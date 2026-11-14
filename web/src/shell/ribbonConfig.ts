@@ -75,6 +75,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasData
           title: "Проект",
           items: [
             { command: "project.new", label: "Новый проект", icon: "plus" },
+            { command: "project.demo", label: "Демо-проект", icon: "cube", hint: "Загрузить учебный проект: 48 скважин, пробы, аудит" },
             { command: "view.open", args: { view: "import" }, label: "Импорт", icon: "import", hint: "Загрузить файл Micromine DAT", active: activeView === "import" },
             { command: "data.refresh", label: "Обновить", icon: "refresh", hint: "Перечитать данные проекта с сервера", small: true },
           ],

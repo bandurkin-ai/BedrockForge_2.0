@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit.engine import latest_run
+from app.demo import create_demo_project
 from app.db import get_session
 from app.models import Assay, AuditFinding, Collar, Component, ImportJob, Project, Survey
 
@@ -73,6 +74,13 @@ def create_project(body: ProjectIn, session: Session = Depends(get_session)):
     except IntegrityError:
         session.rollback()
         raise HTTPException(409, "Проект с таким именем уже существует") from None
+    return project
+
+
+@router.post("/demo", response_model=ProjectOut)
+def demo_project(session: Session = Depends(get_session)):
+    """Create the sample project (or return it if it already exists)."""
+    project, _ = create_demo_project(session)
     return project
 
 

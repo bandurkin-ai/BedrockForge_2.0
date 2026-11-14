@@ -28,6 +28,7 @@ export interface Live {
   reload: () => void;
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
+  onDemoProject: () => Promise<string>;
   openPalette: (query: string) => void;
   runAudit: () => Promise<AuditRun>;
   exportAudit: () => void;
@@ -246,6 +247,13 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       required: ["name"],
       confirm: true,
       run: ({ name }) => s().onNewProject(name as string | undefined),
+    },
+    {
+      id: "project.demo",
+      title: "Демо-проект",
+      description: "Создаёт учебный проект «Демо: участок Северный» (48 скважин, пробы AU и CU, результат аудита) и открывает его. Если он уже есть, просто открывает.",
+      confirm: true,
+      run: () => s().onDemoProject(),
     },
     {
       id: "ribbon.toggle",

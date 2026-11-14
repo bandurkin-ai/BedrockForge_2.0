@@ -19,6 +19,7 @@ export function ProjectTree({
   onOpenTable,
   onSelectHole,
   onImport,
+  onDemo,
 }: {
   summary: Summary | null;
   holes: Hole[];
@@ -26,6 +27,7 @@ export function ProjectTree({
   onOpenTable: (kind: TableKind) => void;
   onSelectHole: (holeId: string | null) => void;
   onImport: () => void;
+  onDemo: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [onlyFlagged, setOnlyFlagged] = useState(false);
@@ -62,6 +64,7 @@ export function ProjectTree({
           <div className="empty">
             <p className="muted small">В проекте пока нет скважин.</p>
             <button className="primary" onClick={onImport}>Импортировать данные</button>
+            <button onClick={onDemo}>Загрузить демо-проект</button>
           </div>
         ) : (
           <>

@@ -145,6 +145,8 @@ export const createProject = (name: string) =>
     body: JSON.stringify({ name }),
   });
 
+export const createDemoProject = () => request<Project>("/api/projects/demo", { method: "POST" });
+
 export const getSummary = (projectId: number) => request<Summary>(`/api/projects/${projectId}/summary`);
 
 export function getTable(projectId: number, kind: string, limit: number, offset: number, holeId?: string | null) {

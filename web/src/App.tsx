@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { auditExportUrl, createProject, listProjects, runAudit, type Project } from "./api";
+import { auditExportUrl, createDemoProject, createProject, listProjects, runAudit, type Project } from "./api";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataPage } from "./DataPage";
 import { ImportPage } from "./ImportPage";
@@ -58,11 +58,13 @@ function Workspace({
   project,
   onSelectProject,
   onNewProject,
+  onDemoProject,
 }: {
   projects: Project[];
   project: Project;
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
+  onDemoProject: () => Promise<string>;
 }) {
   const projectId = project.id;
   const [route, navigate] = useRoute();
@@ -144,7 +146,7 @@ function Workspace({
     get ws() { return wsRef.current; },
     get viz() { return vizRef.current; },
     get section() { return sectionRef.current; },
-    setWs, setViz, setSection, setSelectedHole, openView, navigate, reload, onSelectProject, onNewProject,
+    setWs, setViz, setSection, setSelectedHole, openView, navigate, reload, onSelectProject, onNewProject, onDemoProject,
     openPalette: (query) => setPalette(query),
     runAudit: () => runAudit(projectId, DEFAULT_CONFIG),
     exportAudit: () => window.open(auditExportUrl(projectId), "_blank"),
@@ -299,7 +301,7 @@ function Workspace({
             <aside className="dock dock-left" style={{ width: ws.sizes.left }} aria-label="Проект">
               <ProjectTree
                 summary={summary} holes={holes} selectedHole={selectedHole}
-                onOpenTable={openTable} onSelectHole={setSelectedHole} onImport={() => openView("import")}
+                onOpenTable={openTable} onSelectHole={setSelectedHole} onImport={() => openView("import")} onDemo={() => void runCommand("project.demo", {}, "user")}
               />
             </aside>
             <Splitter axis="x" sign={1} size={ws.sizes.left} label="Ширина панели проекта" onResize={(s) => setWs((prev) => resize(prev, "left", s))} />
@@ -430,6 +432,14 @@ export function App() {
   }
 
   /** Creates and opens a project; without a name the user is asked for one. */
+  async function onDemoProject(): Promise<string> {
+    const project = await createDemoProject();
+    setProjects((prev) => (prev?.some((p) => p.id === project.id) ? prev : [...(prev ?? []), project]));
+    selectProject(project.id);
+    return `Открыт проект «${project.name}»`;
+  }
+
+  /** Creates and opens a project; without a name the user is asked for one. */
   async function onNewProject(name?: string): Promise<string> {
     const title = (name ?? window.prompt("Название нового проекта") ?? "").trim();
     if (!title) return "Отменено";
@@ -443,5 +453,5 @@ export function App() {
   const project = projects?.find((p) => p.id === projectId);
   if (!projects || !project) return <main className="page"><p className="muted">Загрузка…</p></main>;
 
-  return <Workspace key={project.id} projects={projects} project={project} onSelectProject={selectProject} onNewProject={onNewProject} />;
+  return <Workspace key={project.id} projects={projects} project={project} onSelectProject={selectProject} onNewProject={onNewProject} onDemoProject={onDemoProject} />;
 }

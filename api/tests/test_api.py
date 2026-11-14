@@ -10,3 +10,14 @@ def test_health_returns_ok():
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_demo_project_is_created_once_with_audit(db_client):
+    first = db_client.post("/api/projects/demo")
+    second = db_client.post("/api/projects/demo")
+
+    assert first.status_code == 200 and second.json()["id"] == first.json()["id"]
+    pid = first.json()["id"]
+    assert db_client.get(f"/api/projects/{pid}/summary").json()["counts"] == {"collar": 48, "survey": 307, "assay": 3916}
+    assert db_client.get(f"/api/projects/{pid}/audit").json()["by_severity"]["error"] > 0
+    assert len(db_client.get("/api/projects").json()) == 1
