@@ -7,6 +7,21 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Errors that happen before React starts (or outside it) would otherwise leave a blank page.
+      function showError(message) {
+        var box = document.getElementById("startup-error");
+        if (!box) {
+          box = document.createElement("pre");
+          box.id = "startup-error";
+          box.style.cssText = "position:fixed;inset:0;margin:0;padding:16px;overflow:auto;background:#fff;color:#b00020;font:13px monospace;white-space:pre-wrap;z-index:9999";
+          document.body.appendChild(box);
+        }
+        box.textContent += message + "\n\n";
+      }
+      window.addEventListener("error", function (e) { showError("Ошибка: " + (e.message || e.type) + (e.filename ? "\n" + e.filename + ":" + e.lineno : "")); });
+      window.addEventListener("unhandledrejection", function (e) { showError("Ошибка: " + (e.reason && (e.reason.stack || e.reason.message) || e.reason)); });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

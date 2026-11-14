@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { Icon } from "./icons";
 import { PANE_COUNT, VIEW_KINDS, VIEW_TITLES, type Layout, type ViewKind } from "./workspace";
 
@@ -49,7 +50,7 @@ export function ViewportGrid({
               </>
             )}
           </header>
-          <div className="pane-body">{renderView(view, index)}</div>
+          <div className="pane-body"><ErrorBoundary key={view} label={VIEW_TITLES[view]} compact>{renderView(view, index)}</ErrorBoundary></div>
         </section>
       ))}
     </div>

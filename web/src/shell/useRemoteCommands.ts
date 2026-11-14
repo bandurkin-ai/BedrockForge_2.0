@@ -17,7 +17,7 @@ export function useRemoteCommands(
   executeRef.current = execute;
 
   useEffect(() => {
-    const session = crypto.randomUUID();
+    const session = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
     const base = `/api/projects/${projectId}/ui/sessions/${session}`;
     const post = (path: string, body: unknown) =>
       fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
