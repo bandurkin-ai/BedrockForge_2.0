@@ -413,6 +413,8 @@ export interface Dataset {
   id: number;
   kind: DatasetKind;
   name: string;
+  /** "/"-separated folder inside the kind's group of the tree; "" at the top */
+  folder: string;
   created_at: string;
   meta: { format?: string; filename?: string; sidecars?: string[] };
   counts: { collar: number; survey: number; assay: number } | null;
@@ -423,12 +425,16 @@ export interface Dataset {
   rasters: RasterInfo[] | null;
 }
 
+/** Where a wireframe's render buffers are (raw little-endian arrays, /api/blobs/{sha256}). */
 export interface WireframeGeometry {
   id: number;
+  /** integer metres near the centre of the extent */
   origin: number[];
-  /** base64 float32 x, y, z relative to origin */
+  vertex_count: number;
+  triangle_count: number;
+  /** URL of float32 x, y, z relative to origin */
   vertices: string;
-  /** base64 uint32 triangle indices */
+  /** URL of uint32 triangle indices */
   triangles: string;
 }
 
@@ -444,6 +450,9 @@ export const createSet = (projectId: number, name: string) =>
 
 export const renameDataset = (id: number, name: string) =>
   request<Dataset>(`/api/datasets/${id}`, { method: "PATCH", ...json({ name }) });
+
+export const moveDataset = (id: number, folder: string) =>
+  request<Dataset>(`/api/datasets/${id}`, { method: "PATCH", ...json({ folder }) });
 
 export async function deleteDataset(id: number): Promise<void> {
   const response = await fetch(`/api/datasets/${id}`, { method: "DELETE" });
@@ -471,11 +480,13 @@ export async function deleteWireframe(id: number): Promise<void> {
 export interface LineGeometry {
   id: number;
   origin: number[];
-  /** base64 float32 x, y, z relative to origin */
+  vertex_count: number;
+  line_count: number;
+  /** URL of float32 x, y, z relative to origin */
   vertices: string;
-  /** base64 uint32 start of every line, plus the end */
+  /** URL of uint32 start of every line, plus the end */
   offsets: string;
-  /** base64 uint8 per line */
+  /** URL of uint8 per line */
   closed: string;
 }
 
@@ -700,3 +711,182 @@ export const runBootstrap = (setId: number, component: string, req: BootstrapReq
 
 export const runLocalUncertainty = (setId: number, component: string, req: LocalRequest) =>
   postJson<LocalResult>(`/api/sets/${setId}/stats/local-uncertainty`, { component, ...req });
+
+// ---- Resumable uploads and background jobs (stage 7) ----
+
+export interface UploadInfo {
+  id: string;
+  project_id: number;
+  filename: string;
+  size: number;
+  received: number;
+  status: "receiving" | "complete";
+  chunk_size: number;
+}
+
+export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+
+export interface JobInfo {
+  id: number;
+  project_id: number | null;
+  kind: string;
+  title: string;
+  status: JobStatus;
+  progress: number;
+  message: string;
+  result: { dataset_ids?: number[]; kind?: string } | null;
+  error: string | null;
+  attempts: number;
+  cancel_requested: boolean;
+  created_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  updated_at: string | null;
+}
+
+export interface JobDetail extends JobInfo {
+  params: Record<string, unknown>;
+  log: { t: string; level: "info" | "warning" | "error"; text: string }[];
+}
+
+export const isFinished = (job: JobInfo) => job.status === "done" || job.status === "failed" || job.status === "cancelled";
+
+const RESUME_PREFIX = "bf.upload:";
+const RETRIES = 6;
+
+function resumeKey(projectId: number, file: File) {
+  return `${RESUME_PREFIX}${projectId}:${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function storage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+async function sha256Hex(data: ArrayBuffer): Promise<string | null> {
+  // crypto.subtle exists only in secure contexts (https, localhost); elsewhere the check is skipped.
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+  const digest = await subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Отменено", "AbortError"));
+    }, { once: true });
+  });
+
+/** Where to continue an upload of this file, if an earlier attempt was interrupted. */
+async function resumable(projectId: number, file: File): Promise<UploadInfo | null> {
+  const id = storage()?.getItem(resumeKey(projectId, file));
+  if (!id) return null;
+  const response = await fetch(`/api/uploads/${id}`);
+  if (!response.ok) {
+    storage()?.removeItem(resumeKey(projectId, file));
+    return null;
+  }
+  const info = (await response.json()) as UploadInfo;
+  return info.size === file.size && info.project_id === projectId ? info : null;
+}
+
+/**
+ * Sends a file of any size (up to the server's limit, 4 GB by default) in chunks with checksums.
+ * Every chunk is retried with a growing pause; after a page reload or a lost connection the
+ * same file continues where it stopped.
+ */
+export async function uploadResumable(
+  projectId: number,
+  file: File,
+  onProgress?: (sent: number, total: number) => void,
+  signal?: AbortSignal,
+): Promise<UploadInfo> {
+  let info = await resumable(projectId, file);
+  if (!info) {
+    info = await request<UploadInfo>(`/api/projects/${projectId}/uploads`, {
+      method: "POST",
+      ...json({ filename: file.name, size: file.size }),
+    });
+    storage()?.setItem(resumeKey(projectId, file), info.id);
+  }
+  let offset = info.received;
+  onProgress?.(offset, file.size);
+  while (offset < file.size) {
+    const chunk = await file.slice(offset, Math.min(file.size, offset + info.chunk_size)).arrayBuffer();
+    const checksum = await sha256Hex(chunk);
+    for (let attempt = 0; ; attempt++) {
+      signal?.throwIfAborted();
+      let response: Response | null = null;
+      try {
+        response = await fetch(`/api/uploads/${info.id}?offset=${offset}`, {
+          method: "PUT",
+          body: chunk,
+          headers: { "Content-Type": "application/octet-stream", ...(checksum ? { "X-Chunk-SHA256": checksum } : {}) },
+          signal,
+        });
+      } catch (e) {
+        if ((e as Error).name === "AbortError") throw e;
+      }
+      if (response?.ok) {
+        info = (await response.json()) as UploadInfo;
+        offset = info.received;
+        break;
+      }
+      if (response?.status === 409) {
+        // The server has a different position (a retried chunk did arrive): continue from there.
+        const body = await response.json().catch(() => null);
+        const received = body?.detail?.received;
+        if (typeof received === "number") {
+          offset = received;
+          break;
+        }
+      }
+      if (response && response.status < 500 && response.status !== 409 && response.status !== 422) {
+        const body = await response.json().catch(() => null);
+        throw new Error(typeof body?.detail === "string" ? body.detail : `Ошибка загрузки: ${response.status}`);
+      }
+      if (attempt >= RETRIES) throw new Error(`Загрузка «${file.name}» прервалась: нет связи с сервером`);
+      await sleep(1000 * 2 ** attempt, signal);
+    }
+    onProgress?.(offset, file.size);
+  }
+  storage()?.removeItem(resumeKey(projectId, file));
+  return info;
+}
+
+export async function deleteUpload(id: string): Promise<void> {
+  await fetch(`/api/uploads/${id}`, { method: "DELETE" });
+}
+
+export interface ImportRequest {
+  uploads: string[];
+  kind?: "wireframes" | "lines" | "rasters";
+  folder?: string;
+  section?: VerticalPlacement | null;
+}
+
+export const startImport = (projectId: number, body: ImportRequest) =>
+  request<JobInfo>(`/api/projects/${projectId}/imports`, { method: "POST", ...json(body) });
+
+export const listJobs = (projectId: number) => request<JobInfo[]>(`/api/projects/${projectId}/jobs`);
+export const getJob = (id: number) => request<JobDetail>(`/api/jobs/${id}`);
+export const cancelJob = (id: number) => request<JobInfo>(`/api/jobs/${id}/cancel`, { method: "POST" });
+
+/** Every change of the project's jobs, as it happens; returns the unsubscribe function. */
+export function subscribeJobs(projectId: number, onJob: (job: JobInfo) => void): () => void {
+  if (typeof EventSource === "undefined") return () => undefined;
+  const source = new EventSource(`/api/projects/${projectId}/jobs/events`);
+  source.addEventListener("job", (e) => onJob(JSON.parse((e as MessageEvent).data) as JobInfo));
+  return () => source.close();
+}
+
+export async function deleteProject(id: number): Promise<void> {
+  const response = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(`Ошибка ${response.status}`);
+}

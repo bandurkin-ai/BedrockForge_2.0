@@ -6,6 +6,7 @@ import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js
 import type { IntervalsData, Trajectories, VerticalPlacement } from "../api";
 import { NO_VALUE_COLOR, type ColorScale } from "./colorScale";
 import type { SectionLine } from "./geometry";
+import { bounds, type Bounds } from "./geometryLoader";
 import { THEME_EVENT } from "./scene3d-theme";
 
 const PATH_COLOR = 0x8a93a6;
@@ -246,33 +247,29 @@ export class GeoScene {
     this.requestRender();
   }
 
-  /** `vertices` are float32 relative to `origin` (project coordinates), `triangles` are uint32 indices. */
-  setWireframe(id: number, origin: number[], vertices: Float32Array, triangles: Uint32Array, color: string, opacity: number): void {
+  /**
+   * `vertices` are float32 relative to `origin` (project coordinates), `triangles` are uint32 indices.
+   * The buffers are used as they are (no copy): the mesh is placed at its origin's offset from the
+   * scene origin, and three.js combines that offset with the camera in double precision, so the
+   * float32 vertices keep their sub-millimetre accuracy wherever the object is.
+   */
+  setWireframe(id: number, origin: number[], vertices: Float32Array, triangles: Uint32Array, color: string, opacity: number, local: Bounds | null = null): void {
     this.removeWireframe(id, false);
     if (vertices.length === 0 || triangles.length === 0) return;
-    let min = [Infinity, Infinity, Infinity];
-    let max = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < vertices.length; i += 3) {
-      for (let k = 0; k < 3; k++) {
-        const v = vertices[i + k] + origin[k];
-        if (v < min[k]) min[k] = v;
-        if (v > max[k]) max[k] = v;
-      }
-    }
+    const b = local ?? bounds(vertices);
+    if (!b) return;
+    const min = b.min.map((v, k) => v + origin[k]);
+    const max = b.max.map((v, k) => v + origin[k]);
     const o = this.ensureOrigin(min, max);
-    const shift = [origin[0] - o.x, origin[1] - o.y, origin[2] - o.z];
-    const positions = new Float32Array(vertices.length);
-    for (let i = 0; i < vertices.length; i += 3) {
-      positions[i] = vertices[i] + shift[0];
-      positions[i + 1] = vertices[i + 1] + shift[1];
-      positions[i + 2] = vertices[i + 2] + shift[2];
-    }
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
     geometry.setIndex(new THREE.BufferAttribute(triangles, 1));
-    geometry.computeVertexNormals();
+    geometry.boundingBox = new THREE.Box3(new THREE.Vector3(...b.min), new THREE.Vector3(...b.max));
+    geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
+    // Flat shading takes normals from screen-space derivatives: no normal buffer is needed.
     const material = new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, flatShading: true });
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(origin[0] - o.x, origin[1] - o.y, origin[2] - o.z);
     this.applyOpacity(material, opacity);
     const layer: WireframeLayer = {
       extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)),
@@ -309,34 +306,28 @@ export class GeoScene {
     this.requestRender();
   }
 
-  /** `vertices` float32 relative to `origin`; `offsets` are line starts plus the end. */
-  setLines(id: number, origin: number[], vertices: Float32Array, offsets: Uint32Array, color: string): void {
+  /** `vertices` float32 relative to `origin`; `offsets` are line starts plus the end. Placed like wireframes. */
+  setLines(id: number, origin: number[], vertices: Float32Array, offsets: Uint32Array, color: string, local: Bounds | null = null): void {
     this.removeLines(id, false);
     if (vertices.length < 6) return;
-    const min = [Infinity, Infinity, Infinity];
-    const max = [-Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < vertices.length; i += 3) {
-      for (let k = 0; k < 3; k++) {
-        const v = vertices[i + k] + origin[k];
-        if (v < min[k]) min[k] = v;
-        if (v > max[k]) max[k] = v;
-      }
-    }
+    const b = local ?? bounds(vertices);
+    if (!b) return;
+    const min = b.min.map((v, k) => v + origin[k]);
+    const max = b.max.map((v, k) => v + origin[k]);
     const o = this.ensureOrigin(min, max);
-    const shift = [origin[0] - o.x, origin[1] - o.y, origin[2] - o.z];
-    const positions: number[] = [];
+    let segments = 0;
+    for (let l = 0; l + 1 < offsets.length; l++) segments += Math.max(0, offsets[l + 1] - offsets[l] - 1);
+    if (segments === 0) return;
+    const positions = new Float32Array(segments * 6);
+    let j = 0;
     for (let l = 0; l + 1 < offsets.length; l++) {
       for (let i = offsets[l]; i + 1 < offsets[l + 1]; i++) {
-        const a = i * 3;
-        const b = (i + 1) * 3;
-        positions.push(
-          vertices[a] + shift[0], vertices[a + 1] + shift[1], vertices[a + 2] + shift[2],
-          vertices[b] + shift[0], vertices[b + 1] + shift[1], vertices[b + 2] + shift[2],
-        );
+        positions.set(vertices.subarray(i * 3, i * 3 + 6), j);
+        j += 6;
       }
     }
-    if (positions.length === 0) return;
     const lines = this.makeLines(positions, null, 2, new THREE.Color(color).getHex());
+    lines.position.set(origin[0] - o.x, origin[1] - o.y, origin[2] - o.z);
     lines.renderOrder = 5;
     this.lineLayers.set(id, { extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)), lines });
     this.root.add(lines);
@@ -791,7 +782,7 @@ export class GeoScene {
     material.needsUpdate = true;
   }
 
-  private makeLines(positions: number[], colors: number[] | null, width: number, color: number): LineSegments2 {
+  private makeLines(positions: number[] | Float32Array, colors: number[] | null, width: number, color: number): LineSegments2 {
     const geometry = new LineSegmentsGeometry();
     geometry.setPositions(positions);
     if (colors) geometry.setColors(colors);
@@ -891,7 +882,9 @@ export class GeoScene {
     const s = this.section;
     if (!this.clip || !s || !this.origin) return;
     const n = sectionNormal(s.az);
-    const c = new THREE.Vector3(s.x0 - this.origin.x, s.y0 - this.origin.y, 0);
+    // In the mesh's own coordinates (it sits at mesh.position in the scene).
+    const at = layer.mesh.position;
+    const c = new THREE.Vector3(s.x0 - this.origin.x - at.x, s.y0 - this.origin.y - at.y, 0);
     const offset = n.dot(c);
     const position = layer.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
     const index = layer.mesh.geometry.getIndex();
@@ -930,6 +923,7 @@ export class GeoScene {
     if (out.length === 0) return;
     const color = (layer.mesh.material as THREE.MeshLambertMaterial).color.getHex();
     layer.cut = this.makeLines(out, null, 3, color);
+    layer.cut.position.copy(at);
     layer.cut.renderOrder = 4;
     layer.cut.visible = layer.mesh.visible;
     this.root.add(layer.cut);

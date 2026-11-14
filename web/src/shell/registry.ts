@@ -1,5 +1,5 @@
 import type { MutableRefObject } from "react";
-import type { AuditRun, Dataset, Hole, Project, RasterPatch, Summary, VerticalPlacement } from "../api";
+import type { AuditRun, Dataset, Hole, JobInfo, Project, RasterPatch, Summary, VerticalPlacement } from "../api";
 import type { TableKind } from "../route";
 import { ANALYSES, type StatsAnalysis } from "../stats/analyses";
 import type { VizSettings } from "../viz/ComponentPanel";
@@ -36,6 +36,11 @@ export interface Live {
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
   onDemoProject: () => Promise<string>;
+  onDeleteProject: (id: number) => Promise<string>;
+  moveDataset: (id: number, folder: string) => Promise<void>;
+  /** Background jobs of the project, newest first. */
+  jobs: JobInfo[];
+  cancelJob: (id: number) => Promise<void>;
   onCreateSet: (name: string) => Promise<string>;
   openPalette: (query: string) => void;
   openImport: (setId: number | null) => void;
@@ -564,6 +569,55 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       description: "Создаёт учебный проект «Демо: участок Северный» (48 скважин, пробы AU и CU, аудит, каркасы рудного тела, контуры, геологическая карта) и открывает его. Если он уже есть — просто открывает.",
       confirm: true,
       run: () => s().onDemoProject(),
+    },
+    {
+      id: "project.delete",
+      title: "Удалить проект",
+      description: "Удаляет проект со всеми данными (наборы скважин, каркасы, линии, растры, задания). Без project_id — текущий. Пользователь подтверждает удаление в окне.",
+      params: { project_id: { type: "integer" } },
+      confirm: true,
+      run: ({ project_id }) => s().onDeleteProject(typeof project_id === "number" ? project_id : s().projectId),
+    },
+    {
+      id: "dataset.move",
+      title: "Переместить в папку",
+      description: "Кладёт объект дерева (набор скважин, файл каркасов, линий, растр) в папку внутри его группы. folder — путь через «/», пустая строка — в корень группы.",
+      params: { dataset_id: { type: "integer" }, folder: { type: "string" } },
+      required: ["dataset_id", "folder"],
+      confirm: true,
+      run: async ({ dataset_id, folder }) => {
+        const d = s().datasets.find((x) => x.id === dataset_id);
+        if (!d) throw new Error(`Объекта с id ${dataset_id} нет в проекте`);
+        await s().moveDataset(d.id, String(folder));
+        return String(folder).trim() ? `«${d.name}» → папка «${String(folder).trim()}»` : `«${d.name}» → корень группы`;
+      },
+    },
+    {
+      id: "jobs.list",
+      title: "Фоновые задания",
+      description: "Показывает фоновые задания проекта (импорт файлов и расчёты): состояние, ход, ошибки. Открывает вкладку «Задания».",
+      run: () => {
+        s().setWs((prev) => openBottom(prev, "jobs"));
+        const list = s().jobs.slice(0, 20);
+        if (list.length === 0) return "Заданий нет";
+        return list
+          .map((j) => `#${j.id} ${j.title || j.kind}: ${j.status}${j.status === "running" ? ` ${Math.round(j.progress * 100)}%` : ""}${j.error ? ` — ${j.error}` : ""}`)
+          .join("\n");
+      },
+    },
+    {
+      id: "jobs.cancel",
+      title: "Отменить задание",
+      description: "Останавливает фоновое задание: в очереди — сразу, выполняющееся — на ближайшем шаге; его частичный результат не сохраняется.",
+      params: { job_id: { type: "integer" } },
+      required: ["job_id"],
+      confirm: true,
+      run: async ({ job_id }) => {
+        const j = s().jobs.find((x) => x.id === job_id);
+        if (!j) throw new Error(`Задания ${job_id} нет`);
+        await s().cancelJob(j.id);
+        return `Задание ${j.id} отменяется`;
+      },
     },
     {
       id: "ribbon.toggle",

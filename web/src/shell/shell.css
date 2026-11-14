@@ -347,3 +347,23 @@ button.icon.active { color: var(--accent); background: var(--accent-soft); }
 .chart-bar { fill: var(--accent); opacity: 0.75; }
 .chart-mark { stroke: var(--brand); stroke-width: 1.5; }
 .stats-note { max-width: 340px; margin: 0; }
+
+/* ---- background jobs (bottom tab "Задания") */
+.jobs { display: flex; flex-direction: column; gap: 10px; }
+.jobs-group { display: flex; flex-direction: column; gap: 4px; }
+.jobs-head { display: flex; align-items: center; gap: 8px; }
+.job-row { display: grid; grid-template-columns: minmax(140px, 1.2fr) minmax(100px, 1fr) minmax(160px, 2fr) auto; align-items: center; gap: 10px; padding: 3px 0; }
+.job-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.job-info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-bar { height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+.job-bar > div { height: 100%; background: var(--accent); transition: width 0.3s; }
+.job-bar.done > div { background: #4caf6d; }
+.job-bar.failed > div, .job-bar.error > div { background: var(--sev-error); }
+.job-bar.cancelled > div { background: var(--muted); }
+.job-row.failed .job-info { color: var(--sev-error); }
+.job-log { margin: 2px 0 8px 16px; padding: 6px 10px; list-style: none; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; max-height: 220px; overflow: auto; }
+.job-log li { display: flex; gap: 8px; }
+.job-log li.error pre { color: var(--sev-error); }
+.job-log pre { margin: 0; white-space: pre-wrap; font: inherit; }
+button.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; }
+.dock-tabs .badge { margin-left: 4px; padding: 0 6px; color: var(--accent); }

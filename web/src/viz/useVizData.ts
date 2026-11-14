@@ -1,4 +1,5 @@
 import { getIntervals, getLineGeometry, getTrajectories, getWireframeGeometry, listHoles, type Hole, type IntervalsData, type Trajectories } from "../api";
+import { loadBuffers, type Bounds } from "./geometryLoader";
 
 // Requests are cached for the session so toggling layers does not refetch megabytes.
 // Keys contain refreshKey, so a re-import or a new audit run bypasses stale entries.
@@ -25,33 +26,33 @@ export const loadIntervals = (setId: number, component: string, refreshKey: numb
 export const loadHoles = (setId: number, refreshKey: number): Promise<Hole[]> =>
   cached(`holes:${setId}:${refreshKey}`, () => listHoles(setId));
 
-function decode(base64: string): ArrayBuffer {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
-  return bytes.buffer;
-}
-
 export interface DecodedWireframe {
   origin: number[];
   vertices: Float32Array;
   triangles: Uint32Array;
+  /** of `vertices`, relative to origin */
+  bounds: Bounds | null;
 }
 
 /** Wireframe geometry never changes after import, so it is cached by id only. */
 export const loadWireframe = (id: number): Promise<DecodedWireframe> =>
   cached(`wf:${id}`, async () => {
     const g = await getWireframeGeometry(id);
-    return { origin: g.origin, vertices: new Float32Array(decode(g.vertices)), triangles: new Uint32Array(decode(g.triangles)) };
+    const { buffers, bounds } = await loadBuffers([g.vertices, g.triangles], 0);
+    return { origin: g.origin, vertices: new Float32Array(buffers[0]), triangles: new Uint32Array(buffers[1]), bounds };
   });
 
 export interface DecodedLines {
   origin: number[];
   vertices: Float32Array;
   offsets: Uint32Array;
+  bounds: Bounds | null;
 }
 
 /** Line geometry never changes after import, so it is cached by id only. */
 export const loadLines = (id: number): Promise<DecodedLines> =>
   cached(`ln:${id}`, async () => {
     const g = await getLineGeometry(id);
-    return { origin: g.origin, vertices: new Float32Array(decode(g.vertices)), offsets: new Uint32Array(decode(g.offsets)) };
+    const { buffers, bounds } = await loadBuffers([g.vertices, g.offsets], 0);
+    return { origin: g.origin, vertices: new Float32Array(buffers[0]), offsets: new Uint32Array(buffers[1]), bounds };
   });

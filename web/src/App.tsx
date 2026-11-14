@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  auditExportUrl, createDemoProject, createProject, createSet, deleteDataset, deleteLines, deleteWireframe, listProjects, patchLines,
-  patchRaster, patchWireframe, renameDataset, runAudit, uploadLines, uploadRasters, uploadWireframes, type Dataset, type Project,
+  auditExportUrl, cancelJob, createDemoProject, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
+  listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, startImport, uploadResumable,
+  type Dataset, type JobInfo, type Project,
 } from "./api";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataPage } from "./DataPage";
@@ -16,6 +17,8 @@ import { DataTree } from "./shell/DataTree";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { Icon } from "./shell/icons";
 import { ImportDialog } from "./shell/ImportDialog";
+import { JobsPanel } from "./shell/JobsPanel";
+import { useJobs } from "./shell/useJobs";
 import { PropertiesPanel } from "./shell/PropertiesPanel";
 import { buildCommands, type Live } from "./shell/registry";
 import { Ribbon } from "./shell/Ribbon";
@@ -74,12 +77,14 @@ function Workspace({
   onSelectProject,
   onNewProject,
   onDemoProject,
+  onDeleteProject,
 }: {
   projects: Project[];
   project: Project;
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
   onDemoProject: () => Promise<string>;
+  onDeleteProject: (id: number) => Promise<string>;
 }) {
   const projectId = project.id;
   const [route, navigate] = useRoute();
@@ -98,6 +103,13 @@ function Workspace({
   const openFiles = (kind: UploadKind) => fileInputs[kind].current?.click();
   const sceneApi = useRef<SceneApi | null>(null);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const jobs = useJobs(projectId, (job: JobInfo) => {
+    if (job.status === "done") reload();
+    setNotice({
+      text: job.status === "done" ? `${job.title}: готово` : job.status === "failed" ? `${job.title}: ${job.error ?? "ошибка"}` : `${job.title}: отменено`,
+      error: job.status === "failed",
+    });
+  });
 
   // The active set and the selected hole live in the URL, so they survive a reload.
   const [activeSet, setActiveSet, activeSetRef] = useLiveState<number | null>(route.set);
@@ -210,7 +222,15 @@ function Workspace({
       // charts need room: grow a short dock, never shrink one the user enlarged
       setWs((prev) => resize(openBottom(prev, "stats"), "bottom", Math.max(prev.sizes.bottom, 400)));
     },
-    reload, onSelectProject, onNewProject, onDemoProject,
+    reload, onSelectProject, onNewProject, onDemoProject, onDeleteProject,
+    moveDataset: async (id, folder) => {
+      await moveDataset(id, folder);
+      reload();
+    },
+    jobs: jobs.jobs,
+    cancelJob: async (id) => {
+      await cancelJob(id);
+    },
     onCreateSet: createNewSet,
     openPalette: (query) => setPalette(query),
     openImport: (setId) => setImportTarget(setId),
@@ -326,6 +346,15 @@ function Workspace({
       return `Переименовано: «${name}»`;
     });
 
+  const onMove = (d: Dataset) =>
+    guarded(async () => {
+      const folder = window.prompt("Папка (через «/», пусто — в корень группы)", d.folder ?? "");
+      if (folder === null || folder.trim() === (d.folder ?? "")) return;
+      const moved = await moveDataset(d.id, folder);
+      reload();
+      return moved.folder ? `«${d.name}» → «${moved.folder}»` : `«${d.name}» → корень группы`;
+    });
+
   const onDelete = (d: Dataset) =>
     guarded(async () => {
       const what =
@@ -361,46 +390,51 @@ function Workspace({
     setLog((prev) => [{ id: Date.now() + Math.random(), time: new Date(), source: "user" as const, title: "Загрузка файла", args: { file }, result, ok: true }, ...prev].slice(0, LOG_LIMIT));
   }
 
+  /** Sends files in resumable chunks, then queues their import; the result arrives with the job. */
+  async function uploadForImport(files: File[]): Promise<string[]> {
+    const ids: string[] = [];
+    for (const file of files) {
+      const state = jobs.trackUpload(file.name, file.size);
+      try {
+        const info = await uploadResumable(projectId, file, (sent) => jobs.updateUpload(state.key, { sent }), state.abort.signal);
+        jobs.updateUpload(state.key, { sent: file.size, status: "done" });
+        ids.push(info.id);
+      } catch (e) {
+        const aborted = (e as Error).name === "AbortError";
+        jobs.updateUpload(state.key, { status: "error", error: aborted ? "Прервано (продолжится при повторной загрузке файла)" : (e as Error).message });
+        throw aborted ? new Error(`Загрузка «${file.name}» прервана`) : e;
+      }
+    }
+    return ids;
+  }
+
   async function onFiles(kind: UploadKind, list: FileList | null) {
     const files = Array.from(list ?? []);
     const input = fileInputs[kind].current;
     if (input) input.value = "";
     if (!files.length) return;
-    if (kind === "rasters") {
-      // Images and their georeference files go together, paired by name on the server.
-      await guarded(async () => {
-        setNotice({ text: `Загрузка: ${files.map((f) => f.name).join(", ")}…`, error: false });
+    setWs((prev) => openBottom(prev, "jobs"));
+    await guarded(async () => {
+      if (kind === "rasters") {
+        // Images and their georeference files go together, paired by name on the server.
         // Images without a georeference file stand on the current section line, if there is one.
-        const created = await uploadRasters(projectId, files, section ? sceneApi.current?.sectionFrame() : null);
-        const result = `Растров: ${created.length} (${created.map((d) => `${d.rasters?.[0]?.name}: ${d.rasters?.[0]?.georef.source}`).join("; ")})`;
-        logUpload(files.map((f) => f.name).join(", "), result);
-        reload();
-        return result;
-      });
-      return;
-    }
-    for (const file of files) {
-      await guarded(async () => {
-        setNotice({ text: `Загрузка ${file.name}…`, error: false });
-        let result: string;
-        if (kind === "wireframes") {
-          const created = await uploadWireframes(projectId, file);
-          const triangles = (created.wireframes ?? []).reduce((n, w) => n + w.triangle_count, 0);
-          result = `${file.name}: каркасов ${created.wireframes?.length ?? 0}, треугольников ${triangles.toLocaleString("ru-RU")}`;
-        } else {
-          const created = await uploadLines(projectId, file);
-          const lines = (created.lines ?? []).reduce((n, l) => n + l.line_count, 0);
-          result = `${file.name}: слоёв ${created.lines?.length ?? 0}, линий ${lines.toLocaleString("ru-RU")} (${created.meta.format})`;
-        }
-        logUpload(file.name, result);
-        reload();
-        return result;
-      });
-    }
+        const uploads = await uploadForImport(files);
+        const job = await startImport(projectId, { uploads, kind, section: section ? sceneApi.current?.sectionFrame() : null });
+        logUpload(files.map((f) => f.name).join(", "), `Задание ${job.id}: ${job.title}`);
+        return `Файлы переданы, импорт идёт в фоне (задание ${job.id})`;
+      }
+      // One job per file: each can be followed and cancelled on its own.
+      for (const file of files) {
+        const [upload] = await uploadForImport([file]);
+        const job = await startImport(projectId, { uploads: [upload], kind });
+        logUpload(file.name, `Задание ${job.id}: ${job.title}`);
+      }
+      return files.length === 1 ? `${files[0].name}: передан, импорт идёт в фоне` : `Файлов передано: ${files.length}, импорт идёт в фоне`;
+    });
   }
 
   const clearHole = () => activeSet !== null && selectHole(activeSet, null);
-  const bottomTabs: BottomTab[] = ["table", "audit", "stats", "log"];
+  const bottomTabs: BottomTab[] = ["table", "audit", "stats", "jobs", "log"];
   const activeSetName = sets.find((d) => d.id === activeSet)?.name ?? null;
 
   return (
@@ -460,6 +494,7 @@ function Workspace({
                   onImport={(setId) => setImportTarget(setId)}
                   onUpload={openFiles}
                   onRename={onRename}
+                  onMove={onMove}
                   onDelete={onDelete}
                   onColor={onColor}
                   onDeleteItem={onDeleteItem}
@@ -499,7 +534,8 @@ function Workspace({
                     <button key={tab} role="tab" aria-selected={ws.bottomTab === tab} className={ws.bottomTab === tab ? "active" : ""} onClick={() => setWs((p) => ({ ...p, bottomTab: tab }))}>
                       {BOTTOM_TITLES[tab]}
                       {tab === "log" && log.length > 0 && ` · ${log.length}`}
-                      {tab !== "log" && activeSetName && <span className="muted"> · {activeSetName}</span>}
+                      {tab === "jobs" && jobs.active > 0 && <span className="badge"> {jobs.active}</span>}
+                      {tab !== "log" && tab !== "jobs" && activeSetName && <span className="muted"> · {activeSetName}</span>}
                     </button>
                   ))}
                   <span className="spacer" />
@@ -509,6 +545,8 @@ function Workspace({
                   <ErrorBoundary key={ws.bottomTab} label={BOTTOM_TITLES[ws.bottomTab]} compact>
                     {ws.bottomTab === "log" ? (
                       <CommandLog entries={log} />
+                    ) : ws.bottomTab === "jobs" ? (
+                      <JobsPanel jobs={jobs.jobs} uploads={jobs.uploads} onClearUploads={jobs.clearUploads} />
                     ) : activeSet === null ? (
                       <p className="muted small">Нет наборов скважин. Импортируйте данные: лента «Главная → Скважины».</p>
                     ) : ws.bottomTab === "table" ? (
@@ -656,9 +694,22 @@ export function App() {
     return `Создан проект «${project.name}»`;
   }
 
+  /** Deletes a project with everything in it, after the user confirms; opens another one. */
+  async function onDeleteProject(id: number): Promise<string> {
+    const target = projects?.find((p) => p.id === id);
+    if (!target) throw new Error(`Проекта с id ${id} нет`);
+    if (!window.confirm(`Удалить проект «${target.name}» со всеми данными? Это нельзя отменить.`)) return "Отменено";
+    await deleteProject(id);
+    let rest = (projects ?? []).filter((p) => p.id !== id);
+    if (rest.length === 0) rest = [await createProject("Основной проект")];
+    setProjects(rest);
+    if (id === projectId) selectProject(rest[0].id);
+    return `Проект «${target.name}» удалён`;
+  }
+
   if (error) return <main className="page"><div className="alert error">{error}</div></main>;
   const project = projects?.find((p) => p.id === projectId);
   if (!projects || !project) return <main className="page"><p className="muted">Загрузка…</p></main>;
 
-  return <Workspace key={project.id} projects={projects} project={project} onSelectProject={selectProject} onNewProject={onNewProject} onDemoProject={onDemoProject} />;
+  return <Workspace key={project.id} projects={projects} project={project} onSelectProject={selectProject} onNewProject={onNewProject} onDemoProject={onDemoProject} onDeleteProject={onDeleteProject} />;
 }

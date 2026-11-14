@@ -43,6 +43,8 @@ export interface DataTreeProps {
   onImport: (setId: number | null) => void;
   onUpload: (kind: "wireframes" | "lines" | "rasters") => void;
   onRename: (dataset: Dataset) => void;
+  /** Ask for a folder and move the object there. */
+  onMove: (dataset: Dataset) => void;
   onDelete: (dataset: Dataset) => void;
   onColor: (kind: "wireframe" | "lines", id: number, color: string) => void;
   onDeleteItem: (kind: "wireframe" | "lines", id: number, name: string) => void;
@@ -85,6 +87,64 @@ function Category({
       </div>
       {open && <ul className="tree-children">{children}</ul>}
     </li>
+  );
+}
+
+/** Objects of one tree group arranged by their "/"-separated folder. */
+interface FolderNode {
+  name: string;
+  path: string;
+  folders: Map<string, FolderNode>;
+  items: Dataset[];
+}
+
+export function folderTree(list: Dataset[]): FolderNode {
+  const root: FolderNode = { name: "", path: "", folders: new Map(), items: [] };
+  for (const d of list) {
+    let node = root;
+    for (const part of (d.folder ?? "").split("/").filter(Boolean)) {
+      let next = node.folders.get(part);
+      if (!next) {
+        next = { name: part, path: node.path ? `${node.path}/${part}` : part, folders: new Map(), items: [] };
+        node.folders.set(part, next);
+      }
+      node = next;
+    }
+    node.items.push(d);
+  }
+  return root;
+}
+
+const countIn = (node: FolderNode): number => node.items.length + [...node.folders.values()].reduce((n, f) => n + countIn(f), 0);
+
+/** Folders first (open unless collapsed), then the objects of this level. */
+function Folders({ node, group, closed, toggle, render }: {
+  node: FolderNode; group: string; closed: (key: string) => boolean; toggle: (key: string) => void; render: (d: Dataset) => ReactNode;
+}) {
+  const folders = [...node.folders.values()].sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  return (
+    <>
+      {folders.map((f) => {
+        const key = `fold:${group}:${f.path}`;
+        const isOpen = !closed(key);
+        return (
+          <li key={key}>
+            <div className="tree-row folder" onClick={() => toggle(key)}>
+              <Twisty open={isOpen} onClick={() => toggle(key)} />
+              <Icon name="folder" size={14} />
+              <span className="grow name" title={f.path}>{f.name}</span>
+              <span className="count">{countIn(f)}</span>
+            </div>
+            {isOpen && (
+              <ul className="tree-children">
+                <Folders node={f} group={group} closed={closed} toggle={toggle} render={render} />
+              </ul>
+            )}
+          </li>
+        );
+      })}
+      {node.items.map(render)}
+    </>
   );
 }
 
@@ -194,7 +254,7 @@ export function DataTree(props: DataTreeProps) {
           actions={<Action icon="plus" title="Новый набор скважин: импорт файлов" onClick={() => props.onImport(null)} />}
         >
           {sets.length === 0 && <li className="tree-note muted small">Нет наборов. «+» — импорт в новый набор.</li>}
-          {sets.map((d) => {
+          <Folders node={folderTree(sets)} group="drillholes" closed={isOpen} toggle={toggle} render={(d) => {
             const key = `set:${d.id}`;
             const counts = d.counts ?? { collar: 0, survey: 0, assay: 0 };
             const component = d.components?.[0];
@@ -208,6 +268,7 @@ export function DataTree(props: DataTreeProps) {
                   <span className="row-actions">
                     <Action icon="import" title="Импорт файлов в этот набор" onClick={() => props.onImport(d.id)} />
                     <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
+                    <Action icon="folder" title="В папку…" onClick={() => props.onMove(d)} />
                     <Action icon="trash" title="Удалить набор со всеми данными" onClick={() => props.onDelete(d)} />
                   </span>
                 </div>
@@ -268,7 +329,7 @@ export function DataTree(props: DataTreeProps) {
                 )}
               </li>
             );
-          })}
+          }} />
         </Category>
 
         <FileCategory
@@ -326,7 +387,7 @@ function FileCategory(props: DataTreeProps & {
       actions={<Action icon="plus" title={props.uploadTitle} onClick={props.onUpload} />}
     >
       {files.length === 0 && <li className="tree-note muted small">{props.emptyNote}</li>}
-      {files.map((d) => {
+      <Folders node={folderTree(files)} group={kind} closed={(k) => open.has(k)} toggle={toggle} render={(d) => {
         const key = `file:${d.id}`;
         const items = props.items(d);
         const allShown = items.every((item) => isShown(ws, keyOf(item.id)));
@@ -339,6 +400,7 @@ function FileCategory(props: DataTreeProps & {
               <span className="count">{items.length}</span>
               <span className="row-actions">
                 <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
+                <Action icon="folder" title="В папку…" onClick={() => props.onMove(d)} />
                 <Action icon="trash" title="Удалить файл со всем содержимым" onClick={() => props.onDelete(d)} />
               </span>
             </div>
@@ -364,7 +426,7 @@ function FileCategory(props: DataTreeProps & {
             )}
           </li>
         );
-      })}
+      }} />
     </Category>
   );
 }
@@ -372,7 +434,8 @@ function FileCategory(props: DataTreeProps & {
 /** Rasters: one image per entry. */
 function RasterCategory(props: DataTreeProps & { open: Set<string>; toggle: (key: string) => void }) {
   const { open, toggle, ws } = props;
-  const entries = (props.datasets ?? []).filter((d) => d.kind === "rasters").flatMap((d) => (d.rasters ?? []).map((r): [Dataset, RasterInfo] => [d, r]));
+  const files = (props.datasets ?? []).filter((d) => d.kind === "rasters");
+  const entries = files.flatMap((d) => (d.rasters ?? []).map((r): [Dataset, RasterInfo] => [d, r]));
   const kind: ObjectKind = "raster";
   return (
     <Category
@@ -380,7 +443,7 @@ function RasterCategory(props: DataTreeProps & { open: Set<string>; toggle: (key
       actions={<Action icon="plus" title="Загрузить растры: изображение вместе с файлом привязки (.jgw/.pgw/.tfw, .tab, .grf) или GeoTIFF" onClick={() => props.onUpload("rasters")} />}
     >
       {entries.length === 0 && <li className="tree-note muted small">Нет растров. «+» — изображение и файл привязки.</li>}
-      {entries.map(([d, r]) => {
+      <Folders node={folderTree(files)} group="rasters" closed={(k) => open.has(k)} toggle={toggle} render={(d) => (d.rasters ?? []).map((r) => {
         const selected = props.selected?.kind === kind && props.selected.id === r.id;
         return (
           <li key={r.id}>
@@ -391,12 +454,13 @@ function RasterCategory(props: DataTreeProps & { open: Set<string>; toggle: (key
               <span className="count" title="Размер пикселя">{r.georef.pixel_size.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} м</span>
               <span className="row-actions">
                 <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
+                <Action icon="folder" title="В папку…" onClick={() => props.onMove(d)} />
                 <Action icon="trash" title="Удалить растр" onClick={() => props.onDelete(d)} />
               </span>
             </div>
           </li>
         );
-      })}
+      })} />
     </Category>
   );
 }

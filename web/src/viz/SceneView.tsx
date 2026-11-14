@@ -228,7 +228,7 @@ export function SceneView(props: SceneViewProps) {
             loadedWireframes.current.delete(w.id);
             return;
           }
-          sceneRef.current.setWireframe(w.id, g.origin, g.vertices, g.triangles, w.color, ws.wireframeOpacity);
+          sceneRef.current.setWireframe(w.id, g.origin, g.vertices, g.triangles, w.color, ws.wireframeOpacity, g.bounds);
           applyStyles();
         })
         .catch((e: Error) => {
@@ -265,7 +265,7 @@ export function SceneView(props: SceneViewProps) {
             loadedLines.current.delete(layer.id);
             return;
           }
-          sceneRef.current.setLines(layer.id, g.origin, g.vertices, g.offsets, layer.color);
+          sceneRef.current.setLines(layer.id, g.origin, g.vertices, g.offsets, layer.color, g.bounds);
           applyStyles();
         })
         .catch((e: Error) => {
