@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import type { Hole, Summary } from "../api";
-import { ComponentPanel, type VizSettings } from "./ComponentPanel";
+import { ScaleStrip, type VizSettings } from "./ComponentPanel";
 import { makeScale } from "./colorScale";
 import type { SectionLine } from "./geometry";
 import { LogView } from "./LogView";
@@ -13,9 +13,7 @@ const View3D = lazy(() => import("./View3D").then((m) => ({ default: m.View3D })
 
 export type VizKind = "plan" | "section" | "log" | "view3d";
 
-const TITLES: Record<VizKind, string> = { plan: "План", section: "Разрез", log: "Колонка скважины", view3d: "3D" };
-
-/** One of the four visual tabs; loads the data they share (trajectories, intervals of one component). */
+/** One of the four visual views; loads the data they share (trajectories, intervals of one component). */
 export function VizTab({
   kind,
   projectId,
@@ -25,7 +23,6 @@ export function VizTab({
   selectedHole,
   settings,
   section,
-  onSettings,
   onSelectHole,
   onSection,
   onOpenSection,
@@ -38,7 +35,6 @@ export function VizTab({
   selectedHole: string | null;
   settings: VizSettings;
   section: SectionLine | null;
-  onSettings: (next: VizSettings) => void;
   onSelectHole: (holeId: string | null) => void;
   onSection: (section: SectionLine | null) => void;
   onOpenSection: () => void;
@@ -59,18 +55,7 @@ export function VizTab({
 
   return (
     <main className="viz-page">
-      <h1 className="viz-title">{TITLES[kind]}</h1>
-      {kind !== "plan" && (
-        <ComponentPanel
-          components={components}
-          settings={settings}
-          component={component}
-          scale={scale}
-          stats={intervals.data?.stats ?? null}
-          unit={unit}
-          onChange={onSettings}
-        />
-      )}
+      {kind !== "plan" && <ScaleStrip component={component} unit={unit} scale={scale} log={settings.log} />}
       {kind === "plan" && (
         <PlanView
           projectId={projectId}

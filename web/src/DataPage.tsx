@@ -55,7 +55,6 @@ export function DataPage({
 
   return (
     <main className="page">
-      <h1>Таблица</h1>
       {error && <div className="alert error">{error}</div>}
 
       <div className="tabs" role="tablist" aria-label="Таблица данных">

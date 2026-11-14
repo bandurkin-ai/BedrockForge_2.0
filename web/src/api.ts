@@ -235,6 +235,58 @@ export const getHole = (projectId: number, holeId: string) =>
 
 export const getHealth = () => request<{ status: string; version: string }>("/api/health");
 
+// ---- Claude assistant ----
+
+export interface AssistantStatus {
+  /** false: the server has no Claude API credentials */
+  configured: boolean;
+  model: string;
+}
+
+export type AssistantBlock =
+  | { type: "text"; text: string }
+  /** A data tool the server already ran for Claude. */
+  | { type: "tool"; name: string; title: string; input: Record<string, unknown>; ok: boolean };
+
+export interface AssistantToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export interface AssistantToolResult {
+  tool_use_id: string;
+  content: string;
+  is_error: boolean;
+}
+
+export interface AssistantTurn {
+  conversation_id: string;
+  blocks: AssistantBlock[];
+  /** Interface commands Claude wants the browser to run; answer with `tool_results`. */
+  pending: AssistantToolCall[];
+  done: boolean;
+  notice: string | null;
+}
+
+export interface AssistantRequest {
+  conversation_id: string | null;
+  text?: string;
+  context?: Record<string, unknown>;
+  tool_results?: AssistantToolResult[];
+  ui_tools: unknown[];
+}
+
+export const getAssistantStatus = () => request<AssistantStatus>("/api/assistant/status");
+
+export const assistantChat = (projectId: number, body: AssistantRequest, signal?: AbortSignal) =>
+  request<AssistantTurn>(`/api/projects/${projectId}/assistant/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+
 export interface ValueStats {
   count: number;
   min: number | null;

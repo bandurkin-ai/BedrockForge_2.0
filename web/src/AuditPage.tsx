@@ -14,7 +14,7 @@ const SEVERITY: Record<string, string> = { error: "Критично", warning: "
 const TABLES: Record<string, string> = { collar: "Устья", survey: "Инклинометрия", assay: "Пробы" };
 const PAGE = 50;
 
-const DEFAULT_CONFIG: AuditConfig = {
+export const DEFAULT_CONFIG: AuditConfig = {
   depth_tolerance: 0.01,
   dogleg_per_30m: 10,
   isolated_factor: 10,
@@ -43,11 +43,14 @@ function Badge({ severity }: { severity: string }) {
 
 export function AuditPage({
   projectId,
+  refreshKey,
   holeId,
   onAudited,
   onClearHole,
 }: {
   projectId: number;
+  /** Changes when the audit was run elsewhere (ribbon, Claude) or data was re-imported. */
+  refreshKey: number;
   holeId: string | null;
   onAudited: () => void;
   onClearHole: () => void;
@@ -69,7 +72,7 @@ export function AuditPage({
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoaded(true));
-  }, [projectId]);
+  }, [projectId, refreshKey]);
 
   useEffect(() => setOffset(0), [holeId]);
 
@@ -82,7 +85,7 @@ export function AuditPage({
     getFindings(projectId, { ...filters, hole: holeId ?? undefined }, PAGE, offset)
       .then(setPage)
       .catch((e: Error) => setError(e.message));
-  }, [projectId, runId, filters, offset, holeId]);
+  }, [projectId, runId, filters, offset, holeId, refreshKey]);
 
   async function onRun() {
     setBusy(true);

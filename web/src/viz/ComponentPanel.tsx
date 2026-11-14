@@ -89,3 +89,22 @@ export function ComponentPanel({
     </div>
   );
 }
+
+/** One-line legend shown above a view; the settings themselves live in the properties panel. */
+export function ScaleStrip({ component, unit, scale, log }: { component: string | null; unit: string | null; scale: ColorScale | null; log: boolean }) {
+  if (!component) return null;
+  return (
+    <div className="scale-strip" aria-label="Шкала содержаний">
+      <strong>{component}</strong>
+      {unit && <span>{unit}</span>}
+      {scale && (
+        <>
+          <span>{formatValue(scale.min)}</span>
+          <div className="legend-bar" style={{ background: scale.gradientCss() }} />
+          <span>{formatValue(scale.max)}</span>
+        </>
+      )}
+      {log && <span>лог.</span>}
+    </div>
+  );
+}

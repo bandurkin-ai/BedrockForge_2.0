@@ -19,6 +19,11 @@ services:
     build: ./api
     environment:
       DATABASE_URL: postgresql+psycopg://geo:geo@db:5432/geo
+      # Claude assistant: take the key from the shell or a .env file next to this file.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ASSISTANT_MODEL: ${ASSISTANT_MODEL:-claude-opus-5-5}
+      # Hosts allowed to reach the MCP endpoint /mcp (add your public host when publishing it).
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost:*,127.0.0.1:*,api:*}
     ports:
       - "8000:8000"
     depends_on:

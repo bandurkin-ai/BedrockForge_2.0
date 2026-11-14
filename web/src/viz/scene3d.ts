@@ -5,6 +5,7 @@ import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import type { IntervalsData, Trajectories } from "../api";
 import { NO_VALUE_COLOR, type ColorScale } from "./colorScale";
+import { THEME_EVENT } from "./scene3d-theme";
 
 const PATH_COLOR = 0x8a93a6;
 const SELECT_COLOR = 0xff7a00;
@@ -56,7 +57,6 @@ export class DrillScene {
   private disposed = false;
   private resizeObserver: ResizeObserver;
   private cleanup: (() => void)[] = [];
-  private colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -76,8 +76,9 @@ export class DrillScene {
       this.applyTheme();
       this.requestRender();
     };
-    this.colorScheme.addEventListener("change", onTheme);
-    this.cleanup.push(() => this.colorScheme.removeEventListener("change", onTheme));
+    // The shell announces a theme switch after it has updated the page colours.
+    window.addEventListener(THEME_EVENT, onTheme);
+    this.cleanup.push(() => window.removeEventListener(THEME_EVENT, onTheme));
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
