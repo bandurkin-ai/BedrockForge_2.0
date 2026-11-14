@@ -526,3 +526,177 @@ export interface RasterPatch {
 
 export const patchRaster = (id: number, patch: RasterPatch) =>
   request<RasterInfo>(`/api/rasters/${id}`, { method: "PATCH", ...json(patch) });
+
+// ---- Statistics ----
+
+export interface DeclusParams {
+  method: "cell" | "polygonal";
+  /** cell sizes; null = from the data extent */
+  cmin: number | null;
+  cmax: number | null;
+  ncell: number;
+  noff: number;
+  minmax: "min" | "max";
+  nx: number;
+  ny: number;
+}
+
+export interface DeclusResult {
+  component: string;
+  method: "cell" | "polygonal";
+  count: number;
+  naive_mean: number;
+  declustered_mean: number;
+  weight_min: number;
+  weight_max: number;
+  /** cell method: element 0 is size 0 (the naive mean) */
+  cell_sizes: (number | null)[] | null;
+  means: (number | null)[] | null;
+  cmin: number | null;
+  cmax: number | null;
+  best_cell_size: number | null;
+}
+
+export interface NscoreResult {
+  component: string;
+  count: number;
+  values: number[];
+  scores: number[];
+  zmin: number;
+  zmax: number;
+  sample_scores: number[];
+}
+
+export interface DirectionParams {
+  azimuth: number;
+  azimuth_tol: number;
+  bandwidth: number | null;
+}
+
+export interface VariogramStructure {
+  it: "spherical" | "exponential" | "gaussian";
+  cc: number;
+  hmaj: number;
+  hmin: number | null;
+  azi: number;
+}
+
+export interface VariogramModelParams {
+  nug: number;
+  structures: VariogramStructure[];
+}
+
+export interface VariogramRequest {
+  lag: number;
+  nlag: number;
+  directions: DirectionParams[];
+  standardize: boolean;
+  model: VariogramModelParams | null;
+}
+
+export interface VariogramDirection extends DirectionParams {
+  dist: (number | null)[];
+  gamma: (number | null)[];
+  npairs: number[];
+  model_gamma: number[] | null;
+}
+
+export interface VariogramResult {
+  component: string;
+  count: number;
+  variance: number;
+  lags: number[];
+  directions: VariogramDirection[];
+}
+
+export interface VariogramMapRequest {
+  nxlag: number;
+  nylag: number;
+  dxlag: number;
+  dylag: number;
+  minnp: number;
+  standardize: boolean;
+}
+
+export interface VariogramMapResult {
+  component: string;
+  count: number;
+  x: number[];
+  y: number[];
+  gamma: (number | null)[][];
+  npairs: number[][];
+}
+
+export interface BootstrapRequest {
+  statistic: "mean" | "median" | "std" | "cv" | "p10" | "p90";
+  n_boot: number;
+  confidence: number;
+  declus: DeclusParams | null;
+  seed: number | null;
+}
+
+export interface BootstrapResult {
+  component: string;
+  statistic: string;
+  count: number;
+  n_boot: number;
+  observed: number;
+  mean: number;
+  std: number;
+  confidence: number;
+  ci_low: number;
+  ci_high: number;
+  edges: number[];
+  counts: number[];
+}
+
+export interface LocalRequest {
+  nx: number;
+  ny: number;
+  nreal: number;
+  k: number;
+  power: number;
+  /** null = 25 % of the larger plan extent */
+  radius: number | null;
+  threshold: number | null;
+  seed: number | null;
+}
+
+export type Grid = (number | null)[][];
+
+export interface LocalResult {
+  component: string;
+  count: number;
+  holes: number;
+  nreal: number;
+  radius: number;
+  x: number[];
+  y: number[];
+  mean: Grid;
+  std: Grid;
+  p10: Grid;
+  p90: Grid;
+  prob_exceed: Grid | null;
+}
+
+const postJson = <T>(url: string, body: unknown) =>
+  request<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+export const runDeclustering = (setId: number, component: string, params: DeclusParams) =>
+  postJson<DeclusResult>(`/api/sets/${setId}/stats/declustering`, { component, ...params });
+
+/** `declus` = null: equal weights. */
+export const runNscore = (setId: number, component: string, declus: DeclusParams | null) =>
+  postJson<NscoreResult>(`/api/sets/${setId}/stats/nscore`, { component, declus });
+
+export const runVariogram = (setId: number, component: string, req: VariogramRequest) =>
+  postJson<VariogramResult>(`/api/sets/${setId}/stats/variogram`, { component, ...req });
+
+export const runVariogramMap = (setId: number, component: string, req: VariogramMapRequest) =>
+  postJson<VariogramMapResult>(`/api/sets/${setId}/stats/variogram-map`, { component, ...req });
+
+export const runBootstrap = (setId: number, component: string, req: BootstrapRequest) =>
+  postJson<BootstrapResult>(`/api/sets/${setId}/stats/bootstrap`, { component, ...req });
+
+export const runLocalUncertainty = (setId: number, component: string, req: LocalRequest) =>
+  postJson<LocalResult>(`/api/sets/${setId}/stats/local-uncertainty`, { component, ...req });

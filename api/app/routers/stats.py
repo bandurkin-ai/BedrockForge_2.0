@@ -22,8 +22,9 @@ from app.db import get_session
 from app.models import Assay, Component
 from app.routers.projects import get_set
 from app.routers.viz import _trajectories
-from app.stats import (VariogramModel, backtr, cell_declus, experimental_variogram,
-                       nscore, polygonal_declus, variogram_map)
+from app.stats import (VariogramModel, backtr, bootstrap, cell_declus, experimental_variogram, idw,
+                       local_expectation, local_percentile, local_prob_exceed, local_std, nscore,
+                       polygonal_declus, resample_groups, variogram_map)
 
 router = APIRouter(prefix="/api", tags=["statistics"])
 
@@ -38,6 +39,7 @@ MAX_MAP_CELLS = 40000
 @dataclass
 class Samples:
     assay_ids: np.ndarray
+    holes: np.ndarray  # hole id of every sample
     x: np.ndarray
     y: np.ndarray
     v: np.ndarray
@@ -71,19 +73,20 @@ def load_samples(session: Session, set_id: int, component: str, min_n: int = 2) 
                 and to_m > from_m and math.isfinite(value)):
             by_hole.setdefault(hole, []).append((aid, 0.5 * (from_m + to_m), value))
 
-    ids, xs, ys, vs = [], [], [], []
+    ids, hs, xs, ys, vs = [], [], [], [], []
     for hole, items in by_hole.items():
         arr = np.array(items)
         pos = trajs[hole].positions(arr[:, 1])
         ids.append(arr[:, 0])
+        hs.append(np.full(len(arr), hole, dtype=object))
         xs.append(pos[:, 0])
         ys.append(pos[:, 1])
         vs.append(arr[:, 2])
     if not ids:
         raise HTTPException(422, f"Нет интервалов со значением «{component}» и траекторией")
-    s = Samples(*(np.concatenate(a) for a in (ids, xs, ys, vs)))
+    s = Samples(*(np.concatenate(a) for a in (ids, hs, xs, ys, vs)))
     order = np.argsort(s.assay_ids, kind="stable")
-    s = Samples(s.assay_ids[order].astype(int), s.x[order], s.y[order], s.v[order])
+    s = Samples(s.assay_ids[order].astype(int), s.holes[order], s.x[order], s.y[order], s.v[order])
     if s.n < min_n:
         raise HTTPException(422, f"Недостаточно данных: {s.n} интервалов, нужно не менее {min_n}")
     if s.n > MAX_SAMPLES:
@@ -392,3 +395,134 @@ def variogram_model_curve(body: ModelCurveRequest):
     h = np.asarray(body.lags, dtype=float)
     return ModelCurveOut(sill=model.sill, gamma=model.gamma(h, body.azimuth).tolist(),
                          cov=model.cov(h, body.azimuth).tolist())
+
+
+# --------------------------------------------------------------------------
+# Uncertainty
+# --------------------------------------------------------------------------
+MAX_BOOTSTRAP = 5000
+HIST_BINS = 24
+
+_STATISTICS = {
+    "mean": np.mean,
+    "median": np.median,
+    "std": lambda a: float(np.std(a)),
+    "cv": lambda a: float(np.std(a) / np.mean(a)) if np.mean(a) != 0 else float("nan"),
+    "p10": lambda a: float(np.percentile(a, 10)),
+    "p90": lambda a: float(np.percentile(a, 90)),
+}
+STATISTIC_TITLES = {"mean": "Среднее", "median": "Медиана", "std": "Стандартное отклонение",
+                    "cv": "Коэффициент вариации", "p10": "P10", "p90": "P90"}
+
+
+class BootstrapRequest(BaseModel):
+    component: str
+    statistic: Literal["mean", "median", "std", "cv", "p10", "p90"] = "mean"
+    n_boot: int = Field(1000, ge=10, le=MAX_BOOTSTRAP)
+    confidence: float = Field(0.9, gt=0.5, lt=1.0)
+    declus: DeclusIn | None = Field(None, description="draw samples with probability proportional to the weights")
+    seed: int | None = None
+
+
+class BootstrapOut(BaseModel):
+    component: str
+    statistic: str
+    count: int
+    n_boot: int
+    observed: float
+    mean: float
+    std: float
+    confidence: float
+    ci_low: float
+    ci_high: float
+    # histogram of the bootstrap distribution
+    edges: list[float]
+    counts: list[int]
+
+
+@router.post("/sets/{set_id}/stats/bootstrap", response_model=BootstrapOut)
+def bootstrap_statistic(set_id: int, body: BootstrapRequest, session: Session = Depends(get_session)):
+    """Bootstrap uncertainty of a statistic of one component (resampling the intervals)."""
+    s = load_samples(session, set_id, body.component)
+    weights = compute_weights(body.declus, s)[0] if body.declus else None
+    stat = _STATISTICS[body.statistic]
+    realizations = _call(bootstrap, s.v, stat, body.n_boot, weights=weights, seed=body.seed)
+    finite = realizations[np.isfinite(realizations)]
+    if len(finite) == 0:
+        raise HTTPException(422, "Статистика не определена для этих данных")
+    tail = 100 * (1 - body.confidence) / 2
+    lo, hi = np.percentile(finite, [tail, 100 - tail])
+    counts, edges = np.histogram(finite, bins=HIST_BINS)
+    return BootstrapOut(
+        component=body.component, statistic=body.statistic, count=s.n, n_boot=body.n_boot,
+        observed=float(stat(s.v)), mean=float(finite.mean()), std=float(finite.std()),
+        confidence=body.confidence, ci_low=float(lo), ci_high=float(hi),
+        edges=edges.tolist(), counts=counts.tolist(),
+    )
+
+
+class LocalRequest(BaseModel):
+    component: str
+    nx: int = Field(30, ge=2, le=100)
+    ny: int = Field(30, ge=2, le=100)
+    nreal: int = Field(50, ge=5, le=300)
+    k: int = Field(8, ge=1, le=64)
+    power: float = Field(2.0, gt=0, le=10)
+    radius: float | None = Field(None, gt=0, description="search radius; default 25 % of the larger plan extent")
+    threshold: float | None = Field(None, description="adds the probability of reaching it")
+    seed: int | None = None
+
+
+class LocalOut(BaseModel):
+    component: str
+    count: int
+    holes: int
+    nreal: int
+    radius: float
+    x: list[float]  # cell centres of every column
+    y: list[float]  # cell centres of every row, ascending
+    # maps [row][column]; null where no data lie within the radius
+    mean: list[list[float | None]]
+    std: list[list[float | None]]
+    p10: list[list[float | None]]
+    p90: list[list[float | None]]
+    prob_exceed: list[list[float | None]] | None = None
+
+
+@router.post("/sets/{set_id}/stats/local-uncertainty", response_model=LocalOut)
+def local_uncertainty(set_id: int, body: LocalRequest, session: Session = Depends(get_session)):
+    """Local uncertainty of an inverse distance estimate: bootstrap the holes, estimate a plan grid each time.
+
+    Every realization resamples whole holes with replacement (the samples of a hole are not independent),
+    so the spread of the maps shows how much the estimate depends on which holes were drilled.
+    """
+    s = load_samples(session, set_id, body.component, min_n=3)
+    n_holes = len(np.unique(s.holes))
+    if n_holes < 3:
+        raise HTTPException(422, f"Нужно не менее 3 скважин с данными, есть {n_holes}")
+    x0, x1, y0, y1 = float(s.x.min()), float(s.x.max()), float(s.y.min()), float(s.y.max())
+    span = max(x1 - x0, y1 - y0)
+    if span <= 0:
+        raise HTTPException(422, "Все интервалы в одной точке плана")
+    radius = body.radius if body.radius is not None else 0.25 * span
+    # cell centres; a degenerate side (all holes on a line) still gets a strip of the other side's cell size
+    cx = x0 + (np.arange(body.nx) + 0.5) * max(x1 - x0, span / body.nx) / body.nx
+    cy = y0 + (np.arange(body.ny) + 0.5) * max(y1 - y0, span / body.ny) / body.ny
+    targets = np.column_stack([np.tile(cx, body.ny), np.repeat(cy, body.nx)])
+
+    xy = s.xy()
+    stack = np.empty((body.nreal, body.ny, body.nx))
+    for r, idx in enumerate(_call(resample_groups, s.holes, body.nreal, body.seed)):
+        stack[r] = _call(idw, xy[idx], s.v[idx], targets, k=body.k, power=body.power,
+                         radius=radius).reshape(body.ny, body.nx)
+
+    def grid(a):
+        return [_clean(row) for row in a]
+
+    return LocalOut(
+        component=body.component, count=s.n, holes=n_holes, nreal=body.nreal, radius=radius,
+        x=cx.tolist(), y=cy.tolist(),
+        mean=grid(local_expectation(stack)), std=grid(local_std(stack)),
+        p10=grid(local_percentile(stack, 10)), p90=grid(local_percentile(stack, 90)),
+        prob_exceed=None if body.threshold is None else grid(local_prob_exceed(stack, body.threshold)),
+    )

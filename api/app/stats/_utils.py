@@ -19,4 +19,6 @@ def check_weights(wts, n):
         raise ValueError("wts and data must have equal length")
     if np.any(wts < 0):
         raise ValueError("wts must be non-negative")
+    if not wts.sum() > 0:
+        raise ValueError("wts must not all be zero")
     return wts * n / wts.sum()

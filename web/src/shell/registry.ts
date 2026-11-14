@@ -1,6 +1,7 @@
 import type { MutableRefObject } from "react";
 import type { AuditRun, Dataset, Hole, Project, RasterPatch, Summary, VerticalPlacement } from "../api";
 import type { TableKind } from "../route";
+import { ANALYSES, type StatsAnalysis } from "../stats/analyses";
 import type { VizSettings } from "../viz/ComponentPanel";
 import { DEFAULT_WINDOW, shiftSection, type SectionLine } from "../viz/geometry";
 import type { Command } from "./commands";
@@ -30,6 +31,7 @@ export interface Live {
   selectHole: (setId: number, holeId: string | null) => void;
   selectObject: (object: SelectedObject | null) => void;
   openTable: (kind: TableKind) => void;
+  openStats: (analysis: StatsAnalysis, component: string | null) => void;
   reload: () => void;
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
@@ -244,11 +246,35 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       },
     },
     {
+      id: "stats.open",
+      title: "Статистика",
+      description:
+        "Открывает вкладку «Статистика» нижней панели для набора скважин. analysis: declus — декластеризация, nscore — нормальные оценки, " +
+        "variogram — вариограмма, map — карта вариограммы, bootstrap — бутстрап статистики, local — карта локальной неопределённости оценки. component — компонент (по умолчанию первый в наборе). " +
+        "Расчёт считается по серединам интервалов в плане и запускается кнопкой «Рассчитать».",
+      params: {
+        analysis: { type: "string", enum: ANALYSES.map(([id]) => id) },
+        component: { type: "string" },
+        set_id: { type: "integer" },
+      },
+      required: ["analysis"],
+      run: ({ analysis, component, set_id }) => {
+        const set = targetSet(set_id);
+        if (set.id !== s().activeSet) s().selectSet(set.id);
+        const names = (s().summary?.components ?? []).map((c) => c.name);
+        if (typeof component === "string" && s().summary && !names.includes(component)) {
+          throw new Error(`Компонента «${component}» нет в наборе. Есть: ${names.join(", ") || "нет компонентов"}`);
+        }
+        s().openStats(analysis as StatsAnalysis, typeof component === "string" ? component : null);
+        return `Статистика «${ANALYSES.find(([id]) => id === analysis)?.[1]}» набора «${set.name}»${component ? `, ${component}` : ""}`;
+      },
+    },
+    {
       id: "panel.set",
       title: "Панель",
       description:
         "Открывает или закрывает панель: project — дерево проекта слева, properties — свойства справа, assistant — чат Claude, " +
-        "bottom — нижняя панель (tab: table, audit или log). Без open переключает.",
+        "bottom — нижняя панель (tab: table, audit, stats или log). Без open переключает.",
       params: {
         panel: { type: "string", enum: Object.keys(PANEL_TITLES) },
         open: { type: "boolean" },
