@@ -8,7 +8,9 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+import json
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
@@ -18,7 +20,10 @@ from app.audit.engine import latest_run
 from app.config import settings
 from app.db import get_session
 from app.formats.lines import LINE_SUFFIXES, LineFormatError, line_stats, pack, read_lines
-from app.formats.rasters import IMAGE_SUFFIXES, SIDECAR_SUFFIXES, RasterFormatError, corners, pair_files, pixel_size, read_raster, rotation_deg
+from app.formats.rasters import (
+    IMAGE_SUFFIXES, SIDECAR_SUFFIXES, Georef, RasterFormatError, corners, corners3d, is_vertical, pair_files, pixel_size,
+    plane_azimuth, read_raster, rotation_deg, vertical_georef,
+)
 from app.formats.wireframes import WIREFRAME_SUFFIXES, WireframeFormatError, mesh_stats, read_wireframes
 from app.models import Assay, Collar, Component, Dataset, LineLayer, Raster, Survey, Wireframe
 from app.routers.projects import get_project
@@ -85,8 +90,21 @@ class LinePatch(BaseModel):
     color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
 
 
+class VerticalPlacement(BaseModel):
+    """A raster standing in a vertical plane: left edge (x1, y1), right edge (x2, y2), from z_top down to z_bottom."""
+
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    z_top: float
+    z_bottom: float
+
+
 class RasterPatch(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
+    # Re-place the image in a vertical plane (e.g. on the current section line).
+    vertical: VerticalPlacement | None = None
     # None clears it: the raster goes under the lowest object of the scene.
     elevation: float | None = None
     opacity: float | None = Field(None, ge=0.05, le=1)
@@ -397,11 +415,52 @@ def delete_lines(layer_id: int, session: Session = Depends(get_session)) -> None
 # ---- rasters
 
 
+def raster_placement(g: Georef, width: int, height: int, checks: list, notes: list) -> tuple[dict, dict]:
+    """The stored georeference (plan or vertical) and the plan extent of a raster."""
+    pts = corners(g.affine, width, height)
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    vertical = is_vertical(g, width, height)
+    georef = {
+        "affine": g.affine, "affine_z": g.affine_z if vertical else None, "source": g.source, "crs": g.crs,
+        "placement": "vertical" if vertical else "plan",
+        "pixel_size": round(pixel_size(g.affine, g.affine_z if vertical else None), 4),
+        "rotation": round(rotation_deg(g.affine), 4),
+        "corners": [[round(x, 3), round(y, 3)] for x, y in pts],
+        "checks": checks, "notes": notes,
+    }
+    extent = {"min": [round(min(xs), 2), round(min(ys), 2)], "max": [round(max(xs), 2), round(max(ys), 2)]}
+    if vertical:
+        c3 = corners3d(g, width, height)
+        zs = [p[2] for p in c3]
+        georef["corners3d"] = [[round(v, 3) for v in p] for p in c3]
+        georef["azimuth"] = round(plane_azimuth(g.affine), 3)
+        extent = {"min": [*extent["min"], round(min(zs), 2)], "max": [*extent["max"], round(max(zs), 2)]}
+    return georef, extent
+
+
+def _section_fallback(section: str | None):
+    """Images without a georeference stand on the current section line, if the client sent one."""
+    if not section:
+        return None
+    try:
+        placement = VerticalPlacement(**json.loads(section))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(422, f"Неверные параметры разреза: {exc}") from exc
+    return lambda w, h: vertical_georef(w, h, placement.x1, placement.y1, placement.x2, placement.y2, placement.z_top, placement.z_bottom)
+
+
 @router.post("/projects/{project_id}/rasters", response_model=list[DatasetOut], status_code=201)
-async def upload_rasters(project_id: int, files: list[UploadFile] = File(...), session: Session = Depends(get_session)):
+async def upload_rasters(
+    project_id: int,
+    files: list[UploadFile] = File(...),
+    section: str | None = Form(None, description="JSON VerticalPlacement for images without a georeference"),
+    session: Session = Depends(get_session),
+):
     """Images with their georeference files (same name, any of .jgw/.pgw/.tfw/.wld, .tab, .grf).
+    Images without one stand on the section line given in `section`, if any.
     Every image becomes a dataset of kind "rasters"."""
     get_project(session, project_id)
+    fallback = _section_fallback(section)
     names = [f.filename or f"file{i}" for i, f in enumerate(files)]
     unknown = [n for n in names if Path(n).suffix.lower() not in IMAGE_SUFFIXES + SIDECAR_SUFFIXES]
     if unknown:
@@ -430,14 +489,15 @@ async def upload_rasters(project_id: int, files: list[UploadFile] = File(...), s
                     text = raw.decode("cp1251", errors="replace")
                 sidecars[Path(s_name).suffix.lower()] = text
             try:
-                images.append((image_name, sidecar_names, read_raster(paths[image_name], image_name, sidecars)))
+                raster = read_raster(paths[image_name], image_name, sidecars, fallback)
+                if raster.georef.source == "Вручную по разрезу":
+                    raster.notes.append("Файла привязки нет: изображение поставлено в плоскость линии разреза, уточните края и высоты в свойствах")
+                images.append((image_name, sidecar_names, raster))
             except RasterFormatError as exc:
                 raise HTTPException(422, str(exc)) from exc
 
     for image_name, sidecar_names, r in images:
-        g = r.georef
-        pts = corners(g.affine, r.width, r.height)
-        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        georef, extent = raster_placement(r.georef, r.width, r.height, r.checks, r.notes)
         dataset = Dataset(project_id=project_id, kind="rasters", name=Path(image_name).name[:255],
                           meta={"format": Path(image_name).suffix.lstrip(".").upper(), "filename": image_name, "sidecars": sidecar_names})
         session.add(dataset)
@@ -447,14 +507,9 @@ async def upload_rasters(project_id: int, files: list[UploadFile] = File(...), s
             name=Path(image_name).stem[:255],
             width=r.width,
             height=r.height,
-            georef={
-                "affine": g.affine, "source": g.source, "crs": g.crs,
-                "pixel_size": round(pixel_size(g.affine), 4), "rotation": round(rotation_deg(g.affine), 4),
-                "corners": [[round(x, 3), round(y, 3)] for x, y in pts],
-                "checks": r.checks, "notes": r.notes,
-            },
-            extent={"min": [round(min(xs), 2), round(min(ys), 2)], "max": [round(max(xs), 2), round(max(ys), 2)]},
-            elevation=g.elevation,
+            georef=georef,
+            extent=extent,
+            elevation=r.georef.elevation,
             opacity=1.0,
             image=r.image,
             mime=r.mime,
@@ -488,5 +543,13 @@ def patch_raster(raster_id: int, body: RasterPatch, session: Session = Depends(g
         raster.elevation = body.elevation
     if body.opacity is not None:
         raster.opacity = body.opacity
+    if body.vertical is not None:
+        v = body.vertical
+        try:
+            g = vertical_georef(raster.width, raster.height, v.x1, v.y1, v.x2, v.y2, v.z_top, v.z_bottom)
+        except RasterFormatError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        notes = [n for n in raster.georef.get("notes", []) if "плоскость линии разреза" not in n]
+        raster.georef, raster.extent = raster_placement(g, raster.width, raster.height, [], notes)
     session.commit()
     return _raster_out(raster)

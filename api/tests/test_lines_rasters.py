@@ -264,4 +264,73 @@ def test_demo_has_lines_and_raster(db_client):
 
     kinds = [d["kind"] for d in db_client.get(f"/api/projects/{pid}/datasets").json()]
 
-    assert kinds == ["drillholes", "wireframes", "lines", "rasters"]
+    assert kinds == ["drillholes", "wireframes", "lines", "rasters", "rasters"]
+    scan = db_client.get(f"/api/projects/{pid}/datasets").json()[-1]["rasters"][0]
+    assert scan["georef"]["placement"] == "vertical" and scan["georef"]["azimuth"] == 90.0
+
+
+# ---- rasters in a vertical plane
+
+
+def test_grf_with_heights_makes_a_vertical_raster():
+    # A 100 × 50 px scan of an east-west section: 1 m per pixel along X, 2 m per pixel down from Z = 500.
+    grf = "\n".join(["0", "0", "0", "1", "1", "1", "0", "0", "0", "1", "0",
+                     "0 0 1000 2000 500 1", "100 0 1100 2000 500 1", "100 50 1100 2000 400 1", "0 50 1000 2000 400 1"])
+    g = read_grf(grf)
+
+    assert g.affine_z is not None
+    assert np.allclose(g.affine, [1, 0, 1000, 0, 0, 2000]) and np.allclose(g.affine_z, [0, -2, 500])
+
+
+def test_vertical_georef_corners_and_errors():
+    from app.formats.rasters import corners3d, is_vertical, plane_azimuth, vertical_georef
+
+    g = vertical_georef(200, 100, 0, 0, 0, 100, 450, 350)  # a north-south section, 0.5 m × 1 m pixels
+
+    assert corners3d(g, 200, 100) == [[0, 0, 450], [0, 100, 450], [0, 100, 350], [0, 0, 350]]
+    assert is_vertical(g, 200, 100) and plane_azimuth(g.affine) == 0.0
+    with pytest.raises(RasterFormatError):
+        vertical_georef(10, 10, 5, 5, 5, 5, 1, 0)
+    with pytest.raises(RasterFormatError):
+        vertical_georef(10, 10, 0, 0, 1, 1, 3, 3)
+
+
+def test_upload_grf_section_scan_and_place_on_section(db_client):
+    pid = _project(db_client)
+    grf = "\n".join(["0", "0", "0", "1", "1", "1", "0", "0", "0", "1", "0",
+                     "0 0 1000 2000 500 1", "40 0 1040 2000 500 1", "40 20 1040 2000 460 1"]).encode()
+
+    (dataset,) = db_client.post(f"/api/projects/{pid}/rasters", files=[("files", ("scan.jpg", _jpeg())), ("files", ("scan.grf", grf))]).json()
+
+    (r,) = dataset["rasters"]
+    g = r["georef"]
+    assert g["placement"] == "vertical" and g["azimuth"] == 90.0
+    assert g["corners3d"] == [[1000.0, 2000.0, 500.0], [1040.0, 2000.0, 500.0], [1040.0, 2000.0, 460.0], [1000.0, 2000.0, 460.0]]
+    assert g["checks"][0]["max"] == 0.0 and g["checks"][0]["points"][2]["dz"] == 0.0
+    assert r["extent"] == {"min": [1000.0, 2000.0, 460.0], "max": [1040.0, 2000.0, 500.0]}
+
+    # Re-place it on another section line, from Z 450 down to 300.
+    moved = db_client.patch(f"/api/rasters/{r['id']}", json={"vertical": {"x1": 0, "y1": 0, "x2": 30, "y2": 40, "z_top": 450, "z_bottom": 300}}).json()
+    assert moved["georef"]["source"] == "Вручную по разрезу" and moved["georef"]["corners3d"][2] == [30.0, 40.0, 300.0]
+    assert moved["georef"]["azimuth"] == pytest.approx(36.87, abs=0.01)
+    bad = db_client.patch(f"/api/rasters/{r['id']}", json={"vertical": {"x1": 0, "y1": 0, "x2": 0, "y2": 0, "z_top": 1, "z_bottom": 0}})
+    assert bad.status_code == 422
+
+
+def test_upload_without_georef_stands_on_section(db_client):
+    import json
+
+    pid = _project(db_client)
+    section = json.dumps({"x1": 500, "y1": 100, "x2": 500, "y2": 300, "z_top": 420, "z_bottom": 220})
+
+    created = db_client.post(f"/api/projects/{pid}/rasters", files=[("files", ("profile.jpg", _jpeg()))], data={"section": section})
+
+    assert created.status_code == 201, created.text
+    g = created.json()[0]["rasters"][0]["georef"]
+    assert g["source"] == "Вручную по разрезу" and g["placement"] == "vertical"
+    assert g["corners3d"][0] == [500.0, 100.0, 420.0] and g["corners3d"][2] == [500.0, 300.0, 220.0]
+    assert any("плоскость линии разреза" in n for n in g["notes"])
+    # Plan rasters keep working the old way.
+    plan = db_client.post(f"/api/projects/{pid}/rasters", files=[("files", ("map.jpg", _jpeg())), ("files", ("map.jgw", b"1\n0\n0\n-1\n0.5\n9.5\n"))], data={"section": section}).json()
+    assert plan[0]["rasters"][0]["georef"]["placement"] == "plan"
+    assert db_client.post(f"/api/projects/{pid}/rasters", files=[("files", ("x.jpg", _jpeg()))], data={"section": "{bad"}).status_code == 422

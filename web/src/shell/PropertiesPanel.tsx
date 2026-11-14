@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import type { AuditRun, Dataset, IntervalsData, LineLayerInfo, RasterInfo, Summary } from "../api";
+import type { AuditRun, Dataset, IntervalsData, LineLayerInfo, RasterInfo, RasterPatch, Summary, VerticalPlacement } from "../api";
 import { HoleCard } from "../HoleCard";
 import type { TableKind } from "../route";
 import { ComponentPanel, type VizSettings } from "../viz/ComponentPanel";
@@ -52,7 +52,7 @@ function ColorSection({ datasets, activeSet, refreshKey, viz, onViz }: {
 
 /** Right dock: the selected object (hole, wireframe) or the active drillhole set. */
 export function PropertiesPanel({
-  datasets, activeSet, summary, audit, selectedHole, selected, refreshKey, viz, onViz, onOpenTable, onClearHole, onRaster,
+  datasets, activeSet, summary, audit, selectedHole, selected, refreshKey, viz, onViz, onOpenTable, onClearHole, onRaster, sectionFrame,
 }: {
   datasets: Dataset[];
   activeSet: number | null;
@@ -65,7 +65,9 @@ export function PropertiesPanel({
   onViz: (next: VizSettings) => void;
   onOpenTable: (kind: TableKind) => void;
   onClearHole: () => void;
-  onRaster: (id: number, patch: { elevation?: number; clear_elevation?: boolean; opacity?: number }) => void;
+  onRaster: (id: number, patch: RasterPatch) => void;
+  /** The frame of the current section line, or null when there is none. */
+  sectionFrame: () => VerticalPlacement | null;
 }) {
   const color = <ColorSection datasets={datasets} activeSet={activeSet} refreshKey={refreshKey} viz={viz} onViz={onViz} />;
   const set = datasets.find((d) => d.id === activeSet);
@@ -75,7 +77,7 @@ export function PropertiesPanel({
   const lines = pick("lines", (d) => d.lines);
   const raster = pick("raster", (d) => d.rasters);
   if (lines) return <LinesProps layer={lines} file={lines.file} />;
-  if (raster) return <RasterProps raster={raster} file={raster.file} onRaster={onRaster} />;
+  if (raster) return <RasterProps raster={raster} file={raster.file} onRaster={onRaster} sectionFrame={sectionFrame} />;
 
   if (wireframe) {
     const { stats, extent } = wireframe;
@@ -193,10 +195,60 @@ function LinesProps({ layer, file }: { layer: LineLayerInfo; file: Dataset }) {
   );
 }
 
-function RasterProps({ raster, file, onRaster }: {
-  raster: RasterInfo; file: Dataset; onRaster: (id: number, patch: { elevation?: number; clear_elevation?: boolean; opacity?: number }) => void;
+const FRAME_FIELDS: { key: keyof VerticalPlacement; label: string }[] = [
+  { key: "x1", label: "Левый край X" },
+  { key: "y1", label: "Левый край Y" },
+  { key: "x2", label: "Правый край X" },
+  { key: "y2", label: "Правый край Y" },
+  { key: "z_top", label: "Верх Z" },
+  { key: "z_bottom", label: "Низ Z" },
+];
+
+/** Edges and heights of a raster standing in a vertical plane (a section scan). */
+function VerticalFrame({ raster, onRaster, sectionFrame }: {
+  raster: RasterInfo; onRaster: (id: number, patch: RasterPatch) => void; sectionFrame: () => VerticalPlacement | null;
+}) {
+  const c = raster.georef.corners3d;
+  const current: VerticalPlacement | null = c ? { x1: c[0][0], y1: c[0][1], x2: c[2][0], y2: c[2][1], z_top: c[0][2], z_bottom: c[2][2] } : null;
+  const [form, setForm] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setForm(current ? Object.fromEntries(FRAME_FIELDS.map((f) => [f.key, String(Math.round(current[f.key] * 100) / 100)])) : {});
+  }, [raster.id, JSON.stringify(c)]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const parsed = FRAME_FIELDS.map((f) => Number((form[f.key] ?? "").replace(",", ".")));
+  const valid = current !== null && parsed.every(Number.isFinite);
+  const changed = valid && FRAME_FIELDS.some((f, i) => Math.abs(parsed[i] - current![f.key]) > 1e-6);
+  const save = () => valid && onRaster(raster.id, { vertical: Object.fromEntries(FRAME_FIELDS.map((f, i) => [f.key, parsed[i]])) as unknown as VerticalPlacement });
+  const onSection = () => {
+    const frame = sectionFrame();
+    if (frame) onRaster(raster.id, { vertical: frame });
+  };
+  const frameAvailable = sectionFrame() !== null;
+
+  return (
+    <div className="props-form">
+      {current && FRAME_FIELDS.map((f) => (
+        <label key={f.key}>
+          {f.label}
+          <input value={form[f.key] ?? ""} inputMode="decimal" onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+            onKeyDown={(e) => e.key === "Enter" && save()} aria-label={f.label} />
+        </label>
+      ))}
+      <div className="props-actions">
+        {current && <button onClick={save} disabled={!changed}>Применить</button>}
+        <button onClick={onSection} disabled={!frameAvailable} title={frameAvailable ? "Края — по линии разреза, высоты — по данным проекта" : "Сначала проведите линию разреза"}>
+          На текущий разрез
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RasterProps({ raster, file, onRaster, sectionFrame }: {
+  raster: RasterInfo; file: Dataset; onRaster: (id: number, patch: RasterPatch) => void; sectionFrame: () => VerticalPlacement | null;
 }) {
   const g = raster.georef;
+  const vertical = g.placement === "vertical";
   const [elevation, setElevation] = useState(raster.elevation === null ? "" : String(raster.elevation));
   useEffect(() => setElevation(raster.elevation === null ? "" : String(raster.elevation)), [raster.id, raster.elevation]);
   const saveElevation = () => {
@@ -218,23 +270,30 @@ function RasterProps({ raster, file, onRaster }: {
         <dt>Размер</dt><dd>{fmt(raster.width)} × {fmt(raster.height)} пикс.</dd>
         <dt>Привязка</dt><dd>{g.source}</dd>
         <dt>Пиксель</dt><dd>{fmt(g.pixel_size, 3)} м</dd>
-        <dt>Поворот</dt><dd>{fmt(g.rotation, 3)}°</dd>
+        {vertical
+          ? <><dt>Положение</dt><dd>вертикально, азимут {fmt(g.azimuth, 1)}°</dd></>
+          : <><dt>Поворот</dt><dd>{fmt(g.rotation, 3)}°</dd></>}
         <Extent extent={raster.extent} />
       </dl>
+      <h2 className="dock-title">{vertical ? "Плоскость растра" : "В вертикальную плоскость"}</h2>
+      {!vertical && <p className="muted small">Скан разреза можно поставить в плоскость текущей линии разреза.</p>}
+      <VerticalFrame raster={raster} onRaster={onRaster} sectionFrame={sectionFrame} />
       <h2 className="dock-title">Отображение</h2>
       <div className="props-form">
-        <label>
+        {!vertical && <label>
           Высота, м
           <input value={elevation} placeholder="авто" onChange={(e) => setElevation(e.target.value)} onBlur={saveElevation}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} aria-label="Высота растра" />
-        </label>
+        </label>}
         <label>
           Непрозрачность
           <input type="range" min={0.05} max={1} step={0.05} defaultValue={raster.opacity} key={raster.id}
             onPointerUp={(e) => onRaster(raster.id, { opacity: Number((e.target as HTMLInputElement).value) })}
             onKeyUp={(e) => onRaster(raster.id, { opacity: Number((e.target as HTMLInputElement).value) })} aria-label="Непрозрачность растра" />
         </label>
-        <p className="muted small">Пусто — растр ложится под самый низкий объект сцены. Отсечение по разрезу действует и на растр.</p>
+        <p className="muted small">
+          {vertical ? "Растр стоит в своей плоскости; при отсечении он виден, если попадает в окно разреза." : "Пусто — растр ложится под самый низкий объект сцены. Отсечение по разрезу действует и на растр."}
+        </p>
       </div>
       {g.checks.length > 0 && (
         <>
@@ -244,8 +303,8 @@ function RasterProps({ raster, file, onRaster }: {
               <p className="small">{c.source}: макс. отклонение <strong className={c.max > g.pixel_size * 2 ? "sev warning" : ""}>{fmt(c.max, 2)} м</strong></p>
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Точка</th><th>dX</th><th>dY</th><th>м</th></tr></thead>
-                  <tbody>{c.points.map((p, i) => <tr key={i}><td>{p.label || i + 1}</td><td>{fmt(p.dx, 2)}</td><td>{fmt(p.dy, 2)}</td><td>{fmt(p.d, 2)}</td></tr>)}</tbody>
+                  <thead><tr><th>Точка</th><th>dX</th><th>dY</th>{vertical && <th>dZ</th>}<th>м</th></tr></thead>
+                  <tbody>{c.points.map((p, i) => <tr key={i}><td>{p.label || i + 1}</td><td>{fmt(p.dx, 2)}</td><td>{fmt(p.dy, 2)}</td>{vertical && <td>{fmt(p.dz, 2)}</td>}<td>{fmt(p.d, 2)}</td></tr>)}</tbody>
                 </table>
               </div>
             </div>

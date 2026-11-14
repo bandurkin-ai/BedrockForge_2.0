@@ -3,7 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
-import type { IntervalsData, Trajectories } from "../api";
+import type { IntervalsData, Trajectories, VerticalPlacement } from "../api";
 import { NO_VALUE_COLOR, type ColorScale } from "./colorScale";
 import type { SectionLine } from "./geometry";
 import { THEME_EVENT } from "./scene3d-theme";
@@ -59,6 +59,9 @@ interface RasterLayer {
   corners: number[][];
   /** null: placed just under the lowest object of the scene. */
   elevation: number | null;
+  /** A raster standing in a vertical plane: corners with Z (then `elevation` is not used). */
+  corners3d: number[][] | null;
+  opacity: number;
   mesh: THREE.Mesh;
   texture: THREE.Texture | null;
   visible: boolean;
@@ -358,12 +361,12 @@ export class GeoScene {
   }
 
   /** A georeferenced image lying in plan; `corners` in project coordinates (TL, TR, BR, BL). */
-  setRaster(id: number, url: string, corners: number[][], elevation: number | null, opacity: number, visible: boolean): void {
+  setRaster(id: number, url: string, corners: number[][], elevation: number | null, opacity: number, visible: boolean, corners3d: number[][] | null = null): void {
     this.removeRaster(id, false);
     const xs = corners.map((c) => c[0]);
     const ys = corners.map((c) => c[1]);
-    const z = elevation ?? 0;
-    this.ensureOrigin([Math.min(...xs), Math.min(...ys), z], [Math.max(...xs), Math.max(...ys), z]);
+    const zs = corners3d ? corners3d.map((c) => c[2]) : [elevation ?? 0];
+    this.ensureOrigin([Math.min(...xs), Math.min(...ys), Math.min(...zs)], [Math.max(...xs), Math.max(...ys), Math.max(...zs)]);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(12), 3));
     geometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2));
@@ -374,9 +377,9 @@ export class GeoScene {
     material.polygonOffsetUnits = 1;
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -1;
-    const layer: RasterLayer = { corners, elevation, mesh, texture: null, visible };
+    const layer: RasterLayer = { corners, elevation, corners3d, mesh, texture: null, visible, opacity };
     this.rasters.set(id, layer);
-    this.applyOpacity(material, opacity);
+    this.layerRaster(layer);
     new THREE.TextureLoader().load(url, (texture) => {
       if (!this.rasters.has(id) || this.rasters.get(id) !== layer) {
         texture.dispose();
@@ -405,14 +408,19 @@ export class GeoScene {
     if (update) this.contentChanged();
   }
 
-  setRasterStyle(id: number, visible: boolean, opacity: number, elevation: number | null): void {
+  setRasterStyle(id: number, visible: boolean, opacity: number, elevation: number | null, corners: number[][], corners3d: number[][] | null): void {
     const layer = this.rasters.get(id);
     if (!layer) return;
     layer.visible = visible;
-    this.applyOpacity(layer.mesh.material as THREE.Material, opacity);
-    if (layer.elevation !== elevation) {
+    layer.opacity = opacity;
+    this.layerRaster(layer);
+    const moved = JSON.stringify([corners, corners3d]) !== JSON.stringify([layer.corners, layer.corners3d]);
+    if (layer.elevation !== elevation || moved) {
       layer.elevation = elevation;
+      layer.corners = corners;
+      layer.corners3d = corners3d;
       this.placeRaster(layer);
+      this.rebuildGrid();
     }
     layer.mesh.visible = visible;
     this.requestRender();
@@ -467,6 +475,7 @@ export class GeoScene {
   setClip(on: boolean): void {
     if (on === this.clip) return;
     this.clip = on;
+    for (const layer of this.rasters.values()) this.layerRaster(layer);
     this.updateSectionLine();
     this.applyClipping();
     this.requestRender();
@@ -481,6 +490,51 @@ export class GeoScene {
     this.controls.dispose();
     this.controls = this.makeControls();
     this.lookFrom(direction);
+  }
+
+  /**
+   * Horizontal direction of a hole, collar to bottom, in degrees clockwise from north;
+   * null for a (nearly) vertical hole, which has no direction in plan.
+   */
+  holeAzimuth(hole: HoleRef): number | null {
+    const path = this.drillholes.get(hole.setId)?.pathOf.get(hole.holeId);
+    if (!path || path.length < 2) return null;
+    const a = path[0];
+    const b = path[path.length - 1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    if (Math.hypot(dx, dy) < 1) return null;
+    return ((THREE.MathUtils.radToDeg(Math.atan2(dx, dy)) % 360) + 360) % 360;
+  }
+
+  /**
+   * The frame of the current section in project coordinates: along the line over the content
+   * (or the drawn length) and from the top to the bottom of the content. Used to stand an image on it.
+   */
+  sectionFrame(): VerticalPlacement | null {
+    const s = this.section;
+    const o = this.origin;
+    const box = this.contentBox(false);
+    if (!s || !o || !box) return null;
+    const along = sectionDirection(s.az);
+    let from = 0;
+    let to = s.length ?? 0;
+    if (s.length === null) {
+      from = Infinity;
+      to = -Infinity;
+      for (const x of [box.min.x, box.max.x]) {
+        for (const y of [box.min.y, box.max.y]) {
+          const u = along.x * (x + o.x - s.x0) + along.y * (y + o.y - s.y0);
+          from = Math.min(from, u);
+          to = Math.max(to, u);
+        }
+      }
+    }
+    return {
+      x1: s.x0 + along.x * from, y1: s.y0 + along.y * from,
+      x2: s.x0 + along.x * to, y2: s.y0 + along.y * to,
+      z_top: box.max.z + o.z, z_bottom: box.min.z + o.z,
+    };
   }
 
   /** Project coordinates of the scene centre (for a default section line). */
@@ -657,6 +711,32 @@ export class GeoScene {
     };
   }
 
+  /**
+   * In a clipped section a vertical raster (a scanned section) is an underlay, as in Micromine:
+   * drawn first and without depth, so holes and wireframe cuts on either side of it stay on top.
+   * Otherwise it is an ordinary object of the 3D scene.
+   */
+  private layerRaster(layer: RasterLayer): void {
+    const material = layer.mesh.material as THREE.MeshBasicMaterial;
+    if (this.clip && layer.corners3d) {
+      material.transparent = false;
+      material.opacity = 1;
+      material.depthTest = false;
+      material.depthWrite = false;
+      // A dim copy of the opacity: the colour is mixed toward the background instead of blending.
+      const background = new THREE.Color();
+      this.renderer.getClearColor(background);
+      material.color.copy(new THREE.Color(0xffffff).lerp(background, 1 - layer.opacity));
+      layer.mesh.renderOrder = -10;
+    } else {
+      material.depthTest = true;
+      material.color.set(0xffffff);
+      this.applyOpacity(material, layer.opacity);
+      layer.mesh.renderOrder = -1;
+    }
+    material.needsUpdate = true;
+  }
+
   /** Corners into scene coordinates; without an elevation the image goes just under the lowest object. */
   private placeRaster(layer: RasterLayer): void {
     const o = this.origin;
@@ -667,13 +747,14 @@ export class GeoScene {
       z = box ? box.min.z - 1 : 0;
     }
     const position = layer.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
-    layer.corners.forEach((c, i) => position.setXYZ(i, c[0] - o.x, c[1] - o.y, z));
+    if (layer.corners3d) layer.corners3d.forEach((c, i) => position.setXYZ(i, c[0] - o.x, c[1] - o.y, c[2] - o.z));
+    else layer.corners.forEach((c, i) => position.setXYZ(i, c[0] - o.x, c[1] - o.y, z));
     position.needsUpdate = true;
     layer.mesh.geometry.computeBoundingSphere();
   }
 
   private contentChanged(): void {
-    for (const layer of this.rasters.values()) if (layer.elevation === null) this.placeRaster(layer);
+    for (const layer of this.rasters.values()) if (layer.elevation === null && !layer.corners3d) this.placeRaster(layer);
     this.rebuildGrid();
     this.applySelected();
     this.updateSectionLine();

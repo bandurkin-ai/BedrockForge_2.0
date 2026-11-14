@@ -1,5 +1,5 @@
 import type { MutableRefObject } from "react";
-import type { AuditRun, Dataset, Hole, Project, Summary } from "../api";
+import type { AuditRun, Dataset, Hole, Project, RasterPatch, Summary, VerticalPlacement } from "../api";
 import type { TableKind } from "../route";
 import type { VizSettings } from "../viz/ComponentPanel";
 import { DEFAULT_WINDOW, shiftSection, type SectionLine } from "../viz/geometry";
@@ -38,7 +38,9 @@ export interface Live {
   openPalette: (query: string) => void;
   openImport: (setId: number | null) => void;
   upload: (kind: "wireframes" | "lines" | "rasters") => void;
-  patchRaster: (id: number, patch: { elevation?: number; clear_elevation?: boolean; opacity?: number }) => Promise<void>;
+  patchRaster: (id: number, patch: RasterPatch) => Promise<void>;
+  sectionFrame: () => VerticalPlacement | null;
+  sectionThroughHole: (setId: number, holeId: string) => SectionLine | null;
   runAudit: (setId: number) => Promise<AuditRun>;
   exportAudit: (setId: number) => void;
   fit: () => void;
@@ -311,6 +313,51 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         s().setWs((prev) => ({ ...prev, clip: true }));
         s().openSection(line);
         return `Разрез: азимут ${line.az}°, окно от ${line.towards} до ${line.away}`;
+      },
+    },
+    {
+      id: "section.through_hole",
+      title: "Разрез по скважине",
+      description:
+        "Линия разреза через устье скважины вдоль её направления в плане (азимут от устья к забою), так что вся скважина " +
+        "лежит в плоскости разреза. У вертикальной скважины азимут остаётся прежним. Включает отсечение и поворачивает вид в плоскость.",
+      params: { hole_id: { type: "string" }, set_id: { type: "integer" } },
+      required: ["hole_id"],
+      run: ({ hole_id, set_id }) => {
+        const set = targetSet(set_id);
+        const hole = set.id === s().activeSet ? s().holes.find((h) => h.hole_id.toLowerCase() === String(hole_id).toLowerCase())?.hole_id : String(hole_id);
+        if (!hole) throw new Error(`Скважины «${hole_id}» нет в наборе «${set.name}»`);
+        const line = s().sectionThroughHole(set.id, hole);
+        if (!line) throw new Error(`Скважина ${hole} не показана в 3D или у неё нет координат устья`);
+        s().selectHole(set.id, hole);
+        s().setSection(line);
+        s().setWs((prev) => ({ ...prev, clip: true }));
+        s().openSection(line);
+        return `Разрез по скважине ${hole}: азимут ${Math.round(line.az * 10) / 10}°, окно от ${line.towards} до ${line.away}`;
+      },
+    },
+    {
+      id: "raster.place_on_section",
+      title: "Растр в плоскость разреза",
+      description:
+        "Ставит растр (например, скан разреза) вертикально в плоскость текущей линии разреза: края — по линии в пределах данных, " +
+        "верх и низ — по высотам данных. Можно задать свои края и высоты: x1, y1 (левый край), x2, y2 (правый край), z_top, z_bottom.",
+      params: {
+        raster_id: { type: "integer" },
+        x1: { type: "number" }, y1: { type: "number" }, x2: { type: "number" }, y2: { type: "number" },
+        z_top: { type: "number" }, z_bottom: { type: "number" },
+      },
+      required: ["raster_id"],
+      confirm: true,
+      run: async (args) => {
+        const raster = findObject("raster", args.raster_id as number);
+        const frame = s().sectionFrame();
+        const keys = ["x1", "y1", "x2", "y2", "z_top", "z_bottom"] as const;
+        const given = keys.every((k) => typeof args[k] === "number");
+        if (!frame && !given) throw new Error("Линия разреза не задана: проведите разрез или передайте x1, y1, x2, y2, z_top, z_bottom");
+        const placement = Object.fromEntries(keys.map((k) => [k, typeof args[k] === "number" ? args[k] : frame![k]])) as unknown as VerticalPlacement;
+        await s().patchRaster(raster.id, { vertical: placement });
+        return `Растр «${raster.name}» стоит вертикально: от (${Math.round(placement.x1)}, ${Math.round(placement.y1)}) до (${Math.round(placement.x2)}, ${Math.round(placement.y2)}), Z ${Math.round(placement.z_top)}…${Math.round(placement.z_bottom)}`;
       },
     },
     {

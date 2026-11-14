@@ -19,7 +19,7 @@ def test_demo_project_is_created_once_with_audit(db_client):
     assert first.status_code == 200 and second.json()["id"] == first.json()["id"]
     pid = first.json()["id"]
     tree = db_client.get(f"/api/projects/{pid}/datasets").json()
-    assert [d["kind"] for d in tree] == ["drillholes", "wireframes", "lines", "rasters"]
+    assert [d["kind"] for d in tree] == ["drillholes", "wireframes", "lines", "rasters", "rasters"]
     holes, wireframes = tree[:2]
     assert holes["counts"] == {"collar": 48, "survey": 307, "assay": 3916}
     assert holes["audit"]["error"] > 0

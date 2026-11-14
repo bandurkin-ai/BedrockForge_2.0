@@ -378,7 +378,7 @@ export interface LineLayerInfo {
 export interface RasterCheck {
   source: string;
   max: number;
-  points: { label: string; col: number; row: number; dx: number; dy: number; d: number }[];
+  points: { label: string; col: number; row: number; dx: number; dy: number; dz?: number; d: number }[];
 }
 
 export interface RasterInfo {
@@ -394,6 +394,12 @@ export interface RasterInfo {
     rotation: number;
     /** top-left, top-right, bottom-right, bottom-left [x, y] */
     corners: number[][];
+    /** "vertical": the image stands in a vertical plane (a section scan) */
+    placement?: "plan" | "vertical";
+    /** vertical rasters: corners [x, y, z] in the same order */
+    corners3d?: number[][];
+    /** vertical rasters: azimuth of the image's left-to-right direction */
+    azimuth?: number;
     checks: RasterCheck[];
     notes: string[];
   };
@@ -489,14 +495,34 @@ export async function deleteLines(id: number): Promise<void> {
   if (!response.ok) throw new Error(`Ошибка ${response.status}`);
 }
 
-/** Images and their georeference files in one request; every image becomes a dataset. */
-export function uploadRasters(projectId: number, files: File[]): Promise<Dataset[]> {
+/** A raster standing in a vertical plane: left edge (x1, y1), right edge (x2, y2), from z_top down to z_bottom. */
+export interface VerticalPlacement {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  z_top: number;
+  z_bottom: number;
+}
+
+/** Images and their georeference files in one request; every image becomes a dataset.
+ * Images without a georeference stand on `section`, if given. */
+export function uploadRasters(projectId: number, files: File[], section?: VerticalPlacement | null): Promise<Dataset[]> {
   const form = new FormData();
   for (const file of files) form.append("files", file);
+  if (section) form.append("section", JSON.stringify(section));
   return request<Dataset[]>(`/api/projects/${projectId}/rasters`, { method: "POST", body: form });
 }
 
 export const rasterImageUrl = (id: number) => `/api/rasters/${id}/image`;
 
-export const patchRaster = (id: number, patch: { name?: string; elevation?: number; clear_elevation?: boolean; opacity?: number }) =>
+export interface RasterPatch {
+  name?: string;
+  elevation?: number;
+  clear_elevation?: boolean;
+  opacity?: number;
+  vertical?: VerticalPlacement;
+}
+
+export const patchRaster = (id: number, patch: RasterPatch) =>
   request<RasterInfo>(`/api/rasters/${id}`, { method: "PATCH", ...json(patch) });

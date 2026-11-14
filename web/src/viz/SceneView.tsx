@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { rasterImageUrl, type Dataset, type Hole, type IntervalsData, type ValueStats } from "../api";
+import { rasterImageUrl, type Dataset, type Hole, type IntervalsData, type ValueStats, type VerticalPlacement } from "../api";
 import { VEXAG_STEPS, isShown, layerKey, type ViewPreset, type WorkspaceState } from "../shell/workspace";
 import { makeScale } from "./colorScale";
 import { ScaleStrip, type VizSettings } from "./ComponentPanel";
@@ -35,6 +35,10 @@ export interface SceneApi {
   drawSection: () => void;
   /** Clip to the window of this line and turn the view into its plane (Z up). */
   openSection: (line: SectionLine) => void;
+  /** The frame of the current section (to stand an image on it), or null without a line. */
+  sectionFrame: () => VerticalPlacement | null;
+  /** A section along the hole's direction through its collar; null if the hole is not shown. */
+  sectionThroughHole: (setId: number, holeId: string) => SectionLine | null;
 }
 
 /** The single main view: every visible object of the project in 3D, plan or section. */
@@ -133,6 +137,8 @@ export function SceneView(props: SceneViewProps) {
         scene.setClip(true);
         scene.view("section");
       },
+      sectionFrame: () => scene.sectionFrame(),
+      sectionThroughHole: (setId, holeId) => throughHole(setId, holeId),
     };
     apiRef.current = api;
     live.current.registerApi?.(api);
@@ -288,7 +294,7 @@ export function SceneView(props: SceneViewProps) {
     for (const r of rasters) {
       if (loadedRasters.current.has(r.id) || !isShown(ws, layerKey.raster(r.id))) continue;
       loadedRasters.current.add(r.id);
-      scene.setRaster(r.id, rasterImageUrl(r.id), r.georef.corners, r.elevation, r.opacity, true);
+      scene.setRaster(r.id, rasterImageUrl(r.id), r.georef.corners, r.elevation, r.opacity, true, r.georef.corners3d ?? null);
     }
     applyStyles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -309,7 +315,7 @@ export function SceneView(props: SceneViewProps) {
       }
       for (const w of d.wireframes ?? []) scene.setWireframeStyle(w.id, w.color, isShown(state, layerKey.wireframe(w.id)), state.wireframeOpacity);
       for (const l of d.lines ?? []) scene.setLinesStyle(l.id, l.color, isShown(state, layerKey.lines(l.id)));
-      for (const r of d.rasters ?? []) scene.setRasterStyle(r.id, isShown(state, layerKey.raster(r.id)), r.opacity, r.elevation);
+      for (const r of d.rasters ?? []) scene.setRasterStyle(r.id, isShown(state, layerKey.raster(r.id)), r.opacity, r.elevation, r.georef.corners, r.georef.corners3d ?? null);
     }
   }
 
@@ -349,6 +355,18 @@ export function SceneView(props: SceneViewProps) {
   }
 
   const setSection = (patch: Partial<SectionLine>) => props.onSection({ ...(section ?? autoSection()), ...patch });
+
+  /**
+   * Through the collar along the hole: the whole hole lies in the section plane.
+   * A vertical hole keeps the current azimuth (or the one across the collars).
+   */
+  function throughHole(setId: number, holeId: string): SectionLine | null {
+    const collar = holesBySet.current.get(setId)?.get(holeId);
+    if (!collar || collar.x === null || collar.y === null) return null;
+    const base = live.current.section ?? autoSection();
+    const az = sceneRef.current?.holeAzimuth({ setId, holeId }) ?? base.az;
+    return { ...base, x0: collar.x, y0: collar.y, az, length: null };
+  }
   /** A new line (auto, through a hole): clip to it and look at its plane. */
   const openSection = (line: SectionLine) => {
     props.onSection(line);
@@ -402,8 +420,16 @@ export function SceneView(props: SceneViewProps) {
             <button onClick={() => { props.onSection(null); props.onWorkspace({ clip: false }); }} title="Убрать линию разреза и отсечение">Сбросить</button>
           </>
         )}
-        <button onClick={() => selectedCollar?.x != null && selectedCollar.y != null && openSection({ ...(section ?? autoSection()), x0: selectedCollar.x, y0: selectedCollar.y, length: null })}
-          disabled={!selectedCollar || selectedCollar.x === null} title="Разрез через устье выбранной скважины">Через скважину</button>
+        <button
+          onClick={() => {
+            const line = activeSet !== null && selectedHole ? throughHole(activeSet, selectedHole) : null;
+            if (line) openSection(line);
+          }}
+          disabled={!selectedCollar || selectedCollar.x === null}
+          title="Разрез вдоль выбранной скважины через её устье: вся скважина в плоскости разреза"
+        >
+          Через скважину
+        </button>
         {!section && <button onClick={() => openSection(autoSection())} title="Разрез поперёк простирания устьев, через их центр">Авто-разрез</button>}
         <span className="toolbar-sep" />
         <label title="Вертикальное преувеличение">

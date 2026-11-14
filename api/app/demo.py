@@ -62,6 +62,7 @@ def create_demo_project(session: Session) -> tuple[Project, bool]:
     _add_orebody(session, project.id)
     _add_lines(session, project.id)
     _add_map(session, project.id)
+    _add_section_scan(session, project.id)
     run_audit(session, pid)
     session.commit()
     return project, True
@@ -164,4 +165,39 @@ def _add_map(session: Session, project_id: int) -> None:
                 "corners": [list(p) for p in pts], "checks": [], "notes": []},
         extent={"min": [x0, y0 - height * pixel], "max": [x0 + width * pixel, y0]},
         elevation=405.0, opacity=0.9, image=out.getvalue(), mime="image/jpeg",
+    ))
+
+
+def _add_section_scan(session: Session, project_id: int) -> None:
+    """A scanned east-west section through the middle row of holes, standing in its vertical plane."""
+    import io
+
+    from PIL import Image, ImageDraw
+
+    from app.formats.rasters import vertical_georef
+    from app.routers.datasets import raster_placement
+
+    width, height = 1000, 520  # 500 m along X, 260 m down from Z 440
+    image = Image.new("RGB", (width, height), "#efe8d6")
+    draw = ImageDraw.Draw(image)
+    for y in range(0, height, 40):
+        draw.line([(0, y), (width, y)], fill="#cfc6b0")
+    for x in range(0, width, 100):
+        draw.line([(x, 0), (x, height)], fill="#cfc6b0")
+    # The ore lens as a geologist drew it, slightly off the wireframe on purpose.
+    draw.ellipse([90, 160, 930, 300], outline="#b5462f", width=6)
+    draw.ellipse([200, 190, 820, 270], fill="#e8a27a", outline="#b5462f", width=3)
+    draw.line([(0, 30), (width, 50)], fill="#5b7f3a", width=5)  # ground surface
+    draw.rectangle([0, 0, width - 1, height - 1], outline="#4a4436", width=4)
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=88)
+
+    g = vertical_georef(width, height, 4950.0, 8125.0, 5450.0, 8125.0, 440.0, 180.0)
+    georef, extent = raster_placement(g, width, height, [], ["Демо: скан разреза по линии Y = 8125"])
+    dataset = Dataset(project_id=project_id, kind="rasters", name="Разрез 8125 (демо).jpg", meta={"format": "JPG"})
+    session.add(dataset)
+    session.flush()
+    session.add(Raster(
+        dataset_id=dataset.id, name="Разрез 8125", width=width, height=height, georef=georef, extent=extent,
+        elevation=None, opacity=0.85, image=out.getvalue(), mime="image/jpeg",
     ))

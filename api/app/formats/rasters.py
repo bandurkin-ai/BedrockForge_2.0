@@ -1,8 +1,9 @@
 """Georeferenced images: JPG, PNG, TIFF / GeoTIFF, BMP with a world file, MapInfo TAB or Micromine GRF.
 
 Georeference is kept as an affine transform of pixel-corner coordinates:
-    X = a·col + b·row + c,   Y = d·col + e·row + f
+    X = a·col + b·row + c,   Y = d·col + e·row + f,   and for rasters off the plan  Z = g·col + h·row + i
 where (col, row) = (0, 0) is the top-left corner of the image and (width, height) the bottom-right one.
+A raster with a Z transform stands in a vertical (or inclined) plane: a scanned section, for example.
 Formats are described in docs/FORMATS.md. Order of preference: GeoTIFF tags → world file → TAB → GRF;
 control points of the other files are used to report deviations.
 """
@@ -34,6 +35,7 @@ class ControlPoint:
     x: float
     y: float
     label: str = ""
+    z: float | None = None
 
 
 @dataclass
@@ -43,6 +45,8 @@ class Georef:
     elevation: float | None = None
     points: list[ControlPoint] = field(default_factory=list)
     crs: str | None = None
+    # g, h, i: Z of a raster that is not in plan; None for plan rasters (they lie at `elevation`).
+    affine_z: list[float] | None = None
 
 
 @dataclass
@@ -80,17 +84,67 @@ def fit_affine(points: list[ControlPoint]) -> list[float]:
     return [float(v) for v in (a, b, c, d, e, f)]
 
 
-def deviations(affine: list[float], points: list[ControlPoint]) -> list[dict]:
+def fit_z(points: list[ControlPoint]) -> list[float]:
+    """Least-squares Z = g·col + h·row + i through control points that carry Z."""
+    m = np.array([[p.col, p.row, 1.0] for p in points])
+    (g, h, i), *_ = np.linalg.lstsq(m, np.array([p.z for p in points]), rcond=None)
+    return [float(g), float(h), float(i)]
+
+
+def apply_z(affine_z: list[float], col: float, row: float) -> float:
+    g, h, i = affine_z
+    return g * col + h * row + i
+
+
+def deviations(affine: list[float], points: list[ControlPoint], affine_z: list[float] | None = None) -> list[dict]:
     out = []
     for p in points:
         x, y = apply(affine, p.col, p.row)
-        out.append({"label": p.label, "col": p.col, "row": p.row, "dx": round(x - p.x, 3), "dy": round(y - p.y, 3), "d": round(float(np.hypot(x - p.x, y - p.y)), 3)})
+        dz = apply_z(affine_z, p.col, p.row) - p.z if affine_z and p.z is not None else 0.0
+        row = {"label": p.label, "col": p.col, "row": p.row, "dx": round(x - p.x, 3), "dy": round(y - p.y, 3)}
+        if affine_z and p.z is not None:
+            row["dz"] = round(dz, 3)
+        row["d"] = round(float(np.sqrt((x - p.x) ** 2 + (y - p.y) ** 2 + dz**2)), 3)
+        out.append(row)
     return out
 
 
-def pixel_size(affine: list[float]) -> float:
+def vertical_georef(width: int, height: int, x1: float, y1: float, x2: float, y2: float, z_top: float, z_bottom: float) -> Georef:
+    """An image standing in a vertical plane: its left edge at (x1, y1), right edge at (x2, y2), from z_top down to z_bottom."""
+    if np.hypot(x2 - x1, y2 - y1) < 1e-6:
+        raise RasterFormatError("Левый и правый края растра совпадают в плане")
+    if abs(z_top - z_bottom) < 1e-6:
+        raise RasterFormatError("Верх и низ растра на одной высоте")
+    return Georef(
+        [(x2 - x1) / width, 0.0, x1, (y2 - y1) / width, 0.0, y1],
+        "Вручную по разрезу",
+        affine_z=[0.0, (z_bottom - z_top) / height, z_top],
+    )
+
+
+def corners3d(g: Georef, width: int, height: int) -> list[list[float]] | None:
+    """Corners with Z (top-left, top-right, bottom-right, bottom-left) for a raster off the plan."""
+    if not g.affine_z:
+        return None
+    return [[*apply(g.affine, c, r), apply_z(g.affine_z, c, r)] for c, r in ((0, 0), (width, 0), (width, height), (0, height))]
+
+
+def is_vertical(g: Georef, width: int, height: int) -> bool:
+    """True when the image does not lie in a horizontal plane."""
+    pts = corners3d(g, width, height)
+    return bool(pts) and float(np.ptp([p[2] for p in pts])) > 1e-3
+
+
+def pixel_size(affine: list[float], affine_z: list[float] | None = None) -> float:
     a, b, _, d, e, _ = affine
-    return float((np.hypot(a, d) + np.hypot(b, e)) / 2)
+    g, h = (affine_z[0], affine_z[1]) if affine_z else (0.0, 0.0)
+    return float((np.sqrt(a * a + d * d + g * g) + np.sqrt(b * b + e * e + h * h)) / 2)
+
+
+def plane_azimuth(affine: list[float]) -> float:
+    """Azimuth of the image's left-to-right direction, degrees clockwise from north."""
+    a, _, _, d, _, _ = affine
+    return float(np.degrees(np.arctan2(a, d)) % 360)
 
 
 def rotation_deg(affine: list[float]) -> float:
@@ -142,12 +196,23 @@ def read_grf(text: str) -> Georef:
     for line in lines[11:]:
         values = _numbers(line)
         if len(values) >= 4:
-            points.append(ControlPoint(col=values[0], row=values[1], x=values[2], y=values[3], label=f"{len(points) + 1}"))
+            z = values[4] if len(values) >= 5 else None
+            points.append(ControlPoint(col=values[0], row=values[1], x=values[2], y=values[3], label=f"{len(points) + 1}", z=z))
     if len(points) >= 3:
         try:
-            return Georef(fit_affine(points), "Micromine GRF", elevation=z0, points=points)
+            g = Georef(fit_affine(points), "Micromine GRF", elevation=z0, points=points)
         except RasterFormatError:
-            pass
+            g = None
+        zs = [p.z for p in points]
+        if all(z is not None for z in zs) and float(np.ptp(zs)) > 1e-3:
+            # Control points at different heights: a section scan standing in a vertical plane.
+            m = np.array([[p.col, p.row, 1.0] for p in points])
+            if np.linalg.matrix_rank(m) < 3:
+                raise RasterFormatError("Опорные точки GRF лежат на одной прямой — привязку вычислить нельзя")
+            xy = [float(v) for v in np.linalg.lstsq(m, np.array([[p.x, p.y] for p in points]), rcond=None)[0].T.ravel()]
+            return Georef([xy[0], xy[1], xy[2], xy[3], xy[4], xy[5]], "Micromine GRF", affine_z=fit_z(points), points=points)
+        if g is not None:
+            return g
     sx, sy = head[3][0], head[4][0]
     matrix = [h[0] for h in head[5:11]] if len(head) >= 11 and all(head[5:11]) else [1, 0, 0, 0, 1, 0]
     r11, r12, _, r21, r22, _ = matrix
@@ -201,8 +266,9 @@ def _display_copy(image) -> tuple[bytes, str, list[str]]:
     return out.getvalue(), "image/jpeg", notes
 
 
-def read_raster(image_path: Path, name: str, sidecars: dict[str, str]) -> RasterImage:
-    """`sidecars` maps a suffix (".jgw", ".tab", ".grf"…) to the file text."""
+def read_raster(image_path: Path, name: str, sidecars: dict[str, str], fallback=None) -> RasterImage:
+    """`sidecars` maps a suffix (".jgw", ".tab", ".grf"…) to the file text.
+    `fallback(width, height) -> Georef` places an image that has no georeference (e.g. on the current section)."""
     from PIL import Image, UnidentifiedImageError
 
     Image.MAX_IMAGE_PIXELS = 400_000_000
@@ -228,12 +294,18 @@ def read_raster(image_path: Path, name: str, sidecars: dict[str, str]) -> Raster
                 candidates.append(read_grf(text))
         except RasterFormatError as exc:
             errors.append(f"{suffix}: {exc}")
+    if not candidates and fallback is not None:
+        try:
+            candidates.append(fallback(width, height))
+        except RasterFormatError as exc:
+            raise RasterFormatError(f"«{name}»: {exc}") from exc
     if not candidates:
         detail = f" ({'; '.join(errors)})" if errors else ""
         raise RasterFormatError(
-            f"Для «{name}» нет привязки{detail}. Загрузите вместе с изображением файл привязки: .jgw/.pgw/.tfw, .tab или .grf"
+            f"Для «{name}» нет привязки{detail}. Загрузите вместе с изображением файл привязки: .jgw/.pgw/.tfw, .tab или .grf, "
+            "или проведите линию разреза — тогда изображение встанет в её плоскость"
         )
-    order = {"GeoTIFF": 0, "World-файл": 1, "MapInfo TAB": 2, "Micromine GRF": 3}
+    order = {"GeoTIFF": 0, "World-файл": 1, "MapInfo TAB": 2, "Micromine GRF": 3, "Вручную по разрезу": 4}
     candidates.sort(key=lambda g: order[g.source])
     chosen = candidates[0]
     # Elevation and coordinate system may come from another file of the same image.
@@ -243,7 +315,7 @@ def read_raster(image_path: Path, name: str, sidecars: dict[str, str]) -> Raster
     checks = []
     for g in candidates:
         if g.points:
-            devs = deviations(chosen.affine, g.points)
+            devs = deviations(chosen.affine, g.points, chosen.affine_z)
             checks.append({"source": g.source, "max": max(d["d"] for d in devs), "points": devs})
 
     data, mime, notes = _display_copy(image)

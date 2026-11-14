@@ -211,6 +211,8 @@ function Workspace({
       await patchRaster(id, patch);
       reload();
     },
+    sectionFrame: () => sceneApi.current?.sectionFrame() ?? null,
+    sectionThroughHole: (setId, holeId) => sceneApi.current?.sectionThroughHole(setId, holeId) ?? null,
     runAudit: (setId) => runAudit(setId, DEFAULT_CONFIG),
     exportAudit: (setId) => window.open(auditExportUrl(setId), "_blank"),
     fit: () => sceneApi.current?.fit(),
@@ -360,7 +362,8 @@ function Workspace({
       // Images and their georeference files go together, paired by name on the server.
       await guarded(async () => {
         setNotice({ text: `Загрузка: ${files.map((f) => f.name).join(", ")}…`, error: false });
-        const created = await uploadRasters(projectId, files);
+        // Images without a georeference file stand on the current section line, if there is one.
+        const created = await uploadRasters(projectId, files, section ? sceneApi.current?.sectionFrame() : null);
         const result = `Растров: ${created.length} (${created.map((d) => `${d.rasters?.[0]?.name}: ${d.rasters?.[0]?.georef.source}`).join("; ")})`;
         logUpload(files.map((f) => f.name).join(", "), result);
         reload();
@@ -536,7 +539,9 @@ function Workspace({
                     onRaster={(id, patch) => void guarded(async () => {
                       await patchRaster(id, patch);
                       reload();
+                      return patch.vertical ? "Растр поставлен в вертикальную плоскость" : undefined;
                     })}
+                    sectionFrame={() => (section ? sceneApi.current?.sectionFrame() ?? null : null)}
                   />
                 </ErrorBoundary>
               </div>
