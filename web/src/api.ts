@@ -234,3 +234,51 @@ export const getHole = (projectId: number, holeId: string) =>
   request<HoleDetail>(`/api/projects/${projectId}/holes/${encodeURIComponent(holeId)}`);
 
 export const getHealth = () => request<{ status: string; version: string }>("/api/health");
+
+export interface ValueStats {
+  count: number;
+  min: number | null;
+  max: number | null;
+  p05: number | null;
+  p50: number | null;
+  p95: number | null;
+}
+
+export interface TrajectoryHole {
+  hole_id: string;
+  td: number | null;
+  source: "survey" | "collar" | "vertical";
+  /** Polyline points [x, y, z, measured depth]. */
+  path: number[][];
+}
+
+export interface Trajectories {
+  holes: TrajectoryHole[];
+  skipped: string[];
+  extent: { min: number[]; max: number[] } | null;
+}
+
+export interface IntervalsData {
+  component: string;
+  unit: string | null;
+  stats: ValueStats;
+  /** hole_id -> rows [from, to, value, x1, y1, z1, x2, y2, z2] */
+  holes: Record<string, number[][]>;
+}
+
+export interface HoleLog {
+  hole_id: string;
+  td: number | null;
+  components: { name: string; unit: string }[];
+  survey: { depth: number | null; azimuth: number | null; dip: number | null }[];
+  intervals: { from_m: number | null; to_m: number | null; sample_id: string | null; values: Record<string, number | null> }[];
+  truncated: boolean;
+}
+
+export const getTrajectories = (projectId: number) => request<Trajectories>(`/api/projects/${projectId}/trajectories`);
+
+export const getIntervals = (projectId: number, component: string) =>
+  request<IntervalsData>(`/api/projects/${projectId}/intervals?component=${encodeURIComponent(component)}`);
+
+export const getHoleLog = (projectId: number, holeId: string) =>
+  request<HoleLog>(`/api/projects/${projectId}/holes/${encodeURIComponent(holeId)}/log`);

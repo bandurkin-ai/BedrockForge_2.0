@@ -3,10 +3,12 @@ import { createProject, listProjects, type Project } from "./api";
 import { AuditPage } from "./AuditPage";
 import { DataPage } from "./DataPage";
 import { ImportPage } from "./ImportPage";
-import { Placeholder } from "./Placeholder";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { useOverview } from "./useOverview";
+import { DEFAULT_VIZ, type VizSettings } from "./viz/ComponentPanel";
+import type { SectionLine } from "./viz/geometry";
+import { VizTab } from "./viz/VizTab";
 import { formatRoute, parseRoute, useRoute, type Tab, type TableKind } from "./route";
 
 const STORAGE_KEY = "geo.projectId";
@@ -15,6 +17,7 @@ const TABS: { tab: Tab; label: string }[] = [
   { tab: "table", label: "Таблица" },
   { tab: "plan", label: "План" },
   { tab: "section", label: "Разрез" },
+  { tab: "log", label: "Колонка" },
   { tab: "view3d", label: "3D" },
   { tab: "audit", label: "Аудит" },
   { tab: "import", label: "Импорт" },
@@ -52,6 +55,8 @@ function Workspace({
   const [route, navigate] = useRoute();
   const [refreshKey, setRefreshKey] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [viz, setViz] = useState<VizSettings>(DEFAULT_VIZ);
+  const [section, setSection] = useState<SectionLine | null>(null);
   const { summary, holes, audit, error } = useOverview(projectId, refreshKey);
   const reload = () => setRefreshKey((k) => k + 1);
 
@@ -142,8 +147,21 @@ function Workspace({
               onClearHole={() => setSelectedHole(null)}
             />
           )}
-          {(route.tab === "plan" || route.tab === "section" || route.tab === "view3d") && (
-            <Placeholder view={route.tab} summary={summary} selectedHole={selectedHole} />
+          {(route.tab === "plan" || route.tab === "section" || route.tab === "log" || route.tab === "view3d") && (
+            <VizTab
+              kind={route.tab}
+              projectId={projectId}
+              refreshKey={refreshKey}
+              summary={summary}
+              holes={holes}
+              selectedHole={selectedHole}
+              settings={viz}
+              section={section}
+              onSettings={setViz}
+              onSelectHole={setSelectedHole}
+              onSection={setSection}
+              onOpenSection={() => navigate({ tab: "section" })}
+            />
           )}
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type Tab = "table" | "plan" | "section" | "view3d" | "audit" | "import";
+export type Tab = "table" | "plan" | "section" | "log" | "view3d" | "audit" | "import";
 export type TableKind = "collar" | "survey" | "assay";
 
 export interface Route {
@@ -15,12 +15,13 @@ const SEGMENTS: Record<string, Tab> = {
   table: "table",
   plan: "plan",
   section: "section",
+  log: "log",
   "3d": "view3d",
   audit: "audit",
   import: "import",
 };
 const SEGMENT_OF: Record<Tab, string> = {
-  table: "table", plan: "plan", section: "section", view3d: "3d", audit: "audit", import: "import",
+  table: "table", plan: "plan", section: "section", log: "log", view3d: "3d", audit: "audit", import: "import",
 };
 
 export const DEFAULT_ROUTE: Route = { tab: "import", kind: "collar", hole: null };

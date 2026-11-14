@@ -5,6 +5,7 @@ describe("route", () => {
   it("parses tabs and table kinds", () => {
     expect(parseRoute("#/table/assay")).toEqual({ tab: "table", kind: "assay", hole: null });
     expect(parseRoute("#/3d")).toEqual({ tab: "view3d", kind: "collar", hole: null });
+    expect(parseRoute("#/log?hole=H1")).toEqual({ tab: "log", kind: "collar", hole: "H1" });
     expect(parseRoute("#/audit")).toEqual({ tab: "audit", kind: "collar", hole: null });
   });
 
@@ -15,7 +16,7 @@ describe("route", () => {
   });
 
   it("round-trips every tab", () => {
-    for (const tab of ["table", "plan", "section", "view3d", "audit", "import"] as const) {
+    for (const tab of ["table", "plan", "section", "log", "view3d", "audit", "import"] as const) {
       const route = { tab, kind: "survey" as const, hole: null };
       const again = parseRoute(formatRoute(route));
       expect(again.tab).toBe(tab);

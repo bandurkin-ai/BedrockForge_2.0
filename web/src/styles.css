@@ -266,3 +266,86 @@ button.icon:hover { background: var(--head-bg); color: var(--fg); }
   .backdrop { display: block; position: fixed; z-index: 10; inset: 0; background: rgba(0, 0, 0, 0.35); }
   .topbar select { min-width: 0; }
 }
+
+/* ---- Visual tabs ---- */
+.viz-page { display: flex; flex-direction: column; height: 100%; padding: 8px 12px 12px; gap: 8px; min-height: 0; }
+.viz-title { margin: 0; font-size: 1.1rem; }
+.viz { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 6px; }
+.viz-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.viz-toolbar button, .component-panel button {
+  border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+  border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer;
+}
+.viz-toolbar button.active { border-color: var(--accent); color: var(--accent); }
+.viz-toolbar button:disabled { opacity: 0.5; cursor: default; }
+.viz-toolbar select, .component-panel select, .range-input {
+  padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit;
+}
+.range-input { width: 80px; min-width: 0; }
+.toolbar-sep { flex: 1; }
+.check { display: inline-flex; align-items: center; gap: 4px; }
+.viz-note { margin: 0; }
+
+.component-panel { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 14px; }
+.legend { min-width: 220px; max-width: 360px; flex: 1; }
+.legend-bar { height: 10px; border-radius: 3px; }
+.legend-ticks { position: relative; height: 16px; font-size: 0.72rem; color: var(--muted); }
+.legend-ticks span { position: absolute; transform: translateX(-50%); }
+
+.canvas {
+  position: relative; flex: 1; min-height: 280px; overflow: hidden; user-select: none;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg); cursor: grab;
+}
+.canvas:active { cursor: grabbing; }
+.canvas.crosshair { cursor: crosshair; }
+.canvas.three { cursor: auto; }
+.canvas svg { display: block; }
+.scene3d { display: block; width: 100%; height: 100%; }
+.canvas-note {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  padding: 8px 14px; border-radius: 8px; background: var(--head-bg); color: var(--muted); text-align: center; max-width: 80%;
+}
+.canvas-note.error { background: var(--err-bg); color: var(--fg); }
+.canvas-note.static { position: static; transform: none; margin: 16px auto; width: fit-content; }
+.coords {
+  position: absolute; left: 8px; bottom: 4px; right: 8px; font-size: 0.72rem; color: var(--muted);
+  pointer-events: none; text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg);
+}
+.map-legend { position: absolute; top: 8px; left: 8px; display: flex; flex-direction: column; gap: 2px; font-size: 0.75rem;
+  background: color-mix(in srgb, var(--bg) 85%, transparent); padding: 4px 8px; border-radius: 6px; pointer-events: none; }
+.map-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.map-legend i.gradient { width: 60px; border-radius: 3px; }
+.tooltip {
+  position: absolute; z-index: 5; pointer-events: none; padding: 5px 9px; font-size: 0.78rem; line-height: 1.35;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.label3d {
+  position: absolute; top: 0; left: 0; pointer-events: none; font-size: 0.8rem; font-weight: 600;
+  padding: 1px 6px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+}
+
+/* svg parts */
+.trace { fill: none; stroke: #8a93a6; stroke-width: 1.2; }
+.trace.selected { stroke: #ff7a00; stroke-width: 3; }
+.interval { stroke-width: 6; stroke-linecap: butt; }
+.collar { cursor: pointer; }
+.collar-dot { stroke: rgba(0, 0, 0, 0.55); stroke-width: 1; }
+.ring { fill: none; stroke: #ff7a00; stroke-width: 2.5; }
+.map-label { font-size: 11px; fill: var(--fg); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.map-label.strong { font-weight: 700; }
+.axis-label { font-size: 10px; fill: var(--muted); }
+.grid { stroke: var(--border); stroke-width: 1; }
+.axis-line { stroke: var(--muted); stroke-width: 1; }
+.td-line { stroke: var(--sev-error); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.corridor { fill: rgba(46, 111, 189, 0.12); stroke: rgba(46, 111, 189, 0.5); stroke-dasharray: 5 4; }
+.section-line { stroke: #2e6fbd; stroke-width: 2; }
+.section-line.draft { stroke-dasharray: 5 4; }
+.scalebar line { stroke: var(--fg); stroke-width: 1.5; }
+.scalebar text, .north text { font-size: 11px; fill: var(--fg); }
+.north polygon { fill: var(--fg); opacity: 0.75; }
+.log-rect { stroke: rgba(0, 0, 0, 0.25); stroke-width: 0.5; }
+
+/* hole log */
+.log-scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0 8px 8px; }
+.log-header { position: sticky; top: 0; z-index: 2; height: 24px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
+.log-header span { position: absolute; top: 4px; white-space: nowrap; }
