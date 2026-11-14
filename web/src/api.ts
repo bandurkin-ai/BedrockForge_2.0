@@ -627,6 +627,58 @@ export interface VariogramMapResult {
   npairs: number[][];
 }
 
+export interface BootstrapRequest {
+  statistic: "mean" | "median" | "std" | "cv" | "p10" | "p90";
+  n_boot: number;
+  confidence: number;
+  declus: DeclusParams | null;
+  seed: number | null;
+}
+
+export interface BootstrapResult {
+  component: string;
+  statistic: string;
+  count: number;
+  n_boot: number;
+  observed: number;
+  mean: number;
+  std: number;
+  confidence: number;
+  ci_low: number;
+  ci_high: number;
+  edges: number[];
+  counts: number[];
+}
+
+export interface LocalRequest {
+  nx: number;
+  ny: number;
+  nreal: number;
+  k: number;
+  power: number;
+  /** null = 25 % of the larger plan extent */
+  radius: number | null;
+  threshold: number | null;
+  seed: number | null;
+}
+
+export type Grid = (number | null)[][];
+
+export interface LocalResult {
+  component: string;
+  count: number;
+  holes: number;
+  nreal: number;
+  radius: number;
+  x: number[];
+  y: number[];
+  mean: Grid;
+  std: Grid;
+  p10: Grid;
+  p90: Grid;
+  prob_exceed: Grid | null;
+}
+
 const postJson = <T>(url: string, body: unknown) =>
   request<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
@@ -642,3 +694,9 @@ export const runVariogram = (setId: number, component: string, req: VariogramReq
 
 export const runVariogramMap = (setId: number, component: string, req: VariogramMapRequest) =>
   postJson<VariogramMapResult>(`/api/sets/${setId}/stats/variogram-map`, { component, ...req });
+
+export const runBootstrap = (setId: number, component: string, req: BootstrapRequest) =>
+  postJson<BootstrapResult>(`/api/sets/${setId}/stats/bootstrap`, { component, ...req });
+
+export const runLocalUncertainty = (setId: number, component: string, req: LocalRequest) =>
+  postJson<LocalResult>(`/api/sets/${setId}/stats/local-uncertainty`, { component, ...req });

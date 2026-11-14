@@ -19,3 +19,10 @@ export function planSpan(points: { x: number | null; y: number | null }[]): numb
 export function defaultLag(span: number | null): number {
   return span === null ? 50 : niceStep(span / 2, 10);
 }
+
+/** Formatter for map coordinates: whole numbers for metre-sized steps, more digits for small steps. */
+export function coordFormat(axis: number[]): (value: number) => string {
+  const step = axis.length > 1 ? Math.abs(axis[1] - axis[0]) : 1;
+  const decimals = step >= 1 || !(step > 0) ? 0 : Math.min(6, Math.ceil(-Math.log10(step)) + 1);
+  return (v) => v.toFixed(decimals);
+}

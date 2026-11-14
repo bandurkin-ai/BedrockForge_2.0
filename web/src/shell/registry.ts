@@ -250,7 +250,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       title: "Статистика",
       description:
         "Открывает вкладку «Статистика» нижней панели для набора скважин. analysis: declus — декластеризация, nscore — нормальные оценки, " +
-        "variogram — вариограмма, map — карта вариограммы. component — компонент (по умолчанию первый в наборе). " +
+        "variogram — вариограмма, map — карта вариограммы, bootstrap — бутстрап статистики, local — карта локальной неопределённости оценки. component — компонент (по умолчанию первый в наборе). " +
         "Расчёт считается по серединам интервалов в плане и запускается кнопкой «Рассчитать».",
       params: {
         analysis: { type: "string", enum: ANALYSES.map(([id]) => id) },

@@ -101,6 +101,7 @@ export function Heatmap({
   xLabel,
   yLabel,
   size = 300,
+  format = formatNumber,
 }: {
   x: number[];
   y: number[];
@@ -109,6 +110,8 @@ export function Heatmap({
   xLabel: string;
   yLabel: string;
   size?: number;
+  /** axis labels and tooltips; coordinates need more digits than the default */
+  format?: (value: number) => string;
 }) {
   const cols = x.length;
   const rows = y.length;
@@ -128,17 +131,17 @@ export function Heatmap({
       <svg viewBox={`0 0 ${ax + w + 10} ${ay + h + 34}`} width={Math.min(ax + w + 10, 460)} role="img" aria-label={`Карта вариограммы: ${yLabel} от ${xLabel}`}>
         {values.map((row, r) =>
           row.map((v, c) =>
-            v === null ? null : <rect key={`${r}-${c}`} x={ax + c * cell} y={ay + (rows - 1 - r) * cell} width={cell + 0.4} height={cell + 0.4} fill={scale.css(v)}><title>{`${xLabel}=${formatNumber(x[c])}, ${yLabel}=${formatNumber(y[r])}: ${formatNumber(v)}`}</title></rect>,
+            v === null ? null : <rect key={`${r}-${c}`} x={ax + c * cell} y={ay + (rows - 1 - r) * cell} width={cell + 0.4} height={cell + 0.4} fill={scale.css(v)}><title>{`${xLabel}=${format(x[c])}, ${yLabel}=${format(y[r])}: ${formatNumber(v)}`}</title></rect>,
           ),
         )}
         <rect className="chart-frame" x={ax} y={ay} width={w} height={h} />
         {pickTicks(x).map((t) => {
           const c = x.indexOf(t);
-          return <text key={`x${t}`} className="chart-tick" x={ax + (c + 0.5) * cell} y={ay + h + 13} textAnchor="middle">{formatNumber(t)}</text>;
+          return <text key={`x${t}`} className="chart-tick" x={ax + (c + 0.5) * cell} y={ay + h + 13} textAnchor="middle">{format(t)}</text>;
         })}
         {pickTicks(y).map((t) => {
           const r = y.indexOf(t);
-          return <text key={`y${t}`} className="chart-tick" x={ax - 5} y={ay + (rows - 1 - r + 0.5) * cell} textAnchor="end" dominantBaseline="middle">{formatNumber(t)}</text>;
+          return <text key={`y${t}`} className="chart-tick" x={ax - 5} y={ay + (rows - 1 - r + 0.5) * cell} textAnchor="end" dominantBaseline="middle">{format(t)}</text>;
         })}
         <text className="chart-axis" x={ax + w / 2} y={ay + h + 30} textAnchor="middle">{xLabel}</text>
         <text className="chart-axis" transform={`translate(10 ${ay + h / 2}) rotate(-90)`} textAnchor="middle">{yLabel}</text>
@@ -148,6 +151,58 @@ export function Heatmap({
         <i style={{ background: scale.gradientCss() }} />
         <span>{formatNumber(scale.max)}</span>
       </figcaption>
+    </figure>
+  );
+}
+
+/** Bars of a histogram with vertical marker lines (e.g. the observed value and an interval). */
+export function Histogram({
+  edges,
+  counts,
+  marks,
+  xLabel,
+  width = 420,
+  height = 220,
+}: {
+  edges: number[];
+  counts: number[];
+  marks: { value: number; label: string; dashed?: boolean }[];
+  xLabel: string;
+  width?: number;
+  height?: number;
+}) {
+  const dx = domainOf([...edges, ...marks.map((m) => m.value)], 0.02);
+  const top = Math.max(1, ...counts);
+  if (!dx) return <p className="muted small">Нет данных для графика</p>;
+  const sx = linearScale(dx, M.left, width - M.right);
+  const sy = linearScale({ min: 0, max: top * 1.08 }, height - M.bottom, M.top);
+  return (
+    <figure className="chart">
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" role="img" aria-label={`Распределение: ${xLabel}`}>
+        {ticksFor({ min: 0, max: top }, 4).map((t) => (
+          <g key={`y${t}`}>
+            <line className="chart-grid" x1={M.left} x2={width - M.right} y1={sy(t)} y2={sy(t)} />
+            <text className="chart-tick" x={M.left - 6} y={sy(t)} textAnchor="end" dominantBaseline="middle">{formatNumber(t)}</text>
+          </g>
+        ))}
+        {ticksFor(dx).map((t) => (
+          <text key={`x${t}`} className="chart-tick" x={sx(t)} y={height - M.bottom + 14} textAnchor="middle">{formatNumber(t)}</text>
+        ))}
+        {counts.map((c, i) => (
+          <rect key={i} className="chart-bar" x={sx(edges[i]) + 0.5} y={sy(c)} width={Math.max(0, sx(edges[i + 1]) - sx(edges[i]) - 1)} height={sy(0) - sy(c)}>
+            <title>{`${formatNumber(edges[i])} … ${formatNumber(edges[i + 1])}: ${c}`}</title>
+          </rect>
+        ))}
+        <rect className="chart-frame" x={M.left} y={M.top} width={width - M.left - M.right} height={height - M.top - M.bottom} />
+        {marks.map((m, i) => (
+          <g key={m.label + i}>
+            <line className="chart-mark" x1={sx(m.value)} x2={sx(m.value)} y1={M.top} y2={height - M.bottom} strokeDasharray={m.dashed ? "4 3" : undefined} />
+            <text className="chart-tick" x={sx(m.value) + 3} y={M.top + 9 + (i % 2) * 11}>{m.label}</text>
+          </g>
+        ))}
+        <text className="chart-axis" x={(M.left + width - M.right) / 2} y={height - 4} textAnchor="middle">{xLabel}</text>
+        <text className="chart-axis" transform={`translate(12 ${(M.top + height - M.bottom) / 2}) rotate(-90)`} textAnchor="middle">Реализаций</text>
+      </svg>
     </figure>
   );
 }

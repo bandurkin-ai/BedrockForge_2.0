@@ -181,3 +181,104 @@ def test_errors_unknown_component_set_and_too_little_data(seeded, db_client, db_
         s.commit()
     r = client.post(url(empty, "variogram"), json={"component": "AU", "lag": 10})
     assert r.status_code == 422 and "AU" in r.json()["detail"]
+
+
+# ---- uncertainty ---------------------------------------------------------
+def test_bootstrap_interval_contains_observed_and_is_reproducible(seeded):
+    client, sid = seeded
+    body = {"component": "AU", "statistic": "mean", "n_boot": 400, "confidence": 0.9, "seed": 7}
+
+    r = client.post(url(sid, "bootstrap"), json=body)
+
+    assert r.status_code == 200, r.text
+    b = r.json()
+    assert b["count"] == 132 and b["n_boot"] == 400 and b["confidence"] == 0.9
+    assert b["ci_low"] < b["observed"] < b["ci_high"]
+    assert b["std"] > 0 and abs(b["mean"] - b["observed"]) < 3 * b["std"]
+    assert len(b["edges"]) == len(b["counts"]) + 1 and sum(b["counts"]) == 400
+    assert client.post(url(sid, "bootstrap"), json=body).json() == b             # same seed, same answer
+    wider = client.post(url(sid, "bootstrap"), json={**body, "confidence": 0.99}).json()
+    assert wider["ci_high"] - wider["ci_low"] > b["ci_high"] - b["ci_low"]
+
+
+def test_bootstrap_declustering_weights_lower_the_mean(seeded):
+    client, sid = seeded
+    plain = client.post(url(sid, "bootstrap"), json={"component": "AU", "n_boot": 600, "seed": 1}).json()
+    weighted = client.post(url(sid, "bootstrap"), json={"component": "AU", "n_boot": 600, "seed": 1,
+                                                        "declus": {"method": "polygonal"}}).json()
+
+    assert weighted["mean"] < plain["mean"]                                      # clustered highs drawn less often
+    assert weighted["observed"] == pytest.approx(plain["observed"])              # the statistic itself stays unweighted
+
+
+@pytest.mark.parametrize("statistic", ["median", "std", "cv", "p10", "p90"])
+def test_bootstrap_other_statistics(seeded, statistic):
+    client, sid = seeded
+
+    r = client.post(url(sid, "bootstrap"), json={"component": "AU", "statistic": statistic, "n_boot": 100, "seed": 2})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["ci_low"] <= r.json()["ci_high"]
+
+
+def test_bootstrap_validation(seeded):
+    client, sid = seeded
+    assert client.post(url(sid, "bootstrap"), json={"component": "AU", "n_boot": 5}).status_code == 422
+    assert client.post(url(sid, "bootstrap"), json={"component": "AU", "n_boot": 99999}).status_code == 422
+    assert client.post(url(sid, "bootstrap"), json={"component": "AU", "statistic": "mode"}).status_code == 422
+    assert client.post(url(sid, "bootstrap"), json={"component": "AU", "confidence": 1.2}).status_code == 422
+    assert client.post(url(sid, "bootstrap"), json={"component": "ZN"}).status_code == 404
+
+
+def test_local_uncertainty_maps(seeded):
+    client, sid = seeded
+
+    r = client.post(url(sid, "local-uncertainty"), json={"component": "AU", "nx": 12, "ny": 10, "nreal": 30,
+                                                         "seed": 3, "threshold": 2.0})
+
+    assert r.status_code == 200, r.text
+    b = r.json()
+    assert (len(b["x"]), len(b["y"])) == (12, 10) and b["holes"] == 66 and b["nreal"] == 30
+    for key in ("mean", "std", "p10", "p90", "prob_exceed"):
+        assert (len(b[key]), len(b[key][0])) == (10, 12)
+    cells = [(i, j) for i in range(10) for j in range(12) if b["mean"][i][j] is not None]
+    assert len(cells) > 60
+    for i, j in cells:
+        assert b["p10"][i][j] <= b["p90"][i][j] and b["std"][i][j] >= 0
+        assert 0 <= b["prob_exceed"][i][j] <= 1
+    # the dense high-grade cluster (around x=y=150) is estimated higher than the far corner
+    near = min(range(12), key=lambda j: abs(b["x"][j] - 150)), min(range(10), key=lambda i: abs(b["y"][i] - 150))
+    corner = b["mean"][0][-1]                                                    # far corner may be empty
+    assert corner is None or b["mean"][near[1]][near[0]] > corner
+    assert client.post(url(sid, "local-uncertainty"), json={"component": "AU", "nx": 12, "ny": 10, "nreal": 30,
+                                                            "seed": 3}).json()["prob_exceed"] is None
+
+
+def test_local_uncertainty_radius_masks_far_cells_and_validates(seeded):
+    client, sid = seeded
+
+    tight = client.post(url(sid, "local-uncertainty"), json={"component": "AU", "nx": 10, "ny": 10, "nreal": 10,
+                                                             "radius": 30, "seed": 1}).json()
+    wide = client.post(url(sid, "local-uncertainty"), json={"component": "AU", "nx": 10, "ny": 10, "nreal": 10,
+                                                            "radius": 1000, "seed": 1}).json()
+
+    empty = lambda m: sum(v is None for row in m for v in row)  # noqa: E731
+    assert empty(tight["mean"]) > empty(wide["mean"]) == 0
+    assert tight["radius"] == 30
+    assert client.post(url(sid, "local-uncertainty"), json={"component": "AU", "nreal": 2}).status_code == 422
+    assert client.post(url(sid, "local-uncertainty"), json={"component": "AU", "nx": 1}).status_code == 422
+
+
+def test_local_uncertainty_needs_three_holes(db_client, db_engine):
+    sid = new_set(db_client, "Two")
+    with Session(db_engine) as s:
+        for k in range(2):
+            s.add(Collar(set_id=sid, hole_id=f"T{k}", x=100.0 * k, y=0.0, z=0.0, td=10.0, azimuth=0.0, dip=-90.0))
+            s.add(Assay(set_id=sid, hole_id=f"T{k}", from_m=0.0, to_m=5.0, analytes={"AU": 1.0 + k}))
+            s.add(Assay(set_id=sid, hole_id=f"T{k}", from_m=5.0, to_m=10.0, analytes={"AU": 2.0 + k}))
+        s.add(Component(set_id=sid, name="AU", unit="g/t"))
+        s.commit()
+
+    r = db_client.post(url(sid, "local-uncertainty"), json={"component": "AU"})
+
+    assert r.status_code == 422 and "скважин" in r.json()["detail"]

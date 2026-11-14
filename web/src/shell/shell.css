@@ -344,3 +344,6 @@ button.icon.active { color: var(--accent); background: var(--accent-soft); }
 .chart-scale { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--muted); }
 .chart-scale i { flex: 0 1 160px; height: 8px; border-radius: 2px; }
 .stats-page .stats-field select { min-width: 0; }
+.chart-bar { fill: var(--accent); opacity: 0.75; }
+.chart-mark { stroke: var(--brand); stroke-width: 1.5; }
+.stats-note { max-width: 340px; margin: 0; }

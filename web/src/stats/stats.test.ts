@@ -3,7 +3,7 @@ import { buildRibbon, flattenRibbon } from "../shell/ribbonConfig";
 import { BOTTOM_TITLES, DEFAULT_WORKSPACE, normalize, openBottom } from "../shell/workspace";
 import { ANALYSES } from "./analyses";
 import { domainOf, formatNumber, linePath, linearScale, parseNumber, ticksFor } from "./chartMath";
-import { defaultLag, planSpan } from "./defaults";
+import { coordFormat, defaultLag, planSpan } from "./defaults";
 
 describe("chart math", () => {
   it("pads the domain, ignores missing values and widens a flat series", () => {
@@ -49,6 +49,14 @@ describe("defaults", () => {
     expect(defaultLag(1000)).toBe(50);
     expect(defaultLag(null)).toBe(50);
     expect(defaultLag(400)).toBe(20);
+  });
+});
+
+describe("coordinate labels", () => {
+  it("keeps whole numbers for metre steps and adds digits for small steps", () => {
+    expect(coordFormat([5000.5, 5010.5])(5010.5)).toBe("5011");
+    expect(coordFormat([100, 100.25])(100.25)).toBe("100.25");
+    expect(coordFormat([1])(7.4)).toBe("7");
   });
 });
 

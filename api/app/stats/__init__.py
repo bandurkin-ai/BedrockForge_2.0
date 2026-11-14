@@ -6,13 +6,14 @@ against ``geostatspy.geostats`` in tests.
 from .transforms import nscore, backtr, NormalScoreTransform
 from .declustering import cell_declus, polygonal_declus
 from .variogram import experimental_variogram, variogram_map, VariogramModel
-from .uncertainty import (bootstrap, local_expectation, local_std,
+from .estimation import idw
+from .uncertainty import (bootstrap, resample_groups, local_expectation, local_std,
                           local_percentile, local_prob_exceed)
 
 __all__ = [
     "nscore", "backtr", "NormalScoreTransform",
     "cell_declus", "polygonal_declus",
     "experimental_variogram", "variogram_map", "VariogramModel",
-    "bootstrap", "local_expectation", "local_std",
+    "idw", "bootstrap", "resample_groups", "local_expectation", "local_std",
     "local_percentile", "local_prob_exceed",
 ]
