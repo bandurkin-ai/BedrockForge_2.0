@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app import mcp_server
-from app.routers import assistant, audit, datasets, imports, projects, viz
+from app.routers import assistant, audit, datasets, imports, projects, stats, viz
 
 mcp_app = mcp_server.http_app()
 
@@ -24,6 +24,7 @@ app.include_router(projects.sets_router)
 app.include_router(datasets.router)
 app.include_router(audit.router)
 app.include_router(viz.router)
+app.include_router(stats.router)
 app.include_router(assistant.router)
 
 # Local single-user MVP: the web dev server runs on a different port.
