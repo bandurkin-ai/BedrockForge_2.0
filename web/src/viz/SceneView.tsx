@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Dataset, Hole, IntervalsData, ValueStats } from "../api";
+import { rasterImageUrl, type Dataset, type Hole, type IntervalsData, type ValueStats } from "../api";
 import { MODE_TITLES, MODES, VEXAG_STEPS, isShown, layerKey, type WorkspaceState } from "../shell/workspace";
 import { makeScale } from "./colorScale";
 import { ScaleStrip, type VizSettings } from "./ComponentPanel";
 import { azimuthDeg, defaultSection, type SectionLine } from "./geometry";
 import { GeoScene, type Hover, type SceneMode } from "./scene3d";
-import { loadHoles, loadIntervals, loadTrajectories, loadWireframe } from "./useVizData";
+import { loadHoles, loadIntervals, loadLines, loadTrajectories, loadWireframe } from "./useVizData";
 
 function auditColor(h: Hole | undefined): string {
   if (!h) return "#9aa3b5";
@@ -37,6 +37,8 @@ export function SceneView(props: SceneViewProps) {
   const labelRef = useRef<HTMLDivElement>(null);
   const loadedSets = useRef(new Map<number, string>());
   const loadedWireframes = useRef(new Set<number>());
+  const loadedLines = useRef(new Set<number>());
+  const loadedRasters = useRef(new Set<number>());
   const holesBySet = useRef(new Map<number, Map<string, Hole>>());
   const [webglError, setWebglError] = useState<string | null>(null);
   const [loading, setLoading] = useState(0);
@@ -53,6 +55,8 @@ export function SceneView(props: SceneViewProps) {
 
   const sets = useMemo(() => (datasets ?? []).filter((d) => d.kind === "drillholes"), [datasets]);
   const wireframes = useMemo(() => (datasets ?? []).flatMap((d) => d.wireframes ?? []), [datasets]);
+  const lineLayers = useMemo(() => (datasets ?? []).flatMap((d) => d.lines ?? []), [datasets]);
+  const rasters = useMemo(() => (datasets ?? []).flatMap((d) => d.rasters ?? []), [datasets]);
   const component = viz.component ?? sets.find((d) => d.id === activeSet)?.components?.[0]?.name ?? sets[0]?.components?.[0]?.name ?? null;
   const scale = useMemo(() => makeScale(viz, refStats), [viz, refStats]);
   const unit = sets.flatMap((d) => d.components ?? []).find((c) => c.name === component)?.unit ?? null;
@@ -104,6 +108,8 @@ export function SceneView(props: SceneViewProps) {
       sceneRef.current = null;
       loadedSets.current.clear();
       loadedWireframes.current.clear();
+      loadedLines.current.clear();
+      loadedRasters.current.clear();
     };
   }, []);
 
@@ -198,6 +204,63 @@ export function SceneView(props: SceneViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wireframes, ws.hidden]);
 
+  // ---- line layers: geometry is loaded once per id
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const ids = new Set(lineLayers.map((l) => l.id));
+    for (const id of [...loadedLines.current]) {
+      if (!ids.has(id)) {
+        scene.removeLines(id);
+        loadedLines.current.delete(id);
+      }
+    }
+    let cancelled = false;
+    for (const layer of lineLayers) {
+      if (loadedLines.current.has(layer.id) || !isShown(ws, layerKey.lines(layer.id))) continue;
+      loadedLines.current.add(layer.id);
+      setLoading((n) => n + 1);
+      loadLines(layer.id)
+        .then((g) => {
+          if (cancelled || !sceneRef.current) {
+            loadedLines.current.delete(layer.id);
+            return;
+          }
+          sceneRef.current.setLines(layer.id, g.origin, g.vertices, g.offsets, layer.color);
+          applyStyles();
+        })
+        .catch((e: Error) => {
+          loadedLines.current.delete(layer.id);
+          if (!cancelled) setError(e.message);
+        })
+        .finally(() => setLoading((n) => n - 1));
+    }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineLayers, ws.hidden]);
+
+  // ---- rasters: the image is a texture on a quad placed by its georeference
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const ids = new Set(rasters.map((r) => r.id));
+    for (const id of [...loadedRasters.current]) {
+      if (!ids.has(id)) {
+        scene.removeRaster(id);
+        loadedRasters.current.delete(id);
+      }
+    }
+    for (const r of rasters) {
+      if (loadedRasters.current.has(r.id) || !isShown(ws, layerKey.raster(r.id))) continue;
+      loadedRasters.current.add(r.id);
+      scene.setRaster(r.id, rasterImageUrl(r.id), r.georef.corners, r.elevation, r.opacity, true);
+    }
+    applyStyles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rasters, ws.hidden]);
+
   function applyStyles() {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -212,6 +275,8 @@ export function SceneView(props: SceneViewProps) {
         });
       }
       for (const w of d.wireframes ?? []) scene.setWireframeStyle(w.id, w.color, isShown(state, layerKey.wireframe(w.id)), state.wireframeOpacity);
+      for (const l of d.lines ?? []) scene.setLinesStyle(l.id, l.color, isShown(state, layerKey.lines(l.id)));
+      for (const r of d.rasters ?? []) scene.setRasterStyle(r.id, isShown(state, layerKey.raster(r.id)), r.opacity, r.elevation);
     }
   }
 
@@ -266,7 +331,7 @@ export function SceneView(props: SceneViewProps) {
   const selectedCollar = activeSet !== null && selectedHole ? holesBySet.current.get(activeSet)?.get(selectedHole) : undefined;
   const hoverInfo = hover ? holesBySet.current.get(hover.setId)?.get(hover.holeId) : undefined;
   const hoverSet = hover ? sets.find((d) => d.id === hover.setId) : undefined;
-  const nothing = datasets !== null && sets.every((d) => !d.counts?.collar) && wireframes.length === 0;
+  const nothing = datasets !== null && sets.every((d) => !d.counts?.collar) && wireframes.length === 0 && lineLayers.length === 0 && rasters.length === 0;
 
   return (
     <div className="scene-view">
@@ -340,7 +405,7 @@ export function SceneView(props: SceneViewProps) {
         {webglError && <div className="canvas-note error">3D недоступно: {webglError}</div>}
         {loading > 0 && <div className="canvas-note corner">Загрузка…</div>}
         {error && <div className="canvas-note error">{error}</div>}
-        {nothing && !webglError && <div className="canvas-note">Нет объектов для показа. Загрузите скважины или каркасы в дереве слева.</div>}
+        {nothing && !webglError && <div className="canvas-note">Нет объектов для показа. Загрузите данные в дереве слева.</div>}
         {drawing !== false && (
           <div className="canvas-note top">{drawing === null ? "Укажите начало профиля" : "Укажите конец профиля"} · Esc — отмена</div>
         )}

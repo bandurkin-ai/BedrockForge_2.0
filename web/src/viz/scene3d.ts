@@ -48,6 +48,21 @@ interface WireframeLayer {
   cut: LineSegments2 | null;
 }
 
+interface LineLayer3D {
+  extent: THREE.Box3;
+  lines: LineSegments2;
+}
+
+interface RasterLayer {
+  /** Project coordinates of the corners: top-left, top-right, bottom-right, bottom-left. */
+  corners: number[][];
+  /** null: placed just under the lowest object of the scene. */
+  elevation: number | null;
+  mesh: THREE.Mesh;
+  texture: THREE.Texture | null;
+  visible: boolean;
+}
+
 /**
  * The one 3D view of the project: drillhole sets and wireframes in a shared space.
  * Plan and section are camera modes of the same scene: plan looks straight down,
@@ -76,6 +91,8 @@ export class GeoScene {
   private materials = new Set<LineMaterial>();
   private drillholes = new Map<number, DrillholeLayer>();
   private wireframes = new Map<number, WireframeLayer>();
+  private lineLayers = new Map<number, LineLayer3D>();
+  private rasters = new Map<number, RasterLayer>();
   private selectedLine: LineSegments2 | null = null;
   private sectionLine: THREE.LineSegments | null = null;
   private grid: THREE.GridHelper | null = null;
@@ -288,6 +305,126 @@ export class GeoScene {
     this.requestRender();
   }
 
+  /** `vertices` float32 relative to `origin`; `offsets` are line starts plus the end. */
+  setLines(id: number, origin: number[], vertices: Float32Array, offsets: Uint32Array, color: string): void {
+    this.removeLines(id, false);
+    if (vertices.length < 6) return;
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < vertices.length; i += 3) {
+      for (let k = 0; k < 3; k++) {
+        const v = vertices[i + k] + origin[k];
+        if (v < min[k]) min[k] = v;
+        if (v > max[k]) max[k] = v;
+      }
+    }
+    const o = this.ensureOrigin(min, max);
+    const shift = [origin[0] - o.x, origin[1] - o.y, origin[2] - o.z];
+    const positions: number[] = [];
+    for (let l = 0; l + 1 < offsets.length; l++) {
+      for (let i = offsets[l]; i + 1 < offsets[l + 1]; i++) {
+        const a = i * 3;
+        const b = (i + 1) * 3;
+        positions.push(
+          vertices[a] + shift[0], vertices[a + 1] + shift[1], vertices[a + 2] + shift[2],
+          vertices[b] + shift[0], vertices[b + 1] + shift[1], vertices[b + 2] + shift[2],
+        );
+      }
+    }
+    if (positions.length === 0) return;
+    const lines = this.makeLines(positions, null, 2, new THREE.Color(color).getHex());
+    lines.renderOrder = 5;
+    this.lineLayers.set(id, { extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)), lines });
+    this.root.add(lines);
+    this.contentChanged();
+  }
+
+  removeLines(id: number, update = true): void {
+    const layer = this.lineLayers.get(id);
+    if (!layer) return;
+    this.root.remove(layer.lines);
+    disposeTree(layer.lines, this.materials);
+    this.lineLayers.delete(id);
+    if (update) this.contentChanged();
+  }
+
+  setLinesStyle(id: number, color: string, visible: boolean): void {
+    const layer = this.lineLayers.get(id);
+    if (!layer) return;
+    (layer.lines.material as LineMaterial).color.set(color);
+    layer.lines.visible = visible;
+    this.requestRender();
+  }
+
+  /** A georeferenced image lying in plan; `corners` in project coordinates (TL, TR, BR, BL). */
+  setRaster(id: number, url: string, corners: number[][], elevation: number | null, opacity: number, visible: boolean): void {
+    this.removeRaster(id, false);
+    const xs = corners.map((c) => c[0]);
+    const ys = corners.map((c) => c[1]);
+    const z = elevation ?? 0;
+    this.ensureOrigin([Math.min(...xs), Math.min(...ys), z], [Math.max(...xs), Math.max(...ys), z]);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(12), 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2));
+    geometry.setIndex([0, 3, 1, 1, 3, 2]);
+    const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, color: 0xffffff });
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = 1;
+    material.polygonOffsetUnits = 1;
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.renderOrder = -1;
+    const layer: RasterLayer = { corners, elevation, mesh, texture: null, visible };
+    this.rasters.set(id, layer);
+    this.applyOpacity(material, opacity);
+    new THREE.TextureLoader().load(url, (texture) => {
+      if (!this.rasters.has(id) || this.rasters.get(id) !== layer) {
+        texture.dispose();
+        return;
+      }
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+      layer.texture = texture;
+      material.map = texture;
+      material.needsUpdate = true;
+      this.requestRender();
+    });
+    this.placeRaster(layer);
+    this.root.add(mesh);
+    this.contentChanged();
+  }
+
+  removeRaster(id: number, update = true): void {
+    const layer = this.rasters.get(id);
+    if (!layer) return;
+    this.root.remove(layer.mesh);
+    layer.mesh.geometry.dispose();
+    (layer.mesh.material as THREE.Material).dispose();
+    layer.texture?.dispose();
+    this.rasters.delete(id);
+    if (update) this.contentChanged();
+  }
+
+  setRasterStyle(id: number, visible: boolean, opacity: number, elevation: number | null): void {
+    const layer = this.rasters.get(id);
+    if (!layer) return;
+    layer.visible = visible;
+    this.applyOpacity(layer.mesh.material as THREE.Material, opacity);
+    if (layer.elevation !== elevation) {
+      layer.elevation = elevation;
+      this.placeRaster(layer);
+    }
+    layer.mesh.visible = visible && this.mode !== "section";
+    this.requestRender();
+  }
+
+  hasLines(id: number): boolean {
+    return this.lineLayers.has(id);
+  }
+
+  hasRaster(id: number): boolean {
+    return this.rasters.has(id);
+  }
+
   hasDrillholes(setId: number): boolean {
     return this.drillholes.has(setId);
   }
@@ -335,6 +472,8 @@ export class GeoScene {
     this.controls.dispose();
     this.controls = this.makeControls();
     if (this.grid) this.grid.visible = this.gridVisible && mode !== "section";
+    // Rasters lie in plan; across a vertical section they would be a line.
+    for (const layer of this.rasters.values()) layer.mesh.visible = layer.visible && mode !== "section";
     this.updateSectionLine();
     this.applyClipping();
     this.resize();
@@ -426,6 +565,8 @@ export class GeoScene {
     this.cleanup.forEach((fn) => fn());
     for (const id of [...this.drillholes.keys()]) this.removeDrillholes(id, false);
     for (const id of [...this.wireframes.keys()]) this.removeWireframe(id, false);
+    for (const id of [...this.lineLayers.keys()]) this.removeLines(id, false);
+    for (const id of [...this.rasters.keys()]) this.removeRaster(id, false);
     this.pointTexture.dispose();
     this.controls.dispose();
     this.renderer.dispose();
@@ -445,18 +586,44 @@ export class GeoScene {
     return controls;
   }
 
-  private contentBox(): THREE.Box3 | null {
-    const box = new THREE.Box3();
-    for (const layer of this.drillholes.values()) if (layer.group.visible) box.union(layer.extent);
-    for (const layer of this.wireframes.values()) if (layer.mesh.visible) box.union(layer.extent);
-    if (box.isEmpty()) {
-      for (const layer of this.drillholes.values()) box.union(layer.extent);
-      for (const layer of this.wireframes.values()) box.union(layer.extent);
-    }
+  /** Everything visible (or everything, when nothing is visible). Rasters count only with `withRasters`. */
+  private contentBox(withRasters = true): THREE.Box3 | null {
+    const collect = (visibleOnly: boolean) => {
+      const box = new THREE.Box3();
+      for (const layer of this.drillholes.values()) if (!visibleOnly || layer.group.visible) box.union(layer.extent);
+      for (const layer of this.wireframes.values()) if (!visibleOnly || layer.mesh.visible) box.union(layer.extent);
+      for (const layer of this.lineLayers.values()) if (!visibleOnly || layer.lines.visible) box.union(layer.extent);
+      if (withRasters) {
+        for (const layer of this.rasters.values()) {
+          if (visibleOnly && !layer.visible) continue;
+          const p = layer.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+          for (let i = 0; i < 4; i++) box.expandByPoint(new THREE.Vector3(p.getX(i), p.getY(i), p.getZ(i)));
+        }
+      }
+      return box;
+    };
+    let box = collect(true);
+    if (box.isEmpty()) box = collect(false);
     return box.isEmpty() ? null : box;
   }
 
+  /** Corners into scene coordinates; without an elevation the image goes just under the lowest object. */
+  private placeRaster(layer: RasterLayer): void {
+    const o = this.origin;
+    if (!o) return;
+    let z = layer.elevation !== null ? layer.elevation - o.z : 0;
+    if (layer.elevation === null) {
+      const box = this.contentBox(false);
+      z = box ? box.min.z - 1 : 0;
+    }
+    const position = layer.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+    layer.corners.forEach((c, i) => position.setXYZ(i, c[0] - o.x, c[1] - o.y, z));
+    position.needsUpdate = true;
+    layer.mesh.geometry.computeBoundingSphere();
+  }
+
   private contentChanged(): void {
+    for (const layer of this.rasters.values()) if (layer.elevation === null) this.placeRaster(layer);
     this.rebuildGrid();
     this.applySelected();
     this.updateSectionLine();

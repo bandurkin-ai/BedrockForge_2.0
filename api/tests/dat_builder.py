@@ -21,14 +21,14 @@ def encode_bocu(text: str) -> bytes:
 
 
 def build(codepage: str, variables: list[tuple[bytes, str, int, int]], records: list[list]) -> bytes:
-    """variables: (raw_name, kind, width, decimals); records: values per field."""
+    """variables: (raw_name, kind, width, decimals); records: values per field (C and N fields as text)."""
     out = bytearray(header(codepage))
     out += f"{len(variables)} VARIABLES\r\n".encode("ascii")
     for raw_name, kind, width, dec in variables:
         out += raw_name + f" {kind} {width:>2} {dec:>2}".encode("ascii") + b"\r\n"
     for rec in records:
         for value, (_, kind, width, _) in zip(rec, variables):
-            if kind == "C":
+            if kind in ("C", "N"):
                 encoded = value if isinstance(value, bytes) else value.encode("ascii")
                 out += encoded.ljust(width, b" ")[:width]
             else:

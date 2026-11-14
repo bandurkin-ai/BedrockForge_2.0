@@ -1,18 +1,25 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Dataset, Hole } from "../api";
+import type { Dataset, Hole, RasterInfo } from "../api";
 import type { TableKind } from "../route";
 import { loadHoles } from "../viz/useVizData";
 import { Icon, type IconName } from "./icons";
-import { isShown, layerKey, type WorkspaceState } from "./workspace";
+import { isShown, layerKey, type ObjectKind, type SelectedObject, type WorkspaceState } from "./workspace";
 
 const MAX_SHOWN = 300;
 
-/** Categories of the project tree; only drillholes and wireframes can be loaded so far. */
+/** Categories of the project tree that cannot be loaded yet. */
 const STUBS: { kind: string; title: string; icon: IconName; note: string }[] = [
-  { kind: "lines", title: "Линии", icon: "lines", note: "Стринги Micromine STR, Surpac STR и DXF — этап 9" },
   { kind: "blocks", title: "Блочные модели", icon: "blocks", note: "Micromine DAT, Datamine DM, CSV — этап 12" },
-  { kind: "rasters", title: "Растры", icon: "raster", note: "JPG, PNG, TIFF с привязкой (JGW, TAB, GRF) — этап 11" },
 ];
+
+/** An item of a file-backed category (a wireframe, a line layer). */
+interface FileItem {
+  id: number;
+  name: string;
+  color: string;
+  count: number;
+  countTitle: string;
+}
 
 const TABLES: { kind: TableKind; label: string }[] = [
   { kind: "collar", label: "Устья" },
@@ -26,19 +33,19 @@ export interface DataTreeProps {
   refreshKey: number;
   activeSet: number | null;
   selectedHole: string | null;
-  selectedWireframe: number | null;
+  selected: SelectedObject | null;
   onShow: (key: string, shown: boolean) => void;
   onSelectSet: (setId: number) => void;
   onSelectHole: (setId: number, holeId: string | null) => void;
-  onSelectWireframe: (id: number | null) => void;
+  onSelectObject: (object: SelectedObject | null) => void;
   onOpenTable: (setId: number, kind: TableKind) => void;
   onOpenAudit: (setId: number) => void;
   onImport: (setId: number | null) => void;
-  onUploadWireframes: () => void;
+  onUpload: (kind: "wireframes" | "lines" | "rasters") => void;
   onRename: (dataset: Dataset) => void;
   onDelete: (dataset: Dataset) => void;
-  onWireframeColor: (id: number, color: string) => void;
-  onDeleteWireframe: (id: number, name: string) => void;
+  onColor: (kind: "wireframe" | "lines", id: number, color: string) => void;
+  onDeleteItem: (kind: "wireframe" | "lines", id: number, name: string) => void;
   onDemo: () => void;
 }
 
@@ -146,7 +153,7 @@ function HoleList({ setId, refreshKey, selectedHole, active, onSelectHole }: {
 /** Left dock: every object of the project by kind, with visibility in the 3D view. */
 export function DataTree(props: DataTreeProps) {
   const { datasets, ws, activeSet } = props;
-  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframes"]));
+  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframe", "cat:lines", "cat:rasters"]));
   const toggle = (key: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
@@ -167,7 +174,6 @@ export function DataTree(props: DataTreeProps) {
   }, [activeSet, props.selectedHole]);
 
   const sets = (datasets ?? []).filter((d) => d.kind === "drillholes");
-  const wireframeFiles = (datasets ?? []).filter((d) => d.kind === "wireframes");
   const empty = datasets !== null && datasets.length === 0;
   const shown = (key: string) => isShown(ws, key);
 
@@ -178,7 +184,7 @@ export function DataTree(props: DataTreeProps) {
         <div className="empty">
           <p className="muted small">Проект пуст. Загрузите скважины или каркасы.</p>
           <button className="primary" onClick={() => props.onImport(null)}>Импорт скважин</button>
-          <button onClick={props.onUploadWireframes}>Загрузить каркасы</button>
+          <button onClick={() => props.onUpload("wireframes")}>Загрузить каркасы</button>
           <button onClick={props.onDemo}>Загрузить демо-проект</button>
         </div>
       )}
@@ -265,52 +271,21 @@ export function DataTree(props: DataTreeProps) {
           })}
         </Category>
 
-        <Category
-          title="Каркасы" icon="wireframe" count={wireframeFiles.reduce((n, d) => n + (d.wireframes?.length ?? 0), 0)}
-          open={isOpen("cat:wireframes")} onToggle={() => toggle("cat:wireframes")}
-          actions={<Action icon="plus" title="Загрузить каркасы: Micromine TRIDB, DXF" onClick={props.onUploadWireframes} />}
-        >
-          {wireframeFiles.length === 0 && <li className="tree-note muted small">Нет каркасов. «+» — файлы .tridb или .dxf.</li>}
-          {wireframeFiles.map((d) => {
-            const key = `file:${d.id}`;
-            const items = d.wireframes ?? [];
-            const allShown = items.every((w) => shown(layerKey.wireframe(w.id)));
-            return (
-              <li key={d.id}>
-                <div className="tree-row set" onClick={() => toggle(key)}>
-                  <Twisty open={isOpen(key)} onClick={() => toggle(key)} />
-                  <Eye shown={allShown} onChange={(v) => items.forEach((w) => props.onShow(layerKey.wireframe(w.id), v))} label={d.name} />
-                  <span className="grow name" title={`${d.name}${d.meta.format ? ` · ${d.meta.format}` : ""}`}>{d.name}</span>
-                  <span className="count">{items.length}</span>
-                  <span className="row-actions">
-                    <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
-                    <Action icon="trash" title="Удалить файл со всеми каркасами" onClick={() => props.onDelete(d)} />
-                  </span>
-                </div>
-                {isOpen(key) && (
-                  <ul className="tree-children">
-                    {items.map((w) => (
-                      <li key={w.id}>
-                        <div className={w.id === props.selectedWireframe ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectWireframe(w.id === props.selectedWireframe ? null : w.id)}>
-                          <Eye shown={shown(layerKey.wireframe(w.id))} onChange={(v) => props.onShow(layerKey.wireframe(w.id), v)} label={w.name} />
-                          <input
-                            type="color" className="swatch" value={w.color} title="Цвет каркаса" aria-label={`Цвет: ${w.name}`}
-                            onClick={(e) => e.stopPropagation()} onChange={(e) => props.onWireframeColor(w.id, e.target.value)}
-                          />
-                          <span className="grow name" title={w.name}>{w.name}</span>
-                          <span className="count" title="Треугольников">{w.triangle_count.toLocaleString("ru-RU")}</span>
-                          <span className="row-actions">
-                            <Action icon="trash" title="Удалить каркас" onClick={() => props.onDeleteWireframe(w.id, w.name)} />
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            );
-          })}
-        </Category>
+        <FileCategory
+          {...props} kind="wireframe" title="Каркасы" icon="wireframe" open={open} toggle={toggle}
+          uploadTitle="Загрузить каркасы: Micromine TRIDB, DXF" emptyNote="Нет каркасов. «+» — файлы .tridb или .dxf."
+          files={(datasets ?? []).filter((d) => d.kind === "wireframes")}
+          items={(d) => (d.wireframes ?? []).map((w) => ({ id: w.id, name: w.name, color: w.color, count: w.triangle_count, countTitle: "Треугольников" }))}
+          onUpload={() => props.onUpload("wireframes")}
+        />
+        <FileCategory
+          {...props} kind="lines" title="Линии" icon="lines" open={open} toggle={toggle}
+          uploadTitle="Загрузить линии: Micromine STR, Surpac STR, DXF" emptyNote="Нет линий. «+» — файлы .str или .dxf."
+          files={(datasets ?? []).filter((d) => d.kind === "lines")}
+          items={(d) => (d.lines ?? []).map((l) => ({ id: l.id, name: l.name, color: l.color, count: l.line_count, countTitle: "Линий" }))}
+          onUpload={() => props.onUpload("lines")}
+        />
+        <RasterCategory {...props} open={open} toggle={toggle} />
 
         {STUBS.map((stub) => (
           <Category
@@ -322,5 +297,106 @@ export function DataTree(props: DataTreeProps) {
         ))}
       </ul>
     </div>
+  );
+}
+
+const LAYER_KEY: Record<"wireframe" | "lines", (id: number) => string> = { wireframe: layerKey.wireframe, lines: layerKey.lines };
+
+/** Wireframes and lines: files, and inside every file its items with colour and visibility. */
+function FileCategory(props: DataTreeProps & {
+  kind: "wireframe" | "lines";
+  title: string;
+  icon: IconName;
+  uploadTitle: string;
+  emptyNote: string;
+  files: Dataset[];
+  items: (d: Dataset) => FileItem[];
+  open: Set<string>;
+  toggle: (key: string) => void;
+  onUpload: () => void;
+}) {
+  const { kind, files, open, toggle, ws } = props;
+  const keyOf = LAYER_KEY[kind];
+  const catKey = `cat:${kind}`;
+  const total = files.reduce((n, d) => n + props.items(d).length, 0);
+  const isSelected = (id: number) => props.selected?.kind === kind && props.selected.id === id;
+  return (
+    <Category
+      title={props.title} icon={props.icon} count={total} open={open.has(catKey)} onToggle={() => toggle(catKey)}
+      actions={<Action icon="plus" title={props.uploadTitle} onClick={props.onUpload} />}
+    >
+      {files.length === 0 && <li className="tree-note muted small">{props.emptyNote}</li>}
+      {files.map((d) => {
+        const key = `file:${d.id}`;
+        const items = props.items(d);
+        const allShown = items.every((item) => isShown(ws, keyOf(item.id)));
+        return (
+          <li key={d.id}>
+            <div className="tree-row set" onClick={() => toggle(key)}>
+              <Twisty open={open.has(key)} onClick={() => toggle(key)} />
+              <Eye shown={allShown} onChange={(v) => items.forEach((item) => props.onShow(keyOf(item.id), v))} label={d.name} />
+              <span className="grow name" title={`${d.name}${d.meta.format ? ` · ${d.meta.format}` : ""}`}>{d.name}</span>
+              <span className="count">{items.length}</span>
+              <span className="row-actions">
+                <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
+                <Action icon="trash" title="Удалить файл со всем содержимым" onClick={() => props.onDelete(d)} />
+              </span>
+            </div>
+            {open.has(key) && (
+              <ul className="tree-children">
+                {items.map((item) => (
+                  <li key={item.id}>
+                    <div className={isSelected(item.id) ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectObject(isSelected(item.id) ? null : { kind, id: item.id })}>
+                      <Eye shown={isShown(ws, keyOf(item.id))} onChange={(v) => props.onShow(keyOf(item.id), v)} label={item.name} />
+                      <input
+                        type="color" className="swatch" value={item.color} title="Цвет" aria-label={`Цвет: ${item.name}`}
+                        onClick={(e) => e.stopPropagation()} onChange={(e) => props.onColor(kind, item.id, e.target.value)}
+                      />
+                      <span className="grow name" title={item.name}>{item.name}</span>
+                      <span className="count" title={item.countTitle}>{item.count.toLocaleString("ru-RU")}</span>
+                      <span className="row-actions">
+                        <Action icon="trash" title="Удалить" onClick={() => props.onDeleteItem(kind, item.id, item.name)} />
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        );
+      })}
+    </Category>
+  );
+}
+
+/** Rasters: one image per entry. */
+function RasterCategory(props: DataTreeProps & { open: Set<string>; toggle: (key: string) => void }) {
+  const { open, toggle, ws } = props;
+  const entries = (props.datasets ?? []).filter((d) => d.kind === "rasters").flatMap((d) => (d.rasters ?? []).map((r): [Dataset, RasterInfo] => [d, r]));
+  const kind: ObjectKind = "raster";
+  return (
+    <Category
+      title="Растры" icon="raster" count={entries.length} open={open.has("cat:rasters")} onToggle={() => toggle("cat:rasters")}
+      actions={<Action icon="plus" title="Загрузить растры: изображение вместе с файлом привязки (.jgw/.pgw/.tfw, .tab, .grf) или GeoTIFF" onClick={() => props.onUpload("rasters")} />}
+    >
+      {entries.length === 0 && <li className="tree-note muted small">Нет растров. «+» — изображение и файл привязки.</li>}
+      {entries.map(([d, r]) => {
+        const selected = props.selected?.kind === kind && props.selected.id === r.id;
+        return (
+          <li key={r.id}>
+            <div className={selected ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectObject(selected ? null : { kind, id: r.id })}>
+              <Eye shown={isShown(ws, layerKey.raster(r.id))} onChange={(v) => props.onShow(layerKey.raster(r.id), v)} label={r.name} />
+              <Icon name="raster" size={14} />
+              <span className="grow name" title={`${d.name} · ${r.georef.source}`}>{r.name}</span>
+              <span className="count" title="Размер пикселя">{r.georef.pixel_size.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} м</span>
+              <span className="row-actions">
+                <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
+                <Action icon="trash" title="Удалить растр" onClick={() => props.onDelete(d)} />
+              </span>
+            </div>
+          </li>
+        );
+      })}
+    </Category>
   );
 }

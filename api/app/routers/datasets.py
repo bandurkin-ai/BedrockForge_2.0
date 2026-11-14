@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -16,8 +17,10 @@ from sqlalchemy.orm import Session
 from app.audit.engine import latest_run
 from app.config import settings
 from app.db import get_session
+from app.formats.lines import LINE_SUFFIXES, LineFormatError, line_stats, pack, read_lines
+from app.formats.rasters import IMAGE_SUFFIXES, SIDECAR_SUFFIXES, RasterFormatError, corners, pair_files, pixel_size, read_raster, rotation_deg
 from app.formats.wireframes import WIREFRAME_SUFFIXES, WireframeFormatError, mesh_stats, read_wireframes
-from app.models import Assay, Collar, Component, Dataset, Survey, Wireframe
+from app.models import Assay, Collar, Component, Dataset, LineLayer, Raster, Survey, Wireframe
 from app.routers.projects import get_project
 
 router = APIRouter(prefix="/api", tags=["datasets"])
@@ -36,6 +39,27 @@ class WireframeOut(BaseModel):
     stats: dict
 
 
+class LineLayerOut(BaseModel):
+    id: int
+    name: str
+    color: str
+    line_count: int
+    point_count: int
+    extent: dict
+    stats: dict
+
+
+class RasterOut(BaseModel):
+    id: int
+    name: str
+    width: int
+    height: int
+    georef: dict
+    extent: dict
+    elevation: float | None
+    opacity: float
+
+
 class DatasetOut(BaseModel):
     id: int
     kind: str
@@ -48,10 +72,25 @@ class DatasetOut(BaseModel):
     audit: dict[str, int] | None = None
     # wireframes
     wireframes: list[WireframeOut] | None = None
+    lines: list[LineLayerOut] | None = None
+    rasters: list[RasterOut] | None = None
 
 
 class NameIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+
+
+class LinePatch(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+
+
+class RasterPatch(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    # None clears it: the raster goes under the lowest object of the scene.
+    elevation: float | None = None
+    opacity: float | None = Field(None, ge=0.05, le=1)
+    clear_elevation: bool = False
 
 
 class WireframePatch(BaseModel):
@@ -89,7 +128,21 @@ def dataset_out(session: Session, d: Dataset) -> DatasetOut:
     elif d.kind == "wireframes":
         rows = session.scalars(select(Wireframe).where(Wireframe.dataset_id == d.id).order_by(Wireframe.id))
         out.wireframes = [_wireframe_out(w) for w in rows]
+    elif d.kind == "lines":
+        rows = session.scalars(select(LineLayer).where(LineLayer.dataset_id == d.id).order_by(LineLayer.id))
+        out.lines = [_line_out(x) for x in rows]
+    elif d.kind == "rasters":
+        rows = session.scalars(select(Raster).where(Raster.dataset_id == d.id).order_by(Raster.id))
+        out.rasters = [_raster_out(r) for r in rows]
     return out
+
+
+def _line_out(x: LineLayer) -> LineLayerOut:
+    return LineLayerOut(id=x.id, name=x.name, color=x.color, line_count=x.line_count, point_count=x.point_count, extent=x.extent, stats=x.stats)
+
+
+def _raster_out(r: Raster) -> RasterOut:
+    return RasterOut(id=r.id, name=r.name, width=r.width, height=r.height, georef=r.georef, extent=r.extent, elevation=r.elevation, opacity=r.opacity)
 
 
 @router.get("/projects/{project_id}/datasets", response_model=list[DatasetOut])
@@ -224,3 +277,216 @@ def delete_wireframe(wireframe_id: int, session: Session = Depends(get_session))
         session.execute(delete(Dataset).where(Dataset.id == dataset_id))
     session.commit()
 
+
+
+# ---- shared upload helpers
+
+
+async def _save_upload(file: UploadFile, path: Path) -> int:
+    size = 0
+    with path.open("wb") as out:
+        while chunk := await file.read(1 << 20):
+            size += len(chunk)
+            if size > settings.max_upload_bytes:
+                raise HTTPException(413, f"Файл «{file.filename}» слишком большой")
+            out.write(chunk)
+    return size
+
+
+def _used_colors(session: Session, project_id: int) -> int:
+    lines = session.scalar(select(func.count()).select_from(LineLayer).join(Dataset).where(Dataset.project_id == project_id)) or 0
+    meshes = session.scalar(select(func.count()).select_from(Wireframe).join(Dataset).where(Dataset.project_id == project_id)) or 0
+    return lines + meshes
+
+
+# ---- lines
+
+
+@router.post("/projects/{project_id}/lines", response_model=DatasetOut, status_code=201)
+async def upload_lines(project_id: int, file: UploadFile, session: Session = Depends(get_session)):
+    """Read a Micromine / Surpac STR or a DXF file; every layer (string code, DXF layer) becomes an item."""
+    get_project(session, project_id)
+    filename = file.filename or "lines"
+    suffix = Path(filename).suffix.lower()
+    if suffix not in LINE_SUFFIXES:
+        raise HTTPException(415, f"Линии читаются из файлов {', '.join(LINE_SUFFIXES)}")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / f"data{suffix}"
+        await _save_upload(file, path)
+        try:
+            fmt, layers = read_lines(path, suffix)
+        except LineFormatError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    dataset = Dataset(project_id=project_id, kind="lines", name=Path(filename).name[:255], meta={"format": fmt, "filename": filename})
+    session.add(dataset)
+    session.flush()
+    used = _used_colors(session, project_id)
+    for i, layer in enumerate(layers):
+        vertices, offsets, closed = pack(layer.lines)
+        session.add(LineLayer(
+            dataset_id=dataset.id,
+            name=layer.name[:255],
+            color=layer.color or PALETTE[(used + i) % len(PALETTE)],
+            line_count=len(layer.lines),
+            point_count=len(vertices),
+            extent={"min": np.round(vertices.min(axis=0), 2).tolist(), "max": np.round(vertices.max(axis=0), 2).tolist()},
+            stats=line_stats(layer.lines),
+            line_attributes=[_jsonable(line.attributes) for line in layer.lines],
+            vertices=np.ascontiguousarray(vertices, dtype="<f8").tobytes(),
+            offsets=offsets.astype("<i8").tobytes(),
+            closed=closed.tobytes(),
+        ))
+    session.commit()
+    return dataset_out(session, dataset)
+
+
+def _jsonable(attributes: dict) -> dict:
+    out = {}
+    for k, v in attributes.items():
+        if isinstance(v, float) and not np.isfinite(v):
+            v = None
+        out[str(k)] = v if isinstance(v, (str, int, float, bool)) or v is None else str(v)
+    return out
+
+
+def _get_line_layer(session: Session, layer_id: int) -> LineLayer:
+    layer = session.get(LineLayer, layer_id)
+    if layer is None:
+        raise HTTPException(404, "Слой линий не найден")
+    return layer
+
+
+@router.get("/lines/{layer_id}/geometry")
+def line_geometry(layer_id: int, session: Session = Depends(get_session)) -> dict:
+    """float32 vertices relative to `origin`, uint32 line starts (lines + 1) and closed flags, base64."""
+    layer = _get_line_layer(session, layer_id)
+    vertices = np.frombuffer(layer.vertices, dtype="<f8").reshape(-1, 3)
+    origin = np.floor(vertices.min(axis=0)) if len(vertices) else np.zeros(3)
+    return {
+        "id": layer.id,
+        "origin": origin.tolist(),
+        "vertices": base64.b64encode((vertices - origin).astype("<f4").tobytes()).decode(),
+        "offsets": base64.b64encode(np.frombuffer(layer.offsets, dtype="<i8").astype("<u4").tobytes()).decode(),
+        "closed": base64.b64encode(layer.closed).decode(),
+    }
+
+
+@router.patch("/lines/{layer_id}", response_model=LineLayerOut)
+def patch_lines(layer_id: int, body: LinePatch, session: Session = Depends(get_session)):
+    layer = _get_line_layer(session, layer_id)
+    if body.name is not None:
+        layer.name = body.name.strip()
+    if body.color is not None:
+        layer.color = body.color.lower()
+    session.commit()
+    return _line_out(layer)
+
+
+@router.delete("/lines/{layer_id}", status_code=204)
+def delete_lines(layer_id: int, session: Session = Depends(get_session)) -> None:
+    layer = _get_line_layer(session, layer_id)
+    dataset_id = layer.dataset_id
+    session.delete(layer)
+    session.flush()
+    if not session.scalar(select(func.count()).select_from(LineLayer).where(LineLayer.dataset_id == dataset_id)):
+        session.execute(delete(Dataset).where(Dataset.id == dataset_id))
+    session.commit()
+
+
+# ---- rasters
+
+
+@router.post("/projects/{project_id}/rasters", response_model=list[DatasetOut], status_code=201)
+async def upload_rasters(project_id: int, files: list[UploadFile] = File(...), session: Session = Depends(get_session)):
+    """Images with their georeference files (same name, any of .jgw/.pgw/.tfw/.wld, .tab, .grf).
+    Every image becomes a dataset of kind "rasters"."""
+    get_project(session, project_id)
+    names = [f.filename or f"file{i}" for i, f in enumerate(files)]
+    unknown = [n for n in names if Path(n).suffix.lower() not in IMAGE_SUFFIXES + SIDECAR_SUFFIXES]
+    if unknown:
+        raise HTTPException(415, f"Неподдерживаемые файлы: {', '.join(unknown)}. Изображения: {', '.join(IMAGE_SUFFIXES)}; привязка: {', '.join(SIDECAR_SUFFIXES)}")
+    groups, unmatched = pair_files(names)
+    if not groups:
+        raise HTTPException(422, "Среди файлов нет изображения (jpg, png, tif, bmp)")
+    if unmatched:
+        raise HTTPException(422, f"Файлы привязки без изображения с тем же именем: {', '.join(unmatched)}")
+
+    created: list[Dataset] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = {}
+        for i, (name, upload) in enumerate(zip(names, files)):
+            path = Path(tmp) / f"{i}{Path(name).suffix.lower()}"
+            await _save_upload(upload, path)
+            paths[name] = path
+        images = []
+        for image_name, sidecar_names in groups.items():
+            sidecars = {}
+            for s_name in sidecar_names:
+                raw = paths[s_name].read_bytes()
+                try:
+                    text = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    text = raw.decode("cp1251", errors="replace")
+                sidecars[Path(s_name).suffix.lower()] = text
+            try:
+                images.append((image_name, sidecar_names, read_raster(paths[image_name], image_name, sidecars)))
+            except RasterFormatError as exc:
+                raise HTTPException(422, str(exc)) from exc
+
+    for image_name, sidecar_names, r in images:
+        g = r.georef
+        pts = corners(g.affine, r.width, r.height)
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        dataset = Dataset(project_id=project_id, kind="rasters", name=Path(image_name).name[:255],
+                          meta={"format": Path(image_name).suffix.lstrip(".").upper(), "filename": image_name, "sidecars": sidecar_names})
+        session.add(dataset)
+        session.flush()
+        session.add(Raster(
+            dataset_id=dataset.id,
+            name=Path(image_name).stem[:255],
+            width=r.width,
+            height=r.height,
+            georef={
+                "affine": g.affine, "source": g.source, "crs": g.crs,
+                "pixel_size": round(pixel_size(g.affine), 4), "rotation": round(rotation_deg(g.affine), 4),
+                "corners": [[round(x, 3), round(y, 3)] for x, y in pts],
+                "checks": r.checks, "notes": r.notes,
+            },
+            extent={"min": [round(min(xs), 2), round(min(ys), 2)], "max": [round(max(xs), 2), round(max(ys), 2)]},
+            elevation=g.elevation,
+            opacity=1.0,
+            image=r.image,
+            mime=r.mime,
+        ))
+        created.append(dataset)
+    session.commit()
+    return [dataset_out(session, d) for d in created]
+
+
+def _get_raster(session: Session, raster_id: int) -> Raster:
+    raster = session.get(Raster, raster_id)
+    if raster is None:
+        raise HTTPException(404, "Растр не найден")
+    return raster
+
+
+@router.get("/rasters/{raster_id}/image")
+def raster_image(raster_id: int, session: Session = Depends(get_session)) -> Response:
+    raster = _get_raster(session, raster_id)
+    return Response(raster.image, media_type=raster.mime, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.patch("/rasters/{raster_id}", response_model=RasterOut)
+def patch_raster(raster_id: int, body: RasterPatch, session: Session = Depends(get_session)):
+    raster = _get_raster(session, raster_id)
+    if body.name is not None:
+        raster.name = body.name.strip()
+    if body.clear_elevation:
+        raster.elevation = None
+    elif body.elevation is not None:
+        raster.elevation = body.elevation
+    if body.opacity is not None:
+        raster.opacity = body.opacity
+    session.commit()
+    return _raster_out(raster)

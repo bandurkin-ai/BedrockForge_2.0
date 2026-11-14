@@ -5,6 +5,13 @@ export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
 export type BottomTab = "table" | "audit" | "log";
 
+/** An object picked in the tree: its properties are shown on the right. */
+export type ObjectKind = "wireframe" | "lines" | "raster";
+export interface SelectedObject {
+  kind: ObjectKind;
+  id: number;
+}
+
 export const MODE_TITLES: Record<SceneMode, string> = { "3d": "3D", plan: "План", section: "Разрез" };
 export const MODES = Object.keys(MODE_TITLES) as SceneMode[];
 export const BOTTOM_TITLES: Record<BottomTab, string> = { table: "Таблица", audit: "Аудит", log: "Журнал команд" };
@@ -25,7 +32,7 @@ export interface WorkspaceState {
   grid: boolean;
   /** Opacity of wireframes, 0.1–1. */
   wireframeOpacity: number;
-  /** Hidden layers: "set:3", "set:3:intervals", "wf:12"... Everything else is shown. */
+  /** Hidden layers: "set:3", "set:3:intervals", "wf:12", "ln:4", "rs:2"... Everything else is shown. */
   hidden: string[];
 }
 
@@ -59,6 +66,8 @@ export const layerKey = {
   set: (id: number) => `set:${id}`,
   setPart: (id: number, part: "paths" | "intervals" | "collars") => `set:${id}:${part}`,
   wireframe: (id: number) => `wf:${id}`,
+  lines: (id: number) => `ln:${id}`,
+  raster: (id: number) => `rs:${id}`,
 };
 
 export function isShown(state: WorkspaceState, key: string): boolean {

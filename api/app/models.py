@@ -67,6 +67,47 @@ class Wireframe(Base):
     triangles: Mapped[bytes] = mapped_column(LargeBinary)  # int32 i, j, k per triangle
 
 
+class LineLayer(Base):
+    """Polylines of one layer (STR string code or DXF layer), stored as one vertex array."""
+
+    __tablename__ = "line_layer"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(_set_fk(), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    color: Mapped[str] = mapped_column(String(7))
+    line_count: Mapped[int] = mapped_column(Integer)
+    point_count: Mapped[int] = mapped_column(Integer)
+    extent: Mapped[dict] = mapped_column(JSONB)
+    # Total length, closed lines, flat (constant Z).
+    stats: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # One dict per line (attributes from the file).
+    line_attributes: Mapped[list] = mapped_column(JSONB, default=list)
+    vertices: Mapped[bytes] = mapped_column(LargeBinary)  # float64 x, y, z
+    offsets: Mapped[bytes] = mapped_column(LargeBinary)  # int64 start of every line, plus the end
+    closed: Mapped[bytes] = mapped_column(LargeBinary)  # uint8 per line
+
+
+class Raster(Base):
+    """A georeferenced image placed in plan at an elevation."""
+
+    __tablename__ = "raster"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(_set_fk(), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    # affine, source, crs, pixel size, rotation, corners, control point checks, notes
+    georef: Mapped[dict] = mapped_column(JSONB)
+    extent: Mapped[dict] = mapped_column(JSONB)
+    # None: placed under the lowest object of the scene.
+    elevation: Mapped[float | None] = mapped_column(Double)
+    opacity: Mapped[float] = mapped_column(Double, default=1.0)
+    image: Mapped[bytes] = mapped_column(LargeBinary)  # display copy
+    mime: Mapped[str] = mapped_column(String(32))
+
+
 class Collar(Base):
     __tablename__ = "collar"
     __table_args__ = (UniqueConstraint("set_id", "hole_id"),)

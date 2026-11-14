@@ -365,16 +365,56 @@ export interface WireframeInfo {
   stats: { area: number; volume: number | null; closed: boolean; degenerate: number; open_edges: number; attributes?: Record<string, unknown> };
 }
 
+export interface LineLayerInfo {
+  id: number;
+  name: string;
+  color: string;
+  line_count: number;
+  point_count: number;
+  extent: { min: number[]; max: number[] };
+  stats: { length: number; closed: number; flat: boolean };
+}
+
+export interface RasterCheck {
+  source: string;
+  max: number;
+  points: { label: string; col: number; row: number; dx: number; dy: number; d: number }[];
+}
+
+export interface RasterInfo {
+  id: number;
+  name: string;
+  width: number;
+  height: number;
+  georef: {
+    affine: number[];
+    source: string;
+    crs: string | null;
+    pixel_size: number;
+    rotation: number;
+    /** top-left, top-right, bottom-right, bottom-left [x, y] */
+    corners: number[][];
+    checks: RasterCheck[];
+    notes: string[];
+  };
+  extent: { min: number[]; max: number[] };
+  /** null: under the lowest object of the scene */
+  elevation: number | null;
+  opacity: number;
+}
+
 export interface Dataset {
   id: number;
   kind: DatasetKind;
   name: string;
   created_at: string;
-  meta: { format?: string; filename?: string };
+  meta: { format?: string; filename?: string; sidecars?: string[] };
   counts: { collar: number; survey: number; assay: number } | null;
   components: { name: string; unit: string }[] | null;
   audit: { error: number; warning: number; info: number } | null;
   wireframes: WireframeInfo[] | null;
+  lines: LineLayerInfo[] | null;
+  rasters: RasterInfo[] | null;
 }
 
 export interface WireframeGeometry {
@@ -419,3 +459,44 @@ export async function deleteWireframe(id: number): Promise<void> {
   const response = await fetch(`/api/wireframes/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`Ошибка ${response.status}`);
 }
+
+// ---- Lines and rasters ----
+
+export interface LineGeometry {
+  id: number;
+  origin: number[];
+  /** base64 float32 x, y, z relative to origin */
+  vertices: string;
+  /** base64 uint32 start of every line, plus the end */
+  offsets: string;
+  /** base64 uint8 per line */
+  closed: string;
+}
+
+export function uploadLines(projectId: number, file: File): Promise<Dataset> {
+  const form = new FormData();
+  form.append("file", file);
+  return request<Dataset>(`/api/projects/${projectId}/lines`, { method: "POST", body: form });
+}
+
+export const getLineGeometry = (id: number) => request<LineGeometry>(`/api/lines/${id}/geometry`);
+
+export const patchLines = (id: number, patch: { name?: string; color?: string }) =>
+  request<LineLayerInfo>(`/api/lines/${id}`, { method: "PATCH", ...json(patch) });
+
+export async function deleteLines(id: number): Promise<void> {
+  const response = await fetch(`/api/lines/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(`Ошибка ${response.status}`);
+}
+
+/** Images and their georeference files in one request; every image becomes a dataset. */
+export function uploadRasters(projectId: number, files: File[]): Promise<Dataset[]> {
+  const form = new FormData();
+  for (const file of files) form.append("files", file);
+  return request<Dataset[]>(`/api/projects/${projectId}/rasters`, { method: "POST", body: form });
+}
+
+export const rasterImageUrl = (id: number) => `/api/rasters/${id}/image`;
+
+export const patchRaster = (id: number, patch: { name?: string; elevation?: number; clear_elevation?: boolean; opacity?: number }) =>
+  request<RasterInfo>(`/api/rasters/${id}`, { method: "PATCH", ...json(patch) });

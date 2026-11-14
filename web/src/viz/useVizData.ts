@@ -1,4 +1,4 @@
-import { getIntervals, getTrajectories, getWireframeGeometry, listHoles, type Hole, type IntervalsData, type Trajectories } from "../api";
+import { getIntervals, getLineGeometry, getTrajectories, getWireframeGeometry, listHoles, type Hole, type IntervalsData, type Trajectories } from "../api";
 
 // Requests are cached for the session so toggling layers does not refetch megabytes.
 // Keys contain refreshKey, so a re-import or a new audit run bypasses stale entries.
@@ -41,4 +41,17 @@ export const loadWireframe = (id: number): Promise<DecodedWireframe> =>
   cached(`wf:${id}`, async () => {
     const g = await getWireframeGeometry(id);
     return { origin: g.origin, vertices: new Float32Array(decode(g.vertices)), triangles: new Uint32Array(decode(g.triangles)) };
+  });
+
+export interface DecodedLines {
+  origin: number[];
+  vertices: Float32Array;
+  offsets: Uint32Array;
+}
+
+/** Line geometry never changes after import, so it is cached by id only. */
+export const loadLines = (id: number): Promise<DecodedLines> =>
+  cached(`ln:${id}`, async () => {
+    const g = await getLineGeometry(id);
+    return { origin: g.origin, vertices: new Float32Array(decode(g.vertices)), offsets: new Uint32Array(decode(g.offsets)) };
   });

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  auditExportUrl, createDemoProject, createProject, createSet, deleteDataset, deleteWireframe, listProjects, patchWireframe,
-  renameDataset, runAudit, uploadWireframes, type Dataset, type Project,
+  auditExportUrl, createDemoProject, createProject, createSet, deleteDataset, deleteLines, deleteWireframe, listProjects, patchLines,
+  patchRaster, patchWireframe, renameDataset, runAudit, uploadLines, uploadRasters, uploadWireframes, type Dataset, type Project,
 } from "./api";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataPage } from "./DataPage";
@@ -24,7 +24,7 @@ import { useLiveState } from "./shell/useLiveState";
 import { useRemoteCommands } from "./shell/useRemoteCommands";
 import {
   BOTTOM_TITLES, MODE_TITLES, isShown, layerKey, loadWorkspace, openBottom, resize, saveWorkspace, setPanel, setShown,
-  type BottomTab, type WorkspaceState,
+  type BottomTab, type SelectedObject, type WorkspaceState,
 } from "./shell/workspace";
 import { StatusBar } from "./StatusBar";
 import { useOverview } from "./useOverview";
@@ -37,7 +37,12 @@ const SceneView = lazy(() => import("./viz/SceneView").then((m) => ({ default: m
 
 const STORAGE_KEY = "geo.projectId";
 const LOG_LIMIT = 200;
-const WIREFRAME_ACCEPT = ".tridb,.dxf";
+const ACCEPT = {
+  wireframes: ".tridb,.dxf",
+  lines: ".str,.dxf",
+  rasters: ".jpg,.jpeg,.png,.tif,.tiff,.bmp,.jgw,.jpgw,.pgw,.pngw,.tfw,.tifw,.bpw,.wld,.tab,.grf",
+};
+type UploadKind = keyof typeof ACCEPT;
 
 function loadSavedProjectId(): number | null {
   try {
@@ -78,13 +83,14 @@ function Workspace({
   const [refreshKey, setRefreshKey] = useState(0);
   const [viz, setViz, vizRef] = useLiveState<VizSettings>(DEFAULT_VIZ);
   const [section, setSection, sectionRef] = useLiveState<SectionLine | null>(null);
-  const [selectedWireframe, setSelectedWireframe, wireframeRef] = useLiveState<number | null>(null);
+  const [selected, setSelected, selectedRef] = useLiveState<SelectedObject | null>(null);
   const [palette, setPalette] = useState<string | null>(null);
   const [importTarget, setImportTarget] = useState<number | null | undefined>(undefined);
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [approval, setApproval] = useState<Approval | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInputs = { wireframes: useRef<HTMLInputElement>(null), lines: useRef<HTMLInputElement>(null), rasters: useRef<HTMLInputElement>(null) };
+  const openFiles = (kind: UploadKind) => fileInputs[kind].current?.click();
   const fitRef = useRef<() => void>(() => undefined);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -108,10 +114,10 @@ function Workspace({
     (setId: number, holeId: string | null) => {
       setActiveSet(setId);
       setSelectedHole(holeId);
-      if (holeId) setSelectedWireframe(null);
+      if (holeId) setSelected(null);
       navigate({ set: setId, hole: holeId });
     },
-    [navigate, setActiveSet, setSelectedHole, setSelectedWireframe],
+    [navigate, setActiveSet, setSelectedHole, setSelected],
   );
   const selectSet = useCallback(
     (setId: number) => {
@@ -159,8 +165,10 @@ function Workspace({
         counts: d.counts, components: d.components, audit: d.audit,
       })),
       wireframes: (datasets ?? []).flatMap((d) => (d.wireframes ?? []).map((w) => ({ id: w.id, name: w.name, file: d.name, shown: isShown(ws, layerKey.wireframe(w.id)) }))),
+      lines: (datasets ?? []).flatMap((d) => (d.lines ?? []).map((l) => ({ id: l.id, name: l.name, file: d.name, lines: l.line_count, shown: isShown(ws, layerKey.lines(l.id)) }))),
+      rasters: (datasets ?? []).flatMap((d) => (d.rasters ?? []).map((r) => ({ id: r.id, name: r.name, elevation: r.elevation, shown: isShown(ws, layerKey.raster(r.id)) }))),
       selected_hole: selectedHole,
-      selected_wireframe: selectedWireframe,
+      selected_object: selected,
       color_scale: viz,
       section,
     }),
@@ -182,11 +190,11 @@ function Workspace({
     get section() { return sectionRef.current; },
     get activeSet() { return activeSetRef.current; },
     get selectedHole() { return holeRef.current; },
-    get selectedWireframe() { return wireframeRef.current; },
+    get selected() { return selectedRef.current; },
     setWs, setViz, setSection, selectSet, selectHole,
-    selectWireframe: (id) => {
-      setSelectedWireframe(id);
-      if (id !== null) setWs((prev) => setPanel(prev, "properties", true));
+    selectObject: (object) => {
+      setSelected(object);
+      if (object !== null) setWs((prev) => setPanel(prev, "properties", true));
     },
     openTable: (kind: TableKind) => {
       navigate({ kind });
@@ -196,7 +204,11 @@ function Workspace({
     onCreateSet: createNewSet,
     openPalette: (query) => setPalette(query),
     openImport: (setId) => setImportTarget(setId),
-    uploadWireframes: () => fileInput.current?.click(),
+    upload: openFiles,
+    patchRaster: async (id, patch) => {
+      await patchRaster(id, patch);
+      reload();
+    },
     runAudit: (setId) => runAudit(setId, DEFAULT_CONFIG),
     exportAudit: (setId) => window.open(auditExportUrl(setId), "_blank"),
     fit: () => fitRef.current(),
@@ -289,55 +301,86 @@ function Workspace({
 
   const onRename = (d: Dataset) =>
     guarded(async () => {
-      const name = window.prompt("Новое название", d.name)?.trim();
-      if (!name || name === d.name) return;
-      await renameDataset(d.id, name);
+      const raster = d.rasters?.[0];
+      const current = raster?.name ?? d.name;
+      const name = window.prompt("Новое название", current)?.trim();
+      if (!name || name === current) return;
+      if (raster) await patchRaster(raster.id, { name });
+      else await renameDataset(d.id, name);
       reload();
       return `Переименовано: «${name}»`;
     });
 
   const onDelete = (d: Dataset) =>
     guarded(async () => {
-      const what = d.kind === "drillholes"
-        ? `набор скважин «${d.name}» со всеми устьями, замерами, пробами и аудитом`
-        : `файл «${d.name}» со всеми каркасами (${d.wireframes?.length ?? 0})`;
+      const what =
+        d.kind === "drillholes" ? `набор скважин «${d.name}» со всеми устьями, замерами, пробами и аудитом`
+        : d.kind === "wireframes" ? `файл «${d.name}» со всеми каркасами (${d.wireframes?.length ?? 0})`
+        : d.kind === "lines" ? `файл «${d.name}» со всеми слоями линий (${d.lines?.length ?? 0})`
+        : `растр «${d.rasters?.[0]?.name ?? d.name}»`;
       if (!window.confirm(`Удалить ${what}? Это действие нельзя отменить.`)) return;
       await deleteDataset(d.id);
-      if (d.wireframes?.some((w) => w.id === selectedWireframe)) setSelectedWireframe(null);
+      const items = [...(d.wireframes ?? []), ...(d.lines ?? []), ...(d.rasters ?? [])].map((x) => x.id);
+      if (selected && items.includes(selected.id)) setSelected(null);
       reload();
       return `Удалено: «${d.name}»`;
     });
 
-  const onDeleteWireframe = (id: number, name: string) =>
+  const onDeleteItem = (kind: "wireframe" | "lines", id: number, name: string) =>
     guarded(async () => {
-      if (!window.confirm(`Удалить каркас «${name}»? Это действие нельзя отменить.`)) return;
-      await deleteWireframe(id);
-      if (id === selectedWireframe) setSelectedWireframe(null);
+      const what = kind === "wireframe" ? `каркас «${name}»` : `слой линий «${name}»`;
+      if (!window.confirm(`Удалить ${what}? Это действие нельзя отменить.`)) return;
+      await (kind === "wireframe" ? deleteWireframe(id) : deleteLines(id));
+      if (selected?.kind === kind && selected.id === id) setSelected(null);
       reload();
-      return `Каркас «${name}» удалён`;
+      return `Удалено: ${what}`;
     });
 
-  const onWireframeColor = (id: number, color: string) =>
+  const onColor = (kind: "wireframe" | "lines", id: number, color: string) =>
     guarded(async () => {
-      await patchWireframe(id, { color });
+      await (kind === "wireframe" ? patchWireframe(id, { color }) : patchLines(id, { color }));
       reload();
     });
 
-  async function onWireframeFiles(files: FileList | null) {
-    if (!files?.length) return;
-    for (const file of Array.from(files)) {
+  function logUpload(file: string, result: string) {
+    setLog((prev) => [{ id: Date.now() + Math.random(), time: new Date(), source: "user" as const, title: "Загрузка файла", args: { file }, result, ok: true }, ...prev].slice(0, LOG_LIMIT));
+  }
+
+  async function onFiles(kind: UploadKind, list: FileList | null) {
+    const files = Array.from(list ?? []);
+    const input = fileInputs[kind].current;
+    if (input) input.value = "";
+    if (!files.length) return;
+    if (kind === "rasters") {
+      // Images and their georeference files go together, paired by name on the server.
+      await guarded(async () => {
+        setNotice({ text: `Загрузка: ${files.map((f) => f.name).join(", ")}…`, error: false });
+        const created = await uploadRasters(projectId, files);
+        const result = `Растров: ${created.length} (${created.map((d) => `${d.rasters?.[0]?.name}: ${d.rasters?.[0]?.georef.source}`).join("; ")})`;
+        logUpload(files.map((f) => f.name).join(", "), result);
+        reload();
+        return result;
+      });
+      return;
+    }
+    for (const file of files) {
       await guarded(async () => {
         setNotice({ text: `Загрузка ${file.name}…`, error: false });
-        const created = await uploadWireframes(projectId, file);
-        const count = created.wireframes?.length ?? 0;
-        const triangles = (created.wireframes ?? []).reduce((n, w) => n + w.triangle_count, 0);
-        const result = `${file.name}: каркасов ${count}, треугольников ${triangles.toLocaleString("ru-RU")}`;
-        setLog((prev) => [{ id: Date.now() + Math.random(), time: new Date(), source: "user" as const, title: "Загрузка каркасов", args: { file: file.name }, result, ok: true }, ...prev]);
+        let result: string;
+        if (kind === "wireframes") {
+          const created = await uploadWireframes(projectId, file);
+          const triangles = (created.wireframes ?? []).reduce((n, w) => n + w.triangle_count, 0);
+          result = `${file.name}: каркасов ${created.wireframes?.length ?? 0}, треугольников ${triangles.toLocaleString("ru-RU")}`;
+        } else {
+          const created = await uploadLines(projectId, file);
+          const lines = (created.lines ?? []).reduce((n, l) => n + l.line_count, 0);
+          result = `${file.name}: слоёв ${created.lines?.length ?? 0}, линий ${lines.toLocaleString("ru-RU")} (${created.meta.format})`;
+        }
+        logUpload(file.name, result);
         reload();
         return result;
       });
     }
-    if (fileInput.current) fileInput.current.value = "";
   }
 
   const clearHole = () => activeSet !== null && selectHole(activeSet, null);
@@ -388,22 +431,22 @@ function Workspace({
               <ErrorBoundary label="Дерево проекта" compact>
                 <DataTree
                   datasets={datasets} ws={ws} refreshKey={refreshKey} activeSet={activeSet}
-                  selectedHole={selectedHole} selectedWireframe={selectedWireframe}
+                  selectedHole={selectedHole} selected={selected}
                   onShow={(key, shown) => setWs((prev) => setShown(prev, key, shown))}
                   onSelectSet={selectSet}
                   onSelectHole={selectHole}
-                  onSelectWireframe={(id) => live.current.selectWireframe(id)}
+                  onSelectObject={(object) => live.current.selectObject(object)}
                   onOpenTable={(setId, kind) => void runCommand("table.open", { kind, set_id: setId }, "user")}
                   onOpenAudit={(setId) => {
                     selectSet(setId);
                     setWs((prev) => openBottom(prev, "audit"));
                   }}
                   onImport={(setId) => setImportTarget(setId)}
-                  onUploadWireframes={() => fileInput.current?.click()}
+                  onUpload={openFiles}
                   onRename={onRename}
                   onDelete={onDelete}
-                  onWireframeColor={onWireframeColor}
-                  onDeleteWireframe={onDeleteWireframe}
+                  onColor={onColor}
+                  onDeleteItem={onDeleteItem}
                   onDemo={() => void runCommand("project.demo", {}, "user")}
                 />
               </ErrorBoundary>
@@ -483,9 +526,13 @@ function Workspace({
                 <ErrorBoundary label="Свойства" compact>
                   <PropertiesPanel
                     datasets={datasets ?? []} activeSet={activeSet} summary={summary} audit={audit}
-                    selectedHole={selectedHole} selectedWireframe={selectedWireframe} refreshKey={refreshKey}
+                    selectedHole={selectedHole} selected={selected} refreshKey={refreshKey}
                     viz={viz} onViz={setViz}
                     onOpenTable={(kind) => void runCommand("table.open", { kind }, "user")} onClearHole={clearHole}
+                    onRaster={(id, patch) => void guarded(async () => {
+                      await patchRaster(id, patch);
+                      reload();
+                    })}
                   />
                 </ErrorBoundary>
               </div>
@@ -512,7 +559,9 @@ function Workspace({
         mode={MODE_TITLES[ws.mode]} assistant={assistant.status} remote={remote}
       />
 
-      <input ref={fileInput} type="file" accept={WIREFRAME_ACCEPT} multiple hidden onChange={(e) => void onWireframeFiles(e.target.files)} />
+      {(Object.keys(ACCEPT) as UploadKind[]).map((kind) => (
+        <input key={kind} ref={fileInputs[kind]} type="file" accept={ACCEPT[kind]} multiple hidden data-upload={kind} onChange={(e) => void onFiles(kind, e.target.files)} />
+      ))}
 
       {notice && (
         <div className={notice.error ? "toast error" : "toast"} role="status" onClick={() => setNotice(null)}>

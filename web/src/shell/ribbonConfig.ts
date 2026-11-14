@@ -87,6 +87,8 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           items: [
             { command: "import.open", label: "Скважины", icon: "drillholes", hint: "Импорт Collar, Survey, Assay в набор скважин (DAT, CSV, Excel)" },
             { command: "wireframes.upload", label: "Каркасы", icon: "wireframe", hint: "Micromine TRIDB или DXF" },
+            { command: "lines.upload", label: "Линии", icon: "lines", hint: "Стринги: Micromine STR, Surpac STR, DXF", small: true },
+            { command: "rasters.upload", label: "Растры", icon: "raster", hint: "Изображение с файлом привязки (.jgw/.pgw/.tfw, .tab, .grf) или GeoTIFF", small: true },
           ],
         },
         { title: "Вид", items: [mode("3d"), mode("plan"), mode("section"), { command: "scene.fit", label: "Вписать", icon: "maximize", shortcut: "f", small: true }] },

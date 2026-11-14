@@ -5,7 +5,8 @@ File layout (verified on Collar, Survey and Assay files of a real project):
 * bytes 0..4095     XML metadata header; ``codepage`` attribute gives text encoding
 * from byte 4096    ``N VARIABLES`` block: N lines ``NAME TYPE WIDTH DECIMALS``
 * then              fixed-width records, each followed by CRLF
-                    TYPE ``C`` = text padded with spaces, TYPE ``R`` = IEEE double, little-endian
+                    TYPE ``C`` = text padded with spaces, TYPE ``R`` = IEEE double, little-endian,
+                    TYPE ``N`` = a number written as text (STR files use it for JOIN)
 
 Known quirk: in files whose header declares ``BOCU-1`` the text bytes (and field
 names) are stored as ASCII + 0x50. Decoding subtracts 0x50 from bytes >= 0x50.
@@ -37,7 +38,7 @@ class MicromineFormatError(ValueError):
 @dataclass(frozen=True)
 class Field:
     name: str
-    kind: str  # "C" (text) or "R" (real)
+    kind: str  # "C" (text), "R" (real) or "N" (number stored as text)
     width: int
     decimals: int
 
@@ -54,11 +55,19 @@ class MicromineTable:
         return len(self.frame)
 
 
+# Micromine codepage names -> Python codecs. ibm-5347 is Windows-1251 (Cyrillic).
+_CODECS = {
+    "ibm-5347": "cp1251", "ibm-1251": "cp1251", "windows-1251": "cp1251", "cp1251": "cp1251",
+    "ibm-5348": "cp1252", "windows-1252": "cp1252", "utf-8": "utf-8", "ascii": "ascii",
+}
+
+
 def _decode_text(raw: bytes, codepage: str) -> str:
     if codepage.upper() == "BOCU-1":
         raw = bytes(c - 0x50 if c >= 0x50 else c for c in raw)
-    # TODO: non-ASCII text (ibm-5347 / Cyrillic) is not used by the sample files yet.
-    return raw.decode("ascii", errors="replace").rstrip()
+        return raw.decode("ascii", errors="replace").rstrip()
+    codec = _CODECS.get(codepage.lower(), "ascii")
+    return raw.decode(codec, errors="replace").rstrip(" \x00")
 
 
 def _parse_header(data: bytes) -> tuple[str, list[Field], int]:
@@ -91,7 +100,7 @@ def _parse_header(data: bytes) -> tuple[str, list[Field], int]:
         if len(parts) < 4:
             raise MicromineFormatError(f"bad variable line: {line!r}")
         kind_token, width_token, decimals_token = parts[-3], parts[-2], parts[-1]
-        if kind_token not in (b"C", b"R"):
+        if kind_token not in (b"C", b"R", b"N"):
             raise MicromineFormatError(f"unknown field type: {kind_token!r}")
         name_raw = line[: line.rfind(kind_token)].rstrip()
         fields.append(
@@ -127,7 +136,7 @@ def read_micromine(path: str | Path) -> MicromineTable:
         )
 
     fmt = "<" + "".join(
-        f"{f.width}s" if f.kind == "C" else "d" for f in fields
+        "d" if f.kind == "R" else f"{f.width}s" for f in fields
     )
     # Real fields are 8 bytes wide by definition; enforce it before unpacking.
     for f in fields:
@@ -141,7 +150,7 @@ def read_micromine(path: str | Path) -> MicromineTable:
     for raw_row in struct.iter_unpack(fmt, data[start:]):
         row = []
         for value, f in zip(raw_row, fields):
-            if f.kind == "C":
+            if f.kind != "R":
                 row.append(_decode_text(value, codepage))
             else:
                 row.append(value)
@@ -152,5 +161,7 @@ def read_micromine(path: str | Path) -> MicromineTable:
     for f, col in zip(fields, columns):
         if f.kind == "R":
             frame[col] = frame[col].astype("float64")
+        elif f.kind == "N":
+            frame[col] = pd.to_numeric(frame[col].str.strip().str.replace(",", ".", regex=False), errors="coerce")
 
     return MicromineTable(path=str(path), codepage=codepage, fields=fields, frame=frame)

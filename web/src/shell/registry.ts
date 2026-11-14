@@ -7,7 +7,7 @@ import type { SceneMode } from "../viz/scene3d";
 import type { Command } from "./commands";
 import {
   BOTTOM_TITLES, MODE_TITLES, MODES, VEXAG_STEPS, isShown, layerKey, openBottom, setPanel, setShown,
-  type BottomTab, type PanelId, type WorkspaceState,
+  type BottomTab, type ObjectKind, type PanelId, type SelectedObject, type WorkspaceState,
 } from "./workspace";
 
 /** The live application state and actions that commands work with. */
@@ -23,13 +23,13 @@ export interface Live {
   section: SectionLine | null;
   activeSet: number | null;
   selectedHole: string | null;
-  selectedWireframe: number | null;
+  selected: SelectedObject | null;
   setWs: (update: (prev: WorkspaceState) => WorkspaceState) => void;
   setViz: (next: VizSettings) => void;
   setSection: (next: SectionLine | null) => void;
   selectSet: (setId: number) => void;
   selectHole: (setId: number, holeId: string | null) => void;
-  selectWireframe: (id: number | null) => void;
+  selectObject: (object: SelectedObject | null) => void;
   openTable: (kind: TableKind) => void;
   reload: () => void;
   onSelectProject: (id: number) => void;
@@ -38,7 +38,8 @@ export interface Live {
   onCreateSet: (name: string) => Promise<string>;
   openPalette: (query: string) => void;
   openImport: (setId: number | null) => void;
-  uploadWireframes: () => void;
+  upload: (kind: "wireframes" | "lines" | "rasters") => void;
+  patchRaster: (id: number, patch: { elevation?: number; clear_elevation?: boolean; opacity?: number }) => Promise<void>;
   runAudit: (setId: number) => Promise<AuditRun>;
   exportAudit: (setId: number) => void;
   fit: () => void;
@@ -48,7 +49,8 @@ export interface Live {
 
 const TABLE_TITLES: Record<TableKind, string> = { collar: "Устья", survey: "Инклинометрия", assay: "Пробы" };
 const PANEL_TITLES: Record<PanelId, string> = { project: "Дерево проекта", properties: "Свойства", assistant: "Claude", bottom: "Нижняя панель" };
-const LAYER_PARTS = ["set", "paths", "intervals", "collars", "wireframe"] as const;
+const LAYER_PARTS = ["set", "paths", "intervals", "collars", "wireframe", "lines", "raster"] as const;
+const OBJECT_TITLES: Record<ObjectKind, string> = { wireframe: "каркас", lines: "слой линий", raster: "растр" };
 type LayerPart = (typeof LAYER_PARTS)[number];
 
 /**
@@ -59,6 +61,15 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
   const s = () => live.current;
   const sets = () => s().datasets.filter((d) => d.kind === "drillholes");
   const wireframes = () => s().datasets.flatMap((d) => d.wireframes ?? []);
+  const lineLayers = () => s().datasets.flatMap((d) => d.lines ?? []);
+  const rasters = () => s().datasets.flatMap((d) => d.rasters ?? []);
+  /** A tree object by kind and id, or an error Claude can read. */
+  const findObject = (kind: ObjectKind, id: number): { id: number; name: string } => {
+    const list = kind === "wireframe" ? wireframes() : kind === "lines" ? lineLayers() : rasters();
+    const found = list.find((x) => x.id === id);
+    if (!found) throw new Error(`Объекта «${OBJECT_TITLES[kind]}» с id ${id} нет в проекте`);
+    return found;
+  };
   /** The set a command works on: the given one, or the active one. */
   const targetSet = (value: unknown): Dataset => {
     const id = typeof value === "number" ? value : s().activeSet;
@@ -114,7 +125,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       title: "Показать или скрыть слой",
       description:
         "Видимость объекта в 3D. layer: set — весь набор скважин, paths / intervals / collars — стволы, содержания, устья набора (id = set_id), " +
-        "wireframe — каркас (id = id каркаса из data_list_datasets).",
+        "wireframe — каркас, lines — слой линий, raster — растр (id объекта из data_list_datasets).",
       params: {
         layer: { type: "string", enum: LAYER_PARTS },
         id: { type: "integer" },
@@ -126,11 +137,10 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         const n = id as number;
         let key: string;
         let name: string;
-        if (part === "wireframe") {
-          const w = wireframes().find((x) => x.id === n);
-          if (!w) throw new Error(`Каркаса ${n} нет в проекте`);
-          key = layerKey.wireframe(n);
-          name = `каркас «${w.name}»`;
+        if (part === "wireframe" || part === "lines" || part === "raster") {
+          const object = findObject(part, n);
+          key = part === "wireframe" ? layerKey.wireframe(n) : part === "lines" ? layerKey.lines(n) : layerKey.raster(n);
+          name = `${OBJECT_TITLES[part]} «${object.name}»`;
         } else {
           const set = targetSet(n);
           key = part === "set" ? layerKey.set(n) : layerKey.setPart(n, part);
@@ -178,21 +188,38 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       },
     },
     {
-      id: "wireframe.select",
-      title: "Выбрать каркас",
-      description: "Показывает свойства каркаса (площадь, объём, замкнутость, охват). null снимает выбор.",
-      params: { wireframe_id: { type: "integer", nullable: true } },
-      required: ["wireframe_id"],
-      run: ({ wireframe_id }) => {
-        if (wireframe_id === null) {
-          s().selectWireframe(null);
+      id: "object.select",
+      title: "Выбрать объект",
+      description:
+        "Показывает свойства объекта дерева: wireframe — каркас (площадь, объём, замкнутость), lines — слой линий (число, длина), " +
+        "raster — растр (привязка, отклонения опорных точек, высота). id = null снимает выбор.",
+      params: { kind: { type: "string", enum: ["wireframe", "lines", "raster"] }, id: { type: "integer", nullable: true } },
+      required: ["kind", "id"],
+      run: ({ kind, id }) => {
+        if (id === null) {
+          s().selectObject(null);
           return "Выбор снят";
         }
-        const w = wireframes().find((x) => x.id === wireframe_id);
-        if (!w) throw new Error(`Каркаса ${wireframe_id} нет в проекте`);
-        s().selectWireframe(w.id);
+        const object = findObject(kind as ObjectKind, id as number);
+        s().selectObject({ kind: kind as ObjectKind, id: object.id });
         s().setWs((prev) => setPanel(prev, "properties", true));
-        return `Выбран каркас «${w.name}»`;
+        return `Выбран ${OBJECT_TITLES[kind as ObjectKind]} «${object.name}»`;
+      },
+    },
+    {
+      id: "raster.set",
+      title: "Высота и прозрачность растра",
+      description: "elevation — высота плоскости растра, м (null — под самым низким объектом сцены); opacity — непрозрачность 0.05–1.",
+      params: { raster_id: { type: "integer" }, elevation: { type: "number", nullable: true }, opacity: { type: "number" } },
+      required: ["raster_id"],
+      run: async ({ raster_id, elevation, opacity }) => {
+        const raster = findObject("raster", raster_id as number);
+        const patch: { elevation?: number; clear_elevation?: boolean; opacity?: number } = {};
+        if (elevation === null) patch.clear_elevation = true;
+        else if (typeof elevation === "number") patch.elevation = elevation;
+        if (typeof opacity === "number") patch.opacity = Math.min(1, Math.max(0.05, opacity));
+        await s().patchRaster(raster.id, patch);
+        return `Растр «${raster.name}»: ${elevation === null ? "высота авто" : typeof elevation === "number" ? `высота ${elevation} м` : ""}${typeof opacity === "number" ? `, непрозрачность ${patch.opacity}` : ""}`;
       },
     },
     {
@@ -341,7 +368,21 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       title: "Загрузить каркасы",
       description: "Выбор файлов Micromine TRIDB или DXF.",
       uiOnly: true,
-      run: () => s().uploadWireframes(),
+      run: () => s().upload("wireframes"),
+    },
+    {
+      id: "lines.upload",
+      title: "Загрузить линии",
+      description: "Выбор файлов Micromine STR, Surpac STR или DXF.",
+      uiOnly: true,
+      run: () => s().upload("lines"),
+    },
+    {
+      id: "rasters.upload",
+      title: "Загрузить растры",
+      description: "Выбор изображений вместе с файлами привязки.",
+      uiOnly: true,
+      run: () => s().upload("rasters"),
     },
     {
       id: "data.refresh",
@@ -358,14 +399,16 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       description: "Что сейчас на экране: проект, режим вида, видимые объекты, активный набор, выбранная скважина или каркас, шкала, разрез.",
       silent: true,
       run: () => {
-        const { ws, projects, projectId, activeSet, selectedHole, selectedWireframe, viz, section } = s();
+        const { ws, projects, projectId, activeSet, selectedHole, selected, viz, section } = s();
         return JSON.stringify({
           project: projects.find((p) => p.id === projectId),
           mode: ws.mode,
           drillhole_sets: sets().map((d) => ({ id: d.id, name: d.name, shown: isShown(ws, layerKey.set(d.id)), active: d.id === activeSet, collars: d.counts?.collar ?? 0 })),
           wireframes: wireframes().map((w) => ({ id: w.id, name: w.name, shown: isShown(ws, layerKey.wireframe(w.id)) })),
+          lines: lineLayers().map((l) => ({ id: l.id, name: l.name, lines: l.line_count, shown: isShown(ws, layerKey.lines(l.id)) })),
+          rasters: rasters().map((r) => ({ id: r.id, name: r.name, elevation: r.elevation, shown: isShown(ws, layerKey.raster(r.id)) })),
           selected_hole: selectedHole,
-          selected_wireframe: selectedWireframe,
+          selected_object: selected,
           color_scale: viz,
           section,
           vertical_exaggeration: ws.vexag,
@@ -396,7 +439,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
     {
       id: "project.demo",
       title: "Демо-проект",
-      description: "Создаёт учебный проект «Демо: участок Северный» (48 скважин, пробы AU и CU, аудит, каркасы рудного тела) и открывает его. Если он уже есть — просто открывает.",
+      description: "Создаёт учебный проект «Демо: участок Северный» (48 скважин, пробы AU и CU, аудит, каркасы рудного тела, контуры, геологическая карта) и открывает его. Если он уже есть — просто открывает.",
       confirm: true,
       run: () => s().onDemoProject(),
     },

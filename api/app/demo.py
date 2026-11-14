@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.audit.engine import run_audit
 from app.formats.wireframes import mesh_stats
-from app.models import Assay, Collar, Component, Dataset, Project, Survey, Wireframe
+from app.models import Assay, Collar, Component, Dataset, LineLayer, Project, Raster, Survey, Wireframe
 
 import numpy as np
 
@@ -60,6 +60,8 @@ def create_demo_project(session: Session) -> tuple[Project, bool]:
     session.add_all([Component(set_id=pid, name="AU", unit="г/т"), Component(set_id=pid, name="CU", unit="%")])
     session.flush()
     _add_orebody(session, project.id)
+    _add_lines(session, project.id)
+    _add_map(session, project.id)
     run_audit(session, pid)
     session.commit()
     return project, True
@@ -104,3 +106,62 @@ def _add_orebody(session: Session, project_id: int) -> None:
             extent={"min": np.round(v.min(axis=0), 2).tolist(), "max": np.round(v.max(axis=0), 2).tolist()},
             stats=mesh_stats(v, t), vertices=v.astype("<f8").tobytes(), triangles=t.astype("<i4").tobytes(),
         ))
+
+
+def _add_lines(session: Session, project_id: int) -> None:
+    """Licence area outlines (closed, flat) and a road along the slope."""
+    from app.formats.lines import Polyline, line_stats, pack
+
+    dataset = Dataset(project_id=project_id, kind="lines", name="Контуры (демо)", meta={"format": "демо"})
+    session.add(dataset)
+    session.flush()
+    area = [(4930, 7940), (5450, 7940), (5450, 8320), (4930, 8320), (4930, 7940)]
+    zone = [(5080, 8020), (5390, 8030), (5420, 8230), (5100, 8240), (5080, 8020)]
+    road = [(4880, 7900, 412), (5000, 7990, 418), (5150, 8080, 424), (5300, 8200, 427), (5500, 8380, 431)]
+    for name, color, lines in [
+        ("Лицензионный участок", "#46c7c0", [Polyline(np.array([(x, y, 430.0) for x, y in area]), True, {"Участок": "Северный"})]),
+        ("Перспективная зона", "#e0c040", [Polyline(np.array([(x, y, 430.0) for x, y in zone]), True, {"Участок": "Зона 1"})]),
+        ("Дорога", "#c06fd8", [Polyline(np.array(road, dtype=float), False, {})]),
+    ]:
+        vertices, offsets, closed = pack(lines)
+        session.add(LineLayer(
+            dataset_id=dataset.id, name=name, color=color, line_count=len(lines), point_count=len(vertices),
+            extent={"min": vertices.min(axis=0).tolist(), "max": vertices.max(axis=0).tolist()},
+            stats=line_stats(lines), line_attributes=[line.attributes for line in lines],
+            vertices=vertices.astype("<f8").tobytes(), offsets=offsets.astype("<i8").tobytes(), closed=closed.tobytes(),
+        ))
+
+
+def _add_map(session: Session, project_id: int) -> None:
+    """A synthetic geological map: rock units in bands, a grid and a frame, georeferenced to the holes."""
+    import io
+
+    from PIL import Image, ImageDraw
+
+    width, height, pixel = 800, 640, 0.75  # 600 × 480 m
+    x0, y0 = 4900.0, 8380.0  # top-left corner
+    image = Image.new("RGB", (width, height), "#d9cfb4")
+    draw = ImageDraw.Draw(image)
+    for i, color in enumerate(["#c9b98f", "#b7c8a1", "#d4a98a", "#a9bfcf", "#cfc39a"]):
+        offset = i * 150 - 120
+        draw.polygon([(offset, 0), (offset + 170, 0), (offset + 330, height), (offset + 160, height)], fill=color)
+    for g in range(0, width, 80):
+        draw.line([(g, 0), (g, height)], fill="#8a8170", width=1)
+    for g in range(0, height, 80):
+        draw.line([(0, g), (width, g)], fill="#8a8170", width=1)
+    draw.rectangle([0, 0, width - 1, height - 1], outline="#4a4436", width=4)
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=88)
+
+    dataset = Dataset(project_id=project_id, kind="rasters", name="Геологическая карта (демо).jpg", meta={"format": "JPG"})
+    session.add(dataset)
+    session.flush()
+    affine = [pixel, 0.0, x0, 0.0, -pixel, y0]
+    pts = [(x0, y0), (x0 + width * pixel, y0), (x0 + width * pixel, y0 - height * pixel), (x0, y0 - height * pixel)]
+    session.add(Raster(
+        dataset_id=dataset.id, name="Геологическая карта", width=width, height=height,
+        georef={"affine": affine, "source": "World-файл", "crs": None, "pixel_size": pixel, "rotation": 0.0,
+                "corners": [list(p) for p in pts], "checks": [], "notes": []},
+        extent={"min": [x0, y0 - height * pixel], "max": [x0 + width * pixel, y0]},
+        elevation=405.0, opacity=0.9, image=out.getvalue(), mime="image/jpeg",
+    ))
