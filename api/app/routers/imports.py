@@ -1,5 +1,10 @@
+import json
 import re
+import shutil
 import uuid
+import zipfile
+from collections import OrderedDict
+from dataclasses import asdict
 from pathlib import Path
 
 import pandas as pd
@@ -10,10 +15,12 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_session
 from app.formats.micromine import MicromineFormatError
+from app.formats.tabular import ReadOptions, TableRead
 from app.importing.schema import KIND_LABELS, SCHEMAS
 from app.importing.service import (
     UnsupportedFormatError,
     apply_mapping,
+    check_supported,
     detect_kind,
     read_table,
     suggest_components,
@@ -41,6 +48,15 @@ class Suggestion(BaseModel):
     components: list[dict[str, str]]
 
 
+class ReadOptionsIn(BaseModel):
+    """Reading parameters for CSV/TXT/Excel; null = detect automatically."""
+
+    encoding: str | None = None
+    delimiter: str | None = None
+    header_row: int = Field(1, ge=0, le=1000)
+    sheet: str | None = None
+
+
 class UploadResponse(BaseModel):
     file_id: str
     filename: str
@@ -50,6 +66,10 @@ class UploadResponse(BaseModel):
     detected_kind: str | None
     suggestions: dict[str, Suggestion]
     preview: list[dict]
+    # Parameters actually used to read the file (detected or chosen).
+    options: ReadOptionsIn
+    sheets: list[str]
+    notes: list[str]
 
 
 class Component(BaseModel):
@@ -96,13 +116,72 @@ def schemas() -> dict[str, dict]:
     }
 
 
-def _stored_path(file_id: str) -> Path:
+# Each upload lives in its own folder: the file itself plus meta.json
+# (original name and the reading options), so validation and commit read it
+# exactly as the user saw it in the preview.
+def _upload_folder(file_id: str) -> Path:
     if not _FILE_ID_RE.match(file_id):
         raise HTTPException(400, "Некорректный идентификатор файла")
-    matches = list(settings.upload_dir.glob(f"{file_id}.*"))
-    if not matches:
+    folder = settings.upload_dir / file_id
+    if not (folder / "meta.json").exists():
         raise HTTPException(404, "Файл не найден, загрузите его заново")
-    return matches[0]
+    return folder
+
+
+def _meta(folder: Path) -> dict:
+    return json.loads((folder / "meta.json").read_text(encoding="utf-8"))
+
+
+def _data_path(folder: Path, meta: dict) -> Path:
+    return folder / f"data{meta['suffix']}"
+
+
+# Upload -> validate -> commit reads the same file three times; a big Excel book
+# takes seconds each time. Keep the last few readings (single-user app).
+_CACHE: OrderedDict[tuple[str, str], TableRead] = OrderedDict()
+_CACHE_SIZE = 4
+
+
+def _cache_key(folder: Path, options: ReadOptions) -> tuple[str, str]:
+    return str(folder), json.dumps(asdict(options), sort_keys=True)
+
+
+def _remember(folder: Path, options: ReadOptions, table: TableRead) -> None:
+    _CACHE[_cache_key(folder, options)] = table
+    while len(_CACHE) > _CACHE_SIZE:
+        _CACHE.popitem(last=False)
+
+
+def _read(folder: Path, meta: dict, options: ReadOptions) -> TableRead:
+    """Read the stored file; reading problems become HTTP errors the UI can show."""
+    key = _cache_key(folder, options)
+    if key in _CACHE:
+        _CACHE.move_to_end(key)
+        return _CACHE[key]
+    try:
+        table = read_table(_data_path(folder, meta), options)
+    except UnsupportedFormatError as exc:
+        raise HTTPException(415, str(exc)) from exc
+    except (MicromineFormatError, ValueError, zipfile.BadZipFile, KeyError, OSError) as exc:
+        raise HTTPException(422, f"Не удалось прочитать файл: {exc}") from exc
+    _remember(folder, options, table)
+    return table
+
+
+def _read_stored(file_id: str) -> tuple[TableRead, dict]:
+    folder = _upload_folder(file_id)
+    meta = _meta(folder)
+    return _read(folder, meta, ReadOptions(**meta["options"])), meta
+
+
+def _used_options(table: TableRead, requested: ReadOptions) -> ReadOptions:
+    """The options that reproduce this reading (detected values fixed)."""
+    return ReadOptions(
+        encoding=table.detected.get("encoding") if table.format == "text" else None,
+        delimiter=table.detected.get("delimiter"),
+        header_row=requested.header_row,
+        sheet=table.detected.get("sheet"),
+    )
 
 
 def _column_info(df: pd.DataFrame) -> list[ColumnInfo]:
@@ -118,33 +197,8 @@ def _column_info(df: pd.DataFrame) -> list[ColumnInfo]:
     ]
 
 
-@router.post("/upload", response_model=UploadResponse)
-async def upload(file: UploadFile) -> UploadResponse:
-    filename = file.filename or "upload"
-    suffix = Path(filename).suffix.lower()
-    file_id = uuid.uuid4().hex
-    settings.upload_dir.mkdir(parents=True, exist_ok=True)
-    path = settings.upload_dir / f"{file_id}{suffix}"
-
-    size = 0
-    with path.open("wb") as out:
-        while chunk := await file.read(_CHUNK):
-            size += len(chunk)
-            if size > settings.max_upload_bytes:
-                out.close()
-                path.unlink(missing_ok=True)
-                raise HTTPException(413, "Файл слишком большой")
-            out.write(chunk)
-
-    try:
-        df, fmt = read_table(path)
-    except UnsupportedFormatError as exc:
-        path.unlink(missing_ok=True)
-        raise HTTPException(415, str(exc)) from exc
-    except MicromineFormatError as exc:
-        path.unlink(missing_ok=True)
-        raise HTTPException(422, f"Не удалось прочитать файл: {exc}") from exc
-
+def _describe(file_id: str, meta: dict, table: TableRead) -> UploadResponse:
+    df = table.frame
     columns = [str(c) for c in df.columns]
     suggestions = {}
     for kind in SCHEMAS:
@@ -153,22 +207,76 @@ async def upload(file: UploadFile) -> UploadResponse:
             mapping=mapping,
             components=suggest_components(df, mapping) if kind == "assay" else [],
         )
-
+    options = meta["options"]
     return UploadResponse(
         file_id=file_id,
-        filename=filename,
-        format=fmt,
+        filename=meta["filename"],
+        format=table.format,
         row_count=len(df),
         columns=_column_info(df),
         detected_kind=detect_kind(columns),
         suggestions=suggestions,
         preview=to_records(df, 10),
+        options=ReadOptionsIn(**options) if table.format != "micromine" else ReadOptionsIn(encoding=table.detected.get("encoding")),
+        sheets=table.sheets,
+        notes=table.notes,
     )
+
+
+@router.post("/upload", response_model=UploadResponse)
+async def upload(file: UploadFile) -> UploadResponse:
+    filename = file.filename or "upload"
+    suffix = Path(filename).suffix.lower()
+    try:
+        check_supported(suffix)
+    except UnsupportedFormatError as exc:
+        raise HTTPException(415, str(exc)) from exc
+    file_id = uuid.uuid4().hex
+    folder = settings.upload_dir / file_id
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"data{suffix}"
+
+    size = 0
+    with path.open("wb") as out:
+        while chunk := await file.read(_CHUNK):
+            size += len(chunk)
+            if size > settings.max_upload_bytes:
+                out.close()
+                shutil.rmtree(folder, ignore_errors=True)
+                raise HTTPException(413, "Файл слишком большой")
+            out.write(chunk)
+
+    meta = {"filename": filename, "suffix": suffix, "options": asdict(ReadOptions())}
+    try:
+        table = _read(folder, meta, ReadOptions())
+    except HTTPException:
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    used = _used_options(table, ReadOptions())
+    _remember(folder, used, table)  # validate and commit read with the fixed options
+    meta["options"] = asdict(used)
+    (folder / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return _describe(file_id, meta, table)
+
+
+@router.post("/{file_id}/options", response_model=UploadResponse)
+def reread(file_id: str, body: ReadOptionsIn) -> UploadResponse:
+    """Read the uploaded file again with other encoding, delimiter, header row or sheet."""
+    folder = _upload_folder(file_id)
+    meta = _meta(folder)
+    requested = ReadOptions(**body.model_dump())
+    table = _read(folder, meta, requested)
+    used = _used_options(table, requested)
+    _remember(folder, used, table)
+    meta["options"] = asdict(used)
+    (folder / "meta.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return _describe(file_id, meta, table)
 
 
 class CommitRequest(ValidateRequest):
     project_id: int
-    filename: str
+    # Defaults to the name of the uploaded file.
+    filename: str | None = None
 
 
 class CommitResponse(BaseModel):
@@ -185,8 +293,8 @@ def commit(req: CommitRequest, session: Session = Depends(get_session)) -> Commi
     if req.kind not in SCHEMAS:
         raise HTTPException(400, f"Неизвестный тип таблицы: {req.kind}")
     get_project(session, req.project_id)
-    path = _stored_path(req.file_id)
-    df, _ = read_table(path)
+    table, meta = _read_stored(req.file_id)
+    df = table.frame
     components = [c.model_dump() for c in req.components] if req.kind == "assay" else []
 
     normalized, issues = apply_mapping(df, req.kind, req.mapping, components, req.attributes)
@@ -199,7 +307,7 @@ def commit(req: CommitRequest, session: Session = Depends(get_session)) -> Commi
         req.project_id,
         req.kind,
         normalized,
-        filename=req.filename[:255],
+        filename=(req.filename or meta["filename"])[:255],
         mapping=req.mapping,
         components=components,
     )
@@ -216,7 +324,7 @@ def commit(req: CommitRequest, session: Session = Depends(get_session)) -> Commi
 def validate(req: ValidateRequest) -> ValidateResponse:
     if req.kind not in SCHEMAS:
         raise HTTPException(400, f"Неизвестный тип таблицы: {req.kind}")
-    df, _ = read_table(_stored_path(req.file_id))
+    df = _read_stored(req.file_id)[0].frame
 
     normalized, issues = apply_mapping(
         df,

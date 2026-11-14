@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.formats.tabular import unique_names
+
 MAGIC = b"THIS IS MICROMINE EXTENDED DATA FILE"
 HEADER_SIZE = 4096
 VARIABLES_TAG = b"VARIABLES\r\n"
@@ -107,19 +109,6 @@ def _parse_header(data: bytes) -> tuple[str, list[Field], int]:
     return codepage, fields, records_start
 
 
-def _unique_names(names: list[str]) -> list[str]:
-    seen: dict[str, int] = {}
-    result = []
-    for name in names:
-        if name in seen:
-            seen[name] += 1
-            result.append(f"{name}_{seen[name]}")
-        else:
-            seen[name] = 1
-            result.append(name)
-    return result
-
-
 def read_micromine(path: str | Path) -> MicromineTable:
     """Read a Micromine extended DAT file into a pandas DataFrame.
 
@@ -158,7 +147,7 @@ def read_micromine(path: str | Path) -> MicromineTable:
                 row.append(value)
         rows.append(row)
 
-    columns = _unique_names([f.name for f in fields])
+    columns = unique_names([f.name for f in fields])
     frame = pd.DataFrame(rows, columns=columns)
     for f, col in zip(fields, columns):
         if f.kind == "R":

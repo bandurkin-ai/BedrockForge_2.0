@@ -15,15 +15,28 @@ export interface Suggestion {
   components: Component[];
 }
 
+/** Reading parameters for CSV/TXT/Excel; null = detect automatically. */
+export interface ReadOptions {
+  encoding: string | null;
+  delimiter: string | null;
+  /** 1-based row with column names (empty rows are not counted); 0 = no header */
+  header_row: number;
+  sheet: string | null;
+}
+
 export interface UploadResponse {
   file_id: string;
   filename: string;
-  format: string;
+  format: "micromine" | "text" | "excel";
   row_count: number;
   columns: ColumnInfo[];
   detected_kind: string | null;
   suggestions: Record<string, Suggestion>;
   preview: Record<string, unknown>[];
+  /** parameters actually used to read the file */
+  options: ReadOptions;
+  sheets: string[];
+  notes: string[];
 }
 
 export interface SchemaField {
@@ -82,6 +95,13 @@ export function uploadFile(file: File): Promise<UploadResponse> {
   form.append("file", file);
   return request<UploadResponse>("/api/import/upload", { method: "POST", body: form });
 }
+
+export const rereadFile = (fileId: string, options: ReadOptions) =>
+  request<UploadResponse>(`/api/import/${fileId}/options`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+  });
 
 export const validateMapping = (req: ValidateRequest) =>
   request<ValidateResponse>("/api/import/validate", {

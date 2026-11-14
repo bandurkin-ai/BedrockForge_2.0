@@ -1,20 +1,7 @@
-import dataclasses
-from pathlib import Path
-
-import pytest
 from fastapi.testclient import TestClient
 
 from app.importing.service import detect_kind, suggest_mapping
-from app.main import app
-from app.routers import imports
 from tests.samples import assay_dat, collar_dat, survey_dat
-
-@pytest.fixture
-def client(tmp_path: Path, monkeypatch) -> TestClient:
-    monkeypatch.setattr(
-        imports, "settings", dataclasses.replace(imports.settings, upload_dir=tmp_path / "uploads")
-    )
-    return TestClient(app)
 
 
 def _upload(client: TestClient, name: str, data: bytes):
@@ -63,8 +50,11 @@ def test_upload_assay_suggests_components_with_units(client):
 
 
 def test_upload_rejects_unsupported_and_broken_files(client):
-    assert _upload(client, "data.xlsx", b"x").status_code == 415
+    assert _upload(client, "notes.docx", b"x").status_code == 415
+    old_excel = _upload(client, "data.xls", b"x")
+    assert old_excel.status_code == 415 and ".xlsx" in old_excel.json()["detail"]
     assert _upload(client, "bad.DAT", b"not micromine").status_code == 422
+    assert _upload(client, "broken.xlsx", b"not a zip").status_code == 422
 
 
 def test_validate_collar_ok(client):

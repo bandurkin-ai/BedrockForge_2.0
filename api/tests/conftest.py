@@ -59,3 +59,12 @@ def db_client(db_engine, tmp_path: Path, monkeypatch) -> Iterator[TestClient]:
     app.dependency_overrides[get_session] = _session
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(tmp_path: Path, monkeypatch) -> TestClient:
+    """API client with uploads in a temporary folder (no database needed)."""
+    monkeypatch.setattr(
+        imports, "settings", dataclasses.replace(imports.settings, upload_dir=tmp_path / "uploads")
+    )
+    return TestClient(app)
