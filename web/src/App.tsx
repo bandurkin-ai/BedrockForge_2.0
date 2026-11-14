@@ -23,7 +23,7 @@ import { useAssistant, type ToolOutcome } from "./shell/useAssistant";
 import { useLiveState } from "./shell/useLiveState";
 import { useRemoteCommands } from "./shell/useRemoteCommands";
 import {
-  BOTTOM_TITLES, MODE_TITLES, isShown, layerKey, loadWorkspace, openBottom, resize, saveWorkspace, setPanel, setShown,
+  BOTTOM_TITLES, isShown, layerKey, loadWorkspace, openBottom, resize, saveWorkspace, setPanel, setShown,
   type BottomTab, type SelectedObject, type WorkspaceState,
 } from "./shell/workspace";
 import { StatusBar } from "./StatusBar";
@@ -33,6 +33,8 @@ import type { SectionLine } from "./viz/geometry";
 import { THEME_EVENT } from "./viz/scene3d-theme";
 
 // three.js is large: the 3D view is a separate chunk, the shell appears first.
+import type { SceneApi } from "./viz/SceneView";
+
 const SceneView = lazy(() => import("./viz/SceneView").then((m) => ({ default: m.SceneView })));
 
 const STORAGE_KEY = "geo.projectId";
@@ -91,7 +93,7 @@ function Workspace({
   const [approval, setApproval] = useState<Approval | null>(null);
   const fileInputs = { wireframes: useRef<HTMLInputElement>(null), lines: useRef<HTMLInputElement>(null), rasters: useRef<HTMLInputElement>(null) };
   const openFiles = (kind: UploadKind) => fileInputs[kind].current?.click();
-  const fitRef = useRef<() => void>(() => undefined);
+  const sceneApi = useRef<SceneApi | null>(null);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   // The active set and the selected hole live in the URL, so they survive a reload.
@@ -159,7 +161,7 @@ function Workspace({
     tools: () => commandTools(commands),
     context: () => ({
       project: { id: project.id, name: project.name },
-      mode: ws.mode,
+      view: { clip: ws.clip && section !== null, perspective: ws.perspective, vertical_exaggeration: ws.vexag },
       drillhole_sets: sets.map((d) => ({
         id: d.id, name: d.name, shown: isShown(ws, layerKey.set(d.id)), active: d.id === activeSet,
         counts: d.counts, components: d.components, audit: d.audit,
@@ -211,7 +213,10 @@ function Workspace({
     },
     runAudit: (setId) => runAudit(setId, DEFAULT_CONFIG),
     exportAudit: (setId) => window.open(auditExportUrl(setId), "_blank"),
-    fit: () => fitRef.current(),
+    fit: () => sceneApi.current?.fit(),
+    view: (preset) => sceneApi.current?.view(preset),
+    drawSection: () => sceneApi.current?.drawSection(),
+    openSection: (line) => sceneApi.current?.openSection(line),
     ask: (prompt) => void assistant.send(prompt),
     resetChat: assistant.reset,
   };
@@ -457,20 +462,19 @@ function Workspace({
 
         <div className="center">
           {error && <div className="alert error">{error}</div>}
-          <section className="viewport" aria-label={`Вид: ${MODE_TITLES[ws.mode]}`}>
+          <section className="viewport" aria-label="3D-вид">
             <ErrorBoundary label="3D-вид">
               <Suspense fallback={<div className="canvas-note static">Загрузка 3D…</div>}>
               <SceneView
                 datasets={datasets} ws={ws} refreshKey={refreshKey} viz={viz}
                 activeSet={activeSet} selectedHole={selectedHole} section={section}
-                onMode={(mode) => void runCommand("scene.mode", { mode }, "user")}
                 onWorkspace={(patch) => setWs((prev) => ({ ...prev, ...patch }))}
                 onPick={(setId, holeId) => selectHole(setId, holeId)}
                 onSection={setSection}
                 onEmptyClick={() => {
                   if (holeRef.current && activeSetRef.current !== null) selectHole(activeSetRef.current, null);
                 }}
-                registerFit={(fit) => (fitRef.current = fit)}
+                registerApi={(api) => (sceneApi.current = api)}
               />
               </Suspense>
             </ErrorBoundary>
@@ -542,7 +546,7 @@ function Workspace({
                   hasHole={selectedHole !== null}
                   context={[
                     project.name,
-                    MODE_TITLES[ws.mode],
+                    section && ws.clip ? `Разрез ${Math.round(section.az)}°` : "3D",
                     activeSetName ? `Набор: ${activeSetName}` : "Нет наборов",
                     selectedHole ? `Скважина ${selectedHole}` : "Скважина не выбрана",
                   ]}
@@ -556,7 +560,7 @@ function Workspace({
 
       <StatusBar
         projectName={project.name} setName={activeSetName} holeCount={holes.length} selectedHole={selectedHole} audit={audit}
-        mode={MODE_TITLES[ws.mode]} assistant={assistant.status} remote={remote}
+        mode={section && ws.clip ? `разрез, азимут ${Math.round(section.az)}°, окно от ${section.towards} до ${section.away}` : "3D"} assistant={assistant.status} remote={remote}
       />
 
       {(Object.keys(ACCEPT) as UploadKind[]).map((kind) => (

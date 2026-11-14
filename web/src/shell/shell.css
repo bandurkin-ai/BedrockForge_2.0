@@ -311,3 +311,5 @@ button.icon.active { color: var(--accent); background: var(--accent-soft); }
 .georef-check p { margin: 4px 0; }
 .georef-check table { font-size: 12px; }
 .notes { margin: 6px 0; padding-left: 16px; }
+
+.toolbar-divider { width: 1px; align-self: stretch; background: var(--border); margin: 2px 2px; }

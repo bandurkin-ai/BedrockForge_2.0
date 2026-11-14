@@ -12,7 +12,8 @@ const PATH_COLOR = 0x8a93a6;
 const SELECT_COLOR = 0xff7a00;
 const SECTION_COLOR = 0x2e6fbd;
 
-export type SceneMode = "3d" | "plan" | "section";
+/** Camera presets: they only turn the view. "section" looks at the section plane with Z up. */
+export type ViewPreset = "top" | "front" | "side" | "iso" | "section";
 
 export interface HoleRef {
   setId: number;
@@ -64,9 +65,9 @@ interface RasterLayer {
 }
 
 /**
- * The one 3D view of the project: drillhole sets and wireframes in a shared space.
- * Plan and section are camera modes of the same scene: plan looks straight down,
- * section looks across a vertical line and clips everything outside its corridor.
+ * The one 3D view of the project: every object in a shared space, always free to rotate.
+ * View buttons only turn the camera (top Y/X, sides Z/X and Z/Y, the section plane);
+ * a section line optionally clips the scene to its window (towards / away from the viewer).
  *
  * Z is up. Coordinates are shifted to a scene origin (the first loaded object), because
  * UTM-sized numbers (4 500 000) do not fit float32 without visible jitter.
@@ -75,8 +76,8 @@ interface RasterLayer {
 export class GeoScene {
   onPick: (hole: HoleRef | null) => void = () => {};
   onHover: (hover: Hover | null) => void = () => {};
-  /** A click on the ground in plan mode (project coordinates), used to draw a section line. */
-  onPlanClick: ((x: number, y: number) => boolean) | null = null;
+  /** A click on the ground (project coordinates); returns true when it was used, e.g. to draw a section line. */
+  onGroundClick: ((x: number, y: number) => boolean) | null = null;
   /** called after every render, e.g. to move HTML labels */
   onRender: () => void = () => {};
 
@@ -84,7 +85,7 @@ export class GeoScene {
   private scene = new THREE.Scene();
   private perspective = new THREE.PerspectiveCamera(45, 1, 1, 1000);
   private ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
-  private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = this.perspective;
+  private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = this.ortho;
   private controls: OrbitControls;
   private root = new THREE.Group();
   private light = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -99,7 +100,7 @@ export class GeoScene {
   private pointTexture: THREE.CanvasTexture;
   private origin: THREE.Vector3 | null = null;
   private vexag = 1;
-  private mode: SceneMode = "3d";
+  private clip = false;
   private section: SectionLine | null = null;
   private selected: HoleRef | null = null;
   private gridVisible = true;
@@ -413,7 +414,7 @@ export class GeoScene {
       layer.elevation = elevation;
       this.placeRaster(layer);
     }
-    layer.mesh.visible = visible && this.mode !== "section";
+    layer.mesh.visible = visible;
     this.requestRender();
   }
 
@@ -444,7 +445,7 @@ export class GeoScene {
 
   setGridVisible(visible: boolean): void {
     this.gridVisible = visible;
-    if (this.grid) this.grid.visible = visible && this.mode !== "section";
+    if (this.grid) this.grid.visible = visible;
     this.requestRender();
   }
 
@@ -454,34 +455,32 @@ export class GeoScene {
     this.requestRender();
   }
 
-  /** The section line is drawn in 3D and plan; in section mode it clips the scene to its corridor. */
+  /** The section line; with clipping on, only its window (towards / away) stays visible. */
   setSection(section: SectionLine | null): void {
     this.section = section;
     this.updateSectionLine();
     this.applyClipping();
-    if (this.mode === "section") this.fit();
     this.requestRender();
   }
 
-  setMode(mode: SceneMode): void {
-    if (mode === this.mode) return;
-    this.mode = mode;
-    this.camera = mode === "3d" ? this.perspective : this.ortho;
-    // The controls take the camera's "up" when created: plan is north-up, section is Z-up.
-    this.ortho.up.set(0, mode === "plan" ? 1 : 0, mode === "plan" ? 0 : 1);
-    this.controls.dispose();
-    this.controls = this.makeControls();
-    if (this.grid) this.grid.visible = this.gridVisible && mode !== "section";
-    // Rasters lie in plan; across a vertical section they would be a line.
-    for (const layer of this.rasters.values()) layer.mesh.visible = layer.visible && mode !== "section";
+  /** Turns clipping to the section window on or off; the camera is not moved. */
+  setClip(on: boolean): void {
+    if (on === this.clip) return;
+    this.clip = on;
     this.updateSectionLine();
     this.applyClipping();
-    this.resize();
-    this.fit();
+    this.requestRender();
   }
 
-  get currentMode(): SceneMode {
-    return this.mode;
+  /** Orthographic (plans and sections are true to scale) or perspective; the view direction is kept. */
+  setPerspective(on: boolean): void {
+    const next = on ? this.perspective : this.ortho;
+    if (next === this.camera) return;
+    const direction = this.viewDirection();
+    this.camera = next;
+    this.controls.dispose();
+    this.controls = this.makeControls();
+    this.lookFrom(direction);
   }
 
   /** Project coordinates of the scene centre (for a default section line). */
@@ -498,60 +497,89 @@ export class GeoScene {
     return collar ? this.project(collar.position) : null;
   }
 
-  /** Fits everything visible into the view. `preset` applies to the 3D mode. */
-  fit(preset: "iso" | "top" | "side" = "iso"): void {
-    const box = this.contentBox() ?? new THREE.Box3(new THREE.Vector3(-50, -50, -50), new THREE.Vector3(50, 50, 50));
-    const scaled = box.clone();
-    scaled.min.z *= this.vexag;
-    scaled.max.z *= this.vexag;
-    const centre = scaled.getCenter(new THREE.Vector3());
-    const size = scaled.getSize(new THREE.Vector3());
-    const radius = Math.max(size.length() / 2, 10);
-    const aspect = Math.max(this.container.clientWidth, 1) / Math.max(this.container.clientHeight, 1);
+  /** Fits everything visible into the window without turning the view. */
+  fit(): void {
+    this.lookFrom(this.viewDirection());
+  }
 
-    if (this.mode === "3d") {
-      const distance = (radius / Math.sin(THREE.MathUtils.degToRad(this.perspective.fov / 2))) * 1.05;
-      const direction =
-        preset === "top" ? new THREE.Vector3(0, -0.0001, 1)
-        : preset === "side" ? new THREE.Vector3(0, -1, 0.02)
-        : new THREE.Vector3(0.9, -1.2, 0.8);
-      this.perspective.position.copy(centre).add(direction.normalize().multiplyScalar(distance));
-      this.perspective.near = distance / 200;
-      this.perspective.far = distance * 50;
+  /** Turns the camera to a standard direction and fits the content. Rotation stays free afterwards. */
+  view(preset: ViewPreset): void {
+    let direction: THREE.Vector3;
+    switch (preset) {
+      case "top": // Y up the screen, X to the right
+        direction = new THREE.Vector3(0, -0.0001, 1);
+        break;
+      case "front": // looking north: Z up, X to the right
+        direction = new THREE.Vector3(0, -1, 0);
+        break;
+      case "side": // looking west: Z up, Y to the right
+        direction = new THREE.Vector3(1, 0, 0);
+        break;
+      case "section": // from the viewer's side of the line: Z up, the line runs to the right
+        if (!this.section) return;
+        direction = sectionNormal(this.section.az);
+        break;
+      default:
+        direction = new THREE.Vector3(0.9, -1.2, 0.8);
+    }
+    this.lookFrom(direction, preset === "section");
+  }
+
+  /** Unit vector from the view target to the camera. */
+  private viewDirection(): THREE.Vector3 {
+    const direction = this.camera.position.clone().sub(this.controls.target);
+    return direction.lengthSq() > 0 ? direction.normalize() : new THREE.Vector3(0.9, -1.2, 0.8).normalize();
+  }
+
+  /** Places the camera on `direction` from the content and sizes the view to hold it. */
+  private lookFrom(direction: THREE.Vector3, onSection = false): void {
+    const box = (this.contentBox(true, true) ?? this.contentBox() ?? new THREE.Box3(new THREE.Vector3(-50, -50, -50), new THREE.Vector3(50, 50, 50))).clone();
+    box.min.z *= this.vexag;
+    box.max.z *= this.vexag;
+    const centre = box.getCenter(new THREE.Vector3());
+    const s = this.section;
+    if (onSection && s && this.origin) {
+      // Centre on the section plane, so the clipped window is in the middle of the view.
+      const n = sectionNormal(s.az);
+      const c = new THREE.Vector3(s.x0 - this.origin.x, s.y0 - this.origin.y, centre.z);
+      centre.sub(n.clone().multiplyScalar(n.dot(centre.clone().sub(c))));
+    }
+    const dir = direction.clone().normalize();
+    const forward = dir.clone().negate();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 0, 1)).normalize();
+    const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+    // Half extents of the content on the screen axes.
+    let halfRight = 0;
+    let halfUp = 0;
+    let radius = 0;
+    const corner = new THREE.Vector3();
+    for (let i = 0; i < 8; i++) {
+      corner.set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z).sub(centre);
+      halfRight = Math.max(halfRight, Math.abs(corner.dot(right)));
+      halfUp = Math.max(halfUp, Math.abs(corner.dot(up)));
+      radius = Math.max(radius, corner.length());
+    }
+    radius = Math.max(radius, 10);
+    const aspect = Math.max(this.container.clientWidth, 1) / Math.max(this.container.clientHeight, 1);
+    const half = Math.max(halfUp, halfRight / aspect, 5) * 1.08;
+
+    if (this.camera === this.perspective) {
+      const distance = (half / Math.tan(THREE.MathUtils.degToRad(this.perspective.fov / 2))) + radius;
+      this.perspective.position.copy(centre).add(dir.multiplyScalar(distance));
+      this.perspective.near = Math.max(distance / 500, 0.1);
+      this.perspective.far = distance * 20 + radius * 4;
       this.perspective.updateProjectionMatrix();
     } else {
-      let target = centre;
-      let half: number;
-      let direction: THREE.Vector3;
-      if (this.mode === "plan") {
-        half = Math.max(size.y / 2, size.x / 2 / aspect) * 1.08;
-        direction = new THREE.Vector3(0, 0, 1);
-      } else {
-        const s = this.section ?? { x0: centre.x, y0: centre.y, az: 90, halfWidth: 25, length: null };
-        const n = sectionNormal(s.az);
-        const along = sectionDirection(s.az);
-        const o = this.origin ?? new THREE.Vector3();
-        // Centre on the line, at the middle height of the content.
-        const lineCentre = new THREE.Vector3(s.x0 - o.x, s.y0 - o.y, centre.z);
-        const offset = along.dot(centre.clone().sub(lineCentre).setZ(0));
-        target = lineCentre.add(along.clone().multiplyScalar(offset));
-        const width = Math.abs(size.x * along.x) + Math.abs(size.y * along.y);
-        half = Math.max(size.z / 2, width / 2 / aspect) * 1.08;
-        // Look along -n, so the line direction points to the right of the screen.
-        direction = n;
-      }
-      half = Math.max(half, 5);
       this.ortho.left = -half * aspect;
       this.ortho.right = half * aspect;
       this.ortho.top = half;
       this.ortho.bottom = -half;
       this.ortho.zoom = 1;
       const distance = radius * 4 + 100;
-      this.ortho.position.copy(target).add(direction.multiplyScalar(distance));
+      this.ortho.position.copy(centre).add(dir.multiplyScalar(distance));
       this.ortho.near = 0.1;
       this.ortho.far = distance * 2 + radius * 4;
       this.ortho.updateProjectionMatrix();
-      centre.copy(target);
     }
     this.controls.target.copy(centre);
     this.controls.update();
@@ -579,20 +607,22 @@ export class GeoScene {
   private makeControls(): OrbitControls {
     const controls = new OrbitControls(this.camera, this.renderer.domElement);
     controls.screenSpacePanning = true;
-    controls.enableRotate = this.mode === "3d";
-    // Plan and section: left button pans, like a map.
-    if (this.mode !== "3d") controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
     controls.addEventListener("change", () => this.requestRender());
     return controls;
   }
 
   /** Everything visible (or everything, when nothing is visible). Rasters count only with `withRasters`. */
-  private contentBox(withRasters = true): THREE.Box3 | null {
+  private contentBox(withRasters = true, clipped = false): THREE.Box3 | null {
+    // With `clipped`, objects entirely outside the section window do not count.
+    const inWindow = clipped ? this.windowTest() : null;
     const collect = (visibleOnly: boolean) => {
       const box = new THREE.Box3();
-      for (const layer of this.drillholes.values()) if (!visibleOnly || layer.group.visible) box.union(layer.extent);
-      for (const layer of this.wireframes.values()) if (!visibleOnly || layer.mesh.visible) box.union(layer.extent);
-      for (const layer of this.lineLayers.values()) if (!visibleOnly || layer.lines.visible) box.union(layer.extent);
+      const add = (extent: THREE.Box3) => {
+        if (!inWindow || inWindow(extent)) box.union(extent);
+      };
+      for (const layer of this.drillholes.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
+      for (const layer of this.wireframes.values()) if (!visibleOnly || layer.mesh.visible) add(layer.extent);
+      for (const layer of this.lineLayers.values()) if (!visibleOnly || layer.lines.visible) add(layer.extent);
       if (withRasters) {
         for (const layer of this.rasters.values()) {
           if (visibleOnly && !layer.visible) continue;
@@ -605,6 +635,26 @@ export class GeoScene {
     let box = collect(true);
     if (box.isEmpty()) box = collect(false);
     return box.isEmpty() ? null : box;
+  }
+
+  /** A test "does this box reach into the clipping window", or null when nothing is clipped. */
+  private windowTest(): ((box: THREE.Box3) => boolean) | null {
+    const s = this.section;
+    if (!this.clip || !s || !this.origin) return null;
+    const n = sectionNormal(s.az);
+    const offset = n.x * (s.x0 - this.origin.x) + n.y * (s.y0 - this.origin.y);
+    return (box) => {
+      let min = Infinity;
+      let max = -Infinity;
+      for (const x of [box.min.x, box.max.x]) {
+        for (const y of [box.min.y, box.max.y]) {
+          const d = n.x * x + n.y * y - offset;
+          min = Math.min(min, d);
+          max = Math.max(max, d);
+        }
+      }
+      return max >= -s.away && min <= s.towards;
+    };
   }
 
   /** Corners into scene coordinates; without an elevation the image goes just under the lowest object. */
@@ -649,7 +699,7 @@ export class GeoScene {
     const material = this.grid.material as THREE.Material;
     material.transparent = true;
     material.opacity = 0.35;
-    this.grid.visible = this.gridVisible && this.mode !== "section";
+    this.grid.visible = this.gridVisible;
     this.root.add(this.grid);
   }
 
@@ -691,7 +741,7 @@ export class GeoScene {
     this.root.add(this.selectedLine);
   }
 
-  /** The section trace and its corridor, drawn on top of the content in 3D and plan. */
+  /** The section trace and the edges of its window, drawn on top of the content while clipping is off. */
   private updateSectionLine(): void {
     if (this.sectionLine) {
       this.scene.remove(this.sectionLine);
@@ -701,31 +751,31 @@ export class GeoScene {
     }
     const s = this.section;
     const box = this.contentBox();
-    if (!s || !this.origin || !box || this.mode === "section") return;
+    if (!s || !this.origin || !box || this.clip) return;
     const along = sectionDirection(s.az);
     const n = sectionNormal(s.az);
     const size = box.getSize(new THREE.Vector3());
     const reach = s.length ?? Math.max(size.x, size.y) * 0.75 + 50;
     const start = s.length === null ? -reach : 0;
     const p0 = new THREE.Vector3(s.x0 - this.origin.x, s.y0 - this.origin.y, 0);
-    const z = (this.mode === "plan" ? box.max.z + 5 : box.max.z) * this.vexag;
+    const z = (box.max.z + 2) * this.vexag;
     const point = (u: number, d: number) => p0.clone().add(along.clone().multiplyScalar(u)).add(n.clone().multiplyScalar(d)).setZ(z);
     const pts: THREE.Vector3[] = [];
     const edge = (d: number) => pts.push(point(start, d), point(reach, d));
     edge(0);
-    edge(-s.halfWidth);
-    edge(s.halfWidth);
+    edge(-s.away);
+    edge(s.towards);
     const geometry = new THREE.BufferGeometry().setFromPoints(pts);
     this.sectionLine = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: SECTION_COLOR, depthTest: false, transparent: true, opacity: 0.9 }));
     this.sectionLine.renderOrder = 10;
     this.scene.add(this.sectionLine);
   }
 
-  /** Section mode keeps only the corridor ±halfWidth around the line (and its length, if set). */
+  /** With clipping on, only the window of the section stays: `towards` the viewer, `away` behind the plane. */
   private applyClipping(): void {
     for (const layer of this.wireframes.values()) this.updateCut(layer);
     const s = this.section;
-    if (this.mode !== "section" || !s || !this.origin) {
+    if (!this.clip || !s || !this.origin) {
       this.renderer.clippingPlanes = [];
       return;
     }
@@ -734,8 +784,8 @@ export class GeoScene {
     const c = new THREE.Vector3(s.x0 - this.origin.x, s.y0 - this.origin.y, 0);
     // A fragment is kept where every plane's signed distance is >= 0.
     const planes = [
-      new THREE.Plane(n.clone(), -n.dot(c) + s.halfWidth),
-      new THREE.Plane(n.clone().negate(), n.dot(c) + s.halfWidth),
+      new THREE.Plane(n.clone(), -n.dot(c) + s.away),
+      new THREE.Plane(n.clone().negate(), n.dot(c) + s.towards),
     ];
     if (s.length !== null) {
       planes.push(new THREE.Plane(along.clone(), -along.dot(c)));
@@ -752,13 +802,13 @@ export class GeoScene {
   }
 
   /**
-   * In section mode a surface seen edge-on would vanish, so every wireframe also gets its
+   * In a clipped section a surface seen edge-on would vanish, so every wireframe also gets its
    * intersection with the section plane drawn as a thick line in its own colour.
    */
   private updateCut(layer: WireframeLayer): void {
     this.removeCut(layer);
     const s = this.section;
-    if (this.mode !== "section" || !s || !this.origin) return;
+    if (!this.clip || !s || !this.origin) return;
     const n = sectionNormal(s.az);
     const c = new THREE.Vector3(s.x0 - this.origin.x, s.y0 - this.origin.y, 0);
     const offset = n.dot(c);
@@ -814,9 +864,9 @@ export class GeoScene {
 
   private visibleInSection(position: THREE.Vector3): boolean {
     const s = this.section;
-    if (this.mode !== "section" || !s || !this.origin) return true;
+    if (!this.clip || !s || !this.origin) return true;
     const d = sectionNormal(s.az).dot(new THREE.Vector3(position.x - (s.x0 - this.origin.x), position.y - (s.y0 - this.origin.y), 0));
-    return Math.abs(d) <= s.halfWidth;
+    return d <= s.towards && d >= -s.away;
   }
 
   private nearestCollar(clientX: number, clientY: number, maxDistance: number): Hover | null {
@@ -841,7 +891,7 @@ export class GeoScene {
     return best;
   }
 
-  /** Project coordinates of a screen point on the horizontal plane through the content (plan mode). */
+  /** Project coordinates of a screen point on the horizontal plane through the scene origin. */
   private groundPoint(clientX: number, clientY: number): { x: number; y: number } | null {
     if (!this.origin) return null;
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -863,9 +913,9 @@ export class GeoScene {
       const quick = performance.now() - down.t < 600;
       down = null;
       if (moved >= 4 || !quick) return;
-      if (this.mode === "plan" && this.onPlanClick) {
+      if (this.onGroundClick) {
         const p = this.groundPoint(e.clientX, e.clientY);
-        if (p && this.onPlanClick(p.x, p.y)) return;
+        if (p && this.onGroundClick(p.x, p.y)) return;
       }
       const hit = this.nearestCollar(e.clientX, e.clientY, 14);
       this.onPick(hit ? { setId: hit.setId, holeId: hit.holeId } : null);

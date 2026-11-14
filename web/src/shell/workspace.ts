@@ -1,5 +1,3 @@
-import type { SceneMode } from "../viz/scene3d";
-
 export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
@@ -12,12 +10,23 @@ export interface SelectedObject {
   id: number;
 }
 
-export const MODE_TITLES: Record<SceneMode, string> = { "3d": "3D", plan: "План", section: "Разрез" };
-export const MODES = Object.keys(MODE_TITLES) as SceneMode[];
+/** Camera presets of the single 3D window. They only turn the view; nothing is a separate mode. */
+export type ViewPreset = "top" | "front" | "side" | "iso" | "section";
+export const VIEW_TITLES: Record<ViewPreset, string> = {
+  top: "Сверху (Y/X)",
+  front: "Сбоку (Z/X)",
+  side: "Сбоку (Z/Y)",
+  iso: "Изометрия",
+  section: "В плоскость разреза",
+};
+export const VIEW_PRESETS = Object.keys(VIEW_TITLES) as ViewPreset[];
 export const BOTTOM_TITLES: Record<BottomTab, string> = { table: "Таблица", audit: "Аудит", log: "Журнал команд" };
 
 export interface WorkspaceState {
-  mode: SceneMode;
+  /** Clip the scene to the window of the section line. */
+  clip: boolean;
+  /** Perspective projection; off = orthographic, as in plans and sections. */
+  perspective: boolean;
   left: boolean;
   right: boolean;
   bottom: boolean;
@@ -37,7 +46,8 @@ export interface WorkspaceState {
 }
 
 export const DEFAULT_WORKSPACE: WorkspaceState = {
-  mode: "3d",
+  clip: false,
+  perspective: false,
   left: true,
   right: true,
   bottom: false,
@@ -113,7 +123,8 @@ export function normalize(raw: unknown): WorkspaceState {
   const d = DEFAULT_WORKSPACE;
   const bool = (value: unknown, fallback: boolean) => (typeof value === "boolean" ? value : fallback);
   let state: WorkspaceState = {
-    mode: MODES.includes(r.mode as SceneMode) ? (r.mode as SceneMode) : d.mode,
+    clip: bool(r.clip, d.clip),
+    perspective: bool(r.perspective, d.perspective),
     left: bool(r.left, d.left),
     right: bool(r.right, d.right),
     bottom: bool(r.bottom, d.bottom),
@@ -136,7 +147,7 @@ export function normalize(raw: unknown): WorkspaceState {
   return state;
 }
 
-const STORAGE_KEY = "bedrockforge.workspace.v2";
+const STORAGE_KEY = "bedrockforge.workspace.v3";
 
 export function loadWorkspace(): WorkspaceState {
   try {

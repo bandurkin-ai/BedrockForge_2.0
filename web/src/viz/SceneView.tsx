@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rasterImageUrl, type Dataset, type Hole, type IntervalsData, type ValueStats } from "../api";
-import { MODE_TITLES, MODES, VEXAG_STEPS, isShown, layerKey, type WorkspaceState } from "../shell/workspace";
+import { VEXAG_STEPS, isShown, layerKey, type ViewPreset, type WorkspaceState } from "../shell/workspace";
 import { makeScale } from "./colorScale";
 import { ScaleStrip, type VizSettings } from "./ComponentPanel";
-import { azimuthDeg, defaultSection, type SectionLine } from "./geometry";
-import { GeoScene, type Hover, type SceneMode } from "./scene3d";
+import { azimuthDeg, DEFAULT_WINDOW, defaultSection, shiftSection, type SectionLine } from "./geometry";
+import { GeoScene, type Hover } from "./scene3d";
 import { loadHoles, loadIntervals, loadLines, loadTrajectories, loadWireframe } from "./useVizData";
 
 function auditColor(h: Hole | undefined): string {
@@ -20,13 +20,21 @@ export interface SceneViewProps {
   activeSet: number | null;
   selectedHole: string | null;
   section: SectionLine | null;
-  onMode: (mode: SceneMode) => void;
   onWorkspace: (patch: Partial<WorkspaceState>) => void;
   onPick: (setId: number, holeId: string | null) => void;
   onSection: (section: SectionLine | null) => void;
   onEmptyClick: () => void;
-  /** Gives the shell a way to fit the view (the "Вписать" command). */
-  registerFit?: (fit: () => void) => void;
+  /** Gives the shell the view actions, so ribbon buttons, hotkeys and Claude can use them. */
+  registerApi?: (api: SceneApi) => void;
+}
+
+export interface SceneApi {
+  fit: () => void;
+  view: (preset: ViewPreset) => void;
+  /** Start drawing a section line: two clicks on the top view. */
+  drawSection: () => void;
+  /** Clip to the window of this line and turn the view into its plane (Z up). */
+  openSection: (line: SectionLine) => void;
 }
 
 /** The single main view: every visible object of the project in 3D, plan or section. */
@@ -35,6 +43,7 @@ export function SceneView(props: SceneViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<GeoScene | null>(null);
   const labelRef = useRef<HTMLDivElement>(null);
+  const apiRef = useRef<SceneApi | null>(null);
   const loadedSets = useRef(new Map<number, string>());
   const loadedWireframes = useRef(new Set<number>());
   const loadedLines = useRef(new Set<number>());
@@ -77,7 +86,7 @@ export function SceneView(props: SceneViewProps) {
       else live.current.onEmptyClick();
     };
     scene.onHover = setHover;
-    scene.onPlanClick = (x, y) => {
+    scene.onGroundClick = (x, y) => {
       const start = drawingRef.current;
       if (start === false) return false;
       if (start === null) {
@@ -86,9 +95,16 @@ export function SceneView(props: SceneViewProps) {
       }
       const length = Math.hypot(x - start.x, y - start.y);
       if (length < 1) return true;
-      live.current.onSection({ x0: start.x, y0: start.y, az: azimuthDeg(x - start.x, y - start.y), length, halfWidth: live.current.section?.halfWidth ?? 25 });
+      const previous = live.current.section;
+      const line: SectionLine = {
+        x0: start.x, y0: start.y, az: azimuthDeg(x - start.x, y - start.y), length,
+        towards: previous?.towards ?? DEFAULT_WINDOW, away: previous?.away ?? DEFAULT_WINDOW,
+      };
       setDrawing(false);
-      live.current.onMode("section");
+      // The line is drawn: clip to its window and turn the view into the section plane, Z up.
+      apiRef.current?.openSection(line);
+      live.current.onSection(line);
+      live.current.onWorkspace({ clip: true });
       return true;
     };
     scene.onRender = () => {
@@ -100,9 +116,26 @@ export function SceneView(props: SceneViewProps) {
         if (p) label.style.transform = `translate(${p.x + 10}px, ${p.y - 26}px)`;
       }
     };
-    scene.setMode(live.current.ws.mode);
+    scene.setPerspective(live.current.ws.perspective);
     sceneRef.current = scene;
-    live.current.registerFit?.(() => scene.fit());
+    const api: SceneApi = {
+      fit: () => scene.fit(),
+      view: (preset) => scene.view(preset),
+      drawSection: () => {
+        // The line is digitised on the plan with everything visible.
+        live.current.onWorkspace({ clip: false });
+        scene.setClip(false);
+        scene.view("top");
+        setDrawing(null);
+      },
+      openSection: (line) => {
+        scene.setSection(line);
+        scene.setClip(true);
+        scene.view("section");
+      },
+    };
+    apiRef.current = api;
+    live.current.registerApi?.(api);
     return () => {
       scene.dispose();
       sceneRef.current = null;
@@ -286,15 +319,9 @@ export function SceneView(props: SceneViewProps) {
   useEffect(() => sceneRef.current?.setSelected(activeSet !== null && selectedHole ? { setId: activeSet, holeId: selectedHole } : null), [activeSet, selectedHole, loading]);
   useEffect(() => sceneRef.current?.setSection(section), [section]);
 
-  // ---- mode: entering the section without a line picks one through the collars
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    if (ws.mode === "section" && !live.current.section) live.current.onSection(autoSection());
-    scene.setMode(ws.mode);
-    if (ws.mode !== "plan") setDrawing(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ws.mode]);
+  // Clipping needs a line: without one it stays off.
+  useEffect(() => sceneRef.current?.setClip(ws.clip && section !== null), [ws.clip, section]);
+  useEffect(() => sceneRef.current?.setPerspective(ws.perspective), [ws.perspective]);
 
   useEffect(() => {
     if (drawing === false) return;
@@ -313,21 +340,30 @@ export function SceneView(props: SceneViewProps) {
   }
 
   function autoSection(): SectionLine {
-    const halfWidth = live.current.section?.halfWidth ?? 25;
+    const towards = live.current.section?.towards ?? DEFAULT_WINDOW;
+    const away = live.current.section?.away ?? DEFAULT_WINDOW;
     const points = collarsXY();
-    if (points.length) return defaultSection(points, halfWidth);
+    if (points.length) return defaultSection(points, towards, away);
     const c = sceneRef.current?.centre();
-    return { x0: c?.x ?? 0, y0: c?.y ?? 0, az: 90, length: null, halfWidth };
+    return { x0: c?.x ?? 0, y0: c?.y ?? 0, az: 90, length: null, towards, away };
   }
 
   const setSection = (patch: Partial<SectionLine>) => props.onSection({ ...(section ?? autoSection()), ...patch });
-  const step = (direction: 1 | -1) => {
-    if (!section) return;
-    const distance = section.halfWidth * 2 * direction;
-    const a = (section.az * Math.PI) / 180;
-    // Move across the line, to its right for a positive step.
-    setSection({ x0: section.x0 + Math.cos(a) * distance, y0: section.y0 - Math.sin(a) * distance });
+  /** A new line (auto, through a hole): clip to it and look at its plane. */
+  const openSection = (line: SectionLine) => {
+    props.onSection(line);
+    props.onWorkspace({ clip: true });
+    apiRef.current?.openSection(line);
   };
+  // The next profile is one window further: away from the viewer for a positive step.
+  const step = (direction: 1 | -1) => section && props.onSection(shiftSection(section, -(section.towards + section.away) * direction));
+  const windowInput = (key: "towards" | "away", label: string, title: string) => (
+    <label title={title}>
+      {label}{" "}
+      <input className="num" type="number" min={0} step={5} value={section?.[key] ?? DEFAULT_WINDOW}
+        onChange={(e) => setSection({ [key]: Math.max(0, Number(e.target.value) || 0) })} aria-label={title} />
+    </label>
+  );
   const selectedCollar = activeSet !== null && selectedHole ? holesBySet.current.get(activeSet)?.get(selectedHole) : undefined;
   const hoverInfo = hover ? holesBySet.current.get(hover.setId)?.get(hover.holeId) : undefined;
   const hoverSet = hover ? sets.find((d) => d.id === hover.setId) : undefined;
@@ -336,58 +372,53 @@ export function SceneView(props: SceneViewProps) {
   return (
     <div className="scene-view">
       <div className="scene-toolbar">
-        <div className="segmented" role="radiogroup" aria-label="Режим вида">
-          {MODES.map((m) => (
-            <button key={m} role="radio" aria-checked={ws.mode === m} className={ws.mode === m ? "active" : ""} onClick={() => props.onMode(m)}>
-              {MODE_TITLES[m]}
-            </button>
-          ))}
+        <div className="segmented" aria-label="Повернуть вид">
+          <button onClick={() => sceneRef.current?.view("top")} title="Вид сверху: Y вверх, X вправо (T)">Y/X</button>
+          <button onClick={() => sceneRef.current?.view("front")} title="Вид сбоку на север: Z вверх, X вправо (X)">Z/X</button>
+          <button onClick={() => sceneRef.current?.view("side")} title="Вид сбоку на запад: Z вверх, Y вправо (Y)">Z/Y</button>
+          <button onClick={() => sceneRef.current?.view("iso")} title="Изометрия (3)">3D</button>
         </div>
-        <button onClick={() => sceneRef.current?.fit()} title="Показать всё (F)">Вписать</button>
-        {ws.mode === "3d" && (
+        <button onClick={() => sceneRef.current?.fit()} title="Показать всё, не поворачивая вид (F)">Вписать</button>
+        <span className="toolbar-divider" />
+        <button className={drawing !== false ? "active" : ""} title="Линия разреза: два клика на виде сверху — начало и конец (S)"
+          onClick={() => (drawing === false ? apiRef.current?.drawSection() : setDrawing(false))}>
+          Разрез
+        </button>
+        {section && (
           <>
-            <button onClick={() => sceneRef.current?.fit("top")}>Сверху</button>
-            <button onClick={() => sceneRef.current?.fit("side")}>Сбоку</button>
-          </>
-        )}
-        {ws.mode === "plan" && (
-          <button className={drawing !== false ? "active" : ""} onClick={() => setDrawing(drawing === false ? null : false)} title="Два клика на плане: начало и конец профиля">
-            Линия разреза
-          </button>
-        )}
-        {ws.mode === "section" && section && (
-          <>
-            <button onClick={() => step(-1)} title="Предыдущий профиль: сдвиг на ширину коридора">◀</button>
-            <button onClick={() => step(1)} title="Следующий профиль: сдвиг на ширину коридора">▶</button>
-            <label>
-              Азимут{" "}
+            <label className="check" title="Отсекать всё за пределами окна разреза (C)">
+              <input type="checkbox" checked={ws.clip} onChange={(e) => props.onWorkspace({ clip: e.target.checked })} /> отсечение
+            </label>
+            {windowInput("towards", "От", "Окно разреза к наблюдателю, в единицах карты")}
+            {windowInput("away", "До", "Окно разреза от наблюдателя, в единицах карты")}
+            <button onClick={() => step(-1)} title="Предыдущий профиль: сдвиг на ширину окна к наблюдателю ([)">◀</button>
+            <button onClick={() => step(1)} title="Следующий профиль: сдвиг на ширину окна от наблюдателя (])">▶</button>
+            <label title="Азимут линии разреза">
+              Аз.{" "}
               <input className="num" type="number" step={5} value={Math.round(section.az * 10) / 10}
-                onChange={(e) => setSection({ az: (((Number(e.target.value) || 0) % 360) + 360) % 360 })} aria-label="Азимут профиля" />°
+                onChange={(e) => setSection({ az: (((Number(e.target.value) || 0) % 360) + 360) % 360 })} aria-label="Азимут линии разреза" />°
             </label>
-            <label>
-              Коридор ±{" "}
-              <input className="num" type="number" min={1} step={5} value={section.halfWidth}
-                onChange={(e) => setSection({ halfWidth: Math.max(1, Number(e.target.value) || 1) })} aria-label="Полуширина коридора" /> м
-            </label>
-            {section.length !== null && <button onClick={() => setSection({ length: null })} title="Не ограничивать профиль по длине">На всю длину</button>}
-            <button onClick={() => selectedCollar?.x != null && selectedCollar.y != null && setSection({ x0: selectedCollar.x, y0: selectedCollar.y, length: null })}
-              disabled={!selectedCollar || selectedCollar.x === null} title="Профиль через выбранную скважину">Через скважину</button>
-            <button onClick={() => props.onSection(autoSection())} title="Поперёк простирания устьев, через их центр">Авто</button>
+            <button onClick={() => sceneRef.current?.view("section")} title="Повернуть вид в плоскость разреза: Z вверх, линия слева направо">В плоскость</button>
+            <button onClick={() => { props.onSection(null); props.onWorkspace({ clip: false }); }} title="Убрать линию разреза и отсечение">Сбросить</button>
           </>
         )}
+        <button onClick={() => selectedCollar?.x != null && selectedCollar.y != null && openSection({ ...(section ?? autoSection()), x0: selectedCollar.x, y0: selectedCollar.y, length: null })}
+          disabled={!selectedCollar || selectedCollar.x === null} title="Разрез через устье выбранной скважины">Через скважину</button>
+        {!section && <button onClick={() => openSection(autoSection())} title="Разрез поперёк простирания устьев, через их центр">Авто-разрез</button>}
         <span className="toolbar-sep" />
-        {ws.mode !== "plan" && (
-          <label title="Вертикальное преувеличение">
-            Верт. ×{" "}
-            <select value={ws.vexag} onChange={(e) => props.onWorkspace({ vexag: Number(e.target.value) })}>
-              {VEXAG_STEPS.map((v) => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </label>
-        )}
-        <label title="Прозрачность каркасов">
+        <label title="Вертикальное преувеличение">
+          Верт. ×{" "}
+          <select value={ws.vexag} onChange={(e) => props.onWorkspace({ vexag: Number(e.target.value) })}>
+            {VEXAG_STEPS.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </label>
+        <label title="Непрозрачность каркасов">
           Каркасы{" "}
           <input type="range" min={0.1} max={1} step={0.05} value={ws.wireframeOpacity}
             onChange={(e) => props.onWorkspace({ wireframeOpacity: Number(e.target.value) })} aria-label="Непрозрачность каркасов" />
+        </label>
+        <label className="check" title="Перспектива; выключено — ортогональная проекция, как на планах и разрезах">
+          <input type="checkbox" checked={ws.perspective} onChange={(e) => props.onWorkspace({ perspective: e.target.checked })} /> перспектива
         </label>
         <label className="check"><input type="checkbox" checked={ws.grid} onChange={(e) => props.onWorkspace({ grid: e.target.checked })} /> сетка</label>
       </div>
@@ -410,9 +441,10 @@ export function SceneView(props: SceneViewProps) {
           <div className="canvas-note top">{drawing === null ? "Укажите начало профиля" : "Укажите конец профиля"} · Esc — отмена</div>
         )}
         <div className="coords">
-          {ws.mode === "3d" && "ЛКМ — вращение, колесо — масштаб, ПКМ — сдвиг · клик по устью — выбор скважины"}
-          {ws.mode === "plan" && "Перетаскивание — сдвиг, колесо — масштаб · клик по устью — выбор скважины"}
-          {ws.mode === "section" && section && `Разрез: азимут ${Math.round(section.az)}°, коридор ±${section.halfWidth} м · перетаскивание — сдвиг, колесо — масштаб`}
+          {section && ws.clip
+            ? `Разрез: азимут ${Math.round(section.az)}°, окно от ${section.towards} до ${section.away} · `
+            : ""}
+          ЛКМ — вращение, колесо — масштаб, ПКМ — сдвиг · клик по устью — выбор скважины
         </div>
       </div>
     </div>

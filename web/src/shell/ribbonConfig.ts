@@ -1,6 +1,5 @@
-import type { SceneMode } from "../viz/scene3d";
 import type { IconName } from "./icons";
-import { MODE_TITLES, type WorkspaceState } from "./workspace";
+import type { ViewPreset, WorkspaceState } from "./workspace";
 
 /** A button: a registry command with preset arguments. The palette and hotkeys use the same list. */
 export interface RibbonItem {
@@ -26,13 +25,12 @@ export interface RibbonTab {
   groups: RibbonGroup[];
 }
 
-const MODE_ICONS: Record<SceneMode, IconName> = { "3d": "cube", plan: "plan", section: "section" };
-const MODE_SHORTCUTS: Record<SceneMode, string> = { "3d": "3", plan: "p", section: "s" };
-const MODE_HINTS: Record<SceneMode, string> = {
-  "3d": "Свободный обзор всех объектов",
-  plan: "Вид сверху; здесь же задаётся линия разреза",
-  section: "Вертикальный разрез: видно только то, что попадает в коридор",
-};
+const VIEWS: { view: ViewPreset; label: string; icon: IconName; hint: string; shortcut: string }[] = [
+  { view: "top", label: "Сверху Y/X", icon: "plan", hint: "Вид сверху: Y вверх, X вправо", shortcut: "t" },
+  { view: "front", label: "Сбоку Z/X", icon: "section", hint: "Вид сбоку на север: Z вверх, X вправо", shortcut: "x" },
+  { view: "side", label: "Сбоку Z/Y", icon: "section", hint: "Вид сбоку на запад: Z вверх, Y вправо", shortcut: "y" },
+  { view: "iso", label: "3D", icon: "cube", hint: "Изометрия", shortcut: "3" },
+];
 
 export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean }[] = [
   { label: "Сводка по проекту", prompt: "Дай краткую сводку по проекту: наборы скважин и каркасы, объём данных, компоненты, состояние аудита и что стоит проверить в первую очередь." },
@@ -41,16 +39,16 @@ export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean
 ];
 
 export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet: boolean; hasSection: boolean }): RibbonTab[] {
-  const mode = (m: SceneMode, small = false): RibbonItem => ({
-    command: "scene.mode",
-    args: { mode: m },
-    label: MODE_TITLES[m],
-    icon: MODE_ICONS[m],
-    hint: MODE_HINTS[m],
-    shortcut: MODE_SHORTCUTS[m],
-    active: ws.mode === m,
-    small,
-  });
+  const view = (index: number, small = false): RibbonItem => {
+    const v = VIEWS[index];
+    return { command: "scene.view", args: { view: v.view }, label: v.label, icon: v.icon, hint: v.hint, shortcut: v.shortcut, small };
+  };
+  const sectionItems: RibbonItem[] = [
+    { command: "section.draw", label: "Разрез", icon: "section2", hint: "Провести линию разреза: два клика на виде сверху", shortcut: "s" },
+    { command: "section.clip", label: "Отсечение", icon: "columns", hint: "Отсекать всё за пределами окна разреза", shortcut: "c", active: ws.clip && ctx.hasSection, disabled: !ctx.hasSection, small: true },
+    { command: "scene.view", args: { view: "section" }, label: "В плоскость разреза", icon: "section", hint: "Повернуть вид в плоскость разреза, Z вверх", disabled: !ctx.hasSection, small: true },
+    { command: "section.clear", label: "Сбросить разрез", icon: "clear", small: true, disabled: !ctx.hasSection },
+  ];
   const bottom = (tab: "table" | "audit" | "log", label: string, icon: IconName): RibbonItem => ({
     command: "panel.set",
     args: { panel: "bottom", tab },
@@ -91,7 +89,8 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
             { command: "rasters.upload", label: "Растры", icon: "raster", hint: "Изображение с файлом привязки (.jgw/.pgw/.tfw, .tab, .grf) или GeoTIFF", small: true },
           ],
         },
-        { title: "Вид", items: [mode("3d"), mode("plan"), mode("section"), { command: "scene.fit", label: "Вписать", icon: "maximize", shortcut: "f", small: true }] },
+        { title: "Вид", items: [view(0), view(1), view(2), view(3, true), { command: "scene.fit", label: "Вписать", icon: "maximize", hint: "Показать всё, не поворачивая вид", shortcut: "f", small: true }] },
+        { title: "Разрез", items: sectionItems },
         {
           title: "Выделение",
           items: [
@@ -106,13 +105,13 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
       id: "view",
       title: "Вид",
       groups: [
-        { title: "Режим", items: [mode("3d"), mode("plan"), mode("section")] },
+        { title: "Поворот вида", items: [view(0), view(1), view(2), view(3)] },
         {
           title: "Разрез",
           items: [
+            ...sectionItems,
             { command: "section.step", args: { direction: -1 }, label: "Предыдущий профиль", icon: "chevronUp", shortcut: "[", small: true, disabled: !ctx.hasSection },
             { command: "section.step", args: { direction: 1 }, label: "Следующий профиль", icon: "chevronDown", shortcut: "]", small: true, disabled: !ctx.hasSection },
-            { command: "section.clear", label: "Сбросить линию", icon: "clear", small: true, disabled: !ctx.hasSection },
           ],
         },
         {
@@ -127,6 +126,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           title: "Оформление",
           items: [
             { command: "scene.style", args: { grid: !ws.grid }, label: ws.grid ? "Скрыть сетку" : "Показать сетку", icon: "quad", small: true },
+            { command: "scene.style", args: { perspective: !ws.perspective }, label: ws.perspective ? "Ортогональная проекция" : "Перспектива", icon: "cube", small: true },
             { command: "theme.set", label: ws.theme === "dark" ? "Светлая тема" : "Тёмная тема", icon: "theme", small: true },
             { command: "ribbon.toggle", label: "Свернуть ленту", icon: "chevronUp", shortcut: "ctrl+f1", small: true },
           ],

@@ -2,12 +2,11 @@ import type { MutableRefObject } from "react";
 import type { AuditRun, Dataset, Hole, Project, Summary } from "../api";
 import type { TableKind } from "../route";
 import type { VizSettings } from "../viz/ComponentPanel";
-import type { SectionLine } from "../viz/geometry";
-import type { SceneMode } from "../viz/scene3d";
+import { DEFAULT_WINDOW, shiftSection, type SectionLine } from "../viz/geometry";
 import type { Command } from "./commands";
 import {
-  BOTTOM_TITLES, MODE_TITLES, MODES, VEXAG_STEPS, isShown, layerKey, openBottom, setPanel, setShown,
-  type BottomTab, type ObjectKind, type PanelId, type SelectedObject, type WorkspaceState,
+  BOTTOM_TITLES, VEXAG_STEPS, VIEW_PRESETS, VIEW_TITLES, isShown, layerKey, openBottom, setPanel, setShown,
+  type BottomTab, type ObjectKind, type PanelId, type SelectedObject, type ViewPreset, type WorkspaceState,
 } from "./workspace";
 
 /** The live application state and actions that commands work with. */
@@ -43,6 +42,9 @@ export interface Live {
   runAudit: (setId: number) => Promise<AuditRun>;
   exportAudit: (setId: number) => void;
   fit: () => void;
+  view: (preset: ViewPreset) => void;
+  drawSection: () => void;
+  openSection: (line: SectionLine) => void;
   ask: (prompt: string) => void;
   resetChat: () => void;
 }
@@ -80,22 +82,24 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
 
   return [
     {
-      id: "scene.mode",
-      title: "Режим вида",
+      id: "scene.view",
+      title: "Повернуть вид",
       description:
-        "Главное окно одно — 3D-сцена со всеми объектами проекта. Режимы: 3d — свободный обзор, plan — вид сверху (север вверх), " +
-        "section — вертикальный разрез по линии section.set: видно только то, что попадает в коридор.",
-      params: { mode: { type: "string", enum: MODES } },
-      required: ["mode"],
-      run: ({ mode }) => {
-        s().setWs((prev) => ({ ...prev, mode: mode as SceneMode }));
-        return `Режим: ${MODE_TITLES[mode as SceneMode]}`;
+        "Главное окно всегда 3D и свободно вращается; команда только поворачивает камеру. top — сверху (Y вверх, X вправо), " +
+        "front — сбоку на север (Z вверх, X вправо), side — сбоку на запад (Z вверх, Y вправо), iso — изометрия, " +
+        "section — в плоскость линии разреза (Z вверх).",
+      params: { view: { type: "string", enum: VIEW_PRESETS } },
+      required: ["view"],
+      run: ({ view }) => {
+        if (view === "section" && !s().section) throw new Error("Линия разреза не задана: сначала section.set");
+        s().view(view as ViewPreset);
+        return `Вид: ${VIEW_TITLES[view as ViewPreset]}`;
       },
     },
     {
       id: "scene.fit",
       title: "Вписать",
-      description: "Показывает все видимые объекты целиком в текущем режиме.",
+      description: "Показывает все видимые объекты целиком, не поворачивая вид.",
       run: () => {
         s().fit();
         return "Вид вписан";
@@ -104,17 +108,19 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
     {
       id: "scene.style",
       title: "Настройки вида",
-      description: "vexag — вертикальное преувеличение (1, 2, 3, 5), grid — сетка, wireframe_opacity — непрозрачность каркасов 0.1–1.",
+      description: "vexag — вертикальное преувеличение (1, 2, 3, 5), grid — сетка, wireframe_opacity — непрозрачность каркасов 0.1–1, perspective — перспектива (false — ортогональная проекция).",
       params: {
         vexag: { type: "integer", enum: VEXAG_STEPS },
         grid: { type: "boolean" },
+        perspective: { type: "boolean" },
         wireframe_opacity: { type: "number" },
       },
-      run: ({ vexag, grid, wireframe_opacity }) => {
+      run: ({ vexag, grid, wireframe_opacity, perspective }) => {
         s().setWs((prev) => ({
           ...prev,
           vexag: (vexag as number | undefined) ?? prev.vexag,
           grid: (grid as boolean | undefined) ?? prev.grid,
+          perspective: (perspective as boolean | undefined) ?? prev.perspective,
           wireframeOpacity: typeof wireframe_opacity === "number" ? Math.min(1, Math.max(0.1, wireframe_opacity)) : prev.wireframeOpacity,
         }));
         return "Настройки вида изменены";
@@ -281,45 +287,87 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       id: "section.set",
       title: "Задать разрез",
       description:
-        "Линия вертикального разреза: начало (x0, y0) в координатах проекта, азимут az по часовой от севера, half_width — полуширина коридора, м, " +
-        "length — длина профиля (null — без ограничения). С open = true сразу включает режим section.",
+        "Линия вертикального разреза: начало (x0, y0) в координатах проекта, азимут az по часовой от севера, length — длина (null — без ограничения). " +
+        "Окно отсечения в единицах карты: towards — к наблюдателю, away — от наблюдателя (наблюдатель справа от линии). " +
+        "Включает отсечение и поворачивает вид в плоскость разреза, Z вверх.",
       params: {
         x0: { type: "number" },
         y0: { type: "number" },
         az: { type: "number", description: "0–360" },
         length: { type: "number", nullable: true },
-        half_width: { type: "number", description: "По умолчанию 25" },
-        open: { type: "boolean" },
+        towards: { type: "number", description: `По умолчанию ${DEFAULT_WINDOW}` },
+        away: { type: "number", description: `По умолчанию ${DEFAULT_WINDOW}` },
       },
       required: ["x0", "y0", "az"],
-      run: ({ x0, y0, az, length, half_width, open }) => {
-        const halfWidth = Math.max(1, (half_width as number | undefined) ?? s().section?.halfWidth ?? 25);
-        s().setSection({ x0: x0 as number, y0: y0 as number, az: (((az as number) % 360) + 360) % 360, length: (length as number | null | undefined) ?? null, halfWidth });
-        if (open) s().setWs((prev) => ({ ...prev, mode: "section" }));
-        return `Разрез: азимут ${az}°, коридор ±${halfWidth} м`;
+      run: ({ x0, y0, az, length, towards, away }) => {
+        const previous = s().section;
+        const line: SectionLine = {
+          x0: x0 as number, y0: y0 as number, az: (((az as number) % 360) + 360) % 360,
+          length: (length as number | null | undefined) ?? null,
+          towards: Math.max(0, (towards as number | undefined) ?? previous?.towards ?? DEFAULT_WINDOW),
+          away: Math.max(0, (away as number | undefined) ?? previous?.away ?? DEFAULT_WINDOW),
+        };
+        s().setSection(line);
+        s().setWs((prev) => ({ ...prev, clip: true }));
+        s().openSection(line);
+        return `Разрез: азимут ${line.az}°, окно от ${line.towards} до ${line.away}`;
       },
+    },
+    {
+      id: "section.window",
+      title: "Окно разреза",
+      description: "Меняет окно отсечения у текущей линии разреза (в единицах карты): towards — к наблюдателю, away — от наблюдателя; clip — включить или выключить отсечение.",
+      params: { towards: { type: "number" }, away: { type: "number" }, clip: { type: "boolean" } },
+      run: ({ towards, away, clip }) => {
+        const sec = s().section;
+        if (!sec) throw new Error("Линия разреза не задана");
+        const next = { ...sec, towards: Math.max(0, (towards as number | undefined) ?? sec.towards), away: Math.max(0, (away as number | undefined) ?? sec.away) };
+        s().setSection(next);
+        if (typeof clip === "boolean") s().setWs((prev) => ({ ...prev, clip }));
+        return `Окно разреза: от ${next.towards} до ${next.away}${typeof clip === "boolean" ? `, отсечение ${clip ? "включено" : "выключено"}` : ""}`;
+      },
+    },
+    {
+      id: "section.clip",
+      title: "Отсечение по разрезу",
+      description: "Включает или выключает отсечение сцены окном разреза (без on — переключает). Вид не поворачивается.",
+      params: { on: { type: "boolean" } },
+      run: ({ on }) => {
+        if (!s().section) throw new Error("Линия разреза не задана");
+        const next = (on as boolean | undefined) ?? !s().ws.clip;
+        s().setWs((prev) => ({ ...prev, clip: next }));
+        return next ? "Отсечение включено" : "Отсечение выключено";
+      },
+    },
+    {
+      id: "section.draw",
+      title: "Провести разрез",
+      description: "Инструмент: два клика на виде сверху задают линию разреза.",
+      uiOnly: true,
+      silent: true,
+      run: () => s().drawSection(),
     },
     {
       id: "section.step",
       title: "Следующий профиль",
-      description: "Сдвигает линию разреза поперёк на ширину коридора: direction = 1 — вправо от линии, -1 — влево.",
+      description: "Сдвигает линию разреза поперёк на ширину окна: direction = 1 — от наблюдателя, -1 — к наблюдателю.",
       params: { direction: { type: "integer", enum: [1, -1] } },
       required: ["direction"],
       run: ({ direction }) => {
         const sec = s().section;
         if (!sec) throw new Error("Линия разреза не задана");
-        const d = sec.halfWidth * 2 * (direction as number);
-        const a = (sec.az * Math.PI) / 180;
-        s().setSection({ ...sec, x0: sec.x0 + Math.cos(a) * d, y0: sec.y0 - Math.sin(a) * d });
-        return `Разрез сдвинут на ${Math.abs(d)} м`;
+        const d = (sec.towards + sec.away) * (direction as number);
+        s().setSection(shiftSection(sec, -d));
+        return `Разрез сдвинут на ${Math.abs(d)} ${d > 0 ? "от наблюдателя" : "к наблюдателю"}`;
       },
     },
     {
       id: "section.clear",
       title: "Сбросить разрез",
-      description: "Удаляет линию разреза; в режиме section она будет выбрана заново поперёк простирания устьев.",
+      description: "Удаляет линию разреза и выключает отсечение.",
       run: () => {
         s().setSection(null);
+        s().setWs((prev) => ({ ...prev, clip: false }));
         return "Линия разреза сброшена";
       },
     },
@@ -396,13 +444,14 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
     {
       id: "workspace.state",
       title: "Состояние интерфейса",
-      description: "Что сейчас на экране: проект, режим вида, видимые объекты, активный набор, выбранная скважина или каркас, шкала, разрез.",
+      description: "Что сейчас на экране: проект, отсечение и проекция, видимые объекты, активный набор, выбранная скважина или каркас, шкала, разрез.",
       silent: true,
       run: () => {
         const { ws, projects, projectId, activeSet, selectedHole, selected, viz, section } = s();
         return JSON.stringify({
           project: projects.find((p) => p.id === projectId),
-          mode: ws.mode,
+          clip: ws.clip && section !== null,
+          perspective: ws.perspective,
           drillhole_sets: sets().map((d) => ({ id: d.id, name: d.name, shown: isShown(ws, layerKey.set(d.id)), active: d.id === activeSet, collars: d.counts?.collar ?? 0 })),
           wireframes: wireframes().map((w) => ({ id: w.id, name: w.name, shown: isShown(ws, layerKey.wireframe(w.id)) })),
           lines: lineLayers().map((l) => ({ id: l.id, name: l.name, lines: l.line_count, shown: isShown(ws, layerKey.lines(l.id)) })),

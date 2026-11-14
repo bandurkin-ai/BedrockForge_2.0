@@ -44,8 +44,9 @@ describe("workspace", () => {
   });
 
   it("repairs stored state from an older version", () => {
-    const state = normalize({ mode: "4d", layout: "quad", theme: "light", sizes: { left: 9999 }, bottom: "yes", vexag: 7, hidden: ["wf:1", 5], wireframeOpacity: 3 });
-    expect(state.mode).toBe("3d");
+    const state = normalize({ mode: "plan", clip: "yes", perspective: true, layout: "quad", theme: "light", sizes: { left: 9999 }, bottom: "yes", vexag: 7, hidden: ["wf:1", 5], wireframeOpacity: 3 });
+    expect(state).not.toHaveProperty("mode"); // the window is always 3D
+    expect([state.clip, state.perspective]).toEqual([false, true]);
     expect(state.theme).toBe("light");
     expect(state.sizes.left).toBe(520);
     expect(state.bottom).toBe(false);
@@ -92,9 +93,9 @@ describe("commands as Claude tools", () => {
 describe("ribbon and palette", () => {
   it("lists each button once and marks the active view", () => {
     const items = flattenRibbon(buildRibbon(DEFAULT_WORKSPACE, { hasHole: false, hasSet: true, hasSection: false }));
-    const views = items.filter((i) => i.command === "scene.mode" && i.args?.mode === "3d");
-    expect(views).toHaveLength(1);
-    expect(views[0].active).toBe(true);
+    const views = items.filter((i) => i.command === "scene.view");
+    expect(views.map((i) => i.args?.view)).toEqual(["top", "front", "side", "iso", "section"]);
+    expect(items.find((i) => i.command === "section.clip")?.disabled).toBe(true); // no section line yet
     expect(items.find((i) => i.command === "hole.select")?.disabled).toBe(true);
     const shortcuts = items.map((i) => i.shortcut).filter(Boolean);
     expect(new Set(shortcuts).size).toBe(shortcuts.length); // no two buttons share a hotkey

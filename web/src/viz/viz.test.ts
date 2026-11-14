@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ColorScale, autoRange, formatValue, makeScale } from "./colorScale";
-import { azimuthDeg, defaultSection, inCorridor, niceStep, niceTicks, toSection } from "./geometry";
+import { azimuthDeg, defaultSection, inCorridor, niceStep, niceTicks, shiftSection, toSection } from "./geometry";
 
 describe("ColorScale", () => {
   it("maps values to positions on a log scale and clamps", () => {
@@ -66,7 +66,7 @@ describe("geometry", () => {
   });
 
   it("projects points on a section line", () => {
-    const north = { x0: 100, y0: 200, az: 0, length: null, halfWidth: 10 };
+    const north = { x0: 100, y0: 200, az: 0, length: null, towards: 10, away: 10 };
     expect(toSection(100, 250, north)).toEqual({ u: 50, d: 0 });
     const p = toSection(105, 250, north); // 5 m east of a north-pointing line is to its right
     expect(p.u).toBeCloseTo(50);
@@ -77,9 +77,12 @@ describe("geometry", () => {
   });
 
   it("selects holes by corridor and length", () => {
-    const line = { x0: 0, y0: 0, az: 90, length: 100, halfWidth: 10 };
-    expect(inCorridor(50, 5, line)).toBe(true);
-    expect(inCorridor(50, 15, line)).toBe(false);
+    const line = { x0: 0, y0: 0, az: 90, length: 100, towards: 10, away: 30 };
+    // East-west line: the viewer is on the south side (to the right of the line).
+    expect(inCorridor(50, -5, line)).toBe(true);
+    expect(inCorridor(50, -15, line)).toBe(false); // beyond the window towards the viewer
+    expect(inCorridor(50, 25, line)).toBe(true); // the window is deeper behind the plane
+    expect(inCorridor(50, 35, line)).toBe(false);
     expect(inCorridor(150, 0, line)).toBe(false);
     expect(inCorridor(150, 0, { ...line, length: null })).toBe(true);
   });
@@ -98,5 +101,13 @@ describe("geometry", () => {
     expect(section.x0).toBeCloseTo(150);
     expect(defaultSection([]).az).toBe(90);
     expect(defaultSection([[5, 5]]).x0).toBe(5);
+    expect(defaultSection([], 10, 40)).toMatchObject({ towards: 10, away: 40 });
+  });
+
+  it("steps a section across itself", () => {
+    const east = { x0: 0, y0: 0, az: 90, length: null, towards: 10, away: 10 };
+    const moved = shiftSection(east, 20);
+    expect(moved.x0).toBeCloseTo(0);
+    expect(moved.y0).toBeCloseTo(-20); // towards the viewer, who is south of an eastward line
   });
 });

@@ -15,7 +15,11 @@ export function niceTicks(min: number, max: number, target = 6): number[] {
   return out;
 }
 
-/** A vertical section: a line from (x0, y0) along azimuth `az`, with a corridor of ±halfWidth metres. */
+/**
+ * A vertical section: a line from (x0, y0) along azimuth `az` and a clipping window around it.
+ * The viewer stands to the right of the line and looks at it, so the line runs left to right on screen:
+ * `towards` is the window depth on the viewer's side, `away` the depth behind the plane (map units).
+ */
 export interface SectionLine {
   x0: number;
   y0: number;
@@ -23,8 +27,11 @@ export interface SectionLine {
   az: number;
   /** null = unlimited */
   length: number | null;
-  halfWidth: number;
+  towards: number;
+  away: number;
 }
+
+export const DEFAULT_WINDOW = 25;
 
 /** u: distance along the section from its origin; d: signed distance to the right of the line. */
 export function toSection(x: number, y: number, line: SectionLine): { u: number; d: number } {
@@ -41,19 +48,20 @@ export function azimuthDeg(dx: number, dy: number): number {
 
 export function inCorridor(x: number, y: number, line: SectionLine): boolean {
   const { u, d } = toSection(x, y, line);
-  return Math.abs(d) <= line.halfWidth && (line.length === null || (u >= -1 && u <= line.length + 1));
+  // `d` is positive to the right of the line, where the viewer is.
+  return d <= line.towards && d >= -line.away && (line.length === null || (u >= -1 && u <= line.length + 1));
 }
 
 /**
  * A sensible first section: through the centre of the collars, across their main
  * direction (perpendicular to the strike), so most holes are seen from the side.
  */
-export function defaultSection(points: [number, number][], halfWidth = 25): SectionLine {
-  if (points.length === 0) return { x0: 0, y0: 0, az: 90, length: null, halfWidth };
+export function defaultSection(points: [number, number][], towards = DEFAULT_WINDOW, away = DEFAULT_WINDOW): SectionLine {
+  if (points.length === 0) return { x0: 0, y0: 0, az: 90, length: null, towards, away };
   const n = points.length;
   const mx = points.reduce((s, p) => s + p[0], 0) / n;
   const my = points.reduce((s, p) => s + p[1], 0) / n;
-  if (n < 2) return { x0: mx, y0: my, az: 90, length: null, halfWidth };
+  if (n < 2) return { x0: mx, y0: my, az: 90, length: null, towards, away };
   let sxx = 0;
   let syy = 0;
   let sxy = 0;
@@ -64,5 +72,11 @@ export function defaultSection(points: [number, number][], halfWidth = 25): Sect
   }
   const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy); // main axis, counter-clockwise from east
   const strike = 90 - (theta * 180) / Math.PI; // clockwise from north
-  return { x0: mx, y0: my, az: (((strike + 90) % 360) + 360) % 360, length: null, halfWidth };
+  return { x0: mx, y0: my, az: (((strike + 90) % 360) + 360) % 360, length: null, towards, away };
+}
+
+/** The same section moved across itself by `distance` (positive: towards the viewer's side). */
+export function shiftSection(line: SectionLine, distance: number): SectionLine {
+  const a = (line.az * Math.PI) / 180;
+  return { ...line, x0: line.x0 + Math.cos(a) * distance, y0: line.y0 - Math.sin(a) * distance };
 }

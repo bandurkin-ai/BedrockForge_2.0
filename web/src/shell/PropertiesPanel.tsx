@@ -234,7 +234,7 @@ function RasterProps({ raster, file, onRaster }: {
             onPointerUp={(e) => onRaster(raster.id, { opacity: Number((e.target as HTMLInputElement).value) })}
             onKeyUp={(e) => onRaster(raster.id, { opacity: Number((e.target as HTMLInputElement).value) })} aria-label="Непрозрачность растра" />
         </label>
-        <p className="muted small">Пусто — растр ложится под самый низкий объект сцены. В режиме «Разрез» растры скрыты.</p>
+        <p className="muted small">Пусто — растр ложится под самый низкий объект сцены. Отсечение по разрезу действует и на растр.</p>
       </div>
       {g.checks.length > 0 && (
         <>
