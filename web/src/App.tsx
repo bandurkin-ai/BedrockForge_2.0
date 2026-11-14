@@ -1,9 +1,7 @@
-// Stage 0 placeholder: the real layout (project tree, tabs) comes in stage 1.
+import { ImportPage } from "./ImportPage";
+
+// Stage 2.1: the import wizard is the only screen. The full layout
+// (project tree, Table / Plan / Section / 3D tabs) comes in stage 1.
 export function App() {
-  return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: 16 }}>
-      <h1>Геологическая система</h1>
-      <p>Каркас приложения. Импорт и визуализация появятся на следующих этапах.</p>
-    </main>
-  );
+  return <ImportPage />;
 }
