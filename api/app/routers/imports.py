@@ -3,10 +3,12 @@ import uuid
 from pathlib import Path
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.db import get_session
 from app.formats.micromine import MicromineFormatError
 from app.importing.schema import KIND_LABELS, SCHEMAS
 from app.importing.service import (
@@ -18,6 +20,8 @@ from app.importing.service import (
     suggest_mapping,
     to_records,
 )
+from app.importing.store import commit_import
+from app.routers.projects import get_project
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 
@@ -159,6 +163,52 @@ async def upload(file: UploadFile) -> UploadResponse:
         detected_kind=detect_kind(columns),
         suggestions=suggestions,
         preview=to_records(df, 10),
+    )
+
+
+class CommitRequest(ValidateRequest):
+    project_id: int
+    filename: str
+
+
+class CommitResponse(BaseModel):
+    job_id: int
+    kind: str
+    inserted: int
+    replaced: int
+    issues: list[IssueOut]
+
+
+@router.post("/commit", response_model=CommitResponse)
+def commit(req: CommitRequest, session: Session = Depends(get_session)) -> CommitResponse:
+    """Validate the mapping again and replace the project's rows of this kind."""
+    if req.kind not in SCHEMAS:
+        raise HTTPException(400, f"Неизвестный тип таблицы: {req.kind}")
+    get_project(session, req.project_id)
+    path = _stored_path(req.file_id)
+    df, _ = read_table(path)
+    components = [c.model_dump() for c in req.components] if req.kind == "assay" else []
+
+    normalized, issues = apply_mapping(df, req.kind, req.mapping, components, req.attributes)
+    out_issues = [IssueOut(**vars(i)) for i in issues]
+    if normalized is None or any(i.severity == "error" for i in issues):
+        raise HTTPException(422, {"message": "Назначение колонок содержит ошибки", "issues": [i.model_dump() for i in out_issues]})
+
+    result = commit_import(
+        session,
+        req.project_id,
+        req.kind,
+        normalized,
+        filename=req.filename[:255],
+        mapping=req.mapping,
+        components=components,
+    )
+    return CommitResponse(
+        job_id=result.job_id,
+        kind=result.kind,
+        inserted=result.inserted,
+        replaced=result.replaced,
+        issues=out_issues,
     )
 
 

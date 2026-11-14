@@ -22,7 +22,35 @@
 | `POST /api/import/upload` | Загрузка файла, предпросмотр, предложенное назначение колонок |
 | `POST /api/import/validate` | Проверка назначения, нормализованный предпросмотр |
 
-Сохранение в PostgreSQL появится на этапе 3. Форматы CSV и Excel — на этапе 2.2.
+Форматы CSV и Excel появятся на этапе 2.2.
+
+## База данных (этап 3)
+
+PostgreSQL 16 (в Docker с PostGIS). Схема создаётся миграциями Alembic: при старте контейнера API выполняется `alembic upgrade head`.
+
+| Таблица | Содержимое |
+|---|---|
+| `project` | Проекты (данные разных проектов изолированы) |
+| `collar`, `survey`, `assay` | Устья, инклинометрия, пробы; свободные колонки в `attributes` (JSONB) |
+| `assay.analytes` | Значения компонентов по имени, например `{"AU": 0.007}` |
+| `component` | Справочник компонентов с единицами измерения |
+| `import_job` | История импорта: файл, назначение колонок, число строк |
+
+Повторный импорт файла того же типа **заменяет** данные этого типа в проекте.
+
+| Эндпоинт | Назначение |
+|---|---|
+| `GET/POST /api/projects`, `DELETE /api/projects/{id}` | Проекты |
+| `GET /api/projects/{id}/summary` | Счётчики, компоненты, история импорта |
+| `GET /api/projects/{id}/tables/{collar\|survey\|assay}` | Постраничный просмотр данных |
+| `POST /api/import/commit` | Сохранение файла в проект |
+
+Новая миграция после изменения `app/models.py`:
+
+```bash
+cd api
+alembic revision --autogenerate -m "описание"
+```
 
 ## Запуск (Docker)
 
@@ -42,6 +70,9 @@ python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 pytest
 ```
+
+Тесты с базой используют `TEST_DATABASE_URL` (по умолчанию `postgresql+psycopg://geo:geo@localhost:5432/geo_test`);
+без доступной PostgreSQL они пропускаются. Схема в тестах создаётся теми же миграциями.
 
 Проверка на реальных файлах проекта (не хранятся в репозитории):
 

@@ -1,5 +1,4 @@
 import dataclasses
-import math
 from pathlib import Path
 
 import pytest
@@ -8,10 +7,7 @@ from fastapi.testclient import TestClient
 from app.importing.service import detect_kind, suggest_mapping
 from app.main import app
 from app.routers import imports
-from tests.dat_builder import build, encode_bocu
-
-CP = "ibm-5347_P100-1998"
-
+from tests.samples import assay_dat, collar_dat, survey_dat
 
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch) -> TestClient:
@@ -19,44 +15,6 @@ def client(tmp_path: Path, monkeypatch) -> TestClient:
         imports, "settings", dataclasses.replace(imports.settings, upload_dir=tmp_path / "uploads")
     )
     return TestClient(app)
-
-
-def _collar() -> bytes:
-    return build(
-        CP,
-        [
-            (b"BHID", "C", 15, 0), (b"X", "R", 8, 3), (b"Y", "R", 8, 3), (b"Z", "R", 8, 3),
-            (b"TDEPTH", "R", 8, 2), (b"AZ", "R", 8, 2), (b"DIP", "R", 8, 2),
-            (b"STATUS", "C", 20, 0),
-        ],
-        [["H1", 466570.5, 4584699.7, 557.9, 300.3, 0.0, -90.0, "measured"],
-         ["H2", 466543.9, 4584688.6, 561.4, 250.0, 165.0, -60.0, ""]],
-    )
-
-
-def _survey() -> bytes:
-    return build(
-        "BOCU-1",
-        [
-            (encode_bocu("BHID"), "C", 15, 0), (encode_bocu("DEPTH"), "R", 8, 3),
-            (encode_bocu("BRG"), "R", 8, 3), (encode_bocu("BRG_TRUE"), "R", 8, 3),
-            (encode_bocu("DIP"), "R", 8, 3),
-        ],
-        [[encode_bocu("H1"), 0.0, 177.6, 184.6, -89.7],
-         [encode_bocu("H1"), 10.0, math.nan, 184.6, -89.7]],
-    )
-
-
-def _assay() -> bytes:
-    return build(
-        CP,
-        [
-            (b"BHID", "C", 15, 0), (b"SAMPID", "C", 20, 0), (b"FROM", "R", 8, 3), (b"TO", "R", 8, 3),
-            (b"H", "R", 8, 3), (b"AU", "R", 8, 4), (b"CU", "R", 8, 5), (b"TYPE", "C", 20, 0),
-        ],
-        [["H1", "H1-01", 0.0, 1.0, 1.0, 0.007, 0.0003, "HOLES"],
-         ["H1", "H1-02", 1.0, 2.0, 1.0, 0.012, 0.00005, "HOLES"]],
-    )
 
 
 def _upload(client: TestClient, name: str, data: bytes):
@@ -72,7 +30,7 @@ def test_schemas_endpoint_lists_three_tables(client):
 
 
 def test_upload_collar_detects_kind_and_suggests_mapping(client):
-    resp = _upload(client, "collar.DAT", _collar())
+    resp = _upload(client, "collar.DAT", collar_dat())
 
     assert resp.status_code == 200
     body = resp.json()
@@ -87,7 +45,7 @@ def test_upload_collar_detects_kind_and_suggests_mapping(client):
 
 
 def test_upload_survey_defaults_to_true_azimuth_and_serializes_nan(client):
-    body = _upload(client, "survey.DAT", _survey()).json()
+    body = _upload(client, "survey.DAT", survey_dat()).json()
 
     assert body["detected_kind"] == "survey"
     assert body["suggestions"]["survey"]["mapping"]["azimuth"] == "BRG_TRUE"
@@ -95,7 +53,7 @@ def test_upload_survey_defaults_to_true_azimuth_and_serializes_nan(client):
 
 
 def test_upload_assay_suggests_components_with_units(client):
-    body = _upload(client, "assay.DAT", _assay()).json()
+    body = _upload(client, "assay.DAT", assay_dat()).json()
 
     assert body["detected_kind"] == "assay"
     assert body["suggestions"]["assay"]["components"] == [
@@ -110,7 +68,7 @@ def test_upload_rejects_unsupported_and_broken_files(client):
 
 
 def test_validate_collar_ok(client):
-    body = _upload(client, "collar.DAT", _collar()).json()
+    body = _upload(client, "collar.DAT", collar_dat()).json()
 
     resp = client.post("/api/import/validate", json={
         "file_id": body["file_id"],
@@ -126,7 +84,7 @@ def test_validate_collar_ok(client):
 
 
 def test_validate_reports_missing_required_field(client):
-    body = _upload(client, "collar.DAT", _collar()).json()
+    body = _upload(client, "collar.DAT", collar_dat()).json()
     mapping = dict(body["suggestions"]["collar"]["mapping"])
     del mapping["td"]
 
@@ -140,7 +98,7 @@ def test_validate_reports_missing_required_field(client):
 
 
 def test_validate_survey_user_can_pick_magnetic_azimuth_and_gets_empty_warning(client):
-    body = _upload(client, "survey.DAT", _survey()).json()
+    body = _upload(client, "survey.DAT", survey_dat()).json()
     mapping = dict(body["suggestions"]["survey"]["mapping"], azimuth="BRG")
 
     result = client.post("/api/import/validate", json={
@@ -153,7 +111,7 @@ def test_validate_survey_user_can_pick_magnetic_azimuth_and_gets_empty_warning(c
 
 
 def test_validate_assay_requires_units_and_carries_attributes(client):
-    body = _upload(client, "assay.DAT", _assay()).json()
+    body = _upload(client, "assay.DAT", assay_dat()).json()
     sug = body["suggestions"]["assay"]
     base = {"file_id": body["file_id"], "kind": "assay", "mapping": sug["mapping"]}
 
@@ -171,7 +129,7 @@ def test_validate_assay_requires_units_and_carries_attributes(client):
 
 
 def test_validate_rejects_duplicate_column_and_unknown_file(client):
-    body = _upload(client, "collar.DAT", _collar()).json()
+    body = _upload(client, "collar.DAT", collar_dat()).json()
     mapping = dict(body["suggestions"]["collar"]["mapping"], y="X")
 
     result = client.post("/api/import/validate", json={

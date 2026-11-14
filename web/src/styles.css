@@ -76,3 +76,28 @@ button.primary:disabled { opacity: 0.6; cursor: default; }
 @media (max-width: 600px) {
   select { min-width: 0; width: 100%; }
 }
+
+.topbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--head-bg);
+}
+.topbar select { min-width: 180px; }
+.topbar button, .pager button {
+  border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+  border-radius: 6px; padding: 5px 12px; font: inherit; cursor: pointer;
+}
+.pager button:disabled { opacity: 0.5; cursor: default; }
+
+.tabs { display: flex; gap: 4px; margin: 16px 0 8px; }
+.tabs.inline { margin: 0 0 0 auto; }
+button.tab {
+  border: 1px solid transparent; background: transparent; color: var(--fg);
+  border-radius: 6px; padding: 6px 14px; font: inherit; cursor: pointer;
+}
+button.tab.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+.cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; min-width: 150px; }
+.card .big { font-size: 1.6rem; font-weight: 600; }
+
+.pager { display: flex; align-items: center; gap: 12px; margin: 8px 0; }

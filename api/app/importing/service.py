@@ -152,6 +152,10 @@ def apply_mapping(
             empty = int((series.isna() | (series == "")).sum())
             if empty and key == "hole_id":
                 issues.append(Issue("error", "empty_hole_id", "Пустой номер скважины", key, empty))
+            elif key == "hole_id" and kind == "collar":
+                duplicates = int(series.duplicated().sum())
+                if duplicates:
+                    issues.append(Issue("error", "duplicate_hole_id", "Повторяющиеся номера скважин в Collar", key, duplicates))
             elif empty and field.required:
                 issues.append(Issue("warning", "empty_values", f"«{field.label}»: пустых значений", key, empty))
             out[key] = series

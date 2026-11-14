@@ -66,6 +66,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     try {
       const body = await response.json();
       if (typeof body.detail === "string") detail = body.detail;
+      else if (typeof body.detail?.message === "string") detail = body.detail.message;
     } catch {
       /* keep the status text */
     }
@@ -84,6 +85,53 @@ export function uploadFile(file: File): Promise<UploadResponse> {
 
 export const validateMapping = (req: ValidateRequest) =>
   request<ValidateResponse>("/api/import/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+
+export interface Project {
+  id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface Summary {
+  counts: Record<string, number>;
+  components: { name: string; unit: string }[];
+  imports: { id: number; kind: string; filename: string; row_count: number; created_at: string }[];
+}
+
+export interface TablePage {
+  total: number;
+  columns: string[];
+  rows: Record<string, unknown>[];
+}
+
+export interface CommitResponse {
+  job_id: number;
+  kind: string;
+  inserted: number;
+  replaced: number;
+  issues: Issue[];
+}
+
+export const listProjects = () => request<Project[]>("/api/projects");
+
+export const createProject = (name: string) =>
+  request<Project>("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+
+export const getSummary = (projectId: number) => request<Summary>(`/api/projects/${projectId}/summary`);
+
+export const getTable = (projectId: number, kind: string, limit: number, offset: number) =>
+  request<TablePage>(`/api/projects/${projectId}/tables/${kind}?limit=${limit}&offset=${offset}`);
+
+export const commitImport = (req: ValidateRequest & { project_id: number; filename: string }) =>
+  request<CommitResponse>("/api/import/commit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),

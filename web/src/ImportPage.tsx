@@ -1,39 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  commitImport,
   getSchemas,
   uploadFile,
   validateMapping,
+  type CommitResponse,
   type Schemas,
   type UploadResponse,
   type ValidateResponse,
 } from "./api";
+import { PreviewTable } from "./Table";
 
 type ComponentState = Record<string, { checked: boolean; unit: string }>;
 
-function formatCell(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "number") return Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(8)));
-  return String(value);
-}
-
-function PreviewTable({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>{columns.map((c) => <th key={c}>{c}</th>)}</tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i}>{columns.map((c) => <td key={c}>{formatCell(row[c])}</td>)}</tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-export function ImportPage() {
+export function ImportPage({ projectId, onImported }: { projectId: number; onImported: () => void }) {
   const [schemas, setSchemas] = useState<Schemas | null>(null);
   const [upload, setUpload] = useState<UploadResponse | null>(null);
   const [kind, setKind] = useState("collar");
@@ -41,6 +21,7 @@ export function ImportPage() {
   const [components, setComponents] = useState<ComponentState>({});
   const [attributes, setAttributes] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<ValidateResponse | null>(null);
+  const [committed, setCommitted] = useState<CommitResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,6 +38,7 @@ export function ImportPage() {
     setComponents(state);
     setAttributes(new Set());
     setResult(null);
+    setCommitted(null);
   }
 
   async function onFile(file: File | undefined) {
@@ -81,31 +63,44 @@ export function ImportPage() {
   const numericFree = freeColumns.filter((c) => c.numeric);
   const fields = schemas?.[kind]?.fields ?? [];
 
-  async function onValidate() {
-    if (!upload) return;
+  function buildRequest() {
+    const comps = Object.entries(components)
+      .filter(([column, s]) => s.checked && !mappedColumns.has(column))
+      .map(([column, s]) => ({ column, unit: s.unit }));
+    const attrs = [...attributes].filter((a) => !mappedColumns.has(a) && !comps.some((c) => c.column === a));
+    return {
+      file_id: upload!.file_id,
+      kind,
+      mapping: Object.fromEntries(Object.entries(mapping).filter(([, v]) => v)),
+      components: kind === "assay" ? comps : [],
+      attributes: attrs,
+    };
+  }
+
+  async function run(action: () => Promise<void>) {
     setBusy(true);
     setError(null);
     try {
-      const comps = Object.entries(components)
-        .filter(([column, s]) => s.checked && !mappedColumns.has(column))
-        .map(([column, s]) => ({ column, unit: s.unit }));
-      const attrs = [...attributes].filter((a) => !mappedColumns.has(a) && !comps.some((c) => c.column === a));
-      const cleanMapping = Object.fromEntries(Object.entries(mapping).filter(([, v]) => v));
-      setResult(
-        await validateMapping({
-          file_id: upload.file_id,
-          kind,
-          mapping: cleanMapping,
-          components: kind === "assay" ? comps : [],
-          attributes: attrs,
-        }),
-      );
+      await action();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
+
+  const onValidate = () =>
+    run(async () => {
+      setCommitted(null);
+      setResult(await validateMapping(buildRequest()));
+    });
+
+  const onCommit = () =>
+    run(async () => {
+      const done = await commitImport({ ...buildRequest(), project_id: projectId, filename: upload!.filename });
+      setCommitted(done);
+      onImported();
+    });
 
   return (
     <main className="page">
@@ -253,6 +248,19 @@ export function ImportPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+              {result.ok && (
+                <p>
+                  <button className="primary" onClick={onCommit} disabled={busy}>Импортировать в проект</button>{" "}
+                  <span className="muted">Существующие данные этого типа в проекте будут заменены.</span>
+                </p>
+              )}
+              {committed && (
+                <div className="alert ok">
+                  Импортировано строк: {committed.inserted.toLocaleString("ru-RU")}
+                  {committed.replaced > 0 && <>, заменено прежних: {committed.replaced.toLocaleString("ru-RU")}</>}.
+                  Данные доступны на вкладке «Данные».
+                </div>
               )}
               {result.columns.length > 0 && <PreviewTable columns={result.columns} rows={result.preview} />}
             </section>

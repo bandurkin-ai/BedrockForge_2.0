@@ -2,10 +2,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
-from app.routers import imports
+from app.routers import imports, projects
 
 app = FastAPI(title="Geology API", version=__version__)
 app.include_router(imports.router)
+app.include_router(projects.router)
 
 # Local single-user MVP: the web dev server runs on a different port.
 app.add_middleware(
