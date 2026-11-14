@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# Node
+node_modules/
+web/dist/
+
+# Local data and secrets (never commit real project data)
+data/
+*.DAT
+.env
+
+# Build caches
+*.tsbuildinfo
