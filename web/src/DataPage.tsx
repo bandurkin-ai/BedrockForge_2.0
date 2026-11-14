@@ -1,31 +1,53 @@
 import { useEffect, useState } from "react";
-import { getSummary, getTable, type Summary, type TablePage } from "./api";
+import { getTable, type Summary, type TablePage } from "./api";
+import type { TableKind } from "./route";
 import { PreviewTable } from "./Table";
 
-const KINDS: [string, string][] = [
+const KINDS: [TableKind, string][] = [
   ["collar", "Устья (Collar)"],
   ["survey", "Инклинометрия (Survey)"],
   ["assay", "Пробы (Assay)"],
 ];
 const PAGE = 50;
 
-export function DataPage({ projectId, refreshKey }: { projectId: number; refreshKey: number }) {
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [kind, setKind] = useState("collar");
+export function DataPage({
+  projectId,
+  refreshKey,
+  kind,
+  holeId,
+  summary,
+  onKindChange,
+  onClearHole,
+}: {
+  projectId: number;
+  refreshKey: number;
+  kind: TableKind;
+  holeId: string | null;
+  summary: Summary | null;
+  onKindChange: (kind: TableKind) => void;
+  onClearHole: () => void;
+}) {
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<TablePage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // A different table, hole or project: start from the first page and drop the old rows
+  // so they are never shown under the new header while the request is in flight.
   useEffect(() => {
-    getSummary(projectId).then(setSummary).catch((e: Error) => setError(e.message));
-  }, [projectId, refreshKey]);
+    setOffset(0);
+    setPage(null);
+  }, [kind, holeId, projectId]);
 
   useEffect(() => {
-    setPage(null);
-    getTable(projectId, kind, PAGE, offset)
-      .then(setPage)
-      .catch((e: Error) => setError(e.message));
-  }, [projectId, kind, offset, refreshKey]);
+    let cancelled = false;
+    setError(null);
+    getTable(projectId, kind, PAGE, offset, holeId)
+      .then((p) => !cancelled && setPage(p))
+      .catch((e: Error) => !cancelled && setError(e.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, kind, offset, holeId, refreshKey]);
 
   const total = page?.total ?? 0;
   const from = total === 0 ? 0 : offset + 1;
@@ -33,44 +55,36 @@ export function DataPage({ projectId, refreshKey }: { projectId: number; refresh
 
   return (
     <main className="page">
-      <h1>Данные проекта</h1>
+      <h1>Таблица</h1>
       {error && <div className="alert error">{error}</div>}
 
-      {summary && (
-        <section className="cards">
-          {KINDS.map(([k, label]) => (
-            <div key={k} className="card">
-              <div className="muted">{label}</div>
-              <div className="big">{summary.counts[k].toLocaleString("ru-RU")}</div>
-            </div>
-          ))}
-          <div className="card">
-            <div className="muted">Компоненты</div>
-            <div>
-              {summary.components.length === 0
-                ? "—"
-                : summary.components.map((c) => `${c.name} (${c.unit})`).join(", ")}
-            </div>
-          </div>
-        </section>
-      )}
-
-      <div className="tabs">
+      <div className="tabs" role="tablist" aria-label="Таблица данных">
         {KINDS.map(([k, label]) => (
           <button
             key={k}
+            role="tab"
+            aria-selected={k === kind}
             className={k === kind ? "tab active" : "tab"}
-            onClick={() => {
-              setKind(k);
-              setOffset(0);
-            }}
+            onClick={() => onKindChange(k)}
           >
             {label}
+            {summary && <span className="muted"> · {summary.counts[k].toLocaleString("ru-RU")}</span>}
           </button>
         ))}
       </div>
 
-      {page && page.total === 0 && <p className="muted">В этой таблице пока нет данных. Импортируйте файл на вкладке «Импорт».</p>}
+      {holeId && (
+        <p className="filter-chip">
+          Скважина: <strong>{holeId}</strong>
+          <button className="icon" onClick={onClearHole} aria-label="Показать все скважины" title="Показать все скважины">✕</button>
+        </p>
+      )}
+
+      {page && page.total === 0 && (
+        <p className="muted">
+          {holeId ? "Для этой скважины в таблице нет строк." : "В этой таблице пока нет данных. Импортируйте файл на вкладке «Импорт»."}
+        </p>
+      )}
       {page && page.total > 0 && (
         <>
           <PreviewTable columns={page.columns} rows={page.rows} />

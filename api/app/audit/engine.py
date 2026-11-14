@@ -16,6 +16,12 @@ _CHUNK = 5000
 _ASSAY_KEYS = ["id", "hole_id", "sample_id", "from_m", "to_m"]
 
 
+def latest_run(session: Session, project_id: int) -> AuditRun | None:
+    return session.scalars(
+        select(AuditRun).where(AuditRun.project_id == project_id).order_by(AuditRun.id.desc()).limit(1)
+    ).first()
+
+
 def _as_float(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return df.astype({c: "float64" for c in columns})
 

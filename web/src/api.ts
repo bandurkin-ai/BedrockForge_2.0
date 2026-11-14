@@ -127,8 +127,11 @@ export const createProject = (name: string) =>
 
 export const getSummary = (projectId: number) => request<Summary>(`/api/projects/${projectId}/summary`);
 
-export const getTable = (projectId: number, kind: string, limit: number, offset: number) =>
-  request<TablePage>(`/api/projects/${projectId}/tables/${kind}?limit=${limit}&offset=${offset}`);
+export function getTable(projectId: number, kind: string, limit: number, offset: number, holeId?: string | null) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (holeId) params.set("hole_id", holeId);
+  return request<TablePage>(`/api/projects/${projectId}/tables/${kind}?${params}`);
+}
 
 export const commitImport = (req: ValidateRequest & { project_id: number; filename: string }) =>
   request<CommitResponse>("/api/import/commit", {
@@ -191,7 +194,7 @@ export const runAudit = (projectId: number, config: AuditConfig) =>
 
 export function getFindings(
   projectId: number,
-  filters: { severity?: string; table?: string; code?: string; hole_id?: string },
+  filters: { severity?: string; table?: string; code?: string; hole_id?: string; hole?: string },
   limit: number,
   offset: number,
 ) {
@@ -201,3 +204,33 @@ export function getFindings(
 }
 
 export const auditExportUrl = (projectId: number) => `/api/projects/${projectId}/audit/export.xlsx`;
+
+export interface Hole {
+  hole_id: string;
+  x: number | null;
+  y: number | null;
+  z: number | null;
+  td: number | null;
+  status: string | null;
+  survey_count: number;
+  assay_count: number;
+  error: number;
+  warning: number;
+  info: number;
+}
+
+export interface HoleDetail extends Hole {
+  azimuth: number | null;
+  dip: number | null;
+  date: string | null;
+  stage: string | null;
+  attributes: Record<string, unknown>;
+  findings: { code: string; severity: "error" | "warning" | "info"; count: number; message: string }[];
+}
+
+export const listHoles = (projectId: number) => request<Hole[]>(`/api/projects/${projectId}/holes`);
+
+export const getHole = (projectId: number, holeId: string) =>
+  request<HoleDetail>(`/api/projects/${projectId}/holes/${encodeURIComponent(holeId)}`);
+
+export const getHealth = () => request<{ status: string; version: string }>("/api/health");

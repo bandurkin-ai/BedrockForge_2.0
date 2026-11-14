@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audit.checks import AuditConfig
-from app.audit.engine import rule_table, run_audit
+from app.audit.engine import latest_run, rule_table, run_audit
 from app.audit.report import build_xlsx
 from app.db import get_session
 from app.models import AuditFinding, AuditRun, ImportJob
@@ -61,12 +61,6 @@ class FindingsPage(BaseModel):
     items: list[FindingOut]
 
 
-def _latest_run(session: Session, project_id: int) -> AuditRun | None:
-    return session.scalars(
-        select(AuditRun).where(AuditRun.project_id == project_id).order_by(AuditRun.id.desc()).limit(1)
-    ).first()
-
-
 def _run_out(session: Session, run: AuditRun) -> RunOut:
     last_import = session.scalar(
         select(func.max(ImportJob.created_at)).where(ImportJob.project_id == run.project_id)
@@ -92,7 +86,7 @@ def start_audit(project_id: int, config: ConfigIn | None = None, session: Sessio
 @router.get("", response_model=RunOut | None)
 def latest_audit(project_id: int, session: Session = Depends(get_session)):
     get_project(session, project_id)
-    run = _latest_run(session, project_id)
+    run = latest_run(session, project_id)
     return _run_out(session, run) if run else None
 
 
@@ -103,12 +97,13 @@ def findings(
     table: str | None = None,
     code: str | None = None,
     hole_id: str | None = None,
+    hole: str | None = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
 ):
     get_project(session, project_id)
-    run = _latest_run(session, project_id)
+    run = latest_run(session, project_id)
     if run is None:
         return FindingsPage(total=0, items=[])
 
@@ -119,8 +114,10 @@ def findings(
         query = query.where(AuditFinding.table_name == table)
     if code:
         query = query.where(AuditFinding.code == code)
+    if hole:
+        query = query.where(AuditFinding.hole_id == hole)  # exact: the hole selected in the navigator
     if hole_id:
-        query = query.where(AuditFinding.hole_id.ilike(f"%{hole_id}%"))
+        query = query.where(AuditFinding.hole_id.ilike(f"%{hole_id}%"))  # free-text search
 
     total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
     severity_order = func.array_position(["error", "warning", "info"], AuditFinding.severity)
@@ -143,7 +140,7 @@ def findings(
 @router.get("/export.xlsx")
 def export_xlsx(project_id: int, session: Session = Depends(get_session)):
     project = get_project(session, project_id)
-    run = _latest_run(session, project_id)
+    run = latest_run(session, project_id)
     if run is None:
         raise HTTPException(404, "Аудит ещё не запускался")
     all_findings = session.scalars(

@@ -41,7 +41,17 @@ function Badge({ severity }: { severity: string }) {
   return <span className={`badge ${severity}`}>{SEVERITY[severity]}</span>;
 }
 
-export function AuditPage({ projectId }: { projectId: number }) {
+export function AuditPage({
+  projectId,
+  holeId,
+  onAudited,
+  onClearHole,
+}: {
+  projectId: number;
+  holeId: string | null;
+  onAudited: () => void;
+  onClearHole: () => void;
+}) {
   const [run, setRun] = useState<AuditRun | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [config, setConfig] = useState<AuditConfig>(DEFAULT_CONFIG);
@@ -61,16 +71,18 @@ export function AuditPage({ projectId }: { projectId: number }) {
       .finally(() => setLoaded(true));
   }, [projectId]);
 
+  useEffect(() => setOffset(0), [holeId]);
+
   const runId = run?.run_id;
   useEffect(() => {
     if (runId === undefined) {
       setPage(null);
       return;
     }
-    getFindings(projectId, filters, PAGE, offset)
+    getFindings(projectId, { ...filters, hole: holeId ?? undefined }, PAGE, offset)
       .then(setPage)
       .catch((e: Error) => setError(e.message));
-  }, [projectId, runId, filters, offset]);
+  }, [projectId, runId, filters, offset, holeId]);
 
   async function onRun() {
     setBusy(true);
@@ -78,6 +90,7 @@ export function AuditPage({ projectId }: { projectId: number }) {
     try {
       setRun(await runAudit(projectId, config));
       setOffset(0);
+      onAudited();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -190,6 +203,12 @@ export function AuditPage({ projectId }: { projectId: number }) {
               onChange={(e) => updateFilter({ hole_id: e.target.value })}
             />
             {filters.code && <button onClick={() => updateFilter({ code: "" })}>Сбросить правило ✕</button>}
+            {holeId && (
+              <span className="filter-chip">
+                Скважина: <strong>{holeId}</strong>
+                <button className="icon" onClick={onClearHole} aria-label="Показать все скважины" title="Показать все скважины">✕</button>
+              </span>
+            )}
           </div>
 
           {page && page.total === 0 && <p className="muted">Нет находок по выбранным фильтрам.</p>}

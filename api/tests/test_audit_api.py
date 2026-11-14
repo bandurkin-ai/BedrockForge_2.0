@@ -76,6 +76,8 @@ def test_findings_filters_and_order(db_client, db_engine):
     assert db_client.get(url, params={"table": "survey"}).json()["items"][0]["hole_id"] == "GHOST"
     assert db_client.get(url, params={"code": "ASSAY_GAP"}).json()["items"][0]["details"]["examples"][0]["prev_to"] == 2.0
     assert db_client.get(url, params={"hole_id": "a3"}).json()["total"] == 1  # case-insensitive substring
+    assert db_client.get(url, params={"hole": "A"}).json()["total"] == 0  # exact match only
+    assert db_client.get(url, params={"hole": "A3"}).json()["total"] == 1
     assert db_client.get(url, params={"limit": 1, "offset": 2}).json()["items"][0]["severity"] == "info"
 
 

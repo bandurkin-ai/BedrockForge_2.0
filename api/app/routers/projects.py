@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Literal
 
@@ -7,8 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.audit.engine import latest_run
 from app.db import get_session
-from app.models import Assay, Collar, Component, ImportJob, Project, Survey
+from app.models import Assay, AuditFinding, Collar, Component, ImportJob, Project, Survey
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -115,15 +117,19 @@ _TABLES = {
 def table_page(
     project_id: int,
     kind: Kind,
+    hole_id: str | None = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
 ):
     get_project(session, project_id)
     model, base_columns, order = _TABLES[kind]
-    total = session.scalar(select(func.count()).select_from(model).where(model.project_id == project_id)) or 0
+    conditions = [model.project_id == project_id]
+    if hole_id:
+        conditions.append(model.hole_id == hole_id)
+    total = session.scalar(select(func.count()).select_from(model).where(*conditions)) or 0
     items = session.scalars(
-        select(model).where(model.project_id == project_id).order_by(*order, model.id).limit(limit).offset(offset)
+        select(model).where(*conditions).order_by(*order, model.id).limit(limit).offset(offset)
     ).all()
 
     columns = list(base_columns)
@@ -140,3 +146,110 @@ def table_page(
             row.update(item.analytes)
         rows.append(row)
     return TablePage(total=total, columns=columns, rows=rows)
+
+
+class HoleOut(BaseModel):
+    hole_id: str
+    x: float | None
+    y: float | None
+    z: float | None
+    td: float | None
+    status: str | None
+    survey_count: int
+    assay_count: int
+    # Number of audit findings for this hole by severity (zeros before the first audit).
+    error: int
+    warning: int
+    info: int
+
+
+class HoleFinding(BaseModel):
+    code: str
+    severity: str
+    count: int
+    message: str
+
+
+class HoleDetail(HoleOut):
+    azimuth: float | None
+    dip: float | None
+    date: str | None
+    stage: str | None
+    attributes: dict
+    findings: list[HoleFinding]
+
+
+def _natural_key(value: str) -> list:
+    """'H-2' sorts before 'H-10'."""
+    return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", value)]
+
+
+def _counts_by_hole(session: Session, model, project_id: int) -> dict[str, int]:
+    rows = session.execute(
+        select(model.hole_id, func.count()).where(model.project_id == project_id).group_by(model.hole_id)
+    )
+    return {hole: n for hole, n in rows}
+
+
+def _finding_counts(session: Session, project_id: int) -> dict[str, dict[str, int]]:
+    run = latest_run(session, project_id)
+    result: dict[str, dict[str, int]] = {}
+    if run is None:
+        return result
+    rows = session.execute(
+        select(AuditFinding.hole_id, AuditFinding.severity, func.count())
+        .where(AuditFinding.run_id == run.id, AuditFinding.hole_id.is_not(None))
+        .group_by(AuditFinding.hole_id, AuditFinding.severity)
+    )
+    for hole, severity, n in rows:
+        result.setdefault(hole, {})[severity] = n
+    return result
+
+
+def _hole_out(c: Collar, surveys: dict, assays: dict, findings: dict) -> dict:
+    found = findings.get(c.hole_id, {})
+    return {
+        "hole_id": c.hole_id, "x": c.x, "y": c.y, "z": c.z, "td": c.td, "status": c.status,
+        "survey_count": surveys.get(c.hole_id, 0), "assay_count": assays.get(c.hole_id, 0),
+        "error": found.get("error", 0), "warning": found.get("warning", 0), "info": found.get("info", 0),
+    }
+
+
+@router.get("/{project_id}/holes", response_model=list[HoleOut])
+def list_holes(project_id: int, session: Session = Depends(get_session)):
+    """Collars with data counts and audit findings, for the hole navigator."""
+    get_project(session, project_id)
+    collars = session.scalars(select(Collar).where(Collar.project_id == project_id)).all()
+    surveys = _counts_by_hole(session, Survey, project_id)
+    assays = _counts_by_hole(session, Assay, project_id)
+    findings = _finding_counts(session, project_id)
+    collars = sorted(collars, key=lambda c: _natural_key(c.hole_id))
+    return [_hole_out(c, surveys, assays, findings) for c in collars]
+
+
+@router.get("/{project_id}/holes/{hole_id}", response_model=HoleDetail)
+def hole_detail(project_id: int, hole_id: str, session: Session = Depends(get_session)):
+    get_project(session, project_id)
+    collar = session.scalars(
+        select(Collar).where(Collar.project_id == project_id, Collar.hole_id == hole_id)
+    ).first()
+    if collar is None:
+        raise HTTPException(404, "Скважина не найдена")
+
+    surveys = _counts_by_hole(session, Survey, project_id)
+    assays = _counts_by_hole(session, Assay, project_id)
+    findings = _finding_counts(session, project_id)
+    found: list[HoleFinding] = []
+    run = latest_run(session, project_id)
+    if run is not None:
+        rows = session.scalars(
+            select(AuditFinding)
+            .where(AuditFinding.run_id == run.id, AuditFinding.hole_id == hole_id)
+            .order_by(func.array_position(["error", "warning", "info"], AuditFinding.severity), AuditFinding.code)
+        )
+        found = [HoleFinding(code=f.code, severity=f.severity, count=f.count, message=f.message) for f in rows]
+    return HoleDetail(
+        **_hole_out(collar, surveys, assays, findings),
+        azimuth=collar.azimuth, dip=collar.dip, date=collar.date, stage=collar.stage,
+        attributes=collar.attributes, findings=found,
+    )

@@ -148,3 +148,61 @@ def test_table_endpoint_pagination(db_client, kind):
 
     assert page["total"] == 2
     assert len(page["rows"]) == 1
+
+
+def test_table_hole_filter_and_holes_list_with_counts(db_client):
+    pid = _project(db_client)
+    _import(db_client, pid, "collar.DAT", collar_dat())
+    _import(db_client, pid, "survey.DAT", survey_dat())
+    _import(db_client, pid, "assay.DAT", assay_dat())
+
+    holes = db_client.get(f"/api/projects/{pid}/holes").json()
+
+    assert [h["hole_id"] for h in holes] == ["H1", "H2"]
+    h1, h2 = holes
+    assert (h1["survey_count"], h1["assay_count"]) == (2, 2)
+    assert (h2["survey_count"], h2["assay_count"]) == (0, 0)
+    assert h1["x"] == 466570.5 and h1["status"] == "measured"
+    assert (h1["error"], h1["warning"], h1["info"]) == (0, 0, 0)  # no audit yet
+
+    page = db_client.get(f"/api/projects/{pid}/tables/survey", params={"hole_id": "H1"}).json()
+    assert page["total"] == 2
+    assert db_client.get(f"/api/projects/{pid}/tables/survey", params={"hole_id": "H2"}).json()["total"] == 0
+
+
+def test_holes_are_naturally_sorted_and_carry_audit_counts(db_client, db_engine):
+    from sqlalchemy.orm import Session
+
+    from app.models import Collar
+
+    pid = _project(db_client)
+    with Session(db_engine) as s:
+        for hole in ["H-10", "H-2", "H-1"]:
+            s.add(Collar(project_id=pid, hole_id=hole, x=1.0, y=1.0, z=1.0, td=10.0, status=""))
+        s.commit()
+    db_client.post(f"/api/projects/{pid}/audit")
+
+    holes = db_client.get(f"/api/projects/{pid}/holes").json()
+
+    assert [h["hole_id"] for h in holes] == ["H-1", "H-2", "H-10"]
+    assert all(h["info"] >= 1 for h in holes)  # empty status + no assay are info findings
+    assert all(h["warning"] >= 1 for h in holes)  # no survey is a warning
+
+
+def test_hole_detail_lists_its_findings_and_404s(db_client, db_engine):
+    from sqlalchemy.orm import Session
+
+    from app.models import Collar
+
+    pid = _project(db_client)
+    with Session(db_engine) as s:
+        s.add(Collar(project_id=pid, hole_id="A", x=1.0, y=1.0, z=1.0, td=10.0, azimuth=90.0, dip=-60.0,
+                     status="", attributes={"rig": "R1"}))
+        s.commit()
+    db_client.post(f"/api/projects/{pid}/audit")
+
+    detail = db_client.get(f"/api/projects/{pid}/holes/A").json()
+
+    assert detail["azimuth"] == 90.0 and detail["dip"] == -60.0 and detail["attributes"] == {"rig": "R1"}
+    assert [f["severity"] for f in detail["findings"]] == ["warning", "info", "info"]
+    assert db_client.get(f"/api/projects/{pid}/holes/NOPE").status_code == 404
