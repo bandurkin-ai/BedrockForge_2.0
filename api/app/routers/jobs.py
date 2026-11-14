@@ -25,6 +25,8 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.db import SessionLocal, get_session
+from app.formats.inspect import inspect
+from app.formats.rasters import pair_files
 from app.formats.registry import OBJECT_KINDS, detect
 from app.jobs import queue
 from app.models import Job
@@ -59,22 +61,38 @@ def _get_job(session: Session, job_id: int) -> Job:
     return job
 
 
-def _detect_uploads(session: Session, project_id: int, ids: list[str]) -> list[dict]:
+def _detect_uploads(session: Session, project_id: int, ids: list[str], *, preview: bool = False) -> list[dict]:
     out = []
     for upload_id in ids:
         u = get_upload(session, upload_id)
         if u.project_id != project_id:
             raise HTTPException(404, "Загрузка не найдена")
-        d = detect(u.filename, part_path(u.id) if u.status == "complete" else None)
-        out.append({"upload": u.id, "filename": u.filename, "size": u.size, "status": u.status,
-                    "kind": d.kind, "format": d.format, "note": d.note})
+        complete = u.status == "complete"
+        d = detect(u.filename, part_path(u.id) if complete else None)
+        row = {"upload": u.id, "filename": u.filename, "size": u.size, "status": u.status,
+               "kind": d.kind, "format": d.format, "note": d.note}
+        if preview and complete:
+            row["preview"] = inspect(d.kind, u.filename, part_path(u.id))
+        out.append(row)
+    # Images and their georeference files pair by name, as the import will pair them.
+    names = [r["filename"] for r in out if r["kind"] in ("rasters", "sidecar")]
+    if names:
+        groups, unmatched = pair_files(names)
+        for r in out:
+            if r["kind"] == "rasters":
+                r["sidecars"] = groups.get(r["filename"], [])
+                if not r["sidecars"]:
+                    r["note"] = "Файла привязки нет: изображение встанет на линию разреза или задаётся вручную"
+            elif r["kind"] == "sidecar" and r["filename"] in unmatched:
+                r["note"] = "Нет изображения с тем же именем"
     return out
 
 
 @router.post("/projects/{project_id}/detect")
 def detect_uploads(project_id: int, body: DetectIn, session: Session = Depends(get_session)) -> list[dict]:
+    """Kind, format and a quick preview of every uploaded file (the import wizard's second step)."""
     get_project(session, project_id)
-    return _detect_uploads(session, project_id, body.uploads)
+    return _detect_uploads(session, project_id, body.uploads, preview=True)
 
 
 @router.post("/projects/{project_id}/imports", status_code=202)

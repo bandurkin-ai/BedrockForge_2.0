@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   auditExportUrl, cancelJob, createDemoProject, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
-  listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, startImport, uploadResumable,
+  listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit,
   type Dataset, type JobInfo, type Project,
 } from "./api";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
@@ -17,6 +17,7 @@ import { DataTree } from "./shell/DataTree";
 import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { Icon } from "./shell/icons";
 import { ImportDialog } from "./shell/ImportDialog";
+import { ImportWizard, WIZARD_ACCEPT } from "./shell/ImportWizard";
 import { JobsPanel } from "./shell/JobsPanel";
 import { useJobs } from "./shell/useJobs";
 import { PropertiesPanel } from "./shell/PropertiesPanel";
@@ -101,6 +102,8 @@ function Workspace({
   const [approval, setApproval] = useState<Approval | null>(null);
   const fileInputs = { wireframes: useRef<HTMLInputElement>(null), lines: useRef<HTMLInputElement>(null), rasters: useRef<HTMLInputElement>(null) };
   const openFiles = (kind: UploadKind) => fileInputs[kind].current?.click();
+  const anyFileInput = useRef<HTMLInputElement>(null);
+  const [wizard, setWizard] = useState<{ files: File[]; kindHint: UploadKind | null } | null>(null);
   const sceneApi = useRef<SceneApi | null>(null);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
   const jobs = useJobs(projectId, (job: JobInfo) => {
@@ -235,6 +238,7 @@ function Workspace({
     openPalette: (query) => setPalette(query),
     openImport: (setId) => setImportTarget(setId),
     upload: openFiles,
+    openImportFiles: () => anyFileInput.current?.click(),
     patchRaster: async (id, patch) => {
       await patchRaster(id, patch);
       reload();
@@ -390,55 +394,53 @@ function Workspace({
     setLog((prev) => [{ id: Date.now() + Math.random(), time: new Date(), source: "user" as const, title: "Загрузка файла", args: { file }, result, ok: true }, ...prev].slice(0, LOG_LIMIT));
   }
 
-  /** Sends files in resumable chunks, then queues their import; the result arrives with the job. */
-  async function uploadForImport(files: File[]): Promise<string[]> {
-    const ids: string[] = [];
-    for (const file of files) {
-      const state = jobs.trackUpload(file.name, file.size);
-      try {
-        const info = await uploadResumable(projectId, file, (sent) => jobs.updateUpload(state.key, { sent }), state.abort.signal);
-        jobs.updateUpload(state.key, { sent: file.size, status: "done" });
-        ids.push(info.id);
-      } catch (e) {
-        const aborted = (e as Error).name === "AbortError";
-        jobs.updateUpload(state.key, { status: "error", error: aborted ? "Прервано (продолжится при повторной загрузке файла)" : (e as Error).message });
-        throw aborted ? new Error(`Загрузка «${file.name}» прервана`) : e;
-      }
-    }
-    return ids;
+  /** Every file import goes through the wizard: transfer, what is inside, parameters, background jobs. */
+  function onFiles(kind: UploadKind | null, list: FileList | File[] | null) {
+    const files = Array.from(list ?? []);
+    const input = kind ? fileInputs[kind].current : anyFileInput.current;
+    if (input) input.value = "";
+    if (files.length) setWizard({ files, kindHint: kind });
   }
 
-  async function onFiles(kind: UploadKind, list: FileList | null) {
-    const files = Array.from(list ?? []);
-    const input = fileInputs[kind].current;
-    if (input) input.value = "";
-    if (!files.length) return;
+  function onJobsStarted(started: JobInfo[]) {
     setWs((prev) => openBottom(prev, "jobs"));
-    await guarded(async () => {
-      if (kind === "rasters") {
-        // Images and their georeference files go together, paired by name on the server.
-        // Images without a georeference file stand on the current section line, if there is one.
-        const uploads = await uploadForImport(files);
-        const job = await startImport(projectId, { uploads, kind, section: section ? sceneApi.current?.sectionFrame() : null });
-        logUpload(files.map((f) => f.name).join(", "), `Задание ${job.id}: ${job.title}`);
-        return `Файлы переданы, импорт идёт в фоне (задание ${job.id})`;
-      }
-      // One job per file: each can be followed and cancelled on its own.
-      for (const file of files) {
-        const [upload] = await uploadForImport([file]);
-        const job = await startImport(projectId, { uploads: [upload], kind });
-        logUpload(file.name, `Задание ${job.id}: ${job.title}`);
-      }
-      return files.length === 1 ? `${files[0].name}: передан, импорт идёт в фоне` : `Файлов передано: ${files.length}, импорт идёт в фоне`;
-    });
+    for (const job of started) logUpload(job.title.replace(/^Импорт: /, ""), `Задание ${job.id}: ${job.title}`);
+    setNotice({ text: started.length === 1 ? `${started[0].title}: идёт в фоне` : `Заданий импорта: ${started.length}, идут в фоне`, error: false });
   }
+
+  // Files dropped anywhere on the window open the wizard.
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+  const dropHandlers = {
+    onDragEnter: (e: React.DragEvent) => {
+      if (!hasFiles(e)) return;
+      dragDepth.current += 1;
+      setDragging(true);
+    },
+    onDragOver: (e: React.DragEvent) => {
+      if (hasFiles(e)) e.preventDefault();
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!hasFiles(e)) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDragging(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth.current = 0;
+      setDragging(false);
+      onFiles(null, e.dataTransfer.files);
+    },
+  };
 
   const clearHole = () => activeSet !== null && selectHole(activeSet, null);
   const bottomTabs: BottomTab[] = ["table", "audit", "stats", "jobs", "log"];
   const activeSetName = sets.find((d) => d.id === activeSet)?.name ?? null;
 
   return (
-    <div className="app">
+    <div className={dragging ? "app drop-target" : "app"} {...dropHandlers}>
       <header className="titlebar">
         <span className="brand"><span className="brand-mark" aria-hidden="true" />BedrockForge</span>
         <label className="project-pick">
@@ -617,8 +619,22 @@ function Workspace({
       />
 
       {(Object.keys(ACCEPT) as UploadKind[]).map((kind) => (
-        <input key={kind} ref={fileInputs[kind]} type="file" accept={ACCEPT[kind]} multiple hidden data-upload={kind} onChange={(e) => void onFiles(kind, e.target.files)} />
+        <input key={kind} ref={fileInputs[kind]} type="file" accept={ACCEPT[kind]} multiple hidden data-upload={kind} onChange={(e) => onFiles(kind, e.target.files)} />
       ))}
+      <input ref={anyFileInput} type="file" accept={WIZARD_ACCEPT} multiple hidden data-upload="any" onChange={(e) => onFiles(null, e.target.files)} />
+
+      {wizard && (
+        <ImportWizard
+          projectId={projectId} files={wizard.files} kindHint={wizard.kindHint} datasets={datasets ?? []}
+          sectionFrame={() => (section ? sceneApi.current?.sectionFrame() ?? null : null)}
+          trackUpload={jobs.trackUpload} updateUpload={jobs.updateUpload} onStarted={onJobsStarted}
+          onTables={(tables) => {
+            setImportTarget(null);
+            setNotice({ text: `Выберите в мастере скважин: ${tables.map((f) => f.name).join(", ")}`, error: false });
+          }}
+          onClose={() => setWizard(null)}
+        />
+      )}
 
       {notice && (
         <div className={notice.error ? "toast error" : "toast"} role="status" onClick={() => setNotice(null)}>

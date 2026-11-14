@@ -45,6 +45,8 @@ export interface Live {
   openPalette: (query: string) => void;
   openImport: (setId: number | null) => void;
   upload: (kind: "wireframes" | "lines" | "rasters") => void;
+  /** File picker of the import wizard (any supported file). */
+  openImportFiles: () => void;
   patchRaster: (id: number, patch: RasterPatch) => Promise<void>;
   sectionFrame: () => VerticalPlacement | null;
   sectionThroughHole: (setId: number, holeId: string) => SectionLine | null;
@@ -488,6 +490,13 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       description: "Открывает мастер импорта таблиц Collar, Survey, Assay.",
       uiOnly: true,
       run: ({ set_id }) => s().openImport(typeof set_id === "number" ? set_id : null),
+    },
+    {
+      id: "import.files",
+      title: "Импорт файлов",
+      description: "Мастер импорта: любые поддерживаемые файлы (каркасы, линии, растры с привязкой); показывает состав файлов и запускает фоновые задания. Файлы можно и перетащить в окно.",
+      uiOnly: true,
+      run: () => s().openImportFiles(),
     },
     {
       id: "wireframes.upload",

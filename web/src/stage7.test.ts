@@ -65,3 +65,34 @@ describe("resumable upload", () => {
     expect(progress.at(-1)).toBe(25);
   }, 10000);
 });
+
+describe("import wizard", async () => {
+  const { planJobs, sortFiles } = await import("./shell/ImportWizard");
+  const row = (upload: string, filename: string, kind: string, chosen: string | null, sidecars?: string[]) =>
+    ({ upload, filename, size: 1, status: "complete", kind, format: "", note: "", chosen, sidecars }) as never;
+
+  it("sends object files up and leaves tables to the drillhole wizard", () => {
+    const f = (n: string) => new File(["x"], n);
+    const r = sortFiles([f("Pit.TRIDB"), f("holes.dat"), f("map.jpg"), f("map.jgw"), f("notes.docx")]);
+    expect(r.objects.map((x) => x.name)).toEqual(["Pit.TRIDB", "map.jpg", "map.jgw"]);
+    expect(r.tables.map((x) => x.name)).toEqual(["holes.dat"]);
+    expect(r.unknown.map((x) => x.name)).toEqual(["notes.docx"]);
+  });
+
+  it("plans one job per wireframe or line file and one for images with their georeference", () => {
+    const plan = planJobs([
+      row("a", "pit.tridb", "wireframes", "wireframes"),
+      row("b", "faults.dxf", "wireframes", "lines"),
+      row("c", "skip.dxf", "lines", null),
+      row("d", "map.jpg", "rasters", "rasters", ["map.jgw"]),
+      row("e", "map.jgw", "sidecar", "rasters"),
+      row("f", "stray.tab", "sidecar", "rasters"),
+    ]);
+    expect(plan).toEqual([
+      { kind: "rasters", uploads: ["d", "e"], names: ["map.jpg", "map.jgw"] },
+      { kind: "wireframes", uploads: ["a"], names: ["pit.tridb"] },
+      { kind: "lines", uploads: ["b"], names: ["faults.dxf"] },
+    ]);
+    expect(planJobs([row("e", "map.jgw", "sidecar", "rasters")])).toEqual([]);
+  });
+});

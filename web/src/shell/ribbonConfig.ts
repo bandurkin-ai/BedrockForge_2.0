@@ -85,6 +85,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
         {
           title: "Загрузка",
           items: [
+            { command: "import.files", label: "Импорт файлов", icon: "import", hint: "Мастер импорта: каркасы, линии, растры — с предпросмотром; можно перетащить файлы в окно" },
             { command: "import.open", label: "Скважины", icon: "drillholes", hint: "Импорт Collar, Survey, Assay в набор скважин (DAT, CSV, Excel)" },
             { command: "wireframes.upload", label: "Каркасы", icon: "wireframe", hint: "Micromine TRIDB или DXF" },
             { command: "lines.upload", label: "Линии", icon: "lines", hint: "Стринги: Micromine STR, Surpac STR, DXF", small: true },

@@ -890,3 +890,26 @@ export async function deleteProject(id: number): Promise<void> {
   const response = await fetch(`/api/projects/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`Ошибка ${response.status}`);
 }
+
+/** What the server found in an uploaded file (import wizard). */
+export interface DetectedFile {
+  upload: string;
+  filename: string;
+  size: number;
+  status: "receiving" | "complete";
+  kind: "wireframes" | "lines" | "rasters" | "sidecar" | "drillholes" | "unknown";
+  format: string;
+  note: string;
+  /** images: their georeference files in this batch */
+  sidecars?: string[];
+  preview?: {
+    summary?: string;
+    error?: string;
+    items?: { name: string; points?: number | null; triangles?: number | null; entities?: Record<string, number> }[];
+    width?: number;
+    height?: number;
+  };
+}
+
+export const detectUploads = (projectId: number, uploads: string[]) =>
+  request<DetectedFile[]>(`/api/projects/${projectId}/detect`, { method: "POST", ...json({ uploads }) });

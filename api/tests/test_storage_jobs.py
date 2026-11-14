@@ -361,3 +361,57 @@ def test_dataset_folders(db_client):
     renamed = db_client.patch(f"/api/datasets/{d['id']}", json={"name": "Скв. 2026"}).json()
     assert renamed["folder"] == "Разведка/2026"
     assert db_client.patch(f"/api/datasets/{d['id']}", json={"folder": ""}).json()["folder"] == ""
+
+
+# ---- import wizard previews (7.6)
+
+
+def test_detect_previews_tridb_dxf_str_and_images(db_client, tmp_path):
+    import io
+
+    from PIL import Image
+
+    from tests.samples import collar_dat
+
+    pid = _project(db_client)
+    tridb = tmp_path / "Pit.tridb"
+    make_tridb(tridb, [("выемка", None, CUBE_V, CUBE_T), ("насыпь", None, CUBE_V, CUBE_T[:4])])
+    doc = ezdxf.new("R2004")
+    msp = doc.modelspace()
+    msp.add_polyface(dxfattribs={"layer": "FAULTS"}).append_faces([[(0, 0, 0), (1, 0, 0), (1, 1, 0)]])
+    msp.add_lwpolyline([(0, 0), (1, 1)], dxfattribs={"layer": "ROADS"})
+    doc.saveas(tmp_path / "f.dxf")
+    png = io.BytesIO()
+    Image.new("RGB", (30, 20)).save(png, "PNG")
+    ids = [
+        upload(db_client, pid, "Pit.tridb", tridb.read_bytes(), chunk=1 << 20),
+        upload(db_client, pid, "f.dxf", (tmp_path / "f.dxf").read_bytes(), chunk=1 << 20),
+        upload(db_client, pid, "map.png", png.getvalue(), chunk=1 << 20),
+        upload(db_client, pid, "map.pgw", b"1\n0\n0\n-1\n0\n0\n"),
+        upload(db_client, pid, "lonely.tab", b"!table"),
+        upload(db_client, pid, "holes.dat", collar_dat(), chunk=1 << 20),
+    ]
+    rows = {r["filename"]: r for r in db_client.post(f"/api/projects/{pid}/detect", json={"uploads": ids}).json()}
+
+    pit = rows["Pit.tridb"]["preview"]
+    assert [(i["name"], i["triangles"]) for i in pit["items"]] == [("выемка", 12), ("насыпь", 4)]
+    assert "треугольников: 16" in pit["summary"]
+    dxf = rows["f.dxf"]
+    assert dxf["kind"] == "wireframes"
+    assert dxf["preview"]["entities"] == {"POLYFACE": 1, "LWPOLYLINE": 1} and dxf["preview"]["layers"] == 2
+    assert rows["map.png"]["preview"]["width"] == 30 and rows["map.png"]["sidecars"] == ["map.pgw"]
+    assert "Нет изображения" in rows["lonely.tab"]["note"]
+    assert rows["holes.dat"]["kind"] == "drillholes"
+
+
+def test_preview_of_micromine_str(tmp_path):
+    from app.formats.inspect import inspect_str
+    from tests.dat_builder import build
+
+    data = build("ascii", [(b"EAST", "R", 8, 3), (b"NORTH", "R", 8, 3), (b"RL", "R", 8, 2), (b"JOIN", "N", 12, 0)],
+                 [[1.0, 2.0, 3.0, "1"], [4.0, 5.0, 6.0, "1"], [7.0, 8.0, 9.0, "2"]])
+    path = tmp_path / "a.str"
+    path.write_bytes(data)
+    p = inspect_str(path)
+    assert p["format"] == "Micromine STR" and p["fields"] == ["EAST", "NORTH", "RL", "JOIN"]
+    assert "точек ≈ 3" in p["summary"]
