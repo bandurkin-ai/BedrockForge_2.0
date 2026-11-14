@@ -236,3 +236,13 @@ tr.clickable:hover td { background: var(--head-bg); }
 .log-scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 0 8px 8px; }
 .log-header { position: sticky; top: 0; z-index: 2; height: 24px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
 .log-header span { position: absolute; top: 4px; white-space: nowrap; }
+
+/* ---- import: reading options ---- */
+.drop.over { border-color: var(--accent); background: var(--head-bg); }
+.read-options { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 8px 0 12px; align-items: flex-start; }
+.read-options .field { min-width: 180px; max-width: 260px; }
+.read-options input[type="number"] {
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; width: 100px;
+}
+.read-options select { min-width: 180px; }
+.notes { margin: 4px 0 8px; padding-left: 18px; color: var(--muted); font-size: 0.85rem; }

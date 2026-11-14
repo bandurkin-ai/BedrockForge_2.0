@@ -8,8 +8,16 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.formats.excel import read_excel
 from app.formats.micromine import read_micromine
+from app.formats.numbers import parse_numbers
+from app.formats.tabular import ReadOptions, TableRead
+from app.formats.text import read_text
 from app.importing.schema import ELEMENTS, PRECIOUS, SCHEMAS
+
+TEXT_SUFFIXES = {".csv", ".txt", ".tsv", ".prn"}
+EXCEL_SUFFIXES = {".xlsx", ".xlsm"}
+SUPPORTED_SUFFIXES = {".dat"} | TEXT_SUFFIXES | EXCEL_SUFFIXES
 
 
 class UnsupportedFormatError(ValueError):
@@ -25,22 +33,48 @@ class Issue:
     count: int | None = None
 
 
-def read_table(path: Path) -> tuple[pd.DataFrame, str]:
-    """Return (data, format name). New formats (CSV, Excel) plug in here."""
+def check_supported(suffix: str) -> None:
+    """Raise UnsupportedFormatError with a message for the user if the extension is not readable."""
+    suffix = suffix.lower()
+    if suffix in SUPPORTED_SUFFIXES:
+        return
+    if suffix == ".xls":
+        raise UnsupportedFormatError("Старый формат Excel (.xls) не поддерживается: сохраните файл как .xlsx")
+    raise UnsupportedFormatError(
+        f"Формат файла «{suffix or 'без расширения'}» не поддерживается. Подходят: .DAT (Micromine), .csv, .txt, .xlsx"
+    )
+
+
+def read_table(path: Path, options: ReadOptions | None = None) -> TableRead:
+    """Read any supported file into a table. Options apply to text and Excel files."""
+    options = options or ReadOptions()
     suffix = path.suffix.lower()
     if suffix == ".dat":
-        return read_micromine(path).frame, "micromine"
-    raise UnsupportedFormatError(f"Формат файла «{suffix or 'без расширения'}» пока не поддерживается")
+        table = read_micromine(path)
+        return TableRead(table.frame, "micromine", {"encoding": table.codepage})
+    if suffix in TEXT_SUFFIXES:
+        return read_text(path, options)
+    if suffix in EXCEL_SUFFIXES:
+        return read_excel(path, options)
+    check_supported(suffix)
+    raise AssertionError("unreachable")
 
 
 def _norm(name: str) -> str:
     return re.sub(r"[\s\-]+", "_", name.strip().upper())
 
 
+def _base(name: str) -> str:
+    """'Глубина (м)' -> 'Глубина', 'X, м' -> 'X': column name without its unit."""
+    return re.split(r"[,(\[]", name, maxsplit=1)[0]
+
+
 def suggest_mapping(kind: str, columns: list[str]) -> dict[str, str]:
     by_norm: dict[str, str] = {}
     for col in columns:
         by_norm.setdefault(_norm(col), col)
+    for col in columns:  # exact names win over names stripped of units
+        by_norm.setdefault(_norm(_base(col)), col)
 
     used: set[str] = set()
     mapping: dict[str, str] = {}
@@ -54,15 +88,34 @@ def suggest_mapping(kind: str, columns: list[str]) -> dict[str, str]:
     return mapping
 
 
+_SYMBOL = re.compile(r"^([A-Za-z]{1,3})(?:$|[\s_,(\[/.-])")
+
+
+def component_symbol(name: str) -> tuple[str | None, str | None]:
+    """'Au, г/т' -> ('AU', 'g/t'); 'CU_PCT' -> ('CU', '%'); 'Comments' -> (None, None)."""
+    match = _SYMBOL.match(name.strip())
+    if not match or match.group(1).upper() not in ELEMENTS:
+        return None, None
+    lower = name.lower()
+    unit = None
+    if "%" in lower or "pct" in lower or "проц" in lower:
+        unit = "%"
+    elif "ppm" in lower or "г/т" in lower or "g/t" in lower:
+        unit = "g/t" if ("г/т" in lower or "g/t" in lower) else "ppm"
+    elif "ppb" in lower or "мг/т" in lower:
+        unit = "ppb"
+    return match.group(1).upper(), unit
+
+
 def suggest_components(df: pd.DataFrame, mapping: dict[str, str]) -> list[dict[str, str]]:
     mapped = set(mapping.values())
     result = []
     for col in df.columns:
         if col in mapped or not pd.api.types.is_numeric_dtype(df[col]):
             continue
-        symbol = _norm(col)
-        if symbol in ELEMENTS:
-            result.append({"column": col, "unit": "g/t" if symbol in PRECIOUS else "%"})
+        symbol, unit = component_symbol(str(col))
+        if symbol:
+            result.append({"column": col, "unit": unit or ("g/t" if symbol in PRECIOUS else "%")})
     return result
 
 
@@ -118,7 +171,7 @@ def apply_mapping(
             issues.append(Issue("error", "unknown_column", f"В файле нет колонки «{col}»", col))
         elif col in used:
             issues.append(Issue("error", "duplicate_column", f"Колонка «{col}» уже назначена", col))
-        elif not pd.api.types.is_numeric_dtype(df[col]):
+        elif parse_numbers(df[col]).parsed == 0:
             issues.append(Issue("error", "component_not_numeric", f"Компонент «{col}» не числовой", col))
         else:
             used[col] = f"comp:{col}"
@@ -139,14 +192,14 @@ def apply_mapping(
     for key, col in mapping.items():
         field = schema[key]
         if field.numeric:
-            series = pd.to_numeric(df[col], errors="coerce")
-            non_numeric = int((series.isna() & df[col].notna()).sum())
-            empty = int((series.isna() & df[col].isna()).sum())
-            if non_numeric:
-                issues.append(Issue("error", "non_numeric", f"«{field.label}»: нечисловых значений", key, non_numeric))
+            parsed = parse_numbers(df[col])
+            empty = int(parsed.values.isna().sum()) - parsed.bad
+            if parsed.bad:
+                example = f", например «{parsed.bad_examples[0]}»" if parsed.bad_examples else ""
+                issues.append(Issue("error", "non_numeric", f"«{field.label}»: нечисловых значений{example}", key, parsed.bad))
             if empty:
                 issues.append(Issue("warning", "empty_values", f"«{field.label}»: пустых значений", key, empty))
-            out[key] = series
+            out[key] = parsed.values
         else:
             series = df[col].astype("string").str.strip()
             empty = int((series.isna() | (series == "")).sum())
@@ -160,7 +213,13 @@ def apply_mapping(
                 issues.append(Issue("warning", "empty_values", f"«{field.label}»: пустых значений", key, empty))
             out[key] = series
     for comp in components:
-        out[f"comp:{comp['column']}"] = df[comp["column"]]
+        parsed = parse_numbers(df[comp["column"]])
+        if parsed.bad:
+            example = f", например «{parsed.bad_examples[0]}»" if parsed.bad_examples else ""
+            issues.append(Issue("error", "non_numeric", f"«{comp['column']}»: нечисловых значений{example}", comp["column"], parsed.bad))
+        if parsed.below_limit:
+            issues.append(Issue("warning", "below_limit", f"«{comp['column']}»: значения «<x» приняты как x/2", comp["column"], parsed.below_limit))
+        out[f"comp:{comp['column']}"] = parsed.values
     for col in attributes:
         out[f"attr:{col}"] = df[col]
     return out, issues

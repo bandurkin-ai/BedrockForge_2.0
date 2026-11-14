@@ -17,42 +17,42 @@ class TargetField:
 
 _HOLE_ID = TargetField(
     "hole_id", "Номер скважины (HoleID)", True, False,
-    ("BHID", "HOLEID", "HOLE_ID", "HOLE", "DH_ID", "ID"),
+    ("BHID", "HOLEID", "HOLE_ID", "HOLE", "DH_ID", "ID", "СКВАЖИНА", "СКВ", "№_СКВ", "№_СКВАЖИНЫ", "НОМЕР_СКВАЖИНЫ"),
 )
 
 SCHEMAS: dict[str, tuple[TargetField, ...]] = {
     "collar": (
         _HOLE_ID,
-        TargetField("x", "X (восток)", True, True, ("X", "EAST", "EASTING", "XCOLLAR")),
-        TargetField("y", "Y (север)", True, True, ("Y", "NORTH", "NORTHING", "YCOLLAR")),
-        TargetField("z", "Z (отметка)", True, True, ("Z", "RL", "ELEV", "ELEVATION", "ZCOLLAR")),
+        TargetField("x", "X (восток)", True, True, ("X", "EAST", "EASTING", "XCOLLAR", "Х")),  # Cyrillic Х too
+        TargetField("y", "Y (север)", True, True, ("Y", "NORTH", "NORTHING", "YCOLLAR", "У")),
+        TargetField("z", "Z (отметка)", True, True, ("Z", "RL", "ELEV", "ELEVATION", "ZCOLLAR", "ОТМЕТКА", "АБС_ОТМЕТКА", "АБСОЛЮТНАЯ_ОТМЕТКА")),
         TargetField(
             "td", "Глубина скважины (TD)", True, True,
-            ("TDEPTH", "TD", "MAX_DEPTH", "TOTAL_DEPTH", "EOH", "LENGTH"),
+            ("TDEPTH", "TD", "MAX_DEPTH", "TOTAL_DEPTH", "EOH", "LENGTH", "ГЛУБИНА_СКВАЖИНЫ", "ГЛУБИНА", "ЗАБОЙ"),
         ),
-        TargetField("azimuth", "Азимут", False, True, ("AZ", "AZIMUTH", "BRG")),
-        TargetField("dip", "Наклон", False, True, ("DIP", "INCL", "INCLINATION")),
-        TargetField("date", "Дата", False, False, ("DATE", "DRILL_DATE", "START_DATE")),
-        TargetField("status", "Статус", False, False, ("STATUS",)),
-        TargetField("stage", "Этап", False, False, ("STAGE",)),
+        TargetField("azimuth", "Азимут", False, True, ("AZ", "AZIMUTH", "BRG", "АЗИМУТ", "АЗ")),
+        TargetField("dip", "Наклон", False, True, ("DIP", "INCL", "INCLINATION", "НАКЛОН", "УГОЛ_НАКЛОНА")),
+        TargetField("date", "Дата", False, False, ("DATE", "DRILL_DATE", "START_DATE", "ДАТА")),
+        TargetField("status", "Статус", False, False, ("STATUS", "СТАТУС")),
+        TargetField("stage", "Этап", False, False, ("STAGE", "ЭТАП")),
     ),
     "survey": (
         _HOLE_ID,
-        TargetField("depth", "Глубина замера", True, True, ("DEPTH", "MD", "AT", "SURVEY_DEPTH")),
+        TargetField("depth", "Глубина замера", True, True, ("DEPTH", "MD", "AT", "SURVEY_DEPTH", "ГЛУБИНА", "ГЛУБИНА_ЗАМЕРА")),
         # BRG_TRUE first: true azimuth is the default, magnetic BRG is a user choice.
         TargetField(
             "azimuth", "Азимут", True, True,
-            ("BRG_TRUE", "AZIMUTH_TRUE", "AZIMUTH", "AZ", "BRG"),
+            ("BRG_TRUE", "AZIMUTH_TRUE", "AZIMUTH", "AZ", "BRG", "АЗИМУТ", "АЗ"),
         ),
-        TargetField("dip", "Наклон", True, True, ("DIP", "INCL", "INCLINATION")),
+        TargetField("dip", "Наклон", True, True, ("DIP", "INCL", "INCLINATION", "НАКЛОН", "УГОЛ_НАКЛОНА")),
     ),
     "assay": (
         _HOLE_ID,
-        TargetField("from", "От (From)", True, True, ("FROM", "DEPTH_FROM", "FROM_M", "FROM_DEPTH")),
-        TargetField("to", "До (To)", True, True, ("TO", "DEPTH_TO", "TO_M", "TO_DEPTH")),
+        TargetField("from", "От (From)", True, True, ("FROM", "DEPTH_FROM", "FROM_M", "FROM_DEPTH", "ОТ", "ИНТЕРВАЛ_ОТ", "С")),
+        TargetField("to", "До (To)", True, True, ("TO", "DEPTH_TO", "TO_M", "TO_DEPTH", "ДО", "ИНТЕРВАЛ_ДО", "ПО")),
         TargetField(
             "sample_id", "Номер пробы", False, False,
-            ("SAMPID", "SAMPLE_ID", "SAMPLEID", "SAMPLE", "SAMPLE_NO", "SAMPNO"),
+            ("SAMPID", "SAMPLE_ID", "SAMPLEID", "SAMPLE", "SAMPLE_NO", "SAMPNO", "ПРОБА", "№_ПРОБЫ", "НОМЕР_ПРОБЫ", "ШИФР_ПРОБЫ"),
         ),
     ),
 }

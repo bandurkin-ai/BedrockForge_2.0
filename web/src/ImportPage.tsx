@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   commitImport,
   getSchemas,
+  rereadFile,
   uploadFile,
   validateMapping,
   type CommitResponse,
+  type ReadOptions,
   type Schemas,
   type UploadResponse,
   type ValidateResponse,
@@ -12,6 +14,67 @@ import {
 import { PreviewTable } from "./Table";
 
 type ComponentState = Record<string, { checked: boolean; unit: string }>;
+
+const ACCEPT = ".dat,.csv,.txt,.tsv,.prn,.xlsx,.xlsm";
+const FORMAT_LABELS: Record<string, string> = { micromine: "Micromine DAT", text: "текст (CSV/TXT)", excel: "Excel" };
+const ENCODINGS = ["utf-8", "utf-8-sig", "cp1251", "cp866", "koi8-r", "utf-16", "latin-1"];
+const DELIMITERS: [string, string][] = [[";", "точка с запятой ;"], [",", "запятая ,"], ["\t", "табуляция"], ["|", "черта |"], ["whitespace", "пробелы"]];
+
+function ReadOptionsPanel({
+  upload,
+  disabled,
+  onChange,
+}: {
+  upload: UploadResponse;
+  disabled: boolean;
+  onChange: (options: ReadOptions) => void;
+}) {
+  const o = upload.options;
+  const set = (patch: Partial<ReadOptions>) => onChange({ ...o, ...patch });
+  return (
+    <div className="read-options">
+      {upload.format === "text" && (
+        <>
+          <label className="field">
+            Кодировка
+            <select value={o.encoding ?? ""} disabled={disabled} onChange={(e) => set({ encoding: e.target.value || null })}>
+              {ENCODINGS.map((enc) => <option key={enc} value={enc}>{enc}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            Разделитель
+            <select value={o.delimiter ?? ""} disabled={disabled} onChange={(e) => set({ delimiter: e.target.value || null })}>
+              {DELIMITERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        </>
+      )}
+      {upload.format === "excel" && (
+        <label className="field">
+          Лист
+          <select value={o.sheet ?? ""} disabled={disabled} onChange={(e) => set({ sheet: e.target.value })}>
+            {upload.sheets.map((sheet) => <option key={sheet} value={sheet}>{sheet}</option>)}
+          </select>
+        </label>
+      )}
+      <label className="field">
+        Строка заголовка
+        <input
+          type="number"
+          min={0}
+          max={1000}
+          value={o.header_row}
+          disabled={disabled}
+          onChange={(e) => {
+            const row = Number(e.target.value);
+            if (Number.isInteger(row) && row >= 0) set({ header_row: row });
+          }}
+        />
+        <span className="muted small">пустые строки не считаются; 0 — заголовка нет</span>
+      </label>
+    </div>
+  );
+}
 
 export function ImportPage({ projectId, onImported }: { projectId: number; onImported: () => void }) {
   const [schemas, setSchemas] = useState<Schemas | null>(null);
@@ -23,6 +86,7 @@ export function ImportPage({ projectId, onImported }: { projectId: number; onImp
   const [result, setResult] = useState<ValidateResponse | null>(null);
   const [committed, setCommitted] = useState<CommitResponse | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,6 +116,21 @@ export function ImportPage({ projectId, onImported }: { projectId: number; onImp
     } catch (e) {
       setUpload(null);
       setResult(null);
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onReadOptions(options: ReadOptions) {
+    if (!upload) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await rereadFile(upload.file_id, options);
+      setUpload(data);
+      applySuggestion(data, data.detected_kind ?? kind);
+    } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
@@ -105,11 +184,25 @@ export function ImportPage({ projectId, onImported }: { projectId: number; onImp
   return (
     <main className="page">
       <h1>Импорт данных</h1>
-      <p className="muted">Загрузите файл Micromine (.DAT), проверьте назначение колонок и запустите проверку.</p>
+      <p className="muted">
+        Загрузите файл Micromine (.DAT), текстовый файл (.csv, .txt) или книгу Excel (.xlsx), проверьте назначение колонок и запустите проверку.
+      </p>
 
-      <label className="drop">
-        <input type="file" accept=".dat,.DAT" onChange={(e) => onFile(e.target.files?.[0])} disabled={busy} />
-        <span>{busy ? "Обработка…" : "Выберите файл .DAT"}</span>
+      <label
+        className={dragOver ? "drop over" : "drop"}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (!busy) onFile(e.dataTransfer.files?.[0]);
+        }}
+      >
+        <input type="file" accept={ACCEPT} onChange={(e) => onFile(e.target.files?.[0])} disabled={busy} />
+        <span>{busy ? "Обработка…" : "Выберите файл или перетащите его сюда: .DAT, .csv, .txt, .xlsx"}</span>
       </label>
 
       {error && <div className="alert error">{error}</div>}
@@ -119,10 +212,25 @@ export function ImportPage({ projectId, onImported }: { projectId: number; onImp
           <section>
             <h2>Файл</h2>
             <p>
-              <strong>{upload.filename}</strong> · формат: {upload.format} · строк: {upload.row_count.toLocaleString("ru-RU")} · колонок:{" "}
-              {upload.columns.length}
+              <strong>{upload.filename}</strong> · формат: {FORMAT_LABELS[upload.format] ?? upload.format} · строк:{" "}
+              {upload.row_count.toLocaleString("ru-RU")} · колонок: {upload.columns.length}
+              {upload.format === "micromine" && upload.options.encoding && <> · кодировка: {upload.options.encoding}</>}
               {upload.detected_kind && <> · определён как: <strong>{schemas[upload.detected_kind].label}</strong></>}
             </p>
+            {upload.format !== "micromine" && (
+              <ReadOptionsPanel upload={upload} disabled={busy} onChange={onReadOptions} />
+            )}
+            {!upload.detected_kind && (
+              <div className="alert warn">
+                Тип таблицы не распознан по названиям колонок.
+                {upload.format !== "micromine" && " Проверьте строку заголовка и разделитель выше,"} либо выберите тип и назначьте колонки вручную.
+              </div>
+            )}
+            {upload.notes.length > 0 && (
+              <ul className="notes">
+                {upload.notes.map((n) => <li key={n}>{n}</li>)}
+              </ul>
+            )}
             <label className="field">
               Тип таблицы
               <select value={kind} onChange={(e) => applySuggestion(upload, e.target.value)}>
