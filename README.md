@@ -8,6 +8,7 @@
 |---|---|
 | `api/` | Бэкенд на FastAPI: чтение файлов, аудит, работа с PostgreSQL |
 | `api/app/formats/` | Форматы файлов. Сейчас: Micromine DAT (нативное чтение) |
+| `api/app/stats/` | Статистика: нормальные оценки, декластеризация, вариограммы (NumPy/SciPy, перенос из GeostatsPy) |
 | `web/` | Интерфейс на React + TypeScript + Vite |
 | `docker-compose.yml` | PostgreSQL + PostGIS, API, веб-интерфейс |
 
