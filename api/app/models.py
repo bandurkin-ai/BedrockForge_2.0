@@ -8,7 +8,7 @@ files can arrive in any order and the audit stage reports orphans.
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Double, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Double, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -46,6 +46,73 @@ class Dataset(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     # Source file, format, notes of the import.
     meta: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Folder in the project tree inside the kind's group, "/"-separated; "" is the group itself.
+    folder: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    # Stored files of the object as a whole, role -> SHA-256 (e.g. "source": the imported file).
+    blobs: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
+class Blob(Base):
+    """A file of the content-addressed store (app/storage/blobs.py)."""
+
+    __tablename__ = "blob"
+
+    sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    size: Mapped[int] = mapped_column(BigInteger)
+    media_type: Mapped[str | None] = mapped_column(String(64))
+    # Registration time; also refreshed on re-registration, so a fresh blob is never collected.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Upload(Base):
+    """A resumable upload: the file arrives in chunks into DATA_DIR/uploads/<id>.part."""
+
+    __tablename__ = "upload"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[int] = mapped_column(_project_fk(), index=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    size: Mapped[int] = mapped_column(BigInteger)
+    received: Mapped[int] = mapped_column(BigInteger, default=0)
+    # receiving -> complete; a consumed upload is deleted.
+    status: Mapped[str] = mapped_column(String(12), default="receiving")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+JOB_STATUSES = ("queued", "running", "done", "failed", "cancelled")
+
+
+class Job(Base):
+    """A background task (import, calculation) run by a worker process (app/jobs/)."""
+
+    __tablename__ = "job"
+    __table_args__ = (
+        Index("ix_job_queue", "status", "id"),
+        Index("ix_job_project_updated", "project_id", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int | None] = mapped_column(_project_fk())
+    kind: Mapped[str] = mapped_column(String(48))
+    title: Mapped[str] = mapped_column(String(255), default="")
+    status: Mapped[str] = mapped_column(String(12), default="queued")
+    params: Mapped[dict] = mapped_column(JSONB, default=dict)
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(Text)
+    progress: Mapped[float] = mapped_column(Double, default=0.0)
+    message: Mapped[str] = mapped_column(Text, default="")
+    # [{"t": iso time, "level": "info" | "warning" | "error", "text": ...}]
+    log: Mapped[list] = mapped_column(JSONB, default=list)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    worker: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Wireframe(Base):
@@ -63,8 +130,11 @@ class Wireframe(Base):
     extent: Mapped[dict] = mapped_column(JSONB)
     # Area, volume, closed, degenerate triangles, source attributes.
     stats: Mapped[dict] = mapped_column(JSONB, default=dict)
-    vertices: Mapped[bytes] = mapped_column(LargeBinary)  # float64 x, y, z per point
-    triangles: Mapped[bytes] = mapped_column(LargeBinary)  # int32 i, j, k per triangle
+    # Integer metres near the centre of the extent; render buffers are relative to it.
+    origin: Mapped[list] = mapped_column(JSONB, default=list)
+    # Stored arrays, role -> SHA-256 (app/storage/geometry.py):
+    # vertices <f8 x y z, triangles <i4 i j k, render_vertices <f4 x y z relative to origin.
+    blobs: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
 class LineLayer(Base):
@@ -83,9 +153,10 @@ class LineLayer(Base):
     stats: Mapped[dict] = mapped_column(JSONB, default=dict)
     # One dict per line (attributes from the file).
     line_attributes: Mapped[list] = mapped_column(JSONB, default=list)
-    vertices: Mapped[bytes] = mapped_column(LargeBinary)  # float64 x, y, z
-    offsets: Mapped[bytes] = mapped_column(LargeBinary)  # int64 start of every line, plus the end
-    closed: Mapped[bytes] = mapped_column(LargeBinary)  # uint8 per line
+    origin: Mapped[list] = mapped_column(JSONB, default=list)
+    # vertices <f8 x y z, offsets <i8 start of every line plus the end, closed u1 per line,
+    # render_vertices <f4 relative to origin, render_offsets <u4.
+    blobs: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
 class Raster(Base):
@@ -104,7 +175,8 @@ class Raster(Base):
     # None: placed under the lowest object of the scene.
     elevation: Mapped[float | None] = mapped_column(Double)
     opacity: Mapped[float] = mapped_column(Double, default=1.0)
-    image: Mapped[bytes] = mapped_column(LargeBinary)  # display copy
+    # image: the display copy (JPEG / PNG).
+    blobs: Mapped[dict] = mapped_column(JSONB, default=dict)
     mime: Mapped[str] = mapped_column(String(32))
 
 

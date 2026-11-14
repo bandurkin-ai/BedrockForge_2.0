@@ -1,6 +1,5 @@
 """Lines (Micromine STR, Surpac STR, DXF) and georeferenced rasters (world file, TAB, GRF, GeoTIFF)."""
 
-import base64
 import io
 import struct
 
@@ -152,9 +151,9 @@ def test_upload_lines_str_geometry_patch_delete(db_client, tmp_path):
     assert layer["stats"] == {"length": 40.0, "closed": 1, "flat": True}
 
     g = db_client.get(f"/api/lines/{layer['id']}/geometry").json()
-    vertices = np.frombuffer(base64.b64decode(g["vertices"]), dtype="<f4").reshape(-1, 3) + g["origin"]
-    offsets = np.frombuffer(base64.b64decode(g["offsets"]), dtype="<u4")
-    assert offsets.tolist() == [0, 5] and base64.b64decode(g["closed"]) == b"\x01"
+    vertices = np.frombuffer(db_client.get(g["vertices"]).content, dtype="<f4").reshape(-1, 3) + g["origin"]
+    offsets = np.frombuffer(db_client.get(g["offsets"]).content, dtype="<u4")
+    assert offsets.tolist() == [0, 5] and db_client.get(g["closed"]).content == b"\x01"
     assert vertices[2].tolist() == [500010.0, 4600010.0, 1000.0]
 
     assert db_client.patch(f"/api/lines/{layer['id']}", json={"color": "#112233"}).json()["color"] == "#112233"

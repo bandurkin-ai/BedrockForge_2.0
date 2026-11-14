@@ -33,44 +33,105 @@ class Mesh:
 
 
 def weld(vertices: np.ndarray, triangles: np.ndarray, tolerance: float = 1e-6) -> tuple[np.ndarray, np.ndarray]:
-    """Merge coincident vertices (DXF faces repeat their corners) and drop unused ones."""
+    """Merge coincident vertices (DXF faces repeat their corners) and drop unused ones.
+
+    Vertices on the same `tolerance` grid point merge; the first of them is kept (exact float64).
+    One lexicographic sort of the integer grid keys: about 1.3 s for 9 million corners.
+    """
     if len(vertices) == 0:
         return vertices.reshape(0, 3), triangles.reshape(0, 3).astype(np.int32)
     key = np.round(vertices / tolerance).astype(np.int64)
-    _, first, inverse = np.unique(key, axis=0, return_index=True, return_inverse=True)
+    order = np.lexsort((key[:, 2], key[:, 1], key[:, 0]))
+    ks = key[order]
+    starts = np.empty(len(ks), dtype=bool)
+    starts[0] = True
+    np.any(ks[1:] != ks[:-1], axis=1, out=starts[1:])
+    group = np.cumsum(starts) - 1
+    inverse = np.empty(len(ks), dtype=np.int64)
+    inverse[order] = group
+    # The first vertex (in file order) of every group represents it.
+    first = np.full(int(group[-1]) + 1, len(ks), dtype=np.int64)
+    np.minimum.at(first, group, order)
     welded = vertices[first]
-    tris = inverse.reshape(-1)[triangles]
+    tris = inverse[triangles]
     used = np.unique(tris)
     remap = np.full(len(welded), -1, dtype=np.int64)
     remap[used] = np.arange(len(used))
     return welded[used], remap[tris].astype(np.int32)
 
 
+# Triangles per slice in mesh_stats: bounds the temporary memory (~200 MB per slice).
+_STATS_SLICE = 1 << 20
+
+
+def edge_summary(triangles: np.ndarray, vertex_count: int) -> tuple[int, int]:
+    """(open edges, non-manifold edges): edges used by one triangle, and by more than two.
+
+    One int64 key per edge (both orientations alike), sorted; ~11 bytes of memory per edge.
+    """
+    t = np.asarray(triangles)
+    m = len(t)
+    n = max(int(vertex_count), 1)
+    keys = np.empty(3 * m, dtype=np.int64)
+    for k, (i, j) in enumerate(((0, 1), (1, 2), (2, 0))):
+        a = t[:, i].astype(np.int64)
+        b = t[:, j].astype(np.int64)
+        seg = keys[k * m:(k + 1) * m]
+        np.minimum(a, b, out=seg)
+        seg *= n
+        seg += np.maximum(a, b)
+    del a, b
+    keys.sort()
+    same_next = np.zeros(len(keys), dtype=bool)
+    np.equal(keys[1:], keys[:-1], out=same_next[:-1])
+    same_prev = np.zeros(len(keys), dtype=bool)
+    same_prev[1:] = same_next[:-1]
+    open_edges = int(np.count_nonzero(~same_prev & ~same_next))
+    # A run of three or more equal keys: its first element has equal keys 1 and 2 places ahead.
+    same_next2 = np.zeros(len(keys), dtype=bool)
+    if len(keys) > 2:
+        np.equal(keys[2:], keys[:-2], out=same_next2[:-2])
+    nonmanifold = int(np.count_nonzero(~same_prev & same_next2))
+    return open_edges, nonmanifold
+
+
 def mesh_stats(vertices: np.ndarray, triangles: np.ndarray) -> dict:
-    """Area, volume (for closed solids), closedness and degenerate triangles."""
+    """Area, volume (for closed solids), closedness, orientation and degenerate triangles.
+
+    Volume: signed tetrahedra from the centre of the extent (keeps precision with UTM
+    coordinates), summed per slice with numpy's pairwise sum and across slices with fsum.
+    """
     if len(triangles) == 0:
         return {"area": 0.0, "volume": None, "closed": False, "degenerate": 0, "open_edges": 0}
-    a, b, c = (vertices[triangles[:, i]] for i in range(3))
-    cross = np.cross(b - a, c - a)
-    areas = 0.5 * np.linalg.norm(cross, axis=1)
-    degenerate = int(np.count_nonzero(areas < 1e-9))
+    import math
 
-    edges = np.sort(np.concatenate([triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]]]), axis=1)
-    _, counts = np.unique(edges, axis=0, return_counts=True)
-    open_edges = int(np.count_nonzero(counts == 1))
-    closed = open_edges == 0 and bool(np.all(counts == 2))
+    v = np.asarray(vertices, dtype=np.float64)
+    o = (v.min(axis=0) + v.max(axis=0)) / 2.0
+    areas, volumes, degenerate = [], [], 0
+    for start in range(0, len(triangles), _STATS_SLICE):
+        tri = np.asarray(triangles[start:start + _STATS_SLICE])
+        a, b, c = (v[tri[:, i]] - o for i in range(3))
+        cross = np.cross(b - a, c - a)
+        area = 0.5 * np.sqrt(np.einsum("ij,ij->i", cross, cross))
+        degenerate += int(np.count_nonzero(area < 1e-9))
+        areas.append(float(area.sum()))
+        volumes.append(float(np.einsum("ij,ij->i", a, np.cross(b, c)).sum()))
 
-    volume = None
+    open_edges, nonmanifold = edge_summary(triangles, len(v))
+    closed = open_edges == 0 and nonmanifold == 0
+    volume = orientation = None
     if closed:
-        # Divergence theorem, relative to the centroid to keep precision with UTM coordinates.
-        o = vertices.mean(axis=0)
-        volume = float(abs(np.einsum("ij,ij->i", a - o, np.cross(b - o, c - o)).sum()) / 6.0)
+        signed = math.fsum(volumes) / 6.0
+        volume = abs(signed)
+        orientation = "outward" if signed > 0 else "inward"
     return {
-        "area": round(float(areas.sum()), 2),
+        "area": round(math.fsum(areas), 2),
         "volume": round(volume, 2) if volume is not None else None,
         "closed": closed,
+        "orientation": orientation,
         "degenerate": degenerate,
         "open_edges": open_edges,
+        "nonmanifold_edges": nonmanifold,
     }
 
 

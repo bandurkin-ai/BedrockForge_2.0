@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import base64
+import json
 import tempfile
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
-import json
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -19,19 +16,18 @@ from sqlalchemy.orm import Session
 from app.audit.engine import latest_run
 from app.config import settings
 from app.db import get_session
-from app.formats.lines import LINE_SUFFIXES, LineFormatError, line_stats, pack, read_lines
-from app.formats.rasters import (
-    IMAGE_SUFFIXES, SIDECAR_SUFFIXES, Georef, RasterFormatError, corners, corners3d, is_vertical, pair_files, pixel_size,
-    plane_azimuth, read_raster, rotation_deg, vertical_georef,
+from app.formats.lines import LINE_SUFFIXES
+from app.formats.rasters import IMAGE_SUFFIXES, SIDECAR_SUFFIXES, RasterFormatError, vertical_georef
+from app.formats.wireframes import WIREFRAME_SUFFIXES
+from app.importing.objects import (
+    ImportFailed, SectionPlacement, import_lines, import_rasters, import_wireframes, raster_placement,
 )
-from app.formats.wireframes import WIREFRAME_SUFFIXES, WireframeFormatError, mesh_stats, read_wireframes
 from app.models import Assay, Collar, Component, Dataset, LineLayer, Raster, Survey, Wireframe
+from app.routers.blobs import blob_url
 from app.routers.projects import get_project
+from app.storage import blobs
 
 router = APIRouter(prefix="/api", tags=["datasets"])
-
-# Distinct colours for wireframes that carry none in the file.
-PALETTE = ["#e8873a", "#4f9dde", "#5fbf6a", "#c06fd8", "#e0c040", "#e05d6f", "#46c7c0", "#9a8f7a"]
 
 
 class WireframeOut(BaseModel):
@@ -69,6 +65,7 @@ class DatasetOut(BaseModel):
     id: int
     kind: str
     name: str
+    folder: str = ""
     created_at: datetime
     meta: dict
     # drillholes: {"collar": n, "survey": n, "assay": n}
@@ -83,6 +80,17 @@ class DatasetOut(BaseModel):
 
 class NameIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+
+
+class DatasetPatch(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
+    # "/"-separated folder inside the kind's group; "" puts the object back at the top.
+    folder: str | None = Field(None, max_length=255)
+
+
+def clean_folder(folder: str) -> str:
+    parts = [p.strip() for p in folder.replace("\\", "/").split("/")]
+    return "/".join(p for p in parts if p)[:255]
 
 
 class LinePatch(BaseModel):
@@ -131,7 +139,7 @@ def _wireframe_out(w: Wireframe) -> WireframeOut:
 
 
 def dataset_out(session: Session, d: Dataset) -> DatasetOut:
-    out = DatasetOut(id=d.id, kind=d.kind, name=d.name, created_at=d.created_at, meta=d.meta or {})
+    out = DatasetOut(id=d.id, kind=d.kind, name=d.name, folder=d.folder or "", created_at=d.created_at, meta=d.meta or {})
     if d.kind == "drillholes":
         def count(model) -> int:
             return session.scalar(select(func.count()).select_from(model).where(model.set_id == d.id)) or 0
@@ -182,9 +190,13 @@ def create_set(project_id: int, body: NameIn, session: Session = Depends(get_ses
 
 
 @router.patch("/datasets/{dataset_id}", response_model=DatasetOut)
-def rename_dataset(dataset_id: int, body: NameIn, session: Session = Depends(get_session)):
+def patch_dataset(dataset_id: int, body: DatasetPatch, session: Session = Depends(get_session)):
+    """Rename an object or move it to a folder of the tree."""
     dataset = get_dataset(session, dataset_id)
-    dataset.name = body.name.strip()
+    if body.name is not None:
+        dataset.name = body.name.strip()
+    if body.folder is not None:
+        dataset.folder = clean_folder(body.folder)
     session.commit()
     return dataset_out(session, dataset)
 
@@ -201,50 +213,20 @@ def delete_dataset(dataset_id: int, session: Session = Depends(get_session)) -> 
 
 @router.post("/projects/{project_id}/wireframes", response_model=DatasetOut, status_code=201)
 async def upload_wireframes(project_id: int, file: UploadFile, session: Session = Depends(get_session)):
-    """Read a TRIDB or DXF file; every wireframe in it becomes an item of one new dataset."""
+    """Read a TRIDB or DXF file in this request (small files, scripts); every wireframe in it
+    becomes an item of one new dataset. Large files: resumable upload + import job (routers/uploads.py)."""
     get_project(session, project_id)
     filename = file.filename or "wireframes"
     suffix = Path(filename).suffix.lower()
     if suffix not in WIREFRAME_SUFFIXES:
         raise HTTPException(415, f"Каркасы читаются из файлов {', '.join(WIREFRAME_SUFFIXES)}")
-
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(dir=blobs.tmp_dir()) as tmp:
         path = Path(tmp) / f"data{suffix}"
-        size = 0
-        with path.open("wb") as out:
-            while chunk := await file.read(1 << 20):
-                size += len(chunk)
-                if size > settings.max_upload_bytes:
-                    raise HTTPException(413, "Файл слишком большой")
-                out.write(chunk)
+        await _save_upload(file, path)
         try:
-            fmt, meshes = read_wireframes(path, suffix)
-        except WireframeFormatError as exc:
+            dataset = import_wireframes(session, project_id, path, filename)
+        except ImportFailed as exc:
             raise HTTPException(422, str(exc)) from exc
-
-    dataset = Dataset(project_id=project_id, kind="wireframes", name=Path(filename).name[:255], meta={"format": fmt, "filename": filename})
-    session.add(dataset)
-    session.flush()
-    used = session.scalar(
-        select(func.count()).select_from(Wireframe).join(Dataset).where(Dataset.project_id == project_id)
-    ) or 0
-    for i, mesh in enumerate(meshes):
-        v = np.ascontiguousarray(mesh.vertices, dtype="<f8")
-        t = np.ascontiguousarray(mesh.triangles, dtype="<i4")
-        stats = mesh_stats(v, t)
-        if mesh.attributes:
-            stats["attributes"] = mesh.attributes
-        session.add(Wireframe(
-            dataset_id=dataset.id,
-            name=mesh.name[:255],
-            color=mesh.color or PALETTE[(used + i) % len(PALETTE)],
-            point_count=len(v),
-            triangle_count=len(t),
-            extent={"min": np.round(v.min(axis=0), 2).tolist(), "max": np.round(v.max(axis=0), 2).tolist()} if len(v) else {"min": [0, 0, 0], "max": [0, 0, 0]},
-            stats=stats,
-            vertices=v.tobytes(),
-            triangles=t.tobytes(),
-        ))
     session.commit()
     return dataset_out(session, dataset)
 
@@ -258,18 +240,16 @@ def _get_wireframe(session: Session, wireframe_id: int) -> Wireframe:
 
 @router.get("/wireframes/{wireframe_id}/geometry")
 def wireframe_geometry(wireframe_id: int, session: Session = Depends(get_session)) -> dict:
-    """Geometry for the 3D view: float32 vertices relative to `origin` (UTM-sized numbers lose
-    precision in float32) and uint32 triangle indices, both base64-encoded."""
+    """Where the render buffers are: float32 x, y, z relative to `origin` and uint32 triangle
+    indices, raw little-endian, served by /api/blobs/{sha256} (immutable, Range requests)."""
     w = _get_wireframe(session, wireframe_id)
-    vertices = np.frombuffer(w.vertices, dtype="<f8").reshape(-1, 3)
-    origin = np.floor(vertices.min(axis=0)) if len(vertices) else np.zeros(3)
-    relative = (vertices - origin).astype("<f4")
-    triangles = np.frombuffer(w.triangles, dtype="<i4").astype("<u4")
     return {
         "id": w.id,
-        "origin": origin.tolist(),
-        "vertices": base64.b64encode(relative.tobytes()).decode(),
-        "triangles": base64.b64encode(triangles.tobytes()).decode(),
+        "origin": w.origin,
+        "vertex_count": w.point_count,
+        "triangle_count": w.triangle_count,
+        "vertices": blob_url(w.blobs["render_vertices"]),
+        "triangles": blob_url(w.blobs["triangles"]),
     }
 
 
@@ -306,15 +286,9 @@ async def _save_upload(file: UploadFile, path: Path) -> int:
         while chunk := await file.read(1 << 20):
             size += len(chunk)
             if size > settings.max_upload_bytes:
-                raise HTTPException(413, f"Файл «{file.filename}» слишком большой")
+                raise HTTPException(413, f"Файл «{file.filename}» слишком большой для прямой загрузки; используйте загрузку частями")
             out.write(chunk)
     return size
-
-
-def _used_colors(session: Session, project_id: int) -> int:
-    lines = session.scalar(select(func.count()).select_from(LineLayer).join(Dataset).where(Dataset.project_id == project_id)) or 0
-    meshes = session.scalar(select(func.count()).select_from(Wireframe).join(Dataset).where(Dataset.project_id == project_id)) or 0
-    return lines + meshes
 
 
 # ---- lines
@@ -328,44 +302,15 @@ async def upload_lines(project_id: int, file: UploadFile, session: Session = Dep
     suffix = Path(filename).suffix.lower()
     if suffix not in LINE_SUFFIXES:
         raise HTTPException(415, f"Линии читаются из файлов {', '.join(LINE_SUFFIXES)}")
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(dir=blobs.tmp_dir()) as tmp:
         path = Path(tmp) / f"data{suffix}"
         await _save_upload(file, path)
         try:
-            fmt, layers = read_lines(path, suffix)
-        except LineFormatError as exc:
+            dataset = import_lines(session, project_id, path, filename)
+        except ImportFailed as exc:
             raise HTTPException(422, str(exc)) from exc
-
-    dataset = Dataset(project_id=project_id, kind="lines", name=Path(filename).name[:255], meta={"format": fmt, "filename": filename})
-    session.add(dataset)
-    session.flush()
-    used = _used_colors(session, project_id)
-    for i, layer in enumerate(layers):
-        vertices, offsets, closed = pack(layer.lines)
-        session.add(LineLayer(
-            dataset_id=dataset.id,
-            name=layer.name[:255],
-            color=layer.color or PALETTE[(used + i) % len(PALETTE)],
-            line_count=len(layer.lines),
-            point_count=len(vertices),
-            extent={"min": np.round(vertices.min(axis=0), 2).tolist(), "max": np.round(vertices.max(axis=0), 2).tolist()},
-            stats=line_stats(layer.lines),
-            line_attributes=[_jsonable(line.attributes) for line in layer.lines],
-            vertices=np.ascontiguousarray(vertices, dtype="<f8").tobytes(),
-            offsets=offsets.astype("<i8").tobytes(),
-            closed=closed.tobytes(),
-        ))
     session.commit()
     return dataset_out(session, dataset)
-
-
-def _jsonable(attributes: dict) -> dict:
-    out = {}
-    for k, v in attributes.items():
-        if isinstance(v, float) and not np.isfinite(v):
-            v = None
-        out[str(k)] = v if isinstance(v, (str, int, float, bool)) or v is None else str(v)
-    return out
 
 
 def _get_line_layer(session: Session, layer_id: int) -> LineLayer:
@@ -377,16 +322,16 @@ def _get_line_layer(session: Session, layer_id: int) -> LineLayer:
 
 @router.get("/lines/{layer_id}/geometry")
 def line_geometry(layer_id: int, session: Session = Depends(get_session)) -> dict:
-    """float32 vertices relative to `origin`, uint32 line starts (lines + 1) and closed flags, base64."""
+    """Render buffers: float32 vertices relative to `origin`, uint32 line starts (lines + 1), uint8 closed flags."""
     layer = _get_line_layer(session, layer_id)
-    vertices = np.frombuffer(layer.vertices, dtype="<f8").reshape(-1, 3)
-    origin = np.floor(vertices.min(axis=0)) if len(vertices) else np.zeros(3)
     return {
         "id": layer.id,
-        "origin": origin.tolist(),
-        "vertices": base64.b64encode((vertices - origin).astype("<f4").tobytes()).decode(),
-        "offsets": base64.b64encode(np.frombuffer(layer.offsets, dtype="<i8").astype("<u4").tobytes()).decode(),
-        "closed": base64.b64encode(layer.closed).decode(),
+        "origin": layer.origin,
+        "vertex_count": layer.point_count,
+        "line_count": layer.line_count,
+        "vertices": blob_url(layer.blobs["render_vertices"]),
+        "offsets": blob_url(layer.blobs["render_offsets"]),
+        "closed": blob_url(layer.blobs["closed"]),
     }
 
 
@@ -415,30 +360,7 @@ def delete_lines(layer_id: int, session: Session = Depends(get_session)) -> None
 # ---- rasters
 
 
-def raster_placement(g: Georef, width: int, height: int, checks: list, notes: list) -> tuple[dict, dict]:
-    """The stored georeference (plan or vertical) and the plan extent of a raster."""
-    pts = corners(g.affine, width, height)
-    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
-    vertical = is_vertical(g, width, height)
-    georef = {
-        "affine": g.affine, "affine_z": g.affine_z if vertical else None, "source": g.source, "crs": g.crs,
-        "placement": "vertical" if vertical else "plan",
-        "pixel_size": round(pixel_size(g.affine, g.affine_z if vertical else None), 4),
-        "rotation": round(rotation_deg(g.affine), 4),
-        "corners": [[round(x, 3), round(y, 3)] for x, y in pts],
-        "checks": checks, "notes": notes,
-    }
-    extent = {"min": [round(min(xs), 2), round(min(ys), 2)], "max": [round(max(xs), 2), round(max(ys), 2)]}
-    if vertical:
-        c3 = corners3d(g, width, height)
-        zs = [p[2] for p in c3]
-        georef["corners3d"] = [[round(v, 3) for v in p] for p in c3]
-        georef["azimuth"] = round(plane_azimuth(g.affine), 3)
-        extent = {"min": [*extent["min"], round(min(zs), 2)], "max": [*extent["max"], round(max(zs), 2)]}
-    return georef, extent
-
-
-def _section_fallback(section: str | None):
+def _section_fallback(section: str | None) -> SectionPlacement | None:
     """Images without a georeference stand on the current section line, if the client sent one."""
     if not section:
         return None
@@ -446,7 +368,7 @@ def _section_fallback(section: str | None):
         placement = VerticalPlacement(**json.loads(section))
     except (ValueError, TypeError) as exc:
         raise HTTPException(422, f"Неверные параметры разреза: {exc}") from exc
-    return lambda w, h: vertical_georef(w, h, placement.x1, placement.y1, placement.x2, placement.y2, placement.z_top, placement.z_bottom)
+    return SectionPlacement(**placement.model_dump())
 
 
 @router.post("/projects/{project_id}/rasters", response_model=list[DatasetOut], status_code=201)
@@ -460,61 +382,21 @@ async def upload_rasters(
     Images without one stand on the section line given in `section`, if any.
     Every image becomes a dataset of kind "rasters"."""
     get_project(session, project_id)
-    fallback = _section_fallback(section)
+    placement = _section_fallback(section)
     names = [f.filename or f"file{i}" for i, f in enumerate(files)]
     unknown = [n for n in names if Path(n).suffix.lower() not in IMAGE_SUFFIXES + SIDECAR_SUFFIXES]
     if unknown:
         raise HTTPException(415, f"Неподдерживаемые файлы: {', '.join(unknown)}. Изображения: {', '.join(IMAGE_SUFFIXES)}; привязка: {', '.join(SIDECAR_SUFFIXES)}")
-    groups, unmatched = pair_files(names)
-    if not groups:
-        raise HTTPException(422, "Среди файлов нет изображения (jpg, png, tif, bmp)")
-    if unmatched:
-        raise HTTPException(422, f"Файлы привязки без изображения с тем же именем: {', '.join(unmatched)}")
-
-    created: list[Dataset] = []
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(dir=blobs.tmp_dir()) as tmp:
         paths = {}
         for i, (name, upload) in enumerate(zip(names, files)):
             path = Path(tmp) / f"{i}{Path(name).suffix.lower()}"
             await _save_upload(upload, path)
             paths[name] = path
-        images = []
-        for image_name, sidecar_names in groups.items():
-            sidecars = {}
-            for s_name in sidecar_names:
-                raw = paths[s_name].read_bytes()
-                try:
-                    text = raw.decode("utf-8")
-                except UnicodeDecodeError:
-                    text = raw.decode("cp1251", errors="replace")
-                sidecars[Path(s_name).suffix.lower()] = text
-            try:
-                raster = read_raster(paths[image_name], image_name, sidecars, fallback)
-                if raster.georef.source == "Вручную по разрезу":
-                    raster.notes.append("Файла привязки нет: изображение поставлено в плоскость линии разреза, уточните края и высоты в свойствах")
-                images.append((image_name, sidecar_names, raster))
-            except RasterFormatError as exc:
-                raise HTTPException(422, str(exc)) from exc
-
-    for image_name, sidecar_names, r in images:
-        georef, extent = raster_placement(r.georef, r.width, r.height, r.checks, r.notes)
-        dataset = Dataset(project_id=project_id, kind="rasters", name=Path(image_name).name[:255],
-                          meta={"format": Path(image_name).suffix.lstrip(".").upper(), "filename": image_name, "sidecars": sidecar_names})
-        session.add(dataset)
-        session.flush()
-        session.add(Raster(
-            dataset_id=dataset.id,
-            name=Path(image_name).stem[:255],
-            width=r.width,
-            height=r.height,
-            georef=georef,
-            extent=extent,
-            elevation=r.georef.elevation,
-            opacity=1.0,
-            image=r.image,
-            mime=r.mime,
-        ))
-        created.append(dataset)
+        try:
+            created = import_rasters(session, project_id, paths, section=placement)
+        except ImportFailed as exc:
+            raise HTTPException(422, str(exc)) from exc
     session.commit()
     return [dataset_out(session, d) for d in created]
 
@@ -527,9 +409,11 @@ def _get_raster(session: Session, raster_id: int) -> Raster:
 
 
 @router.get("/rasters/{raster_id}/image")
-def raster_image(raster_id: int, session: Session = Depends(get_session)) -> Response:
+def raster_image(raster_id: int, session: Session = Depends(get_session)) -> FileResponse:
     raster = _get_raster(session, raster_id)
-    return Response(raster.image, media_type=raster.mime, headers={"Cache-Control": "private, max-age=86400"})
+    sha = raster.blobs["image"]
+    return FileResponse(blobs.path_of(sha), media_type=raster.mime,
+                        headers={"Cache-Control": "private, max-age=86400", "ETag": f'"{sha}"'})
 
 
 @router.patch("/rasters/{raster_id}", response_model=RasterOut)

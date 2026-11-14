@@ -1,0 +1,75 @@
+"""Job handlers. Each gets (ctx, params) and returns a JSON-able result."""
+
+from __future__ import annotations
+
+from sqlalchemy import delete, select
+
+from app.importing.objects import ImportFailed, SectionPlacement, import_lines, import_rasters, import_wireframes
+from app.jobs.worker import JobContext, JobError, handler
+from app.models import Upload
+from app.storage import blobs, gc
+
+
+def _uploads(ctx: JobContext, project_id: int, ids: list[str]) -> list[Upload]:
+    from app.routers.uploads import part_path
+
+    rows = {u.id: u for u in ctx.session.scalars(select(Upload).where(Upload.id.in_(ids)))}
+    out = []
+    for upload_id in ids:
+        u = rows.get(upload_id)
+        if u is None or u.project_id != project_id:
+            raise JobError("Загруженный файл не найден: загрузите его ещё раз")
+        if u.status != "complete":
+            raise JobError(f"Файл «{u.filename}» загружен не полностью")
+        if not part_path(u.id).is_file():
+            raise JobError(f"Файл «{u.filename}» пропал из хранилища: загрузите его ещё раз")
+        out.append(u)
+    return out
+
+
+@handler("import.objects")
+def import_objects(ctx: JobContext, params: dict) -> dict:
+    """params: project_id, kind (wireframes | lines | rasters), uploads [id], folder, section."""
+    from app.routers.uploads import part_path
+
+    project_id = int(params["project_id"])
+    kind = params["kind"]
+    folder = params.get("folder") or ""
+    uploads = _uploads(ctx, project_id, list(params["uploads"]))
+    ctx.log(f"Файлов: {len(uploads)}, {sum(u.size for u in uploads) / 1e6:.1f} МБ")
+    created: list[int] = []
+    try:
+        if kind == "rasters":
+            section = SectionPlacement(**params["section"]) if params.get("section") else None
+            files = {u.filename: part_path(u.id) for u in uploads}
+            datasets = import_rasters(ctx.session, project_id, files, section=section, folder=folder,
+                                      progress=ctx.progress)
+            created = [d.id for d in datasets]
+        elif kind in ("wireframes", "lines"):
+            read = import_wireframes if kind == "wireframes" else import_lines
+            imported = []
+            for i, u in enumerate(uploads):
+                def progress(fraction: float, message: str, i=i, name=u.filename) -> None:
+                    ctx.progress((i + fraction) / len(uploads), f"{name}: {message}")
+
+                dataset = read(ctx.session, project_id, part_path(u.id), u.filename, folder=folder,
+                               progress=progress, keep_source=False)
+                imported.append((dataset, u))
+                ctx.log(f"{u.filename}: прочитан ({dataset.meta.get('format')})")
+            # Sources move into the store only now: after this nothing can fail or be cancelled,
+            # so a cancelled job leaves the uploads in place for another attempt.
+            for dataset, u in imported:
+                dataset.blobs = {"source": blobs.put_file(ctx.session, part_path(u.id))}
+                created.append(dataset.id)
+        else:
+            raise JobError(f"Неизвестный тип объекта «{kind}»")
+    except ImportFailed as exc:
+        raise JobError(str(exc)) from exc
+    ctx.session.execute(delete(Upload).where(Upload.id.in_([u.id for u in uploads])))
+    return {"dataset_ids": created, "kind": kind}
+
+
+@handler("storage.gc")
+def collect_garbage(ctx: JobContext, params: dict) -> dict:
+    report = gc.collect(ctx.session)
+    return report.__dict__

@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit.engine import run_audit
-from app.formats.wireframes import mesh_stats
-from app.models import Assay, Collar, Component, Dataset, LineLayer, Project, Raster, Survey, Wireframe
+from app.importing.objects import add_line_layer, add_wireframe
+from app.models import Assay, Collar, Component, Dataset, Project, Raster, Survey
+from app.storage import blobs
 
 import numpy as np
 
@@ -102,16 +103,12 @@ def _add_orebody(session: Session, project_id: int) -> None:
         ("Ореол", "#4f9dde", (5230, 8125, 330), (260, 190, 45), 6),
     ]:
         v, t = _ellipsoid(center, radii, tilt)
-        session.add(Wireframe(
-            dataset_id=dataset.id, name=name, color=color, point_count=len(v), triangle_count=len(t),
-            extent={"min": np.round(v.min(axis=0), 2).tolist(), "max": np.round(v.max(axis=0), 2).tolist()},
-            stats=mesh_stats(v, t), vertices=v.astype("<f8").tobytes(), triangles=t.astype("<i4").tobytes(),
-        ))
+        add_wireframe(session, dataset.id, name, color, v, t)
 
 
 def _add_lines(session: Session, project_id: int) -> None:
     """Licence area outlines (closed, flat) and a road along the slope."""
-    from app.formats.lines import Polyline, line_stats, pack
+    from app.formats.lines import Polyline
 
     dataset = Dataset(project_id=project_id, kind="lines", name="Контуры (демо)", meta={"format": "демо"})
     session.add(dataset)
@@ -124,13 +121,7 @@ def _add_lines(session: Session, project_id: int) -> None:
         ("Перспективная зона", "#e0c040", [Polyline(np.array([(x, y, 430.0) for x, y in zone]), True, {"Участок": "Зона 1"})]),
         ("Дорога", "#c06fd8", [Polyline(np.array(road, dtype=float), False, {})]),
     ]:
-        vertices, offsets, closed = pack(lines)
-        session.add(LineLayer(
-            dataset_id=dataset.id, name=name, color=color, line_count=len(lines), point_count=len(vertices),
-            extent={"min": vertices.min(axis=0).tolist(), "max": vertices.max(axis=0).tolist()},
-            stats=line_stats(lines), line_attributes=[line.attributes for line in lines],
-            vertices=vertices.astype("<f8").tobytes(), offsets=offsets.astype("<i8").tobytes(), closed=closed.tobytes(),
-        ))
+        add_line_layer(session, dataset.id, name, color, lines)
 
 
 def _add_map(session: Session, project_id: int) -> None:
@@ -164,7 +155,8 @@ def _add_map(session: Session, project_id: int) -> None:
         georef={"affine": affine, "source": "World-файл", "crs": None, "pixel_size": pixel, "rotation": 0.0,
                 "corners": [list(p) for p in pts], "checks": [], "notes": []},
         extent={"min": [x0, y0 - height * pixel], "max": [x0 + width * pixel, y0]},
-        elevation=405.0, opacity=0.9, image=out.getvalue(), mime="image/jpeg",
+        elevation=405.0, opacity=0.9, mime="image/jpeg",
+        blobs={"image": blobs.put_bytes(session, out.getvalue(), media_type="image/jpeg")},
     ))
 
 
@@ -175,7 +167,7 @@ def _add_section_scan(session: Session, project_id: int) -> None:
     from PIL import Image, ImageDraw
 
     from app.formats.rasters import vertical_georef
-    from app.routers.datasets import raster_placement
+    from app.importing.objects import raster_placement
 
     width, height = 1000, 520  # 500 m along X, 260 m down from Z 440
     image = Image.new("RGB", (width, height), "#efe8d6")
@@ -199,5 +191,6 @@ def _add_section_scan(session: Session, project_id: int) -> None:
     session.flush()
     session.add(Raster(
         dataset_id=dataset.id, name="Разрез 8125", width=width, height=height, georef=georef, extent=extent,
-        elevation=None, opacity=0.85, image=out.getvalue(), mime="image/jpeg",
+        elevation=None, opacity=0.85, mime="image/jpeg",
+        blobs={"image": blobs.put_bytes(session, out.getvalue(), media_type="image/jpeg")},
     ))

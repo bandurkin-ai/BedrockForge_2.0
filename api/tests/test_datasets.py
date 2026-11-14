@@ -1,6 +1,5 @@
 """Project tree: independent drillhole sets and wireframes (TRIDB, DXF)."""
 
-import base64
 import sqlite3
 import struct
 import uuid
@@ -58,7 +57,9 @@ def test_mesh_stats_closed_cube_and_open_surface():
     cube = mesh_stats(CUBE_V + 500000, CUBE_T)  # UTM-sized coordinates keep full precision
     surface = mesh_stats(CUBE_V[:4], CUBE_T[:2])
 
-    assert cube == {"area": 6.0, "volume": 1.0, "closed": True, "degenerate": 0, "open_edges": 0}
+    assert cube == {"area": 6.0, "volume": 1.0, "closed": True, "orientation": "outward", "degenerate": 0,
+                    "open_edges": 0, "nonmanifold_edges": 0}
+    assert mesh_stats(CUBE_V, CUBE_T[:, ::-1])["orientation"] == "inward"  # normals inside, volume still positive
     assert surface["closed"] is False and surface["volume"] is None and surface["open_edges"] == 4
 
 
@@ -146,11 +147,19 @@ def test_upload_tridb_geometry_patch_and_delete(db_client, tmp_path):
     assert dump["color"].startswith("#") and dump["stats"]["closed"] is False
 
     geometry = db_client.get(f"/api/wireframes/{pit['id']}/geometry").json()
-    vertices = np.frombuffer(base64.b64decode(geometry["vertices"]), dtype="<f4").reshape(-1, 3)
-    triangles = np.frombuffer(base64.b64decode(geometry["triangles"]), dtype="<u4").reshape(-1, 3)
-    assert geometry["origin"] == [500000.0, 4500000.0, 100.0]
+    assert (geometry["vertex_count"], geometry["triangle_count"]) == (8, 12)
+    raw = db_client.get(geometry["vertices"])
+    assert raw.headers["content-type"] == "application/octet-stream" and "immutable" in raw.headers["cache-control"]
+    vertices = np.frombuffer(raw.content, dtype="<f4").reshape(-1, 3)
+    triangles = np.frombuffer(db_client.get(geometry["triangles"]).content, dtype="<u4").reshape(-1, 3)
+    assert geometry["origin"] == [500000.0, 4500000.0, 100.0]  # integer metres at the centre of the extent
     assert np.allclose(vertices + geometry["origin"], CUBE_V + [500000, 4500000, 100])
     assert np.array_equal(triangles, CUBE_T)
+    # Cached forever by hash; a part of the buffer can be read with Range.
+    etag = raw.headers["etag"]
+    assert db_client.get(geometry["vertices"], headers={"If-None-Match": etag}).status_code == 304
+    part = db_client.get(geometry["vertices"], headers={"Range": "bytes=12-23"})
+    assert part.status_code == 206 and part.content == raw.content[12:24]
 
     patched = db_client.patch(f"/api/wireframes/{pit['id']}", json={"name": "Карьер", "color": "#00AA00"}).json()
     assert (patched["name"], patched["color"]) == ("Карьер", "#00aa00")
