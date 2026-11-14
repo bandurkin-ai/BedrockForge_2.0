@@ -101,3 +101,58 @@ button.tab.active { border-color: var(--accent); color: var(--accent); font-weig
 .card .big { font-size: 1.6rem; font-weight: 600; }
 
 .pager { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+
+:root {
+  --sev-error: #c0392b;
+  --sev-warning: #b9770e;
+  --sev-info: #2e6fbd;
+  --warn-bg: #fff3d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sev-error: #ee7a6c;
+    --sev-warning: #e3b25a;
+    --sev-info: #7fb0f0;
+    --warn-bg: #3a3118;
+  }
+}
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
+a.button {
+  border: 1px solid var(--border); border-radius: 6px; padding: 7px 14px;
+  color: var(--fg); text-decoration: none;
+}
+.alert.warn { background: var(--warn-bg); }
+.small { font-size: 0.8rem; }
+
+.settings { margin: 8px 0 16px; }
+.settings summary { cursor: pointer; color: var(--accent); }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 10px; }
+.field input { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+
+.card.sev-error .big { color: var(--sev-error); }
+.card.sev-warning .big { color: var(--sev-warning); }
+.card.sev-info .big { color: var(--sev-info); }
+
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.78rem; border: 1px solid currentColor; }
+.badge.error { color: var(--sev-error); }
+.badge.warning { color: var(--sev-warning); }
+.badge.info { color: var(--sev-info); }
+.ok-mark { color: var(--muted); font-size: 0.8rem; }
+
+table.rules td.barcell { width: 28%; min-width: 120px; }
+.bar { height: 10px; border-radius: 3px; }
+.bar.error { background: var(--sev-error); }
+.bar.warning { background: var(--sev-warning); }
+.bar.info { background: var(--sev-info); }
+tr.passed td { color: var(--muted); }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: var(--head-bg); }
+.table-wrap td.wrap { white-space: normal; min-width: 220px; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.filters input, .filters button {
+  padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--fg); font: inherit;
+}
+.filters select { min-width: 160px; }

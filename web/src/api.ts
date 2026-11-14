@@ -136,3 +136,68 @@ export const commitImport = (req: ValidateRequest & { project_id: number; filena
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
+
+export interface AuditRule {
+  code: string;
+  severity: "error" | "warning" | "info";
+  table: string;
+  title: string;
+  description: string;
+  findings: number;
+  rows: number;
+}
+
+export interface AuditRun {
+  run_id: number;
+  created_at: string;
+  config: Record<string, number>;
+  by_severity: Record<string, number>;
+  stale: boolean;
+  rules: AuditRule[];
+}
+
+export interface AuditConfig {
+  depth_tolerance: number;
+  dogleg_per_30m: number;
+  isolated_factor: number;
+  z_jump: number;
+  assay_outlier_z: number;
+}
+
+export interface AuditFinding {
+  id: number;
+  code: string;
+  severity: "error" | "warning" | "info";
+  table: string;
+  hole_id: string | null;
+  count: number;
+  message: string;
+  details: { examples?: Record<string, unknown>[] };
+}
+
+export interface FindingsPage {
+  total: number;
+  items: AuditFinding[];
+}
+
+export const getAudit = (projectId: number) => request<AuditRun | null>(`/api/projects/${projectId}/audit`);
+
+export const runAudit = (projectId: number, config: AuditConfig) =>
+  request<AuditRun>(`/api/projects/${projectId}/audit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+
+export function getFindings(
+  projectId: number,
+  filters: { severity?: string; table?: string; code?: string; hole_id?: string },
+  limit: number,
+  offset: number,
+) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+  return request<FindingsPage>(`/api/projects/${projectId}/audit/findings?${params}`);
+}
+
+export const auditExportUrl = (projectId: number) => `/api/projects/${projectId}/audit/export.xlsx`;

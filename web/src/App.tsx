@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { createProject, listProjects, type Project } from "./api";
+import { AuditPage } from "./AuditPage";
 import { DataPage } from "./DataPage";
 import { ImportPage } from "./ImportPage";
 
 // Temporary shell: the full layout (project tree, Plan / Section / 3D tabs) comes in stage 1.
-type Tab = "import" | "data";
+type Tab = "import" | "data" | "audit";
 
 const STORAGE_KEY = "geo.projectId";
 
@@ -88,13 +89,16 @@ export function App() {
         <nav className="tabs inline">
           <button className={tab === "import" ? "tab active" : "tab"} onClick={() => setTab("import")}>Импорт</button>
           <button className={tab === "data" ? "tab active" : "tab"} onClick={() => setTab("data")}>Данные</button>
+          <button className={tab === "audit" ? "tab active" : "tab"} onClick={() => setTab("audit")}>Аудит</button>
         </nav>
       </header>
       {tab === "import" ? (
         // key resets the wizard when the project changes
         <ImportPage key={projectId} projectId={projectId} onImported={() => setRefreshKey((k) => k + 1)} />
-      ) : (
+      ) : tab === "data" ? (
         <DataPage projectId={projectId} refreshKey={refreshKey} />
+      ) : (
+        <AuditPage key={projectId} projectId={projectId} />
       )}
     </>
   );

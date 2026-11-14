@@ -6,7 +6,7 @@ files can arrive in any order and the audit stage reports orphans.
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Double, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import DateTime, Double, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -92,3 +92,31 @@ class ImportJob(Base):
     mapping: Mapped[dict] = mapped_column(JSONB)
     components: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditRun(Base):
+    """Latest audit result of a project; a new run replaces the previous one."""
+
+    __tablename__ = "audit_run"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(_project_fk(), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    config: Mapped[dict] = mapped_column(JSONB)
+    # {"by_severity": {"error": n, ...}, "by_code": {code: {"findings": n, "rows": m}}}
+    counts: Mapped[dict] = mapped_column(JSONB)
+
+
+class AuditFinding(Base):
+    __tablename__ = "audit_finding"
+    __table_args__ = (Index("ix_audit_finding_run", "run_id", "severity", "code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("audit_run.id", ondelete="CASCADE"))
+    code: Mapped[str] = mapped_column(String(48))
+    severity: Mapped[str] = mapped_column(String(8))
+    table_name: Mapped[str] = mapped_column(String(16))
+    hole_id: Mapped[str | None] = mapped_column(String(64))
+    count: Mapped[int] = mapped_column(Integer)
+    message: Mapped[str] = mapped_column(Text)
+    details: Mapped[dict] = mapped_column(JSONB, default=dict)
