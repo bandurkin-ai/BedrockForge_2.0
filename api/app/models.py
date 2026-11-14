@@ -133,8 +133,12 @@ class Wireframe(Base):
     # Integer metres near the centre of the extent; render buffers are relative to it.
     origin: Mapped[list] = mapped_column(JSONB, default=list)
     # Stored arrays, role -> SHA-256 (app/storage/geometry.py):
-    # vertices <f8 x y z, triangles <i4 i j k, render_vertices <f4 x y z relative to origin.
+    # vertices <f8 x y z, triangles <i4 i j k, render_vertices <f4 x y z relative to origin,
+    # lodN_vertices / lodN_triangles: simplified copies for distant views.
     blobs: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Display structure: {"chunk_triangles", "chunks": [[first, count, bbox...]], "lods": [...]};
+    # empty for wireframes stored before stage 10 (drawn whole).
+    render: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
 class LineLayer(Base):

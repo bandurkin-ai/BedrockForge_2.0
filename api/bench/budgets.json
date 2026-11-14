@@ -1,17 +1,71 @@
 {
-  "_doc": "Limits per scenario: seconds of the measured part, peak_mb of the whole process. full = docs/ROADMAP.md 2.2 targets (10 million triangles, 2 GB upload); ci = 1 million triangles on a shared CI runner, with margin.",
+  "_doc": "Limits per scenario: seconds of the measured part, peak_mb of the whole process. full = docs/ROADMAP.md 2.2 targets (10 million triangles, 2 GB upload); ci = 1 million triangles on a shared CI runner, with margin. import_dxf sizes: ci 250 000, full 2 000 000 triangles (~330 MB of DXF).",
   "ci": {
-    "mesh_stats":    {"seconds": 3,   "peak_mb": 600},
-    "store_mesh":    {"seconds": 2,   "peak_mb": 400},
-    "import_tridb":  {"seconds": 6,   "peak_mb": 700},
-    "serve_blob":    {"seconds": 2,   "peak_mb": 600},
-    "upload_chunks": {"seconds": 15,  "peak_mb": 400}
+    "mesh_stats": {
+      "seconds": 3,
+      "peak_mb": 600
+    },
+    "store_mesh": {
+      "seconds": 2,
+      "peak_mb": 400
+    },
+    "import_tridb": {
+      "seconds": 6,
+      "peak_mb": 700
+    },
+    "serve_blob": {
+      "seconds": 2,
+      "peak_mb": 600
+    },
+    "upload_chunks": {
+      "seconds": 15,
+      "peak_mb": 400
+    },
+    "derive_wireframe": {
+      "seconds": 12,
+      "peak_mb": 1000
+    },
+    "section": {
+      "seconds": 1,
+      "peak_mb": 400
+    },
+    "import_dxf": {
+      "seconds": 12,
+      "peak_mb": 800
+    }
   },
   "full": {
-    "mesh_stats":    {"seconds": 20,  "peak_mb": 2048},
-    "store_mesh":    {"seconds": 15,  "peak_mb": 1024},
-    "import_tridb":  {"seconds": 60,  "peak_mb": 2048},
-    "serve_blob":    {"seconds": 5,   "peak_mb": 1536},
-    "upload_chunks": {"seconds": 120, "peak_mb": 512}
+    "mesh_stats": {
+      "seconds": 20,
+      "peak_mb": 2048
+    },
+    "store_mesh": {
+      "seconds": 15,
+      "peak_mb": 1024
+    },
+    "import_tridb": {
+      "seconds": 60,
+      "peak_mb": 2048
+    },
+    "serve_blob": {
+      "seconds": 5,
+      "peak_mb": 1536
+    },
+    "upload_chunks": {
+      "seconds": 120,
+      "peak_mb": 512
+    },
+    "derive_wireframe": {
+      "seconds": 90,
+      "peak_mb": 2048
+    },
+    "section": {
+      "seconds": 1,
+      "peak_mb": 1024
+    },
+    "import_dxf": {
+      "seconds": 60,
+      "peak_mb": 1024
+    }
   }
 }

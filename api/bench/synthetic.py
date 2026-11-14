@@ -109,3 +109,24 @@ def block_model(n_blocks: int, block: float = 5.0, seed: int = 0) -> dict[str, n
         "_EAST": np.full(n_blocks, block), "_NORTH": np.full(n_blocks, block), "_RL": np.full(n_blocks, block),
         "AU": rng.lognormal(-1.0, 1.0, n_blocks), "DENSITY": np.full(n_blocks, 2.7),
     }
+
+
+def write_dxf_polyface(path: Path, vertices: np.ndarray, triangles: np.ndarray, layer: str = "PIT",
+                       per_entity: int = 30000) -> None:
+    """ASCII DXF with POLYFACE entities of at most `per_entity` triangles (AutoCAD keeps a polyface
+    under 32767 vertices, so real files hold many), the way Micromine and Surpac export wireframes."""
+    with path.open("w", encoding="ascii", newline="\r\n") as f:
+        f.write("0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1018\n0\nENDSEC\n")
+        f.write(f"0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n0\nLAYER\n2\n{layer}\n70\n0\n62\n1\n6\nCONTINUOUS\n0\nENDTAB\n0\nENDSEC\n")
+        f.write("0\nSECTION\n2\nENTITIES\n")
+        for start in range(0, len(triangles), per_entity):
+            tri = triangles[start:start + per_entity]
+            used, local = np.unique(tri, return_inverse=True)
+            local = local.reshape(-1, 3) + 1
+            f.write(f"0\nPOLYLINE\n8\n{layer}\n66\n1\n10\n0.0\n20\n0.0\n30\n0.0\n70\n64\n71\n{len(used)}\n72\n{len(tri)}\n")
+            f.write("".join(f"0\nVERTEX\n8\n{layer}\n10\n{x:.4f}\n20\n{y:.4f}\n30\n{z:.4f}\n70\n192\n"
+                            for x, y, z in vertices[used]))
+            f.write("".join(f"0\nVERTEX\n8\n{layer}\n10\n0.0\n20\n0.0\n30\n0.0\n70\n128\n71\n{a}\n72\n{b}\n73\n{c}\n"
+                            for a, b, c in local))
+            f.write(f"0\nSEQEND\n8\n{layer}\n")
+        f.write("0\nENDSEC\n0\nEOF\n")

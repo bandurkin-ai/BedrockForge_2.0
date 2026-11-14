@@ -10,7 +10,7 @@ export type ObjectKind = "wireframes" | "lines" | "rasters";
 
 const KIND_TITLES: Record<ObjectKind, string> = { wireframes: "Каркасы", lines: "Линии", rasters: "Растры" };
 const TABLE_SUFFIXES = [".dat", ".csv", ".txt", ".xlsx", ".xlsm", ".xls"];
-const OBJECT_SUFFIXES = [".tridb", ".dxf", ".str", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp",
+const OBJECT_SUFFIXES = [".tridb", ".dxf", ".obj", ".stl", ".str", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp",
   ".jgw", ".jpgw", ".pgw", ".pngw", ".tfw", ".tifw", ".bpw", ".wld", ".tab", ".grf"];
 export const WIZARD_ACCEPT = [...OBJECT_SUFFIXES, ...TABLE_SUFFIXES].join(",");
 

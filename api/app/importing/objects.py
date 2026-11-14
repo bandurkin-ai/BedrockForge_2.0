@@ -63,14 +63,15 @@ def jsonable(attributes: dict) -> dict:
 
 
 def add_wireframe(session: Session, dataset_id: int, name: str, color: str, vertices: np.ndarray,
-                  triangles: np.ndarray, stats: dict | None = None) -> Wireframe:
+                  triangles: np.ndarray, stats: dict | None = None, progress: Progress = _no_progress) -> Wireframe:
     v = np.ascontiguousarray(vertices, dtype="<f8").reshape(-1, 3)
     t = np.ascontiguousarray(triangles, dtype="<i4").reshape(-1, 3)
-    stored = geometry.store_mesh(session, v, t)
+    if stats is None:
+        stats = mesh_stats(v, t)
+    stored = geometry.store_mesh(session, v, t, derived=True, progress=progress)
     w = Wireframe(
         dataset_id=dataset_id, name=name[:255], color=color, point_count=len(v), triangle_count=len(t),
-        extent=stored.extent, origin=stored.origin, blobs=stored.blobs,
-        stats=stats if stats is not None else mesh_stats(v, t),
+        extent=stored.extent, origin=stored.origin, blobs=stored.blobs, render=stored.render or {}, stats=stats,
     )
     session.add(w)
     return w
@@ -92,17 +93,35 @@ def import_wireframes(session: Session, project_id: int, path: Path, filename: s
     total = sum(len(m.triangles) for m in meshes) or 1
     done = 0
     for i, mesh in enumerate(meshes):
-        progress(0.4 + 0.55 * done / total, f"Каркас {i + 1} из {len(meshes)}: {mesh.name}")
+        share = 0.55 * len(mesh.triangles) / total
+        base = 0.4 + 0.55 * done / total
+        progress(base, f"Каркас {i + 1} из {len(meshes)}: {mesh.name}, проверка")
         stats = mesh_stats(mesh.vertices, mesh.triangles)
         if mesh.attributes:
             stats["attributes"] = mesh.attributes
+
+        def step(fraction: float, message: str, base=base, share=share, name=mesh.name) -> None:
+            progress(base + share * (0.2 + 0.8 * fraction), f"{name}: {message}")
+
         add_wireframe(session, dataset.id, mesh.name, mesh.color or PALETTE[(used + i) % len(PALETTE)],
-                      mesh.vertices, mesh.triangles, stats)
+                      mesh.vertices, mesh.triangles, stats, progress=step)
         done += len(mesh.triangles)
+    session.flush()
+    queue_derive(session, project_id, dataset)
     # Last: once moved, the source is gone from the upload folder, so nothing may fail after it.
     dataset.blobs = _source_blob(session, path, keep_source)
     session.flush()
     return dataset
+
+
+def queue_derive(session: Session, project_id: int, dataset: Dataset) -> None:
+    """Checks and levels of detail run as their own job once the import is committed."""
+    from app.jobs import queue
+
+    ids = list(session.scalars(select(Wireframe.id).where(Wireframe.dataset_id == dataset.id).order_by(Wireframe.id)))
+    if ids:
+        queue.enqueue(session, "wireframes.derive", {"wireframe_ids": ids}, project_id=project_id,
+                      title=f"Проверка и копии для показа: {dataset.name}"[:255], max_attempts=2)
 
 
 def add_line_layer(session: Session, dataset_id: int, name: str, color: str, lines: list) -> LineLayer:

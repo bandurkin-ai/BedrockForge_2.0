@@ -154,7 +154,9 @@ def test_upload_tridb_geometry_patch_and_delete(db_client, tmp_path):
     triangles = np.frombuffer(db_client.get(geometry["triangles"]).content, dtype="<u4").reshape(-1, 3)
     assert geometry["origin"] == [500000.0, 4500000.0, 100.0]  # integer metres at the centre of the extent
     assert np.allclose(vertices + geometry["origin"], CUBE_V + [500000, 4500000, 100])
-    assert np.array_equal(triangles, CUBE_T)
+    # The same triangles with the same winding, in spatial (Z-order) order.
+    assert sorted(map(tuple, triangles.tolist())) == sorted(map(tuple, CUBE_T.tolist()))
+    assert geometry["chunks"] == [[0, 12, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]] and geometry["lods"] == []
     # Cached forever by hash; a part of the buffer can be read with Range.
     etag = raw.headers["etag"]
     assert db_client.get(geometry["vertices"], headers={"If-None-Match": etag}).status_code == 304
@@ -194,7 +196,9 @@ def test_upload_dxf_polyface_and_3dface(db_client, tmp_path):
 def test_upload_rejects_unknown_and_broken_files(db_client):
     pid = _project(db_client)
 
-    assert db_client.post(f"/api/projects/{pid}/wireframes", files={"file": ("a.obj", b"v 0 0 0")}).status_code == 415
+    assert db_client.post(f"/api/projects/{pid}/wireframes", files={"file": ("a.ply", b"ply")}).status_code == 415
+    no_faces = db_client.post(f"/api/projects/{pid}/wireframes", files={"file": ("a.obj", b"v 0 0 0")})
+    assert no_faces.status_code == 422 and "граней" in no_faces.json()["detail"]
     broken = db_client.post(f"/api/projects/{pid}/wireframes", files={"file": ("a.tridb", b"garbage")})
     assert broken.status_code == 422 and "TRIDB" in broken.json()["detail"]
     empty = ezdxf.new()

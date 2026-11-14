@@ -1,4 +1,4 @@
-import { getIntervals, getLineGeometry, getTrajectories, getWireframeGeometry, listHoles, type Hole, type IntervalsData, type Trajectories } from "../api";
+import { getIntervals, getLineGeometry, getTrajectories, getWireframeGeometry, listHoles, type Hole, type IntervalsData, type Trajectories, type WireframeGeometry } from "../api";
 import { loadBuffers, type Bounds } from "./geometryLoader";
 
 // Requests are cached for the session so toggling layers does not refetch megabytes.
@@ -26,20 +26,22 @@ export const loadIntervals = (setId: number, component: string, refreshKey: numb
 export const loadHoles = (setId: number, refreshKey: number): Promise<Hole[]> =>
   cached(`holes:${setId}:${refreshKey}`, () => listHoles(setId));
 
-export interface DecodedWireframe {
-  origin: number[];
+/** Where a wireframe's buffers are; re-read when its levels of detail change. */
+export const loadWireframeInfo = (id: number, lodLevels: number): Promise<WireframeGeometry> =>
+  cached(`wfi:${id}:${lodLevels}`, () => getWireframeGeometry(id));
+
+export interface WireframeBuffers {
   vertices: Float32Array;
   triangles: Uint32Array;
-  /** of `vertices`, relative to origin */
-  bounds: Bounds | null;
 }
 
-/** Wireframe geometry never changes after import, so it is cached by id only. */
-export const loadWireframe = (id: number): Promise<DecodedWireframe> =>
-  cached(`wf:${id}`, async () => {
-    const g = await getWireframeGeometry(id);
-    const { buffers, bounds } = await loadBuffers([g.vertices, g.triangles], 0);
-    return { origin: g.origin, vertices: new Float32Array(buffers[0]), triangles: new Uint32Array(buffers[1]), bounds };
+/** One level of detail (0: full). Buffers never change for a level, so they are cached by id and level. */
+export const loadWireframeLevel = (info: WireframeGeometry, level: number): Promise<WireframeBuffers> =>
+  cached(`wf:${info.id}:${level}`, async () => {
+    const lod = info.lods.find((l) => l.level === level);
+    const urls = level === 0 ? [info.vertices, info.triangles] : [lod!.vertices, lod!.triangles_url];
+    const { buffers } = await loadBuffers(urls);
+    return { vertices: new Float32Array(buffers[0]), triangles: new Uint32Array(buffers[1]) };
   });
 
 export interface DecodedLines {

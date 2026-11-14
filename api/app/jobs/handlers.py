@@ -73,3 +73,41 @@ def import_objects(ctx: JobContext, params: dict) -> dict:
 def collect_garbage(ctx: JobContext, params: dict) -> dict:
     report = gc.collect(ctx.session)
     return report.__dict__
+
+
+@handler("wireframes.derive")
+def derive_wireframes(ctx: JobContext, params: dict) -> dict:
+    """After import: normal orientation, self-intersections and levels of detail of every wireframe.
+    The wireframe can be viewed meanwhile; results are added to its stats and display structure."""
+    from sqlalchemy import update
+
+    from app.geo.checks import orientation_conflicts, self_intersections
+    from app.models import Wireframe
+    from app.storage.geometry import build_lods, mesh_arrays
+
+    ids = [int(i) for i in params.get("wireframe_ids", [])]
+    done = []
+    for k, wid in enumerate(ids):
+        w = ctx.session.get(Wireframe, wid)
+        if w is None:
+            continue  # deleted meanwhile
+
+        def step(fraction: float, message: str, k=k, name=w.name) -> None:
+            ctx.progress((k + fraction) / len(ids), f"{name}: {message}")
+
+        v, t = mesh_arrays(w.blobs)
+        step(0.0, "согласованность нормалей")
+        conflicts = orientation_conflicts(t, len(v))
+        step(0.05, "самопересечения")
+        crossings = self_intersections(v, t)
+        refs, lods = build_lods(ctx.session, v, t, w.origin, progress=lambda f, m, step=step: step(0.4 + 0.6 * f, m))
+        stats = {**(w.stats or {}), "orientation_conflicts": conflicts, "self_intersections": crossings, "checked": True}
+        # A plain UPDATE: a wireframe deleted while this ran is simply skipped.
+        ctx.session.execute(update(Wireframe).where(Wireframe.id == wid).values(
+            stats=stats, blobs={**w.blobs, **refs}, render={**(w.render or {}), "lods": lods}))
+        if crossings["pairs"]:
+            ctx.log(f"{w.name}: самопересечений {crossings['pairs']}", "warning")
+        if conflicts:
+            ctx.log(f"{w.name}: рёбер с несогласованными нормалями {conflicts}", "warning")
+        done.append(wid)
+    return {"wireframe_ids": done}

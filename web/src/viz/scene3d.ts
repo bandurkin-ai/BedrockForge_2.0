@@ -43,12 +43,29 @@ interface DrillholeLayer {
   pathOf: Map<string, number[][]>;
 }
 
+/** One level of detail of a wireframe: a mesh, or (full detail) a group of parts. */
+interface WireframeLevel {
+  object: THREE.Object3D;
+  triangles: number;
+  geometries: THREE.BufferGeometry[];
+}
+
 interface WireframeLayer {
   extent: THREE.Box3;
-  mesh: THREE.Mesh;
-  /** The wireframe's intersection with the section plane (section mode only). */
+  /** Placed at the wireframe's origin; holds its levels and its section line. */
+  group: THREE.Group;
+  material: THREE.MeshLambertMaterial;
+  /** 0: full detail; 1, 2, …: simplified copies, coarser and coarser. */
+  levels: Map<number, WireframeLevel>;
+  /** Bounding sphere in the group's coordinates (for choosing the level). */
+  sphere: THREE.Sphere;
+  /** The exact section (from the server): flat x, y, z per polyline, relative to the origin. */
+  cutLines: { closed: boolean; points: number[][] }[] | null;
   cut: LineSegments2 | null;
 }
+
+/** A level is drawn when it has at most this many triangles per pixel of the object's disc on screen. */
+const TRIANGLES_PER_PIXEL = 2;
 
 interface LineLayer3D {
   extent: THREE.Box3;
@@ -248,47 +265,109 @@ export class GeoScene {
   }
 
   /**
-   * `vertices` are float32 relative to `origin` (project coordinates), `triangles` are uint32 indices.
-   * The buffers are used as they are (no copy): the mesh is placed at its origin's offset from the
-   * scene origin, and three.js combines that offset with the camera in double precision, so the
-   * float32 vertices keep their sub-millimetre accuracy wherever the object is.
+   * A wireframe placed at its `origin` (project coordinates); its levels of detail come later
+   * (setWireframeLevel). The group's offset from the scene origin is combined with the camera in
+   * double precision, so float32 vertices keep sub-millimetre accuracy wherever the object is.
    */
-  setWireframe(id: number, origin: number[], vertices: Float32Array, triangles: Uint32Array, color: string, opacity: number, local: Bounds | null = null): void {
+  addWireframe(id: number, origin: number[], min: number[], max: number[], color: string, opacity: number): void {
     this.removeWireframe(id, false);
-    if (vertices.length === 0 || triangles.length === 0) return;
-    const b = local ?? bounds(vertices);
-    if (!b) return;
-    const min = b.min.map((v, k) => v + origin[k]);
-    const max = b.max.map((v, k) => v + origin[k]);
     const o = this.ensureOrigin(min, max);
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
-    geometry.setIndex(new THREE.BufferAttribute(triangles, 1));
-    geometry.boundingBox = new THREE.Box3(new THREE.Vector3(...b.min), new THREE.Vector3(...b.max));
-    geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
+    const group = new THREE.Group();
+    group.position.set(origin[0] - o.x, origin[1] - o.y, origin[2] - o.z);
     // Flat shading takes normals from screen-space derivatives: no normal buffer is needed.
     const material = new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, flatShading: true });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(origin[0] - o.x, origin[1] - o.y, origin[2] - o.z);
     this.applyOpacity(material, opacity);
-    const layer: WireframeLayer = {
+    const local = new THREE.Box3(new THREE.Vector3(...min.map((v, k) => v - origin[k])), new THREE.Vector3(...max.map((v, k) => v - origin[k])));
+    this.wireframes.set(id, {
       extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)),
-      mesh,
-      cut: null,
-    };
-    this.wireframes.set(id, layer);
-    this.root.add(mesh);
-    this.updateCut(layer);
+      group, material, levels: new Map(), sphere: local.getBoundingSphere(new THREE.Sphere()), cutLines: null, cut: null,
+    });
+    this.root.add(group);
     this.contentChanged();
+  }
+
+  /**
+   * One level of detail: float32 `vertices` relative to the origin and uint32 `triangles`, used
+   * without copying. `chunks` ([first triangle, count, min xyz, max xyz]) split the full level
+   * into parts sharing one vertex buffer, so parts outside the view are skipped.
+   */
+  setWireframeLevel(id: number, level: number, vertices: Float32Array, triangles: Uint32Array, chunks: number[][] | null = null): void {
+    const layer = this.wireframes.get(id);
+    if (!layer || triangles.length === 0) return;
+    this.disposeLevel(layer, level);
+    const position = new THREE.BufferAttribute(vertices, 3);
+    const parts = chunks && chunks.length > 1 ? chunks : [[0, triangles.length / 3, ...layer.sphere.center.toArray(), 0, 0, 0]];
+    const geometries: THREE.BufferGeometry[] = [];
+    const object = parts.length > 1 ? new THREE.Group() : null;
+    let single: THREE.Mesh | null = null;
+    for (const [first, count, ...box] of parts) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", position);
+      geometry.setIndex(new THREE.BufferAttribute(triangles.subarray(first * 3, (first + count) * 3), 1));
+      if (parts.length > 1) {
+        geometry.boundingBox = new THREE.Box3(new THREE.Vector3(box[0], box[1], box[2]), new THREE.Vector3(box[3], box[4], box[5]));
+        geometry.boundingSphere = geometry.boundingBox.getBoundingSphere(new THREE.Sphere());
+      } else {
+        geometry.boundingSphere = layer.sphere.clone();
+      }
+      const mesh = new THREE.Mesh(geometry, layer.material);
+      geometries.push(geometry);
+      if (object) object.add(mesh);
+      else single = mesh;
+    }
+    const entry: WireframeLevel = { object: object ?? single!, triangles: triangles.length / 3, geometries };
+    layer.levels.set(level, entry);
+    layer.group.add(entry.object);
+    this.chooseLevels();
+    this.requestRender();
+  }
+
+  /** Whether a level of a wireframe is already in the scene (the viewer loads coarse to fine). */
+  hasWireframeLevel(id: number, level: number): boolean {
+    return this.wireframes.get(id)?.levels.has(level) ?? false;
+  }
+
+  private disposeLevel(layer: WireframeLayer, level: number): void {
+    const old = layer.levels.get(level);
+    if (!old) return;
+    layer.group.remove(old.object);
+    old.geometries.forEach((g) => g.dispose());
+    layer.levels.delete(level);
+  }
+
+  /** Pixels per scene unit at a point, for the current camera. */
+  private pixelsPerUnit(at: THREE.Vector3): number {
+    const h = this.container.clientHeight || 1;
+    if (this.camera === this.ortho) return (h * this.ortho.zoom) / (this.ortho.top - this.ortho.bottom);
+    const dist = Math.max(this.perspective.position.distanceTo(at), 1e-6);
+    return h / (2 * dist * Math.tan(THREE.MathUtils.degToRad(this.perspective.fov) / 2));
+  }
+
+  /** Every wireframe shows the finest loaded level that is not denser than the screen can show. */
+  private chooseLevels(): void {
+    const centre = new THREE.Vector3();
+    for (const layer of this.wireframes.values()) {
+      if (layer.levels.size === 0) continue;
+      centre.copy(layer.sphere.center).add(layer.group.position);
+      centre.z *= this.vexag;
+      const r = layer.sphere.radius * Math.max(1, this.vexag) * this.pixelsPerUnit(centre);
+      const inside = this.camera === this.perspective && this.perspective.position.distanceTo(centre) < layer.sphere.radius * Math.max(1, this.vexag);
+      const area = Math.max(Math.PI * r * r, 1);
+      const byDetail = [...layer.levels.entries()].sort((a, b) => b[1].triangles - a[1].triangles);
+      let pick = byDetail.find(([, l]) => inside || l.triangles / area <= TRIANGLES_PER_PIXEL) ?? byDetail[byDetail.length - 1];
+      // With clipping on, the section must come from the exact geometry when it is loaded.
+      if (this.clip && layer.levels.has(0)) pick = [0, layer.levels.get(0)!];
+      for (const [level, entry] of layer.levels) entry.object.visible = level === pick[0];
+    }
   }
 
   removeWireframe(id: number, update = true): void {
     const layer = this.wireframes.get(id);
     if (!layer) return;
-    this.root.remove(layer.mesh);
-    layer.mesh.geometry.dispose();
-    (layer.mesh.material as THREE.Material).dispose();
+    for (const level of [...layer.levels.keys()]) this.disposeLevel(layer, level);
     this.removeCut(layer);
+    this.root.remove(layer.group);
+    layer.material.dispose();
     this.wireframes.delete(id);
     if (update) this.contentChanged();
   }
@@ -296,13 +375,11 @@ export class GeoScene {
   setWireframeStyle(id: number, color: string, visible: boolean, opacity: number): void {
     const layer = this.wireframes.get(id);
     if (!layer) return;
-    const material = layer.mesh.material as THREE.MeshLambertMaterial;
-    const recolor = !material.color.equals(new THREE.Color(color));
-    material.color.set(color);
-    this.applyOpacity(material, opacity);
-    layer.mesh.visible = visible;
+    const recolor = !layer.material.color.equals(new THREE.Color(color));
+    layer.material.color.set(color);
+    this.applyOpacity(layer.material, opacity);
+    layer.group.visible = visible;
     if (recolor) this.updateCut(layer);
-    if (layer.cut) layer.cut.visible = visible;
     this.requestRender();
   }
 
@@ -666,7 +743,7 @@ export class GeoScene {
         if (!inWindow || inWindow(extent)) box.union(extent);
       };
       for (const layer of this.drillholes.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
-      for (const layer of this.wireframes.values()) if (!visibleOnly || layer.mesh.visible) add(layer.extent);
+      for (const layer of this.wireframes.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
       for (const layer of this.lineLayers.values()) if (!visibleOnly || layer.lines.visible) add(layer.extent);
       if (withRasters) {
         for (const layer of this.rasters.values()) {
@@ -868,65 +945,41 @@ export class GeoScene {
 
   private removeCut(layer: WireframeLayer): void {
     if (!layer.cut) return;
-    this.root.remove(layer.cut);
+    layer.group.remove(layer.cut);
     disposeTree(layer.cut, this.materials);
     layer.cut = null;
   }
 
   /**
-   * In a clipped section a surface seen edge-on would vanish, so every wireframe also gets its
-   * intersection with the section plane drawn as a thick line in its own colour.
+   * The exact section of a wireframe by the section plane, computed on the server in float64
+   * (points relative to the wireframe's origin), or null to clear it. In a clipped section a
+   * surface seen edge-on would vanish, so the section is drawn as a thick line in its colour.
    */
+  setWireframeCut(id: number, polylines: { closed: boolean; points: number[][] }[] | null): void {
+    const layer = this.wireframes.get(id);
+    if (!layer) return;
+    layer.cutLines = polylines;
+    this.updateCut(layer);
+    this.requestRender();
+  }
+
   private updateCut(layer: WireframeLayer): void {
     this.removeCut(layer);
-    const s = this.section;
-    if (!this.clip || !s || !this.origin) return;
-    const n = sectionNormal(s.az);
-    // In the mesh's own coordinates (it sits at mesh.position in the scene).
-    const at = layer.mesh.position;
-    const c = new THREE.Vector3(s.x0 - this.origin.x - at.x, s.y0 - this.origin.y - at.y, 0);
-    const offset = n.dot(c);
-    const position = layer.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
-    const index = layer.mesh.geometry.getIndex();
-    if (!index) return;
-    const p = position.array as Float32Array;
-    const idx = index.array as Uint32Array;
-    const dist = new Float32Array(position.count);
-    for (let i = 0; i < position.count; i++) dist[i] = n.x * p[i * 3] + n.y * p[i * 3 + 1] - offset;
+    if (!this.clip || !this.section || !layer.cutLines) return;
     const out: number[] = [];
-    const corner = [0, 0, 0];
-    for (let t = 0; t < idx.length; t += 3) {
-      corner[0] = idx[t];
-      corner[1] = idx[t + 1];
-      corner[2] = idx[t + 2];
-      const d0 = dist[corner[0]];
-      const d1 = dist[corner[1]];
-      const d2 = dist[corner[2]];
-      if ((d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 < 0 && d1 < 0 && d2 < 0)) continue;
-      let found = 0;
-      for (let e = 0; e < 3 && found < 2; e++) {
-        const a = corner[e];
-        const b = corner[(e + 1) % 3];
-        const da = dist[a];
-        const db = dist[b];
-        if (da >= 0 === db >= 0) continue;
-        const k = da / (da - db);
-        out.push(
-          p[a * 3] + (p[b * 3] - p[a * 3]) * k,
-          p[a * 3 + 1] + (p[b * 3 + 1] - p[a * 3 + 1]) * k,
-          p[a * 3 + 2] + (p[b * 3 + 2] - p[a * 3 + 2]) * k,
-        );
-        found++;
+    for (const line of layer.cutLines) {
+      const p = line.points;
+      const n = line.closed ? p.length : p.length - 1;
+      for (let i = 0; i < n; i++) {
+        const a = p[i];
+        const b = p[(i + 1) % p.length];
+        out.push(a[0], a[1], a[2], b[0], b[1], b[2]);
       }
-      if (found === 1) out.length -= 3;
     }
     if (out.length === 0) return;
-    const color = (layer.mesh.material as THREE.MeshLambertMaterial).color.getHex();
-    layer.cut = this.makeLines(out, null, 3, color);
-    layer.cut.position.copy(at);
+    layer.cut = this.makeLines(out, null, 3, layer.material.color.getHex());
     layer.cut.renderOrder = 4;
-    layer.cut.visible = layer.mesh.visible;
-    this.root.add(layer.cut);
+    layer.group.add(layer.cut);
   }
 
   private project(position: THREE.Vector3): { x: number; y: number } | null {
@@ -1044,6 +1097,7 @@ export class GeoScene {
       // A headlight: the directional light follows the camera, so faces toward the viewer are lit.
       this.light.position.copy(this.camera.position);
       this.light.target.position.copy(this.controls.target);
+      this.chooseLevels();
       this.renderer.render(this.scene, this.camera);
       this.onRender();
     });

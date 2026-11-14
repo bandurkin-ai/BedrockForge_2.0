@@ -47,6 +47,10 @@ def detect(filename: str, path: Path | None = None) -> Detected:
     suffix = Path(filename).suffix.lower()
     if suffix == ".tridb":
         return Detected("wireframes", "Micromine TRIDB")
+    if suffix == ".obj":
+        return Detected("wireframes", "OBJ")
+    if suffix == ".stl":
+        return Detected("wireframes", "STL", "Координаты в STL — float32: на UTM точность около 0,5 м")
     if suffix == ".str":
         return Detected("lines", "STR (Micromine / Surpac)")
     if suffix == ".dxf":

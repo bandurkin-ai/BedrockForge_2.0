@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-WIREFRAME_SUFFIXES = (".tridb", ".dxf")
+WIREFRAME_SUFFIXES = (".tridb", ".dxf", ".obj", ".stl")
 
 
 class WireframeFormatError(ValueError):
@@ -160,39 +160,75 @@ def _bgr_to_hex(value) -> str | None:
     return f"#{c & 0xFF:02x}{(c >> 8) & 0xFF:02x}{(c >> 16) & 0xFF:02x}"
 
 
-def _blocks(blob: bytes, start: int, header_in_length: bool) -> dict[int, bytes] | None:
-    out: dict[int, bytes] = {}
+_READ = 32 << 20  # bytes per read when streaming a geometry BLOB
+
+
+def _block_table(f, total: int, start: int, header_in_length: bool) -> dict[int, tuple[int, int]] | None:
+    """Block number -> (offset, size) by walking the block headers; None if they do not fit."""
+    out: dict[int, tuple[int, int]] = {}
     pos = start
-    while pos + 16 <= len(blob):
-        length, number = struct.unpack_from("<qq", blob, pos)
+    while pos + 16 <= total:
+        f.seek(pos)
+        length, number = struct.unpack("<qq", f.read(16))
         size = length - 16 if header_in_length else length
-        if size < 0 or pos + 16 + size > len(blob):
+        if size < 0 or pos + 16 + size > total:
             return None
-        out[number] = blob[pos + 16 : pos + 16 + size]
+        out[number] = (pos + 16, size)
         pos += 16 + size
-    return out if pos == len(blob) else None
+    return out if pos == total else None
+
+
+def _read_into(f, offset: int, size: int, out: np.ndarray) -> None:
+    """Reads `size` bytes at `offset` into the 1-D array `out` (any dtype, possibly strided)."""
+    item = out.dtype.itemsize
+    f.seek(offset)
+    done = 0
+    step = _READ - _READ % item
+    while done < size:
+        chunk = f.read(min(step, size - done))
+        if not chunk:
+            raise WireframeFormatError("Геометрия TRIDB обрывается раньше времени")
+        n = len(chunk) // item
+        out[done // item:done // item + n] = np.frombuffer(chunk, dtype=out.dtype.newbyteorder("<"))
+        done += len(chunk)
+
+
+def read_tridb_geometry(f, total: int, point_count: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Decodes one Geometry BLOB from a file-like object (sqlite3.Blob, BytesIO) without holding
+    it in memory: X, Y, Z (blocks 1–3) go straight into one (n, 3) float64 array, indices
+    (block 4) into an (m, 3) int32 array. Two block-length conventions are accepted."""
+    f.seek(0)
+    head = f.read(24)
+    if len(head) < 24 or not head.startswith(_TRIDB_MAGIC):
+        raise WireframeFormatError("Неизвестная структура геометрии TRIDB")
+    guid_length = struct.unpack_from("<q", head, 8)[0]
+    start = 24 + guid_length
+    if not 0 <= guid_length <= 256 or start > total:
+        raise WireframeFormatError("Неизвестная структура геометрии TRIDB")
+    for header_in_length in (False, True):
+        table = _block_table(f, total, start, header_in_length)
+        if not table or not all(k in table for k in (1, 2, 3, 4)):
+            continue
+        sizes = [table[k][1] for k in (1, 2, 3)]
+        if len(set(sizes)) != 1 or sizes[0] % 8 or table[4][1] % 12:
+            continue
+        n = sizes[0] // 8
+        if point_count is not None and n != point_count:
+            continue
+        vertices = np.empty((n, 3), dtype=np.float64)
+        for k in range(3):
+            _read_into(f, table[k + 1][0], table[k + 1][1], vertices[:, k])
+        triangles = np.empty(table[4][1] // 4, dtype=np.int32)
+        _read_into(f, table[4][0], table[4][1], triangles)
+        return vertices, triangles.reshape(-1, 3)
+    raise WireframeFormatError("Не удалось разобрать геометрию TRIDB (блоки вершин и треугольников)")
 
 
 def parse_tridb_geometry(blob: bytes, point_count: int | None = None) -> tuple[np.ndarray, np.ndarray]:
-    """Decode one Geometry BLOB: X, Y, Z arrays (blocks 1–3) and triangle indices (block 4)."""
-    if len(blob) < 24 or not blob.startswith(_TRIDB_MAGIC):
-        raise WireframeFormatError("Неизвестная структура геометрии TRIDB")
-    guid_length = struct.unpack_from("<q", blob, 8)[0]
-    start = 24 + guid_length
-    if not 0 <= guid_length <= 256 or start > len(blob):
-        raise WireframeFormatError("Неизвестная структура геометрии TRIDB")
-    for header_in_length in (False, True):
-        blocks = _blocks(blob, start, header_in_length)
-        if not blocks or not all(k in blocks for k in (1, 2, 3, 4)):
-            continue
-        xs, ys, zs = (np.frombuffer(blocks[k], dtype="<f8") for k in (1, 2, 3))
-        if not (len(xs) == len(ys) == len(zs)) or len(blocks[4]) % 12:
-            continue
-        if point_count is not None and len(xs) != point_count:
-            continue
-        triangles = np.frombuffer(blocks[4], dtype="<i4").reshape(-1, 3).astype(np.int32)
-        return np.column_stack([xs, ys, zs]), triangles
-    raise WireframeFormatError("Не удалось разобрать геометрию TRIDB (блоки вершин и треугольников)")
+    """Decode one Geometry BLOB held in memory (see read_tridb_geometry)."""
+    import io
+
+    return read_tridb_geometry(io.BytesIO(blob), len(blob), point_count)
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -248,15 +284,18 @@ def read_tridb(path: Path) -> list[Mesh]:
         attributes = _attributes(conn, tables)
 
         meshes = []
-        for wf_id, blob in conn.execute("SELECT ID, Geometry FROM Geometry ORDER BY ID"):
-            if blob is None:
+        rows = conn.execute("SELECT rowid, ID, length(Geometry) FROM Geometry ORDER BY ID").fetchall()
+        for rowid, wf_id, size in rows:
+            if not size:
                 continue
             name, colour = info.get(wf_id, (None, None))
-            try:
-                vertices, triangles = parse_tridb_geometry(bytes(blob), counts.get(wf_id))
-            except WireframeFormatError:
-                # A count that disagrees with the geometry is not worth losing the wireframe over.
-                vertices, triangles = parse_tridb_geometry(bytes(blob))
+            # Streamed from the database: a 300 MB wireframe is never in memory twice.
+            with conn.blobopen("Geometry", "Geometry", rowid, readonly=True) as blob:
+                try:
+                    vertices, triangles = read_tridb_geometry(blob, size, counts.get(wf_id))
+                except WireframeFormatError:
+                    # A count that disagrees with the geometry is not worth losing the wireframe over.
+                    vertices, triangles = read_tridb_geometry(blob, size)
             meshes.append(_validate(Mesh(
                 name=str(name or f"Каркас {wf_id}"),
                 vertices=vertices,
@@ -302,7 +341,26 @@ def _triangulate(face: list[int]) -> list[tuple[int, int, int]]:
 
 
 def read_dxf(path: Path) -> list[Mesh]:
-    """POLYFACE / POLYMESH, 3DFACE and MESH entities, one wireframe per layer."""
+    """POLYFACE / POLYMESH, 3DFACE and MESH entities, one wireframe per layer.
+
+    ASCII DXF is streamed (formats/dxf_stream.py); binary DXF and files the stream reader cannot
+    follow go through ezdxf, which holds the whole drawing in memory."""
+    from app.formats.dxf_stream import DxfStreamError, read_dxf_meshes
+
+    try:
+        found, _ = read_dxf_meshes(path)
+    except (DxfStreamError, ValueError, UnicodeDecodeError):
+        return _read_dxf_ezdxf(path)
+    meshes = []
+    for name, (v, t, color) in found.items():
+        vertices, triangles = weld(v, t)
+        meshes.append(_validate(Mesh(name=name, vertices=vertices, triangles=triangles, color=color)))
+    if not meshes:
+        raise WireframeFormatError("В DXF нет каркасов: ожидаются POLYFACE (POLYLINE), 3DFACE или MESH")
+    return meshes
+
+
+def _read_dxf_ezdxf(path: Path) -> list[Mesh]:
     import ezdxf
     from ezdxf import recover
     from ezdxf.render import MeshBuilder
@@ -353,6 +411,91 @@ def read_dxf(path: Path) -> list[Mesh]:
     return meshes
 
 
+# ---------------------------------------------------------------- OBJ, STL
+
+
+def read_obj(path: Path) -> list[Mesh]:
+    """Wavefront OBJ: `v` vertices, `f` faces (v, v/vt, v/vt/vn, v//vn; negative = relative),
+    one wireframe per `o` / `g` name. Polygons are fan-triangulated."""
+    from array import array
+
+    coords = array("d")
+    groups: dict[str, array] = {}
+    current = groups.setdefault("OBJ", array("q"))
+    with path.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if line.startswith("v "):
+                parts = line.split()
+                try:
+                    coords.extend((float(parts[1]), float(parts[2]), float(parts[3])))
+                except (IndexError, ValueError) as exc:
+                    raise WireframeFormatError(f"OBJ: неверная вершина «{line.strip()[:60]}»") from exc
+            elif line.startswith("f "):
+                n = len(coords) // 3
+                try:
+                    idx = [int(tok.split("/")[0]) for tok in line.split()[1:]]
+                except ValueError as exc:
+                    raise WireframeFormatError(f"OBJ: неверная грань «{line.strip()[:60]}»") from exc
+                idx = [i - 1 if i > 0 else n + i for i in idx]
+                for k in range(1, len(idx) - 1):
+                    current.extend((idx[0], idx[k], idx[k + 1]))
+            elif line.startswith(("o ", "g ")):
+                name = line[2:].strip() or "OBJ"
+                current = groups.setdefault(name, array("q"))
+    v = np.frombuffer(coords, dtype=np.float64).reshape(-1, 3)
+    meshes = []
+    for name, tri in groups.items():
+        if not tri:
+            continue
+        t = np.frombuffer(tri, dtype=np.int64).reshape(-1, 3)
+        if t.min() < 0 or t.max() >= len(v):
+            raise WireframeFormatError(f"OBJ «{name}»: номера вершин граней вне диапазона")
+        used, local = np.unique(t, return_inverse=True)
+        meshes.append(_validate(Mesh(name=name, vertices=v[used], triangles=local.reshape(-1, 3).astype(np.int32))))
+    if not meshes:
+        raise WireframeFormatError("В OBJ нет граней (строк «f»)")
+    return meshes
+
+
+_STL_NOTE = "STL хранит координаты в float32: на координатах UTM шаг около 0,5 м — точность ниже, чем у исходной модели"
+
+
+def read_stl(path: Path) -> list[Mesh]:
+    """Binary or ASCII STL: a triangle soup, welded. One wireframe named after the solid."""
+    size = path.stat().st_size
+    with path.open("rb") as f:
+        head = f.read(84)
+    count = int.from_bytes(head[80:84], "little") if len(head) >= 84 else -1
+    name = path.stem
+    if len(head) >= 84 and 84 + 50 * count == size:
+        rec = np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
+        data = np.fromfile(path, dtype=rec, offset=84, count=count)
+        soup = data["v"].reshape(-1, 3).astype(np.float64)
+        label = head[:80].split(b"\x00")[0].decode("ascii", "replace").strip()
+        if label and not label.lower().startswith("solid"):
+            name = label[:100]
+    else:
+        text = path.read_text(encoding="ascii", errors="replace")
+        if not text.lstrip().lower().startswith("solid"):
+            raise WireframeFormatError("Файл не похож на STL (ни двоичный, ни текстовый)")
+        first = text.lstrip().splitlines()[0].split(maxsplit=1)
+        if len(first) > 1:
+            name = first[1].strip()[:100]
+        import re
+
+        nums = re.findall(r"vertex\s+(\S+)\s+(\S+)\s+(\S+)", text)
+        try:
+            soup = np.array(nums, dtype=np.float64)
+        except ValueError as exc:
+            raise WireframeFormatError("STL: неверные координаты вершин") from exc
+        if len(soup) % 3:
+            raise WireframeFormatError("STL: число вершин не кратно трём")
+    if len(soup) == 0:
+        raise WireframeFormatError("В STL нет треугольников")
+    vertices, triangles = weld(soup, np.arange(len(soup)).reshape(-1, 3))
+    return [_validate(Mesh(name=name or "STL", vertices=vertices, triangles=triangles, attributes={"note": _STL_NOTE}))]
+
+
 def read_wireframes(path: Path, suffix: str) -> tuple[str, list[Mesh]]:
     """Returns (format name, meshes)."""
     suffix = suffix.lower()
@@ -360,4 +503,8 @@ def read_wireframes(path: Path, suffix: str) -> tuple[str, list[Mesh]]:
         return "Micromine TRIDB", read_tridb(path)
     if suffix == ".dxf":
         return "DXF", read_dxf(path)
-    raise WireframeFormatError(f"Формат {suffix or 'без расширения'} не поддерживается для каркасов: нужны .tridb или .dxf")
+    if suffix == ".obj":
+        return "OBJ", read_obj(path)
+    if suffix == ".stl":
+        return "STL", read_stl(path)
+    raise WireframeFormatError(f"Формат {suffix or 'без расширения'} не поддерживается для каркасов: нужны {', '.join(WIREFRAME_SUFFIXES)}")

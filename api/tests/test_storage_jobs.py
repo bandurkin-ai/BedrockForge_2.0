@@ -133,7 +133,7 @@ def test_import_job_from_upload(db_client, run_jobs, tmp_path):
     assert job["status"] == "queued" and job["kind"] == "import.objects" and "Pit.tridb" in job["title"]
     assert db_client.get(f"/api/projects/{pid}/datasets").json() == []  # nothing before the worker runs
 
-    assert run_jobs() == 1
+    assert run_jobs() == 2  # the import, then checks and levels of detail of its wireframes
     done = db_client.get(f"/api/jobs/{job['id']}").json()
     assert done["status"] == "done" and done["progress"] == 1.0, done
     assert any("Pit.tridb" in e["text"] for e in done["log"])
@@ -147,7 +147,9 @@ def test_import_job_from_upload(db_client, run_jobs, tmp_path):
     assert blobs.read_bytes(source) == data
 
     listed = db_client.get(f"/api/projects/{pid}/jobs").json()
-    assert [j["id"] for j in listed] == [job["id"]]
+    assert [j["kind"] for j in listed] == ["wireframes.derive", "import.objects"]
+    stats = db_client.get(f"/api/projects/{pid}/datasets").json()[0]["wireframes"][0]["stats"]
+    assert stats["checked"] and stats["orientation_conflicts"] == 0 and stats["self_intersections"]["pairs"] == 0
 
 
 def test_import_job_failure_keeps_uploads(db_client, run_jobs):
@@ -200,7 +202,7 @@ def test_detect_dxf_faces_or_lines(tmp_path):
     assert detect("f.dxf", tmp_path / "f.dxf").kind == "wireframes"
     assert detect("l.dxf", tmp_path / "l.dxf").kind == "lines"
     assert detect("x.STR").kind == "lines" and detect("a.jgw").kind == "sidecar"
-    assert detect("holes.csv").kind == "drillholes" and detect("x.obj").kind == "unknown"
+    assert detect("holes.csv").kind == "drillholes" and detect("x.ply").kind == "unknown" and detect("x.OBJ").kind == "wireframes"
 
 
 # ---- job lifecycle

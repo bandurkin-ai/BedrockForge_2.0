@@ -362,7 +362,23 @@ export interface WireframeInfo {
   point_count: number;
   triangle_count: number;
   extent: { min: number[]; max: number[] };
-  stats: { area: number; volume: number | null; closed: boolean; degenerate: number; open_edges: number; attributes?: Record<string, unknown> };
+  stats: {
+    area: number;
+    volume: number | null;
+    closed: boolean;
+    degenerate: number;
+    open_edges: number;
+    /** "outward" / "inward" for closed solids */
+    orientation?: string | null;
+    nonmanifold_edges?: number;
+    /** set by the checks job after the import */
+    checked?: boolean;
+    orientation_conflicts?: number;
+    self_intersections?: { pairs: number; samples: number[][]; big_triangles: number };
+    attributes?: Record<string, unknown>;
+  };
+  /** simplified copies for distant views */
+  lod_levels: number;
 }
 
 export interface LineLayerInfo {
@@ -436,7 +452,21 @@ export interface WireframeGeometry {
   vertices: string;
   /** URL of uint32 triangle indices */
   triangles: string;
+  /** parts of the triangle buffer in spatial order: [first triangle, count, min xyz, max xyz] relative to origin */
+  chunks: number[][];
+  /** simplified copies, coarser and coarser */
+  lods: { level: number; triangles: number; vertex_count: number; vertices: string; triangles_url: string }[];
 }
+
+export interface SectionResult {
+  id: number;
+  origin: number[];
+  polylines: { closed: boolean; points: number[][] }[];
+}
+
+/** Exact sections of wireframes by a plane (float64 on the server), relative to each wireframe's origin. */
+export const getSections = (wireframeIds: number[], point: number[], normal: number[], signal?: AbortSignal) =>
+  request<{ sections: SectionResult[]; ms: number }>("/api/sections", { method: "POST", ...json({ wireframe_ids: wireframeIds, point, normal }), signal });
 
 const json = (body: unknown): RequestInit => ({
   headers: { "Content-Type": "application/json" },
@@ -913,3 +943,6 @@ export interface DetectedFile {
 
 export const detectUploads = (projectId: number, uploads: string[]) =>
   request<DetectedFile[]>(`/api/projects/${projectId}/detect`, { method: "POST", ...json({ uploads }) });
+
+/** Checks and levels of detail of a wireframe file, again (a job). */
+export const checkWireframes = (datasetId: number) => request<JobInfo>(`/api/datasets/${datasetId}/check`, { method: "POST" });

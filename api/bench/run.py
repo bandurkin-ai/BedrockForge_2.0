@@ -27,8 +27,10 @@ SLOWDOWN = 1.2
 
 PROFILES = {
     "ci": {"mesh_stats": 1_000_000, "store_mesh": 1_000_000, "import_tridb": 1_000_000,
+           "derive_wireframe": 1_000_000, "section": 1_000_000, "import_dxf": 250_000,
            "serve_blob": 1_000_000, "upload_chunks": 256},
     "full": {"mesh_stats": 10_000_000, "store_mesh": 10_000_000, "import_tridb": 10_000_000,
+             "derive_wireframe": 10_000_000, "section": 10_000_000, "import_dxf": 2_000_000,
              "serve_blob": 10_000_000, "upload_chunks": 2048},
 }
 UNITS = {"upload_chunks": "МБ"}
@@ -58,6 +60,15 @@ def _prepare(size: int) -> None:
     np.save(d / f"cube-{size}-v.npy", v)
     np.save(d / f"cube-{size}-t.npy", t)
     write_tridb(d / f"cube-{size}.tridb", [("куб", v, t)])
+
+
+def _prepare_dxf(size: int) -> None:
+    from bench.synthetic import cube_n_for, subdivided_cube, write_dxf_polyface
+
+    d = _cache()
+    if not (d / f"cube-{size}.dxf").exists():
+        v, t = subdivided_cube(cube_n_for(size))
+        write_dxf_polyface(d / f"cube-{size}.dxf", v, t)
 
 
 def _cube(size: int):
@@ -137,6 +148,75 @@ def scenario_import_tridb(size: int, timed) -> dict:
         _drop_project(s, pid)
     assert w["closed"] and abs(w["volume"] - 1e9) < 1e-3, w
     return {"triangles": int(12 * __import__("bench.synthetic", fromlist=["x"]).cube_n_for(size) ** 2), "file_mb": round(mb, 1)}
+
+
+def scenario_import_dxf(size: int, timed) -> dict:
+    import shutil
+
+    from app.importing.objects import import_wireframes
+    from app.storage import blobs
+
+    _prepare_dxf(size)
+    path = blobs.tmp_path(".dxf")
+    shutil.copyfile(_cache() / f"cube-{size}.dxf", path)
+    mb = path.stat().st_size / 1e6
+    with _session() as s:
+        pid = _project(s, "bench dxf")
+        with timed():
+            d = import_wireframes(s, pid, path, "bench.dxf")
+            s.commit()
+        w = s.execute(__import__("sqlalchemy").text("SELECT stats FROM wireframe WHERE dataset_id = :d"), {"d": d.id}).scalar()
+        _drop_project(s, pid)
+    assert w["closed"] and abs(w["volume"] - 1e9) < 1e-2, w
+    return {"file_mb": round(mb, 1)}
+
+
+def scenario_derive_wireframe(size: int, timed) -> dict:
+    """The job after an import: orientation, self-intersections, levels of detail."""
+    from app.geo.checks import orientation_conflicts, self_intersections
+    from app.storage.geometry import build_lods, mesh_arrays, store_mesh
+
+    v, t = _cube(size)
+    with _session() as s:
+        stored = store_mesh(s, v, t, derived=True)
+        s.commit()
+        del v, t
+        mv, mt = mesh_arrays(stored.blobs)
+        with timed():
+            conflicts = orientation_conflicts(mt, len(mv))
+            crossings = self_intersections(mv, mt)
+            _, lods = build_lods(s, mv, mt, stored.origin)
+            s.commit()
+    assert conflicts == 0 and crossings["pairs"] == 0, (conflicts, crossings)
+    return {"lods": [lod["triangles"] for lod in lods]}
+
+
+def scenario_section(size: int, timed) -> dict:
+    """Exact sections at three azimuths through a stored mesh; the slowest one counts."""
+    import numpy as np
+
+    from app.geo.section import plane_section
+    from app.storage.geometry import mesh_arrays, store_mesh
+
+    v, t = _cube(size)
+    with _session() as s:
+        stored = store_mesh(s, v, t, derived=True)
+        s.commit()
+    centre = (v.min(axis=0) + v.max(axis=0)) / 2
+    del v, t
+    mv, mt = mesh_arrays(stored.blobs)
+    plane_section(mv, mt, stored.origin, centre, [1, 0, 0], stored.render["chunks"])  # warm the page cache
+    worst = 0.0
+    for az in (0.0, 30.0, 45.0):
+        a = np.radians(az)
+        n = [np.cos(a), -np.sin(a), 0.0]
+        start = time.perf_counter()
+        lines = plane_section(mv, mt, stored.origin, centre + [0.3, 0.7, 0], n, stored.render["chunks"])
+        worst = max(worst, time.perf_counter() - start)
+        assert len(lines) == 1 and lines[0]["closed"]
+    with timed():
+        time.sleep(worst)  # report the slowest section as the measured time
+    return {"slowest_ms": round(worst * 1000, 1)}
 
 
 def scenario_serve_blob(size: int, timed) -> dict:
@@ -220,7 +300,7 @@ def _child(name: str, size: int) -> None:
 
 def run(name: str, size: int, store: Path) -> dict:
     env = {**os.environ, "BENCH_STORE": str(store), "JOBS_IN_API": "0"}
-    if name != "upload_chunks":
+    if name not in ("upload_chunks", "import_dxf"):
         prep = subprocess.run([sys.executable, "-m", "bench.run", "--prepare", "--size", str(size)],
                               cwd=HERE.parent, env=env, capture_output=True, text=True)
         if prep.returncode:

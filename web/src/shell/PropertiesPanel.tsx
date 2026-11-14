@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import type { AuditRun, Dataset, IntervalsData, LineLayerInfo, RasterInfo, RasterPatch, Summary, VerticalPlacement } from "../api";
+import { checkWireframes } from "../api";
 import { HoleCard } from "../HoleCard";
 import type { TableKind } from "../route";
 import { ComponentPanel, type VizSettings } from "../viz/ComponentPanel";
@@ -94,6 +95,26 @@ export function PropertiesPanel({
           <dt>Объём</dt><dd>{stats.volume !== null ? `${fmt(stats.volume)} м³` : "— (не замкнут)"}</dd>
           <dt>Замкнутость</dt><dd className={stats.closed ? "" : "sev warning"}>{stats.closed ? "замкнут" : `открытых рёбер: ${fmt(stats.open_edges)}`}</dd>
           {stats.degenerate > 0 && <><dt>Вырожденные</dt><dd className="sev warning">{fmt(stats.degenerate)}</dd></>}
+          {stats.orientation === "inward" && <><dt>Нормали</dt><dd className="sev warning">внутрь (объём посчитан по модулю)</dd></>}
+          {(stats.nonmanifold_edges ?? 0) > 0 && <><dt>Рёбра 3+ граней</dt><dd className="sev warning">{fmt(stats.nonmanifold_edges!)}</dd></>}
+          {stats.checked ? (
+            <>
+              <dt>Несогласованные нормали</dt>
+              <dd className={stats.orientation_conflicts ? "sev warning" : ""}>{stats.orientation_conflicts ? `${fmt(stats.orientation_conflicts)} рёбер` : "нет"}</dd>
+              <dt>Самопересечения</dt>
+              <dd className={stats.self_intersections?.pairs ? "sev error" : ""} title={stats.self_intersections?.samples.slice(0, 5).map((p) => p.map((v) => v.toFixed(1)).join(", ")).join("\n")}>
+                {stats.self_intersections?.pairs ? `${fmt(stats.self_intersections.pairs)} пар треугольников` : "нет"}
+              </dd>
+            </>
+          ) : (
+            <>
+              <dt>Проверки</dt>
+              <dd>
+                <span className="muted">не выполнялись </span>
+                <button className="link" onClick={() => void checkWireframes(wireframe.file.id).catch(() => undefined)}>проверить</button>
+              </dd>
+            </>
+          )}
           <dt>X</dt><dd>{fmt(extent.min[0])} – {fmt(extent.max[0])}</dd>
           <dt>Y</dt><dd>{fmt(extent.min[1])} – {fmt(extent.max[1])}</dd>
           <dt>Z</dt><dd>{fmt(extent.min[2])} – {fmt(extent.max[2])}</dd>

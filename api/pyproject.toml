@@ -23,6 +23,9 @@ dependencies = [
     "mcp>=2.0",
     "ezdxf>=1.3",
     "pillow>=10",
+    # Stage 10: compiled geometry kernels (self-intersections) and mesh simplification (levels of detail).
+    "numba>=0.60",
+    "pyfqmr>=0.2",
 ]
 
 [project.optional-dependencies]

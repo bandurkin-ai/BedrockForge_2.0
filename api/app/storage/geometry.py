@@ -48,18 +48,59 @@ class StoredMesh:
     origin: list[float]
     extent: dict
     blobs: dict[str, str]
+    # Display structure (wireframes): parts of the triangle array and levels of detail.
+    render: dict | None = None
 
 
-def store_mesh(session: Session, vertices: np.ndarray, triangles: np.ndarray) -> StoredMesh:
+def _no_progress(_fraction: float, _message: str) -> None:
+    pass
+
+
+def store_mesh(session: Session, vertices: np.ndarray, triangles: np.ndarray, *, derived: bool = False,
+               progress=_no_progress) -> StoredMesh:
+    """Stores a mesh; with `derived`, triangles are stored in Z-order of their centroids (the
+    same triangles, so the exact geometry is unchanged) and cut into parts of CHUNK_TRIANGLES
+    with bounding boxes (docs/ROADMAP.md, 10.3). Levels of detail come later (build_lods)."""
+    from app.geo import meshes
+
     v = np.ascontiguousarray(vertices, dtype="<f8").reshape(-1, 3)
     t = np.ascontiguousarray(triangles, dtype="<i4").reshape(-1, 3)
     origin = render_origin(v)
+    render = None
+    if derived and len(t):
+        progress(0.0, "Пространственный порядок треугольников")
+        t = np.ascontiguousarray(t[meshes.morton_order(v, t)])
+        render = {"chunk_triangles": meshes.CHUNK_TRIANGLES, "chunks": meshes.chunk_table(v, t, origin), "lods": []}
+    progress(0.6, "Запись")
     refs = {
         "vertices": blobs.put_array(session, v, "<f8"),
         "triangles": blobs.put_array(session, t, "<i4"),
         "render_vertices": blobs.put_array(session, _render_copy(v, origin), "<f4"),
     }
-    return StoredMesh(origin=origin.tolist(), extent=extent_of(v), blobs=refs)
+    return StoredMesh(origin=origin.tolist(), extent=extent_of(v), blobs=refs, render=render)
+
+
+def build_lods(session: Session, vertices: np.ndarray, triangles: np.ndarray, origin, progress=_no_progress
+               ) -> tuple[dict[str, str], list[dict]]:
+    """Simplified copies for distant views (1/8, 1/64 of the triangles), float32 relative to the
+    mesh's origin. Returns (blob refs lodN_vertices / lodN_triangles, [{"triangles", "vertices"}])."""
+    from app.geo import meshes
+
+    origin = np.asarray(origin, dtype=np.float64)
+    refs: dict[str, str] = {}
+    lods: list[dict] = []
+    src_v, src_t = vertices, triangles
+    targets = meshes.lod_targets(len(triangles))
+    for i, target in enumerate(targets, start=1):
+        label = f"Упрощённая копия {i}: {target:,} треугольников".replace(",", " ")
+        lo, hi = (i - 1) / len(targets), i / len(targets)
+        progress(lo, label)
+        src_v, src_t = meshes.simplify(src_v, src_t, target,
+                                       progress=lambda f, lo=lo, hi=hi, label=label: progress(lo + (hi - lo) * f, label))
+        refs[f"lod{i}_vertices"] = blobs.put_array(session, _render_copy(src_v, origin), "<f4")
+        refs[f"lod{i}_triangles"] = blobs.put_array(session, src_t, "<i4")
+        lods.append({"triangles": len(src_t), "vertices": len(src_v)})
+    return refs, lods
 
 
 def mesh_arrays(refs: dict) -> tuple[np.ndarray, np.ndarray]:

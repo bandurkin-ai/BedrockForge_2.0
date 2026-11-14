@@ -46,7 +46,7 @@ const SceneView = lazy(() => import("./viz/SceneView").then((m) => ({ default: m
 const STORAGE_KEY = "geo.projectId";
 const LOG_LIMIT = 200;
 const ACCEPT = {
-  wireframes: ".tridb,.dxf",
+  wireframes: ".tridb,.dxf,.obj,.stl",
   lines: ".str,.dxf",
   rasters: ".jpg,.jpeg,.png,.tif,.tiff,.bmp,.jgw,.jpgw,.pgw,.pngw,.tfw,.tifw,.bpw,.wld,.tab,.grf",
 };

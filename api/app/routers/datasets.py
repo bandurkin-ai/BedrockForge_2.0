@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -38,6 +39,8 @@ class WireframeOut(BaseModel):
     triangle_count: int
     extent: dict
     stats: dict
+    # Simplified copies for distant views (they appear after the checks job).
+    lod_levels: int = 0
 
 
 class LineLayerOut(BaseModel):
@@ -135,6 +138,7 @@ def _wireframe_out(w: Wireframe) -> WireframeOut:
     return WireframeOut(
         id=w.id, name=w.name, color=w.color, point_count=w.point_count,
         triangle_count=w.triangle_count, extent=w.extent, stats=w.stats,
+        lod_levels=len((w.render or {}).get("lods", [])),
     )
 
 
@@ -243,6 +247,12 @@ def wireframe_geometry(wireframe_id: int, session: Session = Depends(get_session
     """Where the render buffers are: float32 x, y, z relative to `origin` and uint32 triangle
     indices, raw little-endian, served by /api/blobs/{sha256} (immutable, Range requests)."""
     w = _get_wireframe(session, wireframe_id)
+    render = w.render or {}
+    lods = [
+        {"level": i, "triangles": lod["triangles"], "vertex_count": lod["vertices"],
+         "vertices": blob_url(w.blobs[f"lod{i}_vertices"]), "triangles_url": blob_url(w.blobs[f"lod{i}_triangles"])}
+        for i, lod in enumerate(render.get("lods", []), start=1)
+    ]
     return {
         "id": w.id,
         "origin": w.origin,
@@ -250,6 +260,11 @@ def wireframe_geometry(wireframe_id: int, session: Session = Depends(get_session
         "triangle_count": w.triangle_count,
         "vertices": blob_url(w.blobs["render_vertices"]),
         "triangles": blob_url(w.blobs["triangles"]),
+        # Parts of the triangle buffer in spatial order: [first triangle, count, min xyz, max xyz]
+        # relative to origin; read one with Range: bytes first*12 .. (first+count)*12-1.
+        "chunks": render.get("chunks", []),
+        # Simplified copies, coarser and coarser (only for large meshes).
+        "lods": lods,
     }
 
 
@@ -437,3 +452,61 @@ def patch_raster(raster_id: int, body: RasterPatch, session: Session = Depends(g
         raster.georef, raster.extent = raster_placement(g, raster.width, raster.height, [], notes)
     session.commit()
     return _raster_out(raster)
+
+
+# ---- sections (stage 10.5)
+
+
+class SectionIn(BaseModel):
+    wireframe_ids: list[int] = Field(min_length=1, max_length=500)
+    # A point of the plane (project coordinates) and its normal.
+    point: list[float] = Field(min_length=3, max_length=3)
+    normal: list[float] = Field(min_length=3, max_length=3)
+
+
+@lru_cache(maxsize=512)
+def _cached_section(vertices_sha: str, triangles_sha: str, origin: tuple, point: tuple, normal: tuple,
+                    chunks_json: str) -> list:
+    from app.geo.section import plane_section
+    from app.storage.geometry import mesh_arrays
+
+    v, t = mesh_arrays({"vertices": vertices_sha, "triangles": triangles_sha})
+    return plane_section(v, t, origin, point, normal, json.loads(chunks_json) or None)
+
+
+@router.post("/sections")
+def sections(body: SectionIn, session: Session = Depends(get_session)) -> dict:
+    """Exact sections of wireframes by one plane, float64, relative to every wireframe's origin.
+    Only the parts of each mesh that the plane touches are read; results are cached per plane."""
+    import time
+
+    if not any(body.normal):
+        raise HTTPException(422, "Нормаль плоскости не задана")
+    started = time.perf_counter()
+    rows = session.scalars(select(Wireframe).where(Wireframe.id.in_(body.wireframe_ids)))
+    point = tuple(round(x, 6) for x in body.point)
+    normal = tuple(round(x, 9) for x in body.normal)
+    out = []
+    for w in rows:
+        polylines = _cached_section(w.blobs["vertices"], w.blobs["triangles"], tuple(w.origin), point, normal,
+                                    json.dumps((w.render or {}).get("chunks", [])))
+        out.append({"id": w.id, "origin": w.origin, "polylines": polylines})
+    return {"sections": out, "ms": round((time.perf_counter() - started) * 1000, 1)}
+
+
+@router.post("/datasets/{dataset_id}/check", status_code=202)
+def check_wireframes(dataset_id: int, session: Session = Depends(get_session)) -> dict:
+    """Runs the checks and builds the levels of detail of a wireframe file again (a job);
+    for files loaded before these existed, or after the rules changed."""
+    from app.importing.objects import queue_derive
+    from app.jobs import queue
+    from app.models import Job
+
+    dataset = get_dataset(session, dataset_id)
+    if dataset.kind != "wireframes":
+        raise HTTPException(422, "Проверка — только для каркасов")
+    queue_derive(session, dataset.project_id, dataset)
+    session.flush()
+    job = session.scalars(select(Job).where(Job.kind == "wireframes.derive").order_by(Job.id.desc()).limit(1)).first()
+    session.commit()
+    return queue.job_out(job)

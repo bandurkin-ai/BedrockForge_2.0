@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { rasterImageUrl, type Dataset, type Hole, type IntervalsData, type ValueStats, type VerticalPlacement } from "../api";
+import { getSections, rasterImageUrl, type Dataset, type Hole, type IntervalsData, type ValueStats, type VerticalPlacement } from "../api";
 import { VEXAG_STEPS, isShown, layerKey, type ViewPreset, type WorkspaceState } from "../shell/workspace";
 import { makeScale } from "./colorScale";
 import { ScaleStrip, type VizSettings } from "./ComponentPanel";
 import { azimuthDeg, DEFAULT_WINDOW, defaultSection, shiftSection, type SectionLine } from "./geometry";
 import { GeoScene, type Hover } from "./scene3d";
-import { loadHoles, loadIntervals, loadLines, loadTrajectories, loadWireframe } from "./useVizData";
+import { loadHoles, loadIntervals, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
 
 function auditColor(h: Hole | undefined): string {
   if (!h) return "#9aa3b5";
@@ -49,7 +49,9 @@ export function SceneView(props: SceneViewProps) {
   const labelRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<SceneApi | null>(null);
   const loadedSets = useRef(new Map<number, string>());
-  const loadedWireframes = useRef(new Set<number>());
+  /** id -> number of simplified levels it was loaded with */
+  const loadedWireframes = useRef(new Map<number, number>());
+  const [wireframesShown, setWireframesShown] = useState(0);
   const loadedLines = useRef(new Set<number>());
   const loadedRasters = useRef(new Set<number>());
   const holesBySet = useRef(new Map<number, Map<string, Hole>>());
@@ -206,12 +208,13 @@ export function SceneView(props: SceneViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sets, ws.hidden, component, refreshKey, scale, activeSet]);
 
-  // ---- wireframes: geometry is loaded once per id
+  // ---- wireframes: coarse to fine — the coarsest simplified copy first (a picture within
+  // seconds), then finer ones, then the full detail in spatial parts. Levels are loaded once.
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
     const ids = new Set(wireframes.map((w) => w.id));
-    for (const id of [...loadedWireframes.current]) {
+    for (const id of [...loadedWireframes.current.keys()]) {
       if (!ids.has(id)) {
         scene.removeWireframe(id);
         loadedWireframes.current.delete(id);
@@ -219,19 +222,31 @@ export function SceneView(props: SceneViewProps) {
     }
     let cancelled = false;
     for (const w of wireframes) {
-      if (loadedWireframes.current.has(w.id) || !isShown(ws, layerKey.wireframe(w.id))) continue;
-      loadedWireframes.current.add(w.id);
+      if (loadedWireframes.current.get(w.id) === w.lod_levels || !isShown(ws, layerKey.wireframe(w.id))) continue;
+      const first = !loadedWireframes.current.has(w.id);
+      loadedWireframes.current.set(w.id, w.lod_levels);
       setLoading((n) => n + 1);
-      loadWireframe(w.id)
-        .then((g) => {
-          if (cancelled || !sceneRef.current) {
-            loadedWireframes.current.delete(w.id);
+      (async () => {
+        const info = await loadWireframeInfo(w.id, w.lod_levels);
+        if (cancelled || !sceneRef.current) throw new Error("cancelled");
+        if (first || !sceneRef.current.hasWireframeLevel(w.id, 0)) {
+          sceneRef.current.addWireframe(w.id, info.origin, w.extent.min, w.extent.max, w.color, ws.wireframeOpacity);
+          applyStyles();
+        }
+        const levels = [...info.lods.map((l) => l.level).sort((x, y) => y - x), 0];
+        for (const level of levels) {
+          if (sceneRef.current?.hasWireframeLevel(w.id, level)) continue;
+          const buffers = await loadWireframeLevel(info, level);
+          if (cancelled || !sceneRef.current) throw new Error("cancelled");
+          sceneRef.current.setWireframeLevel(w.id, level, buffers.vertices, buffers.triangles, level === 0 ? info.chunks : null);
+          setWireframesShown((n) => n + 1);
+        }
+      })()
+        .catch((e: Error) => {
+          if (e.message === "cancelled") {
+            if (loadedWireframes.current.get(w.id) === w.lod_levels) loadedWireframes.current.delete(w.id);
             return;
           }
-          sceneRef.current.setWireframe(w.id, g.origin, g.vertices, g.triangles, w.color, ws.wireframeOpacity, g.bounds);
-          applyStyles();
-        })
-        .catch((e: Error) => {
           loadedWireframes.current.delete(w.id);
           if (!cancelled) setError(e.message);
         })
@@ -242,6 +257,29 @@ export function SceneView(props: SceneViewProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wireframes, ws.hidden]);
+
+  // ---- exact sections of wireframes (server, float64) while the scene is clipped to a section
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const shown = wireframes.filter((w) => isShown(ws, layerKey.wireframe(w.id)) && loadedWireframes.current.has(w.id)).map((w) => w.id);
+    if (!ws.clip || !section || shown.length === 0) {
+      for (const w of wireframes) scene.setWireframeCut(w.id, null);
+      return;
+    }
+    const a = (section.az * Math.PI) / 180;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      getSections(shown, [section.x0, section.y0, 0], [Math.cos(a), -Math.sin(a), 0], controller.signal)
+        .then((r) => r.sections.forEach((cut) => sceneRef.current?.setWireframeCut(cut.id, cut.polylines)))
+        .catch((e: Error) => e.name !== "AbortError" && setError(e.message));
+    }, 120);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section?.x0, section?.y0, section?.az, ws.clip, wireframes, ws.hidden, wireframesShown]);
 
   // ---- line layers: geometry is loaded once per id
   useEffect(() => {
