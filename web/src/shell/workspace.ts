@@ -1,7 +1,7 @@
 export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
-export type BottomTab = "table" | "audit" | "log";
+export type BottomTab = "table" | "audit" | "stats" | "log";
 
 /** An object picked in the tree: its properties are shown on the right. */
 export type ObjectKind = "wireframe" | "lines" | "raster";
@@ -20,7 +20,7 @@ export const VIEW_TITLES: Record<ViewPreset, string> = {
   section: "В плоскость разреза",
 };
 export const VIEW_PRESETS = Object.keys(VIEW_TITLES) as ViewPreset[];
-export const BOTTOM_TITLES: Record<BottomTab, string> = { table: "Таблица", audit: "Аудит", log: "Журнал команд" };
+export const BOTTOM_TITLES: Record<BottomTab, string> = { table: "Таблица", audit: "Аудит", stats: "Статистика", log: "Журнал команд" };
 
 export interface WorkspaceState {
   /** Clip the scene to the window of the section line. */

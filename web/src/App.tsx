@@ -5,6 +5,8 @@ import {
 } from "./api";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataPage } from "./DataPage";
+import { StatsPage } from "./StatsPage";
+import type { StatsView } from "./stats/analyses";
 import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
 import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
 import { CommandLog } from "./shell/CommandLog";
@@ -87,6 +89,7 @@ function Workspace({
   const [section, setSection, sectionRef] = useLiveState<SectionLine | null>(null);
   const [selected, setSelected, selectedRef] = useLiveState<SelectedObject | null>(null);
   const [palette, setPalette] = useState<string | null>(null);
+  const [statsView, setStatsView] = useState<StatsView>({ analysis: "declus", component: null });
   const [importTarget, setImportTarget] = useState<number | null | undefined>(undefined);
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -201,6 +204,11 @@ function Workspace({
     openTable: (kind: TableKind) => {
       navigate({ kind });
       setWs((prev) => openBottom(prev, "table"));
+    },
+    openStats: (analysis, component) => {
+      setStatsView((prev) => ({ analysis, component: component ?? prev.component }));
+      // charts need room: grow a short dock, never shrink one the user enlarged
+      setWs((prev) => resize(openBottom(prev, "stats"), "bottom", Math.max(prev.sizes.bottom, 400)));
     },
     reload, onSelectProject, onNewProject, onDemoProject,
     onCreateSet: createNewSet,
@@ -392,7 +400,7 @@ function Workspace({
   }
 
   const clearHole = () => activeSet !== null && selectHole(activeSet, null);
-  const bottomTabs: BottomTab[] = ["table", "audit", "log"];
+  const bottomTabs: BottomTab[] = ["table", "audit", "stats", "log"];
   const activeSetName = sets.find((d) => d.id === activeSet)?.name ?? null;
 
   return (
@@ -508,6 +516,8 @@ function Workspace({
                         setId={activeSet} refreshKey={refreshKey} kind={route.kind} holeId={selectedHole} summary={summary}
                         onKindChange={(kind) => navigate({ kind })} onClearHole={clearHole}
                       />
+                    ) : ws.bottomTab === "stats" ? (
+                      <StatsPage setId={activeSet} refreshKey={refreshKey} summary={summary} holes={holes} view={statsView} onViewChange={setStatsView} />
                     ) : (
                       <AuditPage key={activeSet} setId={activeSet} refreshKey={refreshKey} holeId={selectedHole} onAudited={reload} onClearHole={clearHole} />
                     )}

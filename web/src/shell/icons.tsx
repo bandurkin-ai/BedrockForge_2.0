@@ -5,6 +5,7 @@ const PATHS = {
   section: "M3 18h18M3 18V8l5 3 4-5 4 6 5-3v9M8 11v7M16 12v6",
   log: "M9 3h6v18H9zM9 8h6M9 12h6M9 17h6M5 3v18",
   table: "M3 5h18v14H3zM3 10h18M3 14.5h18M9 5v14",
+  chart: "M4 4v16h16M8 15l3-4 3 2 5-6",
   audit: "M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6l8-3zM8.5 12l2.5 2.5 4.5-5",
   import: "M12 3v12M7 10l5 5 5-5M4 19h16",
   export: "M12 15V3M7 8l5-5 5 5M4 19h16",

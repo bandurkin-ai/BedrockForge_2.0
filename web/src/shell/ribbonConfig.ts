@@ -49,7 +49,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
     { command: "scene.view", args: { view: "section" }, label: "В плоскость разреза", icon: "section", hint: "Повернуть вид в плоскость разреза, Z вверх", disabled: !ctx.hasSection, small: true },
     { command: "section.clear", label: "Сбросить разрез", icon: "clear", small: true, disabled: !ctx.hasSection },
   ];
-  const bottom = (tab: "table" | "audit" | "log", label: string, icon: IconName): RibbonItem => ({
+  const bottom = (tab: "table" | "audit" | "stats" | "log", label: string, icon: IconName): RibbonItem => ({
     command: "panel.set",
     args: { panel: "bottom", tab },
     label,
@@ -143,6 +143,15 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
             { command: "audit.run", label: "Запустить аудит", icon: "play", hint: "27 правил по устьям, инклинометрии и пробам активного набора", disabled: !ctx.hasSet },
             { command: "panel.set", args: { panel: "bottom", tab: "audit" }, label: "Результаты", icon: "audit", active: ws.bottom && ws.bottomTab === "audit", disabled: !ctx.hasSet },
             { command: "audit.export", label: "Отчёт Excel", icon: "export", small: true, disabled: !ctx.hasSet },
+          ],
+        },
+        {
+          title: "Статистика",
+          items: [
+            { command: "stats.open", args: { analysis: "declus" }, label: "Декластеризация", icon: "chart", hint: "Веса декластеризации: ячейки или полигоны", disabled: !ctx.hasSet },
+            { command: "stats.open", args: { analysis: "nscore" }, label: "Нормальные оценки", icon: "chart", hint: "Нормальное преобразование содержаний", small: true, disabled: !ctx.hasSet },
+            { command: "stats.open", args: { analysis: "variogram" }, label: "Вариограмма", icon: "chart", hint: "Экспериментальная вариограмма по направлениям и модель", small: true, disabled: !ctx.hasSet },
+            { command: "stats.open", args: { analysis: "map" }, label: "Карта вариограммы", icon: "chart", hint: "Вариограмма по всем направлениям сразу", small: true, disabled: !ctx.hasSet },
           ],
         },
         {

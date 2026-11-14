@@ -314,3 +314,33 @@ button.icon.active { color: var(--accent); background: var(--accent-soft); }
 
 .toolbar-divider { width: 1px; align-self: stretch; background: var(--border); margin: 2px 2px; }
 .props-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ---- Statistics ---- */
+.stats-page { padding-bottom: 12px; }
+.stats-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+.stats-head .tabs { margin: 0; }
+.stats-form { display: flex; align-items: flex-end; gap: 10px 12px; flex-wrap: wrap; margin: 4px 0 10px; }
+.stats-field { display: inline-flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.stats-field select, .stats-field input { font-size: 13px; color: var(--fg); }
+.stats-check { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; padding-bottom: 5px; cursor: pointer; }
+.stats-results.stale { opacity: 0.55; transition: opacity 0.15s; }
+.stats-body { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
+.stats-summary { margin: 0; min-width: 230px; font-size: 13px; }
+.stats-summary > div { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.stats-summary dt { color: var(--muted); }
+.stats-summary dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.stats-pairs { max-height: 260px; overflow: auto; }
+.stats-pairs td, .stats-pairs th { font-variant-numeric: tabular-nums; }
+.stats-few { color: var(--sev-warning); }
+.chart { margin: 0; flex: 1 1 380px; max-width: 560px; }
+.chart svg { display: block; }
+.chart-grid { stroke: var(--border); stroke-width: 0.6; }
+.chart-frame { fill: none; stroke: var(--border); }
+.chart-ref { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 3; }
+.chart-tick { fill: var(--muted); font-size: 10.5px; }
+.chart-axis { fill: var(--fg); font-size: 11px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.chart-legend i { display: inline-block; width: 10px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 2px; }
+.chart-scale { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.chart-scale i { flex: 0 1 160px; height: 8px; border-radius: 2px; }
+.stats-page .stats-field select { min-width: 0; }
