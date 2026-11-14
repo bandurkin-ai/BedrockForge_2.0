@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { commandTools, findByToolName, formatShortcut, matchesQuery, toolName, validateArgs, type Command } from "./commands";
 import { buildRibbon, flattenRibbon } from "./ribbonConfig";
-import { DEFAULT_WORKSPACE, normalize, resize, setLayout, setPane, setPanel } from "./workspace";
+import { DEFAULT_WORKSPACE, isShown, layerKey, normalize, openBottom, resize, setPanel, setShown } from "./workspace";
 
 const open: Command = {
   id: "view.open",
@@ -18,18 +18,6 @@ const open: Command = {
 const hidden: Command = { id: "palette.open", title: "Палитра", description: "", uiOnly: true, run: () => undefined };
 
 describe("workspace", () => {
-  it("keeps the active pane inside the layout", () => {
-    const quad = { ...setLayout(DEFAULT_WORKSPACE, "quad"), active: 3 };
-    expect(setLayout(quad, "columns").active).toBe(1);
-    expect(setLayout(quad, "single").active).toBe(0);
-  });
-
-  it("changes one pane and ignores bad indexes", () => {
-    expect(setPane(DEFAULT_WORKSPACE, 1, "audit").panes).toEqual(["view3d", "audit", "section", "log"]);
-    expect(setPane(DEFAULT_WORKSPACE, 4, "audit")).toBe(DEFAULT_WORKSPACE);
-    expect(setPane(DEFAULT_WORKSPACE, 0, "view3d")).toBe(DEFAULT_WORKSPACE);
-  });
-
   it("shares the right dock between properties and the assistant", () => {
     const assistant = setPanel(DEFAULT_WORKSPACE, "assistant");
     expect([assistant.right, assistant.rightTab]).toEqual([true, "assistant"]);
@@ -38,19 +26,32 @@ describe("workspace", () => {
     expect(setPanel(assistant, "properties", false)).toBe(assistant); // closing a tab that is not shown changes nothing
   });
 
+  it("opens a bottom tab together with the dock", () => {
+    expect(openBottom(DEFAULT_WORKSPACE, "audit")).toMatchObject({ bottom: true, bottomTab: "audit" });
+  });
+
+  it("hides and shows layers by key", () => {
+    const hidden = setShown(DEFAULT_WORKSPACE, layerKey.wireframe(7), false);
+    expect(isShown(hidden, "wf:7")).toBe(false);
+    expect(isShown(hidden, layerKey.set(7))).toBe(true);
+    expect(setShown(setShown(hidden, "wf:7", false), "wf:7", false).hidden).toEqual(["wf:7"]); // no duplicates
+    expect(isShown(setShown(hidden, "wf:7", true), "wf:7")).toBe(true);
+  });
+
   it("clamps dock sizes", () => {
-    expect(resize(DEFAULT_WORKSPACE, "left", 10).sizes.left).toBe(180);
-    expect(resize(DEFAULT_WORKSPACE, "bottom", 5000).sizes.bottom).toBe(600);
+    expect(resize(DEFAULT_WORKSPACE, "left", 10).sizes.left).toBe(200);
+    expect(resize(DEFAULT_WORKSPACE, "bottom", 5000).sizes.bottom).toBe(640);
   });
 
   it("repairs stored state from an older version", () => {
-    const state = normalize({ layout: "tabs", panes: ["plan", "gone"], active: 9, theme: "light", sizes: { left: 9999 }, bottom: "yes" });
-    expect(state.layout).toBe("single");
-    expect(state.panes).toEqual(["plan", "plan", "section", "log"]);
-    expect(state.active).toBe(0);
+    const state = normalize({ mode: "4d", layout: "quad", theme: "light", sizes: { left: 9999 }, bottom: "yes", vexag: 7, hidden: ["wf:1", 5], wireframeOpacity: 3 });
+    expect(state.mode).toBe("3d");
     expect(state.theme).toBe("light");
-    expect(state.sizes.left).toBe(480);
+    expect(state.sizes.left).toBe(520);
     expect(state.bottom).toBe(false);
+    expect(state.vexag).toBe(1);
+    expect(state.hidden).toEqual(["wf:1"]);
+    expect(state.wireframeOpacity).toBe(DEFAULT_WORKSPACE.wireframeOpacity);
     expect(normalize(null)).toBe(DEFAULT_WORKSPACE);
   });
 });
@@ -90,8 +91,8 @@ describe("commands as Claude tools", () => {
 
 describe("ribbon and palette", () => {
   it("lists each button once and marks the active view", () => {
-    const items = flattenRibbon(buildRibbon(DEFAULT_WORKSPACE, { hasHole: false, hasData: true }));
-    const views = items.filter((i) => i.command === "view.open" && i.args?.view === "view3d");
+    const items = flattenRibbon(buildRibbon(DEFAULT_WORKSPACE, { hasHole: false, hasSet: true, hasSection: false }));
+    const views = items.filter((i) => i.command === "scene.mode" && i.args?.mode === "3d");
     expect(views).toHaveLength(1);
     expect(views[0].active).toBe(true);
     expect(items.find((i) => i.command === "hole.select")?.disabled).toBe(true);

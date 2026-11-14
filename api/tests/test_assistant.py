@@ -47,14 +47,15 @@ class ScriptedClaude:
 @pytest.fixture
 def project(db_client, db_engine):
     pid = db_client.post("/api/projects", json={"name": "Assistant"}).json()["id"]
+    sid = db_client.post(f"/api/projects/{pid}/sets", json={"name": "Скважины"}).json()["id"]
     with Session(db_engine) as s:
         s.add_all([
-            Collar(project_id=pid, hole_id="H-1", x=10.0, y=20.0, z=30.0, td=20.0),
-            Collar(project_id=pid, hole_id="H-2", x=11.0, y=21.0, z=31.0, td=10.0),
-            Assay(project_id=pid, hole_id="H-1", from_m=0.0, to_m=10.0, analytes={"AU": 1.0}),
-            Assay(project_id=pid, hole_id="H-1", from_m=10.0, to_m=12.0, analytes={"AU": 7.0}),
-            Assay(project_id=pid, hole_id="H-2", from_m=0.0, to_m=10.0, analytes={"AU": None}),
-            Component(project_id=pid, name="AU", unit="g/t"),
+            Collar(set_id=sid, hole_id="H-1", x=10.0, y=20.0, z=30.0, td=20.0),
+            Collar(set_id=sid, hole_id="H-2", x=11.0, y=21.0, z=31.0, td=10.0),
+            Assay(set_id=sid, hole_id="H-1", from_m=0.0, to_m=10.0, analytes={"AU": 1.0}),
+            Assay(set_id=sid, hole_id="H-1", from_m=10.0, to_m=12.0, analytes={"AU": 7.0}),
+            Assay(set_id=sid, hole_id="H-2", from_m=0.0, to_m=10.0, analytes={"AU": None}),
+            Component(set_id=sid, name="AU", unit="g/t"),
         ])
         s.commit()
     return db_client, pid

@@ -1,24 +1,10 @@
-import { useEffect, useState } from "react";
-import {
-  getHoleLog,
-  getIntervals,
-  getTrajectories,
-  type HoleLog,
-  type IntervalsData,
-  type Trajectories,
-} from "../api";
+import { getIntervals, getTrajectories, getWireframeGeometry, listHoles, type Hole, type IntervalsData, type Trajectories } from "../api";
 
-export interface Async<T> {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-}
-
-// Requests are cached for the session so switching between views does not refetch ~2 MB.
-// The key contains refreshKey, so a re-import or a new audit run bypasses stale entries.
+// Requests are cached for the session so toggling layers does not refetch megabytes.
+// Keys contain refreshKey, so a re-import or a new audit run bypasses stale entries.
 const cache = new Map<string, Promise<unknown>>();
 
-function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+export function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   let entry = cache.get(key) as Promise<T> | undefined;
   if (!entry) {
     entry = load().catch((e) => {
@@ -30,34 +16,29 @@ function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
   return entry;
 }
 
-function useCached<T>(key: string | null, load: () => Promise<T>): Async<T> {
-  const [state, setState] = useState<Async<T>>({ data: null, loading: key !== null, error: null });
+export const loadTrajectories = (setId: number, refreshKey: number): Promise<Trajectories> =>
+  cached(`traj:${setId}:${refreshKey}`, () => getTrajectories(setId));
 
-  useEffect(() => {
-    if (key === null) {
-      setState({ data: null, loading: false, error: null });
-      return;
-    }
-    let cancelled = false;
-    setState({ data: null, loading: true, error: null });
-    cached(key, load)
-      .then((data) => !cancelled && setState({ data, loading: false, error: null }))
-      .catch((e: Error) => !cancelled && setState({ data: null, loading: false, error: e.message }));
-    return () => {
-      cancelled = true;
-    };
-    // `load` is derived from the key
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+export const loadIntervals = (setId: number, component: string, refreshKey: number): Promise<IntervalsData> =>
+  cached(`int:${setId}:${refreshKey}:${component}`, () => getIntervals(setId, component));
 
-  return state;
+export const loadHoles = (setId: number, refreshKey: number): Promise<Hole[]> =>
+  cached(`holes:${setId}:${refreshKey}`, () => listHoles(setId));
+
+function decode(base64: string): ArrayBuffer {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  return bytes.buffer;
 }
 
-export const useTrajectories = (projectId: number, refreshKey: number): Async<Trajectories> =>
-  useCached(`traj:${projectId}:${refreshKey}`, () => getTrajectories(projectId));
+export interface DecodedWireframe {
+  origin: number[];
+  vertices: Float32Array;
+  triangles: Uint32Array;
+}
 
-export const useIntervals = (projectId: number, component: string | null, refreshKey: number): Async<IntervalsData> =>
-  useCached(component ? `int:${projectId}:${refreshKey}:${component}` : null, () => getIntervals(projectId, component!));
-
-export const useHoleLog = (projectId: number, holeId: string | null, refreshKey: number): Async<HoleLog> =>
-  useCached(holeId ? `log:${projectId}:${refreshKey}:${holeId}` : null, () => getHoleLog(projectId, holeId!));
+/** Wireframe geometry never changes after import, so it is cached by id only. */
+export const loadWireframe = (id: number): Promise<DecodedWireframe> =>
+  cached(`wf:${id}`, async () => {
+    const g = await getWireframeGeometry(id);
+    return { origin: g.origin, vertices: new Float32Array(decode(g.vertices)), triangles: new Uint32Array(decode(g.triangles)) };
+  });

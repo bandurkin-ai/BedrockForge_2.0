@@ -4,10 +4,11 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.models import Assay, Collar, Component, Survey
+from tests.helpers import new_set
 
 
 def _project(client) -> int:
-    return client.post("/api/projects", json={"name": "Viz"}).json()["id"]
+    return new_set(client, "Viz")
 
 
 @pytest.fixture
@@ -16,20 +17,20 @@ def seeded(db_client, db_engine):
     pid = _project(db_client)
     with Session(db_engine) as s:
         s.add_all([
-            Collar(project_id=pid, hole_id="V", x=1000.0, y=2000.0, z=500.0, td=40.0, azimuth=0.0, dip=-90.0),
-            Collar(project_id=pid, hole_id="I", x=1100.0, y=2000.0, z=500.0, td=40.0, azimuth=90.0, dip=-60.0),
-            Collar(project_id=pid, hole_id="X", x=None, y=None, z=None, td=10.0),
+            Collar(set_id=pid, hole_id="V", x=1000.0, y=2000.0, z=500.0, td=40.0, azimuth=0.0, dip=-90.0),
+            Collar(set_id=pid, hole_id="I", x=1100.0, y=2000.0, z=500.0, td=40.0, azimuth=90.0, dip=-60.0),
+            Collar(set_id=pid, hole_id="X", x=None, y=None, z=None, td=10.0),
         ])
         s.add_all([
-            Survey(project_id=pid, hole_id="I", depth=0.0, azimuth=90.0, dip=-60.0),
-            Survey(project_id=pid, hole_id="I", depth=40.0, azimuth=90.0, dip=-60.0),
+            Survey(set_id=pid, hole_id="I", depth=0.0, azimuth=90.0, dip=-60.0),
+            Survey(set_id=pid, hole_id="I", depth=40.0, azimuth=90.0, dip=-60.0),
         ])
         for i, value in enumerate([0.01, 0.1, 1.0, 10.0]):
-            s.add(Assay(project_id=pid, hole_id="V", from_m=10.0 * i, to_m=10.0 * (i + 1), sample_id=f"V-{i}",
+            s.add(Assay(set_id=pid, hole_id="V", from_m=10.0 * i, to_m=10.0 * (i + 1), sample_id=f"V-{i}",
                         analytes={"AU": value, "CU": None if i == 0 else 0.5}))
-        s.add(Assay(project_id=pid, hole_id="I", from_m=0.0, to_m=10.0, sample_id="I-0", analytes={"AU": 2.0}))
-        s.add(Assay(project_id=pid, hole_id="X", from_m=0.0, to_m=10.0, sample_id="X-0", analytes={"AU": 3.0}))
-        s.add_all([Component(project_id=pid, name="AU", unit="g/t"), Component(project_id=pid, name="CU", unit="%")])
+        s.add(Assay(set_id=pid, hole_id="I", from_m=0.0, to_m=10.0, sample_id="I-0", analytes={"AU": 2.0}))
+        s.add(Assay(set_id=pid, hole_id="X", from_m=0.0, to_m=10.0, sample_id="X-0", analytes={"AU": 3.0}))
+        s.add_all([Component(set_id=pid, name="AU", unit="g/t"), Component(set_id=pid, name="CU", unit="%")])
         s.commit()
     return db_client, pid
 
@@ -37,7 +38,7 @@ def seeded(db_client, db_engine):
 def test_trajectories_paths_extent_and_skipped(seeded):
     client, pid = seeded
 
-    body = client.get(f"/api/projects/{pid}/trajectories", params={"step": 10}).json()
+    body = client.get(f"/api/sets/{pid}/trajectories", params={"step": 10}).json()
 
     assert body["skipped"] == ["X"]
     holes = {h["hole_id"]: h for h in body["holes"]}
@@ -57,18 +58,18 @@ def test_trajectories_paths_extent_and_skipped(seeded):
 def test_trajectories_step_controls_density(seeded):
     client, pid = seeded
 
-    coarse = client.get(f"/api/projects/{pid}/trajectories", params={"step": 100}).json()
-    fine = client.get(f"/api/projects/{pid}/trajectories", params={"step": 2}).json()
+    coarse = client.get(f"/api/sets/{pid}/trajectories", params={"step": 100}).json()
+    fine = client.get(f"/api/sets/{pid}/trajectories", params={"step": 2}).json()
 
     n = lambda body: len(next(h for h in body["holes"] if h["hole_id"] == "V")["path"])  # noqa: E731
     assert n(coarse) == 2 and n(fine) == 21
-    assert client.get(f"/api/projects/{pid}/trajectories", params={"step": 0.1}).status_code == 422
+    assert client.get(f"/api/sets/{pid}/trajectories", params={"step": 0.1}).status_code == 422
 
 
 def test_intervals_positions_values_and_stats(seeded):
     client, pid = seeded
 
-    body = client.get(f"/api/projects/{pid}/intervals", params={"component": "AU"}).json()
+    body = client.get(f"/api/sets/{pid}/intervals", params={"component": "AU"}).json()
 
     assert body["unit"] == "g/t" and set(body["holes"]) == {"V", "I"}  # X has no trajectory
     first = body["holes"]["V"][0]
@@ -82,29 +83,29 @@ def test_intervals_positions_values_and_stats(seeded):
 def test_intervals_skip_empty_values_and_reject_unknown_component(seeded):
     client, pid = seeded
 
-    cu = client.get(f"/api/projects/{pid}/intervals", params={"component": "CU"}).json()
+    cu = client.get(f"/api/sets/{pid}/intervals", params={"component": "CU"}).json()
 
     assert [row[0] for row in cu["holes"]["V"]] == [10.0, 20.0, 30.0]  # the empty CU of the first interval is skipped
-    assert client.get(f"/api/projects/{pid}/intervals", params={"component": "ZN"}).status_code == 404
-    assert client.get(f"/api/projects/{pid}/intervals").status_code == 422
+    assert client.get(f"/api/sets/{pid}/intervals", params={"component": "ZN"}).status_code == 404
+    assert client.get(f"/api/sets/{pid}/intervals").status_code == 422
 
 
 def test_hole_log_has_survey_intervals_and_components(seeded):
     client, pid = seeded
 
-    log = client.get(f"/api/projects/{pid}/holes/I/log").json()
+    log = client.get(f"/api/sets/{pid}/holes/I/log").json()
 
     assert log["td"] == 40.0 and log["truncated"] is False
     assert [c["name"] for c in log["components"]] == ["AU", "CU"]
     assert [s["depth"] for s in log["survey"]] == [0.0, 40.0]
     assert log["intervals"] == [{"from_m": 0.0, "to_m": 10.0, "sample_id": "I-0", "values": {"AU": 2.0}}]
-    assert client.get(f"/api/projects/{pid}/holes/NOPE/log").status_code == 404
+    assert client.get(f"/api/sets/{pid}/holes/NOPE/log").status_code == 404
 
 
 def test_empty_project_returns_empty_collections(db_client):
     pid = _project(db_client)
 
-    body = db_client.get(f"/api/projects/{pid}/trajectories").json()
+    body = db_client.get(f"/api/sets/{pid}/trajectories").json()
 
     assert body == {"holes": [], "skipped": [], "extent": None}
-    assert db_client.get("/api/projects/9999/trajectories").status_code == 404
+    assert db_client.get("/api/sets/9999/trajectories").status_code == 404

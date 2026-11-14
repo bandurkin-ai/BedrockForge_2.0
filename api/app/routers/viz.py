@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.geo.trajectory import Trajectory, build_trajectory, sample_path
 from app.models import Assay, Collar, Component, Survey
-from app.routers.projects import get_project
+from app.routers.projects import get_set
 
-router = APIRouter(prefix="/api/projects/{project_id}", tags=["visualization"])
+router = APIRouter(prefix="/api/sets/{set_id}", tags=["visualization"])
 
 _MAX_LOG_INTERVALS = 5000
 
@@ -74,9 +74,9 @@ class HoleLog(BaseModel):
     truncated: bool
 
 
-def _trajectories(session: Session, project_id: int, hole_id: str | None = None) -> tuple[dict[str, Trajectory], list[str]]:
-    collar_query = select(Collar).where(Collar.project_id == project_id)
-    survey_query = select(Survey.hole_id, Survey.depth, Survey.azimuth, Survey.dip).where(Survey.project_id == project_id)
+def _trajectories(session: Session, set_id: int, hole_id: str | None = None) -> tuple[dict[str, Trajectory], list[str]]:
+    collar_query = select(Collar).where(Collar.set_id == set_id)
+    survey_query = select(Survey.hole_id, Survey.depth, Survey.azimuth, Survey.dip).where(Survey.set_id == set_id)
     if hole_id:
         collar_query = collar_query.where(Collar.hole_id == hole_id)
         survey_query = survey_query.where(Survey.hole_id == hole_id)
@@ -102,12 +102,12 @@ def _round(values: np.ndarray) -> list:
 
 @router.get("/trajectories", response_model=TrajectoriesOut)
 def trajectories(
-    project_id: int,
+    set_id: int,
     step: float = Query(10.0, ge=1.0, le=100.0, description="Maximum distance between path points, m"),
     session: Session = Depends(get_session),
 ):
-    get_project(session, project_id)
-    trajs, skipped = _trajectories(session, project_id)
+    get_set(session, set_id)
+    trajs, skipped = _trajectories(session, set_id)
     holes = []
     lows, highs = [], []
     for hole_id, traj in trajs.items():
@@ -135,20 +135,20 @@ def _stats(values: np.ndarray) -> ValueStats:
 
 
 @router.get("/intervals", response_model=IntervalsOut)
-def intervals(project_id: int, component: str, session: Session = Depends(get_session)):
+def intervals(set_id: int, component: str, session: Session = Depends(get_session)):
     """Assay intervals of one component with their 3D end points on the trajectories."""
-    get_project(session, project_id)
+    get_set(session, set_id)
     unit = session.scalar(
-        select(Component.unit).where(Component.project_id == project_id, Component.name == component)
+        select(Component.unit).where(Component.set_id == set_id, Component.name == component)
     )
     if unit is None:
-        raise HTTPException(404, f"Компонент «{component}» не найден в проекте")
+        raise HTTPException(404, f"Компонент «{component}» не найден в наборе")
 
-    trajs, _ = _trajectories(session, project_id)
+    trajs, _ = _trajectories(session, set_id)
     by_hole: dict[str, list[tuple[float, float, float]]] = {}
     rows = session.execute(
         select(Assay.hole_id, Assay.from_m, Assay.to_m, Assay.analytes[component].as_float())
-        .where(Assay.project_id == project_id, Assay.analytes.has_key(component))
+        .where(Assay.set_id == set_id, Assay.analytes.has_key(component))
     )
     for hole, from_m, to_m, value in rows:
         if hole in trajs and None not in (from_m, to_m, value) and to_m > from_m and math.isfinite(value):
@@ -170,26 +170,26 @@ def intervals(project_id: int, component: str, session: Session = Depends(get_se
 
 
 @router.get("/holes/{hole_id}/log", response_model=HoleLog)
-def hole_log(project_id: int, hole_id: str, session: Session = Depends(get_session)):
+def hole_log(set_id: int, hole_id: str, session: Session = Depends(get_session)):
     """Everything the hole log needs: survey stations and all intervals with every component."""
-    get_project(session, project_id)
+    get_set(session, set_id)
     collar = session.scalars(
-        select(Collar).where(Collar.project_id == project_id, Collar.hole_id == hole_id)
+        select(Collar).where(Collar.set_id == set_id, Collar.hole_id == hole_id)
     ).first()
     if collar is None:
         raise HTTPException(404, "Скважина не найдена")
 
     survey = session.execute(
         select(Survey.depth, Survey.azimuth, Survey.dip)
-        .where(Survey.project_id == project_id, Survey.hole_id == hole_id)
+        .where(Survey.set_id == set_id, Survey.hole_id == hole_id)
         .order_by(Survey.depth, Survey.id)
     ).all()
     assays = session.scalars(
-        select(Assay).where(Assay.project_id == project_id, Assay.hole_id == hole_id)
+        select(Assay).where(Assay.set_id == set_id, Assay.hole_id == hole_id)
         .order_by(Assay.from_m, Assay.id).limit(_MAX_LOG_INTERVALS + 1)
     ).all()
     components = session.execute(
-        select(Component.name, Component.unit).where(Component.project_id == project_id).order_by(Component.name)
+        select(Component.name, Component.unit).where(Component.set_id == set_id).order_by(Component.name)
     ).all()
     truncated = len(assays) > _MAX_LOG_INTERVALS
     return HoleLog(

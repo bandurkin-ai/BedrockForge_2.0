@@ -118,6 +118,8 @@ export function eventShortcut(e: KeyboardEvent): string {
   if (/^Key[A-Z]$/.test(e.code)) key = e.code.slice(3).toLowerCase();
   else if (/^Digit\d$/.test(e.code)) key = e.code.slice(5);
   else if (e.code === "Backquote") key = "`";
+  else if (e.code === "BracketLeft") key = "[";
+  else if (e.code === "BracketRight") key = "]";
   return [(e.ctrlKey || e.metaKey) && "ctrl", e.altKey && "alt", e.shiftKey && "shift", key].filter(Boolean).join("+");
 }
 

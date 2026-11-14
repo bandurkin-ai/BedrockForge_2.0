@@ -11,9 +11,11 @@ from sqlalchemy.orm import Session
 from app.audit.engine import latest_run
 from app.demo import create_demo_project
 from app.db import get_session
-from app.models import Assay, AuditFinding, Collar, Component, ImportJob, Project, Survey
+from app.models import Assay, AuditFinding, Collar, Component, Dataset, ImportJob, Project, Survey
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+# Drillhole data lives in drillhole sets (datasets of kind "drillholes").
+sets_router = APIRouter(prefix="/api/sets", tags=["drillholes"])
 
 Kind = Literal["collar", "survey", "assay"]
 
@@ -60,6 +62,13 @@ def get_project(session: Session, project_id: int) -> Project:
     return project
 
 
+def get_set(session: Session, set_id: int) -> Dataset:
+    dataset = session.get(Dataset, set_id)
+    if dataset is None or dataset.kind != "drillholes":
+        raise HTTPException(404, "Набор скважин не найден")
+    return dataset
+
+
 @router.get("", response_model=list[ProjectOut])
 def list_projects(session: Session = Depends(get_session)):
     return session.scalars(select(Project).order_by(Project.id)).all()
@@ -90,18 +99,18 @@ def delete_project(project_id: int, session: Session = Depends(get_session)) -> 
     session.commit()
 
 
-@router.get("/{project_id}/summary", response_model=SummaryOut)
-def summary(project_id: int, session: Session = Depends(get_session)):
-    get_project(session, project_id)
+@sets_router.get("/{set_id}/summary", response_model=SummaryOut)
+def summary(set_id: int, session: Session = Depends(get_session)):
+    get_set(session, set_id)
 
     def count(model) -> int:
-        return session.scalar(select(func.count()).select_from(model).where(model.project_id == project_id)) or 0
+        return session.scalar(select(func.count()).select_from(model).where(model.set_id == set_id)) or 0
 
     components = session.scalars(
-        select(Component).where(Component.project_id == project_id).order_by(Component.name)
+        select(Component).where(Component.set_id == set_id).order_by(Component.name)
     ).all()
     jobs = session.scalars(
-        select(ImportJob).where(ImportJob.project_id == project_id).order_by(ImportJob.id.desc()).limit(10)
+        select(ImportJob).where(ImportJob.set_id == set_id).order_by(ImportJob.id.desc()).limit(10)
     ).all()
     return SummaryOut(
         counts={"collar": count(Collar), "survey": count(Survey), "assay": count(Assay)},
@@ -121,18 +130,18 @@ _TABLES = {
 }
 
 
-@router.get("/{project_id}/tables/{kind}", response_model=TablePage)
+@sets_router.get("/{set_id}/tables/{kind}", response_model=TablePage)
 def table_page(
-    project_id: int,
+    set_id: int,
     kind: Kind,
     hole_id: str | None = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
 ):
-    get_project(session, project_id)
+    get_set(session, set_id)
     model, base_columns, order = _TABLES[kind]
-    conditions = [model.project_id == project_id]
+    conditions = [model.set_id == set_id]
     if hole_id:
         conditions.append(model.hole_id == hole_id)
     total = session.scalar(select(func.count()).select_from(model).where(*conditions)) or 0
@@ -144,7 +153,7 @@ def table_page(
     if kind == "assay":
         columns += [
             c.name for c in session.scalars(
-                select(Component).where(Component.project_id == project_id).order_by(Component.name)
+                select(Component).where(Component.set_id == set_id).order_by(Component.name)
             )
         ]
     rows = []
@@ -192,15 +201,15 @@ def _natural_key(value: str) -> list:
     return [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", value)]
 
 
-def _counts_by_hole(session: Session, model, project_id: int) -> dict[str, int]:
+def _counts_by_hole(session: Session, model, set_id: int) -> dict[str, int]:
     rows = session.execute(
-        select(model.hole_id, func.count()).where(model.project_id == project_id).group_by(model.hole_id)
+        select(model.hole_id, func.count()).where(model.set_id == set_id).group_by(model.hole_id)
     )
     return {hole: n for hole, n in rows}
 
 
-def _finding_counts(session: Session, project_id: int) -> dict[str, dict[str, int]]:
-    run = latest_run(session, project_id)
+def _finding_counts(session: Session, set_id: int) -> dict[str, dict[str, int]]:
+    run = latest_run(session, set_id)
     result: dict[str, dict[str, int]] = {}
     if run is None:
         return result
@@ -223,32 +232,32 @@ def _hole_out(c: Collar, surveys: dict, assays: dict, findings: dict) -> dict:
     }
 
 
-@router.get("/{project_id}/holes", response_model=list[HoleOut])
-def list_holes(project_id: int, session: Session = Depends(get_session)):
+@sets_router.get("/{set_id}/holes", response_model=list[HoleOut])
+def list_holes(set_id: int, session: Session = Depends(get_session)):
     """Collars with data counts and audit findings, for the hole navigator."""
-    get_project(session, project_id)
-    collars = session.scalars(select(Collar).where(Collar.project_id == project_id)).all()
-    surveys = _counts_by_hole(session, Survey, project_id)
-    assays = _counts_by_hole(session, Assay, project_id)
-    findings = _finding_counts(session, project_id)
+    get_set(session, set_id)
+    collars = session.scalars(select(Collar).where(Collar.set_id == set_id)).all()
+    surveys = _counts_by_hole(session, Survey, set_id)
+    assays = _counts_by_hole(session, Assay, set_id)
+    findings = _finding_counts(session, set_id)
     collars = sorted(collars, key=lambda c: _natural_key(c.hole_id))
     return [_hole_out(c, surveys, assays, findings) for c in collars]
 
 
-@router.get("/{project_id}/holes/{hole_id}", response_model=HoleDetail)
-def hole_detail(project_id: int, hole_id: str, session: Session = Depends(get_session)):
-    get_project(session, project_id)
+@sets_router.get("/{set_id}/holes/{hole_id}", response_model=HoleDetail)
+def hole_detail(set_id: int, hole_id: str, session: Session = Depends(get_session)):
+    get_set(session, set_id)
     collar = session.scalars(
-        select(Collar).where(Collar.project_id == project_id, Collar.hole_id == hole_id)
+        select(Collar).where(Collar.set_id == set_id, Collar.hole_id == hole_id)
     ).first()
     if collar is None:
         raise HTTPException(404, "Скважина не найдена")
 
-    surveys = _counts_by_hole(session, Survey, project_id)
-    assays = _counts_by_hole(session, Assay, project_id)
-    findings = _finding_counts(session, project_id)
+    surveys = _counts_by_hole(session, Survey, set_id)
+    assays = _counts_by_hole(session, Assay, set_id)
+    findings = _finding_counts(session, set_id)
     found: list[HoleFinding] = []
-    run = latest_run(session, project_id)
+    run = latest_run(session, set_id)
     if run is not None:
         rows = session.scalars(
             select(AuditFinding)

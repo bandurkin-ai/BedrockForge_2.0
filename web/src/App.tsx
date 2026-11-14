@@ -1,37 +1,43 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { auditExportUrl, createDemoProject, createProject, listProjects, runAudit, type Project } from "./api";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  auditExportUrl, createDemoProject, createProject, createSet, deleteDataset, deleteWireframe, listProjects, patchWireframe,
+  renameDataset, runAudit, uploadWireframes, type Dataset, type Project,
+} from "./api";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataPage } from "./DataPage";
-import { ImportPage } from "./ImportPage";
 import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
 import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
 import { CommandLog } from "./shell/CommandLog";
 import { CommandPalette } from "./shell/CommandPalette";
 import { commandTools, eventShortcut, findByToolName, validateArgs, type CommandSource, type LogEntry } from "./shell/commands";
+import { DataTree } from "./shell/DataTree";
+import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { Icon } from "./shell/icons";
-import { ProjectTree } from "./shell/ProjectTree";
+import { ImportDialog } from "./shell/ImportDialog";
 import { PropertiesPanel } from "./shell/PropertiesPanel";
-import { buildRibbon, flattenRibbon, type RibbonItem } from "./shell/ribbonConfig";
-import { Ribbon } from "./shell/Ribbon";
 import { buildCommands, type Live } from "./shell/registry";
+import { Ribbon } from "./shell/Ribbon";
+import { buildRibbon, flattenRibbon, type RibbonItem } from "./shell/ribbonConfig";
 import { Splitter } from "./shell/Splitter";
 import { useAssistant, type ToolOutcome } from "./shell/useAssistant";
 import { useLiveState } from "./shell/useLiveState";
 import { useRemoteCommands } from "./shell/useRemoteCommands";
-import { ViewportGrid } from "./shell/ViewportGrid";
 import {
-  loadWorkspace, PANE_COUNT, resize, saveWorkspace, setLayout, setPane, setPanel, VIEW_TITLES,
-  type ViewKind, type WorkspaceState,
+  BOTTOM_TITLES, MODE_TITLES, isShown, layerKey, loadWorkspace, openBottom, resize, saveWorkspace, setPanel, setShown,
+  type BottomTab, type WorkspaceState,
 } from "./shell/workspace";
 import { StatusBar } from "./StatusBar";
 import { useOverview } from "./useOverview";
 import { DEFAULT_VIZ, type VizSettings } from "./viz/ComponentPanel";
 import type { SectionLine } from "./viz/geometry";
 import { THEME_EVENT } from "./viz/scene3d-theme";
-import { VizTab } from "./viz/VizTab";
+
+// three.js is large: the 3D view is a separate chunk, the shell appears first.
+const SceneView = lazy(() => import("./viz/SceneView").then((m) => ({ default: m.SceneView })));
 
 const STORAGE_KEY = "geo.projectId";
 const LOG_LIMIT = 200;
+const WIREFRAME_ACCEPT = ".tridb,.dxf";
 
 function loadSavedProjectId(): number | null {
   try {
@@ -72,22 +78,64 @@ function Workspace({
   const [refreshKey, setRefreshKey] = useState(0);
   const [viz, setViz, vizRef] = useLiveState<VizSettings>(DEFAULT_VIZ);
   const [section, setSection, sectionRef] = useLiveState<SectionLine | null>(null);
+  const [selectedWireframe, setSelectedWireframe, wireframeRef] = useLiveState<number | null>(null);
   const [palette, setPalette] = useState<string | null>(null);
+  const [importTarget, setImportTarget] = useState<number | null | undefined>(undefined);
+  const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [approval, setApproval] = useState<Approval | null>(null);
-  const { summary, holes, audit, error } = useOverview(projectId, refreshKey);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const fitRef = useRef<() => void>(() => undefined);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // The selected hole lives in the URL, so it survives reload and back/forward.
-  const selectedHole = route.hole;
-  const setSelectedHole = useCallback((hole: string | null) => navigate({ hole }, { replace: true }), [navigate]);
+  // The active set and the selected hole live in the URL, so they survive a reload.
+  const [activeSet, setActiveSet, activeSetRef] = useLiveState<number | null>(route.set);
+  const [selectedHole, setSelectedHole, holeRef] = useLiveState<string | null>(route.hole);
 
-  // Drop the selection if that hole no longer exists (e.g. after re-importing collars).
+  const { datasets, datasetsKey, summary, holes, audit, error } = useOverview(projectId, activeSet, refreshKey);
+  // A set created just now (import, "new set") is not in the tree until it reloads: do not reset to the first set meanwhile.
+  const pendingSet = useRef<{ set: number; key: number } | null>(null);
+  const refreshKeyRef = useRef(refreshKey);
+  refreshKeyRef.current = refreshKey;
+  const reloadAndSelect = (setId: number) => {
+    pendingSet.current = { set: setId, key: refreshKeyRef.current + 1 };
+    reload();
+    selectHole(setId, null);
+  };
+  const sets = useMemo(() => (datasets ?? []).filter((d) => d.kind === "drillholes"), [datasets]);
+
+  const selectHole = useCallback(
+    (setId: number, holeId: string | null) => {
+      setActiveSet(setId);
+      setSelectedHole(holeId);
+      if (holeId) setSelectedWireframe(null);
+      navigate({ set: setId, hole: holeId });
+    },
+    [navigate, setActiveSet, setSelectedHole, setSelectedWireframe],
+  );
+  const selectSet = useCallback(
+    (setId: number) => {
+      if (setId !== activeSetRef.current) selectHole(setId, null);
+    },
+    [activeSetRef, selectHole],
+  );
+
+  // Keep the active set valid: the first set by default, never a deleted one.
   useEffect(() => {
-    if (selectedHole && holes.length > 0 && !holes.some((h) => h.hole_id === selectedHole)) {
-      navigate({ hole: null }, { replace: true });
-    }
-  }, [holes, selectedHole, navigate]);
+    if (!datasets) return;
+    if (activeSet !== null && sets.some((d) => d.id === activeSet)) return;
+    const pending = pendingSet.current;
+    if (pending && pending.set === activeSet && datasetsKey < pending.key) return;
+    const next = sets[0]?.id ?? null;
+    setActiveSet(next);
+    setSelectedHole(null);
+    navigate({ set: next, hole: null });
+  }, [datasets, datasetsKey, sets, activeSet, navigate, setActiveSet, setSelectedHole]);
+
+  // Drop the hole selection if that hole no longer exists (e.g. after re-importing collars).
+  useEffect(() => {
+    if (selectedHole && activeSet !== null && holes.length > 0 && !holes.some((h) => h.hole_id === selectedHole)) selectHole(activeSet, null);
+  }, [holes, selectedHole, activeSet, selectHole]);
 
   useEffect(() => saveWorkspace(ws), [ws]);
   useEffect(() => {
@@ -95,61 +143,63 @@ function Workspace({
     window.dispatchEvent(new Event(THEME_EVENT));
   }, [ws.theme]);
 
-  // The URL addresses the active pane. Without a hash the remembered view is shown;
-  // otherwise the pane follows the URL (links, back/forward).
-  const [hashReady, setHashReady] = useState(() => window.location.hash.length > 1);
   useEffect(() => {
-    if (!hashReady) {
-      navigate({ tab: ws.panes[ws.active] }, { replace: true });
-      setHashReady(true);
-    } else {
-      setWs((prev) => setPane(prev, prev.active, route.tab));
-    }
-  }, [route.tab, hashReady]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const activatePane = useCallback(
-    (index: number) => {
-      setWs((prev) => (index < PANE_COUNT[prev.layout] ? { ...prev, active: index } : prev));
-      navigate({ tab: wsRef.current.panes[index] }, { replace: true });
-    },
-    [navigate, setWs, wsRef],
-  );
-
-  const openView = useCallback(
-    (view: ViewKind, pane?: number) => {
-      if (pane === undefined || pane === wsRef.current.active) navigate({ tab: view });
-      else setWs((prev) => setPane(prev, pane, view));
-    },
-    [navigate, setWs, wsRef],
-  );
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), notice.error ? 9000 : 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   const assistant = useAssistant(projectId, {
     tools: () => commandTools(commands),
     context: () => ({
       project: { id: project.id, name: project.name },
-      counts: summary?.counts ?? null,
-      components: summary?.components ?? [],
+      mode: ws.mode,
+      drillhole_sets: sets.map((d) => ({
+        id: d.id, name: d.name, shown: isShown(ws, layerKey.set(d.id)), active: d.id === activeSet,
+        counts: d.counts, components: d.components, audit: d.audit,
+      })),
+      wireframes: (datasets ?? []).flatMap((d) => (d.wireframes ?? []).map((w) => ({ id: w.id, name: w.name, file: d.name, shown: isShown(ws, layerKey.wireframe(w.id)) }))),
       selected_hole: selectedHole,
-      layout: ws.layout,
-      windows: ws.panes.slice(0, PANE_COUNT[ws.layout]).map((view, i) => ({ window: i + 1, view, active: i === ws.active })),
+      selected_wireframe: selectedWireframe,
       color_scale: viz,
       section,
-      audit: audit ? { ...audit.by_severity, stale: audit.stale } : null,
     }),
     execute: (name, input) => executeTool(name, input),
   });
 
+  async function createNewSet(name: string): Promise<string> {
+    const created = await createSet(projectId, name.trim() || "Скважины");
+    reloadAndSelect(created.id);
+    return `Создан набор «${created.name}»`;
+  }
+
   // Commands read the latest state through this ref, so the registry itself never changes.
   const live = useRef<Live>(null!);
   live.current = {
-    projectId, projects, holes, summary, selectedHole,
+    projectId, projects, datasets: datasets ?? [], holes, summary,
     get ws() { return wsRef.current; },
     get viz() { return vizRef.current; },
     get section() { return sectionRef.current; },
-    setWs, setViz, setSection, setSelectedHole, openView, navigate, reload, onSelectProject, onNewProject, onDemoProject,
+    get activeSet() { return activeSetRef.current; },
+    get selectedHole() { return holeRef.current; },
+    get selectedWireframe() { return wireframeRef.current; },
+    setWs, setViz, setSection, selectSet, selectHole,
+    selectWireframe: (id) => {
+      setSelectedWireframe(id);
+      if (id !== null) setWs((prev) => setPanel(prev, "properties", true));
+    },
+    openTable: (kind: TableKind) => {
+      navigate({ kind });
+      setWs((prev) => openBottom(prev, "table"));
+    },
+    reload, onSelectProject, onNewProject, onDemoProject,
+    onCreateSet: createNewSet,
     openPalette: (query) => setPalette(query),
-    runAudit: () => runAudit(projectId, DEFAULT_CONFIG),
-    exportAudit: () => window.open(auditExportUrl(projectId), "_blank"),
+    openImport: (setId) => setImportTarget(setId),
+    uploadWireframes: () => fileInput.current?.click(),
+    runAudit: (setId) => runAudit(setId, DEFAULT_CONFIG),
+    exportAudit: (setId) => window.open(auditExportUrl(setId), "_blank"),
+    fit: () => fitRef.current(),
     ask: (prompt) => void assistant.send(prompt),
     resetChat: assistant.reset,
   };
@@ -170,6 +220,7 @@ function Workspace({
       if (!command.silent) {
         setLog((prev) => [{ id: Date.now() + Math.random(), time: new Date(), source, title: command.title, args, result: content, ok }, ...prev].slice(0, LOG_LIMIT));
       }
+      if (!ok && source === "user") setNotice({ text: content, error: true });
       return { title: command.title, content, ok };
     },
     [commands],
@@ -185,23 +236,21 @@ function Workspace({
       const args = input as Record<string, unknown>;
       if (command.confirm) {
         setWs((prev) => setPanel(prev, "assistant", true));
-        const allowed = await new Promise<boolean>((resolve) =>
-          setApproval({ title: command.title, detail: command.description, resolve }),
-        );
+        const allowed = await new Promise<boolean>((resolve) => setApproval({ title: command.title, detail: command.description, resolve }));
         setApproval(null);
         if (!allowed) return { title: command.title, content: "Пользователь отклонил действие", ok: false };
       }
       return runCommand(command.id, args, source);
     },
-    [commands, runCommand],
+    [commands, runCommand, setWs],
   );
   const executeTool = (name: string, input: Record<string, unknown>) => executeExternal(null, name, input, "claude");
 
   const remote = useRemoteCommands(projectId, commands, (id, args) => executeExternal(id, null, args, "remote"));
 
   const tabs = useMemo(
-    () => buildRibbon(ws, { hasHole: selectedHole !== null, hasData: holes.length > 0 }),
-    [ws, selectedHole, holes.length],
+    () => buildRibbon(ws, { hasHole: selectedHole !== null, hasSet: activeSet !== null, hasSection: section !== null }),
+    [ws, selectedHole, activeSet, section],
   );
   const items = useMemo(() => flattenRibbon(tabs), [tabs]);
   const runItem = useCallback(
@@ -213,7 +262,7 @@ function Workspace({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (palette !== null) return;
+      if (palette !== null || importTarget !== undefined) return;
       const shortcut = eventShortcut(e);
       const item = items.find((i) => i.shortcut === shortcut);
       if (!item) return;
@@ -225,38 +274,75 @@ function Workspace({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [items, palette, runItem]);
+  }, [items, palette, importTarget, runItem]);
 
-  const openTable = (kind: TableKind) => void runCommand("table.open", { kind }, "user");
-  const clearHole = () => setSelectedHole(null);
+  // ---- project tree actions
 
-  const renderView = (view: ViewKind) => {
-    switch (view) {
-      case "import":
-        return <ImportPage key={projectId} projectId={projectId} onImported={reload} />;
-      case "table":
-        return (
-          <DataPage
-            projectId={projectId} refreshKey={refreshKey} kind={route.kind} holeId={selectedHole} summary={summary}
-            onKindChange={(kind) => navigate({ kind })} onClearHole={clearHole}
-          />
-        );
-      case "audit":
-        return <AuditPage key={projectId} projectId={projectId} refreshKey={refreshKey} holeId={selectedHole} onAudited={reload} onClearHole={clearHole} />;
-      default:
-        return (
-          <VizTab
-            kind={view} projectId={projectId} refreshKey={refreshKey} summary={summary} holes={holes}
-            selectedHole={selectedHole} settings={viz} section={section}
-            onSelectHole={setSelectedHole} onSection={setSection}
-            onOpenSection={() => {
-              const shown = ws.panes.slice(0, PANE_COUNT[ws.layout]).includes("section");
-              if (!shown) openView("section");
-            }}
-          />
-        );
+  async function guarded(action: () => Promise<string | void>) {
+    try {
+      const text = await action();
+      if (text) setNotice({ text, error: false });
+    } catch (e) {
+      setNotice({ text: (e as Error).message, error: true });
     }
-  };
+  }
+
+  const onRename = (d: Dataset) =>
+    guarded(async () => {
+      const name = window.prompt("Новое название", d.name)?.trim();
+      if (!name || name === d.name) return;
+      await renameDataset(d.id, name);
+      reload();
+      return `Переименовано: «${name}»`;
+    });
+
+  const onDelete = (d: Dataset) =>
+    guarded(async () => {
+      const what = d.kind === "drillholes"
+        ? `набор скважин «${d.name}» со всеми устьями, замерами, пробами и аудитом`
+        : `файл «${d.name}» со всеми каркасами (${d.wireframes?.length ?? 0})`;
+      if (!window.confirm(`Удалить ${what}? Это действие нельзя отменить.`)) return;
+      await deleteDataset(d.id);
+      if (d.wireframes?.some((w) => w.id === selectedWireframe)) setSelectedWireframe(null);
+      reload();
+      return `Удалено: «${d.name}»`;
+    });
+
+  const onDeleteWireframe = (id: number, name: string) =>
+    guarded(async () => {
+      if (!window.confirm(`Удалить каркас «${name}»? Это действие нельзя отменить.`)) return;
+      await deleteWireframe(id);
+      if (id === selectedWireframe) setSelectedWireframe(null);
+      reload();
+      return `Каркас «${name}» удалён`;
+    });
+
+  const onWireframeColor = (id: number, color: string) =>
+    guarded(async () => {
+      await patchWireframe(id, { color });
+      reload();
+    });
+
+  async function onWireframeFiles(files: FileList | null) {
+    if (!files?.length) return;
+    for (const file of Array.from(files)) {
+      await guarded(async () => {
+        setNotice({ text: `Загрузка ${file.name}…`, error: false });
+        const created = await uploadWireframes(projectId, file);
+        const count = created.wireframes?.length ?? 0;
+        const triangles = (created.wireframes ?? []).reduce((n, w) => n + w.triangle_count, 0);
+        const result = `${file.name}: каркасов ${count}, треугольников ${triangles.toLocaleString("ru-RU")}`;
+        setLog((prev) => [{ id: Date.now() + Math.random(), time: new Date(), source: "user" as const, title: "Загрузка каркасов", args: { file: file.name }, result, ok: true }, ...prev]);
+        reload();
+        return result;
+      });
+    }
+    if (fileInput.current) fileInput.current.value = "";
+  }
+
+  const clearHole = () => activeSet !== null && selectHole(activeSet, null);
+  const bottomTabs: BottomTab[] = ["table", "audit", "log"];
+  const activeSetName = sets.find((d) => d.id === activeSet)?.name ?? null;
 
   return (
     <div className="app">
@@ -298,52 +384,84 @@ function Workspace({
       <div className="main">
         {ws.left && (
           <>
-            <aside className="dock dock-left" style={{ width: ws.sizes.left }} aria-label="Проект">
-              <ProjectTree
-                summary={summary} holes={holes} selectedHole={selectedHole}
-                onOpenTable={openTable} onSelectHole={setSelectedHole} onImport={() => openView("import")} onDemo={() => void runCommand("project.demo", {}, "user")}
-              />
+            <aside className="dock dock-left" style={{ width: ws.sizes.left }} aria-label="Дерево проекта">
+              <ErrorBoundary label="Дерево проекта" compact>
+                <DataTree
+                  datasets={datasets} ws={ws} refreshKey={refreshKey} activeSet={activeSet}
+                  selectedHole={selectedHole} selectedWireframe={selectedWireframe}
+                  onShow={(key, shown) => setWs((prev) => setShown(prev, key, shown))}
+                  onSelectSet={selectSet}
+                  onSelectHole={selectHole}
+                  onSelectWireframe={(id) => live.current.selectWireframe(id)}
+                  onOpenTable={(setId, kind) => void runCommand("table.open", { kind, set_id: setId }, "user")}
+                  onOpenAudit={(setId) => {
+                    selectSet(setId);
+                    setWs((prev) => openBottom(prev, "audit"));
+                  }}
+                  onImport={(setId) => setImportTarget(setId)}
+                  onUploadWireframes={() => fileInput.current?.click()}
+                  onRename={onRename}
+                  onDelete={onDelete}
+                  onWireframeColor={onWireframeColor}
+                  onDeleteWireframe={onDeleteWireframe}
+                  onDemo={() => void runCommand("project.demo", {}, "user")}
+                />
+              </ErrorBoundary>
             </aside>
-            <Splitter axis="x" sign={1} size={ws.sizes.left} label="Ширина панели проекта" onResize={(s) => setWs((prev) => resize(prev, "left", s))} />
+            <Splitter axis="x" sign={1} size={ws.sizes.left} label="Ширина дерева проекта" onResize={(s) => setWs((prev) => resize(prev, "left", s))} />
           </>
         )}
 
         <div className="center">
           {error && <div className="alert error">{error}</div>}
-          <ViewportGrid
-            layout={ws.layout}
-            panes={ws.panes}
-            active={ws.active}
-            renderView={renderView}
-            onActivate={activatePane}
-            onChangeView={(index, view) => openView(view, index)}
-            onMaximize={(index) => {
-              const view = ws.panes[index];
-              setWs((prev) => ({ ...setPane(setLayout(prev, "single"), 0, view), active: 0 }));
-              navigate({ tab: view }, { replace: true });
-            }}
-          />
+          <section className="viewport" aria-label={`Вид: ${MODE_TITLES[ws.mode]}`}>
+            <ErrorBoundary label="3D-вид">
+              <Suspense fallback={<div className="canvas-note static">Загрузка 3D…</div>}>
+              <SceneView
+                datasets={datasets} ws={ws} refreshKey={refreshKey} viz={viz}
+                activeSet={activeSet} selectedHole={selectedHole} section={section}
+                onMode={(mode) => void runCommand("scene.mode", { mode }, "user")}
+                onWorkspace={(patch) => setWs((prev) => ({ ...prev, ...patch }))}
+                onPick={(setId, holeId) => selectHole(setId, holeId)}
+                onSection={setSection}
+                onEmptyClick={() => {
+                  if (holeRef.current && activeSetRef.current !== null) selectHole(activeSetRef.current, null);
+                }}
+                registerFit={(fit) => (fitRef.current = fit)}
+              />
+              </Suspense>
+            </ErrorBoundary>
+          </section>
           {ws.bottom && (
             <>
               <Splitter axis="y" sign={-1} size={ws.sizes.bottom} label="Высота нижней панели" onResize={(s) => setWs((prev) => resize(prev, "bottom", s))} />
               <section className="dock dock-bottom" style={{ height: ws.sizes.bottom }} aria-label="Нижняя панель">
                 <div className="dock-tabs" role="tablist">
-                  <button role="tab" aria-selected={ws.bottomTab === "table"} className={ws.bottomTab === "table" ? "active" : ""} onClick={() => setWs((p) => ({ ...p, bottomTab: "table" }))}>Таблица</button>
-                  <button role="tab" aria-selected={ws.bottomTab === "log"} className={ws.bottomTab === "log" ? "active" : ""} onClick={() => setWs((p) => ({ ...p, bottomTab: "log" }))}>
-                    Журнал команд{log.length > 0 && ` · ${log.length}`}
-                  </button>
+                  {bottomTabs.map((tab) => (
+                    <button key={tab} role="tab" aria-selected={ws.bottomTab === tab} className={ws.bottomTab === tab ? "active" : ""} onClick={() => setWs((p) => ({ ...p, bottomTab: tab }))}>
+                      {BOTTOM_TITLES[tab]}
+                      {tab === "log" && log.length > 0 && ` · ${log.length}`}
+                      {tab !== "log" && activeSetName && <span className="muted"> · {activeSetName}</span>}
+                    </button>
+                  ))}
                   <span className="spacer" />
                   <button className="icon" onClick={() => setWs((p) => setPanel(p, "bottom", false))} title="Закрыть панель" aria-label="Закрыть панель"><Icon name="close" size={14} /></button>
                 </div>
                 <div className="dock-body">
-                  {ws.bottomTab === "table" ? (
-                    <DataPage
-                      projectId={projectId} refreshKey={refreshKey} kind={route.kind} holeId={selectedHole} summary={summary}
-                      onKindChange={(kind) => navigate({ kind })} onClearHole={clearHole}
-                    />
-                  ) : (
-                    <CommandLog entries={log} />
-                  )}
+                  <ErrorBoundary key={ws.bottomTab} label={BOTTOM_TITLES[ws.bottomTab]} compact>
+                    {ws.bottomTab === "log" ? (
+                      <CommandLog entries={log} />
+                    ) : activeSet === null ? (
+                      <p className="muted small">Нет наборов скважин. Импортируйте данные: лента «Главная → Скважины».</p>
+                    ) : ws.bottomTab === "table" ? (
+                      <DataPage
+                        setId={activeSet} refreshKey={refreshKey} kind={route.kind} holeId={selectedHole} summary={summary}
+                        onKindChange={(kind) => navigate({ kind })} onClearHole={clearHole}
+                      />
+                    ) : (
+                      <AuditPage key={activeSet} setId={activeSet} refreshKey={refreshKey} holeId={selectedHole} onAudited={reload} onClearHole={clearHole} />
+                    )}
+                  </ErrorBoundary>
                 </div>
               </section>
             </>
@@ -362,11 +480,14 @@ function Workspace({
               </div>
               {/* The chat stays mounted while hidden so a running request keeps its place. */}
               <div className="dock-body" hidden={ws.rightTab !== "properties"}>
-                <PropertiesPanel
-                  projectId={projectId} projectName={project.name} summary={summary} audit={audit}
-                  selectedHole={selectedHole} refreshKey={refreshKey} viz={viz} onViz={setViz}
-                  onOpenTable={openTable} onClearHole={clearHole}
-                />
+                <ErrorBoundary label="Свойства" compact>
+                  <PropertiesPanel
+                    datasets={datasets ?? []} activeSet={activeSet} summary={summary} audit={audit}
+                    selectedHole={selectedHole} selectedWireframe={selectedWireframe} refreshKey={refreshKey}
+                    viz={viz} onViz={setViz}
+                    onOpenTable={(kind) => void runCommand("table.open", { kind }, "user")} onClearHole={clearHole}
+                  />
+                </ErrorBoundary>
               </div>
               <div className="dock-body flush" hidden={ws.rightTab !== "assistant"}>
                 <AssistantPanel
@@ -374,8 +495,9 @@ function Workspace({
                   hasHole={selectedHole !== null}
                   context={[
                     project.name,
+                    MODE_TITLES[ws.mode],
+                    activeSetName ? `Набор: ${activeSetName}` : "Нет наборов",
                     selectedHole ? `Скважина ${selectedHole}` : "Скважина не выбрана",
-                    ws.panes.slice(0, PANE_COUNT[ws.layout]).map((v) => VIEW_TITLES[v]).join(" + "),
                   ]}
                   onSend={(text) => void assistant.send(text)} onStop={assistant.stop} onReset={assistant.reset}
                 />
@@ -386,9 +508,27 @@ function Workspace({
       </div>
 
       <StatusBar
-        projectName={project.name} holeCount={holes.length} selectedHole={selectedHole} audit={audit}
-        activeView={VIEW_TITLES[ws.panes[ws.active]]} assistant={assistant.status} remote={remote}
+        projectName={project.name} setName={activeSetName} holeCount={holes.length} selectedHole={selectedHole} audit={audit}
+        mode={MODE_TITLES[ws.mode]} assistant={assistant.status} remote={remote}
       />
+
+      <input ref={fileInput} type="file" accept={WIREFRAME_ACCEPT} multiple hidden onChange={(e) => void onWireframeFiles(e.target.files)} />
+
+      {notice && (
+        <div className={notice.error ? "toast error" : "toast"} role="status" onClick={() => setNotice(null)}>
+          {notice.text}
+        </div>
+      )}
+
+      {importTarget !== undefined && (
+        <ImportDialog
+          projectId={projectId}
+          sets={sets}
+          initialSet={importTarget}
+          onImported={reloadAndSelect}
+          onClose={() => setImportTarget(undefined)}
+        />
+      )}
 
       {palette !== null && (
         <CommandPalette items={items} holes={holes} initialQuery={palette} onRun={runItem} onClose={() => setPalette(null)} />
@@ -425,13 +565,12 @@ export function App() {
   }, []);
 
   function selectProject(id: number) {
-    // A hole belongs to one project: drop it from the URL before the workspace is rebuilt.
-    window.history.replaceState(null, "", formatRoute({ ...parseRoute(window.location.hash), hole: null }));
+    // Sets and holes belong to one project: drop them from the URL before the workspace is rebuilt.
+    window.history.replaceState(null, "", formatRoute({ ...parseRoute(window.location.hash), set: null, hole: null }));
     setProjectId(id);
     saveProjectId(id);
   }
 
-  /** Creates and opens a project; without a name the user is asked for one. */
   async function onDemoProject(): Promise<string> {
     const project = await createDemoProject();
     setProjects((prev) => (prev?.some((p) => p.id === project.id) ? prev : [...(prev ?? []), project]));

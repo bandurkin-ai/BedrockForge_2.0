@@ -9,7 +9,7 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
 from app.audit.rules import SEVERITY_LABELS, TABLE_LABELS
-from app.models import AuditFinding, AuditRun, Project
+from app.models import AuditFinding, AuditRun
 
 
 def _format_examples(details: dict) -> str:
@@ -19,11 +19,11 @@ def _format_examples(details: dict) -> str:
     )
 
 
-def build_xlsx(project: Project, run: AuditRun, rules: list[dict], findings: list[AuditFinding]) -> bytes:
+def build_xlsx(title: str, run: AuditRun, rules: list[dict], findings: list[AuditFinding]) -> bytes:
     severity = run.counts["by_severity"]
     summary = pd.DataFrame(
         [
-            ("Проект", project.name),
+            ("Проект / набор", title),
             ("Дата аудита", run.created_at.strftime("%Y-%m-%d %H:%M")),
             ("Критично (находок)", severity["error"]),
             ("Предупреждения (находок)", severity["warning"]),

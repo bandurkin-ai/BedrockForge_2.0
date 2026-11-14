@@ -6,6 +6,8 @@ from io import BytesIO
 import pytest
 from openpyxl import Workbook
 
+from tests.helpers import new_set
+
 COLLAR_CSV = (
     "Протокол привязки устьев\r\n"
     "Скважина;X, м;Y, м;Z, м;Глубина (м);Азимут;Наклон;Статус\r\n"
@@ -101,7 +103,7 @@ def test_text_in_numeric_field_is_reported_with_an_example(client):
 
 
 def test_excel_survey_upload_sheet_switch_and_commit(db_client):
-    pid = db_client.post("/api/projects", json={"name": "Excel"}).json()["id"]
+    pid = new_set(db_client, "Excel")
     up = _upload(db_client, "survey.xlsx", _xlsx()).json()
 
     assert up["format"] == "excel" and up["sheets"] == ["Survey", "Notes"]
@@ -113,13 +115,13 @@ def test_excel_survey_upload_sheet_switch_and_commit(db_client):
     back = db_client.post(f"/api/import/{up['file_id']}/options", json={"sheet": "Survey"}).json()
 
     committed = db_client.post("/api/import/commit", json={
-        "project_id": pid, "file_id": up["file_id"], "kind": "survey",
+        "set_id": pid, "file_id": up["file_id"], "kind": "survey",
         "mapping": back["suggestions"]["survey"]["mapping"],
     })
     assert committed.status_code == 200 and committed.json()["inserted"] == 2
-    summary = db_client.get(f"/api/projects/{pid}/summary").json()
+    summary = db_client.get(f"/api/sets/{pid}/summary").json()
     assert summary["imports"][0]["filename"] == "survey.xlsx"  # name taken from the upload
-    rows = db_client.get(f"/api/projects/{pid}/tables/survey").json()["rows"]
+    rows = db_client.get(f"/api/sets/{pid}/tables/survey").json()["rows"]
     assert rows[1] == {"hole_id": "С-1", "depth": 50.0, "azimuth": 11.0, "dip": -61.5}
 
 
@@ -148,20 +150,20 @@ def test_real_files_as_csv_and_excel_give_the_same_project_as_dat(db_client, tmp
 
     results = {}
     for fmt, convert in (("dat", lambda p: p.read_bytes()), ("csv", as_csv), ("xlsx", as_xlsx)):
-        pid = db_client.post("/api/projects", json={"name": fmt}).json()["id"]
+        pid = new_set(db_client, fmt)
         for kind, path in sources.items():
             up = _upload(db_client, f"{kind}.{fmt}", convert(path)).json()
             assert up["detected_kind"] == kind, (fmt, kind)
             sug = up["suggestions"][kind]
             response = db_client.post("/api/import/commit", json={
-                "project_id": pid, "file_id": up["file_id"], "kind": kind,
+                "set_id": pid, "file_id": up["file_id"], "kind": kind,
                 "mapping": sug["mapping"], "components": sug["components"],
             })
             assert response.status_code == 200, (fmt, kind, response.json())
-        audit = db_client.post(f"/api/projects/{pid}/audit").json()
-        assay_page = db_client.get(f"/api/projects/{pid}/tables/assay", params={"limit": 3}).json()
+        audit = db_client.post(f"/api/sets/{pid}/audit").json()
+        assay_page = db_client.get(f"/api/sets/{pid}/tables/assay", params={"limit": 3}).json()
         results[fmt] = (
-            db_client.get(f"/api/projects/{pid}/summary").json()["counts"],
+            db_client.get(f"/api/sets/{pid}/summary").json()["counts"],
             audit["by_severity"],
             assay_page["rows"],
         )

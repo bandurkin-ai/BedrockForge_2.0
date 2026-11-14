@@ -34,6 +34,15 @@ const PATHS = {
   hole: "M12 3v18M8 7l4-4 4 4M9 21h6",
   palette: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z",
   stop: "M6 6h12v12H6z",
+  trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
+  edit: "M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4",
+  chevronRight: "M9 6l6 6-6 6",
+  lines: "M3 17l5-6 4 3 4-7 5 5",
+  wireframe: "M12 3l8 5v8l-8 5-8-5V8l8-5zM4 8l8 5 8-5M12 13v8M8 5.5l8 5M16 5.5l-8 5",
+  blocks: "M3 8l5-3 5 3v6l-5 3-5-3V8zM13 11l4-2.5 4 2.5v5l-4 2.5-4-2.5M8 11v6",
+  raster: "M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9.5a1 1 0 100-.1",
+  drillholes: "M7 3v18M17 3l-4 18M12 3v12M4 3h16",
+  section2: "M4 20L20 4M7 20L20 7M4 17L17 4",
 } as const;
 
 export type IconName = keyof typeof PATHS;

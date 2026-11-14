@@ -26,7 +26,8 @@ mcp = MCPServer(
     "BedrockForge",
     instructions=(
         "BedrockForge — ГГИС для данных бурения: устья, инклинометрия, пробы, аудит качества данных. "
-        "Начните с list_projects, затем передавайте project_id в остальные инструменты. "
+        "Начните с list_projects, затем data_list_datasets: в проекте несколько наборов скважин и каркасы. "
+        "Передавайте project_id и, если наборов скважин несколько, set_id. "
         "Инструменты data_* читают данные. Инструменты ui_* управляют приложением, открытым у пользователя "
         "в браузере: сначала ui_list_commands, затем ui_run_command."
     ),
@@ -57,34 +58,42 @@ async def list_projects() -> str:
 
 
 @mcp.tool()
-async def data_project_summary(project_id: int) -> str:
-    """Число устьев, замеров инклинометрии и проб, список компонентов с единицами, история импорта."""
-    return await _data("data_project_summary", project_id)
+async def data_list_datasets(project_id: int) -> str:
+    """Дерево проекта: наборы скважин (id = set_id, счётчики, компоненты, итоги аудита) и каркасы (треугольники, объём, охват)."""
+    return await _data("data_list_datasets", project_id)
+
+
+@mcp.tool()
+async def data_project_summary(project_id: int, set_id: int | None = None) -> str:
+    """Набор скважин: число устьев, замеров инклинометрии и проб, компоненты с единицами, история импорта."""
+    return await _data("data_project_summary", project_id, set_id=set_id)
 
 
 @mcp.tool()
 async def data_list_holes(
-    project_id: int, search: str | None = None, with_findings_only: bool = False, limit: int = 100, offset: int = 0
+    project_id: int, search: str | None = None, with_findings_only: bool = False, limit: int = 100, offset: int = 0,
+    set_id: int | None = None,
 ) -> str:
     """Скважины проекта: координаты устья, глубина, статус, число замеров и проб, число замечаний аудита.
 
     search — подстрока номера; with_findings_only — только скважины с ошибками и предупреждениями аудита.
     """
     return await _data(
-        "data_list_holes", project_id, search=search, with_findings_only=with_findings_only, limit=limit, offset=offset
+        "data_list_holes", project_id, search=search, with_findings_only=with_findings_only, limit=limit, offset=offset,
+        set_id=set_id,
     )
 
 
 @mcp.tool()
-async def data_get_hole(project_id: int, hole_id: str) -> str:
+async def data_get_hole(project_id: int, hole_id: str, set_id: int | None = None) -> str:
     """Все данные устья одной скважины, дополнительные атрибуты и её замечания аудита."""
-    return await _data("data_get_hole", project_id, hole_id=hole_id)
+    return await _data("data_get_hole", project_id, hole_id=hole_id, set_id=set_id)
 
 
 @mcp.tool()
-async def data_audit_summary(project_id: int) -> str:
-    """Последний запуск аудита: число находок по важности, сработавшие правила, признак устаревания."""
-    return await _data("data_audit_summary", project_id)
+async def data_audit_summary(project_id: int, set_id: int | None = None) -> str:
+    """Последний запуск аудита набора скважин: число находок по важности, сработавшие правила, признак устаревания."""
+    return await _data("data_audit_summary", project_id, set_id=set_id)
 
 
 @mcp.tool()
@@ -96,29 +105,31 @@ async def data_audit_findings(
     hole_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    set_id: int | None = None,
 ) -> str:
     """Находки последнего аудита с примерами строк. code — код правила из data_audit_summary."""
     return await _data(
         "data_audit_findings", project_id,
-        severity=severity, table=table, code=code, hole_id=hole_id, limit=limit, offset=offset,
+        severity=severity, table=table, code=code, hole_id=hole_id, limit=limit, offset=offset, set_id=set_id,
     )
 
 
 @mcp.tool()
 async def data_query_table(
-    project_id: int, kind: Literal["collar", "survey", "assay"], hole_id: str | None = None, limit: int = 50, offset: int = 0
+    project_id: int, kind: Literal["collar", "survey", "assay"], hole_id: str | None = None, limit: int = 50, offset: int = 0,
+    set_id: int | None = None,
 ) -> str:
     """Строки исходных данных: collar — устья, survey — инклинометрия, assay — пробы с содержаниями.
 
     Для survey и assay задавайте hole_id: таблицы большие.
     """
-    return await _data("data_query_table", project_id, kind=kind, hole_id=hole_id, limit=limit, offset=offset)
+    return await _data("data_query_table", project_id, kind=kind, hole_id=hole_id, limit=limit, offset=offset, set_id=set_id)
 
 
 @mcp.tool()
-async def data_component_stats(project_id: int, component: str, hole_id: str | None = None) -> str:
+async def data_component_stats(project_id: int, component: str, hole_id: str | None = None, set_id: int | None = None) -> str:
     """Распределение содержаний компонента по пробам: перцентили, среднее, средневзвешенное по длине."""
-    return await _data("data_component_stats", project_id, component=component, hole_id=hole_id)
+    return await _data("data_component_stats", project_id, component=component, hole_id=hole_id, set_id=set_id)
 
 
 _NO_BROWSER = (

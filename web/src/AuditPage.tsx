@@ -42,13 +42,13 @@ function Badge({ severity }: { severity: string }) {
 }
 
 export function AuditPage({
-  projectId,
+  setId,
   refreshKey,
   holeId,
   onAudited,
   onClearHole,
 }: {
-  projectId: number;
+  setId: number;
   /** Changes when the audit was run elsewhere (ribbon, Claude) or data was re-imported. */
   refreshKey: number;
   holeId: string | null;
@@ -65,14 +65,14 @@ export function AuditPage({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getAudit(projectId)
+    getAudit(setId)
       .then((r) => {
         setRun(r);
         if (r) setConfig({ ...DEFAULT_CONFIG, ...(r.config as Partial<AuditConfig>) });
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoaded(true));
-  }, [projectId, refreshKey]);
+  }, [setId, refreshKey]);
 
   useEffect(() => setOffset(0), [holeId]);
 
@@ -82,16 +82,16 @@ export function AuditPage({
       setPage(null);
       return;
     }
-    getFindings(projectId, { ...filters, hole: holeId ?? undefined }, PAGE, offset)
+    getFindings(setId, { ...filters, hole: holeId ?? undefined }, PAGE, offset)
       .then(setPage)
       .catch((e: Error) => setError(e.message));
-  }, [projectId, runId, filters, offset, holeId, refreshKey]);
+  }, [setId, runId, filters, offset, holeId, refreshKey]);
 
   async function onRun() {
     setBusy(true);
     setError(null);
     try {
-      setRun(await runAudit(projectId, config));
+      setRun(await runAudit(setId, config));
       setOffset(0);
       onAudited();
     } catch (e) {
@@ -112,14 +112,13 @@ export function AuditPage({
 
   return (
     <main className="page">
-      <h1>Аудит данных</h1>
       {error && <div className="alert error">{error}</div>}
 
       <div className="actions">
         <button className="primary" onClick={onRun} disabled={busy}>
           {busy ? "Проверка…" : run ? "Запустить заново" : "Запустить аудит"}
         </button>
-        {run && <a className="button" href={auditExportUrl(projectId)}>Скачать отчёт (Excel)</a>}
+        {run && <a className="button" href={auditExportUrl(setId)}>Скачать отчёт (Excel)</a>}
         {run && <span className="muted">Последний запуск: {new Date(run.created_at).toLocaleString("ru-RU")}</span>}
       </div>
       {run?.stale && <div className="alert warn">После этого аудита были импортированы новые данные. Запустите аудит заново.</div>}

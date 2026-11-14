@@ -9,13 +9,13 @@ function fmt(value: number | null | undefined, digits = 2): string {
 }
 
 export function HoleCard({
-  projectId,
+  setId,
   holeId,
   refreshKey,
   onOpenTable,
   onClose,
 }: {
-  projectId: number;
+  setId: number;
   holeId: string;
   refreshKey: number;
   onOpenTable: (kind: TableKind) => void;
@@ -27,13 +27,13 @@ export function HoleCard({
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    getHole(projectId, holeId)
+    getHole(setId, holeId)
       .then((h) => !cancelled && setHole(h))
       .catch((e: Error) => !cancelled && setError(e.message));
     return () => {
       cancelled = true;
     };
-  }, [projectId, holeId, refreshKey]);
+  }, [setId, holeId, refreshKey]);
 
   return (
     <section className="hole-card" aria-label={`Скважина ${holeId}`}>

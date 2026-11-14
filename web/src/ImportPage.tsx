@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   commitImport,
+  type ImportTarget,
   getSchemas,
   rereadFile,
   uploadFile,
@@ -76,7 +77,7 @@ function ReadOptionsPanel({
   );
 }
 
-export function ImportPage({ projectId, onImported }: { projectId: number; onImported: () => void }) {
+export function ImportPage({ target, onImported }: { target: ImportTarget; onImported: (setId: number) => void }) {
   const [schemas, setSchemas] = useState<Schemas | null>(null);
   const [upload, setUpload] = useState<UploadResponse | null>(null);
   const [kind, setKind] = useState("collar");
@@ -176,14 +177,13 @@ export function ImportPage({ projectId, onImported }: { projectId: number; onImp
 
   const onCommit = () =>
     run(async () => {
-      const done = await commitImport({ ...buildRequest(), project_id: projectId, filename: upload!.filename });
+      const done = await commitImport({ ...buildRequest(), ...target, filename: upload!.filename });
       setCommitted(done);
-      onImported();
+      onImported(done.set_id);
     });
 
   return (
     <main className="page">
-      <h1>Импорт данных</h1>
       <p className="muted">
         Загрузите файл Micromine (.DAT), текстовый файл (.csv, .txt) или книгу Excel (.xlsx), проверьте назначение колонок и запустите проверку.
       </p>
@@ -359,7 +359,7 @@ export function ImportPage({ projectId, onImported }: { projectId: number; onImp
               )}
               {result.ok && (
                 <p>
-                  <button className="primary" onClick={onCommit} disabled={busy}>Импортировать в проект</button>{" "}
+                  <button className="primary" onClick={onCommit} disabled={busy}>Импортировать в набор</button>{" "}
                   <span className="muted">Существующие данные этого типа в проекте будут заменены.</span>
                 </p>
               )}

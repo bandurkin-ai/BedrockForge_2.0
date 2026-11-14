@@ -11,7 +11,7 @@ const KINDS: [TableKind, string][] = [
 const PAGE = 50;
 
 export function DataPage({
-  projectId,
+  setId,
   refreshKey,
   kind,
   holeId,
@@ -19,7 +19,7 @@ export function DataPage({
   onKindChange,
   onClearHole,
 }: {
-  projectId: number;
+  setId: number;
   refreshKey: number;
   kind: TableKind;
   holeId: string | null;
@@ -36,18 +36,18 @@ export function DataPage({
   useEffect(() => {
     setOffset(0);
     setPage(null);
-  }, [kind, holeId, projectId]);
+  }, [kind, holeId, setId]);
 
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    getTable(projectId, kind, PAGE, offset, holeId)
+    getTable(setId, kind, PAGE, offset, holeId)
       .then((p) => !cancelled && setPage(p))
       .catch((e: Error) => !cancelled && setError(e.message));
     return () => {
       cancelled = true;
     };
-  }, [projectId, kind, offset, holeId, refreshKey]);
+  }, [setId, kind, offset, holeId, refreshKey]);
 
   const total = page?.total ?? 0;
   const from = total === 0 ? 0 : offset + 1;

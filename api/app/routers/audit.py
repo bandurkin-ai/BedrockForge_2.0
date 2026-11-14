@@ -9,10 +9,10 @@ from app.audit.checks import AuditConfig
 from app.audit.engine import latest_run, rule_table, run_audit
 from app.audit.report import build_xlsx
 from app.db import get_session
-from app.models import AuditFinding, AuditRun, ImportJob
-from app.routers.projects import get_project
+from app.models import AuditFinding, AuditRun, ImportJob, Project
+from app.routers.projects import get_set
 
-router = APIRouter(prefix="/api/projects/{project_id}/audit", tags=["audit"])
+router = APIRouter(prefix="/api/sets/{set_id}/audit", tags=["audit"])
 
 XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -63,7 +63,7 @@ class FindingsPage(BaseModel):
 
 def _run_out(session: Session, run: AuditRun) -> RunOut:
     last_import = session.scalar(
-        select(func.max(ImportJob.created_at)).where(ImportJob.project_id == run.project_id)
+        select(func.max(ImportJob.created_at)).where(ImportJob.set_id == run.set_id)
     )
     return RunOut(
         run_id=run.id,
@@ -76,23 +76,23 @@ def _run_out(session: Session, run: AuditRun) -> RunOut:
 
 
 @router.post("", response_model=RunOut)
-def start_audit(project_id: int, config: ConfigIn | None = None, session: Session = Depends(get_session)):
+def start_audit(set_id: int, config: ConfigIn | None = None, session: Session = Depends(get_session)):
     """Run the audit and replace the previously stored result."""
-    get_project(session, project_id)
+    get_set(session, set_id)
     cfg = AuditConfig(**config.model_dump()) if config else AuditConfig()
-    return _run_out(session, run_audit(session, project_id, cfg))
+    return _run_out(session, run_audit(session, set_id, cfg))
 
 
 @router.get("", response_model=RunOut | None)
-def latest_audit(project_id: int, session: Session = Depends(get_session)):
-    get_project(session, project_id)
-    run = latest_run(session, project_id)
+def latest_audit(set_id: int, session: Session = Depends(get_session)):
+    get_set(session, set_id)
+    run = latest_run(session, set_id)
     return _run_out(session, run) if run else None
 
 
 @router.get("/findings", response_model=FindingsPage)
 def findings(
-    project_id: int,
+    set_id: int,
     severity: str | None = None,
     table: str | None = None,
     code: str | None = None,
@@ -102,8 +102,8 @@ def findings(
     offset: int = Query(0, ge=0),
     session: Session = Depends(get_session),
 ):
-    get_project(session, project_id)
-    run = latest_run(session, project_id)
+    get_set(session, set_id)
+    run = latest_run(session, set_id)
     if run is None:
         return FindingsPage(total=0, items=[])
 
@@ -138,9 +138,9 @@ def findings(
 
 
 @router.get("/export.xlsx")
-def export_xlsx(project_id: int, session: Session = Depends(get_session)):
-    project = get_project(session, project_id)
-    run = latest_run(session, project_id)
+def export_xlsx(set_id: int, session: Session = Depends(get_session)):
+    dataset = get_set(session, set_id)
+    run = latest_run(session, set_id)
     if run is None:
         raise HTTPException(404, "Аудит ещё не запускался")
     all_findings = session.scalars(
@@ -148,10 +148,11 @@ def export_xlsx(project_id: int, session: Session = Depends(get_session)):
         .order_by(func.array_position(["error", "warning", "info"], AuditFinding.severity),
                   AuditFinding.table_name, AuditFinding.code, AuditFinding.hole_id)
     ).all()
-    data = build_xlsx(project, run, rule_table(run.counts), list(all_findings))
+    project = session.get(Project, dataset.project_id)
+    data = build_xlsx(f"{project.name} / {dataset.name}", run, rule_table(run.counts), list(all_findings))
     return Response(
         data,
         media_type=XLSX_TYPE,
         # ASCII-only name: Chromium drops names given in the RFC 5987 form (filename*).
-        headers={"Content-Disposition": f'attachment; filename="audit_{project_id}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="audit_{set_id}.xlsx"'},
     )

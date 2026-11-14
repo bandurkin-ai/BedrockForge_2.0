@@ -1,54 +1,42 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type Tab = "table" | "plan" | "section" | "log" | "view3d" | "audit" | "import";
 export type TableKind = "collar" | "survey" | "assay";
 
+/** What the address remembers: the active drillhole set, the selected hole and the open table. */
 export interface Route {
-  tab: Tab;
-  kind: TableKind;
+  set: number | null;
   hole: string | null;
+  kind: TableKind;
 }
 
 const KINDS: TableKind[] = ["collar", "survey", "assay"];
-// URL segment <-> tab
-const SEGMENTS: Record<string, Tab> = {
-  table: "table",
-  plan: "plan",
-  section: "section",
-  log: "log",
-  "3d": "view3d",
-  audit: "audit",
-  import: "import",
-};
-const SEGMENT_OF: Record<Tab, string> = {
-  table: "table", plan: "plan", section: "section", log: "log", view3d: "3d", audit: "audit", import: "import",
-};
 
-export const DEFAULT_ROUTE: Route = { tab: "import", kind: "collar", hole: null };
+export const DEFAULT_ROUTE: Route = { set: null, hole: null, kind: "collar" };
 
-/** "#/table/assay?hole=H-1" -> { tab: "table", kind: "assay", hole: "H-1" }. Unknown input falls back to the defaults. */
+/** "#/?set=3&hole=H-1&table=assay" -> { set: 3, hole: "H-1", kind: "assay" }. Unknown input falls back to the defaults. */
 export function parseRoute(hash: string): Route {
-  const [path = "", query = ""] = hash.replace(/^#\/?/, "").split("?");
-  const [segment = "", kindPart = ""] = path.split("/");
-  const tab = SEGMENTS[segment] ?? DEFAULT_ROUTE.tab;
-  const kind = (KINDS as string[]).includes(kindPart) ? (kindPart as TableKind) : DEFAULT_ROUTE.kind;
-  const hole = new URLSearchParams(query).get("hole") || null;
-  return { tab, kind, hole };
+  const query = hash.replace(/^#\/?/, "").split("?")[1] ?? "";
+  const params = new URLSearchParams(query);
+  const set = Number(params.get("set"));
+  const table = params.get("table") ?? "";
+  return {
+    set: Number.isInteger(set) && set > 0 ? set : null,
+    hole: params.get("hole") || null,
+    kind: (KINDS as string[]).includes(table) ? (table as TableKind) : DEFAULT_ROUTE.kind,
+  };
 }
 
 export function formatRoute(route: Route): string {
-  const base = `#/${SEGMENT_OF[route.tab]}`;
-  const path = route.tab === "table" ? `${base}/${route.kind}` : base;
-  return route.hole ? `${path}?${new URLSearchParams({ hole: route.hole })}` : path;
+  const params = new URLSearchParams();
+  if (route.set !== null) params.set("set", String(route.set));
+  if (route.hole) params.set("hole", route.hole);
+  if (route.kind !== DEFAULT_ROUTE.kind) params.set("table", route.kind);
+  const query = params.toString();
+  return query ? `#/?${query}` : "#/";
 }
 
-export interface NavigateOptions {
-  /** Replace the current history entry instead of adding one (used for hole selection). */
-  replace?: boolean;
-}
-
-/** Route state kept in location.hash, so reload and browser back/forward keep the place. */
-export function useRoute(): [Route, (next: Partial<Route>, options?: NavigateOptions) => void] {
+/** Route state kept in location.hash, so reload and the browser history keep the place. */
+export function useRoute(): [Route, (next: Partial<Route>) => void] {
   const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
 
   useEffect(() => {
@@ -57,18 +45,11 @@ export function useRoute(): [Route, (next: Partial<Route>, options?: NavigateOpt
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
 
-  const navigate = useCallback(
-    (next: Partial<Route>, options: NavigateOptions = {}) => {
-      // Read the live hash: several navigations can happen before React re-renders.
-      const target = formatRoute({ ...parseRoute(window.location.hash), ...next });
-      if (options.replace) {
-        window.history.replaceState(null, "", target);
-        setRoute(parseRoute(target));
-      } else {
-        window.location.hash = target;
-      }
-    },
-    [],
-  );
+  const navigate = useCallback((next: Partial<Route>) => {
+    // Read the live hash: several navigations can happen before React re-renders.
+    const target = formatRoute({ ...parseRoute(window.location.hash), ...next });
+    window.history.replaceState(null, "", target);
+    setRoute(parseRoute(target));
+  }, []);
   return [route, navigate];
 }

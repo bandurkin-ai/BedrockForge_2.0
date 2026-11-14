@@ -5,54 +5,88 @@ import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import type { IntervalsData, Trajectories } from "../api";
 import { NO_VALUE_COLOR, type ColorScale } from "./colorScale";
+import type { SectionLine } from "./geometry";
 import { THEME_EVENT } from "./scene3d-theme";
 
 const PATH_COLOR = 0x8a93a6;
 const SELECT_COLOR = 0xff7a00;
+const SECTION_COLOR = 0x2e6fbd;
 
-export interface Layers {
-  paths: boolean;
-  intervals: boolean;
-  collars: boolean;
-  grid: boolean;
+export type SceneMode = "3d" | "plan" | "section";
+
+export interface HoleRef {
+  setId: number;
+  holeId: string;
 }
 
-export interface Hover {
-  id: string;
+export interface Hover extends HoleRef {
   x: number;
   y: number;
 }
 
+export interface DrillholeStyle {
+  visible: boolean;
+  paths: boolean;
+  intervals: boolean;
+  collars: boolean;
+}
+
+interface DrillholeLayer {
+  extent: THREE.Box3;
+  group: THREE.Group;
+  paths: LineSegments2 | null;
+  intervals: LineSegments2 | null;
+  points: THREE.Points | null;
+  collars: { holeId: string; position: THREE.Vector3 }[];
+  pathOf: Map<string, number[][]>;
+}
+
+interface WireframeLayer {
+  extent: THREE.Box3;
+  mesh: THREE.Mesh;
+  /** The wireframe's intersection with the section plane (section mode only). */
+  cut: LineSegments2 | null;
+}
+
 /**
- * The 3D scene: trajectories, grade-coloured intervals, collars and a grid.
- * Z is up. All coordinates are shifted to the centre of the project, because
+ * The one 3D view of the project: drillhole sets and wireframes in a shared space.
+ * Plan and section are camera modes of the same scene: plan looks straight down,
+ * section looks across a vertical line and clips everything outside its corridor.
+ *
+ * Z is up. Coordinates are shifted to a scene origin (the first loaded object), because
  * UTM-sized numbers (4 500 000) do not fit float32 without visible jitter.
- * Renders on demand (on camera change or data update), so an idle tab costs nothing.
+ * Renders on demand, so an idle tab costs nothing.
  */
-export class DrillScene {
-  onPick: (holeId: string | null) => void = () => {};
+export class GeoScene {
+  onPick: (hole: HoleRef | null) => void = () => {};
   onHover: (hover: Hover | null) => void = () => {};
+  /** A click on the ground in plan mode (project coordinates), used to draw a section line. */
+  onPlanClick: ((x: number, y: number) => boolean) | null = null;
   /** called after every render, e.g. to move HTML labels */
   onRender: () => void = () => {};
 
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(45, 1, 1, 1000);
+  private perspective = new THREE.PerspectiveCamera(45, 1, 1, 1000);
+  private ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+  private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = this.perspective;
   private controls: OrbitControls;
   private root = new THREE.Group();
-  private materials: LineMaterial[] = [];
-  private pathLines: LineSegments2 | null = null;
-  private intervalLines: LineSegments2 | null = null;
+  private light = new THREE.DirectionalLight(0xffffff, 1.6);
+  private materials = new Set<LineMaterial>();
+  private drillholes = new Map<number, DrillholeLayer>();
+  private wireframes = new Map<number, WireframeLayer>();
   private selectedLine: LineSegments2 | null = null;
-  private points: THREE.Points | null = null;
+  private sectionLine: THREE.LineSegments | null = null;
   private grid: THREE.GridHelper | null = null;
   private pointTexture: THREE.CanvasTexture;
-  private collars: { id: string; position: THREE.Vector3 }[] = [];
-  private paths = new Map<string, number[][]>();
-  private origin = new THREE.Vector3();
-  private radius = 100;
+  private origin: THREE.Vector3 | null = null;
   private vexag = 1;
-  private selected: string | null = null;
+  private mode: SceneMode = "3d";
+  private section: SectionLine | null = null;
+  private selected: HoleRef | null = null;
+  private gridVisible = true;
+  private fitted = false;
   private frameRequested = false;
   private disposed = false;
   private resizeObserver: ResizeObserver;
@@ -64,11 +98,13 @@ export class DrillScene {
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.className = "scene3d";
 
-    this.camera.up.set(0, 0, 1);
+    this.perspective.up.set(0, 0, 1);
+    this.ortho.up.set(0, 0, 1);
     this.scene.add(this.root);
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.screenSpacePanning = true;
-    this.controls.addEventListener("change", () => this.requestRender());
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.4));
+    this.scene.add(this.light);
+    this.scene.add(this.light.target);
+    this.controls = this.makeControls();
     this.pointTexture = makeCircleTexture();
 
     this.applyTheme();
@@ -90,27 +126,36 @@ export class DrillScene {
     return this.renderer.domElement;
   }
 
-  setData(
-    trajectories: Trajectories | null,
-    intervals: IntervalsData | null,
-    scale: ColorScale | null,
-    collarColors: Map<string, string>,
-  ): void {
-    this.clearObjects();
-    if (!trajectories?.extent || trajectories.holes.length === 0) {
-      this.requestRender();
-      return;
-    }
-    const { min, max } = trajectories.extent;
-    this.origin.set((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
-    const o = this.origin;
-    this.radius = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2], 50) / 2;
+  // ---------------------------------------------------------------- data
+
+  /** Sets the scene origin from the first object; everything later is placed relative to it. */
+  private ensureOrigin(min: number[], max: number[]): THREE.Vector3 {
+    if (!this.origin) this.origin = new THREE.Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
+    return this.origin;
+  }
+
+  setDrillholes(setId: number, trajectories: Trajectories, intervals: IntervalsData | null, scale: ColorScale | null, collarColors: Map<string, string>): void {
+    this.removeDrillholes(setId, false);
+    if (!trajectories.extent || trajectories.holes.length === 0) return;
+    const o = this.ensureOrigin(trajectories.extent.min, trajectories.extent.max);
+    const layer: DrillholeLayer = {
+      extent: new THREE.Box3(
+        new THREE.Vector3(...trajectories.extent.min).sub(o),
+        new THREE.Vector3(...trajectories.extent.max).sub(o),
+      ),
+      group: new THREE.Group(),
+      paths: null,
+      intervals: null,
+      points: null,
+      collars: [],
+      pathOf: new Map(),
+    };
 
     const pathPositions: number[] = [];
     const collarPositions: number[] = [];
     const collarColorsArr: number[] = [];
     for (const h of trajectories.holes) {
-      this.paths.set(h.hole_id, h.path);
+      layer.pathOf.set(h.hole_id, h.path);
       for (let i = 0; i + 1 < h.path.length; i++) {
         const a = h.path[i];
         const b = h.path[i + 1];
@@ -118,15 +163,14 @@ export class DrillScene {
       }
       const c = h.path[0];
       const position = new THREE.Vector3(c[0] - o.x, c[1] - o.y, c[2] - o.z);
-      this.collars.push({ id: h.hole_id, position });
+      layer.collars.push({ holeId: h.hole_id, position });
       collarPositions.push(position.x, position.y, position.z);
       const color = new THREE.Color(collarColors.get(h.hole_id) ?? "#9aa3b5");
       collarColorsArr.push(color.r, color.g, color.b);
     }
-
     if (pathPositions.length > 0) {
-      this.pathLines = this.makeLines(pathPositions, null, 1.5, PATH_COLOR);
-      this.root.add(this.pathLines);
+      layer.paths = this.makeLines(pathPositions, null, 1.5, PATH_COLOR);
+      layer.group.add(layer.paths);
     }
 
     if (intervals) {
@@ -141,75 +185,238 @@ export class DrillScene {
         }
       }
       if (positions.length > 0) {
-        this.intervalLines = this.makeLines(positions, colors, 4.5, 0xffffff);
-        this.intervalLines.renderOrder = 2;
-        this.root.add(this.intervalLines);
+        layer.intervals = this.makeLines(positions, colors, 4.5, 0xffffff);
+        layer.intervals.renderOrder = 2;
+        layer.group.add(layer.intervals);
       }
     }
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(collarPositions, 3));
     geometry.setAttribute("color", new THREE.Float32BufferAttribute(collarColorsArr, 3));
-    this.points = new THREE.Points(
+    layer.points = new THREE.Points(
       geometry,
       new THREE.PointsMaterial({ size: 10, sizeAttenuation: false, vertexColors: true, map: this.pointTexture, transparent: true, alphaTest: 0.4 }),
     );
-    this.points.renderOrder = 3;
-    this.root.add(this.points);
+    layer.points.renderOrder = 3;
+    layer.group.add(layer.points);
 
-    const span = Math.max(max[0] - min[0], max[1] - min[1]) * 1.3;
-    this.grid = new THREE.GridHelper(Math.max(span, 100), 20, 0x8a93a6, 0xbac0cc);
-    this.grid.rotation.x = Math.PI / 2;
-    this.grid.position.z = min[2] - o.z - 2;
-    (this.grid.material as THREE.Material).transparent = true;
-    (this.grid.material as THREE.Material).opacity = 0.35;
-    this.root.add(this.grid);
-
-    this.applySelected();
-    this.fit("iso");
+    this.drillholes.set(setId, layer);
+    this.root.add(layer.group);
+    this.contentChanged();
   }
 
-  setLayers(layers: Layers): void {
-    if (this.pathLines) this.pathLines.visible = layers.paths;
-    if (this.intervalLines) this.intervalLines.visible = layers.intervals;
-    if (this.points) this.points.visible = layers.collars;
-    if (this.grid) this.grid.visible = layers.grid;
+  removeDrillholes(setId: number, update = true): void {
+    const layer = this.drillholes.get(setId);
+    if (!layer) return;
+    this.root.remove(layer.group);
+    disposeTree(layer.group, this.materials);
+    this.drillholes.delete(setId);
+    if (update) this.contentChanged();
+  }
+
+  setDrillholeStyle(setId: number, style: DrillholeStyle): void {
+    const layer = this.drillholes.get(setId);
+    if (!layer) return;
+    layer.group.visible = style.visible;
+    if (layer.paths) layer.paths.visible = style.paths;
+    if (layer.intervals) layer.intervals.visible = style.intervals;
+    if (layer.points) layer.points.visible = style.collars;
     this.requestRender();
   }
+
+  /** `vertices` are float32 relative to `origin` (project coordinates), `triangles` are uint32 indices. */
+  setWireframe(id: number, origin: number[], vertices: Float32Array, triangles: Uint32Array, color: string, opacity: number): void {
+    this.removeWireframe(id, false);
+    if (vertices.length === 0 || triangles.length === 0) return;
+    let min = [Infinity, Infinity, Infinity];
+    let max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < vertices.length; i += 3) {
+      for (let k = 0; k < 3; k++) {
+        const v = vertices[i + k] + origin[k];
+        if (v < min[k]) min[k] = v;
+        if (v > max[k]) max[k] = v;
+      }
+    }
+    const o = this.ensureOrigin(min, max);
+    const shift = [origin[0] - o.x, origin[1] - o.y, origin[2] - o.z];
+    const positions = new Float32Array(vertices.length);
+    for (let i = 0; i < vertices.length; i += 3) {
+      positions[i] = vertices[i] + shift[0];
+      positions[i + 1] = vertices[i + 1] + shift[1];
+      positions[i + 2] = vertices[i + 2] + shift[2];
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(triangles, 1));
+    geometry.computeVertexNormals();
+    const material = new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, flatShading: true });
+    const mesh = new THREE.Mesh(geometry, material);
+    this.applyOpacity(material, opacity);
+    const layer: WireframeLayer = {
+      extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)),
+      mesh,
+      cut: null,
+    };
+    this.wireframes.set(id, layer);
+    this.root.add(mesh);
+    this.updateCut(layer);
+    this.contentChanged();
+  }
+
+  removeWireframe(id: number, update = true): void {
+    const layer = this.wireframes.get(id);
+    if (!layer) return;
+    this.root.remove(layer.mesh);
+    layer.mesh.geometry.dispose();
+    (layer.mesh.material as THREE.Material).dispose();
+    this.removeCut(layer);
+    this.wireframes.delete(id);
+    if (update) this.contentChanged();
+  }
+
+  setWireframeStyle(id: number, color: string, visible: boolean, opacity: number): void {
+    const layer = this.wireframes.get(id);
+    if (!layer) return;
+    const material = layer.mesh.material as THREE.MeshLambertMaterial;
+    const recolor = !material.color.equals(new THREE.Color(color));
+    material.color.set(color);
+    this.applyOpacity(material, opacity);
+    layer.mesh.visible = visible;
+    if (recolor) this.updateCut(layer);
+    if (layer.cut) layer.cut.visible = visible;
+    this.requestRender();
+  }
+
+  hasDrillholes(setId: number): boolean {
+    return this.drillholes.has(setId);
+  }
+
+  hasWireframe(id: number): boolean {
+    return this.wireframes.has(id);
+  }
+
+  // ---------------------------------------------------------------- view
 
   setVerticalExaggeration(value: number): void {
     this.vexag = value;
     this.root.scale.z = value;
+    this.updateSectionLine();
     this.requestRender();
   }
 
-  setSelected(holeId: string | null): void {
-    this.selected = holeId;
+  setGridVisible(visible: boolean): void {
+    this.gridVisible = visible;
+    if (this.grid) this.grid.visible = visible && this.mode !== "section";
+    this.requestRender();
+  }
+
+  setSelected(hole: HoleRef | null): void {
+    this.selected = hole;
     this.applySelected();
     this.requestRender();
   }
 
-  /** Screen position (CSS px inside the container) of a collar, or null if it is behind the camera. */
-  screenPosition(holeId: string): { x: number; y: number } | null {
-    const collar = this.collars.find((c) => c.id === holeId);
-    if (!collar) return null;
-    return this.project(collar.position);
+  /** The section line is drawn in 3D and plan; in section mode it clips the scene to its corridor. */
+  setSection(section: SectionLine | null): void {
+    this.section = section;
+    this.updateSectionLine();
+    this.applyClipping();
+    if (this.mode === "section") this.fit();
+    this.requestRender();
   }
 
+  setMode(mode: SceneMode): void {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    this.camera = mode === "3d" ? this.perspective : this.ortho;
+    // The controls take the camera's "up" when created: plan is north-up, section is Z-up.
+    this.ortho.up.set(0, mode === "plan" ? 1 : 0, mode === "plan" ? 0 : 1);
+    this.controls.dispose();
+    this.controls = this.makeControls();
+    if (this.grid) this.grid.visible = this.gridVisible && mode !== "section";
+    this.updateSectionLine();
+    this.applyClipping();
+    this.resize();
+    this.fit();
+  }
+
+  get currentMode(): SceneMode {
+    return this.mode;
+  }
+
+  /** Project coordinates of the scene centre (for a default section line). */
+  centre(): { x: number; y: number } | null {
+    const box = this.contentBox();
+    if (!box || !this.origin) return null;
+    const c = box.getCenter(new THREE.Vector3());
+    return { x: c.x + this.origin.x, y: c.y + this.origin.y };
+  }
+
+  /** Screen position (CSS px inside the container) of a collar, or null if off screen. */
+  screenPosition(hole: HoleRef): { x: number; y: number } | null {
+    const collar = this.drillholes.get(hole.setId)?.collars.find((c) => c.holeId === hole.holeId);
+    return collar ? this.project(collar.position) : null;
+  }
+
+  /** Fits everything visible into the view. `preset` applies to the 3D mode. */
   fit(preset: "iso" | "top" | "side" = "iso"): void {
-    const target = new THREE.Vector3(0, 0, 0);
-    const radius = Math.max(this.radius * Math.max(this.vexag * 0.6, 1), 1);
-    const distance = (radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2))) * 1.05;
-    const direction =
-      preset === "top" ? new THREE.Vector3(0, -0.0001, 1)
-      : preset === "side" ? new THREE.Vector3(0, -1, 0.02)
-      : new THREE.Vector3(0.9, -1.2, 0.8);
-    this.camera.position.copy(direction.normalize().multiplyScalar(distance));
-    this.camera.near = distance / 200;
-    this.camera.far = distance * 50;
-    this.camera.updateProjectionMatrix();
-    this.controls.target.copy(target);
+    const box = this.contentBox() ?? new THREE.Box3(new THREE.Vector3(-50, -50, -50), new THREE.Vector3(50, 50, 50));
+    const scaled = box.clone();
+    scaled.min.z *= this.vexag;
+    scaled.max.z *= this.vexag;
+    const centre = scaled.getCenter(new THREE.Vector3());
+    const size = scaled.getSize(new THREE.Vector3());
+    const radius = Math.max(size.length() / 2, 10);
+    const aspect = Math.max(this.container.clientWidth, 1) / Math.max(this.container.clientHeight, 1);
+
+    if (this.mode === "3d") {
+      const distance = (radius / Math.sin(THREE.MathUtils.degToRad(this.perspective.fov / 2))) * 1.05;
+      const direction =
+        preset === "top" ? new THREE.Vector3(0, -0.0001, 1)
+        : preset === "side" ? new THREE.Vector3(0, -1, 0.02)
+        : new THREE.Vector3(0.9, -1.2, 0.8);
+      this.perspective.position.copy(centre).add(direction.normalize().multiplyScalar(distance));
+      this.perspective.near = distance / 200;
+      this.perspective.far = distance * 50;
+      this.perspective.updateProjectionMatrix();
+    } else {
+      let target = centre;
+      let half: number;
+      let direction: THREE.Vector3;
+      if (this.mode === "plan") {
+        half = Math.max(size.y / 2, size.x / 2 / aspect) * 1.08;
+        direction = new THREE.Vector3(0, 0, 1);
+      } else {
+        const s = this.section ?? { x0: centre.x, y0: centre.y, az: 90, halfWidth: 25, length: null };
+        const n = sectionNormal(s.az);
+        const along = sectionDirection(s.az);
+        const o = this.origin ?? new THREE.Vector3();
+        // Centre on the line, at the middle height of the content.
+        const lineCentre = new THREE.Vector3(s.x0 - o.x, s.y0 - o.y, centre.z);
+        const offset = along.dot(centre.clone().sub(lineCentre).setZ(0));
+        target = lineCentre.add(along.clone().multiplyScalar(offset));
+        const width = Math.abs(size.x * along.x) + Math.abs(size.y * along.y);
+        half = Math.max(size.z / 2, width / 2 / aspect) * 1.08;
+        // Look along -n, so the line direction points to the right of the screen.
+        direction = n;
+      }
+      half = Math.max(half, 5);
+      this.ortho.left = -half * aspect;
+      this.ortho.right = half * aspect;
+      this.ortho.top = half;
+      this.ortho.bottom = -half;
+      this.ortho.zoom = 1;
+      const distance = radius * 4 + 100;
+      this.ortho.position.copy(target).add(direction.multiplyScalar(distance));
+      this.ortho.near = 0.1;
+      this.ortho.far = distance * 2 + radius * 4;
+      this.ortho.updateProjectionMatrix();
+      centre.copy(target);
+    }
+    this.controls.target.copy(centre);
     this.controls.update();
+    this.fitted = true;
     this.requestRender();
   }
 
@@ -217,7 +424,8 @@ export class DrillScene {
     this.disposed = true;
     this.resizeObserver.disconnect();
     this.cleanup.forEach((fn) => fn());
-    this.clearObjects();
+    for (const id of [...this.drillholes.keys()]) this.removeDrillholes(id, false);
+    for (const id of [...this.wireframes.keys()]) this.removeWireframe(id, false);
     this.pointTexture.dispose();
     this.controls.dispose();
     this.renderer.dispose();
@@ -225,7 +433,65 @@ export class DrillScene {
     this.renderer.domElement.remove();
   }
 
-  // ---- internals ----
+  // ---------------------------------------------------------------- internals
+
+  private makeControls(): OrbitControls {
+    const controls = new OrbitControls(this.camera, this.renderer.domElement);
+    controls.screenSpacePanning = true;
+    controls.enableRotate = this.mode === "3d";
+    // Plan and section: left button pans, like a map.
+    if (this.mode !== "3d") controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+    controls.addEventListener("change", () => this.requestRender());
+    return controls;
+  }
+
+  private contentBox(): THREE.Box3 | null {
+    const box = new THREE.Box3();
+    for (const layer of this.drillholes.values()) if (layer.group.visible) box.union(layer.extent);
+    for (const layer of this.wireframes.values()) if (layer.mesh.visible) box.union(layer.extent);
+    if (box.isEmpty()) {
+      for (const layer of this.drillholes.values()) box.union(layer.extent);
+      for (const layer of this.wireframes.values()) box.union(layer.extent);
+    }
+    return box.isEmpty() ? null : box;
+  }
+
+  private contentChanged(): void {
+    this.rebuildGrid();
+    this.applySelected();
+    this.updateSectionLine();
+    if (!this.fitted) this.fit();
+    this.requestRender();
+  }
+
+  private rebuildGrid(): void {
+    if (this.grid) {
+      this.root.remove(this.grid);
+      this.grid.geometry.dispose();
+      (this.grid.material as THREE.Material).dispose();
+      this.grid = null;
+    }
+    const box = this.contentBox();
+    if (!box) return;
+    const size = box.getSize(new THREE.Vector3());
+    const centre = box.getCenter(new THREE.Vector3());
+    const span = Math.max(size.x, size.y, 100) * 1.3;
+    this.grid = new THREE.GridHelper(span, 20, 0x8a93a6, 0xbac0cc);
+    this.grid.rotation.x = Math.PI / 2;
+    this.grid.position.set(centre.x, centre.y, box.min.z - 2);
+    const material = this.grid.material as THREE.Material;
+    material.transparent = true;
+    material.opacity = 0.35;
+    this.grid.visible = this.gridVisible && this.mode !== "section";
+    this.root.add(this.grid);
+  }
+
+  private applyOpacity(material: THREE.Material, opacity: number): void {
+    material.opacity = opacity;
+    material.transparent = opacity < 1;
+    material.depthWrite = opacity >= 1;
+    material.needsUpdate = true;
+  }
 
   private makeLines(positions: number[], colors: number[] | null, width: number, color: number): LineSegments2 {
     const geometry = new LineSegmentsGeometry();
@@ -233,7 +499,7 @@ export class DrillScene {
     if (colors) geometry.setColors(colors);
     const material = new LineMaterial({ color, linewidth: width, vertexColors: colors !== null, worldUnits: false });
     material.resolution.set(this.container.clientWidth || 1, this.container.clientHeight || 1);
-    this.materials.push(material);
+    this.materials.add(material);
     const lines = new LineSegments2(geometry, material);
     lines.frustumCulled = false;
     return lines;
@@ -242,14 +508,13 @@ export class DrillScene {
   private applySelected(): void {
     if (this.selectedLine) {
       this.root.remove(this.selectedLine);
-      this.selectedLine.geometry.dispose();
-      this.materials = this.materials.filter((m) => m !== this.selectedLine!.material);
-      (this.selectedLine.material as LineMaterial).dispose();
+      disposeTree(this.selectedLine, this.materials);
       this.selectedLine = null;
     }
-    const path = this.selected ? this.paths.get(this.selected) : undefined;
-    if (!path || path.length < 2) return;
+    const layer = this.selected ? this.drillholes.get(this.selected.setId) : undefined;
+    const path = layer && this.selected ? layer.pathOf.get(this.selected.holeId) : undefined;
     const o = this.origin;
+    if (!path || path.length < 2 || !o) return;
     const positions: number[] = [];
     for (let i = 0; i + 1 < path.length; i++) {
       positions.push(path[i][0] - o.x, path[i][1] - o.y, path[i][2] - o.z, path[i + 1][0] - o.x, path[i + 1][1] - o.y, path[i + 1][2] - o.z);
@@ -259,20 +524,117 @@ export class DrillScene {
     this.root.add(this.selectedLine);
   }
 
-  private clearObjects(): void {
-    for (const obj of [this.pathLines, this.intervalLines, this.selectedLine, this.points, this.grid]) {
-      if (!obj) continue;
-      this.root.remove(obj);
-      (obj as THREE.Mesh).geometry?.dispose();
-      const material = (obj as THREE.Mesh).material as THREE.Material | undefined;
-      material?.dispose();
+  /** The section trace and its corridor, drawn on top of the content in 3D and plan. */
+  private updateSectionLine(): void {
+    if (this.sectionLine) {
+      this.scene.remove(this.sectionLine);
+      this.sectionLine.geometry.dispose();
+      (this.sectionLine.material as THREE.Material).dispose();
+      this.sectionLine = null;
     }
-    this.pathLines = this.intervalLines = this.selectedLine = null;
-    this.points = null;
-    this.grid = null;
-    this.materials = [];
-    this.collars = [];
-    this.paths.clear();
+    const s = this.section;
+    const box = this.contentBox();
+    if (!s || !this.origin || !box || this.mode === "section") return;
+    const along = sectionDirection(s.az);
+    const n = sectionNormal(s.az);
+    const size = box.getSize(new THREE.Vector3());
+    const reach = s.length ?? Math.max(size.x, size.y) * 0.75 + 50;
+    const start = s.length === null ? -reach : 0;
+    const p0 = new THREE.Vector3(s.x0 - this.origin.x, s.y0 - this.origin.y, 0);
+    const z = (this.mode === "plan" ? box.max.z + 5 : box.max.z) * this.vexag;
+    const point = (u: number, d: number) => p0.clone().add(along.clone().multiplyScalar(u)).add(n.clone().multiplyScalar(d)).setZ(z);
+    const pts: THREE.Vector3[] = [];
+    const edge = (d: number) => pts.push(point(start, d), point(reach, d));
+    edge(0);
+    edge(-s.halfWidth);
+    edge(s.halfWidth);
+    const geometry = new THREE.BufferGeometry().setFromPoints(pts);
+    this.sectionLine = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: SECTION_COLOR, depthTest: false, transparent: true, opacity: 0.9 }));
+    this.sectionLine.renderOrder = 10;
+    this.scene.add(this.sectionLine);
+  }
+
+  /** Section mode keeps only the corridor ±halfWidth around the line (and its length, if set). */
+  private applyClipping(): void {
+    for (const layer of this.wireframes.values()) this.updateCut(layer);
+    const s = this.section;
+    if (this.mode !== "section" || !s || !this.origin) {
+      this.renderer.clippingPlanes = [];
+      return;
+    }
+    const n = sectionNormal(s.az);
+    const along = sectionDirection(s.az);
+    const c = new THREE.Vector3(s.x0 - this.origin.x, s.y0 - this.origin.y, 0);
+    // A fragment is kept where every plane's signed distance is >= 0.
+    const planes = [
+      new THREE.Plane(n.clone(), -n.dot(c) + s.halfWidth),
+      new THREE.Plane(n.clone().negate(), n.dot(c) + s.halfWidth),
+    ];
+    if (s.length !== null) {
+      planes.push(new THREE.Plane(along.clone(), -along.dot(c)));
+      planes.push(new THREE.Plane(along.clone().negate(), along.dot(c) + s.length));
+    }
+    this.renderer.clippingPlanes = planes;
+  }
+
+  private removeCut(layer: WireframeLayer): void {
+    if (!layer.cut) return;
+    this.root.remove(layer.cut);
+    disposeTree(layer.cut, this.materials);
+    layer.cut = null;
+  }
+
+  /**
+   * In section mode a surface seen edge-on would vanish, so every wireframe also gets its
+   * intersection with the section plane drawn as a thick line in its own colour.
+   */
+  private updateCut(layer: WireframeLayer): void {
+    this.removeCut(layer);
+    const s = this.section;
+    if (this.mode !== "section" || !s || !this.origin) return;
+    const n = sectionNormal(s.az);
+    const c = new THREE.Vector3(s.x0 - this.origin.x, s.y0 - this.origin.y, 0);
+    const offset = n.dot(c);
+    const position = layer.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const index = layer.mesh.geometry.getIndex();
+    if (!index) return;
+    const p = position.array as Float32Array;
+    const idx = index.array as Uint32Array;
+    const dist = new Float32Array(position.count);
+    for (let i = 0; i < position.count; i++) dist[i] = n.x * p[i * 3] + n.y * p[i * 3 + 1] - offset;
+    const out: number[] = [];
+    const corner = [0, 0, 0];
+    for (let t = 0; t < idx.length; t += 3) {
+      corner[0] = idx[t];
+      corner[1] = idx[t + 1];
+      corner[2] = idx[t + 2];
+      const d0 = dist[corner[0]];
+      const d1 = dist[corner[1]];
+      const d2 = dist[corner[2]];
+      if ((d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 < 0 && d1 < 0 && d2 < 0)) continue;
+      let found = 0;
+      for (let e = 0; e < 3 && found < 2; e++) {
+        const a = corner[e];
+        const b = corner[(e + 1) % 3];
+        const da = dist[a];
+        const db = dist[b];
+        if (da >= 0 === db >= 0) continue;
+        const k = da / (da - db);
+        out.push(
+          p[a * 3] + (p[b * 3] - p[a * 3]) * k,
+          p[a * 3 + 1] + (p[b * 3 + 1] - p[a * 3 + 1]) * k,
+          p[a * 3 + 2] + (p[b * 3 + 2] - p[a * 3 + 2]) * k,
+        );
+        found++;
+      }
+      if (found === 1) out.length -= 3;
+    }
+    if (out.length === 0) return;
+    const color = (layer.mesh.material as THREE.MeshLambertMaterial).color.getHex();
+    layer.cut = this.makeLines(out, null, 3, color);
+    layer.cut.renderOrder = 4;
+    layer.cut.visible = layer.mesh.visible;
+    this.root.add(layer.cut);
   }
 
   private project(position: THREE.Vector3): { x: number; y: number } | null {
@@ -283,22 +645,44 @@ export class DrillScene {
     return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
   }
 
+  private visibleInSection(position: THREE.Vector3): boolean {
+    const s = this.section;
+    if (this.mode !== "section" || !s || !this.origin) return true;
+    const d = sectionNormal(s.az).dot(new THREE.Vector3(position.x - (s.x0 - this.origin.x), position.y - (s.y0 - this.origin.y), 0));
+    return Math.abs(d) <= s.halfWidth;
+  }
+
   private nearestCollar(clientX: number, clientY: number, maxDistance: number): Hover | null {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const px = clientX - rect.left;
     const py = clientY - rect.top;
     let best: Hover | null = null;
     let bestDistance = maxDistance;
-    for (const c of this.collars) {
-      const s = this.project(c.position);
-      if (!s) continue;
-      const d = Math.hypot(s.x - px, s.y - py);
-      if (d < bestDistance) {
-        bestDistance = d;
-        best = { id: c.id, x: s.x, y: s.y };
+    for (const [setId, layer] of this.drillholes) {
+      if (!layer.group.visible || !layer.points?.visible) continue;
+      for (const c of layer.collars) {
+        if (!this.visibleInSection(c.position)) continue;
+        const s = this.project(c.position);
+        if (!s) continue;
+        const d = Math.hypot(s.x - px, s.y - py);
+        if (d < bestDistance) {
+          bestDistance = d;
+          best = { setId, holeId: c.holeId, x: s.x, y: s.y };
+        }
       }
     }
     return best;
+  }
+
+  /** Project coordinates of a screen point on the horizontal plane through the content (plan mode). */
+  private groundPoint(clientX: number, clientY: number): { x: number; y: number } | null {
+    if (!this.origin) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, this.camera);
+    const hit = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), new THREE.Vector3());
+    return hit ? { x: hit.x + this.origin.x, y: hit.y + this.origin.y } : null;
   }
 
   private attachPointerEvents(): void {
@@ -311,7 +695,13 @@ export class DrillScene {
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       const quick = performance.now() - down.t < 600;
       down = null;
-      if (moved < 4 && quick) this.onPick(this.nearestCollar(e.clientX, e.clientY, 14)?.id ?? null);
+      if (moved >= 4 || !quick) return;
+      if (this.mode === "plan" && this.onPlanClick) {
+        const p = this.groundPoint(e.clientX, e.clientY);
+        if (p && this.onPlanClick(p.x, p.y)) return;
+      }
+      const hit = this.nearestCollar(e.clientX, e.clientY, 14);
+      this.onPick(hit ? { setId: hit.setId, holeId: hit.holeId } : null);
     };
     const onMove = (e: PointerEvent) => {
       if (down || hoverFrame) return;
@@ -343,8 +733,12 @@ export class DrillScene {
     const w = Math.max(this.container.clientWidth, 1);
     const h = Math.max(this.container.clientHeight, 1);
     this.renderer.setSize(w, h);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    this.perspective.aspect = w / h;
+    this.perspective.updateProjectionMatrix();
+    const half = (this.ortho.top - this.ortho.bottom) / 2;
+    this.ortho.left = -half * (w / h);
+    this.ortho.right = half * (w / h);
+    this.ortho.updateProjectionMatrix();
     for (const m of this.materials) m.resolution.set(w, h);
     this.requestRender();
   }
@@ -355,10 +749,37 @@ export class DrillScene {
     requestAnimationFrame(() => {
       this.frameRequested = false;
       if (this.disposed) return;
+      // A headlight: the directional light follows the camera, so faces toward the viewer are lit.
+      this.light.position.copy(this.camera.position);
+      this.light.target.position.copy(this.controls.target);
       this.renderer.render(this.scene, this.camera);
       this.onRender();
     });
   }
+}
+
+/** Unit vector along a section line (azimuth clockwise from north). */
+export function sectionDirection(az: number): THREE.Vector3 {
+  const a = THREE.MathUtils.degToRad(az);
+  return new THREE.Vector3(Math.sin(a), Math.cos(a), 0);
+}
+
+/** Unit vector to the right of a section line. */
+export function sectionNormal(az: number): THREE.Vector3 {
+  const a = THREE.MathUtils.degToRad(az);
+  return new THREE.Vector3(Math.cos(a), -Math.sin(a), 0);
+}
+
+function disposeTree(object: THREE.Object3D, materials: Set<LineMaterial>): void {
+  object.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    mesh.geometry?.dispose();
+    const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+    for (const m of Array.isArray(material) ? material : material ? [material] : []) {
+      if (m instanceof LineMaterial) materials.delete(m);
+      m.dispose();
+    }
+  });
 }
 
 function makeCircleTexture(): THREE.CanvasTexture {

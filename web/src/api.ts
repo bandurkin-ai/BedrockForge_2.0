@@ -129,6 +129,7 @@ export interface TablePage {
 }
 
 export interface CommitResponse {
+  set_id: number;
   job_id: number;
   kind: string;
   inserted: number;
@@ -147,15 +148,18 @@ export const createProject = (name: string) =>
 
 export const createDemoProject = () => request<Project>("/api/projects/demo", { method: "POST" });
 
-export const getSummary = (projectId: number) => request<Summary>(`/api/projects/${projectId}/summary`);
+export const getSummary = (setId: number) => request<Summary>(`/api/sets/${setId}/summary`);
 
-export function getTable(projectId: number, kind: string, limit: number, offset: number, holeId?: string | null) {
+export function getTable(setId: number, kind: string, limit: number, offset: number, holeId?: string | null) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (holeId) params.set("hole_id", holeId);
-  return request<TablePage>(`/api/projects/${projectId}/tables/${kind}?${params}`);
+  return request<TablePage>(`/api/sets/${setId}/tables/${kind}?${params}`);
 }
 
-export const commitImport = (req: ValidateRequest & { project_id: number; filename: string }) =>
+/** Into an existing set (set_id) or a new one in the project (project_id + set_name). */
+export type ImportTarget = { set_id: number } | { project_id: number; set_name: string };
+
+export const commitImport = (req: ValidateRequest & ImportTarget & { filename: string }) =>
   request<CommitResponse>("/api/import/commit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -205,27 +209,27 @@ export interface FindingsPage {
   items: AuditFinding[];
 }
 
-export const getAudit = (projectId: number) => request<AuditRun | null>(`/api/projects/${projectId}/audit`);
+export const getAudit = (setId: number) => request<AuditRun | null>(`/api/sets/${setId}/audit`);
 
-export const runAudit = (projectId: number, config: AuditConfig) =>
-  request<AuditRun>(`/api/projects/${projectId}/audit`, {
+export const runAudit = (setId: number, config: AuditConfig) =>
+  request<AuditRun>(`/api/sets/${setId}/audit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
   });
 
 export function getFindings(
-  projectId: number,
+  setId: number,
   filters: { severity?: string; table?: string; code?: string; hole_id?: string; hole?: string },
   limit: number,
   offset: number,
 ) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
-  return request<FindingsPage>(`/api/projects/${projectId}/audit/findings?${params}`);
+  return request<FindingsPage>(`/api/sets/${setId}/audit/findings?${params}`);
 }
 
-export const auditExportUrl = (projectId: number) => `/api/projects/${projectId}/audit/export.xlsx`;
+export const auditExportUrl = (setId: number) => `/api/sets/${setId}/audit/export.xlsx`;
 
 export interface Hole {
   hole_id: string;
@@ -250,10 +254,10 @@ export interface HoleDetail extends Hole {
   findings: { code: string; severity: "error" | "warning" | "info"; count: number; message: string }[];
 }
 
-export const listHoles = (projectId: number) => request<Hole[]>(`/api/projects/${projectId}/holes`);
+export const listHoles = (setId: number) => request<Hole[]>(`/api/sets/${setId}/holes`);
 
-export const getHole = (projectId: number, holeId: string) =>
-  request<HoleDetail>(`/api/projects/${projectId}/holes/${encodeURIComponent(holeId)}`);
+export const getHole = (setId: number, holeId: string) =>
+  request<HoleDetail>(`/api/sets/${setId}/holes/${encodeURIComponent(holeId)}`);
 
 export const getHealth = () => request<{ status: string; version: string }>("/api/health");
 
@@ -340,19 +344,78 @@ export interface IntervalsData {
   holes: Record<string, number[][]>;
 }
 
-export interface HoleLog {
-  hole_id: string;
-  td: number | null;
-  components: { name: string; unit: string }[];
-  survey: { depth: number | null; azimuth: number | null; dip: number | null }[];
-  intervals: { from_m: number | null; to_m: number | null; sample_id: string | null; values: Record<string, number | null> }[];
-  truncated: boolean;
+
+export const getTrajectories = (setId: number) => request<Trajectories>(`/api/sets/${setId}/trajectories`);
+
+export const getIntervals = (setId: number, component: string) =>
+  request<IntervalsData>(`/api/sets/${setId}/intervals?component=${encodeURIComponent(component)}`);
+
+
+// ---- Project tree ----
+
+export type DatasetKind = "drillholes" | "lines" | "wireframes" | "blocks" | "rasters";
+
+export interface WireframeInfo {
+  id: number;
+  name: string;
+  color: string;
+  point_count: number;
+  triangle_count: number;
+  extent: { min: number[]; max: number[] };
+  stats: { area: number; volume: number | null; closed: boolean; degenerate: number; open_edges: number; attributes?: Record<string, unknown> };
 }
 
-export const getTrajectories = (projectId: number) => request<Trajectories>(`/api/projects/${projectId}/trajectories`);
+export interface Dataset {
+  id: number;
+  kind: DatasetKind;
+  name: string;
+  created_at: string;
+  meta: { format?: string; filename?: string };
+  counts: { collar: number; survey: number; assay: number } | null;
+  components: { name: string; unit: string }[] | null;
+  audit: { error: number; warning: number; info: number } | null;
+  wireframes: WireframeInfo[] | null;
+}
 
-export const getIntervals = (projectId: number, component: string) =>
-  request<IntervalsData>(`/api/projects/${projectId}/intervals?component=${encodeURIComponent(component)}`);
+export interface WireframeGeometry {
+  id: number;
+  origin: number[];
+  /** base64 float32 x, y, z relative to origin */
+  vertices: string;
+  /** base64 uint32 triangle indices */
+  triangles: string;
+}
 
-export const getHoleLog = (projectId: number, holeId: string) =>
-  request<HoleLog>(`/api/projects/${projectId}/holes/${encodeURIComponent(holeId)}/log`);
+const json = (body: unknown): RequestInit => ({
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export const listDatasets = (projectId: number) => request<Dataset[]>(`/api/projects/${projectId}/datasets`);
+
+export const createSet = (projectId: number, name: string) =>
+  request<Dataset>(`/api/projects/${projectId}/sets`, { method: "POST", ...json({ name }) });
+
+export const renameDataset = (id: number, name: string) =>
+  request<Dataset>(`/api/datasets/${id}`, { method: "PATCH", ...json({ name }) });
+
+export async function deleteDataset(id: number): Promise<void> {
+  const response = await fetch(`/api/datasets/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(`Ошибка ${response.status}`);
+}
+
+export function uploadWireframes(projectId: number, file: File): Promise<Dataset> {
+  const form = new FormData();
+  form.append("file", file);
+  return request<Dataset>(`/api/projects/${projectId}/wireframes`, { method: "POST", body: form });
+}
+
+export const getWireframeGeometry = (id: number) => request<WireframeGeometry>(`/api/wireframes/${id}/geometry`);
+
+export const patchWireframe = (id: number, patch: { name?: string; color?: string }) =>
+  request<WireframeInfo>(`/api/wireframes/${id}`, { method: "PATCH", ...json(patch) });
+
+export async function deleteWireframe(id: number): Promise<void> {
+  const response = await fetch(`/api/wireframes/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(`Ошибка ${response.status}`);
+}

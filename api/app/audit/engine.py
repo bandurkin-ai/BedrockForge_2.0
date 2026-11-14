@@ -1,4 +1,4 @@
-"""Load a project's data, run the checks and store the result."""
+"""Load a drillhole set's data, run the checks and store the result."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ _CHUNK = 5000
 _ASSAY_KEYS = ["id", "hole_id", "sample_id", "from_m", "to_m"]
 
 
-def latest_run(session: Session, project_id: int) -> AuditRun | None:
+def latest_run(session: Session, set_id: int) -> AuditRun | None:
     return session.scalars(
-        select(AuditRun).where(AuditRun.project_id == project_id).order_by(AuditRun.id.desc()).limit(1)
+        select(AuditRun).where(AuditRun.set_id == set_id).order_by(AuditRun.id.desc()).limit(1)
     ).first()
 
 
@@ -26,21 +26,21 @@ def _as_float(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return df.astype({c: "float64" for c in columns})
 
 
-def load_data(session: Session, project_id: int) -> AuditData:
+def load_data(session: Session, set_id: int) -> AuditData:
     conn = session.connection()
     collar = pd.read_sql(
         select(Collar.hole_id, Collar.x, Collar.y, Collar.z, Collar.td, Collar.azimuth, Collar.dip, Collar.status)
-        .where(Collar.project_id == project_id),
+        .where(Collar.set_id == set_id),
         conn,
     )
     survey = pd.read_sql(
         select(Survey.id, Survey.hole_id, Survey.depth, Survey.azimuth, Survey.dip)
-        .where(Survey.project_id == project_id),
+        .where(Survey.set_id == set_id),
         conn,
     )
     raw = pd.read_sql(
         select(Assay.id, Assay.hole_id, Assay.sample_id, Assay.from_m, Assay.to_m, Assay.analytes)
-        .where(Assay.project_id == project_id),
+        .where(Assay.set_id == set_id),
         conn,
     )
     # An empty result comes back as object columns; make the numeric ones float explicitly.
@@ -68,13 +68,13 @@ def summarize(findings: list[Finding]) -> dict:
     return {"by_severity": by_severity, "by_code": by_code}
 
 
-def run_audit(session: Session, project_id: int, cfg: AuditConfig | None = None) -> AuditRun:
-    """Run all checks and replace the project's stored audit with the new result."""
+def run_audit(session: Session, set_id: int, cfg: AuditConfig | None = None) -> AuditRun:
+    """Run all checks and replace the set's stored audit with the new result."""
     cfg = cfg or AuditConfig()
-    findings = run_checks(load_data(session, project_id), cfg)
+    findings = run_checks(load_data(session, set_id), cfg)
 
-    session.execute(delete(AuditRun).where(AuditRun.project_id == project_id))
-    run = AuditRun(project_id=project_id, config=asdict(cfg), counts=summarize(findings))
+    session.execute(delete(AuditRun).where(AuditRun.set_id == set_id))
+    run = AuditRun(set_id=set_id, config=asdict(cfg), counts=summarize(findings))
     session.add(run)
     session.flush()
 

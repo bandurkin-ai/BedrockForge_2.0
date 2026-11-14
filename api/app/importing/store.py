@@ -26,14 +26,14 @@ class CommitResult:
     replaced: int
 
 
-def _rows(kind: str, df: pd.DataFrame, project_id: int) -> list[dict]:
+def _rows(kind: str, df: pd.DataFrame, set_id: int) -> list[dict]:
     base = [c for c in df.columns if not c.startswith(("attr:", "comp:"))]
     attrs = [c for c in df.columns if c.startswith("attr:")]
     comps = [c for c in df.columns if c.startswith("comp:")]
 
     rows = []
     for rec in to_records(df):
-        row = {"project_id": project_id}
+        row = {"set_id": set_id}
         for col in base:
             row[_COLUMN_ALIASES.get(col, col)] = rec[col]
         row["attributes"] = {c[len("attr:"):]: rec[c] for c in attrs}
@@ -45,7 +45,7 @@ def _rows(kind: str, df: pd.DataFrame, project_id: int) -> list[dict]:
 
 def commit_import(
     session: Session,
-    project_id: int,
+    set_id: int,
     kind: str,
     df: pd.DataFrame,
     *,
@@ -53,26 +53,26 @@ def commit_import(
     mapping: dict[str, str],
     components: list[dict[str, str]],
 ) -> CommitResult:
-    """Replace the project's rows of this kind with the file's rows (one transaction)."""
+    """Replace the drillhole set's rows of this kind with the file's rows (one transaction)."""
     model = MODELS[kind]
-    rows = _rows(kind, df, project_id)
+    rows = _rows(kind, df, set_id)
 
-    replaced = session.execute(delete(model).where(model.project_id == project_id)).rowcount
+    replaced = session.execute(delete(model).where(model.set_id == set_id)).rowcount
     for start in range(0, len(rows), _CHUNK):
         session.execute(insert(model), rows[start:start + _CHUNK])
 
     if components:
         stmt = pg_insert(Component).values(
-            [{"project_id": project_id, "name": c["column"], "unit": c["unit"].strip()} for c in components]
+            [{"set_id": set_id, "name": c["column"], "unit": c["unit"].strip()} for c in components]
         )
         session.execute(
             stmt.on_conflict_do_update(
-                index_elements=["project_id", "name"], set_={"unit": stmt.excluded.unit}
+                index_elements=["set_id", "name"], set_={"unit": stmt.excluded.unit}
             )
         )
 
     job = ImportJob(
-        project_id=project_id,
+        set_id=set_id,
         kind=kind,
         filename=filename,
         row_count=len(rows),

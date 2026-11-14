@@ -4,17 +4,19 @@ import { getHealth, type AssistantStatus, type AuditRun } from "./api";
 export function StatusBar({
   projectName,
   holeCount,
+  setName,
   selectedHole,
   audit,
-  activeView,
+  mode,
   assistant,
   remote,
 }: {
   projectName: string;
   holeCount: number;
   selectedHole: string | null;
+  setName: string | null;
   audit: AuditRun | null;
-  activeView: string;
+  mode: string;
   assistant: AssistantStatus | null;
   /** The browser is registered with the server and can take commands from MCP clients. */
   remote: boolean;
@@ -42,7 +44,7 @@ export function StatusBar({
       <span className="sep">·</span>
       <span>Проект: {projectName}</span>
       <span className="sep">·</span>
-      <span>Скважин: {holeCount.toLocaleString("ru-RU")}</span>
+      <span>Набор: {setName ?? "—"}{setName && ` (${holeCount.toLocaleString("ru-RU")} скв.)`}</span>
       {selectedHole && (
         <>
           <span className="sep">·</span>
@@ -50,7 +52,7 @@ export function StatusBar({
         </>
       )}
       <span className="sep">·</span>
-      <span>Окно: {activeView}</span>
+      <span>Вид: {mode}</span>
       <span className="spacer" />
       <span title="Встроенный ассистент работает через Claude API на сервере">
         Claude: {assistant === null ? "…" : assistant.configured ? "подключён" : "нет ключа API"}

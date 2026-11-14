@@ -28,7 +28,8 @@ from app.importing.service import (
     to_records,
 )
 from app.importing.store import commit_import
-from app.routers.projects import get_project
+from app.models import Dataset
+from app.routers.projects import get_project, get_set
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 
@@ -274,12 +275,17 @@ def reread(file_id: str, body: ReadOptionsIn) -> UploadResponse:
 
 
 class CommitRequest(ValidateRequest):
-    project_id: int
+    # The drillhole set to write into; without it a new set is created in project_id.
+    set_id: int | None = None
+    project_id: int | None = None
+    # Name of the new set (default "Скважины").
+    set_name: str | None = Field(None, max_length=255)
     # Defaults to the name of the uploaded file.
     filename: str | None = None
 
 
 class CommitResponse(BaseModel):
+    set_id: int
     job_id: int
     kind: str
     inserted: int
@@ -289,10 +295,16 @@ class CommitResponse(BaseModel):
 
 @router.post("/commit", response_model=CommitResponse)
 def commit(req: CommitRequest, session: Session = Depends(get_session)) -> CommitResponse:
-    """Validate the mapping again and replace the project's rows of this kind."""
+    """Validate the mapping again and replace the set's rows of this kind (a new set if none is given)."""
     if req.kind not in SCHEMAS:
         raise HTTPException(400, f"Неизвестный тип таблицы: {req.kind}")
-    get_project(session, req.project_id)
+    if req.set_id is not None:
+        dataset = get_set(session, req.set_id)
+    elif req.project_id is not None:
+        get_project(session, req.project_id)
+        dataset = None
+    else:
+        raise HTTPException(422, "Укажите набор скважин (set_id) или проект (project_id)")
     table, meta = _read_stored(req.file_id)
     df = table.frame
     components = [c.model_dump() for c in req.components] if req.kind == "assay" else []
@@ -302,9 +314,13 @@ def commit(req: CommitRequest, session: Session = Depends(get_session)) -> Commi
     if normalized is None or any(i.severity == "error" for i in issues):
         raise HTTPException(422, {"message": "Назначение колонок содержит ошибки", "issues": [i.model_dump() for i in out_issues]})
 
+    if dataset is None:
+        dataset = Dataset(project_id=req.project_id, kind="drillholes", name=(req.set_name or "").strip() or "Скважины", meta={})
+        session.add(dataset)
+        session.flush()
     result = commit_import(
         session,
-        req.project_id,
+        dataset.id,
         req.kind,
         normalized,
         filename=(req.filename or meta["filename"])[:255],
@@ -312,6 +328,7 @@ def commit(req: CommitRequest, session: Session = Depends(get_session)) -> Commi
         components=components,
     )
     return CommitResponse(
+        set_id=dataset.id,
         job_id=result.job_id,
         kind=result.kind,
         inserted=result.inserted,
