@@ -11,7 +11,7 @@ import { commandTools, eventShortcut, findByToolName, validateArgs, type Command
 import { Icon } from "./shell/icons";
 import { ProjectTree } from "./shell/ProjectTree";
 import { PropertiesPanel } from "./shell/PropertiesPanel";
-import { buildRibbon, flattenRibbon, type RibbonItem } from "./shell/ribbon";
+import { buildRibbon, flattenRibbon, type RibbonItem } from "./shell/ribbonConfig";
 import { Ribbon } from "./shell/Ribbon";
 import { buildCommands, type Live } from "./shell/registry";
 import { Splitter } from "./shell/Splitter";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { commandTools, findByToolName, formatShortcut, matchesQuery, toolName, validateArgs, type Command } from "./commands";
-import { buildRibbon, flattenRibbon } from "./ribbon";
+import { buildRibbon, flattenRibbon } from "./ribbonConfig";
 import { DEFAULT_WORKSPACE, normalize, resize, setLayout, setPane, setPanel } from "./workspace";
 
 const open: Command = {

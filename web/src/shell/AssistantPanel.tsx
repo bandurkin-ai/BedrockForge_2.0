@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AssistantStatus } from "../api";
 import { Icon } from "./icons";
 import { Markdown } from "./markdown";
-import { QUICK_PROMPTS } from "./ribbon";
+import { QUICK_PROMPTS } from "./ribbonConfig";
 import type { ChatItem } from "./useAssistant";
 
 export interface Approval {

@@ -1,6 +1,6 @@
 import { formatShortcut } from "./commands";
 import { Icon } from "./icons";
-import type { RibbonItem, RibbonTab } from "./ribbon";
+import type { RibbonItem, RibbonTab } from "./ribbonConfig";
 
 function tooltip(item: RibbonItem): string {
   const text = item.hint ?? item.label;

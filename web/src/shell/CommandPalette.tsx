@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Hole } from "../api";
 import { formatShortcut, matchesQuery } from "./commands";
 import { Icon, type IconName } from "./icons";
-import type { RibbonItem } from "./ribbon";
+import type { RibbonItem } from "./ribbonConfig";
 
 interface Entry {
   key: string;
