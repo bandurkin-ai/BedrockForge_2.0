@@ -99,6 +99,15 @@ def test_histogram_api_weights_filters_and_counts(assays):
     cut = client.post(url, json={"field": "comp:AU", "top_cut": 10, "negatives": "exclude", "exclude_zero": True}).json()
     assert cut["counts"]["capped"] == 1 and cut["counts"]["used"] == 3 and cut["stats"]["max"] == 10
 
+    # Cuts at both ends (values 1, 2, -0.01, 0, 40): lower excluded, upper capped by default.
+    both = client.post(url, json={"field": "comp:AU", "bottom_cut": 0.5, "top_cut": 10}).json()
+    assert both["counts"]["bottom_excluded"] == 2 and both["counts"]["capped"] == 1 and both["counts"]["used"] == 3
+    assert both["stats"]["min"] == 1 and both["stats"]["max"] == 10
+    floor = client.post(url, json={"field": "comp:AU", "bottom_cut": 0.5, "bottom_mode": "cap", "top_cut": 10, "top_mode": "exclude"}).json()
+    assert floor["counts"]["bottom_capped"] == 2 and floor["counts"]["top_excluded"] == 1 and floor["counts"]["used"] == 4
+    assert floor["stats"]["mean"] == pytest.approx((1 + 2 + 0.5 + 0.5) / 4)
+    assert client.post(url, json={"field": "comp:AU", "bottom_cut": 5, "top_cut": 5}).status_code == 422
+
     log = client.post(url, json={"field": "comp:AU", "log": True, "bin_width": 0.5}).json()
     assert log["counts"]["nonpositive_log"] == 2 and sum(log["bins"]["counts"]) == 3
     one_hole = client.post(url, json={"field": "comp:AU", "holes": ["H2"]}).json()

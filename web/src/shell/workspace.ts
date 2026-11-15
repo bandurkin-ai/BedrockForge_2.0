@@ -13,7 +13,7 @@ export interface SelectedObject {
 /** Camera presets of the single 3D window. They only turn the view; nothing is a separate mode. */
 export type ViewPreset = "top" | "front" | "side" | "iso" | "section";
 export const VIEW_TITLES: Record<ViewPreset, string> = {
-  top: "Сверху (Y/X)",
+  top: "В план",
   front: "Сбоку (Z/X)",
   side: "Сбоку (Z/Y)",
   iso: "Изометрия",

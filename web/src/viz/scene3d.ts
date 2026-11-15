@@ -87,7 +87,7 @@ interface RasterLayer {
 
 /**
  * The one 3D view of the project: every object in a shared space, always free to rotate.
- * View buttons only turn the camera (top Y/X, sides Z/X and Z/Y, the section plane);
+ * View buttons only turn the camera (plan of what is on screen, sides Z/X and Z/Y, the section plane);
  * a section line optionally clips the scene to its window (towards / away from the viewer).
  *
  * Z is up. Coordinates are shifted to a scene origin (the first loaded object), because
@@ -645,6 +645,30 @@ export class GeoScene {
         direction = new THREE.Vector3(0.9, -1.2, 0.8);
     }
     this.lookFrom(direction, preset === "section");
+  }
+
+  /**
+   * "В план": turns the view to look straight down (Y up, X to the right) about the point the view
+   * is centred on, keeping the scale: the plan shows the part of the project that was on the
+   * screen, not everything (that is "Вписать"). Pressing it again on a plan changes nothing.
+   */
+  toPlan(): void {
+    const target = this.controls.target.clone();
+    const distance = Math.max(this.camera.position.distanceTo(target), 1);
+    const down = new THREE.Vector3(0, -0.0001, 1).normalize();
+    this.camera.up.set(0, 0, 1);
+    this.camera.position.copy(target).addScaledVector(down, distance);
+    if (this.camera === this.ortho) {
+      // Room below for everything under the view, however deep.
+      const box = this.contentBox();
+      const depth = box ? box.getSize(new THREE.Vector3()).length() * Math.max(1, this.vexag) : 0;
+      this.ortho.near = 0.1;
+      this.ortho.far = Math.max(this.ortho.far, distance * 2 + depth * 2);
+      this.ortho.updateProjectionMatrix();
+    }
+    this.camera.lookAt(target);
+    this.controls.update();
+    this.requestRender();
   }
 
   /** Unit vector from the view target to the camera. */

@@ -584,14 +584,21 @@ class SampleFilter(BaseModel):
     # Values below zero: Micromine and many labs write "<0.01" as -0.01.
     negatives: Literal["keep", "exclude", "half_abs"] = "keep"
     exclude_zero: bool = False
-    # Values above are replaced by it (top cut of outliers); statistics are after the cut.
+    # Cuts at both ends; statistics are after them. "cap": values beyond are replaced by the cut
+    # (top cut of outliers, floor at the detection limit); "exclude": samples beyond are left out
+    # (e.g. only ore above a cut-off grade).
+    bottom_cut: float | None = None
+    bottom_mode: Literal["cap", "exclude"] = "exclude"
     top_cut: float | None = None
+    top_mode: Literal["cap", "exclude"] = "cap"
     holes: list[str] | None = Field(None, max_length=10000)
 
     @model_validator(mode="after")
     def _weights(self):
         if self.weight in ("field", "length_field") and not self.weight_field:
             raise ValueError("Укажите поле веса")
+        if self.bottom_cut is not None and self.top_cut is not None and self.top_cut <= self.bottom_cut:
+            raise ValueError("Верхняя отсечка должна быть больше нижней")
         return self
 
 
@@ -653,16 +660,28 @@ def load_field_values(session: Session, set_id: int, f: SampleFilter) -> FieldVa
         zero = v == 0
         n_zero = int(zero.sum())
         v, w = v[~zero], w[~zero]
-    n_capped = 0
+    cut = {"bottom_capped": 0, "bottom_excluded": 0, "capped": 0, "top_excluded": 0}
+    if f.bottom_cut is not None:
+        low = v < f.bottom_cut
+        if f.bottom_mode == "cap":
+            cut["bottom_capped"] = int(low.sum())
+            v = np.where(low, f.bottom_cut, v)
+        else:
+            cut["bottom_excluded"] = int(low.sum())
+            v, w = v[~low], w[~low]
     if f.top_cut is not None:
-        capped = v > f.top_cut
-        n_capped = int(capped.sum())
-        v = np.where(capped, f.top_cut, v)
+        high = v > f.top_cut
+        if f.top_mode == "cap":
+            cut["capped"] = int(high.sum())
+            v = np.where(high, f.top_cut, v)
+        else:
+            cut["top_excluded"] = int(high.sum())
+            v, w = v[~high], w[~high]
     if len(v) == 0:
         raise HTTPException(422, "Нет значений после фильтров")
     return FieldValues(v, w, {
         "rows": total, "missing": int(missing.sum()), "bad_weight": int(bad_weight.sum()),
-        "negative": n_negative, "zero_excluded": n_zero, "capped": n_capped, "used": int(len(v)),
+        "negative": n_negative, "zero_excluded": n_zero, **cut, "used": int(len(v)),
     })
 
 

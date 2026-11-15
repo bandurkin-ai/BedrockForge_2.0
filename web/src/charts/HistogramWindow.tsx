@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getHistogram, getNumericFields, type Describe, type HistogramParams, type HistogramResult, type NumericField, type WeightMode } from "../api";
+import { getHistogram, getNumericFields, type CutMode, type Describe, type HistogramParams, type HistogramResult, type NumericField, type WeightMode } from "../api";
 import { formatNumber, parseNumber } from "../stats/chartMath";
 import { download, savePng, saveSvg, toCsv } from "./exportChart";
 import { HistogramChart, Y_TITLES, barValues, type Mark, type YMode } from "./HistogramChart";
@@ -18,7 +18,10 @@ export interface HistogramSettings {
   y: YMode;
   negatives: HistogramParams["negatives"];
   excludeZero: boolean;
+  bottomCut: string;
+  bottomMode: CutMode;
   topCut: string;
+  topMode: CutMode;
   cumulative: boolean;
   marks: { mean: boolean; median: boolean; p90: boolean; p975: boolean; topCut: boolean };
   color: string;
@@ -38,7 +41,10 @@ export const DEFAULT_HISTOGRAM: HistogramSettings = {
   y: "percent",
   negatives: "keep",
   excludeZero: false,
+  bottomCut: "",
+  bottomMode: "exclude",
   topCut: "",
+  topMode: "cap",
   cumulative: true,
   marks: { mean: true, median: true, p90: false, p975: false, topCut: true },
   color: "#4f9dde",
@@ -59,8 +65,34 @@ export function toParams(s: HistogramSettings): HistogramParams | null {
     end: parseNumber(s.end),
     negatives: s.negatives,
     exclude_zero: s.excludeZero,
+    bottom_cut: parseNumber(s.bottomCut),
+    bottom_mode: s.bottomMode,
     top_cut: parseNumber(s.topCut),
+    top_mode: s.topMode,
   };
+}
+
+/** A cut value with its mode: replace values beyond it, or leave those samples out. */
+function CutInput({ label, value, mode, below, onChange }: {
+  label: string;
+  value: string;
+  mode: CutMode;
+  below?: boolean;
+  onChange: (value: string, mode: CutMode) => void;
+}) {
+  const beyond = below ? "ниже" : "выше";
+  return (
+    <div className="hist-cut">
+      <label>{label}
+        <input value={value} onChange={(e) => onChange(e.target.value, mode)} placeholder="нет" inputMode="decimal" aria-label={label}
+          title={mode === "cap" ? `Значения ${beyond} заменяются этим` : `Пробы ${beyond} не учитываются`} />
+      </label>
+      <select value={mode} onChange={(e) => onChange(value, e.target.value as CutMode)} aria-label={`${label}: режим`}>
+        <option value="exclude">исключить</option>
+        <option value="cap">{below ? "поднять до значения" : "урезать до значения"}</option>
+      </select>
+    </div>
+  );
 }
 
 const WEIGHTS: [WeightMode, string][] = [
@@ -173,8 +205,10 @@ export function HistogramWindow({ setId, setName, initial, onSettings }: {
     if (s.marks.median) marks.push({ value: st.median, label: `Медиана ${formatNumber(st.median)}`, dashed: true });
     if (s.marks.p90) marks.push({ value: st.percentiles["90"], label: `P90 ${formatNumber(st.percentiles["90"])}`, dashed: true });
     if (s.marks.p975) marks.push({ value: st.percentiles["97.5"], label: `P97.5 ${formatNumber(st.percentiles["97.5"])}`, dashed: true });
+    const low = parseNumber(s.bottomCut);
     const cut = parseNumber(s.topCut);
-    if (s.marks.topCut && cut !== null) marks.push({ value: cut, label: `Урезка ${formatNumber(cut)}` });
+    if (s.marks.topCut && low !== null) marks.push({ value: low, label: `Отсечка ${formatNumber(low)}` });
+    if (s.marks.topCut && cut !== null) marks.push({ value: cut, label: `${s.topMode === "cap" ? "Урезка" : "Отсечка"} ${formatNumber(cut)}` });
   }
 
   function saveCsv() {
@@ -216,9 +250,10 @@ export function HistogramWindow({ setId, setName, initial, onSettings }: {
             </select>
           </label>
           <label className="check"><input type="checkbox" checked={s.excludeZero} onChange={(e) => set({ excludeZero: e.target.checked })} /> Исключить нули</label>
-          <label>Урезка сверху
-            <input value={s.topCut} onChange={(e) => set({ topCut: e.target.value })} placeholder="нет" inputMode="decimal" aria-label="Урезка сверху" title="Значения выше заменяются этим (ураганные пробы)" />
-          </label>
+          <CutInput label="Отсечка снизу" value={s.bottomCut} mode={s.bottomMode} below
+            onChange={(bottomCut, bottomMode) => set({ bottomCut, bottomMode })} />
+          <CutInput label="Отсечка сверху" value={s.topCut} mode={s.topMode}
+            onChange={(topCut, topMode) => set({ topCut, topMode })} />
         </fieldset>
 
         <fieldset>
@@ -258,7 +293,7 @@ export function HistogramWindow({ setId, setName, initial, onSettings }: {
           </label>
           <label className="check"><input type="checkbox" checked={s.cumulative} onChange={(e) => set({ cumulative: e.target.checked })} /> Накопленная кривая</label>
           <div className="checks">
-            {([["mean", "Среднее"], ["median", "Медиана"], ["p90", "P90"], ["p975", "P97.5"], ["topCut", "Урезка"]] as [keyof HistogramSettings["marks"], string][]).map(([k, t]) => (
+            {([["mean", "Среднее"], ["median", "Медиана"], ["p90", "P90"], ["p975", "P97.5"], ["topCut", "Отсечки"]] as [keyof HistogramSettings["marks"], string][]).map(([k, t]) => (
               <label key={k} className="check"><input type="checkbox" checked={s.marks[k]} onChange={(e) => set({ marks: { ...s.marks, [k]: e.target.checked } })} /> {t}</label>
             ))}
           </div>
@@ -286,7 +321,10 @@ export function HistogramWindow({ setId, setName, initial, onSettings }: {
               {c!.bad_weight > 0 && ` · без веса ${c!.bad_weight}`}
               {c!.negative > 0 && ` · отрицательных ${c!.negative}${s.negatives === "exclude" ? " (исключены)" : s.negatives === "half_abs" ? " (|x|/2)" : ""}`}
               {c!.zero_excluded > 0 && ` · нулей исключено ${c!.zero_excluded}`}
+              {c!.bottom_excluded > 0 && ` · ниже отсечки исключено ${c!.bottom_excluded}`}
+              {c!.bottom_capped > 0 && ` · поднято до отсечки ${c!.bottom_capped}`}
               {c!.capped > 0 && ` · урезано ${c!.capped}`}
+              {c!.top_excluded > 0 && ` · выше отсечки исключено ${c!.top_excluded}`}
               {c!.nonpositive_log > 0 && ` · ≤ 0 не показаны на логарифмической шкале: ${c!.nonpositive_log}`}
               {result.bins.below.count + result.bins.above.count > 0 && ` · вне диапазона: ниже ${result.bins.below.count}, выше ${result.bins.above.count}`}
               {` · бинов ${result.bins.counts.length}, ширина ${formatNumber(result.bins.width)}${result.log ? " (log10)" : ""}`}

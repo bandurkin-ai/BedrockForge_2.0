@@ -106,7 +106,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       id: "scene.view",
       title: "Повернуть вид",
       description:
-        "Главное окно всегда 3D и свободно вращается; команда только поворачивает камеру. top — сверху (Y вверх, X вправо), " +
+        "Главное окно всегда 3D и свободно вращается; команда только поворачивает камеру. top — «В план»: вид сверху (Y вверх, X вправо) на то, что сейчас на экране (не вписывает всё), " +
         "front — сбоку на север (Z вверх, X вправо), side — сбоку на запад (Z вверх, Y вправо), iso — изометрия, " +
         "section — в плоскость линии разреза (Z вверх).",
       params: { view: { type: "string", enum: VIEW_PRESETS } },
@@ -645,7 +645,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         "Открывает окно гистограммы по таблице проб набора скважин (правая кнопка мыши на наборе или «Пробы» в дереве). " +
         "field — имя компонента (AU) или числового атрибута; weight — none | length | field | length_field (длина × поле, например плотность); " +
         "weight_field — поле веса; log — логарифмическая шкала; bin_width — ширина бина (в log10 при log); bins — число бинов; " +
-        "start / end — диапазон; negatives — keep | exclude | half_abs (половина предела для «<0.01», записанных как −0.01); top_cut — урезка сверху. " +
+        "start / end — диапазон; negatives — keep | exclude | half_abs (половина предела для «<0.01», записанных как −0.01); bottom_cut / top_cut — отсечки снизу и сверху, bottom_mode / top_mode — exclude (исключить пробы) | cap (заменить значением; по умолчанию сверху — урезка cap, снизу — exclude). " +
         "Окно показывает статистику: среднее, медиану, дисперсию, CV, процентили (взвешенные по GSLIB).",
       params: {
         set_id: { type: "integer" },
@@ -658,7 +658,10 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         start: { type: "number" },
         end: { type: "number" },
         negatives: { type: "string", enum: ["keep", "exclude", "half_abs"] },
+        bottom_cut: { type: "number" },
+        bottom_mode: { type: "string", enum: ["exclude", "cap"] },
         top_cut: { type: "number" },
+        top_mode: { type: "string", enum: ["exclude", "cap"] },
       },
       run: (args) => {
         const set = targetSet(args.set_id);
@@ -680,6 +683,9 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         if (typeof args.end === "number") initial.end = text(args.end);
         if (args.negatives) initial.negatives = args.negatives as HistogramSettings["negatives"];
         if (typeof args.top_cut === "number") initial.topCut = text(args.top_cut);
+        if (typeof args.bottom_cut === "number") initial.bottomCut = text(args.bottom_cut);
+        if (args.top_mode === "cap" || args.top_mode === "exclude") initial.topMode = args.top_mode;
+        if (args.bottom_mode === "cap" || args.bottom_mode === "exclude") initial.bottomMode = args.bottom_mode;
         return s().openChart("histogram", set.id, initial);
       },
     },

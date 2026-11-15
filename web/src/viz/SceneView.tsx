@@ -126,7 +126,8 @@ export function SceneView(props: SceneViewProps) {
     sceneRef.current = scene;
     const api: SceneApi = {
       fit: () => scene.fit(),
-      view: (preset) => scene.view(preset),
+      // "top" is "В план": the plan of what is on the screen now, not of everything.
+      view: (preset) => (preset === "top" ? scene.toPlan() : scene.view(preset)),
       drawSection: () => {
         // The line is digitised on the plan with everything visible.
         live.current.onWorkspace({ clip: false });
@@ -429,7 +430,7 @@ export function SceneView(props: SceneViewProps) {
     <div className="scene-view">
       <div className="scene-toolbar">
         <div className="segmented" aria-label="Повернуть вид">
-          <button onClick={() => sceneRef.current?.view("top")} title="Вид сверху: Y вверх, X вправо (T)">Y/X</button>
+          <button onClick={() => sceneRef.current?.toPlan()} title="В план: вид сверху (Y вверх, X вправо) на то, что сейчас на экране (T)">В план</button>
           <button onClick={() => sceneRef.current?.view("front")} title="Вид сбоку на север: Z вверх, X вправо (X)">Z/X</button>
           <button onClick={() => sceneRef.current?.view("side")} title="Вид сбоку на запад: Z вверх, Y вправо (Y)">Z/Y</button>
           <button onClick={() => sceneRef.current?.view("iso")} title="Изометрия (3)">3D</button>

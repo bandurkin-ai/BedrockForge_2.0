@@ -976,8 +976,14 @@ export interface HistogramParams {
   end?: number | null;
   negatives: "keep" | "exclude" | "half_abs";
   exclude_zero: boolean;
+  /** cuts at both ends: "cap" replaces values beyond by the cut, "exclude" leaves the samples out */
+  bottom_cut?: number | null;
+  bottom_mode?: CutMode;
   top_cut?: number | null;
+  top_mode?: CutMode;
 }
+
+export type CutMode = "cap" | "exclude";
 
 export interface Describe {
   count: number;
@@ -998,7 +1004,7 @@ export interface HistogramResult {
   field: string;
   log: boolean;
   weighted: boolean;
-  counts: { rows: number; missing: number; bad_weight: number; negative: number; zero_excluded: number; capped: number; nonpositive_log: number; used: number };
+  counts: { rows: number; missing: number; bad_weight: number; negative: number; zero_excluded: number; bottom_capped: number; bottom_excluded: number; capped: number; top_excluded: number; nonpositive_log: number; used: number };
   stats: Describe;
   stats_unweighted: Describe | null;
   bins: {

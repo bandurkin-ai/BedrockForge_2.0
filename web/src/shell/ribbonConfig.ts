@@ -26,7 +26,7 @@ export interface RibbonTab {
 }
 
 const VIEWS: { view: ViewPreset; label: string; icon: IconName; hint: string; shortcut: string }[] = [
-  { view: "top", label: "Сверху Y/X", icon: "plan", hint: "Вид сверху: Y вверх, X вправо", shortcut: "t" },
+  { view: "top", label: "В план", icon: "plan", hint: "Вид сверху (Y вверх, X вправо) на то, что сейчас на экране", shortcut: "t" },
   { view: "front", label: "Сбоку Z/X", icon: "section", hint: "Вид сбоку на север: Z вверх, X вправо", shortcut: "x" },
   { view: "side", label: "Сбоку Z/Y", icon: "section", hint: "Вид сбоку на запад: Z вверх, Y вправо", shortcut: "y" },
   { view: "iso", label: "3D", icon: "cube", hint: "Изометрия", shortcut: "3" },

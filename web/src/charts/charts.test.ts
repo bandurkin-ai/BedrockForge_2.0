@@ -26,8 +26,8 @@ describe("histogram settings", () => {
   });
 
   it("sends only the chosen bin setting and parses numbers with commas", () => {
-    const p = toParams({ ...DEFAULT_HISTOGRAM, field: "comp:AU", binMode: "width", binWidth: "0,25", bins: "40", topCut: "12,5", start: "" })!;
-    expect(p).toMatchObject({ field: "comp:AU", weight: "length", bin_width: 0.25, bins: null, top_cut: 12.5, start: null, weight_field: null });
+    const p = toParams({ ...DEFAULT_HISTOGRAM, field: "comp:AU", binMode: "width", binWidth: "0,25", bins: "40", topCut: "12,5", bottomCut: "0,1", start: "" })!;
+    expect(p).toMatchObject({ field: "comp:AU", weight: "length", bin_width: 0.25, bins: null, top_cut: 12.5, top_mode: "cap", bottom_cut: 0.1, bottom_mode: "exclude", start: null, weight_field: null });
     const q = toParams({ ...DEFAULT_HISTOGRAM, field: "comp:AU", weight: "field", weightField: "attr:DENSITY", binMode: "count" })!;
     expect(q).toMatchObject({ bins: 30, bin_width: null, weight_field: "attr:DENSITY" });
   });

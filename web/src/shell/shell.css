@@ -411,6 +411,7 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .hist-settings select, .hist-settings input:not([type=checkbox]):not([type=color]) { width: 100%; min-width: 0; box-sizing: border-box; }
 .hist-settings fieldset { min-width: 0; }
 .hist-settings .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.hist-settings .hist-cut { display: flex; flex-direction: column; gap: 3px; }
 .hist-settings .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
 .seg { display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
 .seg button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 4px; border: none; border-radius: 0; background: none; font-size: 0.8rem; }
