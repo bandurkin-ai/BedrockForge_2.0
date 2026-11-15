@@ -45,6 +45,12 @@ export interface DataTreeProps {
   onColor: (kind: "wireframe" | "lines", id: number, color: string) => void;
   onDeleteItem: (kind: "wireframe" | "lines", id: number, name: string) => void;
   onDemo: () => void;
+  /** Right click on a wireframe or a line layer: its menu (edit, operations, export). */
+  onItemMenu?: (kind: "wireframe" | "lines", id: number, x: number, y: number) => void;
+  /** «+» of the lines group: load a file or make a new layer. */
+  onLinesMenu?: (x: number, y: number) => void;
+  /** The layer being edited and whether it has unsaved changes. */
+  editing?: { layerId: number; dirty: boolean } | null;
   /** Right click on a drillhole set (or its assay table): the charts menu. */
   onSetMenu?: (setId: number, x: number, y: number) => void;
   /** A saved chart under a set: open it, or its menu (rename, delete). */
@@ -467,14 +473,14 @@ export function DataTree(props: DataTreeProps) {
           uploadTitle="Загрузить каркасы: Micromine TRIDB, DXF" emptyNote="Нет каркасов. «+» — файлы .tridb или .dxf."
           files={(datasets ?? []).filter((d) => d.kind === "wireframes")}
           items={(d) => (d.wireframes ?? []).map((w) => ({ id: w.id, name: w.name, color: w.color, count: w.triangle_count, countTitle: "Треугольников" }))}
-          onUpload={() => props.onUpload("wireframes")}
+          onAdd={() => props.onUpload("wireframes")}
         />
         <FileCategory
           {...props} kind="lines" title="Линии" icon="lines" open={open} toggle={toggle}
           uploadTitle="Загрузить линии: Micromine STR, Surpac STR, DXF" emptyNote="Нет линий. «+» — файлы .str или .dxf."
           files={(datasets ?? []).filter((d) => d.kind === "lines")}
           items={(d) => (d.lines ?? []).map((l) => ({ id: l.id, name: l.name, color: l.color, count: l.line_count, countTitle: "Линий" }))}
-          onUpload={() => props.onUpload("lines")}
+          onAdd={(e) => (props.onLinesMenu ? props.onLinesMenu(e.clientX, e.clientY) : props.onUpload("lines"))}
         />
         <RasterCategory {...props} open={open} toggle={toggle} />
 
@@ -497,7 +503,7 @@ function FileCategory(props: DataTreeProps & {
   items: (d: Dataset) => FileItem[];
   open: Set<string>;
   toggle: (key: string) => void;
-  onUpload: () => void;
+  onAdd: (e: React.MouseEvent) => void;
 }) {
   const { kind, files, open, toggle, ws } = props;
   const keyOf = LAYER_KEY[kind];
@@ -507,7 +513,7 @@ function FileCategory(props: DataTreeProps & {
   return (
     <Category
       title={props.title} icon={props.icon} count={total} open={open.has(catKey)} onToggle={() => toggle(catKey)}
-      actions={<Action icon="plus" title={props.uploadTitle} onClick={props.onUpload} />}
+      actions={<button className="icon row-action" title={props.uploadTitle} aria-label={props.uploadTitle} onClick={(e) => { e.stopPropagation(); props.onAdd(e); }}><Icon name="plus" size={14} /></button>}
     >
       {files.length === 0 && <li className="tree-note muted small">{props.emptyNote}</li>}
       <Folders node={folderTree(files)} group={kind} closed={(k) => open.has(k)} toggle={toggle} render={(d) => {
@@ -531,13 +537,20 @@ function FileCategory(props: DataTreeProps & {
               <ul className="tree-children">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <div className={isSelected(item.id) ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectObject(isSelected(item.id) ? null : { kind, id: item.id })}>
+                    <div className={isSelected(item.id) ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectObject(isSelected(item.id) ? null : { kind, id: item.id })}
+                      onContextMenu={(e) => {
+                        if (!props.onItemMenu) return;
+                        e.preventDefault();
+                        props.onItemMenu(kind, item.id, e.clientX, e.clientY);
+                      }}>
                       <Eye shown={isShown(ws, keyOf(item.id))} onChange={(v) => props.onShow(keyOf(item.id), v)} label={item.name} />
                       <input
                         type="color" className="swatch" value={item.color} title="Цвет" aria-label={`Цвет: ${item.name}`}
                         onClick={(e) => e.stopPropagation()} onChange={(e) => props.onColor(kind, item.id, e.target.value)}
                       />
-                      <span className="grow name" title={item.name}>{item.name}</span>
+                      <span className="grow name" title={item.name}>{item.name}
+                        {kind === "lines" && props.editing?.layerId === item.id && <span className="edit-dirty" title={props.editing.dirty ? "Редактируется: есть несохранённые изменения" : "Редактируется"}>{props.editing.dirty ? " ● правка" : " ✎"}</span>}
+                      </span>
                       <span className="count" title={item.countTitle}>{item.count.toLocaleString("ru-RU")}</span>
                       <span className="row-actions">
                         <Action icon="trash" title="Удалить" onClick={() => props.onDeleteItem(kind, item.id, item.name)} />

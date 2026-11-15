@@ -26,6 +26,11 @@ dependencies = [
     # Stage 10: compiled geometry kernels (self-intersections) and mesh simplification (levels of detail).
     "numba>=0.60",
     "pyfqmr>=0.2",
+    # Stages 24-25: boolean operations on solids (Apache-2.0), constrained Delaunay triangulation
+    # for terrain models (artem-ogre/CDT, MPL-2.0), polygon triangulation for caps (ISC).
+    "manifold3d>=3.2,<4",
+    "PythonCDT>=2.0,<3",
+    "mapbox-earcut>=1.0",
 ]
 
 [project.optional-dependencies]

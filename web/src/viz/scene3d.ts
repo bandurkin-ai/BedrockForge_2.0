@@ -123,7 +123,38 @@ const TRIANGLES_PER_PIXEL = 2;
 
 interface LineLayer3D {
   extent: THREE.Box3;
-  lines: LineSegments2;
+  /** Placed at the layer's origin: the lines and the single points of the layer. */
+  group: THREE.Group;
+  lines: LineSegments2 | null;
+  points: THREE.Points | null;
+}
+
+/** What the string editor draws over the scene; all in project coordinates (float64). */
+export interface EditOverlay {
+  color: string;
+  /** x, y, z pairs: 6 numbers per segment of the working copy */
+  segments: Float64Array;
+  /** segments of the selected lines (drawn thicker) */
+  selected: Float64Array;
+  /** x, y, z of every vertex */
+  vertices: Float64Array;
+  selectedVertices: Float64Array;
+  /** the rubber band to the cursor */
+  draft: Float64Array;
+  /** where the next point goes (the snap target) */
+  marker: number[] | null;
+}
+
+/** A pointer event offered to the editor before the scene uses it. */
+export interface ScenePointer {
+  type: "down" | "move" | "up" | "click" | "dblclick";
+  x: number;
+  y: number;
+  clientX: number;
+  clientY: number;
+  button: number;
+  shift: boolean;
+  ctrl: boolean;
 }
 
 interface BlockLayer {
@@ -193,7 +224,12 @@ export class GeoScene {
   /** A click on a block (when no collar is near the cursor). */
   onPickBlock: ((pick: { modelId: number; index: number } | null) => boolean) | null = null;
   /** A wireframe clicked in the view; true when the click is taken. */
-  onPickWireframe: ((id: number) => boolean) | null = null;
+  onPickWireframe: ((id: number, ray: { origin: [number, number, number]; dir: [number, number, number] } | null) => boolean) | null = null;
+  /** The string editor: gets pointer events first; true = taken (no rotation, no picking). */
+  onEditPointer: ((e: ScenePointer) => boolean) | null = null;
+  /** The camera moved or the view was resized. */
+  onCamera: () => void = () => {};
+  private overlay: THREE.Group | null = null;
   private selectedWireframe: number | null = null;
   private selectedLine: LineSegments2 | null = null;
   private sectionLine: THREE.LineSegments | null = null;
@@ -907,39 +943,68 @@ export class GeoScene {
     this.requestRender();
   }
 
-  /** `vertices` float32 relative to `origin`; `offsets` are line starts plus the end. Placed like wireframes. */
+  /** `vertices` float32 relative to `origin`; `offsets` are line starts plus the end. Placed like wireframes.
+   *  A line of one vertex is a point: drawn as a marker. */
   setLines(id: number, origin: number[], vertices: Float32Array, offsets: Uint32Array, color: string, local: Bounds | null = null): void {
     this.removeLines(id, false);
-    if (vertices.length < 6) return;
+    if (vertices.length < 3) return;
     const b = local ?? bounds(vertices);
     if (!b) return;
     const min = b.min.map((v, k) => v + origin[k]);
     const max = b.max.map((v, k) => v + origin[k]);
     const o = this.ensureOrigin(min, max);
     let segments = 0;
-    for (let l = 0; l + 1 < offsets.length; l++) segments += Math.max(0, offsets[l + 1] - offsets[l] - 1);
-    if (segments === 0) return;
-    const positions = new Float32Array(segments * 6);
-    let j = 0;
+    let single = 0;
     for (let l = 0; l + 1 < offsets.length; l++) {
-      for (let i = offsets[l]; i + 1 < offsets[l + 1]; i++) {
-        positions.set(vertices.subarray(i * 3, i * 3 + 6), j);
-        j += 6;
-      }
+      const n = offsets[l + 1] - offsets[l];
+      segments += Math.max(0, n - 1);
+      if (n === 1) single++;
     }
-    const lines = this.makeLines(positions, null, 2, new THREE.Color(color).getHex());
-    lines.position.set(origin[0] - o.x, origin[1] - o.y, origin[2] - o.z);
-    lines.renderOrder = 5;
-    this.lineLayers.set(id, { extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)), lines });
-    this.root.add(lines);
+    if (segments === 0 && single === 0) return;
+    const group = new THREE.Group();
+    group.position.set(origin[0] - o.x, origin[1] - o.y, origin[2] - o.z);
+    const hex = new THREE.Color(color).getHex();
+    let lines: LineSegments2 | null = null;
+    if (segments) {
+      const positions = new Float32Array(segments * 6);
+      let j = 0;
+      for (let l = 0; l + 1 < offsets.length; l++) {
+        for (let i = offsets[l]; i + 1 < offsets[l + 1]; i++) {
+          positions.set(vertices.subarray(i * 3, i * 3 + 6), j);
+          j += 6;
+        }
+      }
+      lines = this.makeLines(positions, null, 2, hex);
+      lines.renderOrder = 5;
+      group.add(lines);
+    }
+    let points: THREE.Points | null = null;
+    if (single) {
+      const positions = new Float32Array(single * 3);
+      let j = 0;
+      for (let l = 0; l + 1 < offsets.length; l++) {
+        if (offsets[l + 1] - offsets[l] === 1) {
+          positions.set(vertices.subarray(offsets[l] * 3, offsets[l] * 3 + 3), j);
+          j += 3;
+        }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      points = new THREE.Points(geometry, new THREE.PointsMaterial({ color: hex, size: 9, sizeAttenuation: false, map: this.pointTexture, alphaTest: 0.5, transparent: true }));
+      points.frustumCulled = false;
+      points.renderOrder = 6;
+      group.add(points);
+    }
+    this.lineLayers.set(id, { extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)), group, lines, points });
+    this.root.add(group);
     this.contentChanged();
   }
 
   removeLines(id: number, update = true): void {
     const layer = this.lineLayers.get(id);
     if (!layer) return;
-    this.root.remove(layer.lines);
-    disposeTree(layer.lines, this.materials);
+    this.root.remove(layer.group);
+    disposeTree(layer.group, this.materials);
     this.lineLayers.delete(id);
     if (update) this.contentChanged();
   }
@@ -947,8 +1012,160 @@ export class GeoScene {
   setLinesStyle(id: number, color: string, visible: boolean): void {
     const layer = this.lineLayers.get(id);
     if (!layer) return;
-    (layer.lines.material as LineMaterial).color.set(color);
-    layer.lines.visible = visible;
+    if (layer.lines) (layer.lines.material as LineMaterial).color.set(color);
+    if (layer.points) (layer.points.material as THREE.PointsMaterial).color.set(color);
+    layer.group.visible = visible;
+    this.requestRender();
+  }
+
+  // ---------------------------------------------------------------- the string editor
+
+  /** The ray under the cursor in project coordinates (float64): from the eye, through the pixel. */
+  rayAt(clientX: number, clientY: number): { origin: [number, number, number]; dir: [number, number, number] } | null {
+    const o = this.origin;
+    if (!o) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, this.camera);
+    const p = raycaster.ray.origin;
+    const d = raycaster.ray.direction;
+    // The scene is the project shifted by the origin and stretched along Z: a straight line stays straight.
+    const dir: [number, number, number] = [d.x, d.y, d.z / this.vexag];
+    const len = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+    return { origin: [p.x + o.x, p.y + o.y, p.z / this.vexag + o.z], dir: [dir[0] / len, dir[1] / len, dir[2] / len] };
+  }
+
+  /** Project coordinates → clip space (column-major 4×4), the canvas size, and the section window test. */
+  viewTransform(): { matrix: number[]; width: number; height: number; visible?: (x: number, y: number, z: number) => boolean } | null {
+    const o = this.origin;
+    if (!o) return null;
+    this.camera.updateMatrixWorld();
+    const m = new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse)
+      .multiply(new THREE.Matrix4().makeScale(1, 1, this.vexag))
+      .multiply(new THREE.Matrix4().makeTranslation(-o.x, -o.y, -o.z));
+    const s = this.section;
+    let visible: ((x: number, y: number, z: number) => boolean) | undefined;
+    if (this.clip && s) {
+      const n = sectionNormal(s.az);
+      const along = sectionDirection(s.az);
+      visible = (x, y) => {
+        const dx = x - s.x0;
+        const dy = y - s.y0;
+        const d = n.x * dx + n.y * dy;
+        if (d > s.towards + 1e-6 || d < -s.away - 1e-6) return false;
+        if (s.length === null) return true;
+        const u = along.x * dx + along.y * dy;
+        return u >= -1e-6 && u <= s.length + 1e-6;
+      };
+    }
+    return { matrix: Array.from(m.elements), width: this.container.clientWidth || 1, height: this.container.clientHeight || 1, visible };
+  }
+
+  /** The point the view is centred on, project coordinates. */
+  focus(): [number, number, number] | null {
+    const o = this.origin;
+    const t = this.controls.target;
+    return o ? [t.x + o.x, t.y + o.y, t.z / this.vexag + o.z] : null;
+  }
+
+  /** Starts the scene around a point when nothing is loaded yet (the first line of an empty project). */
+  startAt(x: number, y: number, z: number): void {
+    if (this.origin) return;
+    this.ensureOrigin([x - 50, y - 50, z - 50], [x + 50, y + 50, z + 50]);
+    this.contentChanged();
+  }
+
+  private marks = new Map<string, THREE.Object3D>();
+  /** Marks triangles over the scene (self-intersections, triangles picked for a fix): corners in
+   *  project coordinates, 9 numbers per triangle; null removes the marks of this key. */
+  setMarks(key: string, corners: ArrayLike<number> | null, color = "#ff3b30"): void {
+    const old = this.marks.get(key);
+    if (old) {
+      this.root.remove(old);
+      disposeTree(old, this.materials);
+      this.marks.delete(key);
+    }
+    const o = this.origin;
+    if (corners && corners.length >= 9 && o) {
+      const positions = new Float32Array(corners.length);
+      for (let i = 0; i < corners.length; i += 3) {
+        positions[i] = corners[i] - o.x;
+        positions[i + 1] = corners[i + 1] - o.y;
+        positions[i + 2] = corners[i + 2] - o.z;
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const group = new THREE.Group();
+      const fill = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, transparent: true, opacity: 0.55, depthTest: false }));
+      fill.renderOrder = 15;
+      const edges = new Float32Array((corners.length / 9) * 18);
+      for (let t = 0, j = 0; t < corners.length / 9; t++) {
+        for (let k = 0; k < 3; k++, j += 6) {
+          edges.set(positions.subarray(t * 9 + k * 3, t * 9 + k * 3 + 3), j);
+          edges.set(positions.subarray(t * 9 + ((k + 1) % 3) * 3, t * 9 + ((k + 1) % 3) * 3 + 3), j + 3);
+        }
+      }
+      const outline = this.makeLines(edges, null, 2, new THREE.Color(color).getHex());
+      (outline.material as LineMaterial).depthTest = false;
+      outline.renderOrder = 16;
+      group.add(fill, outline);
+      this.marks.set(key, group);
+      this.root.add(group);
+    }
+    this.requestRender();
+  }
+
+  /** Draws the working copy of the edited layer over the scene (null removes it). */
+  setEditOverlay(o: EditOverlay | null): void {
+    if (this.overlay) {
+      this.root.remove(this.overlay);
+      disposeTree(this.overlay, this.materials);
+      this.overlay = null;
+    }
+    if (!o) {
+      this.requestRender();
+      return;
+    }
+    const first = o.vertices.length ? o.vertices : o.marker ? Float64Array.from(o.marker) : null;
+    if (!this.origin && first) this.startAt(first[0], first[1], first[2]);
+    const origin = this.origin;
+    if (!origin) return;
+    const local = (a: ArrayLike<number>): Float32Array => {
+      const out = new Float32Array(a.length);
+      for (let i = 0; i < a.length; i += 3) {
+        out[i] = a[i] - origin.x;
+        out[i + 1] = a[i + 1] - origin.y;
+        out[i + 2] = a[i + 2] - origin.z;
+      }
+      return out;
+    };
+    const group = new THREE.Group();
+    const hex = new THREE.Color(o.color).getHex();
+    const addLines = (a: Float64Array, width: number, color: number, order: number) => {
+      if (a.length < 6) return;
+      const lines = this.makeLines(local(a), null, width, color);
+      (lines.material as LineMaterial).depthTest = false;
+      lines.renderOrder = order;
+      group.add(lines);
+    };
+    const addPoints = (a: ArrayLike<number>, size: number, color: number, order: number) => {
+      if (a.length < 3) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(local(a), 3));
+      const points = new THREE.Points(geometry, new THREE.PointsMaterial({ color, size, sizeAttenuation: false, map: this.pointTexture, alphaTest: 0.4, transparent: true, depthTest: false }));
+      points.frustumCulled = false;
+      points.renderOrder = order;
+      group.add(points);
+    };
+    addLines(o.segments, 2.5, hex, 20);
+    addLines(o.selected, 5, SELECT_COLOR, 21);
+    addLines(o.draft, 1.5, DRAFT_COLOR, 22);
+    addPoints(o.vertices, 8, hex, 23);
+    addPoints(o.selectedVertices, 12, SELECT_COLOR, 24);
+    if (o.marker) addPoints(o.marker, 14, DRAFT_COLOR, 25);
+    this.overlay = group;
+    this.root.add(group);
     this.requestRender();
   }
 
@@ -1297,7 +1514,10 @@ export class GeoScene {
   private makeControls(): OrbitControls {
     const controls = new OrbitControls(this.camera, this.renderer.domElement);
     controls.screenSpacePanning = true;
-    controls.addEventListener("change", () => this.requestRender());
+    controls.addEventListener("change", () => {
+      this.requestRender();
+      this.onCamera();
+    });
     return controls;
   }
 
@@ -1313,7 +1533,7 @@ export class GeoScene {
       for (const layer of this.drillholes.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
       for (const layer of this.wireframes.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
       for (const layer of this.blocks.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
-      for (const layer of this.lineLayers.values()) if (!visibleOnly || layer.lines.visible) add(layer.extent);
+      for (const layer of this.lineLayers.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
       if (withRasters) {
         for (const layer of this.rasters.values()) {
           if (visibleOnly && !layer.visible) continue;
@@ -1678,13 +1898,15 @@ export class GeoScene {
       }
     }
     for (const layer of this.lineLayers.values()) {
-      if (!layer.lines.visible) continue;
+      if (!layer.group.visible || !layer.lines) continue;
       const start = layer.lines.geometry.getAttribute("instanceStart") as THREE.InterleavedBufferAttribute | undefined;
       if (!start) continue;
       const a = start.data.array;
       const count = Math.floor(a.length / 6);
       const step = Math.max(1, Math.ceil(count / POINTS));
-      for (let i = 0; i < count; i += step) out.segments.push([a[i * 6] + o.x, a[i * 6 + 1] + o.y, a[i * 6 + 3] + o.x, a[i * 6 + 4] + o.y]);
+      const gx = layer.group.position.x + o.x;
+      const gy = layer.group.position.y + o.y;
+      for (let i = 0; i < count; i += step) out.segments.push([a[i * 6] + gx, a[i * 6 + 1] + gy, a[i * 6 + 3] + gx, a[i * 6 + 4] + gy]);
     }
     for (const layer of this.wireframes.values()) {
       if (!layer.group.visible || layer.extent.isEmpty()) continue;
@@ -1708,13 +1930,37 @@ export class GeoScene {
     const el = this.renderer.domElement;
     let down: { x: number; y: number; t: number } | null = null;
     let hoverFrame = 0;
-    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; };
+    // The string editor sees every event first; while it holds a drag, the camera stands still.
+    let editDrag = false;
+    const offer = (type: ScenePointer["type"], e: MouseEvent): boolean => {
+      if (!this.onEditPointer) return false;
+      const rect = el.getBoundingClientRect();
+      return this.onEditPointer({ type, x: e.clientX - rect.left, y: e.clientY - rect.top, clientX: e.clientX, clientY: e.clientY,
+        button: e.button, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey });
+    };
+    const onDown = (e: PointerEvent) => {
+      down = { x: e.clientX, y: e.clientY, t: performance.now() };
+      if (offer("down", e)) {
+        editDrag = true;
+        this.controls.enabled = false;
+      }
+    };
     const onUp = (e: PointerEvent) => {
+      if (editDrag) {
+        editDrag = false;
+        this.controls.enabled = true;
+        const taken = offer("up", e);
+        if (taken) {
+          down = null;
+          return;
+        }
+      }
       if (!down) return;
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       const quick = performance.now() - down.t < 600;
       down = null;
       if (moved >= 4 || !quick) return;
+      if (offer("click", e)) return;
       if (this.onGroundClick) {
         const p = this.pickPoint(e.clientX, e.clientY);
         if (p && this.onGroundClick(this.toProject(p).x, this.toProject(p).y)) return;
@@ -1723,11 +1969,15 @@ export class GeoScene {
       if (!hit) {
         const object = this.pickObject(e.clientX, e.clientY);
         if (object?.kind === "block" && this.onPickBlock?.(object)) return;
-        if (object?.kind === "wireframe" && this.onPickWireframe?.(object.id)) return;
+        if (object?.kind === "wireframe" && this.onPickWireframe?.(object.id, this.rayAt(e.clientX, e.clientY))) return;
       }
       this.onPick(hit ? { setId: hit.setId, holeId: hit.holeId } : null);
     };
     const onMove = (e: PointerEvent) => {
+      if (this.onEditPointer && (editDrag || !down)) {
+        offer("move", e);
+        if (editDrag) return;
+      }
       if (this.draftStart && !down) {
         const p = this.pickPoint(e.clientX, e.clientY);
         if (p) this.updateDraft(p);
@@ -1743,7 +1993,10 @@ export class GeoScene {
     el.addEventListener("pointerup", onUp);
     el.addEventListener("pointermove", onMove);
     el.addEventListener("pointerleave", onLeave);
+    const onDouble = (e: MouseEvent) => void offer("dblclick", e);
+    el.addEventListener("dblclick", onDouble);
     this.cleanup.push(() => {
+      el.removeEventListener("dblclick", onDouble);
       el.removeEventListener("pointerdown", onDown);
       el.removeEventListener("pointerup", onUp);
       el.removeEventListener("pointermove", onMove);
@@ -1769,6 +2022,7 @@ export class GeoScene {
     this.ortho.updateProjectionMatrix();
     for (const m of this.materials) m.resolution.set(w, h);
     this.requestRender();
+    this.onCamera();
   }
 
   private requestRender(): void {

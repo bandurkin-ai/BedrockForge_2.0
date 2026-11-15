@@ -12,6 +12,10 @@ import type { ColorScale } from "./colorScale";
 import { loadDownhole, loadHoles, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
 import { buildDownhole, displayFields, stackOf, type LegendEntry, type StackStart } from "./downholeGeometry";
 import type { StripLogSettings } from "../charts/stripLog";
+import type { EditSession } from "../edit/session";
+import { EditCursor, EditToolbar } from "./EditToolbar";
+import { useEditScene } from "./useEditScene";
+import { pickTriangle, type PickResult } from "../api";
 
 function auditColor(h: Hole | undefined): string {
   if (!h) return "#9aa3b5";
@@ -46,6 +50,14 @@ export interface SceneViewProps {
   logs?: DownholeLog[];
   /** A layer of a display clicked in the legend: open its form on that layer. */
   onLegendLayer?: (chartId: number, trackId: string) => void;
+  /** The string editor's session, while a line layer is being edited. */
+  edit?: EditSession | null;
+  onEditSave?: () => void;
+  onEditExit?: () => void;
+  /** The exact triangle under a click on a wireframe (query by click). */
+  onTriangle?: (result: PickResult) => void;
+  /** A panel shown under the toolbar (e.g. the manual triangle edit). */
+  banner?: React.ReactNode;
 }
 
 export interface DownholeLog {
@@ -67,6 +79,8 @@ export interface SceneApi {
   sectionFrame: () => VerticalPlacement | null;
   /** A section along the hole's direction through its collar; null if the hole is not shown. */
   sectionThroughHole: (setId: number, holeId: string) => SectionLine | null;
+  /** Marks triangles in the view (corners in project coordinates, 9 numbers each); null removes them. */
+  mark: (key: string, corners: number[] | null, color?: string) => void;
 }
 
 /** The single main view: every visible object of the project in 3D, plan or section. */
@@ -80,7 +94,10 @@ export function SceneView(props: SceneViewProps) {
   /** id -> number of simplified levels it was loaded with */
   const loadedWireframes = useRef(new Map<number, number>());
   const [wireframesShown, setWireframesShown] = useState(0);
-  const loadedLines = useRef(new Set<number>());
+  /** id -> version of the geometry in the scene */
+  const loadedLines = useRef(new Map<number, number>());
+  const cuts = useRef(new Map<number, { origin: number[]; polylines: { closed: boolean; points: number[][] }[] }>());
+  const [cutsKey, setCutsKey] = useState(0);
   const loadedRasters = useRef(new Set<number>());
   // Block models: those requested, those whose geometry is in the scene, attribute values by "id:key".
   const loadedBlocks = useRef(new Set<number>());
@@ -150,9 +167,13 @@ export function SceneView(props: SceneViewProps) {
       live.current.onPickBlock(pick.modelId, pick.index);
       return true;
     };
-    scene.onPickWireframe = (id) => {
+    scene.onPickWireframe = (id, ray) => {
       if (!live.current.onPickWireframe) return false;
       live.current.onPickWireframe(id);
+      // The exact triangle under the click, from the float64 data on the server.
+      if (ray && live.current.onTriangle) {
+        pickTriangle([id], ray.origin, ray.dir).then((r) => live.current.onTriangle?.(r)).catch(() => undefined);
+      }
       return true;
     };
     scene.onGroundClick = (x, y) => addPointRef.current(x, y);
@@ -205,6 +226,7 @@ export function SceneView(props: SceneViewProps) {
       },
       sectionFrame: () => scene.sectionFrame(),
       sectionThroughHole: (setId, holeId) => throughHole(setId, holeId),
+      mark: (key, corners, color) => scene.setMarks(key, corners, color),
     };
     apiRef.current = api;
     live.current.registerApi?.(api);
@@ -367,13 +389,24 @@ export function SceneView(props: SceneViewProps) {
     const shown = wireframes.filter((w) => isShown(ws, layerKey.wireframe(w.id)) && loadedWireframes.current.has(w.id)).map((w) => w.id);
     if (!ws.clip || !section || shown.length === 0) {
       for (const w of wireframes) scene.setWireframeCut(w.id, null);
+      if (cuts.current.size) {
+        cuts.current.clear();
+        setCutsKey((k) => k + 1);
+      }
       return;
     }
     const a = (section.az * Math.PI) / 180;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       getSections(shown, [section.x0, section.y0, 0], [Math.cos(a), -Math.sin(a), 0], controller.signal)
-        .then((r) => r.sections.forEach((cut) => sceneRef.current?.setWireframeCut(cut.id, cut.polylines)))
+        .then((r) => {
+          cuts.current.clear();
+          r.sections.forEach((cut) => {
+            sceneRef.current?.setWireframeCut(cut.id, cut.polylines);
+            cuts.current.set(cut.id, { origin: cut.origin, polylines: cut.polylines });
+          });
+          setCutsKey((k) => k + 1);
+        })
         .catch((e: Error) => e.name !== "AbortError" && setError(e.message));
     }, 120);
     return () => {
@@ -383,25 +416,29 @@ export function SceneView(props: SceneViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section?.x0, section?.y0, section?.az, ws.clip, wireframes, ws.hidden, wireframesShown]);
 
-  // ---- line layers: geometry is loaded once per id
+  // ---- line layers: geometry is loaded once per id and version (a save of the editor makes a new version)
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
     const ids = new Set(lineLayers.map((l) => l.id));
     for (const id of scene.loadedIds().lines) if (!ids.has(id)) scene.removeLines(id);
-    for (const id of [...loadedLines.current]) if (!ids.has(id)) loadedLines.current.delete(id);
+    for (const id of [...loadedLines.current.keys()]) if (!ids.has(id)) loadedLines.current.delete(id);
     for (const layer of lineLayers) {
-      if (loadedLines.current.has(layer.id) || !isShown(ws, layerKey.lines(layer.id))) continue;
-      loadedLines.current.add(layer.id);
+      if (loadedLines.current.get(layer.id) === layer.version || !isShown(ws, layerKey.lines(layer.id))) continue;
+      loadedLines.current.set(layer.id, layer.version);
+      if (layer.point_count === 0) {
+        scene.removeLines(layer.id);
+        continue;
+      }
       setLoading((n) => n + 1);
-      loadLines(layer.id)
+      loadLines(layer.id, layer.version)
         .then((g) => {
-          if (!sceneRef.current || !loadedLines.current.has(layer.id)) return; // deleted meanwhile
+          if (!sceneRef.current || loadedLines.current.get(layer.id) !== layer.version) return; // deleted or saved again meanwhile
           sceneRef.current.setLines(layer.id, g.origin, g.vertices, g.offsets, layer.color, g.bounds);
           applyStyles();
         })
         .catch((e: Error) => {
-          if (!loadedLines.current.has(layer.id)) return;
+          if (loadedLines.current.get(layer.id) !== layer.version) return;
           loadedLines.current.delete(layer.id);
           setError(e.message);
         })
@@ -539,12 +576,21 @@ export function SceneView(props: SceneViewProps) {
         });
       }
       for (const w of d.wireframes ?? []) scene.setWireframeStyle(w.id, w.color, isShown(state, layerKey.wireframe(w.id)), state.wireframeOpacity);
-      for (const l of d.lines ?? []) scene.setLinesStyle(l.id, l.color, isShown(state, layerKey.lines(l.id)));
+      // The layer being edited is drawn by the editor (its working copy), not from the store.
+      for (const l of d.lines ?? []) scene.setLinesStyle(l.id, l.color, isShown(state, layerKey.lines(l.id)) && live.current.edit?.layerId !== l.id);
       for (const r of d.rasters ?? []) scene.setRasterStyle(r.id, isShown(state, layerKey.raster(r.id)), r.opacity, r.elevation, r.georef.corners, r.georef.corners3d ?? null);
     }
   }
 
-  useEffect(applyStyles, [datasets, ws.hidden, ws.wireframeOpacity]); // eslint-disable-line react-hooks/exhaustive-deps
+  const edit = props.edit ?? null;
+  useEffect(applyStyles, [datasets, ws.hidden, ws.wireframeOpacity, edit]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEditScene(sceneRef, edit, {
+    section, clip: ws.clip, refreshKey, cuts: cuts.current, cutsKey,
+    lineLayers: lineLayers.filter((l) => l.id !== edit?.layerId && l.point_count > 0 && isShown(ws, layerKey.lines(l.id))).map((l) => [l.id, l.version]),
+    sets: sets.filter((d) => d.counts?.collar && isShown(ws, layerKey.set(d.id))).map((d) => d.id),
+    wireframes: wireframes.filter((w) => isShown(ws, layerKey.wireframe(w.id))).map((w) => w.id),
+    onSave: () => props.onEditSave?.(),
+  });
   useEffect(() => sceneRef.current?.setVerticalExaggeration(ws.vexag), [ws.vexag]);
   useEffect(() => sceneRef.current?.setGridVisible(ws.grid), [ws.grid]);
   useEffect(() => sceneRef.current?.setSelectedWireframe(props.selectedWireframe ?? null), [props.selectedWireframe, loading]);
@@ -616,7 +662,7 @@ export function SceneView(props: SceneViewProps) {
   const selectedCollar = activeSet !== null && selectedHole ? holesBySet.current.get(activeSet)?.get(selectedHole) : undefined;
   const hoverInfo = hover ? holesBySet.current.get(hover.setId)?.get(hover.holeId) : undefined;
   const hoverSet = hover ? sets.find((d) => d.id === hover.setId) : undefined;
-  const nothing = datasets !== null && sets.every((d) => !d.counts?.collar) && wireframes.length === 0 && lineLayers.length === 0 && rasters.length === 0 && blockModels.length === 0;
+  const nothing = datasets !== null && sets.every((d) => !d.counts?.collar) && wireframes.length === 0 && lineLayers.length === 0 && rasters.length === 0 && blockModels.length === 0 && !edit;
 
   return (
     <div className="scene-view">
@@ -680,6 +726,8 @@ export function SceneView(props: SceneViewProps) {
         </label>
         <label className="check"><input type="checkbox" checked={ws.grid} onChange={(e) => props.onWorkspace({ grid: e.target.checked })} /> сетка</label>
       </div>
+      {props.banner}
+      {edit && <EditToolbar edit={edit} onSave={() => props.onEditSave?.()} onExit={() => props.onEditExit?.()} sectionOn={ws.clip && section !== null} />}
       {blockLegend && (
         <div className="scene-legend block-legend">
           {blockLegend.scale ? <ScaleStrip component={`Блоки: ${blockLegend.name}`} unit={blockLegend.unit ? unitTitle(blockLegend.unit as never) : null} scale={blockLegend.scale} log={blockLegend.scale.log} /> : <strong>Блоки: {blockLegend.name}</strong>}
@@ -723,7 +771,8 @@ export function SceneView(props: SceneViewProps) {
           ))}
         </div>
       )}
-      <div className={drawing !== false ? "canvas three crosshair" : "canvas three"} ref={containerRef}>
+      <div className={drawing !== false || (edit && edit.tool !== "select") ? "canvas three crosshair" : "canvas three"} ref={containerRef}>
+        {edit && <EditCursor edit={edit} />}
         <div ref={labelRef} className="label3d" style={{ display: "none" }}>{selectedHole}</div>
         {hover && (
           <div className="tooltip" style={{ left: Math.min(hover.x + 14, (containerRef.current?.clientWidth ?? 400) - 200), top: Math.max(hover.y - 10, 4) }}>
