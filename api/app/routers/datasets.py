@@ -23,7 +23,7 @@ from app.formats.wireframes import WIREFRAME_SUFFIXES
 from app.importing.objects import (
     ImportFailed, SectionPlacement, import_lines, import_rasters, import_wireframes, raster_placement,
 )
-from app.models import Assay, Collar, Component, Dataset, LineLayer, Raster, Survey, Wireframe
+from app.models import Assay, Chart, Collar, Component, Dataset, LineLayer, Raster, Survey, Wireframe
 from app.routers.blobs import blob_url
 from app.routers.projects import get_project
 from app.storage import blobs
@@ -75,6 +75,8 @@ class DatasetOut(BaseModel):
     counts: dict[str, int] | None = None
     components: list[dict[str, str]] | None = None
     audit: dict[str, int] | None = None
+    # drillholes: saved charts [{id, kind, name}]
+    charts: list[dict] | None = None
     # wireframes
     wireframes: list[WireframeOut] | None = None
     lines: list[LineLayerOut] | None = None
@@ -155,6 +157,8 @@ def dataset_out(session: Session, d: Dataset) -> DatasetOut:
         ]
         run = latest_run(session, d.id)
         out.audit = run.counts["by_severity"] if run else None
+        out.charts = [{"id": c.id, "kind": c.kind, "name": c.name}
+                      for c in session.scalars(select(Chart).where(Chart.dataset_id == d.id).order_by(Chart.id))]
     elif d.kind == "wireframes":
         rows = session.scalars(select(Wireframe).where(Wireframe.dataset_id == d.id).order_by(Wireframe.id))
         out.wireframes = [_wireframe_out(w) for w in rows]

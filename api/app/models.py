@@ -52,6 +52,23 @@ class Dataset(Base):
     blobs: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
+class Chart(Base):
+    """A saved chart of a drillhole set (histogram, Q-Q, dendrogram): its type and settings.
+    Shown in the project tree under the set; opening it draws it again from the current data."""
+
+    __tablename__ = "chart"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(_set_fk(), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    name: Mapped[str] = mapped_column(String(255))
+    # False once the user renamed it: the name no longer follows the settings.
+    auto_name: Mapped[bool] = mapped_column(Boolean, default=True)
+    settings: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class Blob(Base):
     """A file of the content-addressed store (app/storage/blobs.py)."""
 

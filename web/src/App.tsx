@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  auditExportUrl, cancelJob, createDemoProject, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
+  auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit,
   type Dataset, type JobInfo, type Project,
 } from "./api";
@@ -21,6 +21,7 @@ import { ImportWizard, WIZARD_ACCEPT } from "./shell/ImportWizard";
 import { ChartWindow } from "./charts/ChartWindow";
 import { HistogramWindow, type HistogramSettings } from "./charts/HistogramWindow";
 import { QQWindow, defaultQQ, type QQSettings } from "./charts/QQWindow";
+import { DendrogramWindow, type DendrogramSettings } from "./charts/DendrogramWindow";
 import { ContextMenu } from "./shell/ContextMenu";
 import type { ChartKind } from "./shell/registry";
 import { JobsPanel } from "./shell/JobsPanel";
@@ -59,13 +60,17 @@ type UploadKind = keyof typeof ACCEPT;
 
 interface ChartState {
   id: number;
+  /** the saved chart in the project tree */
+  chartId: number;
   kind: ChartKind;
   setId: number;
-  initial?: Partial<HistogramSettings>;
-  qq?: QQSettings;
+  /** settings the window opens with (histogram / dendrogram: partial; Q-Q: complete) */
+  settings: Record<string, unknown>;
   /** stacking order: the window clicked last is on top */
   z: number;
 }
+
+const CHART_TITLES: Record<ChartKind, string> = { histogram: "Гистограмма", qq: "Q-Q график", dendrogram: "Дендрограмма" };
 
 const raise = (list: ChartState[], id: number): ChartState[] => {
   const top = Math.max(...list.map((c) => c.z));
@@ -127,9 +132,49 @@ function Workspace({
   // Chart windows over the workspace, and the right-click menu of the tree.
   const [charts, setCharts] = useState<ChartState[]>([]);
   const [menu, setMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
-  const openChart = (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings) => {
-    if (kind === "dendrogram") return;
-    setCharts((prev) => [...prev, { id: Date.now() + Math.random(), kind, setId, initial, qq, z: prev.length ? Math.max(...prev.map((c) => c.z)) + 1 : 0 }]);
+  const [chartMenu, setChartMenu] = useState<{ id: number; kind: ChartKind; name: string; x: number; y: number } | null>(null);
+  const showChart = (chartId: number, kind: ChartKind, setId: number, settings: Record<string, unknown>) =>
+    setCharts((prev) => {
+      const open = prev.find((c) => c.chartId === chartId);
+      if (open) return raise(prev, open.id);
+      return [...prev, { id: Date.now() + Math.random(), chartId, kind, setId, settings, z: prev.length ? Math.max(...prev.map((c) => c.z)) + 1 : 0 }];
+    });
+  /** A new chart: saved in the tree under its set right away, then shown. */
+  const openChart = async (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings, dendrogram?: Partial<DendrogramSettings>): Promise<string> => {
+    const settings = (kind === "qq" ? qq ?? defaultQQ(setId) : kind === "dendrogram" ? dendrogram ?? {} : initial ?? {}) as Record<string, unknown>;
+    const saved = await createChart(setId, kind, CHART_TITLES[kind], settings);
+    showChart(saved.id, kind, setId, settings);
+    reload();
+    return `${CHART_TITLES[kind]} сохранён(а) в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Графики`;
+  };
+  /** A saved chart from the tree, with its settings. */
+  const openSavedChart = async (chartId: number): Promise<string> => {
+    const open = charts.find((c) => c.chartId === chartId);
+    if (open) {
+      setCharts((prev) => raise(prev, open.id));
+      return `График «${chartNames.current.get(chartId) ?? ""}» уже открыт`;
+    }
+    const c = await getChart(chartId);
+    showChart(c.id, c.kind, c.set_id, c.settings);
+    return `Открыт график «${c.name}»`;
+  };
+  // Settings of open charts are saved a moment after the last change.
+  const saveTimers = useRef(new Map<number, number>());
+  const chartNames = useRef(new Map<number, string>());
+  const saveChartSettings = (chartId: number, settings: unknown, autoName: string) => {
+    const timers = saveTimers.current;
+    window.clearTimeout(timers.get(chartId));
+    timers.set(chartId, window.setTimeout(() => {
+      timers.delete(chartId);
+      patchChart(chartId, { settings, auto_name: autoName })
+        .then((c) => {
+          if (chartNames.current.get(chartId) !== c.name) {
+            chartNames.current.set(chartId, c.name);
+            reload();
+          }
+        })
+        .catch(() => undefined); // deleted meanwhile
+    }, 800));
   };
   const sceneApi = useRef<SceneApi | null>(null);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -247,7 +292,8 @@ function Workspace({
       navigate({ kind });
       setWs((prev) => openBottom(prev, "table"));
     },
-    openChart: (kind, setId, initial, qq) => openChart(kind, setId, initial, qq),
+    openChart: (kind, setId, initial, qq, dendrogram) => openChart(kind, setId, initial, qq, dendrogram),
+    openSavedChart,
     openStats: (analysis, component) => {
       setStatsView((prev) => ({ analysis, component: component ?? prev.component }));
       // charts need room: grow a short dock, never shrink one the user enlarged
@@ -530,6 +576,8 @@ function Workspace({
                   onDeleteItem={onDeleteItem}
                   onDemo={() => void runCommand("project.demo", {}, "user")}
                   onSetMenu={(setId, x, y) => setMenu({ setId, x, y })}
+                  onOpenChart={(id) => void guarded(() => openSavedChart(id))}
+                  onChartMenu={(chart, x, y) => setChartMenu({ ...chart, x, y })}
                 />
               </ErrorBoundary>
             </aside>
@@ -683,19 +731,48 @@ function Workspace({
 
       {charts.map((c, i) => {
         const setName = sets.find((d) => d.id === c.setId)?.name ?? `набор ${c.setId}`;
+        const saved = sets.find((d) => d.id === c.setId)?.charts?.find((x) => x.id === c.chartId);
+        const onSettings = (settings: unknown, autoName: string) => saveChartSettings(c.chartId, settings, autoName);
         return (
           <ChartWindow
-            key={c.id} index={i} z={30 + c.z} title={`${c.kind === "qq" ? "Q-Q график" : "Гистограмма"} · ${setName}`} icon={c.kind === "qq" ? "qq" : "histogram"}
+            key={c.id} index={i} z={30 + c.z} title={`${saved?.name ?? CHART_TITLES[c.kind]} · ${setName}`} icon={c.kind}
             onFocus={() => setCharts((prev) => raise(prev, c.id))} onClose={() => setCharts((prev) => prev.filter((x) => x.id !== c.id))}
           >
             {c.kind === "qq" ? (
-              <QQWindow sets={sets.map((d) => ({ id: d.id, name: d.name }))} initial={c.qq ?? defaultQQ(c.setId)} />
+              <QQWindow sets={sets.map((d) => ({ id: d.id, name: d.name }))} initial={{ ...defaultQQ(c.setId), ...(c.settings as Partial<QQSettings>) }} onSettings={onSettings} />
+            ) : c.kind === "dendrogram" ? (
+              <DendrogramWindow setId={c.setId} setName={setName} initial={c.settings as Partial<DendrogramSettings>} onSettings={onSettings} />
             ) : (
-              <HistogramWindow setId={c.setId} setName={setName} initial={c.initial} />
+              <HistogramWindow setId={c.setId} setName={setName} initial={c.settings as Partial<HistogramSettings>} onSettings={onSettings} />
             )}
           </ChartWindow>
         );
       })}
+
+      {chartMenu && (
+        <ContextMenu
+          x={chartMenu.x} y={chartMenu.y} title={chartMenu.name} onClose={() => setChartMenu(null)}
+          items={[
+            { label: "Открыть", icon: chartMenu.kind, run: () => void guarded(() => openSavedChart(chartMenu.id)) },
+            { label: "Переименовать…", icon: "edit", run: () => void guarded(async () => {
+              const name = window.prompt("Название графика", chartMenu.name)?.trim();
+              if (!name || name === chartMenu.name) return;
+              await patchChart(chartMenu.id, { name });
+              chartNames.current.set(chartMenu.id, name);
+              reload();
+              return `График переименован: «${name}»`;
+            }) },
+            "separator",
+            { label: "Удалить", icon: "trash", run: () => void guarded(async () => {
+              if (!window.confirm(`Удалить график «${chartMenu.name}»? Данные проб не меняются.`)) return;
+              await deleteChart(chartMenu.id);
+              setCharts((prev) => prev.filter((x) => x.chartId !== chartMenu.id));
+              reload();
+              return `График «${chartMenu.name}» удалён`;
+            }) },
+          ]}
+        />
+      )}
 
       {menu && (() => {
         const target = sets.find((d) => d.id === menu.setId);
@@ -707,7 +784,7 @@ function Workspace({
             items={[
               { label: "Гистограмма", icon: "histogram", disabledNote: noData, run: () => void runCommand("chart.histogram", { set_id: menu.setId }, "user") },
               { label: "Q-Q график", icon: "qq", disabledNote: noData, run: () => void runCommand("chart.qq", { set_id: menu.setId }, "user") },
-              { label: "Дендрограмма", icon: "dendrogram", disabledNote: "в разработке" },
+              { label: "Дендрограмма", icon: "dendrogram", disabledNote: noData ?? ((target?.components?.length ?? 0) < 2 ? "нужно 2+ поля" : undefined), run: () => void runCommand("chart.dendrogram", { set_id: menu.setId }, "user") },
               "separator",
               { label: "Таблица проб", icon: "table", run: () => { selectSet(menu.setId); navigate({ kind: "assay" }); setWs((p) => openBottom(p, "table")); } },
             ]}

@@ -106,7 +106,18 @@ function StatsTable({ main, plain, weighted }: { main: Describe; plain: Describe
 }
 
 /** Histogram of a numeric field of a drillhole set's assay table, Leapfrog / Micromine style. */
-export function HistogramWindow({ setId, setName, initial }: { setId: number; setName: string; initial?: Partial<HistogramSettings> }) {
+export const fieldLabel = (id: string | null) => (id === "length" ? "длина" : (id ?? "").split(":").pop() ?? "");
+
+export const histogramName = (s: HistogramSettings) =>
+  `Гистограмма ${fieldLabel(s.field)}${s.log ? " (log)" : ""}${s.weight === "none" ? "" : s.weight === "length" ? "" : `, вес ${fieldLabel(s.weightField)}`}`.trim();
+
+export function HistogramWindow({ setId, setName, initial, onSettings }: {
+  setId: number;
+  setName: string;
+  initial?: Partial<HistogramSettings>;
+  /** Every change of the settings (the chart is saved with them) and the name they suggest. */
+  onSettings?: (settings: HistogramSettings, autoName: string) => void;
+}) {
   const [fields, setFields] = useState<NumericField[] | null>(null);
   const [s, setS] = useState<HistogramSettings>({ ...DEFAULT_HISTOGRAM, ...initial, marks: { ...DEFAULT_HISTOGRAM.marks, ...initial?.marks } });
   const [result, setResult] = useState<HistogramResult | null>(null);
@@ -123,6 +134,10 @@ export function HistogramWindow({ setId, setName, initial }: { setId: number; se
       })
       .catch((e: Error) => setError(e.message));
   }, [setId]);
+
+  useEffect(() => {
+    if (s.field) onSettings?.(s, histogramName(s));
+  }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const params = useMemo(() => toParams(s), [s]);
   const key = JSON.stringify(params);

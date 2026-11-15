@@ -34,7 +34,7 @@ docker compose up --build
 - Веб: http://localhost:5173, API: http://localhost:8000. Сервис `worker` выполняет фоновые задания; хранилище — том `store` (`DATA_DIR=/data`).
 - Лента → «Демо-проект» создаёт учебный проект (48 скважин, каркасы, линии, растры в плане и в разрезе).
 - Локальная разработка без Docker: PostgreSQL 16 (`pg_ctlcluster 16 main start`; пользователь `geo`/`geo`, базы `geo` и `geo_test`), `alembic upgrade head` и `uvicorn app.main:app` в `api/` (задания идут в потоке API, `JOBS_IN_API=1`), `API_URL=http://localhost:8000 npx vite` в `web/`.
-- Тесты: `cd api && python3 -m pytest` (242 passed / 17 skipped), `cd web && npm test` (48 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
+- Тесты: `cd api && python3 -m pytest` (247 passed / 17 skipped), `cd web && npm test` (51 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
 - Замеры: `cd api && python -m bench.run --profile ci --check` (1 млн треугольников) или `--profile full` (10 млн, 2 ГБ).
 
 ## 3. Стек
@@ -62,7 +62,7 @@ Job                        — фоновое задание: статус, пр
 ```
 
 - Наборы скважин независимые; API скважин — `/api/sets/{id}/…`. У `Dataset` есть `folder` (папка в дереве).
-- Миграции: `0003_datasets`, `0004_lines_rasters`, `0005_object_store_jobs` (перенос bytea → файлы и обратно).
+- Миграции: `0003_datasets`, `0004_lines_rasters`, `0005_object_store_jobs` (перенос bytea → файлы и обратно), `0006_wireframe_render`, `0007_charts`.
 - Геометрия: точные массивы float64 (`blobs.vertices`), копия для показа float32 относительно `origin` в центре объекта (`blobs.render_vertices`); отдаётся сырыми байтами через `/api/blobs/{sha}`, читается в Web Worker (`viz/geometryLoader.ts`). Каждый объект в сцене стоит в своём начале (`mesh.position`), буферы не копируются.
 - Новый тип данных с файлами → добавить таблицу в `OWNERS` (`app/storage/gc.py`), иначе очистка удалит его файлы.
 
@@ -155,7 +155,8 @@ Job                        — фоновое задание: статус, пр
 - [x] Этап 10: потоковое чтение TRIDB и DXF, OBJ/STL, проверки, части, уровни детализации, точное сечение на сервере.
 - [x] Гистограмма проб (правая кнопка в дереве): `app/stats/histogram.py`, эндпоинты `stats/fields` и `stats/histogram` в `routers/stats.py`; веб — `charts/` (окно, график, экспорт), `shell/ContextMenu.tsx`.
 - [x] Q-Q график: `app/stats/qq.py`, `POST /api/stats/qq` (общая загрузка значений — `load_field_values` в `routers/stats.py`); веб — `charts/QQWindow.tsx`, `charts/QQChart.tsx`.
-- [ ] Дендрограмма — пункт меню и команда `chart.dendrogram` есть, окна нет.
+- [x] Дендрограмма: `app/stats/dendrogram.py`, `POST /api/sets/{id}/stats/dendrogram`; веб — `charts/DendrogramWindow.tsx`, `charts/DendrogramChart.tsx`.
+- [x] Сохранённые графики: таблица `chart` (миграция `0007`), `routers/charts.py`; в дереве — узел «Графики» набора; окна сообщают настройки через `onSettings`, `App.tsx` сохраняет их с задержкой 0,8 с.
 - [ ] Остатки этапа 10: Surpac DTM (нужен образец), Datamine (после читателя DM), подгрузка частей по Range в порядке видимости, BVH для запроса по клику (этап 16).
 - [ ] Каркас больше 200 МБ и блочная модель 1–2 ГБ от пользователя — без них этапы 10 и 12 идут на синтетике (`api/bench/synthetic.py`).
 - [ ] Привязка скана разреза по опорным точкам в UI (этап 11).

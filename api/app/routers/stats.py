@@ -742,3 +742,84 @@ def qq_plot(body: QQIn, session: Session = Depends(get_session)) -> dict:
     except QQError as exc:
         raise HTTPException(422, str(exc)) from exc
     return {"mode": "theory", "x": x_info, "y": None, **out}
+
+
+# --------------------------------------------------------------------------
+# Dendrogram: clustering of fields by correlation
+# --------------------------------------------------------------------------
+class DendrogramIn(BaseModel):
+    # None: every component of the set.
+    fields: list[str] | None = Field(None, max_length=200)
+    method: Literal["pearson", "spearman"] = "pearson"
+    log: bool = True
+    linkage: Literal["average", "complete", "single", "weighted"] = "average"
+    distance: Literal["1-r", "1-|r|"] = "1-r"
+    missing: Literal["pairwise", "complete"] = "pairwise"
+    weight: Literal["none", "length"] = "length"
+    negatives: Literal["keep", "exclude", "half_abs"] = "half_abs"
+    exclude_zero: bool = False
+    holes: list[str] | None = Field(None, max_length=10000)
+
+
+@router.post("/sets/{set_id}/stats/dendrogram")
+def dendrogram_of_fields(set_id: int, body: DendrogramIn, session: Session = Depends(get_session)) -> dict:
+    from sqlalchemy import text
+
+    from app.stats.dendrogram import DendrogramError, cluster, correlation_matrix
+
+    get_set(session, set_id)
+    fields = body.fields
+    if fields is None:
+        fields = [f"comp:{c.name}" for c in session.scalars(select(Component).where(Component.set_id == set_id).order_by(Component.name))]
+    fields = list(dict.fromkeys(fields))
+    if len(fields) < 2:
+        raise HTTPException(422, "Нужно хотя бы два числовых поля")
+    exprs, params = [], {"s": set_id}
+    for i, f in enumerate(fields):
+        sql, p = _field_sql(f, f"f{i}")
+        exprs.append(sql)
+        params.update(p)
+    where = "set_id = :s"
+    if body.holes:
+        where += " AND hole_id = ANY(:holes)"
+        params["holes"] = body.holes
+    rows = session.execute(text(
+        f"SELECT CASE WHEN to_m > from_m THEN to_m - from_m END, {', '.join(exprs)} FROM assay WHERE {where}"), params).all()
+    data = np.array([[np.nan if v is None else v for v in row] for row in rows], dtype=np.float64).reshape(-1, len(fields) + 1)
+    w = data[:, 0] if body.weight == "length" else np.ones(len(data))
+    v = data[:, 1:]
+    ok = np.isfinite(w) & (w > 0)
+    w, v = w[ok], v[ok]
+    v = v.copy()
+    if body.negatives == "exclude":
+        v[v < 0] = np.nan
+    elif body.negatives == "half_abs":
+        v = np.where(v < 0, np.abs(v) / 2, v)
+    if body.exclude_zero:
+        v[v == 0] = np.nan
+    dropped_log = 0
+    if body.log:
+        bad = np.isfinite(v) & (v <= 0)
+        dropped_log = int(bad.sum())
+        v[bad] = np.nan
+        v = np.log(v)
+    r, n = correlation_matrix(v, w, body.method, body.missing)
+    names = []
+    units = {c.name: c.unit for c in session.scalars(select(Component).where(Component.set_id == set_id))}
+    for f in fields:
+        name = "Длина интервала" if f == LENGTH_FIELD else f.partition(":")[2]
+        names.append(name)
+    try:
+        tree = cluster(r, names, body.distance, body.linkage)
+    except DendrogramError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {
+        "fields": fields,
+        "names": names,
+        "units": [units.get(n, "") for n in names],
+        "correlation": [[None if not math.isfinite(x) else x for x in row] for row in r.tolist()],
+        "pairs": n.tolist(),
+        "rows": int(len(v)),
+        "dropped_nonpositive_log": dropped_log,
+        **tree,
+    }

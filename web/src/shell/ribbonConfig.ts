@@ -153,7 +153,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           items: [
             { command: "chart.histogram", label: "Гистограмма", icon: "histogram", hint: "Гистограмма проб активного набора: веса, логарифмическая шкала, урезка. Также правой кнопкой на наборе в дереве", disabled: !ctx.hasSet },
             { command: "chart.qq", label: "Q-Q график", icon: "qq", hint: "Квантили проб против логнормального / нормального распределения или другой выборки (набор, поле, скважины)", small: true, disabled: !ctx.hasSet },
-            { command: "chart.dendrogram", label: "Дендрограмма", icon: "dendrogram", hint: "В разработке", small: true, disabled: true },
+            { command: "chart.dendrogram", label: "Дендрограмма", icon: "dendrogram", hint: "Кластеры полей проб по корреляции и матрица корреляций", small: true, disabled: !ctx.hasSet },
           ],
         },
         {

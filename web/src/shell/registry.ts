@@ -6,6 +6,7 @@ import type { VizSettings } from "../viz/ComponentPanel";
 import { DEFAULT_WINDOW, shiftSection, type SectionLine } from "../viz/geometry";
 import type { HistogramSettings } from "../charts/HistogramWindow";
 import { defaultQQ, type QQSettings } from "../charts/QQWindow";
+import type { DendrogramSettings } from "../charts/DendrogramWindow";
 import type { Command } from "./commands";
 
 export type ChartKind = "histogram" | "qq" | "dendrogram";
@@ -37,7 +38,10 @@ export interface Live {
   openTable: (kind: TableKind) => void;
   openStats: (analysis: StatsAnalysis, component: string | null) => void;
   /** A chart window over the workspace (histogram; Q-Q and dendrogram are not ready yet). */
-  openChart: (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings) => void;
+  /** Creates a chart, saves it in the tree under the set and opens it. */
+  openChart: (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings, dendrogram?: Partial<DendrogramSettings>) => Promise<string>;
+  /** Opens a chart saved in the tree. */
+  openSavedChart: (chartId: number) => Promise<string>;
   reload: () => void;
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
@@ -676,8 +680,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         if (typeof args.end === "number") initial.end = text(args.end);
         if (args.negatives) initial.negatives = args.negatives as HistogramSettings["negatives"];
         if (typeof args.top_cut === "number") initial.topCut = text(args.top_cut);
-        s().openChart("histogram", set.id, initial);
-        return `Гистограмма: ${set.name}${args.field ? `, ${String(args.field)}` : ""}`;
+        return s().openChart("histogram", set.id, initial);
       },
     },
     {
@@ -722,16 +725,47 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         if (typeof args.holes === "string") q.x.holes = args.holes;
         if (typeof args.y_holes === "string") q.y.holes = args.y_holes;
         if (typeof args.quantiles === "number") q.quantiles = String(args.quantiles);
-        s().openChart("qq", set.id, undefined, q);
-        return two ? `Q-Q: ${set.name} против ${ySet.name}` : `Q-Q: ${set.name} против ${q.distribution === "lognormal" ? "логнормального" : "нормального"} распределения`;
+        return s().openChart("qq", set.id, undefined, q);
       },
     },
     {
       id: "chart.dendrogram",
       title: "Дендрограмма",
-      description: "Дендрограмма корреляций компонентов. Пока в разработке.",
-      uiOnly: true,
-      run: () => "Дендрограмма пока в разработке",
+      description:
+        "Открывает дендрограмму набора скважин: кластеризация полей проб по корреляции и матрица корреляций. " +
+        "fields — имена компонентов или атрибутов через запятую (по умолчанию все компоненты); method — pearson | spearman; log — по логарифмам (по умолчанию да); " +
+        "linkage — average | complete | single | weighted; distance — 1-r | 1-|r|; cut — порог отсечения (поля ниже — одна группа). Сохраняется в дереве под набором.",
+      params: {
+        set_id: { type: "integer" },
+        fields: { type: "string" },
+        method: { type: "string", enum: ["pearson", "spearman"] },
+        log: { type: "boolean" },
+        linkage: { type: "string", enum: ["average", "complete", "single", "weighted"] },
+        distance: { type: "string", enum: ["1-r", "1-|r|"] },
+        cut: { type: "number" },
+      },
+      run: (args) => {
+        const set = targetSet(args.set_id);
+        if (!set.counts?.assay) throw new Error(`В наборе «${set.name}» нет проб`);
+        const d: Partial<DendrogramSettings> = {};
+        if (typeof args.fields === "string" && args.fields.trim()) {
+          d.fields = args.fields.split(/[\s,;]+/).filter(Boolean).map((n) => (n.includes(":") || n === "length" ? n : set.components?.some((c) => c.name === n) ? `comp:${n}` : `attr:${n}`));
+        }
+        if (args.method) d.method = args.method as DendrogramSettings["method"];
+        if (typeof args.log === "boolean") d.log = args.log;
+        if (args.linkage) d.linkage = args.linkage as DendrogramSettings["linkage"];
+        if (args.distance) d.distance = args.distance as DendrogramSettings["distance"];
+        if (typeof args.cut === "number") d.cut = String(args.cut);
+        return s().openChart("dendrogram", set.id, undefined, undefined, d);
+      },
+    },
+    {
+      id: "chart.open",
+      title: "Открыть сохранённый график",
+      description: "Открывает график, сохранённый в дереве под набором скважин (узел «Графики»), по chart_id; список — в data_list_datasets (поле charts).",
+      params: { chart_id: { type: "integer" } },
+      required: ["chart_id"],
+      run: ({ chart_id }) => s().openSavedChart(Number(chart_id)),
     },
     {
       id: "ribbon.toggle",

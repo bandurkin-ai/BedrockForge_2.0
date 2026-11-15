@@ -439,3 +439,7 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .qq-diagonal { stroke: var(--brand); stroke-width: 1.5; stroke-dasharray: 6 4; }
 .qq-label-ring { stroke: var(--fg); stroke-width: 1.2; }
 .qq-stats { align-self: flex-start; }
+.dendro-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; max-height: 180px; overflow: auto; }
+.dendro-link { stroke: var(--fg); }
+.dendro-chart { color: var(--fg); max-width: 100%; height: auto; }
+.dendro-value { font-size: 9.5px; fill: #1d2330; }

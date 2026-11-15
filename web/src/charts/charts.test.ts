@@ -64,3 +64,39 @@ describe("Q-Q plot", async () => {
     expect(toSample({ ...q.x, weight: "field", weightField: null })).toBeNull();
   });
 });
+
+describe("dendrogram and saved charts", async () => {
+  const { clustersAt, corrColor } = await import("./DendrogramChart");
+  const { dendrogramName, DEFAULT_DENDROGRAM } = await import("./DendrogramWindow");
+  const { histogramName } = await import("./HistogramWindow");
+  const { qqName } = await import("./QQWindow");
+  // AU+AG at 0.1, CU+PB at 0.3, the two pairs at 0.9 (scipy linkage rows).
+  const linkage = [[0, 1, 0.1, 2], [2, 3, 0.3, 2], [4, 5, 0.9, 4]];
+
+  it("cuts the tree into groups", () => {
+    expect(new Set(clustersAt(linkage, 4, [0, 1, 2, 3], 0.5).leaf).size).toBe(2);
+    expect(clustersAt(linkage, 4, [0, 1, 2, 3], 0.5).leaf).toEqual([0, 0, 1, 1]);
+    expect(new Set(clustersAt(linkage, 4, [0, 1, 2, 3], 0.05).leaf).size).toBe(4);
+    expect(new Set(clustersAt(linkage, 4, [0, 1, 2, 3], 1).leaf).size).toBe(1);
+  });
+
+  it("colours correlations from blue through white to red", () => {
+    expect(corrColor(0)).toBe("rgb(245,245,245)");
+    expect(corrColor(1)).toBe("rgb(200,60,50)");
+    expect(corrColor(-1)).toBe("rgb(50,110,200)");
+    expect(corrColor(null)).toBe("#808080");
+  });
+
+  it("names saved charts after their settings", async () => {
+    const { DEFAULT_HISTOGRAM } = await import("./HistogramWindow");
+    const { defaultQQ } = await import("./QQWindow");
+    expect(histogramName({ ...DEFAULT_HISTOGRAM, field: "comp:AU", log: true })).toBe("Гистограмма AU (log)");
+    const q = { ...defaultQQ(1), x: { ...defaultQQ(1).x, field: "comp:AU" } };
+    expect(qqName(q)).toBe("Q-Q AU — логнормальное");
+    expect(qqName({ ...q, mode: "sample", y: { ...q.y, setId: 2, field: "comp:AU", holes: "H1" } })).toBe("Q-Q AU / AU (часть скважин) (два набора)");
+    expect(dendrogramName({ ...DEFAULT_DENDROGRAM, method: "spearman" }, 5)).toBe("Дендрограмма (5 полей), Спирмен");
+    expect(dendrogramName(DEFAULT_DENDROGRAM, 2)).toBe("Дендрограмма (2 поля)");
+    expect(dendrogramName(DEFAULT_DENDROGRAM, 21)).toBe("Дендрограмма (21 поле)");
+    expect(dendrogramName(DEFAULT_DENDROGRAM, 12)).toBe("Дендрограмма (12 полей)");
+  });
+});

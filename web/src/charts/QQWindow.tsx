@@ -158,7 +158,18 @@ const STAT_ROWS: [string, (s: QQResult["x"]["stats"]) => number | null | undefin
 ];
 
 /** Q-Q plot of a set's assay field against a fitted distribution or against another sample. */
-export function QQWindow({ sets, initial }: { sets: { id: number; name: string }[]; initial: QQSettings }) {
+export const qqName = (s: QQSettings) => {
+  const f = (id: string | null) => (id === "length" ? "длина" : (id ?? "").split(":").pop() ?? "");
+  if (s.mode === "theory") return `Q-Q ${f(s.x.field)} — ${s.distribution === "lognormal" ? "логнормальное" : "нормальное"}`;
+  const tag = (x: SampleSettings) => `${f(x.field)}${x.holes.trim() ? " (часть скважин)" : ""}`;
+  return `Q-Q ${tag(s.x)} / ${tag(s.y)}${s.x.setId !== s.y.setId ? " (два набора)" : ""}`;
+};
+
+export function QQWindow({ sets, initial, onSettings }: {
+  sets: { id: number; name: string }[];
+  initial: QQSettings;
+  onSettings?: (settings: QQSettings, autoName: string) => void;
+}) {
   const [s, setS] = useState<QQSettings>(initial);
   const [result, setResult] = useState<QQResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +178,10 @@ export function QQWindow({ sets, initial }: { sets: { id: number; name: string }
   const xFields = useFields(s.x.setId);
   const yFields = useFields(s.y.setId);
   const set = (patch: Partial<QQSettings>) => setS((prev) => ({ ...prev, ...patch }));
+
+  useEffect(() => {
+    if (s.x.field) onSettings?.(s, qqName(s));
+  }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const body = useMemo(() => toQQRequest(s), [s]);
   const key = JSON.stringify(body);

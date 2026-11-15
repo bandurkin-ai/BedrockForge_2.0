@@ -51,6 +51,9 @@ export interface DataTreeProps {
   onDemo: () => void;
   /** Right click on a drillhole set (or its assay table): the charts menu. */
   onSetMenu?: (setId: number, x: number, y: number) => void;
+  /** A saved chart under a set: open it, or its menu (rename, delete). */
+  onOpenChart?: (chartId: number) => void;
+  onChartMenu?: (chart: { id: number; kind: "histogram" | "qq" | "dendrogram"; name: string }, x: number, y: number) => void;
 }
 
 function Twisty({ open, onClick }: { open: boolean; onClick: () => void }) {
@@ -236,6 +239,18 @@ export function DataTree(props: DataTreeProps) {
   }, [activeSet, props.selectedHole]);
 
   const sets = (datasets ?? []).filter((d) => d.kind === "drillholes");
+  // A set whose chart count grew (a chart was just made): show its charts.
+  const chartCounts = useRef(new Map<number, number>());
+  useEffect(() => {
+    const grown: string[] = [];
+    for (const d of sets) {
+      const n = d.charts?.length ?? 0;
+      const before = chartCounts.current.get(d.id);
+      if (before !== undefined && n > before) grown.push(`set:${d.id}`, `charts:${d.id}`);
+      chartCounts.current.set(d.id, n);
+    }
+    if (grown.length) setOpen((prev) => new Set([...prev, ...grown]));
+  }, [sets]);
   const setMenu = (e: React.MouseEvent, setId: number) => {
     if (!props.onSetMenu) return;
     e.preventDefault();
@@ -323,6 +338,34 @@ export function DataTree(props: DataTreeProps) {
                           <span className="count">не запускался</span>
                         )}
                       </button>
+                    </li>
+                    <li>
+                      <div className="tree-row" onClick={() => toggle(`charts:${d.id}`)} onContextMenu={(e) => setMenu(e, d.id)} title="Сохранённые графики; правая кнопка — новый">
+                        <Twisty open={isOpen(`charts:${d.id}`)} onClick={() => toggle(`charts:${d.id}`)} />
+                        <Icon name="chart" size={14} />
+                        <span className="grow">Графики</span>
+                        <span className="count">{d.charts?.length ?? 0}</span>
+                      </div>
+                      {isOpen(`charts:${d.id}`) && (
+                        <ul className="tree-children">
+                          {(d.charts ?? []).length === 0 && <li className="tree-note muted small">Нет графиков. Правая кнопка на наборе или «Пробы» → график.</li>}
+                          {(d.charts ?? []).map((c) => (
+                            <li key={c.id}>
+                              <button
+                                className="tree-row leaf" onClick={() => props.onOpenChart?.(c.id)} title={`${c.name} — открыть`}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  props.onChartMenu?.(c, e.clientX, e.clientY);
+                                }}
+                              >
+                                <Icon name={c.kind} size={14} />
+                                <span className="grow name">{c.name}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </li>
                     <li>
                       <div className="tree-row" onClick={() => toggle(`holes:${d.id}`)}>

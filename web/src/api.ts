@@ -437,6 +437,8 @@ export interface Dataset {
   counts: { collar: number; survey: number; assay: number } | null;
   components: { name: string; unit: string }[] | null;
   audit: { error: number; warning: number; info: number } | null;
+  /** drillholes: saved charts */
+  charts?: { id: number; kind: "histogram" | "qq" | "dendrogram"; name: string }[] | null;
   wireframes: WireframeInfo[] | null;
   lines: LineLayerInfo[] | null;
   rasters: RasterInfo[] | null;
@@ -1053,3 +1055,64 @@ export const getQQ = (
   body: { x: SampleParams; y: ({ kind: "sample" } & SampleParams) | { kind: "normal" | "lognormal" }; quantiles: number },
   signal?: AbortSignal,
 ) => request<QQResult>("/api/stats/qq", { method: "POST", ...json(body), signal });
+
+// ---- Dendrogram ----
+
+export interface DendrogramParams {
+  fields?: string[] | null;
+  method: "pearson" | "spearman";
+  log: boolean;
+  linkage: "average" | "complete" | "single" | "weighted";
+  distance: "1-r" | "1-|r|";
+  missing: "pairwise" | "complete";
+  weight: "none" | "length";
+  negatives: "keep" | "exclude" | "half_abs";
+  exclude_zero: boolean;
+  holes?: string[] | null;
+}
+
+export interface DendrogramResult {
+  fields: string[];
+  names: string[];
+  units: string[];
+  correlation: (number | null)[][];
+  pairs: number[][];
+  rows: number;
+  dropped_nonpositive_log: number;
+  /** scipy linkage: [a, b, distance, size] per merge */
+  linkage: number[][];
+  leaves: string[];
+  /** leaf order as indices into `names` */
+  order: number[];
+  icoord: number[][];
+  dcoord: number[][];
+  max_distance: number;
+}
+
+export const getDendrogram = (setId: number, params: DendrogramParams, signal?: AbortSignal) =>
+  request<DendrogramResult>(`/api/sets/${setId}/stats/dendrogram`, { method: "POST", ...json(params), signal });
+
+// ---- Saved charts ----
+
+export type SavedChartKind = "histogram" | "qq" | "dendrogram";
+
+export interface SavedChart {
+  id: number;
+  set_id: number;
+  kind: SavedChartKind;
+  name: string;
+  auto_name: boolean;
+  settings: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export const createChart = (setId: number, kind: SavedChartKind, name: string, settings: unknown) =>
+  request<SavedChart>(`/api/sets/${setId}/charts`, { method: "POST", ...json({ kind, name, settings }) });
+export const getChart = (id: number) => request<SavedChart>(`/api/charts/${id}`);
+export const patchChart = (id: number, patch: { name?: string; settings?: unknown; auto_name?: string }) =>
+  request<SavedChart>(`/api/charts/${id}`, { method: "PATCH", ...json(patch) });
+export async function deleteChart(id: number): Promise<void> {
+  const response = await fetch(`/api/charts/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(`Ошибка ${response.status}`);
+}
