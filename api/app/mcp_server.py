@@ -91,6 +91,12 @@ async def data_get_hole(project_id: int, hole_id: str, set_id: int | None = None
 
 
 @mcp.tool()
+async def data_object_history(project_id: int, kind: str, object_id: int) -> str:
+    """История объекта: журнал версий слоя линий (kind = lines) с его мерами, либо операция, которой построен каркас (kind = wireframe), и его проверки."""
+    return await _data("data_object_history", project_id, kind=kind, object_id=object_id)
+
+
+@mcp.tool()
 async def data_audit_summary(project_id: int, set_id: int | None = None) -> str:
     """Последний запуск аудита набора скважин: число находок по важности, сработавшие правила, признак устаревания."""
     return await _data("data_audit_summary", project_id, set_id=set_id)

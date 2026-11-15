@@ -1278,6 +1278,7 @@ export class GeoScene {
     this.updateSectionLine();
     this.applyClipping();
     this.requestRender();
+    this.onCamera();
   }
 
   /** Turns clipping to the section window on or off; the camera is not moved. */
@@ -1288,6 +1289,7 @@ export class GeoScene {
     this.updateSectionLine();
     this.applyClipping();
     this.requestRender();
+    this.onCamera();
   }
 
   /** Orthographic (plans and sections are true to scale) or perspective; the view direction is kept. */

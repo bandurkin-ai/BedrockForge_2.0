@@ -180,9 +180,13 @@ def _selected_lines(src: Sources, refs) -> list[tuple[LineLayer, int, np.ndarray
     return out
 
 
-def is_tie(points: np.ndarray, closed: bool, attrs: dict) -> bool:
-    """A tie line: an open two-point line, or any open line marked ROLE = TIE by the editor."""
-    return not closed and (len(points) == 2 or str(attrs.get("ROLE", "")).upper() == "TIE")
+def is_marked_tie(closed: bool, attrs: dict) -> bool:
+    """An open line marked ROLE = TIE by the editor's tie-line tool."""
+    return not closed and str(attrs.get("ROLE", "")).upper() == "TIE"
+
+
+# An unmarked two-point line counts as a tie line when both its ends sit on contour vertices (m).
+TIE_SNAP = 1e-3
 
 
 def op_stitch(src: Sources, params: dict, progress: Progress) -> OpOutput:
@@ -190,8 +194,19 @@ def op_stitch(src: Sources, params: dict, progress: Progress) -> OpOutput:
 
     lines = _selected_lines(src, params.get("contours"))
     contours = [(layer, i, p) for layer, i, p, closed, _ in lines if closed and len(p) >= 3]
-    ties = [p[[0, -1]] for _, _, p, closed, attrs in lines if is_tie(p, closed, attrs)]
-    skipped = sum(1 for _, _, p, closed, attrs in lines if not closed and not is_tie(p, closed, attrs))
+    ties, skipped = [], 0
+    if contours:
+        from scipy.spatial import cKDTree
+
+        tree = cKDTree(np.vstack([p for _, _, p in contours]))
+        for _, _, p, closed, attrs in lines:
+            if closed:
+                continue
+            # The editor's tie tool marks its lines; a plain two-point line joining two contour vertices is one too.
+            if is_marked_tie(closed, attrs) or (len(p) == 2 and float(tree.query(p)[0].max()) <= TIE_SNAP):
+                ties.append(p[[0, -1]])
+            else:
+                skipped += 1
     if len(contours) < 2:
         raise OpError(f"Для сшивки нужно не меньше двух замкнутых контуров, выбрано {len(contours)}. "
                       "Замкните линии в редакторе («Замкнуть») или выберите другие")
@@ -213,7 +228,7 @@ def op_stitch(src: Sources, params: dict, progress: Progress) -> OpOutput:
     out = OpOutput(name=f"Тело: {', '.join(names)}"[:255])
     report = dict(result.report)
     if skipped:
-        out.warnings.append(f"Незамкнутых линий пропущено: {skipped} (тай-линия — линия из двух вершин)")
+        out.warnings.append(f"Незамкнутых линий пропущено: {skipped} (тай-линия — линия из двух вершин, концы которой стоят на вершинах контуров)")
     out.warnings += list(report.get("warnings", []))
     out.meshes.append((out.name, result.vertices, result.triangles, None, {}))
     out.report = report

@@ -209,6 +209,26 @@ def test_ties_fix_a_twisted_pair():
     assert 0.7 * area(ring) * 15.0 < volume(result.vertices, result.triangles) <= area(ring) * 15.0 * (1 + 1e-9)
 
 
+def test_very_dissimilar_contours_still_give_a_strip():
+    """A sliver far to the side of a sprawling contour: the cheapest path walks one whole contour
+    from a single vertex of the other (two cones glued along an edge, not a strip); the search
+    that counts turns is used instead and the body is a valid closed solid."""
+    wide = np.array([[4.83, 4.08], [-2.22, 2.75], [-14.44, 0.44], [-14.12, -3.18], [-12.79, -7.15],
+                     [-12.52, -7.96], [-16.24, -10.97], [-18.23, -10.54], [-2.59, -36.54], [5.39, -38.51],
+                     [1.03, -22.21], [0.93, -14.39], [0.83, -6.56], [0.73, 1.27]])
+    sliver = np.array([[-56.51, 27.84], [-37.3, 38.77], [-39.46, 38.39], [-41.78, 41.61], [-43.03, 41.47],
+                       [-43.18, 42.65], [-43.85, 44.86]])
+    result = stitch_contours([level(wide, 0.0), level(sliver, 10.85)], check=False)
+    stats = mesh_stats(result.vertices, result.triangles)
+    assert stats["closed"] and stats["orientation"] == "outward"
+    assert orientation_conflicts(result.triangles, len(result.vertices)) == 0
+    # The same with tie lines that allow such a path: two ties from one vertex.
+    a, b = section(ellipse(12, 30.0, 14.0), 0.0), section(ellipse(9, 22.0, 16.0), 20.0)
+    tied = stitch_contours([a, b], [np.array([a[0], b[0]]), np.array([a[0], b[5]])], check=False)
+    assert mesh_stats(tied.vertices, tied.triangles)["closed"]
+    assert has_edge(tied.triangles, 0, 12) and has_edge(tied.triangles, 0, 12 + 5)
+
+
 def test_crossing_and_misplaced_ties_are_refused():
     a, b = section(ellipse(40, 30.0, 14.0), 0.0), section(ellipse(28, 22.0, 16.0), 20.0)
     with pytest.raises(StitchError, match="пересекаются") as error:
@@ -243,7 +263,8 @@ def test_branching_one_to_two():
     # New vertices: only the cut of the parent (two ends on its outline and the chord between them).
     added = result.vertices[114:]
     assert 3 <= len(added) <= 12
-    assert np.abs((added - ORIGIN) @ [np.cos(np.radians(30)), np.sin(np.radians(30)), 0]).max() < 3.0  # the cut is between the children (x = −8…10)
+    strike = [np.cos(np.radians(30)), np.sin(np.radians(30)), 0]
+    assert np.abs((added - ORIGIN) @ strike).max() < 3.0  # the cut is between the children (x = −8…10)
     # The parent tapers into two smaller bodies: less than the prism over the parent, more than
     # the two cylinders over the children.
     children = area(CHILD_1) + area(CHILD_2)
@@ -251,7 +272,8 @@ def test_branching_one_to_two():
     # The same series given upside down (two → one) is the same body.
     flipped = stitch_contours(contours[::-1])
     assert_solid(flipped.vertices, flipped.triangles)
-    assert volume(flipped.vertices, flipped.triangles) == pytest.approx(volume(result.vertices, result.triangles), rel=1e-9)
+    same = volume(result.vertices, result.triangles)
+    assert volume(flipped.vertices, flipped.triangles) == pytest.approx(same, rel=1e-9)
 
 
 def test_branching_two_one_two_series():
@@ -297,8 +319,9 @@ def test_series_of_sections_with_line_and_extension_caps():
     result = stitch_contours([contours[i] for i in order], start_cap="line", end_cap="extend", cap_distance=0.5,
                              progress=lambda f, m: calls.append((f, m)))
     assert_solid(result.vertices, result.triangles)
-    # Sections are sorted along the normal; the first contour of the list (section 3) is nearer
-    # to the start than the last one (section 2)?  No: 3 > 2, so the series runs from section 5 to 0.
+    # Sections are sorted along the normal, whose sign puts the first contour of the list before
+    # the last one: here the first (drawn on section 3) lies beyond the last (section 2), so the
+    # series runs from section 5 down to section 0 and the start cap is on section 5.
     assert [s["contours"] for s in result.report["sections"]] == [[2], [4], [0], [5], [3], [1]]
     positions = [s["position"] for s in result.report["sections"]]
     assert np.allclose(np.diff(positions), 20.0, atol=1e-6)
@@ -365,7 +388,7 @@ def test_inclined_sections_and_section_tolerance():
 
 def test_input_vertices_are_bit_identical_in_the_output():
     contours = [section(PARENT, 0.0), section(CHILD_1[::-1], 20.0), section(CHILD_2, 20.0),
-                np.vstack([section(ellipse(15, 5.0, 4.0, cx=-22.0), 41.5), section(ellipse(15, 5.0, 4.0, cx=-22.0), 41.5)[:1]])]
+                section(np.vstack([ellipse(15, 5.0, 4.0, cx=-22.0), ellipse(15, 5.0, 4.0, cx=-22.0)[:1]]), 41.5)]
     for caps in ("flat", "point", "line", "extend"):
         result = stitch_contours(contours, start_cap=caps, end_cap=caps)
         given = np.vstack([contours[0], contours[1], contours[2], contours[3][:-1]])

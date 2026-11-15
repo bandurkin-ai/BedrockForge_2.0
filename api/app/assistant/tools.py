@@ -197,6 +197,35 @@ _SET = {"type": "integer", "description": "Набор скважин (id из da
 _LIMIT = {"type": "integer", "description": f"Сколько строк вернуть (до {MAX_ROWS})"}
 _OFFSET = {"type": "integer", "description": "Сколько строк пропустить"}
 
+def object_history(session: Session, project_id: int, kind: str, object_id: int) -> dict:
+    """How a line layer or a wireframe came to be: the journal of versions of a layer with its
+    measures, or the operation that built a wireframe (sources, parameters) with its checks."""
+    from sqlalchemy import select
+
+    from app.models import Dataset, LineLayer, LineLayerVersion, Wireframe
+
+    if kind == "lines":
+        layer = session.get(LineLayer, object_id)
+        if layer is None or session.get(Dataset, layer.dataset_id).project_id != project_id:
+            raise HTTPException(404, f"Слоя линий {object_id} нет в проекте")
+        rows = session.scalars(select(LineLayerVersion).where(LineLayerVersion.layer_id == layer.id)
+                               .order_by(LineLayerVersion.version.desc()).limit(50))
+        return {
+            "id": layer.id, "name": layer.name, "version": layer.version, "lines": layer.line_count, "vertices": layer.point_count,
+            "measures": layer.stats, "extent": layer.extent,
+            "versions": [{"version": r.version, "action": r.action, "note": r.note, "author": r.author, "created_at": r.created_at.isoformat(),
+                          "lines": [r.prev_line_count, r.line_count], "vertices": [r.prev_point_count, r.point_count]} for r in rows],
+        }
+    if kind == "wireframe":
+        w = session.get(Wireframe, object_id)
+        if w is None or session.get(Dataset, w.dataset_id).project_id != project_id:
+            raise HTTPException(404, f"Каркаса {object_id} нет в проекте")
+        stats = dict(w.stats or {})
+        return {"id": w.id, "name": w.name, "triangles": w.triangle_count, "vertices": w.point_count, "extent": w.extent,
+                "operation": stats.pop("operation", None), "report": stats.pop("report", None), "checks": stats}
+    raise HTTPException(422, "kind: lines или wireframe")
+
+
 DATA_TOOLS: list[DataTool] = [
     DataTool(
         "data_list_datasets", "Дерево проекта",
@@ -255,6 +284,14 @@ DATA_TOOLS: list[DataTool] = [
         "средневзвешенное по длине) по проекту или по одной скважине.",
         {"component": {"type": "string", "description": "Имя компонента, например AU"}, "hole_id": _HOLE, "set_id": _SET},
         ("component",), component_stats,
+    ),
+    DataTool(
+        "data_object_history", "История объекта",
+        "Слой линий (kind = lines): текущая версия, меры (длина 3D и в плане, площади полигонов) и журнал версий — "
+        "кто и когда сохранял, сколько линий и вершин было и стало. Каркас (kind = wireframe): проверки (замкнутость, объём, "
+        "самопересечения) и операция, которой он построен: исходные объекты, параметры, допуски, отчёт. id — из data_list_datasets.",
+        {"kind": {"type": "string", "enum": ["lines", "wireframe"]}, "object_id": {"type": "integer", "description": "id слоя линий или каркаса"}},
+        ("kind", "object_id"), object_history,
     ),
 ]
 

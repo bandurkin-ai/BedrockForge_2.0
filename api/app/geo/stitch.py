@@ -24,13 +24,19 @@ How a series is stitched (docs/prompts/strings-wireframes-editing.md, 6.2):
   edges in opposite directions, so together they are a manifold "pants" surface bounded on the
   parent's section by the parent contour. The chord's end points are inserted into the parent
   contour for all its uses (the strip on its other side, its cap); the chord's inner points are
-  lowered towards the children (a saddle), which keeps them clear of the cap and of a second
-  branching on the parent's other side.
+  moved a quarter of the way towards the children (a saddle), which keeps them clear of the cap
+  and of a second branching on the parent's other side.
 * Ends: flat cap, pinch-out to a point or to a ridge line, or continuation by a share of the spacing.
+* Checks: closedness and orientation always; self-intersections with geo/checks.py on the final
+  coordinates, and what it reports is confirmed by an exact pairwise search (triangles lying in
+  one plane within rounding can give the fast check a false alarm).
 
-Known limits: a contour must not be perpendicular to the sections; the chord of a branching is a
-single straight cut, so a parent whose children are not separable by a line may give a strip with
-self-intersections (reported with the pair of sections; tie lines or an extra contour help).
+Known limits: a contour must not be turned more than 60° away from the sections; the chord of a
+branching is a single straight cut, so children that no straight line separates, or contours on
+neighbouring sections that do not correspond to each other, may give tubes that cross — this is
+reported with the pair of sections (tie lines, an extra contour or other contours help). Tie
+lines are honoured inside one strip; in a branching a tie must stay within the part of the
+parent that goes to its child.
 """
 
 from __future__ import annotations
@@ -316,8 +322,9 @@ def _dp_bounds(back, di, j0, dj, first, last):
 
 
 @njit(cache=True)
-def _dp_trace(back, i0, di, j0, dj, n, m, la, lb, tris, k0):
-    """Triangles of the found path into tris[k0 : k0 + di + dj] (vertex numbers from la, lb).
+def _dp_trace(back, i0, di, j0, dj, n, m, la, lb, tris, moves, k0):
+    """Triangles of the found path into tris[k0 : k0 + di + dj] (vertex numbers from la, lb);
+    moves gets 1 for a step along the first contour and 2 for a step along the second.
 
     With both contours counter-clockwise seen from the second one's side, the triangles
     (a_i, a_i+1, b_j) and (b_j+1, b_j, a_i) look away from the contours' interior.
@@ -325,12 +332,8 @@ def _dp_trace(back, i0, di, j0, dj, n, m, la, lb, tris, k0):
     r = di
     j = j0 + dj
     k = k0 + di + dj - 1
-    turns = -1
-    move = 0
     while r > 0 or j > j0:
-        if back[r, j] != move:
-            move = back[r, j]
-            turns += 1
+        moves[k] = back[r, j]
         if back[r, j] == 1:
             tris[k, 0] = la[(i0 + r - 1) % n]
             tris[k, 1] = la[(i0 + r) % n]
@@ -342,17 +345,17 @@ def _dp_trace(back, i0, di, j0, dj, n, m, la, lb, tris, k0):
             tris[k, 2] = la[(i0 + r) % n]
             j -= 1
         k -= 1
-    return turns
 
 
 @njit(cache=True)
-def _ring_path(d, i0, j0, la, lb, tris):
+def _ring_path(d, i0, j0, lo, hi, la, lb, tris):
     """Cheapest path once round both contours from node (i0, j0) that turns at least three times.
 
     A path with fewer turns walks one whole contour from a single vertex of the other; it passes
     the same span twice, so the "strip" is two cones glued along an edge. The usual search finds
     such a path only for very dissimilar contours; then this one is used. State: the direction
-    of the last step and the number of turns so far (0..3). Returns the cost (inf: no path).
+    of the last step and the number of turns so far (0..3). Row r may use columns lo[r]..hi[r]
+    (relative to the start; this is how tie lines are kept). Returns the cost (inf: no path).
     """
     n, m = d.shape
     cost = np.full((n + 1, m + 1, 8), np.inf)
@@ -360,7 +363,7 @@ def _ring_path(d, i0, j0, la, lb, tris):
     for r in range(n + 1):
         ia = (i0 + r) % n
         for j in range(m + 1):
-            if r == 0 and j == 0:
+            if (r == 0 and j == 0) or j < lo[r] or j > hi[r]:
                 continue
             w = d[ia, (j0 + j) % m]
             for move in range(2):  # 0: along the first contour (from the row above), 1: along the second
@@ -501,6 +504,7 @@ def _strip(pa: np.ndarray, pb: np.ndarray, la: np.ndarray, lb: np.ndarray, gap: 
     else:
         segments = [(0, n, int(_best_start(d, cost, back)), m)]
     tris = np.empty((n + m, 3), dtype=np.int64)
+    moves = np.empty(n + m, dtype=np.int8)
     k = 0
     for i0, di, j0, dj in segments:
         if di == 0 and dj == 0:
@@ -508,20 +512,28 @@ def _strip(pa: np.ndarray, pb: np.ndarray, la: np.ndarray, lb: np.ndarray, gap: 
         lo = np.full(di + 1, j0, dtype=np.int64)
         hi = np.full(di + 1, j0 + dj, dtype=np.int64)
         _dp_fill(d, i0, di, j0, dj, lo, hi, cost, back)
-        turns = _dp_trace(back, i0, di, j0, dj, n, m, la, lb, tris, k)
-        if di == n and dj == m and turns < 3:
-            # Two cones instead of a strip (see _ring_path): search again with the turns counted;
-            # without ties, from a spread of starts.
-            starts = [j0] if ties else sorted({j0, *np.linspace(0, m - 1, min(m, 16)).astype(int).tolist()})
-            best = np.inf
-            trial = np.empty((n + m, 3), dtype=np.int64)
-            for start in starts:
-                total = _ring_path(d, i0, start, la, lb, trial)
-                if total < best:
-                    best = total
-                    tris[k:k + n + m] = trial
+        _dp_trace(back, i0, di, j0, dj, n, m, la, lb, tris, moves, k)
         k += di + dj
-    return tris[:k]
+    if int(np.count_nonzero(moves[1:] != moves[:-1])) < 3:
+        # Two cones instead of a strip (see _ring_path): search again with the turns counted —
+        # through the same ties, or, without ties, from a spread of starts.
+        i0, j0 = segments[0][0], segments[0][2]
+        lo = np.zeros(n + 1, dtype=np.int64)
+        hi = np.full(n + 1, m, dtype=np.int64)
+        row = col = 0
+        for _, di, _, dj in segments[:-1]:
+            row, col = row + di, col + dj
+            lo[row + 1:] = np.maximum(lo[row + 1:], col)
+            hi[:row] = np.minimum(hi[:row], col)
+        starts = [j0] if ties else sorted({j0, *np.linspace(0, m - 1, min(m, 16)).astype(int).tolist()})
+        best = np.inf
+        trial = np.empty((n + m, 3), dtype=np.int64)
+        for start in starts:
+            total = _ring_path(d, i0, start, lo, hi, la, lb, trial)
+            if total < best:
+                best = total
+                tris[:] = trial
+    return tris
 
 
 # ---------------------------------------------------------------- the series
@@ -984,7 +996,8 @@ def stitch_contours(contours: list[np.ndarray], ties: list[np.ndarray] = (), *, 
         normal, pos = -normal, -pos
     for i in range(count):
         if abs(float(normals[i] @ normal)) < 0.5:
-            raise StitchError(f"Контур {i + 1} лежит не в плоскости разрезов: он развёрнут к остальным больше чем на 60°")
+            raise StitchError(
+                f"Контур {i + 1} лежит не в плоскости разрезов: он развёрнут к остальным больше чем на 60°")
     s.normal = normal
     s.u, s.v = _plane_axes(normal)
     sections, section_tolerance = _sections(pos, section_tolerance)
