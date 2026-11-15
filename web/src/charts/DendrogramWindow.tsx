@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getDendrogram, getNumericFields, type DendrogramParams, type DendrogramResult, type NumericField } from "../api";
+import { effectiveTable, SampleTableSelect, useSampleTables } from "../shell/SampleTableSelect";
 import { formatNumber, parseNumber } from "../stats/chartMath";
 import { clustersAt, DendrogramChart } from "./DendrogramChart";
 import { download, savePng, saveSvg, toCsv } from "./exportChart";
 
 export interface DendrogramSettings {
-  /** null: every component of the set */
+  /** the set's sample table; null: the default one */
+  table?: string | null;
+  /** null: every component of the table */
   fields: string[] | null;
   method: DendrogramParams["method"];
   log: boolean;
@@ -41,7 +44,7 @@ export const DEFAULT_DENDROGRAM: DendrogramSettings = {
 export function toDendrogramParams(s: DendrogramSettings): DendrogramParams {
   const holes = s.holes.split(/[\s,;]+/).map((h) => h.trim()).filter(Boolean);
   return {
-    fields: s.fields, method: s.method, log: s.log, linkage: s.linkage, distance: s.distance, missing: s.missing,
+    fields: s.fields, table: s.table ?? null, method: s.method, log: s.log, linkage: s.linkage, distance: s.distance, missing: s.missing,
     weight: s.weight, negatives: s.negatives, exclude_zero: s.excludeZero, holes: holes.length ? holes : null,
   };
 }
@@ -73,9 +76,18 @@ export function DendrogramWindow({ setId, setName, initial, onSettings }: {
   const svgRef = useRef<SVGSVGElement>(null);
   const set = (patch: Partial<DendrogramSettings>) => setS((prev) => ({ ...prev, ...patch }));
 
+  const tables = useSampleTables(setId);
+  const table = effectiveTable(tables, s.table);
   useEffect(() => {
-    getNumericFields(setId).then(setFields).catch((e: Error) => setError(e.message));
-  }, [setId]);
+    if (!tables) return;
+    getNumericFields(setId, table)
+      .then((list) => {
+        setFields(list);
+        // fields of another table: back to every component of this one
+        setS((prev) => ({ ...prev, table, fields: prev.fields && prev.fields.every((f) => list.some((x) => x.id === f)) ? prev.fields : null }));
+      })
+      .catch((e: Error) => setError(e.message));
+  }, [setId, table, tables]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const chosen = s.fields ?? (fields ?? []).filter((f) => f.kind === "component").map((f) => f.id);
   useEffect(() => onSettings?.(s, dendrogramName(s, fields ? chosen.length : null)), [s, fields]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -121,6 +133,7 @@ export function DendrogramWindow({ setId, setName, initial, onSettings }: {
       <form className="hist-settings" onSubmit={(e) => e.preventDefault()}>
         <fieldset>
           <legend>Поля ({chosen.length})</legend>
+          <SampleTableSelect tables={tables} value={s.table ?? null} onChange={(t) => set({ table: t, fields: null })} />
           <div className="dendro-fields">
             {(fields ?? []).map((f) => (
               <label key={f.id} className="check">

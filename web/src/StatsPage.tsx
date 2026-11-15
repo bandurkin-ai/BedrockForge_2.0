@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   runDeclustering, runNscore, runVariogram, runVariogramMap,
   type DeclusParams, type DeclusResult, type DirectionParams, type NscoreResult, type Summary,
-  runBootstrap, runLocalUncertainty,
+  runBootstrap, runLocalUncertainty, getNumericFields, type NumericField,
   type BootstrapResult, type Grid, type LocalResult,
   type VariogramMapResult, type VariogramModelParams, type VariogramResult, type Hole,
 } from "./api";
 import { formatNumber, parseNumber } from "./stats/chartMath";
+import { effectiveTable, useSampleTables } from "./shell/SampleTableSelect";
 import { Heatmap, Histogram, LineChart, type Series } from "./stats/charts";
 import { coordFormat, defaultLag, planSpan } from "./stats/defaults";
 import { ANALYSES, type StatsView } from "./stats/analyses";
@@ -141,9 +142,11 @@ function DeclusFields({ form, onChange }: { form: DeclusForm; onChange: (next: D
 interface PanelProps {
   setId: number;
   component: string;
+  /** the set's sample table; null: the default one */
+  table: string | null;
 }
 
-function DeclusPanel({ setId, component }: PanelProps) {
+function DeclusPanel({ setId, component, table }: PanelProps) {
   const [form, setForm] = useState(DEFAULT_DECLUS);
   const run = useRun<DeclusResult>();
   const r = run.result;
@@ -153,7 +156,7 @@ function DeclusPanel({ setId, component }: PanelProps) {
     <>
       <div className="stats-form">
         <DeclusFields form={form} onChange={setForm} />
-        <RunButton busy={run.busy} onClick={() => run.start(() => runDeclustering(setId, component, declusParams(form)))} />
+        <RunButton busy={run.busy} onClick={() => run.start(() => runDeclustering(setId, component, declusParams(form), table))} />
       </div>
       <Results run={run}>
         {r && (
@@ -178,7 +181,7 @@ function DeclusPanel({ setId, component }: PanelProps) {
   );
 }
 
-function NscorePanel({ setId, component }: PanelProps) {
+function NscorePanel({ setId, component, table }: PanelProps) {
   const [weighted, setWeighted] = useState(false);
   const [form, setForm] = useState(DEFAULT_DECLUS);
   const run = useRun<NscoreResult>();
@@ -190,7 +193,7 @@ function NscorePanel({ setId, component }: PanelProps) {
       <div className="stats-form">
         <label className="stats-check"><input type="checkbox" checked={weighted} onChange={(e) => setWeighted(e.target.checked)} />С весами декластеризации</label>
         {weighted && <DeclusFields form={form} onChange={setForm} />}
-        <RunButton busy={run.busy} onClick={() => run.start(() => runNscore(setId, component, weighted ? declusParams(form) : null))} />
+        <RunButton busy={run.busy} onClick={() => run.start(() => runNscore(setId, component, weighted ? declusParams(form) : null, table))} />
       </div>
       <Results run={run}>
         {r && (
@@ -236,7 +239,7 @@ function modelParams(f: ModelForm, fallbackRange: number): VariogramModelParams 
 const OMNI: DirectionParams = { azimuth: 0, azimuth_tol: 90, bandwidth: null };
 const FOUR: DirectionParams[] = [0, 45, 90, 135].map((azimuth) => ({ azimuth, azimuth_tol: 22.5, bandwidth: null }));
 
-function VariogramPanel({ setId, component, lag0 }: PanelProps & { lag0: number }) {
+function VariogramPanel({ setId, component, table, lag0 }: PanelProps & { lag0: number }) {
   const [lag, setLag] = useState(String(lag0));
   const [nlag, setNlag] = useState("10");
   const [dirs, setDirs] = useState<"omni" | "four">("omni");
@@ -290,7 +293,7 @@ function VariogramPanel({ setId, component, lag0 }: PanelProps & { lag0: number 
                 directions: dirs === "omni" ? [OMNI] : FOUR,
                 standardize,
                 model: modelParams(model, 5 * lagValue),
-              }),
+              }, table),
             )
           }
         />
@@ -329,7 +332,7 @@ function VariogramPanel({ setId, component, lag0 }: PanelProps & { lag0: number 
   );
 }
 
-function MapPanel({ setId, component, lag0 }: PanelProps & { lag0: number }) {
+function MapPanel({ setId, component, table, lag0 }: PanelProps & { lag0: number }) {
   const [step, setStep] = useState(String(lag0));
   const [n, setN] = useState("8");
   const [minnp, setMinnp] = useState("5");
@@ -353,7 +356,7 @@ function MapPanel({ setId, component, lag0 }: PanelProps & { lag0: number }) {
           onClick={() => {
             const d = parseNumber(step) ?? lag0;
             const k = Math.round(parseNumber(n) ?? 8);
-            run.start(() => runVariogramMap(setId, component, { nxlag: k, nylag: k, dxlag: d, dylag: d, minnp: Math.round(parseNumber(minnp) ?? 5), standardize }));
+            run.start(() => runVariogramMap(setId, component, { nxlag: k, nylag: k, dxlag: d, dylag: d, minnp: Math.round(parseNumber(minnp) ?? 5), standardize }, table));
           }}
         />
       </div>
@@ -377,7 +380,7 @@ const STATISTICS: [BootstrapStatistic, string][] = [
 ];
 type BootstrapStatistic = "mean" | "median" | "std" | "cv" | "p10" | "p90";
 
-function BootstrapPanel({ setId, component }: PanelProps) {
+function BootstrapPanel({ setId, component, table }: PanelProps) {
   const [statistic, setStatistic] = useState<BootstrapStatistic>("mean");
   const [nBoot, setNBoot] = useState("1000");
   const [confidence, setConfidence] = useState("0.9");
@@ -416,7 +419,7 @@ function BootstrapPanel({ setId, component }: PanelProps) {
                 confidence: Number(confidence),
                 declus: weighted ? declusParams(form) : null,
                 seed: null,
-              }),
+              }, table),
             )
           }
         />
@@ -461,7 +464,7 @@ function finiteRange(grids: Grid[]): [number, number] | null {
   return values.length ? [Math.min(...values), Math.max(...values)] : null;
 }
 
-function LocalPanel({ setId, component }: PanelProps) {
+function LocalPanel({ setId, component, table }: PanelProps) {
   const [n, setN] = useState("30");
   const [nreal, setNreal] = useState("50");
   const [k, setK] = useState("8");
@@ -492,7 +495,7 @@ function LocalPanel({ setId, component }: PanelProps) {
               runLocalUncertainty(setId, component, {
                 nx: cells, ny: cells, nreal: Math.round(parseNumber(nreal) ?? 50), k: Math.round(parseNumber(k) ?? 8),
                 power: parseNumber(power) ?? 2, radius: parseNumber(radius), threshold: parseNumber(threshold), seed: null,
-              }),
+              }, table),
             );
             setWhich((w) => (w === "prob_exceed" && parseNumber(threshold) === null ? "mean" : w));
           }}
@@ -541,16 +544,29 @@ export function StatsPage({
   view: StatsView;
   onViewChange: (next: StatsView) => void;
 }) {
-  const components = summary?.components ?? [];
+  const tables = useSampleTables(setId, refreshKey);
+  const table = effectiveTable(tables, view.table);
+  const [fields, setFields] = useState<NumericField[] | null>(null);
+  useEffect(() => {
+    if (!tables) return;
+    let cancelled = false;
+    getNumericFields(setId, table).then((f) => !cancelled && setFields(f)).catch(() => !cancelled && setFields([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [setId, table, tables, refreshKey]);
+  void summary;
+  const components = (fields ?? []).filter((f) => f.kind === "component").map((f) => ({ name: f.name, unit: f.unit }));
   const component = components.find((c) => c.name === view.component)?.name ?? components[0]?.name ?? null;
   const lag0 = defaultLag(planSpan(holes));
+  if (!tables || !fields) return <p className="muted small">Загрузка…</p>;
   if (component === null) {
-    return <p className="muted small">В наборе нет компонентов с содержаниями: импортируйте таблицу проб.</p>;
+    return <p className="muted small">В наборе нет таблиц опробования с числами: импортируйте опробование.</p>;
   }
   const unit = components.find((c) => c.name === component)?.unit;
-  // A new set, component or data: drop old results instead of showing them for something else.
-  const key = `${setId}:${component}:${refreshKey}`;
-  const body = { setId, component };
+  // A new set, table, component or data: drop old results instead of showing them for something else.
+  const key = `${setId}:${table}:${component}:${refreshKey}`;
+  const body = { setId, component, table };
   return (
     <main className="page stats-page">
       <div className="stats-head">
@@ -561,6 +577,14 @@ export function StatsPage({
             </button>
           ))}
         </div>
+        {tables.tables.length > 1 && (
+          <label className="stats-field">
+            <span>Таблица</span>
+            <select value={table ?? ""} onChange={(e) => onViewChange({ ...view, table: e.target.value, component: null })} aria-label="Таблица проб">
+              {tables.tables.map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
+            </select>
+          </label>
+        )}
         <label className="stats-field">
           <span>Компонент</span>
           <select value={component} onChange={(e) => onViewChange({ ...view, component: e.target.value })}>

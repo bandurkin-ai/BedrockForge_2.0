@@ -1,3 +1,4 @@
+import { effectiveTable, SampleTableSelect, useSampleTables } from "./shell/SampleTableSelect";
 import { useEffect, useState } from "react";
 import {
   auditExportUrl,
@@ -22,7 +23,7 @@ export const DEFAULT_CONFIG: AuditConfig = {
   assay_outlier_z: 8,
 };
 
-const CONFIG_LABELS: Record<keyof AuditConfig, string> = {
+const CONFIG_LABELS: Record<Exclude<keyof AuditConfig, "table">, string> = {
   depth_tolerance: "Допуск по глубине, м",
   dogleg_per_30m: "Порог изгиба, °/30 м",
   isolated_factor: "Изоляция устья (во сколько раз дальше типичного)",
@@ -63,6 +64,7 @@ export function AuditPage({
   const [page, setPage] = useState<FindingsPage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const tables = useSampleTables(setId, refreshKey);
 
   useEffect(() => {
     getAudit(setId)
@@ -91,7 +93,7 @@ export function AuditPage({
     setBusy(true);
     setError(null);
     try {
-      setRun(await runAudit(setId, config));
+      setRun(await runAudit(setId, { ...config, table: effectiveTable(tables, config.table) }));
       setOffset(0);
       onAudited();
     } catch (e) {
@@ -123,10 +125,18 @@ export function AuditPage({
       </div>
       {run?.stale && <div className="alert warn">После этого аудита были импортированы новые данные. Запустите аудит заново.</div>}
 
+      <div className="audit-table">
+        <SampleTableSelect tables={tables} value={config.table ?? null} onChange={(t) => setConfig({ ...config, table: t })} label="Проверяемая таблица проб" />
+        {run && tables && (() => {
+          const checked = tables.tables.find((t) => t.key === (run.config as { table?: string }).table);
+          return checked ? <span className="muted small">Последний аудит: таблица «{checked.name}»</span> : null;
+        })()}
+      </div>
+
       <details className="settings">
         <summary>Параметры проверок</summary>
         <div className="settings-grid">
-          {(Object.keys(CONFIG_LABELS) as (keyof AuditConfig)[]).map((key) => (
+          {(Object.keys(CONFIG_LABELS) as (keyof typeof CONFIG_LABELS)[]).map((key) => (
             <label key={key} className="field">
               {CONFIG_LABELS[key]}
               <input

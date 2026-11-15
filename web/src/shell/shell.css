@@ -539,3 +539,4 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .interval-table-window .table-wrap { flex: 1; overflow: auto; }
 .tree-row .row-actions.always { opacity: 1; }
 .form-error { color: var(--sev-error); }
+.audit-table { display: flex; align-items: end; gap: 12px; margin: 6px 0; } .audit-table label { display: flex; flex-direction: column; gap: 2px; font-size: 0.85rem; }

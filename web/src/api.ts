@@ -192,6 +192,8 @@ export interface AuditConfig {
   isolated_factor: number;
   z_jump: number;
   assay_outlier_z: number;
+  /** the sample table checked ("assay" or an assay table's id); none: the set's default */
+  table?: string | null;
 }
 
 export interface AuditFinding {
@@ -728,24 +730,25 @@ export interface LocalResult {
 const postJson = <T>(url: string, body: unknown) =>
   request<T>(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-export const runDeclustering = (setId: number, component: string, params: DeclusParams) =>
-  postJson<DeclusResult>(`/api/sets/${setId}/stats/declustering`, { component, ...params });
+// `table`: the set's sample table ("assay" or an assay table's id); null: the default one.
+export const runDeclustering = (setId: number, component: string, params: DeclusParams, table: string | null = null) =>
+  postJson<DeclusResult>(`/api/sets/${setId}/stats/declustering`, { component, table, ...params });
 
 /** `declus` = null: equal weights. */
-export const runNscore = (setId: number, component: string, declus: DeclusParams | null) =>
-  postJson<NscoreResult>(`/api/sets/${setId}/stats/nscore`, { component, declus });
+export const runNscore = (setId: number, component: string, declus: DeclusParams | null, table: string | null = null) =>
+  postJson<NscoreResult>(`/api/sets/${setId}/stats/nscore`, { component, table, declus });
 
-export const runVariogram = (setId: number, component: string, req: VariogramRequest) =>
-  postJson<VariogramResult>(`/api/sets/${setId}/stats/variogram`, { component, ...req });
+export const runVariogram = (setId: number, component: string, req: VariogramRequest, table: string | null = null) =>
+  postJson<VariogramResult>(`/api/sets/${setId}/stats/variogram`, { component, table, ...req });
 
-export const runVariogramMap = (setId: number, component: string, req: VariogramMapRequest) =>
-  postJson<VariogramMapResult>(`/api/sets/${setId}/stats/variogram-map`, { component, ...req });
+export const runVariogramMap = (setId: number, component: string, req: VariogramMapRequest, table: string | null = null) =>
+  postJson<VariogramMapResult>(`/api/sets/${setId}/stats/variogram-map`, { component, table, ...req });
 
-export const runBootstrap = (setId: number, component: string, req: BootstrapRequest) =>
-  postJson<BootstrapResult>(`/api/sets/${setId}/stats/bootstrap`, { component, ...req });
+export const runBootstrap = (setId: number, component: string, req: BootstrapRequest, table: string | null = null) =>
+  postJson<BootstrapResult>(`/api/sets/${setId}/stats/bootstrap`, { component, table, ...req });
 
-export const runLocalUncertainty = (setId: number, component: string, req: LocalRequest) =>
-  postJson<LocalResult>(`/api/sets/${setId}/stats/local-uncertainty`, { component, ...req });
+export const runLocalUncertainty = (setId: number, component: string, req: LocalRequest, table: string | null = null) =>
+  postJson<LocalResult>(`/api/sets/${setId}/stats/local-uncertainty`, { component, table, ...req });
 
 // ---- Resumable uploads and background jobs (stage 7) ----
 
@@ -965,12 +968,23 @@ export interface NumericField {
   count: number;
 }
 
-export const getNumericFields = (setId: number) => request<NumericField[]>(`/api/sets/${setId}/stats/fields`);
+/** Numeric fields of a sample table of the set ("assay" or an assay table's id; none: the default one). */
+export const getNumericFields = (setId: number, table?: string | null) =>
+  request<NumericField[]>(`/api/sets/${setId}/stats/fields${table ? `?table=${encodeURIComponent(table)}` : ""}`);
+
+/** The sample tables of a set for audit and statistics, and the one used by default. */
+export interface SampleTables {
+  tables: { key: string; name: string; row_count: number }[];
+  default: string | null;
+}
+export const getSampleTables = (setId: number) => request<SampleTables>(`/api/sets/${setId}/stats/tables`);
 
 export type WeightMode = "none" | "length" | "field" | "length_field";
 
 export interface HistogramParams {
   field: string;
+  /** the set's sample table; none: the default one */
+  table?: string | null;
   weight: WeightMode;
   weight_field?: string | null;
   log: boolean;
@@ -1032,6 +1046,8 @@ export const getHistogram = (setId: number, params: HistogramParams, signal?: Ab
 export interface SampleParams {
   set_id: number;
   field: string;
+  /** the set's sample table; none: the default one */
+  table?: string | null;
   weight: WeightMode;
   weight_field?: string | null;
   negatives: "keep" | "exclude" | "half_abs";
@@ -1070,6 +1086,8 @@ export const getQQ = (
 
 export interface DendrogramParams {
   fields?: string[] | null;
+  /** the set's sample table; none: the default one */
+  table?: string | null;
   method: "pearson" | "spearman";
   log: boolean;
   linkage: "average" | "complete" | "single" | "weighted";

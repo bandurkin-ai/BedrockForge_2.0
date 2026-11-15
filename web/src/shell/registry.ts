@@ -1,3 +1,4 @@
+import { hasSamples } from "./SampleTableSelect";
 import type { MutableRefObject } from "react";
 import { blockMeta, blockReport, getIntervalTables, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
 import type { TableKind } from "../route";
@@ -649,7 +650,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       },
       run: (args) => {
         const set = targetSet(args.set_id);
-        if (!set.counts?.assay) throw new Error(`В наборе «${set.name}» нет проб`);
+        if (!hasSamples(set)) throw new Error(`В наборе «${set.name}» нет таблиц опробования`);
         const fieldId = (name: unknown) => {
           if (typeof name !== "string" || !name) return null;
           if (name.includes(":") || name === "length") return name;
@@ -695,7 +696,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       },
       run: (args) => {
         const set = targetSet(args.set_id);
-        if (!set.counts?.assay) throw new Error(`В наборе «${set.name}» нет проб`);
+        if (!hasSamples(set)) throw new Error(`В наборе «${set.name}» нет таблиц опробования`);
         const ySet = args.y_set_id !== undefined ? targetSet(args.y_set_id) : set;
         const fieldId = (d: Dataset, name: unknown) => {
           if (typeof name !== "string" || !name) return null;
@@ -736,7 +737,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       },
       run: (args) => {
         const set = targetSet(args.set_id);
-        if (!set.counts?.assay) throw new Error(`В наборе «${set.name}» нет проб`);
+        if (!hasSamples(set)) throw new Error(`В наборе «${set.name}» нет таблиц опробования`);
         const d: Partial<DendrogramSettings> = {};
         if (typeof args.fields === "string" && args.fields.trim()) {
           d.fields = args.fields.split(/[\s,;]+/).filter(Boolean).map((n) => (n.includes(":") || n === "length" ? n : set.components?.some((c) => c.name === n) ? `comp:${n}` : `attr:${n}`));

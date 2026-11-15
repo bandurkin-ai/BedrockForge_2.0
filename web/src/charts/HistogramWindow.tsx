@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getHistogram, getNumericFields, type CutMode, type Describe, type HistogramParams, type HistogramResult, type NumericField, type WeightMode } from "../api";
 import { formatNumber, parseNumber } from "../stats/chartMath";
+import { effectiveTable, SampleTableSelect, useSampleTables } from "../shell/SampleTableSelect";
 import { download, savePng, saveSvg, toCsv } from "./exportChart";
 import { HistogramChart, Y_TITLES, barValues, type Mark, type YMode } from "./HistogramChart";
 
 /** Everything the user can set; also what Claude passes to open a histogram. */
 export interface HistogramSettings {
+  /** the set's sample table ("assay" or an assay table's id); null: the default one */
+  table?: string | null;
   field: string | null;
   weight: WeightMode;
   weightField: string | null;
@@ -56,6 +59,7 @@ export function toParams(s: HistogramSettings): HistogramParams | null {
   if ((s.weight === "field" || s.weight === "length_field") && !s.weightField) return null;
   return {
     field: s.field,
+    table: s.table ?? null,
     weight: s.weight,
     weight_field: s.weight === "field" || s.weight === "length_field" ? s.weightField : null,
     log: s.log,
@@ -158,14 +162,21 @@ export function HistogramWindow({ setId, setName, initial, onSettings }: {
   const svgRef = useRef<SVGSVGElement>(null);
   const set = (patch: Partial<HistogramSettings>) => setS((prev) => ({ ...prev, ...patch }));
 
+  const tables = useSampleTables(setId);
+  const table = effectiveTable(tables, s.table);
   useEffect(() => {
-    getNumericFields(setId)
+    if (!tables) return;
+    getNumericFields(setId, table)
       .then((list) => {
         setFields(list);
-        setS((prev) => ({ ...prev, field: prev.field && list.some((f) => f.id === prev.field) ? prev.field : (list.find((f) => f.kind === "component") ?? list[0])?.id ?? null }));
+        setS((prev) => ({
+          ...prev, table,
+          field: prev.field && list.some((f) => f.id === prev.field) ? prev.field : (list.find((f) => f.kind === "component") ?? list[0])?.id ?? null,
+          weightField: prev.weightField && list.some((f) => f.id === prev.weightField) ? prev.weightField : null,
+        }));
       })
       .catch((e: Error) => setError(e.message));
-  }, [setId]);
+  }, [setId, table, tables]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (s.field) onSettings?.(s, histogramName(s));
@@ -224,6 +235,7 @@ export function HistogramWindow({ setId, setName, initial, onSettings }: {
       <form className="hist-settings" onSubmit={(e) => e.preventDefault()}>
         <fieldset>
           <legend>Данные</legend>
+          <SampleTableSelect tables={tables} value={s.table ?? null} onChange={(t) => set({ table: t })} />
           <label>Поле
             <select value={s.field ?? ""} onChange={(e) => set({ field: e.target.value })} aria-label="Поле">
               {(fields ?? []).map((f) => <option key={f.id} value={f.id}>{f.name}{f.unit ? `, ${f.unit}` : ""} ({f.count})</option>)}

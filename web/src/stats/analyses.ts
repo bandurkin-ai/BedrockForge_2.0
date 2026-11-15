@@ -12,6 +12,8 @@ export const ANALYSES: [StatsAnalysis, string][] = [
 /** What the statistics tab shows. */
 export interface StatsView {
   analysis: StatsAnalysis;
-  /** null = the first component of the set */
+  /** null = the first component of the table */
   component: string | null;
+  /** the set's sample table ("assay" or an assay table's id); null: the default one */
+  table?: string | null;
 }

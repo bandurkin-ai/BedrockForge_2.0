@@ -15,12 +15,11 @@ from typing import Literal
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.models import Assay, Component
 from app.routers.projects import get_set
+from app.samples import resolve_source, source_sql
 from app.routers.viz import _trajectories
 from app.stats import (VariogramModel, backtr, bootstrap, cell_declus, experimental_variogram, idw,
                        local_expectation, local_percentile, local_prob_exceed, local_std, nscore,
@@ -52,21 +51,22 @@ class Samples:
         return np.column_stack([self.x, self.y])
 
 
-def load_samples(session: Session, set_id: int, component: str, min_n: int = 2) -> Samples:
-    """Interval midpoints with a finite value of the component, in assay id order."""
+def load_samples(session: Session, set_id: int, component: str, min_n: int = 2, table: str | None = None) -> Samples:
+    """Interval midpoints with a finite value of the component, in row id order, from the set's
+    sample table `table` ("assay" or an assay table's id; none: the default one)."""
+    from sqlalchemy import text
+
     get_set(session, set_id)
-    exists = session.scalar(
-        select(Component.id).where(Component.set_id == set_id, Component.name == component)
-    )
-    if exists is None:
-        raise HTTPException(404, f"Компонент «{component}» не найден в наборе")
+    src = resolve_source(session, set_id, table)
+    if component not in src.units:
+        raise HTTPException(404, f"Компонент «{component}» не найден в таблице «{src.name}»")
 
     trajs, _ = _trajectories(session, set_id)
-    rows = session.execute(
-        select(Assay.id, Assay.hole_id, Assay.from_m, Assay.to_m, Assay.analytes[component].as_float())
-        .where(Assay.set_id == set_id, Assay.analytes.has_key(component))
-        .order_by(Assay.id)
-    )
+    from_sql, params = source_sql(src)
+    rows = session.execute(text(
+        f"SELECT id, hole_id, from_m, to_m, (analytes ->> :c)::float8 FROM {from_sql} "
+        "WHERE jsonb_typeof(analytes -> :c) = 'number' ORDER BY id"
+    ), {**params, "c": component})
     by_hole: dict[str, list[tuple[int, float, float]]] = {}
     for aid, hole, from_m, to_m, value in rows:
         if (hole in trajs and None not in (from_m, to_m, value)
@@ -151,6 +151,8 @@ def compute_weights(p: DeclusIn, s: Samples) -> tuple[np.ndarray, dict]:
 
 class DeclusRequest(DeclusIn):
     component: str
+    # the set's sample table: "assay" or an assay table's id; none: the default one
+    table: str | None = None
     include_weights: bool = False
 
 
@@ -175,7 +177,7 @@ class DeclusOut(BaseModel):
 @router.post("/sets/{set_id}/stats/declustering", response_model=DeclusOut)
 def declustering(set_id: int, body: DeclusRequest, session: Session = Depends(get_session)):
     """Declustering weights of a component (they sum to the number of samples)."""
-    s = load_samples(session, set_id, body.component)
+    s = load_samples(session, set_id, body.component, table=body.table)
     w, extra = compute_weights(body, s)
     out = DeclusOut(
         component=body.component, method=body.method, count=s.n,
@@ -192,6 +194,8 @@ def declustering(set_id: int, body: DeclusRequest, session: Session = Depends(ge
 # --------------------------------------------------------------------------
 class NscoreRequest(BaseModel):
     component: str
+    # the set's sample table: "assay" or an assay table's id; none: the default one
+    table: str | None = None
     declus: DeclusIn | None = Field(None, description="weights for the transform table; none = equal")
     zmin: float | None = None
     zmax: float | None = None
@@ -218,7 +222,7 @@ def _transform(body, s: Samples):
 @router.post("/sets/{set_id}/stats/nscore", response_model=NscoreOut)
 def normal_score(set_id: int, body: NscoreRequest, session: Session = Depends(get_session)):
     """Normal score transform of a component, optionally with declustering weights."""
-    s = load_samples(session, set_id, body.component, min_n=1)
+    s = load_samples(session, set_id, body.component, min_n=1, table=body.table)
     ns, tr = _transform(body, s)
     return NscoreOut(
         component=body.component, count=s.n, values=tr.values.tolist(), scores=tr.scores.tolist(),
@@ -244,7 +248,7 @@ class BacktrOut(BaseModel):
 @router.post("/sets/{set_id}/stats/backtr", response_model=BacktrOut)
 def back_transform(set_id: int, body: BacktrRequest, session: Session = Depends(get_session)):
     """Back-transform normal scores to component values through the data's own table."""
-    s = load_samples(session, set_id, body.component, min_n=1)
+    s = load_samples(session, set_id, body.component, min_n=1, table=body.table)
     _, tr = _transform(body, s)
     y = np.asarray(body.scores_in, dtype=float)
     if not np.all(np.isfinite(y)):
@@ -282,6 +286,8 @@ class DirectionIn(BaseModel):
 
 class VariogramRequest(BaseModel):
     component: str
+    # the set's sample table: "assay" or an assay table's id; none: the default one
+    table: str | None = None
     lag: float = Field(gt=0)
     nlag: int = Field(10, ge=1, le=200)
     lag_tol: float | None = Field(None, ge=0, description="default: lag / 2")
@@ -312,7 +318,7 @@ class VariogramOut(BaseModel):
 @router.post("/sets/{set_id}/stats/variogram", response_model=VariogramOut)
 def variogram(set_id: int, body: VariogramRequest, session: Session = Depends(get_session)):
     """Experimental semivariogram (plan view) in one or several directions."""
-    s = load_samples(session, set_id, body.component)
+    s = load_samples(session, set_id, body.component, table=body.table)
     model = body.model.build() if body.model else None
     lags = body.lag * np.arange(1, body.nlag + 1)
     out = []
@@ -333,6 +339,8 @@ def variogram(set_id: int, body: VariogramRequest, session: Session = Depends(ge
 
 class MapRequest(BaseModel):
     component: str
+    # the set's sample table: "assay" or an assay table's id; none: the default one
+    table: str | None = None
     nxlag: int = Field(10, ge=1, le=100)
     nylag: int = Field(10, ge=1, le=100)
     dxlag: float = Field(gt=0)
@@ -359,7 +367,7 @@ class MapOut(BaseModel):
 @router.post("/sets/{set_id}/stats/variogram-map", response_model=MapOut)
 def variogram_map_endpoint(set_id: int, body: MapRequest, session: Session = Depends(get_session)):
     """Variogram map of a component (plan view)."""
-    s = load_samples(session, set_id, body.component)
+    s = load_samples(session, set_id, body.component, table=body.table)
     gamma, npairs = _call(variogram_map, s.xy(), s.v, body.nxlag, body.nylag, body.dxlag,
                           body.dylag, minnp=body.minnp, standardize=body.standardize)
     return MapOut(
@@ -417,6 +425,8 @@ STATISTIC_TITLES = {"mean": "Среднее", "median": "Медиана", "std":
 
 class BootstrapRequest(BaseModel):
     component: str
+    # the set's sample table: "assay" or an assay table's id; none: the default one
+    table: str | None = None
     statistic: Literal["mean", "median", "std", "cv", "p10", "p90"] = "mean"
     n_boot: int = Field(1000, ge=10, le=MAX_BOOTSTRAP)
     confidence: float = Field(0.9, gt=0.5, lt=1.0)
@@ -443,7 +453,7 @@ class BootstrapOut(BaseModel):
 @router.post("/sets/{set_id}/stats/bootstrap", response_model=BootstrapOut)
 def bootstrap_statistic(set_id: int, body: BootstrapRequest, session: Session = Depends(get_session)):
     """Bootstrap uncertainty of a statistic of one component (resampling the intervals)."""
-    s = load_samples(session, set_id, body.component)
+    s = load_samples(session, set_id, body.component, table=body.table)
     weights = compute_weights(body.declus, s)[0] if body.declus else None
     stat = _STATISTICS[body.statistic]
     realizations = _call(bootstrap, s.v, stat, body.n_boot, weights=weights, seed=body.seed)
@@ -463,6 +473,8 @@ def bootstrap_statistic(set_id: int, body: BootstrapRequest, session: Session = 
 
 class LocalRequest(BaseModel):
     component: str
+    # the set's sample table: "assay" or an assay table's id; none: the default one
+    table: str | None = None
     nx: int = Field(30, ge=2, le=100)
     ny: int = Field(30, ge=2, le=100)
     nreal: int = Field(50, ge=5, le=300)
@@ -496,7 +508,7 @@ def local_uncertainty(set_id: int, body: LocalRequest, session: Session = Depend
     Every realization resamples whole holes with replacement (the samples of a hole are not independent),
     so the spread of the maps shows how much the estimate depends on which holes were drilled.
     """
-    s = load_samples(session, set_id, body.component, min_n=3)
+    s = load_samples(session, set_id, body.component, min_n=3, table=body.table)
     n_holes = len(np.unique(s.holes))
     if n_holes < 3:
         raise HTTPException(422, f"Нужно не менее 3 скважин с данными, есть {n_holes}")
@@ -543,22 +555,32 @@ class FieldOut(BaseModel):
     count: int
 
 
+@router.get("/sets/{set_id}/stats/tables")
+def sample_tables(set_id: int, session: Session = Depends(get_session)) -> dict:
+    """The sample tables of a set for audit and statistics, and the one used by default."""
+    from app.samples import default_table, source_tables
+
+    get_set(session, set_id)
+    return {"tables": source_tables(session, set_id), "default": default_table(session, set_id)}
+
+
 @router.get("/sets/{set_id}/stats/fields", response_model=list[FieldOut])
-def numeric_fields(set_id: int, session: Session = Depends(get_session)):
-    """Numeric fields of the assay table: components, numeric attributes, interval length."""
+def numeric_fields(set_id: int, table: str | None = None, session: Session = Depends(get_session)):
+    """Numeric fields of a sample table: components, numeric attributes, interval length."""
     from sqlalchemy import text
 
     get_set(session, set_id)
-    units = {c.name: c.unit for c in session.scalars(select(Component).where(Component.set_id == set_id))}
+    src = resolve_source(session, set_id, table)
+    from_sql, params = source_sql(src)
     out = []
     for column, kind, prefix in (("analytes", "component", "comp"), ("attributes", "attribute", "attr")):
         rows = session.execute(text(
-            f"SELECT e.key, count(*) FROM assay, jsonb_each(assay.{column}) AS e "
-            "WHERE assay.set_id = :s AND jsonb_typeof(e.value) = 'number' GROUP BY e.key ORDER BY e.key"
-        ), {"s": set_id}).all()
-        out += [FieldOut(id=f"{prefix}:{k}", name=k, kind=kind, unit=units.get(k, "") if kind == "component" else "", count=n)
+            f"SELECT e.key, count(*) FROM {from_sql}, jsonb_each(src.{column}) AS e "
+            "WHERE jsonb_typeof(e.value) = 'number' GROUP BY e.key ORDER BY e.key"
+        ), params).all()
+        out += [FieldOut(id=f"{prefix}:{k}", name=k, kind=kind, unit=src.units.get(k, "") if kind == "component" else "", count=n)
                 for k, n in rows]
-    n = session.scalar(text("SELECT count(*) FROM assay WHERE set_id = :s AND to_m > from_m"), {"s": set_id}) or 0
+    n = session.scalar(text(f"SELECT count(*) FROM {from_sql} WHERE to_m > from_m"), params) or 0
     out.append(FieldOut(id=LENGTH_FIELD, name="Длина интервала", kind="derived", unit="м", count=n))
     return out
 
@@ -578,6 +600,8 @@ class SampleFilter(BaseModel):
     """Which values of a field go into a chart, and how they are treated (shared by all charts)."""
 
     field: str
+    # the set's sample table: "assay" or an assay table's id; none: the default one
+    table: str | None = None
     # none | length | field (weight_field) | length_field (length × weight_field, e.g. density: tonnage)
     weight: Literal["none", "length", "field", "length_field"] = "none"
     weight_field: str | None = None
@@ -636,12 +660,13 @@ def load_field_values(session: Session, set_id: int, f: SampleFilter) -> FieldVa
         params.update(wp)
     if f.weight in ("length", "length_field"):
         weight_sql = f"(CASE WHEN to_m > from_m THEN to_m - from_m END) * {weight_sql}"
-    where = "set_id = :s"
-    params["s"] = set_id
+    from_sql, src_params = source_sql(resolve_source(session, set_id, f.table))
+    params.update(src_params)
+    where = "TRUE"
     if f.holes:
         where += " AND hole_id = ANY(:holes)"
         params["holes"] = f.holes
-    rows = session.execute(text(f"SELECT {value_sql}, {weight_sql} FROM assay WHERE {where}"), params).all()
+    rows = session.execute(text(f"SELECT {value_sql}, {weight_sql} FROM {from_sql} WHERE {where}"), params).all()
     data = np.array([(np.nan if v is None else v, np.nan if w is None else w) for v, w in rows], dtype=np.float64).reshape(-1, 2)
     v, w = data[:, 0], data[:, 1]
     total = len(v)
@@ -778,6 +803,8 @@ class DendrogramIn(BaseModel):
     negatives: Literal["keep", "exclude", "half_abs"] = "half_abs"
     exclude_zero: bool = False
     holes: list[str] | None = Field(None, max_length=10000)
+    # the set's sample table: "assay" or an assay table's id; none: the default one
+    table: str | None = None
 
 
 @router.post("/sets/{set_id}/stats/dendrogram")
@@ -787,23 +814,25 @@ def dendrogram_of_fields(set_id: int, body: DendrogramIn, session: Session = Dep
     from app.stats.dendrogram import DendrogramError, cluster, correlation_matrix
 
     get_set(session, set_id)
+    src = resolve_source(session, set_id, body.table)
     fields = body.fields
     if fields is None:
-        fields = [f"comp:{c.name}" for c in session.scalars(select(Component).where(Component.set_id == set_id).order_by(Component.name))]
+        fields = [f"comp:{name}" for name in sorted(src.units)]
     fields = list(dict.fromkeys(fields))
     if len(fields) < 2:
         raise HTTPException(422, "Нужно хотя бы два числовых поля")
-    exprs, params = [], {"s": set_id}
+    from_sql, params = source_sql(src)
+    exprs = []
     for i, f in enumerate(fields):
         sql, p = _field_sql(f, f"f{i}")
         exprs.append(sql)
         params.update(p)
-    where = "set_id = :s"
+    where = "TRUE"
     if body.holes:
         where += " AND hole_id = ANY(:holes)"
         params["holes"] = body.holes
     rows = session.execute(text(
-        f"SELECT CASE WHEN to_m > from_m THEN to_m - from_m END, {', '.join(exprs)} FROM assay WHERE {where}"), params).all()
+        f"SELECT CASE WHEN to_m > from_m THEN to_m - from_m END, {', '.join(exprs)} FROM {from_sql} WHERE {where}"), params).all()
     data = np.array([[np.nan if v is None else v for v in row] for row in rows], dtype=np.float64).reshape(-1, len(fields) + 1)
     w = data[:, 0] if body.weight == "length" else np.ones(len(data))
     v = data[:, 1:]
@@ -824,7 +853,7 @@ def dendrogram_of_fields(set_id: int, body: DendrogramIn, session: Session = Dep
         v = np.log(v)
     r, n = correlation_matrix(v, w, body.method, body.missing)
     names = []
-    units = {c.name: c.unit for c in session.scalars(select(Component).where(Component.set_id == set_id))}
+    units = src.units
     for f in fields:
         name = "Длина интервала" if f == LENGTH_FIELD else f.partition(":")[2]
         names.append(name)

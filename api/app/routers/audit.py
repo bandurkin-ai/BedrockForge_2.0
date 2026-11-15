@@ -23,6 +23,8 @@ class ConfigIn(BaseModel):
     isolated_factor: float = 10.0
     z_jump: float = 50.0
     assay_outlier_z: float = 8.0
+    # the sample table to check: "assay" or an assay table's id; none: the set's default
+    table: str | None = None
 
 
 class RuleOut(BaseModel):

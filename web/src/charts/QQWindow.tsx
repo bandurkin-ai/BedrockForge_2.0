@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getNumericFields, getQQ, type NumericField, type QQResult, type SampleParams, type WeightMode } from "../api";
 import { formatNumber, parseNumber } from "../stats/chartMath";
+import { effectiveTable, SampleTableSelect, useSampleTables } from "../shell/SampleTableSelect";
 import { download, savePng, saveSvg, toCsv } from "./exportChart";
 import { QQChart } from "./QQChart";
 
 /** One side of a Q-Q plot: which values of which set, weighted how, filtered how. */
 export interface SampleSettings {
   setId: number;
+  /** the set's sample table; null: the default one */
+  table?: string | null;
   field: string | null;
   weight: WeightMode;
   weightField: string | null;
@@ -54,7 +57,7 @@ export function toSample(s: SampleSettings): SampleParams | null {
   if (needsField && !s.weightField) return null;
   const holes = s.holes.split(/[\s,;]+/).map((h) => h.trim()).filter(Boolean);
   return {
-    set_id: s.setId, field: s.field, weight: s.weight, weight_field: needsField ? s.weightField : null,
+    set_id: s.setId, table: s.table ?? null, field: s.field, weight: s.weight, weight_field: needsField ? s.weightField : null,
     negatives: s.negatives, exclude_zero: s.excludeZero, top_cut: parseNumber(s.topCut), holes: holes.length ? holes : null,
   };
 }
@@ -70,29 +73,31 @@ export function toQQRequest(s: QQSettings) {
   return { x, y: { kind: "sample" as const, ...y }, quantiles: Math.min(999, Math.max(3, quantiles)) };
 }
 
-const fieldCache = new Map<number, Promise<NumericField[]>>();
-const fieldsOf = (setId: number) => {
-  let p = fieldCache.get(setId);
+const fieldCache = new Map<string, Promise<NumericField[]>>();
+const fieldsOf = (setId: number, table: string | null) => {
+  const key = `${setId}:${table ?? ""}`;
+  let p = fieldCache.get(key);
   if (!p) {
-    p = getNumericFields(setId).catch((e) => {
-      fieldCache.delete(setId);
+    p = getNumericFields(setId, table).catch((e) => {
+      fieldCache.delete(key);
       throw e;
     });
-    fieldCache.set(setId, p);
+    fieldCache.set(key, p);
   }
   return p;
 };
 
-function useFields(setId: number) {
+function useFields(setId: number, table: string | null, ready: boolean) {
   const [fields, setFields] = useState<NumericField[] | null>(null);
   useEffect(() => {
     let alive = true;
     setFields(null);
-    fieldsOf(setId).then((f) => alive && setFields(f)).catch(() => alive && setFields([]));
+    if (!ready) return;
+    fieldsOf(setId, table).then((f) => alive && setFields(f)).catch(() => alive && setFields([]));
     return () => {
       alive = false;
     };
-  }, [setId]);
+  }, [setId, table, ready]);
   return fields;
 }
 
@@ -101,7 +106,9 @@ const WEIGHTS: [WeightMode, string][] = [["none", "Без веса"], ["length",
 function SampleForm({ title, value, sets, onChange }: {
   title: string; value: SampleSettings; sets: { id: number; name: string }[]; onChange: (next: SampleSettings) => void;
 }) {
-  const fields = useFields(value.setId);
+  const tables = useSampleTables(value.setId);
+  const table = effectiveTable(tables, value.table);
+  const fields = useFields(value.setId, table, tables !== null);
   const set = (patch: Partial<SampleSettings>) => onChange({ ...value, ...patch });
   // Pick a field once the set's fields are known (the first component).
   useEffect(() => {
@@ -115,10 +122,12 @@ function SampleForm({ title, value, sets, onChange }: {
     <fieldset>
       <legend>{title}</legend>
       <label>Набор
-        <select value={value.setId} onChange={(e) => set({ setId: Number(e.target.value), field: null, weightField: null })} aria-label={`${title}: набор`}>
+        <select value={value.setId} onChange={(e) => set({ setId: Number(e.target.value), table: null, field: null, weightField: null })} aria-label={`${title}: набор`}>
           {sets.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </label>
+      <SampleTableSelect tables={tables} value={value.table ?? null} label={`${title}: таблица проб`}
+        onChange={(t) => set({ table: t, field: null, weightField: null })} />
       <label>Поле
         <select value={value.field ?? ""} onChange={(e) => set({ field: e.target.value })} aria-label={`${title}: поле`}>
           {(fields ?? []).map((f) => <option key={f.id} value={f.id}>{f.name}{f.unit ? `, ${f.unit}` : ""} ({f.count})</option>)}
@@ -175,8 +184,10 @@ export function QQWindow({ sets, initial, onSettings }: {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
-  const xFields = useFields(s.x.setId);
-  const yFields = useFields(s.y.setId);
+  const xTables = useSampleTables(s.x.setId);
+  const yTables = useSampleTables(s.y.setId);
+  const xFields = useFields(s.x.setId, effectiveTable(xTables, s.x.table), xTables !== null);
+  const yFields = useFields(s.y.setId, effectiveTable(yTables, s.y.table), yTables !== null);
   const set = (patch: Partial<QQSettings>) => setS((prev) => ({ ...prev, ...patch }));
 
   useEffect(() => {

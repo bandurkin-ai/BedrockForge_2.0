@@ -25,6 +25,8 @@ class AuditConfig:
     z_jump: float = 50.0  # m, vs. the median Z of the nearest collars
     assay_outlier_z: float = 8.0  # robust sigmas of log10(value)
     planned_markers: tuple[str, ...] = ("project", "planned", "plan", "проект", "план")
+    # the sample table checked: "assay" (built-in) or an assay table's id; none: the set's default
+    table: str | None = None
 
 
 @dataclass

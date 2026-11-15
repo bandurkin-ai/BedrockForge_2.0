@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 
 import pandas as pd
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, text
 from sqlalchemy.orm import Session
 
 from app.audit.checks import AuditConfig, AuditData, Finding, run_checks
 from app.audit.rules import RULES
-from app.models import Assay, AuditFinding, AuditRun, Collar, Survey
+from app.models import AuditFinding, AuditRun, Collar, Survey
+from app.samples import resolve_source, source_sql
 
 _CHUNK = 5000
 _ASSAY_KEYS = ["id", "hole_id", "sample_id", "from_m", "to_m"]
@@ -26,7 +27,7 @@ def _as_float(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return df.astype({c: "float64" for c in columns})
 
 
-def load_data(session: Session, set_id: int) -> AuditData:
+def load_data(session: Session, set_id: int, table: str | None = None) -> AuditData:
     conn = session.connection()
     collar = pd.read_sql(
         select(Collar.hole_id, Collar.x, Collar.y, Collar.z, Collar.td, Collar.azimuth, Collar.dip, Collar.status)
@@ -38,11 +39,11 @@ def load_data(session: Session, set_id: int) -> AuditData:
         .where(Survey.set_id == set_id),
         conn,
     )
-    raw = pd.read_sql(
-        select(Assay.id, Assay.hole_id, Assay.sample_id, Assay.from_m, Assay.to_m, Assay.analytes)
-        .where(Assay.set_id == set_id),
-        conn,
-    )
+    src = resolve_source(session, set_id, table)
+    from_sql, params = source_sql(src)
+    raw = pd.read_sql(text(f"SELECT id, hole_id, sample_id, from_m, to_m, analytes FROM {from_sql}"), conn, params=params)
+    if not src.builtin:  # a table of its own: only its numbers are components
+        raw["analytes"] = [{k: v for k, v in (a or {}).items() if k in src.units} for a in raw["analytes"]]
     # An empty result comes back as object columns; make the numeric ones float explicitly.
     collar = _as_float(collar, ["x", "y", "z", "td", "azimuth", "dip"])
     survey = _as_float(survey, ["depth", "azimuth", "dip"])
@@ -71,7 +72,9 @@ def summarize(findings: list[Finding]) -> dict:
 def run_audit(session: Session, set_id: int, cfg: AuditConfig | None = None) -> AuditRun:
     """Run all checks and replace the set's stored audit with the new result."""
     cfg = cfg or AuditConfig()
-    findings = run_checks(load_data(session, set_id), cfg)
+    # The table checked is stored with the result, so the report says which one it was.
+    cfg = replace(cfg, table=resolve_source(session, set_id, cfg.table).key)
+    findings = run_checks(load_data(session, set_id, cfg.table), cfg)
 
     session.execute(delete(AuditRun).where(AuditRun.set_id == set_id))
     run = AuditRun(set_id=set_id, config=asdict(cfg), counts=summarize(findings))

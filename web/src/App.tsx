@@ -8,6 +8,7 @@ import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
 import { displayName, FORM_TITLES, tableDisplay, withDefaults, type DisplayForm, type StripLogSettings } from "./charts/stripLog";
 import { DownholeForm } from "./viz/DownholeForm";
+import { hasSamples } from "./shell/SampleTableSelect";
 import { CollarStyleForm } from "./viz/CollarStyleForm";
 import { IntervalTableWindow } from "./charts/IntervalTableWindow";
 import { DEFAULT_COLLAR_STYLE } from "./viz/collarStyle";
@@ -1038,16 +1039,16 @@ function Workspace({
       {menu && (() => {
         const target = sets.find((d) => d.id === menu.setId);
         const assays = target?.counts?.assay ?? 0;
-        const noData = assays === 0 ? "нет проб" : undefined;
+        const noData = hasSamples(target) ? undefined : "нет опробования";
         return (
           <ContextMenu
             x={menu.x} y={menu.y} title={`Графики · ${target?.name ?? ""}`} onClose={() => setMenu(null)}
             items={[
               { label: "Гистограмма", icon: "histogram", disabledNote: noData, run: () => void runCommand("chart.histogram", { set_id: menu.setId }, "user") },
               { label: "Q-Q график", icon: "qq", disabledNote: noData, run: () => void runCommand("chart.qq", { set_id: menu.setId }, "user") },
-              { label: "Дендрограмма", icon: "dendrogram", disabledNote: noData ?? ((target?.components?.length ?? 0) < 2 ? "нужно 2+ поля" : undefined), run: () => void runCommand("chart.dendrogram", { set_id: menu.setId }, "user") },
+              { label: "Дендрограмма", icon: "dendrogram", disabledNote: noData ?? (assays > 0 && (target?.components?.length ?? 0) < 2 ? "нужно 2+ поля" : undefined), run: () => void runCommand("chart.dendrogram", { set_id: menu.setId }, "user") },
               "separator",
-              { label: "Таблица проб", icon: "table", run: () => { selectSet(menu.setId); navigate({ kind: "assay" }); setWs((p) => openBottom(p, "table")); } },
+              { label: "Таблица проб", icon: "table", disabledNote: assays > 0 ? undefined : "нет встроенных проб", run: () => { selectSet(menu.setId); navigate({ kind: "assay" }); setWs((p) => openBottom(p, "table")); } },
             ]}
           />
         );
