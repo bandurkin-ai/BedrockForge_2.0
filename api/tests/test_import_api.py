@@ -141,7 +141,11 @@ def test_validate_rejects_duplicate_column_and_unknown_file(client):
 def test_detect_kind_and_mapping_ignore_case_and_spaces():
     cols = ["hole id", "from", "to", "Sample-ID"]
 
-    assert detect_kind(["Hole_ID", "From", "To"]) == "assay"
+    assert detect_kind(["Hole_ID", "From", "To"]) == "interval"  # from-to alone: not assays
+    assert detect_kind(["BHID", "FROM", "TO", "LITH"]) == "interval"
+    assert detect_kind(["BHID", "FROM", "TO", "RQD", "COMMENT"]) == "interval"
+    assert detect_kind(["BHID", "FROM", "TO", "AU", "CU_PCT"]) == "assay"
+    assert detect_kind(["BHID", "FROM", "TO", "SAMPLE"]) == "assay"
     assert detect_kind(["foo", "bar"]) is None
     assert suggest_mapping("assay", ["hole_id", "from", "to", "Sample-ID"])["sample_id"] == "Sample-ID"
     assert suggest_mapping("assay", cols)["hole_id"] == "hole id"  # spaces are treated as underscores

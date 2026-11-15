@@ -127,7 +127,17 @@ def detect_kind(columns: list[str]) -> str | None:
         score = sum(1 for f in required if f.key in mapping) / len(required)
         if score > best_score:
             best_kind, best_score = kind, score
-    return best_kind if best_score >= 0.6 else None
+    if best_score < 0.6:
+        return None
+    if best_kind == "assay":
+        # From-to columns alone do not make assays: those have a sample number or grades (Au, Cu, ...).
+        # Lithology, alteration, RQD and the like are interval tables.
+        mapping = suggest_mapping("assay", columns)
+        mapped = set(mapping.values())
+        graded = any(component_symbol(str(c))[0] for c in columns if c not in mapped)
+        if "sample_id" not in mapping and not graded:
+            return "interval"
+    return best_kind
 
 
 def to_records(df: pd.DataFrame, limit: int | None = None) -> list[dict]:
