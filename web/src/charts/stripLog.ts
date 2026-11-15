@@ -6,14 +6,49 @@ import type { DownholeData, IntervalColumn, IntervalTableInfo } from "../api";
  * - color: the interval filled with a colour (categories, or a colour scale for numbers);
  * - text: the value written in the interval; color_text: both.
  */
-export type TrackType = "line" | "bars" | "color" | "text" | "color_text" | "event";
+export type TrackType = "line" | "bars" | "steps" | "points" | "color" | "text" | "color_text" | "event";
 
 /** A class of a colouring by grade classes: values from `from` (null: everything below the next class) up to the next class. */
 export interface ColorClass {
   from: number | null;
   color: string;
   label?: string;
+  /** not drawn in the view (the eye of the class) */
+  hidden?: boolean;
 }
+
+export type TrackSide = "left" | "right" | "both";
+export type GradientStretch = "linear" | "log" | "quantile";
+export interface TrackGradient { name: string; reverse: boolean; stretch: GradientStretch; min: string; max: string }
+export interface TrackFilter {
+  mode: "all" | "min" | "range";
+  min?: number;
+  max?: number;
+  /** values that are empty: skipped, or drawn in the "no data" colour */
+  empty: "skip" | "nodata";
+  /** zero and negative values: as they are, empty, or replaced (half of the detection limit) */
+  nonPositive: "asis" | "empty" | { replace: number };
+  /** values at or below this are empty (codes like -999) */
+  emptyBelow?: number;
+}
+export interface TrackLabel {
+  on: boolean;
+  /** text with fields in braces: "{AU} г/т", "{from}–{to}", "{len}" */
+  template: string;
+  /** null: as in the data */
+  decimals: number | null;
+  /** only values at or above */
+  min?: number;
+  /** px */
+  size: number;
+  /** "class": the colour of the interval, or a colour of its own */
+  color: string;
+  place: "outside" | "trace";
+  /** at most this many labels of the layer (the highest values stay) */
+  limit?: number;
+}
+/** Where the settings of a layer came from: a copy of a style, or a link to it (then the style's settings are used). */
+export interface StyleRef { id: number; name: string; linked: boolean; modified?: boolean; auto?: boolean }
 
 export type MarkerShape = "circle" | "square" | "diamond" | "triangle" | "cross" | "star";
 export const MARKER_TITLES: Record<MarkerShape, string> = {
@@ -48,8 +83,48 @@ export interface Track {
    * Colour of a number: "single" — the track's colour; "classes" — by grade classes; "scale" — a continuous scale.
    * Not set: bars and lines in one colour, a colour column by the scale.
    */
-  colorBy?: "single" | "classes" | "scale";
+  colorBy?: "single" | "classes" | "scale" | "field";
   classes?: ColorClass[];
+  /** colorBy "field": the field of the same table that gives the colour */
+  colorField?: string;
+  /** the continuous scale: its gradient, stretch and bounds ("" = as the scale of the layer) */
+  gradient?: TrackGradient;
+  /** colour of values outside the classes and of empty ones */
+  noDataColor?: string;
+  /** hidden: not drawn, but kept in the display */
+  visible?: boolean;
+  /** side of the hole on screen (default right) */
+  side?: TrackSide;
+  /** width of the column, m (not set: from `width` and the default column) */
+  widthM?: number;
+  /** distance from the hole, m (not set: stacked after the layers before it) */
+  offsetM?: number;
+  /** 0..1 */
+  opacity?: number;
+  /** bars: the part of an interval left empty between bars, 0..0.8 */
+  gap?: number;
+  /** steps: filled (default) or the outline only */
+  fill?: boolean;
+  /** line: points at the values; points and dots: their size, px */
+  dots?: boolean;
+  pointSize?: number;
+  /** values below go to one side of the hole, above to the other */
+  split?: number | null;
+  /** the scale follows the data (its bounds are empty) */
+  dynamic?: boolean;
+  /** values above the maximum of the scale: clipped, clipped with a mark, or drawn as they are */
+  over?: "clip" | "mark" | "asis";
+  /** tube: thickness in px, constant (`max`) or by the value */
+  radius?: { by: "fixed" | "value"; min: number; max: number; log: boolean };
+  /** hidden categories and the order of categories in the legend */
+  hidden?: string[];
+  catOrder?: string[];
+  /** events: a marker of its own for a value */
+  catMarkers?: Record<string, MarkerShape>;
+  filter?: TrackFilter;
+  label?: TrackLabel;
+  style?: StyleRef;
+  palette?: StyleRef;
   /** colours of categories set by hand (value -> colour); others keep the automatic ones */
   catColors?: Record<string, string>;
   /** events: the marker and its size, px */
@@ -77,12 +152,16 @@ export interface StripLogSettings {
   labels?: boolean;
   /** the form this display was made in (displays of the 3D view) */
   form?: DisplayForm;
+  /** the display template the layers came from */
+  template?: StyleRef;
 }
 
 export const TRACK_TITLES: Record<TrackType, string> = {
   event: "События",
   line: "График (линия)",
   bars: "Столбцы",
+  steps: "Ступени",
+  points: "Точки",
   color: "Цветная колонка",
   text: "Текст",
   color_text: "Цвет + текст",
@@ -166,6 +245,17 @@ export function classColor(classes: ColorClass[] | undefined, v: unknown): strin
   return color;
 }
 
+/** The index of the class a value falls into (a value equal to a bound belongs to the upper class); -1 without one. */
+export function classIndex(classes: ColorClass[] | undefined, v: unknown): number {
+  if (!classes?.length || typeof v !== "number" || !Number.isFinite(v)) return -1;
+  let index = classes[0].from === null || v >= classes[0].from ? 0 : -1;
+  for (let i = 0; i < classes.length; i++) {
+    const from = classes[i].from;
+    if (from !== null && v >= from) index = i;
+  }
+  return index;
+}
+
 /** Classes kept in order: the one without a lower bound first, then ascending bounds (equal bounds dropped). */
 export function sortClasses(classes: ColorClass[]): ColorClass[] {
   const open = classes.filter((c) => c.from === null).slice(0, 1);
@@ -200,12 +290,28 @@ export function classLabel(classes: ColorClass[], i: number): string {
   return next === undefined || next === null ? `≥ ${f(c.from)}` : `${f(c.from)} – ${f(next)}`;
 }
 
-/** The name of a display made in a form: "AU · столбцы", "LITH", "TYPE". */
+const KIND_NAMES: Record<TrackType, string> = {
+  bars: "столбцы", steps: "ступени", line: "линия", points: "точки", color: "лента", color_text: "лента", text: "текст", event: "значки",
+};
+
+/** How a layer is drawn, in a word: "столбцы", "трубка", "лента", "значки". */
+export function kindName(t: Track, tube = false): string {
+  return (t.type === "color" || t.type === "color_text") && tube ? "трубка" : KIND_NAMES[t.type];
+}
+
+/** The name of a display made in a form, from its layers: "AU · столбцы + CU · лента". */
 export function displayName(s: StripLogSettings, tableName?: string): string {
-  const t = s.tracks[0];
-  if (!t) return FORM_TITLES[s.form ?? "grade"];
-  const kind = s.form === "grade" ? ` · ${t.type === "bars" ? "столбцы" : t.type === "line" ? "линия" : "интервал"}` : "";
-  return `${t.field}${kind}${tableName && tableName !== "Пробы" ? ` (${tableName})` : ""}`;
+  const shown = s.tracks.filter((t) => t.visible !== false);
+  if (!shown.length) return FORM_TITLES[s.form ?? "grade"];
+  let first = true;
+  const parts = shown.slice(0, 3).map((t) => {
+    const colour = t.type === "color" || t.type === "color_text";
+    const tube = colour && (t.form ? t.form === "tube" : first);
+    if (colour) first = false;
+    return `${t.field} · ${kindName(t, tube)}`;
+  });
+  const more = shown.length > 3 ? ` + ещё ${shown.length - 3}` : "";
+  return `${parts.join(" + ")}${more}${shown.length === 1 && tableName && tableName !== "Пробы" ? ` (${tableName})` : ""}`;
 }
 
 export function stripLogName(s: StripLogSettings): string {

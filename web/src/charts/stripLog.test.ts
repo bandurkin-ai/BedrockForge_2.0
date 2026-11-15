@@ -69,6 +69,8 @@ describe("downhole log", () => {
   it("names a display by its field and kind", () => {
     const t = { id: "t", table: "assay", field: "AU", type: "bars" as const, width: 90, color: "#000000", min: "", max: "", log: true, boundaries: false };
     expect(displayName({ ...DEFAULT_STRIPLOG, form: "grade", tracks: [t] }, "Пробы")).toBe("AU · столбцы");
-    expect(displayName({ ...DEFAULT_STRIPLOG, form: "lith", tracks: [{ ...t, field: "LITH", type: "color_text" }] }, "Литология")).toBe("LITH (Литология)");
+    expect(displayName({ ...DEFAULT_STRIPLOG, form: "lith", tracks: [{ ...t, field: "LITH", type: "color_text" }] }, "Литология")).toBe("LITH · трубка (Литология)");
+    const cu = { ...t, id: "c", field: "CU", type: "color" as const, form: "panel" as const };
+    expect(displayName({ ...DEFAULT_STRIPLOG, form: "grade", tracks: [t, cu, { ...t, id: "h", visible: false }] })).toBe("AU · столбцы + CU · лента");
   });
 });

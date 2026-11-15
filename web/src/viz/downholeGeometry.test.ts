@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DownholeData, TrajectoryHole } from "../api";
 import { DEFAULT_STRIPLOG, withDefaults, type StripLogSettings, type Track } from "../charts/stripLog";
-import { autoPanelWidth, buildDownhole, hexRgb, pathBetween, pointAt, stackOf, tubeTracks } from "./downholeGeometry";
+import { autoPanelWidth, buildDownhole, cleanValue, displayFields, hexRgb, labelText, passesFilter, pathBetween, pointAt, stackOf, tubeTracks } from "./downholeGeometry";
 import { normalizeCollarStyle } from "./collarStyle";
 
 // A vertical hole going down from z = 100, and one inclined 45 degrees.
@@ -117,7 +117,8 @@ describe("downhole geometry", () => {
     const b = buildDownhole(holes, data, settings([bars], { panel: 10 }), origin);
     // H1: RQD 40 (below 50) then 90 (from 50): the first quad dark, the second red
     expect(b.panels.colors.slice(0, 3)).toEqual(hexRgb("#111111"));
-    expect(b.panels.colors.slice(12, 15)).toEqual(hexRgb("#ff0000"));
+    expect(b.panels.colors.slice(16, 19)).toEqual(hexRgb("#ff0000"));
+    expect(b.legend[0].counts).toEqual([2, 1]);
     expect(b.legend[0].items).toEqual([["< 50", "#111111"], ["≥ 50", "#ff0000"]]);
   });
 
@@ -146,8 +147,8 @@ describe("downhole geometry", () => {
 
   it("starts a display after the columns and tubes of the displays before it", () => {
     const bars = track({ id: "b", field: "RQD", type: "bars", width: 90, min: "0", max: "100" });
-    expect(stackOf(settings([bars]))).toEqual({ units: 1.08, tubes: 0 });
-    expect(stackOf(settings([track({})]))).toEqual({ units: 0, tubes: 1 });
+    expect(stackOf(settings([bars]))).toMatchObject({ units: 1.08, tubes: 0, leftUnits: 0 });
+    expect(stackOf(settings([track({})]))).toMatchObject({ units: 0, tubes: 1 });
     const second = buildDownhole(holes, data, settings([bars], { panel: 10 }), origin, { units: 1.08, tubes: 1 });
     expect(second.panels.amps[0]).toBeCloseTo(10 * (0.15 + 1.08));
     const tube = buildDownhole(holes, data, settings([track({})], { tube: 8 }), origin, { units: 0, tubes: 1 });
@@ -158,5 +159,142 @@ describe("downhole geometry", () => {
     const st = normalizeCollarStyle({ shape: "star", color: "#12ab34", size: 400, label: true, fontFamily: "comic", fontSize: 2 });
     expect(st).toMatchObject({ shape: "star", color: "#12ab34", size: 40, label: true, fontFamily: "sans-serif", fontSize: 8 });
     expect(normalizeCollarStyle(null)).toMatchObject({ shape: "circle", color: "audit", label: false });
+  });
+
+  describe("layers", () => {
+    const bars = (patch: Partial<Track> = {}) => track({ id: "b", field: "RQD", type: "bars", min: "0", max: "100", ...patch });
+    const amps = (t: Track, extra: Partial<StripLogSettings> = {}) => buildDownhole(holes, data, settings([t], { panel: 10, ...extra }), origin).panels.amps;
+
+    it("draws on the left, on both sides, with a width and an offset in metres", () => {
+      expect(amps(bars()).slice(0, 4)).toEqual([1.5, 1.5, 5.5, 5.5]); // RQD 40 of 100 on a 10 m column
+      expect(amps(bars({ side: "left" })).slice(0, 4)).toEqual([-1.5, -1.5, -5.5, -5.5]);
+      const both = amps(bars({ side: "both" }));
+      expect(both.slice(0, 8)).toEqual([1.5, 1.5, 5.5, 5.5, -1.5, -1.5, -5.5, -5.5]);
+      expect(amps(bars({ widthM: 20 })).slice(0, 4)).toEqual([1.5, 1.5, 9.5, 9.5]);
+      expect(amps(bars({ offsetM: 7 })).slice(0, 4)).toEqual([7, 7, 11, 11]);
+    });
+
+    it("stacks each side on its own and leaves hidden layers out", () => {
+      const left = bars({ id: "l", side: "left" });
+      const right = bars({ id: "r" });
+      const b = buildDownhole(holes, data, settings([left, right, bars({ id: "h", visible: false })], { panel: 10 }), origin);
+      expect(b.panels.amps[0]).toBe(-1.5);
+      expect(b.panels.amps[12]).toBe(1.5); // H1 has two intervals of the left layer, then the right one starts at the hole too
+      expect(b.legend.map((l) => l.trackId)).toEqual(["l", "r"]);
+      expect(stackOf(settings([left, right]))).toMatchObject({ units: 1.08, leftUnits: 1.08 });
+      expect(stackOf(settings([bars({ widthM: 12 })]))).toMatchObject({ units: 0.08, m: 12 });
+    });
+
+    it("writes the opacity into the colours of panels", () => {
+      const b = buildDownhole(holes, data, settings([bars({ opacity: 0.4 })], { panel: 10 }), origin);
+      expect(b.panels.colors[3]).toBeCloseTo(0.4);
+      expect(buildDownhole(holes, data, settings([bars()], { panel: 10 }), origin).panels.colors[3]).toBe(1);
+    });
+
+    it("clips values above the maximum, marks them or draws them as they are", () => {
+      const over = bars({ max: "50" }); // RQD 90 is above
+      expect(amps(over).slice(4, 8)).toEqual([1.5, 1.5, 11.5, 11.5]);
+      expect(amps(bars({ max: "50", over: "asis" })).slice(4, 8)).toEqual([1.5, 1.5, 19.5, 19.5]);
+      const lines = (t: Track) => buildDownhole(holes, data, settings([t], { panel: 10 }), origin).lines.amps;
+      expect(lines(bars({ max: "50", over: "mark" })).filter((a) => Math.abs(a - 12.1) < 1e-9)).toHaveLength(2);
+      expect(lines(over).filter((a) => Math.abs(a - 12.1) < 1e-9)).toHaveLength(0);
+    });
+
+    it("hides intervals below the cut-off, of a hidden class and of a hidden rock", () => {
+      const cut = buildDownhole(holes, data, settings([bars({ filter: { mode: "min", min: 30, empty: "skip", nonPositive: "asis" } })], { panel: 10 }), origin);
+      expect(cut.intervals).toBe(2); // 40 and 90 stay, 20 goes
+      const classes = [{ from: null, color: "#111111", hidden: true }, { from: 50, color: "#ff0000" }];
+      const hidden = buildDownhole(holes, data, settings([bars({ colorBy: "classes", classes })], { panel: 10 }), origin);
+      expect(hidden.intervals).toBe(1);
+      expect(hidden.panels.colors.slice(0, 3)).toEqual(hexRgb("#ff0000"));
+      const rocks = buildDownhole(holes, data, settings([track({ hidden: ["Туф"] })]), origin);
+      expect(rocks.tubes[0].positions.length / 6).toBe(3); // only Андезит
+    });
+
+    it("handles empty codes and non-positive values before drawing", () => {
+      const f = (patch: Partial<NonNullable<Track["filter"]>>) => bars({ filter: { mode: "all", empty: "skip", nonPositive: "asis", ...patch } });
+      expect(cleanValue(f({ emptyBelow: -900 }), -999)).toBeNull();
+      expect(cleanValue(f({ nonPositive: "empty" }), 0)).toBeNull();
+      expect(cleanValue(f({ nonPositive: { replace: 0.005 } }), -1)).toBe(0.005);
+      expect(cleanValue(f({}), -1)).toBe(-1);
+      expect(cleanValue(bars(), "x")).toBeNull();
+      expect(passesFilter(f({ mode: "range", min: 1, max: 5 }), 6)).toBe(false);
+      expect(passesFilter(f({ mode: "range", min: 1, max: 5 }), 5)).toBe(true);
+      expect(passesFilter(f({ mode: "min", min: 1 }), null)).toBe(false);
+    });
+
+    it("splits values below and above a threshold to the two sides", () => {
+      const a = amps(bars({ split: 50 })).map((x) => Number(x.toFixed(6)));
+      expect(a.slice(0, 4)).toEqual([-1.5, -1.5, -3.5, -3.5]); // 40: a fifth of the way down from 50
+      expect(a.slice(4, 8)).toEqual([1.5, 1.5, 9.5, 9.5]); // 90: four fifths of the way up
+    });
+
+    it("draws steps, a line through the middles of intervals and points", () => {
+      const steps = buildDownhole(holes, data, settings([bars({ type: "steps" })], { panel: 10 }), origin);
+      expect(steps.panels.index.length / 6).toBe(3);
+      expect(steps.panels.colors[3]).toBeCloseTo(0.55); // the fill is lighter than the outline
+      expect(buildDownhole(holes, data, settings([bars({ type: "steps", fill: false })], { panel: 10 }), origin).panels.amps).toHaveLength(0);
+      const line = buildDownhole(holes, data, settings([bars({ type: "line", dots: true })], { panel: 10 }), origin);
+      expect(line.points[0].amps).toEqual([5.5, 10.5, 3.5]);
+      expect(line.points[0].positions.slice(0, 6)).toEqual([0, 0, -2, 0, 0, -7]); // middles of 0–4 and 4–10
+      // one segment between the two intervals of H1, from one middle to the next
+      const i = line.lines.amps.findIndex((a, k) => a === 5.5 && line.lines.amps[k + 1] === 10.5);
+      expect(i).toBeGreaterThanOrEqual(0);
+      const pts = buildDownhole(holes, data, settings([bars({ type: "points", pointSize: 9 })], { panel: 10 }), origin);
+      expect(pts.points[0]).toMatchObject({ size: 9, amps: [5.5, 10.5, 3.5] });
+      expect(pts.panels.amps).toHaveLength(0);
+    });
+
+    it("sizes a tube by the value in a few thicknesses", () => {
+      const t = track({ id: "r", field: "RQD", type: "color", form: "tube", min: "0", max: "100", radius: { by: "value", min: 2, max: 12, log: false } });
+      const b = buildDownhole(holes, data, settings([t]), origin);
+      expect(b.tubes.map((x) => x.width)).toEqual([4, 6, 12]); // 20, 40 and 90 of 100
+      const fixed = buildDownhole(holes, data, settings([{ ...t, radius: { by: "fixed", min: 2, max: 9, log: false } }]), origin);
+      expect(fixed.tubes.map((x) => x.width)).toEqual([9]);
+    });
+
+    it("writes labels by a template, only for high values, the highest first when over the limit", () => {
+      const label = { on: true, template: "{rqd} % · {from}–{to}", decimals: 1, size: 11, color: "class", place: "outside" as const };
+      const b = buildDownhole(holes, data, settings([bars({ label })], { panel: 10 }), origin);
+      expect(b.labels.map((l) => l.text)).toEqual(["40,0 % · 0–4", "90,0 % · 4–10", "20,0 % · 0–6"]);
+      expect(b.labels[0]).toMatchObject({ size: 11, color: "#ff0000" });
+      expect(b.labels[0].amp).toBeCloseTo(5.9);
+      const high = buildDownhole(holes, data, settings([bars({ label: { ...label, min: 30 } })], { panel: 10 }), origin);
+      expect(high.labels).toHaveLength(2);
+      const top = buildDownhole(holes, data, settings([bars({ label: { ...label, limit: 1, color: "#00ff00" } })], { panel: 10 }), origin);
+      expect(top.labels.map((l) => [l.text.slice(0, 4), l.color])).toEqual([["90,0", "#00ff00"]]);
+      const left = buildDownhole(holes, data, settings([bars({ side: "left", label })], { panel: 10 }), origin);
+      expect(left.labels[0]).toMatchObject({ right: true });
+      expect(labelText("{len} м", { from: 1, to: 3.5, values: {} }, null)).toBe("2,5 м");
+    });
+
+    it("colours by another field and asks the server for every field it needs", () => {
+      const by = bars({ colorBy: "field", colorField: "LITH", label: { on: true, template: "{RQD} {lith}", decimals: null, size: 11, color: "class", place: "outside" } });
+      const b = buildDownhole(holes, data, settings([by], { panel: 10 }), origin);
+      expect(b.panels.colors.slice(0, 3)).not.toEqual(b.panels.colors.slice(16, 19)); // Туф and Андезит
+      expect(b.panels.colors.slice(16, 19)).toEqual(b.panels.colors.slice(32, 35)); // both Андезит
+      expect(displayFields(settings([by]))).toEqual({ "5": ["RQD", "LITH"] });
+    });
+
+    it("keeps the scale colours of older displays and takes other gradients", () => {
+      const t = track({ id: "r", field: "RQD", type: "color", form: "panel", min: "0", max: "100" });
+      const old = buildDownhole(holes, data, settings([t], { panel: 10 }), origin).panels.colors.slice(0, 3);
+      const viridis = buildDownhole(holes, data, settings([{ ...t, gradient: { name: "viridis", reverse: false, stretch: "linear", min: "", max: "" } }], { panel: 10 }), origin).panels.colors.slice(0, 3);
+      expect(old).not.toEqual(viridis);
+      expect(old[2]).toBeGreaterThan(0.3); // 40 of 100 on blue → red: still on the green-blue side
+    });
+
+    it("builds fifty thousand intervals fast enough to follow an edit", () => {
+      const rows = Array.from({ length: 500 }, (_, i) => ({ from: i, to: i + 1, values: { LITH: "A", RQD: (i * 37) % 100 } }));
+      const many: TrajectoryHole[] = Array.from({ length: 100 }, (_, i) => ({ hole_id: `M${i}`, td: 500, source: "survey", path: [[i * 10, 0, 0, 0], [i * 10, 0, -500, 500]] }));
+      const big: DownholeData = { tables: data.tables, holes: many.map((h) => ({ hole_id: h.hole_id, found: true, td: 500, max_depth: 500, tables: { "5": rows } })) };
+      const classes = [{ from: null, color: "#111111" }, { from: 30, color: "#00ff00" }, { from: 60, color: "#ff0000" }];
+      buildDownhole(many, big, settings([bars({ colorBy: "classes", classes })]), [0, 0, 0]); // warm-up
+      const t0 = performance.now();
+      const b = buildDownhole(many, big, settings([bars({ colorBy: "classes", classes })]), [0, 0, 0]);
+      const ms = performance.now() - t0;
+      expect(b.intervals).toBe(50000);
+      expect(ms).toBeLessThan(400); // the target is 100 ms; the margin is for slow test machines
+    });
   });
 });

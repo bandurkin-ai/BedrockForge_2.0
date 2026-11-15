@@ -415,6 +415,10 @@ export class GeoScene {
     build.tubes.forEach((t, i) => {
       if (t.positions.length === 0) return;
       const lines = this.makeLines(t.positions, t.colors, t.width, 0xffffff);
+      if (t.opacity < 1) {
+        lines.material.transparent = true;
+        lines.material.opacity = t.opacity;
+      }
       lines.renderOrder = 2 + i * 0.1;
       layer.tubes.push(lines);
       layer.group.add(lines);
@@ -424,12 +428,12 @@ export class GeoScene {
       g.setAttribute("position", new THREE.Float32BufferAttribute(m.positions, 3));
       g.setAttribute("aTan", new THREE.Float32BufferAttribute(m.tangents, 3));
       g.setAttribute("aAmp", new THREE.Float32BufferAttribute(m.amps, 1));
-      g.setAttribute("color", new THREE.Float32BufferAttribute(m.colors, 3));
+      g.setAttribute("color", new THREE.Float32BufferAttribute(m.colors, 4));
       if (m.index.length) g.setIndex(m.index);
       return g;
     };
     if (build.panels.amps.length > 0) {
-      const material = this.sideMaterial(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }), layer.scale);
+      const material = this.sideMaterial(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, depthWrite: false }), layer.scale);
       layer.materials.push(material);
       layer.panels = new THREE.Mesh(sideGeometry(build.panels), material);
       layer.panels.frustumCulled = false;
@@ -437,12 +441,28 @@ export class GeoScene {
       layer.group.add(layer.panels);
     }
     if (build.lines.amps.length > 0) {
-      const material = this.sideMaterial(new THREE.LineBasicMaterial({ vertexColors: true }), layer.scale);
+      const material = this.sideMaterial(new THREE.LineBasicMaterial({ vertexColors: true, transparent: true }), layer.scale);
       layer.materials.push(material);
       layer.lines = new THREE.LineSegments(sideGeometry(build.lines), material);
       layer.lines.frustumCulled = false;
       layer.lines.renderOrder = 2;
       layer.group.add(layer.lines);
+    }
+    for (const p of build.points) {
+      if (p.amps.length === 0) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(p.positions, 3));
+      g.setAttribute("aTan", new THREE.Float32BufferAttribute(p.tangents, 3));
+      g.setAttribute("aAmp", new THREE.Float32BufferAttribute(p.amps, 1));
+      g.setAttribute("color", new THREE.Float32BufferAttribute(p.colors, 3));
+      const material = this.sideMaterial(new THREE.PointsMaterial({
+        size: p.size, sizeAttenuation: false, vertexColors: true, map: this.markerTexture("circle"), transparent: true, alphaTest: 0.3, opacity: p.opacity,
+      }), layer.scale);
+      layer.materials.push(material);
+      const points = new THREE.Points(g, material);
+      points.frustumCulled = false;
+      points.renderOrder = 3;
+      layer.group.add(points);
     }
     for (const m of build.markers) {
       if (m.positions.length === 0) continue;
@@ -450,7 +470,7 @@ export class GeoScene {
       g.setAttribute("position", new THREE.Float32BufferAttribute(m.positions, 3));
       g.setAttribute("color", new THREE.Float32BufferAttribute(m.colors, 3));
       const points = new THREE.Points(g, new THREE.PointsMaterial({
-        size: m.size, sizeAttenuation: false, vertexColors: true, map: this.markerTexture(m.shape), transparent: true, alphaTest: 0.4, depthTest: false,
+        size: m.size, sizeAttenuation: false, vertexColors: true, map: this.markerTexture(m.shape), transparent: true, alphaTest: 0.4, depthTest: false, opacity: m.opacity,
       }));
       points.frustumCulled = false;
       points.renderOrder = 4;
@@ -458,9 +478,10 @@ export class GeoScene {
     }
     layer.labelGroup.renderOrder = 10;
     for (const label of build.labels) {
-      const { material, wpx, hpx } = this.labelMaterial(label.text);
+      const font = label.size || label.color ? { ...DEFAULT_FONT, size: label.size ?? DEFAULT_FONT.size, color: label.color ?? DEFAULT_FONT.color } : DEFAULT_FONT;
+      const { material, wpx, hpx } = this.labelMaterial(label.text, font);
       const sprite = new THREE.Sprite(material);
-      sprite.center.set(label.px ? -label.px / wpx : 0, 0.5);
+      sprite.center.set(label.px ? -label.px / wpx : label.right ? 1 : 0, 0.5);
       sprite.renderOrder = 10;
       sprite.frustumCulled = false;
       layer.labelGroup.add(sprite);
