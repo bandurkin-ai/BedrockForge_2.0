@@ -117,7 +117,7 @@ export function AssistantPanel({
       <div className="assistant-log" ref={scroller} aria-live="polite">
         {unavailable && (
           <div className="alert warn">
-            <strong>Claude не подключён.</strong> Войдите в аккаунт Anthropic или введите API-ключ.
+            <strong>Claude не подключён.</strong> Подключите свою подписку Claude через Claude Desktop или Claude Code, либо Claude API (аккаунт или ключ).
             <div className="assistant-connect"><button className="primary" onClick={onAccount}>Подключить Claude</button></div>
           </div>
         )}

@@ -710,3 +710,7 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .app .app-dialog-foot button { min-width: 90px; }
 .app .danger-btn { background: var(--sev-error); border-color: var(--sev-error); color: #fff; font-weight: 600; }
 .app .danger-btn:hover { filter: brightness(1.1); }
+.ca-sub { display: flex; flex-direction: column; gap: 6px; }
+.ca-sub p { margin: 0; }
+.ca-code { display: flex; align-items: flex-start; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.ca-code code, .ca-code pre { flex: 1; min-width: 0; margin: 0; font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; }

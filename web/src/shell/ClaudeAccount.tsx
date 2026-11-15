@@ -44,7 +44,7 @@ export function ClaudeAccountButton({ status, onClick }: { status: AssistantStat
  * connection, the model and depth of reasoning, and how much was spent.
  */
 export function ClaudeAccount({ status, onStatus }: { status: AssistantStatus | null; onStatus: (s: AssistantStatus) => void }) {
-  const [tab, setTab] = useState<"account" | "key">(status?.account_login === false ? "key" : "account");
+  const [tab, setTab] = useState<"subscription" | "account" | "key">("subscription");
   const [key, setKey] = useState("");
   const [login, setLogin] = useState<{ id: string; url: string } | null>(null);
   const [code, setCode] = useState("");
@@ -123,16 +123,18 @@ export function ClaudeAccount({ status, onStatus }: { status: AssistantStatus | 
       ) : (
         <section className="ca-card">
           <strong>Подключите Claude</strong>
-          <p className="muted small">Ассистент работает через Claude API: расход оплачивается по тарифу API вашего аккаунта Anthropic (console.anthropic.com). Подписка Claude Pro/Max здесь не используется.</p>
+          <p className="muted small">Два пути: <b>подписка Claude</b> (Pro, Max, Team) — ваш Claude Desktop или Claude Code сам подключается к BedrockForge, без оплаты API; или <b>Claude API</b> — встроенная панель, оплата по тарифу API (вход аккаунтом Console или ключ).</p>
         </section>
       )}
 
       {(!status.configured || status.mode === "env") && (
         <section className="ca-card">
           <div className="dh-seg" role="tablist" aria-label="Способ входа">
-            <button role="tab" aria-selected={tab === "account"} className={tab === "account" ? "active" : ""} onClick={() => setTab("account")}>Аккаунт Anthropic</button>
+            <button role="tab" aria-selected={tab === "subscription"} className={tab === "subscription" ? "active" : ""} onClick={() => setTab("subscription")} title="Без оплаты API: ваш Claude Desktop или Claude Code управляет BedrockForge">Подписка Claude</button>
+            <button role="tab" aria-selected={tab === "account"} className={tab === "account" ? "active" : ""} onClick={() => setTab("account")}>Аккаунт API</button>
             <button role="tab" aria-selected={tab === "key"} className={tab === "key" ? "active" : ""} onClick={() => setTab("key")}>API-ключ</button>
           </div>
+          {tab === "subscription" && <SubscriptionHelp />}
           {tab === "account" && (status.account_login === false ? (
             <p className="muted small">
               Вход аккаунтом недоступен: на сервере нет официальной утилиты Anthropic <code>ant</code>. Используйте API-ключ
@@ -140,7 +142,7 @@ export function ClaudeAccount({ status, onStatus }: { status: AssistantStatus | 
             </p>
           ) : !login ? (
             <>
-              <p className="small">Войдите в аккаунт Anthropic Console в браузере — ключ вводить не нужно. Доступ обновляется сам.</p>
+              <p className="small">Вход в аккаунт Anthropic Console в браузере — ключ вводить не нужно, доступ обновляется сам. Оплата — по тарифу Claude API этого аккаунта.</p>
               <button className="primary" disabled={busy} onClick={startLogin}>{busy ? "Открываю…" : "Войти через Anthropic"}</button>
             </>
           ) : (
@@ -215,6 +217,39 @@ export function ClaudeAccount({ status, onStatus }: { status: AssistantStatus | 
           </>
         ) : <span className="muted small">Нет данных.</span>}
       </section>
+    </div>
+  );
+}
+
+/** How to use a Claude subscription: the user's own Claude app connects to BedrockForge over MCP. */
+function SubscriptionHelp() {
+  const mcp = `${window.location.protocol}//${window.location.hostname}:8000/mcp`;
+  const code = `claude mcp add --transport http bedrockforge ${mcp}`;
+  const desktop = JSON.stringify({ mcpServers: { bedrockforge: { command: "npx", args: ["-y", "mcp-remote", mcp] } } }, null, 2);
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = (what: string, text: string) =>
+    navigator.clipboard?.writeText(text).then(() => setCopied(what)).catch(() => setCopied(null));
+  return (
+    <div className="ca-sub">
+      <p className="small">
+        Подписку Claude (Pro, Max, Team) Anthropic разрешает использовать только в своих приложениях — встроенная панель BedrockForge
+        работать по ней не может. Поэтому подключение идёт наоборот: <b>ваш Claude</b> (Claude Desktop или Claude Code, вход по подписке)
+        подключается к BedrockForge по MCP, читает данные проекта и управляет открытым окном. Ключ API не нужен, расход — в лимитах подписки.
+      </p>
+      <strong className="small">Claude Code</strong>
+      <div className="ca-code"><code>{code}</code><button className="small-btn" onClick={() => copy("code", code)}>{copied === "code" ? "Скопировано" : "Копировать"}</button></div>
+      <strong className="small">Claude Desktop</strong>
+      <ol className="ca-steps small">
+        <li>Установите Node.js (nodejs.org) — нужен мост <code>mcp-remote</code>.</li>
+        <li>Claude Desktop → Settings → Developer → Edit Config. Файл <code>claude_desktop_config.json</code>: Windows — <code>%APPDATA%\Claude</code>, macOS — <code>~/Library/Application Support/Claude</code>.</li>
+        <li>Добавьте в него (или в существующий раздел <code>mcpServers</code>):</li>
+      </ol>
+      <div className="ca-code"><pre>{desktop}</pre><button className="small-btn" onClick={() => copy("desktop", desktop)}>{copied === "desktop" ? "Скопировано" : "Копировать"}</button></div>
+      <ol className="ca-steps small" start={4}>
+        <li>Перезапустите Claude Desktop: в списке инструментов появится «bedrockforge».</li>
+        <li>Держите BedrockForge открытым в браузере (в строке состояния «MCP: готов») и пишите задачи в Claude: «покажи скважину H-12 на разрезе», «сводка аудита».</li>
+      </ol>
+      <p className="muted small">MCP-сервер работает без пароля на этом компьютере (порт 8000): не открывайте его в интернет.</p>
     </div>
   );
 }
