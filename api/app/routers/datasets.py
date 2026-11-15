@@ -51,6 +51,8 @@ class LineLayerOut(BaseModel):
     point_count: int
     extent: dict
     stats: dict
+    # Number of the saved state (the string editor's version check).
+    version: int = 1
 
 
 class RasterOut(BaseModel):
@@ -180,7 +182,7 @@ def dataset_out(session: Session, d: Dataset) -> DatasetOut:
 
 
 def _line_out(x: LineLayer) -> LineLayerOut:
-    return LineLayerOut(id=x.id, name=x.name, color=x.color, line_count=x.line_count, point_count=x.point_count, extent=x.extent, stats=x.stats)
+    return LineLayerOut(id=x.id, name=x.name, color=x.color, line_count=x.line_count, point_count=x.point_count, extent=x.extent, stats=x.stats, version=x.version)
 
 
 def _raster_out(r: Raster) -> RasterOut:
@@ -364,6 +366,7 @@ def line_geometry(layer_id: int, session: Session = Depends(get_session)) -> dic
     return {
         "id": layer.id,
         "origin": layer.origin,
+        "version": layer.version,
         "vertex_count": layer.point_count,
         "line_count": layer.line_count,
         "vertices": blob_url(layer.blobs["render_vertices"]),
