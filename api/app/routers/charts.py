@@ -23,7 +23,7 @@ from app.routers.projects import get_set
 
 router = APIRouter(prefix="/api", tags=["charts"])
 
-ChartKind = Literal["histogram", "qq", "dendrogram"]
+ChartKind = Literal["histogram", "qq", "dendrogram", "striplog"]
 
 
 class ChartIn(BaseModel):

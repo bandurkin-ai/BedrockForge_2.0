@@ -34,7 +34,7 @@ docker compose up --build
 - Веб: http://localhost:5173, API: http://localhost:8000. Сервис `worker` выполняет фоновые задания; хранилище — том `store` (`DATA_DIR=/data`).
 - Лента → «Демо-проект» создаёт учебный проект (48 скважин, каркасы, линии, растры в плане и в разрезе).
 - Локальная разработка без Docker: PostgreSQL 16 (`pg_ctlcluster 16 main start`; пользователь `geo`/`geo`, базы `geo` и `geo_test`), `alembic upgrade head` и `uvicorn app.main:app` в `api/` (задания идут в потоке API, `JOBS_IN_API=1`), `API_URL=http://localhost:8000 npx vite` в `web/`.
-- Тесты: `cd api && python3 -m pytest` (268 passed / 17 skipped), `cd web && npm test` (58 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
+- Тесты: `cd api && python3 -m pytest` (270 passed / 17 skipped), `cd web && npm test` (62 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
 - Замеры: `cd api && python -m bench.run --profile ci --check` (1 млн треугольников) или `--profile full` (10 млн, 2 ГБ).
 
 ## 3. Стек
@@ -53,6 +53,7 @@ docker compose up --build
 ```
 Project → Dataset (kind: drillholes | lines | wireframes | blocks | rasters)
   drillholes → Collar / Survey / Assay / Component / ImportJob / AuditRun / AuditFinding  (по set_id)
+               IntervalTable (имя, колонки [{name, kind number|text, unit}]) → IntervalRow (hole_id, from_m, to_m, values JSONB)
   wireframes → Wireframe
   lines      → LineLayer
   rasters    → Raster (georef JSONB, extent, elevation, opacity, blobs.image)
@@ -63,7 +64,7 @@ Job                        — фоновое задание: статус, пр
 ```
 
 - Наборы скважин независимые; API скважин — `/api/sets/{id}/…`. У `Dataset` есть `folder` (папка в дереве).
-- Миграции: `0003_datasets`, `0004_lines_rasters`, `0005_object_store_jobs` (перенос bytea → файлы и обратно), `0006_wireframe_render`, `0007_charts`.
+- Миграции: `0003_datasets`, `0004_lines_rasters`, `0005_object_store_jobs` (перенос bytea → файлы и обратно), `0006_wireframe_render`, `0007_charts`, `0008_interval_tables`.
 - Геометрия: точные массивы float64 (`blobs.vertices`), копия для показа float32 относительно `origin` в центре объекта (`blobs.render_vertices`); отдаётся сырыми байтами через `/api/blobs/{sha}`, читается в Web Worker (`viz/geometryLoader.ts`). Каждый объект в сцене стоит в своём начале (`mesh.position`), буферы не копируются.
 - Новый тип данных с файлами → добавить таблицу в `OWNERS` (`app/storage/gc.py`), иначе очистка удалит его файлы.
 
@@ -151,6 +152,8 @@ Job                        — фоновое задание: статус, пр
 ## 10. Что дальше
 
 Этапы 7 и 10 сделаны (вехи M0, M1). Этап 12 начат: импорт, проверки, отчёт по бортам и показ блочных моделей (12.1–12.3, 12.6 частично). Не сделано: Datamine DM, поворот модели, срез произвольной плоскостью на сервере и показ только внешних граней для моделей > 3 млн блоков (12.4–12.5).
+
+Интервальные таблицы и данные по стволу: импорт — тип `interval` в `/api/import/commit` (+ `table_name`), запись — `importing/store.commit_interval_table`; `routers/intervals.py` (`/sets/{id}/interval-tables`, `/interval-tables/{id}` PATCH/DELETE/rows, `/sets/{id}/downhole`; пробы — встроенная таблица с ключом `assay`). Аудит, статистика и 3D по-прежнему работают только с пробами. Веб — `charts/stripLog.ts` (настройки, чистые функции), `StripLogChart.tsx`, `StripLogWindow.tsx`; сохраняются как графики вида `striplog`, в дереве — узел «Данные по скважинам».
 
 Блочные модели, где что лежит: `app/formats/blockmodel.py` (чтение, сетка, проверки), `app/importing/blockmodels.py` (запись столбцов), `app/blocks/report.py` и `app/routers/blockmodels.py` (`/render`, `/values/{key}`, `/blocks/{n}`, `/report`, единицы полей); веб — `shell/BlockModelPanel.tsx`, `charts/GradeTonnageWindow.tsx`, `viz/blockStyle.ts`, блоки в `viz/scene3d.ts` (`addBlockModel`, `setBlockStyle`, `pickBlock` — InstancedMesh), распознавание файла — `shell/sniffBlocks.ts`; команда Claude `blocks.report`.
 

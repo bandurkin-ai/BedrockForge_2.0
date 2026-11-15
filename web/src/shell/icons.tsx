@@ -4,6 +4,7 @@ const PATHS = {
   plan: "M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zM9 4v14M15 6v14",
   section: "M3 18h18M3 18V8l5 3 4-5 4 6 5-3v9M8 11v7M16 12v6",
   log: "M9 3h6v18H9zM9 8h6M9 12h6M9 17h6M5 3v18",
+  striplog: "M5 3v18M9 3h4v18H9zM9 8h4M9 13h4M16 5h2M16 9h4M16 13h1M16 17h3",
   table: "M3 5h18v14H3zM3 10h18M3 14.5h18M9 5v14",
   chart: "M4 4v16h16M8 15l3-4 3 2 5-6",
   histogram: "M4 20h16M6 20v-6h3v6M10.5 20V8h3v12M15 20v-9h3v9",

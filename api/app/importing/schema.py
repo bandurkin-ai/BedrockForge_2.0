@@ -55,12 +55,19 @@ SCHEMAS: dict[str, tuple[TargetField, ...]] = {
             ("SAMPID", "SAMPLE_ID", "SAMPLEID", "SAMPLE", "SAMPLE_NO", "SAMPNO", "ПРОБА", "№_ПРОБЫ", "НОМЕР_ПРОБЫ", "ШИФР_ПРОБЫ"),
         ),
     ),
+    # Any interval table besides the assays: every other column is kept as a value.
+    "interval": (
+        _HOLE_ID,
+        TargetField("from", "От (From)", True, True, ("FROM", "DEPTH_FROM", "FROM_M", "FROM_DEPTH", "ОТ", "ИНТЕРВАЛ_ОТ", "С")),
+        TargetField("to", "До (To)", True, True, ("TO", "DEPTH_TO", "TO_M", "TO_DEPTH", "ДО", "ИНТЕРВАЛ_ДО", "ПО")),
+    ),
 }
 
 KIND_LABELS = {
     "collar": "Устья скважин (Collar)",
     "survey": "Инклинометрия (Survey)",
     "assay": "Пробы (Assay)",
+    "interval": "Интервальная таблица (литология, изменения, RQD…)",
 }
 
 # Chemical symbols offered as assay components (value columns).

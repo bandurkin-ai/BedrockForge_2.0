@@ -490,3 +490,22 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .gt-chart .gt-bar { fill: var(--accent); opacity: 0.55; }
 .gt-chart .gt-line { stroke: #e8873a; stroke-width: 2; }
 .gt-chart .gt-point { fill: #e8873a; }
+
+/* ---- downhole log */
+.hist-window.strip-window { grid-template-columns: 300px 1fr; }
+.strip-track .pair input, .strip-track .pair select { min-width: 0; width: 100%; }
+.strip-holes { max-height: 150px; overflow: auto; }
+.strip-track { border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 3px; }
+.strip-track-head { display: flex; align-items: center; gap: 4px; }
+.strip-track-head .spacer { flex: 1; }
+.strip-track-head .icon { padding: 0 4px; font-size: 0.7rem; }
+.strip-add { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.strip-main { overflow: hidden; }
+.strip-scroll { overflow: auto; max-height: 100%; }
+.strip-chart .strip-hole { font-weight: 600; }
+.strip-chart .strip-head { font-weight: 600; }
+.strip-chart .strip-hole-line { stroke: var(--fg); stroke-width: 3; opacity: 0.5; }
+.strip-chart .strip-boundary { stroke: var(--fg); stroke-width: 0.5; opacity: 0.45; }
+.strip-chart .strip-text { font-size: 10px; fill: var(--fg); paint-order: stroke; stroke: var(--bg); stroke-width: 2px; }
+.strip-chart .strip-swatch { stroke: var(--border); }
+.color-pick { flex-direction: row !important; align-items: center; gap: 4px !important; }

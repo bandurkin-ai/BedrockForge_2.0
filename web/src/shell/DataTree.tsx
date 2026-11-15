@@ -49,7 +49,11 @@ export interface DataTreeProps {
   onSetMenu?: (setId: number, x: number, y: number) => void;
   /** A saved chart under a set: open it, or its menu (rename, delete). */
   onOpenChart?: (chartId: number) => void;
-  onChartMenu?: (chart: { id: number; kind: "histogram" | "qq" | "dendrogram"; name: string }, x: number, y: number) => void;
+  onChartMenu?: (chart: { id: number; kind: "histogram" | "qq" | "dendrogram" | "striplog"; name: string }, x: number, y: number) => void;
+  /** Right click on an interval table (the assays: key "assay"): downhole log, rename, delete. */
+  onTableMenu?: (setId: number, table: { key: string; id: number | null; name: string }, x: number, y: number) => void;
+  /** A new downhole log of the set, opened from a table. */
+  onNewLog?: (setId: number, tableKey: string | null) => void;
 }
 
 function Twisty({ open, onClick }: { open: boolean; onClick: () => void }) {
@@ -242,7 +246,7 @@ export function DataTree(props: DataTreeProps) {
     for (const d of sets) {
       const n = d.charts?.length ?? 0;
       const before = chartCounts.current.get(d.id);
-      if (before !== undefined && n > before) grown.push(`set:${d.id}`, `charts:${d.id}`);
+      if (before !== undefined && n > before) grown.push(`set:${d.id}`, `charts:${d.id}`, `logs:${d.id}`);
       chartCounts.current.set(d.id, n);
     }
     if (grown.length) setOpen((prev) => new Set([...prev, ...grown]));
@@ -252,6 +256,12 @@ export function DataTree(props: DataTreeProps) {
     e.preventDefault();
     e.stopPropagation();
     props.onSetMenu(setId, e.clientX, e.clientY);
+  };
+  const tableMenu = (e: React.MouseEvent, setId: number, table: { key: string; id: number | null; name: string } | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (table === null) props.onNewLog?.(setId, null);
+    else props.onTableMenu?.(setId, table, e.clientX, e.clientY);
   };
   const empty = datasets !== null && datasets.length === 0;
   const shown = (key: string) => isShown(ws, key);
@@ -312,8 +322,8 @@ export function DataTree(props: DataTreeProps) {
                       <li key={t.kind}>
                         <button
                           className="tree-row leaf" onClick={() => props.onOpenTable(d.id, t.kind)}
-                          onContextMenu={t.kind === "assay" ? (e) => setMenu(e, d.id) : undefined}
-                          title={t.kind === "assay" ? "Таблица «Пробы»; правая кнопка — графики" : `Таблица «${t.label}»`}
+                          onContextMenu={t.kind === "assay" ? (e) => tableMenu(e, d.id, { key: "assay", id: null, name: "Пробы" }) : undefined}
+                          title={t.kind === "assay" ? "Таблица «Пробы»; правая кнопка — графики и данные по стволу" : `Таблица «${t.label}»`}
                         >
                           <Icon name="table" size={14} />
                           <span className="grow">{t.label}</span>
@@ -321,6 +331,50 @@ export function DataTree(props: DataTreeProps) {
                         </button>
                       </li>
                     ))}
+                    {(d.interval_tables ?? []).map((t) => (
+                      <li key={`it${t.id}`}>
+                        <button
+                          className="tree-row leaf" onClick={() => props.onNewLog?.(d.id, String(t.id))}
+                          onContextMenu={(e) => tableMenu(e, d.id, { key: String(t.id), id: t.id, name: t.name })}
+                          title={`Интервальная таблица «${t.name}»: клик — данные по стволу, правая кнопка — меню`}
+                        >
+                          <Icon name="table" size={14} />
+                          <span className="grow name">{t.name}</span>
+                          <span className="count">{t.row_count.toLocaleString("ru-RU")}</span>
+                        </button>
+                      </li>
+                    ))}
+                    <li>
+                      <div className="tree-row" onClick={() => toggle(`logs:${d.id}`)} onContextMenu={(e) => tableMenu(e, d.id, null)}
+                        title="Сохранённые колонки данных по стволу; правая кнопка — новая">
+                        <Twisty open={isOpen(`logs:${d.id}`)} onClick={() => toggle(`logs:${d.id}`)} />
+                        <Icon name="striplog" size={14} />
+                        <span className="grow">Данные по скважинам</span>
+                        <span className="count">{(d.charts ?? []).filter((c) => c.kind === "striplog").length}</span>
+                      </div>
+                      {isOpen(`logs:${d.id}`) && (
+                        <ul className="tree-children">
+                          {!(d.charts ?? []).some((c) => c.kind === "striplog") && (
+                            <li className="tree-note muted small">Нет. Правая кнопка на таблице («Пробы», литология…) → «Данные по стволу».</li>
+                          )}
+                          {(d.charts ?? []).filter((c) => c.kind === "striplog").map((c) => (
+                            <li key={c.id}>
+                              <button
+                                className="tree-row leaf" onClick={() => props.onOpenChart?.(c.id)} title={`${c.name} — открыть`}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  props.onChartMenu?.(c, e.clientX, e.clientY);
+                                }}
+                              >
+                                <Icon name="striplog" size={14} />
+                                <span className="grow name">{c.name}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
                     <li>
                       <button className="tree-row leaf" onClick={() => props.onOpenAudit(d.id)} title="Результаты аудита набора">
                         <Icon name="audit" size={14} />
@@ -340,12 +394,12 @@ export function DataTree(props: DataTreeProps) {
                         <Twisty open={isOpen(`charts:${d.id}`)} onClick={() => toggle(`charts:${d.id}`)} />
                         <Icon name="chart" size={14} />
                         <span className="grow">Графики</span>
-                        <span className="count">{d.charts?.length ?? 0}</span>
+                        <span className="count">{(d.charts ?? []).filter((c) => c.kind !== "striplog").length}</span>
                       </div>
                       {isOpen(`charts:${d.id}`) && (
                         <ul className="tree-children">
-                          {(d.charts ?? []).length === 0 && <li className="tree-note muted small">Нет графиков. Правая кнопка на наборе или «Пробы» → график.</li>}
-                          {(d.charts ?? []).map((c) => (
+                          {!(d.charts ?? []).some((c) => c.kind !== "striplog") && <li className="tree-note muted small">Нет графиков. Правая кнопка на наборе или «Пробы» → график.</li>}
+                          {(d.charts ?? []).filter((c) => c.kind !== "striplog").map((c) => (
                             <li key={c.id}>
                               <button
                                 className="tree-row leaf" onClick={() => props.onOpenChart?.(c.id)} title={`${c.name} — открыть`}

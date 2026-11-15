@@ -84,6 +84,8 @@ export function ImportPage({ target, onImported }: { target: ImportTarget; onImp
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [components, setComponents] = useState<ComponentState>({});
   const [attributes, setAttributes] = useState<Set<string>>(new Set());
+  // Interval tables (lithology, alteration, ...): their name in the set.
+  const [tableName, setTableName] = useState("");
   const [result, setResult] = useState<ValidateResponse | null>(null);
   const [committed, setCommitted] = useState<CommitResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -101,7 +103,10 @@ export function ImportPage({ target, onImported }: { target: ImportTarget; onImp
     const state: ComponentState = {};
     for (const c of suggestion?.components ?? []) state[c.column] = { checked: true, unit: c.unit };
     setComponents(state);
-    setAttributes(new Set());
+    // An interval table keeps every column that is not hole / from / to.
+    const mapped = new Set(Object.values(suggestion?.mapping ?? {}));
+    setAttributes(nextKind === "interval" ? new Set(data.columns.map((c) => c.name).filter((c) => !mapped.has(c))) : new Set());
+    if (nextKind === "interval") setTableName((prev) => prev || data.filename.replace(/\.[^.]+$/, ""));
     setResult(null);
     setCommitted(null);
   }
@@ -177,7 +182,7 @@ export function ImportPage({ target, onImported }: { target: ImportTarget; onImp
 
   const onCommit = () =>
     run(async () => {
-      const done = await commitImport({ ...buildRequest(), ...target, filename: upload!.filename });
+      const done = await commitImport({ ...buildRequest(), ...target, filename: upload!.filename, ...(kind === "interval" ? { table_name: tableName.trim() || undefined } : {}) });
       setCommitted(done);
       onImported(done.set_id);
     });
@@ -239,6 +244,13 @@ export function ImportPage({ target, onImported }: { target: ImportTarget; onImp
                 ))}
               </select>
             </label>
+            {kind === "interval" && (
+              <label className="field">
+                Название таблицы в наборе
+                <input value={tableName} onChange={(e) => setTableName(e.target.value)} maxLength={255} aria-label="Название интервальной таблицы" placeholder="Литология" />
+                <span className="muted small">Таблица с тем же названием заменяется; пробы и другие таблицы не меняются.</span>
+              </label>
+            )}
           </section>
 
           <section>
@@ -313,8 +325,8 @@ export function ImportPage({ target, onImported }: { target: ImportTarget; onImp
           )}
 
           <section>
-            <h2>Прочие колонки как атрибуты</h2>
-            <p className="muted">Отметьте колонки, которые нужно сохранить как есть (например, H, TYPE).</p>
+            <h2>{kind === "interval" ? "Колонки таблицы" : "Прочие колонки как атрибуты"}</h2>
+            <p className="muted">{kind === "interval" ? "Отмеченные колонки сохраняются: числа — как числа (графики), остальное — как текст (литология, коды)." : "Отметьте колонки, которые нужно сохранить как есть (например, H, TYPE)."}</p>
             <div className="chips">
               {freeColumns
                 .filter((c) => !(kind === "assay" && components[c.name]?.checked))

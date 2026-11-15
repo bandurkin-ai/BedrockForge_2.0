@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pandas as pd
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.importing.service import to_records
-from app.models import Assay, Collar, Component, ImportJob, Survey
+from app.models import Assay, Collar, Component, ImportJob, IntervalRow, IntervalTable, Survey
 
 MODELS = {"collar": Collar, "survey": Survey, "assay": Assay}
 # Normalized key -> model column, where they differ.
@@ -83,3 +83,58 @@ def commit_import(
     session.flush()
     session.commit()
     return CommitResult(job_id=job.id, kind=kind, inserted=len(rows), replaced=replaced)
+
+
+def interval_columns(df: pd.DataFrame) -> list[dict]:
+    """Kept columns of an interval table: a number column when every filled value is a number."""
+    out = []
+    for c in [c for c in df.columns if c.startswith("attr:")]:
+        s = df[c]
+        text = s.astype(str).str.strip()
+        filled = s.notna() & (text != "") & (text.str.lower() != "nan")
+        numeric = pd.to_numeric(text.str.replace(",", ".", regex=False), errors="coerce")
+        kind = "number" if filled.any() and numeric[filled].notna().all() else "text"
+        out.append({"name": c[len("attr:"):], "kind": kind, "unit": ""})
+    return out
+
+
+def commit_interval_table(session: Session, set_id: int, name: str, df: pd.DataFrame, *, filename: str,
+                          mapping: dict[str, str]) -> CommitResult:
+    """Create the set's interval table `name`, or replace its rows if it exists (one transaction)."""
+    columns = interval_columns(df)
+    kinds = {c["name"]: c["kind"] for c in columns}
+    table = session.scalar(select(IntervalTable).where(IntervalTable.set_id == set_id, IntervalTable.name == name))
+    replaced = 0
+    if table is None:
+        table = IntervalTable(set_id=set_id, name=name)
+        session.add(table)
+        session.flush()
+    else:
+        replaced = session.execute(delete(IntervalRow).where(IntervalRow.table_id == table.id)).rowcount
+    rows = []
+    for rec in to_records(df):
+        values = {}
+        for col, kind in kinds.items():
+            v = rec.get(f"attr:{col}")
+            if v is None or (isinstance(v, str) and not v.strip()):
+                continue
+            if kind == "number":
+                try:
+                    values[col] = float(str(v).replace(",", "."))
+                except ValueError:
+                    continue
+            else:
+                values[col] = str(v).strip()
+        rows.append({"table_id": table.id, "hole_id": str(rec["hole_id"]), "from_m": rec.get("from"), "to_m": rec.get("to"),
+                     "values": values})
+    for start in range(0, len(rows), _CHUNK):
+        session.execute(insert(IntervalRow), rows[start:start + _CHUNK])
+    table.columns = columns
+    table.row_count = len(rows)
+    table.filename = filename[:255]
+    job = ImportJob(set_id=set_id, kind="interval", filename=filename, row_count=len(rows), mapping=mapping,
+                    components=[{"table": name}])
+    session.add(job)
+    session.flush()
+    session.commit()
+    return CommitResult(job_id=job.id, kind="interval", inserted=len(rows), replaced=replaced)

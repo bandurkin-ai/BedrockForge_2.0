@@ -1,10 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
-  listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
+  deleteIntervalTable, renameIntervalTable, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
   type Dataset, type JobInfo, type Project,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
+import { StripLogWindow } from "./charts/StripLogWindow";
+import type { StripLogSettings } from "./charts/stripLog";
 import type { BlockStyle } from "./viz/blockStyle";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataPage } from "./DataPage";
@@ -72,9 +74,11 @@ interface ChartState {
   settings: Record<string, unknown>;
   /** stacking order: the window clicked last is on top */
   z: number;
+  /** downhole log: the table and hole it was opened from (its first columns and hole) */
+  hint?: { table?: string | null; hole?: string | null };
 }
 
-const CHART_TITLES: Record<ChartKind, string> = { histogram: "Гистограмма", qq: "Q-Q график", dendrogram: "Дендрограмма" };
+const CHART_TITLES: Record<ChartKind, string> = { histogram: "Гистограмма", qq: "Q-Q график", dendrogram: "Дендрограмма", striplog: "Данные по стволу" };
 
 const raise = (list: ChartState[], id: number): ChartState[] => {
   const top = Math.max(...list.map((c) => c.z));
@@ -147,20 +151,23 @@ function Workspace({
   const [blockStyles, setBlockStyles] = useState<Record<number, BlockStyle>>({});
   const [pickedBlock, setPickedBlock] = useState<{ modelId: number; index: number } | null>(null);
   const [menu, setMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
+  // Right click on an interval table of a set (not the assays: those get the charts menu).
+  const [tableMenu, setTableMenu] = useState<{ setId: number; id: number; name: string; x: number; y: number } | null>(null);
   const [chartMenu, setChartMenu] = useState<{ id: number; kind: ChartKind; name: string; x: number; y: number } | null>(null);
-  const showChart = (chartId: number, kind: ChartKind, setId: number, settings: Record<string, unknown>) =>
+  const showChart = (chartId: number, kind: ChartKind, setId: number, settings: Record<string, unknown>, hint?: ChartState["hint"]) =>
     setCharts((prev) => {
       const open = prev.find((c) => c.chartId === chartId);
       if (open) return raise(prev, open.id);
-      return [...prev, { id: Date.now() + Math.random(), chartId, kind, setId, settings, z: prev.length ? Math.max(...prev.map((c) => c.z)) + 1 : 0 }];
+      return [...prev, { id: Date.now() + Math.random(), chartId, kind, setId, settings, hint, z: prev.length ? Math.max(...prev.map((c) => c.z)) + 1 : 0 }];
     });
   /** A new chart: saved in the tree under its set right away, then shown. */
-  const openChart = async (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings, dendrogram?: Partial<DendrogramSettings>): Promise<string> => {
-    const settings = (kind === "qq" ? qq ?? defaultQQ(setId) : kind === "dendrogram" ? dendrogram ?? {} : initial ?? {}) as Record<string, unknown>;
+  const openChart = async (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings, dendrogram?: Partial<DendrogramSettings>,
+    striplog?: { settings?: Record<string, unknown>; table?: string | null; hole?: string | null }): Promise<string> => {
+    const settings = (kind === "qq" ? qq ?? defaultQQ(setId) : kind === "dendrogram" ? dendrogram ?? {} : kind === "striplog" ? striplog?.settings ?? {} : initial ?? {}) as Record<string, unknown>;
     const saved = await createChart(setId, kind, CHART_TITLES[kind], settings);
-    showChart(saved.id, kind, setId, settings);
+    showChart(saved.id, kind, setId, settings, kind === "striplog" ? { table: striplog?.table, hole: striplog?.hole ?? (activeSetRef.current === setId ? holeRef.current : null) } : undefined);
     reload();
-    return `${CHART_TITLES[kind]} сохранён(а) в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Графики`;
+    return `${CHART_TITLES[kind]} сохранён(а) в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → ${kind === "striplog" ? "Данные по скважинам" : "Графики"}`;
   };
   /** A saved chart from the tree, with its settings. */
   const openSavedChart = async (chartId: number): Promise<string> => {
@@ -307,7 +314,7 @@ function Workspace({
       navigate({ kind });
       setWs((prev) => openBottom(prev, "table"));
     },
-    openChart: (kind, setId, initial, qq, dendrogram) => openChart(kind, setId, initial, qq, dendrogram),
+    openChart: (kind, setId, initial, qq, dendrogram, striplog) => openChart(kind, setId, initial, qq, dendrogram, striplog),
     openSavedChart,
     openBlockReport,
     openStats: (analysis, component) => {
@@ -595,6 +602,8 @@ function Workspace({
                   onDeleteItem={onDeleteItem}
                   onDemo={() => void runCommand("project.demo", {}, "user")}
                   onSetMenu={(setId, x, y) => setMenu({ setId, x, y })}
+                  onTableMenu={(setId, table, x, y) => (table.id === null ? setMenu({ setId, x, y }) : setTableMenu({ setId, id: table.id, name: table.name, x, y }))}
+                  onNewLog={(setId, table) => void guarded(() => openChart("striplog", setId, undefined, undefined, undefined, { table }))}
                   onOpenChart={(id) => void guarded(() => openSavedChart(id))}
                   onChartMenu={(chart, x, y) => setChartMenu({ ...chart, x, y })}
                 />
@@ -771,7 +780,9 @@ function Workspace({
             key={c.id} index={i} z={30 + c.z} title={`${saved?.name ?? CHART_TITLES[c.kind]} · ${setName}`} icon={c.kind}
             onFocus={() => setCharts((prev) => raise(prev, c.id))} onClose={() => setCharts((prev) => prev.filter((x) => x.id !== c.id))}
           >
-            {c.kind === "qq" ? (
+            {c.kind === "striplog" ? (
+              <StripLogWindow setId={c.setId} setName={setName} initial={c.settings as Partial<StripLogSettings>} tableHint={c.hint?.table} holeHint={c.hint?.hole} onSettings={onSettings} />
+            ) : c.kind === "qq" ? (
               <QQWindow sets={sets.map((d) => ({ id: d.id, name: d.name }))} initial={{ ...defaultQQ(c.setId), ...(c.settings as Partial<QQSettings>) }} onSettings={onSettings} />
             ) : c.kind === "dendrogram" ? (
               <DendrogramWindow setId={c.setId} setName={setName} initial={c.settings as Partial<DendrogramSettings>} onSettings={onSettings} />
@@ -831,12 +842,36 @@ function Workspace({
               { label: "Гистограмма", icon: "histogram", disabledNote: noData, run: () => void runCommand("chart.histogram", { set_id: menu.setId }, "user") },
               { label: "Q-Q график", icon: "qq", disabledNote: noData, run: () => void runCommand("chart.qq", { set_id: menu.setId }, "user") },
               { label: "Дендрограмма", icon: "dendrogram", disabledNote: noData ?? ((target?.components?.length ?? 0) < 2 ? "нужно 2+ поля" : undefined), run: () => void runCommand("chart.dendrogram", { set_id: menu.setId }, "user") },
+              { label: "Данные по стволу…", icon: "striplog", disabledNote: noData, run: () => void guarded(() => openChart("striplog", menu.setId, undefined, undefined, undefined, { table: "assay" })) },
               "separator",
               { label: "Таблица проб", icon: "table", run: () => { selectSet(menu.setId); navigate({ kind: "assay" }); setWs((p) => openBottom(p, "table")); } },
             ]}
           />
         );
       })()}
+
+      {tableMenu && (
+        <ContextMenu
+          x={tableMenu.x} y={tableMenu.y} title={tableMenu.name} onClose={() => setTableMenu(null)}
+          items={[
+            { label: "Данные по стволу…", icon: "striplog", run: () => void guarded(() => openChart("striplog", tableMenu.setId, undefined, undefined, undefined, { table: String(tableMenu.id) })) },
+            "separator",
+            { label: "Переименовать…", icon: "edit", run: () => void guarded(async () => {
+              const name = window.prompt("Название таблицы", tableMenu.name)?.trim();
+              if (!name || name === tableMenu.name) return undefined;
+              await renameIntervalTable(tableMenu.id, name);
+              reload();
+              return `Таблица переименована: «${name}»`;
+            }) },
+            { label: "Удалить таблицу", icon: "trash", run: () => void guarded(async () => {
+              if (!window.confirm(`Удалить таблицу «${tableMenu.name}» со всеми интервалами? Пробы и другие таблицы не меняются.`)) return undefined;
+              await deleteIntervalTable(tableMenu.id);
+              reload();
+              return `Таблица «${tableMenu.name}» удалена`;
+            }) },
+          ]}
+        />
+      )}
 
       {palette !== null && (
         <CommandPalette items={items} holes={holes} initialQuery={palette} onRun={runItem} onClose={() => setPalette(null)} />

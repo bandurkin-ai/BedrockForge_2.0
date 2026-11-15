@@ -23,7 +23,7 @@ from app.formats.wireframes import WIREFRAME_SUFFIXES
 from app.importing.objects import (
     ImportFailed, SectionPlacement, import_lines, import_rasters, import_wireframes, raster_placement,
 )
-from app.models import Assay, Chart, Collar, Component, Dataset, LineLayer, Raster, Survey, Wireframe
+from app.models import Assay, Chart, Collar, Component, Dataset, IntervalTable, LineLayer, Raster, Survey, Wireframe
 from app.routers.blobs import blob_url
 from app.routers.projects import get_project
 from app.storage import blobs
@@ -77,6 +77,8 @@ class DatasetOut(BaseModel):
     audit: dict[str, int] | None = None
     # drillholes: saved charts [{id, kind, name}]
     charts: list[dict] | None = None
+    # drillholes: interval tables besides the assays [{id, name, row_count}]
+    interval_tables: list[dict] | None = None
     # wireframes
     wireframes: list[WireframeOut] | None = None
     lines: list[LineLayerOut] | None = None
@@ -159,6 +161,8 @@ def dataset_out(session: Session, d: Dataset) -> DatasetOut:
         out.audit = run.counts["by_severity"] if run else None
         out.charts = [{"id": c.id, "kind": c.kind, "name": c.name}
                       for c in session.scalars(select(Chart).where(Chart.dataset_id == d.id).order_by(Chart.id))]
+        out.interval_tables = [{"id": t.id, "name": t.name, "row_count": t.row_count}
+                               for t in session.scalars(select(IntervalTable).where(IntervalTable.set_id == d.id).order_by(IntervalTable.id))]
     elif d.kind == "wireframes":
         rows = session.scalars(select(Wireframe).where(Wireframe.dataset_id == d.id).order_by(Wireframe.id))
         out.wireframes = [_wireframe_out(w) for w in rows]

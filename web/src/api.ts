@@ -160,7 +160,7 @@ export function getTable(setId: number, kind: string, limit: number, offset: num
 /** Into an existing set (set_id) or a new one in the project (project_id + set_name). */
 export type ImportTarget = { set_id: number } | { project_id: number; set_name: string };
 
-export const commitImport = (req: ValidateRequest & ImportTarget & { filename: string }) =>
+export const commitImport = (req: ValidateRequest & ImportTarget & { filename: string; table_name?: string }) =>
   request<CommitResponse>("/api/import/commit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -438,7 +438,9 @@ export interface Dataset {
   components: { name: string; unit: string }[] | null;
   audit: { error: number; warning: number; info: number } | null;
   /** drillholes: saved charts */
-  charts?: { id: number; kind: "histogram" | "qq" | "dendrogram"; name: string }[] | null;
+  charts?: { id: number; kind: "histogram" | "qq" | "dendrogram" | "striplog"; name: string }[] | null;
+  /** drillholes: interval tables besides the assays (lithology, alteration, ...) */
+  interval_tables?: { id: number; name: string; row_count: number }[] | null;
   wireframes: WireframeInfo[] | null;
   lines: LineLayerInfo[] | null;
   rasters: RasterInfo[] | null;
@@ -1100,7 +1102,7 @@ export const getDendrogram = (setId: number, params: DendrogramParams, signal?: 
 
 // ---- Saved charts ----
 
-export type SavedChartKind = "histogram" | "qq" | "dendrogram";
+export type SavedChartKind = "histogram" | "qq" | "dendrogram" | "striplog";
 
 export interface SavedChart {
   id: number;
@@ -1220,3 +1222,40 @@ export const blockReport = (id: number, params: BlockReportParams, signal?: Abor
 
 export const setBlockUnit = (id: number, key: string, unit: BlockAttribute["unit"]) =>
   request<{ key: string; unit: string | null }>(`/api/blockmodels/${id}/attributes/${encodeURIComponent(key)}`, { method: "PATCH", ...json({ unit }) });
+
+// ---- interval tables and the downhole log
+
+export interface IntervalColumn {
+  name: string;
+  kind: "number" | "text";
+  unit: string;
+}
+
+export interface IntervalTableInfo {
+  /** "assay" for the set's assays, else the table id as text */
+  key: string;
+  id: number | null;
+  name: string;
+  builtin: boolean;
+  row_count: number;
+  columns: IntervalColumn[];
+}
+
+export const getIntervalTables = (setId: number) => request<IntervalTableInfo[]>(`/api/sets/${setId}/interval-tables`);
+export const renameIntervalTable = (id: number, name: string) =>
+  request<{ id: number; name: string }>(`/api/interval-tables/${id}`, { method: "PATCH", ...json({ name }) });
+export const deleteIntervalTable = (id: number) => request<void>(`/api/interval-tables/${id}`, { method: "DELETE" });
+
+export interface DownholeInterval {
+  from: number | null;
+  to: number | null;
+  values: Record<string, number | string | null>;
+}
+
+export interface DownholeData {
+  tables: { key: string; name: string; columns: IntervalColumn[] }[];
+  holes: { hole_id: string; found: boolean; td: number | null; max_depth: number; tables: Record<string, DownholeInterval[]> }[];
+}
+
+export const getDownhole = (setId: number, holes: string[], tables: string[], signal?: AbortSignal) =>
+  request<DownholeData>(`/api/sets/${setId}/downhole`, { method: "POST", ...json({ holes, tables }), signal });

@@ -248,6 +248,34 @@ class Assay(Base):
     attributes: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
+class IntervalTable(Base):
+    """An interval table of a drillhole set besides the assays: lithology, alteration, RQD, more
+    assays. Its columns: [{"name", "kind": "number" | "text", "unit"}]."""
+
+    __tablename__ = "interval_table"
+    __table_args__ = (UniqueConstraint("set_id", "name", name="uq_interval_table_set_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    set_id: Mapped[int] = mapped_column(_set_fk(), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    filename: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    columns: Mapped[list] = mapped_column(JSONB, default=list)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IntervalRow(Base):
+    __tablename__ = "interval_row"
+    __table_args__ = (Index("ix_interval_row_hole", "table_id", "hole_id", "from_m"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    table_id: Mapped[int] = mapped_column(ForeignKey("interval_table.id", ondelete="CASCADE"))
+    hole_id: Mapped[str] = mapped_column(String(64))
+    from_m: Mapped[float | None] = mapped_column(Double)
+    to_m: Mapped[float | None] = mapped_column(Double)
+    values: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
 class Component(Base):
     __tablename__ = "component"
     __table_args__ = (UniqueConstraint("set_id", "name"),)

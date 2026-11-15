@@ -8,10 +8,10 @@ def _upload(client: TestClient, name: str, data: bytes):
     return client.post("/api/import/upload", files={"file": (name, data)})
 
 
-def test_schemas_endpoint_lists_three_tables(client):
+def test_schemas_endpoint_lists_the_tables(client):
     body = client.get("/api/import/schemas").json()
 
-    assert set(body) == {"collar", "survey", "assay"}
+    assert set(body) == {"collar", "survey", "assay", "interval"}
     required = [f["key"] for f in body["collar"]["fields"] if f["required"]]
     assert required == ["hole_id", "x", "y", "z", "td"]
 

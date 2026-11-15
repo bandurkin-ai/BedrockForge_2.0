@@ -1,5 +1,5 @@
 import type { MutableRefObject } from "react";
-import { blockMeta, blockReport, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
+import { blockMeta, blockReport, getIntervalTables, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
 import type { TableKind } from "../route";
 import { ANALYSES, type StatsAnalysis } from "../stats/analyses";
 import type { VizSettings } from "../viz/ComponentPanel";
@@ -7,9 +7,10 @@ import { DEFAULT_WINDOW, shiftSection, type SectionLine } from "../viz/geometry"
 import type { HistogramSettings } from "../charts/HistogramWindow";
 import { defaultQQ, type QQSettings } from "../charts/QQWindow";
 import type { DendrogramSettings } from "../charts/DendrogramWindow";
+import { defaultTracks, newTrack } from "../charts/stripLog";
 import type { Command } from "./commands";
 
-export type ChartKind = "histogram" | "qq" | "dendrogram";
+export type ChartKind = "histogram" | "qq" | "dendrogram" | "striplog";
 import {
   BOTTOM_TITLES, VEXAG_STEPS, VIEW_PRESETS, VIEW_TITLES, isShown, layerKey, openBottom, setPanel, setShown,
   type BottomTab, type ObjectKind, type PanelId, type SelectedObject, type ViewPreset, type WorkspaceState,
@@ -39,7 +40,8 @@ export interface Live {
   openStats: (analysis: StatsAnalysis, component: string | null) => void;
   /** A chart window over the workspace (histogram; Q-Q and dendrogram are not ready yet). */
   /** Creates a chart, saves it in the tree under the set and opens it. */
-  openChart: (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings, dendrogram?: Partial<DendrogramSettings>) => Promise<string>;
+  openChart: (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings, dendrogram?: Partial<DendrogramSettings>,
+    striplog?: { settings?: Record<string, unknown>; table?: string | null; hole?: string | null }) => Promise<string>;
   /** Opens a chart saved in the tree. */
   openSavedChart: (chartId: number) => Promise<string>;
   /** Opens the grade–tonnage window of a block model. */
@@ -766,6 +768,32 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         if (args.distance) d.distance = args.distance as DendrogramSettings["distance"];
         if (typeof args.cut === "number") d.cut = String(args.cut);
         return s().openChart("dendrogram", set.id, undefined, undefined, d);
+      },
+    },
+    {
+      id: "chart.striplog",
+      title: "Данные по стволу",
+      description:
+        "Открывает колонку данных по стволу скважин (графики, столбцы, цветные колонки, текст) и сохраняет её в дереве набора в узле «Данные по скважинам». " +
+        "holes — скважины через запятую (до 30); table — таблица: «Пробы» или имя интервальной таблицы (литология и т.п.); " +
+        "fields — поля через запятую (по умолчанию: текстовые поля и до трёх числовых).",
+      params: { set_id: { type: "integer" }, holes: { type: "string" }, table: { type: "string" }, fields: { type: "string" } },
+      run: async (args) => {
+        const set = targetSet(args.set_id);
+        const tables = await getIntervalTables(set.id);
+        const wantedTable = typeof args.table === "string" && args.table.trim() ? args.table.trim().toLowerCase() : null;
+        const table = wantedTable ? tables.find((t) => t.name.toLowerCase() === wantedTable || t.key === wantedTable) : tables.find((t) => t.columns.length);
+        if (!table) throw new Error(`Таблицы «${args.table}» нет; таблицы набора: ${tables.map((t) => t.name).join(", ")}`);
+        const holes = typeof args.holes === "string" && args.holes.trim() ? args.holes.split(",").map((h) => h.trim()).filter(Boolean).slice(0, 30) : [];
+        let tracks = defaultTracks(table);
+        if (typeof args.fields === "string" && args.fields.trim()) {
+          const names = args.fields.split(",").map((f) => f.trim().toUpperCase());
+          const cols = names.map((n) => table.columns.find((c) => c.name.toUpperCase() === n));
+          const missing = names.filter((_, i) => !cols[i]);
+          if (missing.length) throw new Error(`Полей ${missing.join(", ")} нет в таблице «${table.name}»; поля: ${table.columns.map((c) => c.name).join(", ")}`);
+          tracks = cols.map((c, i) => newTrack(table.key, c!, i));
+        }
+        return s().openChart("striplog", set.id, undefined, undefined, undefined, { settings: holes.length ? { holes, tracks } : { tracks }, table: table.key });
       },
     },
     {
