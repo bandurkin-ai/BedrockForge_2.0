@@ -266,18 +266,28 @@ class IntervalTable(Base):
     kind: Mapped[str] = mapped_column(String(16), default="interval", server_default="interval")
 
 
-class Palette(Base):
-    """A colouring by grade classes saved in a project, to load into other columns.
-    classes: [{"from": lower bound or null (everything below the next), "color": "#rrggbb", "label": ""}], ascending."""
+class Style(Base):
+    """An entry of the styles library of a project.
+    level: "palette" (a colouring: classes, a gradient or category colours), "layer" (the settings of one
+    layer of a display), "display" (a template of a whole display). The frontend owns the shape of `body`;
+    the server only checks the classes and colours in it."""
 
-    __tablename__ = "palette"
-    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_palette_project_name"),)
+    __tablename__ = "style"
+    __table_args__ = (UniqueConstraint("project_id", "level", "name", name="uq_style_project_level_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(_project_fk(), index=True)
     name: Mapped[str] = mapped_column(String(255))
-    classes: Mapped[list] = mapped_column(JSONB, default=list)
+    level: Mapped[str] = mapped_column(String(16))
+    # "number" | "text" | "event" | "mixed"
+    data_kind: Mapped[str] = mapped_column(String(16), default="number", server_default="number")
+    body: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Field names (may contain "*") the style is applied to by default.
+    default_for: Mapped[list] = mapped_column(JSONB, default=list)
+    # Unknown top-level keys of an imported entry: written back on export.
+    extra: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class IntervalRow(Base):
