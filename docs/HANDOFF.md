@@ -34,7 +34,7 @@ docker compose up --build
 - Веб: http://localhost:5173, API: http://localhost:8000. Сервис `worker` выполняет фоновые задания; хранилище — том `store` (`DATA_DIR=/data`).
 - Лента → «Демо-проект» создаёт учебный проект (48 скважин, каркасы, линии, растры в плане и в разрезе).
 - Локальная разработка без Docker: PostgreSQL 16 (`pg_ctlcluster 16 main start`; пользователь `geo`/`geo`, базы `geo` и `geo_test`), `alembic upgrade head` и `uvicorn app.main:app` в `api/` (задания идут в потоке API, `JOBS_IN_API=1`), `API_URL=http://localhost:8000 npx vite` в `web/`.
-- Тесты: `cd api && python3 -m pytest` (247 passed / 17 skipped), `cd web && npm test` (51 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
+- Тесты: `cd api && python3 -m pytest` (268 passed / 17 skipped), `cd web && npm test` (58 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
 - Замеры: `cd api && python -m bench.run --profile ci --check` (1 млн треугольников) или `--profile full` (10 млн, 2 ГБ).
 
 ## 3. Стек
@@ -56,6 +56,7 @@ Project → Dataset (kind: drillholes | lines | wireframes | blocks | rasters)
   wireframes → Wireframe
   lines      → LineLayer
   rasters    → Raster (georef JSONB, extent, elevation, opacity, blobs.image)
+  blocks     → всё в Dataset: meta (сетка, поля, проверки, report) и blobs: centres <f8, sizes <f4, render <f4 ×6, a0… (поля: <f8 или коды <i4)
 Blob (sha256, size)        — файлы хранилища; ссылки — JSONB-колонки `blobs` у dataset, wireframe, line_layer, raster
 Upload                     — загрузка частями (DATA_DIR/uploads/<id>.part)
 Job                        — фоновое задание: статус, прогресс, журнал, отмена, попытки
@@ -74,6 +75,7 @@ Job                        — фоновое задание: статус, пр
 | Каркасы | Micromine TRIDB, DXF (сетки) + статистика: площадь, объём, замкнутость | `wireframes.py` |
 | Линии | Micromine STR, Surpac STR, DXF | `lines.py` |
 | Растры | GeoTIFF, World (.jgw/.pgw/.tfw), MapInfo TAB, GRF (в т.ч. с Z → вертикальный) | `rasters.py` |
+| Блочные модели | Micromine DAT (memmap, столбцы), Micromine CSV, CSV | `blockmodel.py`, `micromine.read_columns`, `bocu1.py` |
 
 Привязка растра: аффинное преобразование по углам пикселей `X=a·col+b·row+c, Y=d·col+e·row+f`, для вертикальных ещё `Z=g·col+h·row+i`.
 
@@ -143,11 +145,14 @@ Job                        — фоновое задание: статус, пр
 | pyfqmr падает на memmap | Ему нужны записываемые массивы: `np.array(..., copy)` в `geo/meshes._simplify_one` |
 | Каркасы до этапа 10 | `render` пустой: рисуются одной частью без уровней; «проверить» в свойствах строит всё заново |
 | Двойная загрузка из мастера | StrictMode дважды запускает эффект монтирования: передача стартует один раз по флагу в `useRef` |
+| BOCU-1 в DAT | Не «ASCII + 0x50», а настоящий BOCU-1 (кириллица — многобайтово). Декодер `formats/bocu1.py` сверен с ICU 74 (`libicuuc`, `ucnv_convert`), векторы — в `tests/test_bocu1.py`. Старый тестовый построитель кодировал A–O без сдвига — исправлен |
 | Пиковая память `--profile full` | Данные готовятся в отдельном процессе (`--prepare`), иначе генерация попадает в замер |
 
 ## 10. Что дальше
 
-Этапы 7 и 10 сделаны (вехи M0, M1). Следующий по плану — этап 12 «Блочные модели» (M2).
+Этапы 7 и 10 сделаны (вехи M0, M1). Этап 12 начат: импорт, проверки, отчёт по бортам и показ блочных моделей (12.1–12.3, 12.6 частично). Не сделано: Datamine DM, поворот модели, срез произвольной плоскостью на сервере и показ только внешних граней для моделей > 3 млн блоков (12.4–12.5).
+
+Блочные модели, где что лежит: `app/formats/blockmodel.py` (чтение, сетка, проверки), `app/importing/blockmodels.py` (запись столбцов), `app/blocks/report.py` и `app/routers/blockmodels.py` (`/render`, `/values/{key}`, `/blocks/{n}`, `/report`, единицы полей); веб — `shell/BlockModelPanel.tsx`, `charts/GradeTonnageWindow.tsx`, `viz/blockStyle.ts`, блоки в `viz/scene3d.ts` (`addBlockModel`, `setBlockStyle`, `pickBlock` — InstancedMesh), распознавание файла — `shell/sniffBlocks.ts`; команда Claude `blocks.report`.
 
 Этап 10, где что лежит: `app/formats/dxf_stream.py` (потоковый DXF), `wireframes.py` (TRIDB потоком, OBJ, STL), `app/geo/meshes.py` (Z-порядок, части, упрощение), `app/geo/checks.py` (самопересечения на numba, нормали), `app/geo/section.py` (точное сечение), задание `wireframes.derive` в `app/jobs/handlers.py`; в вебе — уровни в `viz/scene3d.ts` (`addWireframe`, `setWireframeLevel`, `setWireframeCut`), загрузка от грубого к точному в `viz/SceneView.tsx`.
 

@@ -899,7 +899,7 @@ export async function deleteUpload(id: string): Promise<void> {
 
 export interface ImportRequest {
   uploads: string[];
-  kind?: "wireframes" | "lines" | "rasters";
+  kind?: "wireframes" | "lines" | "rasters" | "blocks";
   folder?: string;
   section?: VerticalPlacement | null;
 }
@@ -930,7 +930,7 @@ export interface DetectedFile {
   filename: string;
   size: number;
   status: "receiving" | "complete";
-  kind: "wireframes" | "lines" | "rasters" | "sidecar" | "drillholes" | "unknown";
+  kind: "wireframes" | "lines" | "rasters" | "blocks" | "sidecar" | "drillholes" | "unknown";
   format: string;
   note: string;
   /** images: their georeference files in this batch */
@@ -1122,3 +1122,101 @@ export async function deleteChart(id: number): Promise<void> {
   const response = await fetch(`/api/charts/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`Ошибка ${response.status}`);
 }
+
+// ---- block models (dataset kind "blocks")
+
+export interface BlockAttribute {
+  key: string;
+  name: string;
+  kind: "number" | "category";
+  unit?: "g/t" | "%" | "ppm" | "ppb" | null;
+  labels?: string[];
+  source: string;
+  stats: {
+    count: number;
+    empty: number;
+    min?: number;
+    max?: number;
+    mean?: number;
+    mean_by_volume?: number | null;
+    categories?: number;
+    top?: { label: string; count: number; volume: number }[];
+  };
+}
+
+export interface BlockCheck {
+  level: "error" | "warning" | "info";
+  code: string;
+  message: string;
+  count: number | null;
+}
+
+export interface BlockModelMeta {
+  format: string;
+  filename: string;
+  block_count: number;
+  volume: number;
+  extent: { min: number[]; max: number[] };
+  render_origin: number[];
+  grid: { origin: number[]; parent: number[]; counts: number[]; subblocked: boolean; parents_used: number; rotation: number; from_file: boolean };
+  roles: Record<string, string>;
+  attributes: BlockAttribute[];
+  checks: BlockCheck[];
+  notes: string[];
+  report: { density?: string | null; density_value?: number | null; grades?: string[]; cutoff_field?: string | null; cutoffs?: number[] };
+}
+
+export const blockMeta = (d: Dataset) => d.meta as unknown as BlockModelMeta;
+
+async function binary(url: string): Promise<ArrayBuffer> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Ошибка ${r.status}`);
+  return r.arrayBuffer();
+}
+
+/** Centre (relative to meta.render_origin) and size of every block, 6 float32 each. */
+export const getBlockRender = async (id: number) => new Float32Array(await binary(`/api/blockmodels/${id}/render`));
+/** An attribute per block as float32 (categories: code; empty: NaN). */
+export const getBlockValues = async (id: number, key: string) => new Float32Array(await binary(`/api/blockmodels/${id}/values/${encodeURIComponent(key)}`));
+
+export interface BlockInfo {
+  index: number;
+  centre: number[];
+  size: number[];
+  values: Record<string, number | string | null>;
+}
+
+export const getBlock = (id: number, index: number) => request<BlockInfo>(`/api/blockmodels/${id}/blocks/${index}`);
+
+export interface BlockReportParams {
+  density?: string | null;
+  density_value?: number | null;
+  grades: string[];
+  cutoff_field?: string | null;
+  cutoffs: number[];
+  filters?: { key: string; labels?: string[]; min?: number | null; max?: number | null }[];
+  group_by?: string | null;
+  remember?: boolean;
+}
+
+export interface BlockReportRow {
+  group: string | null;
+  cutoff: number | null;
+  blocks: number;
+  volume: number;
+  tonnes: number;
+  grades: Record<string, { grade: number | null; metal: { value: number; unit: string; kg?: number } | null; missing_tonnes: number }>;
+}
+
+export interface BlockReport {
+  rows: BlockReportRow[];
+  excluded_no_density: number;
+  grades: { key: string; name: string; unit: string | null }[];
+  density: string | number | null;
+}
+
+export const blockReport = (id: number, params: BlockReportParams, signal?: AbortSignal) =>
+  request<BlockReport>(`/api/blockmodels/${id}/report`, { method: "POST", ...json(params), signal });
+
+export const setBlockUnit = (id: number, key: string, unit: BlockAttribute["unit"]) =>
+  request<{ key: string; unit: string | null }>(`/api/blockmodels/${id}/attributes/${encodeURIComponent(key)}`, { method: "PATCH", ...json({ unit }) });

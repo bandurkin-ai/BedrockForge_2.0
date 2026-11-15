@@ -4,7 +4,7 @@ export type RightTab = "properties" | "assistant";
 export type BottomTab = "table" | "audit" | "stats" | "jobs" | "log";
 
 /** An object picked in the tree: its properties are shown on the right. */
-export type ObjectKind = "wireframe" | "lines" | "raster";
+export type ObjectKind = "wireframe" | "lines" | "raster" | "blocks";
 export interface SelectedObject {
   kind: ObjectKind;
   id: number;
@@ -78,6 +78,7 @@ export const layerKey = {
   wireframe: (id: number) => `wf:${id}`,
   lines: (id: number) => `ln:${id}`,
   raster: (id: number) => `rs:${id}`,
+  blocks: (id: number) => `bm:${id}`,
 };
 
 export function isShown(state: WorkspaceState, key: string): boolean {

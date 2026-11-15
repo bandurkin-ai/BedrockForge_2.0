@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useState } from "react";
 import type { AuditRun, Dataset, IntervalsData, LineLayerInfo, RasterInfo, RasterPatch, Summary, VerticalPlacement } from "../api";
-import { checkWireframes } from "../api";
+import { blockMeta, checkWireframes, type BlockAttribute } from "../api";
+import { defaultBlockStyle, type BlockStyle } from "../viz/blockStyle";
+import { BlockModelPanel } from "./BlockModelPanel";
 import { HoleCard } from "../HoleCard";
 import type { TableKind } from "../route";
 import { ComponentPanel, type VizSettings } from "../viz/ComponentPanel";
@@ -54,6 +56,7 @@ function ColorSection({ datasets, activeSet, refreshKey, viz, onViz }: {
 /** Right dock: the selected object (hole, wireframe) or the active drillhole set. */
 export function PropertiesPanel({
   datasets, activeSet, summary, audit, selectedHole, selected, refreshKey, viz, onViz, onOpenTable, onClearHole, onRaster, sectionFrame,
+  blockStyles, onBlockStyle, pickedBlock, onBlockUnit, onBlockReport,
 }: {
   datasets: Dataset[];
   activeSet: number | null;
@@ -69,6 +72,11 @@ export function PropertiesPanel({
   onRaster: (id: number, patch: RasterPatch) => void;
   /** The frame of the current section line, or null when there is none. */
   sectionFrame: () => VerticalPlacement | null;
+  blockStyles?: Record<number, BlockStyle>;
+  onBlockStyle?: (id: number, style: BlockStyle) => void;
+  pickedBlock?: { modelId: number; index: number } | null;
+  onBlockUnit?: (id: number, key: string, unit: BlockAttribute["unit"]) => void;
+  onBlockReport?: (id: number) => void;
 }) {
   const color = <ColorSection datasets={datasets} activeSet={activeSet} refreshKey={refreshKey} viz={viz} onViz={onViz} />;
   const set = datasets.find((d) => d.id === activeSet);
@@ -78,6 +86,17 @@ export function PropertiesPanel({
   const lines = pick("lines", (d) => d.lines);
   const raster = pick("raster", (d) => d.rasters);
   if (lines) return <LinesProps layer={lines} file={lines.file} />;
+  const model = selected?.kind === "blocks" ? datasets.find((d) => d.id === selected.id && d.kind === "blocks") : undefined;
+  if (model) {
+    return (
+      <BlockModelPanel
+        dataset={model} style={blockStyles?.[model.id] ?? defaultBlockStyle(blockMeta(model))}
+        picked={pickedBlock?.modelId === model.id ? pickedBlock.index : null}
+        onStyle={(style) => onBlockStyle?.(model.id, style)} onUnit={(key, unit) => onBlockUnit?.(model.id, key, unit)}
+        onReport={() => onBlockReport?.(model.id)}
+      />
+    );
+  }
   if (raster) return <RasterProps raster={raster} file={raster.file} onRaster={onRaster} sectionFrame={sectionFrame} />;
 
   if (wireframe) {

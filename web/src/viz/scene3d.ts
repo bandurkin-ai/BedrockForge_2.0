@@ -12,6 +12,7 @@ import { THEME_EVENT } from "./scene3d-theme";
 const PATH_COLOR = 0x8a93a6;
 const SELECT_COLOR = 0xff7a00;
 const SECTION_COLOR = 0x2e6fbd;
+const BLOCK_BOX = new THREE.BoxGeometry(1, 1, 1);
 const DRAFT_COLOR = 0xff8c1a;
 
 /** Plan overview for the section map (project coordinates). */
@@ -83,6 +84,20 @@ interface LineLayer3D {
   lines: LineSegments2;
 }
 
+interface BlockLayer {
+  extent: THREE.Box3;
+  group: THREE.Group;
+  /** centre (relative to the group) and size of every block */
+  render: Float32Array;
+  mesh: THREE.InstancedMesh | null;
+  material: THREE.MeshLambertMaterial;
+  /** block number of every instance */
+  index: Int32Array;
+}
+
+/** Above this many shown blocks the model is not drawn (stage 12.5: surfaces of filtered blocks). */
+export const MAX_SHOWN_BLOCKS = 3_000_000;
+
 interface RasterLayer {
   /** Project coordinates of the corners: top-left, top-right, bottom-right, bottom-left. */
   corners: number[][];
@@ -126,6 +141,9 @@ export class GeoScene {
   private wireframes = new Map<number, WireframeLayer>();
   private lineLayers = new Map<number, LineLayer3D>();
   private rasters = new Map<number, RasterLayer>();
+  private blocks = new Map<number, BlockLayer>();
+  /** A click on a block (when no collar is near the cursor). */
+  onPickBlock: ((pick: { modelId: number; index: number } | null) => boolean) | null = null;
   private selectedLine: LineSegments2 | null = null;
   private sectionLine: THREE.LineSegments | null = null;
   /** The section line being drawn: its first point (rendered space) and the rubber band to the cursor. */
@@ -266,6 +284,103 @@ export class GeoScene {
     disposeTree(layer.group, this.materials);
     this.drillholes.delete(setId);
     if (update) this.contentChanged();
+  }
+
+  /**
+   * A block model: `render` holds the centre (relative to `origin`, project coordinates) and the
+   * size of every block, 6 float32 each. Colours come with setBlockStyle.
+   */
+  addBlockModel(id: number, render: Float32Array, origin: number[], min: number[], max: number[]): void {
+    this.removeBlockModel(id, false);
+    const o = this.ensureOrigin(min, max);
+    const group = new THREE.Group();
+    group.position.set(origin[0] - o.x, origin[1] - o.y, origin[2] - o.z);
+    const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    this.blocks.set(id, {
+      extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)),
+      group, render, mesh: null, material, index: new Int32Array(0),
+    });
+    this.root.add(group);
+    this.contentChanged();
+  }
+
+  /** Colours (rgb 0–255 per block) and which blocks are shown; returns the number drawn. */
+  setBlockStyle(id: number, colors: Uint8Array, visible: Uint8Array, opacity: number, shown: boolean): number {
+    const layer = this.blocks.get(id);
+    if (!layer) return 0;
+    layer.group.visible = shown;
+    this.applyOpacity(layer.material, opacity);
+    if (layer.mesh) {
+      layer.group.remove(layer.mesh);
+      layer.mesh.dispose();
+      layer.mesh = null;
+    }
+    const n = layer.render.length / 6;
+    let count = 0;
+    for (let i = 0; i < n; i++) count += visible[i];
+    if (count === 0 || count > MAX_SHOWN_BLOCKS) {
+      layer.index = new Int32Array(0);
+      this.requestRender();
+      return count > MAX_SHOWN_BLOCKS ? -count : 0;
+    }
+    const mesh = new THREE.InstancedMesh(BLOCK_BOX, layer.material, count);
+    const index = new Int32Array(count);
+    const m = mesh.instanceMatrix.array as Float32Array;
+    const c = new Float32Array(count * 3);
+    const r = layer.render;
+    let k = 0;
+    for (let i = 0; i < n; i++) {
+      if (!visible[i]) continue;
+      const b = i * 6;
+      const e = k * 16;
+      // Scale by the size, then move to the centre (column-major).
+      m[e] = r[b + 3]; m[e + 5] = r[b + 4]; m[e + 10] = r[b + 5]; m[e + 15] = 1;
+      m[e + 12] = r[b]; m[e + 13] = r[b + 1]; m[e + 14] = r[b + 2];
+      c[k * 3] = colors[i * 3] / 255;
+      c[k * 3 + 1] = colors[i * 3 + 1] / 255;
+      c[k * 3 + 2] = colors[i * 3 + 2] / 255;
+      index[k++] = i;
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(c, 3);
+    mesh.computeBoundingSphere();
+    mesh.computeBoundingBox();
+    layer.mesh = mesh;
+    layer.index = index;
+    layer.group.add(mesh);
+    this.requestRender();
+    return count;
+  }
+
+  removeBlockModel(id: number, update = true): void {
+    const layer = this.blocks.get(id);
+    if (!layer) return;
+    layer.mesh?.dispose();
+    layer.material.dispose();
+    this.root.remove(layer.group);
+    this.blocks.delete(id);
+    if (update) this.contentChanged();
+  }
+
+  /** The block under the cursor: nearest hit over every shown model. */
+  private pickBlock(clientX: number, clientY: number): { modelId: number; index: number } | null {
+    if (!this.blocks.size) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, this.camera);
+    const planes = this.renderer.clippingPlanes;
+    let best: { modelId: number; index: number; distance: number } | null = null;
+    for (const [modelId, layer] of this.blocks) {
+      if (!layer.group.visible || !layer.mesh) continue;
+      for (const hit of raycaster.intersectObject(layer.mesh, false)) {
+        // Hidden by the section window: not pickable.
+        if (planes.length && !planes.every((p) => p.distanceToPoint(hit.point) >= -1e-6)) continue;
+        if (hit.instanceId !== undefined && (!best || hit.distance < best.distance)) best = { modelId, index: layer.index[hit.instanceId], distance: hit.distance };
+        break;
+      }
+    }
+    return best ? { modelId: best.modelId, index: best.index } : null;
   }
 
   setDrillholeStyle(setId: number, style: DrillholeStyle): void {
@@ -766,6 +881,7 @@ export class GeoScene {
     for (const id of [...this.wireframes.keys()]) this.removeWireframe(id, false);
     for (const id of [...this.lineLayers.keys()]) this.removeLines(id, false);
     for (const id of [...this.rasters.keys()]) this.removeRaster(id, false);
+    for (const id of [...this.blocks.keys()]) this.removeBlockModel(id, false);
     this.pointTexture.dispose();
     this.controls.dispose();
     this.renderer.dispose();
@@ -793,6 +909,7 @@ export class GeoScene {
       };
       for (const layer of this.drillholes.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
       for (const layer of this.wireframes.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
+      for (const layer of this.blocks.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
       for (const layer of this.lineLayers.values()) if (!visibleOnly || layer.lines.visible) add(layer.extent);
       if (withRasters) {
         for (const layer of this.rasters.values()) {
@@ -1177,6 +1294,10 @@ export class GeoScene {
       for (let i = 0; i < 4; i++) b.expandByPoint(new THREE.Vector3(p.getX(i), p.getY(i), 0));
       out.boxes.push([b.min.x + o.x, b.min.y + o.y, b.max.x + o.x, b.max.y + o.y]);
     }
+    for (const layer of this.blocks.values()) {
+      if (!layer.group.visible) continue;
+      out.boxes.push([layer.extent.min.x + o.x, layer.extent.min.y + o.y, layer.extent.max.x + o.x, layer.extent.max.y + o.y]);
+    }
     return out;
   }
 
@@ -1196,6 +1317,10 @@ export class GeoScene {
         if (p && this.onGroundClick(this.toProject(p).x, this.toProject(p).y)) return;
       }
       const hit = this.nearestCollar(e.clientX, e.clientY, 14);
+      if (!hit && this.onPickBlock) {
+        const block = this.pickBlock(e.clientX, e.clientY);
+        if (block && this.onPickBlock(block)) return;
+      }
       this.onPick(hit ? { setId: hit.setId, holeId: hit.holeId } : null);
     };
     const onMove = (e: PointerEvent) => {

@@ -1,9 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
-  listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit,
+  listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
   type Dataset, type JobInfo, type Project,
 } from "./api";
+import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
+import type { BlockStyle } from "./viz/blockStyle";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataPage } from "./DataPage";
 import { StatsPage } from "./StatsPage";
@@ -18,6 +20,7 @@ import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { Icon } from "./shell/icons";
 import { ImportDialog } from "./shell/ImportDialog";
 import { ImportWizard, WIZARD_ACCEPT } from "./shell/ImportWizard";
+import { isBlockModelFile } from "./shell/sniffBlocks";
 import { ChartWindow } from "./charts/ChartWindow";
 import { HistogramWindow, type HistogramSettings } from "./charts/HistogramWindow";
 import { QQWindow, defaultQQ, type QQSettings } from "./charts/QQWindow";
@@ -55,6 +58,7 @@ const ACCEPT = {
   wireframes: ".tridb,.dxf,.obj,.stl",
   lines: ".str,.dxf",
   rasters: ".jpg,.jpeg,.png,.tif,.tiff,.bmp,.jgw,.jpgw,.pgw,.pngw,.tfw,.tifw,.bpw,.wld,.tab,.grf",
+  blocks: ".dat,.csv,.txt",
 };
 type UploadKind = keyof typeof ACCEPT;
 
@@ -125,12 +129,23 @@ function Workspace({
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [approval, setApproval] = useState<Approval | null>(null);
-  const fileInputs = { wireframes: useRef<HTMLInputElement>(null), lines: useRef<HTMLInputElement>(null), rasters: useRef<HTMLInputElement>(null) };
+  const fileInputs = { wireframes: useRef<HTMLInputElement>(null), lines: useRef<HTMLInputElement>(null), rasters: useRef<HTMLInputElement>(null), blocks: useRef<HTMLInputElement>(null) };
   const openFiles = (kind: UploadKind) => fileInputs[kind].current?.click();
   const anyFileInput = useRef<HTMLInputElement>(null);
-  const [wizard, setWizard] = useState<{ files: File[]; kindHint: UploadKind | null } | null>(null);
+  const [wizard, setWizard] = useState<{ files: File[]; kindHint: UploadKind | null; blockModels: Set<File> } | null>(null);
   // Chart windows over the workspace, and the right-click menu of the tree.
   const [charts, setCharts] = useState<ChartState[]>([]);
+  // Grade–tonnage windows of block models (shown with the chart windows, not saved in the tree).
+  const [reports, setReports] = useState<{ id: number; modelId: number; z: number }[]>([]);
+  const openBlockReport = (modelId: number) =>
+    setReports((prev) => {
+      const top = Math.max(0, ...prev.map((r) => r.z), ...charts.map((c) => c.z)) + 1;
+      const open = prev.find((r) => r.modelId === modelId);
+      return open ? prev.map((r) => (r.id === open.id ? { ...r, z: top } : r)) : [...prev, { id: Date.now(), modelId, z: top }];
+    });
+  // How each block model is shown, and the block picked in the view.
+  const [blockStyles, setBlockStyles] = useState<Record<number, BlockStyle>>({});
+  const [pickedBlock, setPickedBlock] = useState<{ modelId: number; index: number } | null>(null);
   const [menu, setMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
   const [chartMenu, setChartMenu] = useState<{ id: number; kind: ChartKind; name: string; x: number; y: number } | null>(null);
   const showChart = (chartId: number, kind: ChartKind, setId: number, settings: Record<string, unknown>) =>
@@ -294,6 +309,7 @@ function Workspace({
     },
     openChart: (kind, setId, initial, qq, dendrogram) => openChart(kind, setId, initial, qq, dendrogram),
     openSavedChart,
+    openBlockReport,
     openStats: (analysis, component) => {
       setStatsView((prev) => ({ analysis, component: component ?? prev.component }));
       // charts need room: grow a short dock, never shrink one the user enlarged
@@ -473,7 +489,10 @@ function Workspace({
     const files = Array.from(list ?? []);
     const input = kind ? fileInputs[kind].current : anyFileInput.current;
     if (input) input.value = "";
-    if (files.length) setWizard({ files, kindHint: kind });
+    if (!files.length) return;
+    // Tables that are block models go to the object import, the rest to the drillhole wizard.
+    void Promise.all(files.map(async (f) => ((kind === "blocks" && /\.(dat|csv|txt)$/i.test(f.name)) || (await isBlockModelFile(f)) ? f : null)))
+      .then((found) => setWizard({ files, kindHint: kind, blockModels: new Set(found.filter((f): f is File => f !== null)) }));
   }
 
   function onJobsStarted(started: JobInfo[]) {
@@ -600,6 +619,11 @@ function Workspace({
                   if (holeRef.current && activeSetRef.current !== null) selectHole(activeSetRef.current, null);
                 }}
                 registerApi={(api) => (sceneApi.current = api)}
+                blockStyles={blockStyles}
+                onPickBlock={(modelId, index) => {
+                  setPickedBlock({ modelId, index });
+                  live.current.selectObject({ kind: "blocks", id: modelId });
+                }}
               />
               </Suspense>
             </ErrorBoundary>
@@ -669,6 +693,15 @@ function Workspace({
                       return patch.vertical ? "Растр поставлен в вертикальную плоскость" : undefined;
                     })}
                     sectionFrame={() => (section ? sceneApi.current?.sectionFrame() ?? null : null)}
+                    blockStyles={blockStyles}
+                    onBlockStyle={(id, style) => setBlockStyles((prev) => ({ ...prev, [id]: style }))}
+                    pickedBlock={pickedBlock}
+                    onBlockUnit={(id, key, unit) => void guarded(async () => {
+                      await setBlockUnit(id, key, unit);
+                      reload();
+                      return undefined;
+                    })}
+                    onBlockReport={openBlockReport}
                   />
                 </ErrorBoundary>
               </div>
@@ -702,7 +735,7 @@ function Workspace({
 
       {wizard && (
         <ImportWizard
-          projectId={projectId} files={wizard.files} kindHint={wizard.kindHint} datasets={datasets ?? []}
+          projectId={projectId} files={wizard.files} blockModels={wizard.blockModels} kindHint={wizard.kindHint} datasets={datasets ?? []}
           sectionFrame={() => (section ? sceneApi.current?.sectionFrame() ?? null : null)}
           trackUpload={jobs.trackUpload} updateUpload={jobs.updateUpload} onStarted={onJobsStarted}
           onTables={(tables) => {
@@ -745,6 +778,19 @@ function Workspace({
             ) : (
               <HistogramWindow setId={c.setId} setName={setName} initial={c.settings as Partial<HistogramSettings>} onSettings={onSettings} />
             )}
+          </ChartWindow>
+        );
+      })}
+
+      {reports.map((r, i) => {
+        const model = (datasets ?? []).find((d) => d.id === r.modelId && d.kind === "blocks");
+        if (!model) return null;
+        return (
+          <ChartWindow
+            key={r.id} index={charts.length + i} z={30 + r.z} title={`Содержание–тоннаж · ${model.name}`} icon="blocks"
+            onFocus={() => openBlockReport(r.modelId)} onClose={() => setReports((prev) => prev.filter((x) => x.id !== r.id))}
+          >
+            <GradeTonnageWindow dataset={model} />
           </ChartWindow>
         );
       })}

@@ -140,6 +140,29 @@ def inspect_image(path: Path) -> dict:
     return {"width": w, "height": h, "summary": f"{w} × {h} пикселей, {mode}"}
 
 
+def inspect_blocks(path: Path, filename: str) -> dict:
+    from app.formats.blockmodel import find_roles, header_fields
+
+    names = header_fields(path, filename) or []
+    roles = find_roles(names)
+    size = path.stat().st_size
+    count = ""
+    with path.open("rb") as f:
+        magic = f.read(len(MAGIC))
+    if magic == MAGIC:
+        from app.formats.micromine import read_header
+
+        _, fields, start = read_header(path)
+        record = sum(fd.width for fd in fields) + 2
+        count = f"блоков {_n((size - start) // record)}, "
+    used = {v for v in roles.values() if v}
+    sizes = "размеры: " + ", ".join(roles[f"d{a}"] for a in "xyz") if all(roles[f"d{a}"] for a in "xyz") else "размеров нет — регулярная модель"
+    attrs = [n for n in names if n not in used]
+    return {"format": "Блочная модель", "fields": names,
+            "summary": f"Блочная модель: {count}центр {', '.join(roles[a] or '?' for a in 'xyz')}, {sizes}; "
+                       f"атрибуты ({len(attrs)}): {', '.join(attrs[:20])}{' …' if len(attrs) > 20 else ''}"}
+
+
 def inspect(kind: str, filename: str, path: Path) -> dict:
     suffix = Path(filename).suffix.lower()
     try:
@@ -151,6 +174,8 @@ def inspect(kind: str, filename: str, path: Path) -> dict:
             return inspect_str(path)
         if kind == "rasters":
             return inspect_image(path)
+        if kind == "blocks":
+            return inspect_blocks(path, filename)
     except OSError as exc:
         return {"error": f"Файл не читается: {exc}"}
     return {}

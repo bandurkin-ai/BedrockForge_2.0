@@ -7,10 +7,6 @@ import { isShown, layerKey, type ObjectKind, type SelectedObject, type Workspace
 
 const MAX_SHOWN = 300;
 
-/** Categories of the project tree that cannot be loaded yet. */
-const STUBS: { kind: string; title: string; icon: IconName; note: string }[] = [
-  { kind: "blocks", title: "Блочные модели", icon: "blocks", note: "Micromine DAT, Datamine DM, CSV — этап 12" },
-];
 
 /** An item of a file-backed category (a wireframe, a line layer). */
 interface FileItem {
@@ -41,7 +37,7 @@ export interface DataTreeProps {
   onOpenTable: (setId: number, kind: TableKind) => void;
   onOpenAudit: (setId: number) => void;
   onImport: (setId: number | null) => void;
-  onUpload: (kind: "wireframes" | "lines" | "rasters") => void;
+  onUpload: (kind: "wireframes" | "lines" | "rasters" | "blocks") => void;
   onRename: (dataset: Dataset) => void;
   /** Ask for a folder and move the object there. */
   onMove: (dataset: Dataset) => void;
@@ -218,7 +214,7 @@ function HoleList({ setId, refreshKey, selectedHole, active, onSelectHole }: {
 /** Left dock: every object of the project by kind, with visibility in the 3D view. */
 export function DataTree(props: DataTreeProps) {
   const { datasets, ws, activeSet } = props;
-  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframe", "cat:lines", "cat:rasters"]));
+  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframe", "cat:lines", "cat:rasters", "cat:blocks"]));
   const toggle = (key: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
@@ -406,14 +402,7 @@ export function DataTree(props: DataTreeProps) {
         />
         <RasterCategory {...props} open={open} toggle={toggle} />
 
-        {STUBS.map((stub) => (
-          <Category
-            key={stub.kind} title={stub.title} icon={stub.icon} open={isOpen(`cat:${stub.kind}`)} onToggle={() => toggle(`cat:${stub.kind}`)}
-            actions={<Action icon="plus" title={`Загрузка появится позже: ${stub.note}`} onClick={() => undefined} disabled />}
-          >
-            <li className="tree-note muted small">В разработке. {stub.note}.</li>
-          </Category>
-        ))}
+        <BlockCategory {...props} open={open} toggle={toggle} />
       </ul>
     </div>
   );
@@ -482,6 +471,42 @@ function FileCategory(props: DataTreeProps & {
                 ))}
               </ul>
             )}
+          </li>
+        );
+      }} />
+    </Category>
+  );
+}
+
+/** Block models: one model per file. */
+function BlockCategory(props: DataTreeProps & { open: Set<string>; toggle: (key: string) => void }) {
+  const { open, toggle, ws } = props;
+  const files = (props.datasets ?? []).filter((d) => d.kind === "blocks");
+  const kind: ObjectKind = "blocks";
+  return (
+    <Category
+      title="Блочные модели" icon="blocks" count={files.length} open={open.has("cat:blocks")} onToggle={() => toggle("cat:blocks")}
+      actions={<Action icon="plus" title="Загрузить блочную модель: Micromine DAT или CSV (X, Y, Z и размеры _X, _Y, _Z)" onClick={() => props.onUpload("blocks")} />}
+    >
+      {files.length === 0 && <li className="tree-note muted small">Нет моделей. «+» — Micromine DAT или CSV.</li>}
+      <Folders node={folderTree(files)} group="blocks" closed={(k) => open.has(k)} toggle={toggle} render={(d) => {
+        const selected = props.selected?.kind === kind && props.selected.id === d.id;
+        const n = (d.meta as { block_count?: number }).block_count ?? 0;
+        const errors = ((d.meta as { checks?: { level: string }[] }).checks ?? []).filter((c) => c.level === "error").length;
+        return (
+          <li key={d.id}>
+            <div className={selected ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectObject(selected ? null : { kind, id: d.id })}>
+              <Eye shown={isShown(ws, layerKey.blocks(d.id))} onChange={(v) => props.onShow(layerKey.blocks(d.id), v)} label={d.name} />
+              <Icon name="blocks" size={14} />
+              <span className="grow name" title={`${d.name}${d.meta.format ? ` · ${d.meta.format}` : ""}`}>{d.name}</span>
+              {errors > 0 && <span className="dot error" title={`Ошибок проверки: ${errors}`}>{errors}</span>}
+              <span className="count" title="Блоков">{n.toLocaleString("ru-RU")}</span>
+              <span className="row-actions">
+                <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
+                <Action icon="folder" title="В папку…" onClick={() => props.onMove(d)} />
+                <Action icon="trash" title="Удалить модель" onClick={() => props.onDelete(d)} />
+              </span>
+            </div>
           </li>
         );
       }} />

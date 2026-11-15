@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import delete, select
 
+from app.importing.blockmodels import import_block_model
 from app.importing.objects import ImportFailed, SectionPlacement, import_lines, import_rasters, import_wireframes
 from app.jobs.worker import JobContext, JobError, handler
 from app.models import Upload
@@ -45,8 +46,8 @@ def import_objects(ctx: JobContext, params: dict) -> dict:
             datasets = import_rasters(ctx.session, project_id, files, section=section, folder=folder,
                                       progress=ctx.progress)
             created = [d.id for d in datasets]
-        elif kind in ("wireframes", "lines"):
-            read = import_wireframes if kind == "wireframes" else import_lines
+        elif kind in ("wireframes", "lines", "blocks"):
+            read = {"wireframes": import_wireframes, "lines": import_lines, "blocks": import_block_model}[kind]
             imported = []
             for i, u in enumerate(uploads):
                 def progress(fraction: float, message: str, i=i, name=u.filename) -> None:
@@ -59,7 +60,7 @@ def import_objects(ctx: JobContext, params: dict) -> dict:
             # Sources move into the store only now: after this nothing can fail or be cancelled,
             # so a cancelled job leaves the uploads in place for another attempt.
             for dataset, u in imported:
-                dataset.blobs = {"source": blobs.put_file(ctx.session, part_path(u.id))}
+                dataset.blobs = {**(dataset.blobs or {}), "source": blobs.put_file(ctx.session, part_path(u.id))}
                 created.append(dataset.id)
         else:
             raise JobError(f"Неизвестный тип объекта «{kind}»")

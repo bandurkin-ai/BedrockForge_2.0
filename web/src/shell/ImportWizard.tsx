@@ -6,9 +6,10 @@ import { Icon } from "./icons";
 import { formatBytes } from "./JobsPanel";
 import type { UploadState } from "./useJobs";
 
-export type ObjectKind = "wireframes" | "lines" | "rasters";
+export type ObjectKind = "wireframes" | "lines" | "rasters" | "blocks";
 
-const KIND_TITLES: Record<ObjectKind, string> = { wireframes: "Каркасы", lines: "Линии", rasters: "Растры" };
+const KIND_TITLES: Record<ObjectKind, string> = { wireframes: "Каркасы", lines: "Линии", rasters: "Растры", blocks: "Блочная модель" };
+const isObjectKind = (k: string): k is ObjectKind => k in KIND_TITLES;
 const TABLE_SUFFIXES = [".dat", ".csv", ".txt", ".xlsx", ".xlsm", ".xls"];
 const OBJECT_SUFFIXES = [".tridb", ".dxf", ".obj", ".stl", ".str", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp",
   ".jgw", ".jpgw", ".pgw", ".pngw", ".tfw", ".tifw", ".bpw", ".wld", ".tab", ".grf"];
@@ -19,14 +20,17 @@ const suffix = (name: string) => {
   return i < 0 ? "" : name.slice(i).toLowerCase();
 };
 
-/** Files sorted before sending: object files go up, tables go to the drillhole wizard. */
-export function sortFiles(files: File[]): { objects: File[]; tables: File[]; unknown: File[] } {
+/**
+ * Files sorted before sending: object files go up, tables go to the drillhole wizard. A table
+ * that is a block model (`blockModels`, found by sniffBlocks) is an object file too.
+ */
+export function sortFiles(files: File[], blockModels: Set<File> = new Set()): { objects: File[]; tables: File[]; unknown: File[] } {
   const objects: File[] = [];
   const tables: File[] = [];
   const unknown: File[] = [];
   for (const f of files) {
     const s = suffix(f.name);
-    if (OBJECT_SUFFIXES.includes(s)) objects.push(f);
+    if (OBJECT_SUFFIXES.includes(s) || blockModels.has(f)) objects.push(f);
     else if (TABLE_SUFFIXES.includes(s)) tables.push(f);
     else unknown.push(f);
   }
@@ -46,7 +50,7 @@ export function planJobs(rows: Row[]): { kind: ObjectKind; uploads: string[]; na
   const rasters = [...images, ...rows.filter((r) => r.kind === "sidecar" && used.has(r.filename))];
   if (images.length) plan.push({ kind: "rasters", uploads: rasters.map((r) => r.upload), names: rasters.map((r) => r.filename) });
   for (const r of rows) {
-    if (r.chosen === "wireframes" || r.chosen === "lines") plan.push({ kind: r.chosen, uploads: [r.upload], names: [r.filename] });
+    if (r.chosen === "wireframes" || r.chosen === "lines" || r.chosen === "blocks") plan.push({ kind: r.chosen, uploads: [r.upload], names: [r.filename] });
   }
   return plan;
 }
@@ -56,10 +60,12 @@ export function planJobs(rows: Row[]): { kind: ObjectKind; uploads: string[]; na
  * parameters (kind, folder, placement of images without a georeference) → background jobs.
  */
 export function ImportWizard({
-  projectId, files, kindHint, datasets, sectionFrame, trackUpload, updateUpload, onStarted, onTables, onClose,
+  projectId, files, blockModels, kindHint, datasets, sectionFrame, trackUpload, updateUpload, onStarted, onTables, onClose,
 }: {
   projectId: number;
   files: File[];
+  /** Tables that are block models (sniffed from their header): imported as objects. */
+  blockModels?: Set<File>;
   /** Opened from the "Каркасы" / "Линии" / "Растры" buttons: their kind is preselected. */
   kindHint: ObjectKind | null;
   datasets: Dataset[];
@@ -70,7 +76,7 @@ export function ImportWizard({
   onTables: (files: File[]) => void;
   onClose: () => void;
 }) {
-  const sorted = useMemo(() => sortFiles(files), [files]);
+  const sorted = useMemo(() => sortFiles(files, blockModels), [files, blockModels]);
   const [stage, setStage] = useState<"upload" | "review" | "starting">(sorted.objects.length ? "upload" : "review");
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [rows, setRows] = useState<Row[]>([]);
@@ -122,8 +128,9 @@ export function ImportWizard({
         if (!alive.current) return;
         setRows(detected.map((d) => ({
           ...d,
-          chosen: d.kind === "wireframes" || d.kind === "lines" || d.kind === "rasters"
-            ? (kindHint && kindHint !== "rasters" && d.kind !== "rasters" && suffix(d.filename) === ".dxf" ? kindHint : d.kind)
+          chosen: d.kind === "blocks" ? "blocks"
+            : d.kind === "wireframes" || d.kind === "lines" || d.kind === "rasters"
+            ? ((kindHint === "wireframes" || kindHint === "lines") && d.kind !== "rasters" && suffix(d.filename) === ".dxf" ? kindHint : d.kind)
             : d.kind === "sidecar" ? "rasters" : null,
         })));
         setStage("review");
@@ -222,7 +229,7 @@ export function ImportWizard({
                         <td>
                           {r.kind === "sidecar" ? (
                             <span className="muted small">привязка растра</span>
-                          ) : r.kind === "wireframes" || r.kind === "lines" || r.kind === "rasters" ? (
+                          ) : isObjectKind(r.kind) ? (
                             <select value={r.chosen ?? ""} onChange={(e) => setKind(r.upload, (e.target.value || null) as ObjectKind | null)} aria-label={`Тип: ${r.filename}`}>
                               {(suffix(r.filename) === ".dxf" ? (["wireframes", "lines"] as ObjectKind[]) : [r.kind]).map((k) => (
                                 <option key={k} value={k}>{KIND_TITLES[k]}</option>

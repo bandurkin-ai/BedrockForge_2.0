@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSections, rasterImageUrl, type Dataset, type Hole, type IntervalsData, type ValueStats, type VerticalPlacement } from "../api";
+import { blockMeta, getBlockRender, getBlockValues, getSections, rasterImageUrl, type Dataset, type Hole, type IntervalsData, type ValueStats, type VerticalPlacement } from "../api";
 import { VEXAG_STEPS, isShown, layerKey, type ViewPreset, type WorkspaceState } from "../shell/workspace";
 import { makeScale } from "./colorScale";
 import { ScaleStrip, type VizSettings } from "./ComponentPanel";
 import { azimuthDeg, DEFAULT_WINDOW, defaultSection, shiftSection, type SectionLine } from "./geometry";
 import { SectionMap } from "./SectionMap";
-import { GeoScene, type Hover } from "./scene3d";
+import { GeoScene, MAX_SHOWN_BLOCKS, type Hover } from "./scene3d";
+import { blockColors, defaultBlockStyle, type BlockStyle } from "./blockStyle";
+import { unitTitle } from "../shell/BlockModelPanel";
+import type { ColorScale } from "./colorScale";
 import { loadHoles, loadIntervals, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
 
 function auditColor(h: Hole | undefined): string {
@@ -27,6 +30,10 @@ export interface SceneViewProps {
   onEmptyClick: () => void;
   /** Gives the shell the view actions, so ribbon buttons, hotkeys and Claude can use them. */
   registerApi?: (api: SceneApi) => void;
+  /** How each block model is shown (default: by its first grade). */
+  blockStyles?: Record<number, BlockStyle>;
+  /** A block picked in the view. */
+  onPickBlock?: (modelId: number, index: number) => void;
 }
 
 export interface SceneApi {
@@ -55,6 +62,12 @@ export function SceneView(props: SceneViewProps) {
   const [wireframesShown, setWireframesShown] = useState(0);
   const loadedLines = useRef(new Set<number>());
   const loadedRasters = useRef(new Set<number>());
+  // Block models: those requested, those whose geometry is in the scene, attribute values by "id:key".
+  const loadedBlocks = useRef(new Set<number>());
+  const readyBlocks = useRef(new Set<number>());
+  const blockValues = useRef(new Map<string, Float32Array>());
+  const styleRun = useRef(0);
+  const [blockLegend, setBlockLegend] = useState<{ name: string; unit: string | null; scale: ColorScale | null; shown: number; total: number; tooMany: boolean } | null>(null);
   const holesBySet = useRef(new Map<number, Map<string, Hole>>());
   const [webglError, setWebglError] = useState<string | null>(null);
   const [loading, setLoading] = useState(0);
@@ -90,6 +103,7 @@ export function SceneView(props: SceneViewProps) {
   const wireframes = useMemo(() => (datasets ?? []).flatMap((d) => d.wireframes ?? []), [datasets]);
   const lineLayers = useMemo(() => (datasets ?? []).flatMap((d) => d.lines ?? []), [datasets]);
   const rasters = useMemo(() => (datasets ?? []).flatMap((d) => d.rasters ?? []), [datasets]);
+  const blockModels = useMemo(() => (datasets ?? []).filter((d) => d.kind === "blocks"), [datasets]);
   const component = viz.component ?? sets.find((d) => d.id === activeSet)?.components?.[0]?.name ?? sets[0]?.components?.[0]?.name ?? null;
   const scale = useMemo(() => makeScale(viz, refStats), [viz, refStats]);
   const unit = sets.flatMap((d) => d.components ?? []).find((c) => c.name === component)?.unit ?? null;
@@ -110,6 +124,11 @@ export function SceneView(props: SceneViewProps) {
       else live.current.onEmptyClick();
     };
     scene.onHover = setHover;
+    scene.onPickBlock = (pick) => {
+      if (!pick || !live.current.onPickBlock) return false;
+      live.current.onPickBlock(pick.modelId, pick.index);
+      return true;
+    };
     scene.onGroundClick = (x, y) => addPointRef.current(x, y);
     addPointRef.current = (x, y) => {
       const start = drawingRef.current;
@@ -168,6 +187,8 @@ export function SceneView(props: SceneViewProps) {
       loadedWireframes.current.clear();
       loadedLines.current.clear();
       loadedRasters.current.clear();
+      loadedBlocks.current.clear();
+      readyBlocks.current.clear();
     };
   }, []);
 
@@ -355,6 +376,75 @@ export function SceneView(props: SceneViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rasters, ws.hidden]);
 
+  // ---- block models: geometry once, colours on every style change
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const ids = new Set(blockModels.map((d) => d.id));
+    for (const id of [...loadedBlocks.current]) {
+      if (!ids.has(id)) {
+        scene.removeBlockModel(id);
+        loadedBlocks.current.delete(id);
+        readyBlocks.current.delete(id);
+      }
+    }
+    for (const d of blockModels) {
+      if (loadedBlocks.current.has(d.id) || !isShown(ws, layerKey.blocks(d.id))) continue;
+      loadedBlocks.current.add(d.id);
+      const meta = blockMeta(d);
+      setLoading((n) => n + 1);
+      getBlockRender(d.id)
+        .then((render) => {
+          if (!loadedBlocks.current.has(d.id)) return;
+          scene.addBlockModel(d.id, render, meta.render_origin, meta.extent.min, meta.extent.max);
+          readyBlocks.current.add(d.id);
+          void styleBlocks();
+        })
+        .catch((e: Error) => {
+          loadedBlocks.current.delete(d.id);
+          setError(`Блочная модель не загрузилась: ${e.message}`);
+        })
+        .finally(() => setLoading((n) => n - 1));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockModels, ws.hidden]);
+
+  async function styleBlocks() {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const run = ++styleRun.current;
+    let legend: typeof blockLegend = null;
+    for (const d of live.current.datasets ?? []) {
+      if (d.kind !== "blocks" || !readyBlocks.current.has(d.id)) continue;
+      const meta = blockMeta(d);
+      const style = live.current.blockStyles?.[d.id] ?? defaultBlockStyle(meta);
+      const attr = meta.attributes.find((a) => a.key === style.attribute) ?? null;
+      let values: Float32Array | null = null;
+      if (attr) {
+        const key = `${d.id}:${attr.key}`;
+        values = blockValues.current.get(key) ?? null;
+        if (!values) {
+          try {
+            values = await getBlockValues(d.id, attr.key);
+          } catch (e) {
+            setError(`Значения поля ${attr.name} не загрузились: ${(e as Error).message}`);
+            continue;
+          }
+          blockValues.current.set(key, values);
+        }
+      }
+      if (run !== styleRun.current) return;
+      const shownLayer = isShown(live.current.ws, layerKey.blocks(d.id));
+      const c = blockColors(meta.block_count, attr, values, style);
+      const drawn = scene.setBlockStyle(d.id, c.colors, c.visible, style.opacity, shownLayer);
+      if (shownLayer && !legend) {
+        legend = { name: attr ? attr.name : d.name, unit: attr?.unit ?? null, scale: c.scale, shown: c.shown, total: meta.block_count, tooMany: drawn < 0 };
+      }
+    }
+    if (run === styleRun.current) setBlockLegend(legend);
+  }
+  useEffect(() => void styleBlocks(), [props.blockStyles, ws.hidden, datasets]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function applyStyles() {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -445,7 +535,7 @@ export function SceneView(props: SceneViewProps) {
   const selectedCollar = activeSet !== null && selectedHole ? holesBySet.current.get(activeSet)?.get(selectedHole) : undefined;
   const hoverInfo = hover ? holesBySet.current.get(hover.setId)?.get(hover.holeId) : undefined;
   const hoverSet = hover ? sets.find((d) => d.id === hover.setId) : undefined;
-  const nothing = datasets !== null && sets.every((d) => !d.counts?.collar) && wireframes.length === 0 && lineLayers.length === 0 && rasters.length === 0;
+  const nothing = datasets !== null && sets.every((d) => !d.counts?.collar) && wireframes.length === 0 && lineLayers.length === 0 && rasters.length === 0 && blockModels.length === 0;
 
   return (
     <div className="scene-view">
@@ -510,6 +600,16 @@ export function SceneView(props: SceneViewProps) {
         <label className="check"><input type="checkbox" checked={ws.grid} onChange={(e) => props.onWorkspace({ grid: e.target.checked })} /> сетка</label>
       </div>
       {component && <div className="scene-legend"><ScaleStrip component={component} unit={unit} scale={scale} log={viz.log} /></div>}
+      {blockLegend && (
+        <div className="scene-legend block-legend">
+          {blockLegend.scale ? <ScaleStrip component={`Блоки: ${blockLegend.name}`} unit={blockLegend.unit ? unitTitle(blockLegend.unit as never) : null} scale={blockLegend.scale} log={blockLegend.scale.log} /> : <strong>Блоки: {blockLegend.name}</strong>}
+          <span className="muted small">
+            {blockLegend.tooMany
+              ? ` · показать можно до ${MAX_SHOWN_BLOCKS.toLocaleString("ru-RU")} блоков: сузьте отбор (${blockLegend.shown.toLocaleString("ru-RU")})`
+              : ` · показано ${blockLegend.shown.toLocaleString("ru-RU")} из ${blockLegend.total.toLocaleString("ru-RU")}`}
+          </span>
+        </div>
+      )}
 
       <div className={drawing !== false ? "canvas three crosshair" : "canvas three"} ref={containerRef}>
         <div ref={labelRef} className="label3d" style={{ display: "none" }}>{selectedHole}</div>

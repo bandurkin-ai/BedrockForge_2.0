@@ -44,7 +44,7 @@ POLL_SECONDS = 0.5
 class ImportIn(BaseModel):
     uploads: list[str] = Field(min_length=1, max_length=100)
     # None: detected from the first file.
-    kind: Literal["wireframes", "lines", "rasters"] | None = None
+    kind: Literal["wireframes", "lines", "rasters", "blocks"] | None = None
     folder: str = Field("", max_length=255)
     # Images without a georeference stand in this vertical plane.
     section: VerticalPlacement | None = None

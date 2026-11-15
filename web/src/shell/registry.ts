@@ -1,5 +1,5 @@
 import type { MutableRefObject } from "react";
-import type { AuditRun, Dataset, Hole, JobInfo, Project, RasterPatch, Summary, VerticalPlacement } from "../api";
+import { blockMeta, blockReport, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
 import type { TableKind } from "../route";
 import { ANALYSES, type StatsAnalysis } from "../stats/analyses";
 import type { VizSettings } from "../viz/ComponentPanel";
@@ -42,6 +42,8 @@ export interface Live {
   openChart: (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings, dendrogram?: Partial<DendrogramSettings>) => Promise<string>;
   /** Opens a chart saved in the tree. */
   openSavedChart: (chartId: number) => Promise<string>;
+  /** Opens the grade–tonnage window of a block model. */
+  openBlockReport: (modelId: number) => void;
   reload: () => void;
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
@@ -72,8 +74,8 @@ export interface Live {
 
 const TABLE_TITLES: Record<TableKind, string> = { collar: "Устья", survey: "Инклинометрия", assay: "Пробы" };
 const PANEL_TITLES: Record<PanelId, string> = { project: "Дерево проекта", properties: "Свойства", assistant: "Claude", bottom: "Нижняя панель" };
-const LAYER_PARTS = ["set", "paths", "intervals", "collars", "wireframe", "lines", "raster"] as const;
-const OBJECT_TITLES: Record<ObjectKind, string> = { wireframe: "каркас", lines: "слой линий", raster: "растр" };
+const LAYER_PARTS = ["set", "paths", "intervals", "collars", "wireframe", "lines", "raster", "blocks"] as const;
+const OBJECT_TITLES: Record<ObjectKind, string> = { wireframe: "каркас", lines: "слой линий", raster: "растр", blocks: "блочная модель" };
 type LayerPart = (typeof LAYER_PARTS)[number];
 
 /**
@@ -86,9 +88,10 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
   const wireframes = () => s().datasets.flatMap((d) => d.wireframes ?? []);
   const lineLayers = () => s().datasets.flatMap((d) => d.lines ?? []);
   const rasters = () => s().datasets.flatMap((d) => d.rasters ?? []);
+  const blockModels = () => s().datasets.filter((d) => d.kind === "blocks");
   /** A tree object by kind and id, or an error Claude can read. */
   const findObject = (kind: ObjectKind, id: number): { id: number; name: string } => {
-    const list = kind === "wireframe" ? wireframes() : kind === "lines" ? lineLayers() : rasters();
+    const list = kind === "wireframe" ? wireframes() : kind === "lines" ? lineLayers() : kind === "blocks" ? blockModels() : rasters();
     const found = list.find((x) => x.id === id);
     if (!found) throw new Error(`Объекта «${OBJECT_TITLES[kind]}» с id ${id} нет в проекте`);
     return found;
@@ -152,7 +155,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       title: "Показать или скрыть слой",
       description:
         "Видимость объекта в 3D. layer: set — весь набор скважин, paths / intervals / collars — стволы, содержания, устья набора (id = set_id), " +
-        "wireframe — каркас, lines — слой линий, raster — растр (id объекта из data_list_datasets).",
+        "wireframe — каркас, lines — слой линий, raster — растр, blocks — блочная модель (id объекта из data_list_datasets).",
       params: {
         layer: { type: "string", enum: LAYER_PARTS },
         id: { type: "integer" },
@@ -164,9 +167,9 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         const n = id as number;
         let key: string;
         let name: string;
-        if (part === "wireframe" || part === "lines" || part === "raster") {
+        if (part === "wireframe" || part === "lines" || part === "raster" || part === "blocks") {
           const object = findObject(part, n);
-          key = part === "wireframe" ? layerKey.wireframe(n) : part === "lines" ? layerKey.lines(n) : layerKey.raster(n);
+          key = part === "wireframe" ? layerKey.wireframe(n) : part === "lines" ? layerKey.lines(n) : part === "blocks" ? layerKey.blocks(n) : layerKey.raster(n);
           name = `${OBJECT_TITLES[part]} «${object.name}»`;
         } else {
           const set = targetSet(n);
@@ -219,8 +222,8 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       title: "Выбрать объект",
       description:
         "Показывает свойства объекта дерева: wireframe — каркас (площадь, объём, замкнутость), lines — слой линий (число, длина), " +
-        "raster — растр (привязка, отклонения опорных точек, высота). id = null снимает выбор.",
-      params: { kind: { type: "string", enum: ["wireframe", "lines", "raster"] }, id: { type: "integer", nullable: true } },
+        "raster — растр (привязка, отклонения опорных точек, высота), blocks — блочная модель (сетка, проверки, поля, показ). id = null снимает выбор.",
+      params: { kind: { type: "string", enum: ["wireframe", "lines", "raster", "blocks"] }, id: { type: "integer", nullable: true } },
       required: ["kind", "id"],
       run: ({ kind, id }) => {
         if (id === null) {
@@ -772,6 +775,42 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       params: { chart_id: { type: "integer" } },
       required: ["chart_id"],
       run: ({ chart_id }) => s().openSavedChart(Number(chart_id)),
+    },
+    {
+      id: "blocks.report",
+      title: "Отчёт по бортам блочной модели",
+      description:
+        "Тоннаж, содержания и металл блочной модели по бортовым содержаниям; открывает окно отчёта и возвращает таблицу. " +
+        "model_id — id модели (data_list_datasets, kind blocks); density — поле плотности (имя) или density_value — постоянная, т/м³; " +
+        "grades — поля содержаний через запятую; cutoff_field — поле борта; cutoffs — борта через запятую (блок в борту, если значение ≥ борта). " +
+        "По умолчанию — сохранённые в модели плотность и содержания (SG, поля *_CUT).",
+      params: {
+        model_id: { type: "integer" }, density: { type: "string" }, density_value: { type: "number" },
+        grades: { type: "string" }, cutoff_field: { type: "string" }, cutoffs: { type: "string" },
+      },
+      required: ["model_id"],
+      run: async (args) => {
+        const d = blockModels().find((x) => x.id === Number(args.model_id));
+        if (!d) throw new Error(`Блочной модели ${args.model_id} нет в проекте`);
+        const meta = blockMeta(d);
+        const keyOf = (name: string) => {
+          const a = meta.attributes.find((x) => x.name.toUpperCase() === name.trim().toUpperCase() || x.key === name.trim());
+          if (!a) throw new Error(`Поля «${name}» нет в модели; поля: ${meta.attributes.map((x) => x.name).join(", ")}`);
+          return a.key;
+        };
+        const grades = typeof args.grades === "string" && args.grades ? args.grades.split(",").map(keyOf) : meta.report?.grades ?? [];
+        const density = typeof args.density === "string" && args.density ? keyOf(args.density) : typeof args.density_value === "number" ? null : meta.report?.density ?? null;
+        const densityValue = typeof args.density_value === "number" ? args.density_value : density ? null : 2.7;
+        const cutoffField = typeof args.cutoff_field === "string" && args.cutoff_field ? keyOf(args.cutoff_field) : grades[0] ?? null;
+        const cutoffs = typeof args.cutoffs === "string" && args.cutoffs ? args.cutoffs.split(",").map(Number).filter(Number.isFinite) : [0, 0.3, 0.5, 1, 2];
+        const r = await blockReport(d.id, { density, density_value: densityValue, grades, cutoff_field: cutoffField, cutoffs });
+        s().openBlockReport(d.id);
+        const head = ["борт", "млн т", ...r.grades.flatMap((g) => [`${g.name} (${g.unit ?? "—"})`, `${g.name}: металл`])];
+        const lines = r.rows.map((row) => [row.cutoff ?? "—", (row.tonnes / 1e6).toFixed(4),
+          ...r.grades.flatMap((g) => [row.grades[g.key]?.grade?.toFixed(4) ?? "—", row.grades[g.key]?.metal ? `${row.grades[g.key].metal!.value.toFixed(3)} ${row.grades[g.key].metal!.unit}` : "—"])].join(" | "));
+        return [`Модель «${d.name}», плотность: ${typeof r.density === "number" ? `${r.density} т/м³` : r.density}`, head.join(" | "), ...lines,
+          r.excluded_no_density ? `Блоков без плотности: ${r.excluded_no_density}` : ""].filter(Boolean).join("\n");
+      },
     },
     {
       id: "ribbon.toggle",

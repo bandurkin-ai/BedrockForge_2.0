@@ -1,0 +1,261 @@
+"""Block models: DAT (BOCU-1 and cp1251) and CSV readers, grid, checks, import job, report."""
+
+from __future__ import annotations
+
+import struct
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from app.blocks.report import TROY_OUNCE_G
+from app.formats.blockmodel import (
+    BlockModelError, check_model, describe_grid, header_fields, looks_like_block_model, read_block_model,
+)
+from app.formats.micromine import read_columns
+from app.formats.registry import detect
+from tests.dat_builder import encode_bocu, header
+from tests.test_bocu1 import ICU_VECTORS
+from tests.test_storage_jobs import _project, upload
+
+ORIGIN = np.array([466167.5, 4584527.5, 202.5])  # corner of parent (0, 0, 0); first centre 466170, 4584530, 205
+PARENT = 5.0
+# BOCU-1 bytes ICU writes for a Cyrillic label (prev starts afresh in every field).
+RUDA = dict(ICU_VECTORS)["Руда окисл. ёЁ"]
+
+
+def make_blocks(seed: int = 3) -> dict[str, np.ndarray]:
+    """A sub-blocked model on a 4 × 3 × 2 parent grid of 5 m: some parents whole, some split
+    along X into 2 + 3 m, some into 1 m × 5 × 5 slices, some into 5 × 5 × (2 + 2 + 1)."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i in range(4):
+        for j in range(3):
+            for k in range(2):
+                if (i + j + k) % 5 == 4:
+                    continue  # an empty parent (air)
+                lo = ORIGIN + PARENT * np.array([i, j, k])
+                kind = (i * 7 + j * 3 + k) % 4
+                if kind == 0:
+                    parts = [(lo, (5, 5, 5))]
+                elif kind == 1:
+                    parts = [(lo, (2, 5, 5)), (lo + [2, 0, 0], (3, 5, 5))]
+                elif kind == 2:
+                    parts = [(lo + [x, 0, 0], (1, 5, 5)) for x in range(5)]
+                else:
+                    parts = [(lo, (5, 5, 2)), (lo + [0, 0, 2], (5, 5, 2)), (lo + [0, 0, 4], (5, 5, 1))]
+                for corner, size in parts:
+                    rows.append((*(corner + np.array(size) / 2), *size))
+    a = np.array(rows)
+    n = len(a)
+    return {
+        "X": a[:, 0], "Y": a[:, 1], "Z": a[:, 2], "_X": a[:, 3], "_Y": a[:, 4], "_Z": a[:, 5],
+        "SG": np.round(rng.uniform(2.4, 3.2, n), 3),
+        "DENSITY": np.full(n, 2.6),
+        "AU_CUT": np.round(rng.lognormal(0, 1, n), 4),
+        "AU": np.round(rng.lognormal(0.1, 1, n), 4),
+        "CU_CUT": np.round(rng.uniform(0, 1, n), 4),
+        "ALT": np.array(["G" if x % 3 else "Q" for x in range(n)]),
+        "OXIDE": (np.arange(n) % 4 == 0).astype(int),
+    }
+
+
+def write_dat(path: Path, m: dict[str, np.ndarray], codepage: str = "BOCU-1", cyrillic: bool = False) -> None:
+    """R fields for geometry and AU, N (text) for SG and OXIDE, C for ALT."""
+    bocu = codepage.upper() == "BOCU-1"
+    enc = (lambda s: encode_bocu(s)) if bocu else (lambda s: s.encode("cp1251"))
+    fields = [("X", "R", 8), ("Y", "R", 8), ("Z", "R", 8), ("_X", "R", 8), ("_Y", "R", 8), ("_Z", "R", 8),
+              ("SG", "N", 10), ("DENSITY", "R", 8), ("AU_CUT", "R", 8), ("AU", "R", 8), ("CU_CUT", "R", 8),
+              ("ALT", "C", 20), ("OXIDE", "N", 3)]
+    out = bytearray(header(codepage))
+    out += f"{len(fields)}   VARIABLES\r\n".encode()
+    for name, kind, width in fields:
+        out += enc(name).ljust(10, b" ") + f" {kind} {width:>3}  3".encode() + b"\r\n"
+    for r in range(len(m["X"])):
+        for name, kind, width in fields:
+            v = m[name][r]
+            if kind == "R":
+                out += struct.pack("<d", float(v))
+            elif kind == "N":
+                text = f"{v:.3f}" if name == "SG" else f"{int(v)}"
+                if name == "SG" and r == 1:
+                    text = ""  # an empty value
+                out += enc(text.rjust(width))[:width].ljust(width, b" ")
+            else:
+                label = "Руда окисл. ёЁ" if cyrillic and str(v) == "Q" else str(v)
+                raw = RUDA if (bocu and label.startswith("Руда")) else enc(label)
+                out += raw.ljust(width, b" ")
+        out += b"\r\n"
+    path.write_bytes(bytes(out))
+
+
+def write_micromine_csv(path: Path, m: dict[str, np.ndarray]) -> None:
+    names = list(m)
+    types = ["CHARACTER" if m[n].dtype.kind in "US" else "DOUBLE" for n in names]
+    lines = [",".join(names), ",".join(types), "466170,5,4584530,5,205,5,CENTRE"]
+    for r in range(len(m["X"])):
+        lines.append(",".join(str(m[n][r]) for n in names))
+    path.write_text("\n".join(lines) + "\n", encoding="cp1251")
+
+
+# ------------------------------------------------------------------------------------ readers
+def test_dat_columns_bocu_numbers_text_and_cyrillic(tmp_path):
+    m = make_blocks()
+    p = tmp_path / "Model.DAT"
+    write_dat(p, m, cyrillic=True)
+    cols = {c.name: c for c in read_columns(p).columns}
+    assert list(cols)[:6] == ["X", "Y", "Z", "_X", "_Y", "_Z"]
+    assert np.array_equal(cols["X"].values, m["X"]) and np.array_equal(cols["AU_CUT"].values, m["AU_CUT"])
+    sg = cols["SG"].values
+    assert np.isnan(sg[1]) and np.allclose(np.delete(sg, 1), np.delete(m["SG"], 1))
+    assert np.array_equal(cols["OXIDE"].values, m["OXIDE"])
+    alt = cols["ALT"]
+    assert alt.kind == "category" and set(alt.labels) == {"G", "Руда окисл. ёЁ"}
+    assert [alt.labels[c] for c in alt.values[:3]] == ["Руда окисл. ёЁ", "G", "G"]
+
+
+def test_cp1251_dat_and_header_padded_to_8192(tmp_path):
+    m = make_blocks()
+    p = tmp_path / "Model.DAT"
+    write_dat(p, m, codepage="ibm-5347_P100-1998")
+    data = p.read_bytes()
+    # The same file with the XML header padded to 8192 bytes, as some exports have it.
+    padded = data[:4096] + b"\x00" * 4096 + data[4096:]
+    p2 = tmp_path / "Padded.DAT"
+    p2.write_bytes(padded)
+    for path in (p, p2):
+        t = read_block_model(path, path.name)
+        assert len(t.centres) == len(m["X"]) and t.format.startswith("Micromine DAT")
+        assert {a.name for a in t.attributes} >= {"SG", "AU_CUT", "ALT"}
+
+
+def test_micromine_csv_grid_line_and_plain_csv(tmp_path):
+    m = make_blocks()
+    p = tmp_path / "Model.csv"
+    write_micromine_csv(p, m)
+    t = read_block_model(p, p.name)
+    assert t.format == "Micromine CSV" and t.grid_hint == {"origin": [466170.0, 4584530.0, 205.0], "size": [5.0, 5.0, 5.0], "at": "centre"}
+    assert np.allclose(t.centres[:, 0], m["X"]) and next(a for a in t.attributes if a.name == "ALT").kind == "category"
+    # A regular model without sizes: the size is the spacing of the centres.
+    q = tmp_path / "regular.csv"
+    q.write_text("EAST;NORTH;RL;AU\n0;0;0;1\n10;0;0;2\n0;10;0;3\n0;0;4;4\n", encoding="utf-8")
+    r = read_block_model(q, q.name)
+    assert r.sizes[0].tolist() == [10.0, 10.0, 4.0] and "регулярная" in r.notes[0]
+    with pytest.raises(BlockModelError, match="центра"):
+        bad = tmp_path / "bad.csv"
+        bad.write_text("A,B\n1,2\n", encoding="utf-8")
+        read_block_model(bad, bad.name)
+
+
+def test_detection_tells_block_models_from_drillhole_tables(tmp_path):
+    m = make_blocks()
+    p = tmp_path / "Model.DAT"
+    write_dat(p, m)
+    assert detect("Model.DAT", p).kind == "blocks"
+    assert header_fields(p, "Model.DAT")[:3] == ["X", "Y", "Z"]
+    assert not looks_like_block_model(["BHID", "FROM", "TO", "X", "Y", "Z", "AU"])
+    assay = tmp_path / "assay.csv"
+    assay.write_text("BHID,FROM,TO,AU\nH1,0,1,0.5\n", encoding="utf-8")
+    assert detect("assay.csv", assay).kind == "drillholes"
+
+
+# ------------------------------------------------------------------------------- grid, checks
+def test_grid_of_a_subblocked_model_and_clean_checks(tmp_path):
+    m = make_blocks()
+    p = tmp_path / "Model.DAT"
+    write_dat(p, m)
+    t = read_block_model(p, p.name)
+    grid, cells, inside = describe_grid(t)
+    assert grid.parent == [5.0, 5.0, 5.0] and np.allclose(grid.origin, ORIGIN) and grid.counts == [4, 3, 2]
+    assert grid.subblocked and inside.all() and grid.parents_used == 19
+    checks = check_model(t, grid, cells, inside)
+    assert not [c for c in checks if c["level"] == "error"], checks
+    assert any(c["code"] == "constant" and "DENSITY" in c["message"] for c in checks)
+    volume = next(c for c in checks if c["code"] == "volume")
+    assert "2 375" in volume["message"]  # 19 parents × 125 m³
+
+
+def test_checks_find_overlaps_crossings_and_duplicates(tmp_path):
+    m = make_blocks()
+    extra = {k: np.append(v, v[0]) for k, v in m.items()}  # a duplicate of block 0
+    # A block crossing from parent (0,0,0) into (1,0,0) and overlapping the blocks there.
+    extra = {k: np.append(v, v[0]) for k, v in extra.items()}
+    extra["X"][-1] = ORIGIN[0] + 4.5
+    extra["_X"][-1] = 2.0
+    extra["_Y"][-1] = 5.0
+    extra["_Z"][-1] = 1.0
+    extra["Y"][-1] = ORIGIN[1] + 2.5
+    extra["Z"][-1] = ORIGIN[2] + 0.5
+    p = tmp_path / "Bad.DAT"
+    write_dat(p, extra)
+    t = read_block_model(p, p.name)
+    grid, cells, inside = describe_grid(t)
+    codes = {c["code"]: c["count"] for c in check_model(t, grid, cells, inside)}
+    assert codes["duplicates"] == 1 and codes["crosses_parent"] == 1
+    assert codes["overlaps"] == 2  # block 0 and its duplicate (the crossing block is not on the grid)
+
+
+# ------------------------------------------------------------------------- import job, report
+def _import(db_client, run_jobs, tmp_path, m) -> tuple[int, dict]:
+    pid = _project(db_client)
+    p = tmp_path / "Model_OK.DAT"
+    write_dat(p, m, cyrillic=True)
+    uid = upload(db_client, pid, "Model_OK.DAT", p.read_bytes(), chunk=1 << 16)
+    det = db_client.post(f"/api/projects/{pid}/detect", json={"uploads": [uid]}).json()[0]
+    assert det["kind"] == "blocks" and "Блочная модель" in det["preview"]["summary"]
+    job = db_client.post(f"/api/projects/{pid}/imports", json={"uploads": [uid]})
+    assert job.status_code == 202, job.text
+    run_jobs()
+    done = db_client.get(f"/api/jobs/{job.json()['id']}").json()
+    assert done["status"] == "done", done
+    (d,) = db_client.get(f"/api/projects/{pid}/datasets").json()
+    return pid, d
+
+
+def test_import_job_and_grade_tonnage_report(db_client, run_jobs, tmp_path):
+    m = make_blocks()
+    _, d = _import(db_client, run_jobs, tmp_path, m)
+    assert d["kind"] == "blocks"
+    meta = d["meta"]
+    n = len(m["X"])
+    assert meta["block_count"] == n and meta["volume"] == pytest.approx(2375.0)
+    assert meta["grid"]["counts"] == [4, 3, 2] and meta["grid"]["subblocked"]
+    attrs = {a["name"]: a for a in meta["attributes"]}
+    assert attrs["AU_CUT"]["unit"] == "g/t" and attrs["CU_CUT"]["unit"] == "%" and attrs["ALT"]["kind"] == "category"
+    # Defaults: SG (it varies), not the constant DENSITY; AU_CUT rather than AU.
+    assert meta["report"]["density"] == attrs["SG"]["key"]
+    assert attrs["AU"]["key"] not in meta["report"]["grades"] and attrs["AU_CUT"]["key"] in meta["report"]["grades"]
+
+    au, cu, sg = attrs["AU_CUT"]["key"], attrs["CU_CUT"]["key"], attrs["SG"]["key"]
+    url = f"/api/blockmodels/{d['id']}/report"
+    r = db_client.post(url, json={"density": sg, "grades": [au, cu], "cutoff_field": au, "cutoffs": [0, 0.5, 1]})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    vol = m["_X"] * m["_Y"] * m["_Z"]
+    sgv = m["SG"].copy()
+    sgv[1] = np.nan  # the empty value
+    t = vol * sgv
+    assert body["excluded_no_density"] == 1
+    for row in body["rows"]:
+        sel = (m["AU_CUT"] >= row["cutoff"]) & np.isfinite(t)
+        assert row["tonnes"] == pytest.approx(t[sel].sum())
+        g = row["grades"][au]
+        assert g["grade"] == pytest.approx((m["AU_CUT"][sel] * t[sel]).sum() / t[sel].sum())
+        assert g["metal"]["value"] == pytest.approx((m["AU_CUT"][sel] * t[sel]).sum() / TROY_OUNCE_G / 1000)
+        assert row["grades"][cu]["metal"]["unit"] == "т"
+    # Constant density, filter by a category, grouping.
+    alt = attrs["ALT"]["key"]
+    g = db_client.post(url, json={"density_value": 2.7, "grades": [au], "filters": [{"key": alt, "labels": ["G"]}],
+                                  "group_by": attrs["OXIDE"]["key"]}).json()
+    total = g["rows"][0]
+    sel = m["ALT"] == "G"
+    assert total["group"] is None and total["tonnes"] == pytest.approx(vol[sel].sum() * 2.7)
+    assert sum(r["tonnes"] for r in g["rows"][1:]) == pytest.approx(total["tonnes"])
+    assert db_client.post(url, json={"grades": [au]}).status_code == 422  # no density
+
+    # A block by its number, attribute values for the viewer.
+    b = db_client.get(f"/api/blockmodels/{d['id']}/blocks/0").json()
+    assert b["centre"][0] == m["X"][0] and b["values"]["ALT"] == "Руда окисл. ёЁ" and b["values"]["AU_CUT"] == m["AU_CUT"][0]
+    raw = db_client.get(f"/api/blockmodels/{d['id']}/values/{au}").content
+    assert np.allclose(np.frombuffer(raw, "<f4"), m["AU_CUT"].astype("<f4"))
+    assert db_client.patch(f"/api/blockmodels/{d['id']}/attributes/{au}", json={"unit": "ppm"}).json()["unit"] == "ppm"

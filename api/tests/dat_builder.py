@@ -16,8 +16,9 @@ def header(codepage: str) -> bytes:
 
 
 def encode_bocu(text: str) -> bytes:
-    """Encode text the way BOCU-1-declared Micromine files store it (ASCII + 0x50)."""
-    return bytes(ord(c) + 0x50 if ord(c) >= 0x50 else ord(c) for c in text)
+    """ASCII text as BOCU-1 writes it in a fresh field (checked against ICU): printable
+    characters are byte + 0x50, space and controls are themselves."""
+    return bytes(ord(c) + 0x50 if 0x20 < ord(c) < 0x80 else ord(c) for c in text)
 
 
 def build(codepage: str, variables: list[tuple[bytes, str, int, int]], records: list[list]) -> bytes:
