@@ -56,18 +56,45 @@ def render_copy(dataset_id: int, session: Session = Depends(get_session)) -> Res
 @router.get("/{dataset_id}/exposed")
 def exposed(dataset_id: int, session: Session = Depends(get_session)) -> Response:
     """uint8 per block: 1 when it can be seen from outside (a big model is drawn as its shell)."""
-    from app.blocks.shell import exposed_mask
-
     d = get_model(session, dataset_id)
     sha = d.blobs.get("exposed")
-    if sha is None:  # imported before the shell was stored
-        g = d.meta["grid"]
-        mask = exposed_mask(blobs.read_array(d.blobs["centres"], "<f8", 3), blobs.read_array(d.blobs["sizes"], "<f4", 3),
-                            g["origin"], g["parent"], g["counts"])
-        sha = blobs.put_array(session, mask, "<u1")
-        d.blobs = {**d.blobs, "exposed": sha}
-        session.commit()
+    if sha is None or not d.meta["grid"].get("aligned"):
+        # Imported before the shell was stored, or with the grid taken from the lowest corner.
+        sha = realign(session, d)
     return Response(blobs.read_bytes(sha), media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
+
+
+def realign(session: Session, d: Dataset) -> str:
+    """A model stored with its grid at its lowest corner: the grid where its whole blocks stand,
+    the check of sub-blocks crossing their parent counted again, the outer shell."""
+    from app.blocks.shell import exposed_mask
+    from app.formats.blockmodel import aligned_origin
+
+    g = dict(d.meta["grid"])
+    centres = blobs.read_array(d.blobs["centres"], "<f8", 3)
+    sizes = blobs.read_array(d.blobs["sizes"], "<f4", 3).astype(np.float64)
+    parent = np.asarray(g["parent"], np.float64)
+    checks = list(d.meta.get("checks", []))
+    if not g.get("from_file"):
+        lo, hi = centres - sizes / 2, centres + sizes / 2
+        origin = aligned_origin(lo, sizes, parent)
+        tol = 1e-6 * np.maximum(parent, 1)
+        i0 = np.floor((lo - origin + tol) / parent).astype(np.int64)
+        i1 = np.floor((hi - origin - tol) / parent).astype(np.int64)
+        inside = (i0 == i1).all(axis=1)
+        g["origin"] = [float(v) for v in origin]
+        g["counts"] = [int(v) for v in (i1.max(axis=0) + 1).clip(min=0)]
+        crossing = int((~inside).sum())
+        checks = [c for c in checks if c.get("code") != "crosses_parent"]
+        if crossing:
+            checks.insert(0, {"level": "error", "code": "crosses_parent", "message": "Субблоки пересекают границу родительского блока", "count": crossing})
+    g["aligned"] = True
+    mask = exposed_mask(centres, sizes, g["origin"], g["parent"], g["counts"])
+    sha = blobs.put_array(session, mask, "<u1")
+    d.blobs = {**d.blobs, "exposed": sha}
+    d.meta = {**d.meta, "grid": g, "checks": checks}
+    session.commit()
+    return sha
 
 
 @router.get("/{dataset_id}/values/{key}")

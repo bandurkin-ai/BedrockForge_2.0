@@ -91,7 +91,7 @@ def store_block_model(session: Session, dataset: Dataset, t: BlockTable, progres
         "render_origin": [float(v) for v in origin],
         "grid": {"origin": grid.origin, "parent": grid.parent, "counts": grid.counts, "subblocked": grid.subblocked,
                  "parents_used": grid.parents_used, "rotation": grid.rotation,
-                 "from_file": t.grid_hint is not None},
+                 "from_file": t.grid_hint is not None, "aligned": True},
         "roles": t.roles,
         "attributes": attributes,
         "checks": checks,

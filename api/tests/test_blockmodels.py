@@ -394,3 +394,39 @@ def test_shell_of_an_imported_model(db_client, run_jobs, tmp_path):
     assert raw.status_code == 200
     mask = np.frombuffer(raw.content, np.uint8)
     assert len(mask) == len(m["X"]) and 0 < mask.sum() <= len(mask)
+
+
+def test_grid_of_a_trimmed_model_starts_where_whole_blocks_stand():
+    """A model trimmed to the ore: its lowest block is a sub-block in the middle of its parent.
+    The grid must still be at the whole blocks, and no sub-block crosses its parent."""
+    from app.formats.blockmodel import BlockTable, aligned_origin, describe_grid
+
+    whole = np.array([[i * 10 + 5, j * 10 + 5, k * 5 + 2.5] for i in range(3) for j in range(3) for k in range(2)], float)
+    subs = np.array([[33.5, 5, 2.5], [37.5, 5, 2.5]])  # parent (3, 0, 0) cut into 3 m (from x=32) and 5 m; 30–32 is air
+    low = np.array([[-6.0, 5, 2.5], [-2.5, 5, 2.5]])  # parent (−1, 0, 0): 4 m from x=−8 … only its right part
+    centres = np.vstack([whole, subs, low]) + [1000, 2000, 300]
+    sizes = np.vstack([np.tile([10, 10, 5.0], (len(whole), 1)), [[3, 10, 5], [5, 10, 5]], [[4, 10, 5], [5, 10, 5]]])
+    o = aligned_origin(centres - sizes / 2, sizes, np.array([10, 10, 5.0]))
+    assert np.allclose(o, [990, 2000, 300])
+    t = BlockTable("CSV", centres, sizes, [], {}, None)
+    info, _, inside = describe_grid(t)
+    assert inside.all() and info.origin == [990, 2000, 300]
+
+
+def test_old_model_is_realigned_on_first_show(db_client, db_engine, run_jobs, tmp_path):
+    from sqlalchemy.orm import Session
+
+    from app.models import Dataset
+
+    m = make_blocks()
+    pid, d = _import(db_client, run_jobs, tmp_path, m)
+    with Session(db_engine) as s:  # as stored before: no shell, the grid one block off
+        ds = s.get(Dataset, d["id"])
+        g = {k: v for k, v in ds.meta["grid"].items() if k != "aligned"}
+        g["origin"] = [v - 1.5 for v in g["origin"]]
+        ds.meta = {**ds.meta, "grid": g}
+        ds.blobs = {k: v for k, v in ds.blobs.items() if k != "exposed"}
+        s.commit()
+    assert db_client.get(f"/api/blockmodels/{d['id']}/exposed").status_code == 200
+    (d2,) = db_client.get(f"/api/projects/{pid}/datasets").json()
+    assert d2["meta"]["grid"]["aligned"] and np.allclose(d2["meta"]["grid"]["origin"], d["meta"]["grid"]["origin"])

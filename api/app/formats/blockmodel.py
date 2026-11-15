@@ -270,6 +270,28 @@ class GridInfo:
     rotation: float = 0.0
 
 
+def aligned_origin(lo: np.ndarray, sizes: np.ndarray, parent: np.ndarray) -> np.ndarray:
+    """Corner of parent (0, 0, 0) when the file does not give the grid. The lowest corner of the model
+    is not always on the grid (a model trimmed to the ore or under the topography starts with a
+    sub-block in the middle of its parent): the grid is where blocks of the full parent size stand."""
+    if not len(lo):
+        return np.zeros(3)
+    origin = lo.min(axis=0).astype(np.float64)
+    for a in range(3):
+        p = float(parent[a])
+        if p <= 0:
+            continue
+        whole = np.abs(sizes[:, a] - p) <= 1e-6 * max(p, 1)
+        corners = lo[whole, a] if whole.any() else lo[:, a]
+        if len(corners) > 2_000_000:
+            corners = corners[:: len(corners) // 2_000_000 + 1]
+        residue = np.round(np.mod(corners - origin[a], p), 4) % round(p, 4)
+        values, counts = np.unique(residue, return_counts=True)
+        r = float(values[np.argmax(counts)])
+        origin[a] += r - p if r > 0 else 0.0  # one step down so that every block has an index ≥ 0
+    return origin
+
+
 def describe_grid(t: BlockTable) -> tuple[GridInfo, np.ndarray, np.ndarray]:
     """The parent grid and, per block, its parent cell (i, j, k) and whether it lies inside it."""
     lo = t.centres - t.sizes / 2
@@ -280,7 +302,7 @@ def describe_grid(t: BlockTable) -> tuple[GridInfo, np.ndarray, np.ndarray]:
         origin = o - parent / 2 if t.grid_hint["at"] == "centre" else o
     else:
         parent = t.sizes.max(axis=0) if len(t.sizes) else np.ones(3)
-        origin = lo.min(axis=0) if len(lo) else np.zeros(3)
+        origin = aligned_origin(lo, t.sizes, parent)
     tol = 1e-6 * np.maximum(parent, 1)
     i0 = np.floor((lo - origin + tol) / parent).astype(np.int64)
     i1 = np.floor((hi - origin - tol) / parent).astype(np.int64)
