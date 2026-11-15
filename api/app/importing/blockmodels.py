@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 from sqlalchemy.orm import Session
 
+from app.blocks.shell import exposed_mask
 from app.formats.blockmodel import (
     BlockModelError, BlockTable, check_model, describe_grid, guess_unit, read_block_model, stats_of,
 )
@@ -65,6 +66,8 @@ def store_block_model(session: Session, dataset: Dataset, t: BlockTable, progres
         render[a:a + step, :3] = t.centres[a:a + step] - origin
         render[a:a + step, 3:] = t.sizes[a:a + step]
     refs["render"] = blobs.put_array(session, render, "<f4")
+    progress(0.78, "Внешняя оболочка модели")
+    refs["exposed"] = blobs.put_array(session, exposed_mask(t.centres, t.sizes, grid.origin, grid.parent, grid.counts), "<u1")
     attributes = []
     for i, c in enumerate(t.attributes):
         key = f"a{i}"

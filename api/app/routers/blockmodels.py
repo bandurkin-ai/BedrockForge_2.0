@@ -53,6 +53,23 @@ def render_copy(dataset_id: int, session: Session = Depends(get_session)) -> Res
                         headers={"ETag": f'"{sha}"', "Cache-Control": "private, max-age=31536000, immutable"})
 
 
+@router.get("/{dataset_id}/exposed")
+def exposed(dataset_id: int, session: Session = Depends(get_session)) -> Response:
+    """uint8 per block: 1 when it can be seen from outside (a big model is drawn as its shell)."""
+    from app.blocks.shell import exposed_mask
+
+    d = get_model(session, dataset_id)
+    sha = d.blobs.get("exposed")
+    if sha is None:  # imported before the shell was stored
+        g = d.meta["grid"]
+        mask = exposed_mask(blobs.read_array(d.blobs["centres"], "<f8", 3), blobs.read_array(d.blobs["sizes"], "<f4", 3),
+                            g["origin"], g["parent"], g["counts"])
+        sha = blobs.put_array(session, mask, "<u1")
+        d.blobs = {**d.blobs, "exposed": sha}
+        session.commit()
+    return Response(blobs.read_bytes(sha), media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
+
+
 @router.get("/{dataset_id}/values/{key}")
 def attribute_values(dataset_id: int, key: str, session: Session = Depends(get_session)) -> Response:
     """Values of an attribute as float32 per block (categories: their code, empty = NaN), for colouring."""

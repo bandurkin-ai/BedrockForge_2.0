@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { blockMeta, getBlockRender, getBlockValues, getSections, rasterImageUrl, type Dataset, type Hole, type VerticalPlacement } from "../api";
+import { blockMeta, getBlockExposed, getBlockRender, getBlockValues, getSections, rasterImageUrl, type Dataset, type Hole, type VerticalPlacement } from "../api";
 import { VEXAG_STEPS, isShown, layerKey, type ViewPreset, type WorkspaceState } from "../shell/workspace";
 import { ScaleStrip, type VizSettings } from "./ComponentPanel";
 import { azimuthDeg, DEFAULT_WINDOW, defaultSection, shiftSection, type SectionLine } from "./geometry";
@@ -87,7 +87,9 @@ export function SceneView(props: SceneViewProps) {
   const readyBlocks = useRef(new Set<number>());
   const blockValues = useRef(new Map<string, Float32Array>());
   const styleRun = useRef(0);
-  const [blockLegend, setBlockLegend] = useState<{ name: string; unit: string | null; scale: ColorScale | null; shown: number; total: number; tooMany: boolean } | null>(null);
+  const [blockLegend, setBlockLegend] = useState<{ name: string; unit: string | null; scale: ColorScale | null; shown: number; total: number; tooMany: boolean; shell: number | null } | null>(null);
+  // Outer shells of big models, by model id (they do not change when values are edited).
+  const blockShells = useRef(new Map<number, Uint8Array>());
   const holesBySet = useRef(new Map<number, Map<string, Hole>>());
   // Downhole displays: the settings each was built with, and their legends.
   const loadedLogs = useRef(new Map<number, string>());
@@ -485,9 +487,27 @@ export function SceneView(props: SceneViewProps) {
       if (run !== styleRun.current) return;
       const shownLayer = isShown(live.current.ws, layerKey.blocks(d.id));
       const c = blockColors(meta.block_count, attr, values, style);
+      // Too many blocks for the browser: draw only those that can be seen from outside.
+      let shell = false;
+      if (c.shown > MAX_SHOWN_BLOCKS) {
+        let mask = blockShells.current.get(d.id) ?? null;
+        if (!mask) {
+          try {
+            mask = await getBlockExposed(d.id);
+            blockShells.current.set(d.id, mask);
+          } catch (e) {
+            setError(`Оболочка блочной модели не загрузилась: ${(e as Error).message}`);
+          }
+        }
+        if (run !== styleRun.current) return;
+        if (mask && mask.length === c.visible.length) {
+          for (let i = 0; i < mask.length; i++) c.visible[i] &= mask[i];
+          shell = true;
+        }
+      }
       const drawn = scene.setBlockStyle(d.id, c.colors, c.visible, style.opacity, shownLayer);
       if (shownLayer && !legend) {
-        legend = { name: attr ? attr.name : d.name, unit: attr?.unit ?? null, scale: c.scale, shown: c.shown, total: meta.block_count, tooMany: drawn < 0 };
+        legend = { name: attr ? attr.name : d.name, unit: attr?.unit ?? null, scale: c.scale, shown: c.shown, total: meta.block_count, tooMany: drawn < 0, shell: shell ? Math.max(drawn, 0) : null };
       }
     }
     if (run === styleRun.current) setBlockLegend(legend);
@@ -655,6 +675,8 @@ export function SceneView(props: SceneViewProps) {
           <span className="muted small">
             {blockLegend.tooMany
               ? ` · показать можно до ${MAX_SHOWN_BLOCKS.toLocaleString("ru-RU")} блоков: сузьте отбор (${blockLegend.shown.toLocaleString("ru-RU")})`
+              : blockLegend.shell !== null
+              ? ` · отобрано ${blockLegend.shown.toLocaleString("ru-RU")} из ${blockLegend.total.toLocaleString("ru-RU")}, показана внешняя оболочка: ${blockLegend.shell.toLocaleString("ru-RU")} блоков`
               : ` · показано ${blockLegend.shown.toLocaleString("ru-RU")} из ${blockLegend.total.toLocaleString("ru-RU")}`}
           </span>
         </div>

@@ -73,6 +73,9 @@ def find_roles(names: list[str]) -> dict[str, str | None]:
     for axis in "xyz":
         roles[axis] = _find(names, CENTRE_NAMES[axis])
         roles["d" + axis] = _find(names, SIZE_NAMES[axis])
+        # Micromine names the size after the centre with "_": EAST → _EAST, RL → _RL.
+        if roles[axis] and not roles["d" + axis]:
+            roles["d" + axis] = _find(names, ("_" + roles[axis].upper(),))
     return roles
 
 

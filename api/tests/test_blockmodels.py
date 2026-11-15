@@ -357,3 +357,40 @@ def test_variable_line_with_a_field_description(tmp_path):
         assert {"AU_CUT", "ALT"} <= {a.name for a in t.attributes}
         assert np.allclose(next(a for a in t.attributes if a.name == "AU_CUT").values, m["AU_CUT"])
         assert len(t.centres) == len(m["X"])
+
+
+def test_size_fields_named_after_the_centre():
+    """A real export: EAST, NORTH, RL and the sizes _EAST, _NORTH, _RL."""
+    from app.formats.blockmodel import find_roles
+
+    roles = find_roles(["EAST", "NORTH", "RL", "_EAST", "_NORTH", "_RL", "CU"])
+    assert (roles["x"], roles["dx"], roles["dy"], roles["dz"]) == ("EAST", "_EAST", "_NORTH", "_RL")
+
+
+def test_outer_shell_of_a_model():
+    from app.blocks.shell import exposed_mask
+
+    # 3 × 3 × 3 whole parents of 10 m: only the middle one is closed on every side.
+    idx = np.array([(i, j, k) for i in range(3) for j in range(3) for k in range(3)], float)
+    centres = idx * 10 + 5
+    sizes = np.full_like(centres, 10.0)
+    m = exposed_mask(centres, sizes, [0, 0, 0], [10, 10, 10], [3, 3, 3])
+    assert m.sum() == 26 and m[13] == 0
+    # The middle parent split into 2 × 1 × 1 halves: both hidden; one more parent removed: its neighbours show.
+    mid = np.array([[2.5 + 10, 15, 15], [7.5 + 10, 15, 15]])
+    c2 = np.vstack([np.delete(centres, [13, 14], axis=0), mid])  # 14 = (1, 1, 2): the middle one's top neighbour
+    s2 = np.vstack([np.delete(sizes, [13, 14], axis=0), [[5, 10, 10], [5, 10, 10]]])
+    m2 = exposed_mask(c2, s2, [0, 0, 0], [10, 10, 10], [3, 3, 3])
+    assert m2[-2:].tolist() == [1, 1]  # their top face is open now
+    # A parent not filled by its sub-blocks: its blocks are shown, its neighbours too.
+    m3 = exposed_mask(c2[:-1], s2[:-1], [0, 0, 0], [10, 10, 10], [3, 3, 3])
+    assert m3[-1] == 1
+
+
+def test_shell_of_an_imported_model(db_client, run_jobs, tmp_path):
+    m = make_blocks()
+    _, d = _import(db_client, run_jobs, tmp_path, m)
+    raw = db_client.get(f"/api/blockmodels/{d['id']}/exposed")
+    assert raw.status_code == 200
+    mask = np.frombuffer(raw.content, np.uint8)
+    assert len(mask) == len(m["X"]) and 0 < mask.sum() <= len(mask)

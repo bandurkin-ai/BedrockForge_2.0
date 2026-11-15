@@ -1278,6 +1278,8 @@ async function binary(url: string): Promise<ArrayBuffer> {
 
 /** Centre (relative to meta.render_origin) and size of every block, 6 float32 each. */
 export const getBlockRender = async (id: number) => new Float32Array(await binary(`/api/blockmodels/${id}/render`));
+/** 1 per block that can be seen from outside, 0 for one closed on every side (big models are drawn as their shell). */
+export const getBlockExposed = async (id: number) => new Uint8Array(await binary(`/api/blockmodels/${id}/exposed`));
 /** An attribute per block as float32 (categories: code; empty: NaN). */
 export const getBlockValues = async (id: number, key: string) => new Float32Array(await binary(`/api/blockmodels/${id}/values/${encodeURIComponent(key)}`));
 
