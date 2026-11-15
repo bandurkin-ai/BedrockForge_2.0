@@ -53,7 +53,9 @@ FIELD_TYPES = ("C", "N", *BINARY_TYPES)
 # NAME is 10 wide and the type follows it directly: a 10-character name has no space before it
 # ("RUN_AU_CUTN 12 8"), a shorter one is padded with spaces. In BOCU-1 files printable characters of
 # the name are bytes >= 0x80, so the type letter (0x41-0x5A) cannot be mistaken for a name byte.
-_VARIABLE_RE = re.compile(rb"^(.*?)\s*([A-Z])\s+(\d+)\s+(\d+)\s*$", re.DOTALL)
+# "NAME  T WIDTH DEC", optionally followed by "|description" (newer Micromine versions write the
+# field's description there, e.g. "ЗОЛОТО    C 1 0|Золото, г/т").
+_VARIABLE_RE = re.compile(rb"^(.*?)\s*([A-Z])\s+(\d+)\s+(\d+)\s*(?:\|.*)?$", re.DOTALL)
 
 
 @dataclass

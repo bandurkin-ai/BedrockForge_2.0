@@ -61,7 +61,7 @@ def make_blocks(seed: int = 3) -> dict[str, np.ndarray]:
 
 
 def write_dat(path: Path, m: dict[str, np.ndarray], codepage: str = "BOCU-1", cyrillic: bool = False,
-              tight: bool = False, rename: dict[str, str] | None = None) -> None:
+              tight: bool = False, rename: dict[str, str] | None = None, described: bool = False) -> None:
     """R fields for geometry and AU, N (text) for SG and OXIDE, C for ALT. `tight`: the real layout of a
     variable line, NAME padded to 10 and the type right after it ("RUN_AU_CUTN 12 8"); `rename`: field
     names in the header (the data are taken by the original name)."""
@@ -75,7 +75,9 @@ def write_dat(path: Path, m: dict[str, np.ndarray], codepage: str = "BOCU-1", cy
     for name, kind, width in fields:
         shown = (rename or {}).get(name, name)
         if tight:
-            out += enc(shown).ljust(10, b" ") + f"{kind} {width} 3".encode() + b"\r\n"
+            out += enc(shown).ljust(10, b" ") + f"{kind} {width} 3".encode()
+            # a field description after "|", as newer Micromine writes it
+            out += (b"|" + enc(("Grade of " if bocu else "Описание ") + f"{shown} X 1 2 ") if described else b"") + b"\r\n"
         else:
             out += enc(shown).ljust(10, b" ") + f" {kind} {width:>3}  3".encode() + b"\r\n"
     for r in range(len(m["X"])):
@@ -341,4 +343,17 @@ def test_variable_line_with_a_ten_character_name_and_cp1251_cyrillic(tmp_path):
         if codepage != "BOCU-1":
             assert "ПЛОТНОСТЬ" in got
         assert np.allclose(next(a for a in t.attributes if a.name == "RUN_AU_CUT").values, m["AU_CUT"])
+        assert len(t.centres) == len(m["X"])
+
+
+def test_variable_line_with_a_field_description(tmp_path):
+    """Newer Micromine writes "NAME C 1 0|description" in the VARIABLES block (a real BM_LU.DAT)."""
+    m = make_blocks()
+    for codepage in ("BOCU-1", "ibm-5347_P100-1998"):
+        p = tmp_path / f"Described_{codepage[:4]}.DAT"
+        write_dat(p, m, codepage=codepage, tight=True, described=True)
+        assert detect(p.name, p).kind == "blocks"
+        t = read_block_model(p, p.name)
+        assert {"AU_CUT", "ALT"} <= {a.name for a in t.attributes}
+        assert np.allclose(next(a for a in t.attributes if a.name == "AU_CUT").values, m["AU_CUT"])
         assert len(t.centres) == len(m["X"])
