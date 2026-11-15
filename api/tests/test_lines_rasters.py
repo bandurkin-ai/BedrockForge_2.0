@@ -216,8 +216,11 @@ def test_upload_raster_with_world_file_and_tab_check(db_client):
     assert image.headers["content-type"] == "image/jpeg" and Image.open(io.BytesIO(image.content)).size == (40, 20)
     patched = db_client.patch(f"/api/rasters/{raster['id']}", json={"elevation": 420.5, "opacity": 0.5}).json()
     assert (patched["elevation"], patched["opacity"]) == (420.5, 0.5)
+    shifted = db_client.patch(f"/api/rasters/{raster['id']}", json={"z_shift": -20.5}).json()
+    assert shifted["elevation"] == 400.0
     cleared = db_client.patch(f"/api/rasters/{raster['id']}", json={"clear_elevation": True}).json()
     assert cleared["elevation"] is None
+    assert db_client.patch(f"/api/rasters/{raster['id']}", json={"z_shift": 5}).status_code == 422  # no height to shift
     assert db_client.delete(f"/api/datasets/{dataset['id']}").status_code == 204
 
 
@@ -311,6 +314,8 @@ def test_upload_grf_section_scan_and_place_on_section(db_client):
     # Re-place it on another section line, from Z 450 down to 300.
     moved = db_client.patch(f"/api/rasters/{r['id']}", json={"vertical": {"x1": 0, "y1": 0, "x2": 30, "y2": 40, "z_top": 450, "z_bottom": 300}}).json()
     assert moved["georef"]["source"] == "Вручную по разрезу" and moved["georef"]["corners3d"][2] == [30.0, 40.0, 300.0]
+    up = db_client.patch(f"/api/rasters/{r['id']}", json={"z_shift": 12.5}).json()  # a vertical raster moves with all its corners
+    assert up["georef"]["corners3d"][2] == [30.0, 40.0, 312.5] and up["extent"]["max"][2] == 462.5 and up["georef"]["affine_z"][2] == 462.5
     assert moved["georef"]["azimuth"] == pytest.approx(36.87, abs=0.01)
     bad = db_client.patch(f"/api/rasters/{r['id']}", json={"vertical": {"x1": 0, "y1": 0, "x2": 0, "y2": 0, "z_top": 1, "z_bottom": 0}})
     assert bad.status_code == 422

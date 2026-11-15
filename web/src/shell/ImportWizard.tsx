@@ -85,6 +85,9 @@ export function ImportWizard({
   const [error, setError] = useState<string | null>(null);
   const [folder, setFolder] = useState("");
   const [onSection, setOnSection] = useState(true);
+  // Z level of rasters: the height of plan images (empty: from the georeference file) and a shift of every image, m
+  const [zLevel, setZLevel] = useState("");
+  const [zShift, setZShift] = useState("");
   const aborts = useRef<AbortController[]>([]);
   const uploaded = useRef<string[]>([]);
   const started = useRef(false);
@@ -170,6 +173,7 @@ export function ImportWizard({
         jobs.push(await startImport(projectId, {
           uploads: p.uploads, kind: p.kind, folder,
           section: p.kind === "rasters" && onSection ? section : null,
+          ...(p.kind === "rasters" ? { elevation: num(zLevel), z_shift: num(zShift) ?? 0 } : {}),
         }));
       }
       started.current = true;
@@ -184,6 +188,12 @@ export function ImportWizard({
     }
   }
 
+  const num = (text: string): number | null => {
+    const t = text.trim().replace(",", ".");
+    const v = Number(t);
+    return t === "" || !Number.isFinite(v) ? null : v;
+  };
+  const zBad = (zLevel.trim() !== "" && num(zLevel) === null) || (zShift.trim() !== "" && num(zShift) === null);
   const setKind = (upload: string, chosen: ObjectKind | null) => setRows((prev) => prev.map((r) => (r.upload === upload ? { ...r, chosen } : r)));
 
   return (
@@ -300,6 +310,22 @@ export function ImportWizard({
                       Изображения без привязки — на текущий разрез
                     </label>
                   )}
+                  {kindsInPlan.includes("rasters") && (
+                    <fieldset className="wizard-z">
+                      <legend>Уровень растров по Z</legend>
+                      <label title="Высота плоскости растров в плане. Пусто — из файла привязки (GRF), а без неё — под самым низким объектом сцены">
+                        Высота, м{" "}
+                        <input value={zLevel} inputMode="decimal" placeholder="из привязки" aria-label="Высота растров, м" onChange={(e) => setZLevel(e.target.value)} />
+                      </label>
+                      <label title="Поднять (+) или опустить (−) все растры, в том числе вертикальные сканы разрезов">
+                        Сдвиг, м{" "}
+                        <input value={zShift} inputMode="decimal" placeholder="0" aria-label="Сдвиг растров по Z, м" onChange={(e) => setZShift(e.target.value)} />
+                      </label>
+                      <span className="muted small">
+                        {zBad ? "Введите число, например 405 или −12,5." : "Высота задаёт уровень растров в плане; сдвиг поднимает (+) или опускает (−) все растры, и вертикальные тоже. Позже — в свойствах растра."}
+                      </span>
+                    </fieldset>
+                  )}
                   <span className="muted small">
                     Заданий: {plan.length} ({kindsInPlan.map((k) => KIND_TITLES[k]).join(", ")}). Ход — во вкладке «Задания».
                   </span>
@@ -311,7 +337,7 @@ export function ImportWizard({
         <footer className="modal-foot">
           <span className="spacer" />
           <button onClick={close}>Отмена</button>
-          <button className="primary" disabled={stage !== "review" || plan.length === 0} onClick={() => void run()}>
+          <button className="primary" disabled={stage !== "review" || plan.length === 0 || zBad} onClick={() => void run()}>
             {stage === "starting" ? "Запуск…" : "Импортировать"}
           </button>
         </footer>

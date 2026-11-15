@@ -56,6 +56,9 @@ export interface Live {
   onNewProject: (name?: string) => Promise<string>;
   onDemoProject: () => Promise<string>;
   onDeleteProject: (id: number) => Promise<string>;
+  onPatchProject: (id: number, patch: { name?: string; description?: string }) => Promise<string>;
+  /** Opens the projects window. */
+  openProjects: () => void;
   moveDataset: (id: number, folder: string) => Promise<void>;
   /** Background jobs of the project, newest first. */
   jobs: JobInfo[];
@@ -573,6 +576,30 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       description: "Создаёт учебный проект «Демо: участок Северный» (48 скважин, пробы AU и CU, аудит, каркасы рудного тела, контуры, геологическая карта) и открывает его. Если он уже есть — просто открывает.",
       confirm: true,
       run: () => s().onDemoProject(),
+    },
+    {
+      id: "project.manage",
+      title: "Управление проектами",
+      description: "Открывает окно «Проекты»: название и описание открытого проекта, его состав, список всех проектов (открыть, переименовать, удалить, создать).",
+      run: () => {
+        s().openProjects();
+        return "Открыто окно «Проекты»";
+      },
+    },
+    {
+      id: "project.rename",
+      title: "Переименовать проект",
+      description: "Меняет название проекта (без project_id — текущего) и/или его описание.",
+      params: { name: { type: "string" }, description: { type: "string" }, project_id: { type: "integer" } },
+      confirm: true,
+      run: async ({ name, description, project_id }) => {
+        const id = typeof project_id === "number" ? project_id : s().projectId;
+        const patch: { name?: string; description?: string } = {};
+        if (typeof name === "string" && name.trim()) patch.name = name.trim();
+        if (typeof description === "string") patch.description = description;
+        if (!patch.name && patch.description === undefined) throw new Error("Укажите name или description");
+        return s().onPatchProject(id, patch);
+      },
     },
     {
       id: "project.delete",

@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from app.audit.engine import latest_run
 from app.demo import create_demo_project
 from app.db import get_session
-from app.models import Assay, AuditFinding, Collar, Component, Dataset, ImportJob, Project, Survey
+from app.models import (
+    Assay, AssistantChat, AuditFinding, Chart, Collar, Component, Dataset, ImportJob, IntervalTable, Project, Survey, Wireframe,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 # Drillhole data lives in drillhole sets (datasets of kind "drillholes").
@@ -22,11 +24,18 @@ Kind = Literal["collar", "survey", "assay"]
 
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    description: str = Field("", max_length=4000)
+
+
+class ProjectPatch(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=4000)
 
 
 class ProjectOut(BaseModel):
     id: int
     name: str
+    description: str = ""
     created_at: datetime
 
 
@@ -76,7 +85,10 @@ def list_projects(session: Session = Depends(get_session)):
 
 @router.post("", response_model=ProjectOut, status_code=201)
 def create_project(body: ProjectIn, session: Session = Depends(get_session)):
-    project = Project(name=body.name.strip())
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(422, "Нужно название проекта")
+    project = Project(name=name, description=body.description.strip())
     session.add(project)
     try:
         session.commit()
@@ -91,6 +103,62 @@ def demo_project(session: Session = Depends(get_session)):
     """Create the sample project (or return it if it already exists)."""
     project, _ = create_demo_project(session)
     return project
+
+
+@router.patch("/{project_id}", response_model=ProjectOut)
+def patch_project(project_id: int, body: ProjectPatch, session: Session = Depends(get_session)):
+    """Rename a project or change its description."""
+    project = get_project(session, project_id)
+    if body.name is not None:
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(422, "Нужно название проекта")
+        project.name = name
+    if body.description is not None:
+        project.description = body.description.strip()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(409, "Проект с таким именем уже существует") from None
+    return project
+
+
+@router.get("/{project_id}/stats")
+def project_stats(project_id: int, session: Session = Depends(get_session)) -> dict:
+    """What a project holds: objects of every kind, holes and samples, and when it last changed."""
+    project = get_project(session, project_id)
+    kinds = dict(session.execute(
+        select(Dataset.kind, func.count()).where(Dataset.project_id == project_id).group_by(Dataset.kind)
+    ).all())
+    set_ids = select(Dataset.id).where(Dataset.project_id == project_id, Dataset.kind == "drillholes").scalar_subquery()
+
+    def count(model) -> int:
+        return session.scalar(select(func.count()).select_from(model).where(model.set_id.in_(set_ids))) or 0
+
+    wireframes = session.scalar(
+        select(func.count()).select_from(Wireframe).join(Dataset, Wireframe.dataset_id == Dataset.id).where(Dataset.project_id == project_id)
+    ) or 0
+    interval_rows = session.scalar(
+        select(func.coalesce(func.sum(IntervalTable.row_count), 0)).where(IntervalTable.set_id.in_(set_ids))
+    ) or 0
+    charts = session.scalar(
+        select(func.count()).select_from(Chart).join(Dataset, Chart.dataset_id == Dataset.id).where(Dataset.project_id == project_id)
+    ) or 0
+    chats = session.scalar(select(func.count()).select_from(AssistantChat).where(AssistantChat.project_id == project_id)) or 0
+    stamps = [
+        project.created_at,
+        session.scalar(select(func.max(Dataset.created_at)).where(Dataset.project_id == project_id)),
+        session.scalar(select(func.max(ImportJob.created_at)).where(ImportJob.set_id.in_(set_ids))),
+        session.scalar(select(func.max(AssistantChat.updated_at)).where(AssistantChat.project_id == project_id)),
+    ]
+    return {
+        "id": project.id,
+        "datasets": {k: int(kinds.get(k, 0)) for k in ("drillholes", "wireframes", "lines", "rasters", "blocks")},
+        "holes": count(Collar), "surveys": count(Survey), "assays": count(Assay), "interval_rows": int(interval_rows),
+        "wireframes": int(wireframes), "charts": int(charts), "chats": int(chats),
+        "updated_at": max(s for s in stamps if s is not None).isoformat(),
+    }
 
 
 @router.delete("/{project_id}", status_code=204)

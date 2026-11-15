@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
-  getStyles, getStyleUsage, setAssistantPreferences, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord,
+  getStyles, getStyleUsage, setAssistantPreferences, patchProject, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
@@ -23,6 +23,7 @@ import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
 import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
 import { ClaudeAccount, ClaudeAccountButton } from "./shell/ClaudeAccount";
 import { askConfirm, askText, DialogHost, showError } from "./shell/dialogs";
+import { ProjectsPanel } from "./shell/ProjectsPanel";
 import { CommandLog } from "./shell/CommandLog";
 import { CommandPalette } from "./shell/CommandPalette";
 import { commandTools, eventShortcut, findByToolName, validateArgs, type CommandSource, type LogEntry } from "./shell/commands";
@@ -136,6 +137,7 @@ function Workspace({
   onNewProject,
   onDemoProject,
   onDeleteProject,
+  onPatchProject,
 }: {
   projects: Project[];
   project: Project;
@@ -143,6 +145,7 @@ function Workspace({
   onNewProject: (name?: string) => Promise<string>;
   onDemoProject: () => Promise<string>;
   onDeleteProject: (id: number) => Promise<string>;
+  onPatchProject: (id: number, patch: { name?: string; description?: string }) => Promise<string>;
 }) {
   const projectId = project.id;
   const [route, navigate] = useRoute();
@@ -443,6 +446,7 @@ function Workspace({
   }, [notice]);
 
   const [accountOpen, setAccountOpen] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const assistant = useAssistant(projectId, {
     tools: () => commandTools(commands),
     context: () => ({
@@ -498,7 +502,8 @@ function Workspace({
       // charts need room: grow a short dock, never shrink one the user enlarged
       setWs((prev) => resize(openBottom(prev, "stats"), "bottom", Math.max(prev.sizes.bottom, 400)));
     },
-    reload, onSelectProject, onNewProject, onDemoProject, onDeleteProject,
+    reload, onSelectProject, onNewProject, onDemoProject, onDeleteProject, onPatchProject,
+    openProjects: () => setProjectsOpen(true),
     moveDataset: async (id, folder) => {
       await moveDataset(id, folder);
       reload();
@@ -732,6 +737,9 @@ function Workspace({
           <select value={projectId} onChange={(e) => onSelectProject(Number(e.target.value))} aria-label="Проект">
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
+          <button className="icon" onClick={() => setProjectsOpen(true)} title="Управление проектами: переименовать, описание, состав, все проекты" aria-label="Управление проектами">
+            <Icon name="gear" size={15} />
+          </button>
         </label>
         <button className="command-search" onClick={() => setPalette("")} title="Поиск команд и скважин (Ctrl+K)">
           <Icon name="search" size={14} />
@@ -946,6 +954,20 @@ function Workspace({
         mode={section && ws.clip ? `разрез, азимут ${Math.round(section.az)}°, окно от ${section.towards} до ${section.away}` : "3D"} assistant={assistant.status} remote={remote}
         onAssistant={() => setAccountOpen(true)}
       />
+
+      {projectsOpen && (
+        <ChartWindow index={1} z={58} size="medium" icon="folder" title="Проекты" onFocus={() => undefined} onClose={() => setProjectsOpen(false)}>
+          <ProjectsPanel
+            projects={projects} currentId={projectId} refreshKey={refreshKey}
+            onOpen={(id) => { setProjectsOpen(false); onSelectProject(id); }}
+            onRename={(id, name) => onPatchProject(id, { name })}
+            onDescribe={(id, description) => onPatchProject(id, { description })}
+            onDelete={(id) => onDeleteProject(id)}
+            onNew={() => onNewProject()}
+            onDemo={() => onDemoProject()}
+          />
+        </ChartWindow>
+      )}
 
       {accountOpen && (
         <ChartWindow index={1} z={60} size="form" icon="spark" title="Claude: подключение" onFocus={() => undefined} onClose={() => setAccountOpen(false)}>
@@ -1215,6 +1237,13 @@ export function App() {
     return `Создан проект «${project.name}»`;
   }
 
+  /** Renames a project or changes its description. */
+  async function onPatchProject(id: number, patch: { name?: string; description?: string }): Promise<string> {
+    const updated = await patchProject(id, patch);
+    setProjects((prev) => (prev ?? []).map((p) => (p.id === id ? updated : p)));
+    return patch.name !== undefined ? `Проект переименован: «${updated.name}»` : "Описание проекта сохранено";
+  }
+
   /** Deletes a project with everything in it, after the user confirms; opens another one. */
   async function onDeleteProject(id: number): Promise<string> {
     const target = projects?.find((p) => p.id === id);
@@ -1232,5 +1261,5 @@ export function App() {
   const project = projects?.find((p) => p.id === projectId);
   if (!projects || !project) return <main className="page"><p className="muted">Загрузка…</p></main>;
 
-  return <Workspace key={project.id} projects={projects} project={project} onSelectProject={selectProject} onNewProject={onNewProject} onDemoProject={onDemoProject} onDeleteProject={onDeleteProject} />;
+  return <Workspace key={project.id} projects={projects} project={project} onSelectProject={selectProject} onNewProject={onNewProject} onDemoProject={onDemoProject} onDeleteProject={onDeleteProject} onPatchProject={onPatchProject} />;
 }

@@ -44,6 +44,7 @@ def import_objects(ctx: JobContext, params: dict) -> dict:
             section = SectionPlacement(**params["section"]) if params.get("section") else None
             files = {u.filename: part_path(u.id) for u in uploads}
             datasets = import_rasters(ctx.session, project_id, files, section=section, folder=folder,
+                                      elevation=params.get("elevation"), z_shift=float(params.get("z_shift") or 0.0),
                                       progress=ctx.progress)
             created = [d.id for d in datasets]
         elif kind in ("wireframes", "lines", "blocks"):

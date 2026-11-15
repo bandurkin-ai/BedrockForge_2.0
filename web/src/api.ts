@@ -114,8 +114,26 @@ export const validateMapping = (req: ValidateRequest) =>
 export interface Project {
   id: number;
   name: string;
+  description?: string;
   created_at: string;
 }
+
+export interface ProjectStats {
+  id: number;
+  datasets: { drillholes: number; wireframes: number; lines: number; rasters: number; blocks: number };
+  holes: number;
+  surveys: number;
+  assays: number;
+  interval_rows: number;
+  wireframes: number;
+  charts: number;
+  chats: number;
+  updated_at: string;
+}
+
+export const patchProject = (id: number, patch: { name?: string; description?: string }) =>
+  request<Project>(`/api/projects/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+export const getProjectStats = (id: number) => request<ProjectStats>(`/api/projects/${id}/stats`);
 
 export interface Summary {
   counts: Record<string, number>;
@@ -626,6 +644,8 @@ export interface RasterPatch {
   clear_elevation?: boolean;
   opacity?: number;
   vertical?: VerticalPlacement;
+  /** raise (> 0) or lower the raster, m: a plan one, or every corner of a vertical one */
+  z_shift?: number;
 }
 
 export const patchRaster = (id: number, patch: RasterPatch) =>
@@ -963,6 +983,9 @@ export interface ImportRequest {
   kind?: "wireframes" | "lines" | "rasters" | "blocks";
   folder?: string;
   section?: VerticalPlacement | null;
+  /** rasters: the height of plan images (null: from the georeference file) and a shift of every image, m */
+  elevation?: number | null;
+  z_shift?: number;
 }
 
 export const startImport = (projectId: number, body: ImportRequest) =>

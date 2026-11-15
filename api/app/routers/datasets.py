@@ -21,7 +21,7 @@ from app.formats.lines import LINE_SUFFIXES
 from app.formats.rasters import IMAGE_SUFFIXES, SIDECAR_SUFFIXES, RasterFormatError, vertical_georef
 from app.formats.wireframes import WIREFRAME_SUFFIXES
 from app.importing.objects import (
-    ImportFailed, SectionPlacement, import_lines, import_rasters, import_wireframes, raster_placement,
+    ImportFailed, SectionPlacement, import_lines, import_rasters, import_wireframes, raster_placement, shift_raster_z,
 )
 from app.models import Assay, Chart, Collar, Component, Dataset, IntervalTable, LineLayer, Raster, Survey, Wireframe
 from app.routers.blobs import blob_url
@@ -124,6 +124,8 @@ class RasterPatch(BaseModel):
     elevation: float | None = None
     opacity: float | None = Field(None, ge=0.05, le=1)
     clear_elevation: bool = False
+    # Raise (> 0) or lower the raster by this many metres: a plan one, or every corner of a vertical one.
+    z_shift: float | None = Field(None, ge=-20000, le=20000)
 
 
 class WireframePatch(BaseModel):
@@ -458,6 +460,10 @@ def patch_raster(raster_id: int, body: RasterPatch, session: Session = Depends(g
             raise HTTPException(422, str(exc)) from exc
         notes = [n for n in raster.georef.get("notes", []) if "плоскость линии разреза" not in n]
         raster.georef, raster.extent = raster_placement(g, raster.width, raster.height, [], notes)
+    if body.z_shift:
+        if raster.elevation is None and not raster.georef.get("corners3d"):
+            raise HTTPException(422, "У растра нет высоты: сначала задайте её, потом сдвигайте")
+        raster.georef, raster.extent, raster.elevation = shift_raster_z(raster.georef, raster.extent, raster.elevation, body.z_shift)
     session.commit()
     return _raster_out(raster)
 

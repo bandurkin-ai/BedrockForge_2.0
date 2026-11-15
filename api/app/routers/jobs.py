@@ -48,6 +48,9 @@ class ImportIn(BaseModel):
     folder: str = Field("", max_length=255)
     # Images without a georeference stand in this vertical plane.
     section: VerticalPlacement | None = None
+    # Rasters: the height of plan images (None: from the georeference file) and a shift of every image, m.
+    elevation: float | None = Field(None, ge=-20000, le=20000)
+    z_shift: float = Field(0.0, ge=-20000, le=20000)
 
 
 class DetectIn(BaseModel):
@@ -114,7 +117,8 @@ def start_import(project_id: int, body: ImportIn, session: Session = Depends(get
     job = queue.enqueue(
         session, "import.objects",
         {"project_id": project_id, "kind": kind, "uploads": body.uploads, "folder": clean_folder(body.folder),
-         "section": body.section.model_dump() if body.section else None},
+         "section": body.section.model_dump() if body.section else None,
+         "elevation": body.elevation, "z_shift": body.z_shift},
         project_id=project_id, title=f"Импорт: {names}"[:255],
     )
     session.commit()

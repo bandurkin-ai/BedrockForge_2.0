@@ -76,6 +76,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           title: "Проект",
           items: [
             { command: "project.new", label: "Новый проект", icon: "plus" },
+            { command: "project.manage", label: "Проекты", icon: "folder", hint: "Управление проектами: название, описание, состав, все проекты" },
             { command: "project.demo", label: "Демо-проект", icon: "cube", hint: "Учебный проект: 48 скважин, пробы, аудит, каркасы рудного тела", small: true },
             { command: "data.refresh", label: "Обновить", icon: "refresh", hint: "Перечитать данные проекта с сервера", small: true },
             { command: "project.delete", label: "Удалить проект", icon: "trash", hint: "Удалить текущий проект со всеми данными", small: true },

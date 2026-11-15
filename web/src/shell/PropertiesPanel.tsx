@@ -249,6 +249,9 @@ function RasterProps({ raster, file, onRaster, sectionFrame }: {
   const g = raster.georef;
   const vertical = g.placement === "vertical";
   const [elevation, setElevation] = useState(raster.elevation === null ? "" : String(raster.elevation));
+  const [shift, setShift] = useState("");
+  const shiftValue = Number(shift.trim().replace(",", "."));
+  const canShift = shift.trim() !== "" && Number.isFinite(shiftValue) && shiftValue !== 0 && (vertical || raster.elevation !== null);
   useEffect(() => setElevation(raster.elevation === null ? "" : String(raster.elevation)), [raster.id, raster.elevation]);
   const saveElevation = () => {
     const text = elevation.trim().replace(",", ".");
@@ -284,6 +287,14 @@ function RasterProps({ raster, file, onRaster, sectionFrame }: {
           <input value={elevation} placeholder="авто" onChange={(e) => setElevation(e.target.value)} onBlur={saveElevation}
             onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} aria-label="Высота растра" />
         </label>}
+        <label title={vertical || raster.elevation !== null ? "Поднять (+) или опустить (−) растр на заданное число метров" : "Сначала задайте высоту растра"}>
+          Сдвиг по Z, м
+          <span className="props-inline">
+            <input value={shift} inputMode="decimal" placeholder="+10 или −5" onChange={(e) => setShift(e.target.value)} aria-label="Сдвиг растра по Z, м"
+              onKeyDown={(e) => e.key === "Enter" && canShift && (onRaster(raster.id, { z_shift: shiftValue }), setShift(""))} />
+            <button disabled={!canShift} onClick={() => { onRaster(raster.id, { z_shift: shiftValue }); setShift(""); }}>Сдвинуть</button>
+          </span>
+        </label>
         <label>
           Непрозрачность
           <input type="range" min={0.05} max={1} step={0.05} defaultValue={raster.opacity} key={raster.id}

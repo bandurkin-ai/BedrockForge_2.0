@@ -195,6 +195,24 @@ class SectionPlacement:
     z_bottom: float
 
 
+def shift_raster_z(georef: dict, extent: dict, elevation: float | None, dz: float) -> tuple[dict, dict, float | None]:
+    """The raster raised (dz > 0) or lowered by dz metres: its plan elevation, or every corner of a vertical one."""
+    if not dz:
+        return georef, extent, elevation
+    georef = dict(georef)
+    extent = {k: list(v) for k, v in extent.items()}
+    if georef.get("corners3d"):
+        georef["corners3d"] = [[p[0], p[1], round(p[2] + dz, 3)] for p in georef["corners3d"]]
+        if georef.get("affine_z"):
+            g, h, i = georef["affine_z"]
+            georef["affine_z"] = [g, h, i + dz]
+        for k in ("min", "max"):
+            if len(extent.get(k, [])) == 3:
+                extent[k][2] = round(extent[k][2] + dz, 2)
+        return georef, extent, elevation
+    return georef, extent, None if elevation is None else round(elevation + dz, 3)
+
+
 def section_fallback(section: SectionPlacement | None):
     if section is None:
         return None
@@ -220,8 +238,12 @@ def _decode_sidecar(raw: bytes) -> str:
 
 def import_rasters(session: Session, project_id: int, files: dict[str, Path], *,
                    section: SectionPlacement | None = None, folder: str = "",
+                   elevation: float | None = None, z_shift: float = 0.0,
                    progress: Progress = _no_progress) -> list[Dataset]:
-    """`files`: original file name -> path. Images pair with their georeference files by name."""
+    """`files`: original file name -> path. Images pair with their georeference files by name.
+
+    Z level: `elevation` sets the height of plan images (instead of the one in the georeference file);
+    `z_shift` then raises or lowers every image, vertical ones too."""
     groups = check_raster_names(list(files))
     fallback = section_fallback(section)
     created: list[Dataset] = []
@@ -235,6 +257,18 @@ def import_rasters(session: Session, project_id: int, files: dict[str, Path], *,
         if r.georef.source == "Вручную по разрезу":
             r.notes.append("Файла привязки нет: изображение поставлено в плоскость линии разреза, уточните края и высоты в свойствах")
         georef, extent = raster_placement(r.georef, r.width, r.height, r.checks, r.notes)
+        z = r.georef.elevation
+        if elevation is not None and not georef.get("corners3d"):
+            if z is not None and abs(z - elevation) > 1e-9:
+                r.notes.append(f"Высота из файла привязки {z:g} м заменена на {elevation:g} м")
+            z = elevation
+        if z_shift:
+            if z is None and not georef.get("corners3d"):
+                r.notes.append("Сдвиг по Z не применён: у растра нет высоты (он ляжет под самый низкий объект); задайте высоту")
+            else:
+                georef, extent, z = shift_raster_z(georef, extent, z, z_shift)
+                r.notes.append(f"Сдвиг по Z: {z_shift:+g} м")
+        georef["notes"] = r.notes
         dataset = Dataset(project_id=project_id, kind="rasters", name=Path(image_name).name[:255], folder=folder,
                           meta={"format": Path(image_name).suffix.lstrip(".").upper(), "filename": image_name,
                                 "sidecars": sidecar_names})
@@ -242,7 +276,7 @@ def import_rasters(session: Session, project_id: int, files: dict[str, Path], *,
         session.flush()
         session.add(Raster(
             dataset_id=dataset.id, name=Path(image_name).stem[:255], width=r.width, height=r.height,
-            georef=georef, extent=extent, elevation=r.georef.elevation, opacity=1.0,
+            georef=georef, extent=extent, elevation=z, opacity=1.0,
             blobs={"image": blobs.put_bytes(session, r.image, media_type=r.mime)}, mime=r.mime,
         ))
         created.append(dataset)

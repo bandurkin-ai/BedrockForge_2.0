@@ -714,3 +714,31 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .ca-sub p { margin: 0; }
 .ca-code { display: flex; align-items: flex-start; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
 .ca-code code, .ca-code pre { flex: 1; min-width: 0; margin: 0; font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---- projects window */
+.projects-panel { height: 100%; box-sizing: border-box; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; background: var(--panel); font-size: 0.85rem; }
+.pp-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.pp-head { display: flex; align-items: center; gap: 8px; }
+.pp-head button { display: inline-flex; align-items: center; gap: 4px; }
+.pp-name { font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-desc { display: flex; flex-direction: column; gap: 3px; }
+.pp-desc textarea { resize: vertical; min-height: 40px; }
+.pp-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+.pp-stats > div { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.pp-stats > div.zero { opacity: 0.55; }
+.pp-stats b { font-size: 1.05rem; }
+.pp-table { width: 100%; border-collapse: collapse; }
+.pp-table th, .pp-table td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.pp-table th.num, .pp-table td.num { text-align: right; }
+.pp-table tr.current { background: var(--accent-soft); }
+.pp-row-name { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.pp-row-desc { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-badge { font-size: 11px; font-weight: 500; color: var(--accent); border: 1px solid var(--accent); border-radius: 8px; padding: 0 6px; }
+.pp-actions { white-space: nowrap; text-align: right; }
+.pp-actions button { margin-left: 2px; }
+.project-pick { display: inline-flex; align-items: center; gap: 6px; }
+.wizard-z { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.wizard-z legend { font-size: 0.8rem; color: var(--muted); padding: 0 4px; }
+.wizard-z input { width: 110px; }
+.props-inline { display: flex; gap: 6px; }
+.props-inline input { flex: 1; min-width: 0; }

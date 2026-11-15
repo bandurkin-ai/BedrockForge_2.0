@@ -192,6 +192,30 @@ def test_raster_import_job_pairs_georeference(db_client, run_jobs):
     assert image.status_code == 200 and image.headers["content-type"].startswith("image/") and len(image.content) > 100
 
 
+def test_raster_import_job_sets_and_shifts_the_z_level(db_client, run_jobs):
+    import io
+
+    from PIL import Image
+
+    pid = _project(db_client)
+    out = io.BytesIO()
+    Image.new("RGB", (40, 20), "#336699").save(out, "PNG")
+
+    def imported(**z):
+        ids = [upload(db_client, pid, "map.png", out.getvalue()), upload(db_client, pid, "map.pgw", b"2\n0\n0\n-2\n1001\n2999\n")]
+        job = db_client.post(f"/api/projects/{pid}/imports", json={"uploads": ids, **z}).json()
+        run_jobs()
+        assert db_client.get(f"/api/jobs/{job['id']}").json()["status"] == "done"
+        return db_client.get(f"/api/projects/{pid}/datasets").json()[-1]["rasters"][0]
+
+    assert imported()["elevation"] is None  # a world file has no height: under the lowest object
+    placed = imported(elevation=420, z_shift=-15.5)
+    assert placed["elevation"] == 404.5 and any("Сдвиг по Z" in n for n in placed["georef"]["notes"])
+    unplaced = imported(z_shift=10)
+    assert unplaced["elevation"] is None and any("не применён" in n for n in unplaced["georef"]["notes"])
+    assert db_client.post(f"/api/projects/{pid}/imports", json={"uploads": ["x"], "z_shift": 1e9}).status_code == 422
+
+
 def test_detect_dxf_faces_or_lines(tmp_path):
     faces = ezdxf.new()
     faces.modelspace().add_3dface([(0, 0, 0), (1, 0, 0), (1, 1, 0)])
