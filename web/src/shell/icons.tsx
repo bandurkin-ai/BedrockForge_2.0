@@ -1,6 +1,7 @@
 /** Line icons on a 24px grid; they take the text colour. */
 const PATHS = {
   cube: "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5l8 4.5 8-4.5M12 12v9",
+  cubeTop: "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5l8 4.5 8-4.5M12 12v9",
   cubeLeft: "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5l8 4.5 8-4.5M12 12v9",
   cubeRight: "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5l8 4.5 8-4.5M12 12v9",
   plan: "M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zM9 4v14M15 6v14",
@@ -58,6 +59,7 @@ export type IconName = keyof typeof PATHS;
 
 /** Faces drawn filled: the side views are a cube with its left or right face shaded. */
 const FILLS: Partial<Record<IconName, string>> = {
+  cubeTop: "M12 3l8 4.5-8 4.5-8-4.5z",
   cubeLeft: "M4 7.5l8 4.5v9l-8-4.5z",
   cubeRight: "M20 7.5l-8 4.5v9l8-4.5z",
 };
