@@ -10,6 +10,7 @@ export function StatusBar({
   mode,
   assistant,
   remote,
+  onAssistant,
 }: {
   projectName: string;
   holeCount: number;
@@ -20,6 +21,8 @@ export function StatusBar({
   assistant: AssistantStatus | null;
   /** The browser is registered with the server and can take commands from MCP clients. */
   remote: boolean;
+  /** opens the window of the Claude connection */
+  onAssistant?: () => void;
 }) {
   const [online, setOnline] = useState<boolean | null>(null);
 
@@ -54,9 +57,10 @@ export function StatusBar({
       <span className="sep">·</span>
       <span>Вид: {mode}</span>
       <span className="spacer" />
-      <span title="Встроенный ассистент работает через Claude API на сервере">
-        Claude: {assistant === null ? "…" : assistant.configured ? "подключён" : "нет ключа API"}
-      </span>
+      <button className="statusbar-link" onClick={onAssistant} title="Подключение Claude: вход, модель, расход">
+        Claude: {assistant === null ? "…" : !assistant.configured ? "не подключён" : assistant.mode === "account" ? "аккаунт" : assistant.mode === "key" ? "ключ" : "подключён"}
+        {assistant?.configured && assistant.models ? ` · ${assistant.models.find((m) => m.id === assistant.model)?.title.replace("Claude ", "") ?? assistant.model}` : ""}
+      </button>
       <span className="sep">·</span>
       <span title="Внешние клиенты Claude управляют этим окном через MCP-сервер /mcp">MCP: {remote ? "готов" : "нет связи"}</span>
       <span className="sep">·</span>

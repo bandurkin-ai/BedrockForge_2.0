@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app import ui_bridge
-from app.assistant import service, tools
+from app.assistant import connection, service, tools
 from app.models import Assay, Collar, Component
 
 UI_TOOL = {
@@ -26,8 +26,9 @@ def tool_use(id_, name, input_):
     return SimpleNamespace(type="tool_use", id=id_, name=name, input=input_)
 
 
-def reply(*content, stop_reason="end_turn"):
-    return SimpleNamespace(content=list(content), stop_reason=stop_reason)
+def reply(*content, stop_reason="end_turn", usage=None):
+    return SimpleNamespace(content=list(content), stop_reason=stop_reason, model="claude-opus-5-5",
+                           usage=SimpleNamespace(**(usage or {"input_tokens": 1000, "output_tokens": 100})))
 
 
 class ScriptedClaude:
@@ -61,14 +62,23 @@ def project(db_client, db_engine):
     return db_client, pid
 
 
+@pytest.fixture(autouse=True)
+def assistant_dir(monkeypatch, tmp_path):
+    """The stored connection lives in a scratch directory; no credentials from the environment."""
+    monkeypatch.setattr(connection, "_dir", lambda: tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    return tmp_path
+
+
 @pytest.fixture
 def claude(monkeypatch):
     def install(*responses):
         fake = ScriptedClaude(*responses)
         monkeypatch.setattr(service, "get_client", lambda: fake)
+        monkeypatch.setattr(service, "is_configured", lambda: True)
         return fake
 
-    service._conversations.clear()
     return install
 
 
@@ -76,22 +86,21 @@ def chat(client, pid, **body):
     return client.post(f"/api/projects/{pid}/assistant/chat", json={"ui_tools": [UI_TOOL], **body})
 
 
-def test_status_reports_missing_credentials(db_client, monkeypatch):
-    monkeypatch.setattr(service, "is_configured", lambda: False)
+def test_status_reports_missing_credentials(db_client):
+    st = db_client.get("/api/assistant/status").json()
 
-    assert db_client.get("/api/assistant/status").json() == {"configured": False, "model": "claude-opus-5-5"}
+    assert st["configured"] is False and st["mode"] is None and st["model"] == "claude-opus-5-5"
+    assert [m["id"] for m in st["models"]][:3] == ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
 
 
-def test_chat_without_credentials_is_a_clear_error(project, monkeypatch):
+def test_chat_without_credentials_is_a_clear_error(project):
     client, pid = project
-    monkeypatch.setattr(service, "is_configured", lambda: False)
-    service._conversations.clear()
 
     response = chat(client, pid, text="привет")
 
     assert response.status_code == 503
-    assert "ANTHROPIC_API_KEY" in response.json()["detail"]
-    assert service._conversations.popitem()[1].messages == []  # the failed turn left nothing behind
+    assert "API-ключ" in response.json()["detail"]
+    assert client.get(f"/api/projects/{pid}/assistant/chats").json() == []  # the failed turn left nothing behind
 
 
 def test_data_tool_runs_on_server_and_ui_tool_goes_to_browser(project, claude):

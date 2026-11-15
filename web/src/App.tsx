@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
-  getStyles, getStyleUsage, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord,
+  getStyles, getStyleUsage, setAssistantPreferences, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
@@ -21,6 +21,7 @@ import { StatsPage } from "./StatsPage";
 import type { StatsView } from "./stats/analyses";
 import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
 import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
+import { ClaudeAccount, ClaudeAccountButton } from "./shell/ClaudeAccount";
 import { CommandLog } from "./shell/CommandLog";
 import { CommandPalette } from "./shell/CommandPalette";
 import { commandTools, eventShortcut, findByToolName, validateArgs, type CommandSource, type LogEntry } from "./shell/commands";
@@ -440,6 +441,7 @@ function Workspace({
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  const [accountOpen, setAccountOpen] = useState(false);
   const assistant = useAssistant(projectId, {
     tools: () => commandTools(commands),
     context: () => ({
@@ -746,6 +748,7 @@ function Workspace({
         >
           <Icon name="spark" size={16} /> Claude
         </button>
+        <ClaudeAccountButton status={assistant.status} onClick={() => setAccountOpen(true)} />
       </header>
 
       <Ribbon
@@ -923,6 +926,12 @@ function Workspace({
                     selectedHole ? `Скважина ${selectedHole}` : "Скважина не выбрана",
                   ]}
                   onSend={(text) => void assistant.send(text)} onStop={assistant.stop} onReset={assistant.reset}
+                  title={assistant.title} usage={assistant.usage} chats={assistant.chats} chatId={assistant.chatId}
+                  onOpenChat={(id) => void assistant.openChat(id).catch((e: Error) => window.alert(e.message))}
+                  onRenameChat={(id, name) => void assistant.renameChat(id, name).catch((e: Error) => window.alert(e.message))}
+                  onDeleteChat={(id) => void assistant.deleteChat(id).catch((e: Error) => window.alert(e.message))}
+                  onAccount={() => setAccountOpen(true)}
+                  onModel={(model) => void setAssistantPreferences({ model }).then(assistant.setStatus).catch((e: Error) => window.alert(e.message))}
                 />
               </div>
             </aside>
@@ -933,7 +942,14 @@ function Workspace({
       <StatusBar
         projectName={project.name} setName={activeSetName} holeCount={holes.length} selectedHole={selectedHole} audit={audit}
         mode={section && ws.clip ? `разрез, азимут ${Math.round(section.az)}°, окно от ${section.towards} до ${section.away}` : "3D"} assistant={assistant.status} remote={remote}
+        onAssistant={() => setAccountOpen(true)}
       />
+
+      {accountOpen && (
+        <ChartWindow index={1} z={60} size="form" icon="spark" title="Claude: подключение" onFocus={() => undefined} onClose={() => setAccountOpen(false)}>
+          <ClaudeAccount status={assistant.status} onStatus={(st) => { assistant.setStatus(st); assistant.refreshStatus(); }} />
+        </ChartWindow>
+      )}
 
       {(Object.keys(ACCEPT) as UploadKind[]).map((kind) => (
         <input key={kind} ref={fileInputs[kind]} type="file" accept={ACCEPT[kind]} multiple hidden data-upload={kind} onChange={(e) => onFiles(kind, e.target.files)} />

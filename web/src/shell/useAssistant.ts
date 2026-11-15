@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { assistantChat, getAssistantStatus, type AssistantRequest, type AssistantStatus, type AssistantToolResult } from "../api";
+import {
+  assistantChat, deleteAssistantChat, getAssistantChat, getAssistantStatus, listAssistantChats, renameAssistantChat,
+  type AssistantChatInfo, type AssistantRequest, type AssistantStatus, type AssistantToolResult, type AssistantUsageTotals,
+} from "../api";
 
 export type ChatItem =
   | { kind: "user"; text: string }
@@ -26,28 +29,78 @@ export interface AssistantDeps {
 const describe = (input: Record<string, unknown>) =>
   Object.entries(input).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ");
 
+const CHAT_KEY = (projectId: number) => `bf.assistant.chat.${projectId}`;
+const remember = (projectId: number, id: string | null) => {
+  try {
+    if (id) localStorage.setItem(CHAT_KEY(projectId), id);
+    else localStorage.removeItem(CHAT_KEY(projectId));
+  } catch {
+    /* not remembered */
+  }
+};
+
 /**
- * Chat with Claude through the backend. The server owns the conversation and runs the data
- * tools; interface commands come back as `pending` and are executed here, in the browser.
+ * Chat with Claude through the backend. The server owns the conversation, keeps it in the project
+ * (history of chats) and runs the data tools; interface commands come back as `pending` and are
+ * executed here, in the browser.
  */
 export function useAssistant(projectId: number, deps: AssistantDeps) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<AssistantStatus | null>(null);
+  const [chats, setChats] = useState<AssistantChatInfo[]>([]);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [title, setTitle] = useState<string | null>(null);
+  const [usage, setUsage] = useState<AssistantUsageTotals | null>(null);
   const conversation = useRef<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const depsRef = useRef(deps);
   depsRef.current = deps;
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshStatus = useCallback(() => {
     getAssistantStatus()
-      .then((s) => !cancelled && setStatus(s))
-      .catch(() => !cancelled && setStatus({ configured: false, model: "" }));
-    return () => {
-      cancelled = true;
-    };
+      .then(setStatus)
+      .catch(() => setStatus({ configured: false, model: "" }));
   }, []);
+  useEffect(refreshStatus, [refreshStatus]);
+
+  const refreshChats = useCallback(() => {
+    listAssistantChats(projectId).then(setChats).catch(() => setChats([]));
+  }, [projectId]);
+
+  const select = useCallback((id: string | null) => {
+    conversation.current = id;
+    setChatId(id);
+    remember(projectId, id);
+  }, [projectId]);
+
+  /** Opens a saved chat of the project: its messages, and where it stopped. */
+  const openChat = useCallback(async (id: string) => {
+    abort.current?.abort();
+    const c = await getAssistantChat(id);
+    select(c.id);
+    setTitle(c.title);
+    setUsage({ input_tokens: c.input_tokens, output_tokens: c.output_tokens, cost_usd: c.cost_usd });
+    setItems(c.items as ChatItem[]);
+  }, [select]);
+
+  // A new project: its chats, and the chat that was open there last time.
+  useEffect(() => {
+    abort.current?.abort();
+    setItems([]);
+    setTitle(null);
+    setUsage(null);
+    conversation.current = null;
+    setChatId(null);
+    refreshChats();
+    let last: string | null = null;
+    try {
+      last = localStorage.getItem(CHAT_KEY(projectId));
+    } catch {
+      last = null;
+    }
+    if (last) openChat(last).catch(() => remember(projectId, null));
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const push = (item: ChatItem) => setItems((prev) => [...prev, item]);
 
@@ -69,7 +122,9 @@ export function useAssistant(projectId: number, deps: AssistantDeps) {
       try {
         for (;;) {
           const turn = await assistantChat(projectId, body, controller.signal);
-          conversation.current = turn.conversation_id;
+          if (conversation.current !== turn.conversation_id) select(turn.conversation_id);
+          setTitle(turn.title);
+          setUsage(turn.usage);
           for (const block of turn.blocks) {
             if (block.type === "text") push({ kind: "assistant", text: block.text });
             else push({ kind: "tool", title: block.title, detail: describe(block.input), ok: block.ok });
@@ -83,8 +138,9 @@ export function useAssistant(projectId: number, deps: AssistantDeps) {
             const outcome: ToolOutcome = controller.signal.aborted
               ? { title: call.name, content: "Отменено пользователем", ok: false }
               : await depsRef.current.execute(call.name, call.input);
-            push({ kind: "tool", title: outcome.title, detail: outcome.ok ? describe(call.input) : outcome.content, ok: outcome.ok });
-            results.push({ tool_use_id: call.id, content: outcome.content, is_error: !outcome.ok });
+            const detail = outcome.ok ? describe(call.input) : outcome.content;
+            push({ kind: "tool", title: outcome.title, detail, ok: outcome.ok });
+            results.push({ tool_use_id: call.id, content: outcome.content, is_error: !outcome.ok, title: outcome.title, detail: detail.slice(0, 2000) });
           }
           if (controller.signal.aborted) break;
           body = { conversation_id: conversation.current, tool_results: results, ui_tools: depsRef.current.tools() };
@@ -95,18 +151,34 @@ export function useAssistant(projectId: number, deps: AssistantDeps) {
       } finally {
         abort.current = null;
         setBusy(false);
+        refreshChats();
       }
     },
-    [projectId],
+    [projectId, select, refreshChats],
   );
 
   const stop = useCallback(() => abort.current?.abort(), []);
 
+  /** A new chat (the old one stays in the history). */
   const reset = useCallback(() => {
     abort.current?.abort();
-    conversation.current = null;
+    select(null);
+    setTitle(null);
+    setUsage(null);
     setItems([]);
-  }, []);
+  }, [select]);
 
-  return { items, busy, status, send, stop, reset };
+  const renameChat = useCallback(async (id: string, name: string) => {
+    await renameAssistantChat(id, name);
+    if (id === conversation.current) setTitle(name);
+    refreshChats();
+  }, [refreshChats]);
+
+  const deleteChat = useCallback(async (id: string) => {
+    await deleteAssistantChat(id);
+    if (id === conversation.current) reset();
+    refreshChats();
+  }, [refreshChats, reset]);
+
+  return { items, busy, status, setStatus, refreshStatus, send, stop, reset, chats, chatId, title, usage, openChat, renameChat, deleteChat, refreshChats };
 }

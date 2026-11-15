@@ -266,10 +266,28 @@ export const getHealth = () => request<{ status: string; version: string }>("/ap
 
 // ---- Claude assistant ----
 
+export interface AssistantModel { id: string; title: string; note: string; price_in: number; price_out: number }
+
 export interface AssistantStatus {
-  /** false: the server has no Claude API credentials */
+  /** false: Claude is not connected (no key, no account, nothing in the server's environment) */
   configured: boolean;
+  /** how: an API key entered here, an Anthropic account login, or the server's environment */
+  mode?: "key" | "account" | "env" | null;
   model: string;
+  effort?: string;
+  models?: AssistantModel[];
+  efforts?: string[];
+  /** the server can sign in with an Anthropic account (the `ant` CLI is installed) */
+  account_login?: boolean;
+  /** the key, masked */
+  key?: string | null;
+  /** what the account login says about the account (organization, workspace) */
+  account?: Record<string, string> | null;
+  connected_at?: number | null;
+  login_pending?: boolean;
+  message?: string;
+  /** the connection was made, but the test request failed */
+  warning?: boolean;
 }
 
 export type AssistantBlock =
@@ -287,10 +305,17 @@ export interface AssistantToolResult {
   tool_use_id: string;
   content: string;
   is_error: boolean;
+  /** how the chat history shows the command */
+  title?: string;
+  detail?: string;
 }
+
+export interface AssistantUsageTotals { input_tokens: number; output_tokens: number; cost_usd: number }
 
 export interface AssistantTurn {
   conversation_id: string;
+  title: string;
+  usage: AssistantUsageTotals;
   blocks: AssistantBlock[];
   /** Interface commands Claude wants the browser to run; answer with `tool_results`. */
   pending: AssistantToolCall[];
@@ -307,6 +332,37 @@ export interface AssistantRequest {
 }
 
 export const getAssistantStatus = () => request<AssistantStatus>("/api/assistant/status");
+export const connectAssistantKey = (apiKey: string) =>
+  request<AssistantStatus>("/api/assistant/connect/key", { method: "POST", ...json({ api_key: apiKey }) });
+export const startAccountLogin = () => request<{ login_id: string; url: string }>("/api/assistant/connect/account/start", { method: "POST" });
+export const finishAccountLogin = (loginId: string, code: string) =>
+  request<AssistantStatus>("/api/assistant/connect/account/finish", { method: "POST", ...json({ login_id: loginId, code }) });
+export const cancelAccountLogin = () => request<void>("/api/assistant/connect/account/cancel", { method: "POST" });
+export const disconnectAssistant = () => request<AssistantStatus>("/api/assistant/disconnect", { method: "POST" });
+export const checkAssistant = () => request<{ ok: boolean; message: string }>("/api/assistant/check", { method: "POST" });
+export const setAssistantPreferences = (p: { model?: string; effort?: string }) =>
+  request<AssistantStatus>("/api/assistant/preferences", { method: "PUT", ...json(p) });
+
+export interface AssistantUsagePeriod {
+  requests: number; input_tokens: number; output_tokens: number; cost_usd: number;
+  by_model: { model: string; requests: number; input_tokens: number; output_tokens: number; cost_usd: number }[];
+}
+export interface AssistantUsage { currency: string; estimate: boolean; today: AssistantUsagePeriod; month: AssistantUsagePeriod; all: AssistantUsagePeriod }
+export const getAssistantUsage = () => request<AssistantUsage>("/api/assistant/usage");
+
+export interface AssistantChatInfo {
+  id: string; title: string; model: string; messages: number;
+  input_tokens: number; output_tokens: number; cost_usd: number; created_at: string | null; updated_at: string | null;
+}
+export interface AssistantChatFull extends AssistantChatInfo {
+  items: ({ kind: "user" | "assistant" | "notice"; text: string } | { kind: "tool"; title: string; detail: string; ok: boolean })[];
+  waiting: boolean;
+}
+export const listAssistantChats = (projectId: number) => request<AssistantChatInfo[]>(`/api/projects/${projectId}/assistant/chats`);
+export const getAssistantChat = (id: string) => request<AssistantChatFull>(`/api/assistant/chats/${id}`);
+export const renameAssistantChat = (id: string, title: string) =>
+  request<AssistantChatInfo>(`/api/assistant/chats/${id}`, { method: "PATCH", ...json({ title }) });
+export const deleteAssistantChat = (id: string) => request<void>(`/api/assistant/chats/${id}`, { method: "DELETE" });
 
 export const assistantChat = (projectId: number, body: AssistantRequest, signal?: AbortSignal) =>
   request<AssistantTurn>(`/api/projects/${projectId}/assistant/chat`, {

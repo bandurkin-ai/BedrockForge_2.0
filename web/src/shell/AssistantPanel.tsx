@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { AssistantStatus } from "../api";
+import type { AssistantChatInfo, AssistantStatus, AssistantUsageTotals } from "../api";
+import { ClaudeAccountButton } from "./ClaudeAccount";
 import { Icon } from "./icons";
 import { Markdown } from "./markdown";
 import { QUICK_PROMPTS } from "./ribbonConfig";
@@ -22,6 +23,15 @@ export function AssistantPanel({
   onSend,
   onStop,
   onReset,
+  title,
+  usage,
+  chats,
+  chatId,
+  onOpenChat,
+  onRenameChat,
+  onDeleteChat,
+  onAccount,
+  onModel,
 }: {
   items: ChatItem[];
   busy: boolean;
@@ -33,8 +43,21 @@ export function AssistantPanel({
   onSend: (text: string) => void;
   onStop: () => void;
   onReset: () => void;
+  /** the open chat: its title and what it cost */
+  title: string | null;
+  usage: AssistantUsageTotals | null;
+  /** saved chats of the project */
+  chats: AssistantChatInfo[];
+  chatId: string | null;
+  onOpenChat: (id: string) => void;
+  onRenameChat: (id: string, title: string) => void;
+  onDeleteChat: (id: string) => void;
+  /** opens the window of the connection */
+  onAccount: () => void;
+  onModel: (model: string) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [history, setHistory] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,19 +76,48 @@ export function AssistantPanel({
     <div className="assistant">
       <header className="assistant-head">
         <Icon name="spark" size={16} />
-        <strong>Claude</strong>
-        {status?.configured && <span className="muted small">{status.model}</span>}
+        <strong className="assistant-title" title={title ?? "Новый диалог"}>{title ?? "Claude"}</strong>
         <span className="spacer" />
-        <button className="icon" onClick={onReset} disabled={items.length === 0} title="Новый диалог" aria-label="Новый диалог">
+        {status?.configured && (status.models?.length ?? 0) > 0 && (
+          <select className="assistant-model" value={status.model} aria-label="Модель Claude" title="Модель Claude для следующих сообщений" onChange={(e) => onModel(e.target.value)}>
+            {status.models?.map((m) => <option key={m.id} value={m.id}>{m.title.replace("Claude ", "")}</option>)}
+          </select>
+        )}
+        <button className={`icon${history ? " active" : ""}`} onClick={() => setHistory((h) => !h)} title="История диалогов проекта" aria-label="История диалогов" aria-pressed={history}>
+          <Icon name="list" size={16} />
+        </button>
+        <button className="icon" onClick={() => { onReset(); setHistory(false); }} disabled={items.length === 0 && !chatId} title="Новый диалог" aria-label="Новый диалог">
           <Icon name="plus" size={16} />
         </button>
+        <ClaudeAccountButton status={status} onClick={onAccount} />
       </header>
+      {history && (
+        <div className="assistant-history" role="list" aria-label="История диалогов">
+          {chats.length === 0 && <span className="muted small">В этом проекте ещё нет диалогов.</span>}
+          {chats.map((c) => (
+            <div key={c.id} role="listitem" className={`assistant-chat${c.id === chatId ? " active" : ""}`}>
+              <button className="assistant-chat-open" onClick={() => { onOpenChat(c.id); setHistory(false); }} title={`Открыть: ${c.title}`}>
+                <span className="assistant-chat-title">{c.title}</span>
+                <span className="muted small">
+                  {c.updated_at ? new Date(c.updated_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}
+                  {` · вопросов: ${c.messages}`}{c.cost_usd > 0 ? ` · $${c.cost_usd.toFixed(c.cost_usd < 0.01 ? 4 : 2)}` : ""}
+                </span>
+              </button>
+              <button className="icon" title="Переименовать" aria-label={`Переименовать: ${c.title}`} onClick={() => {
+                const name = window.prompt("Название диалога", c.title)?.trim();
+                if (name && name !== c.title) onRenameChat(c.id, name);
+              }}><Icon name="edit" size={14} /></button>
+              <button className="icon" title="Удалить диалог" aria-label={`Удалить: ${c.title}`} onClick={() => window.confirm(`Удалить диалог «${c.title}»?`) && onDeleteChat(c.id)}><Icon name="trash" size={14} /></button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="assistant-log" ref={scroller} aria-live="polite">
         {unavailable && (
           <div className="alert warn">
-            <strong>Claude не подключён.</strong> На сервере API не задан ключ: добавьте переменную
-            окружения <code>ANTHROPIC_API_KEY</code> и перезапустите сервис <code>api</code>.
+            <strong>Claude не подключён.</strong> Войдите в аккаунт Anthropic или введите API-ключ.
+            <div className="assistant-connect"><button className="primary" onClick={onAccount}>Подключить Claude</button></div>
           </div>
         )}
         {items.length === 0 && !unavailable && (
@@ -115,6 +167,11 @@ export function AssistantPanel({
 
       <div className="assistant-context" title="Этот контекст Claude получает с каждым сообщением">
         {context.map((label) => <span key={label} className="chip">{label}</span>)}
+        {usage && usage.cost_usd > 0 && (
+          <span className="chip assistant-cost" title={`Диалог: ${usage.input_tokens.toLocaleString("ru-RU")} токенов на входе, ${usage.output_tokens.toLocaleString("ru-RU")} на выходе (оценка по ценам API)`}>
+            ${usage.cost_usd.toFixed(usage.cost_usd < 0.01 ? 4 : 2)}
+          </span>
+        )}
       </div>
       <div className="assistant-input">
         <textarea

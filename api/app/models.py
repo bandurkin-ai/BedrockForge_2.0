@@ -351,3 +351,41 @@ class AuditFinding(Base):
     count: Mapped[int] = mapped_column(Integer)
     message: Mapped[str] = mapped_column(Text)
     details: Mapped[dict] = mapped_column(JSONB, default=dict)
+
+
+class AssistantChat(Base):
+    """A conversation with Claude in a project. `messages` is the Messages API history as sent
+    (thinking blocks included), `items` what the chat panel shows; `pending` holds the state of
+    a turn that waits for the browser to run interface commands."""
+
+    __tablename__ = "assistant_chat"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[int] = mapped_column(_project_fk(), index=True)
+    title: Mapped[str] = mapped_column(String(200), default="Новый диалог")
+    messages: Mapped[list] = mapped_column(JSONB, default=list)
+    items: Mapped[list] = mapped_column(JSONB, default=list)
+    pending: Mapped[dict] = mapped_column(JSONB, default=dict)
+    model: Mapped[str] = mapped_column(String(64), default="")
+    input_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    output_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    cost_usd: Mapped[float] = mapped_column(Double, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class AssistantUsage(Base):
+    """Tokens of one request to Claude, for the spending summary (kept when a chat is deleted)."""
+
+    __tablename__ = "assistant_usage"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("project.id", ondelete="SET NULL"), nullable=True, index=True)
+    chat_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model: Mapped[str] = mapped_column(String(64))
+    input_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    output_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    cache_read_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    cache_write_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    cost_usd: Mapped[float | None] = mapped_column(Double, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
