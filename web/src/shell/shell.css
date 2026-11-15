@@ -538,3 +538,4 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .interval-table-window .pager { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
 .interval-table-window .table-wrap { flex: 1; overflow: auto; }
 .tree-row .row-actions.always { opacity: 1; }
+.form-error { color: var(--sev-error); }

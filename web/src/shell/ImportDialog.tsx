@@ -62,6 +62,7 @@ export function ImportDialog({
         <div className="modal-body">
           <ImportPage
             target={target}
+            setHasAssays={setId !== null && (sets.find((d) => d.id === setId)?.counts?.assay ?? 0) > 0}
             onImported={(id) => {
               setSetId(id);
               onImported(id);

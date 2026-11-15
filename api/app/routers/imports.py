@@ -282,7 +282,8 @@ class CommitRequest(ValidateRequest):
     set_name: str | None = Field(None, max_length=255)
     # Defaults to the name of the uploaded file.
     filename: str | None = None
-    # Interval tables (kind "interval"): the table's name in the set (default: the file name).
+    # Interval and event tables: the table's name in the set (default: the file name).
+    # Assays: «Пробы» (or empty) is the set's main assay table; another name makes a table of its own.
     table_name: str | None = Field(None, max_length=255)
 
 
@@ -320,6 +321,18 @@ def commit(req: CommitRequest, session: Session = Depends(get_session)) -> Commi
         dataset = Dataset(project_id=req.project_id, kind="drillholes", name=(req.set_name or "").strip() or "Скважины", meta={})
         session.add(dataset)
         session.flush()
+    assay_table = (req.table_name or "").strip()
+    if req.kind == "assay" and assay_table and assay_table.lower() != "пробы":
+        # Another assay file (composites, another lab): a table of its own, not the set's main assays.
+        from app.importing.store import commit_interval_table
+
+        renamed = normalized.rename(columns={c: f"attr:{c[len('comp:'):]}" for c in normalized.columns if c.startswith("comp:")})
+        units = {c["column"]: c.get("unit", "") for c in components}
+        result = commit_interval_table(session, dataset.id, assay_table[:255], renamed,
+                                       filename=(req.filename or meta["filename"])[:255], mapping=req.mapping, kind="interval",
+                                       units=units)
+        return CommitResponse(set_id=dataset.id, job_id=result.job_id, kind="assay", inserted=result.inserted,
+                              replaced=result.replaced, issues=out_issues)
     if req.kind in ("interval", "event"):
         from pathlib import PurePath
 

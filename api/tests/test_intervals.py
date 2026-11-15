@@ -109,3 +109,21 @@ def test_palettes_of_a_project_save_replace_delete(db_client):
     assert bad.status_code == 422
     assert db_client.delete(f"/api/palettes/{saved.json()['id']}").status_code == 204
     assert db_client.get(f"/api/projects/{project}/palettes").json() == []
+
+
+def test_more_assay_files_get_tables_of_their_own(db_client):
+    sid = new_set(db_client)
+    _import(db_client, sid, "collar.DAT", collar_dat())
+    assert _import(db_client, sid, "assay.DAT", assay_dat(), table_name="Пробы").status_code == 200
+    r = _import(db_client, sid, "comp.DAT", assay_dat(), table_name="Композиты Au")
+    assert r.status_code == 200, r.text
+    assert r.json()["kind"] == "assay" and r.json()["inserted"] > 0
+    tables = db_client.get(f"/api/sets/{sid}/interval-tables").json()
+    assert [t["name"] for t in tables] == ["Пробы", "Композиты Au"]
+    assert tables[0]["row_count"] == tables[1]["row_count"]  # the main assays are not replaced
+    units = {c["name"]: c["unit"] for c in tables[1]["columns"]}
+    assert units["AU"] == "g/t" and all(c["kind"] == "number" for c in tables[1]["columns"])
+    # without a name (or «Пробы») an assay file is the set's main assay table, as before
+    again = _import(db_client, sid, "assay.DAT", assay_dat())
+    assert again.json()["replaced"] > 0
+    assert [t["name"] for t in db_client.get(f"/api/sets/{sid}/interval-tables").json()] == ["Пробы", "Композиты Au"]

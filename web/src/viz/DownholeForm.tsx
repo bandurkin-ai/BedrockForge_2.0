@@ -41,7 +41,8 @@ export function DownholeForm({ projectId, setId, form, initial, saved, refreshKe
   saved: boolean;
   refreshKey: number;
   onPreview: (settings: StripLogSettings | null) => void;
-  onSave: (settings: StripLogSettings, name: string) => void;
+  /** saves; resolves with the text to show, rejects with the reason */
+  onSave: (settings: StripLogSettings, name: string) => Promise<string>;
 }) {
   const [tables, setTables] = useState<IntervalTableInfo[] | null>(null);
   const [track, setTrack] = useState<Track | null>(initial?.tracks[0] ?? null);
@@ -54,9 +55,12 @@ export function DownholeForm({ projectId, setId, form, initial, saved, refreshKe
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(!saved);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const patch = (p: Partial<Track>) => {
     setTrack((t) => (t ? { ...t, ...p } : t));
     setDirty(true);
+    setNote(null);
   };
 
   useEffect(() => {
@@ -360,14 +364,22 @@ export function DownholeForm({ projectId, setId, form, initial, saved, refreshKe
       )}
 
       <div className="form-actions">
-        <button type="button" className="primary" disabled={!settings || (saved && !dirty)} onClick={() => {
+        <button type="button" className="primary" disabled={!settings || saving || (saved && !dirty)} onClick={() => {
           if (!settings) return;
-          onSave(settings, displayName(settings, table?.name));
-          setDirty(false);
-        }}>Сохранить</button>
-        <span className="muted small">
+          setSaving(true);
+          setSaveError(null);
+          onSave(settings, displayName(settings, table?.name))
+            .then((text) => {
+              setDirty(false);
+              setNote(text);
+            })
+            .catch((e: Error) => setSaveError(`Не сохранено: ${e.message}${/Input should be|downhole/i.test(e.message)
+              ? ". Сервер (контейнер api) старой версии: запустите BedrockForge.bat, он пересоберёт api" : ""}`))
+            .finally(() => setSaving(false));
+        }}>{saving ? "Сохранение…" : "Сохранить"}</button>
+        {saveError ? <span className="small form-error">{saveError}</span> : <span className="muted small">
           {note ?? (saved ? (dirty ? "Изменения видны на скважинах; сохранятся по кнопке." : "Сохранено.") : `${FORM_TITLES[form]}: видно на скважинах; в дерево попадёт по кнопке.`)}
-        </span>
+        </span>}
       </div>
     </form>
   );

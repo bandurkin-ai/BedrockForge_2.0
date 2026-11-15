@@ -963,7 +963,7 @@ function Workspace({
                 }
                 return { ...prev, [f.id]: settings };
               })}
-              onSave={(settings, name) => void guarded(() => saveDisplay(f, settings, name))}
+              onSave={(settings, name) => saveDisplay(f, settings, name)}
             />
           </ChartWindow>
         );

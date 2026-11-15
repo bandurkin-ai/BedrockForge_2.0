@@ -99,10 +99,13 @@ def interval_columns(df: pd.DataFrame) -> list[dict]:
 
 
 def commit_interval_table(session: Session, set_id: int, name: str, df: pd.DataFrame, *, filename: str,
-                          mapping: dict[str, str], kind: str = "interval") -> CommitResult:
+                          mapping: dict[str, str], kind: str = "interval", units: dict[str, str] | None = None) -> CommitResult:
     """Create the set's interval table `name`, or replace its rows if it exists (one transaction).
     kind "event": rows have one depth, kept as from = to."""
     columns = interval_columns(df)
+    for c in columns:  # units of assay components (g/t, %)
+        if units and units.get(c["name"]):
+            c["unit"] = units[c["name"]]
     kinds = {c["name"]: c["kind"] for c in columns}
     table = session.scalar(select(IntervalTable).where(IntervalTable.set_id == set_id, IntervalTable.name == name))
     replaced = 0

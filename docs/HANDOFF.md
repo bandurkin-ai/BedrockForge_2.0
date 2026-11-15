@@ -35,7 +35,7 @@ docker compose up --build
 - Веб: http://localhost:5173, API: http://localhost:8000. Сервис `worker` выполняет фоновые задания; хранилище — том `store` (`DATA_DIR=/data`).
 - Лента → «Демо-проект» создаёт учебный проект (48 скважин, каркасы, линии, растры в плане и в разрезе).
 - Локальная разработка без Docker: PostgreSQL 16 (`pg_ctlcluster 16 main start`; пользователь `geo`/`geo`, базы `geo` и `geo_test`), `alembic upgrade head` и `uvicorn app.main:app` в `api/` (задания идут в потоке API, `JOBS_IN_API=1`), `API_URL=http://localhost:8000 npx vite` в `web/`.
-- Тесты: `cd api && python3 -m pytest` (277 passed / 17 skipped), `cd web && npm test` (81 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
+- Тесты: `cd api && python3 -m pytest` (278 passed / 17 skipped), `cd web && npm test` (81 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
 - Замеры: `cd api && python -m bench.run --profile ci --check` (1 млн треугольников) или `--profile full` (10 млн, 2 ГБ).
 
 ## 3. Стек
