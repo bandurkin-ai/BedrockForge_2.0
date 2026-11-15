@@ -54,8 +54,6 @@ export interface DataTreeProps {
   onTableMenu?: (setId: number, table: { key: string; id: number | null; name: string }, x: number, y: number) => void;
   /** A table of the set shown on its holes in 3D (null: a new log window). */
   onNewLog?: (setId: number, tableKey: string | null) => void;
-  /** Right click on the node «Данные по скважинам»: its menu (nothing is created by the click). */
-  onLogsMenu?: (setId: number, x: number, y: number) => void;
   /** Saved downhole displays that are on in the 3D view, and turning one on or off. */
   logsOn?: number[];
   onToggleLog?: (chartId: number, on: boolean) => void;
@@ -251,7 +249,7 @@ export function DataTree(props: DataTreeProps) {
     for (const d of sets) {
       const n = d.charts?.length ?? 0;
       const before = chartCounts.current.get(d.id);
-      if (before !== undefined && n > before) grown.push(`set:${d.id}`, `charts:${d.id}`, `logs:${d.id}`);
+      if (before !== undefined && n > before) grown.push(`set:${d.id}`, `charts:${d.id}`);
       chartCounts.current.set(d.id, n);
     }
     if (grown.length) setOpen((prev) => new Set([...prev, ...grown]));
@@ -265,8 +263,7 @@ export function DataTree(props: DataTreeProps) {
   const tableMenu = (e: React.MouseEvent, setId: number, table: { key: string; id: number | null; name: string } | null) => {
     e.preventDefault();
     e.stopPropagation();
-    if (table === null) props.onLogsMenu?.(setId, e.clientX, e.clientY);
-    else props.onTableMenu?.(setId, table, e.clientX, e.clientY);
+    if (table !== null) props.onTableMenu?.(setId, table, e.clientX, e.clientY);
   };
   const empty = datasets !== null && datasets.length === 0;
   const shown = (key: string) => isShown(ws, key);
@@ -316,51 +313,16 @@ export function DataTree(props: DataTreeProps) {
                       <span className="grow">Стволы</span>
                     </li>
                     <li className="tree-row layer" onContextMenu={(e) => setMenu(e, d.id)}>
+                      <Twisty open={!isOpen(`logsClosed:${d.id}`)} onClick={() => toggle(`logsClosed:${d.id}`)} />
                       <Eye shown={shown(layerKey.setPart(d.id, "intervals"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "intervals"), v)} label="содержания" />
                       <span className="grow">Содержания{component ? ` · ${d.components!.map((c) => c.name).join(", ")}` : ""}</span>
                     </li>
-                    <li className="tree-row layer">
-                      <Eye shown={shown(layerKey.setPart(d.id, "collars"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "collars"), v)} label="устья" />
-                      <span className="grow">Устья</span>
-                    </li>
-                    {TABLES.map((t) => (
-                      <li key={t.kind}>
-                        <button
-                          className="tree-row leaf" onClick={() => props.onOpenTable(d.id, t.kind)}
-                          onContextMenu={t.kind === "assay" ? (e) => tableMenu(e, d.id, { key: "assay", id: null, name: "Пробы" }) : undefined}
-                          title={t.kind === "assay" ? "Таблица «Пробы»; правая кнопка — графики и данные по стволу" : `Таблица «${t.label}»`}
-                        >
-                          <Icon name="table" size={14} />
-                          <span className="grow">{t.label}</span>
-                          <span className="count">{counts[t.kind].toLocaleString("ru-RU")}</span>
-                        </button>
-                      </li>
-                    ))}
-                    {(d.interval_tables ?? []).map((t) => (
-                      <li key={`it${t.id}`}>
-                        <button
-                          className="tree-row leaf" onClick={() => props.onNewLog?.(d.id, String(t.id))}
-                          onContextMenu={(e) => tableMenu(e, d.id, { key: String(t.id), id: t.id, name: t.name })}
-                          title={`Интервальная таблица «${t.name}»: клик — показать на скважинах в 3D, правая кнопка — меню`}
-                        >
-                          <Icon name="table" size={14} />
-                          <span className="grow name">{t.name}</span>
-                          <span className="count">{t.row_count.toLocaleString("ru-RU")}</span>
-                        </button>
-                      </li>
-                    ))}
-                    <li>
-                      <div className="tree-row" onClick={() => toggle(`logs:${d.id}`)} onContextMenu={(e) => tableMenu(e, d.id, null)}
-                        title="Сохранённые отображения данных по стволу; правая кнопка — меню">
-                        <Twisty open={isOpen(`logs:${d.id}`)} onClick={() => toggle(`logs:${d.id}`)} />
-                        <Icon name="striplog" size={14} />
-                        <span className="grow">Данные по скважинам</span>
-                        <span className="count">{(d.charts ?? []).filter((c) => c.kind === "striplog").length}</span>
-                      </div>
-                      {isOpen(`logs:${d.id}`) && (
+                    {/* Saved displays of data along the holes (graphs, bars, tubes, text): on / off, drag onto the view. */}
+                    {!isOpen(`logsClosed:${d.id}`) && (
+                      <li>
                         <ul className="tree-children">
                           {!(d.charts ?? []).some((c) => c.kind === "striplog") && (
-                            <li className="tree-note muted small">Нет. Правая кнопка на таблице («Пробы», литология…) → «Показать на скважинах (3D)».</li>
+                            <li className="tree-note muted small">Графики и данные на скважинах: лента «Вид» → «Данные по скважинам».</li>
                           )}
                           {(d.charts ?? []).filter((c) => c.kind === "striplog").map((c) => {
                             const on = (props.logsOn ?? []).includes(c.id);
@@ -392,8 +354,38 @@ export function DataTree(props: DataTreeProps) {
                             );
                           })}
                         </ul>
-                      )}
+                      </li>
+                    )}
+                    <li className="tree-row layer">
+                      <Eye shown={shown(layerKey.setPart(d.id, "collars"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "collars"), v)} label="устья" />
+                      <span className="grow">Устья</span>
                     </li>
+                    {TABLES.map((t) => (
+                      <li key={t.kind}>
+                        <button
+                          className="tree-row leaf" onClick={() => props.onOpenTable(d.id, t.kind)}
+                          onContextMenu={t.kind === "assay" ? (e) => tableMenu(e, d.id, { key: "assay", id: null, name: "Пробы" }) : undefined}
+                          title={t.kind === "assay" ? "Таблица «Пробы»; правая кнопка — графики и данные по стволу" : `Таблица «${t.label}»`}
+                        >
+                          <Icon name="table" size={14} />
+                          <span className="grow">{t.label}</span>
+                          <span className="count">{counts[t.kind].toLocaleString("ru-RU")}</span>
+                        </button>
+                      </li>
+                    ))}
+                    {(d.interval_tables ?? []).map((t) => (
+                      <li key={`it${t.id}`}>
+                        <button
+                          className="tree-row leaf" onClick={() => props.onNewLog?.(d.id, String(t.id))}
+                          onContextMenu={(e) => tableMenu(e, d.id, { key: String(t.id), id: t.id, name: t.name })}
+                          title={`Интервальная таблица «${t.name}»: клик — показать на скважинах в 3D, правая кнопка — меню`}
+                        >
+                          <Icon name="table" size={14} />
+                          <span className="grow name">{t.name}</span>
+                          <span className="count">{t.row_count.toLocaleString("ru-RU")}</span>
+                        </button>
+                      </li>
+                    ))}
                     <li>
                       <button className="tree-row leaf" onClick={() => props.onOpenAudit(d.id)} title="Результаты аудита набора">
                         <Icon name="audit" size={14} />

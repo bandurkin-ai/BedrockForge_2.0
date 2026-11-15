@@ -44,6 +44,8 @@ export interface Live {
     striplog?: { settings?: Record<string, unknown>; table?: string | null; hole?: string | null }) => Promise<string>;
   /** Opens a chart saved in the tree. */
   openSavedChart: (chartId: number) => Promise<string>;
+  /** Opens the window of data along the holes as a draft previewed in the view (null: the first table with data). */
+  previewOnHoles: (setId: number, tableKey: string | null) => Promise<string>;
   /** Shows a table (and its fields) on the holes of the set in the main view; saves the display in the tree. */
   showOnHoles: (setId: number, tableKey: string, fields?: string[]) => Promise<string>;
   /** Opens the grade–tonnage window of a block model. */
@@ -776,7 +778,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       id: "chart.striplog",
       title: "Данные по стволу",
       description:
-        "Открывает колонку данных по стволу скважин (графики, столбцы, цветные колонки, текст) и сохраняет её в дереве набора в узле «Данные по скважинам». " +
+        "Открывает колонку данных по стволу скважин (графики, столбцы, цветные колонки, текст) как черновик; в дерево (под «Содержаниями») её добавляет кнопка «Сохранить» в окне. " +
         "holes — скважины через запятую (до 30); table — таблица: «Пробы» или имя интервальной таблицы (литология и т.п.); " +
         "fields — поля через запятую (по умолчанию: текстовые поля и до трёх числовых).",
       params: { set_id: { type: "integer" }, holes: { type: "string" }, table: { type: "string" }, fields: { type: "string" } },
@@ -799,11 +801,21 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       },
     },
     {
+      id: "holes.data_window",
+      title: "Данные по скважинам",
+      description:
+        "Открывает окно настройки данных на скважинах (графики, столбцы, цветные трубки и ленты, подписи) для набора: черновик сразу виден на скважинах в главном окне, " +
+        "кнопка «Сохранить» в окне добавляет отображение в дерево под «Содержаниями». Чтобы показать и сохранить сразу, без окна, — holes.show_data.",
+      params: { set_id: { type: "integer" } },
+      uiOnly: true,
+      run: (args) => s().previewOnHoles(targetSet(args.set_id).id, null),
+    },
+    {
       id: "holes.show_data",
       title: "Показать данные на скважинах",
       description:
         "Показывает на скважинах в главном окне (3D и разрезы) данные интервальной таблицы: цветная трубка по стволу (литология и т.п.), " +
-        "столбцы и графики рядом со стволом (числа), подписи. Отображение сохраняется в дереве в узле «Данные по скважинам»; " +
+        "столбцы и графики рядом со стволом (числа), подписи. Отображение сохраняется в дереве набора под «Содержаниями»; " +
         "его можно включать и выключать галочкой, настройки — двойной клик. table — «Пробы» или имя интервальной таблицы; fields — поля через запятую (по умолчанию: текстовые и до двух числовых).",
       params: { set_id: { type: "integer" }, table: { type: "string" }, fields: { type: "string" } },
       run: async (args) => {

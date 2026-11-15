@@ -133,7 +133,7 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
           ) : (
             <>
               <button type="button" className="primary" disabled={!s.tracks.length} onClick={() => onSave?.(s, stripLogName(s))}
-                title="Добавить в дерево: «Данные по скважинам»">Сохранить</button>
+                title="Добавить в дерево набора, под «Содержаниями»">Сохранить</button>
               <span className="muted small">Черновик: в дереве его нет, пока не сохранён.</span>
             </>
           )}

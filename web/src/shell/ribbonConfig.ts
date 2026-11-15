@@ -126,6 +126,13 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           ],
         },
         {
+          title: "Просмотр",
+          items: [
+            { command: "holes.data_window", label: "Данные по скважинам", icon: "striplog", disabled: !ctx.hasSet,
+              hint: "Графики, столбцы, цветные трубки и подписи на скважинах в 3D и на разрезах: окно настройки с предпросмотром" },
+          ],
+        },
+        {
           title: "Оформление",
           items: [
             { command: "scene.style", args: { grid: !ws.grid }, label: ws.grid ? "Скрыть сетку" : "Показать сетку", icon: "quad", small: true },

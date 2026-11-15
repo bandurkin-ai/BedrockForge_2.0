@@ -156,7 +156,6 @@ function Workspace({
   const [menu, setMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
   // Right click on an interval table of a set (not the assays: those get the charts menu).
   const [tableMenu, setTableMenu] = useState<{ setId: number; id: number; name: string; x: number; y: number } | null>(null);
-  const [logsMenu, setLogsMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
   const [chartMenu, setChartMenu] = useState<{ id: number; kind: ChartKind; name: string; x: number; y: number } | null>(null);
   const showChart = (chartId: number, kind: ChartKind, setId: number, settings: Record<string, unknown>, hint?: ChartState["hint"]) =>
     setCharts((prev) => {
@@ -173,7 +172,7 @@ function Workspace({
       // A downhole display is a draft until «Сохранить» in its window: nothing is added to the tree by opening it.
       const draftId = -(Date.now() + ++draftSeq.current);
       showChart(draftId, kind, setId, settings, { table: striplog?.table, hole: striplog?.hole ?? (activeSetRef.current === setId ? holeRef.current : null) });
-      return "Данные по стволу открыты как черновик: «Сохранить» в окне добавит их в дерево («Данные по скважинам»)";
+      return "Данные по стволу открыты как черновик: «Сохранить» в окне добавит их в дерево (под «Содержаниями»)";
     }
     const saved = await createChart(setId, kind, CHART_TITLES[kind], settings);
     showChart(saved.id, kind, setId, settings);
@@ -218,11 +217,11 @@ function Workspace({
     }
   }, [ws.logs]);
   /** A table on the holes of its whole set, as a draft window with a live preview in the view (saved by its button). */
-  const previewOnHoles = async (setId: number, tableKey: string): Promise<string> => {
+  const previewOnHoles = async (setId: number, tableKey: string | null): Promise<string> => {
     const tables = await getIntervalTables(setId);
-    const table = tables.find((t) => t.key === tableKey);
+    const table = tableKey === null ? tables.find((t) => t.columns.length > 0) : tables.find((t) => t.key === tableKey);
     if (!table || table.columns.length === 0) throw new Error("В таблице нет полей для показа на скважинах");
-    return openChart("striplog", setId, undefined, undefined, undefined, { settings: tableDisplay(table) as unknown as Record<string, unknown>, table: tableKey });
+    return openChart("striplog", setId, undefined, undefined, undefined, { settings: tableDisplay(table) as unknown as Record<string, unknown>, table: table.key });
   };
   /** «Сохранить» of a draft window: the display becomes a row of the tree and stays on in the view. */
   const saveDraft = async (draftId: number, setId: number, settings: StripLogSettings, autoName: string): Promise<string> => {
@@ -236,7 +235,7 @@ function Workspace({
     setCharts((prev) => prev.map((c) => (c.chartId === draftId ? { ...c, chartId: saved.id } : c)));
     setWs((prev) => setLogShown(prev, saved.id, true));
     reload();
-    return `Сохранено в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Данные по скважинам → «${saved.name}»`;
+    return `Сохранено в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Содержания → «${saved.name}»`;
   };
   /** A table on the holes of its whole set, saved in the tree and on at once (the assistant's command). */
   const showOnHoles = async (setId: number, tableKey: string, fields?: string[]): Promise<string> => {
@@ -249,7 +248,7 @@ function Workspace({
     setLogSettings((prev) => ({ ...prev, [saved.id]: settings }));
     setWs((prev) => setLogShown(prev, saved.id, true));
     reload();
-    return `«${table.name}» показана на скважинах; настройки — в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Данные по скважинам`;
+    return `«${table.name}» показана на скважинах; настройки — в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Содержания`;
   };
   const saveChartSettings = (chartId: number, settings: unknown, autoName: string) => {
     if (charts.find((c) => c.chartId === chartId)?.kind === "striplog") setLogSettings((prev) => ({ ...prev, [chartId]: withDefaults(settings as Partial<StripLogSettings>) }));
@@ -402,6 +401,7 @@ function Workspace({
     openChart: (kind, setId, initial, qq, dendrogram, striplog) => openChart(kind, setId, initial, qq, dendrogram, striplog),
     openSavedChart,
     showOnHoles,
+    previewOnHoles,
     openBlockReport,
     openStats: (analysis, component) => {
       setStatsView((prev) => ({ analysis, component: component ?? prev.component }));
@@ -689,8 +689,7 @@ function Workspace({
                   onDemo={() => void runCommand("project.demo", {}, "user")}
                   onSetMenu={(setId, x, y) => setMenu({ setId, x, y })}
                   onTableMenu={(setId, table, x, y) => (table.id === null ? setMenu({ setId, x, y }) : setTableMenu({ setId, id: table.id, name: table.name, x, y }))}
-                  onNewLog={(setId, table) => void guarded(() => (table ? previewOnHoles(setId, table) : openChart("striplog", setId, undefined, undefined, undefined, { table })))}
-                  onLogsMenu={(setId, x, y) => setLogsMenu({ setId, x, y })}
+                  onNewLog={(setId, table) => void guarded(() => previewOnHoles(setId, table))}
                   logsOn={ws.logs}
                   onToggleLog={toggleLog}
                   onOpenChart={(id) => void guarded(() => openSavedChart(id))}
@@ -956,21 +955,6 @@ function Workspace({
               { label: "Данные по стволу (окно)…", icon: "striplog", disabledNote: noData, run: () => void guarded(() => openChart("striplog", menu.setId, undefined, undefined, undefined, { table: "assay" })) },
               "separator",
               { label: "Таблица проб", icon: "table", run: () => { selectSet(menu.setId); navigate({ kind: "assay" }); setWs((p) => openBottom(p, "table")); } },
-            ]}
-          />
-        );
-      })()}
-
-      {logsMenu && (() => {
-        const target = sets.find((d) => d.id === logsMenu.setId);
-        const mine = (target?.charts ?? []).filter((c) => c.kind === "striplog").map((c) => c.id);
-        const anyOn = mine.some((id) => ws.logs.includes(id));
-        return (
-          <ContextMenu
-            x={logsMenu.x} y={logsMenu.y} title={`Данные по скважинам · ${target?.name ?? ""}`} onClose={() => setLogsMenu(null)}
-            items={[
-              { label: "Новое отображение…", icon: "striplog", run: () => void guarded(() => openChart("striplog", logsMenu.setId, undefined, undefined, undefined, { table: null })) },
-              { label: "Скрыть все со скважин", icon: "clear", disabledNote: anyOn ? undefined : "ничего не показано", run: () => setWs((prev) => ({ ...prev, logs: prev.logs.filter((id) => !mine.includes(id)) })) },
             ]}
           />
         );
