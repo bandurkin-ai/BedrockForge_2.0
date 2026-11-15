@@ -136,6 +136,20 @@ describe("EditSession", () => {
     expect(s.layer.lines).toHaveLength(2);
   });
 
+  it("drags a vertex in plan without changing its Z", () => {
+    const s = planSession();
+    s.snap = { ...s.snap, enabled: false };
+    const id = s.addLine([[E0 + 50, N0 + 50, 311.5], [E0 + 100, N0 + 50, 320]], false);
+    s.pointer(at(100, 300, "down"));
+    s.pointer(at(140, 260, "move"));
+    s.pointer(at(140, 260, "up"));
+    const moved = s.layer.lines.find((l) => l.id === id)!.points[0];
+    expect(moved).toEqual([E0 + 70, N0 + 70, 311.5]); // not the plan level 250
+    expect(s.history.undoLabel).toBe("Перемещение вершины");
+    s.undo();
+    expect(s.layer.lines[0].points[0]).toEqual([E0 + 50, N0 + 50, 311.5]);
+  });
+
   it("finds the point of an edge closest to the cursor ray", () => {
     const p = closestOnSegmentToRay([0, 0, 0], [10, 0, 0], { origin: [4, 3, 50], dir: [0, 0, -1] });
     expect(p).toEqual([4, 0, 0]);

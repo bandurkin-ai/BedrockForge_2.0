@@ -76,7 +76,7 @@ export interface Hover {
 }
 
 type Drag =
-  | { kind: "vertex"; ref: VertexRef; moved: boolean }
+  | { kind: "vertex"; ref: VertexRef; origin: Vec3; moved: boolean }
   | { kind: "lines"; ids: number[]; last: Vec3; moved: boolean }
   | { kind: "box"; x0: number; y0: number; x1: number; y1: number; add: boolean };
 
@@ -326,6 +326,13 @@ export class EditSession {
       return true;
     }
     this.hover = this.resolve(e);
+    if (d?.kind === "vertex" && !this.hover.snap) {
+      // Without a snap a dragged vertex slides in its own plane: in plan it keeps its Z, on a
+      // section its distance from the section plane (only a snap or typed coordinates change those).
+      const ray = this.view?.ray(e.clientX, e.clientY);
+      const p = ray ? rayPlane(ray, { point: d.origin, normal: this.drawingPlane().normal }) : null;
+      this.hover = { ...this.hover, point: p };
+    }
     if (d?.kind === "vertex" && this.hover.point) {
       d.moved = true;
       this.history.replace(ops.moveVertex(this.layer, d.ref, this.hover.point));
@@ -367,7 +374,7 @@ export class EditSession {
       const sel = this.shownSelection;
       if (!sel.vertices.some((r) => sameRef(r, v.ref))) this.select({ lines: e.shift ? sel.lines : [], vertices: e.shift ? [...sel.vertices, v.ref] : [v.ref] });
       this.refreshOwnSource(v.ref);
-      this.drag = { kind: "vertex", ref: v.ref, moved: false };
+      this.drag = { kind: "vertex", ref: v.ref, origin: vertexAt(this.layer, v.ref)!, moved: false };
       return true;
     }
     const s = nearestSegment(this.layer, t, e.x, e.y, 6);
