@@ -77,12 +77,7 @@ function ReadOptionsPanel({
   );
 }
 
-export function ImportPage({ target, onImported, setHasAssays = false }: {
-  target: ImportTarget;
-  onImported: (setId: number) => void;
-  /** the target set already has assays: a new assay file gets its own table by default, so it does not replace them */
-  setHasAssays?: boolean;
-}) {
+export function ImportPage({ target, onImported }: { target: ImportTarget; onImported: (setId: number) => void }) {
   const [schemas, setSchemas] = useState<Schemas | null>(null);
   const [upload, setUpload] = useState<UploadResponse | null>(null);
   const [kind, setKind] = useState("collar");
@@ -114,7 +109,7 @@ export function ImportPage({ target, onImported, setHasAssays = false }: {
     const stem = data.filename.replace(/\.[^.]+$/, "");
     if (nextKind === "interval" || nextKind === "event") setTableName((prev) => (prev && prev !== "Пробы" ? prev : stem));
     // Assays: the main table «Пробы», or a table of its own (more assay files: composites, other labs).
-    if (nextKind === "assay") setTableName(setHasAssays ? stem : "Пробы");
+    if (nextKind === "assay") setTableName(stem);
     setResult(null);
     setCommitted(null);
   }
@@ -259,7 +254,7 @@ export function ImportPage({ target, onImported, setHasAssays = false }: {
                   placeholder={kind === "event" ? "События" : kind === "assay" ? "Пробы" : "Литология"} />
                 <span className="muted small">
                   {kind === "assay"
-                    ? "«Пробы» — основная таблица набора (аудит, статистика, графики); другое название — отдельная таблица опробования (композиты, другая лаборатория). Таблица с тем же названием заменяется, остальные не меняются."
+                    ? "Каждый файл опробования — своя таблица набора (опробование, композиты, другая лаборатория). Таблица с тем же названием заменяется, остальные не меняются."
                     : "Таблица с тем же названием заменяется; пробы и другие таблицы не меняются."}
                 </span>
               </label>

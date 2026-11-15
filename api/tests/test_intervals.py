@@ -54,7 +54,7 @@ def test_downhole_data_of_several_tables(db_client):
     _import(db_client, sid, "collar.DAT", collar_dat())
     _lith(db_client, sid)
     tables = db_client.get(f"/api/sets/{sid}/interval-tables").json()
-    key = tables[1]["key"]
+    key = tables[0]["key"]  # no assays: the lithology is the only table
     body = db_client.post(f"/api/sets/{sid}/downhole", json={"holes": ["H1", "H2", "NOPE"], "tables": [key]}).json()
     assert [t["name"] for t in body["tables"]] == ["Литология"]
     h1, h2, nope = body["holes"]
@@ -84,7 +84,7 @@ def test_event_tables_have_one_depth_and_feed_the_downhole_data(db_client):
     assert r.json()["kind"] == "event" and r.json()["inserted"] == 3
     tables = db_client.get(f"/api/sets/{sid}/interval-tables").json()
     ev = next(t for t in tables if t["name"] == "События")
-    assert ev["kind"] == "event" and tables[0]["kind"] == "interval"
+    assert ev["kind"] == "event" and [t["name"] for t in tables] == ["События"]  # no assays: no built-in «Пробы»
     body = db_client.post(f"/api/sets/{sid}/downhole", json={"all": True, "tables": [ev["key"]]}).json()
     assert body["tables"][0]["kind"] == "event"
     h1 = next(h for h in body["holes"] if h["hole_id"] == "H1")

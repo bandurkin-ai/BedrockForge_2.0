@@ -370,7 +370,8 @@ export function DataTree(props: DataTreeProps) {
                         </ul>
                       </li>
                     )}
-                    {TABLES.map((t) => (
+                    {/* The built-in assay table only when it has rows: assay files are named tables of their own now. */}
+                    {TABLES.filter((t) => t.kind !== "assay" || counts.assay > 0).map((t) => (
                       <li key={t.kind}>
                         <button
                           className="tree-row leaf" onClick={() => props.onOpenTable(d.id, t.kind)}

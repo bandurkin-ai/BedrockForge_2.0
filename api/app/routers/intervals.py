@@ -35,8 +35,9 @@ def assay_columns(session: Session, set_id: int) -> list[dict]:
 
 def tables_of(session: Session, set_id: int) -> list[dict]:
     assays = session.scalar(select(func.count()).select_from(Assay).where(Assay.set_id == set_id)) or 0
+    # The built-in assays only when the set has them (assay files are named tables of their own now).
     out = [{"key": "assay", "id": None, "name": "Пробы", "builtin": True, "row_count": assays, "kind": "interval",
-            "columns": assay_columns(session, set_id) if assays else []}]
+            "columns": assay_columns(session, set_id)}] if assays else []
     for t in session.scalars(select(IntervalTable).where(IntervalTable.set_id == set_id).order_by(IntervalTable.id)):
         out.append({"key": str(t.id), "id": t.id, "name": t.name, "builtin": False, "row_count": t.row_count,
                     "columns": t.columns, "filename": t.filename, "kind": t.kind})
