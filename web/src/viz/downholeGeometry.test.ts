@@ -185,6 +185,12 @@ describe("downhole geometry", () => {
       expect(stackOf(settings([bars({ widthM: 12 })]))).toMatchObject({ units: 0.08, m: 12 });
     });
 
+    it("draws the base line of a column along the hole, not its outer edge", () => {
+      const lines = buildDownhole(holes, data, settings([bars()], { panel: 10 }), origin).lines.amps;
+      expect(lines.filter((a) => a === 1.5).length).toBeGreaterThan(0); // the base line at the hole side
+      expect(lines.filter((a) => a === 11.5)).toHaveLength(0); // no line over the graph
+    });
+
     it("writes the opacity into the colours of panels", () => {
       const b = buildDownhole(holes, data, settings([bars({ opacity: 0.4 })], { panel: 10 }), origin);
       expect(b.panels.colors[3]).toBeCloseTo(0.4);

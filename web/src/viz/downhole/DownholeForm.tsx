@@ -25,6 +25,7 @@ import {
   STYLE_FILE_EXT, type StyleFile, type StyleRec,
 } from "./styles";
 import { downloadText, pickFile } from "./ui";
+import { askText } from "../../shell/dialogs";
 
 /** Which table and field a new display of a form starts with. */
 function firstLayer(form: DisplayForm, tables: IntervalTableInfo[]): Track | null {
@@ -310,7 +311,7 @@ export function DownholeForm({ projectId, setId, form, initial, saved, refreshKe
     say(`Стиль «${style.name}» обновлён; связанные отображения перестроены`);
   };
 
-  const menu = (id: string, action: "duplicate" | "saveStyle" | "applyStyle" | "applyTo" | "remove") => {
+  const menu = async (id: string, action: "duplicate" | "saveStyle" | "applyStyle" | "applyTo" | "remove") => {
     const t = resolved?.tracks.find((x) => x.id === id);
     if (!t) return;
     if (action === "duplicate") {
@@ -324,7 +325,7 @@ export function DownholeForm({ projectId, setId, form, initial, saved, refreshKe
       change((s) => ({ ...s, tracks: s.tracks.filter((x) => x.id !== id) }));
       setSelected((sel) => sel.filter((x) => x !== id));
     } else if (action === "saveStyle") {
-      const name = window.prompt("Стиль слоя: название", t.style?.name ?? `${t.field}`)?.trim();
+      const name = await askText({ title: "Сохранить как стиль слоя", message: "Название в библиотеке проекта", value: t.style?.name ?? `${t.field}` });
       if (!name) return;
       saveStyle("layer", name, t).then((rec) => { setRef("layer", id, { id: rec.id, name: rec.name, linked: false }); say(`Стиль «${rec.name}» сохранён в библиотеке проекта`); }).catch((e: Error) => say(e.message, true));
     } else if (action === "applyStyle") {
@@ -334,7 +335,7 @@ export function DownholeForm({ projectId, setId, form, initial, saved, refreshKe
       const source = t.style ? library.find((s) => s.id === t.style?.id) : undefined;
       if (source) setApplying(source);
       else {
-        const name = window.prompt("Чтобы применить настройки к другим полям, сохраните их как стиль. Название:", t.field)?.trim();
+        const name = await askText({ title: "Применить к другим полям", message: "Чтобы применить настройки к другим полям, сохраните их как стиль. Название:", value: t.field });
         if (name) saveStyle("layer", name, t).then((rec) => { setRef("layer", id, { id: rec.id, name: rec.name, linked: false }); setApplying(rec as StyleRec); }).catch((e: Error) => say(e.message, true));
       }
     }

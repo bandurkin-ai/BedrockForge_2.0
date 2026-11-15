@@ -697,3 +697,16 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .assistant-head .assistant-title { flex: 1 1 auto; max-width: none; }
 .assistant-head .spacer { display: none; }
 .ca-profile .muted.small { line-height: 1.35; }
+
+/* ---- the application's own dialogs (instead of the browser's confirm / prompt / alert) */
+.app-dialog-backdrop { z-index: 200; }
+.modal.app-dialog { width: min(440px, 92vw); height: auto; max-height: 80vh; display: flex; flex-direction: column; border-radius: 8px; overflow: hidden; }
+.app-dialog.danger .modal-head { color: var(--sev-error); }
+.app-dialog.error .modal-head { color: var(--sev-error); }
+.app-dialog-body { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; background: var(--panel); }
+.app-dialog-message { margin: 0; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-dialog-body input { width: 100%; box-sizing: border-box; }
+.app-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.app .app-dialog-foot button { min-width: 90px; }
+.app .danger-btn { background: var(--sev-error); border-color: var(--sev-error); color: #fff; font-weight: 600; }
+.app .danger-btn:hover { filter: brightness(1.1); }

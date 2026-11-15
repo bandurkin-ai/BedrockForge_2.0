@@ -727,7 +727,7 @@ export function buildDownhole(
         for (const [s, before] of prev) addSegment(build.lines, before.point, before.point, [0, 0, -1], before.amp, s * col.offset, hexRgb(t.color));
       }
     }
-    // The frame of every panel column along the hole.
+    // The base line of every panel column along the hole (its outer edge is not drawn: a line over the graph only hides it).
     if (lastBottom > -Infinity) {
       const top = from ?? traj.path[0][3];
       const a = rel(pointAt(traj.path, Math.max(top, traj.path[0][3])));
@@ -739,7 +739,6 @@ export function buildDownhole(
         const sides = typeof r.track.split === "number" ? [1, -1] : col.sides;
         for (const s of sides) {
           addSegment(build.lines, a, b, tan, s * col.offset, s * col.offset, frame);
-          if (r.track.type !== "color" && r.track.type !== "color_text") addSegment(build.lines, a, b, tan, s * (col.offset + col.width), s * (col.offset + col.width), frame);
         }
       }
     }

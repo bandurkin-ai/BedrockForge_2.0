@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AssistantChatInfo, AssistantStatus, AssistantUsageTotals } from "../api";
 import { ClaudeAccountButton } from "./ClaudeAccount";
+import { askConfirm, askText } from "./dialogs";
 import { Icon } from "./icons";
 import { Markdown } from "./markdown";
 import { QUICK_PROMPTS } from "./ribbonConfig";
@@ -103,11 +104,11 @@ export function AssistantPanel({
                   {` · вопросов: ${c.messages}`}{c.cost_usd > 0 ? ` · $${c.cost_usd.toFixed(c.cost_usd < 0.01 ? 4 : 2)}` : ""}
                 </span>
               </button>
-              <button className="icon" title="Переименовать" aria-label={`Переименовать: ${c.title}`} onClick={() => {
-                const name = window.prompt("Название диалога", c.title)?.trim();
+              <button className="icon" title="Переименовать" aria-label={`Переименовать: ${c.title}`} onClick={async () => {
+                const name = await askText({ title: "Переименовать диалог", value: c.title });
                 if (name && name !== c.title) onRenameChat(c.id, name);
               }}><Icon name="edit" size={14} /></button>
-              <button className="icon" title="Удалить диалог" aria-label={`Удалить: ${c.title}`} onClick={() => window.confirm(`Удалить диалог «${c.title}»?`) && onDeleteChat(c.id)}><Icon name="trash" size={14} /></button>
+              <button className="icon" title="Удалить диалог" aria-label={`Удалить: ${c.title}`} onClick={async () => (await askConfirm({ title: "Удаление диалога", message: `Удалить диалог «${c.title}»?`, danger: true })) && onDeleteChat(c.id)}><Icon name="trash" size={14} /></button>
             </div>
           ))}
         </div>

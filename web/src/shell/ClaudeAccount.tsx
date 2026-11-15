@@ -3,6 +3,7 @@ import {
   cancelAccountLogin, checkAssistant, connectAssistantKey, disconnectAssistant, finishAccountLogin, getAssistantUsage,
   setAssistantPreferences, startAccountLogin, type AssistantStatus, type AssistantUsage,
 } from "../api";
+import { askConfirm } from "./dialogs";
 import { Icon } from "./icons";
 
 export const EFFORT_TITLES: Record<string, [string, string]> = {
@@ -114,7 +115,7 @@ export function ClaudeAccount({ status, onStatus }: { status: AssistantStatus | 
           <div className="ca-actions">
             <button disabled={busy} onClick={() => run(checkAssistant().then((r) => setNote({ text: r.message })))}>Проверить связь</button>
             {status.mode !== "env" && (
-              <button disabled={busy} onClick={() => window.confirm("Отключить Claude? Сохранённый ключ или вход будут удалены с сервера.") && run(disconnectAssistant(), "Claude отключён")}>Выйти</button>
+              <button disabled={busy} onClick={async () => (await askConfirm({ title: "Выход из Claude", message: "Отключить Claude? Сохранённый ключ или вход будут удалены с сервера.", ok: "Выйти", danger: true })) && run(disconnectAssistant(), "Claude отключён")}>Выйти</button>
             )}
           </div>
           {status.mode === "env" && <p className="muted small">Ключ задан в окружении сервера. Чтобы войти иначе, войдите аккаунтом или введите ключ ниже — они заменят его.</p>}

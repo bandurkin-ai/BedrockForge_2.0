@@ -22,6 +22,7 @@ import type { StatsView } from "./stats/analyses";
 import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
 import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
 import { ClaudeAccount, ClaudeAccountButton } from "./shell/ClaudeAccount";
+import { askConfirm, askText, DialogHost, showError } from "./shell/dialogs";
 import { CommandLog } from "./shell/CommandLog";
 import { CommandPalette } from "./shell/CommandPalette";
 import { commandTools, eventShortcut, findByToolName, validateArgs, type CommandSource, type LogEntry } from "./shell/commands";
@@ -614,7 +615,7 @@ function Workspace({
     guarded(async () => {
       const raster = d.rasters?.[0];
       const current = raster?.name ?? d.name;
-      const name = window.prompt("Новое название", current)?.trim();
+      const name = await askText({ title: "Переименовать", message: `Новое название для «${current}»`, value: current });
       if (!name || name === current) return;
       if (raster) await patchRaster(raster.id, { name });
       else await renameDataset(d.id, name);
@@ -624,8 +625,8 @@ function Workspace({
 
   const onMove = (d: Dataset) =>
     guarded(async () => {
-      const folder = window.prompt("Папка (через «/», пусто — в корень группы)", d.folder ?? "");
-      if (folder === null || folder.trim() === (d.folder ?? "")) return;
+      const folder = await askText({ title: "Переместить в папку", message: "Папка через «/»; пусто — в корень группы", value: d.folder ?? "", allowEmpty: true });
+      if (folder === null || folder === (d.folder ?? "")) return;
       const moved = await moveDataset(d.id, folder);
       reload();
       return moved.folder ? `«${d.name}» → «${moved.folder}»` : `«${d.name}» → корень группы`;
@@ -638,7 +639,7 @@ function Workspace({
         : d.kind === "wireframes" ? `файл «${d.name}» со всеми каркасами (${d.wireframes?.length ?? 0})`
         : d.kind === "lines" ? `файл «${d.name}» со всеми слоями линий (${d.lines?.length ?? 0})`
         : `растр «${d.rasters?.[0]?.name ?? d.name}»`;
-      if (!window.confirm(`Удалить ${what}? Это действие нельзя отменить.`)) return;
+      if (!(await askConfirm({ title: "Удаление", message: `Удалить ${what}? Это действие нельзя отменить.`, danger: true }))) return;
       await deleteDataset(d.id);
       const items = [...(d.wireframes ?? []), ...(d.lines ?? []), ...(d.rasters ?? [])].map((x) => x.id);
       if (selected && items.includes(selected.id)) setSelected(null);
@@ -649,7 +650,7 @@ function Workspace({
   const onDeleteItem = (kind: "wireframe" | "lines", id: number, name: string) =>
     guarded(async () => {
       const what = kind === "wireframe" ? `каркас «${name}»` : `слой линий «${name}»`;
-      if (!window.confirm(`Удалить ${what}? Это действие нельзя отменить.`)) return;
+      if (!(await askConfirm({ title: "Удаление", message: `Удалить ${what}? Это действие нельзя отменить.`, danger: true }))) return;
       await (kind === "wireframe" ? deleteWireframe(id) : deleteLines(id));
       if (selected?.kind === kind && selected.id === id) setSelected(null);
       reload();
@@ -927,11 +928,11 @@ function Workspace({
                   ]}
                   onSend={(text) => void assistant.send(text)} onStop={assistant.stop} onReset={assistant.reset}
                   title={assistant.title} usage={assistant.usage} chats={assistant.chats} chatId={assistant.chatId}
-                  onOpenChat={(id) => void assistant.openChat(id).catch((e: Error) => window.alert(e.message))}
-                  onRenameChat={(id, name) => void assistant.renameChat(id, name).catch((e: Error) => window.alert(e.message))}
-                  onDeleteChat={(id) => void assistant.deleteChat(id).catch((e: Error) => window.alert(e.message))}
+                  onOpenChat={(id) => void assistant.openChat(id).catch(showError)}
+                  onRenameChat={(id, name) => void assistant.renameChat(id, name).catch(showError)}
+                  onDeleteChat={(id) => void assistant.deleteChat(id).catch(showError)}
                   onAccount={() => setAccountOpen(true)}
-                  onModel={(model) => void setAssistantPreferences({ model }).then(assistant.setStatus).catch((e: Error) => window.alert(e.message))}
+                  onModel={(model) => void setAssistantPreferences({ model }).then(assistant.setStatus).catch(showError)}
                 />
               </div>
             </aside>
@@ -939,6 +940,7 @@ function Workspace({
         )}
       </div>
 
+      <DialogHost />
       <StatusBar
         projectName={project.name} setName={activeSetName} holeCount={holes.length} selectedHole={selectedHole} audit={audit}
         mode={section && ws.clip ? `разрез, азимут ${Math.round(section.az)}°, окно от ${section.towards} до ${section.away}` : "3D"} assistant={assistant.status} remote={remote}
@@ -1079,7 +1081,7 @@ function Workspace({
             }] : []),
             { label: chartMenu.kind === "downhole" ? "Настройки…" : "Открыть", icon: chartMenu.kind === "downhole" ? "gear" as const : chartMenu.kind, run: () => void guarded(() => openSavedChart(chartMenu.id)) },
             { label: "Переименовать…", icon: "edit", run: () => void guarded(async () => {
-              const name = window.prompt("Название графика", chartMenu.name)?.trim();
+              const name = await askText({ title: "Переименовать график", value: chartMenu.name });
               if (!name || name === chartMenu.name) return;
               await patchChart(chartMenu.id, { name });
               chartNames.current.set(chartMenu.id, name);
@@ -1088,7 +1090,7 @@ function Workspace({
             }) },
             "separator",
             { label: "Удалить", icon: "trash", run: () => void guarded(async () => {
-              if (!window.confirm(`Удалить график «${chartMenu.name}»? Данные проб не меняются.`)) return;
+              if (!(await askConfirm({ title: "Удаление графика", message: `Удалить «${chartMenu.name}»? Данные проб не меняются.`, danger: true }))) return;
               await deleteChart(chartMenu.id);
               setWs((prev) => setLogShown(prev, chartMenu.id, false));
               setCharts((prev) => prev.filter((x) => x.chartId !== chartMenu.id));
@@ -1139,14 +1141,14 @@ function Workspace({
             } },
             "separator",
             { label: "Переименовать…", icon: "edit", run: () => void guarded(async () => {
-              const name = window.prompt("Название таблицы", tableMenu.name)?.trim();
+              const name = await askText({ title: "Переименовать таблицу", value: tableMenu.name });
               if (!name || name === tableMenu.name) return undefined;
               await renameIntervalTable(tableMenu.id, name);
               reload();
               return `Таблица переименована: «${name}»`;
             }) },
             { label: "Удалить таблицу", icon: "trash", run: () => void guarded(async () => {
-              if (!window.confirm(`Удалить таблицу «${tableMenu.name}» со всеми интервалами? Пробы и другие таблицы не меняются.`)) return undefined;
+              if (!(await askConfirm({ title: "Удаление таблицы", message: `Удалить таблицу «${tableMenu.name}» со всеми интервалами? Пробы и другие таблицы не меняются.`, danger: true }))) return undefined;
               await deleteIntervalTable(tableMenu.id);
               reload();
               return `Таблица «${tableMenu.name}» удалена`;
@@ -1205,7 +1207,7 @@ export function App() {
 
   /** Creates and opens a project; without a name the user is asked for one. */
   async function onNewProject(name?: string): Promise<string> {
-    const title = (name ?? window.prompt("Название нового проекта") ?? "").trim();
+    const title = (name ?? (await askText({ title: "Новый проект", message: "Название нового проекта", placeholder: "например, Участок Северный" })) ?? "").trim();
     if (!title) return "Отменено";
     const project = await createProject(title);
     setProjects((prev) => [...(prev ?? []), project]);
@@ -1217,7 +1219,7 @@ export function App() {
   async function onDeleteProject(id: number): Promise<string> {
     const target = projects?.find((p) => p.id === id);
     if (!target) throw new Error(`Проекта с id ${id} нет`);
-    if (!window.confirm(`Удалить проект «${target.name}» со всеми данными? Это нельзя отменить.`)) return "Отменено";
+    if (!(await askConfirm({ title: "Удаление проекта", message: `Удалить проект «${target.name}» со всеми данными? Это нельзя отменить.`, danger: true }))) return "Отменено";
     await deleteProject(id);
     let rest = (projects ?? []).filter((p) => p.id !== id);
     if (rest.length === 0) rest = [await createProject("Основной проект")];
