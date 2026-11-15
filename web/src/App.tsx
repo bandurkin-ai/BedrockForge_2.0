@@ -676,7 +676,15 @@ function Workspace({
   const activeSetName = sets.find((d) => d.id === activeSet)?.name ?? null;
 
   return (
-    <div className={dragging ? "app drop-target" : "app"} {...dropHandlers}>
+    <div
+      className={dragging ? "app drop-target" : "app"} {...dropHandlers}
+      // Only the application's own menus: the browser's menu stays just in text fields (copy, paste).
+      onContextMenu={(e) => {
+        const t = e.target as HTMLElement;
+        const text = t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && /^(text|search|number|email|url|password|)$/.test(t.type)) || t.isContentEditable;
+        if (!text) e.preventDefault();
+      }}
+    >
       <header className="titlebar">
         <span className="brand"><span className="brand-mark" aria-hidden="true" />BedrockForge</span>
         <label className="project-pick">
