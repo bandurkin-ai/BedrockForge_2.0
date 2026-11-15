@@ -68,6 +68,17 @@ def detect(filename: str, path: Path | None = None) -> Detected:
         if names and looks_like_block_model(names):
             return Detected("blocks", "Micromine DAT" if suffix == ".dat" else "CSV",
                             "Блочная модель: центр и размер блоков")
+        if suffix == ".dat" and names is None:
+            from app.formats.micromine import MicromineFormatError, read_header
+
+            try:
+                read_header(path)
+            except (MicromineFormatError, OSError, ValueError) as exc:
+                return Detected("drillholes", "DAT", f"Заголовок Micromine не прочитан: {exc}")
+        if names:
+            return Detected("drillholes", suffix.lstrip(".").upper(),
+                            f"Таблица (поля: {', '.join(names[:12])}{' …' if len(names) > 12 else ''}): импорт через мастер скважин. "
+                            "Блочной модели нужны поля центра (X, Y, Z) и размера (_X, _Y, _Z)")
     if suffix in TABLE_SUFFIXES:
         return Detected("drillholes", suffix.lstrip(".").upper(), "Таблица: импорт через мастер скважин")
     return Detected("unknown", suffix.lstrip(".").upper() or "без расширения", "Формат не поддерживается")

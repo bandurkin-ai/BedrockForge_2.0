@@ -77,6 +77,8 @@ export function ImportWizard({
   onClose: () => void;
 }) {
   const sorted = useMemo(() => sortFiles(files, blockModels), [files, blockModels]);
+  const asBlocks = useMemo(() => new Set(files.filter((f) => blockModels?.has(f) || (kindHint === "blocks" && TABLE_SUFFIXES.includes(suffix(f.name)))).map((f) => f.name)),
+    [files, blockModels, kindHint]);
   const [stage, setStage] = useState<"upload" | "review" | "starting">(sorted.objects.length ? "upload" : "review");
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [rows, setRows] = useState<Row[]>([]);
@@ -128,7 +130,9 @@ export function ImportWizard({
         if (!alive.current) return;
         setRows(detected.map((d) => ({
           ...d,
-          chosen: d.kind === "blocks" ? "blocks"
+          // Sent as a block model (sniffed in the browser, or from the "Блочные модели" button):
+          // it stays one even if the server did not recognise it; the import reports why.
+          chosen: d.kind === "blocks" || (d.kind === "drillholes" && asBlocks.has(d.filename)) ? "blocks"
             : d.kind === "wireframes" || d.kind === "lines" || d.kind === "rasters"
             ? ((kindHint === "wireframes" || kindHint === "lines") && d.kind !== "rasters" && suffix(d.filename) === ".dxf" ? kindHint : d.kind)
             : d.kind === "sidecar" ? "rasters" : null,
@@ -229,6 +233,11 @@ export function ImportWizard({
                         <td>
                           {r.kind === "sidecar" ? (
                             <span className="muted small">привязка растра</span>
+                          ) : r.kind === "drillholes" && asBlocks.has(r.filename) ? (
+                            <select value={r.chosen ?? ""} onChange={(e) => setKind(r.upload, (e.target.value || null) as ObjectKind | null)} aria-label={`Тип: ${r.filename}`}>
+                              <option value="blocks">{KIND_TITLES.blocks}</option>
+                              <option value="">Не загружать</option>
+                            </select>
                           ) : isObjectKind(r.kind) ? (
                             <select value={r.chosen ?? ""} onChange={(e) => setKind(r.upload, (e.target.value || null) as ObjectKind | null)} aria-label={`Тип: ${r.filename}`}>
                               {(suffix(r.filename) === ".dxf" ? (["wireframes", "lines"] as ObjectKind[]) : [r.kind]).map((k) => (

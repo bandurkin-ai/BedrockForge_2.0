@@ -259,3 +259,39 @@ def test_import_job_and_grade_tonnage_report(db_client, run_jobs, tmp_path):
     raw = db_client.get(f"/api/blockmodels/{d['id']}/values/{au}").content
     assert np.allclose(np.frombuffer(raw, "<f4"), m["AU_CUT"].astype("<f4"))
     assert db_client.patch(f"/api/blockmodels/{d['id']}/attributes/{au}", json={"unit": "ppm"}).json()["unit"] == "ppm"
+
+
+def test_xml_header_longer_than_4096_and_no_codepage(tmp_path):
+    """The model export pads a long XML header to 8192 bytes: the codepage is past byte 4096.
+    Without any codepage, BOCU-1 names (ASCII + 0x50) are recognised by their bytes."""
+    m = make_blocks()
+    p = tmp_path / "Model.DAT"
+    write_dat(p, m)
+    data = p.read_bytes()
+    head, rest = data[:4096], data[4096:]
+    magic_end = head.index(b"\r\n") + 2
+    xml = head[magic_end:].rstrip(b"\x00")
+    long_xml = xml.replace(b"<metadata version=\"1.0\">", b"<metadata version=\"1.0\"><blockmodel>" + b" " * 5000 + b"</blockmodel>")
+    big = (head[:magic_end] + long_xml).ljust(8192, b"\x00") + rest
+    q = tmp_path / "Long.DAT"
+    q.write_bytes(big)
+    assert detect("Long.DAT", q).kind == "blocks"
+    t = read_block_model(q, q.name)
+    assert len(t.centres) == len(m["X"]) and "BOCU-1" in t.format
+    # No codepage at all.
+    bare = (head[:magic_end] + xml.replace(b'codepage="BOCU-1"', b"")).ljust(4096, b"\x00") + rest
+    r = tmp_path / "Bare.DAT"
+    r.write_bytes(bare)
+    assert detect("Bare.DAT", r).kind == "blocks"
+    assert next(a for a in read_block_model(r, r.name).attributes if a.name == "ALT").labels[0] in ("G", "Руда окисл. ёЁ")
+
+
+def test_detection_explains_a_table_that_is_not_a_model(tmp_path):
+    p = tmp_path / "assay.csv"
+    p.write_text("BHID,FROM,TO,AU\nH1,0,1,0.5\n", encoding="utf-8")
+    d = detect("assay.csv", p)
+    assert d.kind == "drillholes" and "_X" in d.note
+    broken = tmp_path / "broken.DAT"
+    broken.write_bytes(b"THIS IS MICROMINE EXTENDED DATA FILE!" + b"\x00" * 5000)
+    d = detect("broken.DAT", broken)
+    assert d.kind == "drillholes" and "не прочитан" in d.note

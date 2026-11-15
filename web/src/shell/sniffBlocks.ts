@@ -25,12 +25,15 @@ export function isBlockModelFields(names: string[]): boolean {
 export function fieldNames(head: Uint8Array): string[] {
   const latin = Array.from(head.subarray(0, Math.min(head.length, 1 << 18)), (b) => String.fromCharCode(b)).join("");
   if (latin.startsWith(MAGIC)) {
-    const bocu = /codepage="BOCU-1"/i.test(latin.slice(0, 8192));
     const m = /(\d+)\s+VARIABLES\r\n/.exec(latin.slice(4096));
     if (!m) return [];
+    // The XML header can be longer than 4096 bytes: the codepage is searched in all of it.
+    const declared = /codepage="([^"]*)"/i.exec(latin.slice(0, 4096 + m.index))?.[1];
     const lines = latin.slice(4096 + m.index + m[0].length).split("\r\n").slice(0, Number(m[1]));
-    return lines.map((line) => {
-      const name = line.replace(/\s+[A-Z]\s+\d+\s+\d+\s*$/, "").trimEnd();
+    const raw = lines.map((line) => line.replace(/\s+[A-Z]\s+\d+\s+\d+\s*$/, "").trimEnd());
+    const shifted = raw.every((n) => Array.from(n.trim(), (ch) => ch.charCodeAt(0)).every((c) => c > 0x70 || c === 0x20));
+    const bocu = declared ? declared.toUpperCase() === "BOCU-1" : shifted;
+    return raw.map((name) => {
       // BOCU-1 writes ASCII as byte + 0x50 in a fresh field.
       return bocu ? Array.from(name, (ch) => (ch.charCodeAt(0) > 0x70 && ch.charCodeAt(0) < 0xd0 ? String.fromCharCode(ch.charCodeAt(0) - 0x50) : ch)).join("") : name;
     });

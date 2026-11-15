@@ -88,12 +88,12 @@ def _parse_header(data: bytes) -> tuple[str, list[Field], int]:
     if not data.startswith(MAGIC):
         raise MicromineFormatError("file is not a Micromine extended data file")
 
-    codepage_match = _CODEPAGE_RE.search(data[:HEADER_SIZE])
-    codepage = codepage_match.group(1).decode("ascii") if codepage_match else "ascii"
-
     vars_pos = data.find(VARIABLES_TAG, HEADER_SIZE)
     if vars_pos < 0:
         raise MicromineFormatError("VARIABLES block not found")
+    # The XML header may be longer than 4096 bytes (then padded to 8192): look in all of it.
+    codepage_match = _CODEPAGE_RE.search(data[:vars_pos])
+    codepage = codepage_match.group(1).decode("ascii", "replace") if codepage_match else None
 
     # "<N>   VARIABLES": the header before it is padded with zero bytes (to 4096 or 8192).
     count_token = data[HEADER_SIZE:vars_pos].replace(b"\x00", b" ").split()
@@ -103,6 +103,7 @@ def _parse_header(data: bytes) -> tuple[str, list[Field], int]:
 
     pos = vars_pos + len(VARIABLES_TAG)
     fields: list[Field] = []
+    raw_names: list[bytes] = []
     for _ in range(count):
         end = data.find(b"\r\n", pos)
         if end < 0:
@@ -114,16 +115,23 @@ def _parse_header(data: bytes) -> tuple[str, list[Field], int]:
         if not m:
             raise MicromineFormatError(f"bad variable line: {line!r}")
         name_raw, kind_token, width_token, decimals_token = m.groups()
+        raw_names.append(name_raw)
         if kind_token.decode("ascii") not in FIELD_TYPES:
             raise MicromineFormatError(f"unknown field type: {kind_token!r}")
         fields.append(
             Field(
-                name=_decode_text(name_raw, codepage),
+                name=_decode_text(name_raw, codepage or "ascii"),
                 kind=kind_token.decode("ascii"),
                 width=int(width_token),
                 decimals=int(decimals_token),
             )
         )
+
+    if codepage is None:
+        # No codepage in the header: BOCU-1 names are ASCII + 0x50 (every byte above 0x70).
+        raws = [r for r in raw_names if r.strip()]
+        codepage = "BOCU-1" if raws and all(all(b > 0x70 or b == 0x20 for b in r.strip()) for r in raws) else "ascii"
+        fields = [Field(_decode_text(r, codepage), f.kind, f.width, f.decimals) for r, f in zip(raw_names, fields)]
 
     # Records are not flagged in the header: they start right after the last
     # variable line (the 'pos' value after the loop).
