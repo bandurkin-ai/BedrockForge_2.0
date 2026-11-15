@@ -175,6 +175,8 @@ export function SceneView(props: SceneViewProps) {
     };
     scene.setPerspective(live.current.ws.perspective);
     sceneRef.current = scene;
+    // For tests in development: what the scene holds.
+    if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) (window as unknown as { __geoScene?: GeoScene }).__geoScene = scene;
     const api: SceneApi = {
       fit: () => scene.fit(),
       // "top" is "В план": the plan of what is on the screen now, not of everything.
@@ -211,13 +213,9 @@ export function SceneView(props: SceneViewProps) {
     const scene = sceneRef.current;
     if (!scene) return;
     const ids = new Set(sets.map((d) => d.id));
-    for (const id of [...loadedSets.current.keys()]) {
-      if (!ids.has(id)) {
-        scene.removeDrillholes(id);
-        loadedSets.current.delete(id);
-      }
-    }
-    let cancelled = false;
+    // Deleted sets go away from what the scene really holds (a load in flight may have drawn one after its key changed).
+    for (const id of scene.loadedIds().sets) if (!ids.has(id)) scene.removeDrillholes(id);
+    for (const id of [...loadedSets.current.keys()]) if (!ids.has(id)) loadedSets.current.delete(id);
     for (const d of sets) {
       if (!isShown(ws, layerKey.set(d.id)) || !d.counts?.collar) continue;
       // Holes are plain paths and collars; what is drawn along them comes from the displays under «Стволы».
@@ -227,24 +225,20 @@ export function SceneView(props: SceneViewProps) {
       setLoading((n) => n + 1);
       Promise.all([loadTrajectories(d.id, refreshKey), loadHoles(d.id, refreshKey)])
         .then(([trajectories, holes]) => {
-          if (cancelled || !sceneRef.current) {
-            loadedSets.current.delete(d.id);
-            return;
-          }
+          // Deleted or superseded meanwhile: the newer state decides.
+          if (!sceneRef.current || loadedSets.current.get(d.id) !== key) return;
           holesBySet.current.set(d.id, new Map(holes.map((h) => [h.hole_id, h])));
           sceneRef.current.setDrillholes(d.id, trajectories, null, null, new Map(holes.map((h) => [h.hole_id, auditColor(h)])));
           applyStyles();
           setError(null);
         })
         .catch((e: Error) => {
+          if (loadedSets.current.get(d.id) !== key) return;
           loadedSets.current.delete(d.id);
-          if (!cancelled) setError(e.message);
+          setError(e.message);
         })
         .finally(() => setLoading((n) => n - 1));
     }
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sets, ws.hidden, refreshKey]);
 
@@ -263,6 +257,7 @@ export function SceneView(props: SceneViewProps) {
     const scene = sceneRef.current;
     if (!scene) return;
     const wanted = new Map((logs ?? []).map((l) => [l.id, l]));
+    for (const key of scene.loadedIds().downholes) if (!wanted.has(Number(key.slice(4)))) scene.removeDownhole(key);
     for (const id of [...loadedLogs.current.keys()]) {
       if (!wanted.has(id)) {
         scene.removeDownhole(`log:${id}`);
@@ -315,47 +310,41 @@ export function SceneView(props: SceneViewProps) {
     const scene = sceneRef.current;
     if (!scene) return;
     const ids = new Set(wireframes.map((w) => w.id));
-    for (const id of [...loadedWireframes.current.keys()]) {
-      if (!ids.has(id)) {
-        scene.removeWireframe(id);
-        loadedWireframes.current.delete(id);
-      }
-    }
-    let cancelled = false;
+    for (const id of scene.loadedIds().wireframes) if (!ids.has(id)) scene.removeWireframe(id);
+    for (const id of [...loadedWireframes.current.keys()]) if (!ids.has(id)) loadedWireframes.current.delete(id);
     for (const w of wireframes) {
       if (loadedWireframes.current.get(w.id) === w.lod_levels || !isShown(ws, layerKey.wireframe(w.id))) continue;
       const first = !loadedWireframes.current.has(w.id);
       loadedWireframes.current.set(w.id, w.lod_levels);
       setLoading((n) => n + 1);
+      // A load runs to its end unless the wireframe is deleted or reloaded meanwhile (its key changes).
+      const current = () => !!sceneRef.current && loadedWireframes.current.get(w.id) === w.lod_levels;
       (async () => {
         const info = await loadWireframeInfo(w.id, w.lod_levels);
-        if (cancelled || !sceneRef.current) throw new Error("cancelled");
-        if (first || !sceneRef.current.hasWireframeLevel(w.id, 0)) {
-          sceneRef.current.addWireframe(w.id, info.origin, w.extent.min, w.extent.max, w.color, ws.wireframeOpacity);
+        const view = sceneRef.current;
+        if (!current() || !view) throw new Error("cancelled");
+        if (first || !view.hasWireframeLevel(w.id, 0)) {
+          view.addWireframe(w.id, info.origin, w.extent.min, w.extent.max, w.color, ws.wireframeOpacity);
           applyStyles();
         }
         const levels = [...info.lods.map((l) => l.level).sort((x, y) => y - x), 0];
         for (const level of levels) {
           if (sceneRef.current?.hasWireframeLevel(w.id, level)) continue;
           const buffers = await loadWireframeLevel(info, level);
-          if (cancelled || !sceneRef.current) throw new Error("cancelled");
-          sceneRef.current.setWireframeLevel(w.id, level, buffers.vertices, buffers.triangles, level === 0 ? info.chunks : null);
+          if (!current() || sceneRef.current !== view) throw new Error("cancelled");
+          view.setWireframeLevel(w.id, level, buffers.vertices, buffers.triangles, level === 0 ? info.chunks : null);
           setWireframesShown((n) => n + 1);
         }
       })()
         .catch((e: Error) => {
-          if (e.message === "cancelled") {
-            if (loadedWireframes.current.get(w.id) === w.lod_levels) loadedWireframes.current.delete(w.id);
-            return;
-          }
+          // Deleted while loading: whatever was drawn goes too.
+          if (!loadedWireframes.current.has(w.id)) sceneRef.current?.removeWireframe(w.id);
+          if (e.message === "cancelled" || loadedWireframes.current.get(w.id) !== w.lod_levels) return;
           loadedWireframes.current.delete(w.id);
-          if (!cancelled) setError(e.message);
+          setError(e.message);
         })
         .finally(() => setLoading((n) => n - 1));
     }
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wireframes, ws.hidden]);
 
@@ -387,35 +376,25 @@ export function SceneView(props: SceneViewProps) {
     const scene = sceneRef.current;
     if (!scene) return;
     const ids = new Set(lineLayers.map((l) => l.id));
-    for (const id of [...loadedLines.current]) {
-      if (!ids.has(id)) {
-        scene.removeLines(id);
-        loadedLines.current.delete(id);
-      }
-    }
-    let cancelled = false;
+    for (const id of scene.loadedIds().lines) if (!ids.has(id)) scene.removeLines(id);
+    for (const id of [...loadedLines.current]) if (!ids.has(id)) loadedLines.current.delete(id);
     for (const layer of lineLayers) {
       if (loadedLines.current.has(layer.id) || !isShown(ws, layerKey.lines(layer.id))) continue;
       loadedLines.current.add(layer.id);
       setLoading((n) => n + 1);
       loadLines(layer.id)
         .then((g) => {
-          if (cancelled || !sceneRef.current) {
-            loadedLines.current.delete(layer.id);
-            return;
-          }
+          if (!sceneRef.current || !loadedLines.current.has(layer.id)) return; // deleted meanwhile
           sceneRef.current.setLines(layer.id, g.origin, g.vertices, g.offsets, layer.color, g.bounds);
           applyStyles();
         })
         .catch((e: Error) => {
+          if (!loadedLines.current.has(layer.id)) return;
           loadedLines.current.delete(layer.id);
-          if (!cancelled) setError(e.message);
+          setError(e.message);
         })
         .finally(() => setLoading((n) => n - 1));
     }
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lineLayers, ws.hidden]);
 
@@ -424,12 +403,8 @@ export function SceneView(props: SceneViewProps) {
     const scene = sceneRef.current;
     if (!scene) return;
     const ids = new Set(rasters.map((r) => r.id));
-    for (const id of [...loadedRasters.current]) {
-      if (!ids.has(id)) {
-        scene.removeRaster(id);
-        loadedRasters.current.delete(id);
-      }
-    }
+    for (const id of scene.loadedIds().rasters) if (!ids.has(id)) scene.removeRaster(id);
+    for (const id of [...loadedRasters.current]) if (!ids.has(id)) loadedRasters.current.delete(id);
     for (const r of rasters) {
       if (loadedRasters.current.has(r.id) || !isShown(ws, layerKey.raster(r.id))) continue;
       loadedRasters.current.add(r.id);
@@ -444,9 +419,9 @@ export function SceneView(props: SceneViewProps) {
     const scene = sceneRef.current;
     if (!scene) return;
     const ids = new Set(blockModels.map((d) => d.id));
+    for (const id of scene.loadedIds().blocks) if (!ids.has(id)) scene.removeBlockModel(id);
     for (const id of [...loadedBlocks.current]) {
       if (!ids.has(id)) {
-        scene.removeBlockModel(id);
         loadedBlocks.current.delete(id);
         readyBlocks.current.delete(id);
       }
@@ -458,7 +433,7 @@ export function SceneView(props: SceneViewProps) {
       setLoading((n) => n + 1);
       getBlockRender(d.id)
         .then((render) => {
-          if (!loadedBlocks.current.has(d.id)) return;
+          if (!loadedBlocks.current.has(d.id) || sceneRef.current !== scene) return; // deleted meanwhile
           scene.addBlockModel(d.id, render, meta.render_origin, meta.extent.min, meta.extent.max);
           readyBlocks.current.add(d.id);
           void styleBlocks();

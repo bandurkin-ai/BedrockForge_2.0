@@ -382,6 +382,18 @@ export class GeoScene {
     return texture;
   }
 
+  /** What the scene holds, by kind: the view compares it with the project, so nothing deleted stays drawn. */
+  loadedIds(): { sets: number[]; wireframes: number[]; lines: number[]; rasters: number[]; blocks: number[]; downholes: string[] } {
+    return {
+      sets: [...this.drillholes.keys()],
+      wireframes: [...this.wireframes.keys()],
+      lines: [...this.lineLayers.keys()],
+      rasters: [...this.rasters.keys()],
+      blocks: [...this.blocks.keys()],
+      downholes: [...this.downholes.keys()],
+    };
+  }
+
   /** The scene origin (project coordinates), null until the first object is loaded. */
   sceneOrigin(extent?: { min: number[]; max: number[] } | null): [number, number, number] | null {
     if (extent) this.ensureOrigin(extent.min, extent.max);
