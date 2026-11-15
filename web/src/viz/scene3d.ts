@@ -12,6 +12,17 @@ import { THEME_EVENT } from "./scene3d-theme";
 const PATH_COLOR = 0x8a93a6;
 const SELECT_COLOR = 0xff7a00;
 const SECTION_COLOR = 0x2e6fbd;
+const DRAFT_COLOR = 0xff8c1a;
+
+/** Plan overview for the section map (project coordinates). */
+export interface PlanOverview {
+  holes: [number, number][][];
+  collars: [number, number][];
+  /** x1, y1, x2, y2 */
+  segments: [number, number, number, number][];
+  /** min x, min y, max x, max y */
+  boxes: [number, number, number, number][];
+}
 
 /** Camera presets: they only turn the view. "section" looks at the section plane with Z up. */
 export type ViewPreset = "top" | "front" | "side" | "iso" | "section";
@@ -117,6 +128,9 @@ export class GeoScene {
   private rasters = new Map<number, RasterLayer>();
   private selectedLine: LineSegments2 | null = null;
   private sectionLine: THREE.LineSegments | null = null;
+  /** The section line being drawn: its first point (rendered space) and the rubber band to the cursor. */
+  private draftStart: THREE.Vector3 | null = null;
+  private draftLine: THREE.LineSegments | null = null;
   private grid: THREE.GridHelper | null = null;
   private pointTexture: THREE.CanvasTexture;
   private origin: THREE.Vector3 | null = null;
@@ -682,8 +696,19 @@ export class GeoScene {
     const box = (this.contentBox(true, true) ?? this.contentBox() ?? new THREE.Box3(new THREE.Vector3(-50, -50, -50), new THREE.Vector3(50, 50, 50))).clone();
     box.min.z *= this.vexag;
     box.max.z *= this.vexag;
-    const centre = box.getCenter(new THREE.Vector3());
     const s = this.section;
+    if (onSection && s && s.length !== null && this.origin) {
+      // A drawn line: the view holds the line from end to end (and its window), not the whole project.
+      const along = sectionDirection(s.az);
+      const n = sectionNormal(s.az);
+      const p0 = new THREE.Vector3(s.x0 - this.origin.x, s.y0 - this.origin.y, 0);
+      const ends = [0, s.length].flatMap((u) => [-s.away, s.towards].map((d) => p0.clone().addScaledVector(along, u).addScaledVector(n, d)));
+      box.min.x = Math.min(...ends.map((e) => e.x));
+      box.max.x = Math.max(...ends.map((e) => e.x));
+      box.min.y = Math.min(...ends.map((e) => e.y));
+      box.max.y = Math.max(...ends.map((e) => e.y));
+    }
+    const centre = box.getCenter(new THREE.Vector3());
     if (onSection && s && this.origin) {
       // Centre on the section plane, so the clipped window is in the middle of the view.
       const n = sectionNormal(s.az);
@@ -1043,15 +1068,116 @@ export class GeoScene {
     return best;
   }
 
-  /** Project coordinates of a screen point on the horizontal plane through the scene origin. */
-  private groundPoint(clientX: number, clientY: number): { x: number; y: number } | null {
+  /**
+   * A screen point picked for drawing (rendered space): on the horizontal plane through the point
+   * the view is centred on, or, for a view from the side, on the vertical plane through it facing
+   * the viewer. So a line can be drawn in any view, where the data are, without turning it.
+   */
+  private pickPoint(clientX: number, clientY: number): THREE.Vector3 | null {
     if (!this.origin) return null;
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(ndc, this.camera);
-    const hit = raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), new THREE.Vector3());
-    return hit ? { x: hit.x + this.origin.x, y: hit.y + this.origin.y } : null;
+    const target = this.controls.target;
+    const view = this.viewDirection();
+    const plane = Math.abs(view.z) > 0.2
+      ? new THREE.Plane(new THREE.Vector3(0, 0, 1), -target.z)
+      : new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(view.x, view.y, 0).normalize(), target);
+    return raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+  }
+
+  /** Project coordinates (x, y) of a rendered-space point. */
+  private toProject(p: THREE.Vector3): { x: number; y: number } {
+    return { x: p.x + this.origin!.x, y: p.y + this.origin!.y };
+  }
+
+  /**
+   * Starts (`start` = null: waiting for the first point), continues (the first point given) or
+   * ends (`false`) drawing a section line: the first point is marked and a rubber band follows
+   * the cursor to it.
+   */
+  setDraft(start: { x: number; y: number } | null | false): void {
+    if (start === false || start === null) {
+      this.draftStart = null;
+      this.updateDraft(null);
+      return;
+    }
+    if (!this.origin) return;
+    const z = this.draftStart?.z ?? this.controls.target.z;
+    this.draftStart = new THREE.Vector3(start.x - this.origin.x, start.y - this.origin.y, z);
+    this.updateDraft(this.draftStart);
+  }
+
+  private updateDraft(end: THREE.Vector3 | null): void {
+    if (this.draftLine) {
+      this.scene.remove(this.draftLine);
+      this.draftLine.geometry.dispose();
+      (this.draftLine.material as THREE.Material).dispose();
+      this.draftLine = null;
+    }
+    const a = this.draftStart;
+    if (a && end) {
+      // Cross marks at both ends, sized to the screen, and the line between them.
+      const mark = 6 / Math.max(this.pixelsPerUnit(a), 1e-9);
+      const pts: THREE.Vector3[] = [a, end.clone().setZ(a.z)];
+      for (const p of [a, end.clone().setZ(a.z)]) {
+        pts.push(p.clone().add(new THREE.Vector3(-mark, -mark, 0)), p.clone().add(new THREE.Vector3(mark, mark, 0)));
+        pts.push(p.clone().add(new THREE.Vector3(-mark, mark, 0)), p.clone().add(new THREE.Vector3(mark, -mark, 0)));
+      }
+      this.draftLine = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineBasicMaterial({ color: DRAFT_COLOR, depthTest: false, transparent: true }));
+      this.draftLine.renderOrder = 11;
+      this.scene.add(this.draftLine);
+    }
+    this.requestRender();
+  }
+
+  /**
+   * What the plan overview of a section shows (project coordinates, visible objects only): hole
+   * traces, line layers (thinned to a budget), wireframe and raster outlines.
+   */
+  planOverview(): PlanOverview {
+    const o = this.origin;
+    const out: PlanOverview = { holes: [], collars: [], segments: [], boxes: [] };
+    if (!o) return out;
+    const POINTS = 20000;
+    let total = 0;
+    for (const layer of this.drillholes.values()) if (layer.group.visible) for (const path of layer.pathOf.values()) total += path.length;
+    const every = Math.max(1, Math.ceil(total / POINTS));
+    for (const layer of this.drillholes.values()) {
+      if (!layer.group.visible) continue;
+      for (const path of layer.pathOf.values()) {
+        if (!path.length) continue;
+        const trace: [number, number][] = [];
+        for (let i = 0; i < path.length; i += every) trace.push([path[i][0], path[i][1]]);
+        const last = path[path.length - 1];
+        if ((path.length - 1) % every) trace.push([last[0], last[1]]);
+        out.holes.push(trace);
+        out.collars.push([path[0][0], path[0][1]]);
+      }
+    }
+    for (const layer of this.lineLayers.values()) {
+      if (!layer.lines.visible) continue;
+      const start = layer.lines.geometry.getAttribute("instanceStart") as THREE.InterleavedBufferAttribute | undefined;
+      if (!start) continue;
+      const a = start.data.array;
+      const count = Math.floor(a.length / 6);
+      const step = Math.max(1, Math.ceil(count / POINTS));
+      for (let i = 0; i < count; i += step) out.segments.push([a[i * 6] + o.x, a[i * 6 + 1] + o.y, a[i * 6 + 3] + o.x, a[i * 6 + 4] + o.y]);
+    }
+    for (const layer of this.wireframes.values()) {
+      if (!layer.group.visible || layer.extent.isEmpty()) continue;
+      out.boxes.push([layer.extent.min.x + o.x, layer.extent.min.y + o.y, layer.extent.max.x + o.x, layer.extent.max.y + o.y]);
+    }
+    for (const layer of this.rasters.values()) {
+      if (!layer.visible) continue;
+      const p = layer.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+      const b = new THREE.Box3();
+      for (let i = 0; i < 4; i++) b.expandByPoint(new THREE.Vector3(p.getX(i), p.getY(i), 0));
+      out.boxes.push([b.min.x + o.x, b.min.y + o.y, b.max.x + o.x, b.max.y + o.y]);
+    }
+    return out;
   }
 
   private attachPointerEvents(): void {
@@ -1066,13 +1192,17 @@ export class GeoScene {
       down = null;
       if (moved >= 4 || !quick) return;
       if (this.onGroundClick) {
-        const p = this.groundPoint(e.clientX, e.clientY);
-        if (p && this.onGroundClick(p.x, p.y)) return;
+        const p = this.pickPoint(e.clientX, e.clientY);
+        if (p && this.onGroundClick(this.toProject(p).x, this.toProject(p).y)) return;
       }
       const hit = this.nearestCollar(e.clientX, e.clientY, 14);
       this.onPick(hit ? { setId: hit.setId, holeId: hit.holeId } : null);
     };
     const onMove = (e: PointerEvent) => {
+      if (this.draftStart && !down) {
+        const p = this.pickPoint(e.clientX, e.clientY);
+        if (p) this.updateDraft(p);
+      }
       if (down || hoverFrame) return;
       hoverFrame = requestAnimationFrame(() => {
         hoverFrame = 0;

@@ -4,6 +4,7 @@ import { VEXAG_STEPS, isShown, layerKey, type ViewPreset, type WorkspaceState } 
 import { makeScale } from "./colorScale";
 import { ScaleStrip, type VizSettings } from "./ComponentPanel";
 import { azimuthDeg, DEFAULT_WINDOW, defaultSection, shiftSection, type SectionLine } from "./geometry";
+import { SectionMap } from "./SectionMap";
 import { GeoScene, type Hover } from "./scene3d";
 import { loadHoles, loadIntervals, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
 
@@ -67,6 +68,23 @@ export function SceneView(props: SceneViewProps) {
   live.current = props;
   const drawingRef = useRef(drawing);
   drawingRef.current = drawing;
+  /** Adds a point of the section line being drawn (from the 3D view or the plan map). */
+  const addPointRef = useRef<(x: number, y: number) => boolean>(() => false);
+  const [mapOpen, setMapOpen] = useState(() => {
+    try {
+      return localStorage.getItem("geo.sectionMap") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleMap = (open: boolean) => {
+    setMapOpen(open);
+    try {
+      localStorage.setItem("geo.sectionMap", open ? "1" : "0");
+    } catch {
+      // the map just opens again next time
+    }
+  };
 
   const sets = useMemo(() => (datasets ?? []).filter((d) => d.kind === "drillholes"), [datasets]);
   const wireframes = useMemo(() => (datasets ?? []).flatMap((d) => d.wireframes ?? []), [datasets]);
@@ -92,7 +110,8 @@ export function SceneView(props: SceneViewProps) {
       else live.current.onEmptyClick();
     };
     scene.onHover = setHover;
-    scene.onGroundClick = (x, y) => {
+    scene.onGroundClick = (x, y) => addPointRef.current(x, y);
+    addPointRef.current = (x, y) => {
       const start = drawingRef.current;
       if (start === false) return false;
       if (start === null) {
@@ -129,10 +148,7 @@ export function SceneView(props: SceneViewProps) {
       // "top" is "В план": the plan of what is on the screen now, not of everything.
       view: (preset) => (preset === "top" ? scene.toPlan() : scene.view(preset)),
       drawSection: () => {
-        // The line is digitised on the plan with everything visible.
-        live.current.onWorkspace({ clip: false });
-        scene.setClip(false);
-        scene.view("top");
+        // Drawn where the view is now: the camera is not turned and nothing is refitted.
         setDrawing(null);
       },
       openSection: (line) => {
@@ -368,6 +384,7 @@ export function SceneView(props: SceneViewProps) {
   useEffect(() => sceneRef.current?.setClip(ws.clip && section !== null), [ws.clip, section]);
   useEffect(() => sceneRef.current?.setPerspective(ws.perspective), [ws.perspective]);
 
+  useEffect(() => sceneRef.current?.setDraft(drawing), [drawing]);
   useEffect(() => {
     if (drawing === false) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawing(false);
@@ -392,6 +409,10 @@ export function SceneView(props: SceneViewProps) {
     const c = sceneRef.current?.centre();
     return { x0: c?.x ?? 0, y0: c?.y ?? 0, az: 90, length: null, towards, away };
   }
+
+  const showMap = mapOpen && (section !== null || drawing !== false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const overview = useMemo(() => (showMap ? sceneRef.current?.planOverview() ?? null : null), [showMap, loading, datasets, ws.hidden, section === null]);
 
   const setSection = (patch: Partial<SectionLine>) => props.onSection({ ...(section ?? autoSection()), ...patch });
 
@@ -437,7 +458,7 @@ export function SceneView(props: SceneViewProps) {
         </div>
         <button onClick={() => sceneRef.current?.fit()} title="Показать всё, не поворачивая вид (F)">Вписать</button>
         <span className="toolbar-divider" />
-        <button className={drawing !== false ? "active" : ""} title="Линия разреза: два клика на виде сверху — начало и конец (S)"
+        <button className={drawing !== false ? "active" : ""} title="Линия разреза: два клика — начало и конец, в текущем виде или на плане (S)"
           onClick={() => (drawing === false ? apiRef.current?.drawSection() : setDrawing(false))}>
           Разрез
         </button>
@@ -456,6 +477,7 @@ export function SceneView(props: SceneViewProps) {
                 onChange={(e) => setSection({ az: (((Number(e.target.value) || 0) % 360) + 360) % 360 })} aria-label="Азимут линии разреза" />°
             </label>
             <button onClick={() => sceneRef.current?.view("section")} title="Повернуть вид в плоскость разреза: Z вверх, линия слева направо">В плоскость</button>
+            <button className={mapOpen ? "active" : ""} onClick={() => toggleMap(!mapOpen)} title="Маленький план: данные, линия разреза и окно просмотра">План</button>
             <button onClick={() => { props.onSection(null); props.onWorkspace({ clip: false }); }} title="Убрать линию разреза и отсечение">Сбросить</button>
           </>
         )}
@@ -503,7 +525,11 @@ export function SceneView(props: SceneViewProps) {
         {error && <div className="canvas-note error">{error}</div>}
         {nothing && !webglError && <div className="canvas-note">Нет объектов для показа. Загрузите данные в дереве слева.</div>}
         {drawing !== false && (
-          <div className="canvas-note top">{drawing === null ? "Укажите начало профиля" : "Укажите конец профиля"} · Esc — отмена</div>
+          <div className="canvas-note top">{drawing === null ? "Укажите начало профиля" : "Укажите конец профиля"} — в виде или на плане · Esc — отмена</div>
+        )}
+        {showMap && overview && (
+          <SectionMap overview={overview} section={section} draft={drawing || null} drawing={drawing !== false}
+            onPoint={(x, y) => addPointRef.current(x, y)} onClose={() => toggleMap(false)} />
         )}
         <div className="coords">
           {section && ws.clip

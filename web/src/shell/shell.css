@@ -444,3 +444,25 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .dendro-link { stroke: var(--fg); }
 .dendro-chart { color: var(--fg); max-width: 100%; height: auto; }
 .dendro-value { font-size: 9.5px; fill: #1d2330; }
+
+/* ---- plan map beside a section */
+.section-map {
+  position: absolute; right: 10px; bottom: 26px; z-index: 5; width: 260px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  overflow: hidden; font-size: 0.75rem;
+}
+.section-map-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 2px 8px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.section-map-head .icon { padding: 0 6px; line-height: 1.2; }
+.section-map svg { display: block; width: 100%; height: auto; }
+.section-map svg.drawing { cursor: crosshair; }
+.section-map .sm-box { fill: none; stroke: var(--muted); stroke-dasharray: 3 2; stroke-width: 0.8; opacity: 0.6; }
+.section-map .sm-lines { fill: none; stroke: #c68bdc; stroke-width: 0.7; opacity: 0.7; }
+.section-map .sm-hole { fill: none; stroke: var(--muted); stroke-width: 0.8; opacity: 0.8; }
+.section-map .sm-collar { fill: #3aa55d; }
+.section-map .sm-window { fill: rgba(46, 111, 189, 0.18); stroke: #2e6fbd; stroke-width: 0.8; stroke-dasharray: 4 2; }
+.section-map .sm-section { fill: none; stroke: #2e6fbd; stroke-width: 2; }
+.section-map .sm-end { fill: #2e6fbd; }
+.section-map .sm-eye { fill: #ff8c1a; }
+.section-map .sm-draft { fill: #ff8c1a; stroke: var(--panel); stroke-width: 1; }
+.section-map .sm-north path { fill: var(--muted); }
+.section-map .sm-north text { fill: var(--muted); font-size: 8px; }
