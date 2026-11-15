@@ -27,6 +27,14 @@ describe("downhole log", () => {
     expect(d.tracks.map((t) => [t.field, t.type])).toEqual([["LITH", "color_text"], ["WEATH", "color"], ["RQD", "bars"], ["A", "bars"]]);
   });
 
+  it("ends the linear scale at the 98th percentile when there is enough data, so one outlier does not flatten the bars", () => {
+    const rows = Array.from({ length: 100 }, (_, i) => ({ from: i, to: i + 1, values: { AU: i === 99 ? 5000 : i / 10 } }));
+    const many: DownholeData = { tables: [], holes: [{ hole_id: "H", found: true, td: 100, max_depth: 100, tables: { assay: rows } }] };
+    const r = fieldRange(many, "assay", "AU", false)!;
+    expect(r[0]).toBe(0);
+    expect(r[1]).toBeLessThan(10);
+  });
+
   it("colours categories over every hole, the same colour for the same rock", () => {
     const colors = categoryColors(data, "5", "LITH");
     expect([...colors.keys()]).toEqual(["Туф", "Андезит"]);

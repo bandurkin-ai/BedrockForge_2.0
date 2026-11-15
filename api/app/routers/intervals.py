@@ -121,8 +121,10 @@ def downhole(set_id: int, body: DownholeIn, session: Session = Depends(get_sessi
         values = values or {}
         return values if keep is None else {k: values[k] for k in keep if k in values}
 
-    # every row of the chosen tables for the chosen holes in one query per table
-    wanted_holes = set(names)
+    # every row of the chosen tables for the chosen holes in one query per table;
+    # with `all`, hole names are matched without regard to case and outer spaces (tables often differ in that)
+    norm = (lambda h: h.strip().upper()) if body.all else (lambda h: h)
+    wanted_holes = {norm(h): h for h in names}
     by_table: dict[str, dict[str, list]] = {t["key"]: {} for t in wanted}
     for t in wanted:
         if t["key"] == "assay":
@@ -130,16 +132,18 @@ def downhole(set_id: int, body: DownholeIn, session: Session = Depends(get_sessi
             if not body.all:
                 query = query.where(Assay.hole_id.in_(names))
             for r in session.scalars(query):
-                if r.hole_id in wanted_holes:
-                    by_table["assay"].setdefault(r.hole_id, []).append(
+                hole = wanted_holes.get(norm(r.hole_id))
+                if hole is not None:
+                    by_table["assay"].setdefault(hole, []).append(
                         {"from": r.from_m, "to": r.to_m, "values": pick("assay", {**(r.attributes or {}), **(r.analytes or {})})})
         else:
             query = select(IntervalRow).where(IntervalRow.table_id == t["id"]).order_by(IntervalRow.hole_id, IntervalRow.from_m)
             if not body.all:
                 query = query.where(IntervalRow.hole_id.in_(names))
             for r in session.scalars(query):
-                if r.hole_id in wanted_holes:
-                    by_table[t["key"]].setdefault(r.hole_id, []).append({"from": r.from_m, "to": r.to_m, "values": pick(t["key"], r.values)})
+                hole = wanted_holes.get(norm(r.hole_id))
+                if hole is not None:
+                    by_table[t["key"]].setdefault(hole, []).append({"from": r.from_m, "to": r.to_m, "values": pick(t["key"], r.values)})
     holes = []
     for hole in names:
         c = collars.get(hole)

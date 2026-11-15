@@ -518,3 +518,4 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .legend-swatch i { width: 11px; height: 11px; border-radius: 2px; border: 1px solid rgba(0, 0, 0, 0.35); display: inline-block; }
 .tree-row.dragging { opacity: 0.55; }
 .strip-save { display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; }
+.legend-warning { color: var(--warning, #e0a030); }

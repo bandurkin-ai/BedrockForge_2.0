@@ -66,6 +66,7 @@ export interface DownholeBuild {
 }
 
 export const MAX_LABELS = 2500;
+export const holeKey = (id: string) => String(id).trim().toUpperCase();
 const FRAME_COLOR = "#8a93a6";
 
 const emptyMesh = (): SideMesh => ({ positions: [], tangents: [], amps: [], colors: [], index: [] });
@@ -198,7 +199,8 @@ export function buildDownhole(
   settings: StripLogSettings,
   origin: [number, number, number],
 ): DownholeBuild {
-  const holes = new Map(trajectories.map((h) => [h.hole_id, h]));
+  // Hole names are matched without regard to case and outer spaces (tables often differ in that).
+  const holes = new Map(trajectories.map((h) => [holeKey(h.hole_id), h]));
   const resolved = settings.tracks.map((t) => resolve(data, t));
   const tubeIds = tubeTracks(settings.tracks);
   const panelWidth = settings.panel && settings.panel > 0 ? settings.panel : autoPanelWidth(trajectories);
@@ -269,7 +271,7 @@ export function buildDownhole(
 
   const frame = hexRgb(FRAME_COLOR);
   for (const hole of data.holes) {
-    const traj = holes.get(hole.hole_id);
+    const traj = holes.get(holeKey(hole.hole_id));
     if (!traj || traj.path.length < 1 || traj.path[0].length < 4) continue;
     build.holes += 1;
     let lastBottom = -Infinity;

@@ -89,6 +89,17 @@ describe("downhole geometry", () => {
     expect(b.tubes[0].positions.slice(0, 6)).toEqual([0, 0, 0, 0, 0, -4]);
   });
 
+  it("matches hole names without regard to case and outer spaces", () => {
+    const other: TrajectoryHole[] = [{ ...holes[0], hole_id: " h1 " }];
+    expect(buildDownhole(other, data, settings([track({})]), origin).holes).toBe(1);
+  });
+
+  it("fills tracks saved by an older version, so building does not fail", () => {
+    const old = withDefaults({ allHoles: true, tracks: [{ table: "5", field: "RQD" } as never] });
+    expect(old.tracks[0]).toMatchObject({ type: "bars", width: 90, min: "", max: "", log: false });
+    expect(buildDownhole(holes, data, old, origin).panels.amps.length).toBeGreaterThan(0);
+  });
+
   it("sizes the default panel from the holes and fills settings of older versions", () => {
     expect(autoPanelWidth(holes)).toBe(2); // 10 m holes → clamped to 2
     const long: TrajectoryHole[] = [{ hole_id: "L", td: 600, source: "survey", path: [[0, 0, 0, 0], [0, 0, -600, 600]] }];

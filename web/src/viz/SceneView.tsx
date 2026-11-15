@@ -83,7 +83,7 @@ export function SceneView(props: SceneViewProps) {
   const holesBySet = useRef(new Map<number, Map<string, Hole>>());
   // Downhole displays: the settings each was built with, and their legends.
   const loadedLogs = useRef(new Map<number, string>());
-  const [logLegends, setLogLegends] = useState<{ id: number; name: string; entries: LegendEntry[]; holes: number }[]>([]);
+  const [logLegends, setLogLegends] = useState<{ id: number; name: string; entries: LegendEntry[]; holes: number; intervals: number }[]>([]);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [loading, setLoading] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -292,10 +292,13 @@ export function SceneView(props: SceneViewProps) {
         .then(([trajectories, data]) => {
           if (!sceneRef.current || loadedLogs.current.get(log.id) !== key) return;
           const origin = sceneRef.current.sceneOrigin(trajectories.extent);
-          if (!origin) return;
+          if (!origin) {
+            loadedLogs.current.delete(log.id); // no holes with coordinates yet: tried again on the next change
+            return;
+          }
           const build = buildDownhole(trajectories.holes, data, s, origin);
           sceneRef.current.setDownhole(`log:${log.id}`, build);
-          setLogLegends((prev) => [...prev.filter((x) => x.id !== log.id), { id: log.id, name: log.name, entries: build.legend, holes: build.holes }]);
+          setLogLegends((prev) => [...prev.filter((x) => x.id !== log.id), { id: log.id, name: log.name, entries: build.legend, holes: build.holes, intervals: build.intervals }]);
           setError(null);
         })
         .catch((e: Error) => {
@@ -676,7 +679,8 @@ export function SceneView(props: SceneViewProps) {
         <div className="scene-legend downhole-legend" aria-label="Данные по скважинам">
           {logLegends.map((l) => (
             <div key={l.id} className="downhole-legend-item">
-              <strong title={`${l.holes} скв.`}>{l.name}</strong>
+              <strong title={`${l.holes} скв., ${l.intervals} интервалов`}>{l.name}</strong>
+              {l.intervals === 0 && <span className="legend-warning">нет интервалов на скважинах: проверьте имена скважин в таблице и в устьях</span>}
               {l.entries.map((e) => (
                 <span key={e.trackId} className="downhole-legend-track">
                   <span className="muted">{e.title}{e.unit ? `, ${e.unit}` : ""}</span>

@@ -92,8 +92,14 @@ export function withDefaults(raw: Partial<StripLogSettings> | null | undefined):
   const r = raw ?? {};
   return {
     ...DEFAULT_STRIPLOG, ...r,
-    holes: Array.isArray(r.holes) ? r.holes : [],
-    tracks: Array.isArray(r.tracks) ? r.tracks : [],
+    holes: Array.isArray(r.holes) ? r.holes.map(String) : [],
+    // tracks saved by an older version may lack fields
+    tracks: Array.isArray(r.tracks)
+      ? r.tracks.filter((t) => t && typeof t.table === "string" && typeof t.field === "string").map((t, i) => ({
+        ...t, id: t.id ?? newTrackId(), type: t.type ?? "bars", width: Number(t.width) || 90, color: t.color ?? LOG_COLORS[i % LOG_COLORS.length],
+        min: t.min ?? "", max: t.max ?? "", log: !!t.log, boundaries: !!t.boundaries,
+      }))
+      : [],
   };
 }
 
@@ -145,17 +151,23 @@ export function categoryColors(data: DownholeData, table: string, field: string)
 
 /** Numeric range of a field over every hole shown (positive values only for a log scale). */
 export function fieldRange(data: DownholeData, table: string, field: string, log: boolean): [number, number] | null {
-  let lo = Infinity;
-  let hi = -Infinity;
+  const values: number[] = [];
   for (const h of data.holes) {
     for (const iv of h.tables[table] ?? []) {
       const v = iv.values[field];
       if (typeof v !== "number" || !Number.isFinite(v) || (log && v <= 0)) continue;
-      lo = Math.min(lo, v);
-      hi = Math.max(hi, v);
+      values.push(v);
     }
   }
-  if (!Number.isFinite(lo)) return null;
+  if (values.length === 0) return null;
+  values.sort((a, b) => a - b);
+  let lo = values[0];
+  let hi = values[values.length - 1];
+  // A few extreme values must not flatten every bar: with enough data the linear scale ends at the 98th percentile.
+  if (!log && values.length >= 50) {
+    const p98 = values[Math.floor((values.length - 1) * 0.98)];
+    if (p98 > lo) hi = p98;
+  }
   if (!log && lo > 0) lo = 0; // bars and lines start at zero
   if (hi <= lo) hi = log ? lo * 10 : lo + 1;
   return [lo, hi];

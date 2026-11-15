@@ -56,10 +56,15 @@ interface DownholeLayer {
   labelGroup: THREE.Group;
   /** panels and lines each carry a side direction found by the shader from the camera */
   materials: THREE.Material[];
+  /** width of the default panel column, m, and the factor that keeps it wide enough on screen */
+  panelWidth: number;
+  scale: { value: number };
 }
 
 /** A label shows when its interval is at least this long on screen, px. */
 const LABEL_MIN_PX = 18;
+/** Panels are in metres, but the default column is never narrower than this on screen, px. */
+const PANEL_MIN_PX = 26;
 
 interface DrillholeLayer {
   extent: THREE.Box3;
@@ -313,7 +318,7 @@ export class GeoScene {
       this.requestRender();
       return;
     }
-    const layer: DownholeLayer = { group: new THREE.Group(), tubes: [], panels: null, lines: null, labels: [], labelGroup: new THREE.Group(), materials: [] };
+    const layer: DownholeLayer = { group: new THREE.Group(), tubes: [], panels: null, lines: null, labels: [], labelGroup: new THREE.Group(), materials: [], panelWidth: build.panelWidth, scale: { value: 1 } };
     layer.group.visible = visible;
     build.tubes.forEach((t, i) => {
       if (t.positions.length === 0) return;
@@ -332,7 +337,7 @@ export class GeoScene {
       return g;
     };
     if (build.panels.amps.length > 0) {
-      const material = this.sideMaterial(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+      const material = this.sideMaterial(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }), layer.scale);
       layer.materials.push(material);
       layer.panels = new THREE.Mesh(sideGeometry(build.panels), material);
       layer.panels.frustumCulled = false;
@@ -340,7 +345,7 @@ export class GeoScene {
       layer.group.add(layer.panels);
     }
     if (build.lines.amps.length > 0) {
-      const material = this.sideMaterial(new THREE.LineBasicMaterial({ vertexColors: true }));
+      const material = this.sideMaterial(new THREE.LineBasicMaterial({ vertexColors: true }), layer.scale);
       layer.materials.push(material);
       layer.lines = new THREE.LineSegments(sideGeometry(build.lines), material);
       layer.lines.frustumCulled = false;
@@ -391,14 +396,15 @@ export class GeoScene {
   }
 
   /** A material whose vertices move `aAmp` metres to the side of the hole, across it and in the plane of the screen. */
-  private sideMaterial<T extends THREE.Material>(material: T): T {
+  private sideMaterial<T extends THREE.Material>(material: T, scale: { value: number }): T {
     const side = this.side;
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uView = side.view;
       shader.uniforms.uRight = side.right;
       shader.uniforms.uVexag = side.vexag;
+      shader.uniforms.uScale = scale;
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nattribute vec3 aTan;\nattribute float aAmp;\nuniform vec3 uView;\nuniform vec3 uRight;\nuniform float uVexag;")
+        .replace("#include <common>", "#include <common>\nattribute vec3 aTan;\nattribute float aAmp;\nuniform vec3 uView;\nuniform vec3 uRight;\nuniform float uVexag;\nuniform float uScale;")
         .replace(
           "#include <begin_vertex>",
           `#include <begin_vertex>
@@ -407,7 +413,7 @@ export class GeoScene {
           float sl = length(sw);
           sw = sl < 0.05 ? uRight : sw / sl;
           if (dot(sw, uRight) < 0.0) sw = -sw;
-          transformed += vec3(sw.xy, sw.z / uVexag) * aAmp;`,
+          transformed += vec3(sw.xy, sw.z / uVexag) * aAmp * uScale;`,
         );
     };
     material.customProgramCacheKey = () => "downhole-side";
@@ -456,8 +462,12 @@ export class GeoScene {
     const tw = new THREE.Vector3();
     const sw = new THREE.Vector3();
     const at = new THREE.Vector3();
+    const target = this.controls.target;
     for (const layer of this.downholes.values()) {
+      // On a large site a column of a few metres is a hairline: widen every column to a minimum on screen.
+      layer.scale.value = Math.max(1, PANEL_MIN_PX / Math.max(layer.panelWidth * this.pixelsPerUnit(target), 1e-9));
       if (!layer.group.visible || layer.labels.length === 0) continue;
+      const k = layer.scale.value;
       for (const item of layer.labels) {
         const l = item.label;
         at.set(l.position[0], l.position[1], l.position[2] * this.vexag);
@@ -472,9 +482,9 @@ export class GeoScene {
         if (sw.dot(right) < 0) sw.negate();
         // The label sits at the middle of its column; its left edge at the column's start, so it grows outwards.
         item.sprite.position.set(
-          l.position[0] + sw.x * l.amp,
-          l.position[1] + sw.y * l.amp,
-          l.position[2] + (sw.z * l.amp) / this.vexag,
+          l.position[0] + sw.x * l.amp * k,
+          l.position[1] + sw.y * l.amp * k,
+          l.position[2] + (sw.z * l.amp * k) / this.vexag,
         );
         item.sprite.scale.set(item.wpx / pxPerM, item.hpx / pxPerM, 1);
       }
