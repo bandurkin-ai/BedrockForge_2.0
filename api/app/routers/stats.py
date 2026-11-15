@@ -574,16 +574,13 @@ def _field_sql(field_id: str, key: str) -> tuple[str, dict]:
             {key: name})
 
 
-class HistogramIn(BaseModel):
+class SampleFilter(BaseModel):
+    """Which values of a field go into a chart, and how they are treated (shared by all charts)."""
+
     field: str
     # none | length | field (weight_field) | length_field (length × weight_field, e.g. density: tonnage)
     weight: Literal["none", "length", "field", "length_field"] = "none"
     weight_field: str | None = None
-    log: bool = False
-    bin_width: float | None = Field(None, gt=0)
-    bins: int | None = Field(None, ge=1, le=1000)
-    start: float | None = None
-    end: float | None = None
     # Values below zero: Micromine and many labs write "<0.01" as -0.01.
     negatives: Literal["keep", "exclude", "half_abs"] = "keep"
     exclude_zero: bool = False
@@ -595,30 +592,48 @@ class HistogramIn(BaseModel):
     def _weights(self):
         if self.weight in ("field", "length_field") and not self.weight_field:
             raise ValueError("Укажите поле веса")
+        return self
+
+
+class HistogramIn(SampleFilter):
+    log: bool = False
+    bin_width: float | None = Field(None, gt=0)
+    bins: int | None = Field(None, ge=1, le=1000)
+    start: float | None = None
+    end: float | None = None
+
+    @model_validator(mode="after")
+    def _range(self):
         if self.start is not None and self.end is not None and self.end <= self.start:
             raise ValueError("Конец диапазона должен быть больше начала")
         return self
 
 
-@router.post("/sets/{set_id}/stats/histogram")
-def histogram_of_field(set_id: int, body: HistogramIn, session: Session = Depends(get_session)) -> dict:
+@dataclass
+class FieldValues:
+    values: np.ndarray
+    weights: np.ndarray
+    counts: dict
+
+
+def load_field_values(session: Session, set_id: int, f: SampleFilter) -> FieldValues:
+    """Values and weights of a field of a set's assay table after the filters, with counts of
+    what was left out (missing value, no weight, negatives, zeros, top cut)."""
     from sqlalchemy import text
 
-    from app.stats.histogram import HistogramError, HistogramSpec, describe, histogram
-
     get_set(session, set_id)
-    value_sql, params = _field_sql(body.field, "f")
+    value_sql, params = _field_sql(f.field, "f")
     weight_sql = "1.0"
-    if body.weight in ("field", "length_field"):
-        weight_sql, wp = _field_sql(body.weight_field, "w")
+    if f.weight in ("field", "length_field"):
+        weight_sql, wp = _field_sql(f.weight_field, "w")
         params.update(wp)
-    if body.weight in ("length", "length_field"):
+    if f.weight in ("length", "length_field"):
         weight_sql = f"(CASE WHEN to_m > from_m THEN to_m - from_m END) * {weight_sql}"
     where = "set_id = :s"
     params["s"] = set_id
-    if body.holes:
+    if f.holes:
         where += " AND hole_id = ANY(:holes)"
-        params["holes"] = body.holes
+        params["holes"] = f.holes
     rows = session.execute(text(f"SELECT {value_sql}, {weight_sql} FROM assay WHERE {where}"), params).all()
     data = np.array([(np.nan if v is None else v, np.nan if w is None else w) for v, w in rows], dtype=np.float64).reshape(-1, 2)
     v, w = data[:, 0], data[:, 1]
@@ -629,22 +644,34 @@ def histogram_of_field(set_id: int, body: HistogramIn, session: Session = Depend
     v, w = v[keep], w[keep]
     negative = v < 0
     n_negative = int(negative.sum())
-    if body.negatives == "exclude":
+    if f.negatives == "exclude":
         v, w = v[~negative], w[~negative]
-    elif body.negatives == "half_abs":
+    elif f.negatives == "half_abs":
         v = np.where(negative, np.abs(v) / 2, v)
     n_zero = 0
-    if body.exclude_zero:
+    if f.exclude_zero:
         zero = v == 0
         n_zero = int(zero.sum())
         v, w = v[~zero], w[~zero]
     n_capped = 0
-    if body.top_cut is not None:
-        capped = v > body.top_cut
+    if f.top_cut is not None:
+        capped = v > f.top_cut
         n_capped = int(capped.sum())
-        v = np.where(capped, body.top_cut, v)
+        v = np.where(capped, f.top_cut, v)
     if len(v) == 0:
-        raise HTTPException(422, "Нет значений для гистограммы после фильтров")
+        raise HTTPException(422, "Нет значений после фильтров")
+    return FieldValues(v, w, {
+        "rows": total, "missing": int(missing.sum()), "bad_weight": int(bad_weight.sum()),
+        "negative": n_negative, "zero_excluded": n_zero, "capped": n_capped, "used": int(len(v)),
+    })
+
+
+@router.post("/sets/{set_id}/stats/histogram")
+def histogram_of_field(set_id: int, body: HistogramIn, session: Session = Depends(get_session)) -> dict:
+    from app.stats.histogram import HistogramError, HistogramSpec, describe, histogram
+
+    fv = load_field_values(session, set_id, body)
+    v, w = fv.values, fv.weights
     n_nonpositive_log = int(np.count_nonzero(v <= 0)) if body.log else 0
     try:
         h = histogram(v, w, HistogramSpec(log=body.log, bin_width=body.bin_width, bins=body.bins,
@@ -660,11 +687,7 @@ def histogram_of_field(set_id: int, body: HistogramIn, session: Session = Depend
         "field": body.field,
         "log": body.log,
         "weighted": weighted,
-        "counts": {
-            "rows": total, "missing": int(missing.sum()), "bad_weight": int(bad_weight.sum()),
-            "negative": n_negative, "zero_excluded": n_zero, "capped": n_capped,
-            "nonpositive_log": n_nonpositive_log, "used": int(len(v)),
-        },
+        "counts": {**fv.counts, "nonpositive_log": n_nonpositive_log},
         "stats": describe(v, w if weighted else None),
         "stats_unweighted": describe(v) if weighted else None,
         "bins": {
@@ -674,3 +697,48 @@ def histogram_of_field(set_id: int, body: HistogramIn, session: Session = Depend
         "conventions": "Процентили по GSLIB: середина накопленного веса, линейная интерполяция (без весов — Hazen). "
                        "Дисперсия — генеральная. Бины [a, b), последний закрыт.",
     }
+
+
+# --------------------------------------------------------------------------
+# Q-Q plot: a sample against another sample or a fitted distribution
+# --------------------------------------------------------------------------
+class QQSample(SampleFilter):
+    kind: Literal["sample"] = "sample"
+    set_id: int
+
+
+class QQTheory(BaseModel):
+    kind: Literal["normal", "lognormal"]
+
+
+class QQIn(BaseModel):
+    x: QQSample
+    y: QQSample | QQTheory = Field(discriminator="kind")
+    # Sample against sample: quantiles at k / (n + 1), k = 1..n (99: every percent).
+    quantiles: int = Field(99, ge=3, le=999)
+
+
+def _side(session: Session, s: QQSample) -> tuple[FieldValues, dict]:
+    from app.stats.histogram import describe
+
+    fv = load_field_values(session, s.set_id, s)
+    weighted = s.weight != "none"
+    return fv, {"set_id": s.set_id, "field": s.field, "weighted": weighted, "counts": fv.counts,
+                "stats": describe(fv.values, fv.weights if weighted else None)}
+
+
+@router.post("/stats/qq")
+def qq_plot(body: QQIn, session: Session = Depends(get_session)) -> dict:
+    """Q-Q plot data. For two samples the x and y sides may come from different drillhole sets."""
+    from app.stats.qq import QQError, sample_vs_distribution, sample_vs_sample
+
+    fx, x_info = _side(session, body.x)
+    try:
+        if isinstance(body.y, QQSample):
+            fy, y_info = _side(session, body.y)
+            out = sample_vs_sample(fx.values, fx.weights, fy.values, fy.weights, body.quantiles)
+            return {"mode": "sample", "x": x_info, "y": y_info, **out}
+        out = sample_vs_distribution(fx.values, fx.weights, body.y.kind)
+    except QQError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"mode": "theory", "x": x_info, "y": None, **out}

@@ -20,6 +20,7 @@ import { ImportDialog } from "./shell/ImportDialog";
 import { ImportWizard, WIZARD_ACCEPT } from "./shell/ImportWizard";
 import { ChartWindow } from "./charts/ChartWindow";
 import { HistogramWindow, type HistogramSettings } from "./charts/HistogramWindow";
+import { QQWindow, defaultQQ, type QQSettings } from "./charts/QQWindow";
 import { ContextMenu } from "./shell/ContextMenu";
 import type { ChartKind } from "./shell/registry";
 import { JobsPanel } from "./shell/JobsPanel";
@@ -61,6 +62,7 @@ interface ChartState {
   kind: ChartKind;
   setId: number;
   initial?: Partial<HistogramSettings>;
+  qq?: QQSettings;
   /** stacking order: the window clicked last is on top */
   z: number;
 }
@@ -125,9 +127,9 @@ function Workspace({
   // Chart windows over the workspace, and the right-click menu of the tree.
   const [charts, setCharts] = useState<ChartState[]>([]);
   const [menu, setMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
-  const openChart = (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>) => {
-    if (kind !== "histogram") return;
-    setCharts((prev) => [...prev, { id: Date.now() + Math.random(), kind, setId, initial, z: prev.length ? Math.max(...prev.map((c) => c.z)) + 1 : 0 }]);
+  const openChart = (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings) => {
+    if (kind === "dendrogram") return;
+    setCharts((prev) => [...prev, { id: Date.now() + Math.random(), kind, setId, initial, qq, z: prev.length ? Math.max(...prev.map((c) => c.z)) + 1 : 0 }]);
   };
   const sceneApi = useRef<SceneApi | null>(null);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
@@ -245,7 +247,7 @@ function Workspace({
       navigate({ kind });
       setWs((prev) => openBottom(prev, "table"));
     },
-    openChart: (kind, setId, initial) => openChart(kind, setId, initial),
+    openChart: (kind, setId, initial, qq) => openChart(kind, setId, initial, qq),
     openStats: (analysis, component) => {
       setStatsView((prev) => ({ analysis, component: component ?? prev.component }));
       // charts need room: grow a short dock, never shrink one the user enlarged
@@ -683,10 +685,14 @@ function Workspace({
         const setName = sets.find((d) => d.id === c.setId)?.name ?? `набор ${c.setId}`;
         return (
           <ChartWindow
-            key={c.id} index={i} z={30 + c.z} title={`Гистограмма · ${setName}`}
+            key={c.id} index={i} z={30 + c.z} title={`${c.kind === "qq" ? "Q-Q график" : "Гистограмма"} · ${setName}`} icon={c.kind === "qq" ? "qq" : "histogram"}
             onFocus={() => setCharts((prev) => raise(prev, c.id))} onClose={() => setCharts((prev) => prev.filter((x) => x.id !== c.id))}
           >
-            <HistogramWindow setId={c.setId} setName={setName} initial={c.initial} />
+            {c.kind === "qq" ? (
+              <QQWindow sets={sets.map((d) => ({ id: d.id, name: d.name }))} initial={c.qq ?? defaultQQ(c.setId)} />
+            ) : (
+              <HistogramWindow setId={c.setId} setName={setName} initial={c.initial} />
+            )}
           </ChartWindow>
         );
       })}
@@ -700,7 +706,7 @@ function Workspace({
             x={menu.x} y={menu.y} title={`Графики · ${target?.name ?? ""}`} onClose={() => setMenu(null)}
             items={[
               { label: "Гистограмма", icon: "histogram", disabledNote: noData, run: () => void runCommand("chart.histogram", { set_id: menu.setId }, "user") },
-              { label: "Q-Q график", icon: "qq", disabledNote: "в разработке" },
+              { label: "Q-Q график", icon: "qq", disabledNote: noData, run: () => void runCommand("chart.qq", { set_id: menu.setId }, "user") },
               { label: "Дендрограмма", icon: "dendrogram", disabledNote: "в разработке" },
               "separator",
               { label: "Таблица проб", icon: "table", run: () => { selectSet(menu.setId); navigate({ kind: "assay" }); setWs((p) => openBottom(p, "table")); } },

@@ -32,3 +32,35 @@ describe("histogram settings", () => {
     expect(q).toMatchObject({ bins: 30, bin_width: null, weight_field: "attr:DENSITY" });
   });
 });
+
+describe("Q-Q plot", async () => {
+  const { labelledPoints, qqDomains } = await import("./QQChart");
+  const { defaultQQ, toQQRequest, toSample } = await import("./QQWindow");
+  const pts: [number, number, number][] = [[1, 2, 10], [2, 3, 50], [4, 9, 90]];
+
+  it("uses one common range for equal axes, so the 1:1 line is the diagonal", () => {
+    const d = qqDomains(pts, false, true)!;
+    expect(d.x).toEqual(d.y);
+    expect(d.x.min).toBeLessThan(1);
+    expect(d.x.max).toBeGreaterThan(9);
+    const own = qqDomains(pts, false, false)!;
+    expect(own.x.max).toBeLessThan(own.y.max);
+    expect(qqDomains([[0, 1, 50]], true, true)).toBeNull(); // no positive x on log axes
+  });
+
+  it("labels the points nearest to P10, P50, P90", () => {
+    expect(labelledPoints(pts).map((l) => l.index)).toEqual([0, 1, 2]);
+  });
+
+  it("builds requests for a distribution and for two samples", () => {
+    const q = defaultQQ(3);
+    expect(toQQRequest(q)).toBeNull(); // no field yet
+    q.x.field = "comp:AU";
+    expect(toQQRequest(q)).toMatchObject({ x: { set_id: 3, field: "comp:AU", weight: "length", holes: null }, y: { kind: "lognormal" } });
+    q.mode = "sample";
+    q.y = { ...q.y, setId: 5, field: "comp:AU", holes: "H1, H2  H3" };
+    q.quantiles = "5000";
+    expect(toQQRequest(q)).toMatchObject({ y: { kind: "sample", set_id: 5, holes: ["H1", "H2", "H3"] }, quantiles: 999 });
+    expect(toSample({ ...q.x, weight: "field", weightField: null })).toBeNull();
+  });
+});

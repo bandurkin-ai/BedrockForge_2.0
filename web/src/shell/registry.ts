@@ -5,6 +5,7 @@ import { ANALYSES, type StatsAnalysis } from "../stats/analyses";
 import type { VizSettings } from "../viz/ComponentPanel";
 import { DEFAULT_WINDOW, shiftSection, type SectionLine } from "../viz/geometry";
 import type { HistogramSettings } from "../charts/HistogramWindow";
+import { defaultQQ, type QQSettings } from "../charts/QQWindow";
 import type { Command } from "./commands";
 
 export type ChartKind = "histogram" | "qq" | "dendrogram";
@@ -36,7 +37,7 @@ export interface Live {
   openTable: (kind: TableKind) => void;
   openStats: (analysis: StatsAnalysis, component: string | null) => void;
   /** A chart window over the workspace (histogram; Q-Q and dendrogram are not ready yet). */
-  openChart: (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>) => void;
+  openChart: (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>, qq?: QQSettings) => void;
   reload: () => void;
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
@@ -682,9 +683,48 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
     {
       id: "chart.qq",
       title: "Q-Q график",
-      description: "Q-Q график распределения проб. Пока в разработке.",
-      uiOnly: true,
-      run: () => "Q-Q график пока в разработке",
+      description:
+        "Открывает Q-Q график по таблице проб набора скважин (правая кнопка на наборе или «Пробы» в дереве). " +
+        "Без y_set_id — сравнение с распределением: distribution = lognormal (по умолчанию) | normal; показывает PPCC. " +
+        "С y_set_id и/или y_field — две выборки (другой набор, другое поле, другие скважины): квантили одна против другой, линия 1:1, расстояние Колмогорова–Смирнова. " +
+        "field / y_field — компонент (AU) или числовой атрибут; weight — none | length | field | length_field; holes / y_holes — номера скважин через запятую; quantiles — число квантилей (99 — каждый процент); log — логарифмические оси.",
+      params: {
+        set_id: { type: "integer" },
+        field: { type: "string" },
+        distribution: { type: "string", enum: ["lognormal", "normal"] },
+        y_set_id: { type: "integer" },
+        y_field: { type: "string" },
+        weight: { type: "string", enum: ["none", "length", "field", "length_field"] },
+        holes: { type: "string" },
+        y_holes: { type: "string" },
+        quantiles: { type: "integer" },
+        log: { type: "boolean" },
+      },
+      run: (args) => {
+        const set = targetSet(args.set_id);
+        if (!set.counts?.assay) throw new Error(`В наборе «${set.name}» нет проб`);
+        const ySet = args.y_set_id !== undefined ? targetSet(args.y_set_id) : set;
+        const fieldId = (d: Dataset, name: unknown) => {
+          if (typeof name !== "string" || !name) return null;
+          if (name.includes(":") || name === "length") return name;
+          return d.components?.some((c) => c.name === name) ? `comp:${name}` : `attr:${name}`;
+        };
+        const q = defaultQQ(set.id);
+        const two = args.y_set_id !== undefined || args.y_field !== undefined || args.y_holes !== undefined;
+        q.mode = two ? "sample" : "theory";
+        if (args.distribution) q.distribution = args.distribution as QQSettings["distribution"];
+        if (two) q.log = false;
+        if (typeof args.log === "boolean") q.log = args.log;
+        else if (!two) q.log = q.distribution === "lognormal";
+        q.x.field = fieldId(set, args.field);
+        q.y = { ...q.y, setId: ySet.id, field: fieldId(ySet, args.y_field ?? args.field) };
+        if (args.weight) q.x.weight = q.y.weight = args.weight as QQSettings["x"]["weight"];
+        if (typeof args.holes === "string") q.x.holes = args.holes;
+        if (typeof args.y_holes === "string") q.y.holes = args.y_holes;
+        if (typeof args.quantiles === "number") q.quantiles = String(args.quantiles);
+        s().openChart("qq", set.id, undefined, q);
+        return two ? `Q-Q: ${set.name} против ${ySet.name}` : `Q-Q: ${set.name} против ${q.distribution === "lognormal" ? "логнормального" : "нормального"} распределения`;
+      },
     },
     {
       id: "chart.dendrogram",

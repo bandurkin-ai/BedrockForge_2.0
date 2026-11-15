@@ -1,14 +1,15 @@
 import { useRef, useState, type ReactNode } from "react";
-import { Icon } from "../shell/icons";
+import { Icon, type IconName } from "../shell/icons";
 
 /**
  * A floating window over the workspace (charts): drag by the title, resize by the corner,
  * maximise, close. Several can be open; the one clicked last is on top.
  */
 export function ChartWindow({
-  title, index, z, onFocus, onClose, children,
+  title, icon = "histogram", index, z, onFocus, onClose, children,
 }: {
   title: string;
+  icon?: IconName;
   /** Opening order: each next window is offset a little. */
   index: number;
   z: number;
@@ -38,7 +39,7 @@ export function ChartWindow({
       onMouseDown={onFocus} role="dialog" aria-label={title}
     >
       <header className="chart-window-head" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={() => (drag.current = null)} onDoubleClick={() => setMax((m) => !m)}>
-        <Icon name="histogram" size={15} />
+        <Icon name={icon} size={15} />
         <strong className="grow">{title}</strong>
         <button className="icon" onClick={() => setMax((m) => !m)} title={max ? "Обычный размер" : "Развернуть"} aria-label={max ? "Обычный размер" : "Развернуть"}>
           <Icon name="maximize" size={14} />

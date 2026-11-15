@@ -1014,3 +1014,42 @@ export interface HistogramResult {
 
 export const getHistogram = (setId: number, params: HistogramParams, signal?: AbortSignal) =>
   request<HistogramResult>(`/api/sets/${setId}/stats/histogram`, { method: "POST", ...json(params), signal });
+
+// ---- Q-Q plot ----
+
+export interface SampleParams {
+  set_id: number;
+  field: string;
+  weight: WeightMode;
+  weight_field?: string | null;
+  negatives: "keep" | "exclude" | "half_abs";
+  exclude_zero: boolean;
+  top_cut?: number | null;
+  holes?: string[] | null;
+}
+
+export interface QQSideInfo {
+  set_id: number;
+  field: string;
+  weighted: boolean;
+  counts: { rows: number; missing: number; bad_weight: number; negative: number; zero_excluded: number; capped: number; used: number };
+  stats: Describe;
+}
+
+export interface QQResult {
+  mode: "sample" | "theory";
+  /** the sample (on the X axis against a sample, on the Y axis against a distribution) */
+  x: QQSideInfo;
+  y: QQSideInfo | null;
+  /** [x, y, probability %] */
+  points: [number, number, number][];
+  extremes?: { x: [number, number]; y: [number, number] };
+  ks?: number;
+  distribution?: { name: "normal" | "lognormal"; mu: number; sigma: number; dropped_nonpositive: number };
+  ppcc?: number | null;
+}
+
+export const getQQ = (
+  body: { x: SampleParams; y: ({ kind: "sample" } & SampleParams) | { kind: "normal" | "lognormal" }; quantiles: number },
+  signal?: AbortSignal,
+) => request<QQResult>("/api/stats/qq", { method: "POST", ...json(body), signal });

@@ -403,16 +403,17 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .chart-window.maximized .chart-window-head { cursor: default; }
 .chart-window-body { flex: 1; min-height: 0; overflow: hidden; }
 .hist-window { display: grid; grid-template-columns: 250px 1fr; height: 100%; }
-.hist-settings { overflow: auto; padding: 8px 10px; border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
+.hist-settings { overflow-y: auto; overflow-x: hidden; min-width: 0; padding: 8px 10px; border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
 .hist-settings fieldset { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px 8px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .hist-settings legend { font-size: 0.78rem; color: var(--muted); padding: 0 4px; }
 .hist-settings label { display: flex; flex-direction: column; gap: 2px; font-size: 0.82rem; }
 .hist-settings label.check { flex-direction: row; align-items: center; gap: 6px; }
-.hist-settings select, .hist-settings input:not([type=checkbox]):not([type=color]) { width: 100%; }
+.hist-settings select, .hist-settings input:not([type=checkbox]):not([type=color]) { width: 100%; min-width: 0; box-sizing: border-box; }
+.hist-settings fieldset { min-width: 0; }
 .hist-settings .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .hist-settings .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
 .seg { display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
-.seg button { flex: 1; padding: 3px 4px; border: none; border-radius: 0; background: none; font-size: 0.8rem; }
+.seg button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 4px; border: none; border-radius: 0; background: none; font-size: 0.8rem; }
 .seg button.active { background: var(--accent); color: var(--accent-fg); }
 .hist-export { display: flex; gap: 6px; }
 .hist-export button { flex: 1; }
@@ -433,3 +434,8 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .hist-stats thead th { text-align: right; font-weight: 600; color: var(--fg); padding: 0 0 3px 14px; }
 .hist-stats tbody th { text-align: left; font-weight: normal; color: var(--muted); padding: 1px 6px 1px 0; }
 .hist-stats td { text-align: right; font-variant-numeric: tabular-nums; padding-left: 14px; }
+.qq-plot { align-self: flex-start; width: min(100%, 680px); }
+.qq-plot svg { max-height: 62vh; }
+.qq-diagonal { stroke: var(--brand); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.qq-label-ring { stroke: var(--fg); stroke-width: 1.2; }
+.qq-stats { align-self: flex-start; }

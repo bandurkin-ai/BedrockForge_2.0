@@ -34,7 +34,7 @@ docker compose up --build
 - Веб: http://localhost:5173, API: http://localhost:8000. Сервис `worker` выполняет фоновые задания; хранилище — том `store` (`DATA_DIR=/data`).
 - Лента → «Демо-проект» создаёт учебный проект (48 скважин, каркасы, линии, растры в плане и в разрезе).
 - Локальная разработка без Docker: PostgreSQL 16 (`pg_ctlcluster 16 main start`; пользователь `geo`/`geo`, базы `geo` и `geo_test`), `alembic upgrade head` и `uvicorn app.main:app` в `api/` (задания идут в потоке API, `JOBS_IN_API=1`), `API_URL=http://localhost:8000 npx vite` в `web/`.
-- Тесты: `cd api && python3 -m pytest` (235 passed / 17 skipped), `cd web && npm test` (45 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
+- Тесты: `cd api && python3 -m pytest` (242 passed / 17 skipped), `cd web && npm test` (48 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
 - Замеры: `cd api && python -m bench.run --profile ci --check` (1 млн треугольников) или `--profile full` (10 млн, 2 ГБ).
 
 ## 3. Стек
@@ -154,7 +154,8 @@ Job                        — фоновое задание: статус, пр
 - [ ] Импорт таблиц скважин (`/api/import/*`) пока идёт в запросе — перевести на задания в этапе 8.
 - [x] Этап 10: потоковое чтение TRIDB и DXF, OBJ/STL, проверки, части, уровни детализации, точное сечение на сервере.
 - [x] Гистограмма проб (правая кнопка в дереве): `app/stats/histogram.py`, эндпоинты `stats/fields` и `stats/histogram` в `routers/stats.py`; веб — `charts/` (окно, график, экспорт), `shell/ContextMenu.tsx`.
-- [ ] Q-Q график и дендрограмма — пункты меню и команды `chart.qq`, `chart.dendrogram` есть, окна нет.
+- [x] Q-Q график: `app/stats/qq.py`, `POST /api/stats/qq` (общая загрузка значений — `load_field_values` в `routers/stats.py`); веб — `charts/QQWindow.tsx`, `charts/QQChart.tsx`.
+- [ ] Дендрограмма — пункт меню и команда `chart.dendrogram` есть, окна нет.
 - [ ] Остатки этапа 10: Surpac DTM (нужен образец), Datamine (после читателя DM), подгрузка частей по Range в порядке видимости, BVH для запроса по клику (этап 16).
 - [ ] Каркас больше 200 МБ и блочная модель 1–2 ГБ от пользователя — без них этапы 10 и 12 идут на синтетике (`api/bench/synthetic.py`).
 - [ ] Привязка скана разреза по опорным точкам в UI (этап 11).
