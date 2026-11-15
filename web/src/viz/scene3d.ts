@@ -5,6 +5,7 @@ import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import type { IntervalsData, Trajectories, VerticalPlacement } from "../api";
 import { NO_VALUE_COLOR, type ColorScale } from "./colorScale";
+import type { DownholeBuild, Label } from "./downholeGeometry";
 import type { SectionLine } from "./geometry";
 import { bounds, type Bounds } from "./geometryLoader";
 import { THEME_EVENT } from "./scene3d-theme";
@@ -44,6 +45,21 @@ export interface DrillholeStyle {
   intervals: boolean;
   collars: boolean;
 }
+
+/** Data along the holes (tubes, panels, graph lines, text) of one saved display. */
+interface DownholeLayer {
+  group: THREE.Group;
+  tubes: LineSegments2[];
+  panels: THREE.Mesh | null;
+  lines: THREE.LineSegments | null;
+  labels: { sprite: THREE.Sprite; label: Label; wpx: number; hpx: number }[];
+  labelGroup: THREE.Group;
+  /** panels and lines each carry a side direction found by the shader from the camera */
+  materials: THREE.Material[];
+}
+
+/** A label shows when its interval is at least this long on screen, px. */
+const LABEL_MIN_PX = 18;
 
 interface DrillholeLayer {
   extent: THREE.Box3;
@@ -138,6 +154,10 @@ export class GeoScene {
   private light = new THREE.DirectionalLight(0xffffff, 1.6);
   private materials = new Set<LineMaterial>();
   private drillholes = new Map<number, DrillholeLayer>();
+  private downholes = new Map<string, DownholeLayer>();
+  /** Camera directions for the shader of panels (world space), updated before each render. */
+  private side = { view: { value: new THREE.Vector3(0, 0, -1) }, right: { value: new THREE.Vector3(1, 0, 0) }, vexag: { value: 1 } };
+  private labelMaterials = new Map<string, THREE.SpriteMaterial>();
   private wireframes = new Map<number, WireframeLayer>();
   private lineLayers = new Map<number, LineLayer3D>();
   private rasters = new Map<number, RasterLayer>();
@@ -275,6 +295,190 @@ export class GeoScene {
     this.drillholes.set(setId, layer);
     this.root.add(layer.group);
     this.contentChanged();
+  }
+
+  /** The scene origin (project coordinates), null until the first object is loaded. */
+  sceneOrigin(extent?: { min: number[]; max: number[] } | null): [number, number, number] | null {
+    if (extent) this.ensureOrigin(extent.min, extent.max);
+    return this.origin ? [this.origin.x, this.origin.y, this.origin.z] : null;
+  }
+
+  /**
+   * Data along the holes of one display: colour tubes along the hole, panels beside it (bars, graph lines,
+   * colour ribbons) and text. `build` is relative to the scene origin; null removes the display.
+   */
+  setDownhole(key: string, build: DownholeBuild | null, visible = true): void {
+    this.removeDownhole(key, false);
+    if (!build) {
+      this.requestRender();
+      return;
+    }
+    const layer: DownholeLayer = { group: new THREE.Group(), tubes: [], panels: null, lines: null, labels: [], labelGroup: new THREE.Group(), materials: [] };
+    layer.group.visible = visible;
+    build.tubes.forEach((t, i) => {
+      if (t.positions.length === 0) return;
+      const lines = this.makeLines(t.positions, t.colors, t.width, 0xffffff);
+      lines.renderOrder = 2 + i * 0.1;
+      layer.tubes.push(lines);
+      layer.group.add(lines);
+    });
+    const sideGeometry = (m: DownholeBuild["panels"]) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(m.positions, 3));
+      g.setAttribute("aTan", new THREE.Float32BufferAttribute(m.tangents, 3));
+      g.setAttribute("aAmp", new THREE.Float32BufferAttribute(m.amps, 1));
+      g.setAttribute("color", new THREE.Float32BufferAttribute(m.colors, 3));
+      if (m.index.length) g.setIndex(m.index);
+      return g;
+    };
+    if (build.panels.amps.length > 0) {
+      const material = this.sideMaterial(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+      layer.materials.push(material);
+      layer.panels = new THREE.Mesh(sideGeometry(build.panels), material);
+      layer.panels.frustumCulled = false;
+      layer.panels.renderOrder = 1;
+      layer.group.add(layer.panels);
+    }
+    if (build.lines.amps.length > 0) {
+      const material = this.sideMaterial(new THREE.LineBasicMaterial({ vertexColors: true }));
+      layer.materials.push(material);
+      layer.lines = new THREE.LineSegments(sideGeometry(build.lines), material);
+      layer.lines.frustumCulled = false;
+      layer.lines.renderOrder = 2;
+      layer.group.add(layer.lines);
+    }
+    layer.labelGroup.renderOrder = 10;
+    for (const label of build.labels) {
+      const { material, wpx, hpx } = this.labelMaterial(label.text);
+      const sprite = new THREE.Sprite(material);
+      sprite.center.set(0, 0.5);
+      sprite.renderOrder = 10;
+      sprite.frustumCulled = false;
+      layer.labelGroup.add(sprite);
+      layer.labels.push({ sprite, label, wpx, hpx });
+    }
+    layer.group.add(layer.labelGroup);
+    this.downholes.set(key, layer);
+    this.root.add(layer.group);
+    this.requestRender();
+  }
+
+  setDownholeVisible(key: string, visible: boolean): void {
+    const layer = this.downholes.get(key);
+    if (!layer) return;
+    layer.group.visible = visible;
+    this.requestRender();
+  }
+
+  hasDownhole(key: string): boolean {
+    return this.downholes.has(key);
+  }
+
+  removeDownhole(key: string, update = true): void {
+    const layer = this.downholes.get(key);
+    if (!layer) return;
+    this.root.remove(layer.group);
+    layer.group.traverse((child) => {
+      if (child instanceof THREE.Sprite) return; // labels share their materials
+      const m = child as THREE.Mesh;
+      m.geometry?.dispose();
+      const material = m.material as THREE.Material | undefined;
+      if (material instanceof LineMaterial) this.materials.delete(material);
+      material?.dispose();
+    });
+    this.downholes.delete(key);
+    if (update) this.requestRender();
+  }
+
+  /** A material whose vertices move `aAmp` metres to the side of the hole, across it and in the plane of the screen. */
+  private sideMaterial<T extends THREE.Material>(material: T): T {
+    const side = this.side;
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uView = side.view;
+      shader.uniforms.uRight = side.right;
+      shader.uniforms.uVexag = side.vexag;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nattribute vec3 aTan;\nattribute float aAmp;\nuniform vec3 uView;\nuniform vec3 uRight;\nuniform float uVexag;")
+        .replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+          vec3 tw = normalize(vec3(aTan.xy, aTan.z * uVexag));
+          vec3 sw = cross(tw, uView);
+          float sl = length(sw);
+          sw = sl < 0.05 ? uRight : sw / sl;
+          if (dot(sw, uRight) < 0.0) sw = -sw;
+          transformed += vec3(sw.xy, sw.z / uVexag) * aAmp;`,
+        );
+    };
+    material.customProgramCacheKey = () => "downhole-side";
+    return material;
+  }
+
+  private labelMaterial(text: string): { material: THREE.SpriteMaterial; wpx: number; hpx: number } {
+    const cached = this.labelMaterials.get(text);
+    const size = 12;
+    if (cached) return { material: cached, wpx: cached.userData.wpx, hpx: cached.userData.hpx };
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const k = 2;
+    const font = `${size * k}px sans-serif`;
+    if (ctx) {
+      ctx.font = font;
+    }
+    const w = Math.ceil((ctx?.measureText(text).width ?? text.length * size * 0.6 * k) + 6 * k);
+    canvas.width = Math.max(2, w);
+    canvas.height = Math.ceil(size * k * 1.4);
+    if (ctx) {
+      ctx.font = font;
+      ctx.textBaseline = "middle";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 3 * k;
+      ctx.strokeStyle = "rgba(10, 14, 22, 0.85)";
+      ctx.strokeText(text, 3 * k, canvas.height / 2);
+      ctx.fillStyle = "#f3f6fb";
+      ctx.fillText(text, 3 * k, canvas.height / 2);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+    material.userData = { wpx: canvas.width / k, hpx: canvas.height / k };
+    this.labelMaterials.set(text, material);
+    return { material, wpx: canvas.width / k, hpx: canvas.height / k };
+  }
+
+  /** Camera directions for the shaders of panels, and the position and size of the text labels. */
+  private updateDownholes(): void {
+    if (this.downholes.size === 0) return;
+    this.camera.updateMatrixWorld();
+    const view = this.camera.getWorldDirection(this.side.view.value).normalize();
+    const right = this.side.right.value.setFromMatrixColumn(this.camera.matrixWorld, 0).normalize();
+    this.side.vexag.value = this.vexag;
+    const tw = new THREE.Vector3();
+    const sw = new THREE.Vector3();
+    const at = new THREE.Vector3();
+    for (const layer of this.downholes.values()) {
+      if (!layer.group.visible || layer.labels.length === 0) continue;
+      for (const item of layer.labels) {
+        const l = item.label;
+        at.set(l.position[0], l.position[1], l.position[2] * this.vexag);
+        const pxPerM = this.pixelsPerUnit(at);
+        const show = l.length * pxPerM >= LABEL_MIN_PX;
+        item.sprite.visible = show;
+        if (!show) continue;
+        tw.set(l.tangent[0], l.tangent[1], l.tangent[2] * this.vexag).normalize();
+        sw.crossVectors(tw, view);
+        if (sw.length() < 0.05) sw.copy(right);
+        else sw.normalize();
+        if (sw.dot(right) < 0) sw.negate();
+        // The label sits at the middle of its column; its left edge at the column's start, so it grows outwards.
+        item.sprite.position.set(
+          l.position[0] + sw.x * l.amp,
+          l.position[1] + sw.y * l.amp,
+          l.position[2] + (sw.z * l.amp) / this.vexag,
+        );
+        item.sprite.scale.set(item.wpx / pxPerM, item.hpx / pxPerM, 1);
+      }
+    }
   }
 
   removeDrillholes(setId: number, update = true): void {
@@ -882,6 +1086,12 @@ export class GeoScene {
     for (const id of [...this.lineLayers.keys()]) this.removeLines(id, false);
     for (const id of [...this.rasters.keys()]) this.removeRaster(id, false);
     for (const id of [...this.blocks.keys()]) this.removeBlockModel(id, false);
+    for (const key of [...this.downholes.keys()]) this.removeDownhole(key, false);
+    for (const m of this.labelMaterials.values()) {
+      m.map?.dispose();
+      m.dispose();
+    }
+    this.labelMaterials.clear();
     this.pointTexture.dispose();
     this.controls.dispose();
     this.renderer.dispose();
@@ -1377,6 +1587,7 @@ export class GeoScene {
       this.light.position.copy(this.camera.position);
       this.light.target.position.copy(this.controls.target);
       this.chooseLevels();
+      this.updateDownholes();
       this.renderer.render(this.scene, this.camera);
       this.onRender();
     });

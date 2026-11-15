@@ -509,3 +509,11 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .strip-chart .strip-text { font-size: 10px; fill: var(--fg); paint-order: stroke; stroke: var(--bg); stroke-width: 2px; }
 .strip-chart .strip-swatch { stroke: var(--border); }
 .color-pick { flex-direction: row !important; align-items: center; gap: 4px !important; }
+
+/* Data along the holes in the 3D view: legend of the displays that are on. */
+.downhole-legend { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12px; max-height: 96px; overflow: auto; }
+.downhole-legend-item { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; }
+.downhole-legend-track { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.legend-swatch { display: inline-flex; align-items: center; gap: 4px; }
+.legend-swatch i { width: 11px; height: 11px; border-radius: 2px; border: 1px solid rgba(0, 0, 0, 0.35); display: inline-block; }
+.tree-row.dragging { opacity: 0.55; }

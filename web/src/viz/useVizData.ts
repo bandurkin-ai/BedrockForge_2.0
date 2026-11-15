@@ -1,4 +1,4 @@
-import { getIntervals, getLineGeometry, getTrajectories, getWireframeGeometry, listHoles, type Hole, type IntervalsData, type Trajectories, type WireframeGeometry } from "../api";
+import { getDownhole, getIntervals, getLineGeometry, getTrajectories, getWireframeGeometry, listHoles, type DownholeData, type Hole, type IntervalsData, type Trajectories, type WireframeGeometry } from "../api";
 import { loadBuffers, type Bounds } from "./geometryLoader";
 
 // Requests are cached for the session so toggling layers does not refetch megabytes.
@@ -58,3 +58,8 @@ export const loadLines = (id: number): Promise<DecodedLines> =>
     const { buffers, bounds } = await loadBuffers([g.vertices, g.offsets], 0);
     return { origin: g.origin, vertices: new Float32Array(buffers[0]), offsets: new Uint32Array(buffers[1]), bounds };
   });
+
+/** The data of interval tables along the holes for the 3D view: every hole (or the listed ones), only the fields drawn. */
+export const loadDownhole = (setId: number, holes: string[] | "all", fields: Record<string, string[]>, refreshKey: number): Promise<DownholeData> =>
+  cached(`dh:${setId}:${refreshKey}:${holes === "all" ? "all" : holes.join(",")}:${JSON.stringify(fields)}`, () =>
+    getDownhole(setId, holes === "all" ? [] : holes, Object.keys(fields), undefined, holes === "all", fields));

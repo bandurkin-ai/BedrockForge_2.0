@@ -4,8 +4,9 @@ import { loadHoles } from "../viz/useVizData";
 import { download, savePng, saveSvg, toCsv } from "./exportChart";
 import { StripLogChart } from "./StripLogChart";
 import {
-  DEFAULT_STRIPLOG, defaultTracks, LOG_COLORS, newTrack, stripLogName, TRACK_TITLES, type StripLogSettings, type Track, type TrackType,
+  DEFAULT_STRIPLOG, defaultTracks, LOG_COLORS, newTrack, stripLogName, TRACK_TITLES, TUBE_RANGE, type StripLogSettings, type Track, type TrackType,
 } from "./stripLog";
+import { tubeTracks } from "../viz/downholeGeometry";
 
 const SCALES: [number, string][] = [[0, "вписать"], [0.5, "1:2000"], [1, "1:1000"], [2, "1:500"], [4, "1:250"], [8, "1:125"], [20, "1:50"]];
 
@@ -151,6 +152,23 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
           <label className="check"><input type="checkbox" checked={s.grid} onChange={(e) => set({ grid: e.target.checked })} /> общая шкала глубин</label>
         </fieldset>
         <fieldset>
+          <legend>В главном окне (3D и разрезы)</legend>
+          <label className="check"><input type="checkbox" checked={s.allHoles ?? false} onChange={(e) => set({ allHoles: e.target.checked })} /> все скважины набора</label>
+          <p className="muted small">{s.allHoles ? "Рисуется на всех скважинах набора." : "Рисуется на скважинах, отмеченных выше."}</p>
+          <div className="pair">
+            <label>Трубка, px
+              <input type="number" min={TUBE_RANGE[0]} max={TUBE_RANGE[1]} step={1} value={s.tube ?? 8}
+                onChange={(e) => set({ tube: Math.max(TUBE_RANGE[0], Math.min(TUBE_RANGE[1], Number(e.target.value) || 8)) })} aria-label="Толщина трубки, px" />
+            </label>
+            <label>Колонка, м
+              <input type="number" min={0} max={500} step={1} value={s.panel ?? 0} placeholder="авто"
+                onChange={(e) => set({ panel: Math.max(0, Math.min(500, Number(e.target.value) || 0)) })} aria-label="Ширина колонки, м (0 — по размеру скважин)" />
+            </label>
+          </div>
+          <label className="check"><input type="checkbox" checked={s.labels !== false} onChange={(e) => set({ labels: e.target.checked })} /> подписи значений вдоль ствола</label>
+          <p className="muted small">Столбцы, графики и цветные ленты стоят рядом со стволом лицом к камере; «Колонка, м» — ширина колонки с шириной 90.</p>
+        </fieldset>
+        <fieldset>
           <legend>Колонки ({s.tracks.length})</legend>
           {s.tracks.map((t, i) => {
             const tb = table(t.table);
@@ -192,6 +210,14 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
                   </>
                 )}
                 <label className="check"><input type="checkbox" checked={t.boundaries} onChange={(e) => updateTrack(t.id, { boundaries: e.target.checked })} /> границы интервалов</label>
+                {(t.type === "color" || t.type === "color_text") && (
+                  <label>В 3D
+                    <select value={tubeTracks(s.tracks).has(t.id) ? "tube" : "panel"} onChange={(e) => updateTrack(t.id, { form: e.target.value as "tube" | "panel" })} aria-label={`В 3D: ${t.field}`}>
+                      <option value="tube">трубка на стволе</option>
+                      <option value="panel">лента рядом со стволом</option>
+                    </select>
+                  </label>
+                )}
               </div>
             );
           })}

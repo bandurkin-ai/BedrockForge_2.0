@@ -9,7 +9,9 @@ import { GeoScene, MAX_SHOWN_BLOCKS, type Hover } from "./scene3d";
 import { blockColors, defaultBlockStyle, type BlockStyle } from "./blockStyle";
 import { unitTitle } from "../shell/BlockModelPanel";
 import type { ColorScale } from "./colorScale";
-import { loadHoles, loadIntervals, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
+import { loadDownhole, loadHoles, loadIntervals, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
+import { buildDownhole, type LegendEntry } from "./downholeGeometry";
+import type { StripLogSettings } from "../charts/stripLog";
 
 function auditColor(h: Hole | undefined): string {
   if (!h) return "#9aa3b5";
@@ -34,6 +36,16 @@ export interface SceneViewProps {
   blockStyles?: Record<number, BlockStyle>;
   /** A block picked in the view. */
   onPickBlock?: (modelId: number, index: number) => void;
+  /** Saved displays of data along the holes that are on in the view. */
+  logs?: DownholeLog[];
+}
+
+export interface DownholeLog {
+  /** id of the saved display (chart) */
+  id: number;
+  setId: number;
+  name: string;
+  settings: StripLogSettings;
 }
 
 export interface SceneApi {
@@ -69,6 +81,9 @@ export function SceneView(props: SceneViewProps) {
   const styleRun = useRef(0);
   const [blockLegend, setBlockLegend] = useState<{ name: string; unit: string | null; scale: ColorScale | null; shown: number; total: number; tooMany: boolean } | null>(null);
   const holesBySet = useRef(new Map<number, Map<string, Hole>>());
+  // Downhole displays: the settings each was built with, and their legends.
+  const loadedLogs = useRef(new Map<number, string>());
+  const [logLegends, setLogLegends] = useState<{ id: number; name: string; entries: LegendEntry[]; holes: number }[]>([]);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [loading, setLoading] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -189,6 +204,7 @@ export function SceneView(props: SceneViewProps) {
       loadedRasters.current.clear();
       loadedBlocks.current.clear();
       readyBlocks.current.clear();
+      loadedLogs.current.clear();
     };
   }, []);
 
@@ -245,6 +261,51 @@ export function SceneView(props: SceneViewProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sets, ws.hidden, component, refreshKey, scale, activeSet]);
+
+  // ---- data along the holes (saved displays that are on): tubes, panels, graphs, text
+  const logs = props.logs;
+  const logsKey = JSON.stringify((logs ?? []).map((l) => [l.id, l.setId, l.settings]));
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const wanted = new Map((logs ?? []).map((l) => [l.id, l]));
+    for (const id of [...loadedLogs.current.keys()]) {
+      if (!wanted.has(id)) {
+        scene.removeDownhole(`log:${id}`);
+        loadedLogs.current.delete(id);
+        setLogLegends((prev) => prev.filter((x) => x.id !== id));
+      }
+    }
+    for (const log of wanted.values()) {
+      const key = `${refreshKey}:${JSON.stringify(log.settings)}`;
+      if (loadedLogs.current.get(log.id) === key) continue;
+      loadedLogs.current.set(log.id, key);
+      const s = log.settings;
+      const fields: Record<string, string[]> = {};
+      for (const t of s.tracks) (fields[t.table] ??= []).includes(t.field) || fields[t.table].push(t.field);
+      if (s.tracks.length === 0 || (!s.allHoles && s.holes.length === 0)) {
+        scene.removeDownhole(`log:${log.id}`);
+        continue;
+      }
+      setLoading((n) => n + 1);
+      Promise.all([loadTrajectories(log.setId, refreshKey), loadDownhole(log.setId, s.allHoles ? "all" : s.holes, fields, refreshKey)])
+        .then(([trajectories, data]) => {
+          if (!sceneRef.current || loadedLogs.current.get(log.id) !== key) return;
+          const origin = sceneRef.current.sceneOrigin(trajectories.extent);
+          if (!origin) return;
+          const build = buildDownhole(trajectories.holes, data, s, origin);
+          sceneRef.current.setDownhole(`log:${log.id}`, build);
+          setLogLegends((prev) => [...prev.filter((x) => x.id !== log.id), { id: log.id, name: log.name, entries: build.legend, holes: build.holes }]);
+          setError(null);
+        })
+        .catch((e: Error) => {
+          if (loadedLogs.current.get(log.id) === key) loadedLogs.current.delete(log.id);
+          setError(e.message);
+        })
+        .finally(() => setLoading((n) => n - 1));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logsKey, refreshKey]);
 
   // ---- wireframes: coarse to fine — the coarsest simplified copy first (a picture within
   // seconds), then finer ones, then the full detail in spatial parts. Levels are loaded once.
@@ -611,6 +672,25 @@ export function SceneView(props: SceneViewProps) {
         </div>
       )}
 
+      {logLegends.length > 0 && (
+        <div className="scene-legend downhole-legend" aria-label="Данные по скважинам">
+          {logLegends.map((l) => (
+            <div key={l.id} className="downhole-legend-item">
+              <strong title={`${l.holes} скв.`}>{l.name}</strong>
+              {l.entries.map((e) => (
+                <span key={e.trackId} className="downhole-legend-track">
+                  <span className="muted">{e.title}{e.unit ? `, ${e.unit}` : ""}</span>
+                  {e.items.slice(0, 12).map(([label, color]) => (
+                    <span key={label} className="legend-swatch"><i style={{ background: color }} />{label}</span>
+                  ))}
+                  {e.items.length > 12 && <span className="muted small">… ещё {e.items.length - 12}</span>}
+                  {e.range && e.items.length === 0 && <span className="muted small">{e.range[0].toLocaleString("ru-RU")} … {e.range[1].toLocaleString("ru-RU")}</span>}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
       <div className={drawing !== false ? "canvas three crosshair" : "canvas three"} ref={containerRef}>
         <div ref={labelRef} className="label3d" style={{ display: "none" }}>{selectedHole}</div>
         {hover && (

@@ -44,6 +44,8 @@ export interface Live {
     striplog?: { settings?: Record<string, unknown>; table?: string | null; hole?: string | null }) => Promise<string>;
   /** Opens a chart saved in the tree. */
   openSavedChart: (chartId: number) => Promise<string>;
+  /** Shows a table (and its fields) on the holes of the set in the main view; saves the display in the tree. */
+  showOnHoles: (setId: number, tableKey: string, fields?: string[]) => Promise<string>;
   /** Opens the grade–tonnage window of a block model. */
   openBlockReport: (modelId: number) => void;
   reload: () => void;
@@ -794,6 +796,28 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
           tracks = cols.map((c, i) => newTrack(table.key, c!, i));
         }
         return s().openChart("striplog", set.id, undefined, undefined, undefined, { settings: holes.length ? { holes, tracks } : { tracks }, table: table.key });
+      },
+    },
+    {
+      id: "holes.show_data",
+      title: "Показать данные на скважинах",
+      description:
+        "Показывает на скважинах в главном окне (3D и разрезы) данные интервальной таблицы: цветная трубка по стволу (литология и т.п.), " +
+        "столбцы и графики рядом со стволом (числа), подписи. Отображение сохраняется в дереве в узле «Данные по скважинам»; " +
+        "его можно включать и выключать галочкой, настройки — двойной клик. table — «Пробы» или имя интервальной таблицы; fields — поля через запятую (по умолчанию: текстовые и до двух числовых).",
+      params: { set_id: { type: "integer" }, table: { type: "string" }, fields: { type: "string" } },
+      run: async (args) => {
+        const set = targetSet(args.set_id);
+        const tables = await getIntervalTables(set.id);
+        const wantedTable = typeof args.table === "string" && args.table.trim() ? args.table.trim().toLowerCase() : null;
+        const table = wantedTable ? tables.find((t) => t.name.toLowerCase() === wantedTable || t.key === wantedTable) : tables.find((t) => t.columns.length);
+        if (!table) throw new Error(`Таблицы «${args.table}» нет; таблицы набора: ${tables.map((t) => t.name).join(", ")}`);
+        const fields = typeof args.fields === "string" && args.fields.trim() ? args.fields.split(",").map((f) => f.trim()).filter(Boolean) : undefined;
+        if (fields) {
+          const missing = fields.filter((f) => !table.columns.some((c) => c.name.toUpperCase() === f.toUpperCase()));
+          if (missing.length) throw new Error(`Полей ${missing.join(", ")} нет в таблице «${table.name}»; поля: ${table.columns.map((c) => c.name).join(", ")}`);
+        }
+        return s().showOnHoles(set.id, table.key, fields);
       },
     },
     {

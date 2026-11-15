@@ -93,9 +93,13 @@ def table_rows(table_id: int, offset: int = 0, limit: int = 500, session: Sessio
 
 
 class DownholeIn(BaseModel):
-    holes: list[str] = Field(min_length=1, max_length=MAX_HOLES)
+    # the downhole log window: up to MAX_HOLES holes side by side; `all`: every hole of the set (the 3D view)
+    holes: list[str] = Field(default_factory=list, max_length=MAX_HOLES)
+    all: bool = False
     # "assay" and / or ids of interval tables; empty: all tables
     tables: list[str] = Field(default_factory=list, max_length=50)
+    # table key -> the fields to send (others are left out); a table without an entry sends all of its fields
+    fields: dict[str, list[str]] = Field(default_factory=dict)
 
 
 @router.post("/sets/{set_id}/downhole")
@@ -104,21 +108,43 @@ def downhole(set_id: int, body: DownholeIn, session: Session = Depends(get_sessi
     get_set(session, set_id)
     tables = tables_of(session, set_id)
     wanted = [t for t in tables if not body.tables or t["key"] in body.tables]
-    collars = {c.hole_id: c for c in session.scalars(select(Collar).where(Collar.set_id == set_id, Collar.hole_id.in_(body.holes)))}
+    if body.all:
+        names = list(session.scalars(select(Collar.hole_id).where(Collar.set_id == set_id).order_by(Collar.hole_id)))
+    elif body.holes:
+        names = body.holes
+    else:
+        raise HTTPException(422, "Нужны скважины: список holes или all")
+    collars = {c.hole_id: c for c in session.scalars(select(Collar).where(Collar.set_id == set_id, Collar.hole_id.in_(names)))}
+
+    def pick(key: str, values: dict | None) -> dict:
+        keep = body.fields.get(key)
+        values = values or {}
+        return values if keep is None else {k: values[k] for k in keep if k in values}
+
+    # every row of the chosen tables for the chosen holes in one query per table
+    wanted_holes = set(names)
+    by_table: dict[str, dict[str, list]] = {t["key"]: {} for t in wanted}
+    for t in wanted:
+        if t["key"] == "assay":
+            query = select(Assay).where(Assay.set_id == set_id).order_by(Assay.hole_id, Assay.from_m)
+            if not body.all:
+                query = query.where(Assay.hole_id.in_(names))
+            for r in session.scalars(query):
+                if r.hole_id in wanted_holes:
+                    by_table["assay"].setdefault(r.hole_id, []).append(
+                        {"from": r.from_m, "to": r.to_m, "values": pick("assay", {**(r.attributes or {}), **(r.analytes or {})})})
+        else:
+            query = select(IntervalRow).where(IntervalRow.table_id == t["id"]).order_by(IntervalRow.hole_id, IntervalRow.from_m)
+            if not body.all:
+                query = query.where(IntervalRow.hole_id.in_(names))
+            for r in session.scalars(query):
+                if r.hole_id in wanted_holes:
+                    by_table[t["key"]].setdefault(r.hole_id, []).append({"from": r.from_m, "to": r.to_m, "values": pick(t["key"], r.values)})
     holes = []
-    for hole in body.holes:
+    for hole in names:
         c = collars.get(hole)
-        data: dict[str, list] = {}
-        for t in wanted:
-            if t["key"] == "assay":
-                rows = session.scalars(select(Assay).where(Assay.set_id == set_id, Assay.hole_id == hole).order_by(Assay.from_m))
-                data["assay"] = [{"from": r.from_m, "to": r.to_m, "values": {**(r.attributes or {}), **(r.analytes or {})}} for r in rows]
-            else:
-                rows = session.scalars(select(IntervalRow).where(IntervalRow.table_id == t["id"], IntervalRow.hole_id == hole)
-                                       .order_by(IntervalRow.from_m))
-                data[t["key"]] = [{"from": r.from_m, "to": r.to_m, "values": r.values} for r in rows]
+        data = {t["key"]: by_table[t["key"]].get(hole, []) for t in wanted}
         depths = [iv["to"] for rows in data.values() for iv in rows if iv["to"] is not None]
         holes.append({"hole_id": hole, "found": c is not None, "td": c.td if c else None,
-                      "max_depth": max([*(depths or [0.0]), c.td or 0.0] if c else depths or [0.0])})
-        holes[-1]["tables"] = data
+                      "max_depth": max([*(depths or [0.0]), c.td or 0.0] if c else depths or [0.0]), "tables": data})
     return {"tables": [{k: t[k] for k in ("key", "name", "columns")} for t in wanted], "holes": holes}

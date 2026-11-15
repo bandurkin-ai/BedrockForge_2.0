@@ -23,6 +23,11 @@ export interface Track {
   log: boolean;
   /** interval boundaries as thin lines */
   boundaries: boolean;
+  /**
+   * In the 3D view a colour column is a "tube" along the hole or a "panel" (a ribbon beside it);
+   * bars, lines and text are always panels. Not set: the first colour column is a tube, the rest panels.
+   */
+  form?: "tube" | "panel";
 }
 
 export interface StripLogSettings {
@@ -35,6 +40,14 @@ export interface StripLogSettings {
   scale: number;
   /** holes on one common depth axis (otherwise each from its own top) */
   grid: boolean;
+  /** 3D view: every hole of the set (otherwise only `holes`) */
+  allHoles?: boolean;
+  /** 3D view: thickness of the first tube, px */
+  tube?: number;
+  /** 3D view: width of a panel column of the default width, m (0 or not set: from the size of the holes) */
+  panel?: number;
+  /** 3D view: write the values of text columns along the hole */
+  labels?: boolean;
 }
 
 export const TRACK_TITLES: Record<TrackType, string> = {
@@ -70,7 +83,34 @@ export function defaultTracks(table: IntervalTableInfo): Track[] {
   return [...text, ...numbers].map((c, i) => newTrack(table.key, c, i));
 }
 
-export const DEFAULT_STRIPLOG: StripLogSettings = { holes: [], tracks: [], from: "", to: "", scale: 0, grid: true };
+export const DEFAULT_STRIPLOG: StripLogSettings = {
+  holes: [], tracks: [], from: "", to: "", scale: 0, grid: true, allHoles: false, tube: 8, panel: 0, labels: true,
+};
+
+/** The saved settings may come from an older version or be empty: fill what is missing. */
+export function withDefaults(raw: Partial<StripLogSettings> | null | undefined): StripLogSettings {
+  const r = raw ?? {};
+  return {
+    ...DEFAULT_STRIPLOG, ...r,
+    holes: Array.isArray(r.holes) ? r.holes : [],
+    tracks: Array.isArray(r.tracks) ? r.tracks : [],
+  };
+}
+
+/** The saved display a table makes on the holes of its whole set (the 3D view): its default columns. */
+export function tableDisplay(table: IntervalTableInfo, fields?: string[]): StripLogSettings {
+  // The first text column is a tube with its text, further ones plain colour ribbons; at most two numbers as bars.
+  const named = fields?.length ? fields.map((f) => table.columns.find((c) => c.name.toUpperCase() === f.toUpperCase())).filter((c): c is IntervalColumn => !!c) : null;
+  const text = named ? named.filter((c) => c.kind === "text") : table.columns.filter((c) => c.kind === "text").slice(0, 2);
+  const numbers = named ? named.filter((c) => c.kind === "number") : table.columns.filter((c) => c.kind === "number").slice(0, 2);
+  const tracks = [...text, ...numbers].map((c, i) => {
+    const t = newTrack(table.key, c, i);
+    return c.kind === "text" && i > 0 ? { ...t, type: "color" as const, boundaries: false } : t;
+  });
+  return { ...DEFAULT_STRIPLOG, allHoles: true, tracks };
+}
+
+export const TUBE_RANGE: [number, number] = [2, 24];
 
 export function stripLogName(s: StripLogSettings): string {
   const holes = s.holes.length <= 3 ? s.holes.join(", ") : `${s.holes.slice(0, 2).join(", ")} и ещё ${s.holes.length - 2}`;

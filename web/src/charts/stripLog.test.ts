@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownholeData } from "../api";
-import { along, categoryColors, defaultTracks, depthTicks, fieldRange, stripLogName } from "./stripLog";
+import { along, categoryColors, defaultTracks, depthTicks, fieldRange, stripLogName, tableDisplay } from "./stripLog";
 
 const data: DownholeData = {
   tables: [{ key: "5", name: "Литология", columns: [{ name: "LITH", kind: "text", unit: "" }, { name: "RQD", kind: "number", unit: "%" }] }],
@@ -15,6 +15,16 @@ describe("downhole log", () => {
   it("builds default columns: text first, then numbers", () => {
     const tracks = defaultTracks({ key: "5", id: 5, name: "Литология", builtin: false, row_count: 3, columns: data.tables[0].columns });
     expect(tracks.map((t) => [t.field, t.type])).toEqual([["LITH", "color_text"], ["RQD", "bars"]]);
+  });
+
+  it("makes the display of a table on every hole: one tube with text, further text as ribbons, two numbers as bars", () => {
+    const cols = [
+      { name: "LITH", kind: "text" as const, unit: "" }, { name: "WEATH", kind: "text" as const, unit: "" },
+      { name: "RQD", kind: "number" as const, unit: "%" }, { name: "A", kind: "number" as const, unit: "" }, { name: "B", kind: "number" as const, unit: "" },
+    ];
+    const d = tableDisplay({ key: "5", id: 5, name: "Литология", builtin: false, row_count: 3, columns: cols });
+    expect(d.allHoles).toBe(true);
+    expect(d.tracks.map((t) => [t.field, t.type])).toEqual([["LITH", "color_text"], ["WEATH", "color"], ["RQD", "bars"], ["A", "bars"]]);
   });
 
   it("colours categories over every hole, the same colour for the same rock", () => {

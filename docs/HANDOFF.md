@@ -35,7 +35,7 @@ docker compose up --build
 - Веб: http://localhost:5173, API: http://localhost:8000. Сервис `worker` выполняет фоновые задания; хранилище — том `store` (`DATA_DIR=/data`).
 - Лента → «Демо-проект» создаёт учебный проект (48 скважин, каркасы, линии, растры в плане и в разрезе).
 - Локальная разработка без Docker: PostgreSQL 16 (`pg_ctlcluster 16 main start`; пользователь `geo`/`geo`, базы `geo` и `geo_test`), `alembic upgrade head` и `uvicorn app.main:app` в `api/` (задания идут в потоке API, `JOBS_IN_API=1`), `API_URL=http://localhost:8000 npx vite` в `web/`.
-- Тесты: `cd api && python3 -m pytest` (275 passed / 17 skipped), `cd web && npm test` (62 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
+- Тесты: `cd api && python3 -m pytest` (275 passed / 17 skipped), `cd web && npm test` (70 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
 - Замеры: `cd api && python -m bench.run --profile ci --check` (1 млн треугольников) или `--profile full` (10 млн, 2 ГБ).
 
 ## 3. Стек
@@ -158,6 +158,8 @@ Job                        — фоновое задание: статус, пр
 Этапы 7 и 10 сделаны (вехи M0, M1). Этап 12 начат: импорт, проверки, отчёт по бортам и показ блочных моделей (12.1–12.3, 12.6 частично). Не сделано: Datamine DM, поворот модели, срез произвольной плоскостью на сервере и показ только внешних граней для моделей > 3 млн блоков (12.4–12.5).
 
 Интервальные таблицы и данные по стволу: импорт — тип `interval` в `/api/import/commit` (+ `table_name`), запись — `importing/store.commit_interval_table`; `routers/intervals.py` (`/sets/{id}/interval-tables`, `/interval-tables/{id}` PATCH/DELETE/rows, `/sets/{id}/downhole`; пробы — встроенная таблица с ключом `assay`). Аудит, статистика и 3D по-прежнему работают только с пробами. Веб — `charts/stripLog.ts` (настройки, чистые функции), `StripLogChart.tsx`, `StripLogWindow.tsx`; сохраняются как графики вида `striplog`, в дереве — узел «Данные по скважинам».
+
+**Данные по стволу в главном окне (3D и разрезы).** Включённое отображение = сохранённый `striplog` (его id в `ws.logs`, рабочее пространство). `POST /sets/{id}/downhole` умеет `all: true` (все скважины) и `fields` (только нужные поля). Геометрия — чистый модуль `viz/downholeGeometry.ts` (`buildDownhole`: трубки — `LineSegments2`, колонки рядом — треугольники/отрезки с атрибутами `aTan`, `aAmp`, подписи). Сторона колонки находится в шейдере (`GeoScene.sideMaterial`): `cross(направление ствола, взгляд камеры)`, поэтому колонка всегда лицом к камере и на разрезе лежит в его плоскости; вертикальное преувеличение учтено. Подписи — `THREE.Sprite`, размер в px, видимость и положение обновляются в `updateDownholes` перед каждым кадром. `SceneView` берёт `logs` из `App` (`logLayers`), данные кешируются в `useVizData.loadDownhole`. Поля трека `form` (`tube`/`panel`) и настройки `allHoles`, `tube`, `panel`, `labels` — в `charts/stripLog.ts`. Команда Claude: `holes.show_data`.
 
 Блочные модели, где что лежит: `app/formats/blockmodel.py` (чтение, сетка, проверки), `app/importing/blockmodels.py` (запись столбцов), `app/blocks/report.py` и `app/routers/blockmodels.py` (`/render`, `/values/{key}`, `/blocks/{n}`, `/report`, единицы полей); веб — `shell/BlockModelPanel.tsx`, `charts/GradeTonnageWindow.tsx`, `viz/blockStyle.ts`, блоки в `viz/scene3d.ts` (`addBlockModel`, `setBlockStyle`, `pickBlock` — InstancedMesh), распознавание файла — `shell/sniffBlocks.ts`; команда Claude `blocks.report`.
 

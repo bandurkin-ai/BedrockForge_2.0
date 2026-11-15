@@ -43,6 +43,8 @@ export interface WorkspaceState {
   wireframeOpacity: number;
   /** Hidden layers: "set:3", "set:3:intervals", "wf:12", "ln:4", "rs:2"... Everything else is shown. */
   hidden: string[];
+  /** Saved downhole displays (charts of kind striplog) that are on in the 3D view. Off until shown. */
+  logs: number[];
 }
 
 export const DEFAULT_WORKSPACE: WorkspaceState = {
@@ -61,6 +63,7 @@ export const DEFAULT_WORKSPACE: WorkspaceState = {
   grid: true,
   wireframeOpacity: 0.7,
   hidden: [],
+  logs: [],
 };
 
 export const SIZE_LIMITS = {
@@ -89,6 +92,13 @@ export function setShown(state: WorkspaceState, key: string, shown: boolean): Wo
   const hidden = state.hidden.filter((k) => k !== key);
   if (!shown) hidden.push(key);
   return { ...state, hidden };
+}
+
+/** Turn a saved downhole display on or off in the 3D view. */
+export function setLogShown(state: WorkspaceState, chartId: number, shown: boolean): WorkspaceState {
+  const logs = state.logs.filter((id) => id !== chartId);
+  if (shown) logs.push(chartId);
+  return { ...state, logs };
 }
 
 /** Open or close a panel; `open` omitted toggles it. The assistant and properties share the right dock. */
@@ -140,6 +150,7 @@ export function normalize(raw: unknown): WorkspaceState {
     wireframeOpacity:
       typeof r.wireframeOpacity === "number" && r.wireframeOpacity >= 0.1 && r.wireframeOpacity <= 1 ? r.wireframeOpacity : d.wireframeOpacity,
     hidden: Array.isArray(r.hidden) ? r.hidden.filter((k): k is string => typeof k === "string").slice(0, 2000) : [],
+    logs: Array.isArray(r.logs) ? r.logs.filter((k): k is number => Number.isInteger(k)).slice(0, 200) : [],
   };
   for (const dock of ["left", "right", "bottom"] as const) {
     const size = r.sizes?.[dock];

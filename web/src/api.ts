@@ -1259,5 +1259,5 @@ export interface DownholeData {
   holes: { hole_id: string; found: boolean; td: number | null; max_depth: number; tables: Record<string, DownholeInterval[]> }[];
 }
 
-export const getDownhole = (setId: number, holes: string[], tables: string[], signal?: AbortSignal) =>
-  request<DownholeData>(`/api/sets/${setId}/downhole`, { method: "POST", ...json({ holes, tables }), signal });
+export const getDownhole = (setId: number, holes: string[], tables: string[], signal?: AbortSignal, all = false, fields?: Record<string, string[]>) =>
+  request<DownholeData>(`/api/sets/${setId}/downhole`, { method: "POST", ...json({ holes, tables, all, fields: fields ?? {} }), signal });

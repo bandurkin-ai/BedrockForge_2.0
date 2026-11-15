@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { commandTools, findByToolName, formatShortcut, matchesQuery, toolName, validateArgs, type Command } from "./commands";
 import { buildRibbon, flattenRibbon } from "./ribbonConfig";
-import { DEFAULT_WORKSPACE, isShown, layerKey, normalize, openBottom, resize, setPanel, setShown } from "./workspace";
+import { DEFAULT_WORKSPACE, isShown, layerKey, normalize, openBottom, resize, setLogShown, setPanel, setShown } from "./workspace";
 
 const open: Command = {
   id: "view.open",
@@ -16,6 +16,17 @@ const open: Command = {
   run: () => "ok",
 };
 const hidden: Command = { id: "palette.open", title: "Палитра", description: "", uiOnly: true, run: () => undefined };
+
+describe("workspace: downhole displays in 3D", () => {
+  it("turns a saved display on and off, and keeps only valid ids from a stored state", () => {
+    const on = setLogShown(setLogShown(DEFAULT_WORKSPACE, 4, true), 7, true);
+    expect(on.logs).toEqual([4, 7]);
+    expect(setLogShown(on, 4, true).logs).toEqual([7, 4]); // once, not twice
+    expect(setLogShown(on, 4, false).logs).toEqual([7]);
+    expect(normalize({ logs: [3, "x", 1.5, 9] }).logs).toEqual([3, 9]);
+    expect(normalize({}).logs).toEqual([]); // older stored state: nothing on
+  });
+});
 
 describe("workspace", () => {
   it("shares the right dock between properties and the assistant", () => {

@@ -1,12 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
-  deleteIntervalTable, renameIntervalTable, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
+  deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
   type Dataset, type JobInfo, type Project,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
-import type { StripLogSettings } from "./charts/stripLog";
+import { tableDisplay, withDefaults, type StripLogSettings } from "./charts/stripLog";
 import type { BlockStyle } from "./viz/blockStyle";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataPage } from "./DataPage";
@@ -40,7 +40,7 @@ import { useAssistant, type ToolOutcome } from "./shell/useAssistant";
 import { useLiveState } from "./shell/useLiveState";
 import { useRemoteCommands } from "./shell/useRemoteCommands";
 import {
-  BOTTOM_TITLES, isShown, layerKey, loadWorkspace, openBottom, resize, saveWorkspace, setPanel, setShown,
+  BOTTOM_TITLES, isShown, layerKey, loadWorkspace, openBottom, resize, saveWorkspace, setLogShown, setPanel, setShown,
   type BottomTab, type SelectedObject, type WorkspaceState,
 } from "./shell/workspace";
 import { StatusBar } from "./StatusBar";
@@ -50,7 +50,7 @@ import type { SectionLine } from "./viz/geometry";
 import { THEME_EVENT } from "./viz/scene3d-theme";
 
 // three.js is large: the 3D view is a separate chunk, the shell appears first.
-import type { SceneApi } from "./viz/SceneView";
+import type { DownholeLog, SceneApi } from "./viz/SceneView";
 
 const SceneView = lazy(() => import("./viz/SceneView").then((m) => ({ default: m.SceneView })));
 
@@ -77,6 +77,9 @@ interface ChartState {
   /** downhole log: the table and hole it was opened from (its first columns and hole) */
   hint?: { table?: string | null; hole?: string | null };
 }
+
+/** Drag type of a saved downhole display dragged from the tree onto the 3D view. */
+export const LOG_DRAG = "application/x-bedrockforge-log";
 
 const CHART_TITLES: Record<ChartKind, string> = { histogram: "Гистограмма", qq: "Q-Q график", dendrogram: "Дендрограмма", striplog: "Данные по стволу" };
 
@@ -183,7 +186,34 @@ function Workspace({
   // Settings of open charts are saved a moment after the last change.
   const saveTimers = useRef(new Map<number, number>());
   const chartNames = useRef(new Map<number, string>());
+  // Data along the holes in the 3D view: the settings of every saved display that is on (live while its window is open).
+  const [logSettings, setLogSettings] = useState<Record<number, StripLogSettings>>({});
+  const logRequested = useRef(new Set<number>());
+  const toggleLog = (chartId: number, on: boolean) => setWs((prev) => setLogShown(prev, chartId, on));
+  useEffect(() => {
+    for (const id of ws.logs) {
+      if (logRequested.current.has(id)) continue;
+      logRequested.current.add(id);
+      getChart(id)
+        .then((c) => setLogSettings((prev) => (id in prev ? prev : { ...prev, [id]: withDefaults(c.settings as Partial<StripLogSettings>) })))
+        .catch(() => logRequested.current.delete(id)); // deleted: it just does not show
+    }
+  }, [ws.logs]);
+  /** A table on the holes of its whole set: a display with its default columns, saved in the tree and on at once. */
+  const showOnHoles = async (setId: number, tableKey: string, fields?: string[]): Promise<string> => {
+    const tables = await getIntervalTables(setId);
+    const table = tables.find((t) => t.key === tableKey);
+    if (!table || table.columns.length === 0) throw new Error("В таблице нет полей для показа на скважинах");
+    const settings = tableDisplay(table, fields);
+    const saved = await createChart(setId, "striplog", `${table.name} на скважинах`, settings);
+    logRequested.current.add(saved.id);
+    setLogSettings((prev) => ({ ...prev, [saved.id]: settings }));
+    setWs((prev) => setLogShown(prev, saved.id, true));
+    reload();
+    return `«${table.name}» показана на скважинах; настройки — в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Данные по скважинам`;
+  };
   const saveChartSettings = (chartId: number, settings: unknown, autoName: string) => {
+    if (charts.find((c) => c.chartId === chartId)?.kind === "striplog") setLogSettings((prev) => ({ ...prev, [chartId]: withDefaults(settings as Partial<StripLogSettings>) }));
     const timers = saveTimers.current;
     window.clearTimeout(timers.get(chartId));
     timers.set(chartId, window.setTimeout(() => {
@@ -223,6 +253,17 @@ function Workspace({
     selectHole(setId, null);
   };
   const sets = useMemo(() => (datasets ?? []).filter((d) => d.kind === "drillholes"), [datasets]);
+  // Saved downhole displays that are on, with their settings: what the 3D view draws on the holes.
+  const logLayers = useMemo<DownholeLog[]>(() => {
+    const out: DownholeLog[] = [];
+    for (const d of sets) {
+      for (const c of d.charts ?? []) {
+        if (c.kind !== "striplog" || !ws.logs.includes(c.id) || !logSettings[c.id]) continue;
+        out.push({ id: c.id, setId: d.id, name: c.name, settings: logSettings[c.id] });
+      }
+    }
+    return out;
+  }, [sets, ws.logs, logSettings]);
 
   const selectHole = useCallback(
     (setId: number, holeId: string | null) => {
@@ -316,6 +357,7 @@ function Workspace({
     },
     openChart: (kind, setId, initial, qq, dendrogram, striplog) => openChart(kind, setId, initial, qq, dendrogram, striplog),
     openSavedChart,
+    showOnHoles,
     openBlockReport,
     openStats: (analysis, component) => {
       setStatsView((prev) => ({ analysis, component: component ?? prev.component }));
@@ -603,7 +645,9 @@ function Workspace({
                   onDemo={() => void runCommand("project.demo", {}, "user")}
                   onSetMenu={(setId, x, y) => setMenu({ setId, x, y })}
                   onTableMenu={(setId, table, x, y) => (table.id === null ? setMenu({ setId, x, y }) : setTableMenu({ setId, id: table.id, name: table.name, x, y }))}
-                  onNewLog={(setId, table) => void guarded(() => openChart("striplog", setId, undefined, undefined, undefined, { table }))}
+                  onNewLog={(setId, table) => void guarded(() => (table ? showOnHoles(setId, table) : openChart("striplog", setId, undefined, undefined, undefined, { table })))}
+                  logsOn={ws.logs}
+                  onToggleLog={toggleLog}
                   onOpenChart={(id) => void guarded(() => openSavedChart(id))}
                   onChartMenu={(chart, x, y) => setChartMenu({ ...chart, x, y })}
                 />
@@ -615,7 +659,16 @@ function Workspace({
 
         <div className="center">
           {error && <div className="alert error">{error}</div>}
-          <section className="viewport" aria-label="3D-вид">
+          <section
+            className="viewport" aria-label="3D-вид"
+            onDragOver={(e) => { if (e.dataTransfer.types.includes(LOG_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }}
+            onDrop={(e) => {
+              const id = Number(e.dataTransfer.getData(LOG_DRAG));
+              if (!e.dataTransfer.types.includes(LOG_DRAG) || !Number.isInteger(id)) return;
+              e.preventDefault();
+              toggleLog(id, true);
+            }}
+          >
             <ErrorBoundary label="3D-вид">
               <Suspense fallback={<div className="canvas-note static">Загрузка 3D…</div>}>
               <SceneView
@@ -628,6 +681,7 @@ function Workspace({
                   if (holeRef.current && activeSetRef.current !== null) selectHole(activeSetRef.current, null);
                 }}
                 registerApi={(api) => (sceneApi.current = api)}
+                logs={logLayers}
                 blockStyles={blockStyles}
                 onPickBlock={(modelId, index) => {
                   setPickedBlock({ modelId, index });
@@ -810,7 +864,11 @@ function Workspace({
         <ContextMenu
           x={chartMenu.x} y={chartMenu.y} title={chartMenu.name} onClose={() => setChartMenu(null)}
           items={[
-            { label: "Открыть", icon: chartMenu.kind, run: () => void guarded(() => openSavedChart(chartMenu.id)) },
+            ...(chartMenu.kind === "striplog" ? [{
+              label: ws.logs.includes(chartMenu.id) ? "Скрыть со скважин (3D)" : "Показать на скважинах (3D)", icon: "striplog" as const,
+              run: () => toggleLog(chartMenu.id, !ws.logs.includes(chartMenu.id)),
+            }] : []),
+            { label: chartMenu.kind === "striplog" ? "Настройки и колонка…" : "Открыть", icon: chartMenu.kind, run: () => void guarded(() => openSavedChart(chartMenu.id)) },
             { label: "Переименовать…", icon: "edit", run: () => void guarded(async () => {
               const name = window.prompt("Название графика", chartMenu.name)?.trim();
               if (!name || name === chartMenu.name) return;
@@ -823,6 +881,7 @@ function Workspace({
             { label: "Удалить", icon: "trash", run: () => void guarded(async () => {
               if (!window.confirm(`Удалить график «${chartMenu.name}»? Данные проб не меняются.`)) return;
               await deleteChart(chartMenu.id);
+              setWs((prev) => setLogShown(prev, chartMenu.id, false));
               setCharts((prev) => prev.filter((x) => x.chartId !== chartMenu.id));
               reload();
               return `График «${chartMenu.name}» удалён`;
@@ -842,7 +901,8 @@ function Workspace({
               { label: "Гистограмма", icon: "histogram", disabledNote: noData, run: () => void runCommand("chart.histogram", { set_id: menu.setId }, "user") },
               { label: "Q-Q график", icon: "qq", disabledNote: noData, run: () => void runCommand("chart.qq", { set_id: menu.setId }, "user") },
               { label: "Дендрограмма", icon: "dendrogram", disabledNote: noData ?? ((target?.components?.length ?? 0) < 2 ? "нужно 2+ поля" : undefined), run: () => void runCommand("chart.dendrogram", { set_id: menu.setId }, "user") },
-              { label: "Данные по стволу…", icon: "striplog", disabledNote: noData, run: () => void guarded(() => openChart("striplog", menu.setId, undefined, undefined, undefined, { table: "assay" })) },
+              { label: "Показать на скважинах (3D)", icon: "striplog", disabledNote: noData, run: () => void guarded(() => showOnHoles(menu.setId, "assay")) },
+              { label: "Данные по стволу (окно)…", icon: "striplog", disabledNote: noData, run: () => void guarded(() => openChart("striplog", menu.setId, undefined, undefined, undefined, { table: "assay" })) },
               "separator",
               { label: "Таблица проб", icon: "table", run: () => { selectSet(menu.setId); navigate({ kind: "assay" }); setWs((p) => openBottom(p, "table")); } },
             ]}
@@ -854,7 +914,8 @@ function Workspace({
         <ContextMenu
           x={tableMenu.x} y={tableMenu.y} title={tableMenu.name} onClose={() => setTableMenu(null)}
           items={[
-            { label: "Данные по стволу…", icon: "striplog", run: () => void guarded(() => openChart("striplog", tableMenu.setId, undefined, undefined, undefined, { table: String(tableMenu.id) })) },
+            { label: "Показать на скважинах (3D)", icon: "striplog", run: () => void guarded(() => showOnHoles(tableMenu.setId, String(tableMenu.id))) },
+            { label: "Данные по стволу (окно)…", icon: "striplog", run: () => void guarded(() => openChart("striplog", tableMenu.setId, undefined, undefined, undefined, { table: String(tableMenu.id) })) },
             "separator",
             { label: "Переименовать…", icon: "edit", run: () => void guarded(async () => {
               const name = window.prompt("Название таблицы", tableMenu.name)?.trim();

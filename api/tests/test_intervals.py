@@ -63,6 +63,11 @@ def test_downhole_data_of_several_tables(db_client):
     assert not nope["found"] and nope["tables"][key] == []
     assert h1["max_depth"] >= 6.0
     assert db_client.post(f"/api/sets/{sid}/downhole", json={"holes": []}).status_code == 422
+    # The 3D view asks for every hole of the set, with only the fields it draws.
+    allb = db_client.post(f"/api/sets/{sid}/downhole", json={"all": True, "tables": [key], "fields": {key: ["LITH"]}}).json()
+    got = {h["hole_id"]: h for h in allb["holes"]}
+    assert set(got) >= {"H1", "H2"} and all(h["found"] for h in allb["holes"])
+    assert got["H2"]["tables"][key][0]["values"] == {"LITH": "Андезит"}
     # Saved downhole logs are charts of kind "striplog".
     c = db_client.post(f"/api/sets/{sid}/charts", json={"kind": "striplog", "name": "Колонка H1", "settings": {"holes": ["H1"]}})
     assert c.status_code == 201

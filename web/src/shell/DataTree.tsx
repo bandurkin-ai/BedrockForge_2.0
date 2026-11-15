@@ -52,8 +52,11 @@ export interface DataTreeProps {
   onChartMenu?: (chart: { id: number; kind: "histogram" | "qq" | "dendrogram" | "striplog"; name: string }, x: number, y: number) => void;
   /** Right click on an interval table (the assays: key "assay"): downhole log, rename, delete. */
   onTableMenu?: (setId: number, table: { key: string; id: number | null; name: string }, x: number, y: number) => void;
-  /** A new downhole log of the set, opened from a table. */
+  /** A table of the set shown on its holes in 3D (null: a new log window). */
   onNewLog?: (setId: number, tableKey: string | null) => void;
+  /** Saved downhole displays that are on in the 3D view, and turning one on or off. */
+  logsOn?: number[];
+  onToggleLog?: (chartId: number, on: boolean) => void;
 }
 
 function Twisty({ open, onClick }: { open: boolean; onClick: () => void }) {
@@ -336,7 +339,7 @@ export function DataTree(props: DataTreeProps) {
                         <button
                           className="tree-row leaf" onClick={() => props.onNewLog?.(d.id, String(t.id))}
                           onContextMenu={(e) => tableMenu(e, d.id, { key: String(t.id), id: t.id, name: t.name })}
-                          title={`Интервальная таблица «${t.name}»: клик — данные по стволу, правая кнопка — меню`}
+                          title={`Интервальная таблица «${t.name}»: клик — показать на скважинах в 3D, правая кнопка — меню`}
                         >
                           <Icon name="table" size={14} />
                           <span className="grow name">{t.name}</span>
@@ -355,23 +358,37 @@ export function DataTree(props: DataTreeProps) {
                       {isOpen(`logs:${d.id}`) && (
                         <ul className="tree-children">
                           {!(d.charts ?? []).some((c) => c.kind === "striplog") && (
-                            <li className="tree-note muted small">Нет. Правая кнопка на таблице («Пробы», литология…) → «Данные по стволу».</li>
+                            <li className="tree-note muted small">Нет. Правая кнопка на таблице («Пробы», литология…) → «Показать на скважинах (3D)».</li>
                           )}
-                          {(d.charts ?? []).filter((c) => c.kind === "striplog").map((c) => (
-                            <li key={c.id}>
-                              <button
-                                className="tree-row leaf" onClick={() => props.onOpenChart?.(c.id)} title={`${c.name} — открыть`}
-                                onContextMenu={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  props.onChartMenu?.(c, e.clientX, e.clientY);
-                                }}
-                              >
-                                <Icon name="striplog" size={14} />
-                                <span className="grow name">{c.name}</span>
-                              </button>
-                            </li>
-                          ))}
+                          {(d.charts ?? []).filter((c) => c.kind === "striplog").map((c) => {
+                            const on = (props.logsOn ?? []).includes(c.id);
+                            return (
+                              <li key={c.id}>
+                                <div
+                                  className={on ? "tree-row layer active" : "tree-row layer"} draggable
+                                  onDragStart={(e) => {
+                                    e.dataTransfer.setData("application/x-bedrockforge-log", String(c.id));
+                                    e.dataTransfer.effectAllowed = "copy";
+                                  }}
+                                  onClick={() => props.onToggleLog?.(c.id, !on)} onDoubleClick={() => props.onOpenChart?.(c.id)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    props.onChartMenu?.(c, e.clientX, e.clientY);
+                                  }}
+                                  title={`${c.name}: клик — показать / скрыть на скважинах в 3D, перетащите в окно вида; двойной клик — настройки`}
+                                >
+                                  <input type="checkbox" className="eye" checked={on} onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => props.onToggleLog?.(c.id, e.target.checked)} aria-label={`На скважинах: ${c.name}`} />
+                                  <Icon name="striplog" size={14} />
+                                  <span className="grow name">{c.name}</span>
+                                  <span className="row-actions">
+                                    <Action icon="properties" title="Настройки отображения…" onClick={() => props.onOpenChart?.(c.id)} />
+                                  </span>
+                                </div>
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </li>
