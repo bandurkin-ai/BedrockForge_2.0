@@ -38,6 +38,9 @@ describe("block model files and report", () => {
     const vars = ["X", "_X", "Y", "_Y", "Z", "_Z"].map((n) => `${shift(n).padEnd(10)} R   8  3\r\n`).join("");
     const text = (magic + '<data codepage="BOCU-1"/>').padEnd(4096, "\0") + "6   VARIABLES\r\n" + vars;
     expect(fieldNames(Uint8Array.from(text, (c) => c.charCodeAt(0)))).toEqual(["X", "_X", "Y", "_Y", "Z", "_Z"]);
+    // A 10-character name has no space before its type: "RUN_AU_CUTN 12 8".
+    const tight = (magic + '<data codepage="BOCU-1"/>').padEnd(4096, "\0") + "7   VARIABLES\r\n" + ["X", "_X", "Y", "_Y", "Z", "_Z", "RUN_AU_CUT"].map((n, i) => `${shift(n).padEnd(10)}${i === 6 ? "N" : "R"} 12 8\r\n`).join("");
+    expect(fieldNames(Uint8Array.from(tight, (c) => c.charCodeAt(0)))).toEqual(["X", "_X", "Y", "_Y", "Z", "_Z", "RUN_AU_CUT"]);
     // A long XML header padded to 8192 bytes, the codepage past byte 4096; and no codepage at all.
     const long = (magic + " ".repeat(5000) + '<data codepage="BOCU-1"/>').padEnd(8192, "\0") + "6   VARIABLES\r\n" + vars;
     expect(isBlockModelFields(fieldNames(Uint8Array.from(long, (c) => c.charCodeAt(0))))).toBe(true);

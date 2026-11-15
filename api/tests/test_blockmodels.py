@@ -60,8 +60,11 @@ def make_blocks(seed: int = 3) -> dict[str, np.ndarray]:
     }
 
 
-def write_dat(path: Path, m: dict[str, np.ndarray], codepage: str = "BOCU-1", cyrillic: bool = False) -> None:
-    """R fields for geometry and AU, N (text) for SG and OXIDE, C for ALT."""
+def write_dat(path: Path, m: dict[str, np.ndarray], codepage: str = "BOCU-1", cyrillic: bool = False,
+              tight: bool = False, rename: dict[str, str] | None = None) -> None:
+    """R fields for geometry and AU, N (text) for SG and OXIDE, C for ALT. `tight`: the real layout of a
+    variable line, NAME padded to 10 and the type right after it ("RUN_AU_CUTN 12 8"); `rename`: field
+    names in the header (the data are taken by the original name)."""
     bocu = codepage.upper() == "BOCU-1"
     enc = (lambda s: encode_bocu(s)) if bocu else (lambda s: s.encode("cp1251"))
     fields = [("X", "R", 8), ("Y", "R", 8), ("Z", "R", 8), ("_X", "R", 8), ("_Y", "R", 8), ("_Z", "R", 8),
@@ -70,7 +73,11 @@ def write_dat(path: Path, m: dict[str, np.ndarray], codepage: str = "BOCU-1", cy
     out = bytearray(header(codepage))
     out += f"{len(fields)}   VARIABLES\r\n".encode()
     for name, kind, width in fields:
-        out += enc(name).ljust(10, b" ") + f" {kind} {width:>3}  3".encode() + b"\r\n"
+        shown = (rename or {}).get(name, name)
+        if tight:
+            out += enc(shown).ljust(10, b" ") + f"{kind} {width} 3".encode() + b"\r\n"
+        else:
+            out += enc(shown).ljust(10, b" ") + f" {kind} {width:>3}  3".encode() + b"\r\n"
     for r in range(len(m["X"])):
         for name, kind, width in fields:
             v = m[name][r]
@@ -295,3 +302,23 @@ def test_detection_explains_a_table_that_is_not_a_model(tmp_path):
     broken.write_bytes(b"THIS IS MICROMINE EXTENDED DATA FILE!" + b"\x00" * 5000)
     d = detect("broken.DAT", broken)
     assert d.kind == "drillholes" and "не прочитан" in d.note
+
+
+def test_variable_line_with_a_ten_character_name_and_cp1251_cyrillic(tmp_path):
+    """The real export has fields named RUN_AU_CUT (10 characters): the type follows the name with
+    no space. A cp1251 file names its codepage "ibm-5347_P100-1998" and its Cyrillic must decode."""
+    m = make_blocks()
+    every = {"AU_CUT": "RUN_AU_CUT", "CU_CUT": "RUN_CU_CUT", "DENSITY": "ПЛОТНОСТЬ"}
+    for codepage in ("BOCU-1", "ibm-5347_P100-1998"):
+        # (Cyrillic names in BOCU-1 are multi-byte: not part of this layout test)
+        names = {k: v for k, v in every.items() if codepage != "BOCU-1" or v.isascii()}
+        p = tmp_path / f"Tight_{codepage[:4]}.DAT"
+        write_dat(p, m, codepage=codepage, tight=True, rename=names)
+        assert detect(p.name, p).kind == "blocks"
+        t = read_block_model(p, p.name)
+        got = {a.name for a in t.attributes}
+        assert {"RUN_AU_CUT", "RUN_CU_CUT"} <= got
+        if codepage != "BOCU-1":
+            assert "ПЛОТНОСТЬ" in got
+        assert np.allclose(next(a for a in t.attributes if a.name == "RUN_AU_CUT").values, m["AU_CUT"])
+        assert len(t.centres) == len(m["X"])

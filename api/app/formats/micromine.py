@@ -50,7 +50,10 @@ class Field:
 # Binary field types and their numpy types; C and N are text of WIDTH bytes.
 BINARY_TYPES = {"R": "<f8", "F": "<f4", "L": "<i4", "S": "<i2", "B": "u1"}
 FIELD_TYPES = ("C", "N", *BINARY_TYPES)
-_VARIABLE_RE = re.compile(rb"^(.*?)\s+([A-Z])\s+(\d+)\s+(\d+)\s*$", re.DOTALL)
+# NAME is 10 wide and the type follows it directly: a 10-character name has no space before it
+# ("RUN_AU_CUTN 12 8"), a shorter one is padded with spaces. In BOCU-1 files printable characters of
+# the name are bytes >= 0x80, so the type letter (0x41-0x5A) cannot be mistaken for a name byte.
+_VARIABLE_RE = re.compile(rb"^(.*?)\s*([A-Z])\s+(\d+)\s+(\d+)\s*$", re.DOTALL)
 
 
 @dataclass
@@ -72,6 +75,12 @@ _CODECS = {
 }
 
 
+def codec_of(codepage: str) -> str:
+    """Python codec for a Micromine codepage name; ICU names carry a suffix: "ibm-5347_P100-1998"."""
+    name = codepage.lower().strip()
+    return _CODECS.get(name) or _CODECS.get(name.split("_")[0]) or "ascii"
+
+
 def is_bocu(codepage: str) -> bool:
     return codepage.upper() == "BOCU-1"
 
@@ -79,8 +88,7 @@ def is_bocu(codepage: str) -> bool:
 def _decode_text(raw: bytes, codepage: str) -> str:
     if is_bocu(codepage):
         return bocu1.decode(raw.rstrip(b" \x00"), errors="replace").rstrip(" \x00")
-    codec = _CODECS.get(codepage.lower(), "ascii")
-    return raw.decode(codec, errors="replace").rstrip(" \x00")
+    return raw.decode(codec_of(codepage), errors="replace").rstrip(" \x00")
 
 
 def _parse_header(data: bytes) -> tuple[str, list[Field], int]:

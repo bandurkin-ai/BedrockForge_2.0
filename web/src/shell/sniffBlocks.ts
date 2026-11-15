@@ -30,7 +30,7 @@ export function fieldNames(head: Uint8Array): string[] {
     // The XML header can be longer than 4096 bytes: the codepage is searched in all of it.
     const declared = /codepage="([^"]*)"/i.exec(latin.slice(0, 4096 + m.index))?.[1];
     const lines = latin.slice(4096 + m.index + m[0].length).split("\r\n").slice(0, Number(m[1]));
-    const raw = lines.map((line) => line.replace(/\s+[A-Z]\s+\d+\s+\d+\s*$/, "").trimEnd());
+    const raw = lines.map((line) => line.replace(/\s*[A-Z]\s+\d+\s+\d+\s*$/, "").trimEnd());
     const shifted = raw.every((n) => Array.from(n.trim(), (ch) => ch.charCodeAt(0)).every((c) => c > 0x70 || c === 0x20));
     const bocu = declared ? declared.toUpperCase() === "BOCU-1" : shifted;
     return raw.map((name) => {
