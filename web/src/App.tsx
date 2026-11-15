@@ -18,6 +18,10 @@ import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { Icon } from "./shell/icons";
 import { ImportDialog } from "./shell/ImportDialog";
 import { ImportWizard, WIZARD_ACCEPT } from "./shell/ImportWizard";
+import { ChartWindow } from "./charts/ChartWindow";
+import { HistogramWindow, type HistogramSettings } from "./charts/HistogramWindow";
+import { ContextMenu } from "./shell/ContextMenu";
+import type { ChartKind } from "./shell/registry";
 import { JobsPanel } from "./shell/JobsPanel";
 import { useJobs } from "./shell/useJobs";
 import { PropertiesPanel } from "./shell/PropertiesPanel";
@@ -51,6 +55,20 @@ const ACCEPT = {
   rasters: ".jpg,.jpeg,.png,.tif,.tiff,.bmp,.jgw,.jpgw,.pgw,.pngw,.tfw,.tifw,.bpw,.wld,.tab,.grf",
 };
 type UploadKind = keyof typeof ACCEPT;
+
+interface ChartState {
+  id: number;
+  kind: ChartKind;
+  setId: number;
+  initial?: Partial<HistogramSettings>;
+  /** stacking order: the window clicked last is on top */
+  z: number;
+}
+
+const raise = (list: ChartState[], id: number): ChartState[] => {
+  const top = Math.max(...list.map((c) => c.z));
+  return list.map((c) => (c.id === id && c.z !== top ? { ...c, z: top + 1 } : c));
+};
 
 function loadSavedProjectId(): number | null {
   try {
@@ -104,6 +122,13 @@ function Workspace({
   const openFiles = (kind: UploadKind) => fileInputs[kind].current?.click();
   const anyFileInput = useRef<HTMLInputElement>(null);
   const [wizard, setWizard] = useState<{ files: File[]; kindHint: UploadKind | null } | null>(null);
+  // Chart windows over the workspace, and the right-click menu of the tree.
+  const [charts, setCharts] = useState<ChartState[]>([]);
+  const [menu, setMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
+  const openChart = (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>) => {
+    if (kind !== "histogram") return;
+    setCharts((prev) => [...prev, { id: Date.now() + Math.random(), kind, setId, initial, z: prev.length ? Math.max(...prev.map((c) => c.z)) + 1 : 0 }]);
+  };
   const sceneApi = useRef<SceneApi | null>(null);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
   const jobs = useJobs(projectId, (job: JobInfo) => {
@@ -220,6 +245,7 @@ function Workspace({
       navigate({ kind });
       setWs((prev) => openBottom(prev, "table"));
     },
+    openChart: (kind, setId, initial) => openChart(kind, setId, initial),
     openStats: (analysis, component) => {
       setStatsView((prev) => ({ analysis, component: component ?? prev.component }));
       // charts need room: grow a short dock, never shrink one the user enlarged
@@ -501,6 +527,7 @@ function Workspace({
                   onColor={onColor}
                   onDeleteItem={onDeleteItem}
                   onDemo={() => void runCommand("project.demo", {}, "user")}
+                  onSetMenu={(setId, x, y) => setMenu({ setId, x, y })}
                 />
               </ErrorBoundary>
             </aside>
@@ -651,6 +678,36 @@ function Workspace({
           onClose={() => setImportTarget(undefined)}
         />
       )}
+
+      {charts.map((c, i) => {
+        const setName = sets.find((d) => d.id === c.setId)?.name ?? `набор ${c.setId}`;
+        return (
+          <ChartWindow
+            key={c.id} index={i} z={30 + c.z} title={`Гистограмма · ${setName}`}
+            onFocus={() => setCharts((prev) => raise(prev, c.id))} onClose={() => setCharts((prev) => prev.filter((x) => x.id !== c.id))}
+          >
+            <HistogramWindow setId={c.setId} setName={setName} initial={c.initial} />
+          </ChartWindow>
+        );
+      })}
+
+      {menu && (() => {
+        const target = sets.find((d) => d.id === menu.setId);
+        const assays = target?.counts?.assay ?? 0;
+        const noData = assays === 0 ? "нет проб" : undefined;
+        return (
+          <ContextMenu
+            x={menu.x} y={menu.y} title={`Графики · ${target?.name ?? ""}`} onClose={() => setMenu(null)}
+            items={[
+              { label: "Гистограмма", icon: "histogram", disabledNote: noData, run: () => void runCommand("chart.histogram", { set_id: menu.setId }, "user") },
+              { label: "Q-Q график", icon: "qq", disabledNote: "в разработке" },
+              { label: "Дендрограмма", icon: "dendrogram", disabledNote: "в разработке" },
+              "separator",
+              { label: "Таблица проб", icon: "table", run: () => { selectSet(menu.setId); navigate({ kind: "assay" }); setWs((p) => openBottom(p, "table")); } },
+            ]}
+          />
+        );
+      })()}
 
       {palette !== null && (
         <CommandPalette items={items} holes={holes} initialQuery={palette} onRun={runItem} onClose={() => setPalette(null)} />

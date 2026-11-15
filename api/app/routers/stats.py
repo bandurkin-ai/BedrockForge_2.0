@@ -526,3 +526,151 @@ def local_uncertainty(set_id: int, body: LocalRequest, session: Session = Depend
         p10=grid(local_percentile(stack, 10)), p90=grid(local_percentile(stack, 90)),
         prob_exceed=None if body.threshold is None else grid(local_prob_exceed(stack, body.threshold)),
     )
+
+
+# --------------------------------------------------------------------------
+# Histogram of an assay field (no trajectories needed, no sample limit)
+# --------------------------------------------------------------------------
+LENGTH_FIELD = "length"
+
+
+class FieldOut(BaseModel):
+    # "comp:AU", "attr:DENSITY" or "length"
+    id: str
+    name: str
+    kind: Literal["component", "attribute", "derived"]
+    unit: str = ""
+    count: int
+
+
+@router.get("/sets/{set_id}/stats/fields", response_model=list[FieldOut])
+def numeric_fields(set_id: int, session: Session = Depends(get_session)):
+    """Numeric fields of the assay table: components, numeric attributes, interval length."""
+    from sqlalchemy import text
+
+    get_set(session, set_id)
+    units = {c.name: c.unit for c in session.scalars(select(Component).where(Component.set_id == set_id))}
+    out = []
+    for column, kind, prefix in (("analytes", "component", "comp"), ("attributes", "attribute", "attr")):
+        rows = session.execute(text(
+            f"SELECT e.key, count(*) FROM assay, jsonb_each(assay.{column}) AS e "
+            "WHERE assay.set_id = :s AND jsonb_typeof(e.value) = 'number' GROUP BY e.key ORDER BY e.key"
+        ), {"s": set_id}).all()
+        out += [FieldOut(id=f"{prefix}:{k}", name=k, kind=kind, unit=units.get(k, "") if kind == "component" else "", count=n)
+                for k, n in rows]
+    n = session.scalar(text("SELECT count(*) FROM assay WHERE set_id = :s AND to_m > from_m"), {"s": set_id}) or 0
+    out.append(FieldOut(id=LENGTH_FIELD, name="Длина интервала", kind="derived", unit="м", count=n))
+    return out
+
+
+def _field_sql(field_id: str, key: str) -> tuple[str, dict]:
+    if field_id == LENGTH_FIELD:
+        return "CASE WHEN to_m > from_m THEN to_m - from_m END", {}
+    prefix, _, name = field_id.partition(":")
+    column = {"comp": "analytes", "attr": "attributes"}.get(prefix)
+    if column is None or not name:
+        raise HTTPException(422, f"Неизвестное поле «{field_id}»")
+    return (f"CASE WHEN jsonb_typeof({column} -> :{key}) = 'number' THEN ({column} ->> :{key})::float8 END",
+            {key: name})
+
+
+class HistogramIn(BaseModel):
+    field: str
+    # none | length | field (weight_field) | length_field (length × weight_field, e.g. density: tonnage)
+    weight: Literal["none", "length", "field", "length_field"] = "none"
+    weight_field: str | None = None
+    log: bool = False
+    bin_width: float | None = Field(None, gt=0)
+    bins: int | None = Field(None, ge=1, le=1000)
+    start: float | None = None
+    end: float | None = None
+    # Values below zero: Micromine and many labs write "<0.01" as -0.01.
+    negatives: Literal["keep", "exclude", "half_abs"] = "keep"
+    exclude_zero: bool = False
+    # Values above are replaced by it (top cut of outliers); statistics are after the cut.
+    top_cut: float | None = None
+    holes: list[str] | None = Field(None, max_length=10000)
+
+    @model_validator(mode="after")
+    def _weights(self):
+        if self.weight in ("field", "length_field") and not self.weight_field:
+            raise ValueError("Укажите поле веса")
+        if self.start is not None and self.end is not None and self.end <= self.start:
+            raise ValueError("Конец диапазона должен быть больше начала")
+        return self
+
+
+@router.post("/sets/{set_id}/stats/histogram")
+def histogram_of_field(set_id: int, body: HistogramIn, session: Session = Depends(get_session)) -> dict:
+    from sqlalchemy import text
+
+    from app.stats.histogram import HistogramError, HistogramSpec, describe, histogram
+
+    get_set(session, set_id)
+    value_sql, params = _field_sql(body.field, "f")
+    weight_sql = "1.0"
+    if body.weight in ("field", "length_field"):
+        weight_sql, wp = _field_sql(body.weight_field, "w")
+        params.update(wp)
+    if body.weight in ("length", "length_field"):
+        weight_sql = f"(CASE WHEN to_m > from_m THEN to_m - from_m END) * {weight_sql}"
+    where = "set_id = :s"
+    params["s"] = set_id
+    if body.holes:
+        where += " AND hole_id = ANY(:holes)"
+        params["holes"] = body.holes
+    rows = session.execute(text(f"SELECT {value_sql}, {weight_sql} FROM assay WHERE {where}"), params).all()
+    data = np.array([(np.nan if v is None else v, np.nan if w is None else w) for v, w in rows], dtype=np.float64).reshape(-1, 2)
+    v, w = data[:, 0], data[:, 1]
+    total = len(v)
+    missing = ~np.isfinite(v)
+    bad_weight = ~missing & ~(np.isfinite(w) & (w > 0))
+    keep = ~missing & ~bad_weight
+    v, w = v[keep], w[keep]
+    negative = v < 0
+    n_negative = int(negative.sum())
+    if body.negatives == "exclude":
+        v, w = v[~negative], w[~negative]
+    elif body.negatives == "half_abs":
+        v = np.where(negative, np.abs(v) / 2, v)
+    n_zero = 0
+    if body.exclude_zero:
+        zero = v == 0
+        n_zero = int(zero.sum())
+        v, w = v[~zero], w[~zero]
+    n_capped = 0
+    if body.top_cut is not None:
+        capped = v > body.top_cut
+        n_capped = int(capped.sum())
+        v = np.where(capped, body.top_cut, v)
+    if len(v) == 0:
+        raise HTTPException(422, "Нет значений для гистограммы после фильтров")
+    n_nonpositive_log = int(np.count_nonzero(v <= 0)) if body.log else 0
+    try:
+        h = histogram(v, w, HistogramSpec(log=body.log, bin_width=body.bin_width, bins=body.bins,
+                                          start=body.start, end=body.end))
+    except HistogramError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    weighted = body.weight != "none"
+    weight_total = float(w.sum())
+    sums = np.asarray(h.weights)
+    percent = (sums / weight_total * 100).tolist()
+    cumulative = ((h.below["weight"] + np.cumsum(sums)) / weight_total * 100).tolist()
+    return {
+        "field": body.field,
+        "log": body.log,
+        "weighted": weighted,
+        "counts": {
+            "rows": total, "missing": int(missing.sum()), "bad_weight": int(bad_weight.sum()),
+            "negative": n_negative, "zero_excluded": n_zero, "capped": n_capped,
+            "nonpositive_log": n_nonpositive_log, "used": int(len(v)),
+        },
+        "stats": describe(v, w if weighted else None),
+        "stats_unweighted": describe(v) if weighted else None,
+        "bins": {
+            "edges": h.edges, "counts": h.counts, "weights": h.weights, "percent": percent,
+            "cumulative_percent": cumulative, "width": h.bin_width, "below": h.below, "above": h.above,
+        },
+        "conventions": "Процентили по GSLIB: середина накопленного веса, линейная интерполяция (без весов — Hazen). "
+                       "Дисперсия — генеральная. Бины [a, b), последний закрыт.",
+    }

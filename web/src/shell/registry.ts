@@ -4,7 +4,10 @@ import type { TableKind } from "../route";
 import { ANALYSES, type StatsAnalysis } from "../stats/analyses";
 import type { VizSettings } from "../viz/ComponentPanel";
 import { DEFAULT_WINDOW, shiftSection, type SectionLine } from "../viz/geometry";
+import type { HistogramSettings } from "../charts/HistogramWindow";
 import type { Command } from "./commands";
+
+export type ChartKind = "histogram" | "qq" | "dendrogram";
 import {
   BOTTOM_TITLES, VEXAG_STEPS, VIEW_PRESETS, VIEW_TITLES, isShown, layerKey, openBottom, setPanel, setShown,
   type BottomTab, type ObjectKind, type PanelId, type SelectedObject, type ViewPreset, type WorkspaceState,
@@ -32,6 +35,8 @@ export interface Live {
   selectObject: (object: SelectedObject | null) => void;
   openTable: (kind: TableKind) => void;
   openStats: (analysis: StatsAnalysis, component: string | null) => void;
+  /** A chart window over the workspace (histogram; Q-Q and dendrogram are not ready yet). */
+  openChart: (kind: ChartKind, setId: number, initial?: Partial<HistogramSettings>) => void;
   reload: () => void;
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
@@ -627,6 +632,66 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         await s().cancelJob(j.id);
         return `Задание ${j.id} отменяется`;
       },
+    },
+    {
+      id: "chart.histogram",
+      title: "Гистограмма",
+      description:
+        "Открывает окно гистограммы по таблице проб набора скважин (правая кнопка мыши на наборе или «Пробы» в дереве). " +
+        "field — имя компонента (AU) или числового атрибута; weight — none | length | field | length_field (длина × поле, например плотность); " +
+        "weight_field — поле веса; log — логарифмическая шкала; bin_width — ширина бина (в log10 при log); bins — число бинов; " +
+        "start / end — диапазон; negatives — keep | exclude | half_abs (половина предела для «<0.01», записанных как −0.01); top_cut — урезка сверху. " +
+        "Окно показывает статистику: среднее, медиану, дисперсию, CV, процентили (взвешенные по GSLIB).",
+      params: {
+        set_id: { type: "integer" },
+        field: { type: "string" },
+        weight: { type: "string", enum: ["none", "length", "field", "length_field"] },
+        weight_field: { type: "string" },
+        log: { type: "boolean" },
+        bin_width: { type: "number" },
+        bins: { type: "integer" },
+        start: { type: "number" },
+        end: { type: "number" },
+        negatives: { type: "string", enum: ["keep", "exclude", "half_abs"] },
+        top_cut: { type: "number" },
+      },
+      run: (args) => {
+        const set = targetSet(args.set_id);
+        if (!set.counts?.assay) throw new Error(`В наборе «${set.name}» нет проб`);
+        const fieldId = (name: unknown) => {
+          if (typeof name !== "string" || !name) return null;
+          if (name.includes(":") || name === "length") return name;
+          return set.components?.some((c) => c.name === name) ? `comp:${name}` : `attr:${name}`;
+        };
+        const text = (v: unknown) => (typeof v === "number" ? String(v) : "");
+        const initial: Partial<HistogramSettings> = {};
+        if (args.field) initial.field = fieldId(args.field);
+        if (args.weight) initial.weight = args.weight as HistogramSettings["weight"];
+        if (args.weight_field) initial.weightField = fieldId(args.weight_field);
+        if (typeof args.log === "boolean") initial.log = args.log;
+        if (typeof args.bin_width === "number") Object.assign(initial, { binMode: "width", binWidth: text(args.bin_width) });
+        else if (typeof args.bins === "number") Object.assign(initial, { binMode: "count", bins: text(args.bins) });
+        if (typeof args.start === "number") initial.start = text(args.start);
+        if (typeof args.end === "number") initial.end = text(args.end);
+        if (args.negatives) initial.negatives = args.negatives as HistogramSettings["negatives"];
+        if (typeof args.top_cut === "number") initial.topCut = text(args.top_cut);
+        s().openChart("histogram", set.id, initial);
+        return `Гистограмма: ${set.name}${args.field ? `, ${String(args.field)}` : ""}`;
+      },
+    },
+    {
+      id: "chart.qq",
+      title: "Q-Q график",
+      description: "Q-Q график распределения проб. Пока в разработке.",
+      uiOnly: true,
+      run: () => "Q-Q график пока в разработке",
+    },
+    {
+      id: "chart.dendrogram",
+      title: "Дендрограмма",
+      description: "Дендрограмма корреляций компонентов. Пока в разработке.",
+      uiOnly: true,
+      run: () => "Дендрограмма пока в разработке",
     },
     {
       id: "ribbon.toggle",

@@ -49,6 +49,8 @@ export interface DataTreeProps {
   onColor: (kind: "wireframe" | "lines", id: number, color: string) => void;
   onDeleteItem: (kind: "wireframe" | "lines", id: number, name: string) => void;
   onDemo: () => void;
+  /** Right click on a drillhole set (or its assay table): the charts menu. */
+  onSetMenu?: (setId: number, x: number, y: number) => void;
 }
 
 function Twisty({ open, onClick }: { open: boolean; onClick: () => void }) {
@@ -234,6 +236,12 @@ export function DataTree(props: DataTreeProps) {
   }, [activeSet, props.selectedHole]);
 
   const sets = (datasets ?? []).filter((d) => d.kind === "drillholes");
+  const setMenu = (e: React.MouseEvent, setId: number) => {
+    if (!props.onSetMenu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    props.onSetMenu(setId, e.clientX, e.clientY);
+  };
   const empty = datasets !== null && datasets.length === 0;
   const shown = (key: string) => isShown(ws, key);
 
@@ -260,7 +268,10 @@ export function DataTree(props: DataTreeProps) {
             const component = d.components?.[0];
             return (
               <li key={d.id}>
-                <div className={d.id === activeSet ? "tree-row set active-set" : "tree-row set"} onClick={() => props.onSelectSet(d.id)}>
+                <div
+                  className={d.id === activeSet ? "tree-row set active-set" : "tree-row set"} onClick={() => props.onSelectSet(d.id)}
+                  onContextMenu={(e) => setMenu(e, d.id)} title="Правая кнопка — графики"
+                >
                   <Twisty open={isOpen(key)} onClick={() => toggle(key)} />
                   <Eye shown={shown(layerKey.set(d.id))} onChange={(v) => props.onShow(layerKey.set(d.id), v)} label={d.name} />
                   <span className="grow name" title={d.name}>{d.name}</span>
@@ -278,7 +289,7 @@ export function DataTree(props: DataTreeProps) {
                       <Eye shown={shown(layerKey.setPart(d.id, "paths"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "paths"), v)} label="стволы" />
                       <span className="grow">Стволы</span>
                     </li>
-                    <li className="tree-row layer">
+                    <li className="tree-row layer" onContextMenu={(e) => setMenu(e, d.id)}>
                       <Eye shown={shown(layerKey.setPart(d.id, "intervals"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "intervals"), v)} label="содержания" />
                       <span className="grow">Содержания{component ? ` · ${d.components!.map((c) => c.name).join(", ")}` : ""}</span>
                     </li>
@@ -288,7 +299,11 @@ export function DataTree(props: DataTreeProps) {
                     </li>
                     {TABLES.map((t) => (
                       <li key={t.kind}>
-                        <button className="tree-row leaf" onClick={() => props.onOpenTable(d.id, t.kind)} title={`Таблица «${t.label}»`}>
+                        <button
+                          className="tree-row leaf" onClick={() => props.onOpenTable(d.id, t.kind)}
+                          onContextMenu={t.kind === "assay" ? (e) => setMenu(e, d.id) : undefined}
+                          title={t.kind === "assay" ? "Таблица «Пробы»; правая кнопка — графики" : `Таблица «${t.label}»`}
+                        >
                           <Icon name="table" size={14} />
                           <span className="grow">{t.label}</span>
                           <span className="count">{counts[t.kind].toLocaleString("ru-RU")}</span>

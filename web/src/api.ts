@@ -79,6 +79,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     try {
       const body = await response.json();
       if (typeof body.detail === "string") detail = body.detail;
+      else if (Array.isArray(body.detail) && typeof body.detail[0]?.msg === "string") detail = body.detail[0].msg.replace(/^Value error, /, "");
       else if (typeof body.detail?.message === "string") detail = body.detail.message;
     } catch {
       /* keep the status text */
@@ -946,3 +947,70 @@ export const detectUploads = (projectId: number, uploads: string[]) =>
 
 /** Checks and levels of detail of a wireframe file, again (a job). */
 export const checkWireframes = (datasetId: number) => request<JobInfo>(`/api/datasets/${datasetId}/check`, { method: "POST" });
+
+// ---- Histogram of assay fields ----
+
+export interface NumericField {
+  /** "comp:AU", "attr:DENSITY" or "length" */
+  id: string;
+  name: string;
+  kind: "component" | "attribute" | "derived";
+  unit: string;
+  count: number;
+}
+
+export const getNumericFields = (setId: number) => request<NumericField[]>(`/api/sets/${setId}/stats/fields`);
+
+export type WeightMode = "none" | "length" | "field" | "length_field";
+
+export interface HistogramParams {
+  field: string;
+  weight: WeightMode;
+  weight_field?: string | null;
+  log: boolean;
+  bin_width?: number | null;
+  bins?: number | null;
+  start?: number | null;
+  end?: number | null;
+  negatives: "keep" | "exclude" | "half_abs";
+  exclude_zero: boolean;
+  top_cut?: number | null;
+}
+
+export interface Describe {
+  count: number;
+  weight_sum: number;
+  min: number;
+  max: number;
+  mean: number;
+  variance: number;
+  std: number;
+  cv: number | null;
+  skewness: number | null;
+  median: number;
+  percentiles: Record<string, number>;
+  log?: { count: number; mean_ln: number; variance_ln: number; geometric_mean: number };
+}
+
+export interface HistogramResult {
+  field: string;
+  log: boolean;
+  weighted: boolean;
+  counts: { rows: number; missing: number; bad_weight: number; negative: number; zero_excluded: number; capped: number; nonpositive_log: number; used: number };
+  stats: Describe;
+  stats_unweighted: Describe | null;
+  bins: {
+    edges: number[];
+    counts: number[];
+    weights: number[];
+    percent: number[];
+    cumulative_percent: number[];
+    width: number;
+    below: { count: number; weight: number };
+    above: { count: number; weight: number };
+  };
+  conventions: string;
+}
+
+export const getHistogram = (setId: number, params: HistogramParams, signal?: AbortSignal) =>
+  request<HistogramResult>(`/api/sets/${setId}/stats/histogram`, { method: "POST", ...json(params), signal });

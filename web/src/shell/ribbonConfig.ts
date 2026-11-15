@@ -149,6 +149,14 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           ],
         },
         {
+          title: "Графики",
+          items: [
+            { command: "chart.histogram", label: "Гистограмма", icon: "histogram", hint: "Гистограмма проб активного набора: веса, логарифмическая шкала, урезка. Также правой кнопкой на наборе в дереве", disabled: !ctx.hasSet },
+            { command: "chart.qq", label: "Q-Q график", icon: "qq", hint: "В разработке", small: true, disabled: true },
+            { command: "chart.dendrogram", label: "Дендрограмма", icon: "dendrogram", hint: "В разработке", small: true, disabled: true },
+          ],
+        },
+        {
           title: "Статистика",
           items: [
             { command: "stats.open", args: { analysis: "declus" }, label: "Декластеризация", icon: "chart", hint: "Веса декластеризации: ячейки или полигоны", disabled: !ctx.hasSet },

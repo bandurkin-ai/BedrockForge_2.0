@@ -386,3 +386,50 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .error-text { color: var(--sev-error); }
 .modal-foot { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--chrome); }
 .app.drop-target::after { content: "Отпустите файлы для импорта"; position: fixed; inset: 12px; z-index: 50; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--accent); border-radius: 10px; background: var(--accent-soft); color: var(--fg); font-size: 1.1rem; pointer-events: none; }
+
+/* ---- context menu */
+.context-menu { position: fixed; z-index: 60; min-width: 220px; padding: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.context-title { padding: 4px 10px 6px; font-size: 0.78rem; color: var(--muted); border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.context-menu button { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: none; border: none; border-radius: 4px; text-align: left; color: var(--fg); cursor: pointer; }
+.context-menu button:hover:not(:disabled), .context-menu button:focus-visible { background: var(--accent-soft); outline: none; }
+.context-menu button:disabled { color: var(--muted); cursor: default; }
+.context-icon { width: 14px; }
+.context-separator { height: 1px; margin: 4px 6px; background: var(--border); }
+
+/* ---- chart windows (histogram) */
+.chart-window { position: fixed; z-index: 30; width: min(1180px, 94vw); height: min(720px, 86vh); min-width: 560px; min-height: 360px; resize: both; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); }
+.chart-window.maximized { inset: 8px; width: auto; height: auto; resize: none; }
+.chart-window-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--chrome); border-bottom: 1px solid var(--border); cursor: move; user-select: none; touch-action: none; }
+.chart-window.maximized .chart-window-head { cursor: default; }
+.chart-window-body { flex: 1; min-height: 0; overflow: hidden; }
+.hist-window { display: grid; grid-template-columns: 250px 1fr; height: 100%; }
+.hist-settings { overflow: auto; padding: 8px 10px; border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
+.hist-settings fieldset { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px 8px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.hist-settings legend { font-size: 0.78rem; color: var(--muted); padding: 0 4px; }
+.hist-settings label { display: flex; flex-direction: column; gap: 2px; font-size: 0.82rem; }
+.hist-settings label.check { flex-direction: row; align-items: center; gap: 6px; }
+.hist-settings select, .hist-settings input:not([type=checkbox]):not([type=color]) { width: 100%; }
+.hist-settings .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.hist-settings .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+.seg { display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+.seg button { flex: 1; padding: 3px 4px; border: none; border-radius: 0; background: none; font-size: 0.8rem; }
+.seg button.active { background: var(--accent); color: var(--accent-fg); }
+.hist-export { display: flex; gap: 6px; }
+.hist-export button { flex: 1; }
+.hist-main { overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.hist-plot { flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.hist-plot svg { display: block; max-height: 56vh; }
+.chart-window.maximized .hist-plot svg { max-height: 62vh; }
+.hist-plot.busy { opacity: 0.6; }
+.hist-chart .chart-bg { fill: var(--bg); }
+.hist-cum { stroke: var(--brand); stroke-width: 2; }
+.hist-mark { stroke: var(--fg); stroke-width: 1.2; opacity: 0.8; }
+.hist-mark-label { fill: var(--fg); }
+.hist-tip rect { fill: var(--chrome); stroke: var(--border); }
+.hist-tip text { fill: var(--fg); font-size: 11px; }
+.hist-notes { margin: 0; flex-shrink: 0; }
+.hist-tables { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+.hist-stats { border-collapse: collapse; font-size: 0.82rem; min-width: 220px; }
+.hist-stats thead th { text-align: right; font-weight: 600; color: var(--fg); padding: 0 0 3px 14px; }
+.hist-stats tbody th { text-align: left; font-weight: normal; color: var(--muted); padding: 1px 6px 1px 0; }
+.hist-stats td { text-align: right; font-variant-numeric: tabular-nums; padding-left: 14px; }
