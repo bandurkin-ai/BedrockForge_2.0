@@ -28,6 +28,8 @@ call :run "git checkout %BRANCH%" || goto :failed
 call :run "git pull origin %BRANCH%" || goto :failed
 call :run "git log --oneline -3" || goto :failed
 call :run "docker compose up --build -d" || goto :failed
+rem The web container serves the sources from the folder; restart it so it surely picks up the update.
+call :run "docker compose restart web" || goto :failed
 
 rem Give api (migrations) and worker a few seconds to start, then record their state.
 timeout /t 10 /nobreak >nul
@@ -37,7 +39,7 @@ call :run "docker compose logs --tail 60 api worker"
 >>"%LOG%" echo.
 >>"%LOG%" echo === OK %date% %time% ===
 echo.
-echo DONE. Open http://localhost:5173 and press F5.
+echo DONE. Open http://localhost:5173 and press Ctrl+F5 (the page is ready about 20 seconds after the restart).
 echo Log: %LOG%
 goto :end
 
