@@ -12,11 +12,10 @@ import { resolveTracks, unlinkStyle, type StyleRec } from "./viz/downhole/styles
 import type { ApplyTarget } from "./viz/downhole/ApplyDialog";
 import { hasSamples } from "./shell/SampleTableSelect";
 import { CollarStyleForm } from "./viz/CollarStyleForm";
-import { IntervalTableWindow } from "./charts/IntervalTableWindow";
 import { DEFAULT_COLLAR_STYLE } from "./viz/collarStyle";
 import type { BlockStyle } from "./viz/blockStyle";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
-import { DataPage } from "./DataPage";
+import { DataTables } from "./DataTables";
 import { StatsPage } from "./StatsPage";
 import type { StatsView } from "./stats/analyses";
 import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
@@ -239,7 +238,7 @@ function Workspace({
   // Forms of displays (grades, lithology, events): what a form shows is previewed in the view; only its button saves.
   const [forms, setForms] = useState<DisplayFormState[]>([]);
   const [previews, setPreviews] = useState<Record<number, StripLogSettings>>({});
-  const topZ = () => Math.max(0, ...charts.map((c) => c.z), ...forms.map((f) => f.z), ...tableWins.map((t) => t.z)) + 1;
+  const topZ = () => Math.max(0, ...charts.map((c) => c.z), ...forms.map((f) => f.z)) + 1;
   /** Opens the form of a new display, or of a saved one (chartId). */
   const openDisplayForm = async (setId: number, form: DisplayForm, chartId: number | null = null, focus: string | null = null): Promise<void> => {
     const open = chartId !== null ? forms.find((f) => f.chartId === chartId) : undefined;
@@ -336,11 +335,14 @@ function Workspace({
   };
   // Marker and label of the collars of a set (the gear of «Устья»), and windows with rows of interval tables.
   const [collarForm, setCollarForm] = useState<number | null>(null);
-  const [tableWins, setTableWins] = useState<{ id: number; tableId: number; name: string; event: boolean; z: number }[]>([]);
-  const openIntervalTable = (t: { id: number; name: string; kind?: "interval" | "event" }) =>
-    setTableWins((prev) => (prev.some((w) => w.tableId === t.id)
-      ? prev.map((w) => (w.tableId === t.id ? { ...w, z: topZ() } : w))
-      : [...prev, { id: Date.now(), tableId: t.id, name: t.name, event: t.kind === "event", z: topZ() }]));
+  /** An interval or event table of a set: in the bottom panel, like the collars, surveys and assays. */
+  const openIntervalTable = (t: { id: number; set_id?: number }, setId?: number) => {
+    const sid = setId ?? t.set_id;
+    if (sid !== undefined && sid !== activeSetRef.current) selectSet(sid);
+    navigate({ kind: String(t.id) });
+    // a table needs room: grow a short dock, never shrink one the user enlarged
+    setWs((prev) => resize(openBottom(prev, "table"), "bottom", Math.max(prev.sizes.bottom, 380)));
+  };
   const saveChartSettings = (chartId: number, settings: unknown, autoName: string) => {
     if (chartId < 0) return; // the window of data along the holes is a viewer: nothing is saved
     const timers = saveTimers.current;
@@ -490,7 +492,7 @@ function Workspace({
     },
     openTable: (kind: TableKind) => {
       navigate({ kind });
-      setWs((prev) => openBottom(prev, "table"));
+      setWs((prev) => resize(openBottom(prev, "table"), "bottom", Math.max(prev.sizes.bottom, 380)));
     },
     openChart: (kind, setId, initial, qq, dendrogram, striplog) => openChart(kind, setId, initial, qq, dendrogram, striplog),
     openSavedChart,
@@ -799,7 +801,7 @@ function Workspace({
                   onCollarStyle={(setId) => setCollarForm(setId)}
                   onPathsMenu={(setId, x, y) => setPathsMenu({ setId, x, y })}
                   onOpenDisplay={(id) => void guarded(() => openDisplayForm(0, "grade", id))}
-                  onOpenIntervalTable={openIntervalTable}
+                  onOpenIntervalTable={(t, setId) => openIntervalTable(t, setId)}
                   logsOn={ws.logs}
                   onToggleLog={toggleLog}
                   onOpenChart={(id) => void guarded(() => openSavedChart(id))}
@@ -872,9 +874,10 @@ function Workspace({
                     ) : activeSet === null ? (
                       <p className="muted small">Нет наборов скважин. Импортируйте данные: лента «Главная → Скважины».</p>
                     ) : ws.bottomTab === "table" ? (
-                      <DataPage
-                        setId={activeSet} refreshKey={refreshKey} kind={route.kind} holeId={selectedHole} summary={summary}
-                        onKindChange={(kind) => navigate({ kind })} onClearHole={clearHole}
+                      <DataTables
+                        setId={activeSet} refreshKey={refreshKey} tableKey={route.kind} holeId={selectedHole}
+                        onTableChange={(kind) => navigate({ kind })} onClearHole={clearHole}
+                        onSelectHole={(hole) => selectHole(activeSet, hole)} onChanged={reload}
                       />
                     ) : ws.bottomTab === "stats" ? (
                       <StatsPage setId={activeSet} refreshKey={refreshKey} summary={summary} holes={holes} view={statsView} onViewChange={setStatsView} />
@@ -1070,16 +1073,6 @@ function Workspace({
         </ChartWindow>
       )}
 
-      {tableWins.map((t, i) => (
-        <ChartWindow
-          key={t.id} index={i + 3} z={30 + t.z} size="medium" icon="table" title={`${t.event ? "События" : "Таблица"} · ${t.name}`}
-          onFocus={() => setTableWins((prev) => prev.map((x) => (x.id === t.id ? { ...x, z: topZ() } : x)))}
-          onClose={() => setTableWins((prev) => prev.filter((x) => x.id !== t.id))}
-        >
-          <IntervalTableWindow tableId={t.tableId} event={t.event} refreshKey={refreshKey} />
-        </ChartWindow>
-      ))}
-
       {reports.map((r, i) => {
         const model = (datasets ?? []).find((d) => d.id === r.modelId && d.kind === "blocks");
         if (!model) return null;
@@ -1159,7 +1152,7 @@ function Workspace({
           items={[
             { label: "Открыть таблицу", icon: "table", run: () => {
               const t = sets.find((d) => d.id === tableMenu.setId)?.interval_tables?.find((x) => x.id === tableMenu.id);
-              if (t) openIntervalTable(t);
+              if (t) openIntervalTable(t, tableMenu.setId);
             } },
             "separator",
             { label: "Переименовать…", icon: "edit", run: () => void guarded(async () => {

@@ -57,7 +57,7 @@ export interface DataTreeProps {
   /** A saved display of data along the holes: its form. */
   onOpenDisplay?: (chartId: number) => void;
   /** An interval or event table: its rows. */
-  onOpenIntervalTable?: (table: { id: number; name: string; kind?: "interval" | "event" }) => void;
+  onOpenIntervalTable?: (table: { id: number; name: string; kind?: "interval" | "event" }, setId: number) => void;
   /** Right click on an interval table (the assays: key "assay"): downhole log, rename, delete. */
   onTableMenu?: (setId: number, table: { key: string; id: number | null; name: string }, x: number, y: number) => void;
   /** A table of the set shown on its holes in 3D (null: a new log window). */
@@ -387,9 +387,9 @@ export function DataTree(props: DataTreeProps) {
                     {(d.interval_tables ?? []).map((t) => (
                       <li key={`it${t.id}`}>
                         <button
-                          className="tree-row leaf" onClick={() => props.onOpenIntervalTable?.(t)}
+                          className="tree-row leaf" onClick={() => props.onOpenIntervalTable?.(t, d.id)}
                           onContextMenu={(e) => tableMenu(e, d.id, { key: String(t.id), id: t.id, name: t.name })}
-                          title={`${t.kind === "event" ? "События" : "Интервальная таблица"} «${t.name}»: клик — открыть таблицу, правая кнопка — меню`}
+                          title={`${t.kind === "event" ? "События" : "Интервальная таблица"} «${t.name}»: клик — открыть в нижней панели, правая кнопка — меню`}
                         >
                           <Icon name="table" size={14} />
                           <span className="grow name">{t.name}{t.kind === "event" ? " · события" : ""}</span>

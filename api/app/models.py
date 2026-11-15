@@ -391,3 +391,23 @@ class AssistantUsage(Base):
     cache_write_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
     cost_usd: Mapped[float | None] = mapped_column(Double, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class DataEdit(Base):
+    """A correction made by hand in a table of a drillhole set: the edit log, with undo.
+    `changes`: field -> [old, new]; for a deleted row the whole row as [value, None]."""
+
+    __tablename__ = "data_edit"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    set_id: Mapped[int] = mapped_column(_set_fk(), index=True)
+    # "collar" | "survey" | "assay" | the id of an interval table
+    table_key: Mapped[str] = mapped_column(String(32))
+    table_name: Mapped[str] = mapped_column(String(255), default="")
+    row_id: Mapped[int] = mapped_column(BigInteger)
+    hole_id: Mapped[str] = mapped_column(String(64), default="")
+    # "update" | "insert" | "delete"
+    action: Mapped[str] = mapped_column(String(16))
+    changes: Mapped[dict] = mapped_column(JSONB, default=dict)
+    undone: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

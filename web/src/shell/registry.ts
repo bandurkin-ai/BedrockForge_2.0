@@ -265,14 +265,17 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
     {
       id: "table.open",
       title: "Открыть таблицу",
-      description: "Таблица набора скважин в нижней панели: collar — устья, survey — инклинометрия, assay — пробы. При выбранной скважине — только её строки.",
-      params: { kind: { type: "string", enum: Object.keys(TABLE_TITLES) }, set_id: { type: "integer" } },
+      description: "Таблица набора скважин в нижней панели (сортировка, статистика по полям, ручная правка): collar — устья, survey — инклинометрия, assay — пробы, или id интервальной таблицы / таблицы событий набора (interval_tables в списке данных). При выбранной скважине — только её строки.",
+      params: { kind: { type: "string" }, set_id: { type: "integer" } },
       required: ["kind"],
       run: ({ kind, set_id }) => {
         const set = targetSet(set_id);
+        const key = String(kind);
+        const interval = set.interval_tables?.find((t) => String(t.id) === key);
+        if (!(key in TABLE_TITLES) && !interval) throw new Error(`Таблицы ${key} нет в наборе «${set.name}»`);
         if (set.id !== s().activeSet) s().selectSet(set.id);
-        s().openTable(kind as TableKind);
-        return `Таблица «${TABLE_TITLES[kind as TableKind]}» набора «${set.name}»`;
+        s().openTable(key as TableKind);
+        return `Таблица «${interval?.name ?? TABLE_TITLES[key as TableKind]}» набора «${set.name}»`;
       },
     },
     {

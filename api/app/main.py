@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app import mcp_server
 from app.config import settings
-from app.routers import assistant, audit, blobs, blockmodels, charts, datasets, imports, intervals, jobs, projects, stats, styles, uploads, viz
+from app.routers import assistant, audit, blobs, blockmodels, charts, datasets, datatables, imports, intervals, jobs, projects, stats, styles, uploads, viz
 
 mcp_app = mcp_server.http_app()
 
@@ -42,6 +42,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="BedrockForge API", version=__version__, lifespan=lifespan)
 app.include_router(imports.router)
+app.include_router(datatables.router)
 app.include_router(projects.router)
 app.include_router(projects.sets_router)
 app.include_router(datasets.router)

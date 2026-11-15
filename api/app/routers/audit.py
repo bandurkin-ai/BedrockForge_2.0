@@ -9,7 +9,7 @@ from app.audit.checks import AuditConfig
 from app.audit.engine import latest_run, rule_table, run_audit
 from app.audit.report import build_xlsx
 from app.db import get_session
-from app.models import AuditFinding, AuditRun, ImportJob, Project
+from app.models import AuditFinding, AuditRun, DataEdit, ImportJob, Project
 from app.routers.projects import get_set
 
 router = APIRouter(prefix="/api/sets/{set_id}/audit", tags=["audit"])
@@ -64,9 +64,12 @@ class FindingsPage(BaseModel):
 
 
 def _run_out(session: Session, run: AuditRun) -> RunOut:
-    last_import = session.scalar(
-        select(func.max(ImportJob.created_at)).where(ImportJob.set_id == run.set_id)
-    )
+    stamps = [
+        session.scalar(select(func.max(ImportJob.created_at)).where(ImportJob.set_id == run.set_id)),
+        # hand corrections in the tables make the audit stale too
+        session.scalar(select(func.max(DataEdit.created_at)).where(DataEdit.set_id == run.set_id)),
+    ]
+    last_import = max((s for s in stamps if s is not None), default=None)
     return RunOut(
         run_id=run.id,
         created_at=run.created_at,

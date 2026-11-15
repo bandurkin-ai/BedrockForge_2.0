@@ -4,6 +4,7 @@ import { DEFAULT_ROUTE, formatRoute, parseRoute } from "./route";
 describe("route", () => {
   it("parses set, hole and table", () => {
     expect(parseRoute("#/?set=3&hole=BH%201&table=assay")).toEqual({ set: 3, hole: "BH 1", kind: "assay" });
+    expect(parseRoute("#/?set=3&table=17").kind).toBe("17"); // an interval or event table by its id
   });
 
   it("falls back to defaults on unknown input", () => {

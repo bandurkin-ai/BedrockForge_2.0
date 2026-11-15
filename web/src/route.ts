@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type TableKind = "collar" | "survey" | "assay";
+/** A table of a drillhole set in the bottom panel: a fixed one, or the id of an interval / event table. */
+export type TableKey = TableKind | string;
 
 /** What the address remembers: the active drillhole set, the selected hole and the open table. */
 export interface Route {
   set: number | null;
   hole: string | null;
-  kind: TableKind;
+  kind: TableKey;
 }
 
 const KINDS: TableKind[] = ["collar", "survey", "assay"];
@@ -22,7 +24,7 @@ export function parseRoute(hash: string): Route {
   return {
     set: Number.isInteger(set) && set > 0 ? set : null,
     hole: params.get("hole") || null,
-    kind: (KINDS as string[]).includes(table) ? (table as TableKind) : DEFAULT_ROUTE.kind,
+    kind: (KINDS as string[]).includes(table) || /^\d{1,9}$/.test(table) ? table : DEFAULT_ROUTE.kind,
   };
 }
 

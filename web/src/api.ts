@@ -1390,3 +1390,38 @@ export const exportStyles = (projectId: number, ids?: number[]) =>
   request<Record<string, unknown>>(`/api/projects/${projectId}/styles/export${ids?.length ? `?ids=${ids.join(",")}` : ""}`);
 export const importStyles = (projectId: number, file: unknown, conflicts: Record<string, "replace" | "keep_both" | "skip">) =>
   request<StyleImportResult>(`/api/projects/${projectId}/styles/import`, { method: "POST", ...json({ file, conflicts, default: "skip" }) });
+
+// ---- tables of a drillhole set: rows, statistics of fields, hand corrections
+
+export interface DataTableInfo { key: string; name: string; kind: "collar" | "survey" | "assay" | "interval" | "event"; rows: number }
+export interface DataColumn { name: string; kind: "number" | "text"; unit: string; required: boolean }
+export type DataRow = Record<string, string | number | null> & { _id: number };
+export interface DataTablePage { key: string; name: string; kind: DataTableInfo["kind"]; total: number; columns: DataColumn[]; rows: DataRow[] }
+export interface FieldStats extends DataColumn {
+  count: number; empty: number;
+  min?: number | null; max?: number | null; mean?: number | null; median?: number | null; std?: number | null; sum?: number | null;
+  unique?: number; top?: [string, number][];
+}
+export interface DataEdit {
+  id: number; table_key: string; table_name: string; row_id: number; hole_id: string;
+  action: "update" | "insert" | "delete"; changes: Record<string, [unknown, unknown]>; undone: boolean; created_at: string | null;
+}
+
+const dtBase = (setId: number, key: string) => `/api/sets/${setId}/datatables/${encodeURIComponent(key)}`;
+export const listDataTables = (setId: number) => request<DataTableInfo[]>(`/api/sets/${setId}/datatables`);
+export function getDataTable(setId: number, key: string, p: { offset: number; limit: number; sort?: string | null; desc?: boolean; holeId?: string | null }) {
+  const q = new URLSearchParams({ offset: String(p.offset), limit: String(p.limit) });
+  if (p.sort) q.set("sort", p.sort);
+  if (p.desc) q.set("desc", "true");
+  if (p.holeId) q.set("hole_id", p.holeId);
+  return request<DataTablePage>(`${dtBase(setId, key)}?${q}`);
+}
+export const getDataTableStats = (setId: number, key: string, holeId?: string | null) =>
+  request<{ total: number; fields: FieldStats[] }>(`${dtBase(setId, key)}/stats${holeId ? `?hole_id=${encodeURIComponent(holeId)}` : ""}`);
+export const updateDataRow = (setId: number, key: string, rowId: number, values: Record<string, unknown>) =>
+  request<{ row: DataRow; changed: string[] }>(`${dtBase(setId, key)}/rows/${rowId}`, { method: "PATCH", ...json({ values }) });
+export const insertDataRow = (setId: number, key: string, values: Record<string, unknown>) =>
+  request<{ row: DataRow }>(`${dtBase(setId, key)}/rows`, { method: "POST", ...json({ values }) });
+export const deleteDataRow = (setId: number, key: string, rowId: number) => request<void>(`${dtBase(setId, key)}/rows/${rowId}`, { method: "DELETE" });
+export const listDataEdits = (setId: number) => request<DataEdit[]>(`/api/sets/${setId}/edits`);
+export const undoDataEdit = (id: number) => request<DataEdit>(`/api/edits/${id}/undo`, { method: "POST" });
