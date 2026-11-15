@@ -192,6 +192,9 @@ export class GeoScene {
   private blocks = new Map<number, BlockLayer>();
   /** A click on a block (when no collar is near the cursor). */
   onPickBlock: ((pick: { modelId: number; index: number } | null) => boolean) | null = null;
+  /** A wireframe clicked in the view; true when the click is taken. */
+  onPickWireframe: ((id: number) => boolean) | null = null;
+  private selectedWireframe: number | null = null;
   private selectedLine: LineSegments2 | null = null;
   private sectionLine: THREE.LineSegments | null = null;
   /** The section line being drawn: its first point (rendered space) and the rubber band to the cursor. */
@@ -715,12 +718,8 @@ export class GeoScene {
   }
 
   /** The block under the cursor: nearest hit over every shown model. */
-  private pickBlock(clientX: number, clientY: number): { modelId: number; index: number } | null {
+  private pickBlock(raycaster: THREE.Raycaster): { modelId: number; index: number; distance: number } | null {
     if (!this.blocks.size) return null;
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(ndc, this.camera);
     const planes = this.renderer.clippingPlanes;
     let best: { modelId: number; index: number; distance: number } | null = null;
     for (const [modelId, layer] of this.blocks) {
@@ -732,7 +731,49 @@ export class GeoScene {
         break;
       }
     }
-    return best ? { modelId: best.modelId, index: best.index } : null;
+    return best;
+  }
+
+  /** The wireframe under the cursor: nearest hit on the shown level of every shown wireframe. */
+  private pickWireframe(raycaster: THREE.Raycaster): { id: number; distance: number } | null {
+    const planes = this.renderer.clippingPlanes;
+    let best: { id: number; distance: number } | null = null;
+    for (const [id, layer] of this.wireframes) {
+      if (!layer.group.visible || layer.material.opacity <= 0.02) continue;
+      for (const level of layer.levels.values()) {
+        if (!level.object.visible) continue;
+        for (const hit of raycaster.intersectObject(level.object, true)) {
+          if (planes.length && !planes.every((p) => p.distanceToPoint(hit.point) >= -1e-6)) continue;
+          if (!best || hit.distance < best.distance) best = { id, distance: hit.distance };
+          break;
+        }
+      }
+    }
+    return best;
+  }
+
+  /** What is under the cursor among blocks and wireframes, the nearest of them. */
+  private pickObject(clientX: number, clientY: number):
+    { kind: "block"; modelId: number; index: number } | { kind: "wireframe"; id: number } | null {
+    if (!this.blocks.size && !this.wireframes.size) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(ndc, this.camera);
+    const block = this.onPickBlock ? this.pickBlock(raycaster) : null;
+    const wire = this.onPickWireframe ? this.pickWireframe(raycaster) : null;
+    if (block && (!wire || block.distance <= wire.distance)) return { kind: "block", modelId: block.modelId, index: block.index };
+    return wire ? { kind: "wireframe", id: wire.id } : null;
+  }
+
+  /** The wireframe chosen in the view or the tree: drawn a little lighter. */
+  setSelectedWireframe(id: number | null): void {
+    if (id === this.selectedWireframe) return;
+    const old = this.selectedWireframe === null ? undefined : this.wireframes.get(this.selectedWireframe);
+    old?.material.emissive.setHex(0x000000);
+    this.selectedWireframe = id;
+    this.wireframes.get(id ?? -1)?.material.emissive.setHex(0x3a3a3a);
+    this.requestRender();
   }
 
   setDrillholeStyle(setId: number, style: DrillholeStyle): void {
@@ -764,6 +805,7 @@ export class GeoScene {
       extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)),
       group, material, levels: new Map(), sphere: local.getBoundingSphere(new THREE.Sphere()), cutLines: null, cut: null,
     });
+    if (this.selectedWireframe === id) material.emissive.setHex(0x3a3a3a);
     this.root.add(group);
     this.contentChanged();
   }
@@ -1678,9 +1720,10 @@ export class GeoScene {
         if (p && this.onGroundClick(this.toProject(p).x, this.toProject(p).y)) return;
       }
       const hit = this.nearestCollar(e.clientX, e.clientY, 14);
-      if (!hit && this.onPickBlock) {
-        const block = this.pickBlock(e.clientX, e.clientY);
-        if (block && this.onPickBlock(block)) return;
+      if (!hit) {
+        const object = this.pickObject(e.clientX, e.clientY);
+        if (object?.kind === "block" && this.onPickBlock?.(object)) return;
+        if (object?.kind === "wireframe" && this.onPickWireframe?.(object.id)) return;
       }
       this.onPick(hit ? { setId: hit.setId, holeId: hit.holeId } : null);
     };

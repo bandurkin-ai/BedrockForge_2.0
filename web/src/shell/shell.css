@@ -814,3 +814,28 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .wiz-err { color: #c0392b; }
 .wiz-warn { color: var(--warn); }
 .wiz-pre { white-space: pre-line; }
+
+/* ---- attributes of a wireframe, values of a block */
+.attr-editor { display: flex; flex-direction: column; gap: 6px; }
+.attr-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.attr-table { width: 100%; border-collapse: collapse; }
+.attr-table th { text-align: left; font-weight: 600; font-size: 0.78rem; color: var(--muted); padding: 2px 4px; }
+.attr-table td { padding: 2px 4px; }
+.attr-table td.attr-name { color: var(--muted); white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.app .attr-table input { width: 100%; min-width: 0; box-sizing: border-box; }
+.attr-actions { display: flex; align-items: center; gap: 6px; }
+.wf-edit { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.wf-edit input[type="text"] { flex: 1; min-width: 0; }
+.wf-edit input[type="color"] { width: 32px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: none; }
+.attr-editor .small-btn { padding: 2px 8px; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; }
+.attr-actions .small-btn { align-self: auto; }
+
+/* ---- settings: hotkeys */
+.settings-panel { height: 100%; box-sizing: border-box; padding: 10px; display: flex; flex-direction: column; gap: 10px; background: var(--panel); font-size: 0.85rem; }
+.settings-panel > .pp-card { flex: 1; min-height: 0; }
+.settings-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.settings-keys td { vertical-align: middle; }
+.settings-fn { display: inline-flex; align-items: center; gap: 6px; }
+.settings-group td { font-size: 0.78rem; font-weight: 600; color: var(--muted); background: var(--head-bg); padding-top: 4px; padding-bottom: 4px; }
+.settings-keys kbd { font: 0.8rem ui-monospace, monospace; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); }
+.settings-wait { color: var(--accent); font-weight: 600; }

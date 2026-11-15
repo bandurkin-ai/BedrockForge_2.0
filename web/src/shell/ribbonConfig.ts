@@ -103,6 +103,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           ],
         },
         { title: "Ассистент", items: [assistant] },
+        { title: "Настройка", items: [{ command: "settings.open", label: "Настройка", icon: "gear", hint: "Настройки программы: быстрые клавиши" }] },
       ],
     },
     {

@@ -268,6 +268,26 @@ def test_import_job_and_grade_tonnage_report(db_client, run_jobs, tmp_path):
     assert db_client.patch(f"/api/blockmodels/{d['id']}/attributes/{au}", json={"unit": "ppm"}).json()["unit"] == "ppm"
 
 
+def test_edit_values_of_a_block(db_client, run_jobs, tmp_path):
+    m = make_blocks()
+    pid, d = _import(db_client, run_jobs, tmp_path, m)
+    url = f"/api/blockmodels/{d['id']}/blocks/2"
+    r = db_client.patch(url, json={"values": {"AU_CUT": "99,5", "ALT": "Новая руда", "SG": None}})
+    assert r.status_code == 200, r.text
+    b = r.json()
+    assert b["values"]["AU_CUT"] == 99.5 and b["values"]["ALT"] == "Новая руда" and b["values"]["SG"] is None
+    assert db_client.get(url).json()["values"] == b["values"]
+    (d2,) = db_client.get(f"/api/projects/{pid}/datasets").json()
+    attrs = {a["name"]: a for a in d2["meta"]["attributes"]}
+    assert attrs["AU_CUT"]["stats"]["max"] == 99.5
+    assert "Новая руда" in attrs["ALT"]["labels"] and attrs["SG"]["stats"]["empty"] >= 1
+    raw = db_client.get(f"/api/blockmodels/{d['id']}/values/{attrs['AU_CUT']['key']}").content
+    assert np.frombuffer(raw, "<f4")[2] == 99.5
+    assert db_client.patch(url, json={"values": {"AU_CUT": "abc"}}).status_code == 422
+    assert db_client.patch(url, json={"values": {"NOPE": 1}}).status_code == 422
+    assert db_client.patch(f"/api/blockmodels/{d['id']}/blocks/100000", json={"values": {"AU": 1}}).status_code == 404
+
+
 def test_xml_header_longer_than_4096_and_no_codepage(tmp_path):
     """The model export pads a long XML header to 8192 bytes: the codepage is past byte 4096.
     Without any codepage, BOCU-1 names (ASCII + 0x50) are recognised by their bytes."""

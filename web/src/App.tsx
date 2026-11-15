@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
-  deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
+  deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, editBlock, renameDataset, runAudit, setBlockUnit,
   getStyles, getStyleUsage, setAssistantPreferences, patchProject, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
@@ -23,6 +23,8 @@ import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
 import { ClaudeAccount, ClaudeAccountButton } from "./shell/ClaudeAccount";
 import { askConfirm, askText, DialogHost, showError } from "./shell/dialogs";
 import { ProjectsPanel } from "./shell/ProjectsPanel";
+import { SettingsPanel } from "./shell/SettingsPanel";
+import { applyShortcuts, loadShortcuts, saveShortcuts, type ShortcutOverrides } from "./shell/shortcuts";
 import { CommandLog } from "./shell/CommandLog";
 import { CommandPalette } from "./shell/CommandPalette";
 import { commandTools, eventShortcut, findByToolName, validateArgs, type CommandSource, type LogEntry } from "./shell/commands";
@@ -449,6 +451,12 @@ function Workspace({
 
   const [accountOpen, setAccountOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shortcuts, setShortcutsState] = useState<ShortcutOverrides>(loadShortcuts);
+  const setShortcuts = (next: ShortcutOverrides) => {
+    setShortcutsState(next);
+    saveShortcuts(next);
+  };
   const assistant = useAssistant(projectId, {
     tools: () => commandTools(commands),
     context: () => ({
@@ -506,6 +514,7 @@ function Workspace({
     },
     reload, onSelectProject, onNewProject, onDemoProject, onDeleteProject, onPatchProject,
     openProjects: () => setProjectsOpen(true),
+    openSettings: () => setSettingsOpen(true),
     moveDataset: async (id, folder) => {
       await moveDataset(id, folder);
       reload();
@@ -579,10 +588,12 @@ function Workspace({
 
   const remote = useRemoteCommands(projectId, commands, (id, args) => executeExternal(id, null, args, "remote"));
 
-  const tabs = useMemo(
+  const builtTabs = useMemo(
     () => buildRibbon(ws, { hasHole: selectedHole !== null, hasSet: activeSet !== null, hasSection: section !== null }),
     [ws, selectedHole, activeSet, section],
   );
+  // The user's hotkeys (Главная › Настройка) replace the built-in ones everywhere: ribbon hints, palette, keys.
+  const tabs = useMemo(() => applyShortcuts(builtTabs, shortcuts), [builtTabs, shortcuts]);
   const items = useMemo(() => flattenRibbon(tabs), [tabs]);
   const runItem = useCallback(
     (item: RibbonItem) => {
@@ -845,6 +856,8 @@ function Workspace({
                   setPickedBlock({ modelId, index });
                   live.current.selectObject({ kind: "blocks", id: modelId });
                 }}
+                onPickWireframe={(id) => live.current.selectObject({ kind: "wireframe", id })}
+                selectedWireframe={selected?.kind === "wireframe" ? selected.id : null}
               />
               </Suspense>
             </ErrorBoundary>
@@ -924,6 +937,15 @@ function Workspace({
                       return undefined;
                     })}
                     onBlockReport={openBlockReport}
+                    onWireframe={async (id, patch) => {
+                      await patchWireframe(id, patch);
+                      reload();
+                    }}
+                    onBlockValues={async (id, index, values) => {
+                      const stored = await editBlock(id, index, values);
+                      reload();
+                      return stored;
+                    }}
                   />
                 </ErrorBoundary>
               </div>
@@ -969,6 +991,12 @@ function Workspace({
             onNew={() => onNewProject()}
             onDemo={() => onDemoProject()}
           />
+        </ChartWindow>
+      )}
+
+      {settingsOpen && (
+        <ChartWindow index={1} z={58} size="medium" icon="gear" title="Настройка" onFocus={() => undefined} onClose={() => setSettingsOpen(false)}>
+          <SettingsPanel tabs={tabs} defaults={builtTabs} overrides={shortcuts} onChange={setShortcuts} />
         </ChartWindow>
       )}
 

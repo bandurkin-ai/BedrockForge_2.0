@@ -36,6 +36,10 @@ export interface SceneViewProps {
   blockStyles?: Record<number, BlockStyle>;
   /** A block picked in the view. */
   onPickBlock?: (modelId: number, index: number) => void;
+  /** A wireframe picked in the view. */
+  onPickWireframe?: (id: number) => void;
+  /** The wireframe shown as selected (lighter). */
+  selectedWireframe?: number | null;
   /** Marker and labels of the collars, by set id (default: a circle coloured by the audit, no labels). */
   collarStyles?: Record<number, CollarStyle>;
   /** Saved displays of data along the holes that are on in the view. */
@@ -142,6 +146,11 @@ export function SceneView(props: SceneViewProps) {
     scene.onPickBlock = (pick) => {
       if (!pick || !live.current.onPickBlock) return false;
       live.current.onPickBlock(pick.modelId, pick.index);
+      return true;
+    };
+    scene.onPickWireframe = (id) => {
+      if (!live.current.onPickWireframe) return false;
+      live.current.onPickWireframe(id);
       return true;
     };
     scene.onGroundClick = (x, y) => addPointRef.current(x, y);
@@ -460,7 +469,8 @@ export function SceneView(props: SceneViewProps) {
       const attr = meta.attributes.find((a) => a.key === style.attribute) ?? null;
       let values: Float32Array | null = null;
       if (attr) {
-        const key = `${d.id}:${attr.key}`;
+        // Values change when a block is edited: the statistics then change too.
+        const key = `${d.id}:${attr.key}:${JSON.stringify(attr.stats)}:${attr.labels?.length ?? 0}`;
         values = blockValues.current.get(key) ?? null;
         if (!values) {
           try {
@@ -506,6 +516,7 @@ export function SceneView(props: SceneViewProps) {
   useEffect(applyStyles, [datasets, ws.hidden, ws.wireframeOpacity]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => sceneRef.current?.setVerticalExaggeration(ws.vexag), [ws.vexag]);
   useEffect(() => sceneRef.current?.setGridVisible(ws.grid), [ws.grid]);
+  useEffect(() => sceneRef.current?.setSelectedWireframe(props.selectedWireframe ?? null), [props.selectedWireframe, loading]);
   useEffect(() => sceneRef.current?.setSelected(activeSet !== null && selectedHole ? { setId: activeSet, holeId: selectedHole } : null), [activeSet, selectedHole, loading]);
   useEffect(() => sceneRef.current?.setSection(section), [section]);
 

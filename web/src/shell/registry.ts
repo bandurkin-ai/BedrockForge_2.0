@@ -59,6 +59,8 @@ export interface Live {
   onPatchProject: (id: number, patch: { name?: string; description?: string }) => Promise<string>;
   /** Opens the projects window. */
   openProjects: () => void;
+  /** Opens the settings window (hotkeys). */
+  openSettings: () => void;
   moveDataset: (id: number, folder: string) => Promise<void>;
   /** Background jobs of the project, newest first. */
   jobs: JobInfo[];
@@ -889,6 +891,16 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       uiOnly: true,
       silent: true,
       run: () => s().setWs((prev) => ({ ...prev, ribbonCollapsed: !prev.ribbonCollapsed })),
+    },
+    {
+      id: "settings.open",
+      title: "Настройка",
+      description: "Открывает окно настроек: назначение быстрых клавиш функциям ленты.",
+      uiOnly: true,
+      run: () => {
+        s().openSettings();
+        return "Открыты настройки";
+      },
     },
     {
       id: "palette.open",

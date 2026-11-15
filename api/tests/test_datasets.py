@@ -166,6 +166,11 @@ def test_upload_tridb_geometry_patch_and_delete(db_client, tmp_path):
     patched = db_client.patch(f"/api/wireframes/{pit['id']}", json={"name": "Карьер", "color": "#00AA00"}).json()
     assert (patched["name"], patched["color"]) == ("Карьер", "#00aa00")
     assert db_client.patch(f"/api/wireframes/{pit['id']}", json={"color": "red"}).status_code == 422
+    attrs = db_client.patch(f"/api/wireframes/{pit['id']}", json={"attributes": {" Тип ": "карьер", "Этап": 2, "Активен": True, "Прим": None}})
+    assert attrs.status_code == 200, attrs.text
+    assert attrs.json()["stats"]["attributes"] == {"Тип": "карьер", "Этап": 2, "Активен": True, "Прим": None}
+    assert "area" in attrs.json()["stats"]  # the other statistics stay
+    assert db_client.patch(f"/api/wireframes/{pit['id']}", json={"attributes": {" ": 1}}).status_code == 422
 
     assert db_client.delete(f"/api/wireframes/{pit['id']}").status_code == 204
     assert db_client.delete(f"/api/wireframes/{dump['id']}").status_code == 204

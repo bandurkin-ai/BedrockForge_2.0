@@ -185,3 +185,56 @@ def set_unit(dataset_id: int, key: str, body: UnitIn, session: Session = Depends
     d.meta = {**d.meta, "attributes": [{**x, "unit": body.unit} if x["key"] == a["key"] else x for x in d.meta["attributes"]]}
     session.commit()
     return {"key": a["key"], "unit": body.unit}
+
+
+class BlockValuesIn(BaseModel):
+    # Field name (or key) -> new value: a number, a category label, or null to empty it.
+    values: dict[str, float | str | None] = Field(min_length=1, max_length=500)
+
+
+@router.patch("/{dataset_id}/blocks/{index}")
+def edit_block(dataset_id: int, index: int, body: BlockValuesIn, session: Session = Depends(get_session)) -> dict:
+    """Change attribute values of one block; the field statistics are counted again."""
+    from app.formats.blockmodel import stats_of
+    from app.formats.micromine import Column
+
+    d = get_model(session, dataset_id)
+    if not 0 <= index < d.meta.get("block_count", 0):
+        raise HTTPException(404, "Блока с таким номером нет")
+    attrs = [dict(a) for a in d.meta.get("attributes", [])]
+    refs = dict(d.blobs)
+    vol = None
+    for name, value in body.values.items():
+        a = next((x for x in attrs if x["key"] == name or x["name"] == name), None)
+        if a is None:
+            raise HTTPException(422, f"Поля «{name}» нет в модели")
+        col = column(d, a).copy()
+        if a["kind"] == "number":
+            if isinstance(value, str):
+                text = value.strip().replace(",", ".")
+                try:
+                    value = float(text) if text else None
+                except ValueError:
+                    raise HTTPException(422, f"Поле «{a['name']}»: нужно число, а не «{value}»") from None
+            if value is not None and not np.isfinite(value):
+                raise HTTPException(422, f"Поле «{a['name']}»: нужно конечное число")
+            col[index] = np.nan if value is None else float(value)
+            labels = None
+        else:
+            labels = list(a.get("labels") or [])
+            text = "" if value is None else (f"{value:g}" if isinstance(value, float) else str(value)).strip()
+            if not text:
+                col[index] = -1
+            else:
+                if text not in labels:
+                    labels.append(text[:255])
+                col[index] = labels.index(text[:255])
+            a["labels"] = labels
+        if vol is None:
+            vol = volumes(d)
+        refs[a["key"]] = blobs.put_array(session, col, "<f8" if a["kind"] == "number" else "<i4")
+        a["stats"] = stats_of(Column(name=a["name"], kind=a["kind"], values=col, labels=labels), vol)
+    d.blobs = refs
+    d.meta = {**d.meta, "attributes": attrs}
+    session.commit()
+    return block(dataset_id, index, session)

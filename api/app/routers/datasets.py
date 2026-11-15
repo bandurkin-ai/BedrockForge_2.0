@@ -131,6 +131,8 @@ class RasterPatch(BaseModel):
 class WireframePatch(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+    # Every attribute of the wireframe (replaces the old ones): name -> text, number, yes/no or empty.
+    attributes: dict[str, str | float | int | bool | None] | None = Field(None, max_length=200)
 
 
 def get_dataset(session: Session, dataset_id: int) -> Dataset:
@@ -285,6 +287,16 @@ def patch_wireframe(wireframe_id: int, body: WireframePatch, session: Session = 
         w.name = body.name.strip()
     if body.color is not None:
         w.color = body.color.lower()
+    if body.attributes is not None:
+        attrs = {}
+        for k, v in body.attributes.items():
+            key = k.strip()[:100]
+            if not key:
+                raise HTTPException(422, "У атрибута должно быть название")
+            if key in attrs:
+                raise HTTPException(422, f"Атрибут «{key}» указан дважды")
+            attrs[key] = v.strip()[:2000] if isinstance(v, str) else v
+        w.stats = {**w.stats, "attributes": attrs}
     session.commit()
     return _wireframe_out(w)
 

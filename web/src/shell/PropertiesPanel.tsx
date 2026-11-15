@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import type { AuditRun, Dataset, LineLayerInfo, RasterInfo, RasterPatch, Summary, VerticalPlacement } from "../api";
-import { blockMeta, checkWireframes, type BlockAttribute } from "../api";
+import { blockMeta, checkWireframes, type BlockAttribute, type BlockInfo } from "../api";
+import { AttributeEditor, type AttrValue } from "./AttributeEditor";
 import { defaultBlockStyle, type BlockStyle } from "../viz/blockStyle";
 import { BlockModelPanel } from "./BlockModelPanel";
 import { HoleCard } from "../HoleCard";
@@ -14,7 +15,7 @@ const fmt = (value: number | null | undefined, digits = 0) =>
 /** Right dock: the selected object (hole, wireframe) or the active drillhole set. */
 export function PropertiesPanel({
   datasets, activeSet, summary, audit, selectedHole, selected, refreshKey, onOpenTable, onClearHole, onRaster, sectionFrame,
-  blockStyles, onBlockStyle, pickedBlock, onBlockUnit, onBlockReport,
+  blockStyles, onBlockStyle, pickedBlock, onBlockUnit, onBlockReport, onWireframe, onBlockValues,
 }: {
   datasets: Dataset[];
   activeSet: number | null;
@@ -35,6 +36,10 @@ export function PropertiesPanel({
   pickedBlock?: { modelId: number; index: number } | null;
   onBlockUnit?: (id: number, key: string, unit: BlockAttribute["unit"]) => void;
   onBlockReport?: (id: number) => void;
+  /** Rename, recolour a wireframe or replace its attributes. */
+  onWireframe?: (id: number, patch: { name?: string; color?: string; attributes?: Record<string, AttrValue> }) => Promise<unknown>;
+  /** New values of a block's fields; resolves with the block as stored. */
+  onBlockValues?: (id: number, index: number, values: Record<string, number | string | null>) => Promise<BlockInfo>;
 }) {
   // What is drawn along the holes is set up in the tree: «Стволы» → right click.
   const color = null;
@@ -53,6 +58,7 @@ export function PropertiesPanel({
         picked={pickedBlock?.modelId === model.id ? pickedBlock.index : null}
         onStyle={(style) => onBlockStyle?.(model.id, style)} onUnit={(key, unit) => onBlockUnit?.(model.id, key, unit)}
         onReport={() => onBlockReport?.(model.id)}
+        onValues={onBlockValues ? (index, values) => onBlockValues(model.id, index, values) : undefined}
       />
     );
   }
@@ -63,7 +69,8 @@ export function PropertiesPanel({
     return (
       <div className="props">
         <h2 className="dock-title">Каркас</h2>
-        <div className="props-head"><span className="swatch-static" style={{ background: wireframe.color }} /><strong>{wireframe.name}</strong></div>
+        {onWireframe ? <WireframeHead key={wireframe.id} id={wireframe.id} name={wireframe.name} color={wireframe.color} onWireframe={onWireframe} />
+          : <div className="props-head"><span className="swatch-static" style={{ background: wireframe.color }} /><strong>{wireframe.name}</strong></div>}
         <dl className="props-list">
           <dt>Файл</dt><dd>{wireframe.file.name}</dd>
           <dt>Формат</dt><dd>{wireframe.file.meta.format ?? "—"}</dd>
@@ -97,7 +104,9 @@ export function PropertiesPanel({
           <dt>Y</dt><dd>{fmt(extent.min[1])} – {fmt(extent.max[1])}</dd>
           <dt>Z</dt><dd>{fmt(extent.min[2])} – {fmt(extent.max[2])}</dd>
         </dl>
-        {stats.attributes && Object.keys(stats.attributes).length > 0 && (
+        {onWireframe ? (
+          <AttributeEditor attributes={(stats.attributes ?? {}) as Record<string, AttrValue>} onSave={(attributes) => onWireframe(wireframe.id, { attributes })} />
+        ) : stats.attributes && Object.keys(stats.attributes).length > 0 && (
           <>
             <h2 className="dock-title">Атрибуты</h2>
             <dl className="props-list">
@@ -161,6 +170,35 @@ export function PropertiesPanel({
       )}
       {color}
     </div>
+  );
+}
+
+/** Name and colour of a wireframe, edited in place: the name is saved on Enter or when the field is left. */
+function WireframeHead({ id, name, color, onWireframe }: {
+  id: number;
+  name: string;
+  color: string;
+  onWireframe: (id: number, patch: { name?: string; color?: string }) => Promise<unknown>;
+}) {
+  const [text, setText] = useState(name);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setText(name), [name]);
+  const save = (patch: { name?: string; color?: string }) => void onWireframe(id, patch).then(() => setError(null)).catch((e: Error) => setError(e.message));
+  const commit = () => {
+    const t = text.trim();
+    if (!t) return setText(name);
+    if (t !== name) save({ name: t });
+  };
+  return (
+    <>
+      <div className="wf-edit">
+        <input type="color" value={color} title="Цвет каркаса" aria-label="Цвет каркаса" onChange={(e) => save({ color: e.target.value })} />
+        <input type="text" value={text} maxLength={255} aria-label="Название каркаса" title="Название: Enter — сохранить"
+          onChange={(e) => setText(e.target.value)} onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setText(name); }} />
+      </div>
+      {error && <div className="alert error small">{error}</div>}
+    </>
   );
 }
 

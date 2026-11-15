@@ -578,7 +578,7 @@ export function uploadWireframes(projectId: number, file: File): Promise<Dataset
 
 export const getWireframeGeometry = (id: number) => request<WireframeGeometry>(`/api/wireframes/${id}/geometry`);
 
-export const patchWireframe = (id: number, patch: { name?: string; color?: string }) =>
+export const patchWireframe = (id: number, patch: { name?: string; color?: string; attributes?: Record<string, string | number | boolean | null> }) =>
   request<WireframeInfo>(`/api/wireframes/${id}`, { method: "PATCH", ...json(patch) });
 
 export async function deleteWireframe(id: number): Promise<void> {
@@ -1289,6 +1289,9 @@ export interface BlockInfo {
 }
 
 export const getBlock = (id: number, index: number) => request<BlockInfo>(`/api/blockmodels/${id}/blocks/${index}`);
+/** New values of a block's fields (a number, a category label, null: empty); the stored block comes back. */
+export const editBlock = (id: number, index: number, values: Record<string, number | string | null>) =>
+  request<BlockInfo>(`/api/blockmodels/${id}/blocks/${index}`, { method: "PATCH", ...json({ values }) });
 
 export interface BlockReportParams {
   density?: string | null;

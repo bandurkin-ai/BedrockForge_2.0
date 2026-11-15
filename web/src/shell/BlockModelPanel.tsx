@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { blockMeta, getBlock, type BlockAttribute, type BlockInfo, type Dataset } from "../api";
 import { CATEGORY_COLORS, type BlockStyle } from "../viz/blockStyle";
+import { BlockValuesEditor } from "./AttributeEditor";
 
 const fmt = (v: number | null | undefined, digits = 2) =>
   v === null || v === undefined || !Number.isFinite(v) ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: digits });
@@ -10,7 +11,7 @@ export const unitTitle = (u: BlockAttribute["unit"] | undefined) => UNIT_TITLES[
 const LEVEL_TITLES = { error: "Ошибка", warning: "Внимание", info: "Сведения" } as const;
 
 /** Properties of a block model: description, checks, how it is shown, fields, the picked block. */
-export function BlockModelPanel({ dataset, style, picked, onStyle, onUnit, onReport }: {
+export function BlockModelPanel({ dataset, style, picked, onStyle, onUnit, onReport, onValues }: {
   dataset: Dataset;
   style: BlockStyle;
   /** block number picked in the view, or null */
@@ -18,6 +19,8 @@ export function BlockModelPanel({ dataset, style, picked, onStyle, onUnit, onRep
   onStyle: (next: BlockStyle) => void;
   onUnit: (key: string, unit: BlockAttribute["unit"]) => void;
   onReport: () => void;
+  /** Saves new values of the picked block's fields; resolves with the stored block. */
+  onValues?: (index: number, values: Record<string, number | string | null>) => Promise<BlockInfo>;
 }) {
   const meta = blockMeta(dataset);
   const g = meta.grid;
@@ -104,10 +107,15 @@ export function BlockModelPanel({ dataset, style, picked, onStyle, onUnit, onRep
           <dl className="props-list">
             <dt>Центр</dt><dd>{block.centre.map((v) => fmt(v, 2)).join("; ")}</dd>
             <dt>Размер</dt><dd>{block.size.map((v) => fmt(v, 3)).join(" × ")}</dd>
-            {Object.entries(block.values).map(([k, v]) => (
+            {!onValues && Object.entries(block.values).map(([k, v]) => (
               <Fragment key={k}><dt>{k}</dt><dd>{typeof v === "number" ? fmt(v, 4) : v ?? "—"}</dd></Fragment>
             ))}
           </dl>
+          {onValues && (
+            <BlockValuesEditor values={block.values}
+              fields={meta.attributes.map((a) => ({ name: a.name, kind: a.kind, labels: a.labels }))}
+              onSave={async (values) => setBlock(await onValues(block.index, values))} />
+          )}
         </>
       )}
 
