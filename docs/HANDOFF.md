@@ -31,6 +31,7 @@ git pull
 docker compose up --build
 ```
 
+- На Windows: `scripts/BedrockForge.bat` делает то же самое с логом `BedrockForge_log.txt` рядом с файлом (прошлый запуск — `BedrockForge_log_prev.txt`); путь к репозиторию — переменная `REPO` в начале файла. Файл можно держать где угодно.
 - Веб: http://localhost:5173, API: http://localhost:8000. Сервис `worker` выполняет фоновые задания; хранилище — том `store` (`DATA_DIR=/data`).
 - Лента → «Демо-проект» создаёт учебный проект (48 скважин, каркасы, линии, растры в плане и в разрезе).
 - Локальная разработка без Docker: PostgreSQL 16 (`pg_ctlcluster 16 main start`; пользователь `geo`/`geo`, базы `geo` и `geo_test`), `alembic upgrade head` и `uvicorn app.main:app` в `api/` (задания идут в потоке API, `JOBS_IN_API=1`), `API_URL=http://localhost:8000 npx vite` в `web/`.
