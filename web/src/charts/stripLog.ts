@@ -114,6 +114,8 @@ export const TUBE_RANGE: [number, number] = [2, 24];
 
 export function stripLogName(s: StripLogSettings): string {
   const holes = s.holes.length <= 3 ? s.holes.join(", ") : `${s.holes.slice(0, 2).join(", ")} и ещё ${s.holes.length - 2}`;
+  const fields = s.tracks.length ? ` (${s.tracks.map((t) => t.field).slice(0, 3).join(", ")}${s.tracks.length > 3 ? "…" : ""})` : "";
+  if (s.allHoles) return `На скважинах${fields || " —"}`;
   return `Колонка ${holes || "—"}${s.tracks.length ? ` (${s.tracks.map((t) => t.field).slice(0, 3).join(", ")}${s.tracks.length > 3 ? "…" : ""})` : ""}`;
 }
 

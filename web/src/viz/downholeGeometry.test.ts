@@ -27,7 +27,9 @@ describe("downhole geometry", () => {
   it("finds a point and the stations between two depths on a bent hole", () => {
     expect(pointAt(holes[0].path, 4)).toEqual([1000, 2000, 96]);
     expect(pointAt(holes[1].path, 7.5)).toEqual([1102.5, 2000, 92.5]);
-    expect(pointAt(holes[0].path, 99)).toEqual([1000, 2000, 90]); // clamped to the bottom
+    expect(pointAt(holes[0].path, 15)).toEqual([1000, 2000, 85]); // below the last point: straight on
+    expect(pointAt(holes[0].path, -3)).toEqual([1000, 2000, 100]); // above the collar: the collar
+    expect(pointAt([[5, 5, 50, 0]], 12)).toEqual([5, 5, 38]); // a hole without a depth: straight down
     expect(pathBetween(holes[1].path, 2, 8)).toEqual([[1100, 2000, 98], [1100, 2000, 95], [1103, 2000, 92]]);
   });
 
@@ -78,6 +80,13 @@ describe("downhole geometry", () => {
     expect(b.labels.map((l) => l.text)).toContain("Туф");
     expect(b.labels.find((l) => l.text === "Туф")?.length).toBeCloseTo(2);
     expect(buildDownhole(holes, data, settings([track({})], { labels: false }), origin).labels).toHaveLength(0);
+  });
+
+  it("draws intervals of a hole that has no depth in the collar table (a path of one point)", () => {
+    const noTd: TrajectoryHole[] = [{ hole_id: "H1", td: 0, source: "vertical", path: [[1000, 2000, 100, 0]] }];
+    const b = buildDownhole(noTd, data, settings([track({})]), origin);
+    expect(b.holes).toBe(1);
+    expect(b.tubes[0].positions.slice(0, 6)).toEqual([0, 0, 0, 0, 0, -4]);
   });
 
   it("sizes the default panel from the holes and fills settings of older versions", () => {

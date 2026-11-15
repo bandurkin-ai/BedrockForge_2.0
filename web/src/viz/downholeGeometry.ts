@@ -76,12 +76,24 @@ export function hexRgb(hex: string): [number, number, number] {
   return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
 }
 
-/** The point of a hole path (x, y, z, measured depth) at a depth: clamped to the ends. */
+/**
+ * The point of a hole path (x, y, z, measured depth) at a depth. Above the collar: the collar.
+ * Below the last point the hole goes on straight (a hole without a depth in the collar table still
+ * has intervals); a path of one point goes straight down.
+ */
 export function pointAt(path: number[][], depth: number): [number, number, number] {
   if (path.length === 0) return [0, 0, 0];
   if (depth <= path[0][3]) return [path[0][0], path[0][1], path[0][2]];
   const last = path[path.length - 1];
-  if (depth >= last[3]) return [last[0], last[1], last[2]];
+  if (depth >= last[3]) {
+    const over = depth - last[3];
+    if (over <= 0) return [last[0], last[1], last[2]];
+    const prev = path.length > 1 ? path[path.length - 2] : null;
+    const d = prev ? [last[0] - prev[0], last[1] - prev[1], last[2] - prev[2]] : [0, 0, -1];
+    const l = Math.hypot(d[0], d[1], d[2]);
+    const u = l > 1e-9 ? [d[0] / l, d[1] / l, d[2] / l] : [0, 0, -1];
+    return [last[0] + u[0] * over, last[1] + u[1] * over, last[2] + u[2] * over];
+  }
   let lo = 0;
   let hi = path.length - 1;
   while (hi - lo > 1) {
@@ -258,7 +270,7 @@ export function buildDownhole(
   const frame = hexRgb(FRAME_COLOR);
   for (const hole of data.holes) {
     const traj = holes.get(hole.hole_id);
-    if (!traj || traj.path.length < 2) continue;
+    if (!traj || traj.path.length < 1 || traj.path[0].length < 4) continue;
     build.holes += 1;
     let lastBottom = -Infinity;
     for (const r of resolved) {

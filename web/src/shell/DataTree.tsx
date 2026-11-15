@@ -54,6 +54,8 @@ export interface DataTreeProps {
   onTableMenu?: (setId: number, table: { key: string; id: number | null; name: string }, x: number, y: number) => void;
   /** A table of the set shown on its holes in 3D (null: a new log window). */
   onNewLog?: (setId: number, tableKey: string | null) => void;
+  /** Right click on the node «Данные по скважинам»: its menu (nothing is created by the click). */
+  onLogsMenu?: (setId: number, x: number, y: number) => void;
   /** Saved downhole displays that are on in the 3D view, and turning one on or off. */
   logsOn?: number[];
   onToggleLog?: (chartId: number, on: boolean) => void;
@@ -263,7 +265,7 @@ export function DataTree(props: DataTreeProps) {
   const tableMenu = (e: React.MouseEvent, setId: number, table: { key: string; id: number | null; name: string } | null) => {
     e.preventDefault();
     e.stopPropagation();
-    if (table === null) props.onNewLog?.(setId, null);
+    if (table === null) props.onLogsMenu?.(setId, e.clientX, e.clientY);
     else props.onTableMenu?.(setId, table, e.clientX, e.clientY);
   };
   const empty = datasets !== null && datasets.length === 0;
@@ -349,7 +351,7 @@ export function DataTree(props: DataTreeProps) {
                     ))}
                     <li>
                       <div className="tree-row" onClick={() => toggle(`logs:${d.id}`)} onContextMenu={(e) => tableMenu(e, d.id, null)}
-                        title="Сохранённые колонки данных по стволу; правая кнопка — новая">
+                        title="Сохранённые отображения данных по стволу; правая кнопка — меню">
                         <Twisty open={isOpen(`logs:${d.id}`)} onClick={() => toggle(`logs:${d.id}`)} />
                         <Icon name="striplog" size={14} />
                         <span className="grow">Данные по скважинам</span>

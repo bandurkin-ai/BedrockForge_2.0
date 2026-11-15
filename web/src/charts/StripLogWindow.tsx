@@ -11,7 +11,7 @@ import { tubeTracks } from "../viz/downholeGeometry";
 const SCALES: [number, string][] = [[0, "вписать"], [0.5, "1:2000"], [1, "1:1000"], [2, "1:500"], [4, "1:250"], [8, "1:125"], [20, "1:50"]];
 
 /** Downhole log: columns of interval tables along the chosen holes (graphs, bars, colour, text). */
-export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, onSettings }: {
+export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, onSettings, saved = true, onSave }: {
   setId: number;
   setName: string;
   initial?: Partial<StripLogSettings>;
@@ -20,6 +20,9 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
   /** the hole selected in the project, shown first */
   holeHint?: string | null;
   onSettings?: (settings: StripLogSettings, autoName: string) => void;
+  /** false: a draft, not in the project tree yet — «Сохранить» adds it */
+  saved?: boolean;
+  onSave?: (settings: StripLogSettings, autoName: string) => void;
 }) {
   const [s, setS] = useState<StripLogSettings>({ ...DEFAULT_STRIPLOG, ...initial });
   const [tables, setTables] = useState<IntervalTableInfo[] | null>(null);
@@ -58,7 +61,7 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
   }, [tables, holes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (s.holes.length) onSettings?.(s, stripLogName(s));
+    if (s.holes.length || (s.allHoles && s.tracks.length)) onSettings?.(s, stripLogName(s));
   }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const wanted = useMemo(() => [...new Set(s.tracks.map((t) => t.table))], [s.tracks]);
@@ -124,6 +127,17 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
   return (
     <div className="hist-window strip-window">
       <form className="hist-settings" onSubmit={(e) => e.preventDefault()}>
+        <div className="strip-save">
+          {saved ? (
+            <span className="muted small">Сохранено в дереве; изменения сохраняются сами.</span>
+          ) : (
+            <>
+              <button type="button" className="primary" disabled={!s.tracks.length} onClick={() => onSave?.(s, stripLogName(s))}
+                title="Добавить в дерево: «Данные по скважинам»">Сохранить</button>
+              <span className="muted small">Черновик: в дереве его нет, пока не сохранён.</span>
+            </>
+          )}
+        </div>
         <fieldset>
           <legend>Скважины ({s.holes.length})</legend>
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="поиск" aria-label="Поиск скважины" />
