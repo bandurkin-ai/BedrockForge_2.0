@@ -239,4 +239,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # `python -m app.jobs.worker` runs this file as the module "__main__", but the handlers register
+    # themselves in "app.jobs.worker" (their import), a second copy of this module with its own
+    # HANDLERS: the worker here would see none ("Неизвестный тип задания"). Run the real module.
+    from app.jobs.worker import main as _main
+
+    _main()
