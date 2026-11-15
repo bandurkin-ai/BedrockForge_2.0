@@ -2,12 +2,14 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
-  type Dataset, type JobInfo, type Project, type SavedChartKind,
+  getStyles, getStyleUsage, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
 import { displayName, FORM_TITLES, tableDisplay, withDefaults, type DisplayForm, type StripLogSettings } from "./charts/stripLog";
-import { DownholeForm } from "./viz/DownholeForm";
+import { DownholeForm } from "./viz/downhole/DownholeForm";
+import { resolveTracks, unlinkStyle, type StyleRec } from "./viz/downhole/styles";
+import type { ApplyTarget } from "./viz/downhole/ApplyDialog";
 import { hasSamples } from "./shell/SampleTableSelect";
 import { CollarStyleForm } from "./viz/CollarStyleForm";
 import { IntervalTableWindow } from "./charts/IntervalTableWindow";
@@ -96,6 +98,8 @@ interface DisplayFormState {
   chartId: number | null;
   initial: StripLogSettings | null;
   z: number;
+  /** the layer to select on opening (a click in the legend) */
+  focus?: string | null;
 }
 
 const raise = (list: ChartState[], id: number): ChartState[] => {
@@ -232,10 +236,10 @@ function Workspace({
   const [previews, setPreviews] = useState<Record<number, StripLogSettings>>({});
   const topZ = () => Math.max(0, ...charts.map((c) => c.z), ...forms.map((f) => f.z), ...tableWins.map((t) => t.z)) + 1;
   /** Opens the form of a new display, or of a saved one (chartId). */
-  const openDisplayForm = async (setId: number, form: DisplayForm, chartId: number | null = null): Promise<void> => {
+  const openDisplayForm = async (setId: number, form: DisplayForm, chartId: number | null = null, focus: string | null = null): Promise<void> => {
     const open = chartId !== null ? forms.find((f) => f.chartId === chartId) : undefined;
     if (open) {
-      setForms((prev) => prev.map((f) => (f.id === open.id ? { ...f, z: topZ() } : f)));
+      setForms((prev) => prev.map((f) => (f.id === open.id ? { ...f, z: topZ(), focus: focus ?? f.focus } : f)));
       return;
     }
     let initial: StripLogSettings | null = null;
@@ -245,7 +249,7 @@ function Workspace({
       form = initial.form ?? (initial.tracks[0]?.type === "event" ? "event" : initial.tracks[0]?.type === "color" || initial.tracks[0]?.type === "color_text" ? "lith" : "grade");
       setId = c.set_id;
     }
-    setForms((prev) => [...prev, { id: Date.now(), setId, form, chartId, initial, z: topZ() }]);
+    setForms((prev) => [...prev, { id: Date.now(), setId, form, chartId, initial, z: topZ(), focus }]);
   };
   const closeForm = (id: number) => {
     setForms((prev) => prev.filter((f) => f.id !== id));
@@ -271,6 +275,39 @@ function Workspace({
     setWs((prev) => setLogShown(prev, saved.id, true));
     reload();
     return `Сохранено в дереве: ${setName} → Стволы → «${saved.name}»`;
+  };
+  // The library of styles of the project: linked layers of every display take their settings from it.
+  const [styles, setStyles] = useState<StyleRecord[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    getStyles(projectId).then((list) => !cancelled && setStyles(list)).catch(() => !cancelled && setStyles([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+  /** Before a style is deleted: saved displays linked to it keep a copy of its settings. */
+  const unlinkCharts = async (style: StyleRec): Promise<void> => {
+    const usage = await getStyleUsage(style.id);
+    for (const u of usage) {
+      const c = await getChart(u.chart_id);
+      const settings = unlinkStyle(withDefaults(c.settings as Partial<StripLogSettings>), style.id, styles as StyleRec[]);
+      await patchChart(u.chart_id, { settings });
+      setLogSettings((prev) => (u.chart_id in prev ? { ...prev, [u.chart_id]: settings } : prev));
+    }
+  };
+  /** «Применить к…» of a style: new displays, saved and on at once. */
+  const createDisplays = async (targets: ApplyTarget[]): Promise<string> => {
+    const names: string[] = [];
+    for (const t of targets) {
+      const table = (await getIntervalTables(t.setId)).find((x) => x.key === t.settings.tracks[0]?.table);
+      const saved = await createChart(t.setId, "downhole", displayName(t.settings, table?.name), t.settings);
+      logRequested.current.add(saved.id);
+      setLogSettings((prev) => ({ ...prev, [saved.id]: t.settings }));
+      setWs((prev) => setLogShown(prev, saved.id, true));
+      names.push(saved.name);
+    }
+    reload();
+    return `Создано отображений: ${names.length} (${names.slice(0, 3).join(", ")}${names.length > 3 ? "…" : ""})`;
   };
   /** Fields of a table on the holes of its set, saved under «Стволы» and on at once (the assistant's command). */
   const showOnHoles = async (setId: number, tableKey: string, fields?: string[]): Promise<string> => {
@@ -349,14 +386,14 @@ function Workspace({
         if (c.kind !== "downhole") continue;
         const editing = forms.find((f) => f.chartId === c.id);
         const settings = (editing && previews[editing.id]) || (ws.logs.includes(c.id) ? logSettings[c.id] : undefined);
-        if (settings) out.push({ id: c.id, setId: d.id, name: c.name, settings });
+        if (settings) out.push({ id: c.id, setId: d.id, name: c.name, settings: editing ? settings : resolveTracks(settings, styles as StyleRec[]) });
       }
       for (const f of forms) {
         if (f.setId === d.id && f.chartId === null && previews[f.id]) out.push({ id: -f.id, setId: d.id, name: `${FORM_TITLES[f.form]} (не сохранено)`, settings: previews[f.id] });
       }
     }
     return out;
-  }, [sets, ws.logs, logSettings, forms, previews]);
+  }, [sets, ws.logs, logSettings, forms, previews, styles]);
 
   const selectHole = useCallback(
     (setId: number, holeId: string | null) => {
@@ -787,6 +824,7 @@ function Workspace({
                 }}
                 registerApi={(api) => (sceneApi.current = api)}
                 logs={logLayers}
+                onLegendLayer={(chartId, trackId) => chartId > 0 && void guarded(() => openDisplayForm(0, "grade", chartId, trackId))}
                 collarStyles={ws.collarStyles}
                 blockStyles={blockStyles}
                 onPickBlock={(modelId, index) => {
@@ -959,12 +997,14 @@ function Workspace({
         const saved = f.chartId !== null ? sets.find((d) => d.id === f.setId)?.charts?.find((x) => x.id === f.chartId) : undefined;
         return (
           <ChartWindow
-            key={f.id} index={i + 2} z={30 + f.z} size="compact" icon="striplog"
+            key={f.id} index={i + 2} z={30 + f.z} size="form" icon="striplog"
             title={`${saved?.name ?? `${FORM_TITLES[f.form]} (новое)`} · ${setName}`}
             onFocus={() => setForms((prev) => prev.map((x) => (x.id === f.id ? { ...x, z: topZ() } : x)))} onClose={() => closeForm(f.id)}
           >
             <DownholeForm
-              projectId={projectId} setId={f.setId} form={f.form} initial={f.initial} saved={f.chartId !== null} refreshKey={refreshKey}
+              projectId={projectId} setId={f.setId} form={f.form} initial={f.initial} saved={f.chartId !== null} refreshKey={refreshKey} focus={f.focus}
+              styles={styles} sets={sets.map((d) => ({ id: d.id, name: d.name }))} onStyles={setStyles} onUnlinkCharts={unlinkCharts}
+              onCreate={createDisplays} onOpenDisplay={(id) => void guarded(() => openDisplayForm(0, "grade", id))}
               onPreview={(settings) => setPreviews((prev) => {
                 if (!settings) {
                   const { [f.id]: _gone, ...rest } = prev;

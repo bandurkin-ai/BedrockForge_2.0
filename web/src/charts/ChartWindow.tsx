@@ -17,7 +17,7 @@ export function ChartWindow({
   onClose: () => void;
   children: ReactNode;
   /** a narrow window for a form, or a medium one for a table (default: a large chart window) */
-  size?: "compact" | "medium";
+  size?: "compact" | "medium" | "form";
 }) {
   const [pos, setPos] = useState(() => ({ x: 120 + (index % 6) * 28, y: 90 + (index % 6) * 28 }));
   const [max, setMax] = useState(false);

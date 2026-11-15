@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getDownhole, getIntervalTables, getPalettes, type DownholeData, type Hole, type IntervalTableInfo, type SavedPalette } from "../api";
+import { getDownhole, getIntervalTables, getStyles, type DownholeData, type Hole, type IntervalTableInfo } from "../api";
 import { loadHoles } from "../viz/useVizData";
 import { download, savePng, saveSvg, toCsv } from "./exportChart";
 import { StripLogChart } from "./StripLogChart";
 import {
-  DEFAULT_STRIPLOG, defaultClasses, defaultTracks, fieldRange, LOG_COLORS, newTrack, sortClasses, stripLogName, TRACK_TITLES, type StripLogSettings, type Track, type TrackType,
+  DEFAULT_STRIPLOG, defaultClasses, defaultTracks, fieldRange, LOG_COLORS, newTrack, sortClasses, stripLogName, TRACK_TITLES, type ColorClass, type StripLogSettings, type Track, type TrackType,
 } from "./stripLog";
 
 const SCALES: [number, string][] = [[0, "вписать"], [0.5, "1:2000"], [1, "1:1000"], [2, "1:500"], [4, "1:250"], [8, "1:125"], [20, "1:50"]];
@@ -37,9 +37,14 @@ export function StripLogWindow({ projectId, setId, setName, initial, tableHint, 
   const [fitHeight, setFitHeight] = useState(560);
   const set = (patch: Partial<StripLogSettings>) => setS((p) => ({ ...p, ...patch }));
 
-  const [palettes, setPalettes] = useState<SavedPalette[]>([]);
+  // colourings of the project's style library (classes only)
+  const [palettes, setPalettes] = useState<{ id: number; name: string; classes: ColorClass[] }[]>([]);
   useEffect(() => {
-    if (projectId !== undefined) getPalettes(projectId).then(setPalettes).catch(() => undefined);
+    if (projectId === undefined) return;
+    getStyles(projectId)
+      .then((list) => setPalettes(list.filter((x) => x.level === "palette" && Array.isArray(x.body.classes) && (x.body.classes as unknown[]).length)
+        .map((x) => ({ id: x.id, name: x.name, classes: x.body.classes as ColorClass[] }))))
+      .catch(() => undefined);
   }, [projectId]);
   useEffect(() => {
     getIntervalTables(setId).then(setTables).catch((e: Error) => setError(e.message));

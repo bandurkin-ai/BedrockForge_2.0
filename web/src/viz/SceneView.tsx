@@ -10,7 +10,7 @@ import { blockColors, defaultBlockStyle, type BlockStyle } from "./blockStyle";
 import { unitTitle } from "../shell/BlockModelPanel";
 import type { ColorScale } from "./colorScale";
 import { loadDownhole, loadHoles, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
-import { buildDownhole, stackOf, type LegendEntry, type StackStart } from "./downholeGeometry";
+import { buildDownhole, displayFields, stackOf, type LegendEntry, type StackStart } from "./downholeGeometry";
 import type { StripLogSettings } from "../charts/stripLog";
 
 function auditColor(h: Hole | undefined): string {
@@ -40,6 +40,8 @@ export interface SceneViewProps {
   collarStyles?: Record<number, CollarStyle>;
   /** Saved displays of data along the holes that are on in the view. */
   logs?: DownholeLog[];
+  /** A layer of a display clicked in the legend: open its form on that layer. */
+  onLegendLayer?: (chartId: number, trackId: string) => void;
 }
 
 export interface DownholeLog {
@@ -269,14 +271,13 @@ export function SceneView(props: SceneViewProps) {
     const taken = new Map<number, StackStart>();
     for (const log of wanted.values()) {
       const start = taken.get(log.setId) ?? { units: 0, tubes: 0 };
-      const own = stackOf(log.settings);
-      taken.set(log.setId, { units: start.units + own.units, tubes: start.tubes + own.tubes });
-      const key = `${refreshKey}:${start.units}:${start.tubes}:${JSON.stringify(log.settings)}`;
+      taken.set(log.setId, stackOf(log.settings, start));
+      const key = `${refreshKey}:${JSON.stringify(start)}:${JSON.stringify(log.settings)}`;
       if (loadedLogs.current.get(log.id) === key) continue;
       loadedLogs.current.set(log.id, key);
       const s = log.settings;
       const fields: Record<string, string[]> = {};
-      for (const t of s.tracks) (fields[t.table] ??= []).includes(t.field) || fields[t.table].push(t.field);
+      Object.assign(fields, displayFields(s));
       if (s.tracks.length === 0 || (!s.allHoles && s.holes.length === 0)) {
         scene.removeDownhole(`log:${log.id}`);
         continue;
@@ -656,12 +657,21 @@ export function SceneView(props: SceneViewProps) {
               {l.intervals === 0 && <span className="legend-warning">нет интервалов на скважинах: проверьте имена скважин в таблице и в устьях</span>}
               {l.entries.map((e) => (
                 <span key={e.trackId} className="downhole-legend-track">
-                  <span className="muted">{e.title}{e.unit ? `, ${e.unit}` : ""}</span>
-                  {e.items.slice(0, 12).map(([label, color]) => (
-                    <span key={label} className="legend-swatch"><i style={{ background: color }} />{label}</span>
+                  <button type="button" className="legend-layer" title={l.id > 0 ? "Открыть настройки этого слоя" : "Настройки — в открытой форме"} onClick={() => props.onLegendLayer?.(l.id, e.trackId)}>
+                    {e.title}{e.unit ? `, ${e.unit}` : ""}
+                  </button>
+                  {e.items.slice(0, 12).map(([label, color], i) => (
+                    <span key={label} className="legend-swatch" title={e.counts[i] !== undefined ? `${e.counts[i].toLocaleString("ru-RU")} интервалов` : undefined}>
+                      <i style={{ background: color }} />{label}{e.counts[i] ? <span className="muted"> · {e.counts[i].toLocaleString("ru-RU")}</span> : null}
+                    </span>
                   ))}
                   {e.items.length > 12 && <span className="muted small">… ещё {e.items.length - 12}</span>}
-                  {e.range && e.items.length === 0 && <span className="muted small">{e.range[0].toLocaleString("ru-RU")} … {e.range[1].toLocaleString("ru-RU")}</span>}
+                  {e.range && e.items.length === 0 && (
+                    <span className="muted small legend-range">
+                      {e.gradient && <i className="legend-gradient" style={{ background: e.gradient }} />}
+                      {e.range[0].toLocaleString("ru-RU")} … {e.range[1].toLocaleString("ru-RU")}
+                    </span>
+                  )}
                 </span>
               ))}
             </div>

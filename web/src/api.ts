@@ -1286,15 +1286,28 @@ export const getDownhole = (setId: number, holes: string[], tables: string[], si
 export const getIntervalRows = (id: number, offset: number, limit: number) =>
   request<{ total: number; columns: IntervalColumn[]; rows: Record<string, unknown>[] }>(`/api/interval-tables/${id}/rows?offset=${offset}&limit=${limit}`);
 
-// ---- colourings by grade classes saved in a project
+// ---- the library of styles of a project (colourings, layer styles, display templates)
 
-export interface SavedPalette {
+export interface StyleRecord {
   id: number;
   name: string;
-  classes: { from: number | null; color: string; label?: string }[];
+  level: "palette" | "layer" | "display";
+  data_kind: "number" | "text" | "event" | "mixed";
+  body: Record<string, unknown>;
+  default_for: string[];
 }
+export type StyleInput = Omit<StyleRecord, "id">;
+export interface StyleUsage { chart_id: number; name: string; set_id: number; linked: boolean; tracks: string[] }
+export interface StyleImportResult { created: number; replaced: number; skipped: number; renamed: { from: string; to: string; level: string }[]; styles: StyleRecord[] }
 
-export const getPalettes = (projectId: number) => request<SavedPalette[]>(`/api/projects/${projectId}/palettes`);
-export const savePalette = (projectId: number, name: string, classes: SavedPalette["classes"]) =>
-  request<SavedPalette>(`/api/projects/${projectId}/palettes`, { method: "PUT", ...json({ name, classes }) });
-export const deletePalette = (id: number) => request<void>(`/api/palettes/${id}`, { method: "DELETE" });
+export const getStyles = (projectId: number) => request<StyleRecord[]>(`/api/projects/${projectId}/styles`);
+export const putStyle = (projectId: number, style: StyleInput) =>
+  request<StyleRecord>(`/api/projects/${projectId}/styles`, { method: "PUT", ...json(style) });
+export const patchStyle = (id: number, patch: Partial<Pick<StyleRecord, "name" | "body" | "default_for" | "data_kind">>) =>
+  request<StyleRecord>(`/api/styles/${id}`, { method: "PATCH", ...json(patch) });
+export const deleteStyle = (id: number) => request<void>(`/api/styles/${id}`, { method: "DELETE" });
+export const getStyleUsage = (id: number) => request<StyleUsage[]>(`/api/styles/${id}/usage`);
+export const exportStyles = (projectId: number, ids?: number[]) =>
+  request<Record<string, unknown>>(`/api/projects/${projectId}/styles/export${ids?.length ? `?ids=${ids.join(",")}` : ""}`);
+export const importStyles = (projectId: number, file: unknown, conflicts: Record<string, "replace" | "keep_both" | "skip">) =>
+  request<StyleImportResult>(`/api/projects/${projectId}/styles/import`, { method: "POST", ...json({ file, conflicts, default: "skip" }) });

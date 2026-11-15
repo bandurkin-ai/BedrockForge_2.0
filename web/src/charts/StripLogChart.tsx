@@ -155,7 +155,10 @@ export const StripLogChart = forwardRef<SVGSVGElement, { data: DownholeData; set
   },
 );
 
-function TrackBody({ prepared: p, rows, x, w, y, hole }: { prepared: Prepared; rows: DownholeInterval[]; x: number; w: number; y: (d: number) => number; hole: string }) {
+function TrackBody({ prepared, rows, x, w, y, hole }: { prepared: Prepared; rows: DownholeInterval[]; x: number; w: number; y: (d: number) => number; hole: string }) {
+  // kinds of the 3D view the column draws in its nearest way: steps as bars, points as a line
+  const own = prepared.track;
+  const p = own.type === "steps" || own.type === "points" ? { ...prepared, track: { ...own, type: own.type === "steps" ? "bars" as const : "line" as const } } : prepared;
   const t = p.track;
   const tip = (iv: DownholeInterval) => `${hole} ${formatNumber(iv.from!, 2)}–${formatNumber(iv.to!, 2)} м: ${t.field} = ${valueText(iv.values[t.field]) || "—"}`;
   const pos = (v: number) => (p.range ? along(v, p.range[0], p.range[1], t.log) : 0);
