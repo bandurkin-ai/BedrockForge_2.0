@@ -2,11 +2,15 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, renameDataset, runAudit, setBlockUnit,
-  type Dataset, type JobInfo, type Project,
+  type Dataset, type JobInfo, type Project, type SavedChartKind,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
-import { tableDisplay, withDefaults, type StripLogSettings } from "./charts/stripLog";
+import { displayName, FORM_TITLES, tableDisplay, withDefaults, type DisplayForm, type StripLogSettings } from "./charts/stripLog";
+import { DownholeForm } from "./viz/DownholeForm";
+import { CollarStyleForm } from "./viz/CollarStyleForm";
+import { IntervalTableWindow } from "./charts/IntervalTableWindow";
+import { DEFAULT_COLLAR_STYLE } from "./viz/collarStyle";
 import type { BlockStyle } from "./viz/blockStyle";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataPage } from "./DataPage";
@@ -81,7 +85,17 @@ interface ChartState {
 /** Drag type of a saved downhole display dragged from the tree onto the 3D view. */
 export const LOG_DRAG = "application/x-bedrockforge-log";
 
-const CHART_TITLES: Record<ChartKind, string> = { histogram: "Гистограмма", qq: "Q-Q график", dendrogram: "Дендрограмма", striplog: "Данные по стволу" };
+const CHART_TITLES: Record<ChartKind, string> = { histogram: "Гистограмма", qq: "Q-Q график", dendrogram: "Дендрограмма", striplog: "Данные по скважинам" };
+
+/** An open form of a display of data along the holes: a new one (chartId null) or a saved one being edited. */
+interface DisplayFormState {
+  id: number;
+  setId: number;
+  form: DisplayForm;
+  chartId: number | null;
+  initial: StripLogSettings | null;
+  z: number;
+}
 
 const raise = (list: ChartState[], id: number): ChartState[] => {
   const top = Math.max(...list.map((c) => c.z));
@@ -156,7 +170,9 @@ function Workspace({
   const [menu, setMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
   // Right click on an interval table of a set (not the assays: those get the charts menu).
   const [tableMenu, setTableMenu] = useState<{ setId: number; id: number; name: string; x: number; y: number } | null>(null);
-  const [chartMenu, setChartMenu] = useState<{ id: number; kind: ChartKind; name: string; x: number; y: number } | null>(null);
+  const [chartMenu, setChartMenu] = useState<{ id: number; kind: SavedChartKind; name: string; x: number; y: number } | null>(null);
+  // Right click on «Стволы»: what to show along the holes.
+  const [pathsMenu, setPathsMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
   const showChart = (chartId: number, kind: ChartKind, setId: number, settings: Record<string, unknown>, hint?: ChartState["hint"]) =>
     setCharts((prev) => {
       const open = prev.find((c) => c.chartId === chartId);
@@ -169,10 +185,10 @@ function Workspace({
     striplog?: { settings?: Record<string, unknown>; table?: string | null; hole?: string | null }): Promise<string> => {
     const settings = (kind === "qq" ? qq ?? defaultQQ(setId) : kind === "dendrogram" ? dendrogram ?? {} : kind === "striplog" ? striplog?.settings ?? {} : initial ?? {}) as Record<string, unknown>;
     if (kind === "striplog") {
-      // A downhole display is a draft until «Сохранить» in its window: nothing is added to the tree by opening it.
+      // The window of data along the holes is a viewer: it is not saved and adds nothing to the tree.
       const draftId = -(Date.now() + ++draftSeq.current);
       showChart(draftId, kind, setId, settings, { table: striplog?.table, hole: striplog?.hole ?? (activeSetRef.current === setId ? holeRef.current : null) });
-      return "Данные по стволу открыты как черновик: «Сохранить» в окне добавит их в дерево (под «Содержаниями»)";
+      return "Открыто окно «Данные по скважинам»";
     }
     const saved = await createChart(setId, kind, CHART_TITLES[kind], settings);
     showChart(saved.id, kind, setId, settings);
@@ -187,13 +203,17 @@ function Workspace({
       return `График «${chartNames.current.get(chartId) ?? ""}» уже открыт`;
     }
     const c = await getChart(chartId);
+    if (c.kind === "downhole") {
+      await openDisplayForm(c.set_id, "grade", c.id);
+      return `Открыты настройки «${c.name}»`;
+    }
     showChart(c.id, c.kind, c.set_id, c.settings);
     return `Открыт график «${c.name}»`;
   };
   // Settings of open charts are saved a moment after the last change.
   const saveTimers = useRef(new Map<number, number>());
   const chartNames = useRef(new Map<number, string>());
-  // Data along the holes in the 3D view: the settings of every saved display that is on (live while its window is open).
+  // Data along the holes in the 3D view: the saved settings of every display that is on.
   const [logSettings, setLogSettings] = useState<Record<number, StripLogSettings>>({});
   const logRequested = useRef(new Set<number>());
   const toggleLog = (chartId: number, on: boolean) => setWs((prev) => setLogShown(prev, chartId, on));
@@ -202,57 +222,84 @@ function Workspace({
       if (logRequested.current.has(id)) continue;
       logRequested.current.add(id);
       getChart(id)
-        .then(async (c) => {
-          let settings = withDefaults(c.settings as Partial<StripLogSettings>);
-          if (settings.tracks.length === 0) {
-            // Saved without columns (never set up): the default display of the first table with data.
-            const table = (await getIntervalTables(c.set_id)).find((t) => t.columns.length > 0);
-            if (table) settings = { ...settings, ...tableDisplay(table), holes: settings.holes, allHoles: settings.holes.length === 0 };
-          } else if (settings.holes.length === 0 && !settings.allHoles) {
-            settings = { ...settings, allHoles: true };
-          }
-          setLogSettings((prev) => (id in prev ? prev : { ...prev, [id]: settings }));
-        })
+        .then((c) => setLogSettings((prev) => (id in prev ? prev : { ...prev, [id]: withDefaults(c.settings as Partial<StripLogSettings>) })))
         .catch(() => logRequested.current.delete(id)); // deleted: it just does not show
     }
   }, [ws.logs]);
-  /** A table on the holes of its whole set, as a draft window with a live preview in the view (saved by its button). */
-  const previewOnHoles = async (setId: number, tableKey: string | null): Promise<string> => {
-    const tables = await getIntervalTables(setId);
-    const table = tableKey === null ? tables.find((t) => t.columns.length > 0) : tables.find((t) => t.key === tableKey);
-    if (!table || table.columns.length === 0) throw new Error("В таблице нет полей для показа на скважинах");
-    return openChart("striplog", setId, undefined, undefined, undefined, { settings: tableDisplay(table) as unknown as Record<string, unknown>, table: table.key });
+  // Forms of displays (grades, lithology, events): what a form shows is previewed in the view; only its button saves.
+  const [forms, setForms] = useState<DisplayFormState[]>([]);
+  const [previews, setPreviews] = useState<Record<number, StripLogSettings>>({});
+  const topZ = () => Math.max(0, ...charts.map((c) => c.z), ...forms.map((f) => f.z), ...tableWins.map((t) => t.z)) + 1;
+  /** Opens the form of a new display, or of a saved one (chartId). */
+  const openDisplayForm = async (setId: number, form: DisplayForm, chartId: number | null = null): Promise<void> => {
+    const open = chartId !== null ? forms.find((f) => f.chartId === chartId) : undefined;
+    if (open) {
+      setForms((prev) => prev.map((f) => (f.id === open.id ? { ...f, z: topZ() } : f)));
+      return;
+    }
+    let initial: StripLogSettings | null = null;
+    if (chartId !== null) {
+      const c = await getChart(chartId);
+      initial = withDefaults(c.settings as Partial<StripLogSettings>);
+      form = initial.form ?? (initial.tracks[0]?.type === "event" ? "event" : initial.tracks[0]?.type === "color" || initial.tracks[0]?.type === "color_text" ? "lith" : "grade");
+      setId = c.set_id;
+    }
+    setForms((prev) => [...prev, { id: Date.now(), setId, form, chartId, initial, z: topZ() }]);
   };
-  /** «Сохранить» of a draft window: the display becomes a row of the tree and stays on in the view. */
-  const saveDraft = async (draftId: number, setId: number, settings: StripLogSettings, autoName: string): Promise<string> => {
-    const saved = await createChart(setId, "striplog", autoName || CHART_TITLES.striplog, settings);
-    logRequested.current.add(saved.id);
-    chartNames.current.set(saved.id, saved.name);
-    setLogSettings((prev) => {
-      const { [draftId]: _draft, ...rest } = prev;
-      return { ...rest, [saved.id]: settings };
+  const closeForm = (id: number) => {
+    setForms((prev) => prev.filter((f) => f.id !== id));
+    setPreviews((prev) => {
+      const { [id]: _gone, ...rest } = prev;
+      return rest;
     });
-    setCharts((prev) => prev.map((c) => (c.chartId === draftId ? { ...c, chartId: saved.id } : c)));
+  };
+  /** «Сохранить» of a form: a new row under «Стволы» (on at once), or the changes of a saved display. */
+  const saveDisplay = async (f: DisplayFormState, settings: StripLogSettings, name: string): Promise<string> => {
+    const setName = sets.find((d) => d.id === f.setId)?.name ?? "";
+    if (f.chartId !== null) {
+      const c = await patchChart(f.chartId, { settings, auto_name: name });
+      const id = f.chartId;
+      setLogSettings((prev) => ({ ...prev, [id]: settings }));
+      reload();
+      return `Сохранено: ${setName} → Стволы → «${c.name}»`;
+    }
+    const saved = await createChart(f.setId, "downhole", name, settings);
+    logRequested.current.add(saved.id);
+    setLogSettings((prev) => ({ ...prev, [saved.id]: settings }));
+    setForms((prev) => prev.map((x) => (x.id === f.id ? { ...x, chartId: saved.id, initial: settings } : x)));
     setWs((prev) => setLogShown(prev, saved.id, true));
     reload();
-    return `Сохранено в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Содержания → «${saved.name}»`;
+    return `Сохранено в дереве: ${setName} → Стволы → «${saved.name}»`;
   };
-  /** A table on the holes of its whole set, saved in the tree and on at once (the assistant's command). */
+  /** Fields of a table on the holes of its set, saved under «Стволы» and on at once (the assistant's command). */
   const showOnHoles = async (setId: number, tableKey: string, fields?: string[]): Promise<string> => {
     const tables = await getIntervalTables(setId);
     const table = tables.find((t) => t.key === tableKey);
     if (!table || table.columns.length === 0) throw new Error("В таблице нет полей для показа на скважинах");
-    const settings = tableDisplay(table, fields);
-    const saved = await createChart(setId, "striplog", `${table.name} на скважинах`, settings);
-    logRequested.current.add(saved.id);
-    setLogSettings((prev) => ({ ...prev, [saved.id]: settings }));
-    setWs((prev) => setLogShown(prev, saved.id, true));
+    const base = tableDisplay(table, fields);
+    const names: string[] = [];
+    for (const t of base.tracks) {
+      const track = table.kind === "event" ? { ...t, type: "event" as const, marker: "diamond" as const, size: 12 } : t;
+      const form: DisplayForm = table.kind === "event" ? "event" : track.type === "bars" || track.type === "line" ? "grade" : "lith";
+      const settings: StripLogSettings = { ...base, form, tracks: [track] };
+      const saved = await createChart(setId, "downhole", displayName(settings, table.name), settings);
+      logRequested.current.add(saved.id);
+      setLogSettings((prev) => ({ ...prev, [saved.id]: settings }));
+      setWs((prev) => setLogShown(prev, saved.id, true));
+      names.push(saved.name);
+    }
     reload();
-    return `«${table.name}» показана на скважинах; настройки — в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Содержания`;
+    return `На скважинах показано: ${names.join(", ")}; настройки — в дереве: ${sets.find((d) => d.id === setId)?.name ?? ""} → Стволы`;
   };
+  // Marker and label of the collars of a set (the gear of «Устья»), and windows with rows of interval tables.
+  const [collarForm, setCollarForm] = useState<number | null>(null);
+  const [tableWins, setTableWins] = useState<{ id: number; tableId: number; name: string; event: boolean; z: number }[]>([]);
+  const openIntervalTable = (t: { id: number; name: string; kind?: "interval" | "event" }) =>
+    setTableWins((prev) => (prev.some((w) => w.tableId === t.id)
+      ? prev.map((w) => (w.tableId === t.id ? { ...w, z: topZ() } : w))
+      : [...prev, { id: Date.now(), tableId: t.id, name: t.name, event: t.kind === "event", z: topZ() }]));
   const saveChartSettings = (chartId: number, settings: unknown, autoName: string) => {
-    if (charts.find((c) => c.chartId === chartId)?.kind === "striplog") setLogSettings((prev) => ({ ...prev, [chartId]: withDefaults(settings as Partial<StripLogSettings>) }));
-    if (chartId < 0) return; // a draft: kept in the window (and previewed in the view) until saved
+    if (chartId < 0) return; // the window of data along the holes is a viewer: nothing is saved
     const timers = saveTimers.current;
     window.clearTimeout(timers.get(chartId));
     timers.set(chartId, window.setTimeout(() => {
@@ -292,21 +339,23 @@ function Workspace({
     selectHole(setId, null);
   };
   const sets = useMemo(() => (datasets ?? []).filter((d) => d.kind === "drillholes"), [datasets]);
-  // Saved downhole displays that are on, with their settings: what the 3D view draws on the holes.
+  // What the 3D view draws on the holes: saved displays that are on (a display being edited shows its form's
+  // state, on or not), then new displays of open forms. The order is the order of the tree: columns stand in it.
   const logLayers = useMemo<DownholeLog[]>(() => {
     const out: DownholeLog[] = [];
     for (const d of sets) {
       for (const c of d.charts ?? []) {
-        if (c.kind !== "striplog" || !ws.logs.includes(c.id) || !logSettings[c.id]) continue;
-        out.push({ id: c.id, setId: d.id, name: c.name, settings: logSettings[c.id] });
+        if (c.kind !== "downhole") continue;
+        const editing = forms.find((f) => f.chartId === c.id);
+        const settings = (editing && previews[editing.id]) || (ws.logs.includes(c.id) ? logSettings[c.id] : undefined);
+        if (settings) out.push({ id: c.id, setId: d.id, name: c.name, settings });
+      }
+      for (const f of forms) {
+        if (f.setId === d.id && f.chartId === null && previews[f.id]) out.push({ id: -f.id, setId: d.id, name: `${FORM_TITLES[f.form]} (не сохранено)`, settings: previews[f.id] });
       }
     }
-    // Drafts (open windows not saved yet) are previewed too.
-    for (const c of charts) {
-      if (c.kind === "striplog" && c.chartId < 0 && logSettings[c.chartId]) out.push({ id: c.chartId, setId: c.setId, name: "Черновик", settings: logSettings[c.chartId] });
-    }
     return out;
-  }, [sets, ws.logs, logSettings, charts]);
+  }, [sets, ws.logs, logSettings, forms, previews]);
 
   const selectHole = useCallback(
     (setId: number, holeId: string | null) => {
@@ -401,7 +450,7 @@ function Workspace({
     openChart: (kind, setId, initial, qq, dendrogram, striplog) => openChart(kind, setId, initial, qq, dendrogram, striplog),
     openSavedChart,
     showOnHoles,
-    previewOnHoles,
+    previewOnHoles: (setId) => openChart("striplog", setId, undefined, undefined, undefined, { table: null }),
     openBlockReport,
     openStats: (analysis, component) => {
       setStatsView((prev) => ({ analysis, component: component ?? prev.component }));
@@ -689,7 +738,10 @@ function Workspace({
                   onDemo={() => void runCommand("project.demo", {}, "user")}
                   onSetMenu={(setId, x, y) => setMenu({ setId, x, y })}
                   onTableMenu={(setId, table, x, y) => (table.id === null ? setMenu({ setId, x, y }) : setTableMenu({ setId, id: table.id, name: table.name, x, y }))}
-                  onNewLog={(setId, table) => void guarded(() => previewOnHoles(setId, table))}
+                  onCollarStyle={(setId) => setCollarForm(setId)}
+                  onPathsMenu={(setId, x, y) => setPathsMenu({ setId, x, y })}
+                  onOpenDisplay={(id) => void guarded(() => openDisplayForm(0, "grade", id))}
+                  onOpenIntervalTable={openIntervalTable}
                   logsOn={ws.logs}
                   onToggleLog={toggleLog}
                   onOpenChart={(id) => void guarded(() => openSavedChart(id))}
@@ -726,6 +778,7 @@ function Workspace({
                 }}
                 registerApi={(api) => (sceneApi.current = api)}
                 logs={logLayers}
+                collarStyles={ws.collarStyles}
                 blockStyles={blockStyles}
                 onPickBlock={(modelId, index) => {
                   setPickedBlock({ modelId, index });
@@ -873,19 +926,14 @@ function Workspace({
         const setName = sets.find((d) => d.id === c.setId)?.name ?? `набор ${c.setId}`;
         const saved = sets.find((d) => d.id === c.setId)?.charts?.find((x) => x.id === c.chartId);
         const onSettings = (settings: unknown, autoName: string) => saveChartSettings(c.chartId, settings, autoName);
-        const draft = c.chartId < 0;
         return (
           <ChartWindow
-            key={c.id} index={i} z={30 + c.z} title={`${saved?.name ?? CHART_TITLES[c.kind]}${draft ? " (не сохранено)" : ""} · ${setName}`} icon={c.kind}
+            key={c.id} index={i} z={30 + c.z} title={`${saved?.name ?? CHART_TITLES[c.kind]} · ${setName}`} icon={c.kind}
             onFocus={() => setCharts((prev) => raise(prev, c.id))}
-            onClose={() => {
-              setCharts((prev) => prev.filter((x) => x.id !== c.id));
-              if (draft) setLogSettings((prev) => { const { [c.chartId]: _gone, ...rest } = prev; return rest; });
-            }}
+            onClose={() => setCharts((prev) => prev.filter((x) => x.id !== c.id))}
           >
             {c.kind === "striplog" ? (
-              <StripLogWindow setId={c.setId} setName={setName} initial={c.settings as Partial<StripLogSettings>} tableHint={c.hint?.table} holeHint={c.hint?.hole} onSettings={onSettings}
-                saved={!draft} onSave={(settings, autoName) => void guarded(() => saveDraft(c.chartId, c.setId, settings, autoName))} />
+              <StripLogWindow setId={c.setId} setName={setName} initial={c.settings as Partial<StripLogSettings>} tableHint={c.hint?.table} holeHint={c.hint?.hole} onSettings={onSettings} />
             ) : c.kind === "qq" ? (
               <QQWindow sets={sets.map((d) => ({ id: d.id, name: d.name }))} initial={{ ...defaultQQ(c.setId), ...(c.settings as Partial<QQSettings>) }} onSettings={onSettings} />
             ) : c.kind === "dendrogram" ? (
@@ -896,6 +944,52 @@ function Workspace({
           </ChartWindow>
         );
       })}
+
+      {forms.map((f, i) => {
+        const setName = sets.find((d) => d.id === f.setId)?.name ?? `набор ${f.setId}`;
+        const saved = f.chartId !== null ? sets.find((d) => d.id === f.setId)?.charts?.find((x) => x.id === f.chartId) : undefined;
+        return (
+          <ChartWindow
+            key={f.id} index={i + 2} z={30 + f.z} size="compact" icon="striplog"
+            title={`${saved?.name ?? `${FORM_TITLES[f.form]} (новое)`} · ${setName}`}
+            onFocus={() => setForms((prev) => prev.map((x) => (x.id === f.id ? { ...x, z: topZ() } : x)))} onClose={() => closeForm(f.id)}
+          >
+            <DownholeForm
+              projectId={projectId} setId={f.setId} form={f.form} initial={f.initial} saved={f.chartId !== null} refreshKey={refreshKey}
+              onPreview={(settings) => setPreviews((prev) => {
+                if (!settings) {
+                  const { [f.id]: _gone, ...rest } = prev;
+                  return rest;
+                }
+                return { ...prev, [f.id]: settings };
+              })}
+              onSave={(settings, name) => void guarded(() => saveDisplay(f, settings, name))}
+            />
+          </ChartWindow>
+        );
+      })}
+
+      {collarForm !== null && sets.some((d) => d.id === collarForm) && (
+        <ChartWindow
+          index={1} z={30 + topZ()} size="compact" icon="gear" title={`Устья · ${sets.find((d) => d.id === collarForm)?.name ?? ""}`}
+          onFocus={() => undefined} onClose={() => setCollarForm(null)}
+        >
+          <CollarStyleForm
+            style={ws.collarStyles[collarForm] ?? DEFAULT_COLLAR_STYLE}
+            onChange={(next) => setWs((prev) => ({ ...prev, collarStyles: { ...prev.collarStyles, [collarForm]: next } }))}
+          />
+        </ChartWindow>
+      )}
+
+      {tableWins.map((t, i) => (
+        <ChartWindow
+          key={t.id} index={i + 3} z={30 + t.z} size="medium" icon="table" title={`${t.event ? "События" : "Таблица"} · ${t.name}`}
+          onFocus={() => setTableWins((prev) => prev.map((x) => (x.id === t.id ? { ...x, z: topZ() } : x)))}
+          onClose={() => setTableWins((prev) => prev.filter((x) => x.id !== t.id))}
+        >
+          <IntervalTableWindow tableId={t.tableId} event={t.event} refreshKey={refreshKey} />
+        </ChartWindow>
+      ))}
 
       {reports.map((r, i) => {
         const model = (datasets ?? []).find((d) => d.id === r.modelId && d.kind === "blocks");
@@ -914,11 +1008,11 @@ function Workspace({
         <ContextMenu
           x={chartMenu.x} y={chartMenu.y} title={chartMenu.name} onClose={() => setChartMenu(null)}
           items={[
-            ...(chartMenu.kind === "striplog" ? [{
+            ...(chartMenu.kind === "downhole" ? [{
               label: ws.logs.includes(chartMenu.id) ? "Скрыть со скважин (3D)" : "Показать на скважинах (3D)", icon: "striplog" as const,
               run: () => toggleLog(chartMenu.id, !ws.logs.includes(chartMenu.id)),
             }] : []),
-            { label: chartMenu.kind === "striplog" ? "Настройки и колонка…" : "Открыть", icon: chartMenu.kind, run: () => void guarded(() => openSavedChart(chartMenu.id)) },
+            { label: chartMenu.kind === "downhole" ? "Настройки…" : "Открыть", icon: chartMenu.kind === "downhole" ? "gear" as const : chartMenu.kind, run: () => void guarded(() => openSavedChart(chartMenu.id)) },
             { label: "Переименовать…", icon: "edit", run: () => void guarded(async () => {
               const name = window.prompt("Название графика", chartMenu.name)?.trim();
               if (!name || name === chartMenu.name) return;
@@ -933,6 +1027,7 @@ function Workspace({
               await deleteChart(chartMenu.id);
               setWs((prev) => setLogShown(prev, chartMenu.id, false));
               setCharts((prev) => prev.filter((x) => x.chartId !== chartMenu.id));
+              for (const f of forms) if (f.chartId === chartMenu.id) closeForm(f.id);
               reload();
               return `График «${chartMenu.name}» удалён`;
             }) },
@@ -951,8 +1046,6 @@ function Workspace({
               { label: "Гистограмма", icon: "histogram", disabledNote: noData, run: () => void runCommand("chart.histogram", { set_id: menu.setId }, "user") },
               { label: "Q-Q график", icon: "qq", disabledNote: noData, run: () => void runCommand("chart.qq", { set_id: menu.setId }, "user") },
               { label: "Дендрограмма", icon: "dendrogram", disabledNote: noData ?? ((target?.components?.length ?? 0) < 2 ? "нужно 2+ поля" : undefined), run: () => void runCommand("chart.dendrogram", { set_id: menu.setId }, "user") },
-              { label: "Показать на скважинах (3D)", icon: "striplog", disabledNote: noData, run: () => void guarded(() => previewOnHoles(menu.setId, "assay")) },
-              { label: "Данные по стволу (окно)…", icon: "striplog", disabledNote: noData, run: () => void guarded(() => openChart("striplog", menu.setId, undefined, undefined, undefined, { table: "assay" })) },
               "separator",
               { label: "Таблица проб", icon: "table", run: () => { selectSet(menu.setId); navigate({ kind: "assay" }); setWs((p) => openBottom(p, "table")); } },
             ]}
@@ -960,12 +1053,25 @@ function Workspace({
         );
       })()}
 
+      {pathsMenu && (
+        <ContextMenu
+          x={pathsMenu.x} y={pathsMenu.y} title={`По стволам · ${sets.find((d) => d.id === pathsMenu.setId)?.name ?? ""}`} onClose={() => setPathsMenu(null)}
+          items={[
+            { label: "Содержания…", icon: "histogram", run: () => void guarded(() => openDisplayForm(pathsMenu.setId, "grade")) },
+            { label: "Литология…", icon: "striplog", run: () => void guarded(() => openDisplayForm(pathsMenu.setId, "lith")) },
+            { label: "События…", icon: "hole", run: () => void guarded(() => openDisplayForm(pathsMenu.setId, "event")) },
+          ]}
+        />
+      )}
+
       {tableMenu && (
         <ContextMenu
           x={tableMenu.x} y={tableMenu.y} title={tableMenu.name} onClose={() => setTableMenu(null)}
           items={[
-            { label: "Показать на скважинах (3D)", icon: "striplog", run: () => void guarded(() => previewOnHoles(tableMenu.setId, String(tableMenu.id))) },
-            { label: "Данные по стволу (окно)…", icon: "striplog", run: () => void guarded(() => openChart("striplog", tableMenu.setId, undefined, undefined, undefined, { table: String(tableMenu.id) })) },
+            { label: "Открыть таблицу", icon: "table", run: () => {
+              const t = sets.find((d) => d.id === tableMenu.setId)?.interval_tables?.find((x) => x.id === tableMenu.id);
+              if (t) openIntervalTable(t);
+            } },
             "separator",
             { label: "Переименовать…", icon: "edit", run: () => void guarded(async () => {
               const name = window.prompt("Название таблицы", tableMenu.name)?.trim();

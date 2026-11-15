@@ -262,6 +262,22 @@ class IntervalTable(Base):
     columns: Mapped[list] = mapped_column(JSONB, default=list)
     row_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # "interval": rows have from / to; "event": a single depth (kept in from_m and to_m), no thickness
+    kind: Mapped[str] = mapped_column(String(16), default="interval", server_default="interval")
+
+
+class Palette(Base):
+    """A colouring by grade classes saved in a project, to load into other columns.
+    classes: [{"from": lower bound or null (everything below the next), "color": "#rrggbb", "label": ""}], ascending."""
+
+    __tablename__ = "palette"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_palette_project_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(_project_fk(), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    classes: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class IntervalRow(Base):

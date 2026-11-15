@@ -1,3 +1,4 @@
+import { normalizeCollarStyle, type CollarStyle } from "../viz/collarStyle";
 export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
@@ -45,6 +46,8 @@ export interface WorkspaceState {
   hidden: string[];
   /** Saved downhole displays (charts of kind striplog) that are on in the 3D view. Off until shown. */
   logs: number[];
+  /** Marker and label of the collars, by drillhole set id (the gear of «Устья»). */
+  collarStyles: Record<number, CollarStyle>;
 }
 
 export const DEFAULT_WORKSPACE: WorkspaceState = {
@@ -64,6 +67,7 @@ export const DEFAULT_WORKSPACE: WorkspaceState = {
   wireframeOpacity: 0.7,
   hidden: [],
   logs: [],
+  collarStyles: {},
 };
 
 export const SIZE_LIMITS = {
@@ -151,6 +155,10 @@ export function normalize(raw: unknown): WorkspaceState {
       typeof r.wireframeOpacity === "number" && r.wireframeOpacity >= 0.1 && r.wireframeOpacity <= 1 ? r.wireframeOpacity : d.wireframeOpacity,
     hidden: Array.isArray(r.hidden) ? r.hidden.filter((k): k is string => typeof k === "string").slice(0, 2000) : [],
     logs: Array.isArray(r.logs) ? r.logs.filter((k): k is number => Number.isInteger(k)).slice(0, 200) : [],
+    collarStyles: Object.fromEntries(
+      Object.entries(r.collarStyles && typeof r.collarStyles === "object" ? r.collarStyles : {})
+        .filter(([k]) => Number.isInteger(Number(k))).slice(0, 200).map(([k, v]) => [Number(k), normalizeCollarStyle(v)]),
+    ),
   };
   for (const dock of ["left", "right", "bottom"] as const) {
     const size = r.sizes?.[dock];

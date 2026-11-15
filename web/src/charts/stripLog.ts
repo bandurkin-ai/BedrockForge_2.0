@@ -6,7 +6,23 @@ import type { DownholeData, IntervalColumn, IntervalTableInfo } from "../api";
  * - color: the interval filled with a colour (categories, or a colour scale for numbers);
  * - text: the value written in the interval; color_text: both.
  */
-export type TrackType = "line" | "bars" | "color" | "text" | "color_text";
+export type TrackType = "line" | "bars" | "color" | "text" | "color_text" | "event";
+
+/** A class of a colouring by grade classes: values from `from` (null: everything below the next class) up to the next class. */
+export interface ColorClass {
+  from: number | null;
+  color: string;
+  label?: string;
+}
+
+export type MarkerShape = "circle" | "square" | "diamond" | "triangle" | "cross" | "star";
+export const MARKER_TITLES: Record<MarkerShape, string> = {
+  circle: "Круг", square: "Квадрат", diamond: "Ромб", triangle: "Треугольник", cross: "Крест", star: "Звезда",
+};
+
+/** What a saved display of data along the holes shows; each has its own form. */
+export type DisplayForm = "grade" | "lith" | "event";
+export const FORM_TITLES: Record<DisplayForm, string> = { grade: "Содержания", lith: "Литология", event: "События" };
 
 export interface Track {
   id: string;
@@ -28,6 +44,17 @@ export interface Track {
    * bars, lines and text are always panels. Not set: the first colour column is a tube, the rest panels.
    */
   form?: "tube" | "panel";
+  /**
+   * Colour of a number: "single" — the track's colour; "classes" — by grade classes; "scale" — a continuous scale.
+   * Not set: bars and lines in one colour, a colour column by the scale.
+   */
+  colorBy?: "single" | "classes" | "scale";
+  classes?: ColorClass[];
+  /** colours of categories set by hand (value -> colour); others keep the automatic ones */
+  catColors?: Record<string, string>;
+  /** events: the marker and its size, px */
+  marker?: MarkerShape;
+  size?: number;
 }
 
 export interface StripLogSettings {
@@ -48,9 +75,12 @@ export interface StripLogSettings {
   panel?: number;
   /** 3D view: write the values of text columns along the hole */
   labels?: boolean;
+  /** the form this display was made in (displays of the 3D view) */
+  form?: DisplayForm;
 }
 
 export const TRACK_TITLES: Record<TrackType, string> = {
+  event: "События",
   line: "График (линия)",
   bars: "Столбцы",
   color: "Цветная колонка",
@@ -117,6 +147,58 @@ export function tableDisplay(table: IntervalTableInfo, fields?: string[]): Strip
 }
 
 export const TUBE_RANGE: [number, number] = [2, 24];
+
+const CLASS_COLORS = ["#9aa3b5", "#4f9dde", "#5fbf6a", "#e0c040", "#e8873a", "#e0364a", "#b03ad0"];
+
+/** The colour of a value in a colouring by classes; null without classes or for a non-number. */
+export function classColor(classes: ColorClass[] | undefined, v: unknown): string | null {
+  if (!classes?.length || typeof v !== "number" || !Number.isFinite(v)) return null;
+  let color = classes[0].from === null || v >= classes[0].from ? classes[0].color : null;
+  for (const c of classes) if (c.from !== null && v >= c.from) color = c.color;
+  return color;
+}
+
+/** Classes kept in order: the one without a lower bound first, then ascending bounds (equal bounds dropped). */
+export function sortClasses(classes: ColorClass[]): ColorClass[] {
+  const open = classes.filter((c) => c.from === null).slice(0, 1);
+  const bounded = classes.filter((c): c is ColorClass & { from: number } => c.from !== null && Number.isFinite(c.from)).sort((a, b) => a.from - b.from);
+  return [...open, ...bounded.filter((c, i) => i === 0 || c.from !== bounded[i - 1].from)];
+}
+
+/** Default classes over a range: round bounds, linear or (for grades) by powers. */
+export function defaultClasses(range: [number, number] | null, log: boolean, count = 5): ColorClass[] {
+  const [lo, hi] = range ?? [0, 1];
+  const bounds: number[] = [];
+  if (log && hi > 0) {
+    const a = Math.log10(Math.max(lo, hi / 1000, 1e-9));
+    const b = Math.log10(hi);
+    for (let i = 1; i < count; i++) bounds.push(10 ** (a + ((b - a) * i) / count));
+  } else {
+    for (let i = 1; i < count; i++) bounds.push(lo + ((hi - lo) * i) / count);
+  }
+  const round = (v: number) => Number(v.toPrecision(2));
+  const out: ColorClass[] = [{ from: null, color: CLASS_COLORS[0] }];
+  for (const b of [...new Set(bounds.map(round))]) out.push({ from: b, color: CLASS_COLORS[out.length % CLASS_COLORS.length] });
+  return out;
+}
+
+/** "< 0.3", "0.3 – 1", "≥ 1": the text of a class in a legend. */
+export function classLabel(classes: ColorClass[], i: number): string {
+  const c = classes[i];
+  if (c.label) return c.label;
+  const next = classes[i + 1]?.from;
+  const f = (v: number) => String(Number(v.toPrecision(4)));
+  if (c.from === null) return next === undefined || next === null ? "все" : `< ${f(next)}`;
+  return next === undefined || next === null ? `≥ ${f(c.from)}` : `${f(c.from)} – ${f(next)}`;
+}
+
+/** The name of a display made in a form: "AU · столбцы", "LITH", "TYPE". */
+export function displayName(s: StripLogSettings, tableName?: string): string {
+  const t = s.tracks[0];
+  if (!t) return FORM_TITLES[s.form ?? "grade"];
+  const kind = s.form === "grade" ? ` · ${t.type === "bars" ? "столбцы" : t.type === "line" ? "линия" : "интервал"}` : "";
+  return `${t.field}${kind}${tableName && tableName !== "Пробы" ? ` (${tableName})` : ""}`;
+}
 
 export function stripLogName(s: StripLogSettings): string {
   const holes = s.holes.length <= 3 ? s.holes.join(", ") : `${s.holes.slice(0, 2).join(", ")} и ещё ${s.holes.length - 2}`;

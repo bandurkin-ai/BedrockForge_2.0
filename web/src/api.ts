@@ -438,9 +438,9 @@ export interface Dataset {
   components: { name: string; unit: string }[] | null;
   audit: { error: number; warning: number; info: number } | null;
   /** drillholes: saved charts */
-  charts?: { id: number; kind: "histogram" | "qq" | "dendrogram" | "striplog"; name: string }[] | null;
+  charts?: { id: number; kind: SavedChartKind; name: string }[] | null;
   /** drillholes: interval tables besides the assays (lithology, alteration, ...) */
-  interval_tables?: { id: number; name: string; row_count: number }[] | null;
+  interval_tables?: { id: number; name: string; row_count: number; kind?: "interval" | "event" }[] | null;
   wireframes: WireframeInfo[] | null;
   lines: LineLayerInfo[] | null;
   rasters: RasterInfo[] | null;
@@ -1104,7 +1104,8 @@ export const getDendrogram = (setId: number, params: DendrogramParams, signal?: 
 
 // ---- Saved charts ----
 
-export type SavedChartKind = "histogram" | "qq" | "dendrogram" | "striplog";
+/** "downhole": a display of data along the holes in the 3D view (grades, lithology, events) */
+export type SavedChartKind = "histogram" | "qq" | "dendrogram" | "striplog" | "downhole";
 
 export interface SavedChart {
   id: number;
@@ -1241,6 +1242,8 @@ export interface IntervalTableInfo {
   builtin: boolean;
   row_count: number;
   columns: IntervalColumn[];
+  /** "event": rows have one depth, no thickness */
+  kind?: "interval" | "event";
 }
 
 export const getIntervalTables = (setId: number) => request<IntervalTableInfo[]>(`/api/sets/${setId}/interval-tables`);
@@ -1255,9 +1258,25 @@ export interface DownholeInterval {
 }
 
 export interface DownholeData {
-  tables: { key: string; name: string; columns: IntervalColumn[] }[];
+  tables: { key: string; name: string; columns: IntervalColumn[]; kind?: "interval" | "event" }[];
   holes: { hole_id: string; found: boolean; td: number | null; max_depth: number; tables: Record<string, DownholeInterval[]> }[];
 }
 
 export const getDownhole = (setId: number, holes: string[], tables: string[], signal?: AbortSignal, all = false, fields?: Record<string, string[]>) =>
   request<DownholeData>(`/api/sets/${setId}/downhole`, { method: "POST", ...json({ holes, tables, all, fields: fields ?? {} }), signal });
+
+export const getIntervalRows = (id: number, offset: number, limit: number) =>
+  request<{ total: number; columns: IntervalColumn[]; rows: Record<string, unknown>[] }>(`/api/interval-tables/${id}/rows?offset=${offset}&limit=${limit}`);
+
+// ---- colourings by grade classes saved in a project
+
+export interface SavedPalette {
+  id: number;
+  name: string;
+  classes: { from: number | null; color: string; label?: string }[];
+}
+
+export const getPalettes = (projectId: number) => request<SavedPalette[]>(`/api/projects/${projectId}/palettes`);
+export const savePalette = (projectId: number, name: string, classes: SavedPalette["classes"]) =>
+  request<SavedPalette>(`/api/projects/${projectId}/palettes`, { method: "PUT", ...json({ name, classes }) });
+export const deletePalette = (id: number) => request<void>(`/api/palettes/${id}`, { method: "DELETE" });

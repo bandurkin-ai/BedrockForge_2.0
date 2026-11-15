@@ -6,7 +6,7 @@ import { Icon, type IconName } from "../shell/icons";
  * maximise, close. Several can be open; the one clicked last is on top.
  */
 export function ChartWindow({
-  title, icon = "histogram", index, z, onFocus, onClose, children,
+  title, icon = "histogram", index, z, onFocus, onClose, children, size,
 }: {
   title: string;
   icon?: IconName;
@@ -16,6 +16,8 @@ export function ChartWindow({
   onFocus: () => void;
   onClose: () => void;
   children: ReactNode;
+  /** a narrow window for a form, or a medium one for a table (default: a large chart window) */
+  size?: "compact" | "medium";
 }) {
   const [pos, setPos] = useState(() => ({ x: 120 + (index % 6) * 28, y: 90 + (index % 6) * 28 }));
   const [max, setMax] = useState(false);
@@ -35,7 +37,7 @@ export function ChartWindow({
 
   return (
     <section
-      className={max ? "chart-window maximized" : "chart-window"} style={max ? { zIndex: z } : { left: pos.x, top: pos.y, zIndex: z }}
+      className={`chart-window${max ? " maximized" : ""}${size ? ` ${size}` : ""}`} style={max ? { zIndex: z } : { left: pos.x, top: pos.y, zIndex: z }}
       onMouseDown={onFocus} role="dialog" aria-label={title}
     >
       <header className="chart-window-head" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={() => (drag.current = null)} onDoubleClick={() => setMax((m) => !m)}>

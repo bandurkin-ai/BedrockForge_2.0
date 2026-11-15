@@ -519,3 +519,22 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .tree-row.dragging { opacity: 0.55; }
 .strip-save { display: flex; align-items: center; gap: 8px; padding: 2px 0 6px; }
 .legend-warning { color: var(--warning, #e0a030); }
+
+/* Forms of data along the holes (grades, lithology, events) and of the collars. */
+.chart-window.compact { width: min(380px, 94vw); height: min(680px, 88vh); min-width: 300px; }
+.chart-window.medium { width: min(760px, 94vw); height: min(560px, 86vh); }
+.downhole-form { height: 100%; box-sizing: border-box; border-right: 0; }
+.form-note { padding: 12px; }
+.form-actions { display: flex; align-items: center; gap: 8px; position: sticky; bottom: -8px; background: var(--panel); padding: 6px 0 8px; border-top: 1px solid var(--border); }
+.class-list { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; }
+.class-row { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; }
+.class-row input[type=color] { width: 28px; height: 22px; padding: 0; border: 1px solid var(--border); background: none; flex: none; }
+.hist-settings .class-row input.class-from { width: 84px; flex: none; }
+.class-row span.class-from { width: 84px; flex: none; }
+.palette-box { display: flex; flex-direction: column; gap: 4px; border-top: 1px dashed var(--border); padding-top: 6px; }
+.palette-row { display: flex; gap: 4px; align-items: center; }
+.palette-row select, .palette-row input { flex: 1; min-width: 0; }
+.interval-table-window { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.interval-table-window .pager { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
+.interval-table-window .table-wrap { flex: 1; overflow: auto; }
+.tree-row .row-actions.always { opacity: 1; }

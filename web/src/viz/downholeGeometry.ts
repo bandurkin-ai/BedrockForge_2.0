@@ -1,5 +1,5 @@
 import type { DownholeData, DownholeInterval, TrajectoryHole } from "../api";
-import { along, categoryColors, fieldRange, type StripLogSettings, type Track } from "../charts/stripLog";
+import { along, categoryColors, classColor, classLabel, fieldRange, type MarkerShape, type StripLogSettings, type Track } from "../charts/stripLog";
 import { formatNumber, parseNumber } from "../stats/chartMath";
 import { ColorScale } from "./colorScale";
 
@@ -41,6 +41,24 @@ export interface Label {
   /** length of the interval along the hole, m */
   length: number;
   trackId: string;
+  /** shift to the right of the point on screen, px (labels of event markers) */
+  px?: number;
+}
+
+/** Markers of events on the holes: one point each. */
+export interface MarkerLayer {
+  trackId: string;
+  shape: MarkerShape;
+  /** px */
+  size: number;
+  positions: number[];
+  colors: number[];
+}
+
+/** Where a display starts when others of the same set are shown before it: columns already taken, tubes already drawn. */
+export interface StackStart {
+  units: number;
+  tubes: number;
 }
 
 export interface LegendEntry {
@@ -58,6 +76,7 @@ export interface DownholeBuild {
   /** frames of panels and graph lines (segments) */
   lines: SideMesh;
   labels: Label[];
+  markers: MarkerLayer[];
   legend: LegendEntry[];
   /** width of the default panel column, m */
   panelWidth: number;
@@ -66,6 +85,8 @@ export interface DownholeBuild {
 }
 
 export const MAX_LABELS = 2500;
+/** The label of an event shows at the zoom where an interval of this length would get its label, m. */
+const EVENT_LABEL_M = 4;
 export const holeKey = (id: string) => String(id).trim().toUpperCase();
 const FRAME_COLOR = "#8a93a6";
 
@@ -147,13 +168,34 @@ function resolve(data: DownholeData, t: Track): Resolved {
   const wantsColor = t.type === "color" || t.type === "color_text";
   return {
     track: t, numeric, range, unit: column?.unit ?? "",
-    colors: !numeric && wantsColor ? categoryColors(data, t.table, t.field) : null,
-    scale: numeric && wantsColor && range ? new ColorScale(range[0], range[1], t.log) : null,
+    colors: !numeric && (wantsColor || t.type === "event") ? withCatColors(categoryColors(data, t.table, t.field), t.catColors) : null,
+    scale: numeric && range && (t.colorBy === "scale" || (wantsColor && t.colorBy !== "classes" && t.colorBy !== "single"))
+      ? new ColorScale(range[0], range[1], t.log) : null,
   };
 }
 
-/** Colour of an interval's value in a colour column, null when it has none. */
+function withCatColors(auto: Map<string, string>, own: Record<string, string> | undefined): Map<string, string> {
+  if (own) for (const [k, c] of Object.entries(own)) if (auto.has(k)) auto.set(k, c);
+  return auto;
+}
+
+/** Columns (in units of the default column) and tubes a display takes: the next display of the set starts after them. */
+export function stackOf(settings: StripLogSettings): StackStart {
+  const tubes = tubeTracks(settings.tracks);
+  let units = 0;
+  for (const t of settings.tracks) {
+    if (tubes.has(t.id) || t.type === "event") continue;
+    units += Math.max(0.3, t.width / 90) + 0.08;
+  }
+  return { units, tubes: tubes.size };
+}
+
+/** Colour of an interval's value: by classes, category or scale; null when it has none. */
 function colorOf(r: Resolved, v: unknown): [number, number, number] | null {
+  if (r.track.colorBy === "classes" && r.numeric) {
+    const c = classColor(r.track.classes, v);
+    return c ? hexRgb(c) : null;
+  }
   if (r.colors && v !== null && v !== undefined && v !== "") {
     const c = r.colors.get(String(v));
     return c ? hexRgb(c) : null;
@@ -186,7 +228,11 @@ export function autoPanelWidth(holes: TrajectoryHole[]): number {
 }
 
 /** The depths an interval covers inside the depth window of the settings; null when outside it. */
-function clip(iv: DownholeInterval, from: number | null, to: number | null): [number, number] | null {
+function clip(iv: DownholeInterval, from: number | null, to: number | null, event = false): [number, number] | null {
+  if (event) {
+    const d = iv.from ?? iv.to;
+    return d === null || d < (from ?? -Infinity) || d > (to ?? Infinity) ? null : [d, d];
+  }
   if (iv.from === null || iv.to === null || !(iv.to > iv.from)) return null;
   const a = Math.max(iv.from, from ?? -Infinity);
   const b = Math.min(iv.to, to ?? Infinity);
@@ -198,6 +244,7 @@ export function buildDownhole(
   data: DownholeData,
   settings: StripLogSettings,
   origin: [number, number, number],
+  start: StackStart = { units: 0, tubes: 0 },
 ): DownholeBuild {
   // Hole names are matched without regard to case and outer spaces (tables often differ in that).
   const holes = new Map(trajectories.map((h) => [holeKey(h.hole_id), h]));
@@ -209,14 +256,14 @@ export function buildDownhole(
   const tubeWidth = Math.max(1, settings.tube ?? 8);
 
   const build: DownholeBuild = {
-    tubes: [], panels: emptyMesh(), lines: emptyMesh(), labels: [], legend: [], panelWidth, holes: 0, intervals: 0,
+    tubes: [], panels: emptyMesh(), lines: emptyMesh(), labels: [], markers: [], legend: [], panelWidth, holes: 0, intervals: 0,
   };
 
   // Panel columns, side by side from the hole outwards: offset and width in metres.
   const columns = new Map<string, { offset: number; width: number }>();
-  let offset = panelWidth * 0.15;
+  let offset = panelWidth * (0.15 + start.units);
   for (const r of resolved) {
-    if (tubeIds.has(r.track.id) && r.track.type === "color") continue; // a tube without text takes no room
+    if (r.track.type === "event" || (tubeIds.has(r.track.id) && r.track.type === "color")) continue; // a tube without text takes no room
     const width = panelWidth * Math.max(0.3, r.track.width / 90);
     if (!tubeIds.has(r.track.id)) {
       columns.set(r.track.id, { offset, width });
@@ -227,7 +274,8 @@ export function buildDownhole(
   }
 
   const rel = (p: [number, number, number]): [number, number, number] => [p[0] - origin[0], p[1] - origin[1], p[2] - origin[2]];
-  let tubeIndex = 0;
+  let tubeIndex = start.tubes;
+  const markerOf = new Map<string, MarkerLayer>();
   const tubeOf = new Map<string, TubeLayer>();
   for (const r of resolved) {
     if (tubeIds.has(r.track.id)) {
@@ -235,11 +283,17 @@ export function buildDownhole(
       tubeOf.set(r.track.id, layer);
       build.tubes.push(layer);
     }
+    if (r.track.type === "event") {
+      const layer: MarkerLayer = { trackId: r.track.id, shape: r.track.marker ?? "diamond", size: Math.max(4, r.track.size ?? 12), positions: [], colors: [] };
+      markerOf.set(r.track.id, layer);
+      build.markers.push(layer);
+    }
     if (r.colors || r.numeric || r.track.type === "text") {
+      const classes = r.numeric && r.track.colorBy === "classes" ? r.track.classes ?? [] : [];
       build.legend.push({
         trackId: r.track.id,
         title: r.track.field,
-        items: r.colors ? [...r.colors].slice(0, 30) : [],
+        items: r.colors ? [...r.colors].slice(0, 30) : classes.map((c, i) => [classLabel(classes, i), c.color] as [string, string]),
         range: r.numeric ? r.range : null,
         unit: r.unit,
       });
@@ -282,13 +336,28 @@ export function buildDownhole(
       const tube = tubeOf.get(t.id);
       const wantsColor = t.type === "color" || t.type === "color_text";
       const showText = t.type === "text" || t.type === "color_text";
-      const barColor = hexRgb(t.color);
+      const oneColor = hexRgb(t.color);
+      const perValue = r.numeric && (t.colorBy === "classes" || t.colorBy === "scale");
+      const markers = markerOf.get(t.id);
       let prevEnd: { depth: number; amp: number } | null = null;
       for (const iv of rows) {
-        const span = clip(iv, from, to);
+        const span = clip(iv, from, to, t.type === "event");
         if (!span) continue;
         build.intervals += 1;
         const value = iv.values[t.field];
+        if (markers) {
+          const p = rel(pointAt(traj.path, span[0]));
+          const c = (r.colors ? colorOf(r, value) : null) ?? oneColor;
+          markers.positions.push(p[0], p[1], p[2]);
+          markers.colors.push(c[0], c[1], c[2]);
+          const text = valueText(value);
+          if (settings.labels !== false && text && build.labels.length < MAX_LABELS) {
+            build.labels.push({ position: p, tangent: [0, 0, -1], amp: 0, text, length: EVENT_LABEL_M, trackId: t.id, px: markers.size / 2 + 4 });
+          }
+          continue;
+        }
+        // bars and lines: one colour, or the colour of the value's class / place on the scale
+        const barColor = perValue ? colorOf(r, value) ?? hexRgb(FRAME_COLOR) : oneColor;
         const pa = rel(pointAt(traj.path, span[0]));
         const pb = rel(pointAt(traj.path, span[1]));
         const tan = unit(pa, pb);
@@ -336,7 +405,7 @@ export function buildDownhole(
       const tan = unit(a, b);
       for (const r of resolved) {
         const col = columns.get(r.track.id);
-        if (!col || tubeIds.has(r.track.id) || r.track.type === "text") continue;
+        if (!col || tubeIds.has(r.track.id) || r.track.type === "text" || r.track.type === "event") continue;
         addSegment(build.lines, a, b, tan, col.offset, col.offset, frame);
         if (r.track.type === "bars" || r.track.type === "line") addSegment(build.lines, a, b, tan, col.offset + col.width, col.offset + col.width, frame);
       }

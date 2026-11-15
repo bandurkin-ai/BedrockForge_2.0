@@ -99,8 +99,9 @@ def interval_columns(df: pd.DataFrame) -> list[dict]:
 
 
 def commit_interval_table(session: Session, set_id: int, name: str, df: pd.DataFrame, *, filename: str,
-                          mapping: dict[str, str]) -> CommitResult:
-    """Create the set's interval table `name`, or replace its rows if it exists (one transaction)."""
+                          mapping: dict[str, str], kind: str = "interval") -> CommitResult:
+    """Create the set's interval table `name`, or replace its rows if it exists (one transaction).
+    kind "event": rows have one depth, kept as from = to."""
     columns = interval_columns(df)
     kinds = {c["name"]: c["kind"] for c in columns}
     table = session.scalar(select(IntervalTable).where(IntervalTable.set_id == set_id, IntervalTable.name == name))
@@ -114,27 +115,28 @@ def commit_interval_table(session: Session, set_id: int, name: str, df: pd.DataF
     rows = []
     for rec in to_records(df):
         values = {}
-        for col, kind in kinds.items():
+        for col, value_kind in kinds.items():
             v = rec.get(f"attr:{col}")
             if v is None or (isinstance(v, str) and not v.strip()):
                 continue
-            if kind == "number":
+            if value_kind == "number":
                 try:
                     values[col] = float(str(v).replace(",", "."))
                 except ValueError:
                     continue
             else:
                 values[col] = str(v).strip()
-        rows.append({"table_id": table.id, "hole_id": str(rec["hole_id"]), "from_m": rec.get("from"), "to_m": rec.get("to"),
-                     "values": values})
+        top, bottom = (rec.get("depth"), rec.get("depth")) if kind == "event" else (rec.get("from"), rec.get("to"))
+        rows.append({"table_id": table.id, "hole_id": str(rec["hole_id"]), "from_m": top, "to_m": bottom, "values": values})
     for start in range(0, len(rows), _CHUNK):
         session.execute(insert(IntervalRow), rows[start:start + _CHUNK])
     table.columns = columns
     table.row_count = len(rows)
     table.filename = filename[:255]
-    job = ImportJob(set_id=set_id, kind="interval", filename=filename, row_count=len(rows), mapping=mapping,
+    table.kind = kind
+    job = ImportJob(set_id=set_id, kind=kind, filename=filename, row_count=len(rows), mapping=mapping,
                     components=[{"table": name}])
     session.add(job)
     session.flush()
     session.commit()
-    return CommitResult(job_id=job.id, kind="interval", inserted=len(rows), replaced=replaced)
+    return CommitResult(job_id=job.id, kind=kind, inserted=len(rows), replaced=replaced)

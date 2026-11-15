@@ -4,14 +4,13 @@ import { loadHoles } from "../viz/useVizData";
 import { download, savePng, saveSvg, toCsv } from "./exportChart";
 import { StripLogChart } from "./StripLogChart";
 import {
-  DEFAULT_STRIPLOG, defaultTracks, LOG_COLORS, newTrack, stripLogName, TRACK_TITLES, TUBE_RANGE, type StripLogSettings, type Track, type TrackType,
+  DEFAULT_STRIPLOG, defaultTracks, LOG_COLORS, newTrack, stripLogName, TRACK_TITLES, type StripLogSettings, type Track, type TrackType,
 } from "./stripLog";
-import { tubeTracks } from "../viz/downholeGeometry";
 
 const SCALES: [number, string][] = [[0, "вписать"], [0.5, "1:2000"], [1, "1:1000"], [2, "1:500"], [4, "1:250"], [8, "1:125"], [20, "1:50"]];
 
-/** Downhole log: columns of interval tables along the chosen holes (graphs, bars, colour, text). */
-export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, onSettings, saved = true, onSave }: {
+/** «Данные по скважинам»: columns of interval tables along the chosen holes (graphs, bars, colour, text). A viewer: nothing is saved. */
+export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, onSettings }: {
   setId: number;
   setName: string;
   initial?: Partial<StripLogSettings>;
@@ -20,9 +19,6 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
   /** the hole selected in the project, shown first */
   holeHint?: string | null;
   onSettings?: (settings: StripLogSettings, autoName: string) => void;
-  /** false: a draft, not in the project tree yet — «Сохранить» adds it */
-  saved?: boolean;
-  onSave?: (settings: StripLogSettings, autoName: string) => void;
 }) {
   const [s, setS] = useState<StripLogSettings>({ ...DEFAULT_STRIPLOG, ...initial });
   const [tables, setTables] = useState<IntervalTableInfo[] | null>(null);
@@ -108,7 +104,7 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
   };
   const table = (k: string) => tables?.find((t) => t.key === k);
   const shownHoles = (holes ?? []).filter((h) => !filter || h.hole_id.toLowerCase().includes(filter.toLowerCase()));
-  const fileName = `Данные по стволу ${setName}`;
+  const fileName = `Данные по скважинам ${setName}`;
 
   function saveCsv() {
     if (!data) return;
@@ -127,17 +123,6 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
   return (
     <div className="hist-window strip-window">
       <form className="hist-settings" onSubmit={(e) => e.preventDefault()}>
-        <div className="strip-save">
-          {saved ? (
-            <span className="muted small">Сохранено в дереве; изменения сохраняются сами.</span>
-          ) : (
-            <>
-              <button type="button" className="primary" disabled={!s.tracks.length} onClick={() => onSave?.(s, stripLogName(s))}
-                title="Добавить в дерево набора, под «Содержаниями»">Сохранить</button>
-              <span className="muted small">Черновик: в дереве его нет, пока не сохранён.</span>
-            </>
-          )}
-        </div>
         <fieldset>
           <legend>Скважины ({s.holes.length})</legend>
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="поиск" aria-label="Поиск скважины" />
@@ -164,23 +149,6 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
             </select>
           </label>
           <label className="check"><input type="checkbox" checked={s.grid} onChange={(e) => set({ grid: e.target.checked })} /> общая шкала глубин</label>
-        </fieldset>
-        <fieldset>
-          <legend>В главном окне (3D и разрезы)</legend>
-          <label className="check"><input type="checkbox" checked={s.allHoles ?? false} onChange={(e) => set({ allHoles: e.target.checked })} /> все скважины набора</label>
-          <p className="muted small">{s.allHoles ? "Рисуется на всех скважинах набора." : "Рисуется на скважинах, отмеченных выше."}</p>
-          <div className="pair">
-            <label>Трубка, px
-              <input type="number" min={TUBE_RANGE[0]} max={TUBE_RANGE[1]} step={1} value={s.tube ?? 8}
-                onChange={(e) => set({ tube: Math.max(TUBE_RANGE[0], Math.min(TUBE_RANGE[1], Number(e.target.value) || 8)) })} aria-label="Толщина трубки, px" />
-            </label>
-            <label>Колонка, м
-              <input type="number" min={0} max={500} step={1} value={s.panel ?? 0} placeholder="авто"
-                onChange={(e) => set({ panel: Math.max(0, Math.min(500, Number(e.target.value) || 0)) })} aria-label="Ширина колонки, м (0 — по размеру скважин)" />
-            </label>
-          </div>
-          <label className="check"><input type="checkbox" checked={s.labels !== false} onChange={(e) => set({ labels: e.target.checked })} /> подписи значений вдоль ствола</label>
-          <p className="muted small">Столбцы, графики и цветные ленты стоят рядом со стволом лицом к камере; «Колонка, м» — ширина колонки с шириной 90.</p>
         </fieldset>
         <fieldset>
           <legend>Колонки ({s.tracks.length})</legend>
@@ -224,14 +192,6 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
                   </>
                 )}
                 <label className="check"><input type="checkbox" checked={t.boundaries} onChange={(e) => updateTrack(t.id, { boundaries: e.target.checked })} /> границы интервалов</label>
-                {(t.type === "color" || t.type === "color_text") && (
-                  <label>В 3D
-                    <select value={tubeTracks(s.tracks).has(t.id) ? "tube" : "panel"} onChange={(e) => updateTrack(t.id, { form: e.target.value as "tube" | "panel" })} aria-label={`В 3D: ${t.field}`}>
-                      <option value="tube">трубка на стволе</option>
-                      <option value="panel">лента рядом со стволом</option>
-                    </select>
-                  </label>
-                )}
               </div>
             );
           })}

@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { blockMeta, getBlockRender, getBlockValues, getSections, rasterImageUrl, type Dataset, type Hole, type IntervalsData, type ValueStats, type VerticalPlacement } from "../api";
+import { blockMeta, getBlockRender, getBlockValues, getSections, rasterImageUrl, type Dataset, type Hole, type VerticalPlacement } from "../api";
 import { VEXAG_STEPS, isShown, layerKey, type ViewPreset, type WorkspaceState } from "../shell/workspace";
-import { makeScale } from "./colorScale";
 import { ScaleStrip, type VizSettings } from "./ComponentPanel";
 import { azimuthDeg, DEFAULT_WINDOW, defaultSection, shiftSection, type SectionLine } from "./geometry";
 import { SectionMap } from "./SectionMap";
 import { GeoScene, MAX_SHOWN_BLOCKS, type Hover } from "./scene3d";
+import { DEFAULT_COLLAR_STYLE, type CollarStyle } from "./collarStyle";
 import { blockColors, defaultBlockStyle, type BlockStyle } from "./blockStyle";
 import { unitTitle } from "../shell/BlockModelPanel";
 import type { ColorScale } from "./colorScale";
-import { loadDownhole, loadHoles, loadIntervals, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
-import { buildDownhole, type LegendEntry } from "./downholeGeometry";
+import { loadDownhole, loadHoles, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
+import { buildDownhole, stackOf, type LegendEntry, type StackStart } from "./downholeGeometry";
 import type { StripLogSettings } from "../charts/stripLog";
 
 function auditColor(h: Hole | undefined): string {
@@ -36,6 +36,8 @@ export interface SceneViewProps {
   blockStyles?: Record<number, BlockStyle>;
   /** A block picked in the view. */
   onPickBlock?: (modelId: number, index: number) => void;
+  /** Marker and labels of the collars, by set id (default: a circle coloured by the audit, no labels). */
+  collarStyles?: Record<number, CollarStyle>;
   /** Saved displays of data along the holes that are on in the view. */
   logs?: DownholeLog[];
 }
@@ -63,7 +65,7 @@ export interface SceneApi {
 
 /** The single main view: every visible object of the project in 3D, plan or section. */
 export function SceneView(props: SceneViewProps) {
-  const { datasets, ws, refreshKey, viz, activeSet, selectedHole, section } = props;
+  const { datasets, ws, refreshKey, activeSet, selectedHole, section } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<GeoScene | null>(null);
   const labelRef = useRef<HTMLDivElement>(null);
@@ -89,7 +91,6 @@ export function SceneView(props: SceneViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [hover, setHover] = useState<Hover | null>(null);
   const [drawing, setDrawing] = useState<{ x: number; y: number } | null | false>(false);
-  const [refStats, setRefStats] = useState<ValueStats | null>(null);
 
   // Latest values for scene callbacks.
   const live = useRef(props);
@@ -119,9 +120,6 @@ export function SceneView(props: SceneViewProps) {
   const lineLayers = useMemo(() => (datasets ?? []).flatMap((d) => d.lines ?? []), [datasets]);
   const rasters = useMemo(() => (datasets ?? []).flatMap((d) => d.rasters ?? []), [datasets]);
   const blockModels = useMemo(() => (datasets ?? []).filter((d) => d.kind === "blocks"), [datasets]);
-  const component = viz.component ?? sets.find((d) => d.id === activeSet)?.components?.[0]?.name ?? sets[0]?.components?.[0]?.name ?? null;
-  const scale = useMemo(() => makeScale(viz, refStats), [viz, refStats]);
-  const unit = sets.flatMap((d) => d.components ?? []).find((c) => c.name === component)?.unit ?? null;
 
   // ---- the scene itself, created once
   useEffect(() => {
@@ -220,27 +218,21 @@ export function SceneView(props: SceneViewProps) {
       }
     }
     let cancelled = false;
-    const reference = sets.find((d) => d.id === activeSet) ?? sets[0];
     for (const d of sets) {
       if (!isShown(ws, layerKey.set(d.id)) || !d.counts?.collar) continue;
-      const hasComponent = !!component && !!d.components?.some((c) => c.name === component);
-      const key = `${refreshKey}:${hasComponent ? component : ""}:${scale ? `${scale.min}:${scale.max}:${viz.log}` : ""}`;
+      // Holes are plain paths and collars; what is drawn along them comes from the displays under «Стволы».
+      const key = `${refreshKey}`;
       if (loadedSets.current.get(d.id) === key) continue;
       loadedSets.current.set(d.id, key);
       setLoading((n) => n + 1);
-      Promise.all([
-        loadTrajectories(d.id, refreshKey),
-        hasComponent ? loadIntervals(d.id, component!, refreshKey) : Promise.resolve<IntervalsData | null>(null),
-        loadHoles(d.id, refreshKey),
-      ])
-        .then(([trajectories, intervals, holes]) => {
+      Promise.all([loadTrajectories(d.id, refreshKey), loadHoles(d.id, refreshKey)])
+        .then(([trajectories, holes]) => {
           if (cancelled || !sceneRef.current) {
             loadedSets.current.delete(d.id);
             return;
           }
           holesBySet.current.set(d.id, new Map(holes.map((h) => [h.hole_id, h])));
-          if (d.id === reference?.id) setRefStats(intervals?.stats ?? null);
-          sceneRef.current.setDrillholes(d.id, trajectories, intervals, scale, new Map(holes.map((h) => [h.hole_id, auditColor(h)])));
+          sceneRef.current.setDrillholes(d.id, trajectories, null, null, new Map(holes.map((h) => [h.hole_id, auditColor(h)])));
           applyStyles();
           setError(null);
         })
@@ -250,17 +242,19 @@ export function SceneView(props: SceneViewProps) {
         })
         .finally(() => setLoading((n) => n - 1));
     }
-    // The reference statistics follow the active set even when nothing reloads.
-    if (reference && component && reference.components?.some((c) => c.name === component)) {
-      loadIntervals(reference.id, component, refreshKey).then((i) => !cancelled && setRefStats(i.stats)).catch(() => undefined);
-    } else {
-      setRefStats(null);
-    }
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sets, ws.hidden, component, refreshKey, scale, activeSet]);
+  }, [sets, ws.hidden, refreshKey]);
+
+  // ---- collars: marker and labels of every set
+  const collarStyles = props.collarStyles;
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    for (const d of sets) scene.setCollarStyle(d.id, collarStyles?.[d.id] ?? DEFAULT_COLLAR_STYLE);
+  }, [sets, collarStyles]);
 
   // ---- data along the holes (saved displays that are on): tubes, panels, graphs, text
   const logs = props.logs;
@@ -276,8 +270,13 @@ export function SceneView(props: SceneViewProps) {
         setLogLegends((prev) => prev.filter((x) => x.id !== id));
       }
     }
+    // Displays of one set stand side by side: each starts after the columns and tubes of those before it.
+    const taken = new Map<number, StackStart>();
     for (const log of wanted.values()) {
-      const key = `${refreshKey}:${JSON.stringify(log.settings)}`;
+      const start = taken.get(log.setId) ?? { units: 0, tubes: 0 };
+      const own = stackOf(log.settings);
+      taken.set(log.setId, { units: start.units + own.units, tubes: start.tubes + own.tubes });
+      const key = `${refreshKey}:${start.units}:${start.tubes}:${JSON.stringify(log.settings)}`;
       if (loadedLogs.current.get(log.id) === key) continue;
       loadedLogs.current.set(log.id, key);
       const s = log.settings;
@@ -296,7 +295,7 @@ export function SceneView(props: SceneViewProps) {
             loadedLogs.current.delete(log.id); // no holes with coordinates yet: tried again on the next change
             return;
           }
-          const build = buildDownhole(trajectories.holes, data, s, origin);
+          const build = buildDownhole(trajectories.holes, data, s, origin, start);
           sceneRef.current.setDownhole(`log:${log.id}`, build);
           setLogLegends((prev) => [...prev.filter((x) => x.id !== log.id), { id: log.id, name: log.name, entries: build.legend, holes: build.holes, intervals: build.intervals }]);
           setError(null);
@@ -663,7 +662,6 @@ export function SceneView(props: SceneViewProps) {
         </label>
         <label className="check"><input type="checkbox" checked={ws.grid} onChange={(e) => props.onWorkspace({ grid: e.target.checked })} /> сетка</label>
       </div>
-      {component && <div className="scene-legend"><ScaleStrip component={component} unit={unit} scale={scale} log={viz.log} /></div>}
       {blockLegend && (
         <div className="scene-legend block-legend">
           {blockLegend.scale ? <ScaleStrip component={`Блоки: ${blockLegend.name}`} unit={blockLegend.unit ? unitTitle(blockLegend.unit as never) : null} scale={blockLegend.scale} log={blockLegend.scale.log} /> : <strong>Блоки: {blockLegend.name}</strong>}

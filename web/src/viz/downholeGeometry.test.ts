@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { DownholeData, TrajectoryHole } from "../api";
 import { DEFAULT_STRIPLOG, withDefaults, type StripLogSettings, type Track } from "../charts/stripLog";
-import { autoPanelWidth, buildDownhole, pathBetween, pointAt, tubeTracks } from "./downholeGeometry";
+import { autoPanelWidth, buildDownhole, hexRgb, pathBetween, pointAt, stackOf, tubeTracks } from "./downholeGeometry";
+import { normalizeCollarStyle } from "./collarStyle";
 
 // A vertical hole going down from z = 100, and one inclined 45 degrees.
 const holes: TrajectoryHole[] = [
@@ -108,5 +109,54 @@ describe("downhole geometry", () => {
     expect(old.tracks).toEqual([]);
     expect(old.tube).toBe(8);
     expect(old.labels).toBe(true);
+  });
+
+  it("colours bars by grade classes and lists the classes in the legend", () => {
+    const classes = [{ from: null, color: "#111111" }, { from: 50, color: "#ff0000" }];
+    const bars = track({ id: "b", field: "RQD", type: "bars", min: "0", max: "100", colorBy: "classes", classes });
+    const b = buildDownhole(holes, data, settings([bars], { panel: 10 }), origin);
+    // H1: RQD 40 (below 50) then 90 (from 50): the first quad dark, the second red
+    expect(b.panels.colors.slice(0, 3)).toEqual(hexRgb("#111111"));
+    expect(b.panels.colors.slice(12, 15)).toEqual(hexRgb("#ff0000"));
+    expect(b.legend[0].items).toEqual([["< 50", "#111111"], ["≥ 50", "#ff0000"]]);
+  });
+
+  it("uses the colours of rocks set by hand", () => {
+    const b = buildDownhole(holes, data, settings([track({ catColors: { Туф: "#00ff00" } })]), origin);
+    expect(b.tubes[0].colors.slice(0, 3)).toEqual(hexRgb("#00ff00"));
+    expect(b.legend[0].items[0]).toEqual(["Туф", "#00ff00"]);
+  });
+
+  it("puts events as markers with labels at their depth", () => {
+    const events: DownholeData = {
+      tables: [{ key: "9", name: "События", kind: "event", columns: [{ name: "TYPE", kind: "text", unit: "" }] }],
+      holes: [{ hole_id: "H1", found: true, td: 10, max_depth: 10, tables: { "9": [
+        { from: 4, to: 4, values: { TYPE: "Вода" } }, { from: 7, to: 7, values: { TYPE: "Разлом" } }] } }],
+    };
+    const ev = track({ id: "e", table: "9", field: "TYPE", type: "event", marker: "star", size: 14 });
+    const b = buildDownhole(holes, events, settings([ev]), origin);
+    expect(b.markers).toHaveLength(1);
+    expect(b.markers[0]).toMatchObject({ shape: "star", size: 14, positions: [0, 0, -4, 0, 0, -7] });
+    expect(b.markers[0].colors.slice(0, 3)).not.toEqual(b.markers[0].colors.slice(3, 6)); // a colour per kind of event
+    expect(b.labels.map((l) => [l.text, l.px])).toEqual([["Вода", 11], ["Разлом", 11]]);
+    expect(b.panels.amps).toHaveLength(0);
+    // the depth window applies to events too
+    expect(buildDownhole(holes, events, settings([ev], { from: "5" }), origin).markers[0].positions).toEqual([0, 0, -7]);
+  });
+
+  it("starts a display after the columns and tubes of the displays before it", () => {
+    const bars = track({ id: "b", field: "RQD", type: "bars", width: 90, min: "0", max: "100" });
+    expect(stackOf(settings([bars]))).toEqual({ units: 1.08, tubes: 0 });
+    expect(stackOf(settings([track({})]))).toEqual({ units: 0, tubes: 1 });
+    const second = buildDownhole(holes, data, settings([bars], { panel: 10 }), origin, { units: 1.08, tubes: 1 });
+    expect(second.panels.amps[0]).toBeCloseTo(10 * (0.15 + 1.08));
+    const tube = buildDownhole(holes, data, settings([track({})], { tube: 8 }), origin, { units: 0, tubes: 1 });
+    expect(tube.tubes[0].width).toBe(5.5); // thinner than the tube under it
+  });
+
+  it("keeps a valid collar style from stored state", () => {
+    const st = normalizeCollarStyle({ shape: "star", color: "#12ab34", size: 400, label: true, fontFamily: "comic", fontSize: 2 });
+    expect(st).toMatchObject({ shape: "star", color: "#12ab34", size: 40, label: true, fontFamily: "sans-serif", fontSize: 8 });
+    expect(normalizeCollarStyle(null)).toMatchObject({ shape: "circle", color: "audit", label: false });
   });
 });

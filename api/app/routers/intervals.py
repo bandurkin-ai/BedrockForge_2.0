@@ -35,11 +35,11 @@ def assay_columns(session: Session, set_id: int) -> list[dict]:
 
 def tables_of(session: Session, set_id: int) -> list[dict]:
     assays = session.scalar(select(func.count()).select_from(Assay).where(Assay.set_id == set_id)) or 0
-    out = [{"key": "assay", "id": None, "name": "Пробы", "builtin": True, "row_count": assays,
+    out = [{"key": "assay", "id": None, "name": "Пробы", "builtin": True, "row_count": assays, "kind": "interval",
             "columns": assay_columns(session, set_id) if assays else []}]
     for t in session.scalars(select(IntervalTable).where(IntervalTable.set_id == set_id).order_by(IntervalTable.id)):
         out.append({"key": str(t.id), "id": t.id, "name": t.name, "builtin": False, "row_count": t.row_count,
-                    "columns": t.columns, "filename": t.filename})
+                    "columns": t.columns, "filename": t.filename, "kind": t.kind})
     return out
 
 
@@ -151,4 +151,4 @@ def downhole(set_id: int, body: DownholeIn, session: Session = Depends(get_sessi
         depths = [iv["to"] for rows in data.values() for iv in rows if iv["to"] is not None]
         holes.append({"hole_id": hole, "found": c is not None, "td": c.td if c else None,
                       "max_depth": max([*(depths or [0.0]), c.td or 0.0] if c else depths or [0.0]), "tables": data})
-    return {"tables": [{k: t[k] for k in ("key", "name", "columns")} for t in wanted], "holes": holes}
+    return {"tables": [{k: t[k] for k in ("key", "name", "columns", "kind")} for t in wanted], "holes": holes}

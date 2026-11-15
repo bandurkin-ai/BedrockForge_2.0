@@ -313,31 +313,6 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       },
     },
     {
-      id: "viz.set",
-      title: "Раскраска по содержаниям",
-      description: "Компонент и цветовая шкала содержаний для всех наборов скважин. min/max = null — авто-диапазон (5–95 перцентиль).",
-      params: {
-        component: { type: "string", description: "Имя компонента, например AU" },
-        min: { type: "number", nullable: true },
-        max: { type: "number", nullable: true },
-        log: { type: "boolean", description: "Логарифмическая шкала" },
-      },
-      run: (args) => {
-        const next = { ...s().viz };
-        if (typeof args.component === "string") {
-          const all = sets().flatMap((d) => d.components ?? []);
-          const found = all.find((c) => c.name.toLowerCase() === (args.component as string).toLowerCase());
-          if (!found) throw new Error(`Компонента «${args.component}» нет ни в одном наборе`);
-          next.component = found.name;
-        }
-        if ("min" in args) next.min = args.min as number | null;
-        if ("max" in args) next.max = args.max as number | null;
-        if (typeof args.log === "boolean") next.log = args.log;
-        s().setViz(next);
-        return `Шкала: ${next.component ?? "первый компонент"}, ${next.min ?? "авто"} – ${next.max ?? "авто"}${next.log ? ", логарифмическая" : ""}`;
-      },
-    },
-    {
       id: "section.set",
       title: "Задать разрез",
       description:
@@ -778,7 +753,7 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       id: "chart.striplog",
       title: "Данные по стволу",
       description:
-        "Открывает колонку данных по стволу скважин (графики, столбцы, цветные колонки, текст) как черновик; в дерево (под «Содержаниями») её добавляет кнопка «Сохранить» в окне. " +
+        "Открывает колонку данных по стволу скважин (графики, столбцы, цветные колонки, текст) в окне просмотра (не сохраняется). " +
         "holes — скважины через запятую (до 30); table — таблица: «Пробы» или имя интервальной таблицы (литология и т.п.); " +
         "fields — поля через запятую (по умолчанию: текстовые поля и до трёх числовых).",
       params: { set_id: { type: "integer" }, holes: { type: "string" }, table: { type: "string" }, fields: { type: "string" } },
@@ -804,8 +779,8 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       id: "holes.data_window",
       title: "Данные по скважинам",
       description:
-        "Открывает окно настройки данных на скважинах (графики, столбцы, цветные трубки и ленты, подписи) для набора: черновик сразу виден на скважинах в главном окне, " +
-        "кнопка «Сохранить» в окне добавляет отображение в дерево под «Содержаниями». Чтобы показать и сохранить сразу, без окна, — holes.show_data.",
+        "Открывает окно «Данные по скважинам»: колонки интервальных таблиц вдоль выбранных скважин (каротажная диаграмма). Только просмотр, ничего не сохраняет. " +
+        "Чтобы показать данные на скважинах в 3D — holes.show_data.",
       params: { set_id: { type: "integer" } },
       uiOnly: true,
       run: (args) => s().previewOnHoles(targetSet(args.set_id).id, null),
@@ -815,8 +790,8 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       title: "Показать данные на скважинах",
       description:
         "Показывает на скважинах в главном окне (3D и разрезы) данные интервальной таблицы: цветная трубка по стволу (литология и т.п.), " +
-        "столбцы и графики рядом со стволом (числа), подписи. Отображение сохраняется в дереве набора под «Содержаниями»; " +
-        "его можно включать и выключать галочкой, настройки — двойной клик. table — «Пробы» или имя интервальной таблицы; fields — поля через запятую (по умолчанию: текстовые и до двух числовых).",
+        "столбцы и графики рядом со стволом (числа), подписи. Каждое поле сохраняется отдельным отображением в дереве набора под «Стволами» (там же правой кнопкой: Содержания, Литология, События); " +
+        "их можно включать и выключать галочкой, настройки — двойной клик. table — «Пробы» или имя интервальной таблицы; fields — поля через запятую (по умолчанию: текстовые и до двух числовых).",
       params: { set_id: { type: "integer" }, table: { type: "string" }, fields: { type: "string" } },
       run: async (args) => {
         const set = targetSet(args.set_id);

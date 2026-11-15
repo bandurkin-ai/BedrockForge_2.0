@@ -6,6 +6,10 @@ import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js
 import type { IntervalsData, Trajectories, VerticalPlacement } from "../api";
 import { NO_VALUE_COLOR, type ColorScale } from "./colorScale";
 import type { DownholeBuild, Label } from "./downholeGeometry";
+import type { MarkerShape } from "../charts/stripLog";
+import { DEFAULT_COLLAR_STYLE, type CollarStyle } from "./collarStyle";
+
+export { DEFAULT_COLLAR_STYLE, type CollarStyle };
 import type { SectionLine } from "./geometry";
 import { bounds, type Bounds } from "./geometryLoader";
 import { THEME_EVENT } from "./scene3d-theme";
@@ -38,6 +42,17 @@ export interface Hover extends HoleRef {
   x: number;
   y: number;
 }
+
+interface LabelFont {
+  size: number;
+  family: string;
+  bold: boolean;
+  color: string;
+}
+
+const DEFAULT_FONT: LabelFont = { size: 12, family: "sans-serif", bold: false, color: "#f3f6fb" };
+/** No more hole names than this are written (each is a sprite). */
+const MAX_COLLAR_LABELS = 3000;
 
 export interface DrillholeStyle {
   visible: boolean;
@@ -74,6 +89,12 @@ interface DrillholeLayer {
   points: THREE.Points | null;
   collars: { holeId: string; position: THREE.Vector3 }[];
   pathOf: Map<string, number[][]>;
+  /** r, g, b per collar by the audit */
+  auditColors: number[];
+  labelGroup: THREE.Group;
+  labels: { sprite: THREE.Sprite; position: THREE.Vector3; wpx: number; hpx: number }[];
+  /** shift of the labels to the right of the marker, px */
+  labelShift: number;
 }
 
 /** One level of detail of a wireframe: a mesh, or (full detail) a group of parts. */
@@ -163,6 +184,8 @@ export class GeoScene {
   /** Camera directions for the shader of panels (world space), updated before each render. */
   private side = { view: { value: new THREE.Vector3(0, 0, -1) }, right: { value: new THREE.Vector3(1, 0, 0) }, vexag: { value: 1 } };
   private labelMaterials = new Map<string, THREE.SpriteMaterial>();
+  private markerTextures = new Map<MarkerShape, THREE.CanvasTexture>();
+  private collarStyles = new Map<number, CollarStyle>();
   private wireframes = new Map<number, WireframeLayer>();
   private lineLayers = new Map<number, LineLayer3D>();
   private rasters = new Map<number, RasterLayer>();
@@ -245,6 +268,10 @@ export class GeoScene {
       points: null,
       collars: [],
       pathOf: new Map(),
+      auditColors: [],
+      labelGroup: new THREE.Group(),
+      labels: [],
+      labelShift: 8,
     };
 
     const pathPositions: number[] = [];
@@ -296,10 +323,63 @@ export class GeoScene {
     );
     layer.points.renderOrder = 3;
     layer.group.add(layer.points);
+    layer.auditColors = collarColorsArr;
+    layer.group.add(layer.labelGroup);
 
     this.drillholes.set(setId, layer);
     this.root.add(layer.group);
+    this.applyCollarStyle(setId);
     this.contentChanged();
+  }
+
+  /** The marker of the collars (shape, colour, size) and the labels with hole names. */
+  setCollarStyle(setId: number, style: CollarStyle): void {
+    this.collarStyles.set(setId, style);
+    this.applyCollarStyle(setId);
+    this.requestRender();
+  }
+
+  private applyCollarStyle(setId: number): void {
+    const layer = this.drillholes.get(setId);
+    const style = this.collarStyles.get(setId) ?? DEFAULT_COLLAR_STYLE;
+    if (!layer?.points) return;
+    const material = layer.points.material as THREE.PointsMaterial;
+    material.size = style.size;
+    material.map = this.markerTexture(style.shape);
+    material.needsUpdate = true;
+    const colors = layer.points.geometry.getAttribute("color") as THREE.BufferAttribute;
+    const one = style.color === "audit" ? null : new THREE.Color(style.color);
+    for (let i = 0; i < colors.count; i++) {
+      if (one) colors.setXYZ(i, one.r, one.g, one.b);
+      else colors.setXYZ(i, layer.auditColors[i * 3], layer.auditColors[i * 3 + 1], layer.auditColors[i * 3 + 2]);
+    }
+    colors.needsUpdate = true;
+    // labels: rebuilt, their materials are shared and stay in the cache
+    layer.labelGroup.clear();
+    layer.labels = [];
+    layer.labelShift = style.size / 2 + 3;
+    if (style.label) {
+      const font: LabelFont = { size: style.fontSize, family: style.fontFamily, bold: style.bold, color: style.labelColor };
+      for (const c of layer.collars.slice(0, MAX_COLLAR_LABELS)) {
+        const { material: m, wpx, hpx } = this.labelMaterial(c.holeId, font);
+        const sprite = new THREE.Sprite(m);
+        sprite.renderOrder = 10;
+        sprite.frustumCulled = false;
+        sprite.position.copy(c.position);
+        layer.labelGroup.add(sprite);
+        layer.labels.push({ sprite, position: c.position, wpx, hpx });
+      }
+    }
+    layer.labelGroup.visible = layer.points.visible;
+  }
+
+  private markerTexture(shape: MarkerShape): THREE.CanvasTexture {
+    let texture = this.markerTextures.get(shape);
+    if (!texture) {
+      texture = shape === "circle" ? this.pointTexture : makeMarkerTexture(shape);
+      this.markerTextures.set(shape, texture);
+    }
+    return texture;
   }
 
   /** The scene origin (project coordinates), null until the first object is loaded. */
@@ -352,11 +432,23 @@ export class GeoScene {
       layer.lines.renderOrder = 2;
       layer.group.add(layer.lines);
     }
+    for (const m of build.markers) {
+      if (m.positions.length === 0) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(m.positions, 3));
+      g.setAttribute("color", new THREE.Float32BufferAttribute(m.colors, 3));
+      const points = new THREE.Points(g, new THREE.PointsMaterial({
+        size: m.size, sizeAttenuation: false, vertexColors: true, map: this.markerTexture(m.shape), transparent: true, alphaTest: 0.4, depthTest: false,
+      }));
+      points.frustumCulled = false;
+      points.renderOrder = 4;
+      layer.group.add(points);
+    }
     layer.labelGroup.renderOrder = 10;
     for (const label of build.labels) {
       const { material, wpx, hpx } = this.labelMaterial(label.text);
       const sprite = new THREE.Sprite(material);
-      sprite.center.set(0, 0.5);
+      sprite.center.set(label.px ? -label.px / wpx : 0, 0.5);
       sprite.renderOrder = 10;
       sprite.frustumCulled = false;
       layer.labelGroup.add(sprite);
@@ -420,14 +512,15 @@ export class GeoScene {
     return material;
   }
 
-  private labelMaterial(text: string): { material: THREE.SpriteMaterial; wpx: number; hpx: number } {
-    const cached = this.labelMaterials.get(text);
-    const size = 12;
+  private labelMaterial(text: string, f: LabelFont = DEFAULT_FONT): { material: THREE.SpriteMaterial; wpx: number; hpx: number } {
+    const key = `${f.size}|${f.family}|${f.bold ? "b" : ""}|${f.color}|${text}`;
+    const cached = this.labelMaterials.get(key);
+    const size = f.size;
     if (cached) return { material: cached, wpx: cached.userData.wpx, hpx: cached.userData.hpx };
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     const k = 2;
-    const font = `${size * k}px sans-serif`;
+    const font = `${f.bold ? "bold " : ""}${size * k}px ${f.family}`;
     if (ctx) {
       ctx.font = font;
     }
@@ -441,19 +534,29 @@ export class GeoScene {
       ctx.lineWidth = 3 * k;
       ctx.strokeStyle = "rgba(10, 14, 22, 0.85)";
       ctx.strokeText(text, 3 * k, canvas.height / 2);
-      ctx.fillStyle = "#f3f6fb";
+      ctx.fillStyle = f.color;
       ctx.fillText(text, 3 * k, canvas.height / 2);
     }
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
     material.userData = { wpx: canvas.width / k, hpx: canvas.height / k };
-    this.labelMaterials.set(text, material);
+    this.labelMaterials.set(key, material);
     return { material, wpx: canvas.width / k, hpx: canvas.height / k };
   }
 
   /** Camera directions for the shaders of panels, and the position and size of the text labels. */
   private updateDownholes(): void {
+    const where = new THREE.Vector3();
+    for (const layer of this.drillholes.values()) {
+      if (!layer.group.visible || !layer.labelGroup.visible) continue;
+      for (const item of layer.labels) {
+        where.set(item.position.x, item.position.y, item.position.z * this.vexag);
+        const pxPerM = this.pixelsPerUnit(where);
+        item.sprite.center.set(-layer.labelShift / item.wpx, 0.5);
+        item.sprite.scale.set(item.wpx / pxPerM, item.hpx / pxPerM, 1);
+      }
+    }
     if (this.downholes.size === 0) return;
     this.camera.updateMatrixWorld();
     const view = this.camera.getWorldDirection(this.side.view.value).normalize();
@@ -495,6 +598,8 @@ export class GeoScene {
     const layer = this.drillholes.get(setId);
     if (!layer) return;
     this.root.remove(layer.group);
+    layer.labelGroup.clear(); // label materials are shared: they stay in the cache
+    layer.group.remove(layer.labelGroup);
     disposeTree(layer.group, this.materials);
     this.drillholes.delete(setId);
     if (update) this.contentChanged();
@@ -604,6 +709,7 @@ export class GeoScene {
     if (layer.paths) layer.paths.visible = style.paths;
     if (layer.intervals) layer.intervals.visible = style.intervals;
     if (layer.points) layer.points.visible = style.collars;
+    layer.labelGroup.visible = style.collars;
     this.requestRender();
   }
 
@@ -1102,6 +1208,8 @@ export class GeoScene {
       m.dispose();
     }
     this.labelMaterials.clear();
+    for (const [shape, t] of this.markerTextures) if (shape !== "circle") t.dispose();
+    this.markerTextures.clear();
     this.pointTexture.dispose();
     this.controls.dispose();
     this.renderer.dispose();
@@ -1626,6 +1734,43 @@ function disposeTree(object: THREE.Object3D, materials: Set<LineMaterial>): void
       m.dispose();
     }
   });
+}
+
+/** A white marker with a dark outline, tinted by the colour of the point. */
+function makeMarkerTexture(shape: MarkerShape): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "rgba(0,0,0,0.6)";
+  ctx.lineWidth = 5;
+  ctx.lineJoin = "round";
+  const poly = (pts: number[][]) => {
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  };
+  if (shape === "square") poly([[8, 8], [56, 8], [56, 56], [8, 56]]);
+  else if (shape === "diamond") poly([[32, 4], [60, 32], [32, 60], [4, 32]]);
+  else if (shape === "triangle") poly([[32, 5], [59, 56], [5, 56]]);
+  else if (shape === "cross") poly([[22, 4], [42, 4], [42, 22], [60, 22], [60, 42], [42, 42], [42, 60], [22, 60], [22, 42], [4, 42], [4, 22], [22, 22]]);
+  else if (shape === "star") {
+    const pts: number[][] = [];
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? 13 : 29;
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      pts.push([32 + r * Math.cos(a), 32 + r * Math.sin(a)]);
+    }
+    poly(pts);
+  } else {
+    ctx.beginPath();
+    ctx.arc(32, 32, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  return new THREE.CanvasTexture(canvas);
 }
 
 function makeCircleTexture(): THREE.CanvasTexture {

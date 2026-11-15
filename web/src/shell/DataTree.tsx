@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Dataset, Hole, RasterInfo } from "../api";
+import type { Dataset, Hole, RasterInfo, SavedChartKind } from "../api";
 import type { TableKind } from "../route";
 import { loadHoles } from "../viz/useVizData";
 import { Icon, type IconName } from "./icons";
@@ -49,7 +49,15 @@ export interface DataTreeProps {
   onSetMenu?: (setId: number, x: number, y: number) => void;
   /** A saved chart under a set: open it, or its menu (rename, delete). */
   onOpenChart?: (chartId: number) => void;
-  onChartMenu?: (chart: { id: number; kind: "histogram" | "qq" | "dendrogram" | "striplog"; name: string }, x: number, y: number) => void;
+  onChartMenu?: (chart: { id: number; kind: SavedChartKind; name: string }, x: number, y: number) => void;
+  /** The gear (or right click) of «Устья»: the form of the collars' marker and label. */
+  onCollarStyle?: (setId: number) => void;
+  /** Right click on «Стволы»: what to show along the holes (grades, lithology, events). */
+  onPathsMenu?: (setId: number, x: number, y: number) => void;
+  /** A saved display of data along the holes: its form. */
+  onOpenDisplay?: (chartId: number) => void;
+  /** An interval or event table: its rows. */
+  onOpenIntervalTable?: (table: { id: number; name: string; kind?: "interval" | "event" }) => void;
   /** Right click on an interval table (the assays: key "assay"): downhole log, rename, delete. */
   onTableMenu?: (setId: number, table: { key: string; id: number | null; name: string }, x: number, y: number) => void;
   /** A table of the set shown on its holes in 3D (null: a new log window). */
@@ -288,7 +296,7 @@ export function DataTree(props: DataTreeProps) {
           <Folders node={folderTree(sets)} group="drillholes" closed={isOpen} toggle={toggle} render={(d) => {
             const key = `set:${d.id}`;
             const counts = d.counts ?? { collar: 0, survey: 0, assay: 0 };
-            const component = d.components?.[0];
+            const displays = (d.charts ?? []).filter((c) => c.kind === "downhole");
             return (
               <li key={d.id}>
                 <div
@@ -308,23 +316,29 @@ export function DataTree(props: DataTreeProps) {
                 </div>
                 {isOpen(key) && (
                   <ul className="tree-children">
-                    <li className="tree-row layer">
+                    <li className="tree-row layer" onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); props.onCollarStyle?.(d.id); }}
+                      title="Устья: значок и подпись — шестерёнка или правая кнопка">
+                      <Eye shown={shown(layerKey.setPart(d.id, "collars"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "collars"), v)} label="устья" />
+                      <span className="grow">Устья</span>
+                      <span className="row-actions always">
+                        <Action icon="gear" title="Значок, цвет, размер и подпись устьев…" onClick={() => props.onCollarStyle?.(d.id)} />
+                      </span>
+                    </li>
+                    <li className="tree-row layer" onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); props.onPathsMenu?.(d.id, e.clientX, e.clientY); }}
+                      title="Стволы: правая кнопка — что показать по стволам (содержания, литология, события)">
+                      <Twisty open={!isOpen(`logsClosed:${d.id}`)} onClick={() => toggle(`logsClosed:${d.id}`)} />
                       <Eye shown={shown(layerKey.setPart(d.id, "paths"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "paths"), v)} label="стволы" />
                       <span className="grow">Стволы</span>
+                      <span className="count">{displays.length || ""}</span>
                     </li>
-                    <li className="tree-row layer" onContextMenu={(e) => setMenu(e, d.id)}>
-                      <Twisty open={!isOpen(`logsClosed:${d.id}`)} onClick={() => toggle(`logsClosed:${d.id}`)} />
-                      <Eye shown={shown(layerKey.setPart(d.id, "intervals"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "intervals"), v)} label="содержания" />
-                      <span className="grow">Содержания{component ? ` · ${d.components!.map((c) => c.name).join(", ")}` : ""}</span>
-                    </li>
-                    {/* Saved displays of data along the holes (graphs, bars, tubes, text): on / off, drag onto the view. */}
+                    {/* Saved displays of data along the holes: on / off, drag onto the view, double click to edit. */}
                     {!isOpen(`logsClosed:${d.id}`) && (
                       <li>
                         <ul className="tree-children">
-                          {!(d.charts ?? []).some((c) => c.kind === "striplog") && (
-                            <li className="tree-note muted small">Графики и данные на скважинах: лента «Вид» → «Данные по скважинам».</li>
+                          {displays.length === 0 && (
+                            <li className="tree-note muted small">Правая кнопка на «Стволах» → Содержания, Литология или События.</li>
                           )}
-                          {(d.charts ?? []).filter((c) => c.kind === "striplog").map((c) => {
+                          {displays.map((c) => {
                             const on = (props.logsOn ?? []).includes(c.id);
                             return (
                               <li key={c.id}>
@@ -334,20 +348,20 @@ export function DataTree(props: DataTreeProps) {
                                     e.dataTransfer.setData("application/x-bedrockforge-log", String(c.id));
                                     e.dataTransfer.effectAllowed = "copy";
                                   }}
-                                  onClick={() => props.onToggleLog?.(c.id, !on)} onDoubleClick={() => props.onOpenChart?.(c.id)}
+                                  onClick={() => props.onToggleLog?.(c.id, !on)} onDoubleClick={() => props.onOpenDisplay?.(c.id)}
                                   onContextMenu={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     props.onChartMenu?.(c, e.clientX, e.clientY);
                                   }}
-                                  title={`${c.name}: клик — показать / скрыть на скважинах в 3D, перетащите в окно вида; двойной клик — настройки`}
+                                  title={`${c.name}: клик — показать / скрыть на скважинах, можно перетащить в окно вида; двойной клик — настройки`}
                                 >
                                   <input type="checkbox" className="eye" checked={on} onClick={(e) => e.stopPropagation()}
                                     onChange={(e) => props.onToggleLog?.(c.id, e.target.checked)} aria-label={`На скважинах: ${c.name}`} />
                                   <Icon name="striplog" size={14} />
                                   <span className="grow name">{c.name}</span>
                                   <span className="row-actions">
-                                    <Action icon="properties" title="Настройки отображения…" onClick={() => props.onOpenChart?.(c.id)} />
+                                    <Action icon="gear" title="Настройки отображения…" onClick={() => props.onOpenDisplay?.(c.id)} />
                                   </span>
                                 </div>
                               </li>
@@ -356,16 +370,12 @@ export function DataTree(props: DataTreeProps) {
                         </ul>
                       </li>
                     )}
-                    <li className="tree-row layer">
-                      <Eye shown={shown(layerKey.setPart(d.id, "collars"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "collars"), v)} label="устья" />
-                      <span className="grow">Устья</span>
-                    </li>
                     {TABLES.map((t) => (
                       <li key={t.kind}>
                         <button
                           className="tree-row leaf" onClick={() => props.onOpenTable(d.id, t.kind)}
                           onContextMenu={t.kind === "assay" ? (e) => tableMenu(e, d.id, { key: "assay", id: null, name: "Пробы" }) : undefined}
-                          title={t.kind === "assay" ? "Таблица «Пробы»; правая кнопка — графики и данные по стволу" : `Таблица «${t.label}»`}
+                          title={t.kind === "assay" ? "Таблица «Пробы»; правая кнопка — графики" : `Таблица «${t.label}»`}
                         >
                           <Icon name="table" size={14} />
                           <span className="grow">{t.label}</span>
@@ -376,12 +386,12 @@ export function DataTree(props: DataTreeProps) {
                     {(d.interval_tables ?? []).map((t) => (
                       <li key={`it${t.id}`}>
                         <button
-                          className="tree-row leaf" onClick={() => props.onNewLog?.(d.id, String(t.id))}
+                          className="tree-row leaf" onClick={() => props.onOpenIntervalTable?.(t)}
                           onContextMenu={(e) => tableMenu(e, d.id, { key: String(t.id), id: t.id, name: t.name })}
-                          title={`Интервальная таблица «${t.name}»: клик — показать на скважинах в 3D, правая кнопка — меню`}
+                          title={`${t.kind === "event" ? "События" : "Интервальная таблица"} «${t.name}»: клик — открыть таблицу, правая кнопка — меню`}
                         >
                           <Icon name="table" size={14} />
-                          <span className="grow name">{t.name}</span>
+                          <span className="grow name">{t.name}{t.kind === "event" ? " · события" : ""}</span>
                           <span className="count">{t.row_count.toLocaleString("ru-RU")}</span>
                         </button>
                       </li>
@@ -405,12 +415,12 @@ export function DataTree(props: DataTreeProps) {
                         <Twisty open={isOpen(`charts:${d.id}`)} onClick={() => toggle(`charts:${d.id}`)} />
                         <Icon name="chart" size={14} />
                         <span className="grow">Графики</span>
-                        <span className="count">{(d.charts ?? []).filter((c) => c.kind !== "striplog").length}</span>
+                        <span className="count">{(d.charts ?? []).filter((c) => c.kind !== "striplog" && c.kind !== "downhole").length}</span>
                       </div>
                       {isOpen(`charts:${d.id}`) && (
                         <ul className="tree-children">
-                          {!(d.charts ?? []).some((c) => c.kind !== "striplog") && <li className="tree-note muted small">Нет графиков. Правая кнопка на наборе или «Пробы» → график.</li>}
-                          {(d.charts ?? []).filter((c) => c.kind !== "striplog").map((c) => (
+                          {!(d.charts ?? []).some((c) => c.kind !== "striplog" && c.kind !== "downhole") && <li className="tree-note muted small">Нет графиков. Правая кнопка на наборе или «Пробы» → график.</li>}
+                          {(d.charts ?? []).filter((c) => c.kind !== "striplog" && c.kind !== "downhole").map((c) => (
                             <li key={c.id}>
                               <button
                                 className="tree-row leaf" onClick={() => props.onOpenChart?.(c.id)} title={`${c.name} — открыть`}
@@ -420,7 +430,7 @@ export function DataTree(props: DataTreeProps) {
                                   props.onChartMenu?.(c, e.clientX, e.clientY);
                                 }}
                               >
-                                <Icon name={c.kind} size={14} />
+                                <Icon name={c.kind === "downhole" ? "striplog" : c.kind} size={14} />
                                 <span className="grow name">{c.name}</span>
                               </button>
                             </li>

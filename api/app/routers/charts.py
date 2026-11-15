@@ -23,7 +23,8 @@ from app.routers.projects import get_set
 
 router = APIRouter(prefix="/api", tags=["charts"])
 
-ChartKind = Literal["histogram", "qq", "dendrogram", "striplog"]
+# "downhole": a display of data along the holes in the 3D view (grades, lithology, events)
+ChartKind = Literal["histogram", "qq", "dendrogram", "striplog", "downhole"]
 
 
 class ChartIn(BaseModel):

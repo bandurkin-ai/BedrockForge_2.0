@@ -1,61 +1,19 @@
 import { Fragment, useEffect, useState } from "react";
-import type { AuditRun, Dataset, IntervalsData, LineLayerInfo, RasterInfo, RasterPatch, Summary, VerticalPlacement } from "../api";
+import type { AuditRun, Dataset, LineLayerInfo, RasterInfo, RasterPatch, Summary, VerticalPlacement } from "../api";
 import { blockMeta, checkWireframes, type BlockAttribute } from "../api";
 import { defaultBlockStyle, type BlockStyle } from "../viz/blockStyle";
 import { BlockModelPanel } from "./BlockModelPanel";
 import { HoleCard } from "../HoleCard";
 import type { TableKind } from "../route";
-import { ComponentPanel, type VizSettings } from "../viz/ComponentPanel";
-import { makeScale } from "../viz/colorScale";
-import { loadIntervals } from "../viz/useVizData";
+import type { VizSettings } from "../viz/ComponentPanel";
 import type { SelectedObject } from "./workspace";
 
 const fmt = (value: number | null | undefined, digits = 0) =>
   value === null || value === undefined ? "—" : value.toLocaleString("ru-RU", { maximumFractionDigits: digits });
 
-/** Component and colour range shared by every drillhole set in the 3D view. */
-function ColorSection({ datasets, activeSet, refreshKey, viz, onViz }: {
-  datasets: Dataset[]; activeSet: number | null; refreshKey: number; viz: VizSettings; onViz: (next: VizSettings) => void;
-}) {
-  const sets = datasets.filter((d) => d.kind === "drillholes");
-  const components = [...new Map(sets.flatMap((d) => d.components ?? []).map((c) => [c.name, c])).values()];
-  const reference = sets.find((d) => d.id === activeSet) ?? sets[0];
-  const component = components.some((c) => c.name === viz.component) ? viz.component : reference?.components?.[0]?.name ?? components[0]?.name ?? null;
-  const [intervals, setIntervals] = useState<IntervalsData | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!reference || !component || !reference.components?.some((c) => c.name === component)) {
-      setIntervals(null);
-      return;
-    }
-    loadIntervals(reference.id, component, refreshKey).then((i) => !cancelled && setIntervals(i)).catch(() => !cancelled && setIntervals(null));
-    return () => {
-      cancelled = true;
-    };
-  }, [reference?.id, component, refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const stats = intervals?.stats ?? null;
-  return (
-    <>
-      <h2 className="dock-title">Раскраска по содержаниям</h2>
-      <ComponentPanel
-        components={components}
-        settings={viz}
-        component={component}
-        scale={makeScale(viz, stats ?? undefined)}
-        stats={stats}
-        unit={components.find((c) => c.name === component)?.unit ?? null}
-        onChange={onViz}
-      />
-      {sets.length > 1 && reference && <p className="muted small">Авто-диапазон — по набору «{reference.name}».</p>}
-    </>
-  );
-}
-
 /** Right dock: the selected object (hole, wireframe) or the active drillhole set. */
 export function PropertiesPanel({
-  datasets, activeSet, summary, audit, selectedHole, selected, refreshKey, viz, onViz, onOpenTable, onClearHole, onRaster, sectionFrame,
+  datasets, activeSet, summary, audit, selectedHole, selected, refreshKey, onOpenTable, onClearHole, onRaster, sectionFrame,
   blockStyles, onBlockStyle, pickedBlock, onBlockUnit, onBlockReport,
 }: {
   datasets: Dataset[];
@@ -78,7 +36,8 @@ export function PropertiesPanel({
   onBlockUnit?: (id: number, key: string, unit: BlockAttribute["unit"]) => void;
   onBlockReport?: (id: number) => void;
 }) {
-  const color = <ColorSection datasets={datasets} activeSet={activeSet} refreshKey={refreshKey} viz={viz} onViz={onViz} />;
+  // What is drawn along the holes is set up in the tree: «Стволы» → right click.
+  const color = null;
   const set = datasets.find((d) => d.id === activeSet);
   const pick = <T extends { id: number }>(kind: SelectedObject["kind"], list: (d: Dataset) => T[] | null) =>
     selected?.kind === kind ? datasets.flatMap((d) => (list(d) ?? []).map((x) => ({ ...x, file: d }))).find((x) => x.id === selected.id) : undefined;

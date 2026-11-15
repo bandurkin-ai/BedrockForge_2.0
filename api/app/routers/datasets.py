@@ -161,7 +161,7 @@ def dataset_out(session: Session, d: Dataset) -> DatasetOut:
         out.audit = run.counts["by_severity"] if run else None
         out.charts = [{"id": c.id, "kind": c.kind, "name": c.name}
                       for c in session.scalars(select(Chart).where(Chart.dataset_id == d.id).order_by(Chart.id))]
-        out.interval_tables = [{"id": t.id, "name": t.name, "row_count": t.row_count}
+        out.interval_tables = [{"id": t.id, "name": t.name, "row_count": t.row_count, "kind": t.kind}
                                for t in session.scalars(select(IntervalTable).where(IntervalTable.set_id == d.id).order_by(IntervalTable.id))]
     elif d.kind == "wireframes":
         rows = session.scalars(select(Wireframe).where(Wireframe.dataset_id == d.id).order_by(Wireframe.id))

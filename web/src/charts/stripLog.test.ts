@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownholeData } from "../api";
-import { along, categoryColors, defaultTracks, depthTicks, fieldRange, stripLogName, tableDisplay } from "./stripLog";
+import { along, categoryColors, defaultTracks, depthTicks, fieldRange, stripLogName, tableDisplay, classColor, classLabel, defaultClasses, displayName, sortClasses, DEFAULT_STRIPLOG } from "./stripLog";
 
 const data: DownholeData = {
   tables: [{ key: "5", name: "Литология", columns: [{ name: "LITH", kind: "text", unit: "" }, { name: "RQD", kind: "number", unit: "%" }] }],
@@ -52,5 +52,23 @@ describe("downhole log", () => {
     expect(depthTicks(0, 100, 3)).toEqual([0, 20, 40, 60, 80, 100]);
     expect(depthTicks(12, 30, 30)).toEqual([12, 14, 16, 18, 20, 22, 24, 26, 28, 30]);
     expect(stripLogName({ holes: ["H1", "H2", "H3", "H4"], tracks: [], from: "", to: "", scale: 0, grid: true })).toBe("Колонка H1, H2 и ещё 2");
+  });
+
+  it("colours by grade classes: below the first bound, between bounds, from the last", () => {
+    const classes = [{ from: null, color: "#a" }, { from: 0.3, color: "#b" }, { from: 1, color: "#c" }];
+    expect([0, 0.29, 0.3, 0.99, 1, 50].map((v) => classColor(classes, v))).toEqual(["#a", "#a", "#b", "#b", "#c", "#c"]);
+    expect(classColor([{ from: 0.5, color: "#b" }], 0.1)).toBeNull(); // below every class: no colour
+    expect(classColor(classes, "x")).toBeNull();
+    expect(classes.map((_, i) => classLabel(classes, i))).toEqual(["< 0.3", "0.3 – 1", "≥ 1"]);
+    expect(sortClasses([{ from: 2, color: "#c" }, { from: null, color: "#a" }, { from: 1, color: "#b" }, { from: 2, color: "#d" }]).map((c) => c.from)).toEqual([null, 1, 2]);
+    const auto = defaultClasses([0, 10], false);
+    expect(auto.map((c) => c.from)).toEqual([null, 2, 4, 6, 8]);
+    expect(defaultClasses([0.01, 10], true).length).toBeGreaterThan(2);
+  });
+
+  it("names a display by its field and kind", () => {
+    const t = { id: "t", table: "assay", field: "AU", type: "bars" as const, width: 90, color: "#000000", min: "", max: "", log: true, boundaries: false };
+    expect(displayName({ ...DEFAULT_STRIPLOG, form: "grade", tracks: [t] }, "Пробы")).toBe("AU · столбцы");
+    expect(displayName({ ...DEFAULT_STRIPLOG, form: "lith", tracks: [{ ...t, field: "LITH", type: "color_text" }] }, "Литология")).toBe("LITH (Литология)");
   });
 });

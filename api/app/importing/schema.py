@@ -61,6 +61,11 @@ SCHEMAS: dict[str, tuple[TargetField, ...]] = {
         TargetField("from", "От (From)", True, True, ("FROM", "DEPTH_FROM", "FROM_M", "FROM_DEPTH", "ОТ", "ИНТЕРВАЛ_ОТ", "С")),
         TargetField("to", "До (To)", True, True, ("TO", "DEPTH_TO", "TO_M", "TO_DEPTH", "ДО", "ИНТЕРВАЛ_ДО", "ПО")),
     ),
+    # Events along a hole: one depth, no thickness (water inflow, core loss point, structure, sample point).
+    "event": (
+        _HOLE_ID,
+        TargetField("depth", "Глубина события", True, True, ("DEPTH", "AT", "MD", "DEPTH_AT", "ГЛУБИНА", "ГЛУБИНА_СОБЫТИЯ")),
+    ),
 }
 
 KIND_LABELS = {
@@ -68,6 +73,7 @@ KIND_LABELS = {
     "survey": "Инклинометрия (Survey)",
     "assay": "Пробы (Assay)",
     "interval": "Интервальная таблица (литология, изменения, RQD…)",
+    "event": "События по скважинам (глубина без мощности)",
 }
 
 # Chemical symbols offered as assay components (value columns).

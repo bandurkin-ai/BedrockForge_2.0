@@ -11,7 +11,7 @@ def _upload(client: TestClient, name: str, data: bytes):
 def test_schemas_endpoint_lists_the_tables(client):
     body = client.get("/api/import/schemas").json()
 
-    assert set(body) == {"collar", "survey", "assay", "interval"}
+    assert set(body) == {"collar", "survey", "assay", "interval", "event"}
     required = [f["key"] for f in body["collar"]["fields"] if f["required"]]
     assert required == ["hole_id", "x", "y", "z", "td"]
 

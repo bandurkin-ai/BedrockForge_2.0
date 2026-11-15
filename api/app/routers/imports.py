@@ -320,14 +320,14 @@ def commit(req: CommitRequest, session: Session = Depends(get_session)) -> Commi
         dataset = Dataset(project_id=req.project_id, kind="drillholes", name=(req.set_name or "").strip() or "Скважины", meta={})
         session.add(dataset)
         session.flush()
-    if req.kind == "interval":
+    if req.kind in ("interval", "event"):
         from pathlib import PurePath
 
         from app.importing.store import commit_interval_table
 
         name = (req.table_name or "").strip() or PurePath(req.filename or meta["filename"]).stem or "Интервалы"
         result = commit_interval_table(session, dataset.id, name[:255], normalized,
-                                       filename=(req.filename or meta["filename"])[:255], mapping=req.mapping)
+                                       filename=(req.filename or meta["filename"])[:255], mapping=req.mapping, kind=req.kind)
         return CommitResponse(set_id=dataset.id, job_id=result.job_id, kind=result.kind, inserted=result.inserted,
                               replaced=result.replaced, issues=out_issues)
     result = commit_import(
