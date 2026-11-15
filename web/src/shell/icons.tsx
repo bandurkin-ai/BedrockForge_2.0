@@ -1,6 +1,8 @@
 /** Line icons on a 24px grid; they take the text colour. */
 const PATHS = {
   cube: "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5l8 4.5 8-4.5M12 12v9",
+  cubeLeft: "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5l8 4.5 8-4.5M12 12v9",
+  cubeRight: "M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5l8 4.5 8-4.5M12 12v9",
   plan: "M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zM9 4v14M15 6v14",
   section: "M3 18h18M3 18V8l5 3 4-5 4 6 5-3v9M8 11v7M16 12v6",
   log: "M9 3h6v18H9zM9 8h6M9 12h6M9 17h6M5 3v18",
@@ -54,6 +56,12 @@ const PATHS = {
 
 export type IconName = keyof typeof PATHS;
 
+/** Faces drawn filled: the side views are a cube with its left or right face shaded. */
+const FILLS: Partial<Record<IconName, string>> = {
+  cubeLeft: "M4 7.5l8 4.5v9l-8-4.5z",
+  cubeRight: "M20 7.5l-8 4.5v9l8-4.5z",
+};
+
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   return (
     <svg
@@ -68,6 +76,7 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
       strokeLinejoin="round"
       aria-hidden="true"
     >
+      {FILLS[name] && <path d={FILLS[name]} fill="currentColor" fillOpacity={0.55} stroke="none" />}
       <path d={PATHS[name]} />
     </svg>
   );
