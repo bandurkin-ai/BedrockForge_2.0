@@ -2,7 +2,7 @@ import { forwardRef } from "react";
 import type { DownholeData, DownholeInterval } from "../api";
 import { ColorScale } from "../viz/colorScale";
 import { formatNumber, parseNumber } from "../stats/chartMath";
-import { along, categoryColors, depthTicks, fieldRange, type StripLogSettings, type Track } from "./stripLog";
+import { along, categoryColors, classColor, classLabel, depthTicks, fieldRange, type StripLogSettings, type Track } from "./stripLog";
 
 const AXIS = 46;
 const GAP = 26;
@@ -28,14 +28,17 @@ function prepare(data: DownholeData, t: Track): Prepared {
   const hi = parseNumber(t.max) ?? auto?.[1] ?? null;
   const range: [number, number] | null = lo !== null && hi !== null && hi > lo ? [lo, hi] : auto;
   const wantsColor = t.type === "color" || t.type === "color_text";
+  const cats = !numeric && (wantsColor || t.type === "event") ? categoryColors(data, t.table, t.field) : null;
+  if (cats && t.catColors) for (const [k, c] of Object.entries(t.catColors)) if (cats.has(k)) cats.set(k, c);
   return {
     track: t,
     title: `${t.field}${table && table.key !== "assay" ? ` · ${table.name}` : ""}`,
     unit: column?.unit ?? "",
     numeric,
     range,
-    colors: !numeric && wantsColor ? categoryColors(data, t.table, t.field) : null,
-    scale: numeric && wantsColor && range ? new ColorScale(range[0], range[1], t.log) : null,
+    colors: cats,
+    // a number is coloured by its class, by the scale, or (bars and lines) in one colour
+    scale: numeric && range && t.colorBy !== "classes" && (t.colorBy === "scale" || (wantsColor && t.colorBy !== "single")) ? new ColorScale(range[0], range[1], t.log) : null,
   };
 }
 
@@ -58,8 +61,12 @@ export const StripLogChart = forwardRef<SVGSVGElement, { data: DownholeData; set
     const pxPerM = s.scale > 0 ? s.scale : Math.max(0.05, (fitHeight - HEAD - 2 * PAD - 70) / Math.max(longest, 1e-6));
     const trackWidth = tracks.reduce((w, t) => w + t.track.width, 0);
     const holeWidth = AXIS + Math.max(trackWidth, 60);
-    const legends = tracks.filter((t) => t.colors && t.colors.size > 0);
-    const legendRows = legends.reduce((n, t) => n + 1 + Math.ceil(Math.min(t.colors!.size, 40) / 4), 0);
+    // legends: categories, or the classes of a colouring by grades
+    const legendItems = (t: Prepared): [string, string][] =>
+      t.colors ? [...t.colors].slice(0, 40)
+        : t.numeric && t.track.colorBy === "classes" ? (t.track.classes ?? []).map((c, i, all) => [classLabel(all, i), c.color] as [string, string]) : [];
+    const legends = tracks.filter((t) => legendItems(t).length > 0);
+    const legendRows = legends.reduce((n, t) => n + 1 + Math.ceil(legendItems(t).length / 4), 0);
     const W = PAD * 2 + data.holes.length * holeWidth + Math.max(0, data.holes.length - 1) * GAP;
     const bodyH = longest * pxPerM;
     const H = PAD * 2 + HEAD + bodyH + (legendRows ? 16 + legendRows * 16 : 0);
@@ -97,7 +104,8 @@ export const StripLogChart = forwardRef<SVGSVGElement, { data: DownholeData; set
               {tracks.map((p, ti) => {
                 const tx = hx + AXIS + tracks.slice(0, ti).reduce((w, t) => w + t.track.width, 0);
                 const w = p.track.width;
-                const rows = (h.tables[p.track.table] ?? []).filter((iv) => iv.from !== null && iv.to !== null && iv.to! > span.top && iv.from! < span.bottom);
+                const rows = (h.tables[p.track.table] ?? []).filter((iv) => iv.from !== null && iv.to !== null
+                  && (p.track.type === "event" ? iv.from! >= span.top && iv.from! <= span.bottom : iv.to! > span.top && iv.from! < span.bottom));
                 return (
                   <g key={p.track.id}>
                     <text className="chart-tick strip-head" x={tx + 3} y={PAD + 40}>{p.title.length > w / 6 ? `${p.title.slice(0, Math.max(3, Math.floor(w / 6) - 1))}…` : p.title}<title>{p.title}</title></text>
@@ -121,7 +129,7 @@ export const StripLogChart = forwardRef<SVGSVGElement, { data: DownholeData; set
           let row = 0;
           const top = PAD + HEAD + bodyH + 16;
           return legends.map((p) => {
-            const items = [...p.colors!].slice(0, 40);
+            const items = legendItems(p);
             const head = row++;
             const out = (
               <g key={p.track.id}>
@@ -154,12 +162,38 @@ function TrackBody({ prepared: p, rows, x, w, y, hole }: { prepared: Prepared; r
   const out: JSX.Element[] = [];
   const showColor = t.type === "color" || t.type === "color_text";
   const showText = t.type === "text" || t.type === "color_text";
+  /** colour of a number by its class or the scale; null: the track's own colour */
+  const valueColor = (v: unknown): string | null => {
+    if (!p.numeric) return null;
+    if (t.colorBy === "classes") return classColor(t.classes, v);
+    return p.scale && typeof v === "number" ? p.scale.css(v) : null;
+  };
+  if (t.type === "event") {
+    // markers at the depth of the event, with its value beside
+    const r = Math.max(4, (t.size ?? 12) / 2);
+    rows.forEach((iv, i) => {
+      const v = iv.values[t.field];
+      const cy = y(iv.from!);
+      const cx = x + r + 4;
+      const fill = (p.colors && v !== null && v !== undefined ? p.colors.get(String(v)) : null) ?? t.color;
+      out.push(
+        <g key={`e${i}`}>
+          <line className="strip-boundary" x1={x} x2={x + w} y1={cy} y2={cy} />
+          <path d={`M${cx} ${cy - r}L${cx + r} ${cy}L${cx} ${cy + r}L${cx - r} ${cy}Z`} fill={fill} className="strip-swatch">
+            <title>{`${hole} ${formatNumber(iv.from!, 2)} м: ${t.field} = ${valueText(v) || "—"}`}</title>
+          </path>
+          <text className="strip-text" x={cx + r + 4} y={cy + 4}>{valueText(v)}</text>
+        </g>,
+      );
+    });
+    return <>{out}</>;
+  }
   if (showColor) {
     rows.forEach((iv, i) => {
       const v = iv.values[t.field];
       let fill: string | null = null;
       if (p.colors && v !== null && v !== undefined && v !== "") fill = p.colors.get(String(v)) ?? null;
-      if (p.scale && typeof v === "number") fill = p.scale.css(v);
+      if (p.numeric) fill = valueColor(v);
       if (fill) out.push(<rect key={`c${i}`} x={x} y={y(iv.from!)} width={w} height={Math.max(0.5, y(iv.to!) - y(iv.from!))} fill={fill}><title>{tip(iv)}</title></rect>);
     });
   }
@@ -167,7 +201,7 @@ function TrackBody({ prepared: p, rows, x, w, y, hole }: { prepared: Prepared; r
     rows.forEach((iv, i) => {
       const v = iv.values[t.field];
       if (typeof v !== "number" || !Number.isFinite(v)) return;
-      out.push(<rect key={`b${i}`} className="strip-bar" x={x} y={y(iv.from!)} width={Math.max(0.5, pos(v) * w)} height={Math.max(0.5, y(iv.to!) - y(iv.from!))} fill={t.color}><title>{tip(iv)}</title></rect>);
+      out.push(<rect key={`b${i}`} className="strip-bar" x={x} y={y(iv.from!)} width={Math.max(0.5, pos(v) * w)} height={Math.max(0.5, y(iv.to!) - y(iv.from!))} fill={valueColor(v) ?? t.color}><title>{tip(iv)}</title></rect>);
     });
   }
   if (t.type === "line" && p.numeric) {

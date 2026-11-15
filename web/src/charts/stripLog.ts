@@ -96,8 +96,15 @@ export const CATEGORY_COLORS = ["#e0c040", "#8a6d3b", "#5fbf6a", "#4f9dde", "#c0
 let nextId = 0;
 export const newTrackId = () => `t${Date.now().toString(36)}${(nextId++).toString(36)}`;
 
-export function newTrack(table: string, column: IntervalColumn, index: number): Track {
+export function newTrack(table: string, column: IntervalColumn, index: number, event = false): Track {
   const grade = /^(AU|AG|PT|PD)/i.test(column.name) || /g\/t|ppm|ppb|г\/т/i.test(column.unit);
+  // a field of an event table: markers at their depth
+  if (event) {
+    return {
+      id: newTrackId(), table, field: column.name, type: "event", width: 110, color: LOG_COLORS[index % LOG_COLORS.length],
+      min: "", max: "", log: false, boundaries: false, marker: "diamond", size: 12,
+    };
+  }
   return {
     id: newTrackId(), table, field: column.name,
     type: column.kind === "text" ? "color_text" : "bars",
@@ -108,6 +115,7 @@ export function newTrack(table: string, column: IntervalColumn, index: number): 
 
 /** Default columns from a table: its text fields first (lithology), then up to three numbers. */
 export function defaultTracks(table: IntervalTableInfo): Track[] {
+  if (table.kind === "event") return table.columns.slice(0, 1).map((c, i) => newTrack(table.key, c, i, true));
   const text = table.columns.filter((c) => c.kind === "text").slice(0, 2);
   const numbers = table.columns.filter((c) => c.kind === "number").slice(0, 3);
   return [...text, ...numbers].map((c, i) => newTrack(table.key, c, i));

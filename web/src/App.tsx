@@ -942,7 +942,7 @@ function Workspace({
             onClose={() => setCharts((prev) => prev.filter((x) => x.id !== c.id))}
           >
             {c.kind === "striplog" ? (
-              <StripLogWindow setId={c.setId} setName={setName} initial={c.settings as Partial<StripLogSettings>} tableHint={c.hint?.table} holeHint={c.hint?.hole} onSettings={onSettings} />
+              <StripLogWindow projectId={projectId} setId={c.setId} setName={setName} initial={c.settings as Partial<StripLogSettings>} tableHint={c.hint?.table} holeHint={c.hint?.hole} onSettings={onSettings} />
             ) : c.kind === "qq" ? (
               <QQWindow sets={sets.map((d) => ({ id: d.id, name: d.name }))} initial={{ ...defaultQQ(c.setId), ...(c.settings as Partial<QQSettings>) }} onSettings={onSettings} />
             ) : c.kind === "dendrogram" ? (

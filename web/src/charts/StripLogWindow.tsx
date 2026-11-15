@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getDownhole, getIntervalTables, type DownholeData, type Hole, type IntervalTableInfo } from "../api";
+import { getDownhole, getIntervalTables, getPalettes, type DownholeData, type Hole, type IntervalTableInfo, type SavedPalette } from "../api";
 import { loadHoles } from "../viz/useVizData";
 import { download, savePng, saveSvg, toCsv } from "./exportChart";
 import { StripLogChart } from "./StripLogChart";
 import {
-  DEFAULT_STRIPLOG, defaultTracks, LOG_COLORS, newTrack, stripLogName, TRACK_TITLES, type StripLogSettings, type Track, type TrackType,
+  DEFAULT_STRIPLOG, defaultClasses, defaultTracks, fieldRange, LOG_COLORS, newTrack, sortClasses, stripLogName, TRACK_TITLES, type StripLogSettings, type Track, type TrackType,
 } from "./stripLog";
 
 const SCALES: [number, string][] = [[0, "вписать"], [0.5, "1:2000"], [1, "1:1000"], [2, "1:500"], [4, "1:250"], [8, "1:125"], [20, "1:50"]];
 
 /** «Данные по скважинам»: columns of interval tables along the chosen holes (graphs, bars, colour, text). A viewer: nothing is saved. */
-export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, onSettings }: {
+export function StripLogWindow({ projectId, setId, setName, initial, tableHint, holeHint, onSettings }: {
+  /** for the colourings by grade classes saved in the project */
+  projectId?: number;
   setId: number;
   setName: string;
   initial?: Partial<StripLogSettings>;
@@ -27,12 +29,18 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState("");
+  // the table whose fields are the columns, and the table of the «+ колонка» list (fields of other tables)
   const [addTable, setAddTable] = useState<string>("");
+  const [mixTable, setMixTable] = useState<string>("");
   const svgRef = useRef<SVGSVGElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const [fitHeight, setFitHeight] = useState(560);
   const set = (patch: Partial<StripLogSettings>) => setS((p) => ({ ...p, ...patch }));
 
+  const [palettes, setPalettes] = useState<SavedPalette[]>([]);
+  useEffect(() => {
+    if (projectId !== undefined) getPalettes(projectId).then(setPalettes).catch(() => undefined);
+  }, [projectId]);
   useEffect(() => {
     getIntervalTables(setId).then(setTables).catch((e: Error) => setError(e.message));
     loadHoles(setId, 0).then(setHoles).catch((e: Error) => setError(e.message));
@@ -44,7 +52,7 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
     setS((p) => {
       let next = p;
       if (!p.tracks.length) {
-        const t = tables.find((x) => x.key === (tableHint ?? "assay")) ?? tables.find((x) => x.columns.length);
+        const t = tables.find((x) => x.key === tableHint) ?? tables.find((x) => x.columns.length);
         if (t) next = { ...next, tracks: defaultTracks(t) };
       }
       if (!p.holes.length && holes.length) {
@@ -53,7 +61,10 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
       }
       return next;
     });
-    setAddTable((prev) => prev || tableHint || tables[0]?.key || "");
+    // the table shown: the one of the first column, else the one the columns were taken from
+    const shown = s.tracks[0]?.table ?? (tables.find((x) => x.key === tableHint) ?? tables.find((x) => x.columns.length))?.key ?? "";
+    setAddTable((prev) => prev || shown);
+    setMixTable((prev) => prev || shown);
   }, [tables, holes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -151,12 +162,31 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
           <label className="check"><input type="checkbox" checked={s.grid} onChange={(e) => set({ grid: e.target.checked })} /> общая шкала глубин</label>
         </fieldset>
         <fieldset>
+          <legend>Таблица</legend>
+          <label>Таблица набора
+            <select value={addTable} aria-label="Таблица набора" onChange={(e) => {
+              // table first: its fields become the columns
+              const t = table(e.target.value);
+              setAddTable(e.target.value);
+              setMixTable(e.target.value);
+              if (t) set({ tracks: defaultTracks(t) });
+            }}>
+              {(tables ?? []).map((t) => <option key={t.key} value={t.key}>{t.name}{t.kind === "event" ? " · события" : ""} · {t.row_count.toLocaleString("ru-RU")}</option>)}
+            </select>
+          </label>
+          <p className="muted small">Смена таблицы показывает её поля. Поля других таблиц добавляются ниже («+ колонка»).</p>
+          {tables && tables.length === 0 && <p className="muted small">В наборе нет таблиц опробования: импортируйте их в мастере скважин.</p>}
+        </fieldset>
+        <fieldset>
           <legend>Колонки ({s.tracks.length})</legend>
           {s.tracks.map((t, i) => {
             const tb = table(t.table);
             const col = tb?.columns.find((c) => c.name === t.field);
             const numeric = col?.kind === "number";
-            const types: TrackType[] = numeric ? ["bars", "line", "color", "text", "color_text"] : ["color_text", "color", "text"];
+            const event = tb?.kind === "event";
+            const types: TrackType[] = event ? ["event"] : numeric ? ["bars", "line", "color", "text", "color_text"] : ["color_text", "color", "text"];
+            const colorBy = t.colorBy ?? (t.type === "color" || t.type === "color_text" ? "scale" : "single");
+            const range = numeric && data ? fieldRange(data, t.table, t.field, t.log) : null;
             return (
               <div key={t.id} className="strip-track">
                 <div className="strip-track-head">
@@ -177,7 +207,7 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
                     <input type="number" min={30} max={400} step={10} value={t.width} onChange={(e) => updateTrack(t.id, { width: Math.max(30, Math.min(400, Number(e.target.value) || 90)) })} aria-label={`Ширина: ${t.field}`} />
                   </label>
                 </div>
-                {numeric && (
+                {numeric && !event && (
                   <>
                     <div className="pair">
                       <label>от<input value={t.min} onChange={(e) => updateTrack(t.id, { min: e.target.value })} placeholder="авто" inputMode="decimal" aria-label={`Шкала от: ${t.field}`} /></label>
@@ -185,26 +215,58 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint, o
                     </div>
                     <div className="pair">
                       <label className="check"><input type="checkbox" checked={t.log} onChange={(e) => updateTrack(t.id, { log: e.target.checked })} /> лог.</label>
-                      {(t.type === "bars" || t.type === "line") && (
+                      {(t.type === "bars" || t.type === "line") && colorBy === "single" && (
                         <label className="color-pick">Цвет<input type="color" value={t.color} onChange={(e) => updateTrack(t.id, { color: e.target.value })} aria-label={`Цвет: ${t.field}`} /></label>
                       )}
                     </div>
+                    {t.type !== "text" && t.type !== "line" && (
+                      <label>Раскраска
+                        <select value={colorBy} aria-label={`Раскраска: ${t.field}`} onChange={(e) => {
+                          const next = e.target.value as Track["colorBy"];
+                          updateTrack(t.id, { colorBy: next, classes: next === "classes" && !t.classes?.length ? defaultClasses(range, t.log) : t.classes });
+                        }}>
+                          {t.type === "bars" && <option value="single">один цвет</option>}
+                          <option value="classes">по градациям содержаний</option>
+                          <option value="scale">непрерывная шкала</option>
+                        </select>
+                      </label>
+                    )}
+                    {t.type !== "text" && t.type !== "line" && colorBy === "classes" && (
+                      <div className="palette-row">
+                        <select value="" aria-label={`Раскраска проекта: ${t.field}`} onChange={(e) => {
+                          const p = palettes.find((x) => String(x.id) === e.target.value);
+                          if (p) updateTrack(t.id, { classes: sortClasses(p.classes.map((c) => ({ ...c }))) });
+                        }}>
+                          <option value="">{palettes.length ? "раскраска проекта…" : "нет сохранённых раскрасок"}</option>
+                          {palettes.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        <button type="button" title="Границы по диапазону значений" onClick={() => updateTrack(t.id, { classes: defaultClasses(range, t.log) })}>Авто</button>
+                      </div>
+                    )}
                   </>
                 )}
-                <label className="check"><input type="checkbox" checked={t.boundaries} onChange={(e) => updateTrack(t.id, { boundaries: e.target.checked })} /> границы интервалов</label>
+                {event && (
+                  <div className="pair">
+                    <label>Значок, px
+                      <input type="number" min={4} max={40} value={t.size ?? 12} onChange={(e) => updateTrack(t.id, { size: Math.max(4, Math.min(40, Number(e.target.value) || 12)) })} aria-label={`Размер значка: ${t.field}`} />
+                    </label>
+                    {numeric && <label className="color-pick">Цвет<input type="color" value={t.color} onChange={(e) => updateTrack(t.id, { color: e.target.value })} aria-label={`Цвет: ${t.field}`} /></label>}
+                  </div>
+                )}
+                {!event && <label className="check"><input type="checkbox" checked={t.boundaries} onChange={(e) => updateTrack(t.id, { boundaries: e.target.checked })} /> границы интервалов</label>}
               </div>
             );
           })}
           <div className="strip-add">
-            <select value={addTable} onChange={(e) => setAddTable(e.target.value)} aria-label="Таблица для новой колонки">
+            <select value={mixTable} onChange={(e) => setMixTable(e.target.value)} aria-label="Таблица для новой колонки">
               {(tables ?? []).map((t) => <option key={t.key} value={t.key}>{t.name}</option>)}
             </select>
             <select value="" onChange={(e) => {
-              const c = table(addTable)?.columns.find((x) => x.name === e.target.value);
-              if (c) set({ tracks: [...s.tracks, { ...newTrack(addTable, c, s.tracks.length), color: LOG_COLORS[s.tracks.length % LOG_COLORS.length] }] });
+              const c = table(mixTable)?.columns.find((x) => x.name === e.target.value);
+              if (c) set({ tracks: [...s.tracks, { ...newTrack(mixTable, c, s.tracks.length, table(mixTable)?.kind === "event"), color: LOG_COLORS[s.tracks.length % LOG_COLORS.length] }] });
             }} aria-label="Добавить колонку">
               <option value="">+ колонка…</option>
-              {(table(addTable)?.columns ?? []).map((c) => <option key={c.name} value={c.name}>{c.name}{c.kind === "text" ? " (текст)" : c.unit ? `, ${c.unit}` : ""}</option>)}
+              {(table(mixTable)?.columns ?? []).map((c) => <option key={c.name} value={c.name}>{c.name}{c.kind === "text" ? " (текст)" : c.unit ? `, ${c.unit}` : ""}</option>)}
             </select>
           </div>
         </fieldset>
