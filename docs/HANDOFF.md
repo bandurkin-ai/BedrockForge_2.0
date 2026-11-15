@@ -34,7 +34,7 @@ docker compose up --build
 - Веб: http://localhost:5173, API: http://localhost:8000. Сервис `worker` выполняет фоновые задания; хранилище — том `store` (`DATA_DIR=/data`).
 - Лента → «Демо-проект» создаёт учебный проект (48 скважин, каркасы, линии, растры в плане и в разрезе).
 - Локальная разработка без Docker: PostgreSQL 16 (`pg_ctlcluster 16 main start`; пользователь `geo`/`geo`, базы `geo` и `geo_test`), `alembic upgrade head` и `uvicorn app.main:app` в `api/` (задания идут в потоке API, `JOBS_IN_API=1`), `API_URL=http://localhost:8000 npx vite` в `web/`.
-- Тесты: `cd api && python3 -m pytest` (270 passed / 17 skipped), `cd web && npm test` (62 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
+- Тесты: `cd api && python3 -m pytest` (273 passed / 17 skipped), `cd web && npm test` (62 passed). Не использовать `/root/.local/bin/pytest` — без alembic.
 - Замеры: `cd api && python -m bench.run --profile ci --check` (1 млн треугольников) или `--profile full` (10 млн, 2 ГБ).
 
 ## 3. Стек
@@ -147,6 +147,7 @@ Job                        — фоновое задание: статус, пр
 | Каркасы до этапа 10 | `render` пустой: рисуются одной частью без уровней; «проверить» в свойствах строит всё заново |
 | Двойная загрузка из мастера | StrictMode дважды запускает эффект монтирования: передача стартует один раз по флагу в `useRef` |
 | BOCU-1 в DAT | Не «ASCII + 0x50», а настоящий BOCU-1 (кириллица — многобайтово). Декодер `formats/bocu1.py` сверен с ICU 74 (`libicuuc`, `ucnv_convert`), векторы — в `tests/test_bocu1.py`. Старый тестовый построитель кодировал A–O без сдвига — исправлен |
+| «Неизвестный тип задания import.objects» у всех заданий | Исполнитель получил недогруженный модуль обработчиков (импорт в потоке при старте). Теперь `_ensure_handlers` под блокировкой, вызывается в основном потоке до запуска исполнителей и повторно в `run_job`; при ошибке импорта задание показывает её. Упавшее задание — «Повторить» (`POST /api/jobs/{id}/retry`, загрузки те же) |
 | Пиковая память `--profile full` | Данные готовятся в отдельном процессе (`--prepare`), иначе генерация попадает в замер |
 
 ## 10. Что дальше

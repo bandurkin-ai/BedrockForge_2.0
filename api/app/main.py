@@ -17,7 +17,15 @@ async def lifespan(_: FastAPI):
     workers = []
     if settings.jobs_in_api:
         from app.db import SessionLocal
-        from app.jobs.worker import Worker
+        from app.jobs.worker import Worker, _ensure_handlers
+
+        # In this thread, before any worker thread starts: no import race between them.
+        try:
+            _ensure_handlers()
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception("job handlers cannot be loaded")
 
         for i in range(settings.jobs_in_api):
             worker = Worker(SessionLocal, name=f"api-{i}")

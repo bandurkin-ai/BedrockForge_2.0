@@ -912,6 +912,8 @@ export const startImport = (projectId: number, body: ImportRequest) =>
 export const listJobs = (projectId: number) => request<JobInfo[]>(`/api/projects/${projectId}/jobs`);
 export const getJob = (id: number) => request<JobDetail>(`/api/jobs/${id}`);
 export const cancelJob = (id: number) => request<JobInfo>(`/api/jobs/${id}/cancel`, { method: "POST" });
+/** A failed or cancelled job again, with the same uploaded files. */
+export const retryJob = (id: number) => request<JobInfo>(`/api/jobs/${id}/retry`, { method: "POST" });
 
 /** Every change of the project's jobs, as it happens; returns the unsubscribe function. */
 export function subscribeJobs(projectId: number, onJob: (job: JobInfo) => void): () => void {

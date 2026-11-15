@@ -417,3 +417,33 @@ def test_preview_of_micromine_str(tmp_path):
     p = inspect_str(path)
     assert p["format"] == "Micromine STR" and p["fields"] == ["EAST", "NORTH", "RL", "JOIN"]
     assert "точек ≈ 3" in p["summary"]
+
+
+def test_unknown_handlers_reload_and_failed_job_retry(db_client, run_jobs, tmp_path, monkeypatch):
+    """A worker that started with no handlers loads them before failing a job; a failed import
+    can be run again with the same uploads."""
+    from app.jobs import worker
+
+    pid = _project(db_client)
+    path = tmp_path / "Pit.tridb"
+    make_tridb(path, [("выемка", 0x0080FF, CUBE_V + [500000, 4500000, 100], CUBE_T)])
+    uid = upload(db_client, pid, "Pit.tridb", path.read_bytes(), chunk=4096)
+    job = db_client.post(f"/api/projects/{pid}/imports", json={"uploads": [uid]}).json()
+
+    saved = dict(worker.HANDLERS)
+    worker.HANDLERS.clear()  # as after a half-finished import of app.jobs.handlers
+    monkeypatch.setattr(worker, "_ensure_handlers", lambda: worker.HANDLERS.update(saved))
+    run_jobs()
+    assert db_client.get(f"/api/jobs/{job['id']}").json()["status"] == "done"
+
+    # A job that failed keeps its uploads and can be retried.
+    job2 = db_client.post(f"/api/projects/{pid}/imports", json={
+        "uploads": [upload(db_client, pid, "Pit2.tridb", path.read_bytes(), chunk=4096)]}).json()
+    db_client.post(f"/api/jobs/{job2['id']}/cancel")
+    run_jobs()
+    assert db_client.get(f"/api/jobs/{job2['id']}").json()["status"] == "cancelled"
+    again = db_client.post(f"/api/jobs/{job2['id']}/retry")
+    assert again.status_code == 200 and again.json()["status"] == "queued"
+    run_jobs()
+    assert db_client.get(f"/api/jobs/{job2['id']}").json()["status"] == "done"
+    assert db_client.post(f"/api/jobs/{job2['id']}/retry").status_code == 409  # done: nothing to retry

@@ -131,3 +131,21 @@ def job_out(job: Job) -> dict:
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
         "updated_at": job.updated_at.isoformat() if job.updated_at else None,
     }
+
+
+def retry(session: Session, job: Job) -> Job:
+    """A failed or cancelled job back in the queue as it was (the caller commits)."""
+    job.status = "queued"
+    job.error = None
+    job.result = None
+    job.progress = 0.0
+    job.message = "В очереди (повтор)"
+    job.attempts = 0
+    job.cancel_requested = False
+    job.started_at = None
+    job.finished_at = None
+    job.heartbeat_at = None
+    job.worker = None
+    job.updated_at = now()
+    job.log = [*(job.log or []), {"t": now().isoformat(), "level": "info", "text": "Повтор задания"}]
+    return job

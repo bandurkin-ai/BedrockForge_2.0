@@ -142,6 +142,25 @@ def cancel_job(job_id: int, session: Session = Depends(get_session)) -> dict:
     return queue.job_out(queue.request_cancel(session, job))
 
 
+@router.post("/jobs/{job_id}/retry")
+def retry_job(job_id: int, session: Session = Depends(get_session)) -> dict:
+    """A failed or cancelled job again, with the same files (an import needs its uploads still there)."""
+    from app.models import Upload
+
+    job = _get_job(session, job_id)
+    if job.status not in ("failed", "cancelled"):
+        raise HTTPException(409, "Повторить можно только задание с ошибкой или отменённое")
+    ids = list((job.params or {}).get("uploads") or [])
+    if ids:
+        found = {u.id: u for u in session.scalars(select(Upload).where(Upload.id.in_(ids)))}
+        missing = [i for i in ids if i not in found or found[i].status != "complete" or not part_path(i).is_file()]
+        if missing:
+            raise HTTPException(409, "Загруженных файлов этого задания уже нет: загрузите их заново")
+    queue.retry(session, job)
+    session.commit()
+    return queue.job_out(job)
+
+
 @router.post("/storage/gc", status_code=202)
 def start_gc(session: Session = Depends(get_session)) -> dict:
     job = queue.enqueue(session, "storage.gc", {}, title="Очистка хранилища", max_attempts=1)

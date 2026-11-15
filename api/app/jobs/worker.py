@@ -97,6 +97,17 @@ def run_job(session_factory: Callable[[], Session], job: Job) -> str:
     """Runs one claimed job to its end; returns the final status."""
     fn = HANDLERS.get(job.kind)
     if fn is None:
+        # The handlers may not have been loaded (an import that failed, or one still running in
+        # another thread): load them now, and say why if that is impossible.
+        try:
+            _ensure_handlers()
+        except Exception as exc:
+            log.exception("job handlers cannot be loaded")
+            _finish(session_factory, job.id, status="failed", message="Ошибка",
+                    error=f"Обработчики заданий не загрузились: {type(exc).__name__}: {exc}")
+            return "failed"
+        fn = HANDLERS.get(job.kind)
+    if fn is None:
         _finish(session_factory, job.id, status="failed", error=f"Неизвестный тип задания «{job.kind}»",
                 message="Ошибка")
         return "failed"
@@ -150,8 +161,22 @@ def run_pending(session_factory: Callable[[], Session], *, worker: str = "inline
     return n
 
 
+_handlers_lock = threading.Lock()
+
+
 def _ensure_handlers() -> None:
-    from app.jobs import handlers  # noqa: F401  (registers the handlers)
+    """Imports the handlers once (they register themselves). Under a lock: two worker threads
+    importing at once could see a half-initialised module with no handlers registered yet."""
+    with _handlers_lock:
+        import importlib
+
+        importlib.import_module("app.jobs.handlers")
+        if "import.objects" not in HANDLERS:
+            # A half-imported module left in sys.modules: import it afresh.
+            import sys
+
+            sys.modules.pop("app.jobs.handlers", None)
+            importlib.import_module("app.jobs.handlers")
 
 
 class Worker:
@@ -163,7 +188,11 @@ class Worker:
         self.stopping = threading.Event()
 
     def run(self) -> None:
-        _ensure_handlers()
+        try:
+            _ensure_handlers()
+        except Exception:
+            # Keep running: run_job loads them again and reports the error with the job.
+            log.exception("job handlers cannot be loaded")
         last_sweep = 0.0
         last_gc = time.monotonic()
         while not self.stopping.is_set():

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cancelJob, getJob, isFinished, type JobDetail, type JobInfo } from "../api";
+import { cancelJob, getJob, isFinished, retryJob, type JobDetail, type JobInfo } from "../api";
 import type { UploadState } from "./useJobs";
 
 const STATUS: Record<JobInfo["status"], string> = {
@@ -40,6 +40,13 @@ export function JobsPanel({ jobs, uploads, onClearUploads }: { jobs: JobInfo[]; 
   const show = async (id: number) => {
     try {
       setOpen(open?.id === id ? null : await getJob(id));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const retry = async (id: number) => {
+    try {
+      await retryJob(id);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -93,6 +100,9 @@ export function JobsPanel({ jobs, uploads, onClearUploads }: { jobs: JobInfo[]; 
                 <button className="small" disabled={j.cancel_requested} onClick={() => void cancel(j.id)}>
                   {j.cancel_requested ? "Отмена…" : "Отменить"}
                 </button>
+              )}
+              {(j.status === "failed" || j.status === "cancelled") && (
+                <button className="small" onClick={() => void retry(j.id)} title="Запустить снова с теми же файлами (без новой загрузки)">Повторить</button>
               )}
             </div>
             {open?.id === j.id && (
