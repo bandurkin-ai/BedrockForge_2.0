@@ -25,3 +25,4 @@ playwright-report/
 *.pem
 *.key
 license-private*
+.eb-cache/
