@@ -811,7 +811,7 @@ function Workspace({
       }}
     >
       <header className="titlebar">
-        <span className="brand"><span className="brand-mark" aria-hidden="true" />BedrockForge</span>
+        <span className="brand"><span className="brand-mark" aria-hidden="true" />BedrockForge<span className="brand-by">by Mikhail Bandurkin</span></span>
         <label className="project-pick">
           <span className="muted">Проект</span>
           <select value={projectId} onChange={(e) => onSelectProject(Number(e.target.value))} aria-label="Проект">

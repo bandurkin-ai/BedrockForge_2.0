@@ -3,6 +3,7 @@ import {
   cancelAccountLogin, checkAssistant, connectAssistantKey, disconnectAssistant, finishAccountLogin, getAssistantUsage,
   setAssistantPreferences, startAccountLogin, type AssistantStatus, type AssistantUsage,
 } from "../api";
+import { desktop, mcpUrl } from "../desktop";
 import { askConfirm } from "./dialogs";
 import { Icon } from "./icons";
 
@@ -77,13 +78,15 @@ export function ClaudeAccount({ status, onStatus }: { status: AssistantStatus | 
 
   const startLogin = () => {
     // The page is opened at once (an address set later would be blocked as a pop-up).
-    const page = window.open("about:blank", "_blank");
+    // The desktop client opens the address in the system browser once it is known.
+    const page = desktop ? null : window.open("about:blank", "_blank");
     setBusy(true);
     setNote(null);
     startAccountLogin()
       .then((r) => {
         setLogin({ id: r.login_id, url: r.url });
-        if (page) page.location.href = r.url;
+        if (desktop) void desktop.openExternal(r.url);
+        else if (page) page.location.href = r.url;
       })
       .catch((e: Error) => {
         page?.close();
@@ -223,7 +226,7 @@ export function ClaudeAccount({ status, onStatus }: { status: AssistantStatus | 
 
 /** How to use a Claude subscription: the user's own Claude app connects to BedrockForge over MCP. */
 function SubscriptionHelp() {
-  const mcp = `${window.location.protocol}//${window.location.hostname}:8000/mcp`;
+  const mcp = mcpUrl();
   const code = `claude mcp add --transport http bedrockforge ${mcp}`;
   const desktop = JSON.stringify({ mcpServers: { bedrockforge: { command: "npx", args: ["-y", "mcp-remote", mcp] } } }, null, 2);
   const [copied, setCopied] = useState<string | null>(null);
@@ -247,7 +250,7 @@ function SubscriptionHelp() {
       <div className="ca-code"><pre>{desktop}</pre><button className="small-btn" onClick={() => copy("desktop", desktop)}>{copied === "desktop" ? "Скопировано" : "Копировать"}</button></div>
       <ol className="ca-steps small" start={4}>
         <li>Перезапустите Claude Desktop: в списке инструментов появится «bedrockforge».</li>
-        <li>Держите BedrockForge открытым в браузере (в строке состояния «MCP: готов») и пишите задачи в Claude: «покажи скважину H-12 на разрезе», «сводка аудита».</li>
+        <li>Держите BedrockForge открытым в браузере или в программе для Windows (в строке состояния «MCP: готов») и пишите задачи в Claude: «покажи скважину H-12 на разрезе», «сводка аудита».</li>
       </ol>
       <p className="muted small">MCP-сервер работает без пароля на этом компьютере (порт 8000): не открывайте его в интернет.</p>
     </div>

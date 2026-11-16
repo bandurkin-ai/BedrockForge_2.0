@@ -1,0 +1,72 @@
+{
+  "name": "bedrockforge-desktop",
+  "productName": "BedrockForge",
+  "version": "0.1.0",
+  "description": "BedrockForge by Mikhail Bandurkin — desktop client for Windows 11",
+  "author": "Mikhail Bandurkin",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "web": "npm --prefix ../web ci && npm --prefix ../web run build",
+    "start": "electron .",
+    "test": "node --test test/proxy.test.js",
+    "dist": "npm run web && electron-builder --win portable nsis --x64 --publish never",
+    "dist:dir": "electron-builder --win dir --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.bandurkin.bedrockforge",
+    "productName": "BedrockForge",
+    "copyright": "© Mikhail Bandurkin",
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "executableName": "BedrockForge"
+    },
+    "portable": {
+      "artifactName": "BedrockForge-${version}-portable.exe"
+    },
+    "nsis": {
+      "artifactName": "BedrockForge-${version}-setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "BedrockForge",
+      "uninstallDisplayName": "BedrockForge by Mikhail Bandurkin"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "bandurkin-ai",
+        "repo": "BedrockForge",
+        "releaseType": "draft"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bandurkin-ai/BedrockForge.git"
+  }
+}
