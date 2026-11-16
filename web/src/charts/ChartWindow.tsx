@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Icon, type IconName } from "../shell/icons";
 
 /**
@@ -35,7 +36,7 @@ export function ChartWindow({
     setPos({ x, y });
   };
 
-  return (
+  const win = (
     <section
       className={`chart-window${max ? " maximized" : ""}${size ? ` ${size}` : ""}`} style={max ? { zIndex: z } : { left: pos.x, top: pos.y, zIndex: z }}
       onMouseDown={onFocus} role="dialog" aria-label={title}
@@ -51,4 +52,11 @@ export function ChartWindow({
       <div className="chart-window-body">{children}</div>
     </section>
   );
+  // All floating windows live in one layer of the page: however high their own order grows,
+  // dialogs (export, import, confirmations) and menus stay above them.
+  const layer = document.getElementById(WINDOW_LAYER_ID);
+  return layer ? createPortal(win, layer) : win;
 }
+
+/** id of the element that holds every floating window (rendered once by the application). */
+export const WINDOW_LAYER_ID = "window-layer";

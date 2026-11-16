@@ -410,13 +410,15 @@ export class GeoScene {
   private resizeObserver: ResizeObserver;
   private cleanup: (() => void)[] = [];
   private axes: AxesGizmo;
+  /** the running turn of the view to an axis (a newer one stops it) */
+  private turnToken = 0;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.className = "scene3d";
-    this.axes = new AxesGizmo(container);
+    this.axes = new AxesGizmo(container, (dir) => this.turnTo(dir));
 
     this.perspective.up.set(0, 0, 1);
     this.ortho.up.set(0, 0, 1);
@@ -2027,6 +2029,50 @@ export class GeoScene {
     this.requestRender();
   }
 
+  /**
+   * A click on an axis of the corner gizmo: the view turns smoothly to look along that axis
+   * (from its end toward the centre of the view), keeping the centre and the scale.
+   * `from` is in rendered space (Z already stretched or flipped).
+   */
+  turnTo(from: THREE.Vector3): void {
+    const target = this.controls.target.clone();
+    const distance = Math.max(this.camera.position.distanceTo(target), 1);
+    const end = from.clone().normalize();
+    // Straight up or down: a hair off the vertical, so the screen keeps Y up (the camera's up is Z).
+    if (Math.abs(end.z) > 0.999) end.set(0, end.z > 0 ? -0.0001 : 0.0001, Math.sign(end.z)).normalize();
+    const start = this.viewDirection();
+    if (start.angleTo(end) < 1e-3) return;
+    if (this.camera === this.ortho) {
+      // Room behind for everything, however the view turns (fitDepth trims it after).
+      const box = this.contentBox();
+      const depth = box ? box.getSize(new THREE.Vector3()).length() * Math.max(1, Math.abs(this.vexag)) : 0;
+      this.ortho.near = 0.1;
+      this.ortho.far = Math.max(this.ortho.far, distance * 2 + depth * 2);
+      this.ortho.updateProjectionMatrix();
+    }
+    const turn = new THREE.Quaternion().setFromUnitVectors(start, end);
+    const q = new THREE.Quaternion();
+    const dir = new THREE.Vector3();
+    const t0 = performance.now();
+    const token = ++this.turnToken;
+    const step = (now: number) => {
+      if (this.disposed || token !== this.turnToken) return;
+      const k = Math.min((now - t0) / 260, 1);
+      const e = 1 - (1 - k) ** 3; // ease out
+      q.identity().slerp(turn, e);
+      dir.copy(start).applyQuaternion(q);
+      if (k === 1) dir.copy(end);
+      this.camera.up.set(0, 0, 1);
+      this.camera.position.copy(target).addScaledVector(dir, distance);
+      this.camera.lookAt(target);
+      this.controls.update();
+      this.requestRender();
+      this.onCamera();
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
   /** Unit vector from the view target to the camera. */
   private viewDirection(): THREE.Vector3 {
     const direction = this.camera.position.clone().sub(this.controls.target);
@@ -2793,7 +2839,9 @@ class AxesGizmo {
   private v = new THREE.Vector3();
   private static R = 33;
 
-  constructor(container: HTMLElement) {
+  private flipZ = false;
+
+  constructor(container: HTMLElement, onTurn: (from: THREE.Vector3) => void) {
     this.svg = document.createElementNS(SVG_NS, "svg");
     this.svg.setAttribute("class", "axes-gizmo");
     this.svg.setAttribute("viewBox", "-46 -46 92 92");
@@ -2807,13 +2855,29 @@ class AxesGizmo {
       g.setAttribute("class", `axis axis-${key}`);
       const back = document.createElementNS(SVG_NS, "circle");
       back.setAttribute("class", "axis-neg");
-      back.setAttribute("r", "3");
+      back.setAttribute("r", "4");
       const line = document.createElementNS(SVG_NS, "line");
       line.setAttribute("x1", "0");
       line.setAttribute("y1", "0");
       const dot = document.createElementNS(SVG_NS, "circle");
       dot.setAttribute("class", "axis-head");
       dot.setAttribute("r", "8");
+      const axis = key.toUpperCase();
+      const tip = (el: SVGElement, text: string) => {
+        const t = document.createElementNS(SVG_NS, "title");
+        t.textContent = text;
+        el.appendChild(t);
+      };
+      tip(dot, `Вид вдоль оси ${axis} (с её положительной стороны)`);
+      tip(back, `Вид с отрицательной стороны оси ${axis}`);
+      const pick = (sign: number) => (e: MouseEvent) => {
+        e.stopPropagation();
+        const v = dir.clone().multiplyScalar(sign);
+        if (this.flipZ && key === "z") v.negate();
+        onTurn(v);
+      };
+      dot.addEventListener("click", pick(1));
+      back.addEventListener("click", pick(-1));
       const label = document.createElementNS(SVG_NS, "text");
       label.textContent = key.toUpperCase();
       label.setAttribute("text-anchor", "middle");
@@ -2826,6 +2890,7 @@ class AxesGizmo {
   }
 
   update(camera: THREE.Camera, flipZ: boolean): void {
+    this.flipZ = flipZ;
     const inv = camera.matrixWorldInverse;
     const order: { depth: number; g: SVGGElement }[] = [];
     for (const it of this.items) {
