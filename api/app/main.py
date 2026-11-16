@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app import mcp_server
 from app.config import settings
-from app.routers import assistant, audit, blobs, blockmodels, charts, datasets, datatables, exports, imports, intervals, jobs, lines, operations, projects, stats, styles, uploads, viz
+from app.routers import archives, assistant, audit, blobs, blockmodels, charts, datasets, datatables, exports, imports, intervals, jobs, lines, operations, projects, stats, styles, uploads, viz
 
 mcp_app = mcp_server.http_app()
 
@@ -68,6 +68,7 @@ app.include_router(charts.router)
 app.include_router(blockmodels.router)
 app.include_router(intervals.router)
 app.include_router(styles.router)
+app.include_router(archives.router)
 
 # Local single-user MVP: the web dev server runs on a different port.
 app.add_middleware(

@@ -889,3 +889,24 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .tree-category.dragging > .tree-row.category { opacity: 0.45; }
 .tree-category.drop-before { box-shadow: 0 -2px 0 var(--accent); }
 .tree-category.drop-after { box-shadow: 0 2px 0 var(--accent); }
+
+/* ---- project export / import (.bfggis) */
+.modal.pa-dialog { width: min(720px, 94vw); display: flex; flex-direction: column; }
+.pa-contents td { padding: 3px 8px; font-size: 0.85rem; }
+.pa-params { flex-direction: column; align-items: flex-start; }
+.pa-password { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.pa-progress { display: flex; flex-direction: column; gap: 6px; }
+.pa-done { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 4px; }
+.pa-drop {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 16px; text-align: center; cursor: pointer;
+  border: 2px dashed var(--border); border-radius: 8px; background: var(--panel);
+}
+.pa-drop:hover, .pa-drop:focus-visible { border-color: var(--accent); }
+.pa-steps { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: pa; }
+.pa-steps li { counter-increment: pa; padding: 2px 10px; border-radius: 10px; background: var(--hover); color: var(--muted); }
+.pa-steps li::before { content: counter(pa) ". "; }
+.pa-steps li.active { background: var(--accent); color: #fff; }
+.pa-source { display: flex; flex-direction: column; gap: 2px; }
+.pa-warn { color: var(--sev-warning, #d9a400); }
+.pa-modes label input[type="text"], .pa-modes label input:not([type]) { min-width: 240px; }
+.pa-source .pp-badge { margin-left: 8px; }

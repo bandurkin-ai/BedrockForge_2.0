@@ -900,7 +900,8 @@ export const runLocalUncertainty = (setId: number, component: string, req: Local
 
 export interface UploadInfo {
   id: string;
-  project_id: number;
+  /** null: a project archive, uploaded before its project exists */
+  project_id: number | null;
   filename: string;
   size: number;
   received: number;
@@ -950,8 +951,8 @@ export const isFinished = (job: JobInfo) => job.status === "done" || job.status 
 const RESUME_PREFIX = "bf.upload:";
 const RETRIES = 6;
 
-function resumeKey(projectId: number, file: File) {
-  return `${RESUME_PREFIX}${projectId}:${file.name}:${file.size}:${file.lastModified}`;
+function resumeKey(projectId: number | null, file: File) {
+  return `${RESUME_PREFIX}${projectId ?? "archive"}:${file.name}:${file.size}:${file.lastModified}`;
 }
 
 function storage(): Storage | null {
@@ -980,7 +981,7 @@ const sleep = (ms: number, signal?: AbortSignal) =>
   });
 
 /** Where to continue an upload of this file, if an earlier attempt was interrupted. */
-async function resumable(projectId: number, file: File): Promise<UploadInfo | null> {
+async function resumable(projectId: number | null, file: File): Promise<UploadInfo | null> {
   const id = storage()?.getItem(resumeKey(projectId, file));
   if (!id) return null;
   const response = await tracedFetch(`/api/uploads/${id}`);
@@ -995,17 +996,18 @@ async function resumable(projectId: number, file: File): Promise<UploadInfo | nu
 /**
  * Sends a file of any size (up to the server's limit, 4 GB by default) in chunks with checksums.
  * Every chunk is retried with a growing pause; after a page reload or a lost connection the
- * same file continues where it stopped.
+ * same file continues where it stopped. `projectId` null: a project archive (.bfggis), which has no
+ * project yet.
  */
 export async function uploadResumable(
-  projectId: number,
+  projectId: number | null,
   file: File,
   onProgress?: (sent: number, total: number) => void,
   signal?: AbortSignal,
 ): Promise<UploadInfo> {
   let info = await resumable(projectId, file);
   if (!info) {
-    info = await request<UploadInfo>(`/api/projects/${projectId}/uploads`, {
+    info = await request<UploadInfo>(projectId === null ? "/api/uploads" : `/api/projects/${projectId}/uploads`, {
       method: "POST",
       ...json({ filename: file.name, size: file.size }),
     });
@@ -1102,6 +1104,75 @@ export function subscribeJobs(projectId: number, onJob: (job: JobInfo) => void):
   const source = new EventSource(`/api/projects/${projectId}/jobs/events`);
   source.addEventListener("job", (e) => onJob(JSON.parse((e as MessageEvent).data) as JobInfo));
   return () => source.close();
+}
+
+/** Changes of one job until it ends; returns the unsubscribe function. */
+export function subscribeJob(jobId: number, onJob: (job: JobInfo) => void): () => void {
+  if (typeof EventSource === "undefined") return () => undefined;
+  const source = new EventSource(`/api/jobs/${jobId}/events`);
+  source.addEventListener("job", (e) => onJob(JSON.parse((e as MessageEvent).data) as JobInfo));
+  source.addEventListener("end", () => source.close());
+  return () => source.close();
+}
+
+// ---- moving a whole project: one .bfggis file (api/app/routers/archives.py)
+
+/** What an export of the project will hold. */
+export interface ArchiveSummary {
+  name: string;
+  description: string;
+  created_at: string | null;
+  /** rows per table */
+  tables: Record<string, number>;
+  /** stored files (geometry, images, source files) and their size in bytes */
+  files: number;
+  file_bytes: number;
+}
+export const getArchiveSummary = (projectId: number) => request<ArchiveSummary>(`/api/projects/${projectId}/archive/summary`);
+
+export interface ProjectExportRequest {
+  filename?: string;
+  password?: string;
+  /** view settings of this browser for the project's objects */
+  browser?: Record<string, unknown> | null;
+}
+export const startProjectExport = (projectId: number, body: ProjectExportRequest) =>
+  request<JobInfo>(`/api/projects/${projectId}/archive`, { method: "POST", ...json(body) });
+
+/** What a .bfggis file holds (after its upload); `password_ok` false: a password is needed or wrong. */
+export interface ArchiveInfo {
+  encrypted: boolean;
+  password_ok: boolean;
+  error?: string | null;
+  size: number;
+  filename: string;
+  app_version?: string;
+  schema_revision?: string;
+  exported_at?: string;
+  project?: { id: number; name: string; description: string; created_at: string | null };
+  tables?: Record<string, number>;
+  files?: number;
+  file_bytes?: number;
+  browser?: boolean;
+  name_taken?: boolean;
+  existing_project_id?: number | null;
+  /** the name a copy gets when the project's name is taken: "name (2)" */
+  free_name?: string;
+}
+export const inspectArchive = (uploadId: string, password?: string) =>
+  request<ArchiveInfo>("/api/archives/inspect", { method: "POST", ...json({ upload_id: uploadId, password: password || null }) });
+
+export type ArchiveImportMode = "copy" | "rename" | "replace";
+export const startProjectImport = (body: { upload_id: string; password?: string; name?: string; mode: ArchiveImportMode }) =>
+  request<JobInfo>("/api/archives/import", { method: "POST", ...json({ ...body, password: body.password || null }) });
+
+/** The result of a finished project import: the new project and old -> new ids of its objects. */
+export interface ProjectImportResult {
+  project_id: number;
+  name: string;
+  replaced_project_id: number | null;
+  maps: Record<string, Record<string, number>>;
+  browser: Record<string, unknown> | null;
 }
 
 export async function deleteProject(id: number): Promise<void> {

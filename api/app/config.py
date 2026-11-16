@@ -14,6 +14,8 @@ class Settings:
     data_dir: Path
     # Resumable uploads (several requests, see routers/uploads.py).
     max_chunked_upload_bytes: int
+    # Project archives (.bfggis) may be much larger than ordinary files.
+    max_archive_upload_bytes: int
     upload_chunk_bytes: int
     # Background jobs: a worker thread inside the API process (local development) or none
     # (production: separate `python -m app.jobs.worker` processes).
@@ -36,6 +38,7 @@ class Settings:
             max_upload_bytes=int(os.environ.get("MAX_UPLOAD_MB", "200")) * 1024 * 1024,
             data_dir=Path(os.environ.get("DATA_DIR", Path(tempfile.gettempdir()) / "bedrockforge-data")),
             max_chunked_upload_bytes=int(os.environ.get("MAX_CHUNKED_UPLOAD_MB", "4096")) * 1024 * 1024,
+            max_archive_upload_bytes=int(os.environ.get("MAX_ARCHIVE_UPLOAD_MB", "262144")) * 1024 * 1024,
             upload_chunk_bytes=int(os.environ.get("UPLOAD_CHUNK_MB", "16")) * 1024 * 1024,
             jobs_in_api=int(os.environ.get("JOBS_IN_API", "1")),
             assistant_configured=bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")),

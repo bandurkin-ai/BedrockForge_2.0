@@ -25,7 +25,7 @@ from app.routers.projects import get_project
 
 router = APIRouter(prefix="/api", tags=["exports"])
 
-FORMATS = {"omf": (".omf", "export.omf")}
+FORMATS = {"omf": (".omf", "export.omf"), "bfggis": (".bfggis", "export.project")}
 
 
 class ExportIn(BaseModel):
