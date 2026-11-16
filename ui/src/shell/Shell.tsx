@@ -8,6 +8,12 @@ import { DialogHost } from "./DialogHost";
 import { dialogStore, showMessage } from "./dialogs";
 import { detectImportKind, IMPORT_TITLES } from "./tree";
 import { LicenseWindow } from "./LicenseWindow";
+import { startEvents } from "../modules/jobs/state";
+import { ExportWindow } from "../modules/projects/ExportWindow";
+import { ImportWindow } from "../modules/projects/ImportWindow";
+import { ProjectsWindow } from "../modules/projects/ProjectsWindow";
+import { restoreLast } from "../modules/projects/state";
+import { bridge } from "../bridge";
 import { Palette } from "./Palette";
 import { SettingsWindow } from "./SettingsWindow";
 import { WindowLayer, type WindowRenderer } from "./WindowLayer";
@@ -28,6 +34,12 @@ const renderWindow: WindowRenderer = (w) => {
       return <SettingsWindow tab={w.props?.tab as string | undefined} />;
     case "license":
       return <LicenseWindow />;
+    case "projects":
+      return <ProjectsWindow />;
+    case "project-export":
+      return <ExportWindow winId={w.id} />;
+    case "project-import":
+      return <ImportWindow winId={w.id} path={String(w.props?.path ?? "")} />;
     default:
       return null;
   }
@@ -50,6 +62,14 @@ export function Shell() {
   useEffect(() => {
     document.documentElement.dataset.theme = ws.theme;
   }, [ws.theme]);
+
+  // The core is up: the last project opens (ТЗ 7.3), job events flow (ТЗ 7.6). Again after a restart.
+  const coreOnline = useStore(app.store, (s) => s.core === "online");
+  useEffect(() => {
+    if (!coreOnline) return;
+    restoreLast(app).catch((e: unknown) => void showMessage({ title: "Проект", message: e instanceof Error ? e.message : String(e) }));
+  }, [app, coreOnline]);
+  useEffect(() => startEvents(), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -77,6 +97,11 @@ export function Shell() {
       if (!files.length) return;
       e.preventDefault();
       const kind = detectImportKind(files.map((f) => f.name));
+      if (kind === "project") {
+        const path = bridge()?.pathForFile(files[0]);
+        if (path) await app.run("project.import", { path });
+        return;
+      }
       if (!kind) {
         await showMessage({ title: "Импорт файлов", message: "Тип файлов не распознан. Поддерживаются DAT, CSV, Excel, TRIDB, DXF, OBJ, STL, STR, растры с привязкой, OMF, .bfggis." });
         return;

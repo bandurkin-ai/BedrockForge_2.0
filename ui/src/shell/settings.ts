@@ -12,11 +12,14 @@ export interface UserSettings {
   version: number;
   workspace: WorkspaceState;
   shortcuts: ShortcutOverrides;
+  /** uid of the project open last: it opens at start (ТЗ 7.3). */
+  lastProject: string | null;
 }
 
 export function normalizeSettings(raw: unknown): UserSettings {
   const r = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-  return { version: SETTINGS_VERSION, workspace: normalizeWorkspace(r.workspace), shortcuts: normalizeShortcuts(r.shortcuts) };
+  const last = typeof r.lastProject === "string" && /^[0-9a-f]{32}$/.test(r.lastProject) ? r.lastProject : null;
+  return { version: SETTINGS_VERSION, workspace: normalizeWorkspace(r.workspace), shortcuts: normalizeShortcuts(r.shortcuts), lastProject: last };
 }
 
 const LOCAL_KEY = "bedrockforge2.settings";

@@ -1,4 +1,5 @@
 import { useApp } from "./AppContext";
+import { JobsPanel } from "../modules/jobs/JobsPanel";
 import { CommandLog } from "./CommandLog";
 import { Icon } from "./Icon";
 import { useStore } from "./useStore";
@@ -10,7 +11,6 @@ const STAGE_TEXT: Partial<Record<BottomTab, string>> = {
   audit: "Аудит данных скважин появится на этапе Э5.",
   stats: "Статистика появится на этапе Э13.",
   swath: "Swath plot появится на этапе Э13.",
-  jobs: "Фоновые задания появятся на этапе Э2.",
 };
 
 export function BottomDock() {
@@ -29,7 +29,7 @@ export function BottomDock() {
           <Icon name="close" size={14} />
         </button>
       </div>
-      <div className={css.dockBody}>{tab === "log" ? <CommandLog /> : <div className={css.empty}>{STAGE_TEXT[tab]}</div>}</div>
+      <div className={css.dockBody}>{tab === "log" ? <CommandLog /> : tab === "jobs" ? <JobsPanel /> : <div className={css.empty}>{STAGE_TEXT[tab]}</div>}</div>
     </section>
   );
 }

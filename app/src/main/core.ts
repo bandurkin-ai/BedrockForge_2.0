@@ -25,6 +25,8 @@ export interface CoreInfo {
 export interface CoreOptions {
   command: CoreCommand;
   dataDir: string;
+  /** Folder of projects (ТЗ 6.5), read at every start: «Настройка» may change it. */
+  projectsDir?: () => string;
   logFile: string;
   readyTimeoutMs?: number;
   healthIntervalMs?: number;
@@ -96,7 +98,9 @@ export class CoreProcess extends EventEmitter {
   async start(port = 0): Promise<CoreInfo> {
     const token = this.token;
     const { file, args, cwd } = this.opts.command;
+    const projects = this.opts.projectsDir?.();
     const fullArgs = [...args, "--port", String(port), "--token", token, "--data", this.opts.dataDir, "--watch-stdin"];
+    if (projects) fullArgs.push("--projects", projects);
     this.log(`start ${file} ${args.join(" ")} (cwd ${cwd})`);
     const child = spawn(file, fullArgs, {
       cwd,

@@ -9,7 +9,15 @@ export const ART = path.resolve(__dirname, "..", "..", "artifacts");
 export function launchOptions(extraEnv: Record<string, string> = {}, userData?: string) {
   const exe = process.env.BF_APP_EXE; // packaged BedrockForge.exe on Windows CI
   const data = userData ?? fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-"));
-  const env = { ...process.env, BF_SOFTWARE_GL: "1", BF_USER_DATA: data, ...extraEnv } as Record<string, string>;
+  // Projects and the instance cache live next to the profile of the test (a fresh folder per launch unless shared).
+  const env = {
+    ...process.env,
+    BF_SOFTWARE_GL: "1",
+    BF_USER_DATA: data,
+    BF_PROJECTS_DIR: path.join(data, "Проекты"),
+    ...(process.env.BF_APP_EXE ? {} : { BF_LOCAL_DIR: path.join(data, "local") }),
+    ...extraEnv,
+  } as Record<string, string>;
   const args = process.platform === "linux" ? ["--no-sandbox"] : [];
   return exe ? { executablePath: exe, args, env } : { args: [path.resolve(__dirname, ".."), ...args], env };
 }
