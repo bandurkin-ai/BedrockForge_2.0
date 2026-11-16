@@ -83,7 +83,9 @@ jobs:
           $env:BF_LOCAL_DIR = Join-Path $env:RUNNER_TEMP "Профиль Тест\BedrockForge"
           Set-Location app
           npx playwright test
-          if ($LASTEXITCODE -ne 0) { throw "E2E failed" }
+          $rc = $LASTEXITCODE
+          Copy-Item -Recurse -Force (Join-Path $env:BF_LOCAL_DIR "logs") ..\artifacts\logs -ErrorAction SilentlyContinue
+          if ($rc -ne 0) { throw "E2E failed" }
           if (Test-Path ..\artifacts\startup.json) { "Запуск до рабочего окна: " + (Get-Content ..\artifacts\startup.json -Raw) | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
 
       - name: SHA256SUMS.txt

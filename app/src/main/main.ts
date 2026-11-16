@@ -142,6 +142,10 @@ function createMain(): void {
     width: placed?.width ?? 1440, height: placed?.height ?? 900, x: placed?.x, y: placed?.y, minWidth: 1024, minHeight: 600, show: false,
     title: TITLE, backgroundColor: "#15181d", webPreferences: securePrefs("preload.js"),
   });
+  // ТЗ 7.0.14: the minimum is 1024×600 of the page itself; on Windows the frame takes ~16 px of the outer size.
+  const [ow, oh] = mainWin.getSize();
+  const [cw, ch] = mainWin.getContentSize();
+  mainWin.setMinimumSize(1024 + Math.max(0, ow - cw), 600 + Math.max(0, oh - ch));
   if (placed?.x === undefined) mainWin.center();
   const remember = () => {
     if (!mainWin || mainWin.isDestroyed() || mainWin.isMinimized() || mainWin.isFullScreen()) return;
