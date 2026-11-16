@@ -60,6 +60,8 @@ export interface DataTreeProps {
   onCollarStyle?: (setId: number) => void;
   /** The gear of «Стволы»: line width and colour, depth ticks, crossings with wireframes and block models. */
   onTraceStyle?: (setId: number) => void;
+  /** The gear (or right click) of a block model: restriction, colouring by a field, how it is drawn. */
+  onBlockSettings?: (id: number) => void;
   /** Right click on «Стволы»: what to show along the holes (grades, lithology, events). */
   onPathsMenu?: (setId: number, x: number, y: number) => void;
   /** A saved display of data along the holes: its form. */
@@ -589,12 +591,16 @@ function BlockCategory(props: DataTreeProps & { open: Set<string>; toggle: (key:
         const errors = ((d.meta as { checks?: { level: string }[] }).checks ?? []).filter((c) => c.level === "error").length;
         return (
           <li key={d.id}>
-            <div className={selected ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectObject(selected ? null : { kind, id: d.id })}>
+            <div className={selected ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectObject(selected ? null : { kind, id: d.id })}
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); props.onBlockSettings?.(d.id); }}>
               <Eye shown={isShown(ws, layerKey.blocks(d.id))} onChange={(v) => props.onShow(layerKey.blocks(d.id), v)} label={d.name} />
               <Icon name="blocks" size={14} />
-              <span className="grow name" title={`${d.name}${d.meta.format ? ` · ${d.meta.format}` : ""}`}>{d.name}</span>
+              <span className="grow name" title={`${d.name}${d.meta.format ? ` · ${d.meta.format}` : ""} — шестерёнка или правая кнопка: настройки`}>{d.name}</span>
               {errors > 0 && <span className="dot error" title={`Ошибок проверки: ${errors}`}>{errors}</span>}
               <span className="count" title="Блоков">{n.toLocaleString("ru-RU")}</span>
+              <span className="row-actions always">
+                <Action icon="gear" title="Настройки модели: ограничитель, раскраска по полю, просмотр (оболочка, срез, края)…" onClick={() => props.onBlockSettings?.(d.id)} />
+              </span>
               <span className="row-actions">
                 <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
                 <Action icon="folder" title="В папку…" onClick={() => props.onMove(d)} />

@@ -17,7 +17,9 @@ import { CollarStyleForm } from "./viz/CollarStyleForm";
 import { DEFAULT_COLLAR_STYLE } from "./viz/collarStyle";
 import { TraceStyleForm } from "./viz/TraceStyleForm";
 import { DEFAULT_TRACE_STYLE } from "./viz/traceStyle";
-import type { BlockStyle } from "./viz/blockStyle";
+import { defaultBlockStyle } from "./viz/blockStyle";
+import { blockMeta } from "./api";
+import { BlockSettingsForm } from "./viz/BlockSettingsForm";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataTables } from "./DataTables";
 import { StatsPage } from "./StatsPage";
@@ -188,7 +190,6 @@ function Workspace({
       return open ? prev.map((r) => (r.id === open.id ? { ...r, z: top } : r)) : [...prev, { id: Date.now(), modelId, z: top }];
     });
   // How each block model is shown, and the block picked in the view.
-  const [blockStyles, setBlockStyles] = useState<Record<number, BlockStyle>>({});
   const [pickedBlock, setPickedBlock] = useState<{ modelId: number; index: number } | null>(null);
   const [menu, setMenu] = useState<{ setId: number; x: number; y: number } | null>(null);
   // Right click on an interval table of a set (not the assays: those get the charts menu).
@@ -350,6 +351,8 @@ function Workspace({
   // Marker and label of the collars of a set (the gear of «Устья»), and windows with rows of interval tables.
   const [collarForm, setCollarForm] = useState<number | null>(null);
   const [traceForm, setTraceForm] = useState<number | null>(null);
+  // The settings window of a block model (the gear in the tree): restriction, colouring, view.
+  const [blockForm, setBlockForm] = useState<number | null>(null);
   const [traceNotes, setTraceNotes] = useState<Record<number, string[]>>({});
   /** An interval or event table of a set: in the bottom panel, like the collars, surveys and assays. */
   const openIntervalTable = (t: { id: number; set_id?: number }, setId?: number) => {
@@ -904,6 +907,7 @@ function Workspace({
                   onTableMenu={(setId, table, x, y) => (table.id === null ? setMenu({ setId, x, y }) : setTableMenu({ setId, id: table.id, name: table.name, x, y }))}
                   onCollarStyle={(setId) => setCollarForm(setId)}
                   onTraceStyle={(setId) => setTraceForm(setId)}
+                  onBlockSettings={(id) => setBlockForm(id)}
                   onPathsMenu={(setId, x, y) => setPathsMenu({ setId, x, y })}
                   onOpenDisplay={(id) => void guarded(() => openDisplayForm(0, "grade", id))}
                   onOpenIntervalTable={(t, setId) => openIntervalTable(t, setId)}
@@ -947,7 +951,7 @@ function Workspace({
                 collarStyles={ws.collarStyles}
                 traceStyles={ws.traceStyles}
                 onTraceNotes={(setId, notes) => setTraceNotes((prev) => (JSON.stringify(prev[setId] ?? []) === JSON.stringify(notes) ? prev : { ...prev, [setId]: notes }))}
-                blockStyles={blockStyles}
+                blockStyles={ws.blockStyles}
                 onPickBlock={(modelId, index) => {
                   setPickedBlock({ modelId, index });
                   live.current.selectObject({ kind: "blocks", id: modelId });
@@ -1046,8 +1050,9 @@ function Workspace({
                       return patch.vertical ? "Растр поставлен в вертикальную плоскость" : undefined;
                     })}
                     sectionFrame={() => (section ? sceneApi.current?.sectionFrame() ?? null : null)}
-                    blockStyles={blockStyles}
-                    onBlockStyle={(id, style) => setBlockStyles((prev) => ({ ...prev, [id]: style }))}
+                    blockStyles={ws.blockStyles}
+                    onBlockStyle={(id, style) => setWs((prev) => ({ ...prev, blockStyles: { ...prev.blockStyles, [id]: style } }))}
+                    onBlockSettings={(id) => setBlockForm(id)}
                     pickedBlock={pickedBlock}
                     onBlockUnit={(id, key, unit) => void guarded(async () => {
                       await setBlockUnit(id, key, unit);
@@ -1245,6 +1250,25 @@ function Workspace({
           />
         </ChartWindow>
       )}
+
+      {(() => {
+        const model = blockForm === null ? undefined : (datasets ?? []).find((d) => d.id === blockForm && d.kind === "blocks");
+        if (!model) return null;
+        return (
+          <ChartWindow
+            index={2} z={30 + topZ()} size="form" icon="gear" title={`Блочная модель · ${model.name}`}
+            onFocus={() => undefined} onClose={() => setBlockForm(null)}
+          >
+            <BlockSettingsForm
+              dataset={model} style={ws.blockStyles[model.id] ?? defaultBlockStyle(blockMeta(model))}
+              onChange={(next) => setWs((prev) => ({ ...prev, blockStyles: { ...prev.blockStyles, [model.id]: next } }))}
+              projectId={projectId} styles={styles} onStyles={setStyles}
+              displays={sets.flatMap((d) => (d.charts ?? []).filter((c) => c.kind === "downhole").map((c) => ({ id: c.id, name: c.name, setName: d.name })))}
+              say={(text, error = false) => setNotice({ text, error })}
+            />
+          </ChartWindow>
+        );
+      })()}
 
       {reports.map((r, i) => {
         const model = (datasets ?? []).find((d) => d.id === r.modelId && d.kind === "blocks");

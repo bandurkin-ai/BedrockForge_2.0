@@ -483,7 +483,27 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .block-fields th, .block-fields td { padding: 2px 4px; border-bottom: 1px solid var(--border); text-align: left; }
 .block-fields td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .block-fields select { font-size: 0.75rem; padding: 0 2px; }
-.block-legend { display: flex; align-items: center; gap: 6px; }
+.block-legend { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; font-size: 12px; }
+.block-legend-scale { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.block-legend-scale .legend-bar { width: 140px; height: 8px; display: inline-block; border-radius: 2px; }
+/* The settings window of a block model: restriction, colouring, view. */
+.block-form { padding-bottom: 8px; }
+.block-conditions { display: flex; flex-direction: column; gap: 3px; }
+.block-condition { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(0, 1fr) 22px; gap: 4px; align-items: center; }
+.block-condition.head { margin: 0; }
+.block-condition .icon { padding: 0; width: 22px; height: 22px; }
+.block-form input[type=radio] { width: auto !important; flex: none; margin: 0; }
+.props-gear { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.block-join { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.block-form .block-categories { max-height: 230px; gap: 1px; }
+.block-category { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.block-category input[type=color] { width: 26px; height: 20px; padding: 0; border: 1px solid var(--border); background: none; flex: none; }
+.block-category .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.block-form .dh-tools input[type=color] { width: 26px; height: 20px; padding: 0; border: 1px solid var(--border); background: none; flex: none; }
+.block-form .dh-stylebar .dh-pop { flex: 1; min-width: 0; }
+.block-form .dh-stylebar .dh-style-pick { width: 100%; display: flex; align-items: center; gap: 6px; text-align: left; }
+.block-none { padding: 2px 5px; }
+.block-summary { margin: 0; }
 .gt-table { border-collapse: collapse; font-size: 0.8rem; margin: 8px 0; }
 .gt-table th, .gt-table td { padding: 3px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
 .gt-table th:first-child, .gt-table td:first-child { text-align: left; }
