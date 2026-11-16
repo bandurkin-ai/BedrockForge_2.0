@@ -1,0 +1,12 @@
+{
+  "name": "bedrockforge2",
+  "private": true,
+  "description": "BedrockForge 2 — npm workspaces: ui (interface) and app (Electron shell)",
+  "workspaces": ["ui", "app"],
+  "scripts": {
+    "build": "npm run build -w ui && npm run build -w app",
+    "test": "npm test -w ui && npm test -w app",
+    "typecheck": "npm run typecheck -w ui && npm run typecheck -w app"
+  },
+  "engines": { "node": ">=22" }
+}

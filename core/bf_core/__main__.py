@@ -23,6 +23,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--data", default=None, help="user data directory")
     p.add_argument("--mode", default=os.environ.get("BF_MODE", "desktop"), choices=["desktop", "server"])
     p.add_argument("--dev-origin", action="append", default=[], help="extra allowed Origin (dev only)")
+    p.add_argument("--watch-stdin", action="store_true", help="exit when stdin closes (parent shell died)")
     p.add_argument("--selftest", action="store_true", help="check native dependencies and exit")
     return p.parse_args(argv)
 
@@ -43,6 +44,24 @@ def main(argv: list[str] | None = None) -> int:
         print("bf-core: --token is required", file=sys.stderr)
         return 2
     return serve(args)
+
+
+def _watch_parent(request_shutdown) -> None:  # type: ignore[no-untyped-def]
+    """The shell keeps our stdin open; EOF means it is gone, so stop (then force-exit)."""
+    import threading
+    import time
+
+    def run() -> None:
+        try:
+            while sys.stdin.buffer.read(4096):
+                pass
+        except (OSError, ValueError):
+            pass
+        request_shutdown()
+        time.sleep(10)
+        os._exit(0)
+
+    threading.Thread(target=run, name="parent-watch", daemon=True).start()
 
 
 def serve(args: argparse.Namespace) -> int:
@@ -66,6 +85,9 @@ def serve(args: argparse.Namespace) -> int:
         server.should_exit = True
 
     state.request_shutdown = request_shutdown
+
+    if args.watch_stdin:
+        _watch_parent(request_shutdown)
 
     import asyncio
 
