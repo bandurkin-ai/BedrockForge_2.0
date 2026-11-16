@@ -1,7 +1,10 @@
+import logging
+import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app import __version__
 from app import mcp_server
@@ -73,6 +76,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+    """An unexpected failure as JSON: its type, text and the end of the stack go into the web
+    application's import/export journal (instead of a bare «Internal Server Error»)."""
+    logging.getLogger("app").error("%s %s failed", request.method, request.url.path, exc_info=exc)
+    trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)[-12:])
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Внутренняя ошибка сервера: {type(exc).__name__}: {exc}"[:2000], "trace": trace[-8000:]},
+    )
 
 
 @app.get("/api/health")

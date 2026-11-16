@@ -1,3 +1,5 @@
+import { tracedFetch } from "./shell/opLog";
+
 export interface ColumnInfo {
   name: string;
   dtype: string;
@@ -95,7 +97,7 @@ async function failure(response: Response): Promise<Error> {
  * Returns the file name.
  */
 export async function downloadFile(url: string, fallbackName: string): Promise<string> {
-  const response = await fetch(url);
+  const response = await tracedFetch(url);
   if (!response.ok) throw await failure(response);
   const disposition = response.headers.get("content-disposition") ?? "";
   const star = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
@@ -113,7 +115,7 @@ export async function downloadFile(url: string, fallbackName: string): Promise<s
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await tracedFetch(url, init);
   if (!response.ok) {
     throw await failure(response);
   }
@@ -455,6 +457,16 @@ export interface IntervalsData {
 
 export const getTrajectories = (setId: number) => request<Trajectories>(`/api/sets/${setId}/trajectories`);
 
+export interface Intersections {
+  objects: { kind: "wireframe" | "blocks"; id: number; dataset_id: number; name: string }[];
+  /** points: [depth, x, y, z, object index, event] — event 0: a wireframe crossing, 1: into a block model, 2: out of it */
+  holes: { hole_id: string; points: number[][] }[];
+  notes: string[];
+}
+
+/** Where the holes of a set cross the project's wireframes and enter or leave its block models. */
+export const getIntersections = (setId: number) => request<Intersections>(`/api/sets/${setId}/intersections`);
+
 export const getIntervals = (setId: number, component: string) =>
   request<IntervalsData>(`/api/sets/${setId}/intervals?component=${encodeURIComponent(component)}`);
 
@@ -599,7 +611,7 @@ export const moveDataset = (id: number, folder: string) =>
   request<Dataset>(`/api/datasets/${id}`, { method: "PATCH", ...json({ folder }) });
 
 export async function deleteDataset(id: number): Promise<void> {
-  const response = await fetch(`/api/datasets/${id}`, { method: "DELETE" });
+  const response = await tracedFetch(`/api/datasets/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`Ошибка ${response.status}`);
 }
 
@@ -615,7 +627,7 @@ export const patchWireframe = (id: number, patch: { name?: string; color?: strin
   request<WireframeInfo>(`/api/wireframes/${id}`, { method: "PATCH", ...json(patch) });
 
 export async function deleteWireframe(id: number): Promise<void> {
-  const response = await fetch(`/api/wireframes/${id}`, { method: "DELETE" });
+  const response = await tracedFetch(`/api/wireframes/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`Ошибка ${response.status}`);
 }
 
@@ -647,7 +659,7 @@ export const patchLines = (id: number, patch: { name?: string; color?: string })
   request<LineLayerInfo>(`/api/lines/${id}`, { method: "PATCH", ...json(patch) });
 
 export async function deleteLines(id: number): Promise<void> {
-  const response = await fetch(`/api/lines/${id}`, { method: "DELETE" });
+  const response = await tracedFetch(`/api/lines/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`Ошибка ${response.status}`);
 }
 
@@ -936,7 +948,7 @@ const sleep = (ms: number, signal?: AbortSignal) =>
 async function resumable(projectId: number, file: File): Promise<UploadInfo | null> {
   const id = storage()?.getItem(resumeKey(projectId, file));
   if (!id) return null;
-  const response = await fetch(`/api/uploads/${id}`);
+  const response = await tracedFetch(`/api/uploads/${id}`);
   if (!response.ok) {
     storage()?.removeItem(resumeKey(projectId, file));
     return null;
@@ -973,7 +985,7 @@ export async function uploadResumable(
       signal?.throwIfAborted();
       let response: Response | null = null;
       try {
-        response = await fetch(`/api/uploads/${info.id}?offset=${offset}`, {
+        response = await tracedFetch(`/api/uploads/${info.id}?offset=${offset}`, {
           method: "PUT",
           body: chunk,
           headers: { "Content-Type": "application/octet-stream", ...(checksum ? { "X-Chunk-SHA256": checksum } : {}) },
@@ -1010,7 +1022,7 @@ export async function uploadResumable(
 }
 
 export async function deleteUpload(id: string): Promise<void> {
-  await fetch(`/api/uploads/${id}`, { method: "DELETE" });
+  await tracedFetch(`/api/uploads/${id}`, { method: "DELETE" });
 }
 
 export type BlockRole = "x" | "y" | "z" | "dx" | "dy" | "dz";
@@ -1057,7 +1069,7 @@ export function subscribeJobs(projectId: number, onJob: (job: JobInfo) => void):
 }
 
 export async function deleteProject(id: number): Promise<void> {
-  const response = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+  const response = await tracedFetch(`/api/projects/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`Ошибка ${response.status}`);
 }
 
@@ -1279,7 +1291,7 @@ export const getChart = (id: number) => request<SavedChart>(`/api/charts/${id}`)
 export const patchChart = (id: number, patch: { name?: string; settings?: unknown; auto_name?: string }) =>
   request<SavedChart>(`/api/charts/${id}`, { method: "PATCH", ...json(patch) });
 export async function deleteChart(id: number): Promise<void> {
-  const response = await fetch(`/api/charts/${id}`, { method: "DELETE" });
+  const response = await tracedFetch(`/api/charts/${id}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`Ошибка ${response.status}`);
 }
 
@@ -1329,7 +1341,7 @@ export interface BlockModelMeta {
 export const blockMeta = (d: Dataset) => d.meta as unknown as BlockModelMeta;
 
 async function binary(url: string): Promise<ArrayBuffer> {
-  const r = await fetch(url);
+  const r = await tracedFetch(url);
   if (!r.ok) throw new Error(`Ошибка ${r.status}`);
   return r.arrayBuffer();
 }
@@ -1515,7 +1527,7 @@ export interface LineArrays {
 }
 
 async function rawBuffer(url: string): Promise<ArrayBuffer> {
-  const response = await fetch(url);
+  const response = await tracedFetch(url);
   if (!response.ok) throw new Error(`Геометрия не загрузилась: ошибка ${response.status}`);
   return response.arrayBuffer();
 }

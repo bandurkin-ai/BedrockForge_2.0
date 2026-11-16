@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DownholeData, TrajectoryHole } from "../api";
 import { DEFAULT_STRIPLOG, withDefaults, type StripLogSettings, type Track } from "../charts/stripLog";
-import { autoPanelWidth, buildDownhole, cleanValue, displayFields, hexRgb, labelText, passesFilter, pathBetween, pointAt, stackOf, tubeTracks } from "./downholeGeometry";
+import { autoPanelWidth, buildDownhole, mergeSpans, cleanValue, displayFields, hexRgb, labelText, passesFilter, pathBetween, pointAt, stackOf, tubeTracks } from "./downholeGeometry";
 import { normalizeCollarStyle } from "./collarStyle";
 
 // A vertical hole going down from z = 100, and one inclined 45 degrees.
@@ -189,6 +189,21 @@ describe("downhole geometry", () => {
       const lines = buildDownhole(holes, data, settings([bars()], { panel: 10 }), origin).lines.amps;
       expect(lines.filter((a) => a === 1.5).length).toBeGreaterThan(0); // the base line at the hole side
       expect(lines.filter((a) => a === 11.5)).toHaveLength(0); // no line over the graph
+    });
+
+    it("runs the base line along a bent hole and only where the column has values", () => {
+      // H2 bends at 5 m; RQD only from 0 to 6 m there, and a row without a value from 6 to 10 m.
+      const bent: DownholeData = { ...data, holes: [{ hole_id: "H2", found: true, td: 10, max_depth: 10, tables: { "5": [
+        { from: 0, to: 6, values: { RQD: 20 } }, { from: 6, to: 10, values: { RQD: null } }] } }] };
+      const b = buildDownhole([holes[1]], bent, settings([bars()], { panel: 10 }), origin);
+      const base: number[][] = [];
+      for (let i = 0; i < b.lines.amps.length; i++) if (b.lines.amps[i] === 1.5) base.push(b.lines.positions.slice(i * 3, i * 3 + 3));
+      // Two pieces through the survey station at 5 m (not one straight line from the collar), ending at 6 m.
+      expect(base).toEqual([[100, 0, 0], [100, 0, -5], [100, 0, -5], [101, 0, -6]]);
+    });
+
+    it("joins touching spans of values", () => {
+      expect(mergeSpans([[4, 6], [0, 2], [2, 3], [5, 8], [10, 12]])).toEqual([[0, 3], [4, 8], [10, 12]]);
     });
 
     it("writes the opacity into the colours of panels", () => {

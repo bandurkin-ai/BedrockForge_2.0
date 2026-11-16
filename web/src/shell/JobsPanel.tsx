@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { cancelJob, getJob, isExportJob, isFinished, jobDownloadUrl, retryJob, type JobDetail, type JobInfo } from "../api";
+import { LogButton } from "./LogButton";
 import type { UploadState } from "./useJobs";
 
 const STATUS: Record<JobInfo["status"], string> = {
@@ -107,6 +108,7 @@ export function JobsPanel({ jobs, uploads, onClearUploads }: { jobs: JobInfo[]; 
                   Скачать
                 </a>
               )}
+              <LogButton jobId={j.id} failed={j.status === "failed"} size={13} />
               {(j.status === "failed" || j.status === "cancelled") && (
                 <button className="small" onClick={() => void retry(j.id)} title="Запустить снова с теми же файлами (без новой загрузки)">Повторить</button>
               )}

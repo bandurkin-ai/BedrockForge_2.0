@@ -268,3 +268,80 @@ def snap_points(set_id: int, step: float = Query(10.0, ge=1.0, le=100.0), sessio
         body += np.ascontiguousarray(a, dtype=dtype).tobytes()
         body += b"\x00" * (-len(body) % 8)
     return Response(bytes(body), media_type="application/octet-stream", headers={"Cache-Control": "no-store"})
+
+
+class IntersectionObject(BaseModel):
+    kind: str  # "wireframe" | "blocks"
+    id: int  # wireframe id or block model dataset id
+    dataset_id: int
+    name: str
+
+
+class IntersectionHole(BaseModel):
+    hole_id: str
+    # [depth, x, y, z, object index, event] — event 0: crossing a wireframe, 1: into a block model, 2: out of it
+    points: list[list[float]]
+
+
+class IntersectionsOut(BaseModel):
+    objects: list[IntersectionObject]
+    holes: list[IntersectionHole]
+    # objects or holes left out (too large a block model for the remaining budget and so on)
+    notes: list[str]
+
+
+@router.get("/intersections", response_model=IntersectionsOut)
+def intersections(
+    set_id: int,
+    wireframes: bool = True,
+    blocks: bool = True,
+    session: Session = Depends(get_session),
+):
+    """Where the holes of a set cross the wireframes of the project and enter or leave its block models."""
+    from app.geo.intersect import BlockTarget, MeshTarget, hole_segments, new_budget
+    from app.models import Dataset, Wireframe
+    from app.storage import blobs
+    from app.storage.geometry import mesh_arrays
+
+    s = get_set(session, set_id)
+    trajs, _ = _trajectories(session, set_id)
+    paths = {h: hole_segments(t) for h, t in trajs.items()}
+    objects: list[IntersectionObject] = []
+    found: dict[str, list[list[float]]] = {}
+    notes: list[str] = []
+
+    def add(hole: str, obj: int, hits) -> None:
+        for h in hits:
+            found.setdefault(hole, []).append([round(h.depth, 3), round(h.xyz[0], 3), round(h.xyz[1], 3), round(h.xyz[2], 3),
+                                               obj, 0 if h.event == "cross" else 1 if h.event == "in" else 2])
+
+    datasets = list(session.scalars(select(Dataset).where(Dataset.project_id == s.project_id)))
+    if wireframes:
+        ids = [d.id for d in datasets if d.kind == "wireframes"]
+        for w in session.scalars(select(Wireframe).where(Wireframe.dataset_id.in_(ids)).order_by(Wireframe.id)) if ids else []:
+            try:
+                target = MeshTarget(*mesh_arrays(w.blobs))
+            except Exception as exc:  # a missing blob: the other objects still count
+                notes.append(f"Каркас «{w.name}» не прочитан: {exc}")
+                continue
+            obj = len(objects)
+            objects.append(IntersectionObject(kind="wireframe", id=w.id, dataset_id=w.dataset_id, name=w.name))
+            for hole, (points, md) in paths.items():
+                add(hole, obj, target.hits(points, md))
+    if blocks:
+        budget = new_budget()
+        for d in (d for d in datasets if d.kind == "blocks"):
+            grid = (d.meta or {}).get("grid") or {}
+            if "centres" not in d.blobs or "sizes" not in d.blobs or not grid.get("parent"):
+                continue
+            target = BlockTarget(blobs.read_array(d.blobs["centres"], "<f8", 3), blobs.read_array(d.blobs["sizes"], "<f4", 3),
+                                 grid["origin"], grid["parent"], grid["counts"])
+            obj = len(objects)
+            objects.append(IntersectionObject(kind="blocks", id=d.id, dataset_id=d.id, name=d.name))
+            skipped = budget[1]
+            for hole, traj in trajs.items():
+                add(hole, obj, target.hits(traj, budget))
+            if budget[1] > skipped:
+                notes.append(f"Блочная модель «{d.name}»: слишком мелкие блоки, у скважин ({budget[1] - skipped}) пересечения не искались")
+    holes = [IntersectionHole(hole_id=h, points=sorted(p)) for h, p in found.items()]
+    return IntersectionsOut(objects=objects, holes=holes, notes=notes)

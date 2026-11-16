@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useS
 
 const noSubscribe = () => () => undefined;
 import {
-  auditExportUrl, downloadFile, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
+  auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, editBlock, renameDataset, runAudit, setBlockUnit,
   getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord, type PickResult,
 } from "./api";
@@ -15,6 +15,8 @@ import type { ApplyTarget } from "./viz/downhole/ApplyDialog";
 import { hasSamples } from "./shell/SampleTableSelect";
 import { CollarStyleForm } from "./viz/CollarStyleForm";
 import { DEFAULT_COLLAR_STYLE } from "./viz/collarStyle";
+import { TraceStyleForm } from "./viz/TraceStyleForm";
+import { DEFAULT_TRACE_STYLE } from "./viz/traceStyle";
 import type { BlockStyle } from "./viz/blockStyle";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataTables } from "./DataTables";
@@ -23,7 +25,8 @@ import type { StatsView } from "./stats/analyses";
 import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
 import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
 import { ClaudeAccount, ClaudeAccountButton } from "./shell/ClaudeAccount";
-import { askConfirm, askText, DialogHost, showError, showMessage } from "./shell/dialogs";
+import { askConfirm, askText, DialogHost, showError } from "./shell/dialogs";
+import { downloadWithLog } from "./shell/exportDownload";
 import { ProjectsPanel } from "./shell/ProjectsPanel";
 import { SettingsPanel } from "./shell/SettingsPanel";
 import { applyShortcuts, loadShortcuts, saveShortcuts, type ShortcutOverrides } from "./shell/shortcuts";
@@ -44,6 +47,7 @@ import { DendrogramWindow, type DendrogramSettings } from "./charts/DendrogramWi
 import { ContextMenu } from "./shell/ContextMenu";
 import type { ChartKind } from "./shell/registry";
 import { JobsPanel } from "./shell/JobsPanel";
+import { LogsDialog } from "./shell/LogButton";
 import { useJobs } from "./shell/useJobs";
 import { createModeling, type TriangleEdit } from "./shell/modeling";
 import { FormHost } from "./shell/FormDialog";
@@ -345,6 +349,8 @@ function Workspace({
   };
   // Marker and label of the collars of a set (the gear of «Устья»), and windows with rows of interval tables.
   const [collarForm, setCollarForm] = useState<number | null>(null);
+  const [traceForm, setTraceForm] = useState<number | null>(null);
+  const [traceNotes, setTraceNotes] = useState<Record<number, string[]>>({});
   /** An interval or event table of a set: in the bottom panel, like the collars, surveys and assays. */
   const openIntervalTable = (t: { id: number; set_id?: number }, setId?: number) => {
     const sid = setId ?? t.set_id;
@@ -470,6 +476,7 @@ function Workspace({
   const [projectsOpen, setProjectsOpen] = useState(false);
   /** The OMF export window: the datasets checked when it opens ([]: every exportable one). */
   const [omfExport, setOmfExport] = useState<number[] | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcuts, setShortcutsState] = useState<ShortcutOverrides>(loadShortcuts);
   const setShortcuts = (next: ShortcutOverrides) => {
@@ -554,8 +561,9 @@ function Workspace({
     sectionFrame: () => sceneApi.current?.sectionFrame() ?? null,
     sectionThroughHole: (setId, holeId) => sceneApi.current?.sectionThroughHole(setId, holeId) ?? null,
     runAudit: (setId) => runAudit(setId, DEFAULT_CONFIG),
-    exportAudit: (setId) => void downloadFile(auditExportUrl(setId), "audit.xlsx").catch((e) => showMessage({ title: "Отчёт аудита не выгружен", message: (e as Error).message, error: true })),
+    exportAudit: (setId) => void downloadWithLog(auditExportUrl(setId), "audit.xlsx", "Отчёт аудита в Excel", { "Набор": setId }).catch(() => undefined),
     openOmfExport: (ids) => setOmfExport(ids ?? []),
+    openLogs: () => setLogsOpen(true),
     exportOmf: async (ids, filename) => {
       const job = await startExport(projectId, { format: "omf", dataset_ids: ids, filename });
       onExportStarted(job);
@@ -895,6 +903,7 @@ function Workspace({
                   onSetMenu={(setId, x, y) => setMenu({ setId, x, y })}
                   onTableMenu={(setId, table, x, y) => (table.id === null ? setMenu({ setId, x, y }) : setTableMenu({ setId, id: table.id, name: table.name, x, y }))}
                   onCollarStyle={(setId) => setCollarForm(setId)}
+                  onTraceStyle={(setId) => setTraceForm(setId)}
                   onPathsMenu={(setId, x, y) => setPathsMenu({ setId, x, y })}
                   onOpenDisplay={(id) => void guarded(() => openDisplayForm(0, "grade", id))}
                   onOpenIntervalTable={(t, setId) => openIntervalTable(t, setId)}
@@ -936,6 +945,8 @@ function Workspace({
                 logs={logLayers}
                 onLegendLayer={(chartId, trackId) => chartId > 0 && void guarded(() => openDisplayForm(0, "grade", chartId, trackId))}
                 collarStyles={ws.collarStyles}
+                traceStyles={ws.traceStyles}
+                onTraceNotes={(setId, notes) => setTraceNotes((prev) => (JSON.stringify(prev[setId] ?? []) === JSON.stringify(notes) ? prev : { ...prev, [setId]: notes }))}
                 blockStyles={blockStyles}
                 onPickBlock={(modelId, index) => {
                   setPickedBlock({ modelId, index });
@@ -1138,12 +1149,12 @@ function Workspace({
       {omfExport && (
         <OmfExportDialog
           projectName={projects.find((p) => p.id === projectId)?.name ?? "Проект"} datasets={datasets ?? []} initial={omfExport}
-          onStart={async (ids, filename) => {
-            await live.current.exportOmf(ids, filename);
-          }}
+          onStart={(ids, filename) => live.current.exportOmf(ids, filename)}
           onClose={() => setOmfExport(null)}
         />
       )}
+
+      {logsOpen && <LogsDialog jobs={jobs.jobs} onClose={() => setLogsOpen(false)} />}
 
       {notice && (
         <div className={notice.error ? "toast error" : "toast"} role="status" onClick={() => setNotice(null)}>
@@ -1209,6 +1220,19 @@ function Workspace({
           </ChartWindow>
         );
       })}
+
+      {traceForm !== null && sets.some((d) => d.id === traceForm) && (
+        <ChartWindow
+          index={1} z={30 + topZ()} size="compact" icon="gear" title={`Стволы · ${sets.find((d) => d.id === traceForm)?.name ?? ""}`}
+          onFocus={() => undefined} onClose={() => setTraceForm(null)}
+        >
+          <TraceStyleForm
+            style={ws.traceStyles[traceForm] ?? DEFAULT_TRACE_STYLE}
+            notes={traceNotes[traceForm]}
+            onChange={(next) => setWs((prev) => ({ ...prev, traceStyles: { ...prev.traceStyles, [traceForm]: next } }))}
+          />
+        </ChartWindow>
+      )}
 
       {collarForm !== null && sets.some((d) => d.id === collarForm) && (
         <ChartWindow

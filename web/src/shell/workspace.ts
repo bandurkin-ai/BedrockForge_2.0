@@ -1,4 +1,5 @@
 import { normalizeCollarStyle, type CollarStyle } from "../viz/collarStyle";
+import { normalizeTraceStyle, type TraceStyle } from "../viz/traceStyle";
 export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
@@ -48,6 +49,8 @@ export interface WorkspaceState {
   logs: number[];
   /** Marker and label of the collars, by drillhole set id (the gear of «Устья»). */
   collarStyles: Record<number, CollarStyle>;
+  /** Hole traces in 3D, by drillhole set id (the gear of «Стволы»). */
+  traceStyles: Record<number, TraceStyle>;
 }
 
 export const DEFAULT_WORKSPACE: WorkspaceState = {
@@ -68,6 +71,7 @@ export const DEFAULT_WORKSPACE: WorkspaceState = {
   hidden: [],
   logs: [],
   collarStyles: {},
+  traceStyles: {},
 };
 
 export const SIZE_LIMITS = {
@@ -158,6 +162,10 @@ export function normalize(raw: unknown): WorkspaceState {
     collarStyles: Object.fromEntries(
       Object.entries(r.collarStyles && typeof r.collarStyles === "object" ? r.collarStyles : {})
         .filter(([k]) => Number.isInteger(Number(k))).slice(0, 200).map(([k, v]) => [Number(k), normalizeCollarStyle(v)]),
+    ),
+    traceStyles: Object.fromEntries(
+      Object.entries(r.traceStyles && typeof r.traceStyles === "object" ? r.traceStyles : {})
+        .filter(([k]) => Number.isInteger(Number(k))).slice(0, 200).map(([k, v]) => [Number(k), normalizeTraceStyle(v)]),
     ),
   };
   for (const dock of ["left", "right", "bottom"] as const) {

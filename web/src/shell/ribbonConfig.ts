@@ -97,6 +97,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           items: [
             { command: "omf.import", label: "Импорт OMF", icon: "import", hint: "Open Mining Format v1 (Leapfrog OMF 0.9): каркасы, линии и блочные модели из одного файла" },
             { command: "omf.export", label: "Экспорт OMF", icon: "export", hint: "Каркасы, линии и регулярные блочные модели проекта в один файл OMF v1" },
+            { command: "logs.open", label: "Журналы", icon: "logFile", hint: "Журналы импорта и экспорта этого сеанса: открыть текстом, скопировать или скачать .txt для поиска ошибок", small: true },
           ],
         },
         { title: "Вид", items: [view(0), view(1), view(2), { command: "scene.fit", label: "Вписать", icon: "maximize", hint: "Показать всё, не поворачивая вид", shortcut: "f", small: true }] },

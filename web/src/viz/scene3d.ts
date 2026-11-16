@@ -8,6 +8,8 @@ import { NO_VALUE_COLOR, type ColorScale } from "./colorScale";
 import type { DownholeBuild, Label } from "./downholeGeometry";
 import type { MarkerShape } from "../charts/stripLog";
 import { DEFAULT_COLLAR_STYLE, type CollarStyle } from "./collarStyle";
+import { pointAt } from "./downholeGeometry";
+import { DEFAULT_TRACE_STYLE, depthText, isLabelDepth, tickDepths, type TraceStyle } from "./traceStyle";
 
 export { DEFAULT_COLLAR_STYLE, type CollarStyle };
 import type { SectionLine } from "./geometry";
@@ -76,6 +78,20 @@ interface DownholeLayer {
   scale: { value: number };
 }
 
+/** A mark on a hole trace: a crossing with a wireframe, or where it enters or leaves a block model. */
+export interface TraceMark {
+  /** project coordinates */
+  xyz: [number, number, number];
+  color: string;
+  shape: MarkerShape;
+  label: string | null;
+}
+
+/** No more ticks and written depths than this per set (each written depth is a sprite). */
+const MAX_TICKS = 200_000;
+const MAX_TICK_LABELS = 5000;
+const MAX_MARK_LABELS = 3000;
+
 /** A label shows when its interval is at least this long on screen, px. */
 const LABEL_MIN_PX = 18;
 /** Panels are in metres, but the default column is never narrower than this on screen, px. */
@@ -95,6 +111,13 @@ interface DrillholeLayer {
   labels: { sprite: THREE.Sprite; position: THREE.Vector3; wpx: number; hpx: number }[];
   /** shift of the labels to the right of the marker, px */
   labelShift: number;
+  /** depth ticks and marks of crossings, with their written depths and names */
+  marks: THREE.Group;
+  markLabelGroup: THREE.Group;
+  markLabels: { sprite: THREE.Sprite; position: THREE.Vector3; wpx: number; hpx: number; shift: number; mark: boolean }[];
+  /** metres per pixel at the view's target: ticks keep their length on screen */
+  tickScale: { value: number };
+  hasTicks: boolean;
 }
 
 /** One level of detail of a wireframe: a mesh, or (full detail) a group of parts. */
@@ -217,6 +240,7 @@ export class GeoScene {
   private labelMaterials = new Map<string, THREE.SpriteMaterial>();
   private markerTextures = new Map<MarkerShape, THREE.CanvasTexture>();
   private collarStyles = new Map<number, CollarStyle>();
+  private traceStyles = new Map<number, { style: TraceStyle; marks: TraceMark[] }>();
   private wireframes = new Map<number, WireframeLayer>();
   private lineLayers = new Map<number, LineLayer3D>();
   private rasters = new Map<number, RasterLayer>();
@@ -311,6 +335,11 @@ export class GeoScene {
       labelGroup: new THREE.Group(),
       labels: [],
       labelShift: 8,
+      marks: new THREE.Group(),
+      markLabelGroup: new THREE.Group(),
+      markLabels: [],
+      tickScale: { value: 1 },
+      hasTicks: false,
     };
 
     const pathPositions: number[] = [];
@@ -364,14 +393,129 @@ export class GeoScene {
     layer.group.add(layer.points);
     layer.auditColors = collarColorsArr;
     layer.group.add(layer.labelGroup);
+    layer.group.add(layer.marks);
 
     this.drillholes.set(setId, layer);
     this.root.add(layer.group);
     this.applyCollarStyle(setId);
+    this.applyTraceStyle(setId);
     this.contentChanged();
   }
 
   /** The marker of the collars (shape, colour, size) and the labels with hole names. */
+  /**
+   * Hole traces of a set: width and colour of the line, depth ticks with written depths, and marks
+   * where the holes cross objects (computed on the server, filtered by the caller).
+   */
+  setTraceStyle(setId: number, style: TraceStyle, marks: TraceMark[] = []): void {
+    this.traceStyles.set(setId, { style, marks });
+    this.applyTraceStyle(setId);
+    this.requestRender();
+  }
+
+  private applyTraceStyle(setId: number): void {
+    const layer = this.drillholes.get(setId);
+    if (!layer || !this.origin) return;
+    const { style, marks } = this.traceStyles.get(setId) ?? { style: DEFAULT_TRACE_STYLE, marks: [] };
+    if (layer.paths) {
+      layer.paths.material.linewidth = style.width;
+      layer.paths.material.color.set(style.color);
+      layer.paths.material.needsUpdate = true;
+    }
+    // Marks are rebuilt: sprites first (their materials are shared and stay in the cache).
+    layer.markLabelGroup.clear();
+    layer.marks.remove(layer.markLabelGroup);
+    disposeTree(layer.marks, this.materials);
+    layer.marks.clear();
+    layer.markLabels = [];
+    layer.marks.add(layer.markLabelGroup);
+    layer.markLabelGroup.renderOrder = 10;
+    layer.hasTicks = false;
+    const o = this.origin;
+    const addLabel = (text: string, at: THREE.Vector3, font: LabelFont, shift: number, mark = false) => {
+      const { material, wpx, hpx } = this.labelMaterial(text, font);
+      const sprite = new THREE.Sprite(material);
+      sprite.renderOrder = 10;
+      sprite.frustumCulled = false;
+      sprite.position.copy(at);
+      sprite.center.set(-shift / wpx, 0.5);
+      layer.markLabelGroup.add(sprite);
+      layer.markLabels.push({ sprite, position: at, wpx, hpx, shift, mark });
+    };
+
+    if (style.ticks) {
+      const positions: number[] = [];
+      const tangents: number[] = [];
+      const amps: number[] = [];
+      const font: LabelFont = { size: style.labelSize, family: "sans-serif", bold: false, color: style.labelColor };
+      let labels = 0;
+      for (const [, path] of layer.pathOf) {
+        if (path.length < 2 || path[0].length < 4) continue;
+        const length = path[path.length - 1][3];
+        for (const d of tickDepths(length, style.tickStep)) {
+          if (positions.length / 6 >= MAX_TICKS) break;
+          const p = pointAt(path, d);
+          const a = pointAt(path, Math.max(0, d - 0.5));
+          const b = pointAt(path, Math.min(length, d + 0.5));
+          const t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+          const tl = Math.hypot(t[0], t[1], t[2]) || 1;
+          for (const amp of [-style.tickSize, style.tickSize]) {
+            positions.push(p[0] - o.x, p[1] - o.y, p[2] - o.z);
+            tangents.push(t[0] / tl, t[1] / tl, t[2] / tl);
+            amps.push(amp);
+          }
+          if (style.tickLabels && labels < MAX_TICK_LABELS && isLabelDepth(d, style.labelStep)) {
+            labels += 1;
+            addLabel(depthText(d), new THREE.Vector3(p[0] - o.x, p[1] - o.y, p[2] - o.z), font, style.tickSize + 3);
+          }
+        }
+      }
+      if (positions.length) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        g.setAttribute("aTan", new THREE.Float32BufferAttribute(tangents, 3));
+        g.setAttribute("aAmp", new THREE.Float32BufferAttribute(amps, 1));
+        const material = this.sideMaterial(new THREE.LineBasicMaterial({ color: style.color }), layer.tickScale);
+        const ticks = new THREE.LineSegments(g, material);
+        ticks.frustumCulled = false;
+        ticks.renderOrder = 2;
+        layer.marks.add(ticks);
+        layer.hasTicks = true;
+      }
+    }
+
+    if (marks.length) {
+      // One points object per colour and shape.
+      const groups = new Map<string, { shape: MarkerShape; color: THREE.Color; positions: number[] }>();
+      const font: LabelFont = { size: Math.max(9, style.labelSize), family: "sans-serif", bold: false, color: style.labelColor };
+      let labels = 0;
+      for (const m of marks) {
+        const key = `${m.shape}|${m.color}`;
+        let g = groups.get(key);
+        if (!g) groups.set(key, (g = { shape: m.shape, color: new THREE.Color(m.color), positions: [] }));
+        const at = new THREE.Vector3(m.xyz[0] - o.x, m.xyz[1] - o.y, m.xyz[2] - o.z);
+        g.positions.push(at.x, at.y, at.z);
+        if (m.label && labels < MAX_MARK_LABELS) {
+          labels += 1;
+          addLabel(m.label, at, font, style.markerSize / 2 + 4, true);
+        }
+      }
+      for (const g of groups.values()) {
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(g.positions, 3));
+        const points = new THREE.Points(geometry, new THREE.PointsMaterial({
+          size: style.markerSize, sizeAttenuation: false, color: g.color, map: this.markerTexture(g.shape), transparent: true, alphaTest: 0.4, depthTest: false,
+        }));
+        points.frustumCulled = false;
+        points.renderOrder = 5;
+        layer.marks.add(points);
+      }
+    }
+    // Crossings are placed before depths when labels compete for room.
+    layer.markLabels.sort((a, b) => Number(b.mark) - Number(a.mark));
+    layer.marks.visible = layer.paths?.visible ?? true;
+  }
+
   setCollarStyle(setId: number, style: CollarStyle): void {
     this.collarStyles.set(setId, style);
     this.applyCollarStyle(setId);
@@ -629,11 +773,40 @@ export class GeoScene {
         item.sprite.scale.set(item.wpx / pxPerM, item.hpx / pxPerM, 1);
       }
     }
-    if (this.downholes.size === 0) return;
+    // The side direction of panels and ticks follows the camera.
     this.camera.updateMatrixWorld();
     const view = this.camera.getWorldDirection(this.side.view.value).normalize();
     const right = this.side.right.value.setFromMatrixColumn(this.camera.matrixWorld, 0).normalize();
     this.side.vexag.value = this.vexag;
+    // Written depths and names of crossings: a label that would cover one already placed is hidden
+    // (crossings first, then depths), so a wide view does not turn into a heap of text.
+    const taken = new Set<number>();
+    const CELL_W = 24;
+    const CELL_H = 12;
+    const place = (x: number, y: number, w: number, h: number): boolean => {
+      const x0 = Math.floor(x / CELL_W);
+      const x1 = Math.floor((x + w) / CELL_W);
+      const y0 = Math.floor((y - h / 2) / CELL_H);
+      const y1 = Math.floor((y + h / 2) / CELL_H);
+      for (let i = x0; i <= x1; i++) for (let j = y0; j <= y1; j++) if (taken.has(i * 100_003 + j)) return false;
+      for (let i = x0; i <= x1; i++) for (let j = y0; j <= y1; j++) taken.add(i * 100_003 + j);
+      return true;
+    };
+    for (const layer of this.drillholes.values()) {
+      if (!layer.group.visible || !layer.marks.visible) continue;
+      // Ticks are in pixels: metres per pixel at the target.
+      if (layer.hasTicks) layer.tickScale.value = 1 / Math.max(this.pixelsPerUnit(this.controls.target), 1e-9);
+      for (const item of layer.markLabels) {
+        const screen = this.visibleInSection(item.position) ? this.project(item.position) : null;
+        const show = !!screen && place(screen.x + item.shift, screen.y, item.wpx, item.hpx);
+        item.sprite.visible = show;
+        if (!show) continue;
+        where.set(item.position.x, item.position.y, item.position.z * this.vexag);
+        const pxPerM = this.pixelsPerUnit(where);
+        item.sprite.scale.set(item.wpx / pxPerM, item.hpx / pxPerM, 1);
+      }
+    }
+    if (this.downholes.size === 0) return;
     const tw = new THREE.Vector3();
     const sw = new THREE.Vector3();
     const at = new THREE.Vector3();
@@ -672,6 +845,8 @@ export class GeoScene {
     this.root.remove(layer.group);
     layer.labelGroup.clear(); // label materials are shared: they stay in the cache
     layer.group.remove(layer.labelGroup);
+    layer.markLabelGroup.clear();
+    layer.marks.remove(layer.markLabelGroup);
     disposeTree(layer.group, this.materials);
     this.drillholes.delete(setId);
     if (update) this.contentChanged();
@@ -817,6 +992,7 @@ export class GeoScene {
     if (!layer) return;
     layer.group.visible = style.visible;
     if (layer.paths) layer.paths.visible = style.paths;
+    layer.marks.visible = style.paths;
     if (layer.intervals) layer.intervals.visible = style.intervals;
     if (layer.points) layer.points.visible = style.collars;
     layer.labelGroup.visible = style.collars;

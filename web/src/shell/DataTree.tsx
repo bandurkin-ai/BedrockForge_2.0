@@ -58,6 +58,8 @@ export interface DataTreeProps {
   onChartMenu?: (chart: { id: number; kind: SavedChartKind; name: string }, x: number, y: number) => void;
   /** The gear (or right click) of «Устья»: the form of the collars' marker and label. */
   onCollarStyle?: (setId: number) => void;
+  /** The gear of «Стволы»: line width and colour, depth ticks, crossings with wireframes and block models. */
+  onTraceStyle?: (setId: number) => void;
   /** Right click on «Стволы»: what to show along the holes (grades, lithology, events). */
   onPathsMenu?: (setId: number, x: number, y: number) => void;
   /** A saved display of data along the holes: its form. */
@@ -331,11 +333,14 @@ export function DataTree(props: DataTreeProps) {
                       </span>
                     </li>
                     <li className="tree-row layer" onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); props.onPathsMenu?.(d.id, e.clientX, e.clientY); }}
-                      title="Стволы: правая кнопка — что показать по стволам (содержания, литология, события)">
+                      title="Стволы: шестерёнка — толщина, цвет, риски глубины, пересечения; правая кнопка — что показать по стволам (содержания, литология, события)">
                       <Twisty open={!isOpen(`logsClosed:${d.id}`)} onClick={() => toggle(`logsClosed:${d.id}`)} />
                       <Eye shown={shown(layerKey.setPart(d.id, "paths"))} onChange={(v) => props.onShow(layerKey.setPart(d.id, "paths"), v)} label="стволы" />
                       <span className="grow">Стволы</span>
                       <span className="count">{displays.length || ""}</span>
+                      <span className="row-actions always">
+                        <Action icon="gear" title="Толщина и цвет стволов, риски глубины, точки пересечения с каркасами и блочными моделями…" onClick={() => props.onTraceStyle?.(d.id)} />
+                      </span>
                     </li>
                     {/* Saved displays of data along the holes: on / off, drag onto the view, double click to edit. */}
                     {!isOpen(`logsClosed:${d.id}`) && (
