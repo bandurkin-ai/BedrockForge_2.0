@@ -37,6 +37,46 @@ def test_foreign_host_rejected(client: TestClient) -> None:
     assert r.json()["code"] == "bad_host"
 
 
+def test_localhost_name_rejected(client: TestClient) -> None:
+    assert client.get("/api/v1/health", headers={**H, "Host": "localhost:5555"}).status_code == 403
+
+
+def test_strict_port_when_known() -> None:
+    from bf_core.api.app import CoreState, create_app
+
+    c = TestClient(create_app(CoreState(token=TOKEN, port=5555)), base_url="http://127.0.0.1:5555")
+    assert c.get("/api/v1/health", headers=H).status_code == 200
+    assert c.get("/api/v1/health", headers={**H, "Host": "127.0.0.1:6666"}).status_code == 403
+
+
+def test_websocket_refused(client: TestClient) -> None:
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect("/api/v1/health", headers=H):
+        pass
+
+
+def test_unexpected_error_is_russian_json_with_cors(state) -> None:  # type: ignore[no-untyped-def]
+    from fastapi import APIRouter
+
+    from bf_core.api.app import create_app
+
+    app = create_app(state)
+    boom = APIRouter()
+
+    @boom.get("/api/v1/boom")
+    def _boom() -> None:
+        raise RuntimeError("boom")
+
+    app.include_router(boom)
+    c = TestClient(app, base_url="http://127.0.0.1:5555", raise_server_exceptions=False)
+    r = c.get("/api/v1/boom", headers={**H, "Origin": "app://bedrockforge"})
+    assert r.status_code == 500
+    assert r.json()["code"] == "internal"
+    assert r.headers["access-control-allow-origin"] == "app://bedrockforge"
+
+
 def test_foreign_origin_rejected(client: TestClient) -> None:
     r = client.get("/api/v1/health", headers={**H, "Origin": "https://evil.example"})
     assert r.status_code == 403

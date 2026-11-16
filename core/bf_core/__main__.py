@@ -34,10 +34,6 @@ def main(argv: list[str] | None = None) -> int:
 
     configure_numba_cache()
     args = parse_args(argv)
-    if getattr(sys, "frozen", False):
-        from bf_core.numba_cache import install_frozen_cache_locator
-
-        install_frozen_cache_locator()
     if args.selftest:
         from bf_core.diag.selftest import run_selftest
 
@@ -80,7 +76,7 @@ def serve(args: argparse.Namespace) -> int:
     sock.bind(("127.0.0.1", args.port))
     port = sock.getsockname()[1]
 
-    state = CoreState(token=args.token, mode=args.mode, data_dir=args.data)
+    state = CoreState(token=args.token, mode=args.mode, data_dir=args.data, port=port)
     app = create_app(state, extra_origins=tuple(args.dev_origin))
     config = uvicorn.Config(app, log_level="warning", access_log=False, lifespan="on", timeout_graceful_shutdown=5)
     server = uvicorn.Server(config)

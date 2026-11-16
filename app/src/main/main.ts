@@ -149,7 +149,9 @@ function createMain(): void {
 
 function registerIpc(): void {
   ipcMain.on("bf:core-info", (e) => {
-    const info: CoreInfo | null = core.current();
+    // The launch token goes to the main window of our own origin only.
+    const ownWindow = mainWin !== null && e.sender === mainWin.webContents && (e.senderFrame?.url ?? "").startsWith(ORIGIN + "/");
+    const info: CoreInfo | null = ownWindow ? core.current() : null;
     e.returnValue = info ? { baseUrl: info.baseUrl, token: info.token, version: info.version } : null;
   });
   ipcMain.on("bf:app-version", (e) => (e.returnValue = app.getVersion()));

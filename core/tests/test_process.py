@@ -14,10 +14,10 @@ import pytest
 TOKEN = "proc-token-abcdef"
 
 
-def _start(cwd: str | None = None, env: dict[str, str] | None = None) -> tuple[subprocess.Popen[str], int]:
+def _start(*extra: str, cwd: str | None = None, env: dict[str, str] | None = None) -> tuple[subprocess.Popen[str], int]:
     proc = subprocess.Popen(
-        [sys.executable, "-m", "bf_core", "--port", "0", "--token", TOKEN],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+        [sys.executable, "-m", "bf_core", "--port", "0", "--token", TOKEN, *extra],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
         cwd=cwd, env={**os.environ, **(env or {})},
     )
     assert proc.stdout is not None
@@ -28,7 +28,7 @@ def _start(cwd: str | None = None, env: dict[str, str] | None = None) -> tuple[s
         if line.startswith("BF-READY"):
             break
         if proc.poll() is not None:
-            pytest.fail(f"core exited: {proc.stderr.read() if proc.stderr else ''}")
+            pytest.fail("core exited before BF-READY")
     assert line.startswith("BF-READY"), line
     fields = dict(kv.split("=") for kv in line.split()[1:])
     return proc, int(fields["port"])
@@ -62,6 +62,30 @@ def test_ready_token_and_shutdown() -> None:
     finally:
         if proc.poll() is None:
             proc.kill()
+
+
+@pytest.mark.windows
+def test_exits_when_parent_stdin_closes() -> None:
+    proc, port = _start("--watch-stdin")
+    try:
+        assert _get(port, "/api/v1/health", TOKEN) == 200
+        assert proc.stdin is not None
+        proc.stdin.close()  # the shell died
+        assert proc.wait(timeout=20) == 0
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+
+def test_heavy_libraries_not_imported_before_ready() -> None:
+    code = (
+        "import sys; from bf_core.api.app import CoreState, create_app; create_app(CoreState(token='t'));"
+        "heavy=[m for m in ('numba','numpy','pandas','pyarrow','duckdb','scipy') if m in sys.modules];"
+        "print(','.join(heavy))"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "", f"imported before BF-READY: {r.stdout.strip()}"
 
 
 def test_missing_token_refuses_to_start() -> None:

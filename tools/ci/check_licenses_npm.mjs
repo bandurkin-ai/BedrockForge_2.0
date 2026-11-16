@@ -2,8 +2,9 @@
 // Usage: node tools/ci/check_licenses_npm.mjs [-v]
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..", "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FORBIDDEN = /\b(A|L)?GPL\b/i;
 const verbose = process.argv.includes("-v");
 

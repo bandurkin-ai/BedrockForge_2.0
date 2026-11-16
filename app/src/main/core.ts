@@ -92,8 +92,18 @@ export class CoreProcess extends EventEmitter {
     child.stderr?.setEncoding("utf8");
     child.stderr?.on("data", (d: string) => this.log(`core! ${d.trimEnd()}`));
 
+    try {
+      return await this.handshake(child, token);
+    } catch (e) {
+      this.killTree(child); // no orphan bf-core after a failed start
+      this.child = null;
+      throw e;
+    }
+  }
+
+  private async handshake(child: ChildProcess, token: string): Promise<CoreInfo> {
     const ready = await new Promise<ReadyInfo>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("Ядро не ответило за отведённое время")), this.opts.readyTimeoutMs ?? 60_000);
+      const timer = setTimeout(() => reject(new Error("Ядро не ответило за 30 с")), this.opts.readyTimeoutMs ?? 30_000);
       const rl = createInterface({ input: child.stdout! });
       rl.on("line", (line) => {
         const r = parseReadyLine(line);

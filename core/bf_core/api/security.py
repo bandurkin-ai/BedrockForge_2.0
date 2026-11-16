@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import logging
 from collections.abc import Awaitable, Callable, Iterable
 
 from starlette.requests import Request
@@ -10,6 +11,8 @@ from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 from .errors import error_body
+
+log = logging.getLogger("bf_core.api")
 
 TOKEN_HEADER = "X-BF-Token"
 APP_ORIGIN = "app://bedrockforge"
@@ -25,23 +28,43 @@ class GuardMiddleware:
         app: ASGIApp,
         token: str,
         allowed_origins: Iterable[str] = (APP_ORIGIN,),
-        allowed_hosts: Iterable[str] = ("127.0.0.1", "localhost"),
+        port: int | None = None,
     ) -> None:
         self.app = app
         self.token = token.encode()
         self.allowed_origins = frozenset(allowed_origins)
-        self.allowed_hosts = frozenset(allowed_hosts)
+        # ADR 0002: Host must be exactly 127.0.0.1:<port> (DNS rebinding); port None = tests only.
+        self.port = port
 
     async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 1008})
+            return
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
         request = Request(scope)
         response = self._check(request)
-        if response is None:
-            await self.app(scope, receive, self._with_cors(send, request))
+        if response is not None:
+            await response(scope, receive, send)
             return
-        await response(scope, receive, send)
+        started = False
+        cors_send = self._with_cors(send, request)
+
+        async def tracking_send(message):  # type: ignore[no-untyped-def]
+            nonlocal started
+            if message["type"] == "http.response.start":
+                started = True
+            await cors_send(message)
+
+        try:
+            await self.app(scope, receive, tracking_send)
+        except Exception:  # noqa: BLE001 - answer in Russian with CORS instead of a bare 500
+            log.exception("unhandled error in %s %s", request.method, request.url.path)
+            if started:
+                return
+            body = error_body("internal", "Внутренняя ошибка ядра.", "Скопируйте журнал ядра и отправьте разработчику.")
+            await JSONResponse(body, status_code=500)(scope, receive, cors_send)
 
     def _cors_headers(self, request: Request) -> list[tuple[bytes, bytes]]:
         origin = request.headers.get("origin")
@@ -67,8 +90,10 @@ class GuardMiddleware:
         return wrapped
 
     def _check(self, request: Request) -> Response | None:
-        host = (request.headers.get("host") or "").rsplit(":", 1)[0].strip("[]")
-        if host not in self.allowed_hosts:
+        host = request.headers.get("host") or ""
+        name, _, port = host.rpartition(":")
+        ok_host = host == f"127.0.0.1:{self.port}" if self.port else (name == "127.0.0.1" and port.isdigit())
+        if not ok_host:
             return JSONResponse(
                 error_body("bad_host", "Запрос с недопустимым адресом.", "Ядро принимает запросы только с 127.0.0.1."),
                 status_code=403,

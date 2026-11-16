@@ -23,6 +23,7 @@ API_PREFIX = "/api/v1"
 class CoreState:
     token: str
     mode: str = "desktop"
+    port: int | None = None
     data_dir: str | None = None
     request_shutdown: Callable[[], None] = field(default=lambda: None)
 
@@ -48,7 +49,8 @@ def create_app(state: CoreState, extra_origins: tuple[str, ...] = ()) -> FastAPI
     app.state.core = state
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(Exception, unexpected_error_handler)
-    app.add_middleware(GuardMiddleware, token=state.token, allowed_origins=(APP_ORIGIN, *extra_origins))
+    origins = (APP_ORIGIN, *extra_origins)
+    app.add_middleware(GuardMiddleware, token=state.token, allowed_origins=origins, port=state.port)
 
     base = APIRouter(prefix=API_PREFIX)
 
