@@ -4,7 +4,7 @@ import { normalizeBlockStyle, type BlockStyle } from "../viz/blockStyle";
 export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
-export type BottomTab = "table" | "audit" | "stats" | "jobs" | "log";
+export type BottomTab = "table" | "audit" | "stats" | "swath" | "jobs" | "log";
 
 /** An object picked in the tree: its properties are shown on the right. */
 export type ObjectKind = "wireframe" | "lines" | "raster" | "blocks";
@@ -23,7 +23,7 @@ export const VIEW_TITLES: Record<ViewPreset, string> = {
   section: "В плоскость разреза",
 };
 export const VIEW_PRESETS = Object.keys(VIEW_TITLES) as ViewPreset[];
-export const BOTTOM_TITLES: Record<BottomTab, string> = { table: "Таблица", audit: "Аудит", stats: "Статистика", jobs: "Задания", log: "Журнал команд" };
+export const BOTTOM_TITLES: Record<BottomTab, string> = { table: "Таблица", audit: "Аудит", stats: "Статистика", swath: "Swath plot", jobs: "Задания", log: "Журнал команд" };
 
 export interface WorkspaceState {
   /** Clip the scene to the window of the section line. */
@@ -48,6 +48,8 @@ export interface WorkspaceState {
   hidden: string[];
   /** Saved downhole displays (charts of kind striplog) that are on in the 3D view. Off until shown. */
   logs: number[];
+  /** Swath plots (objects of the tree section «Аудит») drawn in the 3D view. Off until shown. */
+  swaths: number[];
   /** Marker and label of the collars, by drillhole set id (the gear of «Устья»). */
   collarStyles: Record<number, CollarStyle>;
   /** Hole traces in 3D, by drillhole set id (the gear of «Стволы»). */
@@ -73,6 +75,7 @@ export const DEFAULT_WORKSPACE: WorkspaceState = {
   wireframeOpacity: 0.7,
   hidden: [],
   logs: [],
+  swaths: [],
   collarStyles: {},
   traceStyles: {},
   blockStyles: {},
@@ -111,6 +114,13 @@ export function setLogShown(state: WorkspaceState, chartId: number, shown: boole
   const logs = state.logs.filter((id) => id !== chartId);
   if (shown) logs.push(chartId);
   return { ...state, logs };
+}
+
+/** Draw a swath plot in the 3D view, or take it off. */
+export function setSwathShown(state: WorkspaceState, id: number, shown: boolean): WorkspaceState {
+  const swaths = state.swaths.filter((x) => x !== id);
+  if (shown) swaths.push(id);
+  return { ...state, swaths };
 }
 
 /** Open or close a panel; `open` omitted toggles it. The assistant and properties share the right dock. */
@@ -163,6 +173,7 @@ export function normalize(raw: unknown): WorkspaceState {
       typeof r.wireframeOpacity === "number" && r.wireframeOpacity >= 0.1 && r.wireframeOpacity <= 1 ? r.wireframeOpacity : d.wireframeOpacity,
     hidden: Array.isArray(r.hidden) ? r.hidden.filter((k): k is string => typeof k === "string").slice(0, 2000) : [],
     logs: Array.isArray(r.logs) ? r.logs.filter((k): k is number => Number.isInteger(k)).slice(0, 200) : [],
+    swaths: Array.isArray(r.swaths) ? r.swaths.filter((k): k is number => Number.isInteger(k)).slice(0, 50) : [],
     collarStyles: Object.fromEntries(
       Object.entries(r.collarStyles && typeof r.collarStyles === "object" ? r.collarStyles : {})
         .filter(([k]) => Number.isInteger(Number(k))).slice(0, 200).map(([k, v]) => [Number(k), normalizeCollarStyle(v)]),

@@ -13,6 +13,7 @@ import { formatValue } from "./colorScale";
 import { loadDownhole, loadHoles, loadIntersections, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
 import { buildDownhole, displayFields, stackOf, type LegendEntry, type StackStart } from "./downholeGeometry";
 import type { StripLogSettings } from "../charts/stripLog";
+import type { SwathBuild } from "../stats/swath";
 import type { EditSession } from "../edit/session";
 import { EditCursor, EditToolbar } from "./EditToolbar";
 import { useEditScene } from "./useEditScene";
@@ -56,6 +57,8 @@ export interface SceneViewProps {
   onTraceNotes?: (setId: number, notes: string[]) => void;
   /** Saved displays of data along the holes that are on in the view. */
   logs?: DownholeLog[];
+  /** Swath plots that are on in the view: the cuboid cut into swaths and the plot over it. */
+  swaths?: SwathLayerInput[];
   /** A layer of a display clicked in the legend: open its form on that layer. */
   onLegendLayer?: (chartId: number, trackId: string) => void;
   /** The string editor's session, while a line layer is being edited. */
@@ -68,6 +71,13 @@ export interface SceneViewProps {
   banner?: React.ReactNode;
   /** «Собрать из контуров»: make the wireframe of these lines of the edited layer, in this order. */
   onAssemble?: (lines: number[], closed: boolean) => void;
+}
+
+export interface SwathLayerInput {
+  /** id of the plot (an object of the tree) */
+  id: number;
+  /** drawn anew whenever this object changes */
+  build: SwathBuild;
 }
 
 export interface DownholeLog {
@@ -131,6 +141,8 @@ export function SceneView(props: SceneViewProps) {
   const holesBySet = useRef(new Map<number, Map<string, Hole>>());
   // Downhole displays: the settings each was built with, and their legends.
   const loadedLogs = useRef(new Map<number, string>());
+  /** Swath plots in the scene, by id: what each was drawn from. */
+  const shownSwaths = useRef(new Map<number, SwathBuild>());
   const [logLegends, setLogLegends] = useState<{ id: number; name: string; entries: LegendEntry[]; holes: number; intervals: number }[]>([]);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [loading, setLoading] = useState(0);
@@ -261,6 +273,7 @@ export function SceneView(props: SceneViewProps) {
       loadedBlocks.current.clear();
       readyBlocks.current.clear();
       loadedLogs.current.clear();
+      shownSwaths.current.clear();
     };
   }, []);
 
@@ -529,6 +542,24 @@ export function SceneView(props: SceneViewProps) {
     applyStyles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rasters, ws.hidden]);
+
+  // ---- swath plots: the swaths and the plot over them, drawn again when their build changes
+  const swathLayers = props.swaths;
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const wanted = new Map((swathLayers ?? []).map((s) => [s.id, s.build]));
+    for (const id of scene.loadedIds().swaths) {
+      if (wanted.has(id)) continue;
+      scene.setSwath(id, null);
+      shownSwaths.current.delete(id);
+    }
+    for (const [id, build] of wanted) {
+      if (shownSwaths.current.get(id) === build) continue;
+      scene.setSwath(id, build);
+      shownSwaths.current.set(id, build);
+    }
+  }, [swathLayers]);
 
   // ---- block models: geometry once, colours on every style change
   useEffect(() => {

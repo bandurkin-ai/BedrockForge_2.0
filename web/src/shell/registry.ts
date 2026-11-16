@@ -1,9 +1,10 @@
 import { hasSamples } from "./SampleTableSelect";
 import type { MutableRefObject } from "react";
-import { blockMeta, blockReport, getIntervalTables, getJob, patchWireframe, type DtmSettings, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
+import { blockMeta, blockReport, runSwath, getIntervalTables, getJob, patchWireframe, type DtmSettings, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
 import { recentLogs } from "./opLog";
 import type { TableKind } from "../route";
 import { ANALYSES, type StatsAnalysis } from "../stats/analyses";
+import { axisTitle, axisValue, defaultSwath, swathProblem, swathRequest, type SwathSettings } from "../stats/swath";
 import type { VizSettings } from "../viz/ComponentPanel";
 import { DEFAULT_WINDOW, shiftSection, type SectionLine } from "../viz/geometry";
 import type { HistogramSettings } from "../charts/HistogramWindow";
@@ -56,6 +57,10 @@ export interface Live {
   showOnHoles: (setId: number, tableKey: string, fields?: string[]) => Promise<string>;
   /** Opens the grade–tonnage window of a block model. */
   openBlockReport: (modelId: number) => void;
+  /** Saved swath plots of the project (tree section «Аудит»). */
+  swaths: { id: number; name: string }[];
+  /** Opens a saved swath plot in the bottom dock and draws it in 3D; null makes a new one (with these settings, or the defaults). */
+  openSwath: (id: number | null, settings?: SwathSettings) => Promise<string>;
   reload: () => void;
   onSelectProject: (id: number) => void;
   onNewProject: (name?: string) => Promise<string>;
@@ -1206,6 +1211,41 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
           ...r.grades.flatMap((g) => [row.grades[g.key]?.grade?.toFixed(4) ?? "—", row.grades[g.key]?.metal ? `${row.grades[g.key].metal!.value.toFixed(3)} ${row.grades[g.key].metal!.unit}` : "—"])].join(" | "));
         return [`Модель «${d.name}», плотность: ${typeof r.density === "number" ? `${r.density} т/м³` : r.density}`, head.join(" | "), ...lines,
           r.excluded_no_density ? `Блоков без плотности: ${r.excluded_no_density}` : ""].filter(Boolean).join("\n");
+      },
+    },
+    {
+      id: "stats.swath",
+      title: "Swath plot",
+      description:
+        "Swath plot: средние (средневзвешенные) содержания блочных моделей и проб по полосам вдоль направления — проверка оценки на смещение и сглаживание. " +
+        "Без swath_id создаёт новый график (первая блочная модель по объёму против проб активного набора по длине, пробы — внутри блоков модели), сохраняет его в дереве " +
+        "(раздел «Аудит»), открывает в нижней панели и рисует полосы и график в 3D; возвращает таблицу средних по полосам. swath_id — открыть сохранённый. " +
+        "direction: x, y, z или azimuth (с azimuth — градусы от севера по часовой); width — ширина полосы, м (по умолчанию — целые блоки). " +
+        "Ряды, веса, отбор блоков и проб настраиваются в панели.",
+      params: {
+        swath_id: { type: "integer" }, direction: { type: "string", enum: ["x", "y", "z", "azimuth"] },
+        azimuth: { type: "number" }, width: { type: "number" },
+      },
+      run: async (args) => {
+        if (args.swath_id !== undefined && args.swath_id !== null) return s().openSwath(Number(args.swath_id));
+        const settings = defaultSwath(s().datasets, s().activeSet);
+        if (typeof args.direction === "string") settings.direction = args.direction as SwathSettings["direction"];
+        if (typeof args.azimuth === "number") {
+          settings.azimuth = String(args.azimuth);
+          if (args.direction === undefined) settings.direction = "azimuth";
+        }
+        if (typeof args.width === "number") settings.width = String(args.width);
+        const problem = swathProblem(settings);
+        if (problem) throw new Error(problem === "Добавьте ряд: блочную модель или пробы набора скважин" ? "Для Swath plot нужна блочная модель или набор скважин с пробами" : problem);
+        const r = await runSwath(swathRequest(settings));
+        const opened = await s().openSwath(null, settings);
+        const head = ["полоса", axisTitle(r), ...r.series.flatMap((x) => [x.name, x.kind === "samples" ? "проб" : x.weight_unit])];
+        const fmt = (v: number | null) => (v === null ? "—" : Number(v.toPrecision(4)).toString());
+        const lines = r.centres.slice(0, 80).map((t, k) => [k + 1, fmt(axisValue(r, t)),
+          ...r.series.flatMap((x) => [fmt(x.mean[k]), x.kind === "samples" ? x.count[k] : fmt(x.weights[k])])].join(" | "));
+        const totals = r.series.map((x) => `${x.name}: среднее ${fmt(x.total.mean)} (${x.weight_name}, ${x.kind === "samples" ? "проб" : "блоков"} ${x.total.count})`);
+        return [opened, `${r.count} полос по ${fmt(r.width)} м`, ...totals, head.join(" | "), ...lines,
+          r.count > 80 ? `… ещё ${r.count - 80} полос` : "", ...r.notes].filter(Boolean).join("\n");
       },
     },
     {

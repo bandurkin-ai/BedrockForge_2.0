@@ -23,7 +23,8 @@ def _set_fk() -> ForeignKey:
 
 
 # Dataset kinds shown in the project tree. Only drillholes and wireframes can be loaded so far.
-DATASET_KINDS = ("drillholes", "lines", "wireframes", "blocks", "rasters")
+# "swath": a saved swath plot (section «Аудит»): no data of its own, only settings in `meta`.
+DATASET_KINDS = ("drillholes", "lines", "wireframes", "blocks", "rasters", "swath")
 
 
 class Project(Base):

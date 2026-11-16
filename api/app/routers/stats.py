@@ -668,23 +668,32 @@ def load_field_values(session: Session, set_id: int, f: SampleFilter) -> FieldVa
         params["holes"] = f.holes
     rows = session.execute(text(f"SELECT {value_sql}, {weight_sql} FROM {from_sql} WHERE {where}"), params).all()
     data = np.array([(np.nan if v is None else v, np.nan if w is None else w) for v, w in rows], dtype=np.float64).reshape(-1, 2)
-    v, w = data[:, 0], data[:, 1]
+    v, w, _, counts = filter_values(data[:, 0], data[:, 1], f)
+    if len(v) == 0:
+        raise HTTPException(422, "Нет значений после фильтров")
+    return FieldValues(v, w, counts)
+
+
+def filter_values(v: np.ndarray, w: np.ndarray, f: SampleFilter) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
+    """Values and weights of the rows a chart takes (missing values, weights, negatives, zeros and
+    cuts treated as the filter says), the numbers of those rows, and counts of what was left out."""
     total = len(v)
+    index = np.arange(total)
     missing = ~np.isfinite(v)
     bad_weight = ~missing & ~(np.isfinite(w) & (w > 0))
     keep = ~missing & ~bad_weight
-    v, w = v[keep], w[keep]
+    v, w, index = v[keep], w[keep], index[keep]
     negative = v < 0
     n_negative = int(negative.sum())
     if f.negatives == "exclude":
-        v, w = v[~negative], w[~negative]
+        v, w, index = v[~negative], w[~negative], index[~negative]
     elif f.negatives == "half_abs":
         v = np.where(negative, np.abs(v) / 2, v)
     n_zero = 0
     if f.exclude_zero:
         zero = v == 0
         n_zero = int(zero.sum())
-        v, w = v[~zero], w[~zero]
+        v, w, index = v[~zero], w[~zero], index[~zero]
     cut = {"bottom_capped": 0, "bottom_excluded": 0, "capped": 0, "top_excluded": 0}
     if f.bottom_cut is not None:
         low = v < f.bottom_cut
@@ -693,7 +702,7 @@ def load_field_values(session: Session, set_id: int, f: SampleFilter) -> FieldVa
             v = np.where(low, f.bottom_cut, v)
         else:
             cut["bottom_excluded"] = int(low.sum())
-            v, w = v[~low], w[~low]
+            v, w, index = v[~low], w[~low], index[~low]
     if f.top_cut is not None:
         high = v > f.top_cut
         if f.top_mode == "cap":
@@ -701,13 +710,11 @@ def load_field_values(session: Session, set_id: int, f: SampleFilter) -> FieldVa
             v = np.where(high, f.top_cut, v)
         else:
             cut["top_excluded"] = int(high.sum())
-            v, w = v[~high], w[~high]
-    if len(v) == 0:
-        raise HTTPException(422, "Нет значений после фильтров")
-    return FieldValues(v, w, {
+            v, w, index = v[~high], w[~high], index[~high]
+    return v, w, index, {
         "rows": total, "missing": int(missing.sum()), "bad_weight": int(bad_weight.sum()),
         "negative": n_negative, "zero_excluded": n_zero, **cut, "used": int(len(v)),
-    })
+    }
 
 
 @router.post("/sets/{set_id}/stats/histogram")

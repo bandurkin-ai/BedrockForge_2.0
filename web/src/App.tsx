@@ -4,7 +4,7 @@ const noSubscribe = () => () => undefined;
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, editBlock, renameDataset, runAudit, setBlockUnit,
-  getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord, type PickResult,
+  getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, createSwath, patchSwath, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord, type PickResult,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
@@ -23,6 +23,9 @@ import { BlockSettingsForm } from "./viz/BlockSettingsForm";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataTables } from "./DataTables";
 import { StatsPage } from "./StatsPage";
+import { SwathPanel } from "./stats/SwathPanel";
+import { defaultSwath, normalizeSwath, type SwathSettings } from "./stats/swath";
+import { useSwathLayers, useSwathStates, type SwathItem } from "./stats/useSwaths";
 import type { StatsView } from "./stats/analyses";
 import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
 import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
@@ -64,7 +67,7 @@ import { useAssistant, type ToolOutcome } from "./shell/useAssistant";
 import { useLiveState } from "./shell/useLiveState";
 import { useRemoteCommands } from "./shell/useRemoteCommands";
 import {
-  BOTTOM_TITLES, isShown, layerKey, loadWorkspace, openBottom, resize, saveWorkspace, setLogShown, setPanel, setShown,
+  BOTTOM_TITLES, isShown, layerKey, loadWorkspace, openBottom, resize, saveWorkspace, setLogShown, setPanel, setShown, setSwathShown,
   type BottomTab, type SelectedObject, type WorkspaceState,
 } from "./shell/workspace";
 import { StatusBar } from "./StatusBar";
@@ -412,6 +415,61 @@ function Workspace({
     selectHole(setId, null);
   };
   const sets = useMemo(() => (datasets ?? []).filter((d) => d.kind === "drillholes"), [datasets]);
+
+  // ---- swath plots: objects of the tree section «Аудит»; one is open in the bottom dock, any may be drawn in 3D
+  const [swathOpen, setSwathOpen] = useState<number | null>(null);
+  // Settings as the user left them: shown at once, saved a moment later.
+  const [swathDrafts, setSwathDrafts] = useState<Record<number, SwathSettings>>({});
+  // A plot made just now is not in the tree until it reloads.
+  const [swathMade, setSwathMade] = useState<Dataset | null>(null);
+  const [swathHover, setSwathHover] = useState<{ id: number; index: number } | null>(null);
+  const swathSets = useMemo(() => {
+    const list = (datasets ?? []).filter((d) => d.kind === "swath");
+    return swathMade && !list.some((d) => d.id === swathMade.id) ? [...list, swathMade] : list;
+  }, [datasets, swathMade]);
+  const swathSaved = useMemo(
+    () => new Map(swathSets.map((d) => [d.id, normalizeSwath((d.meta as { settings?: unknown }).settings)])),
+    [swathSets],
+  );
+  const swathItems = useMemo<SwathItem[]>(
+    () => swathSets.filter((d) => d.id === swathOpen || ws.swaths.includes(d.id)).map((d) => ({ id: d.id, settings: swathDrafts[d.id] ?? swathSaved.get(d.id)! })),
+    [swathSets, swathSaved, swathDrafts, swathOpen, ws.swaths],
+  );
+  const swathStates = useSwathStates(swathItems, refreshKey);
+  const swathLayers = useSwathLayers(useMemo(() => swathItems.filter((x) => ws.swaths.includes(x.id)), [swathItems, ws.swaths]), swathStates, swathHover);
+  const swathTimers = useRef(new Map<number, number>());
+  const changeSwath = (id: number, next: SwathSettings) => {
+    setSwathDrafts((prev) => ({ ...prev, [id]: next }));
+    const timers = swathTimers.current;
+    window.clearTimeout(timers.get(id));
+    timers.set(id, window.setTimeout(() => {
+      timers.delete(id);
+      patchSwath(id, next).catch(() => undefined); // deleted meanwhile
+    }, 800));
+  };
+  const showSwath = (id: number) => {
+    setSwathOpen(id);
+    setWs((prev) => resize(openBottom(setSwathShown(prev, id, true), "swath"), "bottom", Math.max(prev.sizes.bottom, 440)));
+  };
+  /** Opens a saved plot, or makes a new one (the first block model against the samples of the active set). */
+  const openSwath = async (id: number | null, settings?: SwathSettings): Promise<string> => {
+    if (id !== null) {
+      const d = swathSets.find((x) => x.id === id);
+      if (!d) throw new Error(`Swath plot ${id} нет в проекте`);
+      showSwath(id);
+      return `Открыт Swath plot «${d.name}»`;
+    }
+    const initial = settings ?? defaultSwath(datasets ?? [], activeSetRef.current);
+    if (!initial.series.length) throw new Error("Для Swath plot нужна блочная модель или набор скважин с пробами");
+    const taken = new Set(swathSets.map((d) => d.name));
+    let n = swathSets.length + 1;
+    while (taken.has(`Swath plot ${n}`)) n++;
+    const made = await createSwath(projectId, `Swath plot ${n}`, initial);
+    setSwathMade(made);
+    showSwath(made.id);
+    reload();
+    return `Swath plot «${made.name}» сохранён в дереве: раздел «Аудит»`;
+  };
   // What the 3D view draws on the holes: saved displays that are on (a display being edited shows its form's
   // state, on or not), then new displays of open forms. The order is the order of the tree: columns stand in it.
   const logLayers = useMemo<DownholeLog[]>(() => {
@@ -536,6 +594,8 @@ function Workspace({
     showOnHoles,
     previewOnHoles: (setId) => openChart("striplog", setId, undefined, undefined, undefined, { table: null }),
     openBlockReport,
+    openSwath: (id, settings) => openSwath(id, settings),
+    get swaths() { return swathSets.map((d) => ({ id: d.id, name: d.name })); },
     openStats: (analysis, component) => {
       setStatsView((prev) => ({ analysis, component: component ?? prev.component }));
       // charts need room: grow a short dock, never shrink one the user enlarged
@@ -721,9 +781,16 @@ function Workspace({
         d.kind === "drillholes" ? `набор скважин «${d.name}» со всеми устьями, замерами, пробами и аудитом`
         : d.kind === "wireframes" ? `файл «${d.name}» со всеми каркасами (${d.wireframes?.length ?? 0})`
         : d.kind === "lines" ? `файл «${d.name}» со всеми слоями линий (${d.lines?.length ?? 0})`
+        : d.kind === "blocks" ? `блочную модель «${d.name}»`
+        : d.kind === "swath" ? `Swath plot «${d.name}»`
         : `растр «${d.rasters?.[0]?.name ?? d.name}»`;
       if (!(await askConfirm({ title: "Удаление", message: `Удалить ${what}? Это действие нельзя отменить.`, danger: true }))) return;
       await deleteDataset(d.id);
+      if (d.kind === "swath") {
+        if (swathOpen === d.id) setSwathOpen(null);
+        if (swathMade?.id === d.id) setSwathMade(null);
+        setWs((prev) => setSwathShown(prev, d.id, false));
+      }
       const items = [...(d.wireframes ?? []), ...(d.lines ?? []), ...(d.rasters ?? [])].map((x) => x.id);
       if (selected && items.includes(selected.id)) setSelected(null);
       reload();
@@ -802,7 +869,7 @@ function Workspace({
   };
 
   const clearHole = () => activeSet !== null && selectHole(activeSet, null);
-  const bottomTabs: BottomTab[] = ["table", "audit", "stats", "jobs", "log"];
+  const bottomTabs: BottomTab[] = ["table", "audit", "stats", "swath", "jobs", "log"];
   const activeSetName = sets.find((d) => d.id === activeSet)?.name ?? null;
 
   return (
@@ -876,6 +943,10 @@ function Workspace({
                   onRename={onRename}
                   onMove={onMove}
                   onDelete={onDelete}
+                  swathOpen={ws.bottom && ws.bottomTab === "swath" ? swathOpen : null}
+                  swathsOn={ws.swaths}
+                  onOpenSwath={(id) => void guarded(() => openSwath(id))}
+                  onToggleSwath={(id, on) => setWs((prev) => setSwathShown(prev, id, on))}
                   onColor={onColor}
                   onDeleteItem={onDeleteItem}
                   onDtm={onDtm}
@@ -955,6 +1026,7 @@ function Workspace({
                 }}
                 registerApi={(api) => (sceneApi.current = api)}
                 logs={logLayers}
+                swaths={swathLayers}
                 onLegendLayer={(chartId, trackId) => chartId > 0 && void guarded(() => openDisplayForm(0, "grade", chartId, trackId))}
                 collarStyles={ws.collarStyles}
                 traceStyles={ws.traceStyles}
@@ -1002,18 +1074,35 @@ function Workspace({
                       {BOTTOM_TITLES[tab]}
                       {tab === "log" && log.length > 0 && ` · ${log.length}`}
                       {tab === "jobs" && jobs.active > 0 && <span className="badge"> {jobs.active}</span>}
-                      {tab !== "log" && tab !== "jobs" && activeSetName && <span className="muted"> · {activeSetName}</span>}
+                      {tab !== "log" && tab !== "jobs" && tab !== "swath" && activeSetName && <span className="muted"> · {activeSetName}</span>}
                     </button>
                   ))}
                   <span className="spacer" />
                   <button className="icon" onClick={() => setWs((p) => setPanel(p, "bottom", false))} title="Закрыть панель" aria-label="Закрыть панель"><Icon name="close" size={14} /></button>
                 </div>
-                <div className="dock-body">
+                <div className={ws.bottomTab === "swath" ? "dock-body flush" : "dock-body"}>
                   <ErrorBoundary key={ws.bottomTab} label={BOTTOM_TITLES[ws.bottomTab]} compact>
                     {ws.bottomTab === "log" ? (
                       <CommandLog entries={log} />
                     ) : ws.bottomTab === "jobs" ? (
                       <JobsPanel jobs={jobs.jobs} uploads={jobs.uploads} onClearUploads={jobs.clearUploads} />
+                    ) : ws.bottomTab === "swath" ? (
+                      (() => {
+                        const open = swathSets.find((d) => d.id === swathOpen) ?? null;
+                        return (
+                          <SwathPanel
+                            datasets={datasets ?? []} swath={open} refreshKey={refreshKey}
+                            settings={open ? swathDrafts[open.id] ?? swathSaved.get(open.id) ?? null : null}
+                            state={open ? swathStates[open.id] : undefined}
+                            shown3d={open !== null && ws.swaths.includes(open.id)}
+                            onChange={(next) => open && changeSwath(open.id, next)}
+                            onHover={(index) => setSwathHover(open && index !== null ? { id: open.id, index } : null)}
+                            onShow3d={(on) => open && setWs((prev) => setSwathShown(prev, open.id, on))}
+                            onNew={() => void guarded(() => openSwath(null))}
+                            onOpen={(id) => void guarded(() => openSwath(id))}
+                          />
+                        );
+                      })()
                     ) : activeSet === null ? (
                       <p className="muted small">Нет наборов скважин. Импортируйте данные: лента «Главная → Скважины».</p>
                     ) : ws.bottomTab === "table" ? (

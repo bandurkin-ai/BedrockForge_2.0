@@ -473,7 +473,8 @@ export const getIntervals = (setId: number, component: string) =>
 
 // ---- Project tree ----
 
-export type DatasetKind = "drillholes" | "lines" | "wireframes" | "blocks" | "rasters";
+/** "swath": a saved swath plot (tree section «Аудит»); its settings are in `meta.settings`. */
+export type DatasetKind = "drillholes" | "lines" | "wireframes" | "blocks" | "rasters" | "swath";
 
 export interface WireframeInfo {
   id: number;
@@ -1433,6 +1434,84 @@ export const blockReport = (id: number, params: BlockReportParams, signal?: Abor
 
 export const setBlockUnit = (id: number, key: string, unit: BlockAttribute["unit"]) =>
   request<{ key: string; unit: string | null }>(`/api/blockmodels/${id}/attributes/${encodeURIComponent(key)}`, { method: "PATCH", ...json({ unit }) });
+
+// ---- swath plots: block models and samples compared by their means in slices across a direction
+
+export interface SwathBlockRequest {
+  kind: "blocks";
+  model_id: number;
+  field: string;
+  weight: "volume" | "tonnage" | "none";
+  density?: string | null;
+  filters?: { key: string; labels?: string[]; min?: number | null; max?: number | null }[];
+}
+
+export interface SwathSampleRequest {
+  kind: "samples";
+  set_id: number;
+  table?: string | null;
+  field: string;
+  weight: "none" | "length" | "field" | "length_field";
+  weight_field?: string | null;
+  negatives?: "keep" | "exclude" | "half_abs";
+  top_cut?: number | null;
+  /** box: every sample in the cuboid of the swaths; blocks: only those inside a block of a model series */
+  within: "box" | "blocks";
+  /** number of the block model series in the list (none: the first one) */
+  within_series?: number | null;
+}
+
+export interface SwathRequest {
+  direction: "x" | "y" | "z" | "azimuth";
+  azimuth: number;
+  width: number | null;
+  anchor: number | null;
+  series: (SwathBlockRequest | SwathSampleRequest)[];
+}
+
+export interface SwathSeriesResult {
+  index: number;
+  kind: "blocks" | "samples";
+  name: string;
+  field: string;
+  unit: string;
+  weight: string;
+  weight_name: string;
+  weight_unit: string;
+  dataset_id: number;
+  /** samples: "box" or the name of the model series they were taken inside */
+  within?: string;
+  counts: Record<string, number>;
+  /** per swath: the weighted mean (null: nothing in the swath), how many values, their weight */
+  mean: (number | null)[];
+  count: number[];
+  weights: (number | null)[];
+  total: { mean: number | null; count: number; weight: number };
+}
+
+export interface SwathResult {
+  direction: "x" | "y" | "z" | "azimuth";
+  azimuth: number;
+  /** unit vectors: u across the swaths (the axis of the plot), v and w along them */
+  frame: { u: number[]; v: number[]; w: number[] };
+  /** the cuboid of the swaths: its extent along u, v and w */
+  box: { u: number[]; v: number[]; w: number[] };
+  start: number;
+  width: number;
+  count: number;
+  centres: number[];
+  /** size of a parent block along the direction (null without a block model) */
+  block: number | null;
+  series: SwathSeriesResult[];
+  notes: string[];
+}
+
+export const runSwath = (body: SwathRequest, signal?: AbortSignal) =>
+  request<SwathResult>("/api/stats/swath", { method: "POST", ...json(body), signal });
+export const createSwath = (projectId: number, name: string, settings: unknown) =>
+  request<Dataset>(`/api/projects/${projectId}/swaths`, { method: "POST", ...json({ name, settings }) });
+export const patchSwath = (id: number, settings: unknown) =>
+  request<Dataset>(`/api/swaths/${id}`, { method: "PATCH", ...json({ settings }) });
 
 // ---- interval tables and the downhole log
 

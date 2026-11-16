@@ -82,6 +82,11 @@ export interface DataTreeProps {
   /** Saved downhole displays that are on in the 3D view, and turning one on or off. */
   logsOn?: number[];
   onToggleLog?: (chartId: number, on: boolean) => void;
+  /** Swath plots (section «Аудит»): the one open in the bottom dock, those drawn in 3D, opening and showing one. */
+  swathOpen?: number | null;
+  swathsOn?: number[];
+  onOpenSwath?: (id: number | null) => void;
+  onToggleSwath?: (id: number, on: boolean) => void;
 }
 
 function Twisty({ open, onClick }: { open: boolean; onClick: () => void }) {
@@ -279,7 +284,7 @@ function HoleList({ setId, refreshKey, selectedHole, active, onSelectHole }: {
 /** Left dock: every object of the project by kind, with visibility in the 3D view. */
 export function DataTree(props: DataTreeProps) {
   const { datasets, ws, activeSet } = props;
-  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframe", "cat:dtm", "cat:lines", "cat:rasters", "cat:blocks"]));
+  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframe", "cat:dtm", "cat:lines", "cat:rasters", "cat:blocks", "cat:audit"]));
   const toggle = (key: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
@@ -551,6 +556,8 @@ export function DataTree(props: DataTreeProps) {
         <RasterCategory {...props} open={open} toggle={toggle} />
 
         <BlockCategory {...props} open={open} toggle={toggle} />
+
+        <AuditCategory {...props} open={open} toggle={toggle} />
       </ul>
       </GroupOrder.Provider>
     </div>
@@ -642,6 +649,42 @@ function FileCategory(props: DataTreeProps & {
                 ))}
               </ul>
             )}
+          </li>
+        );
+      }} />
+    </Category>
+  );
+}
+
+/** «Аудит»: checks of the estimates kept in the project. Swath plots: block models against samples by swaths. */
+function AuditCategory(props: DataTreeProps & { open: Set<string>; toggle: (key: string) => void }) {
+  const { open, toggle } = props;
+  const plots = (props.datasets ?? []).filter((d) => d.kind === "swath");
+  return (
+    <Category
+      id="cat:audit" title="Аудит" icon="audit" count={plots.length} open={open.has("cat:audit")} onToggle={() => toggle("cat:audit")}
+      actions={<Action icon="plus" title="Новый Swath plot: средние блочной модели и проб по полосам" onClick={() => props.onOpenSwath?.(null)} />}
+    >
+      {plots.length === 0 && <li className="tree-note muted small">Нет проверок. «+» — Swath plot: блочная модель против проб по полосам.</li>}
+      <Folders node={folderTree(plots)} group="audit" closed={(k) => open.has(k)} toggle={toggle} render={(d) => {
+        const active = props.swathOpen === d.id;
+        const series = ((d.meta as { settings?: { series?: unknown[] } }).settings?.series ?? []).length;
+        return (
+          <li key={d.id}>
+            <div className={active ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onOpenSwath?.(d.id)} title={`${d.name} — открыть в нижней панели; галочка — полосы и график в 3D`}>
+              {/* The tick only shows or hides the plot in 3D: it does not open it. */}
+              <span onClick={(e) => e.stopPropagation()}>
+                <Eye shown={(props.swathsOn ?? []).includes(d.id)} onChange={(v) => props.onToggleSwath?.(d.id, v)} label={d.name} />
+              </span>
+              <Icon name="swath" size={14} />
+              <span className="grow name">{d.name}</span>
+              <span className="count" title="Рядов">{series}</span>
+              <span className="row-actions">
+                <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
+                <Action icon="folder" title="В папку…" onClick={() => props.onMove(d)} />
+                <Action icon="trash" title="Удалить Swath plot" onClick={() => props.onDelete(d)} />
+              </span>
+            </div>
           </li>
         );
       }} />
