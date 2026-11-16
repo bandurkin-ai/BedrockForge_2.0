@@ -106,7 +106,9 @@ def test_second_instance_opens_read_only_and_refuses_changes(pclient, tmp_path) 
         assert not holder.acquire()
         r = pclient.post(f"{API}/{p['uid']}/open")
         assert r.status_code == 200 and r.json()["read_only"] is True
-        assert r.json()["lock_owner"].get("pid") == other.pid
+        # on Windows the venv python.exe is a launcher: the locking process is its child, not other.pid
+        owner = r.json()["lock_owner"]
+        assert isinstance(owner.get("pid"), int) and owner["pid"] != os.getpid() and owner.get("since")
         r = pclient.patch(f"{API}/{p['uid']}", json={"name": "Другое"})
         assert r.status_code == 423 and r.json()["code"] == "project_read_only"
         assert pclient.delete(f"{API}/{p['uid']}").status_code == 423
