@@ -4,9 +4,36 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BedrockForge — ГГИС</title>
+    <script>
+      // Theme before the first paint, so the startup splash does not flash in the wrong colours.
+      try { var w = JSON.parse(localStorage.getItem("bedrockforge.workspace.v3") || "null"); if (w && w.theme === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
+    </script>
+    <style>
+      /* Startup splash: shown until React draws the workspace (the same markup is the React Splash component). */
+      .splash { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #15181d; color: #dfe3ea; font-family: system-ui, "Segoe UI", sans-serif; z-index: 1000; }
+      :root[data-theme="light"] .splash { background: #ffffff; color: #1d2330; }
+      .splash-card { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 36px 48px; border-radius: 10px; background: rgba(127,127,127,0.08); border: 1px solid rgba(127,127,127,0.22); }
+      .splash-logo { width: 56px; height: 56px; border-radius: 10px; background: linear-gradient(135deg, #e8873a 0 50%, #803f0d 50% 100%); }
+      .splash-title { font-size: 28px; font-weight: 700; letter-spacing: 0.01em; }
+      .splash-by { font-size: 14px; opacity: 0.7; margin-top: -8px; }
+      .splash-bar { width: 220px; height: 3px; border-radius: 2px; background: rgba(127,127,127,0.25); overflow: hidden; margin-top: 6px; }
+      .splash-bar::after { content: ""; display: block; width: 40%; height: 100%; background: #e8873a; animation: splash-run 1.2s ease-in-out infinite; }
+      .splash-note { font-size: 12px; opacity: 0.6; }
+      @keyframes splash-run { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="splash" role="status" aria-live="polite">
+        <div class="splash-card">
+          <div class="splash-logo" aria-hidden="true"></div>
+          <div class="splash-title">BedrockForge</div>
+          <div class="splash-by">by Mikhail Bandurkin</div>
+          <div class="splash-bar" aria-hidden="true"></div>
+          <div class="splash-note">Запуск программы…</div>
+        </div>
+      </div>
+    </div>
     <script>
       // Errors that happen before React starts (or outside it) would otherwise leave a blank page.
       function showError(message) {

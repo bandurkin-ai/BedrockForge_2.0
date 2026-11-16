@@ -41,11 +41,12 @@ button.icon.active { color: var(--accent); background: var(--accent-soft); }
   display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 10px; flex-shrink: 0;
   background: var(--chrome); border-bottom: 1px solid var(--border);
 }
-.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: 0.01em; }
+.brand { white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: 0.01em; }
 .brand-mark {
   width: 16px; height: 16px; border-radius: 3px;
   background: linear-gradient(135deg, var(--brand) 0 50%, color-mix(in srgb, var(--brand) 55%, #000) 50% 100%);
 }
+.brand-by { white-space: nowrap; font-weight: 400; font-size: 11px; color: var(--muted); letter-spacing: 0; }
 .project-pick { display: inline-flex; align-items: center; gap: 6px; }
 .project-pick .muted { margin: 0; }
 .project-pick select { min-width: 180px; max-width: 280px; }

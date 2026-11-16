@@ -814,7 +814,7 @@ function Workspace({
       }}
     >
       <header className="titlebar">
-        <span className="brand"><span className="brand-mark" aria-hidden="true" />BedrockForge</span>
+        <span className="brand"><span className="brand-mark" aria-hidden="true" />BedrockForge<span className="brand-by">by Mikhail Bandurkin</span></span>
         <label className="project-pick">
           <span className="muted">Проект</span>
           <select value={projectId} onChange={(e) => onSelectProject(Number(e.target.value))} aria-label="Проект">
@@ -1449,7 +1449,22 @@ export function App() {
 
   if (error) return <main className="page"><div className="alert error">{error}</div></main>;
   const project = projects?.find((p) => p.id === projectId);
-  if (!projects || !project) return <main className="page"><p className="muted">Загрузка…</p></main>;
+  if (!projects || !project) return <Splash note="Загрузка проектов…" />;
 
   return <Workspace key={project.id} projects={projects} project={project} onSelectProject={selectProject} onNewProject={onNewProject} onDemoProject={onDemoProject} onDeleteProject={onDeleteProject} onPatchProject={onPatchProject} />;
+}
+
+/** Startup splash, the same markup as the one in index.html (shown before React starts). */
+function Splash({ note }: { note: string }) {
+  return (
+    <div className="splash" role="status" aria-live="polite">
+      <div className="splash-card">
+        <div className="splash-logo" aria-hidden="true" />
+        <div className="splash-title">BedrockForge</div>
+        <div className="splash-by">by Mikhail Bandurkin</div>
+        <div className="splash-bar" aria-hidden="true" />
+        <div className="splash-note">{note}</div>
+      </div>
+    </div>
+  );
 }
