@@ -1,0 +1,28 @@
+.wrap { padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; height: 100%; overflow: auto; }
+.section { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.section h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.row { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 8px; align-items: center; margin-bottom: 6px; }
+.label { color: var(--text-dim); }
+.title { display: flex; gap: 8px; align-items: center; font-size: 15px; font-weight: 600; }
+.input { width: 100%; padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-input); color: var(--text); font: inherit; }
+.btn { padding: 4px 12px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; white-space: nowrap; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.danger { color: var(--danger); }
+.iconBtn { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 2px 4px; }
+.iconBtn:hover { color: var(--text); }
+.counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 16px; }
+.counts span b { font-weight: 600; margin-left: 4px; }
+.table { width: 100%; border-collapse: collapse; }
+.table th { text-align: left; color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--border); padding: 4px 6px; }
+.table td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.table tr.open td { background: var(--bg-active); }
+.table tr:hover td { background: var(--bg-hover); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.actions { white-space: nowrap; text-align: right; }
+.footer { display: flex; gap: 8px; flex-wrap: wrap; }
+.note { color: var(--text-faint); font-size: 12px; }
+.error { color: var(--danger); }
+.warn { color: var(--warn); }
+.choice { display: flex; flex-direction: column; gap: 6px; }
+.choice label { display: flex; gap: 6px; align-items: center; }

@@ -29,7 +29,7 @@ describe("shell commands of Э1", () => {
 
   it("a confirm command from Claude waits for the user's dialog", async () => {
     const app = createApp({ persist: false });
-    app.registry.bind("project.delete", () => "Удалён");
+    app.registry.bind("project.delete", () => "Удалён", () => null); // available: the test is about the confirmation
     const pending = app.registry.execute("project.delete", {}, "claude");
     await Promise.resolve();
     const req = dialogStore.get().queue.at(-1)!;

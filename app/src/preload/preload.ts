@@ -1,5 +1,5 @@
 // Bridge between the sandboxed interface and the main process (contextIsolation).
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 contextBridge.exposeInMainWorld("bf", {
   core: () => ipcRenderer.sendSync("bf:core-info"),
@@ -11,6 +11,11 @@ contextBridge.exposeInMainWorld("bf", {
   copyText: (text: string) => ipcRenderer.send("bf:copy-text", String(text)),
   saveText: (defaultName: string, text: string) => ipcRenderer.invoke("bf:save-text", String(defaultName), String(text)),
   coreRetry: () => ipcRenderer.send("bf:core-retry"),
+  pickSave: (defaultName: string) => ipcRenderer.invoke("bf:pick-save", String(defaultName)),
+  pickOpen: () => ipcRenderer.invoke("bf:pick-open"),
+  pickFolder: () => ipcRenderer.invoke("bf:pick-folder"),
+  showInFolder: (file: string) => ipcRenderer.send("bf:show-in-folder", String(file)),
+  pathForFile: (file: File) => webUtils.getPathForFile(file),
   coreLog: () => ipcRenderer.sendSync("bf:core-log"),
   onCoreState: (cb: (state: unknown) => void) => {
     const listener = (_e: unknown, state: unknown) => cb(state);

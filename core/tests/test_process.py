@@ -102,3 +102,41 @@ def test_missing_token_refuses_to_start() -> None:
         timeout=60,
     )
     assert r.returncode == 2
+
+
+def _json(port: int, method: str, path: str, body: object | None = None) -> dict:  # type: ignore[type-arg]
+    import json
+
+    data = None if body is None else json.dumps(body).encode()
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", data=data, method=method)
+    req.add_header("X-BF-Token", TOKEN)
+    req.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read())  # type: ignore[no-any-return]
+
+
+@pytest.mark.windows
+def test_job_runs_while_the_core_watches_its_stdin(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """As in the app: stdin is the shell's pipe and is watched. On Windows a blocking read of it hung the start
+    of every spawn worker (the job stayed «В очереди» forever)."""
+    import time
+
+    env = {"BF_LOCAL_DIR": str(tmp_path / "local"), "BF_PROJECTS_DIR": str(tmp_path / "Проекты")}
+    proc, port = _start("--watch-stdin", env=env)
+    try:
+        _json(port, "POST", "/api/v1/projects", {"name": "Задания"})
+        job = _json(port, "POST", "/api/v1/jobs", {"kind": "diag.sleep", "params": {"steps": 2}})
+        deadline = time.monotonic() + 60
+        status = ""
+        while time.monotonic() < deadline:
+            status = _json(port, "GET", f"/api/v1/jobs/{job['source']}/{job['id']}")["status"]
+            if status in ("done", "failed"):
+                break
+            time.sleep(0.2)
+        assert status == "done"
+        assert proc.stdin is not None
+        proc.stdin.close()
+        assert proc.wait(timeout=30) == 0
+    finally:
+        if proc.poll() is None:
+            proc.kill()

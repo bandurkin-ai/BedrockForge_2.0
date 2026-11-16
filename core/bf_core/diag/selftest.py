@@ -141,8 +141,62 @@ def check_routers() -> dict[str, Any]:
     return {"modules": list(ROUTER_MODULES), "routes": paths}
 
 
+def check_migrations() -> dict[str, Any]:
+    """Alembic revisions ship as data files in the frozen exe: both chains upgrade an empty database."""
+    from bf_core.db import dialect, migrate
+
+    heads = {}
+    with tempfile.TemporaryDirectory(prefix="bf-selftest-") as tmp:
+        for chain in ("project", "instance"):
+            engine = dialect.create_engine(dialect.sqlite_url(str(Path(tmp) / f"{chain}.sqlite")))
+            try:
+                migrate.upgrade(engine, chain)
+                assert migrate.state(engine, chain) == "current"
+                heads[chain] = migrate.head(chain)
+            finally:
+                engine.dispose()
+    return {"heads": heads}
+
+
+def check_worker() -> dict[str, Any]:
+    """A `spawn` worker starts from this build (in the frozen exe — bf-core.exe itself) and runs a job."""
+    import multiprocessing as mp
+
+    from bf_core.jobs.worker import main
+
+    ctx = mp.get_context("spawn")
+    parent, child = ctx.Pipe()
+    proc = ctx.Process(target=main, args=(child, "quick"), daemon=True)
+    t0 = time.perf_counter()
+    proc.start()
+    child.close()
+    try:
+        msgs = []
+        while parent.poll(60):
+            msg = parent.recv()
+            msgs.append(msg[0])
+            if msg[0] == "hello":
+                continue
+            if msg[0] == "ready":
+                parent.send(("run", {"id": 1, "kind": "diag.quick", "params": {}}))
+            elif msg[0] in ("done", "error"):
+                break
+        assert msgs and msgs[-1] == "done", msgs
+        return {"start_and_run_s": round(time.perf_counter() - t0, 3)}
+    finally:
+        try:
+            parent.send(("stop",))
+        except OSError:
+            pass
+        proc.join(5)
+        if proc.is_alive():
+            proc.kill()
+
+
 CHECKS: dict[str, Callable[[], dict[str, Any]]] = {
+    "worker": check_worker,
     "routers": check_routers,
+    "migrations": check_migrations,
     "numpy_scipy": check_numpy_scipy,
     "numba": check_numba,
     "manifold3d": check_manifold,

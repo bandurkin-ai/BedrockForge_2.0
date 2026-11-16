@@ -21,6 +21,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--port", type=int, default=0, help="0 = random free port")
     p.add_argument("--token", default=os.environ.get("BF_TOKEN", ""), help="launch token (X-BF-Token)")
     p.add_argument("--data", default=None, help="user data directory")
+    p.add_argument("--projects", default=os.environ.get("BF_PROJECTS_DIR"), help="folder of projects")
     p.add_argument("--mode", default=os.environ.get("BF_MODE", "desktop"), choices=["desktop", "server"])
     p.add_argument("--dev-origin", action="append", default=[], help="extra allowed Origin (dev only)")
     p.add_argument("--watch-stdin", action="store_true", help="exit when stdin closes (parent shell died)")
@@ -47,25 +48,83 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _watch_parent(request_shutdown) -> None:  # type: ignore[no-untyped-def]
-    """The shell keeps our stdin open; EOF means it is gone, so stop (then force-exit)."""
+    """The shell keeps our stdin open; EOF (or the shell process gone) means stop, then force-exit.
+
+    Windows: no blocking read of stdin. A synchronous ReadFile pending on the pipe makes every other
+    operation on that file object wait — including the start of a `spawn` worker, which gets the std
+    handles and hangs in its initialisation. Instead the pipe is peeked and the shell process is checked
+    once a second.
+    """
     import threading
     import time
 
-    def run() -> None:
+    def stop() -> None:
+        request_shutdown()
+        time.sleep(10)
+        os._exit(0)
+
+    def run_posix() -> None:
         try:
             while sys.stdin.buffer.read(4096):
                 pass
         except (OSError, ValueError):
             pass
-        request_shutdown()
-        time.sleep(10)
-        os._exit(0)
+        stop()
 
-    threading.Thread(target=run, name="parent-watch", daemon=True).start()
+    def run_windows() -> None:
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+        k32.PeekNamedPipe.argtypes = [
+            wintypes.HANDLE,
+            ctypes.c_void_p,
+            wintypes.DWORD,
+            ctypes.c_void_p,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.c_void_p,
+        ]
+        k32.PeekNamedPipe.restype = wintypes.BOOL
+        k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k32.OpenProcess.restype = wintypes.HANDLE
+        k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        k32.WaitForSingleObject.restype = wintypes.DWORD
+        try:
+            pipe = msvcrt.get_osfhandle(sys.stdin.fileno())  # type: ignore[attr-defined]
+        except (OSError, ValueError, AttributeError):
+            pipe = None
+        parent = k32.OpenProcess(0x00100000, False, os.getppid())  # SYNCHRONIZE
+        avail = wintypes.DWORD(0)
+        while True:
+            time.sleep(1.0)
+            if pipe is not None:
+                if not k32.PeekNamedPipe(pipe, None, 0, None, ctypes.byref(avail), None):
+                    break  # ERROR_BROKEN_PIPE: the shell closed our stdin
+                if avail.value:
+                    try:
+                        os.read(sys.stdin.fileno(), avail.value)  # data is there: the read returns at once
+                    except OSError:
+                        break
+            if parent and k32.WaitForSingleObject(parent, 0) == 0:
+                break  # the shell process is gone
+        stop()
+
+    target = run_windows if sys.platform == "win32" else run_posix
+    threading.Thread(target=target, name="parent-watch", daemon=True).start()
 
 
 def serve(args: argparse.Namespace) -> int:
+    import logging
+
     import uvicorn
+
+    # Messages of the core modules go to stderr: the shell writes them into core.log («core!» lines).
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger("bf_core")
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
 
     from bf_core.winjob import kill_children_with_me
 
@@ -83,12 +142,13 @@ def serve(args: argparse.Namespace) -> int:
     sock.bind(("127.0.0.1", args.port))
     port = sock.getsockname()[1]
 
-    state = CoreState(token=args.token, mode=args.mode, data_dir=args.data, port=port)
+    state = CoreState(token=args.token, mode=args.mode, data_dir=args.data, port=port, projects_dir=args.projects)
     app = create_app(state, extra_origins=tuple(args.dev_origin))
     config = uvicorn.Config(app, log_level="warning", access_log=False, lifespan="on", timeout_graceful_shutdown=5)
     server = uvicorn.Server(config)
 
     def request_shutdown() -> None:
+        state.events.close()  # open SSE streams would hold uvicorn's graceful shutdown for 5 s
         server.should_exit = True
 
     state.request_shutdown = request_shutdown

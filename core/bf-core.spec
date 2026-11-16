@@ -10,7 +10,7 @@ ROOT = Path(SPECPATH)
 bf_modules = sorted(
     ".".join(p.relative_to(ROOT).with_suffix("").parts).removesuffix(".__init__")
     for p in (ROOT / "bf_core").rglob("*.py")
-    if "__pycache__" not in p.parts
+    if "__pycache__" not in p.parts and "migrations" not in p.parts
 )
 hidden = collect_submodules("uvicorn") + bf_modules
 
@@ -18,6 +18,8 @@ a = Analysis(
     ["entry.py"],
     pathex=[str(ROOT)],
     hiddenimports=hidden,
+    # Alembic reads env.py and revisions from files: they ship as data, not in the PYZ.
+    datas=[(str(ROOT / "bf_core" / "db" / "migrations"), "bf_core/db/migrations")],
     excludes=["tkinter", "matplotlib", "IPython", "pytest"],
     noarchive=False,
 )

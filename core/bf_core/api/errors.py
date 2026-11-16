@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -34,4 +36,18 @@ async def unexpected_error_handler(_: Request, exc: Exception) -> JSONResponse:
             "Скопируйте журнал ядра и отправьте разработчику.",
         ),
         status_code=500,
+    )
+
+
+async def validation_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    """Bad request fields: a Russian message naming the fields, never their values (a password may be one)."""
+    errors: list[dict[str, Any]] = getattr(exc, "errors", lambda: [])()
+    fields = sorted({".".join(str(p) for p in e.get("loc", ())[1:]) or "тело" for e in errors})
+    return JSONResponse(
+        error_body(
+            "bad_request",
+            f"Неверные данные запроса: {', '.join(fields) or 'тело запроса'}.",
+            "Проверьте введённые значения; если ошибка повторяется — отправьте журнал разработчику.",
+        ),
+        status_code=422,
     )

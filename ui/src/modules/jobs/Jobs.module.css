@@ -1,0 +1,15 @@
+.wrap { display: flex; flex-direction: column; gap: 6px; }
+.bar { display: flex; gap: 8px; align-items: center; }
+.warn { color: var(--warn); }
+.table { width: 100%; border-collapse: collapse; }
+.table th { text-align: left; color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--border); padding: 3px 6px; }
+.table td { padding: 3px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.link { border: 0; background: transparent; color: var(--accent); cursor: pointer; padding: 0; text-align: left; font: inherit; }
+.progress { width: 120px; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; margin-top: 5px; }
+.progress > div { height: 100%; background: var(--accent); }
+.why { color: var(--text-faint); font-size: 12px; }
+.failed { color: var(--danger); }
+.done { color: var(--ok); }
+.btn { padding: 1px 8px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; margin-left: 4px; white-space: nowrap; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.empty { color: var(--text-faint); padding: 8px 4px; }

@@ -2,6 +2,8 @@
  * The application object: registry + state + handlers of the commands implemented on Э1.
  * No React here; components read app.store and run app.registry.execute().
  */
+import { bindJobs } from "../modules/jobs/bind";
+import { bindProjects } from "../modules/projects/bind";
 import { createRegistry } from "./catalog";
 import type { Command, CommandSource } from "./commands";
 import { askConfirm } from "./dialogs";
@@ -30,17 +32,20 @@ export function createApp(opts: { persist?: boolean } = {}): App {
     ...INITIAL_STATE,
     workspace: loaded?.settings.workspace ?? INITIAL_STATE.workspace,
     shortcuts: loaded?.settings.shortcuts ?? {},
+    lastProject: loaded?.settings.lastProject ?? null,
+    projectsDir: loaded?.settings.projectsDir ?? null,
+    heavyWorkers: loaded?.settings.heavyWorkers ?? 1,
   });
   const palette = new Store<{ query: string | null }>({ query: null });
 
   if (loaded?.writable) {
     let last = "";
     store.subscribe(() => {
-      const { workspace, shortcuts } = store.get();
-      const key = JSON.stringify([workspace, shortcuts]);
+      const { workspace, shortcuts, lastProject, projectsDir, heavyWorkers } = store.get();
+      const key = JSON.stringify([workspace, shortcuts, lastProject, projectsDir, heavyWorkers]);
       if (key !== last) {
         last = key;
-        saveSettings({ version: 1, workspace, shortcuts });
+        saveSettings({ version: 1, workspace, shortcuts, lastProject, projectsDir, heavyWorkers });
       }
     });
   }
@@ -120,5 +125,8 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   const run = async (id: string, args: Record<string, unknown> = {}, source: CommandSource = "user") => {
     await registry.execute(id, args, source);
   };
-  return { registry, store, palette, run };
+  const app: App = { registry, store, palette, run };
+  bindProjects(app);
+  bindJobs(app);
+  return app;
 }

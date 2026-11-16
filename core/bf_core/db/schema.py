@@ -1,0 +1,172 @@
+"""Tables of the project database (`project.sqlite` / schema `p_<id>`) and of the instance database
+(`instance.sqlite` in the profile / schema `public`). ADR 0003 §3: no `project_id` in project tables.
+
+SQLAlchemy Core tables; later stages add their tables here (or in `bf_core/<module>/schema.py` imported below)
+together with an Alembic revision. Times are set by the application (`dialect.utcnow()`).
+"""
+
+from __future__ import annotations
+
+import sqlalchemy as sa
+
+from .dialect import NAMING_CONVENTION, PK, REF, JSONType, UtcDateTime
+
+project_md = sa.MetaData(naming_convention=NAMING_CONVENTION)
+instance_md = sa.MetaData(naming_convention=NAMING_CONVENTION)
+
+
+def _jobs(md: sa.MetaData) -> tuple[sa.Table, sa.Table]:
+    jobs = sa.Table(
+        "jobs",
+        md,
+        sa.Column("id", PK, primary_key=True),
+        sa.Column("queue", sa.String(16), nullable=False),  # heavy | quick
+        sa.Column("kind", sa.String(64), nullable=False),
+        sa.Column("title", sa.String(400), nullable=False),
+        sa.Column("status", sa.String(16), nullable=False),  # queued running done failed cancelled
+        sa.Column("priority", sa.Integer, nullable=False, default=100),
+        sa.Column("params", JSONType, nullable=False),
+        # Archive password etc.: only until a worker takes the job (claim clears it); never in state or logs.
+        sa.Column("secret", sa.String(1024)),
+        sa.Column("result", JSONType),
+        sa.Column("error", JSONType),  # {code, message, hint}
+        sa.Column("progress", sa.Double, nullable=False, default=0.0),
+        sa.Column("message", sa.String(400)),
+        sa.Column("cancel_requested", sa.Boolean, nullable=False, default=False),
+        sa.Column("attempts", sa.Integer, nullable=False, default=0),
+        sa.Column("max_attempts", sa.Integer, nullable=False, default=3),
+        sa.Column("memory_mb", sa.Integer),
+        sa.Column("worker", sa.String(64)),
+        sa.Column("project_uid", sa.String(32)),  # instance jobs: the project they concern, if any
+        sa.Column("created_at", UtcDateTime, nullable=False),
+        sa.Column("started_at", UtcDateTime),
+        sa.Column("heartbeat_at", UtcDateTime),
+        sa.Column("finished_at", UtcDateTime),
+        sa.Index(None, "queue", "status", "priority", "id"),
+    )
+    job_log = sa.Table(
+        "job_log",
+        md,
+        sa.Column("job_id", REF, sa.ForeignKey("jobs.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column("seq", sa.Integer, primary_key=True),
+        sa.Column("at", UtcDateTime, nullable=False),
+        sa.Column("level", sa.String(8), nullable=False),  # info | warn | error
+        sa.Column("text", sa.Text, nullable=False),
+    )
+    return jobs, job_log
+
+
+# --- project level ------------------------------------------------------------------------------
+
+project_meta = sa.Table(
+    "project_meta",
+    project_md,
+    sa.Column("id", PK, primary_key=True),  # always 1
+    sa.Column("uid", sa.Uuid, nullable=False),
+    sa.Column("name", sa.String(200), nullable=False),
+    sa.Column("name_key", sa.String(200), nullable=False),
+    sa.Column("description", JSONType, nullable=False),  # {deposit, license, stage, text}
+    sa.Column("crs", sa.String(200)),
+    sa.Column("app_version", sa.String(32), nullable=False),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Column("updated_at", UtcDateTime, nullable=False),
+    sa.Column("version", sa.Integer, nullable=False, default=1),
+)
+
+objects = sa.Table(
+    "objects",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("parent_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE")),
+    sa.Column("kind", sa.String(32), nullable=False),
+    sa.Column("name", sa.String(200), nullable=False),
+    sa.Column("name_key", sa.String(200), nullable=False),
+    sa.Column("folder", sa.String(200)),
+    sa.Column("sort_key", sa.Double, nullable=False, default=0.0),
+    sa.Column("state", sa.String(16), nullable=False, default="ready"),  # building | ready
+    sa.Column("version", sa.Integer, nullable=False, default=1),
+    sa.Column("meta", JSONType, nullable=False),
+    sa.Column("extent", JSONType),  # [xmin, ymin, zmin, xmax, ymax, zmax]
+    sa.Column("crs", sa.String(200)),
+    sa.Column("job_id", REF),  # the job building it (state = building)
+    sa.Column("author", sa.String(100)),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Column("updated_at", UtcDateTime, nullable=False),
+    sa.Index(None, "kind", "state"),
+    sa.Index(None, "parent_id"),
+)
+
+object_refs = sa.Table(
+    "object_refs",
+    project_md,
+    sa.Column("src_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("dst_id", REF, sa.ForeignKey("objects.id", ondelete="RESTRICT"), primary_key=True),
+    sa.Column("role", sa.String(32), primary_key=True),
+    sa.Index(None, "dst_id"),
+)
+
+blobs = sa.Table(
+    "blobs",
+    project_md,
+    sa.Column("sha256", sa.String(64), primary_key=True),
+    sa.Column("size", sa.BigInteger, nullable=False),
+    sa.Column("media_type", sa.String(100), nullable=False),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+)
+
+blob_owners = sa.Table(
+    "blob_owners",
+    project_md,
+    sa.Column("sha256", sa.String(64), sa.ForeignKey("blobs.sha256", ondelete="CASCADE"), primary_key=True),
+    sa.Column("owner_kind", sa.String(32), primary_key=True),
+    sa.Column("owner_id", REF, primary_key=True),
+    sa.Column("role", sa.String(32), primary_key=True),
+    sa.Index(None, "owner_kind", "owner_id"),
+)
+
+jobs, job_log = _jobs(project_md)
+
+edit_log = sa.Table(
+    "edit_log",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("scope_kind", sa.String(32), nullable=False),
+    sa.Column("scope_id", REF, nullable=False),
+    sa.Column("group_id", REF, nullable=False),  # one user action may touch many rows
+    sa.Column("action", sa.String(32), nullable=False),  # update | insert | delete | meta
+    sa.Column("row_ref", JSONType),
+    sa.Column("changes", JSONType, nullable=False),  # {field: [before, after]}
+    sa.Column("undone", sa.Boolean, nullable=False, default=False),
+    sa.Column("author", sa.String(100)),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Index(None, "scope_kind", "scope_id", "id"),
+)
+
+settings = sa.Table(
+    "settings",
+    project_md,
+    sa.Column("scope", sa.String(32), primary_key=True),  # view | tree | …
+    sa.Column("key", sa.String(200), primary_key=True),
+    sa.Column("value", JSONType, nullable=False),
+    sa.Column("version", sa.Integer, nullable=False, default=1),
+)
+
+# --- instance level -------------------------------------------------------------------------------
+
+instance_jobs, instance_job_log = _jobs(instance_md)
+
+#: Cache of the project list (the folders and their project_meta are the truth); deleted without loss.
+projects_cache = sa.Table(
+    "projects",
+    instance_md,
+    sa.Column("uid", sa.String(32), primary_key=True),
+    sa.Column("path", sa.Text, nullable=False),
+    sa.Column("name", sa.String(200), nullable=False),
+    sa.Column("name_key", sa.String(200), nullable=False),
+    sa.Column("summary", JSONType, nullable=False),
+    sa.Column("mtime", sa.Double, nullable=False),
+    sa.Column("opened_at", UtcDateTime),
+)
+
+#: Kinds of blob owners. A new kind that stores files registers here, or tests/test_db.py fails (ТЗ 6.5).
+BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job"})

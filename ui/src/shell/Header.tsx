@@ -14,7 +14,7 @@ export function Header() {
         <b>BedrockForge</b>
         <span>by Mikhail Bandurkin</span>
       </div>
-      <button type="button" className={css.project} title="Проекты" onClick={() => void app.run("project.manage")}>
+      <button type="button" className={css.project} title="Проекты" data-testid="project-selector" onClick={() => void app.run("project.manage")}>
         <span>{project ?? "Проект не открыт"}</span>
         <Icon name="gear" size={13} />
       </button>

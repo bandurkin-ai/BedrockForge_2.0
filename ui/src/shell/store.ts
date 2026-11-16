@@ -17,6 +17,11 @@ export interface AppState {
   /** Reason shown while the core is offline, or the last notice («перезапущено»). */
   coreMessage: string | null;
   projectName: string | null;
+  /** The open project is read-only (open in another window, ADR 0002 §5). */
+  projectReadOnly: boolean;
+  lastProject: string | null;
+  projectsDir: string | null;
+  heavyWorkers: number;
   setName: string | null;
   setHoles: number;
   holeId: string | null;
@@ -34,6 +39,10 @@ export const INITIAL_STATE: AppState = {
   coreVersion: null,
   coreMessage: null,
   projectName: null,
+  projectReadOnly: false,
+  lastProject: null,
+  projectsDir: null,
+  heavyWorkers: 1,
   setName: null,
   setHoles: 0,
   holeId: null,

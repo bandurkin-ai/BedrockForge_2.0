@@ -64,9 +64,18 @@ function log(line: string): void {
   }
 }
 
+/** Документы\BedrockForge\Проекты unless «Настройка» chose another folder (ТЗ 6.5). */
+function projectsDir(): string {
+  const s = readSettings(SETTINGS_FILE());
+  const chosen = s && typeof s === "object" ? (s as Record<string, unknown>).projectsDir : undefined;
+  if (typeof chosen === "string" && path.isAbsolute(chosen)) return chosen;
+  return process.env.BF_PROJECTS_DIR || path.join(app.getPath("documents"), "BedrockForge", "Проекты");
+}
+
 const core = new CoreProcess({
   command: coreCommand(app.isPackaged, process.resourcesPath, path.join(__dirname, "..")),
   dataDir: app.getPath("userData"),
+  projectsDir,
   logFile: path.join(LOG_DIR, "core.log"),
 });
 
@@ -268,6 +277,26 @@ function registerIpc(): void {
     return true;
   });
   ipcMain.on("bf:spike", (e) => (e.returnValue = process.env.BF_SPIKE ?? null));
+  // System file dialogs for .bfggis (ТЗ 7.4): the path goes to the core, which reads and writes the file itself.
+  const bfggis = [{ name: "Проект BedrockForge", extensions: ["bfggis"] }];
+  ipcMain.handle("bf:pick-save", async (e, defaultName: string) => {
+    if (!mainWin || !fromMain(e.sender)) return null;
+    const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.join(app.getPath("documents"), path.basename(String(defaultName))), filters: bfggis });
+    return r.canceled || !r.filePath ? null : r.filePath;
+  });
+  ipcMain.handle("bf:pick-open", async (e) => {
+    if (!mainWin || !fromMain(e.sender)) return null;
+    const r = await dialog.showOpenDialog(mainWin, { properties: ["openFile"], filters: bfggis });
+    return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
+  });
+  ipcMain.handle("bf:pick-folder", async (e) => {
+    if (!mainWin || !fromMain(e.sender)) return null;
+    const r = await dialog.showOpenDialog(mainWin, { properties: ["openDirectory", "createDirectory"] });
+    return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
+  });
+  ipcMain.on("bf:show-in-folder", (e, file: string) => {
+    if (fromMain(e.sender) && typeof file === "string" && path.isAbsolute(file)) shell.showItemInFolder(file);
+  });
 }
 
 async function boot(): Promise<void> {

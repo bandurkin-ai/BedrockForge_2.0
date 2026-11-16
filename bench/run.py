@@ -71,7 +71,11 @@ def run_profile(profile: str, repeat: int, only: list[str] | None) -> dict[str, 
             for _ in range(repeat):
                 out = subprocess.run(
                     [sys.executable, "-m", "bench.run", "--child", name, "--profile", profile, "--work", str(work)],
-                    cwd=ROOT, env=env, capture_output=True, text=True, check=True,
+                    cwd=ROOT,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=True,
                 )
                 runs.append(json.loads(out.stdout.strip().splitlines()[-1]))
         secs = statistics.median(r["seconds"] for r in runs)

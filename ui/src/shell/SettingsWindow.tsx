@@ -5,10 +5,11 @@ import { askConfirm, showMessage } from "./dialogs";
 import { eventShortcut, formatShortcut, isComplete } from "./keys";
 import { buildRibbon, flattenRibbon } from "./ribbonConfig";
 import { assign, defaultShortcuts, effectiveShortcuts, functionKey, holderOf, isReserved } from "./shortcuts";
+import { GeneralSettings } from "./GeneralSettings";
 import { useStore } from "./useStore";
 import css from "./SettingsWindow.module.css";
 
-/** «Настройка» (ТЗ 7.0.6): own hotkeys; general settings arrive with projects (Э2). */
+/** «Настройка» (ТЗ 7.0.6, 7.3, 7.6): own hotkeys; folder of projects and job workers. */
 export function SettingsWindow({ tab: initialTab }: { tab?: string }) {
   const [tab, setTab] = useState(initialTab === "general" ? "general" : "shortcuts");
   return (
@@ -21,7 +22,7 @@ export function SettingsWindow({ tab: initialTab }: { tab?: string }) {
           Общие
         </button>
       </div>
-      {tab === "shortcuts" ? <Shortcuts /> : <div className={css.note}>Папка данных проектов и число исполнителей фоновых заданий настраиваются с этапа Э2 (проекты и задания).</div>}
+      {tab === "shortcuts" ? <Shortcuts /> : <GeneralSettings />}
     </div>
   );
 }

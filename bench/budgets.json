@@ -1,11 +1,55 @@
 {
   "_comment": "ТЗ 5.3 / 7.33. ci ≈ 1/10 of target volumes, checked on every PR; full — at milestones. Seconds and MB.",
   "ci": {
-    "mesh_volume": { "params": { "triangles": 1000000 }, "budget_s": 2.0, "budget_mb": 600 },
-    "parquet_filter": { "params": { "nx": 200, "ny": 100, "nz": 100 }, "budget_s": 2.0, "budget_mb": 800 }
+    "mesh_volume": {
+      "params": {
+        "triangles": 1000000
+      },
+      "budget_s": 2.0,
+      "budget_mb": 600
+    },
+    "parquet_filter": {
+      "params": {
+        "nx": 200,
+        "ny": 100,
+        "nz": 100
+      },
+      "budget_s": 2.0,
+      "budget_mb": 800
+    },
+    "project_export": {
+      "params": {
+        "mb": 200,
+        "password": true
+      },
+      "budget_s": 15.0,
+      "budget_mb": 600
+    }
   },
   "full": {
-    "mesh_volume": { "params": { "triangles": 10000000 }, "budget_s": 10.0, "budget_mb": 2048 },
-    "parquet_filter": { "params": { "nx": 400, "ny": 250, "nz": 200 }, "budget_s": 2.0, "budget_mb": 1024 }
+    "mesh_volume": {
+      "params": {
+        "triangles": 10000000
+      },
+      "budget_s": 10.0,
+      "budget_mb": 2048
+    },
+    "parquet_filter": {
+      "params": {
+        "nx": 400,
+        "ny": 250,
+        "nz": 200
+      },
+      "budget_s": 2.0,
+      "budget_mb": 1024
+    },
+    "project_export": {
+      "params": {
+        "mb": 2048,
+        "password": true
+      },
+      "budget_s": 120.0,
+      "budget_mb": 1024
+    }
   }
 }
