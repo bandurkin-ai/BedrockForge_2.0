@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 
+import sqlalchemy as sa
 from fastapi import Request
 
 from bf_core.api.app import CoreState
@@ -16,8 +18,36 @@ from .store import ProjectService
 _create_lock = threading.Lock()
 
 
+MAINTENANCE_EVERY_S = 30 * 60  # unused files go within the hour (ТЗ 7.6); daily backup (ADR 0002 §5)
+log = logging.getLogger("bf_core.projects")
+
+
 class _Service(ProjectService):
+    def __init__(self, root: Path, instance: sa.Engine) -> None:
+        super().__init__(root, instance)
+        self._stop = threading.Event()
+        threading.Thread(target=self._maintenance, name="project-maintenance", daemon=True).start()
+
+    def maintain_once(self) -> None:
+        from bf_core.storage.blobs import BlobStore
+        from bf_core.storage.gc import collect
+
+        with self._lock:
+            p = self.current
+            if p is None or p.read_only:
+                return
+            collect(p.engine, BlobStore(p.folder))
+            p.backup_if_due()
+
+    def _maintenance(self) -> None:
+        while not self._stop.wait(MAINTENANCE_EVERY_S):
+            try:
+                self.maintain_once()
+            except Exception:  # noqa: BLE001 - maintenance never stops the core
+                log.exception("project maintenance failed")
+
     def shutdown(self) -> None:
+        self._stop.set()
         self.close()
         self.instance.dispose()
 
