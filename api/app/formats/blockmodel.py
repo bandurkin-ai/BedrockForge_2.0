@@ -57,6 +57,17 @@ class BlockModelError(ValueError):
 
 
 @dataclass
+class RegularGrid:
+    """A model of one block per cell of a regular grid (an OMF volume): the grid is known, so blocks
+    cannot overlap, repeat or cross a cell, and the heavy checks of arbitrary sub-blocks are skipped."""
+
+    origin: list[float]  # corner of cell (0, 0, 0), x y z
+    parent: list[float]  # cell size, x y z
+    counts: list[int]  # cells along x, y, z
+    cells: np.ndarray  # int64 per block: ix + nx·(iy + ny·iz)
+
+
+@dataclass
 class BlockTable:
     format: str
     centres: np.ndarray  # (n, 3) float64
@@ -66,6 +77,7 @@ class BlockTable:
     grid_hint: dict | None = None  # origin_centre / origin_corner and size from the file
     notes: list[str] = field(default_factory=list)
     dropped: int = 0  # rows without a centre or a size
+    regular: RegularGrid | None = None
 
 
 def _find(names: list[str], wanted: tuple[str, ...], used: set[str] = frozenset()) -> str | None:
@@ -375,8 +387,6 @@ def check_model(t: BlockTable, grid: GridInfo, cells: np.ndarray, inside: np.nda
         out.append({"level": level, "code": code, "message": message, "count": count})
 
     n = len(t.centres)
-    if t.dropped:
-        add("warning", "dropped", "Строки без координат центра или размера пропущены", t.dropped)
     negative = int((cells < 0).any(axis=1).sum())
     if negative:
         add("error", "off_grid", "Блоки за началом сетки (отрицательный индекс родительской ячейки)", negative)
@@ -392,7 +402,19 @@ def check_model(t: BlockTable, grid: GridInfo, cells: np.ndarray, inside: np.nda
     overlap, method = _overlaps(t, grid, cells, inside)
     if overlap:
         add("error", "overlaps", f"Перекрытия блоков ({method})", overlap)
-    vol = np.prod(t.sizes, axis=1)
+    out.extend(attribute_checks(t, float(np.prod(t.sizes, axis=1, dtype=np.float64).sum())))
+    return out
+
+
+def attribute_checks(t: BlockTable, volume: float) -> list[dict]:
+    """Checks of the fields (empty, constant, unreadable values) and the total volume."""
+    out: list[dict] = []
+
+    def add(level: str, code: str, message: str, count: int | None = None) -> None:
+        out.append({"level": level, "code": code, "message": message, "count": count})
+
+    if t.dropped:
+        add("warning", "dropped", "Строки без координат центра или размера пропущены", t.dropped)
     for c in t.attributes:
         if c.kind == "number":
             nan = int(np.isnan(c.values).sum())
@@ -405,7 +427,7 @@ def check_model(t: BlockTable, grid: GridInfo, cells: np.ndarray, inside: np.nda
                 add("warning", "unparsed", f"{c.name}: значения не читаются как числа", c.unparsed)
         elif (c.values < 0).any():
             add("warning", "empty_values", f"{c.name}: пустые значения", int((c.values < 0).sum()))
-    add("info", "volume", f"Объём блоков {float(vol.sum()):,.0f} м³".replace(",", " "))
+    add("info", "volume", f"Объём блоков {volume:,.0f} м³".replace(",", " "))
     return out
 
 
@@ -522,10 +544,14 @@ def stats_of(c: Column, volume: np.ndarray) -> dict:
         w = volume[ok]
         return {"count": int(ok.sum()), "empty": int((~ok).sum()), "min": float(v[ok].min()), "max": float(v[ok].max()),
                 "mean": float(v[ok].mean()), "mean_by_volume": float((v[ok] * w).sum() / w.sum()) if w.sum() > 0 else None}
-    counts = np.bincount(c.values[c.values >= 0], minlength=len(c.labels or [])) if len(c.values) else np.zeros(0)
-    vols = np.bincount(c.values[c.values >= 0], weights=volume[c.values >= 0], minlength=len(c.labels or [])) if len(c.values) else np.zeros(0)
+    ok = c.values >= 0  # one mask and one copy of the codes: 50 million blocks make each of them big
+    codes = c.values[ok]
+    counts = np.bincount(codes, minlength=len(c.labels or []))
+    vols = np.bincount(codes, weights=volume[ok], minlength=len(c.labels or []))
+    del codes
     order = np.argsort(-counts)[:100]
-    return {"count": int((c.values >= 0).sum()), "empty": int((c.values < 0).sum()), "categories": len(c.labels or []),
+    filled = int(ok.sum())
+    return {"count": filled, "empty": int(len(c.values) - filled), "categories": len(c.labels or []),
             "top": [{"label": (c.labels or [])[i], "count": int(counts[i]), "volume": float(vols[i])} for i in order]}
 
 

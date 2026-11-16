@@ -31,7 +31,7 @@ from typing import BinaryIO
 
 import numpy as np
 
-from app.formats.blockmodel import BlockTable
+from app.formats.blockmodel import BlockTable, RegularGrid
 from app.formats.lines import LineLayer, Polyline
 from app.formats.micromine import Column
 from app.formats.tabular import unique_names
@@ -230,7 +230,7 @@ class OmfFile:
         dt = np.dtype(dtype)
         if len(out) % dt.itemsize:
             raise OmfFormatError(f"OMF: {what} — размер данных не кратен типу {dtype}")
-        return np.frombuffer(bytes(out), dtype=dt)
+        return np.frombuffer(out, dtype=dt)  # no copy: a 47-million-value column is 380 MB
 
     def image_bytes(self, block: dict, what: str) -> bytes:
         return self._block({**block, "dtype": "|u1"}, what).tobytes()
@@ -329,7 +329,7 @@ def _column_values(omf: OmfFile, data: dict, n: int, label: str) -> tuple[str, n
         v = omf.array(data.get("array"), what)
         if not isinstance(v, np.ndarray) or v.ndim != 1 or len(v) != n:
             raise OmfFormatError(f"OMF: {what} — длина {len(v)} не равна числу значений {n}")
-        return "number", v.astype(np.float64), None
+        return "number", np.asarray(v, dtype=np.float64), None
     if cls == "MappedData":
         idx = omf.array(data.get("array"), what)
         if not isinstance(idx, np.ndarray) or idx.ndim != 1 or len(idx) != n:
@@ -337,9 +337,10 @@ def _column_values(omf: OmfFile, data: dict, n: int, label: str) -> tuple[str, n
         labels = _legend_labels(omf, data, label)
         if labels is None:
             return None
-        bad = ~np.isfinite(idx) if idx.dtype.kind == "f" else np.zeros(len(idx), bool)
-        safe = np.where(bad, -1, idx).astype(np.int64)
-        codes = np.where((safe >= 0) & (safe < len(labels)), safe, -1).astype(np.int32)
+        if idx.dtype.kind == "f":
+            idx = np.where(np.isfinite(idx), idx, -1)
+        codes = idx.astype(np.int32)  # a separate array: the int64 indices are freed with idx
+        codes[(idx < 0) | (idx >= len(labels))] = -1
         return "category", codes, labels
     if cls in ("StringData", "DateTimeData"):
         values = omf.array(data.get("array"), what)
@@ -568,16 +569,8 @@ def _volume(omf: OmfFile, geometry: dict, data: list[dict], name: str, origin: n
     n = nu * nv * nw
     if n > MAX_VOLUME_CELLS:
         return f"{label}: не загружен — {n:,} ячеек больше предела {MAX_VOLUME_CELLS:,}".replace(",", " ")
-    centres_1d = [np.cumsum(t) - t / 2 for t in tensors]
-    idx = [np.tile(np.arange(nu), nv * nw), np.tile(np.repeat(np.arange(nv), nu), nw), np.repeat(np.arange(nw), nu * nv)]
-    centres = np.empty((n, 3), dtype=np.float64)
-    sizes = np.empty((n, 3), dtype=np.float64)
-    for a in range(3):  # grid axis a lies along coordinate placed[a][0]
-        k, sign = placed[a]
-        centres[:, k] = origin[k] + sign * centres_1d[a][idx[a]]
-        sizes[:, k] = tensors[a][idx[a]]
-    del idx
 
+    # Values first: cells without any value are not stored, so their coordinates are never computed.
     warnings: list[str] = []
     cols: list[Column] = []
     units: dict[str, str] = {}
@@ -605,25 +598,62 @@ def _volume(omf: OmfFile, geometry: dict, data: list[dict], name: str, origin: n
         c.name = unique
 
     notes: list[str] = []
-    regular = all(np.allclose(t, t[0], rtol=0, atol=1e-9 * max(t[0], 1)) for t in tensors)
-    hint = None
-    if regular:
-        lo = (centres - sizes / 2).min(axis=0)
-        hint = {"origin": [float(x) for x in lo], "size": [float(sizes[0, k]) for k in range(3)], "at": "corner"}
-    else:
-        notes.append("Шаг сетки OMF переменный: блоки разного размера, родительская сетка — по наибольшему блоку")
+    lin: np.ndarray | None = None  # kept cells (u fastest); None — all of them
     if cols:
         keep = np.zeros(n, dtype=bool)
         for c in cols:
             keep |= np.isfinite(c.values) if c.kind == "number" else (c.values >= 0)
         if keep.any() and not keep.all():
-            dropped = int(n - keep.sum())
-            notes.append(f"Ячеек сетки без значений: {dropped:,} из {n:,} — не загружены".replace(",", " "))
-            centres, sizes = centres[keep], sizes[keep]
+            lin = np.flatnonzero(keep)
+            notes.append(f"Ячеек сетки без значений: {n - len(lin):,} из {n:,} — не загружены".replace(",", " "))
             for c in cols:
-                c.values = c.values[keep]
+                c.values = c.values[lin]
+        del keep
+    m = n if lin is None else len(lin)
+    regular = all(np.allclose(t, t[0], rtol=0, atol=1e-9 * max(t[0], 1)) for t in tensors)
+    if not regular:
+        notes.append("Шаг сетки OMF переменный: блоки разного размера, родительская сетка — по наибольшему блоку")
+
+    # Grid axis a (u, v, w) lies along coordinate placed[a] = (k, sign).
+    centres = np.empty((m, 3), dtype=np.float64)
+    sizes = np.empty((m, 3), dtype=np.float32 if regular else np.float64)
+    cells = np.zeros(m, dtype=np.int64) if regular else None
+    counts, parent, corner = [0] * 3, [0.0] * 3, [0.0] * 3
+    order = sorted(range(3), key=lambda a: placed[a][0])  # grid axes in x, y, z order
+    stride = {}
+    acc = 1
+    for a in order:
+        stride[a] = acc
+        acc *= len(tensors[a])
+    div = [1, nu, nu * nv]
+    centre_1d = [np.cumsum(t) - t / 2 for t in tensors]
+    step = 1 << 22  # in slices: temporaries of the whole grid would add gigabytes at 50 million cells
+    for start in range(0, m, step):
+        stop = min(start + step, m)
+        base = np.arange(start, stop, dtype=np.int64) if lin is None else lin[start:stop]
+        for a in range(3):
+            k, sign = placed[a]
+            t = tensors[a]
+            ia = base // div[a] % len(t) if div[a] > 1 else base % len(t)
+            centres[start:stop, k] = origin[k] + sign * centre_1d[a][ia]
+            if regular:
+                sizes[start:stop, k] = t[0]
+                cells[start:stop] += (ia if sign > 0 else len(t) - 1 - ia) * stride[a]
+            else:
+                sizes[start:stop, k] = t[ia]
+    for a in range(3):
+        k, sign = placed[a]
+        t = tensors[a]
+        counts[k] = len(t)
+        parent[k] = float(t[0])
+        corner[k] = float(origin[k] if sign > 0 else origin[k] - t.sum())
+    del lin
+
+    hint = {"origin": corner, "size": parent, "at": "corner"} if regular else None
+    grid = RegularGrid(origin=corner, parent=parent, counts=counts, cells=cells) if regular else None
     table = BlockTable(format=FORMAT_NAME, centres=centres, sizes=sizes, attributes=cols,
-                       roles={k: "" for k in ("x", "y", "z", "dx", "dy", "dz")}, grid_hint=hint, notes=notes)
+                       roles={k: "" for k in ("x", "y", "z", "dx", "dy", "dz")}, grid_hint=hint, notes=notes,
+                       regular=grid)
     return table, units, warnings
 
 

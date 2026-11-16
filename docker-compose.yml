@@ -39,12 +39,11 @@ services:
         condition: service_healthy
 
   # Background jobs (imports, calculations). Scale with `docker compose up --scale worker=3`.
+  # restart: a worker killed for lack of memory comes back; otherwise every later job waits forever.
   worker:
     build: ./api
-    command: ["python", "-m", "app.jobs.worker"]
-    # Back after a crash (e.g. killed for lack of memory on a big import, exit code 137): otherwise
-    # every later job waits in the queue for ever. The job it ran is requeued, at most 3 attempts.
     restart: unless-stopped
+    command: ["python", "-m", "app.jobs.worker"]
     environment: *api-env
     volumes:
       - store:/data
@@ -57,8 +56,8 @@ services:
   # own, so they never wait behind the import of a big file.
   worker-quick:
     build: ./api
-    command: ["python", "-m", "app.jobs.worker"]
     restart: unless-stopped
+    command: ["python", "-m", "app.jobs.worker"]
     environment:
       <<: *api-env
       JOB_KINDS: geometry.operation

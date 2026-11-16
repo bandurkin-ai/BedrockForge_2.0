@@ -15,9 +15,9 @@ from pathlib import Path
 import numpy as np
 from sqlalchemy.orm import Session
 
-from app.blocks.shell import exposed_mask
+from app.blocks.shell import exposed_mask, regular_exposed
 from app.formats.blockmodel import (
-    BlockModelError, BlockTable, check_model, describe_grid, guess_unit, read_block_model, stats_of,
+    BlockModelError, BlockTable, GridInfo, attribute_checks, check_model, describe_grid, guess_unit, read_block_model, stats_of,
 )
 from app.importing.objects import ImportFailed
 from app.models import Dataset
@@ -51,24 +51,41 @@ def default_grades(attributes: list[dict]) -> list[str]:
 
 def store_block_model(session: Session, dataset: Dataset, t: BlockTable, progress: Progress = _no_progress) -> None:
     progress(0.70, "Сетка и проверки")
-    grid, cells, inside = describe_grid(t)
-    checks = check_model(t, grid, cells, inside)
-    volume = np.prod(t.sizes, axis=1)
+    if t.regular is not None:
+        # One block per cell of a known grid (OMF): nothing to infer, overlaps and duplicates are impossible.
+        g = t.regular
+        grid = GridInfo(origin=[float(v) for v in g.origin], parent=[float(v) for v in g.parent],
+                        counts=[int(v) for v in g.counts], subblocked=False, parents_used=int(len(t.centres)))
+        volume = np.prod(t.sizes, axis=1, dtype=np.float64)
+        checks = attribute_checks(t, float(volume.sum()))
+    else:
+        grid, cells, inside = describe_grid(t)
+        checks = check_model(t, grid, cells, inside)
+        del cells, inside
+        volume = np.prod(t.sizes, axis=1, dtype=np.float64)
     progress(0.74, "Запись столбцов")
     refs = {
         "centres": blobs.put_array(session, t.centres, "<f8"),
         "sizes": blobs.put_array(session, t.sizes, "<f4"),
     }
     origin = render_origin(t.centres)
-    render = np.empty((len(t.centres), 6), dtype="<f4")
+    # The display copy is written in slices: a whole (n, 6) array is 1 GB at 45 million blocks.
+    tmp = blobs.tmp_path()
     step = 1 << 20
-    for a in range(0, len(t.centres), step):
-        render[a:a + step, :3] = t.centres[a:a + step] - origin
-        render[a:a + step, 3:] = t.sizes[a:a + step]
-    refs["render"] = blobs.put_array(session, render, "<f4")
-    del render  # on disk now; the shell below needs the room
+    with tmp.open("wb") as f:
+        for a in range(0, len(t.centres), step):
+            part = np.empty((len(t.centres[a:a + step]), 6), dtype="<f4")
+            part[:, :3] = t.centres[a:a + step] - origin
+            part[:, 3:] = t.sizes[a:a + step]
+            part.tofile(f)
+    refs["render"] = blobs.put_file(session, tmp, media_type="application/octet-stream")
     progress(0.78, "Внешняя оболочка модели")
-    refs["exposed"] = blobs.put_array(session, exposed_mask(t.centres, t.sizes, grid.origin, grid.parent, grid.counts), "<u1")
+    if t.regular is not None:
+        exposed = regular_exposed(t.regular.cells, t.regular.counts)
+    else:
+        exposed = exposed_mask(t.centres, t.sizes, grid.origin, grid.parent, grid.counts)
+    refs["exposed"] = blobs.put_array(session, exposed, "<u1")
+    del exposed
     attributes = []
     for i, c in enumerate(t.attributes):
         key = f"a{i}"
@@ -80,9 +97,12 @@ def store_block_model(session: Session, dataset: Dataset, t: BlockTable, progres
             a["labels"] = c.labels or []
         attributes.append(a)
         progress(0.80 + 0.18 * (i + 1) / max(len(t.attributes), 1), f"Поле {c.name}")
-    lo = t.centres - t.sizes / 2
-    hi = t.centres + t.sizes / 2
-    extent = {"min": lo.min(axis=0).tolist(), "max": hi.max(axis=0).tolist()} if len(lo) else extent_of(lo)
+    # Column by column: (n, 3) copies of corners would double the memory of a big model.
+    if len(t.centres):
+        extent = {"min": [float((t.centres[:, a] - t.sizes[:, a] / 2).min()) for a in range(3)],
+                  "max": [float((t.centres[:, a] + t.sizes[:, a] / 2).max()) for a in range(3)]}
+    else:
+        extent = extent_of(t.centres)
     dataset.meta = {
         **(dataset.meta or {}),
         "format": t.format,
