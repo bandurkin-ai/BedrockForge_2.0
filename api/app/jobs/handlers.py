@@ -55,8 +55,9 @@ def import_objects(ctx: JobContext, params: dict) -> dict:
                 def progress(fraction: float, message: str, i=i, name=u.filename) -> None:
                     ctx.progress((i + fraction) / len(uploads), f"{name}: {message}")
 
+                extra = {"roles": params["block_roles"]} if kind == "blocks" and params.get("block_roles") else {}
                 dataset = read(ctx.session, project_id, part_path(u.id), u.filename, folder=folder,
-                               progress=progress, keep_source=False)
+                               progress=progress, keep_source=False, **extra)
                 imported.append((dataset, u))
                 ctx.log(f"{u.filename}: прочитан ({dataset.meta.get('format')})")
             # Sources move into the store only now: after this nothing can fail or be cancelled,

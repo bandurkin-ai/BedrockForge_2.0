@@ -101,6 +101,9 @@ class OmfFile:
 
     def __init__(self, path: Path):
         self.path = Path(path)
+        # Called with the share (0..1) of the binary block being read: progress, and a chance for
+        # the job to stop (a single block of a big model can take minutes to inflate).
+        self.tick: Callable[[float], None] | None = None
         self._f: BinaryIO = self.path.open("rb")
         try:
             self.size = self.path.stat().st_size
@@ -217,6 +220,8 @@ class OmfFile:
                     raise OmfFormatError(f"OMF: {what} — файл обрезан")
                 left -= len(chunk)
                 out += d.decompress(chunk)
+                if self.tick is not None and length:
+                    self.tick(1.0 - left / length)
             out += d.flush()
         except zlib.error as exc:
             raise OmfFormatError(f"OMF: {what} — двоичный блок повреждён ({exc})") from None
@@ -364,6 +369,8 @@ def read_omf(path: Path, progress: Progress | None = None) -> OmfContent:
         if not elements:
             raise OmfFormatError("В файле OMF нет элементов")
         names_used: dict[str, int] = {}
+        current = {"k": 0, "label": ""}
+        omf.tick = lambda f: progress((current["k"] + 0.9 * f) / len(elements), current["label"])
         for k, (_uid, element) in enumerate(elements):
             cls = element.get("__class__")
             title = ELEMENT_TITLES.get(cls, cls)
@@ -374,6 +381,7 @@ def read_omf(path: Path, progress: Progress | None = None) -> OmfContent:
             else:
                 names_used[name] = 1
             label = f"{title} «{name}»"
+            current.update(k=k, label=label)
             progress(k / len(elements), label)
             color = color_hex(element.get("color"))
             note = _textures_note(element, label)

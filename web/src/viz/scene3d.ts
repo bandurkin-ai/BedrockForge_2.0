@@ -2027,6 +2027,48 @@ export class GeoScene {
     this.onCamera();
   }
 
+  /**
+   * The near and far planes hold everything there is, from wherever the camera now looks: set
+   * once at «Вписать», they cut the scene after a turn, a pan, a zoom or newly shown objects.
+   * The orthographic camera also steps back out of the content (its distance does not change the
+   * picture, only what lies behind it).
+   */
+  private fitDepth(): void {
+    const box = this.contentBox(true) ?? new THREE.Box3();
+    if (this.grid) {
+      // In the content's own coordinates (the root's Z stretch comes below, for both).
+      const g = this.grid.geometry;
+      if (!g.boundingBox) g.computeBoundingBox();
+      this.grid.updateMatrix();
+      box.union(g.boundingBox!.clone().applyMatrix4(this.grid.matrix));
+    }
+    if (box.isEmpty()) return;
+    const scaled = box.clone();
+    scaled.min.z *= this.vexag;
+    scaled.max.z *= this.vexag;
+    if (this.vexag < 0) [scaled.min.z, scaled.max.z] = [scaled.max.z, scaled.min.z];
+    const sphere = scaled.getBoundingSphere(new THREE.Sphere());
+    const radius = Math.max(sphere.radius * 1.15, 10);
+    const cam = this.camera.position;
+    const forward = this.controls.target.clone().sub(cam);
+    if (forward.lengthSq() === 0) return;
+    forward.normalize();
+    let depth = sphere.center.clone().sub(cam).dot(forward);
+    if (this.camera === this.ortho) {
+      if (depth - radius < 1) {
+        cam.addScaledVector(forward, depth - radius - 1);
+        depth = radius + 1;
+      }
+      this.ortho.near = Math.max(0.1, depth - radius);
+      this.ortho.far = depth + radius;
+    } else {
+      const far = Math.max(depth + radius, 1);
+      this.perspective.near = Math.max(0.1, depth - radius, far / 20000);
+      this.perspective.far = far;
+    }
+    this.camera.updateProjectionMatrix();
+  }
+
   private requestRender(): void {
     if (this.frameRequested || this.disposed) return;
     this.frameRequested = true;
@@ -2038,6 +2080,7 @@ export class GeoScene {
       this.light.target.position.copy(this.controls.target);
       this.chooseLevels();
       this.updateDownholes();
+      this.fitDepth();
       this.renderer.render(this.scene, this.camera);
       this.onRender();
     });

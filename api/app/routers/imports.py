@@ -18,6 +18,7 @@ from app.formats.micromine import MicromineFormatError
 from app.formats.tabular import ReadOptions, TableRead
 from app.importing.schema import KIND_LABELS, SCHEMAS
 from app.importing.service import (
+    DATA_ERRORS,
     UnsupportedFormatError,
     apply_mapping,
     check_supported,
@@ -84,6 +85,8 @@ class ValidateRequest(BaseModel):
     mapping: dict[str, str]
     components: list[Component] = Field(default_factory=list)
     attributes: list[str] = Field(default_factory=list)
+    # Take errors in the data as they are (to be corrected in BedrockForge): see apply_mapping.
+    force: bool = False
 
 
 class IssueOut(BaseModel):
@@ -100,6 +103,8 @@ class ValidateResponse(BaseModel):
     issues: list[IssueOut]
     columns: list[str]
     preview: list[dict]
+    # The errors are all in the data (not in the mapping): the table can be loaded with force.
+    fixable: bool = False
 
 
 @router.get("/schemas")
@@ -312,7 +317,7 @@ def commit(req: CommitRequest, session: Session = Depends(get_session)) -> Commi
     df = table.frame
     components = [c.model_dump() for c in req.components] if req.kind == "assay" else []
 
-    normalized, issues = apply_mapping(df, req.kind, req.mapping, components, req.attributes)
+    normalized, issues = apply_mapping(df, req.kind, req.mapping, components, req.attributes, force=req.force)
     out_issues = [IssueOut(**vars(i)) for i in issues]
     if normalized is None or any(i.severity == "error" for i in issues):
         raise HTTPException(422, {"message": "Назначение колонок содержит ошибки", "issues": [i.model_dump() for i in out_issues]})
@@ -374,10 +379,13 @@ def validate(req: ValidateRequest) -> ValidateResponse:
         req.mapping,
         [c.model_dump() for c in req.components],
         req.attributes,
+        force=req.force,
     )
     out_issues = [IssueOut(**vars(i)) for i in issues]
     ok = normalized is not None and not any(i.severity == "error" for i in issues)
+    errors = [i for i in issues if i.severity == "error"]
     return ValidateResponse(
+        fixable=normalized is not None and bool(errors) and all(i.code in DATA_ERRORS for i in errors),
         ok=ok,
         row_count=len(df),
         issues=out_issues,

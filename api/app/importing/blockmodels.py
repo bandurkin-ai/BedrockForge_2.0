@@ -102,10 +102,11 @@ def store_block_model(session: Session, dataset: Dataset, t: BlockTable, progres
 
 
 def import_block_model(session: Session, project_id: int, path: Path, filename: str, *, folder: str = "",
-                       progress: Progress = _no_progress, keep_source: bool = True) -> Dataset:
+                       progress: Progress = _no_progress, keep_source: bool = True,
+                       roles: dict[str, str | None] | None = None) -> Dataset:
     progress(0.02, "Чтение файла")
     try:
-        t = read_block_model(path, filename, progress)
+        t = read_block_model(path, filename, progress, roles)
     except BlockModelError as exc:
         raise ImportFailed(str(exc)) from exc
     if not len(t.centres):

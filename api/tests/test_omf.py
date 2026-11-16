@@ -315,3 +315,25 @@ def test_gc_removes_old_export_files(db_client, db_engine):
         report = gc.collect(s, export_ttl=timedelta(hours=48))
     assert report.exports == 1 and not old.exists() and fresh.exists()
     fresh.unlink()
+
+
+def test_reading_a_big_block_reports_progress_and_can_stop(tmp_path):
+    """Inflating one big block takes long: progress comes from inside it, and a cancel stops it there."""
+    path = tmp_path / "big.omf"
+    rng = np.random.default_rng(1)
+    with OmfWriter(path, "Проект", "") as w:
+        w.add_surface("Тело", rng.uniform(0, 1, (300_000, 3)), rng.integers(0, 300_000, (600_000, 3)), "#ffffff")
+    seen = []
+    read_omf(path, progress=lambda f, m: seen.append((f, m)))
+    inside = [f for f, m in seen if "Тело" in m and 0 < f < 1]
+    assert len(inside) >= 2 and inside == sorted(inside)
+
+    class Stop(Exception):
+        pass
+
+    def stop(f, m):
+        if 0 < f < 1:
+            raise Stop
+
+    with pytest.raises(Stop):
+        read_omf(path, progress=stop)

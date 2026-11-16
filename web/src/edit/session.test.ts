@@ -39,6 +39,58 @@ describe("stored form", () => {
 });
 
 describe("EditSession", () => {
+  it("assembles contours in the order of the clicks; a second click takes one out; Esc leaves", async () => {
+    const s = planSession();
+    s.setTool("polygon");
+    const square = (x0: number) => [[x0, 300], [x0 + 60, 300], [x0 + 60, 240], [x0, 240]];
+    for (const x0 of [20, 150, 280]) {
+      for (const [x, y] of square(x0)) {
+        s.pointer(at(x, y));
+        await tick();
+      }
+      s.finishDrawing();
+    }
+    s.setTool("line");
+    s.pointer(at(20, 50));
+    await tick();
+    s.pointer(at(200, 50));
+    await tick();
+    s.finishDrawing();
+    const [a, b, c, open] = s.layer.lines.map((l) => l.id);
+    s.startAssemble();
+    expect(s.tool).toBe("select");
+    for (const x of [340, 20, 150]) s.pointer(at(x, 270)); // the left edges of the third, first and second squares
+    expect(s.assembled()).toEqual([c, a, b]);
+    expect(s.shownSelection.lines).toEqual([c, a, b]);
+    s.pointer(at(20, 270)); // again: out
+    expect(s.assembled()).toEqual([c, b]);
+    s.pointer(at(100, 50)); // an open line is not a contour
+    expect(s.assembled()).toEqual([c, b]);
+    expect(s.message).toContain("замкнутым");
+    void open;
+    s.dropLastContour();
+    expect(s.assembled()).toEqual([c]);
+    s.setAssembleClosed(true);
+    expect(s.assemble?.closed).toBe(true);
+    s.escape();
+    expect(s.assemble).toBeNull();
+  });
+
+  it("a right click ends the line being drawn; without a line it is left to the view", async () => {
+    const s = planSession();
+    s.setTool("line");
+    for (const [x, y] of [[100, 300], [300, 300], [300, 100]]) {
+      s.pointer(at(x, y));
+      await tick();
+    }
+    expect(s.drawing).not.toBeNull();
+    expect(s.pointer(at(200, 200, "click", { button: 2 }))).toBe(true);
+    expect(s.drawing).toBeNull();
+    expect(s.layer.lines[0].points).toHaveLength(3);
+    expect(s.layer.lines[0].closed).toBe(false);
+    expect(s.pointer(at(200, 200, "click", { button: 2 }))).toBe(false);
+  });
+
   it("draws a polygon on the plan level, closes it and undoes point by point", async () => {
     const s = planSession();
     s.setTool("polygon");

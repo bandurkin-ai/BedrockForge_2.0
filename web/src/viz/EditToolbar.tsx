@@ -11,8 +11,8 @@ import { ToolButton } from "../shell/ToolButton";
 const TOOLS: Tool[] = ["select", "line", "polygon", "point", "tie", "insert"];
 const TOOL_HINTS: Record<Tool, string> = {
   select: "Щелчок — выбрать линию или вершину, Shift — добавить; тянуть вершину или выбранную линию — переместить; Ctrl + тянуть — рамка; двойной щелчок по сегменту — вставить вершину",
-  line: "Щелчки ставят вершины; Enter или двойной щелчок — закончить; щелчок по концу готовой линии — продолжить её; Backspace — убрать последнюю точку",
-  polygon: "Щелчки ставят вершины; Enter, двойной щелчок или щелчок по первой вершине — замкнуть",
+  line: "Щелчки ставят вершины; правая кнопка, Enter или двойной щелчок — закончить; щелчок по концу готовой линии — продолжить её; Backspace — убрать последнюю точку",
+  polygon: "Щелчки ставят вершины; правая кнопка, Enter, двойной щелчок или щелчок по первой вершине — замкнуть",
   point: "Каждый щелчок — отдельная точка",
   tie: "Тай-линия для сшивки: два щелчка по соответствующим вершинам контуров соседних разрезов",
   insert: "Щелчок по сегменту вставляет в него вершину",
@@ -137,7 +137,7 @@ export function EditToolbar({ edit, onSave, onExit, sectionOn }: { edit: EditSes
         </div>
       </div>
       <div className="edit-status small">
-        {coordError ? <span className="error-text">{coordError}</span> : edit.message ? <span>{edit.message}</span> : <span className="muted">{TOOL_HINTS[edit.tool]}</span>}
+        {coordError ? <span className="error-text" title={coordError}>{coordError}</span> : edit.message ? <span title={edit.message}>{edit.message}</span> : <span className="muted" title={TOOL_HINTS[edit.tool]}>{TOOL_HINTS[edit.tool]}</span>}
         <span className="grow" />
         {m && <span title="Выбранная линия">вершин {m.vertices} · длина {fmt(m.length)} м (в плане {fmt(m.planLength)}){m.area !== null ? ` · площадь ${fmt(m.area)} м² (в плане ${fmt(m.planArea ?? 0)})` : ""}</span>}
         {!m && lines.length > 1 && <span>выбрано линий: {lines.length}</span>}

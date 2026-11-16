@@ -28,15 +28,23 @@ from app.formats.tabular import unique_names
 Progress = Callable[[float, str], None]
 
 # Field roles by name (case does not matter), in order of preference.
+# Datamine: XC/XINC (8 characters), Micromine: EAST/_EAST, Surpac: X_CENTRE/DIM_X, Vulcan: XCENTRE/XLENGTH,
+# Leapfrog / Seequent: X/DX, "Centroid X"/"Size X", Deswik and CSV exports: XCENTROID/XSIZE.
 CENTRE_NAMES = {
-    "x": ("X", "XC", "XCENTRE", "XCENTER", "X_CENTRE", "EAST", "EASTING", "XMID", "MIDX", "CENTROID_X"),
-    "y": ("Y", "YC", "YCENTRE", "YCENTER", "Y_CENTRE", "NORTH", "NORTHING", "YMID", "MIDY", "CENTROID_Y"),
-    "z": ("Z", "ZC", "ZCENTRE", "ZCENTER", "Z_CENTRE", "RL", "ELEV", "ELEVATION", "ZMID", "MIDZ", "CENTROID_Z"),
+    "x": ("X", "XC", "XCENTRE", "XCENTER", "X_CENTRE", "X_CENTER", "XCENTROID", "CENTROID_X", "CENTRE_X", "CENTER_X",
+          "EAST", "EASTING", "XMID", "MIDX", "MID_X", "XPT", "X_COORD", "ВОСТОК", "Х"),
+    "y": ("Y", "YC", "YCENTRE", "YCENTER", "Y_CENTRE", "Y_CENTER", "YCENTROID", "CENTROID_Y", "CENTRE_Y", "CENTER_Y",
+          "NORTH", "NORTHING", "YMID", "MIDY", "MID_Y", "YPT", "Y_COORD", "СЕВЕР", "У"),
+    "z": ("Z", "ZC", "ZCENTRE", "ZCENTER", "Z_CENTRE", "Z_CENTER", "ZCENTROID", "CENTROID_Z", "CENTRE_Z", "CENTER_Z",
+          "RL", "ELEV", "ELEVATION", "ZMID", "MIDZ", "MID_Z", "ZPT", "Z_COORD", "ОТМЕТКА"),
 }
 SIZE_NAMES = {
-    "x": ("_X", "XINC", "DX", "XSIZE", "SIZE_X", "XDIM", "X_SIZE", "DIM_X"),
-    "y": ("_Y", "YINC", "DY", "YSIZE", "SIZE_Y", "YDIM", "Y_SIZE", "DIM_Y"),
-    "z": ("_Z", "ZINC", "DZ", "ZSIZE", "SIZE_Z", "ZDIM", "Z_SIZE", "DIM_Z"),
+    "x": ("_X", "XINC", "DX", "XSIZE", "SIZE_X", "XDIM", "X_SIZE", "DIM_X", "XLENGTH", "X_LENGTH", "LENGTH_X", "XL",
+          "BLOCK_SIZE_X", "SIZEX", "XBLOCK", "РАЗМЕР_X"),
+    "y": ("_Y", "YINC", "DY", "YSIZE", "SIZE_Y", "YDIM", "Y_SIZE", "DIM_Y", "YLENGTH", "Y_LENGTH", "LENGTH_Y", "YL",
+          "BLOCK_SIZE_Y", "SIZEY", "YBLOCK", "РАЗМЕР_Y"),
+    "z": ("_Z", "ZINC", "DZ", "ZSIZE", "SIZE_Z", "ZDIM", "Z_SIZE", "DIM_Z", "ZLENGTH", "Z_LENGTH", "LENGTH_Z", "ZL",
+          "BLOCK_SIZE_Z", "SIZEZ", "ZBLOCK", "РАЗМЕР_Z"),
 }
 CSV_TYPES = {"DOUBLE", "NUMERIC", "CHARACTER", "REAL", "FLOAT", "INTEGER", "LONG", "SHORT", "BYTE", "TEXT", "STRING", "C", "N", "R"}
 # Above this many cells of the smallest block size per parent the exact overlap test is skipped
@@ -60,22 +68,32 @@ class BlockTable:
     dropped: int = 0  # rows without a centre or a size
 
 
-def _find(names: list[str], wanted: tuple[str, ...]) -> str | None:
-    upper = {n.upper(): n for n in names}
+def _find(names: list[str], wanted: tuple[str, ...], used: set[str] = frozenset()) -> str | None:
+    """Exact names (any case) first; then the looser match of app.importing.names (units, separators,
+    names cut to 8 or 10 characters) among names not starting with "_" — in Micromine "_EAST" is a size."""
+    upper = {n.upper(): n for n in names if n not in used}
     for w in wanted:
         if w in upper:
             return upper[w]
-    return None
+    from app.importing.names import match_column
+
+    return match_column([n for n in names if not n.startswith("_")], wanted, set(used))
 
 
 def find_roles(names: list[str]) -> dict[str, str | None]:
     roles: dict[str, str | None] = {}
+    used: set[str] = set()
     for axis in "xyz":
-        roles[axis] = _find(names, CENTRE_NAMES[axis])
-        roles["d" + axis] = _find(names, SIZE_NAMES[axis])
+        roles[axis] = _find(names, CENTRE_NAMES[axis], used)
+        if roles[axis]:
+            used.add(roles[axis])
+    for axis in "xyz":
+        roles["d" + axis] = _find(names, SIZE_NAMES[axis], used)
         # Micromine names the size after the centre with "_": EAST → _EAST, RL → _RL.
         if roles[axis] and not roles["d" + axis]:
-            roles["d" + axis] = _find(names, ("_" + roles[axis].upper(),))
+            roles["d" + axis] = _find(names, ("_" + roles[axis].upper(),), used)
+        if roles["d" + axis]:
+            used.add(roles["d" + axis])
     return roles
 
 
@@ -87,9 +105,16 @@ def looks_like_block_model(names: list[str]) -> bool:
         return False
     if all(roles["d" + a] for a in "xyz"):
         return True
-    upper = {n.upper() for n in names}
-    hole_like = {"BHID", "HOLEID", "HOLE_ID", "HOLE", "FROM", "TO", "DEPTH", "AZ", "DIP", "AZIMUTH", "TDEPTH", "SAMPID"}
-    return not (upper & hole_like) and len(names) >= 4
+    # Hole tables by the same loose names as the drillhole wizard: "DrillholeI", "Depth_m", "Dip (deg)".
+    from app.importing.names import match_column
+    from app.importing.schema import SCHEMAS
+
+    hole_like = ("BHID", "HOLEID", "HOLE_ID", "HOLE", "FROM", "TO", "DEPTH", "AZ", "DIP", "AZIMUTH", "TDEPTH", "SAMPID")
+    hole_names = next(f.aliases for f in SCHEMAS["collar"] if f.key == "hole_id")
+    named = [n for n in names if n not in {roles[a] for a in "xyz"}]
+    if match_column(named, hole_like) or match_column(named, tuple(a for a in hole_names if a not in ("NAME", "ID"))):
+        return False
+    return len(names) >= 4
 
 
 # ---------------------------------------------------------------------------------- sniffing
@@ -129,7 +154,8 @@ def _delimiter(line: str) -> str:
 
 
 # ------------------------------------------------------------------------------------ readers
-def read_block_model(path: Path, filename: str, progress: Progress | None = None) -> BlockTable:
+def read_block_model(path: Path, filename: str, progress: Progress | None = None, roles: dict[str, str | None] | None = None) -> BlockTable:
+    """roles: the user's choice of centre and size fields (x, y, z, dx, dy, dz; "" — no such field); the rest found by name."""
     progress = progress or (lambda _f, _m: None)
     with path.open("rb") as f:
         head = f.read(len(MAGIC))
@@ -142,10 +168,10 @@ def read_block_model(path: Path, filename: str, progress: Progress | None = None
         if dat.trailing_bytes:
             notes.append(f"В конце файла {dat.trailing_bytes} байт не составляют запись — пропущены")
         fmt = f"Micromine DAT ({dat.codepage})"
-        return _assemble(fmt, dat.columns, None, notes)
+        return _assemble(fmt, dat.columns, None, notes, roles)
     if Path(filename).suffix.lower() in (".csv", ".txt"):
         cols, hint, fmt = _read_csv(path, progress)
-        return _assemble(fmt, cols, hint, [])
+        return _assemble(fmt, cols, hint, [], roles)
     raise BlockModelError("Блочная модель читается из Micromine DAT или CSV")
 
 
@@ -159,7 +185,7 @@ def _read_csv(path: Path, progress: Progress) -> tuple[list[Column], dict | None
         b"".join(lines).decode("utf-8")
     except UnicodeDecodeError:
         encoding = "cp1251"
-    split = lambda raw: [c.strip().strip('"') for c in next(csv.reader([_decode_line(raw)], delimiter=sep))]  # noqa: E731
+    split = lambda raw: [c.strip().strip('"') for c in next(csv.reader([_decode_line(raw)], delimiter=sep))]
     names = unique_names(split(lines[0]))
     skip = 0
     types: list[str] | None = None
@@ -214,9 +240,15 @@ def _grid_line(cells: list[str]) -> dict | None:
             "at": "corner" if at in ("CORNER", "ORIGIN") else "centre"}
 
 
-def _assemble(fmt: str, cols: list[Column], hint: dict | None, notes: list[str]) -> BlockTable:
+def _assemble(fmt: str, cols: list[Column], hint: dict | None, notes: list[str], chosen: dict[str, str | None] | None = None) -> BlockTable:
     names = [c.name for c in cols]
     roles = find_roles(names)
+    for role, name in (chosen or {}).items():
+        if role not in ("x", "y", "z", "dx", "dy", "dz"):
+            continue
+        if name and name not in names:
+            raise BlockModelError(f"Поля «{name}» в файле нет")
+        roles[role] = name or None
     missing = [a.upper() for a in "xyz" if not roles[a]]
     if missing:
         raise BlockModelError(f"Не найдены поля центра блока: {', '.join(missing)} (ожидаются X, Y, Z или XC, YC, ZC)")
@@ -312,7 +344,7 @@ def describe_grid(t: BlockTable) -> tuple[GridInfo, np.ndarray, np.ndarray]:
     valid = inside & (i0 >= 0).all(axis=1)
     lin = (i0[valid, 0] * counts[1] + i0[valid, 1]) * counts[2] + i0[valid, 2] if valid.any() else np.zeros(0, np.int64)
     info = GridInfo(origin=[float(v) for v in origin], parent=[float(v) for v in parent],
-                    counts=[int(v) for v in counts], subblocked=subblocked, parents_used=int(len(np.unique(lin))))
+                    counts=[int(v) for v in counts], subblocked=subblocked, parents_used=len(np.unique(lin)))
     return info, i0, inside
 
 
@@ -397,7 +429,7 @@ def _overlaps(t: BlockTable, grid: GridInfo, cells: np.ndarray, inside: np.ndarr
             same[1:] = s[1:] == s[:-1]
             same[:-1] |= same[1:]
             blocks = np.unique(owner[order][same])
-            return int(len(blocks)), "по сетке наименьшего блока"
+            return len(blocks), "по сетке наименьшего блока"
     # Fallback: volume per parent.
     vol = np.prod(t.sizes, axis=1)[ok]
     c = cells[ok]
@@ -433,7 +465,7 @@ def stats_of(c: Column, volume: np.ndarray) -> dict:
         v = c.values
         ok = np.isfinite(v)
         if not ok.any():
-            return {"count": 0, "empty": int(len(v))}
+            return {"count": 0, "empty": len(v)}
         w = volume[ok]
         return {"count": int(ok.sum()), "empty": int((~ok).sum()), "min": float(v[ok].min()), "max": float(v[ok].max()),
                 "mean": float(v[ok].mean()), "mean_by_volume": float((v[ok] * w).sum() / w.sum()) if w.sum() > 0 else None}

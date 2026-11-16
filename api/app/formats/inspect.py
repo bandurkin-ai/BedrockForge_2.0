@@ -13,6 +13,7 @@ from pathlib import Path
 
 from app.formats.micromine import HEADER_SIZE, MAGIC, MicromineFormatError, _parse_header
 
+
 def _n(x: int) -> str:
     return f"{x:,}".replace(",", " ")
 
@@ -158,7 +159,7 @@ def inspect_blocks(path: Path, filename: str) -> dict:
     used = {v for v in roles.values() if v}
     sizes = "размеры: " + ", ".join(roles[f"d{a}"] for a in "xyz") if all(roles[f"d{a}"] for a in "xyz") else "размеров нет — регулярная модель"
     attrs = [n for n in names if n not in used]
-    return {"format": "Блочная модель", "fields": names,
+    return {"format": "Блочная модель", "fields": names, "roles": roles,
             "summary": f"Блочная модель: {count}центр {', '.join(roles[a] or '?' for a in 'xyz')}, {sizes}; "
                        f"атрибуты ({len(attrs)}): {', '.join(attrs[:20])}{' …' if len(attrs) > 20 else ''}"}
 

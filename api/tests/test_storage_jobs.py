@@ -471,3 +471,26 @@ def test_unknown_handlers_reload_and_failed_job_retry(db_client, run_jobs, tmp_p
     run_jobs()
     assert db_client.get(f"/api/jobs/{job2['id']}").json()["status"] == "done"
     assert db_client.post(f"/api/jobs/{job2['id']}/retry").status_code == 409  # done: nothing to retry
+
+
+def test_quick_worker_takes_only_its_kinds(db_client, factory):
+    """An operation on wireframes does not wait behind a long import: the quick worker skips the import."""
+    from app.jobs.worker import QUICK_KINDS
+
+    slow = _enqueue(factory, "import.objects")
+    quick = _enqueue(factory, "geometry.operation")
+    with factory() as s:
+        job = queue.claim(s, "quick", QUICK_KINDS)
+        assert job.id == quick
+    with factory() as s:
+        assert queue.claim(s, "quick", QUICK_KINDS) is None
+        assert queue.claim(s, "any").id == slow
+
+
+def test_kinds_from_env(monkeypatch):
+    from app.jobs.worker import kinds_from_env
+
+    monkeypatch.setenv("JOB_KINDS", " geometry.operation , export.omf,")
+    assert kinds_from_env() == ["geometry.operation", "export.omf"]
+    monkeypatch.setenv("JOB_KINDS", "")
+    assert kinds_from_env() is None

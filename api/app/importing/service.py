@@ -13,6 +13,7 @@ from app.formats.micromine import read_micromine
 from app.formats.numbers import parse_numbers
 from app.formats.tabular import ReadOptions, TableRead
 from app.formats.text import read_text
+from app.importing.names import match_column
 from app.importing.schema import ELEMENTS, PRECIOUS, SCHEMAS
 
 TEXT_SUFFIXES = {".csv", ".txt", ".tsv", ".prn"}
@@ -60,31 +61,16 @@ def read_table(path: Path, options: ReadOptions | None = None) -> TableRead:
     raise AssertionError("unreachable")
 
 
-def _norm(name: str) -> str:
-    return re.sub(r"[\s\-]+", "_", name.strip().upper())
-
-
-def _base(name: str) -> str:
-    """'Глубина (м)' -> 'Глубина', 'X, м' -> 'X': column name without its unit."""
-    return re.split(r"[,(\[]", name, maxsplit=1)[0]
-
-
 def suggest_mapping(kind: str, columns: list[str]) -> dict[str, str]:
-    by_norm: dict[str, str] = {}
-    for col in columns:
-        by_norm.setdefault(_norm(col), col)
-    for col in columns:  # exact names win over names stripped of units
-        by_norm.setdefault(_norm(_base(col)), col)
-
+    """Source column for each target field, by the names of app.importing.schema (see app.importing.names)."""
     used: set[str] = set()
     mapping: dict[str, str] = {}
+    # Fields in schema order; a column taken by one field is not offered to the next.
     for field in SCHEMAS[kind]:
-        for alias in field.aliases:
-            col = by_norm.get(alias)
-            if col is not None and col not in used:
-                mapping[field.key] = col
-                used.add(col)
-                break
+        col = match_column(columns, field.aliases, used)
+        if col is not None:
+            mapping[field.key] = col
+            used.add(col)
     return mapping
 
 
@@ -152,8 +138,15 @@ def apply_mapping(
     mapping: dict[str, str],
     components: list[dict[str, str]],
     attributes: list[str],
+    force: bool = False,
 ) -> tuple[pd.DataFrame | None, list[Issue]]:
-    """Build the normalized table. Returns (None, issues) if the mapping is invalid."""
+    """Build the normalized table. Returns (None, issues) if the mapping is invalid.
+
+    force: errors in the data (not in the mapping) are taken as they are, to be corrected in
+    BedrockForge: a value that is not a number stays empty and its text is kept in the attribute
+    «<column> (исходное)»; a row without a hole number gets «БЕЗ НОМЕРА (строка N)»; a repeated
+    collar gets «<номер> (повтор k)». Those issues become warnings that say so.
+    """
     issues: list[Issue] = []
     schema = {f.key: f for f in SCHEMAS[kind]}
 
@@ -198,7 +191,16 @@ def apply_mapping(
     if any(i.severity == "error" for i in issues):
         return None, issues
 
+    kept = " — загружено как есть, исправьте в BedrockForge"
+    data_error = "warning" if force else "error"
     out = pd.DataFrame(index=df.index)
+    originals: dict[str, pd.Series] = {}
+
+    def keep_original(col: str, values: pd.Series) -> None:
+        # The text that was not a number: kept beside the empty value, so it can be corrected.
+        raw = df[col].astype("string").where(values.isna() & df[col].notna() & (df[col].astype("string").str.strip() != ""))
+        originals[f"attr:{col} (исходное)"] = raw
+
     for key, col in mapping.items():
         field = schema[key]
         if field.numeric:
@@ -206,30 +208,47 @@ def apply_mapping(
             empty = int(parsed.values.isna().sum()) - parsed.bad
             if parsed.bad:
                 example = f", например «{parsed.bad_examples[0]}»" if parsed.bad_examples else ""
-                issues.append(Issue("error", "non_numeric", f"«{field.label}»: нечисловых значений{example}", key, parsed.bad))
+                issues.append(Issue(data_error, "non_numeric", f"«{field.label}»: нечисловых значений{example}{kept if force else ''}", key, parsed.bad))
+                if force:
+                    keep_original(col, parsed.values)
             if empty:
                 issues.append(Issue("warning", "empty_values", f"«{field.label}»: пустых значений", key, empty))
             out[key] = parsed.values
         else:
             series = df[col].astype("string").str.strip()
-            empty = int((series.isna() | (series == "")).sum())
+            blank = series.isna() | (series == "")
+            empty = int(blank.sum())
             if empty and key == "hole_id":
-                issues.append(Issue("error", "empty_hole_id", "Пустой номер скважины", key, empty))
-            elif key == "hole_id" and kind == "collar":
-                duplicates = int(series.duplicated().sum())
+                issues.append(Issue(data_error, "empty_hole_id", f"Пустой номер скважины{kept if force else ''}", key, empty))
+                if force:
+                    rows = pd.Series(range(2, len(series) + 2), index=series.index).astype("string")
+                    series = series.where(~blank, "БЕЗ НОМЕРА (строка " + rows + ")")
+            if key == "hole_id" and kind == "collar":
+                repeat = series.groupby(series).cumcount()
+                duplicates = int((repeat > 0).sum())
                 if duplicates:
-                    issues.append(Issue("error", "duplicate_hole_id", "Повторяющиеся номера скважин в Collar", key, duplicates))
-            elif empty and field.required:
+                    issues.append(Issue(data_error, "duplicate_hole_id", f"Повторяющиеся номера скважин в Collar{kept if force else ''}", key, duplicates))
+                    if force:
+                        series = series.where(repeat == 0, series + " (повтор " + (repeat + 1).astype("string") + ")")
+            elif empty and field.required and key != "hole_id":
                 issues.append(Issue("warning", "empty_values", f"«{field.label}»: пустых значений", key, empty))
             out[key] = series
     for comp in components:
         parsed = parse_numbers(df[comp["column"]])
         if parsed.bad:
             example = f", например «{parsed.bad_examples[0]}»" if parsed.bad_examples else ""
-            issues.append(Issue("error", "non_numeric", f"«{comp['column']}»: нечисловых значений{example}", comp["column"], parsed.bad))
+            issues.append(Issue(data_error, "non_numeric", f"«{comp['column']}»: нечисловых значений{example}{kept if force else ''}", comp["column"], parsed.bad))
+            if force:
+                keep_original(comp["column"], parsed.values)
         if parsed.below_limit:
             issues.append(Issue("warning", "below_limit", f"«{comp['column']}»: значения «<x» приняты как x/2", comp["column"], parsed.below_limit))
         out[f"comp:{comp['column']}"] = parsed.values
     for col in attributes:
         out[f"attr:{col}"] = df[col]
+    for name, values in originals.items():
+        out[name] = values
     return out, issues
+
+
+# Errors in the data itself (not in the mapping): an import may take them and leave the fixing to BedrockForge.
+DATA_ERRORS = frozenset({"non_numeric", "empty_hole_id", "duplicate_hole_id"})

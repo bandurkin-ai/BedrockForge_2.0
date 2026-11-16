@@ -15,6 +15,9 @@ import type { StripLogSettings } from "../charts/stripLog";
 import type { EditSession } from "../edit/session";
 import { EditCursor, EditToolbar } from "./EditToolbar";
 import { useEditScene } from "./useEditScene";
+import { AssembleBar } from "./AssembleBar";
+import { Icon } from "../shell/icons";
+import { ToolButton } from "../shell/ToolButton";
 import { pickTriangle, type PickResult } from "../api";
 
 function auditColor(h: Hole | undefined): string {
@@ -58,6 +61,8 @@ export interface SceneViewProps {
   onTriangle?: (result: PickResult) => void;
   /** A panel shown under the toolbar (e.g. the manual triangle edit). */
   banner?: React.ReactNode;
+  /** «Собрать из контуров»: make the wireframe of these lines of the edited layer, in this order. */
+  onAssemble?: (lines: number[], closed: boolean) => void;
 }
 
 export interface DownholeLog {
@@ -667,67 +672,64 @@ export function SceneView(props: SceneViewProps) {
   return (
     <div className="scene-view">
       <div className="scene-toolbar">
-        <div className="segmented" aria-label="Повернуть вид">
-          <button onClick={() => sceneRef.current?.toPlan()} title="В план: вид сверху (Y вверх, X вправо) на то, что сейчас на экране (T)">В план</button>
-          <button onClick={() => sceneRef.current?.view("front")} title="Вид сбоку на север: Z вверх, X вправо (X)">Z/X</button>
-          <button onClick={() => sceneRef.current?.view("side")} title="Вид сбоку на запад: Z вверх, Y вправо (Y)">Z/Y</button>
-          <button onClick={() => sceneRef.current?.view("iso")} title="Изометрия (3)">3D</button>
+        <div className="tool-group" role="toolbar" aria-label="Повернуть вид">
+          <ToolButton icon="cubeTop" label="В план" hint="Вид сверху (Y вверх, X вправо) на то, что сейчас на экране" keys="T" onClick={() => sceneRef.current?.toPlan()} />
+          <ToolButton icon="cubeLeft" label="Сбоку Z/X" hint="Вид сбоку на север: Z вверх, X вправо" keys="X" onClick={() => sceneRef.current?.view("front")} />
+          <ToolButton icon="cubeRight" label="Сбоку Z/Y" hint="Вид сбоку на запад: Z вверх, Y вправо" keys="Y" onClick={() => sceneRef.current?.view("side")} />
+          <ToolButton icon="maximize" label="Вписать" hint="Показать всё, не поворачивая вид" keys="F" onClick={() => sceneRef.current?.fit()} />
         </div>
-        <button onClick={() => sceneRef.current?.fit()} title="Показать всё, не поворачивая вид (F)">Вписать</button>
-        <span className="toolbar-divider" />
-        <button className={drawing !== false ? "active" : ""} title="Линия разреза: два клика — начало и конец, в текущем виде или на плане (S)"
-          onClick={() => (drawing === false ? apiRef.current?.drawSection() : setDrawing(false))}>
-          Разрез
-        </button>
+        <div className="tool-group" role="toolbar" aria-label="Разрез">
+          <ToolButton icon="vwSection" label="Разрез" hint="Линия разреза: два клика — начало и конец, в текущем виде или на плане" keys="S" active={drawing !== false}
+            onClick={() => (drawing === false ? apiRef.current?.drawSection() : setDrawing(false))} />
+          <ToolButton icon="vwHole" label="Разрез через скважину" hint="Разрез вдоль выбранной скважины через её устье: вся скважина в плоскости разреза"
+            off="Выберите скважину (щелчок по устью)" disabled={!selectedCollar || selectedCollar.x === null}
+            onClick={() => {
+              const line = activeSet !== null && selectedHole ? throughHole(activeSet, selectedHole) : null;
+              if (line) openSection(line);
+            }} />
+          {!section && <ToolButton icon="vwAuto" label="Авто-разрез" hint="Разрез поперёк простирания устьев, через их центр" onClick={() => openSection(autoSection())} />}
+          {section && (
+            <>
+              <ToolButton icon="vwClip" label="Отсечение" hint="Отсекать всё за пределами окна разреза" keys="C" active={ws.clip} onClick={() => props.onWorkspace({ clip: !ws.clip })} />
+              <ToolButton icon="vwPrev" label="Предыдущий профиль" hint="Сдвиг на ширину окна к наблюдателю" keys="[" onClick={() => step(-1)} />
+              <ToolButton icon="vwNext" label="Следующий профиль" hint="Сдвиг на ширину окна от наблюдателя" keys="]" onClick={() => step(1)} />
+              <ToolButton icon="vwToPlane" label="В плоскость разреза" hint="Повернуть вид в плоскость разреза: Z вверх, линия слева направо" onClick={() => sceneRef.current?.view("section")} />
+              <ToolButton icon="vwMap" label="План" hint="Маленький план: данные, линия разреза и окно просмотра" active={mapOpen} onClick={() => toggleMap(!mapOpen)} />
+              <ToolButton icon="vwReset" label="Сбросить разрез" hint="Убрать линию разреза и отсечение" onClick={() => { props.onSection(null); props.onWorkspace({ clip: false }); }} />
+            </>
+          )}
+        </div>
         {section && (
           <>
-            <label className="check" title="Отсекать всё за пределами окна разреза (C)">
-              <input type="checkbox" checked={ws.clip} onChange={(e) => props.onWorkspace({ clip: e.target.checked })} /> отсечение
-            </label>
             {windowInput("towards", "От", "Окно разреза к наблюдателю, в единицах карты")}
             {windowInput("away", "До", "Окно разреза от наблюдателя, в единицах карты")}
-            <button onClick={() => step(-1)} title="Предыдущий профиль: сдвиг на ширину окна к наблюдателю ([)">◀</button>
-            <button onClick={() => step(1)} title="Следующий профиль: сдвиг на ширину окна от наблюдателя (])">▶</button>
             <label title="Азимут линии разреза">
               Аз.{" "}
               <input className="num" type="number" step={5} value={Math.round(section.az * 10) / 10}
                 onChange={(e) => setSection({ az: (((Number(e.target.value) || 0) % 360) + 360) % 360 })} aria-label="Азимут линии разреза" />°
             </label>
-            <button onClick={() => sceneRef.current?.view("section")} title="Повернуть вид в плоскость разреза: Z вверх, линия слева направо">В плоскость</button>
-            <button className={mapOpen ? "active" : ""} onClick={() => toggleMap(!mapOpen)} title="Маленький план: данные, линия разреза и окно просмотра">План</button>
-            <button onClick={() => { props.onSection(null); props.onWorkspace({ clip: false }); }} title="Убрать линию разреза и отсечение">Сбросить</button>
           </>
         )}
-        <button
-          onClick={() => {
-            const line = activeSet !== null && selectedHole ? throughHole(activeSet, selectedHole) : null;
-            if (line) openSection(line);
-          }}
-          disabled={!selectedCollar || selectedCollar.x === null}
-          title="Разрез вдоль выбранной скважины через её устье: вся скважина в плоскости разреза"
-        >
-          Через скважину
-        </button>
-        {!section && <button onClick={() => openSection(autoSection())} title="Разрез поперёк простирания устьев, через их центр">Авто-разрез</button>}
         <span className="toolbar-sep" />
-        <label title="Вертикальное преувеличение">
-          Верт. ×{" "}
-          <select value={ws.vexag} onChange={(e) => props.onWorkspace({ vexag: Number(e.target.value) })}>
-            {VEXAG_STEPS.map((v) => <option key={v} value={v}>{v}</option>)}
+        <label className="tool-field" title="Вертикальное преувеличение">
+          <Icon name="vwVexag" size={16} />
+          <select value={ws.vexag} onChange={(e) => props.onWorkspace({ vexag: Number(e.target.value) })} aria-label="Вертикальное преувеличение">
+            {VEXAG_STEPS.map((v) => <option key={v} value={v}>×{v}</option>)}
           </select>
         </label>
-        <label title="Непрозрачность каркасов">
-          Каркасы{" "}
+        <label className="tool-field" title="Непрозрачность каркасов">
+          <Icon name="vwOpacity" size={16} />
           <input type="range" min={0.1} max={1} step={0.05} value={ws.wireframeOpacity}
             onChange={(e) => props.onWorkspace({ wireframeOpacity: Number(e.target.value) })} aria-label="Непрозрачность каркасов" />
         </label>
-        <label className="check" title="Перспектива; выключено — ортогональная проекция, как на планах и разрезах">
-          <input type="checkbox" checked={ws.perspective} onChange={(e) => props.onWorkspace({ perspective: e.target.checked })} /> перспектива
-        </label>
-        <label className="check"><input type="checkbox" checked={ws.grid} onChange={(e) => props.onWorkspace({ grid: e.target.checked })} /> сетка</label>
+        <div className="tool-group" role="toolbar" aria-label="Отображение">
+          <ToolButton icon="vwPerspective" label="Перспектива" hint="Включено — перспектива; выключено — ортогональная проекция, как на планах и разрезах" active={ws.perspective} onClick={() => props.onWorkspace({ perspective: !ws.perspective })} />
+          <ToolButton icon="vwGrid" label="Сетка" hint="Координатная сетка с подписями" active={ws.grid} onClick={() => props.onWorkspace({ grid: !ws.grid })} />
+        </div>
       </div>
       {props.banner}
       {edit && <EditToolbar edit={edit} onSave={() => props.onEditSave?.()} onExit={() => props.onEditExit?.()} sectionOn={ws.clip && section !== null} />}
+      {edit && <AssembleBar edit={edit} sceneRef={sceneRef} onCreate={(lines, closed) => props.onAssemble?.(lines, closed)} />}
       {blockLegend && (
         <div className="scene-legend block-legend">
           {blockLegend.scale ? <ScaleStrip component={`Блоки: ${blockLegend.name}`} unit={blockLegend.unit ? unitTitle(blockLegend.unit as never) : null} scale={blockLegend.scale} log={blockLegend.scale.log} /> : <strong>Блоки: {blockLegend.name}</strong>}

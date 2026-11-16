@@ -224,10 +224,24 @@ function DraftEditor({ draft, schemas, kinds, busy, onChange, onReread }: {
       )}
 
       {draft.error && <div className="alert error">{draft.error}</div>}
+      {(draft.force || result?.fixable) && (
+        <label className="check import-force" title="Нечисловое значение останется пустым, его текст — в атрибуте «<колонка> (исходное)»; строка без номера скважины получит «БЕЗ НОМЕРА (строка N)»; повтор устья — «<номер> (повтор k)». Исправить: таблицы скважин и аудит">
+          <input type="checkbox" checked={draft.force} disabled={busy} onChange={(e) => {
+            // Checked again at once with the new choice: the user sees what will be loaded.
+            const next: Draft = { ...draft, force: e.target.checked, result: null, committed: null, error: null };
+            onChange(next);
+            void validateMapping(buildRequest(next)).then((r) => onChange({ ...next, result: r })).catch((err) => onChange({ ...next, error: (err as Error).message }));
+          }} />{" "}
+          Загрузить с ошибками в данных — исправлю в BedrockForge (таблицы и аудит)
+        </label>
+      )}
       {result && (
         <>
           <div className={`alert ${result.ok ? "ok" : "error"}`}>
-            {result.ok ? `Проверка пройдена: строк ${fmt(result.row_count)}.` : "Есть ошибки: исправьте назначение колонок или файл."}
+            {result.ok
+              ? `Проверка пройдена: строк ${fmt(result.row_count)}.${draft.force ? " Ошибки в данных будут загружены как есть." : ""}`
+              : result.fixable ? "Есть ошибки в данных. Их можно загрузить как есть и исправить в BedrockForge — или исправить файл."
+              : "Есть ошибки: исправьте назначение колонок или файл."}
           </div>
           {result.issues.length > 0 && (
             <ul className="issues">

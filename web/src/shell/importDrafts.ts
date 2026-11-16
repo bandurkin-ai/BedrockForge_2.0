@@ -11,6 +11,8 @@ export interface Draft {
   /** interval, event and assay tables: the name in the set */
   tableName: string;
   result: ValidateResponse | null;
+  /** load errors in the data as they are, to fix them in BedrockForge */
+  force: boolean;
   committed: CommitResponse | null;
   error: string | null;
 }
@@ -33,7 +35,7 @@ export function makeDraft(upload: UploadResponse, kind: string, tableName?: stri
   return {
     key: upload.file_id, upload, kind, mapping, components, attributes,
     tableName: TABLE_KINDS.includes(kind) ? tableName ?? stem(upload.filename) : "",
-    result: null, committed: null, error: null,
+    result: null, force: false, committed: null, error: null,
   };
 }
 
@@ -52,6 +54,7 @@ export function buildRequest(d: Draft): ValidateRequest {
     mapping: Object.fromEntries(Object.entries(d.mapping).filter(([, v]) => v)),
     components: comps,
     attributes: d.attributes.filter((a) => !mapped.has(a) && !comps.some((c) => c.column === a)),
+    ...(d.force ? { force: true } : {}),
   };
 }
 

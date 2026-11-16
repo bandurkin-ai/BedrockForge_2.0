@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  deleteUpload, detectUploads, startImport, uploadResumable, type Dataset, type DetectedFile, type JobInfo, type VerticalPlacement,
+  deleteUpload, detectUploads, startImport, uploadResumable, type BlockRole, type Dataset, type DetectedFile, type JobInfo, type VerticalPlacement,
 } from "../api";
 import { Icon } from "./icons";
 import { formatBytes } from "./JobsPanel";
@@ -41,11 +41,18 @@ export function sortFiles(files: File[], blockModels: Set<File> = new Set()): { 
 
 interface Row extends DetectedFile {
   chosen: ObjectKind | null;
+  /** block models: centre and size fields as the user set them */
+  roles?: Partial<Record<BlockRole, string>>;
 }
 
+const BLOCK_ROLES: { role: BlockRole; label: string; size?: boolean }[] = [
+  { role: "x", label: "Центр X" }, { role: "y", label: "Центр Y" }, { role: "z", label: "Центр Z" },
+  { role: "dx", label: "Размер X", size: true }, { role: "dy", label: "Размер Y", size: true }, { role: "dz", label: "Размер Z", size: true },
+];
+
 /** Import jobs to start: rasters with their georeference files together, other files one by one. */
-export function planJobs(rows: Row[]): { kind: ObjectKind; uploads: string[]; names: string[] }[] {
-  const plan: { kind: ObjectKind; uploads: string[]; names: string[] }[] = [];
+export function planJobs(rows: Row[]): { kind: ObjectKind; uploads: string[]; names: string[]; roles?: Partial<Record<BlockRole, string>> }[] {
+  const plan: { kind: ObjectKind; uploads: string[]; names: string[]; roles?: Partial<Record<BlockRole, string>> }[] = [];
   const images = rows.filter((r) => r.chosen === "rasters" && r.kind === "rasters");
   // Georeference files go with the images that use them; a stray one would fail the job.
   const used = new Set(images.flatMap((r) => r.sidecars ?? []));
@@ -53,7 +60,7 @@ export function planJobs(rows: Row[]): { kind: ObjectKind; uploads: string[]; na
   if (images.length) plan.push({ kind: "rasters", uploads: rasters.map((r) => r.upload), names: rasters.map((r) => r.filename) });
   for (const r of rows) {
     if (r.chosen === "wireframes" || r.chosen === "lines" || r.chosen === "blocks" || r.chosen === "omf") {
-      plan.push({ kind: r.chosen, uploads: [r.upload], names: [r.filename] });
+      plan.push({ kind: r.chosen, uploads: [r.upload], names: [r.filename], ...(r.chosen === "blocks" && r.roles ? { roles: r.roles } : {}) });
     }
   }
   return plan;
@@ -179,6 +186,7 @@ export function ImportWizard({
           uploads: p.uploads, kind: p.kind, folder,
           section: p.kind === "rasters" && onSection ? section : null,
           ...(p.kind === "rasters" ? { elevation: num(zLevel), z_shift: num(zShift) ?? 0 } : {}),
+          ...(p.roles ? { block_roles: p.roles } : {}),
         }));
       }
       started.current = true;
@@ -266,6 +274,26 @@ export function ImportWizard({
                         </td>
                         <td className="small">
                           {r.preview?.error ? <span className="error-text">{r.preview.error}</span> : r.preview?.summary}
+                          {r.chosen === "blocks" && r.preview?.fields && r.preview.fields.length > 0 && (
+                            <div className="block-roles" aria-label={`Поля блочной модели: ${r.filename}`}>
+                              <span className="muted">Поля подобраны по названиям — проверьте:</span>
+                              {BLOCK_ROLES.map(({ role, label, size }) => {
+                                const value = r.roles?.[role] ?? r.preview?.roles?.[role] ?? "";
+                                return (
+                                  <label key={role} className={value ? "" : "unset"}>
+                                    {label}{" "}
+                                    <select value={value} aria-label={`${label}: ${r.filename}`}
+                                      onChange={(e) => setRows((prev) => prev.map((x) => x.upload === r.upload
+                                        ? { ...x, roles: { ...Object.fromEntries(BLOCK_ROLES.map((b) => [b.role, x.roles?.[b.role] ?? x.preview?.roles?.[b.role] ?? ""])), [role]: e.target.value } }
+                                        : x))}>
+                                      <option value="">{size ? "нет (регулярная модель)" : "— не выбрано —"}</option>
+                                      {r.preview!.fields!.map((f) => <option key={f} value={f}>{f}</option>)}
+                                    </select>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
                           {r.note && <div className="muted">{r.note}</div>}
                           {r.preview?.items && r.preview.items.length > 0 && (
                             <details>

@@ -62,10 +62,14 @@ export interface ValidateRequest {
   mapping: Record<string, string>;
   components: Component[];
   attributes: string[];
+  /** take errors in the data as they are (to be fixed in BedrockForge) */
+  force?: boolean;
 }
 
 export interface ValidateResponse {
   ok: boolean;
+  /** all errors are in the data (not in the mapping): the table can be loaded with force */
+  fixable?: boolean;
   row_count: number;
   issues: Issue[];
   columns: string[];
@@ -1009,6 +1013,8 @@ export async function deleteUpload(id: string): Promise<void> {
   await fetch(`/api/uploads/${id}`, { method: "DELETE" });
 }
 
+export type BlockRole = "x" | "y" | "z" | "dx" | "dy" | "dz";
+
 export interface ImportRequest {
   uploads: string[];
   kind?: "wireframes" | "lines" | "rasters" | "blocks" | "omf";
@@ -1017,6 +1023,8 @@ export interface ImportRequest {
   /** rasters: the height of plan images (null: from the georeference file) and a shift of every image, m */
   elevation?: number | null;
   z_shift?: number;
+  /** block models: centre and size fields chosen by the user ("" — no such field) */
+  block_roles?: Partial<Record<BlockRole, string>>;
 }
 
 export const startImport = (projectId: number, body: ImportRequest) =>
@@ -1066,6 +1074,9 @@ export interface DetectedFile {
   sidecars?: string[];
   preview?: {
     summary?: string;
+    /** block models: the field names and the centre / size fields found by name */
+    fields?: string[];
+    roles?: Partial<Record<BlockRole, string | null>>;
     error?: string;
     items?: {
       name: string; points?: number | null; triangles?: number | null; entities?: Record<string, number>;
@@ -1614,3 +1625,14 @@ export async function getHoleSnap(setId: number): Promise<HoleSnapData> {
     bounds: out.bounds as Float64Array, boundHole: out.bound_hole as Uint32Array, boundDepth: out.bound_depth as Float32Array,
   };
 }
+
+/** «Собрать из контуров»: the solid the picked contours make (nothing stored), triangle corners in project coordinates. */
+export interface StitchPreview {
+  corners: number[];
+  triangles: number;
+  closed: boolean;
+  volume: number | null;
+  warnings: string[];
+}
+export const stitchPreview = (body: { contours: number[][][]; ties?: number[][][]; start_cap?: string; end_cap?: string }, signal?: AbortSignal) =>
+  request<StitchPreview>("/api/stitch/preview", { method: "POST", ...json(body), signal });

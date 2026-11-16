@@ -51,6 +51,8 @@ class ImportIn(BaseModel):
     # Rasters: the height of plan images (None: from the georeference file) and a shift of every image, m.
     elevation: float | None = Field(None, ge=-20000, le=20000)
     z_shift: float = Field(0.0, ge=-20000, le=20000)
+    # Block models: centre and size fields chosen in the wizard (x, y, z, dx, dy, dz; "" — none).
+    block_roles: dict[Literal["x", "y", "z", "dx", "dy", "dz"], str] | None = None
 
 
 class DetectIn(BaseModel):
@@ -118,7 +120,7 @@ def start_import(project_id: int, body: ImportIn, session: Session = Depends(get
         session, "import.objects",
         {"project_id": project_id, "kind": kind, "uploads": body.uploads, "folder": clean_folder(body.folder),
          "section": body.section.model_dump() if body.section else None,
-         "elevation": body.elevation, "z_shift": body.z_shift},
+         "elevation": body.elevation, "z_shift": body.z_shift, "block_roles": body.block_roles},
         project_id=project_id, title=f"Импорт: {names}"[:255],
     )
     session.commit()

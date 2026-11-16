@@ -115,6 +115,11 @@ export class EditSession {
   hover: Hover | null = null;
   /** The line being drawn: its id and the end that grows. */
   drawing: { line: number; atStart: boolean } | null = null;
+  /**
+   * «Собрать из контуров»: closed lines in the order the user clicked them; the wireframe grows
+   * with each one. `closed`: the open ends are capped. null — not assembling.
+   */
+  assemble: { order: number[]; closed: boolean } | null = null;
   drag: Drag | null = null;
   message: string | null = null;
   saving = false;
@@ -312,6 +317,12 @@ export class EditSession {
     if (e.type === "down") return this.onDown(e, t);
     if (e.type === "up") return this.onUp(e, t);
     if (e.type === "dblclick") return this.onDoubleClick(e, t);
+    // A right click (without dragging: a drag pans the view) ends the line being drawn, as in AutoCAD.
+    if (e.button === 2) {
+      if (!this.drawing) return false;
+      this.finishDrawing();
+      return true;
+    }
     if (e.button !== 0) return false;
     void this.onClick(e, t);
     return true;
@@ -466,6 +477,7 @@ export class EditSession {
   }
 
   private clickSelect(e: EditPointer, t: ViewTransform): void {
+    if (this.assemble) return this.clickAssemble(e, t);
     const sel = this.shownSelection;
     const v = nearestVertex(this.layer, t, e.x, e.y, this.snap.radius);
     if (v) {
@@ -480,6 +492,59 @@ export class EditSession {
       return this.select({ lines: [s.line], vertices: [] });
     }
     if (!e.shift) this.select(EMPTY_SELECTION);
+  }
+
+  // ---- «Собрать из контуров»
+  startAssemble(): void {
+    if (this.drawing) this.finishDrawing();
+    this.tool = "select";
+    this.assemble = { order: [], closed: false };
+    this.select(EMPTY_SELECTION);
+    this.say("Сборка каркаса: щёлкайте замкнутые контуры по порядку — каркас растёт от контура к контуру");
+  }
+
+  stopAssemble(): void {
+    this.assemble = null;
+    this.select(EMPTY_SELECTION);
+    this.say(null);
+  }
+
+  /** Contours of the assembly that still exist, in order (a line may have been deleted meanwhile). */
+  assembled(): number[] {
+    return (this.assemble?.order ?? []).filter((id) => lineById(this.layer, id)?.closed);
+  }
+
+  /** Adds the picked contour (or takes it out, with a second click). */
+  pickContour(id: number): void {
+    const a = this.assemble;
+    if (!a) return;
+    const line = lineById(this.layer, id);
+    if (!line) return;
+    if (!line.closed || line.points.length < 3) return this.say("Контур должен быть замкнутым: выберите его в режиме правки и нажмите «Замкнуть»");
+    a.order = a.order.includes(id) ? a.order.filter((x) => x !== id) : [...a.order, id];
+    this.select({ lines: [...a.order], vertices: [] });
+    const n = a.order.length;
+    this.say(n === 0 ? "Щёлкните первый контур" : n === 1 ? "Щёлкните следующий контур" : `Контуров в каркасе: ${n}. Следующий контур — щелчок; «Замкнуть торцы» закроет каркас`);
+  }
+
+  dropLastContour(): void {
+    const a = this.assemble;
+    if (!a || !a.order.length) return;
+    this.pickContour(a.order[a.order.length - 1]);
+  }
+
+  setAssembleClosed(closed: boolean): void {
+    if (!this.assemble) return;
+    this.assemble = { ...this.assemble, closed };
+    this.emit();
+  }
+
+  private clickAssemble(e: EditPointer, t: ViewTransform): void {
+    const v = nearestVertex(this.layer, t, e.x, e.y, this.snap.radius);
+    const s = v ? null : nearestSegment(this.layer, t, e.x, e.y, 8);
+    const id = v?.ref.line ?? s?.line;
+    if (id === undefined) return this.say("Щёлкните по линии контура");
+    this.pickContour(id);
   }
 
   private onDoubleClick(e: EditPointer, t: ViewTransform | null): boolean {
@@ -536,6 +601,7 @@ export class EditSession {
       return this.afterChange();
     }
     if (this.drawing) return this.finishDrawing();
+    if (this.assemble) return this.stopAssemble();
     const sel = this.shownSelection;
     if (sel.lines.length || sel.vertices.length) return this.select(EMPTY_SELECTION);
     if (this.tool !== "select") this.setTool("select");
