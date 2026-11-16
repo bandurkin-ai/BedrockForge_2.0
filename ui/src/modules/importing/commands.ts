@@ -2,7 +2,7 @@ import type { Command } from "../../shell/commands";
 
 /** Import (Э3, Э7, Э8, Э11). */
 export const commands: Command[] = [
-  { id: "import.files", title: "Импорт файлов", description: "Мастер импорта с автоопределением типа.", uiOnly: true, stage: "Э3" },
+  { id: "import.files", title: "Импорт файлов", description: "Мастер импорта с автоопределением типа.", params: { kind: { type: "string", enum: ["holes", "wireframes", "lines", "rasters", "omf", "project"] } }, uiOnly: true, stage: "Э3" },
   { id: "import.open", title: "Скважины", description: "Мастер импорта скважин: Collar, Survey, Assay (DAT, CSV, Excel).", uiOnly: true, stage: "Э3" },
   { id: "set.create", title: "Новый набор", description: "Создать пустой набор скважин.", params: { name: { type: "string" } }, required: ["name"], confirm: true, stage: "Э3" },
   { id: "wireframes.upload", title: "Каркасы", description: "Загрузить каркасы: Micromine TRIDB, DXF, OBJ, STL.", uiOnly: true, stage: "Э8" },

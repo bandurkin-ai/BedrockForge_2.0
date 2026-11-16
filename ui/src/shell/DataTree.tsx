@@ -1,10 +1,32 @@
 import { useState, type DragEvent } from "react";
 import { useApp } from "./AppContext";
+import { openMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { useStore } from "./useStore";
 import { moveSection, TREE_SECTIONS, type TreeSection } from "./workspace";
 import css from "./DataTree.module.css";
 import shell from "./Shell.module.css";
+
+/** Context menu of a section header (ТЗ 7.0.13, 7.1 «+»). */
+function sectionMenu(s: TreeSection, reason: (id: string) => string | null, run: (id: string, args?: Record<string, unknown>) => void): MenuItem[] {
+  const item = (label: string, id: string, args?: Record<string, unknown>): MenuItem => ({ label, reason: reason(id), run: () => run(id, args) });
+  switch (s) {
+    case "holes":
+      return [item("Новый набор…", "set.create"), item("Импорт скважин…", "import.open")];
+    case "lines":
+      return [item("Новый слой…", "lines.new_layer"), item("Загрузить файл: STR, DXF", "lines.upload")];
+    case "wireframes":
+      return [item("Загрузить каркасы…", "wireframes.upload")];
+    case "rasters":
+      return [item("Загрузить растр…", "rasters.upload")];
+    case "blocks":
+      return [item("Загрузить блочную модель…", "import.files")];
+    case "audit":
+      return [item("Новый swath plot…", "stats.swath")];
+    default:
+      return [{ label: "Нет действий", reason: "У раздела нет команд" }];
+  }
+}
 
 const PLUS: Partial<Record<TreeSection, { command: string; title: string }>> = {
   holes: { command: "import.open", title: "Новый набор и импорт скважин" },
@@ -75,6 +97,10 @@ export function DataTree() {
                   setOver(null);
                 }}
                 onClick={() => toggle(s)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  openMenu(e.clientX, e.clientY, sectionMenu(s, (id) => app.registry.reason(id), (id, args) => void app.run(id, args)));
+                }}
               >
                 <span className={`${css.chev} ${isCollapsed ? css.collapsed : ""}`}>
                   <Icon name="chevronDown" size={14} />

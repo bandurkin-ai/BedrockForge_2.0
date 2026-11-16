@@ -2,7 +2,10 @@ import { useEffect, useMemo } from "react";
 import { useApp } from "./AppContext";
 import { BottomDock, RightDock, Viewport } from "./Docks";
 import { DataTree } from "./DataTree";
+import { ContextMenuHost } from "./ContextMenu";
 import { DialogHost } from "./DialogHost";
+import { showMessage } from "./dialogs";
+import { detectImportKind, IMPORT_TITLES } from "./tree";
 import { Palette } from "./Palette";
 import { SettingsWindow } from "./SettingsWindow";
 import { WindowLayer, type WindowRenderer } from "./WindowLayer";
@@ -61,6 +64,32 @@ export function Shell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [app, keys, paletteOpen]);
 
+  useEffect(() => {
+    // Files dropped from Explorer open the import wizard with the detected type (ТЗ 7.1, 7.8).
+    const over = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    const drop = async (e: DragEvent) => {
+      const files = [...(e.dataTransfer?.files ?? [])];
+      if (!files.length) return;
+      e.preventDefault();
+      const kind = detectImportKind(files.map((f) => f.name));
+      if (!kind) {
+        await showMessage({ title: "Импорт файлов", message: "Тип файлов не распознан. Поддерживаются DAT, CSV, Excel, TRIDB, DXF, OBJ, STL, STR, растры с привязкой, OMF, .bfggis." });
+        return;
+      }
+      const reason = app.registry.reason("import.files");
+      if (reason) await showMessage({ title: `Импорт: ${IMPORT_TITLES[kind]}`, message: reason });
+      else await app.run("import.files", { kind });
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("drop", drop);
+    };
+  }, [app]);
+
   const set = (dock: "left" | "right" | "bottom") => (px: number) => app.store.set((s) => ({ workspace: resize(s.workspace, dock, px) }));
 
   return (
@@ -92,6 +121,7 @@ export function Shell() {
       </div>
       <StatusBar />
       <WindowLayer render={renderWindow} />
+      <ContextMenuHost />
       <Palette />
       <DialogHost />
     </div>
