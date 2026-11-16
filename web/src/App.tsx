@@ -829,8 +829,8 @@ function Workspace({
           <kbd>Ctrl+K</kbd>
         </button>
         <span className="spacer" />
-        <button className="icon" onClick={() => runItem({ command: "theme.set", label: "", icon: "theme" })} title="Сменить тему" aria-label="Сменить тему">
-          <Icon name="theme" size={16} />
+        <button className="icon" onClick={() => runItem({ command: "theme.set", label: "", icon: "theme" })} title={ws.theme === "dark" ? "Тёмная тема — включить светлую" : "Светлая тема — включить тёмную"} aria-label="Сменить тему">
+          <Icon name={ws.theme === "dark" ? "moon" : "sun"} size={16} />
         </button>
         <button
           className={ws.right && ws.rightTab === "assistant" ? "claude-button active" : "claude-button"}

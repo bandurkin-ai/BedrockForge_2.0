@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Dataset, Hole, RasterInfo, SavedChartKind } from "../api";
 import type { TableKind } from "../route";
 import { loadHoles } from "../viz/useVizData";
 import { Icon, type IconName } from "./icons";
+import { loadOrder, moveGroup, saveOrder } from "./treeOrder";
 import { isShown, layerKey, type ObjectKind, type SelectedObject, type WorkspaceState } from "./workspace";
 
 const MAX_SHOWN = 300;
@@ -99,14 +100,47 @@ function Action({ icon, title, onClick, disabled }: { icon: IconName; title: str
   );
 }
 
+/** The user's order of the groups; a group is moved by dragging its title row onto another group. */
+const GroupOrder = createContext<{ order: string[]; dragged: string | null; drag: (id: string | null) => void; drop: (to: string, after: boolean) => void }>({
+  order: [], dragged: null, drag: () => undefined, drop: () => undefined,
+});
+
 function Category({
-  title, icon, count, open, onToggle, actions, children,
+  id, title, icon, count, open, onToggle, actions, children,
 }: {
-  title: string; icon: IconName; count?: number; open: boolean; onToggle: () => void; actions?: ReactNode; children?: ReactNode;
+  id: string; title: string; icon: IconName; count?: number; open: boolean; onToggle: () => void; actions?: ReactNode; children?: ReactNode;
 }) {
+  const { order, dragged, drag, drop } = useContext(GroupOrder);
+  // Where the dragged group would land: above or below this one.
+  const [mark, setMark] = useState<"before" | "after" | null>(null);
+  const over = (e: React.DragEvent<HTMLLIElement>) => {
+    if (!dragged || dragged === id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    // By the title row: over the opened contents of a group the drop goes below it.
+    const r = (e.currentTarget.firstElementChild ?? e.currentTarget).getBoundingClientRect();
+    setMark(e.clientY > r.top + r.height / 2 ? "after" : "before");
+  };
   return (
-    <li className="tree-category">
-      <div className="tree-row category" onClick={onToggle}>
+    <li
+      className={`tree-category${dragged === id ? " dragging" : ""}${mark && dragged && dragged !== id ? ` drop-${mark}` : ""}`} style={{ order: order.indexOf(id) }}
+      onDragOver={over} onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setMark(null)}
+      onDrop={(e) => {
+        if (!dragged || dragged === id) return;
+        e.preventDefault();
+        drop(id, mark === "after");
+        setMark(null);
+      }}
+    >
+      <div
+        className="tree-row category" onClick={onToggle} draggable title="Перетащите заголовок, чтобы поменять порядок разделов"
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", title);
+          drag(id);
+        }}
+        onDragEnd={() => { drag(null); setMark(null); }}
+      >
         <Twisty open={open} onClick={onToggle} />
         <Icon name={icon} size={15} />
         <span className="grow">{title}</span>
@@ -250,6 +284,16 @@ export function DataTree(props: DataTreeProps) {
       return next;
     });
   const isOpen = (key: string) => open.has(key);
+  const [order, setOrder] = useState(loadOrder);
+  const [dragged, setDragged] = useState<string | null>(null);
+  const groups = useMemo(() => ({
+    order, dragged, drag: setDragged,
+    drop: (to: string, after: boolean) => setOrder((prev) => {
+      const next = dragged ? moveGroup(prev, dragged, to, after) : prev;
+      saveOrder(next);
+      return next;
+    }),
+  }), [order, dragged]);
 
   // Open the active set (and its holes when a hole gets selected elsewhere).
   useEffect(() => {
@@ -299,9 +343,10 @@ export function DataTree(props: DataTreeProps) {
           <button onClick={props.onDemo}>Загрузить демо-проект</button>
         </div>
       )}
-      <ul className="tree-root">
+      <GroupOrder.Provider value={groups}>
+      <ul className="tree-root groups">
         <Category
-          title="Скважины" icon="drillholes" count={sets.length} open={isOpen("cat:drillholes")} onToggle={() => toggle("cat:drillholes")}
+          id="cat:drillholes" title="Скважины" icon="drillholes" count={sets.length} open={isOpen("cat:drillholes")} onToggle={() => toggle("cat:drillholes")}
           actions={<Action icon="plus" title="Новый набор скважин: импорт файлов" onClick={() => props.onImport(null)} />}
         >
           {sets.length === 0 && <li className="tree-note muted small">Нет наборов. «+» — импорт в новый набор.</li>}
@@ -503,6 +548,7 @@ export function DataTree(props: DataTreeProps) {
 
         <BlockCategory {...props} open={open} toggle={toggle} />
       </ul>
+      </GroupOrder.Provider>
     </div>
   );
 }
@@ -532,7 +578,7 @@ function FileCategory(props: DataTreeProps & {
   const isSelected = (id: number) => props.selected?.kind === kind && props.selected.id === id;
   return (
     <Category
-      title={props.title} icon={props.icon} count={total} open={open.has(catKey)} onToggle={() => toggle(catKey)}
+      id={catKey} title={props.title} icon={props.icon} count={total} open={open.has(catKey)} onToggle={() => toggle(catKey)}
       actions={<button className="icon row-action" title={props.uploadTitle} aria-label={props.uploadTitle} onClick={(e) => { e.stopPropagation(); props.onAdd(e); }}><Icon name="plus" size={14} /></button>}
     >
       {files.length === 0 && <li className="tree-note muted small">{props.emptyNote}</li>}
@@ -600,7 +646,7 @@ function BlockCategory(props: DataTreeProps & { open: Set<string>; toggle: (key:
   const kind: ObjectKind = "blocks";
   return (
     <Category
-      title="Блочные модели" icon="blocks" count={files.length} open={open.has("cat:blocks")} onToggle={() => toggle("cat:blocks")}
+      id="cat:blocks" title="Блочные модели" icon="blocks" count={files.length} open={open.has("cat:blocks")} onToggle={() => toggle("cat:blocks")}
       actions={<Action icon="plus" title="Загрузить блочную модель: Micromine DAT или CSV (X, Y, Z и размеры _X, _Y, _Z)" onClick={() => props.onUpload("blocks")} />}
     >
       {files.length === 0 && <li className="tree-note muted small">Нет моделей. «+» — Micromine DAT или CSV.</li>}
@@ -637,7 +683,7 @@ function RasterCategory(props: DataTreeProps & { open: Set<string>; toggle: (key
   const kind: ObjectKind = "raster";
   return (
     <Category
-      title="Растры" icon="raster" count={entries.length} open={open.has("cat:rasters")} onToggle={() => toggle("cat:rasters")}
+      id="cat:rasters" title="Растры" icon="raster" count={entries.length} open={open.has("cat:rasters")} onToggle={() => toggle("cat:rasters")}
       actions={<Action icon="plus" title="Загрузить растры: изображение вместе с файлом привязки (.jgw/.pgw/.tfw, .tab, .grf) или GeoTIFF" onClick={() => props.onUpload("rasters")} />}
     >
       {entries.length === 0 && <li className="tree-note muted small">Нет растров. «+» — изображение и файл привязки.</li>}
