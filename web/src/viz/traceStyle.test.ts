@@ -6,6 +6,9 @@ describe("hole trace style", () => {
     const s = normalizeTraceStyle({ width: 40, color: "#12ab34", ticks: true, tickStep: -1, wireframeColor: "object", blockColor: "red" });
     expect(s).toMatchObject({ width: 12, color: "#12ab34", ticks: true, tickStep: 0.5, wireframeColor: "object", blockColor: DEFAULT_TRACE_STYLE.blockColor });
     expect(normalizeTraceStyle(null)).toEqual(DEFAULT_TRACE_STYLE);
+    expect(DEFAULT_TRACE_STYLE.endDepth).toBe(false);
+    expect(normalizeTraceStyle({ endDepth: true }).endDepth).toBe(true);
+    expect(normalizeTraceStyle({ endDepth: "yes" }).endDepth).toBe(false);
   });
 
   it("puts ticks at multiples of the step and writes every n-th", () => {

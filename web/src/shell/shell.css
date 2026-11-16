@@ -874,6 +874,8 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .modal.log-viewer .modal-foot button { display: inline-flex; align-items: center; gap: 4px; }
 .modal.logs-dialog { height: min(560px, 80vh); }
 .modal.logs-dialog button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.job-waiting { margin: 2px 0 6px; white-space: normal; }
+.job-actions { display: inline-flex; align-items: center; gap: 6px; justify-self: end; }
 
 /* ---- terrain models (ЦТМ) */
 .props-form label.props-check { justify-content: flex-start; gap: 8px; cursor: pointer; }

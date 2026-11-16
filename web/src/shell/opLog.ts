@@ -48,6 +48,15 @@ export interface JobJournal {
   started_at?: string | null;
   finished_at?: string | null;
   log: { t: string; level: string; text: string }[];
+  /** a queued job: why it waits */
+  waiting?: string | null;
+}
+
+/** The job queue as the server sees it (JobsQueue in api.ts fits). */
+export interface QueueState {
+  workers: { name: string; kinds: string[] | null; job: number | null; age: number; alive: boolean; up_seconds: number }[];
+  active: { id: number; project_id: number | null; kind: string; title: string; status: string; progress: number;
+    worker: string | null; attempts: number; running_seconds: number | null; heartbeat_age: number | null }[];
 }
 
 const NET_LIMIT = 2000;
@@ -214,8 +223,8 @@ export class OpLog {
   }
 
   /** The journal as plain text; `jobs` are the server journals of the attached jobs. */
-  text(jobs: JobJournal[] = []): string {
-    return renderLog(this, jobs);
+  text(jobs: JobJournal[] = [], queue: QueueState | null = null): string {
+    return renderLog(this, jobs, queue);
   }
 }
 
@@ -238,7 +247,7 @@ function environment(): string[] {
   ];
 }
 
-export function renderLog(log: OpLog, jobs: JobJournal[] = []): string {
+export function renderLog(log: OpLog, jobs: JobJournal[] = [], queue: QueueState | null = null): string {
   const out: string[] = [];
   const line = "=".repeat(78);
   out.push(line, `BedrockForge — журнал ${log.kind === "import" ? "импорта" : "экспорта"}: ${log.title}`, line);
@@ -277,11 +286,66 @@ export function renderLog(log: OpLog, jobs: JobJournal[] = []): string {
     out.push(...renderJob(job));
   }
 
+  if (queue) out.push("", ...renderQueue(queue));
+
   out.push("", "-- Все запросы к серверу ".padEnd(78, "-"));
   if (!requests.length) out.push("(запросов не было)");
-  for (const r of requests) out.push(...renderRequest(r));
+  for (const r of collapseChunks(requests)) out.push(...("seq" in r ? renderRequest(r) : [r.text]));
   out.push("", line, "Конец журнала", line, "");
   return out.join("\n");
+}
+
+/** Successful chunks of one upload in a row become one line: a 1 GB file is ~60 of them. */
+function collapseChunks(requests: NetEntry[]): (NetEntry | { text: string })[] {
+  const out: (NetEntry | { text: string })[] = [];
+  const chunk = (r: NetEntry) => r.method === "PUT" && /\/api\/uploads\/[^/?]+\?offset=/.test(r.url) && r.status !== null && r.status < 300 && !r.error;
+  const upload = (r: NetEntry) => r.url.replace(/\?.*$/, "");
+  for (let i = 0; i < requests.length; ) {
+    const r = requests[i];
+    if (!chunk(r)) {
+      out.push(r);
+      i++;
+      continue;
+    }
+    // Chunks of the same upload, other requests in between (a health check) kept as they are.
+    const run: NetEntry[] = [];
+    const between: NetEntry[] = [];
+    let j = i;
+    for (; j < requests.length; j++) {
+      const x = requests[j];
+      if (chunk(x) && upload(x) === upload(r)) run.push(x);
+      else if (!/^PUT$/.test(x.method) && /\/api\/health$/.test(x.url)) between.push(x);
+      else break;
+    }
+    if (run.length < 3) {
+      out.push(...requests.slice(i, j));
+    } else {
+      const bytes = run.reduce((n, x) => n + (Number(/<двоичные данные (\d+) Б>/.exec(x.request)?.[1]) || 0), 0);
+      const ms = run.reduce((n, x) => n + (x.ms ?? 0), 0);
+      const last = run[run.length - 1];
+      out.push({ text: `${time(r.t)}…${time(last.t)} #${r.seq}–#${last.seq} PUT ${upload(r)} × ${run.length} частей → все ${r.status} · ${(bytes / 1048576).toFixed(1)} МБ за ${(ms / 1000).toFixed(1)} с (${((bytes / 1048576) / Math.max(ms / 1000, 1e-3)).toFixed(0)} МБ/с)` });
+      out.push(...between);
+    }
+    i = j;
+  }
+  return out;
+}
+
+/** The job workers and the jobs queued or running: why a job of this journal waits. */
+export function renderQueue(q: QueueState): string[] {
+  const out = ["-- Очередь заданий (сейчас) ".padEnd(78, "-")];
+  if (!q.workers.length) out.push("Обработчиков заданий (worker) не слышно ни одного: задания в очереди не начнутся.");
+  for (const w of q.workers) {
+    out.push(`Обработчик ${w.name} (${w.kinds?.length ? w.kinds.join(", ") : "все задания"}): ${w.alive ? "работает" : `НЕ ОТВЕЧАЕТ ${Math.round(w.age)} с`}`
+      + `${w.job ? `, выполняет №${w.job}` : ", свободен"}, запущен ${Math.round(w.up_seconds / 60)} мин назад`);
+  }
+  if (!q.active.length) out.push("Заданий в очереди и в работе нет.");
+  for (const a of q.active) {
+    out.push(`№${a.id} ${a.status === "running" ? "выполняется" : "в очереди"} · ${a.kind} · «${a.title}» · проект ${a.project_id ?? "—"}`
+      + (a.status === "running" ? ` · ${Math.round(a.progress * 100)}% · ${a.running_seconds ?? 0} с · ${a.worker ?? "—"}${a.heartbeat_age !== null ? ` · сигнал ${a.heartbeat_age} с назад` : ""}` : "")
+      + ` · попыток ${a.attempts}`);
+  }
+  return out;
 }
 
 function renderRequest(r: NetEntry): string[] {
@@ -298,6 +362,7 @@ export function renderJob(job: JobJournal): string[] {
     `Создано: ${job.created_at ?? "—"} · начато: ${job.started_at ?? "—"} · завершено: ${job.finished_at ?? "—"}`,
   ];
   if (job.message) out.push(`Сообщение: ${job.message}`);
+  if (job.waiting) out.push(`Почему ждёт: ${job.waiting}`);
   if (job.error) out.push(`Ошибка: ${job.error}`);
   if (job.params !== undefined) out.push(`Параметры:\n${indent(stringify(job.params))}`);
   if (job.result != null) out.push(`Результат:\n${indent(cut(stringify(job.result), 20000))}`);
@@ -330,10 +395,10 @@ export const recentLogs = (): readonly OpLog[] => logs;
 export const logForJob = (jobId: number): OpLog | undefined => byJob.get(jobId);
 
 /** Text of a job that no dialog of this session started (e.g. after a page reload). */
-export function renderJobOnly(job: JobJournal): string {
+export function renderJobOnly(job: JobJournal, queue: QueueState | null = null): string {
   const line = "=".repeat(78);
   return [line, `BedrockForge — журнал фонового задания №${job.id}`, line, `Журнал составлен: ${stamp(Date.now())}`, ...environment(), "",
-    ...renderJob(job), "", line, "Конец журнала", line, ""].join("\n");
+    ...renderJob(job), ...(queue ? ["", ...renderQueue(queue)] : []), "", line, "Конец журнала", line, ""].join("\n");
 }
 
 /** Copies text to the clipboard; false when the browser refused. */

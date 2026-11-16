@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { cancelJob, getJob, isExportJob, isFinished, jobDownloadUrl, retryJob, type JobDetail, type JobInfo } from "../api";
+import { useEffect, useState } from "react";
+import { cancelJob, getJob, getJobsQueue, isExportJob, isFinished, jobDownloadUrl, retryJob, type JobDetail, type JobInfo, type JobsQueue } from "../api";
 import { LogButton } from "./LogButton";
 import type { UploadState } from "./useJobs";
 
@@ -37,6 +37,9 @@ function Bar({ value, state }: { value: number; state: string }) {
 export function JobsPanel({ jobs, uploads, onClearUploads }: { jobs: JobInfo[]; uploads: UploadState[]; onClearUploads: () => void }) {
   const [open, setOpen] = useState<JobDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const queued = jobs.some((j) => j.status === "queued");
+  const queue = useJobsQueue(queued);
+  const noWorker = jobs.filter((j) => j.status === "queued").map((j) => queue?.waiting[String(j.id)]).find((w) => w?.startsWith("Нет работающего"));
 
   const show = async (id: number) => {
     try {
@@ -66,6 +69,7 @@ export function JobsPanel({ jobs, uploads, onClearUploads }: { jobs: JobInfo[]; 
   return (
     <div className="jobs">
       {error && <div className="alert error small">{error}</div>}
+      {noWorker && <div className="alert error small job-waiting">{noWorker}</div>}
       {uploads.length > 0 && (
         <div className="jobs-group">
           <div className="jobs-head">
@@ -97,22 +101,27 @@ export function JobsPanel({ jobs, uploads, onClearUploads }: { jobs: JobInfo[]; 
                 {j.error ? `: ${j.error}` : ""}
                 {duration(j) && ` · ${duration(j)}`}
               </span>
-              {!isFinished(j) && (
-                <button className="small" disabled={j.cancel_requested} onClick={() => void cancel(j.id)}>
-                  {j.cancel_requested ? "Отмена…" : "Отменить"}
-                </button>
-              )}
-              {j.status === "done" && isExportJob(j) && j.result?.filename && (
-                <a className="job-download small" href={jobDownloadUrl(j.id)} download={j.result.filename}
-                  title={`${j.result.filename}${j.result.size ? `, ${formatBytes(j.result.size)}` : ""}${j.result.warnings?.length ? ` · замечаний: ${j.result.warnings.length} (журнал задания)` : ""}`}>
-                  Скачать
-                </a>
-              )}
-              <LogButton jobId={j.id} failed={j.status === "failed"} size={13} />
-              {(j.status === "failed" || j.status === "cancelled") && (
-                <button className="small" onClick={() => void retry(j.id)} title="Запустить снова с теми же файлами (без новой загрузки)">Повторить</button>
-              )}
+              <span className="job-actions">
+                {!isFinished(j) && (
+                  <button className="small" disabled={j.cancel_requested} onClick={() => void cancel(j.id)}>
+                    {j.cancel_requested ? "Отмена…" : "Отменить"}
+                  </button>
+                )}
+                {j.status === "done" && isExportJob(j) && j.result?.filename && (
+                  <a className="job-download small" href={jobDownloadUrl(j.id)} download={j.result.filename}
+                    title={`${j.result.filename}${j.result.size ? `, ${formatBytes(j.result.size)}` : ""}${j.result.warnings?.length ? ` · замечаний: ${j.result.warnings.length} (журнал задания)` : ""}`}>
+                    Скачать
+                  </a>
+                )}
+                <LogButton jobId={j.id} failed={j.status === "failed"} size={13} />
+                {(j.status === "failed" || j.status === "cancelled") && (
+                  <button className="small" onClick={() => void retry(j.id)} title="Запустить снова с теми же файлами (без новой загрузки)">Повторить</button>
+                )}
+              </span>
             </div>
+            {j.status === "queued" && queue?.waiting[String(j.id)] && !queue.waiting[String(j.id)].startsWith("Нет работающего") && (
+              <div className="muted small job-waiting">{queue.waiting[String(j.id)]}</div>
+            )}
             {open?.id === j.id && (
               <ol className="job-log small">
                 {open.log.length === 0 && <li className="muted">Журнал пуст</li>}
@@ -128,4 +137,24 @@ export function JobsPanel({ jobs, uploads, onClearUploads }: { jobs: JobInfo[]; 
       </div>
     </div>
   );
+}
+
+/** Why queued jobs wait (workers, jobs ahead), asked again every few seconds while any job is queued. */
+function useJobsQueue(active: boolean): JobsQueue | null {
+  const [state, setState] = useState<JobsQueue | null>(null);
+  useEffect(() => {
+    if (!active) {
+      setState(null);
+      return;
+    }
+    let alive = true;
+    const load = () => void getJobsQueue().then((q) => alive && setState(q)).catch(() => undefined);
+    load();
+    const timer = setInterval(load, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [active]);
+  return state;
 }
