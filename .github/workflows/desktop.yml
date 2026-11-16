@@ -1,0 +1,59 @@
+name: Desktop (Windows)
+
+# BedrockForge for Windows 11 (docs/DESKTOP.md, part 1, K6): portable .exe and the NSIS installer,
+# built on Windows from the same web/ as the browser version. A tag v* also attaches them to a draft release.
+on:
+  push:
+    paths: ["desktop/**", "web/**", ".github/workflows/desktop.yml"]
+    tags: ["v*"]
+  pull_request:
+    paths: ["desktop/**", "web/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            desktop/package-lock.json
+      - name: Interface (web/dist)
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Client tests
+        working-directory: desktop
+        run: |
+          npm ci
+          npm test
+      - name: Build portable .exe and installer
+        working-directory: desktop
+        run: npx electron-builder --win portable nsis --x64 --publish never
+      - name: SHA-256
+        working-directory: desktop/release
+        shell: pwsh
+        run: |
+          Get-FileHash *.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Tee-Object SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BedrockForge-windows
+          path: |
+            desktop/release/*.exe
+            desktop/release/latest.yml
+            desktop/release/SHA256SUMS.txt
+      - name: Draft release for a tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: gh release create "${{ github.ref_name }}" --draft --title "BedrockForge ${{ github.ref_name }}" --notes-file release/SHA256SUMS.txt (Get-ChildItem release/*.exe) release/latest.yml release/SHA256SUMS.txt

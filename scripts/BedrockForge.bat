@@ -40,6 +40,7 @@ call :run "docker compose logs --tail 60 api worker"
 >>"%LOG%" echo === OK %date% %time% ===
 echo.
 echo DONE. Open http://localhost:5173 and press Ctrl+F5 (the page is ready about 20 seconds after the restart).
+echo Or start BedrockForge.exe (the Windows client, see desktop\README.md).
 echo Log: %LOG%
 goto :end
 
