@@ -59,6 +59,7 @@ export class CoreProcess extends EventEmitter {
   private child: ChildProcess | null = null;
   private info: CoreInfo | null = null;
   private stopping = false;
+  private restarting: Promise<void> | null = null;
   private readonly budget = new RestartBudget();
   /** One token per shell session: the window keeps working after a restart on the same port. */
   private readonly token = randomBytes(32).toString("hex");
@@ -111,7 +112,7 @@ export class CoreProcess extends EventEmitter {
       return await this.handshake(child, token);
     } catch (e) {
       this.killTree(child); // no orphan bf-core after a failed start
-      this.child = null;
+      if (this.child === child) this.child = null;
       throw e;
     }
   }
@@ -183,6 +184,7 @@ export class CoreProcess extends EventEmitter {
   }
 
   private async onExit(code: number | null, signal: NodeJS.Signals | null): Promise<void> {
+    if (this.restarting) return; // a restart in progress owns the process slot
     this.child = null;
     this.info = null;
     if (this.stopping) return;
@@ -196,16 +198,27 @@ export class CoreProcess extends EventEmitter {
     await this.restart();
   }
 
-  /** Restart on the previous port (the window CSP is bound to it); a busy port → a new one. */
-  async restart(): Promise<void> {
-    this.stopping = false;
-    const before = this.lastPort;
-    try {
-      const info = await this.start(before).catch(() => this.start(0));
-      this.emit("restarted", info, info.port !== before);
-    } catch (e) {
-      this.emit("failed", e);
-    }
+  /**
+   * Restart on the previous port (the window CSP is bound to it); a busy port → a new one.
+   * Only one restart runs at a time; calls during it share the same promise. `manual` — the retry of
+   * the «Ядро недоступно» screen: one attempt, and only when no core is running.
+   */
+  restart(manual = false): Promise<void> {
+    if (this.stopping) return Promise.resolve();
+    if (this.restarting) return this.restarting;
+    if (manual && (this.child || this.info)) return Promise.resolve();
+    this.restarting = (async () => {
+      const before = this.lastPort;
+      try {
+        const info = manual ? await this.start(before) : await this.start(before).catch(() => this.start(0));
+        this.emit("restarted", info, info.port !== before);
+      } catch (e) {
+        this.emit("failed", e);
+      } finally {
+        this.restarting = null;
+      }
+    })();
+    return this.restarting;
   }
 
   async stop(): Promise<void> {

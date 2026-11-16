@@ -59,7 +59,7 @@ function Shortcuts() {
   giveRef.current = give;
   useEffect(() => {
     if (!capturing) return;
-    app.store.set({ modal: true }); // ribbon hotkeys are off while a shortcut is being captured
+    app.store.set((st) => ({ modal: st.modal + 1 })); // ribbon hotkeys are off while a shortcut is being captured
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -72,7 +72,7 @@ function Shortcuts() {
     window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("keydown", onKey, true);
-      app.store.set({ modal: false });
+      app.store.set((st) => ({ modal: Math.max(0, st.modal - 1) }));
     };
   }, [capturing, app]);
 

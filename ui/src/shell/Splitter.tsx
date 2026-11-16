@@ -15,9 +15,11 @@ export function Splitter({ axis, size, invert, onResize, label }: { axis: "x" | 
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
   };
   return <div role="separator" aria-label={label} aria-orientation={axis === "x" ? "vertical" : "horizontal"} className={axis === "x" ? css.splitX : css.splitY} onPointerDown={start} />;
 }

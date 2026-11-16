@@ -33,6 +33,10 @@
   от коммита с ТЗ (63bb4aa). Заказчику: сделать `main` веткой по умолчанию и защитить (ci, windows).
 
 ## Допущения (вынести в отчёт вехи)
+- Ревью Э1, отложено: (11) удаление всех трёх отметок пробного периода начинает его заново — защита на Э24;
+  (13) на Windows SO_EXCLUSIVEADDRUSE + TIME_WAIT → перезапуск ядра на новом порту с перезагрузкой окна — проверяется core.spec в windows.yml;
+  (14) os._exit при --watch-stdin: на Э2 соединения SQLite/DuckDB закрывать в lifespan до выхода;
+  (19) подтверждение команд Claude — модальным окном, в чате — на Э23.
 - Справочник BF — ветка `claude/laughing-bohr-gpy965` этого репозитория (код base-functional);
   файлы real_data взяты из `bandurkin-ai/BedrockForge@real_data` (только чтение).
 - `autoContinueAtUsageLimit` в проектном `.claude/settings.json` не действует (ключ уровня

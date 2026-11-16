@@ -5,7 +5,7 @@ import { DataTree } from "./DataTree";
 import { ContextMenuHost } from "./ContextMenu";
 import { CoreDown } from "./CoreDown";
 import { DialogHost } from "./DialogHost";
-import { showMessage } from "./dialogs";
+import { dialogStore, showMessage } from "./dialogs";
 import { detectImportKind, IMPORT_TITLES } from "./tree";
 import { LicenseWindow } from "./LicenseWindow";
 import { Palette } from "./Palette";
@@ -55,7 +55,8 @@ export function Shell() {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
       const sc = eventShortcut(e);
-      const modal = paletteOpen || app.store.get().modal;
+      // Palette, own dialogs (incl. Claude's confirmation) and shortcut capture switch the ribbon keys off.
+      const modal = paletteOpen || dialogStore.get().queue.length > 0 || app.store.get().modal > 0;
       const item = resolveKey(sc, keys, { typing: isTyping(e.target), modal });
       if (!item) return;
       e.preventDefault();

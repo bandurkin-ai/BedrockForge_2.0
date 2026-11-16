@@ -27,6 +27,9 @@ function DialogView({ req }: { req: DialogRequest }) {
 
   useEffect(() => {
     (inputRef.current ?? okRef.current)?.focus();
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();

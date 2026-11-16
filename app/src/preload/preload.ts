@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("bf", {
   coreRetry: () => ipcRenderer.send("bf:core-retry"),
   coreLog: () => ipcRenderer.sendSync("bf:core-log"),
   onCoreState: (cb: (state: unknown) => void) => {
-    ipcRenderer.on("bf:core-state", (_e, state) => cb(state));
+    const listener = (_e: unknown, state: unknown) => cb(state);
+    ipcRenderer.on("bf:core-state", listener);
+    return () => ipcRenderer.removeListener("bf:core-state", listener);
   },
 });

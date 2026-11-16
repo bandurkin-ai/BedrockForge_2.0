@@ -26,8 +26,26 @@ export function writeSettings(file: string, data: unknown): boolean {
   const tmp = `${file}.${process.pid}.tmp`;
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(tmp, text, "utf8");
-    fs.renameSync(tmp, file);
+    const fd = fs.openSync(tmp, "w");
+    try {
+      fs.writeSync(fd, text, null, "utf8");
+      fs.fsyncSync(fd); // a power cut must not leave an empty settings file
+    } finally {
+      fs.closeSync(fd);
+    }
+    for (let attempt = 0; ; attempt++) {
+      try {
+        fs.renameSync(tmp, file);
+        break;
+      } catch (e) {
+        // An antivirus may hold the file for a moment (EPERM/EBUSY on Windows).
+        if (attempt >= 4 || !["EPERM", "EBUSY", "EACCES"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e;
+        const until = Date.now() + 50 * (attempt + 1);
+        while (Date.now() < until) {
+          /* short synchronous wait: settings are written rarely */
+        }
+      }
+    }
     return true;
   } catch {
     try {
@@ -42,6 +60,7 @@ export function writeSettings(file: string, data: unknown): boolean {
 /** Merges the window part (owned by the main process) into the file without touching the rest. */
 export function mergeSettings(file: string, patch: Record<string, unknown>): void {
   const cur = readSettings(file);
+  if (cur === "damaged") return; // keep a damaged file for recovery; defaults are used this session
   const base = cur && typeof cur === "object" ? (cur as Record<string, unknown>) : {};
   writeSettings(file, { ...base, ...patch });
 }

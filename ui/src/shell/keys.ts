@@ -30,10 +30,11 @@ export function eventShortcut(e: KeyLike): string {
   else if (/^Digit\d$/.test(e.code)) key = e.code.slice(5);
   else if (/^F\d{1,2}$/.test(e.code)) key = e.code.toLowerCase();
   else if (e.code in CODE_KEYS) key = CODE_KEYS[e.code];
-  return [(e.ctrlKey || e.metaKey) && "ctrl", e.altKey && "alt", e.shiftKey && "shift", key].filter(Boolean).join("+");
+  // Win is its own modifier: Win+X must not become Ctrl+X (Windows keeps Win shortcuts, ТЗ 7.0.6).
+  return [e.ctrlKey && "ctrl", e.metaKey && "meta", e.altKey && "alt", e.shiftKey && "shift", key].filter(Boolean).join("+");
 }
 
-const NAMES: Record<string, string> = { ctrl: "Ctrl", alt: "Alt", shift: "Shift", escape: "Esc", "`": "Ё", enter: "Enter", space: "Пробел" };
+const NAMES: Record<string, string> = { meta: "Win", ctrl: "Ctrl", alt: "Alt", shift: "Shift", escape: "Esc", "`": "Ё", enter: "Enter", space: "Пробел" };
 
 /** "ctrl+`" -> "Ctrl+Ё" (the key above Tab on a Russian keyboard). */
 export function formatShortcut(shortcut: string): string {
@@ -45,7 +46,7 @@ export function formatShortcut(shortcut: string): string {
 
 /** A single key without Ctrl/Alt: it must not fire while typing in a field. */
 export function isPlainKey(shortcut: string): boolean {
-  return !shortcut.includes("ctrl+") && !shortcut.includes("alt+");
+  return !shortcut.includes("ctrl+") && !shortcut.includes("alt+") && !shortcut.includes("meta+");
 }
 
 /** Shortcuts kept by Windows or the shell; they cannot be assigned (ТЗ 7.0.6). */

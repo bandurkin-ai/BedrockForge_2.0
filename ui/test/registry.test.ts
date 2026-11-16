@@ -85,3 +85,12 @@ describe("hotkeys", () => {
     expect(formatShortcut("escape")).toBe("Esc");
   });
 });
+
+describe("Win key (ТЗ 7.0.6)", () => {
+  it("is a modifier of its own and is reserved", async () => {
+    const { isReserved } = await import("../src/shell/shortcuts");
+    const sc = eventShortcut({ code: "KeyX", key: "x", ctrlKey: false, metaKey: true, altKey: false, shiftKey: false });
+    expect(sc).toBe("meta+x");
+    expect(isReserved(sc)).toBe(true);
+  });
+});

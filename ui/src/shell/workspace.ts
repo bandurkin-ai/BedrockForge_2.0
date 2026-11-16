@@ -167,5 +167,5 @@ export function normalizeView(raw: unknown): ViewState {
 export function setLayerShown(view: ViewState, key: string, shown: boolean): ViewState {
   const hidden = view.hidden.filter((k) => k !== key);
   if (!shown) hidden.push(key);
-  return { ...view, hidden };
+  return { ...view, hidden: hidden.slice(-2000) }; // ТЗ 7.0.10: at most 2000 keys
 }

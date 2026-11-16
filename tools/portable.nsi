@@ -84,8 +84,20 @@ Function .onInit
 FunctionEnd
 
 Section
+  ; Two first runs at once must not unpack into the same folder.
+  System::Call 'kernel32::CreateMutexW(p 0, i 0, w "BedrockForgePortable-${VERSION}") p .r3 ?e'
+  Pop $4
+  ${If} $4 == 183
+    MessageBox MB_OK|MB_ICONINFORMATION "BedrockForge уже готовится к первому запуску. Дождитесь окончания."
+    Quit
+  ${EndIf}
+  ClearErrors
   SetOutPath "$Target"
   File /r "${SRC}\*.*"
+  ${If} ${Errors}
+    MessageBox MB_OK|MB_ICONSTOP "Не удалось распаковать BedrockForge в $Target. Освободите место на диске или запустите файл из другой папки."
+    Quit
+  ${EndIf}
   FileOpen $2 "$Target\.bf-ready-${VERSION}" w
   FileWrite $2 "${VERSION}"
   FileClose $2

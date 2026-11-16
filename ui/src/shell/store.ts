@@ -22,8 +22,8 @@ export interface AppState {
   holeId: string | null;
   hasSection: boolean;
   editing: boolean;
-  /** Modal UI (palette, import wizard) is open: ribbon hotkeys are off (ТЗ 7.0.6). */
-  modal: boolean;
+  /** Number of open modal UIs (shortcut capture, import wizard): ribbon hotkeys are off (ТЗ 7.0.6). */
+  modal: number;
 }
 
 export const INITIAL_STATE: AppState = {
@@ -39,7 +39,7 @@ export const INITIAL_STATE: AppState = {
   holeId: null,
   hasSection: false,
   editing: false,
-  modal: false,
+  modal: 0,
 };
 
 export class Store<T> {

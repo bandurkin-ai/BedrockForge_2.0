@@ -18,7 +18,7 @@ export interface BfBridge {
   saveText(defaultName: string, text: string): Promise<boolean>;
   coreRetry(): void;
   coreLog(): string;
-  onCoreState(cb: (state: { status: "online" | "offline" | "starting"; info: CoreInfo | null; message?: string }) => void): void;
+  onCoreState(cb: (state: { status: "online" | "offline" | "starting"; info: CoreInfo | null; message?: string }) => void): () => void;
 }
 
 declare global {

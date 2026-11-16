@@ -33,11 +33,23 @@ export function loadSettings(): { settings: UserSettings; writable: boolean } {
 }
 
 let timer: ReturnType<typeof setTimeout> | null = null;
+let pending: (() => void) | null = null;
+
+/** Writes a debounced change at once (window closing or reloading). */
+export function flushSettings(): void {
+  if (timer) clearTimeout(timer);
+  timer = null;
+  const p = pending;
+  pending = null;
+  p?.();
+}
+
+if (typeof window !== "undefined") window.addEventListener("beforeunload", flushSettings);
 
 /** Debounced write (resizing a dock must not write the file on every pixel). */
 export function saveSettings(s: UserSettings, delayMs = 400): void {
   if (timer) clearTimeout(timer);
-  timer = setTimeout(() => {
+  pending = () => {
     const b = bridge();
     try {
       if (b) b.saveSettings(s);
@@ -45,5 +57,6 @@ export function saveSettings(s: UserSettings, delayMs = 400): void {
     } catch {
       /* the layout just will not be remembered */
     }
-  }, delayMs);
+  };
+  timer = setTimeout(flushSettings, delayMs);
 }

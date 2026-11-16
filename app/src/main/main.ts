@@ -71,6 +71,7 @@ const core = new CoreProcess({
 });
 
 let splash: BrowserWindow | null = null;
+let quitting = false;
 let mainWin: BrowserWindow | null = null;
 
 async function serveStatic(root: string, pathname: string): Promise<Response> {
@@ -157,7 +158,7 @@ function createMain(): void {
     } else if (input.key === "F5") {
       mainWin.webContents.reload();
       e.preventDefault();
-    } else if (input.control && input.shift && input.key.toLowerCase() === "i") {
+    } else if (input.control && input.shift && input.code === "KeyI") {
       mainWin.webContents.toggleDevTools();
       e.preventDefault();
     }
@@ -190,6 +191,23 @@ function createMain(): void {
   void mainWin.loadURL(`${ORIGIN}/index.html`);
 }
 
+/** Last `max` bytes of a log file without reading it whole. */
+function tailFile(file: string, max = 200_000): string {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(file, "r");
+    const size = fs.fstatSync(fd).size;
+    const len = Math.min(size, max);
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, size - len);
+    return buf.toString("utf8");
+  } catch {
+    return "Журнал ядра пуст";
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
 function publicInfo(info: CoreInfo | null) {
   return info ? { baseUrl: info.baseUrl, token: info.token, version: info.version } : null;
 }
@@ -201,22 +219,16 @@ function registerIpc(): void {
   ipcMain.on("bf:splash-copy-log", (e) => {
     if (!splash || e.sender !== splash.webContents) return;
     try {
-      clipboard.writeText(fs.readFileSync(core.logPath(), "utf8").slice(-200_000));
+      clipboard.writeText(tailFile(core.logPath()));
     } catch {
       clipboard.writeText("Журнал ядра пуст");
     }
   });
   ipcMain.on("bf:core-retry", (e) => {
-    if (mainWin && e.sender === mainWin.webContents && !core.current()) void core.restart();
+    if (mainWin && e.sender === mainWin.webContents && !quitting) void core.restart(true);
   });
   ipcMain.on("bf:core-log", (e) => {
-    let text = "";
-    try {
-      text = fs.readFileSync(core.logPath(), "utf8").slice(-200_000);
-    } catch {
-      text = "Журнал ядра пуст";
-    }
-    e.returnValue = text;
+    e.returnValue = mainWin && e.sender === mainWin.webContents ? tailFile(core.logPath()) : "";
   });
   ipcMain.on("bf:core-info", (e) => {
     // The launch token goes to the main window of our own origin only.
@@ -295,7 +307,6 @@ if (!app.requestSingleInstanceLock()) {
     win.focus();
   });
   app.on("window-all-closed", () => app.quit());
-  let quitting = false;
   app.on("before-quit", (e) => {
     if (quitting) return;
     e.preventDefault();
