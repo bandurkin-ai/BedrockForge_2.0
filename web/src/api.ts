@@ -457,6 +457,16 @@ export interface IntervalsData {
 
 export const getTrajectories = (setId: number) => request<Trajectories>(`/api/sets/${setId}/trajectories`);
 
+export interface Intersections {
+  objects: { kind: "wireframe" | "blocks"; id: number; dataset_id: number; name: string }[];
+  /** points: [depth, x, y, z, object index, event] — event 0: a wireframe crossing, 1: into a block model, 2: out of it */
+  holes: { hole_id: string; points: number[][] }[];
+  notes: string[];
+}
+
+/** Where the holes of a set cross the project's wireframes and enter or leave its block models. */
+export const getIntersections = (setId: number) => request<Intersections>(`/api/sets/${setId}/intersections`);
+
 export const getIntervals = (setId: number, component: string) =>
   request<IntervalsData>(`/api/sets/${setId}/intervals?component=${encodeURIComponent(component)}`);
 

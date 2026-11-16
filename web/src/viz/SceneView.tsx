@@ -4,12 +4,13 @@ import { VEXAG_STEPS, isShown, layerKey, type ViewPreset, type WorkspaceState } 
 import { ScaleStrip, type VizSettings } from "./ComponentPanel";
 import { azimuthDeg, DEFAULT_WINDOW, defaultSection, shiftSection, type SectionLine } from "./geometry";
 import { SectionMap } from "./SectionMap";
-import { GeoScene, MAX_SHOWN_BLOCKS, type Hover } from "./scene3d";
+import { GeoScene, MAX_SHOWN_BLOCKS, type Hover, type TraceMark } from "./scene3d";
 import { DEFAULT_COLLAR_STYLE, type CollarStyle } from "./collarStyle";
+import { DEFAULT_TRACE_STYLE, depthText, type TraceStyle } from "./traceStyle";
 import { blockColors, defaultBlockStyle, type BlockStyle } from "./blockStyle";
 import { unitTitle } from "../shell/BlockModelPanel";
 import type { ColorScale } from "./colorScale";
-import { loadDownhole, loadHoles, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
+import { loadDownhole, loadHoles, loadIntersections, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
 import { buildDownhole, displayFields, stackOf, type LegendEntry, type StackStart } from "./downholeGeometry";
 import type { StripLogSettings } from "../charts/stripLog";
 import type { EditSession } from "../edit/session";
@@ -49,6 +50,10 @@ export interface SceneViewProps {
   selectedWireframe?: number | null;
   /** Marker and labels of the collars, by set id (default: a circle coloured by the audit, no labels). */
   collarStyles?: Record<number, CollarStyle>;
+  /** Hole traces of each set: line, depth ticks, crossings with wireframes and block models. */
+  traceStyles?: Record<number, TraceStyle>;
+  /** Notes of the crossings search by set (objects left out), for the form of «Стволы». */
+  onTraceNotes?: (setId: number, notes: string[]) => void;
   /** Saved displays of data along the holes that are on in the view. */
   logs?: DownholeLog[];
   /** A layer of a display clicked in the legend: open its form on that layer. */
@@ -289,6 +294,52 @@ export function SceneView(props: SceneViewProps) {
     if (!scene) return;
     for (const d of sets) scene.setCollarStyle(d.id, collarStyles?.[d.id] ?? DEFAULT_COLLAR_STYLE);
   }, [sets, collarStyles]);
+
+  // ---- hole traces: line, depth ticks, crossings with wireframes and block models
+  const traceStyles = props.traceStyles;
+  const onTraceNotes = props.onTraceNotes;
+  // Which objects are shown decides which crossings are marked (when the style asks for visible ones only).
+  const shownObjects = JSON.stringify([
+    wireframes.filter((w) => isShown(ws, layerKey.wireframe(w.id))).map((w) => w.id),
+    blockModels.filter((d) => isShown(ws, layerKey.blocks(d.id))).map((d) => d.id),
+  ]);
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const [shownWf, shownBm] = JSON.parse(shownObjects) as [number[], number[]];
+    const colorOf = new Map(wireframes.map((w) => [w.id, w.color]));
+    for (const d of sets) {
+      const style = traceStyles?.[d.id] ?? DEFAULT_TRACE_STYLE;
+      if (!style.intersections || !(style.withWireframes || style.withBlocks)) {
+        scene.setTraceStyle(d.id, style, []);
+        continue;
+      }
+      scene.setTraceStyle(d.id, style, []); // the line and ticks at once; the marks when they come
+      loadIntersections(d.id, refreshKey, `${wireframes.map((w) => `${w.id}.${w.triangle_count}`).join()}|${blockModels.map((b) => b.id).join()}`)
+        .then((data) => {
+          if (!sceneRef.current) return;
+          const marks: TraceMark[] = [];
+          for (const h of data.holes) {
+            for (const [depth, x, y, z, index, event] of h.points) {
+              const obj = data.objects[index];
+              if (!obj) continue;
+              const wf = obj.kind === "wireframe";
+              if (wf ? !style.withWireframes : !style.withBlocks) continue;
+              if (style.onlyVisible && !(wf ? shownWf.includes(obj.id) : shownBm.includes(obj.id))) continue;
+              const color = wf ? (style.wireframeColor === "object" ? colorOf.get(obj.id) ?? "#ff4d6d" : style.wireframeColor) : style.blockColor;
+              marks.push({
+                xyz: [x, y, z], color, shape: wf ? "diamond" : event === 1 ? "triangle" : "square",
+                label: style.markerLabels ? `${depthText(depth)} · ${wf ? obj.name : `${obj.name}: ${event === 1 ? "вход" : "выход"}`}` : null,
+              });
+            }
+          }
+          sceneRef.current.setTraceStyle(d.id, style, marks);
+          onTraceNotes?.(d.id, data.notes);
+        })
+        .catch((e: Error) => setError(`Пересечения стволов не получены: ${e.message}`));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sets, traceStyles, refreshKey, shownObjects, wireframes]);
 
   // ---- data along the holes (saved displays that are on): tubes, panels, graphs, text
   const logs = props.logs;

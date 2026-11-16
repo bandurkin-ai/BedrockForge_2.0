@@ -15,6 +15,8 @@ import type { ApplyTarget } from "./viz/downhole/ApplyDialog";
 import { hasSamples } from "./shell/SampleTableSelect";
 import { CollarStyleForm } from "./viz/CollarStyleForm";
 import { DEFAULT_COLLAR_STYLE } from "./viz/collarStyle";
+import { TraceStyleForm } from "./viz/TraceStyleForm";
+import { DEFAULT_TRACE_STYLE } from "./viz/traceStyle";
 import type { BlockStyle } from "./viz/blockStyle";
 import { AuditPage, DEFAULT_CONFIG } from "./AuditPage";
 import { DataTables } from "./DataTables";
@@ -347,6 +349,8 @@ function Workspace({
   };
   // Marker and label of the collars of a set (the gear of «Устья»), and windows with rows of interval tables.
   const [collarForm, setCollarForm] = useState<number | null>(null);
+  const [traceForm, setTraceForm] = useState<number | null>(null);
+  const [traceNotes, setTraceNotes] = useState<Record<number, string[]>>({});
   /** An interval or event table of a set: in the bottom panel, like the collars, surveys and assays. */
   const openIntervalTable = (t: { id: number; set_id?: number }, setId?: number) => {
     const sid = setId ?? t.set_id;
@@ -899,6 +903,7 @@ function Workspace({
                   onSetMenu={(setId, x, y) => setMenu({ setId, x, y })}
                   onTableMenu={(setId, table, x, y) => (table.id === null ? setMenu({ setId, x, y }) : setTableMenu({ setId, id: table.id, name: table.name, x, y }))}
                   onCollarStyle={(setId) => setCollarForm(setId)}
+                  onTraceStyle={(setId) => setTraceForm(setId)}
                   onPathsMenu={(setId, x, y) => setPathsMenu({ setId, x, y })}
                   onOpenDisplay={(id) => void guarded(() => openDisplayForm(0, "grade", id))}
                   onOpenIntervalTable={(t, setId) => openIntervalTable(t, setId)}
@@ -940,6 +945,8 @@ function Workspace({
                 logs={logLayers}
                 onLegendLayer={(chartId, trackId) => chartId > 0 && void guarded(() => openDisplayForm(0, "grade", chartId, trackId))}
                 collarStyles={ws.collarStyles}
+                traceStyles={ws.traceStyles}
+                onTraceNotes={(setId, notes) => setTraceNotes((prev) => (JSON.stringify(prev[setId] ?? []) === JSON.stringify(notes) ? prev : { ...prev, [setId]: notes }))}
                 blockStyles={blockStyles}
                 onPickBlock={(modelId, index) => {
                   setPickedBlock({ modelId, index });
@@ -1213,6 +1220,19 @@ function Workspace({
           </ChartWindow>
         );
       })}
+
+      {traceForm !== null && sets.some((d) => d.id === traceForm) && (
+        <ChartWindow
+          index={1} z={30 + topZ()} size="compact" icon="gear" title={`Стволы · ${sets.find((d) => d.id === traceForm)?.name ?? ""}`}
+          onFocus={() => undefined} onClose={() => setTraceForm(null)}
+        >
+          <TraceStyleForm
+            style={ws.traceStyles[traceForm] ?? DEFAULT_TRACE_STYLE}
+            notes={traceNotes[traceForm]}
+            onChange={(next) => setWs((prev) => ({ ...prev, traceStyles: { ...prev.traceStyles, [traceForm]: next } }))}
+          />
+        </ChartWindow>
+      )}
 
       {collarForm !== null && sets.some((d) => d.id === collarForm) && (
         <ChartWindow

@@ -1,4 +1,4 @@
-import { getDownhole, getIntervals, getLineGeometry, getTrajectories, getWireframeGeometry, listHoles, type DownholeData, type Hole, type IntervalsData, type Trajectories, type WireframeGeometry } from "../api";
+import { getDownhole, getIntersections, getIntervals, getLineGeometry, getTrajectories, getWireframeGeometry, listHoles, type DownholeData, type Hole, type Intersections, type IntervalsData, type Trajectories, type WireframeGeometry } from "../api";
 import { loadBuffers, type Bounds } from "./geometryLoader";
 
 // Requests are cached for the session so toggling layers does not refetch megabytes.
@@ -19,6 +19,10 @@ export function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
 
 export const loadTrajectories = (setId: number, refreshKey: number): Promise<Trajectories> =>
   cached(`traj:${setId}:${refreshKey}`, () => getTrajectories(setId));
+
+/** `objects`: the project's wireframes and block models — a new or deleted one asks again. */
+export const loadIntersections = (setId: number, refreshKey: number, objects: string): Promise<Intersections> =>
+  cached(`isect:${setId}:${refreshKey}:${objects}`, () => getIntersections(setId));
 
 export const loadIntervals = (setId: number, component: string, refreshKey: number): Promise<IntervalsData> =>
   cached(`int:${setId}:${refreshKey}:${component}`, () => getIntervals(setId, component));

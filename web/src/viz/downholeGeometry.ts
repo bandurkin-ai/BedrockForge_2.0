@@ -573,7 +573,8 @@ export function buildDownhole(
     const traj = holes.get(holeKey(hole.hole_id));
     if (!traj || traj.path.length < 1 || traj.path[0].length < 4) continue;
     build.holes += 1;
-    let lastBottom = -Infinity;
+    // Depths where each panel column drew a value: its base line runs only there.
+    const drawn = new Map<string, [number, number][]>();
     for (const r of resolved) {
       const t = r.track;
       const rows = (hole.tables[t.table] ?? []).filter((iv) => iv.from !== null && iv.to !== null);
@@ -632,7 +633,6 @@ export function buildDownhole(
         const pa = rel(pointAt(traj.path, span[0]));
         const pb = rel(pointAt(traj.path, span[1]));
         const tan = unit(pa, pb);
-        lastBottom = Math.max(lastBottom, span[1]);
         if (wantsColor && color) {
           if (tubes) {
             const layer = tubes.length > 1 && value !== null && r.range
@@ -645,6 +645,8 @@ export function buildDownhole(
             }
           } else if (col) {
             for (const s of col.sides) addTriangles(build.panels, pa, pb, tan, s * col.offset, s * (col.offset + col.width), color, alpha);
+            if (!drawn.has(t.id)) drawn.set(t.id, []);
+            drawn.get(t.id)!.push(span);
           }
         }
         // the far end of the interval's mark beside the hole: where its label goes
@@ -653,6 +655,8 @@ export function buildDownhole(
           const p = Math.min(cap, positionOf(value, lo, hi, t.log));
           const c = color ?? hexRgb(FRAME_COLOR);
           // Sides the value is drawn on, and how far: a split sends values below the threshold to the left.
+          if (!drawn.has(t.id)) drawn.set(t.id, []);
+          drawn.get(t.id)!.push(span);
           const marks: [number, number][] = split === null
             ? col.sides.map((s) => [s, p] as [number, number])
             : [p >= split ? [1, split < 1 ? (p - split) / (1 - split) : 0] : [-1, split > 0 ? (split - p) / split : 0]];
@@ -727,18 +731,19 @@ export function buildDownhole(
         for (const [s, before] of prev) addSegment(build.lines, before.point, before.point, [0, 0, -1], before.amp, s * col.offset, hexRgb(t.color));
       }
     }
-    // The base line of every panel column along the hole (its outer edge is not drawn: a line over the graph only hides it).
-    if (lastBottom > -Infinity) {
-      const top = from ?? traj.path[0][3];
-      const a = rel(pointAt(traj.path, Math.max(top, traj.path[0][3])));
-      const b = rel(pointAt(traj.path, lastBottom));
-      const tan = unit(a, b);
-      for (const r of resolved) {
-        const col = columns.get(r.track.id);
-        if (!col || tubeIds.has(r.track.id) || r.track.type === "text" || r.track.type === "event") continue;
-        const sides = typeof r.track.split === "number" ? [1, -1] : col.sides;
-        for (const s of sides) {
-          addSegment(build.lines, a, b, tan, s * col.offset, s * col.offset, frame);
+    // The base line of every panel column (its outer edge is not drawn: a line over the graph only hides it).
+    // It follows the hole through its survey stations and runs only where the column has values: a straight
+    // line from the collar to the deepest interval would stand apart from a bent hole and go on below the data.
+    for (const r of resolved) {
+      const col = columns.get(r.track.id);
+      const spans = drawn.get(r.track.id);
+      if (!col || !spans?.length || tubeIds.has(r.track.id) || r.track.type === "text" || r.track.type === "event") continue;
+      const sides = typeof r.track.split === "number" ? [1, -1] : col.sides;
+      for (const [a, b] of mergeSpans(spans)) {
+        const pts = pathBetween(traj.path, a, b).map(rel);
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const tan = unit(pts[i], pts[i + 1]);
+          for (const s of sides) addSegment(build.lines, pts[i], pts[i + 1], tan, s * col.offset, s * col.offset, frame);
         }
       }
     }
@@ -764,6 +769,18 @@ export function buildDownhole(
   }
   build.tubes = build.tubes.filter((t) => t.positions.length > 0);
   return build;
+}
+
+/** Depth spans joined where they touch or overlap, from the top down. */
+export function mergeSpans(spans: [number, number][]): [number, number][] {
+  const sorted = [...spans].sort((a, b) => a[0] - b[0]);
+  const out: [number, number][] = [];
+  for (const [a, b] of sorted) {
+    const last = out[out.length - 1];
+    if (last && a <= last[1] + 1e-6) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
 }
 
 function rgbHex(c: Rgb): string {
