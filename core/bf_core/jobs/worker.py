@@ -17,7 +17,39 @@ from typing import Any
 HEARTBEAT_S = 5.0
 
 
+def _worker_log(queue_name: str) -> None:
+    """The worker's own log file (its stderr is not the core's in a packaged app)."""
+    import logging
+
+    try:
+        from bf_core.paths import logs_dir
+
+        logs_dir().mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(logs_dir() / f"worker-{queue_name}.log", encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(process)d %(levelname)s %(message)s"))
+        root = logging.getLogger("bf_core")
+        root.addHandler(handler)
+        root.setLevel(logging.INFO)
+    except OSError:
+        pass
+
+
 def main(conn: Connection, queue_name: str) -> None:
+    conn.send(("hello",))  # before any import: the scheduler sees the process is alive and the pipe works
+    _worker_log(queue_name)
+    import logging
+
+    wlog = logging.getLogger("bf_core.worker")
+    wlog.info("worker %s: started", queue_name)
+    try:
+        _main(conn, queue_name)
+    except BaseException:
+        wlog.exception("worker %s: failed", queue_name)
+        raise
+    wlog.info("worker %s: stopped", queue_name)
+
+
+def _main(conn: Connection, queue_name: str) -> None:
     os.environ.setdefault("BF_WORKER", queue_name)
     from bf_core.paths import configure_numba_cache
 
@@ -26,6 +58,9 @@ def main(conn: Connection, queue_name: str) -> None:
     from .registry import load_handlers
 
     kinds = load_handlers()
+    import logging
+
+    logging.getLogger("bf_core.worker").info("handlers: %s", ", ".join(sorted(kinds)))
     send_lock = threading.Lock()
 
     def send(msg: tuple[Any, ...]) -> None:

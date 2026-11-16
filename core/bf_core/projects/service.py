@@ -84,10 +84,12 @@ def projects_of(state: CoreState) -> ProjectService:
         migrate.upgrade(engine, "instance")
         root = Path(state.projects_dir) if state.projects_dir else default_projects_dir()
         service = _Service(root, engine)
-        state.services["projects"] = service
-    from bf_core.jobs.service import attach
+        from bf_core.jobs.service import attach
 
-    attach(state, service)  # the scheduler is created right after: shutdown closes it first
+        # The scheduler first, then the service becomes visible: a concurrent request never sees one without
+        # the other. Shutdown closes them in reverse order (the scheduler before the projects).
+        attach(state, service)
+        state.services["projects"] = service
     return service  # type: ignore[no-any-return]
 
 

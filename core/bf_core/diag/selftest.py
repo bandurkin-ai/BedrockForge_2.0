@@ -175,6 +175,8 @@ def check_worker() -> dict[str, Any]:
         while parent.poll(60):
             msg = parent.recv()
             msgs.append(msg[0])
+            if msg[0] == "hello":
+                continue
             if msg[0] == "ready":
                 parent.send(("run", {"id": 1, "kind": "diag.quick", "params": {}}))
             elif msg[0] in ("done", "error"):

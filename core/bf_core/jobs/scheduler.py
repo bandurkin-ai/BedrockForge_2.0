@@ -360,6 +360,9 @@ class Scheduler:
 
     def _on_message(self, w: Worker, msg: tuple[Any, ...]) -> None:
         kind = msg[0]
+        if kind == "hello":
+            log.info("worker %s answers", w.name)
+            return
         if kind == "ready":
             w.ready = True
             log.info("worker %s ready", w.name)
