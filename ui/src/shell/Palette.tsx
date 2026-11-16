@@ -54,7 +54,11 @@ function PaletteBox({ initial }: { initial: string }) {
             if (e.key === "Escape") close();
             else if (e.key === "ArrowDown") setSel((i) => Math.min(rows.length - 1, i + 1));
             else if (e.key === "ArrowUp") setSel((i) => Math.max(0, i - 1));
-            else if (e.key === "Enter") runRow(rows[sel]);
+            else if (e.key === "Enter") {
+              // The text may be ahead of the last render (typed and Enter at once): search what is in the field.
+              const text = e.currentTarget.value;
+              runRow(text === query ? rows[sel] : searchPalette(text, items, [])[0]);
+            }
             else return;
             e.preventDefault();
           }}
