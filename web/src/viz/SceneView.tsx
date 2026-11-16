@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { blockMeta, getBlockExposed, getBlockRender, getBlockValues, getSections, rasterImageUrl, type Dataset, type Hole, type VerticalPlacement } from "../api";
+import { blockMeta, getBlockExposed, getBlockRender, getBlockValues, getSections, rasterImageUrl, type BlockAttribute, type Dataset, type Hole, type VerticalPlacement } from "../api";
 import { VEXAG_STEPS, isShown, layerKey, type ViewPreset, type WorkspaceState } from "../shell/workspace";
-import { ScaleStrip, type VizSettings } from "./ComponentPanel";
+import type { VizSettings } from "./ComponentPanel";
 import { azimuthDeg, DEFAULT_WINDOW, defaultSection, shiftSection, type SectionLine } from "./geometry";
 import { SectionMap } from "./SectionMap";
 import { GeoScene, MAX_SHOWN_BLOCKS, type Hover, type TraceMark } from "./scene3d";
 import { DEFAULT_COLLAR_STYLE, type CollarStyle } from "./collarStyle";
 import { DEFAULT_TRACE_STYLE, depthText, type TraceStyle } from "./traceStyle";
-import { blockColors, defaultBlockStyle, type BlockStyle } from "./blockStyle";
+import { activeConditions, blockColors, defaultBlockStyle, filterMask, shellMask, type BlockLegendItems, type BlockStyle } from "./blockStyle";
 import { unitTitle } from "../shell/BlockModelPanel";
-import type { ColorScale } from "./colorScale";
+import { formatValue } from "./colorScale";
 import { loadDownhole, loadHoles, loadIntersections, loadLines, loadTrajectories, loadWireframeInfo, loadWireframeLevel } from "./useVizData";
 import { buildDownhole, displayFields, stackOf, type LegendEntry, type StackStart } from "./downholeGeometry";
 import type { StripLogSettings } from "../charts/stripLog";
@@ -114,7 +114,18 @@ export function SceneView(props: SceneViewProps) {
   const readyBlocks = useRef(new Set<number>());
   const blockValues = useRef(new Map<string, Float32Array>());
   const styleRun = useRef(0);
-  const [blockLegend, setBlockLegend] = useState<{ name: string; unit: string | null; scale: ColorScale | null; shown: number; total: number; tooMany: boolean; shell: number | null; thinned: number } | null>(null);
+  const [blockLegend, setBlockLegend] = useState<{
+    name: string; unit: string | null; items: BlockLegendItems;
+    /** blocks that pass the restriction, all blocks, boxes drawn */
+    shown: number; total: number; drawn: number;
+    shell: boolean; thinned: number;
+    /** the shell was taken because the model is too big to draw whole */
+    forced: boolean; slice: boolean; filtered: boolean;
+  } | null>(null);
+  // Colours and the blocks drawn, by model id: counted again only when the look of the model changes.
+  const blockDrawings = useRef(new Map<number, {
+    key: string; colors: Uint8Array; all: Uint8Array; drawn: Uint8Array; shown: number; count: number; shell: boolean; thinned: number; legend: BlockLegendItems;
+  }>());
   // Outer shells of big models, by model id (they do not change when values are edited).
   const blockShells = useRef(new Map<number, Uint8Array>());
   const holesBySet = useRef(new Map<number, Map<string, Hole>>());
@@ -529,6 +540,8 @@ export function SceneView(props: SceneViewProps) {
       if (!ids.has(id)) {
         loadedBlocks.current.delete(id);
         readyBlocks.current.delete(id);
+        blockDrawings.current.delete(id);
+        blockShells.current.delete(id);
       }
     }
     for (const d of blockModels) {
@@ -562,61 +575,106 @@ export function SceneView(props: SceneViewProps) {
       const meta = blockMeta(d);
       const style = live.current.blockStyles?.[d.id] ?? defaultBlockStyle(meta);
       const attr = meta.attributes.find((a) => a.key === style.attribute) ?? null;
-      let values: Float32Array | null = null;
-      if (attr) {
-        // Values change when a block is edited: the statistics then change too.
-        const key = `${d.id}:${attr.key}:${JSON.stringify(attr.stats)}:${attr.labels?.length ?? 0}`;
-        values = blockValues.current.get(key) ?? null;
-        if (!values) {
+      // Values of the colour field and of the fields of the restriction (they change when a block is edited: the statistics then change too).
+      const fields = new Map<string, BlockAttribute>();
+      if (attr) fields.set(attr.key, attr);
+      for (const c of activeConditions(style.filter, meta.attributes)) fields.set(c.attribute.key, c.attribute);
+      const loaded = new Map<string, Float32Array>();
+      let failed = false;
+      for (const a of fields.values()) {
+        const key = `${d.id}:${a.key}:${JSON.stringify(a.stats)}:${a.labels?.length ?? 0}`;
+        let v = blockValues.current.get(key) ?? null;
+        if (!v) {
           try {
-            values = await getBlockValues(d.id, attr.key);
+            v = await getBlockValues(d.id, a.key);
           } catch (e) {
-            setError(`Значения поля ${attr.name} не загрузились: ${(e as Error).message}`);
-            continue;
+            setError(`Значения поля ${a.name} не загрузились: ${(e as Error).message}`);
+            failed = true;
+            break;
           }
-          blockValues.current.set(key, values);
+          blockValues.current.set(key, v);
         }
+        loaded.set(a.key, v);
       }
+      if (failed) continue;
       if (run !== styleRun.current) return;
       const shownLayer = isShown(live.current.ws, layerKey.blocks(d.id));
-      const c = blockColors(meta.block_count, attr, values, style);
-      // Too many blocks for the browser: draw only those that can be seen from outside.
-      let shell = false;
-      if (c.shown > MAX_SHOWN_BLOCKS) {
-        let mask = blockShells.current.get(d.id) ?? null;
-        if (!mask) {
-          try {
-            mask = await getBlockExposed(d.id);
-            blockShells.current.set(d.id, mask);
-          } catch (e) {
-            setError(`Оболочка блочной модели не загрузилась: ${(e as Error).message}`);
+      const n = meta.block_count;
+      const values = attr ? loaded.get(attr.key) ?? null : null;
+      // Colours and the blocks to draw are kept until something they depend on changes.
+      const { opacity: _o, slice: _s, edges: _e, edgeColor: _c, edgeWidth: _w, palette: _p, ...look } = style;
+      const lookKey = `${JSON.stringify(look)}|${[...fields.values()].map((a) => JSON.stringify(a.stats)).join()}`;
+      let drawing = blockDrawings.current.get(d.id);
+      if (!drawing || drawing.key !== lookKey) {
+        const c = blockColors(n, attr, values, style);
+        const passes = filterMask(n, style.filter, meta.attributes, (key) => loaded.get(key) ?? null);
+        if (passes) {
+          c.shown = 0;
+          for (let i = 0; i < n; i++) c.shown += (c.visible[i] &= passes[i]);
+        }
+        // The outer shell: asked for, or the only way to draw a model too big for the browser.
+        let drawn = c.visible;
+        let shell = false;
+        if (c.shown > 0 && (style.view === "shell" || c.shown > MAX_SHOWN_BLOCKS)) {
+          // The whole model: the shell stored on the server. A part of it: counted here.
+          let mask = c.shown < n ? shellMask(scene.blockRender(d.id) ?? new Float32Array(0), c.visible, meta.grid, meta.render_origin) : null;
+          if (!mask) {
+            let whole = blockShells.current.get(d.id) ?? null;
+            if (!whole) {
+              try {
+                whole = await getBlockExposed(d.id);
+                blockShells.current.set(d.id, whole);
+              } catch (e) {
+                setError(`Оболочка блочной модели не загрузилась: ${(e as Error).message}`);
+              }
+            }
+            if (run !== styleRun.current) return;
+            if (whole && whole.length === n) {
+              mask = new Uint8Array(n);
+              for (let i = 0; i < n; i++) mask[i] = c.visible[i] & whole[i];
+            }
+          }
+          if (mask) {
+            drawn = mask;
+            shell = true;
           }
         }
-        if (run !== styleRun.current) return;
-        if (mask && mask.length === c.visible.length) {
-          for (let i = 0; i < mask.length; i++) c.visible[i] &= mask[i];
-          shell = true;
-        }
-      }
-      // Still too many (a sparse model has a thick shell): every k-th block, so the model is seen at all.
-      let thinned = 1;
-      if (c.shown > MAX_SHOWN_BLOCKS) {
+        // Still too many (a sparse model has a thick shell): every k-th block, so the model is seen at all.
         let count = 0;
-        for (let i = 0; i < c.visible.length; i++) count += c.visible[i];
+        for (let i = 0; i < n; i++) count += drawn[i];
+        let thinned = 1;
         if (count > MAX_SHOWN_BLOCKS) {
           thinned = Math.ceil(count / MAX_SHOWN_BLOCKS);
+          if (drawn === c.visible) drawn = c.visible.slice();
           let k = 0;
-          for (let i = 0; i < c.visible.length; i++) if (c.visible[i] && k++ % thinned !== 0) c.visible[i] = 0;
+          count = 0;
+          for (let i = 0; i < n; i++) {
+            if (drawn[i] && k++ % thinned !== 0) drawn[i] = 0;
+            count += drawn[i];
+          }
         }
+        drawing = { key: lookKey, colors: c.colors, all: c.visible, drawn, shown: c.shown, count, shell, thinned, legend: c.legend };
+        blockDrawings.current.set(d.id, drawing);
       }
-      const drawn = scene.setBlockStyle(d.id, c.colors, c.visible, style.opacity, shownLayer);
+      scene.setBlockStyle(d.id, {
+        colors: drawing.colors, all: drawing.all, drawn: drawing.drawn, opacity: style.opacity, shown: shownLayer, slice: style.slice,
+        edges: style.edges ? { color: style.edgeColor, width: style.edgeWidth } : null,
+      });
       if (shownLayer && !legend) {
-        legend = { name: attr ? attr.name : d.name, unit: attr?.unit ?? null, scale: c.scale, shown: c.shown, total: meta.block_count, tooMany: drawn < 0, shell: shell || thinned > 1 ? Math.max(drawn, 0) : null, thinned };
+        legend = {
+          name: attr ? attr.name : d.name, unit: attr?.unit ?? null, items: drawing.legend, shown: drawing.shown, total: n, drawn: drawing.count,
+          shell: drawing.shell, thinned: drawing.thinned, forced: drawing.shell && style.view !== "shell", slice: style.slice,
+          filtered: activeConditions(style.filter, meta.attributes).length > 0,
+        };
       }
     }
     if (run === styleRun.current) setBlockLegend(legend);
   }
-  useEffect(() => void styleBlocks(), [props.blockStyles, ws.hidden, datasets]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A moment after the last change: typing a value or dragging a slider restyles a big model once, not per keystroke.
+  useEffect(() => {
+    const timer = window.setTimeout(() => void styleBlocks(), 120);
+    return () => window.clearTimeout(timer);
+  }, [props.blockStyles, ws.hidden, datasets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function applyStyles() {
     const scene = sceneRef.current;
@@ -783,14 +841,32 @@ export function SceneView(props: SceneViewProps) {
       {edit && <AssembleBar edit={edit} sceneRef={sceneRef} onCreate={(lines, closed) => props.onAssemble?.(lines, closed)} />}
       {blockLegend && (
         <div className="scene-legend block-legend">
-          {blockLegend.scale ? <ScaleStrip component={`Блоки: ${blockLegend.name}`} unit={blockLegend.unit ? unitTitle(blockLegend.unit as never) : null} scale={blockLegend.scale} log={blockLegend.scale.log} /> : <strong>Блоки: {blockLegend.name}</strong>}
+          <strong>Блоки: {blockLegend.name}{blockLegend.unit ? `, ${unitTitle(blockLegend.unit as never)}` : ""}</strong>
+          {blockLegend.items?.kind === "scale" && (
+            <span className="block-legend-scale">
+              <span>{formatValue(blockLegend.items.min)}</span>
+              <i className="legend-bar" style={{ background: blockLegend.items.css }} />
+              <span>{formatValue(blockLegend.items.max)}</span>
+              {blockLegend.items.log && <span className="muted">лог.</span>}
+            </span>
+          )}
+          {blockLegend.items?.kind === "swatches" && (
+            <>
+              {blockLegend.items.items.slice(0, 14).map(([label, color]) => <span key={label} className="legend-swatch"><i style={{ background: color }} />{label || "(пусто)"}</span>)}
+              {blockLegend.items.items.length > 14 && <span className="muted small">… ещё {blockLegend.items.items.length - 14}</span>}
+            </>
+          )}
           <span className="muted small">
-            {blockLegend.tooMany
-              ? ` · показать можно до ${MAX_SHOWN_BLOCKS.toLocaleString("ru-RU")} блоков: сузьте отбор (${blockLegend.shown.toLocaleString("ru-RU")})`
-              : blockLegend.shell !== null
-              ? ` · отобрано ${blockLegend.shown.toLocaleString("ru-RU")} из ${blockLegend.total.toLocaleString("ru-RU")}, показано ${blockLegend.shell.toLocaleString("ru-RU")}: `
-                + (blockLegend.thinned > 1 ? `внешние блоки, каждый ${blockLegend.thinned}-й — сузьте отбор, чтобы увидеть все` : "внешняя оболочка")
-              : ` · показано ${blockLegend.shown.toLocaleString("ru-RU")} из ${blockLegend.total.toLocaleString("ru-RU")}`}
+            {blockLegend.filtered || blockLegend.shown < blockLegend.total
+              ? `отобрано ${blockLegend.shown.toLocaleString("ru-RU")} из ${blockLegend.total.toLocaleString("ru-RU")}`
+              : `блоков ${blockLegend.total.toLocaleString("ru-RU")}`}
+            {section && ws.clip && blockLegend.slice
+              ? " · срез плоскостью разреза"
+              : blockLegend.thinned > 1
+              ? ` · показано ${blockLegend.drawn.toLocaleString("ru-RU")}: внешние блоки, каждый ${blockLegend.thinned}-й — сузьте отбор ограничителем, чтобы увидеть все`
+              : blockLegend.shell
+              ? ` · внешняя оболочка: ${blockLegend.drawn.toLocaleString("ru-RU")}${blockLegend.forced ? ` (все блоки — до ${MAX_SHOWN_BLOCKS.toLocaleString("ru-RU")})` : ""}`
+              : ""}
           </span>
         </div>
       )}

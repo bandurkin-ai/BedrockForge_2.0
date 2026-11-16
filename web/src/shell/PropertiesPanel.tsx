@@ -18,7 +18,7 @@ const fmt = (value: number | null | undefined, digits = 0) =>
 /** Right dock: the selected object (hole, wireframe) or the active drillhole set. */
 export function PropertiesPanel({
   datasets, activeSet, summary, audit, selectedHole, selected, refreshKey, onOpenTable, onClearHole, onRaster, sectionFrame,
-  blockStyles, onBlockStyle, pickedBlock, onBlockUnit, onBlockReport, onWireframe, onBlockValues, edit, triangle, onCommand,
+  blockStyles, onBlockStyle, onBlockSettings, pickedBlock, onBlockUnit, onBlockReport, onWireframe, onBlockValues, edit, triangle, onCommand,
 }: {
   /** The string editor's session, while a layer is being edited. */
   edit?: EditSession | null;
@@ -42,6 +42,7 @@ export function PropertiesPanel({
   sectionFrame: () => VerticalPlacement | null;
   blockStyles?: Record<number, BlockStyle>;
   onBlockStyle?: (id: number, style: BlockStyle) => void;
+  onBlockSettings?: (id: number) => void;
   pickedBlock?: { modelId: number; index: number } | null;
   onBlockUnit?: (id: number, key: string, unit: BlockAttribute["unit"]) => void;
   onBlockReport?: (id: number) => void;
@@ -65,7 +66,7 @@ export function PropertiesPanel({
       <BlockModelPanel
         dataset={model} style={blockStyles?.[model.id] ?? defaultBlockStyle(blockMeta(model))}
         picked={pickedBlock?.modelId === model.id ? pickedBlock.index : null}
-        onStyle={(style) => onBlockStyle?.(model.id, style)} onUnit={(key, unit) => onBlockUnit?.(model.id, key, unit)}
+        onStyle={(style) => onBlockStyle?.(model.id, style)} onSettings={() => onBlockSettings?.(model.id)} onUnit={(key, unit) => onBlockUnit?.(model.id, key, unit)}
         onReport={() => onBlockReport?.(model.id)}
         onValues={onBlockValues ? (index, values) => onBlockValues(model.id, index, values) : undefined}
       />
