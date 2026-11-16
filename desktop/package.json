@@ -11,7 +11,7 @@
     "web": "npm --prefix ../web ci && npm --prefix ../web run build",
     "start": "electron .",
     "test": "node --test test/proxy.test.js",
-    "dist": "npm run web && electron-builder --win portable nsis --x64 --publish never",
+    "dist": "npm run web && electron-builder --win portable --x64 --publish never",
     "dist:dir": "electron-builder --win dir --x64 --publish never"
   },
   "devDependencies": {
@@ -40,21 +40,12 @@
     "win": {
       "icon": "assets/icon.png",
       "target": [
-        "portable",
-        "nsis"
+        "portable"
       ],
       "executableName": "BedrockForge"
     },
     "portable": {
       "artifactName": "BedrockForge-${version}-portable.exe"
-    },
-    "nsis": {
-      "artifactName": "BedrockForge-${version}-setup.exe",
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "shortcutName": "BedrockForge",
-      "uninstallDisplayName": "BedrockForge by Mikhail Bandurkin"
     },
     "publish": [
       {
