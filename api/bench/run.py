@@ -6,7 +6,7 @@
 
 Every scenario runs in its own process, so its peak memory (max RSS) is its own.
 `--check` fails (exit 1) when a time or memory budget of bench/budgets.json is exceeded;
-with `--baseline FILE` it also reports scenarios more than 20 % slower than that earlier run.
+with `--baseline FILE` it also reports scenarios more than 20 % (and at least 0.25 s) slower than that earlier run.
 Database scenarios use BENCH_DATABASE_URL or TEST_DATABASE_URL (a migrated database).
 """
 
@@ -24,6 +24,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SLOWDOWN = 1.2
+# Scenarios of a fraction of a second vary by more than 20 % between two runs on a shared runner
+# (serve_blob: 0.10-0.20 s on the same code), so a slowdown also has to be at least this long.
+SLOWDOWN_FLOOR = 0.25
 
 PROFILES = {
     "ci": {"mesh_stats": 1_000_000, "store_mesh": 1_000_000, "import_tridb": 1_000_000,
@@ -436,7 +439,8 @@ def check(results: list[dict], profile: str, baseline: dict | None) -> list[str]
         if "peak_mb" in b and r["peak_mb"] > b["peak_mb"]:
             problems.append(f"{name}: {r['peak_mb']} МБ памяти > бюджета {b['peak_mb']} МБ")
         old = (baseline or {}).get(name)
-        if old and old.get("size") == r["size"] and r["seconds"] > old["seconds"] * SLOWDOWN:
+        if (old and old.get("size") == r["size"] and r["seconds"] > old["seconds"] * SLOWDOWN
+                and r["seconds"] - old["seconds"] > SLOWDOWN_FLOOR):
             problems.append(f"{name}: {r['seconds']} с, медленнее прошлого замера ({old['seconds']} с) больше чем на 20 %")
     return problems
 
