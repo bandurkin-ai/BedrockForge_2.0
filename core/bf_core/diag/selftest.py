@@ -141,8 +141,26 @@ def check_routers() -> dict[str, Any]:
     return {"modules": list(ROUTER_MODULES), "routes": paths}
 
 
+def check_migrations() -> dict[str, Any]:
+    """Alembic revisions ship as data files in the frozen exe: both chains upgrade an empty database."""
+    from bf_core.db import dialect, migrate
+
+    heads = {}
+    with tempfile.TemporaryDirectory(prefix="bf-selftest-") as tmp:
+        for chain in ("project", "instance"):
+            engine = dialect.create_engine(dialect.sqlite_url(str(Path(tmp) / f"{chain}.sqlite")))
+            try:
+                migrate.upgrade(engine, chain)
+                assert migrate.state(engine, chain) == "current"
+                heads[chain] = migrate.head(chain)
+            finally:
+                engine.dispose()
+    return {"heads": heads}
+
+
 CHECKS: dict[str, Callable[[], dict[str, Any]]] = {
     "routers": check_routers,
+    "migrations": check_migrations,
     "numpy_scipy": check_numpy_scipy,
     "numba": check_numba,
     "manifold3d": check_manifold,

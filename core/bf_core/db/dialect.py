@@ -124,26 +124,41 @@ def read_tx(engine: Engine) -> Iterator[Connection]:
         yield conn
 
 
+@contextmanager
+def _driver(engine: Engine) -> Iterator[Any]:
+    """The sqlite3 connection itself, in autocommit (`isolation_level = None`): for statements that may not
+    run inside a transaction (VACUUM, wal_checkpoint) — SQLAlchemy would begin one implicitly."""
+    with engine.connect() as conn:
+        raw = conn.connection.driver_connection
+        assert raw is not None
+        yield raw
+
+
 def quick_check(engine: Engine) -> str:
     """`PRAGMA quick_check` on SQLite ("ok" when sound); PostgreSQL has no equivalent — "ok"."""
     if not is_sqlite(engine):
         return "ok"
-    with engine.connect() as conn:
-        rows = conn.exec_driver_sql("PRAGMA quick_check").fetchall()
+    try:
+        with _driver(engine) as raw:
+            rows = raw.execute("PRAGMA quick_check").fetchall()
+    except sa.exc.DBAPIError as exc:
+        return str(exc.orig)
+    except Exception as exc:  # noqa: BLE001 - sqlite3.DatabaseError on a damaged header
+        return str(exc)
     return "; ".join(str(r[0]) for r in rows[:5])
 
 
 def checkpoint(engine: Engine) -> None:
     """Fold the WAL into the database file (on close and before a backup)."""
     if is_sqlite(engine):
-        with engine.connect() as conn:
-            conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+        with _driver(engine) as raw:
+            raw.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
 
 def vacuum_into(engine: Engine, target: str) -> None:
     """A consistent copy of a live SQLite database (backups, `.bfggis` export)."""
-    with engine.connect() as conn:
-        conn.exec_driver_sql("VACUUM INTO ?", (target,))
+    with _driver(engine) as raw:
+        raw.execute("VACUUM INTO ?", (target,))
 
 
 @contextmanager

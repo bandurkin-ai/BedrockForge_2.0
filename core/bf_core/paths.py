@@ -48,3 +48,16 @@ def configure_numba_cache() -> Path:
     path = Path(os.environ["NUMBA_CACHE_DIR"])
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def instance_db() -> Path:
+    """Jobs without a project and the cache of the project list (ADR 0002 §6); deleted without loss."""
+    return local_app_dir() / "state" / "instance.sqlite"
+
+
+def default_projects_dir() -> Path:
+    """Документы\\BedrockForge\\Проекты (ТЗ 6.5); the shell passes the real Documents folder with --projects."""
+    portable = _portable_root()
+    if portable is not None:
+        return portable / "Проекты"
+    return Path.home() / "Documents" / APP_DIR_NAME / "Проекты"

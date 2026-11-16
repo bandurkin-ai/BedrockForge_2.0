@@ -21,6 +21,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--port", type=int, default=0, help="0 = random free port")
     p.add_argument("--token", default=os.environ.get("BF_TOKEN", ""), help="launch token (X-BF-Token)")
     p.add_argument("--data", default=None, help="user data directory")
+    p.add_argument("--projects", default=os.environ.get("BF_PROJECTS_DIR"), help="folder of projects")
     p.add_argument("--mode", default=os.environ.get("BF_MODE", "desktop"), choices=["desktop", "server"])
     p.add_argument("--dev-origin", action="append", default=[], help="extra allowed Origin (dev only)")
     p.add_argument("--watch-stdin", action="store_true", help="exit when stdin closes (parent shell died)")
@@ -83,7 +84,7 @@ def serve(args: argparse.Namespace) -> int:
     sock.bind(("127.0.0.1", args.port))
     port = sock.getsockname()[1]
 
-    state = CoreState(token=args.token, mode=args.mode, data_dir=args.data, port=port)
+    state = CoreState(token=args.token, mode=args.mode, data_dir=args.data, port=port, projects_dir=args.projects)
     app = create_app(state, extra_origins=tuple(args.dev_origin))
     config = uvicorn.Config(app, log_level="warning", access_log=False, lifespan="on", timeout_graceful_shutdown=5)
     server = uvicorn.Server(config)
