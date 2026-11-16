@@ -3,7 +3,7 @@ import { useApp } from "./AppContext";
 import { commandContext } from "./store";
 import { formatShortcut } from "./keys";
 import { Icon } from "./Icon";
-import { buildRibbon, itemReason, type RibbonItem } from "./ribbon";
+import { buildRibbon, itemReason, type RibbonItem } from "./ribbonConfig";
 import { effectiveShortcuts, functionKey } from "./shortcuts";
 import { useRegistryVersion, useStore } from "./useStore";
 import css from "./Ribbon.module.css";

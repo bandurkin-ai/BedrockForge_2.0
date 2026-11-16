@@ -124,7 +124,7 @@ jobs:
         with: { fetch-depth: 0 }
       - name: Имена файлов, различающиеся только регистром
         run: |
-          dup=$(git ls-files | sort -f | uniq -di)
+          dup=$( (git ls-files; git ls-files | sed -E 's#\.[^/]*$##') | sort -f | uniq -i -D | sort -u | awk '{l=tolower($0); if (seen[l] && seen[l]!=$0) print; seen[l]=$0}')
           if [ -n "$dup" ]; then echo "Запрещено (ТЗ 17.2.1):"; echo "$dup"; exit 1; fi
       - name: Скрипты .bat/.cmd только ASCII
         run: |

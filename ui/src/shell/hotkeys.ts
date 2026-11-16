@@ -1,6 +1,6 @@
 /** Resolving a key press to a ribbon function (ТЗ 7.0.6). Pure; Shell.tsx listens to keydown. */
 import { isPlainKey } from "./keys";
-import type { FlatItem } from "./ribbon";
+import type { FlatItem } from "./ribbonConfig";
 import { effectiveShortcuts, functionKey, type ShortcutOverrides } from "./shortcuts";
 
 export interface KeyTarget {

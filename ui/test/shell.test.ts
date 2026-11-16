@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { moduleCommands } from "../src/shell/catalog";
 import { EMPTY_CONTEXT } from "../src/shell/commands";
-import { buildRibbon, flattenRibbon, itemReason } from "../src/shell/ribbon";
+import { buildRibbon, flattenRibbon, itemReason } from "../src/shell/ribbonConfig";
 import { assign, defaultShortcuts, effectiveShortcuts, functionKey, normalizeShortcuts } from "../src/shell/shortcuts";
 import {
   DEFAULT_TREE_ORDER,
@@ -109,7 +109,7 @@ describe("workspace (ТЗ 7.0.10, 7.0.14)", () => {
   });
 });
 
-import { searchPalette } from "../src/shell/palette";
+import { searchPalette } from "../src/shell/paletteSearch";
 
 describe("palette (ТЗ 7.0.7)", () => {
   const holes = Array.from({ length: 50_000 }, (_, i) => ({ holeId: `СКВ-${String(i + 1).padStart(5, "0")}`, setName: "Набор 1" }));

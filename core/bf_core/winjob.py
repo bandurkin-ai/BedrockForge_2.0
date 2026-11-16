@@ -61,8 +61,16 @@ def kill_children_with_me() -> bool:
         ]
 
     k32 = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]
+    # Explicit signatures: 64-bit handles (GetCurrentProcess is -1) overflow the default c_int.
+    k32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
     k32.CreateJobObjectW.restype = wintypes.HANDLE
+    k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+    k32.SetInformationJobObject.restype = wintypes.BOOL
+    k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    k32.AssignProcessToJobObject.restype = wintypes.BOOL
+    k32.GetCurrentProcess.argtypes = []
     k32.GetCurrentProcess.restype = wintypes.HANDLE
+    k32.CloseHandle.argtypes = [wintypes.HANDLE]
     job = k32.CreateJobObjectW(None, None)
     if not job:
         return False
@@ -70,13 +78,13 @@ def kill_children_with_me() -> bool:
     info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK
     size = ctypes.sizeof(info)
     if not k32.SetInformationJobObject(
-        wintypes.HANDLE(job), JobObjectExtendedLimitInformation, ctypes.byref(info), size
+        job, JobObjectExtendedLimitInformation, ctypes.byref(info), size
     ):
-        k32.CloseHandle(wintypes.HANDLE(job))
+        k32.CloseHandle(job)
         return False
-    if not k32.AssignProcessToJobObject(wintypes.HANDLE(job), k32.GetCurrentProcess()):
+    if not k32.AssignProcessToJobObject(job, k32.GetCurrentProcess()):
         # Already in a job that forbids nesting (old Windows, some CI runners): watch-stdin still applies.
-        k32.CloseHandle(wintypes.HANDLE(job))
+        k32.CloseHandle(job)
         return False
     _job_handle = int(job)  # kept open for the life of the process
     return True

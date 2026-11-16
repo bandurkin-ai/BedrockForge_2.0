@@ -15,7 +15,7 @@ import { Header } from "./Header";
 import { resolveKey, shortcutMap } from "./hotkeys";
 import { eventShortcut } from "./keys";
 import { Ribbon } from "./Ribbon";
-import { buildRibbon, flattenRibbon } from "./ribbon";
+import { buildRibbon, flattenRibbon } from "./ribbonConfig";
 import { Splitter } from "./Splitter";
 import { StatusBar } from "./StatusBar";
 import { useStore } from "./useStore";

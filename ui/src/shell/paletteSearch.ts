@@ -1,6 +1,6 @@
 /** Palette search (ТЗ 7.0.7). Pure. */
 import { matchesQuery } from "./commands";
-import type { FlatItem } from "./ribbon";
+import type { FlatItem } from "./ribbonConfig";
 
 export const PALETTE_LIMIT = 60;
 export const HOLE_PREFIX = "скв ";

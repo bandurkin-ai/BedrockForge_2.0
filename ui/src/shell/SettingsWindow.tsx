@@ -3,10 +3,10 @@ import { useApp } from "./AppContext";
 import { matchesQuery } from "./commands";
 import { askConfirm, showMessage } from "./dialogs";
 import { eventShortcut, formatShortcut, isComplete } from "./keys";
-import { buildRibbon, flattenRibbon } from "./ribbon";
+import { buildRibbon, flattenRibbon } from "./ribbonConfig";
 import { assign, defaultShortcuts, effectiveShortcuts, functionKey, holderOf, isReserved } from "./shortcuts";
 import { useStore } from "./useStore";
-import css from "./Settings.module.css";
+import css from "./SettingsWindow.module.css";
 
 /** «Настройка» (ТЗ 7.0.6): own hotkeys; general settings arrive with projects (Э2). */
 export function SettingsWindow({ tab: initialTab }: { tab?: string }) {
