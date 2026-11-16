@@ -49,6 +49,8 @@ export interface DataTreeProps {
   onDeleteItem: (kind: "wireframe" | "lines", id: number, name: string) => void;
   /** Move a wireframe to the «ЦТМ» section (terrain models) or back to the wireframes. */
   onDtm?: (id: number, on: boolean) => void;
+  /** The gear of a terrain model: its settings in the properties panel. */
+  onDtmSettings?: (id: number) => void;
   onDemo: () => void;
   /** Right click on a wireframe or a line layer: its menu (edit, operations, export). */
   onItemMenu?: (kind: "wireframe" | "lines", id: number, x: number, y: number) => void;
@@ -623,6 +625,12 @@ function FileCategory(props: DataTreeProps & {
                       </span>
                       {item.draped && <span className="dtm-draped" title="На рельеф положен растр"><Icon name="raster" size={13} /></span>}
                       <span className="count" title={item.countTitle}>{item.count.toLocaleString("ru-RU")}</span>
+                      {props.section === "dtm" && props.onDtmSettings && (
+                        <button className="icon row-action dtm-gear" title="Настройки ЦТМ: растр на рельефе, цвет, прозрачность, атрибуты" aria-label={`Настройки ЦТМ: ${item.name}`}
+                          onClick={(e) => { e.stopPropagation(); props.onDtmSettings!(item.id); }}>
+                          <Icon name="gear" size={14} />
+                        </button>
+                      )}
                       <span className="row-actions">
                         {kind === "wireframe" && props.onDtm && (props.section === "dtm"
                           ? <Action icon="wireframe" title="Вернуть в каркасы" onClick={() => props.onDtm!(item.id, false)} />

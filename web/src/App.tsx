@@ -879,6 +879,7 @@ function Workspace({
                   onColor={onColor}
                   onDeleteItem={onDeleteItem}
                   onDtm={onDtm}
+                  onDtmSettings={(id) => void runCommand("object.select", { kind: "wireframe", id }, "user")}
                   editing={edit ? { layerId: edit.layerId, dirty: editDirty } : null}
                   onLinesMenu={(x, y) => setObjectMenu({ x, y, title: "Линии", items: [
                     { label: "Новый слой…", icon: "plus", run: () => void runCommand("lines.new_layer", {}, "user") },
@@ -897,7 +898,8 @@ function Workspace({
                       "separator",
                       cmd("Экспорт в Micromine STR", "lines.export", { layer_id: id, format: "str" }), cmd("Экспорт в DXF", "lines.export", { layer_id: id, format: "dxf" }),
                     ] : [
-                      isDtm ? cmd("Вернуть в каркасы", "wireframe.dtm", { wireframe_id: id, on: false }) : cmd("Перенести в ЦТМ", "wireframe.dtm", { wireframe_id: id, on: true }),
+                      ...(isDtm ? [cmd("Настройки ЦТМ…", "object.select", { kind: "wireframe", id }), cmd("Вернуть в каркасы", "wireframe.dtm", { wireframe_id: id, on: false })]
+                        : [cmd("Перенести в ЦТМ", "wireframe.dtm", { wireframe_id: id, on: true })]),
                       "separator",
                       cmd("Исправить…", "model.repair"), cmd("Показать самопересечения", "model.self_intersections"), cmd("Править треугольники", "model.triangles"),
                       cmd("Упростить…", "model.simplify"), cmd("Сгладить…", "model.smooth"), cmd("Разделить на части", "model.split"), cmd("Объединить в один объект…", "model.merge"),
