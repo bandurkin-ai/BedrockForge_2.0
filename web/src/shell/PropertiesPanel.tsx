@@ -82,6 +82,12 @@ export function PropertiesPanel({
         <h2 className="dock-title">{wireframe.dtm ? "ЦТМ — модель рельефа" : "Каркас"}</h2>
         {onWireframe ? <WireframeHead key={wireframe.id} id={wireframe.id} name={wireframe.name} color={wireframe.color} onWireframe={onWireframe} />
           : <div className="props-head"><span className="swatch-static" style={{ background: wireframe.color }} /><strong>{wireframe.name}</strong></div>}
+        {/* The settings of a terrain model come first: they are what the object is opened for. */}
+        {wireframe.dtm && onWireframe && (
+          <DtmProps key={`dtm${wireframe.id}`} dtm={wireframe.dtm} rasters={datasets.flatMap((d) => d.rasters ?? []).filter((r) => !r.georef.corners3d)}
+            extent={extent} onChange={(dtm_settings) => void onWireframe(wireframe.id, { dtm_settings }).catch(() => undefined)} />
+        )}
+        {wireframe.dtm && <h2 className="dock-title">Поверхность</h2>}
         <dl className="props-list">
           <dt>Файл</dt><dd>{wireframe.file.name}</dd>
           <dt>Формат</dt><dd>{wireframe.file.meta.format ?? "—"}</dd>
@@ -125,10 +131,6 @@ export function PropertiesPanel({
             </dl>
             {onCommand && <button onClick={() => onCommand("model.rebuild", { wireframe_id: wireframe.id })} title="Повторить построение на текущем состоянии исходных объектов (например, после правки контуров)">Перестроить</button>}
           </>
-        )}
-        {wireframe.dtm && onWireframe && (
-          <DtmProps key={`dtm${wireframe.id}`} dtm={wireframe.dtm} rasters={datasets.flatMap((d) => d.rasters ?? []).filter((r) => !r.georef.corners3d)}
-            extent={extent} onChange={(dtm_settings) => void onWireframe(wireframe.id, { dtm_settings }).catch(() => undefined)} />
         )}
         {onWireframe && (
           <div className="props-actions">

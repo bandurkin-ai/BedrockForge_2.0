@@ -855,6 +855,9 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         const after = await patchWireframe(id, { ...(move !== undefined ? { dtm: move } : {}), ...(has && move !== false ? { dtm_settings: settings } : {}) });
         s().reload();
         if (!after.dtm) return `«${after.name}» возвращён в каркасы`;
+        // The settings of the terrain model are in the properties panel: show them.
+        s().selectObject({ kind: "wireframe", id });
+        s().setWs((prev) => setPanel(prev, "properties", true));
         const raster = after.dtm.raster_id ? s().datasets.flatMap((d) => d.rasters ?? []).find((r) => r.id === after.dtm!.raster_id)?.name : null;
         return `«${after.name}» в разделе ЦТМ${raster ? `; на рельефе растр «${raster}»${after.dtm.clip ? ", часть за ЦТМ скрыта" : ""}` : "; растр не положен"}`;
       },
