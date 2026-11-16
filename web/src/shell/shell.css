@@ -874,3 +874,15 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .modal.log-viewer .modal-foot button { display: inline-flex; align-items: center; gap: 4px; }
 .modal.logs-dialog { height: min(560px, 80vh); }
 .modal.logs-dialog button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+
+/* ---- terrain models (ЦТМ) */
+.props-form label.props-check { justify-content: flex-start; gap: 8px; cursor: pointer; }
+.app .props-form label.props-check input { width: auto; }
+.props-form select { max-width: 170px; }
+.dtm-draped { display: inline-flex; color: var(--accent); margin-right: 4px; }
+
+/* ---- groups of the data tree in the user's order (dragged by their title rows) */
+.tree-root.groups { display: flex; flex-direction: column; }
+.tree-category.dragging > .tree-row.category { opacity: 0.45; }
+.tree-category.drop-before { box-shadow: 0 -2px 0 var(--accent); }
+.tree-category.drop-after { box-shadow: 0 2px 0 var(--accent); }

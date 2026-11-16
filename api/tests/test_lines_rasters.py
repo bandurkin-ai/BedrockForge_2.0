@@ -338,3 +338,44 @@ def test_upload_without_georef_stands_on_section(db_client):
     plan = db_client.post(f"/api/projects/{pid}/rasters", files=[("files", ("map.jpg", _jpeg())), ("files", ("map.jgw", b"1\n0\n0\n-1\n0.5\n9.5\n"))], data={"section": section}).json()
     assert plan[0]["rasters"][0]["georef"]["placement"] == "plan"
     assert db_client.post(f"/api/projects/{pid}/rasters", files=[("files", ("x.jpg", _jpeg()))], data={"section": "{bad"}).status_code == 422
+
+
+def test_wireframe_moves_to_dtm_and_back_with_a_draped_raster(db_client):
+    pid = db_client.post("/api/projects/demo").json()["id"]
+    datasets = db_client.get(f"/api/projects/{pid}/datasets").json()
+    wireframe = next(d for d in datasets if d["kind"] == "wireframes")["wireframes"][0]
+    raster = next(d for d in datasets if d["kind"] == "rasters")["rasters"][0]
+    url = f"/api/wireframes/{wireframe['id']}"
+    assert wireframe["dtm"] is None
+    # Settings only exist for a terrain model.
+    assert db_client.patch(url, json={"dtm_settings": {"clip": False}}).status_code == 422
+
+    moved = db_client.patch(url, json={"dtm": True}).json()
+    assert moved["dtm"] == {"raster_id": None, "clip": True, "tint": "#ffffff", "opacity": 1.0, "shade": True}
+    draped = db_client.patch(url, json={"dtm_settings": {"raster_id": raster["id"], "tint": "#FFEEDD", "opacity": 0.6}}).json()
+    assert draped["dtm"] == {"raster_id": raster["id"], "clip": True, "tint": "#ffeedd", "opacity": 0.6, "shade": True}
+    # One setting changes, the others stay; the tree gives the settings back.
+    assert db_client.patch(url, json={"dtm_settings": {"clip": False, "shade": False}}).json()["dtm"]["raster_id"] == raster["id"]
+    listed = next(w for d in db_client.get(f"/api/projects/{pid}/datasets").json() for w in d.get("wireframes") or [] if w["id"] == wireframe["id"])
+    assert listed["dtm"]["clip"] is False and listed["dtm"]["shade"] is False
+
+    assert db_client.patch(url, json={"dtm_settings": {"raster_id": 10**6}}).status_code == 422
+    assert db_client.patch(url, json={"dtm_settings": {"opacity": 2}}).status_code == 422
+    other = db_client.post("/api/projects", json={"name": "Другой"}).json()["id"]
+    (foreign,) = db_client.post(f"/api/projects/{other}/rasters", files=[("files", ("m.jpg", _jpeg())), ("files", ("m.jgw", b"1\n0\n0\n-1\n0.5\n9.5\n"))]).json()
+    assert db_client.patch(url, json={"dtm_settings": {"raster_id": foreign["rasters"][0]["id"]}}).status_code == 422
+
+    assert db_client.patch(url, json={"dtm_settings": {"raster_id": 0}}).json()["dtm"]["raster_id"] is None
+    assert db_client.patch(url, json={"dtm": False}).json()["dtm"] is None
+
+
+def test_vertical_raster_is_not_draped(db_client):
+    pid = db_client.post("/api/projects/demo").json()["id"]
+    wireframe = next(d for d in db_client.get(f"/api/projects/{pid}/datasets").json() if d["kind"] == "wireframes")["wireframes"][0]
+    section = '{"x1": 0, "y1": 0, "x2": 100, "y2": 0, "z_top": 50, "z_bottom": 0}'
+    created = db_client.post(f"/api/projects/{pid}/rasters", files=[("files", ("profile.jpg", _jpeg()))], data={"section": section})
+    scan = created.json()[0]["rasters"][0]
+    url = f"/api/wireframes/{wireframe['id']}"
+    db_client.patch(url, json={"dtm": True})
+    answer = db_client.patch(url, json={"dtm_settings": {"raster_id": scan["id"]}})
+    assert answer.status_code == 422 and "вертикальной" in answer.json()["detail"]

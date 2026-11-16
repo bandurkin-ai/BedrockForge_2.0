@@ -740,6 +740,8 @@ function Workspace({
       return `Удалено: ${what}`;
     });
 
+  const onDtm = (id: number, on: boolean) => void runCommand("wireframe.dtm", { wireframe_id: id, on }, "user");
+
   const onColor = (kind: "wireframe" | "lines", id: number, color: string) =>
     guarded(async () => {
       await (kind === "wireframe" ? patchWireframe(id, { color }) : patchLines(id, { color }));
@@ -830,8 +832,8 @@ function Workspace({
           <kbd>Ctrl+K</kbd>
         </button>
         <span className="spacer" />
-        <button className="icon" onClick={() => runItem({ command: "theme.set", label: "", icon: "theme" })} title="Сменить тему" aria-label="Сменить тему">
-          <Icon name="theme" size={16} />
+        <button className="icon" onClick={() => runItem({ command: "theme.set", label: "", icon: "theme" })} title={ws.theme === "dark" ? "Тёмная тема — включить светлую" : "Светлая тема — включить тёмную"} aria-label="Сменить тему">
+          <Icon name={ws.theme === "dark" ? "moon" : "sun"} size={16} />
         </button>
         <button
           className={ws.right && ws.rightTab === "assistant" ? "claude-button active" : "claude-button"}
@@ -876,6 +878,7 @@ function Workspace({
                   onDelete={onDelete}
                   onColor={onColor}
                   onDeleteItem={onDeleteItem}
+                  onDtm={onDtm}
                   editing={edit ? { layerId: edit.layerId, dirty: editDirty } : null}
                   onLinesMenu={(x, y) => setObjectMenu({ x, y, title: "Линии", items: [
                     { label: "Новый слой…", icon: "plus", run: () => void runCommand("lines.new_layer", {}, "user") },
@@ -885,6 +888,7 @@ function Workspace({
                     live.current.selectObject({ kind, id });
                     const cmd = (label: string, command: string, args: Record<string, unknown> = {}): MenuEntry => ({ label, run: () => void runCommand(command, args, "user") });
                     const name = (kind === "lines" ? (datasets ?? []).flatMap((d) => d.lines ?? []) : (datasets ?? []).flatMap((d) => d.wireframes ?? [])).find((o) => o.id === id)?.name ?? "";
+                    const isDtm = kind === "wireframe" && Boolean((datasets ?? []).flatMap((d) => d.wireframes ?? []).find((o) => o.id === id)?.dtm);
                     setObjectMenu({ x, y, title: name, items: kind === "lines" ? [
                       edit?.layerId === id ? cmd("Завершить правку", "lines.finish") : cmd("Редактировать", "lines.edit", { layer_id: id }),
                       cmd("Версии…", "lines.versions", { layer_id: id }),
@@ -893,6 +897,8 @@ function Workspace({
                       "separator",
                       cmd("Экспорт в Micromine STR", "lines.export", { layer_id: id, format: "str" }), cmd("Экспорт в DXF", "lines.export", { layer_id: id, format: "dxf" }),
                     ] : [
+                      isDtm ? cmd("Вернуть в каркасы", "wireframe.dtm", { wireframe_id: id, on: false }) : cmd("Перенести в ЦТМ", "wireframe.dtm", { wireframe_id: id, on: true }),
+                      "separator",
                       cmd("Исправить…", "model.repair"), cmd("Показать самопересечения", "model.self_intersections"), cmd("Править треугольники", "model.triangles"),
                       cmd("Упростить…", "model.simplify"), cmd("Сгладить…", "model.smooth"), cmd("Разделить на части", "model.split"), cmd("Объединить в один объект…", "model.merge"),
                       "separator",
