@@ -1,6 +1,7 @@
 services:
   db:
     image: postgis/postgis:16-3.4
+    restart: unless-stopped
     environment:
       POSTGRES_USER: geo
       POSTGRES_PASSWORD: geo
@@ -17,6 +18,7 @@ services:
 
   api:
     build: ./api
+    restart: unless-stopped
     environment: &api-env
       DATABASE_URL: postgresql+psycopg://geo:geo@db:5432/geo
       # Object store (geometry, images, uploads); shared with the worker through the volume.
@@ -40,6 +42,9 @@ services:
   worker:
     build: ./api
     command: ["python", "-m", "app.jobs.worker"]
+    # Back after a crash (e.g. killed for lack of memory on a big import, exit code 137): otherwise
+    # every later job waits in the queue for ever. The job it ran is requeued, at most 3 attempts.
+    restart: unless-stopped
     environment: *api-env
     volumes:
       - store:/data
@@ -53,6 +58,7 @@ services:
   worker-quick:
     build: ./api
     command: ["python", "-m", "app.jobs.worker"]
+    restart: unless-stopped
     environment:
       <<: *api-env
       JOB_KINDS: geometry.operation

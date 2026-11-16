@@ -54,7 +54,7 @@ def store_block_model(session: Session, dataset: Dataset, t: BlockTable, progres
     grid, cells, inside = describe_grid(t)
     checks = check_model(t, grid, cells, inside)
     volume = np.prod(t.sizes, axis=1)
-    progress(0.80, "Запись столбцов")
+    progress(0.74, "Запись столбцов")
     refs = {
         "centres": blobs.put_array(session, t.centres, "<f8"),
         "sizes": blobs.put_array(session, t.sizes, "<f4"),
@@ -66,6 +66,7 @@ def store_block_model(session: Session, dataset: Dataset, t: BlockTable, progres
         render[a:a + step, :3] = t.centres[a:a + step] - origin
         render[a:a + step, 3:] = t.sizes[a:a + step]
     refs["render"] = blobs.put_array(session, render, "<f4")
+    del render  # on disk now; the shell below needs the room
     progress(0.78, "Внешняя оболочка модели")
     refs["exposed"] = blobs.put_array(session, exposed_mask(t.centres, t.sizes, grid.origin, grid.parent, grid.counts), "<u1")
     attributes = []

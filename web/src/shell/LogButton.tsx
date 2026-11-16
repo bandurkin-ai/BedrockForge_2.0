@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { getJob, type JobDetail, type JobInfo } from "../api";
+import { getJob, getJobsQueue, type JobDetail, type JobInfo, type JobsQueue } from "../api";
 import { Icon } from "./icons";
 import { copyText, logForJob, recentLogs, renderJobOnly, saveText, subscribeLogs, type OpLog } from "./opLog";
 
@@ -16,13 +16,16 @@ async function buildText(log: OpLog | null, jobId: number | null): Promise<{ tex
       failed.push(`задание №${id}: ${(e as Error).message}`);
     }
   }
+  // A job not finished: the queue as the server sees it (workers alive, the jobs ahead).
+  let queue: JobsQueue | null = null;
+  if (jobs.some((j) => j.status === "queued" || j.status === "running")) queue = await getJobsQueue().catch(() => null);
   if (log) {
-    const text = log.text(jobs);
+    const text = log.text(jobs, queue);
     return { text: failed.length ? `${text}\nНе получены журналы: ${failed.join("; ")}\n` : text, name: log.fileName() };
   }
   const job = jobs[0];
   if (!job) return { text: `Журнал задания №${jobId} не получен: ${failed.join("; ")}\n`, name: `bedrockforge-job-${jobId}.txt` };
-  return { text: renderJobOnly(job), name: `bedrockforge-job-${job.id}.txt` };
+  return { text: renderJobOnly(job, queue), name: `bedrockforge-job-${job.id}.txt` };
 }
 
 /** The journal as text in a window: copy to the clipboard, download as .txt, refresh. */

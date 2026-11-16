@@ -908,6 +908,17 @@ export interface JobInfo {
 export interface JobDetail extends JobInfo {
   params: Record<string, unknown>;
   log: { t: string; level: "info" | "warning" | "error"; text: string }[];
+  /** a queued job: why it waits (no worker running, the jobs ahead) */
+  waiting?: string | null;
+}
+
+/** Why jobs wait: the job workers heard from, and the jobs queued or running in every project. */
+export interface JobsQueue {
+  workers: { name: string; kinds: string[] | null; job: number | null; age: number; alive: boolean; up_seconds: number }[];
+  active: { id: number; project_id: number | null; kind: string; title: string; status: string; progress: number; message: string | null;
+    worker: string | null; attempts: number; started_at: string | null; running_seconds: number | null; heartbeat_age: number | null }[];
+  /** job id -> why it waits */
+  waiting: Record<string, string>;
 }
 
 export const isFinished = (job: JobInfo) => job.status === "done" || job.status === "failed" || job.status === "cancelled";
@@ -1056,6 +1067,7 @@ export const isExportJob = (job: Pick<JobInfo, "kind">) => job.kind.startsWith("
 
 export const listJobs = (projectId: number) => request<JobInfo[]>(`/api/projects/${projectId}/jobs`);
 export const getJob = (id: number) => request<JobDetail>(`/api/jobs/${id}`);
+export const getJobsQueue = () => request<JobsQueue>("/api/jobs/queue");
 export const cancelJob = (id: number) => request<JobInfo>(`/api/jobs/${id}/cancel`, { method: "POST" });
 /** A failed or cancelled job again, with the same uploaded files. */
 export const retryJob = (id: number) => request<JobInfo>(`/api/jobs/${id}/retry`, { method: "POST" });

@@ -199,6 +199,24 @@ class Worker:
         # and wireframes from waiting behind an import of a big file.
         self.kinds = kinds
         self.stopping = threading.Event()
+        # the job being run, for the beat file the API reads (app/jobs/beats.py)
+        self.current: int | None = None
+        self.started = time.time()
+
+    def _beat(self) -> None:
+        from app.jobs import beats
+
+        while True:
+            try:
+                beats.write(self.name, self.kinds, self.current, self.started)
+            except Exception:  # a full or read-only disk must not stop the jobs
+                log.exception("worker beat of %s not written", self.name)
+            if self.stopping.wait(beats.BEAT_SECONDS):
+                break
+        try:
+            beats.remove(self.name)
+        except Exception:
+            pass
 
     def run(self) -> None:
         try:
@@ -208,6 +226,7 @@ class Worker:
             log.exception("job handlers cannot be loaded")
         last_sweep = 0.0
         last_gc = time.monotonic()
+        threading.Thread(target=self._beat, name=f"job-beat-{self.name}", daemon=True).start()
         while not self.stopping.is_set():
             try:
                 if time.monotonic() - last_gc > GC_SECONDS:
@@ -228,7 +247,11 @@ class Worker:
                     self.stopping.wait(POLL_SECONDS)
                     continue
                 log.info("job %s (%s) started", job.id, job.kind)
-                status = run_job(self.session_factory, job)
+                self.current = job.id
+                try:
+                    status = run_job(self.session_factory, job)
+                finally:
+                    self.current = None
                 log.info("job %s finished: %s", job.id, status)
             except Exception:
                 log.exception("worker loop error")
