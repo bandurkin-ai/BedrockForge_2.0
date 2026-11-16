@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("bf", {
   coreRetry: () => ipcRenderer.send("bf:core-retry"),
   pickSave: (defaultName: string) => ipcRenderer.invoke("bf:pick-save", String(defaultName)),
   pickOpen: () => ipcRenderer.invoke("bf:pick-open"),
+  pickFolder: () => ipcRenderer.invoke("bf:pick-folder"),
   showInFolder: (file: string) => ipcRenderer.send("bf:show-in-folder", String(file)),
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   coreLog: () => ipcRenderer.sendSync("bf:core-log"),

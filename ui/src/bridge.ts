@@ -21,6 +21,7 @@ export interface BfBridge {
   pickSave(defaultName: string): Promise<string | null>;
   /** «Открыть» a .bfggis: the chosen path or null. */
   pickOpen(): Promise<string | null>;
+  pickFolder(): Promise<string | null>;
   showInFolder(file: string): void;
   /** Disk path of a file dropped from Explorer. */
   pathForFile(file: File): string;

@@ -33,17 +33,19 @@ export function createApp(opts: { persist?: boolean } = {}): App {
     workspace: loaded?.settings.workspace ?? INITIAL_STATE.workspace,
     shortcuts: loaded?.settings.shortcuts ?? {},
     lastProject: loaded?.settings.lastProject ?? null,
+    projectsDir: loaded?.settings.projectsDir ?? null,
+    heavyWorkers: loaded?.settings.heavyWorkers ?? 1,
   });
   const palette = new Store<{ query: string | null }>({ query: null });
 
   if (loaded?.writable) {
     let last = "";
     store.subscribe(() => {
-      const { workspace, shortcuts, lastProject } = store.get();
-      const key = JSON.stringify([workspace, shortcuts, lastProject]);
+      const { workspace, shortcuts, lastProject, projectsDir, heavyWorkers } = store.get();
+      const key = JSON.stringify([workspace, shortcuts, lastProject, projectsDir, heavyWorkers]);
       if (key !== last) {
         last = key;
-        saveSettings({ version: 1, workspace, shortcuts, lastProject });
+        saveSettings({ version: 1, workspace, shortcuts, lastProject, projectsDir, heavyWorkers });
       }
     });
   }

@@ -16,6 +16,8 @@ describe("projects and jobs (Э2)", () => {
   it("the last project uid survives settings normalisation, junk is dropped", () => {
     expect(normalizeSettings({ lastProject: "a".repeat(32) }).lastProject).toBe("a".repeat(32));
     expect(normalizeSettings({ lastProject: "../../x" }).lastProject).toBeNull();
+    expect(normalizeSettings({ heavyWorkers: 4, projectsDir: "D:\\Проекты" })).toMatchObject({ heavyWorkers: 4, projectsDir: "D:\\Проекты" });
+    expect(normalizeSettings({ heavyWorkers: 0 }).heavyWorkers).toBe(1);
   });
 
   it("SSE: events split across chunks are kept until complete", () => {

@@ -14,6 +14,7 @@ import { ImportWindow } from "../modules/projects/ImportWindow";
 import { ProjectsWindow } from "../modules/projects/ProjectsWindow";
 import { restoreLast } from "../modules/projects/state";
 import { bridge } from "../bridge";
+import { api } from "./api";
 import { Palette } from "./Palette";
 import { SettingsWindow } from "./SettingsWindow";
 import { WindowLayer, type WindowRenderer } from "./WindowLayer";
@@ -68,6 +69,8 @@ export function Shell() {
   useEffect(() => {
     if (!coreOnline) return;
     restoreLast(app).catch((e: unknown) => void showMessage({ title: "Проект", message: e instanceof Error ? e.message : String(e) }));
+    const heavy = app.store.get().heavyWorkers;
+    if (heavy !== 1) void api.put("/jobs/workers", { heavy }).catch(() => undefined);
   }, [app, coreOnline]);
   useEffect(() => startEvents(), []);
 

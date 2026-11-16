@@ -289,6 +289,11 @@ function registerIpc(): void {
     const r = await dialog.showOpenDialog(mainWin, { properties: ["openFile"], filters: bfggis });
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
   });
+  ipcMain.handle("bf:pick-folder", async (e) => {
+    if (!mainWin || !fromMain(e.sender)) return null;
+    const r = await dialog.showOpenDialog(mainWin, { properties: ["openDirectory", "createDirectory"] });
+    return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
+  });
   ipcMain.on("bf:show-in-folder", (e, file: string) => {
     if (fromMain(e.sender) && typeof file === "string" && path.isAbsolute(file)) shell.showItemInFolder(file);
   });

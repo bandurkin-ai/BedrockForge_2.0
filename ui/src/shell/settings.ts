@@ -14,12 +14,25 @@ export interface UserSettings {
   shortcuts: ShortcutOverrides;
   /** uid of the project open last: it opens at start (ТЗ 7.3). */
   lastProject: string | null;
+  /** Folder of projects chosen in «Настройка» (null — Документы\\BedrockForge\\Проекты); the shell reads it. */
+  projectsDir: string | null;
+  /** Workers of the general job queue (ТЗ 7.6: 1 by default, plus the quick one). */
+  heavyWorkers: number;
 }
 
 export function normalizeSettings(raw: unknown): UserSettings {
   const r = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const last = typeof r.lastProject === "string" && /^[0-9a-f]{32}$/.test(r.lastProject) ? r.lastProject : null;
-  return { version: SETTINGS_VERSION, workspace: normalizeWorkspace(r.workspace), shortcuts: normalizeShortcuts(r.shortcuts), lastProject: last };
+  const dir = typeof r.projectsDir === "string" && r.projectsDir.length < 400 ? r.projectsDir : null;
+  const heavy = Number.isInteger(r.heavyWorkers) && (r.heavyWorkers as number) >= 1 && (r.heavyWorkers as number) <= 16 ? (r.heavyWorkers as number) : 1;
+  return {
+    version: SETTINGS_VERSION,
+    workspace: normalizeWorkspace(r.workspace),
+    shortcuts: normalizeShortcuts(r.shortcuts),
+    lastProject: last,
+    projectsDir: dir,
+    heavyWorkers: heavy,
+  };
 }
 
 const LOCAL_KEY = "bedrockforge2.settings";
