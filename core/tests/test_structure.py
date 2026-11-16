@@ -60,7 +60,11 @@ def test_no_eval_or_raw_html_in_frontend() -> None:
     assert not hits, hits
 
 
-def test_router_discovery_imports() -> None:
+def test_router_modules_match_source_tree() -> None:
     from bf_core.api.app import discover_routers
+    from bf_core.api.modules import ROUTER_MODULES
 
-    assert isinstance(discover_routers(), list)
+    pkg = ROOT / "core" / "bf_core"
+    on_disk = sorted(p.parent.name for p in pkg.glob("*/router.py") if p.parent.name != "api")
+    assert sorted(ROUTER_MODULES) == on_disk, "register the module in bf_core/api/modules.py"
+    assert len(discover_routers()) == len(ROUTER_MODULES)

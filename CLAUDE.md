@@ -24,7 +24,7 @@ Desktop-ГГИС для Windows 11: Electron (app/) + React/TS/three.js (ui/) + 
 
 ## Структура
 app/ оболочка (src/main, src/preload, static/ заставка, e2e/) · ui/src/{shell,viz,charts,edit,modules/<модуль>}
-· core/bf_core/<модуль> (api — FastAPI, роутеры модулей подключаются автоматически из `<модуль>/router.py`)
+· core/bf_core/<модуль> (api — FastAPI; роутер `<модуль>/router.py` регистрируется в `api/modules.py`)
 · core/tests · bench/ (run.py, budgets.json, scenarios/) · tools/ (gen/, ci/, spec/, bf-license — Э24)
 · docs/{spec,adr,USER_GUIDE.md,CHECKLIST.md} · tests/data/real/ (файлы real_data, только чтение)
 Модуль печати называется `printing` (не `print` — не затеняет встроенную функцию).

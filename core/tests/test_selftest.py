@@ -29,8 +29,9 @@ def test_numba_cache_in_cyrillic_path(tmp_path: Path) -> None:
     env["PYTHONPATH"] = str(core_dir) + os.pathsep + env.get("PYTHONPATH", "")
     runs = []
     for _ in range(2):  # second run must load from the cache
-        r = subprocess.run([sys.executable, "-m", "bf_core", "--selftest"], cwd=work, env=env,
-                           capture_output=True, timeout=600)
+        r = subprocess.run(
+            [sys.executable, "-m", "bf_core", "--selftest"], cwd=work, env=env, capture_output=True, timeout=600
+        )
         assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
         runs.append(json.loads(r.stdout.decode("utf-8")))
     numba = runs[1]["checks"]["numba"]

@@ -77,9 +77,7 @@ def kill_children_with_me() -> bool:
     info = EXTENDED_LIMIT()
     info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK
     size = ctypes.sizeof(info)
-    if not k32.SetInformationJobObject(
-        job, JobObjectExtendedLimitInformation, ctypes.byref(info), size
-    ):
+    if not k32.SetInformationJobObject(job, JobObjectExtendedLimitInformation, ctypes.byref(info), size):
         k32.CloseHandle(job)
         return False
     if not k32.AssignProcessToJobObject(job, k32.GetCurrentProcess()):

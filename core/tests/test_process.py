@@ -17,8 +17,13 @@ TOKEN = "proc-token-abcdef"
 def _start(*extra: str, cwd: str | None = None, env: dict[str, str] | None = None) -> tuple[subprocess.Popen[str], int]:
     proc = subprocess.Popen(
         [sys.executable, "-m", "bf_core", "--port", "0", "--token", TOKEN, *extra],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
-        cwd=cwd, env={**os.environ, **(env or {})},
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        encoding="utf-8",
+        cwd=cwd,
+        env={**os.environ, **(env or {})},
     )
     assert proc.stdout is not None
     deadline = time.monotonic() + 60
@@ -89,6 +94,11 @@ def test_heavy_libraries_not_imported_before_ready() -> None:
 
 
 def test_missing_token_refuses_to_start() -> None:
-    r = subprocess.run([sys.executable, "-m", "bf_core", "--port", "0"], capture_output=True, text=True,
-                       env={k: v for k, v in os.environ.items() if k != "BF_TOKEN"}, timeout=60)
+    r = subprocess.run(
+        [sys.executable, "-m", "bf_core", "--port", "0"],
+        capture_output=True,
+        text=True,
+        env={k: v for k, v in os.environ.items() if k != "BF_TOKEN"},
+        timeout=60,
+    )
     assert r.returncode == 2

@@ -19,12 +19,24 @@ def _cube(size: float = 1.0, origin: tuple[float, float, float] = (0.0, 0.0, 0.0
     import numpy as np
 
     ox, oy, oz = origin
-    v = np.array(
-        [[x, y, z] for z in (0, size) for y in (0, size) for x in (0, size)], dtype=np.float64
-    ) + np.array([ox, oy, oz])
+    v = np.array([[x, y, z] for z in (0, size) for y in (0, size) for x in (0, size)], dtype=np.float64) + np.array(
+        [ox, oy, oz]
+    )
     t = np.array(
-        [[0, 2, 1], [1, 2, 3], [4, 5, 6], [5, 7, 6], [0, 1, 4], [1, 5, 4],
-         [2, 6, 3], [3, 6, 7], [0, 4, 2], [2, 4, 6], [1, 3, 5], [3, 7, 5]],
+        [
+            [0, 2, 1],
+            [1, 2, 3],
+            [4, 5, 6],
+            [5, 7, 6],
+            [0, 1, 4],
+            [1, 5, 4],
+            [2, 6, 3],
+            [3, 6, 7],
+            [0, 4, 2],
+            [2, 4, 6],
+            [1, 3, 5],
+            [3, 7, 5],
+        ],
         dtype=np.uint32,
     )
     return v, t
@@ -111,9 +123,7 @@ def check_duckdb_arrow() -> dict[str, Any]:
         table = pa.table({"i": np.arange(n, dtype=np.int64), "au": np.linspace(0.0, 1.0, n)})
         pq.write_table(table, path, compression="zstd", row_group_size=25_000)
         con = duckdb.connect()
-        row = con.execute(
-            "SELECT count(*), avg(au) FROM read_parquet(?) WHERE au >= 0.5", [str(path)]
-        ).fetchone()
+        row = con.execute("SELECT count(*), avg(au) FROM read_parquet(?) WHERE au >= 0.5", [str(path)]).fetchone()
         assert row is not None
         cnt, mean = row
         con.close()
@@ -121,7 +131,18 @@ def check_duckdb_arrow() -> dict[str, Any]:
     return {"duckdb": duckdb.__version__, "pyarrow": pa.__version__, "rows": int(cnt), "mean": float(mean)}
 
 
+def check_routers() -> dict[str, Any]:
+    """Every HTTP module imports in this build (in the frozen exe a missing one is a 404)."""
+    from bf_core.api.app import discover_routers
+    from bf_core.api.modules import ROUTER_MODULES
+
+    routers = discover_routers()
+    paths = sorted({getattr(r, "path", "") for router in routers for r in router.routes})
+    return {"modules": list(ROUTER_MODULES), "routes": paths}
+
+
 CHECKS: dict[str, Callable[[], dict[str, Any]]] = {
+    "routers": check_routers,
     "numpy_scipy": check_numpy_scipy,
     "numba": check_numba,
     "manifold3d": check_manifold,

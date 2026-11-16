@@ -1,10 +1,9 @@
-"""FastAPI application factory. Module routers are discovered automatically."""
+"""FastAPI application factory. Module routers are listed in api/modules.py."""
 
 from __future__ import annotations
 
 import asyncio
 import importlib
-import pkgutil
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 
@@ -14,6 +13,7 @@ from fastapi.responses import StreamingResponse
 import bf_core
 
 from .errors import ApiError, api_error_handler, unexpected_error_handler
+from .modules import ROUTER_MODULES
 from .security import APP_ORIGIN, GuardMiddleware
 
 API_PREFIX = "/api/v1"
@@ -29,19 +29,8 @@ class CoreState:
 
 
 def discover_routers() -> list[APIRouter]:
-    """Import `bf_core.<module>.router` for every module that has one."""
-    routers: list[APIRouter] = []
-    for info in sorted(pkgutil.iter_modules(bf_core.__path__), key=lambda i: i.name):
-        if not info.ispkg or info.name == "api":
-            continue
-        try:
-            mod = importlib.import_module(f"bf_core.{info.name}.router")
-        except ModuleNotFoundError as exc:
-            if exc.name == f"bf_core.{info.name}.router":
-                continue
-            raise
-        routers.append(mod.router)
-    return routers
+    """Import `bf_core.<module>.router` for every module of ROUTER_MODULES."""
+    return [importlib.import_module(f"bf_core.{name}.router").router for name in ROUTER_MODULES]
 
 
 def create_app(state: CoreState, extra_origins: tuple[str, ...] = ()) -> FastAPI:
