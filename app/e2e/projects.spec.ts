@@ -13,7 +13,9 @@ async function online(page: Page) {
 async function command(page: Page, query: string) {
   await page.keyboard.press("Control+KeyK");
   await page.getByLabel("Поиск команды").fill(query);
+  await expect(page.getByRole("option").first()).toBeVisible();
   await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Палитра команд")).toHaveCount(0);
 }
 
 async function answer(page: Page, text: string) {

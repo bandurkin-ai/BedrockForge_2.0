@@ -57,7 +57,7 @@ function PaletteBox({ initial }: { initial: string }) {
             else if (e.key === "Enter") {
               // The text may be ahead of the last render (typed and Enter at once): search what is in the field.
               const text = e.currentTarget.value;
-              runRow(text === query ? rows[sel] : searchPalette(text, items, [])[0]);
+              runRow(text === query ? rows[Math.min(sel, rows.length - 1)] : searchPalette(text, items, [])[0]);
             }
             else return;
             e.preventDefault();
@@ -76,7 +76,7 @@ function PaletteBox({ initial }: { initial: string }) {
                 aria-disabled={reason ? true : undefined}
                 title={reason ? `Недоступно: ${reason}` : undefined}
                 className={[css.row, i === sel && css.selected, reason && css.disabled].filter(Boolean).join(" ")}
-                onMouseEnter={() => setSel(i)}
+                onMouseMove={() => i !== sel && setSel(i)} // not mouseenter: a list appearing under a resting cursor must not move the choice
                 onClick={() => runRow(r)}
               >
                 {r.kind === "command" ? (
