@@ -90,7 +90,8 @@ class Upload(Base):
     __tablename__ = "upload"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
-    project_id: Mapped[int] = mapped_column(_project_fk(), index=True)
+    # None: an upload of a project archive, made before the project exists (routers/archives.py).
+    project_id: Mapped[int | None] = mapped_column(_project_fk(), index=True, nullable=True)
     filename: Mapped[str] = mapped_column(String(255))
     size: Mapped[int] = mapped_column(BigInteger)
     received: Mapped[int] = mapped_column(BigInteger, default=0)

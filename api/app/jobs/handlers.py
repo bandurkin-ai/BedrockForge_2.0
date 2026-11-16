@@ -190,3 +190,65 @@ def geometry_operation(ctx: JobContext, params: dict) -> dict:
     for warning in result.get("warnings", []):
         ctx.log(warning, "warning")
     return result
+
+
+def _take_password(ctx: JobContext, params: dict) -> str | None:
+    """The password leaves the job's stored parameters as soon as the worker has it."""
+    password = params.pop("password", None)
+    if password is not None:
+        from sqlalchemy import text
+
+        with ctx.session_factory() as s:
+            s.execute(text("UPDATE job SET params = params - 'password' WHERE id = :id"), {"id": ctx.job_id})
+            s.commit()
+    return password
+
+
+@handler("export.project")
+def export_project_archive(ctx: JobContext, params: dict) -> dict:
+    """params: project_id, filename, password?, browser? — the whole project into one .bfggis file."""
+    from app.archive.export import ExportFailed, export_project
+    from app.exporting.files import export_path
+
+    password = _take_password(ctx, params)
+    out = export_path(ctx.job_id, ".bfggis")
+    try:
+        result = export_project(ctx.session_factory, int(params["project_id"]), out, password=password,
+                                browser=params.get("browser"), progress=lambda f, m: ctx.progress(f, m),
+                                log=lambda t, level: ctx.log(t, level))
+    except ExportFailed as exc:
+        raise JobError(str(exc)) from exc
+    ctx.log(f"Файл {result['bytes'] / 1e6:.1f} МБ: строк {result['rows']}, файлов хранилища {result['files']}"
+            + (", с паролем" if password else ""))
+    return {**result, "filename": params["filename"]}
+
+
+@handler("import.project")
+def import_project_archive(ctx: JobContext, params: dict) -> dict:
+    """params: upload_id, name, mode (copy | rename | replace), password? — a .bfggis file as a new project."""
+    from app.archive.container import ArchiveError
+    from app.archive.importer import ImportFailed, import_project
+    from app.routers.uploads import part_path
+
+    password = _take_password(ctx, params)
+    upload = ctx.session.get(Upload, params["upload_id"])
+    if upload is None or upload.status != "complete" or not part_path(upload.id).is_file():
+        raise JobError("Загруженный файл не найден: загрузите его ещё раз")
+    try:
+        result = import_project(ctx.session, part_path(upload.id), password=password, name=params.get("name") or None,
+                                mode=params.get("mode") or "copy", progress=lambda f, m: ctx.progress(f, m),
+                                log=lambda t, level: ctx.log(t, level))
+    except (ArchiveError, ImportFailed) as exc:
+        raise JobError(str(exc)) from exc
+    # The file is consumed with the import (the collector removes it from disk), and the job now
+    # belongs to the new project: it shows among that project's jobs.
+    from sqlalchemy import update
+
+    from app.models import Job
+
+    # Logged first: the journal is written by another connection, which would wait for the job row
+    # this transaction locks below.
+    ctx.log(f"Проект «{result['name']}»: файлов хранилища {result['files']}")
+    ctx.session.delete(upload)
+    ctx.session.execute(update(Job).where(Job.id == ctx.job_id).values(project_id=result["project_id"]))
+    return result

@@ -69,6 +69,12 @@ export interface Live {
   onPatchProject: (id: number, patch: { name?: string; description?: string }) => Promise<string>;
   /** Opens the projects window. */
   openProjects: () => void;
+  /** Opens the window of an export of the whole project into a .bfggis file (none: the open project). */
+  openProjectExport: (projectId?: number) => void;
+  /** Opens the window of an import of a .bfggis file as a project. */
+  openProjectImport: () => void;
+  /** Starts the export of the whole project into a .bfggis file (without a password). */
+  exportProject: (projectId: number, filename?: string, includeView?: boolean) => Promise<JobInfo>;
   /** Opens the settings window (hotkeys). */
   openSettings: () => void;
   moveDataset: (id: number, folder: string) => Promise<void>;
@@ -638,6 +644,41 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       run: () => {
         s().openProjects();
         return "Открыто окно «Проекты»";
+      },
+    },
+    {
+      id: "project.export",
+      title: "Экспорт проекта (.bfggis)",
+      description:
+        "Весь проект одним сжатым файлом .bfggis для переноса на другой компьютер: наборы скважин, таблицы, журнал правок, каркасы, линии с версиями, " +
+        "растры, блочные модели, графики, стили, диалоги Claude, файлы хранилища. Без параметров открывает окно экспорта (там же можно задать пароль). " +
+        "С start=true сразу запускает фоновое задание без пароля; файл — во вкладке «Задания».",
+      params: {
+        project_id: { type: "integer", description: "id проекта; по умолчанию — открытый", nullable: true },
+        filename: { type: "string", description: "имя файла; по умолчанию — название проекта и дата", nullable: true },
+        include_view: { type: "boolean", description: "добавить настройки вида этого браузера (только для открытого проекта); по умолчанию да", nullable: true },
+        start: { type: "boolean", description: "true — запустить сразу, без окна", nullable: true },
+      },
+      run: async ({ project_id, filename, include_view, start }) => {
+        const id = typeof project_id === "number" ? project_id : s().projectId;
+        if (!s().projects.some((p) => p.id === id)) throw new Error(`Проекта с id ${id} нет`);
+        if (start !== true) {
+          s().openProjectExport(id);
+          return "Открыто окно экспорта проекта";
+        }
+        const job = await s().exportProject(id, typeof filename === "string" ? filename : undefined, include_view !== false);
+        return `Задание ${job.id}: ${job.title}`;
+      },
+    },
+    {
+      id: "project.import",
+      title: "Импорт проекта (.bfggis)",
+      description:
+        "Открывает окно импорта проекта из файла .bfggis (сделанного экспортом проекта на этом или другом компьютере). " +
+        "Файл выбирает пользователь; в окне — пароль, выбор при совпадении названия (копия, другое название, замена), ход импорта.",
+      run: () => {
+        s().openProjectImport();
+        return "Открыто окно импорта проекта";
       },
     },
     {

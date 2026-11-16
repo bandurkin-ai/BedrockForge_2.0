@@ -31,6 +31,9 @@ dependencies = [
     "manifold3d>=3.2,<4",
     "PythonCDT>=2.0,<3",
     "mapbox-earcut>=1.0",
+    # Stage 27: project archives (.bfggis) — zstd compression, AES-256-GCM encryption with a password.
+    "zstandard>=0.22",
+    "cryptography>=42",
 ]
 
 [project.optional-dependencies]

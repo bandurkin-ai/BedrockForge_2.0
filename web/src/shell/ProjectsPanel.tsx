@@ -13,7 +13,7 @@ const objects = (s: ProjectStats) => s.datasets.wireframes + s.datasets.lines + 
  * Project management: the open project (name, description, what it holds) and every project of the
  * installation with its size and last change — open, rename, delete, create.
  */
-export function ProjectsPanel({ projects, currentId, refreshKey, onOpen, onRename, onDescribe, onDelete, onNew, onDemo }: {
+export function ProjectsPanel({ projects, currentId, refreshKey, onOpen, onRename, onDescribe, onDelete, onNew, onDemo, onExport, onImport }: {
   projects: Project[];
   currentId: number;
   refreshKey: number;
@@ -23,6 +23,10 @@ export function ProjectsPanel({ projects, currentId, refreshKey, onOpen, onRenam
   onDelete: (id: number) => Promise<unknown>;
   onNew: () => Promise<unknown>;
   onDemo: () => Promise<unknown>;
+  /** the export window of a project (a .bfggis file for another computer) */
+  onExport: (project: Project) => void;
+  /** the import window of a .bfggis file */
+  onImport: () => void;
 }) {
   const [stats, setStats] = useState<Record<number, ProjectStats>>({});
   const [query, setQuery] = useState("");
@@ -65,6 +69,7 @@ export function ProjectsPanel({ projects, currentId, refreshKey, onOpen, onRenam
             <Icon name="folder" size={18} />
             <strong className="pp-name grow" title={current.name}>{current.name}</strong>
             <button onClick={() => void rename(current)} title="Переименовать открытый проект"><Icon name="edit" size={14} /> Переименовать</button>
+            <button onClick={() => onExport(current)} title="Весь проект одним файлом .bfggis — для работы на другом компьютере"><Icon name="export" size={14} /> Экспорт</button>
           </div>
           <div className="muted small">Создан {date(current.created_at)} · изменён {date(s?.updated_at)}</div>
           <label className="pp-desc">
@@ -91,6 +96,7 @@ export function ProjectsPanel({ projects, currentId, refreshKey, onOpen, onRenam
         <div className="pp-head">
           <strong className="grow">Все проекты ({projects.length})</strong>
           <button className="primary" onClick={() => run(onNew())}><Icon name="plus" size={14} /> Новый проект</button>
+          <button onClick={onImport} title="Открыть проект из файла .bfggis, сделанного экспортом проекта"><Icon name="import" size={14} /> Импорт…</button>
           <button onClick={() => run(onDemo())} title="Учебный проект: 48 скважин, пробы, аудит, каркасы">Демо-проект</button>
         </div>
         <input value={query} placeholder="поиск по названию и описанию" aria-label="Поиск проекта" onChange={(e) => setQuery(e.target.value)} />
@@ -111,6 +117,7 @@ export function ProjectsPanel({ projects, currentId, refreshKey, onOpen, onRenam
                   <td className="small">{date(st?.updated_at ?? p.created_at)}</td>
                   <td className="pp-actions">
                     <button disabled={open} onClick={() => onOpen(p.id)} title={open ? "Этот проект уже открыт" : "Открыть проект"}>Открыть</button>
+                    <button className="icon" onClick={() => onExport(p)} title="Экспорт проекта в файл .bfggis" aria-label={`Экспорт ${p.name}`}><Icon name="export" size={14} /></button>
                     <button className="icon" onClick={() => void rename(p)} title="Переименовать" aria-label={`Переименовать ${p.name}`}><Icon name="edit" size={14} /></button>
                     <button className="icon" onClick={() => run(onDelete(p.id))} title="Удалить проект со всеми данными" aria-label={`Удалить ${p.name}`}><Icon name="trash" size={14} /></button>
                   </td>
