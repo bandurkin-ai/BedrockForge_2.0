@@ -25,7 +25,7 @@
 | Инструмент | Версия | Примечание |
 |------------|--------|-----------|
 | Python | **3.12.16** | Сборка python-build-standalone через uv (`core/.python-version`); установщиков python.org для security-only ветки 3.12 под Windows нет → **спайк а** (PyInstaller + такая сборка); запасной вариант — `actions/setup-python` 3.12.10 |
-| uv | **0.13.6** (посл. 0.13.8) | `required-version = "==0.13.6"`; в облаке `uvx --from uv==0.13.6 uv …` (в образе 0.11.32); MIT OR Apache-2.0 |
+| uv | **0.13.6** (посл. 0.13.8) | В CI — ровно 0.13.6 (`setup-uv`, `version`); `required-version = ">=0.13.6,<0.14"`; образ облака даёт 0.11.32 (знает Python только до 3.12.13) → `uvx --from uv==0.13.6 uv …`; MIT OR Apache-2.0 |
 | Node.js / npm | **22.23.4 / 10.9.9** | Версия облачной среды; electron@45 требует Node ≥ 22.12; `.nvmrc`, `engine-strict` |
 | PostgreSQL | 16 | Только CI (service) и сервер Э25 |
 
@@ -35,17 +35,18 @@
 |-------|-----------|-----------|----------|-----|-------------|
 | electron | **45.2.3** | 45.3.3 (16.11) | MIT (+ Chromium, см. п. 7) | app, dev | BF: 45.2.1; последний патч 45.2 в окне П3; Chromium 156.0.8078.80, Node 24.22.2 |
 | electron-builder | **26.18.0** | 26.18.0 (тег v26: 26.18.1) | MIT | app, dev | Версия BF; опция `electronFuses` есть в схеме (проверено) |
-| electron-updater | **6.8.11** | 6.8.11 | MIT | app, runtime | Парный выпуск к builder 26.18.0 |
+| electron-updater | **6.8.11** | 6.8.11 | MIT | app, runtime (вводится на Э24) | Парный выпуск к builder 26.18.0 |
 | react, react-dom | **18.3.1** | 19.3.1 | MIT | ui | Ориентир ТЗ и BF |
 | typescript | **5.6.3** | 7.0.2 | Apache-2.0 | ui, app | Ориентир; openapi-typescript требует `^5.x` |
 | vite / @vitejs/plugin-react | **5.4.21 / 4.3.4** | 8.3.8 / 6.3.0 | MIT | ui, dev | BF: 5.4.11 → последний патч 5.4 |
-| vitest | **2.1.9** | 5.1.0 | MIT | ui, dev | BF: 2.1.8 → последний патч 2.1 (требует vite ^5) |
+| vitest | **2.1.9** | 5.1.0 | MIT | ui, app, dev | BF: 2.1.8 → последний патч 2.1 (требует vite ^5) |
+| esbuild | **0.28.2** | 0.28.2 | MIT | app, dev | Сборка main и preload в один файл (preload в `sandbox` не может `require`); версии ≤ 0.24.2 подпадают под GHSA-67mh-4wv8-2f99 |
 | three / @types/three | **0.170.0** | 0.187.0 | MIT | ui | Ориентир ТЗ и BF |
 | three-mesh-bvh | **0.9.18** | 0.9.18 | MIT | ui | В BF не было; ТЗ «0.8+»; peer `three >= 0.159` → **спайк б** |
-| @playwright/test | **1.65.0** | 1.65.1 | Apache-2.0 | app, dev | В BF не было; ориентир «1.4x» (1.49.1, 12.2024) на 22 мес. старше Electron 45; обе запускают Electron 45.2.3 в облаке → **спайк б**, запасная 1.49.1 |
+| @playwright/test | **1.49.1** | 1.65.1 | Apache-2.0 | app, dev | Ориентир ТЗ «1.4x» (последняя 1.4x); запускает Electron 45.2.3 в облаке (проверено). Ключ программного рендера задаём сами — 1.49.1 его не добавляет → **спайк б**; запасная — 1.65.0 (проверена там же) |
 | openapi-typescript | **7.13.0** | 7.13.0 | MIT | ui, dev | Типы API из OpenAPI (ТЗ 6.6) |
 | @types/react, @types/react-dom | **18.3.31 / 18.3.7** | 19.3.0 | MIT | ui, dev | Последние для React 18 |
-| @types/node | **22.20.5** (ui) / **24.19.2** (app) | 26.6.6 | MIT | dev | ui — Node сборки; app — Node 24 внутри Electron 45 |
+| @types/node | **22.20.5** | 26.6.6 | MIT | dev | Версия BF, общая для ui и app; API Node 24 (внутри Electron 45) сверх Node 22 не используем |
 | license-checker-rseidelsohn | **4.4.2** | 5.0.1 (нужен Node ≥ 24) | BSD-3-Clause | dev | Поддерживаемая замена `license-checker` (25.0.1, 2019) |
 | @cyclonedx/cyclonedx-npm | **6.0.1** | 7.0.1 | Apache-2.0 | dev | SBOM |
 | pdf-lib | 1.17.1 (вводится на Э22) | 1.17.1 | MIT | app | Склейка PDF |
@@ -82,7 +83,7 @@
 | anthropic | **2.6.0** | 2.9.0 (16.11) | Apache-2.0 | Нужен на Э23; обновить перед Э23 (выходит еженедельно) |
 | psutil | **7.2.2** | 7.2.2 | BSD-3-Clause | Оценка памяти заданий (ADR 0002) |
 
-### 5. Python, разработка и сборка (группа `dev`, в дистрибутив не входит)
+### 5. Python, разработка и сборка (группы `dev` и `build`, в дистрибутив не входят)
 
 pytest 9.2.0, httpx 0.28.1, ruff 0.17.4, mypy 2.4.1, pip-licenses 5.5.5, cyclonedx-bom 8.0.1, pdfminer.six 20260107 (все MIT/BSD/Apache-2.0); **PyInstaller 6.22.3** и pyinstaller-hooks-contrib 2026.9 (см. п. 7); GeostatsPy 0.0.79 — только сверка в тестах; Cython (Apache-2.0) — версия фиксируется на Э24.
 
@@ -91,10 +92,9 @@ pytest 9.2.0, httpx 0.28.1, ruff 0.17.4, mypy 2.4.1, pip-licenses 5.5.5, cyclone
 | Файл | Содержимое |
 |------|-----------|
 | `core/pyproject.toml` + `core/uv.lock` | Один универсальный lock для `win_amd64` и `linux x86_64` (`[tool.uv] environments`), хеши sha256, `exclude-newer`, `no-build`, `constraint-dependencies` |
-| `ui/package.json` + `ui/package-lock.json` | Интерфейс; всё собирается Vite, `node_modules` в дистрибутив не попадает |
-| `app/package.json` + `app/package-lock.json` | Electron main/preload, сборка, E2E; в asar — только `electron-updater` и 15 его зависимостей |
+| Корневой `package.json` (`workspaces: ["ui", "app"]`) + **один** `package-lock.json` | Все npm-пакеты с `integrity`; в `ui/package.json` и `app/package.json` — точные версии |
 
-**npm workspaces не используем.** Причины: схема двух пакетов проверена в BF; electron-builder берёт production-зависимости из `app/node_modules` без подъёма чужих пакетов; `ci.yml` (Linux) ставит только `ui` и не качает Electron (≈ 275 МБ после распаковки); проверка лицензий и SBOM идут по пакету. Единство версий общих инструментов (typescript) проверяет скрипт CI.
+**npm workspaces — да, один `package-lock.json` в корне** (так же сформулировано в ТЗ 6.3 и S8; набор разрешён одним lock: 651 пакет). Условия: (1) main и preload собирает esbuild, интерфейс — Vite; `node_modules` в asar не кладётся, поэтому подъём зависимостей в корень на упаковку не влияет; (2) пакеты, чей код попадает в сборку (react, three, three-mesh-bvh, electron-updater, pdf-lib), объявляются в `dependencies` — по ним идут проверка лицензий и SBOM; всё остальное — `devDependencies`; (3) пакет `electron` 45 не скачивает двоичный файл при `npm ci` (нет `postinstall`): он загружается при первом запуске или шагом `npx install-electron` — задания Linux CI без Electron его не качают, в `windows.yml` это явный шаг с кешем.
 
 Установка — только `uv sync --locked` и `npm ci`. Обновление — отдельный PR `deps: …`: правка версии → `uv lock` / `npm install --package-lock-only --before=<дата>` → CI Linux + Windows → проверка лицензий → bench. Патчи безопасности Electron 45.x — раз в месяц; мажоры — только ADR.
 
@@ -113,21 +113,22 @@ pytest 9.2.0, httpx 0.28.1, ruff 0.17.4, mypy 2.4.1, pip-licenses 5.5.5, cyclone
 
 ## Причины
 
-- Набор Python разрешён одним `uv lock` для Windows и Linux и установлен в облаке; набор npm — двумя lock-файлами; production-зависимости npm: 0 уязвимостей (`npm audit --omit=dev`).
+- Набор Python разрешён одним `uv lock` для Windows и Linux и установлен в облаке; набор npm — одним lock-файлом workspaces; production-зависимости npm: 0 уязвимостей (`npm audit --omit=dev`).
 - numpy 2.3.5 — пересечение допусков numba (`< 2.6`), scipy (`>= 2.0`), tifffile (`>= 2.1`), ortools (`>= 2.0.2`) и линии, современной pandas 2.3.3.
 
 ## Последствия
 
 - Vite 5.4 / vitest 2.1 не получают исправлений: `npm audit` показывает уязвимости dev-сервера и `tinypool` (только dev; dev-сервер в CI и сборке не используется). Переход на Vite 7+/vitest 4+ — отдельный ADR после В1.
-- Ядро: 69 runtime-пакетов, колёса Windows ≈ 223 МБ (llvmlite 42, scipy 37, pyarrow 28, ortools 24) + Electron ≈ 100 МБ в сжатом виде → оценка дистрибутива 300–350 МБ при лимите 400 МБ; размер контролируется в `windows.yml`.
+- Ядро: 69 runtime-пакетов, колёса Windows ≈ 223 МБ (llvmlite 42, scipy 37, pyarrow 28, ortools 24) + Electron ≈ 100 МБ в сжатом виде → оценка дистрибутива 330–370 МБ при лимите 400 МБ (запас мал); размер контролируется в `windows.yml`.
 - Белый список лицензий шире списка ТЗ 6.3 — требуется согласие заказчика (отчёт вехи В1).
+- Каркас Э0 в репозитории собран до этого ADR на последних версиях (Electron 45.3.3, numpy 2.5.5, duckdb 2.0.0 и др.) — lock-файлы приводятся к таблицам п. 3–4 до спайков на `windows-latest`.
 
 ## Альтернативы
 
 | Вариант | Почему нет |
 |---------|-----------|
 | Всё самое новое (React 19, TS 7, Vite 8, three 0.187, numpy 2.5, pandas 3) | Нарушает правило ТЗ; большой объём непроверенных изменений на старте |
-| npm workspaces, один `package-lock.json` | Подъём зависимостей мешает упаковке asar; Linux CI качал бы Electron |
+| Отдельные lock-файлы `ui` и `app` без workspaces (как в BF) | Дублирует общие dev-пакеты, требует сверки версий скриптом; изоляция упаковки уже достигается сборкой esbuild |
 | numpy 2.5.5 / 2.4.6 | Вышли после pandas 2.3.3 (последней 2.x); выгоды нет, риск есть |
 | asyncpg (Apache-2.0) | Только asyncio; ядро синхронное (SQLite) |
 | **Предложение заказчику:** после В1 обновить dev-инструменты UI (Vite, vitest) отдельным спайком | Снимет предупреждения `npm audit` |
@@ -139,6 +140,23 @@ pytest 9.2.0, httpx 0.28.1, ruff 0.17.4, mypy 2.4.1, pip-licenses 5.5.5, cyclone
 | Колёса `cp312-win_amd64` | `pip download --only-binary=:all: --platform win_amd64` для 22 бинарных пакетов; `uv lock` с `no-build` | Выполнено в облаке |
 | Совместимость набора Python | `uv sync --locked` (Python 3.12.16, Linux) + дымовой скрипт: импорты, numba `cache=True` в папке с кириллицей и пробелом, булева операция manifold3d, pythoncdt, earcut, marching cubes → pyfqmr, Parquet zstd → DuckDB без автозагрузки расширений, OR-Tools max-flow, CSV с десятичной запятой, Ed25519 | Выполнено в облаке (Linux) |
 | То же на Windows в `onedir` | **Спайк а**: PyInstaller 6.22.3 на `windows-latest`, тот же дымовой скрипт из `bf-core.exe`, размер папки | Э0 |
-| Electron 45.2.3 + three 0.170.0 + three-mesh-bvh, 1 млн треугольников, программный рендер; Playwright 1.65.0 | **Спайк б** (в облаке на Linux уже запускается, см. ADR 0004) | Э0 |
+| Electron 45.2.3 + three 0.170.0 + three-mesh-bvh, 1 млн треугольников, программный рендер; Playwright 1.49.1 | **Спайк б** (в облаке на Linux уже запускается, см. ADR 0004) | Э0 |
 | Ядро на 127.0.0.1 с токеном, 401 без токена; запуск из пути с кириллицей | **Спайки в, г** (ADR 0002, 0005) | Э0 |
 | Лицензии и SBOM | `pip-licenses`, `license-checker-rseidelsohn` с белым списком в `ci.yml` | Э0 (каркас CI) |
+
+## Итоги спайков Э0 (2026-11-16)
+
+| Спайк | Где | Результат |
+|-------|-----|-----------|
+| а. PyInstaller 6.22 onedir: numpy, scipy, numba, manifold3d, PythonCDT, pyfqmr, duckdb, pyarrow считают (`bf-core --selftest`) | `windows-latest`, run 43916849569; Linux | ✅ onedir 434 МБ (Windows); portable `.exe` 214 МБ, NSIS 243 МБ (бюджет 400 МБ) |
+| б. Electron 45 + three 0.170, 1 млн треугольников, программный WebGL2, кадр — артефакт | Linux (xvfb) и `windows-latest` | ✅ рендер «SwiftShader (Subzero)» с `--enable-unsafe-swiftshader`; ≈ 0,23–0,9 с на кадр; `artifacts/spike-mesh-1m.png` |
+| в. Ядро на 127.0.0.1 с токеном отвечает окну `app://`; без токена 401; чужие Host/Origin 403 | Linux, `windows-latest` (собранный `.exe`) | ✅ |
+| г. Запуск из пути с кириллицей и пробелами, кеш numba там же | `windows-latest`: `…\Мои проекты\bf core`, приложение — `…\Программы BF\BedrockForge 2` | ✅ кеш numba: первый запуск 1,24 с, повторный 0,19 с |
+
+Находка спайка г: в собранном `bf-core.exe` numba не использует `NUMBA_CACHE_DIR` (у функций относительный
+`co_filename`, исходника на диске нет) и пишет кеш в общий `%LOCALAPPDATA%\numba`. Решение —
+собственный локатор `core/bf_core/numba_cache.py` (свежесть кеша — по штампу `.exe`, как у numba для
+frozen-приложений); проверка — шаг «Спайк а/г» в `windows.yml` (≥ 2 файла кеша в заданной папке).
+
+Спайки а–г пройдены на наборе «последних» версий; закреплённый набор этого ADR проверяется тем же
+`windows.yml` в PR Э0 (Python 3.12.16, numpy 2.3.5, Electron 45.2.3 и т. д.).

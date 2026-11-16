@@ -10,7 +10,7 @@ Desktop-ГГИС для Windows 11: Electron (app/) + React/TS/three.js (ui/) + 
 ## Команды
 - Ядро: `cd core && uv sync && uv run pytest -q -x --tb=short`
 - Ядро, линт: `uv run ruff check . && uv run mypy bf_core`
-- Ядро, БД на PostgreSQL: `BF_TEST_PG=postgresql+pg8000://… uv run pytest -q -m db`
+- Ядро, БД на PostgreSQL: `BF_TEST_PG=postgresql+pg8000://… uv run pytest -q -m db` (драйвер pg8000 — BSD, ADR 0003)
 - Ядро, самопроверка зависимостей: `uv run python -m bf_core --selftest`
 - Интерфейс и оболочка (npm workspaces ui, app): `npm ci && npm test -- --reporter=dot && npm run typecheck`
 - Сборка интерфейса и оболочки: `npm run build`
@@ -19,7 +19,8 @@ Desktop-ГГИС для Windows 11: Electron (app/) + React/TS/three.js (ui/) + 
 - Сборка bf-core: `cd core && uv sync --group build && uv run pyinstaller bf-core.spec`
 - Сборка .exe — только в CI windows.yml (артефакт BedrockForge-windows)
 - ТЗ → spec: `pandoc docs/TZ/BF2-TZ.docx -t gfm --wrap=none -o /tmp/tz.md && python3 tools/spec/split_tz.py /tmp/tz.md docs/spec`
-- В облаке uv: `export UV_SYSTEM_CERTS=1; unset UV_NATIVE_TLS` (прокси с собственным CA)
+- В облаке uv: `export UV_SYSTEM_CERTS=1; unset UV_NATIVE_TLS` (прокси с собственным CA); uv 0.13.6 (`pip install --user uv==0.13.6`)
+- Версии: только по ADR 0001 (точные `==`, `exclude-newer`, `npm install --before=<дата>`); новая зависимость — через ADR
 
 ## Структура
 app/ оболочка (src/main, src/preload, static/ заставка, e2e/) · ui/src/{shell,viz,charts,edit,modules/<модуль>}

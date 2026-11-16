@@ -13,7 +13,6 @@ concurrency:
 permissions:
   contents: read
 env:
-  UV_PYTHON: "3.12"
   PYTHONUTF8: "1"
 
 jobs:
@@ -24,13 +23,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-        with: { enable-cache: true, cache-dependency-glob: core/uv.lock }
+        with: { version: "0.13.6", enable-cache: true, cache-dependency-glob: core/uv.lock }
       - uses: actions/setup-node@v7
-        with: { node-version: 22, cache: npm }
+        with: { node-version-file: .nvmrc, cache: npm }
 
       - name: Ядро — зависимости
         working-directory: core
-        run: uv sync --frozen --group build
+        run: uv sync --locked --group build
       - name: Ядро — pytest (подмножество windows)
         working-directory: core
         run: uv run pytest -q -m windows --tb=short
