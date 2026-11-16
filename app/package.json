@@ -1,0 +1,76 @@
+{
+  "name": "bedrockforge",
+  "productName": "BedrockForge",
+  "version": "0.0.1",
+  "description": "BedrockForge 2 — BedrockForge by Mikhail Bandurkin",
+  "author": "Mikhail Bandurkin",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs && electron .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p .",
+    "e2e": "playwright test",
+    "dist:win": "electron-builder --win portable nsis --x64 --publish never",
+    "dist:dir": "electron-builder --dir --publish never"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1",
+    "@types/node": "22.20.5",
+    "electron": "45.2.3",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  },
+  "build": {
+    "appId": "com.bandurkin.bedrockforge2",
+    "productName": "BedrockForge",
+    "copyright": "© Mikhail Bandurkin",
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "static/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../ui/dist",
+        "to": "ui"
+      },
+      {
+        "from": "../core/dist/bf-core",
+        "to": "bf-core"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "executableName": "BedrockForge"
+    },
+    "portable": {
+      "artifactName": "BedrockForge-${version}-portable.exe"
+    },
+    "nsis": {
+      "artifactName": "BedrockForge-${version}-setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "dir"
+      ]
+    },
+    "publish": null
+  }
+}

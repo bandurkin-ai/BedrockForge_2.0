@@ -1,0 +1,85 @@
+[project]
+name = "bf-core"
+version = "0.0.1"
+description = "BedrockForge 2 compute core"
+requires-python = "==3.12.*"
+dependencies = [
+  "fastapi==0.162.2",
+  "uvicorn==0.54.0",
+  "pydantic==2.14.3",
+  "sqlalchemy==2.0.57",
+  "alembic==1.20.1",
+  "pg8000==1.31.6",
+  "numpy==2.3.5",
+  "scipy==1.18.1",
+  "pandas==2.3.3",
+  "pyarrow==25.0.1",
+  "duckdb==1.5.6",
+  "numba==0.68.1",
+  "llvmlite==0.50.0",
+  "manifold3d==3.5.4",
+  "pythoncdt==2.0.2",
+  "mapbox-earcut==2.1.0",
+  "pyfqmr==0.5.0",
+  "scikit-image==0.26.0",
+  "ortools==9.15.6755",
+  "numexpr==2.14.2",
+  "threadpoolctl==3.8.0",
+  "ezdxf==1.4.5",
+  "openpyxl==3.1.5",
+  "pillow==12.3.0",
+  "tifffile==2026.10.15",
+  "zstandard==0.25.0",
+  "cryptography==50.0.2",
+  "pyproj==3.8.0",
+  "anthropic==2.6.0",
+  "psutil==7.2.2",
+]
+
+[dependency-groups]
+dev = [
+  "pytest==9.2.0",
+  "httpx==0.28.1",
+  "ruff==0.17.4",
+  "mypy==2.4.1",
+  "pip-licenses==5.5.5",
+]
+build = [
+  "pyinstaller==6.22.3",
+  "pyinstaller-hooks-contrib==2026.9",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+required-version = ">=0.13.6,<0.14"
+# ADR 0001: only releases older than 7 days, only binary wheels, one lock for Windows and Linux.
+exclude-newer = "2026-11-09T00:00:00Z"
+no-build = true
+environments = [
+  "sys_platform == 'win32' and platform_machine == 'AMD64'",
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+constraint-dependencies = ["python-dateutil==2.9.0.post0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "windows: tests that must also run on Windows CI",
+  "db: database layer tests (SQLite and PostgreSQL)",
+  "slow: long-running tests",
+]
+addopts = "-ra"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = false

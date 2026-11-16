@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+core/build/
+core/dist/
+*.egg-info/
+# Node
+node_modules/
+ui/dist/
+app/dist/
+app/release/
+*.tsbuildinfo
+# Artifacts
+bench/out/
+artifacts/
+test-results/
+playwright-report/
+# Local data
+*.bfproj/
+.env
+*.pem
+*.key
+license-private*
