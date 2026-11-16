@@ -221,7 +221,8 @@ def _read_csv(path: Path, progress: Progress) -> tuple[list[Column], dict | None
     cols: list[Column] = []
     for name in names:
         s = frame[name]
-        if name in text_cols or s.dtype == object:
+        # Text comes as `object` in pandas 2 and as the string dtype in pandas 3.
+        if name in text_cols or not pd.api.types.is_numeric_dtype(s):
             numeric = pd.to_numeric(s.astype(str).str.strip().str.replace(",", ".", regex=False), errors="coerce")
             filled = s.notna() & (s.astype(str).str.strip() != "")
             if name not in text_cols and filled.any() and numeric[filled].notna().all():

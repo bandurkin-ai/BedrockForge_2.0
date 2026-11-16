@@ -139,7 +139,71 @@ interface WireframeLayer {
   /** The exact section (from the server): flat x, y, z per polyline, relative to the origin. */
   cutLines: { closed: boolean; points: number[][] }[] | null;
   cut: LineSegments2 | null;
+  /** Project coordinates the vertices are relative to. */
+  origin: number[];
+  /** The raster draped on the surface (a terrain model): shader values and the loaded image. */
+  drape: DrapeUniforms;
+  drapeTexture: THREE.Texture | null;
+  drapeUrl: string | null;
 }
+
+/** A raster laid on a terrain model: the image follows the relief. */
+export interface Drape {
+  rasterId: number;
+  url: string;
+  /** Corners of the image in project coordinates: top-left, top-right, bottom-right, bottom-left. */
+  corners: number[][];
+  /** The image is multiplied by this colour ("#ffffff": as is). */
+  tint: string;
+  /** How much of the image covers the surface's own colour, 0…1. */
+  opacity: number;
+  /** Light and shadow of the relief on the image. */
+  shade: boolean;
+  /** Hide the part of the raster outside the surface (otherwise it stays flat around it). */
+  clip: boolean;
+}
+
+interface DrapeUniforms {
+  uDrapeMap: { value: THREE.Texture | null };
+  uDrapeU: { value: THREE.Vector3 };
+  uDrapeV: { value: THREE.Vector3 };
+  uDrapeTint: { value: THREE.Color };
+  uDrapeMix: { value: number };
+  uDrapeShade: { value: number };
+}
+
+/**
+ * Image coordinates (u, v) of a point as two rows of numbers: u = a·x + b·y + c. `corners` are
+ * the image's top-left, top-right, bottom-right, bottom-left; x, y are relative to `origin`.
+ */
+export function imageAxes(corners: number[][], origin: number[]): { u: [number, number, number]; v: [number, number, number] } | null {
+  const [tl, , br, bl] = corners;
+  const e1 = [br[0] - bl[0], br[1] - bl[1]];
+  const e2 = [tl[0] - bl[0], tl[1] - bl[1]];
+  const det = e1[0] * e2[1] - e2[0] * e1[1];
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null;
+  const bx = bl[0] - origin[0];
+  const by = bl[1] - origin[1];
+  return {
+    u: [e2[1] / det, -e2[0] / det, -(e2[1] * bx - e2[0] * by) / det],
+    v: [-e1[1] / det, e1[0] / det, (e1[1] * bx - e1[0] * by) / det],
+  };
+}
+
+/** The part of an image (u0, v0, u1, v1) covered by a box in plan, or null when they do not meet. */
+export function imageWindow(corners: number[][], min: number[], max: number[]): [number, number, number, number] | null {
+  const axes = imageAxes(corners, [0, 0]);
+  if (!axes) return null;
+  const at = (x: number, y: number) => [axes.u[0] * x + axes.u[1] * y + axes.u[2], axes.v[0] * x + axes.v[1] * y + axes.v[2]];
+  const points = [at(min[0], min[1]), at(max[0], min[1]), at(max[0], max[1]), at(min[0], max[1])];
+  const u = points.map((p) => p[0]);
+  const v = points.map((p) => p[1]);
+  const window: [number, number, number, number] = [Math.min(...u), Math.min(...v), Math.max(...u), Math.max(...v)];
+  return window[0] >= 1 || window[1] >= 1 || window[2] <= 0 || window[3] <= 0 ? null : window;
+}
+
+/** Most surfaces one flat raster is cut out for (the rest of them only cover it). */
+const MAX_RASTER_HOLES = 4;
 
 /** A level is drawn when it has at most this many triangles per pixel of the object's disc on screen. */
 const TRIANGLES_PER_PIXEL = 2;
@@ -189,6 +253,74 @@ interface BlockLayer {
   material: THREE.MeshLambertMaterial;
   /** block number of every instance */
   index: Int32Array;
+  /** rgb per block; which blocks pass the restriction; which of them are drawn as boxes (the shell, thinned) */
+  colors: Uint8Array | null;
+  all: Uint8Array | null;
+  drawn: Uint8Array | null;
+  /** the boxes do not match `colors` and `drawn` any more */
+  stale: boolean;
+  shown: boolean;
+  opacity: number;
+  /** in a clipped section: the cut of the blocks by the section plane instead of the boxes */
+  slice: boolean;
+  sliceMesh: THREE.Mesh | null;
+  sliceMaterial: THREE.MeshBasicMaterial;
+  /** block number of every quad of the cut */
+  sliceIndex: Int32Array;
+  edges: BlockEdgeUniforms;
+}
+
+/** Outlines of blocks, drawn in the fragment shader of their faces (any number of blocks costs nothing more). */
+interface BlockEdgeUniforms {
+  /** half of the line width, px; 0: no outlines */
+  width: { value: number };
+  color: { value: THREE.Color };
+  /** the cut drawn as an underlay: its colour mixed toward the background instead of blending */
+  fade: { value: number };
+  back: { value: THREE.Color };
+}
+
+export interface BlockDisplay {
+  /** rgb 0–255 per block */
+  colors: Uint8Array;
+  /** 1 per block that passes the restriction (the cut of a section takes these) */
+  all: Uint8Array;
+  /** 1 per block drawn as a box (the outer shell, or all of them) */
+  drawn: Uint8Array;
+  opacity: number;
+  shown: boolean;
+  slice: boolean;
+  /** outlines: colour and width in px, or null */
+  edges: { color: string; width: number } | null;
+}
+
+/**
+ * Adds outlines to a material whose faces carry uv 0..1 (a box face, a quad of a cut): a fragment
+ * closer to the border of its face than the line width takes the line colour. The width is in
+ * pixels (screen-space derivatives); faces only a few pixels across get no outline, so a model
+ * seen from afar does not turn into the colour of its lines.
+ */
+function outlineFaces(material: THREE.Material, u: BlockEdgeUniforms): void {
+  material.defines = { ...(material.defines ?? {}), USE_UV: "" };
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.bfEdgeWidth = u.width;
+    shader.uniforms.bfEdgeColor = u.color;
+    shader.uniforms.bfFade = u.fade;
+    shader.uniforms.bfBack = u.back;
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform float bfEdgeWidth;\nuniform vec3 bfEdgeColor;\nuniform float bfFade;\nuniform vec3 bfBack;")
+      .replace("#include <opaque_fragment>", `if (bfEdgeWidth > 0.0) {
+  vec2 bfPx = 1.0 / max(fwidth(vUv), vec2(1e-7));
+  vec2 bfD = min(vUv, 1.0 - vUv) * bfPx;
+  float bfLine = 1.0 - smoothstep(bfEdgeWidth - 0.5, bfEdgeWidth + 0.5, min(bfD.x, bfD.y));
+  float bfFace = min(bfPx.x, bfPx.y);
+  bfLine *= clamp((bfFace - 4.0 * bfEdgeWidth - 2.0) / (4.0 * bfEdgeWidth + 2.0), 0.0, 1.0);
+  outgoingLight = mix(outgoingLight, bfEdgeColor, bfLine);
+}
+outgoingLight = mix(bfBack, outgoingLight, bfFade);
+#include <opaque_fragment>`);
+  };
+  material.customProgramCacheKey = () => "bf-block-edges";
 }
 
 /** Above this many shown blocks the model is not drawn (stage 12.5: surfaces of filtered blocks). */
@@ -205,6 +337,8 @@ interface RasterLayer {
   mesh: THREE.Mesh;
   texture: THREE.Texture | null;
   visible: boolean;
+  /** Windows of the image (u0, v0, u1, v1) not drawn: there the raster lies on a terrain model. */
+  holes: { uHoles: { value: THREE.Vector4[] }; uHoleCount: { value: number } };
 }
 
 /**
@@ -244,6 +378,8 @@ export class GeoScene {
   private wireframes = new Map<number, WireframeLayer>();
   private lineLayers = new Map<number, LineLayer3D>();
   private rasters = new Map<number, RasterLayer>();
+  /** Rasters draped on terrain models, by wireframe (kept while the wireframe is not loaded yet). */
+  private drapes = new Map<number, Drape>();
   private blocks = new Map<number, BlockLayer>();
   /** A click on a block (when no collar is near the cursor). */
   onPickBlock: ((pick: { modelId: number; index: number } | null) => boolean) | null = null;
@@ -880,34 +1016,97 @@ export class GeoScene {
     const o = this.ensureOrigin(min, max);
     const group = new THREE.Group();
     group.position.set(origin[0] - o.x, origin[1] - o.y, origin[2] - o.z);
+    const edges: BlockEdgeUniforms = { width: { value: 0 }, color: { value: new THREE.Color(0x1c2230) }, fade: { value: 1 }, back: { value: new THREE.Color(0) } };
     const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const sliceMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    outlineFaces(material, edges);
+    outlineFaces(sliceMaterial, edges);
     this.blocks.set(id, {
       extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)),
       group, render, mesh: null, material, index: new Int32Array(0),
+      colors: null, all: null, drawn: null, stale: false, shown: true, opacity: 1,
+      slice: false, sliceMesh: null, sliceMaterial, sliceIndex: new Int32Array(0), edges,
     });
     this.root.add(group);
     this.contentChanged();
   }
 
-  /** Colours (rgb 0–255 per block) and which blocks are shown; returns the number drawn. */
-  setBlockStyle(id: number, colors: Uint8Array, visible: Uint8Array, opacity: number, shown: boolean): number {
+  /** Centre and size of every block of a model in the scene (6 float32 each), or null. */
+  blockRender(id: number): Float32Array | null {
+    return this.blocks.get(id)?.render ?? null;
+  }
+
+  /**
+   * How a model is shown: colours, the blocks that pass its restriction and those drawn as boxes,
+   * outlines, and whether a clipped section shows the cut. Returns the number of boxes (negative:
+   * more than can be drawn).
+   */
+  setBlockStyle(id: number, d: BlockDisplay): number {
     const layer = this.blocks.get(id);
     if (!layer) return 0;
-    layer.group.visible = shown;
-    this.applyOpacity(layer.material, opacity);
+    if (layer.colors !== d.colors || layer.drawn !== d.drawn) layer.stale = true;
+    layer.colors = d.colors;
+    layer.all = d.all;
+    layer.drawn = d.drawn;
+    layer.shown = d.shown;
+    layer.opacity = d.opacity;
+    layer.slice = d.slice;
+    layer.edges.width.value = d.edges ? Math.max(0.6, d.edges.width / 2) : 0;
+    if (d.edges) layer.edges.color.value.set(d.edges.color);
+    layer.group.visible = d.shown;
+    let count = 0;
+    for (let i = 0; i < d.drawn.length; i++) count += d.drawn[i];
+    this.refreshBlocks(layer);
+    this.requestRender();
+    return count > MAX_SHOWN_BLOCKS ? -count : count;
+  }
+
+  /** Is the model shown as its cut by the section plane now? */
+  private slicing(layer: BlockLayer): boolean {
+    return layer.slice && this.clip && this.section !== null && this.origin !== null;
+  }
+
+  /** The boxes or the cut of a model, whichever the view needs now; the other is hidden. */
+  private refreshBlocks(layer: BlockLayer): void {
+    if (layer.sliceMesh) {
+      layer.group.remove(layer.sliceMesh);
+      layer.sliceMesh.geometry.dispose();
+      layer.sliceMesh = null;
+      layer.sliceIndex = new Int32Array(0);
+    }
+    if (!layer.colors || !layer.all || !layer.drawn) return;
+    if (!layer.shown) return; // built when the model is shown
+    if (this.slicing(layer)) {
+      if (layer.mesh) layer.mesh.visible = false;
+      // An underlay, as a vertical raster: drawn first and without depth, so holes and wireframe
+      // cuts on either side of the plane stay on top; its opacity mixes it toward the background.
+      this.renderer.getClearColor(layer.edges.back.value);
+      layer.edges.fade.value = layer.opacity;
+      layer.sliceMaterial.depthTest = false;
+      layer.sliceMaterial.depthWrite = false;
+      this.buildSlice(layer);
+      return;
+    }
+    layer.edges.fade.value = 1;
+    this.applyOpacity(layer.material, layer.opacity);
+    if (layer.stale || !layer.mesh) this.buildBoxes(layer);
+    if (layer.mesh) layer.mesh.visible = true;
+  }
+
+  private buildBoxes(layer: BlockLayer): void {
     if (layer.mesh) {
       layer.group.remove(layer.mesh);
       layer.mesh.dispose();
       layer.mesh = null;
     }
+    layer.stale = false;
+    layer.index = new Int32Array(0);
+    const visible = layer.drawn as Uint8Array;
+    const colors = layer.colors as Uint8Array;
     const n = layer.render.length / 6;
     let count = 0;
     for (let i = 0; i < n; i++) count += visible[i];
-    if (count === 0 || count > MAX_SHOWN_BLOCKS) {
-      layer.index = new Int32Array(0);
-      this.requestRender();
-      return count > MAX_SHOWN_BLOCKS ? -count : 0;
-    }
+    if (count === 0 || count > MAX_SHOWN_BLOCKS) return;
     const mesh = new THREE.InstancedMesh(BLOCK_BOX, layer.material, count);
     const index = new Int32Array(count);
     const m = mesh.instanceMatrix.array as Float32Array;
@@ -933,15 +1132,88 @@ export class GeoScene {
     layer.mesh = mesh;
     layer.index = index;
     layer.group.add(mesh);
-    this.requestRender();
-    return count;
+  }
+
+  /**
+   * The cut of a model by the vertical plane of the section: every block that passes the
+   * restriction and is crossed by the plane gives a rectangle on it (the part of the section line
+   * inside the block, by the block's height), in the block's colour.
+   */
+  private buildSlice(layer: BlockLayer): void {
+    const s = this.section;
+    const o = this.origin;
+    if (!s || !o) return;
+    const all = layer.all as Uint8Array;
+    const colors = layer.colors as Uint8Array;
+    const r = layer.render;
+    const n = all.length;
+    const along = sectionDirection(s.az);
+    const normal = sectionNormal(s.az);
+    const ax = along.x, ay = along.y, nx = normal.x, ny = normal.y;
+    const anx = Math.abs(nx), any = Math.abs(ny);
+    // The start of the section line in the coordinates of the model's group.
+    const px = s.x0 - o.x - layer.group.position.x;
+    const py = s.y0 - o.y - layer.group.position.y;
+    // A line without a length runs both ways from its start.
+    const u0min = s.length === null ? -Infinity : 0;
+    const u1max = s.length ?? Infinity;
+    const crossed: number[] = [];
+    for (let i = 0, b = 0; i < n; i++, b += 6) {
+      if (!all[i]) continue;
+      const d = (r[b] - px) * nx + (r[b + 1] - py) * ny;
+      if (Math.abs(d) <= (anx * r[b + 3] + any * r[b + 4]) / 2) crossed.push(i);
+    }
+    const position = new Float32Array(crossed.length * 12);
+    const color = new Uint8Array(crossed.length * 12);
+    const uv = new Float32Array(crossed.length * 8);
+    const index = new Uint32Array(crossed.length * 6);
+    const blocks = new Int32Array(crossed.length);
+    let k = 0;
+    for (const i of crossed) {
+      const b = i * 6;
+      const hx = r[b + 3] / 2, hy = r[b + 4] / 2, hz = r[b + 5] / 2;
+      // The part of the line (by the distance along it) inside the block's footprint.
+      let u0 = u0min, u1 = u1max;
+      if (Math.abs(ax) > 1e-9) {
+        const a = (r[b] - hx - px) / ax, c = (r[b] + hx - px) / ax;
+        u0 = Math.max(u0, Math.min(a, c));
+        u1 = Math.min(u1, Math.max(a, c));
+      }
+      if (Math.abs(ay) > 1e-9) {
+        const a = (r[b + 1] - hy - py) / ay, c = (r[b + 1] + hy - py) / ay;
+        u0 = Math.max(u0, Math.min(a, c));
+        u1 = Math.min(u1, Math.max(a, c));
+      }
+      if (!(u1 - u0 > 1e-6)) continue;
+      const x0 = px + ax * u0, y0 = py + ay * u0, x1 = px + ax * u1, y1 = py + ay * u1;
+      const z0 = r[b + 2] - hz, z1 = r[b + 2] + hz;
+      position.set([x0, y0, z0, x1, y1, z0, x1, y1, z1, x0, y0, z1], k * 12);
+      uv.set([0, 0, 1, 0, 1, 1, 0, 1], k * 8);
+      for (let v = 0; v < 4; v++) color.set([colors[i * 3], colors[i * 3 + 1], colors[i * 3 + 2]], k * 12 + v * 3);
+      index.set([k * 4, k * 4 + 1, k * 4 + 2, k * 4, k * 4 + 2, k * 4 + 3], k * 6);
+      blocks[k++] = i;
+    }
+    if (k === 0) return;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(position.subarray(0, k * 12), 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(color.subarray(0, k * 12), 3, true));
+    geometry.setAttribute("uv", new THREE.BufferAttribute(uv.subarray(0, k * 8), 2));
+    geometry.setIndex(new THREE.BufferAttribute(index.subarray(0, k * 6), 1));
+    geometry.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geometry, layer.sliceMaterial);
+    mesh.renderOrder = -5;
+    layer.sliceMesh = mesh;
+    layer.sliceIndex = blocks.subarray(0, k);
+    layer.group.add(mesh);
   }
 
   removeBlockModel(id: number, update = true): void {
     const layer = this.blocks.get(id);
     if (!layer) return;
     layer.mesh?.dispose();
+    layer.sliceMesh?.geometry.dispose();
     layer.material.dispose();
+    layer.sliceMaterial.dispose();
     this.root.remove(layer.group);
     this.blocks.delete(id);
     if (update) this.contentChanged();
@@ -953,7 +1225,17 @@ export class GeoScene {
     const planes = this.renderer.clippingPlanes;
     let best: { modelId: number; index: number; distance: number } | null = null;
     for (const [modelId, layer] of this.blocks) {
-      if (!layer.group.visible || !layer.mesh) continue;
+      if (!layer.group.visible) continue;
+      if (layer.sliceMesh) {
+        // The cut: a quad (two triangles) per block.
+        for (const hit of raycaster.intersectObject(layer.sliceMesh, false)) {
+          if (planes.length && !planes.every((p) => p.distanceToPoint(hit.point) >= -1e-6)) continue;
+          if (hit.faceIndex !== undefined && hit.faceIndex !== null && (!best || hit.distance < best.distance)) best = { modelId, index: layer.sliceIndex[hit.faceIndex >> 1], distance: hit.distance };
+          break;
+        }
+        continue;
+      }
+      if (!layer.mesh || !layer.mesh.visible) continue;
       for (const hit of raycaster.intersectObject(layer.mesh, false)) {
         // Hidden by the section window: not pickable.
         if (planes.length && !planes.every((p) => p.distanceToPoint(hit.point) >= -1e-6)) continue;
@@ -1031,13 +1313,20 @@ export class GeoScene {
     // Flat shading takes normals from screen-space derivatives: no normal buffer is needed.
     const material = new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, flatShading: true });
     this.applyOpacity(material, opacity);
+    const drape: DrapeUniforms = {
+      uDrapeMap: { value: null }, uDrapeU: { value: new THREE.Vector3() }, uDrapeV: { value: new THREE.Vector3() },
+      uDrapeTint: { value: new THREE.Color(0xffffff) }, uDrapeMix: { value: 0 }, uDrapeShade: { value: 1 },
+    };
+    this.drapeMaterial(material, drape);
     const local = new THREE.Box3(new THREE.Vector3(...min.map((v, k) => v - origin[k])), new THREE.Vector3(...max.map((v, k) => v - origin[k])));
     this.wireframes.set(id, {
       extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)),
       group, material, levels: new Map(), sphere: local.getBoundingSphere(new THREE.Sphere()), cutLines: null, cut: null,
+      origin: [...origin], drape, drapeTexture: null, drapeUrl: null,
     });
     if (this.selectedWireframe === id) material.emissive.setHex(0x3a3a3a);
     this.root.add(group);
+    this.applyDrape(id);
     this.contentChanged();
   }
 
@@ -1123,7 +1412,9 @@ export class GeoScene {
     this.removeCut(layer);
     this.root.remove(layer.group);
     layer.material.dispose();
+    layer.drapeTexture?.dispose();
     this.wireframes.delete(id);
+    this.updateDrapedRasters();
     if (update) this.contentChanged();
   }
 
@@ -1133,9 +1424,117 @@ export class GeoScene {
     const recolor = !layer.material.color.equals(new THREE.Color(color));
     layer.material.color.set(color);
     this.applyOpacity(layer.material, opacity);
+    const shown = layer.group.visible !== visible;
     layer.group.visible = visible;
     if (recolor) this.updateCut(layer);
+    if (shown) this.updateDrapedRasters();
     this.requestRender();
+  }
+
+  /**
+   * The surface's material also takes a raster: the image's coordinates come from the vertex
+   * position in plan, so no texture coordinates are stored and every level of detail is covered.
+   */
+  private drapeMaterial(material: THREE.MeshLambertMaterial, uniforms: DrapeUniforms): void {
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, uniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nuniform vec3 uDrapeU;\nuniform vec3 uDrapeV;\nvarying vec2 vDrapeUv;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvDrapeUv = vec2(dot(uDrapeU, vec3(position.xy, 1.0)), dot(uDrapeV, vec3(position.xy, 1.0)));");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nuniform sampler2D uDrapeMap;\nuniform vec3 uDrapeTint;\nuniform float uDrapeMix;\nuniform float uDrapeShade;\nvarying vec2 vDrapeUv;")
+        .replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>
+          vec4 drapeTexel = texture2D(uDrapeMap, vDrapeUv);
+          vec3 drapeRgb = drapeTexel.rgb * uDrapeTint;
+          float drapeK = uDrapeMix * drapeTexel.a * step(0.0, vDrapeUv.x) * step(vDrapeUv.x, 1.0) * step(0.0, vDrapeUv.y) * step(vDrapeUv.y, 1.0);
+          diffuseColor.rgb = mix(diffuseColor.rgb, drapeRgb, drapeK);`,
+        )
+        .replace("#include <opaque_fragment>", "outgoingLight = mix(outgoingLight, drapeRgb, drapeK * (1.0 - uDrapeShade));\n#include <opaque_fragment>");
+    };
+  }
+
+  /** Lays a raster on a wireframe (a terrain model) or takes it off (null). */
+  setDrape(wireframeId: number, drape: Drape | null): void {
+    const old = this.drapes.get(wireframeId);
+    if (JSON.stringify(old ?? null) === JSON.stringify(drape)) return;
+    if (drape) this.drapes.set(wireframeId, drape);
+    else this.drapes.delete(wireframeId);
+    this.applyDrape(wireframeId);
+  }
+
+  /** The draped raster of a wireframe, as it is set now. */
+  drapeOf(wireframeId: number): Drape | null {
+    return this.drapes.get(wireframeId) ?? null;
+  }
+
+  private applyDrape(id: number): void {
+    const layer = this.wireframes.get(id);
+    if (layer) {
+      const drape = this.drapes.get(id);
+      const axes = drape ? imageAxes(drape.corners, layer.origin) : null;
+      const u = layer.drape;
+      if (!drape || !axes) {
+        u.uDrapeMix.value = 0;
+        u.uDrapeMap.value = null;
+        layer.drapeTexture?.dispose();
+        layer.drapeTexture = null;
+        layer.drapeUrl = null;
+      } else {
+        u.uDrapeU.value.set(...axes.u);
+        u.uDrapeV.value.set(...axes.v);
+        u.uDrapeTint.value.set(drape.tint);
+        u.uDrapeShade.value = drape.shade ? 1 : 0;
+        // The image appears when it is loaded; until then the surface keeps its own colour.
+        u.uDrapeMix.value = layer.drapeTexture && layer.drapeUrl === drape.url ? drape.opacity : 0;
+        if (layer.drapeUrl !== drape.url) {
+          const url = drape.url;
+          layer.drapeUrl = url;
+          new THREE.TextureLoader().load(url, (texture) => {
+            if (this.wireframes.get(id) !== layer || layer.drapeUrl !== url) {
+              texture.dispose();
+              return;
+            }
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+            layer.drapeTexture?.dispose();
+            layer.drapeTexture = texture;
+            u.uDrapeMap.value = texture;
+            u.uDrapeMix.value = this.drapes.get(id)?.opacity ?? 0;
+            this.requestRender();
+          });
+        }
+      }
+    }
+    this.updateDrapedRasters();
+    this.requestRender();
+  }
+
+  /**
+   * A raster lying on a shown terrain model is not drawn flat as well: hidden whole when the
+   * model keeps only its own part of the image, otherwise cut out where the model covers it.
+   */
+  private updateDrapedRasters(): void {
+    const o = this.origin;
+    for (const [id, layer] of this.rasters) {
+      const holes: THREE.Vector4[] = [];
+      let hidden = false;
+      if (!layer.corners3d && o) {
+        for (const [wireframeId, drape] of this.drapes) {
+          const surface = this.wireframes.get(wireframeId);
+          if (drape.rasterId !== id || !surface?.group.visible) continue;
+          if (drape.clip) hidden = true;
+          const min = surface.extent.min;
+          const max = surface.extent.max;
+          const window = imageWindow(layer.corners, [min.x + o.x, min.y + o.y], [max.x + o.x, max.y + o.y]);
+          if (window && holes.length < MAX_RASTER_HOLES) holes.push(new THREE.Vector4(...window));
+        }
+      }
+      layer.holes.uHoleCount.value = holes.length;
+      holes.forEach((h, i) => layer.holes.uHoles.value[i].copy(h));
+      layer.mesh.visible = layer.visible && !hidden;
+    }
   }
 
   /** `vertices` float32 relative to `origin`; `offsets` are line starts plus the end. Placed like wireframes.
@@ -1379,9 +1778,25 @@ export class GeoScene {
     material.polygonOffset = true;
     material.polygonOffsetFactor = 1;
     material.polygonOffsetUnits = 1;
+    const holes = { uHoles: { value: Array.from({ length: MAX_RASTER_HOLES }, () => new THREE.Vector4()) }, uHoleCount: { value: 0 } };
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, holes);
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying vec2 vHoleUv;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvHoleUv = uv;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>\nuniform vec4 uHoles[${MAX_RASTER_HOLES}];\nuniform int uHoleCount;\nvarying vec2 vHoleUv;`)
+        .replace(
+          "#include <map_fragment>",
+          `for (int i = 0; i < ${MAX_RASTER_HOLES}; i++) {
+            if (i < uHoleCount && vHoleUv.x > uHoles[i].x && vHoleUv.y > uHoles[i].y && vHoleUv.x < uHoles[i].z && vHoleUv.y < uHoles[i].w) discard;
+          }
+          #include <map_fragment>`,
+        );
+    };
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -1;
-    const layer: RasterLayer = { corners, elevation, corners3d, mesh, texture: null, visible, opacity };
+    const layer: RasterLayer = { corners, elevation, corners3d, mesh, texture: null, visible, opacity, holes };
     this.rasters.set(id, layer);
     this.layerRaster(layer);
     new THREE.TextureLoader().load(url, (texture) => {
@@ -1399,6 +1814,7 @@ export class GeoScene {
     this.placeRaster(layer);
     this.root.add(mesh);
     this.contentChanged();
+    this.updateDrapedRasters();
   }
 
   removeRaster(id: number, update = true): void {
@@ -1426,7 +1842,7 @@ export class GeoScene {
       this.placeRaster(layer);
       this.rebuildGrid();
     }
-    layer.mesh.visible = visible;
+    this.updateDrapedRasters();
     this.requestRender();
   }
 
@@ -1909,6 +2325,8 @@ export class GeoScene {
   /** With clipping on, only the window of the section stays: `towards` the viewer, `away` behind the plane. */
   private applyClipping(): void {
     for (const layer of this.wireframes.values()) this.updateCut(layer);
+    // Block models shown by their cut follow the section plane.
+    for (const layer of this.blocks.values()) if (layer.slice || layer.sliceMesh) this.refreshBlocks(layer);
     const s = this.section;
     if (!this.clip || !s || !this.origin) {
       this.renderer.clippingPlanes = [];
@@ -2205,6 +2623,8 @@ export class GeoScene {
   /** The scene background follows the page background (light or dark theme). */
   private applyTheme(): void {
     this.renderer.setClearColor(new THREE.Color(getComputedStyle(this.container).backgroundColor));
+    // Cuts of block models are mixed toward the background.
+    for (const layer of this.blocks.values()) this.renderer.getClearColor(layer.edges.back.value);
   }
 
   private resize(): void {

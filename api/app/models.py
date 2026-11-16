@@ -158,6 +158,9 @@ class Wireframe(Base):
     # Display structure: {"chunk_triangles", "chunks": [[first, count, bbox...]], "lods": [...]};
     # empty for wireframes stored before stage 10 (drawn whole).
     render: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # None: an ordinary wireframe. A dict: the wireframe is a digital terrain model (the «ЦТМ»
+    # section of the tree) with its settings: {"raster_id", "clip", "tint", "opacity", "shade"}.
+    dtm: Mapped[dict | None] = mapped_column(JSONB, default=None)
 
 
 class LineLayer(Base):
