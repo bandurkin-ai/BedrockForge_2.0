@@ -7,6 +7,7 @@ import { CoreDown } from "./CoreDown";
 import { DialogHost } from "./DialogHost";
 import { showMessage } from "./dialogs";
 import { detectImportKind, IMPORT_TITLES } from "./tree";
+import { LicenseWindow } from "./LicenseWindow";
 import { Palette } from "./Palette";
 import { SettingsWindow } from "./SettingsWindow";
 import { WindowLayer, type WindowRenderer } from "./WindowLayer";
@@ -26,7 +27,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "settings":
       return <SettingsWindow tab={w.props?.tab as string | undefined} />;
     case "license":
-      return <div style={{ padding: 14, color: "var(--text-dim)" }}>Окно «Лицензия» готовится (подшаг 1.8).</div>;
+      return <LicenseWindow />;
     default:
       return null;
   }

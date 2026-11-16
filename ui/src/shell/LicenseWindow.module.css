@@ -1,0 +1,9 @@
+.wrap { padding: 16px 18px; line-height: 1.6; }
+.row { display: grid; grid-template-columns: 150px 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
+.label { color: var(--text-dim); }
+.code { font-family: Consolas, monospace; font-size: 14px; letter-spacing: 0.5px; display: flex; gap: 8px; align-items: center; }
+.btn { padding: 4px 12px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); cursor: pointer; }
+.btn[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.ok { color: var(--ok); }
+.bad { color: var(--danger); }
+.note { color: var(--text-faint); font-size: 12px; margin-top: 14px; }

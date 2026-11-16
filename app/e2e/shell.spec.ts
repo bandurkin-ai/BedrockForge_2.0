@@ -108,3 +108,19 @@ test("palette runs commands; own hotkey: conflict dialog, «· изменено�
     await close(app);
   }
 });
+
+test("«Лицензия» shows the PC code and the trial period", async () => {
+  const { app, page } = await launch();
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    await page.keyboard.press("Control+KeyK");
+    await page.getByLabel("Поиск команды").fill("лицензия");
+    await page.keyboard.press("Enter");
+    const win = page.getByRole("dialog", { name: "Лицензия" });
+    await expect(win.getByTestId("hwid")).toHaveText(/^[0-9A-F]{8}-[0-9A-F]{8}-[0-9A-F]{8}$/);
+    await expect(win.getByTestId("license-message")).toContainText("Пробный период: осталось 30 дн.");
+    await page.screenshot({ path: shot("license.png") });
+  } finally {
+    await close(app);
+  }
+});
