@@ -5,4 +5,4 @@ bf-core.exe (PyInstaller PYZ), and a missing router there showed up only as 404 
 tests/test_structure.py checks that this list matches the router.py files of the source tree.
 """
 
-ROUTER_MODULES: tuple[str, ...] = ("jobs", "license", "projects", "storage")
+ROUTER_MODULES: tuple[str, ...] = ("archive", "jobs", "license", "projects", "storage")
