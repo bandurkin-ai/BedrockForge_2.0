@@ -1,13 +1,13 @@
 # PROGRESS — BedrockForge 2
-Обновлено: 2026-11-16 18:15 UTC · Сессия: https://claude.ai/code/session_01PV4nyXwrRaJmTepomG4WpS · Ветка: claude/vigilant-meitner-vzjsd3 · Режим: норма
+Обновлено: 2026-11-16 18:43 UTC · Сессия: https://claude.ai/code/session_01PV4nyXwrRaJmTepomG4WpS · Ветка: claude/vigilant-meitner-vzjsd3 · Режим: норма
 
 ## Сейчас
 Веха: В1 «Каркас» · Этап: Э1 «Каркас приложения» · PR: — (черновой открывается)
 Подшаг: 1.9 portable, документация, ревью, PR (8 из 9)
 
 ## Следующее действие
-tools/portable.nsi (однократная распаковка, ADR 0005 §3) + шаг в windows.yml с замером времени запуска;
-затем docs (USER_GUIDE, CHECKLIST, CHANGELOG) через docs-writer, ревью reviewer, описание PR #2, CI → слияние.
+Дождаться CI windows на d2e0dcb (исправлены ribbon.ts/Ribbon.tsx и ctypes) и отчёта reviewer Э1 →
+исправить находки → описание PR #2 по Приложению Ж → зелёный CI → слияние → Э2.
 
 ## План этапа Э1 (spec: 07-00, 07-01, 07-02, 06 6.4/6.9, 05 5.7)
 - [x] 1.1 Чистые модули: реестр команд (схема, confirm/silent/uiOnly, источник), клавиши (e.code, раскладки), workspace + normalize, конфиг ленты 7.0.4 — vitest
@@ -50,7 +50,7 @@ tools/portable.nsi (однократная распаковка, ADR 0005 §3) +
 | Этап | Окон 5 ч (оценка / факт) | Сессия | Примечание |
 |---|---|---|---|
 | Э0 | 1–2 / ≈0,5 | vigilant-meitner | Спайки прошли с первого раза |
-| Э1 | 2–3 / — | vigilant-meitner | — |
+| Э1 | 2–3 / — | vigilant-meitner | 5-часовой лимит в 18:40 UTC: работа продолжена после сброса |
 
 ## Страховка от лимита
 Задача: trig_01FzykpMptKv3MV6pcJJV8m7 · каждый час (:16) · создана 2026-11-16 17:16 UTC
