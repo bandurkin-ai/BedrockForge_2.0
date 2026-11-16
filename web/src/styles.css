@@ -251,6 +251,23 @@ tr.clickable:hover td { background: var(--head-bg); }
 .edit-toolbar { display: flex; flex-direction: column; gap: 3px; padding: 4px 8px; border-bottom: 1px solid var(--border); background: var(--chrome); font-size: 0.8rem; }
 .edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .edit-row button { padding: 2px 7px; font-size: 0.78rem; }
+.tool-group { display: inline-flex; align-items: center; gap: 1px; padding: 1px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.tool-wrap { display: inline-flex; }
+.edit-row .tool-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--fg); cursor: pointer; }
+.edit-row .tool-btn.narrow { width: 16px; }
+.edit-row .tool-btn:hover:not(:disabled) { background: var(--accent-soft); }
+.edit-row .tool-btn.active { background: var(--accent); color: var(--accent-fg); }
+.edit-row .tool-btn.save:not(:disabled) { color: var(--accent); }
+.edit-row .tool-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.edit-snap .tool-btn { border: 1px solid var(--border); background: var(--bg); }
+.tool-tip {
+  position: fixed; z-index: 1000; transform: translateX(-50%); max-width: 300px; padding: 6px 9px; pointer-events: none;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow); font-size: 0.76rem; line-height: 1.35;
+}
+.tool-tip-head { display: flex; align-items: center; gap: 8px; }
+.tool-tip-head kbd { margin-left: auto; padding: 0 4px; border: 1px solid var(--border); border-radius: 3px; font-size: 0.7rem; color: var(--muted); }
+.tool-tip-hint { margin-top: 2px; color: var(--muted); }
+.tool-tip-off { margin-top: 3px; color: var(--warn); }
 .edit-layer { display: inline-flex; align-items: center; gap: 5px; margin-right: 6px; }
 .edit-layer i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .edit-dirty { color: var(--brand); font-weight: 600; }

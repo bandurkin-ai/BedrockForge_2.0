@@ -107,7 +107,17 @@ export function useEditScene(sceneRef: MutableRefObject<GeoScene | null>, edit: 
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene || !edit) return;
-    scene.onEditPointer = (e) => edit.pointer(e);
+    scene.onEditPointer = (e) => {
+      // An empty project has no coordinate origin yet: the first press starts the scene around
+      // (0, 0, Z of the drawing level) in plan, so clicks place points at once. Not on a mere hover,
+      // so data still loading sets the origin itself.
+      if (e.type !== "move" && !scene.focus()) {
+        scene.startAt(0, 0, edit.zLevel);
+        scene.view("top");
+        edit.viewChanged();
+      }
+      return edit.pointer(e);
+    };
     scene.onCamera = () => edit.viewChanged();
     edit.view = { ray: (x, y) => scene.rayAt(x, y), transform: () => scene.viewTransform() };
     edit.probe = async (ray) => {

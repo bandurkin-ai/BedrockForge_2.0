@@ -1,7 +1,9 @@
+import { showMessage } from "./shell/dialogs";
 import { effectiveTable, SampleTableSelect, useSampleTables } from "./shell/SampleTableSelect";
 import { useEffect, useState } from "react";
 import {
   auditExportUrl,
+  downloadFile,
   getAudit,
   getFindings,
   runAudit,
@@ -120,7 +122,7 @@ export function AuditPage({
         <button className="primary" onClick={onRun} disabled={busy}>
           {busy ? "Проверка…" : run ? "Запустить заново" : "Запустить аудит"}
         </button>
-        {run && <a className="button" href={auditExportUrl(setId)}>Скачать отчёт (Excel)</a>}
+        {run && <button className="button" onClick={() => void downloadFile(auditExportUrl(setId), "audit.xlsx").catch((e) => showMessage({ title: "Отчёт аудита не выгружен", message: (e as Error).message, error: true }))}>Скачать отчёт (Excel)</button>}
         {run && <span className="muted">Последний запуск: {new Date(run.created_at).toLocaleString("ru-RU")}</span>}
       </div>
       {run?.stale && <div className="alert warn">После этого аудита были импортированы новые данные. Запустите аудит заново.</div>}
