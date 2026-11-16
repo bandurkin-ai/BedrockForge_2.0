@@ -1,0 +1,17 @@
+.wrap { display: flex; flex-direction: column; height: 100%; }
+.tabs { display: flex; border-bottom: 1px solid var(--border); flex: none; }
+.tab { border: 0; background: transparent; padding: 6px 12px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; }
+.tabActive { color: var(--text); border-bottom-color: var(--accent); }
+.tools { display: flex; gap: 8px; padding: 8px 10px; flex: none; }
+.search { flex: 1; padding: 4px 8px; background: var(--bg-input); border: 1px solid var(--border-strong); border-radius: var(--radius); }
+.btn { padding: 3px 10px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); cursor: pointer; white-space: nowrap; }
+.list { flex: 1; overflow: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.table th { position: sticky; top: 0; background: var(--bg-elev); text-align: left; padding: 4px 10px; color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--border); }
+.table td { padding: 3px 10px; border-bottom: 1px solid var(--border); }
+.changed { color: var(--accent); font-size: 11px; margin-left: 6px; }
+.capture { color: var(--accent); }
+.actions { display: flex; gap: 4px; justify-content: flex-end; }
+.link { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 1px 4px; font-size: 12px; }
+.link:hover { color: var(--text); text-decoration: underline; }
+.note { padding: 14px; color: var(--text-dim); line-height: 1.6; }

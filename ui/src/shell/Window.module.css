@@ -1,0 +1,8 @@
+.layer { position: fixed; inset: 0; pointer-events: none; z-index: 500; }
+.win { position: absolute; pointer-events: auto; display: flex; flex-direction: column; background: var(--bg-elev); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: var(--shadow); min-width: 280px; min-height: 160px; }
+.bar { height: 30px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 4px 0 10px; border-bottom: 1px solid var(--border); cursor: move; user-select: none; }
+.bar span { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 4px; border-radius: var(--radius); display: flex; }
+.btn:hover { background: var(--bg-hover); color: var(--text); }
+.content { flex: 1; overflow: auto; min-height: 0; }
+.grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }

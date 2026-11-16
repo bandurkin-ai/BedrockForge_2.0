@@ -32,7 +32,8 @@ test("1M triangles under software WebGL2", async () => {
   try {
     await expect.poll(async () => app.windows().some((w) => w.url().endsWith("/index.html")), { timeout: 90_000 }).toBe(true);
     const page = app.windows().find((w) => w.url().endsWith("/index.html"))!;
-    await page.waitForFunction(() => window.__bfSpike !== undefined, undefined, { timeout: 120_000 });
+    // Not waitForFunction: under the strict CSP of app:// it needs eval.
+    await expect.poll(() => page.evaluate(() => window.__bfSpike !== undefined), { timeout: 120_000 }).toBe(true);
     const result = await page.evaluate(() => window.__bfSpike);
     fs.mkdirSync(ART, { recursive: true });
     fs.writeFileSync(path.join(ART, "spike-mesh.json"), JSON.stringify(result, null, 2));

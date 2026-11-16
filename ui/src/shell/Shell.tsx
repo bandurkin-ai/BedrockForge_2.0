@@ -2,6 +2,10 @@ import { useEffect, useMemo } from "react";
 import { useApp } from "./AppContext";
 import { BottomDock, RightDock, Viewport } from "./Docks";
 import { DataTree } from "./DataTree";
+import { DialogHost } from "./DialogHost";
+import { Palette } from "./Palette";
+import { SettingsWindow } from "./SettingsWindow";
+import { WindowLayer, type WindowRenderer } from "./WindowLayer";
 import { Header } from "./Header";
 import { resolveKey, shortcutMap } from "./hotkeys";
 import { eventShortcut } from "./keys";
@@ -12,6 +16,17 @@ import { StatusBar } from "./StatusBar";
 import { useStore } from "./useStore";
 import { resize } from "./workspace";
 import css from "./Shell.module.css";
+
+const renderWindow: WindowRenderer = (w) => {
+  switch (w.kind) {
+    case "settings":
+      return <SettingsWindow tab={w.props?.tab as string | undefined} />;
+    case "license":
+      return <div style={{ padding: 14, color: "var(--text-dim)" }}>Окно «Лицензия» готовится (подшаг 1.8).</div>;
+    default:
+      return null;
+  }
+};
 
 function isTyping(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -76,6 +91,9 @@ export function Shell() {
         )}
       </div>
       <StatusBar />
+      <WindowLayer render={renderWindow} />
+      <Palette />
+      <DialogHost />
     </div>
   );
 }

@@ -108,3 +108,23 @@ describe("workspace (ТЗ 7.0.10, 7.0.14)", () => {
     expect(v.wireframeOpacity).toBe(0.7);
   });
 });
+
+import { searchPalette } from "../src/shell/palette";
+
+describe("palette (ТЗ 7.0.7)", () => {
+  const holes = Array.from({ length: 50_000 }, (_, i) => ({ holeId: `СКВ-${String(i + 1).padStart(5, "0")}`, setName: "Набор 1" }));
+
+  it("finds commands by label and «tab › group»", () => {
+    expect(searchPalette("тема", items, []).some((r) => r.kind === "command" && r.item.command === "theme.set")).toBe(true);
+    expect(searchPalette("анализ графики", items, []).some((r) => r.kind === "command" && r.item.command === "chart.qq")).toBe(true);
+  });
+
+  it("«скв » searches only holes; at most 60 rows; fast on 50 000 holes", () => {
+    const t0 = performance.now();
+    const rows = searchPalette("скв 1", items, holes);
+    expect(performance.now() - t0).toBeLessThan(50);
+    expect(rows.every((r) => r.kind === "hole")).toBe(true);
+    expect(rows.length).toBe(60);
+    expect(searchPalette("с", items, holes).some((r) => r.kind === "hole")).toBe(false);
+  });
+});

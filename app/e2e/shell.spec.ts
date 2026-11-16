@@ -65,3 +65,46 @@ test("hotkeys in the Russian layout, palette-free command log, theme and layout 
     await close(app);
   }
 });
+
+test("palette runs commands; own hotkey: conflict dialog, «· изменено», survives a restart", async () => {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-keys-"));
+  let { app, page } = await launch({}, userData);
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    await page.keyboard.press("Control+KeyK");
+    const input = page.getByLabel("Поиск команды");
+    await expect(input).toBeFocused();
+    await input.fill("светлая тема");
+    await page.keyboard.press("Enter");
+    await expect(page.getByLabel("Палитра команд")).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("light");
+
+    // Single keys do not fire inside a text field.
+    await page.keyboard.press("Control+KeyK");
+    await page.getByLabel("Поиск команды").fill("настройка");
+    await page.keyboard.press("Enter");
+    const settings = page.getByRole("dialog", { name: "Настройка" });
+    await expect(settings).toBeVisible();
+    await settings.getByLabel("Поиск по функции или сочетанию").fill("Вписать");
+    await settings.getByRole("button", { name: "Назначить" }).first().click();
+    await page.keyboard.press("KeyT"); // «T» belongs to «В план»
+    const conflict = page.getByRole("dialog", { name: "Сочетание уже занято" });
+    await expect(conflict).toBeVisible();
+    await conflict.getByRole("button", { name: "Переназначить" }).click();
+    await expect(settings.getByText("· изменено")).toHaveCount(1);
+    await expect(settings.getByRole("row", { name: /Вписать/ })).toContainText(/\bT\b/);
+    await page.screenshot({ path: shot("settings-shortcuts.png") });
+    await page.waitForTimeout(700);
+  } finally {
+    await close(app);
+  }
+  ({ app, page } = await launch({}, userData));
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    await page.keyboard.press("Control+KeyK");
+    await page.getByLabel("Поиск команды").fill("вписать");
+    await expect(page.getByRole("option").first()).toContainText("T");
+  } finally {
+    await close(app);
+  }
+});
