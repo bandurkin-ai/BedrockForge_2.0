@@ -9,8 +9,10 @@ import {
   type ReadOptions,
   type Schemas,
   type UploadResponse,
+  type ValidateResponse,
 } from "./api";
 import { Icon } from "./shell/icons";
+import type { OpLog } from "./shell/opLog";
 import { buildRequest, distribute, makeDraft, MAIN_ASSAYS, missingFields, TABLE_KINDS, tableKind, uniqueName, type Draft } from "./shell/importDrafts";
 import { PreviewTable } from "./Table";
 
@@ -20,6 +22,30 @@ const ENCODINGS = ["utf-8", "utf-8-sig", "cp1251", "cp866", "koi8-r", "utf-16", 
 const DELIMITERS: [string, string][] = [[";", "точка с запятой ;"], [",", "запятая ,"], ["\t", "табуляция"], ["|", "черта |"], ["whitespace", "пробелы"]];
 const KIND_SHORT: Record<string, string> = { collar: "Устья", survey: "Инклинометрия", assay: "Пробы", interval: "Интервалы", event: "События" };
 const fmt = (n: number) => n.toLocaleString("ru-RU");
+
+/** What a file was read as, for the journal (without the preview rows: they are in the request trace). */
+export function describeUpload(u: UploadResponse) {
+  return {
+    file_id: u.file_id, filename: u.filename, format: u.format, row_count: u.row_count, detected_kind: u.detected_kind,
+    options: u.options, sheets: u.sheets, notes: u.notes,
+    columns: u.columns.map((c) => `${c.name} [${c.dtype}${c.numeric ? ", число" : ""}] пример: ${JSON.stringify(c.sample.slice(0, 3))}`),
+    suggestions: u.suggestions,
+    preview_first_rows: u.preview.slice(0, 5),
+  };
+}
+
+const draftName = (d: Draft) => `${KIND_SHORT[d.kind] ?? d.kind}${TABLE_KINDS.includes(d.kind) ? ` «${d.tableName}»` : ""} (${d.upload.filename})`;
+
+/** The check of a draft in the journal: the request and every issue. */
+function logValidation(log: OpLog | undefined, d: Draft, result: ValidateResponse) {
+  if (!log) return;
+  const errors = result.issues.filter((i) => i.severity === "error");
+  const text = `Проверка ${draftName(d)}: ${result.ok ? "пройдена" : result.fixable ? "ошибки в данных (можно загрузить как есть)" : "есть ошибки"}, строк ${result.row_count}, замечаний ${result.issues.length}`;
+  if (result.ok) log.info(text);
+  else log.error(text);
+  log.data("Замечания проверки", result.issues.length ? result.issues.map((i) => `[${i.severity}] ${i.code}${i.field ? ` (${i.field})` : ""}: ${i.message}${i.count !== null ? ` — ${i.count}` : ""}`) : "нет");
+  if (errors.length && result.preview?.length) log.data("Строки после назначения колонок (начало)", result.preview.slice(0, 5));
+}
 
 function ReadOptionsPanel({
   upload,
@@ -98,8 +124,9 @@ function FileDrop({ multiple, busy, text, onFiles }: { multiple?: boolean; busy:
 }
 
 /** One file of the wizard: how it is read, which columns go where, and what the check says. */
-function DraftEditor({ draft, schemas, kinds, busy, onChange, onReread }: {
+function DraftEditor({ draft, schemas, kinds, busy, onChange, onReread, log }: {
   draft: Draft;
+  log?: OpLog;
   schemas: Schemas;
   /** kinds the user may choose on this step; one kind: no choice */
   kinds: string[];
@@ -134,7 +161,7 @@ function DraftEditor({ draft, schemas, kinds, busy, onChange, onReread }: {
           {kinds.length > 1 && (
             <label className="field">
               Тип таблицы
-              <select value={kind} aria-label="Тип таблицы" onChange={(e) => onChange({ ...makeDraft(upload, e.target.value, draft.tableName), key: draft.key })}>
+              <select value={kind} aria-label="Тип таблицы" onChange={(e) => { log?.info(`${upload.filename}: тип таблицы ${kind} → ${e.target.value}`); onChange({ ...makeDraft(upload, e.target.value, draft.tableName), key: draft.key }); }}>
                 {kinds.map((k) => <option key={k} value={k}>{schemas[k]?.label ?? k}</option>)}
               </select>
             </label>
@@ -230,7 +257,10 @@ function DraftEditor({ draft, schemas, kinds, busy, onChange, onReread }: {
             // Checked again at once with the new choice: the user sees what will be loaded.
             const next: Draft = { ...draft, force: e.target.checked, result: null, committed: null, error: null };
             onChange(next);
-            void validateMapping(buildRequest(next)).then((r) => onChange({ ...next, result: r })).catch((err) => onChange({ ...next, error: (err as Error).message }));
+            log?.info(`${draftName(next)}: «Загрузить с ошибками» — ${next.force ? "включено" : "выключено"}`);
+            log?.data("Запрос проверки", buildRequest(next));
+            void validateMapping(buildRequest(next)).then((r) => { logValidation(log, next, r); onChange({ ...next, result: r }); })
+              .catch((err) => { log?.error(`Проверка ${draftName(next)} не выполнена`, err); onChange({ ...next, error: (err as Error).message }); });
           }} />{" "}
           Загрузить с ошибками в данных — исправлю в BedrockForge (таблицы и аудит)
         </label>
@@ -269,8 +299,10 @@ const STEPS = ["Устья", "Инклинометрия", "Интервалы �
  * Import of drillholes step by step: collars, then the survey (or none), then any number of interval
  * and event tables; the last step shows what goes into the set and writes it.
  */
-export function DrillholeImport({ projectId, sets, initialSet, onImported, onClose }: {
+export function DrillholeImport({ projectId, sets, initialSet, onImported, onClose, log }: {
   projectId: number;
+  /** journal of this import (the dialog's log icon) */
+  log?: OpLog;
   sets: Dataset[];
   /** null: a new set */
   initialSet: number | null;
@@ -287,13 +319,19 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
   const [tables, setTables] = useState<Draft[]>([]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setShownError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
+  /** An error under the step: shown and written to the journal. */
+  const setError = (text: string | null) => {
+    if (text) log?.error(`Шаг «${STEPS[step]}»: ${text}`);
+    setShownError(text);
+  };
 
   useEffect(() => {
-    getSchemas().then(setSchemas).catch((e: Error) => setError(e.message));
-  }, []);
+    getSchemas().then((s) => { setSchemas(s); log?.info(`Схемы таблиц получены: ${Object.keys(s).join(", ")}`); })
+      .catch((e: Error) => { log?.error("Схемы таблиц не получены", e); setShownError(e.message); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const existing = setId === null ? undefined : sets.find((d) => d.id === setId);
   const inSet = existing?.counts ?? { collar: 0, survey: 0, assay: 0 };
@@ -322,11 +360,17 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
     setNote(null);
     const uploads: UploadResponse[] = [];
     const failed: string[] = [];
+    log?.info(`Шаг «${STEPS[step]}»: выбрано файлов ${files.length}`);
+    log?.data("Файлы", files.map((f) => ({ name: f.name, size: f.size, type: f.type || "—", lastModified: new Date(f.lastModified).toISOString() })));
     for (const f of files) {
       try {
-        uploads.push(await uploadFile(f));
+        const u = await uploadFile(f);
+        uploads.push(u);
+        log?.info(`${f.name}: прочитан как ${FORMAT_LABELS[u.format] ?? u.format}, строк ${u.row_count}, колонок ${u.columns.length}, похож на ${u.detected_kind ?? "—"}`);
+        log?.data(`Чтение ${f.name}`, describeUpload(u));
       } catch (e) {
         failed.push(`${f.name}: ${(e as Error).message}`);
+        log?.error(`${f.name}: файл не прочитан`, e);
       }
     }
     let rest = uploads;
@@ -352,6 +396,7 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
     if (uploads.length > 1 || (rest.length && step < 2)) {
       const parts = [nextCollar && `устья — ${nextCollar.filename}`, nextSurvey && `инклинометрия — ${nextSurvey.filename}`, rest.length && `таблиц на шаге 3 — ${rest.length}`].filter(Boolean);
       setNote(`Файлы разложены по шагам: ${parts.join("; ")}.`);
+      log?.info(`Файлы разложены по шагам: ${parts.join("; ")}`);
     }
     if (failed.length) setError(failed.join("\n"));
     setBusy(false);
@@ -361,7 +406,9 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
     setBusy(true);
     setError(null);
     try {
+      log?.data(`${d.upload.filename}: перечитать с параметрами`, options);
       const data = await rereadFile(d.upload.file_id, options);
+      log?.data(`Перечитан ${d.upload.filename}`, describeUpload(data));
       update(d.key, { ...makeDraft(data, d.kind, d.tableName), key: d.key });
     } catch (e) {
       setError((e as Error).message);
@@ -379,15 +426,23 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
     for (const d of drafts) {
       const missing = missingFields(d, schemas[d.kind]?.fields ?? []);
       if (missing.length) {
+        log?.error(`${draftName(d)}: не назначены колонки ${missing.join(", ")}`);
+        log?.data("Назначение колонок", d.mapping);
         update(d.key, { ...d, result: null, error: `Назначьте колонки: ${missing.join(", ")}` });
         ok = false;
         continue;
       }
       try {
-        const result = d.result ?? (await validateMapping(buildRequest(d)));
+        let result = d.result;
+        if (!result) {
+          log?.data(`Запрос проверки ${draftName(d)}`, buildRequest(d));
+          result = await validateMapping(buildRequest(d));
+          logValidation(log, d, result);
+        }
         update(d.key, { ...d, result, error: null });
         if (!result.ok) ok = false;
       } catch (e) {
+        log?.error(`Проверка ${draftName(d)} не выполнена`, e);
         update(d.key, { ...d, error: (e as Error).message });
         ok = false;
       }
@@ -415,6 +470,7 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
       }
     }
     setError(null);
+    log?.info(`Шаг «${STEPS[step]}» пройден → «${STEPS[step + 1]}»`);
     setStep(step + 1);
   }
 
@@ -425,19 +481,25 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
     setError(null);
     let target = setId;
     let stopped = false;
+    log?.info(`Импорт: файлов ${queue.length}, набор ${target ?? `новый «${newName.trim() || "Скважины"}»`}`);
     for (const d of queue) {
       if (d.committed) continue;
       try {
-        const done = await commitImport({
+        const req = {
           ...buildRequest(d),
           ...(target !== null ? { set_id: target } : { project_id: projectId, set_name: newName.trim() || "Скважины" }),
           filename: d.upload.filename,
           ...(TABLE_KINDS.includes(d.kind) ? { table_name: d.tableName.trim() || undefined } : {}),
-        });
+        };
+        log?.data(`Запись ${draftName(d)}`, req);
+        const done = await commitImport(req);
+        log?.info(`${draftName(d)}: записано ${done.inserted}, заменено ${done.replaced}, набор ${done.set_id}`);
+        if (done.issues?.length) log?.data("Замечания при записи", done.issues);
         target = done.set_id;
         setSetId(target);
         update(d.key, { ...d, committed: done, error: null });
       } catch (e) {
+        log?.error(`${draftName(d)}: не записан`, e);
         update(d.key, { ...d, error: (e as Error).message });
         stopped = true;
         if (d.kind === "collar") break; // nothing to attach the rest to
@@ -445,6 +507,7 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
     }
     if (target !== null) onImported(target);
     setFinished(!stopped);
+    log?.info(stopped ? "Импорт завершён с ошибками" : "Импорт завершён");
     if (stopped) setError("Часть файлов не импортирована. Исправьте их на шаге и нажмите «Импортировать» ещё раз — уже записанные не повторяются.");
     setBusy(false);
   }
@@ -502,7 +565,7 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
                 )}
                 {!keepCollar && <FileDrop multiple busy={busy} onFiles={(f) => void addFiles(f)}
                   text={collar ? "Заменить файл устьев: выберите или перетащите другой" : "Выберите файл устьев или перетащите сюда: .DAT, .csv, .txt, .xlsx"} />}
-                {collar && !keepCollar && <DraftEditor draft={collar} schemas={schemas} kinds={["collar"]} busy={busy} onChange={(d) => update(d.key, d)} onReread={(o) => void reread(collar, o)} />}
+                {collar && !keepCollar && <DraftEditor draft={collar} schemas={schemas} kinds={["collar"]} busy={busy} onChange={(d) => update(d.key, d)} onReread={(o) => void reread(collar, o)} log={log} />}
               </>
             )}
 
@@ -523,7 +586,7 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
                   <>
                     <FileDrop multiple busy={busy} onFiles={(f) => void addFiles(f)}
                       text={survey ? "Заменить файл инклинометрии: выберите или перетащите другой" : "Выберите файл инклинометрии или перетащите сюда"} />
-                    {survey && <DraftEditor draft={survey} schemas={schemas} kinds={["survey"]} busy={busy} onChange={(d) => update(d.key, d)} onReread={(o) => void reread(survey, o)} />}
+                    {survey && <DraftEditor draft={survey} schemas={schemas} kinds={["survey"]} busy={busy} onChange={(d) => update(d.key, d)} onReread={(o) => void reread(survey, o)} log={log} />}
                   </>
                 )}
               </>
@@ -552,7 +615,7 @@ export function DrillholeImport({ projectId, sets, initialSet, onImported, onClo
                         </li>
                       ))}
                     </ul>
-                    <DraftEditor key={active.key} draft={active} schemas={schemas} kinds={TABLE_KINDS} busy={busy} onChange={(d) => update(d.key, d)} onReread={(o) => void reread(active, o)} />
+                    <DraftEditor key={active.key} draft={active} schemas={schemas} kinds={TABLE_KINDS} busy={busy} onChange={(d) => update(d.key, d)} onReread={(o) => void reread(active, o)} log={log} />
                   </div>
                 )}
               </>

@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
-import { blockMeta, type Dataset } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { blockMeta, type Dataset, type JobInfo } from "../api";
 import { Icon } from "./icons";
+import { LogButton } from "./LogButton";
+import { createLog } from "./opLog";
 
 const KINDS = ["wireframes", "lines", "blocks"] as const;
 type ExportKind = (typeof KINDS)[number];
@@ -34,7 +36,8 @@ export function OmfExportDialog({ projectName, datasets, initial, onStart, onClo
   datasets: Dataset[];
   /** preselected datasets (from the tree); all exportable ones when empty */
   initial?: number[];
-  onStart: (ids: number[], filename: string) => Promise<void>;
+  /** starts the job; the job (when returned) goes into the journal */
+  onStart: (ids: number[], filename: string) => Promise<JobInfo | void>;
   onClose: () => void;
 }) {
   const groups = useMemo(() => omfCandidates(datasets), [datasets]);
@@ -43,6 +46,18 @@ export function OmfExportDialog({ projectName, datasets, initial, onStart, onClo
   const [filename, setFilename] = useState(projectName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [log] = useState(() => createLog("export", `Экспорт в OMF: ${projectName}`));
+  const close = () => {
+    log.close();
+    onClose();
+  };
+
+  useEffect(() => {
+    log.open({
+      "наборы": groups.flatMap((g) => g.items.map(({ d, problem }) => ({ id: d.id, kind: d.kind, name: d.name, folder: d.folder ?? "", problem: problem ?? "можно экспортировать" }))),
+      "отмечены заранее": initial ?? [],
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (id: number) => setChosen((prev) => {
     const next = new Set(prev);
@@ -54,24 +69,30 @@ export function OmfExportDialog({ projectName, datasets, initial, onStart, onClo
   async function run() {
     setBusy(true);
     setError(null);
+    const ids = exportable.filter((id) => chosen.has(id));
+    log.data("Запуск экспорта", { dataset_ids: ids, filename: filename.trim() });
     try {
-      await onStart(exportable.filter((id) => chosen.has(id)), filename.trim());
-      onClose();
+      const job = await onStart(ids, filename.trim());
+      if (job) log.attachJobs([job.id]);
+      log.info("Экспорт запущен; файл — во вкладке «Задания»");
+      close();
     } catch (e) {
+      log.error("Экспорт не запущен", e);
       setError((e as Error).message);
       setBusy(false);
     }
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
+    <div className="modal-backdrop" onMouseDown={close}>
       <div className="modal wizard" role="dialog" aria-label="Экспорт в OMF" onMouseDown={(e) => e.stopPropagation()}>
         <header className="modal-head">
           <Icon name="export" size={16} />
           <strong>Экспорт в OMF</strong>
           <span className="muted small">OMF v1 — открывается в Leapfrog (OMF 0.9) и других ГГИС</span>
           <span className="spacer" />
-          <button className="icon" onClick={onClose} title="Закрыть (Esc)" aria-label="Закрыть"><Icon name="close" size={16} /></button>
+          <LogButton log={log} />
+          <button className="icon" onClick={close} title="Закрыть (Esc)" aria-label="Закрыть"><Icon name="close" size={16} /></button>
         </header>
         <div className="modal-body wizard-body">
           {error && <div className="alert error small">{error}</div>}
@@ -119,7 +140,7 @@ export function OmfExportDialog({ projectName, datasets, initial, onStart, onClo
         <footer className="modal-foot">
           <span className="muted small">Выбрано: {exportable.filter((id) => chosen.has(id)).length}</span>
           <span className="spacer" />
-          <button onClick={onClose}>Отмена</button>
+          <button onClick={close}>Отмена</button>
           <button className="primary" disabled={busy || exportable.every((id) => !chosen.has(id))} onClick={() => void run()}>
             {busy ? "Запуск…" : "Экспортировать"}
           </button>

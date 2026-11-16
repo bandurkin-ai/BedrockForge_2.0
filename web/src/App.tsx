@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useS
 
 const noSubscribe = () => () => undefined;
 import {
-  auditExportUrl, downloadFile, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
+  auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, editBlock, renameDataset, runAudit, setBlockUnit,
   getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord, type PickResult,
 } from "./api";
@@ -23,7 +23,8 @@ import type { StatsView } from "./stats/analyses";
 import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
 import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
 import { ClaudeAccount, ClaudeAccountButton } from "./shell/ClaudeAccount";
-import { askConfirm, askText, DialogHost, showError, showMessage } from "./shell/dialogs";
+import { askConfirm, askText, DialogHost, showError } from "./shell/dialogs";
+import { downloadWithLog } from "./shell/exportDownload";
 import { ProjectsPanel } from "./shell/ProjectsPanel";
 import { SettingsPanel } from "./shell/SettingsPanel";
 import { applyShortcuts, loadShortcuts, saveShortcuts, type ShortcutOverrides } from "./shell/shortcuts";
@@ -44,6 +45,7 @@ import { DendrogramWindow, type DendrogramSettings } from "./charts/DendrogramWi
 import { ContextMenu } from "./shell/ContextMenu";
 import type { ChartKind } from "./shell/registry";
 import { JobsPanel } from "./shell/JobsPanel";
+import { LogsDialog } from "./shell/LogButton";
 import { useJobs } from "./shell/useJobs";
 import { createModeling, type TriangleEdit } from "./shell/modeling";
 import { FormHost } from "./shell/FormDialog";
@@ -470,6 +472,7 @@ function Workspace({
   const [projectsOpen, setProjectsOpen] = useState(false);
   /** The OMF export window: the datasets checked when it opens ([]: every exportable one). */
   const [omfExport, setOmfExport] = useState<number[] | null>(null);
+  const [logsOpen, setLogsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcuts, setShortcutsState] = useState<ShortcutOverrides>(loadShortcuts);
   const setShortcuts = (next: ShortcutOverrides) => {
@@ -554,8 +557,9 @@ function Workspace({
     sectionFrame: () => sceneApi.current?.sectionFrame() ?? null,
     sectionThroughHole: (setId, holeId) => sceneApi.current?.sectionThroughHole(setId, holeId) ?? null,
     runAudit: (setId) => runAudit(setId, DEFAULT_CONFIG),
-    exportAudit: (setId) => void downloadFile(auditExportUrl(setId), "audit.xlsx").catch((e) => showMessage({ title: "Отчёт аудита не выгружен", message: (e as Error).message, error: true })),
+    exportAudit: (setId) => void downloadWithLog(auditExportUrl(setId), "audit.xlsx", "Отчёт аудита в Excel", { "Набор": setId }).catch(() => undefined),
     openOmfExport: (ids) => setOmfExport(ids ?? []),
+    openLogs: () => setLogsOpen(true),
     exportOmf: async (ids, filename) => {
       const job = await startExport(projectId, { format: "omf", dataset_ids: ids, filename });
       onExportStarted(job);
@@ -1138,12 +1142,12 @@ function Workspace({
       {omfExport && (
         <OmfExportDialog
           projectName={projects.find((p) => p.id === projectId)?.name ?? "Проект"} datasets={datasets ?? []} initial={omfExport}
-          onStart={async (ids, filename) => {
-            await live.current.exportOmf(ids, filename);
-          }}
+          onStart={(ids, filename) => live.current.exportOmf(ids, filename)}
           onClose={() => setOmfExport(null)}
         />
       )}
+
+      {logsOpen && <LogsDialog jobs={jobs.jobs} onClose={() => setLogsOpen(false)} />}
 
       {notice && (
         <div className={notice.error ? "toast error" : "toast"} role="status" onClick={() => setNotice(null)}>

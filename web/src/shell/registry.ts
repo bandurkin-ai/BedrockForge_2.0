@@ -1,6 +1,7 @@
 import { hasSamples } from "./SampleTableSelect";
 import type { MutableRefObject } from "react";
-import { blockMeta, blockReport, getIntervalTables, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
+import { blockMeta, blockReport, getIntervalTables, getJob, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
+import { recentLogs } from "./opLog";
 import type { TableKind } from "../route";
 import { ANALYSES, type StatsAnalysis } from "../stats/analyses";
 import type { VizSettings } from "../viz/ComponentPanel";
@@ -82,6 +83,8 @@ export interface Live {
   exportAudit: (setId: number) => void;
   /** Opens the OMF export window with these datasets checked (none: every exportable one). */
   openOmfExport: (ids?: number[]) => void;
+  /** Opens the list of this session's import and export journals. */
+  openLogs: () => void;
   /** Starts the OMF export job of these datasets. */
   exportOmf: (ids: number[], filename?: string) => Promise<JobInfo>;
   fit: () => void;
@@ -887,6 +890,31 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         if (id === null) throw new Error("Не выбран каркас: укажите wireframe_id");
         findObject("wireframe", id);
         return s().modeling.rebuild(id);
+      },
+    },
+    {
+      id: "logs.open",
+      title: "Журналы импорта и экспорта",
+      description: "Окно с журналами импорта и экспорта этого сеанса: каждый открывается текстом, копируется в буфер или скачивается .txt для поиска ошибок.",
+      uiOnly: true,
+      run: () => {
+        s().openLogs();
+        return "Открыт список журналов";
+      },
+    },
+    {
+      id: "logs.last",
+      title: "Последний журнал импорта или экспорта",
+      description:
+        "Возвращает текст журнала импорта или экспорта этого сеанса (шаги, запросы к серверу с ответами, журналы фоновых заданий) — для поиска причины ошибки. " +
+        "index — 0 для последнего, 1 для предыдущего и т. д.",
+      params: { index: { type: "integer", nullable: true } },
+      run: async ({ index }) => {
+        const list = recentLogs();
+        const log = list[typeof index === "number" ? index : 0];
+        if (!log) return list.length ? `Журналов всего ${list.length}` : "Импорта и экспорта в этом сеансе не было";
+        const jobs = await Promise.all(log.jobIds.map((id) => getJob(id).catch(() => null)));
+        return log.text(jobs.filter((j): j is NonNullable<typeof j> => j !== null));
       },
     },
     {

@@ -841,3 +841,16 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .settings-group td { font-size: 0.78rem; font-weight: 600; color: var(--muted); background: var(--head-bg); padding-top: 4px; padding-bottom: 4px; }
 .settings-keys kbd { font: 0.8rem ui-monospace, monospace; padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); }
 .settings-wait { color: var(--accent); font-weight: 600; }
+
+/* journals of imports and exports */
+.log-button.has-errors { color: var(--sev-error); }
+.log-button.with-label { display: inline-flex; align-items: center; gap: 4px; width: auto; padding: 0 6px; }
+.log-backdrop { z-index: 250; }
+.modal.log-viewer { width: min(1000px, 94vw); height: min(760px, 88vh); }
+.log-text {
+  flex: 1; min-height: 0; margin: 0; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border); resize: none;
+  background: var(--panel); color: var(--fg); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; overflow: auto;
+}
+.modal.log-viewer .modal-foot button { display: inline-flex; align-items: center; gap: 4px; }
+.modal.logs-dialog { height: min(560px, 80vh); }
+.modal.logs-dialog button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }

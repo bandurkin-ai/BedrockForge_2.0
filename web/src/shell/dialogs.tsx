@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "./icons";
+import { LogButton } from "./LogButton";
+import type { OpLog } from "./opLog";
 
 /**
  * The application's own dialogs instead of the browser's confirm / prompt / alert:
@@ -29,7 +31,7 @@ export interface TextOptions extends Base {
 type Request =
   | { id: number; kind: "confirm"; options: ConfirmOptions; resolve: (v: boolean) => void }
   | { id: number; kind: "text"; options: TextOptions; resolve: (v: string | null) => void }
-  | { id: number; kind: "message"; options: Base & { error?: boolean }; resolve: () => void };
+  | { id: number; kind: "message"; options: MessageOptions; resolve: () => void };
 
 let queue: Request[] = [];
 let nextId = 1;
@@ -60,8 +62,14 @@ export function askText(options: TextOptions): Promise<string | null> {
   return new Promise((resolve) => enqueue({ id: nextId++, kind: "text", options, resolve }));
 }
 
+export interface MessageOptions extends Base {
+  error?: boolean;
+  /** journal of the import or export that failed: its icon is in the header */
+  log?: OpLog;
+}
+
 /** A message with one button. */
-export function showMessage(options: (Base & { error?: boolean }) | string): Promise<void> {
+export function showMessage(options: MessageOptions | string): Promise<void> {
   const o = typeof options === "string" ? { title: "Сообщение", message: options } : options;
   return new Promise((resolve) => enqueue({ id: nextId++, kind: "message", options: o, resolve }));
 }
@@ -128,6 +136,7 @@ function Dialog({ request: r }: { request: Request }) {
         <header className="modal-head">
           <Icon name={danger ? "trash" : error ? "close" : "spark"} size={15} />
           <strong id={`dlg-${r.id}`} className="grow">{r.options.title}</strong>
+          {r.kind === "message" && r.options.log && <LogButton log={r.options.log} size={14} />}
           <button className="icon" onClick={cancel} title="Закрыть (Esc)" aria-label="Закрыть"><Icon name="close" size={14} /></button>
         </header>
         <form className="app-dialog-body" onSubmit={(e) => { e.preventDefault(); accept(); }}>

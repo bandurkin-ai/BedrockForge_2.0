@@ -5,12 +5,13 @@
  */
 import {
   createLineLayer, getLineArrays, getLineVersions, getSelfIntersections, lineExportUrl, moveLinesToLayer, rebuildWireframe, restoreLineVersion,
-  saveLineGeometry, startOperation, downloadFile, wireframeExportUrl, type Dataset, type JobInfo, type LineLayerInfo, type PickResult, type WireframeInfo,
+  saveLineGeometry, startOperation, wireframeExportUrl, type Dataset, type JobInfo, type LineLayerInfo, type PickResult, type WireframeInfo,
 } from "../api";
 import { fromStored } from "../edit/io";
 import type { Vec3 } from "../edit/model";
 import { EditSession } from "../edit/session";
 import type { SectionLine } from "../viz/geometry";
+import { downloadWithLog } from "./exportDownload";
 import { askConfirm, askText, showMessage } from "./dialogs";
 import { askForm, type FormField, type FormValue } from "./FormDialog";
 
@@ -188,13 +189,8 @@ export function createModeling(ctx: ModelingContext) {
 
   /** Downloads an export; a refusal is shown in the application's window (not a browser page). */
   async function download(url: string, fallback: string, what: string): Promise<string> {
-    try {
-      const name = await downloadFile(url, fallback);
-      return `${what}: файл «${name}» сохранён в загрузки`;
-    } catch (e) {
-      void showMessage({ title: `${what} не выполнен`, message: (e as Error).message, error: true });
-      throw e;
-    }
+    const name = await downloadWithLog(url, fallback, what, { "Проект": ctx.projectId });
+    return `${what}: файл «${name}» сохранён в загрузки`;
   }
   async function exportLines(ids: number[], format: "str" | "dxf"): Promise<string> {
     if (!ids.length) throw new Error("Не выбран слой линий");

@@ -128,7 +128,7 @@ describe("OMF export", async () => {
   it("has its own group on the Home tab", () => {
     const home = buildRibbon(DEFAULT_WORKSPACE, { hasHole: false, hasSet: false, hasSection: false })[0];
     const omf = home.groups.find((g) => g.title === "OMF");
-    expect(omf?.items.map((i) => i.command)).toEqual(["omf.import", "omf.export"]);
+    expect(omf?.items.map((i) => i.command)).toEqual(["omf.import", "omf.export", "logs.open"]);
     expect(home.groups.map((g) => g.title).indexOf("OMF")).toBe(home.groups.map((g) => g.title).indexOf("Загрузка") + 1);
   });
 });

@@ -4,6 +4,8 @@ import {
 } from "../api";
 import { Icon } from "./icons";
 import { formatBytes } from "./JobsPanel";
+import { LogButton } from "./LogButton";
+import { createLog } from "./opLog";
 import type { UploadState } from "./useJobs";
 
 export type ObjectKind = "wireframes" | "lines" | "rasters" | "blocks" | "omf";
@@ -103,6 +105,18 @@ export function ImportWizard({
   const uploaded = useRef<string[]>([]);
   const started = useRef(false);
   const section = sectionFrame();
+  const [log] = useState(() => createLog("import", `Импорт файлов: ${files.map((f) => f.name).join(", ")}`.slice(0, 200), { "Проект": projectId }));
+
+  useEffect(() => {
+    log.open({
+      "файлы": files.map((f) => ({ name: f.name, size: f.size, type: f.type || "—", lastModified: new Date(f.lastModified).toISOString() })),
+      "подсказка вида": kindHint ?? "—",
+      "блочные модели (по заголовку)": files.filter((f) => blockModels?.has(f)).map((f) => f.name),
+      "объекты": sorted.objects.map((f) => f.name),
+      "таблицы скважин": sorted.tables.map((f) => f.name),
+      "не поддерживаются": sorted.unknown.map((f) => f.name),
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
@@ -130,6 +144,7 @@ export function ImportWizard({
       try {
         const ids: string[] = [];
         for (const file of sorted.objects) {
+          log.info(`${file.name}: передача (${formatBytes(file.size)})`);
           const state = trackUpload(file.name, file.size);
           aborts.current.push(state.abort);
           const info = await uploadResumable(projectId, file, (sent) => {
@@ -138,8 +153,12 @@ export function ImportWizard({
           }, state.abort.signal);
           updateUpload(state.key, { sent: file.size, status: "done" });
           ids.push(info.id);
+          log.info(`${file.name}: передан, загрузка ${info.id}`);
         }
         const detected = await detectUploads(projectId, ids);
+        log.info(`Состав файлов определён: ${detected.map((d) => `${d.filename} → ${d.kind} (${d.format})`).join("; ")}`);
+        log.data("Что внутри файлов (ответ сервера)", detected);
+        for (const d of detected) if (d.preview?.error) log.error(`${d.filename}: ${d.preview.error}`);
         uploaded.current = ids;
         if (!alive.current) return;
         setRows(detected.map((d) => ({
@@ -154,6 +173,7 @@ export function ImportWizard({
         })));
         setStage("review");
       } catch (e) {
+        log.error((e as Error).name === "AbortError" ? "Передача прервана" : "Передача или определение состава не выполнены", e);
         if (alive.current) setError((e as Error).name === "AbortError" ? "Передача прервана" : (e as Error).message);
       }
     })();
@@ -164,6 +184,8 @@ export function ImportWizard({
     aborts.current.forEach((a) => a.abort());
     // Files sent but not imported are removed now (otherwise the nightly cleanup does it).
     if (!started.current) uploaded.current.forEach((id) => void deleteUpload(id));
+    if (!started.current) log.info("Закрыто без запуска импорта");
+    log.close();
     onClose();
   }
 
@@ -181,21 +203,29 @@ export function ImportWizard({
     setError(null);
     try {
       const jobs: JobInfo[] = [];
+      log.info(`Запуск импорта: заданий ${plan.length}`);
       for (const p of plan) {
-        jobs.push(await startImport(projectId, {
+        const req = {
           uploads: p.uploads, kind: p.kind, folder,
           section: p.kind === "rasters" && onSection ? section : null,
           ...(p.kind === "rasters" ? { elevation: num(zLevel), z_shift: num(zShift) ?? 0 } : {}),
           ...(p.roles ? { block_roles: p.roles } : {}),
-        }));
+        };
+        log.data(`Задание: ${KIND_TITLES[p.kind]} — ${p.names.join(", ")}`, req);
+        const job = await startImport(projectId, req);
+        jobs.push(job);
+        log.attachJobs([job.id]);
       }
       started.current = true;
       // Files left out of the import (unchecked, unknown) are not kept.
       const used = new Set(plan.flatMap((p) => p.uploads));
       rows.filter((r) => !used.has(r.upload)).forEach((r) => void deleteUpload(r.upload));
       onStarted(jobs);
+      log.info(`Импорт запущен: ${jobs.map((j) => `№${j.id}`).join(", ")}; ход — во вкладке «Задания»`);
+      log.close();
       onClose();
     } catch (e) {
+      log.error("Импорт не запущен", e);
       setError((e as Error).message);
       setStage("review");
     }
@@ -207,7 +237,10 @@ export function ImportWizard({
     return t === "" || !Number.isFinite(v) ? null : v;
   };
   const zBad = (zLevel.trim() !== "" && num(zLevel) === null) || (zShift.trim() !== "" && num(zShift) === null);
-  const setKind = (upload: string, chosen: ObjectKind | null) => setRows((prev) => prev.map((r) => (r.upload === upload ? { ...r, chosen } : r)));
+  const setKind = (upload: string, chosen: ObjectKind | null) => {
+    log.info(`${rows.find((r) => r.upload === upload)?.filename ?? upload}: загрузить как ${chosen ? KIND_TITLES[chosen] : "— не загружать"}`);
+    setRows((prev) => prev.map((r) => (r.upload === upload ? { ...r, chosen } : r)));
+  };
 
   return (
     <div className="modal-backdrop" onMouseDown={close}>
@@ -219,6 +252,7 @@ export function ImportWizard({
             {stage === "upload" ? "1 · передача" : stage === "review" ? "2 · проверка и параметры" : "3 · запуск"}
           </span>
           <span className="spacer" />
+          <LogButton log={log} />
           <button className="icon" onClick={close} title="Закрыть (Esc)" aria-label="Закрыть"><Icon name="close" size={16} /></button>
         </header>
         <div className="modal-body wizard-body">
@@ -326,7 +360,7 @@ export function ImportWizard({
                   {sorted.tables.length > 0 && (
                     <p className="small">
                       Таблицы скважин ({sorted.tables.map((f) => f.name).join(", ")}) загружаются через мастер скважин: там назначаются колонки.{" "}
-                      <button className="link" onClick={() => { onTables(sorted.tables); onClose(); }}>Открыть мастер скважин</button>
+                      <button className="link" onClick={() => { log.info("Таблицы переданы в мастер скважин"); log.close(); onTables(sorted.tables); onClose(); }}>Открыть мастер скважин</button>
                     </p>
                   )}
                   {sorted.unknown.length > 0 && (
