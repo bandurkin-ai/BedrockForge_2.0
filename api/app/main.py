@@ -17,7 +17,7 @@ async def lifespan(_: FastAPI):
     workers = []
     if settings.jobs_in_api:
         from app.db import SessionLocal
-        from app.jobs.worker import Worker, _ensure_handlers
+        from app.jobs.worker import QUICK_KINDS, Worker, _ensure_handlers
 
         # In this thread, before any worker thread starts: no import race between them.
         try:
@@ -31,6 +31,11 @@ async def lifespan(_: FastAPI):
             worker = Worker(SessionLocal, name=f"api-{i}")
             worker.start_thread()
             workers.append(worker)
+        if settings.jobs_in_api:
+            # Operations on lines and wireframes do not wait behind a long import.
+            quick = Worker(SessionLocal, name="api-quick", kinds=QUICK_KINDS)
+            quick.start_thread()
+            workers.append(quick)
     # The MCP endpoint is a mounted sub-application; its session manager needs this app's lifespan.
     try:
         async with mcp_server.mcp.session_manager.run():

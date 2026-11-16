@@ -204,3 +204,19 @@ def test_hole_detail_lists_its_findings_and_404s(db_client, db_engine):
     assert detail["azimuth"] == 90.0 and detail["dip"] == -60.0 and detail["attributes"] == {"rig": "R1"}
     assert [f["severity"] for f in detail["findings"]] == ["warning", "info", "info"]
     assert db_client.get(f"/api/sets/{pid}/holes/NOPE").status_code == 404
+
+
+def test_collars_with_errors_are_loaded_when_asked_and_fixed_later(db_client):
+    sid = _project(db_client, "С ошибками")
+    data = "HOLEID,EAST,NORTH,RL,DEPTH\nA,1,1,1,10\n,2,2,2,20\nA,3,3,3,30\nB,нет,4,4,40\n".encode()
+    up = db_client.post("/api/import/upload", files={"file": ("collar.csv", data)}).json()
+    body = {"file_id": up["file_id"], "kind": "collar", "mapping": up["suggestions"]["collar"]["mapping"]}
+    checked = db_client.post("/api/import/validate", json=body).json()
+    assert checked["ok"] is False and checked["fixable"] is True
+    assert db_client.post("/api/import/commit", json={**body, "set_id": sid}).status_code == 422
+
+    forced = db_client.post("/api/import/validate", json={**body, "force": True}).json()
+    assert forced["ok"] is True
+    r = db_client.post("/api/import/commit", json={**body, "set_id": sid, "force": True})
+    assert r.status_code == 200, r.text
+    assert r.json()["inserted"] == 4

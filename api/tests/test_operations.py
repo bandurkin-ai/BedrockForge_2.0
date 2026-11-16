@@ -269,3 +269,19 @@ def test_hole_snap_targets_are_exact(db_client):
     bounds = arrays["bounds"].reshape(-1, 3)
     assert arrays["bound_depth"].tolist() == [10.0, 12.5, 20.0]
     assert np.allclose(bounds[:, 2], [z - 10, z - 12.5, z - 20], atol=1e-9) and np.all(bounds[:, 0] == x)
+
+
+def test_stitch_preview_grows_with_the_picked_contours_and_closes(client):
+    """«Собрать из контуров»: the preview of the solid, open until the ends are closed; nothing is stored."""
+    import numpy as np
+
+    square = np.array([[0, 0, 0], [10, 0, 0], [10, 0, 10], [0, 0, 10]], dtype=float)
+    cs = [(square + [0, y, 0]).tolist() for y in (0, 10, 20)]
+    two = client.post("/api/stitch/preview", json={"contours": cs[:2]}).json()
+    assert two["triangles"] == 8 and two["closed"] is False and two["volume"] is None
+    three = client.post("/api/stitch/preview", json={"contours": cs, "start_cap": "flat", "end_cap": "flat"}).json()
+    assert three["closed"] is True and abs(three["volume"] - 2000.0) < 1e-6
+    assert len(three["corners"]) == three["triangles"] * 9
+    bad = client.post("/api/stitch/preview", json={"contours": [cs[0], cs[0]]})
+    assert bad.status_code == 422 and "одном разрезе" in bad.json()["detail"]
+    assert client.post("/api/stitch/preview", json={"contours": cs, "end_cap": "dome"}).status_code == 422

@@ -15,51 +15,77 @@ class TargetField:
     aliases: tuple[str, ...]
 
 
+# Names used by Micromine, Datamine, Surpac, Vulcan, Leapfrog, acQuire, GBIS and Russian-language
+# databases. Matching ignores case, separators and units ("Depth_m" = "DEPTH"), and takes names cut
+# to 8 or 10 characters ("DrillholeI" = "DrillholeID"): see app.importing.names.
 _HOLE_ID = TargetField(
     "hole_id", "Номер скважины (HoleID)", True, False,
-    ("BHID", "HOLEID", "HOLE_ID", "HOLE", "DH_ID", "ID", "СКВАЖИНА", "СКВ", "№_СКВ", "№_СКВАЖИНЫ", "НОМЕР_СКВАЖИНЫ"),
+    ("BHID", "HOLEID", "HOLE_ID", "HOLE", "HOLE_NAME", "HOLENAME", "HOLE_NO", "HOLENO", "HOLE_NUMBER", "DHID", "DH_ID",
+     "DRILLHOLE", "DRILLHOLE_ID", "DRILLHOLEID", "DRILL_HOLE", "BOREHOLE", "BOREHOLE_ID", "BH_ID", "WELL", "WELL_ID",
+     "NAME", "ID", "СКВАЖИНА", "СКВ", "№_СКВ", "№_СКВАЖИНЫ", "НОМЕР_СКВАЖИНЫ", "НОМЕР_СКВ", "ИМЯ_СКВАЖИНЫ", "ВЫРАБОТКА"),
 )
+_FROM = ("FROM", "DEPTH_FROM", "FROM_DEPTH", "MFROM", "SAMPFROM", "SAMPLE_FROM", "DEPTHFROM", "INTERVAL_FROM", "TOP",
+         "ОТ", "ИНТЕРВАЛ_ОТ", "ГЛУБИНА_ОТ", "С", "КРОВЛЯ")
+_TO = ("TO", "DEPTH_TO", "TO_DEPTH", "MTO", "SAMPTO", "SAMPLE_TO", "DEPTHTO", "INTERVAL_TO", "BOTTOM", "BASE",
+       "ДО", "ИНТЕРВАЛ_ДО", "ГЛУБИНА_ДО", "ПО", "ПОДОШВА")
+_DIP = ("DIP", "INCL", "INCLINATION", "DIP_DEG", "DIP_ANGLE", "PLUNGE", "TRUE_DIP", "НАКЛОН", "УГОЛ_НАКЛОНА", "УГОЛ",
+        "ЗЕНИТНЫЙ_УГОЛ")
+# True / grid azimuth before the magnetic one: the magnetic azimuth needs a declination correction.
+_AZIMUTH = ("AZIMUTH", "AZ", "AZI", "AZIM", "BRG", "BEARING", "GRID_AZIMUTH", "GRID_BEARING", "GRIDBEARING", "AZIMUTH_GRID",
+            "AZ_GRID", "АЗИМУТ", "АЗ", "АЗИМУТ_ИСТИННЫЙ", "ДИРЕКЦИОННЫЙ_УГОЛ")
 
 SCHEMAS: dict[str, tuple[TargetField, ...]] = {
     "collar": (
         _HOLE_ID,
-        TargetField("x", "X (восток)", True, True, ("X", "EAST", "EASTING", "XCOLLAR", "Х")),  # Cyrillic Х too
-        TargetField("y", "Y (север)", True, True, ("Y", "NORTH", "NORTHING", "YCOLLAR", "У")),
-        TargetField("z", "Z (отметка)", True, True, ("Z", "RL", "ELEV", "ELEVATION", "ZCOLLAR", "ОТМЕТКА", "АБС_ОТМЕТКА", "АБСОЛЮТНАЯ_ОТМЕТКА")),
+        TargetField("x", "X (восток)", True, True,
+                    ("X", "EAST", "EASTING", "XCOLLAR", "X_COLLAR", "COLLAR_X", "LOCATIONX", "LOC_X", "EAST_GRID",
+                     "GRID_EAST", "MINE_EAST", "XCOORD", "X_COORD", "ВОСТОК", "Х")),  # Cyrillic Х too
+        TargetField("y", "Y (север)", True, True,
+                    ("Y", "NORTH", "NORTHING", "YCOLLAR", "Y_COLLAR", "COLLAR_Y", "LOCATIONY", "LOC_Y", "NORTH_GRID",
+                     "GRID_NORTH", "MINE_NORTH", "YCOORD", "Y_COORD", "СЕВЕР", "У")),
+        TargetField("z", "Z (отметка)", True, True,
+                    ("Z", "RL", "ELEV", "ELEVATION", "ZCOLLAR", "Z_COLLAR", "COLLAR_Z", "COLLAR_RL", "LOCATIONZ", "LOC_Z",
+                     "MINE_RL", "GRID_RL", "ALTITUDE", "HEIGHT", "ZCOORD", "Z_COORD",
+                     "ОТМЕТКА", "АБС_ОТМЕТКА", "АБСОЛЮТНАЯ_ОТМЕТКА", "ВЫСОТА", "Z_УСТЬЯ")),
         TargetField(
             "td", "Глубина скважины (TD)", True, True,
-            ("TDEPTH", "TD", "MAX_DEPTH", "TOTAL_DEPTH", "EOH", "LENGTH", "ГЛУБИНА_СКВАЖИНЫ", "ГЛУБИНА", "ЗАБОЙ"),
+            ("TDEPTH", "TD", "MAX_DEPTH", "MAXDEPTH", "TOTAL_DEPTH", "TOTALDEPTH", "FINAL_DEPTH", "END_DEPTH", "EOH", "EOH_DEPTH",
+             "HOLE_DEPTH", "HOLE_LENGTH", "DEPTH", "LENGTH", "ГЛУБИНА_СКВАЖИНЫ", "ГЛУБИНА", "ЗАБОЙ", "ДЛИНА"),
         ),
-        TargetField("azimuth", "Азимут", False, True, ("AZ", "AZIMUTH", "BRG", "АЗИМУТ", "АЗ")),
-        TargetField("dip", "Наклон", False, True, ("DIP", "INCL", "INCLINATION", "НАКЛОН", "УГОЛ_НАКЛОНА")),
-        TargetField("date", "Дата", False, False, ("DATE", "DRILL_DATE", "START_DATE", "ДАТА")),
-        TargetField("status", "Статус", False, False, ("STATUS", "СТАТУС")),
-        TargetField("stage", "Этап", False, False, ("STAGE", "ЭТАП")),
+        TargetField("azimuth", "Азимут", False, True, _AZIMUTH),
+        TargetField("dip", "Наклон", False, True, _DIP),
+        TargetField("date", "Дата", False, False, ("DATE", "DRILL_DATE", "START_DATE", "DATE_START", "END_DATE", "ДАТА",
+                                                   "ДАТА_БУРЕНИЯ")),
+        TargetField("status", "Статус", False, False, ("STATUS", "HOLE_STATUS", "СТАТУС")),
+        TargetField("stage", "Этап", False, False, ("STAGE", "PHASE", "PROGRAM", "PROGRAMME", "CAMPAIGN", "ЭТАП", "СТАДИЯ")),
     ),
     "survey": (
         _HOLE_ID,
-        TargetField("depth", "Глубина замера", True, True, ("DEPTH", "MD", "AT", "SURVEY_DEPTH", "ГЛУБИНА", "ГЛУБИНА_ЗАМЕРА")),
+        TargetField("depth", "Глубина замера", True, True,
+                    ("DEPTH", "AT", "MD", "SURVEY_DEPTH", "SURVDEPTH", "SURV_DEPTH", "DISTANCE", "MEASURED_DEPTH",
+                     "ГЛУБИНА", "ГЛУБИНА_ЗАМЕРА")),
         # BRG_TRUE first: true azimuth is the default, magnetic BRG is a user choice.
         TargetField(
             "azimuth", "Азимут", True, True,
-            ("BRG_TRUE", "AZIMUTH_TRUE", "AZIMUTH", "AZ", "BRG", "АЗИМУТ", "АЗ"),
+            ("BRG_TRUE", "AZIMUTH_TRUE", "TRUE_AZIMUTH", *_AZIMUTH, "AZIMUTH_MAG", "AZIMUTHMAG", "MAG_AZIMUTH", "AZ_MAG"),
         ),
-        TargetField("dip", "Наклон", True, True, ("DIP", "INCL", "INCLINATION", "НАКЛОН", "УГОЛ_НАКЛОНА")),
+        TargetField("dip", "Наклон", True, True, _DIP),
     ),
     "assay": (
         _HOLE_ID,
-        TargetField("from", "От (From)", True, True, ("FROM", "DEPTH_FROM", "FROM_M", "FROM_DEPTH", "ОТ", "ИНТЕРВАЛ_ОТ", "С")),
-        TargetField("to", "До (To)", True, True, ("TO", "DEPTH_TO", "TO_M", "TO_DEPTH", "ДО", "ИНТЕРВАЛ_ДО", "ПО")),
+        TargetField("from", "От (From)", True, True, _FROM),
+        TargetField("to", "До (To)", True, True, _TO),
         TargetField(
             "sample_id", "Номер пробы", False, False,
-            ("SAMPID", "SAMPLE_ID", "SAMPLEID", "SAMPLE", "SAMPLE_NO", "SAMPNO", "ПРОБА", "№_ПРОБЫ", "НОМЕР_ПРОБЫ", "ШИФР_ПРОБЫ"),
+            ("SAMPID", "SAMPLE_ID", "SAMPLEID", "SAMPLE", "SAMPLE_NO", "SAMPNO", "SAMPLE_NUMBER", "SAMPLE_NAME", "SAMP_ID",
+             "ПРОБА", "№_ПРОБЫ", "НОМЕР_ПРОБЫ", "ШИФР_ПРОБЫ", "ШИФР"),
         ),
     ),
     # Any interval table besides the assays: every other column is kept as a value.
     "interval": (
         _HOLE_ID,
-        TargetField("from", "От (From)", True, True, ("FROM", "DEPTH_FROM", "FROM_M", "FROM_DEPTH", "ОТ", "ИНТЕРВАЛ_ОТ", "С")),
-        TargetField("to", "До (To)", True, True, ("TO", "DEPTH_TO", "TO_M", "TO_DEPTH", "ДО", "ИНТЕРВАЛ_ДО", "ПО")),
+        TargetField("from", "От (From)", True, True, _FROM),
+        TargetField("to", "До (To)", True, True, _TO),
     ),
     # Events along a hole: one depth, no thickness (water inflow, core loss point, structure, sample point).
     "event": (
@@ -78,8 +104,7 @@ KIND_LABELS = {
 
 # Chemical symbols offered as assay components (value columns).
 ELEMENTS = frozenset(
-    "AU AG PT PD CU PB ZN NI CO FE MN MO W SN AS SB BI HG CD CR V TI AL MG CA NA K S P "
-    "U TH REE LI B BA SR ZR F CL".split()
+    ["AU", "AG", "PT", "PD", "CU", "PB", "ZN", "NI", "CO", "FE", "MN", "MO", "W", "SN", "AS", "SB", "BI", "HG", "CD", "CR", "V", "TI", "AL", "MG", "CA", "NA", "K", "S", "P", "U", "TH", "REE", "LI", "B", "BA", "SR", "ZR", "F", "CL"]
 )
 # Default units are only suggestions; the user sets the real ones in the wizard.
 PRECIOUS = frozenset({"AU", "AG", "PT", "PD"})

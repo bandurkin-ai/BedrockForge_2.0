@@ -220,3 +220,47 @@ def export_wireframes(ids: str, format: str = "dxf", session: Session = Depends(
         raise HTTPException(422, str(exc)) from exc
     name = rows[wanted[0]].name if len(wanted) == 1 else "Каркасы"
     return _download(path, f"{name}.{format}", "application/octet-stream")
+
+
+class StitchPreviewIn(BaseModel):
+    """Contours (with the editor's unsaved changes) in the order the user picked them."""
+    contours: list[list[list[float]]] = Field(min_length=2, max_length=500)
+    ties: list[list[list[float]]] = Field(default_factory=list, max_length=2000)
+    start_cap: str = "none"
+    end_cap: str = "none"
+
+
+PREVIEW_MAX_POINTS = 200_000
+
+
+@router.post("/stitch/preview")
+def stitch_preview(body: StitchPreviewIn) -> dict:
+    """The solid «Собрать из контуров» would make, for the view: the wireframe grows with every
+    picked contour; open ends until the user closes them. Nothing is stored."""
+    from app.geo.stitch import CAPS, StitchError, stitch_contours
+
+    if sum(len(c) for c in body.contours) > PREVIEW_MAX_POINTS:
+        raise HTTPException(422, f"Для предпросмотра слишком много вершин (больше {PREVIEW_MAX_POINTS:,}): создайте каркас операцией «Сшить контуры»".replace(",", " "))
+    for cap in (body.start_cap, body.end_cap):
+        if cap not in CAPS:
+            raise HTTPException(422, f"Неизвестный способ замыкания торца «{cap}»")
+    try:
+        contours = [np.asarray(c, dtype=np.float64) for c in body.contours]
+        ties = [np.asarray(t, dtype=np.float64)[[0, -1]] for t in body.ties if len(t) >= 2]
+        r = stitch_contours(contours, ties, start_cap=body.start_cap, end_cap=body.end_cap)
+    except (StitchError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    tri = r.triangles
+    closed = bool(r.report.get("closed"))
+    volume = None
+    if closed and len(tri):
+        v = r.vertices - r.vertices.mean(axis=0)  # near the origin: no loss of digits
+        a, b, c = v[tri[:, 0]], v[tri[:, 1]], v[tri[:, 2]]
+        volume = abs(float(np.einsum("ij,ij->i", a, np.cross(b, c)).sum()) / 6.0)
+    return {
+        "corners": r.vertices[tri.reshape(-1)].reshape(-1).tolist(),
+        "triangles": int(len(tri)),
+        "closed": closed,
+        "volume": volume,
+        "warnings": list(r.report.get("warnings", [])),
+    }

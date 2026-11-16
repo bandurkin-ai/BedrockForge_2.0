@@ -878,7 +878,7 @@ function Workspace({
                       edit?.layerId === id ? cmd("Завершить правку", "lines.finish") : cmd("Редактировать", "lines.edit", { layer_id: id }),
                       cmd("Версии…", "lines.versions", { layer_id: id }),
                       "separator",
-                      cmd("Сшить контуры в тело…", "model.stitch"), cmd("Выдавить полигон…", "model.extrude"), cmd("ЦМР из точек и линий…", "model.dtm"),
+                      cmd("Сшить контуры в тело…", "model.stitch"), cmd("Собрать из контуров", "model.assemble"), cmd("Выдавить полигон…", "model.extrude"), cmd("ЦМР из точек и линий…", "model.dtm"),
                       "separator",
                       cmd("Экспорт в Micromine STR", "lines.export", { layer_id: id, format: "str" }), cmd("Экспорт в DXF", "lines.export", { layer_id: id, format: "dxf" }),
                     ] : [
@@ -945,6 +945,7 @@ function Workspace({
                 edit={edit}
                 onEditSave={() => void modeling.save()}
                 onEditExit={() => void modeling.leave()}
+                onAssemble={(lines, closed) => void guarded(() => modeling.finishAssemble(lines, closed))}
                 onTriangle={(r) => {
                   if (!modeling.triangleClick(r)) setTriangleInfo(r);
                 }}

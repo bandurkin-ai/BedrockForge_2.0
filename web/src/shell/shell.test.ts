@@ -105,7 +105,7 @@ describe("ribbon and palette", () => {
   it("lists each button once and marks the active view", () => {
     const items = flattenRibbon(buildRibbon(DEFAULT_WORKSPACE, { hasHole: false, hasSet: true, hasSection: false }));
     const views = items.filter((i) => i.command === "scene.view");
-    expect(views.map((i) => i.args?.view)).toEqual(["top", "front", "side", "iso", "section"]);
+    expect(views.map((i) => i.args?.view)).toEqual(["top", "front", "side", "section"]);
     expect(items.find((i) => i.command === "section.clip")?.disabled).toBe(true); // no section line yet
     expect(items.find((i) => i.command === "hole.select")?.disabled).toBe(true);
     const shortcuts = items.map((i) => i.shortcut).filter(Boolean);

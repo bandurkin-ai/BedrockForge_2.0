@@ -48,6 +48,21 @@ services:
       api:
         condition: service_started
 
+  # Operations on lines and wireframes (stitching, booleans, repair): seconds each; a worker of their
+  # own, so they never wait behind the import of a big file.
+  worker-quick:
+    build: ./api
+    command: ["python", "-m", "app.jobs.worker"]
+    environment:
+      <<: *api-env
+      JOB_KINDS: geometry.operation
+    volumes:
+      - store:/data
+    stop_grace_period: 30s
+    depends_on:
+      api:
+        condition: service_started
+
   web:
     image: node:22-alpine
     working_dir: /app

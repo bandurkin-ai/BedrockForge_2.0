@@ -77,6 +77,20 @@ const PATHS = {
   edErase: "M8 20h12M5 15l9-10 6 6-8 9H9z M9.5 10l6 6",
   edSnap: "M7 7h10v10H7zM12 2v5M12 17v5M2 12h5M17 12h5",
   edMore: "M7 10l5 5 5-5",
+  // ---- the 3D view toolbar
+  vwSection: "M4 20L20 4M4 20h.01M20 4h.01M8 9l3 3M13 14l3 3",
+  vwHole: "M12 3v18M9 3h6M6 8l12 8M18 8L6 16",
+  vwAuto: "M4 20L20 4M7 4h3M8.5 2.5v3M16 17h4M18 15v4",
+  vwClip: "M6 7a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM6 14a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM8 10.5L20 5M8 15.5L20 21",
+  vwPrev: "M15 6l-6 6 6 6M5 4v16",
+  vwNext: "M9 6l6 6-6 6M19 4v16",
+  vwToPlane: "M4 7l8-4 8 4v10l-8 4-8-4zM12 3v18M8 12h8",
+  vwMap: "M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zM6 15L17 8",
+  vwReset: "M4 20L20 4M14 14l6 6M20 14l-6 6",
+  vwPerspective: "M3 6l8 3v6l-8 3zM11 9l10-5v16l-10-5",
+  vwGrid: "M4 4h16v16H4zM4 9.3h16M4 14.7h16M9.3 4v16M14.7 4v16",
+  vwVexag: "M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4M4 12h3M17 12h3",
+  vwOpacity: "M12 3a9 9 0 100 18 9 9 0 000-18zM12 3v18M12 7h6M12 11h8.6M12 15h8M12 19h4",
 } as const;
 
 export type IconName = keyof typeof PATHS;
@@ -102,7 +116,7 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      {FILLS[name] && <path d={FILLS[name]} fill="currentColor" fillOpacity={0.55} stroke="none" />}
+      {FILLS[name] && <path d={FILLS[name]} fill="currentColor" fillOpacity={0.8} stroke="none" />}
       <path d={PATHS[name]} />
     </svg>
   );

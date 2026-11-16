@@ -253,13 +253,17 @@ tr.clickable:hover td { background: var(--head-bg); }
 .edit-row button { padding: 2px 7px; font-size: 0.78rem; }
 .tool-group { display: inline-flex; align-items: center; gap: 1px; padding: 1px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .tool-wrap { display: inline-flex; }
-.edit-row .tool-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--fg); cursor: pointer; }
-.edit-row .tool-btn.narrow { width: 16px; }
-.edit-row .tool-btn:hover:not(:disabled) { background: var(--accent-soft); }
-.edit-row .tool-btn.active { background: var(--accent); color: var(--accent-fg); }
-.edit-row .tool-btn.save:not(:disabled) { color: var(--accent); }
-.edit-row .tool-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+.scene-toolbar .tool-group { margin-right: 2px; }
+.tool-field { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.tool-field select, .tool-field input { color: var(--fg); }
+.tool-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--fg); cursor: pointer; }
+.tool-btn.narrow { width: 16px; }
+.tool-btn:hover:not(:disabled) { background: var(--accent-soft); }
+.tool-btn.active { background: var(--accent); color: var(--accent-fg); }
+.tool-btn.save:not(:disabled) { color: var(--accent); }
+.tool-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 .edit-snap .tool-btn { border: 1px solid var(--border); background: var(--bg); }
+.edit-snap .tool-btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .tool-tip {
   position: fixed; z-index: 1000; transform: translateX(-50%); max-width: 300px; padding: 6px 9px; pointer-events: none;
   background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow); font-size: 0.76rem; line-height: 1.35;
@@ -281,7 +285,10 @@ tr.clickable:hover td { background: var(--head-bg); }
 .edit-coord { flex: 1 1 220px; min-width: 180px; }
 .edit-coord input { width: 100%; font-size: 0.78rem; padding: 2px 6px; }
 .edit-coord input.invalid { border-color: var(--sev-error); }
-.edit-status { display: flex; gap: 12px; min-height: 1.2em; }
+/* One line of fixed height: a longer hint or the cursor coordinates must not move the view under the mouse. */
+.edit-status { display: flex; gap: 12px; height: 1.35em; line-height: 1.35em; white-space: nowrap; overflow: hidden; }
+.edit-status > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.edit-status > span:not(:first-child) { flex-shrink: 0; }
 .edit-status .grow { flex: 1; }
 .edit-xyz { font-variant-numeric: tabular-nums; color: var(--muted); }
 .error-text { color: var(--sev-error); }
@@ -301,3 +308,11 @@ tr.clickable:hover td { background: var(--head-bg); }
 .app-dialog-message { white-space: pre-line; }
 .props-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .props-actions button { padding: 2px 8px; font-size: 0.78rem; }
+
+/* ---- block model fields in the import wizard */
+.block-roles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 10px; margin-top: 6px; }
+.block-roles > span { grid-column: 1 / -1; }
+.block-roles label { display: flex; flex-direction: column; gap: 2px; font-size: 0.78rem; }
+.block-roles label.unset select { border-color: var(--warn); }
+.import-force { display: flex; margin: 6px 0; padding: 6px 10px; border: 1px dashed var(--warn); border-radius: 6px; }
+.assemble-info { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

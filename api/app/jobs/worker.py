@@ -179,12 +179,25 @@ def _ensure_handlers() -> None:
             importlib.import_module("app.jobs.handlers")
 
 
+# Interactive operations: seconds, not minutes. They get a worker of their own.
+QUICK_KINDS = ["geometry.operation"]
+
+
+def kinds_from_env() -> list[str] | None:
+    """JOB_KINDS=geometry.operation,… — the kinds this worker process takes (empty: all)."""
+    raw = os.environ.get("JOB_KINDS", "").strip()
+    return [k.strip() for k in raw.split(",") if k.strip()] or None
+
+
 class Worker:
     """A polling loop; also requeues jobs of workers that died."""
 
-    def __init__(self, session_factory: Callable[[], Session], name: str | None = None):
+    def __init__(self, session_factory: Callable[[], Session], name: str | None = None, kinds: list[str] | None = None):
         self.session_factory = session_factory
         self.name = (name or f"{socket.gethostname()}:{os.getpid()}")[:64]
+        # Only these kinds of jobs (None: any). A worker for QUICK_KINDS keeps operations on lines
+        # and wireframes from waiting behind an import of a big file.
+        self.kinds = kinds
         self.stopping = threading.Event()
 
     def run(self) -> None:
@@ -210,7 +223,7 @@ class Worker:
                         for job_id in queue.requeue_stale(s):
                             log.warning("job %s requeued after a lost worker", job_id)
                 with self.session_factory() as s:
-                    job = queue.claim(s, self.name)
+                    job = queue.claim(s, self.name, self.kinds)
                 if job is None:
                     self.stopping.wait(POLL_SECONDS)
                     continue
@@ -231,10 +244,10 @@ def main() -> None:
     from app.db import SessionLocal
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    worker = Worker(SessionLocal)
+    worker = Worker(SessionLocal, kinds=kinds_from_env())
     signal.signal(signal.SIGTERM, lambda *_: worker.stopping.set())
     signal.signal(signal.SIGINT, lambda *_: worker.stopping.set())
-    log.info("worker %s started", worker.name)
+    log.info("worker %s started (jobs: %s)", worker.name, ", ".join(worker.kinds) if worker.kinds else "all")
     worker.run()
 
 

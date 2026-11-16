@@ -29,7 +29,6 @@ const VIEWS: { view: ViewPreset; label: string; icon: IconName; hint: string; sh
   { view: "top", label: "В план", icon: "cubeTop", hint: "Вид сверху (Y вверх, X вправо) на то, что сейчас на экране", shortcut: "t" },
   { view: "front", label: "Сбоку Z/X", icon: "cubeLeft", hint: "Вид сбоку на север: Z вверх, X вправо", shortcut: "x" },
   { view: "side", label: "Сбоку Z/Y", icon: "cubeRight", hint: "Вид сбоку на запад: Z вверх, Y вправо", shortcut: "y" },
-  { view: "iso", label: "3D", icon: "cube", hint: "Изометрия", shortcut: "3" },
 ];
 
 export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean }[] = [
@@ -100,7 +99,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
             { command: "omf.export", label: "Экспорт OMF", icon: "export", hint: "Каркасы, линии и регулярные блочные модели проекта в один файл OMF v1" },
           ],
         },
-        { title: "Вид", items: [view(0), view(1), view(2), view(3, true), { command: "scene.fit", label: "Вписать", icon: "maximize", hint: "Показать всё, не поворачивая вид", shortcut: "f", small: true }] },
+        { title: "Вид", items: [view(0), view(1), view(2), { command: "scene.fit", label: "Вписать", icon: "maximize", hint: "Показать всё, не поворачивая вид", shortcut: "f", small: true }] },
         { title: "Разрез", items: sectionItems },
         {
           title: "Выделение",
@@ -117,7 +116,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
       id: "view",
       title: "Вид",
       groups: [
-        { title: "Поворот вида", items: [view(0), view(1), view(2), view(3)] },
+        { title: "Поворот вида", items: [view(0), view(1), view(2)] },
         {
           title: "Разрез",
           items: [
@@ -172,6 +171,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           title: "Каркас из контуров",
           items: [
             { command: "model.stitch", label: "Сшить контуры", icon: "wireframe", hint: "Тело из замкнутых контуров разрезов: тай-линии, разветвления, торцы" },
+            { command: "model.assemble", label: "Собрать из контуров", icon: "edPolygon", hint: "Щёлкайте контуры по порядку — каркас растёт от контура к контуру; «Замкнуть» закрывает торцы" },
             { command: "model.extrude", label: "Выдавить", icon: "cube", hint: "Полигон → тело на расстояние", small: true },
             { command: "model.triangles", label: "Треугольники", icon: "edit", hint: "Ручная правка: удалить и добавить треугольники", small: true },
             { command: "model.rebuild", label: "Перестроить", icon: "refresh", hint: "Повторить построение выбранного каркаса на изменённых исходных объектах", small: true },

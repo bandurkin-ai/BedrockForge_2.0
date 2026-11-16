@@ -250,6 +250,41 @@ export function createModeling(ctx: ModelingContext) {
     return run("stitch", { contours: contoursOf(num(v.id)), start_cap: v.start_cap, end_cap: v.end_cap, cap_distance: v.cap_distance ?? 0.5 }, String(v.name || ""));
   }
 
+  /**
+   * «Собрать из контуров»: the edited layer (or the chosen one, opened for editing) — the user
+   * clicks contours one by one and sees the wireframe grow (see AssembleBar).
+   */
+  async function startAssemble(layerId?: number): Promise<string | undefined> {
+    let session = ctx.edit();
+    if (!session || (layerId !== undefined && session.layerId !== layerId)) {
+      const preset = layerId ?? selectedId("lines");
+      const options = closedLayers().length ? closedLayers() : layerOptions();
+      let id = preset !== null && options.some((o) => o.value === String(preset)) ? preset : null;
+      if (id === null) {
+        const v = await choose("Собрать каркас из контуров", "Слой с контурами", options, preset,
+          "В проекте нет слоя линий: нарисуйте контуры на разрезах инструментом «Полигон»");
+        if (!v) return undefined;
+        id = num(v.id);
+      }
+      await startEdit(id);
+      session = ctx.edit();
+      if (!session) return undefined;
+    }
+    session.startAssemble();
+    return `Сборка каркаса из контуров слоя «${session.layerName}»: щёлкайте контуры по порядку`;
+  }
+
+  /** Makes the assembled wireframe: the layer is saved first, the picked contours are stitched in order. */
+  async function finishAssemble(lines: number[], closed: boolean): Promise<string | undefined> {
+    const session = ctx.edit();
+    if (!session || lines.length < 2) return undefined;
+    if (!(await savedFirst(session.layerId))) return "Каркас не создан: слой не сохранён";
+    const cap = closed ? "flat" : "none";
+    const text = await run("stitch", { contours: [{ layer_id: session.layerId, lines }], start_cap: cap, end_cap: cap }, `Каркас: ${session.layerName}`);
+    session.stopAssemble();
+    return text;
+  }
+
   async function extrude(layerId?: number): Promise<string | undefined> {
     const v = await choose("Выдавливание полигона", "Слой с полигоном", closedLayers(), layerId ?? ctx.edit()?.layerId ?? selectedId("lines"),
       "В проекте нет замкнутых полигонов", [
@@ -544,7 +579,7 @@ export function createModeling(ctx: ModelingContext) {
 
   return {
     newLayer, startEdit, save, leave, versions, moveSelected, exportLines, exportWireframes, run,
-    stitch, extrude, repair, simplify, smooth, split, merge, boolean, clip, intersectionLines, dtm, contours, volume, rebuild,
+    stitch, startAssemble, finishAssemble, extrude, repair, simplify, smooth, split, merge, boolean, clip, intersectionLines, dtm, contours, volume, rebuild,
     showSelfIntersections, startTriangles, triangleClick, setTriangleMode, applyTriangles, jobDone,
     /** Adds a line to the edited layer from coordinates (commands, Claude). */
     addLine(points: Vec3[], closed: boolean): string {
