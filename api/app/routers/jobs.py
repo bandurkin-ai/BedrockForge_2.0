@@ -4,7 +4,8 @@
     POST /api/projects/{id}/detect           which object kind the files hold
     GET  /api/projects/{id}/jobs             newest first
     GET  /api/projects/{id}/jobs/events      SSE: every change of the project's jobs
-    GET  /api/jobs/{id}                      one job with its journal
+    GET  /api/jobs/queue                     workers heard from, queued and running jobs, why each waits
+    GET  /api/jobs/{id}                      one job with its journal (a queued one: why it waits)
     GET  /api/jobs/{id}/events               SSE: changes of one job until it ends
     POST /api/jobs/{id}/cancel
     POST /api/storage/gc                     collect unreferenced files (a job)
@@ -136,10 +137,68 @@ def list_jobs(project_id: int, limit: int = Query(50, ge=1, le=500), session: Se
     return [queue.job_out(j) for j in jobs]
 
 
+def _minutes(seconds: float) -> str:
+    return f"{seconds:.0f} с" if seconds < 90 else f"{seconds / 60:.0f} мин"
+
+
+def queue_state(session: Session) -> dict:
+    """Workers heard from, the jobs that are queued or running (of every project: they share the
+    workers), and for each queued job why it waits."""
+    from app.jobs import beats
+
+    workers = beats.read_all()
+    t = queue.now()
+    active = list(session.scalars(select(Job).where(Job.status.in_(("queued", "running"))).order_by(Job.id).limit(500)))
+    rows = []
+    for j in active:
+        beat = (t - j.heartbeat_at).total_seconds() if j.heartbeat_at else None
+        rows.append({"id": j.id, "project_id": j.project_id, "kind": j.kind, "title": j.title, "status": j.status,
+                     "progress": j.progress, "message": j.message, "worker": j.worker, "attempts": j.attempts,
+                     "started_at": j.started_at.isoformat() if j.started_at else None,
+                     "running_seconds": round((t - j.started_at).total_seconds()) if j.started_at and j.status == "running" else None,
+                     "heartbeat_age": round(beat, 1) if beat is not None else None})
+    waiting: dict[int, str] = {}
+    for r in rows:
+        if r["status"] != "queued":
+            continue
+        able = [w for w in workers if beats.takes(w, r["kind"])]
+        if not able:
+            stopped = [w for w in workers if not w["alive"] and (not w["kinds"] or r["kind"] in w["kinds"])]
+            text = "Нет работающего обработчика заданий (worker): задание не начнётся, пока он не запущен."
+            if stopped:
+                text += f" Последний раз обработчик «{stopped[0]['name']}» отвечал {_minutes(stopped[0]['age'])} назад"
+                text += f" (выполнял задание №{stopped[0]['job']})." if stopped[0]["job"] else "."
+            text += (" Docker: docker compose up -d worker; почему остановился — docker compose logs --tail 200 worker."
+                     " Частая причина — нехватка памяти при импорте большого файла (код выхода 137): увеличьте память Docker.")
+            waiting[r["id"]] = text
+            continue
+        ahead = [a for a in rows if a["id"] < r["id"] and any(beats.takes(w, a["kind"]) for w in able)]
+        running = [a for a in ahead if a["status"] == "running"]
+        parts = [f"Впереди заданий: {len(ahead)}." if ahead else "Ждёт свободного обработчика."]
+        for a in running[:3]:
+            p = f"№{a['id']} «{a['title'] or a['kind']}» выполняется {_minutes(a['running_seconds'] or 0)}, {round((a['progress'] or 0) * 100)}%"
+            if a["heartbeat_age"] is not None and a["heartbeat_age"] > queue.STALE_SECONDS / 2:
+                p += f" — не отвечает {_minutes(a['heartbeat_age'])}: обработчик, вероятно, остановился"
+            parts.append(p + ".")
+        busy = sum(1 for w in able if w["job"])
+        parts.append(f"Обработчиков для такого задания: {len(able)}, заняты: {busy}.")
+        waiting[r["id"]] = " ".join(parts)
+    return {"workers": workers, "active": rows, "waiting": waiting}
+
+
+@router.get("/jobs/queue")
+def read_queue(session: Session = Depends(get_session)) -> dict:
+    """Why jobs wait: the workers heard from and the jobs queued or running."""
+    return queue_state(session)
+
+
 @router.get("/jobs/{job_id}")
 def read_job(job_id: int, session: Session = Depends(get_session)) -> dict:
     job = _get_job(session, job_id)
-    return {**queue.job_out(job), "params": job.params, "log": job.log}
+    out = {**queue.job_out(job), "params": job.params, "log": job.log}
+    if job.status == "queued":
+        out["waiting"] = queue_state(session)["waiting"].get(job.id)
+    return out
 
 
 @router.post("/jobs/{job_id}/cancel")

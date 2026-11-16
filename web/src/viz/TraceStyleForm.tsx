@@ -26,6 +26,13 @@ export function TraceStyleForm({ style, onChange, notes }: { style: TraceStyle; 
       </fieldset>
 
       <fieldset>
+        <legend>Глубина скважины</legend>
+        <label className="check" title="Риска в конце скважины и её глубина в метрах">
+          <input type="checkbox" checked={style.endDepth} onChange={(e) => set({ endDepth: e.target.checked })} /> показать глубину
+        </label>
+      </fieldset>
+
+      <fieldset>
         <legend>Риски глубины</legend>
         <label className="check"><input type="checkbox" checked={style.ticks} onChange={(e) => set({ ticks: e.target.checked })} /> показывать риски</label>
         <div className="pair">
@@ -45,11 +52,11 @@ export function TraceStyleForm({ style, onChange, notes }: { style: TraceStyle; 
               onChange={(e) => set({ labelStep: clamp(e.target.value, 0.5, 5000, style.labelStep) })} />
           </label>
           <label>Шрифт, px
-            <input type="number" min={7} max={30} value={style.labelSize} disabled={!style.ticks || !style.tickLabels} aria-label="Размер подписи глубины, px"
+            <input type="number" min={7} max={30} value={style.labelSize} disabled={!(style.ticks && style.tickLabels) && !style.endDepth} aria-label="Размер подписи глубины, px"
               onChange={(e) => set({ labelSize: clamp(e.target.value, 7, 30, style.labelSize) })} />
           </label>
         </div>
-        <label className="color-pick">Цвет подписей<input type="color" value={style.labelColor} disabled={!style.ticks || !style.tickLabels} aria-label="Цвет подписей глубины" onChange={(e) => set({ labelColor: e.target.value })} /></label>
+        <label className="color-pick">Цвет подписей<input type="color" value={style.labelColor} disabled={!(style.ticks && style.tickLabels) && !style.endDepth} aria-label="Цвет подписей глубины" onChange={(e) => set({ labelColor: e.target.value })} /></label>
       </fieldset>
 
       <fieldset>

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Dataset, Hole, RasterInfo, SavedChartKind } from "../api";
 import type { TableKind } from "../route";
 import { loadHoles } from "../viz/useVizData";
 import { Icon, type IconName } from "./icons";
+import { loadOrder, moveGroup, saveOrder } from "./treeOrder";
 import { isShown, layerKey, type ObjectKind, type SelectedObject, type WorkspaceState } from "./workspace";
 
 const MAX_SHOWN = 300;
@@ -15,6 +16,8 @@ interface FileItem {
   color: string;
   count: number;
   countTitle: string;
+  /** A terrain model with a raster laid on it. */
+  draped?: boolean;
 }
 
 const TABLES: { kind: TableKind; label: string }[] = [
@@ -44,6 +47,8 @@ export interface DataTreeProps {
   onDelete: (dataset: Dataset) => void;
   onColor: (kind: "wireframe" | "lines", id: number, color: string) => void;
   onDeleteItem: (kind: "wireframe" | "lines", id: number, name: string) => void;
+  /** Move a wireframe to the «ЦТМ» section (terrain models) or back to the wireframes. */
+  onDtm?: (id: number, on: boolean) => void;
   onDemo: () => void;
   /** Right click on a wireframe or a line layer: its menu (edit, operations, export). */
   onItemMenu?: (kind: "wireframe" | "lines", id: number, x: number, y: number) => void;
@@ -60,6 +65,8 @@ export interface DataTreeProps {
   onCollarStyle?: (setId: number) => void;
   /** The gear of «Стволы»: line width and colour, depth ticks, crossings with wireframes and block models. */
   onTraceStyle?: (setId: number) => void;
+  /** The gear (or right click) of a block model: restriction, colouring by a field, how it is drawn. */
+  onBlockSettings?: (id: number) => void;
   /** Right click on «Стволы»: what to show along the holes (grades, lithology, events). */
   onPathsMenu?: (setId: number, x: number, y: number) => void;
   /** A saved display of data along the holes: its form. */
@@ -95,14 +102,47 @@ function Action({ icon, title, onClick, disabled }: { icon: IconName; title: str
   );
 }
 
+/** The user's order of the groups; a group is moved by dragging its title row onto another group. */
+const GroupOrder = createContext<{ order: string[]; dragged: string | null; drag: (id: string | null) => void; drop: (to: string, after: boolean) => void }>({
+  order: [], dragged: null, drag: () => undefined, drop: () => undefined,
+});
+
 function Category({
-  title, icon, count, open, onToggle, actions, children,
+  id, title, icon, count, open, onToggle, actions, children,
 }: {
-  title: string; icon: IconName; count?: number; open: boolean; onToggle: () => void; actions?: ReactNode; children?: ReactNode;
+  id: string; title: string; icon: IconName; count?: number; open: boolean; onToggle: () => void; actions?: ReactNode; children?: ReactNode;
 }) {
+  const { order, dragged, drag, drop } = useContext(GroupOrder);
+  // Where the dragged group would land: above or below this one.
+  const [mark, setMark] = useState<"before" | "after" | null>(null);
+  const over = (e: React.DragEvent<HTMLLIElement>) => {
+    if (!dragged || dragged === id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    // By the title row: over the opened contents of a group the drop goes below it.
+    const r = (e.currentTarget.firstElementChild ?? e.currentTarget).getBoundingClientRect();
+    setMark(e.clientY > r.top + r.height / 2 ? "after" : "before");
+  };
   return (
-    <li className="tree-category">
-      <div className="tree-row category" onClick={onToggle}>
+    <li
+      className={`tree-category${dragged === id ? " dragging" : ""}${mark && dragged && dragged !== id ? ` drop-${mark}` : ""}`} style={{ order: order.indexOf(id) }}
+      onDragOver={over} onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setMark(null)}
+      onDrop={(e) => {
+        if (!dragged || dragged === id) return;
+        e.preventDefault();
+        drop(id, mark === "after");
+        setMark(null);
+      }}
+    >
+      <div
+        className="tree-row category" onClick={onToggle} draggable title="Перетащите заголовок, чтобы поменять порядок разделов"
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", title);
+          drag(id);
+        }}
+        onDragEnd={() => { drag(null); setMark(null); }}
+      >
         <Twisty open={open} onClick={onToggle} />
         <Icon name={icon} size={15} />
         <span className="grow">{title}</span>
@@ -237,7 +277,7 @@ function HoleList({ setId, refreshKey, selectedHole, active, onSelectHole }: {
 /** Left dock: every object of the project by kind, with visibility in the 3D view. */
 export function DataTree(props: DataTreeProps) {
   const { datasets, ws, activeSet } = props;
-  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframe", "cat:lines", "cat:rasters", "cat:blocks"]));
+  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframe", "cat:dtm", "cat:lines", "cat:rasters", "cat:blocks"]));
   const toggle = (key: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
@@ -246,6 +286,16 @@ export function DataTree(props: DataTreeProps) {
       return next;
     });
   const isOpen = (key: string) => open.has(key);
+  const [order, setOrder] = useState(loadOrder);
+  const [dragged, setDragged] = useState<string | null>(null);
+  const groups = useMemo(() => ({
+    order, dragged, drag: setDragged,
+    drop: (to: string, after: boolean) => setOrder((prev) => {
+      const next = dragged ? moveGroup(prev, dragged, to, after) : prev;
+      saveOrder(next);
+      return next;
+    }),
+  }), [order, dragged]);
 
   // Open the active set (and its holes when a hole gets selected elsewhere).
   useEffect(() => {
@@ -295,9 +345,10 @@ export function DataTree(props: DataTreeProps) {
           <button onClick={props.onDemo}>Загрузить демо-проект</button>
         </div>
       )}
-      <ul className="tree-root">
+      <GroupOrder.Provider value={groups}>
+      <ul className="tree-root groups">
         <Category
-          title="Скважины" icon="drillholes" count={sets.length} open={isOpen("cat:drillholes")} onToggle={() => toggle("cat:drillholes")}
+          id="cat:drillholes" title="Скважины" icon="drillholes" count={sets.length} open={isOpen("cat:drillholes")} onToggle={() => toggle("cat:drillholes")}
           actions={<Action icon="plus" title="Новый набор скважин: импорт файлов" onClick={() => props.onImport(null)} />}
         >
           {sets.length === 0 && <li className="tree-note muted small">Нет наборов. «+» — импорт в новый набор.</li>}
@@ -476,8 +527,16 @@ export function DataTree(props: DataTreeProps) {
         <FileCategory
           {...props} kind="wireframe" title="Каркасы" icon="wireframe" open={open} toggle={toggle}
           uploadTitle="Загрузить каркасы: Micromine TRIDB, DXF" emptyNote="Нет каркасов. «+» — файлы .tridb или .dxf."
-          files={(datasets ?? []).filter((d) => d.kind === "wireframes")}
-          items={(d) => (d.wireframes ?? []).map((w) => ({ id: w.id, name: w.name, color: w.color, count: w.triangle_count, countTitle: "Треугольников" }))}
+          files={(datasets ?? []).filter((d) => d.kind === "wireframes" && (!(d.wireframes ?? []).length || (d.wireframes ?? []).some((w) => !w.dtm)))}
+          items={(d) => (d.wireframes ?? []).filter((w) => !w.dtm).map((w) => ({ id: w.id, name: w.name, color: w.color, count: w.triangle_count, countTitle: "Треугольников" }))}
+          onAdd={() => props.onUpload("wireframes")}
+        />
+        <FileCategory
+          {...props} kind="wireframe" section="dtm" title="ЦТМ" icon="dtm" open={open} toggle={toggle}
+          uploadTitle="Загрузить каркас поверхности: Micromine TRIDB, DXF (затем перенесите его в ЦТМ)"
+          emptyNote="Нет цифровых моделей рельефа. Правая кнопка на каркасе поверхности → «Перенести в ЦТМ»."
+          files={(datasets ?? []).filter((d) => d.kind === "wireframes" && (d.wireframes ?? []).some((w) => w.dtm))}
+          items={(d) => (d.wireframes ?? []).filter((w) => w.dtm).map((w) => ({ id: w.id, name: w.name, color: w.color, count: w.triangle_count, countTitle: "Треугольников", draped: Boolean(w.dtm?.raster_id) }))}
           onAdd={() => props.onUpload("wireframes")}
         />
         <FileCategory
@@ -491,6 +550,7 @@ export function DataTree(props: DataTreeProps) {
 
         <BlockCategory {...props} open={open} toggle={toggle} />
       </ul>
+      </GroupOrder.Provider>
     </div>
   );
 }
@@ -500,6 +560,8 @@ const LAYER_KEY: Record<"wireframe" | "lines", (id: number) => string> = { wiref
 /** Wireframes and lines: files, and inside every file its items with colour and visibility. */
 function FileCategory(props: DataTreeProps & {
   kind: "wireframe" | "lines";
+  /** "dtm": the terrain models among the wireframes (the «ЦТМ» section). */
+  section?: "dtm";
   title: string;
   icon: IconName;
   uploadTitle: string;
@@ -512,18 +574,21 @@ function FileCategory(props: DataTreeProps & {
 }) {
   const { kind, files, open, toggle, ws } = props;
   const keyOf = LAYER_KEY[kind];
-  const catKey = `cat:${kind}`;
+  const group = props.section ?? kind;
+  const catKey = `cat:${group}`;
   const total = files.reduce((n, d) => n + props.items(d).length, 0);
   const isSelected = (id: number) => props.selected?.kind === kind && props.selected.id === id;
   return (
     <Category
-      title={props.title} icon={props.icon} count={total} open={open.has(catKey)} onToggle={() => toggle(catKey)}
+      id={catKey} title={props.title} icon={props.icon} count={total} open={open.has(catKey)} onToggle={() => toggle(catKey)}
       actions={<button className="icon row-action" title={props.uploadTitle} aria-label={props.uploadTitle} onClick={(e) => { e.stopPropagation(); props.onAdd(e); }}><Icon name="plus" size={14} /></button>}
     >
       {files.length === 0 && <li className="tree-note muted small">{props.emptyNote}</li>}
-      <Folders node={folderTree(files)} group={kind} closed={(k) => open.has(k)} toggle={toggle} render={(d) => {
-        const key = `file:${d.id}`;
+      <Folders node={folderTree(files)} group={group} closed={(k) => open.has(k)} toggle={toggle} render={(d) => {
+        const key = `file:${group}:${d.id}`;
         const items = props.items(d);
+        // A file with objects in both sections (wireframes and terrain models) is deleted object by object.
+        const whole = kind !== "wireframe" || (d.wireframes ?? []).length === items.length;
         const allShown = items.every((item) => isShown(ws, keyOf(item.id)));
         return (
           <li key={d.id}>
@@ -535,7 +600,7 @@ function FileCategory(props: DataTreeProps & {
               <span className="row-actions">
                 <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
                 <Action icon="folder" title="В папку…" onClick={() => props.onMove(d)} />
-                <Action icon="trash" title="Удалить файл со всем содержимым" onClick={() => props.onDelete(d)} />
+                {whole && <Action icon="trash" title="Удалить файл со всем содержимым" onClick={() => props.onDelete(d)} />}
               </span>
             </div>
             {open.has(key) && (
@@ -556,8 +621,12 @@ function FileCategory(props: DataTreeProps & {
                       <span className="grow name" title={item.name}>{item.name}
                         {kind === "lines" && props.editing?.layerId === item.id && <span className="edit-dirty" title={props.editing.dirty ? "Редактируется: есть несохранённые изменения" : "Редактируется"}>{props.editing.dirty ? " ● правка" : " ✎"}</span>}
                       </span>
+                      {item.draped && <span className="dtm-draped" title="На рельеф положен растр"><Icon name="raster" size={13} /></span>}
                       <span className="count" title={item.countTitle}>{item.count.toLocaleString("ru-RU")}</span>
                       <span className="row-actions">
+                        {kind === "wireframe" && props.onDtm && (props.section === "dtm"
+                          ? <Action icon="wireframe" title="Вернуть в каркасы" onClick={() => props.onDtm!(item.id, false)} />
+                          : <Action icon="dtm" title="Перенести в ЦТМ (модели рельефа)" onClick={() => props.onDtm!(item.id, true)} />)}
                         <Action icon="trash" title="Удалить" onClick={() => props.onDeleteItem(kind, item.id, item.name)} />
                       </span>
                     </div>
@@ -579,7 +648,7 @@ function BlockCategory(props: DataTreeProps & { open: Set<string>; toggle: (key:
   const kind: ObjectKind = "blocks";
   return (
     <Category
-      title="Блочные модели" icon="blocks" count={files.length} open={open.has("cat:blocks")} onToggle={() => toggle("cat:blocks")}
+      id="cat:blocks" title="Блочные модели" icon="blocks" count={files.length} open={open.has("cat:blocks")} onToggle={() => toggle("cat:blocks")}
       actions={<Action icon="plus" title="Загрузить блочную модель: Micromine DAT или CSV (X, Y, Z и размеры _X, _Y, _Z)" onClick={() => props.onUpload("blocks")} />}
     >
       {files.length === 0 && <li className="tree-note muted small">Нет моделей. «+» — Micromine DAT или CSV.</li>}
@@ -589,12 +658,16 @@ function BlockCategory(props: DataTreeProps & { open: Set<string>; toggle: (key:
         const errors = ((d.meta as { checks?: { level: string }[] }).checks ?? []).filter((c) => c.level === "error").length;
         return (
           <li key={d.id}>
-            <div className={selected ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectObject(selected ? null : { kind, id: d.id })}>
+            <div className={selected ? "tree-row leaf active" : "tree-row leaf"} onClick={() => props.onSelectObject(selected ? null : { kind, id: d.id })}
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); props.onBlockSettings?.(d.id); }}>
               <Eye shown={isShown(ws, layerKey.blocks(d.id))} onChange={(v) => props.onShow(layerKey.blocks(d.id), v)} label={d.name} />
               <Icon name="blocks" size={14} />
-              <span className="grow name" title={`${d.name}${d.meta.format ? ` · ${d.meta.format}` : ""}`}>{d.name}</span>
+              <span className="grow name" title={`${d.name}${d.meta.format ? ` · ${d.meta.format}` : ""} — шестерёнка или правая кнопка: настройки`}>{d.name}</span>
               {errors > 0 && <span className="dot error" title={`Ошибок проверки: ${errors}`}>{errors}</span>}
               <span className="count" title="Блоков">{n.toLocaleString("ru-RU")}</span>
+              <span className="row-actions always">
+                <Action icon="gear" title="Настройки модели: ограничитель, раскраска по полю, просмотр (оболочка, срез, края)…" onClick={() => props.onBlockSettings?.(d.id)} />
+              </span>
               <span className="row-actions">
                 <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
                 <Action icon="folder" title="В папку…" onClick={() => props.onMove(d)} />
@@ -616,7 +689,7 @@ function RasterCategory(props: DataTreeProps & { open: Set<string>; toggle: (key
   const kind: ObjectKind = "raster";
   return (
     <Category
-      title="Растры" icon="raster" count={entries.length} open={open.has("cat:rasters")} onToggle={() => toggle("cat:rasters")}
+      id="cat:rasters" title="Растры" icon="raster" count={entries.length} open={open.has("cat:rasters")} onToggle={() => toggle("cat:rasters")}
       actions={<Action icon="plus" title="Загрузить растры: изображение вместе с файлом привязки (.jgw/.pgw/.tfw, .tab, .grf) или GeoTIFF" onClick={() => props.onUpload("rasters")} />}
     >
       {entries.length === 0 && <li className="tree-note muted small">Нет растров. «+» — изображение и файл привязки.</li>}

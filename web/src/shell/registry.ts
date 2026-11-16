@@ -1,6 +1,6 @@
 import { hasSamples } from "./SampleTableSelect";
 import type { MutableRefObject } from "react";
-import { blockMeta, blockReport, getIntervalTables, getJob, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
+import { blockMeta, blockReport, getIntervalTables, getJob, patchWireframe, type DtmSettings, type AuditRun, type Dataset, type Hole, type JobInfo, type Project, type RasterPatch, type Summary, type VerticalPlacement } from "../api";
 import { recentLogs } from "./opLog";
 import type { TableKind } from "../route";
 import { ANALYSES, type StatsAnalysis } from "../stats/analyses";
@@ -825,6 +825,38 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         if (id === null) throw new Error("Не выбран каркас: укажите wireframe_id");
         findObject("wireframe", id);
         return s().modeling.exportWireframes([id], format as "dxf" | "obj");
+      },
+    },
+    {
+      id: "wireframe.dtm",
+      title: "ЦТМ: модель рельефа",
+      description:
+        "Переносит каркас топографической поверхности в раздел «ЦТМ» (on: true) или обратно в каркасы (on: false) и задаёт настройки ЦТМ: " +
+        "raster_id — растр в плане, который кладётся на рельеф (0 — снять); clip — скрыть часть растра за пределами ЦТМ; tint — цвет растра #rrggbb; " +
+        "opacity — непрозрачность растра 0–1; shade — тени рельефа. wireframe_id — id каркаса; без него — выбранный.",
+      params: {
+        wireframe_id: { type: "integer" }, on: { type: "boolean" }, raster_id: { type: "integer" }, clip: { type: "boolean" },
+        tint: { type: "string" }, opacity: { type: "number" }, shade: { type: "boolean" },
+      },
+      run: async ({ wireframe_id, on, raster_id, clip, tint, opacity, shade }) => {
+        const id = typeof wireframe_id === "number" ? wireframe_id : s().selected?.kind === "wireframe" ? s().selected!.id : null;
+        if (id === null) throw new Error("Не выбран каркас: укажите wireframe_id");
+        const before = findObject("wireframe", id) as { name: string; dtm?: DtmSettings | null };
+        const settings: Partial<DtmSettings> = {};
+        if (typeof raster_id === "number") settings.raster_id = raster_id;
+        if (typeof clip === "boolean") settings.clip = clip;
+        if (typeof tint === "string") settings.tint = tint;
+        if (typeof opacity === "number") settings.opacity = Math.min(1, Math.max(0, opacity));
+        if (typeof shade === "boolean") settings.shade = shade;
+        const has = Object.keys(settings).length > 0;
+        // Settings alone put the wireframe among the terrain models; `on: false` takes it back.
+        const move = typeof on === "boolean" ? on : has && !before.dtm ? true : undefined;
+        if (move === undefined && !has) throw new Error("Укажите on (true — в ЦТМ, false — в каркасы) или настройки ЦТМ");
+        const after = await patchWireframe(id, { ...(move !== undefined ? { dtm: move } : {}), ...(has && move !== false ? { dtm_settings: settings } : {}) });
+        s().reload();
+        if (!after.dtm) return `«${after.name}» возвращён в каркасы`;
+        const raster = after.dtm.raster_id ? s().datasets.flatMap((d) => d.rasters ?? []).find((r) => r.id === after.dtm!.raster_id)?.name : null;
+        return `«${after.name}» в разделе ЦТМ${raster ? `; на рельефе растр «${raster}»${after.dtm.clip ? ", часть за ЦТМ скрыта" : ""}` : "; растр не положен"}`;
       },
     },
     // ---- modelling: operations (background jobs; the result is a new object, sources are not changed)

@@ -150,6 +150,11 @@ def test_micromine_csv_grid_line_and_plain_csv(tmp_path):
     q.write_text("EAST;NORTH;RL;AU\n0;0;0;1\n10;0;0;2\n0;10;0;3\n0;0;4;4\n", encoding="utf-8")
     r = read_block_model(q, q.name)
     assert r.sizes[0].tolist() == [10.0, 10.0, 4.0] and "регулярная" in r.notes[0]
+    # A plain CSV with a text field (no line of types): a category, in pandas 2 and 3 alike.
+    w = tmp_path / "rock.csv"
+    w.write_text("X,Y,Z,_X,_Y,_Z,FE,ROCK\n5,5,5,10,10,10,31.5,ORE\n15,5,5,10,10,10,2.0,WASTE\n25,5,5,10,10,10,40,ORE\n", encoding="utf-8")
+    rock = next(a for a in read_block_model(w, w.name).attributes if a.name == "ROCK")
+    assert rock.kind == "category" and rock.labels == ["ORE", "WASTE"] and rock.values.tolist() == [0, 1, 0]
     with pytest.raises(BlockModelError, match="центра"):
         bad = tmp_path / "bad.csv"
         bad.write_text("A,B\n1,2\n", encoding="utf-8")

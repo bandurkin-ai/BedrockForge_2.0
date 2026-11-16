@@ -499,6 +499,30 @@ export interface WireframeInfo {
   };
   /** simplified copies for distant views */
   lod_levels: number;
+  /** Settings of a terrain model (the «ЦТМ» section of the tree); null: an ordinary wireframe. */
+  dtm: DtmSettings | null;
+}
+
+/** A terrain model: the raster laid on its relief and how it is shown. */
+export interface DtmSettings {
+  raster_id: number | null;
+  /** Only the part of the raster on the surface is shown (otherwise the rest stays flat around it). */
+  clip: boolean;
+  /** "#rrggbb" the image is multiplied by; "#ffffff": as is. */
+  tint: string;
+  opacity: number;
+  /** Light and shadow of the relief on the image. */
+  shade: boolean;
+}
+
+export interface WireframePatch {
+  name?: string;
+  color?: string;
+  attributes?: Record<string, string | number | boolean | null>;
+  /** true: to the «ЦТМ» section; false: back to the wireframes. */
+  dtm?: boolean;
+  /** raster_id 0 takes the raster off. */
+  dtm_settings?: Partial<DtmSettings>;
 }
 
 export interface LineLayerInfo {
@@ -623,7 +647,7 @@ export function uploadWireframes(projectId: number, file: File): Promise<Dataset
 
 export const getWireframeGeometry = (id: number) => request<WireframeGeometry>(`/api/wireframes/${id}/geometry`);
 
-export const patchWireframe = (id: number, patch: { name?: string; color?: string; attributes?: Record<string, string | number | boolean | null> }) =>
+export const patchWireframe = (id: number, patch: WireframePatch) =>
   request<WireframeInfo>(`/api/wireframes/${id}`, { method: "PATCH", ...json(patch) });
 
 export async function deleteWireframe(id: number): Promise<void> {
@@ -908,6 +932,17 @@ export interface JobInfo {
 export interface JobDetail extends JobInfo {
   params: Record<string, unknown>;
   log: { t: string; level: "info" | "warning" | "error"; text: string }[];
+  /** a queued job: why it waits (no worker running, the jobs ahead) */
+  waiting?: string | null;
+}
+
+/** Why jobs wait: the job workers heard from, and the jobs queued or running in every project. */
+export interface JobsQueue {
+  workers: { name: string; kinds: string[] | null; job: number | null; age: number; alive: boolean; up_seconds: number }[];
+  active: { id: number; project_id: number | null; kind: string; title: string; status: string; progress: number; message: string | null;
+    worker: string | null; attempts: number; started_at: string | null; running_seconds: number | null; heartbeat_age: number | null }[];
+  /** job id -> why it waits */
+  waiting: Record<string, string>;
 }
 
 export const isFinished = (job: JobInfo) => job.status === "done" || job.status === "failed" || job.status === "cancelled";
@@ -1056,6 +1091,7 @@ export const isExportJob = (job: Pick<JobInfo, "kind">) => job.kind.startsWith("
 
 export const listJobs = (projectId: number) => request<JobInfo[]>(`/api/projects/${projectId}/jobs`);
 export const getJob = (id: number) => request<JobDetail>(`/api/jobs/${id}`);
+export const getJobsQueue = () => request<JobsQueue>("/api/jobs/queue");
 export const cancelJob = (id: number) => request<JobInfo>(`/api/jobs/${id}/cancel`, { method: "POST" });
 /** A failed or cancelled job again, with the same uploaded files. */
 export const retryJob = (id: number) => request<JobInfo>(`/api/jobs/${id}/retry`, { method: "POST" });

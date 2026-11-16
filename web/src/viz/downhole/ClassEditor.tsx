@@ -7,13 +7,17 @@ import { HistogramPlot } from "./HistogramPlot";
 import { ColorField, MenuItem, NumField, Popover } from "./ui";
 
 /** Grade classes on the histogram of the field: bounds dragged on the distribution, a row per class, automatic breaks, gradients. */
-export function ClassEditor({ values, classes, onChange, log: logDefault, noData, onNoData }: {
+export function ClassEditor({ values, classes, onChange, log: logDefault, noData, onNoData, noun = "проб", weights = true }: {
   values: FieldValues | null;
   classes: ColorClass[];
   onChange: (classes: ColorClass[], key?: string) => void;
   log: boolean;
   noData: string;
   onNoData: (color: string) => void;
+  /** what is counted, in the genitive: «проб» of drillholes, «блоков» of a block model */
+  noun?: string;
+  /** the values have interval lengths to weight them by */
+  weights?: boolean;
 }) {
   const [log, setLog] = useState(logDefault);
   const [cum, setCum] = useState(false);
@@ -64,10 +68,10 @@ export function ClassEditor({ values, classes, onChange, log: logDefault, noData
       {hist ? (
         <>
           <div className="dh-hist-tools">
-            <span className="muted small grow">число проб{byLength ? " (по длине)" : ""}</span>
+            <span className="muted small grow">число {noun}{byLength ? " (по длине)" : ""}</span>
             <label className="check" title="Логарифмическая ось значений"><input type="checkbox" checked={log} onChange={(e) => setLog(e.target.checked)} /> лог X</label>
-            <label className="check" title="Накопленное распределение: доля проб не выше значения"><input type="checkbox" checked={cum} onChange={(e) => setCum(e.target.checked)} /> накопл.</label>
-            <label className="check" title="Взвешивать пробы по длине интервала"><input type="checkbox" checked={byLength} onChange={(e) => setByLength(e.target.checked)} /> по длине</label>
+            <label className="check" title={`Накопленное распределение: доля ${noun} не выше значения`}><input type="checkbox" checked={cum} onChange={(e) => setCum(e.target.checked)} /> накопл.</label>
+            {weights && <label className="check" title="Взвешивать пробы по длине интервала"><input type="checkbox" checked={byLength} onChange={(e) => setByLength(e.target.checked)} /> по длине</label>}
           </div>
           <HistogramPlot
             hist={hist} label="Гистограмма значений с границами классов" showCumulative={cum}
@@ -93,7 +97,7 @@ export function ClassEditor({ values, classes, onChange, log: logDefault, noData
             )}
             <input className="dh-class-label" value={c.label ?? ""} placeholder={classLabel(classes.map((x) => ({ ...x, label: undefined })), i)} aria-label={`Подпись класса ${i + 1}`} title="Своя подпись класса в легенде (пусто — по границам)"
               onChange={(e) => onChange(classes.map((x, j) => (j === i ? { ...x, label: e.target.value || undefined } : x)), `label${i}`)} />
-            <span className="muted small dh-count" title="Число проб в классе и их доля">{counts[i].toLocaleString("ru-RU")} · {total ? Math.round((counts[i] / total) * 100) : 0} %</span>
+            <span className="muted small dh-count" title={`Число ${noun} в классе и их доля`}>{counts[i].toLocaleString("ru-RU")} · {total ? Math.round((counts[i] / total) * 100) : 0} %</span>
             <button type="button" className="icon" title="Удалить класс" aria-label={`Удалить класс ${i + 1}`} disabled={classes.length <= 1} onClick={() => remove(i)}>✕</button>
           </div>
         ))}

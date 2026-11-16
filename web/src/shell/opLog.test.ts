@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createLog, logForJob, recentLogs, renderJobOnly, resetTrace, tracedFetch } from "./opLog";
+import { createLog, logForJob, recentLogs, renderJobOnly, renderQueue, resetTrace, tracedFetch } from "./opLog";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -65,5 +65,29 @@ describe("journal of an import or export", () => {
     expect(text).toContain("Ошибка: DXF повреждён");
     expect(text).toContain("Traceback");
     expect(renderJobOnly(job)).toContain("журнал фонового задания №41");
+  });
+
+  it("writes the chunks of a big upload as one line", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } })));
+    const log = createLog("import", "Большой файл");
+    log.info("старт");
+    for (let i = 0; i < 10; i++) {
+      await tracedFetch(`/api/uploads/abc?offset=${i * 1048576}`, { method: "PUT", body: new ArrayBuffer(1048576) });
+      if (i === 4) await tracedFetch("/api/health");
+    }
+    await tracedFetch("/api/projects/1/detect", { method: "POST", body: "{}" });
+    const text = log.text();
+    expect(text).toContain("PUT /api/uploads/abc × 10 частей → все 200 · 10.0 МБ");
+    expect(text.match(/offset=/g)).toBeNull();
+    expect(text).toContain("GET /api/health");
+    expect(text).toContain("POST /api/projects/1/detect");
+  });
+
+  it("says when no job worker is running", () => {
+    const q = renderQueue({ workers: [], active: [{ id: 20, project_id: 1, kind: "import.objects", title: "Импорт", status: "queued", progress: 0, worker: null, attempts: 0, running_seconds: null, heartbeat_age: null }] });
+    expect(q.join("\n")).toContain("не слышно ни одного");
+    expect(q.join("\n")).toContain("№20 в очереди");
+    const job = { id: 20, kind: "import.objects", status: "queued", waiting: "Нет работающего обработчика", log: [] };
+    expect(renderJobOnly(job)).toContain("Почему ждёт: Нет работающего обработчика");
   });
 });

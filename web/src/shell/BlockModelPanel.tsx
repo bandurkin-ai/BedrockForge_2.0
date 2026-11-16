@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { blockMeta, getBlock, type BlockAttribute, type BlockInfo, type Dataset } from "../api";
-import { CATEGORY_COLORS, type BlockStyle } from "../viz/blockStyle";
+import { activeConditions, type BlockStyle } from "../viz/blockStyle";
+import { Icon } from "./icons";
 import { BlockValuesEditor } from "./AttributeEditor";
 
 const fmt = (v: number | null | undefined, digits = 2) =>
@@ -11,7 +12,7 @@ export const unitTitle = (u: BlockAttribute["unit"] | undefined) => UNIT_TITLES[
 const LEVEL_TITLES = { error: "Ошибка", warning: "Внимание", info: "Сведения" } as const;
 
 /** Properties of a block model: description, checks, how it is shown, fields, the picked block. */
-export function BlockModelPanel({ dataset, style, picked, onStyle, onUnit, onReport, onValues }: {
+export function BlockModelPanel({ dataset, style, picked, onStyle, onUnit, onReport, onValues, onSettings }: {
   dataset: Dataset;
   style: BlockStyle;
   /** block number picked in the view, or null */
@@ -19,6 +20,8 @@ export function BlockModelPanel({ dataset, style, picked, onStyle, onUnit, onRep
   onStyle: (next: BlockStyle) => void;
   onUnit: (key: string, unit: BlockAttribute["unit"]) => void;
   onReport: () => void;
+  /** Opens the settings window of the model (restriction, colouring, view). */
+  onSettings?: () => void;
   /** Saves new values of the picked block's fields; resolves with the stored block. */
   onValues?: (index: number, values: Record<string, number | string | null>) => Promise<BlockInfo>;
 }) {
@@ -36,6 +39,7 @@ export function BlockModelPanel({ dataset, style, picked, onStyle, onUnit, onRep
     };
   }, [dataset.id, picked]);
   const errors = meta.checks.filter((c) => c.level === "error").length;
+  const conditions = activeConditions(style.filter, meta.attributes).length;
 
   return (
     <div className="props block-props">
@@ -67,38 +71,27 @@ export function BlockModelPanel({ dataset, style, picked, onStyle, onUnit, onRep
       <h3 className="props-sub">Показ</h3>
       <div className="props-form">
         <label>Цвет по
-          <select value={style.attribute ?? ""} onChange={(e) => set({ attribute: e.target.value || null, min: "", max: "", from: "", to: "", hidden: [] })} aria-label="Цвет по полю">
+          <select value={style.attribute ?? ""} aria-label="Цвет по полю"
+            onChange={(e) => {
+              const a = meta.attributes.find((x) => x.key === e.target.value);
+              onStyle({ ...style, attribute: a ? a.key : null, min: "", max: "", hidden: [], catColors: {}, classes: [], colorBy: "scale", log: a?.unit === "g/t" || a?.unit === "ppm" || a?.unit === "ppb", palette: undefined });
+            }}>
             <option value="">— один цвет —</option>
             {meta.attributes.map((a) => <option key={a.key} value={a.key}>{a.name}{a.kind === "category" ? " (категории)" : a.unit ? `, ${unitTitle(a.unit)}` : ""}</option>)}
           </select>
         </label>
-        {attr?.kind === "number" && (
-          <>
-            <div className="pair">
-              <label>Шкала от<input value={style.min} onChange={(e) => set({ min: e.target.value })} placeholder="авто" inputMode="decimal" aria-label="Шкала от" /></label>
-              <label>до<input value={style.max} onChange={(e) => set({ max: e.target.value })} placeholder="авто" inputMode="decimal" aria-label="Шкала до" /></label>
-            </div>
-            <label className="check"><input type="checkbox" checked={style.log} onChange={(e) => set({ log: e.target.checked })} /> логарифмическая</label>
-            <div className="pair">
-              <label>Показать от<input value={style.from} onChange={(e) => set({ from: e.target.value })} placeholder="все" inputMode="decimal" aria-label="Показать блоки от" title="Только блоки со значением не меньше (например, бортовое)" /></label>
-              <label>до<input value={style.to} onChange={(e) => set({ to: e.target.value })} placeholder="все" inputMode="decimal" aria-label="Показать блоки до" /></label>
-            </div>
-          </>
-        )}
-        {attr?.kind === "category" && (
-          <div className="block-categories">
-            {(attr.labels ?? []).map((label, i) => (
-              <label key={label} className="check">
-                <input type="checkbox" checked={!style.hidden.includes(label)}
-                  onChange={(e) => set({ hidden: e.target.checked ? style.hidden.filter((h) => h !== label) : [...style.hidden, label] })} />
-                <span className="swatch-static" style={{ background: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} /> {label}
-              </label>
-            ))}
-          </div>
-        )}
         <label>Непрозрачность
           <input type="range" min={0.1} max={1} step={0.05} value={style.opacity} onChange={(e) => set({ opacity: Number(e.target.value) })} aria-label="Непрозрачность блоков" />
         </label>
+        <p className="muted small block-summary">
+          {attr ? (attr.kind === "category" ? "категории" : style.colorBy === "classes" ? `градации (${style.classes.length})` : "шкала") : "один цвет"}
+          {style.palette ? ` «${style.palette.name}»` : ""}
+          {" · "}{conditions ? `ограничитель: условий ${conditions}` : "без ограничителя"}
+          {" · "}{style.view === "shell" ? "внешняя оболочка" : "все блоки"}{style.slice ? ", срез на разрезе" : ""}{style.edges ? ", края" : ""}
+        </p>
+        <button className="props-gear" onClick={onSettings} title="Ограничитель, раскраска по полю (градации, шкала, из скважин), оболочка / все блоки, срез на разрезе, края">
+          <Icon name="gear" size={14} /> Настройки показа…
+        </button>
       </div>
 
       {block && (

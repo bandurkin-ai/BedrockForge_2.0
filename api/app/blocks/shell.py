@@ -25,7 +25,7 @@ def exposed_mask(centres: np.ndarray, sizes: np.ndarray, origin, parent, counts)
     step = 1 << 21
     # Pass 1: which cells are full (sub-block volumes add up to the parent volume).
     lin_all = np.full(n, -1, np.int64)
-    cell_all = np.zeros((n, 3), np.int64)
+    cell_all = np.zeros((n, 3), np.int32)  # cell indices fit; half the memory of int64
     for a in range(0, n, step):
         c = centres[a:a + step].astype(np.float64)
         s = sizes[a:a + step].astype(np.float64)
@@ -58,7 +58,7 @@ def exposed_mask(centres: np.ndarray, sizes: np.ndarray, origin, parent, counts)
         c = centres[a:a + step].astype(np.float64)
         s = sizes[a:a + step].astype(np.float64)
         lo, hi = c - s / 2, c + s / 2
-        cell = cell_all[a:a + step]
+        cell = cell_all[a:a + step].astype(np.int64)
         cell_lo = origin + cell * parent
         cell_hi = cell_lo + parent
         seen = np.zeros(len(lin), bool)

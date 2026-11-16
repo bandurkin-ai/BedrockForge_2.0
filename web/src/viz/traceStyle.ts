@@ -15,6 +15,8 @@ export interface TraceStyle {
   labelStep: number;
   labelSize: number;
   labelColor: string;
+  /** a tick at the end of each hole with its depth, m */
+  endDepth: boolean;
   /** marks where the holes cross wireframes and enter / leave block models */
   intersections: boolean;
   withWireframes: boolean;
@@ -31,7 +33,7 @@ export interface TraceStyle {
 
 export const DEFAULT_TRACE_STYLE: TraceStyle = {
   width: 1.5, color: "#8a93a6",
-  ticks: false, tickStep: 10, tickSize: 4, tickLabels: true, labelStep: 50, labelSize: 11, labelColor: "#c9d1de",
+  ticks: false, tickStep: 10, tickSize: 4, tickLabels: true, labelStep: 50, labelSize: 11, labelColor: "#c9d1de", endDepth: false,
   intersections: false, withWireframes: true, withBlocks: true, onlyVisible: true, markerSize: 9,
   wireframeColor: "object", blockColor: "#ffb020", markerLabels: true,
 };
@@ -55,6 +57,7 @@ export function normalizeTraceStyle(raw: unknown): TraceStyle {
     labelStep: num(r.labelStep, 0.5, 5000, d.labelStep),
     labelSize: num(r.labelSize, 7, 30, d.labelSize),
     labelColor: hex(r.labelColor, d.labelColor),
+    endDepth: bool(r.endDepth, d.endDepth),
     intersections: bool(r.intersections, d.intersections),
     withWireframes: bool(r.withWireframes, d.withWireframes),
     withBlocks: bool(r.withBlocks, d.withBlocks),

@@ -221,7 +221,8 @@ def _read_csv(path: Path, progress: Progress) -> tuple[list[Column], dict | None
     cols: list[Column] = []
     for name in names:
         s = frame[name]
-        if name in text_cols or s.dtype == object:
+        # Text comes as `object` in pandas 2 and as the string dtype in pandas 3.
+        if name in text_cols or not pd.api.types.is_numeric_dtype(s):
             numeric = pd.to_numeric(s.astype(str).str.strip().str.replace(",", ".", regex=False), errors="coerce")
             filled = s.notna() & (s.astype(str).str.strip() != "")
             if name not in text_cols and filled.any() and numeric[filled].notna().all():
@@ -270,10 +271,10 @@ def _assemble(fmt: str, cols: list[Column], hint: dict | None, notes: list[str],
         if name and by_name[name].kind != "number":
             raise BlockModelError(f"Поле {name} должно быть числовым")
     n = len(by_name[roles["x"]].values)
-    centres = np.column_stack([by_name[roles[a]].values for a in "xyz"]).astype(np.float64)
+    centres = np.column_stack([by_name[roles[a]].values for a in "xyz"]).astype(np.float64, copy=False)
     has_size = all(roles["d" + a] for a in "xyz")
     if has_size:
-        sizes = np.column_stack([by_name[roles["d" + a]].values for a in "xyz"]).astype(np.float64)
+        sizes = np.column_stack([by_name[roles["d" + a]].values for a in "xyz"]).astype(np.float64, copy=False)
     else:
         size = np.array(hint["size"]) if hint else _spacing(centres)
         sizes = np.broadcast_to(size, (n, 3)).astype(np.float64).copy()
@@ -285,11 +286,13 @@ def _assemble(fmt: str, cols: list[Column], hint: dict | None, notes: list[str],
         notes.append(f"Блоков без координат или с размером ≤ 0: {dropped} — пропущены")
     used = {v for v in roles.values() if v}
     attrs = []
+    # Every row kept (the usual case): no copy of a column (a big model is gigabytes of them).
+    keep = (lambda v: v) if not dropped else (lambda v: v[ok])
     for c in cols:
         if c.name in used:
             continue
-        attrs.append(Column(c.name, c.kind, c.values[ok], c.labels, c.source, c.unparsed))
-    return BlockTable(format=fmt, centres=centres[ok], sizes=sizes[ok], attributes=attrs,
+        attrs.append(Column(c.name, c.kind, keep(c.values), c.labels, c.source, c.unparsed))
+    return BlockTable(format=fmt, centres=keep(centres), sizes=keep(sizes), attributes=attrs,
                       roles={k: (v or "") for k, v in roles.items()}, grid_hint=hint, notes=notes, dropped=dropped)
 
 
@@ -338,26 +341,43 @@ def aligned_origin(lo: np.ndarray, sizes: np.ndarray, parent: np.ndarray) -> np.
 
 def describe_grid(t: BlockTable) -> tuple[GridInfo, np.ndarray, np.ndarray]:
     """The parent grid and, per block, its parent cell (i, j, k) and whether it lies inside it."""
-    lo = t.centres - t.sizes / 2
-    hi = t.centres + t.sizes / 2
+    n = len(t.centres)
     if t.grid_hint:
         parent = np.array(t.grid_hint["size"], dtype=np.float64)
         o = np.array(t.grid_hint["origin"], dtype=np.float64)
         origin = o - parent / 2 if t.grid_hint["at"] == "centre" else o
     else:
-        parent = t.sizes.max(axis=0) if len(t.sizes) else np.ones(3)
-        origin = aligned_origin(lo, t.sizes, parent)
+        parent = t.sizes.max(axis=0) if n else np.ones(3)
+        origin = aligned_origin(t.centres - t.sizes / 2, t.sizes, parent) if n else np.zeros(3)
     tol = 1e-6 * np.maximum(parent, 1)
-    i0 = np.floor((lo - origin + tol) / parent).astype(np.int64)
-    i1 = np.floor((hi - origin - tol) / parent).astype(np.int64)
-    inside = (i0 == i1).all(axis=1)
-    counts = (i1.max(axis=0) + 1).clip(min=0) if len(i1) else np.zeros(3, np.int64)
-    subblocked = bool(len(t.sizes) and (np.abs(t.sizes - parent) > tol).any())
+    # Axis by axis, cells in int32: a model of millions of blocks keeps to a few hundred MB here.
+    i0 = np.empty((n, 3), np.int32)
+    inside = np.ones(n, bool)
+    counts = np.zeros(3, np.int64)
+    subblocked = False
+    for a in range(3):
+        c, half = t.centres[:, a], t.sizes[:, a] / 2
+        first = np.floor((c - half - origin[a] + tol[a]) / parent[a])
+        last = np.floor((c + half - origin[a] - tol[a]) / parent[a])
+        i0[:, a] = np.clip(first, -(2**31), 2**31 - 1)
+        inside &= first == last
+        if n:
+            counts[a] = max(0, int(last.max()) + 1)
+            subblocked = subblocked or bool((np.abs(t.sizes[:, a] - parent[a]) > tol[a]).any())
+        del first, last, half
     valid = inside & (i0 >= 0).all(axis=1)
-    lin = (i0[valid, 0] * counts[1] + i0[valid, 1]) * counts[2] + i0[valid, 2] if valid.any() else np.zeros(0, np.int64)
+    lin = ((i0[valid, 0].astype(np.int64) * counts[1] + i0[valid, 1]) * counts[2] + i0[valid, 2]) if valid.any() else np.zeros(0, np.int64)
     info = GridInfo(origin=[float(v) for v in origin], parent=[float(v) for v in parent],
-                    counts=[int(v) for v in counts], subblocked=subblocked, parents_used=len(np.unique(lin)))
+                    counts=[int(v) for v in counts], subblocked=subblocked, parents_used=_distinct(lin))
     return info, i0, inside
+
+
+def _distinct(values: np.ndarray) -> int:
+    """How many different values (by sorting: np.unique hashes and is several times slower on millions)."""
+    if not len(values):
+        return 0
+    v = np.sort(values)
+    return int(1 + np.count_nonzero(v[1:] != v[:-1]))
 
 
 def check_model(t: BlockTable, grid: GridInfo, cells: np.ndarray, inside: np.ndarray) -> list[dict]:
@@ -377,9 +397,7 @@ def check_model(t: BlockTable, grid: GridInfo, cells: np.ndarray, inside: np.nda
     if grid.subblocked and t.grid_hint is None:
         add("info", "parent_guess", "Размер родительского блока определён по самому большому блоку: "
             + " × ".join(f"{v:g}" for v in grid.parent))
-    # Exact duplicates.
-    key = np.round(np.hstack([t.centres, t.sizes]), 6)
-    dup = n - len(np.unique(key, axis=0)) if n else 0
+    dup = _duplicates(t.centres, t.sizes)
     if dup:
         add("error", "duplicates", "Повторяющиеся блоки (тот же центр и размер)", int(dup))
     overlap, method = _overlaps(t, grid, cells, inside)
@@ -414,6 +432,33 @@ def attribute_checks(t: BlockTable, volume: float) -> list[dict]:
     return out
 
 
+def _duplicates(centres: np.ndarray, sizes: np.ndarray) -> int:
+    """Blocks repeating another (the same centre and size to a micrometre): extra copies counted.
+    A 64-bit hash of the six numbers, sorted; rows with equal hashes are compared exactly. Without
+    a table of n × 6 and its sorted copy (gigabytes for a big model)."""
+    n = len(centres)
+    if n < 2:
+        return 0
+    h = np.zeros(n, np.uint64)
+    with np.errstate(over="ignore"):
+        for col in (*centres.T, *sizes.T):
+            q = np.round(col * 1e6).astype(np.int64).view(np.uint64)
+            h = (h ^ q) * np.uint64(0x100000001B3)
+            h ^= h >> np.uint64(29)
+            del q
+    order = np.argsort(h, kind="stable")
+    hs = h[order]
+    del h
+    same = np.zeros(n, dtype=bool)
+    same[1:] = hs[1:] == hs[:-1]
+    if not same.any():
+        return 0
+    same[:-1] |= same[1:]
+    rows = order[same]
+    key = np.round(np.hstack([centres[rows], sizes[rows]]), 6)
+    return int(len(rows) - len(np.unique(key, axis=0)))
+
+
 def _overlaps(t: BlockTable, grid: GridInfo, cells: np.ndarray, inside: np.ndarray) -> tuple[int, str]:
     """Blocks sharing space with another block. Exact on the grid of the smallest block size when
     every block is aligned to it; otherwise parents whose blocks hold more than the parent volume."""
@@ -429,6 +474,15 @@ def _overlaps(t: BlockTable, grid: GridInfo, cells: np.ndarray, inside: np.ndarr
     aligned = (np.abs(steps_lo - np.rint(steps_lo)) < 1e-4).all() and (np.abs(steps_n - np.rint(steps_n)) < 1e-4).all() \
         and (np.abs(parent / unit - per_parent) < 1e-4).all()
     ok = inside & (cells >= 0).all(axis=1)
+    if not grid.subblocked:
+        # Every block fills its parent cell: blocks overlap exactly when they share a cell.
+        c = cells[ok].astype(np.int64)
+        lin = np.sort((c[:, 0] * grid.counts[1] + c[:, 1]) * grid.counts[2] + c[:, 2])
+        del c
+        same = np.zeros(len(lin), dtype=bool)
+        same[1:] = lin[1:] == lin[:-1]
+        same[:-1] |= same[1:]
+        return int(same.sum()), "по сетке наименьшего блока"
     if aligned:
         nsub = np.rint(steps_n).astype(np.int64)
         total = int(np.prod(nsub, axis=1)[ok].sum())

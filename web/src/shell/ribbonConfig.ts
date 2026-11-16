@@ -146,7 +146,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           items: [
             { command: "scene.style", args: { grid: !ws.grid }, label: ws.grid ? "Скрыть сетку" : "Показать сетку", icon: "quad", small: true },
             { command: "scene.style", args: { perspective: !ws.perspective }, label: ws.perspective ? "Ортогональная проекция" : "Перспектива", icon: "cube", small: true },
-            { command: "theme.set", label: ws.theme === "dark" ? "Светлая тема" : "Тёмная тема", icon: "theme", small: true },
+            { command: "theme.set", label: ws.theme === "dark" ? "Светлая тема" : "Тёмная тема", icon: ws.theme === "dark" ? "sun" : "moon", small: true },
             { command: "ribbon.toggle", label: "Свернуть ленту", icon: "chevronUp", shortcut: "ctrl+f1", small: true },
           ],
         },
@@ -205,6 +205,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
             { command: "model.dtm", label: "ЦМР", icon: "plan", hint: "Поверхность из точек и линий (структурные линии)" },
             { command: "model.contours", label: "Изолинии", icon: "lines", small: true },
             { command: "model.volume", label: "Объём", icon: "histogram", hint: "Выемка и насыпь между поверхностями", small: true },
+            { command: "wireframe.dtm", args: { on: true }, label: "В ЦТМ", icon: "dtm", hint: "Выбранный каркас поверхности — в раздел ЦТМ (на рельеф можно положить растр)", small: true },
           ],
         },
       ],

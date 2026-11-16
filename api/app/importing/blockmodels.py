@@ -63,7 +63,7 @@ def store_block_model(session: Session, dataset: Dataset, t: BlockTable, progres
         checks = check_model(t, grid, cells, inside)
         del cells, inside
         volume = np.prod(t.sizes, axis=1, dtype=np.float64)
-    progress(0.80, "Запись столбцов")
+    progress(0.74, "Запись столбцов")
     refs = {
         "centres": blobs.put_array(session, t.centres, "<f8"),
         "sizes": blobs.put_array(session, t.sizes, "<f4"),
