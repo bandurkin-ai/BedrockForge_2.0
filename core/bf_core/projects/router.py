@@ -69,6 +69,15 @@ def current_project(svc: Svc) -> dict[str, Any]:
     return {"project": _info(p) if p else None}
 
 
+@router.post("/demo")
+def demo_project(svc: Svc) -> dict[str, Any]:
+    """`project.demo`: creates «Демо: участок Северный» or opens it if it exists (ТЗ 7.5)."""
+    from bf_core.demo.project import create_or_open
+
+    project, created = create_or_open(svc)
+    return {**_info(project), "created": created}
+
+
 @router.post("/{uid}/open")
 def open_project(svc: Svc, uid: str) -> dict[str, Any]:
     return _info(svc.open(uid))

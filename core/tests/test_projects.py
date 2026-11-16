@@ -158,3 +158,13 @@ def test_network_and_long_paths_rejected(pclient) -> None:  # type: ignore[no-un
     with pytest.raises(ApiError) as err:
         check_location(Path("/" + "п" * 200))
     assert err.value.code == "path_too_long"
+
+
+def test_demo_created_once_then_opened(pclient) -> None:  # type: ignore[no-untyped-def]
+    first = pclient.post(API + "/demo").json()
+    assert first["created"] is True and first["name"] == "Демо: участок Северный"
+    assert first["description"]["stage"] == "Разведка"
+    pclient.post(API + "/close")
+    second = pclient.post(API + "/demo").json()
+    assert second["created"] is False and second["uid"] == first["uid"]
+    assert [e["name"] for e in pclient.get(API).json()["projects"]] == ["Демо: участок Северный"]
