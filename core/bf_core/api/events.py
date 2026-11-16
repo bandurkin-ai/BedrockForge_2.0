@@ -18,6 +18,7 @@ class EventBus:
         self._lock = threading.Lock()
         self._ids = itertools.count(1)
         self._recent: deque[tuple[int, str, str]] = deque(maxlen=200)
+        self._closed = False
 
     def publish(self, event: str, data: dict[str, Any]) -> None:
         item = (next(self._ids), event, json.dumps(data, ensure_ascii=False, default=str))
@@ -28,6 +29,17 @@ class EventBus:
             try:
                 loop.call_soon_threadsafe(queue.put_nowait, item)
             except RuntimeError:  # the loop is closed: the subscriber is gone
+                pass
+
+    def close(self) -> None:
+        """Ends every stream (shutdown: uvicorn waits for open connections otherwise)."""
+        with self._lock:
+            subs = list(self._subs)
+            self._closed = True
+        for loop, queue in subs:
+            try:
+                loop.call_soon_threadsafe(queue.put_nowait, (0, "", ""))
+            except RuntimeError:
                 pass
 
     def subscribe(self, last_id: int | None = None) -> tuple[asyncio.Queue[tuple[int, str, str]], Any]:

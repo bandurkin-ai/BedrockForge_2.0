@@ -106,3 +106,22 @@ def test_shutdown_calls_hook(state, client: TestClient) -> None:  # type: ignore
     state.request_shutdown = lambda: called.append(1)
     assert client.post("/api/v1/shutdown", headers=H).status_code == 200
     assert called == [1]
+
+
+def test_event_stream_ends_on_shutdown() -> None:
+    """uvicorn waits for open connections at shutdown: the SSE stream must end by itself."""
+    import asyncio
+
+    from bf_core.api.events import EventBus
+
+    async def run() -> list[tuple[int, str, str]]:
+        bus = EventBus()
+        queue, unsubscribe = bus.subscribe()
+        bus.publish("job", {"id": 1})
+        bus.close()
+        got = [await queue.get(), await queue.get()]
+        unsubscribe()
+        return got
+
+    got = asyncio.run(run())
+    assert got[0][1] == "job" and got[1][0] == 0

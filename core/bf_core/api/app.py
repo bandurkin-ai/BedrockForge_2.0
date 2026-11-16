@@ -83,6 +83,8 @@ def create_app(state: CoreState, extra_origins: tuple[str, ...] = ()) -> FastAPI
                     except TimeoutError:
                         yield b": keep-alive\n\n"
                         continue
+                    if item[0] == 0:  # the core stops
+                        return
                     yield format_sse(item)
             finally:
                 unsubscribe()

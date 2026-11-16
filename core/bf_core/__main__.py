@@ -90,6 +90,7 @@ def serve(args: argparse.Namespace) -> int:
     server = uvicorn.Server(config)
 
     def request_shutdown() -> None:
+        state.events.close()  # open SSE streams would hold uvicorn's graceful shutdown for 5 s
         server.should_exit = True
 
     state.request_shutdown = request_shutdown
