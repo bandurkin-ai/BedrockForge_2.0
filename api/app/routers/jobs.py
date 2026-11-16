@@ -195,7 +195,8 @@ def read_queue(session: Session = Depends(get_session)) -> dict:
 @router.get("/jobs/{job_id}")
 def read_job(job_id: int, session: Session = Depends(get_session)) -> dict:
     job = _get_job(session, job_id)
-    out = {**queue.job_out(job), "params": job.params, "log": job.log}
+    params = {k: v for k, v in (job.params or {}).items() if k != "password"}
+    out = {**queue.job_out(job), "params": params, "log": job.log}
     if job.status == "queued":
         out["waiting"] = queue_state(session)["waiting"].get(job.id)
     return out

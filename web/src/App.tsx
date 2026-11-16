@@ -4,7 +4,7 @@ const noSubscribe = () => () => undefined;
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, editBlock, renameDataset, runAudit, setBlockUnit,
-  getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord, type PickResult,
+  getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, startProjectExport, type Dataset, type JobInfo, type Project, type ProjectImportResult, type SavedChartKind, type StyleRecord, type PickResult,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
@@ -41,6 +41,8 @@ import { Icon } from "./shell/icons";
 import { ImportDialog } from "./shell/ImportDialog";
 import { ImportWizard, WIZARD_ACCEPT } from "./shell/ImportWizard";
 import { OmfExportDialog } from "./shell/OmfExportDialog";
+import { ProjectExportDialog, ProjectImportDialog } from "./shell/ProjectArchiveDialogs";
+import { applyTreeOrder, collectBrowserState, mergeBrowserState } from "./shell/projectBrowserState";
 import { isBlockModelFile } from "./shell/sniffBlocks";
 import { ChartWindow } from "./charts/ChartWindow";
 import { HistogramWindow, type HistogramSettings } from "./charts/HistogramWindow";
@@ -153,6 +155,7 @@ function Workspace({
   onDemoProject,
   onDeleteProject,
   onPatchProject,
+  onProjectImported,
 }: {
   projects: Project[];
   project: Project;
@@ -161,6 +164,8 @@ function Workspace({
   onDemoProject: () => Promise<string>;
   onDeleteProject: (id: number) => Promise<string>;
   onPatchProject: (id: number, patch: { name?: string; description?: string }) => Promise<string>;
+  /** a project came from a .bfggis file: reread the list (an imported copy may have replaced a project) */
+  onProjectImported: (result: ProjectImportResult) => Promise<void>;
 }) {
   const projectId = project.id;
   const [route, navigate] = useRoute();
@@ -479,6 +484,9 @@ function Workspace({
   const [projectsOpen, setProjectsOpen] = useState(false);
   /** The OMF export window: the datasets checked when it opens ([]: every exportable one). */
   const [omfExport, setOmfExport] = useState<number[] | null>(null);
+  /** The window of an export of a whole project (.bfggis) and the one of an import. */
+  const [projectExport, setProjectExport] = useState<{ id: number; name: string } | null>(null);
+  const [projectImport, setProjectImport] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcuts, setShortcutsState] = useState<ShortcutOverrides>(loadShortcuts);
@@ -543,6 +551,20 @@ function Workspace({
     },
     reload, onSelectProject, onNewProject, onDemoProject, onDeleteProject, onPatchProject,
     openProjects: () => setProjectsOpen(true),
+    openProjectExport: (id) => {
+      const target = projects.find((p) => p.id === (id ?? projectId));
+      if (target) setProjectExport({ id: target.id, name: target.name });
+    },
+    openProjectImport: () => setProjectImport(true),
+    exportProject: async (id, filename, includeView = true) => {
+      const target = projects.find((p) => p.id === id);
+      const job = await startProjectExport(id, {
+        filename: filename || `${target?.name ?? "Проект"}_${new Date().toISOString().slice(0, 10)}`,
+        browser: includeView && id === projectId ? { ...collectBrowserState(wsRef.current, datasets ?? []) } : null,
+      });
+      onExportStarted(job);
+      return job;
+    },
     openSettings: () => setSettingsOpen(true),
     moveDataset: async (id, folder) => {
       await moveDataset(id, folder);
@@ -1125,6 +1147,8 @@ function Workspace({
             onDelete={(id) => onDeleteProject(id)}
             onNew={() => onNewProject()}
             onDemo={() => onDemoProject()}
+            onExport={(p) => setProjectExport({ id: p.id, name: p.name })}
+            onImport={() => setProjectImport(true)}
           />
         </ChartWindow>
       )}
@@ -1164,6 +1188,31 @@ function Workspace({
           projectName={projects.find((p) => p.id === projectId)?.name ?? "Проект"} datasets={datasets ?? []} initial={omfExport}
           onStart={(ids, filename) => live.current.exportOmf(ids, filename)}
           onClose={() => setOmfExport(null)}
+        />
+      )}
+
+      {projectExport && (
+        <ProjectExportDialog
+          project={projectExport}
+          browserState={projectExport.id === projectId ? { ...collectBrowserState(ws, datasets ?? []) } : null}
+          onClose={() => setProjectExport(null)}
+        />
+      )}
+
+      {projectImport && (
+        <ProjectImportDialog
+          onImported={(result) => void onProjectImported(result)}
+          onOpenProject={(result, applyView) => {
+            if (applyView && result.browser) {
+              // Saved now: this workspace is rebuilt for the other project and reads it from storage.
+              saveWorkspace(mergeBrowserState(wsRef.current, result.browser, result.maps));
+              applyTreeOrder(result.browser);
+            }
+            setProjectImport(false);
+            setProjectsOpen(false);
+            onSelectProject(result.project_id);
+          }}
+          onClose={() => setProjectImport(false)}
         />
       )}
 
@@ -1442,6 +1491,13 @@ export function App() {
     return patch.name !== undefined ? `Проект переименован: «${updated.name}»` : "Описание проекта сохранено";
   }
 
+  /** A project imported from a .bfggis file: the list again; the open project may have been replaced. */
+  async function onProjectImported(result: ProjectImportResult): Promise<void> {
+    const list = await listProjects();
+    setProjects(list);
+    if (result.replaced_project_id !== null && result.replaced_project_id === projectId) selectProject(result.project_id);
+  }
+
   /** Deletes a project with everything in it, after the user confirms; opens another one. */
   async function onDeleteProject(id: number): Promise<string> {
     const target = projects?.find((p) => p.id === id);
@@ -1459,7 +1515,7 @@ export function App() {
   const project = projects?.find((p) => p.id === projectId);
   if (!projects || !project) return <Splash note="Загрузка проектов…" />;
 
-  return <Workspace key={project.id} projects={projects} project={project} onSelectProject={selectProject} onNewProject={onNewProject} onDemoProject={onDemoProject} onDeleteProject={onDeleteProject} onPatchProject={onPatchProject} />;
+  return <Workspace key={project.id} projects={projects} project={project} onSelectProject={selectProject} onNewProject={onNewProject} onDemoProject={onDemoProject} onDeleteProject={onDeleteProject} onPatchProject={onPatchProject} onProjectImported={onProjectImported} />;
 }
 
 /** Startup splash, the same markup as the one in index.html (shown before React starts). */

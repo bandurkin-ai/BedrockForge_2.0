@@ -76,6 +76,8 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
           items: [
             { command: "project.new", label: "Новый проект", icon: "plus" },
             { command: "project.manage", label: "Проекты", icon: "folder", hint: "Управление проектами: название, описание, состав, все проекты" },
+            { command: "project.export", label: "Экспорт проекта", icon: "export", hint: "Весь проект одним файлом .bfggis — для работы на другом компьютере" },
+            { command: "project.import", label: "Импорт проекта", icon: "import", hint: "Открыть проект из файла .bfggis" },
             { command: "project.demo", label: "Демо-проект", icon: "cube", hint: "Учебный проект: 48 скважин, пробы, аудит, каркасы рудного тела", small: true },
             { command: "data.refresh", label: "Обновить", icon: "refresh", hint: "Перечитать данные проекта с сервера", small: true },
             { command: "project.delete", label: "Удалить проект", icon: "trash", hint: "Удалить текущий проект со всеми данными", small: true },

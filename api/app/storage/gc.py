@@ -67,6 +67,15 @@ def collect(session: Session, *, grace: timedelta = GRACE, upload_ttl: timedelta
     from app.exporting.files import EXPORT_TTL
 
     report.exports = _sweep(blobs.root() / "exports", time.time() - (export_ttl or EXPORT_TTL).total_seconds())
+    # Work folders of project imports (app/archive/importer.py) left by a worker that died.
+    work = blobs.root() / "archive-work"
+    if work.is_dir():
+        import shutil
+
+        old = time.time() - upload_ttl.total_seconds()
+        for p in work.iterdir():
+            if p.stat().st_mtime < old:
+                shutil.rmtree(p, ignore_errors=True)
 
     stale = session.execute(
         text("DELETE FROM upload WHERE updated_at < now() - :ttl RETURNING id"), {"ttl": upload_ttl}

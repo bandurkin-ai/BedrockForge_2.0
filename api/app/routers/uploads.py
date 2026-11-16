@@ -1,6 +1,7 @@
 """Resumable uploads of large files (up to MAX_CHUNKED_UPLOAD_MB, 4 GB by default).
 
     POST   /api/projects/{id}/uploads   {filename, size}       -> upload (id, chunk_size, received)
+    POST   /api/uploads                 {filename, size}       -> an upload of a project archive (no project yet)
     PUT    /api/uploads/{id}?offset=N   raw bytes of one chunk -> upload
     GET    /api/uploads/{id}                                   -> upload (to resume: send from `received`)
     DELETE /api/uploads/{id}
@@ -39,7 +40,7 @@ class UploadIn(BaseModel):
 
 class UploadOut(BaseModel):
     id: str
-    project_id: int
+    project_id: int | None
     filename: str
     size: int
     received: int
@@ -71,8 +72,20 @@ def get_upload(session: Session, upload_id: str, *, lock: bool = False) -> Uploa
 @router.post("/projects/{project_id}/uploads", response_model=UploadOut, status_code=201)
 def create_upload(project_id: int, body: UploadIn, session: Session = Depends(get_session)):
     get_project(session, project_id)
-    if body.size > settings.max_chunked_upload_bytes:
-        limit = settings.max_chunked_upload_bytes / (1 << 30)
+    return _create(session, project_id, body, settings.max_chunked_upload_bytes)
+
+
+@router.post("/uploads", response_model=UploadOut, status_code=201)
+def create_archive_upload(body: UploadIn, session: Session = Depends(get_session)):
+    """A project archive (.bfggis): it arrives before the project it makes exists."""
+    if not body.filename.lower().endswith(".bfggis"):
+        raise HTTPException(422, "Нужен файл проекта BedrockForge (.bfggis)")
+    return _create(session, None, body, settings.max_archive_upload_bytes)
+
+
+def _create(session: Session, project_id: int | None, body: UploadIn, max_bytes: int) -> UploadOut:
+    if body.size > max_bytes:
+        limit = max_bytes / (1 << 30)
         raise HTTPException(413, f"Файл больше {limit:g} ГБ")
     upload = Upload(id=uuid.uuid4().hex, project_id=project_id, filename=Path(body.filename).name[:255],
                     size=body.size, received=0, status="complete" if body.size == 0 else "receiving")
