@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app import mcp_server
 from app.config import settings
-from app.routers import assistant, audit, blobs, blockmodels, charts, datasets, datatables, imports, intervals, jobs, lines, operations, projects, stats, styles, uploads, viz
+from app.routers import assistant, audit, blobs, blockmodels, charts, datasets, datatables, exports, imports, intervals, jobs, lines, operations, projects, stats, styles, uploads, viz
 
 mcp_app = mcp_server.http_app()
 
@@ -55,6 +55,7 @@ app.include_router(assistant.router)
 app.include_router(blobs.router)
 app.include_router(uploads.router)
 app.include_router(jobs.router)
+app.include_router(exports.router)
 app.include_router(charts.router)
 app.include_router(blockmodels.router)
 app.include_router(intervals.router)

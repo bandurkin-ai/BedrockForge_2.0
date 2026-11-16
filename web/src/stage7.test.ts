@@ -95,4 +95,40 @@ describe("import wizard", async () => {
     ]);
     expect(planJobs([row("e", "map.jgw", "sidecar", "rasters")])).toEqual([]);
   });
+
+  it("sends OMF files up and plans one job per file", () => {
+    const f = (n: string) => new File(["x"], n);
+    expect(sortFiles([f("Leapfrog.OMF"), f("holes.csv")]).objects.map((x) => x.name)).toEqual(["Leapfrog.OMF"]);
+    expect(planJobs([row("a", "a.omf", "omf", "omf"), row("b", "b.omf", "omf", "omf"), row("c", "c.omf", "omf", null)])).toEqual([
+      { kind: "omf", uploads: ["a"], names: ["a.omf"] },
+      { kind: "omf", uploads: ["b"], names: ["b.omf"] },
+    ]);
+  });
+});
+
+describe("OMF export", async () => {
+  const { omfCandidates, omfProblem } = await import("./shell/OmfExportDialog");
+  const { buildRibbon } = await import("./shell/ribbonConfig");
+  const { DEFAULT_WORKSPACE } = await import("./shell/workspace");
+  const ds = (id: number, kind: string, extra: Record<string, unknown> = {}) =>
+    ({ id, kind, name: `d${id}`, folder: "", meta: {}, wireframes: null, lines: null, rasters: null, ...extra }) as never;
+  const grid = (subblocked: boolean) => ({ meta: { block_count: 6, grid: { counts: [1, 2, 3], subblocked, rotation: 0 } } });
+
+  it("offers wireframes, lines and regular block models, explains the rest", () => {
+    const list = [ds(1, "wireframes", { wireframes: [{ id: 1 }] }), ds(2, "lines", { lines: [] }), ds(3, "blocks", grid(false)),
+      ds(4, "blocks", grid(true)), ds(5, "drillholes"), ds(6, "rasters")];
+    const groups = omfCandidates(list);
+    expect(groups.map((g) => [g.kind, g.items.map((i) => i.d.id)])).toEqual([["wireframes", [1]], ["lines", [2]], ["blocks", [3, 4]]]);
+    expect(omfProblem(list[0])).toBeNull();
+    expect(omfProblem(list[1])).toMatch("нет линий");
+    expect(omfProblem(list[2])).toBeNull();
+    expect(omfProblem(list[3])).toMatch("субблочная");
+  });
+
+  it("has its own group on the Home tab", () => {
+    const home = buildRibbon(DEFAULT_WORKSPACE, { hasHole: false, hasSet: false, hasSection: false })[0];
+    const omf = home.groups.find((g) => g.title === "OMF");
+    expect(omf?.items.map((i) => i.command)).toEqual(["omf.import", "omf.export"]);
+    expect(home.groups.map((g) => g.title).indexOf("OMF")).toBe(home.groups.map((g) => g.title).indexOf("Загрузка") + 1);
+  });
 });

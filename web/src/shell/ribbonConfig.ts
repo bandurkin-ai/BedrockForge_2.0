@@ -93,6 +93,13 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
             { command: "rasters.upload", label: "Растры", icon: "raster", hint: "Изображение с файлом привязки (.jgw/.pgw/.tfw, .tab, .grf) или GeoTIFF", small: true },
           ],
         },
+        {
+          title: "OMF",
+          items: [
+            { command: "omf.import", label: "Импорт OMF", icon: "import", hint: "Open Mining Format v1 (Leapfrog OMF 0.9): каркасы, линии и блочные модели из одного файла" },
+            { command: "omf.export", label: "Экспорт OMF", icon: "export", hint: "Каркасы, линии и регулярные блочные модели проекта в один файл OMF v1" },
+          ],
+        },
         { title: "Вид", items: [view(0), view(1), view(2), view(3, true), { command: "scene.fit", label: "Вписать", icon: "maximize", hint: "Показать всё, не поворачивая вид", shortcut: "f", small: true }] },
         { title: "Разрез", items: sectionItems },
         {
