@@ -38,7 +38,7 @@ export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean
   { label: "Проверить скважину", prompt: "Проверь выбранную скважину: данные устья, инклинометрию, опробование и замечания аудита. Покажи её на разрезе.", needsHole: true },
 ];
 
-export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet: boolean; hasSection: boolean }): RibbonTab[] {
+export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet: boolean; hasSection: boolean; editing?: boolean }): RibbonTab[] {
   const view = (index: number, small = false): RibbonItem => {
     const v = VIEWS[index];
     return { command: "scene.view", args: { view: v.view }, label: v.label, icon: v.icon, hint: v.hint, shortcut: v.shortcut, small };
@@ -148,6 +148,62 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
             { command: "scene.style", args: { perspective: !ws.perspective }, label: ws.perspective ? "Ортогональная проекция" : "Перспектива", icon: "cube", small: true },
             { command: "theme.set", label: ws.theme === "dark" ? "Светлая тема" : "Тёмная тема", icon: "theme", small: true },
             { command: "ribbon.toggle", label: "Свернуть ленту", icon: "chevronUp", shortcut: "ctrl+f1", small: true },
+          ],
+        },
+      ],
+    },
+    {
+      id: "model",
+      title: "Моделирование",
+      groups: [
+        {
+          title: "Стринги",
+          items: [
+            { command: "lines.new_layer", label: "Новый слой", icon: "plus", hint: "Пустой слой линий и режим правки на нём" },
+            { command: "lines.edit", label: "Редактировать", icon: "edit", hint: "Редактор стрингов на выбранном слое линий: рисование, вершины, привязка", active: ctx.editing },
+            { command: "lines.save", label: "Сохранить", icon: "import", hint: "Сохранить слой: новая версия в журнале (Ctrl+S)", disabled: !ctx.editing, small: true },
+            { command: "lines.versions", label: "Версии", icon: "list", hint: "Журнал версий слоя, возврат к версии", small: true },
+            { command: "lines.finish", label: "Завершить", icon: "close", hint: "Выйти из режима правки", disabled: !ctx.editing, small: true },
+            { command: "lines.export", args: { format: "str" }, label: "В STR", icon: "export", hint: "Экспорт слоя в Micromine STR", small: true },
+            { command: "lines.export", args: { format: "dxf" }, label: "В DXF", icon: "export", hint: "Экспорт слоя в DXF", small: true },
+          ],
+        },
+        {
+          title: "Каркас из контуров",
+          items: [
+            { command: "model.stitch", label: "Сшить контуры", icon: "wireframe", hint: "Тело из замкнутых контуров разрезов: тай-линии, разветвления, торцы" },
+            { command: "model.extrude", label: "Выдавить", icon: "cube", hint: "Полигон → тело на расстояние", small: true },
+            { command: "model.triangles", label: "Треугольники", icon: "edit", hint: "Ручная правка: удалить и добавить треугольники", small: true },
+            { command: "model.rebuild", label: "Перестроить", icon: "refresh", hint: "Повторить построение выбранного каркаса на изменённых исходных объектах", small: true },
+          ],
+        },
+        {
+          title: "Правка каркасов",
+          items: [
+            { command: "model.repair", label: "Исправить", icon: "audit", hint: "Сшивка вершин, нормали, отверстия, лишние треугольники" },
+            { command: "model.self_intersections", label: "Самопересечения", icon: "search", hint: "Показать пересекающиеся треугольники выбранного каркаса", small: true },
+            { command: "model.simplify", label: "Упростить", icon: "chevronDown", small: true },
+            { command: "model.smooth", label: "Сгладить", icon: "chart", small: true },
+            { command: "model.merge", label: "В один объект", icon: "plus", small: true },
+            { command: "model.split", label: "На части", icon: "columns", small: true },
+          ],
+        },
+        {
+          title: "Операции",
+          items: [
+            { command: "model.boolean", label: "Булева", icon: "quad", hint: "Объединение, пересечение, вычитание замкнутых тел" },
+            { command: "model.clip", label: "Обрезать", icon: "section", hint: "Уровнем, плоскостью разреза, полигоном, поверхностью" },
+            { command: "model.intersection", label: "Линии пересечения", icon: "lines", small: true },
+            { command: "wireframe.export", args: { format: "dxf" }, label: "Каркас в DXF", icon: "export", small: true },
+            { command: "wireframe.export", args: { format: "obj" }, label: "Каркас в OBJ", icon: "export", small: true },
+          ],
+        },
+        {
+          title: "Поверхности",
+          items: [
+            { command: "model.dtm", label: "ЦМР", icon: "plan", hint: "Поверхность из точек и линий (структурные линии)" },
+            { command: "model.contours", label: "Изолинии", icon: "lines", small: true },
+            { command: "model.volume", label: "Объём", icon: "histogram", hint: "Выемка и насыпь между поверхностями", small: true },
           ],
         },
       ],

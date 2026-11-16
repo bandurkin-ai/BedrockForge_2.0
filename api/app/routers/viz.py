@@ -203,3 +203,68 @@ def hole_log(set_id: int, hole_id: str, session: Session = Depends(get_session))
         ],
         truncated=truncated,
     )
+
+
+@router.get("/snap")
+def snap_points(set_id: int, step: float = Query(10.0, ge=1.0, le=100.0), session: Session = Depends(get_session)):
+    """Snapping targets of the string editor along the holes of a set, exact (float64, not rounded):
+    collars, points of the trajectories and the boundaries of every interval (assays and interval
+    tables) placed on the trajectories.
+
+    Binary: uint32 length of a JSON header, the header, padding to 8 bytes, then the arrays the
+    header lists in `arrays` ([name, dtype, count of values]) one after another, little-endian.
+    """
+    import json
+
+    from fastapi.responses import Response
+
+    from app.models import IntervalRow, IntervalTable
+
+    get_set(session, set_id)
+    trajs, _ = _trajectories(session, set_id)
+    names = list(trajs)
+    index = {name: i for i, name in enumerate(names)}
+    depths: dict[str, list[float]] = {}
+    for query in (
+        select(Assay.hole_id, Assay.from_m, Assay.to_m).where(Assay.set_id == set_id),
+        select(IntervalRow.hole_id, IntervalRow.from_m, IntervalRow.to_m).join(IntervalTable, IntervalTable.id == IntervalRow.table_id)
+        .where(IntervalTable.set_id == set_id),
+    ):
+        for hole, from_m, to_m in session.execute(query):
+            if hole in index:
+                bucket = depths.setdefault(hole, [])
+                if from_m is not None:
+                    bucket.append(from_m)
+                if to_m is not None:
+                    bucket.append(to_m)
+    collars = np.zeros((len(names), 3))
+    trace, trace_offsets = [], [0]
+    bounds, bound_hole, bound_depth = [], [], []
+    for i, name in enumerate(names):
+        traj = trajs[name]
+        path = sample_path(traj, step)[:, :3]
+        collars[i] = path[0]
+        trace.append(path)
+        trace_offsets.append(trace_offsets[-1] + len(path))
+        d = np.unique(np.asarray(depths.get(name, []), dtype=np.float64))
+        d = d[np.isfinite(d) & (d >= 0) & (d <= float(traj.md[-1]) + 1e-6)]
+        if len(d):
+            bounds.append(traj.positions(d))
+            bound_hole.append(np.full(len(d), i, dtype="<u4"))
+            bound_depth.append(d.astype("<f4"))
+    arrays = [
+        ("collars", "<f8", collars),
+        ("trace", "<f8", np.vstack(trace) if trace else np.zeros((0, 3))),
+        ("trace_offsets", "<u4", np.asarray(trace_offsets, dtype="<u4")),
+        ("bounds", "<f8", np.vstack(bounds) if bounds else np.zeros((0, 3))),
+        ("bound_hole", "<u4", np.concatenate(bound_hole) if bound_hole else np.zeros(0, dtype="<u4")),
+        ("bound_depth", "<f4", np.concatenate(bound_depth) if bound_depth else np.zeros(0, dtype="<f4")),
+    ]
+    header = json.dumps({"holes": names, "arrays": [[n, dt, int(np.asarray(a).size)] for n, dt, a in arrays]},
+                        ensure_ascii=False).encode()
+    body = bytearray(len(header).to_bytes(4, "little") + header)
+    body += b"\x00" * (-len(body) % 8)
+    for _, dtype, a in arrays:
+        body += np.ascontiguousarray(a, dtype=dtype).tobytes()
+        body += b"\x00" * (-len(body) % 8)
+    return Response(bytes(body), media_type="application/octet-stream", headers={"Cache-Control": "no-store"})

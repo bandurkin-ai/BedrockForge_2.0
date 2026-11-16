@@ -15,7 +15,7 @@ import numpy as np
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.formats.lines import LineFormatError, line_stats, pack, read_lines
+from app.formats.lines import LineFormatError, pack, read_lines
 from app.formats.rasters import (
     Georef, RasterFormatError, corners, corners3d, is_vertical, pair_files, pixel_size, plane_azimuth,
     read_raster, rotation_deg, vertical_georef,
@@ -124,15 +124,21 @@ def queue_derive(session: Session, project_id: int, dataset: Dataset) -> None:
                       title=f"Проверка и копии для показа: {dataset.name}"[:255], max_attempts=2)
 
 
-def add_line_layer(session: Session, dataset_id: int, name: str, color: str, lines: list) -> LineLayer:
+def add_line_layer(session: Session, dataset_id: int, name: str, color: str, lines: list, *,
+                   action: str = "import", note: str = "") -> LineLayer:
+    """A new layer of the tree from polylines; its state becomes version 1 of the layer's journal."""
+    from app.lines.edit import record_version
+    from app.lines.measure import layer_measures
+
     vertices, offsets, closed = pack(lines)
     stored = geometry.store_lines(session, vertices, offsets, closed)
     layer = LineLayer(
         dataset_id=dataset_id, name=name[:255], color=color, line_count=len(lines), point_count=len(vertices),
-        extent=stored.extent, origin=stored.origin, blobs=stored.blobs, stats=line_stats(lines),
-        line_attributes=[jsonable(line.attributes) for line in lines],
+        extent=stored.extent, origin=stored.origin, blobs=stored.blobs, stats=layer_measures(vertices, offsets, closed),
+        line_attributes=[jsonable(line.attributes) for line in lines], version=1,
     )
     session.add(layer)
+    record_version(session, layer, action, note=note)
     return layer
 
 

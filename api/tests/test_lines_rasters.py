@@ -148,7 +148,7 @@ def test_upload_lines_str_geometry_patch_delete(db_client, tmp_path):
     assert body["kind"] == "lines" and body["meta"]["format"] == "Micromine STR"
     (layer,) = body["lines"]
     assert (layer["name"], layer["line_count"], layer["point_count"]) == ("КОНТУР", 1, 5)
-    assert layer["stats"] == {"length": 40.0, "closed": 1, "flat": True}
+    assert layer["stats"] == {"length": 40.0, "plan_length": 40.0, "closed": 1, "points": 0, "flat": True, "area": 100.0, "plan_area": 100.0}
 
     g = db_client.get(f"/api/lines/{layer['id']}/geometry").json()
     vertices = np.frombuffer(db_client.get(g["vertices"]).content, dtype="<f4").reshape(-1, 3) + g["origin"]

@@ -180,6 +180,34 @@ class LineLayer(Base):
     # vertices <f8 x y z, offsets <i8 start of every line plus the end, closed u1 per line,
     # render_vertices <f4 relative to origin, render_offsets <u4.
     blobs: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Number of the current saved state; every save of the editor makes the next one (line_layer_version).
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+
+
+class LineLayerVersion(Base):
+    """A saved state of a line layer: the journal of the string editor. The store is immutable,
+    so a version is only references to the arrays it had; returning to it writes a new version."""
+
+    __tablename__ = "line_layer_version"
+    __table_args__ = (UniqueConstraint("layer_id", "version", name="uq_line_layer_version"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    layer_id: Mapped[int] = mapped_column(ForeignKey("line_layer.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    # "import" | "create" | "save" | "restore" | "move" | "operation"
+    action: Mapped[str] = mapped_column(String(16), default="save")
+    note: Mapped[str] = mapped_column(String(255), default="")
+    # Who saved it; empty until the application has user accounts (stage 28a).
+    author: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    line_count: Mapped[int] = mapped_column(Integer)
+    point_count: Mapped[int] = mapped_column(Integer)
+    prev_line_count: Mapped[int] = mapped_column(Integer, default=0)
+    prev_point_count: Mapped[int] = mapped_column(Integer, default=0)
+    # vertices, offsets, closed of this version (the exact arrays).
+    blobs: Mapped[dict] = mapped_column(JSONB, default=dict)
+    line_attributes: Mapped[list] = mapped_column(JSONB, default=list)
+    stats: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Raster(Base):

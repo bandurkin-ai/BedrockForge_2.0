@@ -172,3 +172,20 @@ def derive_wireframes(ctx: JobContext, params: dict) -> dict:
             ctx.log(f"{w.name}: рёбер с несогласованными нормалями {conflicts}", "warning")
         done.append(wid)
     return {"wireframe_ids": done}
+
+
+@handler("geometry.operation")
+def geometry_operation(ctx: JobContext, params: dict) -> dict:
+    """params: project_id, op, params, name, folder — an operation on lines and wireframes
+    (app/ops/operations.py). The result is a new object of the tree; sources are left as they are."""
+    from app.ops.operations import OpError, run_operation
+
+    try:
+        result = run_operation(ctx.session, int(params["project_id"]), params["op"], params.get("params") or {},
+                               name=params.get("name"), folder=params.get("folder"),
+                               progress=lambda f, m="": ctx.progress(f, m or None))
+    except OpError as exc:
+        raise JobError(str(exc)) from exc
+    for warning in result.get("warnings", []):
+        ctx.log(warning, "warning")
+    return result

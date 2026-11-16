@@ -102,7 +102,8 @@ def read_micromine_str(path: Path) -> list[LineLayer]:
             continue
         points = xyz[start:i]
         points = points[np.isfinite(points[:, :2]).all(axis=1)]
-        if len(points) >= 2:
+        # A string of one vertex is a point (a survey mark, a sample location).
+        if len(points) >= 1:
             name = str(keys[start][1]).strip() or _NO_CODE
             row = frame.iloc[start]
             attributes = {str(c): (None if pd.isna(row[c]) else row[c].item() if hasattr(row[c], "item") else row[c]) for c in extra}
@@ -192,6 +193,13 @@ def read_dxf_lines(path: Path, flatten: float = 0.1) -> list[LineLayer]:
     kinds = {"LINE", "LWPOLYLINE", "POLYLINE", "SPLINE", "ARC", "CIRCLE", "ELLIPSE"}
     for entity in doc.modelspace():
         kind = entity.dxftype()
+        if kind == "POINT":
+            # A point is a line of one vertex.
+            p = entity.dxf.location
+            layer = entity.dxf.get("layer", "0")
+            groups.setdefault(layer, []).append(Polyline(np.array([[p.x, p.y, p.z]], dtype=float), False, {"entity": kind}))
+            colors.setdefault(layer, _dxf_color(entity, doc))
+            continue
         if kind not in kinds or (kind == "POLYLINE" and (entity.is_poly_face_mesh or entity.is_polygon_mesh)):
             continue
         try:
@@ -207,7 +215,7 @@ def read_dxf_lines(path: Path, flatten: float = 0.1) -> list[LineLayer]:
         groups.setdefault(layer, []).append(Polyline(points, closed, {"entity": kind}))
         colors.setdefault(layer, _dxf_color(entity, doc))
     if not groups:
-        raise LineFormatError("В DXF нет линий: ожидаются LINE, LWPOLYLINE, POLYLINE, SPLINE, ARC, CIRCLE")
+        raise LineFormatError("В DXF нет линий: ожидаются LINE, LWPOLYLINE, POLYLINE, SPLINE, ARC, CIRCLE, POINT")
     return _layers(groups, colors)
 
 

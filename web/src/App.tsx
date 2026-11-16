@@ -1,8 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+
+const noSubscribe = () => () => undefined;
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, editBlock, renameDataset, runAudit, setBlockUnit,
-  getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord,
+  getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord, type PickResult,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
@@ -43,6 +45,10 @@ import { ContextMenu } from "./shell/ContextMenu";
 import type { ChartKind } from "./shell/registry";
 import { JobsPanel } from "./shell/JobsPanel";
 import { useJobs } from "./shell/useJobs";
+import { createModeling, type TriangleEdit } from "./shell/modeling";
+import { FormHost } from "./shell/FormDialog";
+import type { EditSession } from "./edit/session";
+import type { MenuEntry } from "./shell/ContextMenu";
 import { PropertiesPanel } from "./shell/PropertiesPanel";
 import { buildCommands, type Live } from "./shell/registry";
 import { Ribbon } from "./shell/Ribbon";
@@ -365,8 +371,17 @@ function Workspace({
   };
   const sceneApi = useRef<SceneApi | null>(null);
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
+  // The string editor's session and the manual triangle edit, while they are on.
+  const [edit, setEdit, editRef] = useLiveState<EditSession | null>(null);
+  const [triangles, setTriangles, trianglesRef] = useLiveState<TriangleEdit | null>(null);
+  const [objectMenu, setObjectMenu] = useState<{ x: number; y: number; title: string; items: MenuEntry[] } | null>(null);
+  const [triangleInfo, setTriangleInfo] = useState<PickResult | null>(null);
+  const modelingRef = useRef<ReturnType<typeof createModeling>>(null!);
   const jobs = useJobs(projectId, (job: JobInfo) => {
-    if (job.status === "done") reload();
+    if (job.status === "done") {
+      reload();
+      modelingRef.current?.jobDone(job);
+    }
     setNotice({
       text: job.status === "done" ? `${job.title}: готово` : job.status === "failed" ? `${job.title}: ${job.error ?? "ошибка"}` : `${job.title}: отменено`,
       error: job.status === "failed",
@@ -552,7 +567,36 @@ function Workspace({
     openSection: (line) => sceneApi.current?.openSection(line),
     ask: (prompt) => void assistant.send(prompt),
     resetChat: assistant.reset,
+    get modeling() { return modelingRef.current; },
+    edit: () => editRef.current,
   };
+  modelingRef.current = useMemo(() => createModeling({
+    projectId,
+    datasets: () => live.current.datasets,
+    reload,
+    notify: (text, error = false) => setNotice({ text, error }),
+    edit: () => editRef.current,
+    setEdit,
+    section: () => sectionRef.current,
+    selected: () => selectedRef.current,
+    select: (object) => live.current.selectObject(object),
+    show: (kind, id) => setWs((prev) => setShown(prev, kind === "wireframe" ? layerKey.wireframe(id) : layerKey.lines(id), true)),
+    onJobStarted: (job) => onJobsStarted([job]),
+    triangles: () => trianglesRef.current,
+    setTriangles,
+    mark: (key, corners, color) => sceneApi.current?.mark(key, corners, color),
+  }), [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const modeling = modelingRef.current;
+  // Leaving the page with unsaved lines asks first.
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (editRef.current?.dirty) e.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [editRef]);
+  // The tree and the status bar show whether the edited layer has unsaved changes.
+  const editDirty = useSyncExternalStore(edit?.subscribe ?? noSubscribe, () => edit?.dirty ?? false);
   const commands = useMemo(() => buildCommands(live), []);
 
   const runCommand = useCallback(
@@ -599,8 +643,8 @@ function Workspace({
   const remote = useRemoteCommands(projectId, commands, (id, args) => executeExternal(id, null, args, "remote"));
 
   const builtTabs = useMemo(
-    () => buildRibbon(ws, { hasHole: selectedHole !== null, hasSet: activeSet !== null, hasSection: section !== null }),
-    [ws, selectedHole, activeSet, section],
+    () => buildRibbon(ws, { hasHole: selectedHole !== null, hasSet: activeSet !== null, hasSection: section !== null, editing: edit !== null }),
+    [ws, selectedHole, activeSet, section, edit],
   );
   // The user's hotkeys (Главная › Настройка) replace the built-in ones everywhere: ribbon hints, palette, keys.
   const tabs = useMemo(() => applyShortcuts(builtTabs, shortcuts), [builtTabs, shortcuts]);
@@ -821,6 +865,32 @@ function Workspace({
                   onDelete={onDelete}
                   onColor={onColor}
                   onDeleteItem={onDeleteItem}
+                  editing={edit ? { layerId: edit.layerId, dirty: editDirty } : null}
+                  onLinesMenu={(x, y) => setObjectMenu({ x, y, title: "Линии", items: [
+                    { label: "Новый слой…", icon: "plus", run: () => void runCommand("lines.new_layer", {}, "user") },
+                    { label: "Загрузить файл: STR, DXF", icon: "import", run: () => openFiles("lines") },
+                  ] })}
+                  onItemMenu={(kind, id, x, y) => {
+                    live.current.selectObject({ kind, id });
+                    const cmd = (label: string, command: string, args: Record<string, unknown> = {}): MenuEntry => ({ label, run: () => void runCommand(command, args, "user") });
+                    const name = (kind === "lines" ? (datasets ?? []).flatMap((d) => d.lines ?? []) : (datasets ?? []).flatMap((d) => d.wireframes ?? [])).find((o) => o.id === id)?.name ?? "";
+                    setObjectMenu({ x, y, title: name, items: kind === "lines" ? [
+                      edit?.layerId === id ? cmd("Завершить правку", "lines.finish") : cmd("Редактировать", "lines.edit", { layer_id: id }),
+                      cmd("Версии…", "lines.versions", { layer_id: id }),
+                      "separator",
+                      cmd("Сшить контуры в тело…", "model.stitch"), cmd("Выдавить полигон…", "model.extrude"), cmd("ЦМР из точек и линий…", "model.dtm"),
+                      "separator",
+                      cmd("Экспорт в Micromine STR", "lines.export", { layer_id: id, format: "str" }), cmd("Экспорт в DXF", "lines.export", { layer_id: id, format: "dxf" }),
+                    ] : [
+                      cmd("Исправить…", "model.repair"), cmd("Показать самопересечения", "model.self_intersections"), cmd("Править треугольники", "model.triangles"),
+                      cmd("Упростить…", "model.simplify"), cmd("Сгладить…", "model.smooth"), cmd("Разделить на части", "model.split"), cmd("Объединить в один объект…", "model.merge"),
+                      "separator",
+                      cmd("Булева операция…", "model.boolean"), cmd("Обрезать…", "model.clip"), cmd("Линии пересечения…", "model.intersection"),
+                      cmd("Изолинии…", "model.contours"), cmd("Объём между поверхностями…", "model.volume"), cmd("Перестроить", "model.rebuild", { wireframe_id: id }),
+                      "separator",
+                      cmd("Экспорт в DXF", "wireframe.export", { wireframe_id: id, format: "dxf" }), cmd("Экспорт в OBJ", "wireframe.export", { wireframe_id: id, format: "obj" }),
+                    ] });
+                  }}
                   onDemo={() => void runCommand("project.demo", {}, "user")}
                   onSetMenu={(setId, x, y) => setMenu({ setId, x, y })}
                   onTableMenu={(setId, table, x, y) => (table.id === null ? setMenu({ setId, x, y }) : setTableMenu({ setId, id: table.id, name: table.name, x, y }))}
@@ -872,6 +942,27 @@ function Workspace({
                   live.current.selectObject({ kind: "blocks", id: modelId });
                 }}
                 onPickWireframe={(id) => live.current.selectObject({ kind: "wireframe", id })}
+                edit={edit}
+                onEditSave={() => void modeling.save()}
+                onEditExit={() => void modeling.leave()}
+                onTriangle={(r) => {
+                  if (!modeling.triangleClick(r)) setTriangleInfo(r);
+                }}
+                banner={triangles && (
+                  <div className="edit-toolbar" aria-label="Правка треугольников">
+                    <div className="edit-row">
+                      <strong className="edit-layer">Правка треугольников: {triangles.name}</strong>
+                      <div className="segmented">
+                        <button className={triangles.mode === "remove" ? "active" : ""} onClick={() => modeling.setTriangleMode("remove")} title="Щелчок по треугольнику отмечает его к удалению (повторный — снимает)">Удалить</button>
+                        <button className={triangles.mode === "add" ? "active" : ""} onClick={() => modeling.setTriangleMode("add")} title="Три щелчка у вершин каркаса — новый треугольник">Добавить</button>
+                      </div>
+                      <span className="muted small">к удалению {triangles.remove.size} · новых {triangles.add.length}{triangles.pending.length ? ` · вершин указано ${triangles.pending.length} из 3` : ""}</span>
+                      <span className="toolbar-sep" />
+                      <button className="primary" disabled={!triangles.remove.size && !triangles.add.length} onClick={() => void guarded(() => modeling.applyTriangles(true))}>Применить</button>
+                      <button onClick={() => void modeling.applyTriangles(false)}>Отмена</button>
+                    </div>
+                  </div>
+                )}
                 selectedWireframe={selected?.kind === "wireframe" ? selected.id : null}
               />
               </Suspense>
@@ -956,6 +1047,8 @@ function Workspace({
                       await patchWireframe(id, patch);
                       reload();
                     }}
+                    edit={edit} triangle={triangleInfo}
+                    onCommand={(id, args) => void runCommand(id, args ?? {}, "user")}
                     onBlockValues={async (id, index, values) => {
                       const stored = await editBlock(id, index, values);
                       reload();
@@ -989,9 +1082,11 @@ function Workspace({
       </div>
 
       <DialogHost />
+      <FormHost />
+      {objectMenu && <ContextMenu x={objectMenu.x} y={objectMenu.y} title={objectMenu.title} items={objectMenu.items} onClose={() => setObjectMenu(null)} />}
       <StatusBar
         projectName={project.name} setName={activeSetName} holeCount={holes.length} selectedHole={selectedHole} audit={audit}
-        mode={section && ws.clip ? `разрез, азимут ${Math.round(section.az)}°, окно от ${section.towards} до ${section.away}` : "3D"} assistant={assistant.status} remote={remote}
+        mode={(edit ? `правка «${edit.layerName}»${editDirty ? " — не сохранено" : ""} · ` : "") + (section && ws.clip ? `разрез, азимут ${Math.round(section.az)}°, окно от ${section.towards} до ${section.away}` : "3D")} assistant={assistant.status} remote={remote}
         onAssistant={() => setAccountOpen(true)}
       />
 

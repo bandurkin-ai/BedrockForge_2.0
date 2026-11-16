@@ -51,9 +51,9 @@ export interface DecodedLines {
   bounds: Bounds | null;
 }
 
-/** Line geometry never changes after import, so it is cached by id only. */
-export const loadLines = (id: number): Promise<DecodedLines> =>
-  cached(`ln:${id}`, async () => {
+/** Line geometry changes only with the layer's version (a save of the string editor). */
+export const loadLines = (id: number, version = 1): Promise<DecodedLines> =>
+  cached(`ln:${id}:${version}`, async () => {
     const g = await getLineGeometry(id);
     const { buffers, bounds } = await loadBuffers([g.vertices, g.offsets], 0);
     return { origin: g.origin, vertices: new Float32Array(buffers[0]), offsets: new Uint32Array(buffers[1]), bounds };

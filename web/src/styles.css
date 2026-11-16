@@ -246,3 +246,41 @@ tr.clickable:hover td { background: var(--head-bg); }
 }
 .read-options select { min-width: 180px; }
 .notes { margin: 4px 0 8px; padding-left: 18px; color: var(--muted); font-size: 0.85rem; }
+
+/* ---- the string editor and operation dialogs */
+.edit-toolbar { display: flex; flex-direction: column; gap: 3px; padding: 4px 8px; border-bottom: 1px solid var(--border); background: var(--chrome); font-size: 0.8rem; }
+.edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.edit-row button { padding: 2px 7px; font-size: 0.78rem; }
+.edit-layer { display: inline-flex; align-items: center; gap: 5px; margin-right: 6px; }
+.edit-layer i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.edit-dirty { color: var(--brand); font-weight: 600; }
+.edit-snap { position: relative; display: inline-flex; gap: 1px; }
+.edit-popover {
+  position: absolute; top: 100%; left: 0; z-index: 30; display: flex; flex-direction: column; gap: 3px; min-width: 240px; padding: 8px 10px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow);
+}
+.edit-popover .num { width: 64px; }
+.edit-toolbar .num.wide { width: 84px; }
+.edit-coord { flex: 1 1 220px; min-width: 180px; }
+.edit-coord input { width: 100%; font-size: 0.78rem; padding: 2px 6px; }
+.edit-coord input.invalid { border-color: var(--sev-error); }
+.edit-status { display: flex; gap: 12px; min-height: 1.2em; }
+.edit-status .grow { flex: 1; }
+.edit-xyz { font-variant-numeric: tabular-nums; color: var(--muted); }
+.error-text { color: var(--sev-error); }
+.snap-label {
+  position: absolute; z-index: 6; pointer-events: none; padding: 1px 6px; font-size: 0.72rem; white-space: nowrap;
+  background: #ffcc00; color: #1d2330; border-radius: 4px;
+}
+.select-box { position: absolute; z-index: 6; pointer-events: none; border: 1px dashed var(--accent); background: var(--accent-soft); }
+.form-dialog { min-width: 420px; max-width: 560px; }
+.form-grid { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; }
+.form-row { display: grid; grid-template-columns: 46% 1fr; align-items: center; gap: 4px 10px; font-size: 0.85rem; }
+.form-row small { grid-column: 2; }
+.form-row select, .form-row input { width: 100%; min-width: 0; }
+.form-check { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.form-note { margin: 0; }
+.form-error { color: var(--sev-error); font-size: 0.82rem; margin: 4px 0 0; }
+.app-dialog-message { white-space: pre-line; }
+.props-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.props-actions button { padding: 2px 8px; font-size: 0.78rem; }

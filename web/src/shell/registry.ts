@@ -10,6 +10,10 @@ import { defaultQQ, type QQSettings } from "../charts/QQWindow";
 import type { DendrogramSettings } from "../charts/DendrogramWindow";
 import { defaultTracks, newTrack } from "../charts/stripLog";
 import type { Command } from "./commands";
+import type { Modeling } from "./modeling";
+import type { EditSession, Tool } from "../edit/session";
+import type { Vec3 } from "../edit/model";
+import { layerMeasures } from "../edit/measure";
 
 export type ChartKind = "histogram" | "qq" | "dendrogram" | "striplog";
 import {
@@ -86,6 +90,10 @@ export interface Live {
   openSection: (line: SectionLine) => void;
   ask: (prompt: string) => void;
   resetChat: () => void;
+  /** The string editor and the operations on lines and wireframes. */
+  modeling: Modeling;
+  /** The editing session, while a line layer is being edited. */
+  edit: () => EditSession | null;
 }
 
 const TABLE_TITLES: Record<TableKind, string> = { collar: "Устья", survey: "Инклинометрия", assay: "Пробы" };
@@ -659,6 +667,225 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
         if (!d) throw new Error(`Объекта с id ${dataset_id} нет в проекте`);
         await s().moveDataset(d.id, String(folder));
         return String(folder).trim() ? `«${d.name}» → папка «${String(folder).trim()}»` : `«${d.name}» → корень группы`;
+      },
+    },
+
+    // ---- modelling: the string editor
+    {
+      id: "lines.new_layer",
+      title: "Новый слой линий",
+      description: "Создаёт пустой слой линий (название — код стринга при экспорте STR) и включает на нём режим правки. Дальше линии рисуются в окне или добавляются командой lines.add_line.",
+      params: { name: { type: "string", description: "Название слоя" } },
+      confirm: true,
+      run: async ({ name }) => (await s().modeling.newLayer(typeof name === "string" && name.trim() ? name.trim() : undefined)) ?? "Отменено",
+    },
+    {
+      id: "lines.edit",
+      title: "Редактировать слой линий",
+      description: "Включает режим правки слоя линий (редактор стрингов): рисование линий и полигонов в плане и на разрезе с привязкой, правка вершин, операции над линиями. " +
+        "Изменения остаются в рабочей копии до lines.save. layer_id — id слоя из layer.list; без него — выбранный в дереве слой.",
+      params: { layer_id: { type: "integer" } },
+      run: async ({ layer_id }) => {
+        const id = typeof layer_id === "number" ? layer_id : s().selected?.kind === "lines" ? s().selected!.id : null;
+        if (id === null) throw new Error("Не выбран слой линий: укажите layer_id");
+        return s().modeling.startEdit(id);
+      },
+    },
+    {
+      id: "lines.save",
+      title: "Сохранить слой линий",
+      description: "Сохраняет рабочую копию редактируемого слоя как новую версию (журнал версий слоя). Если слой изменён в другой вкладке, сохранение отклоняется.",
+      confirm: true,
+      run: async () => {
+        if (!s().edit()) throw new Error("Режим правки не включён");
+        return (await s().modeling.save()) ? "Слой сохранён" : "Слой не сохранён";
+      },
+    },
+    {
+      id: "lines.finish",
+      title: "Завершить правку линий",
+      description: "Выходит из режима правки; при несохранённых изменениях спрашивает, сохранить ли их.",
+      uiOnly: true,
+      run: async () => ((await s().modeling.leave()) ? "Правка завершена" : "Правка продолжается"),
+    },
+    {
+      id: "lines.tool",
+      title: "Инструмент редактора линий",
+      description: "Выбирает инструмент редактора: select — выбор и перемещение, line — линия, polygon — замкнутый полигон, point — точка, tie — тай-линия для сшивки, insert — вставить вершину на сегменте.",
+      params: { tool: { type: "string", enum: ["select", "line", "polygon", "point", "tie", "insert"] } },
+      required: ["tool"],
+      run: ({ tool }) => {
+        const e = s().edit();
+        if (!e) throw new Error("Режим правки не включён: сначала lines.edit");
+        e.setTool(tool as Tool);
+        return `Инструмент: ${tool}`;
+      },
+    },
+    {
+      id: "lines.add_line",
+      title: "Добавить линию по координатам",
+      description: "Добавляет в редактируемый слой линию по точным координатам проекта. points — JSON-массив вершин [[x, y, z], …]; closed — замкнутый полигон. Требует режима правки (lines.edit); сохраняется командой lines.save.",
+      params: { points: { type: "string", description: "JSON: [[x, y, z], …]" }, closed: { type: "boolean" } },
+      required: ["points"],
+      run: ({ points, closed }) => {
+        let list: unknown;
+        try {
+          list = typeof points === "string" ? JSON.parse(points) : points;
+        } catch {
+          throw new Error("points: ожидается JSON-массив [[x, y, z], …]");
+        }
+        if (!Array.isArray(list) || !list.length || !list.every((p) => Array.isArray(p) && p.length === 3 && p.every((v) => typeof v === "number" && Number.isFinite(v)))) {
+          throw new Error("points: ожидается непустой массив вершин [x, y, z]");
+        }
+        return s().modeling.addLine(list as Vec3[], Boolean(closed));
+      },
+    },
+    {
+      id: "lines.undo",
+      title: "Отменить правку линий",
+      description: "Отменяет последнее действие в редакторе линий (Ctrl+Z).",
+      run: () => {
+        const e = s().edit();
+        if (!e) throw new Error("Режим правки не включён");
+        e.undo();
+        return e.message ?? "Отменено";
+      },
+    },
+    {
+      id: "lines.redo",
+      title: "Вернуть правку линий",
+      description: "Возвращает отменённое действие в редакторе линий (Ctrl+Y).",
+      run: () => {
+        const e = s().edit();
+        if (!e) throw new Error("Режим правки не включён");
+        e.redo();
+        return e.message ?? "Возвращено";
+      },
+    },
+    {
+      id: "lines.measure",
+      title: "Измерения слоя линий",
+      description: "Длина (3D и в плане), число линий и вершин, площади полигонов слоя: сохранённые значения, а для редактируемого слоя — текущие, с учётом несохранённой правки.",
+      params: { layer_id: { type: "integer" } },
+      run: ({ layer_id }) => {
+        const e = s().edit();
+        if (e && (layer_id === undefined || layer_id === e.layerId)) {
+          const m = layerMeasures(e.layer);
+          return `Слой «${e.layerName}» (правка): линий ${m.lines}, вершин ${m.vertices}, длина ${m.length.toFixed(3)} м (в плане ${m.planLength.toFixed(3)}), замкнутых ${m.closedLines}, площадь ${m.area.toFixed(3)} м² (в плане ${m.planArea.toFixed(3)})`;
+        }
+        const l = lineLayers().find((x) => x.id === (layer_id ?? s().selected?.id));
+        if (!l) throw new Error("Слой линий не найден: укажите layer_id");
+        const st = l.stats;
+        return `Слой «${l.name}»: линий ${l.line_count}, вершин ${l.point_count}, длина ${st.length.toFixed(3)} м (в плане ${(st.plan_length ?? st.length).toFixed(3)}), замкнутых ${st.closed}, площадь ${(st.area ?? 0).toFixed(3)} м² (в плане ${(st.plan_area ?? 0).toFixed(3)}), версия ${l.version}`;
+      },
+    },
+    {
+      id: "lines.move_selected",
+      title: "Перенести линии в другой слой",
+      description: "Переносит выбранные в редакторе линии в другой слой линий (оба слоя получают новую версию).",
+      uiOnly: true,
+      run: async () => (await s().modeling.moveSelected()) ?? "Отменено",
+    },
+    {
+      id: "lines.versions",
+      title: "Версии слоя линий",
+      description: "Открывает журнал версий слоя линий: каждая запись — сохранение (когда, сколько линий и вершин было и стало); можно вернуть любую версию (возврат — новая запись, ничего не стирается).",
+      params: { layer_id: { type: "integer" } },
+      uiOnly: true,
+      run: async ({ layer_id }) => {
+        const id = typeof layer_id === "number" ? layer_id : s().selected?.kind === "lines" ? s().selected!.id : s().edit()?.layerId;
+        if (id == null) throw new Error("Не выбран слой линий");
+        return (await s().modeling.versions(id)) ?? "Журнал закрыт";
+      },
+    },
+    {
+      id: "lines.export",
+      title: "Экспорт линий",
+      description: "Выгружает слой линий в файл Micromine STR (координаты побитно точные) или DXF. layer_id — id слоя; без него — выбранный слой.",
+      params: { layer_id: { type: "integer" }, format: { type: "string", enum: ["str", "dxf"] } },
+      required: ["format"],
+      run: ({ layer_id, format }) => {
+        const id = typeof layer_id === "number" ? layer_id : s().selected?.kind === "lines" ? s().selected!.id : s().edit()?.layerId;
+        if (id == null) throw new Error("Не выбран слой линий: укажите layer_id");
+        findObject("lines", id);
+        return s().modeling.exportLines([id], format as "str" | "dxf");
+      },
+    },
+    {
+      id: "wireframe.export",
+      title: "Экспорт каркаса",
+      description: "Выгружает каркас в DXF или OBJ с точными координатами float64. wireframe_id — id каркаса; без него — выбранный.",
+      params: { wireframe_id: { type: "integer" }, format: { type: "string", enum: ["dxf", "obj"] } },
+      required: ["format"],
+      run: ({ wireframe_id, format }) => {
+        const id = typeof wireframe_id === "number" ? wireframe_id : s().selected?.kind === "wireframe" ? s().selected!.id : null;
+        if (id === null) throw new Error("Не выбран каркас: укажите wireframe_id");
+        findObject("wireframe", id);
+        return s().modeling.exportWireframes([id], format as "dxf" | "obj");
+      },
+    },
+    // ---- modelling: operations (background jobs; the result is a new object, sources are not changed)
+    {
+      id: "model.operation",
+      title: "Операция с линиями и каркасами",
+      description:
+        "Запускает операцию фоновым заданием; результат — новый объект в дереве, исходные не меняются. op и params (JSON): " +
+        "stitch {contours:[{layer_id, lines:[i]|null}], start_cap, end_cap: flat|point|line|extend|none, cap_distance} — сшивка замкнутых контуров слоя в тело (линии из двух вершин — тай-линии); " +
+        "extrude {contours, distance, vector:[x,y,z]|null, both_sides}; repair {wireframe_id, weld, weld_on, drop_degenerate, drop_duplicate, fix_nonmanifold, fill_holes, orient}; " +
+        "simplify {wireframe_id, target_triangles | tolerance}; smooth {wireframe_id, iterations, strength}; merge {wireframe_ids:[…]}; split {wireframe_id}; " +
+        "boolean {op: union|intersection|difference, a, b} — только замкнутые тела; clip_plane {wireframe_id, point:[x,y,z], normal:[x,y,z], keep: positive|negative|both}; " +
+        "clip_polygon {wireframe_id, polygon:{layer_id, line}, keep: inside|outside|both}; clip_surface {wireframe_id, surface_id, keep: above|below|both}; " +
+        "intersection_lines {a, b}; dtm {layers:[layer_id], set_ids:[…], breaklines, boundary:{layer_id}|null, max_edge}; contours {wireframe_id, interval, base, major_every}; " +
+        "volume_between {top, bottom | level, polygon:{layer_id}|null} — объёмы выемки и насыпи (результат в задании). Ход — jobs.list.",
+      params: {
+        op: { type: "string", enum: ["stitch", "extrude", "repair", "simplify", "smooth", "merge", "split", "boolean", "clip_plane", "clip_polygon", "clip_surface", "intersection_lines", "dtm", "contours", "volume_between"] },
+        params: { type: "string", description: "JSON с параметрами операции" },
+        name: { type: "string", description: "Название результата (по умолчанию из названий исходных объектов)" },
+      },
+      required: ["op", "params"],
+      confirm: true,
+      run: async ({ op, params, name }) => {
+        let parsed: unknown;
+        try {
+          parsed = typeof params === "string" ? JSON.parse(params) : params;
+        } catch {
+          throw new Error("params: ожидается JSON-объект");
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("params: ожидается JSON-объект");
+        return s().modeling.run(String(op), parsed as Record<string, unknown>, typeof name === "string" ? name : undefined);
+      },
+    },
+    ...([
+      ["model.stitch", "Сшить контуры в тело", "Диалог сшивки замкнутых контуров разрезов в тело: слой, замыкание торцов; тай-линии и разветвления учитываются.", () => s().modeling.stitch()],
+      ["model.extrude", "Выдавить полигон", "Диалог выдавливания полигона в тело на расстояние по нормали или по вектору.", () => s().modeling.extrude()],
+      ["model.repair", "Исправить каркас", "Диалог исправления каркаса: сшивка вершин, вырожденные и повторные треугольники, нормали, отверстия, неманифолдные рёбра; отчёт «было → стало».", () => s().modeling.repair()],
+      ["model.simplify", "Упростить каркас", "Диалог упрощения каркаса до числа треугольников или до допуска по отклонению.", () => s().modeling.simplify()],
+      ["model.smooth", "Сгладить каркас", "Диалог сглаживания каркаса без усадки объёма.", () => s().modeling.smooth()],
+      ["model.merge", "Объединить каркасы в объект", "Диалог: несколько каркасов в один объект (без изменения геометрии).", () => s().modeling.merge()],
+      ["model.split", "Разделить каркас на части", "Диалог: каркас на отдельные связные части.", () => s().modeling.split()],
+      ["model.boolean", "Булева операция", "Диалог булевой операции над двумя замкнутыми телами: объединение, пересечение, вычитание.", () => s().modeling.boolean()],
+      ["model.clip", "Обрезать каркас", "Диалог обрезки каркаса: уровнем, плоскостью разреза, полигоном в плане или поверхностью.", () => s().modeling.clip()],
+      ["model.intersection", "Линии пересечения каркасов", "Диалог: линия пересечения двух каркасов как слой линий.", () => s().modeling.intersectionLines()],
+      ["model.dtm", "ЦМР из точек и линий", "Диалог построения поверхности (триангуляция Делоне со структурными линиями) из слоёв линий, точек и устьев скважин.", () => s().modeling.dtm()],
+      ["model.contours", "Изолинии", "Диалог построения изолиний поверхности с шагом: основные и дополнительные горизонтали.", () => s().modeling.contours()],
+      ["model.volume", "Объём между поверхностями", "Диалог расчёта объёмов выемки и насыпи между двумя поверхностями или поверхностью и уровнем.", () => s().modeling.volume()],
+      ["model.triangles", "Править треугольники", "Ручная правка каркаса: отметить треугольники к удалению щелчками, добавить треугольник по трём вершинам; результат — новый каркас.", () => s().modeling.startTriangles()],
+      ["model.self_intersections", "Показать самопересечения", "Отмечает в окне красным треугольники выбранного каркаса, участвующие в самопересечениях.", () => s().modeling.showSelfIntersections()],
+    ] as [string, string, string, () => Promise<string | undefined> | string][]).map(([id, title, description, run]): Command => ({
+      id, title, description, uiOnly: id !== "model.self_intersections",
+      run: async () => (await run()) ?? "Отменено",
+    })),
+    {
+      id: "model.rebuild",
+      title: "Перестроить каркас",
+      description: "Повторяет операцию, которой построен каркас (сшивка, булева и т. д.), на текущем состоянии исходных объектов — например, после правки контуров; тай-линии и параметры берутся прежние. Результат — новый объект.",
+      params: { wireframe_id: { type: "integer" } },
+      confirm: true,
+      run: async ({ wireframe_id }) => {
+        const id = typeof wireframe_id === "number" ? wireframe_id : s().selected?.kind === "wireframe" ? s().selected!.id : null;
+        if (id === null) throw new Error("Не выбран каркас: укажите wireframe_id");
+        findObject("wireframe", id);
+        return s().modeling.rebuild(id);
       },
     },
     {

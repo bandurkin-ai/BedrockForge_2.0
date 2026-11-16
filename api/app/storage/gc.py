@@ -14,7 +14,7 @@ from app.storage import blobs
 
 # Tables whose `blobs` JSONB column ({role: sha256}) references stored files.
 # A new table that stores files must be added here, or its files will be collected.
-OWNERS = ("dataset", "wireframe", "line_layer", "raster")
+OWNERS = ("dataset", "wireframe", "line_layer", "line_layer_version", "raster")
 
 # A blob is kept this long after registration even when nothing references it yet.
 GRACE = timedelta(hours=1)

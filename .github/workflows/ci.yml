@@ -25,7 +25,7 @@ jobs:
       - run: pip install -e ".[dev]"
       - name: Tests (accuracy references included)
         run: python -m pytest -q
-      # Speed and memory: budgets of bench/budgets.json, and no scenario more than 20 % slower
+      # Speed and memory: budgets of bench/budgets.json, and no scenario more than 20 % (and at least 0.25 s) slower
       # than the base branch measured on the same runner.
       - name: Benchmarks of the base branch
         if: github.event_name == 'pull_request'

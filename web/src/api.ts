@@ -465,7 +465,9 @@ export interface LineLayerInfo {
   line_count: number;
   point_count: number;
   extent: { min: number[]; max: number[] };
-  stats: { length: number; closed: number; flat: boolean };
+  stats: { length: number; closed: number; flat: boolean; plan_length?: number; points?: number; area?: number; plan_area?: number };
+  /** number of the saved state (the string editor's version check) */
+  version: number;
 }
 
 export interface RasterCheck {
@@ -590,6 +592,7 @@ export async function deleteWireframe(id: number): Promise<void> {
 
 export interface LineGeometry {
   id: number;
+  version: number;
   origin: number[];
   vertex_count: number;
   line_count: number;
@@ -848,8 +851,8 @@ export interface JobInfo {
   status: JobStatus;
   progress: number;
   message: string;
-  /** import: created datasets; export: the file (download with jobDownloadUrl) */
-  result: { dataset_ids?: number[]; kind?: string; filename?: string; size?: number; elements?: number; warnings?: string[] } | null;
+  /** import: created datasets; export: the file (download with jobDownloadUrl); operation: the report and the objects made */
+  result: { dataset_ids?: number[]; kind?: string; filename?: string; size?: number; elements?: number; warnings?: string[]; op?: string; title?: string; report?: Record<string, unknown>; wireframe_ids?: number[]; layer_ids?: number[] } | null;
   error: string | null;
   attempts: number;
   cancel_requested: boolean;
@@ -1447,3 +1450,140 @@ export const insertDataRow = (setId: number, key: string, values: Record<string,
 export const deleteDataRow = (setId: number, key: string, rowId: number) => request<void>(`${dtBase(setId, key)}/rows/${rowId}`, { method: "DELETE" });
 export const listDataEdits = (setId: number) => request<DataEdit[]>(`/api/sets/${setId}/edits`);
 export const undoDataEdit = (id: number) => request<DataEdit>(`/api/edits/${id}/undo`, { method: "POST" });
+
+
+// ---- the string editor: exact geometry, saving with versions
+
+export interface LineExact {
+  id: number;
+  name: string;
+  color: string;
+  version: number;
+  vertex_count: number;
+  line_count: number;
+  /** URLs of raw little-endian arrays: float64 x, y, z; int64 line starts (lines + 1); uint8 closed */
+  vertices: string;
+  offsets: string;
+  closed: string;
+  attributes: Record<string, unknown>[];
+}
+
+export interface LineArrays {
+  version: number;
+  vertices: Float64Array;
+  offsets: Uint32Array;
+  closed: Uint8Array;
+  attributes: Record<string, unknown>[];
+}
+
+async function rawBuffer(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Геометрия не загрузилась: ошибка ${response.status}`);
+  return response.arrayBuffer();
+}
+
+/** The exact (float64) arrays of a line layer, as stored: a closed line repeats its first vertex. */
+export async function getLineArrays(id: number): Promise<LineArrays> {
+  const info = await request<LineExact>(`/api/lines/${id}/exact`);
+  const [v, o, c] = await Promise.all([rawBuffer(info.vertices), rawBuffer(info.offsets), rawBuffer(info.closed)]);
+  const starts = new BigInt64Array(o);
+  const offsets = new Uint32Array(starts.length);
+  for (let i = 0; i < starts.length; i++) offsets[i] = Number(starts[i]);
+  return { version: info.version, vertices: new Float64Array(v), offsets, closed: new Uint8Array(c), attributes: info.attributes };
+}
+
+export const createLineLayer = (projectId: number, body: { name: string; color?: string; folder?: string; dataset_id?: number }) =>
+  request<Dataset>(`/api/projects/${projectId}/line-layers`, { method: "POST", ...json(body) });
+
+/** Saves the layer as its next version; rejects with the server's message when it was saved elsewhere meanwhile. */
+export function saveLineGeometry(id: number, baseVersion: number,
+  data: { vertices: Float64Array; offsets: Uint32Array; closed: Uint8Array; attributes: Record<string, unknown>[] }, note = ""): Promise<LineLayerInfo> {
+  const form = new FormData();
+  form.append("base_version", String(baseVersion));
+  form.append("attributes", JSON.stringify(data.attributes));
+  form.append("note", note);
+  // Typed arrays go as they are: little-endian on every platform the application runs on.
+  form.append("vertices", new Blob([data.vertices]));
+  form.append("offsets", new Blob([data.offsets]));
+  form.append("closed", new Blob([data.closed]));
+  return request<LineLayerInfo>(`/api/lines/${id}/geometry`, { method: "PUT", body: form });
+}
+
+export interface LineVersion {
+  version: number;
+  action: "import" | "create" | "save" | "restore" | "move" | "operation";
+  note: string;
+  author: string | null;
+  line_count: number;
+  point_count: number;
+  prev_line_count: number;
+  prev_point_count: number;
+  created_at: string;
+  current: boolean;
+}
+
+export const getLineVersions = (id: number) => request<LineVersion[]>(`/api/lines/${id}/versions`);
+export const restoreLineVersion = (id: number, version: number) =>
+  request<LineLayerInfo>(`/api/lines/${id}/versions/${version}/restore`, { method: "POST" });
+export const moveLinesToLayer = (id: number, lines: number[], targetId: number, baseVersion: number) =>
+  request<LineLayerInfo[]>(`/api/lines/${id}/move-lines`, { method: "POST", ...json({ lines, target_id: targetId, base_version: baseVersion }) });
+
+// ---- operations on lines and wireframes (jobs), query by click, export
+
+export const startOperation = (projectId: number, op: string, params: Record<string, unknown>, name?: string) =>
+  request<JobInfo>(`/api/projects/${projectId}/operations`, { method: "POST", ...json({ op, params, name: name || null }) });
+export const rebuildWireframe = (id: number) => request<JobInfo>(`/api/wireframes/${id}/rebuild`, { method: "POST" });
+
+export interface TriangleHit {
+  triangle: number;
+  distance: number;
+  point: number[];
+  vertices: number[][];
+  indices: number[];
+  normal: number[];
+  area: number;
+  dip: number;
+  dip_direction: number;
+}
+export interface PickResult { id: number | null; name: string | null; hit: TriangleHit | null }
+
+/** The first triangle of the given wireframes on a ray (project coordinates), from the exact data. */
+export const pickTriangle = (wireframeIds: number[], origin: number[], direction: number[], maxDistance?: number) =>
+  request<PickResult>("/api/pick", { method: "POST", ...json({ wireframe_ids: wireframeIds, origin, direction, max_distance: maxDistance ?? null }) });
+
+export const getSelfIntersections = (id: number) =>
+  request<{ id: number; origin: number[]; triangles: number[]; corners: number[] }>(`/api/wireframes/${id}/self-intersections`);
+
+export const lineExportUrl = (layerIds: number[], format: "str" | "dxf") => `/api/export/lines?format=${format}&ids=${layerIds.join(",")}`;
+export const wireframeExportUrl = (ids: number[], format: "dxf" | "obj") => `/api/export/wireframes?format=${format}&ids=${ids.join(",")}`;
+
+export interface HoleSnapData {
+  holes: string[];
+  collars: Float64Array;
+  trace: Float64Array;
+  traceOffsets: Uint32Array;
+  bounds: Float64Array;
+  boundHole: Uint32Array;
+  boundDepth: Float32Array;
+}
+
+/** Exact snapping targets along the holes of a set: collars, trajectories, interval boundaries. */
+export async function getHoleSnap(setId: number): Promise<HoleSnapData> {
+  const buffer = await rawBuffer(`/api/sets/${setId}/snap`);
+  const length = new DataView(buffer).getUint32(0, true);
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 4, length))) as { holes: string[]; arrays: [string, string, number][] };
+  let at = 4 + length;
+  at += (8 - (at % 8)) % 8;
+  const out: Record<string, ArrayBufferView> = {};
+  for (const [name, dtype, count] of header.arrays) {
+    const size = dtype === "<f8" ? 8 : 4;
+    const part = buffer.slice(at, at + count * size);
+    out[name] = dtype === "<f8" ? new Float64Array(part) : dtype === "<f4" ? new Float32Array(part) : new Uint32Array(part);
+    at += count * size;
+    at += (8 - (at % 8)) % 8;
+  }
+  return {
+    holes: header.holes, collars: out.collars as Float64Array, trace: out.trace as Float64Array, traceOffsets: out.trace_offsets as Uint32Array,
+    bounds: out.bounds as Float64Array, boundHole: out.bound_hole as Uint32Array, boundDepth: out.bound_depth as Float32Array,
+  };
+}

@@ -1,5 +1,8 @@
-import { Fragment, useEffect, useState } from "react";
-import type { AuditRun, Dataset, LineLayerInfo, RasterInfo, RasterPatch, Summary, VerticalPlacement } from "../api";
+import { Fragment, useEffect, useState, useSyncExternalStore } from "react";
+import type { AuditRun, Dataset, LineLayerInfo, PickResult, RasterInfo, RasterPatch, Summary, VerticalPlacement } from "../api";
+import type { EditSession } from "../edit/session";
+import { lineById, type EditLine } from "../edit/model";
+import { layerMeasures, lineMeasures } from "../edit/measure";
 import { blockMeta, checkWireframes, type BlockAttribute, type BlockInfo } from "../api";
 import { AttributeEditor, type AttrValue } from "./AttributeEditor";
 import { defaultBlockStyle, type BlockStyle } from "../viz/blockStyle";
@@ -15,8 +18,14 @@ const fmt = (value: number | null | undefined, digits = 0) =>
 /** Right dock: the selected object (hole, wireframe) or the active drillhole set. */
 export function PropertiesPanel({
   datasets, activeSet, summary, audit, selectedHole, selected, refreshKey, onOpenTable, onClearHole, onRaster, sectionFrame,
-  blockStyles, onBlockStyle, pickedBlock, onBlockUnit, onBlockReport, onWireframe, onBlockValues,
+  blockStyles, onBlockStyle, pickedBlock, onBlockUnit, onBlockReport, onWireframe, onBlockValues, edit, triangle, onCommand,
 }: {
+  /** The string editor's session, while a layer is being edited. */
+  edit?: EditSession | null;
+  /** The triangle of a wireframe picked by a click (exact data). */
+  triangle?: PickResult | null;
+  /** Runs a registry command (buttons of the panel). */
+  onCommand?: (id: string, args?: Record<string, unknown>) => void;
   datasets: Dataset[];
   activeSet: number | null;
   summary: Summary | null;
@@ -49,7 +58,7 @@ export function PropertiesPanel({
   const wireframe = pick("wireframe", (d) => d.wireframes);
   const lines = pick("lines", (d) => d.lines);
   const raster = pick("raster", (d) => d.rasters);
-  if (lines) return <LinesProps layer={lines} file={lines.file} />;
+  if (lines) return <LinesProps layer={lines} file={lines.file} edit={edit?.layerId === lines.id ? edit : null} onCommand={onCommand} />;
   const model = selected?.kind === "blocks" ? datasets.find((d) => d.id === selected.id && d.kind === "blocks") : undefined;
   if (model) {
     return (
@@ -66,6 +75,7 @@ export function PropertiesPanel({
 
   if (wireframe) {
     const { stats, extent } = wireframe;
+    const operation = (stats as { operation?: { title: string; params: Record<string, unknown>; sources: { name: string }[] } }).operation;
     return (
       <div className="props">
         <h2 className="dock-title">Каркас</h2>
@@ -104,6 +114,38 @@ export function PropertiesPanel({
           <dt>Y</dt><dd>{fmt(extent.min[1])} – {fmt(extent.max[1])}</dd>
           <dt>Z</dt><dd>{fmt(extent.min[2])} – {fmt(extent.max[2])}</dd>
         </dl>
+        {operation && (
+          <>
+            <h2 className="dock-title">Построен операцией</h2>
+            <dl className="props-list">
+              <dt>Операция</dt><dd>{operation.title}</dd>
+              <dt>Исходные</dt><dd>{operation.sources.map((x) => x.name).join(", ") || "—"}</dd>
+              <dt>Параметры</dt><dd className="small" title={JSON.stringify(operation.params, null, 1)}>{JSON.stringify(operation.params).slice(0, 120)}</dd>
+            </dl>
+            {onCommand && <button onClick={() => onCommand("model.rebuild", { wireframe_id: wireframe.id })} title="Повторить построение на текущем состоянии исходных объектов (например, после правки контуров)">Перестроить</button>}
+          </>
+        )}
+        {onCommand && (
+          <div className="props-actions">
+            <button onClick={() => onCommand("model.repair")}>Исправить…</button>
+            <button onClick={() => onCommand("model.clip")}>Обрезать…</button>
+            <button onClick={() => onCommand("model.triangles")}>Треугольники</button>
+            <button onClick={() => onCommand("wireframe.export", { wireframe_id: wireframe.id, format: "dxf" })}>DXF</button>
+            <button onClick={() => onCommand("wireframe.export", { wireframe_id: wireframe.id, format: "obj" })}>OBJ</button>
+          </div>
+        )}
+        {triangle?.hit && triangle.id === wireframe.id && (
+          <>
+            <h2 className="dock-title">Треугольник № {fmt(triangle.hit.triangle)}</h2>
+            <dl className="props-list">
+              {triangle.hit.vertices.map((v, i) => <Fragment key={i}><dt>Вершина {i + 1}</dt><dd className="small">{v.map((x) => x.toFixed(3)).join("  ")}</dd></Fragment>)}
+              <dt>Точка щелчка</dt><dd className="small">{triangle.hit.point.map((x) => x.toFixed(3)).join("  ")}</dd>
+              <dt>Площадь</dt><dd>{fmt(triangle.hit.area, 3)} м²</dd>
+              <dt>Угол падения</dt><dd>{fmt(triangle.hit.dip, 1)}°</dd>
+              <dt>Азимут падения</dt><dd>{fmt(triangle.hit.dip_direction, 1)}°</dd>
+            </dl>
+          </>
+        )}
         {onWireframe ? (
           <AttributeEditor attributes={(stats.attributes ?? {}) as Record<string, AttrValue>} onSave={(attributes) => onWireframe(wireframe.id, { attributes })} />
         ) : stats.attributes && Object.keys(stats.attributes).length > 0 && (
@@ -213,24 +255,71 @@ function Extent({ extent }: { extent: { min: number[]; max: number[] } }) {
   );
 }
 
-function LinesProps({ layer, file }: { layer: LineLayerInfo; file: Dataset }) {
+function LinesProps({ layer, file, edit, onCommand }: { layer: LineLayerInfo; file: Dataset; edit: EditSession | null; onCommand?: (id: string, args?: Record<string, unknown>) => void }) {
+  // While the layer is edited the numbers follow the working copy.
+  useSyncExternalStore(edit?.subscribe ?? noSubscribe, edit?.getRevision ?? zero);
+  const live = edit ? layerMeasures(edit.layer) : null;
+  const st = layer.stats;
+  const picked = edit ? edit.targetLines().map((id) => lineById(edit.layer, id)).filter((l): l is EditLine => !!l) : [];
+  const one = picked.length === 1 ? lineMeasures(picked[0]) : null;
   return (
     <div className="props">
-      <h2 className="dock-title">Линии</h2>
-      <div className="props-head"><span className="swatch-static" style={{ background: layer.color }} /><strong>{layer.name}</strong></div>
+      <h2 className="dock-title">Линии{edit ? " · правка" : ""}</h2>
+      <div className="props-head"><span className="swatch-static" style={{ background: layer.color }} /><strong>{layer.name}</strong>{edit?.dirty && <span className="edit-dirty" title="Есть несохранённые изменения"> ●</span>}</div>
       <dl className="props-list">
         <dt>Файл</dt><dd>{file.name}</dd>
         <dt>Формат</dt><dd>{file.meta.format ?? "—"}</dd>
-        <dt>Линий</dt><dd>{fmt(layer.line_count)}</dd>
-        <dt>Замкнутых</dt><dd>{fmt(layer.stats.closed)}</dd>
-        <dt>Точек</dt><dd>{fmt(layer.point_count)}</dd>
-        <dt>Длина</dt><dd>{fmt(layer.stats.length)} м</dd>
-        <Extent extent={layer.extent} />
+        <dt>Версия</dt><dd>{layer.version}{edit?.dirty ? " + несохранённые изменения" : ""}</dd>
+        <dt>Линий</dt><dd>{fmt(live ? live.lines : layer.line_count)}</dd>
+        <dt>Замкнутых</dt><dd>{fmt(live ? live.closedLines : st.closed)}</dd>
+        <dt>Вершин</dt><dd>{fmt(live ? live.vertices : layer.point_count)}</dd>
+        <dt>Длина</dt><dd>{fmt(live ? live.length : st.length, 2)} м</dd>
+        <dt>Длина в плане</dt><dd>{fmt(live ? live.planLength : st.plan_length ?? st.length, 2)} м</dd>
+        <dt>Площадь полигонов</dt><dd>{fmt(live ? live.area : st.area ?? 0, 2)} м²</dd>
+        <dt>Площадь в плане</dt><dd>{fmt(live ? live.planArea : st.plan_area ?? 0, 2)} м²</dd>
+        {!edit && <Extent extent={layer.extent} />}
       </dl>
-      {layer.stats.flat && <p className="muted small">Линии плоские: все точки на высоте {fmt(layer.extent.min[2], 2)} м.</p>}
+      {!edit && st.flat && layer.point_count > 0 && <p className="muted small">Линии плоские: все точки на высоте {fmt(layer.extent.min[2], 2)} м.</p>}
+      {onCommand && (
+        <div className="props-actions">
+          {!edit && <button className="primary" onClick={() => onCommand("lines.edit", { layer_id: layer.id })}>Редактировать</button>}
+          <button onClick={() => onCommand("lines.versions", { layer_id: layer.id })}>Версии…</button>
+          <button onClick={() => onCommand("model.stitch")} title="Сшить замкнутые контуры слоя в тело">Сшить…</button>
+          <button onClick={() => onCommand("model.dtm")}>ЦМР…</button>
+          <button onClick={() => onCommand("lines.export", { layer_id: layer.id, format: "str" })}>STR</button>
+          <button onClick={() => onCommand("lines.export", { layer_id: layer.id, format: "dxf" })}>DXF</button>
+        </div>
+      )}
+      {edit && one && (
+        <>
+          <h2 className="dock-title">Выбранная линия</h2>
+          <dl className="props-list">
+            <dt>Вершин</dt><dd>{one.vertices}</dd>
+            <dt>Длина</dt><dd>{fmt(one.length, 3)} м</dd>
+            <dt>Длина в плане</dt><dd>{fmt(one.planLength, 3)} м</dd>
+            <dt>Замкнута</dt><dd>{one.closed ? "да" : "нет"}</dd>
+            {one.area !== null && <><dt>Площадь в своей плоскости</dt><dd>{fmt(one.area, 3)} м²</dd><dt>Площадь в плане</dt><dd>{fmt(one.planArea ?? 0, 3)} м²</dd><dt>Периметр</dt><dd>{fmt(one.perimeter ?? 0, 3)} м</dd></>}
+          </dl>
+        </>
+      )}
+      {edit && picked.length > 0 && (
+        <>
+          <AttributeEditor key={picked.map((l) => l.id).join(",")} attributes={picked[0].attrs as Record<string, AttrValue>}
+            onSave={async (attributes) => {
+              const patch: Record<string, string | number | null | undefined> = {};
+              for (const k of Object.keys(picked[0].attrs)) if (!(k in attributes)) patch[k] = undefined;
+              for (const [k, v] of Object.entries(attributes)) patch[k] = typeof v === "boolean" ? String(v) : v;
+              edit.setAttrs(patch);
+            }} />
+          {onCommand && <button onClick={() => onCommand("lines.move_selected")} title="Перенести выбранные линии в другой слой">В другой слой…</button>}
+        </>
+      )}
     </div>
   );
 }
+
+const noSubscribe = () => () => undefined;
+const zero = () => 0;
 
 const FRAME_FIELDS: { key: keyof VerticalPlacement; label: string }[] = [
   { key: "x1", label: "Левый край X" },
