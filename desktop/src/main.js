@@ -16,6 +16,7 @@ const ORIGIN = "app://bedrockforge";
 const DEFAULT_SERVER = "http://localhost:8000";
 const RETRY_MS = 3000;
 const MIN_SPLASH_MS = 1500;
+const UI_READY_TIMEOUT_MS = 30000;
 
 protocol.registerSchemesAsPrivileged([
   { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true, codeCache: true } },
@@ -273,7 +274,15 @@ function createMain(warning) {
   });
   main.webContents.on("render-process-gone", (_e, d) => log(`renderer gone: ${d.reason}`));
 
-  main.once("ready-to-show", () => {
+  // The window is shown when the interface reports it has drawn the workspace (preload.js, "bf:ui-ready"),
+  // so the only splash the user sees is this one; a fallback shows it anyway if that never comes.
+  let shown = false;
+  const reveal = (why) => {
+    if (shown || !main) return;
+    shown = true;
+    clearTimeout(fallback);
+    ipcMain.removeListener("bf:ui-ready", onReady);
+    if (why !== "ready") log(`window shown by ${why}`);
     const wait = Math.max(0, MIN_SPLASH_MS - (Date.now() - splashShownAt)) + (warning ? 2500 : 0);
     setTimeout(() => {
       if (!main) return;
@@ -282,7 +291,13 @@ function createMain(warning) {
       main.focus();
       if (splash && !splash.isDestroyed()) splash.destroy();
     }, wait);
-  });
+  };
+  const onReady = (e) => {
+    if (main && e.sender === main.webContents) reveal("ready");
+  };
+  ipcMain.on("bf:ui-ready", onReady);
+  const fallback = setTimeout(() => reveal("timeout"), UI_READY_TIMEOUT_MS);
+  main.webContents.once("did-fail-load", () => reveal("load failure"));
   void main.loadURL(`${ORIGIN}/index.html`);
 }
 

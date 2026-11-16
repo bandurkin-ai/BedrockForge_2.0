@@ -26,7 +26,7 @@ window.bfSplash.onState((s) => {
   $("bar").style.visibility = s.phase === "unavailable" ? "hidden" : "visible";
   if (s.phase === "connecting") setStatus(`Подключение к серверу ${s.server}…`);
   else if (s.phase === "starting") {
-    setStatus("Сервер на связи. Открываю проект…");
+    setStatus("Сервер на связи. Загрузка проектов…");
     if (s.warning) {
       const w = document.createElement("div");
       w.className = "warn";
