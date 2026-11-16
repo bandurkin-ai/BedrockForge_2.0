@@ -47,3 +47,23 @@ describe("projects and jobs (Э2)", () => {
     setCoreTarget(null);
   });
 });
+
+describe("serial project changes", () => {
+  it("run in call order even if the first is slower", async () => {
+    const { serial } = await import("../src/modules/projects/state");
+    const done: string[] = [];
+    const slow = serial(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      done.push("a");
+    });
+    const fast = serial(async () => {
+      done.push("b");
+    });
+    const failing = serial(async () => {
+      throw new Error("x");
+    });
+    await Promise.all([slow, fast, failing.catch(() => undefined)]);
+    await serial(async () => done.push("c"));
+    expect(done).toEqual(["a", "b", "c"]);
+  });
+});

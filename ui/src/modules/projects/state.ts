@@ -83,12 +83,16 @@ export async function refreshCurrent(app: App): Promise<ProjectInfo | null> {
 }
 
 /** At start: the last project opens (ТЗ 7.3); a deleted one is forgotten. */
-export async function restoreLast(app: App): Promise<void> {
+export function restoreLast(app: App): Promise<void> {
+  return serial(() => restore(app));
+}
+
+async function restore(app: App): Promise<void> {
   const cur = await refreshCurrent(app);
   const last = app.store.get().lastProject;
   if (cur || !last) return;
   try {
-    setCurrent(app, await api.post<ProjectInfo>(`/projects/${last}/open`));
+    setCurrent(app, await api.post<ProjectInfo>(`/projects/${last}/open`)); // not openProject: already serial
   } catch (e) {
     if (e instanceof CoreError && e.status === 404) app.store.set({ lastProject: null });
     else throw e;
@@ -99,38 +103,60 @@ export async function listProjects(q = ""): Promise<{ root: string; projects: Pr
   return api.get(`/projects${q ? `?q=${encodeURIComponent(q)}` : ""}`);
 }
 
-export async function openProject(app: App, uid: string): Promise<ProjectInfo> {
-  const info = await api.post<ProjectInfo>(`/projects/${uid}/open`);
-  setCurrent(app, info);
-  return info;
+let chain: Promise<unknown> = Promise.resolve();
+
+/**
+ * Changes of the open project run one after another: two overlapping requests could finish in the core in one
+ * order and reach the window in the other, and the window would show a project the core does not have open.
+ */
+export function serial<T>(fn: () => Promise<T>): Promise<T> {
+  const next = chain.then(fn, fn);
+  chain = next.catch(() => undefined);
+  return next;
 }
 
-export async function createProject(app: App, name: string): Promise<ProjectInfo> {
-  const info = await api.post<ProjectInfo>("/projects", { name });
-  setCurrent(app, info);
-  touch();
-  return info;
+export function openProject(app: App, uid: string): Promise<ProjectInfo> {
+  return serial(async () => {
+    const info = await api.post<ProjectInfo>(`/projects/${uid}/open`);
+    setCurrent(app, info);
+    return info;
+  });
 }
 
-export async function updateProject(app: App, uid: string, patch: { name?: string; description?: Description; expected_version?: number }): Promise<ProjectInfo> {
-  const info = await api.patch<ProjectInfo>(`/projects/${uid}`, patch);
-  setCurrent(app, info);
-  touch();
-  return info;
+export function createProject(app: App, name: string): Promise<ProjectInfo> {
+  return serial(async () => {
+    const info = await api.post<ProjectInfo>("/projects", { name });
+    setCurrent(app, info);
+    touch();
+    return info;
+  });
 }
 
-export async function deleteProject(app: App, uid: string): Promise<void> {
-  await api.del(`/projects/${uid}`);
-  if (projectStore.get().current?.uid === uid) setCurrent(app, null);
-  if (app.store.get().lastProject === uid) app.store.set({ lastProject: null });
-  touch();
+export function updateProject(app: App, uid: string, patch: { name?: string; description?: Description; expected_version?: number }): Promise<ProjectInfo> {
+  return serial(async () => {
+    const info = await api.patch<ProjectInfo>(`/projects/${uid}`, patch);
+    setCurrent(app, info);
+    touch();
+    return info;
+  });
 }
 
-export async function demoProject(app: App): Promise<ProjectInfo & { created: boolean }> {
-  const info = await api.post<ProjectInfo & { created: boolean }>("/projects/demo");
-  setCurrent(app, info);
-  touch();
-  return info;
+export function deleteProject(app: App, uid: string): Promise<void> {
+  return serial(async () => {
+    await api.del(`/projects/${uid}`);
+    if (projectStore.get().current?.uid === uid) setCurrent(app, null);
+    if (app.store.get().lastProject === uid) app.store.set({ lastProject: null });
+    touch();
+  });
+}
+
+export function demoProject(app: App): Promise<ProjectInfo & { created: boolean }> {
+  return serial(async () => {
+    const info = await api.post<ProjectInfo & { created: boolean }>("/projects/demo");
+    setCurrent(app, info);
+    touch();
+    return info;
+  });
 }
 
 /** Default file name of an export: «<Название>_ГГГГ-ММ-ДД.bfggis» (ТЗ 7.4). */
