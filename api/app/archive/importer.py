@@ -234,15 +234,16 @@ def _num(v) -> int | None:
 
 
 def remap_refs(value, maps: dict[str, dict]):
-    """Chart settings and style bodies: set ids (`setId`), sample tables (`table`, an interval table id
-    as text) and styles (`style` / `palette` / `template` = {"id", "linked"}), at any depth."""
+    """Chart settings, style bodies and swath plot settings: set and block model ids (`setId`, `modelId`),
+    sample tables (`table`, an interval table id as text) and styles (`style` / `palette` / `template` =
+    {"id", "linked"}), at any depth."""
     if isinstance(value, list):
         return [remap_refs(v, maps) for v in value]
     if not isinstance(value, dict):
         return value
     out = {}
     for k, v in value.items():
-        if k in ("setId", "set_id") and _num(v) is not None:
+        if k in ("setId", "set_id", "modelId", "model_id") and _num(v) is not None:
             out[k] = maps["dataset"].get(_num(v), v)
         elif k == "table" and isinstance(v, str) and v.isdigit():
             new = maps["interval_table"].get(int(v))
@@ -289,6 +290,10 @@ def _fix_json(session: Session, project_id: int, maps: dict[str, dict]) -> None:
     update("wireframe", "dtm", session.execute(text(
         f"SELECT id, dtm FROM wireframe WHERE dataset_id IN ({ds}) AND dtm ? 'raster_id'"), p),
         lambda d: {**d, "raster_id": maps["raster"].get(_num(d["raster_id"])) if _num(d["raster_id"]) is not None else d["raster_id"]})
+    # Swath plots (objects of the tree section «Аудит»): their series name drillhole sets and block models.
+    update("dataset", "meta", session.execute(text(
+        "SELECT id, meta FROM dataset WHERE project_id = :p AND kind = 'swath' AND meta ? 'settings'"), p),
+        lambda m: {**m, "settings": remap_refs(m["settings"], maps)})
     update("chart", "settings", session.execute(text(
         f"SELECT id, settings FROM chart WHERE dataset_id IN ({ds})"), p), lambda s: remap_refs(s, maps))
     update("style", "body", session.execute(text("SELECT id, body FROM style WHERE project_id = :p"), p),

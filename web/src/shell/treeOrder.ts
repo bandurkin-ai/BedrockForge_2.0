@@ -1,5 +1,5 @@
 /** Groups of the data tree in the order the user wants them (dragged by their title rows). */
-export const TREE_GROUPS = ["cat:drillholes", "cat:wireframe", "cat:dtm", "cat:lines", "cat:rasters", "cat:blocks"] as const;
+export const TREE_GROUPS = ["cat:drillholes", "cat:wireframe", "cat:dtm", "cat:lines", "cat:rasters", "cat:blocks", "cat:audit"] as const;
 
 const STORAGE_KEY = "bedrockforge.treeOrder";
 

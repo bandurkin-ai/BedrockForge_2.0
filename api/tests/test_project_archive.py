@@ -43,6 +43,10 @@ def test_remap_refs():
     assert out["x"] == {"setId": 50, "table": "70"}
     assert out["tracks"][0] == {"table": "assay", "style": {"id": 30, "linked": True}}
     assert out["tracks"][1]["palette"] == {"id": None, "linked": False}
+    # Swath plot series: a block model and the samples of a set, with their table.
+    swath = {"series": [{"kind": "blocks", "modelId": 5, "field": "a1"}, {"kind": "samples", "setId": 5, "table": "7", "withinSeries": "s1"}]}
+    assert remap_refs(swath, maps)["series"] == [{"kind": "blocks", "modelId": 50, "field": "a1"},
+                                                 {"kind": "samples", "setId": 50, "table": "70", "withinSeries": "s1"}]
 
 
 # ---- container
@@ -119,6 +123,9 @@ def rich_project(db_client, db_engine):
         raster = s.scalars(select(Raster).join(Dataset).where(Dataset.project_id == pid)).first()
         wf = s.scalars(select(Wireframe).join(Dataset).where(Dataset.project_id == pid)).first()
         wf.dtm = {"raster_id": raster.id, "opacity": 1}
+        # A swath plot naming the set and another object of the project (as if it were a block model).
+        s.add(Dataset(project_id=pid, kind="swath", name="Swath plot 1", meta={"settings": {"direction": "x", "series": [
+            {"kind": "blocks", "modelId": raster.dataset_id, "field": "a1"}, {"kind": "samples", "setId": sid, "table": str(table.id)}]}}))
         s.commit()
         row = s.scalars(select(IntervalRow.id).where(IntervalRow.table_id == table.id).order_by(IntervalRow.id)).first()
         tid = table.id
@@ -170,6 +177,11 @@ def test_round_trip(rich_project, db_engine, db_client, tmp_path):
         assert chart.settings["tracks"][0]["table"] == str(table.id)
         assert chart.settings["tracks"][0]["style"] == {"id": style.id, "linked": True}
         assert chart.settings["x"]["setId"] == sid_new
+        swath = s.scalars(select(Dataset).where(Dataset.project_id == new, Dataset.kind == "swath")).one()
+        model_old = s.scalars(select(Raster.dataset_id).join(Dataset).where(Dataset.project_id == pid)).first()
+        assert swath.meta["settings"]["series"] == [
+            {"kind": "blocks", "modelId": maps["dataset"][str(model_old)], "field": "a1"},
+            {"kind": "samples", "setId": sid_new, "table": str(table.id)}]
         wf = s.scalars(select(Wireframe).join(Dataset).where(Dataset.project_id == new, Wireframe.dtm.is_not(None))).one()
         raster_ids = set(s.scalars(select(Raster.id).join(Dataset).where(Dataset.project_id == new)))
         assert wf.dtm["raster_id"] in raster_ids

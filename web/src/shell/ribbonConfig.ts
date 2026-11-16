@@ -241,6 +241,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
             { command: "stats.open", args: { analysis: "map" }, label: "Карта вариограммы", icon: "chart", hint: "Вариограмма по всем направлениям сразу", small: true, disabled: !ctx.hasSet },
             { command: "stats.open", args: { analysis: "bootstrap" }, label: "Бутстрап", icon: "chart", hint: "Доверительный интервал среднего и других статистик", small: true, disabled: !ctx.hasSet },
             { command: "stats.open", args: { analysis: "local" }, label: "Карта неопределённости", icon: "chart", hint: "Разброс оценки по плану: бутстрап скважин и обратные расстояния", small: true, disabled: !ctx.hasSet },
+            { command: "stats.swath", label: "SWATH PLOT", icon: "swath", hint: "Средние (и средневзвешенные) содержания блочных моделей и проб по полосам вдоль X, Y, Z или азимута; полосы и график — в 3D. Сохраняется в дереве: «Аудит»", small: true },
           ],
         },
         {

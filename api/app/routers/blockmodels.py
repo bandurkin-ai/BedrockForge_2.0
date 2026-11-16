@@ -133,6 +133,23 @@ class Filter(BaseModel):
     max: float | None = None
 
 
+def block_mask(d: Dataset, filters: list[Filter], n: int) -> np.ndarray:
+    """Blocks that pass every filter: a category field by its labels, a number by its range."""
+    mask = np.ones(n, dtype=bool)
+    for f in filters:
+        a = attribute(d, f.key)
+        v = column(d, a)
+        if a["kind"] == "category":
+            wanted = [i for i, label in enumerate(a["labels"]) if label in set(f.labels or [])]
+            mask &= np.isin(v, wanted)
+        else:
+            if f.min is not None:
+                mask &= v >= f.min
+            if f.max is not None:
+                mask &= v <= f.max
+    return mask
+
+
 class ReportIn(BaseModel):
     # A density field, or a constant (t/m³) for every block.
     density: str | None = None
@@ -178,18 +195,7 @@ def report(dataset_id: int, body: ReportIn, session: Session = Depends(get_sessi
             raise HTTPException(422, "Поле борта должно быть числовым")
         cutoff = np.asarray(column(d, ca))
         cutoffs = sorted(set(body.cutoffs)) or [0.0]
-    mask = np.ones(n, dtype=bool)
-    for f in body.filters:
-        a = attribute(d, f.key)
-        v = column(d, a)
-        if a["kind"] == "category":
-            wanted = [i for i, label in enumerate(a["labels"]) if label in set(f.labels or [])]
-            mask &= np.isin(v, wanted)
-        else:
-            if f.min is not None:
-                mask &= v >= f.min
-            if f.max is not None:
-                mask &= v <= f.max
+    mask = block_mask(d, body.filters, n)
     groups = None
     if body.group_by:
         ga = attribute(d, body.group_by)

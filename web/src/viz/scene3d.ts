@@ -10,6 +10,8 @@ import type { MarkerShape } from "../charts/stripLog";
 import { DEFAULT_COLLAR_STYLE, type CollarStyle } from "./collarStyle";
 import { pointAt } from "./downholeGeometry";
 import { DEFAULT_TRACE_STYLE, depthText, isLabelDepth, tickDepths, type TraceStyle } from "./traceStyle";
+import type { SwathBuild } from "../stats/swath";
+import { SwathLayer } from "./swathLayer";
 
 export { DEFAULT_COLLAR_STYLE, type CollarStyle };
 import type { SectionLine } from "./geometry";
@@ -50,6 +52,8 @@ interface LabelFont {
   family: string;
   bold: boolean;
   color: string;
+  /** the ring around the letters (default: dark, for light text over anything) */
+  halo?: string;
 }
 
 const DEFAULT_FONT: LabelFont = { size: 12, family: "sans-serif", bold: false, color: "#f3f6fb" };
@@ -381,6 +385,8 @@ export class GeoScene {
   /** Rasters draped on terrain models, by wireframe (kept while the wireframe is not loaded yet). */
   private drapes = new Map<number, Drape>();
   private blocks = new Map<number, BlockLayer>();
+  /** Swath plots: the cuboid cut into swaths and the plot over it, by the id of the plot. */
+  private swaths = new Map<number, SwathLayer>();
   /** A click on a block (when no collar is near the cursor). */
   onPickBlock: ((pick: { modelId: number; index: number } | null) => boolean) | null = null;
   /** A wireframe clicked in the view; true when the click is taken. */
@@ -725,7 +731,7 @@ export class GeoScene {
   }
 
   /** What the scene holds, by kind: the view compares it with the project, so nothing deleted stays drawn. */
-  loadedIds(): { sets: number[]; wireframes: number[]; lines: number[]; rasters: number[]; blocks: number[]; downholes: string[] } {
+  loadedIds(): { sets: number[]; wireframes: number[]; lines: number[]; rasters: number[]; blocks: number[]; downholes: string[]; swaths: number[] } {
     return {
       sets: [...this.drillholes.keys()],
       wireframes: [...this.wireframes.keys()],
@@ -733,6 +739,7 @@ export class GeoScene {
       rasters: [...this.rasters.keys()],
       blocks: [...this.blocks.keys()],
       downholes: [...this.downholes.keys()],
+      swaths: [...this.swaths.keys()],
     };
   }
 
@@ -888,7 +895,7 @@ export class GeoScene {
   }
 
   private labelMaterial(text: string, f: LabelFont = DEFAULT_FONT): { material: THREE.SpriteMaterial; wpx: number; hpx: number } {
-    const key = `${f.size}|${f.family}|${f.bold ? "b" : ""}|${f.color}|${text}`;
+    const key = `${f.size}|${f.family}|${f.bold ? "b" : ""}|${f.color}|${f.halo ?? ""}|${text}`;
     const cached = this.labelMaterials.get(key);
     const size = f.size;
     if (cached) return { material: cached, wpx: cached.userData.wpx, hpx: cached.userData.hpx };
@@ -907,7 +914,7 @@ export class GeoScene {
       ctx.textBaseline = "middle";
       ctx.lineJoin = "round";
       ctx.lineWidth = 3 * k;
-      ctx.strokeStyle = "rgba(10, 14, 22, 0.85)";
+      ctx.strokeStyle = f.halo ?? "rgba(10, 14, 22, 0.85)";
       ctx.strokeText(text, 3 * k, canvas.height / 2);
       ctx.fillStyle = f.color;
       ctx.fillText(text, 3 * k, canvas.height / 2);
@@ -1033,6 +1040,40 @@ export class GeoScene {
     });
     this.root.add(group);
     this.contentChanged();
+  }
+
+  /**
+   * A swath plot over the scene: the cuboid cut into swaths and, once it is counted, the plot of
+   * means over them (it turns toward the viewer about the cuboid's axis). null removes it.
+   */
+  setSwath(id: number, build: SwathBuild | null): void {
+    const old = this.swaths.get(id);
+    if (old) {
+      this.root.remove(old.group);
+      old.group.traverse((child) => {
+        if (child instanceof THREE.Sprite) return; // labels share their materials
+        const m = child as THREE.Mesh;
+        m.geometry?.dispose();
+        const material = m.material as THREE.Material | undefined;
+        if (material instanceof LineMaterial) this.materials.delete(material);
+        material?.dispose();
+      });
+      this.swaths.delete(id);
+    }
+    if (build) {
+      const o = this.ensureOrigin(build.centre, build.centre);
+      const layer = new SwathLayer(build, o, {
+        makeLines: (positions, width, color) => this.makeLines(positions, null, width, color),
+        labelMaterial: (text, font) => this.labelMaterial(text, font),
+        pointTexture: this.pointTexture,
+        background: this.renderer.getClearColor(new THREE.Color()),
+      });
+      this.swaths.set(id, layer);
+      this.root.add(layer.group);
+    }
+    // The first thing in an empty scene: show it; otherwise the view stays where the user left it.
+    if (build && !old && !this.fitted) this.contentChanged();
+    else this.requestRender();
   }
 
   /** Centre and size of every block of a model in the scene (6 float32 each), or null. */
@@ -2118,6 +2159,22 @@ export class GeoScene {
       halfUp = Math.max(halfUp, Math.abs(corner.dot(up)));
       radius = Math.max(radius, corner.length());
     }
+    // The plots of swaths stand beside their cuboids on one side: the view moves over to hold them too.
+    const plots = onSection ? [] : [...this.swaths.values()].flatMap((layer) => layer.corners(forward, right, up, this.vexag));
+    if (plots.length) {
+      let [r0, r1, u0, u1] = [-halfRight, halfRight, -halfUp, halfUp];
+      for (const p of plots) {
+        p.sub(centre);
+        r0 = Math.min(r0, p.dot(right));
+        r1 = Math.max(r1, p.dot(right));
+        u0 = Math.min(u0, p.dot(up));
+        u1 = Math.max(u1, p.dot(up));
+        radius = Math.max(radius, p.length());
+      }
+      centre.addScaledVector(right, (r0 + r1) / 2).addScaledVector(up, (u0 + u1) / 2);
+      halfRight = (r1 - r0) / 2;
+      halfUp = (u1 - u0) / 2;
+    }
     radius = Math.max(radius, 10);
     const aspect = Math.max(this.container.clientWidth, 1) / Math.max(this.container.clientHeight, 1);
     const half = Math.max(halfUp, halfRight / aspect, 5) * 1.08;
@@ -2156,6 +2213,7 @@ export class GeoScene {
     for (const id of [...this.rasters.keys()]) this.removeRaster(id, false);
     for (const id of [...this.blocks.keys()]) this.removeBlockModel(id, false);
     for (const key of [...this.downholes.keys()]) this.removeDownhole(key, false);
+    for (const id of [...this.swaths.keys()]) this.setSwath(id, null);
     for (const m of this.labelMaterials.values()) {
       m.map?.dispose();
       m.dispose();
@@ -2196,6 +2254,7 @@ export class GeoScene {
       for (const layer of this.wireframes.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
       for (const layer of this.blocks.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
       for (const layer of this.lineLayers.values()) if (!visibleOnly || layer.group.visible) add(layer.extent);
+      for (const layer of this.swaths.values()) add(layer.extent);
       if (withRasters) {
         for (const layer of this.rasters.values()) {
           if (visibleOnly && !layer.visible) continue;
@@ -2674,6 +2733,8 @@ export class GeoScene {
     this.renderer.setClearColor(new THREE.Color(getComputedStyle(this.container).backgroundColor));
     // Cuts of block models are mixed toward the background.
     for (const layer of this.blocks.values()) this.renderer.getClearColor(layer.edges.back.value);
+    // Swath plots take the colour of their lines and of the plate under the plot from the background.
+    for (const [id, layer] of [...this.swaths]) this.setSwath(id, layer.build);
   }
 
   private resize(): void {
@@ -2699,6 +2760,8 @@ export class GeoScene {
    */
   private fitDepth(): void {
     const box = this.contentBox(true) ?? new THREE.Box3();
+    // The plot of a swath stands beside its cuboid, wherever the viewer is.
+    for (const layer of this.swaths.values()) box.union(layer.reach);
     if (this.grid) {
       // In the content's own coordinates (the root's Z stretch comes below, for both).
       const g = this.grid.geometry;
@@ -2744,6 +2807,10 @@ export class GeoScene {
       this.light.target.position.copy(this.controls.target);
       this.chooseLevels();
       this.updateDownholes();
+      if (this.swaths.size) {
+        this.camera.updateMatrixWorld();
+        for (const layer of this.swaths.values()) layer.update(this.camera, this.vexag, (at) => this.pixelsPerUnit(at));
+      }
       this.fitDepth();
       this.renderer.render(this.scene, this.camera);
       this.axes.update(this.camera, this.vexag < 0);

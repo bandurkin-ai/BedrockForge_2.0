@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app import mcp_server
 from app.config import settings
-from app.routers import archives, assistant, audit, blobs, blockmodels, charts, datasets, datatables, exports, imports, intervals, jobs, lines, operations, projects, stats, styles, uploads, viz
+from app.routers import archives, assistant, audit, blobs, blockmodels, charts, datasets, datatables, exports, imports, intervals, jobs, lines, operations, projects, stats, styles, swath, uploads, viz
 
 mcp_app = mcp_server.http_app()
 
@@ -59,6 +59,7 @@ app.include_router(operations.router)
 app.include_router(audit.router)
 app.include_router(viz.router)
 app.include_router(stats.router)
+app.include_router(swath.router)
 app.include_router(assistant.router)
 app.include_router(blobs.router)
 app.include_router(uploads.router)
