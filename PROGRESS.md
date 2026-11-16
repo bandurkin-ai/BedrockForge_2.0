@@ -2,15 +2,15 @@
 Обновлено: 2026-11-16 20:05 UTC · Сессия: https://claude.ai/code/session_01PV4nyXwrRaJmTepomG4WpS · Ветка: claude/vigilant-meitner-vzjsd3 · Режим: норма
 
 ## Сейчас
-Веха: В1 «Каркас» · Этап: Э2 «Проекты» · PR: — (откроется черновой после 2.1)
-Подшаг: 2.1 слой БД (1 из 9)
+Веха: В1 «Каркас» · Этап: Э2 «Проекты» · PR: #3 (черновой)
+Подшаг: 2.3 хранилище blobs (3 из 9)
 
 ## Следующее действие
-2.1: db/dialect.py, модели проекта и экземпляра, Alembic (две цепочки: project, instance), тест цикла миграций на SQLite и PG.
+2.3: storage/blobs.py (запись через .tmp, владельцы), сборщик, GET /blobs/{sha} с ETag/Range; затем 2.4 задания.
 
 ## План этапа Э2 (spec: 07-03, 07-04, 07-05, 07-06, 06 6.5/6.7; ADR 0002, 0003)
-- [ ] 2.1 Слой БД: dialect.py (типы, PRAGMA, BEGIN IMMEDIATE, claim_job), модели (project_meta, objects, object_refs, blobs, blob_owners, jobs, job_log, edit_log, settings; instance: jobs, job_log, projects), Alembic, проверка «диалект только в dialect.py» — pytest SQLite + PG
-- [ ] 2.2 Проекты: папка `<Имя>.bfproj` (манифест, project.sqlite, blobs, cache, backups, logs), создание/открытие/переименование/описание/удаление/поиск/сводка, project.lock и «только чтение», quick_check, автокопии (5), сетевые пути; роутер projects — pytest + httpx
+- [x] 2.1 Слой БД: dialect.py (типы, PRAGMA, BEGIN IMMEDIATE, claim_job), модели (project_meta, objects, object_refs, blobs, blob_owners, jobs, job_log, edit_log, settings; instance: jobs, job_log, projects), Alembic, проверка «диалект только в dialect.py» — pytest SQLite + PG
+- [x] 2.2 Проекты: папка `<Имя>.bfproj` (манифест, project.sqlite, blobs, cache, backups, logs), создание/открытие/переименование/описание/удаление/поиск/сводка, project.lock и «только чтение», quick_check, автокопии (5), сетевые пути; роутер projects — pytest + httpx
 - [ ] 2.3 Хранилище blobs (запись через .tmp + SHA-256, владельцы, сборщик раз в час), отдача массива с ETag/Range — pytest
 - [ ] 2.4 Задания: планировщик в ядре, исполнители spawn (heavy N + quick 1), tick/отмена, пульс 5 с, «почему ждёт», 3 попытки, память, SSE; роутер jobs — pytest с настоящими процессами
 - [ ] 2.5 `.bfggis`: экспорт/импорт заданиями, AES-256, контрольные суммы, пересчёт id, версии, файлы BF — pytest
@@ -24,6 +24,10 @@
   от коммита с ТЗ (63bb4aa). Заказчику: сделать `main` веткой по умолчанию и защитить (ci, windows).
 
 ## Допущения (вынести в отчёт вехи)
+- Э2: переименование проекта не меняет имя папки `<Имя>.bfproj` (папка открыта ядром; пользователю не показывается).
+- Э2: удаление проекта — сразу (переименование папки в `.del-…` и удаление), не заданием; занятый другим окном — 423.
+- Э2: `quick_check` при открытии — всегда синхронно; фоновая проверка баз > 200 МБ — когда появятся большие таблицы (Э3).
+- Э2: демо-проект BF генерирует данные кодом (seed 7), файлов данных нет; в Э2 демо создаёт проект, данные типов Э3–Э9 добавляются генератором по мере появления типов.
 - Ревью Э1, отложено: (11) удаление всех трёх отметок пробного периода начинает его заново — защита на Э24;
   (13) на Windows SO_EXCLUSIVEADDRUSE + TIME_WAIT → перезапуск ядра на новом порту с перезагрузкой окна — проверяется core.spec в windows.yml;
   (14) os._exit при --watch-stdin: на Э2 соединения SQLite/DuckDB закрывать в lifespan до выхода;
