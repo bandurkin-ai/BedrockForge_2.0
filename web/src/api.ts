@@ -72,19 +72,46 @@ export interface ValidateResponse {
   preview: Record<string, unknown>[];
 }
 
+async function failure(response: Response): Promise<Error> {
+  let detail = `Ошибка ${response.status}`;
+  try {
+    const body = await response.json();
+    if (typeof body.detail === "string") detail = body.detail;
+    else if (Array.isArray(body.detail) && typeof body.detail[0]?.msg === "string") detail = body.detail[0].msg.replace(/^Value error, /, "");
+    else if (typeof body.detail?.message === "string") detail = body.detail.message;
+  } catch {
+    /* keep the status text */
+  }
+  return new Error(detail);
+}
+
+/**
+ * Downloads a file from the server into the browser's downloads, without opening a page:
+ * a server refusal comes back as an Error with its text (shown in the application's own window).
+ * Returns the file name.
+ */
+export async function downloadFile(url: string, fallbackName: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw await failure(response);
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  const plain = /filename="?([^";]+)"?/i.exec(disposition);
+  const name = star ? decodeURIComponent(star[1]) : plain ? plain[1] : fallbackName;
+  const href = URL.createObjectURL(await response.blob());
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 10_000);
+  return name;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
-    let detail = `Ошибка ${response.status}`;
-    try {
-      const body = await response.json();
-      if (typeof body.detail === "string") detail = body.detail;
-      else if (Array.isArray(body.detail) && typeof body.detail[0]?.msg === "string") detail = body.detail[0].msg.replace(/^Value error, /, "");
-      else if (typeof body.detail?.message === "string") detail = body.detail.message;
-    } catch {
-      /* keep the status text */
-    }
-    throw new Error(detail);
+    throw await failure(response);
   }
   return response.json() as Promise<T>;
 }

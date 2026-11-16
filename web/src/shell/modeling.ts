@@ -5,7 +5,7 @@
  */
 import {
   createLineLayer, getLineArrays, getLineVersions, getSelfIntersections, lineExportUrl, moveLinesToLayer, rebuildWireframe, restoreLineVersion,
-  saveLineGeometry, startOperation, wireframeExportUrl, type Dataset, type JobInfo, type LineLayerInfo, type PickResult, type WireframeInfo,
+  saveLineGeometry, startOperation, downloadFile, wireframeExportUrl, type Dataset, type JobInfo, type LineLayerInfo, type PickResult, type WireframeInfo,
 } from "../api";
 import { fromStored } from "../edit/io";
 import type { Vec3 } from "../edit/model";
@@ -186,15 +186,34 @@ export function createModeling(ctx: ModelingContext) {
     return `Перенесено линий: ${indices.length}`;
   }
 
-  function exportLines(ids: number[], format: "str" | "dxf"): string {
-    if (!ids.length) throw new Error("Не выбран слой линий");
-    window.open(lineExportUrl(ids, format), "_blank");
-    return `Экспорт линий в ${format.toUpperCase()}`;
+  /** Downloads an export; a refusal is shown in the application's window (not a browser page). */
+  async function download(url: string, fallback: string, what: string): Promise<string> {
+    try {
+      const name = await downloadFile(url, fallback);
+      return `${what}: файл «${name}» сохранён в загрузки`;
+    } catch (e) {
+      void showMessage({ title: `${what} не выполнен`, message: (e as Error).message, error: true });
+      throw e;
+    }
   }
-  function exportWireframes(ids: number[], format: "dxf" | "obj"): string {
+  async function exportLines(ids: number[], format: "str" | "dxf"): Promise<string> {
+    if (!ids.length) throw new Error("Не выбран слой линий");
+    // The file is written from the saved layer: unsaved edits are saved first (or left out on request).
+    const session = ctx.edit();
+    if (session && ids.includes(session.layerId) && session.dirty) {
+      const go = await askConfirm({
+        title: "Экспорт линий", ok: "Сохранить и выгрузить",
+        message: `В слое «${session.layerName}» есть несохранённые изменения. В файл попадает сохранённая версия слоя — сохранить изменения перед выгрузкой?`,
+      });
+      if (!go) return "Экспорт отменён";
+      if (!(await save())) return "Экспорт отменён: слой не сохранён";
+    }
+    const ext = format === "str" ? "STR" : "dxf";
+    return download(lineExportUrl(ids, format), `Линии.${ext}`, `Экспорт линий в ${format.toUpperCase()}`);
+  }
+  function exportWireframes(ids: number[], format: "dxf" | "obj"): Promise<string> {
     if (!ids.length) throw new Error("Не выбран каркас");
-    window.open(wireframeExportUrl(ids, format), "_blank");
-    return `Экспорт каркасов в ${format.toUpperCase()}`;
+    return download(wireframeExportUrl(ids, format), `Каркас.${format}`, `Экспорт каркасов в ${format.toUpperCase()}`);
   }
 
   // ---------------------------------------------------------------- operations

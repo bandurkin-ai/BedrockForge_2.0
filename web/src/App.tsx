@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useS
 
 const noSubscribe = () => () => undefined;
 import {
-  auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
+  auditExportUrl, downloadFile, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, editBlock, renameDataset, runAudit, setBlockUnit,
   getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord, type PickResult,
 } from "./api";
@@ -23,7 +23,7 @@ import type { StatsView } from "./stats/analyses";
 import { formatRoute, parseRoute, useRoute, type TableKind } from "./route";
 import { AssistantPanel, type Approval } from "./shell/AssistantPanel";
 import { ClaudeAccount, ClaudeAccountButton } from "./shell/ClaudeAccount";
-import { askConfirm, askText, DialogHost, showError } from "./shell/dialogs";
+import { askConfirm, askText, DialogHost, showError, showMessage } from "./shell/dialogs";
 import { ProjectsPanel } from "./shell/ProjectsPanel";
 import { SettingsPanel } from "./shell/SettingsPanel";
 import { applyShortcuts, loadShortcuts, saveShortcuts, type ShortcutOverrides } from "./shell/shortcuts";
@@ -554,7 +554,7 @@ function Workspace({
     sectionFrame: () => sceneApi.current?.sectionFrame() ?? null,
     sectionThroughHole: (setId, holeId) => sceneApi.current?.sectionThroughHole(setId, holeId) ?? null,
     runAudit: (setId) => runAudit(setId, DEFAULT_CONFIG),
-    exportAudit: (setId) => window.open(auditExportUrl(setId), "_blank"),
+    exportAudit: (setId) => void downloadFile(auditExportUrl(setId), "audit.xlsx").catch((e) => showMessage({ title: "Отчёт аудита не выгружен", message: (e as Error).message, error: true })),
     openOmfExport: (ids) => setOmfExport(ids ?? []),
     exportOmf: async (ids, filename) => {
       const job = await startExport(projectId, { format: "omf", dataset_ids: ids, filename });

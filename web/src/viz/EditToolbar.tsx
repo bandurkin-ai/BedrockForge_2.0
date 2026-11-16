@@ -5,6 +5,8 @@ import { lineById } from "../edit/model";
 import { TOOL_TITLES, type EditSession, type Tool } from "../edit/session";
 import { SNAP_KINDS, SNAP_TITLES, type SnapKind } from "../edit/snap";
 import { askForm } from "../shell/FormDialog";
+import type { IconName } from "../shell/icons";
+import { ToolButton } from "../shell/ToolButton";
 
 const TOOLS: Tool[] = ["select", "line", "polygon", "point", "tie", "insert"];
 const TOOL_HINTS: Record<Tool, string> = {
@@ -15,6 +17,8 @@ const TOOL_HINTS: Record<Tool, string> = {
   tie: "Тай-линия для сшивки: два щелчка по соответствующим вершинам контуров соседних разрезов",
   insert: "Щелчок по сегменту вставляет в него вершину",
 };
+
+const TOOL_ICONS: Record<Tool, IconName> = { select: "edSelect", line: "edPline", polygon: "edPolygon", point: "edPoint", tie: "edTie", insert: "edInsert" };
 
 const num = (v: unknown) => Number(v);
 const fmt = (v: number, digits = 2) => v.toLocaleString("ru-RU", { maximumFractionDigits: digits });
@@ -66,39 +70,44 @@ export function EditToolbar({ edit, onSave, onExit, sectionOn }: { edit: EditSes
   };
 
   const m = lines.length === 1 ? lineMeasures(lineById(edit.layer, lines[0])!) : null;
+  const need = "Сначала выберите линии (инструмент «Выбор»)";
   return (
     <div className="edit-toolbar" aria-label="Редактор стрингов">
       <div className="edit-row">
         <strong className="edit-layer" title="Редактируемый слой линий">
           <i style={{ background: edit.color }} />{edit.layerName}{edit.dirty && <span className="edit-dirty" title="Есть несохранённые изменения"> ●</span>}
         </strong>
-        <div className="segmented" aria-label="Инструмент">
+        <div className="tool-group" role="toolbar" aria-label="Инструмент">
           {TOOLS.map((t) => (
-            <button key={t} className={edit.tool === t ? "active" : ""} title={TOOL_HINTS[t]} onClick={() => edit.setTool(t)}>{TOOL_TITLES[t].split(" ")[0]}{t === "insert" ? " вершину" : ""}</button>
+            <ToolButton key={t} icon={TOOL_ICONS[t]} label={TOOL_TITLES[t]} hint={TOOL_HINTS[t]} active={edit.tool === t} onClick={() => edit.setTool(t)} />
           ))}
         </div>
-        <button onClick={() => edit.undo()} disabled={!edit.history.canUndo} title={`Отменить${edit.history.undoLabel ? `: ${edit.history.undoLabel}` : ""} (Ctrl+Z)`}>↶</button>
-        <button onClick={() => edit.redo()} disabled={!edit.history.canRedo} title={`Вернуть${edit.history.redoLabel ? `: ${edit.history.redoLabel}` : ""} (Ctrl+Y)`}>↷</button>
-        <span className="toolbar-sep" />
-        <button className="primary" onClick={onSave} disabled={!edit.dirty || edit.saving} title="Сохранить слой: новая версия в журнале (Ctrl+S)">{edit.saving ? "Сохранение…" : "Сохранить"}</button>
-        <button onClick={onExit} title="Выйти из режима правки">Завершить</button>
-      </div>
-      <div className="edit-row">
-        <button onClick={() => edit.setClosed(true)} disabled={!has} title="Замкнуть выбранные линии">Замкнуть</button>
-        <button onClick={() => edit.setClosed(false)} disabled={!has} title="Разомкнуть выбранные линии">Разомкнуть</button>
-        <button onClick={() => edit.breakAtVertex()} disabled={!one} title="Разорвать линию в выбранной вершине">Разорвать</button>
-        <button onClick={() => edit.join()} disabled={lines.length !== 2} title="Соединить две выбранные линии ближайшими концами">Соединить</button>
-        <button onClick={() => edit.reverse()} disabled={!has} title="Развернуть направление линий">Развернуть</button>
-        <button onClick={shift} disabled={!has} title="Сдвинуть на вектор (в том числе по Z) или сделать копию">Сдвиг…</button>
-        <button onClick={() => ask("Копия со смещением", "Смещение, м", 5, "Для полигона: больше нуля — наружу, меньше — внутрь", (x) => edit.offset(x))} disabled={!has} title="Параллельная копия линии; для полигона — наружу или внутрь">Смещение…</button>
-        <button onClick={() => ask("Проредить", "Допуск, м", 0.5, "Вершины, отстоящие от линии меньше допуска, удаляются (Дуглас–Пекер)", (x) => edit.simplify(x), 0)} disabled={!has}>Проредить…</button>
-        <button onClick={() => ask("Сгустить", "Шаг, м", 5, "Вершины добавляются так, чтобы сегменты были не длиннее шага", (x) => edit.densify(x), 1e-6)} disabled={!has}>Сгустить…</button>
-        <button onClick={() => edit.smooth(1)} disabled={!has} title="Сгладить выбранные линии (срезание углов)">Сгладить</button>
-        <button onClick={() => edit.deleteSelection()} disabled={!has && !sel.vertices.length} title="Удалить выбранные вершины или линии (Delete)">Удалить</button>
-        <span className="toolbar-sep" />
+        <div className="tool-group" role="toolbar" aria-label="Правка линий">
+          <ToolButton icon="edClose" label="Замкнуть" hint="Замкнуть выбранные линии в полигоны" off={need} disabled={!has} onClick={() => edit.setClosed(true)} />
+          <ToolButton icon="edOpen" label="Разомкнуть" hint="Разомкнуть выбранные полигоны" off={need} disabled={!has} onClick={() => edit.setClosed(false)} />
+          <ToolButton icon="edBreak" label="Разорвать" hint="Разорвать линию в выбранной вершине (одна вершина)" off="Выберите одну вершину" disabled={!one} onClick={() => edit.breakAtVertex()} />
+          <ToolButton icon="edJoin" label="Соединить" hint="Соединить две выбранные линии ближайшими концами" off="Выберите ровно две линии" disabled={lines.length !== 2} onClick={() => edit.join()} />
+          <ToolButton icon="edReverse" label="Развернуть" hint="Развернуть направление выбранных линий" off={need} disabled={!has} onClick={() => edit.reverse()} />
+        </div>
+        <div className="tool-group" role="toolbar" aria-label="Изменение формы">
+          <ToolButton icon="edMove" label="Сдвиг…" hint="Сдвинуть выбранные линии на вектор (в том числе по Z) или сделать копию; мышью — тянуть выбранную линию в режиме «Выбор»" off={need} disabled={!has} onClick={shift} />
+          <ToolButton icon="edOffset" label="Смещение…" hint="Параллельная копия линии на заданном расстоянии; для полигона: больше нуля — наружу, меньше — внутрь" off={need} disabled={!has}
+            onClick={() => ask("Копия со смещением", "Смещение, м", 5, "Для полигона: больше нуля — наружу, меньше — внутрь", (x) => edit.offset(x))} />
+          <ToolButton icon="edSimplify" label="Проредить…" hint="Удалить вершины, отстоящие от линии меньше допуска (Дуглас–Пекер)" off={need} disabled={!has}
+            onClick={() => ask("Проредить", "Допуск, м", 0.5, "Вершины, отстоящие от линии меньше допуска, удаляются (Дуглас–Пекер)", (x) => edit.simplify(x), 0)} />
+          <ToolButton icon="edDensify" label="Сгустить…" hint="Добавить вершины, чтобы сегменты были не длиннее шага" off={need} disabled={!has}
+            onClick={() => ask("Сгустить", "Шаг, м", 5, "Вершины добавляются так, чтобы сегменты были не длиннее шага", (x) => edit.densify(x), 1e-6)} />
+          <ToolButton icon="edSmooth" label="Сгладить" hint="Сгладить выбранные линии срезанием углов" off={need} disabled={!has} onClick={() => edit.smooth(1)} />
+          <ToolButton icon="edErase" label="Удалить" hint="Удалить выбранные вершины или линии" keys="Delete" off="Выберите вершины или линии" disabled={!has && !sel.vertices.length} onClick={() => edit.deleteSelection()} />
+        </div>
+        <div className="tool-group" role="toolbar" aria-label="История">
+          <ToolButton icon="edUndo" label="Отменить" hint={edit.history.undoLabel ?? undefined} keys="Ctrl+Z" disabled={!edit.history.canUndo} onClick={() => edit.undo()} />
+          <ToolButton icon="edRedo" label="Вернуть" hint={edit.history.redoLabel ?? undefined} keys="Ctrl+Y" disabled={!edit.history.canRedo} onClick={() => edit.redo()} />
+        </div>
         <span className="edit-snap">
-          <button className={edit.snap.enabled ? "active" : ""} onClick={() => setSnap({ enabled: !edit.snap.enabled })} title="Привязка к объектам">Привязка</button>
-          <button onClick={() => setSnapOpen((v) => !v)} title="Цели привязки" aria-expanded={snapOpen}>▾</button>
+          <ToolButton icon="edSnap" label="Привязка" hint={`Привязка к объектам: ${edit.snap.kinds.map((k) => SNAP_TITLES[k].toLowerCase()).join(", ") || "цели не выбраны"}`}
+            active={edit.snap.enabled} onClick={() => setSnap({ enabled: !edit.snap.enabled })} />
+          <ToolButton icon="edMore" label="Цели привязки" hint="Что ловит привязка, радиус, шаг сетки" className="narrow" aria-expanded={snapOpen} onClick={() => setSnapOpen((v) => !v)} />
           {snapOpen && (
             <div className="edit-popover" onMouseLeave={() => setSnapOpen(false)}>
               {SNAP_KINDS.map((k) => (
@@ -122,6 +131,10 @@ export function EditToolbar({ edit, onSave, onExit, sectionOn }: { edit: EditSes
           <input value={coord} placeholder="X Y Z · @азимут длина наклон · @@dX dY dZ" aria-label="Координаты точки" title={coordError ?? "Координаты следующей точки (или выбранной вершины): X Y Z; от предыдущей — @азимут расстояние [угол наклона] или @@dX dY [dZ]; Enter"}
             className={coordError ? "invalid" : ""} onChange={(e) => { setCoord(e.target.value); setCoordError(null); }} />
         </form>
+        <div className="tool-group" role="toolbar" aria-label="Слой">
+          <ToolButton icon="edSave" label={edit.saving ? "Сохранение…" : "Сохранить"} hint="Сохранить слой: новая версия в журнале" keys="Ctrl+S" className="save" off="Изменений нет" disabled={!edit.dirty || edit.saving} onClick={onSave} />
+          <ToolButton icon="edExit" label="Завершить правку" hint="Выйти из режима правки (несохранённые изменения будут предложено сохранить)" onClick={onExit} />
+        </div>
       </div>
       <div className="edit-status small">
         {coordError ? <span className="error-text">{coordError}</span> : edit.message ? <span>{edit.message}</span> : <span className="muted">{TOOL_HINTS[edit.tool]}</span>}
