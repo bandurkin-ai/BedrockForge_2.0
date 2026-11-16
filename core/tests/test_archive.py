@@ -18,6 +18,7 @@ from bf_core.db.schema import blob_owners, edit_log, object_refs, objects, proje
 from bf_core.projects.service import projects_of
 from bf_core.storage.blobs import BlobStore
 
+pytestmark = pytest.mark.windows
 API = "/api/v1"
 
 

@@ -66,7 +66,16 @@ def _watch_parent(request_shutdown) -> None:  # type: ignore[no-untyped-def]
 
 
 def serve(args: argparse.Namespace) -> int:
+    import logging
+
     import uvicorn
+
+    # Messages of the core modules go to stderr: the shell writes them into core.log («core!» lines).
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger("bf_core")
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
 
     from bf_core.winjob import kill_children_with_me
 

@@ -15,6 +15,7 @@ from bf_core.projects.lock import ProjectLock
 from bf_core.projects.project import open_folder
 from bf_core.projects.service import projects_of
 
+pytestmark = pytest.mark.windows  # file locks, rename of open folders
 API = "/api/v1/projects"
 
 

@@ -289,6 +289,7 @@ class Scheduler:
         proc = self._ctx.Process(target=main, args=(child, queue), name=f"bf-{queue}-{self._seq}", daemon=True)
         proc.start()
         child.close()
+        log.info("worker %s started: pid %s", proc.name, proc.pid)
         self.workers.append(Worker(proc.name, queue, proc, parent))
 
     def _ensure_workers(self) -> None:
@@ -361,6 +362,7 @@ class Scheduler:
         kind = msg[0]
         if kind == "ready":
             w.ready = True
+            log.info("worker %s ready", w.name)
             return
         run = w.job
         if run is None or msg[1] != run.job_id:
@@ -422,6 +424,7 @@ class Scheduler:
 
     def _on_dead(self, w: Worker) -> None:
         run = w.job
+        log.warning("worker %s exited: code %s, job %s", w.name, w.process.exitcode, run.job_id if run else None)
         self._kill(w)
         self._restarts.append(time.monotonic())  # only unexpected exits count toward «слишком часто»
         if run is None:

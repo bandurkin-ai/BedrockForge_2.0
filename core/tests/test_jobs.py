@@ -14,6 +14,7 @@ from bf_core.jobs import store
 from bf_core.jobs.service import jobs_of
 from bf_core.projects.service import projects_of
 
+pytestmark = pytest.mark.windows  # spawn workers, pipes and kills behave differently on Windows
 API = "/api/v1"
 FINAL = ("done", "failed", "cancelled")
 

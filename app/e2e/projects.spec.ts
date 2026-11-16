@@ -33,8 +33,12 @@ function newCorePids(before: Set<number>): number[] {
 }
 
 function kill(pid: number) {
-  if (process.platform === "win32") execSync(`taskkill /PID ${pid} /T /F`);
-  else process.kill(pid, "SIGKILL");
+  try {
+    if (process.platform === "win32") execSync(`taskkill /PID ${pid} /T /F`, { stdio: "ignore" });
+    else process.kill(pid, "SIGKILL");
+  } catch {
+    /* /T already took the workers with the core */
+  }
 }
 
 test("projects: demo once, new, taken name refused, description survives restart and a killed core, search, delete", async () => {
