@@ -337,3 +337,75 @@ def test_reading_a_big_block_reports_progress_and_can_stop(tmp_path):
 
     with pytest.raises(Stop):
         read_omf(path, progress=stop)
+
+
+def _cells_from_centres(t) -> np.ndarray:
+    g = t.regular
+    ijk = np.rint((t.centres - np.array(g.origin)) / np.array(g.parent) - 0.5).astype(np.int64)
+    return ijk[:, 0] + g.counts[0] * (ijk[:, 1] + g.counts[1] * ijk[:, 2])
+
+
+def test_regular_volume_knows_its_grid_with_negative_and_swapped_axes(tmp_path):
+    """A regular volume skips the checks of arbitrary sub-blocks: its grid and cell numbers come from the file."""
+    raw = RawOmf()
+    nu, nv, nw = 3, 4, 2
+    rng = np.random.default_rng(5)
+    values = rng.uniform(0, 1, nu * nv * nw)
+    values[[0, 5, 7]] = np.nan  # cells without values are not stored
+    data = raw.add("ScalarData", name="AU", description="", array=raw.array("ScalarArray", values, "<f8"), location="cells")
+    geom = raw.add("VolumeGridGeometry", origin=[100.0, 200.0, 300.0], tensor_u=[2.0] * nu, tensor_v=[5.0] * nv,
+                   tensor_w=[1.5] * nw, axis_u=[0.0, -1.0, 0.0], axis_v=[1.0, 0.0, 0.0], axis_w=[0.0, 0.0, -1.0])
+    raw.element("VolumeElement", "vol", geom, [data])
+    ((_, t, _, _),) = read_omf(raw.write(tmp_path / "r.omf")).blocks
+    g = t.regular
+    assert g.counts == [nv, nu, nw] and g.parent == [5.0, 2.0, 1.5]
+    assert g.origin == [100.0, 200.0 - 2.0 * nu, 300.0 - 1.5 * nw]
+    assert len(t.centres) == nu * nv * nw - 3
+    assert (_cells_from_centres(t) == g.cells).all()
+    assert t.sizes.dtype == np.float32 and (t.sizes == [5.0, 2.0, 1.5]).all()
+
+
+def test_shell_of_a_regular_grid_matches_the_general_pass():
+    from app.blocks.shell import exposed_mask, regular_exposed
+
+    rng = np.random.default_rng(11)
+    counts = [7, 5, 6]
+    occupied = rng.uniform(size=int(np.prod(counts))) < 0.8
+    cells = np.flatnonzero(occupied)
+    ix, iy, iz = cells % 7, cells // 7 % 5, cells // 35
+    origin, parent = np.array([10.0, 20.0, 30.0]), np.array([2.0, 3.0, 1.0])
+    centres = origin + (np.column_stack([ix, iy, iz]) + 0.5) * parent
+    sizes = np.broadcast_to(parent, centres.shape).copy()
+    general = exposed_mask(centres, sizes, origin, parent, counts)
+    assert (regular_exposed(cells, counts) == general).all() and 0 < general.sum() < len(cells)
+
+
+def test_import_of_a_regular_volume_stores_grid_shell_and_checks(db_client, run_jobs, tmp_path):
+    counts = [6, 5, 4]
+    total = int(np.prod(counts))
+    au = np.arange(total, dtype=np.float64)
+    au[:10] = np.nan
+    zone = np.where(np.arange(total) % 2 == 0, 0, 1).astype(np.int32)
+    path = tmp_path / "grid.omf"
+    with OmfWriter(path, "Сетка") as w:
+        w.add_volume("Модель", [1000.0, 2000.0, 100.0], [10.0, 10.0, 5.0], counts, np.arange(total),
+                     [("AU", "number", au, None, "g/t"), ("ZONE", "category", zone, ["окисл.", "первич."], None)], None)
+    pid = _project(db_client)
+    uid = upload(db_client, pid, "grid.omf", path.read_bytes(), chunk=1 << 16)
+    job = db_client.post(f"/api/projects/{pid}/imports", json={"uploads": [uid]}).json()
+    run_jobs()
+    assert db_client.get(f"/api/jobs/{job['id']}").json()["status"] == "done"
+    (d,) = db_client.get(f"/api/projects/{pid}/datasets").json()
+    meta = d["meta"]
+    assert meta["block_count"] == total and meta["volume"] == total * 500.0
+    assert meta["grid"]["counts"] == counts and meta["grid"]["origin"] == [1000.0, 2000.0, 100.0]
+    assert not meta["grid"]["subblocked"] and meta["grid"]["parents_used"] == total
+    assert meta["extent"] == {"min": [1000.0, 2000.0, 100.0], "max": [1060.0, 2050.0, 120.0]}
+    codes = {c["code"] for c in meta["checks"]}
+    assert "empty_values" in codes and "volume" in codes and not codes & {"overlaps", "duplicates", "crosses_parent"}
+    attrs = {a["name"]: a for a in meta["attributes"]}
+    assert attrs["AU"]["unit"] == "g/t" and attrs["AU"]["stats"]["empty"] == 10
+    assert attrs["ZONE"]["stats"]["count"] == total
+    shell = np.frombuffer(db_client.get(f"/api/blockmodels/{d['id']}/exposed").content, np.uint8)
+    inner = (counts[0] - 2) * (counts[1] - 2) * (counts[2] - 2)
+    assert int((shell == 0).sum()) == inner

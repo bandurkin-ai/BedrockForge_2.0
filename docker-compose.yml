@@ -17,6 +17,7 @@ services:
 
   api:
     build: ./api
+    restart: unless-stopped
     environment: &api-env
       DATABASE_URL: postgresql+psycopg://geo:geo@db:5432/geo
       # Object store (geometry, images, uploads); shared with the worker through the volume.
@@ -37,8 +38,10 @@ services:
         condition: service_healthy
 
   # Background jobs (imports, calculations). Scale with `docker compose up --scale worker=3`.
+  # restart: a worker killed for lack of memory comes back; otherwise every later job waits forever.
   worker:
     build: ./api
+    restart: unless-stopped
     command: ["python", "-m", "app.jobs.worker"]
     environment: *api-env
     volumes:
@@ -52,6 +55,7 @@ services:
   # own, so they never wait behind the import of a big file.
   worker-quick:
     build: ./api
+    restart: unless-stopped
     command: ["python", "-m", "app.jobs.worker"]
     environment:
       <<: *api-env

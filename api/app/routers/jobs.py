@@ -122,6 +122,8 @@ def start_import(project_id: int, body: ImportIn, session: Session = Depends(get
          "section": body.section.model_dump() if body.section else None,
          "elevation": body.elevation, "z_shift": body.z_shift, "block_roles": body.block_roles},
         project_id=project_id, title=f"Импорт: {names}"[:255],
+        # A file that does not fit in memory kills the worker every time: two attempts, not three.
+        max_attempts=2,
     )
     session.commit()
     return queue.job_out(job)

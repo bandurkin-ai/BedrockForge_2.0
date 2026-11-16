@@ -73,3 +73,28 @@ def exposed_mask(centres: np.ndarray, sizes: np.ndarray, origin, parent, counts)
                 seen |= touches & ~nb_full
         out[a:a + step] = np.where(inside_full, seen, True).astype(np.uint8)
     return out
+
+
+def regular_exposed(cells: np.ndarray, counts) -> np.ndarray:
+    """exposed_mask for one block per cell of a regular grid (cells: ix + nx·(iy + ny·iz)).
+    A block is hidden when all six neighbour cells hold a block; one byte per grid cell, so a
+    50-million-cell grid needs about 50 MB instead of the gigabytes of the general pass."""
+    n = len(cells)
+    if n == 0:
+        return np.zeros(0, np.uint8)
+    nx, ny, nz = (int(c) for c in counts)
+    occ = np.zeros(nx * ny * nz, bool)
+    occ[cells] = True
+    occ = occ.reshape(nz, ny, nx)
+    hidden = occ.copy()
+    for axis in range(3):
+        lo = [slice(None)] * 3
+        hi = [slice(None)] * 3
+        lo[axis], hi[axis] = slice(1, None), slice(None, -1)
+        hidden[tuple(lo)] &= occ[tuple(hi)]  # neighbour on the lower side
+        hidden[tuple(hi)] &= occ[tuple(lo)]  # neighbour on the upper side
+        edge = [slice(None)] * 3
+        for end in (0, -1):  # cells on the boundary of the grid are seen from outside
+            edge[axis] = end
+            hidden[tuple(edge)] = False
+    return (~hidden.reshape(-1)[cells]).astype(np.uint8)
