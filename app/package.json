@@ -13,7 +13,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p .",
     "e2e": "playwright test",
-    "dist:win": "electron-builder --win portable nsis --x64 --publish never",
+    "dist:win": "electron-builder --win nsis dir --x64 --publish never",
     "dist:dir": "electron-builder --dir --publish never"
   },
   "devDependencies": {
@@ -51,13 +51,9 @@
     "asar": true,
     "win": {
       "target": [
-        "portable",
         "nsis"
       ],
       "executableName": "BedrockForge"
-    },
-    "portable": {
-      "artifactName": "BedrockForge-${version}-portable.exe"
     },
     "nsis": {
       "artifactName": "BedrockForge-${version}-setup.exe",

@@ -62,10 +62,27 @@ jobs:
           npm ci
           npm run build
 
-      - name: electron-builder (portable + NSIS)
+      - name: electron-builder (NSIS + win-unpacked)
         working-directory: app
         env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
-        run: npx electron-builder --win portable nsis dir --x64 --publish never
+        run: npx electron-builder --win nsis dir --x64 --publish never
+
+      - name: Portable (tools/portable.nsi, однократная распаковка)
+        shell: pwsh
+        run: |
+          $makensis = Get-ChildItem -Recurse -Filter makensis.exe "$env:LOCALAPPDATA\electron-builder\Cache\nsis" | Select-Object -First 1
+          if (-not $makensis) { throw "makensis.exe not found in the electron-builder cache" }
+          $version = (Get-Content app\package.json -Raw | ConvertFrom-Json).version
+          $out = "app\release\BedrockForge-$version-portable.exe"
+          & $makensis.FullName /V2 "/DVERSION=$version" "/DSRC=$PWD\app\release\win-unpacked" "/DOUTFILE=$PWD\$out" tools\portable.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed" }
+          $dir = Join-Path $env:RUNNER_TEMP "Портативная BF"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item $out $dir
+          $exe = Join-Path $dir (Split-Path $out -Leaf)
+          $t = Measure-Command { Start-Process -FilePath $exe -ArgumentList "/S","/extract-only" -Wait }
+          if (-not (Test-Path (Join-Path $dir "BedrockForge-$version\BedrockForge.exe"))) { throw "portable did not unpack" }
+          "Portable: первая распаковка {0:N1} с" -f $t.TotalSeconds | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
 
       - name: Дымовой E2E на собранном приложении из пути с кириллицей
         shell: pwsh
@@ -78,6 +95,7 @@ jobs:
           Set-Location app
           npx playwright test
           if ($LASTEXITCODE -ne 0) { throw "E2E failed" }
+          if (Test-Path ..\artifacts\startup.json) { "Запуск до рабочего окна: " + (Get-Content ..\artifacts\startup.json -Raw) | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
 
       - name: SHA256SUMS.txt
         shell: pwsh

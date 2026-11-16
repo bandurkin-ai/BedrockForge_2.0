@@ -6,6 +6,7 @@ import path from "node:path";
 import { ART, close, launchOptions } from "./helpers";
 
 test("window opens, core answers with token, 401 without", async () => {
+  const t0 = Date.now();
   const app = await electron.launch(launchOptions({}));
   try {
     const win = await app.firstWindow();
@@ -13,6 +14,9 @@ test("window opens, core answers with token, 401 without", async () => {
     await expect.poll(async () => app.windows().some((w) => w.url().endsWith("/index.html")), { timeout: 90_000 }).toBe(true);
     const page = app.windows().find((w) => w.url().endsWith("/index.html")) ?? win;
     await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    const startupMs = Date.now() - t0; // ТЗ 5.3: ≤ 6 s cold, ≤ 3 s warm on the acceptance PC
+    fs.mkdirSync(ART, { recursive: true });
+    fs.writeFileSync(path.join(ART, "startup.json"), JSON.stringify({ startupMs, platform: process.platform, packaged: Boolean(process.env.BF_APP_EXE) }));
     const codes = await page.evaluate(async () => {
       const core = window.bf!.core()!;
       const ok = await fetch(`${core.baseUrl}/api/v1/health`, { headers: { "X-BF-Token": core.token } });
