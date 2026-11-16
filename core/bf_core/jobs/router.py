@@ -26,7 +26,7 @@ class SubmitBody(BaseModel):
 
 
 class WorkersBody(BaseModel):
-    heavy: int = Field(ge=1, le=32)
+    heavy: int = Field(ge=1, le=16)
 
 
 def _not_found() -> ApiError:
@@ -70,7 +70,8 @@ def list_jobs(s: Sched) -> dict[str, Any]:
 
 @router.post("")
 def submit(s: Sched, body: SubmitBody) -> dict[str, Any]:
-    if body.kind not in KINDS:
+    if body.kind not in KINDS or not KINDS[body.kind].public:
+        # module jobs are started by their own endpoints, which check the parameters
         raise ApiError(422, "unknown_job", f"Неизвестный вид задания: {body.kind}.", "Обновите программу.")
     try:
         key, job_id = s.submit(body.kind, body.params, title=body.title)
@@ -114,8 +115,17 @@ def cancel(s: Sched, key: str, job_id: int) -> dict[str, Any]:
 def retry(s: Sched, key: str, job_id: int) -> dict[str, Any]:
     try:
         new_id = s.retry(key, job_id)
+    except PermissionError as exc:
+        raise ApiError(
+            409,
+            "password_not_kept",
+            "Пароль задания не сохраняется.",
+            "Запустите экспорт или импорт заново и введите пароль.",
+        ) from exc
     except LookupError as exc:
-        raise _not_found() from exc
+        raise ApiError(
+            409, "job_project_closed", "Проект этого задания не открыт.", "Откройте проект задания и повторите."
+        ) from exc
     return {"source": key, "id": new_id}
 
 

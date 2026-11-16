@@ -141,8 +141,18 @@ class Project:
         return self.backup()
 
 
-def write_manifest(folder: Path, uid: str, name: str) -> None:
-    data = {"format": "bfproj", "version": 1, "uid": uid, "name": name, "app_version": bf_core.__version__}
+def write_manifest(folder: Path, uid: str, name: str, **extra: Any) -> None:
+    """Writes `project.bfproj`; fields it had besides the standard ones (import token) are kept."""
+    old = read_manifest(folder) or {}
+    data = {
+        **old,
+        **extra,
+        "format": "bfproj",
+        "version": 1,
+        "uid": uid,
+        "name": name,
+        "app_version": bf_core.__version__,
+    }
     tmp = folder / (MANIFEST + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, folder / MANIFEST)

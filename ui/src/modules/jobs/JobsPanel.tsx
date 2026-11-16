@@ -3,8 +3,7 @@ import { bridge } from "../../bridge";
 import { useApp } from "../../shell/AppContext";
 import { showMessage } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
-import { openProject } from "../projects/state";
-import { cancelJob, jobLog, jobsStore, refresh, restartWorkers, retryJob, STATUS_TITLES, type Job } from "./state";
+import { jobLog, jobsStore, refresh, STATUS_TITLES, type Job } from "./state";
 import css from "./Jobs.module.css";
 
 /** «Задания» (ТЗ 7.6): state, progress, why it waits; cancel, retry, show in folder, journal. */
@@ -28,7 +27,7 @@ export function JobsPanel() {
       {(noWorker || workers?.stopped_reason) && (
         <div className={css.bar}>
           <span className={css.warn}>{workers?.stopped_reason ?? "Нет работающего исполнителя заданий."}</span>
-          <button type="button" className={css.btn} onClick={() => void restartWorkers()}>
+          <button type="button" className={css.btn} onClick={() => void app.run("jobs.restart_workers")}>
             Перезапустить исполнителей
           </button>
         </div>
@@ -75,12 +74,12 @@ export function JobsPanel() {
                 </td>
                 <td>
                   {(j.status === "queued" || j.status === "running") && (
-                    <button type="button" className={css.btn} disabled={j.cancel_requested} onClick={() => void cancelJob(j)}>
+                    <button type="button" className={css.btn} disabled={j.cancel_requested} onClick={() => void app.run("jobs.cancel", { job_id: j.id })}>
                       {j.cancel_requested ? "Отмена…" : "Отменить"}
                     </button>
                   )}
                   {j.status === "failed" && (
-                    <button type="button" className={css.btn} onClick={() => void retryJob(j)}>
+                    <button type="button" className={css.btn} onClick={() => void app.run("jobs.retry", { job_id: j.id, source: j.source })}>
                       Повторить
                     </button>
                   )}
@@ -90,7 +89,7 @@ export function JobsPanel() {
                     </button>
                   )}
                   {j.status === "done" && j.kind === "import.project" && typeof j.result?.uid === "string" && (
-                    <button type="button" className={css.btn} onClick={() => void openProject(app, String(j.result!.uid))}>
+                    <button type="button" className={css.btn} onClick={() => void app.run("project.open", { uid: String(j.result!.uid) })}>
                       Открыть проект
                     </button>
                   )}

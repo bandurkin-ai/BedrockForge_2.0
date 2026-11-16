@@ -25,6 +25,7 @@ log = logging.getLogger("bf_core.projects")
 class _Service(ProjectService):
     def __init__(self, root: Path, instance: sa.Engine) -> None:
         super().__init__(root, instance)
+        self.sweep()
         self._stop = threading.Event()
         threading.Thread(target=self._maintenance, name="project-maintenance", daemon=True).start()
 
@@ -35,10 +36,15 @@ class _Service(ProjectService):
         with self._lock:
             p = self.current
             if p is None or p.read_only:
+                p = None
+            if p is None:
+                self.reap()
+                self.sweep()
                 return
             collect(p.engine, BlobStore(p.folder))
             p.backup_if_due()
         self.reap()
+        self.sweep()
 
     def _maintenance(self) -> None:
         while not self._stop.wait(MAINTENANCE_EVERY_S):

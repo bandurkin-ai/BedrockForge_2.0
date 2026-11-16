@@ -6,7 +6,7 @@ import type { CommandSource } from "../../shell/commands";
 import { askConfirm, askText, showMessage } from "../../shell/dialogs";
 import { openWindow } from "../../shell/windows";
 import { refresh as refreshJobs } from "../jobs/state";
-import { createProject, deleteProject, demoProject, projectStore, refreshCurrent, updateProject } from "./state";
+import { createProject, deleteProject, demoProject, openProject, projectStore, refreshCurrent, updateProject } from "./state";
 
 const needProject = (ctx: { hasProject: boolean }) => (ctx.hasProject ? null : "Проект не открыт");
 const needCore = (ctx: { coreOnline: boolean }) => (ctx.coreOnline ? null : "Ядро недоступно");
@@ -50,6 +50,15 @@ export function bindProjects(app: App): void {
     async (_a, source) => {
       const p = await guarded(() => demoProject(app), source);
       return p.created ? `Создан демо-проект «${p.name}»` : `Открыт демо-проект «${p.name}»`;
+    },
+    needCore,
+  );
+
+  r.bind(
+    "project.open",
+    async (a, source) => {
+      const p = await guarded(() => openProject(app, String(a.uid)), source);
+      return `Открыт проект «${p.name}»${p.read_only ? " (только чтение)" : ""}`;
     },
     needCore,
   );

@@ -10,7 +10,7 @@ from .context import JobContext, JobError
 from .registry import handler
 
 
-@handler("diag.sleep", "Проверка заданий", queue="heavy")
+@handler("diag.sleep", "Проверка заданий", queue="heavy", public=True)
 def sleep(ctx: JobContext) -> dict[str, Any]:
     """Ticks `steps` times every `step_s`; `crash_at` kills the process at that step on the first attempts."""
     steps = int(ctx.params.get("steps", 10))
@@ -26,18 +26,18 @@ def sleep(ctx: JobContext) -> dict[str, Any]:
     return {"steps": steps, "attempt": ctx.job.get("attempts")}
 
 
-@handler("diag.quick", "Быстрая проверка", queue="quick")
+@handler("diag.quick", "Быстрая проверка", queue="quick", public=True)
 def quick(ctx: JobContext) -> dict[str, Any]:
     ctx.tick(1.0)
     return {"ok": True}
 
 
-@handler("diag.fail", "Проверка ошибки", queue="heavy")
+@handler("diag.fail", "Проверка ошибки", queue="heavy", public=True)
 def fail(ctx: JobContext) -> dict[str, Any]:
     raise JobError("diag_failed", "Проверочная ошибка.", "Ничего делать не нужно.")
 
 
-@handler("diag.hang", "Проверка зависания", queue="heavy")
+@handler("diag.hang", "Проверка зависания", queue="heavy", public=True)
 def hang(ctx: JobContext) -> dict[str, Any]:
     """Never ticks: cancellation must still end it (the scheduler kills the worker)."""
     time.sleep(float(ctx.params.get("seconds", 60)))

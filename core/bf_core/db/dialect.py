@@ -90,6 +90,8 @@ def create_engine(url: str, *, schema: str | None = None) -> Engine:
             cur.execute("PRAGMA synchronous=NORMAL")
             cur.execute("PRAGMA foreign_keys=ON")
             cur.execute("PRAGMA busy_timeout=30000")
+            # Deleted content is overwritten: the archive password a job held is not left in free pages.
+            cur.execute("PRAGMA secure_delete=ON")
             cur.close()
 
         @sa.event.listens_for(engine, "begin")

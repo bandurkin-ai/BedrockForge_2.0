@@ -7,6 +7,7 @@ From the scheduler: ("run", job), ("cancel", id), ("stop",).
 
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import traceback
@@ -17,8 +18,6 @@ HEARTBEAT_S = 5.0
 
 
 def main(conn: Connection, queue_name: str) -> None:
-    import os
-
     os.environ.setdefault("BF_WORKER", queue_name)
     from bf_core.paths import configure_numba_cache
 
@@ -36,20 +35,31 @@ def main(conn: Connection, queue_name: str) -> None:
     jobs: queue.Queue[dict[str, Any] | None] = queue.Queue()
     cancel = threading.Event()
     current: dict[str, int | None] = {"id": None}
+    cancelled_ids: set[int] = set()  # a cancel may arrive before the job starts running here
+    state_lock = threading.Lock()
 
     def reader() -> None:
+        lost = False
         try:
             while True:
                 msg = conn.recv()
                 if msg[0] == "run":
                     jobs.put(msg[1])
-                elif msg[0] == "cancel" and msg[1] == current["id"]:
-                    cancel.set()
+                elif msg[0] == "cancel":
+                    with state_lock:
+                        cancelled_ids.add(int(msg[1]))
+                        if msg[1] == current["id"]:
+                            cancel.set()
                 elif msg[0] == "stop":
                     break
         except (EOFError, OSError):
-            pass
+            lost = True
         jobs.put(None)
+        if lost:
+            # The core is gone (killed): stop the running job, and leave for sure — a new core requeues it,
+            # two copies of one job must never run.
+            cancel.set()
+            threading.Timer(2.0, lambda: os._exit(4)).start()
 
     def beat() -> None:
         while True:
@@ -70,8 +80,11 @@ def main(conn: Connection, queue_name: str) -> None:
         job = jobs.get()
         if job is None:
             break
-        cancel.clear()
-        current["id"] = job["id"]
+        with state_lock:
+            cancel.clear()
+            current["id"] = job["id"]
+            if job["id"] in cancelled_ids:
+                cancel.set()
         ctx = JobContext(job, send, cancel)
         try:
             spec = kinds.get(job["kind"])

@@ -125,3 +125,9 @@ def test_event_stream_ends_on_shutdown() -> None:
 
     got = asyncio.run(run())
     assert got[0][1] == "job" and got[1][0] == 0
+
+
+def test_validation_error_is_russian_and_hides_values(pclient) -> None:  # type: ignore[no-untyped-def]
+    r = pclient.post("/api/v1/projects/import/inspect", json={"path": "x", "password": "S" * 2000})
+    assert r.status_code == 422 and r.json()["code"] == "bad_request"
+    assert "password" in r.json()["message"] and "SSSS" not in r.text

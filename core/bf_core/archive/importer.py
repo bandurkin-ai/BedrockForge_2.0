@@ -18,7 +18,8 @@ import sqlalchemy as sa
 import bf_core
 from bf_core.db import dialect, migrate
 from bf_core.db.schema import blobs, project_md, project_meta
-from bf_core.projects.project import DB_FILE, SUFFIX, folder_name, write_manifest
+from bf_core.projects.lock import ProjectLock
+from bf_core.projects.project import DB_FILE, SUFFIX, folder_name, read_manifest, write_manifest
 from bf_core.storage.blobs import BlobStore, valid_sha
 
 from .container import ArchiveError, Corrupted, TooNew, open_archive, read_header, read_json
@@ -104,14 +105,18 @@ def import_project(
     name: str,
     password: str | None = None,
     apply_view: bool = True,
+    token: str | None = None,
     progress: Progress = lambda _f, _m: None,
 ) -> dict[str, Any]:
     """Builds the project in `root/.imp-<uuid>.bfproj` and renames it into place. Returns the new uid, name,
-    folder and the id maps."""
+    folder and the id maps. `token` marks the project (manifest) so that a retry after a crash finds it.
+    The building folder is locked while it is filled: the maintenance removes only abandoned ones."""
     root.mkdir(parents=True, exist_ok=True)
     building = root / f".imp-{uuid.uuid4().hex}{SUFFIX}"
     for sub in ("", "blobs", "cache", "backups", "logs"):
         (building / sub).mkdir(parents=True, exist_ok=True)
+    lock = ProjectLock(building / "project.lock")
+    lock.acquire()
     engine = dialect.create_engine(dialect.sqlite_url(str(building / DB_FILE)))
     store = BlobStore(building)
     size = max(1, path.stat().st_size)
@@ -126,10 +131,16 @@ def import_project(
         dialect.checkpoint(engine)
     except BaseException:
         engine.dispose()
+        lock.release()
         shutil.rmtree(building, ignore_errors=True)
         raise
     engine.dispose()
-    write_manifest(building, result["uid"], name)
+    if token:
+        (building / "logs" / f"import-{token}.json").write_text(
+            json.dumps(result, ensure_ascii=False), encoding="utf-8"
+        )
+    write_manifest(building, result["uid"], name, **({"import_token": token} if token else {}))
+    lock.release()
     base = folder_name(name)
     folder = root / f"{base}{SUFFIX}"
     n = 2
@@ -139,6 +150,30 @@ def import_project(
     os.replace(building, folder)
     result["path"] = str(folder)
     return result
+
+
+def find_imported(root: Path, token: str) -> dict[str, Any] | None:
+    """A project an earlier attempt of the same import job already created (it died before reporting)."""
+    if not root.is_dir():
+        return None
+    for folder in root.iterdir():
+        if not folder.name.endswith(SUFFIX) or folder.name.startswith("."):
+            continue
+        manifest = read_manifest(folder)
+        if manifest and manifest.get("import_token") == token:
+            try:
+                result = json.loads((folder / "logs" / f"import-{token}.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                result = {
+                    "uid": manifest.get("uid"),
+                    "name": manifest.get("name"),
+                    "id_maps": {},
+                    "rows": {},
+                    "files": 0,
+                }
+            result["path"] = str(folder)
+            return dict(result)
+    return None
 
 
 def _restore(
@@ -161,7 +196,11 @@ def _restore(
     pos = {"n": 0}
     by_name = {f"db/{t.name}.jsonl": t for t in TABLES}
 
-    with open_archive(path, password, on_read=lambda n: pos.__setitem__("n", n)) as (_, tar):
+    def on_read(n: int) -> None:  # progress and cancellation inside big members too (ТЗ 6.7: tick ≥ 1/s)
+        pos["n"] = n
+        progress(n, None)  # type: ignore[arg-type]
+
+    with open_archive(path, password, on_read=on_read) as (_, tar):
         for member in tar:
             if not member.isfile():
                 continue

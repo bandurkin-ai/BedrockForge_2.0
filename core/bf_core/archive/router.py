@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -58,13 +59,20 @@ def _file(path: str) -> Path:
 @router.post("/export")
 def export_project(svc: Svc, s: Sched, body: ExportBody) -> dict[str, Any]:
     project = svc.require_current()
+    if project.read_only:
+        raise ApiError(
+            423,
+            "project_read_only",
+            "Проект открыт только для чтения: экспорт выполняет окно, в котором проект открыт для записи.",
+            "Экспортируйте проект из того окна или закройте его там.",
+        )
     out = Path(body.path)
     if out.suffix.lower() != ".bfggis":
         out = out.with_name(out.name + ".bfggis")
     if not out.parent.is_dir():
         raise ApiError(422, "folder_not_found", "Папка для файла не найдена.", "Выберите другую папку.")
     title = f"Экспорт проекта «{project.meta()['name']}»"
-    params = {"path": str(out), "include_view": body.include_view}
+    params = {"path": str(out), "include_view": body.include_view, "encrypted": bool(body.password)}
     key, job_id = s.submit("export.project", params, title=title, secret=body.password or None)
     return {"source": key, "id": job_id, "path": str(out)}
 
@@ -102,16 +110,21 @@ def import_file(svc: Svc, s: Sched, body: ImportBody) -> dict[str, Any]:
     if info.get("needs_password"):
         raise ApiError(422, "bad_password", "Файл защищён паролем.", "Введите пароль.")
     entries = svc.list()
-    same = [e for e in entries if dialect.name_key(e["name"]) == dialect.name_key(info["name"])]
-    params: dict[str, Any] = {"path": str(path), "root": str(svc.root), "apply_view": body.apply_view}
+    file_name = svc.clean_name(str(info.get("name") or "Проект"))
+    same = [e for e in entries if dialect.name_key(e["name"]) == dialect.name_key(file_name)]
+    params: dict[str, Any] = {
+        "path": str(path),
+        "root": str(svc.root),
+        "apply_view": body.apply_view,
+        "encrypted": bool(body.password),
+        "token": uuid.uuid4().hex,  # a retry after a crash finds the project the first attempt made
+    }
     if body.mode == "new" and not same:
-        params["name"] = info["name"]
+        params["name"] = file_name
     elif body.mode in ("new", "copy"):
-        params["name"] = _unique_copy_name(svc, info["name"])
+        params["name"] = _unique_copy_name(svc, file_name)
     elif body.mode == "rename":
-        name = " ".join((body.name or "").split())
-        if not name:
-            raise ApiError(422, "name_empty", "Название проекта не может быть пустым.", "Введите название.")
+        name = svc.clean_name(body.name or "")
         if any(dialect.name_key(e["name"]) == dialect.name_key(name) for e in entries):
             raise ApiError(409, "name_taken", f"Проект «{name}» уже есть.", "Выберите другое название.")
         params["name"] = name
@@ -119,10 +132,18 @@ def import_file(svc: Svc, s: Sched, body: ImportBody) -> dict[str, Any]:
         if not same:
             raise ApiError(404, "project_not_found", "Заменяемый проект не найден.", "Выберите «Создать копию».")
         old = same[0]
+        if svc.busy(old["uid"]):
+            raise ApiError(
+                409,
+                "project_busy",
+                "У заменяемого проекта выполняются задания.",
+                "Дождитесь их окончания или отмените их.",
+            )
         if svc.current and svc.current.uid == old["uid"]:
             svc.close()
-        params["name"] = info["name"]
+        params["name"] = file_name
         params["replace_folder"] = old["path"]
+        params["replace_uid"] = old["uid"]
     title = f"Импорт проекта «{params['name']}»"
     key, job_id = s.submit("import.project", params, title=title, secret=body.password or None)
     return {"source": key, "id": job_id, "name": params["name"]}

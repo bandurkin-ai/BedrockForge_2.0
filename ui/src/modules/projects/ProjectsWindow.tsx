@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useApp } from "../../shell/AppContext";
 import { Icon } from "../../shell/Icon";
 import { useStore } from "../../shell/useStore";
-import { formatDate, listProjects, objectCount, openProject, projectStore, SUMMARY_TITLES, updateProject, type Description, type ProjectEntry } from "./state";
+import { formatDate, listProjects, objectCount, projectStore, SUMMARY_TITLES, updateProject, type Description, type ProjectEntry } from "./state";
 import css from "./Projects.module.css";
 
 const DESC_FIELDS: [keyof Description, string][] = [
@@ -51,7 +51,7 @@ export function ProjectsWindow() {
     if (changed) updateProject(app, current.uid, { description: desc, expected_version: current.version }).catch(fail);
   };
   const run = (id: string, args: Record<string, unknown> = {}) => void app.run(id, args);
-  const open = (uid: string) => openProject(app, uid).catch(fail);
+  const open = (uid: string) => app.run("project.open", { uid });
 
   return (
     <div className={css.wrap}>

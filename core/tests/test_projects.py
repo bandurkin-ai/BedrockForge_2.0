@@ -6,12 +6,14 @@ import os
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
 
 from bf_core.projects.lock import ProjectLock
 from bf_core.projects.project import open_folder
+from bf_core.projects.service import projects_of
 
 API = "/api/v1/projects"
 
@@ -168,3 +170,46 @@ def test_demo_created_once_then_opened(pclient) -> None:  # type: ignore[no-unty
     second = pclient.post(API + "/demo").json()
     assert second["created"] is False and second["uid"] == first["uid"]
     assert [e["name"] for e in pclient.get(API).json()["projects"]] == ["Демо: участок Северный"]
+
+
+def test_sweep_removes_abandoned_service_folders_only(pclient, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    svc = projects_of(pclient.core)
+    svc.root.mkdir(parents=True, exist_ok=True)
+    old = svc.root / ".imp-dead.bfproj"
+    busy = svc.root / ".imp-busy.bfproj"
+    fresh = svc.root / ".del-fresh.bfproj"
+    for d in (old, busy, fresh):
+        d.mkdir()
+        (d / "project.lock").write_bytes(b" ")
+    lock = ProjectLock(busy / "project.lock")
+    assert lock.acquire()
+    past = time.time() - 3600
+    for d in (old, busy):
+        os.utime(d, (past, past))
+    try:
+        assert svc.sweep() == 1
+    finally:
+        lock.release()
+    assert not old.exists() and busy.exists() and fresh.exists()
+
+
+def test_busy_project_is_not_deleted_and_stays_open(pclient) -> None:  # type: ignore[no-untyped-def]
+    p = _create(pclient, "Занятый")
+    svc = projects_of(pclient.core)
+    svc.is_busy = lambda uid: uid == p["uid"]
+    r = pclient.delete(f"{API}/{p['uid']}")
+    assert r.status_code == 409 and r.json()["code"] == "project_busy"
+    assert pclient.get(API + "/current").json()["project"]["uid"] == p["uid"]
+
+
+def test_damaged_project_does_not_close_the_open_one(pclient) -> None:  # type: ignore[no-untyped-def]
+    a = _create(pclient, "Целый")
+    b = _create(pclient, "Сломанный")
+    pclient.post(f"{API}/{a['uid']}/open")
+    db = Path(b["path"]) / "project.sqlite"
+    data = bytearray(db.read_bytes())
+    data[4096:] = b"\x0d\xff" * ((len(data) - 4096) // 2)
+    db.write_bytes(bytes(data))
+    r = pclient.post(f"{API}/{b['uid']}/open")
+    assert r.status_code == 409 and r.json()["code"] == "project_damaged"
+    assert pclient.get(API + "/current").json()["project"]["uid"] == a["uid"]

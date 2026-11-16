@@ -91,6 +91,8 @@ class ProjectService:
         #: Projects closed by the user while their jobs still run (ADR 0002 §5 «Смена проекта»).
         self.detached: dict[str, Project] = {}
         self.is_released: Callable[[str], bool] = lambda _uid: True
+        #: Whether jobs of a project run now (the scheduler sets it).
+        self.is_busy: Callable[[str], bool] = lambda _uid: False
 
     # --- listing ----------------------------------------------------------------------------
 
@@ -157,6 +159,7 @@ class ProjectService:
             engine.dispose()
 
     def list(self, query: str = "") -> list[dict[str, Any]]:
+        self.reap()
         q = dialect.name_key(query)
         out = []
         for folder in self._folders():
@@ -183,8 +186,9 @@ class ProjectService:
         return any(e["uid"] != except_uid and dialect.name_key(e["name"]) == key for e in self.list())
 
     @staticmethod
-    def _clean_name(name: str) -> str:
-        name = " ".join(str(name).split())
+    def clean_name(name: str) -> str:
+        name = "".join(ch for ch in str(name) if ch.isprintable() or ch == " ")
+        name = " ".join(name.split())
         if not name:
             raise ApiError(422, "name_empty", "Название проекта не может быть пустым.", "Введите название.")
         if len(name) > 200:
@@ -197,7 +201,7 @@ class ProjectService:
     # --- changes ----------------------------------------------------------------------------
 
     def create(self, name: str, description: Any = None) -> Project:
-        name = self._clean_name(name)
+        name = self.clean_name(name)
         with self._lock:
             self.root.mkdir(parents=True, exist_ok=True)
             check_location(self.root)
@@ -210,11 +214,13 @@ class ProjectService:
         with self._lock:
             if self.current and self.current.uid == uid:
                 return self.current
-            self.close()
+            self.reap()
+            # The new project opens before the current one closes: a damaged or newer project leaves it open.
             if uid in self.detached:
                 project = self.detached.pop(uid)
             else:
                 project = open_folder(self.find(uid))
+            self.close()
             self.current = project
             for hook in self.on_open:
                 hook(project)
@@ -234,6 +240,35 @@ class ProjectService:
                 else:
                     p.close()
             self.reap()
+
+    def busy(self, uid: str) -> bool:
+        self.reap()
+        return uid in self.detached or self.is_busy(uid)
+
+    def sweep(self, min_age_s: float = 600) -> int:
+        """Removes service folders left by a killed process (`.new-`, `.imp-`, `.del-`): not locked, not fresh."""
+        import time
+
+        n = 0
+        if not self.root.is_dir():
+            return 0
+        for folder in self.root.iterdir():
+            if not folder.is_dir() or not folder.name.startswith((".new-", ".imp-", ".del-")):
+                continue
+            try:
+                if time.time() - folder.stat().st_mtime < min_age_s:
+                    continue
+            except OSError:
+                continue
+            lock_file = folder / "project.lock"
+            if lock_file.exists():
+                probe = ProjectLock(lock_file)
+                if not probe.acquire():
+                    continue  # an import is filling it right now
+                probe.release()
+            shutil.rmtree(folder, ignore_errors=True)
+            n += 1
+        return n
 
     def reap(self) -> None:
         """Closes detached projects whose jobs have ended."""
@@ -264,7 +299,7 @@ class ProjectService:
                 raise ApiError(409, "not_open", "Изменять можно только открытый проект.", "Откройте проект.")
             values: dict[str, Any] = {"updated_at": dialect.utcnow()}
             if name is not None:
-                name = self._clean_name(name)
+                name = self.clean_name(name)
                 if self._name_taken(name, except_uid=uid):
                     raise self._taken(name)
                 values.update(name=name, name_key=dialect.name_key(name))
@@ -290,12 +325,12 @@ class ProjectService:
         """All the project's data: the folder goes away (a running job keeps it until it ends — Э2.4)."""
         with self._lock:
             folder = self.find(uid)
-            if self.current and self.current.uid == uid:
-                self.close()
-            if uid in self.detached:
+            if self.busy(uid):  # checked before closing: a refused delete leaves the project open
                 raise ApiError(
                     409, "project_busy", "У проекта выполняются задания.", "Дождитесь их окончания или отмените их."
                 )
+            if self.current and self.current.uid == uid:
+                self.close()
             probe = ProjectLock(folder / "project.lock")  # refuses to delete a project open elsewhere
             if probe.acquire():
                 probe.release()
@@ -307,7 +342,15 @@ class ProjectService:
                     "Закройте его там и повторите удаление.",
                 )
             trash = folder.with_name(f".del-{uuid.uuid4().hex}{SUFFIX}")
-            folder.rename(trash)  # disappears from the list at once, even if removal takes time
+            try:
+                folder.rename(trash)  # disappears from the list at once, even if removal takes time
+            except OSError as exc:
+                raise ApiError(
+                    423,
+                    "project_in_use",
+                    f"Папку проекта не удалось удалить: {exc.strerror or exc}.",
+                    "Закройте программы, открывшие файлы проекта (Проводник, антивирус), и повторите.",
+                ) from exc
             shutil.rmtree(trash, ignore_errors=True)
             with dialect.write_tx(self.instance) as conn:
                 conn.execute(sa.delete(projects_cache).where(projects_cache.c.uid == uid))

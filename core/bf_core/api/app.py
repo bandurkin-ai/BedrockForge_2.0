@@ -10,11 +10,12 @@ from dataclasses import dataclass, field
 from typing import Annotated, Any
 
 from fastapi import APIRouter, FastAPI, Header
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse
 
 import bf_core
 
-from .errors import ApiError, api_error_handler, unexpected_error_handler
+from .errors import ApiError, api_error_handler, unexpected_error_handler, validation_error_handler
 from .events import EventBus, format_sse
 from .modules import ROUTER_MODULES
 from .security import APP_ORIGIN, GuardMiddleware
@@ -54,6 +55,7 @@ def create_app(state: CoreState, extra_origins: tuple[str, ...] = ()) -> FastAPI
     app = FastAPI(title="bf-core", version=bf_core.__version__, docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.core = state
     app.add_exception_handler(ApiError, api_error_handler)
+    app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(Exception, unexpected_error_handler)
     origins = (APP_ORIGIN, *extra_origins)
     app.add_middleware(GuardMiddleware, token=state.token, allowed_origins=origins, port=state.port)

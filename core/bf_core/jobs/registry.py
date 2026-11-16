@@ -30,6 +30,8 @@ class JobKind:
     estimate_memory: Callable[[dict[str, Any]], int] = lambda _params: 256
     #: Instance jobs live in instance.sqlite (no project: import of a project, demo).
     instance: bool = False
+    #: May be started by the generic POST /jobs (diagnostics). Module jobs go through their own endpoints.
+    public: bool = False
 
 
 KINDS: dict[str, JobKind] = {}
@@ -43,6 +45,7 @@ def handler(
     max_attempts: int | None = None,
     estimate_memory: Callable[[dict[str, Any]], int] | None = None,
     instance: bool = False,
+    public: bool = False,
 ) -> Callable[[Callable[[JobContext], dict[str, Any] | None]], Callable[[JobContext], dict[str, Any] | None]]:
     def wrap(fn: Callable[[JobContext], dict[str, Any] | None]) -> Callable[[JobContext], dict[str, Any] | None]:
         attempts = max_attempts if max_attempts is not None else (2 if kind.startswith("import.") else 3)
@@ -54,6 +57,7 @@ def handler(
             attempts,
             estimate_memory or (lambda _p: 256),
             instance,
+            public,
         )
         return fn
 

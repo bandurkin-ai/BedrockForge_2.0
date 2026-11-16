@@ -39,6 +39,7 @@ class JobContext:
         self._send = send
         self._cancelled = cancelled
         self._last_sent = 0.0
+        self._last_message: str | None = None
         self._engine: sa.Engine | None = None
 
     # --- progress, log, cancellation ----------------------------------------------------------
@@ -48,8 +49,12 @@ class JobContext:
         if self._cancelled.is_set():
             raise JobCancelled()
         now = time.monotonic()
-        if message is not None or now - self._last_sent >= 0.2:
+        # At most 5 messages a second; a new text goes at once unless texts change faster than that.
+        new_text = message is not None and message != self._last_message
+        if now - self._last_sent >= 0.2 or (new_text and now - self._last_sent >= 0.05):
             self._last_sent = now
+            if message is not None:
+                self._last_message = message
             p = None if progress is None else max(0.0, min(1.0, float(progress)))
             self._send(("progress", self.id, p, message))
 

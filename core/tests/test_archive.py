@@ -179,3 +179,33 @@ def test_file_of_bf1_is_recognised(ac, tmp_path: Path) -> None:  # type: ignore[
         w.add_bytes("manifest.json", json.dumps(manifest, ensure_ascii=False).encode())
     info = ac.post(f"{API}/projects/import/inspect", json={"path": str(path)}).json()
     assert info["from_bf"] is True and info["name"] == "Демо: участок Северный" and info["tables"]["collar"] == 48
+
+
+def test_lost_password_never_writes_a_plain_file(ac, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.jobs.service import jobs_of
+
+    sched = jobs_of(ac.core)
+    out = tmp_path / "x.bfggis"
+    # what a retry after a worker crash sees: the job says «encrypted», the secret was taken by the first attempt
+    key, jid = sched.submit("export.project", {"path": str(out), "encrypted": True}, secret=None)
+    job = wait_job(ac, key, jid)
+    assert job["status"] == "failed" and job["error"]["code"] == "password_lost" and not out.exists()
+    r = ac.post(f"{API}/jobs/{key}/{jid}/retry")
+    assert r.status_code == 409 and r.json()["code"] == "password_not_kept"
+
+
+def test_internal_kinds_are_not_started_by_the_generic_endpoint(ac) -> None:  # type: ignore[no-untyped-def]
+    r = ac.post(f"{API}/jobs", json={"kind": "import.project", "params": {"replace_folder": "/"}})
+    assert r.status_code == 422 and r.json()["code"] == "unknown_job"
+
+
+def test_import_retry_finds_the_project_of_the_first_attempt(ac, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.archive.importer import find_imported, import_project
+
+    fill(ac)
+    path = Path(export(ac, tmp_path / "t.bfggis")["result"]["path"])
+    root = projects_of(ac.core).root
+    first = import_project(path, root, name="Повтор", token="tok1")
+    again = find_imported(root, "tok1")
+    assert again is not None and again["uid"] == first["uid"] and again["id_maps"] == first["id_maps"]
+    assert find_imported(root, "other") is None

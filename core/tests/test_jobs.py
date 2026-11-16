@@ -184,3 +184,15 @@ def test_secret_is_never_shown_and_cleared_on_claim(jc) -> None:  # type: ignore
     t, _ = store.tables(False)
     with dialect.read_tx(src.engine) as conn:  # type: ignore[union-attr]
         assert conn.execute(sa.select(t.c.secret).where(t.c.id == jid)).scalar_one() is None
+
+
+def test_retry_goes_to_the_project_of_the_job(jc) -> None:  # type: ignore[no-untyped-def]
+    key, jid = submit(jc, "diag.fail")
+    wait_for(jc, key, jid)
+    other = jc.post(API + "/projects", json={"name": "Другой"}).json()
+    r = jc.post(f"{API}/jobs/{key}/{jid}/retry")
+    assert r.status_code == 409 and r.json()["code"] == "job_project_closed"
+    first = [e for e in jc.get(API + "/projects").json()["projects"] if e["uid"] != other["uid"]][0]
+    jc.post(f"{API}/projects/{first['uid']}/open")
+    r = jc.post(f"{API}/jobs/{key}/{jid}/retry").json()
+    assert r["source"] == key

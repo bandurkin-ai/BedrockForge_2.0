@@ -4,6 +4,7 @@ import type { Command } from "../../shell/commands";
 export const commands: Command[] = [
   { id: "project.new", title: "Новый проект", description: "Создать пустой проект и открыть его.", params: { name: { type: "string" } }, confirm: true, stage: "Э2" },
   { id: "project.demo", title: "Демо-проект", description: "Учебный проект: 48 скважин, пробы, аудит, каркасы рудного тела.", confirm: true, stage: "Э2" },
+  { id: "project.open", title: "Открыть проект", description: "Открыть проект по его uid (список проектов — окно «Проекты»).", params: { uid: { type: "string" } }, required: ["uid"], stage: "Э2" },
   { id: "project.rename", title: "Переименовать проект", description: "Новое название и описание проекта.", params: { name: { type: "string" }, description: { type: "string" } }, confirm: true, stage: "Э2" },
   { id: "project.delete", title: "Удалить проект", description: "Удалить текущий проект со всеми данными.", confirm: true, stage: "Э2" },
   { id: "project.manage", title: "Проекты", description: "Окно управления проектами: название, описание, состав, все проекты.", stage: "Э2" },

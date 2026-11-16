@@ -29,6 +29,9 @@ def attach(state: CoreState, svc: ProjectService) -> Scheduler:
         svc.on_open.append(opened)
         svc.on_close.append(lambda p: sched.detach_project(p.uid))
         svc.is_released = sched.released
+        svc.is_busy = sched.busy
+        # A detached project closes as soon as its last job ends (not at the next maintenance pass).
+        sched.on_release = lambda _key: threading.Thread(target=svc.reap, name="project-reap", daemon=True).start()
         if svc.current is not None:
             opened(svc.current)
         state.services["jobs"] = sched

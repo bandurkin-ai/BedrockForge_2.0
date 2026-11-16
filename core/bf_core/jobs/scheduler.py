@@ -11,6 +11,7 @@ import logging
 import multiprocessing as mp
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from multiprocessing.connection import Connection, wait
 from typing import Any
@@ -78,11 +79,13 @@ class Scheduler:
         self.waiting: dict[tuple[str, int], str] = {}  # (source key, job id) → reason
         self.stopped_reason: str | None = None
         self._restarts: list[float] = []
+        self.on_release: Callable[[str], None] = lambda _key: None
         self._lock = threading.RLock()
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._ctx = mp.get_context("spawn")
         self._seq = 0
+        self._last_dispatch = 0.0
         store.recover(instance.engine, True)
         with self._lock:
             self._ensure_workers()
@@ -112,6 +115,11 @@ class Scheduler:
             self.project = None
             return busy
 
+    def busy(self, key: str) -> bool:
+        """Jobs of this project run now."""
+        with self._lock:
+            return any(w.job and w.job.source.key == key for w in self.workers)
+
     def released(self, key: str) -> bool:
         """True once a detached project has no running jobs (the project service then closes it)."""
         with self._lock:
@@ -128,13 +136,28 @@ class Scheduler:
     # --- public API -------------------------------------------------------------------------
 
     def submit(
-        self, kind: str, params: dict[str, Any], *, title: str | None = None, secret: str | None = None
+        self,
+        kind: str,
+        params: dict[str, Any],
+        *,
+        title: str | None = None,
+        secret: str | None = None,
+        source: str | None = None,
     ) -> tuple[str, int]:
+        """A new job in instance.sqlite (instance kinds) or in the open project — or in `source`, which must be
+        the instance or an attached project (a retry goes to the project of the failed job)."""
         spec = KINDS.get(kind)
         if spec is None:
             raise KeyError(kind)
         with self._lock:
-            src = self.instance if spec.instance else self.project
+            if source is not None:
+                src = (
+                    self.instance
+                    if source == "instance"
+                    else (self.project if self.project and self.project.key == source else None)
+                )
+            else:
+                src = self.instance if spec.instance else self.project
         if src is None:
             raise LookupError("no project")
         job_id = store.insert(
@@ -188,7 +211,9 @@ class Scheduler:
         old = store.get(src.engine, src.instance, job_id)
         if old is None:
             raise LookupError(job_id)
-        _, new_id = self.submit(old["kind"], old["params"], title=old["title"])
+        if (old["params"] or {}).get("encrypted"):
+            raise PermissionError("password")  # the password is not kept: the user starts the job again
+        _, new_id = self.submit(old["kind"], old["params"], title=old["title"], source=key)
         return new_id
 
     def restart_workers(self) -> None:
@@ -275,11 +300,10 @@ class Scheduler:
             for _ in range(n - have):
                 now = time.monotonic()
                 self._restarts = [t for t in self._restarts if now - t < 60]
-                if len(self._restarts) >= MAX_RESTARTS_PER_MIN * 3:
+                if len(self._restarts) >= MAX_RESTARTS_PER_MIN:
                     self.stopped_reason = "Исполнитель заданий перезапускался слишком часто."
                     log.error("workers restart too often; stopped")
                     return
-                self._restarts.append(now)
                 self._spawn(queue)
 
     def _kill(self, w: Worker) -> None:
@@ -313,6 +337,7 @@ class Scheduler:
         else:
             self._wake.wait(0.2)
             ready = []
+        woken = self._wake.is_set()
         self._wake.clear()
         with self._lock:
             for w in list(self.workers):
@@ -326,7 +351,11 @@ class Scheduler:
                     self._on_dead(w)
             self._watchdog()
             self._ensure_workers()
-            self._dispatch()
+            now = time.monotonic()
+            # Claims open a connection per source: on a wake-up (new job, a worker freed) or twice a second.
+            if woken or ready or now - self._last_dispatch >= 0.5:
+                self._last_dispatch = now
+                self._dispatch()
 
     def _on_message(self, w: Worker, msg: tuple[Any, ...]) -> None:
         kind = msg[0]
@@ -389,10 +418,12 @@ class Scheduler:
     def _release(self, src: Source) -> None:
         if src.key in self.detached and not any(x.job and x.job.source.key == src.key for x in self.workers):
             self.detached.pop(src.key, None)
+            self.on_release(src.key)
 
     def _on_dead(self, w: Worker) -> None:
         run = w.job
         self._kill(w)
+        self._restarts.append(time.monotonic())  # only unexpected exits count toward «слишком часто»
         if run is None:
             return
         src = run.source
@@ -463,6 +494,7 @@ class Scheduler:
                 nxt.id,
                 status="failed",
                 finished_at=dialect.utcnow(),
+                secret=None,
                 error={
                     "code": "out_of_memory",
                     "message": f"Заданию нужно ~{(nxt.memory_mb or 0) / 1024:.1f} ГБ — больше всей памяти компьютера.",

@@ -28,10 +28,36 @@ Log = Callable[[str, str], None]
 
 
 def snapshot(engine: sa.Engine, folder: Path) -> Path:
+    """A copy of the project; objects still being built by other jobs (state='building') are dropped from it."""
     target = folder / "cache" / f"export-{uuid.uuid4().hex}.sqlite"
     target.parent.mkdir(parents=True, exist_ok=True)
     dialect.vacuum_into(engine, str(target))
+    snap = dialect.create_engine(dialect.sqlite_url(str(target)))
+    try:
+        from bf_core.db.schema import objects
+        from bf_core.jobs.store import drop_partial
+
+        with dialect.write_tx(snap) as conn:
+            for job_id in conn.execute(
+                sa.select(objects.c.job_id).where(objects.c.state == "building").distinct()
+            ).scalars():
+                drop_partial(conn, job_id)
+            conn.execute(sa.delete(objects).where(objects.c.state == "building"))
+    finally:
+        snap.dispose()
     return target
+
+
+class _Reading:
+    """A file read by tar that reports progress (and lets a cancel through) inside a big member."""
+
+    def __init__(self, f: Any, on_bytes: Callable[[int], None]) -> None:
+        self._f, self._on = f, on_bytes
+
+    def read(self, n: int = -1) -> bytes:
+        data = self._f.read(n)
+        self._on(len(data))
+        return bytes(data)
 
 
 def manifest_of(conn: sa.Connection, include_view: bool) -> dict[str, Any]:
@@ -87,7 +113,8 @@ def export_project(
             missing = [f.sha256 for f in files if not store.exists(f.sha256)]
             if missing:
                 log(f"Файлов нет в хранилище: {len(missing)} (будут пропущены)", "warn")
-            present = [f for f in files if f.sha256 not in set(missing)]
+            missing_set = set(missing)
+            present = [f for f in files if f.sha256 not in missing_set]
             manifest["missing_files"] = missing
             rows_total = sum(manifest["tables"].values())
             total = max(1, rows_total * 200 + sum(int(f.size) for f in present))
@@ -116,10 +143,12 @@ def export_project(
                     try:
                         with open(work, "wb") as out:  # streamed: tables of millions of rows (Э3)
                             rows = conn.execution_options(yield_per=10_000).execute(sa.select(table).order_by(*order))
-                            for r in rows.mappings():
+                            for k, r in enumerate(rows.mappings()):
                                 line = encode_row(table, dict(r))
                                 h.update(line)
                                 out.write(line)
+                                if k % 5000 == 4999:
+                                    progress(done / total, f"Таблица {t.name}")
                         w.add_file(name, work)
                     finally:
                         work.unlink(missing_ok=True)
@@ -130,8 +159,16 @@ def export_project(
                 w.add_bytes("blobs.json", raw)
                 checksums["blobs.json"] = hashlib.sha256(raw).hexdigest()
                 for k, f in enumerate(present):
-                    progress(done / total, f"Файлы хранилища: {k + 1} из {len(present)}")
-                    w.add_file(f"blobs/{f.sha256}", store.path_of(f.sha256))
+                    msg = f"Файлы хранилища: {k + 1} из {len(present)}"
+                    progress(done / total, msg)
+                    sent = {"n": 0}
+
+                    def moved(n: int, msg: str = msg, sent: dict[str, int] = sent, base: int = done) -> None:
+                        sent["n"] += n
+                        progress((base + sent["n"]) / total, msg)
+
+                    with store.open(f.sha256) as fh:
+                        w.add_stream(f"blobs/{f.sha256}", int(f.size), _Reading(fh, moved))  # type: ignore[arg-type]
                     done += int(f.size)
                 w.add_bytes("checksums.json", json.dumps(checksums, indent=1).encode())
         os.replace(part, out_path)

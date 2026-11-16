@@ -27,7 +27,7 @@ class EventBus:
             subs = list(self._subs)
         for loop, queue in subs:
             try:
-                loop.call_soon_threadsafe(queue.put_nowait, item)
+                loop.call_soon_threadsafe(_offer, queue, item)
             except RuntimeError:  # the loop is closed: the subscriber is gone
                 pass
 
@@ -57,6 +57,18 @@ class EventBus:
                 self._subs.discard(entry)
 
         return queue, unsubscribe
+
+
+def _offer(queue: asyncio.Queue[tuple[int, str, str]], item: tuple[int, str, str]) -> None:
+    """A reader that fell 10 000 events behind loses the oldest progress: the window reloads the list anyway."""
+    try:
+        queue.put_nowait(item)
+    except asyncio.QueueFull:
+        try:
+            queue.get_nowait()
+            queue.put_nowait(item)
+        except (asyncio.QueueEmpty, asyncio.QueueFull):
+            pass
 
 
 def format_sse(item: tuple[int, str, str]) -> bytes:
