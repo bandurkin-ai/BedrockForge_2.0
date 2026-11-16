@@ -1,0 +1,1 @@
+"""Geostatistics: variography, kriging, IDW."""

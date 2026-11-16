@@ -1,0 +1,1 @@
+"""Operation registry with preconditions."""
