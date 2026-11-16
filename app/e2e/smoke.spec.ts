@@ -1,21 +1,9 @@
 // Smoke E2E (spikes Э0-б, Э0-в): launch the app, core answers with token and 401 without,
 // 1M triangles render under software WebGL; a frame is saved as an artifact.
-import { _electron as electron, expect, test, type ElectronApplication } from "@playwright/test";
+import { _electron as electron, expect, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-
-const ART = path.resolve(__dirname, "..", "..", "artifacts");
-
-function launchOptions(extraEnv: Record<string, string>) {
-  const exe = process.env.BF_APP_EXE; // packaged BedrockForge.exe on Windows CI
-  const env = { ...process.env, BF_SOFTWARE_GL: "1", ...extraEnv } as Record<string, string>;
-  const args = process.platform === "linux" ? ["--no-sandbox"] : [];
-  return exe ? { executablePath: exe, args, env } : { args: [path.resolve(__dirname, ".."), ...args], env };
-}
-
-async function close(app: ElectronApplication): Promise<void> {
-  await app.close().catch(() => undefined);
-}
+import { ART, close, launchOptions } from "./helpers";
 
 test("window opens, core answers with token, 401 without", async () => {
   const app = await electron.launch(launchOptions({}));
@@ -24,7 +12,7 @@ test("window opens, core answers with token, 401 without", async () => {
     // The first window is the splash; wait for the main window.
     await expect.poll(async () => app.windows().some((w) => w.url().endsWith("/index.html")), { timeout: 90_000 }).toBe(true);
     const page = app.windows().find((w) => w.url().endsWith("/index.html")) ?? win;
-    await expect(page.getByTestId("core-status")).toContainText("работает", { timeout: 60_000 });
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
     const codes = await page.evaluate(async () => {
       const core = window.bf!.core()!;
       const ok = await fetch(`${core.baseUrl}/api/v1/health`, { headers: { "X-BF-Token": core.token } });

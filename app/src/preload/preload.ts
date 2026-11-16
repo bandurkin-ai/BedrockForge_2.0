@@ -6,7 +6,11 @@ contextBridge.exposeInMainWorld("bf", {
   appVersion: () => ipcRenderer.sendSync("bf:app-version"),
   spike: () => ipcRenderer.sendSync("bf:spike"),
   uiReady: () => ipcRenderer.send("bf:ui-ready"),
-  onCoreRestarted: (cb: (info: unknown) => void) => {
-    ipcRenderer.on("bf:core-restarted", (_e, info) => cb(info));
+  loadSettings: () => ipcRenderer.sendSync("bf:settings-load"),
+  saveSettings: (data: unknown) => ipcRenderer.send("bf:settings-save", data),
+  copyText: (text: string) => ipcRenderer.send("bf:copy-text", String(text)),
+  saveText: (defaultName: string, text: string) => ipcRenderer.invoke("bf:save-text", String(defaultName), String(text)),
+  onCoreState: (cb: (state: unknown) => void) => {
+    ipcRenderer.on("bf:core-state", (_e, state) => cb(state));
   },
 });

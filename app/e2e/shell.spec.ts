@@ -1,0 +1,67 @@
+// Э1 shell acceptance (ТЗ 7.0.14) on the real Electron window.
+import { expect, test } from "@playwright/test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { close, launch, setWindowSize, shot } from "./helpers";
+
+test("first start: dark theme, tree and properties open, bottom closed; 1024 px without horizontal scroll", async () => {
+  const { app, page } = await launch();
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
+    await expect(page.getByRole("tree")).toBeVisible();
+    await expect(page.getByLabel("Правая панель")).toBeVisible();
+    await expect(page.getByLabel("Нижняя панель")).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "Главная" })).toHaveAttribute("aria-selected", "true");
+
+    await setWindowSize(app, 1024, 700);
+    await page.waitForTimeout(500);
+    const layout = await page.evaluate(() => {
+      const r = (label: string) => document.querySelector(`[aria-label="${label}"]`)!.getBoundingClientRect();
+      return {
+        scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        width: window.innerWidth,
+        right: r("Правая панель").right,
+        ribbon: r("Лента").right,
+      };
+    });
+    expect(layout.scroll).toBeLessThanOrEqual(0);
+    expect(layout.right).toBeLessThanOrEqual(layout.width);
+    expect(layout.ribbon).toBeLessThanOrEqual(layout.width);
+    await page.screenshot({ path: shot("shell-1024.png") });
+  } finally {
+    await close(app);
+  }
+});
+
+test("hotkeys in the Russian layout, palette-free command log, theme and layout survive a restart", async () => {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-persist-"));
+  let { app, page } = await launch({}, userData);
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    // Ctrl+Ё (Backquote) opens the bottom dock; a physical key, whatever the layout.
+    await page.keyboard.press("Control+Backquote");
+    await expect(page.getByLabel("Нижняя панель")).toBeVisible();
+    await page.getByRole("tab", { name: "Журнал команд" }).click();
+    await page.getByLabel("Тема").click();
+    expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("light");
+    await expect(page.getByLabel("Журнал команд")).toContainText("Тема");
+    // Ctrl+B hides the tree.
+    await page.keyboard.press("Control+KeyB");
+    await expect(page.getByRole("tree")).toHaveCount(0);
+    await page.waitForTimeout(700); // debounced settings write
+  } finally {
+    await close(app);
+  }
+  ({ app, page } = await launch({}, userData));
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("light");
+    await expect(page.getByRole("tree")).toHaveCount(0);
+    await expect(page.getByLabel("Нижняя панель")).toBeVisible();
+    await page.screenshot({ path: shot("shell-light-restored.png") });
+  } finally {
+    await close(app);
+  }
+});

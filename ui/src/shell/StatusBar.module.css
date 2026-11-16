@@ -1,0 +1,8 @@
+.bar { display: flex; align-items: center; gap: 6px; padding: 0 10px; background: var(--bg-elev); border-top: 1px solid var(--border); font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.online { background: var(--ok); }
+.starting { background: var(--warn); }
+.offline { background: var(--danger); }
+.sep { color: var(--text-faint); }
+.right { margin-left: auto; display: flex; gap: 6px; }
+.link { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 0; text-decoration: underline dotted; }

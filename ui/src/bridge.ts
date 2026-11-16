@@ -11,6 +11,12 @@ export interface BfBridge {
   appVersion(): string;
   uiReady(): void;
   spike(): string | null;
+  /** User settings file %APPDATA%\BedrockForge\settings.json (null — missing or damaged). */
+  loadSettings(): unknown;
+  saveSettings(data: unknown): void;
+  copyText(text: string): void;
+  saveText(defaultName: string, text: string): Promise<boolean>;
+  onCoreState(cb: (state: { status: "online" | "offline" | "starting"; info: CoreInfo | null; message?: string }) => void): void;
 }
 
 declare global {

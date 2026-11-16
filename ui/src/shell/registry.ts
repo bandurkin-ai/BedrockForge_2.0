@@ -35,6 +35,7 @@ export class CommandRegistry {
   private log: LogEntry[] = [];
   private nextLogId = 1;
   private readonly listeners = new Set<() => void>();
+  private ver = 0;
   hooks: RegistryHooks = { context: () => EMPTY_CONTEXT, confirm: async () => false };
 
   register(commands: Command[]): void {
@@ -70,12 +71,16 @@ export class CommandRegistry {
     return this.log;
   }
 
-  subscribe(fn: () => void): () => void {
+  subscribe = (fn: () => void): (() => void) => {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
-  }
+  };
+
+  /** Changes on every registration, binding and log entry (for useSyncExternalStore). */
+  version = (): number => this.ver;
 
   private emit(): void {
+    this.ver++;
     for (const fn of this.listeners) fn();
   }
 

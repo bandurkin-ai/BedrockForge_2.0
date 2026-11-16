@@ -1,18 +1,19 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
 import { bridge } from "./bridge";
+import { Root } from "./Root";
+import "./styles/tokens.css";
 
-const root = createRoot(document.getElementById("root")!);
+const host = document.getElementById("root")!;
 const spike = bridge()?.spike() ?? new URLSearchParams(location.search).get("spike");
 
 if (spike === "mesh") {
   // Spike Э0-б: three.js is a lazy chunk, never in the main bundle (ТЗ 17.4.8).
-  void import("./spikes/mesh").then((m) => m.runMeshSpike(document.getElementById("root")!));
+  void import("./spikes/mesh").then((m) => m.runMeshSpike(host));
 } else {
-  root.render(
+  createRoot(host).render(
     <StrictMode>
-      <App />
+      <Root />
     </StrictMode>,
   );
 }
