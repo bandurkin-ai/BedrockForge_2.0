@@ -1,0 +1,19 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.docx binary
+*.tridb binary
+*.TRIDB binary
+*.DXF binary
+*.dxf binary
+*.STR binary
+*.str binary
+*.DAT binary
+*.dat binary
+*.xlsx binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.npy binary
+*.parquet binary
+*.bfggis binary
