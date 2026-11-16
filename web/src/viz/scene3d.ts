@@ -114,7 +114,7 @@ interface DrillholeLayer {
   /** depth ticks and marks of crossings, with their written depths and names */
   marks: THREE.Group;
   markLabelGroup: THREE.Group;
-  markLabels: { sprite: THREE.Sprite; position: THREE.Vector3; wpx: number; hpx: number; shift: number; mark: boolean }[];
+  markLabels: { sprite: THREE.Sprite; position: THREE.Vector3; wpx: number; hpx: number; shift: number; priority: number }[];
   /** metres per pixel at the view's target: ticks keep their length on screen */
   tickScale: { value: number };
   hasTicks: boolean;
@@ -432,7 +432,8 @@ export class GeoScene {
     layer.markLabelGroup.renderOrder = 10;
     layer.hasTicks = false;
     const o = this.origin;
-    const addLabel = (text: string, at: THREE.Vector3, font: LabelFont, shift: number, mark = false) => {
+    /** priority: 2 — crossings, 1 — the depth at the end of a hole, 0 — tick depths (kept first when labels compete) */
+    const addLabel = (text: string, at: THREE.Vector3, font: LabelFont, shift: number, priority = 0) => {
       const { material, wpx, hpx } = this.labelMaterial(text, font);
       const sprite = new THREE.Sprite(material);
       sprite.renderOrder = 10;
@@ -440,33 +441,51 @@ export class GeoScene {
       sprite.position.copy(at);
       sprite.center.set(-shift / wpx, 0.5);
       layer.markLabelGroup.add(sprite);
-      layer.markLabels.push({ sprite, position: at, wpx, hpx, shift, mark });
+      layer.markLabels.push({ sprite, position: at, wpx, hpx, shift, priority });
     };
 
-    if (style.ticks) {
+    if (style.ticks || style.endDepth) {
       const positions: number[] = [];
       const tangents: number[] = [];
       const amps: number[] = [];
       const font: LabelFont = { size: style.labelSize, family: "sans-serif", bold: false, color: style.labelColor };
+      const endFont: LabelFont = { ...font, bold: true };
+      // The end of a hole: a longer tick, so it reads as the bottom and not as one more step.
+      const endSize = Math.max(6, style.tickSize * 1.75);
       let labels = 0;
+      let endLabels = 0;
+      const tick = (path: number[][], d: number, length: number, size: number) => {
+        const p = pointAt(path, d);
+        const a = pointAt(path, Math.max(0, d - 0.5));
+        const b = pointAt(path, Math.min(length, d + 0.5));
+        const t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const tl = Math.hypot(t[0], t[1], t[2]) || 1;
+        for (const amp of [-size, size]) {
+          positions.push(p[0] - o.x, p[1] - o.y, p[2] - o.z);
+          tangents.push(t[0] / tl, t[1] / tl, t[2] / tl);
+          amps.push(amp);
+        }
+        return new THREE.Vector3(p[0] - o.x, p[1] - o.y, p[2] - o.z);
+      };
       for (const [, path] of layer.pathOf) {
         if (path.length < 2 || path[0].length < 4) continue;
         const length = path[path.length - 1][3];
-        for (const d of tickDepths(length, style.tickStep)) {
-          if (positions.length / 6 >= MAX_TICKS) break;
-          const p = pointAt(path, d);
-          const a = pointAt(path, Math.max(0, d - 0.5));
-          const b = pointAt(path, Math.min(length, d + 0.5));
-          const t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-          const tl = Math.hypot(t[0], t[1], t[2]) || 1;
-          for (const amp of [-style.tickSize, style.tickSize]) {
-            positions.push(p[0] - o.x, p[1] - o.y, p[2] - o.z);
-            tangents.push(t[0] / tl, t[1] / tl, t[2] / tl);
-            amps.push(amp);
+        if (style.ticks) {
+          for (const d of tickDepths(length, style.tickStep)) {
+            if (positions.length / 6 >= MAX_TICKS) break;
+            if (style.endDepth && d >= length - 1e-6) continue; // the end has its own tick and depth
+            const at = tick(path, d, length, style.tickSize);
+            if (style.tickLabels && labels < MAX_TICK_LABELS && isLabelDepth(d, style.labelStep)) {
+              labels += 1;
+              addLabel(depthText(d), at, font, style.tickSize + 3);
+            }
           }
-          if (style.tickLabels && labels < MAX_TICK_LABELS && isLabelDepth(d, style.labelStep)) {
-            labels += 1;
-            addLabel(depthText(d), new THREE.Vector3(p[0] - o.x, p[1] - o.y, p[2] - o.z), font, style.tickSize + 3);
+        }
+        if (style.endDepth && length > 0) {
+          const at = tick(path, length, length, endSize);
+          if (endLabels < MAX_TICK_LABELS) {
+            endLabels += 1;
+            addLabel(depthText(length), at, endFont, endSize + 3, 1);
           }
         }
       }
@@ -497,7 +516,7 @@ export class GeoScene {
         g.positions.push(at.x, at.y, at.z);
         if (m.label && labels < MAX_MARK_LABELS) {
           labels += 1;
-          addLabel(m.label, at, font, style.markerSize / 2 + 4, true);
+          addLabel(m.label, at, font, style.markerSize / 2 + 4, 2);
         }
       }
       for (const g of groups.values()) {
@@ -512,7 +531,7 @@ export class GeoScene {
       }
     }
     // Crossings are placed before depths when labels compete for room.
-    layer.markLabels.sort((a, b) => Number(b.mark) - Number(a.mark));
+    layer.markLabels.sort((a, b) => b.priority - a.priority);
     layer.marks.visible = layer.paths?.visible ?? true;
   }
 
