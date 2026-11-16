@@ -91,8 +91,11 @@ def test_app_origin_gets_cors(client: TestClient) -> None:
 def test_preflight_without_token(client: TestClient) -> None:
     r = client.options(
         "/api/v1/health",
-        headers={"Origin": "app://bedrockforge", "Access-Control-Request-Method": "GET",
-                 "Access-Control-Request-Headers": "x-bf-token"},
+        headers={
+            "Origin": "app://bedrockforge",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "x-bf-token",
+        },
     )
     assert r.status_code == 204
     assert "X-BF-Token" in r.headers["access-control-allow-headers"]

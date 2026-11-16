@@ -28,6 +28,22 @@ def test_no_case_only_name_clashes() -> None:
     assert not clashes, sorted(clashes)
 
 
+def test_no_case_only_module_name_clashes() -> None:
+    """`ribbon.ts` next to `Ribbon.tsx`: on Windows `import "./Ribbon"` resolves to the wrong file (ТЗ 17.2.1)."""
+    stems: dict[str, str] = {}
+    clashes = []
+    for path in _tracked():
+        if "/" not in path:
+            continue
+        folder, name = path.rsplit("/", 1)
+        stem = name.split(".", 1)[0]
+        key = f"{folder.lower()}/{stem.lower()}"
+        if key in stems and stems[key] != f"{folder}/{stem}":
+            clashes.append((stems[key], path))
+        stems.setdefault(key, f"{folder}/{stem}")
+    assert not clashes, clashes
+
+
 def test_no_eval_or_raw_html_in_frontend() -> None:
     """ТЗ 5.6 S9: no eval, new Function, dangerouslySetInnerHTML; no window.confirm/prompt/alert (17.4.1)."""
     import re
@@ -44,7 +60,11 @@ def test_no_eval_or_raw_html_in_frontend() -> None:
     assert not hits, hits
 
 
-def test_router_discovery_imports() -> None:
+def test_router_modules_match_source_tree() -> None:
     from bf_core.api.app import discover_routers
+    from bf_core.api.modules import ROUTER_MODULES
 
-    assert isinstance(discover_routers(), list)
+    pkg = ROOT / "core" / "bf_core"
+    on_disk = sorted(p.parent.name for p in pkg.glob("*/router.py") if p.parent.name != "api")
+    assert sorted(ROUTER_MODULES) == on_disk, "register the module in bf_core/api/modules.py"
+    assert len(discover_routers()) == len(ROUTER_MODULES)

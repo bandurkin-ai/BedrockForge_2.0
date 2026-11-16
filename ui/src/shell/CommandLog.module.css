@@ -1,0 +1,4 @@
+.table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.table th { text-align: left; color: var(--text-dim); font-weight: 500; padding: 3px 8px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg-panel); }
+.table td { padding: 3px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.failed td { color: var(--danger); }

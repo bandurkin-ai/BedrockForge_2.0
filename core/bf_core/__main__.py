@@ -67,12 +67,19 @@ def _watch_parent(request_shutdown) -> None:  # type: ignore[no-untyped-def]
 def serve(args: argparse.Namespace) -> int:
     import uvicorn
 
+    from bf_core.winjob import kill_children_with_me
+
+    kill_children_with_me()
+
     import bf_core
     from bf_core.api.app import CoreState, create_app
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     if sys.platform == "win32":
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)  # type: ignore[attr-defined]
+    else:
+        # Restart on the same port right after a crash (TIME_WAIT); on Windows this flag would allow port theft.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", args.port))
     port = sock.getsockname()[1]
 
@@ -101,6 +108,11 @@ def serve(args: argparse.Namespace) -> int:
         await serve_task
 
     asyncio.run(run())
+    if args.watch_stdin:
+        # The stdin watcher thread may still block in read(); leave without interpreter finalization.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
     return 0
 
 

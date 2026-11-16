@@ -1,11 +1,12 @@
 // BedrockForge 2 main process: splash, bf-core lifecycle, app:// protocol, one main window.
-import { app, BrowserWindow, ipcMain, Menu, protocol, session, shell, type WebContents } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, screen, session, shell, type WebContents } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CoreProcess, type CoreInfo } from "./core";
 import { coreCommand, uiRoot } from "./paths";
 import { contentSecurityPolicy, isAllowedExternal, mimeOf, ORIGIN, staticFile } from "./protocol";
+import { mergeSettings, readSettings, writeSettings } from "./userSettings";
 
 const TITLE = "BedrockForge by Mikhail Bandurkin";
 const UI_READY_TIMEOUT_MS = 30_000;
@@ -33,6 +34,26 @@ function localDir(): string {
 const LOG_DIR = path.join(localDir(), "logs");
 const SHELL_ROOT = path.join(__dirname, "..", "static");
 const UI_ROOT = uiRoot(app.isPackaged, process.resourcesPath, path.join(__dirname, ".."));
+if (process.env.BF_USER_DATA) app.setPath("userData", process.env.BF_USER_DATA);
+const SETTINGS_FILE = () => path.join(app.getPath("userData"), "settings.json");
+
+interface WindowPlacement {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  maximized: boolean;
+}
+
+function savedPlacement(): WindowPlacement | null {
+  const s = readSettings(SETTINGS_FILE());
+  const w = s && typeof s === "object" ? (s as { window?: Partial<WindowPlacement> }).window : undefined;
+  if (!w || typeof w.width !== "number" || typeof w.height !== "number") return null;
+  const b = { x: w.x ?? 0, y: w.y ?? 0, width: Math.max(1024, w.width), height: Math.max(600, w.height) };
+  const area = screen.getDisplayMatching(b).workArea;
+  const visible = b.x < area.x + area.width - 50 && b.x + b.width > area.x + 50 && b.y >= area.y - 10 && b.y < area.y + area.height - 50;
+  return visible ? { ...b, maximized: Boolean(w.maximized) } : { width: b.width, height: b.height, maximized: Boolean(w.maximized) };
+}
 
 function log(line: string): void {
   try {
@@ -50,6 +71,7 @@ const core = new CoreProcess({
 });
 
 let splash: BrowserWindow | null = null;
+let quitting = false;
 let mainWin: BrowserWindow | null = null;
 
 async function serveStatic(root: string, pathname: string): Promise<Response> {
@@ -115,11 +137,36 @@ function createSplash(): void {
 }
 
 function createMain(): void {
+  const placed = savedPlacement();
   mainWin = new BrowserWindow({
-    width: 1440, height: 900, minWidth: 1024, minHeight: 600, show: false,
+    width: placed?.width ?? 1440, height: placed?.height ?? 900, x: placed?.x, y: placed?.y, minWidth: 1024, minHeight: 600, show: false,
     title: TITLE, backgroundColor: "#15181d", webPreferences: securePrefs("preload.js"),
   });
-  mainWin.center();
+  // ТЗ 7.0.14: the minimum is 1024×600 of the page itself; on Windows the frame takes ~16 px of the outer size.
+  const [ow, oh] = mainWin.getSize();
+  const [cw, ch] = mainWin.getContentSize();
+  mainWin.setMinimumSize(1024 + Math.max(0, ow - cw), 600 + Math.max(0, oh - ch));
+  if (placed?.x === undefined) mainWin.center();
+  const remember = () => {
+    if (!mainWin || mainWin.isDestroyed() || mainWin.isMinimized() || mainWin.isFullScreen()) return;
+    const maximized = mainWin.isMaximized();
+    const b = maximized ? (savedPlacement() ?? mainWin.getNormalBounds()) : mainWin.getBounds();
+    mergeSettings(SETTINGS_FILE(), { window: { x: b.x, y: b.y, width: b.width, height: b.height, maximized } });
+  };
+  mainWin.on("close", remember);
+  mainWin.webContents.on("before-input-event", (e, input) => {
+    if (input.type !== "keyDown" || !mainWin) return;
+    if (input.key === "F11") {
+      mainWin.setFullScreen(!mainWin.isFullScreen());
+      e.preventDefault();
+    } else if (input.key === "F5") {
+      mainWin.webContents.reload();
+      e.preventDefault();
+    } else if (input.control && input.shift && input.code === "KeyI") {
+      mainWin.webContents.toggleDevTools();
+      e.preventDefault();
+    }
+  });
   lockDown(mainWin.webContents);
   mainWin.on("page-title-updated", (e) => e.preventDefault());
   mainWin.on("closed", () => {
@@ -135,6 +182,7 @@ function createMain(): void {
     shown = true;
     clearTimeout(fallback);
     if (why !== "ready") log(`window shown by ${why}`);
+    if (placed?.maximized) mainWin.maximize();
     mainWin.show();
     mainWin.focus();
     if (splash && !splash.isDestroyed()) splash.destroy();
@@ -147,7 +195,45 @@ function createMain(): void {
   void mainWin.loadURL(`${ORIGIN}/index.html`);
 }
 
+/** Last `max` bytes of a log file without reading it whole. */
+function tailFile(file: string, max = 200_000): string {
+  let fd: number | null = null;
+  try {
+    fd = fs.openSync(file, "r");
+    const size = fs.fstatSync(fd).size;
+    const len = Math.min(size, max);
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, size - len);
+    return buf.toString("utf8");
+  } catch {
+    return "Журнал ядра пуст";
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
+function publicInfo(info: CoreInfo | null) {
+  return info ? { baseUrl: info.baseUrl, token: info.token, version: info.version } : null;
+}
+
 function registerIpc(): void {
+  ipcMain.on("bf:splash-close", (e) => {
+    if (splash && e.sender === splash.webContents) app.quit();
+  });
+  ipcMain.on("bf:splash-copy-log", (e) => {
+    if (!splash || e.sender !== splash.webContents) return;
+    try {
+      clipboard.writeText(tailFile(core.logPath()));
+    } catch {
+      clipboard.writeText("Журнал ядра пуст");
+    }
+  });
+  ipcMain.on("bf:core-retry", (e) => {
+    if (mainWin && e.sender === mainWin.webContents && !quitting) void core.restart(true);
+  });
+  ipcMain.on("bf:core-log", (e) => {
+    e.returnValue = mainWin && e.sender === mainWin.webContents ? tailFile(core.logPath()) : "";
+  });
   ipcMain.on("bf:core-info", (e) => {
     // The launch token goes to the main window of our own origin only.
     const ownWindow = mainWin !== null && e.sender === mainWin.webContents && (e.senderFrame?.url ?? "").startsWith(ORIGIN + "/");
@@ -155,6 +241,32 @@ function registerIpc(): void {
     e.returnValue = info ? { baseUrl: info.baseUrl, token: info.token, version: info.version } : null;
   });
   ipcMain.on("bf:app-version", (e) => (e.returnValue = app.getVersion()));
+  const fromMain = (sender: WebContents) => mainWin !== null && sender === mainWin.webContents;
+  ipcMain.on("bf:settings-load", (e) => {
+    const s = fromMain(e.sender) ? readSettings(SETTINGS_FILE()) : null;
+    // The window placement belongs to the main process; the interface gets the rest.
+    if (s && typeof s === "object") {
+      const { window: _w, ...rest } = s as Record<string, unknown>;
+      e.returnValue = rest;
+    } else e.returnValue = s;
+  });
+  ipcMain.on("bf:settings-save", (e, data: unknown) => {
+    if (!fromMain(e.sender) || !data || typeof data !== "object" || Array.isArray(data)) return;
+    const cur = readSettings(SETTINGS_FILE());
+    if (cur === "damaged") return; // do not overwrite a file the user may want to recover
+    const win = cur && typeof cur === "object" ? (cur as Record<string, unknown>).window : undefined;
+    writeSettings(SETTINGS_FILE(), { ...(data as Record<string, unknown>), ...(win ? { window: win } : {}) });
+  });
+  ipcMain.on("bf:copy-text", (e, text: string) => {
+    if (fromMain(e.sender) && typeof text === "string" && text.length < 50_000_000) clipboard.writeText(text);
+  });
+  ipcMain.handle("bf:save-text", async (e, name: string, text: string) => {
+    if (!mainWin || !fromMain(e.sender)) return false;
+    const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.basename(String(name)), filters: [{ name: "Текст", extensions: ["txt"] }] });
+    if (r.canceled || !r.filePath) return false;
+    await fs.promises.writeFile(r.filePath, "\uFEFF" + String(text), "utf8");
+    return true;
+  });
   ipcMain.on("bf:spike", (e) => (e.returnValue = process.env.BF_SPIKE ?? null));
 }
 
@@ -174,11 +286,18 @@ async function boot(): Promise<void> {
     splashState(`Вычислительное ядро не запускается: ${e instanceof Error ? e.message : String(e)}. Журнал: ${LOG_DIR}`, true);
     return;
   }
-  core.on("restarted", (info: CoreInfo) => {
-    log("core restarted");
-    mainWin?.webContents.send("bf:core-restarted", { baseUrl: info.baseUrl, token: info.token, version: info.version, message: "Вычислительное ядро перезапущено" });
+  core.on("state", (status: "online" | "offline") => {
+    mainWin?.webContents.send("bf:core-state", { status, info: status === "online" ? publicInfo(core.current()) : null });
   });
-  core.on("failed", (e: unknown) => log(`core failed permanently: ${String(e)}`));
+  core.on("restarted", (info: CoreInfo, portChanged: boolean) => {
+    log(`core restarted on port ${info.port}${portChanged ? " (new port: reloading the window)" : ""}`);
+    if (portChanged) mainWin?.webContents.reload(); // CSP of the page names the old port
+    else mainWin?.webContents.send("bf:core-state", { status: "online", info: publicInfo(info), message: "Вычислительное ядро перезапущено" });
+  });
+  core.on("failed", (e: unknown) => {
+    log(`core failed permanently: ${String(e)}`);
+    mainWin?.webContents.send("bf:core-state", { status: "offline", info: null, message: String(e) });
+  });
   createMain();
 }
 
@@ -192,7 +311,6 @@ if (!app.requestSingleInstanceLock()) {
     win.focus();
   });
   app.on("window-all-closed", () => app.quit());
-  let quitting = false;
   app.on("before-quit", (e) => {
     if (quitting) return;
     e.preventDefault();

@@ -1,0 +1,14 @@
+.tree { flex: 1; overflow: auto; padding: 4px 0; user-select: none; }
+.title { display: flex; align-items: center; height: 28px; padding: 0 8px; border-bottom: 1px solid var(--border); font-weight: 600; flex: none; }
+.section { margin-bottom: 2px; }
+.head { display: flex; align-items: center; gap: 4px; height: 26px; padding: 0 6px; cursor: pointer; color: var(--text); }
+.head:hover { background: var(--bg-hover); }
+.dragOver { box-shadow: inset 0 2px 0 var(--accent); }
+.chev { display: flex; color: var(--text-dim); transition: transform 0.1s; }
+.collapsed { transform: rotate(-90deg); }
+.name { flex: 1; }
+.plus { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 2px; border-radius: var(--radius); display: flex; }
+.plus:hover { background: var(--bg-active); color: var(--text); }
+.none { padding: 2px 8px 6px 28px; color: var(--text-faint); font-size: 12px; }
+.demo { margin: 12px; padding: 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius); color: var(--text-dim); line-height: 1.5; text-align: center; }
+.demo button { margin-top: 8px; border: 1px solid var(--border-strong); background: var(--bg-hover); padding: 5px 12px; border-radius: var(--radius); cursor: pointer; }

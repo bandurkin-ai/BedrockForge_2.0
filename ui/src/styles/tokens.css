@@ -1,0 +1,82 @@
+/* Design tokens of both themes (ТЗ 7.0.9). Component styles are CSS modules; this file holds only variables and resets. */
+:root,
+:root[data-theme="dark"] {
+  --bg: #15181d;
+  --bg-elev: #1b1f26;
+  --bg-panel: #1f242c;
+  --bg-hover: #2a313b;
+  --bg-active: #2f3a4a;
+  --bg-input: #12151a;
+  --border: #2e353f;
+  --border-strong: #3c4553;
+  --text: #e6e8eb;
+  --text-dim: #9aa3ad;
+  --text-faint: #6b7480;
+  --accent: #e0a458;
+  --accent-text: #15181d;
+  --danger: #ff6b5e;
+  --ok: #4cc38a;
+  --warn: #f2c94c;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --scene-bg: #101317;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f5f7;
+  --bg-elev: #ffffff;
+  --bg-panel: #fafbfc;
+  --bg-hover: #e9ecf1;
+  --bg-active: #dde6f3;
+  --bg-input: #ffffff;
+  --border: #d9dde3;
+  --border-strong: #c3c9d2;
+  --text: #1d2229;
+  --text-dim: #5b6572;
+  --text-faint: #8a94a1;
+  --accent: #b86e14;
+  --accent-text: #ffffff;
+  --danger: #d23b2f;
+  --ok: #1f8f5c;
+  --warn: #a8790a;
+  --shadow: 0 8px 28px rgba(20, 30, 50, 0.18);
+  --scene-bg: #e9edf2;
+  color-scheme: light;
+}
+
+:root {
+  --font: "Segoe UI", system-ui, sans-serif;
+  --font-size: 13px;
+  --radius: 4px;
+  --header-h: 40px;
+  --status-h: 24px;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--font-size);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

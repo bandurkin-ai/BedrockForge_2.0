@@ -4,3 +4,6 @@ body { display: flex; flex-direction: column; align-items: center; justify-conte
 .by { margin-top: 6px; font-size: 15px; color: #9aa3ad; }
 .state { margin-top: 36px; font-size: 13px; color: #9aa3ad; min-height: 18px; text-align: center; padding: 0 24px; }
 .state.error { color: #ff8a80; }
+.actions { margin-top: 18px; display: flex; gap: 10px; -webkit-app-region: no-drag; }
+.actions[hidden] { display: none; }
+.actions button { border: 1px solid #3c4553; background: #2a313b; color: #e6e8eb; padding: 5px 14px; border-radius: 4px; cursor: pointer; font: inherit; }
