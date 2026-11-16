@@ -44,7 +44,7 @@ import { OmfExportDialog } from "./shell/OmfExportDialog";
 import { ProjectExportDialog, ProjectImportDialog } from "./shell/ProjectArchiveDialogs";
 import { applyTreeOrder, collectBrowserState, mergeBrowserState } from "./shell/projectBrowserState";
 import { isBlockModelFile } from "./shell/sniffBlocks";
-import { ChartWindow } from "./charts/ChartWindow";
+import { ChartWindow, WINDOW_LAYER_ID } from "./charts/ChartWindow";
 import { HistogramWindow, type HistogramSettings } from "./charts/HistogramWindow";
 import { QQWindow, defaultQQ, type QQSettings } from "./charts/QQWindow";
 import { DendrogramWindow, type DendrogramSettings } from "./charts/DendrogramWindow";
@@ -122,10 +122,12 @@ interface DisplayFormState {
   focus?: string | null;
 }
 
-const raise = (list: ChartState[], id: number): ChartState[] => {
-  const top = Math.max(...list.map((c) => c.z));
-  return list.map((c) => (c.id === id && c.z !== top ? { ...c, z: top + 1 } : c));
-};
+/** Brings a chart window to the top of all floating windows (top: the next free place in their common order). */
+const raise = (list: ChartState[], id: number, top: number): ChartState[] =>
+  list.map((c) => (c.id === id && c.z < top - 1 ? { ...c, z: top } : c));
+
+/** Windows of the application itself, ordered together with charts and forms. */
+type SysWindow = "projects" | "settings" | "account";
 
 function loadSavedProjectId(): number | null {
   try {
@@ -190,7 +192,7 @@ function Workspace({
   const [reports, setReports] = useState<{ id: number; modelId: number; z: number }[]>([]);
   const openBlockReport = (modelId: number) =>
     setReports((prev) => {
-      const top = Math.max(0, ...prev.map((r) => r.z), ...charts.map((c) => c.z)) + 1;
+      const top = Math.max(0, ...prev.map((r) => r.z), ...charts.map((c) => c.z), ...forms.map((f) => f.z), ...Object.values(sysZ)) + 1;
       const open = prev.find((r) => r.modelId === modelId);
       return open ? prev.map((r) => (r.id === open.id ? { ...r, z: top } : r)) : [...prev, { id: Date.now(), modelId, z: top }];
     });
@@ -205,8 +207,8 @@ function Workspace({
   const showChart = (chartId: number, kind: ChartKind, setId: number, settings: Record<string, unknown>, hint?: ChartState["hint"]) =>
     setCharts((prev) => {
       const open = prev.find((c) => c.chartId === chartId);
-      if (open) return raise(prev, open.id);
-      return [...prev, { id: Date.now() + Math.random(), chartId, kind, setId, settings, hint, z: prev.length ? Math.max(...prev.map((c) => c.z)) + 1 : 0 }];
+      if (open) return raise(prev, open.id, topZ());
+      return [...prev, { id: Date.now() + Math.random(), chartId, kind, setId, settings, hint, z: topZ() }];
     });
   const draftSeq = useRef(0);
   /** A new chart: saved in the tree under its set right away, then shown (a downhole display: a draft until saved). */
@@ -228,7 +230,7 @@ function Workspace({
   const openSavedChart = async (chartId: number): Promise<string> => {
     const open = charts.find((c) => c.chartId === chartId);
     if (open) {
-      setCharts((prev) => raise(prev, open.id));
+      setCharts((prev) => raise(prev, open.id, topZ()));
       return `График «${chartNames.current.get(chartId) ?? ""}» уже открыт`;
     }
     const c = await getChart(chartId);
@@ -258,7 +260,10 @@ function Workspace({
   // Forms of displays (grades, lithology, events): what a form shows is previewed in the view; only its button saves.
   const [forms, setForms] = useState<DisplayFormState[]>([]);
   const [previews, setPreviews] = useState<Record<number, StripLogSettings>>({});
-  const topZ = () => Math.max(0, ...charts.map((c) => c.z), ...forms.map((f) => f.z)) + 1;
+  // Windows of the application (projects, settings, Claude): their place in the same order as charts and forms.
+  const [sysZ, setSysZ] = useState<Record<SysWindow, number>>({ projects: 0, settings: 0, account: 0 });
+  const topZ = () => Math.max(0, ...charts.map((c) => c.z), ...forms.map((f) => f.z), ...reports.map((r) => r.z), ...Object.values(sysZ)) + 1;
+  const raiseSys = (w: SysWindow) => setSysZ((prev) => (prev[w] === topZ() - 1 && prev[w] > 0 ? prev : { ...prev, [w]: topZ() }));
   /** Opens the form of a new display, or of a saved one (chartId). */
   const openDisplayForm = async (setId: number, form: DisplayForm, chartId: number | null = null, focus: string | null = null): Promise<void> => {
     const open = chartId !== null ? forms.find((f) => f.chartId === chartId) : undefined;
@@ -489,6 +494,10 @@ function Workspace({
   const [projectImport, setProjectImport] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // An application window opened (or opened again) comes to the top.
+  useEffect(() => { if (projectsOpen) raiseSys("projects"); }, [projectsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (settingsOpen) raiseSys("settings"); }, [settingsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (accountOpen) raiseSys("account"); }, [accountOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const [shortcuts, setShortcutsState] = useState<ShortcutOverrides>(loadShortcuts);
   const setShortcuts = (next: ShortcutOverrides) => {
     setShortcutsState(next);
@@ -1137,8 +1146,10 @@ function Workspace({
         onAssistant={() => setAccountOpen(true)}
       />
 
+      <div id={WINDOW_LAYER_ID} className="window-layer" />
+
       {projectsOpen && (
-        <ChartWindow index={1} z={58} size="medium" icon="folder" title="Проекты" onFocus={() => undefined} onClose={() => setProjectsOpen(false)}>
+        <ChartWindow index={1} z={30 + sysZ.projects} size="medium" icon="folder" title="Проекты" onFocus={() => raiseSys("projects")} onClose={() => setProjectsOpen(false)}>
           <ProjectsPanel
             projects={projects} currentId={projectId} refreshKey={refreshKey}
             onOpen={(id) => { setProjectsOpen(false); onSelectProject(id); }}
@@ -1154,13 +1165,13 @@ function Workspace({
       )}
 
       {settingsOpen && (
-        <ChartWindow index={1} z={58} size="medium" icon="gear" title="Настройка" onFocus={() => undefined} onClose={() => setSettingsOpen(false)}>
+        <ChartWindow index={2} z={30 + sysZ.settings} size="medium" icon="gear" title="Настройка" onFocus={() => raiseSys("settings")} onClose={() => setSettingsOpen(false)}>
           <SettingsPanel tabs={tabs} defaults={builtTabs} overrides={shortcuts} onChange={setShortcuts} />
         </ChartWindow>
       )}
 
       {accountOpen && (
-        <ChartWindow index={1} z={60} size="form" icon="spark" title="Claude: подключение" onFocus={() => undefined} onClose={() => setAccountOpen(false)}>
+        <ChartWindow index={3} z={30 + sysZ.account} size="form" icon="spark" title="Claude: подключение" onFocus={() => raiseSys("account")} onClose={() => setAccountOpen(false)}>
           <ClaudeAccount status={assistant.status} onStatus={(st) => { assistant.setStatus(st); assistant.refreshStatus(); }} />
         </ChartWindow>
       )}
@@ -1241,7 +1252,7 @@ function Workspace({
         return (
           <ChartWindow
             key={c.id} index={i} z={30 + c.z} title={`${saved?.name ?? CHART_TITLES[c.kind]} · ${setName}`} icon={c.kind}
-            onFocus={() => setCharts((prev) => raise(prev, c.id))}
+            onFocus={() => setCharts((prev) => raise(prev, c.id, topZ()))}
             onClose={() => setCharts((prev) => prev.filter((x) => x.id !== c.id))}
           >
             {c.kind === "striplog" ? (

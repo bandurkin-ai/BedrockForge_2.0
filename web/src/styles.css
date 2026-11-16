@@ -188,6 +188,24 @@ tr.clickable:hover td { background: var(--head-bg); }
 .canvas.three { cursor: auto; }
 .canvas svg { display: block; }
 .scene3d { display: block; width: 100%; height: 100%; }
+/* orientation of X, Y, Z in the lower left corner of the 3D view */
+.canvas svg.axes-gizmo {
+  position: absolute; left: 10px; bottom: 26px; width: 92px; height: 92px; pointer-events: none; z-index: 1;
+  --ax-x: #ef4f5f; --ax-y: #3fbf6f; --ax-z: #4c8dff;
+}
+.axes-ring { fill: color-mix(in srgb, var(--bg) 70%, transparent); stroke: color-mix(in srgb, var(--fg) 14%, transparent); stroke-width: 1; }
+.axes-gizmo .axis line { stroke-width: 2.5; stroke-linecap: round; }
+.axes-gizmo .axis-head { stroke: var(--bg); stroke-width: 1.5; }
+.axes-gizmo .axis-neg { fill: none; stroke-width: 1.5; opacity: 0.55; }
+.axes-gizmo text { font: 700 10px/1 system-ui, sans-serif; fill: #fff; }
+.axes-gizmo .axis-x line, .axes-gizmo .axis-x .axis-neg { stroke: var(--ax-x); } .axes-gizmo .axis-x .axis-head { fill: var(--ax-x); }
+.axes-gizmo .axis-y line, .axes-gizmo .axis-y .axis-neg { stroke: var(--ax-y); } .axes-gizmo .axis-y .axis-head { fill: var(--ax-y); }
+.axes-gizmo .axis-z line, .axes-gizmo .axis-z .axis-neg { stroke: var(--ax-z); } .axes-gizmo .axis-z .axis-head { fill: var(--ax-z); }
+.axes-gizmo .axis.away { opacity: 0.45; }
+.axes-gizmo .axis-head, .axes-gizmo .axis-neg { pointer-events: all; cursor: pointer; transition: r 0.12s, opacity 0.12s; }
+.axes-gizmo .axis-head:hover { r: 9.5; }
+.axes-gizmo .axis-neg:hover { r: 5.5; opacity: 1; }
+.axes-gizmo text { pointer-events: none; }
 .canvas-note {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   padding: 8px 14px; border-radius: 8px; background: var(--head-bg); color: var(--muted); text-align: center; max-width: 80%;

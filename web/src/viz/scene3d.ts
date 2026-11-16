@@ -409,12 +409,16 @@ export class GeoScene {
   private disposed = false;
   private resizeObserver: ResizeObserver;
   private cleanup: (() => void)[] = [];
+  private axes: AxesGizmo;
+  /** the running turn of the view to an axis (a newer one stops it) */
+  private turnToken = 0;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(this.renderer.domElement);
     this.renderer.domElement.className = "scene3d";
+    this.axes = new AxesGizmo(container, (dir) => this.turnTo(dir));
 
     this.perspective.up.set(0, 0, 1);
     this.ortho.up.set(0, 0, 1);
@@ -2025,6 +2029,50 @@ export class GeoScene {
     this.requestRender();
   }
 
+  /**
+   * A click on an axis of the corner gizmo: the view turns smoothly to look along that axis
+   * (from its end toward the centre of the view), keeping the centre and the scale.
+   * `from` is in rendered space (Z already stretched or flipped).
+   */
+  turnTo(from: THREE.Vector3): void {
+    const target = this.controls.target.clone();
+    const distance = Math.max(this.camera.position.distanceTo(target), 1);
+    const end = from.clone().normalize();
+    // Straight up or down: a hair off the vertical, so the screen keeps Y up (the camera's up is Z).
+    if (Math.abs(end.z) > 0.999) end.set(0, end.z > 0 ? -0.0001 : 0.0001, Math.sign(end.z)).normalize();
+    const start = this.viewDirection();
+    if (start.angleTo(end) < 1e-3) return;
+    if (this.camera === this.ortho) {
+      // Room behind for everything, however the view turns (fitDepth trims it after).
+      const box = this.contentBox();
+      const depth = box ? box.getSize(new THREE.Vector3()).length() * Math.max(1, Math.abs(this.vexag)) : 0;
+      this.ortho.near = 0.1;
+      this.ortho.far = Math.max(this.ortho.far, distance * 2 + depth * 2);
+      this.ortho.updateProjectionMatrix();
+    }
+    const turn = new THREE.Quaternion().setFromUnitVectors(start, end);
+    const q = new THREE.Quaternion();
+    const dir = new THREE.Vector3();
+    const t0 = performance.now();
+    const token = ++this.turnToken;
+    const step = (now: number) => {
+      if (this.disposed || token !== this.turnToken) return;
+      const k = Math.min((now - t0) / 260, 1);
+      const e = 1 - (1 - k) ** 3; // ease out
+      q.identity().slerp(turn, e);
+      dir.copy(start).applyQuaternion(q);
+      if (k === 1) dir.copy(end);
+      this.camera.up.set(0, 0, 1);
+      this.camera.position.copy(target).addScaledVector(dir, distance);
+      this.camera.lookAt(target);
+      this.controls.update();
+      this.requestRender();
+      this.onCamera();
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
   /** Unit vector from the view target to the camera. */
   private viewDirection(): THREE.Vector3 {
     const direction = this.camera.position.clone().sub(this.controls.target);
@@ -2120,6 +2168,7 @@ export class GeoScene {
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     this.renderer.domElement.remove();
+    this.axes.dispose();
   }
 
   // ---------------------------------------------------------------- internals
@@ -2697,6 +2746,7 @@ export class GeoScene {
       this.updateDownholes();
       this.fitDepth();
       this.renderer.render(this.scene, this.camera);
+      this.axes.update(this.camera, this.vexag < 0);
       this.onRender();
     });
   }
@@ -2775,4 +2825,96 @@ function makeCircleTexture(): THREE.CanvasTexture {
   ctx.strokeStyle = "rgba(0,0,0,0.55)";
   ctx.stroke();
   return new THREE.CanvasTexture(canvas);
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * The orientation of X, Y, Z in the lower left corner of the 3D view: an SVG overlay turned with
+ * the camera after each render (axes towards the viewer are drawn on top, those away are dimmed).
+ */
+class AxesGizmo {
+  private svg: SVGSVGElement;
+  private items: { key: string; dir: THREE.Vector3; g: SVGGElement; line: SVGLineElement; dot: SVGCircleElement; back: SVGCircleElement }[] = [];
+  private v = new THREE.Vector3();
+  private static R = 33;
+
+  private flipZ = false;
+
+  constructor(container: HTMLElement, onTurn: (from: THREE.Vector3) => void) {
+    this.svg = document.createElementNS(SVG_NS, "svg");
+    this.svg.setAttribute("class", "axes-gizmo");
+    this.svg.setAttribute("viewBox", "-46 -46 92 92");
+    this.svg.setAttribute("aria-hidden", "true");
+    const ring = document.createElementNS(SVG_NS, "circle");
+    ring.setAttribute("class", "axes-ring");
+    ring.setAttribute("r", "44");
+    this.svg.appendChild(ring);
+    for (const [key, dir] of [["x", new THREE.Vector3(1, 0, 0)], ["y", new THREE.Vector3(0, 1, 0)], ["z", new THREE.Vector3(0, 0, 1)]] as const) {
+      const g = document.createElementNS(SVG_NS, "g");
+      g.setAttribute("class", `axis axis-${key}`);
+      const back = document.createElementNS(SVG_NS, "circle");
+      back.setAttribute("class", "axis-neg");
+      back.setAttribute("r", "4");
+      const line = document.createElementNS(SVG_NS, "line");
+      line.setAttribute("x1", "0");
+      line.setAttribute("y1", "0");
+      const dot = document.createElementNS(SVG_NS, "circle");
+      dot.setAttribute("class", "axis-head");
+      dot.setAttribute("r", "8");
+      const axis = key.toUpperCase();
+      const tip = (el: SVGElement, text: string) => {
+        const t = document.createElementNS(SVG_NS, "title");
+        t.textContent = text;
+        el.appendChild(t);
+      };
+      tip(dot, `Вид вдоль оси ${axis} (с её положительной стороны)`);
+      tip(back, `Вид с отрицательной стороны оси ${axis}`);
+      const pick = (sign: number) => (e: MouseEvent) => {
+        e.stopPropagation();
+        const v = dir.clone().multiplyScalar(sign);
+        if (this.flipZ && key === "z") v.negate();
+        onTurn(v);
+      };
+      dot.addEventListener("click", pick(1));
+      back.addEventListener("click", pick(-1));
+      const label = document.createElementNS(SVG_NS, "text");
+      label.textContent = key.toUpperCase();
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("dominant-baseline", "central");
+      g.append(back, line, dot, label);
+      this.svg.appendChild(g);
+      this.items.push({ key, dir, g, line, dot, back });
+    }
+    container.appendChild(this.svg);
+  }
+
+  update(camera: THREE.Camera, flipZ: boolean): void {
+    this.flipZ = flipZ;
+    const inv = camera.matrixWorldInverse;
+    const order: { depth: number; g: SVGGElement }[] = [];
+    for (const it of this.items) {
+      this.v.copy(it.dir);
+      if (flipZ && it.key === "z") this.v.negate();
+      this.v.transformDirection(inv);
+      const x = this.v.x * AxesGizmo.R;
+      const y = -this.v.y * AxesGizmo.R;
+      it.line.setAttribute("x2", x.toFixed(2));
+      it.line.setAttribute("y2", y.toFixed(2));
+      it.g.lastElementChild!.setAttribute("x", x.toFixed(2));
+      it.g.lastElementChild!.setAttribute("y", y.toFixed(2));
+      it.dot.setAttribute("cx", x.toFixed(2));
+      it.dot.setAttribute("cy", y.toFixed(2));
+      it.back.setAttribute("cx", (-x * 0.8).toFixed(2));
+      it.back.setAttribute("cy", (-y * 0.8).toFixed(2));
+      // In view space +z points at the viewer.
+      it.g.classList.toggle("away", this.v.z < -0.2);
+      order.push({ depth: this.v.z, g: it.g });
+    }
+    order.sort((a, b) => a.depth - b.depth).forEach((o) => this.svg.appendChild(o.g));
+  }
+
+  dispose(): void {
+    this.svg.remove();
+  }
 }

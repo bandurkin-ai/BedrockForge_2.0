@@ -81,8 +81,9 @@ export function ProjectsPanel({ projects, currentId, refreshKey, onOpen, onRenam
           {s ? (
             <div className="pp-stats">
               {([
-                ["Наборы скважин", s.datasets.drillholes], ["Скважины", s.holes], ["Замеры", s.surveys], ["Пробы", s.assays],
-                ["Интервалы таблиц", s.interval_rows], ["Каркасы", s.wireframes], ["Линии", s.datasets.lines], ["Растры", s.datasets.rasters],
+                ["Наборы скважин", s.datasets.drillholes], ["Скважины", s.holes],
+                // Samples are either in the built-in assay table or in imported interval tables (Assay, …).
+                ["Пробы (интервалы)", s.assays + s.interval_rows], ["Замеры инклинометрии", s.surveys], ["Каркасы", s.wireframes], ["Линии", s.datasets.lines], ["Растры", s.datasets.rasters],
                 ["Блочные модели", s.datasets.blocks], ["Графики", s.charts], ["Диалоги Claude", s.chats],
               ] as [string, number][]).map(([title, n]) => (
                 <div key={title} className={n ? "" : "zero"}><b>{fmt(n)}</b><span className="muted small">{title}</span></div>

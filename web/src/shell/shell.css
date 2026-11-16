@@ -400,6 +400,9 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .context-separator { height: 1px; margin: 4px 6px; background: var(--border); }
 
 /* ---- chart windows (histogram) */
+/* every floating window is in this layer: dialogs (z-index 40 and up) and menus are always above them */
+.window-layer { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
+.window-layer > * { pointer-events: auto; }
 .chart-window { position: fixed; z-index: 30; width: min(1180px, 94vw); height: min(720px, 86vh); min-width: 560px; min-height: 360px; resize: both; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); }
 .chart-window.maximized { inset: 8px; width: auto; height: auto; resize: none; }
 .chart-window-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--chrome); border-bottom: 1px solid var(--border); cursor: move; user-select: none; touch-action: none; }
