@@ -1,0 +1,7 @@
+import type { Command } from "../../shell/commands";
+
+/** Background jobs (Э2). */
+export const commands: Command[] = [
+  { id: "jobs.list", title: "Задания", description: "Список фоновых заданий: очередь, прогресс, ошибки.", stage: "Э2" },
+  { id: "jobs.cancel", title: "Отменить задание", description: "Отменить фоновое задание.", params: { job_id: { type: "integer" } }, required: ["job_id"], confirm: true, stage: "Э2" },
+];
