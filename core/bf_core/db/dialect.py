@@ -1,0 +1,222 @@
+"""The only place with dialect-dependent code (ADR 0003 §6): portable types, SQLite PRAGMAs,
+write transactions, job claim, JSON access. SQLite (desktop project / instance) and PostgreSQL 16 (server, Э25).
+"""
+
+from __future__ import annotations
+
+import unicodedata
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from typing import Any
+
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.pool import NullPool
+
+# --- portable types ---------------------------------------------------------------------------
+
+#: Row key: INTEGER PRIMARY KEY (rowid alias, autoincrement) on SQLite, BIGINT identity on PostgreSQL.
+PK = sa.BigInteger().with_variant(sa.Integer(), "sqlite")
+#: A reference to a row key (same storage as PK).
+REF = sa.BigInteger().with_variant(sa.Integer(), "sqlite")
+JSONType = sa.JSON().with_variant(JSONB(), "postgresql")
+
+
+class UtcDateTime(sa.types.TypeDecorator[datetime]):
+    """Always UTC; set by the application (no server defaults). Naive on SQLite, TIMESTAMPTZ on PostgreSQL."""
+
+    impl = sa.DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: sa.Dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("naive datetime: use bf_core.db.dialect.utcnow()")
+        value = value.astimezone(UTC)
+        return value.replace(tzinfo=None) if dialect.name == "sqlite" else value
+
+    def process_result_value(self, value: datetime | None, dialect: sa.Dialect) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def name_key(name: str) -> str:
+    """Uniqueness and search key of a name: NFC + casefold (SQLite NOCASE/LIKE do not know Cyrillic)."""
+    return unicodedata.normalize("NFC", name.strip()).casefold()
+
+
+NAMING_CONVENTION = {
+    "ix": "ix_%(table_name)s_%(column_0_N_name)s",
+    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
+# --- engines --------------------------------------------------------------------------------
+
+
+def sqlite_url(path: str, read_only: bool = False) -> str:
+    from pathlib import Path
+
+    uri = Path(path).resolve().as_uri().replace("file://", "file:", 1)
+    return f"sqlite+pysqlite:///{uri}?mode=ro&uri=true" if read_only else f"sqlite+pysqlite:///{uri}?uri=true"
+
+
+def create_engine(url: str, *, schema: str | None = None) -> Engine:
+    """Engine with the dialect setup of ADR 0002 §5: WAL, synchronous=NORMAL, foreign keys, busy timeout.
+
+    SQLite connections are not pooled across threads (NullPool): each request opens its own, cheap for files.
+    `schema` (PostgreSQL) maps the project tables to `p_<id>` (server mode).
+    """
+    if url.startswith("sqlite"):
+        engine = sa.create_engine(url, poolclass=NullPool, connect_args={"check_same_thread": False})
+
+        @sa.event.listens_for(engine, "connect")
+        def _on_connect(dbapi_conn: Any, _record: Any) -> None:
+            dbapi_conn.isolation_level = None  # transactions are begun explicitly (BEGIN / BEGIN IMMEDIATE)
+            cur = dbapi_conn.cursor()
+            ro = "mode=ro" in url
+            if not ro:
+                cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA synchronous=NORMAL")
+            cur.execute("PRAGMA foreign_keys=ON")
+            cur.execute("PRAGMA busy_timeout=30000")
+            cur.close()
+
+        @sa.event.listens_for(engine, "begin")
+        def _on_begin(conn: Connection) -> None:
+            mode = conn.info.pop("bf_begin", "BEGIN")
+            conn.exec_driver_sql(mode)
+
+        return engine
+    engine = sa.create_engine(url, pool_pre_ping=True)
+    if schema:
+        engine = engine.execution_options(schema_translate_map={None: schema})
+    return engine
+
+
+def is_sqlite(bind: Engine | Connection) -> bool:
+    return bind.dialect.name == "sqlite"
+
+
+@contextmanager
+def write_tx(engine: Engine) -> Iterator[Connection]:
+    """A write transaction: `BEGIN IMMEDIATE` on SQLite (the writer lock is taken up front, no upgrade deadlock)."""
+    with engine.connect() as conn:
+        if is_sqlite(engine):
+            conn.info["bf_begin"] = "BEGIN IMMEDIATE"
+        with conn.begin():
+            yield conn
+
+
+@contextmanager
+def read_tx(engine: Engine) -> Iterator[Connection]:
+    with engine.connect() as conn, conn.begin():
+        yield conn
+
+
+def quick_check(engine: Engine) -> str:
+    """`PRAGMA quick_check` on SQLite ("ok" when sound); PostgreSQL has no equivalent — "ok"."""
+    if not is_sqlite(engine):
+        return "ok"
+    with engine.connect() as conn:
+        rows = conn.exec_driver_sql("PRAGMA quick_check").fetchall()
+    return "; ".join(str(r[0]) for r in rows[:5])
+
+
+def checkpoint(engine: Engine) -> None:
+    """Fold the WAL into the database file (on close and before a backup)."""
+    if is_sqlite(engine):
+        with engine.connect() as conn:
+            conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+
+
+def vacuum_into(engine: Engine, target: str) -> None:
+    """A consistent copy of a live SQLite database (backups, `.bfggis` export)."""
+    with engine.connect() as conn:
+        conn.exec_driver_sql("VACUUM INTO ?", (target,))
+
+
+@contextmanager
+def foreign_keys_off(conn: Connection) -> Iterator[None]:
+    """Alembic batch mode on SQLite recreates tables: FK checks are off during it and verified after.
+
+    The PRAGMA works only outside a transaction, so it goes to the driver connection directly
+    (autocommit: `isolation_level = None`), before the migration transaction begins.
+    """
+    if conn.dialect.name != "sqlite":
+        yield
+        return
+    raw = conn.connection.driver_connection
+    assert raw is not None
+    raw.execute("PRAGMA foreign_keys=OFF")
+    try:
+        yield
+        bad = raw.execute("PRAGMA foreign_key_check").fetchall()
+        if bad:
+            raise RuntimeError(f"foreign key check failed after migration: {bad[:5]}")
+    finally:
+        raw.execute("PRAGMA foreign_keys=ON")
+
+
+# --- jobs -------------------------------------------------------------------------------------
+
+
+def claim_job(conn: Connection, jobs: sa.Table, queue: str, worker: str, now: datetime) -> dict[str, Any] | None:
+    """Atomically take the next queued job of `queue` (ADR 0002 §4). The caller holds a write transaction
+    (`write_tx`: BEGIN IMMEDIATE on SQLite — one writer, so select + update cannot interleave; PostgreSQL
+    locks the row with FOR UPDATE SKIP LOCKED). The job secret (archive password) is read and cleared here.
+    Returns the job row as it is after the claim, with the secret under "secret".
+    """
+    pick = (
+        sa.select(jobs.c.id, jobs.c.secret)
+        .where(jobs.c.status == "queued", jobs.c.queue == queue)
+        .order_by(jobs.c.priority, jobs.c.id)
+        .limit(1)
+    )
+    if conn.dialect.name == "postgresql":
+        pick = pick.with_for_update(skip_locked=True)
+    found = conn.execute(pick).first()
+    if found is None:
+        return None
+    conn.execute(
+        sa.update(jobs)
+        .where(jobs.c.id == found.id)
+        .values(
+            status="running",
+            attempts=jobs.c.attempts + 1,
+            started_at=now,
+            heartbeat_at=now,
+            worker=worker,
+            cancel_requested=False,
+            secret=None,
+        )
+    )
+    row = conn.execute(sa.select(jobs).where(jobs.c.id == found.id)).one()
+    out = dict(row._mapping)
+    out["secret"] = found.secret
+    return out
+
+
+def json_text(column: sa.ColumnElement[Any], key: str) -> sa.ColumnElement[str]:
+    """`column ->> key` on both dialects (filters on JSON fields are rare: such fields become columns)."""
+    return column[key].as_string()
+
+
+def is_integrity_error(exc: BaseException) -> bool:
+    """Constraint violation on both drivers: pg8000 reports SQLSTATE 23xxx as ProgrammingError."""
+    if isinstance(exc, sa.exc.IntegrityError):
+        return True
+    orig = getattr(exc, "orig", None)
+    args = getattr(orig, "args", ())
+    code = args[0].get("C") if args and isinstance(args[0], dict) else None
+    return isinstance(code, str) and code.startswith("23")
