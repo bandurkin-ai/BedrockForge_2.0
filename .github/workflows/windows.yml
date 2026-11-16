@@ -1,0 +1,100 @@
+# Windows build and smoke E2E on every PR and push to main (ТЗ 10.4).
+# Spikes Э0: (а) PyInstaller onedir with native deps computes; (г) start from a Cyrillic path with
+# spaces and numba cache there; (б, в) the packaged app draws 1M triangles and the core answers.
+name: windows
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+env:
+  UV_PYTHON: "3.12"
+  PYTHONUTF8: "1"
+
+jobs:
+  build:
+    name: Сборка .exe и дымовой E2E
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true, cache-dependency-glob: core/uv.lock }
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: npm }
+
+      - name: Ядро — зависимости
+        working-directory: core
+        run: uv sync --frozen --group build
+      - name: Ядро — pytest (подмножество windows)
+        working-directory: core
+        run: uv run pytest -q -m windows --tb=short
+
+      - name: Ядро — PyInstaller onedir
+        working-directory: core
+        run: uv run pyinstaller --noconfirm --clean bf-core.spec
+
+      - name: Спайк а/г — самопроверка из пути с кириллицей и пробелами
+        shell: pwsh
+        run: |
+          $dst = Join-Path $env:RUNNER_TEMP "Мои проекты\bf core"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          Copy-Item -Recurse -Force core\dist\bf-core $dst
+          $env:NUMBA_CACHE_DIR = Join-Path $dst "кеш numba"
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          foreach ($i in 1, 2) {
+            & (Join-Path $dst "bf-core\bf-core.exe") --selftest | Out-File -Encoding utf8 "artifacts\selftest-$i.json"
+            if ($LASTEXITCODE -ne 0) { Get-Content "artifacts\selftest-$i.json"; throw "selftest $i failed" }
+          }
+          $r = Get-Content -Raw -Encoding utf8 artifacts\selftest-2.json | ConvertFrom-Json
+          if (-not $r.frozen) { throw "not frozen" }
+          if ($r.checks.numba.cache_files -lt 2) { throw "numba cache not written to $env:NUMBA_CACHE_DIR" }
+          Write-Host "numba: first $((Get-Content -Raw artifacts\selftest-1.json | ConvertFrom-Json).checks.numba.seconds) s, cached $($r.checks.numba.seconds) s"
+          $size = (Get-ChildItem -Recurse core\dist\bf-core | Measure-Object -Property Length -Sum).Sum / 1MB
+          "bf-core onedir: {0:N0} MB" -f $size | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+
+      - name: Интерфейс и оболочка
+        run: |
+          npm ci
+          npm run build
+
+      - name: electron-builder (portable + NSIS)
+        working-directory: app
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
+        run: npx electron-builder --win portable nsis dir --x64 --publish never
+
+      - name: Дымовой E2E на собранном приложении из пути с кириллицей
+        shell: pwsh
+        run: |
+          $dst = Join-Path $env:RUNNER_TEMP "Программы BF\BedrockForge 2"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          Copy-Item -Recurse -Force app\release\win-unpacked\* $dst
+          $env:BF_APP_EXE = Join-Path $dst "BedrockForge.exe"
+          $env:BF_LOCAL_DIR = Join-Path $env:RUNNER_TEMP "Профиль Тест\BedrockForge"
+          Set-Location app
+          npx playwright test
+          if ($LASTEXITCODE -ne 0) { throw "E2E failed" }
+
+      - name: SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          Set-Location app\release
+          Get-ChildItem *.exe | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower(), $_.Name } | Out-File -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+          Get-ChildItem *.exe | ForEach-Object { "{0}: {1:N0} MB" -f $_.Name, ($_.Length / 1MB) } | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: BedrockForge-windows
+          path: |
+            app/release/*.exe
+            app/release/SHA256SUMS.txt
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with: { name: windows-e2e, path: artifacts/, retention-days: 30, if-no-files-found: ignore }

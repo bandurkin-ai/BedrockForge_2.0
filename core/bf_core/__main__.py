@@ -34,6 +34,10 @@ def main(argv: list[str] | None = None) -> int:
 
     configure_numba_cache()
     args = parse_args(argv)
+    if getattr(sys, "frozen", False):
+        from bf_core.numba_cache import install_frozen_cache_locator
+
+        install_frozen_cache_locator()
     if args.selftest:
         from bf_core.diag.selftest import run_selftest
 
