@@ -499,6 +499,30 @@ export interface WireframeInfo {
   };
   /** simplified copies for distant views */
   lod_levels: number;
+  /** Settings of a terrain model (the «ЦТМ» section of the tree); null: an ordinary wireframe. */
+  dtm: DtmSettings | null;
+}
+
+/** A terrain model: the raster laid on its relief and how it is shown. */
+export interface DtmSettings {
+  raster_id: number | null;
+  /** Only the part of the raster on the surface is shown (otherwise the rest stays flat around it). */
+  clip: boolean;
+  /** "#rrggbb" the image is multiplied by; "#ffffff": as is. */
+  tint: string;
+  opacity: number;
+  /** Light and shadow of the relief on the image. */
+  shade: boolean;
+}
+
+export interface WireframePatch {
+  name?: string;
+  color?: string;
+  attributes?: Record<string, string | number | boolean | null>;
+  /** true: to the «ЦТМ» section; false: back to the wireframes. */
+  dtm?: boolean;
+  /** raster_id 0 takes the raster off. */
+  dtm_settings?: Partial<DtmSettings>;
 }
 
 export interface LineLayerInfo {
@@ -623,7 +647,7 @@ export function uploadWireframes(projectId: number, file: File): Promise<Dataset
 
 export const getWireframeGeometry = (id: number) => request<WireframeGeometry>(`/api/wireframes/${id}/geometry`);
 
-export const patchWireframe = (id: number, patch: { name?: string; color?: string; attributes?: Record<string, string | number | boolean | null> }) =>
+export const patchWireframe = (id: number, patch: WireframePatch) =>
   request<WireframeInfo>(`/api/wireframes/${id}`, { method: "PATCH", ...json(patch) });
 
 export async function deleteWireframe(id: number): Promise<void> {

@@ -139,7 +139,71 @@ interface WireframeLayer {
   /** The exact section (from the server): flat x, y, z per polyline, relative to the origin. */
   cutLines: { closed: boolean; points: number[][] }[] | null;
   cut: LineSegments2 | null;
+  /** Project coordinates the vertices are relative to. */
+  origin: number[];
+  /** The raster draped on the surface (a terrain model): shader values and the loaded image. */
+  drape: DrapeUniforms;
+  drapeTexture: THREE.Texture | null;
+  drapeUrl: string | null;
 }
+
+/** A raster laid on a terrain model: the image follows the relief. */
+export interface Drape {
+  rasterId: number;
+  url: string;
+  /** Corners of the image in project coordinates: top-left, top-right, bottom-right, bottom-left. */
+  corners: number[][];
+  /** The image is multiplied by this colour ("#ffffff": as is). */
+  tint: string;
+  /** How much of the image covers the surface's own colour, 0…1. */
+  opacity: number;
+  /** Light and shadow of the relief on the image. */
+  shade: boolean;
+  /** Hide the part of the raster outside the surface (otherwise it stays flat around it). */
+  clip: boolean;
+}
+
+interface DrapeUniforms {
+  uDrapeMap: { value: THREE.Texture | null };
+  uDrapeU: { value: THREE.Vector3 };
+  uDrapeV: { value: THREE.Vector3 };
+  uDrapeTint: { value: THREE.Color };
+  uDrapeMix: { value: number };
+  uDrapeShade: { value: number };
+}
+
+/**
+ * Image coordinates (u, v) of a point as two rows of numbers: u = a·x + b·y + c. `corners` are
+ * the image's top-left, top-right, bottom-right, bottom-left; x, y are relative to `origin`.
+ */
+export function imageAxes(corners: number[][], origin: number[]): { u: [number, number, number]; v: [number, number, number] } | null {
+  const [tl, , br, bl] = corners;
+  const e1 = [br[0] - bl[0], br[1] - bl[1]];
+  const e2 = [tl[0] - bl[0], tl[1] - bl[1]];
+  const det = e1[0] * e2[1] - e2[0] * e1[1];
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null;
+  const bx = bl[0] - origin[0];
+  const by = bl[1] - origin[1];
+  return {
+    u: [e2[1] / det, -e2[0] / det, -(e2[1] * bx - e2[0] * by) / det],
+    v: [-e1[1] / det, e1[0] / det, (e1[1] * bx - e1[0] * by) / det],
+  };
+}
+
+/** The part of an image (u0, v0, u1, v1) covered by a box in plan, or null when they do not meet. */
+export function imageWindow(corners: number[][], min: number[], max: number[]): [number, number, number, number] | null {
+  const axes = imageAxes(corners, [0, 0]);
+  if (!axes) return null;
+  const at = (x: number, y: number) => [axes.u[0] * x + axes.u[1] * y + axes.u[2], axes.v[0] * x + axes.v[1] * y + axes.v[2]];
+  const points = [at(min[0], min[1]), at(max[0], min[1]), at(max[0], max[1]), at(min[0], max[1])];
+  const u = points.map((p) => p[0]);
+  const v = points.map((p) => p[1]);
+  const window: [number, number, number, number] = [Math.min(...u), Math.min(...v), Math.max(...u), Math.max(...v)];
+  return window[0] >= 1 || window[1] >= 1 || window[2] <= 0 || window[3] <= 0 ? null : window;
+}
+
+/** Most surfaces one flat raster is cut out for (the rest of them only cover it). */
+const MAX_RASTER_HOLES = 4;
 
 /** A level is drawn when it has at most this many triangles per pixel of the object's disc on screen. */
 const TRIANGLES_PER_PIXEL = 2;
@@ -205,6 +269,8 @@ interface RasterLayer {
   mesh: THREE.Mesh;
   texture: THREE.Texture | null;
   visible: boolean;
+  /** Windows of the image (u0, v0, u1, v1) not drawn: there the raster lies on a terrain model. */
+  holes: { uHoles: { value: THREE.Vector4[] }; uHoleCount: { value: number } };
 }
 
 /**
@@ -244,6 +310,8 @@ export class GeoScene {
   private wireframes = new Map<number, WireframeLayer>();
   private lineLayers = new Map<number, LineLayer3D>();
   private rasters = new Map<number, RasterLayer>();
+  /** Rasters draped on terrain models, by wireframe (kept while the wireframe is not loaded yet). */
+  private drapes = new Map<number, Drape>();
   private blocks = new Map<number, BlockLayer>();
   /** A click on a block (when no collar is near the cursor). */
   onPickBlock: ((pick: { modelId: number; index: number } | null) => boolean) | null = null;
@@ -1012,13 +1080,20 @@ export class GeoScene {
     // Flat shading takes normals from screen-space derivatives: no normal buffer is needed.
     const material = new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, flatShading: true });
     this.applyOpacity(material, opacity);
+    const drape: DrapeUniforms = {
+      uDrapeMap: { value: null }, uDrapeU: { value: new THREE.Vector3() }, uDrapeV: { value: new THREE.Vector3() },
+      uDrapeTint: { value: new THREE.Color(0xffffff) }, uDrapeMix: { value: 0 }, uDrapeShade: { value: 1 },
+    };
+    this.drapeMaterial(material, drape);
     const local = new THREE.Box3(new THREE.Vector3(...min.map((v, k) => v - origin[k])), new THREE.Vector3(...max.map((v, k) => v - origin[k])));
     this.wireframes.set(id, {
       extent: new THREE.Box3(new THREE.Vector3(...min).sub(o), new THREE.Vector3(...max).sub(o)),
       group, material, levels: new Map(), sphere: local.getBoundingSphere(new THREE.Sphere()), cutLines: null, cut: null,
+      origin: [...origin], drape, drapeTexture: null, drapeUrl: null,
     });
     if (this.selectedWireframe === id) material.emissive.setHex(0x3a3a3a);
     this.root.add(group);
+    this.applyDrape(id);
     this.contentChanged();
   }
 
@@ -1104,7 +1179,9 @@ export class GeoScene {
     this.removeCut(layer);
     this.root.remove(layer.group);
     layer.material.dispose();
+    layer.drapeTexture?.dispose();
     this.wireframes.delete(id);
+    this.updateDrapedRasters();
     if (update) this.contentChanged();
   }
 
@@ -1114,9 +1191,117 @@ export class GeoScene {
     const recolor = !layer.material.color.equals(new THREE.Color(color));
     layer.material.color.set(color);
     this.applyOpacity(layer.material, opacity);
+    const shown = layer.group.visible !== visible;
     layer.group.visible = visible;
     if (recolor) this.updateCut(layer);
+    if (shown) this.updateDrapedRasters();
     this.requestRender();
+  }
+
+  /**
+   * The surface's material also takes a raster: the image's coordinates come from the vertex
+   * position in plan, so no texture coordinates are stored and every level of detail is covered.
+   */
+  private drapeMaterial(material: THREE.MeshLambertMaterial, uniforms: DrapeUniforms): void {
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, uniforms);
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nuniform vec3 uDrapeU;\nuniform vec3 uDrapeV;\nvarying vec2 vDrapeUv;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvDrapeUv = vec2(dot(uDrapeU, vec3(position.xy, 1.0)), dot(uDrapeV, vec3(position.xy, 1.0)));");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nuniform sampler2D uDrapeMap;\nuniform vec3 uDrapeTint;\nuniform float uDrapeMix;\nuniform float uDrapeShade;\nvarying vec2 vDrapeUv;")
+        .replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>
+          vec4 drapeTexel = texture2D(uDrapeMap, vDrapeUv);
+          vec3 drapeRgb = drapeTexel.rgb * uDrapeTint;
+          float drapeK = uDrapeMix * drapeTexel.a * step(0.0, vDrapeUv.x) * step(vDrapeUv.x, 1.0) * step(0.0, vDrapeUv.y) * step(vDrapeUv.y, 1.0);
+          diffuseColor.rgb = mix(diffuseColor.rgb, drapeRgb, drapeK);`,
+        )
+        .replace("#include <opaque_fragment>", "outgoingLight = mix(outgoingLight, drapeRgb, drapeK * (1.0 - uDrapeShade));\n#include <opaque_fragment>");
+    };
+  }
+
+  /** Lays a raster on a wireframe (a terrain model) or takes it off (null). */
+  setDrape(wireframeId: number, drape: Drape | null): void {
+    const old = this.drapes.get(wireframeId);
+    if (JSON.stringify(old ?? null) === JSON.stringify(drape)) return;
+    if (drape) this.drapes.set(wireframeId, drape);
+    else this.drapes.delete(wireframeId);
+    this.applyDrape(wireframeId);
+  }
+
+  /** The draped raster of a wireframe, as it is set now. */
+  drapeOf(wireframeId: number): Drape | null {
+    return this.drapes.get(wireframeId) ?? null;
+  }
+
+  private applyDrape(id: number): void {
+    const layer = this.wireframes.get(id);
+    if (layer) {
+      const drape = this.drapes.get(id);
+      const axes = drape ? imageAxes(drape.corners, layer.origin) : null;
+      const u = layer.drape;
+      if (!drape || !axes) {
+        u.uDrapeMix.value = 0;
+        u.uDrapeMap.value = null;
+        layer.drapeTexture?.dispose();
+        layer.drapeTexture = null;
+        layer.drapeUrl = null;
+      } else {
+        u.uDrapeU.value.set(...axes.u);
+        u.uDrapeV.value.set(...axes.v);
+        u.uDrapeTint.value.set(drape.tint);
+        u.uDrapeShade.value = drape.shade ? 1 : 0;
+        // The image appears when it is loaded; until then the surface keeps its own colour.
+        u.uDrapeMix.value = layer.drapeTexture && layer.drapeUrl === drape.url ? drape.opacity : 0;
+        if (layer.drapeUrl !== drape.url) {
+          const url = drape.url;
+          layer.drapeUrl = url;
+          new THREE.TextureLoader().load(url, (texture) => {
+            if (this.wireframes.get(id) !== layer || layer.drapeUrl !== url) {
+              texture.dispose();
+              return;
+            }
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+            layer.drapeTexture?.dispose();
+            layer.drapeTexture = texture;
+            u.uDrapeMap.value = texture;
+            u.uDrapeMix.value = this.drapes.get(id)?.opacity ?? 0;
+            this.requestRender();
+          });
+        }
+      }
+    }
+    this.updateDrapedRasters();
+    this.requestRender();
+  }
+
+  /**
+   * A raster lying on a shown terrain model is not drawn flat as well: hidden whole when the
+   * model keeps only its own part of the image, otherwise cut out where the model covers it.
+   */
+  private updateDrapedRasters(): void {
+    const o = this.origin;
+    for (const [id, layer] of this.rasters) {
+      const holes: THREE.Vector4[] = [];
+      let hidden = false;
+      if (!layer.corners3d && o) {
+        for (const [wireframeId, drape] of this.drapes) {
+          const surface = this.wireframes.get(wireframeId);
+          if (drape.rasterId !== id || !surface?.group.visible) continue;
+          if (drape.clip) hidden = true;
+          const min = surface.extent.min;
+          const max = surface.extent.max;
+          const window = imageWindow(layer.corners, [min.x + o.x, min.y + o.y], [max.x + o.x, max.y + o.y]);
+          if (window && holes.length < MAX_RASTER_HOLES) holes.push(new THREE.Vector4(...window));
+        }
+      }
+      layer.holes.uHoleCount.value = holes.length;
+      holes.forEach((h, i) => layer.holes.uHoles.value[i].copy(h));
+      layer.mesh.visible = layer.visible && !hidden;
+    }
   }
 
   /** `vertices` float32 relative to `origin`; `offsets` are line starts plus the end. Placed like wireframes.
@@ -1360,9 +1545,25 @@ export class GeoScene {
     material.polygonOffset = true;
     material.polygonOffsetFactor = 1;
     material.polygonOffsetUnits = 1;
+    const holes = { uHoles: { value: Array.from({ length: MAX_RASTER_HOLES }, () => new THREE.Vector4()) }, uHoleCount: { value: 0 } };
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, holes);
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying vec2 vHoleUv;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvHoleUv = uv;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>\nuniform vec4 uHoles[${MAX_RASTER_HOLES}];\nuniform int uHoleCount;\nvarying vec2 vHoleUv;`)
+        .replace(
+          "#include <map_fragment>",
+          `for (int i = 0; i < ${MAX_RASTER_HOLES}; i++) {
+            if (i < uHoleCount && vHoleUv.x > uHoles[i].x && vHoleUv.y > uHoles[i].y && vHoleUv.x < uHoles[i].z && vHoleUv.y < uHoles[i].w) discard;
+          }
+          #include <map_fragment>`,
+        );
+    };
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = -1;
-    const layer: RasterLayer = { corners, elevation, corners3d, mesh, texture: null, visible, opacity };
+    const layer: RasterLayer = { corners, elevation, corners3d, mesh, texture: null, visible, opacity, holes };
     this.rasters.set(id, layer);
     this.layerRaster(layer);
     new THREE.TextureLoader().load(url, (texture) => {
@@ -1380,6 +1581,7 @@ export class GeoScene {
     this.placeRaster(layer);
     this.root.add(mesh);
     this.contentChanged();
+    this.updateDrapedRasters();
   }
 
   removeRaster(id: number, update = true): void {
@@ -1407,7 +1609,7 @@ export class GeoScene {
       this.placeRaster(layer);
       this.rebuildGrid();
     }
-    layer.mesh.visible = visible;
+    this.updateDrapedRasters();
     this.requestRender();
   }
 

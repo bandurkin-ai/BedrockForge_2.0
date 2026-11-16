@@ -15,6 +15,8 @@ interface FileItem {
   color: string;
   count: number;
   countTitle: string;
+  /** A terrain model with a raster laid on it. */
+  draped?: boolean;
 }
 
 const TABLES: { kind: TableKind; label: string }[] = [
@@ -44,6 +46,8 @@ export interface DataTreeProps {
   onDelete: (dataset: Dataset) => void;
   onColor: (kind: "wireframe" | "lines", id: number, color: string) => void;
   onDeleteItem: (kind: "wireframe" | "lines", id: number, name: string) => void;
+  /** Move a wireframe to the «ЦТМ» section (terrain models) or back to the wireframes. */
+  onDtm?: (id: number, on: boolean) => void;
   onDemo: () => void;
   /** Right click on a wireframe or a line layer: its menu (edit, operations, export). */
   onItemMenu?: (kind: "wireframe" | "lines", id: number, x: number, y: number) => void;
@@ -237,7 +241,7 @@ function HoleList({ setId, refreshKey, selectedHole, active, onSelectHole }: {
 /** Left dock: every object of the project by kind, with visibility in the 3D view. */
 export function DataTree(props: DataTreeProps) {
   const { datasets, ws, activeSet } = props;
-  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframe", "cat:lines", "cat:rasters", "cat:blocks"]));
+  const [open, setOpen] = useState<Set<string>>(() => new Set(["cat:drillholes", "cat:wireframe", "cat:dtm", "cat:lines", "cat:rasters", "cat:blocks"]));
   const toggle = (key: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
@@ -476,8 +480,16 @@ export function DataTree(props: DataTreeProps) {
         <FileCategory
           {...props} kind="wireframe" title="Каркасы" icon="wireframe" open={open} toggle={toggle}
           uploadTitle="Загрузить каркасы: Micromine TRIDB, DXF" emptyNote="Нет каркасов. «+» — файлы .tridb или .dxf."
-          files={(datasets ?? []).filter((d) => d.kind === "wireframes")}
-          items={(d) => (d.wireframes ?? []).map((w) => ({ id: w.id, name: w.name, color: w.color, count: w.triangle_count, countTitle: "Треугольников" }))}
+          files={(datasets ?? []).filter((d) => d.kind === "wireframes" && (!(d.wireframes ?? []).length || (d.wireframes ?? []).some((w) => !w.dtm)))}
+          items={(d) => (d.wireframes ?? []).filter((w) => !w.dtm).map((w) => ({ id: w.id, name: w.name, color: w.color, count: w.triangle_count, countTitle: "Треугольников" }))}
+          onAdd={() => props.onUpload("wireframes")}
+        />
+        <FileCategory
+          {...props} kind="wireframe" section="dtm" title="ЦТМ" icon="dtm" open={open} toggle={toggle}
+          uploadTitle="Загрузить каркас поверхности: Micromine TRIDB, DXF (затем перенесите его в ЦТМ)"
+          emptyNote="Нет цифровых моделей рельефа. Правая кнопка на каркасе поверхности → «Перенести в ЦТМ»."
+          files={(datasets ?? []).filter((d) => d.kind === "wireframes" && (d.wireframes ?? []).some((w) => w.dtm))}
+          items={(d) => (d.wireframes ?? []).filter((w) => w.dtm).map((w) => ({ id: w.id, name: w.name, color: w.color, count: w.triangle_count, countTitle: "Треугольников", draped: Boolean(w.dtm?.raster_id) }))}
           onAdd={() => props.onUpload("wireframes")}
         />
         <FileCategory
@@ -500,6 +512,8 @@ const LAYER_KEY: Record<"wireframe" | "lines", (id: number) => string> = { wiref
 /** Wireframes and lines: files, and inside every file its items with colour and visibility. */
 function FileCategory(props: DataTreeProps & {
   kind: "wireframe" | "lines";
+  /** "dtm": the terrain models among the wireframes (the «ЦТМ» section). */
+  section?: "dtm";
   title: string;
   icon: IconName;
   uploadTitle: string;
@@ -512,7 +526,8 @@ function FileCategory(props: DataTreeProps & {
 }) {
   const { kind, files, open, toggle, ws } = props;
   const keyOf = LAYER_KEY[kind];
-  const catKey = `cat:${kind}`;
+  const group = props.section ?? kind;
+  const catKey = `cat:${group}`;
   const total = files.reduce((n, d) => n + props.items(d).length, 0);
   const isSelected = (id: number) => props.selected?.kind === kind && props.selected.id === id;
   return (
@@ -521,9 +536,11 @@ function FileCategory(props: DataTreeProps & {
       actions={<button className="icon row-action" title={props.uploadTitle} aria-label={props.uploadTitle} onClick={(e) => { e.stopPropagation(); props.onAdd(e); }}><Icon name="plus" size={14} /></button>}
     >
       {files.length === 0 && <li className="tree-note muted small">{props.emptyNote}</li>}
-      <Folders node={folderTree(files)} group={kind} closed={(k) => open.has(k)} toggle={toggle} render={(d) => {
-        const key = `file:${d.id}`;
+      <Folders node={folderTree(files)} group={group} closed={(k) => open.has(k)} toggle={toggle} render={(d) => {
+        const key = `file:${group}:${d.id}`;
         const items = props.items(d);
+        // A file with objects in both sections (wireframes and terrain models) is deleted object by object.
+        const whole = kind !== "wireframe" || (d.wireframes ?? []).length === items.length;
         const allShown = items.every((item) => isShown(ws, keyOf(item.id)));
         return (
           <li key={d.id}>
@@ -535,7 +552,7 @@ function FileCategory(props: DataTreeProps & {
               <span className="row-actions">
                 <Action icon="edit" title="Переименовать" onClick={() => props.onRename(d)} />
                 <Action icon="folder" title="В папку…" onClick={() => props.onMove(d)} />
-                <Action icon="trash" title="Удалить файл со всем содержимым" onClick={() => props.onDelete(d)} />
+                {whole && <Action icon="trash" title="Удалить файл со всем содержимым" onClick={() => props.onDelete(d)} />}
               </span>
             </div>
             {open.has(key) && (
@@ -556,8 +573,12 @@ function FileCategory(props: DataTreeProps & {
                       <span className="grow name" title={item.name}>{item.name}
                         {kind === "lines" && props.editing?.layerId === item.id && <span className="edit-dirty" title={props.editing.dirty ? "Редактируется: есть несохранённые изменения" : "Редактируется"}>{props.editing.dirty ? " ● правка" : " ✎"}</span>}
                       </span>
+                      {item.draped && <span className="dtm-draped" title="На рельеф положен растр"><Icon name="raster" size={13} /></span>}
                       <span className="count" title={item.countTitle}>{item.count.toLocaleString("ru-RU")}</span>
                       <span className="row-actions">
+                        {kind === "wireframe" && props.onDtm && (props.section === "dtm"
+                          ? <Action icon="wireframe" title="Вернуть в каркасы" onClick={() => props.onDtm!(item.id, false)} />
+                          : <Action icon="dtm" title="Перенести в ЦТМ (модели рельефа)" onClick={() => props.onDtm!(item.id, true)} />)}
                         <Action icon="trash" title="Удалить" onClick={() => props.onDeleteItem(kind, item.id, item.name)} />
                       </span>
                     </div>

@@ -631,7 +631,15 @@ export function SceneView(props: SceneViewProps) {
           collars: isShown(state, layerKey.setPart(d.id, "collars")),
         });
       }
-      for (const w of d.wireframes ?? []) scene.setWireframeStyle(w.id, w.color, isShown(state, layerKey.wireframe(w.id)), state.wireframeOpacity);
+      for (const w of d.wireframes ?? []) {
+        scene.setWireframeStyle(w.id, w.color, isShown(state, layerKey.wireframe(w.id)), state.wireframeOpacity);
+        // A terrain model carries its raster: the image lies on the relief.
+        const image = w.dtm?.raster_id ? (list ?? []).flatMap((x) => x.rasters ?? []).find((r) => r.id === w.dtm!.raster_id && !r.georef.corners3d) : undefined;
+        scene.setDrape(w.id, w.dtm && image ? {
+          rasterId: image.id, url: rasterImageUrl(image.id), corners: image.georef.corners,
+          tint: w.dtm.tint, opacity: w.dtm.opacity, shade: w.dtm.shade, clip: w.dtm.clip,
+        } : null);
+      }
       // The layer being edited is drawn by the editor (its working copy), not from the store.
       for (const l of d.lines ?? []) scene.setLinesStyle(l.id, l.color, isShown(state, layerKey.lines(l.id)) && live.current.edit?.layerId !== l.id);
       for (const r of d.rasters ?? []) scene.setRasterStyle(r.id, isShown(state, layerKey.raster(r.id)), r.opacity, r.elevation, r.georef.corners, r.georef.corners3d ?? null);

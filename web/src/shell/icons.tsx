@@ -54,6 +54,7 @@ const PATHS = {
   blocks: "M3 8l5-3 5 3v6l-5 3-5-3V8zM13 11l4-2.5 4 2.5v5l-4 2.5-4-2.5M8 11v6",
   raster: "M4 5h16v14H4zM4 15l4-4 4 4 3-3 5 5M15 9.5a1 1 0 100-.1",
   drillholes: "M7 3v18M17 3l-4 18M12 3v12M4 3h16",
+  dtm: "M2 18l5-8 4 5 3-4 8 7zM7 10l2.5 8M14 11l1 7M4 21h16",
   section2: "M4 20L20 4M7 20L20 7M4 17L17 4",
   // ---- the string editor (after the AutoCAD drawing and modify commands)
   edSelect: "M5 3l13 8-6 1.5 3.5 7-2.5 1.2-3.5-7L5 18z",

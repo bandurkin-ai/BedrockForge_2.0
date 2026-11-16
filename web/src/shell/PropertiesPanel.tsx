@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, useSyncExternalStore } from "react";
-import type { AuditRun, Dataset, LineLayerInfo, PickResult, RasterInfo, RasterPatch, Summary, VerticalPlacement } from "../api";
+import type { AuditRun, Dataset, DtmSettings, LineLayerInfo, PickResult, RasterInfo, RasterPatch, Summary, VerticalPlacement, WireframePatch } from "../api";
 import type { EditSession } from "../edit/session";
 import { lineById, type EditLine } from "../edit/model";
 import { layerMeasures, lineMeasures } from "../edit/measure";
@@ -46,7 +46,7 @@ export function PropertiesPanel({
   onBlockUnit?: (id: number, key: string, unit: BlockAttribute["unit"]) => void;
   onBlockReport?: (id: number) => void;
   /** Rename, recolour a wireframe or replace its attributes. */
-  onWireframe?: (id: number, patch: { name?: string; color?: string; attributes?: Record<string, AttrValue> }) => Promise<unknown>;
+  onWireframe?: (id: number, patch: WireframePatch) => Promise<unknown>;
   /** New values of a block's fields; resolves with the block as stored. */
   onBlockValues?: (id: number, index: number, values: Record<string, number | string | null>) => Promise<BlockInfo>;
 }) {
@@ -78,7 +78,7 @@ export function PropertiesPanel({
     const operation = (stats as { operation?: { title: string; params: Record<string, unknown>; sources: { name: string }[] } }).operation;
     return (
       <div className="props">
-        <h2 className="dock-title">Каркас</h2>
+        <h2 className="dock-title">{wireframe.dtm ? "ЦТМ — модель рельефа" : "Каркас"}</h2>
         {onWireframe ? <WireframeHead key={wireframe.id} id={wireframe.id} name={wireframe.name} color={wireframe.color} onWireframe={onWireframe} />
           : <div className="props-head"><span className="swatch-static" style={{ background: wireframe.color }} /><strong>{wireframe.name}</strong></div>}
         <dl className="props-list">
@@ -124,6 +124,17 @@ export function PropertiesPanel({
             </dl>
             {onCommand && <button onClick={() => onCommand("model.rebuild", { wireframe_id: wireframe.id })} title="Повторить построение на текущем состоянии исходных объектов (например, после правки контуров)">Перестроить</button>}
           </>
+        )}
+        {wireframe.dtm && onWireframe && (
+          <DtmProps key={`dtm${wireframe.id}`} dtm={wireframe.dtm} rasters={datasets.flatMap((d) => d.rasters ?? []).filter((r) => !r.georef.corners3d)}
+            extent={extent} onChange={(dtm_settings) => void onWireframe(wireframe.id, { dtm_settings }).catch(() => undefined)} />
+        )}
+        {onWireframe && (
+          <div className="props-actions">
+            {wireframe.dtm
+              ? <button onClick={() => void onWireframe(wireframe.id, { dtm: false }).catch(() => undefined)} title="Убрать из раздела ЦТМ: объект снова обычный каркас (настройки рельефа сбрасываются)">Вернуть в каркасы</button>
+              : <button onClick={() => void onWireframe(wireframe.id, { dtm: true }).catch(() => undefined)} title="Каркас топографической поверхности переносится в раздел ЦТМ: на него можно положить растр">Перенести в ЦТМ</button>}
+          </div>
         )}
         {onCommand && (
           <div className="props-actions">
@@ -212,6 +223,57 @@ export function PropertiesPanel({
       )}
       {color}
     </div>
+  );
+}
+
+/** Settings of a terrain model: the raster laid on the relief and how it looks. */
+function DtmProps({ dtm, rasters, extent, onChange }: {
+  dtm: DtmSettings; rasters: RasterInfo[]; extent: { min: number[]; max: number[] }; onChange: (patch: Partial<DtmSettings>) => void;
+}) {
+  const raster = rasters.find((r) => r.id === dtm.raster_id) ?? null;
+  // Does the image reach the surface at all (by their boxes in plan)?
+  const apart = raster && (raster.extent.max[0] < extent.min[0] || raster.extent.min[0] > extent.max[0] || raster.extent.max[1] < extent.min[1] || raster.extent.min[1] > extent.max[1]);
+  return (
+    <>
+      <h2 className="dock-title">Растр на рельефе</h2>
+      <div className="props-form">
+        <label title="Растр в плане (карта, космоснимок, ортофото) ложится на поверхность и повторяет рельеф">
+          Растр
+          <select value={raster?.id ?? 0} onChange={(e) => onChange({ raster_id: Number(e.target.value) })} aria-label="Растр на рельефе">
+            <option value={0}>— нет —</option>
+            {rasters.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </label>
+        {rasters.length === 0 && <p className="muted small">В проекте нет растров в плане: загрузите изображение с файлом привязки (раздел «Растры»).</p>}
+        {apart && <p className="sev warning small">Растр и поверхность не пересекаются в плане: проверьте привязку.</p>}
+        {raster && (
+          <>
+            <label className="props-check" title="Показывать только ту часть растра, что попала на ЦТМ. Без галочки остальная часть растра остаётся плоской вокруг поверхности, на своей высоте">
+              <input type="checkbox" checked={dtm.clip} onChange={(e) => onChange({ clip: e.target.checked })} />
+              Скрыть данные за ЦТМ
+            </label>
+            <label className="props-check" title="Свет и тень рельефа на изображении. Без галочки растр показан своими цветами, без затенения">
+              <input type="checkbox" checked={dtm.shade} onChange={(e) => onChange({ shade: e.target.checked })} />
+              Тени рельефа
+            </label>
+            <label title="Цвет, на который умножается изображение: белый — без изменений">
+              Цвет растра
+              <span className="props-inline">
+                <input type="color" className="swatch" value={dtm.tint} onChange={(e) => onChange({ tint: e.target.value })} aria-label="Цвет растра на рельефе" />
+                <button className="link" disabled={dtm.tint === "#ffffff"} onClick={() => onChange({ tint: "#ffffff" })}>сбросить</button>
+              </span>
+            </label>
+            <label title="Насколько растр перекрывает собственный цвет поверхности">
+              Непрозрачность растра
+              <input type="range" min={0} max={1} step={0.05} defaultValue={dtm.opacity} key={`${raster.id}:${dtm.opacity}`}
+                onPointerUp={(e) => onChange({ opacity: Number((e.target as HTMLInputElement).value) })}
+                onKeyUp={(e) => onChange({ opacity: Number((e.target as HTMLInputElement).value) })} aria-label="Непрозрачность растра на рельефе" />
+            </label>
+          </>
+        )}
+        <p className="muted small">Цвет поверхности — образец у названия; прозрачность поверхности — «Каркасы» на панели 3D-вида. Атрибуты — ниже.</p>
+      </div>
+    </>
   );
 }
 

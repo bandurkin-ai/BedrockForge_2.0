@@ -205,6 +205,7 @@ export function buildRibbon(ws: WorkspaceState, ctx: { hasHole: boolean; hasSet:
             { command: "model.dtm", label: "ЦМР", icon: "plan", hint: "Поверхность из точек и линий (структурные линии)" },
             { command: "model.contours", label: "Изолинии", icon: "lines", small: true },
             { command: "model.volume", label: "Объём", icon: "histogram", hint: "Выемка и насыпь между поверхностями", small: true },
+            { command: "wireframe.dtm", args: { on: true }, label: "В ЦТМ", icon: "dtm", hint: "Выбранный каркас поверхности — в раздел ЦТМ (на рельеф можно положить растр)", small: true },
           ],
         },
       ],

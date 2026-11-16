@@ -41,6 +41,8 @@ class WireframeOut(BaseModel):
     stats: dict
     # Simplified copies for distant views (they appear after the checks job).
     lod_levels: int = 0
+    # Settings of a terrain model (the «ЦТМ» section); None for an ordinary wireframe.
+    dtm: dict | None = None
 
 
 class LineLayerOut(BaseModel):
@@ -130,11 +132,30 @@ class RasterPatch(BaseModel):
     z_shift: float | None = Field(None, ge=-20000, le=20000)
 
 
+class DtmSettings(BaseModel):
+    # The raster draped on the surface; 0 takes it off.
+    raster_id: int | None = Field(None, ge=0)
+    # Hide the part of the raster outside the surface (otherwise it stays flat at its elevation).
+    clip: bool | None = None
+    # Colour the image is multiplied by ("#ffffff": as is) and how much of it covers the surface.
+    tint: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+    opacity: float | None = Field(None, ge=0, le=1)
+    # Light and shadow of the relief on the image.
+    shade: bool | None = None
+
+
 class WireframePatch(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
     # Every attribute of the wireframe (replaces the old ones): name -> text, number, yes/no or empty.
     attributes: dict[str, str | float | int | bool | None] | None = Field(None, max_length=200)
+    # True: move the wireframe to the «ЦТМ» section (terrain models); False: back to the wireframes.
+    dtm: bool | None = None
+    # Settings of a terrain model (only the given ones change).
+    dtm_settings: DtmSettings | None = None
+
+
+DTM_DEFAULTS = {"raster_id": None, "clip": True, "tint": "#ffffff", "opacity": 1.0, "shade": True}
 
 
 def get_dataset(session: Session, dataset_id: int) -> Dataset:
@@ -149,6 +170,7 @@ def _wireframe_out(w: Wireframe) -> WireframeOut:
         id=w.id, name=w.name, color=w.color, point_count=w.point_count,
         triangle_count=w.triangle_count, extent=w.extent, stats=w.stats,
         lod_levels=len((w.render or {}).get("lods", [])),
+        dtm={**DTM_DEFAULTS, **w.dtm} if w.dtm is not None else None,
     )
 
 
@@ -299,6 +321,27 @@ def patch_wireframe(wireframe_id: int, body: WireframePatch, session: Session = 
                 raise HTTPException(422, f"Атрибут «{key}» указан дважды")
             attrs[key] = v.strip()[:2000] if isinstance(v, str) else v
         w.stats = {**w.stats, "attributes": attrs}
+    if body.dtm is True and w.dtm is None:
+        w.dtm = dict(DTM_DEFAULTS)
+    elif body.dtm is False:
+        w.dtm = None
+    if body.dtm_settings is not None:
+        if w.dtm is None:
+            raise HTTPException(422, "Каркас не в разделе ЦТМ: сначала перенесите его в ЦТМ")
+        changes = body.dtm_settings.model_dump(exclude_unset=True)
+        raster_id = changes.get("raster_id")
+        if raster_id:
+            project_id = get_dataset(session, w.dataset_id).project_id
+            raster = session.get(Raster, raster_id)
+            if raster is None or get_dataset(session, raster.dataset_id).project_id != project_id:
+                raise HTTPException(422, "Растр не найден в этом проекте")
+            if raster.georef.get("corners3d"):
+                raise HTTPException(422, "Растр стоит в вертикальной плоскости: на рельеф кладётся только растр в плане")
+        elif "raster_id" in changes:
+            changes["raster_id"] = None
+        if changes.get("tint"):
+            changes["tint"] = changes["tint"].lower()
+        w.dtm = {**DTM_DEFAULTS, **w.dtm, **{k: v for k, v in changes.items() if v is not None or k == "raster_id"}}
     session.commit()
     return _wireframe_out(w)
 
