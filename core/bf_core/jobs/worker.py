@@ -1,0 +1,117 @@
+"""A worker process (`spawn`, ADR 0002 §4): takes jobs from the scheduler over a pipe, runs their handlers.
+
+Messages to the scheduler: ("ready",), ("progress", id, p, msg), ("log", id, level, text), ("beat", id),
+("done", id, result), ("error", id, {code, message, hint}, retry), ("cancelled", id).
+From the scheduler: ("run", job), ("cancel", id), ("stop",).
+"""
+
+from __future__ import annotations
+
+import queue
+import threading
+import traceback
+from multiprocessing.connection import Connection
+from typing import Any
+
+HEARTBEAT_S = 5.0
+
+
+def main(conn: Connection, queue_name: str) -> None:
+    import os
+
+    os.environ.setdefault("BF_WORKER", queue_name)
+    from bf_core.paths import configure_numba_cache
+
+    configure_numba_cache()
+    from .context import JobCancelled, JobContext, JobError
+    from .registry import load_handlers
+
+    kinds = load_handlers()
+    send_lock = threading.Lock()
+
+    def send(msg: tuple[Any, ...]) -> None:
+        with send_lock:
+            conn.send(msg)
+
+    jobs: queue.Queue[dict[str, Any] | None] = queue.Queue()
+    cancel = threading.Event()
+    current: dict[str, int | None] = {"id": None}
+
+    def reader() -> None:
+        try:
+            while True:
+                msg = conn.recv()
+                if msg[0] == "run":
+                    jobs.put(msg[1])
+                elif msg[0] == "cancel" and msg[1] == current["id"]:
+                    cancel.set()
+                elif msg[0] == "stop":
+                    break
+        except (EOFError, OSError):
+            pass
+        jobs.put(None)
+
+    def beat() -> None:
+        while True:
+            job_id = current["id"]
+            if job_id is not None:
+                try:
+                    send(("beat", job_id))
+                except (OSError, ValueError):
+                    return
+            if stop_beat.wait(HEARTBEAT_S):
+                return
+
+    stop_beat = threading.Event()
+    threading.Thread(target=reader, name="worker-reader", daemon=True).start()
+    threading.Thread(target=beat, name="worker-beat", daemon=True).start()
+    send(("ready",))
+    while True:
+        job = jobs.get()
+        if job is None:
+            break
+        cancel.clear()
+        current["id"] = job["id"]
+        ctx = JobContext(job, send, cancel)
+        try:
+            spec = kinds.get(job["kind"])
+            if spec is None:
+                raise JobError("unknown_job", f"Неизвестный вид задания: {job['kind']}.", "Обновите программу.")
+            ctx.tick(0.0)
+            result = spec.run(ctx) or {}
+            send(("done", job["id"], result))
+        except JobCancelled:
+            send(("cancelled", job["id"]))
+        except JobError as exc:
+            send(("error", job["id"], {"code": exc.code, "message": exc.message, "hint": exc.hint}, exc.retry))
+        except MemoryError:
+            send(("error", job["id"], _memory_error(job), False))
+            break  # a worker after MemoryError is restarted (ADR 0002 §4)
+        except Exception:  # noqa: BLE001 - every failure is reported to the job, the worker lives on
+            ctx.log(traceback.format_exc(limit=8), "error")
+            err = {
+                "code": "job_failed",
+                "message": "Задание завершилось с ошибкой.",
+                "hint": "Откройте журнал задания: в нём подробности. Повторите или отправьте журнал разработчику.",
+            }
+            send(("error", job["id"], err, True))
+        finally:
+            ctx.close()
+            current["id"] = None
+    stop_beat.set()
+
+
+def _memory_error(job: dict[str, Any]) -> dict[str, str]:
+    need = job.get("memory_mb")
+    try:
+        import psutil
+
+        avail = psutil.virtual_memory().available / 2**30
+    except Exception:  # noqa: BLE001
+        avail = float("nan")
+    need_txt = f"~{need / 1024:.1f} ГБ" if need else "больше, чем доступно"
+    return {
+        "code": "out_of_memory",
+        "message": f"Не хватило памяти: нужно {need_txt}, доступно {avail:.1f} ГБ.",
+        "hint": "Закройте другие программы или уменьшите объём данных задания и повторите.",
+    }

@@ -7,14 +7,15 @@ import importlib
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Header
 from fastapi.responses import StreamingResponse
 
 import bf_core
 
 from .errors import ApiError, api_error_handler, unexpected_error_handler
+from .events import EventBus, format_sse
 from .modules import ROUTER_MODULES
 from .security import APP_ORIGIN, GuardMiddleware
 
@@ -31,6 +32,7 @@ class CoreState:
     projects_dir: str | None = None
     #: Lazily created services of modules (projects, jobs, …), keyed by module.
     services: dict[str, Any] = field(default_factory=dict)
+    events: EventBus = field(default_factory=EventBus)
     request_shutdown: Callable[[], None] = field(default=lambda: None)
 
 
@@ -68,12 +70,22 @@ def create_app(state: CoreState, extra_origins: tuple[str, ...] = ()) -> FastAPI
         return {"status": "stopping"}
 
     @base.get("/events")
-    async def events() -> StreamingResponse:
+    async def events(last_event_id: Annotated[str | None, Header()] = None) -> StreamingResponse:
+        last = int(last_event_id) if last_event_id and last_event_id.isdigit() else None
+        queue, unsubscribe = state.events.subscribe(last)
+
         async def stream() -> AsyncIterator[bytes]:
-            yield b"event: hello\ndata: {}\n\n"
-            while True:
-                await asyncio.sleep(15)
-                yield b": keep-alive\n\n"
+            try:
+                yield b"event: hello\ndata: {}\n\n"
+                while True:
+                    try:
+                        item = await asyncio.wait_for(queue.get(), timeout=15)
+                    except TimeoutError:
+                        yield b": keep-alive\n\n"
+                        continue
+                    yield format_sse(item)
+            finally:
+                unsubscribe()
 
         return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 

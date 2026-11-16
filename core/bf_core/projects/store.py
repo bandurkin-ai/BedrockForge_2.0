@@ -85,6 +85,12 @@ class ProjectService:
         self.instance = instance_engine
         self.current: Project | None = None
         self._lock = threading.RLock()
+        #: Hooks of the job scheduler: a project opened; a project closing (True — its jobs run, keep it).
+        self.on_open: list[Callable[[Project], None]] = []
+        self.on_close: list[Callable[[Project], bool]] = []
+        #: Projects closed by the user while their jobs still run (ADR 0002 §5 «Смена проекта»).
+        self.detached: dict[str, Project] = {}
+        self.is_released: Callable[[str], bool] = lambda _uid: True
 
     # --- listing ----------------------------------------------------------------------------
 
@@ -204,10 +210,14 @@ class ProjectService:
         with self._lock:
             if self.current and self.current.uid == uid:
                 return self.current
-            folder = self.find(uid)
-            project = open_folder(folder)
             self.close()
+            if uid in self.detached:
+                project = self.detached.pop(uid)
+            else:
+                project = open_folder(self.find(uid))
             self.current = project
+            for hook in self.on_open:
+                hook(project)
             with dialect.write_tx(self.instance) as conn:
                 conn.execute(
                     sa.update(projects_cache).where(projects_cache.c.uid == uid).values(opened_at=dialect.utcnow())
@@ -216,9 +226,20 @@ class ProjectService:
 
     def close(self) -> None:
         with self._lock:
-            if self.current:
-                self.current.close()
-                self.current = None
+            p, self.current = self.current, None
+            if p is not None:
+                keep = any([hook(p) for hook in self.on_close])
+                if keep:
+                    self.detached[p.uid] = p
+                else:
+                    p.close()
+            self.reap()
+
+    def reap(self) -> None:
+        """Closes detached projects whose jobs have ended."""
+        with self._lock:
+            for uid in [u for u in self.detached if self.is_released(u)]:
+                self.detached.pop(uid).close()
 
     def require_current(self, writable: bool = False) -> Project:
         p = self.current
@@ -271,6 +292,10 @@ class ProjectService:
             folder = self.find(uid)
             if self.current and self.current.uid == uid:
                 self.close()
+            if uid in self.detached:
+                raise ApiError(
+                    409, "project_busy", "У проекта выполняются задания.", "Дождитесь их окончания или отмените их."
+                )
             probe = ProjectLock(folder / "project.lock")  # refuses to delete a project open elsewhere
             if probe.acquire():
                 probe.release()

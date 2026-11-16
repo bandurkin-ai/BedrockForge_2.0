@@ -38,6 +38,7 @@ class _Service(ProjectService):
                 return
             collect(p.engine, BlobStore(p.folder))
             p.backup_if_due()
+        self.reap()
 
     def _maintenance(self) -> None:
         while not self._stop.wait(MAINTENANCE_EVERY_S):
@@ -48,7 +49,13 @@ class _Service(ProjectService):
 
     def shutdown(self) -> None:
         self._stop.set()
-        self.close()
+        with self._lock:
+            if self.current:
+                self.current.close()
+                self.current = None
+            for p in self.detached.values():
+                p.close()
+            self.detached.clear()
         self.instance.dispose()
 
 
@@ -72,6 +79,9 @@ def projects_of(state: CoreState) -> ProjectService:
         root = Path(state.projects_dir) if state.projects_dir else default_projects_dir()
         service = _Service(root, engine)
         state.services["projects"] = service
+    from bf_core.jobs.service import attach
+
+    attach(state, service)  # the scheduler is created right after: shutdown closes it first
     return service  # type: ignore[no-any-return]
 
 
