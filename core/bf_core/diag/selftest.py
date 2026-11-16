@@ -158,7 +158,41 @@ def check_migrations() -> dict[str, Any]:
     return {"heads": heads}
 
 
+def check_worker() -> dict[str, Any]:
+    """A `spawn` worker starts from this build (in the frozen exe — bf-core.exe itself) and runs a job."""
+    import multiprocessing as mp
+
+    from bf_core.jobs.worker import main
+
+    ctx = mp.get_context("spawn")
+    parent, child = ctx.Pipe()
+    proc = ctx.Process(target=main, args=(child, "quick"), daemon=True)
+    t0 = time.perf_counter()
+    proc.start()
+    child.close()
+    try:
+        msgs = []
+        while parent.poll(60):
+            msg = parent.recv()
+            msgs.append(msg[0])
+            if msg[0] == "ready":
+                parent.send(("run", {"id": 1, "kind": "diag.quick", "params": {}}))
+            elif msg[0] in ("done", "error"):
+                break
+        assert msgs and msgs[-1] == "done", msgs
+        return {"start_and_run_s": round(time.perf_counter() - t0, 3)}
+    finally:
+        try:
+            parent.send(("stop",))
+        except OSError:
+            pass
+        proc.join(5)
+        if proc.is_alive():
+            proc.kill()
+
+
 CHECKS: dict[str, Callable[[], dict[str, Any]]] = {
+    "worker": check_worker,
     "routers": check_routers,
     "migrations": check_migrations,
     "numpy_scipy": check_numpy_scipy,
