@@ -4,6 +4,7 @@ import { createApp } from "./shell/app";
 import { AppContext } from "./shell/AppContext";
 import { Shell } from "./shell/Shell";
 import { fetchHealth } from "./shell/coreClient";
+import { showMessage } from "./shell/dialogs";
 
 /** Creates the app once, tracks the core and tells the shell window it has drawn (one splash). */
 export function Root() {
@@ -20,7 +21,10 @@ export function Root() {
         .then((h) => app.store.set({ core: "online", coreVersion: h.version }))
         .catch(() => app.store.set({ core: "offline" }));
     }
-    b?.onCoreState?.((st) => app.store.set({ core: st.status, coreVersion: st.info?.version ?? null }));
+    b?.onCoreState?.((st) => {
+      app.store.set((s) => ({ core: st.status, coreVersion: st.info?.version ?? s.coreVersion, coreMessage: st.message ?? (st.status === "offline" ? s.coreMessage : null) }));
+      if (st.status === "online" && st.message) void showMessage({ title: "Ядро", message: `${st.message}. Данные не потеряны; подробности — в журнале ядра.` });
+    });
   }, [app]);
 
   useEffect(() => {

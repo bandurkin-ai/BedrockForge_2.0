@@ -14,6 +14,8 @@ export interface AppState {
   shortcuts: ShortcutOverrides;
   core: CoreStatus;
   coreVersion: string | null;
+  /** Reason shown while the core is offline, or the last notice («перезапущено»). */
+  coreMessage: string | null;
   projectName: string | null;
   setName: string | null;
   setHoles: number;
@@ -30,6 +32,7 @@ export const INITIAL_STATE: AppState = {
   shortcuts: {},
   core: "starting",
   coreVersion: null,
+  coreMessage: null,
   projectName: null,
   setName: null,
   setHoles: 0,

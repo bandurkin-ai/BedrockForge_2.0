@@ -27,6 +27,7 @@ export interface CoreOptions {
   dataDir: string;
   logFile: string;
   readyTimeoutMs?: number;
+  healthIntervalMs?: number;
 }
 
 function httpJson(port: number, token: string, method: string, pathname: string, timeoutMs = 3000): Promise<{ status: number; body: unknown }> {
@@ -59,6 +60,12 @@ export class CoreProcess extends EventEmitter {
   private info: CoreInfo | null = null;
   private stopping = false;
   private readonly budget = new RestartBudget();
+  /** One token per shell session: the window keeps working after a restart on the same port. */
+  private readonly token = randomBytes(32).toString("hex");
+  private lastPort = 0;
+  private logStream: fs.WriteStream | null = null;
+  private watchdog: NodeJS.Timeout | null = null;
+  private misses = 0;
 
   constructor(private readonly opts: CoreOptions) {
     super();
@@ -70,17 +77,25 @@ export class CoreProcess extends EventEmitter {
 
   private log(line: string): void {
     try {
-      fs.mkdirSync(path.dirname(this.opts.logFile), { recursive: true });
-      fs.appendFileSync(this.opts.logFile, `${new Date().toISOString()} ${line}\n`);
+      if (!this.logStream) {
+        fs.mkdirSync(path.dirname(this.opts.logFile), { recursive: true });
+        this.logStream = fs.createWriteStream(this.opts.logFile, { flags: "a" });
+        this.logStream.on("error", () => (this.logStream = null));
+      }
+      this.logStream.write(`${new Date().toISOString()} ${line}\n`);
     } catch {
       /* logging never breaks the app */
     }
   }
 
-  async start(): Promise<CoreInfo> {
-    const token = randomBytes(32).toString("hex");
+  logPath(): string {
+    return this.opts.logFile;
+  }
+
+  async start(port = 0): Promise<CoreInfo> {
+    const token = this.token;
     const { file, args, cwd } = this.opts.command;
-    const fullArgs = [...args, "--port", "0", "--token", token, "--data", this.opts.dataDir, "--watch-stdin"];
+    const fullArgs = [...args, "--port", String(port), "--token", token, "--data", this.opts.dataDir, "--watch-stdin"];
     this.log(`start ${file} ${args.join(" ")} (cwd ${cwd})`);
     const child = spawn(file, fullArgs, {
       cwd,
@@ -130,23 +145,64 @@ export class CoreProcess extends EventEmitter {
     if (body.version !== ready.version) throw new Error(`Версии ядра не совпадают: ${body.version} / ${ready.version}`);
 
     this.info = { baseUrl: `http://127.0.0.1:${ready.port}`, token, version: ready.version, port: ready.port };
+    this.lastPort = ready.port;
     this.log(`ready port=${ready.port} version=${ready.version}`);
     child.once("exit", (code, signal) => void this.onExit(code, signal));
+    this.startWatchdog(child);
     return this.info;
+  }
+
+  /** ADR 0002: 3 missed /health in a row → the core is restarted. */
+  private startWatchdog(child: ChildProcess): void {
+    this.stopWatchdog();
+    this.misses = 0;
+    this.watchdog = setInterval(async () => {
+      const info = this.info;
+      if (!info || this.child !== child) return;
+      let ok = false;
+      try {
+        ok = (await httpJson(info.port, info.token, "GET", "/api/v1/health", 3000)).status === 200;
+      } catch {
+        ok = false;
+      }
+      if (ok) {
+        if (this.misses) this.emit("state", "online");
+        this.misses = 0;
+        return;
+      }
+      this.misses++;
+      this.emit("state", "offline");
+      this.log(`health missed (${this.misses})`);
+      if (this.misses >= 3) this.killTree(child);
+    }, this.opts.healthIntervalMs ?? 5000);
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
   }
 
   private async onExit(code: number | null, signal: NodeJS.Signals | null): Promise<void> {
     this.child = null;
     this.info = null;
     if (this.stopping) return;
+    this.stopWatchdog();
     this.log(`core exited unexpectedly: code=${code} signal=${signal}`);
+    this.emit("state", "offline");
     if (!this.budget.tryConsume(Date.now())) {
-      this.emit("failed", new Error("Ядро не запускается: превышено число перезапусков"));
+      this.emit("failed", new Error("Ядро не запускается: превышено число перезапусков (3 за 5 мин)"));
       return;
     }
+    await this.restart();
+  }
+
+  /** Restart on the previous port (the window CSP is bound to it); a busy port → a new one. */
+  async restart(): Promise<void> {
+    this.stopping = false;
+    const before = this.lastPort;
     try {
-      const info = await this.start();
-      this.emit("restarted", info);
+      const info = await this.start(before).catch(() => this.start(0));
+      this.emit("restarted", info, info.port !== before);
     } catch (e) {
       this.emit("failed", e);
     }
@@ -154,6 +210,7 @@ export class CoreProcess extends EventEmitter {
 
   async stop(): Promise<void> {
     this.stopping = true;
+    this.stopWatchdog();
     const child = this.child;
     const info = this.info;
     if (!child) return;

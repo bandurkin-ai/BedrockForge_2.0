@@ -3,6 +3,7 @@ import { useApp } from "./AppContext";
 import { BottomDock, RightDock, Viewport } from "./Docks";
 import { DataTree } from "./DataTree";
 import { ContextMenuHost } from "./ContextMenu";
+import { CoreDown } from "./CoreDown";
 import { DialogHost } from "./DialogHost";
 import { showMessage } from "./dialogs";
 import { detectImportKind, IMPORT_TITLES } from "./tree";
@@ -121,6 +122,7 @@ export function Shell() {
       </div>
       <StatusBar />
       <WindowLayer render={renderWindow} />
+      <CoreDown />
       <ContextMenuHost />
       <Palette />
       <DialogHost />

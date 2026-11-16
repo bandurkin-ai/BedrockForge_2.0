@@ -190,7 +190,34 @@ function createMain(): void {
   void mainWin.loadURL(`${ORIGIN}/index.html`);
 }
 
+function publicInfo(info: CoreInfo | null) {
+  return info ? { baseUrl: info.baseUrl, token: info.token, version: info.version } : null;
+}
+
 function registerIpc(): void {
+  ipcMain.on("bf:splash-close", (e) => {
+    if (splash && e.sender === splash.webContents) app.quit();
+  });
+  ipcMain.on("bf:splash-copy-log", (e) => {
+    if (!splash || e.sender !== splash.webContents) return;
+    try {
+      clipboard.writeText(fs.readFileSync(core.logPath(), "utf8").slice(-200_000));
+    } catch {
+      clipboard.writeText("Журнал ядра пуст");
+    }
+  });
+  ipcMain.on("bf:core-retry", (e) => {
+    if (mainWin && e.sender === mainWin.webContents && !core.current()) void core.restart();
+  });
+  ipcMain.on("bf:core-log", (e) => {
+    let text = "";
+    try {
+      text = fs.readFileSync(core.logPath(), "utf8").slice(-200_000);
+    } catch {
+      text = "Журнал ядра пуст";
+    }
+    e.returnValue = text;
+  });
   ipcMain.on("bf:core-info", (e) => {
     // The launch token goes to the main window of our own origin only.
     const ownWindow = mainWin !== null && e.sender === mainWin.webContents && (e.senderFrame?.url ?? "").startsWith(ORIGIN + "/");
@@ -243,9 +270,13 @@ async function boot(): Promise<void> {
     splashState(`Вычислительное ядро не запускается: ${e instanceof Error ? e.message : String(e)}. Журнал: ${LOG_DIR}`, true);
     return;
   }
-  core.on("restarted", (info: CoreInfo) => {
-    log("core restarted");
-    mainWin?.webContents.send("bf:core-state", { status: "online", info: { baseUrl: info.baseUrl, token: info.token, version: info.version }, message: "Вычислительное ядро перезапущено" });
+  core.on("state", (status: "online" | "offline") => {
+    mainWin?.webContents.send("bf:core-state", { status, info: status === "online" ? publicInfo(core.current()) : null });
+  });
+  core.on("restarted", (info: CoreInfo, portChanged: boolean) => {
+    log(`core restarted on port ${info.port}${portChanged ? " (new port: reloading the window)" : ""}`);
+    if (portChanged) mainWin?.webContents.reload(); // CSP of the page names the old port
+    else mainWin?.webContents.send("bf:core-state", { status: "online", info: publicInfo(info), message: "Вычислительное ядро перезапущено" });
   });
   core.on("failed", (e: unknown) => {
     log(`core failed permanently: ${String(e)}`);
