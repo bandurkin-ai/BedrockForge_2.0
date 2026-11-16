@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   auditExportUrl, cancelJob, createChart, createDemoProject, deleteChart, getChart, patchChart, createProject, createSet, deleteDataset, deleteLines, deleteProject, deleteWireframe,
   deleteIntervalTable, renameIntervalTable, getIntervalTables, listProjects, moveDataset, patchLines, patchRaster, patchWireframe, editBlock, renameDataset, runAudit, setBlockUnit,
-  getStyles, getStyleUsage, setAssistantPreferences, patchProject, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord,
+  getStyles, getStyleUsage, setAssistantPreferences, patchProject, startExport, type Dataset, type JobInfo, type Project, type SavedChartKind, type StyleRecord,
 } from "./api";
 import { GradeTonnageWindow } from "./charts/GradeTonnageWindow";
 import { StripLogWindow } from "./charts/StripLogWindow";
@@ -33,6 +33,7 @@ import { ErrorBoundary } from "./shell/ErrorBoundary";
 import { Icon } from "./shell/icons";
 import { ImportDialog } from "./shell/ImportDialog";
 import { ImportWizard, WIZARD_ACCEPT } from "./shell/ImportWizard";
+import { OmfExportDialog } from "./shell/OmfExportDialog";
 import { isBlockModelFile } from "./shell/sniffBlocks";
 import { ChartWindow } from "./charts/ChartWindow";
 import { HistogramWindow, type HistogramSettings } from "./charts/HistogramWindow";
@@ -72,6 +73,7 @@ const ACCEPT = {
   lines: ".str,.dxf",
   rasters: ".jpg,.jpeg,.png,.tif,.tiff,.bmp,.jgw,.jpgw,.pgw,.pngw,.tfw,.tifw,.bpw,.wld,.tab,.grf",
   blocks: ".dat,.csv,.txt",
+  omf: ".omf",
 };
 type UploadKind = keyof typeof ACCEPT;
 
@@ -161,7 +163,7 @@ function Workspace({
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [approval, setApproval] = useState<Approval | null>(null);
-  const fileInputs = { wireframes: useRef<HTMLInputElement>(null), lines: useRef<HTMLInputElement>(null), rasters: useRef<HTMLInputElement>(null), blocks: useRef<HTMLInputElement>(null) };
+  const fileInputs = { wireframes: useRef<HTMLInputElement>(null), lines: useRef<HTMLInputElement>(null), rasters: useRef<HTMLInputElement>(null), blocks: useRef<HTMLInputElement>(null), omf: useRef<HTMLInputElement>(null) };
   const openFiles = (kind: UploadKind) => fileInputs[kind].current?.click();
   const anyFileInput = useRef<HTMLInputElement>(null);
   const [wizard, setWizard] = useState<{ files: File[]; kindHint: UploadKind | null; blockModels: Set<File> } | null>(null);
@@ -451,6 +453,8 @@ function Workspace({
 
   const [accountOpen, setAccountOpen] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
+  /** The OMF export window: the datasets checked when it opens ([]: every exportable one). */
+  const [omfExport, setOmfExport] = useState<number[] | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcuts, setShortcutsState] = useState<ShortcutOverrides>(loadShortcuts);
   const setShortcuts = (next: ShortcutOverrides) => {
@@ -536,6 +540,12 @@ function Workspace({
     sectionThroughHole: (setId, holeId) => sceneApi.current?.sectionThroughHole(setId, holeId) ?? null,
     runAudit: (setId) => runAudit(setId, DEFAULT_CONFIG),
     exportAudit: (setId) => window.open(auditExportUrl(setId), "_blank"),
+    openOmfExport: (ids) => setOmfExport(ids ?? []),
+    exportOmf: async (ids, filename) => {
+      const job = await startExport(projectId, { format: "omf", dataset_ids: ids, filename });
+      onExportStarted(job);
+      return job;
+    },
     fit: () => sceneApi.current?.fit(),
     view: (preset) => sceneApi.current?.view(preset),
     drawSection: () => sceneApi.current?.drawSection(),
@@ -694,6 +704,11 @@ function Workspace({
     // Tables that are block models go to the object import, the rest to the drillhole wizard.
     void Promise.all(files.map(async (f) => ((kind === "blocks" && /\.(dat|csv|txt)$/i.test(f.name)) || (await isBlockModelFile(f)) ? f : null)))
       .then((found) => setWizard({ files, kindHint: kind, blockModels: new Set(found.filter((f): f is File => f !== null)) }));
+  }
+
+  function onExportStarted(job: JobInfo) {
+    setWs((prev) => openBottom(prev, "jobs"));
+    setNotice({ text: `${job.title}: идёт в фоне, файл появится во вкладке «Задания»`, error: false });
   }
 
   function onJobsStarted(started: JobInfo[]) {
@@ -1021,6 +1036,16 @@ function Workspace({
             setNotice({ text: `Выберите в мастере скважин: ${tables.map((f) => f.name).join(", ")}`, error: false });
           }}
           onClose={() => setWizard(null)}
+        />
+      )}
+
+      {omfExport && (
+        <OmfExportDialog
+          projectName={projects.find((p) => p.id === projectId)?.name ?? "Проект"} datasets={datasets ?? []} initial={omfExport}
+          onStart={async (ids, filename) => {
+            await live.current.exportOmf(ids, filename);
+          }}
+          onClose={() => setOmfExport(null)}
         />
       )}
 

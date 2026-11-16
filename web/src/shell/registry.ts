@@ -68,7 +68,7 @@ export interface Live {
   onCreateSet: (name: string) => Promise<string>;
   openPalette: (query: string) => void;
   openImport: (setId: number | null) => void;
-  upload: (kind: "wireframes" | "lines" | "rasters") => void;
+  upload: (kind: "wireframes" | "lines" | "rasters" | "omf") => void;
   /** File picker of the import wizard (any supported file). */
   openImportFiles: () => void;
   patchRaster: (id: number, patch: RasterPatch) => Promise<void>;
@@ -76,6 +76,10 @@ export interface Live {
   sectionThroughHole: (setId: number, holeId: string) => SectionLine | null;
   runAudit: (setId: number) => Promise<AuditRun>;
   exportAudit: (setId: number) => void;
+  /** Opens the OMF export window with these datasets checked (none: every exportable one). */
+  openOmfExport: (ids?: number[]) => void;
+  /** Starts the OMF export job of these datasets. */
+  exportOmf: (ids: number[], filename?: string) => Promise<JobInfo>;
   fit: () => void;
   view: (preset: ViewPreset) => void;
   drawSection: () => void;
@@ -521,6 +525,35 @@ export function buildCommands(live: MutableRefObject<Live>): Command[] {
       description: "Выбор изображений вместе с файлами привязки.",
       uiOnly: true,
       run: () => s().upload("rasters"),
+    },
+    {
+      id: "omf.import",
+      title: "Импорт OMF",
+      description: "Выбор файлов Open Mining Format (OMF v1, Leapfrog OMF 0.9): каркасы, линии и блочные модели загружаются отдельными наборами.",
+      uiOnly: true,
+      run: () => s().upload("omf"),
+    },
+    {
+      id: "omf.export",
+      title: "Экспорт в OMF",
+      description:
+        "Экспорт каркасов, линий и регулярных блочных моделей в один файл OMF v1 (открывается в Leapfrog и других ГГИС). " +
+        "С dataset_ids (через запятую) сразу запускает фоновое задание; без них открывает окно выбора наборов. Файл — во вкладке «Задания».",
+      params: {
+        dataset_ids: { type: "string", description: "id наборов через запятую, например \"3,5,8\"", nullable: true },
+        filename: { type: "string", description: "имя файла; по умолчанию — название проекта", nullable: true },
+      },
+      run: async ({ dataset_ids, filename }) => {
+        const ids = String(dataset_ids ?? "").split(/[\s,;]+/).filter(Boolean).map(Number);
+        if (!ids.length) {
+          s().openOmfExport();
+          return "Открыто окно экспорта в OMF";
+        }
+        const bad = ids.filter((id) => !s().datasets.some((d) => d.id === id));
+        if (bad.length || ids.some((id) => !Number.isInteger(id))) throw new Error(`Наборов нет в проекте: ${bad.join(", ") || String(dataset_ids)}`);
+        const job = await s().exportOmf(ids, typeof filename === "string" ? filename : undefined);
+        return `Задание ${job.id}: ${job.title}`;
+      },
     },
     {
       id: "data.refresh",

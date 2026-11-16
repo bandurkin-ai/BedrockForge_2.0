@@ -29,13 +29,15 @@ class GcReport:
     stray_files: int = 0
     tmp_files: int = 0
     uploads: int = 0
+    exports: int = 0
 
 
 def referenced_sql() -> str:
     return " UNION ".join(f"SELECT value FROM {t}, jsonb_each_text({t}.blobs) WHERE value IS NOT NULL" for t in OWNERS)
 
 
-def collect(session: Session, *, grace: timedelta = GRACE, upload_ttl: timedelta = UPLOAD_TTL) -> GcReport:
+def collect(session: Session, *, grace: timedelta = GRACE, upload_ttl: timedelta = UPLOAD_TTL,
+            export_ttl: timedelta | None = None) -> GcReport:
     """Deletes what nothing references. Runs in one transaction under the exclusive store lock."""
     report = GcReport()
     blobs.lock_exclusive(session)
@@ -61,6 +63,10 @@ def collect(session: Session, *, grace: timedelta = GRACE, upload_ttl: timedelta
                 p.unlink(missing_ok=True)
                 report.stray_files += 1
     report.tmp_files = _sweep(blobs.root() / "tmp", cutoff)
+    # Files of export jobs (app/exporting/files.py): by age, nothing refers to them.
+    from app.exporting.files import EXPORT_TTL
+
+    report.exports = _sweep(blobs.root() / "exports", time.time() - (export_ttl or EXPORT_TTL).total_seconds())
 
     stale = session.execute(
         text("DELETE FROM upload WHERE updated_at < now() - :ttl RETURNING id"), {"ttl": upload_ttl}

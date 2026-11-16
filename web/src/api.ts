@@ -848,7 +848,8 @@ export interface JobInfo {
   status: JobStatus;
   progress: number;
   message: string;
-  result: { dataset_ids?: number[]; kind?: string } | null;
+  /** import: created datasets; export: the file (download with jobDownloadUrl) */
+  result: { dataset_ids?: number[]; kind?: string; filename?: string; size?: number; elements?: number; warnings?: string[] } | null;
   error: string | null;
   attempts: number;
   cancel_requested: boolean;
@@ -980,7 +981,7 @@ export async function deleteUpload(id: string): Promise<void> {
 
 export interface ImportRequest {
   uploads: string[];
-  kind?: "wireframes" | "lines" | "rasters" | "blocks";
+  kind?: "wireframes" | "lines" | "rasters" | "blocks" | "omf";
   folder?: string;
   section?: VerticalPlacement | null;
   /** rasters: the height of plan images (null: from the georeference file) and a shift of every image, m */
@@ -990,6 +991,18 @@ export interface ImportRequest {
 
 export const startImport = (projectId: number, body: ImportRequest) =>
   request<JobInfo>(`/api/projects/${projectId}/imports`, { method: "POST", ...json(body) });
+
+/** Export of datasets to a file (a background job); the file then comes from jobDownloadUrl. */
+export interface ExportRequest {
+  format: "omf";
+  dataset_ids: number[];
+  /** file name for the download; empty: the project name */
+  filename?: string;
+}
+export const startExport = (projectId: number, body: ExportRequest) =>
+  request<JobInfo>(`/api/projects/${projectId}/exports`, { method: "POST", ...json(body) });
+export const jobDownloadUrl = (jobId: number) => `/api/jobs/${jobId}/download`;
+export const isExportJob = (job: Pick<JobInfo, "kind">) => job.kind.startsWith("export.");
 
 export const listJobs = (projectId: number) => request<JobInfo[]>(`/api/projects/${projectId}/jobs`);
 export const getJob = (id: number) => request<JobDetail>(`/api/jobs/${id}`);
@@ -1016,7 +1029,7 @@ export interface DetectedFile {
   filename: string;
   size: number;
   status: "receiving" | "complete";
-  kind: "wireframes" | "lines" | "rasters" | "blocks" | "sidecar" | "drillholes" | "unknown";
+  kind: "wireframes" | "lines" | "rasters" | "blocks" | "omf" | "sidecar" | "drillholes" | "unknown";
   format: string;
   note: string;
   /** images: their georeference files in this batch */
@@ -1024,7 +1037,11 @@ export interface DetectedFile {
   preview?: {
     summary?: string;
     error?: string;
-    items?: { name: string; points?: number | null; triangles?: number | null; entities?: Record<string, number> }[];
+    items?: {
+      name: string; points?: number | null; triangles?: number | null; entities?: Record<string, number>;
+      /** OMF: element type, what it becomes, why it is skipped, grid cells, data names, textures */
+      type?: string; as?: string; skip?: string; cells?: number; data?: string[]; textures?: number;
+    }[];
     width?: number;
     height?: number;
   };

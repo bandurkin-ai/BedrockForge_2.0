@@ -176,6 +176,10 @@ def inspect(kind: str, filename: str, path: Path) -> dict:
             return inspect_image(path)
         if kind == "blocks":
             return inspect_blocks(path, filename)
+        if kind == "omf":
+            from app.formats.omf import describe
+
+            return describe(path)
     except OSError as exc:
         return {"error": f"Файл не читается: {exc}"}
     return {}

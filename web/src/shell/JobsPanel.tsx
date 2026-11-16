@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cancelJob, getJob, isFinished, retryJob, type JobDetail, type JobInfo } from "../api";
+import { cancelJob, getJob, isExportJob, isFinished, jobDownloadUrl, retryJob, type JobDetail, type JobInfo } from "../api";
 import type { UploadState } from "./useJobs";
 
 const STATUS: Record<JobInfo["status"], string> = {
@@ -60,7 +60,7 @@ export function JobsPanel({ jobs, uploads, onClearUploads }: { jobs: JobInfo[]; 
   };
 
   if (jobs.length === 0 && uploads.length === 0) {
-    return <p className="muted small">Заданий нет. Загрузка каркасов, линий и растров идёт фоновым заданием: здесь видны ход, ошибки и журнал.</p>;
+    return <p className="muted small">Заданий нет. Загрузка каркасов, линий, растров и экспорт в OMF идут фоновыми заданиями: здесь видны ход, ошибки, журнал и файлы для скачивания.</p>;
   }
   return (
     <div className="jobs">
@@ -100,6 +100,12 @@ export function JobsPanel({ jobs, uploads, onClearUploads }: { jobs: JobInfo[]; 
                 <button className="small" disabled={j.cancel_requested} onClick={() => void cancel(j.id)}>
                   {j.cancel_requested ? "Отмена…" : "Отменить"}
                 </button>
+              )}
+              {j.status === "done" && isExportJob(j) && j.result?.filename && (
+                <a className="job-download small" href={jobDownloadUrl(j.id)} download={j.result.filename}
+                  title={`${j.result.filename}${j.result.size ? `, ${formatBytes(j.result.size)}` : ""}${j.result.warnings?.length ? ` · замечаний: ${j.result.warnings.length} (журнал задания)` : ""}`}>
+                  Скачать
+                </a>
               )}
               {(j.status === "failed" || j.status === "cancelled") && (
                 <button className="small" onClick={() => void retry(j.id)} title="Запустить снова с теми же файлами (без новой загрузки)">Повторить</button>

@@ -6,8 +6,9 @@ from sqlalchemy import delete, select
 
 from app.importing.blockmodels import import_block_model
 from app.importing.objects import ImportFailed, SectionPlacement, import_lines, import_rasters, import_wireframes
+from app.importing.omf import attach_source, import_omf
 from app.jobs.worker import JobContext, JobError, handler
-from app.models import Upload
+from app.models import Dataset, Project, Upload
 from app.storage import blobs, gc
 
 
@@ -30,7 +31,7 @@ def _uploads(ctx: JobContext, project_id: int, ids: list[str]) -> list[Upload]:
 
 @handler("import.objects")
 def import_objects(ctx: JobContext, params: dict) -> dict:
-    """params: project_id, kind (wireframes | lines | rasters), uploads [id], folder, section."""
+    """params: project_id, kind (wireframes | lines | rasters | blocks | omf), uploads [id], folder, section."""
     from app.routers.uploads import part_path
 
     project_id = int(params["project_id"])
@@ -63,12 +64,70 @@ def import_objects(ctx: JobContext, params: dict) -> dict:
             for dataset, u in imported:
                 dataset.blobs = {**(dataset.blobs or {}), "source": blobs.put_file(ctx.session, part_path(u.id))}
                 created.append(dataset.id)
+        elif kind == "omf":
+            # One OMF file gives several datasets; they all refer to the file as their source.
+            imported_omf = []
+            for i, u in enumerate(uploads):
+                def progress(fraction: float, message: str, i=i, name=u.filename) -> None:
+                    ctx.progress((i + fraction) / len(uploads), f"{name}: {message}")
+
+                datasets, warnings = import_omf(ctx.session, project_id, part_path(u.id), u.filename, folder=folder,
+                                                progress=progress, keep_source=False)
+                imported_omf.append((datasets, u))
+                kinds = ", ".join(f"{d.kind} «{d.name}»" for d in datasets)
+                ctx.log(f"{u.filename}: прочитан (OMF v1), наборов {len(datasets)}: {kinds}")
+                for w in warnings:
+                    ctx.log(f"{u.filename}: {w}", "warning")
+            for datasets, u in imported_omf:
+                attach_source(ctx.session, datasets, part_path(u.id))
+                created.extend(d.id for d in datasets)
         else:
             raise JobError(f"Неизвестный тип объекта «{kind}»")
     except ImportFailed as exc:
         raise JobError(str(exc)) from exc
     ctx.session.execute(delete(Upload).where(Upload.id.in_([u.id for u in uploads])))
     return {"dataset_ids": created, "kind": kind}
+
+
+@handler("export.omf")
+def export_omf_file(ctx: JobContext, params: dict) -> dict:
+    """params: project_id, dataset_ids [id], filename. The file lands in DATA_DIR/exports/<job id>.omf;
+    GET /api/jobs/{id}/download gives it under `filename`."""
+    import os
+
+    from app.exporting.files import export_path
+    from app.exporting.omf import ExportFailed, export_omf
+
+    project_id = int(params["project_id"])
+    project = ctx.session.get(Project, project_id)
+    if project is None:
+        raise JobError("Проект удалён")
+    ids = [int(i) for i in params.get("dataset_ids") or []]
+    found = {d.id: d for d in ctx.session.scalars(select(Dataset).where(Dataset.id.in_(ids), Dataset.project_id == project_id))}
+    datasets = [found[i] for i in ids if i in found]
+    missing = len(ids) - len(datasets)
+    if not datasets:
+        raise JobError("Выбранных наборов нет в проекте")
+    if missing:
+        ctx.log(f"Наборов удалено после запуска: {missing}", "warning")
+    ctx.log(f"Наборов: {len(datasets)} — " + ", ".join(f"«{d.name}»" for d in datasets))
+    tmp = blobs.tmp_path(".omf")
+    try:
+        written, warnings = export_omf(ctx.session, project.name, project.description or "", datasets, tmp,
+                                       progress=lambda f, m: ctx.progress(f, m))
+        ctx.check_cancel()
+        dest = export_path(ctx.job_id, ".omf")
+        os.replace(tmp, dest)
+    except ExportFailed as exc:
+        raise JobError(str(exc)) from exc
+    finally:
+        tmp.unlink(missing_ok=True)
+    for w in warnings:
+        ctx.log(w, "warning")
+    size = dest.stat().st_size
+    ctx.log(f"Записано элементов: {written}, {size / 1e6:.2f} МБ")
+    return {"filename": params.get("filename") or f"{project.name}.omf", "size": size, "elements": written,
+            "warnings": warnings, "download": f"/api/jobs/{ctx.job_id}/download"}
 
 
 @handler("storage.gc")

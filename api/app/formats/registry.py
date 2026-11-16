@@ -11,7 +11,8 @@ from pathlib import Path
 
 from app.formats.rasters import IMAGE_SUFFIXES, SIDECAR_SUFFIXES
 
-OBJECT_KINDS = ("wireframes", "lines", "rasters", "blocks")
+# "omf" is a container: one file gives wireframes, lines and block models (importing/omf.py).
+OBJECT_KINDS = ("wireframes", "lines", "rasters", "blocks", "omf")
 TABLE_SUFFIXES = (".dat", ".csv", ".txt", ".xlsx", ".xlsm", ".xls")
 
 # DXF entity names that hold triangles (wireframes) rather than lines.
@@ -21,7 +22,7 @@ _SCAN_BYTES = 64 << 20
 
 @dataclass(frozen=True)
 class Detected:
-    kind: str  # wireframes | lines | rasters | blocks | sidecar | drillholes | unknown
+    kind: str  # wireframes | lines | rasters | blocks | omf | sidecar | drillholes | unknown
     format: str
     note: str = ""
 
@@ -45,6 +46,20 @@ def _dxf_has_faces(path: Path) -> bool:
 
 def detect(filename: str, path: Path | None = None) -> Detected:
     suffix = Path(filename).suffix.lower()
+    if suffix == ".omf":
+        from app.formats.omf import MAGIC, VERSION
+
+        if path is not None:
+            with path.open("rb") as f:
+                head = f.read(36)
+            if head[:4] != MAGIC:
+                if head[:2] == b"PK":
+                    return Detected("unknown", "OMF 2 (ZIP)", "Файл OMF 2 (архив ZIP) не поддерживается: сохраните проект в OMF 1 (Leapfrog: OMF 0.9)")
+                return Detected("unknown", "OMF", "Нет сигнатуры OMF в начале файла: файл повреждён или это другой формат")
+            if not head[4:36].startswith(VERSION):
+                version = head[4:36].rstrip(b"\x00").decode("ascii", "replace")
+                return Detected("unknown", f"OMF {version}", "Версия OMF не поддерживается: читается OMF v1 (OMF-v0.9.0)")
+        return Detected("omf", "OMF v1", "Контейнер: каркасы, линии и блочные модели загрузятся отдельными наборами")
     if suffix == ".tridb":
         return Detected("wireframes", "Micromine TRIDB")
     if suffix == ".obj":

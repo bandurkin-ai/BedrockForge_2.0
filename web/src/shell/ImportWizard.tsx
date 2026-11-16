@@ -6,12 +6,14 @@ import { Icon } from "./icons";
 import { formatBytes } from "./JobsPanel";
 import type { UploadState } from "./useJobs";
 
-export type ObjectKind = "wireframes" | "lines" | "rasters" | "blocks";
+export type ObjectKind = "wireframes" | "lines" | "rasters" | "blocks" | "omf";
 
-const KIND_TITLES: Record<ObjectKind, string> = { wireframes: "Каркасы", lines: "Линии", rasters: "Растры", blocks: "Блочная модель" };
+const KIND_TITLES: Record<ObjectKind, string> = {
+  wireframes: "Каркасы", lines: "Линии", rasters: "Растры", blocks: "Блочная модель", omf: "OMF: каркасы, линии, блоки",
+};
 const isObjectKind = (k: string): k is ObjectKind => k in KIND_TITLES;
 const TABLE_SUFFIXES = [".dat", ".csv", ".txt", ".xlsx", ".xlsm", ".xls"];
-const OBJECT_SUFFIXES = [".tridb", ".dxf", ".obj", ".stl", ".str", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp",
+const OBJECT_SUFFIXES = [".omf", ".tridb", ".dxf", ".obj", ".stl", ".str", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp",
   ".jgw", ".jpgw", ".pgw", ".pngw", ".tfw", ".tifw", ".bpw", ".wld", ".tab", ".grf"];
 export const WIZARD_ACCEPT = [...OBJECT_SUFFIXES, ...TABLE_SUFFIXES].join(",");
 
@@ -50,7 +52,9 @@ export function planJobs(rows: Row[]): { kind: ObjectKind; uploads: string[]; na
   const rasters = [...images, ...rows.filter((r) => r.kind === "sidecar" && used.has(r.filename))];
   if (images.length) plan.push({ kind: "rasters", uploads: rasters.map((r) => r.upload), names: rasters.map((r) => r.filename) });
   for (const r of rows) {
-    if (r.chosen === "wireframes" || r.chosen === "lines" || r.chosen === "blocks") plan.push({ kind: r.chosen, uploads: [r.upload], names: [r.filename] });
+    if (r.chosen === "wireframes" || r.chosen === "lines" || r.chosen === "blocks" || r.chosen === "omf") {
+      plan.push({ kind: r.chosen, uploads: [r.upload], names: [r.filename] });
+    }
   }
   return plan;
 }
@@ -136,6 +140,7 @@ export function ImportWizard({
           // Sent as a block model (sniffed in the browser, or from the "Блочные модели" button):
           // it stays one even if the server did not recognise it; the import reports why.
           chosen: d.kind === "blocks" || (d.kind === "drillholes" && asBlocks.has(d.filename)) ? "blocks"
+            : d.kind === "omf" ? "omf"
             : d.kind === "wireframes" || d.kind === "lines" || d.kind === "rasters"
             ? ((kindHint === "wireframes" || kindHint === "lines") && d.kind !== "rasters" && suffix(d.filename) === ".dxf" ? kindHint : d.kind)
             : d.kind === "sidecar" ? "rasters" : null,
@@ -271,6 +276,11 @@ export function ImportWizard({
                                     {it.name}
                                     {it.triangles != null && <span className="muted"> · {it.triangles.toLocaleString("ru-RU")} треуг.</span>}
                                     {it.entities && <span className="muted"> · {Object.entries(it.entities).map(([k, n]) => `${k} ${n}`).join(", ")}</span>}
+                                    {it.type && <span className="muted"> · {it.type}{it.as ? ` → ${it.as}` : ""}</span>}
+                                    {it.cells != null && <span className="muted"> · {it.cells.toLocaleString("ru-RU")} ячеек</span>}
+                                    {it.skip && <span className="error-text"> · не загрузится: {it.skip}</span>}
+                                    {it.data && it.data.length > 0 && <span className="muted"> · данные: {it.data.join(", ")}</span>}
+                                    {it.textures ? <span className="muted"> · текстур {it.textures} (не переносятся)</span> : null}
                                   </li>
                                 ))}
                               </ul>
