@@ -6,13 +6,16 @@ packed from the start: one vertex array per layer instead of a list of polylines
 * `xyz` — float64 N×3, X/Y finite; Z may be NaN (no elevation), never replaced by 0.
 * `offsets` — int64, lines + 1 entries, `offsets[0] = 0`, `offsets[-1] = N`, no empty lines; a line of one
   vertex is a point shown as a mark (ТЗ 7.18).
-* `closed` — uint8 per line. A closed line repeats its first vertex at the end (ТЗ 17 п. 12) and has at least
-  three other vertices; `close` / `from_lines` add the repeat when a file only flags the line closed.
+* `closed` — uint8 per line. A closed line repeats its first vertex at the end (ТЗ 17 п. 12; within `CLOSE_TOL`,
+  the last vertex as the file has it) and has at least three other vertices; `close` / `from_lines` add the
+  repeat when a file only flags the line closed.
 * A layer of points (`points_only`) has neither `offsets` nor `closed`: every vertex is a point.
-* `seq` — uint32 per feature (line, or point): its order in the source file, so a writer can restore the
-  record order of a file whose layers were interleaved.
+* `seq` — uint32 per vertex: the number of its record in the source file, so a writer can restore the record
+  order of a file whose layers were interleaved (lines go by the `seq` of their first vertex, as
+  `str_layers.gather`). A vertex added to close a line gets the `seq` of the first vertex: it was not in the file.
 * `attrs` — a pyarrow Table, one row per feature; `vattrs` — one row per vertex (only fields that change
   along a line: M of SHP, Surpac descriptions). Columns are float64 (NaN = empty) or strings (null = empty).
+  Given as a Table, a mapping {name: values} or a list of `table.Column` (what the STR readers return).
 
 Nothing heavy is imported at module import time except numpy (ADR 0002: pyarrow loads inside functions).
 """
@@ -34,6 +37,15 @@ if TYPE_CHECKING:
 FEATURE = "feature"
 VERTEX = "vertex"
 MAX_NAME = 200
+#: First and last vertex closer than this in X, Y and Z: the line repeats its first vertex (BF `_closed`,
+#: `str_layers.CLOSE_TOLERANCE`). The last vertex stays as the file has it: export is bit-exact.
+CLOSE_TOL = 1e-6
+
+
+def _near(a: np.ndarray, b: np.ndarray, tol: float = CLOSE_TOL) -> np.ndarray:
+    """Per row: every axis within `tol` (an empty Z matches an empty Z only)."""
+    with np.errstate(invalid="ignore"):
+        return np.asarray(((np.abs(a - b) <= tol) | (np.isnan(a) & np.isnan(b))).all(axis=-1))
 
 
 def _bad(message: str, hint: str = "Проверьте файл: геометрия слоя повреждена.") -> FormatError:
@@ -62,12 +74,14 @@ def _clean_table(table: Any, rows: int, what: str) -> pa.Table | None:
 
     if table is None:
         return None
+    if isinstance(table, list | tuple):  # [table.Column]: name + values (float64 NaN / pyarrow strings)
+        table = {c.name: c.values for c in table}
     if isinstance(table, Mapping):
         table = pa.table({str(k): _column(v) for k, v in table.items()}) if table else None
         if table is None:
             return None
     if not isinstance(table, pa.Table):
-        raise TypeError(f"{what}: a pyarrow.Table or a mapping of columns is expected")
+        raise TypeError(f"{what}: a pyarrow.Table, a mapping or a list of columns is expected")
     if table.num_columns == 0:
         return None
     if table.num_rows != rows:
@@ -144,7 +158,7 @@ class LineSet:
             self.closed = np.ascontiguousarray(np.asarray(self.closed, dtype=np.uint8))
         n = self.feature_count
         if self.seq is None:
-            self.seq = np.arange(n, dtype="<u4")
+            self.seq = np.arange(len(self.xyz), dtype="<u4")
         else:
             self.seq = np.ascontiguousarray(np.asarray(self.seq, dtype="<u4"))
         self.validate()
@@ -169,7 +183,7 @@ class LineSet:
 
     @property
     def feature_count(self) -> int:
-        """Rows of `attrs` and entries of `seq`: lines, or points of a point layer."""
+        """Rows of `attrs`: lines, or points of a point layer."""
         return self.point_count if self.offsets is None else self.line_count
 
     @property
@@ -199,15 +213,14 @@ class LineSet:
             idx = np.flatnonzero(closed)
             if len(idx):
                 a, b = offsets[idx], offsets[idx + 1] - 1
-                same = (xyz[a] == xyz[b]) | (np.isnan(xyz[a]) & np.isnan(xyz[b]))
-                bad = idx[(b - a < 3) | ~same.all(axis=1)]
+                bad = idx[(b - a < 3) | ~_near(xyz[a], xyz[b])]
                 if len(bad):
                     raise _bad(
                         f"Замкнутая линия {int(bad[0]) + 1} должна иметь не меньше трёх вершин и повторять "
                         "первую вершину в конце."
                     )
-        if self.seq is not None and len(self.seq) != self.feature_count:
-            raise _bad("Порядок записей задан не для каждой линии.")
+        if self.seq is not None and len(self.seq) != n:
+            raise _bad("Номер записи в файле задан не для каждой вершины.")
 
     # --- measures -----------------------------------------------------------------------------------
 
@@ -281,17 +294,16 @@ class LineSet:
 # --- building ---------------------------------------------------------------------------------------
 
 
-def detect_closed(xyz: np.ndarray, offsets: np.ndarray, tol: float = 0.0) -> np.ndarray:
-    """uint8 per line: first and last vertices coincide (within `tol` per axis) and there are ≥ 4 vertices.
-    With `tol` = 0 the test is exact, so the repeated vertex stays as the file has it (bit-exact export)."""
+def detect_closed(xyz: np.ndarray, offsets: np.ndarray, tol: float = CLOSE_TOL) -> np.ndarray:
+    """uint8 per line: first and last vertices coincide (within `tol` per axis) and there are ≥ 4 vertices;
+    `tol` = 0 — bit for bit. Nothing is moved: the repeated vertex stays as the file has it."""
     xyz = np.asarray(xyz, dtype=np.float64)
     offsets = np.asarray(offsets, dtype=np.int64)
     if len(offsets) < 2:
         return np.zeros(0, dtype=np.uint8)
     a, b = offsets[:-1], offsets[1:] - 1
     pa_, pb = xyz[a], xyz[b]
-    near = (np.abs(pa_ - pb) <= tol) | (np.isnan(pa_) & np.isnan(pb))
-    return ((b - a >= 3) & near.all(axis=1)).astype(np.uint8)
+    return ((b - a >= 3) & _near(pa_, pb, tol)).astype(np.uint8)
 
 
 def close(
@@ -306,7 +318,7 @@ def close(
     if not flags.any():
         return xyz, offsets, flags.astype(np.uint8), None
     a, b = offsets[:-1], offsets[1:] - 1
-    same = ((xyz[a] == xyz[b]) | (np.isnan(xyz[a]) & np.isnan(xyz[b]))).all(axis=1) & (b > a)
+    same = _near(xyz[a], xyz[b]) & (b > a)
     count = (b - a + 1) + np.where(same, 0, 1)
     flags &= count >= 4
     add = flags & ~same
@@ -331,7 +343,8 @@ def from_lines(
     units: dict[str, str] | None = None,
 ) -> LineSet:
     """A layer from separate polylines (k×3 each). `closed` None: closed where the first vertex repeats;
-    given: flagged lines get the repeat of the first vertex (and of its vertex attributes)."""
+    given: flagged lines get the repeat of the first vertex (and of its vertex attributes and `seq`).
+    `seq` and `vattrs` are given per source vertex."""
     parts = [np.asarray(v, dtype=np.float64).reshape(-1, 3) for v in lines]
     offsets = np.zeros(len(parts) + 1, dtype=np.int64)
     offsets[1:] = np.cumsum([len(p) for p in parts])
@@ -347,6 +360,8 @@ def from_lines(
             vattrs = _clean_table(vattrs, n_src, "вершин")
             if vattrs is not None:
                 vattrs = vattrs.take(take)
+        if take is not None:
+            seq = (np.arange(n_src, dtype=np.uint32) if seq is None else np.asarray(seq, dtype=np.uint32))[take]
     return LineSet(name, xyz, offsets, flags, seq, attrs, vattrs, color, dict(units or {}))
 
 
@@ -365,13 +380,15 @@ def from_points(
 
 class LineSetBuilder:
     """Lines (or points) added one by one by a streaming reader; `build()` packs them into a LineSet.
-    Attribute values: numbers (NaN / None = empty) or text (None = empty); a field missing on a line is empty."""
+    Attribute values: numbers (NaN / None = empty) or text (None = empty); a field missing on a line is empty.
+    `seq` of `add`: None — vertices numbered in the order added; an int — the record of the first vertex (the
+    next ones follow it); a sequence — the record of every vertex."""
 
     def __init__(self, name: str, *, points: bool = False, color: str | None = None) -> None:
         self.name, self.points, self.color = name, points, color
         self._xyz: list[np.ndarray] = []
         self._closed: list[int] = []
-        self._seq: list[int] = []
+        self._seq: list[np.ndarray] = []
         self._attrs: dict[str, list[Any]] = {}
         self._vattrs: dict[str, list[Any]] = {}
         self._features = 0
@@ -386,7 +403,7 @@ class LineSetBuilder:
         xyz: Any,
         closed: bool = False,
         *,
-        seq: int | None = None,
+        seq: int | Sequence[int] | None = None,
         attrs: Mapping[str, Any] | None = None,
         vattrs: Mapping[str, Sequence[Any]] | None = None,
     ) -> None:
@@ -395,18 +412,27 @@ class LineSetBuilder:
             raise ValueError("a point layer takes single vertices")
         if len(v) == 0:
             return  # an empty line is not stored (ТЗ 7.18: no empty lines)
+        if seq is None:
+            rec = np.arange(self._vertices, self._vertices + len(v), dtype=np.int64)
+        elif isinstance(seq, int | np.integer):
+            rec = np.arange(int(seq), int(seq) + len(v), dtype=np.int64)
+        else:
+            rec = np.asarray(seq, dtype=np.int64).reshape(-1)
+            if len(rec) != len(v):
+                raise ValueError(f"seq: {len(rec)} record numbers for {len(v)} vertices")
         if closed and not self.points:
             first, last = v[0], v[-1]
-            same = len(v) > 1 and bool(np.all((first == last) | (np.isnan(first) & np.isnan(last))))
+            same = len(v) > 1 and bool(_near(first, last))
             if len(v) + (0 if same else 1) < 4:
                 closed = False  # fewer than three distinct vertices: not a closed line
             elif not same:
                 v = np.vstack([v, v[:1]])
+                rec = np.append(rec, rec[0])  # not a record of the file: the seq of the first vertex
                 if vattrs:
                     vattrs = {k: [*list(col), list(col)[0]] for k, col in vattrs.items()}
         self._xyz.append(v)
         self._closed.append(1 if closed else 0)
-        self._seq.append(self._features if seq is None else int(seq))
+        self._seq.append(rec)
         self._put(self._attrs, attrs or {}, self._features, 1)
         self._put(self._vattrs, vattrs or {}, self._vertices, len(v), per_row=True)
         self._features += 1
@@ -435,7 +461,7 @@ class LineSetBuilder:
         xyz = np.vstack(self._xyz) if self._xyz else np.zeros((0, 3))
         attrs = {k: _column(v) for k, v in self._attrs.items()} or None
         vattrs = {k: _column(v) for k, v in self._vattrs.items()} or None
-        seq = np.asarray(self._seq, dtype=np.uint32)
+        seq = np.concatenate(self._seq).astype(np.uint32) if self._seq else np.zeros(0, dtype=np.uint32)
         if self.points:
             return LineSet(self.name, xyz, None, None, seq, attrs, None, self.color, dict(self.units))
         offsets = np.zeros(len(self._xyz) + 1, dtype=np.int64)

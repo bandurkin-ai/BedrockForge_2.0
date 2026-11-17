@@ -45,14 +45,30 @@ def test_closed_line_repeats_first_vertex_once() -> None:
     assert err.value.code == "bad_geometry" and "повторять первую вершину" in err.value.message
 
 
-def test_detect_closed_is_exact_by_default() -> None:
+def test_detect_closed_within_a_micrometre_keeps_the_file_vertex() -> None:
     sq = _square()
-    xyz = np.vstack([sq, sq[:1], sq[:3], sq[:1] + [1e-7, 0, 0]])
-    offsets = np.array([0, 5, 9])
-    assert detect_closed(xyz, offsets).tolist() == [1, 0]
-    assert detect_closed(xyz, offsets, tol=1e-6).tolist() == [1, 1]
-    layer = from_lines("auto", [xyz[:5], xyz[5:]])  # closed=None: detected, nothing appended
-    assert layer.closed is not None and layer.closed.tolist() == [1, 0] and layer.point_count == 9
+    near = sq[:1] + [4e-7, 0, 0]
+    xyz = np.vstack([sq, sq[:1], sq[:3], near, sq, sq[:1] + [1e-5, 0, 0]])
+    offsets = np.array([0, 5, 9, 14])
+    assert detect_closed(xyz, offsets).tolist() == [1, 1, 0]  # BF `_closed`: 1e-6 per axis
+    assert detect_closed(xyz, offsets, tol=0.0).tolist() == [1, 0, 0]
+    layer = from_lines("auto", [xyz[:5], xyz[5:9], xyz[9:]])  # closed=None: detected, nothing appended or moved
+    assert layer.closed is not None and layer.closed.tolist() == [1, 1, 0] and layer.point_count == 14
+    assert layer.line(1)[-1].tobytes() == near.tobytes()
+    flagged = from_lines("flag", [xyz[5:9], xyz[9:]], closed=[True, True])
+    assert [len(flagged.line(i)) for i in (0, 1)] == [4, 6]  # within the tolerance: no second repeat
+
+
+def test_columns_of_str_readers_are_accepted() -> None:
+    from bf_core.formats.table import Column
+
+    cols = [Column("JOIN", "number", np.array([1.0, np.nan])), Column("NOTE", "text", pa.chunked_array([["a", None]]))]
+    layer = from_lines("STR", [_square(), _square()[:2]], attrs=cols, vattrs=[])
+    assert layer.attrs is not None and layer.vattrs is None
+    assert layer.attr_schema() == [
+        {"name": "JOIN", "kind": "number", "unit": None, "scope": "feature"},
+        {"name": "NOTE", "kind": "text", "unit": None, "scope": "feature"},
+    ]
 
 
 def test_close_carries_vertex_attributes() -> None:
@@ -60,6 +76,7 @@ def test_close_carries_vertex_attributes() -> None:
     layer = from_lines("M", [sq, sq[:2]], closed=[True, False], vattrs={"M": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]})
     assert layer.vattrs is not None
     assert layer.vattrs.column("M").to_pylist() == [1.0, 2.0, 3.0, 4.0, 1.0, 5.0, 6.0]
+    assert layer.seq is not None and layer.seq.tolist() == [0, 1, 2, 3, 0, 4, 5]  # the repeat is not a record
     xyz, offsets, flags, take = close(sq, np.array([0, 4]), [True])
     assert take is not None and take.tolist() == [0, 1, 2, 3, 0] and offsets.tolist() == [0, 5]
     assert flags.tolist() == [1] and xyz[-1].tobytes() == sq[0].tobytes()
@@ -133,11 +150,14 @@ def test_builder_streams_lines_with_attributes() -> None:
     b.add(np.zeros((0, 3)))  # an empty line is not stored
     b.add(sq[:1], seq=9)  # a point in a line layer: one vertex
     b.add(sq[:3], closed=True)  # a triangle: the repeat makes four vertices
-    b.add(sq[:2], closed=True)  # two vertices flagged closed: stays open
+    b.add(sq[:2], closed=True, seq=[20, 22])  # two vertices flagged closed: stays open
     layer = b.build()
     assert layer.line_count == 5 and layer.point_count == 5 + 2 + 1 + 4 + 2
     assert layer.closed is not None and layer.closed.tolist() == [1, 0, 0, 1, 0]
-    assert layer.seq is not None and layer.seq.tolist() == [7, 3, 9, 3, 4]
+    # per vertex: records follow the first one; unnumbered lines count vertices; the closing repeat is not a record
+    assert layer.seq is not None and layer.seq.tolist() == [7, 8, 9, 10, 7, 3, 4, 9, 8, 9, 10, 8, 20, 22]
+    with pytest.raises(ValueError, match="record numbers"):
+        b.add(sq, seq=[1, 2])
     a, v = layer.attrs, layer.vattrs
     assert a is not None and v is not None
     j = a.column("JOIN").to_pylist()
@@ -181,7 +201,7 @@ def test_layer_roundtrip_bit_exact(project, tmp_path: Path) -> None:  # type: ig
         closed=[False, False, False, False, True],
         attrs={"STRING": ["1", "1", "2", "2", "3"], "AU": [1.0, None, 2.5, math.nan, 3.0]},
         vattrs={"M": rng.normal(size=sum(len(x) for x in lines) + 4)},
-        seq=[4, 0, 1, 3, 2],
+        seq=np.arange(sum(len(x) for x in lines) + 4)[::-1],  # records of the file, per source vertex
         color="#FF8800",
         units={"AU": "г/т"},
     )
@@ -197,7 +217,8 @@ def test_layer_roundtrip_bit_exact(project, tmp_path: Path) -> None:  # type: ig
     assert back.xyz.tobytes() == layer.xyz.tobytes()  # float64 bit for bit, NaN and -0.0 included
     assert back.offsets is not None and layer.offsets is not None and back.offsets.tolist() == layer.offsets.tolist()
     assert back.closed is not None and back.closed.tolist() == [0, 0, 0, 0, 1]
-    assert back.seq is not None and back.seq.tolist() == [4, 0, 1, 3, 2]
+    assert back.seq is not None and back.seq.dtype == np.dtype("<u4") and len(back.seq) == back.point_count
+    assert back.seq.tolist()[:2] == [323, 322] and back.seq.tolist()[-5:] == [3, 2, 1, 0, 3]  # repeat: first seq
     assert back.attrs is not None and back.attrs.schema == layer.attrs.schema
     assert back.attrs.column("STRING").to_pylist() == ["1", "1", "2", "2", "3"]
     assert back.attrs.column("AU").to_numpy().tobytes() == np.array([1.0, math.nan, 2.5, math.nan, 3.0]).tobytes()

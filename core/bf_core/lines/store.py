@@ -3,7 +3,7 @@
 A file is `objects(kind="line_file")`: the format, encoding, source field schema, CRS and warnings in `meta`,
 the file as loaded in the `source` blob. Its layers are `objects(kind="line_layer", parent_id=file)` with a
 `line_layers` row and the geometry in immutable blobs of the owner `object`: `xyz <f8 N×3`, `offsets <i8`,
-`closed u1` (not for points), `seq <u4`, `attrs` and `vattrs` (Parquet). Arrays are raw little-endian.
+`closed u1` (not for points), `seq <u4` (per vertex), `attrs` and `vattrs` (Parquet). Arrays are raw little-endian.
 
 Writing a big layer: `stage_layer` outside the write transaction (temp files with fsync, SHA-256), then
 `commit_layer` inside it; `StagedLayer.discard()` drops the temp files when the commit does not happen.
