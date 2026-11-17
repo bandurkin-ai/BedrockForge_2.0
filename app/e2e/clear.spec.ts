@@ -41,7 +41,11 @@ test("«Очистить окно»: nothing drawn but grid, the same after a re
     await waitFrame(page);
     expect((await state(page)).stats.calls).toBe(cleared.stats.calls);
 
-    expect((await run(page, "layer.show", { layer: "set", id: setId, visible: true })).ok).toBe(true);
+    // the check box of the set in the tree shows it again (review Э6.1)
+    const box = page.getByRole("checkbox", { name: /^Показать «.+» в 3D$/ }).first();
+    await expect(box).not.toBeChecked();
+    await box.check();
+    expect(setId).toBeGreaterThan(0);
     await waitFrame(page);
     expect((await state(page)).stats.calls).toBeGreaterThan(cleared.stats.calls);
   } finally {

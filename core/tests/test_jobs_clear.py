@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import timedelta
 
 import pytest
 import sqlalchemy as sa
@@ -67,6 +68,17 @@ def test_clear_removes_only_finished_and_their_logs(jc) -> None:  # type: ignore
     with dialect.read_tx(sched.project.engine) as conn:
         ids = {row[0] for row in conn.execute(sa.select(log.c.job_id))}
     assert ids <= {queued, running}
+
+
+def test_clear_keeps_jobs_finished_just_now(pclient) -> None:  # type: ignore[no-untyped-def]
+    """The scheduler writes the last log line after the status: a job finished seconds ago stays (review Э6.1)."""
+    sched = jobs_of(pclient.core)
+    fresh = _add(sched.instance.engine, True, "cancelled")
+    store.update(sched.instance.engine, True, fresh, finished_at=dialect.utcnow())
+    old = _add(sched.instance.engine, True, "done")
+    store.update(sched.instance.engine, True, old, finished_at=dialect.utcnow() - timedelta(seconds=60))
+    assert pclient.post(API + "/jobs/clear", json={}).json() == {"removed": 1}
+    assert store.get(sched.instance.engine, True, fresh) is not None
 
 
 def test_clear_without_project_clears_instance(pclient) -> None:  # type: ignore[no-untyped-def]

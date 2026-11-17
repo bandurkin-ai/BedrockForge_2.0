@@ -5,6 +5,7 @@
 import { useMemo, useState } from "react";
 import { useApp } from "../../shell/AppContext";
 import { openMenu } from "../../shell/ContextMenu";
+import { Icon } from "../../shell/Icon";
 import { askConfirm, askText } from "../../shell/dialogs";
 import { buildFolders, toggleExpanded, type FolderNode } from "../../shell/tree";
 import { TreeRow } from "../../shell/TreeRow";
@@ -61,7 +62,7 @@ export function ViewsTree() {
     ...node.folders.flatMap((f) => {
       const open = !collapsed.includes(f.path);
       return [
-        <TreeRow key={`f:${f.path}`} label={f.name} level={level} expanded={open} onToggle={() => setCollapsed((c) => toggleExpanded(c, f.path))} glyph={<span aria-hidden>📁 </span>} />,
+        <TreeRow key={`f:${f.path}`} label={f.name} level={level} expanded={open} onToggle={() => setCollapsed((c) => toggleExpanded(c, f.path))} glyph={<span className={css.folderGlyph} aria-hidden><Icon name="folder" size={13} /></span>} />,
         ...(open ? rows(f, level + 1) : []),
       ];
     }),

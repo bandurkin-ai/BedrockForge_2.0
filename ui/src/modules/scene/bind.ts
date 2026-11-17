@@ -9,7 +9,9 @@ import { openWindow } from "../../shell/windows";
 import { onJobFinished } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { hiddenKey, patchFields, toggleHidden, ViewSync, type ViewIO } from "./viewSync";
-import { clearedKeys, effectiveHidden, normalizeHideAll, showNew, showUnderHideAll } from "./hideAll";
+import { clearedKeys, effectiveHidden, normalizeHideAll, showNew, showUnderHideAll, topKey } from "./hideAll";
+
+const SUB_LAYERS = ["collars", "paths", "intervals"] as const;
 import { bindViewCommands } from "./viewCommands";
 
 /** Every view key of the open project as the core keeps it (styles of collars and traces, displays…). */
@@ -137,9 +139,13 @@ export function bindScene(app: App): void {
     const op = toggleHidden(key, a.visible as boolean);
     // after «Очистить окно» an object is shown by `hide_all.shown`; a sub-layer also by `hidden`
     const sub = key.split(":").length > 2;
-    if (projectStore.get().current && normalizeHideAll(viewStore.get().hide_all).on && (a.visible === true || !sub)) {
+    const hideAll = normalizeHideAll(viewStore.get().hide_all);
+    if (projectStore.get().current && hideAll.on && (a.visible === true || !sub)) {
+      const top = topKey(key);
+      // a sub-layer shown after the clear: its object comes back with only this sub-layer
+      const others = sub && !hideAll.shown.includes(top) ? SUB_LAYERS.map((p) => `${top}:${p}`).filter((k) => k !== key) : [];
       updateView("hide_all", showUnderHideAll(key, a.visible as boolean));
-      if (a.visible === true) updateView("hidden", op);
+      if (a.visible === true) updateView("hidden", (v) => [...(op(v) as string[]).filter((k) => !others.includes(k)), ...others].slice(-2000));
     } else if (projectStore.get().current) updateView("hidden", op);
     else store.set((s) => ({ view: { ...s.view, hidden: op(s.view.hidden) as string[] } }));
     return `${a.visible ? "Показан" : "Скрыт"} слой ${key}`;
@@ -148,8 +154,11 @@ export function bindScene(app: App): void {
   registry.bind(
     "scene.clear",
     async () => {
-      const keys = clearedKeys(viewStore.get().displays);
-      for (const [key, value] of Object.entries(keys)) updateView(key, () => value);
+      const keys = clearedKeys([]);
+      updateView("hide_all", () => keys.hide_all);
+      updateView("hidden", () => keys.hidden);
+      // an operation on the current list: displays added in another window are switched off, not lost
+      updateView("displays", (v) => clearedKeys(v).displays);
       await registry.execute("hole.select", { hole_id: null });
       return "Окно очищено: все объекты скрыты; камера, разрез и сетка — прежние";
     },

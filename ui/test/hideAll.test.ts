@@ -48,3 +48,24 @@ describe("hide_all (ТЗ 7.35 Д-04, ADR 0008)", () => {
     expect(showUnderHideAll("set:9", true)(undefined)).toEqual({ on: false, shown: [] });
   });
 });
+
+import { ViewSync } from "../src/modules/scene/viewSync";
+
+describe("ViewSync.adopt (review Э6.1)", () => {
+  it("an answer to a write sent before a view was applied does not undo the view", async () => {
+    let release: (v: { value: unknown; version: number }) => void = () => {};
+    const io = {
+      get: async () => ({ values: { hidden: { value: [], version: 1 } } }),
+      put: () => new Promise<{ value: unknown; version: number }>((r) => (release = r)),
+    };
+    const seen: unknown[] = [];
+    const sync = new ViewSync(io, (_k, v) => seen.push(v), () => {}, 10_000);
+    await sync.load();
+    sync.update("hidden", () => ["set:1"]);
+    const writing = sync.flush("hidden");
+    sync.adopt({ hidden: { value: ["set:2:paths"], version: 3 } });
+    release({ value: ["set:1"], version: 2 });
+    await writing;
+    expect(sync.value("hidden")).toEqual(["set:2:paths"]);
+  });
+});

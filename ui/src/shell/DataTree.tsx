@@ -76,7 +76,12 @@ export function DataTree() {
         onKeyDown={onTreeKeyDown}
         onMouseDown={onTreeMouseDown}
         onFocus={(e) => {
+          // the container is a Tab stop only while no row has the focus: Shift+Tab from a row leaves the tree
           if (e.target === e.currentTarget) e.currentTarget.querySelector<HTMLElement>("[data-tree-row]")?.focus();
+          else e.currentTarget.tabIndex = -1;
+        }}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) e.currentTarget.tabIndex = 0;
         }}
       >
         {!project && (

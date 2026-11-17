@@ -110,7 +110,7 @@ def snapshot(conn: sa.Connection) -> dict[str, Any]:
 
 def _meta(camera: Any, keys: dict[str, Any]) -> dict[str, Any]:
     meta = {"v": 1, "camera": check_camera(camera), "keys": keys}
-    if len(json.dumps(meta, ensure_ascii=False)) > MAX_BYTES:
+    if len(json.dumps(meta, ensure_ascii=False).encode("utf-8")) > MAX_BYTES:
         raise ViewError("Вид больше 512 КБ: скройте часть объектов списком или очистите окно и сохраните заново.")
     return meta
 

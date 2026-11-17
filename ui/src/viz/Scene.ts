@@ -214,17 +214,14 @@ export class Scene {
     return this.rig.state();
   }
 
-  /** The camera in absolute coordinates for a saved view (null before the first object). */
+  /** The camera of a saved view, absolute (null before the first object); the projection comes with the keys. */
   worldCamera(): WorldCamera | null {
     const o = this.origin.value;
     return o ? toWorld(this.rig.state(), o, this.vexag, !this.rig.perspective, this.rig.persp.fov) : null;
   }
-
-  /** Puts the camera of a saved view (the projection comes with the view keys, `setView`). */
   setWorldCamera(c: WorldCamera): void {
     this.turn.cancel();
-    const o = this.origin.value ?? this.origin.ensure([...c.target, ...c.target]);
-    this.rig.apply(fromWorld(c, o, this.vexag, this.rig.state()));
+    this.rig.apply(fromWorld(c, this.origin.value ?? this.origin.ensure([...c.target, ...c.target]), this.vexag, this.rig.state()));
   }
 
   /** Turns the view by `rad` about the vertical through its centre (smoke scenario, frame benchmark). */

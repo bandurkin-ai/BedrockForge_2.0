@@ -35,6 +35,7 @@ async function guard<T>(fn: () => Promise<T>): Promise<T> {
 
 export function bindViews(app: App): void {
   const r = app.registry;
+  let applying = 0; // clicks one after another: only the last answer is shown
   let uid: string | null = null;
   projectStore.subscribe(() => {
     const cur = projectStore.get().current?.uid ?? null;
@@ -58,7 +59,9 @@ export function bindViews(app: App): void {
     "views.apply",
     async (a) => {
       const v = view(a);
+      const n = ++applying;
       const out = await guard(() => applyView(v.id));
+      if (n !== applying) return `Вид «${v.name}» заменён следующим`;
       viewSyncOf()?.adopt(out.values);
       const camera = cameraOf(out.camera);
       const scene = currentScene();

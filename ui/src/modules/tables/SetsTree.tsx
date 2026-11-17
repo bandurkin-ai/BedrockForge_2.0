@@ -22,6 +22,7 @@ export function SetsTree() {
   const app = useApp();
   const s = useStore(tablesStore, (x) => x);
   const charts = useStore(libraryStore, (x) => x.charts);
+  const hidden = useStore(app.store, (x) => x.view.hidden);
   const [collapsed, setCollapsed] = useState<string[]>([]);
   if (!s.sets.length) return <div className={css.treeNone}>Нет объектов</div>;
   const open = async (set: SetInfo, kind?: string) => {
@@ -65,6 +66,11 @@ export function SetsTree() {
               level={2}
               expanded={hasDisplays ? open_ : undefined}
               onToggle={() => setCollapsed((c) => toggleExpanded(c, String(set.id)))}
+              check={{
+                checked: !hidden.includes(`set:${set.id}`),
+                label: `Показать «${set.name}» в 3D`,
+                onChange: (v) => void app.run("layer.show", { layer: "set", id: set.id, visible: v }),
+              }}
               selected={set.id === s.setId}
               onSelect={() => select(set)}
               onActivate={() => void open(set)}

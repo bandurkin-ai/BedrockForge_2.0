@@ -44,14 +44,19 @@ export async function createView(camera: unknown, name?: string): Promise<ViewRo
 export async function patchView(id: number, patch: { name?: string; folder?: string | null; camera?: unknown }): Promise<ViewRow> {
   const cur = byId(id);
   if (!cur) throw new Error("Вид не найден: обновите раздел «Виды»");
-  const r = await api.put<ViewRow>(`/views/${id}`, { expected_version: cur.version, ...patch });
-  await loadViews();
-  return r;
+  try {
+    return await api.put<ViewRow>(`/views/${id}`, { expected_version: cur.version, ...patch });
+  } finally {
+    await loadViews(); // after a 409 too: the next try goes with the new version
+  }
 }
 
 export async function deleteView(id: number): Promise<void> {
-  await api.del(`/views/${id}`);
-  await loadViews();
+  try {
+    await api.del(`/views/${id}`);
+  } finally {
+    await loadViews();
+  }
 }
 
 export function applyView(id: number): Promise<Applied> {
