@@ -12,6 +12,7 @@ import { ImportWizard } from "../modules/importing/ImportWizard";
 import { OpLogWindow } from "./OpLogWindow";
 import { startEvents } from "../modules/jobs/state";
 import { StripLogWindow } from "../charts/striplog/StripLogWindow";
+import { SetStyleWindow } from "../modules/scene/SetStyleWindow";
 import { ExportWindow } from "../modules/projects/ExportWindow";
 import { ImportWindow } from "../modules/projects/ImportWindow";
 import { ProjectsWindow } from "../modules/projects/ProjectsWindow";
@@ -48,6 +49,10 @@ const renderWindow: WindowRenderer = (w) => {
       return <ExportWindow winId={w.id} />;
     case "project-import":
       return <ImportWindow winId={w.id} path={String(w.props?.path ?? "")} />;
+    case "collars-style":
+      return <SetStyleWindow kind="collars" setId={Number(w.props?.setId)} />;
+    case "traces-style":
+      return <SetStyleWindow kind="traces" setId={Number(w.props?.setId)} />;
     case "striplog":
       return <StripLogWindow setId={Number(w.props?.setId)} setName={String(w.props?.setName ?? "")} tableHint={(w.props?.tableHint as string | null) ?? null} holeHint={(w.props?.holeHint as string | null) ?? null} />;
     default:

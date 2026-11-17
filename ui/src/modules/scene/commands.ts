@@ -19,6 +19,20 @@ export const commands: Command[] = [
   { id: "object.select", title: "Выбрать объект", description: "Выбрать объект проекта: показать его свойства.", params: { kind: { type: "string", enum: ["wireframe", "lines", "raster", "blocks"] }, id: { type: "integer" } }, required: ["kind", "id"], stage: "Э7" },
   { id: "table.open", title: "Таблица набора", description: "Открыть таблицу набора в нижней панели.", params: { kind: { type: "string" }, set_id: { type: "integer" } }, required: ["kind"], stage: "Э4" },
   { id: "stats.open", title: "Статистика", description: "Открыть анализ вкладки «Статистика».", params: { analysis: { type: "string", enum: ["declus", "nscore", "variogram", "map", "bootstrap", "local"] } }, required: ["analysis"], stage: "Э13" },
+  {
+    id: "holes.collar_style",
+    title: "Устья: значок и подпись",
+    description: "Стиль устьев набора в 3D: значок (circle, square, diamond, triangle, cross, star), цвет (#rrggbb или audit — по аудиту), размер, подпись номера. Без параметров стиля открывает форму.",
+    params: { set_id: { type: "integer" }, shape: { type: "string", enum: ["circle", "square", "diamond", "triangle", "cross", "star"] }, color: { type: "string" }, size: { type: "number" }, label: { type: "boolean" }, fontSize: { type: "number" }, bold: { type: "boolean" }, labelColor: { type: "string" } },
+    stage: "Э6",
+  },
+  {
+    id: "holes.trace_style",
+    title: "Стволы: линия и риски",
+    description: "Стиль стволов набора в 3D: толщина и цвет, риски глубины (шаг, длина, подписи), глубина на забое, пересечения с каркасами и блоками. Без параметров стиля открывает форму.",
+    params: { set_id: { type: "integer" }, width: { type: "number" }, color: { type: "string" }, ticks: { type: "boolean" }, tickStep: { type: "number" }, tickLabels: { type: "boolean" }, labelStep: { type: "number" }, endDepth: { type: "boolean" }, intersections: { type: "boolean" } },
+    stage: "Э6",
+  },
   { id: "holes.data_window", title: "Данные по скважинам", description: "Окно колонок данных вдоль выбранных скважин.", uiOnly: true, stage: "Э6" },
   { id: "holes.show_data", title: "Показать данные скважин", description: "Показать колонки данных для указанных скважин.", params: { hole_ids: { type: "string" } }, stage: "Э6" },
 ];

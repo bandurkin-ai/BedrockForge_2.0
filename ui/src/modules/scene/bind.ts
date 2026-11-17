@@ -5,6 +5,8 @@ import { api } from "../../shell/api";
 import { Store } from "../../shell/store";
 import { DEFAULT_VIEW, VEXAG_STEPS, type ViewState } from "../../shell/workspace";
 import { projectStore } from "../projects/state";
+import { openWindow } from "../../shell/windows";
+import { tablesStore } from "../tables/state";
 import { hiddenKey, patchFields, toggleHidden, ViewSync, type ViewIO } from "./viewSync";
 
 /** Every view key of the open project as the core keeps it (styles of collars and traces, displays…). */
@@ -107,4 +109,25 @@ export function bindScene(app: App): void {
     else store.set((s) => ({ view: { ...s.view, hidden: op(s.view.hidden) as string[] } }));
     return `${a.visible ? "Показан" : "Скрыт"} слой ${key}`;
   });
+
+  for (const [command, kind, title] of [["holes.collar_style", "collars", "Устья"], ["holes.trace_style", "traces", "Стволы"]] as const) {
+    registry.bind(command, async (a) => {
+      const t = tablesStore.get();
+      const setId = typeof a.set_id === "number" ? a.set_id : t.setId;
+      const set = t.sets.find((x) => x.id === setId);
+      if (!set) throw new Error("Выберите набор скважин");
+      const { set_id: _ignored, ...patch } = a;
+      const { saveSetStyle, setStyle } = await import("./SetStyleWindow");
+      if (!Object.keys(patch).length) {
+        openWindow(`${kind}-style`, `${title} · ${set.name}`, "form", { setId: set.id }, window.innerWidth, window.innerHeight);
+        return `Открыта настройка «${title} · ${set.name}»`;
+      }
+      const next = { ...setStyle(kind, set.id), ...patch };
+      const { normalizeCollarStyle } = await import("../../viz/holes/collarStyle");
+      const { normalizeTraceStyle } = await import("../../viz/holes/traceStyle");
+      const clean = kind === "collars" ? normalizeCollarStyle(next) : normalizeTraceStyle(next);
+      saveSetStyle(kind, set.id, clean);
+      return `${title} набора «${set.name}»: ${JSON.stringify(clean)}`;
+    });
+  }
 }
