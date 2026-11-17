@@ -42,6 +42,8 @@ VERSION = "R2004"  # AC1018: the version of the owner's sample, the first with t
 CODEC = "cp1251"
 ERRORS = "bf_dxf_unicode"  # characters outside the code page become \U+XXXX (UTF-16 units, as AutoCAD writes)
 CHUNK = 50_000  # vertices formatted at once
+SHORT = 64  # lines up to this many vertices are formatted many at a time
+FLUSH_BYTES = 4 << 20  # text kept in memory before it goes to the file
 TEXT_HEIGHT = 2.5  # the usual default of a metric drawing: a TEXT must have a height
 TEXT_FIELDS = ("text", "height", "rotation")
 _BAD_LAYER_CHARS = re.compile(r'[\x00-\x1f<>/\\":;?*|=`,]')
@@ -230,12 +232,17 @@ def write_dxf(path: str | Path, layers: Sequence[LineSet], progress: Progress | 
     part = path.with_name(path.name + ".part")
     try:
         with part.open("wb") as f:
+
+            def written(vertices: int, out: list[bytes], last: bool = False) -> None:
+                if last or sum(map(len, out)) >= FLUSH_BYTES:
+                    f.write(b"".join(out))
+                    out.clear()
+                    tick((done + vertices) / total, f"Запись DXF: вершин {n_text(done + vertices)} из {n_text(total)}")
+
             f.write(head)
             for layer, name, (first, counts, flags) in zip(layers, names, plans, strict=True):
-                written = _write_layer(f, layer, _encodable(name), space, handle, first, counts, flags, counted)
+                done += _write_layer(layer, _encodable(name), space, handle, first, counts, flags, counted, written)
                 handle += int(np.where(counts == 1, 1, counts + 2).sum())
-                done += written
-                tick(done / total, f"Запись DXF: вершин {n_text(done)} из {n_text(total)}")
             f.write(tail)
         os.replace(part, path)
     finally:
@@ -248,7 +255,6 @@ def write_dxf(path: str | Path, layers: Sequence[LineSet], progress: Progress | 
 
 
 def _write_layer(
-    f: Any,
     layer: LineSet,
     name: str,
     space: str,
@@ -257,74 +263,97 @@ def _write_layer(
     counts: np.ndarray,
     flags: np.ndarray,
     counted: dict[str, int],
+    written: Any,
 ) -> int:
-    """The entities of one layer; returns the vertices written."""
+    """The entities of one layer; returns the vertices written. `written(vertices of the layer so far, texts,
+    last)` takes the text made so far to the file when there is enough of it."""
     color = _color_tags(layer.color)
     xyz = np.where(np.isnan(layer.xyz), 0.0, layer.xyz) if np.isnan(layer.xyz).any() else layer.xyz
     texts = _text_columns(layer)
-    point = _entity("POINT", space, name, color + "100\r\nAcDbPoint\r\n") + " 10\r\n%r\r\n 20\r\n%r\r\n 30\r\n%r\r\n"
-    label = (
+
+    # templates of bytes: the layer name is encoded once, a number is put in by %a — its repr
+    def raw(text: str) -> bytes:
+        return text.replace("%r", "%a").encode(CODEC, errors=ERRORS)
+
+    xyz_tags = " 10\r\n%r\r\n 20\r\n%r\r\n 30\r\n%r\r\n"
+    in_layer = f"100\r\nAcDbEntity\r\n  8\r\n{name}\r\n".replace("%", "%%")
+    point = raw(_entity("POINT", space, name, color + "100\r\nAcDbPoint\r\n") + xyz_tags)
+    label = raw(
         _entity("TEXT", space, name, color + "100\r\nAcDbText\r\n")
-        + " 10\r\n%r\r\n 20\r\n%r\r\n 30\r\n%r\r\n 40\r\n%r\r\n  1\r\n%s\r\n 50\r\n%r\r\n100\r\nAcDbText\r\n"
+        + xyz_tags
+        + " 40\r\n%r\r\n  1\r\n%s\r\n 50\r\n%r\r\n100\r\nAcDbText\r\n"
     )
-    polyline = (
+    polyline = raw(
         _entity("POLYLINE", space, name, color + "100\r\nAcDb3dPolyline\r\n")
         + " 66\r\n     1\r\n 10\r\n0.0\r\n 20\r\n0.0\r\n 30\r\n0.0\r\n 70\r\n%6d\r\n"
     )
-    vertex = (
+    vertex = raw(
         "  0\r\nVERTEX\r\n  5\r\n%X\r\n330\r\n%X\r\n"
-        + f"100\r\nAcDbEntity\r\n  8\r\n{name}\r\n100\r\nAcDbVertex\r\n100\r\nAcDb3dPolylineVertex\r\n".replace(
-            "%", "%%"
-        )
-        + " 10\r\n%r\r\n 20\r\n%r\r\n 30\r\n%r\r\n 70\r\n    32\r\n"
+        + in_layer
+        + "100\r\nAcDbVertex\r\n100\r\nAcDb3dPolylineVertex\r\n"
+        + xyz_tags
+        + " 70\r\n    32\r\n"
     )
-    seqend = "  0\r\nSEQEND\r\n  5\r\n%X\r\n330\r\n%X\r\n" + f"100\r\nAcDbEntity\r\n  8\r\n{name}\r\n".replace(
-        "%", "%%"
-    )
-    out: list[str] = []
-    pending = 0
-
-    def flush() -> None:
-        nonlocal pending
-        f.write("".join(out).encode(CODEC, errors=ERRORS))
-        out.clear()
-        pending = 0
-
-    for i, (a, k, flag) in enumerate(zip(first.tolist(), counts.tolist(), flags.tolist(), strict=True)):
-        if k == 1:
-            x, y, z = xyz[a].tolist()
-            text = texts[0][i] if texts is not None else None
-            if texts is None or text is None:
-                out.append(point % (handle, x, y, z))
-                counted["points"] += 1
-            else:
-                height, rotation = float(texts[1][i]), float(texts[2][i])
-                if not height > 0:
-                    height = TEXT_HEIGHT
-                    counted["no_height"] += 1
-                line = " ".join(text.split()) if "\n" in text or "\r" in text else text
-                out.append(label % (handle, x, y, z, height, line, rotation if rotation == rotation else 0.0))
-                counted["texts"] += 1
+    seqend = raw("  0\r\nSEQEND\r\n  5\r\n%X\r\n330\r\n%X\r\n" + in_layer)
+    out: list[bytes] = []
+    done = 0
+    is_text = np.zeros(len(counts), dtype=bool)
+    if texts is not None:
+        is_text = (counts == 1) & np.array([t is not None for t in texts[0]], dtype=bool)
+    # runs of entities written by one template: equal numbers of vertices; a text is a run of its own
+    key = np.where(is_text, -1, counts)
+    edges = np.flatnonzero((np.diff(key) != 0) | is_text[1:] | is_text[:-1]) + 1
+    for lo, hi in zip(np.concatenate([[0], edges]).tolist(), np.concatenate([edges, [len(key)]]).tolist(), strict=True):
+        k = int(counts[lo])
+        if texts is not None and is_text[lo]:
+            x, y, z = xyz[first[lo]].tolist()
+            text, height, rotation = str(texts[0][lo]), float(texts[1][lo]), float(texts[2][lo])
+            if not height > 0:
+                height = TEXT_HEIGHT
+                counted["no_height"] += 1
+            line = " ".join(text.split()) if "\n" in text or "\r" in text else text
+            turn = rotation if rotation == rotation else 0.0
+            out.append(label % (handle, x, y, z, height, line.encode(CODEC, errors=ERRORS), turn))
+            counted["texts"] += 1
             handle += 1
-        else:
-            owner = handle
-            out.append(polyline % (owner, flag))
-            handle += 1
-            for lo in range(a, a + k, CHUNK):
-                v = xyz[lo : min(lo + CHUNK, a + k)]
-                rows = len(v)
-                ids = range(handle, handle + rows)
-                x, y, z = v[:, 0].tolist(), v[:, 1].tolist(), v[:, 2].tolist()
-                args = tuple(chain.from_iterable(zip(ids, [owner] * rows, x, y, z, strict=True)))
-                out.append((vertex * rows) % args)
-                handle += rows
-                if rows == CHUNK:
-                    flush()
-            out.append(seqend % (handle, owner))
-            handle += 1
-            counted["lines"] += 1
-        pending += k
-        if pending >= CHUNK:
-            flush()
-    flush()
+        elif k > SHORT:  # long lines one by one, their vertices in portions
+            for a, flag in zip(first[lo:hi].tolist(), flags[lo:hi].tolist(), strict=True):
+                owner = handle
+                out.append(polyline % (owner, flag))
+                handle += 1
+                for at in range(a, a + k, CHUNK):
+                    v = xyz[at : min(at + CHUNK, a + k)]
+                    ids = range(handle, handle + len(v))
+                    x, y, z = v[:, 0].tolist(), v[:, 1].tolist(), v[:, 2].tolist()
+                    out.append(
+                        (vertex * len(v)) % tuple(chain.from_iterable(zip(ids, [owner] * len(v), x, y, z, strict=True)))
+                    )
+                    handle += len(v)
+                    done += len(v)
+                    written(done, out)
+                out.append(seqend % (handle, owner))
+                handle += 1
+            counted["lines"] += hi - lo
+        else:  # many short lines (or points) at once: one template repeated, the arguments in columns
+            step = max(1, CHUNK // k)
+            template = point if k == 1 else polyline + vertex * k + seqend
+            for at in range(lo, hi, step):
+                rows = first[at : min(at + step, hi)]
+                m = len(rows)
+                owners = handle + np.arange(m, dtype=np.int64) * (1 if k == 1 else k + 2)
+                columns: list[list[Any]] = (
+                    [owners.tolist()] if k == 1 else [owners.tolist(), flags[at : at + m].tolist()]
+                )
+                for j in range(k):
+                    if k > 1:
+                        columns += [(owners + 1 + j).tolist(), owners.tolist()]
+                    columns += [xyz[rows + j, c].tolist() for c in range(3)]
+                if k > 1:
+                    columns += [(owners + k + 1).tolist(), owners.tolist()]
+                out.append((template * m) % tuple(chain.from_iterable(zip(*columns, strict=True))))
+                handle += m * (1 if k == 1 else k + 2)
+                done += m * k
+                written(done, out)
+            counted["points" if k == 1 else "lines"] += hi - lo
+    written(done, out, True)
     return int(counts.sum())
