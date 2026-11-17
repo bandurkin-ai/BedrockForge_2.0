@@ -289,6 +289,22 @@ function registerIpc(): void {
     const r = await dialog.showOpenDialog(mainWin, { properties: ["openFile"], filters: bfggis });
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
   });
+  // Table files of the import wizards (ТЗ 7.7) and .prj of a coordinate system: several files at once.
+  const fileFilters: Record<string, Electron.FileFilter[]> = {
+    tables: [
+      { name: "Таблицы скважин", extensions: ["dat", "csv", "txt", "tsv", "prn", "xlsx", "xlsm", "xls"] },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    prj: [{ name: "Система координат (.prj)", extensions: ["prj"] }],
+  };
+  ipcMain.handle("bf:pick-files", async (e, kind: string, multi: boolean) => {
+    if (!mainWin || !fromMain(e.sender)) return [];
+    const r = await dialog.showOpenDialog(mainWin, {
+      properties: multi ? ["openFile", "multiSelections"] : ["openFile"],
+      filters: fileFilters[kind] ?? fileFilters.tables,
+    });
+    return r.canceled ? [] : r.filePaths;
+  });
   ipcMain.handle("bf:pick-folder", async (e) => {
     if (!mainWin || !fromMain(e.sender)) return null;
     const r = await dialog.showOpenDialog(mainWin, { properties: ["openDirectory", "createDirectory"] });

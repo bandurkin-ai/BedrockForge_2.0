@@ -165,6 +165,9 @@ def check(svc: Svc, body: FileSpec) -> dict[str, Any]:
         "issues": [],
         "preview": [],
     }
+    from .schema import SCHEMAS
+
+    out["fields"] = [{"key": f.key, "label": f.label, "required": f.required} for f in SCHEMAS[kind]] if kind else []
     if kind is None:
         out["issues"] = [
             {"severity": "error", "code": "unknown_kind", "message": "Тип таблицы не распознан: выберите его вручную."}
@@ -174,7 +177,10 @@ def check(svc: Svc, body: FileSpec) -> dict[str, Any]:
         table, kind, mapping, components, body.attributes or [], force=body.force, table_name=body.table_name
     )
     out["issues"] = [i.as_dict() for i in issues]
-    out["can_force"] = norm is None and all(i.severity == "warning" or i.code in _data_errors() for i in issues)
+    # «Загрузить с ошибками» is offered while the issues include errors in the data (reported as warnings once
+    # the flag is on) and nothing else blocks: errors in the mapping are never loaded that way.
+    data = _data_errors()
+    out["can_force"] = any(i.code in data for i in issues) and all(i.severity == "warning" or i.code in data for i in issues)
     if norm is not None:
         out["counts"] = norm.counts
         out["preview"] = _preview(norm)
@@ -273,3 +279,18 @@ def list_sets(svc: Svc) -> dict[str, Any]:
             .order_by(objects.c.sort_key, objects.c.id)
         ).mappings()
         return {"sets": [dict(r) for r in rows]}
+
+
+class PrjBody(BaseModel):
+    path: str = Field(max_length=2000)
+
+
+@router.post("/crs/describe")
+def describe_prj(body: PrjBody) -> dict[str, Any]:
+    """A .prj chosen in the wizard: its name and WKT (ТЗ 9.12)."""
+    from bf_core.crs import CrsError, read_prj
+
+    try:
+        return read_prj(_file(body.path)).as_dict()
+    except CrsError as exc:
+        raise ApiError(422, "crs_unreadable", str(exc), "Выберите другой файл .prj или оставьте систему координат не заданной.") from exc

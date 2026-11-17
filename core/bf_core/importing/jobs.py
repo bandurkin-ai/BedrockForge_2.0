@@ -167,6 +167,8 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
             log_ids.append(int(key[0]))
         if new_set:
             conn.execute(sa.update(objects).where(objects.c.id == set_id).values(state="ready", job_id=None))
+        elif p.get("crs"):
+            conn.execute(sa.update(objects).where(objects.c.id == set_id).values(crs=p["crs"]))
         conn.execute(sa.update(objects).where(objects.c.id == set_id).values(updated_at=dialect.utcnow()))
 
     # Source files into the storage — the last step: the import is done even if a copy fails.
