@@ -6,6 +6,7 @@ import { bindAudit } from "../modules/audit/bind";
 import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
 import { bindProjects } from "../modules/projects/bind";
+import { bindScene } from "../modules/scene/bind";
 import { bindTables } from "../modules/tables/bind";
 import { createRegistry } from "./catalog";
 import { logText, opLogStore, openLogWindow } from "./opLog";
@@ -15,7 +16,7 @@ import { formatArgs, type CommandRegistry } from "./registry";
 import { loadSettings, saveSettings } from "./settings";
 import { commandContext, INITIAL_STATE, Store, type AppState } from "./store";
 import { openWindow } from "./windows";
-import { BOTTOM_TITLES, setLayerShown, setPanel, VEXAG_STEPS, type BottomTab, type PanelId } from "./workspace";
+import { BOTTOM_TITLES, setPanel, type BottomTab, type PanelId } from "./workspace";
 
 export interface App {
   registry: CommandRegistry;
@@ -105,27 +106,6 @@ export function createApp(opts: { persist?: boolean } = {}): App {
       `Вид: ${s.view.perspective ? "перспектива" : "ортогональная"}, преувеличение ${s.view.vexag}, сетка ${s.view.grid ? "вкл" : "выкл"}`,
     ].join("; ");
   });
-  registry.bind("scene.style", (a) => {
-    const v = { ...store.get().view };
-    if (typeof a.vexag === "number") {
-      if (!VEXAG_STEPS.includes(a.vexag)) throw new Error("Преувеличение: 1, 2, 3 или 5");
-      v.vexag = a.vexag;
-    }
-    if (typeof a.grid === "boolean") v.grid = a.grid;
-    if (typeof a.perspective === "boolean") v.perspective = a.perspective;
-    if (typeof a.wireframe_opacity === "number") {
-      if (a.wireframe_opacity < 0.1 || a.wireframe_opacity > 1) throw new Error("Непрозрачность каркасов: от 0,1 до 1");
-      v.wireframeOpacity = a.wireframe_opacity;
-    }
-    store.set({ view: v });
-    return `Сетка ${v.grid ? "вкл" : "выкл"}, ${v.perspective ? "перспектива" : "ортогональная проекция"}, преувеличение ${v.vexag}`;
-  });
-  registry.bind("layer.show", (a) => {
-    const key = a.id === undefined ? String(a.layer) : `${a.layer}:${a.id}`;
-    store.set((s) => ({ view: setLayerShown(s.view, key, a.visible as boolean) }));
-    return `${a.visible ? "Показан" : "Скрыт"} слой ${key}`;
-  });
-
   registry.bind("logs.open", () => {
     openLogWindow();
   });
@@ -145,5 +125,6 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindImporting(app);
   bindTables(app);
   bindAudit(app);
+  bindScene(app);
   return app;
 }

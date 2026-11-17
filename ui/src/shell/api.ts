@@ -7,6 +7,8 @@ export class CoreError extends Error {
   /** 500 of the core: exception type and text, end of the stack (ТЗ 7.9). */
   detail?: string;
   trace?: string;
+  /** Machine fields of the error body (e.g. the current value and version on a 409). */
+  body?: Record<string, unknown>;
 
   constructor(
     readonly status: number,
@@ -62,6 +64,7 @@ export async function call<T>(method: string, path: string, body?: unknown, f: t
     const err = new CoreError(r.status, String(e.code ?? "error"), String(e.message ?? `Ядро ответило ${r.status}`), String(e.hint ?? ""));
     err.detail = typeof e.detail === "string" ? e.detail : undefined;
     err.trace = typeof e.trace === "string" ? e.trace : undefined;
+    err.body = e;
     throw err;
   }
   return data as T;

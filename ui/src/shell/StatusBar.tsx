@@ -21,6 +21,12 @@ export function StatusBar() {
   ];
   if (s.holeId) parts.push(<span key="hole">Выбрана: <b>{s.holeId}</b></span>);
   parts.push(<span key="view">Вид: {s.view.perspective ? "перспектива" : "ортогональная"}</span>);
+  if (s.statusNote)
+    parts.push(
+      <span key="note" role="status" title="Закрыть" onClick={() => app.store.set({ statusNote: null })}>
+        {s.statusNote}
+      </span>,
+    );
   return (
     <footer className={css.bar}>
       {parts.flatMap((p, i) => (i ? [<span key={`s${i}`} className={css.sep}>·</span>, p] : [p]))}

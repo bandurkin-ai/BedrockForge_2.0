@@ -27,6 +27,8 @@ export interface AppState {
   holeId: string | null;
   hasSection: boolean;
   editing: boolean;
+  /** A passing notice of the view (settings not saved, «упрощено»…). */
+  statusNote: string | null;
   /** Number of open modal UIs (shortcut capture, import wizard): ribbon hotkeys are off (ТЗ 7.0.6). */
   modal: number;
 }
@@ -48,6 +50,7 @@ export const INITIAL_STATE: AppState = {
   holeId: null,
   hasSection: false,
   editing: false,
+  statusNote: null,
   modal: 0,
 };
 
