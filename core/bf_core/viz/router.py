@@ -176,3 +176,44 @@ def class_counts(svc: Svc, set_id: int, body: ClassBody) -> dict[str, Any]:
     if ref.key not in snap.data:
         raise data_changed()
     return calc(snap, t, ref, bounds)
+
+
+# --- the window «Данные по скважинам» (ТЗ 7.17, ADR 0007 §6) -----------------------------------------------
+
+
+@router.get("/sets/{set_id}/hole-names")
+def hole_names(svc: Svc, set_id: int) -> dict[str, Any]:
+    """Names of the holes of the set in its order (the hole list of the window)."""
+    from .keys import set_state
+    from .log import hole_names as names
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        set_state(conn, set_id)
+        return {"names": names(conn, set_id)}
+
+
+class LogTable(BaseModel):
+    table: str = Field(min_length=1, max_length=200)  # name_key or id of the table
+    fields: list[Annotated[str, Field(max_length=300)]] | None = Field(default=None, max_length=64)
+
+
+class LogBody(BaseModel):
+    holes: list[Annotated[str, Field(max_length=200)]] = Field(max_length=1000)
+    tables: list[LogTable] = Field(default_factory=list, max_length=64)
+    from_: float | None = Field(default=None, alias="from")
+    to: float | None = None
+
+
+@router.post("/sets/{set_id}/log")
+def hole_log(svc: Svc, set_id: int, body: LogBody) -> dict[str, Any]:
+    """Depths and values of the chosen tables for up to 30 holes; null — empty."""
+    from .keys import set_state
+    from .log import check, log, resolve
+
+    project = svc.require_current()
+    check(body.holes, len(body.tables), body.from_, body.to)
+    with dialect.read_tx(project.engine) as conn:
+        set_state(conn, set_id)
+        tables = [resolve(conn, set_id, t.table, t.fields) for t in body.tables]
+        return log(conn, set_id, body.holes, tables, body.from_, body.to)

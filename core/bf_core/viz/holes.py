@@ -90,6 +90,12 @@ def _build(project: Any, set_id: int, st: Any) -> Layout:
     collar = traj.xyz[traj.offsets[built]]
     seq = built[morton_order(collar[:, 0], collar[:, 1], st.hole_ids[built])]
     parts = make_parts(hole_bounds(traj, seq))
+    if len(parts) > np.iinfo(np.uint16).max:  # `part u2`: never with 2000 holes a part, only on junk extents
+        from bf_core.api.errors import ApiError
+
+        raise ApiError(
+            422, "too_many_parts", "Скважины набора разбросаны слишком широко для 3D.", "Проверьте координаты устьев."
+        )
     part = np.zeros(len(seq), dtype=np.uint16)
     slot = np.zeros(len(seq), dtype=np.uint16)
     for p in parts:

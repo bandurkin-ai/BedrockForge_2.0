@@ -44,6 +44,16 @@ def _numbers(conn: sa.Connection, sql: str, params: tuple[Any, ...], n: int) -> 
     return np.concatenate(parts) if parts else np.zeros((0, n))
 
 
+def _deepest_rows(conn: sa.Connection, set_id: int) -> list[np.ndarray]:
+    """(hole id, deepest «до» or «от») of every ready table of the set: one table at a time — its index (table,
+    hole, from) gives the groups in order, no temporary B-tree (5 M rows: 0.7 s instead of 1.9 s)."""
+    tables = conn.execute(
+        sa.select(dh_tables.c.id).where(dh_tables.c.set_id == set_id, dh_tables.c.state == "ready")
+    ).scalars()
+    sql = "SELECT hole_id, max(coalesce(to_m, from_m)) FROM dh_rows WHERE table_id = ? GROUP BY hole_id"
+    return [_numbers(conn, sql, (int(t),), 2) for t in tables.all()]
+
+
 def _build(conn: sa.Connection, set_id: int, method: str, key: tuple[Any, ...]) -> SetTrajectories:
     from .desurvey import Collars, Surveys, desurvey
 
@@ -53,10 +63,11 @@ def _build(conn: sa.Connection, set_id: int, method: str, key: tuple[Any, ...]) 
         (set_id,),
         8,
     )
-    names = [
-        r[0]
-        for r in conn.execute(sa.select(dh_holes.c.name).where(dh_holes.c.set_id == set_id).order_by(dh_holes.c.id))
-    ]
+    names = list(
+        conn.execute(sa.select(dh_holes.c.name).where(dh_holes.c.set_id == set_id).order_by(dh_holes.c.id)).scalars()
+    )
+    sv = _numbers(conn, "SELECT hole_id, depth, azimuth, dip FROM dh_surveys WHERE set_id = ?", (set_id,), 4)
+    deep_parts = _deepest_rows(conn, set_id)
     ids = holes[:, 0].astype(np.int64)
     index = {int(h): i for i, h in enumerate(ids.tolist())}
     no_collar = ~(holes[:, 7] > 0)
@@ -64,7 +75,6 @@ def _build(conn: sa.Connection, set_id: int, method: str, key: tuple[Any, ...]) 
     for j, name in enumerate(("x", "y", "z", "td", "azimuth", "dip"), start=1):
         col[name] = np.ascontiguousarray(holes[:, j])
         col[name][no_collar] = np.nan
-    sv = _numbers(conn, "SELECT hole_id, depth, azimuth, dip FROM dh_surveys WHERE set_id = ?", (set_id,), 4)
     s_dense = np.searchsorted(ids, sv[:, 0].astype(np.int64))  # ids ascend; surveys of holes of the set
     s_depth = np.ascontiguousarray(sv[:, 1])
     surveys = Surveys(s_dense, s_depth, np.ascontiguousarray(sv[:, 2]), np.ascontiguousarray(sv[:, 3]))
@@ -72,17 +82,7 @@ def _build(conn: sa.Connection, set_id: int, method: str, key: tuple[Any, ...]) 
     td = col["td"]
     deepest = np.full(len(ids), np.nan)
     np.fmax.at(deepest, s_dense, s_depth)  # the deepest survey (NaN depths ignored)
-    tables = conn.execute(
-        sa.select(dh_tables.c.id).where(dh_tables.c.set_id == set_id, dh_tables.c.state == "ready")
-    ).scalars()
-    for table_id in tables.all():
-        # one table at a time: its index (table, hole, from) gives the groups in order, no temporary B-tree
-        deep = _numbers(
-            conn,
-            "SELECT hole_id, max(coalesce(to_m, from_m)) FROM dh_rows WHERE table_id = ? GROUP BY hole_id",
-            (int(table_id),),
-            2,
-        )
+    for deep in deep_parts:
         pos = np.searchsorted(ids, deep[:, 0].astype(np.int64)).clip(0, max(len(ids) - 1, 0))
         ok = (ids[pos] == deep[:, 0]) if len(ids) else np.zeros(len(deep), dtype=bool)
         np.fmax.at(deepest, pos[ok], deep[ok, 1])

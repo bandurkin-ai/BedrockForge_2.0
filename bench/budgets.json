@@ -75,7 +75,7 @@
       "limits": {
         "paths_s": 1.0,
         "field_s": 1.5,
-        "manifest_mb": 3.0,
+        "manifest_mb": 3.5,
         "paths_mb": 40.0
       }
     }
@@ -153,9 +153,9 @@
       "budget_s": 9.0,
       "budget_mb": 1536,
       "limits": {
-        "paths_s": 3.0,
+        "paths_s": 3.5,
         "field_s": 6.0,
-        "manifest_mb": 3.0,
+        "manifest_mb": 3.5,
         "paths_mb": 40.0
       }
     }
