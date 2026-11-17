@@ -84,6 +84,17 @@ def test_table_by_id_all_columns_window_and_cut(demo, monkeypatch) -> None:  # t
     assert t["truncated"] is True and len(t["from"]) == 10 == len(t["values"]["AU"])
 
 
+def test_answer_bounded_by_cells(demo, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.viz import log
+
+    c, set_id = demo
+    monkeypatch.setattr(log, "MAX_CELLS", 150)  # 3 columns: 50 rows in all
+    out = _log(c, set_id, {"holes": ["DH-001", "DH-002"], "tables": [{"table": "пробы"}]})
+    a, b = (h["tables"]["пробы"] for h in out["holes"])
+    assert len(a["from"]) == 50 and a["truncated"] is True
+    assert len(b["from"]) == 0 and b["truncated"] is True
+
+
 def test_events_have_null_to(demo) -> None:  # type: ignore[no-untyped-def]
     from bf_core.drillholes.store import ColumnSpec, TableData, write_table
 

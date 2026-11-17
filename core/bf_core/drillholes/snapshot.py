@@ -87,6 +87,7 @@ class Snapshot:
     orders: dict[tuple[str, bool], np.ndarray] = field(default_factory=dict)  # cached sort orders
     masks: dict[tuple[Any, str], np.ndarray] = field(default_factory=dict)  # cached filters (hole, expression)
     by_hole: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None  # cached `hole_index()`
+    by_hole_key: tuple[Any, ...] | None = None  # the snapshot key the index was built for
 
     def __post_init__(self) -> None:
         if len(self.alive) != len(self.ids):
@@ -96,8 +97,9 @@ class Snapshot:
         """Rows grouped by hole for 3D (ADR 0007 §1 `intervals`): (rows, holes, starts) — the alive rows with a
         depth «от», ascending by hole id, then by «от», then by row id; rows[starts[i]:starts[i + 1]] belong to
         holes[i]. Rows without «от» cannot be placed on a hole and are left out. Cached until the next edit."""
+        key = self.key
         hit = self.by_hole
-        if hit is not None:
+        if hit is not None and self.by_hole_key == key:
             return hit
         start = self.data["from"]
         keep = self.alive & ~np.isnan(start)
@@ -112,8 +114,10 @@ class Snapshot:
         cut = np.flatnonzero(h[1:] != h[:-1]) + 1
         holes = h[np.concatenate(([0], cut))] if len(h) else np.zeros(0, dtype=np.int64)
         starts = np.concatenate(([0], cut, [len(h)])).astype(np.int64) if len(h) else np.zeros(1, dtype=np.int64)
-        self.by_hole = (rows, holes, starts)
-        return self.by_hole
+        index = (rows, holes, starts)
+        if self.key == key:  # an edit meanwhile moved the snapshot on: do not keep an index of the old rows
+            self.by_hole, self.by_hole_key = index, key
+        return index
 
     @property
     def rows(self) -> int:

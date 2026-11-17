@@ -93,7 +93,9 @@ def unlink(settings: dict[str, Any], uid: str, level: str, body: dict[str, Any])
         if _linked(t.get("style"), uid) and level == "layer":
             t = apply_layer_style(t, body)
         if _linked(t.get("palette"), uid) and level == "palette":
-            t = {**t, **{k: v for k, v in palette_fields(body).items() if v is not None}}
+            fields = palette_fields(body)
+            # as the interface: the colouring replaces these keys, an absent one is removed (categories)
+            t = {k: v for k, v in {**t, **fields}.items() if not (k in fields and fields[k] is None)}
         if _refers(t.get("style"), uid):
             t = {k: v for k, v in t.items() if k != "style"}
         if _refers(t.get("palette"), uid):

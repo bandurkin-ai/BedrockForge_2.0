@@ -79,6 +79,7 @@ def part_intervals(
     end = np.full(len(rows), np.nan) if table.kind == "event" else snap.data["to"][rows]
     arrays: list[tuple[str, Any, str]] = [("slot", slot, "<u2"), ("from", start, "<f8"), ("to", end, "<f8")]
     cats: dict[str, list[str]] = {}
+    fields = list({f.key: f for f in fields}.values())  # «Au,AU» name one column: once
     for f in fields:
         col = snap.data.get(f.key)
         if col is None:

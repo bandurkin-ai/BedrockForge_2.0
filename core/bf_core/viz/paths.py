@@ -30,7 +30,12 @@ def part_paths(project: Any, state: SetState, method: str, tol: float, k: int) -
     if not 0 <= k < len(lay.parts):
         raise part_not_found(k)
     p = lay.parts[k]
-    offsets, xyz, md = densify(lay.st.traj, lay.holes_of(k), tol, p.origin)
+    try:
+        offsets, xyz, md = densify(lay.st.traj, lay.holes_of(k), tol, p.origin)
+    except ValueError as e:  # too many points for this tolerance
+        raise ApiError(
+            422, "too_many_points", "Слишком подробные траектории для показа.", "Увеличьте допуск построения стволов."
+        ) from e
     header = {
         "kind": "paths",
         "format": FORMAT,

@@ -58,7 +58,16 @@ def write(conn: sa.Connection, key: str, value: Any, expected_version: int) -> d
         stale = normalize(key, row.value, strict=False) if row is not None else None
         raise Conflict(stale, current)
     if row is None:
-        conn.execute(sa.insert(settings).values(scope=SCOPE, key=key, value=clean, version=1))
+        try:
+            with conn.begin_nested():  # two first writes at once: the second one is a conflict, not a 500
+                conn.execute(sa.insert(settings).values(scope=SCOPE, key=key, value=clean, version=1))
+        except sa.exc.IntegrityError as e:
+            now = conn.execute(
+                sa.select(settings.c.value, settings.c.version).where(settings.c.scope == SCOPE, settings.c.key == key)
+            ).first()
+            raise Conflict(
+                normalize(key, now.value, strict=False) if now else None, int(now.version) if now else 0
+            ) from e
     else:
         n = conn.execute(
             sa.update(settings)

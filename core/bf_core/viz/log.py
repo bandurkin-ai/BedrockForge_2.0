@@ -22,6 +22,8 @@ MAX_HOLES = 30
 MAX_TABLES = 16
 MAX_FIELDS = 64
 MAX_ROWS = 20_000
+#: Values in one answer (holes × rows × fields): a bound on the JSON whatever the request (the assistant too).
+MAX_CELLS = 2_000_000
 
 
 def too_many_holes(n: int) -> ApiError:
@@ -85,9 +87,11 @@ def resolve(conn: sa.Connection, set_id: int, key: str, fields: list[str] | None
         ref = table_by_key(conn, set_id, key)
     cols = {c.key: c for c in table_columns(conn, ref.id, ref.kind) if c.role != "fixed" and c.slot is not None}
     if fields is None:
-        chosen = list(cols.values())
+        chosen = list(cols.values())[:MAX_FIELDS]  # «all» is bounded too: the answer must stay small
     else:
-        chosen = [cols[f.key] for f in fields_of(conn, ref, list(dict.fromkeys(fields))) if f.key in cols]
+        chosen = list(
+            {f.key: cols[f.key] for f in fields_of(conn, ref, list(dict.fromkeys(fields))) if f.key in cols}.values()
+        )
     columns = [Column(c.name, c.kind, c.unit, int(c.slot)) for c in chosen if c.slot is not None]
     return Table(key, ref.id, ref.name, ref.kind, columns)
 
@@ -96,7 +100,9 @@ def _number(v: float) -> float | None:
     return None if math.isnan(v) else v
 
 
-def _rows(conn: sa.Connection, t: Table, hole_id: int, lo: float | None, hi: float | None) -> dict[str, Any]:
+def _rows(
+    conn: sa.Connection, t: Table, hole_id: int, lo: float | None, hi: float | None, limit: int = MAX_ROWS
+) -> dict[str, Any]:
     from bf_core.drillholes.snapshot import _decode_vectors
 
     q = sa.select(dh_rows.c.from_m, dh_rows.c.to_m, dh_rows.c.num, dh_rows.c.txt).where(
@@ -106,9 +112,9 @@ def _rows(conn: sa.Connection, t: Table, hole_id: int, lo: float | None, hi: flo
         q = q.where(sa.func.coalesce(dh_rows.c.to_m, dh_rows.c.from_m) >= lo)
     if hi is not None:
         q = q.where(dh_rows.c.from_m <= hi)
-    got = conn.execute(q.order_by(dh_rows.c.from_m, dh_rows.c.id).limit(MAX_ROWS + 1)).all()
-    truncated = len(got) > MAX_ROWS
-    got = got[:MAX_ROWS]
+    got = conn.execute(q.order_by(dh_rows.c.from_m, dh_rows.c.id).limit(limit + 1)).all()
+    truncated = len(got) > limit
+    got = got[:limit]
     numbers = [c for c in t.columns if c.kind == "number"]
     width = max((c.slot for c in numbers), default=-1) + 1
     matrix = _decode_vectors([r.num for r in got], width) if width else None
@@ -141,6 +147,7 @@ def log(
         )
     }
     out = []
+    cells = 0
     for name in names:
         h = found.get(name)
         item: dict[str, Any] = {"name": name, "found": h is not None, "collar_z": None, "td": None, "tables": {}}
@@ -148,7 +155,12 @@ def log(
             if h.has_collar:
                 item["collar_z"] = None if h.z is None else float(h.z)
                 item["td"] = None if h.td is None else float(h.td)
-            item["tables"] = {t.key: _rows(conn, t, int(h.id), lo, hi) for t in tables}
+            for t in tables:
+                width = max(1, len(t.columns))
+                left = max(0, MAX_CELLS - cells) // width
+                rows = _rows(conn, t, int(h.id), lo, hi, limit=min(MAX_ROWS, left))
+                cells += len(rows["from"]) * width
+                item["tables"][t.key] = rows
         out.append(item)
     return {"holes": out, "tables": [t.as_dict() for t in tables]}
 
