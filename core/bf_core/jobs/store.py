@@ -104,6 +104,19 @@ def read_log(engine: sa.Engine, instance: bool, job_id: int) -> list[dict[str, A
     return [{"seq": r["seq"], "at": r["at"].isoformat(), "level": r["level"], "text": r["text"]} for r in rows]
 
 
+def clear_finished(engine: sa.Engine, instance: bool, statuses: tuple[str, ...]) -> int:
+    """«Очистить выполненные» (ТЗ 7.35 Д-10): finished jobs and their logs, in one transaction.
+    Queued and running jobs are never touched; exported files stay on disk."""
+    statuses = tuple(s for s in statuses if s in FINAL)
+    if not statuses:
+        return 0
+    t, log = tables(instance)
+    with dialect.write_tx(engine) as conn:
+        ids = sa.select(t.c.id).where(t.c.status.in_(statuses)).scalar_subquery()
+        conn.execute(sa.delete(log).where(log.c.job_id.in_(ids)))
+        return int(conn.execute(sa.delete(t).where(t.c.status.in_(statuses))).rowcount or 0)
+
+
 def drop_partial(conn: sa.Connection, job_id: int) -> int:
     """Objects a job was building (state='building') and their file references: the job left nothing."""
     from bf_core.drillholes.store import drop_building

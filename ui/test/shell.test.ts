@@ -17,8 +17,29 @@ const tabs = buildRibbon(DEFAULT_WORKSPACE, DEFAULT_VIEW);
 const items = flattenRibbon(tabs);
 
 describe("ribbon (ТЗ 7.0.4)", () => {
-  it("has the five tabs", () => {
-    expect(tabs.map((t) => t.title)).toEqual(["Главная", "Вид", "Моделирование", "Анализ", "Claude"]);
+  it("has the six tabs (ADR 0008: + «Настройки проекта»)", () => {
+    expect(tabs.map((t) => t.title)).toEqual(["Главная", "Вид", "Моделирование", "Анализ", "Настройки проекта", "Claude"]);
+    expect(tabs.every((t) => /^[a-z]{1,16}$/.test(t.id))).toBe(true);
+  });
+
+  it("«Главная» has no «Вид» and «Разрез» groups; view and section stay on «Вид» (Д-05, Д-08)", () => {
+    expect(tabs[0].groups.map((g) => g.title)).toEqual(["Проект", "Загрузка", "OMF", "Выделение", "Ассистент", "Настройка"]);
+    const at = (command: string, args?: Record<string, unknown>) =>
+      items.find((i) => i.command === command && JSON.stringify(i.args ?? {}) === JSON.stringify(args ?? {}))?.group;
+    for (const view of ["top", "front", "side", "section"]) expect(at("scene.view", { view })).toMatch(/^Вид › /);
+    expect(at("scene.fit")).toBe("Вид › Поворот вида");
+    for (const c of ["section.draw", "section.clip", "section.clear"]) expect(at(c)).toBe("Вид › Разрез");
+  });
+
+  it("one term «ЦТМ»: no «ЦМР»/«ЦМП» in labels, titles and descriptions (Д-07)", () => {
+    expect(items.filter((i) => /ЦМ[РП]/.test(`${i.label} ${i.hint ?? ""}`)).map((i) => i.label)).toEqual([]);
+    expect(moduleCommands().filter((c) => /ЦМ[РП]/.test(`${c.title} ${c.description}`)).map((c) => c.id)).toEqual([]);
+    expect(items.find((i) => i.command === "model.dtm")?.label).toBe("Построить ЦТМ");
+  });
+
+  it("«Аудит и статистика» and «Настройки проекта › Обслуживание» (Д-06, Д-10)", () => {
+    expect(tabs.find((t) => t.id === "analysis")!.groups[0].title).toBe("Аудит и статистика");
+    expect(items.find((i) => i.command === "jobs.clear_finished")?.group).toBe("Настройки проекта › Обслуживание");
   });
 
   it("every button calls a registered command", () => {

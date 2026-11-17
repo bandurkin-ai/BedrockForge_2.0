@@ -12,7 +12,7 @@ export type TreeSection = "holes" | "wireframes" | "dtm" | "lines" | "rasters" |
 
 export const BOTTOM_TITLES: Record<BottomTab, string> = {
   table: "Таблица",
-  audit: "Аудит",
+  audit: "Аудит и статистика",
   stats: "Статистика",
   swath: "Swath plot",
   jobs: "Задания",
@@ -26,7 +26,7 @@ export const TREE_SECTIONS: Record<TreeSection, string> = {
   lines: "Линии",
   rasters: "Растры",
   blocks: "Блочные модели",
-  audit: "Аудит",
+  audit: "Аудит и статистика",
 };
 export const DEFAULT_TREE_ORDER = Object.keys(TREE_SECTIONS) as TreeSection[];
 

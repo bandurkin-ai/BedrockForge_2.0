@@ -4,7 +4,7 @@ const DIALOGS: [string, string][] = [
   ["model.stitch", "Сшить контуры"], ["model.assemble", "Собрать из контуров"], ["model.extrude", "Выдавить"],
   ["model.repair", "Исправить"], ["model.simplify", "Упростить"], ["model.smooth", "Сгладить"],
   ["model.merge", "В один объект"], ["model.split", "На части"], ["model.boolean", "Булева"],
-  ["model.clip", "Обрезать"], ["model.intersection", "Линии пересечения"], ["model.dtm", "ЦМР"],
+  ["model.clip", "Обрезать"], ["model.intersection", "Линии пересечения"], ["model.dtm", "Построить ЦТМ"],
   ["model.contours", "Изолинии"], ["model.volume", "Объём"], ["model.triangles", "Треугольники"],
 ];
 
