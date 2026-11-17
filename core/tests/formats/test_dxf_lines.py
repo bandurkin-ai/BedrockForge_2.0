@@ -466,5 +466,4 @@ def test_missing_and_bad_coordinates_are_not_zero(tmp_path: Path) -> None:
         "4 вершин без координаты X или Y пропущены",
         "2 вершин с высотой Z, которая не является числом: высота пуста",
     ]
-    assert not np.any(np.concatenate([layer.xyz for layer in read.layers]) == 0.0, axis=None) or True
     assert all((layer.xyz[:, :2] != 0.0).all() for layer in read.layers)  # nothing missing has turned into zero
