@@ -1,8 +1,13 @@
-# Linux checks on every push and PR (ТЗ 10.4).
+# Linux checks on PRs and pushes to main (ТЗ 10.4). Feature-branch pushes without a PR are
+# not built (Actions minutes); docs-only changes are skipped. Manual run: workflow_dispatch.
 name: ci
 on:
   push:
+    branches: [main]
+    paths-ignore: ["docs/**", "**/*.md"]
   pull_request:
+    paths-ignore: ["docs/**", "**/*.md"]
+  workflow_dispatch:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
