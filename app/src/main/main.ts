@@ -274,11 +274,22 @@ function registerIpc(): void {
   ipcMain.on("bf:copy-text", (e, text: string) => {
     if (fromMain(e.sender) && typeof text === "string" && text.length < 50_000_000) clipboard.writeText(text);
   });
+  /** A file appears whole or not at all: written next to it, then renamed over it (a reader never sees half). */
+  const writeWhole = async (file: string, data: string | Uint8Array): Promise<void> => {
+    const part = `${file}.${process.pid}.part`;
+    try {
+      await fs.promises.writeFile(part, data, typeof data === "string" ? "utf8" : undefined);
+      await fs.promises.rename(part, file);
+    } catch (err) {
+      await fs.promises.rm(part, { force: true }).catch(() => undefined);
+      throw err;
+    }
+  };
   ipcMain.handle("bf:save-text", async (e, name: string, text: string) => {
     if (!mainWin || !fromMain(e.sender)) return false;
     const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.basename(String(name)), filters: [{ name: "Текст", extensions: ["txt"] }] });
     if (r.canceled || !r.filePath) return false;
-    await fs.promises.writeFile(r.filePath, "\uFEFF" + String(text), "utf8");
+    await writeWhole(r.filePath, "\uFEFF" + String(text));
     return true;
   });
   // Exports of the interface (ADR 0007 §6): a chart as PNG/SVG, its data as CSV, styles as .bfstyle.json.
@@ -306,8 +317,7 @@ function registerIpc(): void {
     const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.join(app.getPath("documents"), path.basename(String(name))), filters: k.filters });
     if (r.canceled || !r.filePath) return null;
     try {
-      if (typeof data === "string") await fs.promises.writeFile(r.filePath, (k.bom ? "\uFEFF" : "") + data, "utf8");
-      else await fs.promises.writeFile(r.filePath, data);
+      await writeWhole(r.filePath, typeof data === "string" ? (k.bom ? "\uFEFF" : "") + data : data);
     } catch (err) {
       return { error: fileError(err) };
     }
