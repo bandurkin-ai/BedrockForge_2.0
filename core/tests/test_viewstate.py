@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from bf_core.archive.view_remap import remap_setting
-from bf_core.viewstate.keys import BadValue, map_ids, normalize
+from bf_core.viewstate.keys import BadValue, drop_missing, ids_in, map_ids, normalize
 from tests.test_import_job import API, wait_job
 
 
@@ -128,3 +128,45 @@ def test_bfggis_keeps_code_lists_and_renumbers_view(demo, tmp_path: Path) -> Non
     roundtrip(include_view=False)  # without view settings the code lists still come along
     assert c.get(f"{API}/view").json()["values"] == {}
     assert "Породы" in {x["name"] for x in c.get(f"{API}/drillholes/codes").json()["lists"]}
+
+
+def test_hide_all_shared_fixtures_and_ids() -> None:
+    """«Очистить окно» (ТЗ 7.35 Д-04, ADR 0008): the same cases as the interface (ui/test/hideAll.test.ts)."""
+    import json
+
+    cases = json.loads((Path(__file__).parent / "data" / "view" / "hide_all.json").read_text(encoding="utf-8"))
+    for case in cases["cases"]:
+        assert normalize("hide_all", case["in"], strict=False) == case["out"], case
+    with pytest.raises(BadValue):
+        normalize("hide_all", {"on": True, "shown": ["junk"]}, strict=True)
+    many = {"on": True, "shown": [f"set:{i}" for i in range(1, 2501)]}
+    shown = normalize("hide_all", many, strict=True)["shown"]
+    assert len(shown) == 2000 and shown[-1] == "set:2500"  # the newest are kept
+    m = {3: 30}.get
+    assert map_ids("hide_all", {"on": True, "shown": ["set:3", "wf:7"]}, m) == {"on": True, "shown": ["set:30"]}
+    assert list(ids_in("hide_all", {"on": True, "shown": ["set:3:paths", "wf:7"]})) == [3, 7]
+    assert drop_missing("hide_all", {"on": True, "shown": ["set:3", "wf:7"]}, lambda i: i == 3) == {
+        "on": True,
+        "shown": ["set:3"],
+    }
+
+
+def test_hide_all_api_and_bfggis(demo, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    c, set_id = demo
+    r = c.put(
+        f"{API}/view/hide_all",
+        json={"value": {"on": True, "shown": [f"set:{set_id}", "wf:999999"]}, "expected_version": 0},
+    )
+    assert r.status_code == 200, r.text
+    got = c.get(f"{API}/view").json()["values"]["hide_all"]["value"]
+    assert got == {"on": True, "shown": [f"set:{set_id}"]}  # the missing object is forgotten on read
+    out = tmp_path / "hide-all"
+    r = c.post(f"{API}/projects/export", json={"path": str(out), "password": None, "include_view": True})
+    job = wait_job(c, r.json()["source"], r.json()["id"])
+    r = c.post(f"{API}/projects/import", json={"path": job["result"]["path"], "mode": "copy"}).json()
+    job = wait_job(c, r["source"], r["id"])
+    assert job["status"] == "done", job
+    c.post(f"{API}/projects/{job['result']['uid']}/open")
+    new_set = job["result"]["id_maps"]["objects"][str(set_id)]
+    got = c.get(f"{API}/view").json()["values"]["hide_all"]["value"]
+    assert got == {"on": True, "shown": [f"set:{new_set}"]}

@@ -6,8 +6,10 @@ import { Store } from "../../shell/store";
 import { DEFAULT_VIEW, VEXAG_STEPS, type ViewState } from "../../shell/workspace";
 import { beforeProjectChange, projectStore } from "../projects/state";
 import { openWindow } from "../../shell/windows";
+import { onJobFinished } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { hiddenKey, patchFields, toggleHidden, ViewSync, type ViewIO } from "./viewSync";
+import { clearedKeys, effectiveHidden, normalizeHideAll, showNew, showUnderHideAll } from "./hideAll";
 import { bindViewCommands } from "./viewCommands";
 
 /** Every view key of the open project as the core keeps it (styles of collars and traces, displays…). */
@@ -33,8 +35,14 @@ export function viewSyncOf(): ViewSync | null {
 
 const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
-/** The part of the view kept in the app store (ribbon, status bar, Claude). */
-export function viewFromKeys(keys: Record<string, unknown>, base: ViewState = DEFAULT_VIEW): ViewState {
+/** Object keys of the project the scene can show (sets now; wireframes, lines… with their stages). */
+export function objectKeys(): string[] {
+  return tablesStore.get().sets.map((s) => `set:${s.id}`);
+}
+
+/** The part of the view kept in the app store (ribbon, status bar, Claude). `hidden` there is the effective
+ * list: with «Очистить окно» on, every object not shown again (ADR 0008). */
+export function viewFromKeys(keys: Record<string, unknown>, base: ViewState = DEFAULT_VIEW, objects: readonly string[] = objectKeys()): ViewState {
   const scene = (keys.scene ?? {}) as Record<string, unknown>;
   const section = (keys.section ?? {}) as Record<string, unknown>;
   const d = DEFAULT_VIEW;
@@ -45,7 +53,11 @@ export function viewFromKeys(keys: Record<string, unknown>, base: ViewState = DE
     vexag: VEXAG_STEPS.includes(scene.vexag as number) ? (scene.vexag as number) : d.vexag,
     wireframeOpacity: num(scene.wireframe_opacity, d.wireframeOpacity),
     clip: section.clip === true,
-    hidden: Array.isArray(keys.hidden) ? (keys.hidden as unknown[]).filter((k): k is string => typeof k === "string") : [],
+    hidden: effectiveHidden(
+      Array.isArray(keys.hidden) ? (keys.hidden as unknown[]).filter((k): k is string => typeof k === "string") : [],
+      normalizeHideAll(keys.hide_all),
+      objects,
+    ),
   };
 }
 
@@ -55,7 +67,7 @@ export function bindScene(app: App): void {
     io,
     (key, value) => {
       viewStore.set({ [key]: value });
-      if (key === "scene" || key === "section" || key === "hidden") store.set((s) => ({ view: viewFromKeys(viewStore.get(), s.view) }));
+      if (key === "scene" || key === "section" || key === "hidden" || key === "hide_all") store.set((s) => ({ view: viewFromKeys(viewStore.get(), s.view) }));
     },
     (text) => store.set({ statusNote: text }),
   );
@@ -63,6 +75,19 @@ export function bindScene(app: App): void {
   // closing the window: send what is pending (the requests go out before the page is gone)
   if (typeof window !== "undefined") window.addEventListener("pagehide", () => void sync?.flushAll());
   let uid: string | null = null;
+  // the effective hidden list follows the objects of the project
+  let setsRef = tablesStore.get().sets;
+  tablesStore.subscribe(() => {
+    if (tablesStore.get().sets === setsRef) return;
+    setsRef = tablesStore.get().sets;
+    store.set((s) => ({ view: viewFromKeys(viewStore.get(), s.view) }));
+  });
+  // a set just imported is shown also after «Очистить окно» (ТЗ 17.4.7)
+  onJobFinished((job) => {
+    const setId = job.result?.set_id;
+    if (job.kind !== "import.drillholes" || job.status !== "done" || typeof setId !== "number") return;
+    if (projectStore.get().current && normalizeHideAll(viewStore.get().hide_all).on) updateView("hide_all", showNew([`set:${setId}`]));
+  });
   projectStore.subscribe(() => {
     const cur = projectStore.get().current?.uid ?? null;
     if (cur === uid) return;
@@ -110,10 +135,26 @@ export function bindScene(app: App): void {
   registry.bind("layer.show", (a) => {
     const key = hiddenKey(String(a.layer), Number(a.id));
     const op = toggleHidden(key, a.visible as boolean);
-    if (projectStore.get().current) updateView("hidden", op);
+    // after «Очистить окно» an object is shown by `hide_all.shown`; a sub-layer also by `hidden`
+    const sub = key.split(":").length > 2;
+    if (projectStore.get().current && normalizeHideAll(viewStore.get().hide_all).on && (a.visible === true || !sub)) {
+      updateView("hide_all", showUnderHideAll(key, a.visible as boolean));
+      if (a.visible === true) updateView("hidden", op);
+    } else if (projectStore.get().current) updateView("hidden", op);
     else store.set((s) => ({ view: { ...s.view, hidden: op(s.view.hidden) as string[] } }));
     return `${a.visible ? "Показан" : "Скрыт"} слой ${key}`;
   });
+
+  registry.bind(
+    "scene.clear",
+    async () => {
+      const keys = clearedKeys(viewStore.get().displays);
+      for (const [key, value] of Object.entries(keys)) updateView(key, () => value);
+      await registry.execute("hole.select", { hole_id: null });
+      return "Окно очищено: все объекты скрыты; камера, разрез и сетка — прежние";
+    },
+    (ctx) => (ctx.hasProject ? null : "Откройте или создайте проект"),
+  );
 
   bindViewCommands(app);
 
