@@ -98,7 +98,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           ],
         },
         { title: "Ассистент", items: [assistant] },
-        { title: "Настройка", items: [{ command: "settings.open", label: "Настройка", icon: "gear", hint: "Быстрые клавиши, папка данных проектов, число исполнителей" }, { command: "license.open", label: "Лицензия", icon: "audit", small: true }] },
+        { title: "Настройка", items: [{ command: "settings.open", label: "Настройка", icon: "gear", hint: "Быстрые клавиши, папка данных проектов, число исполнителей" }, { command: "license.open", label: "Лицензия", icon: "audit", small: true }, { command: "app.about", label: "О производителе", icon: "info", small: true }] },
       ],
     },
     {
