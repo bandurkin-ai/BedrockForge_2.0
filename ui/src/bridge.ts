@@ -16,6 +16,10 @@ export interface BfBridge {
   saveSettings(data: unknown): void;
   copyText(text: string): void;
   saveText(defaultName: string, text: string): Promise<boolean>;
+  /** Save dialog and write (PNG/SVG of a chart, CSV of its data with a BOM, .bfstyle.json): the path or null. */
+  saveFile(name: string, kind: "png" | "svg" | "csv" | "bfstyle", data: string | Uint8Array): Promise<string | null>;
+  /** Open dialog for a text file (.bfstyle.json, CSV of codes): its name and text, or null when cancelled. */
+  openText(kind: "bfstyle" | "csv"): Promise<{ name: string; text: string | null; error?: string } | null>;
   coreRetry(): void;
   /** «Сохранить как» for .bfggis: the chosen path or null. */
   /** Save dialog: .bfggis by default, or a table format (dat, csv, xlsx). */
