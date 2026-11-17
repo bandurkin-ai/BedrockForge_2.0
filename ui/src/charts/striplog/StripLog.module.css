@@ -1,0 +1,38 @@
+/* «Данные по скважинам» (ТЗ 7.17): the brand palette and fonts (ADR 0006). */
+.window { display: flex; height: 100%; min-height: 0; gap: 8px; }
+.settings { width: 300px; flex: none; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+.settings fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.settings legend { font-family: var(--font-brand); font-weight: 600; font-size: 12px; color: var(--text-dim); padding: 0 4px; }
+.settings label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.check { flex-direction: row !important; align-items: center; gap: 6px !important; }
+.pair { display: flex; gap: 6px; }
+.pair > * { flex: 1; min-width: 0; }
+.holes { max-height: 180px; overflow: auto; display: flex; flex-direction: column; }
+.muted { color: var(--text-faint); font-size: 12px; margin: 0; }
+.track { border-top: 1px solid var(--border); padding-top: 4px; display: flex; flex-direction: column; gap: 4px; }
+.trackHead { display: flex; align-items: center; gap: 4px; }
+.trackHead strong { font-weight: 600; }
+.spacer { flex: 1; }
+.icon { border: 1px solid var(--border); background: var(--bg-hover); color: var(--text); border-radius: var(--radius); cursor: pointer; padding: 0 5px; font: inherit; }
+.icon:disabled { opacity: 0.4; cursor: default; }
+.export { display: flex; gap: 6px; }
+.export button { flex: 1; padding: 3px 8px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; font: inherit; }
+.export button:disabled { opacity: 0.5; cursor: default; }
+.main { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.error { color: var(--danger); font-size: 12px; }
+.scroll { overflow: auto; }
+.busy { opacity: 0.6; }
+.hist_chart { display: block; font-family: var(--font); }
+.strip_chart { background: var(--bg-elev); }
+.chart_bg { fill: var(--bg-elev); }
+.chart_axis { fill: var(--text); font-size: 12px; font-family: var(--font-brand); font-weight: 600; }
+.strip_hole { font-size: 13px; }
+.chart_tick { fill: var(--text-dim); font-size: 10px; font-family: var(--font); }
+.strip_head { fill: var(--text); font-size: 11px; }
+.chart_grid { stroke: var(--border); stroke-width: 0.5; }
+.chart_frame { stroke: var(--border-strong); stroke-width: 1; }
+.strip_hole_line { stroke: var(--brand-orange); stroke-width: 3; }
+.strip_bar { stroke: none; }
+.strip_boundary { stroke: var(--text-dim); stroke-width: 0.5; }
+.strip_swatch { stroke: var(--border-strong); stroke-width: 0.5; }
+.strip_text { fill: var(--text); font-size: 10px; font-family: var(--font); }

@@ -6,6 +6,7 @@ import { bindAudit } from "../modules/audit/bind";
 import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
 import { bindProjects } from "../modules/projects/bind";
+import { bindStripLog } from "../charts/striplog/bind";
 import { bindScene } from "../modules/scene/bind";
 import { bindTables } from "../modules/tables/bind";
 import { createRegistry } from "./catalog";
@@ -126,5 +127,6 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindTables(app);
   bindAudit(app);
   bindScene(app);
+  bindStripLog(app);
   return app;
 }
