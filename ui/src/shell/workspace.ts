@@ -8,11 +8,11 @@ export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
 export type BottomTab = "table" | "audit" | "stats" | "swath" | "jobs" | "log";
-export type TreeSection = "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "audit";
+export type TreeSection = "views" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "audit";
 
 export const BOTTOM_TITLES: Record<BottomTab, string> = {
   table: "Таблица",
-  audit: "Аудит",
+  audit: "Аудит и статистика",
   stats: "Статистика",
   swath: "Swath plot",
   jobs: "Задания",
@@ -20,13 +20,14 @@ export const BOTTOM_TITLES: Record<BottomTab, string> = {
 };
 
 export const TREE_SECTIONS: Record<TreeSection, string> = {
+  views: "Виды",
   holes: "Скважины",
   wireframes: "Каркасы",
   dtm: "ЦТМ",
   lines: "Линии",
   rasters: "Растры",
   blocks: "Блочные модели",
-  audit: "Аудит",
+  audit: "Аудит и статистика",
 };
 export const DEFAULT_TREE_ORDER = Object.keys(TREE_SECTIONS) as TreeSection[];
 
@@ -116,10 +117,13 @@ export function moveSection(order: TreeSection[], moved: TreeSection, before: Tr
 
 const bool = (value: unknown, fallback: boolean) => (typeof value === "boolean" ? value : fallback);
 
-function normalizeOrder(raw: unknown): TreeSection[] {
+/** A stored order of the sections: «Виды», when missing (an order saved before Э6.1), goes first (ADR 0008);
+ * other new sections go to the end. */
+export function normalizeOrder(raw: unknown): TreeSection[] {
   const valid = Array.isArray(raw) ? raw.filter((s): s is TreeSection => typeof s === "string" && s in TREE_SECTIONS) : [];
   const unique = [...new Set(valid)];
-  return [...unique, ...DEFAULT_TREE_ORDER.filter((s) => !unique.includes(s))];
+  const head: TreeSection[] = unique.includes("views") ? [] : ["views"];
+  return [...head, ...unique, ...DEFAULT_TREE_ORDER.filter((s) => !unique.includes(s) && !head.includes(s))];
 }
 
 /** Stored state may come from an older version or be damaged: keep only valid values. */

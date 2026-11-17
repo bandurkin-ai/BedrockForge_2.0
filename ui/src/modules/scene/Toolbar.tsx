@@ -28,7 +28,7 @@ function ToolButton({ icon, label, hint, keys, active, disabled, off, onClick }:
   const title = `${label}${hint ? ` — ${hint}` : ""}${keys ? ` (${keys})` : ""}${disabled && off ? `. ${off}` : ""}`;
   return (
     <button type="button" className={css.tool} title={title} aria-label={label} aria-pressed={active === undefined ? undefined : active} disabled={disabled} onClick={onClick}>
-      <Icon name={icon} size={16} />
+      <Icon name={icon} size={24} />
     </button>
   );
 }

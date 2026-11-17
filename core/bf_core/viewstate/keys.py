@@ -123,6 +123,18 @@ def _hidden(v: Any, strict: bool) -> list[str]:
     return out[::-1]
 
 
+def _hide_all(v: Any, strict: bool) -> dict[str, Any]:
+    """«Очистить окно» (ТЗ 7.35 Д-04, ADR 0008): while `on`, only the keys in `shown` are visible."""
+    if not isinstance(v, dict):
+        _fail(strict, "Очистка окна: ожидаются on и shown.")
+        return {"on": False, "shown": []}
+    if "on" in v and not isinstance(v["on"], bool):
+        _fail(strict, "Очистка окна: «on» — да или нет.")
+    on = _bool(v.get("on"), False)
+    shown = _hidden(v.get("shown", []), strict) if on else []
+    return {"on": on, "shown": shown}
+
+
 def _displays(v: Any, strict: bool) -> list[dict[str, Any]]:
     if not isinstance(v, list):
         _fail(strict, "Отображения по стволу: ожидается список.")
@@ -191,6 +203,7 @@ NORMALIZERS: dict[str, Callable[[Any, bool], Any]] = {
     "scene": _scene,
     "section": _section,
     "hidden": _hidden,
+    "hide_all": _hide_all,
     "displays": _displays,
     "swaths": _swaths,
     "collar_styles": _styles,
@@ -214,6 +227,8 @@ def drop_missing(key: str, value: Any, alive: Callable[[int], bool]) -> Any:
     """Forget ids of deleted objects (read side): hidden keys, displays, styles, columns, the active set."""
     if key == "hidden":
         return [k for k in value if alive(int(HIDDEN_RE.match(k).group(2)))]  # type: ignore[union-attr]
+    if key == "hide_all":
+        return {**value, "shown": drop_missing("hidden", value["shown"], alive)}
     if key == "displays":
         return [d for d in value if alive(d["chart"])]
     if key in ("collar_styles", "trace_styles", "block_styles"):
@@ -228,6 +243,8 @@ def drop_missing(key: str, value: Any, alive: Callable[[int], bool]) -> Any:
 def ids_in(key: str, value: Any) -> Iterable[int]:
     if key == "hidden":
         return (int(HIDDEN_RE.match(k).group(2)) for k in value)  # type: ignore[union-attr]
+    if key == "hide_all":
+        return ids_in("hidden", value["shown"])
     if key == "displays":
         return (d["chart"] for d in value)
     if key in ("collar_styles", "trace_styles", "block_styles"):
@@ -250,6 +267,8 @@ def map_ids(key: str, value: Any, new_id: Callable[[int], int | None]) -> Any:
 
     if key == "hidden":
         return [h for h in map(hidden, value) if h is not None]
+    if key == "hide_all":
+        return {**value, "shown": [h for h in map(hidden, value["shown"]) if h is not None]}
     if key == "displays":
         return [{**d, "chart": n} for d in value if (n := new_id(d["chart"])) is not None]
     if key in ("collar_styles", "trace_styles", "block_styles"):

@@ -78,6 +78,25 @@
         "manifest_mb": 3.5,
         "paths_mb": 40.0
       }
+    },
+    "jobs_clear": {
+      "params": {
+        "jobs": 10000,
+        "log_lines": 3
+      },
+      "budget_s": 1.0,
+      "budget_mb": 300
+    },
+    "view_apply": {
+      "params": {
+        "sets": 1200,
+        "views": 200
+      },
+      "budget_s": 2.0,
+      "budget_mb": 300,
+      "limits": {
+        "apply_s": 0.05
+      }
     }
   },
   "full": {
@@ -157,6 +176,25 @@
         "field_s": 6.0,
         "manifest_mb": 3.5,
         "paths_mb": 40.0
+      }
+    },
+    "jobs_clear": {
+      "params": {
+        "jobs": 10000,
+        "log_lines": 20
+      },
+      "budget_s": 1.0,
+      "budget_mb": 400
+    },
+    "view_apply": {
+      "params": {
+        "sets": 2000,
+        "views": 200
+      },
+      "budget_s": 2.0,
+      "budget_mb": 300,
+      "limits": {
+        "apply_s": 0.05
       }
     }
   },

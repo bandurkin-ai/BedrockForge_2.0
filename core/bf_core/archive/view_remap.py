@@ -27,3 +27,17 @@ def remap_setting(row: dict[str, Any], objects: dict[int, int], apply_view: bool
             return None
         return {**row, "key": f"{objects[int(set_id)]}:{rest}"}
     return row
+
+
+def remap_views(conn: Any, objects_map: dict[int, int]) -> int:
+    """Saved views (ТЗ 7.35 Д-09, ADR 0008): ids inside their meta on a `.bfggis` import. Views are objects and
+    always come along; their keys refer to sets, wireframes, displays… of the same archive."""
+    import sqlalchemy as sa
+
+    from bf_core.db.schema import objects
+    from bf_core.viewstate.views import KIND, remap_meta
+
+    rows = conn.execute(sa.select(objects.c.id, objects.c.meta).where(objects.c.kind == KIND)).all()
+    for view_id, meta in rows:
+        conn.execute(sa.update(objects).where(objects.c.id == view_id).values(meta=remap_meta(meta, objects_map.get)))
+    return len(rows)

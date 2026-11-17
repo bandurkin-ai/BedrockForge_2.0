@@ -1,10 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { bridge } from "../../bridge";
 import { useApp } from "../../shell/AppContext";
 import { showMessage } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
 import { logOfJob, openLogWindow } from "../../shell/opLog";
-import { jobLog, jobsStore, refresh, STATUS_TITLES, type Job } from "./state";
+import { clearReason, jobLog, jobsStore, refresh, STATUS_TITLES, type Job } from "./state";
 import css from "./Jobs.module.css";
 
 /** «Задания» (ТЗ 7.6): state, progress, why it waits; cancel, retry, show in folder, journal. */
@@ -17,6 +17,8 @@ export function JobsPanel() {
     void refresh();
   }, []);
 
+  const [withFailed, setWithFailed] = useState(false);
+  const clearWhy = clearReason(jobs, withFailed);
   const noWorker = jobs.some((j) => j.status === "queued" && j.why_waiting?.startsWith("Нет работающего исполнителя"));
   const showLog = async (j: Job) => {
     const text = await jobLog(j).catch((e: unknown) => String(e));
@@ -33,6 +35,21 @@ export function JobsPanel() {
           </button>
         </div>
       )}
+      <div className={css.bar}>
+        <button
+          type="button"
+          className={css.btn}
+          data-testid="jobs-clear"
+          disabled={clearWhy !== null}
+          title={clearWhy ?? "Убрать из списка готовые и отменённые задания с их журналами"}
+          onClick={() => void app.run("jobs.clear_finished", { include_failed: withFailed })}
+        >
+          Очистить выполненные
+        </button>
+        <label className={css.why}>
+          <input type="checkbox" checked={withFailed} onChange={(e) => setWithFailed(e.target.checked)} /> и с ошибкой
+        </label>
+      </div>
       {error && <div className={css.warn}>{error}</div>}
       {!jobs.length ? (
         <div className={css.empty}>Заданий нет. Здесь появятся импорт, экспорт и долгие расчёты.</div>

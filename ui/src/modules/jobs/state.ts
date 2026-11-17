@@ -157,6 +157,22 @@ export function startEvents(): () => void {
   };
 }
 
+/** Finished jobs «Очистить выполненные» removes (ТЗ 7.35 Д-10). */
+export function finishedJobs(jobs: Pick<Job, "status">[], includeFailed: boolean): number {
+  return jobs.filter((j) => j.status === "done" || j.status === "cancelled" || (includeFailed && j.status === "failed")).length;
+}
+
+/** Why «Очистить выполненные» is unavailable, or null. */
+export function clearReason(jobs: Pick<Job, "status">[], includeFailed: boolean): string | null {
+  return finishedJobs(jobs, includeFailed) ? null : "Нет выполненных заданий";
+}
+
+export async function clearFinished(includeFailed: boolean): Promise<number> {
+  const r = await api.post<{ removed: number }>("/jobs/clear", { include_failed: includeFailed });
+  await refresh();
+  return r.removed;
+}
+
 export async function cancelJob(job: Pick<Job, "source" | "id">): Promise<void> {
   await api.post(`/jobs/${job.source}/${job.id}/cancel`);
   await refresh();

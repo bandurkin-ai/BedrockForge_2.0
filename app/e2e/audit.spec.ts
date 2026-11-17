@@ -14,7 +14,7 @@ test("«Аудит»: demo errors, run, filter by rule, «устарел», Exce
     await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
     await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
     await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
-    await page.getByRole("treeitem", { name: /Скважины 2025/ }).click();
+    await page.getByRole("treeitem", { name: /Скважины 2025/ }).dblclick(); // a double click opens the table (Д-03)
     const panel = page.getByLabel("Нижняя панель");
     await panel.getByRole("tab", { name: "Аудит" }).click();
     // the demo opens with its audit done: the deliberate errors are listed
