@@ -45,14 +45,18 @@ def upgrade() -> None:
         sa.Column("kind", sa.String(length=16), nullable=False),
         sa.Column("row_count", sa.Integer(), nullable=False),
         sa.Column("rev", sa.Integer(), nullable=False),
+        sa.Column("state", sa.String(length=16), nullable=False),
+        sa.Column("job_id", bfd.PK, nullable=True),
         sa.Column("created_at", bfd.UtcDateTime(), nullable=False),
         sa.Column("updated_at", bfd.UtcDateTime(), nullable=False),
         sa.ForeignKeyConstraint(
             ["set_id"], ["objects.id"], name=op.f("fk_dh_tables_set_id_objects"), ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_dh_tables")),
-        sa.UniqueConstraint("set_id", "name_key", name=op.f("uq_dh_tables_set_id_name_key")),
     )
+    with op.batch_alter_table("dh_tables", schema=None) as batch_op:
+        batch_op.create_index(batch_op.f("ix_dh_tables_set_id_name_key"), ["set_id", "name_key"], unique=False)
+
     op.create_table(
         "export_log",
         sa.Column("id", bfd.PK, nullable=False),
@@ -171,5 +175,8 @@ def downgrade() -> None:
 
     op.drop_table("import_log")
     op.drop_table("export_log")
+    with op.batch_alter_table("dh_tables", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_dh_tables_set_id_name_key"))
+
     op.drop_table("dh_tables")
     op.drop_table("dh_holes")

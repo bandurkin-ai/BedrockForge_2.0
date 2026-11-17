@@ -106,6 +106,9 @@ def read_log(engine: sa.Engine, instance: bool, job_id: int) -> list[dict[str, A
 
 def drop_partial(conn: sa.Connection, job_id: int) -> int:
     """Objects a job was building (state='building') and their file references: the job left nothing."""
+    from bf_core.drillholes.store import drop_building
+
+    drop_building(conn, job_id)  # tables an import was filling in existing sets
     ids = [
         r[0]
         for r in conn.execute(sa.select(objects.c.id).where(objects.c.job_id == job_id, objects.c.state == "building"))

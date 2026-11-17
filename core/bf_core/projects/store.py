@@ -64,6 +64,12 @@ def summary(conn: sa.Connection) -> dict[str, int]:
         key = OBJECT_KIND_KEYS.get(kind)
         if key:
             out[key] += int(n)
+    from bf_core.drillholes import store as dh
+
+    out["holes"] = dh.count_holes(conn)
+    out["surveys"] = dh.count_surveys(conn)
+    out["assays"] = dh.count_assays(conn)
+    out["interval_rows"] = dh.count_interval_rows(conn)
     for key, fn in COUNTERS.items():
         out[key] = fn(conn)
     return out

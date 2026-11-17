@@ -194,9 +194,12 @@ dh_tables = sa.Table(
     sa.Column("kind", sa.String(16), nullable=False),  # assay | interval | event
     sa.Column("row_count", sa.Integer, nullable=False, default=0),
     sa.Column("rev", sa.Integer, nullable=False, default=1),  # grows on every edit (column snapshots)
+    # A table being imported is "building" (invisible) until the job swaps it in (ТЗ 7.6: no partial result).
+    sa.Column("state", sa.String(16), nullable=False, default="ready"),
+    sa.Column("job_id", REF),
     sa.Column("created_at", UtcDateTime, nullable=False),
     sa.Column("updated_at", UtcDateTime, nullable=False),
-    sa.UniqueConstraint("set_id", "name_key"),
+    sa.Index(None, "set_id", "name_key"),
 )
 
 dh_columns = sa.Table(
