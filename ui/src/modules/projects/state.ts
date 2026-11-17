@@ -109,8 +109,15 @@ let chain: Promise<unknown> = Promise.resolve();
  * Changes of the open project run one after another: two overlapping requests could finish in the core in one
  * order and reach the window in the other, and the window would show a project the core does not have open.
  */
+/** Work to finish before the open project changes (pending writes of the view settings, ТЗ 7.0.10). */
+export const beforeProjectChange = new Set<() => Promise<void>>();
+
 export function serial<T>(fn: () => Promise<T>): Promise<T> {
-  const next = chain.then(fn, fn);
+  const run = async () => {
+    await Promise.all([...beforeProjectChange].map((f) => f().catch(() => undefined)));
+    return fn();
+  };
+  const next = chain.then(run, run);
   chain = next.catch(() => undefined);
   return next;
 }

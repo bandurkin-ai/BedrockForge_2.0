@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { bridge } from "../../bridge";
+import { bridge, saveFile } from "../../bridge";
 import { api, CoreError } from "../../shell/api";
 import type { DownholeData, IntervalTableInfo } from "../../viz/downhole/types";
 import { logCsv, type CsvColumn } from "./csv";
@@ -141,7 +141,7 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint }:
         if (!svg) return;
         out = kind === "svg" ? await svgText(svg) : await pngBytes(svg);
       }
-      const path = await b.saveFile(`${fileName}.${kind}`, kind, out);
+      const path = await saveFile(`${fileName}.${kind}`, kind, out);
       setNote(path ? `Сохранено: ${path}` : null);
     } catch (e) {
       setError(errText(e));
@@ -163,6 +163,7 @@ export function StripLogWindow({ setId, setName, initial, tableHint, holeHint }:
               </label>
             ))}
           </div>
+          {shownHoles.length > 300 && <p className={css.muted}>Показаны первые 300 из {shownHoles.length.toLocaleString("ru-RU")} — уточните поиск.</p>}
           <p className={css.muted}>До {MAX_HOLES} скважин рядом.</p>
         </fieldset>
         <fieldset>

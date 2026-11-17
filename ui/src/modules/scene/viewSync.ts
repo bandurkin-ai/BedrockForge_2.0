@@ -22,6 +22,8 @@ export interface ConflictError {
 
 const isConflict = (e: unknown): e is ConflictError =>
   typeof e === "object" && e !== null && (e as { status?: unknown }).status === 409;
+/** 410: the value belongs to a project that is no longer open — nothing to write, nothing to tell. */
+const isGone = (e: unknown) => typeof e === "object" && e !== null && (e as { status?: unknown }).status === 410;
 
 interface Entry {
   value: unknown;
@@ -108,7 +110,7 @@ export class ViewSync {
       e.version = r.version;
       this.settle(key, e, r.value);
     } catch (err) {
-      if (gen !== this.generation) return;
+      if (gen !== this.generation || isGone(err)) return;
       if (!isConflict(err)) {
         e.pending = [...ops, ...e.pending]; // the next change writes them too
         this.onNote("Настройки вида не сохранены в проекте: ядро недоступно.");

@@ -79,8 +79,9 @@ export function azimuthDeg(dx: number, dy: number): number {
 
 export function inCorridor(x: number, y: number, line: SectionLine): boolean {
   const { u, d } = toSection(x, y, line);
-  // `d` is positive to the right of the line, where the viewer is.
-  return d <= line.towards && d >= -line.away && (line.length === null || (u >= -1 && u <= line.length + 1));
+  // `d` is positive to the right of the line, where the viewer is. The same bounds as clipPlanes: the mini-plan
+  // and the 3D view keep the same objects at the ends of a drawn line.
+  return d <= line.towards && d >= -line.away && (line.length === null || (u >= 0 && u <= line.length));
 }
 
 /**

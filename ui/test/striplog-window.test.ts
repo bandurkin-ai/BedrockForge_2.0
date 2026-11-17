@@ -58,4 +58,22 @@ describe("window «Данные по скважинам»", () => {
     expect(svg.indexOf("<defs>")).toBeGreaterThan(svg.indexOf("<svg"));
     expect(svg.endsWith("<rect/></svg>")).toBe(true);
   });
+
+  it("CSV of 20 000 intervals by two columns is linear; formulas are not run by Excel", () => {
+    const n = 20_000;
+    const from = Array.from({ length: n }, (_, i) => i * 2);
+    const big: LogAnswer = {
+      tables: [{ key: "5", id: 5, name: "Пробы", kind: "assay", columns: [{ name: "AU", kind: "number", unit: "" }, { name: "S", kind: "text", unit: "" }] }],
+      holes: [{ name: "=cmd", collar_z: 0, td: 2 * n, found: true, tables: { "5": { from, to: from.map((f) => f + 2), values: { AU: from.map(() => 1), S: from.map(() => "@x") } } } }],
+    };
+    const t0 = performance.now();
+    const csv = logCsv(toDownhole(big), [
+      { table: "5", field: "AU", title: "AU", event: false },
+      { table: "5", field: "S", title: "S", event: false },
+    ]);
+    expect(performance.now() - t0).toBeLessThan(1000);
+    const rows = csv.split("\r\n");
+    expect(rows).toHaveLength(n + 1);
+    expect(rows[1]).toBe(`"'=cmd";0;2;1;"'@x"`);
+  });
 });

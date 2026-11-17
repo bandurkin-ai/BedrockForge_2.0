@@ -89,6 +89,8 @@ def test_api_versions_conflict_and_deleted_objects(demo) -> None:  # type: ignor
     r = c.put(f"{API}/view/scene", json={"value": {"vexag": 4}, "expected_version": 1})
     assert r.status_code == 422 and r.json()["code"] == "bad_view_setting" and "1, 2, 3 или 5" in r.json()["message"]
     assert c.put(f"{API}/view/whatever", json={"value": 1, "expected_version": 0}).status_code == 422
+    late = c.put(f"{API}/view/scene", json={"value": {}, "expected_version": 1, "project": "0" * 32})
+    assert late.status_code == 410 and late.json()["code"] == "project_changed"  # a write of another project
 
     hidden = [f"set:{set_id}:collars", "wf:999999"]
     assert c.put(f"{API}/view/hidden", json={"value": hidden, "expected_version": 0}).status_code == 200

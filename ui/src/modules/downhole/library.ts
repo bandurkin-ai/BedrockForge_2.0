@@ -2,7 +2,7 @@
  * The style library and the saved displays of a project (ТЗ 7.16, ADR 0007 §3): API of the core and its
  * cache for the forms. Built-in styles (BUILTIN_STYLES) are read-only and never sent to the core.
  */
-import { bridge } from "../../bridge";
+import { bridge, saveFile } from "../../bridge";
 import { api } from "../../shell/api";
 import { Store } from "../../shell/store";
 import type { StripLogSettings } from "../../charts/striplog/model";
@@ -32,7 +32,13 @@ export interface StyleUsage {
   tracks: string[];
 }
 
-export const libraryStore = new Store<{ styles: StyleRow[]; charts: ChartRow[]; loaded: boolean }>({ styles: [], charts: [], loaded: false });
+export const libraryStore = new Store<{
+  styles: StyleRow[];
+  charts: ChartRow[];
+  loaded: boolean;
+  /** the last deleted style: every open form keeps a copy of its settings (ТЗ 7.16) */
+  removed: { style: StyleRec; seq: number } | null;
+}>({ styles: [], charts: [], loaded: false, removed: null });
 
 /** Library styles and the built-in ones (built-in last, as in BF). */
 export function allStyles(): StyleRec[] {
@@ -59,6 +65,7 @@ export async function patchStyle(style: StyleRow, patch: Partial<Pick<StyleRow, 
 /** Deletes a style; the displays that used it keep its settings (the core unlinks them). */
 export async function deleteStyle(style: StyleRow): Promise<number[]> {
   const r = await api.del<{ charts: number[] }>(`/styles/${style.id}`);
+  libraryStore.set((x) => ({ removed: { style, seq: (x.removed?.seq ?? 0) + 1 } }));
   await loadLibrary();
   return r.charts;
 }
@@ -70,9 +77,7 @@ export async function styleUsage(style: StyleRow): Promise<StyleUsage[]> {
 /** «Экспорт…»: a .bfstyle.json through the save dialog; the path or null. */
 export async function exportStyles(ids: number[] | null): Promise<string | null> {
   const r = await api.post<{ name: string; file: unknown }>("/styles/export", { ids });
-  const b = bridge();
-  if (!b) throw new Error("Сохранение файлов доступно только в приложении");
-  return b.saveFile(r.name, "bfstyle", JSON.stringify(r.file, null, 1));
+  return saveFile(r.name, "bfstyle", JSON.stringify(r.file, null, 1));
 }
 
 export interface StyleImportResult {

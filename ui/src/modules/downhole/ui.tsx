@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { bridge } from "../../bridge";
+import { bridge, saveFile } from "../../bridge";
 
 /** Small controls shared by the sections of the downhole display form. */
 
@@ -190,7 +190,5 @@ export async function openCsvText(): Promise<string | null> {
 
 /** «Экспорт в CSV»: the save dialog of the app (the shell adds the BOM); the path or null. */
 export async function saveCsv(name: string, text: string): Promise<string | null> {
-  const b = bridge();
-  if (!b) throw new Error("Сохранение файлов доступно только в приложении");
-  return b.saveFile(name.replace(/[\\/:*?"<>|]+/g, "_"), "csv", text);
+  return saveFile(name.replace(/[\\/:*?"<>|]+/g, "_"), "csv", text);
 }

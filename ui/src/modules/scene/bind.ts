@@ -4,7 +4,7 @@ import type { App } from "../../shell/app";
 import { api } from "../../shell/api";
 import { Store } from "../../shell/store";
 import { DEFAULT_VIEW, VEXAG_STEPS, type ViewState } from "../../shell/workspace";
-import { projectStore } from "../projects/state";
+import { beforeProjectChange, projectStore } from "../projects/state";
 import { openWindow } from "../../shell/windows";
 import { tablesStore } from "../tables/state";
 import { hiddenKey, patchFields, toggleHidden, ViewSync, type ViewIO } from "./viewSync";
@@ -15,7 +15,8 @@ export const viewStore = new Store<Record<string, unknown>>({});
 
 const io: ViewIO = {
   get: () => api.get("/view"),
-  put: (key, value, expectedVersion) => api.put(`/view/${key}`, { value, expected_version: expectedVersion }),
+  put: (key, value, expectedVersion) =>
+    api.put(`/view/${key}`, { value, expected_version: expectedVersion, project: projectStore.get().current?.uid ?? null }),
 };
 
 let sync: ViewSync | null = null;
@@ -58,6 +59,9 @@ export function bindScene(app: App): void {
     },
     (text) => store.set({ statusNote: text }),
   );
+  beforeProjectChange.add(() => sync?.flushAll() ?? Promise.resolve());
+  // closing the window: send what is pending (the requests go out before the page is gone)
+  if (typeof window !== "undefined") window.addEventListener("pagehide", () => void sync?.flushAll());
   let uid: string | null = null;
   projectStore.subscribe(() => {
     const cur = projectStore.get().current?.uid ?? null;

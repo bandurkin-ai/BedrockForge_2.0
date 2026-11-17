@@ -29,11 +29,15 @@ def get_view(svc: Svc) -> dict[str, Any]:
 class PutBody(BaseModel):
     value: Any = None
     expected_version: int = Field(ge=0)
+    #: uid of the project the value belongs to: a write that comes late, after another project opened, is refused
+    project: str | None = Field(default=None, max_length=64)
 
 
 @router.put("/{key}")
 def put_view(svc: Svc, key: str, body: PutBody) -> dict[str, Any]:
     project = svc.require_current(writable=True)
+    if body.project is not None and body.project != project.uid:
+        raise ApiError(410, "project_changed", "Открыт другой проект.", "Настройка вида прежнего проекта не записана.")
     try:
         with dialect.write_tx(project.engine) as conn:
             return write(conn, key, body.value, body.expected_version)

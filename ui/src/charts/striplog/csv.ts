@@ -13,16 +13,25 @@ export interface CsvColumn {
   event: boolean;
 }
 
+/** Text a spreadsheet would run as a formula (= + - @) gets a leading apostrophe. */
+const safe = (t: string) => (/^[=+\-@\t\r]/.test(t) ? `'${t}` : t);
 const cell = (v: string | number | null | undefined) =>
-  v === null || v === undefined || v === "" ? "" : typeof v === "number" ? String(v) : `"${String(v).replace(/"/g, '""')}"`;
+  v === null || v === undefined || v === "" ? "" : typeof v === "number" ? String(v) : `"${safe(String(v)).replace(/"/g, '""')}"`;
 
-/** The value of an interval column over [a, b]: the interval that holds it (the first one when they overlap). */
-function covering(rows: DownholeInterval[], field: string, a: number, b: number): number | string | null {
-  for (const r of rows) {
-    if (r.from === null || r.to === null) continue;
-    if (r.from <= a + 1e-9 && r.to >= b - 1e-9 && r.to > r.from) return r.values[field] ?? null;
-  }
-  return null;
+/**
+ * The value of an interval column over [a, b] — the first interval (by «от») that holds it. Asked with `a`
+ * growing, it walks the rows once (two pointers: 20 000 rows by 40 000 pieces stay linear).
+ */
+function coverer(rows: DownholeInterval[], field: string): (a: number, b: number) => number | string | null {
+  const list = rows.filter((r) => r.from !== null && r.to !== null && r.to > r.from).sort((x, y) => (x.from as number) - (y.from as number));
+  let j = 0;
+  return (a, b) => {
+    while (j < list.length && (list[j].to as number) < a - 1e-9) j++;
+    for (let k = j; k < list.length && (list[k].from as number) <= a + 1e-9; k++) {
+      if ((list[k].to as number) >= b - 1e-9) return list[k].values[field] ?? null;
+    }
+    return null;
+  };
 }
 
 export function logCsv(data: DownholeData, columns: CsvColumn[]): string {
@@ -42,15 +51,17 @@ export function logCsv(data: DownholeData, columns: CsvColumn[]): string {
     }
     const depths = [...marks].sort((x, y) => x - y);
     const rows: { a: number; b: number; cells: (number | string | null)[] }[] = [];
+    const pieces = columns.map((c) => (c.event ? null : coverer(h.tables[c.table] ?? [], c.field)));
     for (let i = 0; i + 1 < depths.length; i++) {
       const a = depths[i];
       const b = depths[i + 1];
-      const cells = columns.map((c) => (c.event ? null : covering(h.tables[c.table] ?? [], c.field, a, b)));
+      const cells = pieces.map((f) => (f ? f(a, b) : null));
       if (cells.some((v) => v !== null)) rows.push({ a, b, cells });
     }
+    const points = columns.map((c) => (c.event ? null : coverer(h.tables[c.table] ?? [], c.field)));
     for (const d of [...new Set(events)].sort((x, y) => x - y)) {
-      const cells = columns.map((c) => {
-        if (!c.event) return covering(h.tables[c.table] ?? [], c.field, d, d);
+      const cells = columns.map((c, ci) => {
+        if (!c.event) return (points[ci] as (a: number, b: number) => number | string | null)(d, d);
         const ev = (h.tables[c.table] ?? []).find((r) => r.from !== null && Math.abs(r.from - d) < 1e-9);
         return ev ? (ev.values[c.field] ?? null) : null;
       });

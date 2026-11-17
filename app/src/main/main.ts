@@ -288,27 +288,45 @@ function registerIpc(): void {
     csv: { filters: [{ name: "CSV", extensions: ["csv"] }], bom: true },
     bfstyle: { filters: [{ name: "Стили BedrockForge", extensions: ["bfstyle.json", "json"] }], bom: false },
   };
+  const kindOf = (kind: string) => (Object.hasOwn(fileKinds, kind) ? fileKinds[kind] : undefined);
+  /** A file the system refuses: the reason in Russian (ТЗ 17), not the English text of Node. */
+  const fileError = (err: unknown): string => {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code === "EBUSY" || code === "EPERM") return "Файл занят другой программой — закройте его и повторите.";
+    if (code === "EACCES") return "Нет прав на запись в эту папку — выберите другую.";
+    if (code === "ENOSPC") return "На диске нет места.";
+    if (code === "ENOENT") return "Файл или папка не найдены.";
+    return "Файл не записан или не прочитан: ошибка файловой системы.";
+  };
   ipcMain.handle("bf:save-file", async (e, name: string, kind: string, data: string | Uint8Array) => {
     if (!mainWin || !fromMain(e.sender)) return null;
-    const k = fileKinds[String(kind)];
+    const k = kindOf(String(kind));
     if (!k || (typeof data !== "string" && !(data instanceof Uint8Array))) return null;
     if ((typeof data === "string" ? data.length * 3 : data.byteLength) > 512 * 1024 * 1024) return null;
     const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.join(app.getPath("documents"), path.basename(String(name))), filters: k.filters });
     if (r.canceled || !r.filePath) return null;
-    if (typeof data === "string") await fs.promises.writeFile(r.filePath, (k.bom ? "\uFEFF" : "") + data, "utf8");
-    else await fs.promises.writeFile(r.filePath, data);
+    try {
+      if (typeof data === "string") await fs.promises.writeFile(r.filePath, (k.bom ? "\uFEFF" : "") + data, "utf8");
+      else await fs.promises.writeFile(r.filePath, data);
+    } catch (err) {
+      return { error: fileError(err) };
+    }
     return r.filePath;
   });
   ipcMain.handle("bf:open-text", async (e, kind: string) => {
     if (!mainWin || !fromMain(e.sender)) return null;
-    const k = fileKinds[String(kind)];
+    const k = kindOf(String(kind));
     if (!k || kind === "png") return null;
     const r = await dialog.showOpenDialog(mainWin, { properties: ["openFile"], filters: k.filters });
     if (r.canceled || !r.filePaths.length) return null;
     const file = r.filePaths[0];
-    const st = await fs.promises.stat(file);
-    if (st.size > 8 * 1024 * 1024) return { name: path.basename(file), text: null, error: "Файл больше 8 МБ" };
-    return { name: path.basename(file), text: (await fs.promises.readFile(file, "utf8")).replace(/^\uFEFF/, "") };
+    try {
+      const st = await fs.promises.stat(file);
+      if (st.size > 8 * 1024 * 1024) return { name: path.basename(file), text: null, error: "Файл больше 8 МБ" };
+      return { name: path.basename(file), text: (await fs.promises.readFile(file, "utf8")).replace(/^\uFEFF/, "") };
+    } catch (err) {
+      return { name: path.basename(file), text: null, error: fileError(err) };
+    }
   });
   // Flags of the interface: the E2E hook of the 3D window (BF_E2E=1) and software WebGL.
   ipcMain.on("bf:flags", (e) => (e.returnValue = { e2e: process.env.BF_E2E === "1", softwareGl: SOFTWARE_GL }));

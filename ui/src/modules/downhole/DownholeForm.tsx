@@ -80,6 +80,7 @@ export function DownholeForm({ setId, form, chart, hint, focus, refreshKey = 0, 
   const manifest = useRef<Promise<Manifest> | null>(null);
 
   const rows = useStore(libraryStore, (s) => s.styles);
+  const removed = useStore(libraryStore, (s) => s.removed);
   const library = useMemo<StyleRec[]>(() => [...rows, ...BUILTIN_STYLES], [rows]);
   const say = (text: string, error = false) => setNote({ text, error });
   const run = (p: Promise<unknown>) => void p.catch((e: unknown) => say(errText(e), true));
@@ -215,17 +216,23 @@ export function DownholeForm({ setId, form, chart, hint, focus, refreshKey = 0, 
     }
   };
 
+  // A style deleted here or in another window: this form keeps its settings as its own, the saved state too.
+  const seenRemoved = useRef(removed?.seq ?? 0);
+  useEffect(() => {
+    if (!removed || removed.seq === seenRemoved.current) return;
+    seenRemoved.current = removed.seq;
+    const { style } = removed;
+    change((s) => unlinkStyle(s, style.uid, [style]));
+    setBaseline((b) => b && unlinkStyle(b, style.uid, [style]));
+  }, [removed, change]);
+
   // ---- the library
 
   const lib: StyleLib = {
     styles: library,
     say,
     remove: async (style) => {
-      const before = library;
-      await deleteStyle(needRow(style)); // the core leaves a copy of the style in the saved displays
-      // the open form keeps the style's settings as its own, the saved state too
-      change((s) => unlinkStyle(s, style.uid, before));
-      setBaseline((b) => b && unlinkStyle(b, style.uid, before));
+      await deleteStyle(needRow(style)); // the core leaves a copy in the saved displays; open forms — the effect below
       say(`Стиль «${style.name}» удалён; слои сохранили его настройки`);
     },
     rename: async (style, name) => {
