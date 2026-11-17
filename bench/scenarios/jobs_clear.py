@@ -16,6 +16,7 @@ def _engine(work: Path) -> Any:
 
 def prepare(params: dict[str, Any], work: Path) -> None:
     import sqlalchemy as sa
+
     from bf_core.db import dialect
     from bf_core.db.schema import job_log, jobs
     from bf_core.projects.project import create_folder
