@@ -8,6 +8,7 @@ import { projectStore } from "../projects/state";
 import { openWindow } from "../../shell/windows";
 import { tablesStore } from "../tables/state";
 import { hiddenKey, patchFields, toggleHidden, ViewSync, type ViewIO } from "./viewSync";
+import { bindViewCommands } from "./viewCommands";
 
 /** Every view key of the open project as the core keeps it (styles of collars and traces, displays…). */
 export const viewStore = new Store<Record<string, unknown>>({});
@@ -109,6 +110,8 @@ export function bindScene(app: App): void {
     else store.set((s) => ({ view: { ...s.view, hidden: op(s.view.hidden) as string[] } }));
     return `${a.visible ? "Показан" : "Скрыт"} слой ${key}`;
   });
+
+  bindViewCommands(app);
 
   for (const [command, kind, title] of [["holes.collar_style", "collars", "Устья"], ["holes.trace_style", "traces", "Стволы"]] as const) {
     registry.bind(command, async (a) => {

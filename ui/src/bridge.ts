@@ -10,7 +10,10 @@ export interface BfBridge {
   core(): CoreInfo | null;
   appVersion(): string;
   uiReady(): void;
-  spike(): string | null;
+  /** E2E hook of the 3D window (BF_E2E=1) and whether WebGL is software (SwiftShader). */
+  flags(): { e2e: boolean; softwareGl: boolean };
+  /** Restart the app with software WebGL (the 3D diagnostic window, ADR 0004 §4). */
+  relaunchSoftwareGl(): void;
   /** User settings file %APPDATA%\BedrockForge\settings.json (null — missing or damaged). */
   loadSettings(): unknown;
   saveSettings(data: unknown): void;

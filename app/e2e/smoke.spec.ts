@@ -1,9 +1,9 @@
-// Smoke E2E (spikes Э0-б, Э0-в): launch the app, core answers with token and 401 without,
-// 1M triangles render under software WebGL; a frame is saved as an artifact.
+// Smoke E2E (spike Э0-в, scene of Э6): launch the app, core answers with token and 401 without, the 3D window
+// of the demo project draws under software WebGL; a frame is saved as an artifact.
 import { _electron as electron, expect, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { ART, close, launchOptions } from "./helpers";
+import { ART, close, launch, launchOptions, waitFrame } from "./helpers";
 
 test("window opens, core answers with token, 401 without", async () => {
   const t0 = Date.now();
@@ -31,19 +31,21 @@ test("window opens, core answers with token, 401 without", async () => {
   }
 });
 
-test("1M triangles under software WebGL2", async () => {
-  const app = await electron.launch(launchOptions({ BF_SPIKE: "mesh" }));
+test("the 3D window draws a frame under software WebGL2", async () => {
+  // Replaces the spike Э0-б: the scene of the demo project is a lazy chunk on WebGL2 (ADR 0004).
+  const { app, page } = await launch({ BF_E2E: "1" });
   try {
-    await expect.poll(async () => app.windows().some((w) => w.url().endsWith("/index.html")), { timeout: 90_000 }).toBe(true);
-    const page = app.windows().find((w) => w.url().endsWith("/index.html"))!;
-    // Not waitForFunction: under the strict CSP of app:// it needs eval.
-    await expect.poll(() => page.evaluate(() => window.__bfSpike !== undefined), { timeout: 120_000 }).toBe(true);
-    const result = await page.evaluate(() => window.__bfSpike);
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
+    await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
+    await waitFrame(page);
+    const state = await page.evaluate(() => window.__bfScene!.state());
+    const pixels = await page.evaluate(() => window.__bfScene!.pixels());
     fs.mkdirSync(ART, { recursive: true });
-    fs.writeFileSync(path.join(ART, "spike-mesh.json"), JSON.stringify(result, null, 2));
-    await page.screenshot({ path: path.join(ART, "spike-mesh-1m.png") });
-    expect(result && "triangles" in result ? result.triangles : result).toBe(1_000_000);
-    expect(result && "webgl2" in result ? result.webgl2 : false).toBe(true);
+    fs.writeFileSync(path.join(ART, "scene-frame.json"), JSON.stringify({ gpu: state.gpu, frames: state.frames, stats: state.stats, pixels }, null, 2));
+    await page.screenshot({ path: path.join(ART, "scene-frame.png") });
+    expect(state.gpu.renderer).not.toBe("");
+    expect(pixels?.nonBackground ?? 0).toBeGreaterThan(100);
   } finally {
     await close(app);
   }

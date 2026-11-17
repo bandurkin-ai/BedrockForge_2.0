@@ -9,6 +9,7 @@ import { bindJobs } from "../modules/jobs/bind";
 import { bindProjects } from "../modules/projects/bind";
 import { bindStripLog } from "../charts/striplog/bind";
 import { bindScene } from "../modules/scene/bind";
+import { bindSection } from "../modules/section/bind";
 import { bindTables } from "../modules/tables/bind";
 import { createRegistry } from "./catalog";
 import { logText, opLogStore, openLogWindow } from "./opLog";
@@ -128,6 +129,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindTables(app);
   bindAudit(app);
   bindScene(app);
+  bindSection(app);
   bindStripLog(app);
   bindDownhole(app);
   return app;

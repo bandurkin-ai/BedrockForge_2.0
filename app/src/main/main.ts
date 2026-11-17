@@ -15,7 +15,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true, codeCache: true } },
 ]);
 
-if (process.env.BF_SOFTWARE_GL === "1") {
+// «Программная отрисовка (медленно)» of the 3D diagnostic window relaunches with this switch (ADR 0004 §4).
+const SOFTWARE_GL = process.env.BF_SOFTWARE_GL === "1" || process.argv.includes("--bf-software-gl");
+if (SOFTWARE_GL) {
   // Software WebGL2 (SwiftShader): CI without GPU and a user fallback for broken drivers.
   app.commandLine.appendSwitch("use-gl", "angle");
   app.commandLine.appendSwitch("use-angle", "swiftshader");
@@ -308,7 +310,14 @@ function registerIpc(): void {
     if (st.size > 8 * 1024 * 1024) return { name: path.basename(file), text: null, error: "Файл больше 8 МБ" };
     return { name: path.basename(file), text: (await fs.promises.readFile(file, "utf8")).replace(/^\uFEFF/, "") };
   });
-  ipcMain.on("bf:spike", (e) => (e.returnValue = process.env.BF_SPIKE ?? null));
+  // Flags of the interface: the E2E hook of the 3D window (BF_E2E=1) and software WebGL.
+  ipcMain.on("bf:flags", (e) => (e.returnValue = { e2e: process.env.BF_E2E === "1", softwareGl: SOFTWARE_GL }));
+  ipcMain.on("bf:relaunch-software-gl", (e) => {
+    if (!fromMain(e.sender) || SOFTWARE_GL) return;
+    log("relaunch with software WebGL (asked by the 3D diagnostic window)");
+    app.relaunch({ args: [...process.argv.slice(1), "--bf-software-gl"] });
+    app.quit();
+  });
   // System file dialogs for .bfggis (ТЗ 7.4): the path goes to the core, which reads and writes the file itself.
   const bfggis = [{ name: "Проект BedrockForge", extensions: ["bfggis"] }];
   // Table export (ТЗ 9.12): DAT, CSV, XLSX — the filter follows the chosen format.

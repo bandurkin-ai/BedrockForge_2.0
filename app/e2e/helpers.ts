@@ -61,3 +61,9 @@ export function shot(name: string): string {
   fs.mkdirSync(ART, { recursive: true });
   return path.join(ART, name);
 }
+
+/** Waits for «кадр готов» of the 3D window (BF_E2E=1): everything loaded and the last change drawn. */
+export async function waitFrame(page: Page, timeout = 90_000): Promise<void> {
+  // Not waitForFunction: under the strict CSP of app:// it needs eval.
+  await expect.poll(() => page.evaluate(() => (window.__bfScene ? window.__bfScene.ready() : false)), { timeout, intervals: [100, 200, 400] }).toBe(true);
+}

@@ -29,6 +29,29 @@ describe("projection for picking (float64)", () => {
     expect(p[10]).toBe(3);
   });
 
+  it("matches the matrices of three.js cameras (ortho and perspective)", async () => {
+    const THREE = await import("three");
+    const cam = lookFrom([0.9, -1.2, 0.8], { min: [-300, -200, -50], max: [400, 250, 80] }, opts);
+    const ortho = new THREE.OrthographicCamera(-cam.half * opts.aspect, cam.half * opts.aspect, cam.half, -cam.half, cam.near, cam.far);
+    ortho.up.set(0, 0, 1);
+    ortho.position.set(...cam.position);
+    ortho.lookAt(...cam.target);
+    ortho.updateMatrixWorld();
+    ortho.updateProjectionMatrix();
+    const ref = new THREE.Matrix4().multiplyMatrices(ortho.projectionMatrix, ortho.matrixWorldInverse).elements;
+    viewProjection(cam, opts).forEach((v, i) => expect(v).toBeCloseTo(ref[i], 9));
+    const popts = { ...opts, perspective: true };
+    const pc = lookFrom([0.9, -1.2, 0.8], { min: [-300, -200, -50], max: [400, 250, 80] }, popts);
+    const persp = new THREE.PerspectiveCamera(45, popts.aspect, pc.near, pc.far);
+    persp.up.set(0, 0, 1);
+    persp.position.set(...pc.position);
+    persp.lookAt(...pc.target);
+    persp.updateMatrixWorld();
+    persp.updateProjectionMatrix();
+    const pref = new THREE.Matrix4().multiplyMatrices(persp.projectionMatrix, persp.matrixWorldInverse).elements;
+    viewProjection(pc, popts).forEach((v, i) => expect(v).toBeCloseTo(pref[i], 9));
+  });
+
   it("points behind the near or far plane are not projected", () => {
     const cam = { ...lookFrom([0, -1, 0], { min: [-10, -10, -10], max: [10, 10, 10] }, opts) };
     const m = viewProjection(cam, opts);

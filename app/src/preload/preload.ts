@@ -4,7 +4,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 contextBridge.exposeInMainWorld("bf", {
   core: () => ipcRenderer.sendSync("bf:core-info"),
   appVersion: () => ipcRenderer.sendSync("bf:app-version"),
-  spike: () => ipcRenderer.sendSync("bf:spike"),
+  flags: () => ipcRenderer.sendSync("bf:flags"),
+  relaunchSoftwareGl: () => ipcRenderer.send("bf:relaunch-software-gl"),
   uiReady: () => ipcRenderer.send("bf:ui-ready"),
   loadSettings: () => ipcRenderer.sendSync("bf:settings-load"),
   saveSettings: (data: unknown) => ipcRenderer.send("bf:settings-save", data),
