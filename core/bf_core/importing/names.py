@@ -65,7 +65,9 @@ def compact(name: str) -> str:
     return canon(name).replace("_", "")
 
 
-def match_column(columns: list[str], aliases: tuple[str, ...] | list[str], used: set[str] | frozenset[str] = frozenset()) -> str | None:
+def match_column(
+    columns: list[str], aliases: tuple[str, ...] | list[str], used: set[str] | frozenset[str] = frozenset()
+) -> str | None:
     """The column for the first alias found (aliases in priority order), or None."""
     free = [c for c in columns if c not in used]
     by_canon: dict[str, str] = {}
