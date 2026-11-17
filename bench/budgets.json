@@ -31,6 +31,13 @@
       },
       "budget_s": 15.0,
       "budget_mb": 900
+    },
+    "table_browse": {
+      "params": {
+        "rows": 500000
+      },
+      "budget_s": 15.0,
+      "budget_mb": 900
     }
   },
   "full": {
@@ -59,6 +66,13 @@
       "budget_mb": 1024
     },
     "drillhole_import": {
+      "params": {
+        "rows": 5000000
+      },
+      "budget_s": 90.0,
+      "budget_mb": 3072
+    },
+    "table_browse": {
       "params": {
         "rows": 5000000
       },

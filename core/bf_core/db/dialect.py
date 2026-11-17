@@ -253,3 +253,41 @@ def bulk_insert(conn: Connection, table: sa.Table, columns: Sequence[str], rows:
     placeholder = "?" if conn.dialect.name == "sqlite" else "%s"
     sql = f"INSERT INTO {table.name} ({', '.join(columns)}) VALUES ({', '.join([placeholder] * len(columns))})"
     conn.exec_driver_sql(sql, list(map(tuple, rows)))
+
+
+def bulk_update(
+    conn: Connection, table: sa.Table, columns: Sequence[str], key: str, rows: Sequence[Sequence[Any]]
+) -> None:
+    """Many rows `UPDATE table SET columns… WHERE key = …` through the driver's executemany; each row is the
+    new values followed by the key. Values in driver form, as for `bulk_insert`."""
+    if not rows:
+        return
+    placeholder = "?" if conn.dialect.name == "sqlite" else "%s"
+    sets = ", ".join(f"{c} = {placeholder}" for c in columns)
+    conn.exec_driver_sql(f"UPDATE {table.name} SET {sets} WHERE {key} = {placeholder}", list(map(tuple, rows)))
+
+
+def json_field_sql(conn: Connection, column: str, key: str) -> str:
+    """SQL text of `column ->> key` for a raw select (`iter_driver_rows`); `key` must be a plain token."""
+    if not key.replace("_", "").isalnum():
+        raise ValueError(key)
+    if conn.dialect.name == "sqlite":
+        return f"json_extract({column}, '$.\"{key}\"')"
+    return f"({column} ->> '{key}')"
+
+
+def iter_driver_rows(conn: Connection, sql: str, params: Sequence[Any], size: int = 200_000) -> Iterator[list[Any]]:
+    """Rows of a raw select in portions, as driver tuples — no per-row SQLAlchemy work (snapshots of 5 million
+    rows). `sql` uses `?` placeholders; they become `%s` on PostgreSQL."""
+    if conn.dialect.name != "sqlite":
+        sql = sql.replace("?", "%s")
+    cur = conn.connection.driver_connection.cursor()  # type: ignore[union-attr]
+    try:
+        cur.execute(sql, tuple(params))
+        while True:
+            part = cur.fetchmany(size)
+            if not part:
+                return
+            yield part
+    finally:
+        cur.close()

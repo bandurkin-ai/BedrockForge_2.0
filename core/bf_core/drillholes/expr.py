@@ -231,6 +231,21 @@ def compile_expr(text: str, resolve: Resolve, n: int) -> _Value:
                 stack = np.vstack([num(a) for a in args])
                 with np.errstate(all="ignore"):
                     return _Value("number", (np.nanmin if name == "min" else np.nanmax)(stack, axis=0))
+            if name == "inlist" and len(args) >= 2:
+                first = args[0]
+                if first.kind == "number":
+                    x = num(first)
+                    acc = np.zeros(n, dtype=bool)
+                    for a in args[1:]:
+                        with np.errstate(invalid="ignore"):
+                            acc |= x == num(a) if a.kind != "text" else np.zeros(n, dtype=bool)
+                    return _Value("bool", acc)
+                t0 = _as_text(first)
+                options = [{str(v).casefold() for v in _as_text(a) if v is not None} for a in args[1:]]
+                allowed = set().union(*options)
+                return _Value(
+                    "bool", np.array([v is not None and str(v).casefold() in allowed for v in t0], dtype=bool)
+                )
             if name in ("upper", "lower", "trim") and len(args) == 1:
                 t = _as_text(args[0])
                 fns: dict[str, Callable[[str], str]] = {"upper": str.upper, "lower": str.lower, "trim": str.strip}

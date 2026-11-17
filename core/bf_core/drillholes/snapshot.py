@@ -13,7 +13,6 @@ happens only when the key is unknown.
 
 from __future__ import annotations
 
-import json
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
@@ -24,7 +23,8 @@ from typing import Any
 import numpy as np
 import sqlalchemy as sa
 
-from bf_core.db.schema import dh_columns, dh_holes, dh_rows, dh_surveys, dh_tables, objects
+from bf_core.db import dialect
+from bf_core.db.schema import dh_columns, dh_holes, dh_surveys, dh_tables, objects
 
 PARQUET_FROM = 100_000
 CACHE_SIZE = 3
@@ -245,48 +245,39 @@ def build_rows(
     number_slots = {c.slot: c.key for c in cols if c.kind == "number" and c.slot is not None}
     text_slots = {str(c.slot): c.key for c in cols if c.kind == "text" and c.slot is not None}
     width = max(number_slots, default=-1) + 1
-    ids: list[int] = []
-    holes: list[int] = []
-    froms: list[Any] = []
-    tos: list[Any] = []
-    blobs: list[bytes | None] = []
-    texts: dict[str, list[Any]] = {k: [] for k in text_slots.values()}
-    q = (
-        sa.select(dh_rows.c.id, dh_rows.c.hole_id, dh_rows.c.from_m, dh_rows.c.to_m, dh_rows.c.num, dh_rows.c.txt)
-        .where(dh_rows.c.table_id == table_id)
-        .order_by(dh_rows.c.id)
-    )
-    for part in conn.execute(q.execution_options(yield_per=100_000)).partitions():
-        for r in part:
-            ids.append(r[0])
-            holes.append(r[1])
-            froms.append(r[2])
-            tos.append(r[3])
-            blobs.append(r[4])
-            if texts:
-                t = r[5]
-                if isinstance(t, str):
-                    t = json.loads(t)
-                for tslot, tk in text_slots.items():
-                    texts[tk].append(None if not t else t.get(tslot))
-    matrix = _decode_vectors(blobs, width)
-    del blobs
-    data: dict[str, np.ndarray] = {"from": _floats(froms), "to": _floats(tos)}
+
+    texts = list(text_slots.items())
+    fields = ["id", "hole_id", "from_m", "to_m", "num"] + [
+        dialect.json_field_sql(conn, "txt", slot) for slot, _k in texts
+    ]
+    sql = f"SELECT {', '.join(fields)} FROM dh_rows WHERE table_id = ? ORDER BY id"
+    parts: dict[str, list[np.ndarray]] = {k: [] for k in ("id", "hole", "from", "to")}
+    text_parts: dict[str, list[np.ndarray]] = {k: [] for _s, k in texts}
+    matrices: list[np.ndarray] = []
+    for chunk in dialect.iter_driver_rows(conn, sql, (table_id,)):
+        got = list(zip(*chunk, strict=True))
+        parts["id"].append(np.array(got[0], dtype=np.int64))
+        parts["hole"].append(np.array(got[1], dtype=np.int64))
+        parts["from"].append(np.array(got[2], dtype=float))  # None → NaN
+        parts["to"].append(np.array(got[3], dtype=float))
+        matrices.append(_decode_vectors(list(got[4]), width))
+        for j, (_s, k) in enumerate(texts):
+            text_parts[k].append(np.array(got[5 + j], dtype=object))
+        del chunk, got
+
+    def cat(arrs: list[np.ndarray], dtype: Any) -> np.ndarray:
+        return np.concatenate(arrs) if arrs else np.zeros(0, dtype=dtype)
+
+    ids = cat(parts["id"], np.int64)
+    data: dict[str, np.ndarray] = {"from": cat(parts["from"], float), "to": cat(parts["to"], float)}
+    matrix = np.concatenate(matrices) if matrices else np.zeros((0, max(width, 1)))
+    del matrices
     for nslot, nk in number_slots.items():
-        data[nk] = np.ascontiguousarray(matrix[:, nslot]) if width else np.zeros(0)
-    for k, vals in texts.items():
-        data[k] = np.array(vals, dtype=object)
-    snap = Snapshot(
-        str(table_id),
-        set_id,
-        kind,
-        key,
-        cols,
-        np.array(ids, dtype=np.int64),
-        np.array(holes, dtype=np.int64),
-        data,
-        names,
-    )
+        data[nk] = np.ascontiguousarray(matrix[:, nslot])
+    del matrix
+    for _s, k in texts:
+        data[k] = cat(text_parts[k], object)
+    snap = Snapshot(str(table_id), set_id, kind, key, cols, ids, cat(parts["hole"], np.int64), data, names)
     if path is not None and len(ids) >= PARQUET_FROM:
         _to_parquet(snap, path)
     return snap

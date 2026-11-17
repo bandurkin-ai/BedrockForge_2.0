@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
-from bf_core.db.schema import dh_holes, dh_rows, dh_surveys, edit_log
+from bf_core.db.schema import dh_holes, dh_rows, dh_surveys, dh_tables, edit_log
 
 from . import edit as e
 from .snapshot import Snapshot, snapshots, table_key
@@ -228,6 +228,9 @@ def undo(project: Any, edit_id: int) -> dict[str, Any]:
             ref = g["row_ref"] or {}
             row_id = int(ref.get("row") or 0)
             changes = g["changes"] or {}
+            if g["action"] in ("column", "append"):
+                _undo_structure(conn, t, g["action"], ref, changes)
+                continue
             if g["action"] == "insert":
                 found = e.read_row(conn, t, row_id)
                 if found is not None:
@@ -270,7 +273,10 @@ def undo(project: Any, edit_id: int) -> dict[str, Any]:
         _prune(conn, set_id)
         conn.execute(sa.update(edit_log).where(edit_log.c.id.in_([g["id"] for g in group])).values(undone=True))
         new_rev = e.bump(conn, t, None, rows_delta=delta)
-    snapshots.forget(set_id) if t.table == "collar" else _finish(project, t, old_rev, new_rev, done, {})
+    if t.table == "collar" or any(g["action"] in ("column", "append") for g in group):
+        snapshots.forget(set_id)
+    else:
+        _finish(project, t, old_rev, new_rev, done, {})
     return {"rev": new_rev, "undone": [g["id"] for g in group], "set_id": set_id, "table": table}
 
 
@@ -293,3 +299,42 @@ def current(project: Any, set_id: int, table: str) -> tuple[Any, ...]:
     if key is None:
         raise ApiError(404, "table_not_found", "Таблица не найдена.", "Обновите дерево проекта.")
     return key
+
+
+def _undo_structure(
+    conn: sa.Connection, t: e.Target, action: str, ref: dict[str, Any], changes: dict[str, Any]
+) -> None:
+    """Undo of a tool: a column added → hidden, deleted → back, renamed → old name; appended rows → deleted."""
+    from bf_core.db.schema import dh_columns
+
+    if action == "append":
+        first, last = ref.get("rows") or [0, -1]
+        conn.execute(sa.delete(dh_rows).where(dh_rows.c.table_id == int(t.table), dh_rows.c.id.between(first, last)))
+        conn.execute(
+            sa.update(dh_tables)
+            .where(dh_tables.c.id == int(t.table))
+            .values(
+                row_count=sa.select(sa.func.count())
+                .select_from(dh_rows)
+                .where(dh_rows.c.table_id == int(t.table))
+                .scalar_subquery()
+            )
+        )
+        return
+    key = str(ref.get("column"))
+    if key.startswith("a:"):  # a free column of collars or surveys: the attribute leaves every row
+        from .snapshot import build_collars, build_surveys
+        from .tools import set_column
+
+        snap = (build_collars if t.table == "collar" else build_surveys)(conn, t.set_id, ())
+        idx = np.arange(len(snap.ids))
+        if changes.get("column", [None, None])[0] is None:
+            set_column(conn, t, snap, key, idx, [None] * len(idx))
+        return
+    col_id = int(key[1:])
+    if "name" in changes:
+        conn.execute(sa.update(dh_columns).where(dh_columns.c.id == col_id).values(name=changes["name"][0]))
+    elif changes.get("column", [None, None])[0] is None:
+        conn.execute(sa.update(dh_columns).where(dh_columns.c.id == col_id).values(deleted=True))
+    else:
+        conn.execute(sa.update(dh_columns).where(dh_columns.c.id == col_id).values(deleted=False))
