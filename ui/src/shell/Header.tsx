@@ -1,6 +1,7 @@
 import { useApp } from "./AppContext";
 import { Icon } from "./Icon";
 import { useStore } from "./useStore";
+import logoMark from "../assets/logo-mark.png";
 import css from "./Header.module.css";
 
 /** Title bar of the window (ТЗ 7.0.3): logo, project, command search, theme, Claude. */
@@ -11,8 +12,13 @@ export function Header() {
   return (
     <header className={css.header}>
       <div className={css.logo} title="BedrockForge by Mikhail Bandurkin">
-        <b>BedrockForge</b>
-        <span>by Mikhail Bandurkin</span>
+        <img src={logoMark} alt="" className={css.mark} />
+        <div className={css.wordmark}>
+          <b>
+            Bedrock<span className={css.forge}>Forge</span>
+          </b>
+          <span>by Mikhail Bandurkin</span>
+        </div>
       </div>
       <button type="button" className={css.project} title="Проекты" data-testid="project-selector" onClick={() => void app.run("project.manage")}>
         <span>{project ?? "Проект не открыт"}</span>

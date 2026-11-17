@@ -264,6 +264,38 @@ export_log = sa.Table(
     sa.Column("created_at", UtcDateTime, nullable=False),
 )
 
+audit_runs = sa.Table(  # ТЗ 7.12: the last audit of a set (a new run replaces it)
+    "audit_runs",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("set_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
+    # the sample table checked (NULL once it is deleted or replaced: the result is «устарел» then)
+    sa.Column("table_id", REF, sa.ForeignKey("dh_tables.id", ondelete="SET NULL")),
+    sa.Column("table_name", sa.String(200), nullable=False),
+    sa.Column("config", JSONType, nullable=False),  # thresholds used
+    sa.Column("versions", JSONType, nullable=False),  # set version and table revision: «устарел» when they move
+    sa.Column("summary", JSONType, nullable=False),  # every rule: rows and holes affected (passed ones too)
+    sa.Column("totals", JSONType, nullable=False),  # findings by severity
+    sa.Column("job_id", REF),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Index(None, "set_id"),
+)
+
+audit_findings = sa.Table(  # grouped by rule and hole: the count and up to 20 examples
+    "audit_findings",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("run_id", REF, sa.ForeignKey("audit_runs.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("code", sa.String(40), nullable=False),
+    sa.Column("severity", sa.String(10), nullable=False),
+    sa.Column("source", sa.String(10), nullable=False),  # collar | survey | assay
+    sa.Column("hole", sa.String(200)),
+    sa.Column("count", sa.Integer, nullable=False),
+    sa.Column("examples", JSONType),
+    sa.Index(None, "run_id", "severity"),
+    sa.Index(None, "run_id", "hole"),
+)
+
 # --- instance level -------------------------------------------------------------------------------
 
 instance_jobs, instance_job_log = _jobs(instance_md)

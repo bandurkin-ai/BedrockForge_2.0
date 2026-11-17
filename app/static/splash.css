@@ -1,9 +1,21 @@
-html, body { margin: 0; height: 100%; background: #15181d; color: #e6e8eb; font-family: "Segoe UI", sans-serif; user-select: none; }
+/* Brand (docs/brand/README.md): Anthracite, Copper Orange, Light Stone; Montserrat and Inter (OFL-1.1, bundled). */
+@font-face { font-family: "Montserrat"; font-weight: 700; src: url("fonts/montserrat-latin-700-normal.woff2") format("woff2"); unicode-range: U+0000-00FF, U+2000-206F; }
+@font-face { font-family: "Montserrat"; font-weight: 700; src: url("fonts/montserrat-cyrillic-700-normal.woff2") format("woff2"); unicode-range: U+0400-04FF; }
+@font-face { font-family: "Montserrat"; font-weight: 500; src: url("fonts/montserrat-latin-500-normal.woff2") format("woff2"); unicode-range: U+0000-00FF, U+2000-206F; }
+@font-face { font-family: "Montserrat"; font-weight: 500; src: url("fonts/montserrat-cyrillic-500-normal.woff2") format("woff2"); unicode-range: U+0400-04FF; }
+@font-face { font-family: "Inter"; font-weight: 400; src: url("fonts/inter-latin-400-normal.woff2") format("woff2"); unicode-range: U+0000-00FF, U+2000-206F; }
+@font-face { font-family: "Inter"; font-weight: 400; src: url("fonts/inter-cyrillic-400-normal.woff2") format("woff2"); unicode-range: U+0400-04FF; }
+html, body { margin: 0; height: 100%; background: #1b222b; color: #e6e9ee; font-family: "Inter", "Segoe UI", sans-serif; user-select: none; }
 body { display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-app-region: drag; }
-.brand { font-size: 40px; font-weight: 600; letter-spacing: 0.5px; }
-.by { margin-top: 6px; font-size: 15px; color: #9aa3ad; }
-.state { margin-top: 36px; font-size: 13px; color: #9aa3ad; min-height: 18px; text-align: center; padding: 0 24px; }
+.logo { display: flex; align-items: center; gap: 18px; }
+.mark { height: 110px; }
+.brand { font-family: "Montserrat", "Segoe UI", sans-serif; font-size: 40px; font-weight: 700; letter-spacing: -0.5px; }
+.bedrock { color: #e6e9ee; }
+.forge { color: #f46a1a; }
+.by { margin-top: 2px; font-family: "Montserrat", "Segoe UI", sans-serif; font-weight: 500; font-size: 16px; color: #8a99a8; }
+.tagline { margin-top: 18px; font-size: 12px; letter-spacing: 0.6px; color: #8a99a8; }
+.state { margin-top: 36px; font-size: 13px; color: #8a99a8; min-height: 18px; text-align: center; padding: 0 24px; }
 .state.error { color: #ff8a80; }
 .actions { margin-top: 18px; display: flex; gap: 10px; -webkit-app-region: no-drag; }
 .actions[hidden] { display: none; }
-.actions button { border: 1px solid #3c4553; background: #2a313b; color: #e6e8eb; padding: 5px 14px; border-radius: 4px; cursor: pointer; font: inherit; }
+.actions button { border: 1px solid #3a4655; background: #26303c; color: #e6e9ee; padding: 5px 14px; border-radius: 4px; cursor: pointer; font: inherit; }

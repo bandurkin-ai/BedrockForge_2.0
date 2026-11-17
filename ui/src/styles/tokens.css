@@ -1,51 +1,60 @@
 /* Design tokens of both themes (ТЗ 7.0.9). Component styles are CSS modules; this file holds only variables and resets. */
 :root,
 :root[data-theme="dark"] {
-  --bg: #15181d;
-  --bg-elev: #1b1f26;
-  --bg-panel: #1f242c;
-  --bg-hover: #2a313b;
-  --bg-active: #2f3a4a;
-  --bg-input: #12151a;
-  --border: #2e353f;
-  --border-strong: #3c4553;
-  --text: #e6e8eb;
-  --text-dim: #9aa3ad;
-  --text-faint: #6b7480;
-  --accent: #e0a458;
-  --accent-text: #15181d;
-  --danger: #ff6b5e;
-  --ok: #4cc38a;
-  --warn: #f2c94c;
-  --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
-  --scene-bg: #101317;
+  /* Brand (docs/brand/README.md): Anthracite base, Cobalt — actions and data, Copper Orange — highlights,
+     Light Stone — text on dark, Slate — secondary text and borders. */
+  --bg: #161c24;
+  --bg-elev: #1b222b;
+  --bg-panel: #1f2731;
+  --bg-hover: #26303c;
+  --bg-active: #1e3a6b;
+  --bg-input: #121820;
+  --border: #2b3542;
+  --border-strong: #3a4655;
+  --text: #e6e9ee;
+  --text-dim: #8a99a8;
+  --text-faint: #7d8d9e;
+  --accent: #1f6bff;
+  --accent-text: #ffffff;
+  --highlight: #f46a1a;
+  --brand-ink: #e6e9ee;
+  --brand-orange: #f46a1a;
+  --danger: #ff5c4d;
+  --ok: #3fbf7f;
+  --warn: #f4b13a;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  --scene-bg: #11161d;
   color-scheme: dark;
 }
 
 :root[data-theme="light"] {
-  --bg: #f4f5f7;
+  --bg: #e6e9ee;
   --bg-elev: #ffffff;
-  --bg-panel: #fafbfc;
-  --bg-hover: #e9ecf1;
-  --bg-active: #dde6f3;
+  --bg-panel: #f3f5f8;
+  --bg-hover: #dce1e8;
+  --bg-active: #d3e1ff;
   --bg-input: #ffffff;
-  --border: #d9dde3;
-  --border-strong: #c3c9d2;
-  --text: #1d2229;
-  --text-dim: #5b6572;
-  --text-faint: #8a94a1;
-  --accent: #b86e14;
+  --border: #c9d0d9;
+  --border-strong: #8a99a8;
+  --text: #1b222b;
+  --text-dim: #4f5d6c;
+  --text-faint: #5e6b78;
+  --accent: #1f6bff;
   --accent-text: #ffffff;
+  --highlight: #d9570c;
+  --brand-ink: #1b222b;
+  --brand-orange: #f46a1a;
   --danger: #d23b2f;
   --ok: #1f8f5c;
-  --warn: #a8790a;
-  --shadow: 0 8px 28px rgba(20, 30, 50, 0.18);
-  --scene-bg: #e9edf2;
+  --warn: #8a5300;
+  --shadow: 0 8px 28px rgba(27, 34, 43, 0.18);
+  --scene-bg: #eef1f5;
   color-scheme: light;
 }
 
 :root {
-  --font: "Segoe UI", system-ui, sans-serif;
+  --font: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-brand: "Montserrat", "Segoe UI", system-ui, sans-serif;
   --font-size: 13px;
   --radius: 4px;
   --header-h: 40px;
@@ -79,4 +88,13 @@ textarea {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* Brand typography: Montserrat for headings and titles, Inter for text (docs/brand/README.md). */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-brand);
+  font-weight: 600;
 }

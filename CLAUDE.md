@@ -59,13 +59,14 @@ app/ оболочка (src/main, src/preload, static/ заставка, e2e/) ·
 - Решение принято и записано в ADR — не обсуждать заново.
 
 ## Обязательные правила (полный список — раздел 17 ТЗ)
+- Фирменный стиль во всём интерфейсе и **всех выпусках**: docs/brand/README.md (палитра, Montserrat/Inter, знак, иконка), ADR 0006.
 - Тексты для пользователя — по-русски; идентификаторы и комментарии — по-английски.
 - Координаты float64; float32 только для показа от целочисленного начала (ui/src/viz/origin.ts).
 - Пропуски не превращать в ноль; ошибки — `{code, message, hint}` по-русски с подсказкой.
 - Имена файлов не различаются только регистром; файл ≤ ~600 строк.
 - Команда = запись в реестре (лента, Ctrl+K, клавиши, ассистент).
 - Только собственные окна; никаких window.confirm/prompt/alert/open.
-- Зависимости — только MIT/BSD/Apache-2.0/MPL-2.0/ISC/PSF; lock-файлы (core/uv.lock, package-lock.json);
+- Зависимости — только MIT/BSD/Apache-2.0/MPL-2.0/ISC/PSF (шрифты — OFL-1.1, ADR 0006); lock-файлы (core/uv.lock, package-lock.json);
   проверка `tools/ci/check_licenses_py.py`, `tools/ci/check_licenses_npm.mjs`.
 - Ядро слушает только 127.0.0.1, токен `X-BF-Token`, проверка Host/Origin (core/bf_core/api/security.py).
 - numba: `cache=True`; кеш — `NUMBA_CACHE_DIR` (bf_core/paths.py; в .exe — bf_core/numba_cache.py).

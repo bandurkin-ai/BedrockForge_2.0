@@ -30,6 +30,8 @@ TABLES: tuple[Table, ...] = (
     Table("dh_rows"),
     Table("import_log", renumber=True),
     Table("export_log", renumber=True),
+    Table("audit_runs", renumber=True),
+    Table("audit_findings"),
     Table("blob_owners"),
     Table("edit_log", renumber=True),
     Table("settings", view=True),
@@ -57,6 +59,10 @@ ID_COLUMNS: dict[tuple[str, str], str | None] = {
     ("import_log", "job_id"): None,
     ("export_log", "object_id"): "objects",
     ("export_log", "job_id"): None,
+    ("audit_runs", "set_id"): "objects",
+    ("audit_runs", "job_id"): None,
+    ("audit_runs", "table_id"): "dh_tables",
+    ("audit_findings", "run_id"): "audit_runs",
 }
 
 #: (table, kind column, id column) → {kind value: table}. Rows of unknown kinds are dropped.
