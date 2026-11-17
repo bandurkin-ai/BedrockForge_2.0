@@ -4,10 +4,10 @@ File: line 1 — the header (location, date, purpose, memo); line 2 — the axis
 then records `number, Y, X, Z, D1, D2, …` (Y, the northing, comes first). A record with number 0 ends a segment;
 `0, …, END` ends the file. Code page Windows-1251; UTF-8 with a BOM is recognised.
 
-`read_surpac(path, progress)` → `str_layers.StrRead`: layer = string number (key; name «Стринг N»), line = segment
-(a change of the number without a 0 record also ends one), a closed segment repeats its first vertex.
+`read_surpac(path, progress)` → `str_layers.StrRead` of `lineset.LineSet`s: layer = string number (named «Стринг N»),
+line = segment (a change of the number without a 0 record also ends one), a closed segment repeats its first vertex.
 D1, D2, … are text columns: a line attribute when they do not change along any segment, otherwise per vertex;
-an empty description is null. A coordinate that is not a number stays NaN and is reported.
+an empty description is null. A Z that is not a number stays NaN; a vertex without X or Y is left out (reported).
 `header` (`SurpacHeader`) keeps the header, axis and END lines, the bytes after END and the `SurpacStyle` of the
 records (separators, alignment, decimals, line ends) learned from the start of the file; every record is checked
 against it, and when all match (`header.exact`), `write_surpac(path, layers, like=header)` gives the same bytes.
@@ -32,7 +32,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from bf_core.formats.errors import FormatError
-from bf_core.formats.str_layers import LINE, StrLayer, StrRead, attribute_names, build_layers, gather, n_text, scaled
+from bf_core.formats.lineset import LineSet
+from bf_core.formats.str_layers import StrRead, attribute_names, build_layers, gather, n_text, scaled
 from bf_core.formats.table import Column, Progress, no_progress
 
 if TYPE_CHECKING:
@@ -49,6 +50,7 @@ END_LINE = "0, 0.000, 0.000, 0.000, END"
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 _FIXED = re.compile(r"-?\d+(?:\.(\d*))?")
 _CONTROL = re.compile(r"[\x00-\x1f]")
+_LAYER = re.compile(r"(?:Стринг\s*)?(\d+)", re.IGNORECASE)
 _HINT = "Сохраните стринги в Surpac как текстовый файл .str (String file) и загрузите его заново."
 
 
@@ -267,12 +269,12 @@ def read_surpac(
             for i, raw in enumerate(lines):
                 line_no += 1
                 cr = raw.endswith("\r")
-                ending = "\r\n" if cr else "\n"
+                ending = ("\r\n" if cr else "\n") if i < len(lines) - 1 or data.endswith(b"\n") else ""
                 line = raw[:-1] if cr else raw
                 if title is None:
-                    title, newline = line, ending
+                    title, newline = line, ending or newline
                     continue
-                if exact and ending != newline and not (not chunk and i == len(lines) - 1):
+                if ending and ending != newline:
                     exact = False
                 if axis is None:
                     if _integer(line.split(",")[0]) != 0 or "," not in line:
@@ -280,7 +282,7 @@ def read_surpac(
                     axis = line
                     continue
                 if style is None:
-                    style = _learn(lines[i : i + LEARN_LINES], newline)
+                    style = _learn([t.removesuffix("\r") for t in lines[i : i + LEARN_LINES]], newline)
                 tokens = line.split(",")
                 number = _integer(tokens[0])
                 if number is None or number < 0 or len(tokens) < 4:
@@ -290,9 +292,7 @@ def read_surpac(
                     continue
                 if number == 0:
                     if any(t.strip().upper() == "END" for t in tokens[4:]):
-                        end = (line, ending if (chunk or i < len(lines) - 1 or raw.endswith("\n")) else "")
-                        if i == len(lines) - 1 and not data.endswith(b"\n"):
-                            end = (line, "")
+                        end = (line, ending)
                         exact = exact and not open_segment
                         tail = b"\n".join(data.split(b"\n")[i + 1 :]) + rest
                         break
@@ -347,9 +347,10 @@ def read_surpac(
     if tail.strip():
         warnings.append("После записи END есть строки: они не прочитаны")
     if bad:
-        warnings.append(f"{n_text(len(bad))} строк не читаются как записи Surpac (например, строка {bad[0]}): пропущены")
+        shown = f"{n_text(len(bad))} строк не читаются как записи Surpac (например, строка {bad[0]})"
+        warnings.append(f"{shown}: пропущены")
     if bad_coords:
-        warnings.append(f"{n_text(bad_coords)} координат не являются числами: оставлены пустыми")
+        warnings.append(f"{n_text(bad_coords)} координат не являются числами: прочитаны как пустые")
     if replaced:
         warnings.append(f"{n_text(replaced)} символов не читаются в кодировке {codec}")
         exact = False
@@ -363,12 +364,17 @@ def read_surpac(
     for j in range(body.width):
         chunks = [p[3][j] if j < len(p[3]) else pa.nulls(len(p[0]), type=pa.string()) for p in body.parts]
         columns.append(Column(f"D{j + 1}", "text", pa.chunked_array(chunks, type=pa.string())))
+    missing = int((~np.isfinite(xyz[:, :2])).any(axis=1).sum())
+    if missing:
+        warnings.append(f"{n_text(missing)} вершин без координаты X или Y пропущены")
+        header_exact = False
+    else:
+        header_exact = exact
     keys, codes = np.unique(numbers, return_inverse=True)
-    key_list: list[str | int | None] = [int(k) for k in keys.tolist()]
-    names = [f"Стринг {k}" for k in key_list]
-    layers = build_layers(xyz, starts, codes.ravel(), key_list, names, columns, (), scaled(tick, 0.9, 1.0))
+    names = [f"Стринг {k}" for k in keys.tolist()]
+    layers = build_layers(xyz, starts, codes.ravel(), names, columns, (), scaled(tick, 0.9, 1.0))
     assert style is not None
-    header = SurpacHeader(title, axis, end[0], end[1], tail, style, codec, bom, body.width, exact)
+    header = SurpacHeader(title, axis, end[0], end[1], tail, style, codec, bom, body.width, header_exact)
     tick(1.0, f"Прочитано вершин: {n_text(len(xyz))}")
     return StrRead("surpac_str", layers, header, codec, len(xyz), warnings)
 
@@ -376,14 +382,12 @@ def read_surpac(
 # ---------------------------------------------------------------- writing
 
 
-def _numbers(layers: Sequence[StrLayer], warnings: list[str]) -> list[int]:
-    """String number of every layer: its own (a Surpac layer, or a name that is a number), else a free one."""
+def _numbers(layers: Sequence[LineSet], warnings: list[str]) -> list[int]:
+    """String number of every layer: from its name («Стринг 5» or «5»), else a free one."""
     wanted: list[int | None] = []
     for layer in layers:
-        key = layer.key
-        if isinstance(key, str) and key.strip().isdigit():
-            key = int(key.strip())
-        wanted.append(key if isinstance(key, int) and not isinstance(key, bool) and key >= 1 else None)
+        m = _LAYER.fullmatch(layer.name)
+        wanted.append(int(m.group(1)) if m and int(m.group(1)) >= 1 else None)
     used: set[int] = set()
     out: list[int] = []
     for w in wanted:
@@ -403,7 +407,7 @@ def _numbers(layers: Sequence[StrLayer], warnings: list[str]) -> list[int]:
     return out
 
 
-def _descriptions(layers: Sequence[StrLayer], warnings: list[str]) -> list[tuple[int, str, str]]:
+def _descriptions(layers: Sequence[LineSet], warnings: list[str]) -> list[tuple[int, str, str]]:
     """(D index from 0, attribute, level): D1…D100 keep their place, other attributes take the free ones."""
     slots: list[tuple[int, str, str]] = []
     others: list[tuple[str, str]] = []
@@ -434,7 +438,7 @@ def _texts(column: Column) -> list[str | None]:
 
 def write_surpac(
     path: str | Path,
-    layers: Sequence[StrLayer],
+    layers: Sequence[LineSet],
     *,
     like: SurpacHeader | None = None,
     encoding: str | None = None,
@@ -464,9 +468,7 @@ def write_surpac(
         head = f"{line},{day.day:02d}-{_MONTHS[day.month - 1]}-{day.year % 100:02d},," + nl + AXIS_LINE + nl
         end = END_LINE + nl
     numbers = _numbers(layers, warnings)
-    g = gather(layers, scaled(tick, 0.0, 0.1))
-    if g.closed_added:
-        warnings.append(f"{n_text(g.closed_added)} замкнутых линий записаны с повтором первой вершины в конце")
+    g = gather(layers)
     slots = _descriptions(layers, warnings)
     width = max((j + 1 for j, _, _ in slots), default=0)
     columns = [(j, g.column(layers, name, level)) for j, name, level in slots]
@@ -519,4 +521,4 @@ def _encode(text: str, codec: str) -> bytes:
         ) from exc
 
 
-__all__ = ["SurpacHeader", "SurpacStyle", "SurpacWritten", "is_surpac", "read_surpac", "write_surpac", "LINE"]
+__all__ = ["SurpacHeader", "SurpacStyle", "SurpacWritten", "is_surpac", "read_surpac", "write_surpac"]

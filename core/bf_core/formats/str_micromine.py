@@ -27,16 +27,16 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from bf_core.formats.errors import FormatError
+from bf_core.formats.lineset import LineSet
 from bf_core.formats.micromine import read_dat
 from bf_core.formats.micromine_header import DEFAULT_CODEPAGE, FIELD_TYPES, DatHeader, Field, codec_of, default_xml
 from bf_core.formats.micromine_write import DatWritten, derive_fields, field_names, write_dat
 from bf_core.formats.str_layers import (
     NO_CODE,
     Gathered,
-    StrLayer,
     StrRead,
     attribute_names,
     blank,
@@ -44,8 +44,10 @@ from bf_core.formats.str_layers import (
     changes,
     gather,
     n_text,
+    norm,
     row_keys,
     scaled,
+    strings,
     text_codes,
 )
 from bf_core.formats.table import Column, Progress, no_progress
@@ -65,14 +67,6 @@ def _role(names: Sequence[str], wanted: Sequence[str]) -> int | None:
     """Index of the field that plays a role: the first name of `wanted` found (first such field)."""
     upper = [n.strip().upper() for n in names]
     return next((upper.index(w) for w in wanted if w in upper), None)
-
-
-def _strings(column: Column) -> Any:
-    import pyarrow as pa
-
-    if column.kind == "text":
-        return column.values
-    return pa.chunked_array([pa.array(column.text(), type=pa.string())])
 
 
 def _join_breaks(join: Column) -> np.ndarray | None:
@@ -120,7 +114,7 @@ def read_str(
         warnings.append("В файле нет поля RL (Z): высоты линий пустые")
     missing = int((~np.isfinite(xyz[:, :2])).any(axis=1).sum())
     if missing:
-        warnings.append(f"{n_text(missing)} вершин без координаты X или Y: оставлены пустыми")
+        warnings.append(f"{n_text(missing)} вершин без координаты X или Y пропущены")
 
     starts = np.ones(n, dtype=bool)
     split = np.zeros(n - 1, dtype=bool)
@@ -130,14 +124,15 @@ def read_str(
         if extra is not None:
             split |= extra
     if code is not None:
-        codes, labels = text_codes(_strings(code))
+        codes, labels = text_codes(strings(code))
         split |= changes(codes)
-        keys: list[str | int | None] = [*labels, None]
         layer_names = [label.strip() or NO_CODE for label in labels] + [NO_CODE]
+        if any(norm(label) != label.strip() for label in labels):
+            warnings.append("В значениях STRING есть лишние пробелы: в именах слоёв они убраны")
         codes = np.where(codes < 0, len(labels), codes)
     else:
         warnings.append("В файле нет поля STRING: все линии — в одном слое")
-        codes, keys, layer_names = np.zeros(n, dtype=np.int64), [None], [NO_CODE]
+        codes, layer_names = np.zeros(n, dtype=np.int64), [NO_CODE]
     starts[1:] = split
     used = {id(c) for c in (east, north, rl, code) if c is not None}
     others = [c for c in columns if id(c) not in used]
@@ -145,7 +140,7 @@ def read_str(
     if pit and _role([c.name for c in others], (ROAD,)) is None:
         warnings.append("В файле .PIT нет поля Road")
     line_only = (join.name,) if join is not None else ()
-    layers = build_layers(xyz, starts, codes, keys, layer_names, others, line_only, scaled(tick, 0.8, 1.0))
+    layers = build_layers(xyz, starts, codes, layer_names, others, line_only, scaled(tick, 0.8, 1.0))
     lines = sum(layer.line_count for layer in layers)
     tick(1.0, f"Прочитано линий: {n_text(lines)}, вершин: {n_text(n)}")
     return StrRead("micromine_pit" if pit else "micromine_str", layers, header, header.encoding, n, warnings)
@@ -202,13 +197,9 @@ def _encoded_len(text: str, encoding: str, what: str) -> int:
         ) from exc
 
 
-def _layer_code(layer: StrLayer) -> str:
-    """STRING of a layer: its text in the source; a number (Surpac) as text; the name of a new layer."""
-    if isinstance(layer.key, str):
-        return layer.key
-    if layer.key is None:
-        return "" if layer.name == NO_CODE else layer.name
-    return str(layer.key)
+def _layer_code(layer: LineSet) -> str:
+    """STRING of a layer: its name; the layer «Без кода» has a blank STRING."""
+    return "" if layer.name == NO_CODE else layer.name
 
 
 def _joins(wanted: np.ndarray, codes: np.ndarray, width: int) -> np.ndarray:
@@ -246,14 +237,17 @@ def _source_fields(like: DatHeader | None, codes: list[str], encoding: str) -> t
 
 
 def _columns(
-    layers: Sequence[StrLayer], g: Gathered, fields: list[Field], names: list[str], codes: list[str], warnings: list[str]
-) -> list[Column]:
+    layers: Sequence[LineSet], g: Gathered, fields: list[Field], names: list[str], codes: list[str], warnings: list[str]
+) -> tuple[list[Column], set[str]]:
+    """Values of every field; the attributes used. A field takes the attribute of its name (as LineSet keeps it)."""
     import numpy as np
     import pyarrow as pa
 
     attributes = dict(attribute_names(layers))
+    by_name = {norm(name).casefold(): name for name in reversed(list(attributes))}
     join_attr = next((name for name in attributes if name.strip().upper() == JOIN), None)
-    first = np.cumsum(g.counts) - g.counts  # position of the first vertex of every written line
+    used = {join_attr} if join_attr is not None else set()
+    first = g.first
     index = {t: i for i, t in reversed(list(enumerate(codes)))}
     code_of_line = np.asarray([index[t] for t in codes], dtype=np.int64)[g.layer[first]]
     roles = {
@@ -272,7 +266,7 @@ def _columns(
         elif i == roles["join"]:
             own = g.column(layers, join_attr, attributes[join_attr]) if join_attr is not None else None
             if f.kind == "C":
-                out.append(Column(name, "text", _strings(own)) if own is not None else blank("text", m, name))
+                out.append(Column(name, "text", strings(own)) if own is not None else blank("text", m, name))
                 continue
             wanted = own.values[first] if own is not None and own.kind == "number" else np.full(len(first), np.nan)
             joins = _joins(wanted, code_of_line, f.width if f.kind == "N" else JOIN_WIDTH)
@@ -283,17 +277,20 @@ def _columns(
         elif i == roles["string"]:
             labels = pa.array(codes, type=pa.string()).take(pa.array(g.layer, type=pa.int64()))
             out.append(Column(name, "text", pa.chunked_array([labels])))
-        elif name in attributes:
-            column = g.column(layers, name, attributes[name])
-            out.append(Column(name, "text", _strings(column)) if f.kind == "C" else column)
+        elif norm(name).casefold() in by_name:
+            attr = by_name[norm(name).casefold()]
+            used.add(attr)
+            column = g.column(layers, attr, attributes[attr])
+            same = Column(name, column.kind, column.values)
+            out.append(Column(name, "text", strings(column)) if f.kind == "C" else same)
         else:
             out.append(blank("text" if f.kind == "C" else "number", m, name))
-    return out
+    return out, used
 
 
 def write_str(
     path: str | Path,
-    layers: Sequence[StrLayer],
+    layers: Sequence[LineSet],
     *,
     like: DatHeader | None = None,
     codepage: str = DEFAULT_CODEPAGE,
@@ -314,16 +311,13 @@ def write_str(
     encoding = like.encoding if like is not None else codec_of(codepage)
     if encoding is None:
         raise FormatError("unknown_encoding", f"Неизвестная кодовая страница: {codepage}", "Выберите Windows-1251.")
-    g = gather(layers, scaled(tick, 0.0, 0.1))
+    g = gather(layers)
     warnings: list[str] = []
-    if g.closed_added:
-        warnings.append(f"{n_text(g.closed_added)} замкнутых линий записаны с повтором первой вершины в конце")
     codes = [_layer_code(layer) for layer in layers]
     fields, names = _source_fields(like, codes, encoding)
 
     # Fields without which the lines could not be told apart on reading are added to a source layout.
-    first = np.cumsum(g.counts) - g.counts
-    same_code = np.asarray([codes[k] for k in g.layer[first].tolist()], dtype=object)
+    same_code = np.asarray([codes[k] for k in g.layer[g.first].tolist()], dtype=object)
     added: list[Field] = []
     if _role(names, RL_NAMES) is None and bool(np.isfinite(g.xyz[:, 2]).any()):
         added.append(Field("RL", "R", 8, COORD_DECIMALS))
@@ -334,15 +328,13 @@ def write_str(
     if added:
         warnings.append(f"Добавлены поля {', '.join(f.name for f in added)}: без них линии файла нельзя различить")
     fields, names = [*fields, *added], [*names, *(f.name for f in added)]
-    columns = _columns(layers, g, fields, names, codes, warnings)
-
-    taken = set(names)
-    new = [(name, level) for name, level in attribute_names(layers) if name not in taken]
-    new = [(name, level) for name, level in new if name.strip().upper() != JOIN]
+    columns, taken = _columns(layers, g, fields, names, codes, warnings)
+    tick(0.1, "Запись STR")
+    new = [(name, scope) for name, scope in attribute_names(layers) if name not in taken]
     if new:
         short, notes = field_names([*(f.name for f in fields), *(name for name, _ in new)], encoding)
-        for (name, level), field_name in zip(new, short[len(fields) :], strict=True):
-            column = g.column(layers, name, level)
+        for (name, scope), field_name in zip(new, short[len(fields) :], strict=True):
+            column = g.column(layers, name, scope)
             fields.append(_attribute_field(field_name, column, encoding))
             columns.append(column)
         warnings += [note for note in notes if any(f"«{name.strip()}»" in note for name, _ in new)]
@@ -362,4 +354,4 @@ def write_str(
     return written
 
 
-__all__ = ["StrLayer", "StrRead", "read_str", "write_str"]
+__all__ = ["StrRead", "read_str", "write_str"]

@@ -1,72 +1,42 @@
-"""Line layers as the STR readers return them, and the helpers both STR formats share (ТЗ 9.3, 9.6; ADR 0011 §1–2).
+"""What both STR formats share: records in file order → `lineset.LineSet` layers, and back (ТЗ 9.3, 9.6; ADR 0011 §1–2).
 
-`StrLayer` keeps the lines of one layer in flat arrays, in the layout of the `line_layers` blobs (ADR 0011 §1):
-  * `xyz` float64 N×3 (NaN = no value, never 0); line i is `xyz[offsets[i]:offsets[i + 1]]`;
-  * `offsets` int64 L+1, `closed` bool L — a closed line repeats its first vertex at the end (17, п. 12);
-  * `seq` uint32 N — the number of the record of each vertex in the source file: writers put the lines back
-    in the order of the file, so that read → write gives the same bytes;
-  * `attrs` — columns with one row per line (fields that do not change along any line, such as JOIN);
-    `vattrs` — columns with one row per vertex (fields that do; Surpac descriptions, `.PIT` Road flags).
-    Columns are `table.Column`: numbers are float64 with NaN, text is pyarrow strings with null.
-`key` is what names the layer in the file: the STRING text of Micromine (None = blank), the Surpac string number.
-`formats/lineset.py` (7.2) gets a thin adapter from these structures; this module does not depend on it.
-
-Writers call `gather(layers)`: every line once, in the order of the file (by `seq`; lines without `seq` go after
-them, layer by layer), with a closed line that does not repeat its first vertex closed by repeating it.
+Reading (`build_layers`): the records of a file come as flat arrays — xyz, a "new line starts here" flag, the layer
+of every record and the other fields as `table.Column`s. They become one `LineSet` per layer:
+  * layers in the order of their first line, lines and vertices in the order of the file;
+  * a record without X or Y is left out (the caller reports how many) — a LineSet holds finite X/Y only;
+    an empty Z stays NaN, never 0;
+  * closed = the last vertex repeats the first (within `lineset.CLOSE_TOL`), 4 vertices or more
+    (`lineset.detect_closed`): the repeat stays in `xyz` as the file has it, so the export gives the same bytes;
+  * `seq` = the record number of every vertex: writers put the lines back in the file order;
+  * a field that does not change along any line is a line attribute (`attrs`), any other one is per vertex
+    (`vattrs`): Surpac descriptions, Road flags of a `.PIT`.
+Writing (`gather`): every line once, by the `seq` of its first vertex when the layers come from one file (those
+`seq` do not repeat), otherwise layer by layer; a points-only layer is written as lines of one vertex.
+Attributes are merged over the layers by name (`Gathered.column`), a layer without one gives NaN / null.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from bf_core.formats.lineset import FEATURE, VERTEX, LineSet, detect_closed
 from bf_core.formats.table import Column, Progress
 
 if TYPE_CHECKING:
     import numpy as np
 
 NO_CODE = "Без кода"  # the layer of lines with a blank STRING
-CLOSE_TOLERANCE = 1e-6  # first and last vertex closer than this in x, y and z: the line is closed (BF `_closed`)
-LINE, VERTEX = "line", "vertex"
-
-
-@dataclass
-class StrLayer:
-    name: str
-    key: str | int | None
-    xyz: np.ndarray
-    offsets: np.ndarray
-    closed: np.ndarray
-    seq: np.ndarray | None = None
-    attrs: list[Column] = field(default_factory=list)
-    vattrs: list[Column] = field(default_factory=list)
-
-    @property
-    def line_count(self) -> int:
-        return len(self.offsets) - 1
-
-    @property
-    def point_count(self) -> int:
-        return len(self.xyz)
-
-    def line(self, i: int) -> np.ndarray:
-        return self.xyz[self.offsets[i] : self.offsets[i + 1]]  # type: ignore[no-any-return]
-
-    def column(self, name: str) -> Column | None:
-        for c in (*self.attrs, *self.vattrs):
-            if c.name == name:
-                return c
-        return None
 
 
 @dataclass
 class StrRead:
     format: str  # "micromine_str" | "micromine_pit" | "surpac_str"
-    layers: list[StrLayer]
-    header: Any  # micromine_header.DatHeader or str_surpac.SurpacHeader: what writers need to give the same bytes
+    layers: list[LineSet]
+    header: Any  # micromine_header.DatHeader or str_surpac.SurpacHeader: what a writer needs for the same bytes
     encoding: str
-    records: int  # vertex records read
+    records: int  # vertex records in the file
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -80,6 +50,11 @@ class StrRead:
 
 def n_text(x: int) -> str:
     return f"{x:,}".replace(",", " ")
+
+
+def norm(name: str) -> str:
+    """A name as LineSet keeps it: whitespace collapsed."""
+    return " ".join(str(name).split())
 
 
 def scaled(progress: Progress, start: float, stop: float) -> Progress:
@@ -121,14 +96,13 @@ def changes(keys: np.ndarray) -> np.ndarray:
     return differ  # type: ignore[no-any-return]
 
 
-def take(column: Column, index: np.ndarray, name: str | None = None) -> Column:
+def take(column: Column, index: np.ndarray) -> Column:
     import pyarrow as pa
 
     if column.kind == "number":
-        values: Any = column.values[index]
-    else:
-        values = pa.chunked_array([column.values.take(pa.array(index, type=pa.int64()))], type=pa.string())
-    return Column(name or column.name, column.kind, values, source=column.source)
+        return Column(column.name, "number", column.values[index], source=column.source)
+    values = pa.chunked_array([column.values.take(pa.array(index, type=pa.int64()))], type=pa.string())
+    return Column(column.name, "text", values, source=column.source)
 
 
 def blank(kind: str, rows: int, name: str) -> Column:
@@ -140,38 +114,45 @@ def blank(kind: str, rows: int, name: str) -> Column:
     return Column(name, "text", pa.chunked_array([pa.nulls(rows, type=pa.string())], type=pa.string()))
 
 
-def as_text(column: Column) -> Column:
-    """A number column as text (12.0 → "12", NaN → null); text stays as it is."""
+def strings(column: Column) -> Any:
+    """Text of a column as pyarrow strings (numbers as typed: 12.0 → "12", NaN → null)."""
     import pyarrow as pa
 
     if column.kind == "text":
-        return column
-    return Column(column.name, "text", pa.chunked_array([pa.array(column.text(), type=pa.string())]))
+        return column.values
+    return pa.chunked_array([pa.array(column.text(), type=pa.string())])
 
 
-def concat(columns: Sequence[Column], name: str) -> Column:
-    import numpy as np
+def _table(columns: Sequence[Column]) -> Any:
+    """Columns → pyarrow Table (float64 / string); names unique without regard to case, as LineSet wants."""
     import pyarrow as pa
 
-    if all(c.kind == "number" for c in columns):
-        return Column(name, "number", np.concatenate([c.values for c in columns]) if columns else np.empty(0))
-    chunks = [chunk for c in columns for chunk in as_text(c).values.chunks]
-    return Column(name, "text", pa.chunked_array(chunks, type=pa.string()))
+    if not columns:
+        return None
+    names: list[str] = []
+    seen: set[str] = set()
+    for c in columns:
+        base = name = norm(c.name) or "FIELD"
+        k = 1
+        while name.casefold() in seen:
+            k += 1
+            name = f"{base}_{k}"
+        seen.add(name.casefold())
+        names.append(name)
+    arrays = [pa.array(c.values, type=pa.float64()) if c.kind == "number" else c.values for c in columns]
+    return pa.table(arrays, names=names)
+
+
+def from_table(table: Any, name: str) -> Column:
+    import pyarrow as pa
+
+    col = table.column(name)
+    if pa.types.is_floating(col.type):
+        return Column(name, "number", col.to_numpy())
+    return Column(name, "text", col.cast(pa.string()))
 
 
 # ---------------------------------------------------------------- reading: records → layers
-
-
-def closed_flags(xyz: np.ndarray, offsets: np.ndarray) -> np.ndarray:
-    """A line of 3 or more vertices whose last vertex repeats the first (within CLOSE_TOLERANCE) is closed."""
-    import numpy as np
-
-    counts = np.diff(offsets)
-    closed = counts > 2
-    if closed.any():
-        first, last = xyz[offsets[:-1][closed]], xyz[offsets[1:][closed] - 1]
-        closed[closed] = (np.abs(first - last) <= CLOSE_TOLERANCE).all(axis=1)
-    return closed  # type: ignore[no-any-return]
 
 
 def ranges(starts: np.ndarray, counts: np.ndarray) -> np.ndarray:
@@ -189,27 +170,33 @@ def build_layers(
     xyz: np.ndarray,
     starts: np.ndarray,
     layer_code: np.ndarray,
-    layer_keys: Sequence[str | int | None],
     layer_names: Sequence[str],
     columns: Sequence[Column],
     line_only: Sequence[str] = (),
     progress: Progress | None = None,
-) -> list[StrLayer]:
-    """Records in file order → layers.
+) -> list[LineSet]:
+    """Records in file order → layers (see the module docstring).
 
-    `starts` — bool per record, True where a new line begins (the first record included); `layer_code` — the
-    index into `layer_keys` / `layer_names` of each record. A column that does not change along any line
-    becomes a line attribute (`attrs`), any other a vertex attribute (`vattrs`); `line_only` are always line
-    attributes (they cannot change along a line by how the lines were split).
-    Layers come in the order of their first line; lines and vertices in the order of the file.
+    `starts` — bool per record, True where a new line begins; `layer_code` — index into `layer_names` of every
+    record; `line_only` — columns that are line attributes whatever they hold (they split the lines).
     """
     import numpy as np
 
+    line_id = np.cumsum(starts) - 1
+    keep = np.isfinite(xyz[:, :2]).all(axis=1)
+    record = np.flatnonzero(keep) if not keep.all() else np.arange(len(xyz))
+    if len(record) < len(xyz):
+        xyz, line_id, layer_code = xyz[record], line_id[record], layer_code[record]
+        columns = [take(c, record) for c in columns]
     n = len(xyz)
-    first = np.flatnonzero(starts).astype(np.int64)
+    if n == 0:
+        return []
+    begins = np.ones(n, dtype=bool)
+    begins[1:] = line_id[1:] != line_id[:-1]
+    first = np.flatnonzero(begins).astype(np.int64)
     offsets = np.append(first, n).astype(np.int64)
-    closed = closed_flags(xyz, offsets)
-    within = ~starts[1:]
+    closed = detect_closed(xyz, offsets)
+    within = ~begins[1:]
     line_cols: list[Column] = []
     vertex_cols: list[Column] = []
     for column in columns:
@@ -221,35 +208,36 @@ def build_layers(
     line_layer = layer_code[first]
     order = np.argsort(line_layer, kind="stable")
     present, first_line = np.unique(line_layer, return_index=True)
-    bounds = np.searchsorted(line_layer[order], present)
-    bounds = np.append(bounds, len(order))
-    layers: list[StrLayer] = []
+    bounds = np.append(np.searchsorted(line_layer[order], present), len(order))
+    single = len(present) == 1
+    layers: list[LineSet] = []
     for rank, k in enumerate(np.argsort(first_line, kind="stable").tolist()):
         if progress is not None and rank % 64 == 0:
             progress(rank / len(present), f"Слои: {n_text(rank)} из {n_text(len(present))}")
         lines = order[bounds[k] : bounds[k + 1]]
         counts = offsets[lines + 1] - offsets[lines]
-        if len(present) == 1:
-            vertices = np.arange(n, dtype=np.int64)
-        else:
-            vertices = ranges(offsets[lines], counts)
-        code = int(present[k])
+        vertices = np.arange(n, dtype=np.int64) if single else ranges(offsets[lines], counts)
         layers.append(
-            StrLayer(
-                name=layer_names[code],
-                key=layer_keys[code],
-                xyz=xyz[vertices] if len(present) > 1 else xyz,
+            LineSet(
+                name=layer_names[int(present[k])],
+                xyz=xyz if single else xyz[vertices],
                 offsets=np.concatenate([[0], np.cumsum(counts)]).astype(np.int64),
                 closed=closed[lines],
-                seq=vertices.astype(np.uint32),
-                attrs=[take(c, lines) for c in line_cols],
-                vattrs=[take(c, vertices) for c in vertex_cols],
+                seq=(record if single else record[vertices]).astype(np.uint32),
+                attrs=_table([take(c, lines) for c in line_cols]),
+                vattrs=_table(vertex_cols if single else [take(c, vertices) for c in vertex_cols]),
             )
         )
     return layers
 
 
 # ---------------------------------------------------------------- writing: layers → records
+
+
+def _offsets(layer: LineSet) -> np.ndarray:
+    import numpy as np
+
+    return np.arange(layer.point_count + 1, dtype=np.int64) if layer.offsets is None else layer.offsets
 
 
 @dataclass
@@ -260,78 +248,75 @@ class Gathered:
     vertex: np.ndarray  # M — index into the concatenated vertices (vertex attributes)
     line: np.ndarray  # M — index into the concatenated lines (line attributes)
     layer: np.ndarray  # M — index of the layer
-    line_order: np.ndarray  # L — concatenated line index of each written line
-    counts: np.ndarray  # L — vertices written for each line (a closing repeat included)
-    closed_added: int  # closed lines that did not repeat their first vertex: it was added
+    counts: np.ndarray  # L — vertices of every written line, in the written order
 
-    def column(self, layers: Sequence[StrLayer], name: str, level: str) -> Column:
+    @property
+    def first(self) -> np.ndarray:
+        """Position of the first vertex of every written line."""
+        import numpy as np
+
+        return np.cumsum(self.counts) - self.counts  # type: ignore[no-any-return]
+
+    def column(self, layers: Sequence[LineSet], name: str, scope: str) -> Column:
         """One attribute for every written vertex, whatever layer it is in (missing = NaN / null)."""
-        merged = merged_column(layers, name, level)
-        return take(merged, self.vertex if level == VERTEX else self.line)
+        return take(merged_column(layers, name, scope), self.vertex if scope == VERTEX else self.line)
 
 
-def attribute_names(layers: Sequence[StrLayer]) -> list[tuple[str, str]]:
-    """(name, level) of every attribute, in order of first appearance; vertex level wins over line level."""
+def attribute_names(layers: Sequence[LineSet]) -> list[tuple[str, str]]:
+    """(name, scope) of every attribute, in order of first appearance; vertex scope wins over line scope."""
     found: dict[str, str] = {}
     for layer in layers:
-        for c in layer.attrs:
-            found.setdefault(c.name, LINE)
-        for c in layer.vattrs:
-            found[c.name] = VERTEX
+        for table, scope in ((layer.attrs, FEATURE), (layer.vattrs, VERTEX)):
+            for name in table.column_names if table is not None else ():
+                if scope == VERTEX or name not in found:
+                    found[name] = scope
     return list(found.items())
 
 
-def merged_column(layers: Sequence[StrLayer], name: str, level: str) -> Column:
-    """An attribute over all layers: rows are concatenated lines (LINE) or vertices (VERTEX)."""
+def merged_column(layers: Sequence[LineSet], name: str, scope: str) -> Column:
+    """An attribute over all layers: rows are concatenated lines (FEATURE) or vertices (VERTEX)."""
     import numpy as np
+    import pyarrow as pa
 
-    parts: list[Column] = []
-    kinds = {c.kind for layer in layers for c in (*layer.attrs, *layer.vattrs) if c.name == name}
-    kind = "number" if kinds == {"number"} else "text"
+    found: list[tuple[Column | None, str]] = []
     for layer in layers:
-        rows = layer.point_count if level == VERTEX else layer.line_count
-        found = layer.column(name)
-        if found is None:
-            parts.append(blank(kind, rows, name))
-        elif level == VERTEX and any(c is found for c in layer.attrs):
-            parts.append(take(found, np.repeat(np.arange(layer.line_count), np.diff(layer.offsets))))
+        if layer.vattrs is not None and name in layer.vattrs.column_names:
+            found.append((from_table(layer.vattrs, name), VERTEX))
+        elif layer.attrs is not None and name in layer.attrs.column_names:
+            found.append((from_table(layer.attrs, name), FEATURE))
         else:
-            parts.append(found)
-    return concat(parts, name)
+            found.append((None, ""))
+    kind = "number" if all(c is None or c.kind == "number" for c, _ in found) else "text"
+    parts: list[Column] = []
+    for layer, (column, own) in zip(layers, found, strict=True):
+        offsets = _offsets(layer)
+        rows = layer.point_count if scope == VERTEX else len(offsets) - 1
+        if column is None:
+            parts.append(blank(kind, rows, name))
+        elif scope == VERTEX and own == FEATURE:
+            parts.append(take(column, np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))))
+        else:
+            parts.append(column)
+    if kind == "number":
+        return Column(name, "number", np.concatenate([c.values for c in parts]))
+    chunks = [chunk for c in parts for chunk in strings(c).chunks]
+    return Column(name, "text", pa.chunked_array(chunks, type=pa.string()))
 
 
-def gather(layers: Sequence[StrLayer], tick: Callable[[float, str | None], None] | None = None) -> Gathered:
+def gather(layers: Sequence[LineSet]) -> Gathered:
     import numpy as np
 
-    line_base = np.cumsum([0, *(layer.line_count for layer in layers)])
+    offs = [_offsets(layer) for layer in layers]
+    line_base = np.cumsum([0, *(len(o) - 1 for o in offs)])
     vertex_base = np.cumsum([0, *(layer.point_count for layer in layers)])
-    xyz = np.concatenate([np.asarray(layer.xyz, dtype=np.float64).reshape(-1, 3) for layer in layers]) if layers else (
-        np.empty((0, 3))
-    )
-    starts = np.concatenate([layer.offsets[:-1] + vertex_base[i] for i, layer in enumerate(layers)]).astype(np.int64)
-    counts = np.concatenate([np.diff(layer.offsets) for layer in layers]).astype(np.int64)
-    closed = np.concatenate([np.asarray(layer.closed, dtype=bool) for layer in layers])
+    xyz = np.concatenate([layer.xyz for layer in layers]) if layers else np.empty((0, 3))
+    starts = np.concatenate([o[:-1] + vertex_base[i] for i, o in enumerate(offs)]).astype(np.int64)
+    counts = np.concatenate([np.diff(o) for o in offs]).astype(np.int64)
+    seq = np.concatenate([np.asarray(layer.seq, dtype=np.int64) for layer in layers])[starts]
     layer_of = np.repeat(np.arange(len(layers)), np.diff(line_base))
-    # Order: the record number of the first vertex; lines without one after all others, layer by layer.
-    first_seq = np.full(len(starts), np.inf)
-    for i, layer in enumerate(layers):
-        if layer.seq is not None and layer.line_count:
-            lo, hi = line_base[i], line_base[i + 1]
-            has = counts[lo:hi] > 0
-            first_seq[lo:hi][has] = np.asarray(layer.seq)[layer.offsets[:-1][has]].astype(np.float64)
-    order = np.argsort(first_seq, kind="stable")
-    order = order[counts[order] > 0]
+    # Layers of one file have distinct record numbers: restore the file order. Otherwise layer by layer.
+    order = np.argsort(seq, kind="stable") if len(np.unique(seq)) == len(seq) else np.lexsort((seq, layer_of))
     s, c = starts[order], counts[order]
-    if tick is not None:
-        tick(0.5, None)
-    # A closed line must repeat its first vertex at the end; lines built by hand may not.
-    open_end = np.zeros(len(order), dtype=bool)
-    flagged = closed[order] & (c >= 2)
-    if flagged.any():
-        a, b = xyz[s[flagged]], xyz[s[flagged] + c[flagged] - 1]
-        open_end[flagged] = ~(np.abs(a - b) <= CLOSE_TOLERANCE).all(axis=1)
-    total = c + open_end
-    within = ranges(np.zeros(len(order), dtype=np.int64), total)
-    vertex = np.repeat(s, total) + np.where(within < np.repeat(c, total), within, 0)
-    line = np.repeat(order, total)
-    return Gathered(xyz[vertex], vertex, line, layer_of[line], order, total, int(open_end.sum()))
+    vertex = ranges(s, c)
+    line = np.repeat(order, c)
+    return Gathered(xyz[vertex], vertex, line, layer_of[line], c)
