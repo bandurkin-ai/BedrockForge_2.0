@@ -10,11 +10,16 @@ export function buildDownhole(
   settings: StripLogSettings,
   origin: [number, number, number],
   start: StackStart = { units: 0, tubes: 0 },
+  /**
+   * The data the scales, categories and ranges are taken from (default `data`): the 3D layer draws a part of
+   * the holes, or their rows merged for a coarser level, with the colours of all the data loaded.
+   */
+  scaleData: DownholeData = data,
 ): DownholeBuild {
   // Hole names are matched without regard to case and outer spaces (tables often differ in that).
   const holes = new Map(trajectories.map((h) => [holeKey(h.hole_id), h]));
   const tracks = settings.tracks.filter((t) => t.visible !== false);
-  const resolved = tracks.map((t) => resolve(data, t));
+  const resolved = tracks.map((t) => resolve(scaleData, t));
   const tubeIds = tubeTracks(tracks);
   const panelWidth = settings.panel && settings.panel > 0 ? settings.panel : autoPanelWidth(trajectories);
   const from = parseNumber(settings.from);

@@ -1,5 +1,6 @@
 import { useApp } from "./AppContext";
 import { auditStore, statusText } from "../modules/audit/state";
+import { displaysUi } from "../modules/downhole/displaysUi";
 import { useStore } from "./useStore";
 import css from "./StatusBar.module.css";
 
@@ -10,6 +11,7 @@ export function StatusBar() {
   const app = useApp();
   const s = useStore(app.store, (x) => x);
   const audit = useStore(auditStore, (x) => x.result);
+  const simplified = useStore(displaysUi, (x) => x.simplified > 0);
   const nf = new Intl.NumberFormat("ru-RU");
   const parts = [
     <span key="core" data-testid="core-status">
@@ -20,7 +22,12 @@ export function StatusBar() {
     <span key="set">Набор: {s.setName ? `${s.setName} (${nf.format(s.setHoles)} скв.)` : "—"}</span>,
   ];
   if (s.holeId) parts.push(<span key="hole">Выбрана: <b>{s.holeId}</b></span>);
-  parts.push(<span key="view">Вид: {s.view.perspective ? "перспектива" : "ортогональная"}</span>);
+  parts.push(
+    <span key="view" title={simplified ? "Отображения по стволу далеко от камеры показаны объединёнными интервалами (до 4 или 32 м)" : undefined}>
+      Вид: {s.view.perspective ? "перспектива" : "ортогональная"}
+      {simplified ? " · упрощено" : ""}
+    </span>,
+  );
   if (s.statusNote)
     parts.push(
       <span key="note" role="status" title="Закрыть" onClick={() => app.store.set({ statusNote: null })}>

@@ -15,6 +15,8 @@ interface BfSceneState {
   segments: number;
   /** the last pick on the CPU, ms */
   pickMs: number;
+  /** the layer of displays along holes */
+  displays: { legend: { key: string; name: string; holes: number; intervals: number; entries: { title: string; counts: number[] }[] }[]; simplified: number; loading: number; over: boolean };
 }
 
 interface Window {

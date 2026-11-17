@@ -1,0 +1,12 @@
+/* Legend of the displays along holes over the 3D view (ТЗ 7.16). Brand tokens (docs/brand). */
+.legend { position: absolute; left: 8px; top: 8px; max-width: min(360px, 45%); max-height: 45%; overflow: auto; padding: 6px 8px; border-radius: 6px; background: color-mix(in srgb, var(--bg-elev) 92%, transparent); border: 1px solid var(--border); color: var(--text); font-size: 11px; z-index: 4; box-shadow: var(--shadow); }
+.display + .display { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.name { font-family: var(--font-brand); font-weight: 600; font-size: 12px; display: block; margin-bottom: 2px; }
+.track { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 2px 0; }
+.layer { border: 0; padding: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; font-weight: 600; text-decoration: underline dotted; }
+.layer:hover { color: var(--text); }
+.swatch { display: inline-flex; align-items: center; gap: 3px; color: var(--text-dim); }
+.swatch i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; border: 1px solid color-mix(in srgb, var(--text) 25%, transparent); }
+.range { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
+.range i { display: inline-block; width: 60px; height: 8px; border-radius: 2px; }
+.muted { color: var(--text-faint); }

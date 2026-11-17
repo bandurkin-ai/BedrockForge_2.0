@@ -23,6 +23,8 @@ import { tablesStore } from "../tables/state";
 import { viewStore } from "./bind";
 import { HolesSource } from "./loaders";
 import { currentScene, sceneUi, setCurrentScene } from "./sceneHost";
+import { displaysUi } from "../downhole/displaysUi";
+import { Legend } from "../downhole/Legend";
 import { Toolbar } from "./Toolbar";
 import logoMark from "../../assets/logo-mark.png";
 import shell from "../../shell/Shell.module.css";
@@ -127,6 +129,7 @@ function SceneMount() {
   const app = useApp();
   const host = useRef<HTMLDivElement>(null);
   const ui = useStore(sceneUi, (s) => s);
+  const dh = useStore(displaysUi, (s) => s);
   const draw = useStore(sectionStore, (s) => s.draw);
   const keys = useStore(viewStore, (k) => k);
   const mapOpen = useStore(app.store, (s) => s.workspace.sectionMiniPlan);
@@ -142,8 +145,10 @@ function SceneMount() {
     let source: HolesSource | null = null;
     let disconnect: (() => void) | null = null;
     sceneUi.set({ lost: false, degraded: false, loading: 0, error: null, noWebgl: null, sets: 0 });
-    void import("../../viz/Scene")
-      .then((mod) => {
+    let displays: { idle: boolean; dispose(): void } | null = null;
+    // the scene and the layer of displays along holes: lazy chunks with three.js
+    void Promise.all([import("../../viz/Scene"), import("../downhole/sceneDisplays")])
+      .then(([mod, dh]) => {
         if (disposed) return;
         const probe = mod.probeWebGL2();
         if (!probe.ok) {
@@ -169,13 +174,16 @@ function SceneMount() {
         sceneUi.set({ software: scene.gpu.gpuClass === "software" || flags().softwareGl });
         setCurrentScene(scene);
         disconnect = connect(app, scene, source);
+        const dhs = new dh.DisplaysSource(scene, app);
+        displays = dhs;
         setReady(true);
         if (flags().e2e) {
           const s = scene;
           const src = source;
+          const ready = () => s.idle && src.idle && dhs.idle && !s.renderer.lost;
           window.__bfScene = {
-            ready: () => s.idle && src.idle && !s.renderer.lost,
-            state: () => ({ ...s.debug(), ready: s.idle && src.idle && !s.renderer.lost, loading: sceneUi.get().loading }),
+            ready,
+            state: () => ({ ...s.debug(), ready: ready(), loading: sceneUi.get().loading, displays: displaysUi.get() }),
             pixels: () => s.pixels(),
             collars: (limit?: number) => s.collarsOnScreen(limit),
             /** a command of the registry, as the ribbon or Claude runs it */
@@ -187,6 +195,7 @@ function SceneMount() {
     return () => {
       disposed = true;
       disconnect?.();
+      displays?.dispose();
       source?.dispose();
       if (currentScene() === scene) setCurrentScene(null);
       scene?.dispose();
@@ -210,7 +219,14 @@ function SceneMount() {
         )}
         {ui.degraded && !ui.lost && <div className={css.corner}>Графика перезапускалась трижды за минуту: нагрузка снижена</div>}
         {hint && <div className={css.hint}>{hint}</div>}
-        {ui.loading > 0 && !ui.lost && <div className={css.corner}>Загрузка…</div>}
+        {ready && <Legend />}
+        {(ui.loading > 0 || dh.loading > 0) && !ui.lost && <div className={css.corner}>Загрузка…</div>}
+        {dh.simplified > 0 && ui.loading === 0 && dh.loading === 0 && !ui.lost && (
+          <div className={`${css.corner} ${css.second}`} title="Части далеко от камеры показаны объединёнными интервалами до 4 или 32 м">
+            Отображения упрощены: {Math.round(dh.simplified * 100)} % частей
+          </div>
+        )}
+        {dh.over && <div className={`${css.corner} ${css.third}`}>Не хватает видеопамяти: часть отображений не показана</div>}
         {ui.software && ui.loading === 0 && !ui.lost && <div className={css.corner} title="WebGL без видеокарты (SwiftShader): 3D медленнее">Программная отрисовка</div>}
         {ui.error && <div className={`${css.note} ${css.error}`}>{ui.error}</div>}
         {ready && !hasSets && !ui.error && <div className={css.note}>Нет объектов для показа. Загрузите скважины: «Главная» → «Скважины» или перетащите файлы в окно.</div>}

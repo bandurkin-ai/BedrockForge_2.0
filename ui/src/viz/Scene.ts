@@ -59,7 +59,8 @@ export class Scene {
   private readonly three = new THREE.Scene();
   private readonly root = new THREE.Group();
   private readonly clip = new SharedClip();
-  private readonly resolution = new THREE.Vector2(1, 1);
+  /** the size of the view in px: the `resolution` of every LineMaterial (shared, updated on resize) */
+  readonly resolution = new THREE.Vector2(1, 1);
   private textures = new MarkerTextures();
   private labels: LabelCache;
   private grid: Grid;
