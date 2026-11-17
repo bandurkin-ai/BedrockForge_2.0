@@ -41,3 +41,11 @@ export interface ValueStats {
   p50: number | null;
   p95: number | null;
 }
+
+/** A hole path for the displays: points [x, y, z, measured depth] in project coordinates (float64). */
+export interface TrajectoryHole {
+  hole_id: string;
+  td: number | null;
+  source: "survey" | "collar" | "vertical";
+  path: number[][];
+}
