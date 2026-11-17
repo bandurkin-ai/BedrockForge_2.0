@@ -40,4 +40,8 @@ jobs:
       - name: Черновик выпуска
         shell: pwsh
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh release create "${{ github.ref_name }}" --draft --title "BedrockForge ${{ github.ref_name }}" --notes "Черновик выпуска. Отчёт вехи — в описании PR." app/release/*.exe app/release/SHA256SUMS.txt
+        # brand rules of every release (docs/brand/README.md «Выпуски»): the first line, the slogan, the icon
+        run: |
+          $notes = "**Bedrock**Forge by Mikhail Bandurkin — ${{ github.ref_name }}`n`n_Explore. Model. Plan. Mine._`n`nЧерновик выпуска. Состав — CHANGELOG.md, отчёт вехи — в описании PR этапа."
+          Copy-Item docs\brand\app-icon-256.png app\release\app-icon-256.png
+          gh release create "${{ github.ref_name }}" --draft --title "BedrockForge ${{ github.ref_name }}" --notes $notes app/release/*.exe app/release/SHA256SUMS.txt app/release/app-icon-256.png
