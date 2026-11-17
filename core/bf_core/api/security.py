@@ -10,7 +10,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
-from .errors import error_body
+from .errors import error_body, internal_body
 
 log = logging.getLogger("bf_core.api")
 
@@ -59,11 +59,11 @@ class GuardMiddleware:
 
         try:
             await self.app(scope, receive, tracking_send)
-        except Exception:  # noqa: BLE001 - answer in Russian with CORS instead of a bare 500
+        except Exception as exc:  # noqa: BLE001 - answer in Russian with CORS instead of a bare 500
             log.exception("unhandled error in %s %s", request.method, request.url.path)
             if started:
                 return
-            body = error_body("internal", "Внутренняя ошибка ядра.", "Скопируйте журнал ядра и отправьте разработчику.")
+            body = internal_body(exc)
             await JSONResponse(body, status_code=500)(scope, receive, cors_send)
 
     def _cors_headers(self, request: Request) -> list[tuple[bytes, bytes]]:

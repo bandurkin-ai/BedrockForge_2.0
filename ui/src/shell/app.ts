@@ -5,6 +5,7 @@
 import { bindJobs } from "../modules/jobs/bind";
 import { bindProjects } from "../modules/projects/bind";
 import { createRegistry } from "./catalog";
+import { logText, opLogStore, openLogWindow } from "./opLog";
 import type { Command, CommandSource } from "./commands";
 import { askConfirm } from "./dialogs";
 import { formatArgs, type CommandRegistry } from "./registry";
@@ -120,6 +121,16 @@ export function createApp(opts: { persist?: boolean } = {}): App {
     const key = a.id === undefined ? String(a.layer) : `${a.layer}:${a.id}`;
     store.set((s) => ({ view: setLayerShown(s.view, key, a.visible as boolean) }));
     return `${a.visible ? "Показан" : "Скрыт"} слой ${key}`;
+  });
+
+  registry.bind("logs.open", () => {
+    openLogWindow();
+  });
+  registry.bind("logs.last", (a) => {
+    const index = typeof a.index === "number" ? a.index : 0;
+    const log = opLogStore.get().logs[index];
+    if (!log) return "Журналов операций в этом сеансе нет";
+    return logText(log).slice(-20_000);
   });
 
   const run = async (id: string, args: Record<string, unknown> = {}, source: CommandSource = "user") => {

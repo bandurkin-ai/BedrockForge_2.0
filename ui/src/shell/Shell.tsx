@@ -8,6 +8,7 @@ import { DialogHost } from "./DialogHost";
 import { dialogStore, showMessage } from "./dialogs";
 import { detectImportKind, IMPORT_TITLES } from "./tree";
 import { LicenseWindow } from "./LicenseWindow";
+import { OpLogWindow } from "./OpLogWindow";
 import { startEvents } from "../modules/jobs/state";
 import { ExportWindow } from "../modules/projects/ExportWindow";
 import { ImportWindow } from "../modules/projects/ImportWindow";
@@ -35,6 +36,8 @@ const renderWindow: WindowRenderer = (w) => {
       return <SettingsWindow tab={w.props?.tab as string | undefined} />;
     case "license":
       return <LicenseWindow />;
+    case "op-log":
+      return <OpLogWindow logId={w.props?.logId as number | undefined} />;
     case "projects":
       return <ProjectsWindow />;
     case "project-export":

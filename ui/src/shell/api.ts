@@ -1,8 +1,13 @@
 /** JSON calls to the core with its {code, message, hint} errors (ТЗ 17: Russian text with a hint). */
 import { bridge } from "../bridge";
 import { apiUrl, authHeaders, type CoreTarget } from "./coreClient";
+import { logRequest } from "./opLog";
 
 export class CoreError extends Error {
+  /** 500 of the core: exception type and text, end of the stack (ТЗ 7.9). */
+  detail?: string;
+  trace?: string;
+
   constructor(
     readonly status: number,
     readonly code: string,
@@ -32,6 +37,8 @@ export async function call<T>(method: string, path: string, body?: unknown, f: t
   const target = coreTarget();
   if (!target) throw new CoreError(0, "core_offline", "Ядро недоступно.", "Подождите перезапуска ядра.");
   let r: Response;
+  const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const elapsed = () => (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
   try {
     r = await f(apiUrl(target, path), {
       method,
@@ -39,12 +46,23 @@ export async function call<T>(method: string, path: string, body?: unknown, f: t
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
+    logRequest(method, path, body, 0, elapsed(), "");
     throw new CoreError(0, "core_offline", "Ядро недоступно.", "Подождите перезапуска ядра.");
   }
-  const data = (await r.json().catch(() => null)) as Record<string, unknown> | null;
+  const text = await r.text().catch(() => "");
+  logRequest(method, path, body, r.status, elapsed(), text);
+  let data: Record<string, unknown> | null = null;
+  try {
+    data = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+  } catch {
+    data = null;
+  }
   if (!r.ok) {
     const e = data ?? {};
-    throw new CoreError(r.status, String(e.code ?? "error"), String(e.message ?? `Ядро ответило ${r.status}`), String(e.hint ?? ""));
+    const err = new CoreError(r.status, String(e.code ?? "error"), String(e.message ?? `Ядро ответило ${r.status}`), String(e.hint ?? ""));
+    err.detail = typeof e.detail === "string" ? e.detail : undefined;
+    err.trace = typeof e.trace === "string" ? e.trace : undefined;
+    throw err;
   }
   return data as T;
 }
