@@ -72,13 +72,16 @@ export const tablesStore = new Store<TablesState>({
 
 const text = (e: unknown) => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
 
-export async function loadSets(): Promise<SetInfo[]> {
+/** Reloads the list of sets. The active set changes only when it is gone, or with `pickFirst` (a project was
+ * opened): a background reload (another window, an import) never resets the table the user is looking at. */
+export async function loadSets(pickFirst = false): Promise<SetInfo[]> {
   try {
     const r = await api.get<{ sets: SetInfo[] }>("/drillholes/sets");
     const s = tablesStore.get();
-    const keep = r.sets.some((x) => x.id === s.setId) ? s.setId : (r.sets[0]?.id ?? null);
+    const exists = r.sets.some((x) => x.id === s.setId);
     tablesStore.set({ sets: r.sets, error: null });
-    if (keep !== s.setId) await selectSet(keep);
+    if (s.setId !== null && !exists) await selectSet(r.sets[0]?.id ?? null);
+    else if (s.setId === null && pickFirst && r.sets.length) await selectSet(r.sets[0].id);
     return r.sets;
   } catch {
     tablesStore.set({ sets: [], setId: null, tabs: [], table: null, columns: [], total: 0, pages: {} });

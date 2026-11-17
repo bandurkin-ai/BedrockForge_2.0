@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Query, Request
@@ -14,10 +14,12 @@ from bf_core.db.schema import dh_holes, dh_surveys, dh_tables, objects
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
-from . import actions
-from .expr import ExprError
-from .query import page, stats
-from .snapshot import Snapshot, build_collars, build_rows, build_surveys, snapshots
+if TYPE_CHECKING:
+    from .expr import ExprError
+    from .snapshot import Snapshot
+
+# numpy and the drillhole modules load on first use, not at the start of the core (tests/test_process.py:
+# heavy libraries are not imported before BF-READY).
 
 router = APIRouter(prefix="/drillholes")
 Svc = Annotated[ProjectService, Depends(projects)]
@@ -25,6 +27,9 @@ TABLE_TITLES = {"collar": "Устья", "survey": "Инклинометрия"}
 
 
 def _snapshot(project: Any, set_id: int, table: str) -> Snapshot:
+    from . import actions
+    from .snapshot import build_collars, build_rows, build_surveys, snapshots
+
     key = actions.current(project, set_id, table)
 
     def build() -> Snapshot:
@@ -98,6 +103,9 @@ def table_page(
     coords: bool = False,
 ) -> dict[str, Any]:
     """A page of rows (ТЗ 7.10 «Просмотр», «Сортировка», «Выбор скважины», 7.34 п. 21 «Фильтр по выражению»)."""
+    from .expr import ExprError
+    from .query import page
+
     project = svc.require_current()
     snap = _snapshot(project, set_id, table)
     sort = sort or None
@@ -141,6 +149,9 @@ def field_stats(
     where: Annotated[str | None, Query(max_length=2000)] = None,
 ) -> dict[str, Any]:
     """Σ: filled, empty, min, max, mean, median, standard deviation; for text — unique and frequent values."""
+    from .expr import ExprError
+    from .query import stats
+
     project = svc.require_current()
     snap = _snapshot(project, set_id, table)
     try:
@@ -167,6 +178,8 @@ class RowBody(BaseModel):
 @router.patch("/sets/{set_id}/tables/{table}/rows/{row_id}")
 def edit_cell(svc: Svc, request: Request, set_id: int, table: str, row_id: int, body: CellBody) -> dict[str, Any]:
     project = svc.require_current(writable=True)
+    from . import actions
+
     out = actions.update_cell(project, set_id, table, row_id, body.column, body.value, body.rev)
     if out.get("changed"):
         _changed(request, set_id, table, out["rev"])
@@ -176,6 +189,8 @@ def edit_cell(svc: Svc, request: Request, set_id: int, table: str, row_id: int, 
 @router.post("/sets/{set_id}/tables/{table}/rows")
 def add_row(svc: Svc, request: Request, set_id: int, table: str, body: RowBody) -> dict[str, Any]:
     project = svc.require_current(writable=True)
+    from . import actions
+
     out = actions.insert_row(project, set_id, table, body.values, body.rev)
     _changed(request, set_id, table, out["rev"])
     return out
@@ -186,6 +201,8 @@ def remove_row(
     svc: Svc, request: Request, set_id: int, table: str, row_id: int, rev: int | None = None
 ) -> dict[str, Any]:
     project = svc.require_current(writable=True)
+    from . import actions
+
     out = actions.delete_row(project, set_id, table, row_id, rev)
     _changed(request, set_id, table, out["rev"])
     return out
@@ -194,12 +211,16 @@ def remove_row(
 @router.get("/sets/{set_id}/edits")
 def edits(svc: Svc, set_id: int, table: str | None = None, limit: int = 200) -> dict[str, Any]:
     project = svc.require_current()
+    from . import actions
+
     return {"edits": actions.history(project, set_id, table=table, limit=limit)}
 
 
 @router.post("/edits/{edit_id}/undo")
 def undo_edit(svc: Svc, request: Request, edit_id: int) -> dict[str, Any]:
     project = svc.require_current(writable=True)
+    from . import actions
+
     out = actions.undo(project, edit_id)
     _changed(request, out["set_id"], out["table"], out["rev"])
     return out
@@ -285,6 +306,8 @@ def delete_set(svc: Svc, request: Request, set_id: int) -> dict[str, Any]:
             sa.delete(blob_owners).where(blob_owners.c.owner_kind == "object", blob_owners.c.owner_id == set_id)
         )
         conn.execute(sa.delete(objects).where(objects.c.id == set_id))
+    from .snapshot import snapshots
+
     snapshots.forget(set_id)
     request.app.state.core.events.publish("objects.changed", {"kind": "drillhole_set", "id": set_id, "deleted": True})
     return {"deleted": set_id}
@@ -328,6 +351,27 @@ def set_trajectories(
     return {"method": method, "method_title": METHOD_TITLES[method], "holes": out, "skipped": st.skipped}
 
 
+HOLE_TYPES = {"hole": "Скважина", "trench": "Канава", "design": "Проектная скважина"}
+
+
+def hole_type(attrs: dict[str, Any] | None) -> dict[str, str]:
+    """Канавы и траншеи, проектные скважины (ТЗ 7.34 п. 102, 103) — by the collar attributes «Тип» / «Статус»
+    as they come from the files (TYPE, HOLE_TYPE, STATUS…). A trench is described by its survey like a hole."""
+    text = " ".join(
+        str(v).casefold()
+        for k, v in (attrs or {}).items()
+        if str(k).casefold() in ("type", "hole_type", "тип", "status", "статус")
+    )
+    kind = (
+        "trench"
+        if any(w in text for w in ("канав", "тран", "trench"))
+        else "design"
+        if any(w in text for w in ("проект", "design", "plan"))
+        else "hole"
+    )
+    return {"key": kind, "title": HOLE_TYPES[kind]}
+
+
 @router.get("/sets/{set_id}/holes/{hole_id}")
 def hole_card(svc: Svc, set_id: int, hole_id: int) -> dict[str, Any]:
     """«Карточка скважины» in «Свойства»: the collar, rows per table, the end of the trajectory (audit — Э5)."""
@@ -363,6 +407,7 @@ def hole_card(svc: Svc, set_id: int, hole_id: int) -> dict[str, Any]:
     return {
         "id": h.id,
         "name": h.name,
+        "type": hole_type(h.attrs),
         "collar": None
         if not h.has_collar
         else {"x": h.x, "y": h.y, "z": h.z, "td": h.td, "azimuth": h.azimuth, "dip": h.dip, **(h.attrs or {})},

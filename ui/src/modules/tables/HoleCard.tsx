@@ -7,6 +7,7 @@ import css from "./Tables.module.css";
 interface Card {
   id: number;
   name: string;
+  type: { key: string; title: string };
   collar: Record<string, unknown> | null;
   surveys: number;
   tables: Record<string, { name: string; kind: string; rows: number }>;
@@ -31,7 +32,9 @@ export function HoleCard() {
   if (!card) return <div className={css.note}>Загрузка…</div>;
   return (
     <div className={css.card} aria-label={`Скважина ${card.name}`}>
-      <h4>Скважина {card.name}</h4>
+      <h4>
+        {card.type.title} {card.name}
+      </h4>
       {card.collar ? (
         <dl>
           {Object.entries(card.collar).map(([k, v]) => (

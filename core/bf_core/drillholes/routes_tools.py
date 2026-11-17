@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
@@ -12,9 +12,10 @@ from pydantic import BaseModel, Field
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 
-from . import actions
 from .router import Svc, _changed, _snapshot
-from .snapshot import Snapshot
+
+if TYPE_CHECKING:
+    from .snapshot import Snapshot
 
 router = APIRouter()
 
@@ -252,6 +253,8 @@ def export_table(svc: Svc, request: Request, set_id: int, table: str, body: Expo
     from bf_core.jobs.service import jobs_of
 
     project = svc.require_current()
+    from . import actions
+
     actions.current(project, set_id, table)  # 404 for an unknown table
     folder = Path(body.path).parent
     if not folder.is_dir():

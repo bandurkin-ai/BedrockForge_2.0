@@ -246,3 +246,12 @@ def test_trajectories_coordinates_and_hole_card(dset) -> None:  # type: ignore[n
     d1 = next(h for h in c.get(f"{API}/drillholes/sets/{set_id}/trajectories").json()["holes"] if h["name"] == "D1")
     assert d1["stations"][0][3] == 400.0
     assert c.get(f"{API}/drillholes/sets/{set_id}/trajectories", params={"method": "x"}).status_code == 422
+
+
+def test_hole_types() -> None:
+    from bf_core.drillholes.router import hole_type
+
+    assert hole_type({"status": "Проектная"})["key"] == "design"
+    assert hole_type({"TYPE": "канава"})["key"] == "trench"
+    assert hole_type({"Тип": "Траншея"})["key"] == "trench"
+    assert hole_type(None)["key"] == "hole" and hole_type({"status": "бур"})["key"] == "hole"

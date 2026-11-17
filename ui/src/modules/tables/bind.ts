@@ -28,11 +28,11 @@ export function bindTables(app: App): void {
     const cur = projectStore.get().current?.uid ?? null;
     if (cur === uid) return;
     uid = cur;
-    if (cur) void loadSets();
+    if (cur) void loadSets(true);
     else tablesStore.set({ sets: [], setId: null, tabs: [], table: null, columns: [], total: 0, pages: {} });
   });
   onJobFinished((job) => {
-    if (job.kind === "import.drillholes" && job.status === "done") void loadSets().then(() => loadTabs());
+    if (job.kind === "import.drillholes" && job.status === "done") void loadSets(true).then(() => loadTabs());
   });
   onCoreEvent((event, data) => {
     if (event === "objects.changed") void loadSets();
