@@ -1,7 +1,7 @@
 import { bridge } from "../bridge";
 import { useStore } from "./useStore";
 import { logFileName, logText, opLogStore, openLogWindow } from "./opLog";
-import css from "./OpLog.module.css";
+import css from "./OpLogWindow.module.css";
 
 /** The log of one operation (ТЗ 7.9): «Копировать», «Сохранить .txt», «Обновить». */
 export function OpLogWindow({ logId }: { logId?: number }) {
