@@ -63,7 +63,9 @@ def test_quick_queue_does_not_wait_for_heavy(jc) -> None:  # type: ignore[no-unt
 
 
 def test_cancel_queued_at_once_running_at_next_tick_drops_partial(jc) -> None:  # type: ignore[no-untyped-def]
-    key, first = submit(jc, "diag.sleep", steps=200, step_s=0.05)
+    # steps of 0.5 s: the cancel answer is read long before the worker's next tick, also on a slow CI machine
+    # (with 0.05 s the worker could finish cancelling before the answer, and «Отмена…» was already «Отменено»)
+    key, first = submit(jc, "diag.sleep", steps=40, step_s=0.5)
     _, second = submit(jc, "diag.sleep", steps=1)
     wait_for(jc, key, first, statuses=("running",))
     # a partial result of the running job
