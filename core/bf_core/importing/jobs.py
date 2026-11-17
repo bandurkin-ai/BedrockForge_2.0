@@ -126,18 +126,13 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
             written["surveys"] = len(surveys)
         else:
             assert norm.table is not None
-            res = dh.write_table(
-                engine,
-                set_id,
-                norm.table,
-                job_id=ctx.id,
-                swap=False,
-                tick=lambda frac, msg, base=base, share=share: ctx.tick(
-                    None if frac is None else base + share * (0.5 + 0.5 * frac), msg
-                ),
-            )
-            built.append(res["table_id"])
-            written["rows"] = res["rows"]
+
+            def write_tick(frac: float | None, msg: str | None, base: float = base, share: float = share) -> None:
+                ctx.tick(None if frac is None else base + share * (0.5 + 0.5 * frac), msg)
+
+            done = dh.write_table(engine, set_id, norm.table, job_id=ctx.id, swap=False, tick=write_tick)
+            built.append(done["table_id"])
+            written["rows"] = done["rows"]
         history.append(
             {"file": f, "label": label, "counts": written, "format": Path(f["path"]).suffix.lower().lstrip(".")}
         )
