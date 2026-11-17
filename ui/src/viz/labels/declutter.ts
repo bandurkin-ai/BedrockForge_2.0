@@ -46,10 +46,11 @@ export function declutter(labels: readonly LabelBox[], opts: DeclutterOptions): 
     if (!(Number.isFinite(l.x) && Number.isFinite(l.y) && l.w >= 0 && l.h >= 0)) continue;
     const top = l.y - l.h / 2;
     if (l.x + l.w < 0 || l.x > opts.width || top + l.h < 0 || top > opts.height) continue;
-    const x0 = Math.max(0, Math.floor(l.x / cw));
-    const x1 = Math.min(cols - 1, Math.floor((l.x + l.w) / cw));
-    const y0 = Math.max(0, Math.floor(top / ch));
-    const y1 = Math.min(rows - 1, Math.floor((top + l.h) / ch));
+    // Cells the box covers; an edge exactly on a cell border does not take the next cell.
+    const x0 = Math.min(cols - 1, Math.max(0, Math.floor(l.x / cw)));
+    const x1 = Math.min(cols - 1, Math.max(x0, Math.ceil((l.x + l.w) / cw) - 1));
+    const y0 = Math.min(rows - 1, Math.max(0, Math.floor(top / ch)));
+    const y1 = Math.min(rows - 1, Math.max(y0, Math.ceil((top + l.h) / ch) - 1));
     let free = true;
     for (let r = y0; r <= y1 && free; r++) for (let c = x0; c <= x1; c++) if (taken[r * cols + c]) { free = false; break; }
     if (!free) continue;

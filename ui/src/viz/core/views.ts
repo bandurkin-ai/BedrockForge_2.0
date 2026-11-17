@@ -110,15 +110,22 @@ export function cameraBasis(cam: CameraState): Basis {
 export function lookFrom(direction: Vec3, box: Box3, opts: ViewOptions, section: SectionFrame | null = null): CameraState {
   const b = scaleZ(box, opts.vexag);
   const s = section?.line ?? null;
+  // The points to hold: the corners of the box, or — for a line of given length — the corners of its
+  // window from the top to the bottom of the content (the line from end to end, not its bounding box).
+  let points: Vec3[] = [];
+  for (let i = 0; i < 8; i++) points.push([i & 1 ? b.max[0] : b.min[0], i & 2 ? b.max[1] : b.min[1], i & 4 ? b.max[2] : b.min[2]]);
   if (s && s.length !== null && section) {
     const along = sectionDirection(s.az);
     const n = sectionNormal(s.az);
     const p0: Vec3 = [s.x0 - section.origin.x, s.y0 - section.origin.y, 0];
-    const ends = [0, s.length].flatMap((u) => [-s.away, s.towards].map((d) => addScaled(addScaled(p0, along, u), n, d)));
-    b.min[0] = Math.min(...ends.map((e) => e[0]));
-    b.max[0] = Math.max(...ends.map((e) => e[0]));
-    b.min[1] = Math.min(...ends.map((e) => e[1]));
-    b.max[1] = Math.max(...ends.map((e) => e[1]));
+    points = [0, s.length].flatMap((u) => [-s.away, s.towards].flatMap((d) => [b.min[2], b.max[2]].map((z): Vec3 => {
+      const p = addScaled(addScaled(p0, along, u), n, d);
+      return [p[0], p[1], z];
+    })));
+    b.min[0] = Math.min(...points.map((e) => e[0]));
+    b.max[0] = Math.max(...points.map((e) => e[0]));
+    b.min[1] = Math.min(...points.map((e) => e[1]));
+    b.max[1] = Math.max(...points.map((e) => e[1]));
   }
   let centre = boxCenter(b);
   if (s && section) {
@@ -136,8 +143,8 @@ export function lookFrom(direction: Vec3, box: Box3, opts: ViewOptions, section:
   let halfRight = 0;
   let halfUp = 0;
   let radius = 0;
-  for (let i = 0; i < 8; i++) {
-    const corner = sub([i & 1 ? b.max[0] : b.min[0], i & 2 ? b.max[1] : b.min[1], i & 4 ? b.max[2] : b.min[2]], centre);
+  for (const p of points) {
+    const corner = sub(p, centre);
     halfRight = Math.max(halfRight, Math.abs(dot(corner, right)));
     halfUp = Math.max(halfUp, Math.abs(dot(corner, up)));
     radius = Math.max(radius, length(corner));

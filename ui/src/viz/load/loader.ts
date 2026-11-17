@@ -80,9 +80,10 @@ export class LoadQueue {
   private readonly pending = new Map<string, Task>();
   private readonly running = new Map<string, Task>();
   private readonly etags = new Map<string, string>();
-  private readonly kept = new Map<string, { etag: string; buffer: ArrayBuffer }>();
+  private readonly kept = new Map<string, { etag: string; buffer: ArrayBuffer; bytes: number }>();
   private keptBytes = 0;
   private seq = 0;
+  private scheduled = false;
   /** the largest number of requests seen at once (tests and the diagnostic counter) */
   peak = 0;
 
@@ -99,6 +100,11 @@ export class LoadQueue {
 
   get queued(): number {
     return this.pending.size;
+  }
+
+  /** Bytes kept for `retain` requests. */
+  get retainedBytes(): number {
+    return this.keptBytes;
   }
 
   /**
@@ -120,7 +126,7 @@ export class LoadQueue {
     });
     const req = { url: request.url, priority, retain: request.retain ?? false, revalidate: request.revalidate ?? true };
     this.pending.set(request.url, { req, seq: this.seq++, promise, resolve, reject, abort: null });
-    this.pump();
+    this.schedule();
     return promise;
   }
 
@@ -160,18 +166,18 @@ export class LoadQueue {
   private dropKept(url: string): void {
     const k = this.kept.get(url);
     if (!k) return;
-    this.keptBytes -= k.buffer.byteLength;
+    this.keptBytes -= k.bytes;
     this.kept.delete(url);
   }
 
   private keep(url: string, etag: string, buffer: ArrayBuffer): void {
     this.dropKept(url);
     if (buffer.byteLength > this.retainLimit) return;
-    this.kept.set(url, { etag, buffer });
+    this.kept.set(url, { etag, buffer, bytes: buffer.byteLength });
     this.keptBytes += buffer.byteLength;
     for (const [old, k] of this.kept) {
       if (this.keptBytes <= this.retainLimit) break;
-      this.keptBytes -= k.buffer.byteLength;
+      this.keptBytes -= k.bytes;
       this.kept.delete(old);
     }
   }
@@ -180,7 +186,7 @@ export class LoadQueue {
   private keptFor(url: string, etag: string): ArrayBuffer | null {
     const k = this.kept.get(url);
     if (!k || k.etag !== etag) return null;
-    if ((k.buffer as { detached?: boolean }).detached === true) {
+    if ((k.buffer as { detached?: boolean }).detached === true || (k.bytes > 0 && k.buffer.byteLength === 0)) {
       this.dropKept(url);
       return null;
     }
@@ -196,6 +202,16 @@ export class LoadQueue {
       if (!best || t.req.priority < best.req.priority || (t.req.priority === best.req.priority && t.seq < best.seq)) best = t;
     }
     return best;
+  }
+
+  /** Starts on the next microtask, so that requests queued together go by priority. */
+  private schedule(): void {
+    if (this.scheduled) return;
+    this.scheduled = true;
+    queueMicrotask(() => {
+      this.scheduled = false;
+      this.pump();
+    });
   }
 
   private pump(): void {
