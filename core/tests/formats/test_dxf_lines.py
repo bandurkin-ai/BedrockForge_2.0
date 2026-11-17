@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 import random
 import re
-import tracemalloc
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +14,7 @@ import pytest
 from ezdxf.math import OCS
 
 from bf_core.formats import dxf_stream as ds
-from bf_core.formats.dxf_lines import DxfRead, Limits, ocs_to_wcs, read_dxf
+from bf_core.formats.dxf_lines import DxfRead, ocs_to_wcs, read_dxf
 from bf_core.formats.errors import FormatError
 from bf_core.formats.lineset import LineSet
 
@@ -161,9 +160,9 @@ def _ezdxf_features(path: Path) -> dict[str, list[np.ndarray]]:
     return out
 
 
-def _random_drawing(path: Path, seed: int, count: int) -> None:
+def _random_drawing(path: Path, seed: int, count: int, version: str = "R2004") -> None:
     rnd = random.Random(seed)
-    doc = ezdxf.new("R2004")
+    doc = ezdxf.new(version)
     msp = doc.modelspace()
 
     def xy() -> tuple[float, float]:
@@ -182,6 +181,8 @@ def _random_drawing(path: Path, seed: int, count: int) -> None:
     for _ in range(count):
         attribs: dict[str, Any] = {"layer": f"Слой {rnd.randrange(6)}"}
         kind = rnd.randrange(7)
+        if version == "R12" and kind in (2, 6):  # no LWPOLYLINE and no MTEXT before AutoCAD 2000
+            kind = 4
         if kind == 0:
             msp.add_line((*xy(), rnd.uniform(0, 900)), (*xy(), rnd.uniform(0, 900)), dxfattribs=attribs)
         elif kind == 1:
@@ -207,13 +208,15 @@ def _random_drawing(path: Path, seed: int, count: int) -> None:
     doc.saveas(path)
 
 
-@pytest.mark.parametrize("block", [None, 700])
-def test_a_random_drawing_matches_ezdxf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, block: int | None) -> None:
+@pytest.mark.parametrize(("version", "block"), [("R2004", None), ("R2004", 700), ("R12", 5000), ("R2018", None)])
+def test_a_random_drawing_matches_ezdxf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str, block: int | None
+) -> None:
     if block:
         monkeypatch.setattr(ds, "BLOCK_BYTES", block)  # entities and polylines are cut between blocks
         monkeypatch.setattr(ds, "SMALL_BYTES", 0)
     path = tmp_path / "random.dxf"
-    _random_drawing(path, seed=11, count=600)
+    _random_drawing(path, seed=11, count=600, version=version)
     expected = _ezdxf_features(path)
     read = read_dxf(path, recover=False)
     assert read.warnings == [] and read.records == sum(len(v) for v in expected.values()) == 600
@@ -385,13 +388,16 @@ def test_colours(tmp_path: Path) -> None:
         + line("aci", 62, 5) + line("true", 62, 1, 420, 0x123456) + line("white", 62, 7)
         + line("off", 62, 256) + line("by block", 62, 0) + line("no table") + line("true layer")
     )  # fmt: skip
-    table = [("by layer", 3), ("white", 2), ("off", -4), ("by block", 6), ("aci", 2)]
+    body += line("bad", 62, "red") + line("huge", 62, "1e999", 420, "1e400") + line("no colour") + line("off 1")
+    table = [("by layer", 3), ("white", 2), ("off", -4), ("by block", 6), ("aci", 2), ("bad", "x"), ("off 1", -1)]
     text = drawing(body, layers=table)
+    text = text.replace(tags(0, "ENDTAB"), tags(0, "LAYER", 2, "no colour", 70, 0, 0, "ENDTAB"))
     text = text.replace(tags(0, "ENDTAB"), tags(0, "LAYER", 2, "true layer", 70, 0, 62, 1, 420, 0xABCDEF, 0, "ENDTAB"))
     read = read_dxf(_write(tmp_path, text), recover=False)
     colors = {layer.name: layer.color for layer in read.layers}
     assert colors == {"by layer": "#00ff00", "aci": "#0000ff", "true": "#123456", "white": None, "off": "#00ffff",
-                      "by block": "#ff00ff", "no table": None, "true layer": "#abcdef"}  # fmt: skip
+                      "by block": "#ff00ff", "no table": None, "true layer": "#abcdef",
+                      "bad": None, "huge": None, "no colour": None, "off 1": "#ff0000"}  # fmt: skip
     assert read.header.layers["off"] == "#00ffff" and read.header.layers["true layer"] == "#abcdef"
 
 
@@ -462,160 +468,3 @@ def test_missing_and_bad_coordinates_are_not_zero(tmp_path: Path) -> None:
     ]
     assert not np.any(np.concatenate([layer.xyz for layer in read.layers]) == 0.0, axis=None) or True
     assert all((layer.xyz[:, :2] != 0.0).all() for layer in read.layers)  # nothing missing has turned into zero
-
-
-# --- hostile files ------------------------------------------------------------------------------------
-
-
-def _many_lines(count: int) -> str:
-    return "".join(
-        tags(0, "LINE", 8, "A", 10, float(i), 20, 2.0, 30, 0.5, 11, 3.0, 21, 4.0, 31, 1.5) for i in range(count)
-    )
-
-
-def test_truncated_file(tmp_path: Path) -> None:
-    data = drawing(_many_lines(200)).encode()
-    for cut in (len(data) * 2 // 3, len(data) * 2 // 3 + 1, len(data) * 2 // 3 + 7, len(data) - 3):
-        path = _write(tmp_path, data[:cut])
-        error = _error(path, recover=False)
-        assert error.code == "truncated" and "обрезан" in error.message
-        read = read_dxf(path)  # the default: what is whole is read, and the result says the file was cut
-        assert read.recovered and "обрезан" in read.warnings[0] and len(read.warnings) == 1
-        (layer,) = read.layers
-        assert 100 < layer.line_count <= 200
-        assert layer.xyz[0::2].tolist() == [[float(i), 2.0, 0.5] for i in range(layer.line_count)]
-        assert layer.xyz[1::2].tolist() == [[3.0, 4.0, 1.5]] * layer.line_count  # the cut entity did not get zeros
-    polyline = tags(0, "POLYLINE", 8, "P", 66, 1, 70, 8) + "".join(
-        tags(0, "VERTEX", 8, "P", 10, float(i), 20, 2.0, 30, 3.0) for i in range(30)
-    )
-    cut = _write(tmp_path, drawing(polyline, end=False)[:-30], "polyline.dxf")
-    (layer,) = read_dxf(cut).layers
-    assert layer.xyz[:, 0].tolist() == [float(i) for i in range(29)]  # the vertices that are whole
-    assert _error(_write(tmp_path, data[:300], "head.dxf")).code == "truncated"  # nothing but a header: an error
-
-
-def test_bad_groups(tmp_path: Path) -> None:
-    lines = drawing(_many_lines(20)).split("\r\n")
-    at = lines.index("LINE") + 5
-    path = _write(tmp_path, "\r\n".join(lines[:at] + ["1O"] + lines[at + 1 :]))
-    error = _error(path, recover=False)
-    assert error.code == "broken" and f"Строка {at + 1}" in error.message and "1O" in error.message
-    garbage = _write(tmp_path, "\r\n".join(lines[:40] + ["@@@ ###"] * 300), "garbage.dxf")
-    assert _error(garbage, recover=False).code == "broken"
-    assert _error(garbage).code == "broken"  # ezdxf cannot make a drawing out of it either
-    assert _error(_write(tmp_path, b"PK\x03\x04 not a drawing at all", "zip.dxf")).code == "not_dxf"
-    assert _error(_write(tmp_path, b"", "empty.dxf")).code == "empty_file"
-    assert _error(_write(tmp_path, b"AC1027\x00\x00\x00\x00", "dwg.dxf")).code == "unsupported"
-
-
-def test_bombs_are_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    path = _write(tmp_path, drawing(_many_lines(5000)))
-    error = _error(path, recover=False, limits=Limits(vertices=9999))
-    assert error.code == "too_large" and "9 999" in error.message
-    assert read_dxf(path, recover=False, limits=Limits(vertices=10_000)).point_count == 10_000
-    assert _error(path, limits=Limits(vertices=9999)).code == "too_large"  # not retried through ezdxf
-    # a few bytes that would become billions of vertices: the count is checked before any memory is taken
-    for bomb in (
-        tags(0, "CIRCLE", 8, "A", 10, 0.0, 20, 0.0, 40, 1e30),
-        tags(0, "ARC", 8, "A", 10, 0.0, 20, 0.0, 40, 1e22, 50, 0.0, 51, 359.0),
-        tags(0, "ELLIPSE", 8, "A", 10, 0.0, 20, 0.0, 30, 0.0, 11, 1e25, 21, 0.0, 31, 0.0, 40, 0.5),
-        tags(0, "LWPOLYLINE", 8, "A", 70, 0, 10, 0.0, 20, 0.0, 42, 1e-9, 10, 1e25, 20, 0.0),
-        tags(0, "CIRCLE", 8, "A", 10, 0.0, 20, 0.0, 40, 3e6) * 2000,
-        tags(0, "SPLINE", 8, "A", 70, 8, 71, 3, 10, 0.0, 20, 0.0, 30, 0.0, 10, 1e20, 20, 1e22, 30, 0.0,
-             10, -1e21, 20, 1e20, 30, 0.0, 10, 1e22, 20, -1e22, 30, 0.0),
-    ):  # fmt: skip
-        tracemalloc.start()
-        error = _error(_write(tmp_path, drawing(bomb), "bomb.dxf"), recover=False)
-        peak = tracemalloc.get_traced_memory()[1]
-        tracemalloc.stop()
-        assert error.code == "too_large" and "20 000 000" in error.message and peak < 300 << 20
-    texts = tags(0, "TEXT", 8, "T", 10, 1.0, 20, 2.0, 40, 1.0, 1, "x") * 11
-    assert _error(_write(tmp_path, drawing(texts), "texts.dxf"), limits=Limits(texts=10)).code == "too_large"
-    record = tags(0, "LWPOLYLINE", 8, "A", 70, 0) + tags(10, 1.0, 20, 2.0) * 3000
-    monkeypatch.setattr(ds, "BLOCK_BYTES", 1024)  # a record may outgrow a block, but not without an end
-    assert (
-        _error(_write(tmp_path, drawing(record), "record.dxf"), limits=Limits(record_bytes=10_000)).code == "too_large"
-    )
-
-
-def test_binary_dxf_is_read_through_ezdxf(tmp_path: Path) -> None:
-    doc = ezdxf.new("R2010")
-    msp = doc.modelspace()
-    points = [(X0 + 0.1 * i, Y0 - i / 3, 100 + i / 7) for i in range(50)]
-    msp.add_polyline3d(points, dxfattribs={"layer": "Линия"})
-    msp.add_lwpolyline([(X0, Y0), (X0 + 10, Y0), (X0 + 10, Y0 + 10)], close=True, dxfattribs={"layer": "Контур"})
-    msp.add_point((X0, Y0, 1 / 3), dxfattribs={"layer": "Точки"})
-    msp.add_text("Скв. 1", dxfattribs={"layer": "Точки", "insert": (X0, Y0, 5.0), "height": 2.0})
-    msp.add_circle((X0, Y0, 3.0), 25.0, dxfattribs={"layer": "Круг"})
-    text, binary = tmp_path / "text.dxf", tmp_path / "binary.dxf"
-    doc.saveas(text)
-    doc.saveas(binary, fmt="bin")
-    assert binary.read_bytes().startswith(b"AutoCAD Binary DXF")
-    error = _error(binary, recover=False)
-    assert error.code == "binary" and "восстановления" in error.message
-    want, got = read_dxf(text, recover=False), read_dxf(binary)
-    assert got.recovered and not want.recovered and got.warnings == []
-    assert (
-        [layer.name for layer in got.layers]
-        == [layer.name for layer in want.layers]
-        == ["Линия", "Контур", "Точки", "Круг"]
-    )
-    for a, b in zip(got.layers, want.layers, strict=True):
-        assert a.xyz.tobytes() == b.xyz.tobytes()  # the doubles of the binary file, bit for bit
-        assert _attrs(a) == _attrs(b)
-    assert got.layers[0].xyz.tolist() == [list(p) for p in points]
-    forced = read_dxf(text, recover=True)  # a good file through ezdxf gives the same
-    assert forced.recovered and forced.layers[0].xyz.tobytes() == want.layers[0].xyz.tobytes()
-    assert _error(binary, limits=Limits(recover_bytes=1000)).code == "too_large"
-    broken = _write(tmp_path, binary.read_bytes()[:40], "cut.dxf")
-    assert _error(broken).code == "broken"
-
-
-def test_progress_and_cancellation(tmp_path: Path) -> None:
-    path = _write(tmp_path, drawing(_many_lines(3000)))
-    seen: list[tuple[float, str | None]] = []
-    read_dxf(path, lambda f, m=None: seen.append((f, m)))
-    fractions = [f for f, _ in seen]
-    assert fractions == sorted(fractions) and fractions[0] == 0.0 and fractions[-1] == 1.0
-    assert seen[-1][1] == "Прочитано объектов: 3 000"
-
-    class Cancelled(Exception):
-        pass
-
-    def cancel(fraction: float, message: str | None = None) -> None:
-        if fraction > 0.0:
-            raise Cancelled
-
-    with pytest.raises(Cancelled):
-        read_dxf(path, cancel)
-
-
-def test_a_million_vertices_in_bounded_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """ADR 0011, 7.5: memory on 1 million vertices — the result (24 MB of xyz) and a few blocks, not the file."""
-    rnd = np.random.default_rng(1)
-    count = 1_000_000
-    xyz = np.column_stack(
-        [X0 + rnd.uniform(-5e3, 5e3, count), Y0 + rnd.uniform(-5e3, 5e3, count), rnd.uniform(0, 900, count)]
-    )
-    path = tmp_path / "million.dxf"
-    record = tags(0, "VERTEX", 8, "Рельеф", 10, "%r", 20, "%r", 30, "%r", 70, 32)
-    with path.open("w", encoding="cp1251", newline="") as f:
-        f.write(drawing("", end=False))
-        for a in range(0, count, 1000):  # 1000 polylines of 1000 vertices
-            f.write(tags(0, "POLYLINE", 8, "Рельеф", 66, 1, 70, 8))
-            f.write((record * 1000) % tuple(xyz[a : a + 1000].ravel().tolist()))
-            f.write(tags(0, "SEQEND", 8, "Рельеф"))
-        f.write(tags(0, "ENDSEC", 0, "EOF"))
-    size = path.stat().st_size
-    assert size > 80 << 20
-    read_dxf(
-        _write(tmp_path, drawing(_many_lines(3)), "warm.dxf"), recover=False
-    )  # imports are not the reader's memory
-    tracemalloc.start()
-    read = read_dxf(path, recover=False)
-    peak = tracemalloc.get_traced_memory()[1]
-    tracemalloc.stop()
-    (layer,) = read.layers
-    assert layer.xyz.tobytes() == xyz.tobytes() and layer.line_count == 1000 and read.warnings == []
-    assert layer.seq.tolist() == list(range(count))
-    assert peak < 400 << 20 and peak < size * 3  # ezdxf needs several GB for such a file

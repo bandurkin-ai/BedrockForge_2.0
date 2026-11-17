@@ -5,7 +5,7 @@
 step is at most π / 8 (16 chords in a full turn, as BF: four per quarter), so a small circle stays round. An
 ellipse is cut in its parameter with the step √(8·tol / a): the chord error is bounded by step²/8 · max|C″| and
 |C″| ≤ a, the major half-axis. A spline is evaluated by `ezdxf.math.BSpline` (ADR 0011: the mathematics of curves
-is ezdxf's) and refined where one of three probes of a chord is farther than `tol` from it.
+is ezdxf's) and refined where one of three probes of a chord is farther than 0.9·`tol` from it.
 
 Everything works on arrays of many entities at once and counts the vertices before it makes them: `limit` is the
 number of vertices the caller can still take (`FormatError("too_large")` beyond it — a circle of an absurd radius
@@ -16,7 +16,8 @@ the arcs are added between them.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from itertools import chain
 from typing import Any
 
 import numpy as np
@@ -29,6 +30,7 @@ TWO_PI = 2.0 * math.pi
 SPLINE_ROUNDS = 16  # every round cuts a chord that is too far into four
 PROBE = 0.9  # three probes can miss the farthest point of a chord by a few per cent (a cubic: 5 %): the margin
 HARD_LIMIT = 1 << 31  # vertices of one call when the caller sets no limit
+PORTION = 50_000  # points of a spline evaluated between two signs of life
 
 
 def too_many(limit: int) -> FormatError:
@@ -52,16 +54,17 @@ def _ranges(counts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return owner, within
 
 
+@np.errstate(all="ignore")
 def arc_steps(radius: Any, sweep: Any, tol: float = TOL) -> np.ndarray:
     """Chords (float, ≥ 1) for arcs of `radius` over `sweep` radians: sagitta ≤ tol, step ≤ MIN_STEP."""
     r = np.abs(np.asarray(radius, dtype=np.float64))
-    with np.errstate(divide="ignore", invalid="ignore"):
-        # 2·acos(1 − tol / r) without the loss of digits at a large radius
-        step = np.minimum(4.0 * np.arcsin(np.sqrt(np.minimum(tol / (2.0 * r), 1.0))), MIN_STEP)
-        n = np.ceil(np.abs(np.asarray(sweep, dtype=np.float64)) / step * (1.0 - 1e-12))
+    # 2·acos(1 − tol / r) without the loss of digits at a large radius
+    step = np.minimum(4.0 * np.arcsin(np.sqrt(np.minimum(tol / (2.0 * r), 1.0))), MIN_STEP)
+    n = np.ceil(np.abs(np.asarray(sweep, dtype=np.float64)) / step * (1.0 - 1e-12))
     return np.maximum(n, 1.0)
 
 
+@np.errstate(all="ignore")
 def span(start: Any, end: Any, turn: float) -> np.ndarray:
     """Counter-clockwise angle from `start` to `end` in [0, turn]: equal angles — 0, a whole turn apart — a turn."""
     a = np.asarray(start, dtype=np.float64)
@@ -71,6 +74,7 @@ def span(start: Any, end: Any, turn: float) -> np.ndarray:
     return np.where(whole, np.where(np.isclose(a, b, atol=1e-12), 0.0, turn), out)
 
 
+@np.errstate(all="ignore")
 def arcs(
     cx: Any, cy: Any, radius: Any, start_deg: Any, end_deg: Any, tol: float = TOL, limit: int | None = None
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -86,6 +90,7 @@ def arcs(
     return np.column_stack([cx[owner] + r[owner] * np.cos(angle), cy[owner] + r[owner] * np.sin(angle)]), n + 1
 
 
+@np.errstate(all="ignore")
 def circles(cx: Any, cy: Any, radius: Any, tol: float = TOL, limit: int | None = None) -> tuple[np.ndarray, np.ndarray]:
     """CIRCLE entities → (xy, vertices of each); the first vertex is not repeated: the line is closed."""
     cx, cy, r = (np.asarray(v, dtype=np.float64) for v in (cx, cy, radius))
@@ -97,6 +102,7 @@ def circles(cx: Any, cy: Any, radius: Any, tol: float = TOL, limit: int | None =
     return np.column_stack([cx[owner] + r[owner] * np.cos(angle), cy[owner] + r[owner] * np.sin(angle)]), n
 
 
+@np.errstate(all="ignore")
 def ellipses(
     center: Any,
     major: Any,
@@ -115,12 +121,11 @@ def ellipses(
     ratio = np.asarray(ratio, dtype=np.float64)
     t0 = np.asarray(start, dtype=np.float64)
     a = np.linalg.norm(m, axis=1)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        minor = np.cross(nrm / np.linalg.norm(nrm, axis=1)[:, None], m) * ratio[:, None]
-        sweep = span(t0, end, TWO_PI)
-        half = np.maximum(a, np.linalg.norm(minor, axis=1))
-        step = np.minimum(np.sqrt(8.0 * tol / half), MIN_STEP)
-        steps = np.maximum(np.ceil(sweep / step * (1.0 - 1e-12)), 1.0)
+    minor = np.cross(nrm / np.linalg.norm(nrm, axis=1)[:, None], m) * ratio[:, None]
+    sweep = span(t0, end, TWO_PI)
+    half = np.maximum(a, np.linalg.norm(minor, axis=1))
+    step = np.minimum(np.sqrt(8.0 * tol / half), MIN_STEP)
+    steps = np.maximum(np.ceil(sweep / step * (1.0 - 1e-12)), 1.0)
     closed = np.isclose(sweep, TWO_PI, atol=1e-12)
     _check(float(steps.sum()) + len(steps), limit)
     n = steps.astype(np.int64)
@@ -131,6 +136,7 @@ def ellipses(
     return xyz, counts, closed
 
 
+@np.errstate(all="ignore")
 def bulges(
     xy: np.ndarray,
     bulge: np.ndarray,
@@ -185,12 +191,12 @@ def bulges(
     return out, counts + before[starts + counts] - before[starts], origin
 
 
+@np.errstate(all="ignore")
 def _distance(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Distance from points p to the segments a–b (rows)."""
     ab = b - a
     length = np.einsum("ij,ij->i", ab, ab)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        t = np.clip(np.where(length > 0.0, np.einsum("ij,ij->i", p - a, ab) / length, 0.0), 0.0, 1.0)
+    t = np.clip(np.where(length > 0.0, np.einsum("ij,ij->i", p - a, ab) / length, 0.0), 0.0, 1.0)
     return np.asarray(np.linalg.norm(p - (a + t[:, None] * ab), axis=1))
 
 
@@ -203,17 +209,20 @@ def spline(
     tangents: Sequence[Any] | None = None,
     tol: float = TOL,
     limit: int | None = None,
+    alive: Callable[[], None] | None = None,
 ) -> np.ndarray:
     """A SPLINE entity → xyz of a polyline within `tol` of it. Control points with knots (and weights), or fit
-    points alone (a cubic spline through them, as CAD programs build it). ValueError — the data make no spline."""
+    points alone (a cubic spline through them, as CAD programs build it). ValueError — the data make no spline.
+    `alive` is called between portions of the work (a long spline stays cancellable)."""
     try:
-        return _spline(control, degree, knots, weights, fit, tangents, tol, limit)
+        return _spline(control, degree, knots, weights, fit, tangents, tol, limit, alive)
     except FormatError:
         raise
     except Exception as exc:  # ezdxf has error types of its own: whatever it is, the data make no spline
         raise ValueError(str(exc)) from exc
 
 
+@np.errstate(all="ignore")
 def _spline(
     control: Any,
     degree: int,
@@ -223,6 +232,7 @@ def _spline(
     tangents: Sequence[Any] | None,
     tol: float,
     limit: int | None,
+    alive: Callable[[], None] | None,
 ) -> np.ndarray:
     from ezdxf.math import BSpline, fit_points_to_cad_cv
 
@@ -242,7 +252,13 @@ def _spline(
         raise ValueError("a spline with an empty range of the parameter")
 
     def points(t: np.ndarray) -> np.ndarray:
-        out = np.array([(v.x, v.y, v.z) for v in curve.points(t.tolist())], dtype=np.float64).reshape(-1, 3)
+        out = np.empty((len(t), 3), dtype=np.float64)
+        for lo in range(0, len(t), PORTION):  # ezdxf: a third of a microsecond per point
+            part = t[lo : lo + PORTION].tolist()
+            flat = np.fromiter(chain.from_iterable(curve.points(part)), dtype=np.float64, count=3 * len(part))
+            out[lo : lo + len(part)] = flat.reshape(-1, 3)
+            if alive is not None:
+                alive()
         if not np.isfinite(out).all():
             raise ValueError("a spline with points that are not numbers")
         return out

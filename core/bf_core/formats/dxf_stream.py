@@ -16,14 +16,15 @@ function compiled by numba for a big one. Memory is the block plus its columns; 
 Error codes: empty_file, not_dxf, unsupported (DWG), binary, broken, truncated, too_large.
 
 Ported from BF `formats/dxf_stream.py` (`_pairs`: blocks of pairs). Differences: columns instead of a Python loop over
-pairs, sections and the code page, progress and cancellation, limits, Russian `FormatError`s; binary DXF and files
-with a broken structure are left to `ezdxf.recover` (`dxf_lines.read_dxf`).
+pairs, sections and the code page, progress and cancellation, limits, Russian `FormatError`s; a binary DXF and a
+file with a broken structure are left to ezdxf (`repair`), a file cut short can be read up to the cut (`salvage`).
 """
 
 from __future__ import annotations
 
 import codecs
 import re
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -239,7 +240,8 @@ def _numbers(pk: np.ndarray, poff: np.ndarray, count: int) -> np.ndarray:
     data = np.ascontiguousarray(pk[: int(offsets[-1])])
     try:
         cells = pa.Array.from_buffers(pa.string(), count, [None, pa.py_buffer(offsets), pa.py_buffer(data)])
-        return np.asarray(pc.cast(cells, pa.float64()).to_numpy(zero_copy_only=False), dtype=np.float64)
+        found = pc.cast(cells, pa.float64())  # (its `to_numpy` would import pandas: the buffer is read directly)
+        return np.frombuffer(found.buffers()[1], dtype=np.float64, count=count, offset=found.offset * 8)
     except pa.ArrowInvalid:  # a form Arrow does not take: the same grammar by float()
         raw = data.tobytes()
         return np.array([float(raw[a:b]) for a, b in zip(offsets[:-1].tolist(), offsets[1:].tolist(), strict=True)])
@@ -260,6 +262,43 @@ def codec_of(version: str | None, codepage: str | None) -> str | None:
         return codecs.lookup(name).name
     except LookupError:
         return None
+
+
+def repair(path: Path, out: Path, progress: Progress | None = None, max_bytes: int = 64 << 20) -> None:
+    """A drawing the stream does not take, loaded by ezdxf (a binary DXF; a text one with a broken structure — by
+    `ezdxf.recover`) and saved as a clean ASCII DXF at `out`. ezdxf holds the whole drawing in memory (measured:
+    8 MB and 0.6 s per MB of the file), so a file over `max_bytes` is refused. Error codes: too_large, broken."""
+    tick = progress or no_progress
+    if path.stat().st_size > max_bytes:
+        raise fail(
+            "too_large",
+            f"Файл двоичный или повреждён и больше {max_bytes >> 20} МБ: режим восстановления для него недоступен.",
+        )
+    problem: list[BaseException] = []
+
+    def work() -> None:
+        try:
+            import ezdxf
+            from ezdxf import recover
+
+            with path.open("rb") as f:
+                binary = f.read(18) == BINARY_MAGIC[:18]
+            doc = ezdxf.readfile(str(path)) if binary else recover.readfile(str(path))[0]
+            doc.saveas(str(out))
+        except BaseException as exc:  # reported to the calling thread
+            problem.append(exc)
+
+    thread = threading.Thread(target=work, name="bf-dxf-repair", daemon=True)
+    thread.start()
+    while thread.is_alive():  # ezdxf gives no progress: the tick keeps the job alive and lets it be cancelled
+        thread.join(0.2)
+        tick(0.0, "Восстановление файла DXF")
+    if problem:
+        raise fail(
+            "broken",
+            "Файл не читается как DXF: его структура нарушена, и восстановить её не удалось.",
+            "Откройте чертёж в исходной программе (в AutoCAD — команда RECOVER) и сохраните как DXF.",
+        ) from problem[0]
 
 
 class Block:

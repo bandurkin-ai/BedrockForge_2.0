@@ -61,7 +61,8 @@ def _hex(rgb: int) -> str:
 
 
 def color_of(aci: int, true: int, layer: tuple[int, int] | None) -> str | None:
-    """Colour of an entity: true colour, its ACI, else by layer; 7 (white or black) is no colour."""
+    """Colour of an entity: true colour, its ACI, else by layer; 7 (white or black) is no colour.
+    `layer` — (ACI, true colour) of the LAYER table: a negative ACI is a layer switched off, 0 — no colour."""
     if true >= 0:
         return _hex(true)
     if aci in (0, 256, -1):  # BYBLOCK, BYLAYER, not given
@@ -97,13 +98,15 @@ def build_layers(
     colors: dict[int, tuple[int, int, int]],
 ) -> list[LineSet]:
     """Batches of entities → layers. `names` — layer id → name, `tables` — its (ACI, true colour) in the LAYER
-    table, `colors` — (record, ACI, true colour) of its first entity."""
+    table, `colors` — (record, ACI, true colour) of its first entity. The batches are emptied."""
     if not bs:
         return []
     ords, layer, counts, closed = (
         np.concatenate([getattr(x, k) for x in bs]) for k in ("ord", "layer", "counts", "closed")
     )
     xyz = np.concatenate([x.xyz for x in bs])
+    for x in bs:  # the vertices now live in one array: the batches give their memory back
+        x.xyz = xyz[:0]
     has_text = any(x.text is not None for x in bs)
     texts: list[str] = []
     ref = np.full(len(ords), -1, dtype=np.int64)  # the text of every feature

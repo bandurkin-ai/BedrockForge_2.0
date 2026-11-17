@@ -16,9 +16,11 @@
   * Not loaded and counted in `skipped`: block references (INSERT), hatches, dimensions and so on, entities of
     paper space. Meshes (POLYFACE, polygon mesh, 3DFACE, MESH) are wireframes, read by the Э8 reader: `meshes`.
 The file goes through `dxf_stream` in blocks: memory is the result plus one block. `Limits` stop "bombs".
-`recover`: None — a binary DXF and a file with a broken structure are loaded by `ezdxf.recover`, saved as a clean
-ASCII DXF into a temporary folder and read from there (the result says `recovered`); False — such a file is an
-error; True — always through ezdxf. Error codes: those of `dxf_stream` and too_large.
+`recover`: None — what the plain reading does not take is mended, and the result says so (`recovered`, a warning):
+a file cut short is read up to its last whole record (`DxfStream(salvage=True)`: ezdxf does not read such files);
+a binary DXF is loaded by ezdxf and a text file with a broken structure by `ezdxf.recover`, saved as a clean ASCII
+DXF into a temporary folder and read from there. False — such a file is an error; True — always through ezdxf.
+Error codes: those of `dxf_stream` and too_large.
 
 Ported from BF `formats/lines.py::read_dxf_lines`. Differences: own streaming reader instead of an ezdxf document
 (memory), texts, colour of the LAYER table, paper space left out, limits, progress and cancellation.
@@ -27,7 +29,6 @@ Ported from BF `formats/lines.py::read_dxf_lines`. Differences: own streaming re
 from __future__ import annotations
 
 import tempfile
-import threading
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -64,7 +65,13 @@ class Limits:
     vertices: int = 20_000_000  # of all layers, curves flattened
     texts: int = 2_000_000
     record_bytes: int = ds.MAX_RECORD_BYTES
-    recover_bytes: int = 128 << 20  # ezdxf keeps a whole drawing in memory: about 10 bytes per byte of the file
+    recover_bytes: int = 64 << 20  # ezdxf holds the whole drawing: measured 8 MB of memory and 0.6 s per MB of file
+
+
+def _whole(values: np.ndarray, missing: float = -1.0) -> np.ndarray:
+    """Values that stand for flags and colours: what is not a number of a sane size is `missing`."""
+    with np.errstate(invalid="ignore"):
+        return np.where(np.isfinite(values) & (np.abs(values) < 2.0**31), values, missing)
 
 
 def ocs_axes(normal: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -121,11 +128,11 @@ class _Reader:
     def feed(self, b: Block) -> None:
         kind = b.kind
         tab = np.flatnonzero((kind == ds.K_LAYER) & (b.section == ds.S_TABLES))
-        for name, aci, true in zip(*(b.col(c)[tab].tolist() for c in (2, 62, 420)), strict=True):
+        aci = _whole(b.values(b.col(62)[tab], 0.0), 0.0).astype(np.int64)  # negative: the layer is off; 0 — none
+        true = _whole(b.values(b.col(420)[tab], -1.0)).astype(np.int64)
+        for name, a, t in zip(b.col(2)[tab].tolist(), aci.tolist(), true.tolist(), strict=True):
             if name >= 0:
-                self.table[b.value(name).strip()] = tuple(  # type: ignore[assignment]
-                    int(b.num[p]) if p >= 0 and not b.bad[p] else -1 for p in (aci, true)
-                )
+                self.table[b.value(name).strip()] = (a, t)
         ent = (b.section == ds.S_ENTITIES) & (kind != ds.K_SECTION)
         model = ent & ~(b.values(b.col(67), 0.0) == 1.0)
         self._polylines(b, ent, model)
@@ -152,7 +159,7 @@ class _Reader:
     def _common(self, b: Block, sel: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """(record numbers, layer ids, ACI, true colour) of the entities `sel`."""
         layer = b.intern(b.col(8)[sel], self.names, b"0")
-        return b.first + sel, layer, b.values(b.col(62)[sel], -1.0), b.values(b.col(420)[sel], -1.0)
+        return b.first + sel, layer, _whole(b.values(b.col(62)[sel], -1.0)), _whole(b.values(b.col(420)[sel], -1.0))
 
     def _point(
         self, b: Block, sel: np.ndarray, codes: tuple[int, int, int] = (10, 20, 30)
@@ -318,9 +325,7 @@ class _Reader:
         self._emit(b, sel[ok], counts, closed, xyz)
 
     def _splines(self, b: Block, sel: np.ndarray) -> None:
-        for i, r in enumerate(sel.tolist()):
-            if i % 64 == 0:
-                self.s.alive()
+        for r in sel.tolist():
             lo = int(b.z[r])
             hi = int(b.z[r + 1]) if r + 1 < len(b) else len(b.code)
             code, num = b.code[lo:hi], b.num[lo:hi]
@@ -339,18 +344,19 @@ class _Reader:
             try:
                 xyz = curves.spline(
                     control,
-                    int(degree[0]) if len(degree) and np.isfinite(degree[0]) else 3,
+                    int(_whole(degree[:1], 3.0)[0]) if len(degree) else 3,
                     num[code == 40].tolist(),
                     weights.tolist() if len(weights) == len(control) else (),
                     fit,
                     [start[0].tolist(), stop[0].tolist()] if len(start) and len(stop) else None,
                     self.tol,
                     self.room(),
+                    self.s.alive,
                 )
             except ValueError:
                 self.bad += 1
                 continue
-            closed = bool(len(flags) and np.isfinite(flags[0]) and int(flags[0]) & 1)
+            closed = bool(len(flags) and int(_whole(flags[:1], 0.0)[0]) & 1)
             self._emit(b, np.array([r]), [len(xyz)], [closed], xyz)
 
     def _lwpolylines(self, b: Block, sel: np.ndarray) -> None:
@@ -367,7 +373,7 @@ class _Reader:
         mine = (vertex >= 0) & (owner[np.maximum(vertex, 0)] == b.rec[p42])
         bulge[vertex[mine]] = b.num[p42[mine]]
         ords, layer, aci, true = self._common(b, sel)
-        flags = np.nan_to_num(b.values(b.col(70)[sel], 0.0)).astype(np.int64)
+        flags = _whole(b.values(b.col(70)[sel], 0.0), 0.0).astype(np.int64)
         z = np.repeat(b.values(b.col(38)[sel], 0.0), counts)
         self._flat(ords, layer, aci, true, counts, (flags & 1) != 0, xy, z, bulge, self._normals(b, sel))
 
@@ -408,7 +414,7 @@ class _Reader:
                 b.values(cols[1]),
                 b.values(cols[2], 0.0),
                 b.values(cols[3], 0.0),
-                np.nan_to_num(b.values(cols[4], 0.0)),
+                _whole(b.values(cols[4], 0.0), 0.0),
                 (cols[0] >= 0) & (cols[1] >= 0),
             ]
         )
@@ -427,7 +433,7 @@ class _Reader:
                 layer,
                 aci,
                 true,
-                np.nan_to_num(b.values(b.col(70)[poly], 0.0)),
+                _whole(b.values(b.col(70)[poly], 0.0), 0.0),
                 b.values(b.col(30)[poly], 0.0),
                 self._normals(b, poly),
                 model[poly],
@@ -511,52 +517,16 @@ def _read(path: Path, tick: Progress, tol: float, limits: Limits, salvage: bool 
 
     stream = DxfStream(path, reading, max_record_bytes=limits.record_bytes, salvage=salvage)
     reader = _Reader(stream, tol, limits)
-    for block in stream:
-        reader.feed(block)
-    if reader.open is not None:  # a file cut inside a polyline: the vertices that are there
-        head, parts = reader.open
-        reader._runs(head[None, :], np.array([sum(len(p) for p in parts)]), np.vstack(parts))
-    tick(0.9, "Сборка слоёв")
-    out = reader.result()
+    with np.errstate(all="ignore"):  # a hostile file holds any numbers: what overflows is dropped as not finite
+        for block in stream:
+            reader.feed(block)
+        if reader.open is not None:  # a file cut inside a polyline: the vertices that are there
+            head, parts = reader.open
+            reader._runs(head[None, :], np.array([sum(len(p) for p in parts)]), np.vstack(parts))
+        tick(0.9, "Сборка слоёв")
+        out = reader.result()
     tick(1.0, f"Прочитано объектов: {n_text(out.records)}")
     return out
-
-
-def _repair(path: Path, out: Path, tick: Progress, limits: Limits) -> None:
-    """The drawing loaded by ezdxf (binary, or broken — by `ezdxf.recover`) and saved as a clean ASCII DXF."""
-    size = path.stat().st_size
-    if size > limits.recover_bytes:
-        raise fail(
-            "too_large",
-            f"Файл двоичный или повреждён и больше {limits.recover_bytes >> 20} МБ: "
-            "режим восстановления для него недоступен.",
-        )
-    problem: list[BaseException] = []
-
-    def work() -> None:
-        try:
-            import ezdxf
-            from ezdxf import recover
-
-            with path.open("rb") as f:
-                binary = f.read(18) == ds.BINARY_MAGIC[:18]
-            # `recover` mends the structure of a text file; a binary one is read by the plain loader
-            doc = ezdxf.readfile(str(path)) if binary else recover.readfile(str(path))[0]
-            doc.saveas(str(out))
-        except BaseException as exc:  # reported to the calling thread
-            problem.append(exc)
-
-    thread = threading.Thread(target=work, name="bf-dxf-recover", daemon=True)
-    thread.start()
-    while thread.is_alive():  # ezdxf gives no progress: the tick keeps the job alive and lets it be cancelled
-        thread.join(0.2)
-        tick(0.0, "Восстановление файла DXF")
-    if problem:
-        raise fail(
-            "broken",
-            "Файл не читается как DXF: его структура нарушена, и восстановить её не удалось.",
-            "Откройте чертёж в исходной программе (в AutoCAD — команда RECOVER) и сохраните как DXF.",
-        ) from problem[0]
 
 
 def read_dxf(
@@ -585,10 +555,11 @@ def read_dxf(
             raise problem
         out.warnings.insert(0, "Файл обрезан: прочитаны объекты до места обрыва, последний объект пропущен")
     else:
-        with tempfile.TemporaryDirectory(prefix="bf-dxf-") as folder:
+        # (a cancelled reading leaves ezdxf at work in its thread: the folder is removed when it can be)
+        with tempfile.TemporaryDirectory(prefix="bf-dxf-", ignore_cleanup_errors=True) as folder:
             clean = Path(folder) / "recovered.dxf"
             try:
-                _repair(path, clean, tick, limits)
+                ds.repair(path, clean, tick, limits.recover_bytes)
                 out = _read(clean, tick, tolerance, limits)
             except FormatError as exc:
                 if problem is None or problem.code == "binary" or exc.code == "too_large":
