@@ -164,19 +164,26 @@ def replace_surveys(
     """«Заменить» surveys of one set: (hole, depth, azimuth, dip). One transaction: surveys are small enough
     (tens of thousands of holes × tens of readings)."""
     with dialect.write_tx(engine) as conn:
-        known = hole_ids(conn, set_id)
-        ensure_holes(conn, set_id, (r[0] for r in rows), known)
-        conn.execute(sa.delete(dh_surveys).where(dh_surveys.c.set_id == set_id))
-        for start in range(0, len(rows), BATCH):
-            tick(None, f"Инклинометрия: {start} из {len(rows)}")
-            part = rows[start : start + BATCH]
-            conn.execute(
-                sa.insert(dh_surveys),
-                [
-                    {"set_id": set_id, "hole_id": known[h], "depth": float(d), "azimuth": _num(a), "dip": _num(p)}
-                    for h, d, a, p in part
-                ],
-            )
+        return replace_surveys_in(conn, set_id, rows, tick)
+
+
+def replace_surveys_in(
+    conn: sa.Connection, set_id: int, rows: Sequence[tuple[str, float, float | None, float | None]], tick: Tick
+) -> dict[str, int]:
+    """The same inside the caller's transaction (the final transaction of an import)."""
+    known = hole_ids(conn, set_id)
+    ensure_holes(conn, set_id, (r[0] for r in rows), known)
+    conn.execute(sa.delete(dh_surveys).where(dh_surveys.c.set_id == set_id))
+    for start in range(0, len(rows), BATCH):
+        tick(None, f"Инклинометрия: {start} из {len(rows)}")
+        part = rows[start : start + BATCH]
+        conn.execute(
+            sa.insert(dh_surveys),
+            [
+                {"set_id": set_id, "hole_id": known[h], "depth": float(d), "azimuth": _num(a), "dip": _num(p)}
+                for h, d, a, p in part
+            ],
+        )
     return {"surveys": len(rows)}
 
 
@@ -205,8 +212,11 @@ class TableData:
     qual: list[Sequence[int]] | None = None  # per number column: 0 plain, 1 below / 2 above limit
 
 
-def write_table(engine: sa.Engine, set_id: int, data: TableData, *, job_id: int | None, tick: Tick) -> dict[str, int]:
-    """Builds the table aside, then swaps it in (see the module docstring). Returns {"rows", "table_id"}."""
+def write_table(
+    engine: sa.Engine, set_id: int, data: TableData, *, job_id: int | None, tick: Tick, swap: bool = True
+) -> dict[str, int]:
+    """Builds the table aside, then swaps it in (see the module docstring). Returns {"rows", "table_id"}.
+    `swap=False`: the caller swaps it later with `swap_in` (several files of one import in one transaction)."""
     if data.kind not in TABLE_KINDS:
         raise ValueError(data.kind)
     now = dialect.utcnow()
@@ -273,20 +283,26 @@ def write_table(engine: sa.Engine, set_id: int, data: TableData, *, job_id: int 
             )
         with dialect.write_tx(engine) as conn:
             conn.execute(sa.insert(dh_rows), batch)
-    with dialect.write_tx(engine) as conn:  # the swap: the old table of that name goes, the new one appears
-        conn.execute(
-            sa.delete(dh_tables).where(
-                dh_tables.c.set_id == set_id,
-                dh_tables.c.name_key == dialect.name_key(data.name),
-                dh_tables.c.state == "ready",
-            )
-        )
-        conn.execute(
-            sa.update(dh_tables)
-            .where(dh_tables.c.id == table_id)
-            .values(state="ready", job_id=None, row_count=n, updated_at=dialect.utcnow())
-        )
+    with dialect.write_tx(engine) as conn:
+        conn.execute(sa.update(dh_tables).where(dh_tables.c.id == table_id).values(row_count=n))
+        if swap:
+            swap_in(conn, set_id, table_id)
     return {"rows": n, "table_id": table_id}
+
+
+def swap_in(conn: sa.Connection, set_id: int, table_id: int) -> None:
+    """The old table of that name goes, the built one becomes visible — in the caller's transaction."""
+    name_key = conn.execute(sa.select(dh_tables.c.name_key).where(dh_tables.c.id == table_id)).scalar_one()
+    conn.execute(
+        sa.delete(dh_tables).where(
+            dh_tables.c.set_id == set_id, dh_tables.c.name_key == name_key, dh_tables.c.state == "ready"
+        )
+    )
+    conn.execute(
+        sa.update(dh_tables)
+        .where(dh_tables.c.id == table_id)
+        .values(state="ready", job_id=None, updated_at=dialect.utcnow())
+    )
 
 
 def drop_building(conn: sa.Connection, job_id: int) -> None:

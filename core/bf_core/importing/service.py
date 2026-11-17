@@ -84,9 +84,18 @@ def suggest_components(table: TableRead, mapping: dict[str, str]) -> list[dict[s
     mapped = set(mapping.values())
     out = []
     for col in table.columns:
-        if col.name in mapped or col.kind != "number":
+        if col.name in mapped:
             continue
         symbol, unit = component_symbol(col.name)
+        if not symbol:
+            continue
+        if col.kind != "number":
+            # A grade column with a few typos is read as text: still a component when most values are numbers
+            # (the check then reports the bad ones; «Загрузить с ошибками» keeps their text).
+            values, bad, *_ = _numbers(col)
+            numbers = int((~_isnan(values)).sum())
+            if numbers == 0 or numbers < bad:
+                continue
         if symbol:
             out.append({"column": col.name, "unit": unit or ("g/t" if symbol in PRECIOUS else "%")})
     return out

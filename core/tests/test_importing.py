@@ -26,7 +26,7 @@ def test_cp1251_semicolon_comma_read_and_mapped_without_settings(tmp_path: Path)
     m = suggest_mapping("assay", t.names)
     assert m == {"hole_id": "Hole_ID", "from": "From_m", "to": "To_m"}
     comps = suggest_components(t, m)
-    assert comps == [] or comps[0]["unit"] == "ppm"  # Au_ppm is text here (contains «abc»)
+    assert comps == [{"column": "Au_ppm", "unit": "ppm"}]  # text because of «abc», still mostly numbers
 
 
 def test_limits_and_force_keep_the_original_text(tmp_path: Path) -> None:
