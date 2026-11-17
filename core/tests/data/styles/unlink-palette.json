@@ -1,0 +1,17 @@
+{
+  "about": "Deleting a linked colouring: the layer keeps its classes as its own.",
+  "style": {"uid": "cccccccccccccccccccccccccccccccc", "level": "palette", "body": {"kind": "classes", "classes": [{"color": "#00ff00"}, {"from": 1, "color": "#ff0000"}]}},
+  "settings": {
+    "v": 1,
+    "tracks": [
+      {"id": "t1", "table": "assay", "field": "AU", "type": "bars", "colorBy": "single",
+       "palette": {"uid": "cccccccccccccccccccccccccccccccc", "name": "Градации", "linked": true}}
+    ]
+  },
+  "expected": {
+    "v": 1,
+    "tracks": [
+      {"id": "t1", "table": "assay", "field": "AU", "type": "bars", "colorBy": "classes", "classes": [{"color": "#00ff00"}, {"from": 1, "color": "#ff0000"}]}
+    ]
+  }
+}

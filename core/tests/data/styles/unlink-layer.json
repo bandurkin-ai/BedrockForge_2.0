@@ -1,0 +1,24 @@
+{
+  "about": "Deleting a linked layer style: the layer takes its last body, keeps its binding, loses the link; a copy from another style stays.",
+  "style": {"uid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "level": "layer", "body": {"type": "line", "width": 40, "color": "#112233", "log": true}},
+  "settings": {
+    "v": 1,
+    "tracks": [
+      {"id": "t1", "table": "assay", "field": "AU", "type": "bars", "width": 90, "color": "#ff0000", "visible": false,
+       "style": {"uid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "name": "Линия", "linked": true}},
+      {"id": "t2", "table": "assay", "field": "CU", "type": "bars", "width": 70,
+       "style": {"uid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "name": "Линия", "linked": false}},
+      {"id": "t3", "table": "assay", "field": "AG", "type": "steps",
+       "style": {"uid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "name": "Другой", "linked": true}}
+    ]
+  },
+  "expected": {
+    "v": 1,
+    "tracks": [
+      {"id": "t1", "table": "assay", "field": "AU", "type": "line", "width": 40, "min": "", "max": "", "log": true, "boundaries": false, "color": "#112233", "visible": false},
+      {"id": "t2", "table": "assay", "field": "CU", "type": "bars", "width": 70},
+      {"id": "t3", "table": "assay", "field": "AG", "type": "steps",
+       "style": {"uid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "name": "Другой", "linked": true}}
+    ]
+  }
+}

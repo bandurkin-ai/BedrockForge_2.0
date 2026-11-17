@@ -35,6 +35,8 @@ TABLES: tuple[Table, ...] = (
     Table("audit_findings"),
     Table("blob_owners"),
     Table("edit_log", renumber=True),
+    Table("styles", renumber=True),  # displays link styles by uid: no id references to rewrite
+    Table("charts"),
     Table("settings", view_scope="view"),  # codes, code_links… always; scope view — optional
 )
 
@@ -64,6 +66,7 @@ ID_COLUMNS: dict[tuple[str, str], str | None] = {
     ("audit_runs", "job_id"): None,
     ("audit_runs", "table_id"): "dh_tables",
     ("audit_findings", "run_id"): "audit_runs",
+    ("charts", "object_id"): "objects",
 }
 
 #: (table, kind column, id column) → {kind value: table}. Rows of unknown kinds are dropped.
