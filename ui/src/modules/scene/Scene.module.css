@@ -7,9 +7,9 @@
 .tool:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
 .tool[aria-pressed="true"] { background: var(--bg-active); color: var(--text); border-color: var(--accent); }
 .tool:disabled { opacity: 0.4; cursor: default; }
+.step { width: auto; min-width: 24px; padding: 0 4px; font-size: 11px; font-family: var(--font-brand); font-weight: 600; }
 .field { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
 .field input[type="number"] { width: 58px; padding: 2px 4px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); }
-.field select { padding: 2px 2px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); }
 .field input[type="range"] { width: 80px; accent-color: var(--accent); }
 .area { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--scene-bg); }
 .gl { position: absolute; inset: 0; }

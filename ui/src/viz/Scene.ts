@@ -465,7 +465,9 @@ export class Scene {
     const items: LabelItem[] = [];
     for (const l of this.holeSets.values()) l.labelItems(items);
     for (const { layer, holder } of this.layers.values()) if (holder.visible && layer.labels) items.push(...layer.labels());
-    this.grid.labelItems(items);
+    // the grid seen edge-on (a side view, a section) keeps its lines, its values would be a heap
+    if (Math.abs(viewDirection(cam)[2]) > 0.15) this.grid.labelItems(items);
+    else for (const l of this.grid.labels) l.sprite.visible = false;
     placeLabels(items, {
       width: w,
       height: h,

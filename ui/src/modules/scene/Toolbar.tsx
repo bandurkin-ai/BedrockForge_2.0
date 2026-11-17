@@ -96,16 +96,14 @@ export function Toolbar() {
         </>
       )}
       <span className={css.sep} />
-      <label className={css.field} title="Вертикальное преувеличение">
+      <div className={css.group} role="group" aria-label="Вертикальное преувеличение" title="Вертикальное преувеличение">
         <Icon name="vwVexag" size={16} />
-        <select value={view.vexag} aria-label="Вертикальное преувеличение" onChange={(e) => run("scene.style", { vexag: Number(e.target.value) })}>
-          {VEXAG_STEPS.map((v) => (
-            <option key={v} value={v}>
-              ×{v}
-            </option>
-          ))}
-        </select>
-      </label>
+        {VEXAG_STEPS.map((v) => (
+          <button key={v} type="button" className={`${css.tool} ${css.step}`} aria-pressed={view.vexag === v} aria-label={`Преувеличение ×${v}`} title={`Вертикальное преувеличение ×${v}`} onClick={() => view.vexag !== v && run("scene.style", { vexag: v })}>
+            ×{v}
+          </button>
+        ))}
+      </div>
       <label className={css.field} title="Непрозрачность каркасов">
         <Icon name="vwOpacity" size={16} />
         <input type="range" min={0.1} max={1} step={0.05} value={opacity} aria-label="Непрозрачность каркасов" onChange={(e) => setOpacity(Number(e.target.value))} onPointerUp={commitOpacity} onKeyUp={commitOpacity} onBlur={commitOpacity} />

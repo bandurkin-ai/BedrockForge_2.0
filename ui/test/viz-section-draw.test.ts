@@ -70,3 +70,26 @@ describe("mini-plan", () => {
     expect(f.corners).toHaveLength(4);
   });
 });
+
+describe("section of the project view and the layers of a set", async () => {
+  const { normalizeLine, sectionOf, describeLine } = await import("../src/modules/section/state");
+  const { setStyleOf, setVisibilityOf } = await import("../src/modules/scene/loaders");
+
+  it("reads the line as the core keeps it: azimuth in [0; 360), window defaults, no clipping without a line", () => {
+    expect(normalizeLine({ x0: 1, y0: 2, az: -90, length: 0, towards: -1 })).toEqual({ x0: 1, y0: 2, az: 270, length: null, towards: 25, away: 25 });
+    expect(normalizeLine({ x0: 1, y0: "2", az: 0 })).toBeNull();
+    expect(sectionOf({ section: { line: null, clip: true } })).toEqual({ line: null, clip: false });
+    const s = sectionOf({ section: { line: { x0: 5, y0: 6, az: 45, length: 100, towards: 10, away: 20 }, clip: true } });
+    expect(s.clip).toBe(true);
+    expect(describeLine(s.line!, s.clip)).toMatch(/азимут 45°, длина 100 м, окно от 10 до 20 м, отсечение вкл/);
+  });
+
+  it("hidden keys and styles of a set", () => {
+    expect(setVisibilityOf(["set:3:paths", "set:4"], 3)).toEqual({ set: true, collars: true, paths: false });
+    expect(setVisibilityOf(["set:3:paths", "set:4"], 4).set).toBe(false);
+    const st = setStyleOf({ collar_styles: { "3": { shape: "star", color: "#ff0000" } }, trace_styles: { "3": { width: 3 } } }, 3);
+    expect(st.collar.shape).toBe("star");
+    expect(st.trace.width).toBe(3);
+    expect(setStyleOf({}, 9).collar.color).toBe("audit");
+  });
+});

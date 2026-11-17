@@ -84,3 +84,22 @@ test("3D: frame, T, gizmo Z → top, click on a collar → hole card, lost conte
     await close(app);
   }
 });
+
+test("no WebGL2: the diagnostic window offers software rendering", async () => {
+  // Electron without the SwiftShader switches gets no WebGL2 on a machine without a GPU (ADR 0004, «Контекст»).
+  test.skip(process.platform !== "linux", "a Windows runner may have WebGL2 through WARP");
+  const { app, page } = await launch({ BF_E2E: "1", BF_SOFTWARE_GL: "0" });
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
+    await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
+    const diag = page.getByRole("dialog", { name: "3D недоступно" });
+    await expect.poll(async () => (await diag.isVisible()) || (await page.evaluate(() => window.__bfScene !== undefined)), { timeout: 30_000 }).toBe(true);
+    test.skip(await page.evaluate(() => window.__bfScene !== undefined), "this machine gives WebGL2 without the switches");
+    await expect(diag).toContainText("нет WebGL2");
+    await expect(diag.getByRole("button", { name: "Программная отрисовка (медленно)" })).toBeEnabled();
+    await page.screenshot({ path: shot("scene-no-webgl2.png") });
+  } finally {
+    await close(app);
+  }
+});

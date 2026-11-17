@@ -13,6 +13,8 @@ interface BfSceneState {
   gpu: { renderer: string; vendor: string; gpuClass: string };
   sets: number[];
   segments: number;
+  /** the last pick on the CPU, ms */
+  pickMs: number;
 }
 
 interface Window {
@@ -23,6 +25,7 @@ interface Window {
     state(): BfSceneState;
     pixels(): { width: number; height: number; nonBackground: number } | null;
     collars(limit?: number): { setId: number; name: string; x: number; y: number }[];
+    run(id: string, args?: Record<string, unknown>): Promise<{ ok: boolean; result: string }>;
   };
   __bfLose?: { loseContext(): void; restoreContext(): void } | null;
 }

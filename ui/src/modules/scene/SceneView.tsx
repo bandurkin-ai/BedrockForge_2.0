@@ -178,6 +178,8 @@ function SceneMount() {
             state: () => ({ ...s.debug(), ready: s.idle && src.idle && !s.renderer.lost, loading: sceneUi.get().loading }),
             pixels: () => s.pixels(),
             collars: (limit?: number) => s.collarsOnScreen(limit),
+            /** a command of the registry, as the ribbon or Claude runs it */
+            run: (id: string, args?: Record<string, unknown>) => app.registry.execute(id, args ?? {}),
           };
         }
       })
