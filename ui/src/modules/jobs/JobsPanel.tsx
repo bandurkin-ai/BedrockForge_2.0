@@ -3,6 +3,7 @@ import { bridge } from "../../bridge";
 import { useApp } from "../../shell/AppContext";
 import { showMessage } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
+import { logOfJob, openLogWindow } from "../../shell/opLog";
 import { jobLog, jobsStore, refresh, STATUS_TITLES, type Job } from "./state";
 import css from "./Jobs.module.css";
 
@@ -54,6 +55,11 @@ export function JobsPanel() {
                   <button type="button" className={css.link} title="Журнал задания" onClick={() => void showLog(j)}>
                     {j.title}
                   </button>
+                  {logOfJob(j) !== undefined && (
+                    <button type="button" className={css.link} title="Журнал окна, которое запустило задание" onClick={() => openLogWindow(logOfJob(j))}>
+                      {" "}· журнал операции
+                    </button>
+                  )}
                   {j.status === "queued" && j.why_waiting && <div className={css.why}>{j.why_waiting}</div>}
                   {j.status === "failed" && j.error && (
                     <div className={css.failed}>

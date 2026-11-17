@@ -74,6 +74,7 @@ def test_unexpected_error_is_russian_json_with_cors(state) -> None:  # type: ign
     r = c.get("/api/v1/boom", headers={**H, "Origin": "app://bedrockforge"})
     assert r.status_code == 500
     assert r.json()["code"] == "internal"
+    assert r.json()["detail"] == "RuntimeError: boom" and "_boom" in r.json()["trace"]  # ТЗ 7.9
     assert r.headers["access-control-allow-origin"] == "app://bedrockforge"
 
 

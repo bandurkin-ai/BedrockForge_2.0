@@ -42,7 +42,11 @@ def prepare(params: dict[str, Any], work: Path) -> None:
                     )
                 ).inserted_primary_key[0]
                 store.put_bytes(
-                    conn, os.urandom(size), media_type="application/x-npy", owner_kind="object", owner_id=oid
+                    conn,
+                    os.urandom(size),
+                    media_type="application/x-npy",
+                    owner_kind="object",
+                    owner_id=oid,
                 )
             left -= BLOB_MB
             n += 1
@@ -64,7 +68,9 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     engine = dialect.create_engine(dialect.sqlite_url(str(folder / "project.sqlite")))
     out = work / "out.bfggis"
     try:
-        result = export_project(engine, folder, out, password="замер" if params.get("password") else None)
+        result = export_project(
+            engine, folder, out, password="замер" if params.get("password") else None
+        )
     finally:
         engine.dispose()
         out.unlink(missing_ok=True)

@@ -6,8 +6,10 @@ import { ContextMenuHost } from "./ContextMenu";
 import { CoreDown } from "./CoreDown";
 import { DialogHost } from "./DialogHost";
 import { dialogStore, showMessage } from "./dialogs";
-import { detectImportKind, IMPORT_TITLES } from "./tree";
 import { LicenseWindow } from "./LicenseWindow";
+import { importPaths } from "../modules/importing/bind";
+import { ImportWizard } from "../modules/importing/ImportWizard";
+import { OpLogWindow } from "./OpLogWindow";
 import { startEvents } from "../modules/jobs/state";
 import { ExportWindow } from "../modules/projects/ExportWindow";
 import { ImportWindow } from "../modules/projects/ImportWindow";
@@ -35,6 +37,10 @@ const renderWindow: WindowRenderer = (w) => {
       return <SettingsWindow tab={w.props?.tab as string | undefined} />;
     case "license":
       return <LicenseWindow />;
+    case "op-log":
+      return <OpLogWindow logId={w.props?.logId as number | undefined} />;
+    case "import-drillholes":
+      return <ImportWizard winId={w.id} paths={w.props?.paths as string[] | undefined} />;
     case "projects":
       return <ProjectsWindow />;
     case "project-export":
@@ -99,19 +105,14 @@ export function Shell() {
       const files = [...(e.dataTransfer?.files ?? [])];
       if (!files.length) return;
       e.preventDefault();
-      const kind = detectImportKind(files.map((f) => f.name));
-      if (kind === "project") {
-        const path = bridge()?.pathForFile(files[0]);
-        if (path) await app.run("project.import", { path });
+      const b = bridge();
+      const paths = b ? files.map((f) => b.pathForFile(f)).filter(Boolean) : [];
+      if (!paths.length) return;
+      if (app.registry.reason("import.files")) {
+        await showMessage({ title: "Импорт файлов", message: app.registry.reason("import.files") ?? "" });
         return;
       }
-      if (!kind) {
-        await showMessage({ title: "Импорт файлов", message: "Тип файлов не распознан. Поддерживаются DAT, CSV, Excel, TRIDB, DXF, OBJ, STL, STR, растры с привязкой, OMF, .bfggis." });
-        return;
-      }
-      const reason = app.registry.reason("import.files");
-      if (reason) await showMessage({ title: `Импорт: ${IMPORT_TITLES[kind]}`, message: reason });
-      else await app.run("import.files", { kind });
+      await importPaths(app, paths);
     };
     window.addEventListener("dragover", over);
     window.addEventListener("drop", drop);

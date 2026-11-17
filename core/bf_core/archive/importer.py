@@ -296,12 +296,18 @@ def _dt(text: str) -> Any:
     return d if d.tzinfo else d.replace(tzinfo=UTC)
 
 
+_BATCH = 5_000
+
+
 def _insert_table(conn: sa.Connection, name: str, renumber: bool, rows: Any, maps: dict[str, dict[int, int]]) -> None:
     table = project_md.tables[name]
     id_cols = {col: target for (t, col), target in ID_COLUMNS.items() if t == name}
     kind_cols = [(k, i, m) for (t, k, i), m in KIND_COLUMNS.items() if t == name]
     own = maps.setdefault(name, {}) if renumber else {}
     deferred: list[tuple[int, str, int]] = []  # (new id, column, old target id): self references
+    # Rows nobody refers to (interval rows, survey readings — millions) go in portions, ids left to the database.
+    batched = not renumber and not kind_cols and name not in id_cols.values() and "id" in table.c
+    batch: list[dict[str, Any]] = []
     for raw in rows:
         row = decode_row(table, raw)
         for col, target in id_cols.items():
@@ -327,6 +333,13 @@ def _insert_table(conn: sa.Connection, name: str, renumber: bool, rows: Any, map
             row[id_col] = maps[target][int(old)]
         if skip:
             continue
+        if batched:
+            row.pop("id", None)
+            batch.append(row)
+            if len(batch) >= _BATCH:
+                conn.execute(sa.insert(table), batch)
+                batch = []
+            continue
         old_id = row.pop("id", None) if renumber else None
         res = conn.execute(sa.insert(table).values(**row))
         if renumber:
@@ -335,6 +348,8 @@ def _insert_table(conn: sa.Connection, name: str, renumber: bool, rows: Any, map
             own[int(old_id)] = int(key[0])
             if deferred and deferred[-1][0] == -1:
                 deferred[-1] = (int(key[0]), deferred[-1][1], deferred[-1][2])
+    if batch:
+        conn.execute(sa.insert(table), batch)
     for new_id, col, old_target in deferred:
         if old_target not in own:
             raise Corrupted(f"Ссылка на отсутствующую запись: {name}.{col} = {old_target}")

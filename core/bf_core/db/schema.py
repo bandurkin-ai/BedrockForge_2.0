@@ -151,6 +151,119 @@ settings = sa.Table(
     sa.Column("version", sa.Integer, nullable=False, default=1),
 )
 
+# --- drillhole sets (Э3, ADR 0003 §3–4) ---------------------------------------------------------
+# A set is an object of kind "drillhole_set"; its tables hang on it with ON DELETE CASCADE.
+
+dh_holes = sa.Table(
+    "dh_holes",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("set_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("name", sa.String(200), nullable=False),
+    sa.Column("x", sa.Double),
+    sa.Column("y", sa.Double),
+    sa.Column("z", sa.Double),
+    sa.Column("td", sa.Double),  # total depth
+    sa.Column("azimuth", sa.Double),
+    sa.Column("dip", sa.Double),
+    sa.Column("has_collar", sa.Boolean, nullable=False, default=False),
+    sa.Column("attrs", JSONType),  # other collar columns: {name: value}
+    sa.UniqueConstraint("set_id", "name"),
+)
+
+dh_surveys = sa.Table(
+    "dh_surveys",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("set_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("hole_id", REF, sa.ForeignKey("dh_holes.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("depth", sa.Double, nullable=False),
+    sa.Column("azimuth", sa.Double),
+    sa.Column("dip", sa.Double),
+    sa.Column("attrs", JSONType),
+    sa.Index(None, "set_id", "hole_id", "depth"),
+    sa.Index(None, "hole_id"),  # cascades from dh_holes and «скважина без данных» checks
+)
+
+dh_tables = sa.Table(
+    "dh_tables",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("set_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("name", sa.String(200), nullable=False),
+    sa.Column("name_key", sa.String(200), nullable=False),
+    sa.Column("kind", sa.String(16), nullable=False),  # assay | interval | event
+    sa.Column("row_count", sa.Integer, nullable=False, default=0),
+    sa.Column("rev", sa.Integer, nullable=False, default=1),  # grows on every edit (column snapshots)
+    # A table being imported is "building" (invisible) until the job swaps it in (ТЗ 7.6: no partial result).
+    sa.Column("state", sa.String(16), nullable=False, default="ready"),
+    sa.Column("job_id", REF),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Column("updated_at", UtcDateTime, nullable=False),
+    sa.Index(None, "set_id", "name_key"),
+)
+
+dh_columns = sa.Table(
+    "dh_columns",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("table_id", REF, sa.ForeignKey("dh_tables.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("name", sa.String(200), nullable=False),
+    sa.Column("kind", sa.String(16), nullable=False),  # number | text
+    sa.Column("unit", sa.String(40)),
+    sa.Column("slot", sa.Integer, nullable=False),  # position in dh_rows.num (number) or key in txt (text)
+    sa.Column("role", sa.String(16), nullable=False, default="value"),  # component | value | source
+    sa.Column("deleted", sa.Boolean, nullable=False, default=False),
+    sa.Column("position", sa.Integer, nullable=False, default=0),  # order of columns in the table view
+    sa.Index(None, "table_id"),
+)
+
+dh_rows = sa.Table(
+    "dh_rows",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("table_id", REF, sa.ForeignKey("dh_tables.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("hole_id", REF, sa.ForeignKey("dh_holes.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("from_m", sa.Double),
+    sa.Column("to_m", sa.Double),
+    # All number columns as one float64 little-endian vector: slot = dh_columns.slot, NaN = missing,
+    # a short vector = missing tail slots (ADR 0003 §4).
+    sa.Column("num", sa.LargeBinary),
+    sa.Column("qual", sa.LargeBinary),  # per slot: 0 plain, 1 below / 2 above detection limit; NULL = all plain
+    sa.Column("txt", JSONType),  # text columns {slot: value}
+    sa.Index(None, "table_id", "hole_id", "from_m"),
+    sa.Index(None, "hole_id"),  # cascades from dh_holes and «скважина без данных» checks
+)
+
+import_log = sa.Table(
+    "import_log",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("object_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE")),
+    sa.Column("job_id", REF),
+    sa.Column("file_name", sa.String(400), nullable=False),
+    sa.Column("format", sa.String(32), nullable=False),
+    sa.Column("target", sa.String(32), nullable=False),  # collars | surveys | assay | interval | event | objects
+    sa.Column("mapping", JSONType, nullable=False),  # read settings and column assignment
+    sa.Column("counts", JSONType, nullable=False),  # rows read/written, replaced detection limits, errors
+    sa.Column("sha256", sa.String(64)),  # the source file in blobs (owner kind "import")
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Index(None, "object_id"),
+)
+
+export_log = sa.Table(
+    "export_log",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("object_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE")),
+    sa.Column("job_id", REF),
+    sa.Column("file_name", sa.String(400), nullable=False),
+    sa.Column("format", sa.String(32), nullable=False),
+    sa.Column("settings", JSONType, nullable=False),
+    sa.Column("counts", JSONType, nullable=False),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+)
+
 # --- instance level -------------------------------------------------------------------------------
 
 instance_jobs, instance_job_log = _jobs(instance_md)
@@ -169,4 +282,4 @@ projects_cache = sa.Table(
 )
 
 #: Kinds of blob owners. A new kind that stores files registers here, or tests/test_db.py fails (ТЗ 6.5).
-BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job"})
+BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job", "import"})

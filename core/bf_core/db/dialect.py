@@ -5,7 +5,7 @@ write transactions, job claim, JSON access. SQLite (desktop project / instance) 
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -21,7 +21,8 @@ from sqlalchemy.pool import NullPool
 PK = sa.BigInteger().with_variant(sa.Integer(), "sqlite")
 #: A reference to a row key (same storage as PK).
 REF = sa.BigInteger().with_variant(sa.Integer(), "sqlite")
-JSONType = sa.JSON().with_variant(JSONB(), "postgresql")
+#: None is SQL NULL, not the JSON text "null" (smaller rows, and «no value» stays testable with IS NULL).
+JSONType = sa.JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
 
 
 class UtcDateTime(sa.types.TypeDecorator[datetime]):
@@ -78,7 +79,11 @@ def create_engine(url: str, *, schema: str | None = None) -> Engine:
     `schema` (PostgreSQL) maps the project tables to `p_<id>` (server mode).
     """
     if url.startswith("sqlite"):
-        engine = sa.create_engine(url, poolclass=NullPool, connect_args={"check_same_thread": False})
+        # hide_parameters: the values of a failed statement (a job's archive password among them) never reach
+        # an error text, a job log or the operation log (ТЗ 7.9).
+        engine = sa.create_engine(
+            url, poolclass=NullPool, connect_args={"check_same_thread": False}, hide_parameters=True
+        )
 
         @sa.event.listens_for(engine, "connect")
         def _on_connect(dbapi_conn: Any, _record: Any) -> None:
@@ -100,7 +105,7 @@ def create_engine(url: str, *, schema: str | None = None) -> Engine:
             conn.exec_driver_sql(mode)
 
         return engine
-    engine = sa.create_engine(url, pool_pre_ping=True)
+    engine = sa.create_engine(url, pool_pre_ping=True, hide_parameters=True)
     if schema:
         engine = engine.execution_options(schema_translate_map={None: schema})
     return engine
@@ -237,3 +242,14 @@ def is_integrity_error(exc: BaseException) -> bool:
     args = getattr(orig, "args", ())
     code = args[0].get("C") if args and isinstance(args[0], dict) else None
     return isinstance(code, str) and code.startswith("23")
+
+
+def bulk_insert(conn: Connection, table: sa.Table, columns: Sequence[str], rows: Sequence[Sequence[Any]]) -> None:
+    """Many rows through the driver's executemany, past SQLAlchemy's per-row parameter processing (millions of
+    interval rows, ADR 0003 §4). Values must already be in driver form: float/int/str/bytes/None; JSON as text.
+    PostgreSQL bulk loads through COPY come with the server (Э25)."""
+    if not rows:
+        return
+    placeholder = "?" if conn.dialect.name == "sqlite" else "%s"
+    sql = f"INSERT INTO {table.name} ({', '.join(columns)}) VALUES ({', '.join([placeholder] * len(columns))})"
+    conn.exec_driver_sql(sql, list(map(tuple, rows)))

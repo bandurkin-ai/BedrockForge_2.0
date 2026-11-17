@@ -106,11 +106,17 @@ def read_log(engine: sa.Engine, instance: bool, job_id: int) -> list[dict[str, A
 
 def drop_partial(conn: sa.Connection, job_id: int) -> int:
     """Objects a job was building (state='building') and their file references: the job left nothing."""
+    from bf_core.drillholes.store import drop_building
+
+    drop_building(conn, job_id)  # tables an import was filling in existing sets
     ids = [
         r[0]
         for r in conn.execute(sa.select(objects.c.id).where(objects.c.job_id == job_id, objects.c.state == "building"))
     ]
     if ids:
+        from bf_core.drillholes.store import drop_import_owners
+
+        drop_import_owners(conn, ids)  # import_log goes by cascade: its source files must not stay owned
         conn.execute(
             sa.delete(blob_owners).where(blob_owners.c.owner_kind == "object", blob_owners.c.owner_id.in_(ids))
         )

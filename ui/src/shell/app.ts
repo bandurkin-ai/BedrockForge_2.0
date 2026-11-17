@@ -2,9 +2,11 @@
  * The application object: registry + state + handlers of the commands implemented on Э1.
  * No React here; components read app.store and run app.registry.execute().
  */
+import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
 import { bindProjects } from "../modules/projects/bind";
 import { createRegistry } from "./catalog";
+import { logText, opLogStore, openLogWindow } from "./opLog";
 import type { Command, CommandSource } from "./commands";
 import { askConfirm } from "./dialogs";
 import { formatArgs, type CommandRegistry } from "./registry";
@@ -122,11 +124,22 @@ export function createApp(opts: { persist?: boolean } = {}): App {
     return `${a.visible ? "Показан" : "Скрыт"} слой ${key}`;
   });
 
+  registry.bind("logs.open", () => {
+    openLogWindow();
+  });
+  registry.bind("logs.last", (a) => {
+    const index = typeof a.index === "number" ? a.index : 0;
+    const log = opLogStore.get().logs[index];
+    if (!log) return "Журналов операций в этом сеансе нет";
+    return logText(log).slice(-20_000);
+  });
+
   const run = async (id: string, args: Record<string, unknown> = {}, source: CommandSource = "user") => {
     await registry.execute(id, args, source);
   };
   const app: App = { registry, store, palette, run };
   bindProjects(app);
   bindJobs(app);
+  bindImporting(app);
   return app;
 }
