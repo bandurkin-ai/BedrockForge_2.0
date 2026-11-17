@@ -24,12 +24,12 @@ def prepare(params: dict[str, Any], work: Path) -> None:
     depth = (np.arange(n) % HOLE_ROWS).astype(float)
     grades = rng.lognormal(0.0, 1.0, size=(n, 3)).round(3)
     with open(work / "assay.csv", "w", encoding="utf-8") as fh:
-        fh.write("HOLE_ID,FROM,TO,AU_PPM,AG_PPM,CU_PCT\n")
+        fh.write("HOLE_ID,FROM,TO,AU_PPM,AG_PPM,CU_PCT,SAMPLE_ID\n")
         step = 200_000
         for start in range(0, n, step):
             stop = min(n, start + step)
             fh.writelines(
-                f"DH{holes[i]:06d},{depth[i]:.1f},{depth[i] + 1:.1f},{grades[i, 0]},{grades[i, 1]},{grades[i, 2]}\n"
+                f"DH{holes[i]:06d},{depth[i]:.1f},{depth[i] + 1:.1f},{grades[i, 0]},{grades[i, 1]},{grades[i, 2]},S{i:08d}\n"
                 for i in range(start, stop)
             )
     folder = create_folder(work, "Замер", {})

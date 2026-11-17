@@ -73,6 +73,17 @@ def _numbers(text: np.ndarray) -> tuple[np.ndarray, int, int, list[int]]:
         return values, int((kinds == numbers.BELOW).sum()), int((kinds == numbers.ABOVE).sum()), bad
 
 
+def _cell_encoding(encoding: str) -> str:
+    """N fields are ASCII; their odd text (BOCU-1 number bytes included) is shown as Latin-1 then."""
+    try:
+        import codecs
+
+        codecs.lookup(encoding)
+    except LookupError:
+        return "latin-1"
+    return encoding
+
+
 def _text_chunk(raw: np.ndarray, encoding: str) -> tuple[Any, int, bool]:
     """A chunk of a C field (S-dtype) → pyarrow strings; cells with unreadable characters; any non-ASCII."""
     import numpy as np
@@ -141,6 +152,7 @@ def read_dat(
     below = dict.fromkeys(numeric, 0)
     above = dict.fromkeys(numeric, 0)
     bad: dict[int, tuple[int, str]] = {}
+    bad_cells: dict[int, dict[int, str]] = {}  # N fields: row → the text that is not a number (ТЗ 7.7 «исходное»)
     damaged = dict.fromkeys(texts, 0)
     non_ascii = False
     bad_eol = 0
@@ -174,7 +186,10 @@ def read_dat(
                     below[i] += lo
                     above[i] += hi
                     if wrong_rows:
-                        count, example = bad.get(i, (0, raw[wrong_rows[0]].decode("latin-1").strip()))
+                        cells = bad_cells.setdefault(i, {})
+                        for r in wrong_rows:
+                            cells[a + r] = raw[r].decode(_cell_encoding(header.encoding), "replace").strip()
+                        count, example = bad.get(i, (0, cells[a + wrong_rows[0]]))
                         bad[i] = (count + len(wrong_rows), example)
                 else:
                     chunk, broken, plain = _text_chunk(np.ascontiguousarray(column), header.encoding)
@@ -192,7 +207,9 @@ def read_dat(
     for i in used:
         f = header.fields[i]
         if i in numeric:
-            columns.append(Column(names[i], "number", numeric[i], below[i], above[i], source=f.kind))
+            columns.append(
+                Column(names[i], "number", numeric[i], below[i], above[i], source=f.kind, bad_cells=bad_cells.get(i))
+            )
             if i in bad:
                 count, example = bad[i]
                 what = f"{_n(count)} знач. не являются числами (например «{example}»)"

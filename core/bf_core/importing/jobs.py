@@ -49,15 +49,24 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
     from bf_core.drillholes import store as dh
     from bf_core.formats.errors import FormatError
     from bf_core.formats.registry import read_table
-    from bf_core.storage.blobs import BlobStore
 
-    from .service import normalize
+    from .router import set_name
+    from .service import duplicate_targets, normalize
 
     p = ctx.params
     files = sorted(p["files"], key=lambda f: ORDER.get(f["kind"], 9))
     engine = ctx.engine()
-    store = BlobStore(ctx.project_folder) if ctx.project_folder else None
     n_files = len(files)
+
+    done = _committed(engine, ctx.id, files, new_set=not p.get("set_id"))
+    if done is not None:  # a retry after the final transaction: the data is in, only the copies may be missing
+        ctx.log("Данные уже записаны предыдущей попыткой: сохраняются исходные файлы", "info")
+        result, pending = done
+        _store_sources(ctx, engine, pending)
+        return result
+    clash = duplicate_targets(files)
+    if clash:
+        raise JobError("files_clash", clash, "Уберите лишний файл или дайте таблице другое название.")
 
     with dialect.write_tx(engine) as conn:
         if p.get("set_id"):
@@ -69,12 +78,19 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
                 raise JobError("set_not_found", "Набор скважин не найден.", "Выберите набор заново.")
             new_set = False
         else:
-            name = str(p.get("set_name") or "Скважины").strip()
-            set_id = dh.create_set(conn, name, job_id=ctx.id, crs=p.get("crs"))
+            name = set_name(p.get("set_name")) or "Скважины"
+            try:
+                set_id = dh.create_set(conn, name, job_id=ctx.id, crs=p.get("crs"))
+            except dh.NameTaken:
+                raise JobError(
+                    "name_taken", f"Набор «{name}» уже есть.", "Загрузите в него или выберите другое название."
+                ) from None
             new_set = True
 
     collars: list[Any] = []
+    collar_file: dict[str, str] = {}  # hole → file: one hole in two collar files is ambiguous
     surveys: list[Any] | None = None
+    survey_file: dict[str, str] = {}
     built: list[int] = []
     history: list[dict[str, Any]] = []
     for k, f in enumerate(files):
@@ -119,25 +135,31 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
         del table  # the read table is no longer needed: keep the memory for the next file
         written: dict[str, Any] = {"rows_read": norm.rows, **norm.counts}
         if norm.kind == "collar":
-            collars = norm.collars
-            written["collars"] = len(collars)
+            for c in norm.collars:
+                _claim(collar_file, c.name, label, "устьев")
+            collars.extend(norm.collars)
+            written["collars"] = len(norm.collars)
         elif norm.kind == "survey":
-            surveys = norm.surveys
-            written["surveys"] = len(surveys)
+            mine = {r[0] for r in norm.surveys}
+            for hole in mine:
+                _claim(survey_file, hole, label, "инклинометрии")
+            surveys = (surveys or []) + norm.surveys
+            written["surveys"] = len(norm.surveys)
         else:
             assert norm.table is not None
 
             def write_tick(frac: float | None, msg: str | None, base: float = base, share: float = share) -> None:
                 ctx.tick(None if frac is None else base + share * (0.5 + 0.5 * frac), msg)
 
-            done = dh.write_table(engine, set_id, norm.table, job_id=ctx.id, swap=False, tick=write_tick)
-            built.append(done["table_id"])
-            written["rows"] = done["rows"]
+            out = dh.write_table(engine, set_id, norm.table, job_id=ctx.id, swap=False, tick=write_tick)
+            built.append(out["table_id"])
+            written["rows"] = out["rows"]
         history.append(
             {"file": f, "label": label, "counts": written, "format": Path(f["path"]).suffix.lower().lstrip(".")}
         )
 
     ctx.tick(0.97, "Запись в набор")
+    result = {"set_id": set_id, "new_set": new_set, "files": [{"file": h["label"], **h["counts"]} for h in history]}
     with dialect.write_tx(engine) as conn:  # the final transaction: all or nothing
         if collars:
             dh.replace_collars(conn, set_id, collars)
@@ -145,12 +167,13 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
             dh.replace_surveys_in(conn, set_id, surveys, lambda _f, _m: None)
         for table_id in built:
             dh.swap_in(conn, set_id, table_id)
-        log_ids = []
+        dh.prune_empty_holes(conn, set_id)
+        logs = []
         for h in history:
             res = conn.execute(
                 sa.insert(import_log).values(
                     object_id=set_id,
-                    job_id=None,
+                    job_id=ctx.id,  # links the history to the job log; a retry finds the import done by it
                     file_name=h["label"],
                     format=h["format"],
                     target=h["file"]["kind"],
@@ -164,29 +187,76 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
             )
             key = res.inserted_primary_key
             assert key is not None
-            log_ids.append(int(key[0]))
+            logs.append((int(key[0]), h["file"]["path"], h["label"]))
         if new_set:
             conn.execute(sa.update(objects).where(objects.c.id == set_id).values(state="ready", job_id=None))
         elif p.get("crs"):
             conn.execute(sa.update(objects).where(objects.c.id == set_id).values(crs=p["crs"]))
         conn.execute(sa.update(objects).where(objects.c.id == set_id).values(updated_at=dialect.utcnow()))
 
-    # Source files into the storage — the last step: the import is done even if a copy fails.
-    if store is not None:
-        for h, log_id in zip(history, log_ids, strict=True):
-            try:
-                staged = store.stage_file(Path(h["file"]["path"]))
-                with dialect.write_tx(engine) as conn:
-                    sha = store.commit_staged(
-                        conn,
-                        staged,
-                        media_type="application/octet-stream",
-                        owner_kind="import",
-                        owner_id=log_id,
-                        role="source",
-                    )
-                    conn.execute(sa.update(import_log).where(import_log.c.id == log_id).values(sha256=sha))
-            except OSError as exc:
-                ctx.log(f"{h['label']}: исходный файл не сохранён в проекте ({exc.strerror or exc})", "warn")
-    ctx.tick(1.0, "Готово")
-    return {"set_id": set_id, "new_set": new_set, "files": [{"file": h["label"], **h["counts"]} for h in history]}
+    # Committed: from here on nothing may fail the job or ask to cancel it (the data is in the project).
+    _store_sources(ctx, engine, logs)
+    return result
+
+
+def _claim(owner: dict[str, str], hole: str, label: str, what: str) -> None:
+    other = owner.setdefault(hole, label)
+    if other != label:
+        raise JobError(
+            "hole_in_two_files",
+            f"Скважина «{hole}» есть в двух файлах {what}: «{other}» и «{label}».",
+            "Оставьте скважину в одном файле или загрузите файлы по очереди.",
+        )
+
+
+def _committed(
+    engine: sa.Engine, job_id: int, files: list[dict[str, Any]], new_set: bool
+) -> tuple[dict[str, Any], list[tuple[int, str, str]]] | None:
+    """When an earlier attempt of this job got past the final transaction: its result, and the source files
+    still to copy (log id, path, name). The history rows are in the order of `files`."""
+    with dialect.read_tx(engine) as conn:
+        rows = conn.execute(
+            sa.select(
+                import_log.c.id,
+                import_log.c.object_id,
+                import_log.c.file_name,
+                import_log.c.counts,
+                import_log.c.sha256,
+            )
+            .where(import_log.c.job_id == job_id)
+            .order_by(import_log.c.id)
+        ).all()
+    if not rows:
+        return None
+    result = {
+        "set_id": rows[0].object_id,
+        "new_set": new_set,
+        "files": [{"file": r.file_name, **(r.counts or {})} for r in rows],
+    }
+    pending = [(r.id, f["path"], r.file_name) for r, f in zip(rows, files, strict=False) if r.sha256 is None]
+    return result, pending
+
+
+def _store_sources(ctx: JobContext, engine: sa.Engine, logs: list[tuple[int, str, str]]) -> None:
+    """Source files into the project storage — the last step (ТЗ 6.7): a failed copy is a warning, never a
+    failure of the import, and no cancel is honoured here."""
+    from bf_core.storage.blobs import BlobStore
+
+    if not ctx.project_folder:
+        return
+    store = BlobStore(ctx.project_folder)
+    for log_id, path, label in logs:
+        try:
+            staged = store.stage_file(Path(path))
+            with dialect.write_tx(engine) as conn:
+                sha = store.commit_staged(
+                    conn,
+                    staged,
+                    media_type="application/octet-stream",
+                    owner_kind="import",
+                    owner_id=log_id,
+                    role="source",
+                )
+                conn.execute(sa.update(import_log).where(import_log.c.id == log_id).values(sha256=sha))
+        except Exception as exc:  # noqa: BLE001 - the import is done; the copy is best effort
+            ctx.log(f"{label}: исходный файл не сохранён в проекте ({exc})", "warn")

@@ -16,24 +16,37 @@ export function openDrillholeWizard(paths: string[] = []): void {
   openWindow("import-drillholes", "Импорт скважин", "normal", paths.length ? { paths } : undefined, ...viewport());
 }
 
-/** Files from the dialog or dropped from Explorer: the kind decides the wizard. */
+const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+
+/** Files from the dialog or dropped from Explorer, file by file: drillhole tables go to their wizard, a
+ * `.bfggis` to the project import; the composition says what is not loaded yet and when (ТЗ 7.8). */
 export async function importPaths(app: App, paths: string[]): Promise<string> {
-  const kind = detectImportKind(paths);
-  if (!kind) {
-    await showMessage({ title: "Импорт файлов", message: "Тип файлов не распознан. Поддерживаются DAT, CSV, Excel, TRIDB, DXF, OBJ, STL, STR, растры с привязкой, OMF, .bfggis." });
-    return "Тип файлов не распознан";
+  const groups = new Map<ImportKind | null, string[]>();
+  for (const p of paths) {
+    const kind = detectImportKind([p]);
+    groups.set(kind, [...(groups.get(kind) ?? []), p]);
   }
-  if (kind === "holes") {
-    openDrillholeWizard(paths);
-    return "Открыт мастер импорта скважин";
+  const skipped: string[] = [];
+  for (const [kind, files] of groups) {
+    const names = files.map(baseName).join(", ");
+    if (kind === null) skipped.push(`${names} — тип файла не распознан`);
+    else if (kind !== "holes" && kind !== "project") skipped.push(`${names} — ${IMPORT_TITLES[kind]}: появится на этапе ${LATER[kind] ?? "разработки"}`);
   }
-  if (kind === "project") {
-    await app.run("project.import", { path: paths[0] });
-    return "Открыт импорт проекта";
+  const holes = groups.get("holes") ?? [];
+  const project = groups.get("project") ?? [];
+  if (skipped.length) {
+    const loaded = holes.length + project.length;
+    await showMessage({
+      title: "Импорт файлов",
+      message: loaded ? `Загрузится файлов: ${loaded}. Не загрузятся:` : "Эти файлы пока не загружаются:",
+      log: skipped.join("\n"),
+    });
   }
-  const message = `Импорт: ${IMPORT_TITLES[kind]} — появится на этапе ${LATER[kind] ?? "разработки"}.`;
-  await showMessage({ title: "Импорт файлов", message });
-  return message;
+  if (holes.length) openDrillholeWizard(holes);
+  if (project.length) await app.run("project.import", { path: project[0] });
+  if (holes.length) return "Открыт мастер импорта скважин";
+  if (project.length) return "Открыт импорт проекта";
+  return skipped.length ? "Файлы не загружены" : "Отменено";
 }
 
 export function bindImporting(app: App): void {
@@ -49,7 +62,7 @@ export function bindImporting(app: App): void {
   app.registry.bind(
     "import.files",
     async () => {
-      const paths = (await bridge()?.pickFiles("tables", true)) ?? [];
+      const paths = (await bridge()?.pickFiles("objects", true)) ?? [];
       if (!paths.length) return "Отменено";
       return importPaths(app, paths);
     },

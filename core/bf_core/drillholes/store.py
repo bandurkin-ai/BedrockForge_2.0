@@ -18,7 +18,7 @@ from typing import Any
 import sqlalchemy as sa
 
 from bf_core.db import dialect
-from bf_core.db.schema import dh_columns, dh_holes, dh_rows, dh_surveys, dh_tables, objects
+from bf_core.db.schema import dh_columns, dh_holes, dh_rows, dh_surveys, dh_tables, import_log, objects
 
 BATCH = 50_000
 SET_KIND = "drillhole_set"
@@ -52,7 +52,20 @@ def unpack(data: bytes | None, width: int) -> list[float]:
 # --- sets and holes -----------------------------------------------------------------------------
 
 
+class NameTaken(Exception):
+    """A set of that name exists (or is being built by another job)."""
+
+
 def create_set(conn: sa.Connection, name: str, *, job_id: int | None = None, crs: str | None = None) -> int:
+    taken = conn.execute(
+        sa.select(objects.c.id).where(
+            objects.c.kind == SET_KIND,
+            objects.c.name_key == dialect.name_key(name),
+            objects.c.state.in_(("ready", "building")),
+        )
+    ).first()
+    if taken is not None:
+        raise NameTaken(name)
     now = dialect.utcnow()
     res = conn.execute(
         sa.insert(objects).values(
@@ -156,18 +169,18 @@ def replace_collars(conn: sa.Connection, set_id: int, rows: Sequence[CollarRow])
     return {"added": added, "updated": updated, "collars": len(rows)}
 
 
-def replace_surveys(
-    engine: sa.Engine, set_id: int, rows: Sequence[tuple[str, float, float | None, float | None]], tick: Tick
-) -> dict[str, int]:
+#: (hole, depth, azimuth, dip[, attributes])
+SurveyRow = tuple[Any, ...]
+
+
+def replace_surveys(engine: sa.Engine, set_id: int, rows: Sequence[SurveyRow], tick: Tick) -> dict[str, int]:
     """«Заменить» surveys of one set: (hole, depth, azimuth, dip). One transaction: surveys are small enough
     (tens of thousands of holes × tens of readings)."""
     with dialect.write_tx(engine) as conn:
         return replace_surveys_in(conn, set_id, rows, tick)
 
 
-def replace_surveys_in(
-    conn: sa.Connection, set_id: int, rows: Sequence[tuple[str, float, float | None, float | None]], tick: Tick
-) -> dict[str, int]:
+def replace_surveys_in(conn: sa.Connection, set_id: int, rows: Sequence[SurveyRow], tick: Tick) -> dict[str, int]:
     """The same inside the caller's transaction (the final transaction of an import)."""
     known = hole_ids(conn, set_id)
     ensure_holes(conn, set_id, (r[0] for r in rows), known)
@@ -178,8 +191,15 @@ def replace_surveys_in(
         conn.execute(
             sa.insert(dh_surveys),
             [
-                {"set_id": set_id, "hole_id": known[h], "depth": float(d), "azimuth": _num(a), "dip": _num(p)}
-                for h, d, a, p in part
+                {
+                    "set_id": set_id,
+                    "hole_id": known[r[0]],
+                    "depth": float(r[1]),
+                    "azimuth": _num(r[2]),
+                    "dip": _num(r[3]),
+                    "attrs": (r[4] if len(r) > 4 else None) or None,
+                }
+                for r in part
             ],
         )
     return {"surveys": len(rows)}
@@ -308,12 +328,24 @@ def write_table(
     return {"rows": n, "table_id": table_id}
 
 
+def replaced_by(kind: str, name: str) -> sa.ColumnElement[bool]:
+    """Which ready table of a set a new one replaces («Заменить», ТЗ 7.7 «таблица того же типа»): the assay
+    table — one per set, whatever its name; interval tables and events — the one of the same name (a set has
+    lithology, alteration, RQD… side by side)."""
+    if kind == "assay":
+        return dh_tables.c.kind == "assay"
+    return sa.and_(dh_tables.c.kind == kind, dh_tables.c.name_key == dialect.name_key(name))
+
+
 def swap_in(conn: sa.Connection, set_id: int, table_id: int) -> None:
-    """The old table of that name goes, the built one becomes visible — in the caller's transaction."""
-    name_key = conn.execute(sa.select(dh_tables.c.name_key).where(dh_tables.c.id == table_id)).scalar_one()
+    """The table it replaces goes, the built one becomes visible — in the caller's transaction."""
+    row = conn.execute(sa.select(dh_tables.c.kind, dh_tables.c.name).where(dh_tables.c.id == table_id)).one()
     conn.execute(
         sa.delete(dh_tables).where(
-            dh_tables.c.set_id == set_id, dh_tables.c.name_key == name_key, dh_tables.c.state == "ready"
+            dh_tables.c.set_id == set_id,
+            dh_tables.c.state == "ready",
+            dh_tables.c.id != table_id,
+            replaced_by(row.kind, row.name),
         )
     )
     conn.execute(
@@ -334,6 +366,15 @@ def drop_building(conn: sa.Connection, job_id: int) -> None:
     conn.execute(sa.delete(dh_tables).where(dh_tables.c.job_id == job_id, dh_tables.c.state == "building"))
     for set_id in sets:
         prune_empty_holes(conn, set_id)
+
+
+def drop_import_owners(conn: sa.Connection, object_ids: Sequence[int]) -> None:
+    """Before objects are deleted (their import history goes by cascade): the source files they kept in the
+    storage lose that owner, so the storage cleanup can remove them. Every deletion of sets calls this."""
+    from bf_core.db.schema import blob_owners
+
+    logs = sa.select(import_log.c.id).where(import_log.c.object_id.in_(list(object_ids)))
+    conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == "import", blob_owners.c.owner_id.in_(logs)))
 
 
 def prune_empty_holes(conn: sa.Connection, set_id: int) -> int:

@@ -9,7 +9,7 @@ import { setPanel } from "../../shell/workspace";
 import { refresh as refreshJobs } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { FileCard } from "./FileCard";
-import { canStart, filesOf, ready, STEPS, Wizard, type StepId } from "./wizard";
+import { canStart, clashOf, filesOf, ready, replaces, STEPS, tableNameOf, Wizard, type StepId } from "./wizard";
 import css from "./ImportWizard.module.css";
 
 const STEP_HINT: Record<StepId, string> = {
@@ -30,7 +30,10 @@ export function ImportWizard({ winId, paths }: { winId: string; paths?: string[]
   useStore(opLogStore, (x) => x.version);
   useEffect(() => {
     if (paths?.length) void wizard.add(paths);
-    return () => stopOpLog(wizard.log);
+    return () => {
+      stopOpLog(wizard.log);
+      if (!wizard.store.get().started) wizard.close();
+    };
   }, [wizard, paths]);
 
   const stepIndex = STEPS.findIndex((x) => x.id === s.step);
@@ -159,11 +162,14 @@ function ImportStep({ wizard, onPrj }: { wizard: Wizard; onPrj: () => void }) {
             <li key={f.id} className={ready(f) ? "" : css.error}>
               {f.name}: {f.kind ? `${f.check?.rows.toLocaleString("ru-RU")} строк` : "тип не выбран"}
               {f.force ? " · с ошибками" : ""}
+              {f.kind && f.kind !== "collar" && f.kind !== "survey" ? ` → таблица «${tableNameOf(f)}»` : ""}
+              {replaces(s, f) ? <span className={css.warn}> · заменит {replaces(s, f)}</span> : null}
             </li>
           ))}
           {!s.files.length && <li className={css.note}>Файлы не выбраны.</li>}
         </ul>
         {notReady.length > 0 && <div className={css.error}>Исправьте файлы, отмеченные красным, на их шагах.</div>}
+        {clashOf(s) && <div className={css.error}>{clashOf(s)} Уберите лишний файл или дайте таблице другое название.</div>}
       </section>
     </div>
   );

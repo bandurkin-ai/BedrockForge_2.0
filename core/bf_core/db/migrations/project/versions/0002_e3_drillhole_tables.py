@@ -133,6 +133,7 @@ def upgrade() -> None:
         batch_op.create_index(
             batch_op.f("ix_dh_rows_table_id_hole_id_from_m"), ["table_id", "hole_id", "from_m"], unique=False
         )
+        batch_op.create_index(batch_op.f("ix_dh_rows_hole_id"), ["hole_id"], unique=False)
 
     op.create_table(
         "dh_surveys",
@@ -155,14 +156,17 @@ def upgrade() -> None:
         batch_op.create_index(
             batch_op.f("ix_dh_surveys_set_id_hole_id_depth"), ["set_id", "hole_id", "depth"], unique=False
         )
+        batch_op.create_index(batch_op.f("ix_dh_surveys_hole_id"), ["hole_id"], unique=False)
 
 
 def downgrade() -> None:
     with op.batch_alter_table("dh_surveys", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_dh_surveys_hole_id"))
         batch_op.drop_index(batch_op.f("ix_dh_surveys_set_id_hole_id_depth"))
 
     op.drop_table("dh_surveys")
     with op.batch_alter_table("dh_rows", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_dh_rows_hole_id"))
         batch_op.drop_index(batch_op.f("ix_dh_rows_table_id_hole_id_from_m"))
 
     op.drop_table("dh_rows")

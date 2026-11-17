@@ -23,7 +23,7 @@ export interface BfBridge {
   pickOpen(): Promise<string | null>;
   pickFolder(): Promise<string | null>;
   /** Files for import: "tables" (DAT, CSV, Excel) or "prj"; [] when cancelled. */
-  pickFiles(kind: "tables" | "prj", multi: boolean): Promise<string[]>;
+  pickFiles(kind: "tables" | "prj" | "objects", multi: boolean): Promise<string[]>;
   showInFolder(file: string): void;
   /** Disk path of a file dropped from Explorer. */
   pathForFile(file: File): string;

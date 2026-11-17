@@ -296,6 +296,14 @@ function registerIpc(): void {
       { name: "Все файлы", extensions: ["*"] },
     ],
     prj: [{ name: "Система координат (.prj)", extensions: ["prj"] }],
+    // «Импорт файлов» (ТЗ 7.8): every extension of the wizard; formats arrive with their stages.
+    objects: [
+      {
+        name: "Все поддерживаемые",
+        extensions: ["omf", "tridb", "dxf", "obj", "stl", "str", "jpg", "jpeg", "png", "tif", "tiff", "bmp", "jgw", "jpgw", "pgw", "pngw", "tfw", "tifw", "bpw", "wld", "tab", "grf", "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"],
+      },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
   };
   ipcMain.handle("bf:pick-files", async (e, kind: string, multi: boolean) => {
     if (!mainWin || !fromMain(e.sender)) return [];

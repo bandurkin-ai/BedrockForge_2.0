@@ -28,13 +28,13 @@ Log = Callable[[str, str], None]
 
 
 def snapshot(engine: sa.Engine, folder: Path) -> Path:
-    """A copy of the project; objects still being built by other jobs (state='building') are dropped from it."""
+    """A copy of the project; objects and drillhole tables still being built by jobs (state='building') are dropped."""
     target = folder / "cache" / f"export-{uuid.uuid4().hex}.sqlite"
     target.parent.mkdir(parents=True, exist_ok=True)
     dialect.vacuum_into(engine, str(target))
     snap = dialect.create_engine(dialect.sqlite_url(str(target)))
     try:
-        from bf_core.db.schema import objects
+        from bf_core.db.schema import dh_tables, objects
         from bf_core.jobs.store import drop_partial
 
         with dialect.write_tx(snap) as conn:
@@ -43,6 +43,14 @@ def snapshot(engine: sa.Engine, folder: Path) -> Path:
             ).scalars():
                 drop_partial(conn, job_id)
             conn.execute(sa.delete(objects).where(objects.c.state == "building"))
+            # Tables being built into a ready set (an import still running) are not part of the project yet.
+            from bf_core.drillholes.store import drop_building
+
+            for job_id in conn.execute(
+                sa.select(dh_tables.c.job_id).where(dh_tables.c.state == "building").distinct()
+            ).scalars():
+                drop_building(conn, job_id)  # with the holes it alone brought
+            conn.execute(sa.delete(dh_tables).where(dh_tables.c.state == "building"))
     finally:
         snap.dispose()
     return target

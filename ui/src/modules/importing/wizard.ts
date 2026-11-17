@@ -4,6 +4,7 @@
  */
 import { api, CoreError } from "../../shell/api";
 import { logError, logStep, type OpLog } from "../../shell/opLog";
+import { followJob } from "../jobs/follow";
 import { Store } from "../../shell/store";
 
 export type TableKind = "collar" | "survey" | "assay" | "interval" | "event";
@@ -93,13 +94,22 @@ export interface WizardState {
   setName: string;
   crs: string | null;
   crsName: string | null;
-  sets: { id: number; name: string; holes: number }[];
+  sets: SetInfo[];
   starting: boolean;
+  /** A job was started: the core already dropped its copy of the files. */
+  started: boolean;
   error: string | null;
 }
 
+export interface SetInfo {
+  id: number;
+  name: string;
+  holes: number;
+  tables: { name: string; kind: string; rows: number }[];
+}
+
 export function initialState(): WizardState {
-  return { step: "collar", files: [], setMode: "new", setId: null, setName: "Скважины", crs: null, crsName: null, sets: [], starting: false, error: null };
+  return { step: "collar", files: [], setMode: "new", setId: null, setName: "Скважины", crs: null, crsName: null, sets: [], starting: false, started: false, error: null };
 }
 
 let nextId = 1;
@@ -120,8 +130,40 @@ export function ready(f: FileEntry): boolean {
   return f.kind !== null && !!f.check && !f.busy && !f.error && blockers(f).length === 0;
 }
 
+const nameKey = (t: string) => t.trim().normalize("NFC").toLowerCase();
+const KIND_NAMES: Partial<Record<TableKind, string>> = { assay: "Пробы (Assay)", interval: "Интервальная таблица", event: "События по скважинам" };
+
+/** The table name a file gets in the set (the core uses the same rule). */
+export function tableNameOf(f: FileEntry): string {
+  return f.tableName.trim() || (f.kind ? KIND_NAMES[f.kind] ?? f.kind : "");
+}
+
+/** Two files that would land in one table: the second would replace the first (one assay table per set). */
+export function clashOf(s: WizardState): string | null {
+  const seen = new Map<string, string>();
+  for (const f of s.files) {
+    if (!f.kind || f.kind === "collar" || f.kind === "survey") continue;
+    const key = f.kind === "assay" ? "assay" : `${f.kind}:${nameKey(tableNameOf(f))}`;
+    const other = seen.get(key);
+    if (other) return f.kind === "assay" ? `Файлы «${other}» и «${f.name}» — оба пробы: в наборе одна таблица проб.` : `Файлы «${other}» и «${f.name}» загружаются в одну таблицу «${tableNameOf(f)}».`;
+    seen.set(key, f.name);
+  }
+  return null;
+}
+
+/** What a file replaces in the chosen set («Заменить», ТЗ 7.7): null — nothing, it is new. */
+export function replaces(s: WizardState, f: FileEntry): string | null {
+  if (s.setMode !== "existing" || !f.kind) return null;
+  const set = s.sets.find((x) => x.id === s.setId);
+  if (!set) return null;
+  if (f.kind === "collar") return set.holes ? "устья набора" : null;
+  if (f.kind === "survey") return set.holes ? "инклинометрию набора" : null;
+  const old = set.tables.find((t) => t.kind === f.kind && (f.kind === "assay" || nameKey(t.name) === nameKey(tableNameOf(f))));
+  return old ? `таблицу «${old.name}» (${old.rows.toLocaleString("ru-RU")} строк)` : null;
+}
+
 export function canStart(s: WizardState): boolean {
-  if (!s.files.length || !s.files.every(ready) || s.starting) return false;
+  if (!s.files.length || !s.files.every(ready) || s.starting || clashOf(s)) return false;
   return s.setMode === "existing" ? s.setId !== null : s.setName.trim().length > 0;
 }
 
@@ -140,7 +182,7 @@ export class Wizard {
 
   async loadSets(): Promise<void> {
     try {
-      const r = await api.get<{ sets: { id: number; name: string; holes: number }[] }>("/drillholes/sets");
+      const r = await api.get<{ sets: SetInfo[] }>("/drillholes/sets");
       this.store.set({ sets: r.sets });
     } catch {
       /* no project: the wizard shows it at the start */
@@ -220,6 +262,11 @@ export class Wizard {
     this.patch(id, { busy: false, error: msg });
   }
 
+  /** The wizard closed: the core drops the table it kept read for «Проверить». */
+  close(): void {
+    void api.post("/drillholes/import/forget", {}).catch(() => undefined);
+  }
+
   go(step: StepId): void {
     this.store.set({ step });
     if (step === "import") void this.loadSets();
@@ -242,8 +289,9 @@ export class Wizard {
     logStep(this.log, `Запуск импорта: ${JSON.stringify({ ...body, files: body.files.map((f) => ({ ...f, path: baseName(f.path) })) })}`);
     try {
       const r = await api.post<{ source: string; id: number }>("/drillholes/import", body);
-      logStep(this.log, `Задание №${r.id} поставлено в очередь`);
-      this.store.set({ starting: false });
+      logStep(this.log, `Задание №${r.id} поставлено в очередь; журнал продолжится до его окончания`);
+      followJob(this.log, r);
+      this.store.set({ starting: false, started: true });
       return r;
     } catch (e) {
       const msg = e instanceof CoreError ? e.full : String(e);

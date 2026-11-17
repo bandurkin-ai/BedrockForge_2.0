@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import Request
@@ -33,9 +34,18 @@ def internal_body(exc: BaseException) -> dict[str, str]:
     import traceback
 
     body = error_body("internal", "Внутренняя ошибка ядра.", "Скопируйте журнал операции и отправьте разработчику.")
-    body["detail"] = f"{type(exc).__name__}: {exc}"[:2000]
-    body["trace"] = "".join(traceback.format_exception(exc)[-12:])[-6000:]
+    body["detail"] = mask_secrets(f"{type(exc).__name__}: {exc}")[:2000]
+    body["trace"] = mask_secrets("".join(traceback.format_exception(exc)[-12:]))[-6000:]
     return body
+
+
+_SECRET = re.compile(r"""(?i)(["']?(?:password|secret|token|passphrase)["']?\s*[:=]\s*)(["']?)[^\s"',)}]+\2""")
+
+
+def mask_secrets(text: str) -> str:
+    """Passwords never reach the operation log, even inside an error text (the engines already hide SQL
+    parameters: `hide_parameters=True`)."""
+    return _SECRET.sub(r"\1\2***\2", text)
 
 
 async def unexpected_error_handler(_: Request, exc: Exception) -> JSONResponse:

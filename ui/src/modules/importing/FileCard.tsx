@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { blockers, KIND_TITLES, type FileEntry, type TableKind, type Wizard } from "./wizard";
 import css from "./ImportWizard.module.css";
 
@@ -92,7 +92,7 @@ export function FileCard({ wizard, file }: { wizard: Wizard; file: FileEntry }) 
           {file.inspect.format !== "dat" && (
             <label>
               Строка заголовка
-              <input type="number" min={0} max={1000} value={opt.header_row} onChange={(e) => void wizard.reread(file.id, { ...opt, header_row: Number(e.target.value) })} aria-label="Строка заголовка" />
+              <HeaderRow value={opt.header_row} onApply={(header_row) => void wizard.reread(file.id, { ...opt, header_row })} />
             </label>
           )}
           <button type="button" className={css.linkBtn} onClick={() => setShowRaw(!showRaw)}>
@@ -203,6 +203,32 @@ export function FileCard({ wizard, file }: { wizard: Wizard; file: FileEntry }) 
         </>
       )}
     </section>
+  );
+}
+
+/** Applied on Enter or leaving the field: every keystroke would read the whole file again; empty is not 0. */
+function HeaderRow({ value, onApply }: { value: number; onApply: (v: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const apply = () => {
+    const v = Number(text);
+    if (text.trim() === "" || !Number.isInteger(v) || v < 0 || v > 1000) setText(String(value));
+    else if (v !== value) onApply(v);
+  };
+  return (
+    <input
+      type="number"
+      min={0}
+      max={1000}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={apply}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") apply();
+      }}
+      aria-label="Строка заголовка"
+      title="0 — без заголовка; Enter — применить"
+    />
   );
 }
 

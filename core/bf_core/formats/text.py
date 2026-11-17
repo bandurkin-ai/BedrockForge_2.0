@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import codecs
 import csv
+import re
 from collections import Counter
 from collections.abc import Iterator
 from itertools import repeat
@@ -33,6 +34,7 @@ from pathlib import Path
 from bf_core.formats.errors import FormatError
 from bf_core.formats.table import Progress, ReadInfo, ReadOptions, TableBuilder, TableRead, no_progress
 
+_LINE_BREAK = re.compile(r"\r\n|\r|\n")  # not str.splitlines: \x0b, \x1c…, U+2028 may sit inside a cell
 ENCODINGS = ("utf-8", "utf-8-sig", "cp1251", "cp866", "koi8-r", "utf-16", "utf-16-le", "utf-16-be", "latin-1")
 DELIMITERS = {",": ",", ";": ";", "\t": "\t", "|": "|", "whitespace": None}
 BLOCK = 1 << 20  # bytes decoded and parsed at a time
@@ -188,7 +190,9 @@ def line_blocks(
             if head:
                 stats.replaced += head.count("\ufffd")
                 stats.nul += head.count("\x00")
-                lines = head.splitlines()
+                lines = _LINE_BREAK.split(head)
+                if lines and lines[-1] == "":
+                    lines.pop()
                 if not keep_blank:
                     lines = [line for line in lines if line and not line.isspace()]
                 if lines:

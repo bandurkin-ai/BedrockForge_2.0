@@ -88,6 +88,19 @@ export function logRequest(method: string, path: string, body: unknown, status: 
   touch();
 }
 
+const jobLogs = new Map<string, number>();
+
+/** The job a window started: its result and log go into the window's log; «Задания» opens it from the job. */
+export function linkJob(log: OpLog, job: { source: string; id: number }): void {
+  jobLogs.set(`${job.source}:${job.id}`, log.id);
+}
+
+/** The operation log of the window that started the job, while it is among the last 30. */
+export function logOfJob(job: { source: string; id: number }): number | undefined {
+  const id = jobLogs.get(`${job.source}:${job.id}`);
+  return id !== undefined && opLogStore.get().logs.some((l) => l.id === id) ? id : undefined;
+}
+
 export function logText(log: OpLog): string {
   return log.lines.join("\n");
 }

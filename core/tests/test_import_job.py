@@ -87,7 +87,15 @@ def test_wizard_end_to_end(pclient, files) -> None:  # type: ignore[no-untyped-d
             == 3
         )
     sets = pclient.get(f"{API}/drillholes/sets").json()["sets"]
-    assert sets == [{"id": sets[0]["id"], "name": "Набор 1", "crs": None, "holes": 2}]
+    assert sets == [
+        {
+            "id": sets[0]["id"],
+            "name": "Набор 1",
+            "crs": None,
+            "holes": 2,
+            "tables": [{"name": "Пробы (Assay)", "kind": "assay", "rows": 3}],
+        }
+    ]
 
     # «Заменить» collars of set 1 does not touch set 2 with the same hole names
     r = pclient.post(f"{API}/drillholes/import", json={"set_name": "Набор 2", "files": specs[:1]}).json()

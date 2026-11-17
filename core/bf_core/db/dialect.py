@@ -79,7 +79,11 @@ def create_engine(url: str, *, schema: str | None = None) -> Engine:
     `schema` (PostgreSQL) maps the project tables to `p_<id>` (server mode).
     """
     if url.startswith("sqlite"):
-        engine = sa.create_engine(url, poolclass=NullPool, connect_args={"check_same_thread": False})
+        # hide_parameters: the values of a failed statement (a job's archive password among them) never reach
+        # an error text, a job log or the operation log (ТЗ 7.9).
+        engine = sa.create_engine(
+            url, poolclass=NullPool, connect_args={"check_same_thread": False}, hide_parameters=True
+        )
 
         @sa.event.listens_for(engine, "connect")
         def _on_connect(dbapi_conn: Any, _record: Any) -> None:
@@ -101,7 +105,7 @@ def create_engine(url: str, *, schema: str | None = None) -> Engine:
             conn.exec_driver_sql(mode)
 
         return engine
-    engine = sa.create_engine(url, pool_pre_ping=True)
+    engine = sa.create_engine(url, pool_pre_ping=True, hide_parameters=True)
     if schema:
         engine = engine.execution_options(schema_translate_map={None: schema})
     return engine

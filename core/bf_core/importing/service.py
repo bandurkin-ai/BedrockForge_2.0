@@ -42,7 +42,8 @@ class Normalized:
     kind: str
     rows: int
     collars: list[CollarRow] = field(default_factory=list)
-    surveys: list[tuple[str, float, float | None, float | None]] = field(default_factory=list)
+    #: (hole, depth, azimuth, dip, attributes or None)
+    surveys: list[tuple[str, float, float | None, float | None, dict[str, Any] | None]] = field(default_factory=list)
     table: TableData | None = None
     counts: dict[str, int] = field(default_factory=dict)
 
@@ -131,7 +132,9 @@ def kind_label(kind: str) -> str:
 def _numbers(col: Column) -> tuple[Any, int, int, int, list[str]]:
     """(float64 values, bad, below, above, bad examples): number columns as read, text ones parsed here."""
     if col.kind == "number":
-        return col.values, 0, col.below_limit, col.above_limit, []
+        cells = col.bad_cells or {}
+        examples = [cells[k] for k in sorted(cells)[:5]]
+        return col.values, len(cells), col.below_limit, col.above_limit, examples
     from bf_core.formats.numbers import parse_numbers
 
     p = parse_numbers(col.to_pylist())
@@ -143,7 +146,10 @@ def _texts(col: Column) -> list[str | None]:
         return [None if v is None else str(v).strip() for v in col.to_pylist()]
     from bf_core.formats.numbers import number_text
 
-    return [None if math.isnan(v) else number_text(v) for v in col.values.tolist()]
+    out = [None if math.isnan(v) else number_text(v) for v in col.values.tolist()]
+    for row, text in (col.bad_cells or {}).items():  # DAT: the cell as it was written
+        out[row] = text or None
+    return out
 
 
 def normalize(
@@ -277,10 +283,21 @@ def normalize(
             x, y, z, td, az, dip = (_at(out.get(k), i) for k in ("x", "y", "z", "td", "azimuth", "dip"))
             result.collars.append(CollarRow(holes[i], x, y, z, td, az, dip, attrs=attrs))
     elif kind == "survey":
+        skipped = 0
         for i in range(n):
+            if not holes[i]:
+                continue
             depth = _at(out["depth"], i)
-            if holes[i] and depth is not None:
-                result.surveys.append((holes[i], depth, _at(out["azimuth"], i), _at(out["dip"], i)))
+            if depth is None:  # a reading without its depth cannot be placed: counted and reported
+                skipped += 1
+                continue
+            attrs = {name: vals[i] for name, vals in attr_values.items() if vals[i] not in (None, "")}
+            result.surveys.append((holes[i], depth, _at(out["azimuth"], i), _at(out["dip"], i), attrs or None))
+        if skipped:
+            counts["skipped"] = skipped
+            issues.append(
+                Issue("warning", "survey_without_depth", "Замеры без глубины не загружаются", "depth", skipped)
+            )
     else:
         import numpy as np
 
@@ -301,7 +318,7 @@ def normalize(
             values.append([vals[i] for i in keep])
         start, stop = ("depth", None) if kind == "event" else ("from", "to")
         result.table = TableData(
-            name=table_name or kind_label(kind),
+            name=table_name_of({"table_name": table_name, "kind": kind}),
             kind=kind,
             holes=[holes[i] for i in keep],
             from_m=np.asarray(out[start], dtype=float)[idx],
@@ -329,3 +346,28 @@ def _attr(col: Column) -> list[Any]:
     if col.kind == "number":
         return [None if math.isnan(v) else float(v) for v in col.values.tolist()]
     return [None if v in (None, "") else str(v) for v in col.to_pylist()]
+
+
+def table_name_of(f: dict[str, Any]) -> str:
+    """The name a file's table gets in the set."""
+    return (f.get("table_name") or "").strip() or kind_label(str(f.get("kind")))
+
+
+def duplicate_targets(files: list[dict[str, Any]]) -> str | None:
+    """Two files of one import that would land in the same table: the second would silently replace the first.
+    Several collar or survey files are fine (they are joined); tables are not."""
+    from bf_core.db.dialect import name_key
+
+    seen: dict[tuple[str, str], str] = {}
+    for f in files:
+        kind = str(f.get("kind"))
+        if kind in ("collar", "survey"):
+            continue
+        key = (kind, "" if kind == "assay" else name_key(table_name_of(f)))
+        label = str(f.get("path", "")).replace("\\", "/").rsplit("/", 1)[-1]
+        if key in seen:
+            if kind == "assay":
+                return f"Файлы «{seen[key]}» и «{label}» — оба пробы: в наборе одна таблица проб."
+            return f"Файлы «{seen[key]}» и «{label}» загружаются в одну таблицу «{table_name_of(f)}»."
+        seen[key] = label
+    return None

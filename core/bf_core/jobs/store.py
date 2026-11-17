@@ -114,6 +114,9 @@ def drop_partial(conn: sa.Connection, job_id: int) -> int:
         for r in conn.execute(sa.select(objects.c.id).where(objects.c.job_id == job_id, objects.c.state == "building"))
     ]
     if ids:
+        from bf_core.drillholes.store import drop_import_owners
+
+        drop_import_owners(conn, ids)  # import_log goes by cascade: its source files must not stay owned
         conn.execute(
             sa.delete(blob_owners).where(blob_owners.c.owner_kind == "object", blob_owners.c.owner_id.in_(ids))
         )

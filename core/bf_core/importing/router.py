@@ -12,11 +12,13 @@ from pydantic import BaseModel, Field
 
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
-from bf_core.db.schema import dh_holes, objects
+from bf_core.db.schema import dh_holes, dh_tables, objects
 from bf_core.jobs.scheduler import Scheduler
 from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
+
+from .service import duplicate_targets
 
 router = APIRouter(prefix="/drillholes")
 Svc = Annotated[ProjectService, Depends(projects)]
@@ -37,10 +39,15 @@ class InspectBody(BaseModel):
     options: Options = Field(default_factory=Options)
 
 
+class Component(BaseModel):
+    column: str = Field(max_length=500)
+    unit: str = Field(default="", max_length=50)
+
+
 class FileSpec(InspectBody):
     kind: Kind | None = None
     mapping: dict[str, str] | None = None
-    components: list[dict[str, str]] | None = None
+    components: list[Component] | None = None
     attributes: list[str] | None = None
     force: bool = False
     table_name: str | None = Field(default=None, max_length=200)
@@ -51,6 +58,11 @@ class StartBody(BaseModel):
     set_name: str | None = Field(default=None, max_length=200)
     crs: str | None = Field(default=None, max_length=20000)
     files: list[FileSpec] = Field(min_length=1, max_length=20)
+
+
+def set_name(raw: str | None) -> str:
+    """The name of a new set as it is stored: inner runs of spaces collapsed (the job uses the same)."""
+    return " ".join((raw or "").split())
 
 
 def _file(path: str) -> Path:
@@ -147,13 +159,11 @@ def check(svc: Svc, body: FileSpec) -> dict[str, Any]:
     kind = body.kind or detect_kind(table.names)
     mapping = body.mapping if body.mapping is not None else (suggest_mapping(kind, table.names) if kind else {})
     components = (
-        body.components
+        [c.model_dump() for c in body.components]
         if body.components is not None
         else (suggest_components(table, mapping) if kind == "assay" else [])
     )
-    columns = [
-        {"name": c.name, "kind": c.kind, "sample": [_jsonable(v) for v in c.to_pylist()[:5]]} for c in table.columns
-    ]
+    columns = [{"name": c.name, "kind": c.kind, "sample": _sample(c)} for c in table.columns]
     out: dict[str, Any] = {
         "rows": table.rows,
         "columns": columns,
@@ -195,6 +205,12 @@ def _data_errors() -> frozenset[str]:
     return DATA_ERRORS
 
 
+def _sample(col: Any, n: int = 5) -> list[Any]:
+    """The first values of a column without converting all of it (millions of rows) to Python."""
+    values = col.values[:n] if col.kind == "number" else col.values.slice(0, n)
+    return [_jsonable(v) for v in values.tolist()] if col.kind == "number" else values.to_pylist()
+
+
 def _plain(v: Any) -> Any:
     """numpy scalars → Python (JSON)."""
     return v.item() if hasattr(v, "item") else v
@@ -211,7 +227,9 @@ def _preview(norm: Any, limit: int = 30) -> list[dict[str, Any]]:
             for c in norm.collars[:limit]
         ]
     if norm.kind == "survey":
-        return [{"hole_id": h, "depth": d, "azimuth": a, "dip": p} for h, d, a, p in norm.surveys[:limit]]
+        return [
+            {"hole_id": r[0], "depth": r[1], "azimuth": r[2], "dip": r[3], **(r[4] or {})} for r in norm.surveys[:limit]
+        ]
     t = norm.table
     rows = []
     for i in range(min(limit, len(t.holes))):
@@ -233,6 +251,9 @@ def start(svc: Svc, s: Sched, body: StartBody) -> dict[str, Any]:
                 f"Для «{Path(f.path).name}» не назначены колонки.",
                 "Пройдите шаг файла в мастере.",
             )
+    clash = duplicate_targets([f.model_dump() for f in body.files])
+    if clash:
+        raise ApiError(409, "files_clash", clash, "Уберите лишний файл или дайте таблице другое название.")
     with dialect.read_tx(project.engine) as conn:
         if body.set_id is not None:
             if (
@@ -243,7 +264,7 @@ def start(svc: Svc, s: Sched, body: StartBody) -> dict[str, Any]:
             ):
                 raise ApiError(404, "set_not_found", "Набор скважин не найден.", "Выберите набор заново.")
         else:
-            name = " ".join((body.set_name or "").split())
+            name = set_name(body.set_name)
             if not name:
                 raise ApiError(422, "name_empty", "Название набора не может быть пустым.", "Введите название набора.")
             taken = conn.execute(
@@ -263,11 +284,11 @@ def start(svc: Svc, s: Sched, body: StartBody) -> dict[str, Any]:
     forget_cached()  # the worker reads the files itself: free the wizard's copy
     params = {
         "set_id": body.set_id,
-        "set_name": body.set_name,
+        "set_name": set_name(body.set_name) if body.set_id is None else None,
         "crs": body.crs,
         "files": [f.model_dump() for f in body.files],
     }
-    title = "Импорт скважин" + (f" в «{body.set_name}»" if body.set_name else "")
+    title = "Импорт скважин" + (f" в «{params['set_name']}»" if params["set_name"] else "")
     key, job_id = s.submit("import.drillholes", params, title=title)
     return {"source": key, "id": job_id}
 
@@ -280,12 +301,31 @@ def list_sets(svc: Svc) -> dict[str, Any]:
         holes = (
             sa.select(sa.func.count()).select_from(dh_holes).where(dh_holes.c.set_id == objects.c.id).scalar_subquery()
         )
-        rows = conn.execute(
-            sa.select(objects.c.id, objects.c.name, objects.c.crs, holes.label("holes"))
-            .where(objects.c.kind == "drillhole_set", objects.c.state == "ready")
-            .order_by(objects.c.sort_key, objects.c.id)
-        ).mappings()
-        return {"sets": [dict(r) for r in rows]}
+        rows = [
+            dict(r)
+            for r in conn.execute(
+                sa.select(objects.c.id, objects.c.name, objects.c.crs, holes.label("holes"))
+                .where(objects.c.kind == "drillhole_set", objects.c.state == "ready")
+                .order_by(objects.c.sort_key, objects.c.id)
+            ).mappings()
+        ]
+        tables: dict[int, list[dict[str, Any]]] = {}
+        for t in conn.execute(
+            sa.select(dh_tables.c.set_id, dh_tables.c.name, dh_tables.c.kind, dh_tables.c.row_count)
+            .where(dh_tables.c.state == "ready")
+            .order_by(dh_tables.c.id)
+        ).mappings():
+            tables.setdefault(t["set_id"], []).append({"name": t["name"], "kind": t["kind"], "rows": t["row_count"]})
+        for r in rows:  # «Заменит таблицу …» in the wizard
+            r["tables"] = tables.get(r["id"], [])
+        return {"sets": rows}
+
+
+@router.post("/import/forget")
+def forget() -> dict[str, Any]:
+    """The wizard closed: the table it kept read is not needed any more."""
+    forget_cached()
+    return {"ok": True}
 
 
 class PrjBody(BaseModel):

@@ -73,6 +73,9 @@ class Column:
     below_limit: int = 0  # "<x" cells replaced by x/2
     above_limit: int = 0  # ">x" cells replaced by x
     source: str = ""  # field type in a DAT file (C, R, N, …)
+    #: Number columns of a DAT file: row → text that is not a number (read as NaN). Text columns of CSV and
+    #: Excel keep such cells as text and are parsed by the importer; both paths then report them the same way.
+    bad_cells: dict[int, str] | None = None
 
     def __len__(self) -> int:
         return len(self.values)

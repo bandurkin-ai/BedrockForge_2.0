@@ -182,6 +182,7 @@ dh_surveys = sa.Table(
     sa.Column("dip", sa.Double),
     sa.Column("attrs", JSONType),
     sa.Index(None, "set_id", "hole_id", "depth"),
+    sa.Index(None, "hole_id"),  # cascades from dh_holes and «скважина без данных» checks
 )
 
 dh_tables = sa.Table(
@@ -231,6 +232,7 @@ dh_rows = sa.Table(
     sa.Column("qual", sa.LargeBinary),  # per slot: 0 plain, 1 below / 2 above detection limit; NULL = all plain
     sa.Column("txt", JSONType),  # text columns {slot: value}
     sa.Index(None, "table_id", "hole_id", "from_m"),
+    sa.Index(None, "hole_id"),  # cascades from dh_holes and «скважина без данных» checks
 )
 
 import_log = sa.Table(

@@ -63,7 +63,7 @@ def test_survey_and_interval_kinds(tmp_path: Path) -> None:
     t = read_table(_csv(tmp_path, "BHID\tAT\tBRG\tDIP\nA\t0\t90\t-60\nA\t30\t91\t-59\n", "utf-8"))
     assert detect_kind(t.names) == "survey"
     res, _ = normalize(t, "survey", suggest_mapping("survey", t.names))
-    assert res is not None and res.surveys == [("A", 0.0, 90.0, -60.0), ("A", 30.0, 91.0, -59.0)]
+    assert res is not None and res.surveys == [("A", 0.0, 90.0, -60.0, None), ("A", 30.0, 91.0, -59.0, None)]
     t = read_table(_csv(tmp_path, "Скважина;От;До;Порода\nA;0;5;гранит\n"))
     assert detect_kind(t.names) == "interval"
     res, _ = normalize(t, "interval", suggest_mapping("interval", t.names), attributes=["Порода"])

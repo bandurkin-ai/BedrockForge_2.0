@@ -47,7 +47,8 @@ def describe(text: str) -> CrsInfo:
 
 
 def read_prj(path: Path) -> CrsInfo:
-    data = path.read_bytes()[: MAX_PRJ_BYTES + 1]
+    with path.open("rb") as f:
+        data = f.read(MAX_PRJ_BYTES + 1)
     if len(data) > MAX_PRJ_BYTES:
         raise CrsError("Файл .prj слишком большой для описания системы координат.")
     for enc in ("utf-8-sig", "cp1251", "latin-1"):
