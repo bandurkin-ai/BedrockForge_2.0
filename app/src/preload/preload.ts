@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld("bf", {
   copyText: (text: string) => ipcRenderer.send("bf:copy-text", String(text)),
   saveText: (defaultName: string, text: string) => ipcRenderer.invoke("bf:save-text", String(defaultName), String(text)),
   coreRetry: () => ipcRenderer.send("bf:core-retry"),
-  pickSave: (defaultName: string) => ipcRenderer.invoke("bf:pick-save", String(defaultName)),
+  pickSave: (defaultName: string, kind?: string) => ipcRenderer.invoke("bf:pick-save", String(defaultName), kind === undefined ? undefined : String(kind)),
   pickOpen: () => ipcRenderer.invoke("bf:pick-open"),
   pickFolder: () => ipcRenderer.invoke("bf:pick-folder"),
   pickFiles: (kind: string, multi: boolean) => ipcRenderer.invoke("bf:pick-files", String(kind), Boolean(multi)),

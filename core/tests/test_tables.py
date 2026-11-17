@@ -220,3 +220,29 @@ def test_sets_create_rename_delete(dset) -> None:  # type: ignore[no-untyped-def
         assert conn.execute(sa.select(dh_holes.c.name)).scalars().all() == ["N1"]
     assert [s["name"] for s in c.get(f"{API}/drillholes/sets").json()["sets"]] == ["Новый"]
     assert c.get(f"{API}/drillholes/sets/{set_id}/tables").status_code == 404
+
+
+def test_trajectories_coordinates_and_hole_card(dset) -> None:  # type: ignore[no-untyped-def]
+    c, set_id, tabs = dset
+    r = c.get(f"{API}/drillholes/sets/{set_id}/trajectories").json()
+    assert r["method"] == "minimum_curvature" and r["skipped"] == ["D2"]  # D2 has no X
+    d1 = next(h for h in r["holes"] if h["name"] == "D1")
+    assert d1["stations"][0] == [0.0, 10.0, 20.0, 300.0] and d1["stations"][-1][3] == pytest.approx(
+        250.0
+    )  # vertical, TD 50
+    assay = tabs["assay"]["table"]
+    rows = _page(c, set_id, assay, sort="from", coords="true")["rows"]
+    first = next(row for row in rows if row["hole"] == "D1" and row["from"] == 1.0)
+    assert first["xyz_from"] == pytest.approx([10.0, 20.0, 299.0]) and first["xyz_to"] == pytest.approx(
+        [10.0, 20.0, 298.0]
+    )
+    assert next(row for row in rows if row["hole"] == "D2")["xyz_from"] is None
+    card = c.get(f"{API}/drillholes/sets/{set_id}/holes/{first['hole_id']}").json()
+    assert card["name"] == "D1" and card["collar"]["z"] == 300.0 and card["trajectory"]["length"] == 50.0
+    assert list(card["tables"].values())[0]["rows"] == 2
+    # an edit of Z moves the trajectory (the set version is part of the cache key)
+    collar = next(row for row in _page(c, set_id, "collar")["rows"] if row["hole"] == "D1")
+    c.patch(f"{API}/drillholes/sets/{set_id}/tables/collar/rows/{collar['id']}", json={"column": "z", "value": "400"})
+    d1 = next(h for h in c.get(f"{API}/drillholes/sets/{set_id}/trajectories").json()["holes"] if h["name"] == "D1")
+    assert d1["stations"][0][3] == 400.0
+    assert c.get(f"{API}/drillholes/sets/{set_id}/trajectories", params={"method": "x"}).status_code == 422

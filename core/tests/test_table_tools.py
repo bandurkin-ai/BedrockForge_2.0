@@ -19,7 +19,7 @@ def _undo_last(c, set_id: int) -> None:  # type: ignore[no-untyped-def]
     assert r.status_code == 200, r.text
 
 
-def test_find_and_replace_is_one_undo(dset) -> None:  # type: ignore[no-untyped-def]
+def test_find_and_replace_is_one_undo(dset) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c, set_id, tabs = dset
     assay = tabs["assay"]["table"]
     base = f"{API}/drillholes/sets/{set_id}/tables/{assay}"
@@ -36,7 +36,7 @@ def test_find_and_replace_is_one_undo(dset) -> None:  # type: ignore[no-untyped-
     assert r.status_code == 404 and r.json()["code"] == "nothing_found"
 
 
-def test_computed_field_rename_delete_and_undo(dset) -> None:  # type: ignore[no-untyped-def]
+def test_computed_field_rename_delete_and_undo(dset) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c, set_id, tabs = dset
     assay = tabs["assay"]["table"]
     base = f"{API}/drillholes/sets/{set_id}/tables/{assay}"
@@ -64,7 +64,7 @@ def test_computed_field_rename_delete_and_undo(dset) -> None:  # type: ignore[no
     assert rows == {"D1": 100.0, "D2": 80.0, "D3": 60.0}
 
 
-def test_append_merge_and_codes(dset, tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_append_merge_and_codes(dset, tmp_path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c, set_id, tabs = dset
     assay = tabs["assay"]["table"]
     base = f"{API}/drillholes/sets/{set_id}/tables"
@@ -92,7 +92,7 @@ def test_append_merge_and_codes(dset, tmp_path) -> None:  # type: ignore[no-unty
     assert au
 
 
-def test_append_and_merge_by_key_with_undo(dset, tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_append_and_merge_by_key_with_undo(dset, tmp_path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     from tests.test_import_job import _check, wait_job
 
     c, set_id, tabs = dset
@@ -131,7 +131,7 @@ def test_append_and_merge_by_key_with_undo(dset, tmp_path) -> None:  # type: ign
     assert {t["name"]: t["rows"] for t in c.get(f"{base}").json()["tables"]}["Литология"] == 3
 
 
-def test_export_csv_xlsx_and_dat_round_trip(dset, tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_export_csv_xlsx_and_dat_round_trip(dset, tmp_path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     import openpyxl
 
     from bf_core.formats.micromine import write_dat

@@ -18,7 +18,8 @@ export interface BfBridge {
   saveText(defaultName: string, text: string): Promise<boolean>;
   coreRetry(): void;
   /** «Сохранить как» for .bfggis: the chosen path or null. */
-  pickSave(defaultName: string): Promise<string | null>;
+  /** Save dialog: .bfggis by default, or a table format (dat, csv, xlsx). */
+  pickSave(defaultName: string, kind?: "dat" | "csv" | "xlsx"): Promise<string | null>;
   /** «Открыть» a .bfggis: the chosen path or null. */
   pickOpen(): Promise<string | null>;
   pickFolder(): Promise<string | null>;
