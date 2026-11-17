@@ -12,7 +12,8 @@
 - [x] 7.0 ADR 0011 принят (перенос основы каркасов и «Построить ЦТМ» из Э8/Э9 в Э7); напоминание владельцу (№ 4) — в отчёте сессии
 - [x] 7.1 Миграция 0005, роли blobs (`BLOB_ROLES`), архив (kernel-engineer)
 - [x] 7.2 Модель `formats/lineset.py`, хранилище `lines/store.py` (1 млн вершин: запись 0,3 с, чтение 0,04 с)
-- [ ] 7.3–7.11 Форматы: Micromine STR/.PIT, Surpac STR, DXF (поток, кривые, запись), SHP (pyshp — дополнение ADR 0001), MIF/MID, точки XYZ, привязка растров, изображения/GeoTIFF (kernel-engineer)
+- [x] 7.3–7.4 Micromine STR/.PIT, Surpac STR: оба реальных .STR байт в байт; 1 млн вершин — чтение 1,7 с / 6,0 с
+- [ ] 7.5–7.11 Форматы: Micromine STR/.PIT, Surpac STR, DXF (поток, кривые, запись), SHP (pyshp — дополнение ADR 0001), MIF/MID, точки XYZ, привязка растров, изображения/GeoTIFF (kernel-engineer)
 - [ ] 7.12–7.13 `import.objects`, API линий и растров
 - [ ] 7.14–7.15 Части и LOD линий (BFA1 `lines`), экспорт
 - [ ] 7.16–7.17 Канавы (Д-16): станции с xyz, `import.trenches`, замер
