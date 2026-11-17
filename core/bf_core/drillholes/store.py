@@ -91,21 +91,17 @@ def hole_ids(conn: sa.Connection, set_id: int) -> dict[str, int]:
 
 
 def ensure_holes(conn: sa.Connection, set_id: int, names: Iterable[str], known: dict[str, int]) -> None:
-    """Holes met in surveys or tables but not in collars (has_collar = False); `known` is updated."""
+    """Holes met in surveys or tables but not in collars (has_collar = False); `known` is updated.
+    No IN list of names: 50 000 holes exceed the SQLite parameter limit (32 766)."""
     missing = sorted({n for n in names if n not in known})
     if not missing:
         return
-    conn.execute(sa.insert(dh_holes), [{"set_id": set_id, "name": n, "has_collar": False} for n in missing])
-    known.update(
-        {
-            r.name: int(r.id)
-            for r in conn.execute(
-                sa.select(dh_holes.c.id, dh_holes.c.name).where(
-                    dh_holes.c.set_id == set_id, dh_holes.c.name.in_(missing)
-                )
-            )
-        }
-    )
+    for start in range(0, len(missing), BATCH):
+        conn.execute(
+            sa.insert(dh_holes),
+            [{"set_id": set_id, "name": n, "has_collar": False} for n in missing[start : start + BATCH]],
+        )
+    known.update(hole_ids(conn, set_id))
 
 
 @dataclass
@@ -132,11 +128,13 @@ def replace_collars(conn: sa.Connection, set_id: int, rows: Sequence[CollarRow])
     surveys and samples stay), new names become holes. Returns counts."""
     known = hole_ids(conn, set_id)
     names = {r.name for r in rows}
-    conn.execute(
-        sa.update(dh_holes)
-        .where(dh_holes.c.set_id == set_id, dh_holes.c.name.not_in(names) if names else sa.true())
-        .values(x=None, y=None, z=None, td=None, azimuth=None, dip=None, has_collar=False, attrs=None)
-    )
+    gone = [hid for name, hid in known.items() if name not in names]
+    for start in range(0, len(gone), 10_000):  # ids in portions: under the SQLite parameter limit
+        conn.execute(
+            sa.update(dh_holes)
+            .where(dh_holes.c.id.in_(gone[start : start + 10_000]))
+            .values(x=None, y=None, z=None, td=None, azimuth=None, dip=None, has_collar=False, attrs=None)
+        )
     added = updated = 0
     for r in rows:
         values = {

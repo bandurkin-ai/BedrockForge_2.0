@@ -121,3 +121,19 @@ def test_cancelled_import_leaves_old_table_and_no_new_holes(db_url: str, tmp_pat
         assert conn.execute(sa.select(sa.func.count()).select_from(dh_tables)).scalar_one() == 1
         assert conn.execute(sa.select(sa.func.count()).select_from(dh_rows)).scalar_one() == 1
         assert [h.name for h in conn.execute(sa.select(dh_holes.c.name))] == ["A"]
+
+
+def test_more_holes_than_sqlite_parameters(db_url: str, tmp_path: Path) -> None:
+    """40 000 holes: no IN list of names (SQLite allows 32 766 parameters)."""
+    engine, s1, _ = _setup(db_url, tmp_path)
+    names = [f"H{i:05d}" for i in range(40_000)]
+    dh.write_table(engine, s1, table("Пробы", names, [1.0] * len(names), ["x"] * len(names)), job_id=None, tick=noop)
+    with dialect.write_tx(engine) as conn:
+        r = dh.replace_collars(conn, s1, [dh.CollarRow(n, 1, 2, 3, 10) for n in names[:35_000]])
+        assert r["updated"] == 35_000
+        r = dh.replace_collars(conn, s1, [dh.CollarRow("H00000", 5, 5, 5, 10)])
+    with dialect.read_tx(engine) as conn:
+        with_collar = conn.execute(
+            sa.select(sa.func.count()).select_from(dh_holes).where(dh_holes.c.has_collar.is_(True))
+        ).scalar_one()
+    assert with_collar == 1
