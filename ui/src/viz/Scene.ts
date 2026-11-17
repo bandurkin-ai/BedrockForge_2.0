@@ -1,16 +1,10 @@
 /**
- * Facade of the 3D window (ADR 0004, ADR 0007 §7): one scene of the project — renderer, camera, frames on
- * demand, the scene origin, the shared clipping planes, the holes of the sets, the grid, the section and
- * the gizmo. A lazy chunk: `import("./viz/Scene")` — the main bundle has no three.js.
- *
- * Spaces: absolute (project, float64) → scene (minus the integer scene origin, float64 on the CPU) →
- * rendered (the root is scaled by the vertical exaggeration in Z). Buffers are float32 from the integer
- * origin of their part; a part is placed at `part origin − scene origin`.
- *
- * Other layers (displays along holes, Э7+ objects) join through `addLayer`: a three.js object whose float32
- * coordinates are relative to its own integer origin, materials with `scene.clipPlanes`, a `beforeRender`
- * hook and labels placed with everyone else's. After a lost context the scene drops every layer (its GPU
- * resources are gone) and calls `onRestored` listeners: the owners add their layers again.
+ * Facade of the 3D window (ADR 0004, ADR 0007 §7): renderer, camera, frames on demand, the scene origin, the
+ * shared clipping planes, the holes, the grid, the section, the gizmo. A lazy chunk (no three.js in the main
+ * bundle). Spaces: absolute (float64) → scene (minus the integer scene origin, float64 on the CPU) → rendered
+ * (the root scaled in Z by the exaggeration); buffers are float32 from the integer origin of their part.
+ * Other layers join through `addLayer` (own integer origin, materials with `scene.clipPlanes`, `beforeRender`,
+ * labels placed with everyone else's); after a lost context they are dropped and `onRestored` re-adds them.
  */
 import * as THREE from "three";
 import { attachPointer } from "./core/pointer";

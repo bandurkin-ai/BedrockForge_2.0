@@ -27,5 +27,6 @@ describe("frame counter", () => {
     expect(f.summary(0)).toEqual({ current: 0, min: 0, mean: 0, msPerFrame: 0, frames: 0 });
     expect(bytesText(340 * 1024 * 1024)).toBe("340 МБ");
     expect(bytesText(1.5 * 1024 ** 3)).toBe("1,5 ГБ");
+    expect(bytesText(0.3 * 1024 * 1024)).toBe("0,3 МБ");
   });
 });

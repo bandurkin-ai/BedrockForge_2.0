@@ -71,5 +71,6 @@ export class FpsTracker {
 /** «1,2 ГБ», «340 МБ» — a size for the counter. */
 export function bytesText(bytes: number): string {
   const mb = bytes / (1024 * 1024);
-  return mb >= 1024 ? `${(mb / 1024).toFixed(1).replace(".", ",")} ГБ` : `${Math.round(mb)} МБ`;
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1).replace(".", ",")} ГБ`;
+  return mb >= 10 ? `${Math.round(mb)} МБ` : `${mb.toFixed(1).replace(".", ",")} МБ`;
 }
