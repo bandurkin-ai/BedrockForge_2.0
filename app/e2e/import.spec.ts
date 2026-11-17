@@ -32,7 +32,9 @@ test("wizard «Импорт скважин»: CSV cp1251, TXT and Excel-like CSV
     await page.getByRole("button", { name: "Скважины", exact: true }).first().click();
     const wiz = page.getByRole("dialog", { name: "Импорт скважин" });
     await wiz.getByRole("button", { name: "Добавить файлы…" }).click();
-    // the collar file stays on step 1; the others went to their steps
+    // the collar file stays on step 1; the others went to their steps. Files are read one after another: a card
+    // still being read may stand alone on step 1 for a moment, so wait for the final state (the collar card there).
+    await expect(wiz.getByTestId("import-file").filter({ hasText: "Устья.csv" })).toHaveCount(1);
     await expect(wiz.getByTestId("import-file")).toHaveCount(1);
     await expect(wiz.getByTestId("import-file")).toContainText("Устья.csv");
     await expect(wiz.getByLabel("Тип таблицы")).toHaveValue("collar");
