@@ -34,6 +34,9 @@ test("wizard «Импорт скважин»: CSV cp1251, TXT and Excel-like CSV
     await wiz.getByRole("button", { name: "Добавить файлы…" }).click();
     // the collar file stays on step 1; the others went to their steps. Files are read one after another: a card
     // still being read may stand alone on step 1 for a moment, so wait for the final state (the collar card there).
+    // all three read and sorted: the badges of steps 2 and 3 count their file (a card being read stands on step 1)
+    await expect(wiz.getByRole("button", { name: /^2\. Инклинометрия\s*1$/ })).toBeVisible({ timeout: 30_000 });
+    await expect(wiz.getByRole("button", { name: /^3\. Интервалы.*1$/ })).toBeVisible({ timeout: 30_000 });
     await expect(wiz.getByTestId("import-file").filter({ hasText: "Устья.csv" })).toHaveCount(1);
     await expect(wiz.getByTestId("import-file")).toHaveCount(1);
     await expect(wiz.getByTestId("import-file")).toContainText("Устья.csv");
