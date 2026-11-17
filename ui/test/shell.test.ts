@@ -104,8 +104,10 @@ describe("workspace (ТЗ 7.0.10, 7.0.14)", () => {
     expect(w.sizes).toEqual({ left: 520, right: 260, bottom: 280 });
     expect(w.theme).toBe("dark");
     expect(w.bottomTab).toBe("table");
-    expect(w.treeOrder[0]).toBe("lines");
+    expect(w.treeOrder.slice(0, 2)).toEqual(["views", "lines"]); // an order saved before Э6.1: «Виды» first
     expect(w.treeOrder).toHaveLength(DEFAULT_TREE_ORDER.length);
+    expect(normalizeWorkspace({ treeOrder: ["holes", "views"] }).treeOrder.slice(0, 2)).toEqual(["holes", "views"]); // moved by the user
+    expect(DEFAULT_TREE_ORDER[0]).toBe("views");
   });
 
   it("the right dock: second call for the open tab closes it", () => {
@@ -118,7 +120,7 @@ describe("workspace (ТЗ 7.0.10, 7.0.14)", () => {
   });
 
   it("tree sections reorder by dragging", () => {
-    expect(moveSection(DEFAULT_TREE_ORDER, "audit", "holes")[0]).toBe("audit");
+    expect(moveSection(DEFAULT_TREE_ORDER, "audit", "views")[0]).toBe("audit");
     expect(moveSection(DEFAULT_TREE_ORDER, "holes", null).at(-1)).toBe("holes");
   });
 

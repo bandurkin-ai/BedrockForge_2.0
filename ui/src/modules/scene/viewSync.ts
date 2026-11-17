@@ -83,6 +83,24 @@ export class ViewSync {
     return e.value;
   }
 
+  /** Values the core has just written itself (a saved view applied): taken as they are, the pending changes
+   * of those keys are dropped — the view replaces them. */
+  adopt(values: Record<string, { value: unknown; version: number }>): void {
+    for (const [key, v] of Object.entries(values)) {
+      let e = this.entries.get(key);
+      if (!e) {
+        e = { value: undefined, version: 0, pending: [], timer: null, chain: Promise.resolve() };
+        this.entries.set(key, e);
+      }
+      if (e.timer) clearTimeout(e.timer);
+      e.timer = null;
+      e.pending = [];
+      e.value = v.value;
+      e.version = v.version;
+      this.onChange(key, v.value);
+    }
+  }
+
   /** Write the pending changes of a key now (tests, closing the project). */
   flush(key: string): Promise<void> {
     const e = this.entries.get(key);

@@ -114,7 +114,13 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "section.step", args: { direction: 1 }, label: "Следующий профиль", icon: "chevronDown", shortcut: "]", small: true, unavailable: NO_SECTION },
           ],
         },
-        { title: "Окно", items: [{ command: "scene.clear", label: "Очистить окно", icon: "clear", hint: "Скрыть все объекты; камера, разрез и сетка остаются", shortcut: "ctrl+shift+h" }] },
+        {
+          title: "Окно",
+          items: [
+            { command: "scene.clear", label: "Очистить окно", icon: "clear", hint: "Скрыть все объекты; камера, разрез и сетка остаются", shortcut: "ctrl+shift+h" },
+            { command: "views.save", label: "Сохранить вид", icon: "plus", hint: "Камера, разрез, видимость слоёв и отображения — в раздел «Виды» дерева", small: true },
+          ],
+        },
         {
           title: "Панели",
           items: [

@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { bridge } from "../bridge";
 import { useApp } from "./AppContext";
-import { ABOUT, aboutLines, aboutStore, aboutText, toggleAbout } from "./about";
+import { ABOUT, aboutLines, aboutStore, aboutText, toggleAbout } from "./aboutInfo";
 import { useStore } from "./useStore";
 import logoMark from "../assets/logo-mark.png";
 import css from "./Header.module.css";

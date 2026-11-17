@@ -11,6 +11,7 @@ import { bindStripLog } from "../charts/striplog/bind";
 import { bindScene } from "../modules/scene/bind";
 import { bindSection } from "../modules/section/bind";
 import { bindTables } from "../modules/tables/bind";
+import { bindViews } from "../modules/views/bind";
 import { createRegistry } from "./catalog";
 import { logText, opLogStore, openLogWindow } from "./opLog";
 import type { Command, CommandSource } from "./commands";
@@ -18,7 +19,7 @@ import { askConfirm } from "./dialogs";
 import { formatArgs, type CommandRegistry } from "./registry";
 import { loadSettings, saveSettings } from "./settings";
 import { commandContext, INITIAL_STATE, Store, type AppState } from "./store";
-import { toggleAbout } from "./about";
+import { toggleAbout } from "./aboutInfo";
 import { openWindow } from "./windows";
 import { BOTTOM_TITLES, setPanel, type BottomTab, type PanelId } from "./workspace";
 
@@ -133,6 +134,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindTables(app);
   bindAudit(app);
   bindScene(app);
+  bindViews(app);
   bindSection(app);
   bindStripLog(app);
   bindDownhole(app);

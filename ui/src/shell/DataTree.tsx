@@ -4,6 +4,7 @@ import { openMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { onTreeKeyDown, onTreeMouseDown, TreeRow } from "./TreeRow";
 import { SetsTree } from "../modules/tables/SetsTree";
+import { ViewsTree } from "../modules/views/ViewsTree";
 import { useStore } from "./useStore";
 import { moveSection, TREE_SECTIONS, type TreeSection } from "./workspace";
 import css from "./DataTree.module.css";
@@ -13,6 +14,8 @@ import shell from "./Shell.module.css";
 function sectionMenu(s: TreeSection, reason: (id: string) => string | null, run: (id: string, args?: Record<string, unknown>) => void): MenuItem[] {
   const item = (label: string, id: string, args?: Record<string, unknown>): MenuItem => ({ label, reason: reason(id), run: () => run(id, args) });
   switch (s) {
+    case "views":
+      return [item("Сохранить текущий вид", "views.save")];
     case "holes":
       return [item("Новый набор…", "set.create"), item("Импорт скважин…", "import.open")];
     case "lines":
@@ -31,6 +34,7 @@ function sectionMenu(s: TreeSection, reason: (id: string) => string | null, run:
 }
 
 const PLUS: Partial<Record<TreeSection, { command: string; title: string }>> = {
+  views: { command: "views.save", title: "Сохранить текущий вид" },
   holes: { command: "import.open", title: "Новый набор и импорт скважин" },
   wireframes: { command: "wireframes.upload", title: "Загрузить каркасы" },
   lines: { command: "lines.upload", title: "Новый слой или загрузить файл: STR, DXF" },
@@ -138,7 +142,7 @@ export function DataTree() {
                   )
                 }
               />
-              {!isCollapsed && (s === "holes" ? <SetsTree /> : <div className={css.none}>Нет объектов</div>)}
+              {!isCollapsed && (s === "holes" ? <SetsTree /> : s === "views" ? <ViewsTree /> : <div className={css.none}>Нет объектов</div>)}
             </div>
           );
         })}

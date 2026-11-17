@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ABOUT, aboutLines, aboutStore, aboutText, toggleAbout } from "../src/shell/about";
+import { ABOUT, aboutLines, aboutStore, aboutText, toggleAbout } from "../src/shell/aboutInfo";
 
 describe("«О производителе» (ТЗ 7.35 Д-12)", () => {
   it("shows the product, the maker (answer № 5) and both versions", () => {
