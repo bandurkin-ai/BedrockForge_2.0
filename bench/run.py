@@ -36,6 +36,15 @@ def load_budgets(profile: str) -> dict[str, Any]:
 
 
 def peak_rss_mb() -> float | None:
+    # Linux: VmHWM of this process. ru_maxrss survives fork + exec, so a child would report the peak of the
+    # parent that prepared the data of earlier scenarios (bench/run.py prepares in-process).
+    try:
+        with open("/proc/self/status", encoding="ascii") as fh:
+            for line in fh:
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1]) / 1024.0
+    except OSError:
+        pass
     try:
         import resource
 

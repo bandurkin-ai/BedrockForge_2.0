@@ -279,9 +279,16 @@ function registerIpc(): void {
   ipcMain.on("bf:spike", (e) => (e.returnValue = process.env.BF_SPIKE ?? null));
   // System file dialogs for .bfggis (ТЗ 7.4): the path goes to the core, which reads and writes the file itself.
   const bfggis = [{ name: "Проект BedrockForge", extensions: ["bfggis"] }];
-  ipcMain.handle("bf:pick-save", async (e, defaultName: string) => {
+  // Table export (ТЗ 9.12): DAT, CSV, XLSX — the filter follows the chosen format.
+  const tableFilters: Record<string, Electron.FileFilter[]> = {
+    dat: [{ name: "Micromine DAT", extensions: ["dat"] }],
+    csv: [{ name: "CSV", extensions: ["csv"] }],
+    xlsx: [{ name: "Excel", extensions: ["xlsx"] }],
+  };
+  ipcMain.handle("bf:pick-save", async (e, defaultName: string, kind?: string) => {
     if (!mainWin || !fromMain(e.sender)) return null;
-    const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.join(app.getPath("documents"), path.basename(String(defaultName))), filters: bfggis });
+    const filters = (kind && tableFilters[String(kind)]) || bfggis;
+    const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.join(app.getPath("documents"), path.basename(String(defaultName))), filters });
     return r.canceled || !r.filePath ? null : r.filePath;
   });
   ipcMain.handle("bf:pick-open", async (e) => {

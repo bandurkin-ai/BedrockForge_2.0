@@ -5,6 +5,7 @@
 import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
 import { bindProjects } from "../modules/projects/bind";
+import { bindTables } from "../modules/tables/bind";
 import { createRegistry } from "./catalog";
 import { logText, opLogStore, openLogWindow } from "./opLog";
 import type { Command, CommandSource } from "./commands";
@@ -141,5 +142,6 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindProjects(app);
   bindJobs(app);
   bindImporting(app);
+  bindTables(app);
   return app;
 }

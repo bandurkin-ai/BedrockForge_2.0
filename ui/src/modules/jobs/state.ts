@@ -94,6 +94,13 @@ export function parseSse(buffer: string): { events: { event: string; data: strin
 }
 
 let running = false;
+const eventListeners = new Set<(event: string, data: string) => void>();
+
+/** Other events of the core stream (drillholes.changed, objects.changed…) for the modules that need them. */
+export function onCoreEvent(fn: (event: string, data: string) => void): () => void {
+  eventListeners.add(fn);
+  return () => eventListeners.delete(fn);
+}
 
 /** One SSE connection per window (ADR 0002 §3): fetch + stream, reconnect after a core restart. */
 export function startEvents(): () => void {
@@ -129,7 +136,10 @@ export function startEvents(): () => void {
           const parsed = parseSse(buf + value);
           buf = parsed.rest;
           for (const ev of parsed.events) {
-            if (ev.event !== "job") continue;
+            if (ev.event !== "job") {
+              for (const fn of eventListeners) fn(ev.event, ev.data);
+              continue;
+            }
             if (!applyEvent(JSON.parse(ev.data))) schedule();
           }
         }
