@@ -1,13 +1,20 @@
 # Tag v* -> full build and a draft GitHub Release with .exe and SHA256SUMS.txt (ТЗ 10.4, 16.5).
-# Code signing, SBOM and latest.yml for auto-update are added on Э24.
+# Manual run on main with a version (workflow_dispatch): the workflow puts the tag on the commit it builds
+# itself — for sessions whose git proxy refuses to push tags. Code signing, SBOM and latest.yml: Э24.
 name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Версия выпуска, например v0.2.0 (тег ставится на последний коммит main)"
+        required: true
 permissions:
   contents: write
 env:
   PYTHONUTF8: "1"
+  TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   # makensis for tools/portable.nsi is taken from here (tools/ci/build_portable.ps1)
   ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.eb-cache
 
@@ -17,6 +24,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+      - name: Тег выпуска (ручной запуск)
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          if ("$env:TAG" -notmatch '^v\d+\.\d+\.\d+$') { throw "Версия выпуска — vX.Y.Z, получено: $env:TAG" }
+          if ("${{ github.ref }}" -ne "refs/heads/main") { throw "Выпуск собирается только из main" }
+          gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/$env:TAG" -f sha="${{ github.sha }}"
       - uses: astral-sh/setup-uv@v7
         with: { version: "0.13.6" }
       - uses: actions/setup-node@v7
@@ -42,6 +57,6 @@ jobs:
         env: { GH_TOKEN: "${{ github.token }}" }
         # brand rules of every release (docs/brand/README.md «Выпуски»): the first line, the slogan, the icon
         run: |
-          $notes = "**Bedrock**Forge by Mikhail Bandurkin — ${{ github.ref_name }}`n`n_Explore. Model. Plan. Mine._`n`nЧерновик выпуска. Состав — CHANGELOG.md, отчёт вехи — в описании PR этапа."
+          $notes = "**Bedrock**Forge by Mikhail Bandurkin — $env:TAG`n`n_Explore. Model. Plan. Mine._`n`nЧерновик выпуска. Состав — CHANGELOG.md, отчёт вехи — в описании PR этапа."
           Copy-Item docs\brand\app-icon-256.png app\release\app-icon-256.png
-          gh release create "${{ github.ref_name }}" --draft --title "BedrockForge ${{ github.ref_name }}" --notes $notes app/release/*.exe app/release/SHA256SUMS.txt app/release/app-icon-256.png
+          gh release create "$env:TAG" --draft --title "BedrockForge $env:TAG" --notes $notes app/release/*.exe app/release/SHA256SUMS.txt app/release/app-icon-256.png
