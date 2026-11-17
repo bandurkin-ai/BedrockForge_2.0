@@ -2,6 +2,7 @@
  * The application object: registry + state + handlers of the commands implemented on Э1.
  * No React here; components read app.store and run app.registry.execute().
  */
+import { bindAudit } from "../modules/audit/bind";
 import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
 import { bindProjects } from "../modules/projects/bind";
@@ -143,5 +144,6 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindJobs(app);
   bindImporting(app);
   bindTables(app);
+  bindAudit(app);
   return app;
 }

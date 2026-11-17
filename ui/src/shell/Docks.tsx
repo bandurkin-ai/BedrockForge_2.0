@@ -1,4 +1,5 @@
 import { useApp } from "./AppContext";
+import { AuditPanel } from "../modules/audit/AuditPanel";
 import { JobsPanel } from "../modules/jobs/JobsPanel";
 import { HoleCard } from "../modules/tables/HoleCard";
 import { TablePanel } from "../modules/tables/TablePanel";
@@ -9,7 +10,6 @@ import { BOTTOM_TITLES, type BottomTab } from "./workspace";
 import css from "./Shell.module.css";
 
 const STAGE_TEXT: Partial<Record<BottomTab, string>> = {
-  audit: "Аудит данных скважин появится на этапе Э5.",
   stats: "Статистика появится на этапе Э13.",
   swath: "Swath plot появится на этапе Э13.",
 };
@@ -30,7 +30,7 @@ export function BottomDock() {
           <Icon name="close" size={14} />
         </button>
       </div>
-      <div className={css.dockBody}>{tab === "log" ? <CommandLog /> : tab === "jobs" ? <JobsPanel /> : tab === "table" ? <TablePanel /> : <div className={css.empty}>{STAGE_TEXT[tab]}</div>}</div>
+      <div className={css.dockBody}>{tab === "log" ? <CommandLog /> : tab === "jobs" ? <JobsPanel /> : tab === "table" ? <TablePanel /> : tab === "audit" ? <AuditPanel /> : <div className={css.empty}>{STAGE_TEXT[tab]}</div>}</div>
     </section>
   );
 }

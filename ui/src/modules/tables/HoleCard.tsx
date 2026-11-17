@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, CoreError } from "../../shell/api";
 import { useStore } from "../../shell/useStore";
+import { exampleText, SEVERITY_TITLES, type Finding } from "../audit/state";
 import { cellText, tablesStore } from "./state";
 import css from "./Tables.module.css";
 
@@ -61,7 +62,30 @@ export function HoleCard() {
         <dt>Забой (X, Y, Z)</dt>
         <dd>{card.trajectory.end ? card.trajectory.end.map((v) => cellText(Math.round(v * 100) / 100, "number")).join("; ") : "—"}</dd>
       </dl>
-      <div className={css.note}>Находки аудита появятся на этапе Э5.</div>
+      <HoleFindings setId={s.setId} hole={card.name} version={s.version} />
+    </div>
+  );
+}
+
+/** Findings of the last audit for this hole (ТЗ 7.10 «Карточка скважины: устье и находки аудита»). */
+function HoleFindings({ setId, hole, version }: { setId: number | null; hole: string; version: number }) {
+  const [list, setList] = useState<Finding[] | null>(null);
+  useEffect(() => {
+    if (setId === null) return;
+    api.get<{ findings: Finding[] }>(`/audit/sets/${setId}/findings?hole=${encodeURIComponent(hole)}&limit=100`).then((r) => setList(r.findings), () => setList([]));
+  }, [setId, hole, version]);
+  if (list === null) return null;
+  if (!list.length) return <div className={css.note}>Аудит: замечаний нет (или аудит не запускался).</div>;
+  return (
+    <div>
+      <b>Аудит</b>
+      <ul>
+        {list.map((f, i) => (
+          <li key={i} title={f.examples.map(exampleText).join("\n")}>
+            {SEVERITY_TITLES[f.severity]}: {f.code} — строк {f.count}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

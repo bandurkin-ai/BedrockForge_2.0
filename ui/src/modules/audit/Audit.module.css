@@ -1,0 +1,30 @@
+.panel { display: flex; flex-direction: column; gap: 6px; height: 100%; min-height: 0; }
+.empty { color: var(--text-faint); padding: 8px 4px; }
+.bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.note { color: var(--text-faint); font-size: 12px; }
+.stale { color: var(--warn); font-size: 12px; }
+.error { color: var(--danger); }
+.btn, .primary { padding: 1px 8px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; font: inherit; }
+.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.thresholds { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; }
+.thresholds label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.thresholds input { width: 110px; }
+.wide input { width: 320px; }
+.main { flex: 1; display: flex; gap: 8px; min-height: 0; }
+.rules { width: 360px; border-collapse: collapse; overflow: auto; display: block; }
+.rules th { text-align: left; color: var(--text-dim); font-weight: 500; position: sticky; top: 0; background: var(--bg); }
+.rules td { padding: 2px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.rules tr:hover td { background: var(--bg-hover); }
+.selected td { background: var(--bg-hover); }
+.passed { opacity: 0.6; }
+.badge { display: inline-block; width: 14px; text-align: center; font-weight: 700; }
+.error .badge, .error b { color: var(--danger); }
+.warning .badge, .warning b { color: var(--warn); }
+.info .badge { color: var(--accent); }
+.findings { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; gap: 4px; }
+.list { flex: 1; overflow: auto; list-style: none; margin: 0; padding: 0; }
+.list li { border-bottom: 1px solid var(--border); padding: 3px 0; }
+.example { color: var(--text-dim); font-size: 12px; padding-left: 12px; }
+.chip { display: inline-flex; gap: 4px; align-items: center; background: var(--bg-hover); border-radius: 10px; padding: 0 8px; }
+.chip button { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; }

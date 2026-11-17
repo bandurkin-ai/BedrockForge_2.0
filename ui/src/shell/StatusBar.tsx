@@ -1,4 +1,5 @@
 import { useApp } from "./AppContext";
+import { auditStore, statusText } from "../modules/audit/state";
 import { useStore } from "./useStore";
 import css from "./StatusBar.module.css";
 
@@ -8,6 +9,7 @@ const CORE_TEXT = { starting: "Запуск ядра…", online: "Ядро ра
 export function StatusBar() {
   const app = useApp();
   const s = useStore(app.store, (x) => x);
+  const audit = useStore(auditStore, (x) => x.result);
   const nf = new Intl.NumberFormat("ru-RU");
   const parts = [
     <span key="core" data-testid="core-status">
@@ -27,7 +29,9 @@ export function StatusBar() {
           Claude: не подключён
         </button>
         <span className={css.sep}>·</span>
-        <span>Аудит не запускался</span>
+        <button type="button" className={css.link} onClick={() => void app.run("panel.set", { panel: "bottom", tab: "audit", open: true })}>
+          {statusText(audit)}
+        </button>
       </span>
     </footer>
   );
