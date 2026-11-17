@@ -16,7 +16,8 @@ import * as THREE from "three";
 import { attachPointer } from "./core/pointer";
 import { CameraRig } from "./core/camera";
 import { FrameLoop } from "./core/frame";
-import { nonBackgroundPixels, probeWebGL2, Renderer, type FrameStats, type GpuInfo } from "./core/renderer";
+import { nonBackgroundPixels, probeWebGL2, Renderer, sceneBytes, type FrameStats, type GpuInfo } from "./core/renderer";
+import { FpsTracker } from "./core/stats";
 import { boxFromBbox6, contentBox, fitBox, scaleZ, union, windowTest, type Box3, type Extent } from "./core/bounds";
 import { screenPriority } from "./core/cull";
 import { rebaseCamera, SceneOrigin } from "./core/sceneOrigin";
@@ -88,6 +89,8 @@ export class Scene {
   private readonly frameListeners = new Set<(ctx: FrameContext) => void>();
   private readonly cleanup: (() => void)[] = [];
   private readonly light = new THREE.DirectionalLight(0xffffff, 1.6);
+  /** frames per second and ms per frame (the counter Ctrl+Shift+F) */
+  readonly fps = new FpsTracker();
 
   /** Throws `VizError("no_webgl2")` when the window gets no WebGL2 context. */
   constructor(
@@ -214,6 +217,33 @@ export class Scene {
 
   camera(): CameraState {
     return this.rig.state();
+  }
+
+  /** Turns the view by `rad` about the vertical through its centre (smoke scenario, frame benchmark). */
+  orbit(rad: number): void {
+    const c = this.rig.state();
+    const dx = c.position[0] - c.target[0];
+    const dy = c.position[1] - c.target[1];
+    const [s, k] = [Math.sin(rad), Math.cos(rad)];
+    this.rig.apply({ ...c, position: [c.target[0] + dx * k - dy * s, c.target[1] + dx * s + dy * k, c.position[2]] });
+  }
+
+  /** Runs `step` before every frame until it returns false (frames go on meanwhile). */
+  animate(step: (now: number) => boolean): void {
+    this.loop.animate(step);
+  }
+
+  /** One frame now, the GPU waited for: its ms (the frame benchmark of perf3d). */
+  drawNow(): number {
+    const t0 = performance.now();
+    this.draw(t0);
+    this.renderer.finish();
+    return performance.now() - t0;
+  }
+
+  /** Estimated bytes of buffers and textures on the video card. */
+  gpuBytes(): number {
+    return sceneBytes(this.three);
   }
 
   /** Loading order of a part (smaller — sooner): parts nearer the centre of the screen first. */
@@ -446,8 +476,9 @@ export class Scene {
     return box;
   }
 
-  private draw(_now: number): void {
+  private draw(now: number): void {
     if (this.renderer.lost) return;
+    const t0 = performance.now();
     const opts = this.rig.options();
     let cam = this.rig.state();
     const delta = this.origin.follow(cam.target, this.vexag);
@@ -489,6 +520,7 @@ export class Scene {
     this.renderer.render(this.three, this.rig.camera);
     this.stats = this.renderer.stats();
     this.gizmo.update(cam, this.vexag < 0);
+    this.fps.record(now, performance.now() - t0);
   }
 
   private resize(): void {

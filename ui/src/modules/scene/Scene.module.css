@@ -50,3 +50,9 @@
 .smNorth path { fill: var(--text-dim); }
 .smNorth text { fill: var(--text-dim); font-size: 9px; }
 .simplified { font-size: 10px; color: var(--warn); }
+/* frame counter (ADR 0004 §5) */
+.fps { position: absolute; right: 8px; top: 80px; width: 320px; background: color-mix(in srgb, var(--bg-elev) 95%, transparent); border: 1px solid var(--border); border-radius: 6px; z-index: 5; box-shadow: var(--shadow); font-size: 11px; }
+.fps dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 6px 8px; color: var(--text-dim); }
+.fps dd { margin: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fpsActions { display: flex; gap: 6px; padding: 0 8px 8px; }
+.fpsLog { margin: 0 8px 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; font: 11px/1.4 var(--font); color: var(--text-dim); background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; padding: 6px; }

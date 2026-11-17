@@ -10,6 +10,7 @@ import { holeIndex } from "../../viz/holes/manifest";
 import type { ViewPreset } from "../../viz/core/views";
 import { cancelSectionDraw } from "../section/state";
 import { filterHole, selectSet, tablesStore } from "../tables/state";
+import { fpsStore, runSmoke } from "./fps";
 import { currentScene, requireScene } from "./sceneHost";
 
 const VIEW_TITLES: Record<ViewPreset, string> = {
@@ -45,6 +46,22 @@ export function bindViewCommands(app: App): void {
     () => {
       requireScene().fit();
       return app.store.get().view.clip ? "Вписаны объекты в окне разреза" : "Вписаны все видимые объекты";
+    },
+    needProject,
+  );
+
+  r.bind(
+    "diag.fps",
+    async (a) => {
+      if (a.smoke === true) {
+        const scene = requireScene();
+        if (fpsStore.get().running) throw new Error("Дымовой сценарий уже идёт");
+        fpsStore.set({ open: true });
+        return `Дымовой сценарий: ${await runSmoke(scene)}`;
+      }
+      const open = typeof a.open === "boolean" ? a.open : !fpsStore.get().open;
+      fpsStore.set({ open });
+      return open ? "Счётчик кадров показан" : "Счётчик кадров скрыт";
     },
     needProject,
   );

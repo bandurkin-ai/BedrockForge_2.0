@@ -140,6 +140,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           items: [
             { command: "scene.style", args: { grid: !view.grid }, label: view.grid ? "Скрыть сетку" : "Показать сетку", icon: "vwGrid", small: true },
             { command: "scene.style", args: { perspective: !view.perspective }, label: view.perspective ? "Ортогональная проекция" : "Перспектива", icon: "vwPerspective", small: true },
+            { command: "diag.fps", label: "Счётчик кадров", icon: "chart", hint: "Кадры/с, треугольники, вызовы отрисовки, видеопамять; дымовой сценарий", shortcut: "ctrl+shift+f", small: true },
             { command: "theme.set", label: ws.theme === "dark" ? "Светлая тема" : "Тёмная тема", icon: ws.theme === "dark" ? "sun" : "moon", small: true },
             { command: "ribbon.toggle", label: ws.ribbonCollapsed ? "Развернуть ленту" : "Свернуть ленту", icon: ws.ribbonCollapsed ? "chevronDown" : "chevronUp", shortcut: "ctrl+f1", small: true },
           ],

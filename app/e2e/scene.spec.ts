@@ -103,3 +103,26 @@ test("no WebGL2: the diagnostic window offers software rendering", async () => {
     await close(app);
   }
 });
+
+test("frame counter: Ctrl+Shift+F, the smoke scenario of 10 s goes to its log", async () => {
+  test.setTimeout(180_000);
+  const { app, page } = await launch({ BF_E2E: "1" });
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
+    await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
+    await waitFrame(page);
+    await page.keyboard.press("Control+Shift+KeyF");
+    const fps = page.getByTestId("fps-overlay");
+    await expect(fps).toContainText("Кадры/с");
+    await expect(fps).toContainText("программная");
+    await fps.getByRole("button", { name: "Дымовой сценарий (10 с)" }).click();
+    await expect(fps.getByTestId("fps-log")).toContainText("кадры/с: среднее", { timeout: 60_000 });
+    await expect(fps.getByTestId("fps-log")).toContainText("вызовов отрисовки");
+    await page.screenshot({ path: shot("scene-fps.png") });
+    await page.keyboard.press("Control+Shift+KeyF");
+    await expect(fps).toHaveCount(0);
+  } finally {
+    await close(app);
+  }
+});

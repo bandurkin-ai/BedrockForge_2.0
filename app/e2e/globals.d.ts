@@ -28,6 +28,7 @@ interface Window {
     pixels(): { width: number; height: number; nonBackground: number } | null;
     collars(limit?: number): { setId: number; name: string; x: number; y: number }[];
     run(id: string, args?: Record<string, unknown>): Promise<{ ok: boolean; result: string }>;
+    bench(frames: number): { frames: number; ms_per_frame: number; ms_median: number; calls: number; triangles: number; gpu_bytes: number; gpu: { renderer: string; gpuClass: string } };
   };
   __bfLose?: { loseContext(): void; restoreContext(): void } | null;
 }

@@ -159,5 +159,20 @@
         "paths_mb": 40.0
       }
     }
+  },
+  "external": {
+    "_comment": "Results written by other checks (ADR 0007 §9): the frame of the 3D window under software rendering, E2E app/e2e/perf3d.spec.ts. Budgets only on deterministic counters; ms go to the report.",
+    "frame_sw": {
+      "file": "bench/out/frame_sw.json",
+      "limits": {
+        "calls": 40,
+        "triangles": 1500000,
+        "gpu_mb": 200
+      },
+      "report": [
+        "ms_per_frame",
+        "ms_median"
+      ]
+    }
   }
 }

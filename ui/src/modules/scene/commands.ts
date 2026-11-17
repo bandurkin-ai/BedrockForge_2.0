@@ -33,6 +33,13 @@ export const commands: Command[] = [
     params: { set_id: { type: "integer" }, width: { type: "number" }, color: { type: "string" }, ticks: { type: "boolean" }, tickStep: { type: "number" }, tickLabels: { type: "boolean" }, labelStep: { type: "number" }, endDepth: { type: "boolean" }, intersections: { type: "boolean" } },
     stage: "Э6",
   },
+  {
+    id: "diag.fps",
+    title: "Счётчик кадров",
+    description: "Счётчик кадров 3D-окна (Ctrl+Shift+F): кадры/с, мс на кадр, треугольники и вызовы отрисовки, видеопамять, графика. smoke — дымовой сценарий: вращение 10 с, итог в журнал счётчика.",
+    params: { open: { type: "boolean" }, smoke: { type: "boolean" } },
+    stage: "Э6",
+  },
   { id: "holes.data_window", title: "Данные по скважинам", description: "Окно колонок данных вдоль выбранных скважин.", uiOnly: true, stage: "Э6" },
   {
     id: "holes.show_data",

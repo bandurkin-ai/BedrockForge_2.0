@@ -26,6 +26,7 @@ import { currentScene, sceneUi, setCurrentScene } from "./sceneHost";
 import { displaysUi } from "../downhole/displaysUi";
 import { Legend } from "../downhole/Legend";
 import { Toolbar } from "./Toolbar";
+import { FpsOverlay } from "./FpsOverlay";
 import logoMark from "../../assets/logo-mark.png";
 import shell from "../../shell/Shell.module.css";
 import css from "./Scene.module.css";
@@ -186,6 +187,21 @@ function SceneMount() {
             state: () => ({ ...s.debug(), ready: ready(), loading: sceneUi.get().loading, displays: displaysUi.get() }),
             pixels: () => s.pixels(),
             collars: (limit?: number) => s.collarsOnScreen(limit),
+            /** perf3d: `frames` frames turning a full circle, each drawn now and waited for */
+            bench: (frames: number) => {
+              const ms: number[] = [];
+              let calls = 0;
+              let triangles = 0;
+              for (let i = 0; i < frames; i++) {
+                s.orbit((2 * Math.PI) / frames);
+                ms.push(s.drawNow());
+                const st = s.debug().stats;
+                calls = Math.max(calls, st.calls);
+                triangles = Math.max(triangles, st.triangles);
+              }
+              ms.sort((a, b) => a - b);
+              return { frames, ms_per_frame: ms.reduce((a, b) => a + b, 0) / frames, ms_median: ms[frames >> 1], calls, triangles, gpu_bytes: s.gpuBytes(), gpu: s.gpu };
+            },
             /** a command of the registry, as the ribbon or Claude runs it */
             run: (id: string, args?: Record<string, unknown>) => app.registry.execute(id, args ?? {}),
           };
@@ -220,6 +236,7 @@ function SceneMount() {
         {ui.degraded && !ui.lost && <div className={css.corner}>Графика перезапускалась трижды за минуту: нагрузка снижена</div>}
         {hint && <div className={css.hint}>{hint}</div>}
         {ready && <Legend />}
+        {ready && <FpsOverlay />}
         {(ui.loading > 0 || dh.loading > 0) && !ui.lost && <div className={css.corner}>Загрузка…</div>}
         {dh.simplified > 0 && ui.loading === 0 && dh.loading === 0 && !ui.lost && (
           <div className={`${css.corner} ${css.second}`} title="Части далеко от камеры показаны объединёнными интервалами до 4 или 32 м">

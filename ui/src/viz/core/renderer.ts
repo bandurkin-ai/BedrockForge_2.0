@@ -166,6 +166,15 @@ export class Renderer {
     return { width: w, height: h, data };
   }
 
+  /** Waits for the GPU to finish the frame (a one-pixel read): the frame benchmark measures whole frames. */
+  finish(): void {
+    if (this.lost) return;
+    const gl = this.three.getContext();
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.probe);
+  }
+
+  private readonly probe = new Uint8Array(4);
+
   dispose(): void {
     this.cleanup.forEach((fn) => fn());
     this.three.dispose();
@@ -192,4 +201,35 @@ export function nonBackgroundPixels(data: Uint8Array, tolerance = 8): number {
     if (Math.abs(data[i] - r) > tolerance || Math.abs(data[i + 1] - g) > tolerance || Math.abs(data[i + 2] - b) > tolerance) out++;
   }
   return out;
+}
+
+/**
+ * Bytes of the buffers and textures of a scene as uploaded to the video card (an estimate for the counter
+ * and the frame budget): every attribute, index and interleaved buffer once, textures as RGBA with mipmaps.
+ */
+export function sceneBytes(root: THREE.Object3D): number {
+  const seen = new Set<unknown>();
+  let bytes = 0;
+  const add = (a: { byteLength: number } | null | undefined) => {
+    if (!a || seen.has(a)) return;
+    seen.add(a);
+    bytes += a.byteLength;
+  };
+  root.traverse((o) => {
+    const g = (o as THREE.Mesh).geometry as THREE.BufferGeometry | undefined;
+    if (g?.attributes) {
+      for (const a of Object.values(g.attributes)) add((a as THREE.InterleavedBufferAttribute).data?.array ?? (a as THREE.BufferAttribute).array);
+      add(g.index?.array);
+    }
+    const mats = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+    for (const m of Array.isArray(mats) ? mats : mats ? [mats] : []) {
+      const map = (m as THREE.MeshBasicMaterial).map;
+      const img = map?.image as { width?: number; height?: number } | undefined;
+      if (map && !seen.has(map) && img?.width && img.height) {
+        seen.add(map);
+        bytes += Math.round(img.width * img.height * 4 * 1.34);
+      }
+    }
+  });
+  return bytes;
 }
