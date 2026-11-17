@@ -44,7 +44,20 @@ def create_or_open(svc: ProjectService) -> tuple[Project, bool]:
     for _name, part in PARTS:
         with dialect.write_tx(project.engine) as conn:
             part(conn, store, rng)
+    _audit(project)
     return project, True
+
+
+def _audit(project: Project) -> None:
+    """The demo opens with its audit done (ТЗ 7.5, 7.12): the deliberate errors are listed at once."""
+    from bf_core.audit.service import default_table, get_settings, run
+    from bf_core.db.schema import objects
+
+    with dialect.read_tx(project.engine) as conn:
+        sets = list(conn.execute(sa.select(objects.c.id).where(objects.c.kind == "drillhole_set")).scalars())
+        plans = [(s, default_table(conn, s), get_settings(conn, s)["config"]) for s in sets]
+    for set_id, table, config in plans:
+        run(project.engine, set_id, table=table, config=config, job_id=None, tick=lambda _f, _m=None: None)
 
 
 def _register() -> None:

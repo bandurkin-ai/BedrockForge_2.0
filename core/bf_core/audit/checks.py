@@ -32,6 +32,7 @@ MAX_EXAMPLES = 20  # example rows kept per finding (rule × hole)
 # progress(fraction 0…1 or None, message or None); it may raise (JobCancelled) to cancel the audit.
 Tick = Callable[[float | None, str | None], None]
 Fields = Callable[[np.ndarray], dict[str, list[Any]]]  # positions of example rows → their columns
+Columns = dict[Any, np.ndarray]  # columns of a table by name; the components by their number
 
 _NEIGHBOURS = 5  # nearest collars whose median Z a collar is compared with
 _MISMATCH_DIP, _MISMATCH_AZIMUTH, _INCLINED = 10.0, 30.0, 85.0  # first station against the collar, degrees
@@ -210,9 +211,7 @@ class _Run:
         if self._tick is not None:
             self._tick(self._fraction, self._message)
 
-    def table(
-        self, name: str, row_id: Any, hole: Any, columns: Mapping[Any, Any]
-    ) -> tuple[np.ndarray, np.ndarray, dict[Any, np.ndarray]]:
+    def table(self, name: str, row_id: Any, hole: Any, columns: Mapping[Any, Any]) -> tuple[Any, np.ndarray, Columns]:
         """Rows of a table in file order (ascending id) with checked sizes; rows without a hole get the slot H."""
         ids = np.ascontiguousarray(row_id, dtype=np.int64).reshape(-1)
         n = int(ids.size)
@@ -240,6 +239,7 @@ class _Run:
         if n == 0:
             return
         key = self.rank[hole]
+        self.tick()
         pos = None
         if n > 1 and bool((key[1:] < key[:-1]).any()):
             pos = self.order(key)
@@ -269,15 +269,14 @@ class _Run:
             self.tick()
 
     def result(self) -> AuditResult:
-        summary = [
-            {**asdict(r), "rows": self.rows[r.code], "holes": self.holes[r.code]} for r in RULES.values()
-        ]
+        summary = [{**asdict(r), "rows": self.rows[r.code], "holes": self.holes[r.code]} for r in RULES.values()]
         order = sorted(RULES.values(), key=lambda r: (SEVERITIES.index(r.severity), r.table, r.code))
         return AuditResult(summary, [f for r in order for f in self.found[r.code]])
 
 
-# An example column aligned with the reported rows (not with the rows of the table).
-_Own = NamedTuple("_Own", [("values", np.ndarray)])
+class _Own(NamedTuple):  # an example column aligned with the reported rows (not with the rows of the table)
+    values: np.ndarray
+    labels: list[str] | None = None  # the values are numbers of these texts
 
 
 def _flag(run: _Run, hole: np.ndarray, code: str, rows: np.ndarray, columns: Mapping[str, Any] | None = None) -> None:
@@ -287,12 +286,15 @@ def _flag(run: _Run, hole: np.ndarray, code: str, rows: np.ndarray, columns: Map
 
     def take(sel: np.ndarray) -> dict[str, list[Any]]:
         at = rows[sel]
-        return {
-            k: _plain(v.values[sel] if isinstance(v, _Own) else None if v is None else v[at], sel.size)
-            for k, v in (columns or {}).items()
-        }
+        out: dict[str, list[Any]] = {}
+        for k, v in (columns or {}).items():
+            if isinstance(v, _Own) and v.labels is not None:
+                out[k] = [v.labels[j] for j in v.values[sel].tolist()]
+            else:
+                out[k] = _plain(v.values[sel] if isinstance(v, _Own) else None if v is None else v[at], sel.size)
+        return out
 
-    run.emit(code, hole[rows], None if columns is None else take)
+    run.emit(code, hole[rows], take if columns else None)
 
 
 # --- collars --------------------------------------------------------------------------------------
@@ -354,7 +356,7 @@ def _check_collar(run: _Run, cfg: AuditConfig, with_survey: np.ndarray, with_ass
 # --- surveys --------------------------------------------------------------------------------------
 
 
-def _check_survey(run: _Run, cfg: AuditConfig, row_id: np.ndarray, hole: np.ndarray, c: dict[Any, np.ndarray]) -> None:
+def _check_survey(run: _Run, cfg: AuditConfig, row_id: Any, hole: np.ndarray, c: Columns) -> None:
     depth, azimuth, dip = c["survey_depth"], c["survey_azimuth"], c["survey_dip"]
     n, tol = int(hole.size), cfg.depth_tolerance
     if n == 0:
@@ -411,7 +413,6 @@ def _check_survey(run: _Run, cfg: AuditConfig, row_id: np.ndarray, hole: np.ndar
 
 
 # --- samples --------------------------------------------------------------------------------------
-
 
 
 def _reach_before(hole: np.ndarray, end: np.ndarray) -> np.ndarray:
@@ -521,10 +522,7 @@ def _outliers(values: np.ndarray, threshold: float) -> np.ndarray:
         return positive[logs / (1.4826 * mad) > threshold] if mad > 0 else positive[:0]
 
 
-def _check_assay(
-    run: _Run, cfg: AuditConfig, row_id: np.ndarray, hole: np.ndarray, c: dict[Any, np.ndarray], names: list[str]
-) -> None:
-    """`c`: the columns «assay_from», «assay_to», «assay_sample» (if any) and the components by their number."""
+def _check_assay(run: _Run, cfg: AuditConfig, row_id: Any, hole: np.ndarray, c: Columns, names: list[str]) -> None:
     start, end, sample = c["assay_from"], c["assay_to"], c.get("assay_sample")
     n, tol = int(hole.size), cfg.depth_tolerance
     if n == 0:
@@ -564,10 +562,11 @@ def _check_assay(
         run.at(0.65 + 0.25 * (j + 1) / len(names))
     for code, parts in found.items():  # component by component, as BF's long table
         if parts:
-            columns: dict[str, Any] = {"row_id": row_id}
-            columns["component"] = _Own(np.concatenate([np.full(hit.size, names[j], dtype=object) for hit, j in parts]))
+            numbers = np.concatenate([np.full(hit.size, j, dtype=np.int32) for hit, j in parts])
+            columns: dict[str, Any] = {"row_id": row_id, "component": _Own(numbers, names)}
             if code != "ASSAY_EMPTY_VALUE":
                 columns["value"] = _Own(np.concatenate([c[j][hit] for hit, j in parts]))
+            run.tick()
             flag(code, np.concatenate([hit for hit, _ in parts]), {**columns, "sample": sample, "from": start})
 
 

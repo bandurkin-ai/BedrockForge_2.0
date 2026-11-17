@@ -46,3 +46,14 @@ describe("«Таблица» panel state (ТЗ 7.10)", () => {
     expect(findRow(s, 7)).toBeNull();
   });
 });
+
+import { exampleText, statusText } from "../src/modules/audit/state";
+
+describe("audit texts (ТЗ 7.12)", () => {
+  it("examples in Russian with a decimal comma; status bar summary with «устарел»", () => {
+    expect(exampleText({ row_id: 5, from: 1.5, to: 3, sample: "S1" }, { from: "От", to: "До", sample: "Проба" })).toBe("От: 1,5, До: 3, Проба: S1");
+    expect(statusText(null)).toBe("Аудит не запускался");
+    const r = { totals: { error: 2, warning: 5, info: 1 }, stale: true } as never;
+    expect(statusText(r)).toBe("Аудит: 2 критично, 5 предупр., 1 инф. (устарел)");
+  });
+});

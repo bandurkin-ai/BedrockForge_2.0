@@ -36,7 +36,15 @@ def test_demo_errors_found_and_every_rule_reported(demo) -> None:  # type: ignor
     res = _run(c, set_id)["result"]
     assert len(res["summary"]) == 27 and res["stale"] is False and res["table_name"] == "Пробы"
     found = {r["code"]: r["rows"] for r in res["summary"]}
-    for code in ("SURVEY_BEYOND_TD", "ASSAY_NEGATIVE_VALUE", "ASSAY_OVERLAP", "ASSAY_GAP", "ASSAY_EMPTY_VALUE", "ASSAY_DUPLICATE_SAMPLE", "SURVEY_DOGLEG"):
+    for code in (
+        "SURVEY_BEYOND_TD",
+        "ASSAY_NEGATIVE_VALUE",
+        "ASSAY_OVERLAP",
+        "ASSAY_GAP",
+        "ASSAY_EMPTY_VALUE",
+        "ASSAY_DUPLICATE_SAMPLE",
+        "SURVEY_DOGLEG",
+    ):
         assert found[code] > 0, code
     assert found["COLLAR_MISSING_COORDS"] == 0  # passed rules are listed too
     f = c.get(f"{API}/audit/sets/{set_id}/findings", params={"code": "SURVEY_BEYOND_TD"}).json()

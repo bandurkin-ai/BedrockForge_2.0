@@ -34,7 +34,7 @@ def _set(conn: sa.Connection, set_id: int) -> None:
 
 @router.get("/rules")
 def rules() -> dict[str, Any]:
-    from .rules import RULES, SEVERITY_LABELS, TABLE_LABELS
+    from .rules import EXAMPLE_FIELDS, RULES, SEVERITY_LABELS, TABLE_LABELS
 
     return {
         "rules": [
@@ -43,6 +43,7 @@ def rules() -> dict[str, Any]:
         ],
         "severities": SEVERITY_LABELS,
         "tables": TABLE_LABELS,
+        "fields": EXAMPLE_FIELDS,
     }
 
 

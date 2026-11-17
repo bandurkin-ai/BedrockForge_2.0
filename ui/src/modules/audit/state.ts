@@ -73,6 +73,7 @@ export async function loadAudit(setId: number | null = tablesStore.get().setId):
   }
   auditStore.set({ setId, loading: true });
   try {
+    await loadFieldNames();
     const r = await api.get<{ result: AuditResult | null; settings: AuditState["settings"]; tables: AuditState["tables"] }>(`/audit/sets/${setId}`);
     auditStore.set({ result: r.result, settings: r.settings, tables: r.tables, error: null });
     await loadFindings();
@@ -132,9 +133,20 @@ export function statusText(r: AuditResult | null): string {
   return `Аудит: ${parts.join(", ")}${r.stale ? " (устарел)" : ""}`;
 }
 
-export function exampleText(e: Record<string, unknown>): string {
+/** Russian names of the fields of examples (from /audit/rules). */
+let fieldNames: Record<string, string> = {};
+export async function loadFieldNames(): Promise<void> {
+  if (Object.keys(fieldNames).length) return;
+  try {
+    fieldNames = (await api.get<{ fields: Record<string, string> }>("/audit/rules")).fields;
+  } catch {
+    /* keys are shown as they are */
+  }
+}
+
+export function exampleText(e: Record<string, unknown>, names: Record<string, string> = fieldNames): string {
   return Object.entries(e)
     .filter(([k, v]) => k !== "row_id" && v !== null && v !== undefined && v !== "")
-    .map(([k, v]) => `${k}: ${typeof v === "number" ? v.toLocaleString("ru-RU", { maximumFractionDigits: 4 }) : String(v)}`)
+    .map(([k, v]) => `${names[k] ?? k}: ${typeof v === "number" ? v.toLocaleString("ru-RU", { maximumFractionDigits: 4 }) : String(v)}`)
     .join(", ");
 }

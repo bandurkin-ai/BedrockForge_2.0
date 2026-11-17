@@ -11,9 +11,18 @@ from bf_core.db.schema import audit_findings, objects
 
 
 def _examples(examples: list[dict[str, Any]] | None) -> str:
+    from .rules import EXAMPLE_FIELDS
+
+    def show(v: Any) -> str:
+        return f"{v:.4g}".replace(".", ",") if isinstance(v, float) else str(v)
+
     out = []
     for e in (examples or [])[:20]:
-        out.append("; ".join(f"{k}={v}" for k, v in e.items() if k != "row_id" and v not in (None, "")))
+        out.append(
+            "; ".join(
+                f"{EXAMPLE_FIELDS.get(k, k)}: {show(v)}" for k, v in e.items() if k != "row_id" and v not in (None, "")
+            )
+        )
     return " | ".join(out)
 
 

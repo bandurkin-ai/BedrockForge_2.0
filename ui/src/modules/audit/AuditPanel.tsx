@@ -76,7 +76,7 @@ export function AuditPanel() {
               {r.summary.map((x) => (
                 <tr
                   key={x.code}
-                  className={`${css[x.severity]} ${x.rows ? "" : css.passed} ${s.filters.code === x.code ? css.selected : ""}`}
+                  className={`${css[`sev_${x.severity}`]} ${x.rows ? "" : css.passed} ${s.filters.code === x.code ? css.selected : ""}`}
                   title={`${x.code}: ${x.description}`}
                   onClick={() => void setFilter({ code: s.filters.code === x.code ? "" : x.code })}
                 >
@@ -120,7 +120,7 @@ export function AuditPanel() {
             </div>
             <ul className={css.list} data-testid="audit-findings">
               {s.findings.map((f, i) => (
-                <li key={`${f.code}-${f.hole}-${i}`} className={css[f.severity]}>
+                <li key={`${f.code}-${f.hole}-${i}`} className={css[`sev_${f.severity}`]}>
                   <div>
                     <b>{f.hole ?? "—"}</b> · {r.summary.find((x) => x.code === f.code)?.title ?? f.code} · строк: {f.count}
                   </div>

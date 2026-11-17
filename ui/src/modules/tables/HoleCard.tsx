@@ -81,7 +81,7 @@ function HoleFindings({ setId, hole, version }: { setId: number | null; hole: st
       <b>Аудит</b>
       <ul>
         {list.map((f, i) => (
-          <li key={i} title={f.examples.map(exampleText).join("\n")}>
+          <li key={i} title={f.examples.map((e) => exampleText(e)).join("\n")}>
             {SEVERITY_TITLES[f.severity]}: {f.code} — строк {f.count}
           </li>
         ))}
