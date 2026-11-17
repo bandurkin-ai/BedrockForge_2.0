@@ -282,12 +282,15 @@ def normalize(
             if holes[i] and depth is not None:
                 result.surveys.append((holes[i], depth, _at(out["azimuth"], i), _at(out["dip"], i)))
     else:
+        import numpy as np
+
         keep = [i for i in range(n) if holes[i]]
+        idx = np.asarray(keep, dtype=np.int64)
         cols: list[ColumnSpec] = []
         values: list[Any] = []
-        for c in components:
+        for c in components:  # numbers stay float64 arrays (NaN = missing): no per-cell Python work
             cols.append(ColumnSpec(c["column"], "number", c["unit"].strip(), "component"))
-            values.append([_at(comp_values[c["column"]], i) for i in keep])
+            values.append(np.asarray(comp_values[c["column"]], dtype=float)[idx])
         if "sample_id" in out:
             cols.append(ColumnSpec("Номер пробы", "text", None, "sample"))
             values.append([out["sample_id"][i] for i in keep])
@@ -301,8 +304,8 @@ def normalize(
             name=table_name or kind_label(kind),
             kind=kind,
             holes=[holes[i] for i in keep],
-            from_m=[_at(out[start], i) for i in keep],
-            to_m=[_at(out[stop], i) for i in keep] if stop else [None] * len(keep),
+            from_m=np.asarray(out[start], dtype=float)[idx],
+            to_m=np.asarray(out[stop], dtype=float)[idx] if stop else np.full(len(keep), np.nan),
             columns=cols,
             values=values,
         )

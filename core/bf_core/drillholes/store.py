@@ -205,8 +205,8 @@ class TableData:
     name: str
     kind: str  # assay | interval | event
     holes: Sequence[str]
-    from_m: Sequence[float | None]
-    to_m: Sequence[float | None]
+    from_m: Any  # Sequence[float | None] or a float64 array (NaN = missing)
+    to_m: Any
     columns: list[ColumnSpec]
     values: list[Sequence[Any]]  # one sequence per column, in `columns` order
     qual: list[Sequence[int]] | None = None  # per number column: 0 plain, 1 below / 2 above limit
@@ -258,31 +258,51 @@ def write_table(
             )
         known = hole_ids(conn, set_id)
         ensure_holes(conn, set_id, data.holes, known)
+    import json
+
+    import numpy as np
+
     n = len(data.holes)
+    # All number columns as one float64 matrix: a row's vector is a slice of it, cut after its last value.
+    matrix = np.empty((n, len(number_slots)), dtype="<f8")
+    for k, i in enumerate(number_slots):
+        matrix[:, k] = np.asarray(data.values[i], dtype=float)
+    present = ~np.isnan(matrix)
+    widths = (
+        np.where(present.any(axis=1), len(number_slots) - np.argmax(present[:, ::-1], axis=1), 0)
+        if number_slots
+        else np.zeros(n, dtype=int)
+    )
+    from_m = np.asarray(data.from_m, dtype=float)
+    to_m = np.asarray(data.to_m, dtype=float)
+    hole_of = np.array([known[h] for h in data.holes], dtype=np.int64)
+    texts = [(str(slot_of[i]), data.values[i]) for i in text_slots]
+    columns = ("table_id", "hole_id", "from_m", "to_m", "num", "qual", "txt")
     for start in range(0, n, BATCH):
         tick(start / max(n, 1), f"«{data.name}»: строк {start} из {n}")
         stop = min(n, start + BATCH)
         batch = []
         for r in range(start, stop):
-            nums = [data.values[i][r] for i in number_slots]
-            txt = {str(slot_of[i]): data.values[i][r] for i in text_slots if data.values[i][r] not in (None, "")}
+            w = int(widths[r])
+            txt = {slot: vals[r] for slot, vals in texts if vals[r] not in (None, "")} if texts else None
             qual = None
             if data.qual is not None:
                 q = [int(data.qual[k][r]) for k in range(len(number_slots))]
                 qual = bytes(q) if any(q) else None
+            f, t = from_m[r], to_m[r]
             batch.append(
-                {
-                    "table_id": table_id,
-                    "hole_id": known[data.holes[r]],
-                    "from_m": _num(data.from_m[r]),
-                    "to_m": _num(data.to_m[r]),
-                    "num": pack(nums),
-                    "qual": qual,
-                    "txt": txt or None,
-                }
+                (
+                    table_id,
+                    int(hole_of[r]),
+                    None if f != f else float(f),
+                    None if t != t else float(t),
+                    matrix[r, :w].tobytes() if w else None,
+                    qual,
+                    json.dumps(txt, ensure_ascii=False) if txt else None,
+                )
             )
         with dialect.write_tx(engine) as conn:
-            conn.execute(sa.insert(dh_rows), batch)
+            dialect.bulk_insert(conn, dh_rows, columns, batch)
     with dialect.write_tx(engine) as conn:
         conn.execute(sa.update(dh_tables).where(dh_tables.c.id == table_id).values(row_count=n))
         if swap:

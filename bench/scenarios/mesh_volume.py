@@ -14,7 +14,9 @@ def prepare(params: dict[str, Any], work: Path) -> None:
     v, t = uv_sphere(int(params["triangles"]))
     np.save(work / "v.npy", v)
     np.save(work / "t.npy", t.astype(np.int64))
-    from bf_core.diag.kernels import signed_volume  # compile into the cache outside the timing
+    from bf_core.diag.kernels import (
+        signed_volume,
+    )  # compile into the cache outside the timing
 
     signed_volume(v[:8].copy(), np.array([[0, 1, 2]], dtype=np.int64))
 

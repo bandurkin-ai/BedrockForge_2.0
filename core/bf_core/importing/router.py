@@ -180,7 +180,9 @@ def check(svc: Svc, body: FileSpec) -> dict[str, Any]:
     # «Загрузить с ошибками» is offered while the issues include errors in the data (reported as warnings once
     # the flag is on) and nothing else blocks: errors in the mapping are never loaded that way.
     data = _data_errors()
-    out["can_force"] = any(i.code in data for i in issues) and all(i.severity == "warning" or i.code in data for i in issues)
+    out["can_force"] = any(i.code in data for i in issues) and all(
+        i.severity == "warning" or i.code in data for i in issues
+    )
     if norm is not None:
         out["counts"] = norm.counts
         out["preview"] = _preview(norm)
@@ -191,6 +193,11 @@ def _data_errors() -> frozenset[str]:
     from .service import DATA_ERRORS
 
     return DATA_ERRORS
+
+
+def _plain(v: Any) -> Any:
+    """numpy scalars → Python (JSON)."""
+    return v.item() if hasattr(v, "item") else v
 
 
 def _jsonable(v: Any) -> Any:
@@ -208,8 +215,8 @@ def _preview(norm: Any, limit: int = 30) -> list[dict[str, Any]]:
     t = norm.table
     rows = []
     for i in range(min(limit, len(t.holes))):
-        row = {"hole_id": t.holes[i], "from": t.from_m[i], "to": t.to_m[i]}
-        row.update({c.name: _jsonable(vals[i]) for c, vals in zip(t.columns, t.values, strict=True)})
+        row = {"hole_id": t.holes[i], "from": _jsonable(float(t.from_m[i])), "to": _jsonable(float(t.to_m[i]))}
+        row.update({c.name: _jsonable(_plain(vals[i])) for c, vals in zip(t.columns, t.values, strict=True)})
         rows.append(row)
     return rows
 
@@ -293,4 +300,6 @@ def describe_prj(body: PrjBody) -> dict[str, Any]:
     try:
         return read_prj(_file(body.path)).as_dict()
     except CrsError as exc:
-        raise ApiError(422, "crs_unreadable", str(exc), "Выберите другой файл .prj или оставьте систему координат не заданной.") from exc
+        raise ApiError(
+            422, "crs_unreadable", str(exc), "Выберите другой файл .prj или оставьте систему координат не заданной."
+        ) from exc

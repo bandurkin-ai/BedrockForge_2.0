@@ -66,11 +66,23 @@ def run_profile(profile: str, repeat: int, only: list[str] | None) -> dict[str, 
             continue
         with tempfile.TemporaryDirectory(prefix=f"bf-bench-{name}-") as tmp:
             work = Path(tmp)
-            importlib.import_module(f"bench.scenarios.{name}").prepare(spec["params"], work)
+            importlib.import_module(f"bench.scenarios.{name}").prepare(
+                spec["params"], work
+            )
             runs = []
             for _ in range(repeat):
                 out = subprocess.run(
-                    [sys.executable, "-m", "bench.run", "--child", name, "--profile", profile, "--work", str(work)],
+                    [
+                        sys.executable,
+                        "-m",
+                        "bench.run",
+                        "--child",
+                        name,
+                        "--profile",
+                        profile,
+                        "--work",
+                        str(work),
+                    ],
                     cwd=ROOT,
                     env=env,
                     capture_output=True,
@@ -108,24 +120,33 @@ def compare(base: dict[str, Any], head: dict[str, Any]) -> list[str]:
             continue
         delta = h["seconds"] - b["seconds"]
         if delta >= ABS_LIMIT_S and h["seconds"] > b["seconds"] * (1 + REL_LIMIT):
-            errors.append(f"{name}: {b['seconds']:.3f} s -> {h['seconds']:.3f} s (+{delta:.3f} s)")
+            errors.append(
+                f"{name}: {b['seconds']:.3f} s -> {h['seconds']:.3f} s (+{delta:.3f} s)"
+            )
     return errors
 
 
 def table(report: dict[str, Any], base: dict[str, Any] | None = None) -> str:
-    lines = ["| Сценарий | Время, с | База, с | Память, МБ | Бюджет |", "|---|---|---|---|---|"]
+    lines = [
+        "| Сценарий | Время, с | База, с | Память, МБ | Бюджет |",
+        "|---|---|---|---|---|",
+    ]
     for name, r in report["scenarios"].items():
         b = (base or {}).get("scenarios", {}).get(name, {}).get("seconds")
         mem = "—" if r["peak_mb"] is None else f"{r['peak_mb']:.0f}"
         base_s = "—" if b is None else f"{b:.3f}"
-        lines.append(f"| {name} | {r['seconds']:.3f} | {base_s} | {mem} | {r['budget_s']} с / {r['budget_mb']} МБ |")
+        lines.append(
+            f"| {name} | {r['seconds']:.3f} | {base_s} | {mem} | {r['budget_s']} с / {r['budget_mb']} МБ |"
+        )
     return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="bench.run")
     ap.add_argument("--profile", default="ci", choices=["ci", "full"])
-    ap.add_argument("--check", action="store_true", help="fail when a budget is exceeded")
+    ap.add_argument(
+        "--check", action="store_true", help="fail when a budget is exceeded"
+    )
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--out", type=Path)
@@ -148,7 +169,9 @@ def main(argv: list[str] | None = None) -> int:
     report = run_profile(a.profile, a.repeat, a.only)
     if a.out:
         a.out.parent.mkdir(parents=True, exist_ok=True)
-        a.out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        a.out.write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
     print(table(report))
     if a.check:
         errors = check_budgets(report)

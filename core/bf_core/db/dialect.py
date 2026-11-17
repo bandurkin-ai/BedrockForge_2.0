@@ -5,7 +5,7 @@ write transactions, job claim, JSON access. SQLite (desktop project / instance) 
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -21,7 +21,8 @@ from sqlalchemy.pool import NullPool
 PK = sa.BigInteger().with_variant(sa.Integer(), "sqlite")
 #: A reference to a row key (same storage as PK).
 REF = sa.BigInteger().with_variant(sa.Integer(), "sqlite")
-JSONType = sa.JSON().with_variant(JSONB(), "postgresql")
+#: None is SQL NULL, not the JSON text "null" (smaller rows, and «no value» stays testable with IS NULL).
+JSONType = sa.JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
 
 
 class UtcDateTime(sa.types.TypeDecorator[datetime]):
@@ -237,3 +238,14 @@ def is_integrity_error(exc: BaseException) -> bool:
     args = getattr(orig, "args", ())
     code = args[0].get("C") if args and isinstance(args[0], dict) else None
     return isinstance(code, str) and code.startswith("23")
+
+
+def bulk_insert(conn: Connection, table: sa.Table, columns: Sequence[str], rows: Sequence[Sequence[Any]]) -> None:
+    """Many rows through the driver's executemany, past SQLAlchemy's per-row parameter processing (millions of
+    interval rows, ADR 0003 §4). Values must already be in driver form: float/int/str/bytes/None; JSON as text.
+    PostgreSQL bulk loads through COPY come with the server (Э25)."""
+    if not rows:
+        return
+    placeholder = "?" if conn.dialect.name == "sqlite" else "%s"
+    sql = f"INSERT INTO {table.name} ({', '.join(columns)}) VALUES ({', '.join([placeholder] * len(columns))})"
+    conn.exec_driver_sql(sql, list(map(tuple, rows)))

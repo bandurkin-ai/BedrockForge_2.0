@@ -40,11 +40,11 @@ def test_limits_and_force_keep_the_original_text(tmp_path: Path) -> None:
     tab = res.table
     names = [c.name for c in tab.columns]
     au = tab.values[names.index("Au_ppm")]
-    assert au[0] == 0.005 and au[1] == 4584.7 and au[2] is None
+    assert au[0] == 0.005 and au[1] == 4584.7 and math.isnan(au[2])
     assert tab.values[names.index("Au_ppm (исходное)")] == [None, None, "abc"]
     assert tab.columns[names.index("Au_ppm")].unit == "ppm" and tab.columns[names.index("Au_ppm")].role == "component"
     assert any(i.code == "below_limit" and i.count == 1 for i in issues)
-    assert res.counts["below_limit"] == 1 and tab.from_m == [0.0, 1.5, 0.0]
+    assert res.counts["below_limit"] == 1 and list(tab.from_m) == [0.0, 1.5, 0.0]
 
 
 def test_collar_duplicates_and_empty_hole_with_force(tmp_path: Path) -> None:

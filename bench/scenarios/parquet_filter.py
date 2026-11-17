@@ -9,7 +9,9 @@ from typing import Any
 def prepare(params: dict[str, Any], work: Path) -> None:
     from tools.gen.blockmodel import generate
 
-    generate(work / "bm.parquet", int(params["nx"]), int(params["ny"]), int(params["nz"]))
+    generate(
+        work / "bm.parquet", int(params["nx"]), int(params["ny"]), int(params["nz"])
+    )
 
 
 def load() -> None:
