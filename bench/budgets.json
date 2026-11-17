@@ -64,6 +64,20 @@
       },
       "budget_s": 10.0,
       "budget_mb": 900
+    },
+    "view_parts": {
+      "params": {
+        "holes": 5000,
+        "rows": 500000
+      },
+      "budget_s": 2.5,
+      "budget_mb": 600,
+      "limits": {
+        "paths_s": 1.0,
+        "field_s": 1.5,
+        "manifest_mb": 3.0,
+        "paths_mb": 40.0
+      }
     }
   },
   "full": {
@@ -130,6 +144,20 @@
       },
       "budget_s": 30.0,
       "budget_mb": 3072
+    },
+    "view_parts": {
+      "params": {
+        "holes": 50000,
+        "rows": 5000000
+      },
+      "budget_s": 9.0,
+      "budget_mb": 1536,
+      "limits": {
+        "paths_s": 3.0,
+        "field_s": 6.0,
+        "manifest_mb": 3.0,
+        "paths_mb": 40.0
+      }
     }
   }
 }

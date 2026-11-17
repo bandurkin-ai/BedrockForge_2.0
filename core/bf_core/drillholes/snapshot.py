@@ -86,10 +86,34 @@ class Snapshot:
     alive: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool))
     orders: dict[tuple[str, bool], np.ndarray] = field(default_factory=dict)  # cached sort orders
     masks: dict[tuple[Any, str], np.ndarray] = field(default_factory=dict)  # cached filters (hole, expression)
+    by_hole: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None  # cached `hole_index()`
 
     def __post_init__(self) -> None:
         if len(self.alive) != len(self.ids):
             self.alive = np.ones(len(self.ids), dtype=bool)
+
+    def hole_index(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Rows grouped by hole for 3D (ADR 0007 §1 `intervals`): (rows, holes, starts) — the alive rows with a
+        depth «от», ascending by hole id, then by «от», then by row id; rows[starts[i]:starts[i + 1]] belong to
+        holes[i]. Rows without «от» cannot be placed on a hole and are left out. Cached until the next edit."""
+        hit = self.by_hole
+        if hit is not None:
+            return hit
+        start = self.data["from"]
+        keep = self.alive & ~np.isnan(start)
+        rows = np.flatnonzero(keep)
+        whole = len(rows) == len(keep)
+        h = self.hole_ids if whole else self.hole_ids[rows]  # views when every row counts (5 M rows: no copies)
+        f = start if whole else start[rows]
+        # imports write rows by hole and depth: the sort is skipped when they already come so (rows ascend by id)
+        if len(rows) > 1 and not (np.all(h[1:] >= h[:-1]) and np.all((h[1:] != h[:-1]) | (f[1:] >= f[:-1]))):
+            rows = rows[np.lexsort((self.ids[rows], f, h))]
+            h = self.hole_ids[rows]
+        cut = np.flatnonzero(h[1:] != h[:-1]) + 1
+        holes = h[np.concatenate(([0], cut))] if len(h) else np.zeros(0, dtype=np.int64)
+        starts = np.concatenate(([0], cut, [len(h)])).astype(np.int64) if len(h) else np.zeros(1, dtype=np.int64)
+        self.by_hole = (rows, holes, starts)
+        return self.by_hole
 
     @property
     def rows(self) -> int:
@@ -322,27 +346,23 @@ def _from_parquet(
 ) -> Snapshot:
     import pyarrow.parquet as pq
 
-    t = pq.read_table(path)
-    data: dict[str, np.ndarray] = {}
-    for c in [*cols, ColumnInfo("from", "", "number"), ColumnInfo("to", "", "number")]:
-        if c.key == "hole" or c.key in data:
-            continue
-        if c.key not in t.column_names:
-            raise KeyError(c.key)  # the columns changed: build again
-        col = t.column(c.key)
-        # copies: arrays from Arrow are read-only, and edits patch the snapshot in place
-        data[c.key] = col.to_numpy().copy() if c.kind == "number" else np.array(col.to_pylist(), dtype=object)
-    return Snapshot(
-        table,
-        set_id,
-        kind,
-        key,
-        cols,
-        t.column("__id").to_numpy().copy(),
-        t.column("__hole").to_numpy().copy(),
-        data,
-        names,
-    )
+    with pq.ParquetFile(path) as f:  # closed at once: Windows keeps an open file from being replaced
+        present = set(f.schema_arrow.names)
+
+        def read(name: str, number: bool) -> np.ndarray:
+            # one column at a time (5 M rows: the peak is one Arrow column, not the table); copies — arrays
+            # from Arrow are read-only, and edits patch the snapshot in place
+            col = f.read(columns=[name]).column(0)
+            return col.to_numpy().copy() if number else col.to_numpy(zero_copy_only=False).astype(object, copy=False)
+
+        data: dict[str, np.ndarray] = {}
+        for c in [*cols, ColumnInfo("from", "", "number"), ColumnInfo("to", "", "number")]:
+            if c.key == "hole" or c.key in data:
+                continue
+            if c.key not in present:
+                raise KeyError(c.key)  # the columns changed: build again
+            data[c.key] = read(c.key, c.kind == "number")
+        return Snapshot(table, set_id, kind, key, cols, read("__id", True), read("__hole", True), data, names)
 
 
 # --- cache -----------------------------------------------------------------------------------------
@@ -391,6 +411,7 @@ class SnapshotCache:
         snap.key = new
         snap.orders.clear()
         snap.masks.clear()
+        snap.by_hole = None
         self._put(snap)
 
     def forget(self, set_id: int | None = None) -> None:

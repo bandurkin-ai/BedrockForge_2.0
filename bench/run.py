@@ -106,6 +106,7 @@ def run_profile(profile: str, repeat: int, only: list[str] | None) -> dict[str, 
             "peak_mb": round(max(peaks), 1) if peaks else None,
             "budget_s": spec["budget_s"],
             "budget_mb": spec["budget_mb"],
+            "limits": spec.get("limits", {}),
             "info": runs[-1]["info"],
         }
     return {"profile": profile, "python": sys.version.split()[0], "scenarios": results}
@@ -118,6 +119,11 @@ def check_budgets(report: dict[str, Any]) -> list[str]:
             errors.append(f"{name}: {r['seconds']:.3f} s > budget {r['budget_s']} s")
         if r["peak_mb"] is not None and r["peak_mb"] > r["budget_mb"]:
             errors.append(f"{name}: {r['peak_mb']:.0f} MB > budget {r['budget_mb']} MB")
+        # stages of one scenario with their own budgets: "limits" {info key: max} (seconds, MB of answers)
+        for key, limit in r.get("limits", {}).items():
+            value = r.get("info", {}).get(key)
+            if value is None or value > limit:
+                errors.append(f"{name}: {key} = {value} > budget {limit}")
     return errors
 
 
