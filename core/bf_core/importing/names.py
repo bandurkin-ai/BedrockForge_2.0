@@ -19,9 +19,31 @@ import re
 
 # Units and words that only say how a value is measured: "Depth_m", "Dip_deg", "Au_ppm", "X (м)".
 _UNIT_WORDS = {
-    "M", "METRE", "METRES", "METER", "METERS", "МЕТР", "МЕТРЫ", "М", "FT", "FEET",
-    "DEG", "DEGREE", "DEGREES", "ГРАД", "ГРАДУС", "ГРАДУСЫ",
-    "PCT", "PERCENT", "PPM", "PPB", "GT", "G_T", "GPT", "OZT", "ПРОЦ",
+    "M",
+    "METRE",
+    "METRES",
+    "METER",
+    "METERS",
+    "МЕТР",
+    "МЕТРЫ",
+    "М",
+    "FT",
+    "FEET",
+    "DEG",
+    "DEGREE",
+    "DEGREES",
+    "ГРАД",
+    "ГРАДУС",
+    "ГРАДУСЫ",
+    "PCT",
+    "PERCENT",
+    "PPM",
+    "PPB",
+    "GT",
+    "G_T",
+    "GPT",
+    "OZT",
+    "ПРОЦ",
 }
 _SPLIT = re.compile(r"[^0-9A-ZА-ЯЁ№]+")
 _UNIT_TAIL = re.compile(r"[,(\[].*$")
@@ -43,7 +65,7 @@ def compact(name: str) -> str:
     return canon(name).replace("_", "")
 
 
-def match_column(columns: list[str], aliases: tuple[str, ...] | list[str], used: set[str] = frozenset()) -> str | None:
+def match_column(columns: list[str], aliases: tuple[str, ...] | list[str], used: set[str] | frozenset[str] = frozenset()) -> str | None:
     """The column for the first alias found (aliases in priority order), or None."""
     free = [c for c in columns if c not in used]
     by_canon: dict[str, str] = {}
