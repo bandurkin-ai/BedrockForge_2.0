@@ -45,3 +45,12 @@ def create_or_open(svc: ProjectService) -> tuple[Project, bool]:
         with dialect.write_tx(project.engine) as conn:
             part(conn, store, rng)
     return project, True
+
+
+def _register() -> None:
+    from .drillholes import add_drillholes
+
+    PARTS.append(("drillholes", add_drillholes))
+
+
+_register()
