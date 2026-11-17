@@ -255,3 +255,21 @@ def test_hole_types() -> None:
     assert hole_type({"TYPE": "канава"})["key"] == "trench"
     assert hole_type({"Тип": "Траншея"})["key"] == "trench"
     assert hole_type(None)["key"] == "hole" and hole_type({"status": "бур"})["key"] == "hole"
+
+
+def test_conditions_on_missing_values_stay_missing_in_computed_fields() -> None:
+    from bf_core.drillholes.expr import ExprError, evaluate_value
+
+    cols = {"AU": ("number", np.array([1.0, np.nan, 3.0]))}
+
+    def res(name: str):  # type: ignore[no-untyped-def]
+        return cols[name.upper()]
+
+    _k, v = evaluate_value("AU > 2", res, 3)
+    assert v[0] == 0.0 and np.isnan(v[1]) and v[2] == 1.0
+    _k, v = evaluate_value("isnull(AU) or AU > 2", res, 3)
+    assert v.tolist() == [0.0, 1.0, 1.0]
+    _k, v = evaluate_value("AU > 2 and AU < 5", res, 3)
+    assert v[0] == 0.0 and np.isnan(v[1]) and v[2] == 1.0
+    with pytest.raises(ExprError):
+        evaluate_value("AU > " + "9" * 400, res, 3)

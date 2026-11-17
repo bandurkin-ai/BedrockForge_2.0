@@ -87,8 +87,10 @@ def _prepare(text: str) -> tuple[str, dict[str, str]]:
 class _Value:
     """A column-length result: numbers (float64, NaN missing), text (object, None missing) or bool."""
 
-    def __init__(self, kind: str, values: Any) -> None:
+    def __init__(self, kind: str, values: Any, missing: Any = None) -> None:
         self.kind, self.values = kind, values
+        #: conditions: rows where an operand was missing — a computed field gets «missing» there, not 0
+        self.missing = missing
 
 
 def compile_expr(text: str, resolve: Resolve, n: int) -> _Value:
@@ -118,7 +120,10 @@ def compile_expr(text: str, resolve: Resolve, n: int) -> _Value:
         if isinstance(value, bool):
             return _Value("bool", np.full(n, value))
         if isinstance(value, int | float):
-            return _Value("number", np.full(n, float(value)))
+            try:
+                return _Value("number", np.full(n, float(value)))
+            except OverflowError:
+                raise ExprError("Слишком большое число в выражении.") from None
         if isinstance(value, str):
             return _Value("text", np.full(n, value, dtype=object))
         raise ExprError("Недопустимое значение в выражении.")
@@ -170,17 +175,24 @@ def compile_expr(text: str, resolve: Resolve, n: int) -> _Value:
         if isinstance(node, ast.UnaryOp):
             v = ev(node.operand)
             if isinstance(node.op, ast.Not):
-                return _Value("bool", ~boolean(v))
+                return _Value("bool", ~boolean(v), v.missing)
             if isinstance(node.op, ast.USub):
                 return _Value("number", -num(v))
             if isinstance(node.op, ast.UAdd):
                 return _Value("number", num(v))
         if isinstance(node, ast.BoolOp):
-            masks = [boolean(ev(x)) for x in node.values]
+            parts = [ev(x) for x in node.values]
+            masks = [boolean(p) for p in parts]
             acc = masks[0]
             for m in masks[1:]:
                 acc = (acc & m) if isinstance(node.op, ast.And) else (acc | m)
-            return _Value("bool", acc)
+            # Kleene logic: «or» with a true operand is true, «and» with a false one is false, else missing
+            known = [p.missing if p.missing is not None else np.zeros(n, dtype=bool) for p in parts]
+            if isinstance(node.op, ast.Or):
+                decided = np.any([m & ~k for m, k in zip(masks, known, strict=True)], axis=0)
+            else:
+                decided = np.any([~m & ~k for m, k in zip(masks, known, strict=True)], axis=0)
+            return _Value("bool", acc, _any_missing(parts, n) & ~decided)
         if isinstance(node, ast.BinOp):
             a, b = ev(node.left), ev(node.right)
             if isinstance(node.op, ast.Add) and (a.kind == "text" or b.kind == "text"):
@@ -208,11 +220,13 @@ def compile_expr(text: str, resolve: Resolve, n: int) -> _Value:
         if isinstance(node, ast.Compare):
             left = ev(node.left)
             acc = np.ones(n, dtype=bool)
+            miss = np.zeros(n, dtype=bool)
             for op, right_node in zip(node.ops, node.comparators, strict=True):
                 right = ev(right_node)
                 acc &= compare(op, left, right)
+                miss |= _absent(left) | _absent(right)
                 left = right
-            return _Value("bool", acc)
+            return _Value("bool", acc, miss)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and not node.keywords:
             name = node.func.id.lower()
             args = [ev(a) for a in node.args]
@@ -298,5 +312,24 @@ def evaluate_value(text: str, resolve: Resolve, n: int) -> tuple[str, np.ndarray
     """A computed field: ("number", float64) or ("text", object); conditions become 1/0."""
     v = compile_expr(text, resolve, n)
     if v.kind == "bool":
-        return "number", v.values.astype(float)
+        out = v.values.astype(float)
+        if v.missing is not None:
+            out[v.missing] = np.nan  # a condition on a missing value is missing, never 0 (ТЗ 17)
+        return "number", out
     return v.kind, v.values
+
+
+def _absent(v: _Value) -> np.ndarray:
+    if v.kind == "number":
+        return np.isnan(v.values)  # type: ignore[no-any-return]
+    if v.kind == "text":
+        return np.array([x is None for x in v.values], dtype=bool)
+    return v.missing if v.missing is not None else np.zeros(len(v.values), dtype=bool)  # type: ignore[no-any-return]
+
+
+def _any_missing(parts: list[_Value], n: int) -> np.ndarray:
+    out = np.zeros(n, dtype=bool)
+    for p in parts:
+        if p.missing is not None:
+            out |= p.missing
+    return out

@@ -299,6 +299,7 @@ def delete_set(svc: Svc, request: Request, set_id: int) -> dict[str, Any]:
             sa.select(dh_tables.c.id).where(dh_tables.c.set_id == set_id, dh_tables.c.state == "building")
         ).first():
             raise ApiError(409, "set_busy", "В набор сейчас идёт импорт.", "Дождитесь окончания или отмените задание.")
+        table_ids = list(conn.execute(sa.select(dh_tables.c.id).where(dh_tables.c.set_id == set_id)).scalars())
         drop_import_owners(conn, [set_id])
         from bf_core.db.schema import blob_owners
 
@@ -306,9 +307,10 @@ def delete_set(svc: Svc, request: Request, set_id: int) -> dict[str, Any]:
             sa.delete(blob_owners).where(blob_owners.c.owner_kind == "object", blob_owners.c.owner_id == set_id)
         )
         conn.execute(sa.delete(objects).where(objects.c.id == set_id))
-    from .snapshot import snapshots
+    from .snapshot import drop_cache_files, snapshots
 
     snapshots.forget(set_id)
+    drop_cache_files(project.folder / "cache" / "tables", table_ids)
     request.app.state.core.events.publish("objects.changed", {"kind": "drillhole_set", "id": set_id, "deleted": True})
     return {"deleted": set_id}
 

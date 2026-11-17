@@ -55,8 +55,13 @@ FIELD_KEYS = {
 }
 
 
+PORTION = 50_000
+
+
 def _memory(params: dict[str, Any]) -> int:
-    return 1024
+    """The snapshot of the table (≈ 0,3 KB a row with text) plus a portion being written."""
+    rows = int(params.get("rows") or 0)
+    return max(512, int(rows * 300 / 2**20) + 256)
 
 
 def _source(conn: sa.Connection, set_id: int, kind: str, name: str) -> dict[str, Any] | None:
@@ -152,16 +157,14 @@ def _cell_text(v: Any, kind: str, decimal: str) -> str:
 def _write_csv(
     path: Path, columns: list[Any], n: int, delimiter: str, decimal: str, encoding: str, ctx: JobContext
 ) -> None:
-    lists = [c.to_pylist() for c in columns]
     with path.open("w", encoding=encoding, newline="") as fh:
         w = csv.writer(fh, delimiter=delimiter)
         w.writerow([c.name for c in columns])
-        for start in range(0, n, 50_000):
+        for start in range(0, n, PORTION):
             ctx.tick(start / max(n, 1), f"Строк записано: {start:,}".replace(",", " "))
-            w.writerows(
-                [_cell_text(lists[j][i], columns[j].kind, decimal) for j in range(len(columns))]
-                for i in range(start, min(n, start + 50_000))
-            )
+            stop = min(n, start + PORTION)
+            parts = [[_cell_text(v, c.kind, decimal) for v in _portion(c, start, stop)] for c in columns]
+            w.writerows(zip(*parts, strict=True))
 
 
 def _write_xlsx(path: Path, columns: list[Any], n: int, ctx: JobContext) -> None:
@@ -176,14 +179,20 @@ def _write_xlsx(path: Path, columns: list[Any], n: int, ctx: JobContext) -> None
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet("Таблица")
     ws.append([c.name for c in columns])
-    lists = [c.to_pylist() for c in columns]
-    for i in range(n):
-        if i % 20_000 == 0:
-            ctx.tick(i / max(n, 1), f"Строк записано: {i:,}".replace(",", " "))
-        ws.append(
-            [None if (v is None or (isinstance(v, float) and math.isnan(v))) else v for v in (lst[i] for lst in lists)]
-        )
+    for start in range(0, n, PORTION):
+        ctx.tick(start / max(n, 1), f"Строк записано: {start:,}".replace(",", " "))
+        stop = min(n, start + PORTION)
+        parts = [_portion(c, start, stop) for c in columns]
+        for row in zip(*parts, strict=True):
+            ws.append([None if (v is None or (isinstance(v, float) and math.isnan(v))) else v for v in row])
     wb.save(path)
+
+
+def _portion(col: Any, start: int, stop: int) -> list[Any]:
+    """Values of rows start…stop of a column (numbers as floats, text as str/None) — a portion, not the whole."""
+    if col.kind == "number":
+        return col.values[start:stop].tolist()  # type: ignore[no-any-return]
+    return col.values.slice(start, stop - start).to_pylist()  # type: ignore[no-any-return]
 
 
 @handler("export.table", "Экспорт таблицы", queue="heavy", estimate_memory=_memory)
@@ -248,6 +257,13 @@ def export_table(ctx: JobContext) -> dict[str, Any]:
         else:
             _write_xlsx(part, columns, n, ctx)
         os.replace(part, target)
+    except (LookupError, UnicodeEncodeError) as exc:
+        part.unlink(missing_ok=True)
+        raise JobError(
+            "encoding",
+            f"Значения не записываются в кодировке «{p.get('encoding') or 'utf-8-sig'}».",
+            "Выберите кодировку UTF-8.",
+        ) from exc
     except OSError as exc:
         part.unlink(missing_ok=True)
         raise JobError(

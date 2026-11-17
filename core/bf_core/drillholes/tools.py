@@ -59,6 +59,10 @@ def set_column(conn: sa.Connection, t: e.Target, snap: Snapshot, key: str, idx: 
             else:
                 conn.execute(sa.update(tbl).where(tbl.c.id == row_id).values({key: v}))
         return
+    if key == "from" and t.kind == "event":  # an event has one depth: «до» follows «от»
+        rows_ft = [(v, v, i) for v, i in zip(values, ids.tolist(), strict=True)]
+        dialect.bulk_update(conn, dh_rows, ["from_m", "to_m"], "id", rows_ft)
+        return
     if key in ("from", "to"):
         dialect.bulk_update(
             conn, dh_rows, [f"{key}_m"], "id", [(v, i) for v, i in zip(values, ids.tolist(), strict=True)]
@@ -392,7 +396,7 @@ def merge_by_key(
     lookup: dict[tuple[Any, ...], int] = {}
     dup = 0
     for i, kv in enumerate(keys_of(src)):
-        if src.alive[i]:
+        if src.alive[i] and None not in kv:  # rows with an empty key field match nothing
             if kv in lookup:
                 dup += 1
             lookup.setdefault(kv, i)
@@ -401,7 +405,9 @@ def merge_by_key(
             422, "key_not_unique", f"Ключ повторяется в исходной таблице: {dup} строк.", "Добавьте поля в ключ."
         )
     own = keys_of(snap)
-    idx = np.array([i for i in range(len(snap.ids)) if snap.alive[i] and own[i] in lookup], dtype=np.int64)
+    idx = np.array(
+        [i for i in range(len(snap.ids)) if snap.alive[i] and None not in own[i] and own[i] in lookup], dtype=np.int64
+    )
     group = e.new_group(conn)
     added = []
     for ck in columns:
@@ -494,6 +500,11 @@ def check_codes(conn: sa.Connection, t: e.Target, snap: Snapshot, column: str) -
     bad = sorted(counts.items(), key=lambda kv: -kv[1])
     codes = "; ".join(json.dumps(it["code"], ensure_ascii=False) for it in items)
     where = f"notnull([{col.name}]) и не inlist([{col.name}]; {codes})" if items else None
+    # the expression language has no escapes: codes with quotes or a very long list get no ready filter
+    if where and (
+        any('"' in str(it["code"]) or "'" in str(it["code"]) for it in items) or "]" in col.name or len(where) > 2000
+    ):
+        where = None
     return {
         "list": name,
         "bad": [{"value": v, "count": c} for v, c in bad],

@@ -61,11 +61,20 @@ def _order(snap: Snapshot, key: str, desc: bool) -> np.ndarray:
 
 
 def mask(snap: Snapshot, hole: int | None = None, where: str | None = None) -> np.ndarray:
+    """Rows shown (alive, hole, filter); cached per snapshot — turning pages does not evaluate the filter again.
+    The result is shared: callers must not change it."""
+    key = (hole, where or "")
+    hit = snap.masks.get(key)
+    if hit is not None:
+        return hit
     m = snap.alive.copy()
     if hole is not None:
         m &= snap.hole_ids == hole
     if where:
         m &= evaluate_filter(where, resolver(snap), len(snap.ids))
+    if len(snap.masks) > 8:
+        snap.masks.clear()
+    snap.masks[key] = m
     return m
 
 

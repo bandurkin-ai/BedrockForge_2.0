@@ -53,8 +53,14 @@ def _patch(changes: list[e.Change], names: dict[int, str]) -> Any:
 def _finish(
     project: Any, t: e.Target, old_rev: int, new_rev: int, changes: list[e.Change], names: dict[int, str]
 ) -> None:
-    old = (project.uid, t.set_id, t.table, old_rev)
-    new = (project.uid, t.set_id, t.table, new_rev)
+    with dialect.read_tx(project.engine) as conn:
+        key = table_key(conn, project.uid, t.set_id, t.table)
+    if key is None:
+        snapshots.forget(t.set_id)
+        return
+    new = (*key[:-1], new_rev)
+    old = (*key[:-1], old_rev)
+    names = {**names, **{c.hole_id: c.hole for c in changes if c.hole_id is not None and c.hole}}
     if any(k.startswith("a:") for c in changes for k in c.changes) and t.table in ("collar", "survey"):
         snapshots.forget(t.set_id)  # a new free column: its kind and order come from a fresh build
     else:
@@ -177,12 +183,12 @@ def history(project: Any, set_id: int, *, table: str | None = None, limit: int =
     """The journal of a set, newest first (ТЗ 7.10 «Журнал правок»)."""
     with dialect.read_tx(project.engine) as conn:
         q = sa.select(edit_log).where(edit_log.c.scope_kind == "object", edit_log.c.scope_id == set_id)
+        if table is not None:  # in SQL, before the limit
+            q = q.where(dialect.json_text(edit_log.c.row_ref, "table") == table)
         rows = conn.execute(q.order_by(edit_log.c.id.desc()).limit(max(1, min(limit, 1000)))).mappings().all()
     out = []
     for r in rows:
         ref = r["row_ref"] or {}
-        if table is not None and str(ref.get("table")) != table:
-            continue
         out.append(
             {
                 "id": r["id"],
@@ -255,6 +261,15 @@ def undo(project: Any, edit_id: int) -> dict[str, Any]:
                         409, "row_gone", "Строку этой правки удалили позже.", "Сначала отмените удаление строки."
                     )
                 vals, hole_id, hole = found
+                for k, (_b, after) in changes.items():  # changed since? — the undo would overwrite a later edit
+                    now = hole if k == "hole" else vals.get(k)
+                    if not _same(now, after):
+                        raise ApiError(
+                            409,
+                            "edit_conflict",
+                            f"Значение уже изменено позже ({hole}: «{_shown(now)}» вместо «{_shown(after)}»).",
+                            "Сначала отмените более поздние правки этой строки.",
+                        )
                 if "hole" in changes:
                     before = changes["hole"][0]
                     if t.table == "collar":
@@ -271,7 +286,11 @@ def undo(project: Any, edit_id: int) -> dict[str, Any]:
                     e.Change("update", row_id, vals["hole"], hole_id, {k: [v[1], v[0]] for k, v in changes.items()})
                 )
         _prune(conn, set_id)
-        conn.execute(sa.update(edit_log).where(edit_log.c.id.in_([g["id"] for g in group])).values(undone=True))
+        conn.execute(  # by the group, not an IN list: a replace over millions of rows is one group
+            sa.update(edit_log)
+            .where(edit_log.c.group_id == rec["group_id"], edit_log.c.undone.is_(False))
+            .values(undone=True)
+        )
         new_rev = e.bump(conn, t, None, rows_delta=delta)
     if t.table == "collar" or any(g["action"] in ("column", "append") for g in group):
         snapshots.forget(set_id)
@@ -338,3 +357,15 @@ def _undo_structure(
         conn.execute(sa.update(dh_columns).where(dh_columns.c.id == col_id).values(deleted=True))
     else:
         conn.execute(sa.update(dh_columns).where(dh_columns.c.id == col_id).values(deleted=False))
+
+
+def _same(a: Any, b: Any) -> bool:
+    if a is None or b is None:
+        return (a in (None, "")) and (b in (None, ""))
+    if isinstance(a, int | float) and isinstance(b, int | float):
+        return abs(float(a) - float(b)) <= 1e-12 * max(1.0, abs(float(b)))
+    return str(a) == str(b)
+
+
+def _shown(v: Any) -> str:
+    return "пусто" if v in (None, "") else str(v)

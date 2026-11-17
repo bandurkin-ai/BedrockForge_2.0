@@ -85,6 +85,7 @@ class Snapshot:
     hole_names: dict[int, str]
     alive: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool))
     orders: dict[tuple[str, bool], np.ndarray] = field(default_factory=dict)  # cached sort orders
+    masks: dict[tuple[Any, str], np.ndarray] = field(default_factory=dict)  # cached filters (hole, expression)
 
     def __post_init__(self) -> None:
         if len(self.alive) != len(self.ids):
@@ -123,21 +124,36 @@ class Snapshot:
 # --- building ------------------------------------------------------------------------------------
 
 
+def _token(created: Any) -> str:
+    """Identity of a table besides its id: SQLite gives a freed id again (no AUTOINCREMENT), so a table made
+    after a deletion may carry the old id and rev 1 — its creation time tells them apart (cache, Parquet)."""
+    return "0" if created is None else f"{int(created.timestamp() * 1_000_000):x}"
+
+
 def table_key(conn: sa.Connection, uid: str, set_id: int, table: str) -> tuple[Any, ...] | None:
-    """The current key of a table (None — no such table in the set)."""
+    """The current key of a table: (uid, set id, table, identity token, revision); None — no such table."""
     if table in ("collar", "survey"):
-        v = conn.execute(
-            sa.select(objects.c.version).where(objects.c.id == set_id, objects.c.kind == "drillhole_set")
-        ).scalar()
-        return None if v is None else (uid, set_id, table, int(v))
+        r = conn.execute(
+            sa.select(objects.c.version, objects.c.created_at).where(
+                objects.c.id == set_id, objects.c.kind == "drillhole_set"
+            )
+        ).first()
+        return None if r is None else (uid, set_id, table, _token(r.created_at), int(r.version))
     if not table.isdigit():
         return None
     row = conn.execute(
-        sa.select(dh_tables.c.rev).where(
+        sa.select(dh_tables.c.rev, dh_tables.c.created_at).where(
             dh_tables.c.id == int(table), dh_tables.c.set_id == set_id, dh_tables.c.state == "ready"
         )
     ).first()
-    return None if row is None else (uid, set_id, table, int(row.rev))
+    return None if row is None else (uid, set_id, table, _token(row.created_at), int(row.rev))
+
+
+def drop_cache_files(cache_dir: Path, table_ids: list[int]) -> None:
+    """Parquet snapshots of deleted tables (a deleted set, a replaced table)."""
+    for tid in table_ids:
+        for f in cache_dir.glob(f"{tid}-*.parquet"):
+            f.unlink(missing_ok=True)
 
 
 def _hole_names(conn: sa.Connection, set_id: int) -> dict[int, str]:
@@ -236,7 +252,7 @@ def build_rows(
     kind = conn.execute(sa.select(dh_tables.c.kind).where(dh_tables.c.id == table_id)).scalar_one()
     cols = table_columns(conn, table_id, kind)
     names = _hole_names(conn, set_id)
-    path = cache_dir / f"{table_id}-{key[-1]}.parquet" if cache_dir else None
+    path = cache_dir / f"{table_id}-{key[-2]}-{key[-1]}.parquet" if cache_dir and len(key) >= 2 else None
     if path is not None and path.is_file():
         try:
             return _from_parquet(path, str(table_id), set_id, kind, key, cols, names)
@@ -314,9 +330,18 @@ def _from_parquet(
         if c.key not in t.column_names:
             raise KeyError(c.key)  # the columns changed: build again
         col = t.column(c.key)
-        data[c.key] = col.to_numpy() if c.kind == "number" else np.array(col.to_pylist(), dtype=object)
+        # copies: arrays from Arrow are read-only, and edits patch the snapshot in place
+        data[c.key] = col.to_numpy().copy() if c.kind == "number" else np.array(col.to_pylist(), dtype=object)
     return Snapshot(
-        table, set_id, kind, key, cols, t.column("__id").to_numpy(), t.column("__hole").to_numpy(), data, names
+        table,
+        set_id,
+        kind,
+        key,
+        cols,
+        t.column("__id").to_numpy().copy(),
+        t.column("__hole").to_numpy().copy(),
+        data,
+        names,
     )
 
 
@@ -365,6 +390,7 @@ class SnapshotCache:
         patch(snap)
         snap.key = new
         snap.orders.clear()
+        snap.masks.clear()
         self._put(snap)
 
     def forget(self, set_id: int | None = None) -> None:

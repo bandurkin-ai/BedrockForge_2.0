@@ -242,7 +242,7 @@ class ExportBody(BaseModel):
     where: str | None = Field(default=None, max_length=2000)
     sort: str | None = None
     desc: bool = False
-    delimiter: str | None = Field(default=None, max_length=1)
+    delimiter: str | None = Field(default=None, min_length=1, max_length=1)
     decimal: str | None = Field(default=None, pattern="^[.,]$")
     encoding: str | None = Field(default=None, max_length=20)
 
@@ -256,11 +256,30 @@ def export_table(svc: Svc, request: Request, set_id: int, table: str, body: Expo
     from . import actions
 
     actions.current(project, set_id, table)  # 404 for an unknown table
+    if not Path(body.path).is_absolute():
+        raise ApiError(422, "path_not_absolute", "Путь к файлу должен быть полным.", "Выберите файл в окне сохранения.")
     folder = Path(body.path).parent
     if not folder.is_dir():
         raise ApiError(404, "folder_not_found", "Папка для файла не найдена.", "Выберите папку заново.")
-    params = {"set_id": set_id, "table": table, **body.model_dump()}
+    with dialect.read_tx(project.engine) as conn:
+        tabs_rows = _rows_of(conn, set_id, table)
+    params = {"set_id": set_id, "table": table, "rows": tabs_rows, **body.model_dump()}
     key, job_id = jobs_of(request.app.state.core).submit(
         "export.table", params, title=f"Экспорт таблицы ({body.format.upper()})"
     )
     return {"source": key, "id": job_id}
+
+
+def _rows_of(conn: Any, set_id: int, table: str) -> int:
+    """Rows of a table for the memory estimate of the export job."""
+    import sqlalchemy as sa
+
+    from bf_core.db.schema import dh_holes, dh_surveys, dh_tables
+
+    if table == "collar":
+        q = sa.select(sa.func.count()).select_from(dh_holes).where(dh_holes.c.set_id == set_id)
+    elif table == "survey":
+        q = sa.select(sa.func.count()).select_from(dh_surveys).where(dh_surveys.c.set_id == set_id)
+    else:
+        q = sa.select(dh_tables.c.row_count).where(dh_tables.c.id == int(table))
+    return int(conn.execute(q).scalar() or 0)

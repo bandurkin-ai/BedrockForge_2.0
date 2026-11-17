@@ -274,6 +274,14 @@ def write_row(conn: sa.Connection, t: Target, row_id: int | None, hole_id: int, 
     width = max([c.slot for c in t.columns if c.kind == "number" and c.slot is not None], default=-1) + 1
     nums: list[float | None] = [None] * width
     txt: dict[str, str] = {}
+    if row_id is not None:  # slots of deleted columns keep their values (undo of the deletion brings them back)
+        cur = conn.execute(sa.select(dh_rows.c.num, dh_rows.c.txt).where(dh_rows.c.id == row_id)).first()
+        if cur is not None:
+            if cur.num:
+                old = [None if math.isnan(v) else v for v in unpack(cur.num, len(cur.num) // 8)]
+                nums = old + [None] * max(0, width - len(old))
+            old_txt = json.loads(cur.txt) if isinstance(cur.txt, str) else dict(cur.txt or {})
+            txt = {str(k): str(v) for k, v in old_txt.items()}
     for c in t.columns:
         if c.slot is None:
             continue
@@ -282,6 +290,8 @@ def write_row(conn: sa.Connection, t: Target, row_id: int | None, hole_id: int, 
             nums[c.slot] = v
         elif v not in (None, ""):
             txt[str(c.slot)] = v
+        else:
+            txt.pop(str(c.slot), None)
     values = {
         "hole_id": hole_id,
         "from_m": vals.get("from"),

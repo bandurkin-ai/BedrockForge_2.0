@@ -192,10 +192,16 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
             conn.execute(sa.update(objects).where(objects.c.id == set_id).values(state="ready", job_id=None))
         elif p.get("crs"):
             conn.execute(sa.update(objects).where(objects.c.id == set_id).values(crs=p["crs"]))
-        conn.execute(sa.update(objects).where(objects.c.id == set_id).values(updated_at=dialect.utcnow()))
+        # a new version: snapshots of collars and surveys and the trajectories are built again (ТЗ 7.10, 7.11)
+        conn.execute(
+            sa.update(objects)
+            .where(objects.c.id == set_id)
+            .values(updated_at=dialect.utcnow(), version=objects.c.version + 1)
+        )
 
     # Committed: from here on nothing may fail the job or ask to cancel it (the data is in the project).
     _store_sources(ctx, engine, logs)
+    _drop_stale_snapshots(ctx, engine)
     return result
 
 
@@ -260,3 +266,19 @@ def _store_sources(ctx: JobContext, engine: sa.Engine, logs: list[tuple[int, str
                 conn.execute(sa.update(import_log).where(import_log.c.id == log_id).values(sha256=sha))
         except Exception as exc:  # noqa: BLE001 - the import is done; the copy is best effort
             ctx.log(f"{label}: исходный файл не сохранён в проекте ({exc})", "warn")
+
+
+def _drop_stale_snapshots(ctx: JobContext, engine: sa.Engine) -> None:
+    """Parquet snapshots of tables this import replaced (cache/tables/<id>-…): they are never read again."""
+    from bf_core.db.schema import dh_tables
+
+    if not ctx.project_folder:
+        return
+    folder = ctx.project_folder / "cache" / "tables"
+    if not folder.is_dir():
+        return
+    with dialect.read_tx(engine) as conn:
+        alive = {str(i) for i in conn.execute(sa.select(dh_tables.c.id)).scalars()}
+    for f in folder.glob("*.parquet"):
+        if f.name.split("-", 1)[0] not in alive:
+            f.unlink(missing_ok=True)
