@@ -30,6 +30,7 @@ export interface CoreOptions {
   logFile: string;
   readyTimeoutMs?: number;
   healthIntervalMs?: number;
+  healthTimeoutMs?: number;
 }
 
 function httpJson(port: number, token: string, method: string, pathname: string, timeoutMs = 3000): Promise<{ status: number; body: unknown }> {
@@ -157,28 +158,42 @@ export class CoreProcess extends EventEmitter {
     return this.info;
   }
 
-  /** ADR 0002: 3 missed /health in a row → the core is restarted. */
+  /**
+   * ADR 0002: 3 missed /health in a row → the core is restarted. A single miss (a busy moment of the
+   * machine) is only logged: the «Ядро недоступно» screen appears when the core is really gone
+   * (its exit, or the restart after the third miss). One check at a time: a slow answer is not
+   * overlapped by the next tick.
+   */
   private startWatchdog(child: ChildProcess): void {
     this.stopWatchdog();
     this.misses = 0;
+    let busy = false;
     this.watchdog = setInterval(async () => {
       const info = this.info;
-      if (!info || this.child !== child) return;
-      let ok = false;
+      if (busy || !info || this.child !== child) return;
+      busy = true;
+      const t0 = Date.now();
+      let why = "";
       try {
-        ok = (await httpJson(info.port, info.token, "GET", "/api/v1/health", 3000)).status === 200;
-      } catch {
-        ok = false;
+        const r = await httpJson(info.port, info.token, "GET", "/api/v1/health", this.opts.healthTimeoutMs ?? 5000);
+        if (r.status !== 200) why = `status ${r.status}`;
+      } catch (e) {
+        why = e instanceof Error ? e.message : String(e);
+      } finally {
+        busy = false;
       }
-      if (ok) {
-        if (this.misses) this.emit("state", "online");
+      if (this.child !== child) return;
+      if (!why) {
+        if (this.misses) this.log(`health back after ${this.misses} miss(es), ${Date.now() - t0} ms`);
         this.misses = 0;
         return;
       }
       this.misses++;
-      this.emit("state", "offline");
-      this.log(`health missed (${this.misses})`);
-      if (this.misses >= 3) this.killTree(child);
+      this.log(`health missed (${this.misses}): ${why}, ${Date.now() - t0} ms`);
+      if (this.misses >= 3) {
+        this.emit("state", "offline");
+        this.killTree(child);
+      }
     }, this.opts.healthIntervalMs ?? 5000);
   }
 

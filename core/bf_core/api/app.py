@@ -63,7 +63,7 @@ def create_app(state: CoreState, extra_origins: tuple[str, ...] = ()) -> FastAPI
     base = APIRouter(prefix=API_PREFIX)
 
     @base.get("/health")
-    def health() -> dict[str, str]:
+    async def health() -> dict[str, str]:  # on the event loop: no wait for a free thread of the pool
         return {"status": "ok", "version": bf_core.__version__, "mode": state.mode}
 
     @base.post("/shutdown")
