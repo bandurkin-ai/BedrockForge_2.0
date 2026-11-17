@@ -334,7 +334,22 @@ def test_kernel_character_classes_agree_with_unicode() -> None:
             assert mine == low or (not (set(low) & marker_chars) and mine not in marker_chars), hex(c)
 
 
-def test_mixed_cells_of_a_spreadsheet() -> None:
-    values, kinds = classify([1, 2.5, None, "3,5", True, float("nan"), "<1", "н/д", 2**60, "x"])
+@pytest.mark.parametrize("kernel", [False, True])
+def test_mixed_cells_of_a_spreadsheet(monkeypatch: pytest.MonkeyPatch, kernel: bool) -> None:
+    monkeypatch.setattr(numbers, "KERNEL_MIN", 1 if kernel else 10**9)
+    monkeypatch.setattr(numbers, "_kernel_loaded", kernel)
+    cells = [1, 2.5, None, "3,5", True, float("nan"), "<1", "н/д", 2**60, "x"]
+    values, kinds = classify(cells)
     assert kinds.tolist() == [NUMBER, NUMBER, EMPTY, NUMBER, BAD, EMPTY, BELOW, MARKER, IDLIKE, BAD]
     assert values[:2].tolist() == [1.0, 2.5] and values[3] == 3.5 and values[6] == 0.5
+    with_none = ["1,5", None, "x", "", "н/д"] * 3
+    assert classify(with_none)[1].tolist() == [NUMBER, EMPTY, BAD, EMPTY, MARKER] * 3
+
+
+def test_cells_the_kernel_cannot_take_go_to_the_reference(monkeypatch: pytest.MonkeyPatch) -> None:
+    cells = ["1", "a" + chr(0) + "b", chr(0), "2" + chr(0), chr(0xD800) + "5", "7", ""]  # NUL inside, a lone surrogate
+    expected = numbers.classify_reference(cells)
+    monkeypatch.setattr(numbers, "KERNEL_MIN", 1)
+    values, kinds = classify(cells)
+    assert kinds.tolist() == expected[1].tolist() == [NUMBER, BAD, BAD, BAD, BAD, NUMBER, EMPTY]
+    assert values[[0, 5]].tolist() == [1.0, 7.0]

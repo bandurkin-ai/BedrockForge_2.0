@@ -161,7 +161,7 @@ def load_kernel() -> None:
         _kernel_loaded = True
 
 
-def _kernel(strings: Sequence[str], no_nul: bool = False) -> tuple[np.ndarray, np.ndarray]:
+def _kernel(strings: Sequence[str]) -> tuple[np.ndarray, np.ndarray]:
     """The numba kernel on a column of strings; what it cannot decide exactly is left to the reference."""
     import numpy as np
 
@@ -178,7 +178,7 @@ def _kernel(strings: Sequence[str], no_nul: bool = False) -> tuple[np.ndarray, n
         slow = [i for i, c in enumerate(strings) if "\x00" in c]
         skip = set(slow)
         clean = ["" if i in skip else c for i, c in enumerate(strings)]
-        values, kinds = _kernel(clean, no_nul=True)
+        values, kinds = _kernel(clean)
         for i in slow:
             values[i], kinds[i] = _classify_text(strings[i])
         return values, kinds

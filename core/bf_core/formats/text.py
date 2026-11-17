@@ -110,7 +110,7 @@ def detect_encoding(raw: bytes) -> str:
     return _sniff(iter([raw]))
 
 
-def _blocks(path: Path, limit: int | None = None) -> Iterator[bytes]:
+def _blocks(path: Path, limit: int | None, tick: Progress) -> Iterator[bytes]:
     done = 0
     with path.open("rb") as f:
         while block := f.read(BLOCK):
@@ -118,11 +118,13 @@ def _blocks(path: Path, limit: int | None = None) -> Iterator[bytes]:
             done += len(block)
             if limit is not None and done >= limit:
                 return
+            if done % (16 * BLOCK) == 0:
+                tick(0.0, "Определение кодировки")
 
 
-def sniff_encoding(path: str | Path, limit: int | None = None) -> str:
+def sniff_encoding(path: str | Path, limit: int | None = None, progress: Progress | None = None) -> str:
     """Encoding of a file; the whole file is examined unless `limit` bytes are enough (previews)."""
-    return _sniff(_blocks(Path(path), limit))
+    return _sniff(_blocks(Path(path), limit, progress or no_progress))
 
 
 def _split(line: str, delimiter: str) -> list[str]:
@@ -280,7 +282,7 @@ def read_text(path: str | Path, options: ReadOptions | None = None, progress: Pr
 
         numbers.load_kernel()  # a big file: every column goes through the numba kernel, however short the block
         tick(0.0, "Определение кодировки")
-    encoding = options.encoding or sniff_encoding(path)
+    encoding = options.encoding or sniff_encoding(path, progress=tick)
     skip = max(options.header_row - 1, 0)
     delimiter = options.delimiter or detect_delimiter(head_lines(path, encoding, skip + 200)[skip:])
     tick(0.02, "Чтение строк")
