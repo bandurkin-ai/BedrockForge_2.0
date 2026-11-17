@@ -2,6 +2,7 @@ import { useState, type DragEvent } from "react";
 import { useApp } from "./AppContext";
 import { openMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./Icon";
+import { SetsTree } from "../modules/tables/SetsTree";
 import { useStore } from "./useStore";
 import { moveSection, TREE_SECTIONS, type TreeSection } from "./workspace";
 import css from "./DataTree.module.css";
@@ -121,7 +122,7 @@ export function DataTree() {
                   </button>
                 )}
               </div>
-              {!isCollapsed && <div className={css.none}>Нет объектов</div>}
+              {!isCollapsed && (s === "holes" ? <SetsTree /> : <div className={css.none}>Нет объектов</div>)}
             </div>
           );
         })}

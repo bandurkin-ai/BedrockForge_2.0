@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../../shell/useStore";
-import { loadEdits, tablesStore, undoEdit, type EditRecord } from "./state";
+import { cellText, loadEdits, tablesStore, undoEdit, type EditRecord } from "./state";
 import css from "./Tables.module.css";
 
 const ACTIONS: Record<string, string> = { update: "Правка", insert: "Новая строка", delete: "Удаление", column: "Колонка", append: "Объединение" };
@@ -11,7 +11,7 @@ function describe(e: EditRecord, names: Record<string, string>): string {
     .filter(([k]) => k !== "kind" && k !== "expression")
     .map(([k, v]) => {
       const [before, after] = Array.isArray(v) ? v : [undefined, v];
-      const show = (x: unknown) => (x === null || x === undefined || x === "" ? "пусто" : String(x));
+      const show = (x: unknown) => (x === null || x === undefined || x === "" ? "пусто" : typeof x === "number" ? cellText(x, "number") : String(x));
       return e.action === "update" || e.action === "column" ? `${names[k] ?? k}: ${show(before)} → ${show(after)}` : `${names[k] ?? k} = ${show(e.action === "delete" ? before : after)}`;
     })
     .join("; ");

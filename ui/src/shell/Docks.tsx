@@ -1,5 +1,6 @@
 import { useApp } from "./AppContext";
 import { JobsPanel } from "../modules/jobs/JobsPanel";
+import { HoleCard } from "../modules/tables/HoleCard";
 import { TablePanel } from "../modules/tables/TablePanel";
 import { CommandLog } from "./CommandLog";
 import { Icon } from "./Icon";
@@ -53,7 +54,7 @@ export function RightDock() {
       </div>
       <div className={css.dockBody}>
         {tab === "properties" ? (
-          <div className={css.empty}>Выберите объект в дереве или в 3D — здесь появится его карточка.</div>
+          <HoleCard />
         ) : (
           <div className={css.empty}>Ассистент Claude появится на этапе Э23. Без интернета ассистент недоступен, остальное работает.</div>
         )}
