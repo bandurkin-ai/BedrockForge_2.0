@@ -46,6 +46,7 @@ __all__ = ["MAGIC", "DatHeader", "Field", "parse_header", "read_dat", "read_head
 
 MAX_RECORD = 16 << 20
 CHUNK_ROWS = 1 << 17
+CHUNK_BYTES = 8 << 20
 _HINT = "Откройте файл в Micromine и сохраните его заново или экспортируйте таблицу в CSV."
 
 
@@ -96,11 +97,12 @@ def read_dat(
     progress: Progress | None = None,
     *,
     encoding: str | None = None,
-    chunk_rows: int = CHUNK_ROWS,
+    chunk_rows: int | None = None,
     max_rows: int | None = None,
 ) -> TableRead:
     """Read a Micromine DAT/STR file. `encoding` overrides the code page of the header (a Python codec
-    name or "bocu-1"); `max_rows` reads only the first records (previews)."""
+    name or "bocu-1"); `max_rows` reads only the first records (previews); `chunk_rows` — records
+    converted at a time (by default about 8 МБ of the file, so that progress is reported often)."""
     import numpy as np
     import pyarrow as pa
 
@@ -122,6 +124,7 @@ def read_dat(
         )
     if max_rows is not None:
         rows = min(rows, max(0, max_rows))
+    step = max(1, chunk_rows) if chunk_rows else max(1024, min(CHUNK_ROWS, CHUNK_BYTES // record))
     names = header.names
     dtype = np.dtype(
         {
@@ -144,8 +147,8 @@ def read_dat(
 
     records: Any = np.memmap(path, dtype=dtype, mode="r", offset=header.data_offset, shape=(rows,)) if rows else None
     try:
-        for a in range(0, rows, max(1, chunk_rows)):
-            b = min(rows, a + max(1, chunk_rows))
+        for a in range(0, rows, step):
+            b = min(rows, a + step)
             tick(a / rows, f"Чтение записей: {_n(a)} из {_n(rows)}")
             block = np.array(records[a:b])  # one chunk of records in memory
             wrong = block["eol"] != b"\r\n"

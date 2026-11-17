@@ -278,9 +278,12 @@ def read_text(path: str | Path, options: ReadOptions | None = None, progress: Pr
         raise FormatError("empty_file", "Файл пуст.", _HINT_EMPTY)
     tick(0.0, "Определение кодировки")
     if size >= 2 * BLOCK:
-        from bf_core.formats import numbers
+        # A big file: every column goes through the numba kernel, however short the block. Loading numba
+        # and then the compiled kernel takes a few tenths of a second each: a tick after each.
+        from bf_core.formats import _numkernel, numbers  # noqa: F401
 
-        numbers.load_kernel()  # a big file: every column goes through the numba kernel, however short the block
+        tick(0.0, "Определение кодировки")
+        numbers.load_kernel()
         tick(0.0, "Определение кодировки")
     encoding = options.encoding or sniff_encoding(path, progress=tick)
     skip = max(options.header_row - 1, 0)

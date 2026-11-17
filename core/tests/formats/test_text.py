@@ -261,3 +261,44 @@ def test_progress_cancels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
         read_text(path, progress=cancel)
     assert 0.5 < calls[-1] < 0.6
     path.unlink()
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_hostile_random_text_reads_the_same_in_any_blocks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seed: int
+) -> None:
+    """Random cells — numbers in every notation, marks, quotes, ragged and blank lines — whole file with the
+    kernel against tiny blocks with the Python reference."""
+    rng = np.random.default_rng(seed)
+    plain = ["12,5", "1 000", "<0,01", ">5", "н/д", "-", "", " ", "abc", "007", "1e5", "0", "-3.25", "С-1"]
+    odd = ['"a;b"', 'x"y', "1.", ",5", "NA", "4 584 699,70", "1e999", "  7  ", "№5", '"q""q"', "12abc"]
+    pool = [*plain, *odd, "0.30000000000000004"]
+    lines = ["A;B;C;D;E;F"]
+    for _ in range(6000):
+        width = int(rng.choice([6, 6, 6, 6, 6, 6, 6, 5, 7, 0]))
+        lines.append(";".join(pool[int(i)] for i in rng.integers(0, len(pool), width)))
+    # Uniform stretches (the column-wise path) between the ragged ones.
+    for start in (500, 2500, 4500):
+        for k in range(start, start + 1200):
+            lines[k] = ";".join(plain[int(i)] for i in rng.integers(0, len(plain), 6))
+    path = _write(tmp_path, "h.csv", "\r\n".join(lines) + "\r\n", "cp1251")
+    monkeypatch.setattr(numbers, "KERNEL_MIN", 1)
+    monkeypatch.setattr(text, "BLOCK", 16_384)
+    by_columns: list[int] = []
+    add_columns = text.TableBuilder.add_columns
+    monkeypatch.setattr(
+        text.TableBuilder,
+        "add_columns",
+        lambda self, cols, rows, plain=False: by_columns.append(rows) or add_columns(self, cols, rows, plain),
+    )
+    fast = read_text(path)
+    assert sum(by_columns) > 500  # the column-wise path was taken for whole blocks
+    monkeypatch.setattr(numbers, "KERNEL_MIN", 10**9)
+    monkeypatch.setattr(numbers, "_kernel_loaded", False)
+    monkeypatch.setattr(text, "BLOCK", 999)
+    slow = read_text(path)
+    assert fast.names == slow.names and fast.rows == slow.rows > 5000
+    assert [c.kind for c in fast.columns] == [c.kind for c in slow.columns]
+    assert fast.to_arrow().equals(slow.to_arrow()) and fast.warnings == slow.warnings
+    for a, b in zip(fast.columns, slow.columns, strict=True):
+        assert (a.below_limit, a.above_limit) == (b.below_limit, b.above_limit)
