@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cellText, nextSort, PAGE, resolveTable, rowAt, type TabInfo, type TablesState } from "../src/modules/tables/state";
+import { cellText, editText, findRow, nextSort, PAGE, resolveTable, rowAt, type TabInfo, type TablesState } from "../src/modules/tables/state";
 
 describe("«Таблица» panel state (ТЗ 7.10)", () => {
   it("header click: ascending → descending → off; another column starts ascending", () => {
@@ -34,5 +34,15 @@ describe("«Таблица» panel state (ТЗ 7.10)", () => {
     expect(rowAt(s, 1)?.id).toBe(1);
     expect(rowAt(s, PAGE)?.id).toBe(PAGE);
     expect(rowAt(s, PAGE + 5)).toBeUndefined();
+  });
+
+  it("the editor gets full precision; rows are found by id after a reload", () => {
+    expect(editText(1.23456789, "number")).toBe("1,23456789");
+    expect(editText(3e-7, "number")).toBe("3e-7");
+    expect(cellText(3e-7, "number")).toBe("0"); // the cell shows 6 decimals, the editor keeps the value
+    expect(editText(null, "number")).toBe("");
+    const s = { pages: { 0: [{ id: 5, hole_id: 1, hole: "D1" }], [PAGE]: [{ id: 9, hole_id: 1, hole: "D1" }] } } as unknown as TablesState;
+    expect(findRow(s, 9)?.index).toBe(PAGE);
+    expect(findRow(s, 7)).toBeNull();
   });
 });

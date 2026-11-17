@@ -114,6 +114,7 @@ export function resolveTable(tabs: TabInfo[], kindOrId: string): string | null {
 }
 
 export async function openTable(table: string | null): Promise<void> {
+  generation += 1;
   tablesStore.set({ table, pages: {}, total: 0, columns: [], sort: null, desc: false, error: null });
   if (table !== null) await loadPage(0);
 }
@@ -129,6 +130,8 @@ function query(offset: number): string {
 }
 
 const inflight = new Set<string>();
+/** Grows on every reload: a page answered for an older generation is dropped (it may hold old values and rev). */
+let generation = 0;
 
 /** Loads the page holding row `offset` (pages of 200, cached until the sort, filter or data change). */
 export async function loadPage(offset: number): Promise<void> {
@@ -138,18 +141,20 @@ export async function loadPage(offset: number): Promise<void> {
   if (s.pages[start]) return;
   const q = query(start);
   const key = `${s.setId}:${s.table}:${q}`;
-  if (inflight.has(key)) return;
-  inflight.add(key);
+  const gen = generation;
+  const flight = `${gen}:${key}`;
+  if (inflight.has(flight)) return;
+  inflight.add(flight);
   tablesStore.set({ busy: true });
   try {
     const r = await api.get<{ rows: Row[]; total: number; columns: ColumnInfo[]; rev: number }>(`/drillholes/sets/${s.setId}/tables/${s.table}?${q}`);
     const now = tablesStore.get();
-    if (now.setId !== s.setId || now.table !== s.table || query(start) !== q) return; // the view changed meanwhile
+    if (gen !== generation || now.setId !== s.setId || now.table !== s.table || query(start) !== q) return; // stale
     tablesStore.set((st) => ({ pages: { ...st.pages, [start]: r.rows }, total: r.total, columns: r.columns, rev: r.rev, error: null, version: st.version + 1 }));
   } catch (e) {
     tablesStore.set({ error: text(e) });
   } finally {
-    inflight.delete(key);
+    inflight.delete(flight);
     tablesStore.set({ busy: false });
   }
 }
@@ -159,7 +164,8 @@ export function rowAt(s: TablesState, index: number): Row | undefined {
   return s.pages[start]?.[index - start];
 }
 
-async function reload(): Promise<void> {
+export async function reload(): Promise<void> {
+  generation += 1;
   tablesStore.set({ pages: {} });
   await loadPage(0);
 }
@@ -188,6 +194,21 @@ export async function setWhere(where: string): Promise<void> {
 
 async function afterEdit(): Promise<void> {
   await Promise.all([loadTabs(), reload()]);
+}
+
+/** The value as the editor shows it: full precision with a decimal comma (not the rounded cell text). */
+export function editText(v: unknown, kind: "number" | "text"): string {
+  if (v === null || v === undefined) return "";
+  if (kind === "number" && typeof v === "number") return String(v).replace(".", ",");
+  return String(v);
+}
+
+export function findRow(s: TablesState, id: number): { index: number; row: Row } | null {
+  for (const [start, rows] of Object.entries(s.pages)) {
+    const i = rows.findIndex((r) => r.id === id);
+    if (i >= 0) return { index: Number(start) + i, row: rows[i] };
+  }
+  return null;
 }
 
 export async function editCell(row: Row, column: string, value: string): Promise<string | null> {

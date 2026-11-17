@@ -3,7 +3,7 @@ import { useApp } from "../../shell/AppContext";
 import { Icon } from "../../shell/Icon";
 import { useStore } from "../../shell/useStore";
 import { EditLog } from "./EditLog";
-import { cellText, deleteRow, editCell, fieldStats, filterHole, loadPage, openTable, PAGE, rowAt, selectSet, setWhere, sortBy, tablesStore, type ColumnInfo, type FieldStats, type Row } from "./state";
+import { cellText, deleteRow, editCell, editText, fieldStats, findRow, filterHole, loadPage, openTable, PAGE, rowAt, selectSet, setWhere, sortBy, tablesStore, type ColumnInfo, type FieldStats, type Row } from "./state";
 import { ToolBar } from "./ToolBar";
 import css from "./Tables.module.css";
 
@@ -86,7 +86,8 @@ function Grid() {
   const box = useRef<HTMLDivElement>(null);
   const [top, setTop] = useState(0);
   const [height, setHeight] = useState(300);
-  const [editing, setEditing] = useState<{ index: number; key: string; value: string } | null>(null);
+  /** The cell being edited, by row id (a sorted row moves after a save); `initial` — not saved when unchanged. */
+  const [editing, setEditing] = useState<{ id: number; key: string; value: string; initial: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [stats, setStats] = useState<{ column: ColumnInfo; data: FieldStats | null; error?: string } | null>(null);
 
@@ -110,22 +111,28 @@ function Grid() {
   }, [first, last, s.version, s.table]);
 
   const cols = s.columns;
-  const save = async (row: Row, key: string, value: string, next?: number) => {
-    const err = await editCell(row, key, value);
-    setMessage(err);
-    if (err) return;
-    if (next !== undefined && cols[next]) {
-      const r = rowAt(tablesStore.get(), editing?.index ?? 0);
-      setEditing(r ? { index: editing?.index ?? 0, key: cols[next].key, value: cellText(r[cols[next].key], cols[next].kind) } : null);
-    } else setEditing(null);
+  const startEdit = (row: Row, c: ColumnInfo) => {
+    const v = editText(row[c.key], c.kind);
+    setEditing({ id: row.id, key: c.key, value: v, initial: v });
+  };
+  const save = async (row: Row, next?: number) => {
+    if (!editing) return;
+    if (editing.value !== editing.initial) {
+      const err = await editCell(row, editing.key, editing.value);
+      setMessage(err);
+      if (err) return;
+    }
+    const found = next !== undefined && cols[next] ? findRow(tablesStore.get(), row.id) : null;
+    if (found && next !== undefined) startEdit(found.row, cols[next]);
+    else setEditing(null);
   };
   const onKey = (e: KeyboardEvent<HTMLInputElement>, row: Row, col: number) => {
     if (!editing) return;
-    if (e.key === "Enter") void save(row, editing.key, editing.value);
+    if (e.key === "Enter") void save(row);
     else if (e.key === "Escape") setEditing(null);
     else if (e.key === "Tab") {
       e.preventDefault();
-      void save(row, editing.key, editing.value, col + 1);
+      void save(row, col + 1);
     }
   };
   const showStats = async (c: ColumnInfo) => {
@@ -180,7 +187,7 @@ function Grid() {
               </span>
               {cols.map((c, j) => {
                 if (!row) return <span key={c.key} className={css.cell} />;
-                const isEdit = editing && editing.index === index && editing.key === c.key;
+                const isEdit = editing && editing.id === row.id && editing.key === c.key;
                 if (isEdit)
                   return (
                     <input
@@ -200,7 +207,7 @@ function Grid() {
                     role="gridcell"
                     className={`${css.cell} ${c.kind === "number" ? css.num : ""} ${c.key === "hole" ? css.holeCell : ""}`}
                     title={c.key === "hole" ? "Показать только эту скважину" : "Щелчок — правка"}
-                    onClick={() => (c.key === "hole" && s.table !== "collar" ? void filterHole({ id: row.hole_id, name: row.hole }) : setEditing({ index, key: c.key, value: cellText(row[c.key], c.kind) }))}
+                    onClick={() => (c.key === "hole" && s.table !== "collar" ? void filterHole({ id: row.hole_id, name: row.hole }) : startEdit(row, c))}
                   >
                     {cellText(row[c.key], c.kind)}
                   </span>
