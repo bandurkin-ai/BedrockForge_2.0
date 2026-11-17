@@ -84,6 +84,7 @@ export class Scene {
   private pickMs = 0;
   private stats: FrameStats = { calls: 0, triangles: 0, points: 0, lines: 0, geometries: 0, textures: 0 };
   private readonly restoredListeners = new Set<() => void>();
+  private readonly frameListeners = new Set<(ctx: FrameContext) => void>();
   private readonly cleanup: (() => void)[] = [];
   private readonly light = new THREE.DirectionalLight(0xffffff, 1.6);
 
@@ -149,6 +150,12 @@ export class Scene {
   onRestored(fn: () => void): () => void {
     this.restoredListeners.add(fn);
     return () => this.restoredListeners.delete(fn);
+  }
+
+  /** Before every frame (levels of detail, parts in view): do not change the scene here — ask for a frame. */
+  onFrame(fn: (ctx: FrameContext) => void): () => void {
+    this.frameListeners.add(fn);
+    return () => this.frameListeners.delete(fn);
   }
 
   // ---------------------------------------------------------------- view
@@ -458,6 +465,7 @@ export class Scene {
     const ctx: FrameContext = { camera: cam, options: opts, width: w, height: h, vexag: this.vexag, pixelsPerUnit: ppuAt };
     const ppu = ppuAt(cam.target);
     for (const l of this.holeSets.values()) l.beforeRender(ppu);
+    for (const fn of this.frameListeners) fn(ctx);
     for (const { layer } of this.layers.values()) layer.beforeRender?.(ctx);
     this.light.position.set(...cam.position);
     this.light.target.position.set(...cam.target);
