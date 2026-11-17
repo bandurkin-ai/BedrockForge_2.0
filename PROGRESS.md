@@ -1,21 +1,21 @@
 # PROGRESS — BedrockForge 2
-Обновлено: 2026-11-17 13:40 UTC · Сессия: https://claude.ai/code/session_01PV4nyXwrRaJmTepomG4WpS · Ветка: claude/vigilant-meitner-vzjsd3 · Режим: норма
+Обновлено: 2026-11-17 15:00 UTC · Сессия: https://claude.ai/code/session_01PV4nyXwrRaJmTepomG4WpS · Ветка: claude/vigilant-meitner-vzjsd3 · Режим: норма
 
 ## Сейчас
 Веха: В2 «Скважины и 3D» (Э3–Э6) · Этап: Э6 «3D-окно» · PR: — (будет черновой)
-Подшаг: 6.1–6.3 ядро viz (kernel-engineer) ∥ 6.4 настройки вида (основная сессия)
+Подшаг: 6.1–6.3 ядро viz (kernel-engineer) ∥ 6.8 чистые модули UI (основная сессия)
 
 ## Следующее действие
-6.4 viewstate + .bfggis; дождаться kernel-engineer (6.1–6.3) → 6.5 стили.
+6.8 чистые модули ui/src/viz (перенос BF) ; после kernel-engineer — 6.7 лог, затем 6.9 рендерер.
 
 ## План этапа Э6 (spec: 07-13…07-17, 06 (6.8); ADR 0004)
 - [x] 6.0 Проект этапа, ADR 0007 (architect, принят)
 - [ ] 6.1 Ядро viz: BFA1, части ≤ 2000 стволов, манифест holes, цвет по аудиту (kernel-engineer)
 - [ ] 6.2 Пути частей с допуском 1 см (numba), ETag/304 (kernel-engineer)
 - [ ] 6.3 Интервалы частей, field-stats, class-counts (kernel-engineer)
-- [ ] 6.4 Настройки вида /api/v1/view (ключи, лимиты, 409) + исправления .bfggis (settings codes, перенумерация view)
-- [ ] 6.5 Миграция 0004 styles/charts; стили CRUD, usage, удаление с отвязкой
-- [ ] 6.6 .bfstyle.json; API отображений charts; архив
+- [x] 6.4 Настройки вида /api/v1/view (ключи, лимиты, 409) + исправления .bfggis (settings codes, перенумерация view)
+- [x] 6.5 Миграция 0004 styles/charts; стили CRUD, usage, удаление с отвязкой
+- [x] 6.6 .bfstyle.json; API отображений charts; архив
 - [ ] 6.7 /viz/sets/{id}/log (окно 7.17); замер view_parts
 - [ ] 6.8 Чистые модули UI: BFA1, загрузчик, разрез, виды, гизмо, подписи, LOD, бюджет
 - [ ] 6.9 Рендерер и Viewport (ленивый чанк, потеря контекста, класс графики)
