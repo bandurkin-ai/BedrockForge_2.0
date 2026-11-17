@@ -193,7 +193,17 @@ def check_worker() -> dict[str, Any]:
             proc.kill()
 
 
+def check_pyproj() -> dict[str, Any]:
+    """PROJ data (proj.db) ships with the build: a .prj is described and EPSG codes resolve."""
+    from bf_core.crs import describe
+
+    info = describe("EPSG:28407")  # Pulkovo 1942 / Gauss-Kruger zone 7
+    assert info.projected and info.epsg == 28407, info
+    return {"name": info.name}
+
+
 CHECKS: dict[str, Callable[[], dict[str, Any]]] = {
+    "pyproj": check_pyproj,
     "worker": check_worker,
     "routers": check_routers,
     "migrations": check_migrations,
