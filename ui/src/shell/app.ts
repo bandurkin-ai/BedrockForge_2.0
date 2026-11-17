@@ -3,6 +3,7 @@
  * No React here; components read app.store and run app.registry.execute().
  */
 import { bindAudit } from "../modules/audit/bind";
+import { bindDownhole } from "../modules/downhole/bind";
 import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
 import { bindProjects } from "../modules/projects/bind";
@@ -128,5 +129,6 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindAudit(app);
   bindScene(app);
   bindStripLog(app);
+  bindDownhole(app);
   return app;
 }

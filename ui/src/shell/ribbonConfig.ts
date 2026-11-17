@@ -126,6 +126,16 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
         },
         { title: "Просмотр", items: [{ command: "holes.data_window", label: "Данные по скважинам", icon: "striplog", unavailable: NO_SET }] },
         {
+          title: "По стволу",
+          items: [
+            { command: "downhole.open", args: { form: "grade" }, label: "Содержания…", icon: "histogram", hint: "Отображение содержаний вдоль стволов активного набора", small: true, unavailable: NO_SET },
+            { command: "downhole.open", args: { form: "lith" }, label: "Литология…", icon: "log", hint: "Отображение литологии вдоль стволов", small: true, unavailable: NO_SET },
+            { command: "downhole.open", args: { form: "event" }, label: "События…", icon: "hole", hint: "Отображение событий по скважинам", small: true, unavailable: NO_SET },
+            { command: "styles.export", label: "Экспорт стилей", icon: "export", hint: "Библиотека стилей проекта в файл .bfstyle.json", small: true },
+            { command: "styles.import", label: "Импорт стилей", icon: "import", hint: "Стили из файла .bfstyle.json", small: true },
+          ],
+        },
+        {
           title: "Оформление",
           items: [
             { command: "scene.style", args: { grid: !view.grid }, label: view.grid ? "Скрыть сетку" : "Показать сетку", icon: "vwGrid", small: true },

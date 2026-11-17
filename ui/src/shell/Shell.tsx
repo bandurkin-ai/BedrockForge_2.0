@@ -12,6 +12,8 @@ import { ImportWizard } from "../modules/importing/ImportWizard";
 import { OpLogWindow } from "./OpLogWindow";
 import { startEvents } from "../modules/jobs/state";
 import { StripLogWindow } from "../charts/striplog/StripLogWindow";
+import { DownholeWindow } from "../modules/downhole/DownholeWindow";
+import { StylesImportWindow } from "../modules/downhole/StylesImportWindow";
 import { SetStyleWindow } from "../modules/scene/SetStyleWindow";
 import { ExportWindow } from "../modules/projects/ExportWindow";
 import { ImportWindow } from "../modules/projects/ImportWindow";
@@ -55,6 +57,10 @@ const renderWindow: WindowRenderer = (w) => {
       return <SetStyleWindow kind="traces" setId={Number(w.props?.setId)} />;
     case "striplog":
       return <StripLogWindow setId={Number(w.props?.setId)} setName={String(w.props?.setName ?? "")} tableHint={(w.props?.tableHint as string | null) ?? null} holeHint={(w.props?.holeHint as string | null) ?? null} />;
+    case "downhole":
+      return <DownholeWindow winId={w.id} setId={Number(w.props?.setId)} form={(w.props?.form as "grade" | "lith" | "event" | undefined) ?? "grade"} chartId={typeof w.props?.chartId === "number" ? w.props.chartId : null} table={(w.props?.table as string | null) ?? null} field={(w.props?.field as string | null) ?? null} focus={(w.props?.focus as string | undefined) ?? null} />;
+    case "styles-import":
+      return <StylesImportWindow winId={w.id} token={String(w.props?.token ?? "")} />;
     default:
       return null;
   }

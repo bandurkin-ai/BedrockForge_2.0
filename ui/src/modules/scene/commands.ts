@@ -34,5 +34,13 @@ export const commands: Command[] = [
     stage: "Э6",
   },
   { id: "holes.data_window", title: "Данные по скважинам", description: "Окно колонок данных вдоль выбранных скважин.", uiOnly: true, stage: "Э6" },
-  { id: "holes.show_data", title: "Показать данные скважин", description: "Показать колонки данных для указанных скважин.", params: { hole_ids: { type: "string" } }, stage: "Э6" },
+  {
+    id: "holes.show_data",
+    title: "Показать данные по стволу",
+    description: "Открыть форму отображения данных вдоль стволов (ТЗ 7.16). С таблицей и полем сразу создаёт черновик с этим полем: он виден на скважинах, в дерево попадает только по «Сохранить» в форме. form: grade — содержания, lith — литология, event — события (по умолчанию — по виду поля). Без set_id — активный набор.",
+    params: { set_id: { type: "integer" }, table: { type: "string", description: "Название таблицы набора, например «Пробы»" }, field: { type: "string", description: "Поле таблицы, например AU" }, form: { type: "string", enum: ["grade", "lith", "event"] } },
+  },
+  { id: "downhole.open", title: "Отображение по стволу", description: "Форма нового отображения: Содержания…, Литология… или События…", params: { form: { type: "string", enum: ["grade", "lith", "event"] }, set_id: { type: "integer" }, chart_id: { type: "integer" } }, uiOnly: true },
+  { id: "styles.export", title: "Экспорт стилей", description: "Сохранить библиотеку стилей проекта в файл .bfstyle.json.", uiOnly: true },
+  { id: "styles.import", title: "Импорт стилей", description: "Добавить стили из файла .bfstyle.json; при совпадении названий — заменить, оставить оба или пропустить.", uiOnly: true },
 ];

@@ -116,19 +116,45 @@ export function applyTemplate(template: TemplateBody, table: string, matches: Fi
   return out;
 }
 
-/** "AU*" matches AU, AU_PPM; without a star the name must be equal; case does not matter. */
+/** "AU*" matches AU, AU_PPM; "?" — one character; without them the name must be equal; case does not matter. */
 export function nameMatches(pattern: string, name: string): boolean {
   const p = pattern.trim().toUpperCase();
   const n = name.trim().toUpperCase();
   if (!p) return false;
-  if (!p.includes("*")) return p === n;
-  const re = new RegExp(`^${p.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+  if (!p.includes("*") && !p.includes("?")) return p === n;
+  const re = new RegExp(`^${[...p].map((ch) => (ch === "*" ? ".*" : ch === "?" ? "." : ch.replace(/[.+^${}()|[\]\\]/g, "\\$&"))).join("")}$`, "s");
   return re.test(n);
 }
 
-/** The layer style that applies by itself to a field with this name. */
+/** How exact a mask is (ADR 0007 §3): the exact name, then fewer «*», then a longer literal part. Larger is closer. */
+function maskRank(pattern: string): [number, number, number] {
+  const p = pattern.trim();
+  const stars = (p.match(/\*/g) ?? []).length;
+  const wild = stars + (p.match(/\?/g) ?? []).length;
+  return [wild === 0 ? 1 : 0, -stars, p.replace(/[*?]/g, "").length];
+}
+
+/**
+ * The layer style that applies by itself to a field with this name: of the styles of a fitting kind whose
+ * masks match, the most exact mask wins, then the newer style (`updated_at`, else the larger id).
+ */
 export function defaultStyleFor(field: string, kind: DataKind, styles: StyleRec[]): StyleRec | null {
-  return styles.find((s) => s.level === "layer" && !s.builtin && (s.data_kind === kind || s.data_kind === "mixed") && s.default_for.some((p) => nameMatches(p, field))) ?? null;
+  let best: { s: StyleRec; rank: [number, number, number] } | null = null;
+  const newer = (a: StyleRec, b: StyleRec) => {
+    const ta = String((a as { updated_at?: unknown }).updated_at ?? "");
+    const tb = String((b as { updated_at?: unknown }).updated_at ?? "");
+    return ta !== tb ? ta > tb : a.id > b.id;
+  };
+  for (const s of styles) {
+    if (s.level !== "layer" || s.builtin || !(s.data_kind === kind || s.data_kind === "mixed")) continue;
+    for (const p of s.default_for) {
+      if (!nameMatches(p, field)) continue;
+      const rank = maskRank(p);
+      const cmp = best ? rank.findIndex((v, i) => v !== best!.rank[i]) : -1;
+      if (!best || (cmp >= 0 && rank[cmp] > best.rank[cmp]) || (cmp < 0 && best.s !== s && newer(s, best.s))) best = { s, rank };
+    }
+  }
+  return best?.s ?? null;
 }
 
 /**

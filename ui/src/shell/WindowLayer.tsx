@@ -1,7 +1,7 @@
 import { type PointerEvent as RPointerEvent, type ReactNode } from "react";
 import { Icon } from "./Icon";
 import { useStore } from "./useStore";
-import { clampToViewport, closeWindow, focusWindow, updateWindow, windowStore, type FloatWin } from "./windows";
+import { clampToViewport, focusWindow, requestClose, updateWindow, windowStore, type FloatWin } from "./windows";
 import css from "./Window.module.css";
 
 export type WindowRenderer = (win: FloatWin) => ReactNode;
@@ -55,7 +55,7 @@ function FloatingWindow({ win, children }: { win: FloatWin; children: ReactNode 
         <button type="button" className={css.btn} aria-label="Развернуть" title={win.maximized ? "Восстановить" : "Развернуть"} onClick={() => updateWindow(win.id, { maximized: !win.maximized })}>
           <Icon name="maximize" size={13} />
         </button>
-        <button type="button" className={css.btn} aria-label="Закрыть" title="Закрыть" onClick={() => closeWindow(win.id)}>
+        <button type="button" className={css.btn} aria-label="Закрыть" title="Закрыть" onClick={() => void requestClose(win.id)}>
           <Icon name="close" size={13} />
         </button>
       </div>

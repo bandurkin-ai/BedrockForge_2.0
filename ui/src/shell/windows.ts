@@ -62,5 +62,21 @@ export function updateWindow(id: string, patch: Partial<FloatWin>): void {
 }
 
 export function closeWindow(id: string): void {
+  closeGuards.delete(id);
   windowStore.set((s) => ({ windows: s.windows.filter((w) => w.id !== id) }));
+}
+
+/** A window with unsaved changes asks before it closes (ТЗ 17.4.6): the guard resolves true to close. */
+const closeGuards = new Map<string, () => Promise<boolean>>();
+
+export function setCloseGuard(id: string, guard: (() => Promise<boolean>) | null): void {
+  if (guard) closeGuards.set(id, guard);
+  else closeGuards.delete(id);
+}
+
+/** The cross of the title bar: closes unless the window's guard says no. */
+export async function requestClose(id: string): Promise<void> {
+  const guard = closeGuards.get(id);
+  if (guard && !(await guard())) return;
+  closeWindow(id);
 }
