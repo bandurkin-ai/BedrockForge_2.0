@@ -22,7 +22,7 @@ test("«Таблица»: sort, edit 12,5 → 12.5, empty required field refused
       return set.id as number;
     });
     await expect(page.getByRole("treeitem", { name: /Набор Э4/ })).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("treeitem", { name: /Набор Э4/ }).click();
+    await page.getByRole("treeitem", { name: /Набор Э4/ }).dblclick(); // a double click opens the table (Д-03)
     const panel = page.getByLabel("Нижняя панель");
     await expect(panel.getByRole("tab", { name: /Устья/ })).toHaveAttribute("aria-selected", "true");
     const grid = panel.getByTestId("table-grid");

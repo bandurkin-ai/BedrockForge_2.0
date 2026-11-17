@@ -2,6 +2,7 @@ import { useState, type DragEvent } from "react";
 import { useApp } from "./AppContext";
 import { openMenu, type MenuItem } from "./ContextMenu";
 import { Icon } from "./Icon";
+import { onTreeKeyDown, onTreeMouseDown, TreeRow } from "./TreeRow";
 import { SetsTree } from "../modules/tables/SetsTree";
 import { useStore } from "./useStore";
 import { moveSection, TREE_SECTIONS, type TreeSection } from "./workspace";
@@ -38,7 +39,7 @@ const PLUS: Partial<Record<TreeSection, { command: string; title: string }>> = {
   audit: { command: "stats.swath", title: "Новый swath plot" },
 };
 
-/** Data tree (ТЗ 7.1): sections collapse and are reordered by dragging the header; objects arrive on later stages. */
+/** Data tree (ТЗ 7.1): sections collapse by their arrow only (Д-03) and are reordered by dragging the header. */
 export function DataTree() {
   const app = useApp();
   const order = useStore(app.store, (s) => s.workspace.treeOrder);
@@ -63,7 +64,17 @@ export function DataTree() {
   return (
     <aside className={shell.left} style={{ width }} aria-label="Дерево данных">
       <div className={css.title}>Дерево данных</div>
-      <div className={css.tree} role="tree">
+      <div
+        className={css.tree}
+        role="tree"
+        aria-label="Разделы и объекты проекта"
+        tabIndex={0}
+        onKeyDown={onTreeKeyDown}
+        onMouseDown={onTreeMouseDown}
+        onFocus={(e) => {
+          if (e.target === e.currentTarget) e.currentTarget.querySelector<HTMLElement>("[data-tree-row]")?.focus();
+        }}
+      >
         {!project && (
           <div className={css.demo}>
             Проект пуст.
@@ -77,51 +88,56 @@ export function DataTree() {
           const isCollapsed = collapsed.includes(s);
           const plus = PLUS[s];
           return (
-            <div key={s} className={css.section} role="treeitem" aria-expanded={!isCollapsed} aria-label={TREE_SECTIONS[s]}>
-              <div
-                className={`${css.head} ${over === s ? css.dragOver : ""}`}
-                draggable
-                onDragStart={(e) => {
-                  setDragging(s);
-                  e.dataTransfer.setData("application/x-bf-section", s);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onDragOver={(e) => {
-                  if (!dragging) return;
-                  e.preventDefault();
-                  setOver(s);
-                }}
-                onDragLeave={() => setOver(null)}
-                onDrop={drop(s)}
-                onDragEnd={() => {
-                  setDragging(null);
-                  setOver(null);
-                }}
-                onClick={() => toggle(s)}
+            <div key={s} className={`${css.section} ${over === s ? css.dragOver : ""}`}>
+              <TreeRow
+                label={TREE_SECTIONS[s]}
+                level={1}
+                expanded={!isCollapsed}
+                onToggle={() => toggle(s)}
+                className={css.head}
+                testId={`tree-section-${s}`}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   openMenu(e.clientX, e.clientY, sectionMenu(s, (id) => app.registry.reason(id), (id, args) => void app.run(id, args)));
                 }}
-              >
-                <span className={`${css.chev} ${isCollapsed ? css.collapsed : ""}`}>
-                  <Icon name="chevronDown" size={14} />
-                </span>
-                <span className={css.name}>{TREE_SECTIONS[s]}</span>
-                {plus && (
-                  <button
-                    type="button"
-                    className={css.plus}
-                    title={`${plus.title}${app.registry.reason(plus.command) ? `\nНедоступно: ${app.registry.reason(plus.command)}` : ""}`}
-                    aria-label={plus.title}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void app.run(plus.command);
-                    }}
-                  >
-                    <Icon name="plus" size={13} />
-                  </button>
-                )}
-              </div>
+                drag={{
+                  draggable: true,
+                  onDragStart: (e) => {
+                    setDragging(s);
+                    e.dataTransfer.setData("application/x-bf-section", s);
+                    e.dataTransfer.effectAllowed = "move";
+                  },
+                  onDragOver: (e) => {
+                    if (!dragging) return;
+                    e.preventDefault();
+                    setOver(s);
+                  },
+                  onDragLeave: () => setOver(null),
+                  onDrop: drop(s),
+                  onDragEnd: () => {
+                    setDragging(null);
+                    setOver(null);
+                  },
+                }}
+                after={
+                  plus && (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      data-tree-after=""
+                      className={css.plus}
+                      title={`${plus.title}${app.registry.reason(plus.command) ? `\nНедоступно: ${app.registry.reason(plus.command)}` : ""}`}
+                      aria-label={plus.title}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void app.run(plus.command);
+                      }}
+                    >
+                      <Icon name="plus" size={13} />
+                    </button>
+                  )
+                }
+              />
               {!isCollapsed && (s === "holes" ? <SetsTree /> : <div className={css.none}>Нет объектов</div>)}
             </div>
           );

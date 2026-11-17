@@ -53,10 +53,6 @@
 .log li { border-bottom: 1px solid var(--border); padding-bottom: 4px; }
 .undone { opacity: 0.6; }
 .treeNone { padding: 2px 8px 6px 28px; color: var(--text-faint); font-size: 12px; }
-.treeList { list-style: none; margin: 0; padding: 0 0 4px 22px; }
-.treeItem, .treeItemActive { width: 100%; border: 0; background: transparent; color: var(--text); text-align: left; padding: 2px 6px; cursor: pointer; font: inherit; border-radius: var(--radius); }
-.treeItem:hover { background: var(--bg-hover); }
-.treeItemActive { background: var(--bg-active, var(--bg-hover)); font-weight: 600; }
 .card dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 4px 0 8px; }
 .card dt { color: var(--text-dim); }
 .card dd { margin: 0; font-variant-numeric: tabular-nums; }

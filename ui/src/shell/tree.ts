@@ -81,3 +81,56 @@ export const IMPORT_TITLES: Record<ImportKind, string> = {
   omf: "OMF",
   project: "проект .bfggis",
 };
+
+// ---- keyboard of the tree (WAI-ARIA tree pattern; ТЗ 7.35 Д-03, ADR 0008) ----------------------------
+
+/** A visible row of the tree as the keyboard sees it. */
+export interface KeyRow {
+  level: number;
+  /** undefined: nothing to expand */
+  expanded?: boolean;
+}
+
+export type TreeAction =
+  | { kind: "focus"; index: number }
+  | { kind: "expand"; index: number }
+  | { kind: "collapse"; index: number }
+  | { kind: "select"; index: number }
+  | { kind: "check"; index: number };
+
+/** What a key does on row `i`: ↑/↓ move, → expands or enters, ← collapses or goes to the parent,
+ * Enter selects, Space switches the check box, Home/End — the first and the last row. */
+export function treeKey(key: string, rows: readonly KeyRow[], i: number): TreeAction | null {
+  const row = rows[i];
+  if (!row) return null;
+  switch (key) {
+    case "ArrowDown":
+      return i + 1 < rows.length ? { kind: "focus", index: i + 1 } : null;
+    case "ArrowUp":
+      return i > 0 ? { kind: "focus", index: i - 1 } : null;
+    case "Home":
+      return { kind: "focus", index: 0 };
+    case "End":
+      return { kind: "focus", index: rows.length - 1 };
+    case "ArrowRight":
+      if (row.expanded === false) return { kind: "expand", index: i };
+      if (row.expanded === true && rows[i + 1]?.level > row.level) return { kind: "focus", index: i + 1 };
+      return null;
+    case "ArrowLeft": {
+      if (row.expanded === true) return { kind: "collapse", index: i };
+      for (let j = i - 1; j >= 0; j--) if (rows[j].level < row.level) return { kind: "focus", index: j };
+      return null;
+    }
+    case "Enter":
+      return { kind: "select", index: i };
+    case " ":
+      return { kind: "check", index: i };
+    default:
+      return null;
+  }
+}
+
+/** Expanded state of a row that is changed only by its arrow: a click on the name never changes it. */
+export function toggleExpanded(collapsed: readonly string[], key: string): string[] {
+  return collapsed.includes(key) ? collapsed.filter((k) => k !== key) : [...collapsed, key];
+}

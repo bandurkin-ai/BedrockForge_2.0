@@ -1,15 +1,16 @@
 /**
- * Saved displays of a set in the data tree (ТЗ 7.16): a row under the set — the check box (or a click) shows it
- * in the view (view key `displays`), a double click opens its form, the menu opens, renames and deletes it.
+ * Saved displays of a set in the data tree (ТЗ 7.16, 7.35 Д-03): a row under the set — the check box shows it in
+ * the view (view key `displays`), a click selects it, a double click opens its form, the menu opens, renames
+ * and deletes it.
  * A draft of a form is not here: only «Сохранить» makes a row.
  */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { TreeRow } from "../../shell/TreeRow";
 import { CoreError } from "../../shell/api";
 import { openMenu } from "../../shell/ContextMenu";
 import { askConfirm, askText, showMessage } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
 import { updateView, viewStore } from "../scene/bind";
-import css from "../tables/Tables.module.css";
 import { dropDisplay, isShown, showDisplay } from "./displays";
 import { deleteChart, libraryStore, saveChart, type ChartRow } from "./library";
 import { openDisplay } from "./open";
@@ -54,9 +55,10 @@ export function DisplayRows({ setId }: { setId: number }) {
   const charts = useStore(libraryStore, (s) => s.charts);
   const shown = useStore(viewStore, (s) => s.displays);
   const list = useMemo(() => charts.filter((c) => c.set_id === setId && c.kind === "striplog").sort((a, b) => a.name.localeCompare(b.name, "ru")), [charts, setId]);
+  const [picked, setPicked] = useState<number | null>(null);
   if (!list.length) return null;
   return (
-    <ul className={`${css.treeList} dh-tree`} role="group" aria-label="Отображения по стволу">
+    <div role="group" aria-label="Отображения по стволу">
       {list.map((c) => {
         const on = isShown(shown, c.id);
         const open = () => {
@@ -67,27 +69,29 @@ export function DisplayRows({ setId }: { setId: number }) {
           }
         };
         return (
-          <li key={c.id} className="dh-tree-row">
-            <input type="checkbox" checked={on} aria-label={`Показать «${c.name}» на скважинах`} title={on ? "Скрыть на скважинах" : "Показать на скважинах"} onChange={(e) => show(c, e.target.checked)} />
-            <button
-              type="button" role="treeitem" aria-selected={false} className={css.treeItem} title={`${c.name}: щелчок — показать или скрыть, двойной щелчок — настройки`}
-              onClick={() => show(c, !on)} onDoubleClick={open}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                openMenu(e.clientX, e.clientY, [
-                  { label: "Настройки…", run: open },
-                  { label: on ? "Скрыть на скважинах" : "Показать на скважинах", run: () => show(c, !on) },
-                  { label: "Переименовать…", run: () => void rename(c) },
-                  { label: "Удалить…", run: () => void remove(c) },
-                ]);
-              }}
-            >
-              <span className="dh-tree-glyph" aria-hidden>▥</span> {c.name}
-            </button>
-          </li>
+          <TreeRow
+            key={c.id}
+            label={c.name}
+            level={3}
+            check={{ checked: on, label: `Показать «${c.name}» на скважинах`, onChange: (v) => show(c, v) }}
+            selected={picked === c.id}
+            onSelect={() => setPicked(c.id)}
+            onActivate={open}
+            title={`${c.name}: галочка — показать или скрыть, двойной щелчок — настройки`}
+            glyph={<span className="dh-tree-glyph" aria-hidden>▥ </span>}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openMenu(e.clientX, e.clientY, [
+                { label: "Настройки…", run: open },
+                { label: on ? "Скрыть на скважинах" : "Показать на скважинах", run: () => show(c, !on) },
+                { label: "Переименовать…", run: () => void rename(c) },
+                { label: "Удалить…", run: () => void remove(c) },
+              ]);
+            }}
+          />
         );
       })}
-    </ul>
+    </div>
   );
 }
