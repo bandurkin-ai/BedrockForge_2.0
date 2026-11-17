@@ -113,7 +113,7 @@ def test_roundtrip_same_composition_and_new_ids(ac, tmp_path: Path) -> None:  # 
         assert own["owner_id"] == new_ids["20"] and own["sha256"] == src["sha"]
         log = conn.execute(sa.select(edit_log)).mappings().one()
         assert log["scope_id"] == new_ids["20"] and log["changes"] == {"name": ["Старое", "Тело"]}
-        assert conn.execute(sa.select(settings.c.value)).scalar_one() == ["wf:20"]
+        assert conn.execute(sa.select(settings.c.value)).scalar_one() == [f"wf:{new_ids['20']}"]  # renumbered
     assert BlobStore(p.folder).read_bytes(src["sha"]) == b"\x00\x01" * 5000
     r = ac.get(f"{API}/blobs/{src['sha']}", headers={"Range": "bytes=0-1"})
     assert r.status_code == 206 and r.content == b"\x00\x01"

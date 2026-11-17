@@ -12,12 +12,16 @@ from fastapi.responses import JSONResponse
 class ApiError(Exception):
     """Error shown to the user. `message` and `hint` are in Russian."""
 
-    def __init__(self, status: int, code: str, message: str, hint: str = "") -> None:
+    def __init__(
+        self, status: int, code: str, message: str, hint: str = "", extra: dict[str, Any] | None = None
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
         self.hint = hint
+        #: Machine fields added to the body (e.g. the current value on a 409), never user text.
+        self.extra = extra or {}
 
 
 def error_body(code: str, message: str, hint: str = "") -> dict[str, str]:
@@ -26,7 +30,7 @@ def error_body(code: str, message: str, hint: str = "") -> dict[str, str]:
 
 async def api_error_handler(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, ApiError)
-    return JSONResponse(error_body(exc.code, exc.message, exc.hint), status_code=exc.status)
+    return JSONResponse({**exc.extra, **error_body(exc.code, exc.message, exc.hint)}, status_code=exc.status)
 
 
 def internal_body(exc: BaseException) -> dict[str, str]:

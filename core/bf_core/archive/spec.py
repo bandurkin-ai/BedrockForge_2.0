@@ -16,8 +16,9 @@ class Table:
     name: str
     #: The table has an integer key `id` that is renumbered (else rows are copied with remapped references).
     renumber: bool = False
-    #: Optional (ТЗ 7.4 «По желанию — настройки вида»).
+    #: Optional (ТЗ 7.4 «По желанию — настройки вида»): the whole table, or only rows of this scope.
     view: bool = False
+    view_scope: str | None = None
 
 
 TABLES: tuple[Table, ...] = (
@@ -34,7 +35,7 @@ TABLES: tuple[Table, ...] = (
     Table("audit_findings"),
     Table("blob_owners"),
     Table("edit_log", renumber=True),
-    Table("settings", view=True),
+    Table("settings", view_scope="view"),  # codes, code_links… always; scope view — optional
 )
 
 #: project_meta is written from the manifest; jobs are not part of a project archive (ТЗ 7.4); blobs are

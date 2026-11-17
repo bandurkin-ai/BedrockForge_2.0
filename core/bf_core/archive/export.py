@@ -21,7 +21,7 @@ from bf_core.storage.blobs import BlobStore
 
 from .container import ArchiveWriter
 from .rows import encode_row
-from .spec import APP, TABLES
+from .spec import APP, TABLES, Table
 
 Progress = Callable[[float, str], None]
 Log = Callable[[str, str], None]
@@ -68,10 +68,19 @@ class _Reading:
         return bytes(data)
 
 
+def _rows_of(t: Table, include_view: bool, query: sa.Select[Any]) -> sa.Select[Any]:
+    """The rows a table puts into the archive: without the view scope when view settings are left out."""
+    table = project_md.tables[t.name]
+    query = query.select_from(table)
+    if t.view_scope and not include_view:
+        query = query.where(table.c.scope != t.view_scope)
+    return query
+
+
 def manifest_of(conn: sa.Connection, include_view: bool) -> dict[str, Any]:
     meta = conn.execute(sa.select(project_meta)).mappings().one()
     counts = {
-        t.name: conn.execute(sa.select(sa.func.count()).select_from(project_md.tables[t.name])).scalar_one()
+        t.name: conn.execute(_rows_of(t, include_view, sa.select(sa.func.count()))).scalar_one()
         for t in TABLES
         if include_view or not t.view
     }
@@ -150,7 +159,9 @@ def export_project(
                     h = hashlib.sha256()
                     try:
                         with open(work, "wb") as out:  # streamed: tables of millions of rows (Э3)
-                            rows = conn.execution_options(yield_per=10_000).execute(sa.select(table).order_by(*order))
+                            rows = conn.execution_options(yield_per=10_000).execute(
+                                _rows_of(t, include_view, sa.select(table)).order_by(*order)
+                            )
                             for k, r in enumerate(rows.mappings()):
                                 line = encode_row(table, dict(r))
                                 h.update(line)
