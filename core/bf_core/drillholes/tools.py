@@ -65,16 +65,16 @@ def set_column(conn: sa.Connection, t: e.Target, snap: Snapshot, key: str, idx: 
         )
         return
     assert col.slot is not None
-    for start in range(0, len(ids), PORTION):
-        part = ids[start : start + PORTION].tolist()
-        vals = values[start : start + PORTION]
-        q = sa.select(dh_rows.c.id, dh_rows.c.num if col.kind == "number" else dh_rows.c.txt).where(
-            dh_rows.c.id.in_(part)
-        )
-        current = {r[0]: r[1] for r in conn.execute(q)}
-        rows: list[tuple[Any, int]] = []
-        for row_id, v in zip(part, vals, strict=True):
-            old = current.get(row_id)
+    # One pass over the table through the driver (no IN lists: SQLite takes at most 32 766 parameters).
+    wanted = dict(zip(ids.tolist(), values, strict=True))
+    field = "num" if col.kind == "number" else "txt"
+    sql = f"SELECT id, {field} FROM dh_rows WHERE table_id = ? ORDER BY id"
+    rows: list[tuple[Any, int]] = []
+    for chunk in dialect.iter_driver_rows(conn, sql, (int(t.table),)):
+        for row_id, old in chunk:
+            if row_id not in wanted:
+                continue
+            v = wanted[row_id]
             if col.kind == "number":
                 vec = np.full(col.slot + 1, np.nan) if old is None else np.frombuffer(old, dtype="<f8").copy()
                 if len(vec) <= col.slot:
@@ -91,7 +91,10 @@ def set_column(conn: sa.Connection, t: e.Target, snap: Snapshot, key: str, idx: 
                 else:
                     txt[str(col.slot)] = str(v)
                 rows.append((json.dumps(txt, ensure_ascii=False) if txt else None, row_id))
-        dialect.bulk_update(conn, dh_rows, ["num" if col.kind == "number" else "txt"], "id", rows)
+        if len(rows) >= PORTION:
+            dialect.bulk_update(conn, dh_rows, [field], "id", rows)
+            rows = []
+    dialect.bulk_update(conn, dh_rows, [field], "id", rows)
 
 
 def _record(
