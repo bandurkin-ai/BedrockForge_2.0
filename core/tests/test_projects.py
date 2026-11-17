@@ -165,6 +165,23 @@ def test_network_and_long_paths_rejected(pclient) -> None:  # type: ignore[no-un
     assert err.value.code == "path_too_long"
 
 
+def test_folder_refused_by_os_is_reported(pclient, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Windows «Контролируемый доступ к папкам» refuses mkdir in Documents: a clear error, not «internal»."""
+    real = Path.mkdir
+
+    def refused(self: Path, *a, **kw) -> None:  # type: ignore[no-untyped-def]
+        if "Проекты" in str(self):
+            raise FileNotFoundError(2, "Не удается найти указанный файл", str(self))
+        real(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "mkdir", refused)
+    r = pclient.post(API, json={"name": "Новый"})
+    assert r.status_code == 409, r.text
+    body = r.json()
+    assert body["code"] == "folder_denied"
+    assert "Папка данных проектов" in body["hint"]
+
+
 def test_demo_created_once_then_opened(pclient) -> None:  # type: ignore[no-untyped-def]
     first = pclient.post(API + "/demo").json()
     assert first["created"] is True and first["name"] == "Демо: участок Северный"

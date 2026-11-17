@@ -19,7 +19,7 @@ import bf_core
 from bf_core.db import dialect, migrate
 from bf_core.db.schema import blobs, project_md, project_meta
 from bf_core.projects.lock import ProjectLock
-from bf_core.projects.project import DB_FILE, SUFFIX, folder_name, read_manifest, write_manifest
+from bf_core.projects.project import DB_FILE, SUFFIX, folder_name, make_dirs, read_manifest, write_manifest
 from bf_core.storage.blobs import BlobStore, valid_sha
 
 from .container import ArchiveError, Corrupted, TooNew, open_archive, read_header, read_json
@@ -111,10 +111,10 @@ def import_project(
     """Builds the project in `root/.imp-<uuid>.bfproj` and renames it into place. Returns the new uid, name,
     folder and the id maps. `token` marks the project (manifest) so that a retry after a crash finds it.
     The building folder is locked while it is filled: the maintenance removes only abandoned ones."""
-    root.mkdir(parents=True, exist_ok=True)
+    make_dirs(root)
     building = root / f".imp-{uuid.uuid4().hex}{SUFFIX}"
     for sub in ("", "blobs", "cache", "backups", "logs"):
-        (building / sub).mkdir(parents=True, exist_ok=True)
+        make_dirs(building / sub)
     lock = ProjectLock(building / "project.lock")
     lock.acquire()
     engine = dialect.create_engine(dialect.sqlite_url(str(building / DB_FILE)))
