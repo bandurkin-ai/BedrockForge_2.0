@@ -21,6 +21,11 @@ test("wizard «Импорт скважин»: CSV cp1251, TXT and Excel-like CSV
     await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
     await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
     await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 30_000 });
+    const before = await page.evaluate(async () => {
+      const c = window.bf!.core()!;
+      const r = await fetch(`${c.baseUrl}/api/v1/projects/current`, { headers: { "X-BF-Token": c.token } });
+      return (await r.json()).project.summary;
+    });
     await app.evaluate(({ dialog }, files) => {
       dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: files })) as typeof dialog.showOpenDialog;
     }, [assay, collar, survey]);
@@ -48,7 +53,8 @@ test("wizard «Импорт скважин»: CSV cp1251, TXT and Excel-like CSV
       const r = await fetch(`${c.baseUrl}/api/v1/projects/current`, { headers: { "X-BF-Token": c.token } });
       return (await r.json()).project.summary;
     });
-    expect(summary).toMatchObject({ sets: 1, holes: 2, surveys: 2, assays: 3 });
+    // the demo has its own set «Скважины 2025»: the import adds one set with 2 holes, 2 surveys, 3 samples
+    expect({ sets: summary.sets - before.sets, holes: summary.holes - before.holes, surveys: summary.surveys - before.surveys, assays: summary.assays - before.assays }).toEqual({ sets: 1, holes: 2, surveys: 2, assays: 3 });
 
     await page.keyboard.press("Control+KeyK");
     await page.getByLabel("Поиск команды").fill("журналы");

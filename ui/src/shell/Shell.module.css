@@ -9,7 +9,7 @@
 .splitY { height: 5px; margin: -2px 0; cursor: row-resize; z-index: 2; flex: none; }
 .splitX:hover, .splitY:hover { background: var(--accent); opacity: 0.5; }
 .dockTabs { display: flex; height: 28px; border-bottom: 1px solid var(--border); flex: none; align-items: stretch; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
-.dockTab { border: 0; background: transparent; padding: 0 10px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+.dockTab { font-family: var(--font-brand); font-weight: 500; border: 0; background: transparent; padding: 0 10px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
 .dockTabActive { color: var(--text); border-bottom-color: var(--accent); }
 .dockClose { margin-left: auto; border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 0 8px; }
 .dockBody { flex: 1; overflow: auto; min-height: 0; padding: 8px; }
@@ -17,3 +17,6 @@
 .viewport { flex: 1; position: relative; background: var(--scene-bg); min-height: 0; display: flex; align-items: center; justify-content: center; color: var(--text-faint); }
 .viewportBrand { text-align: center; line-height: 1.6; }
 .viewportBrand strong { display: block; font-size: 22px; color: var(--text-dim); font-weight: 600; }
+.viewportMark { height: 96px; opacity: 0.9; margin-bottom: 10px; }
+.viewportBrand strong { font-family: var(--font-brand); font-weight: 700; color: var(--brand-ink); }
+.forge { color: var(--brand-orange); }

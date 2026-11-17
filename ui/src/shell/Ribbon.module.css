@@ -1,8 +1,8 @@
 .ribbon { background: var(--bg-elev); border-bottom: 1px solid var(--border); user-select: none; }
 .tabs { display: flex; gap: 2px; padding: 0 8px; height: 28px; align-items: stretch; }
-.tab { border: 0; background: transparent; padding: 0 12px; cursor: pointer; color: var(--text-dim); border-bottom: 2px solid transparent; }
+.tab { font-family: var(--font-brand); font-weight: 500; border: 0; background: transparent; padding: 0 12px; cursor: pointer; color: var(--text-dim); border-bottom: 2px solid transparent; }
 .tab:hover { color: var(--text); }
-.tabActive { color: var(--text); border-bottom-color: var(--accent); }
+.tabActive { color: var(--text); border-bottom-color: var(--highlight); }
 .collapse { margin-left: auto; border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 0 6px; }
 .body { display: flex; gap: 0; padding: 4px 6px 0; height: 88px; overflow: hidden; min-width: 0; }
 .group { display: flex; flex-direction: column; padding: 0 6px; border-right: 1px solid var(--border); flex: none; }

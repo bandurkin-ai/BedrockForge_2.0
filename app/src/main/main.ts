@@ -33,6 +33,9 @@ function localDir(): string {
 }
 const LOG_DIR = path.join(localDir(), "logs");
 const SHELL_ROOT = path.join(__dirname, "..", "static");
+// Brand (docs/brand/README.md): Anthracite background, the cube icon of the app.
+const BRAND_BG = "#1b222b";
+const APP_ICON = path.join(SHELL_ROOT, "icon.png");
 const UI_ROOT = uiRoot(app.isPackaged, process.resourcesPath, path.join(__dirname, ".."));
 if (process.env.BF_USER_DATA) app.setPath("userData", process.env.BF_USER_DATA);
 const SETTINGS_FILE = () => path.join(app.getPath("userData"), "settings.json");
@@ -138,7 +141,7 @@ function splashState(text: string, error = false): void {
 function createSplash(): void {
   splash = new BrowserWindow({
     width: 560, height: 340, frame: false, resizable: false, center: true, show: false,
-    title: TITLE, backgroundColor: "#15181d", webPreferences: securePrefs("splash-preload.js"),
+    title: TITLE, backgroundColor: BRAND_BG, icon: APP_ICON, webPreferences: securePrefs("splash-preload.js"),
   });
   lockDown(splash.webContents);
   splash.once("ready-to-show", () => splash?.show());
@@ -149,7 +152,7 @@ function createMain(): void {
   const placed = savedPlacement();
   mainWin = new BrowserWindow({
     width: placed?.width ?? 1440, height: placed?.height ?? 900, x: placed?.x, y: placed?.y, minWidth: 1024, minHeight: 600, show: false,
-    title: TITLE, backgroundColor: "#15181d", webPreferences: securePrefs("preload.js"),
+    title: TITLE, backgroundColor: BRAND_BG, icon: APP_ICON, webPreferences: securePrefs("preload.js"),
   });
   // ТЗ 7.0.14: the minimum is 1024×600 of the page itself; on Windows the frame takes ~16 px of the outer size.
   const [ow, oh] = mainWin.getSize();
