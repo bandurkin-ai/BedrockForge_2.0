@@ -17,7 +17,7 @@ from typing import IO, Any
 import sqlalchemy as sa
 
 from bf_core.db import dialect
-from bf_core.db.schema import BLOB_OWNER_KINDS, blob_owners, blobs
+from bf_core.db.schema import BLOB_OWNER_KINDS, blob_owners, blobs, valid_blob_role
 
 CHUNK = 1 << 20
 _HEX = set("0123456789abcdef")
@@ -125,9 +125,12 @@ class BlobStore:
 
 
 def add_owner(conn: sa.Connection, sha: str, owner_kind: str, owner_id: int, role: str = "data") -> None:
-    """Registers a reference to a blob. Every kind of owner is declared in schema.BLOB_OWNER_KINDS (ТЗ 6.5)."""
+    """Registers a reference to a blob. Every kind of owner is declared in schema.BLOB_OWNER_KINDS (ТЗ 6.5),
+    every role in schema.BLOB_ROLES (ADR 0011 §1)."""
     if owner_kind not in BLOB_OWNER_KINDS:
         raise ValueError(f"blob owner kind {owner_kind!r} is not registered in bf_core.db.schema.BLOB_OWNER_KINDS")
+    if not valid_blob_role(role):
+        raise ValueError(f"blob role {role!r} is not registered in bf_core.db.schema.BLOB_ROLES")
     key = (
         (blob_owners.c.sha256 == sha)
         & (blob_owners.c.owner_kind == owner_kind)
