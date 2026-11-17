@@ -26,7 +26,7 @@ import datetime as dt
 import math
 import os
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -68,18 +68,43 @@ class SurpacStyle:
     min_desc: int = 0  # description fields written even when all are empty (1 — a comma after Z)
     null_line: str = NULL_LINE  # the record that ends a segment
 
-    def coord(self, v: float) -> str:
-        text = "" if v != v else repr(v) if self.decimals is None else f"{v:.{self.decimals}f}"
-        return self.coord_prefix + text.rjust(self.coord_width)
+    def coords(self, values: list[float]) -> list[str]:
+        """Coordinate fields (with the text before them); NaN is a blank field."""
+        fmt = repr if self.decimals is None else f"{{:.{self.decimals}f}}".format
+        pre, w = self.coord_prefix, self.coord_width
+        if w:
+            return [pre + ("" if v != v else fmt(v)).rjust(w) for v in values]
+        return [pre + ("" if v != v else fmt(v)) for v in values]
+
+    def descs(self, values: Sequence[str | None]) -> str:
+        """Description fields with their commas: up to the last filled one, at least `min_desc`."""
+        last = len(values)
+        while last and not values[last - 1]:
+            last -= 1
+        count = max(last, self.min_desc)
+        if not count:
+            return ""
+        filled = [self.desc_prefix + d if d else self.empty_desc for d in values[:count]]
+        return "," + ",".join(filled + [self.empty_desc] * (count - len(filled)))
 
     def record(self, number: int, y: float, x: float, z: float, descs: Sequence[str | None]) -> str:
-        last = max((i + 1 for i, d in enumerate(descs) if d), default=0)
-        count = max(last, self.min_desc)
-        parts = [str(number).rjust(self.number_width), self.coord(y), self.coord(x), self.coord(z)]
-        for i in range(count):
-            d = descs[i] if i < len(descs) else None
-            parts.append(self.desc_prefix + d if d else self.empty_desc)
-        return ",".join(parts)
+        cy, cx, cz = self.coords([y, x, z])
+        return f"{str(number).rjust(self.number_width)},{cy},{cx},{cz}{self.descs(descs)}"
+
+    def checker(self) -> Callable[[str, int, list[float], list[str]], bool]:
+        """A fast `record(...) == line` for the reader; `tokens` are the description fields as in the file."""
+        fmt = repr if self.decimals is None else f"{{:.{self.decimals}f}}".format
+        pre, w, nw = self.coord_prefix, self.coord_width, self.number_width
+
+        def check(line: str, number: int, xyz: list[float], tokens: list[str]) -> bool:
+            texts = [fmt(v) if v == v else "" for v in xyz]
+            y, x, z = (pre + t.rjust(w) for t in texts) if w else (pre + t for t in texts)
+            head = f"{str(number).rjust(nw) if nw else number},{y},{x},{z}"
+            if not tokens and not self.min_desc:
+                return head == line
+            return head + self.descs([t.strip() or None for t in tokens]) == line
+
+        return check
 
 
 @dataclass
@@ -227,6 +252,7 @@ def read_surpac(
     warnings: list[str] = []
     body = _Body()
     style: SurpacStyle | None = None
+    check = SurpacStyle().checker()
     title = axis = None
     newline = "\r\n"
     end: tuple[str, str] | None = None
@@ -283,6 +309,7 @@ def read_surpac(
                     continue
                 if style is None:
                     style = _learn([t.removesuffix("\r") for t in lines[i : i + LEARN_LINES]], newline)
+                    check = style.checker()
                 tokens = line.split(",")
                 number = _integer(tokens[0])
                 if number is None or number < 0 or len(tokens) < 4:
@@ -313,7 +340,7 @@ def read_surpac(
                 if len(descs) > MAX_DESC:
                     raise _fail("too_large", f"Строка {line_no}: описаний {len(descs)} — больше {MAX_DESC}.")
                 values = [t.strip() or None for t in descs]
-                if exact and style.record(number, coords[0], coords[1], coords[2], values) != line:
+                if exact and not check(line, number, coords, descs):
                     exact = False
                 new = not open_segment or number != current
                 if open_segment and number != current:
@@ -478,7 +505,7 @@ def write_surpac(
         warnings.append(f"{n_text(commas)} описаний содержали запятую: она заменена на «;»")
         texts = [(j, [v.replace(",", ";") if v else v for v in values]) for j, values in texts]
     number_of = np.asarray(numbers, dtype=np.int64)[g.layer].tolist()
-    ends = set((np.cumsum(g.counts) - 1).tolist())
+    ends = np.cumsum(g.counts) - 1  # the last vertex of every line: a 0 record follows it
     xs, ys, zs = (g.xyz[:, k].tolist() for k in range(3))
     m = len(xs)
     part = path.with_name(path.name + ".part")
@@ -488,18 +515,29 @@ def write_surpac(
                 out.write(b"\xef\xbb\xbf")
             out.write(_encode(head, codec))
             step = 1 << 16
+            nw = style.number_width
             for a in range(0, m, step):
                 tick(0.1 + 0.9 * a / m, f"Запись вершин: {n_text(a)} из {n_text(m)}")
-                rows: list[str] = []
-                for i in range(a, min(m, a + step)):
-                    descs: list[str | None] = [None] * width
-                    for j, values in texts:
-                        descs[j] = values[i]
-                    rows.append(style.record(number_of[i], ys[i], xs[i], zs[i], descs))
-                    if i in ends:
-                        rows.append(style.null_line)
-                rows.append("")
-                out.write(_encode(nl.join(rows), codec))
+                b = min(m, a + step)
+                nums = [str(k).rjust(nw) for k in number_of[a:b]] if nw else [str(k) for k in number_of[a:b]]
+                cy, cx, cz = style.coords(ys[a:b]), style.coords(xs[a:b]), style.coords(zs[a:b])
+                rows = [f"{k},{y},{x},{z}" for k, y, x, z in zip(nums, cy, cx, cz, strict=True)]
+                if width or style.min_desc:
+                    for i in range(a, b):
+                        descs: list[str | None] = [None] * width
+                        for j, values in texts:
+                            descs[j] = values[i]
+                        rows[i - a] += style.descs(descs)
+                lo, hi = np.searchsorted(ends, [a, b])
+                pieces: list[str] = []
+                prev = 0
+                for e in (ends[lo:hi] - a + 1).tolist():
+                    pieces += rows[prev:e]
+                    pieces.append(style.null_line)
+                    prev = e
+                pieces += rows[prev:]
+                pieces.append("")
+                out.write(_encode(nl.join(pieces), codec))
             out.write(_encode(end, codec))
             if like is not None:
                 out.write(like.tail)
