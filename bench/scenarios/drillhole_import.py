@@ -29,7 +29,8 @@ def prepare(params: dict[str, Any], work: Path) -> None:
         for start in range(0, n, step):
             stop = min(n, start + step)
             fh.writelines(
-                f"DH{holes[i]:06d},{depth[i]:.1f},{depth[i] + 1:.1f},{grades[i, 0]},{grades[i, 1]},{grades[i, 2]},S{i:08d}\n"
+                f"DH{holes[i]:06d},{depth[i]:.1f},{depth[i] + 1:.1f},"
+                f"{grades[i, 0]},{grades[i, 1]},{grades[i, 2]},S{i:08d}\n"
                 for i in range(start, stop)
             )
     folder = create_folder(work, "Замер", {})
