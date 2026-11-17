@@ -3,6 +3,7 @@ import { api, CoreError } from "../../shell/api";
 import { openMenu } from "../../shell/ContextMenu";
 import { askConfirm, askText, showMessage } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
+import { DisplayRows } from "../downhole/DisplaysTree";
 import { loadSets, selectSet, tablesStore, type SetInfo } from "./state";
 import css from "./Tables.module.css";
 
@@ -54,6 +55,11 @@ export function SetsTree() {
                 { label: "Устья", run: () => void open(set, "collar") },
                 { label: "Инклинометрия", run: () => void open(set, "survey") },
                 { label: "Пробы", run: () => void open(set, "assay") },
+                { separator: true, label: "" },
+                { label: "Содержания…", run: () => void app.run("downhole.open", { form: "grade", set_id: set.id }) },
+                { label: "Литология…", run: () => void app.run("downhole.open", { form: "lith", set_id: set.id }) },
+                { label: "События…", run: () => void app.run("downhole.open", { form: "event", set_id: set.id }) },
+                { separator: true, label: "" },
                 { label: "Переименовать…", run: () => void rename(set) },
                 { label: "Удалить…", run: () => void remove(set) },
               ]);
@@ -61,6 +67,7 @@ export function SetsTree() {
           >
             {set.name} <span className={css.count}>{set.holes.toLocaleString("ru-RU")}</span>
           </button>
+          <DisplayRows setId={set.id} />
         </li>
       ))}
     </ul>

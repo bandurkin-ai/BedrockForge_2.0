@@ -1,0 +1,58 @@
+/* The 3D window (ТЗ 7.13): the panel above the view, the canvas, notes over it. Brand tokens (docs/brand). */
+.scene { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; padding: 3px 6px; background: var(--bg-elev); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text); z-index: 3; }
+.group { display: flex; align-items: center; gap: 1px; }
+.sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.tool { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 26px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text-dim); cursor: pointer; padding: 0; }
+.tool:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.tool[aria-pressed="true"] { background: var(--bg-active); color: var(--text); border-color: var(--accent); }
+.tool:disabled { opacity: 0.4; cursor: default; }
+.step { width: auto; min-width: 24px; padding: 0 4px; font-size: 11px; font-family: var(--font-brand); font-weight: 600; }
+.field { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
+.field input[type="number"] { width: 58px; padding: 2px 4px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); }
+.field input[type="range"] { width: 80px; accent-color: var(--accent); }
+.area { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--scene-bg); }
+.gl { position: absolute; inset: 0; }
+.note { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 10px 16px; border-radius: 6px; background: var(--bg-elev); border: 1px solid var(--border); color: var(--text-dim); text-align: center; max-width: 80%; z-index: 4; box-shadow: var(--shadow); }
+.banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); padding: 6px 14px; border-radius: 6px; background: var(--bg-elev); border: 1px solid var(--highlight); color: var(--text); z-index: 5; box-shadow: var(--shadow); }
+.hint { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); padding: 5px 12px; border-radius: 6px; background: color-mix(in srgb, var(--bg-elev) 92%, transparent); border: 1px solid var(--highlight); color: var(--text); z-index: 4; }
+.corner { position: absolute; right: 8px; top: 8px; padding: 3px 8px; border-radius: 4px; background: color-mix(in srgb, var(--bg-elev) 85%, transparent); color: var(--text-dim); font-size: 11px; z-index: 4; }
+.second { top: 32px; }
+.third { top: 56px; color: var(--warn); }
+.error { color: var(--danger); }
+.coords { position: absolute; left: 112px; right: 8px; bottom: 4px; color: var(--text-faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 2; }
+.diag { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 6; }
+.diagBox { width: min(520px, 90%); background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); padding: 16px 18px; color: var(--text); }
+.diagBox h4 { margin: 0 0 8px; }
+.diagBox dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 8px 0 12px; color: var(--text-dim); }
+.diagBox dd { margin: 0; color: var(--text); word-break: break-word; }
+.diagActions { display: flex; gap: 8px; justify-content: flex-end; }
+.button { padding: 5px 12px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-panel); color: var(--text); cursor: pointer; }
+.button:hover { background: var(--bg-hover); }
+.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.primary:hover { background: var(--accent); filter: brightness(1.08); }
+/* mini-plan of the section (ТЗ 7.14) */
+.map { position: absolute; right: 8px; bottom: 26px; width: 260px; background: color-mix(in srgb, var(--bg-elev) 94%, transparent); border: 1px solid var(--border); border-radius: 6px; z-index: 4; box-shadow: var(--shadow); }
+.mapHead { display: flex; align-items: center; justify-content: space-between; padding: 3px 4px 3px 8px; font-size: 11px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+.mapHead button { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 2px; display: inline-flex; }
+.mapHead button:hover { color: var(--text); }
+.map svg { display: block; width: 100%; height: auto; }
+.map svg.drawing { cursor: crosshair; }
+.smHole { fill: none; stroke: var(--text-dim); stroke-width: 1; opacity: 0.8; }
+.smCollar { fill: var(--text); }
+.smBox { fill: none; stroke: var(--text-faint); stroke-dasharray: 3 2; }
+.smLines { fill: none; stroke: var(--text-faint); stroke-width: 0.8; }
+.smWindow { fill: color-mix(in srgb, var(--accent) 16%, transparent); stroke: var(--accent); stroke-width: 0.8; }
+.smSection { fill: none; stroke: var(--accent); stroke-width: 2; }
+.smEnd { fill: var(--accent); }
+.smEye { fill: var(--highlight); }
+.smDraft { fill: none; stroke: var(--highlight); stroke-width: 2; }
+.smNorth path { fill: var(--text-dim); }
+.smNorth text { fill: var(--text-dim); font-size: 9px; }
+.simplified { font-size: 10px; color: var(--warn); }
+/* frame counter (ADR 0004 §5) */
+.fps { position: absolute; right: 8px; top: 80px; width: 320px; background: color-mix(in srgb, var(--bg-elev) 95%, transparent); border: 1px solid var(--border); border-radius: 6px; z-index: 5; box-shadow: var(--shadow); font-size: 11px; }
+.fps dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 6px 8px; color: var(--text-dim); }
+.fps dd { margin: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fpsActions { display: flex; gap: 6px; padding: 0 8px 8px; }
+.fpsLog { margin: 0 8px 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; font: 11px/1.4 var(--font); color: var(--text-dim); background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; padding: 6px; }

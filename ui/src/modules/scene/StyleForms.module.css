@@ -1,0 +1,9 @@
+/* Forms of collar and trace styles (ТЗ 7.15): brand palette and fonts (ADR 0006). */
+.form { display: flex; flex-direction: column; gap: 8px; padding: 4px; font-size: 12px; }
+.form fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.form legend { font-family: var(--font-brand); font-weight: 600; color: var(--text-dim); padding: 0 4px; }
+.form label { display: flex; flex-direction: column; gap: 2px; }
+.check { flex-direction: row !important; align-items: center; gap: 6px; }
+.pair { display: flex; gap: 8px; }
+.pair > * { flex: 1; min-width: 0; }
+.muted { color: var(--text-faint); margin: 0; }

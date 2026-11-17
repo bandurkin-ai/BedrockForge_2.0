@@ -16,8 +16,9 @@ class Table:
     name: str
     #: The table has an integer key `id` that is renumbered (else rows are copied with remapped references).
     renumber: bool = False
-    #: Optional (ТЗ 7.4 «По желанию — настройки вида»).
+    #: Optional (ТЗ 7.4 «По желанию — настройки вида»): the whole table, or only rows of this scope.
     view: bool = False
+    view_scope: str | None = None
 
 
 TABLES: tuple[Table, ...] = (
@@ -34,7 +35,9 @@ TABLES: tuple[Table, ...] = (
     Table("audit_findings"),
     Table("blob_owners"),
     Table("edit_log", renumber=True),
-    Table("settings", view=True),
+    Table("styles", renumber=True),  # displays link styles by uid: no id references to rewrite
+    Table("charts"),
+    Table("settings", view_scope="view"),  # codes, code_links… always; scope view — optional
 )
 
 #: project_meta is written from the manifest; jobs are not part of a project archive (ТЗ 7.4); blobs are
@@ -63,6 +66,7 @@ ID_COLUMNS: dict[tuple[str, str], str | None] = {
     ("audit_runs", "job_id"): None,
     ("audit_runs", "table_id"): "dh_tables",
     ("audit_findings", "run_id"): "audit_runs",
+    ("charts", "object_id"): "objects",
 }
 
 #: (table, kind column, id column) → {kind value: table}. Rows of unknown kinds are dropped.

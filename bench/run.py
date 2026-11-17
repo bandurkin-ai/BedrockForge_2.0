@@ -106,18 +106,52 @@ def run_profile(profile: str, repeat: int, only: list[str] | None) -> dict[str, 
             "peak_mb": round(max(peaks), 1) if peaks else None,
             "budget_s": spec["budget_s"],
             "budget_mb": spec["budget_mb"],
+            "limits": spec.get("limits", {}),
             "info": runs[-1]["info"],
         }
     return {"profile": profile, "python": sys.version.split()[0], "scenarios": results}
 
 
-def check_budgets(report: dict[str, Any]) -> list[str]:
+def external_results() -> dict[str, Any]:
+    """Results written by other checks (the frame of the 3D window from the E2E perf3d): read when present.
+
+    Only the deterministic counters have budgets (`limits`); times go to the report.
+    """
+    spec = json.loads((ROOT / "bench" / "budgets.json").read_text(encoding="utf-8")).get("external", {})
+    out: dict[str, Any] = {}
+    for name, e in spec.items():
+        if name.startswith("_"):
+            continue
+        path = ROOT / e["file"]
+        if not path.is_file():
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        out[name] = {"file": e["file"], "limits": e.get("limits", {}), "report": e.get("report", []), "info": data}
+    return out
+
+
+def check_external(report: dict[str, Any]) -> list[str]:
     errors = []
+    for name, r in report.get("external", {}).items():
+        for key, limit in r["limits"].items():
+            value = r["info"].get(key)
+            if value is None or value > limit:
+                errors.append(f"{name}: {key} = {value} > budget {limit}")
+    return errors
+
+
+def check_budgets(report: dict[str, Any]) -> list[str]:
+    errors = check_external(report)
     for name, r in report["scenarios"].items():
         if r["seconds"] > r["budget_s"]:
             errors.append(f"{name}: {r['seconds']:.3f} s > budget {r['budget_s']} s")
         if r["peak_mb"] is not None and r["peak_mb"] > r["budget_mb"]:
             errors.append(f"{name}: {r['peak_mb']:.0f} MB > budget {r['budget_mb']} MB")
+        # stages of one scenario with their own budgets: "limits" {info key: max} (seconds, MB of answers)
+        for key, limit in r.get("limits", {}).items():
+            value = r.get("info", {}).get(key)
+            if value is None or value > limit:
+                errors.append(f"{name}: {key} = {value} > budget {limit}")
     return errors
 
 
@@ -140,6 +174,9 @@ def table(report: dict[str, Any], base: dict[str, Any] | None = None) -> str:
         "| Сценарий | Время, с | База, с | Память, МБ | Бюджет |",
         "|---|---|---|---|---|",
     ]
+    for name, r in report.get("external", {}).items():
+        shown = ", ".join(f"{k} {r['info'].get(k)}" for k in [*r["limits"], *r["report"]])
+        lines.append(f"| {name} (внешний) | {shown} | — | — | {r['limits']} |")
     for name, r in report["scenarios"].items():
         b = (base or {}).get("scenarios", {}).get(name, {}).get("seconds")
         mem = "—" if r["peak_mb"] is None else f"{r['peak_mb']:.0f}"
@@ -176,6 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if errors else 0
 
     report = run_profile(a.profile, a.repeat, a.only)
+    report["external"] = external_results()
     if a.out:
         a.out.parent.mkdir(parents=True, exist_ok=True)
         a.out.write_text(

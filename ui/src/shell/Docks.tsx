@@ -2,12 +2,12 @@ import { useApp } from "./AppContext";
 import { AuditPanel } from "../modules/audit/AuditPanel";
 import { JobsPanel } from "../modules/jobs/JobsPanel";
 import { HoleCard } from "../modules/tables/HoleCard";
+import { SceneView } from "../modules/scene/SceneView";
 import { TablePanel } from "../modules/tables/TablePanel";
 import { CommandLog } from "./CommandLog";
 import { Icon } from "./Icon";
 import { useStore } from "./useStore";
 import { BOTTOM_TITLES, type BottomTab } from "./workspace";
-import logoMark from "../assets/logo-mark.png";
 import css from "./Shell.module.css";
 
 const STAGE_TEXT: Partial<Record<BottomTab, string>> = {
@@ -67,13 +67,7 @@ export function RightDock() {
 export function Viewport() {
   return (
     <main className={css.viewport} aria-label="Главное окно 3D">
-      <div className={css.viewportBrand}>
-        <img src={logoMark} alt="" className={css.viewportMark} />
-        <strong>
-          Bedrock<span className={css.forge}>Forge</span>
-        </strong>
-        Главное 3D-окно появится на этапе Э6
-      </div>
+      <SceneView />
     </main>
   );
 }

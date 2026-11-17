@@ -25,6 +25,7 @@ from bf_core.storage.blobs import BlobStore, valid_sha
 from .container import ArchiveError, Corrupted, TooNew, open_archive, read_header, read_json
 from .rows import decode_row, read_lines
 from .spec import APP, ID_COLUMNS, KIND_COLUMNS, RETURNED_MAPS, TABLES
+from .view_remap import remap_setting
 
 Progress = Callable[[float, str], None]
 
@@ -226,10 +227,17 @@ def _restore(
                         pass
                 elif spec.name == "blob_owners":
                     owners = list(read_lines(hf))  # type: ignore[arg-type]  # inserted after the blobs rows (FK)
+                elif spec.view_scope:  # settings: view scope optional, ids inside keys renumbered (ADR 0007 §2)
+                    rows = (
+                        r
+                        for raw in read_lines(hf)  # type: ignore[arg-type]
+                        if (r := remap_setting(raw, maps.get("objects", {}), apply_view)) is not None
+                    )
+                    _insert_table(conn, spec.name, spec.renumber, rows, maps)
                 else:
                     _insert_table(conn, spec.name, spec.renumber, read_lines(hf), maps)  # type: ignore[arg-type]
                 actual[member.name] = hf.h.hexdigest()
-                if spec.view:
+                if spec.view or spec.view_scope:
                     view["applied"] = apply_view
             elif member.name == "blobs.json":
                 raw = f.read()

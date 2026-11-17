@@ -296,6 +296,36 @@ audit_findings = sa.Table(  # grouped by rule and hole: the count and up to 20 e
     sa.Index(None, "run_id", "hole"),
 )
 
+# --- 3D displays (Э6, ADR 0007 §3) ----------------------------------------------------------------
+
+styles = sa.Table(  # ТЗ 7.16: the style library of the project (palettes, layer styles, display templates)
+    "styles",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("uid", sa.String(32), nullable=False, unique=True),  # links of displays (survive .bfggis)
+    sa.Column("name", sa.String(255), nullable=False),
+    sa.Column("name_key", sa.String(255), nullable=False),
+    sa.Column("level", sa.String(16), nullable=False),  # palette | layer | display
+    sa.Column("data_kind", sa.String(16), nullable=False),  # number | text | event | mixed
+    sa.Column("body", JSONType, nullable=False),
+    sa.Column("default_for", JSONType, nullable=False),  # field masks: AU, AU*
+    sa.Column("extra", JSONType, nullable=False),  # unknown keys of a .bfstyle.json entry, kept
+    sa.Column("version", sa.Integer, nullable=False, default=1),
+    sa.Column("author", sa.String(100)),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Column("updated_at", UtcDateTime, nullable=False),
+    sa.UniqueConstraint("level", "name_key"),
+)
+
+charts = sa.Table(  # 1 : 1 to objects(kind="chart"): saved displays along holes (striplog) now, charts on Э13
+    "charts",
+    project_md,
+    sa.Column("object_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("kind", sa.String(32), nullable=False),
+    sa.Column("settings", JSONType, nullable=False),
+    sa.Column("auto_name", sa.Boolean, nullable=False, default=False),
+)
+
 # --- instance level -------------------------------------------------------------------------------
 
 instance_jobs, instance_job_log = _jobs(instance_md)

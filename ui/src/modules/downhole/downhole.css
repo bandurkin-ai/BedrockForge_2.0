@@ -1,0 +1,157 @@
+/*
+ * Forms of the displays along holes and the style library (ТЗ 7.16; ported from BF shell.css, «dh-» rules).
+ * Global, but every rule is prefixed «dh-» or scoped under .dh-root; colours are the BF2 tokens
+ * (ADR 0006: Anthracite, Cobalt, Copper Orange, Montserrat headings).
+ */
+.dh-root {
+  --panel: var(--bg-panel);
+  --fg: var(--text);
+  --muted: var(--text-dim);
+  --brand: var(--brand-orange);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --sev-error: var(--danger);
+  --sev-warning: var(--warn);
+  --warn-bg: color-mix(in srgb, var(--warn) 14%, transparent);
+  font-size: 12px;
+}
+.dh-root legend, .dh-root .dh-section-head, .dh-root .dh-layers-head { font-family: var(--font-brand); }
+.dh-root .grow { flex: 1; min-width: 0; }
+.dh-root .muted { color: var(--text-faint); }
+.dh-root .small { font-size: 11px; }
+.dh-root .warn { color: var(--warn); }
+.dh-root .link { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+.dh-root .check { display: flex; align-items: center; gap: 6px; }
+.dh-root button { border: 1px solid var(--border); background: var(--bg-hover); color: var(--text); border-radius: var(--radius); padding: 2px 8px; cursor: pointer; font: inherit; }
+.dh-root button:disabled { opacity: 0.5; cursor: default; }
+.dh-root button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.dh-root button.icon { padding: 0 5px; background: transparent; }
+.dh-root .small-btn { padding: 1px 6px; font-size: 11px; }
+.dh-root .small-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.dh-root .form-note { padding: 12px; }
+.dh-root .form-actions { display: flex; align-items: center; gap: 8px; position: sticky; bottom: -8px; background: var(--panel); padding: 6px 0 8px; border-top: 1px solid var(--border); }
+.dh-root .form-error { color: var(--sev-error); }
+.dh-root input, .dh-root select { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); font: inherit; }
+.downhole-form { height: 100%; box-sizing: border-box; border-right: 0; }
+.dh-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 0; overflow-y: auto; overflow-x: hidden; background: var(--panel); font-size: 0.82rem; }
+.dh-form button { font-size: 0.8rem; }
+.dh-form .small-btn { padding: 2px 7px; font-size: 0.76rem; }
+.dh-form .grow { flex: 1; min-width: 0; }
+.dh-stylebar { display: flex; align-items: center; gap: 4px; position: relative; }
+.dh-stylebar > .dh-pop:first-child { flex: 1; min-width: 0; }
+.dh-style-pick { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dh-modified { font-style: normal; font-size: 0.72rem; color: var(--sev-warning); }
+.dh-link.active { color: var(--accent); background: var(--accent-soft); }
+.dh-pop { position: relative; display: inline-flex; }
+.dh-pop-panel { position: absolute; top: calc(100% + 3px); z-index: 40; min-width: 220px; max-width: 330px; max-height: 420px; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow); padding: 6px; }
+.dh-pop-panel.left { left: 0; }
+.dh-pop-panel.right { right: 0; }
+.dh-pop-form { display: flex; flex-direction: column; gap: 5px; }
+.dh-pop-form label { display: flex; flex-direction: column; gap: 2px; }
+.dh-pop-form label.check { flex-direction: row; align-items: center; gap: 6px; }
+.dh-pop-form hr { border: 0; border-top: 1px solid var(--border); margin: 3px 0; width: 100%; }
+.dh-menu-item { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 4px 6px; border-radius: 4px; }
+.dh-menu-item:hover:not(:disabled) { background: var(--accent-soft); }
+.dh-menu-item.danger { color: var(--sev-error, #e0364a); }
+.dh-gallery { display: flex; flex-direction: column; gap: 4px; }
+.dh-gallery-group { display: flex; flex-direction: column; gap: 1px; }
+.dh-gallery-item { display: flex; align-items: center; gap: 8px; border: 0; background: transparent; padding: 3px 5px; border-radius: 4px; text-align: left; }
+.dh-gallery-item:hover, .dh-gallery-item.active { background: var(--accent-soft); }
+.dh-sample { display: inline-flex; width: 36px; height: 16px; flex: none; border-radius: 3px; overflow: hidden; border: 1px solid var(--border); background: var(--bg); }
+.dh-sample b { flex: 1; }
+.dh-layers { border: 1px solid var(--border); border-radius: 6px; padding: 5px 6px; display: flex; flex-direction: column; gap: 4px; }
+.dh-layers-head { display: flex; align-items: center; gap: 6px; }
+.dh-layer-list { display: flex; flex-direction: column; gap: 2px; max-height: 170px; overflow-y: auto; }
+.dh-layer { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; }
+.dh-layer:hover { background: color-mix(in srgb, var(--accent-soft) 50%, transparent); }
+.dh-layer.selected { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.dh-layer.off .dh-layer-field, .dh-layer.off .dh-sample { opacity: 0.45; }
+.dh-layer-field { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.dh-layer-side { width: 64px; text-align: right; }
+.dh-handle { cursor: grab; color: var(--muted); user-select: none; }
+.dh-eye { font-size: 0.8rem; width: 22px; }
+.dh-empty { padding: 4px; }
+.dh-add-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.dh-sections { display: flex; flex-direction: column; gap: 4px; }
+.dh-section { border: 1px solid var(--border); border-radius: 6px; }
+.dh-section-head { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: transparent; padding: 5px 8px; text-align: left; }
+.dh-section-head:hover { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.dh-twisty { width: 10px; color: var(--muted); }
+.dh-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.76rem; }
+.dh-section-body { display: flex; flex-direction: column; gap: 6px; padding: 2px 8px 8px; }
+.dh-row { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+.dh-label { width: 92px; flex: none; color: var(--muted); font-size: 0.78rem; }
+.dh-control { flex: 1; min-width: 0; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.dh-control > select, .dh-control > input:not([type=checkbox]) { flex: 1; min-width: 0; }
+.dh-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+.dh-seg button { border: 0; border-right: 1px solid var(--border); border-radius: 0; background: transparent; padding: 3px 7px; display: inline-flex; align-items: center; gap: 4px; }
+.dh-seg button:last-child { border-right: 0; }
+.dh-seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.dh-seg-icon { font-size: 0.75rem; letter-spacing: -1px; }
+.dh-slider { display: flex; align-items: center; gap: 6px; }
+.dh-slider input[type=range] { flex: 1; min-width: 60px; }
+.dh-num { display: inline-flex; align-items: center; gap: 3px; }
+.dh-num input { width: 72px; }
+.dh-unit { font-size: 0.75rem; }
+.dh-color { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.dh-color input[type=color] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--border); background: none; }
+.dh-swatch { width: 14px; height: 14px; padding: 0; border: 1px solid var(--border); border-radius: 3px; }
+.dh-banner { border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; background: var(--accent-soft); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.78rem; }
+.dh-banner.warn { background: var(--warn-bg); border-color: var(--sev-warning); }
+.dh-hist { display: flex; flex-direction: column; }
+.dh-hist svg { width: 100%; height: 110px; display: block; touch-action: none; }
+.dh-hist-axis { stroke: var(--muted); stroke-width: 1; }
+.dh-hist-tick { fill: var(--muted); font-size: 9px; }
+.dh-hist-cum { stroke: var(--fg); stroke-width: 1.2; opacity: 0.8; }
+.dh-hist-handle { cursor: ew-resize; outline: none; }
+.dh-hist-handle line { stroke: var(--fg); stroke-width: 1.5; stroke-dasharray: 3 2; }
+.dh-hist-handle rect:not([fill]) { fill: var(--accent); stroke: var(--bg); stroke-width: 1; }
+.dh-hist-handle:focus line, .dh-hist-handle.drag line { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: none; }
+.dh-hist-strip { height: 8px; border-radius: 2px; margin: 0 2%; }
+.dh-hist-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dh-hist-tools label.check { display: inline-flex; align-items: center; gap: 3px; font-size: 0.75rem; }
+.dh-classes { display: flex; flex-direction: column; gap: 5px; }
+.dh-class-rows { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
+.dh-class-row { display: flex; align-items: center; gap: 4px; }
+.dh-class-row.off { opacity: 0.5; }
+.dh-class-row.picked { background: var(--accent-soft); border-radius: 4px; }
+.dh-class-row input[type=color], .dh-cat-row input[type=color] { width: 26px; height: 20px; padding: 0; border: 1px solid var(--border); background: none; flex: none; }
+.dh-from { width: 70px; flex: none; }
+.dh-from input { width: 64px; }
+.dh-class-label { flex: 1; min-width: 40px; }
+.dh-count { width: 92px; text-align: right; flex: none; white-space: nowrap; }
+.dh-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.dh-gradients { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.dh-gradient { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: transparent; border-radius: 4px; padding: 2px 5px; text-align: left; font-size: 0.75rem; }
+.dh-gradient.active { border-color: var(--accent); background: var(--accent-soft); }
+.dh-gradient i { width: 40px; height: 10px; border-radius: 2px; flex: none; }
+.dh-cats { display: flex; flex-direction: column; gap: 5px; }
+.dh-cat-list { overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; }
+.dh-cat-row { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 4px; padding: 0 4px; box-sizing: border-box; }
+.dh-cat-row.off { opacity: 0.5; }
+.dh-cat-row.picked { background: var(--accent-soft); }
+.dh-cat-name { flex: 1; min-width: 0; border: 0; background: transparent; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.dh-cat-marker { width: 92px; flex: none; }
+.dh-holes { display: flex; flex-direction: column; gap: 3px; }
+.dh-hole-list { max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--border); border-radius: 4px; padding: 3px 5px; }
+.dh-hole-list label.check { display: flex; align-items: center; gap: 5px; }
+.dh-dialog, .dh-usage { border: 1px solid var(--accent); border-radius: 6px; background: var(--bg); padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; box-shadow: var(--shadow); }
+.dh-usage { position: absolute; top: calc(100% + 3px); left: 0; right: 0; z-index: 41; }
+.dh-usage-head { display: flex; align-items: center; gap: 6px; }
+.dh-apply-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.dh-apply-list label.check { display: flex; align-items: center; gap: 5px; }
+.dh-map { padding-left: 20px; display: flex; flex-direction: column; gap: 2px; }
+.dh-conflicts { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.dh-conflicts td, .dh-conflicts th { border-bottom: 1px solid var(--border); padding: 3px 4px; text-align: left; }
+.dh-actions { position: sticky; bottom: 0; background: var(--panel); border-top: 1px solid var(--border); padding: 6px 0; margin-top: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; z-index: 5; }
+.dh-note { flex-basis: 100%; }
+
+/* BF2: the windows of the forms and the rows of saved displays in the data tree */
+.dh-window { padding: 8px 10px; box-sizing: border-box; }
+.dh-window > .dh-dialog { border-color: var(--border); box-shadow: none; }
+.dh-tree { padding-left: 14px; }
+.dh-tree-row { display: flex; align-items: center; gap: 2px; }
+.dh-tree-row > input[type=checkbox] { margin: 0 2px 0 0; flex: none; accent-color: var(--accent); }
+.dh-tree-row > button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-tree-glyph { color: var(--brand-orange); }
+.dh-root .dh-banner.link { color: var(--text); text-decoration: none; cursor: default; background: var(--accent-soft); border: 1px solid var(--border); padding: 4px 8px; font-size: 0.78rem; }
+.dh-root h1, .dh-root h2, .dh-root h3 { font-family: var(--font-brand); }

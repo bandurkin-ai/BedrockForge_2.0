@@ -1,0 +1,17 @@
+{
+  "about": "Deleting a linked colouring of categories: the layer takes its colours; hidden and catOrder the style lacks are removed (the interface draws a linked layer so).",
+  "style": {"uid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "level": "palette", "body": {"kind": "categories", "catColors": {"GR": "#ff0000"}}},
+  "settings": {
+    "v": 1,
+    "tracks": [
+      {"id": "t1", "table": "litho", "field": "LITH", "type": "color_text", "hidden": ["X"], "catOrder": ["X", "GR"],
+       "palette": {"uid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "name": "Породы", "linked": true}}
+    ]
+  },
+  "expected": {
+    "v": 1,
+    "tracks": [
+      {"id": "t1", "table": "litho", "field": "LITH", "type": "color_text", "catColors": {"GR": "#ff0000"}}
+    ]
+  }
+}

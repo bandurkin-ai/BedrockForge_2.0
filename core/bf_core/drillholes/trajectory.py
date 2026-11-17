@@ -17,7 +17,7 @@ import numpy as np
 import sqlalchemy as sa
 
 from bf_core.db import dialect
-from bf_core.db.schema import dh_holes, dh_rows, dh_surveys, dh_tables, objects
+from bf_core.db.schema import dh_holes, dh_tables, objects
 
 
 @dataclass
@@ -37,65 +37,59 @@ _lock = threading.Lock()
 _cache: OrderedDict[tuple[Any, ...], SetTrajectories] = OrderedDict()
 
 
+def _numbers(conn: sa.Connection, sql: str, params: tuple[Any, ...], n: int) -> np.ndarray:
+    """A raw select of numbers as a float64 matrix (rows, n), NULL → NaN: read through the driver in portions,
+    converted per portion in C (50 000 holes × 20 stations, no per-row Python work)."""
+    parts = [np.array(chunk, dtype=float).reshape(-1, n) for chunk in dialect.iter_driver_rows(conn, sql, params)]
+    return np.concatenate(parts) if parts else np.zeros((0, n))
+
+
+def _deepest_rows(conn: sa.Connection, set_id: int) -> list[np.ndarray]:
+    """(hole id, deepest «до» or «от») of every ready table of the set: one table at a time — its index (table,
+    hole, from) gives the groups in order, no temporary B-tree (5 M rows: 0.7 s instead of 1.9 s)."""
+    tables = conn.execute(
+        sa.select(dh_tables.c.id).where(dh_tables.c.set_id == set_id, dh_tables.c.state == "ready")
+    ).scalars()
+    sql = "SELECT hole_id, max(coalesce(to_m, from_m)) FROM dh_rows WHERE table_id = ? GROUP BY hole_id"
+    return [_numbers(conn, sql, (int(t),), 2) for t in tables.all()]
+
+
 def _build(conn: sa.Connection, set_id: int, method: str, key: tuple[Any, ...]) -> SetTrajectories:
     from .desurvey import Collars, Surveys, desurvey
 
-    holes = conn.execute(
-        sa.select(
-            dh_holes.c.id,
-            dh_holes.c.name,
-            dh_holes.c.x,
-            dh_holes.c.y,
-            dh_holes.c.z,
-            dh_holes.c.td,
-            dh_holes.c.azimuth,
-            dh_holes.c.dip,
-            dh_holes.c.has_collar,
-        )
-        .where(dh_holes.c.set_id == set_id)
-        .order_by(dh_holes.c.id)
-    ).all()
-    ids = np.array([h.id for h in holes], dtype=np.int64)
-    index = {int(h): i for i, h in enumerate(ids.tolist())}
-
-    def col(name: str) -> np.ndarray:
-        return np.array(
-            [np.nan if getattr(h, name) is None or not h.has_collar else float(getattr(h, name)) for h in holes],
-            dtype=float,
-        )
-
-    td = col("td")
-    deepest = np.full(len(ids), np.nan)
-    deep_rows = conn.execute(
-        sa.select(dh_rows.c.hole_id, sa.func.max(sa.func.coalesce(dh_rows.c.to_m, dh_rows.c.from_m)))
-        .join(dh_tables, dh_tables.c.id == dh_rows.c.table_id)
-        .where(dh_tables.c.set_id == set_id, dh_tables.c.state == "ready")
-        .group_by(dh_rows.c.hole_id)
-    ).all()
-    deep_surv = conn.execute(
-        sa.select(dh_surveys.c.hole_id, sa.func.max(dh_surveys.c.depth))
-        .where(dh_surveys.c.set_id == set_id)
-        .group_by(dh_surveys.c.hole_id)
-    ).all()
-    for hid, d in [*deep_rows, *deep_surv]:
-        i = index.get(int(hid))
-        if i is not None and d is not None:
-            deepest[i] = np.fmax(deepest[i], float(d))
-    length = np.where(np.isnan(td), deepest, np.fmax(td, np.where(np.isnan(deepest), td, deepest)))
-    collars = Collars(np.arange(len(ids)), col("x"), col("y"), col("z"), length, col("azimuth"), col("dip"))
-    srows = conn.execute(
-        sa.select(dh_surveys.c.hole_id, dh_surveys.c.depth, dh_surveys.c.azimuth, dh_surveys.c.dip).where(
-            dh_surveys.c.set_id == set_id
-        )
-    ).all()
-    surveys = Surveys(
-        np.array([index[int(r.hole_id)] for r in srows], dtype=np.int64),
-        np.array([r.depth for r in srows], dtype=float),
-        np.array([np.nan if r.azimuth is None else r.azimuth for r in srows], dtype=float),
-        np.array([np.nan if r.dip is None else r.dip for r in srows], dtype=float),
+    holes = _numbers(
+        conn,
+        "SELECT id, x, y, z, td, azimuth, dip, has_collar FROM dh_holes WHERE set_id = ? ORDER BY id",
+        (set_id,),
+        8,
     )
+    names = list(
+        conn.execute(sa.select(dh_holes.c.name).where(dh_holes.c.set_id == set_id).order_by(dh_holes.c.id)).scalars()
+    )
+    sv = _numbers(conn, "SELECT hole_id, depth, azimuth, dip FROM dh_surveys WHERE set_id = ?", (set_id,), 4)
+    deep_parts = _deepest_rows(conn, set_id)
+    ids = holes[:, 0].astype(np.int64)
+    index = {int(h): i for i, h in enumerate(ids.tolist())}
+    no_collar = ~(holes[:, 7] > 0)
+    col: dict[str, np.ndarray] = {}
+    for j, name in enumerate(("x", "y", "z", "td", "azimuth", "dip"), start=1):
+        col[name] = np.ascontiguousarray(holes[:, j])
+        col[name][no_collar] = np.nan
+    s_dense = np.searchsorted(ids, sv[:, 0].astype(np.int64))  # ids ascend; surveys of holes of the set
+    s_depth = np.ascontiguousarray(sv[:, 1])
+    surveys = Surveys(s_dense, s_depth, np.ascontiguousarray(sv[:, 2]), np.ascontiguousarray(sv[:, 3]))
+
+    td = col["td"]
+    deepest = np.full(len(ids), np.nan)
+    np.fmax.at(deepest, s_dense, s_depth)  # the deepest survey (NaN depths ignored)
+    for deep in deep_parts:
+        pos = np.searchsorted(ids, deep[:, 0].astype(np.int64)).clip(0, max(len(ids) - 1, 0))
+        ok = (ids[pos] == deep[:, 0]) if len(ids) else np.zeros(len(deep), dtype=bool)
+        np.fmax.at(deepest, pos[ok], deep[ok, 1])
+    length = np.where(np.isnan(td), deepest, np.fmax(td, np.where(np.isnan(deepest), td, deepest)))
+    collars = Collars(np.arange(len(ids)), col["x"], col["y"], col["z"], length, col["azimuth"], col["dip"])
     traj = desurvey(collars, surveys, method=method, n_holes=len(ids))
-    return SetTrajectories(key, ids, [h.name for h in holes], index, traj)
+    return SetTrajectories(key, ids, names, index, traj)
 
 
 def trajectories(project: Any, set_id: int, method: str = "minimum_curvature") -> SetTrajectories:

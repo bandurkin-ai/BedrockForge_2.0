@@ -1,0 +1,19 @@
+{
+  "about": "Deleting a linked template: matching layers (by field, case aside) take its settings; the link goes.",
+  "style": {"uid": "dddddddddddddddddddddddddddddddd", "level": "display", "body": {"tracks": [{"field": "au", "type": "tube", "width": 5}, {"field": "ZN", "type": "text"}]}},
+  "settings": {
+    "v": 1,
+    "template": {"uid": "dddddddddddddddddddddddddddddddd", "name": "Шаблон", "linked": true},
+    "tracks": [
+      {"id": "t1", "table": "assay", "field": "AU", "type": "bars", "width": 90},
+      {"id": "t2", "table": "assay", "field": "CU", "type": "bars"}
+    ]
+  },
+  "expected": {
+    "v": 1,
+    "tracks": [
+      {"id": "t1", "table": "assay", "field": "AU", "type": "tube", "width": 5},
+      {"id": "t2", "table": "assay", "field": "CU", "type": "bars"}
+    ]
+  }
+}
