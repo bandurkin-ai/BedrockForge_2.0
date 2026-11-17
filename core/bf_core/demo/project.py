@@ -56,8 +56,13 @@ def _audit(project: Project) -> None:
     with dialect.read_tx(project.engine) as conn:
         sets = list(conn.execute(sa.select(objects.c.id).where(objects.c.kind == "drillhole_set")).scalars())
         plans = [(s, default_table(conn, s), get_settings(conn, s)["config"]) for s in sets]
+    import logging
+
     for set_id, table, config in plans:
-        run(project.engine, set_id, table=table, config=config, job_id=None, tick=lambda _f, _m=None: None)
+        try:
+            run(project.engine, set_id, table=table, config=config, job_id=None, tick=lambda _f, _m=None: None)
+        except Exception:  # noqa: BLE001 - the demo opens anyway; the audit can be run from its tab
+            logging.getLogger("bf_core.demo").exception("demo audit failed")
 
 
 def _register() -> None:

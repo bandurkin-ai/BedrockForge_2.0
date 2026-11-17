@@ -61,6 +61,7 @@ ID_COLUMNS: dict[tuple[str, str], str | None] = {
     ("export_log", "job_id"): None,
     ("audit_runs", "set_id"): "objects",
     ("audit_runs", "job_id"): None,
+    ("audit_runs", "table_id"): "dh_tables",
     ("audit_findings", "run_id"): "audit_runs",
 }
 

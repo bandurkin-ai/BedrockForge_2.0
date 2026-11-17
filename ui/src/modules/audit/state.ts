@@ -84,24 +84,44 @@ export async function loadAudit(setId: number | null = tablesStore.get().setId):
   }
 }
 
-export async function loadFindings(): Promise<void> {
+export const FINDINGS_PAGE = 200;
+/** The latest request wins: an older answer arriving late never replaces a newer one. */
+let request = 0;
+
+/** Findings by the filters; `more` appends the next page (offset = shown). */
+export async function loadFindings(more = false): Promise<void> {
   const s = auditStore.get();
   if (s.setId === null || !s.result) {
     auditStore.set({ findings: [], total: 0 });
     return;
   }
-  const q = new URLSearchParams({ limit: "500" });
-  for (const [k, v] of Object.entries(s.filters)) if (v) q.set(k, v);
+  const q = new URLSearchParams({ limit: String(FINDINGS_PAGE), offset: String(more ? s.findings.length : 0) });
+  for (const [k, v] of Object.entries(s.filters)) if (v) q.set(k === "hole" ? "hole_prefix" : k, v.trim());
+  const mine = ++request;
   try {
     const r = await api.get<{ total: number; findings: Finding[] }>(`/audit/sets/${s.setId}/findings?${q}`);
-    auditStore.set({ findings: r.findings, total: r.total, error: null });
+    if (mine !== request) return;
+    auditStore.set((st) => ({ findings: more ? [...st.findings, ...r.findings] : r.findings, total: r.total, error: null }));
   } catch (e) {
-    auditStore.set({ error: text(e) });
+    if (mine === request) auditStore.set({ error: text(e) });
   }
 }
 
+let typing: ReturnType<typeof setTimeout> | null = null;
+
+/** Filters; the hole field waits for a pause in typing (no request per key). */
 export async function setFilter(patch: Partial<AuditState["filters"]>): Promise<void> {
   auditStore.set((s) => ({ filters: { ...s.filters, ...patch } }));
+  if (typing) clearTimeout(typing);
+  if ("hole" in patch && Object.keys(patch).length === 1) {
+    await new Promise<void>((resolve) => {
+      typing = setTimeout(() => {
+        typing = null;
+        void loadFindings().then(resolve);
+      }, 300);
+    });
+    return;
+  }
   await loadFindings();
 }
 

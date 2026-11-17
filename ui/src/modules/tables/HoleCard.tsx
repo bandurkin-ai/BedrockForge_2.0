@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, CoreError } from "../../shell/api";
 import { useStore } from "../../shell/useStore";
-import { exampleText, SEVERITY_TITLES, type Finding } from "../audit/state";
+import { auditStore, exampleText, SEVERITY_TITLES, type Finding } from "../audit/state";
 import { cellText, tablesStore } from "./state";
 import css from "./Tables.module.css";
 
@@ -70,10 +70,11 @@ export function HoleCard() {
 /** Findings of the last audit for this hole (ТЗ 7.10 «Карточка скважины: устье и находки аудита»). */
 function HoleFindings({ setId, hole, version }: { setId: number | null; hole: string; version: number }) {
   const [list, setList] = useState<Finding[] | null>(null);
+  const run = useStore(auditStore, (x) => x.result?.created_at ?? null); // a new audit — new findings
   useEffect(() => {
     if (setId === null) return;
     api.get<{ findings: Finding[] }>(`/audit/sets/${setId}/findings?hole=${encodeURIComponent(hole)}&limit=100`).then((r) => setList(r.findings), () => setList([]));
-  }, [setId, hole, version]);
+  }, [setId, hole, version, run]);
   if (list === null) return null;
   if (!list.length) return <div className={css.note}>Аудит: замечаний нет (или аудит не запускался).</div>;
   return (

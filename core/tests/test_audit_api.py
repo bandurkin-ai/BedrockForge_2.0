@@ -78,3 +78,55 @@ def test_thresholds_stale_and_excel(demo, tmp_path: Path) -> None:  # type: igno
     wb = openpyxl.load_workbook(job["result"]["path"])
     assert wb.sheetnames == ["Сводка", "По правилам", "Находки"]
     assert wb["По правилам"].max_row == 28 and wb["Находки"].max_row > 1
+
+
+def test_replaced_table_is_found_by_name_and_archive_keeps_the_audit(demo, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    from tests.test_import_job import _check
+
+    c, set_id = demo
+    st = c.get(f"{API}/audit/sets/{set_id}").json()
+    old_table = st["settings"]["table"]
+    assert (
+        c.put(f"{API}/audit/sets/{set_id}/settings", json={"config": {"z_jump": 40}, "table": old_table}).status_code
+        == 200
+    )
+    # «Заменить» the samples: a new table id; the saved choice follows the name «Пробы»
+    f = tmp_path / "assay.csv"
+    f.write_text("Hole_ID,From,To,AU,CU,SampleID\nDH-001,0,2,0.5,0.1,N1\nDH-001,2,4,0.7,0.2,N2\n", encoding="utf-8")
+    chk = _check(c, f, kind="assay")
+    spec = {
+        "path": str(f),
+        "kind": "assay",
+        "mapping": chk["mapping"],
+        "components": chk["components"],
+        "table_name": "Пробы",
+    }
+    r = c.post(f"{API}/drillholes/import", json={"set_id": set_id, "files": [spec]}).json()
+    assert wait_job(c, r["source"], r["id"])["status"] == "done"
+    st = c.get(f"{API}/audit/sets/{set_id}").json()
+    assert st["settings"]["table"] != old_table and st["settings"]["config"]["z_jump"] == 40
+    assert st["result"]["stale"] is True  # the checked table was replaced
+    res = _run(c, set_id)["result"]
+    assert res["table_name"] == "Пробы" and res["stale"] is False
+
+    # .bfggis round trip: the result, its table and the thresholds come along, not «устарел»
+    r = c.post(f"{API}/projects/export", json={"path": str(tmp_path / "out"), "password": None}).json()
+    job = wait_job(c, r["source"], r["id"])
+    r = c.post(f"{API}/projects/import", json={"path": job["result"]["path"], "mode": "copy"}).json()
+    job = wait_job(c, r["source"], r["id"])
+    assert job["status"] == "done", job
+    c.post(f"{API}/projects/{job['result']['uid']}/open")
+    new_set = c.get(f"{API}/drillholes/sets").json()["sets"][0]["id"]
+    st = c.get(f"{API}/audit/sets/{new_set}").json()
+    assert st["result"] is not None and st["result"]["stale"] is False and st["result"]["table_name"] == "Пробы"
+    assert st["settings"]["config"]["z_jump"] == 40 and st["settings"]["table"] == st["result"]["table"]
+    assert c.get(f"{API}/audit/sets/{new_set}/findings").json()["total"] > 0
+
+
+def test_findings_by_hole_prefix(demo) -> None:  # type: ignore[no-untyped-def]
+    c, set_id = demo
+    all_ = c.get(f"{API}/audit/sets/{set_id}/findings", params={"hole_prefix": "DH-01"}).json()["findings"]
+    assert all_ and all(f["hole"].startswith("DH-01") for f in all_)
+    assert (
+        c.get(f"{API}/audit/sets/{set_id}/findings", params={"hole_prefix": "D_"}).json()["total"] == 0
+    )  # _ is literal

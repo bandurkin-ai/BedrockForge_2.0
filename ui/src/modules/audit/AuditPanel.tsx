@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useApp } from "../../shell/AppContext";
 import { useStore } from "../../shell/useStore";
 import { tablesStore } from "../tables/state";
-import { auditStore, exampleText, loadAudit, saveSettings, setFilter, SEVERITY_TITLES, TABLE_TITLES, type AuditConfig, type Severity } from "./state";
+import { auditStore, exampleText, loadAudit, loadFindings, saveSettings, setFilter, SEVERITY_TITLES, TABLE_TITLES, type AuditConfig, type Severity } from "./state";
 import css from "./Audit.module.css";
 
 const THRESHOLDS: [keyof AuditConfig, string][] = [
@@ -107,7 +107,7 @@ export function AuditPanel() {
                   </option>
                 ))}
               </select>
-              <input placeholder="Скважина" value={s.filters.hole} onChange={(e) => void setFilter({ hole: e.target.value })} aria-label="Скважина" />
+              <input placeholder="Скважина (начало номера)" value={s.filters.hole} onChange={(e) => void setFilter({ hole: e.target.value })} aria-label="Скважина" />
               {s.filters.code && (
                 <span className={css.chip}>
                   {s.filters.code}
@@ -132,6 +132,13 @@ export function AuditPanel() {
                 </li>
               ))}
               {!s.findings.length && <li className={css.note}>Находок нет.</li>}
+              {s.findings.length < s.total && (
+                <li>
+                  <button type="button" className={css.btn} onClick={() => void loadFindings(true)}>
+                    Показать ещё (показано {s.findings.length.toLocaleString("ru-RU")} из {s.total.toLocaleString("ru-RU")})
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
         </div>

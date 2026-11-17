@@ -21,7 +21,7 @@ def upgrade() -> None:
         "audit_runs",
         sa.Column("id", bfd.PK, nullable=False),
         sa.Column("set_id", bfd.PK, nullable=False),
-        sa.Column("table_ref", sa.String(length=32), nullable=False),
+        sa.Column("table_id", bfd.PK, nullable=True),
         sa.Column("table_name", sa.String(length=200), nullable=False),
         sa.Column("config", bfd.JSONType, nullable=False),
         sa.Column("versions", bfd.JSONType, nullable=False),
@@ -31,6 +31,9 @@ def upgrade() -> None:
         sa.Column("created_at", bfd.UtcDateTime(), nullable=False),
         sa.ForeignKeyConstraint(
             ["set_id"], ["objects.id"], name=op.f("fk_audit_runs_set_id_objects"), ondelete="CASCADE"
+        ),
+        sa.ForeignKeyConstraint(
+            ["table_id"], ["dh_tables.id"], name=op.f("fk_audit_runs_table_id_dh_tables"), ondelete="SET NULL"
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_audit_runs")),
     )

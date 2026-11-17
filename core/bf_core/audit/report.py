@@ -9,6 +9,15 @@ import sqlalchemy as sa
 
 from bf_core.db.schema import audit_findings, objects
 
+XLSX_ROWS = 1_048_575
+
+
+def _cell(v: Any) -> Any:
+    """Text that starts like a formula (=, +, -, @) is written as text, not run by Excel."""
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@"):
+        return "'" + v
+    return v
+
 
 def _examples(examples: list[dict[str, Any]] | None) -> str:
     from .rules import EXAMPLE_FIELDS
@@ -51,8 +60,8 @@ def write_report(conn: sa.Connection, set_id: int, res: dict[str, Any], path: Pa
     totals = res["totals"]
     cfg = res["config"]
     for k, v in (
-        ("Набор", name),
-        ("Проверенная таблица проб", res.get("table_name") or "—"),
+        ("Набор", _cell(name)),
+        ("Проверенная таблица проб", _cell(res.get("table_name") or "—")),
         ("Дата аудита", res["created_at"]),
         ("Состояние", "устарел (данные изменены после аудита)" if res.get("stale") else "актуален"),
         ("Критично, строк", totals.get("error", 0)),
@@ -93,15 +102,26 @@ def write_report(conn: sa.Connection, set_id: int, res: dict[str, Any], path: Pa
         .where(audit_findings.c.run_id == res["run_id"])
         .order_by(audit_findings.c.hole, sev, audit_findings.c.code)
     )
-    for f in conn.execute(q.execution_options(yield_per=5000)).mappings():
+    total = int(conn.execute(sa.select(sa.func.count()).where(audit_findings.c.run_id == res["run_id"])).scalar_one())
+    if total > XLSX_ROWS:
+        from bf_core.jobs.context import JobError
+
+        raise JobError(
+            "too_many_rows",
+            f"Находок больше, чем строк в листе Excel ({total:,}).".replace(",", " "),
+            "Отфильтруйте находки во вкладке «Аудит» или повысьте пороги.",
+        )
+    for done, f in enumerate(conn.execute(q.execution_options(yield_per=5000)).mappings()):
+        if done % 5000 == 0:
+            tick(0.5 + 0.5 * done / max(total, 1), f"Находки: {done:,}".replace(",", " "))
         ws.append(
             [
-                f["hole"] or "—",
+                _cell(f["hole"] or "—"),
                 f["code"],
                 SEVERITY_LABELS.get(f["severity"], f["severity"]),
                 TABLE_LABELS.get(f["source"], f["source"]),
                 f["count"],
-                _examples(f["examples"]),
+                _cell(_examples(f["examples"])),
             ]
         )
     wb.save(path)

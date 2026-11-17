@@ -269,7 +269,8 @@ audit_runs = sa.Table(  # ТЗ 7.12: the last audit of a set (a new run replaces
     project_md,
     sa.Column("id", PK, primary_key=True),
     sa.Column("set_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
-    sa.Column("table_ref", sa.String(32), nullable=False),  # the sample table checked: dh_tables.id
+    # the sample table checked (NULL once it is deleted or replaced: the result is «устарел» then)
+    sa.Column("table_id", REF, sa.ForeignKey("dh_tables.id", ondelete="SET NULL")),
     sa.Column("table_name", sa.String(200), nullable=False),
     sa.Column("config", JSONType, nullable=False),  # thresholds used
     sa.Column("versions", JSONType, nullable=False),  # set version and table revision: «устарел» when they move

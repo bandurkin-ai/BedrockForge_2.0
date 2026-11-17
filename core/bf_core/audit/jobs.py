@@ -10,8 +10,11 @@ from bf_core.jobs.registry import handler
 
 
 def _memory(params: dict[str, Any]) -> int:
-    """Samples as columns (≈ 0,2 KB a row with the sample number) plus the sort orders."""
-    return max(512, int(int(params.get("rows") or 0) * 250 / 2**20) + 256)
+    """Samples as columns: id, hole, from, to, the sample number (≈ 80 B with the Python string) and 8 B per
+    component, ×3 for the sort orders and masks of the checks (bench: 5 M rows, 2 components ≈ 1,3 GB)."""
+    rows = int(params.get("rows") or 0)
+    per_row = 32 + 80 + 8 * max(1, int(params.get("components") or 2))
+    return max(512, int(rows * per_row * 3 / 2**20) + 384)
 
 
 @handler("audit.run", "Аудит данных скважин", queue="heavy", estimate_memory=_memory)

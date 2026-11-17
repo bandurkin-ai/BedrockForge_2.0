@@ -88,12 +88,23 @@ def run(svc: Svc, request: Request, set_id: int) -> dict[str, Any]:
     with dialect.read_tx(project.engine) as conn:
         _set(conn, set_id)
         st = get_settings(conn, set_id)
-        rows = 0
+        rows = comps = 0
         if st["table"]:
             rows = int(
                 conn.execute(sa.select(dh_tables.c.row_count).where(dh_tables.c.id == int(st["table"]))).scalar() or 0
             )
-    params = {"set_id": set_id, "table": st["table"], "config": st["config"], "rows": rows}
+            from bf_core.db.schema import dh_columns
+
+            comps = int(
+                conn.execute(
+                    sa.select(sa.func.count()).where(
+                        dh_columns.c.table_id == int(st["table"]),
+                        dh_columns.c.kind == "number",
+                        dh_columns.c.deleted.is_(False),
+                    )
+                ).scalar_one()
+            )
+    params = {"set_id": set_id, "table": st["table"], "config": st["config"], "rows": rows, "components": comps}
     key, job_id = jobs_of(request.app.state.core).submit("audit.run", params, title="Аудит данных скважин")
     return {"source": key, "id": job_id}
 
@@ -106,6 +117,7 @@ def list_findings(
     table: str | None = None,
     code: str | None = None,
     hole: Annotated[str | None, Query(max_length=200)] = None,
+    hole_prefix: Annotated[str | None, Query(max_length=200)] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 200,
 ) -> dict[str, Any]:
@@ -119,7 +131,15 @@ def list_findings(
         if res is None:
             return {"total": 0, "findings": []}
         return findings(
-            conn, res["run_id"], severity=severity, source=table, code=code, hole=hole, offset=offset, limit=limit
+            conn,
+            res["run_id"],
+            severity=severity,
+            source=table,
+            code=code,
+            hole=hole,
+            hole_prefix=hole_prefix,
+            offset=offset,
+            limit=limit,
         )
 
 
