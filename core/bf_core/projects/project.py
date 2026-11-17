@@ -66,6 +66,34 @@ def check_location(path: Path) -> None:
         )
 
 
+def make_dirs(path: Path) -> None:
+    """mkdir -p with a user-facing error.
+
+    Windows «Контролируемый доступ к папкам» (Defender) blocks unknown programs from writing to Documents
+    and reports it as ERROR_FILE_NOT_FOUND / ERROR_ACCESS_DENIED even though the parent folder exists.
+    """
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        blocked = sys.platform == "win32" and isinstance(exc, (FileNotFoundError, PermissionError))
+        hint = (
+            "Вероятно, Windows блокирует запись в «Документы» (защита от программ-шантажистов). "
+            "Разрешите программу: «Безопасность Windows» → «Защита от вирусов и угроз» → "
+            "«Управление защитой от программ-шантажистов» → «Разрешить работу приложения через "
+            "контролируемый доступ к папкам» → добавьте bf-core.exe из папки программы "
+            "(resources\\bf-core). Или выберите другую папку: «Настройка → Общие → Папка данных проектов»."
+            if blocked
+            else "Проверьте права на папку и свободное место на диске или выберите другую папку: "
+            "«Настройка → Общие → Папка данных проектов»."
+        )
+        raise ApiError(
+            409,
+            "folder_denied",
+            f"Не удалось создать папку «{path}»: {exc.strerror or exc}.",
+            hint,
+        ) from exc
+
+
 def _is_remote_drive(path: Path) -> bool:
     if sys.platform != "win32" or not path.drive:
         return False
@@ -177,7 +205,7 @@ def create_folder(root: Path, name: str, description: dict[str, str]) -> Path:
     check_location(folder / "backups" / "pre-migrate-0000.sqlite")
     building = root / f".new-{uuid.uuid4().hex}{SUFFIX}"
     for sub in ("", "blobs", "cache", "backups", "logs"):
-        (building / sub).mkdir(parents=True, exist_ok=True)
+        make_dirs(building / sub)
     uid = uuid.uuid4().hex
     engine = dialect.create_engine(dialect.sqlite_url(str(building / DB_FILE)))
     try:

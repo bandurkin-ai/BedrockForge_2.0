@@ -20,7 +20,16 @@ from bf_core.db import dialect, migrate
 from bf_core.db.schema import objects, project_meta, projects_cache
 
 from .lock import ProjectLock
-from .project import DB_FILE, SUFFIX, Project, check_location, create_folder, open_folder, read_manifest
+from .project import (
+    DB_FILE,
+    SUFFIX,
+    Project,
+    check_location,
+    create_folder,
+    make_dirs,
+    open_folder,
+    read_manifest,
+)
 
 #: Composition counters (ТЗ 7.3 «Сводка состава»). Later stages register theirs: name → fn(conn) → int.
 SUMMARY_KEYS = (
@@ -203,8 +212,8 @@ class ProjectService:
     def create(self, name: str, description: Any = None) -> Project:
         name = self.clean_name(name)
         with self._lock:
-            self.root.mkdir(parents=True, exist_ok=True)
             check_location(self.root)
+            make_dirs(self.root)
             if self._name_taken(name):
                 raise self._taken(name)
             folder = create_folder(self.root, name, normalize_description(description))
