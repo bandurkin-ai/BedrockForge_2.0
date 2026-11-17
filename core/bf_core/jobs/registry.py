@@ -14,7 +14,12 @@ if TYPE_CHECKING:
     from .context import JobContext
 
 #: Modules that register handlers. Each later stage appends its module here.
-HANDLER_MODULES: tuple[str, ...] = ("bf_core.jobs.diag", "bf_core.archive.jobs", "bf_core.importing.jobs")
+HANDLER_MODULES: tuple[str, ...] = (
+    "bf_core.jobs.diag",
+    "bf_core.archive.jobs",
+    "bf_core.importing.jobs",
+    "bf_core.drillholes.export",
+)
 
 Queue = str  # "heavy" | "quick"
 

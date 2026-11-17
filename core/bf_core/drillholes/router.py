@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated, Any
 
 import sqlalchemy as sa
@@ -398,3 +399,118 @@ def check_codes(svc: Svc, set_id: int, table: str, column: str) -> dict[str, Any
     snap = _snapshot(project, set_id, table)
     with dialect.read_tx(project.engine) as conn:
         return tools.check_codes(conn, e.target(conn, set_id, table), snap, column)
+
+
+# --- sets (ТЗ 7.10: «+» у «Скважин», set.create) -------------------------------------------------------
+
+
+class SetBody(BaseModel):
+    name: str = Field(max_length=200)
+
+
+@router.post("/sets")
+def create_set(svc: Svc, request: Request, body: SetBody) -> dict[str, Any]:
+    """An empty set: collars, surveys and tables are added by import or by hand."""
+    from .store import NameTaken
+    from .store import create_set as make
+
+    project = svc.require_current(writable=True)
+    name = " ".join(body.name.split())
+    if not name:
+        raise ApiError(422, "name_empty", "Название набора не может быть пустым.", "Введите название набора.")
+    with dialect.write_tx(project.engine) as conn:
+        try:
+            set_id = make(conn, name)
+        except NameTaken:
+            raise ApiError(409, "name_taken", f"Набор «{name}» уже есть.", "Введите другое название.") from None
+    request.app.state.core.events.publish("objects.changed", {"kind": "drillhole_set", "id": set_id})
+    return {"id": set_id, "name": name}
+
+
+@router.patch("/sets/{set_id}")
+def rename_set(svc: Svc, request: Request, set_id: int, body: SetBody) -> dict[str, Any]:
+    project = svc.require_current(writable=True)
+    name = " ".join(body.name.split())
+    if not name:
+        raise ApiError(422, "name_empty", "Название набора не может быть пустым.", "Введите название набора.")
+    with dialect.write_tx(project.engine) as conn:
+        taken = conn.execute(
+            sa.select(objects.c.id).where(
+                objects.c.kind == "drillhole_set",
+                objects.c.name_key == dialect.name_key(name),
+                objects.c.id != set_id,
+                objects.c.state.in_(("ready", "building")),
+            )
+        ).first()
+        if taken is not None:
+            raise ApiError(409, "name_taken", f"Набор «{name}» уже есть.", "Введите другое название.")
+        res = conn.execute(
+            sa.update(objects)
+            .where(objects.c.id == set_id, objects.c.kind == "drillhole_set", objects.c.state == "ready")
+            .values(name=name, name_key=dialect.name_key(name), updated_at=dialect.utcnow())
+        )
+        if res.rowcount != 1:
+            raise ApiError(404, "set_not_found", "Набор скважин не найден.", "Обновите дерево проекта.")
+    request.app.state.core.events.publish("objects.changed", {"kind": "drillhole_set", "id": set_id})
+    return {"id": set_id, "name": name}
+
+
+@router.delete("/sets/{set_id}")
+def delete_set(svc: Svc, request: Request, set_id: int) -> dict[str, Any]:
+    """Deletes a set with its holes, tables and import history; its source files leave the storage
+    (the storage cleanup removes files nobody owns)."""
+    from .store import drop_import_owners
+
+    project = svc.require_current(writable=True)
+    with dialect.write_tx(project.engine) as conn:
+        row = conn.execute(
+            sa.select(objects.c.state).where(objects.c.id == set_id, objects.c.kind == "drillhole_set")
+        ).first()
+        if row is None:
+            raise ApiError(404, "set_not_found", "Набор скважин не найден.", "Обновите дерево проекта.")
+        if row.state != "ready":
+            raise ApiError(409, "set_busy", "В набор сейчас идёт импорт.", "Дождитесь окончания или отмените задание.")
+        if conn.execute(
+            sa.select(dh_tables.c.id).where(dh_tables.c.set_id == set_id, dh_tables.c.state == "building")
+        ).first():
+            raise ApiError(409, "set_busy", "В набор сейчас идёт импорт.", "Дождитесь окончания или отмените задание.")
+        drop_import_owners(conn, [set_id])
+        from bf_core.db.schema import blob_owners
+
+        conn.execute(
+            sa.delete(blob_owners).where(blob_owners.c.owner_kind == "object", blob_owners.c.owner_id == set_id)
+        )
+        conn.execute(sa.delete(objects).where(objects.c.id == set_id))
+    snapshots.forget(set_id)
+    request.app.state.core.events.publish("objects.changed", {"kind": "drillhole_set", "id": set_id, "deleted": True})
+    return {"deleted": set_id}
+
+
+class ExportBody(BaseModel):
+    path: str = Field(max_length=2000)
+    format: str = Field(pattern="^(dat|csv|xlsx)$")
+    columns: list[str] | None = None
+    hole: int | None = None
+    where: str | None = Field(default=None, max_length=2000)
+    sort: str | None = None
+    desc: bool = False
+    delimiter: str | None = Field(default=None, max_length=1)
+    decimal: str | None = Field(default=None, pattern="^[.,]$")
+    encoding: str | None = Field(default=None, max_length=20)
+
+
+@router.post("/sets/{set_id}/tables/{table}/export")
+def export_table(svc: Svc, request: Request, set_id: int, table: str, body: ExportBody) -> dict[str, Any]:
+    """Job «Экспорт таблицы» (DAT / CSV / XLSX) of the rows as the panel shows them."""
+    from bf_core.jobs.service import jobs_of
+
+    project = svc.require_current()
+    actions.current(project, set_id, table)  # 404 for an unknown table
+    folder = Path(body.path).parent
+    if not folder.is_dir():
+        raise ApiError(404, "folder_not_found", "Папка для файла не найдена.", "Выберите папку заново.")
+    params = {"set_id": set_id, "table": table, **body.model_dump()}
+    key, job_id = jobs_of(request.app.state.core).submit(
+        "export.table", params, title=f"Экспорт таблицы ({body.format.upper()})"
+    )
+    return {"source": key, "id": job_id}

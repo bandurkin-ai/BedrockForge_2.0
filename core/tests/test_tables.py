@@ -177,3 +177,46 @@ def test_expressions_unit() -> None:
     for bad in ("__import__('os')", "AU.real", "(lambda: 1)()", "AU[0]", '"a" < "b"', "AU +"):
         with pytest.raises(ExprError):
             evaluate_filter(bad, res, 3)
+
+
+def test_sets_create_rename_delete(dset) -> None:  # type: ignore[no-untyped-def]
+    import sqlalchemy as sa
+
+    from bf_core.db import dialect
+    from bf_core.db.schema import blob_owners, dh_holes, import_log
+    from bf_core.projects.service import projects_of
+
+    c, set_id, _tabs = dset
+    r = c.post(f"{API}/drillholes/sets", json={"name": "  Пустой  набор "})
+    assert r.status_code == 200 and r.json()["name"] == "Пустой набор"
+    empty = r.json()["id"]
+    assert c.post(f"{API}/drillholes/sets", json={"name": "пустой набор"}).status_code == 409
+    tabs = c.get(f"{API}/drillholes/sets/{empty}/tables").json()
+    assert [t["rows"] for t in tabs["tables"]] == [0, 0] and tabs["set"]["holes"] == 0
+    r = c.post(
+        f"{API}/drillholes/sets/{empty}/tables/collar/rows",
+        json={"values": {"hole": "N1", "x": 1, "y": 2, "z": 3, "td": 5}},
+    )
+    assert r.status_code == 200, r.text
+    assert c.patch(f"{API}/drillholes/sets/{empty}", json={"name": "Н"}).json()["code"] == "name_taken"
+    assert c.patch(f"{API}/drillholes/sets/{empty}", json={"name": "Новый"}).status_code == 200
+    p = projects_of(c.core).require_current()
+    with dialect.read_tx(p.engine) as conn:
+        assert (
+            conn.execute(
+                sa.select(sa.func.count()).select_from(blob_owners).where(blob_owners.c.owner_kind == "import")
+            ).scalar_one()
+            == 2
+        )
+    assert c.delete(f"{API}/drillholes/sets/{set_id}").status_code == 200
+    with dialect.read_tx(p.engine) as conn:
+        assert conn.execute(sa.select(sa.func.count()).select_from(import_log)).scalar_one() == 0
+        assert (
+            conn.execute(
+                sa.select(sa.func.count()).select_from(blob_owners).where(blob_owners.c.owner_kind == "import")
+            ).scalar_one()
+            == 0
+        )
+        assert conn.execute(sa.select(dh_holes.c.name)).scalars().all() == ["N1"]
+    assert [s["name"] for s in c.get(f"{API}/drillholes/sets").json()["sets"]] == ["Новый"]
+    assert c.get(f"{API}/drillholes/sets/{set_id}/tables").status_code == 404

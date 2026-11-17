@@ -3,6 +3,8 @@ key, code lists — each undone at once from the journal."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from tests.test_import_job import API
@@ -127,3 +129,75 @@ def test_append_and_merge_by_key_with_undo(dset, tmp_path) -> None:  # type: ign
     _undo_last(c, set_id)
     assert _page(c, set_id, litho)["total"] == 3
     assert {t["name"]: t["rows"] for t in c.get(f"{base}").json()["tables"]}["Литология"] == 3
+
+
+def test_export_csv_xlsx_and_dat_round_trip(dset, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import openpyxl
+
+    from bf_core.formats.micromine import write_dat
+    from bf_core.formats.micromine_header import Field, read_header
+    from bf_core.formats.registry import read_table
+    from tests.test_import_job import _check, wait_job
+
+    c, set_id, tabs = dset
+    assay = tabs["assay"]["table"]
+    base = f"{API}/drillholes/sets/{set_id}/tables/{assay}"
+
+    def export(path, fmt, **extra):  # type: ignore[no-untyped-def]
+        r = c.post(
+            f"{base.rsplit('/', 1)[0]}/{extra.pop('table', assay)}/export",
+            json={"path": str(path), "format": fmt, **extra},
+        )
+        assert r.status_code == 200, r.text
+        job = wait_job(c, r.json()["source"], r.json()["id"])
+        assert job["status"] == "done", job
+        return job["result"]
+
+    res = export(tmp_path / "пробы", "csv", where="Au_ppm > 0,5")
+    text = Path(res["path"]).read_text(encoding="utf-8-sig").splitlines()
+    assert res["rows"] == 2 and text[0].split(";")[:4] == ["Hole_ID", "From", "To", "Au_ppm"]  # names as imported
+    assert text[1].split(";")[:4] == ["D1", "0", "1", "1,5"]
+    res = export(tmp_path / "пробы.xlsx", "xlsx", sort="from", desc=True)
+    ws = openpyxl.load_workbook(res["path"]).active
+    assert ws.max_row == 5 and ws.cell(1, 1).value == "Hole_ID"
+    assert not list(tmp_path.glob("*.part"))
+
+    # DAT imported → exported: the same fields (types, widths, decimals) and values
+    src = tmp_path / "assay.dat"
+    csv_in = tmp_path / "in.csv"
+    csv_in.write_text("HOLE,FROM,TO,AU,SAMPLE\nK1,0,1.25,0.5,A1\nK1,1.25,2,7,A2\n", encoding="utf-8")
+    fields = [
+        Field("HOLE", "C", 6, 0),
+        Field("FROM", "N", 9, 2),
+        Field("TO", "N", 9, 2),
+        Field("AU", "R", 8, 3),
+        Field("SAMPLE", "C", 4, 0),
+    ]
+    write_dat(src, read_table(csv_in).columns, fields=fields)
+    chk = _check(c, src, kind="assay")
+    spec = {
+        "path": str(src),
+        "kind": "assay",
+        "mapping": chk["mapping"],
+        "components": [{"column": "AU", "unit": "g/t"}],
+        "table_name": "DAT",
+    }
+    r = c.post(f"{API}/drillholes/import", json={"set_name": "ДАТ", "files": [spec]}).json()
+    assert wait_job(c, r["source"], r["id"])["status"] == "done"
+    dat_set = next(s for s in c.get(f"{API}/drillholes/sets").json()["sets"] if s["name"] == "ДАТ")
+    dat_table = next(
+        t for t in c.get(f"{API}/drillholes/sets/{dat_set['id']}/tables").json()["tables"] if t["kind"] == "assay"
+    )
+    out = tmp_path / "back.dat"
+    r = c.post(
+        f"{API}/drillholes/sets/{dat_set['id']}/tables/{dat_table['table']}/export",
+        json={"path": str(out), "format": "dat"},
+    )
+    job = wait_job(c, r.json()["source"], r.json()["id"])
+    assert job["status"] == "done", job
+    a, b = read_header(src), read_header(out)
+    assert [(f.name, f.kind, f.width, f.decimals) for f in a.fields] == [
+        (f.name, f.kind, f.width, f.decimals) for f in b.fields
+    ]
+    ta, tb = read_table(src), read_table(out)
+    assert [col.to_pylist() for col in ta.columns] == [col.to_pylist() for col in tb.columns]
