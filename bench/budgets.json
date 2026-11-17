@@ -47,6 +47,15 @@
       },
       "budget_s": 2.0,
       "budget_mb": 600
+    },
+    "audit": {
+      "params": {
+        "holes": 5000,
+        "surveys": 20,
+        "samples": 500000
+      },
+      "budget_s": 5.0,
+      "budget_mb": 900
     }
   },
   "full": {
@@ -96,6 +105,15 @@
       },
       "budget_s": 10.0,
       "budget_mb": 2048
+    },
+    "audit": {
+      "params": {
+        "holes": 50000,
+        "surveys": 20,
+        "samples": 5000000
+      },
+      "budget_s": 30.0,
+      "budget_mb": 3072
     }
   }
 }
