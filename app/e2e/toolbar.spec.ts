@@ -25,7 +25,7 @@ test("3D panel: buttons 42×39, icons 24, fields as before, ≤ 2 rows at 1024 p
 
     const sizes = await bar.evaluate((el) => {
       const r = (x: Element) => x.getBoundingClientRect();
-      const buttons = [...el.querySelectorAll("button")].map((b) => ({ w: r(b).width, h: r(b).height, icon: b.querySelector("svg") ? r(b.querySelector("svg")!).width : null }));
+      const buttons = Array.from(el.querySelectorAll("button")).map((b) => ({ w: r(b).width, h: r(b).height, icon: b.querySelector("svg") ? r(b.querySelector("svg")!).width : null }));
       const input = el.querySelector("input[type=number]");
       return { buttons, input: input ? { w: r(input).width, h: r(input).height } : null, bar: { w: r(el).width, h: r(el).height }, win: window.innerWidth, scroll: el.scrollWidth - el.clientWidth };
     });
