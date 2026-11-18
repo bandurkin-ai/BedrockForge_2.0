@@ -9,7 +9,7 @@ import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { close, launch, shot, waitFrame } from "./helpers";
+import { close, holesOnlyDemo, launch, shot, waitFrame } from "./helpers";
 import { gradientPng } from "./images";
 
 const state = (page: Page) => page.evaluate(() => window.__bfScene!.state());
@@ -50,6 +50,8 @@ test("3D: a DTM built from points, a raster on it at two levels of detail, clip,
     await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
     await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
     await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
+    await waitFrame(page);
+    await holesOnlyDemo(page); // the DTM of the demo with its plan: this spec measures its own surface
     await waitFrame(page);
     expect((await state(page)).wireframes.layers).toBe(0);
 

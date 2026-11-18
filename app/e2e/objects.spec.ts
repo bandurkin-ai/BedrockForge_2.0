@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { close, launch, shot } from "./helpers";
+import { close, holesOnlyDemo, launch, shot } from "./helpers";
 
 const REAL = path.resolve(__dirname, "..", "..", "tests", "data", "real");
 
@@ -63,6 +63,12 @@ test("objects: composition and raster level, tree of lines and rasters, trenches
     await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
     await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
     const tree = page.getByRole("tree", { name: "Разделы и объекты проекта" });
+    // the demo has lines, a plan and a DTM «Рельеф» of its own (7.29): the tree of this spec starts without them
+    await expect(tree.getByTestId(/^tree-dtm-\d+$/)).toHaveCount(1, { timeout: 60_000 });
+    await holesOnlyDemo(page);
+    await expect(tree.getByTestId(/^tree-dtm-\d+$/)).toHaveCount(0, { timeout: 60_000 });
+    await expect(tree.getByRole("treeitem", { name: /План участка/ })).toHaveCount(0);
+    await expect(tree.getByRole("treeitem", { name: /Топосъёмка/ })).toHaveCount(0);
 
     // ---- 7.21: the composition of «Импорт файлов» -------------------------------------------------------
     const str = path.join(dir, "Восточный Цители-Сопели.STR");

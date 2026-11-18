@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { close, launch, shot, waitFrame } from "./helpers";
+import { close, holesOnlyDemo, launch, shot, waitFrame } from "./helpers";
 
 const state = (page: Page) => page.evaluate(() => window.__bfScene!.state());
 
@@ -77,6 +77,8 @@ test("3D: lines, points and a raster — layers, floor, hide, click on a line, v
     await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
     await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
     await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
+    await waitFrame(page);
+    await holesOnlyDemo(page); // the lines, the plan and the DTM of the demo would be counted and clicked too
     await waitFrame(page);
     const before = await state(page);
     expect(before.lines.layers).toBe(0);
