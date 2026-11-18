@@ -1,6 +1,6 @@
 """Reference vectors for the geostatistics kernels, computed with GeostatsPy (MIT).
 
-GeostatsPy is NOT a dependency of BF (ADR 0011): this script runs in a throw-away
+GeostatsPy is NOT a dependency of BF (ADR 0012): this script runs in a throw-away
 environment and only its output - JSON files under tests/data/ref/geostatspy - is
 committed. BF tests read the JSON; they never import GeostatsPy.
 
