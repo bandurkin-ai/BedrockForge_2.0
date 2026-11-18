@@ -14,7 +14,12 @@ test("«Аудит»: demo errors, run, filter by rule, «устарел», Exce
     await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
     await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
     await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
-    await page.getByRole("treeitem", { name: /Скважины 2025/ }).dblclick(); // a double click opens the table (Д-03)
+    // the set becomes active by a click; «Анализ › Результаты» opens the audit tab (the double click of the tree
+    // is tested in tree.spec — under the heavy demo of Э7 on Windows its second click could be lost)
+    await page.getByRole("treeitem", { name: /Скважины 2025/ }).getByText("Скважины 2025", { exact: true }).click();
+    await expect(page.getByRole("contentinfo")).toContainText("Набор: Скважины 2025");
+    await page.getByRole("tab", { name: "Анализ" }).click();
+    await page.getByRole("button", { name: "Результаты" }).click();
     const panel = page.getByLabel("Нижняя панель");
     await panel.getByRole("tab", { name: "Аудит" }).click();
     // the demo opens with its audit done: the deliberate errors are listed

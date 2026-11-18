@@ -4,27 +4,38 @@ import { useApp } from "../../shell/AppContext";
 import { Icon } from "../../shell/Icon";
 import { logStep, openLogWindow, opLogStore, startOpLog, stopOpLog } from "../../shell/opLog";
 import { useStore } from "../../shell/useStore";
-import { closeWindow } from "../../shell/windows";
+import { closeWindow, updateWindow } from "../../shell/windows";
 import { setPanel } from "../../shell/workspace";
 import { refresh as refreshJobs } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { FileCard } from "./FileCard";
-import { canStart, clashOf, filesOf, ready, replaces, STEPS, tableNameOf, Wizard, type StepId } from "./wizard";
+import { TrenchesStep } from "./TrenchesStep";
+import { trenchSummary } from "./trenches";
+import { canStart, clashOf, filesOf, MODE_TITLES, needsReplace, ready, replaces, sampleFile, stepsOf, tableNameOf, trenchBlocker, Wizard, type StepId, type WizardMode } from "./wizard";
 import css from "./ImportWizard.module.css";
 
-const STEP_HINT: Record<StepId, string> = {
-  collar: "Файл устьев: номер скважины, X, Y, Z, глубина. Можно пропустить, если устья уже загружены в набор.",
-  survey: "Инклинометрия: номер скважины, глубина замера, азимут, наклон. Можно пропустить.",
-  tables: "Пробы, интервальные таблицы (литология, RQD…) и события. Несколько файлов — каждый своей таблицей.",
-  import: "Набор, в который загрузить, и система координат.",
+const STEP_HINT: Record<WizardMode, Partial<Record<StepId, string>>> = {
+  holes: {
+    collar: "Файл устьев: номер скважины, X, Y, Z, глубина. Можно пропустить, если устья уже загружены в набор.",
+    survey: "Инклинометрия: номер скважины, глубина замера, азимут, наклон. Можно пропустить.",
+    tables: "Пробы, интервальные таблицы (литология, RQD…) и события. Несколько файлов — каждый своей таблицей.",
+    import: "Набор, в который загрузить, и система координат.",
+  },
+  trenches: {
+    trenches: "Канава — одна полилиния: устье — первая вершина, длина — 3D-длина линии, траектория проходит через все вершины.",
+    tables: "Таблица проб «канава, от, до, …»: «от» и «до» — по 3D-длине полилинии от первой вершины. Можно пропустить.",
+    import: "Набор, в который загрузить канавы, и система координат.",
+  },
 };
 
-/** «Импорт скважин» (ТЗ 7.7): four steps, several files at once, the operation log in the title (ТЗ 7.9). */
-export function ImportWizard({ winId, paths }: { winId: string; paths?: string[] }) {
+/** «Импорт скважин» (ТЗ 7.7): four steps, several files at once, the operation log in the title (ТЗ 7.9).
+ * With `mode: "trenches"` — «Канавы по полилиниям» (ТЗ 7.35 Д-16): the file of polylines, samples, the import. */
+export function ImportWizard({ winId, paths, mode }: { winId: string; paths?: string[]; mode?: WizardMode }) {
   const app = useApp();
   const [wizard] = useState(() => {
     const project = projectStore.get().current;
-    return new Wizard(startOpLog("Импорт скважин", "import", { uiVersion: bridge()?.appVersion(), coreVersion: app.store.get().coreVersion, project: project?.name }));
+    const m = mode ?? "holes";
+    return new Wizard(startOpLog(MODE_TITLES[m], "import", { uiVersion: bridge()?.appVersion(), coreVersion: app.store.get().coreVersion, project: project?.name }), m);
   });
   const s = useStore(wizard.store, (x) => x);
   useStore(opLogStore, (x) => x.version);
@@ -36,10 +47,16 @@ export function ImportWizard({ winId, paths }: { winId: string; paths?: string[]
     };
   }, [wizard, paths]);
 
-  const stepIndex = STEPS.findIndex((x) => x.id === s.step);
+  const steps = stepsOf(s.mode);
+  const stepIndex = Math.max(0, steps.findIndex((x) => x.id === s.step));
   const stepFiles = filesOf(s, s.step);
+  const trenches = s.mode === "trenches";
+  const setMode = (m: WizardMode) => {
+    wizard.setMode(m);
+    updateWindow(winId, { title: MODE_TITLES[m] }); // the window is called by what it loads
+  };
   const pick = async () => {
-    const files = (await bridge()?.pickFiles("tables", true)) ?? [];
+    const files = (await bridge()?.pickFiles("tables", !trenches)) ?? [];
     if (files.length) await wizard.add(files);
   };
   const pickPrj = async () => {
@@ -66,7 +83,7 @@ export function ImportWizard({ winId, paths }: { winId: string; paths?: string[]
     <div className={css.wrap}>
       <div className={css.top}>
         <ol className={css.steps}>
-          {STEPS.map((st, i) => (
+          {steps.map((st, i) => (
             <li key={st.id}>
               <button type="button" className={st.id === s.step ? css.stepActive : css.step} onClick={() => wizard.go(st.id)}>
                 {i + 1}. {st.title}
@@ -76,7 +93,7 @@ export function ImportWizard({ winId, paths }: { winId: string; paths?: string[]
           ))}
         </ol>
         <span className={css.note}>
-          Шаг {stepIndex + 1} из {STEPS.length}
+          Шаг {stepIndex + 1} из {steps.length}
         </span>
         <button
           type="button"
@@ -88,17 +105,33 @@ export function ImportWizard({ winId, paths }: { winId: string; paths?: string[]
           <Icon name="log" size={15} />
         </button>
       </div>
-      <div className={css.hint}>{STEP_HINT[s.step]}</div>
+      {stepIndex === 0 && (
+        <div className={css.modes} role="radiogroup" aria-label="Что загружать">
+          <label>
+            <input type="radio" name={`mode-${winId}`} checked={!trenches} onChange={() => setMode("holes")} /> Скважины: устья и инклинометрия из таблиц
+          </label>
+          <label>
+            <input type="radio" name={`mode-${winId}`} checked={trenches} onChange={() => setMode("trenches")} /> Канавы по полилиниям
+          </label>
+        </div>
+      )}
+      <div className={css.hint}>{STEP_HINT[s.mode][s.step]}</div>
       <div className={css.body}>
-        {s.step !== "import" ? (
+        {s.step === "trenches" ? (
+          <TrenchesStep wizard={wizard} />
+        ) : s.step !== "import" ? (
           <>
             {stepFiles.map((f) => (
               <FileCard key={f.id} wizard={wizard} file={f} />
             ))}
-            <button type="button" className={css.btn} onClick={() => void pick()}>
-              Добавить файлы…
+            <button type="button" className={css.btn} disabled={trenches && s.files.length > 0} title={trenches && s.files.length > 0 ? "Пробы канав — одна таблица" : undefined} onClick={() => void pick()}>
+              {trenches ? "Выбрать таблицу проб…" : "Добавить файлы…"}
             </button>
-            <div className={css.note}>DAT (Micromine), CSV / TXT, Excel .xlsx / .xlsm / .xls. Файлы другого типа сами перейдут на свой шаг.</div>
+            <div className={css.note}>
+              {trenches
+                ? "DAT (Micromine), CSV / TXT, Excel. Тип — «Пробы (Assay)» или «Интервальная таблица»; в колонке «Скважина» — имя канавы."
+                : "DAT (Micromine), CSV / TXT, Excel .xlsx / .xlsm / .xls. Файлы другого типа сами перейдут на свой шаг."}
+            </div>
           </>
         ) : (
           <ImportStep wizard={wizard} onPrj={() => void pickPrj()} />
@@ -106,11 +139,11 @@ export function ImportWizard({ winId, paths }: { winId: string; paths?: string[]
       </div>
       <div className={css.footer}>
         {s.error && <span className={css.error}>{s.error}</span>}
-        <button type="button" className={css.btn} disabled={stepIndex === 0} onClick={() => wizard.go(STEPS[stepIndex - 1].id)}>
+        <button type="button" className={css.btn} disabled={stepIndex === 0} onClick={() => wizard.go(steps[stepIndex - 1].id)}>
           Назад
         </button>
         {s.step !== "import" ? (
-          <button type="button" className={`${css.btn} ${css.primary}`} onClick={() => wizard.go(STEPS[stepIndex + 1].id)}>
+          <button type="button" className={`${css.btn} ${css.primary}`} onClick={() => wizard.go(steps[stepIndex + 1].id)}>
             Далее
           </button>
         ) : (
@@ -126,6 +159,7 @@ export function ImportWizard({ winId, paths }: { winId: string; paths?: string[]
 function ImportStep({ wizard, onPrj }: { wizard: Wizard; onPrj: () => void }) {
   const s = useStore(wizard.store, (x) => x);
   const notReady = s.files.filter((f) => !ready(f));
+  const trenches = s.mode === "trenches";
   return (
     <div className={css.importStep}>
       <section className={css.card}>
@@ -144,7 +178,11 @@ function ImportStep({ wizard, onPrj }: { wizard: Wizard; onPrj: () => void }) {
             ))}
           </select>
         </label>
-        <div className={css.note}>Таблица того же типа и названия заменяется только в этом наборе («Заменить»).</div>
+        <div className={css.note}>
+          {trenches
+            ? "Канавы добавляются к скважинам набора; канава с именем, которое уже есть в наборе, получает новые устье и траекторию."
+            : "Таблица того же типа и названия заменяется только в этом наборе («Заменить»)."}
+        </div>
       </section>
       <section className={css.card}>
         <h4>Система координат</h4>
@@ -157,7 +195,12 @@ function ImportStep({ wizard, onPrj }: { wizard: Wizard; onPrj: () => void }) {
       </section>
       <section className={css.card}>
         <h4>Состав</h4>
-        <ul className={css.summary}>
+        <ul className={css.summary} data-testid="import-summary">
+          {trenches && (
+            <li className={s.trench.preview?.trenches ? "" : css.error}>
+              {s.trench.path ? `${s.trench.name}: ${s.trench.preview ? trenchSummary(s.trench.preview) : (s.trench.error ?? "читается…")}` : "Файл линий канав не выбран."}
+            </li>
+          )}
           {s.files.map((f) => (
             <li key={f.id} className={ready(f) ? "" : css.error}>
               {f.name}: {f.kind ? `${f.check?.rows.toLocaleString("ru-RU")} строк` : "тип не выбран"}
@@ -166,10 +209,24 @@ function ImportStep({ wizard, onPrj }: { wizard: Wizard; onPrj: () => void }) {
               {replaces(s, f) ? <span className={css.warn}> · заменит {replaces(s, f)}</span> : null}
             </li>
           ))}
-          {!s.files.length && <li className={css.note}>Файлы не выбраны.</li>}
+          {!s.files.length && <li className={css.note}>{trenches ? "Без проб: только траектории канав." : "Файлы не выбраны."}</li>}
         </ul>
-        {notReady.length > 0 && <div className={css.error}>Исправьте файлы, отмеченные красным, на их шагах.</div>}
-        {clashOf(s) && <div className={css.error}>{clashOf(s)} Уберите лишний файл или дайте таблице другое название.</div>}
+        {trenches ? (
+          <>
+            {needsReplace(s) && (
+              <label className={css.force}>
+                <input type="checkbox" checked={s.replaceSamples} onChange={(e) => wizard.store.set({ replaceSamples: e.target.checked })} /> Заменить {replaces(s, sampleFile(s)!)} целиком — пробы всех
+                скважин набора
+              </label>
+            )}
+            {trenchBlocker(s) && <div className={css.error}>{trenchBlocker(s)}</div>}
+          </>
+        ) : (
+          <>
+            {notReady.length > 0 && <div className={css.error}>Исправьте файлы, отмеченные красным, на их шагах.</div>}
+            {clashOf(s) && <div className={css.error}>{clashOf(s)} Уберите лишний файл или дайте таблице другое название.</div>}
+          </>
+        )}
       </section>
     </div>
   );

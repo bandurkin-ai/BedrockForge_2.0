@@ -19,6 +19,7 @@
 .cardHead { display: flex; gap: 10px; align-items: baseline; }
 .cardHead .linkBtn { margin-left: auto; }
 .options, .kind { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.options label { display: inline-flex; align-items: center; }
 .options label, .kind { gap: 6px; }
 .options select, .options input, .kind select, .kind input, .map select, .radio input:not([type]), .radio select, .unit { padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-input); color: var(--text); font: inherit; }
 .options input[type="number"] { width: 64px; }
@@ -41,3 +42,18 @@
 .note { color: var(--text-faint); font-size: 12px; }
 .error { color: var(--danger); }
 .warn { color: var(--warn); }
+.modes { display: flex; gap: 18px; padding: 6px 12px 0; flex-wrap: wrap; }
+.modes label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.group { border: 1px solid var(--border); border-radius: var(--radius); margin: 0; padding: 4px 10px 8px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.group legend { color: var(--text-dim); font-size: 12px; padding: 0 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px 14px; max-height: 96px; overflow: auto; }
+.chips label { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.layers { border-collapse: collapse; font-size: 12px; }
+.layers td, .layers th { padding: 1px 12px 1px 0; text-align: left; white-space: nowrap; }
+.layers th { color: var(--text-dim); font-weight: normal; }
+.levelRow { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.levelRow label { display: flex; flex-direction: column; gap: 2px; }
+.levelRow input { width: 120px; padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-input); color: var(--text); font: inherit; }
+.levelRow input[aria-invalid="true"] { border-color: var(--danger); }
+.totals { font-weight: 600; }

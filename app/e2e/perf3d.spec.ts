@@ -2,11 +2,14 @@
 // display along them, 60 frames turning a full circle → bench/out/frame_sw.json. Budgets only on the
 // deterministic counters (draw calls, triangles, video memory: bench/budgets.json → external.frame_sw); the ms
 // per frame of SwiftShader go to the report (`python -m bench.run --check` reads the file when it is there).
+// Э7 (ADR 0011 «Замеры», ТЗ 5.3), before the benchmark: the first frame of the whole demo — holes, lines,
+// survey points, the plan on the DTM — after a lost context (≤ 3 s) and a click on a line and on the surface
+// (≤ 50 ms on the CPU); then the lines, the plan and the DTM of the demo are removed.
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { close, launch, setWindowSize, waitFrame } from "./helpers";
+import { close, holesOnlyDemo, launch, setWindowSize, waitFrame } from "./helpers";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const HOLES = 2000;
@@ -70,6 +73,45 @@ test("perf3d: 2000 holes and a display, 60 frames under software rendering → b
     await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
     await waitFrame(page);
     const demo = (await page.evaluate(() => window.__bfScene!.state())).sets[0];
+
+    // Э7 (ADR 0011 «Замеры», ТЗ 5.3): the demo as it is — holes, lines, survey points, the plan on the DTM —
+    // comes again from the core after a lost context: the time to its first frame; then a click on the road
+    // and a click beside it (the surface with the plan, or a survey point) are answered on the CPU.
+    const whole = await page.evaluate(() => window.__bfScene!.state());
+    expect(whole.lines.layers).toBe(3);
+    expect(whole.wireframes.draped).toHaveLength(1);
+    await page.evaluate(() => {
+      const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="scene-host"] canvas')!;
+      window.__bfLose = canvas.getContext("webgl2")!.getExtension("WEBGL_lose_context");
+      window.__bfLose!.loseContext();
+    });
+    await expect.poll(() => page.evaluate(() => window.__bfScene!.state().lost)).toBe(true);
+    const restored = Date.now();
+    await page.evaluate(() => window.__bfLose!.restoreContext());
+    await waitFrame(page);
+    const firstFrameMs = Date.now() - restored;
+    const again = await page.evaluate(() => window.__bfScene!.state());
+    expect(again.lines.layers).toBe(3);
+    expect(again.wireframes.draped).toEqual(whole.wireframes.draped);
+    expect(firstFrameMs).toBeLessThanOrEqual(3000);
+    await page.keyboard.press("t"); // from above the height of a point does not move it on the screen
+    await waitFrame(page);
+    const pick = async (x: number, y: number) => {
+      const at = (await page.evaluate(([px, py]) => window.__bfScene!.screen(px, py, 420), [x, y] as const))!;
+      await page.mouse.click(at.x, at.y);
+      await waitFrame(page);
+      return page.evaluate(() => window.__bfScene!.state());
+    };
+    const onRoad = await pick(5200, 7947.81); // a vertex of the road (core demo/geo.py)
+    expect(onRoad.picked).toMatchObject({ kind: "lines", on: "line" });
+    expect(onRoad.pickMs).toBeLessThan(50);
+    const beside = await pick(5437.5, 8312.5);
+    expect(beside.picked).not.toBeNull();
+    expect(beside.pickMs).toBeLessThan(50);
+    await page.keyboard.press("Escape");
+    // the frame below is measured as before: the synthetic set alone fills the view
+    await holesOnlyDemo(page);
+
     await importSet(page, paths);
     await expect.poll(() => page.evaluate(() => window.__bfScene!.state().sets.length), { timeout: 120_000 }).toBe(2);
     const set = (await page.evaluate(() => window.__bfScene!.state())).sets.find((s) => s !== demo)!;
@@ -100,6 +142,9 @@ test("perf3d: 2000 holes and a display, 60 frames under software rendering → b
       gpu_bytes: r.gpu_bytes,
       gpu_mb: Math.round((r.gpu_bytes / 1024 / 1024) * 10) / 10,
       simplified: state.displays.simplified,
+      first_frame_ms: firstFrameMs,
+      pick_line_ms: Math.round(onRoad.pickMs * 10) / 10,
+      pick_surface_ms: Math.round(beside.pickMs * 10) / 10,
       renderer: r.gpu.renderer,
       platform: process.platform,
     };

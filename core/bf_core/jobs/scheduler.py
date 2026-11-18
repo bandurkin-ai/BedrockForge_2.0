@@ -43,6 +43,10 @@ class Source:
     folder: str | None = None
 
 
+#: Kinds of jobs that make lines, rasters or wireframes of a project: their end is an `objects.changed` event.
+OBJECT_JOBS = frozenset({"import.objects", "model.dtm"})
+
+
 @dataclass
 class Running:
     job_id: int
@@ -418,6 +422,9 @@ class Scheduler:
                     .values(status=status, finished_at=dialect.utcnow(), **values)
                 )
         self._publish(src, run.job_id)
+        if status == "done" and run.kind in OBJECT_JOBS:
+            # the lists of the interface are read again even if the job was over before the interface saw it run
+            self.events.publish("objects.changed", {"kind": "job", "job": run.kind, "id": run.job_id})
         self._release(src)
 
     def _release(self, src: Source) -> None:

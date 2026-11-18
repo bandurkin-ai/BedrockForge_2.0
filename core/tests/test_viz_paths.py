@@ -115,10 +115,10 @@ def test_demo_paths_match_positions(demo) -> None:  # type: ignore[no-untyped-de
     for method in ("minimum_curvature", "balanced_tangent"):
         st = trajectories(project, set_id, method)
         r, ph, a = _paths(c, set_id, 0, method=method)
-        assert ph["kind"] == "paths" and ph["k"] == 0 and ph["n"] == 48 and ph["tol"] == 0.01
+        assert ph["kind"] == "paths" and ph["k"] == 0 and ph["n"] == 49 and ph["tol"] == 0.01  # with the trench
         assert ph["origin"] == head["parts"][0]["origin"] and all(float(v).is_integer() for v in ph["origin"])
         offsets = a["offsets"]
-        assert offsets.dtype == np.dtype("<u4") and len(offsets) == 49 and offsets[-1] == ph["points"]
+        assert offsets.dtype == np.dtype("<u4") and len(offsets) == 50 and offsets[-1] == ph["points"]
         xyz = a["xyz"].reshape(-1, 3)
         assert len(xyz) == len(a["md"]) == ph["points"] and np.abs(xyz).max() <= 8000.5
         if method == "minimum_curvature":

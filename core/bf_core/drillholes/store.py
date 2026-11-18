@@ -173,6 +173,29 @@ def replace_collars(conn: sa.Connection, set_id: int, rows: Sequence[CollarRow])
 SurveyRow = tuple[Any, ...]
 
 
+class TrenchSurveys(Exception):
+    """Readings of an inclinometer came for holes whose stations are vertices with coordinates (trenches)."""
+
+    def __init__(self, names: Sequence[str]) -> None:
+        super().__init__(", ".join(names))
+        self.names = list(names)
+
+
+def station_holes(conn: sa.Connection, set_id: int) -> set[int]:
+    """Holes of the set whose survey stations carry coordinates: trenches along polylines (ТЗ 7.35 Д-16)."""
+    has_xyz = sa.and_(dh_surveys.c.set_id == set_id, dh_surveys.c.x.is_not(None))
+    return {int(i) for i in conn.execute(sa.select(dh_surveys.c.hole_id).where(has_xyz).distinct()).scalars()}
+
+
+def trench_surveys(conn: sa.Connection, set_id: int, holes: Iterable[str]) -> list[str]:
+    """Those of `holes` (names) that are trenches of the set: readings of an inclinometer are not for them."""
+    fixed = station_holes(conn, set_id)
+    if not fixed:
+        return []
+    known = hole_ids(conn, set_id)
+    return sorted({name for name in holes if known.get(name) in fixed})
+
+
 def replace_surveys(engine: sa.Engine, set_id: int, rows: Sequence[SurveyRow], tick: Tick) -> dict[str, int]:
     """«Заменить» surveys of one set: (hole, depth, azimuth, dip). One transaction: surveys are small enough
     (tens of thousands of holes × tens of readings)."""
@@ -181,10 +204,18 @@ def replace_surveys(engine: sa.Engine, set_id: int, rows: Sequence[SurveyRow], t
 
 
 def replace_surveys_in(conn: sa.Connection, set_id: int, rows: Sequence[SurveyRow], tick: Tick) -> dict[str, int]:
-    """The same inside the caller's transaction (the final transaction of an import)."""
+    """The same inside the caller's transaction (the final transaction of an import).
+
+    Only readings of an inclinometer are replaced (rows without coordinates). The stations of trenches — the
+    vertices of their polylines, `x, y, z` set — are not surveys of a file and stay as they are; rows that
+    name a trench are refused (`TrenchSurveys`) before anything is written: a trench with angles next to its
+    vertices would have two geometries."""
+    trenches = trench_surveys(conn, set_id, (r[0] for r in rows))
+    if trenches:
+        raise TrenchSurveys(trenches)
     known = hole_ids(conn, set_id)
     ensure_holes(conn, set_id, (r[0] for r in rows), known)
-    conn.execute(sa.delete(dh_surveys).where(dh_surveys.c.set_id == set_id))
+    conn.execute(sa.delete(dh_surveys).where(dh_surveys.c.set_id == set_id, dh_surveys.c.x.is_(None)))
     for start in range(0, len(rows), BATCH):
         tick(None, f"Инклинометрия: {start} из {len(rows)}")
         part = rows[start : start + BATCH]

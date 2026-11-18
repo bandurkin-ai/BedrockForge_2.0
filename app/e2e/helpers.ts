@@ -67,3 +67,36 @@ export async function waitFrame(page: Page, timeout = 90_000): Promise<void> {
   // Not waitForFunction: under the strict CSP of app:// it needs eval.
   await expect.poll(() => page.evaluate(() => (window.__bfScene ? window.__bfScene.ready() : false)), { timeout, intervals: [100, 200, 400] }).toBe(true);
 }
+
+/**
+ * The demo project as the specs written before its Э7 parts need it: the holes of «Скважины 2025» (with the
+ * trench «К-01») and nothing else. The lines, the survey points, the plan and the DTM of the demo (core
+ * `demo/geo.py`) are deleted through the core — the interface follows the events of the core — so such a spec
+ * counts, hides and clicks only what it loads itself.
+ */
+export async function holesOnlyDemo(page: Page): Promise<void> {
+  const failed = await page.evaluate(async () => {
+    const c = window.bf!.core()!;
+    const call = async (method: string, url: string) => {
+      const r = await fetch(`${c.baseUrl}/api/v1${url}`, { method, headers: { "X-BF-Token": c.token } });
+      return { status: r.status, body: (await r.json()) as Record<string, { id: number }[]> };
+    };
+    const out: string[] = [];
+    // the DTM goes first: a raster that lies on a DTM is not deleted
+    for (const [url, key] of [["/wireframes", "wireframes"], ["/rasters", "rasters"], ["/lines/files", "files"]]) {
+      for (const o of (await call("GET", url)).body[key]) {
+        const r = await call("DELETE", `${url}/${o.id}`);
+        if (r.status !== 200) out.push(`DELETE ${url}/${o.id}: ${r.status} ${JSON.stringify(r.body)}`);
+      }
+    }
+    return out;
+  });
+  expect(failed).toEqual([]);
+  // with the hook of the 3D window (BF_E2E=1): nothing of them is left in the scene
+  const left = () =>
+    page.evaluate(() => {
+      const s = window.__bfScene?.state();
+      return s ? s.lines.layers + s.rasters.count + s.wireframes.layers : 0;
+    });
+  await expect.poll(left, { timeout: 60_000, intervals: [100, 200, 400] }).toBe(0);
+}

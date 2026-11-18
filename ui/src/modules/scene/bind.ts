@@ -10,6 +10,7 @@ import { onJobFinished } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { hiddenKey, patchFields, toggleHidden, ViewSync, type ViewIO } from "./viewSync";
 import { clearedKeys, effectiveHidden, normalizeHideAll, showNew, showUnderHideAll, topKey } from "./hideAll";
+import { bindSceneObjects, objectViewKeys, sceneObjects } from "./objects";
 
 const SUB_LAYERS = ["collars", "paths", "intervals"] as const;
 import { bindViewCommands } from "./viewCommands";
@@ -37,9 +38,9 @@ export function viewSyncOf(): ViewSync | null {
 
 const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
-/** Object keys of the project the scene can show (sets now; wireframes, lines… with their stages). */
+/** Object keys of the project the scene can show (sets, line layers, rasters, wireframes; blocks… with their stages). */
 export function objectKeys(): string[] {
-  return tablesStore.get().sets.map((s) => `set:${s.id}`);
+  return [...tablesStore.get().sets.map((s) => `set:${s.id}`), ...objectViewKeys()];
 }
 
 /** The part of the view kept in the app store (ribbon, status bar, Claude). `hidden` there is the effective
@@ -82,6 +83,19 @@ export function bindScene(app: App): void {
   tablesStore.subscribe(() => {
     if (tablesStore.get().sets === setsRef) return;
     setsRef = tablesStore.get().sets;
+    store.set((s) => ({ view: viewFromKeys(viewStore.get(), s.view) }));
+  });
+  // line layers, rasters and wireframes: the lists follow the project; what was just loaded or built is
+  // shown also after «Очистить окно» (ТЗ 17.4.7)
+  bindSceneObjects();
+  let objects = sceneObjects.get();
+  sceneObjects.subscribe(() => {
+    const next = sceneObjects.get();
+    if (next.files === objects.files && next.rasters === objects.rasters && next.wireframes === objects.wireframes) return;
+    const known = new Set(objectViewKeys(objects));
+    const added = objects.loaded && next.loaded ? objectViewKeys(next).filter((k) => !known.has(k)) : [];
+    objects = next;
+    if (added.length && projectStore.get().current && sync && normalizeHideAll(viewStore.get().hide_all).on) updateView("hide_all", showNew(added));
     store.set((s) => ({ view: viewFromKeys(viewStore.get(), s.view) }));
   });
   // a set just imported is shown also after «Очистить окно» (ТЗ 17.4.7)

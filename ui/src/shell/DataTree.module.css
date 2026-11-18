@@ -8,3 +8,10 @@
 .none { padding: 2px 8px 6px 28px; color: var(--text-faint); font-size: 12px; }
 .demo { margin: 12px; padding: 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius); color: var(--text-dim); line-height: 1.5; text-align: center; }
 .demo button { margin-top: 8px; border: 1px solid var(--border-strong); background: var(--bg-hover); padding: 5px 12px; border-radius: var(--radius); cursor: pointer; }
+.count { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
+.swatch { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 2px; border: 1px solid var(--border-strong); vertical-align: -1px; }
+.glyph { display: inline-flex; vertical-align: -2px; margin-right: 4px; color: var(--text-dim); }
+.rowBtn { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 2px; border-radius: var(--radius); display: flex; }
+.rowBtn:hover { background: var(--bg-active); color: var(--text); }
+.rowBtn:disabled { opacity: 0.45; cursor: default; }
+.error { color: var(--danger); }

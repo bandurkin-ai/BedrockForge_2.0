@@ -18,6 +18,7 @@ export const commands: Command[] = [
   { id: "palette.open", title: "Все команды", description: "Палитра команд Ctrl+K.", params: { query: { type: "string" } }, uiOnly: true, silent: true },
   { id: "settings.open", title: "Настройка", description: "Окно настроек: быстрые клавиши, папка проектов, число исполнителей.", params: { tab: { type: "string", enum: ["shortcuts", "general"] } }, uiOnly: true },
   { id: "workspace.state", title: "Что на экране", description: "Короткая сводка состояния окна: открытые панели, тема, вид, проект, набор, выбор.", silent: true },
+  { id: "selection.clear", title: "Снять выбор", description: "Снять выбор скважины и объекта проекта (слоя линий, растра, каркаса, ЦТМ); пока рисуется линия разреза — отменить рисование.", stage: "Э7" },
   { id: "app.about", title: "О производителе", description: "Плашка «О производителе»: название, слоган, производитель, версии программы и ядра.", uiOnly: true, stage: "Э6.1" },
   { id: "license.open", title: "Лицензия", description: "Окно «Лицензия»: код ПК, пробный период, файл лицензии.", uiOnly: true },
   { id: "logs.open", title: "Журналы", description: "Журналы импорта и экспорта этого сеанса.", uiOnly: true, stage: "Э3" },

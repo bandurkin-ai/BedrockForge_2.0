@@ -2,8 +2,9 @@
 a fixed seed (no files, no network), so every installation gets the same project.
 
 Parts are added by the stages that bring their data types: drillholes and AU/CU assays (Э3), the audit with
-deliberate errors (Э5), wireframes of the ore body (Э7), outlines (Э8), the geological map and the scan of
-the section Y = 8125 (Э9). A part is a function (conn, store, rng) registered in PARTS.
+deliberate errors (Э5), a trench, strings of the ore body, the road, the survey points, the plan of the site and
+the DTM with the plan on it (Э7, `geo.py`), wireframes of the ore body and outlines (Э8), the geological map and
+the scan of the section Y = 8125 (Э9). A part is a function (conn, store, rng) registered in PARTS.
 """
 
 from __future__ import annotations
@@ -67,8 +68,11 @@ def _audit(project: Project) -> None:
 
 def _register() -> None:
     from .drillholes import add_drillholes
+    from .geo import add_lines, add_terrain, add_trench
 
     PARTS.append(("drillholes", add_drillholes))
+    # Э7 (`geo.py`), after the holes: they take the random stream first and stay as they were
+    PARTS.extend([("trench", add_trench), ("lines", add_lines), ("terrain", add_terrain)])
 
 
 _register()

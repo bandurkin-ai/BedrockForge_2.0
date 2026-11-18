@@ -2,6 +2,11 @@
 
 27 rules in the order of the specification. Titles and descriptions are shown to the user (Russian).
 A new rule = an entry here + a check in `checks.py` + a test.
+
+Exception (ТЗ 7.35 Д-16, ADR 0011 §5): the rules of the table «survey» are not applied to survey stations with
+coordinates — the vertices of a trench along a polyline (`AuditData.survey_fixed`). Such a station has no azimuth
+or dip, and a turn of the polyline is not a dogleg. It still counts as survey data of its hole
+(COLLAR_WITHOUT_SURVEY, COLLAR_PLANNED_WITH_DATA); the collar and sample rules apply to a trench as to a hole.
 """
 
 from __future__ import annotations

@@ -134,7 +134,7 @@ def open_demo(c):  # type: ignore[no-untyped-def]
     r = c.post(f"{API}/projects/demo")
     assert r.status_code == 200, r.text
     sets = c.get(f"{API}/drillholes/sets").json()["sets"]
-    assert [s["name"] for s in sets] == ["Скважины 2025"] and sets[0]["holes"] == 48
+    assert [s["name"] for s in sets] == ["Скважины 2025"] and sets[0]["holes"] == 49  # 48 holes and the trench К-01
     return c, sets[0]["id"]
 
 
@@ -153,11 +153,12 @@ def manifest(c, set_id: int, **params) -> tuple[dict, dict]:  # type: ignore[no-
 def test_demo_manifest(demo) -> None:  # type: ignore[no-untyped-def]
     c, set_id = demo
     head, a = manifest(c, set_id)
-    assert head["kind"] == "holes" and head["method"] == "minimum_curvature" and head["n"] == 48
-    assert head["skipped"] == [] and sorted(head["names"]) == [f"DH-{i:03d}" for i in range(1, 49)]
+    # 48 holes and the trench «К-01» (demo/geo.py): a hole of the set whose stations carry coordinates
+    assert head["kind"] == "holes" and head["method"] == "minimum_curvature" and head["n"] == 49
+    assert head["skipped"] == [] and sorted(head["names"]) == [*(f"DH-{i:03d}" for i in range(1, 49)), "К-01"]
     (part,) = head["parts"]
-    assert part["k"] == 0 and part["n"] == 48 and all(float(v).is_integer() for v in part["origin"])
-    assert a["part"].tolist() == [0] * 48 and a["slot"].tolist() == list(range(48))
+    assert part["k"] == 0 and part["n"] == 49 and all(float(v).is_integer() for v in part["origin"])
+    assert a["part"].tolist() == [0] * 49 and a["slot"].tolist() == list(range(49))
     collars = {
         r["hole"]: r
         for r in c.get(f"{API}/drillholes/sets/{set_id}/tables/collar", params={"limit": 100}).json()["rows"]
@@ -170,11 +171,12 @@ def test_demo_manifest(demo) -> None:  # type: ignore[no-untyped-def]
         assert a["td"][i] == row["td"]
         if name != "DH-006":
             assert abs(a["length"][i] - row["td"]) < 1e-9
-        assert 80 < a["plan_az"][i] < 100  # the demo holes go east
+        assert 80 < a["plan_az"][i] < 100  # the demo holes go east, and so does the trench across the ore zone
     assert a["length"][head["names"].index("DH-006")] > a["td"][head["names"].index("DH-006")]  # survey below TD
     box = np.array(part["bbox"])
     assert np.all(box[:3] <= xyz.min(axis=0)) and np.all(box[3:] >= xyz.max(axis=0))
-    assert a["kind"].tolist() == [0] * 48
+    kinds = dict(zip(head["names"], a["kind"].tolist(), strict=True))
+    assert kinds.pop("К-01") == 1 and set(kinds.values()) == {0}  # a trench by its type, the rest are holes
     # neighbours on the ground are neighbours in the order: the first 4 holes are within 2 cells
     first = xyz[:4, :2]
     assert np.ptp(first[:, 0]) < 120 and np.ptp(first[:, 1]) < 120

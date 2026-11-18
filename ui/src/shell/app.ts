@@ -4,14 +4,18 @@
  */
 import { bindAudit } from "../modules/audit/bind";
 import { bindDownhole } from "../modules/downhole/bind";
+import { bindDtm } from "../modules/dtm/bind";
 import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
+import { bindLines } from "../modules/lines/bind";
 import { bindProjects } from "../modules/projects/bind";
+import { bindRasters } from "../modules/rasters/bind";
 import { bindStripLog } from "../charts/striplog/bind";
 import { bindScene } from "../modules/scene/bind";
 import { bindSection } from "../modules/section/bind";
 import { bindTables } from "../modules/tables/bind";
 import { bindViews } from "../modules/views/bind";
+import { bindObjects } from "../modules/wireframes/bind";
 import { createRegistry } from "./catalog";
 import { logText, opLogStore, openLogWindow } from "./opLog";
 import type { Command, CommandSource } from "./commands";
@@ -134,6 +138,10 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindTables(app);
   bindAudit(app);
   bindScene(app);
+  bindObjects(app);
+  bindLines(app);
+  bindRasters(app);
+  bindDtm(app);
   bindViews(app);
   bindSection(app);
   bindStripLog(app);

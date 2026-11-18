@@ -143,6 +143,10 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
             mine = {r[0] for r in norm.surveys}
             for hole in mine:
                 _claim(survey_file, hole, label, "инклинометрии")
+            with dialect.read_tx(engine) as conn:  # before the tables are built; checked again when written
+                trenches = dh.trench_surveys(conn, set_id, mine)
+            if trenches:
+                raise _trench_surveys(trenches)
             surveys = (surveys or []) + norm.surveys
             written["surveys"] = len(norm.surveys)
         else:
@@ -164,7 +168,10 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
         if collars:
             dh.replace_collars(conn, set_id, collars)
         if surveys is not None:
-            dh.replace_surveys_in(conn, set_id, surveys, lambda _f, _m: None)
+            try:
+                dh.replace_surveys_in(conn, set_id, surveys, lambda _f, _m: None)
+            except dh.TrenchSurveys as exc:
+                raise _trench_surveys(exc.names) from None
         for table_id in built:
             dh.swap_in(conn, set_id, table_id)
         dh.prune_empty_holes(conn, set_id)
@@ -203,6 +210,17 @@ def import_drillholes(ctx: JobContext) -> dict[str, Any]:
     _store_sources(ctx, engine, logs)
     _drop_stale_snapshots(ctx, engine)
     return result
+
+
+def _trench_surveys(names: list[str]) -> JobError:
+    """«Заменить» of the surveys never touches the stations of trenches (the vertices of their polylines), and
+    angles for a trench would give it a second geometry: the import is refused, nothing is written."""
+    shown = ", ".join(f"«{n}»" for n in names[:10]) + (f" и ещё {len(names) - 10}" if len(names) > 10 else "")
+    return JobError(
+        "survey_for_trench",
+        f"Инклинометрия не загружена: в файле есть замеры канав ({shown}), а их ход задан вершинами линий.",
+        "Уберите строки канав из файла инклинометрии. Геометрию канавы меняет «Импорт канав» из файла линий.",
+    )
 
 
 def _claim(owner: dict[str, str], hole: str, label: str, what: str) -> None:
