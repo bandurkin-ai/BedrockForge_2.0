@@ -1,4 +1,4 @@
-"""/api/v1/viz — geometry and data of drillhole sets for the 3D window (ADR 0007 §1).
+"""/api/v1/viz — geometry and data of drillhole sets and line layers for the 3D window (ADR 0007 §1, ADR 0011 §3).
 
 Binary answers are BFA1 (`viz/binary.py`) with an ETag of their key (`viz/keys.py`): If-None-Match → 304
 before any calculation; `Cache-Control: no-cache`, so the window asks again after every change.
@@ -176,6 +176,36 @@ def class_counts(svc: Svc, set_id: int, body: ClassBody) -> dict[str, Any]:
     if ref.key not in snap.data:
         raise data_changed()
     return calc(snap, t, ref, bounds)
+
+
+# --- line and point layers (ADR 0011 §3) ---------------------------------------------------------------
+
+
+@router.get("/lines/{layer_id}")
+def line_layer(svc: Svc, layer_id: int, if_none_match: IfNoneMatch = None) -> Response:
+    """The manifest of a line layer: its extent, the levels of detail and the parts with their ETags."""
+    from . import lines
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        state = lines.layer_state(conn, layer_id)
+    return _answer(lines.layer_etag(project.uid, state), if_none_match, lambda: lines.manifest(project, state))
+
+
+@router.get("/lines/{layer_id}/parts/{k}")
+def line_part(
+    svc: Svc, layer_id: int, k: int, lod: Annotated[int, Query()] = 0, if_none_match: IfNoneMatch = None
+) -> Response:
+    """Part k of a line layer at a level of detail: 0 — every vertex, 1 and 2 — within 4 and 32 m."""
+    from . import lines
+
+    project = svc.require_current()
+    if lod not in range(len(lines.LOD_TOL)):
+        raise lines.bad_lod()
+    with dialect.read_tx(project.engine) as conn:
+        state = lines.layer_state(conn, layer_id)
+    tag = lines.part_etag(project.uid, state, k, lod)
+    return _answer(tag, if_none_match, lambda: lines.part(project, state, k, lod))
 
 
 # --- the window «Данные по скважинам» (ТЗ 7.17, ADR 0007 §6) -----------------------------------------------
