@@ -45,14 +45,12 @@ def _outward(xyz: np.ndarray, tri: np.ndarray) -> np.ndarray:
     return tri if signed > 0 else tri[:, [0, 2, 1]]
 
 
-def _cap(rings: list[np.ndarray], tip: np.ndarray, base: int, tip_index: int, reverse: bool) -> list[list[int]]:
-    """Triangles from the ring that starts at vertex `base` to the point `tip_index`."""
-    n = len(rings[0])
+def _cap(n: int, base: int, tip: int, reverse: bool) -> list[list[int]]:
+    """Triangles from the ring of `n` vertices that starts at vertex `base` to the vertex `tip`."""
     out = []
     for j in range(n):
         a, b = base + j, base + (j + 1) % n
-        out.append([a, tip_index, b] if reverse else [a, b, tip_index])
-    del tip
+        out.append([a, tip, b] if reverse else [a, b, tip])
     return out
 
 
@@ -81,8 +79,7 @@ def loft(rings: list[np.ndarray], step: float = 25.0) -> tuple[np.ndarray, np.nd
             c, d = a + n, b + n
             tri += [[a, b, d], [a, d, c]]
     tips = len(chain) * n
-    tri += _cap(chain, first_point, 0, tips, reverse=True)
-    tri += _cap(chain, last_point, (len(chain) - 1) * n, tips + 1, reverse=False)
+    tri += _cap(n, 0, tips, reverse=True) + _cap(n, (len(chain) - 1) * n, tips + 1, reverse=False)
     t = np.asarray(tri, dtype=np.int64)
     return xyz, _outward(xyz, t)
 
@@ -97,7 +94,8 @@ def ellipsoid(
         lat = math.pi * i / (rings + 1) - math.pi / 2
         for j in range(around):
             lon = 2 * math.pi * j / around
-            u, v, w = axes[0] * math.cos(lat) * math.cos(lon), axes[1] * math.cos(lat) * math.sin(lon), axes[2] * math.sin(lat)
+            u, v = axes[0] * math.cos(lat) * math.cos(lon), axes[1] * math.cos(lat) * math.sin(lon)
+            w = axes[2] * math.sin(lat)
             pts.append((centre[0] + c * u - s * v, centre[1] + s * u + c * v, centre[2] + w))
     pts += [(centre[0], centre[1], centre[2] - axes[2]), (centre[0], centre[1], centre[2] + axes[2])]
     xyz = np.round(np.array(pts, dtype=np.float64), 2)

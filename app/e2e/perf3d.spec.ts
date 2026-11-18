@@ -249,7 +249,7 @@ test("perf3d heavy: the demo, 1 million line segments, a raster and a DTM of 200
     await waitFrame(page);
     const demo = await page.evaluate(() => window.__bfScene!.state());
     expect(demo.lines.layers).toBe(3);
-    expect(demo.wireframes.layers).toBe(1);
+    expect(demo.wireframes.layers).toBe(4); // the relief, the two ore bodies and the fault (Э8)
 
     const api = (method: string, url: string, body?: unknown) =>
       page.evaluate(
@@ -263,6 +263,12 @@ test("perf3d heavy: the demo, 1 million line segments, a raster and a DTM of 200
     type Layer = { id: number; line_count: number; point_count: number };
     type Wf = { id: number; name: string; triangle_count: number };
     const layers = async () => ((await api("GET", "/lines/files")).body.files as { layers: Layer[] }[]).flatMap((f) => f.layers);
+    // the scene measured is the one of the budget (ADR 0013 «Замеры»): the demo with its relief, without the
+    // ore bodies and the fault of Э8 — a few small meshes would only add draw calls to the 38 of 40
+    for (const w of ((await api("GET", "/wireframes")).body.wireframes as { id: number; dtm: unknown }[]).filter((x) => x.dtm === null)) {
+      expect((await api("DELETE", `/wireframes/${w.id}`)).status).toBe(200);
+    }
+    await expect.poll(() => page.evaluate(() => window.__bfScene!.state().wireframes.layers), { timeout: 60_000 }).toBe(1);
 
     // the files as the wizard «Импорт файлов» imports them: one job
     const loadStart = Date.now();

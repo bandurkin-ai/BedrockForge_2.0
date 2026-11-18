@@ -5,22 +5,24 @@ is told by the hole moved by an infinitesimal — up, then east, then north).
 References and tolerances:
   * the ridge of the review of Э8 — a grid of 10 × 4 cells, z = −1.2 · clip(x − 2, 0, 4), a collar on the crest
     (2, 2, 0), azimuth 90°, dip −47°: the hole first goes into the air over the face (50.2°) and meets the lower
-    level at 4.8 / sin 47° = 6.5632 m — one crossing, to 1e-9 m; the directions around it, a collar on a vertex,
-    on an edge and inside a triangle, plain and UTM-sized coordinates, a curved hole, both orientations;
-  * any fan — holes from the vertices of a random relief (peaks, pits, ridges, valleys and saddles) and through
-    them, against a scan with bisection along `positions()` in which the collar is above the surface: 1e-6 m;
+    level at 4.8 / sin 47° = 6.5632 m — one crossing, to 1e-9 m; the directions around it, plain and UTM-sized
+    coordinates, both orientations, a curved hole of every desurvey method;
+  * a collar on a vertex, on an edge, inside a triangle, on a ridge and in a valley, and any fan — holes from the
+    vertices of a random relief (peaks, pits, ridges, valleys and saddles) and through them — against a scan
+    with bisection along `positions()` in which a point on the surface is above it: 1e-6 m;
   * exact arithmetic — polylines through vertices, middles of edges and points of faces of a relief and of a
     closed solid whose coordinates are multiples of 1/8, against the same polylines moved by (1e-18, 1e-27, 1e-9)
     and crossed with the triangles in rational numbers (`fractions`): the same crossings with the same sides,
     depths to 1e-6 m;
   * a graze — an arc of radius 191 m cut into pieces 1 mm off it: the pieces come out of a valley the arc passes
-    0.2–0.9 mm under (and into a ridge it passes over) — no crossing; an arc that does come out by 0.5 mm gives
-    both crossings where the formula says, to 1e-6 m.
+    0.2–0.9 mm under (and into a ridge it passes over) — no crossing; an arc that does come out by 0.5 or 3 mm
+    gives both crossings where the formula says, to 1e-6 m.
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from fractions import Fraction
 
 import numpy as np
@@ -35,20 +37,48 @@ pytestmark = pytest.mark.windows
 
 DEPTH = 1e-6  # metres along the hole; the acceptance of ТЗ 7.15 is 1 mm
 ZERO = np.zeros(3)
+Marks = list[tuple[float, int]]  # (depth, side) of the crossings of a hole
 
 
-def crossings(traj: Trajectories, *meshes: gi.MeshTarget) -> list[list[tuple[float, int]]]:
-    """[(depth, side)] of every hole, of all the wireframes together."""
-    hits = gi.hole_crossings(traj, list(meshes))
+def crossings(traj: Trajectories, mesh: gi.MeshTarget) -> list[Marks]:
+    hits = gi.hole_crossings(traj, [mesh])
     assert set(hits.side.tolist()) <= {-1, 1}
     return [list(zip(hits.depth[hits.hole == h].tolist(), hits.side[hits.hole == h].tolist(), strict=True))
             for h in range(traj.n_holes)]  # fmt: skip
 
 
-def same(got: list[tuple[float, int]], want: list[tuple[float, int]], tol: float = DEPTH) -> bool:
+def same(got: Marks, want: Marks, tol: float = DEPTH) -> bool:
     return [s for _d, s in got] == [s for _d, s in want] and [d for d, _s in got] == pytest.approx(
         [d for d, _s in want], abs=tol
     )
+
+
+def scan(traj: Trajectories, h: int, surface: Callable[[np.ndarray], np.ndarray], step: float = 2.3e-4) -> Marks:
+    """The changes of «above the surface» along a hole: a scan and a bisection. `surface(points)` — its height
+    under the points, NaN beside it (the hole stays what it was). A point on the surface is above it."""
+    length = float(traj.lengths()[h])
+    d = np.unique(np.concatenate([[0.0], np.arange(step, length, step), [length]]))
+
+    def above(depths: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        p = traj.positions(np.full(len(depths), h), depths)
+        z = surface(p)
+        return p[:, 2] >= z, ~np.isnan(z)
+
+    s, known = above(d)
+    d, s = d[known], s[known]
+    out = []
+    for i in np.flatnonzero(s[1:] != s[:-1]):
+        a, b = d[i], d[i + 1]
+        for _ in range(60):
+            m = 0.5 * (a + b)
+            state, on = above(np.array([m]))
+            assert on[0]
+            if state[0] == s[i]:
+                a = m
+            else:
+                b = m
+        out.append((0.5 * (a + b), -1 if s[i] else 1))
+    return out
 
 
 # --- the ridge of the review -------------------------------------------------------------------------------
@@ -61,18 +91,28 @@ def ridge(offset: np.ndarray = ZERO, slope: float = 1.2, up: float = -1.0) -> tu
     return grid(10, 4, lambda x, y: up * slope * np.clip(x - 2.0, 0.0, 4.0) + 0.0 * y, step=1.0, offset=offset)
 
 
-def along(azimuth: float, dip: float, depth: float) -> float:
-    """The depth at which a straight hole has gone `depth` metres down."""
-    return depth / math.sin(math.radians(-dip))
+def ridge_height(slope: float, up: float = -1.0) -> Callable[[np.ndarray], np.ndarray]:
+    def surface(p: np.ndarray) -> np.ndarray:
+        inside = (p[:, 0] >= 0.0) & (p[:, 0] <= 10.0) & (p[:, 1] >= 0.0) & (p[:, 1] <= 4.0)
+        return np.where(inside, up * slope * np.clip(p[:, 0] - 2.0, 0.0, 4.0), np.nan)
+
+    return surface
+
+
+def fan(x: float, y: float, z: float, angles: list[tuple[float, float]], td: float = 12.0) -> Trajectories:
+    """Straight holes from one collar, an (azimuth, dip) each."""
+    return holes([(x, y, z, td)] * len(angles), [(h, 0.0, az, dip) for h, (az, dip) in enumerate(angles)])
 
 
 @pytest.mark.parametrize("offset", [ZERO, UTM], ids=["plain", "utm"])
 def test_collar_on_the_crest_of_a_ridge(offset: np.ndarray) -> None:
     v, t = ridge(offset)
     x, y, z = v[CREST]  # the collar is the vertex itself, bit for bit — as a DTM built through the collars has it
-    cases = [
-        ((90.0, -47.0), [(along(90.0, -47.0, 4.8), -1)]),  # over the face (50.2°) into the air, down on the level
-        ((90.0, -50.0), [(along(90.0, -50.0, 4.8), -1)]),
+    landing = [(4.8 / math.sin(math.radians(47.0)), -1)]
+    assert landing[0][0] == pytest.approx(6.5632, abs=5e-5)
+    cases: list[tuple[tuple[float, float], Marks]] = [
+        ((90.0, -47.0), landing),  # over the face (50.2°) into the air, down on the lower level
+        ((90.0, -50.0), [(4.8 / math.sin(math.radians(50.0)), -1)]),
         ((90.0, -51.0), [(0.0, -1)]),  # steeper than the face: into the ground at once
         ((90.0, -60.0), [(0.0, -1)]),
         ((90.0, -30.0), []),  # over the lower level to the end of the surface
@@ -83,66 +123,56 @@ def test_collar_on_the_crest_of_a_ridge(offset: np.ndarray) -> None:
         ((45.0, -30.0), []),  # askew over the face: its dip along the hole is 40.3°
         ((45.0, -45.0), [(0.0, -1)]),
     ]
-    traj = holes([(x, y, z, 12.0)] * len(cases), [(h, 0.0, az, dip) for h, ((az, dip), _w) in enumerate(cases)])
+    traj = fan(x, y, z, [angles for angles, _w in cases])
     for flipped in (False, True):  # the orientation of the surface changes the sides, not the crossings
-        tri = np.ascontiguousarray(t[:, ::-1]) if flipped else t
-        got = crossings(traj, gi.MeshTarget(v, tri))
+        got = crossings(traj, gi.MeshTarget(v, np.ascontiguousarray(t[:, ::-1]) if flipped else t))
         for h, (angles, want) in enumerate(cases):
-            turned = [(d, -s if flipped else s) for d, s in want]
-            assert same(got[h], turned, 1e-9), (angles, flipped, got[h])
+            assert same(got[h], [(d, -s if flipped else s) for d, s in want], 1e-9), (angles, flipped, got[h])
             if want and want[0][0] == 0.0:
                 assert got[h][0][0] == 0.0  # at the collar exactly
 
 
 def test_collar_on_an_edge_inside_a_triangle_and_in_a_valley() -> None:
-    v, t = ridge(slope=1.25)  # every number of it is exact: a face of 51.3°
-    mesh = gi.MeshTarget(v, t)
+    angles = [(90.0, -47.0), (90.0, -60.0), (90.0, 20.0), (90.0, 40.0), (90.0, 60.0), (270.0, -47.0), (270.0, 47.0),
+              (270.0, -1.0), (270.0, 1.0), (300.0, 5.0), (120.0, -52.0), (60.0, -35.0), (17.0, -80.0), (200.0, 70.0)]  # fmt: skip
     places = {
-        "crest edge": (2.0, 2.5, 0.0),
         "crest vertex": (2.0, 2.0, 0.0),
+        "crest edge": (2.0, 2.5, 0.0),
         "diagonal of the level": (1.5, 2.5, 0.0),
         "inside a level triangle": (1.25, 2.5, 0.0),
+        "toe vertex": (6.0, 2.0, 5.0),
+        "toe edge": (6.0, 1.5, 5.0),
+        "inside a face triangle": (3.25, 1.5, 1.5625),
+        "edge of the face": (3.0, 1.5, 1.25),
     }
-    for name, (x, y, z) in places.items():
-        on_crest = x == 2.0
-        down = (5.0 - 1.25 * 0.0) / math.sin(math.radians(47.0))
-        cases = [
-            ((90.0, -47.0), [(down, -1)] if on_crest else [(0.0, -1)]),
-            ((90.0, -60.0), [(0.0, -1)]),
-            ((270.0, -47.0), [(0.0, -1)]),
-            ((90.0, 20.0), []),
-            ((300.0, 5.0), []),
-        ]
-        traj = holes([(x, y, z, 12.0)] * len(cases), [(h, 0.0, az, dip) for h, ((az, dip), _w) in enumerate(cases)])
-        got = crossings(traj, mesh)
-        for h, (angles, want) in enumerate(cases):
-            assert same(got[h], want, 1e-9), (name, angles, got[h])
-    # a collar on the face itself: out into the air at 47°, into the ground at 60°
-    x, z = 3.25, -1.25 * 1.25
-    traj = holes([(x, 1.5, z, 12.0)] * 3, [(0, 0.0, 90.0, -47.0), (1, 0.0, 90.0, -60.0), (2, 0.0, 270.0, -47.0)])
-    got = crossings(traj, mesh)
-    assert same(got[0], [((5.0 + z) / math.sin(math.radians(47.0)), -1)], 1e-9), got[0]
-    assert got[1] == [(0.0, -1)]
-    # … against the face, out of it behind the crest: 47° up the face of 51.3° is under it
-    h = 1.25 * 1.25 / math.sin(math.radians(47.0))
-    assert same(got[2], [(0.0, -1), (h, 1)], 1e-9) and 3.25 - h * math.cos(math.radians(47.0)) < 2.0, got[2]
-
-    # a valley: the face rises from the collar; under it at +40°, over it at +60°
-    v, t = ridge(slope=1.25, up=1.0)
-    out = 5.0 / math.sin(math.radians(40.0))  # … and out through the upper level
-    cases = [((90.0, -47.0), [(0.0, -1)]), ((90.0, 40.0), [(0.0, -1), (out, 1)]), ((90.0, 60.0), []),
-             ((270.0, -1.0), [(0.0, -1)]), ((270.0, 1.0), [])]  # fmt: skip
-    for x, y in ((2.0, 2.0), (2.0, 2.5)):
-        traj = holes([(x, y, 0.0, 12.0)] * len(cases), [(h, 0.0, az, dip) for h, ((az, dip), _w) in enumerate(cases)])
-        got = crossings(traj, gi.MeshTarget(v, t))
-        for h, (angles, want) in enumerate(cases):
-            assert same(got[h], want, 1e-9), ((x, y), angles, got[h])
+    met = set()
+    for up in (-1.0, 1.0):  # a ridge and a valley; every number of them is exact: a face of 51.3°
+        v, t = ridge(slope=1.25, up=up)
+        mesh, surface = gi.MeshTarget(v, t), ridge_height(1.25, up)
+        for name, (x, y, z) in places.items():
+            traj = fan(x, y, up * z, angles)
+            got = crossings(traj, mesh)
+            for h, angle in enumerate(angles):
+                want = scan(traj, h, surface)
+                assert same(got[h], want), (up, name, angle, got[h], want)
+                if want and want[0][0] < DEPTH:
+                    assert got[h][0][0] == 0.0
+                met.add((up, name, bool(want) and want[0][0] < DEPTH))
+    assert len(met) == 2 * 2 * len(places)  # from every place into the ground and into the air
+    # … of which, by hand: from the crest 47° down over the face of 51.3° to the level 5 m below
+    v, t = ridge(slope=1.25)
+    got = crossings(fan(2.0, 2.5, 0.0, [(90.0, -47.0)]), gi.MeshTarget(v, t))
+    assert same(got[0], [(5.0 / math.sin(math.radians(47.0)), -1)], 1e-9)
+    # from the face 47° up under it and out through the level behind the crest
+    out = 1.5625 / math.sin(math.radians(47.0))
+    got = crossings(fan(3.25, 1.5, -1.5625, [(270.0, 47.0)]), gi.MeshTarget(v, t))
+    assert same(got[0], [(0.0, -1), (out, 1)], 1e-9) and 3.25 - out * math.cos(math.radians(47.0)) < 2.0
 
 
 @pytest.mark.parametrize("method", METHODS)
 def test_curved_hole_from_the_crest(method: str) -> None:
     """The first course of the hole is curved (it flattens by 2° in 30 m): what it does at the collar is told
-    by its first direction, and the crossing at the collar is at depth 0 exactly."""
+    by the way it leaves it, and a crossing at the collar is at depth 0 exactly."""
     v, t = ridge(UTM)
     x, y, z = v[CREST]
     cases = [(-47.0, False), (-60.0, True), (-49.0, False), (-52.0, True)]
@@ -151,9 +181,9 @@ def test_curved_hole_from_the_crest(method: str) -> None:
     hits = gi.hole_crossings(traj, [gi.MeshTarget(v, t)])
     for h, (dip, into_ground) in enumerate(cases):
         depth = hits.depth[hits.hole == h]
-        assert (len(depth) > 0 and depth[0] == 0.0) == into_ground, (method, dip, depth)
+        assert len(depth) == 1 and (depth[0] == 0.0) == into_ground, (method, dip, depth)
         if not into_ground:  # down on the lower level, 4.8 m below the collar
-            assert len(depth) == 1 and 4.8 / math.sin(math.radians(-dip)) < depth[0] < 7.5
+            assert 4.8 / math.sin(math.radians(-dip)) - 1e-9 <= depth[0] < 7.5
             assert hits.xyz[hits.hole == h][0, 2] == pytest.approx(z - 4.8, abs=1e-8)
 
 
@@ -170,44 +200,23 @@ def relief(seed: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return v, t, z
 
 
-def height(z: np.ndarray, p: np.ndarray) -> np.ndarray:
-    """The height of the relief over the points (the diagonal of a cell runs from its low corner)."""
-    i = np.clip(np.floor(p[:, 0]).astype(int), 0, N - 1)
-    j = np.clip(np.floor(p[:, 1]).astype(int), 0, N - 1)
-    u, w = p[:, 0] - i, p[:, 1] - j
-    z00, z10, z11, z01 = z[j, i], z[j, i + 1], z[j + 1, i + 1], z[j + 1, i]
-    return np.where(w <= u, z00 + u * (z10 - z00) + w * (z11 - z10), z00 + u * (z11 - z01) + w * (z01 - z00))
+def relief_height(z: np.ndarray) -> Callable[[np.ndarray], np.ndarray]:
+    """The height of the relief over points inside it (the diagonal of a cell runs from its low corner)."""
 
+    def surface(p: np.ndarray) -> np.ndarray:
+        i = np.clip(np.floor(p[:, 0]).astype(int), 0, N - 1)
+        j = np.clip(np.floor(p[:, 1]).astype(int), 0, N - 1)
+        u, w = p[:, 0] - i, p[:, 1] - j
+        z00, z10, z11, z01 = z[j, i], z[j, i + 1], z[j + 1, i + 1], z[j + 1, i]
+        return np.where(w <= u, z00 + u * (z10 - z00) + w * (z11 - z10), z00 + u * (z11 - z01) + w * (z01 - z00))
 
-def scan(traj: Trajectories, h: int, z: np.ndarray, collar_above: bool, step: float = 1.37e-3) -> list[tuple[float, int]]:
-    """[(depth, side)] of the changes of «above the relief» along a hole: a scan and a bisection. A collar on
-    the surface is above it (`collar_above`); else the hole starts as its first step finds it."""
-    length = float(traj.lengths()[h])
-    d = np.append(np.arange(step, length, step), length)
-
-    def above(depths: np.ndarray) -> np.ndarray:
-        p = traj.positions(np.full(len(depths), h), depths)
-        return np.asarray(p[:, 2] > height(z, p))
-
-    s = above(d)
-    d, s = np.concatenate([[0.0], d]), np.concatenate([[True if collar_above else s[0]], s])
-    out = []
-    for i in np.flatnonzero(s[1:] != s[:-1]):
-        a, b = d[i], d[i + 1]
-        for _ in range(60):
-            m = 0.5 * (a + b)
-            if above(np.array([m]))[0] == s[i]:
-                a = m
-            else:
-                b = m
-        out.append((0.5 * (a + b), -1 if s[i] else 1))
-    return out
+    return surface
 
 
 @pytest.mark.parametrize("seed", [1, 2, 3])
 def test_holes_from_the_vertices_of_a_relief_and_through_them(seed: int) -> None:
     v, t, z = relief(seed)
-    mesh = gi.MeshTarget(v, t)
+    mesh, surface = gi.MeshTarget(v, t), relief_height(z)
     rng = np.random.default_rng(100 + seed)
     nodes = [(int(i), int(j)) for i, j in rng.integers(4, N - 3, (150, 2))]
     az, dip = rng.uniform(0.0, 360.0, len(nodes)), rng.uniform(-89.0, 89.0, len(nodes))
@@ -216,7 +225,7 @@ def test_holes_from_the_vertices_of_a_relief_and_through_them(seed: int) -> None
     got = crossings(from_vertex, mesh)
     at_collar = 0
     for h in range(len(nodes)):
-        want = scan(from_vertex, h, z, True)
+        want = scan(from_vertex, h, surface)
         assert same(got[h], want), (seed, nodes[h], az[h], dip[h], got[h], want)
         at_collar += bool(want) and want[0][0] < DEPTH
     assert 40 < at_collar < 110  # into the ground and into the air
@@ -234,40 +243,46 @@ def test_holes_from_the_vertices_of_a_relief_and_through_them(seed: int) -> None
     middle = through.positions(np.arange(len(nodes)), length / 2.0)
     assert np.abs(middle - (a + k)).max() <= 1e-12
     got = crossings(through, mesh)
-    crossed = touched = 0
+    crossed = touched = in_plane = 0
     for h in range(len(nodes)):
-        want = scan(through, h, z, False)
+        want = scan(through, h, surface)
+        if any(b[0] - a[0] < 0.01 for a, b in zip(want, want[1:], strict=False)):
+            in_plane += 1  # the hole runs in the plane of a face: the rounding of the scan flips it there
+            continue  # (the test against rational arithmetic has such holes)
         assert same(got[h], want), (seed, nodes[h], k[h].tolist(), got[h], want)
-        at_vertex = [d for d, _s in want if abs(d - length[h] / 2.0) < DEPTH]
-        crossed += len(at_vertex)
+        at_vertex = any(abs(d - length[h] / 2.0) < DEPTH for d, _s in want)
+        crossed += at_vertex
         touched += not at_vertex
-    assert crossed > 20 and touched > 20  # through the surface at the vertex, and only touching it there
+    assert crossed > 20 and touched > 20 and in_plane < 10  # through the surface at the vertex, or only touching it
 
 
 # --- exact arithmetic --------------------------------------------------------------------------------------
 
 LIFT = (Fraction(1, 10**18), Fraction(1, 10**27), Fraction(1, 10**9))  # east, north, up
+Vector = list[Fraction]
 
 
-def exact(p: np.ndarray) -> list[Fraction]:
+def exact(p: np.ndarray) -> Vector:
     return [Fraction(float(c)) for c in p]
 
 
-def sub(a: list[Fraction], b: list[Fraction]) -> list[Fraction]:
+def sub(a: Vector, b: Vector) -> Vector:
     return [x - y for x, y in zip(a, b, strict=True)]
 
 
-def cross(a: list[Fraction], b: list[Fraction]) -> list[Fraction]:
+def cross(a: Vector, b: Vector) -> Vector:
     return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 
 
-def dot(a: list[Fraction], b: list[Fraction]) -> Fraction:
+def dot(a: Vector, b: Vector) -> Fraction:
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
 
-def lifted(points: np.ndarray, depths: np.ndarray, v: np.ndarray, t: np.ndarray) -> list[tuple[float, int]]:
-    """[(depth, side)] of the polyline through `points` moved by `LIFT` against the triangles, in rational
-    numbers; crossings at one place are one (the sign of the sum of their signs; none when it is zero)."""
+def lifted(points: np.ndarray, depths: np.ndarray, v: np.ndarray, t: np.ndarray) -> Marks | None:
+    """The crossings of the polyline through `points` moved by `LIFT` with the triangles, in rational numbers;
+    crossings at one place are one (the sign of the sum of their signs; none when it is zero). None — a piece
+    of the polyline lies in the plane of a triangle and goes through the inside of an edge of it: where it
+    leaves the face is beyond float64 unless the piece is level or vertical (`geo/intersect.py`)."""
     lo, hi = v[t].min(axis=1), v[t].max(axis=1)
     found = []
     for k in range(len(points) - 1):
@@ -278,6 +293,13 @@ def lifted(points: np.ndarray, depths: np.ndarray, v: np.ndarray, t: np.ndarray)
         for i in np.flatnonzero(near):
             p0, p1, p2 = (exact(v[c]) for c in t[i])
             n = cross(sub(p1, p0), sub(p2, p0))
+            ea, eb = exact(a), exact(b)
+            if dot(sub(ea, p0), n) == 0 and dot(sub(eb, p0), n) == 0:  # the piece as it is, in the plane
+                for p, q in ((p0, p1), (p1, p2), (p2, p0)):
+                    apart = dot(cross(sub(eb, ea), sub(p, ea)), n) * dot(cross(sub(eb, ea), sub(q, ea)), n)
+                    reach = dot(cross(sub(q, p), sub(ea, p)), n) * dot(cross(sub(q, p), sub(eb, p)), n)
+                    if apart < 0 and reach <= 0 and SKIP_IN_PLANE:
+                        return None
             ga, gb = dot(sub(fa, p0), n), dot(sub(fb, p0), n)
             assert ga != 0 and gb != 0
             if (ga > 0) == (gb > 0):
@@ -287,9 +309,9 @@ def lifted(points: np.ndarray, depths: np.ndarray, v: np.ndarray, t: np.ndarray)
             edges = [dot(cross(sub(q, p), sub(x, p)), n) for p, q in ((p0, p1), (p1, p2), (p2, p0))]
             assert all(e != 0 for e in edges)
             if all(e > 0 for e in edges):
-                found.append((float(depths[k] + s * Fraction(float(depths[k + 1] - depths[k]))), 1 if ga < 0 else -1))
+                found.append((float(depths[k]) + float(s) * float(depths[k + 1] - depths[k]), 1 if ga < 0 else -1))
     found.sort()
-    out: list[tuple[float, int]] = []
+    out: Marks = []
     i = 0
     while i < len(found):
         j, total = i + 1, found[i][1]
@@ -304,8 +326,7 @@ def lifted(points: np.ndarray, depths: np.ndarray, v: np.ndarray, t: np.ndarray)
 
 def octahedron(centre: tuple[float, float, float], r: float) -> tuple[np.ndarray, np.ndarray]:
     """A closed solid of eight faces, normals outward."""
-    c = np.array(centre)
-    v = c + r * np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]], dtype=float)
+    v = np.array(centre) + r * np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]])
     t = [(0, 2, 4), (2, 1, 4), (1, 3, 4), (3, 0, 4), (2, 0, 5), (1, 2, 5), (3, 1, 5), (0, 3, 5)]
     return v, np.array(t, dtype=np.int32)
 
@@ -314,18 +335,18 @@ def special(rng: np.random.Generator, v: np.ndarray, t: np.ndarray, kinds: str) 
     """A point of a wireframe: `v` a vertex, `e` the middle of an edge, `f` a point inside a triangle."""
     a, b, c = v[t[rng.integers(len(t))][rng.permutation(3)]]
     kind = kinds[rng.integers(len(kinds))]
-    return a if kind == "v" else (a + b) / 2.0 if kind == "e" else a / 2.0 + b / 4.0 + c / 4.0
+    return np.asarray(a if kind == "v" else (a + b) / 2.0 if kind == "e" else a / 2.0 + b / 4.0 + c / 4.0)
 
 
 def polylines(seed: int, v: np.ndarray, t: np.ndarray, count: int) -> list[np.ndarray]:
     """Polylines whose vertices are multiples of 1/8 and that meet the wireframe exactly: they start on a
-    vertex, an edge or a face of it; bend on a vertex or a face; go through a vertex or the middle of an edge;
-    run from vertex to vertex — along edges, across faces, through the solid."""
+    vertex, the middle of an edge or a face of it; bend on a vertex or a face; go through a vertex or the
+    middle of an edge; run from vertex to vertex — along edges, across faces, through the solid."""
     rng = np.random.default_rng(seed)
     lo, hi = v.min(axis=0) - 1.0, v.max(axis=0) + 1.0
 
     def anywhere() -> np.ndarray:
-        return np.round(rng.uniform(lo, hi) * 8.0) / 8.0
+        return np.asarray(np.round(rng.uniform(lo, hi) * 8.0) / 8.0 + 1.0 / 16.0)  # on no vertex and no level
 
     out = []
     for n in range(count):
@@ -359,21 +380,24 @@ def test_polylines_through_vertices_edges_and_faces_against_rational_arithmetic(
     )
     for h, (p, d) in enumerate(zip(lines, depths, strict=True)):  # the trajectory is the polyline
         assert np.abs(traj.positions(np.full(len(d), h), d) - p).max() <= 1e-12
-    crossed = at_station = 0
+    crossed = at_station = in_plane = 0
     for v, t, solid in ((rv, rt, None), (ov, ot, "outward")):
         mesh = gi.MeshTarget(v, t, solid=solid)
         got = crossings(traj, mesh)
-        hits = gi.hole_crossings(traj, [mesh])
         for h, (p, d) in enumerate(zip(lines, depths, strict=True)):
             want = lifted(p, d, v, t)
+            if want is None:
+                in_plane += 1
+                continue
             assert same(got[h], want), (seed, solid, h, p.tolist(), got[h], want)
             crossed += len(want)
             at_station += sum(1 for depth, _s in want if np.abs(d - depth).min() < DEPTH)
-        if solid:  # into the solid as often as out of it, or the polyline ends inside
-            spans = gi.inside_intervals(traj, hits)
-            enters, leaves = (int(np.count_nonzero(hits.event == e)) for e in (gi.ENTER, gi.LEAVE))
-            assert enters - leaves == int(spans.to_end.sum()) - int(spans.from_collar.sum())
+        if solid:  # the solid is convex: in, out, in … — never twice the same way
+            sides = [[s for _d, s in marks] for marks in got]
+            assert all(a != b for row in sides for a, b in zip(row, row[1:], strict=False))
+            assert sum(len(row) for row in sides) > 100
     assert crossed > 300 and at_station > 60  # … of them at the ends of the pieces of the polylines
+    assert in_plane < len(lines) // 10
 
 
 # --- a graze -----------------------------------------------------------------------------------------------
@@ -384,40 +408,41 @@ MIDDLE = RADIUS * math.sin(math.radians(15.0))  # … at this distance from its 
 K = math.tan(math.radians(30.0))  # the slopes of the two faces of the crease
 
 
-def crease(under: float, flip: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
+def crease(under: float, flip: float, y0: float) -> tuple[np.ndarray, np.ndarray]:
     """A valley across the hole whose bottom line is `under` metres above the lowest point of the arc (`flip`
-    −1: the mirror image of it and of the hole — a ridge under the top of an arc)."""
+    −1: the mirror image of it — a ridge under the top of the arc that goes up and down); rows of vertices at
+    y0, y0 + 10, y0 + 20."""
     return grid(8, 2, lambda x, y: flip * (under - LOWEST + K * np.abs(x - 40.0)) + 0.0 * y, step=10.0,
-                offset=np.array([MIDDLE - 40.0, -10.0, 0.0]))  # fmt: skip
+                offset=np.array([MIDDLE - 40.0, y0, 0.0]))  # fmt: skip
 
 
-def arc(flip: float = 1.0) -> Trajectories:
+def arc(flip: float) -> Trajectories:
     """East from the origin, 15° down at the collar and 15° up at 100 m (`flip` −1: up, then down)."""
     return holes([(0.0, 0.0, 0.0, 100.0)], [(0, 0.0, 90.0, -15.0 * flip), (0, 100.0, 90.0, 15.0 * flip)])
 
 
 def test_arc_within_a_millimetre_of_a_crease() -> None:
-    traj = arc()
-    low = traj.positions(np.array([0]), np.array([50.0]))[0]
+    low = arc(1.0).positions(np.array([0]), np.array([50.0]))[0]
     assert low == pytest.approx([MIDDLE, 0.0, -LOWEST], abs=1e-9)
-    # the middle piece of the arc is 0.9976 mm above it: over a valley bottom the arc passes under
+    # the middle piece of the arc is 0.9976 mm off it
     pieces = math.ceil(math.sqrt(100.0 * math.radians(30.0) / 8.0 / gi.SAGITTA_M))
     sagitta = RADIUS * (1.0 - math.cos(50.0 / pieces / RADIUS))
-    assert pieces % 2 == 1 and 0.9e-3 < sagitta <= gi.SAGITTA_M
-    for under in (0.2e-3, 0.5e-3, 0.9e-3):
-        assert under < sagitta
+    assert pieces % 2 == 1 and 0.99e-3 < sagitta <= gi.SAGITTA_M
+    for y0 in (-13.0, -10.0):  # the hole over the inside of the triangles, and in the plane of a row of edges
         for flip in (1.0, -1.0):
-            v, t = crease(under, flip)
-            for tri in (t, np.ascontiguousarray(t[:, ::-1])):
-                hits = gi.hole_crossings(arc(flip), [gi.MeshTarget(v, tri)])
-                assert len(hits) == 0, (under, flip, hits.depth.tolist(), hits.side.tolist())
-    # the arc itself comes out of the valley by `over`: at s from the bottom line, s² / 2R + over = K · |s|
-    for over in (0.5e-3, 3e-3):
-        s = RADIUS * K - math.sqrt((RADIUS * K) ** 2 - 2.0 * RADIUS * over)  # the smaller root
-        for flip in (1.0, -1.0):
-            v, t = crease(-over, flip)
-            hits = gi.hole_crossings(arc(flip), [gi.MeshTarget(v, t)])
-            half = RADIUS * math.asin(s / RADIUS)  # the depth from the middle of the arc to x = MIDDLE ± s
-            assert hits.depth == pytest.approx([50.0 - half, 50.0 + half], abs=DEPTH), (over, flip)
-            assert hits.side.tolist() == [1, -1] and 1.7e-3 * over / 0.5e-3 < hits.depth[1] - hits.depth[0]
-            assert np.abs(hits.xyz[:, 2] * flip + LOWEST - over - K * s).max() <= 1e-7  # on the faces
+            traj = arc(flip)
+            # the pieces come out of the valley (into the ridge), the arc passes under (over) its line
+            for under in (0.2e-3, 0.5e-3, 0.9e-3):
+                v, t = crease(under, flip, y0)
+                for tri in (t, np.ascontiguousarray(t[:, ::-1])):
+                    hits = gi.hole_crossings(traj, [gi.MeshTarget(v, tri)])
+                    assert len(hits) == 0, (y0, flip, under, hits.depth.tolist(), hits.side.tolist())
+            # the arc itself comes out by `over`: at s from the line of the crease, s² / 2R + over = K · s
+            for over in (0.5e-3, 3e-3):
+                s = RADIUS * K - math.sqrt((RADIUS * K) ** 2 - 2.0 * RADIUS * over)
+                half = RADIUS * math.asin(s / RADIUS)  # the depth from the middle of the arc to x = MIDDLE ± s
+                v, t = crease(-over, flip, y0)
+                hits = gi.hole_crossings(traj, [gi.MeshTarget(v, t)])
+                assert hits.depth == pytest.approx([50.0 - half, 50.0 + half], abs=DEPTH), (y0, flip, over)
+                assert hits.side.tolist() == ([1, -1] if flip > 0 else [-1, 1])
+                assert np.abs(hits.xyz[:, 2] * flip + LOWEST + over - K * s).max() <= 1e-7  # on the faces

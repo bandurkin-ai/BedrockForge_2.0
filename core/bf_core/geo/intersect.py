@@ -10,16 +10,25 @@ the hole (a mask over the whole mesh for each hole) and took the depth from the 
     arc of minimum curvature by as many as its bend asks for, a course of the balanced tangent method by its
     two halves, a straight course by itself. An arc far from the mesh (by the boxes, grown by the bend of the
     arc) is not cut into pieces at all;
-  * a piece crosses a triangle when its line passes through it (`line_triangle`: nothing slips between two
-    triangles) and its ends are on different sides of the plane of the triangle, an end on the plane counting
-    as above it — so a station lying on a surface gives one crossing, not two or none;
+  * a piece crosses a triangle when its line passes through it (nothing slips between two triangles) and its
+    ends are on different sides of the plane of the triangle. Where the numbers leave it open — a collar or a
+    station exactly on a surface, a hole exactly through an edge or a vertex — the answer is that of the hole
+    moved by an infinitesimal: up, then east, then north (`tri_kernels.segment_triangle`). So a collar on a
+    surface is above it (on a wall — east of it): a hole that starts on a vertex of a DTM built through the
+    collars crosses it at depth 0 when it goes into the ground, and not at all when it starts on a crest and
+    goes out over the face; a station on a surface gives one crossing, not two or none; a hole through a
+    vertex crosses the surface once whatever the triangles around it are, and one that only touches a crest
+    does not cross it. This is exact for a collar or a station that is a vertex of the wireframe, bit for bit,
+    and wherever the arithmetic is (whole coordinates); a point that is on an edge only as far as float64 can
+    tell is beside it;
   * the depth is then moved from the chord to the course itself: the depth at which `Trajectories.positions`
     is on the plane of the triangle (a few steps down the slope of the chord, to `DEPTH_TOL_M`), and the point of the
     mark is `positions(hole, depth)` — on the trace as it is drawn, bit for bit;
   * crossings of one hole with one wireframe nearer than `SAME_HIT_M` along the chord are one crossing (the
-    hole went through an edge or a vertex shared by several triangles); its side is the sign of the sum: a
-    hole that only touches a crease of a solid goes into one face and out of the other at the same point —
-    side 0, event CROSS, and the solid is not entered.
+    hole went through an edge or a vertex where the triangles fold); its side is the sign of the sum, and a
+    sum of zero is no crossing: the hole went into one face and out of the other at the same point — it only
+    touched the wireframe. So is a crossing undone by the next one at the same depth: the straight pieces of
+    a curved course came out of a valley the course itself passes under — a millimetre away at most.
 
 Events (ADR 0007: `event` of a mark). A wireframe said to be a closed solid (`solid="outward"` or "inward":
 `wireframes.stats` closed and orientation) gives ENTER and LEAVE by the side of the triangle the hole comes
@@ -29,8 +38,8 @@ leave ends inside (to the end of the hole). A hole wholly inside a solid has no 
 no interval.
 
 Accuracy: the depth of a crossing is that of the exact path to about 1e-8 m (the acceptance of 7.15 is 1 mm).
-What the 1 mm of the pieces can change is only whether a hole that grazes a surface, or passes within 1 mm of
-its border, is said to cross it.
+What the 1 mm of the pieces can change is only whether a hole that comes out of a surface by less than 1 mm
+and goes back, or passes within 1 mm of its border, is said to cross it.
 
 numba is imported with this module: import it lazily, never before BF-READY.
 """
@@ -190,7 +199,7 @@ def _walk(path, holes, j0, j1, mesh, sagitta, out):  # type: ignore[no-untyped-d
                     i = hits[1][q]
                     chord = da + hits[0][q] * (db - da)
                     depth = chord
-                    if arc:
+                    if arc and 0.0 < hits[0][q] < 1.0:  # (an end of the piece on the plane is on the course)
                         ga, gb = plane_sides(xyz, tri[i, 0], tri[i, 1], tri[i, 2], ax, ay, az, bx, by, bz)
                         depth = _refine(method, s, md, sxyz, dirs, xyz, tri[i, 0], tri[i, 1], tri[i, 2],
                                         da, db, (gb - ga) / (db - da), chord)  # fmt: skip
@@ -206,11 +215,17 @@ def _walk(path, holes, j0, j1, mesh, sagitta, out):  # type: ignore[no-untyped-d
 
 @njit(cache=True, nogil=True)
 def _merge(hole, chord, depth, sign, tol, keep, side):  # type: ignore[no-untyped-def]
-    """Crossings sorted by (hole, chord): those of a hole nearer than `tol` to the one before are one crossing
-    — its first row into `keep`, the sign of the sum of their signs into `side`. The depths of a hole are made
-    not to go back (the order of the crossings is that of the chords). Returns the number of crossings."""
+    """Rows of `_walk` sorted by (hole, chord) → the crossings: their rows into `keep`, their sides (+1 or −1)
+    into `side`; returns their number.
+
+    Rows of a hole nearer than `tol` to the one before are one crossing — the first of them, its side the sign
+    of the sum of their signs; a sum of zero is a touch, not a crossing. The depths of a hole are made not to
+    go back (the order of the crossings is that of the chords: where a chord comes out of a valley its arc
+    passes under, the arc meets the planes of the two faces in the other order). A crossing within `tol` of
+    depth of the one before it and of the other side undoes it: both go."""
     n = hole.shape[0]
     k = 0
+    base = 0  # the first crossing of the hole at hand
     i = 0
     while i < n:
         total = np.int64(sign[i])
@@ -218,11 +233,22 @@ def _merge(hole, chord, depth, sign, tol, keep, side):  # type: ignore[no-untype
         while j < n and hole[j] == hole[i] and chord[j] - chord[j - 1] <= tol:
             total += sign[j]
             j += 1
-        if k > 0 and hole[keep[k - 1]] == hole[i] and depth[i] < depth[keep[k - 1]]:
-            depth[i] = depth[keep[k - 1]]
-        keep[k] = i
-        side[k] = 1 if total > 0 else (-1 if total < 0 else 0)
-        k += 1
+        if i == 0 or hole[i] != hole[i - 1]:
+            base = k
+        if total != 0:
+            s = 1 if total > 0 else -1
+            undone = False
+            if k > base:
+                before = depth[keep[k - 1]]
+                if depth[i] < before:
+                    depth[i] = before
+                undone = side[k - 1] == -s and depth[i] - before <= tol
+            if undone:
+                k -= 1
+            else:
+                keep[k] = i
+                side[k] = s
+                k += 1
         i = j
     return k
 
@@ -328,7 +354,7 @@ class Crossings:
     depth: np.ndarray  # float64: measured depth, metres
     xyz: np.ndarray  # float64 k×3: `positions(hole, depth)`
     triangle: np.ndarray  # int64: the triangle crossed, its number in `tri` as given
-    side: np.ndarray  # int8: +1 the hole goes the way the normal of the triangle looks, −1 against it, 0 a touch
+    side: np.ndarray  # int8: +1 the hole goes the way the normal of the triangle looks, −1 against it
     event: np.ndarray  # uint8: CROSS, ENTER or LEAVE
 
     def __len__(self) -> int:
@@ -396,6 +422,22 @@ def hole_crossings(
     hole, mesh, depth, triangle, side, event = (np.concatenate(col) for col in zip(*found, strict=True))
     order = np.lexsort((mesh, depth, hole))
     return _crossings(traj, hole[order], mesh[order], depth[order], triangle[order], side[order], event[order])
+
+
+def join(parts: Sequence[Crossings]) -> Crossings:
+    """The crossings of wireframes found one at a time as `hole_crossings` of all of them at once gives them,
+    bit for bit: part k holds the crossings of wireframe k alone (its `mesh` is 0). So only one wireframe at a
+    time has to be in memory."""
+    if not parts:
+        return Crossings(np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int32), np.zeros(0, dtype=np.float64),
+                         np.zeros((0, 3), dtype=np.float64), np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int8),
+                         np.zeros(0, dtype=np.uint8))  # fmt: skip
+    mesh = np.concatenate([np.full(len(p), k, dtype=np.int32) for k, p in enumerate(parts)])
+    hole, depth = np.concatenate([p.hole for p in parts]), np.concatenate([p.depth for p in parts])
+    order = np.lexsort((mesh, depth, hole))
+    rest = (np.concatenate([getattr(p, name) for p in parts])[order] for name in ("xyz", "triangle", "side", "event"))
+    xyz, triangle, side, event = rest
+    return Crossings(hole[order], mesh[order], depth[order], xyz, triangle, side, event)
 
 
 def _buffers(room: int) -> tuple[np.ndarray, ...]:

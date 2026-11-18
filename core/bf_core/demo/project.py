@@ -69,10 +69,13 @@ def _audit(project: Project) -> None:
 def _register() -> None:
     from .drillholes import add_drillholes
     from .geo import add_lines, add_terrain, add_trench
+    from .wireframes import add_wireframes
 
     PARTS.append(("drillholes", add_drillholes))
     # Э7 (`geo.py`), after the holes: they take the random stream first and stay as they were
     PARTS.extend([("trench", add_trench), ("lines", add_lines), ("terrain", add_terrain)])
+    # Э8 (`wireframes.py`): the ore bodies from the strings of the ore lens and the fault; no random numbers
+    PARTS.append(("wireframes", add_wireframes))
 
 
 _register()

@@ -204,8 +204,10 @@ def test_lines_points_plan_and_dtm(demo) -> None:  # type: ignore[no-untyped-def
     col, row = int((collars[0, 0] - 4900.0) / 0.5), int((8350.0 - collars[0, 1]) / 0.5)
     assert px[row, col].tolist() == [30, 36, 44] and px[5, 5].tolist() != [30, 36, 44]
 
-    # the DTM: built from the survey points, the collars and the road, the plan laid on it
-    assert [w["name"] for w in wires] == ["Рельеф"]
+    # the DTM: built from the survey points, the collars and the road, the plan laid on it; the wireframes of
+    # «Каркасы» (Э8, `demo/wireframes.py`, test_demo_wireframes.py) come after it
+    assert [w["name"] for w in wires] == ["Рельеф", "Рудное тело 1", "Рудное тело 2", "Разлом"]
+    assert [w["dtm"] is None for w in wires] == [False, True, True, True]
     dtm = wires[0]
     assert dtm["dtm"] == {"raster_id": plan["id"], "clip": True, "tint": "#ffffff", "opacity": 1.0, "shade": True}
     assert [tuple(r) for r in drape] == [(dtm["id"], plan["id"], "drape")]

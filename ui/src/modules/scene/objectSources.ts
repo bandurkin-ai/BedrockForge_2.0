@@ -8,6 +8,7 @@
  * once that command has a handler. A picked surface is then asked of the core (`exactSources.ts`): the exact
  * triangle under the click, its point and how it lies come into `pickedObject` for «Свойства». The same source
  * draws the section lines of the wireframes under clipping and the marks where holes cross wireframes.
+ * After an import of files the view moves to what was loaded when it is not seen (`showLoaded.ts`).
  * A lazy chunk with three.js, loaded with the scene.
  */
 import type { App } from "../../shell/app";
@@ -16,6 +17,7 @@ import type { LinePick } from "../../viz/lines/layer";
 import type { MeshPick, MeshProbe } from "../../viz/mesh/layer";
 import type { RasterPick } from "../../viz/rasters/layer";
 import { floorLevel } from "../../viz/rasters/placement";
+import { onObjectsImported } from "../importing/afterImport";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { viewStore } from "./bind";
@@ -26,6 +28,7 @@ import { LinesSource } from "./linesSource";
 import { lineLayers, pickedObject, sceneObjects, type PickedObject } from "./objects";
 import { RastersSource } from "./rastersSource";
 import { NO_OBJECTS, sceneUi } from "./sceneHost";
+import { ShowLoaded } from "./showLoaded";
 import { WireframesSource } from "./wireframesSource";
 
 export interface ObjectSources {
@@ -62,6 +65,8 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
   const exact = new ExactSource(scene, { wireframes: () => sceneObjects.get().wireframes, hidden, sets: () => tablesStore.get().sets, keys: () => viewStore.get() });
   // the triangles of a checked wireframe that cross each other, in red over its surface
   const checks = new ChecksSource(scene, { wireframes: () => sceneObjects.get().wireframes, hidden });
+  // «Показать загруженное»: what an import stored, once listed, if it is not seen
+  const loaded = new ShowLoaded({ hold: () => scene.holdView(), reveal: (boxes) => scene.reveal(boxes), lists: () => sceneObjects.get(), floor: () => floor });
 
   /** Under the lowest hole, line or surface with heights; hidden ones count only when nothing is visible. */
   function refloor(): void {
@@ -104,6 +109,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
       exact.sync();
       if (surfaces) checks.sync();
       if (surfaces) refloor();
+      loaded.sync();
       // the picked object is gone with its layer, raster or wireframe
       const p = pickedObject.get().picked;
       const there = p === null || (p.kind === "lines" ? lineLayers(next).some((l) => l.id === p.id) : (p.kind === "raster" ? next.rasters : next.wireframes).some((o) => o.id === p.id));
@@ -164,6 +170,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
       if (job.status === "done" && job.kind === "import.drillholes") exact.reload();
     }),
   );
+  off.push(onObjectsImported((job) => loaded.imported(job)));
   // the holes in the scene changed (a set loaded, removed): the floor follows
   let content = sceneUi.get().content;
   off.push(
@@ -226,6 +233,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
     forceLevel: (level) => wireframes.forceLevel(level),
     dispose() {
       off.forEach((fn) => fn());
+      loaded.dispose();
       exact.dispose();
       checks.dispose();
       lines.dispose();

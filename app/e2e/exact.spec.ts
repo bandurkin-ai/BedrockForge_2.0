@@ -5,7 +5,8 @@
 // colour of the wireframe, seen on the screen; moving the line replaces it, clipping off removes it. The style
 // of the traces «Пересечения» marks where the holes cross wireframes — not the DTMs: the relief of the demo is
 // built through the collars, every hole would get «0,000 м · Рельеф». With «с ЦТМ» the holes are marked on the
-// relief too: as many marks as the core finds.
+// relief too: as many marks as the core finds. (The wireframes of «Каркасы» of the demo are hidden until the
+// marks: the pick and the section here are of the relief; the whole story is `wireframes.spec.ts`.)
 import { expect, test, type Page } from "@playwright/test";
 import { close, launch, shot, waitFrame } from "./helpers";
 
@@ -52,6 +53,9 @@ test("3D: exact pick of the relief in «Свойства», the section line of 
     // only the holes and the relief stay in the view: a click on the surface must not meet a survey point or a line
     const files = (await api("GET", "/lines/files")).body.files as { layers: { id: number }[] }[];
     for (const layer of files.flatMap((f) => f.layers)) expect((await run("layer.show", { layer: "lines", id: layer.id, visible: false })).ok).toBe(true);
+    // … nor a wireframe of «Каркасы» (the ore bodies and the fault of the demo, Э8): they come back for the marks
+    const others = ((await api("GET", "/wireframes")).body.wireframes as Wireframe[]).filter((w) => w.id !== relief.id);
+    for (const w of others) expect((await run("layer.show", { layer: "wireframe", id: w.id, visible: false })).ok).toBe(true);
     await page.keyboard.press("t");
     await waitFrame(page);
 
@@ -149,6 +153,8 @@ test("3D: exact pick of the relief in «Свойства», the section line of 
 
     // ---- 8.24: marks where the holes cross the relief ----------------------------------------------------
     const sets = (await api("GET", "/drillholes/sets")).body.sets as { id: number }[];
+    for (const w of others) expect((await run("layer.show", { layer: "wireframe", id: w.id, visible: true })).ok).toBe(true);
+    await waitFrame(page);
     expect((await state(page)).exact.marks).toEqual([]);
     // what the holes may be marked on: the wireframes of «Каркасы» and — only when asked — the DTMs
     type Listed = { id: number; triangle_count: number; dtm: unknown };

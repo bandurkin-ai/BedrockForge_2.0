@@ -5,7 +5,9 @@ A line against a triangle is the test of Woop, Benthin and Wald («Watertight Ra
 in float64. The corners are moved to the origin of the line and sheared so that the line runs along one axis;
 the three edge functions are then products of the same numbers for both triangles of a shared edge, of exactly
 opposite sign, so a line cannot pass between two triangles that share an edge or a vertex: on the edge itself
-both triangles are hit. A triangle seen exactly edge-on, or without area, is not hit. BF used Möller–Trumbore
+both triangles are hit (`line_triangle`: a pick takes the nearer), or exactly one of them — the one the line
+moved by an infinitesimal goes through (`segment_triangle`: the crossings of a path are counted, and their
+signs must add up). A triangle seen exactly edge-on, or without area, is not hit. BF used Möller–Trumbore
 with a tolerance on the barycentric coordinates; without a tolerance that test loses about one ray in a hundred
 of those aimed exactly at a vertex of a lattice with UTM-sized coordinates (tests/test_geo_pick.py), and what a
 tolerance closes depends on the size of the triangle.
@@ -137,10 +139,8 @@ def line_triangle(xyz, i0, i1, i2, o, kx, ky, kz, sx, sy, sz):  # type: ignore[n
 
 
 @njit(cache=True, nogil=True)
-def plane_sides(xyz, i0, i1, i2, ax, ay, az, bx, by, bz):  # type: ignore[no-untyped-def]
-    """Signed distances of the points a and b from the plane of the triangle, times twice its area (positive
-    on the side its normal (corner1 − corner0) × (corner2 − corner0) looks at). The same point and triangle
-    always give the same number, so consecutive segments of a polyline agree about their common point."""
+def _plane(xyz, i0, i1, i2, ax, ay, az, bx, by, bz):  # type: ignore[no-untyped-def]
+    """`plane_sides` and the normal (corner1 − corner0) × (corner2 − corner0): (ga, gb, nx, ny, nz)."""
     px, py, pz = xyz[i0, 0], xyz[i0, 1], xyz[i0, 2]
     e1x, e1y, e1z = xyz[i1, 0] - px, xyz[i1, 1] - py, xyz[i1, 2] - pz
     e2x, e2y, e2z = xyz[i2, 0] - px, xyz[i2, 1] - py, xyz[i2, 2] - pz
@@ -149,7 +149,106 @@ def plane_sides(xyz, i0, i1, i2, ax, ay, az, bx, by, bz):  # type: ignore[no-unt
     nz = e1x * e2y - e1y * e2x
     ga = (ax - px) * nx + (ay - py) * ny + (az - pz) * nz
     gb = (bx - px) * nx + (by - py) * ny + (bz - pz) * nz
+    return ga, gb, nx, ny, nz
+
+
+@njit(cache=True, nogil=True)
+def plane_sides(xyz, i0, i1, i2, ax, ay, az, bx, by, bz):  # type: ignore[no-untyped-def]
+    """Signed distances of the points a and b from the plane of the triangle, times twice its area (positive
+    on the side its normal (corner1 − corner0) × (corner2 − corner0) looks at). The same point and triangle
+    always give the same number, so consecutive segments of a polyline agree about their common point."""
+    ga, gb, _nx, _ny, _nz = _plane(xyz, i0, i1, i2, ax, ay, az, bx, by, bz)
     return ga, gb
+
+
+# --- a segment against a triangle, nothing left open -------------------------------------------------------
+
+# A path that starts, bends or ends exactly on a surface, or goes exactly through an edge or a vertex, is taken
+# as moved by an infinitesimal vector: these are its axes, the largest first — up, then east, then north. The
+# moved path meets no edge and no vertex and none of its points is on a plane, so every question has one
+# answer, and the answers agree with each other: they are those of one path (Edelsbrunner and Mücke,
+# «Simulation of Simplicity», 1990). Up first: a collar on a DTM is above it, as a surveyor sees it.
+LIFT = (2, 0, 1)
+
+
+@njit(cache=True, nogil=True)
+def _lifted(f, px, py, qx, qy, kx, ky, dx, dy, dz):  # type: ignore[no-untyped-def]
+    """The edge function f = p × q of two corners seen along a segment (`_across`), or — the line goes through
+    the edge exactly — what has its sign once the line is moved by `LIFT`: the corners then move by
+    −(dz · Δ[kx] − dx · Δ[kz], dz · Δ[ky] − dy · Δ[kz]) and f by
+    Δ[kx] · dz · ey − Δ[ky] · dz · ex + Δ[kz] · (dy · ex − dx · ey), e = p − q. 0 — the edge is seen end-on."""
+    if f != 0.0:
+        return f
+    ex = px - qx
+    ey = py - qy
+    for axis in LIFT:
+        if axis == kx:
+            c = dz * ey
+        elif axis == ky:
+            c = -dz * ex
+        else:
+            c = dy * ex - dx * ey
+        if c != 0.0:
+            return c
+    return 0.0
+
+
+@njit(cache=True, nogil=True)
+def _across(xyz, i, ax, ay, az, bx, by, bz, kx, ky, kz, dx, dy, dz):  # type: ignore[no-untyped-def]
+    """The corner i seen along the segment a–b: (x, y, which end of the segment it is: 1 — a, 2 — b, 0 —
+    neither). (x, y) = dz · p[k] − d[k] · p[kz] for k = kx, ky, p = corner − a, (dx, dy, dz) = (b − a)[kx, ky,
+    kz]: the sheared corner of `line_triangle` times dz, without the division — so a corner on the line of
+    the segment is at (0, 0) exactly whenever its coordinates say so (the two products are one number), and
+    the edge functions of whole coordinates are exact."""
+    px, py, pz = xyz[i, 0], xyz[i, 1], xyz[i, 2]
+    end = 0
+    if px == bx and py == by and pz == bz:
+        end = 2
+    elif px == ax and py == ay and pz == az:
+        end = 1
+    p = (px - ax, py - ay, pz - az)
+    return dz * p[kx] - dx * p[kz], dz * p[ky] - dy * p[kz], end
+
+
+@njit(cache=True, nogil=True)
+def segment_triangle(xyz, i0, i1, i2, ax, ay, az, bx, by, bz, kx, ky, kz):  # type: ignore[no-untyped-def]
+    """Does the segment a–b cross the triangle (i0, i1, i2)? (kx, ky, kz — the axes of `shear` of b − a.)
+    Returns (crossed, t — where along the segment, 0…1, sign: +1 — it goes the way the normal of the triangle
+    looks, −1 — against it).
+
+    The line of the segment passes through the triangle (the edge functions of `line_triangle`) and its ends
+    are on different sides of the plane. What the numbers leave open — the line goes through an edge or a
+    vertex, an end is on the plane — is told by the segment moved by `LIFT`: of the triangles around an edge or
+    a vertex it crosses as many as the moved segment does (one; none or two where it only touches; three where
+    they fold), and an end on the plane is on the side the moved end is on. An end of the segment that is a
+    corner of the triangle is on its plane exactly, whatever the rounding. NaN coordinates: not crossed."""
+    d = (bx - ax, by - ay, bz - az)
+    dx, dy, dz = d[kx], d[ky], d[kz]
+    p0x, p0y, end0 = _across(xyz, i0, ax, ay, az, bx, by, bz, kx, ky, kz, dx, dy, dz)
+    p1x, p1y, end1 = _across(xyz, i1, ax, ay, az, bx, by, bz, kx, ky, kz, dx, dy, dz)
+    p2x, p2y, end2 = _across(xyz, i2, ax, ay, az, bx, by, bz, kx, ky, kz, dx, dy, dz)
+    u = _lifted(p2x * p1y - p2y * p1x, p2x, p2y, p1x, p1y, kx, ky, dx, dy, dz)
+    v = _lifted(p0x * p2y - p0y * p2x, p0x, p0y, p2x, p2y, kx, ky, dx, dy, dz)
+    w = _lifted(p1x * p0y - p1y * p0x, p1x, p1y, p0x, p0y, kx, ky, dx, dy, dz)
+    if not ((u > 0.0 and v > 0.0 and w > 0.0) or (u < 0.0 and v < 0.0 and w < 0.0)):
+        return False, 0.0, 0
+    ga, gb, nx, ny, nz = _plane(xyz, i0, i1, i2, ax, ay, az, bx, by, bz)
+    if end0 == 1 or end1 == 1 or end2 == 1:
+        ga = 0.0
+    if end0 == 2 or end1 == 2 or end2 == 2:
+        gb = 0.0
+    lift = 0.0
+    if ga == 0.0 or gb == 0.0:  # the side of the plane the moved end is on: the sign of normal · Δ
+        n = (nx, ny, nz)
+        for axis in LIFT:
+            if n[axis] != 0.0:
+                lift = n[axis]
+                break
+    above_a = ga > 0.0 or (ga == 0.0 and lift > 0.0)
+    above_b = gb > 0.0 or (gb == 0.0 and lift > 0.0)
+    if above_a == above_b:
+        return False, 0.0, 0
+    return True, ga / (ga - gb), (-1 if above_a else 1)
 
 
 # --- the tree of boxes -------------------------------------------------------------------------------------
@@ -315,16 +414,16 @@ def leaf_hits(xyz, tri, leaf, leaves, box, nodes, count, check, ax, ay, az, bx, 
     segment goes the way the normal of the triangle looks, −1: against it). Returns their number, or −1 when
     `out_*` are too short.
 
-    A crossing: the line of the segment passes through the triangle (`line_triangle`) and the ends are on
-    different sides of its plane, an end lying on the plane counting as above it. So of two consecutive
-    segments of a polyline exactly one owns a crossing at their common point, and a segment that ends on a
-    surface it came to from above has not crossed it."""
+    A crossing is that of `segment_triangle`: of the segment moved by the infinitesimal `LIFT`. So the signs of
+    the crossings of a polyline add up to where it ends from where it starts however it meets the edges and
+    the vertices: of two consecutive segments one owns a crossing at their common point, a segment that ends
+    on a surface it came to from above has not crossed it, one that starts on a crest and goes out over a face
+    is in the air."""
     dx, dy, dz = bx - ax, by - ay, bz - az
     if dx == 0.0 and dy == 0.0 and dz == 0.0:
         return 0
     ix, iy, iz = _inverse(dx), _inverse(dy), _inverse(dz)
-    kx, ky, kz, sx, sy, sz = shear(dx, dy, dz)
-    o = (ax, ay, az)
+    kx, ky, kz, _sx, _sy, _sz = shear(dx, dy, dz)
     m = tri.shape[0]
     n = 0
     for q in range(count):
@@ -333,17 +432,13 @@ def leaf_hits(xyz, tri, leaf, leaves, box, nodes, count, check, ax, ay, az, bx, 
             continue
         first = (node - (leaves - 1)) * leaf
         for i in range(first, min(m, first + leaf)):
-            i0, i1, i2 = tri[i, 0], tri[i, 1], tri[i, 2]
-            hit, _t, _v, _w = line_triangle(xyz, i0, i1, i2, o, kx, ky, kz, sx, sy, sz)
+            hit, t, sign = segment_triangle(xyz, tri[i, 0], tri[i, 1], tri[i, 2], ax, ay, az, bx, by, bz, kx, ky, kz)
             if not hit:
-                continue
-            ga, gb = plane_sides(xyz, i0, i1, i2, ax, ay, az, bx, by, bz)
-            if (ga >= 0.0) == (gb >= 0.0):
                 continue
             if n == out_t.shape[0]:
                 return -1
-            out_t[n] = ga / (ga - gb)
+            out_t[n] = t
             out_tri[n] = i
-            out_sign[n] = 1 if ga < 0.0 else -1
+            out_sign[n] = sign
             n += 1
     return n

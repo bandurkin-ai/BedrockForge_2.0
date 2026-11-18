@@ -14,6 +14,7 @@ import { nonBackgroundPixels, probeWebGL2, Renderer, sceneBytes, type FrameStats
 import { FpsTracker } from "./core/stats";
 import { boxFromBbox6, contentBox, fitBox, scaleZ, union, windowTest, type Box3, type Extent } from "./core/bounds";
 import { FirstView } from "./core/firstView";
+import { revealCamera } from "./core/reveal";
 import { screenPriority } from "./core/cull";
 import { LayerSet } from "./core/layers";
 import { rebaseCamera, SceneOrigin } from "./core/sceneOrigin";
@@ -193,6 +194,24 @@ export class Scene {
     this.first.stop();
     this.turn.cancel();
     this.rig.apply(fit(this.rig.state(), this.fitBox(), this.rig.options()));
+  }
+
+  /** The view stays while an import arrives: the first view does not refit to everything (`reveal` follows). */
+  holdView(): void {
+    console.log("[reveal] hold");
+    this.first.stop();
+  }
+
+  /** «Показать загруженное»: fitted to the boxes (absolute bbox6) not seen now, if any (`core/reveal.ts`). */
+  reveal(bboxes: ArrayLike<number>[]): boolean {
+    const o = bboxes.length ? this.origin.ensure(bboxes[0]) : null;
+    const cam = o && revealCamera(this.rig.state(), this.rig.options(), bboxes.map((b) => boxFromBbox6(b, o)));
+    console.log("[reveal]", JSON.stringify({ n: bboxes.length, o, before: this.rig.state(), opts: this.rig.options(), cam, b0: Array.from(bboxes[0] ?? []) }));
+    if (!cam) return false;
+    this.first.stop();
+    this.turn.cancel();
+    this.rig.apply(cam);
+    return true;
   }
 
   /** A smooth turn to look along `from` (gizmo): centre and scale kept, a new turn stops the old. */
