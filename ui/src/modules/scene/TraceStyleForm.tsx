@@ -67,6 +67,9 @@ export function TraceStyleForm({ style, onChange, notes }: { style: TraceStyle; 
           <label className={css.check}><input type="checkbox" checked={style.withWireframes} disabled={!style.intersections} onChange={(e) => set({ withWireframes: e.target.checked })} /> с каркасами</label>
           <label className={css.check}><input type="checkbox" checked={style.withBlocks} disabled={!style.intersections} onChange={(e) => set({ withBlocks: e.target.checked })} /> с блочными моделями</label>
         </div>
+        <label className={css.check} title="Пересечения с цифровыми моделями рельефа из раздела «ЦТМ». Рельеф, построенный через устья, пересекает каждую скважину на глубине 0 м">
+          <input type="checkbox" checked={style.withDtm} disabled={!style.intersections} onChange={(e) => set({ withDtm: e.target.checked })} /> с ЦТМ
+        </label>
         <label className={css.check} title="Пересечения только с каркасами и моделями, которые видны в окне">
           <input type="checkbox" checked={style.onlyVisible} disabled={!style.intersections} onChange={(e) => set({ onlyVisible: e.target.checked })} /> только с видимыми объектами
         </label>

@@ -19,6 +19,7 @@ import { floorLevel } from "../../viz/rasters/placement";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { viewStore } from "./bind";
+import { ChecksSource } from "./checksSource";
 import { ExactSource } from "./exactSources";
 import type { HolesSource } from "./loaders";
 import { LinesSource } from "./linesSource";
@@ -35,8 +36,8 @@ export interface ObjectSources {
   readonly idle: boolean;
   /** the answer of the scene to a click that hit no hole */
   pick(hit: LayerHit | null): void;
-  /** for the E2E hook `window.__bfScene.state()`; `wireframes.layers` — surfaces in the scene; `exact` — section lines and marks */
-  state(): { lines: ReturnType<LinesSource["stats"]>; rasters: ReturnType<RastersSource["stats"]>; wireframes: ReturnType<WireframesSource["stats"]>; exact: ReturnType<ExactSource["stats"]>; picked: PickedObject | null; floor: number };
+  /** for the E2E hook `window.__bfScene.state()`; `wireframes.layers` — surfaces in the scene; `exact` — section lines and marks; `checks` — red layers of crossing triangles */
+  state(): { lines: ReturnType<LinesSource["stats"]>; rasters: ReturnType<RastersSource["stats"]>; wireframes: ReturnType<WireframesSource["stats"]>; exact: ReturnType<ExactSource["stats"]>; checks: ReturnType<ChecksSource["stats"]>; picked: PickedObject | null; floor: number };
   /** E2E: the surface of a wireframe over a plan point as drawn now, and the level every part is drawn at */
   probe(id: number, x: number, y: number): MeshProbe | null;
   forceLevel(level: number | null): void;
@@ -59,6 +60,8 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
   });
   // section lines under clipping, marks of crossings, the exact triangle under a click (the core's float64)
   const exact = new ExactSource(scene, { wireframes: () => sceneObjects.get().wireframes, hidden, sets: () => tablesStore.get().sets, keys: () => viewStore.get() });
+  // the triangles of a checked wireframe that cross each other, in red over its surface
+  const checks = new ChecksSource(scene, { wireframes: () => sceneObjects.get().wireframes, hidden });
 
   /** Under the lowest hole, line or surface with heights; hidden ones count only when nothing is visible. */
   function refloor(): void {
@@ -99,6 +102,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
       wireframes.sync();
       rasters.sync();
       exact.sync();
+      if (surfaces) checks.sync();
       if (surfaces) refloor();
       // the picked object is gone with its layer, raster or wireframe
       const p = pickedObject.get().picked;
@@ -127,6 +131,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
       wireframes.sync();
       rasters.sync();
       exact.sync();
+      checks.sync();
       refloor();
     }),
   );
@@ -175,6 +180,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
       rasters.restore();
       wireframes.restore();
       exact.restore();
+      checks.restore();
     }),
   );
   sceneUi.set(NO_OBJECTS);
@@ -183,6 +189,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
   wireframes.sync();
   rasters.sync();
   exact.sync();
+  checks.sync();
   mark(pickedObject.get().picked);
 
   return {
@@ -191,7 +198,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
     wireframes,
     get idle() {
       const o = sceneObjects.get();
-      return lines.idle && rasters.idle && wireframes.idle && exact.idle && (o.loaded || o.error !== null);
+      return lines.idle && rasters.idle && wireframes.idle && exact.idle && checks.idle && (o.loaded || o.error !== null);
     },
     pick(hit) {
       if (!hit) return select(null);
@@ -214,12 +221,13 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
         });
       } else select(null);
     },
-    state: () => ({ lines: lines.stats(), rasters: rasters.stats(), wireframes: wireframes.stats(), exact: exact.stats(), picked: pickedObject.get().picked, floor }),
+    state: () => ({ lines: lines.stats(), rasters: rasters.stats(), wireframes: wireframes.stats(), exact: exact.stats(), checks: checks.stats(), picked: pickedObject.get().picked, floor }),
     probe: (id, x, y) => wireframes.probe(id, x, y),
     forceLevel: (level) => wireframes.forceLevel(level),
     dispose() {
       off.forEach((fn) => fn());
       exact.dispose();
+      checks.dispose();
       lines.dispose();
       rasters.dispose();
       wireframes.dispose();

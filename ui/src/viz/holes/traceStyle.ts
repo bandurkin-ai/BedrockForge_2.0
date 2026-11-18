@@ -19,7 +19,13 @@ export interface TraceStyle {
   endDepth: boolean;
   /** marks where the holes cross wireframes and enter / leave block models */
   intersections: boolean;
+  /** wireframes of «Каркасы» */
   withWireframes: boolean;
+  /**
+   * wireframes of «ЦТМ». Off unless asked for: a relief built through the collars is crossed by every hole at
+   * its collar — a mark «0,000 м · Рельеф» on each of them.
+   */
+  withDtm: boolean;
   withBlocks: boolean;
   /** only objects shown in the view */
   onlyVisible: boolean;
@@ -34,7 +40,7 @@ export interface TraceStyle {
 export const DEFAULT_TRACE_STYLE: TraceStyle = {
   width: 1.5, color: "#8a93a6",
   ticks: false, tickStep: 10, tickSize: 4, tickLabels: true, labelStep: 50, labelSize: 11, labelColor: "#c9d1de", endDepth: false,
-  intersections: false, withWireframes: true, withBlocks: true, onlyVisible: true, markerSize: 9,
+  intersections: false, withWireframes: true, withDtm: false, withBlocks: true, onlyVisible: true, markerSize: 9,
   wireframeColor: "object", blockColor: "#ffb020", markerLabels: true,
 };
 
@@ -60,6 +66,7 @@ export function normalizeTraceStyle(raw: unknown): TraceStyle {
     endDepth: bool(r.endDepth, d.endDepth),
     intersections: bool(r.intersections, d.intersections),
     withWireframes: bool(r.withWireframes, d.withWireframes),
+    withDtm: bool(r.withDtm, d.withDtm),
     withBlocks: bool(r.withBlocks, d.withBlocks),
     onlyVisible: bool(r.onlyVisible, d.onlyVisible),
     markerSize: num(r.markerSize, 3, 40, d.markerSize),
@@ -67,6 +74,20 @@ export function normalizeTraceStyle(raw: unknown): TraceStyle {
     blockColor: hex(r.blockColor, d.blockColor),
     markerLabels: bool(r.markerLabels, d.markerLabels),
   };
+}
+
+/**
+ * The wireframes the crossings of the holes are asked for (`GET /viz/sets/{id}/intersections?wireframes=`):
+ * those of «Каркасы» with «с каркасами», those of «ЦТМ» (`dtm` set) only with «с ЦТМ»; with «только с видимыми
+ * объектами» — the shown ones. A wireframe without triangles is crossed by nothing. An empty list — no request.
+ */
+export function crossedWireframes<W extends { id: number; triangle_count: number; dtm: unknown }>(
+  wireframes: readonly W[],
+  style: Pick<TraceStyle, "intersections" | "withWireframes" | "withDtm" | "onlyVisible">,
+  shown: (id: number) => boolean,
+): W[] {
+  if (!style.intersections) return [];
+  return wireframes.filter((w) => w.triangle_count > 0 && (w.dtm == null ? style.withWireframes : style.withDtm) && (!style.onlyVisible || shown(w.id)));
 }
 
 /** Depths of ticks along a hole of this length: multiples of the step, the collar left out. */

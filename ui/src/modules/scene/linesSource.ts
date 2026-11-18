@@ -279,6 +279,7 @@ export class LinesSource {
     this.lastFrame = now;
     const inView: string[] = [];
     let work = false;
+    let changed = false;
     for (const st of this.layers.values()) {
       if (!st.view.visible) continue;
       st.parts.forEach((p, k) => {
@@ -293,12 +294,14 @@ export class LinesSource {
         p.want = lineLevel(ctx.pixelsPerUnit(nearestInBox(box, ctx.camera.position)), st.bounds, p.want ?? st.view.shown(k));
         p.priority = screenPriority(box, ctx.camera, ctx.options, planes);
         const show = shownLevel(p.want, st.view.levels(k));
-        st.view.show(k, show);
+        if (st.view.show(k, show)) changed = true;
         if (show !== null) this.memory.touch(id, show, now);
         if (!st.fresh.has(`${k}:${p.want}`) && !p.loading.has(p.want) && !p.failed.has(p.want)) work = true;
       });
     }
     this.memory.setVisible(inView);
+    // a loaded level is shown here, a frame after its load: the segments of the frame are counted with it
+    if (changed) this.updateFat();
     if (work) this.schedule();
     this.publish();
   }

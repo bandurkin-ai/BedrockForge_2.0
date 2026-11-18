@@ -1,20 +1,27 @@
-"""The files of «Импорт файлов» before anything is written (ТЗ 7.8, 7.18, 7.19; ADR 0011 §3, §5): pairing a
-selection, reading a file with its companions, and the composition the wizard shows.
+"""The files of «Импорт файлов» before anything is written (ТЗ 7.8, 7.18, 7.19, 7.21; ADR 0011 §3, §5; ADR 0013
+§5): pairing a selection, reading a file with its companions, and the composition the wizard shows.
 
 The files of a selection are paired folder by folder (`formats.registry.group_files`): a main file with its
-companions (`.dbf .shx .prj .cpg` of a shapefile, `.mid` of a MIF, world / TAB / GRF / `.prj` of an image). An
-image also takes the georeference files that lie next to it under its name, chosen or not; a chosen one wins.
+companions (`.dbf .shx .prj .cpg` of a shapefile, `.mid` of a MIF, world / TAB / GRF / `.prj` of an image, the
+`.str` of a Surpac `.dtm`, the points `…pt.dm` of a Datamine `…tr.dm`). An image also takes the georeference
+files that lie next to it under its name, chosen or not; a chosen one wins. The two tables of a Datamine
+wireframe under names that do not tell they are a pair are put together by their content (`_pair_tables`).
 What belongs to nothing (a companion without its main file, an unknown extension) is listed with the reason.
 
 `inspect_files` reads every file and writes nothing: per file its format, layers (lines, points, vertices,
-attributes), CRS, warnings, what is left out, and per raster its size and georeference with «Уровень растров по
-Z» applied (`raster_z` {elevation, shift}; numbers with a comma or a point). Display copies are not made here.
+attributes), wireframes (name, triangles, vertices, colour, attributes, warnings; one that cannot be read — with
+the reason), CRS, warnings, and per raster its size and georeference with «Уровень растров по Z» applied
+(`raster_z` {elevation, shift}; numbers with a comma or a point). The geometry of wireframes is not kept and
+display copies are not made here. A DXF or a DWG gives its lines and its wireframes at once. `preliminary` marks
+a reader that was not checked on real files (Datamine); `choices` — the fields of the file an option of the
+wizard is chosen from (`split_by`, `layer_field`).
 The job `import.objects` (`objects.py`) reads the files with the same functions.
 """
 
 from __future__ import annotations
 
 import math
+import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path, PurePath, PureWindowsPath
@@ -25,12 +32,12 @@ from bf_core.formats.errors import FormatError
 MAX_NOTES = 200  # warnings kept with an object and returned by the composition
 MAX_LAYERS_SHOWN = 500
 POINT_OPTIONS = ("x", "y", "z", "name")  # columns of a table of points (`points.read_points`)
+FILE_SETTINGS = ("split_by", "layer_field")  # choices of the wizard for a file (`registry.read_objects(settings=)`)
 #: Extensions of ТЗ 7.8 that come with later stages: said so, not «unknown format».
-LATER = {
-    ".tridb": "каркасы", ".obj": "каркасы", ".stl": "каркасы", ".dtm": "каркасы", ".dwg": "чертежи DWG",
-    ".omf": "проекты OMF",
-}  # fmt: skip
+LATER = {".omf": "проекты OMF"}
 NUMBER_HINT = "Введите число, например 12,5."
+EMPTY = "В файле нет ни линий, ни точек, ни каркасов."
+TOTALS = ("layers", "lines", "points", "vertices", "rasters", "wireframes", "triangles")
 
 Tick = Callable[[float, str | None], None]
 
@@ -66,13 +73,13 @@ class Group:
 
 def _why(path: Path) -> dict[str, str]:
     """Why a file of the selection is not loaded."""
-    from bf_core.formats.registry import detect_object
+    from bf_core.formats.registry import SUPPORTED, detect_object
 
     suffix = path.suffix.lower()
     code, message, hint = "unsupported", "Файл не загружается.", ""
     if suffix in LATER:
         message = f"Формат «{suffix}» ({LATER[suffix]}) в этой версии не загружается."
-        hint = "Линии и точки загружаются из .str, .dxf, .shp, .mif и таблиц XYZ; растры — с файлом привязки."
+        hint = SUPPORTED
     else:
         try:
             detect_object(path)  # a companion or an unknown extension: refused by the name, the file is not read
@@ -100,7 +107,36 @@ def plan(paths: Sequence[str]) -> tuple[list[Group], list[dict[str, str]]]:
         found, loose = group_files(names)
         groups += [Group(folder / g.main, g.formats, {s: folder / n for s, n in g.sidecars.items()}) for g in found]
         rest += [_why(folder / name) for name in loose]
-    return groups, rest
+    return _pair_tables(groups), rest
+
+
+def _pair_tables(groups: list[Group]) -> list[Group]:
+    """Datamine: the two tables of a wireframe chosen under names that do not tell they are a pair (`ore.dm`,
+    `points.dm`) are one group — the triangles with their points, as the reader itself finds them in the
+    folder; read apart, each would bring the same wireframe."""
+    from bf_core.formats import registry as reg
+
+    loose = [g for g in groups if reg.DATAMINE in g.formats and not g.sidecars]
+    if len(loose) < 2:
+        return groups
+    from bf_core.formats.datamine import POINTS, TRIANGLES
+    from bf_core.formats.datamine_pair import find_pair, kind_of
+
+    kinds = [kind_of(g.main, None) for g in loose]
+    triangles = {os.path.normcase(str(g.main)): g for g, kind in zip(loose, kinds, strict=True) if kind == TRIANGLES}
+    gone: set[int] = set()
+    for g, kind in zip(loose, kinds, strict=True):
+        if kind != POINTS:
+            continue
+        try:
+            other = find_pair(g.main)
+        except (FormatError, OSError):  # several tables to choose from: the reader says so
+            continue
+        owner = triangles.get(os.path.normcase(str(other))) if other is not None else None
+        if owner is not None and not owner.sidecars:
+            owner.sidecars[".dm"] = g.main
+            gone.add(id(g))
+    return [g for g in groups if id(g) not in gone]
 
 
 def number(value: Any, label: str) -> float | None:
@@ -151,8 +187,13 @@ def read_group(
     *,
     displays: bool,
     section: Mapping[str, Any] | None = None,
+    inspect: bool = False,
+    converter: str | None = None,
 ) -> Any:
-    """`registry.ObjectsRead` of a main file with its companions. Raises FormatError / OSError."""
+    """`registry.ObjectsRead` of a main file with its companions. Raises FormatError / OSError. `inspect` —
+    the composition: wireframes without their geometry; otherwise they come one at a time (`ObjectsRead.meshes`:
+    an error of the file may then come while they are taken). `converter` — the ODA File Converter of
+    «Настройка», for a DWG."""
     from bf_core.formats import registry as reg
 
     options = options or {}
@@ -169,9 +210,19 @@ def read_group(
             extra["fallback"] = lambda w, h: section_georef(place, w, h)
     elif reg.POINTS in g.formats:
         extra = {k: str(options[k]) for k in POINT_OPTIONS if options.get(k) is not None}
+    settings = {k: str(options[k]) for k in FILE_SETTINGS if options.get(k)}
+    if converter:
+        settings["converter"] = converter
     return reg.read_objects(
-        g.main, progress, encoding=options.get("encoding") or None, sidecars=sidecars, options=extra
-    )
+        g.main, progress, encoding=options.get("encoding") or None, sidecars=sidecars, options=extra,
+        settings=settings, inspect=inspect,
+    )  # fmt: skip
+
+
+def has_content(read: Any) -> bool:
+    """The file gave something to load: a raster, a layer with points, a wireframe (read or still to read)."""
+    meshes = bool(read.meshes) if isinstance(read.meshes, list) else read.meshes is not None
+    return bool(read.rasters or read.entries or meshes or any(ls.point_count for ls in read.layers))
 
 
 def _layer_summary(ls: Any) -> dict[str, Any]:
@@ -225,23 +276,25 @@ def _fields(detail: Any) -> list[dict[str, Any]]:
 
 
 def _left_out(read: Any) -> list[dict[str, Any]]:
-    """What a file holds but the import does not take (the composition says so)."""
-    meshes = int(getattr(read.detail, "meshes", 0) or 0)
-    if not meshes:
-        return []
-    return [{"what": "Каркасы (сетки DXF)", "count": meshes, "reason": "каркасы — этап Э8, сейчас не загружаются"}]
+    """What a file holds but the import does not take (the composition says so): [{what, count, reason}].
+    Nothing now — the meshes of a drawing are its wireframes (Э8); what a reader skips is in its warnings."""
+    return []
 
 
 def summarize(g: Group, read: Any, elevation: float | None = None, shift: float = 0.0) -> dict[str, Any]:
     """The composition of a read file (also what the journal of the import keeps of it)."""
-    from bf_core.formats.registry import OBJECT_FORMATS, POINTS_KIND, RASTER_KIND
+    from bf_core.formats.registry import OBJECT_FORMATS, POINTS_KIND, RASTER_KIND, WIREFRAMES_KIND
 
     layers = [_layer_summary(ls) for ls in read.layers if ls.point_count]
     rasters = [_raster_summary(r, elevation, shift) for r in read.rasters]
+    meshes = [e.as_dict() for e in read.entries]
+    loadable = [m for m in meshes if not m["error"]]
     notes = [*read.warnings, *(n for _s, _g, extra in rasters for n in extra)]
     kind = OBJECT_FORMATS[read.format].kind
     if layers and all(s["points_only"] for s in layers):
         kind = POINTS_KIND
+    elif meshes and not layers:
+        kind = WIREFRAMES_KIND  # also a drawing that holds nothing but meshes
     names = sorted({p.name for p in g.sidecars.values()} | {n for s, _g, _n in rasters for n in s["sidecars"]})
     crs = read.crs
     return {
@@ -252,11 +305,16 @@ def summarize(g: Group, read: Any, elevation: float | None = None, shift: float 
         "sidecars": names,
         "layers": layers[:MAX_LAYERS_SHOWN],
         "rasters": [s for s, _g, _n in rasters],
+        "wireframes": meshes[:MAX_LAYERS_SHOWN],
         "totals": {
             "layers": len(layers), "lines": sum(s["lines"] for s in layers),
             "points": sum(s["points"] for s in layers), "vertices": sum(s["vertices"] for s in layers),
-            "rasters": len(rasters),
+            "rasters": len(rasters), "wireframes": len(loadable),
+            "triangles": sum(int(m["triangles"] or 0) for m in loadable),
         },
+        "unread": len(meshes) - len(loadable),  # wireframes of the file that will not load (their `error` says why)
+        "preliminary": bool(read.preliminary),
+        "choices": dict(read.choices),
         "warnings": notes[:MAX_NOTES],
         "left_out": _left_out(read),
     }  # fmt: skip
@@ -284,18 +342,24 @@ def inspect_files(
     raster_z: Mapping[str, Any] | None = None,
     section: Mapping[str, Any] | None = None,
     tick: Tick | None = None,
+    converter: str | None = None,
 ) -> dict[str, Any]:
-    """The composition of a selection (ТЗ 7.8 «состав и то, что не загрузится»). Nothing is written."""
+    """The composition of a selection (ТЗ 7.8 «состав и то, что не загрузится»). Nothing is written.
+    `converter` — the ODA File Converter of «Настройка» (a DWG without one is a file that failed, with the
+    text of ADR 0009)."""
     elevation, shift = parse_level(raster_z)
     groups, rest = plan(paths)
     by_file = options_by_file(options)
     files: list[dict[str, Any]] = []
-    totals = dict.fromkeys(("files", "failed", "layers", "lines", "points", "vertices", "rasters"), 0)
+    totals = dict.fromkeys(("files", "failed", *TOTALS), 0)
     for g in groups:
         try:
-            read = read_group(g, by_file.get(option_key(g.main)), tick, displays=False, section=section)
-            if not read.rasters and not any(ls.point_count for ls in read.layers):
-                raise FormatError("empty_file", "В файле нет ни линий, ни точек.", "Проверьте файл.")
+            read = read_group(
+                g, by_file.get(option_key(g.main)), tick, displays=False, section=section, inspect=True,
+                converter=converter,
+            )  # fmt: skip
+            if not has_content(read):
+                raise FormatError("empty_file", EMPTY, "Проверьте файл.")
             entry = summarize(g, read, elevation, shift)
             del read
         except (FormatError, OSError) as exc:

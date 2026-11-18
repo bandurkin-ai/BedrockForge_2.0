@@ -23,6 +23,8 @@ export function saveSetStyle(kind: keyof typeof STYLE_KEYS, setId: number, style
 export function SetStyleWindow({ kind, setId }: { kind: keyof typeof STYLE_KEYS; setId: number }) {
   const keys = useStore(viewStore, (x) => x);
   if (kind === "collars") return <CollarStyleForm style={setStyle("collars", setId, keys)} onChange={(s) => saveSetStyle("collars", setId, s)} />;
-  const notes = ["Пересечения с каркасами и ЦТМ считает ядро по треугольникам: значок ◆ и подпись «глубина · объект» с точностью до миллиметра. Блочные модели — на этапе Э17."];
+  const notes = [
+    "Пересечения с каркасами считает ядро по треугольникам: значок ◆ и подпись «глубина · объект» с точностью до миллиметра. ЦТМ — только с галочкой «с ЦТМ»: рельеф, построенный через устья, даёт метку на устье каждой скважины. Блочные модели — на этапе Э17.",
+  ];
   return <TraceStyleForm style={setStyle("traces", setId, keys)} onChange={(s) => saveSetStyle("traces", setId, s)} notes={notes} />;
 }

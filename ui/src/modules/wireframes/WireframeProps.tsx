@@ -1,8 +1,9 @@
 /**
  * «Свойства» of a wireframe or a DTM (ТЗ 7.20, 7.35 Д-07; ADR 0011 §5). A DTM has its settings at the very
  * top (`DtmProps`); then the colour and visibility, the counts and the extent, «Перенести в ЦТМ» of a
- * wireframe, the triangle picked in the 3D window — its point, dip and dip direction as the core found them
- * (ТЗ 7.21, ADR 0013 §6) — and the attributes of the user: add, change, rename, delete (`wireframe.attr`).
+ * wireframe, its checks with «Проверить» and where it was imported from (`ChecksProps`; ТЗ 7.21), the triangle
+ * picked in the 3D window — its point, dip and dip direction as the core found them (ADR 0013 §6) — and the
+ * attributes of the user: add, change, rename, delete (`wireframe.attr`).
  */
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useApp } from "../../shell/AppContext";
@@ -15,6 +16,7 @@ import css from "../../shell/PropsParts.module.css";
 import { DtmProps } from "../dtm/DtmProps";
 import { pickedObject, sceneObjects } from "../scene/objects";
 import { attrNameError, attrValueText, wireframeFacts } from "./attrs";
+import { ChecksBlock, SourceBlock } from "./ChecksProps";
 import { pickedFacts, pickedNote, pickedTriangle } from "./picked";
 import type { WireframeAttr, WireframeInfo } from "./state";
 import { wireframeKey } from "./tree";
@@ -63,6 +65,8 @@ export function WireframeProps({ id }: { id: number }) {
           </button>
         </div>
       )}
+      <ChecksBlock id={id} stats={w.stats} run={run} />
+      <SourceBlock source={w.source} />
       {triangle ? (
         <fieldset className={css.group} data-testid="props-picked-triangle" data-exact={triangle.exact ? "yes" : triangle.exact === null ? "none" : "pending"}>
           <legend>Треугольник по клику</legend>

@@ -188,7 +188,8 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           title: "Правка каркасов",
           items: [
             { command: "model.repair", label: "Исправить", icon: "audit" },
-            { command: "model.self_intersections", label: "Самопересечения", icon: "search", small: true },
+            { command: "wireframe.check", label: "Проверить", icon: "audit", hint: "Проверка выбранного каркаса или ЦТМ: согласованность нормалей, самопересечения, копии для показа; итог — в «Свойствах»", small: true, unavailable: NO_OBJECT },
+            { command: "model.self_intersections", label: "Самопересечения", icon: "search", hint: "Пересекающиеся треугольники выбранного каркаса — красным в 3D-окне, числа — в «Свойствах»", small: true, unavailable: NO_OBJECT },
             { command: "model.simplify", label: "Упростить", icon: "edSimplify", small: true },
             { command: "model.smooth", label: "Сгладить", icon: "edSmooth", small: true },
             { command: "model.merge", label: "В один объект", icon: "plus", small: true },

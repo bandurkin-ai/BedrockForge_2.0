@@ -166,9 +166,10 @@ test("perf3d: 2000 holes and a display, 60 frames under software rendering → b
 
 // A square of 1.1 km around the demo (its holes: x 4994…5356, y 7994…8256, collars at 420 m).
 const HEAVY = { x0: 4650, y0: 7575, side: 1100 };
-// One layer of lines: 25 000 polylines of 40 segments on 100 levels. A saw of 25 m steps and 100 m teeth: no
-// vertex is nearer than 40 m to a chord of its line, so every level of detail (4 and 32 m) keeps every segment.
-const SAW = { levels: 100, rows: 250, segments: 40, dx: 25, tooth: 100, rowStep: 4, z0: 200, dz: 2 };
+// One layer of lines: 20 000 polylines of 50 segments on 100 levels — 1 020 000 vertices, four parts of the layer.
+// A saw of 20 m steps and 120 m teeth: the simplification of the coarser levels of detail (Douglas–Peucker, 4 and
+// 32 m) drops none of its vertices, so the frame holds every segment whatever the size of the window.
+const SAW = { levels: 100, rows: 200, segments: 50, dx: 20, tooth: 120, rowStep: 4.9, z0: 200, dz: 2 };
 const SEGMENTS = SAW.levels * SAW.rows * SAW.segments;
 // The points of the lower surface: a grid of 317 × 317 at 3.5 m → 2 · 316² = 199 712 triangles.
 const GRID = { n: 317, step: 3.5 };
@@ -303,6 +304,8 @@ test("perf3d heavy: the demo, 1 million line segments, a raster and a DTM of 200
     // the scene is what it is called: every segment of the layer and the whole surface are in the frame
     expect(state.layers).toEqual(expect.arrayContaining([`ln:${sawId}`, `wf:${wf!.id}`]));
     expect(state.lines.segments).toBeGreaterThanOrEqual(SEGMENTS);
+    // more than a million segments in the frame are lines one pixel wide, not six triangles each (ADR 0007 §7)
+    expect(state.stats.lines).toBeGreaterThanOrEqual(SEGMENTS);
     expect(state.rasters.count).toBe(2);
     expect(state.wireframes.layers).toBe(2);
     expect(state.sets.length).toBe(1);
@@ -320,6 +323,7 @@ test("perf3d heavy: the demo, 1 million line segments, a raster and a DTM of 200
       rasters: after.rasters.count,
       raster_px: IMAGE_PX,
       raster_levels: after.rasters.levels,
+      gl_lines: after.stats.lines,
       over: after.lines.over || after.rasters.over || after.wireframes.over,
       frames: r.frames,
       ms_per_frame: Math.round(r.ms_per_frame * 10) / 10,

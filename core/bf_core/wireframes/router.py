@@ -16,6 +16,10 @@ A raster draped on a DTM cannot be deleted: `DELETE /rasters/{id}` → 422 `rast
 `POST /wireframes/pick` {origin, direction, wireframe_ids, clip} — the exact triangle under a click (ADR 0013 §5,
 `wireframes/exact.py`): a ray in project coordinates → {hit: {wireframe_id, name, triangle, distance, point,
 vertices, indices, normal, area, dip, dip_direction} or null}; `clip` — the planes of the section window.
+`POST /wireframes/{id}/check` — «Проверить» (ТЗ 7.21): the job `wireframe.check` (`wireframes/check.py`) makes
+the levels of detail that are missing, checks the normals and the self-intersections and writes
+`stats.checks` → {source, id} of the job. `GET /wireframes/{id}/checks` — BFA1 `checks` with an ETag: the
+triangles that cross, for the red layer of the 3D window; `state` — done, none, failed or missing.
 The geometry for 3D is `/viz/wireframes/{id}` (`viz/router.py`). Numbers may come as text with a comma.
 """
 
@@ -24,7 +28,8 @@ from __future__ import annotations
 import sys
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from bf_core.db import dialect
@@ -218,3 +223,31 @@ def pick(svc: Svc, body: PickBody) -> dict[str, Any]:
 
     project = svc.require_current()
     return exact.pick(project, body.origin, body.direction, body.wireframe_ids, body.clip)
+
+
+@router.post("/{wireframe_id}/check")
+def check_wireframe(svc: Svc, s: Sched, wireframe_id: int) -> dict[str, Any]:
+    """«Проверить»: the job «Проверка и копии для показа» of one wireframe (the same job follows an import)."""
+    from . import check
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        params, title = check.request(conn, [wireframe_id])
+    key, job_id = s.submit(check.KIND, params, title=title)
+    return {"source": key, "id": job_id}
+
+
+@router.get("/{wireframe_id}/checks")
+def wireframe_checks(svc: Svc, wireframe_id: int, if_none_match: Annotated[str | None, Header()] = None) -> Response:
+    """BFA1 `checks`: the crossing triangles of a checked wireframe, float32 from whole-metre origins."""
+    from bf_core.viz.keys import CACHE_HEADERS, matches
+
+    from . import check
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        state, checks = check.layer_state(conn, wireframe_id)
+    headers = {"ETag": check.layer_etag(project, state, checks), **CACHE_HEADERS}
+    if matches(if_none_match, headers["ETag"]):  # before the file is read
+        return Response(status_code=304, headers=headers)
+    return Response(content=check.layer(project, state, checks), media_type="application/octet-stream", headers=headers)

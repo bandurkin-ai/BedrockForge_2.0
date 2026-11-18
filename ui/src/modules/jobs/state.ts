@@ -16,6 +16,8 @@ export interface Job {
   progress: number;
   message: string | null;
   error: { code: string; message: string; hint: string } | null;
+  /** the parameters the job was started with (e.g. `wireframe_ids` of `wireframe.check`) */
+  params?: Record<string, unknown> | null;
   result: Record<string, unknown> | null;
   attempts: number;
   max_attempts: number;

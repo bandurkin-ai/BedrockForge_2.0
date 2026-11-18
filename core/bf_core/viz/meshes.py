@@ -242,22 +242,29 @@ def build_cache(
     t: np.ndarray,
     parts: list[gm.MeshPart],
     progress: Callable[[float], None] | None = None,
+    *,
+    missing_only: bool = False,
 ) -> dict[str, Any]:
     """The simplified levels of every part into `cache\\mesh\\<key>\\`. `progress` may raise to cancel: the
-    files already written stay (they are whole and belong to this geometry). Returns the triangles of every
-    level and the bytes written."""
+    files already written stay (they are whole and belong to this geometry). With `missing_only` a part whose
+    levels are in the folder, whole, is not made again («Проверить», ADR 0013 §5). Returns the triangles of
+    every level, the bytes of the levels and `built` — the parts that were made."""
     counts = [0] * gm.LOD_LEVELS
-    size = 0
+    size = built = 0
     for p in parts:
-        bodies = part_bodies(v, t, p, SIMPLIFIED)
+        found = {lod: _read(_cache_file(folder, key, p.k, lod), p.k, lod) for lod in SIMPLIFIED if missing_only}
+        ready = {lod: body for lod, body in found.items() if body is not None}
+        bodies = ready if len(ready) == len(SIMPLIFIED) else part_bodies(v, t, p, SIMPLIFIED)
+        built += bodies is not ready
         counts[0] += p.count
         for lod, body in bodies.items():
-            _write(_cache_file(folder, key, p.k, lod), body)
+            if bodies is not ready:
+                _write(_cache_file(folder, key, p.k, lod), body)
             counts[lod] += int(binary.decode(body)[0]["triangles"])
             size += len(body)
         if progress:
             progress((p.k + 1) / len(parts))
-    return {"parts": len(parts), "triangles": counts, "bytes": size}
+    return {"parts": len(parts), "triangles": counts, "bytes": size, "built": built}
 
 
 def drop_cache(folder: Path, key: str) -> None:

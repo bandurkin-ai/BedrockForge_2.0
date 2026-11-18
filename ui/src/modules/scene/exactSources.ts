@@ -5,7 +5,8 @@
  *    plane of the section line passes through, `GET /viz/wireframes/{id}/section`; a new line or window cancels
  *    the requests of the old one and its lines leave at once (they would stand in the wrong place);
  *  - the marks where the holes of a set cross wireframes — when the style of its traces asks for them
- *    («Пересечения», «с каркасами»; with the shown wireframes only or with all of them),
+ *    («Пересечения», «с каркасами»; with the shown wireframes only or with all of them; the DTMs only with
+ *    «с ЦТМ»: a relief built through the collars would mark every hole at 0 m — `crossedWireframes`),
  *    `GET /viz/sets/{id}/intersections` with `If-None-Match`: after an edit of the set the marks are asked again
  *    and a 304 changes nothing;
  *  - the exact triangle under a click on a surface, `POST /wireframes/pick` with the planes of the section
@@ -20,6 +21,7 @@ import type { Scene } from "../../viz/Scene";
 import { VizError } from "../../viz/error";
 import { HoleMarksView, marksQuery, MAX_MARK_LABELS, readHoleMarks, type HoleMarksContext } from "../../viz/holes/marks";
 import { MarkerTextures } from "../../viz/holes/markers";
+import { crossedWireframes } from "../../viz/holes/traceStyle";
 import { LabelCache } from "../../viz/labels/sprites";
 import { LoadQueue } from "../../viz/load/loader";
 import { ExactPicker, pickRequest, type AbsRay, type ExactPick } from "../../viz/mesh/exact";
@@ -232,14 +234,14 @@ export class ExactSource {
     const hidden = this.input.hidden();
     const off = new Set(hidden);
     const keys = this.input.keys();
-    const all = this.input.wireframes().filter((w) => w.triangle_count > 0);
+    const all = this.input.wireframes();
     const colorOf = (id: number) => this.input.wireframes().find((w) => w.id === id)?.color ?? null;
     const sets = new Set<number>();
     for (const s of this.input.sets()) {
       const style = setStyleOf(keys, s.id).trace;
       const vis = setVisibilityOf(hidden, s.id);
-      const used = style.onlyVisible ? all.filter((w) => !off.has(wireframeKey(w.id))) : all;
-      if (!style.intersections || !style.withWireframes || !vis.set || !vis.paths || !used.length) continue;
+      const used = crossedWireframes(all, style, (id) => !off.has(wireframeKey(id)));
+      if (!vis.set || !vis.paths || !used.length) continue;
       sets.add(s.id);
       const path = `/viz/sets/${s.id}/intersections?${marksQuery(used.map((w) => w.id))}`;
       const sig = used.map((w) => `${w.id}:${w.version}`).join(",");

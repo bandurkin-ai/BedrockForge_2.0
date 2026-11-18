@@ -161,6 +161,78 @@
         "refuse_mb": 64,
         "georef_error_m": 1e-09
       }
+    },
+    "wireframe_import": {
+      "params": {
+        "triangles": 1000000
+      },
+      "budget_s": 99,
+      "budget_mb": 9999,
+      "limits": {
+        "import_s": 99,
+        "export_s": 99,
+        "blob_mismatches": 0,
+        "row_mismatches": 0,
+        "measure_mismatches": 0
+      }
+    },
+    "wireframe_check": {
+      "params": {
+        "triangles": 1000000
+      },
+      "budget_s": 99,
+      "budget_mb": 9999,
+      "limits": {
+        "lod_s": 99,
+        "check_s": 99,
+        "first_frame_s": 99,
+        "full_s": 99,
+        "lod1_error_m": 99,
+        "lod2_error_m": 99,
+        "normal_conflicts": 0
+      }
+    },
+    "wireframe_exact": {
+      "params": {
+        "triangles": 1000000
+      },
+      "budget_s": 99,
+      "budget_mb": 9999,
+      "limits": {
+        "section_first_s": 99,
+        "section_step_s": 99,
+        "pick_first_s": 99,
+        "pick_s": 99,
+        "section_error_m": 1e-08,
+        "pick_error_m": 1e-08
+      }
+    },
+    "hole_intersections": {
+      "params": {
+        "triangles": 1000000,
+        "holes": 5000
+      },
+      "budget_s": 99,
+      "budget_mb": 9999,
+      "limits": {
+        "tree_s": 99,
+        "cross_s": 99,
+        "plane_error_m": 1e-07,
+        "max_error_m": 0.001,
+        "parity_errors": 0,
+        "collar_errors": 0
+      }
+    },
+    "mesh_formats": {
+      "params": {
+        "triangles": 100000
+      },
+      "budget_s": 99,
+      "budget_mb": 9999,
+      "limits": {
+        "max_error_m": 0.0,
+        "stl_error_m": 0.25
+      }
     }
   },
   "full": {
@@ -323,6 +395,78 @@
         "refuse_s": 1.0,
         "refuse_mb": 64,
         "georef_error_m": 1e-09
+      }
+    },
+    "wireframe_import": {
+      "params": {
+        "triangles": 10000000
+      },
+      "budget_s": 999,
+      "budget_mb": 99999,
+      "limits": {
+        "import_s": 999,
+        "export_s": 999,
+        "blob_mismatches": 0,
+        "row_mismatches": 0,
+        "measure_mismatches": 0
+      }
+    },
+    "wireframe_check": {
+      "params": {
+        "triangles": 10000000
+      },
+      "budget_s": 999,
+      "budget_mb": 99999,
+      "limits": {
+        "lod_s": 999,
+        "check_s": 999,
+        "first_frame_s": 999,
+        "full_s": 999,
+        "lod1_error_m": 99,
+        "lod2_error_m": 99,
+        "normal_conflicts": 0
+      }
+    },
+    "wireframe_exact": {
+      "params": {
+        "triangles": 10000000
+      },
+      "budget_s": 999,
+      "budget_mb": 99999,
+      "limits": {
+        "section_first_s": 999,
+        "section_step_s": 999,
+        "pick_first_s": 999,
+        "pick_s": 999,
+        "section_error_m": 1e-08,
+        "pick_error_m": 1e-08
+      }
+    },
+    "hole_intersections": {
+      "params": {
+        "triangles": 1000000,
+        "holes": 50000
+      },
+      "budget_s": 999,
+      "budget_mb": 99999,
+      "limits": {
+        "tree_s": 999,
+        "cross_s": 999,
+        "plane_error_m": 1e-07,
+        "max_error_m": 0.001,
+        "parity_errors": 0,
+        "collar_errors": 0
+      }
+    },
+    "mesh_formats": {
+      "params": {
+        "triangles": 1000000
+      },
+      "budget_s": 999,
+      "budget_mb": 99999,
+      "limits": {
+        "max_error_m": 0.0,
+        "stl_error_m": 0.25
       }
     }
   },

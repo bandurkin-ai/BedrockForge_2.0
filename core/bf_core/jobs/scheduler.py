@@ -43,8 +43,9 @@ class Source:
     folder: str | None = None
 
 
-#: Kinds of jobs that make lines, rasters or wireframes of a project: their end is an `objects.changed` event.
-OBJECT_JOBS = frozenset({"import.objects", "model.dtm"})
+#: Kinds of jobs that make lines, rasters or wireframes of a project, or what «Свойства» tell about them: their
+#: end is an `objects.changed` event.
+OBJECT_JOBS = frozenset({"import.objects", "model.dtm", "wireframe.check"})
 
 
 @dataclass
