@@ -243,7 +243,7 @@ def survey(project: Any) -> dict[str, Any]:
                 meta={},
                 created_at=now,
                 updated_at=now,
-            )  # fmt: skip
+            )
         ).inserted_primary_key[0]
         for i, (x, y, z) in enumerate(collars.tolist()):
             conn.execute(sa.insert(dh_holes).values(set_id=set_id, name=f"С-{i + 1}", x=x, y=y, z=z, has_collar=True))

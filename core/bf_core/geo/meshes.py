@@ -203,7 +203,13 @@ def part_mesh(v: np.ndarray, t: np.ndarray, part: MeshPart) -> tuple[np.ndarray,
 def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarray, np.ndarray]:
     """Quadric edge-collapse decimation to about `target` triangles (pyfqmr). The vertices on the border of
     the mesh stay where they are, bit for bit, so the count cannot go below what the border needs. A mesh that
-    is small already, or that pyfqmr cannot make smaller, comes back as it is (the same arrays)."""
+    is small already, or that pyfqmr cannot make smaller, comes back as it is (the same arrays).
+
+    Hard data for pyfqmr: a dense grid that is exactly flat and tilted both ways. The quadric of a plane has no
+    single best point and rounding picks one, so such a region is simplified less (about 1/2 instead of 1/8)
+    and its new vertices leave the plane by up to 0.2 of a cell (measured in tests/test_viz_mesh.py). A level
+    plane, a plane tilted along one axis and any surface with relief or noise are not affected; the mesh stays
+    whole and unfolded in every case."""
     if len(tri) < LOD_MIN_TRIANGLES or len(tri) <= max(int(target), 1):
         return local, tri
     import pyfqmr

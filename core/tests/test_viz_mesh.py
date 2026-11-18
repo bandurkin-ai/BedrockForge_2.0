@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+import sqlalchemy as sa
 
 from bf_core.db import dialect
+from bf_core.db.schema import blob_owners, wireframes
 from bf_core.geo import meshes as gm
 from bf_core.projects.service import projects_of
 from bf_core.storage.blobs import BlobStore
@@ -451,6 +453,22 @@ def test_etag_of_a_part_follows_the_geometry_only(stored) -> None:  # type: igno
     assert r2.headers["etag"] != tag and head2["version"] == 3 and head2["dtm"]["tint"] == "#ffeedd"
     assert head2["wireframe"]["name"] == "Рельеф 2026"
     assert head2["parts"][0]["etags"] == tags  # the geometry did not change: the window keeps its buffers
+
+
+def test_part_table_is_cut_from_the_blobs_when_a_writer_left_it_empty(stored) -> None:  # type: ignore[no-untyped-def]
+    c, project, _mesh, relief, box = stored
+    _r, before, _ = _get(c, str(relief))
+    body0 = c.get(f"{API}/viz/wireframes/{relief}/parts/1").content
+    with dialect.write_tx(project.engine) as conn:
+        conn.execute(sa.update(wireframes).where(wireframes.c.object_id == relief).values(render=None))
+        conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_id == box, blob_owners.c.role == "tri"))
+    vm.forget()
+    _r, after, _ = _get(c, str(relief))
+    same = ("k", "first", "n", "bbox", "origin")
+    assert [{k: p[k] for k in same} for p in after["parts"]] == [{k: p[k] for k in same} for p in before["parts"]]
+    assert c.get(f"{API}/viz/wireframes/{relief}/parts/1").content == body0
+    r = c.get(f"{API}/viz/wireframes/{box}")  # a wireframe that lost a file of its geometry
+    assert r.status_code == 500 and r.json()["code"] == "wireframe_broken" and r.json()["hint"]
 
 
 def test_errors_are_russian_with_a_hint(stored) -> None:  # type: ignore[no-untyped-def]

@@ -45,7 +45,7 @@ def add_raster(conn: sa.Connection, name: str, *, vertical: bool = False, state:
             meta={},
             created_at=now,
             updated_at=now,
-        )  # fmt: skip
+        )
     )
     raster_id = int(res.inserted_primary_key[0])  # type: ignore[index]
     georef = {"affine": [0.5, 0.0, 512_000.25, 0.0, -0.5, 6_235_000.75], "source": "world", "crs": None}
@@ -203,9 +203,13 @@ def test_attributes_of_the_user(project) -> None:  # type: ignore[no-untyped-def
         ]
         # rename, delete, change and add in one request; names are compared without case; the order stays
         out = ws.edit_attrs(
-            conn, wf, 2, rename={"год": "Год отчёта"}, remove=["УТВЕРЖДЁН"],
+            conn,
+            wf,
+            2,
+            rename={"год": "Год отчёта"},
+            remove=["УТВЕРЖДЁН"],
             values={"участок": "Юг", "Комментарий": "", "Плотность": None},
-        )  # fmt: skip
+        )
         assert out["attrs"] == [
             {"name": "Участок", "value": "Юг"},
             {"name": "Год отчёта", "value": 2026},
@@ -318,7 +322,7 @@ def test_created_as_a_dtm_with_a_raster_and_deleted(project) -> None:  # type: i
                 meta={},
                 created_at=now,
                 updated_at=now,
-            )  # fmt: skip
+            )
         ).inserted_primary_key[0]
         conn.execute(sa.insert(object_refs).values(src_id=chart, dst_id=wf, role="source"))
         e = err(ws.delete_wireframe, conn, wf)

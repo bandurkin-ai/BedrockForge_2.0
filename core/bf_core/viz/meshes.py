@@ -131,7 +131,7 @@ def mesh_state(conn: sa.Connection, wf_id: int) -> MeshState:
             wireframes.c.origin,
             wireframes.c.render,
             wireframes.c.dtm,
-        )  # fmt: skip
+        )
         .join(wireframes, wireframes.c.object_id == objects.c.id)
         .where(objects.c.id == wf_id, objects.c.kind == WIREFRAME, objects.c.state == "ready")
     ).first()
@@ -142,10 +142,19 @@ def mesh_state(conn: sa.Connection, wf_id: int) -> MeshState:
     if set(shas) != set(store.ARRAYS):
         raise broken()
     return MeshState(
-        wf_id, row.name, int(row.version), (row.meta or {}).get("color"), dtm, int(row.point_count),
-        int(row.triangle_count), row.extent, list(row.origin or [0.0, 0.0, 0.0]), row.render,
-        tuple(sorted(shas.items())), _stamp(row.created_at),
-    )  # fmt: skip
+        wf_id,
+        row.name,
+        int(row.version),
+        (row.meta or {}).get("color"),
+        dtm,
+        int(row.point_count),
+        int(row.triangle_count),
+        row.extent,
+        list(row.origin or [0.0, 0.0, 0.0]),
+        row.render,
+        tuple(sorted(shas.items())),
+        _stamp(row.created_at),
+    )
 
 
 def manifest_etag(uid: str, state: MeshState) -> str:
