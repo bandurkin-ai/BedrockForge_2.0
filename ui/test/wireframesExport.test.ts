@@ -234,7 +234,7 @@ describe("the tree and the ribbon call `wireframe.export` (ТЗ 7.0.4, 7.1)", ()
   it("every command of wireframes of Э8 is in the ribbon (and so in Ctrl+K) and bound", () => {
     const app = createApp({ persist: false });
     const onRibbon = new Set(items.map((i) => i.command));
-    for (const id of ["wireframe.check", "model.self_intersections", "wireframe.export"]) {
+    for (const id of ["wireframes.upload", "wireframe.check", "model.self_intersections", "wireframe.export"]) {
       expect(onRibbon.has(id), id).toBe(true);
       expect(app.registry.get(id)!.run, id).toBeTypeOf("function");
       expect(app.registry.get(id)!.stage, id).toBeUndefined();
@@ -242,10 +242,9 @@ describe("the tree and the ribbon call `wireframe.export` (ТЗ 7.0.4, 7.1)", ()
   });
 });
 
-/** Commands of stages up to Э8 that are still «появится на этапе…»: a hole of the registry. Known ones, each
- * with its owner: `dataset.move` — the folders of the tree (moved past Э3, PROGRESS.md), `wireframes.upload` —
- * подшаг 8.20 (the wizard of wireframes) binds it. */
-const KNOWN_HOLES = ["dataset.move", "wireframes.upload"];
+/** Commands of stages up to Э8 that are still «появится на этапе…»: a hole of the registry. The known one:
+ * `dataset.move` — moving objects between the folders of the tree (left after Э3). */
+const KNOWN_HOLES = ["dataset.move"];
 const stageNo = (s: string): number => Number(/^Э(\d+)/.exec(s)?.[1] ?? Infinity);
 
 describe("the registry has no holes (ТЗ 7.2: a command = a record of the registry)", () => {

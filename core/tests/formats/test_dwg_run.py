@@ -310,7 +310,15 @@ here = Path(__file__).resolve().parent
 (here / "pid.txt").write_text(str(os.getpid()), encoding="utf-8")
 if (here / "broken.txt").exists():
     sys.exit(1)
-os.write(int(sys.argv[sys.argv.index("-displayfd") + 1]), b"77\\n")  # the display the server listens on
+fd = int(sys.argv[sys.argv.index("-displayfd") + 1])
+os.write(fd, b"77")  # the display the server listens on: the number, then — apart, as Xvfb does — a new line
+time.sleep(0.2)
+try:
+    os.write(fd, b"\\n")
+except OSError:  # the reader went away after the number: the real server ends with an error here
+    (here / "ended.txt").write_text("broken pipe", encoding="utf-8")
+    sys.exit(1)
+os.close(fd)
 time.sleep(120)
 """
 
@@ -332,7 +340,8 @@ def test_xvfb_of_path_is_the_screen_of_the_converter(tmp_path: Path, oda: Oda, m
     same(read_dwg(path, converter=oda.exe).layers, layers())
     assert oda.calls[-1]["display"] == ":77"  # the screen the server named, not the one of the user
     args = (bin_ / "args.txt").read_text(encoding="utf-8").split()
-    assert args[:2] == [f":{os.getpid()}", "-displayfd"] and args[3:] == ["-screen", "0", "800x600x24"]
+    assert args[0] == "-displayfd" and args[2:] == ["-screen", "0", "800x600x24"]
+    assert not (bin_ / "ended.txt").exists()  # the server lived until it was ended: its answer was read whole
     with pytest.raises(ProcessLookupError):  # ended with the converter
         os.kill(int((bin_ / "pid.txt").read_text(encoding="utf-8")), 0)
     oda.mode("hang")  # … and when the converter is ended for its time
@@ -354,12 +363,11 @@ def test_real_xvfb_gives_a_screen(tmp_path: Path, oda: Oda, monkeypatch: pytest.
     path, _dxf = drawing(tmp_path / "Проект")
     same(read_dwg(path, converter=oda.exe).layers, layers())
     call = oda.calls[-1]
-    assert call["display"] == f":{os.getpid()}" and call["screen"] is True  # a display of this process only
-    assert not os.path.exists(f"/tmp/.X11-unix/X{os.getpid()}")  # the server is gone with its screen
-    # two drawings at once in one process: each has the screen while its converter runs
+    assert call["display"][:1] == ":" and call["display"][1:].isdigit() and call["screen"] is True
+    # drawings at once (other tests of the machine may run as well): each converter has a screen that is there
     from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(4) as pool:
-        for read in pool.map(lambda _: read_dwg(path, converter=oda.exe), range(4)):
+        for read in pool.map(lambda _: read_dwg(path, converter=oda.exe), range(8)):
             same(read.layers, layers())
-    assert [(c["display"], c["screen"]) for c in oda.calls] == [(f":{os.getpid()}", True)] * 5
+    assert len(oda.calls) == 9 and all(c["display"][1:].isdigit() and c["screen"] is True for c in oda.calls)
