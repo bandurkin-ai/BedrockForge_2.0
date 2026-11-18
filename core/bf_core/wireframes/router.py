@@ -13,14 +13,26 @@ tint, opacity, shade}) and the properties (counts, extent, measures, attributes 
   * `DELETE /wireframes/{id}` — a wireframe other objects refer to → 422 `wireframe_in_use` with their list.
 A raster draped on a DTM cannot be deleted: `DELETE /rasters/{id}` → 422 `raster_in_use` with the DTMs.
 `POST /wireframes/build-dtm` starts the job `model.dtm` («Построить ЦТМ», `wireframes/jobs.py`).
+`POST /wireframes/pick` {origin, direction, wireframe_ids, clip} — the exact triangle under a click (ADR 0013 §5,
+`wireframes/exact.py`): a ray in project coordinates → {hit: {wireframe_id, name, triangle, distance, point,
+vertices, indices, normal, area, dip, dip_direction} or null}; `clip` — the planes of the section window.
+`POST /wireframes/{id}/check` — «Проверить» (ТЗ 7.21): the job `wireframe.check` (`wireframes/check.py`) makes
+the levels of detail that are missing, checks the normals and the self-intersections and writes
+`stats.checks` → {source, id} of the job. `GET /wireframes/{id}/checks` — BFA1 `checks` with an ETag: the
+triangles that cross, for the red layer of the 3D window; `state` — done, none, failed or missing.
+`POST /wireframes/export` {path, format, wireframe_ids, options, overwrite} starts the job `export.wireframes`
+(`wireframes/export.py`): TRIDB, DXF, DWG (through ODA File Converter), OBJ, STL or Surpac DTM; 409
+`files_exist` {files} — the export would replace files the save window did not ask about.
 The geometry for 3D is `/viz/wireframes/{id}` (`viz/router.py`). Numbers may come as text with a comma.
 """
 
 from __future__ import annotations
 
+import sys
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from bf_core.db import dialect
@@ -150,7 +162,11 @@ def delete_wireframe(svc: Svc, request: Request, wireframe_id: int) -> dict[str,
     if gone["shas"] and not gone["shared"]:  # the levels of detail of a geometry nobody has any more
         from bf_core.viz import meshes
 
-        meshes.drop_cache(project.folder, meshes.cache_key(tuple(sorted(gone["shas"].items())), gone["render"]))
+        key = meshes.cache_key(tuple(sorted(gone["shas"].items())), gone["render"])
+        meshes.drop_cache(project.folder, key)
+        exact = sys.modules.get("bf_core.wireframes.exact")  # loaded by the first exact query: nothing kept before
+        if exact is not None:
+            exact.drop(key)
     _changed(request, wireframe_id, deleted=True)
     return {"deleted": wireframe_id}
 
@@ -193,3 +209,99 @@ def build_dtm(svc: Svc, s: Sched, body: BuildDtmBody) -> dict[str, Any]:
         )
     key, job_id = s.submit("model.dtm", params, title="Построение ЦТМ")
     return {"source": key, "id": job_id}
+
+
+class PickBody(BaseModel):
+    origin: list[float] = Field(min_length=3, max_length=3)  # project coordinates
+    direction: list[float] = Field(min_length=3, max_length=3)  # need not be a unit vector
+    wireframe_ids: list[int] | None = Field(default=None, max_length=2000)  # null — every wireframe
+    # the planes of the section window [nx, ny, nz, c]: n·p + c ≥ 0 inside
+    clip: list[Annotated[list[float], Field(min_length=4, max_length=4)]] | None = Field(default=None, max_length=16)
+
+
+@router.post("/pick")
+def pick(svc: Svc, body: PickBody) -> dict[str, Any]:
+    """The nearest triangle the ray meets (ТЗ 7.21 «треугольник по клику»): float64, by the triangles as stored."""
+    from . import exact
+
+    project = svc.require_current()
+    return exact.pick(project, body.origin, body.direction, body.wireframe_ids, body.clip)
+
+
+class ExportOptions(BaseModel):
+    version: str | None = Field(default=None, max_length=16)  # DWG: R2000 … R2018 (R2013 when not given)
+    binary: bool | None = None  # STL: true (default) — binary, float32; false — text, float64
+
+
+class ExportBody(BaseModel):
+    path: str = Field(max_length=2000)
+    format: str = Field(max_length=16)  # tridb | dxf | dwg | obj | stl | dtm
+    wireframe_ids: list[int] = Field(min_length=1, max_length=5000)
+    options: ExportOptions = Field(default_factory=ExportOptions)
+    # files the export replaces without the save window having asked (409 `files_exist` names them): agreed
+    overwrite: bool = False
+
+
+@router.post("/export")
+def export_wireframes(svc: Svc, s: Sched, request: Request, body: ExportBody) -> dict[str, Any]:
+    """`wireframe.export`: the job «Экспорт каркасов» writes the wireframes into one file of the format. 409
+    `files_exist` {files}: the window asks and repeats the call with `overwrite: true`; 422 `oda_not_found` —
+    a DWG without ODA File Converter («Настройка › Внешние программы»)."""
+    from bf_core.importing.tools import oda_converter
+
+    from . import export
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        params = export.request(
+            conn, path=body.path, format=body.format, wireframe_ids=body.wireframe_ids,
+            options=body.options.model_dump(exclude_none=True), overwrite=body.overwrite,
+            oda=oda_converter(request.app.state.core),
+        )  # fmt: skip
+    label = export.FORMATS[body.format].label
+    key, job_id = s.submit("export.wireframes", params, title=f"Экспорт каркасов ({label})")
+    return {"source": key, "id": job_id}
+
+
+class CheckBody(BaseModel):
+    wireframe_ids: list[int] = Field(min_length=1, max_length=2000)
+
+
+@router.post("/check")
+def check_wireframes(svc: Svc, s: Sched, body: CheckBody) -> dict[str, Any]:
+    """The wireframes an import stored, in one job (ADR 0013 §5): «Задания» get one row, not one per wireframe."""
+    from . import check
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        params, title = check.request(conn, body.wireframe_ids)
+    key, job_id = s.submit(check.KIND, params, title=title)
+    return {"source": key, "id": job_id}
+
+
+@router.post("/{wireframe_id}/check")
+def check_wireframe(svc: Svc, s: Sched, wireframe_id: int) -> dict[str, Any]:
+    """«Проверить»: the job «Проверка и копии для показа» of one wireframe (the same job follows an import)."""
+    from . import check
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        params, title = check.request(conn, [wireframe_id])
+    key, job_id = s.submit(check.KIND, params, title=title)
+    return {"source": key, "id": job_id}
+
+
+@router.get("/{wireframe_id}/checks")
+def wireframe_checks(svc: Svc, wireframe_id: int, if_none_match: Annotated[str | None, Header()] = None) -> Response:
+    """BFA1 `checks`: the crossing triangles of a checked wireframe, float32 from whole-metre origins."""
+    from bf_core.viz.keys import CACHE_HEADERS, matches
+
+    from . import check
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        state, checks = check.layer_state(conn, wireframe_id)
+    headers = {"ETag": check.layer_etag(project, state, checks), **CACHE_HEADERS}
+    if matches(if_none_match, headers["ETag"]):  # before the file is read
+        return Response(status_code=304, headers=headers)
+    return Response(content=check.layer(project, state, checks), media_type="application/octet-stream", headers=headers)

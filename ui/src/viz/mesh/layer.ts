@@ -12,7 +12,8 @@
  * material of its own — the top-left corner of the image is given from the origin of that part (float64 on
  * the CPU) — and all of them share one program. The tint multiplies the image, the opacity of the drape
  * covers the colour of the surface, and without the shadows of the relief the image keeps its colours.
- * The texture belongs to the layer of the raster. A click is answered on the CPU (`build.ts::pickMesh`).
+ * The texture belongs to the layer of the raster. A click is answered on the CPU (`build.ts::pickMesh`) by the
+ * level that is drawn; the exact triangle is then the core's (`exact.ts`).
  */
 import * as THREE from "three";
 import type { Vec3 } from "../core/vec3";
@@ -21,6 +22,7 @@ import type { Origin } from "../origin";
 import type { LayerPick, PickQuery, SceneLayer } from "../sceneTypes";
 import { pickMesh, sampleAt, type BuiltMesh, type MeshManifest, type MeshPartInfo, type MeshPickPart } from "./build";
 import { DRAPE_PROGRAM_KEY, drapeUv, drapeUvFloat32, imageAxes, patchDrapeShader, type Corner, type DrapeAxes } from "./drape";
+import { absoluteRay, type AbsRay } from "./exact";
 
 /** A wireframe without a colour of its own: Slate of the brand palette. */
 export const DEFAULT_MESH_COLOR = "#8a99a8";
@@ -59,11 +61,13 @@ export interface MeshDrape {
 export interface MeshPick {
   wireframeId: number;
   k: number;
-  /** the level of detail the pick was made on (the exact pick is the core's, Э8) */
+  /** the level of detail the pick was made on (the exact pick is the core's: `exact.ts`) */
   lod: number;
   triangle: number;
   /** the picked place as shown, absolute float64 */
   xyz: Vec3;
+  /** the ray of the click in project coordinates: what the exact pick of the core is asked with (`exact.ts`) */
+  ray: AbsRay;
 }
 
 /** The surface over a plan point as it is drawn now (the E2E probe of the drape). */
@@ -327,7 +331,7 @@ export class MeshLayerView implements SceneLayer {
     if (!hit) return null;
     const o = this.origin;
     const xyz: Vec3 = [hit.point[0] - q.offset[0] + o.x, hit.point[1] - q.offset[1] + o.y, hit.point[2] / (q.vexag || 1) - q.offset[2] + o.z];
-    const pick: MeshPick = { wireframeId: this.wireframeId, k: hit.k, lod: parts.find((p) => p.k === hit.k)!.lod, triangle: hit.triangle, xyz };
+    const pick: MeshPick = { wireframeId: this.wireframeId, k: hit.k, lod: parts.find((p) => p.k === hit.k)!.lod, triangle: hit.triangle, xyz, ray: absoluteRay(q.ray, q.offset, o, q.vexag) };
     return { score: SURFACE_SCORE + hit.t / (1 + hit.t), hit: pick };
   }
 

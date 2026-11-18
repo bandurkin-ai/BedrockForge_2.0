@@ -1,5 +1,6 @@
-/** The window «Импорт файлов» for lines, points and rasters (ТЗ 7.8; ADR 0011 §5): the composition of the
- * chosen files (`ObjectsStep`), the operation log in the title (ТЗ 7.9), the start of `import.objects`. */
+/** The window «Импорт файлов» for lines, points, rasters and wireframes (ТЗ 7.8; ADR 0011 §5; ADR 0013 §6): the
+ * composition of the chosen files (`ObjectsStep`), the operation log in the title (ТЗ 7.9), the start of
+ * `import.objects`; the wireframes it stores are checked when it ends (`afterImport.ts`). */
 import { useEffect, useState } from "react";
 import { bridge } from "../../bridge";
 import { useApp } from "../../shell/AppContext";
@@ -7,18 +8,22 @@ import { Icon } from "../../shell/Icon";
 import { openLogWindow, opLogStore, startOpLog, stopOpLog } from "../../shell/opLog";
 import { useStore } from "../../shell/useStore";
 import { closeWindow } from "../../shell/windows";
+import { syncOda } from "../../shell/odaTool";
 import { setPanel } from "../../shell/workspace";
 import { refresh as refreshJobs } from "../jobs/state";
 import { projectStore } from "../projects/state";
+import { afterStart } from "./afterImport";
+import type { ObjectsPick } from "./bind";
 import { canStartObjects, ObjectsWizard } from "./objects";
 import { ObjectsStep } from "./ObjectsStep";
 import css from "./ImportWizard.module.css";
 
-export function ObjectsWindow({ winId, paths, pick }: { winId: string; paths?: string[]; pick?: "objects" | "lines" | "rasters" }) {
+export function ObjectsWindow({ winId, paths, pick }: { winId: string; paths?: string[]; pick?: ObjectsPick }) {
   const app = useApp();
   const [wizard] = useState(() => {
     const project = projectStore.get().current;
-    return new ObjectsWizard(startOpLog("Импорт файлов", "import", { uiVersion: bridge()?.appVersion(), coreVersion: app.store.get().coreVersion, project: project?.name }));
+    const log = startOpLog("Импорт файлов", "import", { uiVersion: bridge()?.appVersion(), coreVersion: app.store.get().coreVersion, project: project?.name });
+    return new ObjectsWizard(log, () => syncOda(app.store));
   });
   const s = useStore(wizard.store, (x) => x);
   useStore(opLogStore, (x) => x.version);
@@ -36,6 +41,7 @@ export function ObjectsWindow({ winId, paths, pick }: { winId: string; paths?: s
     if (!r) return;
     app.store.set((st) => ({ workspace: setPanel(st.workspace, "bottom", true, "jobs") }));
     await refreshJobs();
+    afterStart(r);
     closeWindow(winId);
   };
 
@@ -54,7 +60,7 @@ export function ObjectsWindow({ winId, paths, pick }: { winId: string; paths?: s
         </button>
       </div>
       <div className={css.body}>
-        <ObjectsStep wizard={wizard} onAdd={() => void add()} />
+        <ObjectsStep wizard={wizard} onAdd={() => void add()} onSettings={() => void app.run("settings.open", { tab: "tools" })} />
       </div>
       <div className={css.footer}>
         {s.error && <span className={css.error}>{s.error}</span>}

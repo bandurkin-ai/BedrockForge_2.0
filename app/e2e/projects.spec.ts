@@ -58,7 +58,9 @@ test("projects: demo once, new, taken name refused, description survives restart
 
     await command(page, "новый проект");
     await answer(page, "Проект Э2");
-    await expect(header(page)).toContainText("Проект Э2");
+    // a project switch waits for the requests of the scene of the demo in progress (its levels of detail are made
+    // in the process of the API, pyfqmr holds the interpreter): seconds on the CI runners
+    await expect(header(page)).toContainText("Проект Э2", { timeout: 30_000 });
 
     await header(page).click();
     await page.getByRole("button", { name: "Переименовать", exact: true }).click();
@@ -147,7 +149,7 @@ test("export → import through the jobs tab with a password; the copy has the s
     const importRow = page.getByTestId("job-import.project").first();
     await expect(importRow.getByTestId("job-status")).toHaveText("Готово", { timeout: 60_000 });
     await importRow.getByRole("button", { name: "Открыть проект" }).click();
-    await expect(header(page)).toContainText("Демо: участок Северный (2)");
+    await expect(header(page)).toContainText("Демо: участок Северный (2)", { timeout: 30_000 });
     await page.screenshot({ path: shot("jobs-import.png") });
     const text = await page.getByTestId("jobs-panel").innerText();
     expect(text).not.toContain("Секрет-1");

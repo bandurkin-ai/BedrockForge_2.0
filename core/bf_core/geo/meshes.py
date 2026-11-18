@@ -7,7 +7,8 @@ Ported from BF `geo/meshes.py` (`morton_order`, `chunk_table`, `simplify`, `lod_
     morton_order(v, t)          triangles along a Z-order curve of their centroids
     parts_table(v, t)           runs of at most 64 000 consecutive triangles, none wider than 16 km
     part_mesh(v, t, part)       the vertices of a part from its origin (exact float64) and its triangles
-    levels(local, tri)          the part at 1, 1/8 and 1/64 of its triangles (pyfqmr, the border kept)
+    levels(local, tri)          the part at 1, 1/8 and 1/64 of its triangles (flat regions thinned in their
+                                planes — `flat.py`, the rest by pyfqmr; the border kept)
     mesh_stats(v, t)            area, volume of a closed solid, open and non-manifold edges
 
 Differences from BF. The Morton code uses one scale for the three axes (BF scaled every axis to its own span,
@@ -200,18 +201,11 @@ def part_mesh(v: np.ndarray, t: np.ndarray, part: MeshPart) -> tuple[np.ndarray,
 # --- levels of detail ------------------------------------------------------------------------------------
 
 
-def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarray, np.ndarray]:
-    """Quadric edge-collapse decimation to about `target` triangles (pyfqmr). The vertices on the border of
-    the mesh stay where they are, bit for bit, so the count cannot go below what the border needs. A mesh that
-    is small already, or that pyfqmr cannot make smaller, comes back as it is (the same arrays).
-
-    Hard data for pyfqmr: a dense grid that is exactly flat and tilted both ways. The quadric of a plane has no
-    single best point and rounding picks one, so such a region is simplified less (about 1/2 instead of 1/8)
-    and its new vertices leave the plane by up to 0.2 of a cell (measured in tests/test_viz_mesh.py). A level
-    plane, a plane tilted along one axis and any surface with relief or noise are not affected; the mesh stays
-    whole and unfolded in every case."""
-    if len(tri) < LOD_MIN_TRIANGLES or len(tri) <= max(int(target), 1):
-        return local, tri
+def _decimate(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """Quadric edge-collapse decimation to about `target` triangles (pyfqmr), the border kept bit for bit;
+    None when pyfqmr could not make the mesh smaller."""
+    if len(tri) <= max(int(target), 1):
+        return None
     import pyfqmr
 
     s = pyfqmr.Simplify()
@@ -222,8 +216,42 @@ def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarra
     v = np.ascontiguousarray(out_v, dtype=np.float64).reshape(-1, 3)
     t = np.ascontiguousarray(out_t, dtype=np.int32).reshape(-1, 3)
     if len(t) == 0 or len(t) >= len(tri) or not np.isfinite(v).all() or int(t.max()) >= len(v) or int(t.min()) < 0:
-        return local, tri
+        return None
     return v, t
+
+
+def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarray, np.ndarray]:
+    """A mesh of about `target` triangles. The vertices on the border of the mesh stay where they are, bit for
+    bit, so the count cannot go below what the border needs. A mesh that is small already, or that cannot be
+    made smaller, comes back as it is (the same arrays).
+
+    Two steps (ADR 0013 §4). Flat regions and straight edges between them are thinned first, in their own
+    planes, without a new vertex (`geo/flat.py`): pyfqmr spoils them — the quadric of a plane has no single
+    best point. Then pyfqmr (quadric edge collapse) takes the rest down to the target; the vertices of flat
+    regions that could not go are kept away from it with their triangles and joined back afterwards."""
+    count = max(int(target), 1)
+    if len(tri) < LOD_MIN_TRIANGLES or len(tri) <= count:
+        return local, tri
+    from . import flat
+
+    v, t, held = flat.thin(local, tri, count)
+    if len(t) <= count:
+        return v, t
+    if held.any():
+        keep = held[t].any(axis=1)
+        kept, rest = t[keep], t[~keep]
+        if len(rest) == 0:
+            return v, t
+        used, inverse = np.unique(rest, return_inverse=True)
+        sub = np.ascontiguousarray(inverse.reshape(-1, 3), dtype=np.int32)
+        seam = np.intersect1d(kept, used)
+        if flat.bordered(sub, np.searchsorted(used, seam)):  # pyfqmr keeps the vertices of a border
+            # what was held back may take the whole target: the rest then keeps its own share, not nothing
+            goal = count - len(kept) if count > len(kept) else len(rest) // LOD_RATIO
+            made = _decimate(v[used], sub, goal)
+            return (flat.join(v, kept, seam, *made) if made else None) or (v, t)
+        # an edge of three triangles and the like: the cut is no border — pyfqmr gets the mesh whole
+    return _decimate(v, t, count) or (v, t)
 
 
 def levels(local: np.ndarray, tri: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:

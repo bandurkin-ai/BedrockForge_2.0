@@ -1,22 +1,27 @@
-"""Job `import.objects` of the wizard «Импорт файлов» (ТЗ 7.8, 7.18, 7.19; ADR 0011 §1, §3, §5): lines, points
-and rasters. The pairing of the chosen files, their reading and the composition the wizard shows (`inspect_files`)
-are in `object_files.py`.
+"""Job `import.objects` of the wizard «Импорт файлов» (ТЗ 7.8, 7.18, 7.19, 7.21; ADR 0011 §1, §3, §5; ADR 0013
+§3, §5): lines, points, rasters and wireframes. The pairing of the chosen files, their reading and the
+composition the wizard shows (`inspect_files`) are in `object_files.py`; the wireframes — in `object_meshes.py`.
 
-Parameters (`ctx.params`): `files` [paths], `options` {path: {encoding, x, y, z, name}}, `raster_z` {elevation,
-shift} — «Уровень растров по Z», `section` {x1, y1, x2, y2, z_top, z_bottom} — where an image without a
-georeference stands (the current section line, resolved by the endpoint) — and `folder` of the tree.
+Parameters (`ctx.params`): `files` [paths], `options` {path: {encoding, x, y, z, name, split_by, layer_field}},
+`raster_z` {elevation, shift} — «Уровень растров по Z», `section` {x1, y1, x2, y2, z_top, z_bottom} — where an
+image without a georeference stands (the current section line, resolved by the endpoint), `folder` of the tree
+and `oda` — the ODA File Converter of «Настройка», for DWG.
 
 File by file: read, stage the blobs, then a short transaction that writes the objects as `building` (a line file
-with its layers; a raster with its display copies). When every file is in, the source files are staged and one
-final transaction attaches them (`source`, `sidecar:<ext>`), writes `import_log` and makes everything `ready`.
+with its layers; a raster with its display copies; every wireframe of a file as an object of its own, taken
+from the reader one at a time; a DXF or a DWG gives a line file and wireframes). When every file is in, the
+source files are staged and one final transaction attaches them (`source`, `sidecar:<ext>`: to the line file or
+the raster, and to the `import_log` row of every wireframe), writes `import_log` and makes everything `ready`.
 Until then a cancel or a failure leaves nothing: the scheduler drops what the job was building
 (`jobs.store.drop_partial`), the temporary files go here. A file that cannot be read is an error line of the
 journal and an entry of `failed`; the job fails only when nothing was loaded. A retry after the final
 transaction finds the import done by `import_log.job_id`. The source goes into the storage straight from its
 place on the disk: no intermediate copy.
 
-Result: `files` [{file, format, kind, object_id, layers, lines, points, vertices | rasters, width, height, …}],
-`objects` [ids of the line files and rasters], `failed` and `rest` [{file, code, message, hint}], totals.
+Result: `files` — an entry per file and kind of its objects: {file, format, kind, object_id, layers, lines,
+points, vertices | rasters, width, height, … | kind "wireframes", object_ids, wireframes, triangles, mesh_points,
+skipped}; `objects` [ids of the line files, rasters and wireframes], `wireframe_ids` (for `wireframe.check`),
+`failed` and `rest` [{file, code, message, hint}], totals.
 
 Ported from BF `importing/objects.py` (`import_lines`, `import_rasters`, the palette of layers without a colour).
 """
@@ -36,16 +41,19 @@ from bf_core.formats.errors import FormatError
 from bf_core.jobs.context import JobContext, JobError
 from bf_core.jobs.registry import handler
 
+from . import object_meshes as om
 from .object_files import (
+    EMPTY,
+    FILE_SETTINGS,
     MAX_NOTES,
     NUMBER_HINT,
     Group,
     Tick,
     _failure,
     _fields,
-    _left_out,
     _raster_summary,
     _size,
+    has_content,
     inspect_files,
     n_text,
     option_key,
@@ -62,6 +70,12 @@ __all__ = ["import_objects", "inspect_files", "plan"]
 PALETTE = ("#e8873a", "#4f9dde", "#5fbf6a", "#c06fd8", "#e0c040", "#e05d6f", "#46c7c0", "#9a8f7a")
 TARGET = "objects"  # `import_log.target`
 PORTION = 25  # layers written by one transaction (about 0.1 s)
+LINE_TOTALS = ("layers", "lines", "points", "vertices", "rasters")  # `import_log.counts` of a line file
+#: Memory a file needs, by its extension, in sizes of the file: a text file of lines or meshes — its arrays,
+#: attributes and the staging (about 6×). A binary file of wireframes is little more than its geometry, and
+#: staging a wireframe keeps the mesh, its spatial order and the table of its edges at once: measured 10× the
+#: geometry of a wireframe of 620 000 triangles (a TRIDB of 1 million triangles, 23 MB: 150 MB over the start).
+MEMORY_FACTOR = {".tridb": 12, ".stl": 12, ".dm": 12}
 
 
 # --- the job -----------------------------------------------------------------------------------------------
@@ -85,7 +99,7 @@ def _memory(params: dict[str, Any]) -> int:
             except Exception:  # noqa: BLE001 - an estimate: the job itself reports a bad image
                 size *= 10
         else:
-            size *= 6
+            size *= MEMORY_FACTOR.get(path.suffix.lower(), 6)
         need = max(need, size / 2**20)
     return max(512, int(256 + need))
 
@@ -94,14 +108,15 @@ def _memory(params: dict[str, Any]) -> int:
 class _Done:
     """A file whose objects are written as `building`."""
 
-    object_id: int
-    kind: str  # "lines" | "points" | "raster"
     path: Path
     label: str
     format: str
     media: str
-    counts: dict[str, Any]
     settings: dict[str, Any]
+    object_id: int | None = None  # the line file or the raster; None — the file gave wireframes only
+    kind: str = ""  # "lines" | "points" | "raster" of that object
+    counts: dict[str, Any] = field(default_factory=dict)
+    meshes: om.Written | None = None  # the wireframes of the file
     companions: dict[str, Path] = field(default_factory=dict)  # suffix → the file kept as `sidecar:<ext>`
     source: tuple[Path, str, int] | None = None
     sidecars: dict[str, tuple[Path, str, int]] = field(default_factory=dict)
@@ -127,6 +142,15 @@ def _file_meta(g: Group, read: Any, summary: Mapping[str, Any]) -> dict[str, Any
         "fields": _fields(read.detail), "crs_name": crs.get("name"), "epsg": crs.get("epsg"),
         "sidecars": summary["sidecars"], "warnings": summary["warnings"], "left_out": summary["left_out"],
     }  # fmt: skip
+
+
+def _settings(g: Group, options: Mapping[str, Any] | None, summary: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """`import_log.mapping` of a file: how it was read."""
+    options = options or {}
+    out: dict[str, Any] = {"encoding": (summary or {}).get("encoding") or options.get("encoding") or None}
+    out["sidecars"] = (summary or {}).get("sidecars") or sorted(p.name for p in g.sidecars.values())
+    out.update({k: options[k] for k in FILE_SETTINGS if options.get(k)})
+    return out
 
 
 def _write_lines(ctx: JobContext, engine: sa.Engine, store: Any, g: Group, read: Any, tick: Tick) -> _Done:
@@ -171,14 +195,14 @@ def _write_lines(ctx: JobContext, engine: sa.Engine, store: Any, g: Group, read:
                 part.discard()
     tick(1.0, "слои записаны")
     return _Done(
-        file_id,
-        summary["kind"],
         g.main,
         g.main.name,
         read.format,
-        "application/octet-stream",
-        dict(summary["totals"]),
+        om.MEDIA,
         {"encoding": summary["encoding"], "sidecars": summary["sidecars"]},
+        file_id,
+        summary["kind"],
+        {k: summary["totals"][k] for k in LINE_TOTALS},
     )
 
 
@@ -211,10 +235,15 @@ def _write_raster(
         "elevation": summary["elevation"], "georef": summary["georef"]["source"],
     }  # fmt: skip
     return _Done(
-        raster_id, "raster", g.main, g.main.name, read.format, rs.IMAGE_MEDIA.get(r.info.format, "image/*"), counts,
+        g.main, g.main.name, read.format, rs.IMAGE_MEDIA.get(r.info.format, "image/*"),
         {"sidecars": summary["sidecars"], "raster_z": {"elevation": level[0], "shift": level[1]}},
-        {suffix: Path(p) for suffix, p in r.sidecars.items()},
+        raster_id, "raster", counts, companions={suffix: Path(p) for suffix, p in r.sidecars.items()},
     )  # fmt: skip
+
+
+def _span(step: Callable[..., None], low: float, high: float) -> Tick:
+    """The part [low, high] of the share of a file in the progress of the job."""
+    return lambda fraction, message: step(fraction, message, low, high)
 
 
 def _chunks(path: Path, tick: Callable[[int], None]) -> Iterator[bytes]:
@@ -230,9 +259,11 @@ def _chunks(path: Path, tick: Callable[[int], None]) -> Iterator[bytes]:
 
 
 def _result(files: list[dict[str, Any]], failed: list[dict[str, str]], rest: list[dict[str, str]]) -> dict[str, Any]:
-    out: dict[str, Any] = {"files": files, "objects": [f["object_id"] for f in files], "failed": failed, "rest": rest}
-    for key in ("layers", "lines", "points", "vertices", "rasters"):
+    ids = [i for f in files for i in (f.get("object_ids") or [f["object_id"]])]
+    out: dict[str, Any] = {"files": files, "objects": ids, "failed": failed, "rest": rest}
+    for key in ("layers", "lines", "points", "vertices", "rasters", "wireframes", "triangles"):
         out[key] = sum(int(f.get(key) or 0) for f in files)
+    out["wireframe_ids"] = [i for f in files for i in f.get("object_ids") or []]
     return out
 
 
@@ -241,19 +272,18 @@ def _committed(engine: sa.Engine, job_id: int) -> list[dict[str, Any]] | None:
     log = import_log.c
     with dialect.read_tx(engine) as conn:
         rows = conn.execute(
-            sa.select(log.object_id, log.file_name, log.format, log.counts)
+            sa.select(log.object_id, log.file_name, log.format, log.counts, log.sha256)
             .where(log.job_id == job_id, log.target == TARGET)
             .order_by(log.id)
         ).all()
-    if not rows:
-        return None
-    return [{"file": r.file_name, "format": r.format, "object_id": r.object_id, **(r.counts or {})} for r in rows]
+    return om.committed(rows) if rows else None
 
 
 @handler("import.objects", "Импорт файлов", queue="heavy", estimate_memory=_memory)
 def import_objects(ctx: JobContext) -> dict[str, Any]:
+    from bf_core.formats.registry import SUPPORTED
     from bf_core.rasters import store as rs
-    from bf_core.storage.blobs import BlobStore
+    from bf_core.storage.blobs import BlobStore, add_owner
 
     p = ctx.params
     engine = ctx.engine()
@@ -271,11 +301,7 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
     for r in rest:
         ctx.log(f"{r['file']}: {r['message']}", "warn")
     if not groups:
-        raise JobError(
-            "nothing_to_import",
-            "Среди выбранных файлов нет ни одного, который можно загрузить.",
-            "Подходят: стринги .str / .pit, .dxf, .shp, .mif, точки .xyz / .csv / .txt / .dat, растры с привязкой.",
-        )
+        raise JobError("nothing_to_import", "Среди выбранных файлов нет ни одного, который можно загрузить.", SUPPORTED)
     try:
         level = parse_level(p.get("raster_z"))
     except ValueError as exc:
@@ -283,6 +309,7 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
     assert ctx.project_folder is not None
     store = BlobStore(ctx.project_folder)
     options = options_by_file(p.get("options"))  # keys as paths are spelled here, whatever the caller sent
+    folder = p.get("folder") or None
     done: list[_Done] = []
     failed: list[dict[str, str]] = []
     temps: list[Path] = []
@@ -296,32 +323,61 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
                 at = base + share * (lo + (hi - lo) * min(max(frac, 0.0), 1.0))
                 ctx.tick(at, f"{label}: {msg}" if msg else label)
 
-            step(0.0, None)
-            try:
-                read = read_group(g, options.get(option_key(g.main)), step, displays=True, section=p.get("section"))
-                if not read.rasters and not any(layer.point_count for layer in read.layers):
-                    raise FormatError("empty_file", "В файле нет ни линий, ни точек.", "Проверьте файл.")
-            except (FormatError, OSError) as exc:
-                failure = _failure(g.main, exc)
+            def fail(exc: BaseException, label: str = label, path: Path = g.main) -> None:
+                failure = _failure(path, exc)
                 failed.append(failure)
                 ctx.log(f"«{label}» не загружен: {failure['message']} {failure['hint']}".strip(), "error")
+
+            # Wireframes that a reader gives one at a time are read while they are stored: their reader reports
+            # through the meter; everything else is read by `read_group` — the first 0.7 of the file's share.
+            meter = om.Meter()
+
+            def reading(frac: float, msg: str | None, meter: om.Meter = meter, step: Any = step) -> None:
+                if meter.lazy:
+                    meter.reading(frac, msg)
+                else:
+                    step(frac, msg)
+
+            step(0.0, None)
+            chosen = options.get(option_key(g.main))
+            try:
+                read = read_group(g, chosen, reading, displays=True, section=p.get("section"), converter=p.get("oda"))
+                if not has_content(read):
+                    raise FormatError("empty_file", EMPTY, "Проверьте файл.")
+            except (FormatError, OSError) as exc:
+                fail(exc)
                 continue
             for w in read.warnings:
                 ctx.log(f"{label}: {w}", "warn")
-            for left in _left_out(read):
-                ctx.log(f"{label}: {left['what']} — {n_text(left['count'])}: {left['reason']}", "warn")
+            item: _Done | None = None
+            meshes = om.has_meshes(read)
             if read.rasters:
                 item = _write_raster(ctx, engine, store, g, read, level)
                 ctx.log(f"{label}: растр {item.counts['width']} × {item.counts['height']} пикселей", "info")
-            else:
-                item = _write_lines(ctx, engine, store, g, read, lambda f, m: step(f, m, 0.7, 1.0))
+            elif any(layer.point_count for layer in read.layers):
+                item = _write_lines(ctx, engine, store, g, read, _span(step, 0.7, 0.85 if meshes else 1.0))
                 c = item.counts
                 ctx.log(
                     f"{label}: слоёв — {n_text(c['layers'])}, линий — {n_text(c['lines'])}, "
                     f"вершин — {n_text(c['vertices'])}, точек — {n_text(c['points'])}",
                     "info",
                 )
-            done.append(item)
+            if meshes:
+                lazy = not isinstance(read.meshes, list)
+                meter.start(_span(step, 0.0 if lazy else 0.85 if item is not None else 0.7, 1.0), lazy)
+                try:
+                    written = om.write_meshes(ctx, engine, store, g, read, meter, folder)
+                except om.FileFailed as bad:
+                    fail(bad.cause)
+                else:
+                    if item is None:
+                        item = _Done(g.main, label, read.format, om.MEDIA, _settings(g, chosen))
+                    item.meshes = written
+                    if written.companions:  # the other file of a pair, chosen or found next to the file
+                        item.companions.update(written.companions)
+                        item.settings["sidecars"] = sorted(path.name for path in written.companions.values())
+            if item is not None:
+                done.append(item)
             del read  # keep the memory for the next file
         if not done:
             first = failed[0]
@@ -355,32 +411,51 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
             now = dialect.utcnow()
             for item in done:
                 assert item.source is not None
-                sha = rs.attach(conn, store, item.object_id, "source", item.source, item.media)
-                for suffix, staged in item.sidecars.items():
-                    role = f"sidecar:{suffix.lstrip('.').lower()}"
-                    rs.attach(conn, store, item.object_id, role, staged, "text/plain")
-                conn.execute(
-                    sa.insert(import_log).values(
-                        object_id=item.object_id,
-                        job_id=ctx.id,
-                        file_name=item.label,
-                        format=item.format,
-                        target=TARGET,
-                        mapping=item.settings,
-                        counts={"kind": item.kind, **item.counts},
-                        sha256=sha,
-                        created_at=now,
-                    )  # fmt: skip
-                )
-                files.append(
-                    {
-                        "file": item.label,
-                        "format": item.format,
-                        "object_id": item.object_id,
-                        "kind": item.kind,
-                        **item.counts,
-                    }  # fmt: skip
-                )
+                sha = store.place(conn, item.source, media_type=item.media)
+                sides = {
+                    f"sidecar:{suffix.lstrip('.').lower()}": store.place(conn, staged, media_type="text/plain")
+                    for suffix, staged in item.sidecars.items()
+                }
+                if item.object_id is not None:  # a line file or a raster owns its files itself
+                    add_owner(conn, sha, rs.OWNER, item.object_id, "source")
+                    for role, side in sides.items():
+                        add_owner(conn, side, rs.OWNER, item.object_id, role)
+                    conn.execute(
+                        sa.insert(import_log).values(
+                            object_id=item.object_id,
+                            job_id=ctx.id,
+                            file_name=item.label,
+                            format=item.format,
+                            target=TARGET,
+                            mapping=item.settings,
+                            counts={"kind": item.kind, **item.counts},
+                            sha256=sha,
+                            created_at=now,
+                        )  # fmt: skip
+                    )
+                    files.append(
+                        {
+                            "file": item.label,
+                            "format": item.format,
+                            "object_id": item.object_id,
+                            "kind": item.kind,
+                            **item.counts,
+                        }  # fmt: skip
+                    )
+                if item.meshes is not None:  # every wireframe: its row of the journal, which owns the files
+                    files.append(
+                        om.log_meshes(
+                            conn,
+                            item.meshes,
+                            label=item.label,
+                            fmt=item.format,
+                            settings=item.settings,
+                            sha=sha,
+                            sides=sides,
+                            job_id=ctx.id,
+                            now=now,
+                        )  # fmt: skip
+                    )
             mine = sa.and_(objects.c.job_id == ctx.id, objects.c.state == "building")
             conn.execute(sa.update(objects).where(mine).values(state="ready", job_id=None, updated_at=now))
     finally:

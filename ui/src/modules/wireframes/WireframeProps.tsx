@@ -1,7 +1,9 @@
 /**
  * «Свойства» of a wireframe or a DTM (ТЗ 7.20, 7.35 Д-07; ADR 0011 §5). A DTM has its settings at the very
  * top (`DtmProps`); then the colour and visibility, the counts and the extent, «Перенести в ЦТМ» of a
- * wireframe, and the attributes of the user: add, change, rename, delete (`wireframe.attr`).
+ * wireframe, its checks with «Проверить» and where it was imported from (`ChecksProps`; ТЗ 7.21), the triangle
+ * picked in the 3D window — its point, dip and dip direction as the core found them (ADR 0013 §6) — and the
+ * attributes of the user: add, change, rename, delete (`wireframe.attr`).
  */
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useApp } from "../../shell/AppContext";
@@ -12,8 +14,10 @@ import { ColorField, Facts, useRun } from "../../shell/PropsParts";
 import { useStore } from "../../shell/useStore";
 import css from "../../shell/PropsParts.module.css";
 import { DtmProps } from "../dtm/DtmProps";
-import { sceneObjects } from "../scene/objects";
+import { pickedObject, sceneObjects } from "../scene/objects";
 import { attrNameError, attrValueText, wireframeFacts } from "./attrs";
+import { ChecksBlock, SourceBlock } from "./ChecksProps";
+import { pickedFacts, pickedNote, pickedTriangle } from "./picked";
 import type { WireframeAttr, WireframeInfo } from "./state";
 import { wireframeKey } from "./tree";
 
@@ -23,8 +27,10 @@ export function WireframeProps({ id }: { id: number }) {
   const app = useApp();
   const w = useStore(sceneObjects, (o) => o.wireframes.find((x) => x.id === id)) as WireframeInfo | undefined;
   const hidden = useStore(app.store, (s) => s.view.hidden);
+  const picked = useStore(pickedObject, (p) => p.picked);
   const { run, error, setError } = useRun();
   if (!w) return null;
+  const triangle = pickedTriangle(picked, id);
   return (
     <section className={css.panel} aria-label={`Свойства: ${w.name}`} data-testid={w.dtm ? "props-dtm" : "props-wireframe"}>
       <header className={css.head}>
@@ -58,6 +64,17 @@ export function WireframeProps({ id }: { id: number }) {
             Перенести в ЦТМ
           </button>
         </div>
+      )}
+      <ChecksBlock id={id} stats={w.stats} run={run} />
+      <SourceBlock source={w.source} />
+      {triangle ? (
+        <fieldset className={css.group} data-testid="props-picked-triangle" data-exact={triangle.exact ? "yes" : triangle.exact === null ? "none" : "pending"}>
+          <legend>Треугольник по клику</legend>
+          <Facts facts={pickedFacts(triangle)} />
+          {pickedNote(triangle) && <p className={css.note}>{pickedNote(triangle)}</p>}
+        </fieldset>
+      ) : (
+        <p className={css.note}>Щёлкните поверхность в 3D-окне — здесь появятся точка и падение треугольника под щелчком.</p>
       )}
       <Attrs key={`${w.id}:${w.version}`} id={id} attrs={w.attrs ?? []} run={run} fail={setError} />
       {error && (

@@ -1,17 +1,19 @@
 /**
- * Where the files chosen in «Импорт файлов» (or dropped from Explorer) go (ТЗ 7.8; ADR 0011 §5): tables of
- * drillholes — to their wizard, lines, points and rasters — to the composition of objects, a `.bfggis` — to
- * the import of a project. What comes with later stages is told. Pure.
+ * Where the files chosen in «Импорт файлов» (or dropped from Explorer) go (ТЗ 7.8; ADR 0011 §5; ADR 0013 §6):
+ * tables of drillholes — to their wizard, lines, points, rasters and wireframes — to the composition of
+ * objects, a `.bfggis` — to the import of a project. What comes with later stages is told. Pure.
  */
 import { detectImportKind, IMPORT_TITLES, type ImportKind } from "../../shell/tree";
 
 /** Formats of the other object types arrive with their stages (ТЗ 7.8). */
-const LATER: Partial<Record<ImportKind, string>> = { wireframes: "Э8", omf: "Э11" };
+const LATER: Partial<Record<ImportKind, string>> = { omf: "Э11" };
+/** Drawings hold lines and wireframes; Datamine `.dm` — wireframes or strings: the core tells by the content. */
+const COMPOSED = new Set(["dxf", "dwg", "dm"]);
 
 export interface Route {
   /** tables of the drillhole wizard */
   holes: string[];
-  /** lines, points, rasters and their companions: the composition of «Импорт файлов» */
+  /** lines, points, rasters, wireframes and their companions: the composition of «Импорт файлов» */
   objects: string[];
   project: string[];
   /** «<имя> — <почему не загружается>», when the selection has no object to show them with */
@@ -22,8 +24,8 @@ export const baseName = (p: string): string => p.split(/[\\/]/).pop() ?? p;
 const ext = (p: string): string => (baseName(p).toLowerCase().split(".").pop() ?? "");
 
 /**
- * "auto" — by the extension (a DXF holds lines, points and text: its meshes are told in the composition);
- * "objects" — «Линии» and «Растры»: every file is an object, so a CSV is a table of points.
+ * "auto" — by the extension (a DXF or a DWG holds lines, points, text and wireframes: the composition shows both);
+ * "objects" — «Линии», «Растры», «Каркасы»: every file is an object, so a CSV is a table of points.
  */
 export function routeImport(paths: readonly string[], prefer: "auto" | "objects" = "auto"): Route {
   const out: Route = { holes: [], objects: [], project: [], skipped: [] };
@@ -31,7 +33,7 @@ export function routeImport(paths: readonly string[], prefer: "auto" | "objects"
   for (const p of paths) {
     const kind = detectImportKind([p]);
     if (kind === "project") out.project.push(p);
-    else if (prefer === "objects" || kind === "lines" || kind === "rasters" || ext(p) === "dxf") out.objects.push(p);
+    else if (prefer === "objects" || kind === "lines" || kind === "rasters" || kind === "wireframes" || COMPOSED.has(ext(p))) out.objects.push(p);
     else if (kind === "holes") out.holes.push(p);
     else rest.push({ path: p, kind });
   }

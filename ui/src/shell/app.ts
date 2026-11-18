@@ -24,7 +24,7 @@ import { formatArgs, type CommandRegistry } from "./registry";
 import { loadSettings, saveSettings } from "./settings";
 import { commandContext, INITIAL_STATE, Store, type AppState } from "./store";
 import { toggleAbout } from "./aboutInfo";
-import { openWindow } from "./windows";
+import { focusWindow, openWindow, updateWindow, windowStore } from "./windows";
 import { BOTTOM_TITLES, setPanel, type BottomTab, type PanelId } from "./workspace";
 
 export interface App {
@@ -49,17 +49,18 @@ export function createApp(opts: { persist?: boolean } = {}): App {
     lastProject: loaded?.settings.lastProject ?? null,
     projectsDir: loaded?.settings.projectsDir ?? null,
     heavyWorkers: loaded?.settings.heavyWorkers ?? 1,
+    odaConverter: loaded?.settings.odaConverter ?? null,
   });
   const palette = new Store<{ query: string | null }>({ query: null });
 
   if (loaded?.writable) {
     let last = "";
     store.subscribe(() => {
-      const { workspace, shortcuts, lastProject, projectsDir, heavyWorkers } = store.get();
-      const key = JSON.stringify([workspace, shortcuts, lastProject, projectsDir, heavyWorkers]);
+      const { workspace, shortcuts, lastProject, projectsDir, heavyWorkers, odaConverter } = store.get();
+      const key = JSON.stringify([workspace, shortcuts, lastProject, projectsDir, heavyWorkers, odaConverter]);
       if (key !== last) {
         last = key;
-        saveSettings({ version: 1, workspace, shortcuts, lastProject, projectsDir, heavyWorkers });
+        saveSettings({ version: 1, workspace, shortcuts, lastProject, projectsDir, heavyWorkers, odaConverter });
       }
     });
   }
@@ -97,7 +98,11 @@ export function createApp(opts: { persist?: boolean } = {}): App {
     palette.set({ query: typeof a.query === "string" ? a.query : "" });
   });
   registry.bind("settings.open", (a) => {
-    openWindow("settings", "Настройка", "form", { tab: a.tab ?? "shortcuts" }, ...viewport());
+    // one window: asked for a tab while it is open, it comes to the front on that tab (`asked` tells the calls apart)
+    const open = windowStore.get().windows.find((w) => w.kind === "settings");
+    if (!open) return void openWindow("settings", "Настройка", "form", { tab: a.tab ?? "shortcuts" }, ...viewport());
+    if (typeof a.tab === "string") updateWindow(open.id, { props: { tab: a.tab, asked: Number(open.props?.asked ?? 0) + 1 } });
+    focusWindow(open.id);
   });
   registry.bind("app.about", () => {
     toggleAbout();

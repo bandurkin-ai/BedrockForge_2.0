@@ -12,13 +12,16 @@ Parts. The triangles are stored along a Z-order curve (`wireframes/store.py`), a
 origin of a part is the centre of its extent rounded to a whole metre (float64), so the float32 offsets stay
 below 8000.5 m: a step of 2⁻¹¹ m, an error ≤ 0.25 mm per axis.
 
-Levels. 0 — every triangle; 1 and 2 — about 1/8 and 1/64 of them (pyfqmr, `geo/meshes.py::levels`). The
-vertices on the border of a part are the same float32 numbers at every level, so parts drawn at different
+Levels. 0 — every triangle; 1 and 2 — about 1/8 and 1/64 of them (`geo/meshes.py::levels`: flat regions
+are thinned in their planes, `geo/flat.py`, the rest is decimated by pyfqmr). The vertices on the border of a
+part are the same float32 numbers at every level, so parts drawn at different
 levels join without cracks; that is also why a level cannot go below what the border of its part needs
 (`triangles` of the answer is what it holds, `simplified` — whether it is fewer than `source_triangles`).
 Levels 1 and 2 are files `cache\\mesh\\<key>\\<k>-<lod>.bfa` (the answers themselves): built for the whole
 wireframe by the job that creates it (`build_cache`), or for one part on its first request; the folder is
-derived data and may be deleted. The key is the SHA-256 of the blobs, the part table and the limits above.
+derived data and may be deleted. The key is the SHA-256 of the blobs, the part table, the limits above and
+`ALGO` — the way the levels are made: levels cached by an earlier way are not used, and their folder goes
+when a part of the geometry is made anew on a request.
 
 The ETag of a part is the SHA-256 of its key: project, wireframe, creation time, blobs, part, level and the
 limits — not `objects.version`, so a new name, colour or DTM setting re-reads the manifest only.
@@ -50,7 +53,7 @@ from . import binary
 from .keys import FORMAT, _stamp, etag
 
 WIREFRAME = "wireframe"
-ALGO = 1  # the way levels are made: a change here makes new cache folders
+ALGO = 2  # the way levels are made: a change here makes new cache folders (2 — flat regions first, ADR 0013)
 MAX_U2_VERTICES = 65_536
 TABLES_KEPT = 8
 
@@ -81,12 +84,12 @@ def bad_lod() -> ApiError:
 # --- the state of a wireframe and its ETags --------------------------------------------------------------
 
 
-def cache_key(blobs: tuple[tuple[str, str], ...], render: dict[str, Any] | None) -> str:
-    """The name of the cache folder of a geometry: its blobs ((role, sha256), sorted), its part table and the
-    limits the levels are made with."""
+def cache_key(blobs: tuple[tuple[str, str], ...], render: dict[str, Any] | None, algo: int = ALGO) -> str:
+    """The name of the cache folder of a geometry: its blobs ((role, sha256), sorted), its part table, the
+    limits the levels are made with and the way they are made (`algo`: an earlier one names a stale folder)."""
     table = json.dumps(render, sort_keys=True, separators=(",", ":"))
     limits = [gm.PART_TRIANGLES, gm.MAX_SPAN_M, gm.LOD_RATIO, gm.LOD_LEVELS, gm.LOD_MIN_TRIANGLES]
-    text = json.dumps([FORMAT, ALGO, [list(b) for b in blobs], hashlib.sha256(table.encode()).hexdigest(), limits])
+    text = json.dumps([FORMAT, algo, [list(b) for b in blobs], hashlib.sha256(table.encode()).hexdigest(), limits])
     return hashlib.sha256(text.encode()).hexdigest()[:32]
 
 
@@ -200,6 +203,10 @@ def part_bodies(v: np.ndarray, t: np.ndarray, part: gm.MeshPart, lods: tuple[int
 # --- the cache of the simplified levels ------------------------------------------------------------------
 
 SIMPLIFIED = tuple(range(1, gm.LOD_LEVELS))
+#: a part this small without its levels in the cache is drawn whole: simplifying it saves nothing on the
+#: screen, and made here, in the process of the API, the first simplification (numba compiling, cold) held its
+#: requests for seconds (the demo opened, «Аудит» and «Новый проект» waited)
+SMALL_PART = 4096
 
 
 def cache_dir(folder: Path, key: str) -> Path:
@@ -239,22 +246,29 @@ def build_cache(
     t: np.ndarray,
     parts: list[gm.MeshPart],
     progress: Callable[[float], None] | None = None,
+    *,
+    missing_only: bool = False,
 ) -> dict[str, Any]:
     """The simplified levels of every part into `cache\\mesh\\<key>\\`. `progress` may raise to cancel: the
-    files already written stay (they are whole and belong to this geometry). Returns the triangles of every
-    level and the bytes written."""
+    files already written stay (they are whole and belong to this geometry). With `missing_only` a part whose
+    levels are in the folder, whole, is not made again («Проверить», ADR 0013 §5). Returns the triangles of
+    every level, the bytes of the levels and `built` — the parts that were made."""
     counts = [0] * gm.LOD_LEVELS
-    size = 0
+    size = built = 0
     for p in parts:
-        bodies = part_bodies(v, t, p, SIMPLIFIED)
+        found = {lod: _read(_cache_file(folder, key, p.k, lod), p.k, lod) for lod in SIMPLIFIED if missing_only}
+        ready = {lod: body for lod, body in found.items() if body is not None}
+        bodies = ready if len(ready) == len(SIMPLIFIED) else part_bodies(v, t, p, SIMPLIFIED)
+        built += bodies is not ready
         counts[0] += p.count
         for lod, body in bodies.items():
-            _write(_cache_file(folder, key, p.k, lod), body)
+            if bodies is not ready:
+                _write(_cache_file(folder, key, p.k, lod), body)
             counts[lod] += int(binary.decode(body)[0]["triangles"])
             size += len(body)
         if progress:
             progress((p.k + 1) / len(parts))
-    return {"parts": len(parts), "triangles": counts, "bytes": size}
+    return {"parts": len(parts), "triangles": counts, "bytes": size, "built": built}
 
 
 def drop_cache(folder: Path, key: str) -> None:
@@ -304,8 +318,11 @@ def parts_of(project: Any, state: MeshState) -> list[gm.MeshPart]:
     return built
 
 
-def _bodies(project: Any, state: MeshState, part: gm.MeshPart, lods: tuple[int, ...]) -> dict[int, bytes]:
-    """Read what a part needs — its rows of the triangle file and the vertices they use — and encode it."""
+def _bodies(
+    project: Any, state: MeshState, part: gm.MeshPart, lods: tuple[int, ...], *, whole_only: bool = False
+) -> dict[int, bytes]:
+    """Read what a part needs — its rows of the triangle file and the vertices they use — and encode it;
+    `whole_only` — every level asked for is the whole part (a small one, `SMALL_PART`)."""
     xyz, tri = _paths(project, state)
     t = np.fromfile(tri, dtype="<i4", count=3 * part.count, offset=12 * part.first).reshape(-1, 3)
     if len(t) != part.count:
@@ -315,6 +332,9 @@ def _bodies(project: Any, state: MeshState, part: gm.MeshPart, lods: tuple[int, 
         if int(t.max()) >= len(v) or int(t.min()) < 0:
             raise broken()
         whole = gm.make_part(part.k, 0, part.count, part.bbox)  # `t` holds the rows of this part only
+        if whole_only:
+            local, local_t = gm.part_mesh(v, t, whole)
+            return {lod: encode_part(part, lod, local, local_t) for lod in lods}
         return part_bodies(v, t, whole, lods)
     finally:
         del v  # the mapping closes with its last reference (Windows keeps a mapped file locked)
@@ -364,6 +384,8 @@ def part(project: Any, state: MeshState, k: int, lod: int) -> bytes:
     hit = _read(path, k, lod)
     if hit is not None:
         return hit
+    if p.count <= SMALL_PART:  # not made here: drawn whole until «Проверить» or an import makes its levels
+        return _bodies(project, state, p, (lod,), whole_only=True)[lod]
     with _building:  # four parts asked at once: pyfqmr holds the interpreter anyway
         hit = _read(path, k, lod)
         if hit is not None:
@@ -371,4 +393,6 @@ def part(project: Any, state: MeshState, k: int, lod: int) -> bytes:
         bodies = _bodies(project, state, p, SIMPLIFIED)
         for level, body in bodies.items():
             _write(_cache_file(project.folder, key, k, level), body)
+        for algo in range(1, ALGO):  # the levels of this geometry made an earlier way: nobody reads them
+            drop_cache(project.folder, cache_key(state.blobs, state.render, algo))
     return bodies[lod]

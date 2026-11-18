@@ -290,8 +290,13 @@ def import_trenches(ctx: JobContext) -> dict[str, Any]:
         for spec, name, fmt, target, numbers in logged:
             res = conn.execute(
                 sa.insert(import_log).values(
-                    object_id=set_id, job_id=ctx.id, file_name=name, format=fmt, target=target,
-                    mapping={k: v for k, v in spec.items() if k != "path"}, counts=numbers,
+                    object_id=set_id,
+                    job_id=ctx.id,
+                    file_name=name,
+                    format=fmt,
+                    target=target,
+                    mapping={k: v for k, v in spec.items() if k != "path"},
+                    counts=numbers,
                     created_at=dialect.utcnow(),
                 )  # fmt: skip
             )

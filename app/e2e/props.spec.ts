@@ -162,7 +162,14 @@ test("properties: raster shift and section, layer attributes and pick, DTM windo
     await expect.poll(async () => (await layerNow()).color).toBe("#ff8800");
     await lp.getByRole("button", { name: "Без цвета" }).click();
     await expect.poll(async () => (await layerNow()).color).toBeNull();
-    // a click on a point in the 3D window: its row of attributes (the north-west of the grid: clear of the mini-plan)
+    // a click on a point in the 3D window: its row of attributes (the north-west of the grid: clear of the mini-plan);
+    // the other layers of the demo are hidden meanwhile — on the smaller window of the Windows runner a line of the
+    // demo lay within the pick tolerance of the point and was taken instead («Линия № 1»)
+    const others: [string, number][] = [
+      ...files.flatMap((f) => f.layers.filter((l) => l.id !== relief.id).map((l): [string, number] => ["lines", l.id])),
+      ...((await api("GET", "/wireframes")).body.wireframes as { id: number }[]).map((w): [string, number] => ["wireframe", w.id]),
+    ];
+    for (const [layer, id] of others) expect((await run(page, "layer.show", { layer, id, visible: false })).ok).toBe(true);
     expect((await run(page, "scene.view", { view: "top" })).ok).toBe(true);
     expect((await run(page, "scene.fit", {})).ok).toBe(true);
     await waitFrame(page);
@@ -174,6 +181,7 @@ test("properties: raster shift and section, layer attributes and pick, DTM windo
     const picked = lp.getByTestId("props-picked-line");
     await expect(picked).toContainText("Точка № 16");
     await expect(picked).toContainText("Репер 16");
+    for (const [layer, id] of others) expect((await run(page, "layer.show", { layer, id, visible: true })).ok).toBe(true);
     await expect(attrs.locator("tr").filter({ hasText: "Репер 16" })).toHaveClass(/picked/); // its row of the table is marked
     await lp.getByRole("button", { name: "Переименовать…" }).click();
     const rename = page.getByRole("dialog", { name: "Переименовать: слой линий" });

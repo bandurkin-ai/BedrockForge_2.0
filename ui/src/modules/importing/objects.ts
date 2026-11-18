@@ -1,7 +1,9 @@
 /**
- * «Импорт файлов» for lines, points and rasters (ТЗ 7.8, 7.18, 7.19; ADR 0011 §3, §5): the composition of the
- * chosen files (`POST /import/objects/inspect` — nothing is written), «Уровень растров по Z» and the start of
- * the job `import.objects`. The rules are plain functions (vitest); `ObjectsWizard` holds the state. No React.
+ * «Импорт файлов» for lines, points, rasters and wireframes (ТЗ 7.8, 7.18, 7.19, 7.21; ADR 0011 §3, §5; ADR 0013
+ * §5–§6): the composition of the chosen files (`POST /import/objects/inspect` — nothing is written), «Уровень
+ * растров по Z» and the start of the job `import.objects`. A DXF or a DWG gives its lines and its wireframes at
+ * once; Datamine — the field that divides it and «предварительно». The rules are plain functions (vitest);
+ * `ObjectsWizard` holds the state. No React.
  */
 import { api, CoreError } from "../../shell/api";
 import { logError, logStep, type OpLog } from "../../shell/opLog";
@@ -38,19 +40,42 @@ export interface RasterEntry {
   sidecars: string[];
 }
 
+/** A wireframe of a file as the composition tells it; `points` / `triangles` — null when the file does not
+ * tell without reading the geometry; `error` — a wireframe that will not load (the others of the file will). */
+export interface WireframeEntry {
+  key: number | string;
+  name: string;
+  points: number | null;
+  triangles: number | null;
+  color: string | null;
+  attrs: { name: string; value?: unknown }[];
+  extent: number[] | null;
+  warnings: string[];
+  error: { code: string; message: string; hint: string } | null;
+}
+
 export interface FileOk {
   path: string;
   file: string;
   ok: true;
   format: string;
   label: string;
-  kind: "lines" | "points" | "raster";
+  /** "lines" — also a drawing with wireframes (DXF, DWG): its `wireframes` are loaded with its layers */
+  kind: "lines" | "points" | "raster" | "wireframes";
   encoding: string | null;
   crs: { name: string | null; epsg: number | null; wkt: string | null } | null;
   sidecars: string[];
   layers: LayerEntry[];
   rasters: RasterEntry[];
-  totals: { layers: number; lines: number; points: number; vertices: number; rasters: number };
+  /** the first of them (the core cuts a long list); every one that has no `error` is loaded */
+  wireframes: WireframeEntry[];
+  totals: { layers: number; lines: number; points: number; vertices: number; rasters: number; wireframes: number; triangles: number };
+  /** wireframes of the file that will not load */
+  unread: number;
+  /** the reader was not checked on real files (Datamine) */
+  preliminary: boolean;
+  /** option of the file → the fields to choose it from (`split_by`, `layer_field`) */
+  choices: Record<string, string[]>;
   warnings: string[];
   left_out: { what: string; count: number; reason: string }[];
   size: number;
@@ -82,6 +107,8 @@ export interface Totals {
   points: number;
   vertices: number;
   rasters: number;
+  wireframes: number;
+  triangles: number;
 }
 
 export interface Composition {
@@ -94,13 +121,29 @@ export interface Composition {
   section: Record<string, number> | null;
 }
 
-/** How a file is read when it is not to be guessed: the encoding; the columns of a table of points. */
+/** How a file is read when it is not to be guessed: the encoding; the columns of a table of points; Datamine —
+ * the field that divides wireframes, the field whose values are layers of strings ("" — none). */
 export interface FileOptions {
   encoding?: string;
   x?: string;
   y?: string;
   z?: string;
+  split_by?: string;
+  layer_field?: string;
 }
+
+/** The choices of the wizard for a file: option → its Russian label. */
+export const CHOICE_TITLES: Record<string, { label: string; none: string }> = {
+  split_by: { label: "Делить на каркасы по полю", none: "не делить: один каркас" },
+  layer_field: { label: "Слои по полю", none: "один слой" },
+};
+
+/** The formats whose text the encoding changes (the others are binary, or tell their encoding themselves). */
+const NO_ENCODING = new Set(["tridb", "obj", "stl", "surpac_dtm", "dwg", "raster"]);
+export const takesEncoding = (f: FileEntry): boolean => !f.ok || !NO_ENCODING.has(f.format);
+
+/** A DWG without ODA File Converter: «Настройка › Внешние программы» (ADR 0009, ADR 0013 §6). */
+export const needsConverter = (f: FileEntry): boolean => !f.ok && f.error.code === "oda_not_found";
 
 // ---- «Уровень растров по Z» (ТЗ 7.19) -------------------------------------------------------------------
 
@@ -189,36 +232,42 @@ export function initialObjects(): ObjectsState {
 
 const n = (v: number): string => v.toLocaleString("ru-RU");
 
-/** «Файлов: 2 · слоёв: 5 · линий: 120 · вершин: 3 400 · точек: 25 · растров: 1 · не прочитано: 1» */
+const COUNTED = [["layers", "слоёв"], ["lines", "линий"], ["vertices", "вершин"], ["points", "точек"], ["rasters", "растров"], ["wireframes", "каркасов"], ["triangles", "треугольников"]] as const;
+
+/** «Файлов: 2 · слоёв: 5 · линий: 120 · вершин: 3 400 · точек: 25 · растров: 1 · каркасов: 66 · треугольников:
+ * 3 590 · не прочитано: 1» */
 export function totalsText(t: Totals): string {
   if (!t.files && !t.failed) return "Нет файлов для загрузки";
   const parts = [`Файлов: ${n(t.files)}`];
-  for (const [key, label] of [["layers", "слоёв"], ["lines", "линий"], ["vertices", "вершин"], ["points", "точек"], ["rasters", "растров"]] as const) {
-    if (t[key]) parts.push(`${label}: ${n(t[key])}`);
-  }
+  for (const [key, label] of COUNTED) if (t[key]) parts.push(`${label}: ${n(t[key])}`);
   if (t.failed) parts.push(`не прочитано: ${n(t.failed)}`);
   return parts.join(" · ");
 }
 
-/** «3 слоя · 120 линий · 3 400 вершин» of a file of lines or points. */
+/** «слоёв: 3 · линий: 120 · вершин: 3 400» of a file of lines or points; «каркасов: 66 · треугольников: 3 590 ·
+ * не загрузятся: 1» of its wireframes (a drawing has both). */
 export function fileCounts(f: FileOk): string {
   const t = f.totals;
-  const parts = [`слоёв: ${n(t.layers)}`];
+  const parts: string[] = [];
+  if (t.layers || !f.wireframes.length) parts.push(`слоёв: ${n(t.layers)}`);
   if (t.lines) parts.push(`линий: ${n(t.lines)}`);
   if (t.vertices) parts.push(`вершин: ${n(t.vertices)}`);
   if (t.points) parts.push(`точек: ${n(t.points)}`);
+  if (t.wireframes || f.unread) parts.push(`каркасов: ${n(t.wireframes)}`);
+  if (t.triangles) parts.push(`треугольников: ${n(t.triangles)}`);
+  if (f.unread) parts.push(`не загрузятся: ${n(f.unread)}`);
   return parts.join(" · ");
 }
 
 function sumTotals(files: readonly FileEntry[]): Totals {
-  const t: Totals = { files: 0, failed: 0, layers: 0, lines: 0, points: 0, vertices: 0, rasters: 0 };
+  const t: Totals = { files: 0, failed: 0, layers: 0, lines: 0, points: 0, vertices: 0, rasters: 0, wireframes: 0, triangles: 0 };
   for (const f of files) {
     if (!f.ok) {
       t.failed++;
       continue;
     }
     t.files++;
-    for (const k of ["layers", "lines", "points", "vertices", "rasters"] as const) t[k] += f.totals[k];
+    for (const [k] of COUNTED) t[k] += f.totals[k] ?? 0;
   }
   return t;
 }
@@ -268,11 +317,18 @@ export function startBody(s: ObjectsState): { files: string[]; options: Record<s
 
 const errorText = (e: unknown): string => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
 
+/** A DWG is read through ODA File Converter: the core is to hold the path of «Настройка» before it reads one. */
+export const hasDrawing = (paths: readonly string[]): boolean => paths.some((p) => /\.dwg$/i.test(p));
+
 export class ObjectsWizard {
   readonly store = new Store<ObjectsState>(initialObjects());
   private seq = 0;
 
-  constructor(readonly log: OpLog) {}
+  /** `syncConverter` — gives the core the ODA File Converter of «Настройка» (a restarted core has forgotten it). */
+  constructor(
+    readonly log: OpLog,
+    private readonly syncConverter?: () => Promise<unknown>,
+  ) {}
 
   /** Adds files to the selection and reads the composition of all of it (companions pair across the selection). */
   async add(paths: readonly string[]): Promise<void> {
@@ -310,14 +366,18 @@ export class ObjectsWizard {
     }
     this.store.set({ busy: true, error: null });
     try {
+      if (this.syncConverter && hasDrawing(s.paths)) await this.syncConverter().catch(() => undefined); // the file tells what is wrong
+      if (mine !== this.seq) return;
       // the level is not sent: the composition shows the heights of the georeference, the level is applied on top
       const { files, options } = startBody(s);
       const r = await api.post<Composition>("/import/objects/inspect", { files, options, section: true });
       if (mine !== this.seq) return;
       logStep(this.log, `Состав: ${totalsText(r.totals)}`);
       for (const f of r.files) {
-        if (f.ok) logStep(this.log, `  ${f.file}: ${f.label}${f.rasters.length ? "" : `, ${fileCounts(f)}`}${f.warnings.length ? `; замечаний ${f.warnings.length}` : ""}`);
-        else logStep(this.log, `  ${f.file}: не прочитан — ${f.error.message} ${f.error.hint}`.trim());
+        if (f.ok) {
+          logStep(this.log, `  ${f.file}: ${f.label}${f.rasters.length ? "" : `, ${fileCounts(f)}`}${f.preliminary ? " (предварительно)" : ""}${f.warnings.length ? `; замечаний ${f.warnings.length}` : ""}`);
+          for (const w of f.wireframes) if (w.error) logStep(this.log, `    каркас «${w.name}» не загрузится: ${w.error.message} ${w.error.hint}`.trimEnd());
+        } else logStep(this.log, `  ${f.file}: не прочитан — ${f.error.message} ${f.error.hint}`.trim());
       }
       for (const x of r.rest) logStep(this.log, `  ${x.file}: не загрузится — ${x.message}`);
       this.store.set({ composition: r, busy: false });

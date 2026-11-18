@@ -5,6 +5,10 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
+# the quick worker of a test core does not warm the kernels of the simplified copies of wireframes: compiling
+# for seconds there would hold its jobs (cancels, ticks) the tests time; `test_jobs` warms them directly
+os.environ.setdefault("BF_NO_WARMUP", "1")
+
 from bf_core.api.app import CoreState, create_app
 
 TOKEN = "test-token-0123456789"

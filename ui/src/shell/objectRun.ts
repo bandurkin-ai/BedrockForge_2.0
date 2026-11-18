@@ -3,12 +3,24 @@
  * of a command that needs a project, a failure told also in the status bar (the ribbon, the palette and the
  * keys have no other place for it), the «Задания» tab opened for a started export. No React.
  */
+import { CoreError } from "./api";
 import type { App } from "./app";
 import type { Command, CommandContext } from "./commands";
 import { errorText } from "./props";
 import { setPanel } from "./workspace";
 
 export const needProject = (ctx: CommandContext): string | null => (ctx.hasProject ? null : "Откройте или создайте проект");
+
+/** The reason of a command that writes to the project: none open, or it is open only for reading. */
+export const needWritable =
+  (app: App) =>
+  (ctx: CommandContext): string | null =>
+    needProject(ctx) ?? (app.store.get().projectReadOnly ? "Проект открыт только для чтения" : null);
+
+/** A refusal of a command in the form of the errors of the core: {code, message, hint} in Russian (ТЗ 17). */
+export function refusal(code: string, message: string, hint: string): CoreError {
+  return new CoreError(0, code, message, hint);
+}
 
 export const needSection = (ctx: CommandContext): string | null => needProject(ctx) ?? (ctx.hasSection ? null : "Сначала проведите линию разреза");
 

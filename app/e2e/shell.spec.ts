@@ -1,5 +1,5 @@
 // Э1 shell acceptance (ТЗ 7.0.14) on the real Electron window.
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -129,6 +129,108 @@ test("palette runs commands; own hotkey: conflict dialog, «· изменено�
     await page.keyboard.press("Control+KeyK");
     await page.getByLabel("Поиск команды").fill("вписать");
     await expect(page.getByRole("option").first()).toContainText("T");
+  } finally {
+    await close(app);
+  }
+});
+
+// Э8, подшаг 8.21 (ADR 0013 §5–§6; ТЗ 7.35 Д-13): the path of ODA File Converter. A file with the name of the
+// converter stands for it — the program is looked for, never started (the real one is checked by hand on Windows).
+test("«Настройка › Внешние программы»: ODA File Converter — choose, check, a wrong path, restart, clear", async () => {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-oda-"));
+  const folder = path.join(userData, "Программы и утилиты", "ODAFileConverter 26.10.0"); // Cyrillic, spaces, the version
+  fs.mkdirSync(folder, { recursive: true });
+  const exe = path.join(folder, process.platform === "win32" ? "ODAFileConverter.exe" : "ODAFileConverter");
+  fs.writeFileSync(exe, "fake", { mode: 0o755 });
+  const settingsFile = () => JSON.parse(fs.readFileSync(path.join(userData, "settings.json"), "utf8")) as { odaConverter: string | null };
+  type Oda = { configured: string | null; found: boolean; path: string | null; auto: string | null };
+  const core = (page: Page) =>
+    page.evaluate(async () => {
+      const c = window.bf!.core()!;
+      return (await (await fetch(`${c.baseUrl}/api/v1/tools/oda`, { headers: { "X-BF-Token": c.token } })).json()) as Oda;
+    });
+  const openTab = async (page: Page) => {
+    await page.keyboard.press("Control+KeyK");
+    await page.getByLabel("Поиск команды").fill("настройка");
+    await page.keyboard.press("Enter");
+    const settings = page.getByRole("dialog", { name: "Настройка" });
+    await settings.getByRole("tab", { name: "Внешние программы" }).click();
+    return settings;
+  };
+
+  let { app, page } = await launch({}, userData);
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    const installed = (await core(page)).auto !== null; // a developer's PC may have the real converter
+    const settings = await openTab(page);
+    const field = settings.getByLabel("Путь к ODA File Converter");
+    const state = settings.getByTestId("oda-status");
+    await expect(field).toHaveValue("");
+    await expect(state).toHaveAttribute("data-found", String(installed));
+    if (!installed) {
+      await expect(state).toHaveText("ODA File Converter не найден.");
+      await expect(settings).toContainText("бесплатная программа Open Design Alliance");
+      await expect(settings).toContainText("сохраните чертёж в DXF");
+    }
+    expect(await settings.locator("a").count()).toBe(0); // texts only, no links (ТЗ 17.4.1)
+
+    // «Выбрать…»: the file dialog of the system, programs first on Windows
+    await app.evaluate(({ dialog }, f) => {
+      dialog.showOpenDialog = (async (_w: unknown, o: { filters?: { extensions: string[] }[] }) => {
+        (globalThis as { bfOdaFilters?: string[][] }).bfOdaFilters = (o.filters ?? []).map((x) => x.extensions);
+        return { canceled: false, filePaths: [f] };
+      }) as unknown as typeof dialog.showOpenDialog;
+    }, exe);
+    await settings.getByRole("button", { name: "Выбрать…" }).click();
+    await expect(state).toHaveAttribute("data-found", "true");
+    await expect(state).toContainText("ODA File Converter найден, версия 26.10.0.");
+    await expect(state).toContainText(`Программа: ${exe}`);
+    await expect(field).toHaveValue(exe);
+    const filters = await app.evaluate(() => (globalThis as { bfOdaFilters?: string[][] }).bfOdaFilters);
+    expect(filters).toEqual(process.platform === "win32" ? [["exe"], ["*"]] : [["*"]]);
+    expect(await core(page)).toMatchObject({ configured: exe, found: true, path: exe });
+
+    // a typed path is not saved until it is checked; one that is not a full path is refused and changes nothing
+    await field.fill("ODAFileConverter");
+    await expect(settings.getByText("Путь изменён — нажмите «Проверить», чтобы запомнить его.")).toBeVisible();
+    await settings.getByRole("button", { name: "Проверить" }).click();
+    await expect(state).toContainText("Путь к ODA File Converter указан неверно.");
+    expect((await core(page)).configured).toBe(exe);
+
+    // the folder of the converter was updated away: said so; nothing else on the PC — not found
+    const gone = path.join(userData, "ODAFileConverter 25.1.0");
+    await field.fill(gone);
+    await field.press("Enter");
+    await expect(field).toHaveValue(gone);
+    await expect(state).toContainText(installed ? "По указанному пути программы нет. Будет использована найденная" : "ODA File Converter не найден: по указанному пути программы нет.");
+
+    // the folder of the program is enough
+    await field.fill(`"${folder}"`); // «Копировать как путь» of Explorer
+    await field.press("Enter");
+    await expect(state).toContainText(`Программа: ${exe}`);
+    await expect(field).toHaveValue(folder);
+    await page.screenshot({ path: shot("settings-tools.png") });
+    await page.waitForTimeout(700); // debounced settings write
+    expect(settingsFile().odaConverter).toBe(folder);
+  } finally {
+    await close(app);
+  }
+
+  // a new core knows nothing: the interface sends the path of the settings when it comes up
+  ({ app, page } = await launch({}, userData));
+  try {
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    await expect.poll(async () => (await core(page)).configured, { timeout: 30_000 }).toBe(folder);
+    expect(await core(page)).toMatchObject({ found: true, path: exe });
+    const settings = await openTab(page);
+    await expect(settings.getByLabel("Путь к ODA File Converter")).toHaveValue(folder);
+    await expect(settings.getByTestId("oda-status")).toContainText("версия 26.10.0");
+    await settings.getByRole("button", { name: "Очистить" }).click();
+    await expect(settings.getByLabel("Путь к ODA File Converter")).toHaveValue("");
+    await expect(settings.getByRole("button", { name: "Очистить" })).toHaveCount(0);
+    expect((await core(page)).configured).toBeNull();
+    await page.waitForTimeout(700);
+    expect(settingsFile().odaConverter).toBeNull();
   } finally {
     await close(app);
   }

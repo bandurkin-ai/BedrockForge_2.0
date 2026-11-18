@@ -104,7 +104,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           ],
         },
         { title: "Ассистент", items: [assistant] },
-        { title: "Настройка", items: [{ command: "settings.open", label: "Настройка", icon: "gear", hint: "Быстрые клавиши, папка данных проектов, число исполнителей" }, { command: "license.open", label: "Лицензия", icon: "audit", small: true }, { command: "app.about", label: "О производителе", icon: "info", small: true }] },
+        { title: "Настройка", items: [{ command: "settings.open", label: "Настройка", icon: "gear", hint: "Быстрые клавиши, папка данных проектов, число исполнителей, внешние программы" }, { command: "license.open", label: "Лицензия", icon: "audit", small: true }, { command: "app.about", label: "О производителе", icon: "info", small: true }] },
       ],
     },
     {
@@ -188,7 +188,8 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           title: "Правка каркасов",
           items: [
             { command: "model.repair", label: "Исправить", icon: "audit" },
-            { command: "model.self_intersections", label: "Самопересечения", icon: "search", small: true },
+            { command: "wireframe.check", label: "Проверить", icon: "audit", hint: "Проверка выбранного каркаса или ЦТМ: согласованность нормалей, самопересечения, копии для показа; итог — в «Свойствах»", small: true, unavailable: NO_OBJECT },
+            { command: "model.self_intersections", label: "Самопересечения", icon: "search", hint: "Пересекающиеся треугольники выбранного каркаса — красным в 3D-окне, числа — в «Свойствах»", small: true, unavailable: NO_OBJECT },
             { command: "model.simplify", label: "Упростить", icon: "edSimplify", small: true },
             { command: "model.smooth", label: "Сгладить", icon: "edSmooth", small: true },
             { command: "model.merge", label: "В один объект", icon: "plus", small: true },
@@ -202,8 +203,17 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "model.boolean", label: "Булева", icon: "quad" },
             { command: "model.clip", label: "Обрезать", icon: "section" },
             { command: "model.intersection", label: "Линии пересечения", icon: "lines", small: true },
-            { command: "wireframe.export", args: { format: "dxf" }, label: "Каркас в DXF", icon: "export", small: true },
-            { command: "wireframe.export", args: { format: "obj" }, label: "Каркас в OBJ", icon: "export", small: true },
+          ],
+        },
+        {
+          title: "Экспорт каркасов",
+          items: [
+            { command: "wireframe.export", label: "Каркас в TRIDB", icon: "export", hint: "Окно «Экспорт каркасов»: выбранный каркас или ЦТМ в Micromine TRIDB; там же — DXF, DWG, OBJ, STL, Surpac DTM и выбор каркасов", small: true },
+            { command: "wireframe.export", args: { format: "dxf" }, label: "Каркас в DXF", icon: "export", hint: "Каркасы в AutoCAD DXF (сетки POLYFACE); в окне — выбор каркасов", small: true },
+            { command: "wireframe.export", args: { format: "dwg" }, label: "Каркас в DWG", icon: "export", hint: "Каркасы в AutoCAD DWG через ODA File Converter; в окне — версия DWG", small: true },
+            { command: "wireframe.export", args: { format: "obj" }, label: "Каркас в OBJ", icon: "export", hint: "Каркасы в Wavefront OBJ", small: true },
+            { command: "wireframe.export", args: { format: "stl" }, label: "Каркас в STL", icon: "export", hint: "Каркасы в STL: двоичный (float32) или текстовый", small: true },
+            { command: "wireframe.export", args: { format: "dtm" }, label: "Каркас в Surpac DTM", icon: "export", hint: "Каркасы в Surpac DTM с файлом точек STR", small: true },
           ],
         },
         {

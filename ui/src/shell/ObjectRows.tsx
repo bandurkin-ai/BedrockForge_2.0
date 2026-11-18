@@ -20,9 +20,11 @@ export interface TreeItem {
   folder: string | null;
 }
 
-/** Objects of a section in their folders; `row` draws an object at its level. */
-export function FolderRows<T extends TreeItem>({ items, level = 2, row }: { items: readonly T[]; level?: number; row: (item: T, level: number) => ReactNode }) {
+/** Objects of a section in their folders; `row` draws an object at its level, `folderMenu` — the context menu
+ * of a folder by its path («А/Б»), e.g. the export of every wireframe of an imported file. */
+export function FolderRows<T extends TreeItem>({ items, level = 2, row, folderMenu }: { items: readonly T[]; level?: number; row: (item: T, level: number) => ReactNode; folderMenu?: (path: string) => TreeAction[] }) {
   const [collapsed, setCollapsed] = useState<string[]>([]);
+  const menu = useRowMenu();
   const root = useMemo(() => buildFolders(items.map((o) => ({ key: String(o.id), name: o.name, folder: o.folder ?? "" }))), [items]);
   const byKey = new Map(items.map((o) => [String(o.id), o]));
   const rows = (node: FolderNode, at: number): ReactNode[] => [
@@ -35,6 +37,8 @@ export function FolderRows<T extends TreeItem>({ items, level = 2, row }: { item
           level={at}
           expanded={open}
           onToggle={() => setCollapsed((c) => toggleExpanded(c, f.path))}
+          onContextMenu={folderMenu ? menu(folderMenu(f.path), () => undefined) : undefined}
+          testId={folderMenu ? `tree-folder-${f.path}` : undefined}
           glyph={
             <span className={css.glyph} aria-hidden>
               <Icon name="folder" size={13} />

@@ -14,6 +14,7 @@ import { nonBackgroundPixels, probeWebGL2, Renderer, sceneBytes, type FrameStats
 import { FpsTracker } from "./core/stats";
 import { boxFromBbox6, contentBox, fitBox, scaleZ, union, windowTest, type Box3, type Extent } from "./core/bounds";
 import { FirstView } from "./core/firstView";
+import { revealCamera } from "./core/reveal";
 import { screenPriority } from "./core/cull";
 import { LayerSet } from "./core/layers";
 import { rebaseCamera, SceneOrigin } from "./core/sceneOrigin";
@@ -190,9 +191,25 @@ export class Scene {
 
   /** «Вписать»: everything visible (with clipping — in the window) without turning the view. */
   fit(): void {
+    this.take(fit(this.rig.state(), this.fitBox(), this.rig.options()));
+  }
+
+  /** A camera a command sets: the first view and a smooth turn stop. */
+  private take(cam: CameraState): void {
     this.first.stop();
     this.turn.cancel();
-    this.rig.apply(fit(this.rig.state(), this.fitBox(), this.rig.options()));
+    this.rig.apply(cam);
+  }
+
+  /** An import arrives: no refit of the first view; `reveal` — fitted to boxes not seen («Показать загруженное»). */
+  holdView(): void {
+    this.first.stop();
+  }
+  reveal(bboxes: ArrayLike<number>[]): boolean {
+    const o = bboxes.length ? this.origin.ensure(bboxes[0]) : null;
+    const cam = o && revealCamera(this.rig.state(), this.rig.options(), bboxes.map((b) => boxFromBbox6(b, o)));
+    if (cam) this.take(cam);
+    return !!cam;
   }
 
   /** A smooth turn to look along `from` (gizmo): centre and scale kept, a new turn stops the old. */
@@ -219,9 +236,7 @@ export class Scene {
     return o ? toWorld(this.rig.state(), o, this.vexag, !this.rig.perspective, this.rig.persp.fov) : null;
   }
   setWorldCamera(c: WorldCamera): void {
-    this.first.stop();
-    this.turn.cancel();
-    this.rig.apply(fromWorld(c, this.origin.value ?? this.origin.ensure([...c.target, ...c.target]), this.vexag, this.rig.state()));
+    this.take(fromWorld(c, this.origin.value ?? this.origin.ensure([...c.target, ...c.target]), this.vexag, this.rig.state()));
   }
 
   /** Turns the view by `rad` about the vertical through its centre (smoke scenario, frame benchmark). */
@@ -365,22 +380,9 @@ export class Scene {
 
   debug(): SceneDebug {
     const cam = this.rig.state();
-    return {
-      frames: this.loop.frames,
-      idle: this.idle,
-      lost: this.renderer.lost,
-      stats: this.stats,
-      camera: { ...cam, dir: viewDirection(cam) },
-      perspective: this.rig.perspective,
-      vexag: this.vexag,
-      clipPlanes: this.clipPlanes.length,
-      section: this.section,
-      gpu: this.renderer.info,
-      sets: [...this.holeSets.keys()],
-      layers: this.layers.keys(),
-      segments: this.totalSegments(),
-      pickMs: this.pickMs,
-    };
+    const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, clipPlanes: this.clipPlanes.length, section: this.section };
+    const content = { gpu: this.renderer.info, sets: [...this.holeSets.keys()], layers: this.layers.keys(), segments: this.totalSegments(), pickMs: this.pickMs };
+    return { frames: this.loop.frames, idle: this.idle, lost: this.renderer.lost, stats: this.stats, ...view, ...content };
   }
 
   /** A snapshot pass: pixels that differ from the background. */

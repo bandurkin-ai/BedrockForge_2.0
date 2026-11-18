@@ -1,11 +1,13 @@
-/** Commands of import (ТЗ 7.7, 7.8; ADR 0011 §5): the drillhole wizard (and its mode «Канавы по полилиниям»),
- * «Импорт файлов» with the composition of lines, points and rasters, «Линии» and «Растры». */
+/** Commands of import (ТЗ 7.7, 7.8; ADR 0011 §5; ADR 0013 §6): the drillhole wizard (and its mode «Канавы по
+ * полилиниям»), «Импорт файлов» with the composition of lines, points, rasters and wireframes, «Линии»,
+ * «Каркасы» and «Растры»; the wireframes an import stored are checked (`afterImport.ts`). */
 import { bridge } from "../../bridge";
 import type { App } from "../../shell/app";
 import { showMessage } from "../../shell/dialogs";
 import { openWindow } from "../../shell/windows";
 import { onJobFinished } from "../jobs/state";
 import { loadSets } from "../tables/state";
+import { watchImports } from "./afterImport";
 import { routeImport } from "./route";
 import { MODE_TITLES, type WizardMode } from "./wizard";
 
@@ -18,13 +20,15 @@ export function openDrillholeWizard(paths: string[] = [], mode: WizardMode = "ho
   openWindow("import-drillholes", MODE_TITLES[mode], "normal", Object.keys(props).length ? props : undefined, ...viewport());
 }
 
-/** The composition of lines, points and rasters; `pick` — what «Добавить файлы…» of the window offers. */
-export function openObjectsWizard(paths: string[], pick: "objects" | "lines" | "rasters" = "objects"): void {
+export type ObjectsPick = "objects" | "lines" | "rasters" | "wireframes";
+
+/** The composition of lines, points, rasters and wireframes; `pick` — what «Добавить файлы…» of the window offers. */
+export function openObjectsWizard(paths: string[], pick: ObjectsPick = "objects"): void {
   openWindow("import-objects", "Импорт файлов", "normal", { paths, ...(pick === "objects" ? {} : { pick }) }, ...viewport());
 }
 
-/** Files from the dialog or dropped from Explorer: drillhole tables go to their wizard, lines, points and
- * rasters to the composition of «Импорт файлов», a `.bfggis` to the project import; what is not loaded yet is
+/** Files from the dialog or dropped from Explorer: drillhole tables go to their wizard, lines, points, rasters
+ * and wireframes to the composition of «Импорт файлов», a `.bfggis` to the project import; what is not loaded yet is
  * told with its stage (ТЗ 7.8). */
 export async function importPaths(app: App, paths: string[], prefer: "auto" | "objects" = "auto"): Promise<string> {
   const route = routeImport(paths, prefer);
@@ -50,6 +54,7 @@ export function bindImporting(app: App): void {
   onJobFinished((job) => {
     if (job.kind === "import.trenches" && job.status === "done") void loadSets(true);
   });
+  watchImports();
   app.registry.bind(
     "import.open",
     (a) => {
@@ -68,7 +73,7 @@ export function bindImporting(app: App): void {
     },
     needProject,
   );
-  for (const [command, pick] of [["lines.upload", "lines"], ["rasters.upload", "rasters"]] as const) {
+  for (const [command, pick] of [["lines.upload", "lines"], ["wireframes.upload", "wireframes"], ["rasters.upload", "rasters"]] as const) {
     app.registry.bind(
       command,
       async () => {

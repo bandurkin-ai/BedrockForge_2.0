@@ -156,16 +156,19 @@ def test_part_mesh_is_exact_and_float32_is_within_a_quarter_of_a_millimetre() ->
 
 
 PLANES = {
-    # name: (z(x, y), sqrt(1 + a² + b²), exact) — `exact`: pyfqmr places new vertices on the plane itself
-    "level": (lambda x, y: 100.0 + 0 * x, 1.0, True),
-    "tilted along X": (lambda x, y: 100.0 + 0.75 * x, 1.25, True),
-    "tilted both ways": (lambda x, y: 100.0 + 0.3 * x - 0.2 * y, float(np.sqrt(1.13)), False),
+    # name: (z(x, y), sqrt(1 + a² + b²))
+    "level": (lambda x, y: 100.0 + 0 * x, 1.0),
+    "tilted along X": (lambda x, y: 100.0 + 0.75 * x, 1.25),
+    # hard data for pyfqmr alone (the quadric of a plane has no single best point and rounding picks one): it
+    # left 1/2 and 1/4 of the triangles here and took vertices 0.17 of a cell off the plane (Э7); flat regions
+    # are thinned before it now (`geo/flat.py`, ADR 0013), tests/test_geo_flat.py
+    "tilted both ways": (lambda x, y: 100.0 + 0.3 * x - 0.2 * y, float(np.sqrt(1.13))),
 }
 
 
 @pytest.mark.parametrize("name", list(PLANES))
 def test_levels_of_a_plane_stay_on_the_plane_and_keep_its_area(name: str) -> None:
-    plane, slope, exact = PLANES[name]
+    plane, slope = PLANES[name]
     v, t = grid(178, 178, plane)  # 63 368 triangles: one part
     t = t[gm.morton_order(v, t)]
     (p,) = gm.parts_table(v, t)
@@ -177,21 +180,16 @@ def test_levels_of_a_plane_stay_on_the_plane_and_keep_its_area(name: str) -> Non
     assert len(border0) == 4 * 178
     counts = [len(m[1]) for m in made]
     assert counts[0] > counts[1] > counts[2] >= len(border0) - 2  # the border alone needs that many
-    if name == "level":  # nothing in the way: both levels reach their share (the border allows 1/64 here)
-        assert counts[1] <= len(tri) / 8 * 1.02 and counts[2] <= len(tri) / 64 * 1.02
+    # nothing in the way: both levels reach their share, 1/8 and 1/64 (the border allows 1/64 here)
+    assert counts[1] <= len(tri) / 8 and counts[2] <= len(tri) / 64
     for lv, lt in made[1:]:
         rel = lv + np.array(p.origin) - UTM
         off = np.abs(rel[:, 2] - plane(rel[:, 0], rel[:, 1])).max()
         cross = np.cross(lv[lt[:, 1]] - lv[lt[:, 0]], lv[lt[:, 2]] - lv[lt[:, 0]])
         assert (cross[:, 2] > 0).all()  # still looking up: no fold
         assert rows(lv[border_vertices(lt)].astype("<f4")) == border0  # the border, bit for bit
-        if exact:
-            assert off <= 1e-9 and areas(lv, lt).sum() == pytest.approx(true_area, rel=1e-9)
-        else:
-            # Hard data for pyfqmr (the quadric of a plane has no single best point and rounding picks one):
-            # a dense, exactly flat grid tilted both ways is simplified less (about 1/2 and 1/4 here) and its
-            # new vertices leave the plane by up to 0.17 of a cell. The mesh stays whole and unfolded.
-            assert off <= 0.5 and areas(lv, lt).sum() == pytest.approx(true_area, rel=1e-4)
+        assert rows(lv) <= rows(local)  # the vertices of a plane are not moved: the deviation is 0
+        assert off <= 1e-9 and areas(lv, lt).sum() == pytest.approx(true_area, rel=1e-9)
 
 
 def test_levels_of_a_relief_keep_the_borders_of_neighbouring_parts() -> None:
@@ -401,7 +399,13 @@ def test_levels_are_cached_in_the_project_and_made_again_when_lost(stored, monke
         state = vm.mesh_state(conn, relief)
     folder = vm.cache_dir(project.folder, state.cache_key())
     assert not folder.exists()
+    # levels made the way of Э7 (pyfqmr alone, ALGO 1) lie in another folder: they are not read, and it goes
+    stale = vm.cache_dir(project.folder, vm.cache_key(state.blobs, state.render, 1))
+    assert vm.ALGO == 2 and stale != folder
+    stale.mkdir(parents=True)
+    (stale / "1-2.bfa").write_bytes(b"made the old way")
     first = c.get(f"{API}/viz/wireframes/{relief}/parts/1", params={"lod": 2}).content
+    assert binary.decode(first)[0]["lod"] == 2 and not stale.exists()
     assert sorted(f.name for f in folder.iterdir()) == ["1-1.bfa", "1-2.bfa"]  # both levels of the part, no temp files
     assert (folder / "1-2.bfa").read_bytes() == first
     c.get(f"{API}/viz/wireframes/{relief}/parts/0", params={"lod": 0})
@@ -486,3 +490,20 @@ def test_errors_are_russian_with_a_hint(stored) -> None:  # type: ignore[no-unty
     with dialect.write_tx(project.engine) as conn:
         wf_store.delete_wireframe(conn, box)
     assert c.get(f"{API}/viz/wireframes/{box}").json()["code"] == "wireframe_not_found"
+
+
+def test_a_small_part_without_its_levels_is_drawn_whole_and_not_simplified_here(stored, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    c, project, _mesh, _relief, box = stored
+
+    def boom(*_a, **_k):  # type: ignore[no-untyped-def]
+        raise AssertionError("a small part is not simplified in the process of the API")
+
+    monkeypatch.setattr(gm, "levels", boom)
+    whole = binary.decode(c.get(f"{API}/viz/wireframes/{box}/parts/0", params={"lod": 0}).content)
+    for lod in (1, 2):
+        head, arrays = binary.decode(c.get(f"{API}/viz/wireframes/{box}/parts/0", params={"lod": lod}).content)
+        assert head["lod"] == lod and head["triangles"] == whole[0]["triangles"] == 48
+        assert all(np.array_equal(arrays[k], whole[1][k]) for k in arrays)
+    with dialect.read_tx(project.engine) as conn:
+        state = vm.mesh_state(conn, box)
+    assert not vm.cache_dir(project.folder, state.cache_key()).exists()  # nothing cached: «Проверить» makes them

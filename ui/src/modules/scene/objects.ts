@@ -8,6 +8,7 @@
  */
 import { api, CoreError } from "../../shell/api";
 import { Store } from "../../shell/store";
+import type { ExactPick } from "../../viz/mesh/exact";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
 
@@ -76,6 +77,49 @@ export interface DtmInfo {
   shade: boolean;
 }
 
+/** What the job `wireframe.check` found (ТЗ 7.21, ADR 0013 §3): `wireframes.stats.checks`. */
+export interface WireframeChecks {
+  /** "failed" — the mesh could not be checked: `error` says why */
+  state: "done" | "failed";
+  /** edges two neighbours walk the same way: their normals look to different sides */
+  normal_conflicts?: number;
+  /** pairs of triangles that cross */
+  pairs?: number;
+  /** triangles that cross another one, and how many of them the red layer of the 3D window holds */
+  triangles?: number;
+  listed?: number;
+  /** how long the checks took, s; when they were made (UTC, ISO) */
+  seconds?: number;
+  checked_at?: string;
+  error?: { code: string; message: string; hint: string };
+}
+
+/** Measures of a wireframe taken when it was stored, and its checks once the job has run. */
+export interface WireframeStats {
+  area?: number | null;
+  plan_area?: number | null;
+  /** of a closed solid; null — the wireframe is not closed */
+  volume?: number | null;
+  closed?: boolean;
+  /** of a closed solid: where its normals look */
+  orientation?: "outward" | "inward" | null;
+  open_edges?: number;
+  nonmanifold_edges?: number;
+  degenerate?: number;
+  checks?: WireframeChecks | null;
+}
+
+/** Where an imported wireframe came from (`objects.meta.source`, in brief). */
+export interface WireframeSource {
+  format?: string;
+  file?: string;
+  /** the name of the wireframe in its file */
+  name?: string;
+  layer?: string;
+  /** "float32" — the file keeps coordinates in single precision (STL) */
+  precision?: string;
+}
+
 /** A wireframe as `/wireframes` gives it (what the 3D window needs of it). */
 export interface WireframeInfo {
   id: number;
@@ -89,6 +133,9 @@ export interface WireframeInfo {
   extent: (number | null)[] | null;
   /** null — a wireframe of «Каркасы»; settings — a DTM */
   dtm: DtmInfo | null;
+  stats?: WireframeStats;
+  /** null — made in the project */
+  source?: WireframeSource | null;
 }
 
 export interface SceneObjects {
@@ -158,6 +205,8 @@ export function bindSceneObjects(): void {
   });
   onJobFinished((job) => {
     if (job.status === "done" && (job.kind.startsWith("import.") || job.kind === "model.dtm")) void loadSceneObjects();
+    // a check writes its results wireframe by wireframe: a cancelled or failed one has changed «Свойства» too
+    else if (job.kind === "wireframe.check") void loadSceneObjects();
   });
 }
 
@@ -167,7 +216,11 @@ export type PickedObject =
   /** `line` — the line (point) of the layer: the row of its attributes; `xyz` — the picked place, absolute */
   | { kind: "lines"; id: number; line: number; on: "line" | "point"; xyz: [number, number, number] }
   | { kind: "raster"; id: number; xyz: [number, number, number] }
-  /** a wireframe or a DTM */
-  | { kind: "wireframe"; id: number; xyz: [number, number, number] };
+  /**
+   * a wireframe or a DTM. `xyz` — the picked place: as the level of detail in view shows it, then — once the
+   * core has answered — on the exact triangle; `exact` — that triangle (the point, how it lies), null — the
+   * core found none under the click, undefined — not answered yet
+   */
+  | { kind: "wireframe"; id: number; xyz: [number, number, number]; exact?: ExactPick | null };
 
 export const pickedObject = new Store<{ picked: PickedObject | null }>({ picked: null });

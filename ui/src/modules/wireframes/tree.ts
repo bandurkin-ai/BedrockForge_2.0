@@ -31,11 +31,19 @@ const show = (w: Row, visible: boolean): TreeAction => ({
   args: { layer: "wireframe", id: w.id, visible: !visible },
 });
 
-/** Rename and delete are registry commands: they ask in their own windows. */
+/** The check and the export (the window «Экспорт каркасов» with this wireframe); rename and delete are
+ * registry commands too: they ask in their own windows. */
 const edit = (w: Row): TreeAction[] => [
+  { label: "Проверить", command: "wireframe.check", args: { wireframe_id: w.id } },
+  { label: "Экспорт…", command: "wireframe.export", args: { wireframe_id: w.id } },
   SEPARATOR,
   { label: "Переименовать…", command: "object.rename", args: { kind: "wireframe", id: w.id } },
   { label: "Удалить…", command: "object.delete", args: { kind: "wireframe", id: w.id } },
+];
+
+/** A folder of «Каркасы» or «ЦТМ» (the wireframes of one imported file): the export of all of them. */
+export const folderMenu = (path: string, section: "wireframes" | "dtm"): TreeAction[] => [
+  { label: section === "dtm" ? "Экспорт ЦТМ папки…" : "Экспорт каркасов папки…", command: "wireframe.export", args: { folder: path, section } },
 ];
 
 /** The row of a wireframe in «Каркасы», or — with `dtm` set — in «ЦТМ». */

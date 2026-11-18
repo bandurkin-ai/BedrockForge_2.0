@@ -6,7 +6,7 @@ a layer of breaklines across it → the job `model.dtm` into a project database 
   read          the layers from their blobs;
   triangulate   `geo/dtm.py::build_dtm` (PythonCDT);
   store         spatial order of the triangles, parts, measures, the blobs (`wireframes/store.py`);
-  lod           levels 1/8 and 1/64 of every part into `cache\\mesh\\` (pyfqmr, `viz/meshes.py`);
+  lod           levels 1/8 and 1/64 of every part into `cache\\mesh\\` (`geo/flat.py`, pyfqmr, `viz/meshes.py`);
 then, as the 3D window opens the DTM in a fresh process:
   first_frame_s the manifest and every part at level 1/64 (from the cache);
   full_s        every part at level 0 (from the blobs).
@@ -91,13 +91,16 @@ def load() -> None:
     import bf_core.lines.store  # noqa: F401
     import bf_core.viz.meshes  # noqa: F401
     import bf_core.wireframes.jobs  # noqa: F401
+    from bf_core.geo import meshes
     from bf_core.geo.dtm import build_dtm
 
     rng = np.random.default_rng(1)
     pts = rng.random((200, 3)) * 100.0
     line = np.array([[5.0, 5.0, 50.0], [95.0, 90.0, 50.0]])
     ring = np.array([[1.0, 1.0], [99.0, 1.0], [99.0, 99.0], [1.0, 99.0]])
-    build_dtm(pts, [line], boundary=ring, max_edge=80.0)  # every kernel of the build
+    v, t, _report = build_dtm(pts, [line], boundary=ring, max_edge=80.0)  # every kernel of the build
+    assert len(t) >= meshes.LOD_MIN_TRIANGLES
+    meshes.levels(np.asarray(v, dtype=np.float64), np.asarray(t, dtype=np.int32))  # and of the levels (`geo/flat.py`)
 
 
 def run(params: dict[str, Any], work: Path) -> dict[str, Any]:

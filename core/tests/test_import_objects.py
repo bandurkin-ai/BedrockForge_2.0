@@ -108,7 +108,7 @@ def make_files(folder: Path) -> dict[str, Path]:
     folder.mkdir(parents=True, exist_ok=True)
     out = {name: folder / name for name in (
         "contours.str", "points.csv", "map.jpg", "map.jgw", "scan.png", "scan.grf", "plan.tif", "plan.tfw",
-        "plan.tab", "lonely.tfw", "model.obj", "bad.str",
+        "plan.tab", "lonely.tfw", "model.omf", "bad.str",
     )}  # fmt: skip
     write_str(out["contours.str"], [from_lines("100", [SQUARE, OPEN]), from_lines("200", [HIGH])])
     out["points.csv"].write_text(
@@ -127,7 +127,7 @@ def make_files(folder: Path) -> dict[str, Path]:
         tab_text([(1000.0, 3000.0, 0.0, 0.0), (1060.5, 3000.0, 30.0, 0.0), (1060.0, 2960.0, 30.0, 20.0)])
     )
     out["lonely.tfw"].write_text("1\n0\n0\n-1\n0\n0\n")
-    out["model.obj"].write_text("v 0 0 0\n")
+    out["model.omf"].write_bytes(b"\x84\x83\x82\x81OMF-v0.9.0")  # a later stage (Э11)
     out["bad.str"].write_text("это не стринги\n", encoding="utf-8")
     return out
 
@@ -184,7 +184,10 @@ def test_composition_of_a_selection(files: dict[str, Path], project) -> None:  #
         ("100", 2, 8, 1),
         ("200", 1, 5, 1),
     ]
-    assert strings["totals"] == {"layers": 2, "lines": 3, "points": 0, "vertices": 13, "rasters": 0}
+    assert strings["totals"] == {
+        "layers": 2, "lines": 3, "points": 0, "vertices": 13, "rasters": 0, "wireframes": 0, "triangles": 0,
+    }  # fmt: skip
+    assert strings["wireframes"] == [] and not strings["preliminary"] and strings["choices"] == {}
     assert strings["layers"][0]["length"] == pytest.approx(
         2 * (26.234_098_766 + 45.211_543_211) + np.sqrt((np.diff(OPEN, axis=0) ** 2).sum(axis=1)).sum(), abs=1e-6
     )
@@ -209,11 +212,12 @@ def test_composition_of_a_selection(files: dict[str, Path], project) -> None:  #
     bad = by["bad.str"]  # what will not load, and why — in Russian with a hint
     assert not bad["ok"] and bad["error"]["code"] == "unsupported" and "Surpac" in bad["error"]["hint"]
     rest = {r["file"]: r for r in out["rest"]}
-    assert set(rest) == {"lonely.tfw", "model.obj"}
+    assert set(rest) == {"lonely.tfw", "model.omf"}
     assert rest["lonely.tfw"]["code"] == "sidecar" and "вспомогательный" in rest["lonely.tfw"]["message"]
-    assert "каркасы" in rest["model.obj"]["message"] and rest["model.obj"]["hint"]
+    assert "OMF" in rest["model.omf"]["message"] and ".tridb" in rest["model.omf"]["hint"]
     assert out["totals"] == {
         "files": 5, "failed": 1, "layers": 3, "lines": 3, "points": 2, "vertices": 13, "rasters": 3,
+        "wireframes": 0, "triangles": 0,
     }  # fmt: skip
     assert out["raster_z"] == {"applies": True, "elevation": 250.5, "shift": -5.0}
     assert state_of(project.engine, project.folder) == was  # nothing is written
@@ -320,7 +324,7 @@ def test_lines_points_and_rasters_are_written(project, files: dict[str, Path]) -
     # the operation log: what was loaded, what was not and why
     text = "\n".join(ctx.lines)
     assert "contours.str: слоёв — 2, линий — 3, вершин — 13" in text and "map.jpg: растр 64 × 48" in text
-    assert "«bad.str» не загружен" in text and "lonely.tfw" in text and "model.obj" in text
+    assert "«bad.str» не загружен" in text and "lonely.tfw" in text and "model.omf" in text
     assert ctx.progress == sorted(ctx.progress) and ctx.progress[-1] == 0.98  # never goes back
     assert not list((project.folder / "blobs" / ".tmp").iterdir())
 
@@ -413,7 +417,7 @@ def test_cancel_at_any_step_leaves_nothing(project, files: dict[str, Path], monk
 def test_errors_are_told_in_russian_and_leave_nothing(project, files: dict[str, Path], tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     was = state_of(project.engine, project.folder)
     with pytest.raises(JobError) as err:  # nothing to load at all
-        run_job(project.folder, {"files": paths(files, "lonely.tfw", "model.obj")})
+        run_job(project.folder, {"files": paths(files, "lonely.tfw", "model.omf")})
     assert err.value.code == "nothing_to_import" and ".str" in err.value.hint
     with pytest.raises(JobError) as err:  # every file failed: the first reason is the error of the job
         run_job(project.folder, {"files": paths(files, "bad.str")})
@@ -435,7 +439,7 @@ def test_errors_are_told_in_russian_and_leave_nothing(project, files: dict[str, 
 
 def test_a_retry_after_the_commit_changes_nothing(project, files: dict[str, Path]) -> None:  # type: ignore[no-untyped-def]
     """The worker died after the final transaction: the second attempt finds the import done."""
-    params = {"files": paths(files, "contours.str", "map.jpg", "map.jgw", "bad.str", "model.obj")}
+    params = {"files": paths(files, "contours.str", "map.jpg", "map.jgw", "bad.str", "model.omf")}
     first = run_job(project.folder, params, job_id=7)
     was = state_of(project.engine, project.folder)
     second = run_job(project.folder, params, job_id=7)
@@ -490,9 +494,9 @@ def test_wizard_through_the_api(pclient, files: dict[str, Path]) -> None:  # typ
     assert bad.status_code == 422 and bad.json()["code"] == "not_a_number" and bad.json()["hint"]
     missing = pclient.post(f"{API}/import/objects", json={"files": [str(files["map.jpg"]) + ".нет"]})
     assert missing.status_code == 404 and missing.json()["code"] == "file_not_found"
-    nothing = pclient.post(f"{API}/import/objects", json={"files": paths(files, "lonely.tfw", "model.obj")})
+    nothing = pclient.post(f"{API}/import/objects", json={"files": paths(files, "lonely.tfw", "model.omf")})
     assert nothing.status_code == 422 and nothing.json()["code"] == "nothing_to_import"
-    assert [x["file"] for x in nothing.json()["rest"]] == ["lonely.tfw", "model.obj"]
+    assert [x["file"] for x in nothing.json()["rest"]] == ["lonely.tfw", "model.omf"]
 
     r = pclient.post(f"{API}/import/objects", json=body)
     assert r.status_code == 200, r.text

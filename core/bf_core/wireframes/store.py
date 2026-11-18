@@ -6,7 +6,7 @@ triangles are stored along a Z-order curve of their centroids (the same triangle
 change), so the parts of the 3D view are runs of consecutive triangles; their table is `wireframes.render`
 {part_triangles, parts [[first, count, xmin, ymin, zmin, xmax, ymax, zmax]]}. The levels of detail are derived
 files in `cache\\mesh\\` (`viz/meshes.py`). `wireframes.stats` — `geo.meshes.mesh_stats`; the colour is
-`objects.meta.color`.
+`objects.meta.color`; `stats.checks` — the job `wireframe.check` (`check.py`); `source` — its file, in brief.
 
 A DTM is a wireframe with `wireframes.dtm` set: {clip, tint, opacity, shade}. The raster draped on it is the
 row `object_refs(src=wireframe, dst=raster, role="drape")`, so a `.bfggis` renumbers it with the other
@@ -87,6 +87,7 @@ class StagedWireframe:
     origin: list[float]
     files: dict[str, Staged] = field(default_factory=dict)
     shas: dict[str, str] = field(default_factory=dict)
+    seq: np.ndarray | None = None  # <u4: the place of every stored triangle in the mesh as given (source.py)
 
     def discard(self) -> None:
         for tmp, _sha, _size in self.files.values():
@@ -117,23 +118,24 @@ def stage_wireframe(store: BlobStore, xyz: Any, tri: Any, *, progress: Progress 
         raise ApiError(422, exc.code, exc.message, exc.hint) from exc
     order = meshes.morton_order(v, t, part(0.05, 0.3, "Пространственный порядок треугольников"))
     t = np.ascontiguousarray(t[order])
+    seq = order.astype("<u4")
     del order
     parts = meshes.parts_table(v, t, progress=part(0.3, 0.45, "Части каркаса"))
     stats = meshes.mesh_stats(v, t, part(0.45, 0.75, "Площадь и объём"))
     extent = meshes.extent_of(parts)
     staged = StagedWireframe(
         v, t, parts, stats, render_of(parts, meshes.PART_TRIANGLES), extent,
-        list(meshes.origin_of(tuple(extent))) if extent else [0.0, 0.0, 0.0],
+        list(meshes.origin_of(tuple(extent))) if extent else [0.0, 0.0, 0.0], seq=seq,
     )  # fmt: skip
     tick(0.75, "Запись каркаса")
     try:
         for role, arr in (("xyz", v), ("tri", t)):
             staged.files[role] = store.stage_stream(_chunks(np.asarray(arr, dtype=ARRAYS[role])))
             staged.shas[role] = staged.files[role][1]
+        tick(1.0, "Запись каркаса")  # a cancel here must not leave the temp files either
     except BaseException:
         staged.discard()
         raise
-    tick(1.0, "Запись каркаса")
     return staged
 
 
@@ -274,8 +276,8 @@ def dtm_public(dtm: Mapping[str, Any] | None, raster_id: int | None) -> dict[str
 def _public(row: Mapping[str, Any], raster_id: int | None) -> dict[str, Any]:
     out = dict(row)
     meta = out.pop("meta") or {}
-    out["color"] = meta.get("color")
-    out["built"] = meta.get("built")
+    src = {k: v for k in ("format", "file", "name", "layer", "precision") if (v := (meta.get("source") or {}).get(k))}
+    out.update(color=meta.get("color"), built=meta.get("built"), source=src or None)
     out["attrs"] = attrs_list(out["attrs"])
     out["stats"] = out["stats"] or {}
     out["created_at"] = out["created_at"].isoformat()

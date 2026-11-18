@@ -5,6 +5,7 @@
 points and rasters (`inspect`, nothing is written) and the start of the job `import.objects`.
 /api/v1/import/trenches — «Канавы по полилиниям» (ТЗ 7.35 Д-16, ADR 0011 §5): `inspect` — the trenches the
 file gives with the chosen name and direction (nothing is written), and the start of the job `import.trenches`.
+/api/v1/tools — the programs of the user the formats need (ODA File Converter for DWG): `tools.py`.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from bf_core.api.errors import ApiError
@@ -26,6 +27,7 @@ from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
 from .service import duplicate_targets
+from .tools import router as tools_router
 
 dh = APIRouter(prefix="/drillholes")
 Svc = Annotated[ProjectService, Depends(projects)]
@@ -364,6 +366,10 @@ class ObjectOptions(BaseModel):
     y: str | None = Field(default=None, max_length=500)
     z: str | None = Field(default=None, max_length=500)
     name: str | None = Field(default=None, max_length=200)
+    # Datamine: the field that divides a wireframe file into wireframes; the field whose values are layers of
+    # strings (one of `choices` of the composition; empty — one wireframe, one layer)
+    split_by: str | None = Field(default=None, max_length=40)
+    layer_field: str | None = Field(default=None, max_length=40)
 
 
 class RasterLevel(BaseModel):
@@ -382,11 +388,13 @@ class ObjectsBody(BaseModel):
     folder: str | None = Field(default=None, max_length=200)
 
 
-def _objects_request(svc: ProjectService, body: ObjectsBody, *, writable: bool) -> dict[str, Any]:
-    """Checked parameters of the composition and of the job: files, read options, the level, the section."""
+def _objects_request(svc: ProjectService, request: Request, body: ObjectsBody, *, writable: bool) -> dict[str, Any]:
+    """Checked parameters of the composition and of the job: files, read options, the level, the section, and
+    the ODA File Converter of «Настройка» (`oda`: a DWG is read in a worker process — `tools.py`)."""
     from bf_core.rasters.store import section_edges
 
     from .object_files import NUMBER_HINT, option_key, parse_level, usable_section
+    from .tools import oda_converter
 
     project = svc.require_current(writable=writable)
     files = [str(_file(path)) for path in body.files]
@@ -405,31 +413,37 @@ def _objects_request(svc: ProjectService, body: ObjectsBody, *, writable: bool) 
         "raster_z": {"elevation": elevation, "shift": shift},
         "section": section,
         "folder": " ".join(body.folder.split()) or None if body.folder else None,
+        "oda": oda_converter(request.app.state.core),
     }
 
 
 @objects_router.post("/inspect")
-def inspect_objects(svc: Svc, body: ObjectsBody) -> dict[str, Any]:
-    """The composition of the chosen files: formats, layers, lines, points and vertices, CRS, warnings, rasters
-    with their georeference, and what will not load and why. Nothing is written to the project."""
+def inspect_objects(svc: Svc, request: Request, body: ObjectsBody) -> dict[str, Any]:
+    """The composition of the chosen files: formats, layers, lines, points and vertices, wireframes (name,
+    triangles, vertices, colour, attributes), CRS, warnings, rasters with their georeference, and what will not
+    load and why. Nothing is written to the project."""
     from .object_files import inspect_files
 
-    params = _objects_request(svc, body, writable=False)
-    return inspect_files(params["files"], params["options"], params["raster_z"], params["section"])
+    params = _objects_request(svc, request, body, writable=False)
+    return inspect_files(
+        params["files"], params["options"], params["raster_z"], params["section"], converter=params["oda"]
+    )
 
 
 @objects_router.post("")
-def start_objects(svc: Svc, s: Sched, body: ObjectsBody) -> dict[str, Any]:
+def start_objects(svc: Svc, s: Sched, request: Request, body: ObjectsBody) -> dict[str, Any]:
+    from bf_core.formats.registry import SUPPORTED
+
     from .object_files import plan
 
-    params = _objects_request(svc, body, writable=True)
+    params = _objects_request(svc, request, body, writable=True)
     groups, rest = plan(params["files"])
     if not groups:
         raise ApiError(
             422,
             "nothing_to_import",
             "Среди выбранных файлов нет ни одного, который можно загрузить.",
-            "Подходят: стринги .str / .pit, .dxf, .shp, .mif, точки .xyz / .csv / .txt / .dat, растры с привязкой.",
+            SUPPORTED,
             extra={"rest": rest},
         )
     names = [g.main.name for g in groups]
@@ -558,3 +572,4 @@ router = APIRouter()
 router.include_router(dh)
 router.include_router(objects_router)
 router.include_router(trenches_router)
+router.include_router(tools_router)
