@@ -194,7 +194,9 @@ def attrs_page(
     blobs: BlobStore, layer: Mapping[str, Any], shas: Mapping[str, str], scope: str, offset: int, limit: int
 ) -> dict[str, Any]:
     """Rows [offset, offset + limit) of the attributes: one row per line (per point of a point layer), or per
-    vertex for `scope="vertex"`. An empty number is null, never 0. `shas` — the blobs of the layer (`attrs_key`)."""
+    vertex for `scope="vertex"`. An empty number is null, never 0. `shas` — the blobs of the layer (`attrs_key`).
+    Only the row groups of the page are read (`LayerFiles.rows`): a page of a million-row table takes
+    milliseconds, whatever its offset."""
     fields = [f for f in layer["attr_schema"] if f.get("scope", "feature") == scope]
     if scope == "feature":
         total = int(layer["point_count"] if layer["points_only"] else layer["line_count"])
@@ -207,7 +209,7 @@ def attrs_page(
     files = store.layer_files(blobs, shas)
     if not files.has(_TABLE_OF[scope]) or offset >= total:
         return out
-    table = files.table(_TABLE_OF[scope], memory_map=True).slice(offset, limit)
+    table = files.rows(_TABLE_OF[scope], offset, limit)
     names = [f["name"] for f in fields if f["name"] in table.column_names]
     out["fields"] = [f for f in fields if f["name"] in names]
     columns = [table.column(n).to_pylist() for n in names]

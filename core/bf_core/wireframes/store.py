@@ -582,12 +582,17 @@ def delete_wireframe(conn: sa.Connection, wf_id: int) -> dict[str, Any]:
     drop_import_owners(conn, [wf_id])  # import_log goes by cascade: its source files must not stay owned
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == wf_id))
     conn.execute(sa.delete(objects).where(objects.c.id == wf_id))
-    shared = bool(shas) and (
-        conn.execute(
-            sa.select(sa.func.count())
-            .select_from(blob_owners)
-            .where(blob_owners.c.sha256.in_(list(shas.values())), blob_owners.c.role.in_(list(ARRAYS)))
-        ).scalar_one()
-        > 0
+    return {"id": wf_id, "shas": shas, "render": render, "shared": geometry_shared(conn, shas)}
+
+
+def geometry_shared(conn: sa.Connection, shas: Mapping[str, str]) -> bool:
+    """An object of the project owns the geometry of these blobs {role: sha256}: its derived files in
+    `cache\\mesh\\` (the levels of detail, keyed by the blobs) are in use and must stay."""
+    if not shas:
+        return False
+    owned = (
+        sa.select(sa.func.count())
+        .select_from(blob_owners)
+        .where(blob_owners.c.sha256.in_(list(shas.values())), blob_owners.c.role.in_(list(ARRAYS)))
     )
-    return {"id": wf_id, "shas": shas, "render": render, "shared": shared}
+    return bool(conn.execute(owned).scalar_one() > 0)

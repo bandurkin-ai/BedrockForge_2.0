@@ -13,6 +13,7 @@ import { FrameLoop } from "./core/frame";
 import { nonBackgroundPixels, probeWebGL2, Renderer, sceneBytes, type FrameStats, type GpuInfo } from "./core/renderer";
 import { FpsTracker } from "./core/stats";
 import { boxFromBbox6, contentBox, fitBox, scaleZ, union, windowTest, type Box3, type Extent } from "./core/bounds";
+import { FirstView } from "./core/firstView";
 import { screenPriority } from "./core/cull";
 import { LayerSet } from "./core/layers";
 import { rebaseCamera, SceneOrigin } from "./core/sceneOrigin";
@@ -67,7 +68,7 @@ export class Scene {
   private clipOn = false;
   private vexag = 1;
   private gridOn = true;
-  private fitted = false;
+  private readonly first = new FirstView();
   private fat = true;
   private drawing: DrawState = DRAW_OFF;
   private size = { w: 1, h: 1 };
@@ -102,7 +103,10 @@ export class Scene {
       this.loop.invalidate();
       this.events.onCamera?.();
     };
-    this.rig.onUserStart = () => this.turn.cancel();
+    this.rig.onUserStart = () => {
+      this.first.stop();
+      this.turn.cancel();
+    };
     this.renderer.onLost = () => this.contextLost();
     this.renderer.onRestored = () => this.contextRestored();
     this.cleanup.push(
@@ -176,6 +180,7 @@ export class Scene {
 
   /** A standard view: «В план» keeps the centre and the scale, the others fit the content. */
   view(preset: ViewPreset): void {
+    this.first.stop();
     this.turn.cancel();
     const opts = this.rig.options();
     if (preset === "top") {
@@ -189,12 +194,14 @@ export class Scene {
 
   /** «Вписать»: everything visible (with clipping — in the window) without turning the view. */
   fit(): void {
+    this.first.stop();
     this.turn.cancel();
     this.rig.apply(fit(this.rig.state(), this.fitBox(), this.rig.options()));
   }
 
   /** A smooth turn to look along `from` (gizmo): centre and scale kept, a new turn stops the old. */
   turnTo(from: Vec3): void {
+    this.first.stop();
     const opts = this.rig.options();
     const token = this.turn.begin(this.rig.state(), from, performance.now(), { ortho: !opts.perspective, box: contentBox(this.extents()), vexag: this.vexag });
     if (token === null) return;
@@ -216,6 +223,7 @@ export class Scene {
     return o ? toWorld(this.rig.state(), o, this.vexag, !this.rig.perspective, this.rig.persp.fov) : null;
   }
   setWorldCamera(c: WorldCamera): void {
+    this.first.stop();
     this.turn.cancel();
     this.rig.apply(fromWorld(c, this.origin.value ?? this.origin.ensure([...c.target, ...c.target]), this.vexag, this.rig.state()));
   }
@@ -450,10 +458,8 @@ export class Scene {
     this.refreshGrid();
     this.clip.update(this.section, this.clipOn, this.origin.value);
     this.overlay.setLine(this.section, this.clipOn, this.origin.value, contentBox(this.extents()));
-    if (!this.fitted && this.extents().length) {
-      this.fitted = true;
-      this.view("iso");
-    }
+    // the first view: fitted again while the layers of the opened project arrive (`core/firstView.ts`)
+    if (this.first.grown(contentBox(this.extents()))) this.rig.apply(view("iso", this.fitBox(), this.rig.options(), null));
     this.loop.invalidate();
   }
 

@@ -81,13 +81,10 @@ test("trenches: the demo trench in 3D; «Импорт канав…» from a DXF
     await expect(tree.getByRole("treeitem", { name: "Скважины 2025, 49 скв." })).toBeVisible();
     const sets = (await api("/drillholes/sets")).sets as { id: number; name: string; holes: number }[];
     expect(sets.map((s) => [s.name, s.holes])).toEqual([["Скважины 2025", 49]]);
-    await page.screenshot({ path: shot("trenches-demo-initial.png") });
-    await page.keyboard.press("f");
-    await waitFrame(page);
-    await page.screenshot({ path: shot("trenches-demo-fit.png") });
-    const dbg = await collars();
-    console.log("COLLARS", dbg.length, JSON.stringify(dbg.slice(-4)), JSON.stringify(await page.evaluate(() => window.__bfScene!.state().camera)));
-    const demo = dbg.find((c) => c.name === "К-01");
+    // the first view holds the whole demo, whichever of its layers came first: every collar is on the screen
+    const seen = await collars();
+    expect(seen).toHaveLength(49);
+    const demo = seen.find((c) => c.name === "К-01");
     expect(demo, "the demo trench is drawn").toBeTruthy();
     const own = (await api(`/drillholes/sets/${sets[0].id}/tables/collar?limit=100`)).rows as Row[];
     const head = own.find((r) => r.hole === "К-01")!;

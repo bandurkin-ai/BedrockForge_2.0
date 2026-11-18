@@ -437,3 +437,126 @@ def test_bfggis_cycle_renumbers_the_drape_and_keeps_the_geometry(api, tmp_path: 
         assert r.status_code == 200 and r.content == parts[lod]
     e = refused(c.delete(f"{API}/rasters/{new[ids['plan']]}"), 422, "raster_in_use")
     assert e["wireframes"] == [{"id": w["id"], "name": "Рельеф"}]
+
+
+def test_bfggis_cycle_renumbers_what_a_dtm_was_built_from(api, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """`meta.built` names its sources by id: in the copy they are other numbers, and a source that was deleted
+    before the export must not come back as some other object of the copy (Э7 review)."""
+    from bf_core.wireframes.jobs import remap_built
+
+    c, project, ids = api
+    ok(c.delete(f"{API}/wireframes/{ids['body']}"))  # gaps in the ids: every later object gets a new number
+    ok(c.delete(f"{API}/rasters/{ids['map']}"))
+    s = survey(project)
+    with dialect.write_tx(project.engine) as conn:  # a layer of another file: it goes before the export
+        store = BlobStore(project.folder)
+        gone_file = ls_store.create_file(conn, store, name="временный.csv", meta={"format": "csv"})
+        extra = s["pts"][:40] + [300.0, 0.0, 0.0]
+        gone = ls_store.put_layer(conn, store, from_points("Временные", extra), file_id=gone_file)
+    body = {"layer_ids": [s["points"], s["lines"], gone], "set_ids": [s["set"]],
+            "boundary": {"layer_id": s["outline"], "line": 0}, "name": "Поверхность"}  # fmt: skip
+    job = build(c, body)
+    assert job["status"] == "done", job
+    wf_id = job["result"]["wireframe_id"]
+    built = ok(c.get(f"{API}/wireframes/{wf_id}"))["built"]
+    assert [(u["kind"], u["id"], u["name"]) for u in built["sources"]] == [
+        ("line_layer", s["points"], "Пикеты"), ("line_layer", s["lines"], "Бровки"), ("line_layer", gone, "Временные"),
+        ("drillhole_set", s["set"], "Разведка"), ("line_layer", s["outline"], "Контур"),
+    ]  # fmt: skip
+    assert built["params"]["boundary"]["layer_id"] == s["outline"]
+    ok(c.delete(f"{API}/lines/files/{gone_file}"))
+
+    job = export(c, tmp_path / "построено.bfggis")
+    r = c.post(f"{API}/projects/import", json={"path": job["result"]["path"], "mode": "copy"}).json()
+    job = wait_job(c, r["source"], r["id"])
+    assert job["status"] == "done", job
+    new = {int(k): v for k, v in job["result"]["id_maps"]["objects"].items()}
+    assert all(new[s[k]] != s[k] for k in ("points", "lines", "outline", "set")) and gone not in new
+    ok(c.post(f"{API}/projects/{job['result']['uid']}/open"))
+    copy = projects_of(c.core).require_current()
+    assert copy.uid != project.uid
+    w = ok(c.get(f"{API}/wireframes/{new[wf_id]}"))
+    assert w["name"] == "Поверхность"
+    assert [(u["kind"], u["id"], u["name"]) for u in w["built"]["sources"]] == [
+        ("line_layer", new[s["points"]], "Пикеты"), ("line_layer", new[s["lines"]], "Бровки"),
+        ("line_layer", None, "Временные"),  # not in the archive: the name stays, the number does not
+        ("drillhole_set", new[s["set"]], "Разведка"), ("line_layer", new[s["outline"]], "Контур"),
+    ]  # fmt: skip
+    assert w["built"]["params"]["boundary"] == {**built["params"]["boundary"], "layer_id": new[s["outline"]]}
+    # every id of the copy names the object the source project meant
+    with dialect.read_tx(copy.engine) as conn:
+        names = {
+            int(r.id): (r.kind, r.name) for r in conn.execute(sa.select(objects.c.id, objects.c.kind, objects.c.name))
+        }
+    for u in w["built"]["sources"]:
+        assert u["id"] is None or names[u["id"]] == (u["kind"], u["name"]), u
+    for key in ("kind", "method", "report"):  # nothing else of the record changes
+        assert w["built"][key] == built[key], key
+    assert {k: v for k, v in w["built"]["params"].items() if k != "boundary"} == {
+        k: v for k, v in built["params"].items() if k != "boundary"
+    }
+    # the function itself on what it does not know: left as it is
+    assert remap_built(None, new.get) is None and remap_built({"kind": "import"}, new.get) == {"kind": "import"}
+    odd = {"sources": ["текст", {"name": "без номера"}, {"id": True}], "params": {"boundary": None}}
+    assert remap_built(odd, new.get) == {
+        "sources": ["текст", {"name": "без номера", "id": None}, {"id": None}], "params": {"boundary": None},
+    }  # fmt: skip
+
+
+def test_failed_build_keeps_the_levels_of_a_wireframe_with_the_same_geometry(api) -> None:  # type: ignore[no-untyped-def]
+    """The levels of detail are keyed by the geometry. The same sources built again give the same key: when the
+    second build is cancelled or fails, the folder it cleans up is the one the first wireframe draws from."""
+    import threading
+
+    from bf_core.jobs.context import JobCancelled, JobContext
+    from bf_core.wireframes import jobs as dtm_jobs
+
+    c, project, _ids = api
+    s = survey(project)
+    body = {"layer_ids": [s["points"], s["lines"]], "set_ids": [s["set"]]}
+    job = build(c, body)
+    assert job["status"] == "done", job
+    first = job["result"]["wireframe_id"]
+    with dialect.read_tx(project.engine) as conn:
+        folder = vm.cache_dir(project.folder, vm.mesh_state(conn, first).cache_key())
+        params = dtm_jobs.request(conn, **body)
+    levels = {f.name: f.read_bytes() for f in folder.iterdir()}
+    assert sorted(levels) == ["0-1.bfa", "0-2.bfa"]
+
+    def run(stage: str | None, fail: BaseException | None = None) -> None:
+        class Ctx(JobContext):
+            def tick(self, progress: float | None = None, message: str | None = None) -> None:
+                if message == stage:
+                    raise fail or JobCancelled()
+
+        ctx = Ctx(
+            {"id": 77, "params": params, "project_folder": str(project.folder)}, lambda _m: None, threading.Event()
+        )
+        try:
+            dtm_jobs.model_dtm(ctx)
+        finally:
+            ctx.close()
+
+    for stage in ("Уровни детализации", "Сохранение каркаса в проект"):
+        with pytest.raises(JobCancelled):
+            run(stage)
+        assert {f.name: f.read_bytes() for f in folder.iterdir()} == levels, stage
+    with pytest.raises(OSError, match="диск"):  # a failure, not a cancel: the same
+        run("Сохранение каркаса в проект", OSError("диск переполнен"))
+    assert {f.name: f.read_bytes() for f in folder.iterdir()} == levels
+    r = c.get(f"{API}/viz/wireframes/{first}/parts/0", params={"lod": 2})
+    assert r.status_code == 200 and r.content == levels["0-2.bfa"]
+    tmp = BlobStore(project.folder).tmp_dir
+    assert not tmp.exists() or not list(tmp.iterdir())  # the temp files of the stopped builds are gone
+    assert [w["id"] for w in ok(c.get(f"{API}/wireframes"))["wireframes"] if w["built"]] == [first]
+
+    # the only owner of the geometry is gone: now a stopped build of the same surface leaves nothing
+    ok(c.delete(f"{API}/wireframes/{first}"))
+    assert not folder.exists()
+    with pytest.raises(JobCancelled):
+        run("Сохранение каркаса в проект")
+    assert not folder.exists()
+    # and when the project cannot be asked, the folder stays rather than be taken from a wireframe
+    assert dtm_jobs._geometry_in_use(
+        sa.create_engine("sqlite:///" + str(project.folder / "нет" / "x.sqlite")), {"xyz": "0" * 64}
+    )

@@ -150,6 +150,125 @@ def test_attributes_by_pages_with_etag(lines) -> None:  # type: ignore[no-untype
     error_of(c.get(f"{API}/lines/layers/999/attrs"), 404, "line_layer_not_found")
 
 
+def _cells(table: Any, offset: int, limit: int) -> list[list[Any]]:
+    """The reference page: rows of the table the layer was made from; an empty number is null."""
+    part = table.slice(offset, limit)
+    columns = [part.column(name).to_pylist() for name in part.column_names]
+    return [[None if isinstance(v, float) and v != v else v for v in row] for row in zip(*columns, strict=True)]
+
+
+def _attributes(n: int, seed: int) -> Any:
+    """`n` rows of ten attributes: numbers with gaps, repeated codes, Cyrillic text with gaps."""
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    rng = np.random.default_rng(seed)
+    idx = np.arange(n)
+    grade = rng.random(n)
+    grade[::11] = np.nan
+    columns: dict[str, Any] = {"N": pa.array(idx.astype(np.float64)), "AU": pa.array(grade)}
+    columns["Код"] = pc.binary_join_element_wise(pa.scalar("К"), pc.cast(pa.array(idx % 977), pa.string()), "-")
+    note = pc.binary_join_element_wise(pa.scalar("проба"), pc.cast(pa.array(idx), pa.string()), " № ")
+    columns["Примечание"] = pc.if_else(pa.array(idx % 7 != 0), note, pa.scalar(None, pa.string()))
+    for k in range(6):
+        columns[f"E{k}"] = pa.array(rng.normal(size=n))
+    return pa.table(columns)
+
+
+def test_attribute_pages_read_only_their_row_groups(lines, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    """Pages at every kind of offset are the rows of the source table (Э7 review: a page used to read the
+    whole table): across the seams of row groups, by vertices, of a layer in a pack, of a table in one group."""
+    import pyarrow.parquet as pq
+
+    c = lines["client"]
+    project = projects_of(c.core).require_current()
+    store = BlobStore(project.folder)
+    n = 3 * ls.ROW_GROUP + 1234
+    attrs = _attributes(n, 3)
+    xyz = UTM + np.column_stack([np.arange(n) % 1000, np.arange(n) // 1000, np.zeros(n)])
+    k = 2 * ls.ROW_GROUP // 5 + 7  # lines of five vertices: the vertex attributes span two groups and a bit
+    vattrs = _attributes(5 * k, 4).select(["N", "Примечание"])
+    polylines = [OPEN[[0, 1, 2, 1, 0]] + [float(i), 0.0, 0.0] for i in range(k)]
+    with dialect.write_tx(project.engine) as conn:
+        big = ls.put_layer(conn, store, from_points("Пробы", xyz, attrs=attrs), file_id=lines["file"])
+        by_vertex = ls.put_layer(conn, store, from_lines("Профили", polylines, vattrs=vattrs), file_id=lines["file"])
+        monkeypatch.setattr(ls, "ROW_GROUP", 1 << 20)  # as files were written before: everything in one group
+        old = ls.put_layer(conn, store, from_points("Пробы, один блок", xyz, attrs=attrs), file_id=lines["file"])
+        monkeypatch.undo()
+        small = [from_points(f"Малый {i}", xyz[:500], attrs=attrs.slice(700 * i, 500)) for i in range(3)]
+        packed = ls.commit_layers(conn, store, ls.stage_layers(store, small), file_id=lines["file"])
+        roles = {i: set(ls.layer_blobs(conn, i)) for i in (big, by_vertex, old, *packed)}
+    assert "attrs" in roles[big] and "vattrs" in roles[by_vertex]  # big layers: files of their own
+    assert [roles[i] for i in packed] == [{"pack:0"}, {"pack:1"}, {"pack:2"}]  # small ones share a blob
+
+    asked: list[list[int]] = []
+    read_groups = pq.ParquetFile.read_row_groups
+
+    def spy(self: Any, row_groups: Any, *args: Any, **kwargs: Any) -> Any:
+        asked.append(list(row_groups))
+        return read_groups(self, row_groups, *args, **kwargs)
+
+    def whole(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("a page of attributes must not read the whole table")
+
+    monkeypatch.setattr(pq.ParquetFile, "read_row_groups", spy)
+    monkeypatch.setattr(pq, "read_table", whole)
+    monkeypatch.setattr(ls.LayerFiles, "table", whole)
+    g = ls.ROW_GROUP
+    pages = [(0, 200, [0]), (g - 1, 1, [0]), (g - 1, 2, [0, 1]), (g, 200, [1]), (2 * g - 100, 5000, [1, 2]),
+             (3 * g, 200, [3]), (n - 1, 200, [3]), (n - 300, 5000, [3]), (g + 7, 1, [1])]  # fmt: skip
+    for offset, limit, groups in pages:
+        asked.clear()
+        page = c.get(f"{API}/lines/layers/{big}/attrs", params={"offset": offset, "limit": limit}).json()
+        assert page["rows"] == _cells(attrs, offset, limit), (offset, limit)
+        assert asked == [groups] and page["total"] == n and len(page["rows"]) == min(limit, n - offset)
+        assert [f["name"] for f in page["fields"]] == attrs.column_names
+        legacy = c.get(f"{API}/lines/layers/{old}/attrs", params={"offset": offset, "limit": limit}).json()
+        assert legacy["rows"] == page["rows"] and asked[-1] == [0], (offset, limit)  # right, only not as fast
+    asked.clear()
+    assert c.get(f"{API}/lines/layers/{big}/attrs", params={"offset": n, "limit": 10}).json()["rows"] == []
+    assert asked == []  # past the end: nothing is read
+    for offset, limit in ((0, 3), (g - 2, 5), (5 * k - 4, 200), (g + 1, 5000)):
+        url = f"{API}/lines/layers/{by_vertex}/attrs"
+        page = c.get(url, params={"offset": offset, "limit": limit, "scope": "vertex"}).json()
+        assert page["rows"] == _cells(vattrs, offset, limit) and page["total"] == 5 * k, (offset, limit)
+    assert c.get(f"{API}/lines/layers/{by_vertex}/attrs").json()["rows"] == []  # its lines have no attributes
+    # the table of a layer in a pack is a slice of the blob: read in place, the rows of that layer and no other
+    for i, layer in enumerate(packed):
+        for offset, limit in ((0, 200), (499, 5), (120, 300)):
+            page = c.get(f"{API}/lines/layers/{layer}/attrs", params={"offset": offset, "limit": limit}).json()
+            assert page["rows"] == _cells(attrs.slice(700 * i, 500), offset, limit), (i, offset, limit)
+            assert page["total"] == 500
+
+
+def test_a_page_of_a_million_rows_takes_milliseconds(lines) -> None:  # type: ignore[no-untyped-def]
+    """Budget of the Э7 review: a page of 200 rows of a 1 000 000-row table (ten attributes) ≤ 100 ms at any
+    offset — the endpoint as the table of the interface calls it, every page a new one (no 304)."""
+    import time
+
+    c = lines["client"]
+    project = projects_of(c.core).require_current()
+    n = 1_000_000
+    attrs = _attributes(n, 5)
+    xyz = UTM + np.column_stack([np.arange(n) % 1000, np.arange(n) // 1000, np.zeros(n)])
+    with dialect.write_tx(project.engine) as conn:
+        layer = ls.put_layer(
+            conn, BlobStore(project.folder), from_points("Миллион", xyz, attrs=attrs), file_id=lines["file"]
+        )
+    url = f"{API}/lines/layers/{layer}/attrs"
+    c.get(url, params={"offset": 10, "limit": 200})  # the first call imports pyarrow.parquet
+    times = []
+    for offset in (0, 65_500, 250_000, 499_990, 750_123, 934_000, 999_700, 999_990):
+        t0 = time.perf_counter()
+        r = c.get(url, params={"offset": offset, "limit": 200})
+        times.append(time.perf_counter() - t0)
+        assert r.status_code == 200 and r.json()["rows"] == _cells(attrs, offset, 200), offset
+    assert max(times) <= 0.1, [round(t * 1000, 1) for t in times]
+    print(
+        f"attrs page of 1e6 rows: max {max(times) * 1000:.1f} ms, median {sorted(times)[len(times) // 2] * 1000:.1f} ms"
+    )
+
+
 def test_delete_file_with_its_layers(lines) -> None:  # type: ignore[no-untyped-def]
     c = lines["client"]
     error_of(c.delete(f"{API}/lines/files/{lines['busy']}"), 409, "file_busy")  # an import is writing it

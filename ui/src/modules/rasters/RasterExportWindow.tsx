@@ -1,19 +1,21 @@
 /**
  * The window «Экспорт растра» (ТЗ 7.19, 9.7; ADR 0011 §3, §5): the raster, the format — the source file with
  * its georeference next to it, or one GeoTIFF — the file («Сохранить как…») → the job `export.raster`.
+ * Files next to the chosen one that the export would replace are asked about in our own window first.
  */
 import { useState } from "react";
 import { bridge } from "../../bridge";
 import { useApp } from "../../shell/AppContext";
 import { showJobs } from "../../shell/objectRun";
 import { errorText } from "../../shell/props";
+import { askConfirm } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
 import { closeWindow } from "../../shell/windows";
 import css from "../../shell/Props.module.css";
 import { refresh as refreshJobs } from "../jobs/state";
 import { sceneObjects } from "../scene/objects";
 import { startRasterExport } from "./actions";
-import { exportFilter, exportName, exportNotes, exportReason, RASTER_FORMATS, type RasterFormat } from "./export";
+import { exportFilter, exportName, exportNotes, exportReason, overwriteQuestion, RASTER_FORMATS, startWithOverwrite, type RasterFormat } from "./export";
 import type { RasterRow } from "./props";
 import { rasterPlace } from "./tree";
 
@@ -37,8 +39,16 @@ export function RasterExportWindow({ winId, rasterId, format: initial }: { winId
   const start = async () => {
     if (reason || !path || !raster) return;
     setBusy(true);
+    setError(null);
     try {
-      await startRasterExport(raster.id, path, format);
+      const started = await startWithOverwrite(
+        (overwrite) => startRasterExport(raster.id, path, format, overwrite),
+        (files) => askConfirm(overwriteQuestion(files)),
+      );
+      if (!started) {
+        setBusy(false); // «Отмена»: the window stays, another name can be chosen
+        return;
+      }
       showJobs(app);
       await refreshJobs();
       closeWindow(winId);

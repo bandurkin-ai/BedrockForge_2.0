@@ -1,7 +1,12 @@
 /**
  * The window «Экспорт растра» as data (ТЗ 7.19, 9.7; ADR 0011 §3 `export.raster`): the source file with its
  * georeference next to it (a world file and `.prj`), or one GeoTIFF. Pure.
+ *
+ * The save window asks about the chosen name only; the export also writes companion files, and the image may
+ * get the extension of its kind after the chosen name. The core does not replace such files unasked: it
+ * answers 409 `files_exist` with their names, the window asks (`overwriteQuestion`) and starts again.
  */
+import type { ConfirmOptions } from "../../shell/dialogs";
 import type { RasterRow } from "./props";
 
 export type RasterFormat = "source" | "geotiff";
@@ -51,4 +56,36 @@ export function exportReason(r: Raster | undefined, format: RasterFormat, path: 
   if (!r) return "Выберите растр.";
   if (format === "geotiff" && !hasGeoref(r)) return "У растра нет привязки: GeoTIFF записать нельзя. Выберите «Исходный файл с привязкой».";
   return path ? null : "Выберите файл: «Сохранить как…».";
+}
+
+/** The files a 409 `files_exist` of the core names: the export would replace them; null — another error. */
+export function existingFiles(e: unknown): string[] | null {
+  const err = e as { code?: unknown; body?: { files?: unknown } } | null;
+  if (!err || err.code !== "files_exist") return null;
+  const files = Array.isArray(err.body?.files) ? err.body.files.filter((f): f is string => typeof f === "string" && f !== "") : [];
+  return files.length ? files : null;
+}
+
+const SHOWN_FILES = 12;
+
+/** The question of our own window before files next to the chosen one are replaced. */
+export function overwriteQuestion(files: readonly string[]): ConfirmOptions {
+  const shown = files.slice(0, SHOWN_FILES).map((f) => `• ${f}`);
+  if (files.length > SHOWN_FILES) shown.push(`… и ещё ${files.length - SHOWN_FILES}`);
+  const head = files.length === 1 ? "В папке уже есть файл с таким именем. Экспорт заменит его:" : "В папке уже есть файлы с такими именами. Экспорт заменит их:";
+  return { title: "Заменить файлы?", message: `${head}\n${shown.join("\n")}`, okLabel: "Заменить", danger: true };
+}
+
+/**
+ * Starts the export; when the core names files it would replace, asks and starts again with the permission.
+ * null — the user said no: nothing is started and nothing is written.
+ */
+export async function startWithOverwrite<T>(start: (overwrite: boolean) => Promise<T>, ask: (files: string[]) => Promise<boolean>): Promise<T | null> {
+  try {
+    return await start(false);
+  } catch (e) {
+    const files = existingFiles(e);
+    if (!files) throw e;
+    return (await ask(files)) ? start(true) : null;
+  }
 }

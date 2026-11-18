@@ -19,8 +19,11 @@ files [{file, …counts}] — the same after a retry that finds the import alrea
 Nothing is written before both files are read and checked; then everything goes in one final transaction, so a
 cancelled or failed job leaves nothing (a new set and the table of samples are «building» until then). Holes of
 the set that are not in the file stay as they are; a hole of the same name gets the new collar and stations (its
-old stations go, its samples stay). The source files are kept in the project, the history in `import_log`
-(target «trenches»), warnings of the readers and what was left out — in the operation log.
+old stations go, its samples stay). When that hole was a drillhole — it had a collar or readings and was not a
+trench — its collar and readings are replaced: such holes are named in a warning of the operation log and in
+the result (`converted` — how many, `converted_names` — the first 100). The source files are kept in the
+project, the history in `import_log` (target «trenches»), warnings of the readers and what was left out — in
+the operation log.
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ __all__ = ["import_trenches", "preview"]
 TRENCH = "Канава"
 TYPE_KEYS = ("type", "hole_type", "тип")  # the collar attributes `drillholes.router.hole_type` reads
 BATCH = 50_000
+CONVERTED_KEPT = 100  # names of drillholes that became trenches kept in the result and in `import_log`
 
 
 def _memory(params: dict[str, Any]) -> int:
@@ -60,7 +64,8 @@ def _memory(params: dict[str, Any]) -> int:
 def _result(set_id: int, new_set: bool, files: list[dict[str, Any]]) -> dict[str, Any]:
     head = files[0] if files else {}
     out = {"set_id": set_id, "new_set": new_set, "files": files}
-    out.update({k: head.get(k, 0) for k in ("trenches", "vertices", "length", "skipped")})
+    out.update({k: head.get(k, 0) for k in ("trenches", "vertices", "length", "skipped", "converted")})
+    out["converted_names"] = list(head.get("converted_names") or [])
     out["samples"] = sum(int(f.get("rows", 0)) for f in files[1:])
     return out
 
@@ -147,8 +152,10 @@ def _type_key(conn: sa.Connection, set_id: int) -> str:
     return "TYPE"
 
 
-def write_trenches(conn: sa.Connection, set_id: int, t: Trenches, tick: Tick) -> dict[str, int]:
-    """Collars and stations of the trenches, in the caller's transaction; other holes of the set are not touched."""
+def write_trenches(conn: sa.Connection, set_id: int, t: Trenches, tick: Tick) -> dict[str, Any]:
+    """Collars and stations of the trenches, in the caller's transaction; other holes of the set are not touched.
+    Returns {added, updated, converted}: `converted` — the names of the holes that were drillholes (a collar or
+    readings, no vertices with coordinates, not typed «Канава») and are trenches now."""
     import numpy as np
 
     from bf_core.drillholes.store import hole_ids
@@ -159,12 +166,24 @@ def write_trenches(conn: sa.Connection, set_id: int, t: Trenches, tick: Tick) ->
     fresh = json.dumps({key: TRENCH}, ensure_ascii=False)
     old = [known[name] for name in t.names if name in known]
     attrs_of: dict[int, Any] = {}
+    drilled: set[int] = set()  # a collar or readings of an inclinometer, and no station with coordinates
     for a in range(0, len(old), 10_000):  # ids in portions: under the SQLite parameter limit
         part = old[a : a + 10_000]
-        rows = conn.execute(sa.select(dh_holes.c.id, dh_holes.c.attrs).where(dh_holes.c.id.in_(part)))
-        attrs_of.update({int(r.id): r.attrs for r in rows})
+        sv = dh_surveys.c
+        counts = conn.execute(  # per hole: its survey rows and those of them that are vertices (x is set)
+            sa.select(sv.hole_id, sa.func.count(), sa.func.count(sv.x)).where(sv.hole_id.in_(part)).group_by(sv.hole_id)
+        )
+        surveyed = {int(r[0]): (int(r[1]), int(r[2])) for r in counts}
+        rows = conn.execute(
+            sa.select(dh_holes.c.id, dh_holes.c.attrs, dh_holes.c.has_collar).where(dh_holes.c.id.in_(part))
+        )
+        for r in rows:
+            attrs_of[int(r.id)] = r.attrs
+            readings, vertices = surveyed.get(int(r.id), (0, 0))
+            if vertices == 0 and (r.has_collar or readings):
+                drilled.add(int(r.id))
         conn.execute(sa.delete(dh_surveys).where(dh_surveys.c.hole_id.in_(part)))
-    added, updated = [], []
+    added, updated, converted = [], [], []
     for name, (x, y, z), td in zip(t.names, first, length, strict=True):
         hole = known.get(name)
         if hole is None:
@@ -173,6 +192,8 @@ def write_trenches(conn: sa.Connection, set_id: int, t: Trenches, tick: Tick) ->
         attrs = dict(attrs_of.get(hole) or {})
         if "канав" not in str(attrs.get(key, "")).casefold():
             attrs[key] = TRENCH
+            if hole in drilled:
+                converted.append(name)
         updated.append((x, y, z, td, None, None, True, json.dumps(attrs, ensure_ascii=False), hole))
     tick(0.05, f"Канавы: устья — {n_text(len(t.names))}")
     dialect.bulk_insert(conn, dh_holes, ("set_id", "name", "x", "y", "z", "td", "has_collar", "attrs"), added)
@@ -187,7 +208,7 @@ def write_trenches(conn: sa.Connection, set_id: int, t: Trenches, tick: Tick) ->
         b = a + len(part)
         stations = zip(repeat(set_id, len(part)), part, t.depth[a:b].tolist(), *t.xyz[a:b].T.tolist(), strict=True)
         dialect.bulk_insert(conn, dh_surveys, ("set_id", "hole_id", "depth", "x", "y", "z"), list(stations))
-    return {"added": len(added), "updated": len(updated)}
+    return {"added": len(added), "updated": len(updated), "converted": converted}
 
 
 @handler("import.trenches", "Импорт канав", queue="heavy", estimate_memory=_memory)
@@ -259,7 +280,9 @@ def import_trenches(ctx: JobContext) -> dict[str, Any]:
         name = Path(samples["path"]).name
         logged.append((samples, name, Path(name).suffix.lower().lstrip("."), samples.get("kind") or "assay", counts))
     with dialect.write_tx(engine) as conn:  # the final transaction: all or nothing
-        head.update(write_trenches(conn, set_id, t, lambda f, m: ctx.tick(None if f is None else 0.8 + 0.19 * f, m)))
+        written = write_trenches(conn, set_id, t, lambda f, m: ctx.tick(None if f is None else 0.8 + 0.19 * f, m))
+        converted: list[str] = written.pop("converted")
+        head.update(written, converted=len(converted), converted_names=converted[:CONVERTED_KEPT])
         if table_id is not None:
             dh.swap_in(conn, set_id, table_id)
             dh.prune_empty_holes(conn, set_id)
@@ -283,6 +306,12 @@ def import_trenches(ctx: JobContext) -> dict[str, Any]:
         conn.execute(sa.update(objects).where(objects.c.id == set_id).values(**values))
 
     # Committed: from here on nothing may fail the job or ask to cancel it (the data is in the project).
+    if converted:
+        ctx.log(
+            f"{label}: скважины с теми же именами стали канавами — их устья и инклинометрия заменены "
+            f"линиями канав, пробы остались: {listed(converted)}",
+            "warn",
+        )
     _store_sources(ctx, engine, logs)
     _drop_stale_snapshots(ctx, engine)
     return _result(set_id, new_name is not None, [{"file": name, **numbers} for _s, name, _f, _t, numbers in logged])

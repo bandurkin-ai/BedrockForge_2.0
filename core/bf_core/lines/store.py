@@ -44,6 +44,8 @@ TABLES = ("attrs", "vattrs")
 #: A layer whose files together are at most this many bytes goes into the pack of its portion (`stage_layers`).
 PACK_LIMIT = 1 << 20
 PACK_BYTES = 16 << 20  # a pack is closed when it holds this much: the next small layer starts another
+#: Rows in one Parquet row group of the attribute tables: a page of attributes decodes one group, two at a seam.
+ROW_GROUP = 1 << 16
 
 Staged = tuple[Path, str, int]
 
@@ -61,10 +63,12 @@ def _chunks(arr: np.ndarray, tick: Callable[[], None] | None = None) -> Iterator
 
 
 def _parquet(table: Any) -> bytes:
+    """The Parquet file of a table of attributes, in row groups of `ROW_GROUP` rows: a page of the attributes
+    (`LayerFiles.rows`) decodes only the groups it falls into."""
     import pyarrow.parquet as pq
 
     buf = io.BytesIO()
-    pq.write_table(table, buf, compression="zstd")
+    pq.write_table(table, buf, compression="zstd", row_group_size=ROW_GROUP)
     return buf.getvalue()
 
 
@@ -417,6 +421,45 @@ class LayerFiles:
         if len(data) != size:
             raise broken()
         return pq.read_table(pa.BufferReader(data), columns=columns)
+
+    def rows(self, role: str, offset: int, limit: int, columns: Sequence[str] | None = None) -> Any:
+        """Rows [offset, offset + limit) of the Parquet table of a role (None — the layer has none), `columns`
+        only. The file is mapped, not read: the footer says which row groups hold the rows, and only they are
+        decoded — of a table inside a pack too (its bytes are a slice of the mapped blob). A table written as
+        one big group (before `ROW_GROUP`) is still read right, only whole."""
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        part = self.parts.get(role)
+        if part is None:
+            return None
+        path, start, size = part
+        try:
+            with pa.memory_map(str(path), "r") as mapped:
+                source: Any = mapped
+                if size is not None:
+                    mapped.seek(start)
+                    source = pa.BufferReader(mapped.read_buffer(size))
+                    if source.size() != size:
+                        raise broken()
+                file = pq.ParquetFile(source)
+                meta = file.metadata
+                groups: list[int] = []
+                first = at = 0
+                for g in range(meta.num_row_groups):
+                    n = meta.row_group(g).num_rows
+                    if at + n > offset and at < offset + limit:
+                        if not groups:
+                            first = at
+                        groups.append(g)
+                    at += n
+                    if at >= offset + limit:
+                        break
+                if not groups:
+                    return file.schema_arrow.empty_table().select(list(columns or file.schema_arrow.names))
+                return file.read_row_groups(groups, columns=columns).slice(offset - first, limit)
+        except (OSError, pa.ArrowInvalid) as exc:
+            raise broken() from exc
 
 
 def layer_files(store: BlobStore, shas: Mapping[str, str]) -> LayerFiles:

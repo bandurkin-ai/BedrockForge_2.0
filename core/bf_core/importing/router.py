@@ -386,7 +386,7 @@ def _objects_request(svc: ProjectService, body: ObjectsBody, *, writable: bool) 
     """Checked parameters of the composition and of the job: files, read options, the level, the section."""
     from bf_core.rasters.store import section_edges
 
-    from .object_files import NUMBER_HINT, parse_level, usable_section
+    from .object_files import NUMBER_HINT, option_key, parse_level, usable_section
 
     project = svc.require_current(writable=writable)
     files = [str(_file(path)) for path in body.files]
@@ -400,7 +400,8 @@ def _objects_request(svc: ProjectService, body: ObjectsBody, *, writable: bool) 
             section = usable_section(section_edges(conn))
     return {
         "files": files,
-        "options": {path: o.model_dump(exclude_none=True) for path, o in body.options.items()},
+        # the keys as `files` are spelled: «C:/a/b.csv» of the wizard and «C:\\a\\b.csv» of the job are one file
+        "options": {option_key(path): o.model_dump(exclude_none=True) for path, o in body.options.items()},
         "raster_z": {"elevation": elevation, "shift": shift},
         "section": section,
         "folder": " ".join(body.folder.split()) or None if body.folder else None,

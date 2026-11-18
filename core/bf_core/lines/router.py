@@ -117,7 +117,8 @@ def layer_attrs(
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
         layer, shas = service.attrs_key(conn, layer_id, scope)
-    key = json.dumps(["line-attrs", project.uid, layer_id, layer["version"], sorted(shas.items()), scope, offset, limit])
+    blobs = sorted(shas.items())
+    key = json.dumps(["line-attrs", project.uid, layer_id, layer["version"], blobs, scope, offset, limit])
     tag = '"' + hashlib.sha256(key.encode()).hexdigest() + '"'
     headers = {"ETag": tag, **CACHE_HEADERS}
     if matches(if_none_match, tag):

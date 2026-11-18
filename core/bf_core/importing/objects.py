@@ -48,6 +48,8 @@ from .object_files import (
     _size,
     inspect_files,
     n_text,
+    option_key,
+    options_by_file,
     parse_level,
     plan,
     read_group,
@@ -280,7 +282,7 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
         raise JobError("not_a_number", str(exc), NUMBER_HINT) from exc
     assert ctx.project_folder is not None
     store = BlobStore(ctx.project_folder)
-    options: Mapping[str, Any] = p.get("options") or {}
+    options = options_by_file(p.get("options"))  # keys as paths are spelled here, whatever the caller sent
     done: list[_Done] = []
     failed: list[dict[str, str]] = []
     temps: list[Path] = []
@@ -296,7 +298,7 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
 
             step(0.0, None)
             try:
-                read = read_group(g, options.get(str(g.main)), step, displays=True, section=p.get("section"))
+                read = read_group(g, options.get(option_key(g.main)), step, displays=True, section=p.get("section"))
                 if not read.rasters and not any(layer.point_count for layer in read.layers):
                     raise FormatError("empty_file", "В файле нет ни линий, ни точек.", "Проверьте файл.")
             except (FormatError, OSError) as exc:

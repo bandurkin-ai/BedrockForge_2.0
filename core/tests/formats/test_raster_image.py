@@ -422,6 +422,89 @@ def test_reading_can_be_cancelled(tmp_path: Path) -> None:
     assert calls == 4
 
 
+def test_a_cancel_waits_for_the_decoder_before_the_file_is_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A decode cannot be stopped half way. A cancel that arrives meanwhile must wait for it: closing the image
+    or the TIFF under a thread that still reads it is a use after free in the decoder."""
+    import threading
+
+    class Cancelled(Exception):
+        pass
+
+    def cancel(fraction: float, message: str | None) -> None:
+        raise Cancelled  # at the first tick: 0.2 s after the decode has started
+
+    state = {"decoding": 0, "decoded": 0, "closed": 0, "closed_while_decoding": 0}
+
+    def slow(work):  # type: ignore[no-untyped-def]
+        def run(*args, **kwargs):  # type: ignore[no-untyped-def]
+            state["decoding"] += 1
+            try:
+                time.sleep(0.6)  # the decoder is busy long after the cancel
+                return work(*args, **kwargs)
+            finally:
+                state["decoding"] -= 1
+                state["decoded"] += 1
+
+        return run
+
+    def watched(close):  # type: ignore[no-untyped-def]
+        def run(*args, **kwargs):  # type: ignore[no-untyped-def]
+            state["closed"] += 1
+            state["closed_while_decoding"] += state["decoding"]
+            return close(*args, **kwargs)
+
+        return run
+
+    def idle() -> bool:
+        return not [t for t in threading.enumerate() if t.name == "bf-raster"]
+
+    # the call itself: nothing of it is running when the cancel comes out
+    done = threading.Event()
+    with pytest.raises(Cancelled):
+        ri._wait(lambda: (time.sleep(0.5), done.set()), cancel, 0.0, "Чтение изображения")
+    assert done.is_set() and idle()
+
+    # Pillow: `im.load` in the thread, `im.close` by `open_pixels`
+    inspect = ri._inspect
+
+    class Slow:
+        def __init__(self, im) -> None:  # type: ignore[no-untyped-def]
+            self._im = im
+            self.load = slow(im.load)
+            self.close = watched(im.close)
+
+        def __getattr__(self, name: str):  # type: ignore[no-untyped-def]
+            return getattr(self._im, name)
+
+    def inspected(path: Path):  # type: ignore[no-untyped-def]
+        info, im = inspect(path)
+        return info, None if im is None else Slow(im)
+
+    monkeypatch.setattr(ri, "_inspect", inspected)
+    png = save(tmp_path / "big.png", ramp(1200, 800))
+    with pytest.raises(Cancelled), ri.open_pixels(png, cancel):
+        raise AssertionError("the pixels of a cancelled read are not given out")
+    assert state == {"decoding": 0, "decoded": 1, "closed": 1, "closed_while_decoding": 0} and idle()
+
+    # tifffile: `page.asarray` in the thread, `TiffFile.close` by the reader
+    monkeypatch.setattr(tifffile.TiffPage, "asarray", slow(tifffile.TiffPage.asarray))
+    monkeypatch.setattr(tifffile.TiffFile, "close", watched(tifffile.TiffFile.close))
+    f64 = tmp_path / "f64.tif"
+    tifffile.imwrite(f64, np.linspace(0.0, 1.0, 300)[None, :] * np.ones((200, 1)))
+    state.update(decoded=0, closed=0)
+    with pytest.raises(Cancelled), ri.open_pixels(f64, cancel):
+        raise AssertionError("the pixels of a cancelled read are not given out")
+    assert state["decoded"] == 1 and state["closed"] >= 1 and state["closed_while_decoding"] == 0 and idle()
+    # and the whole reader: the job «Импорт файлов» cancelled while the image is being read
+    (tmp_path / "big.pgw").write_text("2.0\n0.0\n0.0\n-2.0\n1001.0\n2999.0\n")
+    state.update(decoded=0, closed=0)
+    with pytest.raises(Cancelled):
+        ri.read_raster(png, cancel)
+    assert state["decoding"] == 0 and state["closed_while_decoding"] == 0 and idle()
+
+
 def test_extreme_shapes(tmp_path: Path) -> None:
     one = save(tmp_path / "one.png", np.full((1, 1, 3), 200, dtype=np.uint8))
     info, copies, _ = ri.display_copies(one)

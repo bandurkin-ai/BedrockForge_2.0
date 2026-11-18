@@ -225,7 +225,9 @@ def probe(path: str | Path) -> ImageInfo:
 
 def _wait[T](work: Callable[[], T], tick: Progress, fraction: float, message: str) -> T:
     """Run a call that cannot report progress (a Pillow decode, resize or encode) in a thread and tick meanwhile.
-    When `tick` raises (cancel) the call is left to finish on its own: its result is dropped."""
+    When `tick` raises (cancel) the call is waited for and its result dropped: a decoder cannot be stopped half
+    way, and the caller closes the image or the TIFF right after — under a thread that still reads it that is
+    a use after free. The cancel is late by what is left of one decode (seconds for the largest image)."""
     done: list[T] = []
     failed: list[BaseException] = []
 
@@ -237,9 +239,13 @@ def _wait[T](work: Callable[[], T], tick: Progress, fraction: float, message: st
 
     thread = threading.Thread(target=run, name="bf-raster", daemon=True)
     thread.start()
-    while thread.is_alive():
-        thread.join(0.2)
-        tick(fraction, message)
+    try:
+        while thread.is_alive():
+            thread.join(0.2)
+            tick(fraction, message)
+    except BaseException:
+        thread.join()
+        raise
     if failed:
         raise failed[0]
     return done[0]

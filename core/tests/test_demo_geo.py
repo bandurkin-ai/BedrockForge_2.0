@@ -277,3 +277,25 @@ def test_demo_is_the_same_everywhere_and_the_audit_finds_nothing_new(demo) -> No
     rows = c.get(f"{API}/audit/sets/{set_id}/findings", params={"limit": 500}).json()
     assert rows["total"] == len(rows["findings"]) > 0
     assert geo.TRENCH not in str(rows["findings"]), "the trench must not add findings"
+
+
+def test_build_dtm_over_the_demo_points_is_announced(demo) -> None:  # type: ignore[no-untyped-def]
+    """«Построить ЦТМ» from the demo points through the scheduler: the surface passes through them, takes the
+    free name, and the end of the job is an `objects.changed` event — the lists of the interface are read again
+    even when the job was over before the interface saw it run (a few hundred points take a moment)."""
+    import json
+
+    c, project, store = demo
+    files = c.get(f"{API}/lines/files").json()["files"]
+    points_id = files[1]["layers"][0]["id"]
+    r = c.post(f"{API}/wireframes/build-dtm", json={"name": "Рельеф", "layer_ids": [points_id]})
+    assert r.status_code == 200, r.text
+    job = wait_job(c, r.json()["source"], r.json()["id"], timeout=120)
+    assert job["status"] == "done", job
+    assert job["result"]["name"] == "Рельеф (2)" and job["result"]["points"] == 25 * 19 + 9
+    with dialect.read_tx(project.engine) as conn:
+        v, _t = wf_store.read_wireframe(conn, store, job["result"]["wireframe_id"])
+        points = ls_store.read_layer(conn, store, points_id)
+    assert {row.tobytes() for row in v} == {row.tobytes() for row in points.xyz}  # float64 bit for bit
+    events = [(name, json.loads(data)) for _id, name, data in c.core.events._recent]
+    assert ("objects.changed", {"kind": "job", "job": "model.dtm", "id": job["id"]}) in events

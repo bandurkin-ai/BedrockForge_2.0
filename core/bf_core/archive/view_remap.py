@@ -1,5 +1,8 @@
 """Rows of `settings` on a `.bfggis` import (ADR 0007 §2): the view scope is optional and carries object ids
-inside keys and values; code lists links carry the set id in the key. Other scopes are copied as they are."""
+inside keys and values; code lists links carry the set id in the key. Other scopes are copied as they are.
+
+Object ids kept inside `objects.meta` are renumbered here too: the keys of saved views (`remap_views`) and the
+sources a wireframe was built from (`remap_wireframes`)."""
 
 from __future__ import annotations
 
@@ -41,3 +44,22 @@ def remap_views(conn: Any, objects_map: dict[int, int]) -> int:
     for view_id, meta in rows:
         conn.execute(sa.update(objects).where(objects.c.id == view_id).values(meta=remap_meta(meta, objects_map.get)))
     return len(rows)
+
+
+def remap_wireframes(conn: Any, objects_map: dict[int, int]) -> int:
+    """What a wireframe was built from (`meta.built` of the job `model.dtm`): the ids of its source layers,
+    sets and boundary on a `.bfggis` import. Returns how many wireframes were renumbered."""
+    import sqlalchemy as sa
+
+    from bf_core.db.schema import objects
+    from bf_core.wireframes.jobs import remap_built
+    from bf_core.wireframes.store import WIREFRAME
+
+    rows = conn.execute(sa.select(objects.c.id, objects.c.meta).where(objects.c.kind == WIREFRAME)).all()
+    changed = 0
+    for wf_id, meta in rows:
+        if isinstance(meta, dict) and meta.get("built") is not None:
+            built = remap_built(meta["built"], objects_map.get)
+            conn.execute(sa.update(objects).where(objects.c.id == wf_id).values(meta={**meta, "built": built}))
+            changed += 1
+    return changed

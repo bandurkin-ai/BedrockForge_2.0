@@ -305,7 +305,8 @@ def test_request_checks_the_parameters(proj: Project, tmp_path: Path) -> None:
     path = str(tmp_path / "out.tif")
     with dialect.read_tx(proj.project.engine) as conn:
         ok = re_.request(conn, raster_id=raster_id, path=path, format="geotiff")
-        assert ok == {"raster_id": raster_id, "path": path, "format": "geotiff", "width": W, "height": H}
+        assert ok == {"raster_id": raster_id, "path": path, "format": "geotiff", "overwrite": False,
+                      "width": W, "height": H}  # fmt: skip
         assert re_._memory(ok) == 512 and re_._memory({**ok, "width": 20_000, "height": 20_000}) > 1500
         assert re_._memory({**ok, "format": "source", "width": 20_000, "height": 20_000}) == 256
         for kw, status, code in (
@@ -321,6 +322,177 @@ def test_request_checks_the_parameters(proj: Project, tmp_path: Path) -> None:
             with pytest.raises(ApiError) as err:
                 re_.request(conn, **kw)  # type: ignore[arg-type]
             assert (err.value.status, err.value.code) == (status, code) and err.value.hint, kw
+
+
+# --- files that are there already (Э7 review) ----------------------------------------------------------
+
+
+def _names(folder: Path) -> list[str]:
+    return sorted(p.name for p in folder.iterdir())
+
+
+def test_files_next_to_the_chosen_one_are_not_replaced_unasked(proj: Project, tmp_path: Path) -> None:
+    """The save window asks about the chosen name only. The companions and an image that got a second
+    extension are other files: without `overwrite` nothing is written and they are named."""
+    (tmp_path / "in").mkdir()
+    raster_id = proj.load(_ortho(tmp_path / "in"))
+    image = (tmp_path / "in" / "ортофото.jpg").read_bytes()
+    out = tmp_path / "o"
+    out.mkdir()
+    theirs = {"карта.jgw": "чужая привязка\n", "карта.prj": "чужая система координат\n"}
+    for name, text in theirs.items():
+        (out / name).write_text(text, encoding="utf-8")
+    chosen = str(out / "карта.jpg")
+
+    def untouched() -> bool:
+        return all((out / name).read_text(encoding="utf-8") == text for name, text in theirs.items())
+
+    with pytest.raises(JobError) as err:
+        proj.run(raster_id=raster_id, path=chosen, format="source")
+    e = err.value
+    assert e.code == "files_exist" and "«карта.jgw», «карта.prj»" in e.message and "карта.jpg" not in e.message
+    assert "Подтвердите замену" in e.hint and untouched()
+    assert _names(out) == sorted(theirs) and proj.log_rows() == []  # no image, no .part, no record
+    with dialect.read_tx(proj.project.engine) as conn:  # the endpoint tells before the job is started
+        with pytest.raises(ApiError) as refused:
+            re_.request(conn, raster_id=raster_id, path=chosen, format="source", store=proj.store)
+        assert (refused.value.status, refused.value.code) == (409, "files_exist")
+        assert refused.value.extra == {"files": ["карта.jgw", "карта.prj"]} and refused.value.hint
+        agreed = re_.request(conn, raster_id=raster_id, path=chosen, format="source", overwrite=True, store=proj.store)
+    assert agreed["overwrite"] is True and untouched()
+
+    # the chosen file itself was asked about by the save window: it is replaced, a folder is not a file to ask about
+    for name in theirs:
+        (out / name).unlink()
+    (out / "карта.jpg").write_bytes(b"old")
+    (out / "карта.jgw").mkdir()
+    with dialect.read_tx(proj.project.engine) as conn:
+        re_.request(conn, raster_id=raster_id, path=chosen, format="source", store=proj.store)
+    with pytest.raises(JobError) as err:
+        proj.run(raster_id=raster_id, path=chosen, format="source")
+    assert err.value.code == "file_unwritable" and (out / "карта.jpg").read_bytes() == b"old"
+    (out / "карта.jgw").rmdir()
+    done, _ = proj.run(raster_id=raster_id, path=chosen, format="source")
+    assert (
+        sorted(done["files"]) == ["карта.jgw", "карта.jpg", "карта.prj"] and (out / "карта.jpg").read_bytes() == image
+    )
+
+    # with the permission the companions are replaced
+    (out / "карта.jgw").write_text("чужая привязка\n", encoding="utf-8")
+    done, _ = proj.run(raster_id=raster_id, path=chosen, format="source", overwrite=True)
+    assert sorted(done["files"]) == ["карта.jgw", "карта.jpg", "карта.prj"]
+    assert read_raster(out / "карта.jpg", displays=False).georef is not None  # a real world file again
+
+    # a second extension: «plan.tif» chosen for a JPEG is written as «plan.tif.jpg» — a name nobody asked about
+    (out / "plan.tif").write_bytes(b"their tiff")
+    (out / "plan.tif.jpg").write_bytes(b"their jpeg")
+    with pytest.raises(JobError) as err:
+        proj.run(raster_id=raster_id, path=str(out / "plan.tif"), format="source")
+    assert err.value.code == "files_exist" and "«plan.tif.jpg»" in err.value.message
+    assert "«plan.tif»" not in err.value.message and (out / "plan.tif.jpg").read_bytes() == b"their jpeg"
+    done, _ = proj.run(raster_id=raster_id, path=str(out / "plan.tif"), format="source", overwrite=True)
+    assert Path(done["path"]).name == "plan.tif.jpg" and Path(done["path"]).read_bytes() == image
+    assert (out / "plan.tif").read_bytes() == b"their tiff"  # the chosen name is not what is written: it stays
+
+    # GeoTIFF: «dem» becomes «dem.tif»; «dem.tif» chosen as it is was asked about
+    (out / "dem.tif").write_bytes(b"their dem")
+    with pytest.raises(JobError) as err:
+        proj.run(raster_id=raster_id, path=str(out / "dem"), format="geotiff")
+    assert err.value.code == "files_exist" and "«dem.tif»" in err.value.message
+    assert (out / "dem.tif").read_bytes() == b"their dem"
+    with dialect.read_tx(proj.project.engine) as conn, pytest.raises(ApiError) as refused:
+        re_.request(conn, raster_id=raster_id, path=str(out / "dem"), format="geotiff", store=proj.store)
+    assert refused.value.extra == {"files": ["dem.tif"]}
+    done, _ = proj.run(raster_id=raster_id, path=str(out / "dem.tif"), format="geotiff")
+    assert done["files"] == ["dem.tif"] and gr.read_geotiff_tags(out / "dem.tif") is not None
+    assert not list(out.glob("*.part"))
+
+
+def test_export_endpoint_asks_before_replacing(proj: Project, tmp_path: Path) -> None:
+    raster_id = proj.load(_ortho(tmp_path))
+    out = tmp_path / "o"
+    out.mkdir()
+    (out / "снимок.prj").write_text("чужой файл", encoding="utf-8")
+    c = proj.client
+    body = {"path": str(out / "снимок.jpg"), "format": "source"}
+    r = c.post(f"{API}/rasters/{raster_id}/export", json=body)
+    assert r.status_code == 409 and r.json()["code"] == "files_exist" and r.json()["files"] == ["снимок.prj"]
+    assert "«снимок.prj»" in r.json()["message"] and r.json()["hint"]
+    assert _names(out) == ["снимок.prj"] and (out / "снимок.prj").read_text(encoding="utf-8") == "чужой файл"
+    r = c.post(f"{API}/rasters/{raster_id}/export", json={**body, "overwrite": True})
+    assert r.status_code == 200, r.text
+    job = wait_job(c, r.json()["source"], r.json()["id"])
+    assert job["status"] == "done" and sorted(job["result"]["files"]) == ["снимок.jgw", "снимок.jpg", "снимок.prj"]
+    assert describe((out / "снимок.prj").read_text(encoding="utf-8")).epsg == 32638
+    # a job started without the permission (not through the endpoint) refuses on its own
+    from bf_core.jobs.service import jobs_of
+
+    key, job_id = jobs_of(c.core).submit("export.raster", {"raster_id": raster_id, **body}, title="Экспорт растра")
+    job = wait_job(c, key, job_id)
+    assert job["status"] == "failed" and job["error"]["code"] == "files_exist", job
+
+
+TAB = (
+    "!table\r\n!version 300\r\n!charset WindowsCyrillic\r\n\r\nDefinition Table\r\n"
+    '  File "C:\\Съёмка\\Разрез 12.png"\r\n  Type "RASTER"\r\n'
+    '  (1000.0,5000.0) (0.0,0.0) Label "Левый верх",\r\n  (1400.0,5000.0) (400.0,0.0) Label "Правый верх",\r\n'
+    '  (1400.0,4800.0) (400.0,200.0) Label "Правый низ"\r\n  Units "m"\r\n'
+)
+
+
+def test_tab_of_a_vertical_raster_names_the_exported_image(proj: Project, tmp_path: Path) -> None:
+    """A raster loaded with a TAB and then put on a section is exported with that TAB (a world file cannot hold
+    a vertical plane). The TAB named the image it was made for: now it names the exported one."""
+    (tmp_path / "in").mkdir()
+    image = tmp_path / "in" / "Разрез 12.png"
+    Image.fromarray(_picture(400, 200)).save(image)
+    image.with_suffix(".tab").write_bytes(TAB.encode("cp1251"))
+    raster_id = proj.load(image)
+    r = proj.client.get(f"{API}/rasters/{raster_id}").json()
+    edges = {"x1": 1000.0, "y1": 5000.0, "x2": 1300.0, "y2": 5400.0, "z_top": 600.0, "z_bottom": 350.0}
+    r = proj.client.patch(f"{API}/rasters/{raster_id}", json={"expected_version": r["version"], "vertical": edges})
+    assert r.status_code == 200 and r.json()["vertical"] is True, r.text
+
+    out, sent = proj.run(raster_id=raster_id, path=str(tmp_path / "o" / "Профиль 5"), format="source")
+    assert sorted(out["files"]) == ["Профиль 5.png", "Профиль 5.tab"]
+    written = (tmp_path / "o" / "Профиль 5.tab").read_bytes()
+    assert written == TAB.replace("C:\\Съёмка\\Разрез 12.png", "Профиль 5.png").encode("cp1251")  # nothing else moved
+    assert len(out["warnings"]) == 1 and ".tab" in out["warnings"][0] and _logs(sent, "warn") == out["warnings"]
+    back = read_raster(tmp_path / "o" / "Профиль 5.png", displays=False)  # the pair reads as a pair again
+    assert back.georef is not None and back.georef.source == gr.TAB
+
+    # the code pages of a TAB and what cannot be done
+    name = "Разрез 7.png"
+    for codec, charset in (("cp1251", "WindowsCyrillic"), ("utf-8", "Neutral"), ("utf-8-sig", "UTF-8"),
+                           ("utf-16", "WindowsCyrillic"), ("utf-16-be", "WindowsCyrillic")):  # fmt: skip
+        text = TAB.replace("WindowsCyrillic", charset)
+        raw = (b"\xfe\xff" if codec == "utf-16-be" else b"") + text.encode(codec)
+        got, done = re_.retarget_tab(raw, name)
+        assert done and got.decode(codec.replace("-be", "")) == text.replace("C:\\Съёмка\\Разрез 12.png", name), codec
+    western = TAB.replace("WindowsCyrillic", "WindowsLatin1").replace("Съёмка\\Разрез 12", "data\\plan")
+    for label, plain in (("Левый верх", "Top left"), ("Правый верх", "Top right"), ("Правый низ", "Bottom right")):
+        western = western.replace(label, plain)
+    latin = western.encode("cp1252")
+    assert re_.retarget_tab(latin, "Разрез 7.png") == (latin, False)  # no Cyrillic in that code page
+    assert re_.retarget_tab(latin, "plan 7.png")[0] == latin.replace(b"C:\\data\\plan.png", b"plan 7.png")
+    world = b"1.0\r\n0.0\r\n0.0\r\n-1.0\r\n10.5\r\n20.5\r\n"
+    assert re_.retarget_tab(world, "a.png") == (world, False)  # no File line: as it was
+    old_mac = TAB.replace("\r\n", "\r").encode("cp1251")
+    assert re_.retarget_tab(old_mac, "a.png")[0] == old_mac.replace(
+        "C:\\Съёмка\\Разрез 12.png".encode("cp1251"), b"a.png"
+    )
+    # a TAB that cannot name the image is still exported, with a warning that says what to fix
+    with dialect.write_tx(proj.project.engine) as conn:
+        from bf_core.db.schema import blob_owners
+
+        owner = {"owner_kind": "object", "owner_id": raster_id, "media_type": ARRAY_MEDIA}
+        conn.execute(
+            sa.delete(blob_owners).where(blob_owners.c.owner_id == raster_id, blob_owners.c.role == "sidecar:tab")
+        )
+        proj.store.put_bytes(conn, latin, role="sidecar:tab", **owner)
+    out, sent = proj.run(raster_id=raster_id, path=str(tmp_path / "o2" / "Профиль 5"), format="source")
+    assert (tmp_path / "o2" / "Профиль 5.tab").read_bytes() == latin
+    assert len(out["warnings"]) == 2 and "«Профиль 5.png»" in out["warnings"][0] and "вручную" in out["warnings"][0]
 
 
 # --- the job in a worker -----------------------------------------------------------------------------

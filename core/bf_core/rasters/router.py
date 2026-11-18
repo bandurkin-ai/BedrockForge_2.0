@@ -201,16 +201,25 @@ def raster_image(
 class ExportBody(BaseModel):
     path: str = Field(max_length=2000)
     format: str = Field(default="source", max_length=16)  # source | geotiff
+    # files next to the chosen one that the export replaces (409 `files_exist` names them): the user agreed
+    overwrite: bool = False
 
 
 @router.post("/{raster_id}/export")
 def export_raster(svc: Svc, s: Sched, raster_id: int, body: ExportBody) -> dict[str, Any]:
-    """`rasters.export`: the job «Экспорт растра» writes the source file with its georeference, or a GeoTIFF."""
+    """`rasters.export`: the job «Экспорт растра» writes the source file with its georeference, or a GeoTIFF.
+    409 `files_exist` {files}: the export would replace files the save window did not ask about — the window
+    asks and repeats the call with `overwrite: true`."""
+    from bf_core.storage.blobs import BlobStore
+
     from . import export
 
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
-        params = export.request(conn, raster_id=raster_id, path=body.path, format=body.format)
+        params = export.request(
+            conn, raster_id=raster_id, path=body.path, format=body.format, overwrite=body.overwrite,
+            store=BlobStore(project.folder),
+        )  # fmt: skip
     label = "GeoTIFF" if body.format == "geotiff" else "исходный файл"
     key, job_id = s.submit("export.raster", params, title=f"Экспорт растра ({label})")
     return {"source": key, "id": job_id}

@@ -16,14 +16,18 @@ such a vertex. The vertices of the result that come from the sources are their f
 
 Steps: read the sources → `build_dtm` → `stage_wireframe` (spatial order, parts, measures, temp files) → the
 levels of detail of every part into `cache\\mesh\\` → one write transaction that makes the wireframe. A cancel
-or a failure before that transaction leaves nothing (temp files and the cache folder are removed).
+or a failure before that transaction leaves nothing (temp files and the cache folder are removed; the folder
+stays when a wireframe of the project has the same geometry — the levels are its own).
+
+What the surface was built from is kept with it (`meta.built`: sources with their ids and names, parameters,
+the report); a `.bfggis` import renumbers the ids (`remap_built`).
 Ported from BF `ops/operations.py::op_dtm`.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from typing import Any
 
@@ -282,6 +286,39 @@ def gather(conn: sa.Connection, store: Any, params: dict[str, Any], tick: Callab
     return src
 
 
+def remap_built(built: Any, new_id: Callable[[int], int | None]) -> Any:
+    """`meta.built` of a wireframe on a `.bfggis` import: the ids of its sources and of its boundary are those
+    of the project it was built in. A source the archive does not have (deleted since) keeps its name and
+    loses its id: the old number would point at another object of the new project."""
+
+    def renumbered(value: Any) -> int | None:
+        return new_id(value) if isinstance(value, int) and not isinstance(value, bool) else None
+
+    if not isinstance(built, dict):
+        return built
+    out = dict(built)
+    if isinstance(built.get("sources"), list):
+        out["sources"] = [
+            {**src, "id": renumbered(src.get("id"))} if isinstance(src, dict) else src for src in built["sources"]
+        ]
+    params = built.get("params")
+    if isinstance(params, dict) and isinstance(params.get("boundary"), dict):
+        boundary = params["boundary"]
+        out["params"] = {**params, "boundary": {**boundary, "layer_id": renumbered(boundary.get("layer_id"))}}
+    return out
+
+
+def _geometry_in_use(engine: sa.Engine, shas: Mapping[str, str]) -> bool:
+    """A wireframe of the project has the geometry of these blobs (`store.geometry_shared`). When the project
+    cannot be asked — the job may be failing because of the database — the answer is «yes»: a folder of
+    levels left behind costs disk space, a folder taken from a wireframe costs its first frames."""
+    try:
+        with dialect.read_tx(engine) as conn:
+            return wf_store.geometry_shared(conn, shas)
+    except Exception:  # noqa: BLE001 - never instead of the error the job is failing with
+        return True
+
+
 # --- the job ---------------------------------------------------------------------------------------------
 
 
@@ -365,8 +402,10 @@ def model_dtm(ctx: JobContext) -> dict[str, Any]:
     except BaseException:
         if staged is not None:
             staged.discard()
-        if key is not None:
-            viz.drop_cache(ctx.project_folder, key)
+            # the levels of detail are keyed by the geometry: a wireframe built from the same sources before
+            # has the same key, and its levels are the files this job has just written over — they stay
+            if key is not None and not _geometry_in_use(engine, staged.shas):
+                viz.drop_cache(ctx.project_folder, key)
         raise
     ctx.log(
         f"Создан каркас «{name}»" + (" в разделе «ЦТМ»" if p.get("to_dtm", True) else "")

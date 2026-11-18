@@ -1,13 +1,14 @@
 """Export of a raster (ТЗ 7.19, 9.7, 9.12; ADR 0011 §3 `export.raster`): the source file or a GeoTIFF.
 
-Job `export.raster` {raster_id, path, format}:
+Job `export.raster` {raster_id, path, format, overwrite?}:
 
 * `source` — the image exactly as it was loaded (the `source` blob, byte for byte) under the chosen name with
   the extension of its kind, and next to it the georeference **as the project has it now**: a world file
   (`.jgw`, `.pgw`, `.tfw`, `.bpw` — `georef.world_text`, numbers by `repr`) and a `.prj` when the CRS is known.
   A world file holds neither the level nor a raster off the plan, so a vertical raster gets the companion files
   it was loaded with (`sidecar:<ext>` blobs: GRF, TAB, …) instead, with a warning that a shift made in the
-  project is not in them, and the level of a plan raster is named in the journal.
+  project is not in them, and the level of a plan raster is named in the journal. A TAB names its image
+  (`File "…"`): that line is written with the name of the exported image (`retarget_tab`).
 * `geotiff` — the pixels of the source without loss and the georeference in tags (`geotiff_write.write_geotiff`):
   the transform bit for bit, the level as the Z of the tie point, the EPSG code. A vertical raster has no place
   in a GeoTIFF: a Russian error that advises the source file.
@@ -15,11 +16,20 @@ Job `export.raster` {raster_id, path, format}:
 The georeference is `rasters.georef` (`georef.describe`) with `rasters.elevation`; a raster without one is
 exported as its source only. Every file is written as `<name>.part` and renamed when all of them are complete,
 so a cancel or a failure leaves nothing. Warnings go to the journal of the job; one row goes to `export_log`.
+
+Files of other people. The save window asks about one name — `path` as chosen. The export writes more: the
+image may get the extension of its kind after the chosen name (`plan.tif` → `plan.tif.jpg`) and its companions
+go next to it. None of those is replaced without `overwrite: true`: the endpoint answers 409 `files_exist`
+with their names (`request` → `existing`; the window asks and starts again), and the job checks once more
+before it writes anything.
 """
 
 from __future__ import annotations
 
+import errno
 import os
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -78,15 +88,33 @@ def _row(conn: sa.Connection, raster_id: int) -> dict[str, Any]:
     return out
 
 
-def request(conn: sa.Connection, *, raster_id: int, path: str, format: str) -> dict[str, Any]:  # noqa: A002
-    """Checked parameters of the job `export.raster` (for the endpoint that starts it); ApiError otherwise."""
+def request(
+    conn: sa.Connection,
+    *,
+    raster_id: int,
+    path: str,
+    format: str,  # noqa: A002 - the name of the parameter in the API
+    overwrite: bool = False,
+    store: Any = None,
+) -> dict[str, Any]:
+    """Checked parameters of the job `export.raster` (for the endpoint that starts it); ApiError otherwise.
+    With the blob `store` of the project: files the export would replace without having been asked about
+    (`existing`) are a 409 `files_exist` with their names in `files`, unless `overwrite`."""
     from bf_core.lines.export import check_path
 
     if format not in FORMATS:
         raise bad_format()
     check_path(path)
     row = _row(conn, raster_id)
-    return {"raster_id": raster_id, "path": path, "format": format, "width": row["width"], "height": row["height"]}
+    if store is not None and not overwrite:
+        clash = existing(planned(Path(path), row, store, format), Path(path))
+        if clash:
+            err = files_exist(clash)
+            raise ApiError(409, err.code, err.message, err.hint, extra={"files": [p.name for p in clash]})
+    return {
+        "raster_id": raster_id, "path": path, "format": format, "overwrite": bool(overwrite),
+        "width": row["width"], "height": row["height"],
+    }  # fmt: skip
 
 
 def _memory(params: dict[str, Any]) -> int:
@@ -141,12 +169,65 @@ def _number(v: float) -> str:
     return f"{v:.3f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
-def write_source(
-    target: Path, row: dict[str, Any], store: Any, tick: Any
-) -> tuple[Path, list[str], list[str], list[str]]:
-    """The source image under `target` (with the extension of its kind) and its georeference files next to it.
-    Returns (image path, names of every file written, warnings, notes)."""
-    from bf_core import crs as crs_mod
+_TAB_FILE_TEXT = r'(?i)(?:^|(?<=[\r\n]))([ \t]*File[ \t]+")[^"\r\n]*(")'
+_TAB_FILE = re.compile(_TAB_FILE_TEXT.encode("ascii"))
+_TAB_CHARSET = re.compile(rb'(?i)(?:^|(?<=[\r\n]))[ \t]*!charset[ \t]+"?([A-Za-z0-9_-]+)')
+
+
+def retarget_tab(content: bytes, image_name: str) -> tuple[bytes, bool]:
+    """A raster TAB whose `File "…"` line names `image_name` — the exported image next to it — instead of the
+    file (often a full path) it was registered with. Every other byte stays: the control points, the line
+    ends, a BOM. The name is written in the code page of the TAB: UTF-16 or UTF-8 by the BOM, else `!charset`,
+    else UTF-8 when the text is UTF-8 with letters beyond ASCII, else Windows-1251 (as `georef._text` reads
+    it). Returns (the text, done); not done — there is no such line or the name has letters the code page
+    does not have: the TAB is returned as it was."""
+    from bf_core.formats.mif import charset_codec
+
+    for bom, wide in ((b"\xff\xfe", "utf-16-le"), (b"\xfe\xff", "utf-16-be")):
+        if content.startswith(bom):
+            try:
+                text = content.decode(wide)
+            except UnicodeDecodeError:
+                return content, False
+            changed, n = re.subn(_TAB_FILE_TEXT, lambda m: m[1] + image_name + m[2], text, count=1)
+            return (changed.encode(wide), True) if n else (content, False)
+    codec: str | None = "utf-8" if content.startswith(b"\xef\xbb\xbf") else None
+    if codec is None:
+        named = _TAB_CHARSET.search(content)
+        codec = charset_codec(named[1].decode("ascii")) if named else None
+    if codec is None:
+        codec = "cp1251"
+        if not content.isascii():
+            try:
+                content.decode("utf-8")
+                codec = "utf-8"
+            except UnicodeDecodeError:
+                pass
+    try:
+        name = image_name.encode(codec)
+    except (UnicodeEncodeError, LookupError):
+        return content, False
+    out, n = _TAB_FILE.subn(lambda m: m[1] + name + m[2], content, count=1)
+    return (out, True) if n else (content, False)
+
+
+@dataclass
+class SourcePlan:
+    """What the export of the source file writes: the image under `target` and the companion files."""
+
+    target: Path
+    source: Path  # the blob of the image
+    texts: dict[Path, str | bytes] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+    @property
+    def files(self) -> list[Path]:
+        return [self.target, *self.texts]
+
+
+def plan_source(target: Path, row: dict[str, Any], store: Any) -> SourcePlan:
+    """The files of «исходный файл с привязкой» for the chosen `target`; nothing is written."""
     from bf_core.formats import georef as gr
     from bf_core.formats.errors import FormatError
     from bf_core.formats.raster_image import probe
@@ -175,7 +256,16 @@ def write_source(
         except FormatError:  # off the plan: the companion files as loaded
             for role, side_sha in sorted(row["blobs"].items()):
                 if role.startswith(SIDECAR) and store.exists(side_sha):
-                    texts[target.with_suffix("." + role[len(SIDECAR) :])] = store.read_bytes(side_sha)
+                    suffix = "." + role[len(SIDECAR) :]
+                    content = store.read_bytes(side_sha)
+                    if suffix == ".tab":  # it names its image: the exported one, not the file it was made for
+                        content, done = retarget_tab(content, target.name)
+                        if not done:
+                            warnings.append(
+                                f"В TAB-файле привязки имя изображения не заменено на «{target.name}»: строки "
+                                'File "…" в нём нет или имя не записывается в кодировке файла — исправьте её вручную'
+                            )
+                    texts[target.with_suffix(suffix)] = content
             warnings.append(
                 "Привязка вертикального растра записана исходными файлами привязки"
                 + (f" ({', '.join(p.suffix for p in texts)})" if texts else " не была: таких файлов в проекте нет")
@@ -184,6 +274,61 @@ def write_source(
         prj = target.with_suffix(".prj")
         if g.crs is not None and prj not in texts:
             texts[prj] = g.crs.wkt
+    return SourcePlan(target, source, texts, warnings, notes)
+
+
+def geotiff_target(target: Path) -> Path:
+    """The GeoTIFF to write: the path as chosen, with `.tif` after it when it has another extension."""
+    return target if target.suffix.lower() in GEOTIFF_SUFFIXES else target.with_name(target.name + GEOTIFF_SUFFIXES[0])
+
+
+def planned(target: Path, row: dict[str, Any], store: Any, fmt: str) -> list[Path]:
+    """Every file the export to the chosen `target` writes, the image first. A raster that cannot be exported
+    (its source is gone) plans nothing: the job tells why."""
+    from bf_core.formats.errors import FormatError
+
+    if fmt != "source":
+        return [geotiff_target(target)]
+    try:
+        return plan_source(target, row, store).files
+    except (FormatError, OSError):
+        return []
+
+
+def existing(files: list[Path], chosen: Path) -> list[Path]:
+    """Those of `files` that are there already and were not asked about: the save window asked about `chosen`
+    only — not about the image under a longer name, nor about the companion files."""
+    return [p for p in files if p != chosen and (p.is_file() or p.is_symlink())]
+
+
+def files_exist(clash: list[Path]) -> Any:
+    from bf_core.formats.errors import FormatError
+
+    names = ", ".join(f"«{p.name}»" for p in clash[:10]) + (f" и ещё {len(clash) - 10}" if len(clash) > 10 else "")
+    return FormatError(
+        "files_exist",
+        f"В папке уже есть файлы, которые экспорт заменит: {names}.",
+        "Подтвердите замену этих файлов в окне экспорта или выберите другое имя файла.",
+    )
+
+
+def write_source(
+    target: Path, row: dict[str, Any], store: Any, tick: Any, *, overwrite: bool = True
+) -> tuple[Path, list[str], list[str], list[str]]:
+    """The source image under `target` (with the extension of its kind) and its georeference files next to it.
+    Returns (image path, names of every file written, warnings, notes). Without `overwrite` a file that is
+    there already and is not `target` itself is not replaced: FormatError `files_exist`, nothing is written."""
+    from bf_core import crs as crs_mod
+
+    plan = plan_source(target, row, store)
+    if not overwrite:
+        clash = existing(plan.files, target)
+        if clash:
+            raise files_exist(clash)
+    for path in plan.files:  # found now, not after the image is already under its name
+        if path.is_dir():
+            raise IsADirectoryError(errno.EISDIR, f"«{path.name}» — папка, а не файл")
+    target, source, texts, warnings, notes = plan.target, plan.source, plan.texts, plan.warnings, plan.notes
     parts: list[tuple[Path, Path]] = []
     try:
         part = target.with_name(target.name + ".part")
@@ -210,8 +355,11 @@ def write_source(
     return target, [path.name for _part, path in parts], warnings, notes
 
 
-def write_geotiff(target: Path, row: dict[str, Any], store: Any, tick: Any) -> tuple[Path, list[str]]:
-    """The raster as one GeoTIFF: (path, warnings). Raises `FormatError` {code, message, hint}."""
+def write_geotiff(
+    target: Path, row: dict[str, Any], store: Any, tick: Any, *, overwrite: bool = True
+) -> tuple[Path, list[str]]:
+    """The raster as one GeoTIFF: (path, warnings). Raises `FormatError` {code, message, hint}; without
+    `overwrite` — `files_exist` when `.tif` had to be added to the chosen name and that file is there."""
     from bf_core.formats.errors import FormatError
     from bf_core.formats.geotiff_write import write_geotiff as write
 
@@ -226,8 +374,9 @@ def write_geotiff(target: Path, row: dict[str, Any], store: Any, tick: Any) -> t
             "У растра нет привязки: GeoTIFF записать нельзя.",
             "Задайте привязку растра или экспортируйте исходный файл.",
         )
-    if target.suffix.lower() not in GEOTIFF_SUFFIXES:
-        target = target.with_name(target.name + GEOTIFF_SUFFIXES[0])
+    chosen, target = target, geotiff_target(target)
+    if not overwrite and existing([target], chosen):
+        raise files_exist([target])
     written = write(target, store.path_of(sha), g, progress=tick)
     return target, [*warnings, *written.warnings]
 
@@ -262,13 +411,14 @@ def export_raster(ctx: JobContext) -> dict[str, Any]:
             ctx.tick(max(0.0, fraction), message)
 
     target = Path(p["path"])
+    overwrite = bool(p.get("overwrite"))  # asked for: the window showed the files that will be replaced
     notes: list[str] = []
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         if fmt == "source":
-            target, files, warnings, notes = write_source(target, row, store, tick)
+            target, files, warnings, notes = write_source(target, row, store, tick, overwrite=overwrite)
         else:
-            target, warnings = write_geotiff(target, row, store, tick)
+            target, warnings = write_geotiff(target, row, store, tick, overwrite=overwrite)
             files = [target.name]
     except FormatError as exc:
         raise JobError(exc.code, exc.message, exc.hint) from exc

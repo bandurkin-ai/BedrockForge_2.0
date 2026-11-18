@@ -42,7 +42,8 @@ export function deleteRaster(id: number): Promise<void> {
   return change(() => api.del(`/rasters/${id}`));
 }
 
-/** Starts the job `export.raster`: the source file with its georeference, or a GeoTIFF. */
-export function startRasterExport(id: number, path: string, format: "source" | "geotiff"): Promise<{ source: string; id: number }> {
-  return api.post(`/rasters/${id}/export`, { path, format });
+/** Starts the job `export.raster`: the source file with its georeference, or a GeoTIFF. Without `overwrite`
+ * the core refuses (409 `files_exist` with their names) to replace files next to the chosen one. */
+export function startRasterExport(id: number, path: string, format: "source" | "geotiff", overwrite = false): Promise<{ source: string; id: number }> {
+  return api.post(`/rasters/${id}/export`, { path, format, overwrite });
 }

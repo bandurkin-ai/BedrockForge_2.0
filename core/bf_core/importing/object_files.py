@@ -17,7 +17,7 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath, PureWindowsPath
 from typing import Any
 
 from bf_core.formats.errors import FormatError
@@ -40,6 +40,21 @@ def n_text(x: int) -> str:
 
 
 # --- the selection -----------------------------------------------------------------------------------------
+
+
+def option_key(path: str | PurePath, flavour: type[PurePath] | None = None) -> str:
+    """The key of the read options of a file: its path as `pathlib` spells it on this system — one kind of
+    separator, none doubled — and in one case where the file system has none (Windows). The wizard sends
+    `C:/data/points.csv` or `C:\\data\\points.csv` as it got them; the files of a selection are met as paths
+    (`plan`), so both sides of the lookup go through here. `flavour` — the path class, this system's by default."""
+    pure = (flavour or Path)(path)
+    text = str(pure)
+    return text.lower() if isinstance(pure, PureWindowsPath) else text
+
+
+def options_by_file(options: Mapping[str, Any] | None, flavour: type[PurePath] | None = None) -> dict[str, Any]:
+    """The read options {path: {...}} of a selection under `option_key` of their paths."""
+    return {option_key(path, flavour): value for path, value in (options or {}).items()}
 
 
 @dataclass
@@ -273,11 +288,12 @@ def inspect_files(
     """The composition of a selection (ТЗ 7.8 «состав и то, что не загрузится»). Nothing is written."""
     elevation, shift = parse_level(raster_z)
     groups, rest = plan(paths)
+    by_file = options_by_file(options)
     files: list[dict[str, Any]] = []
     totals = dict.fromkeys(("files", "failed", "layers", "lines", "points", "vertices", "rasters"), 0)
     for g in groups:
         try:
-            read = read_group(g, (options or {}).get(str(g.main)), tick, displays=False, section=section)
+            read = read_group(g, by_file.get(option_key(g.main)), tick, displays=False, section=section)
             if not read.rasters and not any(ls.point_count for ls in read.layers):
                 raise FormatError("empty_file", "В файле нет ни линий, ни точек.", "Проверьте файл.")
             entry = summarize(g, read, elevation, shift)

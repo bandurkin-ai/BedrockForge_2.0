@@ -337,7 +337,10 @@
       },
       "report": [
         "ms_per_frame",
-        "ms_median"
+        "ms_median",
+        "first_frame_ms",
+        "pick_line_ms",
+        "pick_surface_ms"
       ]
     }
   }
