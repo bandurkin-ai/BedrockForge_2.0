@@ -21,6 +21,8 @@ HANDLER_MODULES: tuple[str, ...] = (
     "bf_core.importing.trenches",
     "bf_core.drillholes.export",
     "bf_core.audit.jobs",
+    "bf_core.lines.export",
+    "bf_core.rasters.export",
 )
 
 Queue = str  # "heavy" | "quick"

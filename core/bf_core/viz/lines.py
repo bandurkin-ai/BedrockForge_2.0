@@ -330,13 +330,15 @@ def _thin(pts: np.ndarray, cell: float) -> np.ndarray:
         return np.zeros(0, dtype=np.int64)
     grid = np.floor(pts / cell)  # cells of the project grid: a point keeps its cell whatever else is in the part
     low = np.fmin.reduce(grid, axis=0)
-    idx = np.where(np.isnan(grid), 0.0, grid - np.where(np.isnan(low), 0.0, low) + 1.0).astype(np.int64)
-    size = [int(v) + 1 for v in idx.max(axis=0)]  # index 0 of Z: the points without a height
-    if size[0] * size[1] * size[2] < 1 << 62:
-        cells = (idx[:, 2] * size[1] + idx[:, 1]) * size[0] + idx[:, 0]
+    # whole numbers from 1 along every axis; 0 along Z — the points without a height
+    rel = np.where(np.isnan(grid), 0.0, grid - np.where(np.isnan(low), 0.0, low) + 1.0)
+    size = [float(v) + 1.0 for v in rel.max(axis=0)]
+    if size[0] * size[1] * size[2] < float(1 << 62):
+        idx = rel.astype(np.int64)
+        cells = (idx[:, 2] * int(size[1]) + idx[:, 1]) * int(size[0]) + idx[:, 0]
         first = np.unique(cells, return_index=True)[1]
-    else:  # a part of one huge extent: junk coordinates
-        first = np.unique(idx, axis=0, return_index=True)[1]
+    else:  # one point of a part with a huge extent (junk coordinates): no single number for a cell
+        first = np.unique(rel, axis=0, return_index=True)[1]
     return np.sort(first)
 
 

@@ -155,7 +155,11 @@ def _check(xyz: Any, offsets: Any, tol: float, closed: Any) -> tuple[np.ndarray,
     off = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64))
     if off.ndim != 1 or len(off) < 1 or off[0] != 0 or off[-1] != len(pts) or np.any(np.diff(off) < 0):
         raise ValueError("simplify: offsets must run from 0 to the number of vertices without going back")
-    if not (isinstance(tol, int | float) and math.isfinite(tol) and tol >= 0.0):
+    try:
+        ok = math.isfinite(float(tol)) and float(tol) >= 0.0
+    except (TypeError, ValueError):
+        ok = False
+    if not ok:
         raise ValueError("simplify: the tolerance must be a finite number, zero or more")
     lines = len(off) - 1
     flags = np.zeros(lines, dtype=np.uint8) if closed is None else np.ascontiguousarray(closed, dtype=np.uint8)
