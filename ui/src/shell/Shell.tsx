@@ -9,6 +9,8 @@ import { dialogStore, showMessage } from "./dialogs";
 import { LicenseWindow } from "./LicenseWindow";
 import { importPaths } from "../modules/importing/bind";
 import { ImportWizard } from "../modules/importing/ImportWizard";
+import { ObjectsWindow } from "../modules/importing/ObjectsWindow";
+import type { WizardMode } from "../modules/importing/wizard";
 import { OpLogWindow } from "./OpLogWindow";
 import { startEvents } from "../modules/jobs/state";
 import { StripLogWindow } from "../charts/striplog/StripLogWindow";
@@ -44,7 +46,9 @@ const renderWindow: WindowRenderer = (w) => {
     case "op-log":
       return <OpLogWindow logId={w.props?.logId as number | undefined} />;
     case "import-drillholes":
-      return <ImportWizard winId={w.id} paths={w.props?.paths as string[] | undefined} />;
+      return <ImportWizard winId={w.id} paths={w.props?.paths as string[] | undefined} mode={w.props?.mode as WizardMode | undefined} />;
+    case "import-objects":
+      return <ObjectsWindow winId={w.id} paths={w.props?.paths as string[] | undefined} pick={w.props?.pick as "lines" | "rasters" | undefined} />;
     case "projects":
       return <ProjectsWindow />;
     case "project-export":

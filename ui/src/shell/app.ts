@@ -12,6 +12,7 @@ import { bindScene } from "../modules/scene/bind";
 import { bindSection } from "../modules/section/bind";
 import { bindTables } from "../modules/tables/bind";
 import { bindViews } from "../modules/views/bind";
+import { bindObjects } from "../modules/wireframes/bind";
 import { createRegistry } from "./catalog";
 import { logText, opLogStore, openLogWindow } from "./opLog";
 import type { Command, CommandSource } from "./commands";
@@ -134,6 +135,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindTables(app);
   bindAudit(app);
   bindScene(app);
+  bindObjects(app);
   bindViews(app);
   bindSection(app);
   bindStripLog(app);

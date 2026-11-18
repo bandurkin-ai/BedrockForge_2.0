@@ -30,8 +30,9 @@ export interface BfBridge {
   /** «Открыть» a .bfggis: the chosen path or null. */
   pickOpen(): Promise<string | null>;
   pickFolder(): Promise<string | null>;
-  /** Files for import: "tables" (DAT, CSV, Excel) or "prj"; [] when cancelled. */
-  pickFiles(kind: "tables" | "prj" | "objects", multi: boolean): Promise<string[]>;
+  /** Files for import: "tables" (DAT, CSV, Excel), "prj", "objects" (everything of «Импорт файлов»), "lines"
+   * (lines and points), "rasters" (images and their georeference), "trenches" (polylines of trenches); [] when cancelled. */
+  pickFiles(kind: "tables" | "prj" | "objects" | "lines" | "rasters" | "trenches", multi: boolean): Promise<string[]>;
   showInFolder(file: string): void;
   /** Disk path of a file dropped from Explorer. */
   pathForFile(file: File): string;

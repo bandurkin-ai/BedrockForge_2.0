@@ -2,7 +2,7 @@
  * The «Линии» section of the data tree as data (ТЗ 7.18, ADR 0011 §5): files → layers, the check boxes of
  * visibility (`layer.show {layer: "lines", id}`, key `ln:<layer>`), what a row tells and offers. Pure.
  */
-import { counted, SEPARATOR, type TreeAction } from "../../shell/treeActions";
+import { count, counted, SEPARATOR, type TreeAction } from "../../shell/treeActions";
 import type { LineFileInfo, LineLayerInfo } from "../scene/objects";
 
 /** A file with more layers has no check box of its own: its layers are switched one by one (a DXF may hold
@@ -21,14 +21,15 @@ export function layerCounts(l: Pick<LineLayerInfo, "points_only" | "line_count" 
   return `${counted(l.line_count, "линия", "линии", "линий")}, ${counted(l.point_count, "вершина", "вершины", "вершин")}`;
 }
 
-const metres = (v: number): string => `${v.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} м`;
+const LENGTH = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
+const metres = (v: number): string => `${LENGTH.format(v)} м`;
 
 /** The tooltip of a layer row. */
 export function layerTitle(l: LineLayerInfo): string {
   const parts = [`${l.name}: ${layerCounts(l)}`];
   if (!l.points_only && Number.isFinite(l.length) && l.length > 0) parts.push(`длина ${metres(l.length)}`);
   if (l.closed === "all") parts.push("замкнутые");
-  else if (l.closed === "some") parts.push(`замкнутых ${l.closed_count.toLocaleString("ru-RU")}`);
+  else if (l.closed === "some") parts.push(`замкнутых ${count(l.closed_count)}`);
   if (l.flat) parts.push("без высот");
   return `${parts.join(", ")}. Щелчок — выбор, галочка — показать в 3D`;
 }

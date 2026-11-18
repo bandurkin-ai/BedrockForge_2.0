@@ -366,6 +366,8 @@ function registerIpc(): void {
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
   });
   // Table files of the import wizards (ТЗ 7.7) and .prj of a coordinate system: several files at once.
+  const lineFiles = ["str", "pit", "dxf", "shp", "dbf", "shx", "prj", "cpg", "mif", "mid", "xyz"];
+  const rasterFiles = ["jpg", "jpeg", "png", "tif", "tiff", "bmp", "jgw", "jpgw", "pgw", "pngw", "tfw", "tifw", "bpw", "bmpw", "wld", "tab", "grf", "prj"];
   const fileFilters: Record<string, Electron.FileFilter[]> = {
     tables: [
       { name: "Таблицы скважин", extensions: ["dat", "csv", "txt", "tsv", "prn", "xlsx", "xlsm", "xls"] },
@@ -376,8 +378,21 @@ function registerIpc(): void {
     objects: [
       {
         name: "Все поддерживаемые",
-        extensions: ["omf", "tridb", "dxf", "obj", "stl", "str", "jpg", "jpeg", "png", "tif", "tiff", "bmp", "jgw", "jpgw", "pgw", "pngw", "tfw", "tifw", "bpw", "wld", "tab", "grf", "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"],
+        extensions: [...new Set(["omf", "tridb", "obj", "stl", ...lineFiles, ...rasterFiles, "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"])],
       },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    // «Линии», «Растры», «Канавы» (ТЗ 7.18, 7.19, 7.35 Д-16; ADR 0011 §5): a main file with its companions.
+    lines: [
+      { name: "Линии и точки", extensions: [...lineFiles, "csv", "txt", "tsv", "prn", "dat"] },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    rasters: [
+      { name: "Растры и файлы привязки", extensions: rasterFiles },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    trenches: [
+      { name: "Линии канав", extensions: ["str", "pit", "dxf", "csv", "txt", "tsv", "prn", "dat", "xyz"] },
       { name: "Все файлы", extensions: ["*"] },
     ],
   };

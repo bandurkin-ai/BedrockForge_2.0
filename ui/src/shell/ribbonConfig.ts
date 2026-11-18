@@ -33,6 +33,7 @@ export interface RibbonTab {
 const NO_SECTION = (c: CommandContext) => (c.hasSection ? null : "Сначала проведите линию разреза");
 const NO_SET = (c: CommandContext) => (c.hasSet ? null : "Нет активного набора скважин");
 const NO_HOLE = (c: CommandContext) => (c.hasHole ? null : "Скважина не выбрана");
+const NOTHING_SELECTED = (c: CommandContext) => (c.hasHole || c.hasObject ? null : "Ничего не выбрано");
 
 export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean }[] = [
   { label: "Сводка по проекту", prompt: "Дай краткую сводку по проекту: наборы скважин и каркасы, объём данных, компоненты, состояние аудита и что стоит проверить в первую очередь." },
@@ -78,8 +79,9 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "import.files", label: "Импорт файлов", icon: "import", hint: "Можно перетащить файлы в окно" },
             { command: "import.open", label: "Скважины", icon: "drillholes", hint: "Collar, Survey, Assay (DAT, CSV, Excel)" },
             { command: "wireframes.upload", label: "Каркасы", icon: "wireframe", hint: "Micromine TRIDB, DXF, OBJ, STL" },
-            { command: "lines.upload", label: "Линии", icon: "lines", hint: "Micromine STR, Surpac STR, DXF", small: true },
-            { command: "rasters.upload", label: "Растры", icon: "raster", hint: "Изображение + файл привязки или GeoTIFF", small: true },
+            { command: "lines.upload", label: "Линии", icon: "lines", hint: "Линии и точки: Micromine STR и PIT, Surpac STR, DXF, SHP, MIF/MID, точки XYZ", small: true },
+            { command: "rasters.upload", label: "Растры", icon: "raster", hint: "Изображение + файл привязки (world, TAB, GRF) или GeoTIFF", small: true },
+            { command: "import.open", args: { mode: "trenches" }, label: "Канавы", icon: "edPline", hint: "Канавы по полилиниям: STR, DXF или таблица вершин; пробы — по 3D-длине", small: true },
           ],
         },
         {
@@ -94,7 +96,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           title: "Выделение",
           items: [
             { command: "palette.open", args: { query: "скв " }, label: "Найти скважину", icon: "search", small: true },
-            { command: "hole.select", args: { hole_id: null }, label: "Снять выбор", icon: "clear", shortcut: "escape", small: true, unavailable: NO_HOLE },
+            { command: "selection.clear", label: "Снять выбор", icon: "clear", hint: "Снять выбор скважины и объекта: линии, растра, каркаса, ЦТМ", shortcut: "escape", small: true, unavailable: NOTHING_SELECTED },
           ],
         },
         { title: "Ассистент", items: [assistant] },

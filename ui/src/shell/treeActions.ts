@@ -3,6 +3,7 @@
  * sections «Линии», «Растры», «Каркасы» and «ЦТМ» are built — and tested — without React. An action is a
  * registry command with its arguments, or a local one of the tree (rename, delete: own dialogs, then the API).
  */
+import type { IconName } from "./Icon";
 
 export interface Confirm {
   title: string;
@@ -13,6 +14,8 @@ export interface Confirm {
 
 export interface TreeAction {
   label: string;
+  /** the sign of the action when it is a button of the row */
+  icon?: IconName;
   /** registry command (the menu item is disabled with the command's reason while it is unavailable) */
   command?: string;
   args?: Record<string, unknown>;
@@ -25,8 +28,21 @@ export interface TreeAction {
 
 export const SEPARATOR: TreeAction = { label: "", separator: true };
 
-/** «1 234» — thousands by a thin space, as everywhere in the interface. */
-export const count = (n: number): string => n.toLocaleString("ru-RU");
+/** A row of an object: what a click on its name does, the buttons at its right and its context menu. */
+export interface ObjectRow {
+  testId: string;
+  title: string;
+  /** "select" — `object.select`; "properties" — select and open «Свойства» */
+  click: "select" | "properties";
+  buttons: TreeAction[];
+  menu: TreeAction[];
+}
+
+// one formatter for all rows: `toLocaleString` makes a new one on every call (a file may have thousands of layers)
+const INTEGER = new Intl.NumberFormat("ru-RU");
+
+/** «1 234» — thousands by a space, as everywhere in the interface. */
+export const count = (n: number): string => INTEGER.format(n);
 
 /** Russian plural: plural(21, "слой", "слоя", "слоёв") → «слой». */
 export function plural(n: number, one: string, few: string, many: string): string {
