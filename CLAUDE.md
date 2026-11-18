@@ -17,7 +17,7 @@ Desktop-ГГИС для Windows 11: Electron (app/) + React/TS/three.js (ui/) + 
 - E2E (Linux, программный WebGL): `cd app && xvfb-run -a npx playwright test`
 - Замеры: `uv run --project core python -m bench.run --profile ci --check`
 - Сборка bf-core: `cd core && uv sync --group build && uv run pyinstaller bf-core.spec`
-- Сборка .exe — только в CI windows.yml (артефакт BedrockForge-windows)
+- Сборка .exe — только в CI windows.yml (сборка + дымовой E2E, артефакт .exe не выгружается; выпуск — release.yml)
 - ТЗ → spec: `pandoc docs/TZ/BF2-TZ.docx -t gfm --wrap=none -o /tmp/tz.md && python3 tools/spec/split_tz.py /tmp/tz.md docs/spec`
 - В облаке uv: `export UV_SYSTEM_CERTS=1; unset UV_NATIVE_TLS` (прокси с собственным CA); uv 0.13.6 (`pip install --user uv==0.13.6`)
 - Версии: только по ADR 0001 (точные `==`, `exclude-newer`, `npm install --before=<дата>`); новая зависимость — через ADR

@@ -13,8 +13,8 @@
 Требования (ТЗ): `docs/spec/00-index.md`. Решения: `docs/adr/`. Ход работ: `PROGRESS.md`.
 
 ## Скачать
-Сборки `.exe` — артефакт **BedrockForge-windows** в GitHub Actions (workflow `windows`) и
-черновики выпусков (Releases) на вехах. Сборка без подписи кода: Windows SmartScreen покажет
+Сборки `.exe` — в выпусках (Releases) на вехах (workflow `release`, ручной запуск); workflow `windows`
+собирает и проверяет `.exe` на каждом PR, но не выгружает его (экономия места Actions). Сборка без подписи кода: Windows SmartScreen покажет
 «Неизвестный издатель» → «Подробнее» → «Выполнить в любом случае».
 
 ## Сборка и тесты
