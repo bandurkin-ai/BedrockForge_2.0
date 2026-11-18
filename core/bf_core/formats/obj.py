@@ -182,8 +182,8 @@ class _Scan:
 
 def _open(path: Path, tick: Progress, geometry: bool) -> _Scan:
     scan = _Scan(path, tick, geometry)
-    if scan.triangles == 0 and not any(g.bad for g in scan.groups):
-        raise fail("no_meshes", "В файле OBJ нет граней (строк «f»): каркасов в нём нет.", _HINT)
+    if scan.triangles == 0:
+        raise fail("no_meshes", "В файле OBJ нет граней (строк «f») из трёх и более вершин: каркасов в нём нет.", _HINT)
     return scan
 
 

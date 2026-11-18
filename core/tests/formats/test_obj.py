@@ -217,6 +217,7 @@ def test_faces_that_cannot_be_read_are_left_out_and_counted(tmp_path: Path) -> N
     assert [(e.name, e.triangles) for e in inspect_obj(path)[0]] == [("A", 11), ("B", 1), ("C", 3)]  # as written
     only_bad = _write(tmp_path, "v 0 0 0\nv 1 1 1\nf 1 2\nf 1 2 7\n", "bad.obj")
     assert _fails(only_bad).code == "no_meshes"
+    assert _fails(_write(tmp_path, "v 0 0 0\nv 1 1 1\nf 1 2\n", "two.obj")).code == "no_meshes"
 
 
 def test_files_that_are_not_obj(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
