@@ -28,8 +28,8 @@ import { holeIndex, type HolesManifest } from "./holes/manifest";
 import { MarkerTextures } from "./holes/markers";
 import { useFatLines } from "./holes/paths";
 import { pickHoles, SelectedHole } from "./holes/select";
-import { LabelCache, placeLabels, type LabelItem } from "./labels/sprites";
-import { projectToScreen, toNdc, viewProjection, type Mat4 } from "./pick/ray";
+import { LabelCache, type LabelItem } from "./labels/sprites";
+import { toNdc, viewProjection, type Mat4 } from "./pick/ray";
 import { SharedClip } from "./section/clip";
 import { DRAW_OFF, type DrawState } from "./section/draw";
 import { viewPlanePoint, type SectionLine } from "./section/math";
@@ -37,6 +37,7 @@ import { buildOverview, type PlanOverview } from "./section/miniPlan";
 import { collarsOnScreen, planSources, type ScreenCollar } from "./holes/screen";
 import { SectionOverlay } from "./section/overlay";
 import type { BuiltPaths } from "./worker/paths";
+import { orbited, placeFrameLabels, screenOf, watchHost } from "./sceneHooks";
 import type { FrameContext, SceneDebug, SceneEvents, SceneLayer } from "./sceneTypes";
 
 export { probeWebGL2 } from "./core/renderer";
@@ -116,12 +117,7 @@ export class Scene {
         leave: () => undefined,
       }),
     );
-    const ro = new ResizeObserver(() => this.resize());
-    ro.observe(host);
-    this.cleanup.push(() => ro.disconnect());
-    const mo = new MutationObserver(() => this.applyTheme());
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    this.cleanup.push(() => mo.disconnect());
+    this.cleanup.push(watchHost(host, () => this.resize(), () => this.applyTheme()));
     this.applyTheme();
     this.resize();
   }
@@ -230,11 +226,7 @@ export class Scene {
 
   /** Turns the view by `rad` about the vertical through its centre (smoke scenario, frame benchmark). */
   orbit(rad: number): void {
-    const c = this.rig.state();
-    const dx = c.position[0] - c.target[0];
-    const dy = c.position[1] - c.target[1];
-    const [s, k] = [Math.sin(rad), Math.cos(rad)];
-    this.rig.apply({ ...c, position: [c.target[0] + dx * k - dy * s, c.target[1] + dx * s + dy * k, c.position[2]] });
+    this.rig.apply(orbited(this.rig.state(), rad));
   }
 
   /** Runs `step` before every frame until it returns false (frames go on meanwhile). */
@@ -406,10 +398,7 @@ export class Scene {
 
   /** A project point on the screen (client px) as last drawn, for the E2E; null — out of the view. */
   screenOf(abs: Vec3): { x: number; y: number } | null {
-    const o = this.origin.value;
-    const s = this.lastVp && o ? projectToScreen(this.lastVp, abs[0] - o.x, abs[1] - o.y, (abs[2] - o.z) * this.vexag, this.size.w, this.size.h) : null;
-    const r = this.renderer.canvas.getBoundingClientRect();
-    return s ? { x: s[0] + r.left, y: s[1] + r.top } : null;
+    return screenOf(this.lastVp, this.origin.value, this.vexag, this.size, this.renderer.canvas, abs);
   }
 
   dispose(): void {
@@ -513,15 +502,7 @@ export class Scene {
     // the grid seen edge-on (a side view, a section) keeps its lines, its values would be a heap
     if (Math.abs(viewDirection(cam)[2]) > 0.15) this.grid.labelItems(items);
     else for (const l of this.grid.labels) l.sprite.visible = false;
-    placeLabels(items, {
-      width: w,
-      height: h,
-      project: (p) => {
-        const s = projectToScreen(vp, p.x, p.y, p.z, w, h);
-        return s ? { x: s[0], y: s[1], ppu: ppuAt([p.x, p.y, p.z]) } : null;
-      },
-      inWindow: (p) => this.clip.inWindow(p.x, p.y),
-    });
+    placeFrameLabels(items, vp, w, h, ppuAt, (x, y) => this.clip.inWindow(x, y));
     this.renderer.render(this.three, this.rig.camera);
     this.stats = this.renderer.stats();
     this.gizmo.update(cam, this.vexag < 0);
