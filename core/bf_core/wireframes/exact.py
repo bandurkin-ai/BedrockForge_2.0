@@ -14,8 +14,9 @@ the geometry (`MeshState.cache_key`: the blobs and the part table): the vertices
 not mapped, a mapped blob could not be deleted on Windows — the finer part table of the pick
 (`geo.pick.fine_parts`: a click on 10 million triangles in under 2 ms) and the tree of boxes of the crossings
 (`geo.intersect.MeshTarget`). The cache holds at most `CACHE_BYTES`, the least recently used wireframe goes
-first, the last one asked for always stays. The marks of a set are kept too, by its trajectories and the
-geometries: a new name or colour of a wireframe only writes the answer again.
+first, the last one asked for always stays; a deleted wireframe leaves it at once (`drop`), and so does
+everything of another project when the project is changed. The marks of a set are kept too, by its
+trajectories and the geometries: a new name or colour of a wireframe only writes the answer again.
 
 numpy and numba are imported with this module: import it lazily, never before BF-READY.
 """
@@ -98,6 +99,7 @@ class Geometry:
     """The arrays of a wireframe as the kernels take them and what is derived from them."""
 
     key: str
+    uid: str  # the project it was read from
     xyz: np.ndarray  # float64 n×3, project coordinates
     tri: np.ndarray  # int32 m×3, in the order of the store (spatial)
     parts: np.ndarray  # float64 p×8: the part table of the store
@@ -141,6 +143,15 @@ def forget() -> None:
         _counts.update(loads=0, trees=0)
 
 
+def drop(key: str) -> None:
+    """The geometry `key` (`viz.meshes.cache_key`) is nobody's any more: a deleted wireframe leaves the cache
+    with the marks found on it."""
+    with _lock:
+        _cache.pop(key, None)
+        for marks_key in [k for k in _marks if any(mesh == key for mesh, _solid in k[1])]:
+            del _marks[marks_key]
+
+
 def cache_info() -> dict[str, int]:
     """What the cache holds: wireframes, their bytes, how many were read from the blobs and how many trees of
     boxes were built since `forget()`."""
@@ -171,35 +182,44 @@ def _solid(stats: Any) -> str | None:
 
 
 def _load(project: Any, state: vm.MeshState, key: str) -> Geometry:
-    xyz_path, tri_path = vm._paths(project, state)
-    xyz = np.fromfile(xyz_path, dtype="<f8")
-    tri = np.fromfile(tri_path, dtype="<i4")
+    from bf_core.storage.blobs import BlobStore
+
+    store = BlobStore(project.folder)
+    shas = (state.sha("xyz"), state.sha("tri"))
+    if any(sha is None or not store.exists(sha) for sha in shas):
+        raise vm.broken()
+    xyz = np.fromfile(store.path_of(str(shas[0])), dtype="<f8")
+    tri = np.fromfile(store.path_of(str(shas[1])), dtype="<i4")
     if len(xyz) != 3 * state.points or len(tri) != 3 * state.triangles:
         raise vm.broken()
     xyz, tri = xyz.reshape(-1, 3), tri.reshape(-1, 3)
     table = [[p.first, p.count, *p.bbox] for p in vm.parts_of(project, state)]
     parts = np.array(table, dtype=np.float64).reshape(-1, 8)
-    return Geometry(key, xyz, tri, parts, xyz.nbytes + tri.nbytes + parts.nbytes)
+    return Geometry(key, project.uid, xyz, tri, parts, xyz.nbytes + tri.nbytes + parts.nbytes)
 
 
 def geometry(project: Any, state: vm.MeshState) -> Geometry:
     """The arrays of a wireframe: from the cache, or read from its blobs (once, whoever asks at the same time)."""
     key = state.cache_key()
     with _lock:
+        for other in [k for k, g in _cache.items() if g.uid != project.uid]:
+            del _cache[other]  # the project was changed: one project is open at a time
         hit = _cache.get(key)
         if hit is not None:
             _cache.move_to_end(key)
             _trim()
             return hit
         gate = _gates.setdefault(key, threading.Lock())
-    with gate:
-        with _lock:
-            hit = _cache.get(key)
-        if hit is None:
-            hit = _load(project, state, key)
+    try:
+        with gate:
             with _lock:
-                _cache[key] = hit
-                _counts["loads"] += 1
+                hit = _cache.get(key)
+            if hit is None:
+                hit = _load(project, state, key)
+                with _lock:
+                    _cache[key] = hit
+                    _counts["loads"] += 1
+    finally:
         with _lock:
             _gates.pop(key, None)
             if key in _cache:
@@ -282,7 +302,7 @@ def _numbers(values: Any, n: int) -> np.ndarray | None:
 
 def _entry(extent: Sequence[float] | None, o: np.ndarray, d: np.ndarray) -> float:
     """Where the ray o + t · d, t ≥ 0, enters the extent of a wireframe (grown a little); inf — it misses."""
-    if extent is None or len(extent) != 6:
+    if extent is None or len(extent) != 6 or any(v is None for v in extent):
         return 0.0  # no extent to tell by: the wireframe is tested
     t0, t1 = 0.0, math.inf
     for c in range(3):
@@ -325,8 +345,8 @@ def pick(
     reach = math.inf
     tested = 0
     for entry, _id, state in entered:
-        if entry > reach:  # this wireframe and every later one start behind the hit already found
-            break
+        if entry == math.inf or entry > reach:  # the ray misses it, or it starts behind the hit already found
+            break  # … and so does every later one
         g = geometry(project, state)
         try:
             hit = gp.ray_pick(g.xyz, g.tri, o, d, parts=g.pick_parts(), clip=planes, max_distance=reach)

@@ -110,6 +110,7 @@ export function markColors(marks: Pick<HoleMarks, "objects" | "obj" | "n">, styl
   return Array.from({ length: marks.n }, (_, i) => byObject[marks.obj[i]]);
 }
 
+/** What the marks share with the scene; read when a style is applied, so its owner may replace the label cache. */
 export interface HoleMarksContext {
   clip: THREE.Plane[];
   /** the shapes of the markers (`holes/markers.ts`); a diamond is taken */

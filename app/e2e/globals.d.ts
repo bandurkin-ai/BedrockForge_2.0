@@ -29,8 +29,23 @@ interface BfSceneState {
    * fewer triangles than in full, parts shown at every level (`shown[lod]`), DTMs that show a raster
    */
   wireframes: { layers: number; parts: number; triangles: number; simplified: number; shown: number[]; draped: number[]; budgeted: boolean; over: boolean };
-  /** the object picked by the last click that hit no hole */
-  picked: { kind: "lines"; id: number; line: number; on: "line" | "point"; xyz: number[] } | { kind: "raster" | "wireframe"; id: number; xyz: number[] } | null;
+  /**
+   * the object picked by the last click that hit no hole; of a wireframe — `exact`: the triangle the core found
+   * under the click (null — none, absent — not answered yet), `xyz` is then the point on it
+   */
+  picked:
+    | { kind: "lines"; id: number; line: number; on: "line" | "point"; xyz: number[] }
+    | { kind: "raster"; id: number; xyz: number[] }
+    | { kind: "wireframe"; id: number; xyz: number[]; exact?: { wireframeId: number; triangle: number; distance: number; point: number[]; area: number; dip: number | null; dipDirection: number | null } | null }
+    | null;
+  /**
+   * what the core computes exactly (Э8): the section lines per wireframe under clipping and the marks where
+   * the holes of a set cross wireframes
+   */
+  exact: {
+    sections: { wireframe: number; lines: number; closed: number; segments: number; color: string; bbox: number[] | null }[];
+    marks: { set: number; marks: number; labels: number; objects: number[] }[];
+  };
   /** the level of what has no height of its own: a metre under the lowest object */
   floor: number;
   /** the layer of displays along holes */

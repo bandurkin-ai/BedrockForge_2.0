@@ -191,6 +191,7 @@ def test_pick_takes_the_nearest_wireframe_and_the_section_window(api) -> None:  
     # a window the ray never enters, a ray that misses, a wireframe that is gone, an empty list
     assert pick(c, origin, [1.0, 0.0, 0.0], clip=[[0.0, 1.0, 0.0, -(lo[1] + 1000.0)]]) is None
     assert pick(c, origin, [0.0, 0.0, 1.0]) is None
+    assert ok(c.post(f"{API}/wireframes/pick", json={"origin": origin.tolist(), "direction": [0, 0, 1]}))["tested"] == 0
     assert pick(c, origin, [1.0, 0.0, 0.0], wireframe_ids=[987_654]) is None
     assert pick(c, origin, [1.0, 0.0, 0.0], wireframe_ids=[]) is None
     # aimed exactly at a corner of the cube along its diagonal: nothing slips between the triangles
@@ -467,3 +468,28 @@ def test_geometry_is_loaded_once_and_kept_within_the_limit(api, monkeypatch: pyt
     assert info["entries"] == 1 and info["loads"] == 3  # the cube was read again
     exact.forget()
     assert exact.cache_info() == {"entries": 0, "bytes": 0, "loads": 0, "trees": 0}
+
+
+def test_deleted_wireframe_and_another_project_leave_the_cache(api, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    c, _project, ids = api
+    lo = ids["lo"]
+    wanted = f"{ids['cube']},{ids['fault']}"
+    _r, head, _a = marks(c, ids["set"], wireframes=wanted)
+    assert head["n"] > 0 and exact.cache_info()["entries"] == 2 and len(exact._marks) == 1
+    # a deleted wireframe: its arrays and the marks found on it go at once, the other wireframe stays
+    assert ok(c.delete(f"{API}/wireframes/{ids['fault']}"))["deleted"] == ids["fault"]
+    assert exact.cache_info()["entries"] == 1 and len(exact._marks) == 0
+    _r, head, a = marks(c, ids["set"], wireframes=wanted)
+    assert [o["id"] for o in head["objects"]] == [ids["cube"]] and set(a["obj"].tolist()) == {0}
+    assert pick(c, lo + [-23.7, 31.9, 500.0], [0.0, 0.0, -1.0]) is None  # where the fault was
+    assert exact.cache_info()["loads"] == 2  # nothing was read again
+    # another project: nothing of the first one is kept
+    assert c.post(f"{API}/projects", json={"name": "Другой проект"}).status_code == 200
+    other = projects_of(c.core).require_current()
+    v, t = grid(6, 6, fault_z, step=5.0, offset=lo)
+    with dialect.write_tx(other.engine) as conn:
+        wf = ws.put_wireframe(conn, BlobStore(other.folder), v, t, name="Склон")
+    hit = pick(c, lo + [12.5, 7.5, 300.0], [0.0, 0.0, -1.0])
+    assert hit["wireframe_id"] == wf and hit["point"][2] == pytest.approx(lo[2] + SLOPE * 12.5, abs=1e-9)
+    info = exact.cache_info()
+    assert info["entries"] == 1 and info["loads"] == 3

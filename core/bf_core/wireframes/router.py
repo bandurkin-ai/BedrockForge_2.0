@@ -21,6 +21,7 @@ The geometry for 3D is `/viz/wireframes/{id}` (`viz/router.py`). Numbers may com
 
 from __future__ import annotations
 
+import sys
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -153,7 +154,11 @@ def delete_wireframe(svc: Svc, request: Request, wireframe_id: int) -> dict[str,
     if gone["shas"] and not gone["shared"]:  # the levels of detail of a geometry nobody has any more
         from bf_core.viz import meshes
 
-        meshes.drop_cache(project.folder, meshes.cache_key(tuple(sorted(gone["shas"].items())), gone["render"]))
+        key = meshes.cache_key(tuple(sorted(gone["shas"].items())), gone["render"])
+        meshes.drop_cache(project.folder, key)
+        exact = sys.modules.get("bf_core.wireframes.exact")  # loaded by the first exact query: nothing kept before
+        if exact is not None:
+            exact.drop(key)
     _changed(request, wireframe_id, deleted=True)
     return {"deleted": wireframe_id}
 

@@ -18,7 +18,7 @@ import { api, coreTarget } from "../../shell/api";
 import { apiUrl, authHeaders } from "../../shell/coreClient";
 import type { Scene } from "../../viz/Scene";
 import { VizError } from "../../viz/error";
-import { HoleMarksView, marksQuery, readHoleMarks } from "../../viz/holes/marks";
+import { HoleMarksView, marksQuery, MAX_MARK_LABELS, readHoleMarks, type HoleMarksContext } from "../../viz/holes/marks";
 import { MarkerTextures } from "../../viz/holes/markers";
 import { LabelCache } from "../../viz/labels/sprites";
 import { LoadQueue } from "../../viz/load/loader";
@@ -63,7 +63,8 @@ interface MarksState {
 export class ExactSource {
   private readonly queue = new LoadQueue({ fetch: (url, init) => fetch(url, init), headers: () => (coreTarget() ? authHeaders(coreTarget()!) : {}) });
   private readonly picker = new ExactPicker((body) => api.post("/wireframes/pick", body));
-  private labels: LabelCache;
+  /** shared by the marks of every set; its label cache is replaced when it has grown (`trimLabels`) */
+  private readonly ctx: HoleMarksContext;
   private textures = new MarkerTextures();
   private lines: SectionLinesView | null = null;
   private readonly sections = new Map<number, SectionState>();
@@ -76,7 +77,7 @@ export class ExactSource {
     private readonly scene: Scene,
     private readonly input: ExactInput,
   ) {
-    this.labels = new LabelCache(scene.clipPlanes);
+    this.ctx = { clip: scene.clipPlanes, textures: this.textures, labels: new LabelCache(scene.clipPlanes), pixelRatio: scene.renderer.pixelRatio };
   }
 
   get idle(): boolean {
@@ -129,10 +130,12 @@ export class ExactSource {
     this.lines = null;
     this.sections.clear();
     this.marks.clear();
-    this.labels.dispose();
-    this.labels = new LabelCache(this.scene.clipPlanes);
+    this.ctx.labels.dispose();
+    this.ctx.labels = new LabelCache(this.scene.clipPlanes);
     this.textures.dispose();
     this.textures = new MarkerTextures();
+    this.ctx.textures = this.textures;
+    this.ctx.pixelRatio = this.scene.renderer.pixelRatio;
     this.sync();
   }
 
@@ -144,7 +147,7 @@ export class ExactSource {
     for (const id of this.marks.keys()) this.scene.removeLayer(marksKey(id), false);
     this.sections.clear();
     this.marks.clear();
-    this.labels.dispose();
+    this.ctx.labels.dispose();
     this.textures.dispose();
   }
 
@@ -257,6 +260,20 @@ export class ExactSource {
     for (const id of [...this.marks.keys()]) if (!sets.has(id)) this.dropMarks(id);
   }
 
+  /**
+   * The textures of the labels are kept by their text; marks that were replaced leave theirs behind. When the
+   * cache has grown well past what the marks in the scene can use, it is made anew and the labels with it.
+   */
+  private trimLabels(): void {
+    const views = [...this.marks].flatMap(([id, st]) => (st.view ? [{ id, view: st.view }] : []));
+    if (this.ctx.labels.size <= 2 * MAX_MARK_LABELS * (views.length + 1)) return;
+    this.ctx.labels.dispose();
+    this.ctx.labels = new LabelCache(this.scene.clipPlanes);
+    const keys = this.input.keys();
+    const colorOf = (id: number) => this.input.wireframes().find((w) => w.id === id)?.color ?? null;
+    for (const { id, view } of views) view.apply(setStyleOf(keys, id).trace, colorOf);
+  }
+
   private dropMarks(setId: number): void {
     const st = this.marks.get(setId);
     if (!st) return;
@@ -279,7 +296,9 @@ export class ExactSource {
       const style = setStyleOf(this.input.keys(), setId).trace;
       const colorOf = (id: number) => this.input.wireframes().find((w) => w.id === id)?.color ?? null;
       if (st.view) this.scene.removeLayer(marksKey(setId), false);
-      st.view = marks.n ? new HoleMarksView(marks, { clip: this.scene.clipPlanes, textures: this.textures, labels: this.labels, pixelRatio: this.scene.renderer.pixelRatio }, style, colorOf) : null;
+      st.view = null;
+      this.trimLabels();
+      st.view = marks.n ? new HoleMarksView(marks, this.ctx, style, colorOf) : null;
       if (st.view) this.scene.addLayer(marksKey(setId), st.view);
       this.scene.invalidate();
     } catch (e) {
