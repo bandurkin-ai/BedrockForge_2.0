@@ -122,6 +122,7 @@ test("displays along holes: draft not in the tree until saved, revert, linked st
       dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [f] })) as typeof dialog.showOpenDialog;
     }, file);
     await command(page, "Экспорт стилей");
+    // the file is renamed into place whole (main.ts writeWhole): it exists only once written
     await expect.poll(() => fs.existsSync(file), { timeout: 30_000 }).toBe(true);
     const exported = JSON.parse(fs.readFileSync(file, "utf8")) as { format: string; styles: { name: string; level: string; data_kind: string; body: unknown; default_for: unknown }[] };
     expect(exported.format).toBe("bedrockforge-styles");

@@ -31,6 +31,8 @@ interface Entry {
   pending: ViewOp[];
   timer: ReturnType<typeof setTimeout> | null;
   chain: Promise<void>;
+  /** bumped by `adopt`: an answer to a write sent before it is stale */
+  epoch?: number;
 }
 
 export class ViewSync {
@@ -83,6 +85,25 @@ export class ViewSync {
     return e.value;
   }
 
+  /** Values the core has just written itself (a saved view applied): taken as they are, the pending changes
+   * of those keys are dropped — the view replaces them. */
+  adopt(values: Record<string, { value: unknown; version: number }>): void {
+    for (const [key, v] of Object.entries(values)) {
+      let e = this.entries.get(key);
+      if (!e) {
+        e = { value: undefined, version: 0, pending: [], timer: null, chain: Promise.resolve() };
+        this.entries.set(key, e);
+      }
+      if (e.timer) clearTimeout(e.timer);
+      e.timer = null;
+      e.pending = [];
+      e.epoch = (e.epoch ?? 0) + 1;
+      e.value = v.value;
+      e.version = v.version;
+      this.onChange(key, v.value);
+    }
+  }
+
   /** Write the pending changes of a key now (tests, closing the project). */
   flush(key: string): Promise<void> {
     const e = this.entries.get(key);
@@ -104,13 +125,15 @@ export class ViewSync {
     const ops = e.pending;
     if (!ops.length || gen !== this.generation) return;
     e.pending = [];
+    const epoch = e.epoch ?? 0;
+    const stale = () => gen !== this.generation || (e.epoch ?? 0) !== epoch;
     try {
       const r = await this.io.put(key, e.value, e.version);
-      if (gen !== this.generation) return;
+      if (stale()) return;
       e.version = r.version;
       this.settle(key, e, r.value);
     } catch (err) {
-      if (gen !== this.generation || isGone(err)) return;
+      if (stale() || isGone(err)) return;
       if (!isConflict(err)) {
         e.pending = [...ops, ...e.pending]; // the next change writes them too
         this.onNote("Настройки вида не сохранены в проекте: ядро недоступно.");
@@ -122,11 +145,11 @@ export class ViewSync {
       const merged = [...ops, ...e.pending].reduce((v, op) => op(v), base);
       try {
         const r = await this.io.put(key, merged, e.version);
-        if (gen !== this.generation) return;
+        if (stale()) return;
         e.version = r.version;
         this.settle(key, e, r.value);
       } catch (again) {
-        if (gen !== this.generation) return;
+        if (stale()) return;
         if (isConflict(again)) {
           e.version = again.body?.version ?? e.version;
           e.pending = [];

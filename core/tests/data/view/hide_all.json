@@ -1,0 +1,13 @@
+{
+  "comment": "Normalization of the view key hide_all (ТЗ 7.35 Д-04, ADR 0008): shared by pytest (core) and vitest (ui). Lenient read.",
+  "cases": [
+    {"in": null, "out": {"on": false, "shown": []}},
+    {"in": "on", "out": {"on": false, "shown": []}},
+    {"in": {}, "out": {"on": false, "shown": []}},
+    {"in": {"on": false, "shown": ["set:3"]}, "out": {"on": false, "shown": []}},
+    {"in": {"on": true}, "out": {"on": true, "shown": []}},
+    {"in": {"on": "yes", "shown": ["set:3"]}, "out": {"on": false, "shown": []}},
+    {"in": {"on": true, "shown": ["set:3", "bad", 7, "wf:12", "set:3", "set:4:collars"]}, "out": {"on": true, "shown": ["wf:12", "set:3", "set:4:collars"]}},
+    {"in": {"on": true, "shown": "set:3"}, "out": {"on": true, "shown": []}}
+  ]
+}

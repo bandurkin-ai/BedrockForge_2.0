@@ -13,6 +13,7 @@ export const commands: Command[] = [
     description: "Преувеличение по вертикали (1, 2, 3, 5), сетка, перспектива, непрозрачность каркасов 0,1–1.",
     params: { vexag: { type: "number", enum: [1, 2, 3, 5] }, grid: { type: "boolean" }, perspective: { type: "boolean" }, wireframe_opacity: { type: "number" } },
   },
+  { id: "scene.clear", title: "Очистить окно", description: "Скрыть в 3D все объекты (наборы, устья, стволы, отображения, каркасы, ЦТМ, линии, растры, блочные модели) и снять выбор скважины. Камера, разрез, сетка и сохранённые виды не меняются; включение галочки показывает объект снова.", stage: "Э6.1" },
   { id: "layer.show", title: "Видимость слоя", description: "Показать или скрыть слой в 3D.", params: { layer: LAYER, id: { type: "integer" }, visible: { type: "boolean" } }, required: ["layer", "visible"] },
   { id: "set.select", title: "Активный набор", description: "Сделать набор скважин активным.", params: { set_id: { type: "integer" } }, required: ["set_id"], stage: "Э4" },
   { id: "hole.select", title: "Выбрать скважину", description: "Выбрать скважину (null — снять выбор).", params: { hole_id: { type: "string", nullable: true }, set_id: { type: "integer" } }, required: ["hole_id"], stage: "Э6" },

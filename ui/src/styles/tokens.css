@@ -57,6 +57,10 @@
   --font-brand: "Montserrat", "Segoe UI", system-ui, sans-serif;
   --font-size: 13px;
   --radius: 4px;
+  /* buttons of the 3D panel, 1.5 × the former 28×26 / 16 px (ТЗ 7.35 Д-11, ADR 0008): fields and labels keep their size */
+  --tool-w: 42px;
+  --tool-h: 39px;
+  --tool-icon: 24px;
   --header-h: 40px;
   --status-h: 24px;
 }

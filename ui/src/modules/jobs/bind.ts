@@ -2,7 +2,8 @@
 import { CoreError } from "../../shell/api";
 import type { App } from "../../shell/app";
 import { setPanel } from "../../shell/workspace";
-import { cancelJob, jobsStore, refresh, restartWorkers, retryJob } from "./state";
+import { askConfirm } from "../../shell/dialogs";
+import { cancelJob, clearFinished, clearReason, finishedJobs, jobsStore, refresh, restartWorkers, retryJob } from "./state";
 
 export function bindJobs(app: App): void {
   app.registry.bind("jobs.list", async () => {
@@ -43,6 +44,25 @@ export function bindJobs(app: App): void {
     coreOnline,
   );
   app.registry.bind(
+    "jobs.clear_finished",
+    async (a, source) => {
+      const includeFailed = a.include_failed === true;
+      await refresh();
+      const reason = clearReason(jobsStore.get().jobs, includeFailed);
+      if (reason) throw new Error(reason);
+      const n = finishedJobs(jobsStore.get().jobs, includeFailed);
+      // a call from Claude was already confirmed by the registry
+      if (source === "user" && !(await askConfirm({ title: "Очистить выполненные", message: `Убрать ${n} ${plural(n)} из списка? Файлы экспортов останутся на диске.`, okLabel: "Да" }))) return "Отменено";
+      try {
+        const removed = await clearFinished(includeFailed);
+        return `Убрано заданий: ${removed}`;
+      } catch (e) {
+        throw new Error(asText(e));
+      }
+    },
+    coreOnline,
+  );
+  app.registry.bind(
     "jobs.cancel",
     async (a) => {
       await refresh();
@@ -58,4 +78,11 @@ export function bindJobs(app: App): void {
     },
     (ctx) => (ctx.coreOnline ? null : "Ядро недоступно"),
   );
+}
+
+function plural(n: number): string {
+  const d = n % 10, h = n % 100;
+  if (d === 1 && h !== 11) return "задание";
+  if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return "задания";
+  return "заданий";
 }

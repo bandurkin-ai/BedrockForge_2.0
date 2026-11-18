@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 import sqlalchemy as sa
@@ -10,6 +11,8 @@ from bf_core.db import dialect
 from bf_core.db.schema import blob_owners, instance_job_log, instance_jobs, job_log, jobs, objects
 
 ACTIVE = ("queued", "running")
+#: «Очистить выполненные» leaves jobs finished less than this ago (their last log line may be on its way)
+SETTLE_S = 5
 FINAL = ("done", "failed", "cancelled")
 
 
@@ -102,6 +105,22 @@ def read_log(engine: sa.Engine, instance: bool, job_id: int) -> list[dict[str, A
     with dialect.read_tx(engine) as conn:
         rows = conn.execute(sa.select(log).where(log.c.job_id == job_id).order_by(log.c.seq)).mappings().all()
     return [{"seq": r["seq"], "at": r["at"].isoformat(), "level": r["level"], "text": r["text"]} for r in rows]
+
+
+def clear_finished(engine: sa.Engine, instance: bool, statuses: tuple[str, ...]) -> int:
+    """«Очистить выполненные» (ТЗ 7.35 Д-10): finished jobs and their logs, in one transaction.
+    Queued and running jobs are never touched; exported files stay on disk."""
+    statuses = tuple(s for s in statuses if s in FINAL)
+    if not statuses:
+        return 0
+    t, log = tables(instance)
+    # a job that has just finished may still get its last log line (the scheduler writes it after the status)
+    settled = sa.or_(t.c.finished_at.is_(None), t.c.finished_at < dialect.utcnow() - timedelta(seconds=SETTLE_S))
+    which = sa.and_(t.c.status.in_(statuses), settled)
+    with dialect.write_tx(engine) as conn:
+        ids = sa.select(t.c.id).where(which).scalar_subquery()
+        conn.execute(sa.delete(log).where(log.c.job_id.in_(ids)))
+        return int(conn.execute(sa.delete(t).where(which)).rowcount or 0)
 
 
 def drop_partial(conn: sa.Connection, job_id: int) -> int:

@@ -14,5 +14,5 @@ export const commands: Command[] = [
   },
   { id: "chart.open", title: "Открыть график", description: "Открыть сохранённый график.", params: { chart_id: { type: "integer" } }, required: ["chart_id"], stage: "Э13" },
   { id: "blocks.report", title: "Отчёт по блочной модели", description: "Тоннаж и содержания по бортам.", params: { model_id: { type: "integer" }, grades: { type: "string" } }, required: ["model_id"], stage: "Э17" },
-  { id: "stats.swath", title: "SWATH PLOT", description: "Средние содержания по полосам; сохраняется в разделе «Аудит».", stage: "Э13" },
+  { id: "stats.swath", title: "SWATH PLOT", description: "Средние содержания по полосам; сохраняется в разделе «Аудит и статистика».", stage: "Э13" },
 ];

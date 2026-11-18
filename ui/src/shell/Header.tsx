@@ -1,10 +1,11 @@
 import { useApp } from "./AppContext";
+import { About } from "./About";
 import { Icon } from "./Icon";
 import { useStore } from "./useStore";
 import logoMark from "../assets/logo-mark.png";
 import css from "./Header.module.css";
 
-/** Title bar of the window (ТЗ 7.0.3): logo, project, command search, theme, Claude. */
+/** Title bar of the window (ТЗ 7.0.3): logo, project, command search, theme, «О производителе» (Д-12), Claude. */
 export function Header() {
   const app = useApp();
   const theme = useStore(app.store, (s) => s.workspace.theme);
@@ -32,6 +33,12 @@ export function Header() {
       <button type="button" className={css.icon} title={theme === "dark" ? "Тёмная тема (переключить на светлую)" : "Светлая тема (переключить на тёмную)"} aria-label="Тема" onClick={() => void app.run("theme.set")}>
         <Icon name={theme === "dark" ? "moon" : "sun"} size={16} />
       </button>
+      <span className={css.aboutAnchor}>
+        <button type="button" className={css.icon} title="О производителе" aria-label="О производителе" data-about-toggle="" onClick={() => void app.run("app.about")}>
+          <Icon name="info" size={16} />
+        </button>
+        <About />
+      </span>
       <button type="button" className={css.icon} title="Claude (Ctrl+J)" aria-label="Claude" onClick={() => void app.run("panel.set", { panel: "assistant" })}>
         <Icon name="spark" size={16} />
       </button>

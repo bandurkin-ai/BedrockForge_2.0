@@ -90,8 +90,6 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "logs.open", label: "Журналы", icon: "logFile", small: true },
           ],
         },
-        { title: "Вид", items: [...views, { command: "scene.fit", label: "Вписать", icon: "maximize", shortcut: "f", small: true }] },
-        { title: "Разрез", items: section },
         {
           title: "Выделение",
           items: [
@@ -100,20 +98,27 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           ],
         },
         { title: "Ассистент", items: [assistant] },
-        { title: "Настройка", items: [{ command: "settings.open", label: "Настройка", icon: "gear", hint: "Быстрые клавиши, папка данных проектов, число исполнителей" }, { command: "license.open", label: "Лицензия", icon: "audit", small: true }] },
+        { title: "Настройка", items: [{ command: "settings.open", label: "Настройка", icon: "gear", hint: "Быстрые клавиши, папка данных проектов, число исполнителей" }, { command: "license.open", label: "Лицензия", icon: "audit", small: true }, { command: "app.about", label: "О производителе", icon: "info", small: true }] },
       ],
     },
     {
       id: "view",
       title: "Вид",
       groups: [
-        { title: "Поворот вида", items: views },
+        { title: "Поворот вида", items: [...views, { command: "scene.fit", label: "Вписать", icon: "maximize", hint: "Показать всё, что сейчас на экране", shortcut: "f", small: true }] },
         {
           title: "Разрез",
           items: [
             ...section,
             { command: "section.step", args: { direction: -1 }, label: "Предыдущий профиль", icon: "chevronUp", shortcut: "[", small: true, unavailable: NO_SECTION },
             { command: "section.step", args: { direction: 1 }, label: "Следующий профиль", icon: "chevronDown", shortcut: "]", small: true, unavailable: NO_SECTION },
+          ],
+        },
+        {
+          title: "Окно",
+          items: [
+            { command: "scene.clear", label: "Очистить окно", icon: "clear", hint: "Скрыть все объекты; камера, разрез и сетка остаются", shortcut: "ctrl+shift+h" },
+            { command: "views.save", label: "Сохранить вид", icon: "plus", hint: "Камера, разрез, видимость слоёв и отображения — в раздел «Виды» дерева", small: true },
           ],
         },
         {
@@ -197,7 +202,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
         {
           title: "Поверхности",
           items: [
-            { command: "model.dtm", label: "ЦМР", icon: "plan" },
+            { command: "model.dtm", label: "Построить ЦТМ", icon: "plan" },
             { command: "model.contours", label: "Изолинии", icon: "lines", small: true },
             { command: "model.volume", label: "Объём", icon: "histogram", small: true },
             { command: "wireframe.dtm", args: { on: true }, label: "В ЦТМ", icon: "dtm", small: true },
@@ -210,7 +215,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
       title: "Анализ",
       groups: [
         {
-          title: "Аудит данных",
+          title: "Аудит и статистика",
           items: [
             { command: "audit.run", label: "Запустить аудит", icon: "play", hint: "27 правил по устьям, инклинометрии и пробам активного набора", unavailable: NO_SET },
             { command: "panel.set", args: { panel: "bottom", tab: "audit" }, label: "Результаты", icon: "audit", unavailable: NO_SET, active: ws.bottom && ws.bottomTab === "audit" },
@@ -252,6 +257,16 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           ).map(([kind, label]): RibbonItem => ({ command: "table.open", args: { kind }, label, icon: "table", small: true, unavailable: NO_SET })),
         },
         { title: "Журнал", items: [{ command: "panel.set", args: { panel: "bottom", tab: "log" }, label: "Журнал команд", icon: "list", small: true, active: ws.bottom && ws.bottomTab === "log" }] },
+      ],
+    },
+    {
+      id: "projsettings",
+      title: "Настройки проекта",
+      groups: [
+        {
+          title: "Обслуживание",
+          items: [{ command: "jobs.clear_finished", label: "Очистить выполненные задания", icon: "clear", hint: "Убрать из списка «Задания» готовые и отменённые задания с их журналами" }],
+        },
       ],
     },
     {

@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from bf_core.api.errors import ApiError
@@ -78,6 +78,31 @@ def submit(s: Sched, body: SubmitBody) -> dict[str, Any]:
     except LookupError as exc:
         raise ApiError(409, "no_project", "Проект не открыт.", "Откройте или создайте проект.") from exc
     return {"source": key, "id": job_id}
+
+
+class ClearBody(BaseModel):
+    include_failed: bool = False
+
+
+@router.post("/clear")
+def clear_finished(s: Sched, body: ClearBody, request: Request) -> dict[str, Any]:
+    """«Очистить выполненные» (ТЗ 7.35 Д-10, ADR 0008): done and cancelled (+ failed by the flag),
+    in instance.sqlite and in the open project; a read-only project — 423."""
+    from bf_core.projects.service import projects_of
+
+    project = projects_of(request.app.state.core).current
+    if project is not None and project.read_only:
+        raise ApiError(
+            423,
+            "project_read_only",
+            "Проект открыт только для чтения: задания проекта не убираются.",
+            "Закройте проект в другом окне BedrockForge и откройте его заново.",
+        )
+    statuses = ("done", "cancelled") + (("failed",) if body.include_failed else ())
+    removed = 0
+    for src in [s.instance] + ([s.project] if s.project else []):
+        removed += store.clear_finished(src.engine, src.instance, statuses)
+    return {"removed": removed}
 
 
 def _source(s: Scheduler, key: str) -> Any:

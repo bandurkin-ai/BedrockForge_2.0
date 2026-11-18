@@ -30,6 +30,31 @@ test("first start: dark theme, tree and properties open, bottom closed; 1024 px 
     expect(layout.right).toBeLessThanOrEqual(layout.width);
     expect(layout.ribbon).toBeLessThanOrEqual(layout.width);
     await page.screenshot({ path: shot("shell-1024.png") });
+
+    // «Главная» without «Вид» and «Разрез» fits 1024 px; «Настройки проекта» is a tab (ADR 0008)
+    await expect(page.getByRole("tab", { name: "Настройки проекта" })).toBeVisible();
+
+    // «О производителе» (Д-12): ⓘ opens the plate, Esc closes it, a click elsewhere too; no window.open
+    await page.evaluate(() => {
+      (window as unknown as { __opened: number }).__opened = 0;
+      window.open = () => {
+        (window as unknown as { __opened: number }).__opened++;
+        return null;
+      };
+    });
+    const about = page.getByRole("dialog", { name: "О производителе" });
+    await page.getByRole("banner").getByRole("button", { name: "О производителе" }).click();
+    await expect(about).toContainText("Bandurkin Mikhail");
+    await expect(about).toContainText(/Версия программы: \d/);
+    await expect(about).toContainText(/Версия ядра: \d/);
+    await page.screenshot({ path: shot("about.png") });
+    await page.keyboard.press("Escape");
+    await expect(about).toHaveCount(0);
+    await page.getByRole("banner").getByRole("button", { name: "О производителе" }).click();
+    await expect(about).toBeVisible();
+    await page.getByRole("tree").click({ position: { x: 20, y: 200 } });
+    await expect(about).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { __opened: number }).__opened)).toBe(0);
   } finally {
     await close(app);
   }

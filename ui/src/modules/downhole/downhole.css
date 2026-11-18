@@ -148,10 +148,6 @@
 /* BF2: the windows of the forms and the rows of saved displays in the data tree */
 .dh-window { padding: 8px 10px; box-sizing: border-box; }
 .dh-window > .dh-dialog { border-color: var(--border); box-shadow: none; }
-.dh-tree { padding-left: 14px; }
-.dh-tree-row { display: flex; align-items: center; gap: 2px; }
-.dh-tree-row > input[type=checkbox] { margin: 0 2px 0 0; flex: none; accent-color: var(--accent); }
-.dh-tree-row > button { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dh-tree-glyph { color: var(--brand-orange); }
 .dh-root .dh-banner.link { color: var(--text); text-decoration: none; cursor: default; background: var(--accent-soft); border: 1px solid var(--border); padding: 4px 8px; font-size: 0.78rem; }
 .dh-root h1, .dh-root h2, .dh-root h3 { font-family: var(--font-brand); }

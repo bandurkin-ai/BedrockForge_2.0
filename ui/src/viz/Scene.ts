@@ -17,6 +17,7 @@ import { screenPriority } from "./core/cull";
 import { rebaseCamera, SceneOrigin } from "./core/sceneOrigin";
 import { TurnController } from "./core/turn";
 import { changeVexag, fit, fitDepth, pixelsPerUnit, screenRay, toPlan, view, viewDirection, type CameraState, type ViewOptions, type ViewPreset } from "./core/views";
+import { fromWorld, toWorld, type WorldCamera } from "./core/worldCamera";
 import type { Vec3 } from "./core/vec3";
 import { AxesGizmo } from "./gizmo/AxesGizmo";
 import { Grid } from "./grid";
@@ -211,6 +212,16 @@ export class Scene {
 
   camera(): CameraState {
     return this.rig.state();
+  }
+
+  /** The camera of a saved view, absolute (null before the first object); the projection comes with the keys. */
+  worldCamera(): WorldCamera | null {
+    const o = this.origin.value;
+    return o ? toWorld(this.rig.state(), o, this.vexag, !this.rig.perspective, this.rig.persp.fov) : null;
+  }
+  setWorldCamera(c: WorldCamera): void {
+    this.turn.cancel();
+    this.rig.apply(fromWorld(c, this.origin.value ?? this.origin.ensure([...c.target, ...c.target]), this.vexag, this.rig.state()));
   }
 
   /** Turns the view by `rad` about the vertical through its centre (smoke scenario, frame benchmark). */
