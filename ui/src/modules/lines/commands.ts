@@ -1,4 +1,5 @@
 import type { Command } from "../../shell/commands";
+import { LINES_FORMAT_IDS } from "./export";
 
 /** String editor (Э9) and the export of layers (Э7; handlers — `bind.ts`). */
 export const commands: Command[] = [
@@ -14,8 +15,8 @@ export const commands: Command[] = [
     id: "lines.export",
     title: "Экспорт линий",
     description:
-      "Слои линий и точек в файл: Micromine STR (str), Surpac STR (surpac), DXF (dxf), CSV (csv) или Micromine DAT (dat); форматы STR пишут только линии. layer_id — один слой, file_id — все слои файла линий, без них — выбранный слой. Открывает окно «Экспорт линий» с выбором слоёв и файла; с path (полный путь к файлу) экспорт запускается сразу как задание.",
-    params: { format: { type: "string", enum: ["str", "surpac", "dxf", "csv", "dat"] }, layer_id: { type: "integer" }, file_id: { type: "integer" }, path: { type: "string", description: "Полный путь к файлу; без него откроется окно" } },
+      "Слои линий и точек в файл: Micromine STR (str), Surpac STR (surpac), DXF (dxf), CSV (csv) или Micromine DAT (dat); форматы STR пишут только линии. layer_id — один слой, file_id — все слои файла линий, без них — выбранный слой. Открывает окно «Экспорт линий» с этим форматом и слоями: файл выбирает пользователь, экспорт идёт как задание.",
+    params: { format: { type: "string", enum: LINES_FORMAT_IDS }, layer_id: { type: "integer" }, file_id: { type: "integer" } },
     stage: "Э7",
   },
   { id: "lines.finish", title: "Завершить", description: "Выйти из правки.", uiOnly: true, stage: "Э9" },

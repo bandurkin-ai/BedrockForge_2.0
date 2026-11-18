@@ -263,32 +263,37 @@ describe("rasters: `raster.set`, «Сдвинуть», «На текущий р�
     expect(dialogStore.get().queue).toHaveLength(0);
   });
 
-  it("export: a window, or the job at once when the path is given", async () => {
+  it("export opens the window with the raster and the format: the file is chosen by a person", async () => {
     const app = await open();
     await app.run("object.select", { kind: "raster", id: 32 });
-    expect((await app.registry.execute("rasters.export", { format: "geotiff" })).result).toBe("Открыто окно «Экспорт растра»");
-    expect(windowStore.get().windows.map((w) => [w.kind, w.props])).toEqual([["raster-export", { rasterId: 32, format: "geotiff" }]]);
-    const started = await app.registry.execute("rasters.export", { raster_id: 31, format: "source", path: "C:\\out\\ortho.jpg" });
-    expect(started.result).toBe("Экспорт растра «Ортофото» (Исходный файл с привязкой) запущен: задание №7");
-    expect(core.calls).toEqual([{ method: "POST", url: "/rasters/31/export", body: { path: "C:\\out\\ortho.jpg", format: "source" } }]);
-    expect((await app.registry.execute("rasters.export", { raster_id: 32, format: "geotiff", path: "C:\\out\\a.tif" })).result).toContain("У растра нет привязки");
+    expect((await app.registry.execute("rasters.export", { format: "geotiff" })).result).toBe("Открыто окно «Экспорт растра» (GeoTIFF): выберите файл и нажмите «Экспортировать»");
+    await app.registry.execute("rasters.export", { raster_id: 31 }, "claude");
+    expect(windowStore.get().windows.map((w) => [w.kind, w.props])).toEqual([["raster-export", { rasterId: 32, format: "geotiff" }], ["raster-export", { rasterId: 31, format: "source" }]]);
+    expect((await app.registry.execute("rasters.export", { raster_id: 99 })).result).toBe("Растр №99 не найден: обновите дерево проекта");
+    // a command never writes to a path of its own
+    expect((await app.registry.execute("rasters.export", { raster_id: 31, path: "C:\\out\\ortho.jpg" })).result).toBe("Неизвестный параметр «path»");
+    expect(core.calls).toEqual([]);
   });
 });
 
 describe("lines: `lines.export` (ТЗ 7.18)", () => {
-  it("opens the window with the format and the layers; with a path starts the job", async () => {
+  it("opens the window with the format and the layers: the file is chosen by a person", async () => {
     const app = await open();
     await app.run("object.select", { kind: "lines", id: 11 });
-    expect((await app.registry.execute("lines.export", { format: "dxf" })).result).toBe("Открыто окно «Экспорт линий»");
+    expect((await app.registry.execute("lines.export", { format: "dxf" })).result).toBe("Открыто окно «Экспорт линий» (DXF): выберите файл и нажмите «Экспортировать»");
     expect(windowStore.get().windows.map((w) => [w.kind, w.title, w.props])).toEqual([["lines-export", "Экспорт линий", { format: "dxf", layerIds: [11] }]]);
-    await app.registry.execute("lines.export", { file_id: 1 });
+    await app.registry.execute("lines.export", { file_id: 1 }, "claude"); // «Экспорт…» of a file: every layer, Micromine STR
     expect(windowStore.get().windows[1].props).toEqual({ format: "str", layerIds: [11, 12] });
-    const started = await app.registry.execute("lines.export", { format: "str", file_id: 1, path: "C:\\out\\roads.str" });
-    expect(started.result).toBe("Экспорт линий (Micromine STR) запущен: задание №7");
-    expect(core.calls).toEqual([{ method: "POST", url: "/lines/export", body: { path: "C:\\out\\roads.str", format: "str", layer_ids: [11] } }]); // points are not written to STR
-    expect((await app.registry.execute("lines.export", { format: "surpac", layer_id: 12, path: "C:\\out\\p.str" })).result).toContain("Surpac STR пишет только линии");
+    await app.registry.execute("lines.export", { format: "csv", layer_id: 12 });
+    expect(windowStore.get().windows[2].props).toEqual({ format: "csv", layerIds: [12] });
     expect((await app.registry.execute("lines.export", { layer_id: 99 })).result).toBe("Слой линий №99 не найден: обновите дерево проекта");
+    expect((await app.registry.execute("lines.export", { file_id: 9 })).result).toBe("Файл линий №9 не найден: обновите дерево проекта");
     expect((await app.registry.execute("lines.export", { format: "shp" })).result).toContain("допустимые значения — str, surpac, dxf, csv, dat");
+    // a command never writes to a path of its own
+    expect((await app.registry.execute("lines.export", { format: "str", path: "C:\\out\\roads.str" })).result).toBe("Неизвестный параметр «path»");
+    expect(core.calls).toEqual([]);
+    sceneObjects.set({ files: [] });
+    expect((await app.registry.execute("lines.export")).result).toBe("В проекте нет слоёв линий: загрузите линии или точки");
   });
 });
 

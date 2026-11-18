@@ -1,24 +1,23 @@
 /**
  * Commands of rasters (ТЗ 7.19; ADR 0011 §5): `raster.set` — the height, the opacity and the edges of a raster
  * in a vertical plane; `raster.shift` — «Сдвинуть»; `raster.place_on_section` — «На текущий разрез» (own
- * confirmation window); `rasters.export` — the window «Экспорт растра», or the job at once with `path`.
+ * confirmation window); `rasters.export` — the window «Экспорт растра» (the file is chosen by a person there).
  * Without `raster_id` — the selected raster, or the only raster of the project.
  */
 import type { App } from "../../shell/app";
 import { askConfirm, askText } from "../../shell/dialogs";
 import { metres } from "../importing/objects";
-import { needProject, needSection, noted, showJobs, viewport } from "../../shell/objectRun";
+import { needProject, needSection, noted, viewport } from "../../shell/objectRun";
 import { selectWithProperties } from "../../shell/treeRun";
 import { openWindow } from "../../shell/windows";
-import { refresh as refreshJobs } from "../jobs/state";
 import { viewSyncOf } from "../scene/bind";
 import { loadSceneObjects, sceneObjects, type RasterInfo } from "../scene/objects";
-import { placeOnSection, rasterById, setRaster, shiftRaster, startRasterExport } from "./actions";
-import { exportReason, RASTER_FORMATS, type RasterFormat } from "./export";
+import { placeOnSection, rasterById, setRaster, shiftRaster } from "./actions";
+import { RASTER_FORMATS } from "./export";
 import { EDGE_LABELS, opacityOf, parseField, placeMessage, rasterState, rasterSummary, shiftReason, type Edges } from "./props";
 
 /** The raster of a command: `raster_id`, the selected raster, or the only one of the project. */
-export function rasterOf(app: App, a: Record<string, unknown>): RasterInfo {
+function rasterOf(app: App, a: Record<string, unknown>): RasterInfo {
   const rasters = sceneObjects.get().rasters;
   const selected = app.store.get().selected;
   const id = typeof a.raster_id === "number" ? a.raster_id : selected?.kind === "raster" ? selected.id : rasters.length === 1 ? rasters[0].id : null;
@@ -111,22 +110,13 @@ export function bindRasters(app: App): void {
     "rasters.export",
     noted(app, async (a) => {
       await ready();
-      const format: RasterFormat = a.format === "geotiff" ? "geotiff" : "source";
-      if (typeof a.path !== "string") {
-        const rasters = sceneObjects.get().rasters;
-        if (!rasters.length) throw new Error("В проекте нет растров: загрузите изображение с файлом привязки или GeoTIFF");
-        const selected = app.store.get().selected;
-        const id = typeof a.raster_id === "number" ? rasterOf(app, a).id : selected?.kind === "raster" ? selected.id : rasters[0].id;
-        openWindow("raster-export", "Экспорт растра", "medium", { rasterId: id, format }, ...viewport());
-        return "Открыто окно «Экспорт растра»";
-      }
-      const raster = rasterOf(app, a);
-      const reason = exportReason(raster, format, a.path);
-      if (reason) throw new Error(reason);
-      const job = await startRasterExport(raster.id, a.path, format);
-      showJobs(app);
-      await refreshJobs();
-      return `Экспорт растра «${raster.name}» (${RASTER_FORMATS.find((f) => f.id === format)!.title}) запущен: задание №${job.id}`;
+      const rasters = sceneObjects.get().rasters;
+      if (!rasters.length) throw new Error("В проекте нет растров: загрузите изображение с файлом привязки или GeoTIFF");
+      const selected = app.store.get().selected;
+      const id = typeof a.raster_id === "number" ? rasterOf(app, a).id : selected?.kind === "raster" ? selected.id : rasters[0].id;
+      const format = RASTER_FORMATS.find((f) => f.id === a.format) ?? RASTER_FORMATS[0];
+      openWindow("raster-export", "Экспорт растра", "medium", { rasterId: id, format: format.id }, ...viewport());
+      return `Открыто окно «Экспорт растра» (${format.title}): выберите файл и нажмите «Экспортировать»`;
     }),
     needProject,
   );

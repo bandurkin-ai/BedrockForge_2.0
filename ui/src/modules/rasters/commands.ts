@@ -1,4 +1,5 @@
 import type { Command } from "../../shell/commands";
+import { RASTER_FORMAT_IDS } from "./export";
 
 const RASTER = { type: "integer", description: "Номер растра; без него — выбранный растр (или единственный растр проекта)" } as const;
 const EDGE = (what: string) => ({ type: "number", description: `${what} растра в вертикальной плоскости; шесть краёв задаются вместе` }) as const;
@@ -44,8 +45,8 @@ export const commands: Command[] = [
     id: "rasters.export",
     title: "Экспорт растра",
     description:
-      "Растр в файл: исходный файл с привязкой рядом (source: world-файл и .prj) или один GeoTIFF (geotiff). Открывает окно «Экспорт растра» с выбором файла; с path (полный путь к файлу) экспорт запускается сразу как задание.",
-    params: { raster_id: RASTER, format: { type: "string", enum: ["source", "geotiff"] }, path: { type: "string", description: "Полный путь к файлу; без него откроется окно" } },
+      "Растр в файл: исходный файл с привязкой рядом (source: world-файл и .prj) или один GeoTIFF (geotiff). Открывает окно «Экспорт растра» с этим растром и форматом: файл выбирает пользователь, экспорт идёт как задание.",
+    params: { raster_id: RASTER, format: { type: "string", enum: RASTER_FORMAT_IDS } },
     stage: "Э7",
   },
 ];

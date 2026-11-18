@@ -16,7 +16,7 @@ const dxf = (entities: (string | number)[][]) => ["0", "SECTION", "2", "ENTITIES
 const GRID = 8; // 8 × 8 points: two pages of attributes (50 rows a page)
 const pointAt = (k: number) => ({ x: 5000 + Math.floor(k / GRID) * 50, y: 7500 + (k % GRID) * 50, z: 300 + Math.floor(k / GRID) * 2 - (k % GRID) });
 
-/** South of the demo holes: two roads and a closed outline, 64 named points, two images in plan. */
+/** Two roads and a closed outline, 64 named points, two images in plan over the points. */
 function makeFiles(dir: string): string[] {
   const files = {
     lines: path.join(dir, "roads.dxf"),
@@ -71,8 +71,11 @@ test("properties: raster shift and section, layer attributes and pick, DTM windo
 
   try {
     await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
-    await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
-    await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
+    // an empty project: only the objects of this test (the demo has its own relief, plan and lines)
+    await page.getByLabel("Лента").getByRole("button", { name: "Новый проект" }).click();
+    await page.getByRole("dialog").last().getByRole("textbox").fill("Свойства объектов");
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("project-selector")).toContainText("Свойства объектов", { timeout: 60_000 });
     await waitFrame(page);
     const started = await api("POST", "/import/objects", { files: makeFiles(dir) });
     expect(started.status, JSON.stringify(started.body)).toBe(200);
