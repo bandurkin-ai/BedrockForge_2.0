@@ -3,12 +3,14 @@
 The layout follows the owner's analysis of the block model files (`tests/data/real/blockmodels-dm-fbm-dat.md` §1–2,
 ADR 0009): pages of 512 words (a word is 8 bytes — extended precision, or 4 — single), page 1 holds the names of
 the file, 28 header words and a 7-word descriptor per field word; data pages hold whole records from their start.
+`build` takes any fields record by record; `build_numbers` gives the same bytes for number fields from an array.
 """
 
 from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from typing import Any
 
 WORDS = 512
 ABSENT = -1.0e30  # the "absent data" number of Datamine
@@ -114,3 +116,28 @@ def build(
                     body += _text(str(value), f.size, word, encoding)
         out += bytes(body).ljust(page, slack)
     return bytes(out)
+
+
+def build_numbers(fields: list[F], table: Any, *, word: int = 8, **header: Any) -> bytes:
+    """The bytes `build` gives for a table of number fields, made with numpy: for tables of a million records.
+    `table` — records × stored fields; the implicit fields of `fields` only get their descriptors."""
+    import numpy as np
+
+    data = np.asarray(table, dtype=np.float64)
+    stored = [f for f in fields if not f.implicit]
+    assert all(f.kind == "N" for f in fields) and data.ndim == 2 and data.shape[1] == len(stored)
+    assert header.get("layout", "dm") == "dm" and header.get("capacity", WORDS) == WORDS
+    head = bytearray(build(fields, [], word=word, **header))  # the header pages of an empty table
+    rows, n = data.shape
+    if rows == 0:
+        return bytes(head)
+    per = WORDS // n
+    pages = -(-rows // per)
+    block = np.zeros((pages * per, n), dtype=f"<f{word}")
+    block[:rows] = data
+    body = np.zeros((pages, WORDS), dtype=f"<f{word}")
+    body[:, : per * n] = block.reshape(pages, per * n)
+    code = "<d" if word == 8 else "<f"
+    struct.pack_into(code, head, 26 * word, float(len(head) // (WORDS * word) + pages))  # the last page
+    struct.pack_into(code, head, 27 * word, float(rows - (pages - 1) * per))  # the records in it
+    return bytes(head) + body.tobytes()
