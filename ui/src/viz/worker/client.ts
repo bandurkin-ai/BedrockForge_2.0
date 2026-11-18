@@ -4,12 +4,17 @@
  */
 import { VizError } from "../error";
 import type { BuiltLines } from "../lines/build";
+import type { BuiltMesh } from "../mesh/build";
 import { buildLines } from "./lines";
+import { buildMesh } from "./mesh";
 import { buildPaths, type BuiltPaths } from "./paths";
 
-export type WorkerRequest = { id: number; kind: "paths"; buffer: ArrayBuffer; kinds: Uint8Array | null } | { id: number; kind: "lines"; buffer: ArrayBuffer };
+export type WorkerRequest =
+  | { id: number; kind: "paths"; buffer: ArrayBuffer; kinds: Uint8Array | null }
+  | { id: number; kind: "lines"; buffer: ArrayBuffer }
+  | { id: number; kind: "mesh"; buffer: ArrayBuffer };
 
-type Built = BuiltPaths | BuiltLines;
+type Built = BuiltPaths | BuiltLines | BuiltMesh;
 export type WorkerResponse = { id: number; ok: true; result: Built } | { id: number; ok: false; error: { code: string; message: string; hint: string } };
 
 export class GeometryWorker {
@@ -36,6 +41,11 @@ export class GeometryWorker {
   /** Segments, markers and text anchors of a part of a line layer; the buffer is transferred (detached here). */
   lines(buffer: ArrayBuffer): Promise<BuiltLines> {
     return this.run({ id: ++this.seq, kind: "lines", buffer }, () => buildLines(buffer), [buffer]);
+  }
+
+  /** Vertices and triangles of a part of a surface, checked; the buffer is transferred (detached here) and comes back. */
+  mesh(buffer: ArrayBuffer): Promise<BuiltMesh> {
+    return this.run({ id: ++this.seq, kind: "mesh", buffer }, () => buildMesh(buffer), [buffer]);
   }
 
   private run<T extends Built>(req: WorkerRequest, local: () => T, transfer: Transferable[]): Promise<T> {

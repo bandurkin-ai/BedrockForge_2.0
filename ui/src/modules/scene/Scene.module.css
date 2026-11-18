@@ -21,6 +21,7 @@
 .second { top: 32px; }
 .third { top: 56px; color: var(--warn); }
 .fourth { top: 80px; }
+.fifth { top: 104px; }
 .error { color: var(--danger); }
 .coords { position: absolute; left: 112px; right: 8px; bottom: 4px; color: var(--text-faint); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 2; }
 .diag { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 6; }

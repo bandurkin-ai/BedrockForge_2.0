@@ -60,9 +60,19 @@ export interface SceneUi {
   rastersLoading: number;
   /** not enough video memory for the large copy of some raster */
   rastersOver: boolean;
+  /** wireframes and DTMs in the scene; manifests and parts of them being loaded */
+  wireframes: number;
+  wireframesLoading: number;
+  /** the triangle budget of the frame made some parts of surfaces coarser («упрощено») */
+  wireframesSimplified: boolean;
+  /** not enough video memory for the finer level of some parts of surfaces */
+  wireframesOver: boolean;
 }
 
 /** The part of the state that belongs to the objects of Э7 (reset with every new scene). */
-export const NO_OBJECTS = { lines: 0, linesLoading: 0, linesSimplified: 0, linesOver: false, rasters: 0, rastersLoading: 0, rastersOver: false };
+export const NO_OBJECTS = {
+  lines: 0, linesLoading: 0, linesSimplified: 0, linesOver: false, rasters: 0, rastersLoading: 0, rastersOver: false,
+  wireframes: 0, wireframesLoading: 0, wireframesSimplified: false, wireframesOver: false,
+};
 
 export const sceneUi = new Store<SceneUi>({ lost: false, degraded: false, loading: 0, error: null, noWebgl: null, software: false, sets: 0, content: 0, ...NO_OBJECTS });

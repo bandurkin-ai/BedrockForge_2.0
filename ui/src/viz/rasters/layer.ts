@@ -6,12 +6,15 @@
  * out of the clipping planes, drawn first, without writing or testing depth — holes and lines on either side
  * of it stay on top; it cannot blend there (transparent objects are drawn last), so its opacity mixes the
  * image toward the background instead. The texture belongs to the caller (it outlives a moved raster).
+ * A raster carried by a DTM (ТЗ 7.20) is not drawn flat as well: hidden whole when the DTM keeps the image to
+ * itself («Скрыть данные за ЦТМ»), otherwise cut out where the DTM covers it (`setCover`).
  */
 import * as THREE from "three";
 import type { Vec3 } from "../core/vec3";
 import type { Origin } from "../origin";
 import type { LayerPick, PickQuery, SceneLayer } from "../sceneTypes";
-import { isBackdrop, pickQuad, type RasterPlacement } from "./placement";
+import { drapeUv, imageAxes } from "../mesh/drape";
+import { inHoles, isBackdrop, MAX_RASTER_HOLES, patchHolesShader, pickQuad, type RasterPlacement } from "./placement";
 
 export interface RasterLayerContext {
   clip: THREE.Plane[];
@@ -50,6 +53,9 @@ export class RasterLayerView implements SceneLayer {
   private backdrop: boolean | null = null;
   private readonly tint = new THREE.Color();
   private style: RasterStyle;
+  /** windows of the image [u0, v0, u1, v1] that are not drawn: surfaces carry the raster there */
+  private readonly holes = { uHoles: { value: Array.from({ length: MAX_RASTER_HOLES }, () => new THREE.Vector4()) }, uHoleCount: { value: 0 } };
+  private covered = false;
 
   constructor(
     readonly rasterId: number,
@@ -69,6 +75,10 @@ export class RasterLayerView implements SceneLayer {
     material.polygonOffset = true;
     material.polygonOffsetFactor = 1;
     material.polygonOffsetUnits = 1;
+    material.onBeforeCompile = (shader) => {
+      if (patchHolesShader(shader)) Object.assign(shader.uniforms, this.holes);
+    };
+    material.customProgramCacheKey = () => "bf-raster-holes";
     this.mesh = new THREE.Mesh(geometry, material);
     this.mesh.visible = false; // until the image comes
     this.object.add(this.mesh);
@@ -101,8 +111,25 @@ export class RasterLayerView implements SceneLayer {
 
   setStyle(style: RasterStyle): void {
     this.style = style;
-    this.object.visible = style.visible;
+    this.object.visible = style.visible && !this.covered;
     this.backdrop = null; // applied again before the next frame
+  }
+
+  /**
+   * The raster lies on surfaces: `hidden` — the image is seen on them only; otherwise it stays flat around
+   * them and `holes` (image windows [u0, v0, u1, v1], at most `MAX_RASTER_HOLES`) are cut where they cover it.
+   */
+  setCover(hidden: boolean, holes: readonly ArrayLike<number>[] = []): void {
+    this.covered = hidden;
+    this.object.visible = this.style.visible && !hidden;
+    const n = hidden ? 0 : Math.min(holes.length, MAX_RASTER_HOLES);
+    this.holes.uHoleCount.value = n;
+    for (let i = 0; i < n; i++) this.holes.uHoles.value[i].set(holes[i][0], holes[i][1], holes[i][2], holes[i][3]);
+  }
+
+  /** How surfaces cover the flat raster now: hidden whole, or the number of holes cut in it. */
+  get cover(): { hidden: boolean; holes: number } {
+    return { hidden: this.covered, holes: this.holes.uHoleCount.value };
   }
 
   get visible(): boolean {
@@ -138,6 +165,14 @@ export class RasterLayerView implements SceneLayer {
     if (!this.mesh.visible) return null;
     const hit = pickQuad(this.local, q.offset, q.vexag, q.ray);
     if (!hit || (!this.isBackdrop && !q.inWindow(hit.point[0], hit.point[1]))) return null;
+    const cut = this.holes.uHoleCount.value;
+    if (cut) {
+      // a click through a hole goes to what is seen there: the surface that carries the image
+      const l = this.local;
+      const axes = imageAxes([[l[0], l[1]], [l[3], l[4]], [l[6], l[7]], [l[9], l[10]]], [0, 0]);
+      const uv = axes ? drapeUv(axes, hit.point[0] - q.offset[0], hit.point[1] - q.offset[1]) : null;
+      if (uv && inHoles(this.holes.uHoles.value.map((h) => [h.x, h.y, h.z, h.w]), cut, uv[0], uv[1])) return null;
+    }
     const o = this.origin;
     const xyz: Vec3 = [hit.point[0] - q.offset[0] + o.x, hit.point[1] - q.offset[1] + o.y, hit.point[2] / (q.vexag || 1) - q.offset[2] + o.z];
     const pick: RasterPick = { rasterId: this.rasterId, xyz };

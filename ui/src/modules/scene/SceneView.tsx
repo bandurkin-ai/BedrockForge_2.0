@@ -137,7 +137,7 @@ function SceneMount() {
   const keys = useStore(viewStore, (k) => k);
   const mapOpen = useStore(app.store, (s) => s.workspace.sectionMiniPlan);
   const hasSets = useStore(tablesStore, (s) => s.sets.length > 0);
-  const hasObjects = useStore(sceneObjects, (o) => o.files.length > 0 || o.rasters.length > 0);
+  const hasObjects = useStore(sceneObjects, (o) => o.files.length > 0 || o.rasters.length > 0 || o.wireframes.length > 0);
   const [ready, setReady] = useState(false);
   const { line, clip } = sectionOf(keys);
 
@@ -151,7 +151,7 @@ function SceneMount() {
     sceneUi.set({ lost: false, degraded: false, loading: 0, error: null, noWebgl: null, sets: 0, ...NO_OBJECTS });
     let displays: { idle: boolean; dispose(): void } | null = null;
     let objects: ObjectSources | null = null;
-    // the scene, the layer of displays along holes, the lines and rasters: lazy chunks with three.js
+    // the scene, the layer of displays along holes, the lines, rasters and surfaces: lazy chunks with three.js
     void Promise.all([import("../../viz/Scene"), import("../downhole/sceneDisplays"), import("./objectSources")])
       .then(([mod, dh, obj]) => {
         if (disposed) return;
@@ -191,9 +191,26 @@ function SceneMount() {
           const ready = () => s.idle && src.idle && dhs.idle && objs.idle && !s.renderer.lost;
           window.__bfScene = {
             ready,
-            // `lines`, `rasters`: what the layers of Э7 show (layers, parts, levels, backdrops); `picked` — the click
+            // `lines`, `rasters`, `wireframes`: what the layers of Э7 show (layers, parts, levels, backdrops, draped
+            // DTMs); `picked` — the click
             state: () => ({ ...s.debug(), ready: ready(), loading: sceneUi.get().loading, displays: displaysUi.get(), ...objs.state() }),
             pixels: () => s.pixels(),
+            /** the colour of the frame at a client point, drawn now: [r, g, b, a] as on the screen; null — outside */
+            pixel: (x: number, y: number) => {
+              s.drawNow();
+              const gl = s.canvas.getContext("webgl2");
+              const r = s.canvas.getBoundingClientRect();
+              const px = Math.floor(((x - r.left) / r.width) * s.canvas.width);
+              const py = s.canvas.height - 1 - Math.floor(((y - r.top) / r.height) * s.canvas.height);
+              if (!gl || px < 0 || py < 0 || px >= s.canvas.width || py >= s.canvas.height) return null;
+              const out = new Uint8Array(4);
+              gl.readPixels(px, py, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, out);
+              return Array.from(out);
+            },
+            /** the surface of a wireframe over a plan point as drawn now: level, height, image coordinates */
+            probe: (id: number, x: number, y: number) => objs.probe(id, x, y),
+            /** every part of the surfaces at this level of detail (null — by the size on the screen) */
+            lod: (level: number | null) => objs.forceLevel(level),
             collars: (limit?: number) => s.collarsOnScreen(limit),
             /** a project point on the screen (client px), null — out of the view */
             screen: (x: number, y: number, z: number) => s.screenOf([x, y, z]),
@@ -248,7 +265,7 @@ function SceneMount() {
         {hint && <div className={css.hint}>{hint}</div>}
         {ready && <Legend />}
         {ready && <FpsOverlay />}
-        {(ui.loading > 0 || dh.loading > 0 || ui.linesLoading > 0 || ui.rastersLoading > 0) && !ui.lost && <div className={css.corner}>Загрузка…</div>}
+        {(ui.loading > 0 || dh.loading > 0 || ui.linesLoading > 0 || ui.rastersLoading > 0 || ui.wireframesLoading > 0) && !ui.lost && <div className={css.corner}>Загрузка…</div>}
         {dh.simplified > 0 && ui.loading === 0 && dh.loading === 0 && !ui.lost && (
           <div className={`${css.corner} ${css.second}`} title="Части далеко от камеры показаны объединёнными интервалами до 4 или 32 м">
             Отображения упрощены: {Math.round(dh.simplified * 100)} % частей
@@ -260,7 +277,12 @@ function SceneMount() {
             Линии упрощены: {Math.round(ui.linesSimplified * 100)} % частей
           </div>
         )}
-        {(ui.linesOver || ui.rastersOver) && !dh.over && !ui.lost && <div className={`${css.corner} ${css.third}`}>Не хватает видеопамяти: часть линий и растров показана упрощённо</div>}
+        {(ui.linesOver || ui.rastersOver || ui.wireframesOver) && !dh.over && !ui.lost && <div className={`${css.corner} ${css.third}`}>Не хватает видеопамяти: часть линий, растров и поверхностей показана упрощённо</div>}
+        {ui.wireframesSimplified && ui.wireframesLoading === 0 && !ui.lost && (
+          <div className={`${css.corner} ${css.fifth}`} title="Треугольников в кадре больше бюджета графики: самые мелкие на экране части поверхностей показаны упрощёнными">
+            Поверхности упрощены
+          </div>
+        )}
         {ui.software && ui.loading === 0 && !ui.lost && <div className={css.corner} title="WebGL без видеокарты (SwiftShader): 3D медленнее">Программная отрисовка</div>}
         {ui.error && <div className={`${css.note} ${css.error}`}>{ui.error}</div>}
         {ready && !hasSets && !hasObjects && !ui.error && <div className={css.note}>Нет объектов для показа. Загрузите скважины: «Главная» → «Скважины» или перетащите файлы в окно.</div>}
@@ -271,7 +293,7 @@ function SceneMount() {
         {ready && (
           <div className={css.coords}>
             {line && clip ? `Разрез: азимут ${Math.round(line.az)}°, окно от ${line.towards} до ${line.away} м · ` : ""}
-            ЛКМ — вращение, колесо — масштаб, ПКМ — сдвиг · щелчок по устью — выбор скважины, по линии или растру — выбор объекта
+            ЛКМ — вращение, колесо — масштаб, ПКМ — сдвиг · щелчок по устью — выбор скважины, по линии, поверхности или растру — выбор объекта
           </div>
         )}
       </div>

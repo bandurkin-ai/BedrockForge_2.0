@@ -5,8 +5,11 @@
  * texture: the small one (≤ 1024 px) first and always, the large one (≤ 4096 px) when the raster is
  * stretched over more pixels than the small copy has and the video memory budget allows. The image comes
  * from `/rasters/{id}/image?level=` and is decoded off the main thread (`createImageBitmap`). Visibility
- * follows the hidden key `rs:<id>`; opacity, elevation and corners follow the list of the project. After a
- * lost context everything comes again. A lazy chunk with three.js.
+ * follows the hidden key `rs:<id>`; opacity, elevation and corners follow the list of the project. A raster
+ * that a DTM carries (ТЗ 7.20) gives its texture to that surface (`textureOf`) — it is loaded even when the
+ * raster itself is hidden — and is not drawn flat as well: hidden whole under «Скрыть данные за ЦТМ»,
+ * otherwise cut out where the DTM covers it. After a lost context everything comes again.
+ * A lazy chunk with three.js.
  */
 import * as THREE from "three";
 import { coreTarget } from "../../shell/api";
@@ -17,6 +20,7 @@ import { GpuMemory, MEMORY_BUDGET } from "../../viz/core/budget";
 import { boxInFrustum, frustumPlanes } from "../../viz/core/cull";
 import { VizError } from "../../viz/error";
 import { LoadQueue } from "../../viz/load/loader";
+import { imageWindow } from "../../viz/mesh/drape";
 import { RasterLayerView, type RasterStyle } from "../../viz/rasters/layer";
 import { rasterPlacement, screenExtent, textureLevel, type RasterPlacement } from "../../viz/rasters/placement";
 import type { RasterInfo } from "./objects";
@@ -27,8 +31,19 @@ const RASTERS_SHARE = 0.25;
 const SMALL = 1;
 const LARGE = 0;
 
+/** A shown DTM that carries a raster. */
+export interface DrapeUse {
+  rasterId: number;
+  /** «Скрыть данные за ЦТМ»: the image is seen on the surface only */
+  clip: boolean;
+  /** absolute extent of the surface: [xmin, ymin, zmin, xmax, ymax, zmax] */
+  bbox: ArrayLike<number>;
+}
+
 export interface RastersInput {
   rasters: () => readonly RasterInfo[];
+  /** the DTMs in the scene that carry rasters */
+  drapes?: () => readonly DrapeUse[];
   /** hidden keys in force (`rs:<id>`) */
   hidden: () => readonly string[];
   /** the level of a raster without an elevation: under the lowest object */
@@ -47,6 +62,10 @@ interface RasterState {
   info: RasterInfo;
   placement: RasterPlacement;
   view: RasterLayerView;
+  /** the hidden key of the raster is not set */
+  visible: boolean;
+  /** shown DTMs that carry the image (plan rasters only) */
+  uses: readonly DrapeUse[];
   /** the longer side of copy 0 and copy 1, px */
   sizes: number[];
   want: number | null;
@@ -89,23 +108,37 @@ export class RastersSource {
     return this.inflight === 0 && this.timer === null;
   }
 
-  /** Rasters in the scene with the copy each shows (null — the image is not there yet) and the backdrops. */
-  stats(): { count: number; levels: Record<string, number | null>; backdrops: number[]; over: boolean } {
+  /**
+   * Rasters in the scene with the copy each shows (null — the image is not there yet), the backdrops, and
+   * those a DTM carries: `covered` — not drawn flat at all, `cut` — flat with holes under the surfaces.
+   */
+  stats(): { count: number; levels: Record<string, number | null>; backdrops: number[]; covered: number[]; cut: number[]; over: boolean } {
     const levels: Record<string, number | null> = {};
     const backdrops: number[] = [];
+    const covered: number[] = [];
+    const cut: number[] = [];
     for (const st of this.items.values()) {
       levels[st.id] = this.shownLevel(st);
       if (st.view.visible && st.view.isBackdrop) backdrops.push(st.id);
+      if (st.view.cover.hidden) covered.push(st.id);
+      else if (st.view.cover.holes) cut.push(st.id);
     }
-    return { count: this.items.size, levels, backdrops, over: this.over };
+    return { count: this.items.size, levels, backdrops, covered, cut, over: this.over };
   }
 
-  /** The list of rasters, their placement or opacity, the hidden keys or the floor changed. */
+  /** The image a raster shows now, for the surface that carries it (null — not loaded yet). */
+  textureOf(id: number): THREE.Texture | null {
+    return this.items.get(id)?.view.texture ?? null;
+  }
+
+  /** The list of rasters, their placement or opacity, the hidden keys, the floor or the draped DTMs changed. */
   sync(): void {
     if (this.disposed) return;
     const list = this.input.rasters();
     const hidden = new Set(this.input.hidden());
     const floor = this.input.floor();
+    const uses = new Map<number, DrapeUse[]>();
+    for (const u of this.input.drapes?.() ?? []) uses.set(u.rasterId, [...(uses.get(u.rasterId) ?? []), u]);
     const ids = new Set(list.map((r) => r.id));
     let changed = false;
     for (const id of [...this.items.keys()]) {
@@ -123,20 +156,30 @@ export class RastersSource {
         changed = changed || st !== undefined;
         continue;
       }
+      // a DTM carries the image: the flat raster is hidden whole or cut out where the surface covers it
+      const draped = r.vertical ? [] : uses.get(r.id) ?? [];
+      const covered = draped.some((u) => u.clip);
+      const corners = [0, 1, 2, 3].map((i) => [p.corners[i * 3], p.corners[i * 3 + 1]]);
+      const holes = covered ? [] : draped.map((u) => imageWindow(corners, [u.bbox[0], u.bbox[1]], [u.bbox[3], u.bbox[4]])).filter((h) => h !== null);
       if (!st) {
-        if (!visible) continue; // a hidden raster that was never shown is not loaded
+        if (!visible && !draped.length) continue; // a hidden raster that was never shown is not loaded
         const view = new RasterLayerView(r.id, p, { clip: this.scene.clipPlanes, background: this.background }, styleOf(r, visible, null));
+        view.setCover(covered, holes);
         const size = (level: number) => {
           const d = r.displays.find((x) => x.level === level);
           return d ? Math.max(d.width, d.height) : 0;
         };
-        this.items.set(r.id, { id: r.id, info: r, placement: p, view, sizes: [size(LARGE), size(SMALL)], want: null, inView: true, textures: new Map(), loading: new Set(), failed: new Set() });
+        this.items.set(r.id, { id: r.id, info: r, placement: p, view, visible, uses: draped, sizes: [size(LARGE), size(SMALL)], want: null, inView: true, textures: new Map(), loading: new Set(), failed: new Set() });
         this.scene.addLayer(rasterKey(r.id), view);
         continue;
       }
       st.info = r;
-      if (st.view.visible !== visible) changed = true;
+      st.visible = visible;
+      st.uses = draped;
+      const was = st.view.visible;
       st.view.setStyle(styleOf(r, visible, this.shownLevel(st)));
+      st.view.setCover(covered, holes);
+      if (st.view.visible !== was) changed = true;
       if (p.corners.some((v, i) => v !== st.placement.corners[i])) {
         st.placement = p;
         st.view.setPlacement(p);
@@ -208,9 +251,10 @@ export class RastersSource {
     this.lastFrame = now;
     const inView: string[] = [];
     let work = false;
+    const seen = (bbox: ArrayLike<number>) => boxInFrustum(scaleZ(boxFromBbox6(bbox, origin), ctx.vexag), planes);
     for (const st of this.items.values()) {
-      if (!st.view.visible) continue;
-      st.inView = boxInFrustum(scaleZ(boxFromBbox6(st.placement.bbox, origin), ctx.vexag), planes);
+      if (!st.visible && !st.uses.length) continue; // nothing shows the image
+      st.inView = (st.view.visible && seen(st.placement.bbox)) || st.uses.some((u) => seen(u.bbox));
       if (st.inView) {
         inView.push(String(st.id));
         st.want = textureLevel(screenExtent(st.placement.local, this.scene.origin.offset(st.view.origin), ctx.vexag, ctx.pixelsPerUnit), st.sizes, st.want);
@@ -221,7 +265,7 @@ export class RastersSource {
         const t = st.textures.get(show)!;
         if (st.view.texture !== t.texture) {
           st.view.setTexture(t.texture);
-          st.view.setStyle(styleOf(st.info, true, show));
+          st.view.setStyle(styleOf(st.info, st.visible, show));
         }
         this.memory.touch(String(st.id), show, now);
       }
@@ -245,7 +289,7 @@ export class RastersSource {
     this.timer = setTimeout(() => {
       this.timer = null;
       for (const st of this.items.values()) {
-        if (!st.view.visible) continue;
+        if (!st.visible && !st.uses.length) continue;
         const level = this.next(st);
         if (level !== null) void this.load(st, level);
       }

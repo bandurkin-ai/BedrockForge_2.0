@@ -38,7 +38,7 @@ export function viewSyncOf(): ViewSync | null {
 
 const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
-/** Object keys of the project the scene can show (sets, line layers, rasters; wireframes… with their stages). */
+/** Object keys of the project the scene can show (sets, line layers, rasters, wireframes; blocks… with their stages). */
 export function objectKeys(): string[] {
   return [...tablesStore.get().sets.map((s) => `set:${s.id}`), ...objectViewKeys()];
 }
@@ -85,13 +85,13 @@ export function bindScene(app: App): void {
     setsRef = tablesStore.get().sets;
     store.set((s) => ({ view: viewFromKeys(viewStore.get(), s.view) }));
   });
-  // line layers and rasters: the lists follow the project; what was just loaded is shown also after
-  // «Очистить окно» (ТЗ 17.4.7)
+  // line layers, rasters and wireframes: the lists follow the project; what was just loaded or built is
+  // shown also after «Очистить окно» (ТЗ 17.4.7)
   bindSceneObjects();
   let objects = sceneObjects.get();
   sceneObjects.subscribe(() => {
     const next = sceneObjects.get();
-    if (next.files === objects.files && next.rasters === objects.rasters) return;
+    if (next.files === objects.files && next.rasters === objects.rasters && next.wireframes === objects.wireframes) return;
     const known = new Set(objectViewKeys(objects));
     const added = objects.loaded && next.loaded ? objectViewKeys(next).filter((k) => !known.has(k)) : [];
     objects = next;

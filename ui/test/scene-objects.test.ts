@@ -1,9 +1,9 @@
-/** The lists of line layers and rasters of the open project and their keys of the view settings. */
+/** The lists of line layers, rasters and wireframes of the open project and their keys of the view settings. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCoreTarget } from "../src/shell/api";
 import { projectStore, type ProjectInfo } from "../src/modules/projects/state";
 import { effectiveHidden } from "../src/modules/scene/hideAll";
-import { lineLayers, loadSceneObjects, objectViewKeys, sceneObjects, type LineFileInfo, type RasterInfo } from "../src/modules/scene/objects";
+import { lineLayers, loadSceneObjects, objectViewKeys, sceneObjects, type LineFileInfo, type RasterInfo, type WireframeInfo } from "../src/modules/scene/objects";
 
 const layer = (id: number, file: number) => ({ id, file_id: file, name: `Слой ${id}`, version: 1, color: null, points_only: false }) as LineFileInfo["layers"][number];
 const files = [
@@ -11,9 +11,17 @@ const files = [
   { id: 2, name: "b.dxf", layers: [layer(21, 2)] },
 ] as LineFileInfo[];
 const rasters = [{ id: 31, name: "Ортофото", version: 1 }] as RasterInfo[];
+const dtm = { raster_id: 31, clip: true, tint: "#ffffff", opacity: 1, shade: true };
+const wireframes = [
+  { id: 41, name: "Рельеф", version: 2, color: null, extent: [0, 0, 250, 10, 10, 300], dtm },
+  { id: 42, name: "Рудное тело", version: 1, color: "#f46a1a", extent: [0, 0, 100, 10, 10, 200], dtm: null },
+] as WireframeInfo[];
 
-function answer(lines: unknown, images: unknown) {
-  return vi.fn(async (url: RequestInfo | URL) => new Response(JSON.stringify(String(url).endsWith("/lines/files") ? { files: lines } : { rasters: images }), { status: 200 }));
+function answer(lines: unknown, images: unknown, meshes: unknown = []) {
+  return vi.fn(async (url: RequestInfo | URL) => {
+    const u = String(url);
+    return new Response(JSON.stringify(u.endsWith("/lines/files") ? { files: lines } : u.endsWith("/wireframes") ? { wireframes: meshes } : { rasters: images }), { status: 200 });
+  });
 }
 
 describe("objects of the scene", () => {
@@ -21,7 +29,7 @@ describe("objects of the scene", () => {
     vi.unstubAllGlobals();
     setCoreTarget(null);
     projectStore.set({ current: null });
-    sceneObjects.set({ files: [], rasters: [], loaded: false, error: null });
+    sceneObjects.set({ files: [], rasters: [], wireframes: [], loaded: false, error: null });
   });
 
   it("layers of every file and rasters give the keys `ln:` and `rs:`; «Очистить окно» hides them too", () => {
@@ -29,6 +37,27 @@ describe("objects of the scene", () => {
     const keys = objectViewKeys({ files, rasters });
     expect(keys).toEqual(["ln:11", "ln:12", "ln:21", "rs:31"]);
     expect(effectiveHidden([], { on: true, shown: ["ln:12"] }, keys).sort()).toEqual(["ln:11", "ln:21", "rs:31"]);
+    // wireframes and DTMs: `wf:`
+    expect(objectViewKeys({ files, rasters, wireframes })).toEqual(["ln:11", "ln:12", "ln:21", "rs:31", "wf:41", "wf:42"]);
+  });
+
+  it("wireframes come with the settings of a DTM; a changed setting gives a new list, the others keep theirs", async () => {
+    setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
+    projectStore.set({ current: { uid: "p1" } as ProjectInfo });
+    vi.stubGlobal("fetch", answer(files, rasters, wireframes));
+    await loadSceneObjects();
+    const first = sceneObjects.get();
+    expect(first.wireframes.map((w) => [w.id, w.dtm?.raster_id ?? null])).toEqual([[41, 31], [42, null]]);
+    expect(objectViewKeys()).toEqual(["ln:11", "ln:12", "ln:21", "rs:31", "wf:41", "wf:42"]);
+    await loadSceneObjects();
+    expect(sceneObjects.get().wireframes).toBe(first.wireframes);
+    // «Вернуть в каркасы»: the settings and the raster are gone
+    vi.stubGlobal("fetch", answer(files, rasters, [{ ...wireframes[0], version: 3, dtm: null }, wireframes[1]]));
+    await loadSceneObjects();
+    expect(sceneObjects.get().wireframes).not.toBe(first.wireframes);
+    expect(sceneObjects.get().wireframes[0].dtm).toBeNull();
+    expect(sceneObjects.get().files).toBe(first.files);
+    expect(sceneObjects.get().rasters).toBe(first.rasters);
   });
 
   it("the lists are read for the open project; unchanged lists keep their identity", async () => {

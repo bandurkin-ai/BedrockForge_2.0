@@ -4,7 +4,8 @@
  * float32 copy from an integer origin for the video card (ТЗ 5.4: never UTM in a buffer). A raster in plan
  * lies at its elevation; without one — under the lowest object, never at 0. A vertical raster keeps the
  * heights of its corners; under clipping it is a backdrop. Also here: the copy of the image to show
- * (≤ 4096 or ≤ 1024 px) by the size on the screen, and the click on a raster. Pure, no three.js.
+ * (≤ 4096 or ≤ 1024 px) by the size on the screen, the click on a raster, and the holes cut in a flat raster
+ * where a surface carries it (ТЗ 7.20, `mesh/drape.ts`). Pure, no three.js.
  */
 import { chooseLevel } from "../core/lod";
 import type { Vec3 } from "../core/vec3";
@@ -127,4 +128,35 @@ export function pickQuad(local: ArrayLike<number>, offset: Vec3, vexag: number, 
   const t = hitTriangle(ray.origin, ray.dir, a, b, c) ?? hitTriangle(ray.origin, ray.dir, a, c, d);
   if (t === null) return null;
   return { t, point: [ray.origin[0] + ray.dir[0] * t, ray.origin[1] + ray.dir[1] * t, ray.origin[2] + ray.dir[2] * t] };
+}
+
+// --- a raster that also lies on surfaces (ТЗ 7.20; BF `updateDrapedRasters`, `setRaster` 1826–1840) -----
+
+/** Most surfaces one flat raster is cut out for (the rest of them only cover it). */
+export const MAX_RASTER_HOLES = 4;
+
+/** Is the image point (u, v) inside one of the first `count` windows [u0, v0, u1, v1]. */
+export function inHoles(holes: readonly ArrayLike<number>[], count: number, u: number, v: number): boolean {
+  for (let i = 0; i < Math.min(count, holes.length); i++) {
+    const h = holes[i];
+    if (u > h[0] && v > h[1] && u < h[2] && v < h[3]) return true;
+  }
+  return false;
+}
+
+/**
+ * Adds the holes to the basic shader of three.js (`onBeforeCompile`): fragments of the quad inside a window
+ * `uHoles[i]` (image coordinates) are not drawn. False — the shader has no such places: it is left as it is.
+ */
+export function patchHolesShader(shader: { vertexShader: string; fragmentShader: string }): boolean {
+  const test = `for (int i = 0; i < ${MAX_RASTER_HOLES}; i++) {\n\t\tif (i < uHoleCount && vHoleUv.x > uHoles[i].x && vHoleUv.y > uHoles[i].y && vHoleUv.x < uHoles[i].z && vHoleUv.y < uHoles[i].w) discard;\n\t}`;
+  const anchors: [keyof typeof shader, string, string][] = [
+    ["vertexShader", "#include <common>", "#include <common>\nvarying vec2 vHoleUv;"],
+    ["vertexShader", "#include <begin_vertex>", "#include <begin_vertex>\n\tvHoleUv = uv;"],
+    ["fragmentShader", "#include <common>", `#include <common>\nuniform vec4 uHoles[${MAX_RASTER_HOLES}];\nuniform int uHoleCount;\nvarying vec2 vHoleUv;`],
+    ["fragmentShader", "#include <map_fragment>", `${test}\n\t#include <map_fragment>`],
+  ];
+  if (!anchors.every(([side, at]) => shader[side].includes(at))) return false;
+  for (const [side, at, to] of anchors) shader[side] = shader[side].replace(at, to);
+  return true;
 }
