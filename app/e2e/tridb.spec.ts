@@ -34,6 +34,13 @@ function drawing(file: string): void {
 test("wireframes: «Каркасы» — a real TRIDB and a DXF with lines and a wireframe, tree, 3D, checks after the import", async () => {
   test.setTimeout(480_000);
   const { app, page } = await launch({ BF_E2E: "1" });
+  // diagnostics for the Windows run (a frame there stays near-empty): failed requests of the scene, in the log
+  page.on("response", (r) => {
+    if (r.status() >= 400 && r.url().includes("/api/")) console.log("tridb: HTTP", r.status(), r.url().replace(/^.*api.v1/, ""));
+  });
+  page.on("console", (m) => {
+    if (m.type() === "error" || m.type() === "warning") console.log("tridb: console", m.type(), m.text().slice(0, 300));
+  });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-tridb-"));
   const pickNext = (files: string[]) =>
     app.evaluate(({ dialog }, f) => {
@@ -119,6 +126,7 @@ test("wireframes: «Каркасы» — a real TRIDB and a DXF with lines and a
     expect(mid.y).toBeLessThan(host.y + 0.75 * host.height);
     const [a, b] = [(await onScreen(lo))!, (await onScreen(hi))!];
     expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeGreaterThan(0.4 * Math.min(host.width, host.height)); // not a dot
+    console.log("tridb: scene", JSON.stringify((await state(page)).wireframes), JSON.stringify(await page.evaluate(() => window.__bfScene!.pixels())));
     // not an empty window: the parts of the wireframes are fetched after the view moved (slower on Windows)
     await expect
       .poll(async () => (await page.evaluate(() => window.__bfScene!.pixels()))!.nonBackground, { timeout: 30_000 })
