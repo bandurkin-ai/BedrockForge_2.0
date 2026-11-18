@@ -396,6 +396,14 @@ export class Scene {
     return collarsOnScreen(this.holeSets.values(), this.lastVp, this.vexag, { w: this.size.w, h: this.size.h, left: r.left, top: r.top }, (x, y) => this.clip.inWindow(x, y), limit);
   }
 
+  /** A project point on the screen (client px) as last drawn, for the E2E; null — out of the view. */
+  screenOf(abs: Vec3): { x: number; y: number } | null {
+    const o = this.origin.value;
+    const s = this.lastVp && o ? projectToScreen(this.lastVp, abs[0] - o.x, abs[1] - o.y, (abs[2] - o.z) * this.vexag, this.size.w, this.size.h) : null;
+    const r = this.renderer.canvas.getBoundingClientRect();
+    return s ? { x: s[0] + r.left, y: s[1] + r.top } : null;
+  }
+
   dispose(): void {
     this.loop.dispose();
     this.cleanup.forEach((fn) => fn());

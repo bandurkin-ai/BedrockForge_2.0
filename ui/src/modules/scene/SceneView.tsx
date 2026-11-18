@@ -195,6 +195,8 @@ function SceneMount() {
             state: () => ({ ...s.debug(), ready: ready(), loading: sceneUi.get().loading, displays: displaysUi.get(), ...objs.state() }),
             pixels: () => s.pixels(),
             collars: (limit?: number) => s.collarsOnScreen(limit),
+            /** a project point on the screen (client px), null — out of the view */
+            screen: (x: number, y: number, z: number) => s.screenOf([x, y, z]),
             /** perf3d: `frames` frames turning a full circle, each drawn now and waited for */
             bench: (frames: number) => {
               const ms: number[] = [];
