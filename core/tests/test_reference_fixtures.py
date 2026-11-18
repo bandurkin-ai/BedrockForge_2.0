@@ -1,4 +1,4 @@
-"""Third-party reference data under tests/data/{ref,ext} (ADR 0011): the files are intact, internally
+"""Third-party reference data under tests/data/{ref,ext} (ADR 0012): the files are intact, internally
 consistent and still say what their manifests say. BF kernels are compared to them in the stage
 that builds the kernel (Э11 OMF, Э16 variograms, Э18 kriging, Э21 pit); this file only guards the data."""
 
