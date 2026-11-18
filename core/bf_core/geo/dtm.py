@@ -272,9 +272,7 @@ def build_dtm(
             ring = new[ring]
 
     # ---- coincident points
-    rep, merged = _merge(
-        x, y, z, cx, cy, tol, ztol, "z_conflict", "Точки совпадают в плане, но имеют разную отметку Z"
-    )
+    rep, merged = _merge(x, y, z, cx, cy, tol, ztol, "z_conflict", "Точки совпадают в плане, но имеют разную отметку Z")
     if merged:
         compact(rep)
     _tick(progress, 0.1)
@@ -489,12 +487,20 @@ def build_dtm(
         if not alive.any():
             raise DtmError(
                 "all_long",
-                f"Все треугольники длиннее заданного ребра ({max_edge:g}".replace(".", ",") + " м) — поверхность пуста.",
+                f"Все треугольники длиннее заданного ребра ({max_edge:g}".replace(".", ",")
+                + " м) — поверхность пуста.",
                 "Увеличьте наибольшую длину ребра.",
             )
     tri = tri[alive]
     used = np.zeros(nv, bool)
     used[tri.ravel()] = True
+    if len(unknown) and not np.delete(used, unknown).any():
+        # only the vertices of a plan-only boundary are left: every height of the surface would be a guess
+        raise DtmError(
+            "boundary_outside",
+            "Внутри границы нет исходных точек: граница не охватывает данные.",
+            "Выберите границу, внутри которой есть точки или линии.",
+        )
     index = np.cumsum(used) - 1
     tri = index[tri]
     vertices = np.column_stack([x[used], y[used], z[used]])

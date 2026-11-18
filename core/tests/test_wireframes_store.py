@@ -36,8 +36,15 @@ def add_raster(conn: sa.Connection, name: str, *, vertical: bool = False, state:
     now = dialect.utcnow()
     res = conn.execute(
         sa.insert(objects).values(
-            kind="raster", name=name, name_key=dialect.name_key(name), sort_key=0.0, state=state, version=1,
-            meta={}, created_at=now, updated_at=now,
+            kind="raster",
+            name=name,
+            name_key=dialect.name_key(name),
+            sort_key=0.0,
+            state=state,
+            version=1,
+            meta={},
+            created_at=now,
+            updated_at=now,
         )  # fmt: skip
     )
     raster_id = int(res.inserted_primary_key[0])  # type: ignore[index]
@@ -92,6 +99,7 @@ def test_geometry_comes_back_bit_for_bit(project) -> None:  # type: ignore[no-un
     assert render["part_triangles"] == gm.PART_TRIANGLES and len(render["parts"]) == 1
     first, count, *box = render["parts"][0]
     assert (first, count) == (0, len(t)) and box == info["extent"]
+
     # stored along the Z-order curve: cut finer, the parts are compact pieces of the plan
     def cover(triangles: np.ndarray) -> float:
         fine = gm.parts_table(xyz, triangles, max_triangles=1800)
@@ -184,7 +192,9 @@ def test_attributes_of_the_user(project) -> None:  # type: ignore[no-untyped-def
     v, t = cube(2, 5.0)
     with dialect.write_tx(project.engine) as conn:
         wf = ws.put_wireframe(conn, BlobStore(project.folder), v, t, name="Тело")
-        out = ws.edit_attrs(conn, wf, 1, values={"Участок": " Север ", "Год": 2026, "Утверждён": True, "Плотность": 2.7})
+        out = ws.edit_attrs(
+            conn, wf, 1, values={"Участок": " Север ", "Год": 2026, "Утверждён": True, "Плотность": 2.7}
+        )
         assert out["version"] == 2 and out["attrs"] == [
             {"name": "Участок", "value": "Север"},
             {"name": "Год", "value": 2026},
@@ -299,8 +309,15 @@ def test_created_as_a_dtm_with_a_raster_and_deleted(project) -> None:  # type: i
         now = dialect.utcnow()
         chart = conn.execute(
             sa.insert(objects).values(
-                kind="chart", name="График", name_key="график", sort_key=0.0, state="ready", version=1, meta={},
-                created_at=now, updated_at=now,
+                kind="chart",
+                name="График",
+                name_key="график",
+                sort_key=0.0,
+                state="ready",
+                version=1,
+                meta={},
+                created_at=now,
+                updated_at=now,
             )  # fmt: skip
         ).inserted_primary_key[0]
         conn.execute(sa.insert(object_refs).values(src_id=chart, dst_id=wf, role="source"))

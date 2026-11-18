@@ -81,6 +81,15 @@ def bad_lod() -> ApiError:
 # --- the state of a wireframe and its ETags --------------------------------------------------------------
 
 
+def cache_key(blobs: tuple[tuple[str, str], ...], render: dict[str, Any] | None) -> str:
+    """The name of the cache folder of a geometry: its blobs ((role, sha256), sorted), its part table and the
+    limits the levels are made with."""
+    table = json.dumps(render, sort_keys=True, separators=(",", ":"))
+    limits = [gm.PART_TRIANGLES, gm.MAX_SPAN_M, gm.LOD_RATIO, gm.LOD_LEVELS, gm.LOD_MIN_TRIANGLES]
+    text = json.dumps([FORMAT, ALGO, [list(b) for b in blobs], hashlib.sha256(table.encode()).hexdigest(), limits])
+    return hashlib.sha256(text.encode()).hexdigest()[:32]
+
+
 @dataclass(frozen=True)
 class MeshState:
     wireframe_id: int
@@ -104,10 +113,7 @@ class MeshState:
         return dict(self.blobs).get(role)
 
     def cache_key(self) -> str:
-        table = json.dumps(self.render, sort_keys=True, separators=(",", ":"))
-        limits = [gm.PART_TRIANGLES, gm.MAX_SPAN_M, gm.LOD_RATIO, gm.LOD_LEVELS, gm.LOD_MIN_TRIANGLES]
-        text = json.dumps([FORMAT, ALGO, list(self.blobs), hashlib.sha256(table.encode()).hexdigest(), limits])
-        return hashlib.sha256(text.encode()).hexdigest()[:32]
+        return cache_key(self.blobs, self.render)
 
 
 def mesh_state(conn: sa.Connection, wf_id: int) -> MeshState:
@@ -115,8 +121,15 @@ def mesh_state(conn: sa.Connection, wf_id: int) -> MeshState:
 
     row = conn.execute(
         sa.select(
-            objects.c.name, objects.c.version, objects.c.meta, objects.c.extent, objects.c.created_at,
-            wireframes.c.point_count, wireframes.c.triangle_count, wireframes.c.origin, wireframes.c.render,
+            objects.c.name,
+            objects.c.version,
+            objects.c.meta,
+            objects.c.extent,
+            objects.c.created_at,
+            wireframes.c.point_count,
+            wireframes.c.triangle_count,
+            wireframes.c.origin,
+            wireframes.c.render,
             wireframes.c.dtm,
         )  # fmt: skip
         .join(wireframes, wireframes.c.object_id == objects.c.id)

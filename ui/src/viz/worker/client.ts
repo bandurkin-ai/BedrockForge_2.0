@@ -3,21 +3,19 @@
  * transfer. Without a Worker (tests, a refused module worker) the same pure code runs here.
  */
 import { VizError } from "../error";
+import type { BuiltLines } from "../lines/build";
+import { buildLines } from "./lines";
 import { buildPaths, type BuiltPaths } from "./paths";
 
-export interface WorkerRequest {
-  id: number;
-  kind: "paths";
-  buffer: ArrayBuffer;
-  kinds: Uint8Array | null;
-}
+export type WorkerRequest = { id: number; kind: "paths"; buffer: ArrayBuffer; kinds: Uint8Array | null } | { id: number; kind: "lines"; buffer: ArrayBuffer };
 
-export type WorkerResponse = { id: number; ok: true; result: BuiltPaths } | { id: number; ok: false; error: { code: string; message: string; hint: string } };
+type Built = BuiltPaths | BuiltLines;
+export type WorkerResponse = { id: number; ok: true; result: Built } | { id: number; ok: false; error: { code: string; message: string; hint: string } };
 
 export class GeometryWorker {
   private worker: Worker | null = null;
   private seq = 0;
-  private readonly pending = new Map<number, { resolve: (b: BuiltPaths) => void; reject: (e: unknown) => void; req: WorkerRequest }>();
+  private readonly pending = new Map<number, { resolve: (b: Built) => void; reject: (e: unknown) => void }>();
 
   constructor(useWorker = typeof Worker !== "undefined") {
     if (!useWorker) return;
@@ -32,21 +30,28 @@ export class GeometryWorker {
 
   /** Line buffers of a part's traces; the buffer is transferred (detached here). */
   paths(buffer: ArrayBuffer, kinds: Uint8Array | null): Promise<BuiltPaths> {
-    const id = ++this.seq;
-    const req: WorkerRequest = { id, kind: "paths", buffer, kinds };
-    return new Promise<BuiltPaths>((resolve, reject) => {
+    return this.run({ id: ++this.seq, kind: "paths", buffer, kinds }, () => buildPaths(buffer, kinds), kinds ? [buffer, kinds.buffer as ArrayBuffer] : [buffer]);
+  }
+
+  /** Segments, markers and text anchors of a part of a line layer; the buffer is transferred (detached here). */
+  lines(buffer: ArrayBuffer): Promise<BuiltLines> {
+    return this.run({ id: ++this.seq, kind: "lines", buffer }, () => buildLines(buffer), [buffer]);
+  }
+
+  private run<T extends Built>(req: WorkerRequest, local: () => T, transfer: Transferable[]): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
       if (!this.worker) {
         queueMicrotask(() => {
           try {
-            resolve(buildPaths(buffer, kinds));
+            resolve(local());
           } catch (e) {
             reject(e);
           }
         });
         return;
       }
-      this.pending.set(id, { resolve, reject, req });
-      this.worker.postMessage(req, kinds ? [buffer, kinds.buffer as ArrayBuffer] : [buffer]);
+      this.pending.set(req.id, { resolve: resolve as (b: Built) => void, reject });
+      this.worker.postMessage(req, transfer);
     });
   }
 

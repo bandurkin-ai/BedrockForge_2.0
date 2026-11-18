@@ -14,6 +14,7 @@ import { nonBackgroundPixels, probeWebGL2, Renderer, sceneBytes, type FrameStats
 import { FpsTracker } from "./core/stats";
 import { boxFromBbox6, contentBox, fitBox, scaleZ, union, windowTest, type Box3, type Extent } from "./core/bounds";
 import { screenPriority } from "./core/cull";
+import { LayerSet } from "./core/layers";
 import { rebaseCamera, SceneOrigin } from "./core/sceneOrigin";
 import { TurnController } from "./core/turn";
 import { changeVexag, fit, fitDepth, pixelsPerUnit, screenRay, toPlan, view, viewDirection, type CameraState, type ViewOptions, type ViewPreset } from "./core/views";
@@ -39,12 +40,7 @@ import type { FrameContext, SceneDebug, SceneEvents, SceneLayer } from "./sceneT
 
 export { probeWebGL2 } from "./core/renderer";
 export type { HoleHit } from "./holes/select";
-export type { FrameContext, SceneDebug, SceneEvents, SceneLayer } from "./sceneTypes";
-
-interface Held {
-  layer: SceneLayer;
-  holder: THREE.Group;
-}
+export type { FrameContext, LayerHit, LayerPick, PickQuery, SceneDebug, SceneEvents, SceneLayer } from "./sceneTypes";
 
 export class Scene {
   readonly clipPlanes: THREE.Plane[];
@@ -64,7 +60,7 @@ export class Scene {
   private readonly gizmo: AxesGizmo;
   private readonly turn = new TurnController();
   private readonly holeSets = new Map<number, HoleSetLayer>();
-  private readonly layers = new Map<string, Held>();
+  private readonly layers = new LayerSet(this.root, this.origin);
   private readonly selection: SelectedHole;
   private selected: { setId: number; name: string } | null = null;
   private section: SectionLine | null = null;
@@ -351,25 +347,18 @@ export class Scene {
   // ---------------------------------------------------------------- other layers
 
   addLayer(key: string, layer: SceneLayer): void {
-    this.removeLayer(key, false);
-    if (layer.bbox) this.origin.ensure(layer.bbox);
-    else this.origin.ensure([layer.origin.x, layer.origin.y, layer.origin.z, layer.origin.x, layer.origin.y, layer.origin.z]);
-    const holder = new THREE.Group();
-    holder.add(layer.object);
-    const off = this.origin.offset(layer.origin);
-    holder.position.set(off[0], off[1], off[2]);
-    this.root.add(holder);
-    this.layers.set(key, { layer, holder });
+    this.layers.add(key, layer);
     this.contentChanged();
   }
 
   removeLayer(key: string, update = true): void {
-    const held = this.layers.get(key);
-    if (!held) return;
-    this.root.remove(held.holder);
-    held.layer.dispose?.();
-    this.layers.delete(key);
-    if (update) this.contentChanged();
+    if (this.layers.remove(key) && update) this.contentChanged();
+  }
+
+  /** A layer changed its extent, origin or visibility: the grid, «Вписать» and near / far follow. */
+  layerChanged(): void {
+    this.layers.place();
+    this.contentChanged();
   }
 
   // ---------------------------------------------------------------- E2E and diagnostics
@@ -388,6 +377,7 @@ export class Scene {
       section: this.section,
       gpu: this.renderer.info,
       sets: [...this.holeSets.keys()],
+      layers: this.layers.keys(),
       segments: this.totalSegments(),
       pickMs: this.pickMs,
     };
@@ -422,7 +412,7 @@ export class Scene {
     if (!o) return [];
     const out: Extent[] = [];
     for (const l of this.holeSets.values()) out.push({ box: l.extent(o), visible: l.visible });
-    for (const { layer, holder } of this.layers.values()) if (layer.bbox) out.push({ box: boxFromBbox6(layer.bbox, o), visible: holder.visible && layer.object.visible });
+    this.layers.extents(o, out);
     return out;
   }
 
@@ -468,10 +458,7 @@ export class Scene {
   /** Part offsets, the planes and the overlay after the scene origin moved. */
   private placeAll(): void {
     for (const l of this.holeSets.values()) l.place(this.origin);
-    for (const { layer, holder } of this.layers.values()) {
-      const off = this.origin.offset(layer.origin);
-      holder.position.set(off[0], off[1], off[2]);
-    }
+    this.layers.place();
     this.contentChanged();
   }
 
@@ -503,13 +490,13 @@ export class Scene {
     const ppu = ppuAt(cam.target);
     for (const l of this.holeSets.values()) l.beforeRender(ppu);
     for (const fn of this.frameListeners) fn(ctx);
-    for (const { layer } of this.layers.values()) layer.beforeRender?.(ctx);
+    this.layers.beforeRender(ctx);
     this.light.position.set(...cam.position);
     this.light.target.position.set(...cam.target);
     this.three.updateMatrixWorld();
     const items: LabelItem[] = [];
     for (const l of this.holeSets.values()) l.labelItems(items);
-    for (const { layer, holder } of this.layers.values()) if (holder.visible && layer.labels) items.push(...layer.labels());
+    this.layers.labels(items);
     // the grid seen edge-on (a side view, a section) keeps its lines, its values would be a heap
     if (Math.abs(viewDirection(cam)[2]) > 0.15) this.grid.labelItems(items);
     else for (const l of this.grid.labels) l.sprite.visible = false;
@@ -563,9 +550,15 @@ export class Scene {
     const vp = this.lastVp;
     if (!vp) return;
     const t0 = performance.now();
-    const hit = pickHoles(this.holeSets.values(), vp, this.vexag, px, py, this.size.w, this.size.h, (x, y) => this.clip.inWindow(x, y));
+    const { w, h } = this.size;
+    const inWindow = (x: number, y: number) => this.clip.inWindow(x, y);
+    const hit = pickHoles(this.holeSets.values(), vp, this.vexag, px, py, w, h, inWindow);
+    // no hole under the cursor: the other layers answer (lines and points first, then surfaces)
+    const ray = screenRay(this.lastCam ?? this.rig.state(), this.rig.options(), ...toNdc(px, py, w, h));
+    const other = hit ? null : this.layers.pick({ vp, vexag: this.vexag, px, py, width: w, height: h, inWindow, ray });
     this.pickMs = performance.now() - t0;
     this.events.onPick?.(hit);
+    this.events.onPickLayer?.(other);
   }
 
   private pointerMove(px: number, py: number): void {
@@ -584,7 +577,7 @@ export class Scene {
   /** Drops everything with GPU resources (the context is gone or the scene closes). */
   private disposeContent(): void {
     for (const id of [...this.holeSets.keys()]) this.removeHoles(id, false);
-    for (const key of [...this.layers.keys()]) this.removeLayer(key, false);
+    this.layers.clear();
     this.selection.clear();
     this.grid.dispose();
     this.overlay.dispose();

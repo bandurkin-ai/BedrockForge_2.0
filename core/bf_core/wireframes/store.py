@@ -176,13 +176,25 @@ def commit_wireframe(
     now = dialect.utcnow()
     info = dict(meta or {})
     if color is not None:
-        info["color"] = _color(color)
+        info["color"] = check_color(color)
     settings = None if dtm is None or dtm is False else _dtm_settings({}, {} if dtm is True else dtm)
     res = conn.execute(
         sa.insert(objects).values(
-            kind=WIREFRAME, name=name, name_key=dialect.name_key(name), parent_id=parent_id, folder=folder,
-            sort_key=sort_key, state=state, version=1, meta=info, extent=staged.extent, crs=crs, job_id=job_id,
-            author=author, created_at=now, updated_at=now,
+            kind=WIREFRAME,
+            name=name,
+            name_key=dialect.name_key(name),
+            parent_id=parent_id,
+            folder=folder,
+            sort_key=sort_key,
+            state=state,
+            version=1,
+            meta=info,
+            extent=staged.extent,
+            crs=crs,
+            job_id=job_id,
+            author=author,
+            created_at=now,
+            updated_at=now,
         )  # fmt: skip
     )
     wf_id = int(res.inserted_primary_key[0])  # type: ignore[index]
@@ -283,7 +295,7 @@ def _rows(conn: sa.Connection, *where: Any) -> list[dict[str, Any]]:
         .all()
     )
     drape = drapes(conn, [int(r["id"]) for r in rows])
-    return [_public(r, drape.get(int(r["id"]))) for r in rows]
+    return [_public(dict(r), drape.get(int(r["id"]))) for r in rows]
 
 
 def list_wireframes(conn: sa.Connection) -> list[dict[str, Any]]:
@@ -343,7 +355,7 @@ def _save(conn: sa.Connection, wf_id: int, version: int, own: Mapping[str, Any],
     return wireframe_info(conn, wf_id)
 
 
-def _color(value: Any) -> str:
+def check_color(value: Any) -> str:
     if not isinstance(value, str) or not COLOR_RE.match(value):
         raise ApiError(422, "bad_color", "Цвет задаётся как #rrggbb.", "Выберите цвет в палитре.")
     return value.lower()
@@ -369,7 +381,7 @@ def update_wireframe(
         if changes["color"] is None:
             meta.pop("color", None)
         else:
-            meta["color"] = _color(changes["color"])
+            meta["color"] = check_color(changes["color"])
         values["meta"] = meta
     return _save(conn, wf_id, int(current["version"]), {}, **values)
 
@@ -477,7 +489,7 @@ def _dtm_settings(base: Mapping[str, Any], changes: Mapping[str, Any]) -> dict[s
         if changes.get(key) is not None:
             out[key] = bool(changes[key])
     if changes.get("tint") is not None:
-        out["tint"] = _color(changes["tint"])
+        out["tint"] = check_color(changes["tint"])
     if changes.get("opacity") is not None:
         opacity = float(changes["opacity"])
         if not 0.0 <= opacity <= 1.0:  # NaN fails too
@@ -545,8 +557,8 @@ def dtm_users(conn: sa.Connection, raster_id: int) -> list[dict[str, Any]]:
 
 def delete_wireframe(conn: sa.Connection, wf_id: int) -> dict[str, Any]:
     """Delete a wireframe, its DTM settings, its drape reference and its file references. A wireframe other
-    objects refer to stays: 422 with their list. Returns {id, shas, shared}: `shared` — another object still
-    owns the geometry (its derived files in `cache\\mesh\\` must stay)."""
+    objects refer to stays: 422 with their list. Returns {id, shas, render, shared}: `shared` — another object
+    still owns the geometry (its derived files in `cache\\mesh\\` must stay)."""
     from bf_core.drillholes.store import drop_import_owners
 
     wireframe_info(conn, wf_id)
@@ -566,6 +578,7 @@ def delete_wireframe(conn: sa.Connection, wf_id: int) -> dict[str, Any]:
             extra={"objects": [{"id": int(u.id), "name": str(u.name), "kind": str(u.kind)} for u in users]},
         )
     shas = blob_shas(conn, wf_id)
+    render = conn.execute(sa.select(wireframes.c.render).where(wireframes.c.object_id == wf_id)).scalar()
     drop_import_owners(conn, [wf_id])  # import_log goes by cascade: its source files must not stay owned
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == wf_id))
     conn.execute(sa.delete(objects).where(objects.c.id == wf_id))
@@ -577,4 +590,4 @@ def delete_wireframe(conn: sa.Connection, wf_id: int) -> dict[str, Any]:
         ).scalar_one()
         > 0
     )
-    return {"id": wf_id, "shas": shas, "shared": shared}
+    return {"id": wf_id, "shas": shas, "render": render, "shared": shared}

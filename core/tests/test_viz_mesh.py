@@ -424,7 +424,9 @@ def test_levels_are_cached_in_the_project_and_made_again_when_lost(stored, monke
     seen: list[float] = []
     built = vm.build_cache(project.folder, state.cache_key(), v, t, vm.parts_of(project, state), seen.append)
     assert built["parts"] == 2 and built["triangles"][0] == 96_000 and seen == [0.5, 1.0]
-    assert built["triangles"][1] <= 96_000 / 8 * 1.05 and built["bytes"] == sum(f.stat().st_size for f in folder.iterdir())
+    assert built["triangles"][1] <= 96_000 / 8 * 1.05 and built["bytes"] == sum(
+        f.stat().st_size for f in folder.iterdir()
+    )
     assert sorted(f.name for f in folder.iterdir()) == ["0-1.bfa", "0-2.bfa", "1-1.bfa", "1-2.bfa"]
     assert (folder / "1-2.bfa").read_bytes() == first
 

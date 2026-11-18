@@ -148,8 +148,9 @@ def segment_events(cx, cy, sa, sb, order, xmin, xmax, tol, cap):  # type: ignore
             d2 = (bx - ax) * (qy - ay) - (by - ay) * (qx - ax)
             d3 = (qx - px) * (ay - py) - (qy - py) * (ax - px)
             d4 = (qx - px) * (by - py) - (qy - py) * (bx - px)
-            if ((d1 > 0.0 and d2 < 0.0) or (d1 < 0.0 and d2 > 0.0)) and \
-                    ((d3 > 0.0 and d4 < 0.0) or (d3 < 0.0 and d4 > 0.0)):
+            if ((d1 > 0.0 and d2 < 0.0) or (d1 < 0.0 and d2 > 0.0)) and (
+                (d3 > 0.0 and d4 < 0.0) or (d3 < 0.0 and d4 > 0.0)
+            ):
                 if nc < cap:
                     c_i[nc] = i
                     c_j[nc] = j
@@ -157,7 +158,6 @@ def segment_events(cx, cy, sa, sb, order, xmin, xmax, tol, cap):  # type: ignore
                     c_tj[nc] = d1 / (d1 - d2)
                 nc += 1
     return nt, nc, t_seg, t_vtx, t_par, c_i, c_j, c_ti, c_tj
-
 
 
 # --- triangulation helpers -------------------------------------------------------------------------------

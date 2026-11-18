@@ -108,6 +108,17 @@
       "limits": {
         "max_error_m": 1e-09
       }
+    },
+    "dtm_build": {
+      "params": {
+        "points": 100000
+      },
+      "budget_s": 3.0,
+      "budget_mb": 600,
+      "limits": {
+        "max_node_error_m": 0.0,
+        "first_frame_s": 1.0
+      }
     }
   },
   "full": {
@@ -217,6 +228,17 @@
       "budget_mb": 1024,
       "limits": {
         "max_error_m": 1e-09
+      }
+    },
+    "dtm_build": {
+      "params": {
+        "points": 1000000
+      },
+      "budget_s": 20.0,
+      "budget_mb": 1200,
+      "limits": {
+        "max_node_error_m": 0.0,
+        "first_frame_s": 3.0
       }
     }
   },

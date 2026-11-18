@@ -20,4 +20,5 @@ ROUTER_MODULES: tuple[str, ...] = (
     "styles",
     "viewstate",
     "viz",
+    "wireframes",
 )
