@@ -17,6 +17,8 @@ export interface CommandContext {
   hasProject: boolean;
   hasSet: boolean;
   hasHole: boolean;
+  /** An object of the project is selected (`object.select`). */
+  hasObject: boolean;
   hasSection: boolean;
   editing: boolean;
   coreOnline: boolean;
@@ -26,6 +28,7 @@ export const EMPTY_CONTEXT: CommandContext = {
   hasProject: false,
   hasSet: false,
   hasHole: false,
+  hasObject: false,
   hasSection: false,
   editing: false,
   coreOnline: false,
