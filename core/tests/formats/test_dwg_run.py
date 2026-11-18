@@ -313,12 +313,9 @@ if (here / "broken.txt").exists():
 fd = int(sys.argv[sys.argv.index("-displayfd") + 1])
 os.write(fd, b"77")  # the display the server listens on: the number, then — apart, as Xvfb does — a new line
 time.sleep(0.2)
-try:
-    os.write(fd, b"\\n")
-except OSError:  # the reader went away after the number: the real server ends with an error here
-    (here / "ended.txt").write_text("broken pipe", encoding="utf-8")
-    sys.exit(1)
+os.write(fd, b"\\n")  # a reader that went away after the number ends the real server here (a broken pipe)
 os.close(fd)
+(here / "ready.txt").write_text("the answer was read whole", encoding="utf-8")
 time.sleep(120)
 """
 
@@ -341,7 +338,7 @@ def test_xvfb_of_path_is_the_screen_of_the_converter(tmp_path: Path, oda: Oda, m
     assert oda.calls[-1]["display"] == ":77"  # the screen the server named, not the one of the user
     args = (bin_ / "args.txt").read_text(encoding="utf-8").split()
     assert args[0] == "-displayfd" and args[2:] == ["-screen", "0", "800x600x24"]
-    assert not (bin_ / "ended.txt").exists()  # the server lived until it was ended: its answer was read whole
+    assert (bin_ / "ready.txt").exists()  # the converter was run when the server had said all: not after the number
     with pytest.raises(ProcessLookupError):  # ended with the converter
         os.kill(int((bin_ / "pid.txt").read_text(encoding="utf-8")), 0)
     oda.mode("hang")  # … and when the converter is ended for its time
