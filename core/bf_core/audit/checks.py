@@ -121,6 +121,7 @@ class AuditData:
     assay_to: np.ndarray
     assay_sample: np.ndarray | None = None  # object per row; None: the table has no sample numbers
     components: dict[str, np.ndarray] = field(default_factory=dict)  # name → value per sample row
+    survey_fixed: np.ndarray | None = None  # bool per survey row: a station with coordinates (a trench vertex)
 
 
 @dataclass
@@ -580,6 +581,7 @@ def run_checks(data: AuditData, config: AuditConfig | None = None, tick: Tick | 
     run = _Run(data, tick)
     run.at(0.0, "Аудит: подготовка данных")
     survey = {k: getattr(data, k) for k in ("survey_depth", "survey_azimuth", "survey_dip")}
+    survey["fixed"] = np.zeros(len(survey["survey_depth"])) if data.survey_fixed is None else data.survey_fixed
     s_id, s_hole, s_cols = run.table("survey", data.survey_row_id, data.survey_hole, survey)
     assay: dict[Any, Any] = dict(enumerate(data.components.values()))
     assay.update(assay_from=data.assay_from, assay_to=data.assay_to)
@@ -591,7 +593,8 @@ def run_checks(data: AuditData, config: AuditConfig | None = None, tick: Tick | 
     slots = run.n_holes + 1
     _check_collar(run, cfg, np.bincount(s_hole, minlength=slots) > 0, np.bincount(a_hole, minlength=slots) > 0)
     run.at(0.06, "Аудит: инклинометрия")
-    _check_survey(run, cfg, s_id, s_hole, s_cols)
+    rows = s_cols.pop("fixed") == 0  # `rules.py`: the survey rules skip stations with coordinates (trenches)
+    _check_survey(run, cfg, s_id[rows], s_hole[rows], {k: v[rows] for k, v in s_cols.items()})
     run.at(0.2, "Аудит: интервалы проб")
     _check_assay(run, cfg, a_id, a_hole, a_cols, [str(k) for k in data.components])
     run.at(0.95, "Аудит: сбор результатов")

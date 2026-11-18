@@ -6,6 +6,8 @@ export interface CoreInfo {
   version: string;
 }
 
+export type SaveKind = "dat" | "csv" | "xlsx" | "str" | "dxf" | "jpg" | "png" | "tif" | "bmp" | "any";
+
 export interface BfBridge {
   core(): CoreInfo | null;
   appVersion(): string;
@@ -24,14 +26,15 @@ export interface BfBridge {
   /** Open dialog for a text file (.bfstyle.json, CSV of codes): its name and text, or null when cancelled. */
   openText(kind: "bfstyle" | "csv"): Promise<{ name: string; text: string | null; error?: string } | null>;
   coreRetry(): void;
-  /** «Сохранить как» for .bfggis: the chosen path or null. */
-  /** Save dialog: .bfggis by default, or a table format (dat, csv, xlsx). */
-  pickSave(defaultName: string, kind?: "dat" | "csv" | "xlsx"): Promise<string | null>;
+  /** Save dialog: the chosen path or null. `.bfggis` by default; a table format (dat, csv, xlsx); the formats of
+   * the export of lines (str, dxf) and of rasters (jpg, png, tif, bmp; any — a file of any kind). */
+  pickSave(defaultName: string, kind?: SaveKind): Promise<string | null>;
   /** «Открыть» a .bfggis: the chosen path or null. */
   pickOpen(): Promise<string | null>;
   pickFolder(): Promise<string | null>;
-  /** Files for import: "tables" (DAT, CSV, Excel) or "prj"; [] when cancelled. */
-  pickFiles(kind: "tables" | "prj" | "objects", multi: boolean): Promise<string[]>;
+  /** Files for import: "tables" (DAT, CSV, Excel), "prj", "objects" (everything of «Импорт файлов»), "lines"
+   * (lines and points), "rasters" (images and their georeference), "trenches" (polylines of trenches); [] when cancelled. */
+  pickFiles(kind: "tables" | "prj" | "objects" | "lines" | "rasters" | "trenches", multi: boolean): Promise<string[]>;
   showInFolder(file: string): void;
   /** Disk path of a file dropped from Explorer. */
   pathForFile(file: File): string;

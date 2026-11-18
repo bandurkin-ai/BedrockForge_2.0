@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import sqlalchemy as sa
 
@@ -62,7 +62,13 @@ def set_state(conn: sa.Connection, set_id: int) -> SetState:
     )
 
 
-def etag(kind: str, uid: str, state: SetState, *rest: Any) -> str:
+class Keyed(Protocol):
+    """What an ETag is made of: the state of a set, of a line layer (`viz/lines.py`), …"""
+
+    def key(self) -> list[Any]: ...
+
+
+def etag(kind: str, uid: str, state: Keyed, *rest: Any) -> str:
     key = json.dumps([kind, FORMAT, uid, *state.key(), *rest], ensure_ascii=False, separators=(",", ":"))
     return '"' + hashlib.sha256(key.encode("utf-8")).hexdigest() + '"'
 

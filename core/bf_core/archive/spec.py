@@ -37,6 +37,11 @@ TABLES: tuple[Table, ...] = (
     Table("edit_log", renumber=True),
     Table("styles", renumber=True),  # displays link styles by uid: no id references to rewrite
     Table("charts"),
+    # Э7 (ADR 0011 §1): 1 : 1 to objects; geometry is in blobs (owners renumbered with the objects); the raster
+    # draped on a DTM is an object_refs row (role drape), renumbered with the other references.
+    Table("line_layers"),
+    Table("rasters"),
+    Table("wireframes"),
     Table("settings", view_scope="view"),  # codes, code_links… always; scope view — optional
 )
 
@@ -67,6 +72,9 @@ ID_COLUMNS: dict[tuple[str, str], str | None] = {
     ("audit_runs", "table_id"): "dh_tables",
     ("audit_findings", "run_id"): "audit_runs",
     ("charts", "object_id"): "objects",
+    ("line_layers", "object_id"): "objects",
+    ("rasters", "object_id"): "objects",
+    ("wireframes", "object_id"): "objects",
 }
 
 #: (table, kind column, id column) → {kind value: table}. Rows of unknown kinds are dropped.

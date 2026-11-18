@@ -148,3 +148,46 @@ def test_dialect_code_only_in_dialect_py(pattern: str) -> None:
 
 def test_blob_owner_kinds_are_known() -> None:
     assert all(re.fullmatch(r"[a-z_]+", k) for k in schema.BLOB_OWNER_KINDS)
+
+
+def test_migration_0005_keeps_surveys_and_adds_station_coordinates(db_url: str, tmp_path: Path) -> None:
+    """Э7 (ADR 0011 §1): an Э6 project gets line_layers / rasters / wireframes and dh_surveys.x/y/z (NULL)."""
+    engine = make_engine(db_url, tmp_path)
+    migrate.upgrade(engine, "project", "0004")
+    now = dialect.utcnow()
+    with dialect.write_tx(engine) as conn:  # only columns that exist at 0004
+        conn.execute(
+            sa.insert(schema.objects).values(
+                id=1,
+                kind="drillhole_set",
+                name="s",
+                name_key="s",
+                sort_key=0.0,
+                state="ready",
+                version=1,
+                meta={},
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        conn.execute(sa.insert(schema.dh_holes).values(id=1, set_id=1, name="K-1", has_collar=False))
+        conn.execute(sa.insert(schema.dh_surveys).values(id=1, set_id=1, hole_id=1, depth=5.5, azimuth=10.0, dip=-60.0))
+    migrate.upgrade(engine, "project")
+    with dialect.read_tx(engine) as conn:
+        names = set(sa.inspect(conn).get_table_names())
+        row = conn.execute(sa.select(schema.dh_surveys)).mappings().one()
+    assert {"line_layers", "rasters", "wireframes"} <= names
+    assert (row["depth"], row["azimuth"], row["dip"]) == (5.5, 10.0, -60.0)
+    assert (row["x"], row["y"], row["z"]) == (None, None, None)  # no coordinates: not 0
+    with dialect.write_tx(engine) as conn:
+        conn.execute(sa.update(schema.dh_surveys).values(x=512_345.678_901_234, y=6_234_567.123_456_789, z=-0.0))
+    with dialect.read_tx(engine) as conn:
+        row = conn.execute(sa.select(schema.dh_surveys)).mappings().one()
+    assert (row["x"], row["y"]) == (512_345.678_901_234, 6_234_567.123_456_789)  # float64 kept exactly
+    migrate.downgrade(engine, "project", "0004")
+    with dialect.read_tx(engine) as conn:
+        names = set(sa.inspect(conn).get_table_names())
+        cols = {c["name"] for c in sa.inspect(conn).get_columns("dh_surveys")}
+        depth = conn.execute(sa.text("SELECT depth FROM dh_surveys")).scalar_one()
+    assert not {"line_layers", "rasters", "wireframes"} & names and not {"x", "y", "z"} & cols and depth == 5.5
+    engine.dispose()

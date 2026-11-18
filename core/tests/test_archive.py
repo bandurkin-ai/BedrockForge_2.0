@@ -210,3 +210,87 @@ def test_import_retry_finds_the_project_of_the_first_attempt(ac, tmp_path: Path)
     again = find_imported(root, "tok1")
     assert again is not None and again["uid"] == first["uid"] and again["id_maps"] == first["id_maps"]
     assert find_imported(root, "other") is None
+
+
+def test_roundtrip_lines_rasters_dtm_renumbered(ac, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """Э7 (ADR 0011 §1): line layers with their blobs, a raster with sidecars, a DTM with its drape reference and
+    survey stations with coordinates come back with new ids, references rewritten, float64 bit for bit."""
+    import numpy as np
+
+    from bf_core.db.schema import dh_holes, dh_surveys, line_layers, rasters, wireframes
+    from bf_core.formats.lineset import from_lines, from_points
+    from bf_core.lines import store as ls_store
+
+    p = projects_of(ac.core).require_current()
+    now = dialect.utcnow()
+    base = dict(sort_key=0.0, state="ready", version=1, created_at=now, updated_at=now)
+    store = BlobStore(p.folder)
+    xyz = np.array([[512_345.678_901_234, 6_234_567.123_456_789, float("nan")], [512_400.5, 6_234_600.25, 401.0]])
+    lines = from_lines("Борт", [xyz, xyz[::-1] + 1.0], attrs={"STRING": ["7", None]})
+    pts = from_points("Устья", xyz, attrs={"NAME": ["C-1", "C-2"]})
+    with dialect.write_tx(p.engine) as conn:
+        conn.execute(sa.insert(objects).values(id=40, kind="folder", name="Э7", name_key="э7", meta={}, **base))
+        file_id = ls_store.create_file(conn, store, name="pit.str", meta={"format": "micromine_str"}, parent_id=40)
+        conn.execute(sa.update(objects).where(objects.c.id == file_id).values(id=77))  # a gap before the layers
+        file_id = 77
+        layer_a = ls_store.put_layer(conn, store, lines, file_id=file_id)
+        layer_b = ls_store.put_layer(conn, store, pts, file_id=file_id)
+        conn.execute(sa.insert(objects).values(id=90, kind="raster", name="План", name_key="план", meta={}, **base))
+        georef = {"affine": [0.5, 0.0, 512_000.25, 0.0, -0.5, 6_235_000.75], "source": "world", "crs": None}
+        conn.execute(
+            sa.insert(rasters).values(object_id=90, width=40, height=30, georef=georef, vertical=False, opacity=0.5)
+        )
+        for role, data in (("source", b"jpeg"), ("sidecar:jgw", b"0.5\n0\n0\n-0.5\n1\n2\n"), ("display0", b"d0")):
+            store.put_bytes(conn, data, media_type="image/jpeg", owner_kind="object", owner_id=90, role=role)
+        conn.execute(sa.insert(objects).values(id=95, kind="wireframe", name="ЦТМ", name_key="цтм", meta={}, **base))
+        dtm = {"clip": False, "tint": "#ffffff", "opacity": 1.0, "shade": True}
+        conn.execute(
+            sa.insert(wireframes).values(
+                object_id=95,
+                point_count=3,
+                triangle_count=1,
+                origin=[512_000.0, 6_235_000.0, 400.0],
+                stats={},
+                attrs={"Участок": "Север"},
+                dtm=dtm,
+            )
+        )
+        conn.execute(sa.insert(object_refs).values(src_id=95, dst_id=90, role="drape"))
+        conn.execute(
+            sa.insert(objects).values(id=60, kind="drillhole_set", name="Канавы", name_key="канавы", meta={}, **base)
+        )
+        hole = conn.execute(sa.insert(dh_holes).values(set_id=60, name="К-1", has_collar=True)).inserted_primary_key[0]
+        conn.execute(
+            sa.insert(dh_surveys).values(
+                set_id=60, hole_id=hole, depth=0.0, x=xyz[0, 0], y=xyz[0, 1], z=401.123_456_789_012_3
+            )
+        )
+    job = export(ac, tmp_path / "e7.bfggis")
+    r = ac.post(f"{API}/projects/import", json={"path": job["result"]["path"], "mode": "copy"}).json()
+    job = wait_job(ac, r["source"], r["id"])
+    assert job["status"] == "done", job
+    ids = {int(k): v for k, v in job["result"]["id_maps"]["objects"].items()}
+    assert set(ids) == {40, 77, layer_a, layer_b, 90, 95, 60}
+    res = job["result"]
+    ac.post(f"{API}/projects/{res['uid']}/open")
+    q = projects_of(ac.core).require_current()
+    qstore = BlobStore(q.folder)
+    with dialect.read_tx(q.engine) as conn:
+        assert conn.execute(sa.select(objects.c.parent_id).where(objects.c.id == ids[77])).scalar_one() == ids[40]
+        assert ls_store.layer_ids(conn, ids[77]) == [ids[layer_a], ids[layer_b]]
+        back = ls_store.read_layer(conn, qstore, ids[layer_a])
+        back_pts = ls_store.read_layer(conn, qstore, ids[layer_b])
+        assert set(conn.execute(sa.select(line_layers.c.object_id)).scalars()) == {ids[layer_a], ids[layer_b]}
+        ras = conn.execute(sa.select(rasters)).mappings().one()
+        roles = {r.role for r in conn.execute(sa.select(blob_owners.c.role).where(blob_owners.c.owner_id == ids[90]))}
+        wf = conn.execute(sa.select(wireframes)).mappings().one()
+        ref = conn.execute(sa.select(object_refs).where(object_refs.c.role == "drape")).mappings().one()
+        st = conn.execute(sa.select(dh_surveys)).mappings().one()
+    assert back.xyz.tobytes() == lines.xyz.tobytes() and back.attrs is not None
+    assert back.attrs.column("STRING").to_pylist() == ["7", None]
+    assert back_pts.points_only and back_pts.xyz.tobytes() == pts.xyz.tobytes()
+    assert ras["object_id"] == ids[90] and ras["georef"] == georef and ras["opacity"] == 0.5
+    assert roles == {"source", "sidecar:jgw", "display0"}
+    assert wf["object_id"] == ids[95] and wf["dtm"] == dtm and wf["attrs"] == {"Участок": "Север"}
+    assert (ref["src_id"], ref["dst_id"]) == (ids[95], ids[90])
+    assert (st["x"], st["y"], st["z"]) == (xyz[0, 0], xyz[0, 1], 401.123_456_789_012_3) and st["set_id"] == ids[60]

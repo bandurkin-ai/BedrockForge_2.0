@@ -97,6 +97,70 @@
       "limits": {
         "apply_s": 0.05
       }
+    },
+    "trenches": {
+      "params": {
+        "trenches": 1000,
+        "vertices": 50
+      },
+      "budget_s": 1.5,
+      "budget_mb": 600,
+      "limits": {
+        "max_error_m": 1e-09
+      }
+    },
+    "dtm_build": {
+      "params": {
+        "points": 100000
+      },
+      "budget_s": 3.0,
+      "budget_mb": 600,
+      "limits": {
+        "max_node_error_m": 0.0,
+        "first_frame_s": 1.0,
+        "build_s": 2.5
+      }
+    },
+    "lines_import": {
+      "params": {
+        "vertices": 100000,
+        "layers": 200
+      },
+      "budget_s": 8.0,
+      "budget_mb": 1024,
+      "limits": {
+        "str_s": 1.5,
+        "str_layers_s": 1.5,
+        "dxf_s": 2.0,
+        "shp_s": 1.5,
+        "mif_s": 1.5,
+        "export_s": 1.0,
+        "max_error_m": 0.0
+      }
+    },
+    "lines_parts": {
+      "params": {
+        "vertices": 100000
+      },
+      "budget_s": 0.5,
+      "budget_mb": 600,
+      "limits": {
+        "first_s": 0.3,
+        "repeat_s": 0.05,
+        "max_error_m": 0.0005
+      }
+    },
+    "raster_import": {
+      "params": {
+        "megapixels": 10
+      },
+      "budget_s": 3.0,
+      "budget_mb": 600,
+      "limits": {
+        "refuse_s": 1.0,
+        "refuse_mb": 64,
+        "georef_error_m": 1e-09
+      }
     }
   },
   "full": {
@@ -196,6 +260,70 @@
       "limits": {
         "apply_s": 0.05
       }
+    },
+    "trenches": {
+      "params": {
+        "trenches": 10000,
+        "vertices": 50
+      },
+      "budget_s": 10.0,
+      "budget_mb": 1024,
+      "limits": {
+        "max_error_m": 1e-09
+      }
+    },
+    "dtm_build": {
+      "params": {
+        "points": 1000000
+      },
+      "budget_s": 20.0,
+      "budget_mb": 1024,
+      "limits": {
+        "max_node_error_m": 0.0,
+        "first_frame_s": 3.0,
+        "build_s": 18.0
+      }
+    },
+    "lines_import": {
+      "params": {
+        "vertices": 1000000,
+        "layers": 2000
+      },
+      "budget_s": 45.0,
+      "budget_mb": 1024,
+      "limits": {
+        "str_s": 10.0,
+        "str_layers_s": 10.0,
+        "dxf_s": 15.0,
+        "shp_s": 10.0,
+        "mif_s": 10.0,
+        "export_s": 5.0,
+        "max_error_m": 0.0
+      }
+    },
+    "lines_parts": {
+      "params": {
+        "vertices": 1000000
+      },
+      "budget_s": 2.0,
+      "budget_mb": 1024,
+      "limits": {
+        "first_s": 1.0,
+        "repeat_s": 0.05,
+        "max_error_m": 0.0005
+      }
+    },
+    "raster_import": {
+      "params": {
+        "megapixels": 100
+      },
+      "budget_s": 15.0,
+      "budget_mb": 1536,
+      "limits": {
+        "refuse_s": 1.0,
+        "refuse_mb": 64,
+        "georef_error_m": 1e-09
+      }
     }
   },
   "external": {
@@ -209,7 +337,10 @@
       },
       "report": [
         "ms_per_frame",
-        "ms_median"
+        "ms_median",
+        "first_frame_ms",
+        "pick_line_ms",
+        "pick_surface_ms"
       ]
     }
   }

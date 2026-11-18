@@ -3,6 +3,7 @@
  * core status, selection. React reads it with useSyncExternalStore (useStore.ts).
  */
 import type { CommandContext } from "./commands";
+import type { Selected } from "./selection";
 import { DEFAULT_VIEW, DEFAULT_WORKSPACE, type ViewState, type WorkspaceState } from "./workspace";
 import type { ShortcutOverrides } from "./shortcuts";
 
@@ -25,6 +26,8 @@ export interface AppState {
   setName: string | null;
   setHoles: number;
   holeId: string | null;
+  /** The object chosen by `object.select` (a layer of lines, a raster, a wireframe or a DTM), or null. */
+  selected: Selected | null;
   hasSection: boolean;
   editing: boolean;
   /** A passing notice of the view (settings not saved, «упрощено»…). */
@@ -48,6 +51,7 @@ export const INITIAL_STATE: AppState = {
   setName: null,
   setHoles: 0,
   holeId: null,
+  selected: null,
   hasSection: false,
   editing: false,
   statusNote: null,
@@ -77,6 +81,7 @@ export function commandContext(s: AppState): CommandContext {
     hasProject: s.projectName !== null,
     hasSet: s.setName !== null,
     hasHole: s.holeId !== null,
+    hasObject: s.selected !== null,
     hasSection: s.hasSection,
     editing: s.editing,
     coreOnline: s.core === "online",

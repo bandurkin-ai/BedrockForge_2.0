@@ -4,6 +4,7 @@ edits bump it), and 3D coordinates of interval ends for the «Таблица» p
 Holes are indexed densely here (0…n-1, sorted by dh_holes.id); a hole without a collar or collar coordinates
 gets no trajectory and is listed in `skipped` by name. The length of a hole is its TD, or the deepest
 interval / survey when TD is missing (so samples below a missing TD are not pinned to the collar).
+Survey stations with coordinates (a trench along a polyline, ТЗ 7.35 Д-16) win over the desurvey method.
 """
 
 from __future__ import annotations
@@ -66,7 +67,8 @@ def _build(conn: sa.Connection, set_id: int, method: str, key: tuple[Any, ...]) 
     names = list(
         conn.execute(sa.select(dh_holes.c.name).where(dh_holes.c.set_id == set_id).order_by(dh_holes.c.id)).scalars()
     )
-    sv = _numbers(conn, "SELECT hole_id, depth, azimuth, dip FROM dh_surveys WHERE set_id = ?", (set_id,), 4)
+    # x, y, z: stations with coordinates (trench vertices, ADR 0011 §1) — the path goes through them exactly
+    sv = _numbers(conn, "SELECT hole_id, depth, azimuth, dip, x, y, z FROM dh_surveys WHERE set_id = ?", (set_id,), 7)
     deep_parts = _deepest_rows(conn, set_id)
     ids = holes[:, 0].astype(np.int64)
     index = {int(h): i for i, h in enumerate(ids.tolist())}
@@ -77,7 +79,7 @@ def _build(conn: sa.Connection, set_id: int, method: str, key: tuple[Any, ...]) 
         col[name][no_collar] = np.nan
     s_dense = np.searchsorted(ids, sv[:, 0].astype(np.int64))  # ids ascend; surveys of holes of the set
     s_depth = np.ascontiguousarray(sv[:, 1])
-    surveys = Surveys(s_dense, s_depth, np.ascontiguousarray(sv[:, 2]), np.ascontiguousarray(sv[:, 3]))
+    surveys = Surveys(s_dense, s_depth, *(np.ascontiguousarray(sv[:, j]) for j in range(2, 7)))
 
     td = col["td"]
     deepest = np.full(len(ids), np.nan)
