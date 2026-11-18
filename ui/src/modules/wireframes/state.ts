@@ -4,7 +4,7 @@
  * one list for the tree, «Свойства» and the 3D window. Every change carries the version of the wireframe; the
  * list is read again after it — after a 409 too. No React here.
  */
-import { api } from "../../shell/api";
+import { api, CoreError } from "../../shell/api";
 import { loadSceneObjects, sceneObjects, type DtmInfo, type WireframeInfo as SceneWireframe } from "../scene/objects";
 
 /** The settings of a DTM: the raster draped on it and how it is shown. */
@@ -63,9 +63,17 @@ export function setDtm(id: number, on: boolean): Promise<WireframeInfo> {
 }
 
 /** The settings of a DTM; settings without `on` move a wireframe to «ЦТМ». */
-export function setDtmSettings(id: number, changes: DtmChanges): Promise<WireframeInfo> {
-  const w = current(id);
-  return change(() => api.put<WireframeInfo>(`/wireframes/${id}/dtm`, { expected_version: w.version, ...changes }));
+export async function setDtmSettings(id: number, changes: DtmChanges): Promise<WireframeInfo> {
+  const put = () => change(() => api.put<WireframeInfo>(`/wireframes/${id}/dtm`, { expected_version: current(id).version, ...changes }));
+  try {
+    return await put();
+  } catch (e) {
+    // The settings are a partial change: the given fields only. A 409 means the version moved under them (a
+    // write of the core or another window); the list was read again, so one more try goes with the new version
+    // (windows E2E Э7: four quick changes of the panel, one of them lost).
+    if (e instanceof CoreError && e.status === 409) return put();
+    throw e;
+  }
 }
 
 export function renameWireframe(id: number, name: string): Promise<WireframeInfo> {

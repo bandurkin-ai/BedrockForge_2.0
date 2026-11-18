@@ -3,7 +3,7 @@
  * when the picker closes (not on every move inside it), a slider that is saved when it is released, and the
  * way a panel runs a registry command and shows why it failed.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./AppContext";
 import { num, type Fact } from "./props";
 import css from "./PropsParts.module.css";
@@ -24,16 +24,21 @@ export function Facts({ facts }: { facts: readonly Fact[] }) {
 
 /** React's `onChange` of a colour or a range input fires on every move; the native `change` — when the value
  * is committed (the picker is closed, the slider is released, a key is pressed). */
-function useCommitted(ref: RefObject<HTMLInputElement>, onCommit: (value: string) => void): void {
+/** The native `change` of an input (React's onChange is `input`): the value the user settled on. The listener
+ * is attached by a callback ref, at once when the element appears — with an effect it came after the paint, and
+ * a change made in that moment (a panel drawn again after the previous save) was lost (windows E2E Э7). */
+function useCommitted(onCommit: (value: string) => void): (el: HTMLInputElement | null) => void {
   const latest = useRef(onCommit);
   latest.current = onCommit;
-  useEffect(() => {
-    const el = ref.current;
+  const bound = useRef<{ el: HTMLInputElement; done: () => void } | null>(null);
+  return useCallback((el: HTMLInputElement | null) => {
+    if (bound.current) bound.current.el.removeEventListener("change", bound.current.done);
+    bound.current = null;
     if (!el) return;
     const done = () => latest.current(el.value);
     el.addEventListener("change", done);
-    return () => el.removeEventListener("change", done);
-  }, [ref]);
+    bound.current = { el, done };
+  }, []);
 }
 
 /** What a field does with a committed value; `false` — it was not saved: the field shows the stored one again. */
@@ -62,10 +67,9 @@ export function Check({ checked, title, disabled, onCommit, children }: { checke
 
 /** A colour field: `onCommit` runs once — when the picker is closed or the value is typed. */
 export function ColorField({ value, label, disabled, onCommit }: { value: string; label: string; disabled?: boolean; onCommit: Commit<string> }) {
-  const ref = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
-  useCommitted(ref, (v) => {
+  const ref = useCommitted((v) => {
     if (v !== value) void Promise.resolve(onCommit(v)).then((ok) => ok === false && setDraft(value));
   });
   return <input ref={ref} type="color" className={css.color} value={draft} aria-label={label} title={label} disabled={disabled} onChange={(e) => setDraft(e.target.value)} />;
@@ -73,10 +77,9 @@ export function ColorField({ value, label, disabled, onCommit }: { value: string
 
 /** A slider with its value: it follows the pointer and is saved when released (or changed by a key). */
 export function Slider({ value, min, max, step, label, disabled, onCommit }: { value: number; min: number; max: number; step: number; label: string; disabled?: boolean; onCommit: Commit<number> }) {
-  const ref = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
-  useCommitted(ref, (v) => {
+  const ref = useCommitted((v) => {
     const next = Number(v);
     if (Number.isFinite(next) && Math.abs(next - value) > 1e-9) void Promise.resolve(onCommit(next)).then((ok) => ok === false && setDraft(value));
   });
