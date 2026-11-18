@@ -208,12 +208,12 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
         {
           title: "Экспорт каркасов",
           items: [
-            { command: "wireframe.export", label: "В TRIDB", icon: "export", hint: "Окно «Экспорт каркасов»: выбранный каркас или ЦТМ в Micromine TRIDB; там же — DXF, DWG, OBJ, STL, Surpac DTM и выбор каркасов", small: true },
-            { command: "wireframe.export", args: { format: "dxf" }, label: "В DXF", icon: "export", hint: "Каркасы в AutoCAD DXF (сетки POLYFACE); в окне — выбор каркасов", small: true },
-            { command: "wireframe.export", args: { format: "dwg" }, label: "В DWG", icon: "export", hint: "Каркасы в AutoCAD DWG через ODA File Converter; в окне — версия DWG", small: true },
-            { command: "wireframe.export", args: { format: "obj" }, label: "В OBJ", icon: "export", hint: "Каркасы в Wavefront OBJ", small: true },
-            { command: "wireframe.export", args: { format: "stl" }, label: "В STL", icon: "export", hint: "Каркасы в STL: двоичный (float32) или текстовый", small: true },
-            { command: "wireframe.export", args: { format: "dtm" }, label: "В Surpac DTM", icon: "export", hint: "Каркасы в Surpac DTM с файлом точек STR", small: true },
+            { command: "wireframe.export", label: "Каркас в TRIDB", icon: "export", hint: "Окно «Экспорт каркасов»: выбранный каркас или ЦТМ в Micromine TRIDB; там же — DXF, DWG, OBJ, STL, Surpac DTM и выбор каркасов", small: true },
+            { command: "wireframe.export", args: { format: "dxf" }, label: "Каркас в DXF", icon: "export", hint: "Каркасы в AutoCAD DXF (сетки POLYFACE); в окне — выбор каркасов", small: true },
+            { command: "wireframe.export", args: { format: "dwg" }, label: "Каркас в DWG", icon: "export", hint: "Каркасы в AutoCAD DWG через ODA File Converter; в окне — версия DWG", small: true },
+            { command: "wireframe.export", args: { format: "obj" }, label: "Каркас в OBJ", icon: "export", hint: "Каркасы в Wavefront OBJ", small: true },
+            { command: "wireframe.export", args: { format: "stl" }, label: "Каркас в STL", icon: "export", hint: "Каркасы в STL: двоичный (float32) или текстовый", small: true },
+            { command: "wireframe.export", args: { format: "dtm" }, label: "Каркас в Surpac DTM", icon: "export", hint: "Каркасы в Surpac DTM с файлом точек STR", small: true },
           ],
         },
         {
