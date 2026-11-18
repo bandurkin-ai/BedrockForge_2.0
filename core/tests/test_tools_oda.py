@@ -151,7 +151,8 @@ def test_another_program_is_warned_about(api: TestClient, tmp_path: Path) -> Non
     assert "ODAFileConverter" in body["warning"] and "acad.exe" in body["warning"]
 
 
-def test_version_from_the_file_name(api: TestClient, tmp_path: Path) -> None:
+def test_version_from_the_file_name(api: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(dwg, "_SUFFIXES", ())  # as on Linux, where the program is an AppImage: any file may be one
     exe = program(tmp_path / "Applications", "ODAFileConverter_QT6_lnxX64_8.3dll_26.10.AppImage")
     assert api.put(URL, json={"path": str(exe)}).json()["version"] == "26.10"
 
@@ -179,6 +180,53 @@ def test_bad_paths_are_refused_and_nothing_changes(api: TestClient, state: CoreS
     assert body["code"] in {"bad_path", "bad_request"}
     assert body["message"] and body["hint"]
     assert tools.oda_converter(state) == str(exe)
+
+
+@pytest.mark.parametrize("name", ["ODAFileConverter.cmd", "ODAFileConverter.bat", "ODAFileConverter", "ODA.lnk"])
+def test_a_file_that_is_not_a_program_is_refused(
+    api: TestClient, state: CoreState, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """The rule of Windows (`formats.dwg`: an `.exe` only), set here so that it is checked on any system."""
+    monkeypatch.setattr(dwg, "_SUFFIXES", (".exe",))
+    exe = program(tmp_path / "ODAFileConverter 26.10.0")
+    before = api.put(URL, json={"path": str(exe)}).json()
+    assert before["found"] is True
+    script = program(tmp_path / "Сценарии", name)
+    r = api.put(URL, json={"path": str(script)})
+    assert r.status_code == 422
+    body = r.json()
+    assert body["code"] == "bad_path" and name in body["message"] and "ODAFileConverter.exe" in body["hint"]
+    assert tools.oda_converter(state) == str(exe) and api.get(URL).json() == before  # nothing has changed
+    # its folder names no program: kept as a path that names nothing, the search goes on
+    body = api.put(URL, json={"path": str(script.parent)}).json()
+    assert (body["found"], body["configured"], body["path"]) == (False, str(script.parent), None)
+    upper = program(tmp_path / "ODA", "ODAFILECONVERTER.EXE")  # the case of the extension does not matter
+    assert api.put(URL, json={"path": str(upper)}).json()["path"] == str(upper)
+
+
+def test_status_tells_what_the_dwg_reader_will_say(
+    api: TestClient, state: CoreState, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file that is not a program got to the path after it was set, or the variable names one: the reader
+    answers `bad_path`, and the state says the same instead of «найден»."""
+    monkeypatch.setattr(dwg, "_SUFFIXES", (".exe",))
+    place = tmp_path / "tools" / "converter"
+    assert api.put(URL, json={"path": str(place)}).json()["found"] is False  # nothing there yet: kept
+    program(place.parent, place.name)
+    body = api.get(URL).json()
+    assert (body["found"], body["path"], body["source"], body["version"]) == (False, None, None, None)
+    assert "«converter»" in body["message"] and "не программа" in body["message"] and ".exe" in body["hint"]
+    with pytest.raises(dwg.FormatError) as info:
+        dwg.find_converter(tools.oda_converter(state), strict=True)
+    assert info.value.code == "bad_path" and info.value.message == body["message"]
+    # the variable: told when nothing comes before it; «Найти» passes it by
+    script = program(tmp_path / "Сценарии", "oda.cmd")
+    monkeypatch.setenv(dwg.ENV, str(script))
+    body = api.put(URL, json={"path": None}).json()
+    assert body["found"] is False and dwg.ENV in body["message"] and body["auto"] is None
+    exe = program(tmp_path / "ODAFileConverter 26.10.0")
+    body = api.put(URL, json={"path": str(exe)}).json()  # a good setting comes first
+    assert (body["found"], body["path"], body["warning"]) == (True, str(exe), "")
 
 
 def test_wrong_type_is_a_bad_request(api: TestClient) -> None:

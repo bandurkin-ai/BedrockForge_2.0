@@ -5,7 +5,9 @@
 of job workers): it sends the path with `PUT` when the core comes up and when the user changes it; the core keeps
 it until it stops. A path that names nothing is kept too — the answer says so and the search goes on, as
 `formats.dwg.find_converter` does: the setting → the variable `BF_ODA_CONVERTER` → `ODAFileConverter` of PATH →
-the newest `…\\Program Files\\ODA\\ODAFileConverter*\\ODAFileConverter.exe`.
+the newest `…\\Program Files\\ODA\\ODAFileConverter*\\ODAFileConverter.exe`. A path that names a file which is
+not a program (on Windows — anything but an `.exe`: `formats.dwg` never runs a `.cmd` or a `.bat`) is refused:
+`bad_path`, the setting stays as it was.
 
 The answer of both requests:
   configured  the path of «Настройка» as the core holds it, or null;
@@ -35,6 +37,7 @@ from pydantic import BaseModel, Field
 from bf_core.api.app import CoreState
 from bf_core.api.errors import ApiError
 from bf_core.formats import dwg
+from bf_core.formats.errors import FormatError
 
 router = APIRouter(prefix="/tools")
 
@@ -57,7 +60,8 @@ class OdaBody(BaseModel):
 
 
 def _clean(path: str | None) -> str | None:
-    """The path as the user gave it without the spaces and quotes around it; an empty one is no path."""
+    """The path as the user gave it without the spaces and quotes around it; an empty one is no path. A path
+    that is not a full one, or names a file `formats.dwg` does not take for a program, is the error `bad_path`."""
     if path is None:
         return None
     text = path.strip().strip('"').strip()
@@ -72,6 +76,10 @@ def _clean(path: str | None) -> str | None:
             "Укажите полный путь к файлу ODAFileConverter.exe или к его папке — либо оставьте поле пустым: "
             "установленная программа будет найдена сама.",
         )
+    try:
+        dwg.program_at(place)
+    except FormatError as err:
+        raise ApiError(422, err.code, err.message, err.hint) from None
     return text
 
 
@@ -109,12 +117,14 @@ def _version(exe: Path) -> str | None:
 
 
 def _concerns(exe: Path, from_setting: bool) -> list[str]:
-    """What is unusual about a program the setting names (one found by the search has the name by definition)."""
+    """What is unusual about a program the setting names (one found by the search has the name by definition).
+    That it is a program at all is not asked here: a file `formats.dwg` would not run never gets this far —
+    `_clean` refuses it, the search passes it by."""
     out = []
     if from_setting and not exe.name.lower().startswith(dwg.PROGRAM.lower()):
         out.append(
-            f"Имя файла «{exe.name}» не похоже на ODAFileConverter.exe — проверьте, что выбрана программа "
-            "ODA File Converter, а не другая."
+            f"Имя файла «{exe.name}» не похоже на {dwg.PROGRAM}.exe: запускаться будет именно этот файл — "
+            "проверьте, что это программа ODA File Converter, а не другая."
         )
     if os.name != "nt" and not os.access(exe, os.X_OK):
         out.append("Файл не помечен как исполняемый — программа не запустится.")
@@ -122,16 +132,24 @@ def _concerns(exe: Path, from_setting: bool) -> list[str]:
 
 
 def oda_status(configured: str | None) -> dict[str, Any]:
-    """The state of the converter for the path of «Настройка» (see the module docstring)."""
-    found = dwg.find_converter(configured)
+    """The state of the converter for the path of «Настройка» (see the module docstring). It is what the DWG
+    reader and writer will do: a file that is not a program, put at the path since it was set or named by the
+    variable, is their error `bad_path` — and is told here in its words."""
+    problem: FormatError | None = None
+    try:
+        found = dwg.find_converter(configured, strict=True)
+    except FormatError as err:
+        found, problem = None, err
     auto = dwg.find_converter(None)
     given = _expanded(configured) if configured else None
     own = found is not None and given is not None and (found == given or found.parent == given)
     warnings: list[str] = []
-    if found is None:
+    version = None
+    if problem is not None:
+        message, hint = problem.message, problem.hint
+    elif found is None:
         message = "ODA File Converter не найден" + (": по указанному пути программы нет." if configured else ".")
         hint = f"{INSTALL} {_WITHOUT}"
-        version = None
     else:
         version = _version(found)
         message = "ODA File Converter найден" + (f", версия {version}." if version else ".")

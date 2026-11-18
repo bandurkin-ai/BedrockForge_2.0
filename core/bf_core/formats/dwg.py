@@ -44,10 +44,11 @@ from __future__ import annotations
 
 import os
 import re
+import select
 import shutil
+import subprocess
 import sys
 import tempfile
-import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -56,6 +57,7 @@ from typing import TYPE_CHECKING, Any
 
 from bf_core.formats.errors import FormatError
 from bf_core.formats.table import Progress, no_progress
+from bf_core.paths import APP_DIR_NAME
 
 if TYPE_CHECKING:
     from bf_core.formats.dxf_layers import DxfRead
@@ -69,6 +71,11 @@ WRITE_VERSION = "R2013"  # of a DWG written, unless the user chooses another (AD
 VERSIONS = ("R2000", "R2004", "R2007", "R2010", "R2013", "R2018")  # to choose from when a DWG is written
 PREFIX = "bf-oda-"
 STALE_S = 24 * 3600.0
+TIMEOUT_S = 300.0  # of one run of the converter: one that takes longer hangs (a window that waits for an answer) …
+TIMEOUT_S_PER_MB = 1.0  # … and this for every megabyte of the file it is given
+XVFB_WAIT_S = 10.0  # for the screen of the converter on Linux to come up
+_WINDOWS = sys.platform == "win32"
+_SUFFIXES: tuple[str, ...] = (".exe",) if _WINDOWS else ()  # of a file that is a program; () — any file may be
 _PROGRAM_FILES = ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)")
 _DWG = re.compile(rb"AC\d{4}|AC\d\.\d\d")  # the version a DWG begins with: AC1032 … AC1009, AC2.10, AC1.50
 _INSTALL = "Не найден ODA File Converter: установите его (бесплатно, Open Design Alliance) и укажите путь в «Настройке»"
@@ -79,22 +86,62 @@ _HINT_FAILED_READ = (
     "(путь к ней — в «Настройке»), или сохраните чертёж в DXF."
 )
 _HINT_FAILED_WRITE = "Проверьте путь к ODA File Converter в «Настройке» или экспортируйте в DXF."
-_LOCK = threading.Lock()  # the settings of ezdxf are one for the process
+_HINT_TIMEOUT = (
+    "Возможно, программа ждёт ответа в своём окне или файл слишком велик. Запустите ODA File Converter вручную "
+    "и проверьте, что он работает; путь к программе — в «Настройке». "
+)
+_SETTING = "Путь к ODA File Converter в «Настройке»"
+_VARIABLE = f"Переменная окружения {ENV}"
 
 
 # ---------------------------------------------------------------- the converter
 
 
-def _program(path: Path) -> Path | None:
-    """`path` when it is a program, the converter inside it when it is the folder of one."""
+def _program(path: Path, named_by: str | None = None) -> Path | None:
+    """`path` when it is a program, the converter inside it when it is the folder of one. On Windows a program
+    is an `.exe` (`_SUFFIXES`): any other file is passed by, or — when `named_by` tells who names it — is the
+    error `bad_path`."""
     try:
         if path.is_file():
-            return path
-        for name in (PROGRAM + ".exe", PROGRAM):
+            if not _SUFFIXES or path.suffix.lower() in _SUFFIXES:
+                return path
+            if named_by is None:
+                return None
+            raise FormatError(
+                "bad_path",
+                f"{named_by} указывает на файл «{path.name}», а это не программа.",
+                f"Укажите файл {PROGRAM}.exe или папку, в которую установлен ODA File Converter.",
+            )
+        for name in [PROGRAM + suffix for suffix in _SUFFIXES] or [PROGRAM + ".exe", PROGRAM]:
             if (path / name).is_file():
                 return path / name
     except OSError:
         pass
+    return None
+
+
+def program_at(path: str | os.PathLike[str]) -> Path | None:
+    """The converter a path of «Настройка» names: the program itself or the one in its folder; None when
+    nothing is there. A file that is not a program (on Windows — not an `.exe`) is the error `bad_path`."""
+    return _program(Path(path), _SETTING)
+
+
+def _on_path() -> Path | None:
+    """`ODAFileConverter` in a folder of PATH. Only the folders PATH names in full are looked into: never the
+    current one (an empty or a relative entry; `shutil.which` looks there first on Windows, whatever `path` it
+    is given), and on Windows the program is an `.exe`, not whatever PATHEXT allows (`.cmd`, `.bat`)."""
+    names = [PROGRAM + suffix for suffix in _SUFFIXES] or [PROGRAM]
+    for entry in (os.environ.get("PATH") or "").split(os.pathsep):
+        folder = Path(entry.strip().strip('"'))
+        if not folder.is_absolute():
+            continue
+        for name in names:
+            found = folder / name
+            try:
+                if found.is_file() and (bool(_SUFFIXES) or os.access(found, os.X_OK)):
+                    return found
+            except OSError:
+                continue
     return None
 
 
@@ -114,25 +161,27 @@ def installed(roots: Iterable[str | Path]) -> Path | None:
     return max(found)[2] if found else None
 
 
-def find_converter(configured: str | os.PathLike[str] | None = None) -> Path | None:
+def find_converter(configured: str | os.PathLike[str] | None = None, *, strict: bool = False) -> Path | None:
     """The ODA File Converter to run, or None when there is none (see the module docstring). A configured path
-    that is no longer there (the converter was updated: its folder carries the version) does not stop the search."""
-    for given in (configured, os.environ.get(ENV)):
+    that is no longer there (the converter was updated: its folder carries the version) does not stop the search.
+    Nor does a file that is not a program, unless `strict`: then it is the error `bad_path` (the reader and the
+    writer ask so: they do not run another program in place of the one the user named)."""
+    for given, named_by in ((configured, _SETTING), (os.environ.get(ENV), _VARIABLE)):
         text = str(given).strip().strip('"') if given else ""
         if text:
-            found = _program(Path(text).expanduser())
+            found = _program(Path(text).expanduser(), named_by if strict else None)
             if found is not None:
                 return found
-    on_path = shutil.which(PROGRAM)
-    if on_path:
-        return Path(on_path)
-    if sys.platform == "win32":
+    on_path = _on_path()
+    if on_path is not None:
+        return on_path
+    if _WINDOWS:
         return installed(dict.fromkeys(v for k in _PROGRAM_FILES if (v := os.environ.get(k))))
     return None
 
 
 def _require(converter: str | os.PathLike[str] | None, writing: bool) -> Path:
-    exe = find_converter(converter)
+    exe = find_converter(converter, strict=True)
     if exe is None:
         if writing:
             raise FormatError("oda_not_found", "Для записи DWG нужна программа ODA File Converter.", HINT_WRITE)
@@ -175,12 +224,60 @@ def _sweep(base: Path) -> None:
             continue
 
 
+def _short_path(folder: Path) -> Path | None:
+    """The short (8.3) path of a folder there is, on Windows; None when it cannot be had. A volume that keeps
+    no short names gives the path as it is; a short name may be Cyrillic as well (the caller looks)."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    get = ctypes.WinDLL("kernel32", use_last_error=True).GetShortPathNameW
+    get.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+    get.restype = wintypes.DWORD
+    size = get(str(folder), None, 0)
+    if size == 0:
+        return None
+    buffer = ctypes.create_unicode_buffer(size)
+    if get(str(folder), buffer, size) == 0:
+        return None
+    return Path(buffer.value)
+
+
+def _bases() -> list[Path]:
+    """Where the folder of a call may be made, the best first; the last is the temporary folder of the user as
+    it is. On Windows, when its path has letters beyond ASCII, before it come its short 8.3 path and
+    `%ProgramData%\\BedrockForge\\tmp`, each when it is ASCII (see the module docstring)."""
+    base = Path(tempfile.gettempdir())
+    out: list[Path] = []
+    if _WINDOWS and not str(base).isascii():
+        short = _short_path(base)
+        if short is not None and str(short).isascii():
+            out.append(short)
+        shared = os.environ.get("ProgramData") or ""
+        if shared and shared.isascii():
+            out.append(Path(shared) / APP_DIR_NAME / "tmp")
+    return [*out, base]
+
+
+def _folder() -> Path:
+    """A new folder `bf-oda-…` (of this user only) in the first of `_bases()` that lets it be made."""
+    *better, base = _bases()
+    for place in better:
+        try:
+            place.mkdir(parents=True, exist_ok=True)
+            _sweep(place)
+            return Path(tempfile.mkdtemp(prefix=PREFIX, dir=place))
+        except OSError:
+            continue
+    _sweep(base)
+    return Path(tempfile.mkdtemp(prefix=PREFIX, dir=base))
+
+
 @contextmanager
 def _workspace() -> Iterator[Path]:
     """A temporary folder with `in/` and `out/`, removed at the end."""
-    base = Path(tempfile.gettempdir())
-    _sweep(base)
-    folder = Path(tempfile.mkdtemp(prefix=PREFIX, dir=base))
+    folder = _folder()
     try:
         (folder / "in").mkdir()
         (folder / "out").mkdir()
@@ -207,39 +304,126 @@ def _release(version: str) -> str:
     return release
 
 
-def _convert(source: Path, target: Path, version: str, audit: bool, exe: Path, writing: bool) -> None:
-    """One run of the converter: `source` → `target` (its extension is the format), checked."""
-    import ezdxf
+def _arguments(source: Path, target: Path, version: str, audit: bool) -> list[str]:
+    """The command line of the converter after its name, as `ezdxf.addons.odafc` writes it: «Input Folder»
+    «Output Folder» version type recurse audit filter. The type is the extension of `target`, the filter is the
+    name of `source`: this file only, and it is made in the folder of `target`."""
+    return [
+        str(source.parent), str(target.parent), version, target.suffix[1:].upper(), "0", "1" if audit else "0",
+        source.name,
+    ]  # fmt: skip
 
-    odafc = _odafc()
-    names = "DXF в DWG" if writing else "DWG в DXF"
-    keys = ("win_exec_path", "unix_exec_path")
-    with _LOCK:
-        saved = [ezdxf.options.get("odafc-addon", key) for key in keys]
-        search = getattr(odafc, "_get_odafc_path", None)
+
+@contextmanager
+def _screen() -> Iterator[dict[str, str] | None]:
+    """The environment the converter runs in (None — that of this process). On Linux the converter opens its
+    window even when it has its arguments: an `Xvfb` of PATH, when there is one, is started as a screen nobody
+    sees — on a display the server finds free and names itself — and is ended with the converter."""
+    xvfb = shutil.which("Xvfb") if sys.platform == "linux" else None
+    server: subprocess.Popen[bytes] | None = None
+    number = ""
+    if xvfb is not None:
+        read, write = os.pipe()
         try:
-            for key in keys:
-                ezdxf.options.set("odafc-addon", key, str(exe))
-            if search is not None:  # PATH comes first there on Windows: the program found here is the one to run
-                odafc._get_odafc_path = lambda system: str(exe)
-            odafc.convert(str(source), str(target), version=version, audit=audit, replace=True)
-        except Exception as exc:  # it did not start or reported an error: ODAFCError, OSError and what ezdxf lets out
-            detail = " ".join(str(exc).split())[:300]
-            raise _failed(writing, f"ODA File Converter не преобразовал {names}", detail) from exc
+            quiet = subprocess.DEVNULL
+            command = [xvfb, "-displayfd", str(write), "-screen", "0", "800x600x24"]
+            server = subprocess.Popen(command, stdin=quiet, stdout=quiet, stderr=quiet, pass_fds=(write,))
+            os.close(write)
+            write = -1
+            # the number of the display once the server listens; nothing when the server has ended
+            if select.select([read], [], [], XVFB_WAIT_S)[0]:
+                number = os.read(read, 64).decode("ascii", errors="replace").strip()
+        except OSError:
+            pass
         finally:
-            if search is not None:
-                odafc._get_odafc_path = search
-            for key, value in zip(keys, saved, strict=True):
-                ezdxf.options.set("odafc-addon", key, value)
+            os.close(read)
+            if write >= 0:
+                os.close(write)
     try:
-        with target.open("rb") as f:
-            head = f.read(4096)
+        yield {**os.environ, "DISPLAY": f":{number}"} if number.isdigit() else None
+    finally:
+        if server is not None:
+            server.terminate()  # not killed at once: the server removes its socket and its lock
+            try:
+                server.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait()
+
+
+def _run(exe: Path, arguments: Sequence[str], timeout: float) -> tuple[int, str, str]:
+    """Runs the converter to its end: (the return code, what it printed, what it complained of). No window is
+    shown, nothing is asked of the user; the output is read while the converter runs (it never waits for a
+    reader) and is text whatever bytes it holds. `subprocess.TimeoutExpired` — it did not end in `timeout`
+    seconds and was ended; `OSError` — it did not start."""
+    options: dict[str, Any] = {}
+    if sys.platform == "win32":
+        hidden = subprocess.STARTUPINFO()
+        hidden.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        hidden.wShowWindow = subprocess.SW_HIDE  # the converter is a program with a window: it stays hidden
+        options = {"creationflags": subprocess.CREATE_NO_WINDOW, "startupinfo": hidden}
+    with _screen() as env:
+        done = subprocess.run(
+            [str(exe), *arguments],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=timeout,
+            env=env,
+            check=False,
+            **options,
+        )
+    out, err = (bytes(raw or b"").decode("utf-8", errors="replace") for raw in (done.stdout, done.stderr))
+    return done.returncode, out, err
+
+
+def _made(target: Path) -> Path | None:
+    """The file the converter made for `target`: of its name, in whatever case the extension is written."""
+    if target.is_file():
+        return target
+    try:
+        for found in target.parent.iterdir():
+            if found.name.casefold() == target.name.casefold() and found.is_file():
+                return found
     except OSError:
-        raise _failed(writing, f"ODA File Converter не создал файл {'DWG' if writing else 'DXF'}") from None
+        pass
+    return None
+
+
+def _convert(source: Path, target: Path, version: str, audit: bool, exe: Path, writing: bool) -> None:
+    """One run of the converter: `source` → `target` (its extension is the format, its folder is where the
+    converter writes), checked."""
+    names = "DXF в DWG" if writing else "DWG в DXF"
+    kind = "DWG" if writing else "DXF"
+    timeout = TIMEOUT_S + TIMEOUT_S_PER_MB * source.stat().st_size / 2**20
+    try:
+        code, out, err = _run(exe, _arguments(source, target, version, audit), timeout)
+    except subprocess.TimeoutExpired:
+        raise FormatError(
+            "oda_timeout",
+            f"ODA File Converter не преобразовал {names} за {round(timeout)} с и был остановлен.",
+            _HINT_TIMEOUT + ("Или экспортируйте в DXF." if writing else "Или сохраните чертёж в DXF."),
+        ) from None
+    except OSError as exc:  # no such program, no right to run it, not a program at all
+        raise _failed(writing, "ODA File Converter не запустился", " ".join(str(exc).split())[:300]) from exc
+    complaint = err.strip()
+    if sys.platform == "linux":  # there the converter ends with a crash even after a good conversion (ezdxf #707)
+        failed = complaint not in ("", "Quit (core dumped)")
+    else:
+        failed = code != 0 or complaint != ""
+    if failed:
+        said = " ".join((complaint or out).split())[:300]
+        detail = (f"код завершения {code}" + (f": {said}" if said else "")) if code != 0 else said
+        raise _failed(writing, f"ODA File Converter не преобразовал {names}", detail)
+    made = _made(target)
+    if made is None:
+        raise _failed(writing, f"ODA File Converter не создал файл {kind}")
+    if made != target:
+        os.replace(made, target)
+    with target.open("rb") as f:
+        head = f.read(4096)
     good = bool(_DWG.match(head)) if writing else head.startswith(b"AutoCAD Binary DXF") or b"SECTION" in head
     if not good:
-        made = "DWG" if writing else "DXF"
-        raise _failed(writing, f"ODA File Converter создал файл, который не похож на {made}")
+        raise _failed(writing, f"ODA File Converter создал файл, который не похож на {kind}")
 
 
 # ---------------------------------------------------------------- reading
@@ -286,6 +470,8 @@ def read_dwg(
     with dxf_of(path, scaled(tick, 0.0, 0.3), converter=converter) as dxf:
         out = read_dxf(dxf, scaled(tick, 0.3, 1.0), **options)
     out.format = "dwg"
+    for mesh in out.wireframes:  # `objects.meta.source` of a wireframe names the file it came from
+        mesh.source["format"] = "dwg"
     return out
 
 
@@ -371,6 +557,7 @@ __all__ = [
     "dxf_to_dwg",
     "find_converter",
     "installed",
+    "program_at",
     "read_dwg",
     "write_dwg",
 ]
