@@ -1,0 +1,124 @@
+{
+  "format": "OMF v1",
+  "file_version": "OMF-v0.9.0",
+  "project": "Test project",
+  "classes": {
+    "ScalarArray": 10,
+    "ScalarData": 9,
+    "ImageTexture": 3,
+    "Vector3Array": 3,
+    "PointSetGeometry": 1,
+    "PointSetElement": 1,
+    "Int2Array": 1,
+    "LineSetGeometry": 1,
+    "LineSetElement": 1,
+    "Int3Array": 1,
+    "SurfaceGeometry": 1,
+    "SurfaceElement": 2,
+    "SurfaceGridGeometry": 1,
+    "VolumeGridGeometry": 1,
+    "VolumeElement": 1,
+    "Project": 1
+  },
+  "elements": [
+    {
+      "class": "PointSetElement",
+      "name": "Random Points",
+      "geometry": "PointSetGeometry",
+      "vertices": 100,
+      "data": [
+        {
+          "name": "rand data",
+          "class": "ScalarData",
+          "location": "vertices"
+        },
+        {
+          "name": "More rand data",
+          "class": "ScalarData",
+          "location": "vertices"
+        }
+      ],
+      "textures": 2
+    },
+    {
+      "class": "LineSetElement",
+      "name": "Random Line",
+      "geometry": "LineSetGeometry",
+      "vertices": 100,
+      "segments": 50,
+      "data": [
+        {
+          "name": "rand vert data",
+          "class": "ScalarData",
+          "location": "vertices"
+        },
+        {
+          "name": "rand segment data",
+          "class": "ScalarData",
+          "location": "segments"
+        }
+      ],
+      "textures": 0
+    },
+    {
+      "class": "SurfaceElement",
+      "name": "trisurf",
+      "geometry": "SurfaceGeometry",
+      "vertices": 100,
+      "triangles": 50,
+      "data": [
+        {
+          "name": "rand vert data",
+          "class": "ScalarData",
+          "location": "vertices"
+        },
+        {
+          "name": "rand face data",
+          "class": "ScalarData",
+          "location": "faces"
+        }
+      ],
+      "textures": 0
+    },
+    {
+      "class": "SurfaceElement",
+      "name": "gridsurf",
+      "geometry": "SurfaceGridGeometry",
+      "tensor_u": 10,
+      "tensor_v": 15,
+      "data": [
+        {
+          "name": "rand vert data",
+          "class": "ScalarData",
+          "location": "vertices"
+        },
+        {
+          "name": "rand face data",
+          "class": "ScalarData",
+          "location": "faces"
+        }
+      ],
+      "textures": 1
+    },
+    {
+      "class": "VolumeElement",
+      "name": "vol",
+      "geometry": "VolumeGridGeometry",
+      "tensor": [
+        10,
+        15,
+        20
+      ],
+      "data": [
+        {
+          "name": "Random Data",
+          "class": "ScalarData",
+          "location": "cells"
+        }
+      ],
+      "textures": 0
+    }
+  ],
+  "file": "v1/test_file.omf",
+  "bytes": 92689
+}

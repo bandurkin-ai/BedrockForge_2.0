@@ -17,3 +17,4 @@
 *.npy binary
 *.parquet binary
 *.bfggis binary
+*.omf binary
