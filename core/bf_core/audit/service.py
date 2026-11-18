@@ -118,10 +118,11 @@ def load(conn: sa.Connection, set_id: int, table: str | None, tick: Any = None) 
         return None
 
     tick(0.02, "Устья и инклинометрия")
-    sv: list[list[Any]] = [[], [], [], [], []]
-    for chunk in dialect.iter_driver_rows(
-        conn, "SELECT id, hole_id, depth, azimuth, dip FROM dh_surveys WHERE set_id = ? ORDER BY id", (set_id,)
-    ):
+    sv: list[list[Any]] = [[], [], [], [], [], []]
+    # the last column: a station with coordinates (a trench vertex) — the survey rules skip it (`rules.py`)
+    fixed = "x IS NOT NULL AND y IS NOT NULL AND z IS NOT NULL"
+    sql = f"SELECT id, hole_id, depth, azimuth, dip, {fixed} FROM dh_surveys WHERE set_id = ? ORDER BY id"
+    for chunk in dialect.iter_driver_rows(conn, sql, (set_id,)):
         for j, col in enumerate(zip(*chunk, strict=True)):
             sv[j].extend(col)
     kwargs: dict[str, Any] = {
@@ -139,6 +140,7 @@ def load(conn: sa.Connection, set_id: int, table: str | None, tick: Any = None) 
         "survey_depth": np.array(sv[2], dtype=float),  # None → NaN
         "survey_azimuth": np.array(sv[3], dtype=float),
         "survey_dip": np.array(sv[4], dtype=float),
+        "survey_fixed": np.array(sv[5], dtype=bool),
     }
     del sv
     kwargs.update(_samples(conn, table, dense, tick) if table is not None else _no_samples())

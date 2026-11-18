@@ -60,7 +60,7 @@ def test_five_vertices_on_utm_match_exactly(method: str) -> None:
     at = t.positions(np.zeros(5, dtype=np.int64), md[0])
     assert np.abs(at - UTM5).max() <= TOL
     assert (at == UTM5).all()  # the stored float64 themselves, whatever the method
-    assert t.lengths()[0] == md[0][-1] == pytest.approx(138.6245, abs=1e-3)
+    assert t.lengths()[0] == md[0][-1] == pytest.approx(126.4200, abs=1e-3)  # 27.577 + 38.772 + 28.274 + 31.798
     assert t.source[0] == SOURCE_SURVEY and t.invalid_stations == 0 and t.duplicate_stations == 0
     # a vertex between two segments is listed twice: once with the direction of each segment
     d, xyz, dirs = t.stations(0)
@@ -77,11 +77,12 @@ def test_straight_between_the_vertices_by_3d_length(method: str) -> None:
     got = t.positions(np.zeros(len(depth), dtype=np.int64), depth) - np.floor(UTM5[0])
     assert np.abs(got - on_polyline(UTM5, md[0], depth)).max() <= TOL
     # depth is the 3D length, not the plan one: a steep segment of 130 m, 50 m in plan
-    steep = np.array([[400_000.0, 6_000_000.0, 500.0], [400_030.0, 6_000_040.0, 380.0], [400_030.0, 6_000_140.0, 380.0]])
+    a, b, c = [400_000.0, 6_000_000.0, 500.0], [400_030.0, 6_000_040.0, 380.0], [400_030.0, 6_000_140.0, 380.0]
+    steep = np.array([a, b, c])
     t, md = trenches([steep], method)
     assert md[0].tolist() == [0.0, 130.0, 230.0]
     at = t.positions(np.zeros(3, dtype=np.int64), np.array([65.0, 130.0, 180.0]))
-    assert np.abs(at - [[400_015.0, 6_000_020.0, 440.0], [400_030.0, 6_000_040.0, 380.0], [400_030.0, 6_000_090.0, 380.0]]).max() <= TOL
+    assert np.abs(at - [[400_015.0, 6_000_020.0, 440.0], b, [400_030.0, 6_000_090.0, 380.0]]).max() <= TOL
 
 
 def test_sample_across_a_vertex_lies_on_the_polyline() -> None:
@@ -238,7 +239,7 @@ def test_hard_data_thousands_of_trenches_in_any_row_order() -> None:
     ticks: list[float | None] = []
     t = desurvey(
         Collars(np.arange(n_h + n_t), cx, cy, cz, td),
-        Surveys(hole[order], depth[order], az[order], dip[order], *(np.ascontiguousarray(xyz[order, i]) for i in range(3))),
+        Surveys(hole[order], depth[order], az[order], dip[order], *np.ascontiguousarray(xyz[order].T)),
         tick=lambda f, _m: ticks.append(f),
     )
     assert ticks and t.invalid_stations == 0 and t.duplicate_stations == 0 and len(t.skipped) == 0
@@ -330,14 +331,14 @@ def test_trench_in_a_project_database(tmp_path: Path) -> None:
                 ],
             )
             ids = dh.hole_ids(conn, set_id)
+            none = dict.fromkeys(("azimuth", "dip", "x", "y", "z"))
             conn.execute(
                 sa.insert(dh_surveys),
-                [{"set_id": set_id, "hole_id": ids["H1"], "depth": d, "azimuth": 90.0, "dip": -60.0} for d in (0.0, 50.0)]
-                + [
-                    {"set_id": set_id, "hole_id": ids["T1"], "depth": float(d), "x": v[0], "y": v[1], "z": v[2]}
-                    for d, v in zip(md, UTM5.tolist(), strict=True)
-                ],
-            )
+                [{**none, "set_id": set_id, "hole_id": ids["H1"], "depth": d, "azimuth": 90.0, "dip": -60.0}
+                 for d in (0.0, 50.0)]
+                + [{**none, "set_id": set_id, "hole_id": ids["T1"], "depth": float(d), "x": v[0], "y": v[1], "z": v[2]}
+                   for d, v in zip(md, UTM5.tolist(), strict=True)],
+            )  # fmt: skip
         dh.write_table(
             engine,
             set_id,
