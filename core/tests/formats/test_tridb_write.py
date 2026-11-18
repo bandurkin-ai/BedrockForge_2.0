@@ -353,6 +353,7 @@ def test_everything_a_file_may_have_cycles(tmp_path: Path) -> None:
             tb_box(v + 5.0, t, id=2, name="тело", general={"Colour": 0x7F112233}),
         ],
         defs=defs,
+        script=script,
     )
     meshes = list(read_tridb(source))
     assert [m.name for m in meshes] == ["тело", "Рудное тело", "Каркас 9"] and len(meshes[1].attrs) == 200
@@ -363,6 +364,51 @@ def test_everything_a_file_may_have_cycles(tmp_path: Path) -> None:
     for table in before:
         assert after[table] == before[table], table
     assert schema(out)["integrity"] == ["ok"] and schema(out)["foreign_keys"] == []
+
+
+def test_source_that_is_not_rows_is_not_trusted(tmp_path: Path) -> None:
+    """`meta.source` comes from a project file: whatever is in it, the writer makes a valid TRIDB."""
+    v, t = cube(2, 10.0)
+    lo, hi = v.min(axis=0), v.max(axis=0)
+    extent = dict(
+        zip(("XMinimum", "YMinimum", "ZMinimum", "XMaximum", "YMaximum", "ZMaximum"), [*lo, *hi], strict=True)
+    )
+    junk = {
+        "format": "tridb",
+        "name": "Куб",
+        "tridb": {
+            "id": 2**70,
+            "guid": 5,
+            "points": len(v),
+            "triangles": len(t),
+            "general": {
+                **{k: float(x) for k, x in extent.items()},
+                "Colour": "red",
+                "Volume": [1],
+                "Code": {"blob": "zz"},
+            },
+            "properties": [[2**70, "PointCount", None, 8.0], "x", [1], [3, "Заметка", {"a": 1}, None]],
+            "attr_defs": [
+                [{"blob": "00"}, "A", 0, 2, "", 0, 0.0, None, None],
+                [1, "B"],
+                [2**64, "C", 0, 2, "", 0, 0.0, None, None],
+            ],
+            "attr_values": "нет",
+            "display": [1],
+            "database": [[1, 2], "x"],
+        },
+    }
+    out = tmp_path / "junk.tridb"
+    write_tridb(out, [MeshSet("Куб", v, t, color="#102030", attrs=[{"name": "A", "value": "x"}], source=junk)], now=NOW)
+    assert schema(out)["integrity"] == ["ok"] and schema(out)["foreign_keys"] == []
+    assert sql(out, "SELECT ID, Name, Code, Colour, Volume FROM GeneralInformation") == [
+        (1, "Куб", None, 0x302010, None)
+    ]
+    props = sql(out, "SELECT rowid, Property, TextValue, RealValue FROM GeometryProperties ORDER BY rowid")
+    assert props == [(3, "Заметка", None, None), (4, "PointCount", None, 8.0)]
+    assert sql(out, "SELECT Name FROM UserAttributeDefinition") == [("A",)]
+    (back,) = read_tridb(out)
+    assert back.xyz.tobytes() == np.ascontiguousarray(v).tobytes() and back.attrs == [{"name": "A", "value": "x"}]
 
 
 # ---------------------------------------------------------------- portions, progress, refusals

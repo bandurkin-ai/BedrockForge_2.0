@@ -186,6 +186,7 @@ def test_meshset_keeps_the_geometry_and_cleans_the_rest() -> None:
     lo, hi = v.min(axis=0), v.max(axis=0)
     assert mesh.extent() == [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]
     assert MeshSet("", v, t).name == "Каркас" and MeshSet("x", v, t, color="red").color is None
+    assert MeshSet("Тело\x00 1\x7f\r\nюг", v, t).name == "Тело 1 юг" and len(MeshSet("я" * 300, v, t).name) == 200
     assert MeshSet("x", v, t).stats is None and MeshSet("x", v, t).warnings == []
 
 
@@ -210,6 +211,8 @@ def test_meshset_refuses_what_cannot_be_a_wireframe() -> None:
     )
     assert error(MeshSet, "Тело", v, t, attrs=[{"name": " ", "value": 1}]).code == "bad_attrs"
     assert error(MeshSet, "Тело", v, t, attrs=[{"name": "A", "value": [1]}]).code == "bad_attrs"
+    assert error(MeshSet, "Тело", v, t, attrs=[{"name": "A", "value": "я" * 2001}]).code == "bad_attrs"
+    assert error(MeshSet, "Тело", v, t, attrs=[{"name": f"A{k}", "value": k} for k in range(201)]).code == "bad_attrs"
 
 
 def test_clean_attrs_loses_nothing_silently() -> None:

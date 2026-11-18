@@ -26,8 +26,9 @@ triangles, general — the `GeneralInformation` row by column (the name is `sour
 of `UserAttributeDefinition`, attr_values — [[rowid, AttributeID, ValueText, ValueInteger, ValueReal]], display,
 database}.
 
-The file is opened read-only and immutable: nothing is written next to it. Error codes: empty_file, not_tridb,
-truncated, broken, unsupported, no_meshes, too_large, bad_mesh, bad_coordinates, empty_mesh.
+The file is opened read-only and immutable (`db.dialect.open_sqlite_file`): nothing is written next to it.
+Error codes: empty_file, not_tridb, truncated, broken, unsupported, no_meshes, too_large, bad_mesh,
+bad_coordinates, empty_mesh.
 
 Ported from BF `formats/wireframes.py` (`read_tridb`, `read_tridb_geometry`, `_attributes`). Differences: the
 tables of the real files (properties and attributes as rows), a composition without geometry, a wireframe that
@@ -43,7 +44,6 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 import numpy as np
 
@@ -109,13 +109,6 @@ def _json(value: Any) -> Any:
     return value
 
 
-def _uri(path: Path) -> str:
-    """Read-only and immutable: SQLite neither locks the file nor writes a journal next to it."""
-    p = str(path.resolve()).replace("\\", "/")
-    p = p if p.startswith("/") else "/" + p  # C:/dir → /C:/dir
-    return "file:" + ("//" if p.startswith("//") else "") + quote(p, safe="/:") + "?mode=ro&immutable=1"
-
-
 def _precheck(path: Path) -> list[str]:
     """The file is an SQLite database of its declared size; warnings about a journal left next to it."""
     size = path.stat().st_size
@@ -176,16 +169,16 @@ class Tridb:
         self._tick: Progress = progress or no_progress
         self._at = 0.0
         self._stopped: BaseException | None = None
+        from bf_core.db.dialect import open_sqlite_file
+
         try:
-            self._conn = sqlite3.connect(_uri(self.path), uri=True, isolation_level=None)
+            self._conn = open_sqlite_file(self.path)  # read-only, immutable: nothing is written next to the file
         except sqlite3.Error as exc:
             raise fail("broken", "Файл TRIDB не открывается как база данных.") from exc
         try:
             self._conn.text_factory = lambda b: b.decode("utf-8", "replace")
             self._conn.set_progress_handler(self._steps, STEPS)
             try:
-                for pragma in ("query_only = ON", "trusted_schema = OFF", "cell_size_check = ON", "mmap_size = 0"):
-                    self._conn.execute(f"PRAGMA {pragma}")
                 self._load()
             except sqlite3.Error as exc:
                 raise self._sqlite(exc) from exc
@@ -223,7 +216,7 @@ class Tridb:
     # --- the composition ---------------------------------------------------------------------------------
 
     def _columns(self, table: str) -> list[str]:
-        return [str(row[1]) for row in self._conn.execute(f'PRAGMA table_info("{table}")')]
+        return [str(c[0]) for c in self._conn.execute(f'SELECT * FROM "{table}" LIMIT 0').description]
 
     def _rows(self, table: str, wanted: Sequence[str], order: str, limit: int | None = None) -> Iterator[list[Any]]:
         """`rowid` and the `wanted` columns of a table (None for a column the file does not have)."""
@@ -394,9 +387,9 @@ class Tridb:
             code = exc.code if isinstance(exc, FormatError) else "broken"
             entry.error = fail(code, f"Каркас «{entry.name}»: неизвестная структура геометрии TRIDB.").as_dict()
             return
-        declared = item.counts or (None, None)
-        if entry.triangles is None and isinstance(declared[1], int | float) and 0 <= declared[1] < 2**53:
-            entry.triangles = int(declared[1])
+        stated = item.counts or (None, None)
+        if entry.triangles is None and isinstance(stated[1], int | float) and 0 <= stated[1] < 2**53:
+            entry.triangles = int(stated[1])
         box = [item.general.get(c) for c in EXTENT] if item.general else []
         if box and all(isinstance(x, float) and math.isfinite(x) for x in box):
             entry.extent = [x for x in box if isinstance(x, float)]
@@ -418,10 +411,10 @@ class Tridb:
         """The wireframe of an entry (or of its key). FormatError — this wireframe cannot be read; the file
         stays open for the others. `progress(fraction, message)` may raise to cancel."""
         found = entry if isinstance(entry, MeshEntry) else next((e for e in self.entries if e.key == entry), None)
-        if found is None:
-            raise fail("broken", "Такого каркаса в файле TRIDB нет.", "Обновите состав файла.")
-        if found.error:
+        if found is not None and found.error:
             raise FormatError(**found.error)
+        if found is None or found.key not in self._items:
+            raise fail("broken", "Такого каркаса в файле TRIDB нет.", "Обновите состав файла.")
         tick = progress or no_progress
         item, name = self._items[found.key], found.name
         self._tick, self._at = tick, 0.0
@@ -449,8 +442,9 @@ class Tridb:
         return mesh
 
     def _check(self, mesh: MeshSet, item: _Item, layout: Layout) -> None:
-        """Compare the geometry with what the file says about it. A version that was not checked on real files
-        is taken only when everything agrees."""
+        """Compare the geometry with what the file says about it (what it does not say is not compared). A
+        version that was not checked on real files is taken only when the file states the counts and the extent
+        and all of them agree."""
         notes: list[str] = []
         n, m = item.counts or (None, None)
         if (n is not None and n != mesh.point_count) or (m is not None and m != mesh.triangle_count):
@@ -459,14 +453,15 @@ class Tridb:
                 f"{n_text(mesh.point_count)} и {n_text(mesh.triangle_count)}: взята геометрия"
             )
         box = [item.general.get(c) for c in EXTENT] if item.general else []
-        if box and box != mesh.extent():
+        stated = bool(box) and all(isinstance(x, int | float) for x in box)
+        if stated and box != mesh.extent():
             notes.append("Охват каркаса в файле не совпадает с его геометрией: взят охват геометрии")
         extra = sorted(k for k in layout.blocks if k not in (1, 2, 3, 4))
         if extra:
             notes.append(f"Блоки геометрии № {', '.join(map(str, extra))} неизвестны и не загружены")
         if not layout.standard:
             shown = int.from_bytes(layout.version[2:], "little")
-            if notes:
+            if notes or not stated or n is None or m is None:
                 raise fail(
                     "unsupported",
                     f"Каркас «{mesh.name}»: версия геометрии TRIDB {shown} не поддерживается (проверена версия 5).",

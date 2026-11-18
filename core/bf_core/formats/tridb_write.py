@@ -109,16 +109,22 @@ def hex_to_bgr(color: str) -> int:
     return int(color[5:7] + color[3:5] + color[1:3], 16)
 
 
+def _is_int(value: Any) -> bool:
+    """An integer SQLite can keep (a rowid, an id)."""
+    return isinstance(value, int) and not isinstance(value, bool) and -(2**63) <= value < 2**63
+
+
 def _sql(value: Any) -> Any:
-    """A value of `meta.source` (JSON) as SQLite takes it."""
+    """A value of `meta.source` (JSON) as SQLite takes it; what is not a value of a row is empty."""
     if isinstance(value, Mapping):
         blob = value.get("blob")
-        return bytes.fromhex(blob) if isinstance(blob, str) else None
-    return value if value is None or isinstance(value, int | float | str) else None
-
-
-def _is_int(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
+        try:
+            return bytes.fromhex(blob) if isinstance(blob, str) else None
+        except ValueError:
+            return None
+    if isinstance(value, bool | float | str) or _is_int(value):
+        return value
+    return None
 
 
 def _rows(value: Any, sizes: tuple[int, ...]) -> list[list[Any]]:
@@ -159,7 +165,7 @@ class _File:
             )
         wanted = src.get("id")
         tid = max(self.ids | {0}) + 1
-        if isinstance(wanted, int) and not isinstance(wanted, bool) and wanted not in self.ids:
+        if isinstance(wanted, int) and _is_int(wanted) and wanted not in self.ids:
             tid = wanted
         self.ids.add(tid)
         row = {**NEW_ROW, "CreateDateTime": self.now, "EditDateTime": self.now}
@@ -368,13 +374,13 @@ def write_tridb(
     tick = progress or no_progress
     tick(0.0, "Запись TRIDB")
     count = total if total is not None else len(meshes) if hasattr(meshes, "__len__") else None  # type: ignore[arg-type]
+    from bf_core.db.dialect import new_sqlite_file
+
     part = path.with_name(path.name + ".part")
     part.open("wb").close()  # an empty file: a folder that is missing or closed for writing is an OSError
-    conn = sqlite3.connect(part, isolation_level=None)
+    conn = new_sqlite_file(part, encoding="UTF-16le", page_size=4096)
     try:
         try:
-            for pragma in ("page_size = 4096", "encoding = 'UTF-16le'", "journal_mode = MEMORY", "synchronous = OFF"):
-                conn.execute(f"PRAGMA {pragma}")
             for statement in DDL:
                 conn.execute(statement)
             conn.execute("BEGIN")

@@ -12,6 +12,7 @@ encoding, «bombs» (lengths and counts a file only declares).
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import sqlite3
 import struct
@@ -23,7 +24,7 @@ import pytest
 
 from bf_core.formats import tridb, tridb_blob
 from bf_core.formats.errors import FormatError
-from bf_core.formats.meshset import MeshSet, name_in_file
+from bf_core.formats.meshset import MeshEntry, MeshSet, name_in_file
 from bf_core.formats.tridb import check_measures, declared, inspect_tridb, open_tridb, read_tridb
 from bf_core.geo.meshes import mesh_stats
 from tests.formats import tridb_builder as tb
@@ -75,7 +76,8 @@ def box(v: np.ndarray, t: np.ndarray, **more: Any) -> dict[str, Any]:
 def test_real_files_bit_for_bit(name: str, count: int, points: int, triangles: int) -> None:
     conn = sqlite3.connect(REAL / name)
     rows = conn.execute(
-        "SELECT g.ID, i.Name, i.Colour, g.Geometry FROM Geometry g JOIN GeneralInformation i ON i.ID = g.ID ORDER BY g.ID"
+        "SELECT g.ID, i.Name, i.Colour, g.Geometry FROM Geometry g JOIN GeneralInformation i ON i.ID = g.ID "
+        "ORDER BY g.ID"
     ).fetchall()
     defs = [r[0] for r in conn.execute("SELECT Name FROM UserAttributeDefinition ORDER BY ID")]
     conn.close()
@@ -142,7 +144,7 @@ def test_source_rows_of_a_real_file() -> None:
 
 
 def test_the_file_is_only_read(tmp_path: Path) -> None:
-    folder = tmp_path / "Каркасы #1 100% ?"
+    folder = tmp_path / ("Каркасы #1 100% & (копия)" + ("" if os.name == "nt" else " ?"))  # «?» is not a Windows name
     folder.mkdir()
     path = folder / "Рудные тела & co.tridb"
     shutil.copyfile(REAL / "ORE SEP 2025.tridb", path)
@@ -267,6 +269,7 @@ def test_one_broken_wireframe_does_not_lose_the_others(tmp_path: Path) -> None:
             "Не BLOB": "broken", "Чужой": "broken", "Каркас 8": "ok", "Последний": "ok", "Без геометрии": "broken",
         }  # fmt: skip
         assert f.read(9).name == "Последний" and fails(f.read, 77).code == "broken"
+        assert fails(f.read, MeshEntry(77, "Чужая запись", 1, 1)).code == "broken"
     assert fails(read_tridb, path).code == "bad_mesh"  # the strict reading stops at the first one
     assert [m.name for m in read_tridb(path, keys=[9, 1, 8])] == ["Целый", "Каркас 8", "Последний"]
 
@@ -308,7 +311,7 @@ def test_blob_structure_is_checked(tmp_path: Path) -> None:
     v, t = cube(2, 10.0)
     good = tb.geometry(v, t)
     x, y, z = (np.ascontiguousarray(v[:, k]).tobytes() for k in range(3))
-    head = good[:60]
+    head, tt = good[:60], t.tobytes()
     cases = {
         "magic": (tb.geometry(v, t, magic=b"\xfe\xff\xff\xff"), "broken"),
         "short": (good[:20], "broken"),
@@ -319,9 +322,9 @@ def test_blob_structure_is_checked(tmp_path: Path) -> None:
         "negative length": (head + struct.pack("<qq", -8, 1) + x, "truncated"),
         "guid bomb": (good[:8] + struct.pack("<qq", 1 << 40, 9) + good[24:], "broken"),
         "no triangles block": (head + tb.block(1, x) + tb.block(2, y) + tb.block(3, z), "broken"),
-        "x shorter": (head + tb.block(1, x[:-8]) + tb.block(2, y) + tb.block(3, z) + tb.block(4, t.tobytes()), "broken"),
-        "odd triangles": (head + tb.block(1, x) + tb.block(2, y) + tb.block(3, z) + tb.block(4, t.tobytes()[:-4]), "broken"),
-        "block twice": (good + tb.block(4, t.tobytes()), "broken"),
+        "x shorter": (head + tb.block(1, x[:-8]) + tb.block(2, y) + tb.block(3, z) + tb.block(4, tt), "broken"),
+        "odd triangles": (head + tb.block(1, x) + tb.block(2, y) + tb.block(3, z) + tb.block(4, tt[:-4]), "broken"),
+        "block twice": (good + tb.block(4, tt), "broken"),
     }  # fmt: skip
     for what, (blob, code) in cases.items():
         path = blob_case(tmp_path, blob)
@@ -347,6 +350,13 @@ def test_extra_blocks_and_other_versions(tmp_path: Path) -> None:
     err = fails(read_tridb, blob_case(tmp_path, newer, XMinimum=0.0))
     assert err.code == "unsupported" and "версия геометрии TRIDB 6" in err.message and "Micromine" in err.hint
     assert fails(read_tridb, blob_case(tmp_path, newer[:-1])).code == "unsupported"
+    # nothing to compare with (the file states neither the counts nor the extent) is not an agreement
+    silent = tb.build(tmp_path / "silent.tridb", [box(v, t, id=1, name="Тело", blob=newer, props=[])])
+    assert fails(read_tridb, silent).code == "unsupported"
+    no_extent = blob_case(tmp_path, newer, XMinimum=None)
+    assert fails(read_tridb, no_extent).code == "unsupported"
+    (mesh,) = read_tridb(blob_case(tmp_path, tb.geometry(v, t), XMinimum=None, ZMaximum=None))  # version 5: no remark
+    assert mesh.warnings == [] and "as" not in mesh.source
     assert fails(
         read_tridb, blob_case(tmp_path, tb.geometry(v, t, version=b"\x00\x00\x04\x00", extra=[(9, b"")]))
     ).code == ("unsupported")

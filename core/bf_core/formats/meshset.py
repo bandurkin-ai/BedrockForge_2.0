@@ -53,6 +53,7 @@ MAX_ATTR_NAME = 100
 MAX_ATTR_TEXT = 2000
 WELD_SLICE = 1 << 20  # corners welded at once: bounds the growth of the table (≈ 32 MB a slice)
 _COLOR = re.compile(r"#[0-9a-f]{6}")
+_CONTROLS = {c: " " for c in (*range(32), 127)}  # NUL and the like in a name of a broken file
 _HINT = "Проверьте исходный файл каркаса."
 
 
@@ -61,8 +62,9 @@ def n_text(x: int) -> str:
 
 
 def clean_name(value: Any, fallback: str = "Каркас") -> str:
-    """A name as the project stores it: spaces collapsed, at most `MAX_NAME` characters, never empty."""
-    return " ".join(str(value if value is not None else "").split())[:MAX_NAME] or fallback
+    """A name as the project stores it: control characters and runs of spaces become one space, at most
+    `MAX_NAME` characters, never empty."""
+    return " ".join(str(value if value is not None else "").translate(_CONTROLS).split())[:MAX_NAME] or fallback
 
 
 def source_of(fmt: str, raw_name: Any, name: str, **more: Any) -> dict[str, Any]:
@@ -164,7 +166,10 @@ def _checked_attrs(raw: Any) -> list[dict[str, Any]]:
                 _HINT,
             )
         seen.add(name_key(name))
-        out.append({"name": name, "value": attr_value(a.get("value"))})
+        value = attr_value(a.get("value"))
+        if isinstance(value, str) and len(value) > MAX_ATTR_TEXT:
+            raise FormatError("bad_attrs", f"Значение атрибута «{name[:40]}» длиннее {MAX_ATTR_TEXT} знаков.", _HINT)
+        out.append({"name": name, "value": value})
     if len(out) > MAX_ATTRS:
         raise FormatError("bad_attrs", f"Атрибутов каркаса больше {MAX_ATTRS}.", _HINT)
     return out

@@ -291,3 +291,44 @@ def iter_driver_rows(conn: Connection, sql: str, params: Sequence[Any], size: in
             yield part
     finally:
         cur.close()
+
+
+# --- SQLite files of other programs (a TRIDB of Micromine: formats/tridb.py, tridb_write.py) --------------
+
+
+def open_sqlite_file(path: Any) -> Any:
+    """A database file that is not ours, to be read (a `sqlite3` connection in autocommit mode): read-only and
+    immutable — SQLite neither locks the file nor writes a journal next to it — with what SQLite advises for a
+    file that is not trusted: its schema runs no functions of ours, the cells of a page are checked, no mmap."""
+    import sqlite3
+    from pathlib import Path
+    from urllib.parse import quote
+
+    p = str(Path(path).resolve()).replace("\\", "/")
+    p = p if p.startswith("/") else "/" + p  # C:/dir → /C:/dir
+    uri = "file:" + ("//" if p.startswith("//") else "") + quote(p, safe="/:") + "?mode=ro&immutable=1"
+    conn = sqlite3.connect(uri, uri=True, isolation_level=None)
+    try:
+        for pragma in ("query_only = ON", "trusted_schema = OFF", "cell_size_check = ON", "mmap_size = 0"):
+            conn.execute(f"PRAGMA {pragma}")
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
+def new_sqlite_file(path: Any, *, encoding: str, page_size: int = 4096) -> Any:
+    """An empty database file for the writer of a format (a `sqlite3` connection in autocommit mode) with the
+    text encoding and the page size of the format. The journal is kept in memory and nothing is synced: the
+    writer fills a temporary file and renames it, so a file half written is never the result."""
+    import sqlite3
+
+    conn = sqlite3.connect(path, isolation_level=None)
+    try:
+        for pragma in (f"page_size = {int(page_size)}", f"encoding = '{encoding}'", "journal_mode = MEMORY"):
+            conn.execute(f"PRAGMA {pragma}")
+        conn.execute("PRAGMA synchronous = OFF")
+    except BaseException:
+        conn.close()
+        raise
+    return conn
