@@ -1,4 +1,5 @@
-"""/api/v1/viz — geometry and data of drillhole sets and line layers for the 3D window (ADR 0007 §1, ADR 0011 §3).
+"""/api/v1/viz — geometry and data of drillhole sets, line layers and wireframes for the 3D window (ADR 0007 §1,
+ADR 0011 §3).
 
 Binary answers are BFA1 (`viz/binary.py`) with an ETag of their key (`viz/keys.py`): If-None-Match → 304
 before any calculation; `Cache-Control: no-cache`, so the window asks again after every change.
@@ -206,6 +207,36 @@ def line_part(
         state = lines.layer_state(conn, layer_id)
     tag = lines.part_etag(project.uid, state, k, lod)
     return _answer(tag, if_none_match, lambda: lines.part(project, state, k, lod))
+
+
+# --- wireframes and DTMs (ADR 0011 §3) -----------------------------------------------------------------
+
+
+@router.get("/wireframes/{wireframe_id}")
+def wireframe(svc: Svc, wireframe_id: int, if_none_match: IfNoneMatch = None) -> Response:
+    """The manifest of a wireframe: colour, DTM settings, extent, levels of detail, parts with their ETags."""
+    from . import meshes
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        state = meshes.mesh_state(conn, wireframe_id)
+    return _answer(meshes.manifest_etag(project.uid, state), if_none_match, lambda: meshes.manifest(project, state))
+
+
+@router.get("/wireframes/{wireframe_id}/parts/{k}")
+def wireframe_part(
+    svc: Svc, wireframe_id: int, k: int, lod: Annotated[int, Query()] = 0, if_none_match: IfNoneMatch = None
+) -> Response:
+    """Part k of a wireframe at a level of detail: 0 — every triangle, 1 and 2 — about 1/8 and 1/64 of them."""
+    from . import meshes
+
+    project = svc.require_current()
+    if lod not in range(meshes.gm.LOD_LEVELS):
+        raise meshes.bad_lod()
+    with dialect.read_tx(project.engine) as conn:
+        state = meshes.mesh_state(conn, wireframe_id)
+    tag = meshes.part_etag(project.uid, state, k, lod)
+    return _answer(tag, if_none_match, lambda: meshes.part(project, state, k, lod))
 
 
 # --- the window «Данные по скважинам» (ТЗ 7.17, ADR 0007 §6) -----------------------------------------------
