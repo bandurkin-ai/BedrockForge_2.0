@@ -3,8 +3,9 @@
 
 Holes drilled from a pit surface (`tools/gen/wireframes.py`: 150–400 m long, 20 survey stations each, dips of
 45–90° that wander; every fifth collar is a vertex of the surface — as a DTM built through the collars has it —
-the others stand above it) against two wireframes as the store keeps them (triangles in spatial order): the
-surface with 90 % of the triangles and a closed ore body under it. In a fresh process, as the marks of
+and its hole goes into the ground there; the others stand above the surface) against two wireframes as the
+store keeps them (triangles in spatial order): the surface with 90 % of the triangles and a closed ore body
+under it. In a fresh process, as the marks of
 `GET /viz/sets/{id}/intersections` are found the first time:
   desurvey_s   the trajectories (minimum curvature);
   tree_s       `geo/intersect.py::MeshTarget` of both wireframes: the trees of boxes;
@@ -16,12 +17,17 @@ What is checked against the surface the wireframe was made from (`Surface.height
   max_error_m    … and from the surface, by height (ТЗ 7.15 asks for 1 mm): the path is tested by straight
                  pieces that stay within 1 mm of it, so a crossing next to an edge may be told by the plane
                  of the triangle across the edge — a fraction of a millimetre off the surface;
+  grazes         pairs «out and in again» of one hole within 2 mm of depth: a hole that runs a few millimetres
+                 under a crease of the surface — its straight pieces come out where the path itself does not
+                 (the limit of the kernel, `geo/intersect.py`: «what the 1 mm of the pieces can change»). They
+                 are counted and left out of the two errors above; `graze_error_m` — how far their points are
+                 from the surface;
   parity_errors  holes whose number of crossings does not fit their ends: a hole from above the surface to
                  below it crosses it an odd number of times, a collar on the surface counting as above it —
                  nothing slips between two triangles;
-  collar_errors  holes collared on a vertex of the surface that are not told right: such a hole crosses the
-                 surface at depth 0 exactly, once, when it goes into the ground — and not at all there when
-                 it starts over the face of a pit, into the air (it crosses the surface further down);
+  collar_errors  holes whose collar is not told right: a hole collared on a vertex of the surface crosses it
+                 at depth 0 exactly, once (the six triangles around the vertex are one crossing), a hole
+                 collared above the surface — never at depth 0;
   the crossings of the ore body lie on it (not outside its ellipsoid) and the holes enter it as often as they
   leave it or end inside.
 """
@@ -32,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 HOLE_KEYS = ("x", "y", "z", "td", "s_hole", "s_depth", "s_az", "s_dip")
+GRAZE_M = 2e-3
 
 
 def prepare(params: dict[str, Any], work: Path) -> None:
@@ -104,10 +111,18 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     surface = Surface.load(work / "surface.npz")
     on_surface = hits.mesh == 0
     p = hits.xyz[on_surface]
-    error = float(np.abs(surface.height(p[:, 0], p[:, 1]) - p[:, 2]).max())
+    off_surface = np.abs(surface.height(p[:, 0], p[:, 1]) - p[:, 2])
     a, b, c = (arrays["surface_xyz"][arrays["surface_tri"][hits.triangle[on_surface], k]] for k in range(3))
     normal = np.cross(b - a, c - a)
-    plane_error = float(np.abs(np.einsum("ij,ij->i", p - a, normal) / np.linalg.norm(normal, axis=1)).max())
+    off_plane = np.abs(np.einsum("ij,ij->i", p - a, normal) / np.linalg.norm(normal, axis=1))
+    hole, depth, side = hits.hole[on_surface], hits.depth[on_surface], hits.side[on_surface]
+    close = (hole[1:] == hole[:-1]) & (depth[1:] - depth[:-1] <= GRAZE_M) & (side[1:] == -side[:-1]) & (side[1:] != 0)
+    graze = np.zeros(len(p), dtype=bool)
+    for i in np.flatnonzero(close).tolist():  # (a crossing is in one pair)
+        if not graze[i]:
+            graze[i] = graze[i + 1] = True
+    error, plane_error = float(off_surface[~graze].max()), float(off_plane[~graze].max())
+    graze_error = float(off_surface[graze].max()) if graze.any() else 0.0
     crossed = np.bincount(hits.hole[on_surface], minlength=n)
     lengths = traj.lengths()
     built = np.flatnonzero(np.isfinite(lengths))
@@ -115,12 +130,9 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     below = surface.height(end[:, 0], end[:, 1]) - end[:, 2]  # NaN — the hole ends outside the surface
     known = ~np.isnan(below)
     parity_errors = int(np.count_nonzero((crossed[built][known] % 2 == 1) != (below[known] > 0.0)))
-    on_node = np.flatnonzero(np.arange(n) % 5 == 0)  # these collars are vertices of the surface
+    on_node = np.arange(n) % 5 == 0  # these collars are vertices of the surface
     at_zero = np.bincount(hits.hole[on_surface & (hits.depth == 0.0)], minlength=n)
-    start = traj.positions(on_node, np.full(len(on_node), 1e-3))  # a millimetre down the hole
-    into_ground = surface.height(start[:, 0], start[:, 1]) > start[:, 2]
-    collar_errors = int(np.count_nonzero(at_zero[on_node] != into_ground))
-    collar_errors += int(np.count_nonzero(np.delete(at_zero, on_node)))  # no other hole starts on the surface
+    collar_errors = int(np.count_nonzero(at_zero != on_node))
     at_collar = int(at_zero.sum())
 
     # the crossings of the ore body: on its facets — inside its ellipsoid, never outside
@@ -153,6 +165,8 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         "ends_inside": int(spans.to_end.sum()),
         "plane_error_m": plane_error,
         "max_error_m": error,
+        "grazes": int(graze.sum()) // 2,
+        "graze_error_m": graze_error,
         "parity_errors": parity_errors,
         "collar_errors": collar_errors,
     }

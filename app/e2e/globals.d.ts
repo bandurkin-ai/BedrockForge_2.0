@@ -46,6 +46,8 @@ interface BfSceneState {
     sections: { wireframe: number; lines: number; closed: number; segments: number; color: string; bbox: number[] | null }[];
     marks: { set: number; marks: number; labels: number; objects: number[] }[];
   };
+  /** the red layers of checked wireframes: the triangles that cross each other (Э8, `chk:<id>`) */
+  checks: { wireframe: number; triangles: number; groups: number; visible: boolean }[];
   /** the level of what has no height of its own: a metre under the lowest object */
   floor: number;
   /** the layer of displays along holes */

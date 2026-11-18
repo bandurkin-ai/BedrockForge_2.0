@@ -14,8 +14,8 @@ them: its step is 0.5 m on the northings).
     scene(n)              about n triangles as the wireframes of one file: a large surface, a fault, three ore
                           bodies and forty lenses — with names, colours and attributes
     drillholes(surface, n) collars and survey stations of n holes drilled from the surface: every fifth collar
-                          is a vertex of the surface (as a DTM built through the collars has it), the others
-                          stand above it
+                          is a vertex of the surface (as a DTM built through the collars has it) and its hole
+                          goes into the ground there, steeper than any face; the others stand above it
 
 The triangles are in the order a file has them (row by row), not in the spatial order of the store.
 """
@@ -257,8 +257,9 @@ def _mesh(name: str, mesh: tuple[np.ndarray, np.ndarray], color: str, attrs: lis
 
 def drillholes(surface: Surface, holes: int, *, stations: int = 20, seed: int = 7) -> dict[str, np.ndarray]:
     """Collars and survey stations of `holes` holes drilled from the surface: {x, y, z, td, s_hole, s_depth,
-    s_az, s_dip}. Every fifth collar is a node of the surface, the others stand 0.5–30 m above it; the holes
-    are 150–400 m long, dip 45–90° and wander (the stations come in any order)."""
+    s_az, s_dip}. Every fifth collar is a node of the surface and its hole starts at 75–90° — steeper than the
+    faces of the pits (51°), into the ground; the others stand 0.5–30 m above the surface and start at 45–90°.
+    The holes are 150–400 m long and wander (the stations come in any order)."""
     rng = np.random.default_rng(seed)
     sx, sy = surface.side
     x = surface.origin[0] + rng.uniform(0.08, 0.92, holes) * sx
@@ -273,7 +274,8 @@ def drillholes(surface: Surface, holes: int, *, stations: int = 20, seed: int = 
     drift = rng.normal(0.0, 2.0, (holes, stations)).cumsum(axis=1).ravel()
     s_az = (np.repeat(rng.uniform(0.0, 360.0, holes), stations) + drift) % 360.0
     drift = rng.normal(0.0, 1.0, (holes, stations)).cumsum(axis=1).ravel()
-    s_dip = np.clip(np.repeat(rng.uniform(-90.0, -45.0, holes), stations) + drift, -90.0, -30.0)
+    dip = np.where(on_node, rng.uniform(-90.0, -75.0, holes), rng.uniform(-90.0, -45.0, holes))
+    s_dip = np.clip(np.repeat(dip, stations) + drift, -90.0, np.repeat(np.where(on_node, -65.0, -30.0), stations))
     order = rng.permutation(holes * stations)
     return {"x": x, "y": y, "z": z, "td": td, "s_hole": s_hole[order], "s_depth": s_depth[order],
             "s_az": s_az[order], "s_dip": s_dip[order]}  # fmt: skip

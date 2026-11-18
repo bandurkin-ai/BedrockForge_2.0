@@ -3,7 +3,9 @@
 // its point lies on the float64 surface, «Свойства» show the point, the dip and the dip direction. A section
 // through the DTM «Рельеф» with clipping on shows the wireframe by its section line: the line of the core, in the
 // colour of the wireframe, seen on the screen; moving the line replaces it, clipping off removes it. The style
-// of the traces «Пересечения» marks where the holes cross the relief: as many marks as the core finds.
+// of the traces «Пересечения» marks where the holes cross wireframes — not the DTMs: the relief of the demo is
+// built through the collars, every hole would get «0,000 м · Рельеф». With «с ЦТМ» the holes are marked on the
+// relief too: as many marks as the core finds.
 import { expect, test, type Page } from "@playwright/test";
 import { close, launch, shot, waitFrame } from "./helpers";
 
@@ -148,22 +150,37 @@ test("3D: exact pick of the relief in «Свойства», the section line of 
     // ---- 8.24: marks where the holes cross the relief ----------------------------------------------------
     const sets = (await api("GET", "/drillholes/sets")).body.sets as { id: number }[];
     expect((await state(page)).exact.marks).toEqual([]);
+    // what the holes may be marked on: the wireframes of «Каркасы» and — only when asked — the DTMs
+    type Listed = { id: number; triangle_count: number; dtm: unknown };
+    const listed = ((await api("GET", "/wireframes")).body.wireframes as Listed[]).filter((w) => w.triangle_count > 0);
+    const solids = listed.filter((w) => w.dtm === null).map((w) => w.id).sort((a, b) => a - b);
+    const everything = listed.map((w) => w.id).sort((a, b) => a - b);
+    expect(everything).toContain(relief.id);
+    expect(solids).not.toContain(relief.id);
+    // by default — without the DTMs: no «0,000 м · Рельеф» at the collar of every hole
     expect((await run("holes.trace_style", { set_id: sets[0].id, intersections: true })).ok).toBe(true);
-    const found = await bfa1(`/viz/sets/${sets[0].id}/intersections?wireframes=${relief.id}`, 0);
+    if (solids.length) await expect.poll(async () => (await state(page)).exact.marks[0]?.objects ?? [], { timeout: 30_000 }).toEqual(solids);
+    await waitFrame(page);
+    for (const m of (await state(page)).exact.marks) expect(m.objects).not.toContain(relief.id);
+    if (!solids.length) expect((await state(page)).exact.marks).toEqual([]); // nothing to cross: no request, no layer
+    // «с ЦТМ»: the relief is crossed too
+    expect((await run("holes.trace_style", { set_id: sets[0].id, withDtm: true })).ok).toBe(true);
+    const found = await bfa1(`/viz/sets/${sets[0].id}/intersections?wireframes=${everything.join(",")}`, 0);
     expect(found.header.kind).toBe("intersections");
     expect(found.header.n as number).toBeGreaterThan(0);
+    await expect.poll(async () => (await state(page)).exact.marks[0]?.objects ?? [], { timeout: 30_000 }).toEqual(everything);
     await expect.poll(async () => (await state(page)).exact.marks[0]?.marks ?? 0, { timeout: 30_000 }).toBe(found.header.n);
     await waitFrame(page);
     const marks = (await state(page)).exact.marks[0];
-    expect(marks).toMatchObject({ set: sets[0].id, objects: [relief.id] });
+    expect(marks).toMatchObject({ set: sets[0].id, objects: everything });
     expect(marks.labels).toBe(Math.min(marks.marks, 3000));
     expect((await state(page)).layers).toContain(`xm:${sets[0].id}`);
     await page.screenshot({ path: shot("exact-marks.png") });
     // «только с видимыми объектами»: a hidden relief gives no marks; the style off — no marks
     expect((await run("layer.show", { layer: "wireframe", id: relief.id, visible: false })).ok).toBe(true);
-    await expect.poll(async () => (await state(page)).exact.marks.length).toBe(0);
+    await expect.poll(async () => (await state(page)).exact.marks.flatMap((m) => m.objects)).toEqual(solids);
     expect((await run("layer.show", { layer: "wireframe", id: relief.id, visible: true })).ok).toBe(true);
-    await expect.poll(async () => (await state(page)).exact.marks.length, { timeout: 30_000 }).toBe(1);
+    await expect.poll(async () => (await state(page)).exact.marks[0]?.objects ?? [], { timeout: 30_000 }).toEqual(everything);
     expect((await run("holes.trace_style", { set_id: sets[0].id, intersections: false })).ok).toBe(true);
     await expect.poll(async () => (await state(page)).exact.marks.length).toBe(0);
     expect((await state(page)).layers).not.toContain(`xm:${sets[0].id}`);
