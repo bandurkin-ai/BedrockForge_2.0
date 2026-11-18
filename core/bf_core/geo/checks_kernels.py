@@ -20,6 +20,8 @@ the coarser triangle). The kernels release the GIL. numba is imported with this 
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from bf_core.jit import njit
@@ -172,13 +174,15 @@ def extents(box, out):  # type: ignore[no-untyped-def]
 
 @njit(cache=True, nogil=True, inline="always")
 def _cell(x, g, c):  # type: ignore[no-untyped-def]
-    """The number of the cell of size c, counted from g, that holds the coordinate x."""
-    return int((np.float64(x) - g) // c)
+    """The number of the cell that holds the coordinate x: cells are counted from g, `c` is one over their
+    size. The same function everywhere, and it never decreases as x grows: that is all the grid needs."""
+    return int(math.floor((np.float64(x) - g) * c))
 
 
 @njit(cache=True, nogil=True)
 def grid_dims(whole, size, dims):  # type: ignore[no-untyped-def]
-    """`dims[L]` — cells along X, Y and Z of the grid of level L (cells of `size[L]`) over the extent `whole`."""
+    """`dims[L]` — cells along X, Y and Z of the grid of level L over the extent `whole`. `size[L]` here and
+    below is one over the size of a cell of level L."""
     for level in range(size.shape[0]):
         for k in range(3):
             dims[level, k] = _cell(whole[k + 3], whole[k], size[level]) + 1
@@ -246,6 +250,12 @@ def split(keys, ids, m):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True, inline="always")
+def _shared(i0, i1, i2, j0, j1, j2):  # type: ignore[no-untyped-def]
+    """Do two triangles have a common vertex?"""
+    return i0 == j0 or i0 == j1 or i0 == j2 or i1 == j0 or i1 == j1 or i1 == j2 or i2 == j0 or i2 == j1 or i2 == j2
+
+
+@njit(cache=True, nogil=True, inline="always")
 def _found(i, j, mark, sample, counters):  # type: ignore[no-untyped-def]
     """Count a crossing pair, flag its triangles and keep it in the sample: every `STRIDE`-th pair is kept; when
     the sample is full, every second one of it stays and the stride doubles."""
@@ -307,7 +317,7 @@ def scan_runs(  # type: ignore[no-untyped-def]
                 if off + (_cell(a0, g0, c) * d1 + _cell(a1, g1, c)) * d2 + _cell(a2, g2, c) != key:
                     continue  # another cell owns the pair
                 j0, j1, j2 = t[j, 0], t[j, 1], t[j, 2]
-                if i0 == j0 or i0 == j1 or i0 == j2 or i1 == j0 or i1 == j1 or i1 == j2 or i2 == j0 or i2 == j1 or i2 == j2:  # fmt: skip
+                if _shared(i0, i1, i2, j0, j1, j2):
                     continue
                 if crossing(v, t, i, j, eps, point):
                     _found(i, j, mark, sample, counters)
@@ -383,7 +393,7 @@ def scan_levels(  # type: ignore[no-untyped-def]
                             if off + (_cell(a0, g0, c) * d1 + _cell(a1, g1, c)) * d2 + _cell(a2, g2, c) != key:
                                 continue
                             j0, j1, j2 = t[j, 0], t[j, 1], t[j, 2]
-                            if i0 == j0 or i0 == j1 or i0 == j2 or i1 == j0 or i1 == j1 or i1 == j2 or i2 == j0 or i2 == j1 or i2 == j2:  # fmt: skip
+                            if _shared(i0, i1, i2, j0, j1, j2):
                                 continue
                             if crossing(v, t, i, j, eps, point):
                                 _found(min(i, j), max(i, j), mark, sample, counters)
