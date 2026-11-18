@@ -203,6 +203,10 @@ def part_bodies(v: np.ndarray, t: np.ndarray, part: gm.MeshPart, lods: tuple[int
 # --- the cache of the simplified levels ------------------------------------------------------------------
 
 SIMPLIFIED = tuple(range(1, gm.LOD_LEVELS))
+#: a part this small without its levels in the cache is drawn whole: simplifying it saves nothing on the
+#: screen, and made here, in the process of the API, the first simplification (numba compiling, cold) held its
+#: requests for seconds (the demo opened, «Аудит» and «Новый проект» waited)
+SMALL_PART = 4096
 
 
 def cache_dir(folder: Path, key: str) -> Path:
@@ -314,8 +318,11 @@ def parts_of(project: Any, state: MeshState) -> list[gm.MeshPart]:
     return built
 
 
-def _bodies(project: Any, state: MeshState, part: gm.MeshPart, lods: tuple[int, ...]) -> dict[int, bytes]:
-    """Read what a part needs — its rows of the triangle file and the vertices they use — and encode it."""
+def _bodies(
+    project: Any, state: MeshState, part: gm.MeshPart, lods: tuple[int, ...], *, whole_only: bool = False
+) -> dict[int, bytes]:
+    """Read what a part needs — its rows of the triangle file and the vertices they use — and encode it;
+    `whole_only` — every level asked for is the whole part (a small one, `SMALL_PART`)."""
     xyz, tri = _paths(project, state)
     t = np.fromfile(tri, dtype="<i4", count=3 * part.count, offset=12 * part.first).reshape(-1, 3)
     if len(t) != part.count:
@@ -325,6 +332,9 @@ def _bodies(project: Any, state: MeshState, part: gm.MeshPart, lods: tuple[int, 
         if int(t.max()) >= len(v) or int(t.min()) < 0:
             raise broken()
         whole = gm.make_part(part.k, 0, part.count, part.bbox)  # `t` holds the rows of this part only
+        if whole_only:
+            local, local_t = gm.part_mesh(v, t, whole)
+            return {lod: encode_part(part, lod, local, local_t) for lod in lods}
         return part_bodies(v, t, whole, lods)
     finally:
         del v  # the mapping closes with its last reference (Windows keeps a mapped file locked)
@@ -374,6 +384,8 @@ def part(project: Any, state: MeshState, k: int, lod: int) -> bytes:
     hit = _read(path, k, lod)
     if hit is not None:
         return hit
+    if p.count <= SMALL_PART:  # not made here: drawn whole until «Проверить» or an import makes its levels
+        return _bodies(project, state, p, (lod,), whole_only=True)[lod]
     with _building:  # four parts asked at once: pyfqmr holds the interpreter anyway
         hit = _read(path, k, lod)
         if hit is not None:

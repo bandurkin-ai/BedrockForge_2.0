@@ -490,3 +490,20 @@ def test_errors_are_russian_with_a_hint(stored) -> None:  # type: ignore[no-unty
     with dialect.write_tx(project.engine) as conn:
         wf_store.delete_wireframe(conn, box)
     assert c.get(f"{API}/viz/wireframes/{box}").json()["code"] == "wireframe_not_found"
+
+
+def test_a_small_part_without_its_levels_is_drawn_whole_and_not_simplified_here(stored, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    c, project, _mesh, _relief, box = stored
+
+    def boom(*_a, **_k):  # type: ignore[no-untyped-def]
+        raise AssertionError("a small part is not simplified in the process of the API")
+
+    monkeypatch.setattr(gm, "levels", boom)
+    whole = binary.decode(c.get(f"{API}/viz/wireframes/{box}/parts/0", params={"lod": 0}).content)
+    for lod in (1, 2):
+        head, arrays = binary.decode(c.get(f"{API}/viz/wireframes/{box}/parts/0", params={"lod": lod}).content)
+        assert head["lod"] == lod and head["triangles"] == whole[0]["triangles"] == 48
+        assert all(np.array_equal(arrays[k], whole[1][k]) for k in arrays)
+    with dialect.read_tx(project.engine) as conn:
+        state = vm.mesh_state(conn, box)
+    assert not vm.cache_dir(project.folder, state.cache_key()).exists()  # nothing cached: «Проверить» makes them
