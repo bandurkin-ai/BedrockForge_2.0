@@ -204,3 +204,10 @@ def test_retry_goes_to_the_project_of_the_job(jc) -> None:  # type: ignore[no-un
     jc.post(f"{API}/projects/{first['uid']}/open")
     r = jc.post(f"{API}/jobs/{key}/{jid}/retry").json()
     assert r["source"] == key
+
+
+def test_quick_worker_warms_the_kernels_of_the_simplified_copies(caplog: pytest.LogCaptureFixture) -> None:
+    from bf_core.jobs.worker import _warm_kernels
+
+    _warm_kernels()  # compiles (or loads) the kernels of `gm.levels`; never raises
+    assert "warm-up of the kernels failed" not in caplog.text
