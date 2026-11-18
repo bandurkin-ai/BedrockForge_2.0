@@ -1,4 +1,9 @@
-"""/api/v1/drillholes/import — the wizard «Импорт скважин» (ТЗ 7.7): look into a file, check a mapping, start."""
+"""Import wizards.
+
+/api/v1/drillholes/import — «Импорт скважин» (ТЗ 7.7): look into a file, check a mapping, start.
+/api/v1/import/objects — «Импорт файлов» (ТЗ 7.8, ADR 0011 §3): the composition of the chosen files of lines,
+points and rasters (`inspect`, nothing is written) and the start of the job `import.objects`.
+"""
 
 from __future__ import annotations
 
@@ -20,7 +25,7 @@ from bf_core.projects.store import ProjectService
 
 from .service import duplicate_targets
 
-router = APIRouter(prefix="/drillholes")
+dh = APIRouter(prefix="/drillholes")
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
 Kind = Literal["collar", "survey", "assay", "interval", "event"]
@@ -108,7 +113,7 @@ def forget_cached() -> None:
         _cache.clear()
 
 
-@router.post("/import/inspect")
+@dh.post("/import/inspect")
 def inspect(svc: Svc, body: InspectBody) -> dict[str, Any]:
     """Step «файл»: format, encoding, delimiter, sheets and the first rows as they are in the file."""
     svc.require_current()
@@ -142,7 +147,7 @@ def inspect(svc: Svc, body: InspectBody) -> dict[str, Any]:
     }
 
 
-@router.post("/import/check")
+@dh.post("/import/check")
 def check(svc: Svc, body: FileSpec) -> dict[str, Any]:
     """Step «колонки»: the whole file is read; kind and mapping are suggested unless given; issues and the
     normalized first rows (ТЗ 7.7 «Предпросмотр»)."""
@@ -239,7 +244,7 @@ def _preview(norm: Any, limit: int = 30) -> list[dict[str, Any]]:
     return rows
 
 
-@router.post("/import")
+@dh.post("/import")
 def start(svc: Svc, s: Sched, body: StartBody) -> dict[str, Any]:
     project = svc.require_current(writable=True)
     for f in body.files:
@@ -293,7 +298,7 @@ def start(svc: Svc, s: Sched, body: StartBody) -> dict[str, Any]:
     return {"source": key, "id": job_id}
 
 
-@router.get("/sets")
+@dh.get("/sets")
 def list_sets(svc: Svc) -> dict[str, Any]:
     """Sets of the open project for «Набор для загрузки» (the tree of sets — Э4)."""
     project = svc.require_current()
@@ -321,7 +326,7 @@ def list_sets(svc: Svc) -> dict[str, Any]:
         return {"sets": rows}
 
 
-@router.post("/import/forget")
+@dh.post("/import/forget")
 def forget() -> dict[str, Any]:
     """The wizard closed: the table it kept read is not needed any more."""
     forget_cached()
@@ -332,7 +337,7 @@ class PrjBody(BaseModel):
     path: str = Field(max_length=2000)
 
 
-@router.post("/crs/describe")
+@dh.post("/crs/describe")
 def describe_prj(body: PrjBody) -> dict[str, Any]:
     """A .prj chosen in the wizard: its name and WKT (ТЗ 9.12)."""
     from bf_core.crs import CrsError, read_prj
@@ -343,3 +348,93 @@ def describe_prj(body: PrjBody) -> dict[str, Any]:
         raise ApiError(
             422, "crs_unreadable", str(exc), "Выберите другой файл .prj или оставьте систему координат не заданной."
         ) from exc
+
+
+# --- «Импорт файлов»: lines, points, rasters (ТЗ 7.8, ADR 0011 §3) -----------------------------------------
+
+objects_router = APIRouter(prefix="/import/objects")
+
+
+class ObjectOptions(BaseModel):
+    encoding: str | None = Field(default=None, max_length=40)
+    # columns of a table of points, when they are not to be guessed (z: "" — no heights)
+    x: str | None = Field(default=None, max_length=500)
+    y: str | None = Field(default=None, max_length=500)
+    z: str | None = Field(default=None, max_length=500)
+    name: str | None = Field(default=None, max_length=200)
+
+
+class RasterLevel(BaseModel):
+    """«Уровень растров по Z» (ТЗ 7.19): numbers, or text with a comma or a point; empty — not set."""
+
+    elevation: float | str | None = None
+    shift: float | str | None = None
+
+
+class ObjectsBody(BaseModel):
+    files: list[Annotated[str, Field(max_length=2000)]] = Field(min_length=1, max_length=500)
+    options: dict[str, ObjectOptions] = Field(default_factory=dict)  # by the path of the main file
+    raster_z: RasterLevel = Field(default_factory=RasterLevel)
+    # an image without a georeference stands in the plane of the current section line (ТЗ 7.19)
+    section: bool = True
+    folder: str | None = Field(default=None, max_length=200)
+
+
+def _objects_request(svc: ProjectService, body: ObjectsBody, *, writable: bool) -> dict[str, Any]:
+    """Checked parameters of the composition and of the job: files, read options, the level, the section."""
+    from bf_core.rasters.store import section_edges
+
+    from .object_files import NUMBER_HINT, parse_level, usable_section
+
+    project = svc.require_current(writable=writable)
+    files = [str(_file(path)) for path in body.files]
+    try:
+        elevation, shift = parse_level(body.raster_z.model_dump())
+    except ValueError as exc:
+        raise ApiError(422, "not_a_number", str(exc), NUMBER_HINT) from exc
+    section = None
+    if body.section:
+        with dialect.read_tx(project.engine) as conn:
+            section = usable_section(section_edges(conn))
+    return {
+        "files": files,
+        "options": {path: o.model_dump(exclude_none=True) for path, o in body.options.items()},
+        "raster_z": {"elevation": elevation, "shift": shift},
+        "section": section,
+        "folder": " ".join(body.folder.split()) or None if body.folder else None,
+    }
+
+
+@objects_router.post("/inspect")
+def inspect_objects(svc: Svc, body: ObjectsBody) -> dict[str, Any]:
+    """The composition of the chosen files: formats, layers, lines, points and vertices, CRS, warnings, rasters
+    with their georeference, and what will not load and why. Nothing is written to the project."""
+    from .object_files import inspect_files
+
+    params = _objects_request(svc, body, writable=False)
+    return inspect_files(params["files"], params["options"], params["raster_z"], params["section"])
+
+
+@objects_router.post("")
+def start_objects(svc: Svc, s: Sched, body: ObjectsBody) -> dict[str, Any]:
+    from .object_files import plan
+
+    params = _objects_request(svc, body, writable=True)
+    groups, rest = plan(params["files"])
+    if not groups:
+        raise ApiError(
+            422,
+            "nothing_to_import",
+            "Среди выбранных файлов нет ни одного, который можно загрузить.",
+            "Подходят: стринги .str / .pit, .dxf, .shp, .mif, точки .xyz / .csv / .txt / .dat, растры с привязкой.",
+            extra={"rest": rest},
+        )
+    names = [g.main.name for g in groups]
+    title = "Импорт файлов: " + ", ".join(names[:3]) + (f" и ещё {len(names) - 3}" if len(names) > 3 else "")
+    key, job_id = s.submit("import.objects", params, title=title[:400])
+    return {"source": key, "id": job_id}
+
+
+router = APIRouter()
+router.include_router(dh)
+router.include_router(objects_router)
