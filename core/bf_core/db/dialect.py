@@ -82,19 +82,21 @@ def create_engine(url: str, *, schema: str | None = None) -> Engine:
         # hide_parameters: the values of a failed statement (a job's archive password among them) never reach
         # an error text, a job log or the operation log (ТЗ 7.9).
         engine = sa.create_engine(
-            url, poolclass=NullPool, connect_args={"check_same_thread": False}, hide_parameters=True
+            url, poolclass=NullPool, connect_args={"check_same_thread": False, "timeout": 30.0}, hide_parameters=True
         )
 
         @sa.event.listens_for(engine, "connect")
         def _on_connect(dbapi_conn: Any, _record: Any) -> None:
             dbapi_conn.isolation_level = None  # transactions are begun explicitly (BEGIN / BEGIN IMMEDIATE)
             cur = dbapi_conn.cursor()
+            # the wait first: `journal_mode` takes a lock too, and a writer of another connection (the demo being
+            # made, a job) may hold one longer than the 5 s of the driver (Windows CI: «database is locked»)
+            cur.execute("PRAGMA busy_timeout=30000")
             ro = "mode=ro" in url
             if not ro:
                 cur.execute("PRAGMA journal_mode=WAL")
             cur.execute("PRAGMA synchronous=NORMAL")
             cur.execute("PRAGMA foreign_keys=ON")
-            cur.execute("PRAGMA busy_timeout=30000")
             # Deleted content is overwritten: the archive password a job held is not left in free pages.
             cur.execute("PRAGMA secure_delete=ON")
             cur.close()
