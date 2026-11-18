@@ -32,6 +32,9 @@ import type { WireframeInfo } from "./objects";
 import { sceneUi } from "./sceneHost";
 
 export const SECTIONS_KEY = "sec";
+/** How far a section line may go from the origin of the layer of lines before the layer is made anew there:
+ * a wireframe crossed near the line is drawn within a tenth of a millimetre (float32 of the offset). */
+export const SECTION_ORIGIN_REACH_M = 4000;
 export const marksKey = (setId: number) => `xm:${setId}`;
 const wireframeKey = (id: number) => `wf:${id}`;
 
@@ -161,6 +164,12 @@ export class ExactSource {
     return apiUrl(t, path);
   }
 
+  /** The colour of a wireframe by its id: the list read once by id (marks of hundreds of wireframes). */
+  private colors(list: readonly WireframeInfo[]): (id: number) => string | null {
+    const byId = new Map(list.map((w) => [w.id, w.color]));
+    return (id) => byId.get(id) ?? null;
+  }
+
   private fail(e: unknown, what: string): void {
     if ((e instanceof VizError && (e.code === "cancelled" || e.status === 404)) || this.disposed) return; // gone: its layer leaves by the list
     sceneUi.set({ error: `${what}: ${e instanceof VizError ? e.full : e instanceof Error ? e.message : String(e)}` });
@@ -197,6 +206,13 @@ export class ExactSource {
       if (this.lines) this.scene.removeLayer(SECTIONS_KEY, false);
       this.lines = null;
       return;
+    }
+    if (this.lines && line && Math.hypot(line.x0 - this.lines.origin.x, line.y0 - this.lines.origin.y) > SECTION_ORIGIN_REACH_M) {
+      // the line went far (another part of the deposit): a new layer from a point of it, its lines asked again
+      for (const st of this.sections.values()) if (st.loading) this.cancel(st.path);
+      this.sections.clear();
+      this.scene.removeLayer(SECTIONS_KEY, false);
+      this.lines = null;
     }
     if (!this.lines && line) {
       this.lines = new SectionLinesView({ x: Math.round(line.x0), y: Math.round(line.y0), z: 0 }, { resolution: this.scene.resolution });
@@ -235,7 +251,7 @@ export class ExactSource {
     const off = new Set(hidden);
     const keys = this.input.keys();
     const all = this.input.wireframes();
-    const colorOf = (id: number) => this.input.wireframes().find((w) => w.id === id)?.color ?? null;
+    const colorOf = this.colors(all);
     const sets = new Set<number>();
     for (const s of this.input.sets()) {
       const style = setStyleOf(keys, s.id).trace;
@@ -272,7 +288,7 @@ export class ExactSource {
     this.ctx.labels.dispose();
     this.ctx.labels = new LabelCache(this.scene.clipPlanes);
     const keys = this.input.keys();
-    const colorOf = (id: number) => this.input.wireframes().find((w) => w.id === id)?.color ?? null;
+    const colorOf = this.colors(this.input.wireframes());
     for (const { id, view } of views) view.apply(setStyleOf(keys, id).trace, colorOf);
   }
 
@@ -296,7 +312,7 @@ export class ExactSource {
       if (!r.buffer) return; // 304: the same marks
       const marks = readHoleMarks(r.buffer);
       const style = setStyleOf(this.input.keys(), setId).trace;
-      const colorOf = (id: number) => this.input.wireframes().find((w) => w.id === id)?.color ?? null;
+      const colorOf = this.colors(this.input.wireframes());
       if (st.view) this.scene.removeLayer(marksKey(setId), false);
       st.view = null;
       this.trimLabels();

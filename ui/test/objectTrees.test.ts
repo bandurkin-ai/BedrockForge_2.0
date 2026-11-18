@@ -265,7 +265,7 @@ describe("`object.select`, «Снять выбор» (Esc) and `wireframe.dtm`",
     expect(back.result).toBe("«Рельеф» возвращён в раздел «Каркасы»: настройки рельефа сброшены");
     expect(solids(sceneObjects.get().wireframes).map((w) => w.id)).toEqual([42]);
     app.store.set({ selected: null });
-    expect(await app.registry.execute("wireframe.dtm", { on: true })).toEqual({ ok: false, result: "Выберите каркас в дереве или укажите wireframe_id" });
-    expect((await app.registry.execute("wireframe.dtm", { wireframe_id: 77 })).result).toBe("Каркас №77 не найден: обновите дерево проекта");
+    expect(await app.registry.execute("wireframe.dtm", { on: true })).toEqual({ ok: false, result: "Каркас не выбран. Выберите каркас в дереве проекта или укажите wireframe_id." });
+    expect((await app.registry.execute("wireframe.dtm", { wireframe_id: 77 })).result).toBe("Каркас №77 не найден. Обновите дерево проекта.");
   });
 });

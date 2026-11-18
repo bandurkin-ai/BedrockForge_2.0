@@ -9,9 +9,11 @@ through a fake ODA File Converter (`tests/formats/test_dwg.py`); the real one is
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ import sqlalchemy as sa
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.db.schema import export_log
+from bf_core.formats import mesh_io
 from bf_core.formats.meshset import MeshSet
 from bf_core.formats.registry import read_objects
 from bf_core.jobs.context import JobCancelled, JobError
@@ -398,6 +401,40 @@ def test_cancel_and_failures_leave_no_file(proj: Project, out_dir: Path) -> None
         proj.run(path=str(out_dir / "папка.dxf"), format="dxf", wireframe_ids=[big])
     assert failed.value.code == "file_unwritable" and failed.value.hint
     assert [p.name for p in out_dir.iterdir()] == ["папка.dxf"] and len(proj.log_rows()) == 1
+
+
+def test_retry_replaces_what_the_failed_job_wrote(
+    proj: Project, out_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """«Повторить» (`retry_of` of the scheduler): the files changed after the first job started are its own."""
+    ids = [proj.put(m) for m in models()]
+    params = proj.request(path=str(out_dir / "pit"), format="dtm", wireframe_ids=ids)  # «pit.dtm», «pit.str»
+    since = dialect.utcnow().isoformat()
+    real = os.replace
+
+    def replace(a: Any, b: Any) -> None:
+        if str(b).endswith(".str"):
+            raise OSError(28, "No space left on device")
+        real(a, b)
+
+    monkeypatch.setattr(mesh_io.os, "replace", replace)
+    with pytest.raises(JobError) as failed:
+        proj.run(**params)
+    assert failed.value.code == "file_unwritable" and sorted(p.name for p in out_dir.iterdir()) == ["pit.dtm"]
+    monkeypatch.setattr(mesh_io.os, "replace", real)
+    with pytest.raises(JobError) as failed:  # not a retry: the .dtm is not asked about
+        proj.run(**params)
+    assert failed.value.code == "files_exist" and "pit.dtm" in failed.value.message
+    out, _ = proj.run(**params, retry_of={"id": 1, "since": since})
+    assert out["files"] == ["pit.dtm", "pit.str"] and len(proj.log_rows()) == 1
+    # a file older than the first job is somebody else's: a retry does not replace it
+    (out_dir / "чужой.str").write_text("чужие стринги", encoding="utf-8")
+    time.sleep(3 * we.CLOCK_S)
+    late = proj.request(path=str(out_dir / "чужой.dtm"), format="dtm", wireframe_ids=ids, overwrite=True)
+    with pytest.raises(JobError) as failed:  # its first job started after the file was there
+        proj.run(**{**late, "overwrite": False}, retry_of={"id": 2, "since": dialect.utcnow().isoformat()})
+    assert failed.value.code == "files_exist" and "чужой.str" in failed.value.message
+    assert (out_dir / "чужой.str").read_text(encoding="utf-8") == "чужие стринги"
 
 
 # --- through the API and the scheduler -------------------------------------------------------------------

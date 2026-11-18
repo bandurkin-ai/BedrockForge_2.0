@@ -77,10 +77,12 @@ export class ChecksSource {
         continue;
       }
       if (st.view?.setVisible(shown)) changed = true;
-      if (st.sig !== sig || st.failed) {
+      // a hidden wireframe without a layer (none came, «missing»): the check is asked for when it is shown —
+      // `sig` stays that of the last answer until then
+      if ((st.sig !== sig || st.failed) && (st.loading || shown || st.view)) {
         st.sig = sig;
         if (st.loading) st.stale = true;
-        else if (shown || st.view) void this.load(w.id, st, true);
+        else void this.load(w.id, st, true);
       }
     }
     for (const id of [...this.layers.keys()]) if (!wanted.has(id)) this.drop(id);

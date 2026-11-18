@@ -187,6 +187,18 @@ describe("`wireframe.check` and `model.self_intersections` (ADR 0013 §6)", () =
     expect(itemReason(button, { ...EMPTY_CONTEXT, hasObject: true }, () => null)).toBeNull();
   });
 
+  it("«Проверить» writes the results into the project: unavailable in a project open only for reading", async () => {
+    const { app, core } = await open([wf(41)]);
+    const button = flattenRibbon(buildRibbon(DEFAULT_WORKSPACE, DEFAULT_VIEW)).find((i) => i.command === "wireframe.check")!;
+    const ctx = { ...EMPTY_CONTEXT, hasProject: true, hasObject: true };
+    expect(itemReason(button, ctx, (id) => app.registry.reason(id))).toBeNull();
+    app.store.set({ projectReadOnly: true });
+    expect(itemReason(button, ctx, (id) => app.registry.reason(id))).toBe("Проект открыт только для чтения"); // the ribbon, the menu
+    expect((await app.registry.execute("wireframe.check", { wireframe_id: 41 })).ok).toBe(false);
+    expect(app.registry.reason("model.self_intersections")).toBeNull(); // what a check found is read, not written
+    expect(core.calls).toEqual([]);
+  });
+
   it("«Проверить» starts the job of the wireframe once: a wireframe being checked is not queued again", async () => {
     const { app, core } = await open([wf(41, { name: "Рудное тело" }), wf(42, { name: "Рельеф" })]);
     const first = await app.registry.execute("wireframe.check", { wireframe_id: 41 });
@@ -213,9 +225,9 @@ describe("`wireframe.check` and `model.self_intersections` (ADR 0013 §6)", () =
 
   it("tells what is wrong: nothing selected, no such wireframe, no triangles, a refusal of the core with its hint", async () => {
     const { app, core } = await open([wf(41), wf(43, { name: "Пустой", triangle_count: 0 })]);
-    expect(await app.registry.execute("wireframe.check")).toEqual({ ok: false, result: "Выберите каркас в дереве или укажите wireframe_id" });
-    expect((await app.registry.execute("wireframe.check", { wireframe_id: 99 })).result).toBe("Каркас №99 не найден: обновите дерево проекта");
-    expect((await app.registry.execute("wireframe.check", { wireframe_id: 43 })).result).toBe("В каркасе «Пустой» нет треугольников: проверять нечего");
+    expect(await app.registry.execute("wireframe.check")).toEqual({ ok: false, result: "Каркас не выбран. Выберите каркас в дереве проекта или укажите wireframe_id." });
+    expect((await app.registry.execute("wireframe.check", { wireframe_id: 99 })).result).toBe("Каркас №99 не найден. Обновите дерево проекта.");
+    expect((await app.registry.execute("wireframe.check", { wireframe_id: 43 })).result).toBe("В каркасе «Пустой» нет треугольников: проверять нечего. Выберите в дереве каркас с треугольниками.");
     core.state.refuse = true;
     expect(await app.registry.execute("wireframe.check", { wireframe_id: 41 })).toEqual({ ok: false, result: "Каркас не найден. Обновите дерево проекта." });
     expect(app.store.get().statusNote).toBe("Каркас не найден. Обновите дерево проекта."); // the ribbon has no other place for it
@@ -347,6 +359,23 @@ describe("the red layers of checked wireframes in the scene", () => {
     expect(checksLayerStore.get().missing).toEqual([1]);
     t.state.list = [];
     await t.settle();
+    expect(checksLayerStore.get().missing).toEqual([]);
+  });
+
+  it("«Проверить» of a hidden wireframe whose list was missing: its layer comes when it is shown", async () => {
+    const layers: Record<number, number | "missing" | "broken"> = { 1: "missing" };
+    const t = await start(layers, [checked(1, 20)]);
+    expect(checksLayerStore.get().missing).toEqual([1]);
+    t.state.hidden = ["wf:1"];
+    await t.settle();
+    layers[1] = 20;
+    t.state.list = [checked(1, 20, "2026-11-18T10:00:00.000+00:00")]; // checked again while hidden
+    await t.settle();
+    expect(t.core.asked).toHaveLength(1); // a hidden wireframe is not loaded
+    t.state.hidden = [];
+    await t.settle();
+    expect(t.core.asked[1]).toEqual({ id: 1, tag: null, status: 200 });
+    expect(t.source.stats()).toEqual([{ wireframe: 1, triangles: 20, groups: 1, visible: true }]);
     expect(checksLayerStore.get().missing).toEqual([]);
   });
 

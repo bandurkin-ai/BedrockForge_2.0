@@ -31,6 +31,13 @@ test("wireframes export: OBJ through the window, the question before a file is r
       app.evaluate(({ dialog }, f) => {
         dialog.showSaveDialog = (async () => ({ canceled: false, filePath: f })) as typeof dialog.showSaveDialog;
       }, file);
+    // the statuses of the jobs `export.wireframes`: a file of a pass before may be there already
+    const exports = () =>
+      page.evaluate(async () => {
+        const c = window.bf!.core()!;
+        const r = await fetch(`${c.baseUrl}/api/v1/jobs`, { headers: { "X-BF-Token": c.token } });
+        return ((await r.json()) as { jobs: { kind: string; status: string }[] }).jobs.filter((j) => j.kind === "export.wireframes").map((j) => j.status);
+      });
     const run = (id: string, args: Record<string, unknown>) => page.evaluate(([i, a]) => window.__bfScene!.run(i as string, a as Record<string, unknown>), [id, args] as const);
 
     // ---- OBJ: the window with the wireframe checked ------------------------------------------------------------
@@ -46,7 +53,7 @@ test("wireframes export: OBJ through the window, the question before a file is r
     await expect(win.getByLabel("Файл экспорта")).toHaveValue(obj);
     await win.getByRole("button", { name: "Экспортировать" }).click();
     await expect(win).toHaveCount(0);
-    await expect.poll(() => fs.existsSync(obj) && fs.statSync(obj).size > 0, { timeout: 60_000 }).toBe(true);
+    await expect.poll(async () => await exports(), { timeout: 60_000 }).toEqual(["done"]);
     const text = fs.readFileSync(obj, "utf8");
     expect(text).toMatch(/^v /m);
     expect(text).toMatch(/^f /m);
@@ -67,7 +74,9 @@ test("wireframes export: OBJ through the window, the question before a file is r
         await ask.getByRole("button", { name: "Заменить" }).click();
       }
       await expect(win).toHaveCount(0);
-      await expect.poll(() => fs.existsSync(dtm) && fs.existsSync(str), { timeout: 60_000 }).toBe(true);
+      // the second pass: its own job is over (the files of the first one are there from the start)
+      await expect.poll(async () => (await exports()).filter((st) => st === "done").length, { timeout: 60_000 }).toBe(again ? 3 : 2);
+      expect(fs.existsSync(dtm) && fs.existsSync(str)).toBe(true);
     }
 
     // ---- TRIDB from the menu of the row of the tree ---------------------------------------------------------------
@@ -80,7 +89,8 @@ test("wireframes export: OBJ through the window, the question before a file is r
     await win.getByRole("button", { name: "Сохранить как…" }).click();
     await win.getByRole("button", { name: "Экспортировать" }).click();
     await expect(win).toHaveCount(0);
-    await expect.poll(() => fs.existsSync(tridb) && fs.statSync(tridb).size > 0, { timeout: 60_000 }).toBe(true);
+    await expect.poll(async () => (await exports()).filter((st) => st === "done").length, { timeout: 60_000 }).toBe(4);
+    expect(fs.statSync(tridb).size).toBeGreaterThan(0);
     expect(fs.readFileSync(tridb).subarray(0, 15).toString("latin1")).toBe("SQLite format 3");
   } finally {
     await close(app);

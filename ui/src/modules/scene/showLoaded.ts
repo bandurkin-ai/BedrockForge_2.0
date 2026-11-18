@@ -37,10 +37,15 @@ function bbox(e: readonly (number | null)[] | null | undefined, floor: number): 
 export function extentsOf(ids: number[], lists: Pick<SceneObjects, "files" | "rasters" | "wireframes">, floor: number): { boxes: Bbox6[]; missing: number } {
   const boxes: Bbox6[] = [];
   let missing = 0;
+  // the lists once by id: an import of hundreds of wireframes into a project of thousands
+  const byId = <T extends { id: number }>(list: readonly T[]) => new Map(list.map((o) => [o.id, o]));
+  const wireframes = byId(lists.wireframes);
+  const files = byId(lists.files);
+  const rasters = byId(lists.rasters);
   for (const id of ids) {
-    const w = lists.wireframes.find((o) => o.id === id);
-    const f = w ? undefined : lists.files.find((o) => o.id === id);
-    const r = w || f ? undefined : lists.rasters.find((o) => o.id === id);
+    const w = wireframes.get(id);
+    const f = w ? undefined : files.get(id);
+    const r = w || f ? undefined : rasters.get(id);
     if (w) {
       const b = bbox(w.extent, floor);
       if (b) boxes.push(b);
@@ -68,6 +73,8 @@ export interface ShowLoadedDeps {
   reveal(boxes: Bbox6[]): boolean;
   lists(): Pick<SceneObjects, "files" | "rasters" | "wireframes">;
   floor(): number;
+  /** The job belongs to the open project (not to one closed while it ran). */
+  ours(job: { source: string }): boolean;
 }
 
 /** Waits for the objects of the last import in the lists, then shows them if they are not seen. */
@@ -78,10 +85,11 @@ export class ShowLoaded {
 
   constructor(private readonly deps: ShowLoadedDeps) {}
 
-  /** The list of jobs changed: an import of files queued or running holds the view (once per job). */
+  /** The list of jobs changed: an import of files of the open project queued or running holds the view (once
+   * per job). */
   jobs(list: readonly { source: string; id: number; kind: string; status: string }[]): void {
     for (const j of list) {
-      if (j.kind !== "import.objects" || (j.status !== "queued" && j.status !== "running")) continue;
+      if (j.kind !== "import.objects" || (j.status !== "queued" && j.status !== "running") || !this.deps.ours(j)) continue;
       const key = `${j.source}:${j.id}`;
       if (this.held.has(key)) continue;
       this.held.add(key);

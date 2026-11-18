@@ -27,7 +27,10 @@ Files of other people (as `rasters/export.py`). The save window asks about one n
 export may write another one: the name with the extension of the format after it (`тела` → `тела.tridb`,
 `тела.txt` → `тела.txt.dxf`), and a Surpac DTM comes with its string file of the same name. None of those is
 replaced without `overwrite: true`: the endpoint answers 409 `files_exist` with their names (the window asks
-and starts again), and the job checks once more before it writes anything.
+and starts again), and the job checks once more before it writes anything. «Повторить» of a failed export
+(`retry_of` of the scheduler) replaces those of them changed after the first job of the chain started: the
+check of that job had found none of them there, so they are what it wrote (a DTM whose .dtm was put in place
+before its .str failed, a file written before the row of `export_log`); a file older than that is not its own.
 
 A DWG needs ODA File Converter (ADR 0009): its path of «Настройка» comes in `oda` (the job runs in a worker
 process); the endpoint refuses at once when there is none — `oda_not_found` with the text of Д-13.
@@ -51,6 +54,7 @@ from bf_core.jobs.registry import handler
 from . import store as ws
 
 MAX_WIREFRAMES = 5000  # of one export (the file of a model holds tens)
+CLOCK_S = 0.1  # the times of files follow a coarser clock than that of the jobs (a tick of Windows: 15.6 ms)
 
 
 @dataclass(frozen=True)
@@ -255,6 +259,18 @@ def write_wireframes(
     return counts, list(written.warnings)
 
 
+def _retry_since(retry: Any) -> float | None:
+    """When the first job of a chain of retries started (POSIX seconds); None — not a retry, or it never ran."""
+    from datetime import UTC, datetime
+
+    raw = retry.get("since") if isinstance(retry, dict) else None
+    try:
+        at = datetime.fromisoformat(str(raw)) if raw else None
+    except ValueError:
+        return None
+    return None if at is None else (at if at.tzinfo else at.replace(tzinfo=UTC)).timestamp()
+
+
 @handler("export.wireframes", "Экспорт каркасов", queue="heavy", estimate_memory=_memory)
 def export_wireframes(ctx: JobContext) -> dict[str, Any]:
     from bf_core.formats.errors import FormatError
@@ -278,7 +294,10 @@ def export_wireframes(ctx: JobContext) -> dict[str, Any]:
     store = BlobStore(ctx.project_folder)
     ctx.tick(0.0, "Чтение каркасов")
     if not bool(p.get("overwrite")):  # asked for: the window showed the files that will be replaced
-        clash = existing(planned(chosen, fmt), chosen)
+        since = _retry_since(p.get("retry_of"))
+        clash = [
+            f for f in existing(planned(chosen, fmt), chosen) if since is None or f.lstat().st_mtime < since - CLOCK_S
+        ]
         if clash:
             err = files_exist(clash)
             raise JobError(err.code, err.message, err.hint)

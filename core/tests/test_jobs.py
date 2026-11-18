@@ -109,7 +109,12 @@ def test_error_is_reported_and_retry_makes_new_job(jc) -> None:  # type: ignore[
     job = wait_for(jc, key, jid)
     assert job["status"] == "failed" and job["error"]["message"] == "Проверочная ошибка." and job["attempts"] == 1
     new = jc.post(f"{API}/jobs/{key}/{jid}/retry").json()["id"]
-    assert new != jid and wait_for(jc, key, new)["status"] == "failed"
+    again = wait_for(jc, key, new)
+    assert new != jid and again["status"] == "failed"
+    # the same parameters and where they come from: an export replaces what the first job wrote
+    assert again["params"]["retry_of"] == {"id": jid, "since": job["started_at"]} and job["started_at"]
+    third = jc.post(f"{API}/jobs/{key}/{new}/retry").json()["id"]
+    assert wait_for(jc, key, third)["params"]["retry_of"] == {"id": new, "since": job["started_at"]}
 
 
 def test_hanging_job_is_killed_after_cancel_grace(jc, monkeypatch) -> None:  # type: ignore[no-untyped-def]

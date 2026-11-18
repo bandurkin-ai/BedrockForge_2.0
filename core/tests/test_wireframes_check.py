@@ -489,7 +489,10 @@ def test_request_names_the_job_and_refuses_bad_lists(api) -> None:  # type: igno
             "wireframe_ids": [ids["pair"], ids["cube"]], "triangles": len(meshes["pair"][1]),
         }  # fmt: skip
         assert check._memory(params) >= 256 and check._memory({"triangles": 10_000_000}) >= 1000
-        for bad, status, code in (([], 422, "no_wireframes"), ([ids["cube"], 999999], 404, "wireframe_not_found"),
+        # a wireframe deleted after the import is left out; none of them found — 404
+        params, title = check.request(conn, [999999, ids["cube"]])
+        assert params["wireframe_ids"] == [ids["cube"]] and title == "Проверка каркаса «Куб»"
+        for bad, status, code in (([], 422, "no_wireframes"), ([999999, 999998], 404, "wireframe_not_found"),
                                   (list(range(1, check.MAX_IDS + 2)), 422, "too_many_wireframes")):  # fmt: skip
             with pytest.raises(ApiError) as caught:
                 check.request(conn, bad)
@@ -572,5 +575,24 @@ def test_imported_wireframes_are_checked_in_one_job(api) -> None:  # type: ignor
     assert job["result"]["checked"] == 2
     assert "checks" in info(c, ids["cube"])["stats"] and "checks" in info(c, ids["pair"])["stats"]
     assert c.post(f"{API}/wireframes/check", json={"wireframe_ids": []}).status_code == 422
-    r = c.post(f"{API}/wireframes/check", json={"wireframe_ids": [ids["cube"], 999999]})
-    assert r.status_code == 404 and r.json()["code"] == "wireframe_not_found"
+    # one of them deleted after the import: the others are checked in the same job
+    started = ok(c.post(f"{API}/wireframes/check", json={"wireframe_ids": [ids["cube"], 999999, ids["turned"]]}))
+    job = wait_job(c, started["source"], started["id"], timeout=300)
+    assert job["status"] == "done" and job["params"]["wireframe_ids"] == [ids["cube"], ids["turned"]], job
+    assert job["result"]["checked"] == 2 and "checks" in info(c, ids["turned"])["stats"]
+    refused(c.post(f"{API}/wireframes/check", json={"wireframe_ids": [999999]}), 404, "wireframe_not_found")
+    refused(c.post(f"{API}/wireframes/999999/check"), 404, "wireframe_not_found")
+
+
+def test_missing_files_of_the_geometry_are_recorded_as_failed(api) -> None:  # type: ignore[no-untyped-def]
+    c, project, ids, _meshes = api
+    with dialect.read_tx(project.engine) as conn:
+        BlobStore(project.folder).path_of(str(vm.mesh_state(conn, ids["turned"]).sha("xyz"))).unlink()
+    result, ctx = run(project, [ids["turned"], ids["cube"]])
+    assert (result["checked"], result["failed"]) == (1, 1)
+    record = info(c, ids["turned"])["stats"]["checks"]
+    assert record["state"] == "failed" and record["error"]["code"] == "wireframe_broken" and record["checked_at"]
+    assert any("Файлы геометрии каркаса не найдены" in line for line in ctx.logs("error"))
+    assert layer(c, ids["turned"])[1]["state"] == "failed"
+    with pytest.raises(JobError):  # the only wireframe of a job: the job fails, the record is there all the same
+        run(project, [ids["turned"]])

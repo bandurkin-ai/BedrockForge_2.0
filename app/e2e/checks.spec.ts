@@ -112,7 +112,7 @@ test("wireframe checks: «Проверить» in «Свойства», the numb
     const second = (await reliefNow()).stats.checks!;
     expect(second.checked_at > found.checked_at).toBe(true);
     expect((await layer(relief.id, empty.etag!)).status).toBe(304); // the same result: the window keeps what it has
-    expect((await run("wireframe.check", { wireframe_id: 999_999 })).result).toBe("Каркас №999999 не найден: обновите дерево проекта");
+    expect((await run("wireframe.check", { wireframe_id: 999_999 })).result).toBe("Каркас №999999 не найден. Обновите дерево проекта.");
   } finally {
     await close(app);
   }

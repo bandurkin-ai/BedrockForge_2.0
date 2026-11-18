@@ -3,6 +3,7 @@
  * wireframe — or, when it holds the settings of a relief, a DTM. No React.
  */
 import type { App } from "../../shell/app";
+import { refusal } from "../../shell/objectRun";
 import { KIND_TITLES, type ObjectKind } from "../../shell/selection";
 import { lineLayers, sceneObjects } from "../scene/objects";
 import { wireframeById, type WireframeInfo } from "./state";
@@ -31,8 +32,8 @@ export function selectedText(kind: ObjectKind, id: number, name: string): string
 export function wireframeOf(app: App, a: Record<string, unknown>): WireframeInfo {
   const selected = app.store.get().selected;
   const id = typeof a.wireframe_id === "number" ? a.wireframe_id : selected?.kind === "wireframe" ? selected.id : null;
-  if (id === null) throw new Error("Выберите каркас в дереве или укажите wireframe_id");
+  if (id === null) throw refusal("no_wireframe", "Каркас не выбран.", "Выберите каркас в дереве проекта или укажите wireframe_id.");
   const w = wireframeById(id);
-  if (!w) throw new Error(`Каркас №${id} не найден: обновите дерево проекта`);
+  if (!w) throw refusal("wireframe_not_found", `Каркас №${id} не найден.`, "Обновите дерево проекта.");
   return w;
 }

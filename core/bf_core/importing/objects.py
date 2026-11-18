@@ -301,9 +301,7 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
     for r in rest:
         ctx.log(f"{r['file']}: {r['message']}", "warn")
     if not groups:
-        raise JobError(
-            "nothing_to_import", "Среди выбранных файлов нет ни одного, который можно загрузить.", SUPPORTED
-        )
+        raise JobError("nothing_to_import", "Среди выбранных файлов нет ни одного, который можно загрузить.", SUPPORTED)
     try:
         level = parse_level(p.get("raster_z"))
     except ValueError as exc:
@@ -447,8 +445,15 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
                 if item.meshes is not None:  # every wireframe: its row of the journal, which owns the files
                     files.append(
                         om.log_meshes(
-                            conn, item.meshes, label=item.label, fmt=item.format, settings=item.settings, sha=sha,
-                            sides=sides, job_id=ctx.id, now=now,
+                            conn,
+                            item.meshes,
+                            label=item.label,
+                            fmt=item.format,
+                            settings=item.settings,
+                            sha=sha,
+                            sides=sides,
+                            job_id=ctx.id,
+                            now=now,
                         )  # fmt: skip
                     )
             mine = sa.and_(objects.c.job_id == ctx.id, objects.c.state == "building")

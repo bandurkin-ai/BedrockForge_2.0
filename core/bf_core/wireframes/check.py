@@ -101,7 +101,9 @@ def _named(conn: sa.Connection, ids: list[int]) -> dict[int, tuple[str, int]]:
 
 def request(conn: sa.Connection, wireframe_ids: Any) -> tuple[dict[str, Any], str]:
     """Checked parameters of the job and its title, for whoever starts it («Проверить», an import):
-    {wireframe_ids, triangles — of the largest wireframe, for the estimate of memory}; ApiError otherwise."""
+    {wireframe_ids, triangles — of the largest wireframe, for the estimate of memory}; ApiError otherwise.
+    Ids that are not wireframes of the project (deleted after an import) are left out of the job; 404 only
+    when none of them is."""
     ids = list(dict.fromkeys(int(i) for i in wireframe_ids or []))
     if not ids:
         raise ApiError(422, "no_wireframes", "Не выбран каркас для проверки.", "Выберите каркас в дереве проекта.")
@@ -113,7 +115,8 @@ def request(conn: sa.Connection, wireframe_ids: Any) -> tuple[dict[str, Any], st
             "Проверьте каркасы несколькими заданиями.",
         )
     found = _named(conn, ids)
-    if len(found) != len(ids):
+    ids = [i for i in ids if i in found]
+    if not ids:
         raise ws.not_found()
     title = f"Проверка каркаса «{found[ids[0]][0]}»" if len(ids) == 1 else f"Проверка каркасов: {len(ids)}"
     return {"wireframe_ids": ids, "triangles": max(count for _name, count in found.values())}, title
@@ -293,8 +296,8 @@ def _check_one(
 ) -> tuple[dict[str, Any] | None, int]:
     """One wireframe: its levels of detail, its checks, the file of its crossing triangles and its record.
     Returns the record (None — the wireframe is gone, nothing was written) and the parts whose levels were
-    made. `records` — by the key of the geometry: wireframes of one geometry are checked once. ApiError — the
-    files of the geometry are not there."""
+    made. `records` — by the key of the geometry: wireframes of one geometry are checked once. The files of
+    the geometry not there — a record «failed» (`ws.broken`), saved like that of a mesh no check works on."""
     from bf_core.geo import checks as gc
     from bf_core.geo import meshes as gm
     from bf_core.viz import meshes as vm
@@ -313,26 +316,30 @@ def _check_one(
     built = 0
     if record is None:
         tick(0.0, STEP_LOD)
-        v, t = _arrays(store, state)
-        table = (state.render or {}).get("parts")
-        parts = (
-            [gm.make_part(k, row[0], row[1], row[2:8]) for k, row in enumerate(table)]
-            if table is not None
-            else gm.parts_table(v, t)
-        )
-        lod = vm.build_cache(folder, key, v, t, parts, lambda f: tick(LOD_SHARE * f, STEP_LOD), missing_only=True)
-        built = int(lod["built"])
-        tick(LOD_SHARE, STEP_CHECKS)
         body = None
         try:
-            found = gc.run_checks(v, t, lambda f: tick(LOD_SHARE + (0.98 - LOD_SHARE) * f, STEP_CHECKS))
-        except gm.MeshError as exc:
+            v, t = _arrays(store, state)
+        except ApiError as exc:  # the files of its geometry are not there: the record says so
             record = _failed(exc)
         else:
-            record = dict(found.stats)
-            if len(found.triangles):
-                body = encode_layer(v, t, found.triangles, int(found.stats["triangles"]))
-        del v, t
+            table = (state.render or {}).get("parts")
+            parts = (
+                [gm.make_part(k, row[0], row[1], row[2:8]) for k, row in enumerate(table)]
+                if table is not None
+                else gm.parts_table(v, t)
+            )
+            lod = vm.build_cache(folder, key, v, t, parts, lambda f: tick(LOD_SHARE * f, STEP_LOD), missing_only=True)
+            built = int(lod["built"])
+            tick(LOD_SHARE, STEP_CHECKS)
+            try:
+                found = gc.run_checks(v, t, lambda f: tick(LOD_SHARE + (0.98 - LOD_SHARE) * f, STEP_CHECKS))
+            except gm.MeshError as exc:
+                record = _failed(exc)
+            else:
+                record = dict(found.stats)
+                if len(found.triangles):
+                    body = encode_layer(v, t, found.triangles, int(found.stats["triangles"]))
+            del v, t
         tick(0.98, STEP_SAVE)  # the last place a cancel is heard: the file and the record go together
         if body is None:
             with suppress(OSError):  # a list made by an older program; one being read on Windows stays

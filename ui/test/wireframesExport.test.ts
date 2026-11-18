@@ -197,14 +197,14 @@ describe("`wireframe.export`: the window with the format and the wireframes", ()
 
   it("says why in Russian; a command never writes to a path of its own", async () => {
     const app = await open();
-    expect((await app.registry.execute("wireframe.export", { wireframe_id: 99 })).result).toBe("Каркас №99 не найден: обновите дерево проекта");
-    expect((await app.registry.execute("wireframe.export", { folder: "Нет такой" })).result).toBe("В папке «Нет такой» нет каркасов: обновите дерево проекта");
+    expect((await app.registry.execute("wireframe.export", { wireframe_id: 99 })).result).toBe("Каркас №99 не найден. Обновите дерево проекта.");
+    expect((await app.registry.execute("wireframe.export", { folder: "Нет такой" })).result).toBe("В папке «Нет такой» нет каркасов. Обновите дерево проекта.");
     expect((await app.registry.execute("wireframe.export", { format: "ply" })).result).toContain("допустимые значения — tridb, dxf, dwg, obj, stl, dtm");
     expect((await app.registry.execute("wireframe.export", { format: "dwg", version: "R14" })).result).toContain("допустимые значения — R2000");
     expect((await app.registry.execute("wireframe.export", { path: "C:\\out\\a.obj" })).result).toBe("Неизвестный параметр «path»");
     expect(shown()).toEqual([]);
     const empty = await open([]);
-    expect((await empty.registry.execute("wireframe.export")).result).toBe("В проекте нет каркасов: загрузите каркасы или постройте ЦТМ");
+    expect((await empty.registry.execute("wireframe.export")).result).toBe("В проекте нет каркасов. Загрузите каркасы или постройте ЦТМ.");
     expect(createApp({ persist: false }).registry.reason("wireframe.export")).toBe("Откройте или создайте проект");
   });
 });

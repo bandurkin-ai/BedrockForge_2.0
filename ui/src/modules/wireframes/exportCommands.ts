@@ -7,7 +7,7 @@
  */
 import { api } from "../../shell/api";
 import type { App } from "../../shell/app";
-import { needProject, noted, viewport } from "../../shell/objectRun";
+import { needProject, noted, refusal, viewport } from "../../shell/objectRun";
 import { openWindow } from "../../shell/windows";
 import { loadSceneObjects, sceneObjects } from "../scene/objects";
 import { defaultWireframes, exportOptions, inFolder, inSection, wireframeFormat, type WireframesExportBody } from "./export";
@@ -24,14 +24,18 @@ export function bindExportCommands(app: App): void {
     noted(app, async (a) => {
       if (!sceneObjects.get().loaded) await loadSceneObjects();
       const list = sceneObjects.get().wireframes as WireframeInfo[];
-      if (!list.length) throw new Error("В проекте нет каркасов: загрузите каркасы или постройте ЦТМ");
+      if (!list.length) throw refusal("no_wireframes", "В проекте нет каркасов.", "Загрузите каркасы или постройте ЦТМ.");
       const format = wireframeFormat(typeof a.format === "string" ? a.format : "tridb");
       const wireframeId = typeof a.wireframe_id === "number" ? a.wireframe_id : null;
       const folder = typeof a.folder === "string" ? a.folder : null;
       const section = a.section === "wireframes" || a.section === "dtm" ? a.section : null;
-      if (wireframeId !== null && !list.some((w) => w.id === wireframeId)) throw new Error(`Каркас №${wireframeId} не найден: обновите дерево проекта`);
-      if (folder !== null && !inFolder(inSection(list, section), folder).length) throw new Error(`В папке «${folder}» нет каркасов: обновите дерево проекта`);
-      if (section !== null && !inSection(list, section).length) throw new Error(section === "dtm" ? "В разделе «ЦТМ» нет поверхностей" : "В разделе «Каркасы» нет каркасов");
+      if (wireframeId !== null && !list.some((w) => w.id === wireframeId)) throw refusal("wireframe_not_found", `Каркас №${wireframeId} не найден.`, "Обновите дерево проекта.");
+      if (folder !== null && !inFolder(inSection(list, section), folder).length) throw refusal("folder_empty", `В папке «${folder}» нет каркасов.`, "Обновите дерево проекта.");
+      if (section !== null && !inSection(list, section).length) {
+        throw section === "dtm"
+          ? refusal("no_dtm", "В разделе «ЦТМ» нет поверхностей.", "Постройте ЦТМ или перенесите каркас поверхности («В ЦТМ»).")
+          : refusal("no_wireframes", "В разделе «Каркасы» нет каркасов.", "Загрузите каркасы в проект.");
+      }
       const selected = app.store.get().selected;
       const ids = defaultWireframes(list, { wireframeId, folder, section, selected: selected?.kind === "wireframe" ? selected.id : null });
       const options = exportOptions(a);

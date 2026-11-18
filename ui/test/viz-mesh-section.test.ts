@@ -5,8 +5,12 @@
  */
 import * as THREE from "three";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { build } from "./bfa1-build";
+import { ExactSource, SECTIONS_KEY } from "../src/modules/scene/exactSources";
+import type { WireframeInfo } from "../src/modules/scene/objects";
+import { setCoreTarget } from "../src/shell/api";
+import type { Scene } from "../src/viz/Scene";
 import { LayerSet } from "../src/viz/core/layers";
 import { SceneOrigin } from "../src/viz/core/sceneOrigin";
 import { VizError } from "../src/viz/error";
@@ -142,5 +146,49 @@ describe("the layer of section lines", () => {
     set.extents(origin.value!, out as never);
     expect(out).toHaveLength(0);
     expect(view.object.parent!.position.toArray()).toEqual(origin.offset(view.origin));
+  });
+});
+
+describe("the lines of sections in the scene (modules/scene/exactSources.ts)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setCoreTarget(null);
+  });
+
+  it("the layer is made anew from a point of the line when the line goes farther than 4 km from its origin", async () => {
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL) => (asked.push(String(url)), new Response(answer(), { status: 200 }))));
+    setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
+    const layers = new Map<string, SectionLinesView>();
+    const scene = {
+      clipPlanes: [], resolution: new THREE.Vector2(1000, 800), renderer: { pixelRatio: 1 }, invalidate: vi.fn(),
+      addLayer: vi.fn((key: string, layer: SectionLinesView) => void layers.set(key, layer)),
+      removeLayer: vi.fn((key: string) => void layers.delete(key)),
+    };
+    const wf = { id: 12, name: "Тело", version: 1, color: "#c0392b", point_count: 8, triangle_count: 12, extent: null, dtm: null, stats: null, source: null } as unknown as WireframeInfo;
+    const keys = { section: { line: { x0: X - 30, y0: Y + 42.5, az: 90 }, clip: true } };
+    const source = new ExactSource(scene as unknown as Scene, { wireframes: () => [wf], hidden: () => [], sets: () => [], keys: () => keys });
+    const settle = async () => {
+      source.sync();
+      await vi.waitFor(() => expect(source.idle).toBe(true));
+    };
+    await settle();
+    const first = layers.get(SECTIONS_KEY)!;
+    expect(first.origin).toEqual({ x: Math.round(X - 30), y: Math.round(Y + 42.5), z: 0 });
+    expect(source.stats().sections).toHaveLength(1);
+    // moved 300 m: the same layer, the lines asked again
+    keys.section.line = { ...keys.section.line, y0: Y + 342.5 };
+    await settle();
+    expect(layers.get(SECTIONS_KEY)).toBe(first);
+    expect(asked).toHaveLength(2);
+    // 10 km away (farther than 4 km): a new layer from the new line
+    keys.section.line = { ...keys.section.line, x0: X + 10_000 };
+    await settle();
+    const moved = layers.get(SECTIONS_KEY)!;
+    expect(moved).not.toBe(first);
+    expect(moved.origin).toEqual({ x: Math.round(X + 10_000), y: Math.round(Y + 342.5), z: 0 });
+    expect(asked).toHaveLength(3);
+    expect(source.stats().sections).toHaveLength(1);
+    source.dispose();
   });
 });

@@ -325,8 +325,15 @@ def log_meshes(
     for wf_id, counts in zip(written.ids, written.counts, strict=True):
         res = conn.execute(
             sa.insert(import_log).values(
-                object_id=wf_id, job_id=job_id, file_name=label, format=fmt, target=TARGET, mapping=dict(settings),
-                counts=counts, sha256=sha, created_at=now,
+                object_id=wf_id,
+                job_id=job_id,
+                file_name=label,
+                format=fmt,
+                target=TARGET,
+                mapping=dict(settings),
+                counts=counts,
+                sha256=sha,
+                created_at=now,
             )  # fmt: skip
         )
         log_id = int(res.inserted_primary_key[0])  # type: ignore[index]

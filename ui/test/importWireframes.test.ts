@@ -1,9 +1,10 @@
 /** «Импорт файлов» for wireframes (ТЗ 7.21, 9.4, 9.5; ADR 0013 §5–§6): where the files go, what the composition
  * counts for a TRIDB and for a drawing with lines and wireframes, the choices of Datamine, a DWG without the
  * converter, and the checks started once an import has stored its wireframes. */
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jobsStore, type Job } from "../src/modules/jobs/state";
-import { checkImported, forgetHandled, importedWireframes } from "../src/modules/importing/afterImport";
+import { afterStart, checkImported, forgetHandled, importedWireframes, onObjectsImported } from "../src/modules/importing/afterImport";
+import { projectStore, type ProjectInfo } from "../src/modules/projects/state";
 import { fileCounts, hasDrawing, initialObjects, needsConverter, startBody, takesEncoding, totalsText, type FileOk, type ObjectsState, type WireframeEntry } from "../src/modules/importing/objects";
 import { routeImport } from "../src/modules/importing/route";
 import { detectImportKind } from "../src/shell/tree";
@@ -83,6 +84,7 @@ describe("the checks after an import (ADR 0013 §5: «затем wireframe.check
   beforeEach(() => {
     forgetHandled();
     jobsStore.set({ jobs: [] });
+    projectStore.set({ current: { uid: "project" } as ProjectInfo });
   });
 
   it("the wireframes of a finished import; none for a failed one, another job or lines only", () => {
@@ -96,22 +98,41 @@ describe("the checks after an import (ADR 0013 §5: «затем wireframe.check
   it("one job of checks per import, once per job; one being checked already is not queued again", async () => {
     const batches: number[][] = [];
     const many = async (ids: number[]) => void batches.push(ids);
-    const one = async () => { throw new Error("not expected"); };
     jobsStore.set({ jobs: [job({ id: 3, kind: "wireframe.check", status: "running", params: { wireframe_ids: [12] }, result: null })] });
-    expect(await checkImported(job(), many, one)).toBe(2);
+    expect(await checkImported(job(), many)).toBe(2);
     expect(batches).toEqual([[11, 13]]);
-    expect(await checkImported(job(), many, one)).toBe(0); // the list of jobs and the window both saw it end
+    expect(await checkImported(job(), many)).toBe(0); // the list of jobs and the window both saw it end
     expect(batches).toEqual([[11, 13]]);
   });
 
-  it("a wireframe deleted meanwhile does not stop the others", async () => {
-    const started: number[] = [];
-    const many = async () => { throw new Error("Каркас не найден"); };
-    const one = async (id: number) => {
-      if (id === 11) throw new Error("Каркас не найден");
-      started.push(id);
+  it("a batch is sent once: the core leaves out a wireframe deleted meanwhile — no job a wireframe", async () => {
+    const batches: number[][] = [];
+    const refused = async (ids: number[]) => {
+      batches.push(ids);
+      throw new Error("Каркас не найден"); // every one of them is gone
     };
-    expect(await checkImported(job(), many, one)).toBe(2);
-    expect(started).toEqual([12, 13]);
+    expect(await checkImported(job(), refused)).toBe(0);
+    expect(batches).toEqual([[11, 12, 13]]);
+  });
+
+  it("an import of a project closed while it ran: no checks, the view is not moved", async () => {
+    const many = vi.fn(async () => undefined);
+    const seen = vi.fn();
+    const off = onObjectsImported(seen);
+    projectStore.set({ current: { uid: "other" } as ProjectInfo });
+    expect(await checkImported(job(), many)).toBe(0);
+    jobsStore.set({ jobs: [job()] });
+    afterStart(job());
+    expect(many).not.toHaveBeenCalled();
+    expect(seen).not.toHaveBeenCalled();
+    projectStore.set({ current: null });
+    expect(await checkImported(job(), many)).toBe(0);
+    // the project of the job open: it is announced and checked
+    projectStore.set({ current: { uid: "project" } as ProjectInfo });
+    expect(await checkImported(job(), many)).toBe(3);
+    expect(many).toHaveBeenCalledWith([11, 12, 13]);
+    afterStart(job());
+    expect(seen).toHaveBeenCalledTimes(1);
+    off();
   });
 });

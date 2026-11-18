@@ -17,7 +17,7 @@ import type { LinePick } from "../../viz/lines/layer";
 import type { MeshPick, MeshProbe } from "../../viz/mesh/layer";
 import type { RasterPick } from "../../viz/rasters/layer";
 import { floorLevel } from "../../viz/rasters/placement";
-import { onObjectsImported } from "../importing/afterImport";
+import { ofOpenProject, onObjectsImported } from "../importing/afterImport";
 import { jobsStore, onCoreEvent, onJobFinished } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { viewStore } from "./bind";
@@ -66,7 +66,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
   // the triangles of a checked wireframe that cross each other, in red over its surface
   const checks = new ChecksSource(scene, { wireframes: () => sceneObjects.get().wireframes, hidden });
   // «Показать загруженное»: what an import stored, once listed, if it is not seen
-  const loaded = new ShowLoaded({ hold: () => scene.holdView(), reveal: (boxes) => scene.reveal(boxes), lists: () => sceneObjects.get(), floor: () => floor });
+  const loaded = new ShowLoaded({ hold: () => scene.holdView(), reveal: (boxes) => scene.reveal(boxes), lists: () => sceneObjects.get(), floor: () => floor, ours: ofOpenProject });
 
   /** Under the lowest hole, line or surface with heights; hidden ones count only when nothing is visible. */
   function refloor(): void {

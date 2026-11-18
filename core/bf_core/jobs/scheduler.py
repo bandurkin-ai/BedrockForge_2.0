@@ -209,7 +209,9 @@ class Scheduler:
         self.wake()
 
     def retry(self, key: str, job_id: int) -> int:
-        """«Повторить» a failed job: a new job with the same parameters (the same files)."""
+        """«Повторить» a failed job: a new job with the same parameters (the same files) and `retry_of` {id, since
+        — when the first job of the chain of retries started (UTC, ISO; None — it never ran)}: an export
+        replaces the files it wrote itself before it failed (`wireframes/export.py`)."""
         src = self.source(key)
         if src is None:
             raise LookupError(key)
@@ -218,7 +220,11 @@ class Scheduler:
             raise LookupError(job_id)
         if (old["params"] or {}).get("encrypted"):
             raise PermissionError("password")  # the password is not kept: the user starts the job again
-        _, new_id = self.submit(old["kind"], old["params"], title=old["title"], source=key)
+        params = dict(old["params"] or {})
+        before = params.get("retry_of")
+        since = before.get("since") if isinstance(before, dict) else None
+        params["retry_of"] = {"id": job_id, "since": since or old.get("started_at")}
+        _, new_id = self.submit(old["kind"], params, title=old["title"], source=key)
         return new_id
 
     def restart_workers(self) -> None:
