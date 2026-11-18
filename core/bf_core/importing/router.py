@@ -3,6 +3,8 @@
 /api/v1/drillholes/import — «Импорт скважин» (ТЗ 7.7): look into a file, check a mapping, start.
 /api/v1/import/objects — «Импорт файлов» (ТЗ 7.8, ADR 0011 §3): the composition of the chosen files of lines,
 points and rasters (`inspect`, nothing is written) and the start of the job `import.objects`.
+/api/v1/import/trenches — «Канавы по полилиниям» (ТЗ 7.35 Д-16, ADR 0011 §5): `inspect` — the trenches the
+file gives with the chosen name and direction (nothing is written), and the start of the job `import.trenches`.
 """
 
 from __future__ import annotations
@@ -435,6 +437,123 @@ def start_objects(svc: Svc, s: Sched, body: ObjectsBody) -> dict[str, Any]:
     return {"source": key, "id": job_id}
 
 
+# --- «Канавы по полилиниям» (ТЗ 7.35 Д-16, ADR 0011 §5) ------------------------------------------------------
+
+trenches_router = APIRouter(prefix="/import/trenches")
+Name = Annotated[str, Field(max_length=500)]
+
+
+class VertexTable(BaseModel):
+    """How a table of vertices «канава, X, Y, Z» is read."""
+
+    encoding: str | None = Field(default=None, max_length=40)
+    delimiter: str | None = Field(default=None, max_length=20)
+    header_row: int = Field(default=1, ge=0, le=1000)
+    sheet: str | None = Field(default=None, max_length=200)
+
+
+class TrenchLines(BaseModel):
+    """The file of polylines and how its trenches are named and directed (`trench_lines.py`)."""
+
+    path: str = Field(max_length=2000)
+    encoding: str | None = Field(default=None, max_length=40)
+    layers: list[Name] | None = Field(default=None, max_length=5000)  # null — every layer of lines
+    name_from: Literal["string", "field"] = "string"
+    name_field: Name | None = None
+    # «Обратить направление»: every trench, or the named ones
+    reverse: bool | Annotated[list[Name], Field(max_length=100_000)] = False
+    x: Name | None = None
+    y: Name | None = None
+    z: Name | None = None
+    table: VertexTable | None = None
+
+
+class TrenchSamples(FileSpec):
+    """The table «канава, от, до, …», mapped as a file of the drillhole wizard (ТЗ 7.7)."""
+
+    kind: Literal["assay", "interval"] = "assay"  # type: ignore[assignment]
+    replace: bool = False  # the set has a table of samples already: replace it, for all its holes
+
+
+class TrenchesInspectBody(BaseModel):
+    lines: TrenchLines
+    limit: int = Field(default=30, ge=1, le=2000)  # trenches listed in the preview
+
+
+class TrenchesBody(BaseModel):
+    set_id: int | None = None
+    set_name: str | None = Field(default=None, max_length=200)
+    crs: str | None = Field(default=None, max_length=20000)
+    lines: TrenchLines
+    samples: TrenchSamples | None = None
+
+
+def _lines_spec(lines: TrenchLines) -> dict[str, Any]:
+    spec = lines.model_dump(exclude_none=True)
+    spec["path"] = str(_file(lines.path))
+    return spec
+
+
+_JOB_STATUS = {"set_not_found": 404, "name_taken": 409, "assay_exists": 409}
+
+
+def _job_error(exc: Any) -> ApiError:
+    """A `JobError` of the checks shared with the job, as an answer of the API."""
+    return ApiError(_JOB_STATUS.get(exc.code, 422), exc.code, exc.message, exc.hint)
+
+
+@trenches_router.post("/inspect")
+def inspect_trenches(svc: Svc, body: TrenchesInspectBody) -> dict[str, Any]:
+    """What the file gives: layers, the fields a name can be taken from, counts, the total 3D length, warnings
+    and the first trenches (name, vertices, length, the first vertex in the chosen direction). Nothing is written."""
+    svc.require_current()
+    from bf_core.jobs.context import JobError
+
+    from .trench_lines import preview
+
+    try:
+        return preview(_lines_spec(body.lines), limit=body.limit)
+    except JobError as exc:
+        raise _job_error(exc) from exc
+
+
+@trenches_router.post("")
+def start_trenches(svc: Svc, s: Sched, body: TrenchesBody) -> dict[str, Any]:
+    from bf_core.jobs.context import JobError
+
+    from .trenches import _check_target
+
+    project = svc.require_current(writable=True)
+    samples = None
+    if body.samples is not None:
+        if body.samples.mapping is None:
+            raise ApiError(
+                422,
+                "mapping_missing",
+                f"Для «{Path(body.samples.path).name}» не назначены колонки.",
+                "Назначьте колонки таблицы проб в мастере.",
+            )
+        samples = body.samples.model_dump()
+        samples["path"] = str(_file(body.samples.path))
+    params: dict[str, Any] = {
+        "set_id": body.set_id,
+        "set_name": set_name(body.set_name) if body.set_id is None else None,
+        "crs": body.crs,
+        "lines": _lines_spec(body.lines),
+        "samples": samples,
+    }
+    try:
+        with dialect.read_tx(project.engine) as conn:
+            _check_target(conn, params, samples)  # the set, its name and its table of samples — before the queue
+    except JobError as exc:
+        raise _job_error(exc) from exc
+    forget_cached()  # the worker reads the table of samples itself
+    title = "Импорт канав" + (f" в «{params['set_name']}»" if params["set_name"] else "")
+    key, job_id = s.submit("import.trenches", params, title=title)
+    return {"source": key, "id": job_id}
+
+
 router = APIRouter()
 router.include_router(dh)
 router.include_router(objects_router)
+router.include_router(trenches_router)

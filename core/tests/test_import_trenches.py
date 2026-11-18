@@ -470,3 +470,83 @@ def test_through_the_scheduler_then_the_audit(pclient, strings: Path, tmp_path: 
     assert wait_job(pclient, r.json()["source"], r.json()["id"], timeout=120)["status"] == "done"
     found = pclient.get(f"{API}/audit/sets/{set_id}/findings").json()["findings"]
     assert {f["code"] for f in found} == {"COLLAR_EMPTY_STATUS"}, found  # no «излом», no empty readings
+
+
+def test_wizard_endpoints(pclient, strings: Path, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """`POST /import/trenches/inspect` — the preview of the wizard (nothing is written); `POST /import/trenches`
+    checks the target and starts the job. Errors are {code, message, hint} in Russian."""
+    url = f"{API}/import/trenches"
+
+    def error_of(r: Any, status: int, code: str) -> dict[str, Any]:
+        body = r.json()
+        assert r.status_code == status and body["code"] == code, r.text
+        assert body["message"] and body["hint"]
+        return body
+
+    lines = {"path": str(strings)}
+    assert pclient.post(f"{url}/inspect", json={"lines": lines}).status_code == 409  # no project is open
+    pclient.post(f"{API}/projects", json={"name": "Канавы"})
+
+    out = pclient.post(f"{url}/inspect", json={"lines": {**lines, "reverse": ["TR-2"]}, "limit": 2}).json()
+    assert out["format"] == "micromine_str" and out["trenches"] == 3 and out["vertices"] == 9
+    assert out["fields"] == ["JOIN"] and [layer["name"] for layer in out["layers"]] == ["TR-1", "TR-2", "TR-3"]
+    assert out["length"] == pytest.approx(float(sum(chainage(t)[-1] for t in (T1, T2, T3))), abs=1e-9)
+    x, y, z = T2[2].tolist()  # reversed: TR-2 starts at its last vertex; `limit` rows of the preview
+    assert out["preview"] == [
+        {"name": "TR-1", "vertices": 4, "length": pytest.approx(float(chainage(T1)[-1]), abs=1e-9),
+         "x": T1[0, 0], "y": T1[0, 1], "z": T1[0, 2]},
+        {"name": "TR-2", "vertices": 3, "length": 62.0, "x": x, "y": y, "z": z},
+    ]  # fmt: skip
+    one = pclient.post(f"{url}/inspect", json={"lines": {**lines, "layers": ["TR-3"], "reverse": True}}).json()
+    assert one["trenches"] == 1 and one["preview"][0]["x"] == T3[1, 0]
+    # JOIN is empty in this file: no trench gets a name — the wizard shows why, it is not an error
+    by_join = pclient.post(f"{url}/inspect", json={"lines": {**lines, "name_from": "field", "name_field": "join"}})
+    assert by_join.status_code == 200 and by_join.json()["trenches"] == 0 and by_join.json()["skipped"] == 3
+    assert "пустым полем" in by_join.json()["warnings"][0], by_join.text
+
+    err = error_of(
+        pclient.post(f"{url}/inspect", json={"lines": {**lines, "name_from": "field", "name_field": "NOPE"}}),
+        422, "no_name_field",
+    )  # fmt: skip
+    assert "JOIN" in err["hint"]
+    error_of(pclient.post(f"{url}/inspect", json={"lines": {**lines, "reverse": ["TR-9"]}}), 422, "unknown_trench")
+    error_of(pclient.post(f"{url}/inspect", json={"lines": {"path": str(tmp_path / "нет.str")}}), 404, "file_not_found")
+    with dialect.read_tx(projects_engine(pclient)) as conn:  # the preview wrote nothing
+        assert conn.execute(sa.select(sa.func.count()).select_from(objects)).scalar_one() == 0
+
+    samples = _samples(tmp_path, ["TR-2;0;20;0,5;S1", "TR-2;20;62;1,2;S2", "TR-1;0;10;2;S3", "TR-3;0;50;0,2;S4"])
+    error_of(pclient.post(url, json={"lines": lines, "set_name": "  "}), 422, "name_empty")
+    error_of(pclient.post(url, json={"lines": lines, "set_id": 999}), 404, "set_not_found")
+    unmapped = {"path": samples["path"]}
+    error_of(pclient.post(url, json={"lines": lines, "set_name": "К", "samples": unmapped}), 422, "mapping_missing")
+    gone = {**samples, "path": str(tmp_path / "нет.csv")}
+    error_of(pclient.post(url, json={"lines": lines, "set_name": "К", "samples": gone}), 404, "file_not_found")
+
+    r = pclient.post(url, json={"lines": {**lines, "reverse": ["TR-2"]}, "set_name": " Канавы  2026 ",
+                                "samples": samples})  # fmt: skip
+    assert r.status_code == 200, r.text
+    job = wait_job(pclient, r.json()["source"], r.json()["id"])
+    assert job["status"] == "done" and job["title"] == "Импорт канав в «Канавы 2026»", job
+    assert job["result"]["trenches"] == 3 and job["result"]["samples"] == 4 and job["result"]["new_set"]
+    sets = pclient.get(f"{API}/drillholes/sets").json()["sets"]
+    assert [(s["name"], s["holes"]) for s in sets] == [("Канавы 2026", 3)]
+    set_id = sets[0]["id"]
+    traj = pclient.get(f"{API}/drillholes/sets/{set_id}/trajectories").json()
+    by_name = {h["name"]: h for h in traj["holes"]}
+    assert by_name["TR-2"]["stations"][0] == [0.0, *T2[2].tolist()]  # reversed, to the last bit
+
+    # the name is taken; the set has a table of samples already: replacing it has to be confirmed
+    error_of(pclient.post(url, json={"lines": lines, "set_name": "канавы 2026"}), 409, "name_taken")
+    again = {"lines": lines, "set_id": set_id, "samples": samples}
+    error_of(pclient.post(url, json=again), 409, "assay_exists")
+    r = pclient.post(url, json={**again, "samples": {**samples, "replace": True}})
+    assert r.status_code == 200, r.text
+    job = wait_job(pclient, r.json()["source"], r.json()["id"])
+    assert job["status"] == "done" and job["title"] == "Импорт канав" and not job["result"]["new_set"], job
+    assert pclient.get(f"{API}/drillholes/sets").json()["sets"][0]["holes"] == 3
+
+
+def projects_engine(client: Any) -> sa.Engine:
+    from bf_core.projects.service import projects_of
+
+    return projects_of(client.core).require_current().engine  # type: ignore[no-any-return]

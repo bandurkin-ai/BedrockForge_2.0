@@ -361,12 +361,42 @@ def _format_error(exc: FormatError) -> ApiError:
     return ApiError(422, exc.code, exc.message, exc.hint)
 
 
+def dtm_users(conn: sa.Connection, raster_id: int) -> list[dict[str, Any]]:
+    """The DTMs the raster is draped on: [{id, name}] by name."""
+    rows = conn.execute(
+        sa.select(objects.c.id, objects.c.name)
+        .join(object_refs, object_refs.c.src_id == objects.c.id)
+        .where(object_refs.c.dst_id == raster_id, object_refs.c.role == DRAPE)
+        .order_by(objects.c.name_key, objects.c.id)
+    ).all()
+    return [{"id": int(r.id), "name": str(r.name)} for r in rows]
+
+
+def _named(users: Sequence[Mapping[str, Any]]) -> str:
+    return ", ".join(f"«{u['name']}»" for u in users[:5]) + (" и другие" if len(users) > 5 else "")
+
+
+def _stays_in_plan(conn: sa.Connection, raster_id: int) -> None:
+    """Before a raster is stood in a vertical plane: a raster a DTM wears stays in plan (ТЗ 7.20 — a vertical
+    raster is not put on a relief, `wireframes.store._drape` refuses it with the same code)."""
+    users = dtm_users(conn, raster_id)
+    if users:
+        raise ApiError(
+            422,
+            "drape_vertical_raster",
+            f"Растр наложен на ЦТМ: {_named(users)}. На рельеф кладётся только растр в плане.",
+            "Снимите растр в настройках этих ЦТМ, затем поставьте его в вертикальную плоскость.",
+            extra={"wireframes": users},
+        )
+
+
 def update_raster(
     conn: sa.Connection, raster_id: int, expected_version: int, changes: Mapping[str, Any]
 ) -> dict[str, Any]:
     """`raster.set` and the «Свойства» of a raster. `changes` holds only what is set: `name`, `opacity`,
     `elevation` (None clears it: under the lowest object) and `vertical` {x1, y1, x2, y2, z_top, z_bottom} — the
-    left and right edges and the heights of a raster standing in a vertical plane."""
+    left and right edges and the heights of a raster standing in a vertical plane (a raster draped on a DTM
+    → 422 `drape_vertical_raster` with the list of the DTMs)."""
     row = _current(conn, raster_id, expected_version)
     values: dict[str, Any] = {}
     g: gr.Georef | None = None
@@ -385,6 +415,7 @@ def update_raster(
             raise ApiError(422, "bad_opacity", "Непрозрачность растра — от 0,05 до 1.", "Введите число от 0,05 до 1.")
         values["opacity"] = float(opacity)
     if "vertical" in changes and changes["vertical"] is not None:
+        _stays_in_plan(conn, raster_id)
         v = changes["vertical"]
         try:
             g = gr.vertical_georef(
@@ -429,20 +460,14 @@ def delete_raster(conn: sa.Connection, raster_id: int) -> int:
     from bf_core.drillholes.store import drop_import_owners
 
     _row(conn, raster_id)
-    users = conn.execute(
-        sa.select(objects.c.id, objects.c.name)
-        .join(object_refs, object_refs.c.src_id == objects.c.id)
-        .where(object_refs.c.dst_id == raster_id, object_refs.c.role == DRAPE)
-        .order_by(objects.c.name_key, objects.c.id)
-    ).all()
+    users = dtm_users(conn, raster_id)
     if users:
-        names = ", ".join(f"«{u.name}»" for u in users[:5]) + (" и другие" if len(users) > 5 else "")
         raise ApiError(
             422,
             "raster_in_use",
-            f"Растр наложен на ЦТМ: {names}.",
+            f"Растр наложен на ЦТМ: {_named(users)}.",
             "Снимите растр в настройках этих ЦТМ, затем удалите его.",
-            extra={"wireframes": [{"id": int(u.id), "name": str(u.name)} for u in users]},
+            extra={"wireframes": users},
         )
     drop_import_owners(conn, [raster_id])  # import_log goes by cascade: its source files must not stay owned
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == raster_id))
@@ -550,8 +575,10 @@ def section_georef(edges: Mapping[str, Any], width: int, height: int, z_top: flo
 
 
 def place_on_section(conn: sa.Connection, raster_id: int, z_top: float | None, expected_version: int) -> dict[str, Any]:
-    """`raster.place_on_section` (ТЗ 7.19): the raster — a plan one too — into the plane of the section line."""
+    """`raster.place_on_section` (ТЗ 7.19): the raster — a plan one too — into the plane of the section line.
+    A raster draped on a DTM stays in plan: 422 `drape_vertical_raster`."""
     row = _current(conn, raster_id, expected_version)
+    _stays_in_plan(conn, raster_id)
     edges = section_edges(conn)
     if edges is None:
         raise ApiError(

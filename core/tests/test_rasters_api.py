@@ -1,6 +1,7 @@
 """/api/v1/rasters (ТЗ 7.19; ADR 0011 §3): the tree and properties, `raster.set` with `expected_version` (409),
 «Сдвинуть» (−5 lowers all four corners of a vertical raster; no elevation → 422 `no_elevation`), «На текущий
-разрез», the image with ETag / 304, deleting (a raster draped on a DTM → 422 with the list), the export job."""
+разрез», the image with ETag / 304, deleting (a raster draped on a DTM → 422 with the list; such a raster also
+cannot be made vertical: 422 `drape_vertical_raster`), the export job."""
 
 from __future__ import annotations
 
@@ -282,6 +283,53 @@ def test_delete_and_a_raster_draped_on_a_dtm(rasters) -> None:  # type: ignore[n
     with dialect.read_tx(project.engine) as conn:
         owners = set(conn.execute(sa.select(blob_owners.c.owner_id)).scalars())
         assert rasters["plan"] not in owners and rasters["scan"] in owners  # its files go with the next cleanup
+
+
+def test_a_raster_draped_on_a_dtm_stays_in_plan(rasters) -> None:  # type: ignore[no-untyped-def]
+    """ТЗ 7.20: a vertical raster is not put on a relief — so a raster a DTM wears cannot be made vertical."""
+    c = rasters["client"]
+    project = rasters["project"]
+    now = dialect.utcnow()
+    with dialect.write_tx(project.engine) as conn:
+        dtms = []
+        for name in ("Рельеф 2026", "Рельеф карьера"):
+            values = dict(kind="wireframe", name=name, name_key=dialect.name_key(name), sort_key=0.0, state="ready",
+                          version=1, meta={}, created_at=now, updated_at=now)  # fmt: skip
+            dtm = int(conn.execute(sa.insert(objects).values(**values)).inserted_primary_key[0])
+            conn.execute(sa.insert(object_refs).values(src_id=dtm, dst_id=rasters["plan"], role=rs.DRAPE))
+            dtms.append(dtm)
+    url = f"{API}/rasters/{rasters['plan']}"
+    before = c.get(url).json()
+    edges = {"x1": 1000, "y1": 5000, "x2": "1300,5", "y2": 5400, "z_top": 600, "z_bottom": 350}
+    err = error_of(c.patch(url, json={"expected_version": 1, "vertical": edges}), 422, "drape_vertical_raster")
+    assert err["wireframes"] == [{"id": dtms[0], "name": "Рельеф 2026"}, {"id": dtms[1], "name": "Рельеф карьера"}]
+    assert "«Рельеф 2026»" in err["message"] and "«Рельеф карьера»" in err["message"] and "ЦТМ" in err["hint"]
+    # «На текущий разрез» would stand it vertically too
+    line = {"x0": 1000.0, "y0": 5000.0, "az": 90.0, "length": 320.0, "towards": 25.0, "away": 25.0}
+    put = c.put(f"{API}/view/section", json={"value": {"line": line, "clip": False}, "expected_version": 0})
+    assert put.status_code == 200, put.text
+    err = error_of(
+        c.post(f"{url}/place-on-section", json={"z_top": 500, "expected_version": 1}), 422, "drape_vertical_raster"
+    )
+    assert [w["id"] for w in err["wireframes"]] == dtms
+    assert c.get(url).json() == before  # nothing changed: neither the placement nor the version
+    # a stale version is told first (the user sees the current raster), a missing raster is a 404
+    error_of(c.patch(url, json={"expected_version": 7, "vertical": edges}), 409, "version_conflict")
+    error_of(c.patch(f"{API}/rasters/999999", json={"expected_version": 1, "vertical": edges}), 404, "raster_not_found")
+    # what keeps it in plan is allowed: the level, the opacity, the name, a shift
+    r = c.patch(url, json={"expected_version": 1, "elevation": "250,5", "opacity": 0.5, "name": "Карта"})
+    assert r.status_code == 200 and r.json()["elevation"] == 250.5 and not r.json()["vertical"], r.text
+    r = c.post(f"{url}/shift", json={"dz": -5, "expected_version": 2})
+    assert r.status_code == 200 and r.json()["elevation"] == 245.5, r.text
+    # a raster no DTM wears is free to stand up
+    other = f"{API}/rasters/{rasters['scan']}"
+    assert c.patch(other, json={"expected_version": 1, "vertical": edges}).status_code == 200
+    with dialect.write_tx(project.engine) as conn:  # «Снять растр» in the settings of both DTMs
+        conn.execute(sa.delete(object_refs).where(object_refs.c.dst_id == rasters["plan"]))
+    r = c.patch(url, json={"expected_version": 3, "vertical": edges})
+    assert r.status_code == 200 and r.json()["vertical"] and r.json()["elevation"] is None, r.text
+    want = [[1000.0, 5000.0, 600.0], [1300.5, 5400.0, 600.0], [1300.5, 5400.0, 350.0], [1000.0, 5000.0, 350.0]]
+    assert np.abs(corners(r.json()) - want).max() <= 1e-9
 
 
 def test_export_job_from_the_api(rasters, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
