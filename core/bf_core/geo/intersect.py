@@ -14,7 +14,7 @@ the hole (a mask over the whole mesh for each hole) and took the depth from the 
     triangles) and its ends are on different sides of the plane of the triangle, an end on the plane counting
     as above it — so a station lying on a surface gives one crossing, not two or none;
   * the depth is then moved from the chord to the course itself: the depth at which `Trajectories.positions`
-    is on the plane of the triangle (a few steps of the secant rule, to `DEPTH_TOL_M`), and the point of the
+    is on the plane of the triangle (a few steps down the slope of the chord, to `DEPTH_TOL_M`), and the point of the
     mark is `positions(hole, depth)` — on the trace as it is drawn, bit for bit;
   * crossings of one hole with one wireframe nearer than `SAME_HIT_M` along the chord are one crossing (the
     hole went through an edge or a vertex shared by several triangles); its side is the sign of the sum: a
@@ -67,6 +67,7 @@ CROSS, ENTER, LEAVE = 0, 1, 2  # `event` of a crossing (ADR 0007 §5): 1 and 2 �
 LEAF = 8  # triangles in a run of the tree
 MAX_LEAVES = 1 << 20  # more triangles make longer runs, not a larger tree (96 MB of boxes at most)
 HOLE_CHUNK = 1 << 12  # holes between two ticks
+MAX_PIECES = 1 << 16  # of one course (a guard against a course of absurd length)
 
 
 # --- kernels -----------------------------------------------------------------------------------------------
@@ -84,7 +85,7 @@ def _pieces(method, seg, ax, ay, az, bx, by, bz, sagitta):  # type: ignore[no-un
         sin_b = math.sqrt(ux * ux + uy * uy + uz * uz)
         if sin_b >= _STRAIGHT:  # an arc of radius seg / β: its sagitta is at most seg · β / 8
             bend = seg * math.atan2(sin_b, cos_b) / 8.0
-            return max(1, int(math.ceil(math.sqrt(bend / sagitta)))), bend
+            return max(1, min(MAX_PIECES, int(math.ceil(math.sqrt(bend / sagitta))))), bend
         if cos_b > 0.0:
             return 1, 0.0
         return 2, 0.0  # the direction turns back: two straight halves
@@ -117,17 +118,41 @@ def _refine(method, s, md, sxyz, dirs, xyz, i0, i1, i2, da, db, slope, depth):  
 
 
 @njit(cache=True, nogil=True)
-def _walk(method, offsets, md, sxyz, dirs, holes, j0, j1, xyz, tri, leaf, leaves, box, pad, sagitta,
-          o_hole, o_chord, o_depth, o_tri, o_sign):  # type: ignore[no-untyped-def]  # fmt: skip
-    """Crossings of the holes holes[j0:j1] with a mesh into `o_*` (in no order within a hole): the hole, the
-    depth along the chords, the depth along the path, the triangle, the sign. Returns (j, n): `n` crossings
-    written, of the holes before `j`; j < j1 — `o_*` are full, go on from hole `j`."""
-    room = o_hole.shape[0]
+def _runs_near(mesh, stack, near, ax, ay, az, bx, by, bz, extra):  # type: ignore[no-untyped-def]
+    """`segment_leaves` into `near`, made longer when it is too short: (number of runs, near)."""
+    xyz, tri, leaf, leaves, box, pad = mesh
+    count = segment_leaves(xyz, tri, leaf, leaves, box, pad, stack, ax, ay, az, bx, by, bz, extra, near)
+    while count < 0:
+        near = np.empty(2 * near.shape[0], dtype=np.int64)
+        count = segment_leaves(xyz, tri, leaf, leaves, box, pad, stack, ax, ay, az, bx, by, bz, extra, near)
+    return count, near
+
+
+@njit(cache=True, nogil=True)
+def _piece_hits(mesh, near, count, check, ax, ay, az, bx, by, bz, hits):  # type: ignore[no-untyped-def]
+    """`leaf_hits` into `hits` (t, triangle, sign), made longer when too short: (number of crossings, hits)."""
+    xyz, tri, leaf, leaves, box, _pad = mesh
+    h_t, h_tri, h_sign = hits
+    found = leaf_hits(xyz, tri, leaf, leaves, box, near, count, check, ax, ay, az, bx, by, bz, h_t, h_tri, h_sign)
+    while found < 0:
+        room = 2 * h_t.shape[0]
+        h_t, h_tri, h_sign = np.empty(room, np.float64), np.empty(room, np.int64), np.empty(room, np.int8)
+        found = leaf_hits(xyz, tri, leaf, leaves, box, near, count, check, ax, ay, az, bx, by, bz, h_t, h_tri, h_sign)
+    return found, (h_t, h_tri, h_sign)
+
+
+@njit(cache=True, nogil=True)
+def _walk(path, holes, j0, j1, mesh, sagitta, out):  # type: ignore[no-untyped-def]
+    """Crossings of the holes holes[j0:j1] of `path` (method, offsets, md, xyz, dirs of the trajectories) with
+    `mesh` (xyz, tri, leaf, leaves, box, pad of a `MeshTarget`) into `out` (in no order within a hole): the
+    hole, the depth along the chords, the depth along the path, the triangle, the sign. Returns (j, n): `n`
+    crossings written, of the holes before `j`; j < j1 — `out` is full, go on from hole `j`."""
+    method, offsets, md, sxyz, dirs = path
+    xyz, tri = mesh[0], mesh[1]
+    o_hole, o_chord, o_depth, o_tri, o_sign = out
     stack = np.empty(128, dtype=np.int64)
     near = np.empty(256, dtype=np.int64)  # the runs of triangles near a course
-    s_t = np.empty(64, dtype=np.float64)
-    s_tri = np.empty(64, dtype=np.int64)
-    s_sign = np.empty(64, dtype=np.int8)
+    hits = (np.empty(64, np.float64), np.empty(64, np.int64), np.empty(64, np.int8))
     n = 0
     for j in range(j0, j1):
         h = holes[j]
@@ -142,54 +167,40 @@ def _walk(method, offsets, md, sxyz, dirs, holes, j0, j1, xyz, tri, leaf, leaves
                 continue
             pieces, bend = _pieces(method, seg, dirs[s, 0], dirs[s, 1], dirs[s, 2],
                                    dirs[s + 1, 0], dirs[s + 1, 1], dirs[s + 1, 2], sagitta)  # fmt: skip
+            arc = bend > 0.0
             count = 0
-            if bend > 0.0:  # an arc: the runs near its chord, once for all its pieces
-                count = segment_leaves(xyz, tri, leaf, leaves, box, pad, stack, ax, ay, az, ex, ey, ez, bend, near)
-                while count < 0:
-                    near = np.empty(2 * near.shape[0], dtype=np.int64)
-                    count = segment_leaves(xyz, tri, leaf, leaves, box, pad, stack, ax, ay, az, ex, ey, ez, bend, near)
+            if arc:  # the runs of triangles near the arc, once for all its pieces; none — the arc is not cut
+                count, near = _runs_near(mesh, stack, near, ax, ay, az, ex, ey, ez, bend)
                 if count == 0:
                     continue
             da = md[s]
             for k in range(1, pieces + 1):
-                if k == pieces:
-                    bx, by, bz = ex, ey, ez
-                    db = md[s + 1]
-                else:
+                bx, by, bz, db = ex, ey, ez, md[s + 1]
+                if k < pieces:
                     db = md[s] + seg * k / pieces
                     bx, by, bz = _course_point(method, s, db, md, sxyz, dirs)
+                found = 0
                 if math.isfinite(bx + by + bz):
-                    if bend == 0.0:  # a straight piece: its own runs
-                        count = segment_leaves(xyz, tri, leaf, leaves, box, pad, stack, ax, ay, az, bx, by, bz, 0.0, near)
-                        while count < 0:
-                            near = np.empty(2 * near.shape[0], dtype=np.int64)
-                            count = segment_leaves(xyz, tri, leaf, leaves, box, pad, stack, ax, ay, az, bx, by, bz, 0.0, near)
-                    found = leaf_hits(xyz, tri, leaf, leaves, box, near, count, bend > 0.0, ax, ay, az, bx, by, bz,
-                                      s_t, s_tri, s_sign)  # fmt: skip
-                    while found < 0:
-                        s_t = np.empty(2 * s_t.shape[0], dtype=np.float64)
-                        s_tri = np.empty(2 * s_tri.shape[0], dtype=np.int64)
-                        s_sign = np.empty(2 * s_sign.shape[0], dtype=np.int8)
-                        found = leaf_hits(xyz, tri, leaf, leaves, box, near, count, bend > 0.0, ax, ay, az,
-                                          bx, by, bz, s_t, s_tri, s_sign)  # fmt: skip
-                    for q in range(found):
-                        if n == room:
-                            return j, start
-                        chord = da + s_t[q] * (db - da)
-                        depth = chord
-                        if bend > 0.0:
-                            i = s_tri[q]
-                            ga, gb = plane_sides(xyz, tri[i, 0], tri[i, 1], tri[i, 2], ax, ay, az, bx, by, bz)
-                            depth = _refine(method, s, md, sxyz, dirs, xyz, tri[i, 0], tri[i, 1], tri[i, 2],
-                                            da, db, (gb - ga) / (db - da), chord)  # fmt: skip
-                        o_hole[n] = h
-                        o_chord[n] = chord
-                        o_depth[n] = depth
-                        o_tri[n] = s_tri[q]
-                        o_sign[n] = s_sign[q]
-                        n += 1
-                ax, ay, az = bx, by, bz
-                da = db
+                    if not arc:
+                        count, near = _runs_near(mesh, stack, near, ax, ay, az, bx, by, bz, 0.0)
+                    found, hits = _piece_hits(mesh, near, count, arc, ax, ay, az, bx, by, bz, hits)
+                for q in range(found):
+                    if n == o_hole.shape[0]:
+                        return j, start
+                    i = hits[1][q]
+                    chord = da + hits[0][q] * (db - da)
+                    depth = chord
+                    if arc:
+                        ga, gb = plane_sides(xyz, tri[i, 0], tri[i, 1], tri[i, 2], ax, ay, az, bx, by, bz)
+                        depth = _refine(method, s, md, sxyz, dirs, xyz, tri[i, 0], tri[i, 1], tri[i, 2],
+                                        da, db, (gb - ga) / (db - da), chord)  # fmt: skip
+                    o_hole[n] = h
+                    o_chord[n] = chord
+                    o_depth[n] = depth
+                    o_tri[n] = i
+                    o_sign[n] = hits[2][q]
+                    n += 1
+                ax, ay, az, da = bx, by, bz, db
     return j1, n
 
 
@@ -294,6 +305,10 @@ class MeshTarget:
         if self.leaves == 0:
             raise ValueError("a triangle refers to a vertex that does not exist")
 
+    def kernel_args(self) -> tuple[Any, ...]:
+        """(xyz, tri, leaf, leaves, box, pad) — `mesh` of the kernels."""
+        return self.xyz, self.tri, self.leaf, self.leaves, self.box, self.pad
+
     @classmethod
     def from_stats(cls, xyz: Any, tri: Any, stats: Mapping[str, Any] | None, *, ordered: bool = False) -> MeshTarget:
         """With `solid` from the measures of the stored wireframe (`wireframes.stats`)."""
@@ -348,12 +363,11 @@ def hole_crossings(
     """Where the holes of `traj` (all of them, or the dense indices `holes`) cross the wireframes `targets`.
 
     `tick` — progress and cancellation, called between portions of `HOLE_CHUNK` holes. Holes without a
-    trajectory give nothing. The memory is that of the trees (48 bytes for every 8 triangles) and of the
-    crossings found."""
+    trajectory give nothing. The memory is that of the trees (13 MB for a million triangles) and of the
+    crossings found; 50 000 holes against a million triangles take about 0.7 s on one thread."""
     which = _which(traj, holes)
-    code = METHODS.index(traj.method)
-    offsets = np.ascontiguousarray(traj.offsets, dtype=np.int64)
     md, sxyz, dirs = (np.ascontiguousarray(a, dtype=np.float64) for a in (traj.md, traj.xyz, traj.dirs))
+    path = (METHODS.index(traj.method), np.ascontiguousarray(traj.offsets, dtype=np.int64), md, sxyz, dirs)
     room = 4 * HOLE_CHUNK
     bufs = _buffers(room)
     found: list[tuple[np.ndarray, ...]] = []
@@ -363,8 +377,7 @@ def hole_crossings(
         rows: list[tuple[np.ndarray, ...]] = []
         j = 0
         while j < len(which):
-            nxt, n = _walk(code, offsets, md, sxyz, dirs, which, j, min(len(which), j + HOLE_CHUNK), target.xyz,
-                           target.tri, target.leaf, target.leaves, target.box, target.pad, SAGITTA_M, *bufs)  # fmt: skip
+            nxt, n = _walk(path, which, j, min(len(which), j + HOLE_CHUNK), target.kernel_args(), SAGITTA_M, bufs)
             if n:
                 rows.append(tuple(b[:n].copy() for b in bufs))
             if nxt == j:  # one hole alone has more crossings than the buffers hold

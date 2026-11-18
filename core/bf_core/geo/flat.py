@@ -46,7 +46,7 @@ import numpy as np
 from bf_core.jit import njit
 
 FLAT_TOL = 1e-6  # the sine of the largest angle between an edge at a vertex and the plane of its fan
-QUALITY = (0.4, 0.2, 0.1, 0.05, 0.02)  # the least quality of a new triangle (1 — equilateral), step by step
+QUALITY = (0.4, 0.2, 0.1, 0.05, 0.02, 0.005, 0.001)  # the least quality of a new triangle, step by step
 MAX_RING = 64  # the longest fan that is looked at: the choice of a neighbour is quadratic in it
 MAX_PASSES = 400
 _Q = 2.0 * math.sqrt(3.0)  # twice the area over the sum of the squared sides is 1/_Q for an equilateral triangle
@@ -195,6 +195,26 @@ def _planes(k, d, cr, c2, off, side, nrm, tol2):  # type: ignore[no-untyped-def]
     if x * x + y * y + z * z > tol2 * lp * lq:
         return 0, 0, 0
     return 2, p, q
+
+
+@njit(cache=True, nogil=True)
+def _least(k, d, c2):  # type: ignore[no-untyped-def]
+    """The least quality of the triangles of a fan (c2 — their squared double areas, from `_planes`)."""
+    least = 4.0
+    for s in range(k):
+        e = s + 1 if s + 1 < k else 0
+        x = d[e, 0] - d[s, 0]
+        y = d[e, 1] - d[s, 1]
+        z = d[e, 2] - d[s, 2]
+        sides = (
+            d[s, 0] * d[s, 0] + d[s, 1] * d[s, 1] + d[s, 2] * d[s, 2]
+            + d[e, 0] * d[e, 0] + d[e, 1] * d[e, 1] + d[e, 2] * d[e, 2]
+            + x * x + y * y + z * z
+        )  # fmt: skip
+        ratio = c2[s] / (sides * sides)
+        if ratio < least:
+            least = ratio
+    return _Q * math.sqrt(least)
 
 
 @njit(cache=True, nogil=True)
@@ -359,11 +379,11 @@ def _thin(xyz, tri, alive, cand, target, tol, quality, max_ring, max_passes):  #
     passno = 0
     while count > target and live > 0 and stage < len(quality) and passno < max_passes:
         passno += 1
-        floor = quality[stage]
         done = 0
         kept = 0
         for i in range(live):
             v = queue[i]
+            floor = quality[stage]
             if count <= target:  # enough: the rest of the queue is not looked at
                 break
             if changed[v] == passno or (tried[v] >= since and changed[v] < tried[v]):
@@ -387,6 +407,9 @@ def _thin(xyz, tri, alive, cand, target, tol, quality, max_ring, max_passes):  #
             if kind == 0:
                 cand[v] = False
                 continue
+            least = _least(k, d, c2)
+            if least < floor:  # the fan has slivers of its own: the cut may be as bad, not worse
+                floor = least
             fits = False
             if kind == 1:  # one polygon: the whole ring
                 for s in range(k):
@@ -499,4 +522,18 @@ def join(
     return np.ascontiguousarray(out_v), np.ascontiguousarray(out_t)
 
 
-__all__ = ["FLAT_TOL", "MAX_RING", "QUALITY", "join", "thin"]
+def bordered(tri: np.ndarray, vertices: np.ndarray) -> bool:
+    """Whether every one of `vertices` is on the border of the mesh: on an edge of one triangle only. pyfqmr
+    keeps such vertices; a vertex of an edge of three triangles that lost one of them is not such."""
+    n = int(tri.max()) + 1 if len(tri) else 0
+    a = np.concatenate([tri[:, 0], tri[:, 1], tri[:, 2]]).astype(np.int64)
+    b = np.concatenate([tri[:, 1], tri[:, 2], tri[:, 0]]).astype(np.int64)
+    keys, counts = np.unique(np.minimum(a, b) * n + np.maximum(a, b), return_counts=True)
+    single = keys[counts == 1]
+    on = np.zeros(n, dtype=np.bool_)
+    on[single // n] = True
+    on[single % n] = True
+    return bool(on[np.asarray(vertices, dtype=np.int64)].all())
+
+
+__all__ = ["FLAT_TOL", "MAX_RING", "QUALITY", "bordered", "join", "thin"]

@@ -206,7 +206,9 @@ def test_intervals_of_holes_that_start_or_end_inside() -> None:
     assert spans.from_collar.tolist() == [False, True, False] and spans.to_end.tolist() == [False, False, True]
     ends = np.array([[50.0, 50.0, 100.0], [20.0, 30.0, 60.0], [70.0, 20.0, 100.0]])
     assert spans.xyz_from == pytest.approx(ends, abs=1e-12)
-    assert spans.xyz_to == pytest.approx(np.array([[50.0, 50.0, 0.0], [20.0, 30.0, 0.0], [70.0, 20.0, 60.0]]), abs=1e-12)
+    assert spans.xyz_to == pytest.approx(
+        np.array([[50.0, 50.0, 0.0], [20.0, 30.0, 0.0], [70.0, 20.0, 60.0]]), abs=1e-12
+    )
     # a hole wholly inside a solid has no crossing to tell it by: no interval (said in the docstring)
     assert 3 not in spans.hole.tolist()
     opened = gi.MeshTarget.from_stats(v, t, {"closed": False, "orientation": None})

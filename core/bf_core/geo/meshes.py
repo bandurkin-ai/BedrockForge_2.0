@@ -236,18 +236,19 @@ def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarra
     v, t, held = flat.thin(local, tri, count)
     if len(t) <= count:
         return v, t
-    if not held.any():
-        return _decimate(v, t, count) or (v, t)
-    keep = held[t].any(axis=1)
-    rest = t[~keep]
-    if len(rest) == 0:
-        return v, t
-    used, inverse = np.unique(rest, return_inverse=True)
-    made = _decimate(v[used], np.ascontiguousarray(inverse.reshape(-1, 3), dtype=np.int32), count - int(keep.sum()))
-    if made is None:
-        return v, t
-    kept = t[keep]
-    return flat.join(v, kept, np.intersect1d(kept, used), *made) or (v, t)
+    if held.any():
+        keep = held[t].any(axis=1)
+        kept, rest = t[keep], t[~keep]
+        if len(rest) == 0:
+            return v, t
+        used, inverse = np.unique(rest, return_inverse=True)
+        sub = np.ascontiguousarray(inverse.reshape(-1, 3), dtype=np.int32)
+        seam = np.intersect1d(kept, used)
+        if flat.bordered(sub, np.searchsorted(used, seam)):  # pyfqmr keeps the vertices of a border
+            made = _decimate(v[used], sub, count - len(kept))
+            return (flat.join(v, kept, seam, *made) if made else None) or (v, t)
+        # an edge of three triangles and the like: the cut is no border — pyfqmr gets the mesh whole
+    return _decimate(v, t, count) or (v, t)
 
 
 def levels(local: np.ndarray, tri: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:

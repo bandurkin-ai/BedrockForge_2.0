@@ -6,13 +6,16 @@ in float64. The corners are moved to the origin of the line and sheared so that 
 the three edge functions are then products of the same numbers for both triangles of a shared edge, of exactly
 opposite sign, so a line cannot pass between two triangles that share an edge or a vertex: on the edge itself
 both triangles are hit. A triangle seen exactly edge-on, or without area, is not hit. BF used Möller–Trumbore
-with tolerances, which on UTM coordinates left gaps of the order of a nanometre.
+with a tolerance on the barycentric coordinates; without a tolerance that test loses about one ray in a hundred
+of those aimed exactly at a vertex of a lattice with UTM-sized coordinates (tests/test_geo_pick.py), and what a
+tolerance closes depends on the size of the triangle.
 
 The tree (for many segments against one mesh): the triangles are taken in runs of `leaf` consecutive ones — the
 order must be spatial (`geo.meshes.morton_order`; a stored wireframe is in that order already) — each run has
 its box, and the boxes are joined in pairs up to the root, as an implicit binary heap of `2 · leaves − 1` nodes
 (`leaves` is a power of two; node k has the children 2k + 1 and 2k + 2; a node without triangles has an empty
-box). No pointers, 48 bytes a node.
+box). No pointers, 48 bytes a node. The curve of the spatial order jumps, so a run may hold triangles far apart
+and have a large box: `segment_leaves` looks at the boxes of the triangles of a run before it reports the run.
 
 numba is imported with this module: import it lazily, never before BF-READY.
 """

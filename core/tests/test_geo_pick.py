@@ -208,6 +208,38 @@ def test_planes_of_the_section_window_limit_the_ray() -> None:
         gp.ray_pick(v, t, origin, d, clip=[[0.0, 0.0, 0.0, 1.0]])
 
 
+def test_fine_parts_cover_the_same_triangles_and_give_the_same_pick() -> None:
+    v, t, parts = stored(*grid(120, 90, hills), part_triangles=2000)
+    fine = gp.fine_parts(v, t, parts, size=64)
+    assert fine.dtype == np.float64 and fine.shape[1] == 8 and len(fine) > 20 * len(parts)
+    first, count = fine[:, 0].astype(int), fine[:, 1].astype(int)
+    assert first[0] == 0 and (first[1:] == first[:-1] + count[:-1]).all() and first[-1] + count[-1] == len(t)
+    assert count.max() <= 64 and set(first.tolist()) >= {int(p[0]) for p in parts}  # runs do not cross the parts
+    for k in (0, len(fine) // 2, len(fine) - 1):  # the box of a run is the exact box of its triangles
+        corners = v[t[first[k] : first[k] + count[k]].ravel()]
+        assert fine[k, 2:5].tolist() == corners.min(axis=0).tolist()
+        assert fine[k, 5:8].tolist() == corners.max(axis=0).tolist()
+    rng = np.random.default_rng(8)
+    lo, hi = v.min(axis=0), v.max(axis=0)
+    found = 0
+    for k in range(200):
+        target = lo + rng.random(3) * (hi - lo)
+        origin = target + [300.0 * math.cos(k), 300.0 * math.sin(k), 40.0 + 200.0 * (k % 3)]
+        coarse = gp.ray_pick(v, t, origin, target - origin, parts=parts)
+        assert gp.ray_pick(v, t, origin, target - origin, parts=fine) == coarse
+        assert gp.ray_pick(v, t, origin, target - origin) == coarse
+        found += coarse is not None
+    assert 100 < found
+    whole = gp.fine_parts(v, t, size=1000)  # without a part table: the whole mesh in runs
+    assert len(whole) == math.ceil(len(t) / 1000) and whole[:, 1].sum() == len(t)
+    with pytest.raises(ValueError):
+        gp.fine_parts(v, t, parts, size=0)
+    bad = t.copy()
+    bad[-1, 2] = len(v)
+    with pytest.raises(ValueError):
+        gp.fine_parts(v, bad, parts)
+
+
 def test_memory_maps_and_bad_input(tmp_path) -> None:  # type: ignore[no-untyped-def]
     v, t, parts = stored(*cube(6, 60.0), part_triangles=64)
     v.tofile(tmp_path / "xyz.bin")
