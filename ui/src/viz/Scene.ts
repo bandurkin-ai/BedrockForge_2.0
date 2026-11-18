@@ -466,8 +466,7 @@ export class Scene {
   /** Part offsets, the planes and the overlay after the scene origin moved. */
   private placeAll(): void {
     for (const l of this.holeSets.values()) l.place(this.origin);
-    this.layers.place();
-    this.contentChanged();
+    this.layerChanged();
   }
 
   private depthBox(): Box3 | null {

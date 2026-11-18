@@ -1,7 +1,8 @@
 // Э7, подшаги 7.24–7.25 (ADR 0011 §4) under software WebGL2: lines, points, a text and a raster imported into
 // the demo project appear in the 3D window as layers `ln:<id>` and `rs:<id>`; a raster without an elevation
-// lies under the lowest hole; a hidden layer leaves the frame; a click on a line picks it within 50 ms; a
-// raster made vertical is a backdrop under clipping and an ordinary object without it.
+// lies under the lowest hole; a hidden layer leaves the frame; far away a dense line is drawn at a coarser
+// level («упрощено»); a click on a line picks it within 50 ms; after a lost context everything comes again;
+// a raster made vertical is a backdrop under clipping and an ordinary object without it.
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
@@ -44,6 +45,9 @@ function png(w: number, h: number): Buffer {
 
 const dxf = (entities: (string | number)[][]) => ["0", "SECTION", "2", "ENTITIES", ...entities.flat().map(String), "0", "ENDSEC", "0", "EOF", ""].join("\r\n");
 
+const ZIGZAG = 600;
+const SEGMENTS = 2 + ZIGZAG - 1;
+
 /** South of the demo holes (x 5000…5400, y 8000…8300): a road, a point, a text; points with and without Z; an image. */
 function makeFiles(dir: string): string[] {
   const files = { lines: path.join(dir, "roads.dxf"), points: path.join(dir, "relief.csv"), image: path.join(dir, "ortho.png"), world: path.join(dir, "ortho.pgw") };
@@ -54,6 +58,8 @@ function makeFiles(dir: string): string[] {
       [0, "LINE", 8, "ROADS", 10, 5440, 20, 7900, 30, 330, 11, 5440, 21, 7860, 31, 331],
       [0, "POINT", 8, "MARKS", 10, 5000.5, 20, 7880, 30, 300],
       [0, "TEXT", 8, "MARKS", 10, 5100, 20, 7880, 30, 300, 40, 5, 1, "Дорога"],
+      // a dense zigzag of 0.5 m: the coarser levels (4 and 32 m) straighten it
+      [0, "LWPOLYLINE", 8, "ZIGZAG", 90, ZIGZAG, 70, 0, 38, 310, ...Array.from({ length: ZIGZAG }, (_, i) => [10, 4960 + (480 * i) / (ZIGZAG - 1), 20, 7820 + (i % 2) * 0.5]).flat()],
     ]),
   );
   fs.writeFileSync(files.points, "X;Y;Z;NAME\n5000,5;7850,25;301,5;Репер 1\n5100;7850;;Репер 2\n5200;7850;303;Репер 3\n", "utf-8");
@@ -99,7 +105,7 @@ test("3D: lines, points and a raster — layers, floor, hide, click on a line, v
           const rasters = (await api("GET", "/rasters")).body.rasters as { id: number }[];
           layers = files.flatMap((f) => f.layers);
           rasterId = rasters[0]?.id ?? 0;
-          return layers.length >= 3 && rasters.length === 1;
+          return layers.length === 4 && rasters.length === 1;
         },
         { timeout: 60_000 },
       )
@@ -112,7 +118,7 @@ test("3D: lines, points and a raster — layers, floor, hide, click on a line, v
     const shown = await state(page);
     for (const l of layers) expect(shown.layers).toContain(`ln:${l.id}`);
     expect(shown.layers).toContain(`rs:${rasterId}`);
-    expect(shown.lines.segments).toBe(2);
+    expect(shown.lines.segments).toBe(SEGMENTS);
     expect(shown.lines.points).toBeGreaterThanOrEqual(5); // the DXF point and text, three points of the table
     expect(shown.lines.simplified).toBe(0);
     expect(shown.rasters.levels[String(rasterId)]).not.toBeNull();
@@ -124,13 +130,33 @@ test("3D: lines, points and a raster — layers, floor, hide, click on a line, v
     await page.screenshot({ path: shot("lines-rasters.png") });
 
     // a hidden layer leaves the frame, its data stays
-    const road = layers.find((l) => !l.points_only)!;
+    const road = layers.find((l) => l.name === "ROADS")!;
+    expect(road).toBeDefined();
     expect((await page.evaluate((id) => window.__bfScene!.run("layer.show", { layer: "lines", id, visible: false }), road.id)).ok).toBe(true);
     await waitFrame(page);
-    expect((await state(page)).lines.segments).toBe(0);
+    expect((await state(page)).lines.segments).toBe(SEGMENTS - 2);
     await page.evaluate((id) => window.__bfScene!.run("layer.show", { layer: "lines", id, visible: true }), road.id);
     await waitFrame(page);
-    expect((await state(page)).lines.segments).toBe(2);
+    expect((await state(page)).lines.segments).toBe(SEGMENTS);
+
+    // far away the zigzag is drawn simplified (a coarser level is loaded), close again — in full
+    const box = (await page.getByTestId("scene-host").boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const zoomUntil = async (delta: number, done: (s: Awaited<ReturnType<typeof state>>) => boolean) => {
+      for (let i = 0; i < 40; i++) {
+        await page.mouse.wheel(0, delta);
+        await waitFrame(page);
+        if (done(await state(page))) return;
+      }
+      throw new Error(`the level of detail did not change: ${JSON.stringify((await state(page)).lines)}`);
+    };
+    await zoomUntil(400, (s) => s.lines.simplified > 0);
+    const far = await state(page);
+    expect(far.lines.segments).toBeLessThan(SEGMENTS);
+    await expect(page.getByText(/Линии упрощены/)).toBeVisible();
+    await zoomUntil(-400, (s) => s.lines.simplified === 0 && s.lines.segments === SEGMENTS);
+    await page.keyboard.press("f");
+    await waitFrame(page);
 
     // a click on the road from above: the line of the layer, on the CPU within 50 ms
     await page.keyboard.press("t");
@@ -149,6 +175,21 @@ test("3D: lines, points and a raster — layers, floor, hide, click on a line, v
     await page.mouse.click(empty.x, empty.y);
     await waitFrame(page);
     expect((await state(page)).picked).toMatchObject({ kind: "raster", id: rasterId });
+
+    // a lost context: the lines and the image come again from the core
+    await page.evaluate(() => {
+      const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="scene-host"] canvas')!;
+      window.__bfLose = canvas.getContext("webgl2")!.getExtension("WEBGL_lose_context");
+      window.__bfLose!.loseContext();
+    });
+    await expect.poll(() => page.evaluate(() => window.__bfScene!.state().lost)).toBe(true);
+    await page.evaluate(() => window.__bfLose!.restoreContext());
+    await expect(page.getByTestId("scene-lost")).toBeHidden({ timeout: 30_000 });
+    await waitFrame(page);
+    const again = await state(page);
+    expect(again.lines).toMatchObject({ layers: layers.length, segments: SEGMENTS, points: shown.lines.points });
+    expect(again.rasters.levels[String(rasterId)]).not.toBeNull();
+    expect((await page.evaluate(() => window.__bfScene!.pixels()))!.nonBackground).toBeGreaterThan(pixelsBefore + 5000);
 
     // the raster made vertical along y = 8100: an ordinary object, and a backdrop once the section clips
     const info = (await api("GET", `/rasters/${rasterId}`)).body as { version: number };
