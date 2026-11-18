@@ -20,6 +20,9 @@ vertices, indices, normal, area, dip, dip_direction} or null}; `clip` — the pl
 the levels of detail that are missing, checks the normals and the self-intersections and writes
 `stats.checks` → {source, id} of the job. `GET /wireframes/{id}/checks` — BFA1 `checks` with an ETag: the
 triangles that cross, for the red layer of the 3D window; `state` — done, none, failed or missing.
+`POST /wireframes/export` {path, format, wireframe_ids, options, overwrite} starts the job `export.wireframes`
+(`wireframes/export.py`): TRIDB, DXF, DWG (through ODA File Converter), OBJ, STL or Surpac DTM; 409
+`files_exist` {files} — the export would replace files the save window did not ask about.
 The geometry for 3D is `/viz/wireframes/{id}` (`viz/router.py`). Numbers may come as text with a comma.
 """
 
@@ -223,6 +226,41 @@ def pick(svc: Svc, body: PickBody) -> dict[str, Any]:
 
     project = svc.require_current()
     return exact.pick(project, body.origin, body.direction, body.wireframe_ids, body.clip)
+
+
+class ExportOptions(BaseModel):
+    version: str | None = Field(default=None, max_length=16)  # DWG: R2000 … R2018 (R2013 when not given)
+    binary: bool | None = None  # STL: true (default) — binary, float32; false — text, float64
+
+
+class ExportBody(BaseModel):
+    path: str = Field(max_length=2000)
+    format: str = Field(max_length=16)  # tridb | dxf | dwg | obj | stl | dtm
+    wireframe_ids: list[int] = Field(min_length=1, max_length=5000)
+    options: ExportOptions = Field(default_factory=ExportOptions)
+    # files the export replaces without the save window having asked (409 `files_exist` names them): agreed
+    overwrite: bool = False
+
+
+@router.post("/export")
+def export_wireframes(svc: Svc, s: Sched, request: Request, body: ExportBody) -> dict[str, Any]:
+    """`wireframe.export`: the job «Экспорт каркасов» writes the wireframes into one file of the format. 409
+    `files_exist` {files}: the window asks and repeats the call with `overwrite: true`; 422 `oda_not_found` —
+    a DWG without ODA File Converter («Настройка › Внешние программы»)."""
+    from bf_core.importing.tools import oda_converter
+
+    from . import export
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        params = export.request(
+            conn, path=body.path, format=body.format, wireframe_ids=body.wireframe_ids,
+            options=body.options.model_dump(exclude_none=True), overwrite=body.overwrite,
+            oda=oda_converter(request.app.state.core),
+        )  # fmt: skip
+    label = export.FORMATS[body.format].label
+    key, job_id = s.submit("export.wireframes", params, title=f"Экспорт каркасов ({label})")
+    return {"source": key, "id": job_id}
 
 
 @router.post("/{wireframe_id}/check")

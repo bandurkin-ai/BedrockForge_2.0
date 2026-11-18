@@ -7,15 +7,18 @@ process:
   section_first_s  the first section — a vertical plane at 63° to the grid through both wireframes: their
                    geometry is read from the blobs, then cut (`GET /viz/wireframes/{id}/section` for each);
   section_step_s   the slowest of 20 next sections, the plane moved by 20 m each time (a step of the section);
-  pick_first_s     the first click after the geometry was dropped: the blobs again and the finer part table;
-  pick_s           the slowest of 250 next clicks (`POST /wireframes/pick`): 100 rays straight down, 100 from a
-                   camera at an angle, 50 that graze the relief (they pass over many parts);
+  pick_first_s     the first click on a wireframe after its geometry was dropped (`POST /wireframes/pick`):
+                   the blobs again and the finer part table — the slower of the two wireframes (the surface
+                   from above, the ore body from below);
+  pick_s           the slowest of 250 next clicks: 100 rays straight down, 100 from a camera at an angle, 50
+                   that graze the relief (they pass over many parts);
   pick_median_s    their median.
 What is checked against the surface the wireframe was made from (`Surface.height`, float64):
   section_error_m  the largest distance of a point of a section from its plane and from the surface; the
                    surface gives one open line from border to border, the ore body — a closed one;
   pick_error_m     the largest distance of a picked point from the surface (for a ray straight down — from the
-                   point under the ray), and no ray passes under the surface before its hit.
+                   point under the ray), and no ray passes under the surface before its hit; the click from
+                   below is answered by the ore body, on its ellipsoid.
 """
 
 from __future__ import annotations
@@ -110,7 +113,7 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     from types import SimpleNamespace
 
     import numpy as np
-    from tools.gen.wireframes import Surface
+    from tools.gen.wireframes import Surface, body_distance, body_of
 
     from bf_core.db import dialect
     from bf_core.viz import binary
@@ -140,9 +143,17 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         steps = [sections(step * k) for k in range(1, STEPS + 1)]
 
         exact.forget()
-        a = time.perf_counter()
-        exact.pick(project, origins[0], directions[0], ids)
-        pick_first_s = time.perf_counter() - a
+        body = body_of(surface, 0)
+        under = np.asarray(body["centre"]) - [0.0, 0.0, 1000.0]
+        cold = []
+        for o, d in ((origins[0], directions[0]), (under, np.array([0.0, 0.0, 1.0]))):
+            a = time.perf_counter()
+            first_hit = exact.pick(project, o, d, ids)["hit"]
+            cold.append(time.perf_counter() - a)
+        pick_first_s = max(cold)
+        assert first_hit is not None and first_hit["wireframe_id"] == ids[1], first_hit
+        shell = float(body_distance([first_hit["point"]], **body)[0])
+        assert 0.98 < shell <= 1.0 + 1e-9, shell  # on a facet of the ore body: inside its ellipsoid, never outside
         picks, times = [], []
         for o, d in zip(origins, directions, strict=True):
             a = time.perf_counter()

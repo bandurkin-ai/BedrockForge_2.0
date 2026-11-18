@@ -335,7 +335,8 @@ def _check_one(
         del v, t
         tick(0.98, STEP_SAVE)  # the last place a cancel is heard: the file and the record go together
         if body is None:
-            checks_file(folder, key).unlink(missing_ok=True)
+            with suppress(OSError):  # a list made by an older program; one being read on Windows stays
+                checks_file(folder, key).unlink(missing_ok=True)
         else:
             vm._write(checks_file(folder, key), body)
         records[key] = record
