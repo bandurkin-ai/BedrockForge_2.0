@@ -422,6 +422,38 @@ def test_reading_can_be_cancelled(tmp_path: Path) -> None:
     assert calls == 4
 
 
+def test_extreme_shapes(tmp_path: Path) -> None:
+    one = save(tmp_path / "one.png", np.full((1, 1, 3), 200, dtype=np.uint8))
+    info, copies, _ = ri.display_copies(one)
+    assert (info.width, info.height) == (1, 1) and [(c.width, c.height) for c in copies] == [(1, 1), (1, 1)]
+    assert np.abs(decode(copies[0]).astype(np.int16) - 200).max() <= 2
+    # A strip 30 000 × 7 px: the short side never becomes zero, the long one is the limit.
+    strip = np.zeros((7, 30_000), dtype=np.uint8)
+    strip[:, 15_000:] = 255
+    info, copies, _ = ri.display_copies(save(tmp_path / "strip.png", strip))
+    assert [(c.width, c.height) for c in copies] == [(4096, 1), (1024, 1)]
+    for copy in copies:
+        row = decode(copy)[0].astype(np.float64)
+        assert row[: copy.width // 2 - 2].max() <= 3 and row[copy.width // 2 + 2 :].min() >= 252
+    tall = ri.display_copies(save(tmp_path / "tall.png", strip.T.copy()))[1]
+    assert [(c.width, c.height) for c in tall] == [(1, 4096), (1, 1024)]
+
+
+def test_16_bit_png(tmp_path: Path) -> None:
+    data = (np.linspace(200, 60_000, 500)[None, :] * np.ones((300, 1))).astype(np.uint16)
+    Image.fromarray(data).save(tmp_path / "deep.png")
+    info, copies, warnings = ri.display_copies(tmp_path / "deep.png")
+    assert (info.format, info.bits, info.reader) == ("PNG", 16, "pillow") and any("8 бит" in w for w in warnings)
+    assert np.abs(decode(copies[0]).astype(np.float64) - stretched(data)).max() <= 3
+
+
+def test_a_file_stored_without_its_extension(tmp_path: Path) -> None:
+    stored = save(tmp_path / "ortho.jpg", ramp(40, 20)).rename(tmp_path / "upload-0004")
+    out = ri.read_raster(stored, sidecars={".jgw": "2.0\n0.0\n0.0\n-2.0\n1001.0\n2999.0\n"}, name="Орто")
+    assert out.name == "Орто" and out.info.format == "JPEG" and out.georef is not None
+    assert out.georef.affine == (2.0, 0.0, 1000.0, 0.0, -2.0, 3000.0) and out.sidecars == {}
+
+
 def test_pixels_are_read_band_by_band(tmp_path: Path) -> None:
     picture = ramp(321, 123)
     path = save(tmp_path / "bands.png", picture)

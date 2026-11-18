@@ -80,6 +80,36 @@ def test_files_without_a_header(tmp_path: Path, name: str, text: str, delimiter:
     assert out.layers[0].attrs is None and out.records == 3
 
 
+@pytest.mark.parametrize(
+    ("text", "delimiter", "header_row"),
+    [
+        ("100,5 200,5 300,5\n110,5 210,5 310,5\n", "whitespace", 0),  # `5 200` is not the number 5200
+        ("100.5, 200.5, 300.5\n110.5, 210.5, 310.5\n", ",", 0),
+        ("100.5\t200.5 300.5\n110.5\t210.5 310.5\n", "whitespace", 0),  # tabs and spaces mixed
+        ("X;Y;Z;Имя\n100,5;200,5;300,5;Точка 1, север\n110,5;210,5;310,5;Точка 2\n", ";", 1),
+        ("X,Y,Z,Name\n100.5,200.5,300.5,Point A\n110.5,210.5,310.5,Point B north\n", ",", 1),
+        ("X\tY\tZ\tName\n100,5\t200,5\t300,5\tPoint A\n110,5\t210,5\t310,5\tB\n", "\t", 1),
+        ("Протокол съёмки № 5\nX;Y;Z\n100,5;200,5;300,5\n110,5;210,5;310,5\n", ";", 2),
+    ],
+)
+def test_the_delimiter_is_told_from_the_decimal_comma(
+    tmp_path: Path, text: str, delimiter: str, header_row: int
+) -> None:
+    options = ReadOptions(header_row=header_row) if header_row == 2 else None
+    out = read_points(put(tmp_path, "local.txt", text), options=options)
+    assert out.header.delimiter == delimiter and out.header.header_row == header_row
+    assert out.layers[0].xyz.tolist() == [[100.5, 200.5, 300.5], [110.5, 210.5, 310.5]]
+
+
+def test_numbers_with_digit_groups(tmp_path: Path) -> None:
+    text = "466 570,586\t4 584 699,697\t557,95\n466 580,5\t4 584 710,25\t560\n"
+    out = read_points(put(tmp_path, "grouped.txt", text))
+    assert out.header.delimiter == "\t" and np.array_equal(out.layers[0].xyz, np.array(ROWS[:2]))
+    text = "X;Y;Z\n466 570,586;4 584 699,697;557,95\n466 580,5;4 584 710,25;560\n"
+    out = read_points(put(tmp_path, "grouped.csv", text))
+    assert out.header.delimiter == ";" and np.array_equal(out.layers[0].xyz, np.array(ROWS[:2]))
+
+
 def test_extra_columns_without_a_header_are_attributes(tmp_path: Path) -> None:
     out = read_points(put(tmp_path, "p.xyz", "1.5 2.5 3.5 12 gold\n4.5 5.5 6.5 13 ore\n"))
     (layer,) = out.layers
@@ -134,6 +164,14 @@ def test_rows_without_x_or_y_are_left_out_and_counted(tmp_path: Path) -> None:
     assert out.records == 6
     assert any("4" in w and "пропущен" in w for w in out.warnings)
     assert any("abc" in w for w in out.warnings)  # what could not be read is named
+
+
+def test_attribute_names_that_differ_only_by_case(tmp_path: Path) -> None:
+    out = read_points(put(tmp_path, "case.csv", "X;Y;Z;Au;AU;au\n1,5;2,5;3,5;4;5;6\n"))
+    (layer,) = out.layers
+    assert layer.attrs.column_names == ["Au", "AU_2", "au_3"]
+    assert [numbers(layer, n).tolist() for n in layer.attrs.column_names] == [[4.0], [5.0], [6.0]]
+    assert sum("AU_2" in w or "au_3" in w for w in out.warnings) == 2
 
 
 def test_micromine_dat_with_points(tmp_path: Path) -> None:

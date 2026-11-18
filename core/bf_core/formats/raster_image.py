@@ -281,10 +281,11 @@ class Pixels:
 
 
 class _PillowPixels(Pixels):
-    def __init__(self, im: Any, info: ImageInfo, tick: Progress, draft: tuple[int, int] | None) -> None:
+    def __init__(self, im: Any, info: ImageInfo, tick: Progress, draft: int | None) -> None:
         self.info, self._im = info, im
         if draft is not None and im.format in ("JPEG", "MPO"):
-            im.draft(None, draft)  # the decoder gives 1/2, 1/4 or 1/8 of the size, not less than `draft`
+            # The decoder gives 1/2, 1/4 or 1/8 of the size, not less than the size asked for.
+            im.draft(None, _fit(info.width, info.height, draft))
         try:
             _wait(im.load, tick, 0.0, "Чтение изображения")
         except _DECODE_ERRORS as exc:
@@ -331,6 +332,9 @@ class _TiffPixels(Pixels):
         except (*_DECODE_ERRORS, tifffile.TiffFileError) as exc:
             self._tif.close()
             raise _decode_error(exc) from exc
+        except BaseException:  # cancelled: the file must not stay open
+            self._tif.close()
+            raise
         self.width, self.height, self.dtype = info.width, info.height, self._arr.dtype
         self.channels = 3 if samples >= 3 else 1
         self.alpha = samples > self.channels and bool(extra) and extra[0] in (1, 2)
@@ -349,11 +353,9 @@ class _TiffPixels(Pixels):
 
 
 @contextmanager
-def open_pixels(
-    path: str | Path, progress: Progress | None = None, *, draft: tuple[int, int] | None = None
-) -> Iterator[Pixels]:
-    """The decoded pixels of an image. `draft` (width, height): a JPEG may be decoded at a smaller size, not
-    less than this one (`Pixels.scale` says how many times smaller)."""
+def open_pixels(path: str | Path, progress: Progress | None = None, *, draft: int | None = None) -> Iterator[Pixels]:
+    """The decoded pixels of an image. `draft` — a longer side in pixels: a JPEG may be decoded 2, 4 or 8 times
+    smaller, but not smaller than that (`Pixels.scale` says how many times); other images ignore it."""
     path = Path(path)
     tick = progress or no_progress
     info, im = _inspect(path)
@@ -477,11 +479,10 @@ def display_copies(
     tick = progress or no_progress
     notes: list[str] = []
     tick(0.0, "Чтение изображения")
-    header = probe(path)
-    targets = [_fit(header.width, header.height, limit) for limit in sizes]
-    w0, h0 = targets[0]
-    with open_pixels(path, _scaled(tick, 0.0, 0.45), draft=(w0, h0)) as px:
+    with open_pixels(path, _scaled(tick, 0.0, 0.45), draft=sizes[0]) as px:
         info = px.info
+        targets = [_fit(info.width, info.height, limit) for limit in sizes]
+        w0, h0 = targets[0]
         factor = max(1, min(px.width // w0, px.height // h0))
         deep = np.dtype(px.dtype) != np.uint8
         rows = max(1, (band_pixels // (4 if deep else 1)) // px.width // factor) * factor
@@ -507,7 +508,7 @@ def display_copies(
         if current.size != (w, h):
             box = None
             if level == 0:  # the reduced picture may end with a part of a pixel: the box is the extent of the source
-                box = (0.0, 0.0, info.width / shrink, info.height / shrink)
+                box = (0.0, 0.0, min(info.width / shrink, current.width), min(info.height / shrink, current.height))
             current = _wait(partial(current.resize, (w, h), lanczos, box=box), tick, at, "Копия для показа")
         if copies and copies[-1].width == w and copies[-1].height == h:
             data, mime = copies[-1].data, copies[-1].mime

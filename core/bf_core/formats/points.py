@@ -7,8 +7,8 @@ a decimal point or comma, «н/д» and the like as empty.
   * Columns X, Y, Z are found by name (`X`, `EAST`, `Восток`, `X, м` …, `importing.names`) or given (`x`, `y`,
     `z`; `z=""` — no heights). A text file whose first line starts with two numbers has no header: its columns
     are X, Y, Z (when the third holds numbers) and then attributes («Колонка 4» …).
-  * The delimiter is the one that splits the lines evenly into the most numeric cells, so `1,5 2,5 3,5` is three
-    numbers between spaces, not four cells between commas.
+  * The delimiter is the one that splits the lines evenly into the most numeric cells, so `1,5 2,5 3,5` and
+    `100,5 200,5 300,5` are three numbers between spaces, not four cells between commas.
   * An empty Z is NaN, never 0; a file without a Z column gives points without heights (a warning). A row without
     X or Y is left out and counted (a `LineSet` holds finite X and Y); `seq` is the number of the row in the file.
   * Every other column is an attribute of the point: a number (NaN = empty) or a text (null = empty).
@@ -77,12 +77,14 @@ def _fail(code: str, message: str, hint: str = _HINT) -> FormatError:
 
 
 def _delimiter(lines: Sequence[str]) -> str:
-    """The delimiter that splits most lines into the same number (> 1) of cells, most of them numbers."""
+    """The delimiter that splits most lines into the same number (> 1) of cells, most of them numbers. A number
+    with spaces between its digit groups (`4 584 699,7`) counts only between `;`, tabs or `|`: between commas
+    or spaces `5 200` is two cells of `100,5 200,5`. On equal scores the first of `_SCORED` wins."""
     from bf_core.formats.numbers import parse_value
     from bf_core.formats.text import _split
 
     sample = [line for line in lines if line.strip()][:200]
-    best, best_score = ",", (0.0, 0.0, 0)
+    best, best_score = ",", (0.0, -1.0)
     for delimiter in _SCORED:
         try:
             rows = [_split(line, delimiter) for line in sample]
@@ -96,9 +98,10 @@ def _delimiter(lines: Sequence[str]) -> str:
         width, hits = max(counts.items(), key=lambda item: (item[1], item[0]))
         if width < 2:
             continue
-        cells = [cell for row in rows[1:] or rows if len(row) == width for cell in row]
-        numeric = sum(parse_value(cell)[1] == "number" for cell in cells) / max(len(cells), 1)
-        score = (hits / len(sample), numeric, width)
+        grouped = delimiter in (";", "\t", "|")
+        cells = [cell.strip() for row in rows[1:] or rows if len(row) == width for cell in row]
+        numbers = sum(parse_value(c)[1] == "number" and (grouped or not any(ch.isspace() for ch in c)) for c in cells)
+        score = (hits / len(sample), numbers / max(len(cells), 1))
         if score > best_score:
             best, best_score = delimiter, score
     return best
@@ -239,13 +242,22 @@ def read_points(
     index = np.flatnonzero(keep)
     whole = dropped == 0
     attrs: dict[str, Any] = {}
+    taken: set[str] = set()
     for column in table.columns:
         if column.name in (fx, fy, fz):
             continue
+        base = title = " ".join(column.name.split()) or "Поле"
+        k = 1
+        while title.casefold() in taken:  # a layer does not tell names apart by case
+            k += 1
+            title = f"{base}_{k}"
+        taken.add(title.casefold())
+        if title != column.name:
+            notes.append(f"Колонка «{column.name}» названа «{title}»: имена атрибутов не должны повторяться")
         if column.kind == "number":
-            attrs[column.name] = column.values if whole else column.values[index]
+            attrs[title] = column.values if whole else column.values[index]
         else:
-            attrs[column.name] = column.values if whole else column.values.take(index)
+            attrs[title] = column.values if whole else column.values.take(index)
     title = name or Path(filename or path.name).stem
     layer = LineSet(title, xyz if whole else xyz[index], None, None, index.astype(np.uint32), attrs or None)
     tick(1.0, f"Прочитано точек: {n_text(layer.point_count)}")

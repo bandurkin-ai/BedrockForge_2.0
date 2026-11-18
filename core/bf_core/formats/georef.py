@@ -25,7 +25,7 @@ A file that cannot be read is a warning when another one gives the georeference.
 Ported from BF `formats/rasters.py`. Differences: fits on centred data and sums without accumulated rounding
 (1e−9 m on UTM), GeoTIFF tags through tifffile (PixelIsPoint, EPSG, elevation), `.prj`, limits on the size of the
 files, `FormatError {code, message, hint}`; deviations are not rounded. Error codes: bad_world, not_raster_tab,
-few_points, collinear, bad_grf, degenerate, too_large, no_elevation.
+few_points, collinear, bad_grf, degenerate, too_large, no_elevation, unrepresentable (`world_text`).
 """
 
 from __future__ import annotations
@@ -179,6 +179,19 @@ def shift_z(g: Georef, dz: float) -> Georef:
             "Задайте высоту растра в свойствах, затем сдвиньте его.",
         )
     return replace(g, elevation=g.elevation + dz)
+
+
+def world_text(g: Georef) -> str:
+    """The six lines of a world file for a plan raster: A, D, B, E and the centre of the top-left pixel."""
+    if g.affine_z:
+        raise _fail(
+            "unrepresentable",
+            "Привязку вертикального растра нельзя записать в world-файл: он описывает растр только в плане.",
+            "Экспортируйте исходный файл растра.",
+        )
+    a, b, c, d, e, f = g.affine
+    values = (a, d, b, e, math.fsum((c, a / 2, b / 2)), math.fsum((f, d / 2, e / 2)))
+    return "".join(f"{v!r}\n" for v in values)
 
 
 def _check(affine: Sequence[float], affine_z: Sequence[float] | None = None) -> None:
@@ -507,7 +520,7 @@ def read_georef(
     files = dict(find_sidecars(image) if sidecars is None else sidecars)
     out = GeorefRead(None)
     candidates: list[Georef] = []
-    tags = read_geotiff_tags(image) if geotiff and image.suffix.lower() in (".tif", ".tiff") else None
+    tags = read_geotiff_tags(image) if geotiff else None  # told by the content: a stored file may have no suffix
     if tags is not None:
         candidates.append(tags)
     own = _OWN_WORLD.get(image.suffix.lower(), ())

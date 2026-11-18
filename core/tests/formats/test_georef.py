@@ -463,6 +463,30 @@ def test_huge_and_binary_sidecars_do_not_hang(tmp_path: Path) -> None:
     assert info.value.code == "too_large"
 
 
+def test_world_text_reads_back_to_the_same_transform() -> None:
+    """Georeference → world file → georeference: the corners stay within 1e−9 (export of a raster with its file)."""
+    g = gr.read_world(world_text(WORLD))
+    text = gr.world_text(g)
+    assert len(text.splitlines()) == 6 and text.endswith("\n")
+    back = gr.read_world(text)
+    assert np.abs(gr.corners3d(back, 9001, 4603)[:, :2] - gr.corners3d(g, 9001, 4603)[:, :2]).max() <= TOL
+    assert [float(v) for v in text.split()[:4]] == [WORLD[0], WORLD[1], WORLD[2], WORLD[3]]
+    assert abs(float(text.split()[4]) - X0) <= TOL and abs(float(text.split()[5]) - Y0) <= TOL
+    simple = gr.read_world("2.0\n0.0\n0.0\n-2.0\n1001.0\n2999.0\n")
+    assert gr.world_text(simple) == "2.0\n0.0\n0.0\n-2.0\n1001.0\n2999.0\n"
+    with pytest.raises(FormatError) as info:
+        gr.world_text(gr.vertical_georef(400, 200, 0.0, 0.0, 30.0, 40.0, 450.0, 300.0))
+    assert info.value.code == "unrepresentable" and info.value.hint
+
+
+def test_geotiff_tags_of_a_file_stored_without_its_extension(tmp_path: Path) -> None:
+    tags = [(33550, "d", 3, (2.0, 2.0, 0.0), True), (33922, "d", 6, (0.0, 0.0, 0.0, 1000.0, 3000.0, 0.0), True)]
+    stored = _tiff(tmp_path / "ortho.tif", tags).rename(tmp_path / "upload-0007")
+    out = gr.read_georef(stored, 40, 20, {})
+    assert out.georef is not None and out.georef.source == gr.GEOTIFF
+    assert out.georef.affine == (2.0, 0.0, 1000.0, 0.0, -2.0, 3000.0)
+
+
 def test_description_for_the_project(tmp_path: Path) -> None:
     g = gr.read_world("2.0\n0\n0\n-2.0\n1001\n2999\n")
     d = gr.describe(g, 40, 20)
