@@ -84,7 +84,7 @@ def project(tmp_path: Path):  # type: ignore[no-untyped-def]
 
     folder = create_folder(tmp_path / "projects", "Канавы", {})
     engine = dialect.create_engine(dialect.sqlite_url(str(folder / "project.sqlite")))
-    yield SimpleNamespace(folder=folder, engine=engine, uid="trenches-test")
+    yield SimpleNamespace(folder=folder, engine=engine, uid=f"trenches-{next(_ids)}")  # the key of cached paths
     engine.dispose()
 
 
@@ -106,18 +106,20 @@ def holes_of(engine: sa.Engine, set_id: int) -> dict[str, Any]:
 def stations_of(engine: sa.Engine, hole_id: int) -> tuple[np.ndarray, np.ndarray]:
     """(depth, xyz) of a hole in the order of the rows; its stations have no azimuth and dip."""
     with dialect.read_tx(engine) as conn:
-        rows = conn.execute(sa.select(dh_surveys).where(dh_surveys.c.hole_id == hole_id).order_by(dh_surveys.c.id)).all()
+        own = dh_surveys.c.hole_id == hole_id
+        rows = conn.execute(sa.select(dh_surveys).where(own).order_by(dh_surveys.c.id)).all()
     assert all(r.azimuth is None and r.dip is None for r in rows)
     return np.array([r.depth for r in rows]), np.array([[r.x, r.y, r.z] for r in rows])
 
 
 def state_of(engine: sa.Engine) -> dict[str, Any]:
     """Everything an import may leave behind."""
+    sv = dh_surveys.c
     with dialect.read_tx(engine) as conn:
         return {
             "objects": [tuple(r) for r in conn.execute(sa.select(objects.c.name, objects.c.state, objects.c.version))],
             "holes": sorted(tuple(r) for r in conn.execute(sa.select(dh_holes.c.name, dh_holes.c.x, dh_holes.c.td))),
-            "surveys": [tuple(r) for r in conn.execute(sa.select(dh_surveys.c.hole_id, dh_surveys.c.depth, dh_surveys.c.x))],
+            "surveys": [tuple(r) for r in conn.execute(sa.select(sv.hole_id, sv.depth, sv.x).order_by(sv.id))],
             "tables": [tuple(r) for r in conn.execute(sa.select(dh_tables.c.name, dh_tables.c.state))],
             "rows": conn.execute(sa.select(sa.func.count()).select_from(dh_rows)).scalar_one(),
             "log": conn.execute(sa.select(sa.func.count()).select_from(import_log)).scalar_one(),
@@ -164,18 +166,19 @@ def test_names_from_a_field_from_join_and_numbered(project, tmp_path: Path) -> N
     from bf_core.formats.str_micromine import write_str
 
     path = tmp_path / "one_string.str"
-    write_str(path, [from_lines("TRENCH", [T1, T2, T3], attrs={"NAME": ["К-1", "К-2", "К-3"], "YEAR": [2024.0] * 3})])
+    attrs = {"JOIN": [11.0, 12.0, 13.0], "NAME": ["К-1", "К-2", "К-3"], "YEAR": [2024.0] * 3}
+    write_str(path, [from_lines("TRENCH", [T1, T2, T3], attrs=attrs)])
     lines = {"path": str(path), "name_from": "field"}
     res = run_job(project.folder, {"set_name": "A", "lines": {**lines, "name_field": "name"}}).result
     holes = holes_of(project.engine, res["set_id"])
     assert sorted(holes) == ["К-1", "К-2", "К-3"] and holes["К-2"].x == T2[0, 0]
     res = run_job(project.folder, {"set_name": "B", "lines": {**lines, "name_field": "JOIN"}}).result
-    assert sorted(holes_of(project.engine, res["set_id"])) == ["1", "2", "3"]  # numbers as they are written
+    assert sorted(holes_of(project.engine, res["set_id"])) == ["11", "12", "13"]  # numbers as they are written
     # the name of the string: three lines share it, so they are numbered in the order of the file — and it is said
     ctx = run_job(project.folder, {"set_name": "C", "lines": {"path": str(path)}})
     holes = holes_of(project.engine, ctx.result["set_id"])
     assert sorted(holes) == ["TRENCH-1", "TRENCH-2", "TRENCH-3"] and holes["TRENCH-3"].y == T3[0, 1]
-    assert any("TRENCH" in line and "3" in line and "TRENCH-1" in line for line in ctx.lines), ctx.lines
+    assert any("«TRENCH»" in line and "по порядку в файле" in line for line in ctx.lines), ctx.lines
     with pytest.raises(JobError) as err:
         run_job(project.folder, {"set_name": "D", "lines": {**lines, "name_field": "CODE"}})
     assert err.value.code == "no_name_field" and "NAME" in err.value.hint and "JOIN" in err.value.hint
@@ -222,7 +225,8 @@ def test_samples_from_to_by_3d_length(project, strings: Path, tmp_path: Path) ->
     assert res["samples"] == 4 and [f["file"] for f in res["files"]] == ["trenches.str", "samples.csv"]
     holes = holes_of(project.engine, res["set_id"])
     with dialect.read_tx(project.engine) as conn:
-        tables = conn.execute(sa.select(dh_tables.c.name, dh_tables.c.kind, dh_tables.c.state, dh_tables.c.row_count)).all()
+        c = dh_tables.c
+        tables = conn.execute(sa.select(c.name, c.kind, c.state, c.row_count)).all()
         targets = sorted(conn.execute(sa.select(import_log.c.target)).scalars())
     assert [tuple(t) for t in tables] == [("Пробы (Assay)", "assay", "ready", 4)] and targets == ["assay", "trenches"]
     st = trajectories(project, res["set_id"])
@@ -257,8 +261,8 @@ def test_table_of_vertices(project, tmp_path: Path) -> None:  # type: ignore[no-
     ctx = run_job(project.folder, {"set_name": "CSV 2", "lines": {"path": str(path), "name_field": "NAME"}})
     assert ctx.result["trenches"] == 1 and ctx.result["skipped"] == 2
     assert stations_of(project.engine, holes_of(project.engine, ctx.result["set_id"])["A"].id)[0].tolist() == [0.0, 5.0]
-    warned = [line for line in ctx.lines if "«B»" in line or "«C»" in line]
-    assert any("Z" in line for line in warned) and any("одной" in line or "меньше" in line for line in warned), ctx.lines
+    assert any("Z" in line and "«B»" in line for line in ctx.lines), ctx.lines
+    assert any("меньше двух" in line and "«C»" in line for line in ctx.lines), ctx.lines
 
 
 def test_surpac_and_dxf(project, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
@@ -266,11 +270,13 @@ def test_surpac_and_dxf(project, tmp_path: Path) -> None:  # type: ignore[no-unt
     from bf_core.formats.str_surpac import write_surpac
 
     path = tmp_path / "surpac.str"
-    write_surpac(path, [from_lines("Стринг 5", [T1], attrs={"D1": ["К-5"]}), from_lines("Стринг 8", [T2], attrs={"D1": ["К-8"]})])
+    five = from_lines("Стринг 5", [T1], attrs={"D1": ["К-5"]})
+    write_surpac(path, [five, from_lines("Стринг 8", [T2], attrs={"D1": ["К-8"]})])
     res = run_job(project.folder, {"set_name": "S1", "lines": {"path": str(path)}}).result
     assert res["files"][0]["format"] == "surpac_str"
     holes = holes_of(project.engine, res["set_id"])
-    assert sorted(holes) == ["Стринг 5", "Стринг 8"] and (stations_of(project.engine, holes["Стринг 5"].id)[1] == T1).all()
+    assert sorted(holes) == ["Стринг 5", "Стринг 8"]
+    assert (stations_of(project.engine, holes["Стринг 5"].id)[1] == T1).all()
     lines = {"path": str(path), "name_from": "field", "name_field": "D1"}
     res = run_job(project.folder, {"set_name": "S2", "lines": lines}).result
     assert sorted(holes_of(project.engine, res["set_id"])) == ["К-5", "К-8"]
@@ -384,7 +390,6 @@ def test_cancel_at_any_step_leaves_nothing(project, strings: Path, tmp_path: Pat
             raise AssertionError("the job never finished")
         assert ticks >= 8, ticks  # the job reports its progress at every stage: reading, lines, samples, writing
         assert ctx.result["trenches"] == 3 and state_of(project.engine) != was
-    assert not (project.folder / "cache" / "tables").exists() or True
 
 
 def test_errors_are_told_in_russian_and_leave_nothing(project, strings: Path, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
@@ -437,7 +442,8 @@ def test_preview_for_the_wizard(strings: Path, tmp_path: Path) -> None:
     assert out["format"] == "micromine_str" and out["trenches"] == 3 and out["vertices"] == 9
     assert out["fields"] == ["JOIN"] and out["layers"] == [{"name": n, "lines": 1} for n in ("TR-1", "TR-2", "TR-3")]
     assert [t["name"] for t in out["preview"]] == ["TR-1", "TR-2", "TR-3"]
-    assert out["preview"][1] == {"name": "TR-2", "vertices": 3, "length": 62.0, "x": T2[2, 0], "y": T2[2, 1], "z": 1188.0}
+    x, y, z = T2[2].tolist()  # the direction of TR-2 is reversed: it starts at its last vertex
+    assert out["preview"][1] == {"name": "TR-2", "vertices": 3, "length": 62.0, "x": x, "y": y, "z": z}
 
 
 def test_through_the_scheduler_then_the_audit(pclient, strings: Path, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
@@ -463,5 +469,4 @@ def test_through_the_scheduler_then_the_audit(pclient, strings: Path, tmp_path: 
     r = pclient.post(f"{API}/audit/sets/{set_id}/run")
     assert wait_job(pclient, r.json()["source"], r.json()["id"], timeout=120)["status"] == "done"
     found = pclient.get(f"{API}/audit/sets/{set_id}/findings").json()["findings"]
-    assert {f["code"] for f in found} <= {"COLLAR_EMPTY_STATUS", "ASSAY_GAP"}, found  # no «излом», no empty readings
-    assert not any(f["table"] == "survey" for f in found)
+    assert {f["code"] for f in found} == {"COLLAR_EMPTY_STATUS"}, found  # no «излом», no empty readings

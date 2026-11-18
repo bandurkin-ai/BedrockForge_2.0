@@ -18,6 +18,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "bf_core.jobs.diag",
     "bf_core.archive.jobs",
     "bf_core.importing.jobs",
+    "bf_core.importing.trenches",
     "bf_core.drillholes.export",
     "bf_core.audit.jobs",
 )

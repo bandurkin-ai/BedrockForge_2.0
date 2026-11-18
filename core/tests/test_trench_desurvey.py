@@ -169,6 +169,17 @@ def test_first_vertex_below_the_collar_and_extension_to_td() -> None:
     step = (UTM5[4] - UTM5[3]) / np.linalg.norm(UTM5[4] - UTM5[3])
     assert np.abs(t.positions(hole, np.array([md[-1] + 4.0]))[0] - (UTM5[4] + 4.0 * step)).max() <= 2 * TOL
     assert t.lengths()[0] == md[-1] + 10.0
+    # a station with coordinates at depth 0 wins over the collar; a single one leaves the hole its collar direction
+    md = chainage(UTM5)
+    for k, azimuth, expect in ((5, NAN, UTM5[1] - UTM5[0]), (1, 90.0, [1.0, 0.0, 0.0]), (1, NAN, [0.0, 0.0, -1.0])):
+        cx, cy, cz = collar[:1], collar[1:2], collar[2:]
+        t = desurvey(
+            Collars(np.array([0]), cx, cy, cz, np.array([NAN]), np.array([azimuth]), np.zeros(1)),
+            Surveys(np.zeros(k, dtype=np.int64), md[:k], none[:k], none[:k], *np.ascontiguousarray(UTM5[:k].T)),
+        )
+        depth, xyz, dirs = t.stations(0)
+        assert (xyz[0] == UTM5[0]).all() and depth[0] == 0.0 and len(depth) == max(1, 2 * k - 2)
+        assert np.allclose(dirs[0], np.asarray(expect) / np.linalg.norm(expect), atol=1e-12)
 
 
 def test_stations_with_and_without_coordinates_in_one_hole() -> None:
@@ -349,7 +360,7 @@ def test_trench_in_a_project_database(tmp_path: Path) -> None:
             job_id=None,
             tick=lambda _f, _m: None,
         )
-        st = trajectories(SimpleNamespace(engine=engine, uid="test-trench"), set_id)
+        st = trajectories(SimpleNamespace(engine=engine, uid=f"trench-{tmp_path.name}"), set_id)
         i = st.index[ids["T1"]]
         assert st.skipped == [] and (st.traj.positions(np.full(5, i), md) == UTM5).all()
         assert st.traj.lengths()[i] == md[-1]
