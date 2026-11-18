@@ -87,6 +87,7 @@ class StagedWireframe:
     origin: list[float]
     files: dict[str, Staged] = field(default_factory=dict)
     shas: dict[str, str] = field(default_factory=dict)
+    seq: np.ndarray | None = None  # <u4: the place of every stored triangle in the mesh as given (source.py)
 
     def discard(self) -> None:
         for tmp, _sha, _size in self.files.values():
@@ -117,23 +118,24 @@ def stage_wireframe(store: BlobStore, xyz: Any, tri: Any, *, progress: Progress 
         raise ApiError(422, exc.code, exc.message, exc.hint) from exc
     order = meshes.morton_order(v, t, part(0.05, 0.3, "Пространственный порядок треугольников"))
     t = np.ascontiguousarray(t[order])
+    seq = order.astype("<u4")
     del order
     parts = meshes.parts_table(v, t, progress=part(0.3, 0.45, "Части каркаса"))
     stats = meshes.mesh_stats(v, t, part(0.45, 0.75, "Площадь и объём"))
     extent = meshes.extent_of(parts)
     staged = StagedWireframe(
         v, t, parts, stats, render_of(parts, meshes.PART_TRIANGLES), extent,
-        list(meshes.origin_of(tuple(extent))) if extent else [0.0, 0.0, 0.0],
+        list(meshes.origin_of(tuple(extent))) if extent else [0.0, 0.0, 0.0], seq=seq,
     )  # fmt: skip
     tick(0.75, "Запись каркаса")
     try:
         for role, arr in (("xyz", v), ("tri", t)):
             staged.files[role] = store.stage_stream(_chunks(np.asarray(arr, dtype=ARRAYS[role])))
             staged.shas[role] = staged.files[role][1]
+        tick(1.0, "Запись каркаса")  # a cancel here must not leave the temp files either
     except BaseException:
         staged.discard()
         raise
-    tick(1.0, "Запись каркаса")
     return staged
 
 

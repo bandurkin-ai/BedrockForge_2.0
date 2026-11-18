@@ -200,18 +200,11 @@ def part_mesh(v: np.ndarray, t: np.ndarray, part: MeshPart) -> tuple[np.ndarray,
 # --- levels of detail ------------------------------------------------------------------------------------
 
 
-def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarray, np.ndarray]:
-    """Quadric edge-collapse decimation to about `target` triangles (pyfqmr). The vertices on the border of
-    the mesh stay where they are, bit for bit, so the count cannot go below what the border needs. A mesh that
-    is small already, or that pyfqmr cannot make smaller, comes back as it is (the same arrays).
-
-    Hard data for pyfqmr: a dense grid that is exactly flat and tilted both ways. The quadric of a plane has no
-    single best point and rounding picks one, so such a region is simplified less (about 1/2 instead of 1/8)
-    and its new vertices leave the plane by up to 0.2 of a cell (measured in tests/test_viz_mesh.py). A level
-    plane, a plane tilted along one axis and any surface with relief or noise are not affected; the mesh stays
-    whole and unfolded in every case."""
-    if len(tri) < LOD_MIN_TRIANGLES or len(tri) <= max(int(target), 1):
-        return local, tri
+def _decimate(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """Quadric edge-collapse decimation to about `target` triangles (pyfqmr), the border kept bit for bit;
+    None when pyfqmr could not make the mesh smaller."""
+    if len(tri) <= max(int(target), 1):
+        return None
     import pyfqmr
 
     s = pyfqmr.Simplify()
@@ -222,8 +215,39 @@ def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarra
     v = np.ascontiguousarray(out_v, dtype=np.float64).reshape(-1, 3)
     t = np.ascontiguousarray(out_t, dtype=np.int32).reshape(-1, 3)
     if len(t) == 0 or len(t) >= len(tri) or not np.isfinite(v).all() or int(t.max()) >= len(v) or int(t.min()) < 0:
-        return local, tri
+        return None
     return v, t
+
+
+def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarray, np.ndarray]:
+    """A mesh of about `target` triangles. The vertices on the border of the mesh stay where they are, bit for
+    bit, so the count cannot go below what the border needs. A mesh that is small already, or that cannot be
+    made smaller, comes back as it is (the same arrays).
+
+    Two steps (ADR 0013 §4). Flat regions and straight edges between them are thinned first, in their own
+    planes, without a new vertex (`geo/flat.py`): pyfqmr spoils them — the quadric of a plane has no single
+    best point. Then pyfqmr (quadric edge collapse) takes the rest down to the target; the vertices of flat
+    regions that could not go are kept away from it with their triangles and joined back afterwards."""
+    count = max(int(target), 1)
+    if len(tri) < LOD_MIN_TRIANGLES or len(tri) <= count:
+        return local, tri
+    from . import flat
+
+    v, t, held = flat.thin(local, tri, count)
+    if len(t) <= count:
+        return v, t
+    if not held.any():
+        return _decimate(v, t, count) or (v, t)
+    keep = held[t].any(axis=1)
+    rest = t[~keep]
+    if len(rest) == 0:
+        return v, t
+    used, inverse = np.unique(rest, return_inverse=True)
+    made = _decimate(v[used], np.ascontiguousarray(inverse.reshape(-1, 3), dtype=np.int32), count - int(keep.sum()))
+    if made is None:
+        return v, t
+    kept = t[keep]
+    return flat.join(v, kept, np.intersect1d(kept, used), *made) or (v, t)
 
 
 def levels(local: np.ndarray, tri: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
