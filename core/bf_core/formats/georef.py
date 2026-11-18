@@ -364,7 +364,7 @@ def read_grf(text: str) -> Georef:
 _SCALE, _TIEPOINT, _MATRIX, _KEYS, _DOUBLES, _ASCII = 33550, 33922, 34264, 34735, 34736, 34737
 KEY_MODEL_TYPE, KEY_RASTER_TYPE, KEY_CITATION, KEY_GEOGRAPHIC, KEY_PROJECTED = 1024, 1025, 1026, 2048, 3072
 PIXEL_IS_AREA, PIXEL_IS_POINT, USER_DEFINED = 1, 2, 32767
-_TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
+TIFF_MAGIC = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
 
 
 def _geokeys(tags: Any) -> dict[int, int]:
@@ -384,7 +384,7 @@ def read_geotiff_tags(path: str | Path) -> Georef | None:
 
     try:
         with Path(path).open("rb") as stream:
-            if stream.read(4) not in _TIFF_MAGIC:
+            if stream.read(4) not in TIFF_MAGIC:
                 return None
         with tifffile.TiffFile(path) as tif:
             tags = tif.pages.first.tags

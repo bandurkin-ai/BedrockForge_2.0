@@ -55,7 +55,11 @@ def png_header(width: int, height: int) -> bytes:
 
 
 def bmp_header(width: int, height: int) -> bytes:
-    return b"BM" + struct.pack("<IHHI", 54, 0, 0, 54) + struct.pack("<IiiHHIIiiII", 40, width, height, 1, 24, 0, 0, 0, 0, 0, 0)
+    return (
+        b"BM"
+        + struct.pack("<IHHI", 54, 0, 0, 54)
+        + struct.pack("<IiiHHIIiiII", 40, width, height, 1, 24, 0, 0, 0, 0, 0, 0)
+    )
 
 
 def tiff_header(width: int, height: int) -> bytes:
@@ -176,7 +180,10 @@ def test_the_copy_covers_exactly_the_extent_of_the_image(tmp_path: Path, suffix:
     _, copies, _ = ri.display_copies(path)
     for copy in copies:
         got = decode(copy).astype(np.float64)
-        assert (copy.width, copy.height) == (ri.DISPLAY_SIZES[copy.level], round(height * ri.DISPLAY_SIZES[copy.level] / width))
+        assert (copy.width, copy.height) == (
+            ri.DISPLAY_SIZES[copy.level],
+            round(height * ri.DISPLAY_SIZES[copy.level] / width),
+        )
         sx, sy = copy.width / width, copy.height / height
         row = got[round((y1 + y2) / 2 * sy)]
         col = got[:, round((x1 + x2) / 2 * sx)]
@@ -230,7 +237,8 @@ def test_palette_bilevel_grey_and_cmyk(tmp_path: Path) -> None:
     Image.fromarray(picture[..., 0]).save(tmp_path / "grey.bmp")
 
     got = decode(ri.display_copies(tmp_path / "p.png")[1][0]).astype(np.int16)
-    assert got.shape == (128, 256, 3) and np.abs(got - np.asarray(palette.convert("RGB"))).max() <= 12
+    difference = np.abs(got - np.asarray(palette.convert("RGB")))
+    assert got.shape == (128, 256, 3) and difference.mean() < 3 and difference.max() <= 40  # steps ring in a JPEG
     transparent = decode(ri.display_copies(tmp_path / "pt.png")[1][0])
     assert transparent.shape == (128, 256, 4) and transparent[0, 0, 3] == 0 and transparent[-1, -1, 3] == 255
     one = decode(ri.display_copies(tmp_path / "one.png")[1][0]).astype(np.int16)
@@ -304,7 +312,8 @@ def test_a_flat_deep_image_does_not_divide_by_zero(tmp_path: Path) -> None:
 
 
 def _pillow(compression: str):
-    return lambda path, picture: Image.fromarray(picture).save(path, compression=compression, quality=95)
+    options = {"quality": 95} if compression == "jpeg" else {}
+    return lambda path, picture: Image.fromarray(picture).save(path, compression=compression, **options)
 
 
 def _tifffile(**options: object):
@@ -353,7 +362,9 @@ def test_tiff_that_pillow_cannot_read_goes_through_tifffile(tmp_path: Path) -> N
     got = decode(copies[0]).astype(np.float64)
     assert got.shape == (200, 300, 3) and np.abs(got - stretched(rgb16)).max() <= 8
 
-    rgba16 = np.dstack([rgb16, np.where(np.arange(300)[None, :] < 150, 0, 65535).astype(np.uint16) * np.ones((200, 1), np.uint16)])
+    rgba16 = np.dstack(
+        [rgb16, np.where(np.arange(300)[None, :] < 150, 0, 65535).astype(np.uint16) * np.ones((200, 1), np.uint16)]
+    )
     tifffile.imwrite(tmp_path / "rgba16.tif", rgba16, photometric="rgb", extrasamples=["unassalpha"])
     got = decode(ri.display_copies(tmp_path / "rgba16.tif")[1][0])
     assert got.shape == (200, 300, 4) and (got[:, :150, 3] == 0).all() and (got[:, 150:, 3] == 255).all()
@@ -415,7 +426,13 @@ def test_pixels_are_read_band_by_band(tmp_path: Path) -> None:
     picture = ramp(321, 123)
     path = save(tmp_path / "bands.png", picture)
     with ri.open_pixels(path) as pixels:
-        assert (pixels.width, pixels.height, pixels.channels, pixels.alpha, pixels.dtype) == (321, 123, 3, False, np.uint8)
+        assert (pixels.width, pixels.height, pixels.channels, pixels.alpha, pixels.dtype) == (
+            321,
+            123,
+            3,
+            False,
+            np.uint8,
+        )
         parts = [pixels.band(y, min(123, y + 50)) for y in range(0, 123, 50)]
     assert np.array_equal(np.vstack(parts), picture)
     data = np.arange(60 * 40, dtype=np.uint16).reshape(40, 60)
