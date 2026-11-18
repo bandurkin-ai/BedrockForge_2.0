@@ -161,10 +161,15 @@ def _binary(path: Path, count: int, header: bytes, tick: Progress, name: str | N
 
 
 class _Text:
-    """The solids of a text STL, block by block. Without `geometry` the facets are only counted."""
+    """The solids of a text STL, block by block. Without `geometry` the facets are only counted; `wanted` —
+    the numbers of the solids whose geometry is read (None — every one): the others are counted and checked
+    as well, but their numbers are not read and their corners are not welded."""
 
-    def __init__(self, path: Path, tick: Progress, name: str | None, geometry: bool) -> None:
-        self.path, self.tick, self.fallback, self.geometry = path, tick, name, geometry
+    def __init__(
+        self, path: Path, tick: Progress, name: str | None, geometry: bool, wanted: set[int | str] | None = None
+    ) -> None:
+        self.path, self.tick, self.fallback, self.geometry, self.wanted = path, tick, name, geometry, wanted
+        self.keep = False  # the geometry of the solid that is open is read
         self.raw: str | None = None  # the name of the solid that is open
         self.solid: _Solid | None = None
         self.rest = np.empty((0, 3))  # corners of a triangle the block ended inside
@@ -212,6 +217,7 @@ class _Text:
                         a, n = int(first[line]), int(cnt[line])
                         self.raw = _decode(b.text(a + 1, a + n - 1)) if n > 1 else None
                         self.solid, self.facets, self.vertices, self.rest = _Solid(), 0, 0, np.empty((0, 3))
+                        self.keep = self.geometry and (self.wanted is None or self.number in self.wanted)
         found = self._close(None)
         if found is not None:
             yield found
@@ -228,7 +234,7 @@ class _Text:
         self.total += len(lines) // 3
         if self.total > MAX_TRIANGLES:
             raise too_many()
-        if self.geometry and len(lines):
+        if self.keep and len(lines):
             xyz = np.full((len(lines), 3), np.nan)
             full = cnt[lines] >= 4
             xyz[full] = b.floats((first[lines[full]][:, None] + np.arange(1, 4)).reshape(-1)).reshape(-1, 3)
@@ -277,9 +283,11 @@ def read_stl(
             yield from _binary(path, count, header, tick, name)
             read = 1
     else:
-        for number, title, raw, solid, _ in _Text(path, tick, name, True):
-            mesh = solid.mesh(title, source_of(FORMAT, raw, title), []) if solid is not None else None
-            if mesh is not None and (wanted is None or number in wanted):
+        for number, title, raw, solid, _ in _Text(path, tick, name, True, wanted):
+            if solid is None or (wanted is not None and number not in wanted):
+                continue  # not asked for: no wireframe is made of it
+            mesh = solid.mesh(title, source_of(FORMAT, raw, title), [])
+            if mesh is not None:
                 read += 1
                 yield mesh
         if not read and wanted is None:

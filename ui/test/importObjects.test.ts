@@ -14,7 +14,7 @@ const raster = (p: Partial<RasterEntry> = {}): RasterEntry => ({
 
 const file = (path: string, p: Partial<FileOk> = {}): FileOk => ({
   path, file: path.split("/").pop()!, ok: true, format: "micromine_str", label: "Стринги Micromine (.STR, .PIT)", kind: "lines", encoding: "cp1251",
-  crs: null, sidecars: [], layers: [], rasters: [], totals: { layers: 2, lines: 10, points: 0, vertices: 340, rasters: 0 }, warnings: [], left_out: [], size: 1000, ...p,
+  crs: null, sidecars: [], layers: [], rasters: [], wireframes: [], totals: { layers: 2, lines: 10, points: 0, vertices: 340, rasters: 0, wireframes: 0, triangles: 0 }, unread: 0, preliminary: false, choices: {}, warnings: [], left_out: [], size: 1000, ...p,
 });
 
 const composition = (files: Composition["files"], rest: Composition["rest"] = []): Composition => {
@@ -22,7 +22,7 @@ const composition = (files: Composition["files"], rest: Composition["rest"] = []
   const sum = (k: keyof FileOk["totals"]) => ok.reduce((n, f) => n + f.totals[k], 0);
   return {
     files, rest,
-    totals: { files: ok.length, failed: files.length - ok.length, layers: sum("layers"), lines: sum("lines"), points: sum("points"), vertices: sum("vertices"), rasters: sum("rasters") },
+    totals: { files: ok.length, failed: files.length - ok.length, layers: sum("layers"), lines: sum("lines"), points: sum("points"), vertices: sum("vertices"), rasters: sum("rasters"), wireframes: sum("wireframes"), triangles: sum("triangles") },
     raster_z: { applies: sum("rasters") > 0, elevation: null, shift: 0 },
     section: null,
   };
@@ -94,7 +94,7 @@ describe("the level a raster gets (ТЗ 7.19; the core applies the same rule on 
 
 describe("the composition and the start (ТЗ 7.8)", () => {
   const lines = file("/d/roads.str");
-  const image = file("/d/ortho.jpg", { format: "raster", kind: "raster", rasters: [raster()], totals: { layers: 0, lines: 0, points: 0, vertices: 0, rasters: 1 } });
+  const image = file("/d/ortho.jpg", { format: "raster", kind: "raster", rasters: [raster()], totals: { layers: 0, lines: 0, points: 0, vertices: 0, rasters: 1, wireframes: 0, triangles: 0 } });
   const broken = { path: "/d/bad.dxf", file: "bad.dxf", ok: false as const, error: { code: "empty_file", message: "В файле нет ни линий, ни точек.", hint: "Проверьте файл." }, size: 10 };
 
   it("starts when something loads, nothing is being read and the level is a number", () => {
@@ -155,12 +155,12 @@ describe("where the chosen files go (ТЗ 7.8)", () => {
   });
 
   it("what comes with later stages is told when nothing else of the selection is an object", () => {
-    const r = routeImport(["/d/ore.tridb", "/d/model.omf", "/d/readme.md"]);
+    const r = routeImport(["/d/model.omf", "/d/readme.md"]);
     expect(r.objects).toEqual([]);
-    expect(r.skipped).toEqual(["ore.tridb — каркасы: появится на этапе Э8", "model.omf — OMF: появится на этапе Э11", "readme.md — тип файла не распознан"]);
+    expect(r.skipped).toEqual(["model.omf — OMF: появится на этапе Э11", "readme.md — тип файла не распознан"]);
     // next to object files they go to the composition: the core says why each is not loaded
-    const mixed = routeImport(["/d/roads.str", "/d/ore.tridb", "/d/readme.md"]);
-    expect(mixed.objects).toEqual(["/d/roads.str", "/d/ore.tridb", "/d/readme.md"]);
+    const mixed = routeImport(["/d/roads.str", "/d/model.omf", "/d/readme.md"]);
+    expect(mixed.objects).toEqual(["/d/roads.str", "/d/model.omf", "/d/readme.md"]);
     expect(mixed.skipped).toEqual([]);
   });
 

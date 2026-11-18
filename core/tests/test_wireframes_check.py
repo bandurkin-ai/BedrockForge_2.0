@@ -561,3 +561,16 @@ def test_a_million_triangles_time_and_memory(api) -> None:  # type: ignore[no-un
     started = time.perf_counter()
     again, _ctx = run(project, [wf])
     assert again["lod_parts"] == 0 and time.perf_counter() - started < 20  # «Проверить»: the levels are there
+
+
+def test_imported_wireframes_are_checked_in_one_job(api) -> None:  # type: ignore[no-untyped-def]
+    c, _project, ids, _meshes = api
+    started = ok(c.post(f"{API}/wireframes/check", json={"wireframe_ids": [ids["pair"], ids["cube"]]}))
+    job = wait_job(c, started["source"], started["id"], timeout=300)
+    assert job["status"] == "done", job
+    assert job["title"] == "Проверка каркасов: 2" and job["params"]["wireframe_ids"] == [ids["pair"], ids["cube"]]
+    assert job["result"]["checked"] == 2
+    assert "checks" in info(c, ids["cube"])["stats"] and "checks" in info(c, ids["pair"])["stats"]
+    assert c.post(f"{API}/wireframes/check", json={"wireframe_ids": []}).status_code == 422
+    r = c.post(f"{API}/wireframes/check", json={"wireframe_ids": [ids["cube"], 999999]})
+    assert r.status_code == 404 and r.json()["code"] == "wireframe_not_found"

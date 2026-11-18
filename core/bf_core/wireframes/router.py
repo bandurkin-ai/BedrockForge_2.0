@@ -263,6 +263,22 @@ def export_wireframes(svc: Svc, s: Sched, request: Request, body: ExportBody) ->
     return {"source": key, "id": job_id}
 
 
+class CheckBody(BaseModel):
+    wireframe_ids: list[int] = Field(min_length=1, max_length=2000)
+
+
+@router.post("/check")
+def check_wireframes(svc: Svc, s: Sched, body: CheckBody) -> dict[str, Any]:
+    """The wireframes an import stored, in one job (ADR 0013 §5): «Задания» get one row, not one per wireframe."""
+    from . import check
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        params, title = check.request(conn, body.wireframe_ids)
+    key, job_id = s.submit(check.KIND, params, title=title)
+    return {"source": key, "id": job_id}
+
+
 @router.post("/{wireframe_id}/check")
 def check_wireframe(svc: Svc, s: Sched, wireframe_id: int) -> dict[str, Any]:
     """«Проверить»: the job «Проверка и копии для показа» of one wireframe (the same job follows an import)."""

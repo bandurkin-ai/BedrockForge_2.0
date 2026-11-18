@@ -5,8 +5,8 @@
  * user changes it; the core looks for the program — the path, then BF_ODA_CONVERTER, PATH, «Program Files\ODA» —
  * and answers with the state and its Russian texts. Pure module: no React.
  */
-import { api } from "./api";
-import { normalizeOdaPath } from "./settings";
+import { api, CoreError } from "./api";
+import { normalizeOdaPath, ODA_PATH_MAX } from "./settings";
 import type { AppState, Store } from "./store";
 
 /** The answer of `GET` and `PUT /tools/oda` (core `importing/tools.py`). */
@@ -40,12 +40,43 @@ export function odaLines(s: OdaStatus): { tone: OdaTone; text: string }[] {
   return out;
 }
 
-/** «Проверить», «Выбрать…», «Очистить»: the path goes to the core; once the core took it, into the settings. */
+/** A path that was typed and is no path (`normalizeOdaPath`: too long, control characters) — the error of the core for such a one. */
+function badOdaPath(): CoreError {
+  return new CoreError(
+    422,
+    "bad_path",
+    `Путь к ODA File Converter указан неверно: он длиннее ${ODA_PATH_MAX} знаков или содержит управляющие символы.`,
+    "Укажите полный путь к файлу ODAFileConverter.exe или к его папке — либо очистите поле: установленная программа будет найдена сама.",
+  );
+}
+
+/**
+ * «Проверить», «Выбрать…», «Очистить»: the path goes to the core; once the core took it, into the settings.
+ * Only an empty field clears the setting: a text that is not a path is an error, and nothing changes.
+ */
 export async function setOdaPath(store: SettingsStore, raw: string | null): Promise<OdaStatus> {
   const path = normalizeOdaPath(raw);
+  // the same steps as `normalizeOdaPath`: what is left of the text is not empty, and yet it gave no path
+  if (path === null && raw !== null && raw.trim().replace(/^"+|"+$/g, "").trim() !== "") throw badOdaPath();
   const status = await api.put<OdaStatus>("/tools/oda", { path });
   store.set({ odaConverter: path });
   return status;
+}
+
+/**
+ * «Выбрать…»: the file dialog of the system → the file chosen, null when the dialog was closed (or there is no
+ * dialog: the browser preview). A dialog that did not open is an error with a Russian text — the path can be typed.
+ */
+export async function pickOdaFile(pickFiles: (() => Promise<string[]>) | undefined): Promise<string | null> {
+  let files: string[] | undefined;
+  try {
+    files = await pickFiles?.();
+  } catch (e) {
+    const err = new CoreError(0, "pick_failed", "Не удалось открыть окно выбора файла.", "Введите путь к ODAFileConverter.exe в поле и нажмите «Проверить».");
+    err.detail = e instanceof Error ? e.message : String(e);
+    throw err;
+  }
+  return files?.[0] ?? null;
 }
 
 /** The tab opens: the core holds what the settings hold (a restarted core has forgotten the path). */

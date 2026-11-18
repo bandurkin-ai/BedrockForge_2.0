@@ -402,6 +402,8 @@ def test_wireframes_of_a_dwg_name_the_dwg_as_their_source(tmp_path: Path, oda: O
     assert read.format == "dwg" and len(read.wireframes) == len(want.wireframes) == 2
     for got, ref in zip(read.wireframes, want.wireframes, strict=True):
         assert ref.source["format"] == "dxf" and got.source == {**ref.source, "format": "dwg"}
-        assert got.name == ref.name and got.xyz.tobytes() == ref.xyz.tobytes() and got.tri.tobytes() == ref.tri.tobytes()
+        assert (
+            got.name == ref.name and got.xyz.tobytes() == ref.xyz.tobytes() and got.tri.tobytes() == ref.tri.tobytes()
+        )
     assert [m.name for m in read.wireframes] == ["Рудное тело", "Рельеф"]
     assert read_dwg(path, converter=oda.exe, wireframes=False).wireframes == []

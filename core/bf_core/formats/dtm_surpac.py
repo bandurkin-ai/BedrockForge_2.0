@@ -27,9 +27,10 @@ counted in a warning. A file without the END line is cut short: an error.
     write_dtm(path, meshes) both files: `path` and the string file of the same name (or `strings`)
 
 Writing: an OBJECT with one TRISOLATION for every wireframe (the numbers a wireframe read from a DTM had, else
-the next free object), its vertices as points of the string of that number — coordinates with `repr`, so they
-come back bit for bit, — its triangles in their order; `closed` tells whether every edge has two triangles. A
-wireframe read from a pair comes back as it was. Names, colours and attributes have no place in the pair
+the next free object), its vertices as one segment of the string of that number (a null record after the last
+of them, as Surpac itself writes the points of a DTM) — coordinates with `repr`, so they come back bit for
+bit, — its triangles in their order; `closed` tells whether every edge has two triangles. A wireframe read
+from a pair comes back as it was. Names, colours and attributes have no place in the pair
 (a warning). Error codes: empty_file, not_dtm, unsupported, no_strings, truncated, no_meshes, too_large and
 those of `str_surpac.read_surpac`.
 """
@@ -285,12 +286,13 @@ def write_dtm(
             taken.add(number)
             n, m = mesh.point_count, mesh.triangle_count
             string = str(min(number[0], MAX_STRING))
-            end = nl + style.null_line + nl
             for a, b in chunks(n, CHUNK):
                 x, y, z = (style.coords(mesh.xyz[a:b, k].tolist()) for k in range(3))
                 rows = [f"{string},{cy},{cx},{cz}" for cy, cx, cz in zip(y, x, z, strict=True)]
-                pts.write((end.join(rows) + end).encode("ascii"))
+                pts.write((nl.join(rows) + nl).encode("ascii"))
                 share(0.5 * b / n, f"Запись DTM: «{mesh.name}», точек {n_text(b)} из {n_text(n)}")
+            if n:  # the points of the object are one segment: a null record ends it, not every point
+                pts.write((style.null_line + nl).encode("ascii"))
             closed = mesh.stats.get("closed") if mesh.stats else None
             if closed is None:
                 closed = edge_summary(mesh.tri, n) == (0, 0)

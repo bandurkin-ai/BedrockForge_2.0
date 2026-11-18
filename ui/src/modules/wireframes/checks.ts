@@ -160,3 +160,8 @@ export function checkSummary(name: string, stats: WireframeStats | null | undefi
 export function startCheck(wireframeId: number): Promise<{ source: string; id: number }> {
   return api.post<{ source: string; id: number }>(`/wireframes/${wireframeId}/check`);
 }
+
+/** The wireframes of an import in one job (`POST /wireframes/check`, up to 2000 ids). */
+export function startChecks(wireframeIds: number[]): Promise<{ source: string; id: number }> {
+  return api.post<{ source: string; id: number }>("/wireframes/check", { wireframe_ids: wireframeIds });
+}

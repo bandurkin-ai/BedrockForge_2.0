@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 from bf_core.api.app import CoreState, create_app
 from bf_core.formats import dwg
+from bf_core.formats.errors import FormatError
 from bf_core.importing import tools
 from tests.conftest import TOKEN
 
@@ -216,7 +217,7 @@ def test_status_tells_what_the_dwg_reader_will_say(
     body = api.get(URL).json()
     assert (body["found"], body["path"], body["source"], body["version"]) == (False, None, None, None)
     assert "«converter»" in body["message"] and "не программа" in body["message"] and ".exe" in body["hint"]
-    with pytest.raises(dwg.FormatError) as info:
+    with pytest.raises(FormatError) as info:
         dwg.find_converter(tools.oda_converter(state), strict=True)
     assert info.value.code == "bad_path" and info.value.message == body["message"]
     # the variable: told when nothing comes before it; «Найти» passes it by

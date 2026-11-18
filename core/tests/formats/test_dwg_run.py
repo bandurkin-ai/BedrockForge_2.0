@@ -26,6 +26,7 @@ from tests.formats.test_dwg import Oda, drawing, error, layers, leftovers, same
 alone, oda = base.alone, base.oda  # the fixtures of that module: no converter of the machine; a fake one
 
 
+@pytest.mark.windows
 def test_the_converter_is_started_as_ezdxf_starts_it(tmp_path: Path, oda: Oda, alone: Path) -> None:
     """The command line is the one of `ezdxf.addons.odafc` (1.4.5), from which only the version names are taken
     now: its settings stay as they were and it makes no folder of its own."""
@@ -63,7 +64,9 @@ def test_a_program_that_does_not_start(tmp_path: Path, alone: Path) -> None:
 
 
 @pytest.mark.skipif(os.name == "nt", reason="the fake is a .cmd there: ending it does not end the script it runs")
-def test_a_converter_that_hangs_is_ended(tmp_path: Path, oda: Oda, alone: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_converter_that_hangs_is_ended(
+    tmp_path: Path, oda: Oda, alone: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     path, _dxf = drawing(tmp_path / "Проект")
     target = tmp_path / "Чертёж.dwg"
     target.write_bytes(b"the drawing that was here")
@@ -143,6 +146,7 @@ def test_cyrillic_temporary_folder(tmp_path: Path, oda: Oda, monkeypatch: pytest
             assert folder.parent == temp  # other systems take such a path as it is
 
 
+@pytest.mark.windows
 def test_where_the_temporary_folder_is_made(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The choice, as it is made on Windows: the temporary folder when its path is ASCII, else its short path,
     else «ProgramData», else the folder as it is."""
@@ -151,6 +155,7 @@ def test_where_the_temporary_folder_is_made(tmp_path: Path, monkeypatch: pytest.
     short: list[Path | None] = [tmp_path / "IVANOV~1" / "Temp"]
     monkeypatch.setattr(dwg, "_short_path", lambda folder: short[0])
     monkeypatch.setattr(tempfile, "tempdir", str(cyr))
+    monkeypatch.setattr(dwg, "_WINDOWS", False)
     assert dwg._bases() == [cyr]  # not Windows: as it is
     monkeypatch.setattr(dwg, "_WINDOWS", True)
     assert dwg._bases() == [short[0], shared, cyr]
@@ -216,12 +221,15 @@ def test_short_path_of_windows(tmp_path: Path) -> None:
 # ---------------------------------------------------------------- what is a program
 
 
+@pytest.mark.windows
 def test_only_an_exe_is_a_program_on_windows(tmp_path: Path, oda: Oda, monkeypatch: pytest.MonkeyPatch) -> None:
     """The rule of Windows, set here so that it is checked on any system."""
     monkeypatch.setattr(dwg, "_SUFFIXES", (".exe",))
     folder = tmp_path / "tools"
     folder.mkdir()
-    scripts = [folder / name for name in ("ODAFileConverter.cmd", "ODAFileConverter.bat", "ODAFileConverter", "oda.lnk")]
+    scripts = [
+        folder / name for name in ("ODAFileConverter.cmd", "ODAFileConverter.bat", "ODAFileConverter", "oda.lnk")
+    ]
     for script in scripts:
         shutil.copyfile(oda.exe, script)
         script.chmod(0o755)
@@ -258,12 +266,12 @@ def test_only_an_exe_is_a_program_on_windows(tmp_path: Path, oda: Oda, monkeypat
     assert err.code == "bad_path" and dwg.ENV in err.message
 
 
-def test_path_is_searched_without_the_current_folder(
-    tmp_path: Path, oda: Oda, monkeypatch: pytest.MonkeyPatch
-) -> None:
+@pytest.mark.windows
+def test_path_is_searched_without_the_current_folder(tmp_path: Path, oda: Oda, monkeypatch: pytest.MonkeyPatch) -> None:
     here = tmp_path / "current"
     here.mkdir()
-    shutil.copy(oda.exe, here / "ODAFileConverter")  # executable, in the current folder
+    for name in ("ODAFileConverter", "ODAFileConverter.exe", "ODAFileConverter.cmd"):
+        shutil.copy(oda.exe, here / name)  # executable, in the current folder
     monkeypatch.chdir(here)
     for value in ("", ".", os.pathsep, f".{os.pathsep}", "current", f"{os.pathsep}{tmp_path / 'nothing here'}"):
         monkeypatch.setenv("PATH", value)
@@ -302,7 +310,7 @@ here = Path(__file__).resolve().parent
 (here / "pid.txt").write_text(str(os.getpid()), encoding="utf-8")
 if (here / "broken.txt").exists():
     sys.exit(1)
-os.write(int(sys.argv[2]), b"77\\n")  # `-displayfd N`: the display the server listens on
+os.write(int(sys.argv[sys.argv.index("-displayfd") + 1]), b"77\\n")  # the display the server listens on
 time.sleep(120)
 """
 
@@ -324,7 +332,7 @@ def test_xvfb_of_path_is_the_screen_of_the_converter(tmp_path: Path, oda: Oda, m
     same(read_dwg(path, converter=oda.exe).layers, layers())
     assert oda.calls[-1]["display"] == ":77"  # the screen the server named, not the one of the user
     args = (bin_ / "args.txt").read_text(encoding="utf-8").split()
-    assert args[0] == "-displayfd" and args[2:] == ["-screen", "0", "800x600x24"]
+    assert args[:2] == [f":{os.getpid()}", "-displayfd"] and args[3:] == ["-screen", "0", "800x600x24"]
     with pytest.raises(ProcessLookupError):  # ended with the converter
         os.kill(int((bin_ / "pid.txt").read_text(encoding="utf-8")), 0)
     oda.mode("hang")  # … and when the converter is ended for its time
@@ -346,5 +354,12 @@ def test_real_xvfb_gives_a_screen(tmp_path: Path, oda: Oda, monkeypatch: pytest.
     path, _dxf = drawing(tmp_path / "Проект")
     same(read_dwg(path, converter=oda.exe).layers, layers())
     call = oda.calls[-1]
-    assert call["display"].startswith(":") and call["display"][1:].isdigit() and call["screen"] is True
-    assert not os.path.exists("/tmp/.X11-unix/X" + call["display"][1:])  # the server is gone with its screen
+    assert call["display"] == f":{os.getpid()}" and call["screen"] is True  # a display of this process only
+    assert not os.path.exists(f"/tmp/.X11-unix/X{os.getpid()}")  # the server is gone with its screen
+    # two drawings at once in one process: each has the screen while its converter runs
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(4) as pool:
+        for read in pool.map(lambda _: read_dwg(path, converter=oda.exe), range(4)):
+            same(read.layers, layers())
+    assert [(c["display"], c["screen"]) for c in oda.calls] == [(f":{os.getpid()}", True)] * 5

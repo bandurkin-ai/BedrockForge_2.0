@@ -360,6 +360,12 @@ function registerIpc(): void {
     png: [{ name: "PNG", extensions: ["png"] }],
     tif: [{ name: "TIFF, GeoTIFF", extensions: ["tif", "tiff"] }],
     bmp: [{ name: "BMP", extensions: ["bmp"] }],
+    // export of wireframes (ТЗ 7.21, 9.4; ADR 0013 §5): a Surpac DTM comes with its .str of the same name
+    tridb: [{ name: "Micromine TRIDB", extensions: ["tridb"] }],
+    dwg: [{ name: "AutoCAD DWG", extensions: ["dwg"] }],
+    obj: [{ name: "Wavefront OBJ", extensions: ["obj"] }],
+    stl: [{ name: "STL", extensions: ["stl"] }],
+    dtm: [{ name: "Surpac DTM", extensions: ["dtm"] }],
     any: [{ name: "Все файлы", extensions: ["*"] }],
   };
   ipcMain.handle("bf:pick-save", async (e, defaultName: string, kind?: string) => {
@@ -375,6 +381,8 @@ function registerIpc(): void {
   });
   // Table files of the import wizards (ТЗ 7.7) and .prj of a coordinate system: several files at once.
   const lineFiles = ["str", "pit", "dxf", "shp", "dbf", "shx", "prj", "cpg", "mif", "mid", "xyz"];
+  // wireframes (ADR 0013 §2): a drawing gives its lines too; .dtm comes with its .str, Datamine — two .dm tables
+  const wireframeFiles = ["tridb", "dxf", "dwg", "obj", "stl", "dtm", "str", "dm"];
   const rasterFiles = ["jpg", "jpeg", "png", "tif", "tiff", "bmp", "jgw", "jpgw", "pgw", "pngw", "tfw", "tifw", "bpw", "bmpw", "wld", "tab", "grf", "prj"];
   const fileFilters: Record<string, Electron.FileFilter[]> = {
     tables: [
@@ -386,13 +394,17 @@ function registerIpc(): void {
     objects: [
       {
         name: "Все поддерживаемые",
-        extensions: [...new Set(["omf", "tridb", "obj", "stl", ...lineFiles, ...rasterFiles, "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"])],
+        extensions: [...new Set(["omf", ...wireframeFiles, ...lineFiles, ...rasterFiles, "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"])],
       },
       { name: "Все файлы", extensions: ["*"] },
     ],
-    // «Линии», «Растры», «Канавы» (ТЗ 7.18, 7.19, 7.35 Д-16; ADR 0011 §5): a main file with its companions.
+    // «Линии», «Каркасы», «Растры», «Канавы» (ТЗ 7.18, 7.19, 7.21, 7.35 Д-16; ADR 0011 §5): a main file with its companions.
     lines: [
       { name: "Линии и точки", extensions: [...lineFiles, "csv", "txt", "tsv", "prn", "dat"] },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    wireframes: [
+      { name: "Каркасы", extensions: wireframeFiles },
       { name: "Все файлы", extensions: ["*"] },
     ],
     rasters: [

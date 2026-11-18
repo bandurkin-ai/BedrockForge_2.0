@@ -13,8 +13,8 @@ import { selectWithProperties } from "../../shell/treeRun";
 import { useStore } from "../../shell/useStore";
 import tree from "../../shell/DataTree.module.css";
 import { sceneObjects } from "../scene/objects";
-import { solids, type WireframeInfo } from "./state";
-import { wireframeKey, wireframeRow } from "./tree";
+import { dtms, solids, type WireframeInfo } from "./state";
+import { folderMenu, wireframeKey, wireframeRow } from "./tree";
 
 /** Rows of wireframes: `pick` chooses the ones of the section (`solids` or `dtms`). */
 export function WireframeRows({ pick, label }: { pick: (list: readonly WireframeInfo[]) => WireframeInfo[]; label: string }) {
@@ -31,6 +31,7 @@ export function WireframeRows({ pick, label }: { pick: (list: readonly Wireframe
     <div role="group" aria-label={label}>
       <FolderRows
         items={list}
+        folderMenu={(path) => folderMenu(path, pick === dtms ? "dtm" : "wireframes")}
         row={(w, level) => {
           const visible = !hidden.includes(wireframeKey(w.id));
           const row = wireframeRow(w, visible);

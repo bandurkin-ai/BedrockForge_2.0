@@ -18,6 +18,8 @@ import { DownholeWindow } from "../modules/downhole/DownholeWindow";
 import { BuildDtmWindow } from "../modules/dtm/BuildDtmWindow";
 import { LinesExportWindow } from "../modules/lines/LinesExportWindow";
 import { RasterExportWindow } from "../modules/rasters/RasterExportWindow";
+import type { ExportOptions } from "../modules/wireframes/export";
+import { WireframesExportWindow } from "../modules/wireframes/WireframesExportWindow";
 import { StylesImportWindow } from "../modules/downhole/StylesImportWindow";
 import { SetStyleWindow } from "../modules/scene/SetStyleWindow";
 import { ExportWindow } from "../modules/projects/ExportWindow";
@@ -52,7 +54,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "import-drillholes":
       return <ImportWizard winId={w.id} paths={w.props?.paths as string[] | undefined} mode={w.props?.mode as WizardMode | undefined} />;
     case "import-objects":
-      return <ObjectsWindow winId={w.id} paths={w.props?.paths as string[] | undefined} pick={w.props?.pick as "lines" | "rasters" | undefined} />;
+      return <ObjectsWindow winId={w.id} paths={w.props?.paths as string[] | undefined} pick={w.props?.pick as "lines" | "rasters" | "wireframes" | undefined} />;
     case "projects":
       return <ProjectsWindow />;
     case "project-export":
@@ -75,6 +77,8 @@ const renderWindow: WindowRenderer = (w) => {
       return <RasterExportWindow winId={w.id} rasterId={w.props?.rasterId as number | undefined} format={w.props?.format as "source" | "geotiff" | undefined} />;
     case "dtm-build":
       return <BuildDtmWindow winId={w.id} />;
+    case "wireframes-export":
+      return <WireframesExportWindow winId={w.id} format={w.props?.format as string | undefined} wireframeIds={w.props?.wireframeIds as number[] | undefined} options={w.props?.options as Partial<ExportOptions> | undefined} />;
     default:
       return null;
   }

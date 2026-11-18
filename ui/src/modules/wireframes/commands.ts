@@ -1,4 +1,5 @@
 import type { Command } from "../../shell/commands";
+import { DWG_VERSIONS, WIREFRAME_FORMAT_IDS } from "./export";
 
 const DIALOGS: [string, string, string?][] = [
   ["model.stitch", "Сшить контуры"], ["model.assemble", "Собрать из контуров"], ["model.extrude", "Выдавить"],
@@ -13,7 +14,7 @@ const OBJECT = "Без kind и id — объект, выбранный в дер
 
 /** Wireframes and modelling operations (Э8, Э9): 16 dialogs model.* (incl. model.rebuild); DTMs and the objects
  * of the data tree — rename, colour, delete (Э7; handlers — `bind.ts`, `objectCommands.ts`); the checks of a
- * wireframe (Э8; `checkCommands.ts`). */
+ * wireframe (Э8; `checkCommands.ts`); the export of wireframes (Э8; `exportCommands.ts`). */
 export const commands: Command[] = [
   {
     id: "wireframe.check",
@@ -23,7 +24,21 @@ export const commands: Command[] = [
     params: { wireframe_id: { type: "integer" } },
     stage: "Э8",
   },
-  { id: "wireframe.export", title: "Экспорт каркаса", description: "Каркас в DXF или OBJ.", params: { format: { type: "string", enum: ["dxf", "obj"] }, wireframe_id: { type: "integer" } }, required: ["format"], stage: "Э8" },
+  {
+    id: "wireframe.export",
+    title: "Экспорт каркасов",
+    description:
+      "Каркасы и ЦТМ в файл: Micromine TRIDB (tridb), DXF (dxf), DWG через ODA File Converter (dwg, version — версия DWG, по умолчанию R2013), Wavefront OBJ (obj), STL (stl; binary: true — двоичный, координаты float32 с потерей точности на UTM; false — текстовый, без потерь) или Surpac DTM с файлом точек STR (dtm). wireframe_id — один каркас, folder — каркасы папки дерева (например, все каркасы одного загруженного файла), section — все каркасы раздела «Каркасы» (wireframes) или «ЦТМ» (dtm); без них — выбранный каркас. Открывает окно «Экспорт каркасов» с этим форматом и каркасами: файл выбирает пользователь, экспорт идёт как задание.",
+    params: {
+      format: { type: "string", enum: WIREFRAME_FORMAT_IDS },
+      wireframe_id: { type: "integer" },
+      folder: { type: "string", description: "Папка дерева: «Модель» или «Модель/Тела»" },
+      section: { type: "string", enum: ["wireframes", "dtm"] },
+      version: { type: "string", enum: [...DWG_VERSIONS], description: "Версия DWG" },
+      binary: { type: "boolean", description: "STL: двоичный (true) или текстовый (false)" },
+    },
+    stage: "Э8",
+  },
   {
     id: "wireframe.dtm",
     title: "В ЦТМ",

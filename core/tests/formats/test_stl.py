@@ -216,6 +216,61 @@ def test_text_solids_blocks_and_damage(tmp_path: Path, monkeypatch: pytest.Monke
     assert _fails(_write(tmp_path, "solid nothing\nendsolid nothing\n"), inspect_stl).code == "no_meshes"
 
 
+def test_text_keys_build_only_the_solids_asked_for(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`keys` of a text STL: the solids that are not asked for are counted and checked, but their numbers are not
+    read, their corners are not welded and no wireframe is made of them."""
+    from bf_core.formats import stl
+
+    rng = np.random.default_rng(5)
+    meshes = [
+        MeshSet("A", *by_use(*cube(3, 10.0))),
+        MeshSet("B", *by_use(*icosphere(2, 7.0))),
+        MeshSet("C", *by_use(*grid(9, 7, lambda x, y: np.sin(x) + y / 3.0))),
+        MeshSet("D", *by_use(*cube(2, 1.0))),
+    ]
+    for mesh in meshes:
+        mesh.xyz += rng.random(mesh.xyz.shape)  # 16–17 significant digits on UTM coordinates
+    path = tmp_path / "four.stl"
+    write_stl(path, meshes, binary=False)
+    # a solid that is not asked for has a triangle on a height that is not a number: nothing is said of it
+    text = path.read_bytes().decode("ascii")
+    at = text.index("vertex", text.index("solid B"))
+    end = text.index("\n", at)
+    path.write_bytes((text[:at] + "vertex 1.0 2.0 высота" + text[end:]).encode("utf-8"))
+    whole = list(read_stl(path))
+    assert [m.name for m in whole] == ["A", "B", "C", "D"] and len(whole[1].warnings) == 1
+
+    added: list[int] = []
+    built: list[str] = []
+    add, mesh_of = stl._Solid.add, stl._Solid.mesh
+    monkeypatch.setattr(stl._Solid, "add", lambda self, corners: (added.append(len(corners)), add(self, corners))[1])
+    monkeypatch.setattr(
+        stl._Solid,
+        "mesh",
+        lambda self, name, source, warnings: (built.append(name), mesh_of(self, name, source, warnings))[1],
+    )
+    monkeypatch.setattr(mesh_io, "BLOCK_BYTES", 4096)  # the solids span many blocks
+    for keys in ([2], [3, 0], [1], [], [7]):
+        added.clear(), built.clear()
+        got = list(read_stl(path, keys=keys))
+        want = [whole[k] for k in sorted(keys) if k < len(whole)]
+        assert built == [m.name for m in want] and [m.name for m in got] == built
+        assert sum(added) == 3 * sum(m.triangle_count for m in want) + 3 * (1 in keys)  # corners read: only theirs
+        for a, b in zip(got, want, strict=True):
+            assert a.xyz.tobytes() == b.xyz.tobytes() and a.tri.tobytes() == b.tri.tobytes()
+            assert a.source == b.source and a.warnings == b.warnings
+    added.clear(), built.clear()
+    assert [m.name for m in read_stl(path)] == ["A", "B", "C", "D"] and built == ["A", "B", "C", "D"]
+    added.clear(), built.clear()
+    assert [(e.key, e.triangles) for e in inspect_stl(path)[0]] == [(k, m.triangle_count) for k, m in enumerate(meshes)]
+    assert added == [] and built == []  # the composition reads no geometry at all
+    # a solid that is not asked for is still checked: a file cut inside it is an error, not half an answer
+    cut = _write(tmp_path, path.read_bytes()[: path.read_bytes().index(b"endsolid D")], "cut.stl")
+    with pytest.raises(FormatError) as info:
+        list(read_stl(cut, keys=[0]))
+    assert info.value.code == "truncated"
+
+
 def test_files_that_are_not_stl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     soup = np.arange(27, dtype=np.float32).reshape(-1, 3)
     whole = binary_file(soup, b"solid with a header like a text file")

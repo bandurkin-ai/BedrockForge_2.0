@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp } from "../src/shell/app";
 import { moduleCommands } from "../src/shell/catalog";
-import { findOda, odaLines, pushOdaPath, setOdaPath, syncOda, type OdaStatus } from "../src/shell/odaTool";
+import { findOda, odaLines, pickOdaFile, pushOdaPath, setOdaPath, syncOda, type OdaStatus } from "../src/shell/odaTool";
 import { normalizeOdaPath, normalizeSettings } from "../src/shell/settings";
 import { INITIAL_STATE, Store, type AppState } from "../src/shell/store";
 import { closeWindow, windowStore } from "../src/shell/windows";
@@ -92,6 +92,45 @@ describe("«Настройка › Внешние программы»: ODA File
     const err = await setOdaPath(s, "ODAFileConverter.exe").catch((e: unknown) => e);
     expect((err as { full: string }).full).toBe("Путь к ODA File Converter указан неверно. Укажите полный путь.");
     expect(s.get().odaConverter).toBe(EXE);
+  });
+
+  it("a text that is no path (too long, control characters) is an error in Russian: the setting is not erased", async () => {
+    const calls = core(() => status());
+    for (const junk of [`C:\\ODA\\${"x".repeat(2000)}`, "C:\\ODA\nODAFileConverter.exe", "C:\\ODA\u0000", ` "D:\\a\tb" `, "\u0001"]) {
+      const s = store(EXE);
+      const err = (await setOdaPath(s, junk).catch((e: unknown) => e)) as { code: string; status: number; message: string; hint: string; full: string };
+      expect(err).toBeInstanceOf(Error);
+      expect([err.code, err.status]).toEqual(["bad_path", 422]);
+      expect(err.message).toBe("Путь к ODA File Converter указан неверно: он длиннее 2000 знаков или содержит управляющие символы.");
+      expect(err.hint).toContain("ODAFileConverter.exe");
+      expect(err.full).toMatch(/[а-я]/);
+      expect(s.get().odaConverter).toBe(EXE); // as it was
+    }
+    expect(calls).toEqual([]); // the core was not asked to forget the path
+    // 2000 characters is still a path; an empty field (spaces, quotes) is «Очистить», not an error
+    const s = store(EXE);
+    const long = `C:\\${"x".repeat(1997)}`;
+    await setOdaPath(s, long);
+    expect(s.get().odaConverter).toBe(long);
+    for (const empty of ["", "  ", '""', ' " " ', "\n", null]) {
+      const cleared = store(EXE);
+      await setOdaPath(cleared, empty);
+      expect(cleared.get().odaConverter).toBeNull();
+    }
+    expect(calls.map((c) => c.body)).toEqual([{ path: long }, ...Array(6).fill({ path: null })]);
+  });
+
+  it("«Выбрать…»: the file chosen; a closed dialog is nothing; a dialog that did not open is an error in Russian", async () => {
+    expect(await pickOdaFile(async () => [EXE, "D:\\other.exe"])).toBe(EXE);
+    expect(await pickOdaFile(async () => [])).toBeNull();
+    expect(await pickOdaFile(undefined)).toBeNull(); // the browser preview: no dialog
+    const err = (await pickOdaFile(() => Promise.reject(new Error("IPC channel closed"))).catch((e: unknown) => e)) as { code: string; full: string; detail?: string };
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe("pick_failed");
+    expect(err.full).toBe("Не удалось открыть окно выбора файла. Введите путь к ODAFileConverter.exe в поле и нажмите «Проверить».");
+    expect(err.detail).toBe("IPC channel closed");
+    const thrown = (await pickOdaFile(() => Promise.reject("нет окна")).catch((e: unknown) => e)) as { detail?: string };
+    expect(thrown.detail).toBe("нет окна");
   });
 
   it("«Очистить»: no path in the core and in the settings", async () => {

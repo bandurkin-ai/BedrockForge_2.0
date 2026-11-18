@@ -22,7 +22,11 @@ const ACTIONS: Partial<Record<TreeSection, SectionAction[]>> = {
     { label: "Загрузить линии и точки: STR, DXF, SHP, MIF, XYZ…", command: "lines.upload" },
     { label: "Новый слой…", command: "lines.new_layer" },
   ],
-  wireframes: [{ label: "Загрузить каркасы…", command: "wireframes.upload" }],
+  wireframes: [
+    { label: "Загрузить каркасы…", command: "wireframes.upload" },
+    { label: "Экспорт каркасов…", command: "wireframe.export", args: { section: "wireframes" } },
+  ],
+  dtm: [{ label: "Экспорт ЦТМ…", command: "wireframe.export", args: { section: "dtm" } }],
   rasters: [{ label: "Загрузить растр…", command: "rasters.upload" }],
   blocks: [{ label: "Загрузить блочную модель…", command: "import.files" }],
   audit: [{ label: "Новый swath plot…", command: "stats.swath" }],

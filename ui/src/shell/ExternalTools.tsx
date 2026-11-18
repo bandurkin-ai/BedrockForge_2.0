@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { bridge } from "../bridge";
 import { CoreError } from "./api";
 import { useApp } from "./AppContext";
-import { findOda, odaLines, setOdaPath, syncOda, type OdaStatus, type OdaTone } from "./odaTool";
+import { findOda, odaLines, pickOdaFile, setOdaPath, syncOda, type OdaStatus, type OdaTone } from "./odaTool";
 import { normalizeOdaPath } from "./settings";
 import { useStore } from "./useStore";
 import css from "./SettingsWindow.module.css";
@@ -49,9 +49,11 @@ export function ExternalTools() {
   }, [app]);
 
   const check = () => void ask(() => setOdaPath(app.store, draft));
+  /** A closed dialog changes nothing (an answer on its way is still shown); one that did not open is told as any other error. */
   const pick = async () => {
-    const files = await bridge()?.pickFiles("program", false);
-    if (files?.length) await ask(() => setOdaPath(app.store, files[0]));
+    const b = bridge();
+    const file = await pickOdaFile(b ? () => b.pickFiles("program", false) : undefined).catch((e: unknown) => ask(() => Promise.reject(e)));
+    if (file) await ask(() => setOdaPath(app.store, file));
   };
   const changed = normalizeOdaPath(draft) !== saved;
   const how = status ? (status.found ? status.install : status.hint) : "";

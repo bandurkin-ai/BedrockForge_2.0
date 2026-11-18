@@ -170,6 +170,69 @@ def test_cycle_is_bit_for_bit(tmp_path: Path) -> None:
     assert (tmp_path / "out2.str").read_bytes() == (tmp_path / "out.str").read_bytes()
 
 
+def test_points_of_an_object_are_one_segment_of_its_string(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A null record ends the segment of an object, not every point of it (as Surpac itself writes the string
+    file of a DTM); the points keep their numbers and their bits."""
+    tiny = MeshSet("T", np.array([[466570.5, 4584700.25, 412.3], [466580.5, 4584700.25, -0.0], [0.1, 1e-7, 1e21]]),
+                   np.array([[0, 1, 2]], dtype=np.int32))  # fmt: skip
+    path = tmp_path / "tiny.dtm"
+    write_dtm(path, [tiny], date=DAY)
+    assert (tmp_path / "tiny.str").read_bytes().decode("ascii").split("\r\n") == [
+        ",18-Nov-26,,",
+        "0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000",
+        "1, 4584700.25, 466570.5, 412.3",
+        "1, 4584700.25, 466580.5, -0.0",
+        "1, 1e-07, 0.1, 1e+21",
+        "0, 0.000, 0.000, 0.000,",
+        "0, 0.000, 0.000, 0.000, END",
+        "",
+    ]
+    (back,) = read_dtm(path)
+    assert back.xyz.tobytes() == tiny.xyz.tobytes() and back.tri.tolist() == [[0, 1, 2]] and back.warnings == []
+
+    # hard ones: 16–17 digits on UTM coordinates; a soup whose vertices repeat, the last of them the first one
+    # (a segment the reader of strings calls closed); more points than are formatted at once
+    rng = np.random.default_rng(11)
+    v, t = icosphere(2, 7.0)
+    v = v + rng.random(v.shape)
+    order = np.roll(np.arange(len(t)), -1)  # the first triangle goes last, turned so that it ends as the file begins
+    soup_t = t[order]
+    soup_t[-1] = np.roll(soup_t[-1], -1)
+    soup = v[soup_t].reshape(-1, 3)
+    soup[-1] = soup[0]
+    meshes = [
+        MeshSet("Сфера", v, t),
+        MeshSet("Суп", soup, np.arange(len(soup), dtype=np.int32).reshape(-1, 3)),
+        MeshSet("Рельеф", *grid(40, 30, lambda x, y: np.cos(x / 3.0) * y)),
+    ]
+    counts = [m.point_count for m in meshes]
+    path = tmp_path / "hard.dtm"
+    written = write_dtm(path, meshes, date=DAY)
+    lines = (tmp_path / "hard.str").read_bytes().decode("ascii").split("\r\n")
+    assert len(lines) == 2 + sum(counts) + len(meshes) + 2 and written.points == sum(counts)
+    ends = [i for i, line in enumerate(lines) if line == "0, 0.000, 0.000, 0.000,"]
+    assert ends == (np.cumsum(counts) + 2 + np.arange(len(meshes))).tolist()  # one after the points of an object
+    strings = read_surpac(tmp_path / "hard.str")
+    assert strings.header.exact and strings.warnings == [] and strings.records == sum(counts)
+    assert [(layer.name, layer.line_count, layer.point_count) for layer in strings.layers] == [
+        (f"Стринг {k + 1}", 1, n) for k, n in enumerate(counts)
+    ]
+    assert [bool(layer.closed[0]) for layer in strings.layers] == [False, True, False]
+    for layer, mesh in zip(strings.layers, meshes, strict=True):
+        assert layer.xyz.tobytes() == mesh.xyz.tobytes()  # every point, the repeated ones as well
+    back = list(read_dtm(path))
+    for a, b in zip(meshes, back, strict=True):
+        assert b.xyz[b.tri].tobytes() == a.xyz[a.tri].tobytes()  # the corners of every triangle, bit for bit
+    assert back[0].xyz.tobytes() == v.tobytes() and back[0].tri.tobytes() == t.tobytes() and back[0].warnings == []
+    assert back[2].xyz.tobytes() == meshes[2].xyz.tobytes() and back[2].tri.tobytes() == meshes[2].tri.tobytes()
+    assert len(back[1].warnings) == 1 and "сшито" in back[1].warnings[0]
+    # the same bytes however many points are formatted at once: no record between the parts
+    monkeypatch.setattr("bf_core.formats.dtm_surpac.CHUNK", 7)
+    write_dtm(tmp_path / "parts.dtm", meshes, strings=tmp_path / "parts.str", date=DAY)
+    assert (tmp_path / "parts.str").read_bytes() == (tmp_path / "hard.str").read_bytes()
+    assert (tmp_path / "parts.dtm").read_bytes() == path.read_bytes().replace(b"hard.str", b"parts.str")
+
+
 def test_blocks_do_not_change_the_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "s.dtm"
     write_dtm(path, [MeshSet("A", *icosphere(2, 5.0)), MeshSet("B", *cube(4, 3.0))], date=DAY)

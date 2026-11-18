@@ -3,7 +3,7 @@
  * DTM (`AppState.selected`; a click in the 3D window calls it too); `selection.clear` — «Снять выбор» (Esc);
  * `wireframe.dtm` — «Перенести в ЦТМ» / «Вернуть в каркасы» and the settings of a DTM; `wireframe.attr` — the
  * attributes of the user. Rename, colour and delete of any object — `objectCommands.ts`; the checks of a
- * wireframe — `checkCommands.ts`.
+ * wireframe — `checkCommands.ts`; the export of wireframes — `exportCommands.ts`.
  */
 import type { App } from "../../shell/app";
 import { needProject, noted } from "../../shell/objectRun";
@@ -15,6 +15,7 @@ import { loadSceneObjects, pickedObject, sceneObjects } from "../scene/objects";
 import { cancelSectionDraw } from "../section/state";
 import { attrNameError, attrPatch, attrResult, findAttr, parseAttrValue } from "./attrs";
 import { bindCheckCommands } from "./checkCommands";
+import { bindExportCommands } from "./exportCommands";
 import { objectName, selectedText, wireframeOf } from "./named";
 import { bindObjectCommands } from "./objectCommands";
 import { editAttrs, setDtm, setDtmSettings, wireframeById } from "./state";
@@ -133,4 +134,5 @@ export function bindObjects(app: App): void {
 
   bindObjectCommands(app);
   bindCheckCommands(app);
+  bindExportCommands(app);
 }

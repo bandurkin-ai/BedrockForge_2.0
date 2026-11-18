@@ -116,7 +116,7 @@ describe("«Каркасы» and «ЦТМ» (Д-07)", () => {
     const row = wireframeRow(list[0], true);
     expect(row.click).toBe("select");
     expect(row.buttons).toEqual([{ label: "Перенести в ЦТМ", icon: "dtm", command: "wireframe.dtm", args: { wireframe_id: 1, on: true } }]);
-    expect(labels(row.menu)).toEqual(["Свойства", "Скрыть в 3D", "Перенести в ЦТМ", "Переименовать…", "Удалить…"]);
+    expect(labels(row.menu)).toEqual(["Свойства", "Скрыть в 3D", "Перенести в ЦТМ", "Проверить", "Экспорт…", "Переименовать…", "Удалить…"]);
     expect(row.menu[1].args).toEqual({ layer: "wireframe", id: 1, visible: false });
     expect(row.menu.slice(-2).map((a) => [a.command, a.args])).toEqual([["object.rename", { kind: "wireframe", id: 1 }], ["object.delete", { kind: "wireframe", id: 1 }]]);
     expect(row.testId).toBe("tree-wireframe-1");
@@ -127,7 +127,7 @@ describe("«Каркасы» and «ЦТМ» (Д-07)", () => {
     expect(row.buttons).toEqual([]);
     expect(row.click).toBe("properties");
     expect(row.title).toContain("Щелчок — настройки ЦТМ в «Свойствах»");
-    expect(labels(row.menu)).toEqual(["Настройки ЦТМ…", "Скрыть в 3D", "Вернуть в каркасы", "Переименовать…", "Удалить…"]);
+    expect(labels(row.menu)).toEqual(["Настройки ЦТМ…", "Скрыть в 3D", "Вернуть в каркасы", "Проверить", "Экспорт…", "Переименовать…", "Удалить…"]);
     expect([row.menu[0].command, row.menu[0].args]).toEqual(["dtm.settings", { wireframe_id: 2 }]); // the same as the click
     const back = row.menu[2];
     expect([back.command, back.args]).toEqual(["wireframe.dtm", { wireframe_id: 2, on: false }]);

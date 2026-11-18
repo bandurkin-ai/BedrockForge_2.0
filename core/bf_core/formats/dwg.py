@@ -44,11 +44,12 @@ from __future__ import annotations
 
 import os
 import re
-import select
+import selectors
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -90,6 +91,7 @@ _HINT_TIMEOUT = (
     "Возможно, программа ждёт ответа в своём окне или файл слишком велик. Запустите ODA File Converter вручную "
     "и проверьте, что он работает; путь к программе — в «Настройке». "
 )
+_SCREEN = threading.Lock()  # of `_screen` (Linux): the display of the converter is named after the process
 _SETTING = "Путь к ODA File Converter в «Настройке»"
 _VARIABLE = f"Переменная окружения {ENV}"
 
@@ -318,37 +320,43 @@ def _arguments(source: Path, target: Path, version: str, audit: bool) -> list[st
 def _screen() -> Iterator[dict[str, str] | None]:
     """The environment the converter runs in (None — that of this process). On Linux the converter opens its
     window even when it has its arguments: an `Xvfb` of PATH, when there is one, is started as a screen nobody
-    sees — on a display the server finds free and names itself — and is ended with the converter."""
+    sees and is ended with the converter. Its display is named after this process, as ezdxf names it (servers
+    that look for a free display at the same moment take one another's), so in a process the converter runs
+    with such a screen one at a time; the server tells when it listens (`-displayfd`)."""
     xvfb = shutil.which("Xvfb") if sys.platform == "linux" else None
-    server: subprocess.Popen[bytes] | None = None
-    number = ""
-    if xvfb is not None:
+    if xvfb is None:
+        yield None
+        return
+    with _SCREEN:
+        server: subprocess.Popen[bytes] | None = None
+        number = ""
         read, write = os.pipe()
         try:
             quiet = subprocess.DEVNULL
-            command = [xvfb, "-displayfd", str(write), "-screen", "0", "800x600x24"]
+            command = [xvfb, f":{os.getpid()}", "-displayfd", str(write), "-screen", "0", "800x600x24"]
             server = subprocess.Popen(command, stdin=quiet, stdout=quiet, stderr=quiet, pass_fds=(write,))
             os.close(write)
             write = -1
-            # the number of the display once the server listens; nothing when the server has ended
-            if select.select([read], [], [], XVFB_WAIT_S)[0]:
-                number = os.read(read, 64).decode("ascii", errors="replace").strip()
-        except OSError:
-            pass
+            with selectors.DefaultSelector() as waiting:
+                waiting.register(read, selectors.EVENT_READ)
+                if waiting.select(XVFB_WAIT_S):  # the number of the display once the server listens; nothing — it ended
+                    number = os.read(read, 64).decode("ascii", errors="replace").strip()
+        except (OSError, ValueError):
+            pass  # no screen of its own: the converter runs with the one there is
         finally:
             os.close(read)
             if write >= 0:
                 os.close(write)
-    try:
-        yield {**os.environ, "DISPLAY": f":{number}"} if number.isdigit() else None
-    finally:
-        if server is not None:
-            server.terminate()  # not killed at once: the server removes its socket and its lock
-            try:
-                server.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
-                server.kill()
-                server.wait()
+        try:
+            yield {**os.environ, "DISPLAY": f":{number}"} if number.isdigit() else None
+        finally:
+            if server is not None:
+                server.terminate()  # not killed at once: the server removes its socket and its lock
+                try:
+                    server.wait(timeout=5.0)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait()
 
 
 def _run(exe: Path, arguments: Sequence[str], timeout: float) -> tuple[int, str, str]:
