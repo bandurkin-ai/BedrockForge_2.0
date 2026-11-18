@@ -36,8 +36,20 @@ import numpy as np
 
 from bf_core.formats.dxf_layers import ranges
 from bf_core.formats.mesh_io import (
-    MAX_TRIANGLES, MeshWritten, TextBlocks, Tokens, chunks, fail, lost_attrs, no_meshes, numbered, part_files, tidy,
-    too_many, unique_name, word,
+    MAX_TRIANGLES,
+    MeshWritten,
+    TextBlocks,
+    Tokens,
+    chunks,
+    fail,
+    lost_attrs,
+    no_meshes,
+    numbered,
+    part_files,
+    tidy,
+    too_many,
+    unique_name,
+    word,
 )  # fmt: skip
 from bf_core.formats.meshset import MeshEntry, MeshSet, clean_name, n_text, name_in_file, source_of
 from bf_core.formats.str_layers import scaled

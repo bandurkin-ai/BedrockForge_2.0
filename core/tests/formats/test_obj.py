@@ -232,7 +232,9 @@ def test_files_that_are_not_obj(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert mesh.triangle_count == 1 and "1 — пропущены" in mesh.warnings[0]
     # a name that is not UTF-8 is read as Windows-1251
     (mesh,) = read_obj(_write(tmp_path, whole.encode() + "o Тело\nf 1 2 3\n".encode("cp1251")), keys=[1])
-    assert mesh.name == "Тело" and mesh.warnings == ["Названия каркасов записаны не в UTF-8: прочитаны как Windows-1251"]
+    assert mesh.name == "Тело" and mesh.warnings == [
+        "Названия каркасов записаны не в UTF-8: прочитаны как Windows-1251"
+    ]
     # limits: triangles, a line without an end
     many = "v 0 0 0\nv 1 0 0\nv 0 1 0\n" + "f 1 2 3\n" * 50
     monkeypatch.setattr("bf_core.formats.obj.MAX_TRIANGLES", 49)

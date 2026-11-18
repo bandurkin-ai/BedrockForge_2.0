@@ -27,6 +27,7 @@ import { restoreLast } from "../modules/projects/state";
 import { bridge } from "../bridge";
 import { api } from "./api";
 import { Palette } from "./Palette";
+import { pushOdaPath } from "./odaTool";
 import { SettingsWindow } from "./SettingsWindow";
 import { WindowLayer, type WindowRenderer } from "./WindowLayer";
 import { Header } from "./Header";
@@ -43,7 +44,7 @@ import css from "./Shell.module.css";
 const renderWindow: WindowRenderer = (w) => {
   switch (w.kind) {
     case "settings":
-      return <SettingsWindow tab={w.props?.tab as string | undefined} />;
+      return <SettingsWindow tab={w.props?.tab as string | undefined} asked={w.props?.asked as number | undefined} />;
     case "license":
       return <LicenseWindow />;
     case "op-log":
@@ -104,6 +105,7 @@ export function Shell() {
     restoreLast(app).catch((e: unknown) => void showMessage({ title: "Проект", message: e instanceof Error ? e.message : String(e) }));
     const heavy = app.store.get().heavyWorkers;
     if (heavy !== 1) void api.put("/jobs/workers", { heavy }).catch(() => undefined);
+    void pushOdaPath(app.store); // «Настройка › Внешние программы»: the core does not keep the path itself
   }, [app, coreOnline]);
   useEffect(() => startEvents(), []);
 

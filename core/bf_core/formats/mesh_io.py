@@ -48,8 +48,8 @@ def fail(code: str, message: str, hint: str = HINT) -> FormatError:
 
 
 def word(text: bytes) -> int:
-    """A keyword as `Tokens.words` gives it."""
-    return int.from_bytes(text.lower(), "little")
+    """A keyword as `Tokens.words` gives it: its first eight bytes."""
+    return int.from_bytes(text.lower()[:8], "little")
 
 
 def too_many(limit: int = MAX_TRIANGLES) -> FormatError:
@@ -75,7 +75,7 @@ class Tokens:
         return np.diff(self.first)
 
     def words(self, tok: np.ndarray) -> np.ndarray:
-        """The tokens as keywords (`word`): 0 for a token longer than eight bytes."""
+        """The tokens as keywords (`word`): their first eight bytes, ASCII letters in lower case."""
         from bf_core.formats import _meshkernel as k
 
         out = np.empty(len(tok), dtype=np.uint64)
@@ -206,7 +206,7 @@ def part_files(*paths: Path) -> Iterator[list[BinaryIO]]:
     parts = [p.with_name(p.name + ".part") for p in paths]
     try:
         with ExitStack() as stack:
-            files = [stack.enter_context(part.open("wb")) for part in parts]
+            files: list[BinaryIO] = [stack.enter_context(part.open("wb")) for part in parts]
             yield files
             for f in files:
                 f.flush()
@@ -224,7 +224,7 @@ def numbered(
     """(number from 0, wireframe, its share of the progress) of the wireframes to write; `meshes` may be a
     generator — then `total` tells their number (without it the progress stays at 0)."""
     tick = progress or no_progress
-    count = total if total is not None else len(meshes) if hasattr(meshes, "__len__") else None
+    count = total if total is not None else len(meshes) if hasattr(meshes, "__len__") else None  # type: ignore[arg-type]
     for i, mesh in enumerate(meshes):
         a, b = (min(1.0, i / count), min(1.0, (i + 1) / count)) if count else (0.0, 0.0)
         yield i, mesh, scaled(tick, a, b)

@@ -123,7 +123,9 @@ class _Solid:
 
     def mesh(self, name: str, source: dict[str, Any], warnings: list[str]) -> MeshSet | None:
         if self.bad:
-            warnings.append(f"Треугольников с координатами, которые не являются числами: {n_text(self.bad)} — пропущены")
+            warnings.append(
+                f"Треугольников с координатами, которые не являются числами: {n_text(self.bad)} — пропущены"
+            )
         if not self.tris:
             return None
         tri = self.tris[0] if len(self.tris) == 1 else np.concatenate(self.tris)
@@ -139,7 +141,8 @@ def _binary(path: Path, count: int, header: bytes, tick: Progress, name: str | N
         f.seek(HEADER_BYTES + 4)
         for a, b in chunks(count, CHUNK):
             data = np.fromfile(f, dtype=RECORD, count=b - a)
-            solid.add(data["v"].reshape(-1, 3).astype(np.float64))
+            with np.errstate(invalid="ignore"):  # a signalling NaN of a damaged file is a NaN as any other
+                solid.add(data["v"].reshape(-1, 3).astype(np.float64))
             tick(b / count, f"Чтение STL: треугольников {n_text(b)} из {n_text(count)}")
     text = _decode(header.split(b"\x00")[0]).strip()
     raw = text[len(MARK) :] if header.startswith(MARK) else None

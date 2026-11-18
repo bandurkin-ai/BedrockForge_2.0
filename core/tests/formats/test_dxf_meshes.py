@@ -3,6 +3,8 @@ limits and hostile files (ТЗ 7.21, 9.5, 9.12; ADR 0013 §2, substep 8.4)."""
 
 from __future__ import annotations
 
+import random
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -194,8 +196,11 @@ def _face(layer: str, *numbers: int) -> str:
 
 def _polyface(layer: str, points: list[tuple[float, float, float]], faces: list[tuple[int, ...]], *more: Any) -> str:
     head = tags(0, "POLYLINE", 8, layer, 66, 1, 70, 64, 71, len(points), 72, len(faces), *more)
-    return head + "".join(_vertex(layer, *p) for p in points) + "".join(_face(layer, *f) for f in faces) + tags(
-        0, "SEQEND", 8, layer
+    return (
+        head
+        + "".join(_vertex(layer, *p) for p in points)
+        + "".join(_face(layer, *f) for f in faces)
+        + tags(0, "SEQEND", 8, layer)
     )
 
 
@@ -260,8 +265,52 @@ def test_faces_that_cannot_be_read_are_left_out_and_counted(tmp_path: Path) -> N
         + tags(0, "POLYLINE", 8, "P", 66, 1, 70, 16, 71, 30000, 72, 30000)
         + "".join(_vertex("P", *p, flags=64) for p in SQUARE)
         + tags(0, "SEQEND", 8, "P")
-        + tags(0, "MESH", 8, "P", 91, 0, 92, 3, 10, a[0], 20, a[1], 30, a[2], 10, b[0], 20, b[1], 30, b[2], 10,
-               c[0], 20, c[1], 30, c[2], 93, 8, 90, 3, 90, 0, 90, 1, 90, 2, 90, 3, 90, 0, 90, 1, 90, 7)  # fmt: skip
+        + tags(
+            0,
+            "MESH",
+            8,
+            "P",
+            91,
+            0,
+            92,
+            3,
+            10,
+            a[0],
+            20,
+            a[1],
+            30,
+            a[2],
+            10,
+            b[0],
+            20,
+            b[1],
+            30,
+            b[2],
+            10,
+            c[0],
+            20,
+            c[1],
+            30,
+            c[2],
+            93,
+            8,
+            90,
+            3,
+            90,
+            0,
+            90,
+            1,
+            90,
+            2,
+            90,
+            3,
+            90,
+            0,
+            90,
+            1,
+            90,
+            7,
+        )  # fmt: skip
         + tags(0, "MESH", 8, "P", 92, 2, 10, 1.0, 20, 2.0, 30, 3.0, 93, 4, 90, 3, 90, 0, 90, 1, 90, 2)
     )
     read = read_dxf(_write(tmp_path, drawing(body)), recover=False)
@@ -283,8 +332,32 @@ def test_exact_welding_and_the_systems_of_coordinates(tmp_path: Path) -> None:
         + _face3d("W", (X0, Y0, Z0), (near, Y0, Z0), (X0, Y0 + 1.0, Z0))  # one unit of the last place apart: two
         # a mesh entity is in the world system whatever its extrusion is
         + _polyface("E", SQUARE, [(1, 2, 3, 4)], 210, 0.0, 220, 0.0, 230, -1.0)
-        + tags(0, "3DFACE", 8, "sheet", 67, 1, 10, 0.0, 20, 0.0, 30, 0.0, 11, 1.0, 21, 0.0, 31, 0.0, 12, 0.0, 22,
-               1.0, 32, 0.0)  # fmt: skip
+        + tags(
+            0,
+            "3DFACE",
+            8,
+            "sheet",
+            67,
+            1,
+            10,
+            0.0,
+            20,
+            0.0,
+            30,
+            0.0,
+            11,
+            1.0,
+            21,
+            0.0,
+            31,
+            0.0,
+            12,
+            0.0,
+            22,
+            1.0,
+            32,
+            0.0,
+        )  # fmt: skip
     )
     read = read_dxf(_write(tmp_path, drawing(body)), recover=False)
     welded, turned = read.wireframes
@@ -401,3 +474,72 @@ def test_no_meshes_and_cancellation(tmp_path: Path) -> None:
     meshes = list(read_dxf_meshes(path, progress=lambda f, m=None: fractions.append(f)))
     assert len(meshes) == 1 and meshes[0].triangle_count == 4000 and meshes[0].point_count == 4
     assert fractions == sorted(fractions) and fractions[0] == 0.0 and fractions[-1] == 1.0
+
+
+@pytest.mark.parametrize("values_only", [True, False])
+def test_damaged_meshes_never_crash_the_reader(tmp_path: Path, values_only: bool) -> None:
+    """Random damage to a drawing with every kind of mesh: wireframes or a FormatError, never another exception,
+    a warning of numpy, a coordinate that is not a number or a triangle on a vertex that is not there."""
+    rng = np.random.default_rng(11)
+    doc = ezdxf.new("R2018")
+    msp = doc.modelspace()
+    p = _points(rng, 30)
+    for layer in ("A", "B"):
+        pface = msp.add_polyface(dxfattribs={"layer": layer})
+        pface.append_faces([[p[i], p[i + 1], p[i + 2], p[i + 3]] for i in range(0, 12, 2)])
+        pface.optimize()
+        pmesh = msp.add_polymesh(size=(3, 4), dxfattribs={"layer": layer})
+        for i in range(3):
+            for j in range(4):
+                pmesh.set_mesh_vertex((i, j), p[4 * i + j])
+        for i in range(5):
+            msp.add_3dface(p[i : i + 4], dxfattribs={"layer": layer})
+        entity = msp.add_mesh(dxfattribs={"layer": layer})
+        with entity.edit_data() as data:
+            data.vertices = p[:9]
+            data.faces = [[0, 1, 2], [2, 3, 4, 5], [5, 6, 7, 8, 0]]
+        msp.add_line(p[0], p[1], dxfattribs={"layer": layer})
+    source = tmp_path / "source.dxf"
+    doc.saveas(source)
+    data = source.read_bytes()
+    eol = b"\r\n" if b"\r\n" in data else b"\n"
+    lines = data.split(eol)
+    first = data[: data.index(b"ENTITIES")].count(b"\n")
+    numbers = b"-1|1e999|nan|0|10|999999999999|1.#QNAN|1e30|-1e30|1e-320|8|64|16|3|255|128|192|4|32767|-5"
+    junk = [b"", b"abc", b"\x00\xff", b" 70", b" 71", b" 90", b"MESH", b"VERTEX", b"SEQEND", b"3DFACE", b"POLYLINE"]
+    junk += numbers.split(b"|")
+    rnd = random.Random(7 if values_only else 8)
+    outcomes: dict[str, int] = {}
+    path = tmp_path / "damaged.dxf"
+    triangles = 0
+    for _ in range(200):
+        damaged = list(lines)
+        for _ in range(rnd.choice([1, 2, 5, 30]) if values_only else rnd.choice([1, 1, 2, 5])):
+            k = rnd.randrange(first, len(damaged))
+            if values_only:  # a value replaced: the structure of the file stays whole
+                damaged[k | 1 if k | 1 < len(damaged) else k - 1] = rnd.choice(junk)
+            elif rnd.random() < 0.5:
+                damaged[k] = rnd.choice(junk)
+            elif rnd.random() < 0.5:
+                del damaged[k]
+            else:
+                damaged = damaged[:k]
+        path.write_bytes(eol.join(damaged))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            try:
+                read = read_dxf(path, recover=False, limits=Limits(triangles=5_000))
+            except FormatError as error:
+                assert error.message and error.hint
+                outcomes[error.code] = outcomes.get(error.code, 0) + 1
+                continue
+        outcomes["ok"] = outcomes.get("ok", 0) + 1
+        for mesh in read.wireframes:
+            assert np.isfinite(mesh.xyz).all() and mesh.triangle_count > 0
+            assert mesh.tri.min() >= 0 and mesh.tri.max() < mesh.point_count
+            assert len(np.unique(mesh.tri)) == mesh.point_count  # welded: every vertex is used
+            triangles += mesh.triangle_count
+    assert set(outcomes) <= {"ok", "broken", "truncated", "too_large"} and outcomes["ok"] >= (
+        150 if values_only else 20
+    )
+    assert triangles > 1000

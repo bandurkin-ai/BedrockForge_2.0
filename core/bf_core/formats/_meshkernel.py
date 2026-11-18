@@ -55,18 +55,16 @@ def scan(buf, n, final, comma, tstart, tend, lfirst):  # type: ignore[no-untyped
 
 @njit(cache=True, nogil=True)
 def words(buf, tstart, tend, idx, out):  # type: ignore[no-untyped-def]
-    """`out[i]` — the token idx[i] as a number: its bytes (ASCII letters in lower case) from the lowest up;
-    0 for a token longer than eight bytes."""
+    """`out[i]` — the token idx[i] as a number: its first eight bytes (ASCII letters in lower case) from the
+    lowest up."""
     for i in range(len(idx)):
         s = tstart[idx[i]]
-        e = tend[idx[i]]
         key = np.uint64(0)
-        if e - s <= 8:
-            for j in range(e - s):
-                c = buf[s + j]
-                if 65 <= c <= 90:
-                    c += 32
-                key |= np.uint64(c) << np.uint64(8 * j)
+        for j in range(min(tend[idx[i]] - s, 8)):
+            c = buf[s + j]
+            if 65 <= c <= 90:
+                c += 32
+            key |= np.uint64(c) << np.uint64(8 * j)
         out[i] = key
 
 

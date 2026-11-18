@@ -403,6 +403,8 @@ function registerIpc(): void {
       { name: "Линии канав", extensions: ["str", "pit", "dxf", "csv", "txt", "tsv", "prn", "dat", "xyz"] },
       { name: "Все файлы", extensions: ["*"] },
     ],
+    // «Настройка › Внешние программы» (ADR 0013 §6): a program of the user; only Windows names them by .exe.
+    program: [...(process.platform === "win32" ? [{ name: "Программы", extensions: ["exe"] }] : []), { name: "Все файлы", extensions: ["*"] }],
   };
   ipcMain.handle("bf:pick-files", async (e, kind: string, multi: boolean) => {
     if (!mainWin || !fromMain(e.sender)) return [];

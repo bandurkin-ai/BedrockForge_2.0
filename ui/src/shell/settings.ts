@@ -18,6 +18,17 @@ export interface UserSettings {
   projectsDir: string | null;
   /** Workers of the general job queue (ТЗ 7.6: 1 by default, plus the quick one). */
   heavyWorkers: number;
+  /** ODA File Converter of «Настройка › Внешние программы»: the program or its folder (null — the core looks for it). */
+  odaConverter: string | null;
+}
+
+export const ODA_PATH_MAX = 2000;
+
+/** A path as it was typed or pasted: no spaces and quotes around it; empty, too long or with control characters — none. */
+export function normalizeOdaPath(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.trim().replace(/^"+|"+$/g, "").trim();
+  return text && text.length <= ODA_PATH_MAX && !/[\u0000-\u001f\u007f]/.test(text) ? text : null;
 }
 
 export function normalizeSettings(raw: unknown): UserSettings {
@@ -32,6 +43,7 @@ export function normalizeSettings(raw: unknown): UserSettings {
     lastProject: last,
     projectsDir: dir,
     heavyWorkers: heavy,
+    odaConverter: normalizeOdaPath(r.odaConverter),
   };
 }
 

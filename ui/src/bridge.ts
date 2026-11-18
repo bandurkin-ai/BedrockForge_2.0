@@ -33,8 +33,9 @@ export interface BfBridge {
   pickOpen(): Promise<string | null>;
   pickFolder(): Promise<string | null>;
   /** Files for import: "tables" (DAT, CSV, Excel), "prj", "objects" (everything of «Импорт файлов»), "lines"
-   * (lines and points), "rasters" (images and their georeference), "trenches" (polylines of trenches); [] when cancelled. */
-  pickFiles(kind: "tables" | "prj" | "objects" | "lines" | "rasters" | "trenches", multi: boolean): Promise<string[]>;
+   * (lines and points), "rasters" (images and their georeference), "trenches" (polylines of trenches), "program"
+   * (a program of the user: .exe — «Настройка › Внешние программы»); [] when cancelled. */
+  pickFiles(kind: "tables" | "prj" | "objects" | "lines" | "rasters" | "trenches" | "program", multi: boolean): Promise<string[]>;
   showInFolder(file: string): void;
   /** Disk path of a file dropped from Explorer. */
   pathForFile(file: File): string;

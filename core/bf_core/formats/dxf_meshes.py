@@ -106,11 +106,13 @@ class _Run:
             raise self.meshes.too_many()
 
     def close(self) -> None:
-        nv, xyz, ok, nf, faces = (np.concatenate([p[i] for p in self.parts]) for i in range(5))
+        nv, xyz, ok, _, faces = (np.concatenate([p[i] for p in self.parts]) for i in range(5))
         self.parts = []
-        piece = self.meshes.convert(self.head, np.array([nv.sum()]), xyz, ok, np.array([nf.sum()]), faces)
-        self.meshes.count(len(piece.tri))
-        self.meshes.weld(piece)
+        for a in range(0, max(len(faces), 1), SLICE):  # the faces in portions: a polyface may hold millions
+            part = faces[a : a + SLICE]
+            piece = self.meshes.convert(self.head, np.array([nv.sum()]), xyz, ok, np.array([len(part)]), part, a == 0)
+            self.meshes.count(len(piece.tri))
+            self.meshes.weld(piece)
 
 
 def _pack(
@@ -147,7 +149,7 @@ class Meshes:
 
     def _note(
         self,
-        kind: str,
+        kind: str | None,
         ords: np.ndarray,
         layers: np.ndarray,
         aci: np.ndarray,
@@ -165,7 +167,8 @@ class Meshes:
             elif mark[0] < layer.first[0]:
                 layer.first = mark
             mine = layers == lay
-            layer.kinds[kind] += int(mine.sum())
+            if kind is not None:
+                layer.kinds[kind] += int(mine.sum())
             layer.bad += int(bad[mine].sum()) if bad is not None else 0
             layer.flat += int(flat[mine].sum()) if flat is not None else 0
 
@@ -252,9 +255,17 @@ class Meshes:
         return _Run(self, head, rows)
 
     def convert(
-        self, head: np.ndarray, nv: np.ndarray, xyz: np.ndarray, ok: np.ndarray, nf: np.ndarray, faces: np.ndarray
+        self,
+        head: np.ndarray,
+        nv: np.ndarray,
+        xyz: np.ndarray,
+        ok: np.ndarray,
+        nf: np.ndarray,
+        faces: np.ndarray,
+        entities: bool = True,
     ) -> _Piece:
-        """Packed polylines (`_pack`) → their triangles."""
+        """Packed polylines (`_pack`) → their triangles. `entities` False — more faces of a polyface that was
+        counted already."""
         n = len(head)
         flags = head[:, 4].astype(np.int64)
         start = np.cumsum(nv) - nv
@@ -264,7 +275,7 @@ class Meshes:
             owner = np.repeat(np.arange(n), nf)
             number = np.abs(faces.astype(np.int64))
             c = np.where(number > 0, number - 1 + start[owner][:, None], -1)
-            wrong = (number > nv[owner][:, None]).any(axis=1)
+            wrong = np.asarray((number > nv[owner][:, None]).any(axis=1))
             wrong |= ~np.append(ok, True)[np.where((c >= 0) & ~wrong[:, None], c, len(ok))].all(axis=1)
             tri, made = fan4(np.where(wrong[:, None], -1, c))
             bad += np.bincount(owner[wrong], minlength=n)
@@ -273,7 +284,7 @@ class Meshes:
         grid = np.flatnonzero((flags & 64) == 0)  # polygon meshes: M × N vertices, of a smoothed one — 73 × 74
         smooth = ((flags[grid] & 4) != 0) & (head[grid, 10] * head[grid, 11] != nv[grid])
         dims = np.where(smooth[:, None], head[grid, 12:14], head[grid, 10:12]).astype(np.int64)
-        fits = (dims[:, 0] * dims[:, 1] == nv[grid]) & (dims.min(axis=1, initial=1) >= 1)
+        fits = np.asarray((dims[:, 0] * dims[:, 1] == nv[grid]) & (dims.min(axis=1, initial=1) >= 1))
         bad[grid[~fits]] += 1
         grid, dims = grid[fits], dims[fits]
         shape = np.column_stack([dims, (flags[grid] & 1) != 0, (flags[grid] & 32) != 0])
@@ -297,7 +308,8 @@ class Meshes:
         ords, layers = head[:, 0].astype(np.int64), head[:, 1].astype(np.int32)
         for kind, mask in ((POLYFACE, (flags & 64) != 0), (POLYMESH, (flags & 64) == 0)):
             if mask.any():
-                self._note(kind, ords[mask], layers[mask], head[mask, 2], head[mask, 3], bad[mask], flat[mask])
+                marks = (ords[mask], layers[mask], head[mask, 2], head[mask, 3], bad[mask], flat[mask])
+                self._note(kind if entities else None, *marks)
         return _Piece(ords, layers, xyz, tri, ent)
 
     # --- welding -----------------------------------------------------------------------------------------

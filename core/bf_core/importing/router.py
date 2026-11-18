@@ -5,6 +5,7 @@
 points and rasters (`inspect`, nothing is written) and the start of the job `import.objects`.
 /api/v1/import/trenches — «Канавы по полилиниям» (ТЗ 7.35 Д-16, ADR 0011 §5): `inspect` — the trenches the
 file gives with the chosen name and direction (nothing is written), and the start of the job `import.trenches`.
+/api/v1/tools — the programs of the user the formats need (ODA File Converter for DWG): `tools.py`.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
 from .service import duplicate_targets
+from .tools import router as tools_router
 
 dh = APIRouter(prefix="/drillholes")
 Svc = Annotated[ProjectService, Depends(projects)]
@@ -558,3 +560,4 @@ router = APIRouter()
 router.include_router(dh)
 router.include_router(objects_router)
 router.include_router(trenches_router)
+router.include_router(tools_router)

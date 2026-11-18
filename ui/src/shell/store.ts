@@ -23,6 +23,8 @@ export interface AppState {
   lastProject: string | null;
   projectsDir: string | null;
   heavyWorkers: number;
+  /** The path of ODA File Converter from «Настройка › Внешние программы» (null — not set). */
+  odaConverter: string | null;
   setName: string | null;
   setHoles: number;
   holeId: string | null;
@@ -48,6 +50,7 @@ export const INITIAL_STATE: AppState = {
   lastProject: null,
   projectsDir: null,
   heavyWorkers: 1,
+  odaConverter: null,
   setName: null,
   setHoles: 0,
   holeId: null,

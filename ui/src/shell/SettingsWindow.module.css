@@ -22,3 +22,9 @@
 .fieldRow input { flex: 1; min-width: 0; padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-input); color: var(--text); }
 .fieldRow button, .field select { padding: 4px 10px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; }
 .field select { align-self: flex-start; }
+.heading { font-weight: 600; }
+.state { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); line-height: 1.5; overflow-wrap: anywhere; user-select: text; }
+.stateOk { color: var(--ok); }
+.stateWarn { color: var(--warn); }
+.stateBad { color: var(--danger); }
+.how { color: var(--text-dim); line-height: 1.6; overflow-wrap: anywhere; user-select: text; }
