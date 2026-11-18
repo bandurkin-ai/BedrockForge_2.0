@@ -45,8 +45,9 @@ def _meshes(work: Path) -> list[Any]:
 
 def prepare(params: dict[str, Any], work: Path) -> None:
     import numpy as np
-    from tests.formats.dm_builder import F, build_numbers
     from tools.gen.wireframes import body_of, ore_body, pit_surface
+
+    from tests.formats.dm_builder import F, build_numbers
 
     n = int(params["triangles"])
     surface = pit_surface(round(0.8 * n))

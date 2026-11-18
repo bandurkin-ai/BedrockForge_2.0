@@ -9,8 +9,8 @@ References and tolerances:
     (the chords of a UV sphere of 20 000 triangles; the tolerance of `test_gen_and_volume`);
   * the scenarios — the errors they report are within the limits of `bench/budgets.json`: a file written and
     read back — 0 (a binary STL — half the step of float32); a section and a pick — 1e-8 m; a crossing of a
-    hole — 1e-7 m from the plane of its triangle and the 1 mm of 7.15 from the surface; a flat place at a simplified level — 0.25 mm (float32 from the
-    origin of its part).
+    hole — 1e-7 m from the plane of its triangle and the 1 mm of 7.15 from the surface; a vertex of a
+    simplified level — metres from the surface, less than a bench of the pit.
 """
 
 from __future__ import annotations
@@ -117,17 +117,30 @@ def test_wireframe_import_reads_stores_and_writes_a_tridb_back_bit_for_bit(tmp_p
     assert info["measure_mismatches"] == 0  # the volume and the area of the file against the geometry, 1e-9
     assert all(info[k] >= 0.0 for k in ("read_s", "store_s", "import_s", "export_s"))
     within_limits("wireframe_import", info, ("blob_mismatches", "row_mismatches", "measure_mismatches"))
+    # the comparison of the two files sees a coordinate moved by one bit and a renamed wireframe
+    from bench.scenarios import wireframe_import as scenario
+
+    from bf_core.formats.tridb_write import write_tridb
+
+    meshes = scenario._meshes(30_000)
+    meshes[3].xyz[5, 2] = np.nextafter(meshes[3].xyz[5, 2], np.inf)
+    meshes[7].name = "Линза другая"
+    write_tridb(tmp_path / "другой.tridb", meshes, now=scenario.NOW, author="bench")
+    blobs, rows = scenario._compare(tmp_path / scenario.SOURCE, tmp_path / "другой.tridb")
+    assert blobs == 1 and rows >= 1
+    assert scenario._compare(tmp_path / scenario.SOURCE, tmp_path / "экспорт.tridb") == (0, 0)
 
 
 @pytest.mark.windows
 def test_wireframe_check_builds_levels_finds_crossings_and_serves_the_first_frame(tmp_path: Path) -> None:
     info = run("wireframe_check", {"triangles": 60_000}, tmp_path)
     assert info["pairs"] > 20 and info["normal_conflicts"] == 0
-    assert info["crossing"] >= info["straddling"] > 20  # every triangle of the fault through the surface is found
+    assert info["straddling"] > 20 and info["missed"] == 0  # every triangle of the fault through the surface
     lod = info["lod_triangles"]
-    assert lod[0] == info["triangles"] and lod[1] <= lod[0] / 6 and lod[2] <= lod[0] / 40  # the shares of 8.12
-    assert info["flat_vertices"] > 0 and info["flat_error_m"] <= 2.5e-4  # a level berm stays level: float32
-    within_limits("wireframe_check", info, ("flat_error_m", "normal_conflicts"))
+    assert lod[0] == info["triangles"] and lod[1] <= lod[0] / 6 and lod[2] <= lod[0] / 40  # one part: as 8.12
+    assert 0.0 < info["lod1_error_m"] <= info["lod2_error_m"] < 15.0  # less than a bench of the pit
+    keys = ("lod1_share", "lod2_share", "lod1_error_m", "lod2_error_m", "normal_conflicts", "missed")
+    within_limits("wireframe_check", info, keys)
 
 
 @pytest.mark.windows

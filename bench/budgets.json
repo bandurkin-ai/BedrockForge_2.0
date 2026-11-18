@@ -118,7 +118,8 @@
       "limits": {
         "max_node_error_m": 0.0,
         "first_frame_s": 1.0,
-        "build_s": 2.5
+        "build_s": 2.5,
+        "lod_s": 1.0
       }
     },
     "lines_import": {
@@ -166,73 +167,94 @@
       "params": {
         "triangles": 1000000
       },
-      "budget_s": 99,
-      "budget_mb": 9999,
+      "budget_s": 8.0,
+      "budget_mb": 600,
       "limits": {
-        "import_s": 99,
-        "export_s": 99,
+        "import_s": 6.0,
+        "export_s": 3.0,
         "blob_mismatches": 0,
         "row_mismatches": 0,
         "measure_mismatches": 0
-      }
+      },
+      "note": "ADR 0013 «Замеры»: импорт TRIDB 1 млн ≤ 6 с / 600 МБ (ТЗ 5.3). export_s — предварительно, по первому замеру (0,4 с)."
     },
     "wireframe_check": {
       "params": {
         "triangles": 1000000
       },
-      "budget_s": 99,
-      "budget_mb": 9999,
+      "budget_s": 10.0,
+      "budget_mb": 800,
       "limits": {
-        "lod_s": 99,
-        "check_s": 99,
-        "first_frame_s": 99,
-        "full_s": 99,
-        "lod1_error_m": 99,
-        "lod2_error_m": 99,
-        "normal_conflicts": 0
-      }
+        "lod_s": 6.0,
+        "check_s": 6.0,
+        "first_frame_s": 1.0,
+        "full_s": 3.0,
+        "lod1_share": 0.167,
+        "lod2_share": 0.04,
+        "lod1_error_m": 4.0,
+        "lod2_error_m": 8.0,
+        "normal_conflicts": 0,
+        "missed": 0
+      },
+      "note": "ADR 0013: LOD и самопересечения — по первому замеру (ориентир full 60 с + 60 с; замер 1 млн: 2,1 с и 0,65 с). Доли и отклонения уровней — предварительно, по первому замеру (1/8 и 1/35; 0,6 м и 4,2 м)."
     },
     "wireframe_exact": {
       "params": {
         "triangles": 1000000
       },
-      "budget_s": 99,
-      "budget_mb": 9999,
+      "budget_s": 3.0,
+      "budget_mb": 600,
       "limits": {
-        "section_first_s": 99,
-        "section_step_s": 99,
-        "pick_first_s": 99,
-        "pick_s": 99,
+        "section_first_s": 0.3,
+        "section_step_s": 0.1,
+        "pick_first_s": 0.2,
+        "pick_s": 0.05,
         "section_error_m": 1e-08,
         "pick_error_m": 1e-08
-      }
+      },
+      "note": "ADR 0013: точный выбор ≤ 50 мс (ТЗ 5.3); сечение full ≤ 1 с / ≤ 300 мс. pick_first_s (первый щелчок: чтение blobs) — предварительно, по первому замеру (0,02 с)."
     },
     "hole_intersections": {
       "params": {
         "triangles": 1000000,
         "holes": 5000
       },
-      "budget_s": 99,
-      "budget_mb": 9999,
+      "budget_s": 2.0,
+      "budget_mb": 600,
       "limits": {
-        "tree_s": 99,
-        "cross_s": 99,
+        "tree_s": 0.5,
+        "cross_s": 1.0,
+        "grazes": 5,
         "plane_error_m": 1e-07,
         "max_error_m": 0.001,
+        "graze_error_m": 0.01,
         "parity_errors": 0,
         "collar_errors": 0
-      }
+      },
+      "note": "ADR 0013: 5 000 стволов × 1 млн — по первому замеру (ориентир ≤ 5 с; замер 0,2 с). Предварительно."
     },
     "mesh_formats": {
       "params": {
         "triangles": 100000
       },
-      "budget_s": 99,
-      "budget_mb": 9999,
+      "budget_s": 8.0,
+      "budget_mb": 800,
       "limits": {
+        "dxf_read_s": 1.5,
+        "dxf_write_s": 1.5,
+        "obj_read_s": 1.5,
+        "obj_write_s": 1.5,
+        "stl_read_s": 1.5,
+        "stl_write_s": 1.5,
+        "stl_text_read_s": 1.5,
+        "stl_text_write_s": 1.5,
+        "dtm_read_s": 1.5,
+        "dtm_write_s": 1.5,
+        "datamine_read_s": 1.5,
         "max_error_m": 0.0,
         "stl_error_m": 0.25
-      }
+      },
+      "note": "ADR 0013: DXF, OBJ, STL — 1 млн: чтение ≤ 15 с, запись ≤ 10 с (предложение ADR, уточняется замером); здесь 100 тыс. Surpac DTM и Datamine — предварительно, по тем же пределам."
     }
   },
   "full": {
@@ -353,7 +375,8 @@
       "limits": {
         "max_node_error_m": 0.0,
         "first_frame_s": 3.0,
-        "build_s": 18.0
+        "build_s": 18.0,
+        "lod_s": 9.0
       }
     },
     "lines_import": {
@@ -401,73 +424,94 @@
       "params": {
         "triangles": 10000000
       },
-      "budget_s": 999,
-      "budget_mb": 99999,
+      "budget_s": 80.0,
+      "budget_mb": 2048,
       "limits": {
-        "import_s": 999,
-        "export_s": 999,
+        "import_s": 60.0,
+        "export_s": 20.0,
         "blob_mismatches": 0,
         "row_mismatches": 0,
         "measure_mismatches": 0
-      }
+      },
+      "note": "ADR 0013 «Замеры»: импорт TRIDB 10 млн ≤ 60 с / 2 ГБ (ТЗ 5.3). export_s — предварительно, по первому замеру (1,4 с)."
     },
     "wireframe_check": {
       "params": {
         "triangles": 10000000
       },
-      "budget_s": 999,
-      "budget_mb": 99999,
+      "budget_s": 140.0,
+      "budget_mb": 2048,
       "limits": {
-        "lod_s": 999,
-        "check_s": 999,
-        "first_frame_s": 999,
-        "full_s": 999,
-        "lod1_error_m": 99,
-        "lod2_error_m": 99,
-        "normal_conflicts": 0
-      }
+        "lod_s": 60.0,
+        "check_s": 60.0,
+        "first_frame_s": 3.0,
+        "full_s": 15.0,
+        "lod1_share": 0.167,
+        "lod2_share": 0.04,
+        "lod1_error_m": 4.0,
+        "lod2_error_m": 8.0,
+        "normal_conflicts": 0,
+        "missed": 0
+      },
+      "note": "ADR 0013: LOD и самопересечения — ориентир 60 с + 60 с (замер 10 млн: 19 с и 6,5 с); первые данные кадра ≤ 3 с, все части LOD 0 ≤ 15 с (ТЗ 5.3). Доли и отклонения уровней — предварительно."
     },
     "wireframe_exact": {
       "params": {
         "triangles": 10000000
       },
-      "budget_s": 999,
-      "budget_mb": 99999,
+      "budget_s": 6.0,
+      "budget_mb": 1024,
       "limits": {
-        "section_first_s": 999,
-        "section_step_s": 999,
-        "pick_first_s": 999,
-        "pick_s": 999,
+        "section_first_s": 1.0,
+        "section_step_s": 0.3,
+        "pick_first_s": 0.5,
+        "pick_s": 0.05,
         "section_error_m": 1e-08,
         "pick_error_m": 1e-08
-      }
+      },
+      "note": "ADR 0013: сечение первое ≤ 1 с, шаг ≤ 300 мс; точный выбор ≤ 50 мс (ТЗ 5.3). pick_first_s (первый щелчок по каркасу 10 млн: чтение 240 МБ blobs и таблица частей) — предварительно, по первому замеру (0,18 с)."
     },
     "hole_intersections": {
       "params": {
         "triangles": 1000000,
         "holes": 50000
       },
-      "budget_s": 999,
-      "budget_mb": 99999,
+      "budget_s": 5.0,
+      "budget_mb": 1024,
       "limits": {
-        "tree_s": 999,
-        "cross_s": 999,
+        "tree_s": 0.5,
+        "cross_s": 4.0,
+        "grazes": 50,
         "plane_error_m": 1e-07,
         "max_error_m": 0.001,
+        "graze_error_m": 0.01,
         "parity_errors": 0,
         "collar_errors": 0
-      }
+      },
+      "note": "ADR 0013: 50 000 стволов × 1 млн — по первому замеру (1,5 с). Предварительно."
     },
     "mesh_formats": {
       "params": {
         "triangles": 1000000
       },
-      "budget_s": 999,
-      "budget_mb": 99999,
+      "budget_s": 60.0,
+      "budget_mb": 1536,
       "limits": {
+        "dxf_read_s": 15.0,
+        "dxf_write_s": 10.0,
+        "obj_read_s": 15.0,
+        "obj_write_s": 10.0,
+        "stl_read_s": 15.0,
+        "stl_write_s": 10.0,
+        "stl_text_read_s": 15.0,
+        "stl_text_write_s": 10.0,
+        "dtm_read_s": 15.0,
+        "dtm_write_s": 10.0,
+        "datamine_read_s": 15.0,
         "max_error_m": 0.0,
         "stl_error_m": 0.25
-      }
+      },
+      "note": "ADR 0013: DXF, OBJ, STL — 1 млн: чтение ≤ 15 с, запись ≤ 10 с (предложение ADR, уточняется замером). Surpac DTM и Datamine — предварительно, по тем же пределам."
     }
   },
   "external": {

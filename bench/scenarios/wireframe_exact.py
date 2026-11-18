@@ -181,7 +181,8 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
             section_error = max(section_error, float(np.abs(off_plane).max()))
             if wf_id == ids[0]:  # a surface over the plan: one open line from border to border, on the surface
                 assert head["lines"] == 1 and not closed.any(), head
-                section_error = max(section_error, float(np.abs(surface.height(xyz[:, 0], xyz[:, 1]) - xyz[:, 2]).max()))
+                off_surface = np.abs(surface.height(xyz[:, 0], xyz[:, 1]) - xyz[:, 2])
+                section_error = max(section_error, float(off_surface.max()))
             else:
                 assert closed.all(), head  # a closed solid is cut along closed lines
             lines += int(head["lines"])

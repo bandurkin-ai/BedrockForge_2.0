@@ -188,7 +188,9 @@ def body_distance(points: Any, centre: Any, radii: Any, azimuth: float, plunge: 
     return np.sqrt(np.einsum("ij,ij->i", local / np.asarray(radii), local / np.asarray(radii)))
 
 
-def fault(surface: Surface, n_triangles: int, *, azimuth: float = 63.0, dip: float = 75.0) -> tuple[np.ndarray, np.ndarray]:
+def fault(
+    surface: Surface, n_triangles: int, *, azimuth: float = 63.0, dip: float = 75.0
+) -> tuple[np.ndarray, np.ndarray]:
     """A sheet of about `n_triangles` triangles through the middle of the surface, striking along `azimuth`
     and dipping `dip` degrees, a little wavy: it goes from above the highest node to below the lowest."""
     sx, sy = surface.side

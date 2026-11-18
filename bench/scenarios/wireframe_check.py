@@ -18,8 +18,8 @@ What is checked:
   lod1_share, lod2_share  the triangles of the levels against all of them: 1/8 and 1/64 are asked for, the
                  borders of the parts stay bit for bit and take their share (8.12 got ≤ 1/6 and ≤ 1/40 on a
                  grid; a pit with relief in parts of 64 000 triangles — about 1/8 and 1/35);
-  every triangle of the fault that has corners on both sides of the surface is found crossing it
-  (`straddling` ≤ `crossing`), and the normals are consistent.
+  missed         triangles of the fault with corners on both sides of the surface (`straddling`: such a
+                 triangle goes through it) that are not among the crossing ones: 0; the normals are consistent.
 """
 
 from __future__ import annotations
@@ -54,9 +54,6 @@ def prepare(params: dict[str, Any], work: Path) -> None:
     fv, ft = fault(surface, round(FAULT_SHARE * n), azimuth=FAULT_AZIMUTH)
     along, across = _along_across(fv)
     np.save(work / "fault.npy", np.array([along.min(), along.max(), across.min(), across.max()]))  # its plan
-    above = fv[:, 2] - surface.height(fv[:, 0], fv[:, 1])
-    side = above[ft] >= 0.0
-    straddling = int(np.count_nonzero(side.any(axis=1) & ~side.all(axis=1)))
     surface.save(work / "surface.npz")
     xyz, tri = np.concatenate([v, fv]), np.concatenate([t, ft + len(v)])
     del v, t, fv, ft
@@ -72,7 +69,7 @@ def prepare(params: dict[str, Any], work: Path) -> None:
             staged.discard()
     finally:
         engine.dispose()
-    (work / "folder.txt").write_text(f"{folder}\n{wf_id}\n{surface.triangles}\n{straddling}", encoding="utf-8")
+    (work / "folder.txt").write_text(f"{folder}\n{wf_id}", encoding="utf-8")
     load()  # compile into the cache outside the timing
 
 
@@ -109,8 +106,9 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     from bf_core.viz import meshes as viz
     from bf_core.wireframes import store as wf_store
 
-    folder_text, wf_text, surface_text, straddling_text = (work / "folder.txt").read_text(encoding="utf-8").split("\n")
+    folder_text, wf_text = (work / "folder.txt").read_text(encoding="utf-8").split("\n")
     folder, wf_id = Path(folder_text), int(wf_text)
+    surface = Surface.load(work / "surface.npz")
     engine = dialect.create_engine(dialect.sqlite_url(str(folder / "project.sqlite")))
     project = SimpleNamespace(engine=engine, uid="bench", folder=folder)
     try:
@@ -121,10 +119,20 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         lod = viz.build_cache(folder, state.cache_key(), v, t, viz.parts_of(project, state))
         t1 = time.perf_counter()
         found = checks.run_checks(v, t)
-        t2 = time.perf_counter()
-        del v, t
+        check_s = time.perf_counter() - t1
+        # the triangles of the fault (its vertices come after the nodes of the surface) that go through the
+        # surface — corners on both sides of it — against the triangles found crossing
+        nodes = (surface.nx + 1) * (surface.ny + 1)
+        of_fault = t[t[:, 0] >= nodes]
+        side = v[of_fault, 2] >= surface.height(v[of_fault, 0], v[of_fault, 1])
+        through = side.any(axis=1) & ~side.all(axis=1)
+        crossing = np.zeros(len(t), dtype=bool)
+        crossing[found.triangles] = True
+        straddling, missed = int(through.sum()), int(np.count_nonzero(through & ~crossing[t[:, 0] >= nodes]))
+        del v, t, of_fault, crossing
 
         viz.forget()
+        t2 = time.perf_counter()
         with dialect.read_tx(engine) as conn:
             state = viz.mesh_state(conn, wf_id)
         head = binary.decode(viz.manifest(project, state))[0]
@@ -138,7 +146,6 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
 
     # the simplified levels against the surface, as the window gets them (away from the fault in plan: its
     # vertices are not the surface)
-    surface = Surface.load(work / "surface.npz")
     a0, a1, c0, c1 = np.load(work / "fault.npy").tolist()
     errors = []
     for bodies in (middle, coarse):
@@ -156,21 +163,23 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     counts = lod["triangles"]
     assert stats["state"] == "done" and stats["normal_conflicts"] == 0, stats
     assert counts[0] == state.triangles and counts[2] < counts[1] < counts[0], counts
-    assert stats["pairs"] > 0 and stats["triangles"] >= int(straddling_text) > 0, (stats["triangles"], straddling_text)
+    assert stats["pairs"] > 0 and straddling > 0 and missed == 0, (stats["pairs"], straddling, missed)
+    assert stats["listed"] == stats["triangles"], stats  # (the list is not cut short: the check above is whole)
     return {
         "triangles": state.triangles,
-        "surface_triangles": int(surface_text),
+        "surface_triangles": surface.triangles,
         "parts": len(head["parts"]),
         "lod_triangles": counts,
         "lod1_share": round(counts[1] / counts[0], 4),
         "lod2_share": round(counts[2] / counts[0], 4),
         "lod_mb": round(lod["bytes"] / 1e6, 2),
         "lod_s": round(t1 - t0, 3),
-        "check_s": round(t2 - t1, 3),
+        "check_s": round(check_s, 3),
         "pairs": stats["pairs"],
         "crossing": stats["triangles"],
         "listed": int(len(found.triangles)),
-        "straddling": int(straddling_text),
+        "straddling": straddling,
+        "missed": missed,
         "normal_conflicts": stats["normal_conflicts"],
         "first_frame_s": round(t3 - t2, 3),
         "full_s": round(t4 - t3, 3),
