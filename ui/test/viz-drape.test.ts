@@ -123,12 +123,12 @@ describe("accuracy of the image coordinates (float64 affine → UV)", () => {
 
   it("hard data: a small rotated image at the edge of a part 16 km wide", () => {
     // 100 m of image, 4096 px (2.4 cm pixels), turned 30°, 8 km from the origin of the part
-    const small = image(520_200, 7_128_950, 4096, 4096, 100 / 4096, 30);
+    const small = image(520_200.3371, 7_128_950.7713, 4096, 4096, 100 / 4096, 30); // its corner is not a float32 there
     const origin: [number, number] = [512_345, 7_123_457];
     const axes = imageAxes(small.corners, origin)!;
     expect(axes.o[0]).toBeGreaterThan(7800); // float32 steps of 0.5 mm there
     expect(worstPx(small, origin, (x, y) => drapeUv(axes, x, y))).toBeLessThan(1e-6);
-    const px = worstPx(small, origin, (x, y) => drapeUvFloat32(axes, x, y));
+    const px = worstPx(small, origin, (x, y) => drapeUvFloat32(axes, x, y)); // measured: 0.011 px, 0.26 mm
     expect(px).toBeLessThan(0.02);
     expect(px * small.pixel).toBeLessThan(5e-4);
   });

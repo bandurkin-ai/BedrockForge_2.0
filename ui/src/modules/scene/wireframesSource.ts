@@ -327,7 +327,7 @@ export class WireframesSource {
     }
     const budget = TRIANGLE_BUDGET[this.scene.gpu.gpuClass] * this.scene.renderer.budgetFactor() * MESH_TRIANGLE_SHARE;
     const wanted = wantedLevels(measured, budget);
-    this.budgeted = wanted.budgeted;
+    this.budgeted = wanted.budgeted && this.forced === null;
     const inView: string[] = [];
     let work = false;
     refs.forEach(({ st, k }, i) => {

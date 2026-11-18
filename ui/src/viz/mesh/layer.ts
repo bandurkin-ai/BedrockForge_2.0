@@ -26,8 +26,8 @@ import { DRAPE_PROGRAM_KEY, drapeUv, drapeUvFloat32, imageAxes, patchDrapeShader
 export const DEFAULT_MESH_COLOR = "#8a99a8";
 /** Scores of surfaces start here, as of rasters: any line or point under the cursor (0…1) wins. */
 export const SURFACE_SCORE = 2;
-/** How much of the selection colour a picked surface glows with. */
-const SELECT_GLOW = 0.35;
+/** How much of the selection colour a picked surface glows with: seen, but the image on a DTM stays readable. */
+const SELECT_GLOW = 0.2;
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
