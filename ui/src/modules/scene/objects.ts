@@ -8,6 +8,7 @@
  */
 import { api, CoreError } from "../../shell/api";
 import { Store } from "../../shell/store";
+import type { ExactPick } from "../../viz/mesh/exact";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
 
@@ -167,7 +168,11 @@ export type PickedObject =
   /** `line` — the line (point) of the layer: the row of its attributes; `xyz` — the picked place, absolute */
   | { kind: "lines"; id: number; line: number; on: "line" | "point"; xyz: [number, number, number] }
   | { kind: "raster"; id: number; xyz: [number, number, number] }
-  /** a wireframe or a DTM */
-  | { kind: "wireframe"; id: number; xyz: [number, number, number] };
+  /**
+   * a wireframe or a DTM. `xyz` — the picked place: as the level of detail in view shows it, then — once the
+   * core has answered — on the exact triangle; `exact` — that triangle (the point, how it lies), null — the
+   * core found none under the click, undefined — not answered yet
+   */
+  | { kind: "wireframe"; id: number; xyz: [number, number, number]; exact?: ExactPick | null };
 
 export const pickedObject = new Store<{ picked: PickedObject | null }>({ picked: null });

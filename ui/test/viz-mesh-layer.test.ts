@@ -227,6 +227,11 @@ describe("a surface in the scene", () => {
     expect(pick.xyz[0]).toBeCloseTo(500_030, 3);
     expect(pick.xyz[1]).toBeCloseTo(7_000_060, 3);
     expect(pick.xyz[2]).toBeCloseTo(290 + (30 / 50) * 20, 3);
+    // the ray of the click in project coordinates passes through the picked place: what the core is asked with
+    const t = (pick.xyz[2] - pick.ray.origin[2]) / pick.ray.dir[2];
+    expect(t).toBeGreaterThan(0);
+    expect(pick.ray.origin[0] + t * pick.ray.dir[0]).toBeCloseTo(pick.xyz[0], 6);
+    expect(pick.ray.origin[1] + t * pick.ray.dir[1]).toBeCloseTo(pick.xyz[1], 6);
     // the coarse level of the same part answers at its own height
     v.show(0, 2);
     expect((set.pick(query(at[0], at[1], vp, cam))!.hit as MeshPick).xyz[2]).toBeCloseTo(300, 6);

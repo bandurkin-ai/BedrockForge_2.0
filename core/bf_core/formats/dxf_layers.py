@@ -15,10 +15,14 @@ order of the file and splits them by DXF layer:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from bf_core.formats.lineset import LineSet, close, detect_closed
+
+if TYPE_CHECKING:
+    from bf_core.formats.meshset import MeshSet
 
 
 @dataclass
@@ -37,7 +41,8 @@ class DxfRead:
     records: int  # entities loaded: lines, points and texts
     warnings: list[str] = field(default_factory=list)
     skipped: dict[str, int] = field(default_factory=dict)  # entities that are not loaded, by DXF type
-    meshes: int = 0  # POLYFACE, polygon mesh, 3DFACE, MESH: wireframes
+    meshes: int = 0  # mesh entities in the file: POLYFACE, polygon mesh, 3DFACE, MESH
+    wireframes: list[MeshSet] = field(default_factory=list)  # the meshes of every layer (`dxf_meshes`)
     recovered: bool = False
 
     @property

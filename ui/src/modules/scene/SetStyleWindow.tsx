@@ -23,6 +23,6 @@ export function saveSetStyle(kind: keyof typeof STYLE_KEYS, setId: number, style
 export function SetStyleWindow({ kind, setId }: { kind: keyof typeof STYLE_KEYS; setId: number }) {
   const keys = useStore(viewStore, (x) => x);
   if (kind === "collars") return <CollarStyleForm style={setStyle("collars", setId, keys)} onChange={(s) => saveSetStyle("collars", setId, s)} />;
-  const notes = ["Пересечения появятся, когда в проекте будут каркасы или блочные модели."];
+  const notes = ["Пересечения с каркасами и ЦТМ считает ядро по треугольникам: значок ◆ и подпись «глубина · объект» с точностью до миллиметра. Блочные модели — на этапе Э17."];
   return <TraceStyleForm style={setStyle("traces", setId, keys)} onChange={(s) => saveSetStyle("traces", setId, s)} notes={notes} />;
 }

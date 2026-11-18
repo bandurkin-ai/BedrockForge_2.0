@@ -14,7 +14,8 @@
     is X or Y, Z stays NaN.
   * The colour of a layer is the colour of its first entity: true colour, else ACI, else that of the LAYER table.
   * Not loaded and counted in `skipped`: block references (INSERT), hatches, dimensions and so on, entities of
-    paper space. Meshes (POLYFACE, polygon mesh, 3DFACE, MESH) are wireframes, read by the Э8 reader: `meshes`.
+    paper space. Meshes (POLYFACE, polygon mesh, 3DFACE, MESH) are wireframes: they are counted in `meshes` and
+    read in the same pass by `dxf_meshes` into `wireframes`, a `MeshSet` per layer (`wireframes=False` — counted only).
 The file goes through `dxf_stream` in blocks: memory is the result plus one block. `Limits` stop "bombs".
 `recover`: None — what the plain reading does not take is mended, and the result says so (`recovered`, a warning):
 a file cut short is read up to its last whole record (`DxfStream(salvage=True)`: ezdxf does not read such files);
@@ -39,6 +40,7 @@ import numpy as np
 from bf_core.formats import dxf_curves as curves
 from bf_core.formats import dxf_stream as ds
 from bf_core.formats.dxf_layers import Batch, DxfHeader, DxfRead, build_layers, color_of, ranges
+from bf_core.formats.dxf_meshes import Meshes
 from bf_core.formats.dxf_stream import Block, DxfStream, fail, n_text
 from bf_core.formats.errors import FormatError
 from bf_core.formats.table import Progress, no_progress
@@ -64,6 +66,7 @@ _Z = np.array([0.0, 0.0, 1.0])
 class Limits:
     vertices: int = 20_000_000  # of all layers, curves flattened
     texts: int = 2_000_000
+    triangles: int = 20_000_000  # of the meshes of all layers
     record_bytes: int = ds.MAX_RECORD_BYTES
     recover_bytes: int = 64 << 20  # ezdxf holds the whole drawing: measured 8 MB of memory and 0.6 s per MB of file
 
@@ -110,15 +113,16 @@ def _ocs(xyz: np.ndarray, normals: np.ndarray, counts: np.ndarray) -> np.ndarray
 
 
 class _Reader:
-    def __init__(self, stream: DxfStream, tol: float, limits: Limits) -> None:
+    def __init__(self, stream: DxfStream, tol: float, limits: Limits, wireframes: bool = True) -> None:
         self.s, self.tol, self.lim = stream, tol, limits
+        self.mesh = Meshes(self._common, limits.triangles, stream.alive) if wireframes else None
         self.names: dict[bytes, int] = {}  # layer name as in the file → id
         self.table: dict[bytes, tuple[int, int]] = {}  # the LAYER table: (ACI, true colour)
         self.color: dict[int, tuple[int, int, int]] = {}  # layer id → (record, ACI, true colour) of its first entity
         self.batches: list[Batch] = []
         self.vertices = self.texts = self.bad = self.dropped = self.no_z = self.meshes = 0
         self.skipped: Counter[bytes] = Counter()
-        self.open: tuple[np.ndarray, list[np.ndarray]] | None = None  # a POLYLINE whose vertices go on
+        self.open: tuple[np.ndarray, Any] | None = None  # a POLYLINE whose vertices go on: (head, their rows)
 
     def room(self) -> int:
         return self.lim.vertices - self.vertices
@@ -151,6 +155,12 @@ class _Reader:
             if len(sel):
                 handler(b, sel)
         self.meshes += int((model & ((kind == ds.K_3DFACE) | (kind == ds.K_MESH))).sum())
+        if self.mesh is not None:
+            for k, read in ((ds.K_3DFACE, self.mesh.faces), (ds.K_MESH, self.mesh.subd)):
+                sel = np.flatnonzero(model & (kind == k))
+                if len(sel):
+                    read(b, sel)
+            self.mesh.flush()
         paper = ent & ~model & (kind != ds.K_VERTEX) & (kind != ds.K_SEQEND)
         self.skipped[b"PAPERSPACE"] += int(paper.sum())
         other = np.flatnonzero(model & ~np.isin(kind, (*_READ, ds.K_3DFACE, ds.K_MESH)))
@@ -407,7 +417,7 @@ class _Reader:
         before = np.maximum.accumulate(np.where(is_vertex, -1, np.arange(len(kind))))  # the last record that is not one
         vrec = np.flatnonzero(is_vertex)
         owner = before[vrec]  # −1: the vertices that continue the polyline of the previous block
-        cols = [b.col(c)[vrec] for c in (10, 20, 30, 42, 70)]
+        cols = [b.col(c)[vrec] for c in (10, 20, 30, 42, 70, 71, 72, 73, 74)]
         v = np.column_stack(
             [
                 b.values(cols[0]),
@@ -416,14 +426,13 @@ class _Reader:
                 b.values(cols[3], 0.0),
                 _whole(b.values(cols[4], 0.0), 0.0),
                 (cols[0] >= 0) & (cols[1] >= 0),
+                *(_whole(b.values(c, 0.0), 0.0) for c in cols[5:]),  # a face of a polyface: its vertex numbers
             ]
         )
         if self.open is not None:
             self.open[1].append(v[: int(np.searchsorted(owner, 0))])
             if before[-1] >= 0:  # another record came: the polyline is complete
-                head, parts = self.open
-                self.open = None
-                self._runs(head[None, :], np.array([sum(len(p) for p in parts)]), np.vstack(parts))
+                self.close()
         if len(poly) == 0:
             return
         ords, layer, aci, true = self._common(b, poly)
@@ -437,23 +446,39 @@ class _Reader:
                 b.values(b.col(30)[poly], 0.0),
                 self._normals(b, poly),
                 model[poly],
+                *(_whole(b.values(b.col(c)[poly], 0.0), 0.0) for c in (71, 72, 73, 74)),  # the counts of a mesh
             ]
         )
         lo, hi = np.searchsorted(owner, poly, "left"), np.searchsorted(owner, poly, "right")
         if before[-1] == poly[-1]:  # the block ends inside the last polyline
-            self.open = (head[-1], [v[lo[-1] : hi[-1]]])
+            rows = v[lo[-1] : hi[-1]]
+            self.open = (head[-1], [rows])
+            if self.mesh is not None and head[-1, 9] and int(head[-1, 4]) & (16 | 64):  # a mesh: kept packed
+                self.open = (head[-1], self.mesh.run(head[-1], rows))
+                self.meshes += 1
             head, lo, hi = head[:-1], lo[:-1], hi[:-1]
         if len(head):
             self._runs(head, hi - lo, v[ranges(lo, hi - lo)])
 
+    def close(self) -> None:
+        """The polyline that went on over blocks is complete (or the file ends inside it)."""
+        if self.open is not None:
+            (head, parts), self.open = self.open, None
+            if isinstance(parts, list):
+                self._runs(head[None, :], np.array([sum(len(p) for p in parts)]), np.vstack(parts))
+            else:
+                parts.close()
+
     def _runs(self, head: np.ndarray, counts: np.ndarray, v: np.ndarray) -> None:
-        """Polylines (`head`: record, layer, ACI, true colour, flags, elevation, normal, in model space) with
-        their vertices (`v`: x, y, z, bulge, flags, has X and Y)."""
+        """Polylines (`head`: record, layer, ACI, true colour, flags, elevation, normal, in model space, 71–74)
+        with their vertices (`v`: x, y, z, bulge, flags, has X and Y, 71–74)."""
         flags = head[:, 4].astype(np.int64)
         mesh = (flags & (16 | 64)) != 0
         model = head[:, 9] != 0
         self.meshes += int((mesh & model).sum())
         owner = np.repeat(np.arange(len(head)), counts)
+        if self.mesh is not None and (mesh & model).any():
+            self.mesh.polylines(head[mesh & model], counts[mesh & model], v[(mesh & model)[owner]])
         keep = (model & ~mesh)[owner] & ((v[:, 4].astype(np.int64) & 16) == 0)  # 16: a control point of a spline fit
         self.dropped += int((keep & (v[:, 5] == 0)).sum())
         keep &= v[:, 5] != 0
@@ -508,21 +533,20 @@ class _Reader:
             warnings.append(f"Объекты листов (пространство листа) не загружаются: {n_text(skipped['PAPERSPACE'])}")
         table = {s.text(k): color_of(-1, -1, v) for k, v in self.table.items()}
         header = DxfHeader(s.version, s.codepage, table)
-        return DxfRead("dxf", layers, header, s.encoding, records, warnings, skipped, self.meshes)
+        found, notes = self.mesh.result(names, tables) if self.mesh is not None else ([], [])
+        return DxfRead("dxf", layers, header, s.encoding, records, warnings + notes, skipped, self.meshes, found)
 
 
-def _read(path: Path, tick: Progress, tol: float, limits: Limits, salvage: bool = False) -> DxfRead:
+def _read(path: Path, tick: Progress, tol: float, limits: Limits, meshes: bool, salvage: bool = False) -> DxfRead:
     def reading(fraction: float, message: str | None = None) -> None:
         tick(fraction * 0.9, message)
 
     stream = DxfStream(path, reading, max_record_bytes=limits.record_bytes, salvage=salvage)
-    reader = _Reader(stream, tol, limits)
+    reader = _Reader(stream, tol, limits, meshes)
     with np.errstate(all="ignore"):  # a hostile file holds any numbers: what overflows is dropped as not finite
         for block in stream:
             reader.feed(block)
-        if reader.open is not None:  # a file cut inside a polyline: the vertices that are there
-            head, parts = reader.open
-            reader._runs(head[None, :], np.array([sum(len(p) for p in parts)]), np.vstack(parts))
+        reader.close()  # a file cut inside a polyline: the vertices that are there
         tick(0.9, "Сборка слоёв")
         out = reader.result()
     tick(1.0, f"Прочитано объектов: {n_text(out.records)}")
@@ -536,21 +560,23 @@ def read_dxf(
     recover: bool | None = None,
     tolerance: float = curves.TOL,
     limits: Limits | None = None,
+    wireframes: bool = True,
 ) -> DxfRead:
-    """Read the lines, points and texts of a DXF file into layers (see the module docstring)."""
+    """Read the lines, points and texts of a DXF file into layers and its meshes into wireframes (see the
+    module docstring)."""
     path = Path(path)
     tick = progress or no_progress
     limits = limits or Limits()
     problem: FormatError | None = None
     if recover is not True:
         try:
-            return _read(path, tick, tolerance, limits)
+            return _read(path, tick, tolerance, limits, wireframes)
         except FormatError as exc:
             if recover is False or exc.code not in ("binary", "broken", "truncated"):
                 raise
             problem = exc
     if problem is not None and problem.code == "truncated":
-        out = _read(path, tick, tolerance, limits, salvage=True)
+        out = _read(path, tick, tolerance, limits, wireframes, salvage=True)
         if out.records == 0 and out.meshes == 0:  # nothing was saved: the cut file is an error
             raise problem
         out.warnings.insert(0, "Файл обрезан: прочитаны объекты до места обрыва, последний объект пропущен")
@@ -560,7 +586,7 @@ def read_dxf(
             clean = Path(folder) / "recovered.dxf"
             try:
                 ds.repair(path, clean, tick, limits.recover_bytes)
-                out = _read(clean, tick, tolerance, limits)
+                out = _read(clean, tick, tolerance, limits, wireframes)
             except FormatError as exc:
                 if problem is None or problem.code == "binary" or exc.code == "too_large":
                     raise

@@ -13,6 +13,9 @@ tint, opacity, shade}) and the properties (counts, extent, measures, attributes 
   * `DELETE /wireframes/{id}` — a wireframe other objects refer to → 422 `wireframe_in_use` with their list.
 A raster draped on a DTM cannot be deleted: `DELETE /rasters/{id}` → 422 `raster_in_use` with the DTMs.
 `POST /wireframes/build-dtm` starts the job `model.dtm` («Построить ЦТМ», `wireframes/jobs.py`).
+`POST /wireframes/pick` {origin, direction, wireframe_ids, clip} — the exact triangle under a click (ADR 0013 §5,
+`wireframes/exact.py`): a ray in project coordinates → {hit: {wireframe_id, name, triangle, distance, point,
+vertices, indices, normal, area, dip, dip_direction} or null}; `clip` — the planes of the section window.
 The geometry for 3D is `/viz/wireframes/{id}` (`viz/router.py`). Numbers may come as text with a comma.
 """
 
@@ -193,3 +196,20 @@ def build_dtm(svc: Svc, s: Sched, body: BuildDtmBody) -> dict[str, Any]:
         )
     key, job_id = s.submit("model.dtm", params, title="Построение ЦТМ")
     return {"source": key, "id": job_id}
+
+
+class PickBody(BaseModel):
+    origin: list[float] = Field(min_length=3, max_length=3)  # project coordinates
+    direction: list[float] = Field(min_length=3, max_length=3)  # need not be a unit vector
+    wireframe_ids: list[int] | None = Field(default=None, max_length=2000)  # null — every wireframe
+    # the planes of the section window [nx, ny, nz, c]: n·p + c ≥ 0 inside
+    clip: list[Annotated[list[float], Field(min_length=4, max_length=4)]] | None = Field(default=None, max_length=16)
+
+
+@router.post("/pick")
+def pick(svc: Svc, body: PickBody) -> dict[str, Any]:
+    """The nearest triangle the ray meets (ТЗ 7.21 «треугольник по клику»): float64, by the triangles as stored."""
+    from . import exact
+
+    project = svc.require_current()
+    return exact.pick(project, body.origin, body.direction, body.wireframe_ids, body.clip)

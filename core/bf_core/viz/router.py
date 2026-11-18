@@ -239,6 +239,63 @@ def wireframe_part(
     return _answer(tag, if_none_match, lambda: meshes.part(project, state, k, lod))
 
 
+# --- exact queries on wireframes (ADR 0013 §5, ADR 0007 §5; `wireframes/exact.py`) -------------------------
+
+Text = Annotated[str | None, Query(max_length=200)]
+
+
+@router.get("/wireframes/{wireframe_id}/section")
+def wireframe_section(
+    svc: Svc,
+    wireframe_id: int,
+    point: Text = None,
+    normal: Text = None,
+    x0: Text = None,
+    y0: Text = None,
+    az: Text = None,
+    length: Text = None,
+    offset: Text = None,
+    if_none_match: IfNoneMatch = None,
+) -> Response:
+    """BFA1 `section`: the lines where a plane cuts the wireframe, float64 project coordinates (ТЗ 7.14). The
+    plane — `point=x,y,z` and `normal=x,y,z`, or a section line `x0`, `y0`, `az` with `length` (the lines are
+    cut at its ends) and `offset` (the plane moved along the normal)."""
+    from bf_core.wireframes import exact
+
+    from . import meshes
+
+    project = svc.require_current()
+    plane = exact.parse_plane(point, normal, x0, y0, az, length, offset)
+    with dialect.read_tx(project.engine) as conn:
+        state = meshes.mesh_state(conn, wireframe_id)
+    tag = exact.section_etag(project.uid, state, plane)
+    return _answer(tag, if_none_match, lambda: exact.section(project, state, plane))
+
+
+@router.get("/sets/{set_id}/intersections")
+def intersections(
+    svc: Svc,
+    set_id: int,
+    wireframes: Annotated[str | None, Query(max_length=40_000)] = None,
+    method: Method = "minimum_curvature",
+    if_none_match: IfNoneMatch = None,
+) -> Response:
+    """BFA1 `intersections` (ADR 0007 §5): where the holes of the set cross the wireframes `wireframes=1,2,3`
+    (no parameter — every wireframe of the project), exactly by the triangles; depths to 1 mm and better."""
+    from bf_core.wireframes import exact
+
+    from .keys import set_state
+
+    project = svc.require_current()
+    method = _method(method)
+    ids = exact.parse_ids(wireframes)
+    with dialect.read_tx(project.engine) as conn:
+        state = set_state(conn, set_id)
+        targets = exact.set_targets(conn, ids)
+    tag = exact.intersections_etag(project.uid, state, method, targets)
+    return _answer(tag, if_none_match, lambda: exact.intersections(project, state, method, targets))
+
+
 # --- the window «Данные по скважинам» (ТЗ 7.17, ADR 0007 §6) -----------------------------------------------
 
 
