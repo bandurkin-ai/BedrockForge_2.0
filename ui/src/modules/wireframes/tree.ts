@@ -31,7 +31,12 @@ const show = (w: Row, visible: boolean): TreeAction => ({
   args: { layer: "wireframe", id: w.id, visible: !visible },
 });
 
-const EDIT: TreeAction[] = [SEPARATOR, { label: "Переименовать…", local: "rename" }, { label: "Удалить…", local: "delete" }];
+/** Rename and delete are registry commands: they ask in their own windows. */
+const edit = (w: Row): TreeAction[] => [
+  SEPARATOR,
+  { label: "Переименовать…", command: "object.rename", args: { kind: "wireframe", id: w.id } },
+  { label: "Удалить…", command: "object.delete", args: { kind: "wireframe", id: w.id } },
+];
 
 /** The row of a wireframe in «Каркасы», or — with `dtm` set — in «ЦТМ». */
 export function wireframeRow(w: Row, visible: boolean): ObjectRow {
@@ -42,13 +47,13 @@ export function wireframeRow(w: Row, visible: boolean): ObjectRow {
       title: `${w.name}: ${size}. Щелчок — настройки ЦТМ в «Свойствах», галочка — показать в 3D`,
       click: "properties",
       buttons: [], // Д-07: no gear — the click on the row opens the settings
-      menu: [{ label: "Настройки ЦТМ…", local: "properties" }, show(w, visible), fromDtm(w), ...EDIT],
+      menu: [{ label: "Настройки ЦТМ…", command: "dtm.settings", args: { wireframe_id: w.id } }, show(w, visible), fromDtm(w), ...edit(w)],
     };
   return {
     testId: `tree-wireframe-${w.id}`,
     title: `${w.name}: ${size}. Щелчок — выбор, галочка — показать в 3D`,
     click: "select",
     buttons: [toDtm(w)],
-    menu: [{ label: "Свойства", local: "properties" }, show(w, visible), toDtm(w), ...EDIT],
+    menu: [{ label: "Свойства", local: "properties" }, show(w, visible), toDtm(w), ...edit(w)],
   };
 }

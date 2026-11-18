@@ -401,11 +401,12 @@ BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job", "import"})
 #: Roles of a blob for its owner (ADR 0011 §1). `data` — a file of no particular role; `source` — the file as
 #: loaded; `sidecar:<ext>` — a companion file of a raster (`sidecar:jgw`, `sidecar:tab`, …); `display0/1` —
 #: raster copies ≤ 4096 / ≤ 1024 px; lines: `xyz <f8 N×3`, `offsets <i8`, `closed u1`, `seq <u4`, `attrs` and
-#: `vattrs` (Parquet); wireframes: `xyz <f8`, `tri <i4`. A new role registers here, or add_owner refuses it.
+#: `vattrs` (Parquet), or `pack:<n>` — entry n of a blob that holds these files of several small layers
+#: (`lines/pack.py`); wireframes: `xyz <f8`, `tri <i4`. A new role registers here, or add_owner refuses it.
 BLOB_ROLES: frozenset[str] = frozenset(
     {"data", "source", "display0", "display1", "xyz", "offsets", "closed", "seq", "attrs", "vattrs", "tri"}
 )
-BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:",)
+BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:")
 
 
 def valid_blob_role(role: str) -> bool:

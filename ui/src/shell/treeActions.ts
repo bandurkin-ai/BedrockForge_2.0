@@ -1,7 +1,8 @@
 /**
  * What a row of an object tree offers (ТЗ 7.1, 7.0.13): its context menu and its buttons as data, so the
  * sections «Линии», «Растры», «Каркасы» and «ЦТМ» are built — and tested — without React. An action is a
- * registry command with its arguments, or a local one of the tree (rename, delete: own dialogs, then the API).
+ * registry command with its arguments (rename, delete, export… ask in their own windows), or the local one of
+ * the tree: «Свойства» — select the object and open the panel.
  */
 import type { IconName } from "./Icon";
 
@@ -19,8 +20,8 @@ export interface TreeAction {
   /** registry command (the menu item is disabled with the command's reason while it is unavailable) */
   command?: string;
   args?: Record<string, unknown>;
-  /** an action of the tree itself */
-  local?: "properties" | "rename" | "delete";
+  /** the action of the tree itself: select the object and open «Свойства» */
+  local?: "properties";
   /** asked in an own dialog before the command runs */
   confirm?: Confirm;
   separator?: boolean;

@@ -273,7 +273,10 @@ def test_lines_points_and_rasters_are_written(project, files: dict[str, Path]) -
         assert first.xyz.tobytes() == np.vstack([SQUARE, OPEN]).tobytes()  # float64 bit for bit
         assert second.xyz.tobytes() == HIGH.tobytes()
         assert first.offsets.tolist() == [0, 5, 8] and first.closed.tolist() == [1, 0]
-        assert set(roles_of(conn, ids[0])) >= {"xyz", "offsets", "closed", "seq"}
+        # two small layers of one portion: entries of one pack (`lines/pack.py`) with all their files in it
+        one, two = roles_of(conn, ids[0]), roles_of(conn, ids[1])
+        assert list(one) == ["pack:0"] and list(two) == ["pack:1"] and one["pack:0"] == two["pack:1"]
+        assert set(ls.layer_files(store, one).parts) >= {"xyz", "offsets", "closed", "seq"}
         info = ls.layer_info(conn, ids[0])
         assert info["line_count"] == 2 and info["closed_count"] == 1 and info["color"].startswith("#")
         assert strings["extent"][:2] == [SQUARE[0, 0], OPEN[0, 1]] and strings["extent"][5] == 1200.0

@@ -10,11 +10,10 @@ import { isSelected } from "../../shell/selection";
 import { toggleExpanded } from "../../shell/tree";
 import { TreeRow } from "../../shell/TreeRow";
 import { count } from "../../shell/treeActions";
-import { deleteDialog, renameDialog, selectWithProperties } from "../../shell/treeRun";
+import { selectWithProperties } from "../../shell/treeRun";
 import { useStore } from "../../shell/useStore";
 import tree from "../../shell/DataTree.module.css";
 import { sceneObjects, type LineFileInfo, type LineLayerInfo } from "../scene/objects";
-import { deleteLineFile, renameLayer } from "./actions";
 import { fileCheck, fileCounts, fileMenu, fileOpen, fileTitle, fileToggle, layerCounts, layerKey, layerMenu, layerTitle, shownLayers } from "./tree";
 
 export function LinesTree() {
@@ -31,8 +30,6 @@ export function LinesTree() {
   const showFile = async (f: LineFileInfo, visible: boolean) => {
     for (const id of fileToggle(f, app.store.get().view.hidden, visible)) await app.run("layer.show", { layer: "lines", id, visible });
   };
-  const removeFile = (f: LineFileInfo) =>
-    deleteDialog("Удалить файл линий", `Файл «${f.name}» удаляется из проекта со всеми слоями (${fileCounts(f)}). Отменить удаление нельзя.`, () => deleteLineFile(f.id));
 
   const layerRow = (l: LineLayerInfo, level: number) => {
     const visible = !off.has(layerKey(l.id));
@@ -50,10 +47,7 @@ export function LinesTree() {
         testId={`tree-layer-${l.id}`}
         glyph={<Swatch color={l.color} />}
         after={<span className={tree.count}>{count(l.points_only ? l.point_count : l.line_count)}</span>}
-        onContextMenu={menu(layerMenu(l, visible), (kind) => {
-          if (kind === "properties") void selectWithProperties(app, "lines", l.id);
-          else if (kind === "rename") void renameDialog("слой линий", l.name, (name) => renameLayer(l, name));
-        })}
+        onContextMenu={menu(layerMenu(l, visible), () => void selectWithProperties(app, "lines", l.id))}
       />
     );
   };
@@ -78,7 +72,7 @@ export function LinesTree() {
                 title={fileTitle(f)}
                 testId={`tree-linefile-${f.id}`}
                 after={<span className={tree.count}>{count(f.layers.length)}</span>}
-                onContextMenu={menu(fileMenu(), (kind) => kind === "delete" && void removeFile(f))}
+                onContextMenu={menu(fileMenu(f), () => undefined)}
               />
               {open && layers.map((l) => layerRow(l, level + 1))}
               {open && rest > 0 && (

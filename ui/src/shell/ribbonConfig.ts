@@ -34,6 +34,7 @@ const NO_SECTION = (c: CommandContext) => (c.hasSection ? null : "Сначала
 const NO_SET = (c: CommandContext) => (c.hasSet ? null : "Нет активного набора скважин");
 const NO_HOLE = (c: CommandContext) => (c.hasHole ? null : "Скважина не выбрана");
 const NOTHING_SELECTED = (c: CommandContext) => (c.hasHole || c.hasObject ? null : "Ничего не выбрано");
+const NO_OBJECT = (c: CommandContext) => (c.hasObject ? null : "Объект не выбран: щёлкните слой линий, растр, каркас или ЦТМ в дереве или в 3D-окне");
 
 export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean }[] = [
   { label: "Сводка по проекту", prompt: "Дай краткую сводку по проекту: наборы скважин и каркасы, объём данных, компоненты, состояние аудита и что стоит проверить в первую очередь." },
@@ -97,6 +98,9 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           items: [
             { command: "palette.open", args: { query: "скв " }, label: "Найти скважину", icon: "search", small: true },
             { command: "selection.clear", label: "Снять выбор", icon: "clear", hint: "Снять выбор скважины и объекта: линии, растра, каркаса, ЦТМ", shortcut: "escape", small: true, unavailable: NOTHING_SELECTED },
+            { command: "object.rename", label: "Переименовать объект", icon: "edit", hint: "Новое название выбранного слоя линий, растра, каркаса или ЦТМ", small: true, unavailable: NO_OBJECT },
+            { command: "object.color", label: "Цвет объекта", icon: "palette", hint: "Цвет выбранного слоя линий, каркаса или ЦТМ — в панели «Свойства»", small: true, unavailable: NO_OBJECT },
+            { command: "object.delete", label: "Удалить объект", icon: "trash", hint: "Удалить выбранный растр, каркас или ЦТМ из проекта", small: true, unavailable: NO_OBJECT },
           ],
         },
         { title: "Ассистент", items: [assistant] },
@@ -166,8 +170,8 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "lines.save", label: "Сохранить", icon: "edSave", shortcut: "ctrl+s", small: true },
             { command: "lines.versions", label: "Версии", icon: "list", small: true },
             { command: "lines.finish", label: "Завершить", icon: "close", small: true },
-            { command: "lines.export", args: { format: "str" }, label: "В STR", icon: "export", small: true },
-            { command: "lines.export", args: { format: "dxf" }, label: "В DXF", icon: "export", small: true },
+            { command: "lines.export", args: { format: "str" }, label: "В STR", icon: "export", hint: "Экспорт линий: Micromine STR; в окне — Surpac STR, DXF, CSV, Micromine DAT и выбор слоёв", small: true },
+            { command: "lines.export", args: { format: "dxf" }, label: "В DXF", icon: "export", hint: "Экспорт линий и точек в DXF; в окне — другие форматы и выбор слоёв", small: true },
           ],
         },
         {
@@ -189,6 +193,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "model.smooth", label: "Сгладить", icon: "edSmooth", small: true },
             { command: "model.merge", label: "В один объект", icon: "plus", small: true },
             { command: "model.split", label: "На части", icon: "columns", small: true },
+            { command: "wireframe.attr", label: "Атрибуты", icon: "list", hint: "Атрибуты пользователя выбранного каркаса или ЦТМ: добавить, изменить, переименовать, удалить — в «Свойствах»", small: true, unavailable: NO_OBJECT },
           ],
         },
         {
@@ -204,10 +209,20 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
         {
           title: "Поверхности",
           items: [
-            { command: "model.dtm", label: "Построить ЦТМ", icon: "plan" },
+            { command: "model.dtm", label: "Построить ЦТМ", icon: "plan", hint: "Поверхность из слоёв точек и линий и устьев скважин; граница — замкнутая линия" },
             { command: "model.contours", label: "Изолинии", icon: "lines", small: true },
             { command: "model.volume", label: "Объём", icon: "histogram", small: true },
-            { command: "wireframe.dtm", args: { on: true }, label: "В ЦТМ", icon: "dtm", small: true },
+            { command: "wireframe.dtm", args: { on: true }, label: "В ЦТМ", icon: "dtm", hint: "Перенести выбранный каркас поверхности в раздел «ЦТМ»", small: true },
+            { command: "dtm.settings", label: "Настройки ЦТМ", icon: "properties", hint: "Растр на рельефе, «Скрыть данные за ЦТМ», цвет и непрозрачность растра, тени — вверху «Свойств»", small: true },
+          ],
+        },
+        {
+          title: "Растры",
+          items: [
+            { command: "rasters.export", label: "Экспорт растра", icon: "export", hint: "Исходный файл с привязкой (world-файл, .prj) или GeoTIFF" },
+            { command: "raster.place_on_section", label: "На текущий разрез", icon: "section", hint: "Поставить выбранный растр в плоскость линии разреза", small: true, unavailable: NO_SECTION },
+            { command: "raster.shift", label: "Сдвинуть по Z", icon: "vwVexag", hint: "Сдвинуть выбранный растр по высоте: плюс — вверх, минус — вниз", small: true },
+            { command: "raster.set", label: "Свойства растра", icon: "raster", hint: "Высота, непрозрачность и края выбранного растра — в панели «Свойства»", small: true },
           ],
         },
       ],

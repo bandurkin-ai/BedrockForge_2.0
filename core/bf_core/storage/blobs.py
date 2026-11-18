@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import IO, Any
 
@@ -82,6 +82,13 @@ class BlobStore:
         role: str = "data",
     ) -> str:
         """Within the owner's write transaction: file into place, `blobs` and `blob_owners` rows."""
+        sha = self.place(conn, staged, media_type=media_type)
+        add_owner(conn, sha, owner_kind, owner_id, role)
+        return sha
+
+    def place(self, conn: sa.Connection, staged: tuple[Path, str, int], *, media_type: str) -> str:
+        """Within a write transaction: the file into place and its `blobs` row, without an owner yet — the
+        caller registers the owners in the same transaction (`add_owner`, `add_owners`: a blob shared by many)."""
         tmp, sha, size = staged
         dst = self.path_of(sha)
         if dst.exists():
@@ -94,7 +101,6 @@ class BlobStore:
             conn.execute(
                 sa.insert(blobs).values(sha256=sha, size=size, media_type=media_type, created_at=dialect.utcnow())
             )
-        add_owner(conn, sha, owner_kind, owner_id, role)
         return sha
 
     def put_bytes(self, conn: sa.Connection, data: bytes, **owner: Any) -> str:
@@ -139,6 +145,19 @@ def add_owner(conn: sa.Connection, sha: str, owner_kind: str, owner_id: int, rol
     )
     if conn.execute(sa.select(blob_owners.c.sha256).where(key)).first() is None:
         conn.execute(sa.insert(blob_owners).values(sha256=sha, owner_kind=owner_kind, owner_id=owner_id, role=role))
+
+
+def add_owners(conn: sa.Connection, rows: Sequence[tuple[str, str, int, str]]) -> None:
+    """References (sha256, owner kind, owner id, role) of owners made in this transaction, in one statement:
+    such owners have no references yet, so nothing is looked up. Kinds and roles are checked as in `add_owner`."""
+    for _sha, owner_kind, _owner_id, role in rows:
+        if owner_kind not in BLOB_OWNER_KINDS:
+            raise ValueError(f"blob owner kind {owner_kind!r} is not registered in bf_core.db.schema.BLOB_OWNER_KINDS")
+        if not valid_blob_role(role):
+            raise ValueError(f"blob role {role!r} is not registered in bf_core.db.schema.BLOB_ROLES")
+    if rows:
+        keys = ("sha256", "owner_kind", "owner_id", "role")
+        conn.execute(sa.insert(blob_owners), [dict(zip(keys, row, strict=True)) for row in rows])
 
 
 def drop_owner(conn: sa.Connection, owner_kind: str, owner_id: int) -> None:

@@ -43,6 +43,10 @@ export const EDGE_LABELS: readonly (readonly [EdgeKey, string])[] = [
   ["z_bottom", "Низ Z"],
 ];
 
+/** A raster as `/rasters` gives it: with the kind and the name of its source file, which the list of the scene
+ * does not declare. */
+export type RasterRow = RasterInfo & { format?: string | null; filename?: string | null };
+
 type Georef = NonNullable<RasterInfo["georef"]> & { rotation?: number; crs_name?: string | null; checks?: unknown[] };
 
 /** The edges of a vertical raster from its corners (top-left, top-right, bottom-right, bottom-left); null —
@@ -62,7 +66,7 @@ export function edgeTexts(e: Edges | null): Record<EdgeKey, string> {
 }
 
 /** What «Свойства» tell about a raster. */
-export function rasterFacts(r: RasterInfo & { filename?: string | null }): Fact[] {
+export function rasterFacts(r: RasterRow): Fact[] {
   const g = r.georef as Georef | null;
   const facts: Fact[] = [{ label: "Размер", value: `${num(r.width, 0)} × ${num(r.height, 0)} px` }];
   facts.push({ label: "Привязка", value: g?.source ? (SOURCE_TITLES[g.source] ?? g.source) : "нет" });
@@ -131,7 +135,8 @@ export function placeMessage(r: Pick<RasterInfo, "name" | "vertical">, zTop: num
   return `Растр «${r.name}» встанет в плоскость линии разреза: края — по линии, ${height}. ${was}`;
 }
 
+/** «в плане, высота 250,5 м, непрозрачность 0,8» */
+export const rasterState = (r: Pick<RasterInfo, "vertical" | "elevation" | "opacity">): string => `${rasterPlace(r)}, непрозрачность ${num(r.opacity, 2)}`;
+
 /** «Растр «Ортофото»: в плане, высота 250,5 м, непрозрачность 0,8» */
-export function rasterSummary(r: Pick<RasterInfo, "name" | "vertical" | "elevation" | "opacity">): string {
-  return `Растр «${r.name}»: ${rasterPlace(r)}, непрозрачность ${num(r.opacity, 2)}`;
-}
+export const rasterSummary = (r: Pick<RasterInfo, "name" | "vertical" | "elevation" | "opacity">): string => `Растр «${r.name}»: ${rasterState(r)}`;

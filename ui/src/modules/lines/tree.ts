@@ -73,11 +73,17 @@ export function layerMenu(l: Pick<LineLayerInfo, "id">, visible: boolean): TreeA
   return [
     { label: "Свойства", local: "properties" },
     { label: visible ? "Скрыть в 3D" : "Показать в 3D", command: "layer.show", args: { layer: "lines", id: l.id, visible: !visible } },
+    { label: "Экспорт…", command: "lines.export", args: { layer_id: l.id } },
     SEPARATOR,
-    { label: "Переименовать…", local: "rename" },
+    { label: "Переименовать…", command: "object.rename", args: { kind: "lines", id: l.id } },
   ];
 }
 
-export function fileMenu(): TreeAction[] {
-  return [{ label: "Удалить…", local: "delete" }];
+/** A file: the export of all its layers and the delete (`object.delete` asks in an own window). */
+export function fileMenu(f: Pick<LineFileInfo, "id">): TreeAction[] {
+  return [
+    { label: "Экспорт…", command: "lines.export", args: { file_id: f.id } },
+    SEPARATOR,
+    { label: "Удалить…", command: "object.delete", args: { kind: "line_file", id: f.id } },
+  ];
 }

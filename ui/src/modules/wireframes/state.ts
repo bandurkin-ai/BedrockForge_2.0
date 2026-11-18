@@ -1,81 +1,47 @@
 /**
- * Wireframes of the open project (ТЗ 7.20, ADR 0011 §1, §3): the list of `GET /wireframes` for the sections
- * «Каркасы» (`dtm` is null) and «ЦТМ» (`dtm` holds the settings of the relief). Read when the project opens,
- * on `objects.changed` and after a job that makes wireframes (`bind.ts`). No React here.
+ * Wireframes of the open project (ТЗ 7.20, ADR 0011 §1, §3) for the sections «Каркасы» (`dtm` is null) and
+ * «ЦТМ» (`dtm` holds the settings of the relief). The list is `sceneObjects.wireframes` (`scene/objects.ts`):
+ * one list for the tree, «Свойства» and the 3D window. Every change carries the version of the wireframe; the
+ * list is read again after it — after a 409 too. No React here.
  */
-import { api, CoreError } from "../../shell/api";
-import { Store } from "../../shell/store";
-import { projectStore } from "../projects/state";
+import { api } from "../../shell/api";
+import { loadSceneObjects, sceneObjects, type DtmInfo, type WireframeInfo as SceneWireframe } from "../scene/objects";
 
 /** The settings of a DTM: the raster draped on it and how it is shown. */
-export interface DtmSettings {
-  raster_id: number | null;
-  clip: boolean;
-  /** "#rrggbb": the colour the image is multiplied by */
-  tint: string;
-  /** 0…1 */
-  opacity: number;
-  shade: boolean;
-}
+export type DtmSettings = DtmInfo;
 
-export interface WireframeInfo {
-  id: number;
+/** An attribute of the user (ТЗ 7.20): text, number, yes/no or empty. */
+export interface WireframeAttr {
   name: string;
-  folder: string | null;
-  version: number;
-  /** "#rrggbb"; null — no colour of its own */
-  color: string | null;
-  point_count: number;
-  triangle_count: number;
-  extent: (number | null)[] | null;
-  /** null — a wireframe of «Каркасы»; settings — a DTM */
-  dtm: DtmSettings | null;
+  value: string | number | boolean | null;
 }
 
-export interface WireframesState {
-  wireframes: WireframeInfo[];
-  loaded: boolean;
-  error: string | null;
+/** A wireframe as `/wireframes` gives it: with its folder of the tree and the attributes of the user. */
+export type WireframeInfo = SceneWireframe & { folder?: string | null; attrs?: WireframeAttr[] };
+
+/** What `PUT /wireframes/{id}/dtm` takes: only the given settings change; `raster_id` 0 takes the raster off. */
+export interface DtmChanges {
+  on?: boolean;
+  raster_id?: number;
+  clip?: boolean;
+  tint?: string;
+  opacity?: number;
+  shade?: boolean;
 }
 
-const EMPTY: WireframesState = { wireframes: [], loaded: false, error: null };
-export const wireframesStore = new Store<WireframesState>(EMPTY);
-
-const text = (e: unknown) => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
+/** `PATCH /wireframes/{id}/attrs`: `rename` {old: new}, then `remove` [names], then `set` {name: value}. */
+export interface AttrsPatch {
+  rename?: Record<string, string>;
+  remove?: string[];
+  set?: Record<string, WireframeAttr["value"]>;
+}
 
 /** «Каркасы»: everything that is not a DTM. */
-export const solids = (list: readonly WireframeInfo[]): WireframeInfo[] => list.filter((w) => w.dtm === null);
+export const solids = <T extends Pick<WireframeInfo, "dtm">>(list: readonly T[]): T[] => list.filter((w) => w.dtm === null);
 /** «ЦТМ»: wireframes with the settings of a relief. */
-export const dtms = (list: readonly WireframeInfo[]): WireframeInfo[] => list.filter((w) => w.dtm !== null);
+export const dtms = <T extends Pick<WireframeInfo, "dtm">>(list: readonly T[]): T[] => list.filter((w) => w.dtm !== null);
 
-export const wireframeById = (id: number): WireframeInfo | undefined => wireframesStore.get().wireframes.find((w) => w.id === id);
-
-let seq = 0;
-
-/** Reads the list; an answer overtaken by a newer request or by another project is dropped. */
-export async function loadWireframes(): Promise<void> {
-  const uid = projectStore.get().current?.uid ?? null;
-  const mine = ++seq;
-  if (!uid) {
-    wireframesStore.set(EMPTY);
-    return;
-  }
-  try {
-    const r = await api.get<{ wireframes: WireframeInfo[] }>("/wireframes");
-    if (mine !== seq || projectStore.get().current?.uid !== uid) return;
-    const cur = wireframesStore.get();
-    // the same list keeps its identity: subscribers compare by reference
-    const same = JSON.stringify(r.wireframes) === JSON.stringify(cur.wireframes);
-    if (!same || !cur.loaded || cur.error) wireframesStore.set({ wireframes: same ? cur.wireframes : r.wireframes, loaded: true, error: null });
-  } catch (e) {
-    if (mine === seq) wireframesStore.set({ error: text(e) });
-  }
-}
-
-export function clearWireframes(): void {
-  seq++;
-  wireframesStore.set(EMPTY);
-}
+export const wireframeById = (id: number): WireframeInfo | undefined => sceneObjects.get().wireframes.find((w) => w.id === id);
 
 function current(id: number): WireframeInfo {
   const w = wireframeById(id);
@@ -83,29 +49,42 @@ function current(id: number): WireframeInfo {
   return w;
 }
 
+async function change<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } finally {
+    await loadSceneObjects(); // after a 409 too: the next try goes with the new version
+  }
+}
+
 /** `wireframe.dtm`: `on` true — into «ЦТМ» (default settings), false — back to «Каркасы» (settings and raster cleared). */
-export async function setDtm(id: number, on: boolean): Promise<WireframeInfo> {
-  const w = current(id);
-  try {
-    return await api.put<WireframeInfo>(`/wireframes/${id}/dtm`, { expected_version: w.version, on });
-  } finally {
-    await loadWireframes(); // after a 409 too: the next try goes with the new version
-  }
+export function setDtm(id: number, on: boolean): Promise<WireframeInfo> {
+  return setDtmSettings(id, { on });
 }
 
-export async function renameWireframe(id: number, name: string): Promise<WireframeInfo> {
+/** The settings of a DTM; settings without `on` move a wireframe to «ЦТМ». */
+export function setDtmSettings(id: number, changes: DtmChanges): Promise<WireframeInfo> {
   const w = current(id);
-  try {
-    return await api.patch<WireframeInfo>(`/wireframes/${id}`, { expected_version: w.version, name });
-  } finally {
-    await loadWireframes();
-  }
+  return change(() => api.put<WireframeInfo>(`/wireframes/${id}/dtm`, { expected_version: w.version, ...changes }));
 }
 
-export async function deleteWireframe(id: number): Promise<void> {
-  try {
-    await api.del(`/wireframes/${id}`);
-  } finally {
-    await loadWireframes();
-  }
+export function renameWireframe(id: number, name: string): Promise<WireframeInfo> {
+  const w = current(id);
+  return change(() => api.patch<WireframeInfo>(`/wireframes/${id}`, { expected_version: w.version, name }));
+}
+
+/** The colour of a wireframe: "#rrggbb", or null — no colour of its own. */
+export function setWireframeColor(id: number, color: string | null): Promise<WireframeInfo> {
+  const w = current(id);
+  return change(() => api.patch<WireframeInfo>(`/wireframes/${id}`, { expected_version: w.version, color }));
+}
+
+/** Attributes of the user: add, change, rename, delete. */
+export function editAttrs(id: number, patch: AttrsPatch): Promise<WireframeInfo> {
+  const w = current(id);
+  return change(() => api.patch<WireframeInfo>(`/wireframes/${id}/attrs`, { expected_version: w.version, ...patch }));
+}
+
+export function deleteWireframe(id: number): Promise<void> {
+  return change(() => api.del(`/wireframes/${id}`));
 }

@@ -116,13 +116,13 @@ def layer_attrs(
 
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
-        layer, sha = service.attrs_key(conn, layer_id, scope)
-    key = json.dumps(["line-attrs", project.uid, layer_id, layer["version"], sha, scope, offset, limit])
+        layer, shas = service.attrs_key(conn, layer_id, scope)
+    key = json.dumps(["line-attrs", project.uid, layer_id, layer["version"], sorted(shas.items()), scope, offset, limit])
     tag = '"' + hashlib.sha256(key.encode()).hexdigest() + '"'
     headers = {"ETag": tag, **CACHE_HEADERS}
     if matches(if_none_match, tag):
         return Response(status_code=304, headers=headers)
-    page = service.attrs_page(BlobStore(project.folder), layer, sha, scope, offset, limit)
+    page = service.attrs_page(BlobStore(project.folder), layer, shas, scope, offset, limit)
     return JSONResponse(page, headers=headers)
 
 

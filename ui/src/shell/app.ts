@@ -4,9 +4,12 @@
  */
 import { bindAudit } from "../modules/audit/bind";
 import { bindDownhole } from "../modules/downhole/bind";
+import { bindDtm } from "../modules/dtm/bind";
 import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
+import { bindLines } from "../modules/lines/bind";
 import { bindProjects } from "../modules/projects/bind";
+import { bindRasters } from "../modules/rasters/bind";
 import { bindStripLog } from "../charts/striplog/bind";
 import { bindScene } from "../modules/scene/bind";
 import { bindSection } from "../modules/section/bind";
@@ -136,6 +139,9 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindAudit(app);
   bindScene(app);
   bindObjects(app);
+  bindLines(app);
+  bindRasters(app);
+  bindDtm(app);
   bindViews(app);
   bindSection(app);
   bindStripLog(app);

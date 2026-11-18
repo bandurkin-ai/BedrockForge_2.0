@@ -8,11 +8,11 @@ import { isSelected, keepSelected } from "../src/shell/selection";
 import { counted, plural } from "../src/shell/treeActions";
 import { sectionActions, sectionPlus } from "../src/shell/treeSections";
 import { DEFAULT_VIEW, DEFAULT_WORKSPACE } from "../src/shell/workspace";
-import { AUTO_OPEN_LAYERS, fileCheck, fileOpen, fileToggle, FILE_TOGGLE_LIMIT, layerCounts, layerMenu, layerTitle, MAX_LAYER_ROWS, shownLayers } from "../src/modules/lines/tree";
+import { AUTO_OPEN_LAYERS, fileCheck, fileMenu, fileOpen, fileToggle, FILE_TOGGLE_LIMIT, layerCounts, layerMenu, layerTitle, MAX_LAYER_ROWS, shownLayers } from "../src/modules/lines/tree";
 import { projectStore, type ProjectInfo } from "../src/modules/projects/state";
 import { inUseBy, rasterMenu, rasterPlace } from "../src/modules/rasters/tree";
-import { pickedObject, sceneObjects, type LineFileInfo, type LineLayerInfo, type RasterInfo } from "../src/modules/scene/objects";
-import { dtms, loadWireframes, solids, wireframesStore, type WireframeInfo } from "../src/modules/wireframes/state";
+import { loadSceneObjects, pickedObject, sceneObjects, type LineFileInfo, type LineLayerInfo, type RasterInfo } from "../src/modules/scene/objects";
+import { dtms, solids, type WireframeInfo } from "../src/modules/wireframes/state";
 import { wireframeRow } from "../src/modules/wireframes/tree";
 
 const layer = (id: number, p: Partial<LineLayerInfo> = {}): LineLayerInfo => ({
@@ -68,6 +68,16 @@ describe("«Линии»: files → layers", () => {
     expect(layerMenu(layer(7), true)[1]).toEqual({ label: "Скрыть в 3D", command: "layer.show", args: { layer: "lines", id: 7, visible: false } });
     expect(layerMenu(layer(7), false)[1]).toEqual({ label: "Показать в 3D", command: "layer.show", args: { layer: "lines", id: 7, visible: true } });
   });
+
+  it("rename, export and delete are registry commands: a layer is renamed, a file is deleted with its layers", () => {
+    expect(labels(layerMenu(layer(7), true))).toEqual(["Свойства", "Скрыть в 3D", "Экспорт…", "Переименовать…"]);
+    expect(layerMenu(layer(7), true).at(-1)).toEqual({ label: "Переименовать…", command: "object.rename", args: { kind: "lines", id: 7 } });
+    expect(layerMenu(layer(7), true)[2]).toEqual({ label: "Экспорт…", command: "lines.export", args: { layer_id: 7 } });
+    const menu = fileMenu(lineFile(3, []));
+    expect(labels(menu)).toEqual(["Экспорт…", "Удалить…"]);
+    expect(menu[0].args).toEqual({ file_id: 3 });
+    expect([menu.at(-1)!.command, menu.at(-1)!.args]).toEqual(["object.delete", { kind: "line_file", id: 3 }]);
+  });
 });
 
 describe("«Растры»", () => {
@@ -80,7 +90,14 @@ describe("«Растры»", () => {
 
   it("visibility goes through `layer.show {layer: \"raster\", id}`; a refused delete names the DTMs", () => {
     expect(rasterMenu(raster(9), true)[1]).toEqual({ label: "Скрыть в 3D", command: "layer.show", args: { layer: "raster", id: 9, visible: false } });
-    expect(labels(rasterMenu(raster(9), true))).toEqual(["Свойства", "Скрыть в 3D", "Переименовать…", "Удалить…"]);
+    expect(labels(rasterMenu(raster(9), true))).toEqual(["Свойства", "Скрыть в 3D", "На текущий разрез…", "Экспорт…", "Переименовать…", "Удалить…"]);
+    const commands = rasterMenu(raster(9), true).filter((a) => a.command && a.command !== "layer.show").map((a) => [a.command, a.args]);
+    expect(commands).toEqual([
+      ["raster.place_on_section", { raster_id: 9 }],
+      ["rasters.export", { raster_id: 9 }],
+      ["object.rename", { kind: "raster", id: 9 }],
+      ["object.delete", { kind: "raster", id: 9 }],
+    ]);
     expect(inUseBy({ code: "raster_in_use", wireframes: [{ id: 3, name: "Рельеф 2026" }, { id: 4, name: "Рельеф карьера" }] })).toEqual(["Рельеф 2026", "Рельеф карьера"]);
     expect(inUseBy({ code: "raster_not_found" })).toBeNull();
     expect(inUseBy(undefined)).toBeNull();
@@ -101,6 +118,7 @@ describe("«Каркасы» and «ЦТМ» (Д-07)", () => {
     expect(row.buttons).toEqual([{ label: "Перенести в ЦТМ", icon: "dtm", command: "wireframe.dtm", args: { wireframe_id: 1, on: true } }]);
     expect(labels(row.menu)).toEqual(["Свойства", "Скрыть в 3D", "Перенести в ЦТМ", "Переименовать…", "Удалить…"]);
     expect(row.menu[1].args).toEqual({ layer: "wireframe", id: 1, visible: false });
+    expect(row.menu.slice(-2).map((a) => [a.command, a.args])).toEqual([["object.rename", { kind: "wireframe", id: 1 }], ["object.delete", { kind: "wireframe", id: 1 }]]);
     expect(row.testId).toBe("tree-wireframe-1");
   });
 
@@ -110,7 +128,7 @@ describe("«Каркасы» and «ЦТМ» (Д-07)", () => {
     expect(row.click).toBe("properties");
     expect(row.title).toContain("Щелчок — настройки ЦТМ в «Свойствах»");
     expect(labels(row.menu)).toEqual(["Настройки ЦТМ…", "Скрыть в 3D", "Вернуть в каркасы", "Переименовать…", "Удалить…"]);
-    expect(row.menu[0].local).toBe("properties"); // the same as the click
+    expect([row.menu[0].command, row.menu[0].args]).toEqual(["dtm.settings", { wireframe_id: 2 }]); // the same as the click
     const back = row.menu[2];
     expect([back.command, back.args]).toEqual(["wireframe.dtm", { wireframe_id: 2, on: false }]);
     expect(back.confirm?.message).toContain("Настройки рельефа сбросятся");
@@ -149,8 +167,7 @@ describe("`object.select`, «Снять выбор» (Esc) and `wireframe.dtm`",
   function open() {
     const app = createApp({ persist: false });
     app.store.set({ projectName: "Проект" });
-    sceneObjects.set({ files, rasters, loaded: true, error: null });
-    wireframesStore.set({ wireframes: wfs, loaded: true, error: null });
+    sceneObjects.set({ files, rasters, wireframes: wfs, loaded: true, error: null });
     return app;
   }
 
@@ -158,8 +175,7 @@ describe("`object.select`, «Снять выбор» (Esc) and `wireframe.dtm`",
     vi.unstubAllGlobals();
     setCoreTarget(null);
     projectStore.set({ current: null });
-    sceneObjects.set({ files: [], rasters: [], loaded: false, error: null });
-    wireframesStore.set({ wireframes: [], loaded: false, error: null });
+    sceneObjects.set({ files: [], rasters: [], wireframes: [], loaded: false, error: null });
     pickedObject.set({ picked: null });
   });
 
@@ -215,7 +231,7 @@ describe("`object.select`, «Снять выбор» (Esc) and `wireframe.dtm`",
     await app.run("object.select", { kind: "wireframe", id: 41 });
     sceneObjects.set({ files: [] }); // other lists do not touch it
     expect(app.store.get().selected).toEqual({ kind: "wireframe", id: 41 });
-    wireframesStore.set({ wireframes: [wfs[1]] });
+    sceneObjects.set({ wireframes: [wfs[1]] });
     expect(app.store.get().selected).toBeNull();
     expect(keepSelected({ kind: "raster", id: 31 }, () => true)).toEqual({ kind: "raster", id: 31 });
     expect(keepSelected(null, () => true)).toBeNull();
@@ -225,28 +241,29 @@ describe("`object.select`, «Снять выбор» (Esc) and `wireframe.dtm`",
     const app = open();
     setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
     projectStore.set({ current: { uid: "p1" } as ProjectInfo });
-    wireframesStore.set({ wireframes: wfs, loaded: true, error: null }); // the project change cleared the list
     const calls: { method: string; url: string; body: unknown }[] = [];
     let server = wfs;
     vi.stubGlobal("fetch", vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-      calls.push({ method: init?.method ?? "GET", url: String(url).replace(/^.*\/api\/v1/, ""), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      const path = String(url).replace(/^.*\/api\/v1/, "");
+      calls.push({ method: init?.method ?? "GET", url: path, body: init?.body ? JSON.parse(String(init.body)) : undefined });
       if (init?.method === "PUT") {
         const on = (JSON.parse(String(init.body)) as { on: boolean }).on;
-        server = server.map((w) => (String(url).endsWith(`/wireframes/${w.id}/dtm`) ? { ...w, version: w.version + 1, dtm: on ? DTM : null } : w));
+        server = server.map((w) => (path === `/wireframes/${w.id}/dtm` ? { ...w, version: w.version + 1, dtm: on ? DTM : null } : w));
+        return new Response(JSON.stringify(server[0]), { status: 200 });
       }
-      return new Response(JSON.stringify(init?.method === "PUT" ? server[0] : { wireframes: server }), { status: 200 });
+      return new Response(JSON.stringify(path === "/lines/files" ? { files } : path === "/rasters" ? { rasters } : { wireframes: server }), { status: 200 });
     }));
-    await loadWireframes();
+    await loadSceneObjects(); // the project change cleared the lists
     calls.length = 0;
     const moved = await app.registry.execute("wireframe.dtm", { wireframe_id: 41, on: true });
     expect(moved).toEqual({ ok: true, result: "«Рудное тело» перенесён в раздел «ЦТМ»" });
     expect(calls[0]).toEqual({ method: "PUT", url: "/wireframes/41/dtm", body: { expected_version: 1, on: true } });
-    expect(dtms(wireframesStore.get().wireframes).map((w) => w.id)).toEqual([41, 42]); // the list was read again
+    expect(dtms(sceneObjects.get().wireframes).map((w) => w.id)).toEqual([41, 42]); // the list was read again
     expect((await app.registry.execute("wireframe.dtm", { wireframe_id: 41 })).result).toBe("«Рудное тело» уже в разделе «ЦТМ»");
     await app.run("object.select", { kind: "wireframe", id: 42 });
     const back = await app.registry.execute("wireframe.dtm", { on: false });
     expect(back.result).toBe("«Рельеф» возвращён в раздел «Каркасы»: настройки рельефа сброшены");
-    expect(solids(wireframesStore.get().wireframes).map((w) => w.id)).toEqual([42]);
+    expect(solids(sceneObjects.get().wireframes).map((w) => w.id)).toEqual([42]);
     app.store.set({ selected: null });
     expect(await app.registry.execute("wireframe.dtm", { on: true })).toEqual({ ok: false, result: "Выберите каркас в дереве или укажите wireframe_id" });
     expect((await app.registry.execute("wireframe.dtm", { wireframe_id: 77 })).result).toBe("Каркас №77 не найден: обновите дерево проекта");

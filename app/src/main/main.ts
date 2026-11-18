@@ -348,15 +348,23 @@ function registerIpc(): void {
   });
   // System file dialogs for .bfggis (ТЗ 7.4): the path goes to the core, which reads and writes the file itself.
   const bfggis = [{ name: "Проект BedrockForge", extensions: ["bfggis"] }];
-  // Table export (ТЗ 9.12): DAT, CSV, XLSX — the filter follows the chosen format.
+  // Table export (ТЗ 9.12): DAT, CSV, XLSX; export of lines and rasters (ТЗ 7.18, 7.19; ADR 0011 §5): STR, DXF,
+  // the kind of the source image or GeoTIFF — the filter follows the chosen format.
   const tableFilters: Record<string, Electron.FileFilter[]> = {
     dat: [{ name: "Micromine DAT", extensions: ["dat"] }],
     csv: [{ name: "CSV", extensions: ["csv"] }],
     xlsx: [{ name: "Excel", extensions: ["xlsx"] }],
+    str: [{ name: "Стринги STR", extensions: ["str"] }],
+    dxf: [{ name: "AutoCAD DXF", extensions: ["dxf"] }],
+    jpg: [{ name: "JPEG", extensions: ["jpg", "jpeg"] }],
+    png: [{ name: "PNG", extensions: ["png"] }],
+    tif: [{ name: "TIFF, GeoTIFF", extensions: ["tif", "tiff"] }],
+    bmp: [{ name: "BMP", extensions: ["bmp"] }],
+    any: [{ name: "Все файлы", extensions: ["*"] }],
   };
   ipcMain.handle("bf:pick-save", async (e, defaultName: string, kind?: string) => {
     if (!mainWin || !fromMain(e.sender)) return null;
-    const filters = (kind && tableFilters[String(kind)]) || bfggis;
+    const filters = kind && Object.hasOwn(tableFilters, String(kind)) ? tableFilters[String(kind)] : bfggis;
     const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.join(app.getPath("documents"), path.basename(String(defaultName))), filters });
     return r.canceled || !r.filePath ? null : r.filePath;
   });

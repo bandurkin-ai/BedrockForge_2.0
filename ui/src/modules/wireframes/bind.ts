@@ -1,35 +1,21 @@
 /**
- * Objects of the data tree (ADR 0011 §5): the list of wireframes follows the project; `object.select` — the
- * selected layer of lines, raster, wireframe or DTM (`AppState.selected`; a click in the 3D window calls it
- * too); `selection.clear` — «Снять выбор» (Esc); `wireframe.dtm` — «Перенести в ЦТМ» / «Вернуть в каркасы».
+ * Objects of the data tree (ADR 0011 §5): `object.select` — the selected layer of lines, raster, wireframe or
+ * DTM (`AppState.selected`; a click in the 3D window calls it too); `selection.clear` — «Снять выбор» (Esc);
+ * `wireframe.dtm` — «Перенести в ЦТМ» / «Вернуть в каркасы» and the settings of a DTM; `wireframe.attr` — the
+ * attributes of the user. Rename, colour and delete of any object — `objectCommands.ts`.
  */
-import { CoreError } from "../../shell/api";
 import type { App } from "../../shell/app";
-import type { CommandContext } from "../../shell/commands";
+import { needProject, noted } from "../../shell/objectRun";
 import { KIND_TITLES, keepSelected, sameObject, type ObjectKind, type Selected } from "../../shell/selection";
-import { onCoreEvent, onJobFinished } from "../jobs/state";
+import { selectWithProperties } from "../../shell/treeRun";
+import { dtmChanges, dtmSummary, hasSettings } from "../dtm/props";
 import { projectStore } from "../projects/state";
-import { lineLayers, pickedObject, sceneObjects } from "../scene/objects";
+import { loadSceneObjects, pickedObject, sceneObjects } from "../scene/objects";
 import { cancelSectionDraw } from "../section/state";
-import { clearWireframes, loadWireframes, setDtm, wireframeById, wireframesStore } from "./state";
-
-const asText = (e: unknown) => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
-const needProject = (ctx: CommandContext) => (ctx.hasProject ? null : "Откройте или создайте проект");
-
-/** The name of an object of the open project; null — there is no such object. */
-export function objectName(kind: ObjectKind, id: number): string | null {
-  if (kind === "lines") return lineLayers().find((l) => l.id === id)?.name ?? null;
-  if (kind === "raster") return sceneObjects.get().rasters.find((r) => r.id === id)?.name ?? null;
-  if (kind === "wireframe") return wireframeById(id)?.name ?? null;
-  return null;
-}
-
-/** «Выбран слой линий «Дороги»»; a DTM is called a DTM. */
-export function selectedText(kind: ObjectKind, id: number, name: string): string {
-  const t = KIND_TITLES[kind];
-  const what = kind === "wireframe" && wireframeById(id)?.dtm ? "ЦТМ" : t.name;
-  return `${t.chosen}${what === "ЦТМ" ? "а" : ""} ${what} «${name}»`;
-}
+import { attrNameError, attrPatch, attrResult, findAttr, parseAttrValue } from "./attrs";
+import { objectName, selectedText, wireframeOf } from "./named";
+import { bindObjectCommands } from "./objectCommands";
+import { editAttrs, setDtm, setDtmSettings, wireframeById } from "./state";
 
 export function bindObjects(app: App): void {
   const r = app.registry;
@@ -37,34 +23,20 @@ export function bindObjects(app: App): void {
     if (!sameObject(app.store.get().selected, selected)) app.store.set({ selected });
   };
 
-  // --- the list of wireframes follows the project -------------------------------------------------------
+  // --- the selection follows the project, the lists and the 3D window -----------------------------------
   let uid: string | null = null;
   projectStore.subscribe(() => {
     const cur = projectStore.get().current?.uid ?? null;
     if (cur === uid) return;
     uid = cur;
     select(null);
-    clearWireframes();
-    if (cur) void loadWireframes();
   });
-  onCoreEvent((event) => {
-    if (event === "objects.changed") void loadWireframes();
-  });
-  onJobFinished((job) => {
-    if (job.status === "done" && (job.kind === "model.dtm" || job.kind.startsWith("import."))) void loadWireframes();
-  });
-
-  // --- the selection follows the lists and the 3D window ------------------------------------------------
   const exists = (kind: ObjectKind, id: number) => objectName(kind, id) !== null;
-  const prune = () => {
-    const o = sceneObjects.get();
+  sceneObjects.subscribe(() => {
     const s = app.store.get().selected;
-    // a list that is not read yet (the project is opening) says nothing about its objects
-    if (!s || (s.kind === "wireframe" ? !wireframesStore.get().loaded : !o.loaded)) return;
-    select(keepSelected(s, exists));
-  };
-  sceneObjects.subscribe(prune);
-  wireframesStore.subscribe(prune);
+    // lists that are not read yet (the project is opening) say nothing about their objects
+    if (s && sceneObjects.get().loaded) select(keepSelected(s, exists));
+  });
   let picked = pickedObject.get().picked;
   pickedObject.subscribe(() => {
     const before = picked;
@@ -103,22 +75,59 @@ export function bindObjects(app: App): void {
 
   r.bind(
     "wireframe.dtm",
-    async (a) => {
-      const selected = app.store.get().selected;
-      const id = typeof a.wireframe_id === "number" ? a.wireframe_id : selected?.kind === "wireframe" ? selected.id : null;
-      if (id === null) throw new Error("Выберите каркас в дереве или укажите wireframe_id");
-      if (!wireframesStore.get().loaded) await loadWireframes();
-      const w = wireframeById(id);
-      if (!w) throw new Error(`Каркас №${id} не найден: обновите дерево проекта`);
-      const on = a.on !== false;
-      if (on === (w.dtm !== null)) return on ? `«${w.name}» уже в разделе «ЦТМ»` : `«${w.name}» уже в разделе «Каркасы»`;
-      try {
-        await setDtm(id, on);
-      } catch (e) {
-        throw new Error(asText(e));
+    noted(app, async (a) => {
+      if (!sceneObjects.get().loaded) await loadSceneObjects();
+      const w = wireframeOf(app, a);
+      const changes = dtmChanges(a);
+      const on = changes.on !== false;
+      if (!on || !hasSettings(changes)) {
+        // only the move between the sections
+        if (on === (w.dtm !== null)) return on ? `«${w.name}» уже в разделе «ЦТМ»` : `«${w.name}» уже в разделе «Каркасы»`;
+        await setDtm(w.id, on);
+        return on ? `«${w.name}» перенесён в раздел «ЦТМ»` : `«${w.name}» возвращён в раздел «Каркасы»: настройки рельефа сброшены`;
       }
-      return on ? `«${w.name}» перенесён в раздел «ЦТМ»` : `«${w.name}» возвращён в раздел «Каркасы»: настройки рельефа сброшены`;
-    },
+      if (changes.raster_id) {
+        const raster = sceneObjects.get().rasters.find((x) => x.id === changes.raster_id);
+        if (!raster) throw new Error(`Растр №${changes.raster_id} не найден: обновите дерево проекта`);
+        // ТЗ 7.20: a vertical raster is not put on a relief
+        if (raster.vertical) throw new Error(`Растр «${raster.name}» стоит в вертикальной плоскости: на рельеф кладётся только растр в плане. Выберите карту или ортофото в плане.`);
+      }
+      const saved = await setDtmSettings(w.id, changes);
+      const dtm = wireframeById(w.id)?.dtm ?? saved.dtm;
+      if (!dtm) return `«${w.name}»: настройки рельефа сохранены`;
+      const raster = dtm.raster_id === null ? null : (sceneObjects.get().rasters.find((x) => x.id === dtm.raster_id)?.name ?? null);
+      return `${w.dtm ? "" : `«${w.name}» перенесён в раздел «ЦТМ». `}ЦТМ «${w.name}»: ${dtmSummary(dtm, raster)}`;
+    }),
     needProject,
   );
+
+  r.bind(
+    "wireframe.attr",
+    noted(app, async (a) => {
+      if (!sceneObjects.get().loaded) await loadSceneObjects();
+      const w = wireframeOf(app, a);
+      const rename = typeof a.rename === "string" ? a.rename.trim().replace(/\s+/g, " ") : undefined;
+      const remove = a.remove === true;
+      if (!("value" in a) && rename === undefined && !remove) {
+        await selectWithProperties(app, "wireframe", w.id);
+        return `Атрибуты «${w.name}» — в панели «Свойства»: добавить, изменить, переименовать, удалить`;
+      }
+      const name = typeof a.name === "string" ? a.name.trim().replace(/\s+/g, " ") : "";
+      if (!name) throw new Error("Укажите название атрибута: name");
+      const attrs = w.attrs ?? [];
+      const found = findAttr(attrs, name);
+      if ((remove || rename !== undefined) && !found) throw new Error(`Атрибута «${name}» у «${w.name}» нет: обновите «Свойства»`);
+      if (!remove && rename !== undefined) {
+        const bad = attrNameError(rename, attrs, name);
+        if (bad) throw new Error(bad);
+      }
+      const value = !remove && "value" in a ? (a.value === null ? null : parseAttrValue(String(a.value))) : undefined;
+      const change = { name: found?.name ?? name, value, rename: remove ? undefined : rename, remove };
+      await editAttrs(w.id, attrPatch(change));
+      return `«${w.name}»: ${attrResult(change)}`;
+    }),
+    needProject,
+  );
+
+  bindObjectCommands(app);
 }

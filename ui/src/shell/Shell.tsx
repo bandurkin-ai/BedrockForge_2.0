@@ -15,6 +15,9 @@ import { OpLogWindow } from "./OpLogWindow";
 import { startEvents } from "../modules/jobs/state";
 import { StripLogWindow } from "../charts/striplog/StripLogWindow";
 import { DownholeWindow } from "../modules/downhole/DownholeWindow";
+import { BuildDtmWindow } from "../modules/dtm/BuildDtmWindow";
+import { LinesExportWindow } from "../modules/lines/LinesExportWindow";
+import { RasterExportWindow } from "../modules/rasters/RasterExportWindow";
 import { StylesImportWindow } from "../modules/downhole/StylesImportWindow";
 import { SetStyleWindow } from "../modules/scene/SetStyleWindow";
 import { ExportWindow } from "../modules/projects/ExportWindow";
@@ -65,6 +68,12 @@ const renderWindow: WindowRenderer = (w) => {
       return <DownholeWindow winId={w.id} setId={Number(w.props?.setId)} form={(w.props?.form as "grade" | "lith" | "event" | undefined) ?? "grade"} chartId={typeof w.props?.chartId === "number" ? w.props.chartId : null} table={(w.props?.table as string | null) ?? null} field={(w.props?.field as string | null) ?? null} focus={(w.props?.focus as string | undefined) ?? null} />;
     case "styles-import":
       return <StylesImportWindow winId={w.id} token={String(w.props?.token ?? "")} />;
+    case "lines-export":
+      return <LinesExportWindow winId={w.id} format={w.props?.format as string | undefined} layerIds={w.props?.layerIds as number[] | undefined} />;
+    case "raster-export":
+      return <RasterExportWindow winId={w.id} rasterId={w.props?.rasterId as number | undefined} format={w.props?.format as "source" | "geotiff" | undefined} />;
+    case "dtm-build":
+      return <BuildDtmWindow winId={w.id} />;
     default:
       return null;
   }

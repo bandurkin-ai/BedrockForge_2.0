@@ -442,17 +442,15 @@ def forget() -> None:
         _cache.clear()
 
 
-def _read_labels(store: Any, state: LayerState) -> Labels | None:
+def _read_labels(files: Any, state: LayerState) -> Labels | None:
     """The text of every feature of a layer that has the attribute `text` (only these columns are read)."""
-    sha = state.sha("attrs")
-    if sha is None or TEXT not in state.fields:
+    if not files.has("attrs") or TEXT not in state.fields:
         return None
     import pyarrow as pa
     import pyarrow.compute as pc
-    import pyarrow.parquet as pq
 
     wanted = [name for name in (TEXT, HEIGHT, ROTATION) if name in state.fields]
-    table = pq.read_table(store.path_of(sha), columns=wanted)
+    table = files.table("attrs", wanted)
     text = table.column(TEXT)
     if not pa.types.is_string(text.type):
         return None  # a number field that happens to be called «text»
@@ -470,22 +468,15 @@ def _read_labels(store: Any, state: LayerState) -> Labels | None:
 
 
 def _load(project: Any, state: LayerState) -> Layout:
-    from bf_core.lines.store import ARRAYS
+    from bf_core.lines.store import broken, layer_files
     from bf_core.storage.blobs import BlobStore
 
-    store = BlobStore(project.folder)
-
-    def array(role: str) -> np.ndarray | None:
-        sha = state.sha(role)
-        return None if sha is None else np.fromfile(store.path_of(sha), dtype=ARRAYS[role])
-
-    xyz, offsets, closed = array("xyz"), array("offsets"), array("closed")
+    files = layer_files(BlobStore(project.folder), dict(state.blobs))  # own blobs of the layer, or a pack entry
+    xyz, offsets, closed = files.array("xyz"), files.array("offsets"), files.array("closed")
     if xyz is None or (not state.points_only and (offsets is None or closed is None)):
-        raise ApiError(
-            500, "line_layer_broken", "Файлы геометрии слоя линий не найдены.", "Загрузите файл линий заново."
-        )
+        raise broken()
     lay = build(xyz, None if state.points_only else offsets, None if state.points_only else closed)
-    lay.labels = _read_labels(store, state)
+    lay.labels = _read_labels(files, state)
     lay.meta = {"layer": state.layer_id, "version": state.version}
     return lay
 

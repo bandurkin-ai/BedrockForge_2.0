@@ -176,14 +176,14 @@ def delete_file(conn: sa.Connection, file_id: int) -> list[int]:
 # --- attributes by pages -----------------------------------------------------------------------------------
 
 
-def attrs_key(conn: sa.Connection, layer_id: int, scope: str) -> tuple[dict[str, Any], str | None]:
-    """The layer and the SHA-256 of its attribute table of a scope (None: the layer has no such attributes)."""
+def attrs_key(conn: sa.Connection, layer_id: int, scope: str) -> tuple[dict[str, Any], dict[str, str]]:
+    """The layer and its blobs {role: SHA-256}: with the version of the layer — the key of its attribute pages."""
     if scope not in SCOPES:
         raise ApiError(
             422, "bad_scope", "Неизвестный вид атрибутов слоя.", "Укажите feature (по линиям) или vertex (по вершинам)."
         )
     layer = get_layer(conn, layer_id)
-    return layer, store.layer_blobs(conn, layer_id).get(_TABLE_OF[scope])
+    return layer, store.layer_blobs(conn, layer_id)
 
 
 def _cell(v: Any) -> Any:
@@ -191,10 +191,10 @@ def _cell(v: Any) -> Any:
 
 
 def attrs_page(
-    blobs: BlobStore, layer: Mapping[str, Any], sha: str | None, scope: str, offset: int, limit: int
+    blobs: BlobStore, layer: Mapping[str, Any], shas: Mapping[str, str], scope: str, offset: int, limit: int
 ) -> dict[str, Any]:
     """Rows [offset, offset + limit) of the attributes: one row per line (per point of a point layer), or per
-    vertex for `scope="vertex"`. An empty number is null, never 0."""
+    vertex for `scope="vertex"`. An empty number is null, never 0. `shas` — the blobs of the layer (`attrs_key`)."""
     fields = [f for f in layer["attr_schema"] if f.get("scope", "feature") == scope]
     if scope == "feature":
         total = int(layer["point_count"] if layer["points_only"] else layer["line_count"])
@@ -204,11 +204,10 @@ def attrs_page(
         "layer_id": layer["id"], "version": layer["version"], "scope": scope, "fields": fields, "total": total,
         "offset": offset, "limit": limit, "rows": [],
     }  # fmt: skip
-    if sha is None or offset >= total:
+    files = store.layer_files(blobs, shas)
+    if not files.has(_TABLE_OF[scope]) or offset >= total:
         return out
-    import pyarrow.parquet as pq
-
-    table = pq.read_table(blobs.path_of(sha), memory_map=True).slice(offset, limit)
+    table = files.table(_TABLE_OF[scope], memory_map=True).slice(offset, limit)
     names = [f["name"] for f in fields if f["name"] in table.column_names]
     out["fields"] = [f for f in fields if f["name"] in names]
     columns = [table.column(n).to_pylist() for n in names]

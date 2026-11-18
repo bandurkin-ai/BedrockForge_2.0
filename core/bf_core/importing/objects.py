@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -152,19 +151,19 @@ def _write_lines(ctx: JobContext, engine: sa.Engine, store: Any, g: Group, read:
             author=who,
         )
     total = len(layers)
+    for i, layer in enumerate(layers):
+        if layer.color is None:
+            layer.color = PALETTE[(used + i) % len(PALETTE)]
     for a in range(0, total, PORTION):
-        staged: list[Any] = []
+
+        def step(k: int, a: int = a) -> None:
+            tick((a + k) / total, f"слой {a + k + 1} из {total}")
+
+        # small layers of a portion share one blob (`lines/pack.py`): a file of thousands of layers stays fast
+        staged = ls.stage_layers(store, layers[a : a + PORTION], step)
         try:
-            for i in range(a, min(total, a + PORTION)):
-                layer = layers[i]
-                at, note = i / total, f"слой {i + 1} из {total}"
-                tick(at, note)
-                if layer.color is None:
-                    layer.color = PALETTE[(used + i) % len(PALETTE)]
-                staged.append(ls.stage_layer(store, layer, partial(tick, at, note)))
             with dialect.write_tx(engine) as conn:
-                for i, part in enumerate(staged, a):
-                    ls.commit_layer(conn, store, part, file_id=file_id, sort_key=float(i), author=who)
+                ls.commit_layers(conn, store, staged, file_id=file_id, sort_key=float(a), author=who)
         finally:
             for part in staged:
                 part.discard()

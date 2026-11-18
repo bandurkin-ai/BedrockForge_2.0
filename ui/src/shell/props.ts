@@ -47,3 +47,6 @@ export function errorText(e: unknown): string {
   const full = (e as { full?: unknown } | null)?.full; // CoreError
   return typeof full === "string" ? full : e instanceof Error ? e.message : String(e);
 }
+
+/** Adds an id to a list of checked ones or takes it away; the order of checking is kept. */
+export const toggleId = (ids: readonly number[], id: number, on: boolean): number[] => (on ? (ids.includes(id) ? [...ids] : [...ids, id]) : ids.filter((x) => x !== id));

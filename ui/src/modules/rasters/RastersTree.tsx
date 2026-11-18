@@ -8,11 +8,10 @@ import { useApp } from "../../shell/AppContext";
 import { FolderRows, Glyph, useRowMenu } from "../../shell/ObjectRows";
 import { isSelected } from "../../shell/selection";
 import { TreeRow } from "../../shell/TreeRow";
-import { deleteDialog, renameDialog, selectWithProperties } from "../../shell/treeRun";
+import { selectWithProperties } from "../../shell/treeRun";
 import { useStore } from "../../shell/useStore";
 import tree from "../../shell/DataTree.module.css";
 import { sceneObjects } from "../scene/objects";
-import { deleteRaster, renameRaster } from "./actions";
 import { rasterKey, rasterMenu, rasterPlace, rasterTitle } from "./tree";
 
 export function RastersTree() {
@@ -44,11 +43,7 @@ export function RastersTree() {
               title={rasterTitle(r)}
               testId={`tree-raster-${r.id}`}
               glyph={<Glyph icon={r.vertical ? "section" : "raster"} />}
-              onContextMenu={menu(rasterMenu(r, visible), (kind) => {
-                if (kind === "properties") void selectWithProperties(app, "raster", r.id);
-                else if (kind === "rename") void renameDialog("растр", r.name, (name) => renameRaster(r, name));
-                else void deleteDialog("Удалить растр", `Растр «${r.name}» удаляется из проекта вместе с файлом изображения. Отменить удаление нельзя.`, () => deleteRaster(r.id));
-              })}
+              onContextMenu={menu(rasterMenu(r, visible), () => void selectWithProperties(app, "raster", r.id))}
             />
           );
         }}

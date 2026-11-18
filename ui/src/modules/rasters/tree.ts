@@ -24,9 +24,11 @@ export function rasterMenu(r: Pick<RasterInfo, "id">, visible: boolean): TreeAct
   return [
     { label: "Свойства", local: "properties" },
     { label: visible ? "Скрыть в 3D" : "Показать в 3D", command: "layer.show", args: { layer: "raster", id: r.id, visible: !visible } },
+    { label: "На текущий разрез…", command: "raster.place_on_section", args: { raster_id: r.id } },
+    { label: "Экспорт…", command: "rasters.export", args: { raster_id: r.id } },
     SEPARATOR,
-    { label: "Переименовать…", local: "rename" },
-    { label: "Удалить…", local: "delete" },
+    { label: "Переименовать…", command: "object.rename", args: { kind: "raster", id: r.id } },
+    { label: "Удалить…", command: "object.delete", args: { kind: "raster", id: r.id } },
   ];
 }
 
