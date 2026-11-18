@@ -23,7 +23,6 @@ from bf_core.storage.blobs import BlobStore
 from . import store
 
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
-MAX_PAGE = 5000
 SCOPES = ("feature", "vertex")
 _TABLE_OF = {"feature": "attrs", "vertex": "vattrs"}
 

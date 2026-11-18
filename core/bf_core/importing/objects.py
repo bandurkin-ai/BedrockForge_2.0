@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,7 @@ __all__ = ["import_objects", "inspect_files", "plan"]
 #: Distinct colours for layers that carry none in the file (BF `PALETTE`).
 PALETTE = ("#e8873a", "#4f9dde", "#5fbf6a", "#c06fd8", "#e0c040", "#e05d6f", "#46c7c0", "#9a8f7a")
 TARGET = "objects"  # `import_log.target`
+PORTION = 25  # layers written by one transaction (about 0.1 s)
 
 
 # --- the job -----------------------------------------------------------------------------------------------
@@ -127,39 +129,56 @@ def _file_meta(g: Group, read: Any, summary: Mapping[str, Any]) -> dict[str, Any
 
 
 def _write_lines(ctx: JobContext, engine: sa.Engine, store: Any, g: Group, read: Any, tick: Tick) -> _Done:
+    """The file object and its layers as `building`. Layers go in portions — staged, then written by a short
+    transaction — so the job reports and can be cancelled between them, however many layers a file has."""
     from bf_core.db.schema import line_layers
     from bf_core.drillholes.edit import author
     from bf_core.lines import store as ls
 
     layers = [layer for layer in read.layers if layer.point_count]
     summary = summarize(g, read)
-    with dialect.read_tx(engine) as conn:
+    who = author()
+    with dialect.write_tx(engine) as conn:
         used = int(conn.execute(sa.select(sa.func.count()).select_from(line_layers)).scalar_one())
-    staged: list[Any] = []
-    try:
-        for i, layer in enumerate(layers):
-            tick(i / len(layers), f"слой {i + 1} из {len(layers)}")
-            if layer.color is None:
-                layer.color = PALETTE[(used + i) % len(PALETTE)]
-            staged.append(ls.stage_layer(store, layer))
-        tick(1.0, "запись слоёв")
-        crs = (summary["crs"] or {}).get("wkt")
-        who = author()
-        with dialect.write_tx(engine) as conn:
-            file_id = ls.create_file(
-                conn, store, name=free_name(conn, ls.LINE_FILE, g.main.name), meta=_file_meta(g, read, summary),
-                folder=ctx.params.get("folder") or None, state="building", job_id=ctx.id, crs=crs, author=who,
-            )  # fmt: skip
-            for i, part in enumerate(staged):
-                ls.commit_layer(conn, store, part, file_id=file_id, sort_key=float(i), author=who)
-    finally:
-        for part in staged:
-            part.discard()
+        file_id = ls.create_file(
+            conn,
+            store,
+            name=free_name(conn, ls.LINE_FILE, g.main.name),
+            meta=_file_meta(g, read, summary),
+            folder=ctx.params.get("folder") or None,
+            state="building",
+            job_id=ctx.id,
+            crs=(summary["crs"] or {}).get("wkt"),
+            author=who,
+        )
+    total = len(layers)
+    for a in range(0, total, PORTION):
+        staged: list[Any] = []
+        try:
+            for i in range(a, min(total, a + PORTION)):
+                layer = layers[i]
+                at, note = i / total, f"слой {i + 1} из {total}"
+                tick(at, note)
+                if layer.color is None:
+                    layer.color = PALETTE[(used + i) % len(PALETTE)]
+                staged.append(ls.stage_layer(store, layer, partial(tick, at, note)))
+            with dialect.write_tx(engine) as conn:
+                for i, part in enumerate(staged, a):
+                    ls.commit_layer(conn, store, part, file_id=file_id, sort_key=float(i), author=who)
+        finally:
+            for part in staged:
+                part.discard()
+    tick(1.0, "слои записаны")
     return _Done(
-        file_id, summary["kind"], g.main, g.main.name, read.format, "application/octet-stream",
+        file_id,
+        summary["kind"],
+        g.main,
+        g.main.name,
+        read.format,
+        "application/octet-stream",
         dict(summary["totals"]),
         {"encoding": summary["encoding"], "sidecars": summary["sidecars"]},
-    )  # fmt: skip
+    )
 
 
 def _write_raster(
@@ -317,11 +336,18 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
             ctx.tick(0.9 + 0.08 * min(copied / total, 1.0), "Сохранение исходных файлов в проекте")
 
         for item in done:
-            item.source = store.stage_stream(_chunks(item.path, copy_tick))
-            temps.append(item.source[0])
-            for suffix, path in item.companions.items():
-                item.sidecars[suffix] = store.stage_file(path)
-                temps.append(item.sidecars[suffix][0])
+            try:
+                item.source = store.stage_stream(_chunks(item.path, copy_tick))
+                temps.append(item.source[0])
+                for suffix, path in item.companions.items():
+                    item.sidecars[suffix] = store.stage_file(path)
+                    temps.append(item.sidecars[suffix][0])
+            except OSError as exc:  # the file went away or the disk is full: nothing is imported
+                raise JobError(
+                    "source_not_saved",
+                    f"«{item.label}»: исходный файл не сохранён в проекте ({exc.strerror or exc}).",
+                    "Проверьте доступ к файлу и свободное место на диске с проектом, затем повторите импорт.",
+                ) from exc
         ctx.tick(0.98, "Запись в проект")
         files: list[dict[str, Any]] = []
         with dialect.write_tx(engine) as conn:  # the final transaction: sources, journal and «готово» together

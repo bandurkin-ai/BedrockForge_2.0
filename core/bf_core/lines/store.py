@@ -13,7 +13,7 @@ Deleting a file deletes its layers (ON DELETE CASCADE) and their file references
 from __future__ import annotations
 
 import io
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -43,9 +43,11 @@ def _not_found(what: str = "Слой линий") -> ApiError:
     return ApiError(404, "line_layer_not_found", f"{what} не найден.", "Обновите дерево проекта.")
 
 
-def _chunks(arr: np.ndarray) -> Iterator[bytes]:
+def _chunks(arr: np.ndarray, tick: Callable[[], None] | None = None) -> Iterator[bytes]:
     raw = memoryview(np.ascontiguousarray(arr)).cast("B")
     for start in range(0, len(raw), CHUNK):
+        if tick is not None:
+            tick()  # may raise to cancel: the temp files go
         yield bytes(raw[start : start + CHUNK])
 
 
@@ -68,14 +70,15 @@ class StagedLayer:
         self.files.clear()
 
 
-def stage_layer(store: BlobStore, ls: LineSet) -> StagedLayer:
-    """The blobs of a layer in temporary files (no database access)."""
+def stage_layer(store: BlobStore, ls: LineSet, tick: Callable[[], None] | None = None) -> StagedLayer:
+    """The blobs of a layer in temporary files (no database access). `tick()` is called before every megabyte
+    of an array: a job reports there and may raise to cancel."""
     staged = StagedLayer(ls)
     arrays: dict[str, np.ndarray | None] = {"xyz": ls.xyz, "offsets": ls.offsets, "closed": ls.closed, "seq": ls.seq}
     try:
         for role, arr in arrays.items():
             if arr is not None:
-                staged.files[role] = store.stage_stream(_chunks(np.asarray(arr, dtype=ARRAYS[role])))
+                staged.files[role] = store.stage_stream(_chunks(np.asarray(arr, dtype=ARRAYS[role]), tick))
         for role, table in (("attrs", ls.attrs), ("vattrs", ls.vattrs)):
             if table is not None:
                 staged.files[role] = store.stage_bytes(_parquet(table))

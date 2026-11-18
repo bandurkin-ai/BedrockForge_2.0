@@ -94,6 +94,13 @@ def apply_level(g: gr.Georef, elevation: float | None = None, shift: float = 0.0
 
 def _georef_of(row: Mapping[str, Any]) -> gr.Georef:
     d = row["georef"] or {}
+    if len(d.get("affine") or ()) != 6:
+        raise ApiError(
+            422,
+            "no_georef",
+            "У растра нет привязки: менять его положение нечем.",
+            "Поставьте растр на текущий разрез или загрузите его заново с файлом привязки.",
+        )
     affine = tuple(float(v) for v in d["affine"])
     affine_z = tuple(float(v) for v in d["affine_z"]) if d.get("affine_z") else None
     return gr.Georef(affine, str(d.get("source") or gr.MANUAL), row["elevation"], affine_z=affine_z)  # type: ignore[arg-type]

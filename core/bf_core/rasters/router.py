@@ -11,6 +11,7 @@ the current raster:
     line of the view settings;
   * `DELETE /rasters/{id}` — a raster draped on a DTM → 422 `raster_in_use` with the list of the DTMs.
 `GET /rasters/{id}/image?level=0|1` — the display copy (≤ 4096 / ≤ 1024 px) with an ETag; If-None-Match → 304.
+`POST /rasters/{id}/export` starts the job `export.raster` (`rasters/export.py`): the source file or a GeoTIFF.
 Numbers may come as text with a comma or a point («−5,5»).
 """
 
@@ -24,13 +25,17 @@ from pydantic import BaseModel, Field
 
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
+from bf_core.jobs.scheduler import Scheduler
+from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
-from . import store
+# numpy and Pillow load on first use, not at the start of the core (tests/test_process.py): `store` and
+# `export` are imported inside the endpoints.
 
 router = APIRouter(prefix="/rasters")
 Svc = Annotated[ProjectService, Depends(projects)]
+Sched = Annotated[Scheduler, Depends(jobs)]
 IfNoneMatch = Annotated[str | None, Header()]
 CACHE_HEADERS = {"Cache-Control": "no-cache"}
 Number = float | str
@@ -53,11 +58,13 @@ def _required(value: Any, label: str) -> float:
 
 
 def _changed(request: Request, raster_id: int, **extra: Any) -> None:
-    request.app.state.core.events.publish("objects.changed", {"kind": store.RASTER, "id": raster_id, **extra})
+    request.app.state.core.events.publish("objects.changed", {"kind": "raster", "id": raster_id, **extra})
 
 
 @router.get("")
 def list_rasters(svc: Svc) -> dict[str, Any]:
+    from . import store
+
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
         return {"rasters": store.list_rasters(conn)}
@@ -65,6 +72,8 @@ def list_rasters(svc: Svc) -> dict[str, Any]:
 
 @router.get("/{raster_id}")
 def get_raster(svc: Svc, raster_id: int) -> dict[str, Any]:
+    from . import store
+
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
         return store.raster_info(conn, raster_id)
@@ -97,6 +106,8 @@ _EDGES = {
 
 @router.patch("/{raster_id}")
 def patch_raster(svc: Svc, request: Request, raster_id: int, body: RasterPatch) -> dict[str, Any]:
+    from . import store
+
     project = svc.require_current(writable=True)
     given = body.model_fields_set
     changes: dict[str, Any] = {}
@@ -122,6 +133,8 @@ class ShiftBody(BaseModel):
 @router.post("/{raster_id}/shift")
 def shift_raster(svc: Svc, request: Request, raster_id: int, body: ShiftBody) -> dict[str, Any]:
     """«Сдвинуть» (ТЗ 7.19): +dz up, −dz down; all four corners of a vertical raster move together."""
+    from . import store
+
     project = svc.require_current(writable=True)
     dz = _required(body.dz, "Сдвиг по Z")
     with dialect.write_tx(project.engine) as conn:
@@ -137,6 +150,8 @@ class SectionBody(BaseModel):
 
 @router.post("/{raster_id}/place-on-section")
 def place_on_section(svc: Svc, request: Request, raster_id: int, body: SectionBody) -> dict[str, Any]:
+    from . import store
+
     project = svc.require_current(writable=True)
     z_top = _number(body.z_top, "Верх Z")
     with dialect.write_tx(project.engine) as conn:
@@ -147,6 +162,8 @@ def place_on_section(svc: Svc, request: Request, raster_id: int, body: SectionBo
 
 @router.delete("/{raster_id}")
 def delete_raster(svc: Svc, request: Request, raster_id: int) -> dict[str, Any]:
+    from . import store
+
     project = svc.require_current(writable=True)
     with dialect.write_tx(project.engine) as conn:
         store.delete_raster(conn, raster_id)
@@ -163,6 +180,8 @@ def raster_image(
     from bf_core.storage.blobs import BlobStore
     from bf_core.viz.keys import matches
 
+    from . import store
+
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
         sha, media, size = store.image_blob(conn, raster_id, level)
@@ -177,3 +196,21 @@ def raster_image(
         )
     headers["Content-Length"] = str(size)
     return StreamingResponse(blobs.iter_range(sha, 0, size - 1), media_type=media, headers=headers)
+
+
+class ExportBody(BaseModel):
+    path: str = Field(max_length=2000)
+    format: str = Field(default="source", max_length=16)  # source | geotiff
+
+
+@router.post("/{raster_id}/export")
+def export_raster(svc: Svc, s: Sched, raster_id: int, body: ExportBody) -> dict[str, Any]:
+    """`rasters.export`: the job «Экспорт растра» writes the source file with its georeference, or a GeoTIFF."""
+    from . import export
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        params = export.request(conn, raster_id=raster_id, path=body.path, format=body.format)
+    label = "GeoTIFF" if body.format == "geotiff" else "исходный файл"
+    key, job_id = s.submit("export.raster", params, title=f"Экспорт растра ({label})")
+    return {"source": key, "id": job_id}
