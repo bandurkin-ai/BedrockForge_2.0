@@ -99,7 +99,9 @@ def test_trench_is_a_hole_with_stations_at_its_vertices_and_samples_along_it(dem
         ).all()
         table = conn.execute(sa.select(dh_tables).where(dh_tables.c.kind == "assay")).mappings().one()
         samples = conn.execute(
-            sa.select(dh_rows.c.from_m, dh_rows.c.to_m).where(dh_rows.c.hole_id == hole["id"]).order_by(dh_rows.c.from_m)
+            sa.select(dh_rows.c.from_m, dh_rows.c.to_m)
+            .where(dh_rows.c.hole_id == hole["id"])
+            .order_by(dh_rows.c.from_m)
         ).all()
         total = conn.execute(sa.select(sa.func.count()).select_from(dh_rows)).scalar_one()
     assert len(collars) == 48
@@ -110,7 +112,9 @@ def test_trench_is_a_hole_with_stations_at_its_vertices_and_samples_along_it(dem
     # a station at every vertex: its coordinates bit for bit, its depth — the 3D length from the first vertex
     assert np.array([s[1:4] for s in stations]).tobytes() == line.tobytes() and all(s[4] is None for s in stations)
     length = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(line, axis=0), axis=1))])
-    assert np.abs(np.array([s[0] for s in stations]) - length).max() <= 1e-9 and hole["td"] == pytest.approx(length[-1], abs=1e-9)
+    assert np.abs(np.array([s[0] for s in stations]) - length).max() <= 1e-9 and hole["td"] == pytest.approx(
+        length[-1], abs=1e-9
+    )
     assert 235.0 < length[-1] < 250.0
     # the trench is dug: 1.5 m below the ground the survey measured at its edge (centimetres)
     assert np.abs(geo.relief(line[:, 0], line[:, 1], collars) - 1.5 - line[:, 2]).max() <= 0.005 + 1e-9
@@ -178,9 +182,21 @@ def test_lines_points_plan_and_dtm(demo) -> None:  # type: ignore[no-untyped-def
     a, b, cc, d, e, f = plan["georef"]["affine"]
     assert abs(a * 0.5 + b * 0.5 + cc - 4900.25) <= 1e-9 and abs(d * 0.5 + e * 0.5 + f - 8349.75) <= 1e-9
     assert plan["georef"]["source"] == "world"
-    assert [p[:2] for p in plan["georef"]["corners3d"]] == [[4900.0, 8350.0], [5500.0, 8350.0], [5500.0, 7900.0], [4900.0, 7900.0]]
+    assert [p[:2] for p in plan["georef"]["corners3d"]] == [
+        [4900.0, 8350.0],
+        [5500.0, 8350.0],
+        [5500.0, 7900.0],
+        [4900.0, 7900.0],
+    ]
     assert set(roles) == {"source", "sidecar:pgw", "display0", "display1"}
-    assert store.read_bytes(roles["sidecar:pgw"]).decode("ascii").split() == ["0.5", "0.0", "0.0", "-0.5", "4900.25", "8349.75"]
+    assert store.read_bytes(roles["sidecar:pgw"]).decode("ascii").split() == [
+        "0.5",
+        "0.0",
+        "0.0",
+        "-0.5",
+        "4900.25",
+        "8349.75",
+    ]
     source = Image.open(io.BytesIO(store.read_bytes(roles["source"])))
     assert source.format == "PNG" and source.size == (1200, 900)
     # a collar is drawn where it is: the dark dot at the pixel of DH-001
@@ -223,16 +239,22 @@ def test_demo_is_the_same_everywhere_and_the_audit_finds_nothing_new(demo) -> No
     with dialect.read_tx(project.engine) as conn:
         set_id = _set(conn)
         collars = geo._collars(conn)
-        layer_ids = [i for f in conn.execute(sa.select(objects.c.id).where(objects.c.kind == "line_file").order_by(objects.c.id)).scalars() for i in ls_store.layer_ids(conn, f)]
+        layer_ids = [
+            i
+            for f in conn.execute(
+                sa.select(objects.c.id).where(objects.c.kind == "line_file").order_by(objects.c.id)
+            ).scalars()
+            for i in ls_store.layer_ids(conn, f)
+        ]
         got = [ls_store.read_layer(conn, store, i).xyz.tobytes() for i in layer_ids]
     rng = random.Random(7)
-    from bf_core.db import migrate
-    from bf_core.demo.drillholes import add_drillholes
-    from tests.dbutil import make_engine
-
     # the stream after the holes and the samples of the trench: replay the parts on a database of their own
     import tempfile
     from pathlib import Path
+
+    from bf_core.db import migrate
+    from bf_core.demo.drillholes import add_drillholes
+    from tests.dbutil import make_engine
 
     with tempfile.TemporaryDirectory() as tmp:
         engine = make_engine("sqlite", Path(tmp))
@@ -243,7 +265,13 @@ def test_demo_is_the_same_everywhere_and_the_audit_finds_nothing_new(demo) -> No
                 with dialect.write_tx(engine) as conn:
                     part(conn, other, rng)
             with dialect.read_tx(engine) as conn:
-                again_ids = [i for f in conn.execute(sa.select(objects.c.id).where(objects.c.kind == "line_file").order_by(objects.c.id)).scalars() for i in ls_store.layer_ids(conn, f)]
+                again_ids = [
+                    i
+                    for f in conn.execute(
+                        sa.select(objects.c.id).where(objects.c.kind == "line_file").order_by(objects.c.id)
+                    ).scalars()
+                    for i in ls_store.layer_ids(conn, f)
+                ]
                 again = [ls_store.read_layer(conn, other, i).xyz.tobytes() for i in again_ids]
                 v2, t2 = wf_store.read_wireframe(conn, other, wf_store.list_wireframes(conn)[0]["id"])
                 png2 = other.read_bytes(
@@ -254,7 +282,9 @@ def test_demo_is_the_same_everywhere_and_the_audit_finds_nothing_new(demo) -> No
     assert got == again and len(got) == 3
     with dialect.read_tx(project.engine) as conn:
         v, t = wf_store.read_wireframe(conn, store, wf_store.list_wireframes(conn)[0]["id"])
-        png = store.read_bytes(conn.execute(sa.select(blob_owners.c.sha256).where(blob_owners.c.role == "source")).scalar_one())
+        png = store.read_bytes(
+            conn.execute(sa.select(blob_owners.c.sha256).where(blob_owners.c.role == "source")).scalar_one()
+        )
     assert v.tobytes() == v2.tobytes() and t.tobytes() == t2.tobytes()
     assert hashlib.sha256(png).hexdigest() == hashlib.sha256(png2).hexdigest()
     assert len(collars) == 48

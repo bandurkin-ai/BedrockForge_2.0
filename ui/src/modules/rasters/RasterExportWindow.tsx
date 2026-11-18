@@ -11,7 +11,7 @@ import { errorText } from "../../shell/props";
 import { askConfirm } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
 import { closeWindow } from "../../shell/windows";
-import css from "../../shell/Props.module.css";
+import css from "../../shell/PropsParts.module.css";
 import { refresh as refreshJobs } from "../jobs/state";
 import { sceneObjects } from "../scene/objects";
 import { startRasterExport } from "./actions";

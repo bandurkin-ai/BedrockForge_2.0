@@ -10,7 +10,7 @@ import { errorText, NO_COLOR } from "../../shell/props";
 import { ColorField, Facts, useRun } from "../../shell/PropsParts";
 import { count } from "../../shell/treeActions";
 import { useStore } from "../../shell/useStore";
-import css from "../../shell/Props.module.css";
+import css from "../../shell/PropsParts.module.css";
 import { pickedObject, sceneObjects, type LineLayerInfo } from "../scene/objects";
 import { loadAttrs } from "./actions";
 import { ATTR_PAGE, attrText, featureFields, fieldTitle, findLayer, layerFacts, pageStart, pager, pickedLine, pickedTitle, rowFacts, type AttrPage } from "./props";

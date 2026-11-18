@@ -11,7 +11,7 @@ import { errorText, toggleId } from "../../shell/props";
 import { count } from "../../shell/treeActions";
 import { useStore } from "../../shell/useStore";
 import { closeWindow } from "../../shell/windows";
-import css from "../../shell/Props.module.css";
+import css from "../../shell/PropsParts.module.css";
 import { refresh as refreshJobs } from "../jobs/state";
 import { layerCounts, shownLayers } from "../lines/tree";
 import { sceneObjects } from "../scene/objects";

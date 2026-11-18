@@ -7,7 +7,7 @@ import { askConfirm } from "../../shell/dialogs";
 import { Check, ColorField, Slider } from "../../shell/PropsParts";
 import { counted } from "../../shell/treeActions";
 import { useStore } from "../../shell/useStore";
-import css from "../../shell/Props.module.css";
+import css from "../../shell/PropsParts.module.css";
 import { sceneObjects, type DtmInfo } from "../scene/objects";
 import { backMessage, drapeOptions, verticalCount } from "./props";
 

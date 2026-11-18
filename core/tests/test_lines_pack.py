@@ -76,7 +76,9 @@ def same_layer(a: LineSet, b: LineSet) -> None:
                 x, y = one.column(name).to_pylist(), two.column(name).to_pylist()
                 assert len(x) == len(y)
                 for p, q in zip(x, y, strict=True):
-                    assert (p == q) or (isinstance(p, float) and isinstance(q, float) and math.isnan(p) == math.isnan(q))
+                    assert (p == q) or (
+                        isinstance(p, float) and isinstance(q, float) and math.isnan(p) == math.isnan(q)
+                    )
     assert a.color == b.color and a.units == b.units
 
 
@@ -88,7 +90,9 @@ def project(tmp_path: Path):  # type: ignore[no-untyped-def]
     engine.dispose()
 
 
-def _put_packed(engine: sa.Engine, store: BlobStore, layers: list[LineSet], name: str = "слои.str") -> tuple[int, list[int]]:
+def _put_packed(
+    engine: sa.Engine, store: BlobStore, layers: list[LineSet], name: str = "слои.str"
+) -> tuple[int, list[int]]:
     staged = ls_store.stage_layers(store, layers)
     try:
         with dialect.write_tx(engine) as conn:
@@ -158,7 +162,11 @@ def test_small_layers_share_one_blob_and_read_back_bit_exact(project) -> None:  
         assert sizes[path.name] == path.stat().st_size
     for layer, info in zip(layers, infos, strict=True):
         st = layer.stats()
-        assert (info["line_count"], info["point_count"], info["length"]) == (st["line_count"], st["point_count"], st["length"])
+        assert (info["line_count"], info["point_count"], info["length"]) == (
+            st["line_count"],
+            st["point_count"],
+            st["length"],
+        )
         assert info["origin"] == layer.origin() and info["points_only"] == layer.points_only
     lo = np.nanmin(np.vstack([x.xyz for x in layers]), axis=0)
     hi = np.nanmax(np.vstack([x.xyz for x in layers]), axis=0)
@@ -294,7 +302,9 @@ def test_packed_and_plain_layers_answer_alike(pclient, tmp_path: Path) -> None: 
     layers = hard_layers()[:4]
     with dialect.write_tx(project.engine) as conn:
         plain_file = ls_store.create_file(conn, store, name="plain.str", meta={"format": "micromine_str"})
-        plain = [ls_store.put_layer(conn, store, x, file_id=plain_file, sort_key=float(k)) for k, x in enumerate(layers)]
+        plain = [
+            ls_store.put_layer(conn, store, x, file_id=plain_file, sort_key=float(k)) for k, x in enumerate(layers)
+        ]
     packed_file, packed = _put_packed(project.engine, store, layers, "packed.str")
     with dialect.read_tx(project.engine) as conn:
         assert all(set(ls_store.layer_blobs(conn, i)) <= set(ls_store.ARRAYS) | set(ls_store.TABLES) for i in plain)

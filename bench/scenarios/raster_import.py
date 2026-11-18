@@ -47,7 +47,8 @@ def prepare(params: dict[str, Any], work: Path) -> None:
     Image.fromarray(pixels).save(work / "ortho.jpg", quality=85)
     del pixels
     (work / "ortho.jgw").write_text("\n".join(repr(v) for v in WORLD) + "\n", encoding="ascii")
-    bomb = b"BM" + struct.pack("<IHHI", 54, 0, 0, 54) + struct.pack("<IiiHHIIiiII", 40, 20050, 20000, 1, 24, 0, 0, 0, 0, 0, 0)
+    info = struct.pack("<IiiHHIIiiII", 40, 20050, 20000, 1, 24, 0, 0, 0, 0, 0, 0)  # 401 Mpix declared, no pixels
+    bomb = b"BM" + struct.pack("<IHHI", 54, 0, 0, 54) + info
     (work / "bomb.bmp").write_bytes(bomb)
     (work / "bomb.bpw").write_text("\n".join(repr(v) for v in WORLD) + "\n", encoding="ascii")
     folder = create_folder(work, "Растр", {})

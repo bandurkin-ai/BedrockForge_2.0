@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useApp } from "./AppContext";
 import { num, type Fact } from "./props";
-import css from "./Props.module.css";
+import css from "./PropsParts.module.css";
 
 export function Facts({ facts }: { facts: readonly Fact[] }) {
   if (!facts.length) return null;

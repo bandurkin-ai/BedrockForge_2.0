@@ -125,15 +125,13 @@ def add_trench(conn: sa.Connection, _store: BlobStore, rng: random.Random) -> No
     depth = np.concatenate([[0.0], np.cumsum(steps)])  # the depth of a vertex is the 3D length to it
     offsets = np.array([0, len(xyz)], dtype=np.int64)
     write_trenches(conn, set_id, Trenches([TRENCH], offsets, xyz, depth), lambda _f, _m: None)
-    hole = int(
-        conn.execute(sa.select(dh_holes.c.id).where(dh_holes.c.set_id == set_id, dh_holes.c.name == TRENCH)).scalar_one()
-    )
+    own = sa.and_(dh_holes.c.set_id == set_id, dh_holes.c.name == TRENCH)
+    hole = int(conn.execute(sa.select(dh_holes.c.id).where(own)).scalar_one())
     # the attributes the holes of the set carry, next to the type the trenches get
     attrs = {"TYPE": "Канава", "status": "Завершена", "stage": "2025"}
     conn.execute(sa.update(dh_holes).where(dh_holes.c.id == hole).values(attrs=attrs))
-    table = conn.execute(
-        sa.select(dh_tables.c.id, dh_tables.c.row_count).where(dh_tables.c.set_id == set_id, dh_tables.c.kind == "assay")
-    ).one()
+    assay = sa.and_(dh_tables.c.set_id == set_id, dh_tables.c.kind == "assay")
+    table = conn.execute(sa.select(dh_tables.c.id, dh_tables.c.row_count).where(assay)).one()
     length = float(depth[-1])
     rows: list[tuple[object, ...]] = []
     start = 0.0
@@ -157,7 +155,7 @@ def add_trench(conn: sa.Connection, _store: BlobStore, rng: random.Random) -> No
 def _line_file(conn: sa.Connection, store: BlobStore, name: str) -> int:
     from bf_core.lines import store as ls
 
-    meta = {"format": "demo", "label": "демо-данные", "filename": None, "fields": [], "warnings": []}
+    meta: dict[str, Any] = {"format": "demo", "label": "демо-данные", "filename": None, "fields": [], "warnings": []}
     return ls.create_file(conn, store, name=name, meta=meta)
 
 
@@ -188,11 +186,12 @@ def add_lines(conn: sa.Connection, store: BlobStore, rng: random.Random) -> None
 
 def survey_points(collars: np.ndarray, rng: random.Random) -> tuple[np.ndarray, list[str]]:
     """Survey points: a 25 m grid walked with a few metres of freedom, the road and the axis of the trench."""
-    xy, codes = [], []
-    for gy in np.arange(AREA[1], AREA[3] + 1.0, 25.0):
-        for gx in np.arange(AREA[0], AREA[2] + 1.0, 25.0):
-            x = min(max(gx + rng.uniform(-8.0, 8.0), AREA[0]), AREA[2])
-            y = min(max(gy + rng.uniform(-8.0, 8.0), AREA[1]), AREA[3])
+    xy: list[tuple[float, float]] = []
+    codes: list[str] = []
+    for gy in np.arange(AREA[1], AREA[3] + 1.0, 25.0).tolist():
+        for gx in np.arange(AREA[0], AREA[2] + 1.0, 25.0).tolist():
+            x = float(min(max(gx + rng.uniform(-8.0, 8.0), AREA[0]), AREA[2]))
+            y = float(min(max(gy + rng.uniform(-8.0, 8.0), AREA[1]), AREA[3]))
             xy.append((round(x, 2), round(y, 2)))
             codes.append("рельеф")
     ground = _on_ground(np.array(xy), collars)
@@ -208,9 +207,9 @@ def plan_png(collars: np.ndarray, strings: list[np.ndarray]) -> tuple[bytes, int
 
     width, height = round((AREA[2] - AREA[0]) / PIXEL), round((AREA[3] - AREA[1]) / PIXEL)
     step = 4  # the relief is computed every 2 m and stretched to the pixels: smooth enough for contours
-    cx = AREA[0] + (np.arange(0, width, step) + step / 2) * PIXEL
-    cy = AREA[3] - (np.arange(0, height, step) + step / 2) * PIXEL
-    coarse = relief(*np.meshgrid(cx, cy), collars).astype(np.float32)
+    cols, rows = np.arange(0, width, step) + step / 2, np.arange(0, height, step) + step / 2
+    gx, gy = np.meshgrid(AREA[0] + cols * PIXEL, AREA[3] - rows * PIXEL)
+    coarse = relief(gx, gy, collars).astype(np.float32)
     z = np.asarray(Image.fromarray(coarse).resize((width, height), Image.Resampling.BILINEAR), dtype=np.float64)
     x, y = np.meshgrid(AREA[0] + (np.arange(width) + 0.5) * PIXEL, AREA[3] - (np.arange(height) + 0.5) * PIXEL)
     unit = np.floor(((x - AREA[0]) * 0.6 + (y - AREA[1]) * 0.35 + 25.0 * np.sin((y - AREA[1]) / 70.0)) / 110.0)
@@ -241,8 +240,8 @@ def plan_png(collars: np.ndarray, strings: list[np.ndarray]) -> tuple[bytes, int
     for line in road_lines(collars):
         draw.line(px(line), fill=(122, 98, 70, 255), width=5)
     draw.line(px(trench_line(collars)), fill=(200, 40, 40, 255), width=4)
-    for cx, cy in px(collars):
-        draw.ellipse([cx - 4, cy - 4, cx + 4, cy + 4], fill=(30, 36, 44, 255), outline=(255, 255, 255, 255))
+    for u, v in px(collars):
+        draw.ellipse([u - 4, v - 4, u + 4, v + 4], fill=(30, 36, 44, 255), outline=(255, 255, 255, 255))
     draw.rectangle([0, 0, width - 1, height - 1], outline=(60, 70, 80, 255), width=3)
     out = io.BytesIO()
     image.save(out, format="PNG", optimize=False, compress_level=6)

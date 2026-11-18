@@ -10,7 +10,7 @@ import { Icon } from "../../shell/Icon";
 import { NO_COLOR } from "../../shell/props";
 import { ColorField, Facts, useRun } from "../../shell/PropsParts";
 import { useStore } from "../../shell/useStore";
-import css from "../../shell/Props.module.css";
+import css from "../../shell/PropsParts.module.css";
 import { DtmProps } from "../dtm/DtmProps";
 import { sceneObjects } from "../scene/objects";
 import { attrNameError, attrValueText, wireframeFacts } from "./attrs";

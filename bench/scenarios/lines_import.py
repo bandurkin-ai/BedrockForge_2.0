@@ -188,7 +188,8 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         files[name] = int(result["objects"][0])
     t0 = time.perf_counter()
     target = work / f"export-{stamp}.str"
-    written = _job(stamp + 9, folder, "export.lines", {"path": str(target), "format": "str", "file_id": files[FILES[0]]})
+    params = {"path": str(target), "format": "str", "file_id": files[FILES[0]]}
+    written = _job(stamp + 9, folder, "export.lines", params)
     out["export_s"] = round(time.perf_counter() - t0, 3)
     assert written["points"] == len(xyz)
     out["export_mb"] = round(target.stat().st_size / 2**20, 1)

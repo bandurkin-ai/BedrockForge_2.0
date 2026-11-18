@@ -9,7 +9,7 @@ import { useApp } from "../../shell/AppContext";
 import { fieldNumber } from "../../shell/props";
 import { Facts, Slider, useRun } from "../../shell/PropsParts";
 import { useRegistryVersion, useStore } from "../../shell/useStore";
-import css from "../../shell/Props.module.css";
+import css from "../../shell/PropsParts.module.css";
 import { sceneObjects, type RasterInfo } from "../scene/objects";
 import { checkLines, EDGE_LABELS, edgeTexts, OPACITY_MAX, OPACITY_MIN, parseEdges, parseField, rasterEdges, rasterFacts, shiftReason, type EdgeKey } from "./props";
 import { rasterKey } from "./tree";

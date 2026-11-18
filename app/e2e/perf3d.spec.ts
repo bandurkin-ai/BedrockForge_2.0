@@ -2,14 +2,14 @@
 // display along them, 60 frames turning a full circle → bench/out/frame_sw.json. Budgets only on the
 // deterministic counters (draw calls, triangles, video memory: bench/budgets.json → external.frame_sw); the ms
 // per frame of SwiftShader go to the report (`python -m bench.run --check` reads the file when it is there).
-// Э7 (ADR 0011 «Замеры», ТЗ 5.3): the lines, the plan and the DTM of the demo stay in the frame; before the
-// benchmark — the first frame of the demo after a lost context (≤ 3 s) and a click on a line and on the
-// surface (≤ 50 ms on the CPU).
+// Э7 (ADR 0011 «Замеры», ТЗ 5.3), before the benchmark: the first frame of the whole demo — holes, lines,
+// survey points, the plan on the DTM — after a lost context (≤ 3 s) and a click on a line and on the surface
+// (≤ 50 ms on the CPU); then the lines, the plan and the DTM of the demo are removed.
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { close, launch, setWindowSize, waitFrame } from "./helpers";
+import { close, holesOnlyDemo, launch, setWindowSize, waitFrame } from "./helpers";
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const HOLES = 2000;
@@ -109,6 +109,8 @@ test("perf3d: 2000 holes and a display, 60 frames under software rendering → b
     expect(beside.picked).not.toBeNull();
     expect(beside.pickMs).toBeLessThan(50);
     await page.keyboard.press("Escape");
+    // the frame below is measured as before: the synthetic set alone fills the view
+    await holesOnlyDemo(page);
 
     await importSet(page, paths);
     await expect.poll(() => page.evaluate(() => window.__bfScene!.state().sets.length), { timeout: 120_000 }).toBe(2);

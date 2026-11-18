@@ -10,7 +10,7 @@ import { tablesStore } from "../modules/tables/state";
 import { WireframeProps } from "../modules/wireframes/WireframeProps";
 import { useApp } from "./AppContext";
 import { useStore } from "./useStore";
-import css from "./Props.module.css";
+import css from "./PropsParts.module.css";
 
 export function PropertiesPanel() {
   const app = useApp();
