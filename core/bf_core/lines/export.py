@@ -97,12 +97,21 @@ def request(
     format: str,  # noqa: A002 - the name of the parameter in the API
     layer_ids: list[int] | None = None,
     file_id: int | None = None,
+    overwrite: bool = False,
     **options: Any,
 ) -> dict[str, Any]:
-    """Checked parameters of the job `export.lines` (for the endpoint that starts it); ApiError otherwise."""
+    """Checked parameters of the job `export.lines` (for the endpoint that starts it); ApiError otherwise.
+    The save window asked only about the chosen name: when the format adds its extension and that file is
+    there already, 409 `files_exist` {files} unless `overwrite` (review Э7, as `rasters/export.py`)."""
     if format not in FORMATS:
         raise bad_format()
     check_path(path)
+    final = target_path(path, format)
+    if not overwrite and final != Path(path) and (final.is_file() or final.is_symlink()):
+        from bf_core.rasters.export import files_exist
+
+        err = files_exist([final])
+        raise ApiError(409, err.code, err.message, err.hint, extra={"files": [final.name]})
     ids = list(dict.fromkeys(int(i) for i in layer_ids or []))
     if file_id is not None and not ids:
         ids = ls_store.layer_ids(conn, file_id) if _is_file(conn, file_id) else []

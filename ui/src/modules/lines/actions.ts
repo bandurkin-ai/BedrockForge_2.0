@@ -43,6 +43,6 @@ export interface LinesExportBody {
 }
 
 /** Starts the job `export.lines`. */
-export function startLinesExport(body: LinesExportBody): Promise<{ source: string; id: number }> {
-  return api.post("/lines/export", body);
+export function startLinesExport(body: LinesExportBody, overwrite = false): Promise<{ source: string; id: number }> {
+  return api.post("/lines/export", { ...body, overwrite });
 }

@@ -15,6 +15,8 @@ import css from "../../shell/PropsParts.module.css";
 import { refresh as refreshJobs } from "../jobs/state";
 import { sceneObjects, type LineFileInfo } from "../scene/objects";
 import { startLinesExport } from "./actions";
+import { askConfirm } from "../../shell/dialogs";
+import { overwriteQuestion, startWithOverwrite } from "../rasters/export";
 import { CSV_DEFAULTS, csvError, exportBody, exportLayers, exportName, exportReason, exportTotals, formatInfo, LINES_FORMATS, skippedNote, type CsvOptions, type LinesFormat } from "./export";
 import { layerCounts, shownLayers } from "./tree";
 
@@ -41,7 +43,13 @@ export function LinesExportWindow({ winId, format: initial, layerIds }: { winId:
     if (reason || !path) return;
     setBusy(true);
     try {
-      await startLinesExport(exportBody(files, ids, format, path, csv));
+      const body = exportBody(files, ids, format, path, csv);
+      // the format adds its extension and that file exists: ask before replacing it (409 `files_exist`)
+      const started = await startWithOverwrite((overwrite) => startLinesExport(body, overwrite), (names) => askConfirm(overwriteQuestion(names)));
+      if (!started) {
+        setBusy(false);
+        return;
+      }
       showJobs(app);
       await refreshJobs();
       closeWindow(winId);

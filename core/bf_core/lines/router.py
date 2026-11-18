@@ -135,6 +135,8 @@ class ExportBody(BaseModel):
     delimiter: str | None = Field(default=None, min_length=1, max_length=1)
     decimal: str | None = Field(default=None, pattern="^[.,]$")
     encoding: str | None = Field(default=None, max_length=20)
+    # the file under the name with the format's extension exists: the user agreed to replace it (409 before)
+    overwrite: bool = False
 
 
 @router.post("/export")

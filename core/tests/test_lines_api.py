@@ -304,3 +304,24 @@ def test_export_job_from_the_api(lines, tmp_path: Path) -> None:  # type: ignore
     job = wait_job(c, r.json()["source"], r.json()["id"])
     assert job["status"] == "done" and job["title"] == "Экспорт линий (DXF)", job
     assert target.is_file() and target.stat().st_size > 0
+
+
+def test_export_asks_before_replacing_the_file_with_the_added_extension(lines, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """Review Э7: the save window asked about «план», the format writes «план.dxf» — an existing one is not
+    replaced silently: 409 `files_exist` {files}, then `overwrite: true` starts the job."""
+    c = lines["client"]
+    chosen = tmp_path / "план"
+    (tmp_path / "план.dxf").write_bytes(b"old")
+    body = {"path": str(chosen), "format": "dxf", "layer_ids": lines["layers"][:1]}
+    r = c.post(f"{API}/lines/export", json=body)
+    assert r.status_code == 409, r.text
+    assert r.json()["code"] == "files_exist" and r.json()["files"] == ["план.dxf"] and r.json()["hint"]
+    r = c.post(f"{API}/lines/export", json={**body, "overwrite": True})
+    assert r.status_code == 200, r.text
+    job = wait_job(c, r.json()["source"], r.json()["id"])
+    assert job["status"] == "done", job
+    assert (tmp_path / "план.dxf").read_bytes() != b"old"
+    # the chosen name with the right extension: the save window already asked
+    r = c.post(f"{API}/lines/export", json={**body, "path": str(tmp_path / "план.dxf")})
+    assert r.status_code == 200, r.text
+    wait_job(c, r.json()["source"], r.json()["id"])
