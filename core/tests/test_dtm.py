@@ -385,3 +385,27 @@ def test_speed_one_million_points(capsys: pytest.CaptureFixture[str]) -> None:
     with capsys.disabled():
         print(f"\n[speed] DTM 1M points: {seconds:.2f} s ({report['triangles']} triangles)")
     assert seconds < 30  # ADR 0011 «Замеры»: the first measure sets the budget (about 3 s here)
+
+
+def test_constraint_edges_go_as_vertind_on_every_platform() -> None:
+    """windows CI (Э7): pybind11 refused `np.uint32` edges ('L' on Windows); `np.uintc` is C `unsigned int`,
+    and a build that still refuses the buffer gets `cdt.Edge` objects."""
+    import pythoncdt as cdt
+
+    from bf_core.geo.dtm import _insert_edges
+
+    class Picky:
+        """A triangulation that refuses buffers like the Windows build did."""
+
+        def __init__(self) -> None:
+            self.got: list[object] = []
+
+        def insert_edges(self, edges: object) -> None:
+            if isinstance(edges, np.ndarray):
+                raise RuntimeError("Incompatible format: expected a CDT::VertInd array!")
+            self.got = list(edges)  # type: ignore[call-overload]
+
+    picky = Picky()
+    _insert_edges(cdt, picky, np.array([[0, 2], [1, 3]], dtype=np.int64))
+    assert [(e.v1, e.v2) for e in picky.got] == [(0, 2), (1, 3)]  # type: ignore[attr-defined]
+    assert np.dtype(np.uintc).char == "I"

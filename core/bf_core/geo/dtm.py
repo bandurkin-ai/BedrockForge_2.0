@@ -95,6 +95,20 @@ def _merge(x, y, z, cx, cy, tol, ztol, code, message):  # type: ignore[no-untype
 # --- triangulation ---------------------------------------------------------------------------------------
 
 
+def _insert_edges(cdt, tri, edges) -> None:  # type: ignore[no-untyped-def]
+    """Constraint edges as CDT::VertInd (C `unsigned int`, buffer format 'I'). `np.uintc` is that type on every
+    platform; `np.uint32` may be described as 'L' on Windows, which pybind11 refuses ("Incompatible format:
+    expected a CDT::VertInd array!" — windows CI, Э7). Should a build still refuse the buffer, the edges go
+    as `cdt.Edge` objects (slower, same result)."""
+    arr = np.ascontiguousarray(edges, dtype=np.uintc)
+    try:
+        tri.insert_edges(arr)
+    except RuntimeError as exc:
+        if "Incompatible format" not in str(exc):
+            raise
+        tri.insert_edges([cdt.Edge(int(a), int(b)) for a, b in arr])
+
+
 def _cdt(cx, cy, edges, tol):  # type: ignore[no-untyped-def]
     """Constrained Delaunay triangulation → (triangles (m,3) int64 CCW, neighbours (m,3) int64, fixed edges).
 
@@ -106,7 +120,7 @@ def _cdt(cx, cy, edges, tol):  # type: ignore[no-untyped-def]
     try:
         tri.insert_vertices(np.ascontiguousarray(np.column_stack([cx, cy])))
         if len(edges):
-            tri.insert_edges(np.ascontiguousarray(edges, dtype=np.uint32))
+            _insert_edges(cdt, tri, edges)
     except RuntimeError as exc:
         raise DtmError(
             "triangulation_failed",
