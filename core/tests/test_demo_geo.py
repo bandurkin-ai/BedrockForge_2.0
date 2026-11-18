@@ -104,7 +104,8 @@ def test_trench_is_a_hole_with_stations_at_its_vertices_and_samples_along_it(dem
         total = conn.execute(sa.select(sa.func.count()).select_from(dh_rows)).scalar_one()
     assert len(collars) == 48
     line = geo.trench_line(collars)
-    assert len(line) == 9 and hole["attrs"] == {"TYPE": "Канава"} and hole["azimuth"] is None and hole["dip"] is None
+    assert hole["attrs"] == {"TYPE": "Канава", "status": "Завершена", "stage": "2025"}
+    assert len(line) == 9 and hole["azimuth"] is None and hole["dip"] is None
     assert np.array([hole["x"], hole["y"], hole["z"]]).tobytes() == line[0].tobytes()
     # a station at every vertex: its coordinates bit for bit, its depth — the 3D length from the first vertex
     assert np.array([s[1:4] for s in stations]).tobytes() == line.tobytes() and all(s[4] is None for s in stations)
@@ -165,7 +166,7 @@ def test_lines_points_plan_and_dtm(demo) -> None:  # type: ignore[no-untyped-def
     for layer in (road, points):
         ground = geo.relief(layer.xyz[:, 0], layer.xyz[:, 1], collars)
         assert np.abs(ground - layer.xyz[:, 2]).max() <= 0.005 + 1e-9
-    assert points.point_count == 23 * 19 + 9 and points.attrs.column("Код").to_pylist().count("канава") == 9
+    assert points.point_count == 25 * 19 + 9 and points.attrs.column("Код").to_pylist().count("канава") == 9
     assert np.isfinite(points.xyz).all() and np.isfinite(road.xyz).all() and np.isfinite(ore.xyz).all()
     # the ground meets the collars within centimetres where the function is asked, exactly in the DTM
     assert np.abs(geo.relief(collars[:, 0], collars[:, 1], collars) - collars[:, 2]).max() < 0.01
@@ -173,15 +174,15 @@ def test_lines_points_plan_and_dtm(demo) -> None:  # type: ignore[no-untyped-def
     # the plan: the centre of the top-left pixel is where the world file puts it; the corners are the area
     assert [r["name"] for r in rasters] == ["План участка"]
     plan = rasters[0]
-    assert (plan["width"], plan["height"]) == (1100, 900) and not plan["vertical"] and plan["elevation"] is None
+    assert (plan["width"], plan["height"]) == (1200, 900) and not plan["vertical"] and plan["elevation"] is None
     a, b, cc, d, e, f = plan["georef"]["affine"]
     assert abs(a * 0.5 + b * 0.5 + cc - 4900.25) <= 1e-9 and abs(d * 0.5 + e * 0.5 + f - 8349.75) <= 1e-9
     assert plan["georef"]["source"] == "world"
-    assert [p[:2] for p in plan["georef"]["corners3d"]] == [[4900.0, 8350.0], [5450.0, 8350.0], [5450.0, 7900.0], [4900.0, 7900.0]]
+    assert [p[:2] for p in plan["georef"]["corners3d"]] == [[4900.0, 8350.0], [5500.0, 8350.0], [5500.0, 7900.0], [4900.0, 7900.0]]
     assert set(roles) == {"source", "sidecar:pgw", "display0", "display1"}
     assert store.read_bytes(roles["sidecar:pgw"]).decode("ascii").split() == ["0.5", "0.0", "0.0", "-0.5", "4900.25", "8349.75"]
     source = Image.open(io.BytesIO(store.read_bytes(roles["source"])))
-    assert source.format == "PNG" and source.size == (1100, 900)
+    assert source.format == "PNG" and source.size == (1200, 900)
     # a collar is drawn where it is: the dark dot at the pixel of DH-001
     px = np.asarray(source.convert("RGB"))
     col, row = int((collars[0, 0] - 4900.0) / 0.5), int((8350.0 - collars[0, 1]) / 0.5)
@@ -195,12 +196,13 @@ def test_lines_points_plan_and_dtm(demo) -> None:  # type: ignore[no-untyped-def
     vertices = {row.tobytes() for row in v}
     for source_xyz in (points.xyz, collars, road.xyz):
         assert all(row.tobytes() in vertices for row in source_xyz)  # float64 bit for bit
-    assert len(v) == points.point_count + 48 + road.point_count and len(t) > 900
+    # (the spur starts at a vertex of the road: the two are one vertex of the surface)
+    assert len(v) == points.point_count + 48 + road.point_count - 1 and len(t) > 900
     area = 0.5 * np.abs(
         (v[t[:, 1], 0] - v[t[:, 0], 0]) * (v[t[:, 2], 1] - v[t[:, 0], 1])
         - (v[t[:, 2], 0] - v[t[:, 0], 0]) * (v[t[:, 1], 1] - v[t[:, 0], 1])
     )
-    assert area.min() > 0 and 0.9 * 550 * 450 < area.sum() <= 550 * 450  # the hull of the survey, no overlaps
+    assert area.min() > 0 and 0.9 * 600 * 450 < area.sum() <= 600 * 450  # the hull of the survey, no overlaps
     # every segment of the road is an edge of the surface (a structural line)
     index = {row.tobytes(): i for i, row in enumerate(v)}
     edges = {frozenset(e) for tri in t.tolist() for e in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0]))}
@@ -268,6 +270,10 @@ def test_demo_is_the_same_everywhere_and_the_audit_finds_nothing_new(demo) -> No
         "SURVEY_BEYOND_TD", "ASSAY_NEGATIVE_VALUE", "ASSAY_OVERLAP", "ASSAY_GAP", "ASSAY_EMPTY_VALUE",
         "ASSAY_DUPLICATE_SAMPLE", "SURVEY_DOGLEG",
     }  # fmt: skip
+    assert set(found) == {
+        "SURVEY_BEYOND_TD", "ASSAY_NEGATIVE_VALUE", "ASSAY_OVERLAP", "ASSAY_GAP", "ASSAY_EMPTY_VALUE",
+        "ASSAY_DUPLICATE_SAMPLE", "SURVEY_DOGLEG",
+    }  # fmt: skip
     rows = c.get(f"{API}/audit/sets/{set_id}/findings", params={"limit": 500}).json()
-    assert rows["total"] == sum(found.values()) and rows["total"] > 0
-    assert not [x for x in rows["rows"] if x["hole"] == geo.TRENCH], "the trench must not add findings"
+    assert rows["total"] == len(rows["findings"]) > 0
+    assert geo.TRENCH not in str(rows["findings"]), "the trench must not add findings"

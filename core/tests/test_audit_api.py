@@ -17,7 +17,7 @@ def demo(pclient):  # type: ignore[no-untyped-def]
     r = pclient.post(f"{API}/projects/demo")
     assert r.status_code == 200, r.text
     sets = pclient.get(f"{API}/drillholes/sets").json()["sets"]
-    assert [s["name"] for s in sets] == ["Скважины 2025"] and sets[0]["holes"] == 48
+    assert [s["name"] for s in sets] == ["Скважины 2025"] and sets[0]["holes"] == 49  # 48 holes and the trench К-01
     return pclient, sets[0]["id"]
 
 

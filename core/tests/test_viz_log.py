@@ -26,7 +26,7 @@ def _log(c, set_id: int, body: dict, status: int = 200) -> dict:  # type: ignore
 def test_hole_names_in_set_order(demo) -> None:  # type: ignore[no-untyped-def]
     c, set_id = demo
     r = c.get(f"{API}/viz/sets/{set_id}/hole-names")
-    assert r.status_code == 200 and r.json() == {"names": [f"DH-{i:03d}" for i in range(1, 49)]}
+    assert r.status_code == 200 and r.json() == {"names": [*(f"DH-{i:03d}" for i in range(1, 49)), "К-01"]}
     assert c.get(f"{API}/viz/sets/999999/hole-names").json()["code"] == "set_not_found"
 
 

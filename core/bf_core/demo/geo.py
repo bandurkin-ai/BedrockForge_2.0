@@ -32,7 +32,7 @@ from bf_core.storage.blobs import BlobStore
 
 from .drillholes import SET_NAME
 
-AREA = (4900.0, 7900.0, 5450.0, 8350.0)  # x0, y0, x1, y1 of the survey and of the plan
+AREA = (4900.0, 7900.0, 5500.0, 8350.0)  # x0, y0, x1, y1 of the survey and of the plan
 PAD = (4994.0, 7994.0, 5356.0, 8256.0)  # the hole grid (8 × 6 holes at 50 m, each within 5 m of its node)
 PIXEL = 0.5  # metres in a pixel of the plan
 TRENCH = "К-01"
@@ -128,6 +128,9 @@ def add_trench(conn: sa.Connection, _store: BlobStore, rng: random.Random) -> No
     hole = int(
         conn.execute(sa.select(dh_holes.c.id).where(dh_holes.c.set_id == set_id, dh_holes.c.name == TRENCH)).scalar_one()
     )
+    # the attributes the holes of the set carry, next to the type the trenches get
+    attrs = {"TYPE": "Канава", "status": "Завершена", "stage": "2025"}
+    conn.execute(sa.update(dh_holes).where(dh_holes.c.id == hole).values(attrs=attrs))
     table = conn.execute(
         sa.select(dh_tables.c.id, dh_tables.c.row_count).where(dh_tables.c.set_id == set_id, dh_tables.c.kind == "assay")
     ).one()
