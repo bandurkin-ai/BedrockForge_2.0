@@ -12,13 +12,16 @@ Parts. The triangles are stored along a Z-order curve (`wireframes/store.py`), a
 origin of a part is the centre of its extent rounded to a whole metre (float64), so the float32 offsets stay
 below 8000.5 m: a step of 2⁻¹¹ m, an error ≤ 0.25 mm per axis.
 
-Levels. 0 — every triangle; 1 and 2 — about 1/8 and 1/64 of them (pyfqmr, `geo/meshes.py::levels`). The
-vertices on the border of a part are the same float32 numbers at every level, so parts drawn at different
+Levels. 0 — every triangle; 1 and 2 — about 1/8 and 1/64 of them (`geo/meshes.py::levels`: flat regions
+are thinned in their planes, `geo/flat.py`, the rest is decimated by pyfqmr). The vertices on the border of a
+part are the same float32 numbers at every level, so parts drawn at different
 levels join without cracks; that is also why a level cannot go below what the border of its part needs
 (`triangles` of the answer is what it holds, `simplified` — whether it is fewer than `source_triangles`).
 Levels 1 and 2 are files `cache\\mesh\\<key>\\<k>-<lod>.bfa` (the answers themselves): built for the whole
 wireframe by the job that creates it (`build_cache`), or for one part on its first request; the folder is
-derived data and may be deleted. The key is the SHA-256 of the blobs, the part table and the limits above.
+derived data and may be deleted. The key is the SHA-256 of the blobs, the part table, the limits above and
+`ALGO` — the way the levels are made: levels cached by an earlier way are not used, and their folder goes
+when a part of the geometry is made anew on a request.
 
 The ETag of a part is the SHA-256 of its key: project, wireframe, creation time, blobs, part, level and the
 limits — not `objects.version`, so a new name, colour or DTM setting re-reads the manifest only.
@@ -50,7 +53,7 @@ from . import binary
 from .keys import FORMAT, _stamp, etag
 
 WIREFRAME = "wireframe"
-ALGO = 1  # the way levels are made: a change here makes new cache folders
+ALGO = 2  # the way levels are made: a change here makes new cache folders (2 — flat regions first, ADR 0013)
 MAX_U2_VERTICES = 65_536
 TABLES_KEPT = 8
 
@@ -81,12 +84,12 @@ def bad_lod() -> ApiError:
 # --- the state of a wireframe and its ETags --------------------------------------------------------------
 
 
-def cache_key(blobs: tuple[tuple[str, str], ...], render: dict[str, Any] | None) -> str:
-    """The name of the cache folder of a geometry: its blobs ((role, sha256), sorted), its part table and the
-    limits the levels are made with."""
+def cache_key(blobs: tuple[tuple[str, str], ...], render: dict[str, Any] | None, algo: int = ALGO) -> str:
+    """The name of the cache folder of a geometry: its blobs ((role, sha256), sorted), its part table, the
+    limits the levels are made with and the way they are made (`algo`: an earlier one names a stale folder)."""
     table = json.dumps(render, sort_keys=True, separators=(",", ":"))
     limits = [gm.PART_TRIANGLES, gm.MAX_SPAN_M, gm.LOD_RATIO, gm.LOD_LEVELS, gm.LOD_MIN_TRIANGLES]
-    text = json.dumps([FORMAT, ALGO, [list(b) for b in blobs], hashlib.sha256(table.encode()).hexdigest(), limits])
+    text = json.dumps([FORMAT, algo, [list(b) for b in blobs], hashlib.sha256(table.encode()).hexdigest(), limits])
     return hashlib.sha256(text.encode()).hexdigest()[:32]
 
 
@@ -371,4 +374,6 @@ def part(project: Any, state: MeshState, k: int, lod: int) -> bytes:
         bodies = _bodies(project, state, p, SIMPLIFIED)
         for level, body in bodies.items():
             _write(_cache_file(project.folder, key, k, level), body)
+        for algo in range(1, ALGO):  # the levels of this geometry made an earlier way: nobody reads them
+            drop_cache(project.folder, cache_key(state.blobs, state.render, algo))
     return bodies[lod]

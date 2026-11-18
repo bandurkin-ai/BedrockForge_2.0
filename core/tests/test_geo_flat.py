@@ -1,8 +1,10 @@
 """Flat regions of a mesh before pyfqmr (ADR 0013 §4 `flat.py`, «Долги Э7»): a dense plane tilted both ways
-goes down to 1/8 and 1/64 of its triangles with no new vertex (the deviation from the plane is 0, area 1e-9);
-faces and straight edges of a box keep its volume and area (1e-12); the border of a part and of a hole stays
-bit for bit and the borders of neighbouring parts coincide at every level; relief and noise above the
-tolerance are left to pyfqmr, which never gets the flat vertices that stayed; hard meshes do not break it."""
+goes down to 1/8 and 1/64 of its triangles with no new vertex (the deviation from the plane is 0, area 1e-9,
+triangles of quality 0.4 and 0.1); faces and straight edges of a box keep its volume and area (1e-12);
+the border of a part and of a hole stays bit for bit and the borders of neighbouring parts coincide at every
+level; relief and noise above the tolerance are left to pyfqmr, which never gets the flat vertices that
+stayed; strips between edges (benches of a pit) are emptied; hard meshes — slivers, triangles without area
+or given twice, edges of three triangles, a patch turned over, a fan of 104 triangles — do not break it."""
 
 from __future__ import annotations
 
@@ -70,7 +72,7 @@ def test_a_plane_tilted_both_ways_reaches_its_share_and_stays_the_same_surface(s
     assert looks_up(out_v, out_t)
     assert areas(out_v, out_t).sum() == pytest.approx(178.0 * 178.0 * SLOPE, rel=1e-9)
     assert under(out_v, out_t) == pytest.approx(under(local, t), rel=1e-12)
-    assert quality(out_v, out_t).min() >= flat.QUALITY[-1] * 0.999  # no slivers
+    assert quality(out_v, out_t).min() >= {8: 0.4, 64: 0.1}[share] * 0.999  # well-shaped triangles, no slivers
 
 
 def test_relief_and_noise_above_the_tolerance_are_left_alone() -> None:
@@ -199,6 +201,19 @@ def test_hard_meshes_keep_their_surface() -> None:
     assert flat.thin(v, t, len(t))[1] is t
 
 
+def test_a_fan_with_slivers_of_its_own_is_cut_no_worse_than_it_is() -> None:
+    v, t = grid(30, 30, lambda x, y: 0 * x, offset=np.zeros(3))
+    v[:, 0] *= 1e4  # cells of 10 km × 1 m, the way strings of sections are joined
+    v[:, 2] = 0.3 * v[:, 0] - 0.2 * v[:, 1]
+    before = quality(v, t).min()
+    assert before < flat.QUALITY[-1] / 5  # every triangle is worse than the last step of quality
+    out_v, out_t, _held = flat.thin(v, t, len(t) // 4)
+    assert len(out_t) in (len(t) // 4, len(t) // 4 - 1) and rows(out_v) <= rows(v) and looks_up(out_v, out_t)
+    assert quality(out_v, out_t).min() >= before * 0.999
+    assert areas(out_v, out_t).sum() == pytest.approx(areas(v, t).sum(), rel=1e-12)
+    assert rows(out_v[border_vertices(out_t)]) == rows(v[border_vertices(t)])
+
+
 def test_the_result_does_not_depend_on_the_run_or_on_read_only_input() -> None:
     v, t = grid(50, 40, tilted)
     local = local_of(v)
@@ -226,7 +241,7 @@ def test_pyfqmr_gets_the_rest_and_the_plane_stays_a_plane() -> None:
     local, tri = gm.part_mesh(v, t, p)
     made = gm.levels(local, tri)
     counts = [len(m[1]) for m in made]
-    assert counts[1] <= len(tri) / 8 * 1.02 and counts[2] <= len(tri) / 64 * 1.3  # the border allows 1/64 here
+    assert counts[1] <= len(tri) / 8 and counts[2] <= len(tri) / 64 * 1.02  # the border allows 1/64 here
     border = rows(local[border_vertices(tri)])
     worst = []
     for lv, lt in made[1:]:
@@ -237,6 +252,93 @@ def test_pyfqmr_gets_the_rest_and_the_plane_stays_a_plane() -> None:
         worst.append(float(np.abs(rel[:, 2] - half(rel[:, 0], rel[:, 1])).max()))
     print("half a plane, half relief: triangles", counts, "deviation, m", [round(w, 3) for w in worst])
     assert worst[0] < 1.0 and worst[1] < 6.0  # the relief is up to 60 m high; it was 5.4 m with the plane spoilt
+
+
+def pit(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Benches 10 m wide and slopes 10 m wide and high, across a direction 30° off X: flat strips tilted both
+    ways between bands of triangles that step over the edges."""
+    s = x * np.cos(np.radians(30.0)) + y * np.sin(np.radians(30.0))
+    k = np.floor(s / 20.0)
+    return np.asarray(300.0 - 10.0 * k - np.maximum(s - 20.0 * k - 10.0, 0.0))
+
+
+def test_strips_between_edges_are_emptied_and_the_levels_reach_their_shares() -> None:
+    v, t = grid(178, 178, pit)
+    t = t[gm.morton_order(v, t)]
+    (p,) = gm.parts_table(v, t)
+    local, tri = gm.part_mesh(v, t, p)
+    out_v, out_t, held = flat.thin(local, tri, 1)
+    assert len(out_t) < len(tri) * 0.3 and not held.any()  # every vertex inside a strip has gone (fans left 9 %)
+    assert under(out_v, out_t) == pytest.approx(under(local, tri), rel=1e-12)
+    made = gm.levels(local, tri)
+    counts = [len(m[1]) for m in made]
+    assert counts[1] <= len(tri) / 8 and counts[2] <= len(tri) / 64 * 1.02
+    border = rows(local[border_vertices(tri)])
+    worst = []
+    for lv, lt in made[1:]:
+        rel = lv + np.array(p.origin) - UTM
+        assert rows(lv[border_vertices(lt)]) == border
+        worst.append(float(np.abs(rel[:, 2] - pit(rel[:, 0], rel[:, 1])).max()))
+    print("benches of a pit: triangles", counts, "deviation, m", [round(w, 3) for w in worst])
+    assert worst[0] < 0.3 and worst[1] < 0.4  # as pyfqmr alone (0.09 and 0.13); the mesh itself cuts 0.34 off
+
+
+def wheel(spokes: int, rings: int, fins: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A flat disc tilted both ways — a hub and `spokes` vertices on its rim — in the middle of relief on
+    `rings` rings around it; the last ring is the border. `fins` puts a third sheet — two triangles — on two
+    edges of the rim that meet: edges of three triangles. Returns (xyz, tri, rim)."""
+    ang = np.arange(spokes) * (2 * np.pi / spokes)
+    pts = [np.array([[0.0, 0.0, 0.0]])]
+    for j in range(rings + 1):
+        r = 50.0 + 12.0 * j
+        z = 0.3 * r * np.cos(ang) - 0.2 * r * np.sin(ang) + (3.0 * np.sin(5 * ang + j) * min(j, 2) if j else 0.0)
+        pts.append(np.column_stack([r * np.cos(ang), r * np.sin(ang), z]))
+    v = np.concatenate(pts)
+    ring = lambda j: 1 + j * spokes + np.arange(spokes)  # noqa: E731
+    nxt = lambda a: np.roll(a, -1)  # noqa: E731
+    tri = [np.column_stack([np.zeros(spokes, dtype=np.int64), ring(0), nxt(ring(0))])]
+    for j in range(rings):
+        a, b = ring(j), ring(j + 1)
+        tri += [np.column_stack([a, b, nxt(b)]), np.column_stack([a, nxt(b), nxt(a)])]
+    t = np.concatenate(tri)
+    if fins:
+        top = len(v)
+        v = np.concatenate([v, [[60.0, 3.0, 40.0]]])
+        t = np.concatenate([t, [[1, 2, top], [2, 3, top]]])
+    return v + UTM, t.astype(np.int32), ring(0)
+
+
+def test_a_flat_vertex_that_stayed_is_kept_away_from_pyfqmr_and_joined_back() -> None:
+    spokes = flat.MAX_RING + 40
+    v, t, rim = wheel(spokes, 6)
+    local = local_of(v)
+    _v, _t, held = flat.thin(local, t, len(t) // 8)
+    assert held.tolist() == [True] + [False] * (len(local) - 1)  # the hub: its fan is longer than the buffers
+    out_v, out_t = gm.simplify(local, t, len(t) // 8)
+    assert len(out_t) < len(t) / 2 and out_t.dtype == np.int32 and int(out_t.max()) < len(out_v)
+    disc = np.concatenate([[0], rim])
+    assert rows(local[disc]) <= rows(out_v)  # the hub and the rim of its fan are where they were
+    at = {r.tobytes(): i for i, r in enumerate(out_v)}
+    hub = at[local[0].tobytes()]
+    fan = out_t[(out_t == hub).any(axis=1)]
+    assert len(fan) == spokes and rows(out_v[np.unique(fan)]) == rows(local[disc])  # the disc as it was
+    assert gm.edge_summary(out_t, len(out_v)) == (spokes, 0)  # one piece: only the last ring is a border
+    assert rows(out_v[border_vertices(out_t)]) == rows(local[border_vertices(t)])
+
+
+def test_a_cut_that_is_no_border_gives_the_mesh_to_pyfqmr_whole() -> None:
+    v, t, rim = wheel(flat.MAX_RING + 40, 6, fins=True)
+    local = local_of(v)
+    _v, _t, held = flat.thin(local, t, len(t) // 8)
+    keep = held[t].any(axis=1)
+    used = np.unique(t[~keep])
+    seam = np.searchsorted(used, np.intersect1d(t[keep], used))
+    rest = np.searchsorted(used, t[~keep]).astype(np.int32)
+    assert held[0] and not flat.bordered(rest, seam)  # a vertex of the rim: every edge at it has two triangles left
+    assert flat.bordered(rest, np.delete(seam, 1))
+    out_v, out_t = gm.simplify(local, t, len(t) // 8)
+    assert len(out_t) < len(t) / 2  # not left as it was
+    assert rows(out_v[border_vertices(out_t)]) <= rows(local[border_vertices(t)])
 
 
 def test_borders_of_neighbouring_parts_of_a_plane_coincide_at_every_level() -> None:

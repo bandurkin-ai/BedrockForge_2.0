@@ -7,7 +7,8 @@ Ported from BF `geo/meshes.py` (`morton_order`, `chunk_table`, `simplify`, `lod_
     morton_order(v, t)          triangles along a Z-order curve of their centroids
     parts_table(v, t)           runs of at most 64 000 consecutive triangles, none wider than 16 km
     part_mesh(v, t, part)       the vertices of a part from its origin (exact float64) and its triangles
-    levels(local, tri)          the part at 1, 1/8 and 1/64 of its triangles (pyfqmr, the border kept)
+    levels(local, tri)          the part at 1, 1/8 and 1/64 of its triangles (flat regions thinned in their
+                                planes — `flat.py`, the rest by pyfqmr; the border kept)
     mesh_stats(v, t)            area, volume of a closed solid, open and non-manifold edges
 
 Differences from BF. The Morton code uses one scale for the three axes (BF scaled every axis to its own span,
@@ -245,7 +246,9 @@ def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarra
         sub = np.ascontiguousarray(inverse.reshape(-1, 3), dtype=np.int32)
         seam = np.intersect1d(kept, used)
         if flat.bordered(sub, np.searchsorted(used, seam)):  # pyfqmr keeps the vertices of a border
-            made = _decimate(v[used], sub, count - len(kept))
+            # what was held back may take the whole target: the rest then keeps its own share, not nothing
+            goal = count - len(kept) if count > len(kept) else len(rest) // LOD_RATIO
+            made = _decimate(v[used], sub, goal)
             return (flat.join(v, kept, seam, *made) if made else None) or (v, t)
         # an edge of three triangles and the like: the cut is no border — pyfqmr gets the mesh whole
     return _decimate(v, t, count) or (v, t)

@@ -18,22 +18,26 @@ vertex with an open fan — the border of the part, of a hole — never goes: ne
 common border bit for bit at every level (ADR 0004 §3). A fold, a triangle without area, a vertex on a new
 edge and an edge that the mesh has already are refused.
 
-Order. Passes over the vertices in a scattered order; a vertex that goes closes the vertices around it until
-the next pass, so every pass thins the mesh evenly, and the last, partial, pass — evenly too. The least
-quality allowed for a new triangle goes down a step (`QUALITY`) only when nothing can go at the current one,
-so the triangles stay as good as the border and the target allow.
+Order. The vertices that may go are found in one sweep in the order of the mesh, then visited in passes in
+a scattered order; a vertex that goes closes the vertices around it until the next pass, so every pass thins
+the mesh evenly, and the last, partial, pass — evenly too. The least quality allowed for a new triangle goes
+down a step (`QUALITY`) only when nothing can go at the current one, so the triangles stay as good as the
+border and the target allow (the grid of Э7: all above 0.4 at 1/8 and above 0.1 at 1/64). A fan that has
+slivers of its own may be cut as badly as it is, not worse: wireframes from files are full of them.
 
 `held` of the answer marks the vertices of flat regions and straight edges that stayed (no cut of the hole
 was good enough, or the fan is longer than `MAX_RING`): pyfqmr must not get their triangles — `join` puts
 them back after it (`geo/meshes.py::simplify`). Everything else — relief, noise above the tolerance,
 corners, edges that bend — has a quadric of full rank and is left to pyfqmr.
 
-ADR 0013 names the collapse of an edge onto a neighbour; a collapse is one of the cuts of the hole (a fan
-from that neighbour) and leaves long fans in strips between edges — benches of a pit: vertices that could
-not go, slivers. The cut by ears has no such case; the properties the ADR asks for are the same.
+ADR 0013 names the collapse of an edge onto a neighbour. A collapse is one of the cuts of the hole — a fan
+from that neighbour — and in strips between edges (benches of a pit) the fans get long: vertices that cannot
+go, slivers, a pit simplified worse than before. The cut by ears has no such case; what the ADR asks for —
+no new vertex, the deviation 0, the border untouched — is the same.
 
-Time is linear: a vertex that could not go is tried again only after its fan has changed or the quality has
-gone down a step. numba is imported with this module: import it lazily, never before BF-READY.
+Time is linear in the mesh: a vertex that could not go is tried again only after its fan has changed or the
+quality has gone down a step. A part of 64 000 triangles: 11 ms when nothing in it is flat, 45 ms when
+everything is. numba is imported with this module: import it lazily, never before BF-READY.
 """
 
 from __future__ import annotations
@@ -46,8 +50,8 @@ import numpy as np
 from bf_core.jit import njit
 
 FLAT_TOL = 1e-6  # the sine of the largest angle between an edge at a vertex and the plane of its fan
-QUALITY = (0.4, 0.2, 0.1, 0.05, 0.02, 0.005, 0.001)  # the least quality of a new triangle, step by step
-MAX_RING = 64  # the longest fan that is looked at: the choice of a neighbour is quadratic in it
+QUALITY = (0.4, 0.2, 0.1, 0.05, 0.02, 0.005, 0.001)  # the least quality of a new triangle (1 — equilateral)
+MAX_RING = 64  # the longest fan that is looked at: the cut of its hole is cubic in it
 MAX_PASSES = 400
 _Q = 2.0 * math.sqrt(3.0)  # twice the area over the sum of the squared sides is 1/_Q for an equilateral triangle
 
@@ -68,7 +72,7 @@ def _prune(v, alive, head, nxt):  # type: ignore[no-untyped-def]
         c = following
 
 
-@njit(cache=True, nogil=True)
+@njit(cache=True, nogil=True, inline="always")
 def _fan(v, tri, head, nxt, slot, ra, rb, rt, ring, rtri):  # type: ignore[no-untyped-def]
     """The closed fan of a vertex in order: triangle rtri[s] is (v, ring[s], ring[s + 1]). Returns the number
     of triangles; 0 — the fan is open, is not one cycle or is not oriented one way; −1 — it is longer than
@@ -109,7 +113,7 @@ def _fan(v, tri, head, nxt, slot, ra, rb, rt, ring, rtri):  # type: ignore[no-un
     return k if ok else 0
 
 
-@njit(cache=True, nogil=True)
+@njit(cache=True, nogil=True, inline="always")
 def _planes(k, d, cr, c2, off, side, nrm, tol2):  # type: ignore[no-untyped-def]
     """How the fan of a vertex lies (d — the ring from the vertex). Returns (kind, p, q):
     1 — in one plane (nrm[0], side 0 everywhere);
@@ -337,6 +341,21 @@ def _stride(n):  # type: ignore[no-untyped-def]
         step += 1
 
 
+@njit(cache=True, nogil=True, inline="always")
+def _look(v, xyz, tri, head, nxt, slot, ra, rb, rt, ring, rtri, d, cr, c2, off, side, nrm, tol2):  # type: ignore[no-untyped-def]
+    """The fan of a vertex and how it lies: (k, kind, p, q) of `_fan` and `_planes`; kind 0 when k ≤ 0."""
+    k = _fan(v, tri, head, nxt, slot, ra, rb, rt, ring, rtri)
+    if k <= 0:
+        return k, 0, 0, 0
+    for s in range(k):
+        r = ring[s]
+        d[s, 0] = xyz[r, 0] - xyz[v, 0]
+        d[s, 1] = xyz[r, 1] - xyz[v, 1]
+        d[s, 2] = xyz[r, 2] - xyz[v, 2]
+    kind, p, q = _planes(k, d, cr, c2, off, side, nrm, tol2)
+    return k, kind, p, q
+
+
 @njit(cache=True, nogil=True)
 def _thin(xyz, tri, alive, cand, target, tol, quality, max_ring, max_passes):  # type: ignore[no-untyped-def]
     """Take vertices of flat fans and of straight edges (see the module) out of `tri` until `target` triangles
@@ -368,17 +387,13 @@ def _thin(xyz, tri, alive, cand, target, tol, quality, max_ring, max_passes):  #
     side = np.empty(max_ring, np.uint8)
     nrm = np.empty((2, 3), np.float64)
     tol2 = tol * tol
-    queue = np.empty(n, np.int32)
-    step = _stride(n) if n > 0 else 1
-    for i in range(n):
-        queue[i] = (i * step) % n
+    queue = np.arange(n).astype(np.int32)
     live = n
     count = m
     stage = 0
     since = 1  # the first pass of the current step of quality
-    passno = 0
+    passno = 0  # pass 0 takes nothing out: it finds the vertices that may go at all
     while count > target and live > 0 and stage < len(quality) and passno < max_passes:
-        passno += 1
         done = 0
         kept = 0
         for i in range(live):
@@ -386,57 +401,39 @@ def _thin(xyz, tri, alive, cand, target, tol, quality, max_ring, max_passes):  #
             floor = quality[stage]
             if count <= target:  # enough: the rest of the queue is not looked at
                 break
-            if changed[v] == passno or (tried[v] >= since and changed[v] < tried[v]):
+            if passno > 0 and (changed[v] == passno or (tried[v] >= since and changed[v] < tried[v])):
                 queue[kept] = v  # closed until the next pass, or nothing new since it could not go
                 kept += 1
                 continue
-            k = _fan(v, tri, head, nxt, slot, ra, rb, rt, ring, rtri)
-            if k <= 0:
-                if k == 0:
-                    cand[v] = False
-                else:
-                    queue[kept] = v
-                    kept += 1
+            k, kind, p, q = _look(v, xyz, tri, head, nxt, slot, ra, rb, rt, ring, rtri, d, cr, c2, off, side, nrm, tol2)
+            if k < 0 or (passno == 0 and kind != 0):  # a fan longer than the buffers may get shorter
+                queue[kept] = v
+                kept += 1
                 continue
-            for s in range(k):
-                r = ring[s]
-                d[s, 0] = xyz[r, 0] - xyz[v, 0]
-                d[s, 1] = xyz[r, 1] - xyz[v, 1]
-                d[s, 2] = xyz[r, 2] - xyz[v, 2]
-            kind, p, q = _planes(k, d, cr, c2, off, side, nrm, tol2)
             if kind == 0:
                 cand[v] = False
                 continue
             least = _least(k, d, c2)
             if least < floor:  # the fan has slivers of its own: the cut may be as bad, not worse
                 floor = least
-            fits = False
-            if kind == 1:  # one polygon: the whole ring
-                for s in range(k):
-                    poly[s] = s
-                _project(poly, k, d, nrm, 0, px, py)
-                fits = _ears(poly, k, px, py, floor, v, ring, tri, head, nxt, cut, 0) >= 0.0
-            elif not _edge(ring[p], ring[q], v, tri, head, nxt):  # two: ring p … q and ring q … p
-                first = 0
-                s = p
+            # the hole: one polygon — the whole ring, or two — ring p … q and ring q … p with the edge p–q
+            fits = kind == 1 or not _edge(ring[p], ring[q], v, tri, head, nxt)
+            base = 0
+            w = 0
+            while fits and w < kind:
+                size = 0
+                s = 0 if kind == 1 else (p if w == 0 else q)
+                last = k - 1 if kind == 1 else (q if w == 0 else p)
                 while True:
-                    poly[first] = s
-                    first += 1
-                    if s == q:
+                    poly[size] = s
+                    size += 1
+                    if s == last:
                         break
                     s = s + 1 if s + 1 < k else 0
-                _project(poly, first, d, nrm, 0, px, py)
-                if _ears(poly, first, px, py, floor, v, ring, tri, head, nxt, cut, 0) >= 0.0:
-                    second = 0
-                    s = q
-                    while True:
-                        poly[second] = s
-                        second += 1
-                        if s == p:
-                            break
-                        s = s + 1 if s + 1 < k else 0
-                    _project(poly, second, d, nrm, 1, px, py)
-                    fits = _ears(poly, second, px, py, floor, v, ring, tri, head, nxt, cut, first - 2) >= 0.0
+                _project(poly, size, d, nrm, w, px, py)
+                fits = _ears(poly, size, px, py, floor, v, ring, tri, head, nxt, cut, base) >= 0.0
+                base += size - 2
+                w += 1
             if not fits:
                 tried[v] = passno
                 queue[kept] = v
@@ -464,9 +461,17 @@ def _thin(xyz, tri, alive, cand, target, tol, quality, max_ring, max_passes):  #
         if count <= target:
             break
         live = kept
-        if done == 0:
+        if passno == 0:
+            # found in the order of the mesh (memory is read in order: a mesh of relief costs this one
+            # sweep); from now on they are visited in a scattered order
+            found = queue[:live].copy()
+            step = _stride(live) if live > 0 else 1
+            for i in range(live):
+                queue[i] = found[(i * step) % live]
+        elif done == 0:
             stage += 1
             since = passno + 1
+        passno += 1
     return count
 
 
@@ -511,7 +516,9 @@ def join(
     kept triangles are put on it there; None when one is not — the pieces would not join."""
     own, inverse = np.unique(kept, return_inverse=True)
     n = len(rest_v)
-    _uniq, first, back = np.unique(np.concatenate([_rows(rest_v), _rows(xyz[own])]), return_index=True, return_inverse=True)
+    _uniq, first, back = np.unique(
+        np.concatenate([_rows(rest_v), _rows(xyz[own])]), return_index=True, return_inverse=True
+    )
     at = first[back[n:]]  # where the coordinates of a vertex of the kept triangles are met first
     shared = np.isin(own, seam)
     if not (at[shared] < n).all():
