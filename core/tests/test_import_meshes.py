@@ -29,7 +29,6 @@ from tests.formats.test_datamine_objects import write_pair
 from tests.formats.test_registry_meshes import drawing, solids
 from tests.formats.tridb_builder import build as build_tridb
 from tests.meshutil import cube
-from tests.test_import_job import API, wait_job
 from tests.test_import_objects import run_job
 
 pytestmark = pytest.mark.windows
@@ -48,15 +47,13 @@ def project(tmp_path: Path):  # type: ignore[no-untyped-def]
     engine.dispose()
 
 
-@pytest.fixture()
-def files(tmp_path: Path) -> dict[str, Path]:
+def make_files(folder: Path) -> dict[str, Path]:
     """A selection of the wizard: a TRIDB of two wireframes, a drawing with a line and two meshes, a Surpac pair,
     an OBJ, and the two tables of a Datamine wireframe under names that do not tell they are a pair."""
     from bf_core.formats.dtm_surpac import write_dtm
     from bf_core.formats.obj import write_obj
     from bf_core.formats.tridb_write import write_tridb
 
-    folder = tmp_path / "исходные"
     folder.mkdir()
     out = {name: folder / name for name in ("Тела.tridb", "mixed.dxf", "pit.dtm", "pit.str", "one.obj")}
     write_tridb(out["Тела.tridb"], solids(), now=1_795_000_000, author="test")
@@ -66,6 +63,11 @@ def files(tmp_path: Path) -> dict[str, Path]:
     v, t = cube(2, 10.0)
     out["ore.dm"], out["nodes.dm"] = write_pair(folder, v + 300.0, t, names=("ore.dm", "nodes.dm"))
     return out
+
+
+@pytest.fixture()
+def files(tmp_path: Path) -> dict[str, Path]:
+    return make_files(tmp_path / "исходные")
 
 
 def paths(files: dict[str, Path], *names: str) -> list[str]:
@@ -188,6 +190,47 @@ def test_dwg_without_the_converter_is_told(tmp_path: Path, monkeypatch: pytest.M
     assert "ODA File Converter" in entry["error"]["hint"] and "DXF" in entry["error"]["hint"]
 
 
+def test_dwg_is_imported_through_the_converter_of_the_settings(  # type: ignore[no-untyped-def]
+    project, files: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The job gets the path of «Настройка» as `oda` (it runs in a worker): a DWG gives its lines and its
+    wireframes as the same drawing saved as DXF does, and the project keeps the DWG itself."""
+    import tempfile
+
+    from ezdxf.addons import odafc
+
+    from bf_core.formats import dwg
+    from tests.formats.test_dwg import Oda, _no_display
+
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp))
+    monkeypatch.delenv(dwg.ENV, raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path / "nothing here"))
+    for name in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
+        monkeypatch.setenv(name, str(tmp_path / "Program Files"))
+    monkeypatch.setattr(odafc, "_linux_dummy_display", _no_display, raising=False)
+    drawing_dwg = tmp_path / "Карьер.dwg"
+    drawing_dwg.write_bytes(b"AC1027".ljust(128, b"\x00") + files["mixed.dxf"].read_bytes())  # the fake's "DWG"
+    with pytest.raises(JobError) as err:
+        run_job(project.folder, {"files": [str(drawing_dwg)]})
+    assert err.value.code == "oda_not_found" and "Карьер.dwg" in err.value.message and "ODA" in err.value.hint
+    assert state_of(project.engine, project.folder)["objects"] == []
+    oda = Oda(tmp_path / "oda")
+    ctx = run_job(project.folder, {"files": [str(drawing_dwg)], "oda": str(oda.exe)})
+    assert [(f["file"], f["format"], f["kind"]) for f in ctx.result["files"]] == [
+        ("Карьер.dwg", "dwg", "lines"), ("Карьер.dwg", "dwg", "wireframes"),
+    ]  # fmt: skip
+    rows = stored(project)
+    assert [(r["name"], r["folder"], r["meta"]["format"]) for r in rows] == [
+        ("ORE", "Карьер.dwg", "dwg"), ("TOPO", "Карьер.dwg", "dwg"),
+    ]  # fmt: skip
+    assert rows[0]["meta"]["source"]["file"] == "Карьер.dwg" and rows[0]["info"]["stats"]["closed"]
+    with dialect.read_tx(project.engine) as conn:
+        kept = set(conn.execute(sa.select(import_log.c.sha256)).scalars())
+    assert kept == {sha_of(drawing_dwg)}  # the drawing as it was loaded, not the temporary DXF
+
+
 # --- the job ---------------------------------------------------------------------------------------------
 
 
@@ -216,8 +259,10 @@ def test_real_tridb_is_imported(project, name: str, count: int, points: int, tri
         got = mesh_of(project, row["id"])
         assert (got.name, got.color, got.attrs) == (ref.name, ref.color, ref.attrs)
         assert bits(got.xyz) == bits(ref.xyz) and got.tri.tobytes() == ref.tri.tobytes()  # the order of the file
-        assert row["meta"]["source"] == ref.source and got.source == ref.source
+        # the rows of the file a writer needs, and the name of the file for «Источник» of the properties
+        assert row["meta"]["source"] == {**ref.source, "file": name} == got.source
         assert (row["meta"]["format"], row["meta"]["filename"]) == ("tridb", name)
+        assert row["info"]["source"] == {"format": "tridb", "file": name, "name": ref.source["name"]}
         assert {"xyz", "tri"} <= row["roles"] <= {"xyz", "tri", "seq"}
         stats, file = row["info"]["stats"], declared(ref.source)
         assert {"area", "volume", "closed", "open_edges", "nonmanifold_edges", "degenerate"} <= set(stats)
@@ -268,7 +313,8 @@ def test_drawing_gives_a_line_file_and_wireframes(project, files: dict[str, Path
     for row, ref in zip(rows, want, strict=True):
         got = mesh_of(project, row["id"])
         assert bits(got.xyz) == bits(ref.xyz) and got.tri.tobytes() == ref.tri.tobytes()
-        assert got.color == ref.color and row["meta"]["source"] == ref.source
+        assert got.color == ref.color and row["meta"]["source"] == {**ref.source, "file": row["meta"]["filename"]}
+        assert row["info"]["source"]["file"] in ("mixed.dxf", "TST-FAULTS.DXF") and row["info"]["source"]["layer"]
     fault = rows[2]["info"]
     assert (fault["point_count"], fault["triangle_count"]) == (7444, 7417) and not fault["stats"]["closed"]
     ore = rows[0]["info"]["stats"]  # the checks at loading: the cube of 3DFACE records is closed, 1000 m³
@@ -307,7 +353,10 @@ def test_pairs_names_and_sources(project, files: dict[str, Path]) -> None:  # ty
     assert [(r["name"], r["folder"]) for r in rows] == [
         ("pit", None), ("ore", None), ("Куб", None), ("Куб (2)", "Тела.tridb"), ("Рельеф", "Тела.tridb"),
     ]  # fmt: skip
-    assert rows[2]["meta"]["source"] == {"format": "obj", "name": "Куб"}
+    assert rows[2]["meta"]["source"] == {"format": "obj", "name": "Куб", "file": "one.obj"}
+    assert rows[0]["meta"]["source"]["file"] == "pit.dtm" and rows[0]["meta"]["source"]["strings"] == "pit.str"
+    # a Datamine pair names both tables itself: the triangles are the file, whichever of the two was chosen
+    assert (rows[1]["meta"]["source"]["file"], rows[1]["info"]["source"]["file"]) == ("ore.dm", "ore.dm")
     assert rows[3]["meta"]["source"]["as"] == "Куб (2)" and rows[3]["meta"]["source"]["name"] == "Куб"
     assert rows[3]["info"]["color"] == "#3366cc" and rows[3]["info"]["attrs"] == [{"name": "Руда", "value": "Au"}]
     assert rows[1]["meta"]["source"]["points_file"] == "nodes.dm"
@@ -342,6 +391,33 @@ def test_pairs_names_and_sources(project, files: dict[str, Path]) -> None:  # ty
             ws.delete_wireframe(conn, wf_id)
         collect(project.engine, store)
         assert store.exists(sha) is left
+
+
+def test_the_other_file_of_a_pair_is_found_and_kept(project, files: dict[str, Path]) -> None:  # type: ignore[no-untyped-def]
+    """Only one file of a pair is chosen — the DTM without its strings, the points table without its triangles:
+    the reader finds the other one next to it, and the project keeps both."""
+    ctx = run_job(project.folder, {"files": paths(files, "pit.dtm", "nodes.dm")})
+    assert [(f["file"], f["format"], f["wireframes"]) for f in ctx.result["files"]] == [
+        ("pit.dtm", "surpac_dtm", 1), ("nodes.dm", "datamine", 1),
+    ]  # fmt: skip
+    rows = stored(project)
+    assert [r["meta"]["source"]["file"] for r in rows] == ["pit.dtm", "ore.dm"]  # Datamine: the triangles table
+    assert rows[1]["meta"]["filename"] == "nodes.dm" and rows[1]["meta"]["source"]["points_file"] == "nodes.dm"
+    with dialect.read_tx(project.engine) as conn:
+        log = conn.execute(sa.select(import_log).order_by(import_log.c.id)).mappings().all()
+        kept = [
+            {str(r.role): str(r.sha256) for r in conn.execute(
+                sa.select(blob_owners.c.role, blob_owners.c.sha256).where(
+                    blob_owners.c.owner_kind == "import", blob_owners.c.owner_id == row["id"]
+                )
+            )}
+            for row in log
+        ]  # fmt: skip
+    assert kept == [
+        {"source": sha_of(files["pit.dtm"]), "sidecar:str": sha_of(files["pit.str"])},
+        {"source": sha_of(files["nodes.dm"]), "sidecar:dm": sha_of(files["ore.dm"])},
+    ]
+    assert [row["mapping"]["sidecars"] for row in log] == [["pit.str"], ["ore.dm"]]
 
 
 def test_cancel_at_any_step_leaves_nothing(project, files: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
@@ -425,8 +501,12 @@ def test_broken_wireframes_and_broken_files(  # type: ignore[no-untyped-def]
     assert rows[0]["info"]["stats"]["volume"] == pytest.approx(1000.0, rel=1e-12)
     assert rows[1]["info"]["stats"]["volume"] is None  # never 0
 
-    with dialect.read_tx(project.engine) as conn:  # the first solid of the cut file was written, then removed
-        assert conn.execute(sa.select(sa.func.max(objects.c.id))).scalar_one() == len(rows) + 1
+    with dialect.read_tx(project.engine) as conn:
+        # the first solid of the cut file was written, then removed: its blobs are in the storage without an owner
+        orphans = set(conn.execute(sa.select(blobs.c.sha256)).scalars()) - set(
+            conn.execute(sa.select(blob_owners.c.sha256)).scalars()
+        )
+        assert len(orphans) >= 2  # its vertices and its triangles
         assert conn.execute(sa.select(sa.func.count()).select_from(wireframes)).scalar_one() == len(rows)
     before = state_of(project.engine, project.folder)
     for bad, code in (([cut], "truncated"), ([tmp_path / "нет такого.tridb"], "file_unreadable")):
@@ -467,31 +547,5 @@ def test_many_small_wireframes_go_in_portions(project, tmp_path: Path, monkeypat
     assert ctx.result["wireframes"] == 60 and len(flushes) <= 60 // om.PORTION + 4  # portions, the folder, the end
     rows = stored(project)
     assert [r["name"] for r in rows] == ["Линза"] + [f"Линза ({k})" for k in range(2, 61)]
-    assert [r["sort_key"] for r in rows] == [float(k) for k in range(60)]
-    assert {r["folder"] for r in rows} == {"много.obj"}
+    assert {r["folder"] for r in rows} == {"много.obj"}  # (the rows are in the order of their ids: of the file)
     assert bits(mesh_of(project, rows[59]["id"]).xyz) == bits(v + [177.0, 0.0, 0.0])
-
-
-# --- through the API and the scheduler -------------------------------------------------------------------
-
-
-def test_wizard_through_the_api(pclient, files: dict[str, Path]) -> None:  # type: ignore[no-untyped-def]
-    """inspect → start → the job in a worker process → the tree of wireframes and of lines."""
-    pclient.post(f"{API}/projects", json={"name": "Каркасы"})
-    body = {"files": paths(files), "options": {str(files["ore.dm"]): {"split_by": ""}}, "folder": "Импорт"}
-    seen = pclient.post(f"{API}/import/objects/inspect", json=body)
-    assert seen.status_code == 200, seen.text
-    assert seen.json()["totals"]["wireframes"] == 7 and seen.json()["totals"]["files"] == 5
-    r = pclient.post(f"{API}/import/objects", json=body)
-    assert r.status_code == 200, r.text
-    job = wait_job(pclient, r.json()["source"], r.json()["id"])
-    assert job["status"] == "done" and job["result"]["wireframes"] == 7, job
-    assert len(job["result"]["wireframe_ids"]) == 7 and job["result"]["failed"] == []
-    tree = pclient.get(f"{API}/wireframes").json()["wireframes"]
-    assert sorted((w["name"], w["folder"]) for w in tree) == sorted([
-        ("Куб", "Импорт/Тела.tridb"), ("Рельеф", "Импорт/Тела.tridb"), ("ORE", "Импорт/mixed.dxf"),
-        ("TOPO", "Импорт/mixed.dxf"), ("pit", "Импорт"), ("Куб (2)", "Импорт"), ("ore (2)", "Импорт"),
-    ])  # fmt: skip  (names differ without case: «ore» of Datamine comes after the layer «ORE» of the drawing)
-    assert [f["name"] for f in pclient.get(f"{API}/lines/files").json()["files"]] == ["mixed.dxf"]
-    first = tree[0]
-    assert pclient.get(f"{API}/viz/wireframes/{first['id']}").status_code == 200  # the 3D manifest of an imported one

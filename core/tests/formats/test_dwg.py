@@ -2,21 +2,24 @@
 ADR 0013 8.9: «pytest с фальшивым конвертером: `oda_not_found`, нет результата, кириллица»).
 
 The fake is a script with the command line of the real program (`in out version type recurse audit mask`). Its
-"DWG" is a DWG signature followed by the DXF it was made from, so a drawing goes both ways through `ezdxf`'s
-`odafc.convert` and the coordinates must come back bit for bit. The real converter is checked by hand on Windows
-(CHECKLIST of the milestone).
+"DWG" is a DWG signature followed by the DXF it was made from, so a drawing goes both ways through the converter
+and the coordinates must come back bit for bit. The real converter is checked by hand on Windows (CHECKLIST of
+the milestone). On Windows the fake is a `.cmd`, which `formats.dwg` does not take for a program: `Oda` lets it
+(`dwg._SUFFIXES`), and the tests of that rule set the rule themselves.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -33,21 +36,32 @@ X0, Y0 = 466570.58600000001, 4584699.697000001
 MAGIC = b"AC1027".ljust(128, b"\x00")
 INSTALL = "Не найден ODA File Converter: установите его (бесплатно, Open Design Alliance) и укажите путь в «Настройке»"
 FAKE = r"""
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
 
 here = Path(__file__).resolve().parent
 mode = (here / "mode.txt").read_text(encoding="utf-8").strip()
 in_dir, out_dir, version, kind, recurse, audit, mask = sys.argv[1:8]
+display = os.environ.get("DISPLAY") or ""
+seen = {"argv": sys.argv[1:], "input": sorted(os.listdir(in_dir)), "pid": os.getpid(), "display": display,
+        "screen": os.path.exists("/tmp/.X11-unix/X" + display.lstrip(":"))}
 with (here / "calls.jsonl").open("a", encoding="utf-8") as log:
-    log.write(json.dumps({"argv": sys.argv[1:], "input": sorted(os.listdir(in_dir))}) + "\n")
+    log.write(json.dumps(seen) + "\n")
 if mode == "fail":
     sys.stderr.write("ODA: unable to load the drawing\n")
     sys.exit(3)
+if mode == "noise":  # Windows-1251 and bytes that are no text at all
+    sys.stderr.buffer.write(b"ODA: \xed\xe5 \xf7\xe8\xf2\xe0\xe5\xf2\xf1\xff \xff\xfe\x80 cannot load\n")
+    sys.exit(3)
+if mode == "hang":
+    time.sleep(120)
 if mode == "nothing":
     sys.exit(0)
+if mode == "chatty":  # more than a pipe holds: a program nobody listens to would wait for ever
+    sys.stdout.buffer.write(b"ODA: a line of the progress report\n" * 40000)
+    sys.stdout.flush()
 source = Path(in_dir) / mask
-target = Path(out_dir) / (source.stem + "." + kind.lower())
+target = Path(out_dir) / (source.stem + "." + (kind if mode == "upper" else kind.lower()))
 magic = b"AC1027".ljust(128, b"\x00")
 if mode == "garbage":
     target.write_bytes(b"\x00\x01 this is not a drawing")
@@ -70,6 +84,7 @@ class Oda:
         if os.name == "nt":
             self.exe = folder / "ODAFileConverter.cmd"
             self.exe.write_bytes(f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n'.encode())
+            dwg._SUFFIXES = (".exe", ".cmd")  # a script stands for the program: so it stays for the session
         else:
             self.exe = folder / "ODAFileConverter"
             self.exe.write_bytes(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n'.encode())
@@ -80,20 +95,21 @@ class Oda:
         (self.folder / "mode.txt").write_text(value, encoding="utf-8")
 
     @property
-    def calls(self) -> list[dict[str, list[str]]]:
+    def calls(self) -> list[dict[str, Any]]:
         log = self.folder / "calls.jsonl"
         return [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()] if log.exists() else []
 
 
 @contextmanager
 def _no_display() -> Iterator[str]:
+    """What the tests of other modules put in place of ezdxf's X server (ezdxf does not start the converter now)."""
     yield ":0"
 
 
 @pytest.fixture(autouse=True)
 def alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """No converter of the machine is found, temporary folders go to the test's own folder (returned), and ezdxf
-    does not start an X server for the fake on Linux."""
+    """No converter of the machine is found (and no Xvfb: PATH is empty), temporary folders go to the test's own
+    folder (returned), «ProgramData» is a folder of the test."""
     temp = tmp_path / "temp"
     temp.mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(temp))
@@ -101,7 +117,7 @@ def alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("PATH", str(tmp_path / "nothing here"))
     for name in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
         monkeypatch.setenv(name, str(tmp_path / "Program Files"))
-    monkeypatch.setattr(odafc, "_linux_dummy_display", _no_display, raising=False)
+    monkeypatch.setenv("ProgramData", str(tmp_path / "ProgramData"))
     return temp
 
 
@@ -218,6 +234,9 @@ def test_read_drawing_with_russian_name(tmp_path: Path, oda: Oda, alone: Path) -
     assert call["argv"][2:] == ["ACAD2018", "DXF", "0", "1", "drawing.dwg"]
     assert call["input"] == ["drawing.dwg"]  # the converter saw one file: not the folder of the drawing
     assert Path(call["argv"][0]).parent.name.startswith("bf-oda-") and Path(call["argv"][0]).parent.parent == alone
+    # the result is made in the folder of the call itself: no other folder appears in the temporary one
+    assert [Path(a).name for a in call["argv"][:2]] == ["in", "out"]
+    assert Path(call["argv"][1]).parent == Path(call["argv"][0]).parent
     assert not any("Чертёж" in a or "Папка" in a for a in call["argv"])  # no name of the user in the command line
     assert leftovers(alone) == [] and path.read_bytes() == before  # nothing is left, the drawing is as it was
     fractions = [f for f, _ in seen]
@@ -365,14 +384,3 @@ def test_the_configured_converter_runs_not_the_one_in_path(
     assert error(read_dwg, path).code == "oda_failed" and len(decoy.calls) == 1  # no setting: the one of PATH
 
 
-def test_ezdxf_is_the_one_the_wrapper_was_written_for() -> None:
-    """`dwg._convert` replaces ezdxf's search of the program for the call: a new ezdxf must be looked at again."""
-    import ezdxf
-
-    assert ezdxf.__version__ == "1.4.5" and callable(getattr(odafc, "_get_odafc_path", None))
-    before = odafc._get_odafc_path
-    saved = [ezdxf.options.get("odafc-addon", key) for key in ("win_exec_path", "unix_exec_path")]
-    with pytest.raises(FormatError):
-        dwg._convert(Path("нет.dwg"), Path("нет.dxf"), "ACAD2018", True, Path("нет"), writing=False)
-    assert odafc._get_odafc_path is before  # put back after a failure as well
-    assert [ezdxf.options.get("odafc-addon", key) for key in ("win_exec_path", "unix_exec_path")] == saved

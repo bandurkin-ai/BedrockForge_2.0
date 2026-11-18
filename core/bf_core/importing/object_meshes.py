@@ -9,14 +9,17 @@ Every wireframe of a file is an object of its own (ADR 0013 «Файл с нес
   hundred wireframes is never in memory whole and a cancel comes between any two steps;
 * the name of the file's wireframe, or «name (2)» when the project has it (`meta.source.as` keeps that, so an
   export gives the file its own name back); the colour and the attributes of the file; `meta.source` — the rows
-  a writer needs for the same file; `meta.warnings` — what the reader and the checks said;
+  a writer needs for the same file and `file` — the name of the file it came from, without its folder, as the
+  journal has it (a reader that names the file itself keeps its word: of a Datamine pair — the triangles
+  table, next to `points_file`); `meta.warnings` — what the reader and the checks said;
 * the checks at loading are `geo.meshes.mesh_stats` of the stored geometry (`wireframes.stats`: area, volume,
   closed, orientation, open and non-manifold edges, degenerate triangles). What they find goes to the journal:
   degenerate triangles, edges of three triangles and more, a volume or an area of the file that the geometry
   does not confirm (TRIDB, 1e-9), a volume stated for a wireframe that is not closed. The consistency of the
   normals, self-intersections and the levels of detail are the job `wireframe.check` (8.16), started after;
 * a file with several wireframes puts them into a folder of the tree named after it (under the folder of the
-  wizard, if one was chosen); a single wireframe stays where the wizard put it;
+  wizard, if one was chosen); a single wireframe stays where the wizard put it. The wireframes of a file are
+  written in its order, so the list of the project (by id) has them file by file, as the files were chosen;
 * a wireframe that cannot be read is a line of the journal and an entry of `skipped`; the others are loaded. An
   error of the file itself (it is found while the wireframes are taken) removes what the file has given so far
   and is raised as `FileFailed` — the job goes on with the next file;
@@ -43,7 +46,9 @@ from bf_core.db.schema import blob_owners, import_log, objects
 from bf_core.formats.errors import FormatError
 from bf_core.jobs.context import JobContext
 
-from .object_files import MAX_NOTES, Group, Tick, n_text
+from .object_files import MAX_NOTES, Group, Tick, has_meshes, n_text
+
+__all__ = ["FileFailed", "Meter", "Written", "committed", "has_meshes", "log_meshes", "write_meshes"]
 
 WIREFRAME = "wireframe"  # `import_log.counts.kind` of a wireframe; the kind of its object
 WIREFRAMES = "wireframes"  # the kind of a file entry of the result
@@ -112,11 +117,6 @@ class Meter:
         self.base = self.seen
 
 
-def has_meshes(read: Any) -> bool:
-    """The file gives wireframes: a reader that has not started yet, or a list that is not empty."""
-    return bool(read.meshes) if isinstance(read.meshes, list) else read.meshes is not None
-
-
 def file_folder(base: str | None, name: str) -> str:
     """The folder of the tree for the wireframes of the file `name`: «folder of the wizard/name»."""
     own = " ".join(name.replace("/", " ").split())
@@ -158,15 +158,19 @@ def _take(read: Any, meter: Meter) -> Generator[Any, None, None]:
         yield mesh
 
 
-def drop(engine: sa.Engine, ids: Sequence[int]) -> None:
-    """Remove wireframes this job was building (a file that failed half-way): the objects and their blob
-    references; the files themselves go with the next cleanup of the storage."""
+def drop(engine: sa.Engine, job_id: int, ids: Sequence[int]) -> None:
+    """Remove wireframes the job `job_id` was building (a file that failed half-way): the objects and their
+    blob references; the files themselves go with the next cleanup of the storage. Only what is still
+    `building` under this job is touched."""
     with dialect.write_tx(engine) as conn:
         for a in range(0, len(ids), 500):
-            part = list(ids[a : a + 500])
-            own = sa.and_(blob_owners.c.owner_kind == "object", blob_owners.c.owner_id.in_(part))
+            mine = sa.and_(
+                objects.c.id.in_(list(ids[a : a + 500])), objects.c.state == "building", objects.c.job_id == job_id
+            )
+            found = sa.select(objects.c.id).where(mine)
+            own = sa.and_(blob_owners.c.owner_kind == "object", blob_owners.c.owner_id.in_(found))
             conn.execute(sa.delete(blob_owners).where(own))
-            conn.execute(sa.delete(objects).where(objects.c.id.in_(part), objects.c.state == "building"))
+            conn.execute(sa.delete(objects).where(mine))
 
 
 def _companions(g: Group, named: set[str]) -> dict[str, Path]:
@@ -204,6 +208,9 @@ def write_meshes(
     said = 0
 
     def flush() -> None:
+        ids: list[int] = []
+        counts: list[dict[str, Any]] = []
+        closed = 0
         try:
             with dialect.write_tx(engine) as conn:
                 names = sa.select(objects.c.name_key).where(objects.c.kind == ws.WIREFRAME)
@@ -212,17 +219,20 @@ def write_meshes(
                     name = unique_name(mesh.name, taken, ws.MAX_NAME)
                     wf_id = src.commit_mesh(
                         conn, store, staged, mesh, name=name, meta={**meta, "warnings": notes[:MAX_NOTES]},
-                        folder=folder, state="building", job_id=ctx.id, author=who, sort_key=float(len(out.ids)),
+                        folder=folder, state="building", job_id=ctx.id, author=who,
                     )  # fmt: skip
-                    out.ids.append(wf_id)
-                    out.closed += bool(staged.stats.get("closed"))
-                    out.counts.append(
+                    ids.append(wf_id)
+                    closed += bool(staged.stats.get("closed"))
+                    counts.append(
                         {"kind": WIREFRAME, "name": name, "points": len(staged.xyz), "triangles": len(staged.tri)}
                     )
         finally:
             for staged, _mesh, _notes in pending:
                 staged.discard()
             pending.clear()
+        out.ids += ids  # written: only now are they wireframes of the file
+        out.counts += counts
+        out.closed += closed
 
     queue = _take(read, meter)
     try:
@@ -242,6 +252,7 @@ def write_meshes(
             notes = [*mesh.warnings, *check_notes(mesh, staged.stats)]
             pending.append((staged, mesh, notes))
             named.update(str(mesh.source[k]) for k in PAIRED.get(read.format, ()) if mesh.source.get(k))
+            mesh.source.setdefault("file", label)  # «Источник» of the properties: the file as the journal names it
             for note in notes[: max(MAX_NOTES - said, 0)]:
                 ctx.log(f"{label}: {title}: {note}", "warn")
             said += len(notes)
@@ -255,14 +266,13 @@ def write_meshes(
             raise FileFailed(
                 FormatError(**first) if first else FormatError("no_meshes", "В файле нет каркасов.", "Проверьте файл.")
             )
-    except BaseException:
+    except FileFailed:
+        drop(engine, ctx.id, out.ids)  # the job goes on with the next file: this one leaves nothing now
+        raise
+    finally:  # a cancel or a failure of the job: the scheduler drops what was written, the temp files go here
         for staged, _mesh, _notes in pending:
             staged.discard()
         pending.clear()
-        if out.ids:  # a cancel is cleaned by the scheduler as well; a failed file must leave nothing now
-            drop(engine, out.ids)
-        raise
-    finally:
         queue.close()
     if said > MAX_NOTES:
         more = n_text(said - MAX_NOTES)

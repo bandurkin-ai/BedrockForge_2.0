@@ -1,33 +1,43 @@
 """AutoCAD DWG through ODA File Converter (ТЗ 7.35 Д-13, Д-17; ADR 0009 — вариант А; ADR 0013 §2).
 
 BF2 does not read or write DWG itself. The user installs ODA File Converter (free, Open Design Alliance; it is not
-distributed with BF2 and is not linked to it), and `ezdxf.addons.odafc.convert` runs it as a separate program:
+distributed with BF2 and is not linked to it), and this module runs it as a separate program:
   * `read_dwg(path, progress, converter=…)` → `DxfRead` (`format = "dwg"`): the drawing becomes a temporary DXF
     R2018 that the DXF reader reads (`dxf_lines.read_dxf` with its options: whatever it gives for a DXF, lines
-    now and wireframes from 8.4 on, it gives for a DWG). `dxf_of(path)` is the same temporary DXF for any other
-    reader. The project keeps the DWG itself as the source;
+    and wireframes, it gives for a DWG; `source["format"]` of the wireframes is "dwg"). `dxf_of(path)` is the
+    same temporary DXF for any other reader. The project keeps the DWG itself as the source;
   * `dwg_output(path)` gives the path of a DXF to write; when the block ends, that DXF becomes the DWG `path`
     (R2013 unless `version` says otherwise). `write_dwg(path, layers)` does so with the DXF writer of lines,
     `dxf_to_dwg(dxf, dwg)` with a DXF that already exists; a writer of wireframes takes `dwg_output` itself;
   * `find_converter(configured)` → the program to run, or None: the path of «Настройка» (the program or its
-    folder), else the variable `BF_ODA_CONVERTER`, else `ODAFileConverter` of PATH, else on Windows the newest
+    folder), else the variable `BF_ODA_CONVERTER`, else `ODAFileConverter` in a folder of PATH (a folder PATH
+    names in full: never the current one), else on Windows the newest
     `…\\Program Files\\ODA\\ODAFileConverter*\\ODAFileConverter.exe`. On other systems there is no known place.
+    On Windows a program is an `.exe` only: a `.cmd`, a `.bat`, a shortcut are never run — the reader and the
+    writer answer `bad_path` when the setting or the variable names such a file (`program_at`, `strict`).
     Without a converter every function raises `oda_not_found` with the text of Д-13.
 
 Around the converter (ADR 0013, «Риски»):
   * it works in a temporary folder of its own, `bf-oda-…`: `in/drawing.dwg` is a copy of the drawing under an
-    ASCII name. The converter is given a folder and a file mask, so it sees this file only, and a name with
-    Cyrillic letters never gets into its command line; the result is made in `out/`;
-  * ezdxf 1.4.5 does not raise when the converter has made no file, and takes the first file of the output folder
-    whatever it is: the result is checked here (it exists, is not empty, begins as a DXF or a DWG does);
-  * on Windows ezdxf looks for `ODAFileConverter` in PATH before the configured path: its search is replaced for
-    the call, so the program found here is the one that runs;
-  * the converter reports no progress and cannot be stopped: `progress` is called before and after it («ждём ODA
-    File Converter»). A job is cancelled by ending its worker (`CANCEL_GRACE_S`); folders such workers leave are
-    removed by the next call when they are a day old;
+    ASCII name, the result is made in `out/` next to it. The converter is given the two folders and a file mask,
+    so it sees this file only and the name of the drawing never gets into its command line. The folder is made
+    in the temporary folder of the user, and on Windows that path may itself hold letters beyond ASCII (a user
+    named in Cyrillic): then its short 8.3 path is taken, and where the volume keeps no short names (or they
+    are Cyrillic too) — `%ProgramData%\\BedrockForge\\tmp`. Only when neither can be had does the command line
+    carry such letters;
+  * the converter is started here, not by ezdxf (which waits for it without a limit, holds its output in pipes
+    nobody reads meanwhile and makes one more folder in the temporary one): `subprocess.run` without a window,
+    the output read to the end and decoded whatever its bytes are, a run longer than `TIMEOUT_S` (and
+    `TIMEOUT_S_PER_MB` for a megabyte of the file) ended — `oda_timeout`. Of ezdxf only the names of the
+    versions are used; its settings are not touched, so nothing is shared between threads;
+  * the converter may end well and make nothing: the result is checked (it exists, is not empty, begins as a
+    DXF or a DWG does);
+  * the converter reports no progress and is not stopped by the user: `progress` is called before and after
+    it («ждём ODA File Converter»). A job is cancelled by ending its worker (`CANCEL_GRACE_S`); folders such
+    workers leave are removed by the next call when they are a day old;
   * a DWG is written next to its place as `.part` and renamed: a failed conversion leaves the old file.
-Error codes: oda_not_found, oda_failed, not_dwg, empty_file, unsupported (the version asked for) and those of
-the DXF reader and writer.
+Error codes: oda_not_found, oda_failed, oda_timeout, bad_path, not_dwg, empty_file, unsupported (the version
+asked for) and those of the DXF reader and writer.
 """
 
 from __future__ import annotations

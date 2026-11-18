@@ -375,7 +375,9 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
                     if item is None:
                         item = _Done(g.main, label, read.format, om.MEDIA, _settings(g, chosen))
                     item.meshes = written
-                    item.companions.update(written.companions)
+                    if written.companions:  # the other file of a pair, chosen or found next to the file
+                        item.companions.update(written.companions)
+                        item.settings["sidecars"] = sorted(path.name for path in written.companions.values())
             if item is not None:
                 done.append(item)
             del read  # keep the memory for the next file

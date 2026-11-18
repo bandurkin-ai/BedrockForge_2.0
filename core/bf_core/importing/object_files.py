@@ -219,10 +219,14 @@ def read_group(
     )  # fmt: skip
 
 
+def has_meshes(read: Any) -> bool:
+    """The file gives wireframes to read: a reader that has not started yet, or a list that is not empty."""
+    return bool(read.meshes) if isinstance(read.meshes, list) else read.meshes is not None
+
+
 def has_content(read: Any) -> bool:
     """The file gave something to load: a raster, a layer with points, a wireframe (read or still to read)."""
-    meshes = bool(read.meshes) if isinstance(read.meshes, list) else read.meshes is not None
-    return bool(read.rasters or read.entries or meshes or any(ls.point_count for ls in read.layers))
+    return bool(read.rasters or read.entries or has_meshes(read) or any(ls.point_count for ls in read.layers))
 
 
 def _layer_summary(ls: Any) -> dict[str, Any]:
