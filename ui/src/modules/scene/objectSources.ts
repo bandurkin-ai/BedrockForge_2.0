@@ -18,7 +18,7 @@ import type { MeshPick, MeshProbe } from "../../viz/mesh/layer";
 import type { RasterPick } from "../../viz/rasters/layer";
 import { floorLevel } from "../../viz/rasters/placement";
 import { onObjectsImported } from "../importing/afterImport";
-import { onCoreEvent, onJobFinished } from "../jobs/state";
+import { jobsStore, onCoreEvent, onJobFinished } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { viewStore } from "./bind";
 import { ChecksSource } from "./checksSource";
@@ -171,6 +171,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
     }),
   );
   off.push(onObjectsImported((job) => loaded.imported(job)));
+  off.push(jobsStore.subscribe(() => loaded.jobs(jobsStore.get().jobs)));
   // the holes in the scene changed (a set loaded, removed): the floor follows
   let content = sceneUi.get().content;
   off.push(

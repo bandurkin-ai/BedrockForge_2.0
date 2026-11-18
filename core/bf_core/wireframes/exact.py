@@ -16,7 +16,9 @@ not mapped, a mapped blob could not be deleted on Windows — the finer part tab
 (`geo.intersect.MeshTarget`). The cache holds at most `CACHE_BYTES`, the least recently used wireframe goes
 first, the last one asked for always stays; a deleted wireframe leaves it at once (`drop`), and so does
 everything of another project when the project is changed. The marks of a set are kept too, by its
-trajectories and the geometries: a new name or colour of a wireframe only writes the answer again.
+trajectories and the geometries: a new name or colour of a wireframe only writes the answer again. They are
+found a wireframe at a time, so the marks of every wireframe of a project need the memory of the largest one
+and of what the cache keeps, not of all of them.
 
 numpy and numba are imported with this module: import it lazily, never before BF-READY.
 """
@@ -524,11 +526,11 @@ def intersections(project: Any, state: SetState, method: str, targets: Sequence[
         if hits is not None:
             _marks.move_to_end(key)
     if hits is None:
-        try:
-            meshes = [geometry(project, t).target(stats) for t, stats in targets]
-            hits = gi.hole_crossings(st.traj, meshes)
+        try:  # a wireframe at a time: only the one at hand is held, the cache lets the others go as it fills
+            found = [gi.hole_crossings(st.traj, [geometry(project, t).target(stats)]) for t, stats in targets]
         except ValueError as exc:  # a triangle of a vertex that is not there
             raise vm.broken() from exc
+        hits = gi.join(found)
         with _lock:
             _marks[key] = hits
             while len(_marks) > MARKS_KEPT:

@@ -4,8 +4,8 @@
 // job «Проверка и копии для показа»: the button waits while it runs, then «Свойства» show what the core found
 // — the same numbers as `stats.checks` of the core — and when. The layer of crossing triangles of the core is
 // empty for a relief, so no red layer joins the scene. `wireframe.check` and `model.self_intersections` of
-// the registry answer in Russian. (A wireframe that does cross itself — with its red layer — comes with the
-// import of wireframes: `wireframes.spec.ts`, подшаг 8.26.)
+// the registry answer in Russian. (The red layer of a wireframe that crosses itself: ui/test/viz-mesh-checks,
+// core tests of `wireframe.check`; the demo has no such wireframe.)
 import { expect, test, type Page } from "@playwright/test";
 import { close, launch, shot, waitFrame } from "./helpers";
 

@@ -108,6 +108,17 @@ describe("the objects of an import (modules/scene/showLoaded.ts)", () => {
     s.dispose();
   });
 
+  it("an import seen queued or running holds the view once — before its objects arrive", () => {
+    const deps: ShowLoadedDeps = { hold: vi.fn(), reveal: vi.fn(() => true), lists: () => ({ wireframes: [], files: [], rasters: [] }), floor: () => 0 };
+    const s = new ShowLoaded(deps);
+    s.jobs([{ source: "core", id: 1, kind: "import.drillholes", status: "running" }, { source: "core", id: 2, kind: "import.objects", status: "done" }]);
+    expect(deps.hold).not.toHaveBeenCalled();
+    s.jobs([{ source: "core", id: 3, kind: "import.objects", status: "queued" }]);
+    s.jobs([{ source: "core", id: 3, kind: "import.objects", status: "running" }]);
+    expect(deps.hold).toHaveBeenCalledTimes(1);
+    s.dispose();
+  });
+
   it("an object never listed: what is listed is shown after the wait; nothing imported — nothing held", () => {
     vi.useFakeTimers();
     const lists = { wireframes: [wf(1, [0, 0, 0, 1, 1, 1])], files: [] as LineFileInfo[], rasters: [] as RasterInfo[] };

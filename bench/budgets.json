@@ -229,7 +229,8 @@
         "max_error_m": 0.001,
         "graze_error_m": 0.01,
         "parity_errors": 0,
-        "collar_errors": 0
+        "collar_errors": 0,
+        "collar_grazes": 10
       },
       "note": "ADR 0013: 5 000 стволов × 1 млн — по первому замеру (ориентир ≤ 5 с; замер 0,2 с). Предварительно."
     },
@@ -486,7 +487,8 @@
         "max_error_m": 0.001,
         "graze_error_m": 0.01,
         "parity_errors": 0,
-        "collar_errors": 0
+        "collar_errors": 0,
+        "collar_grazes": 100
       },
       "note": "ADR 0013: 50 000 стволов × 1 млн — по первому замеру (1,5 с). Предварительно."
     },

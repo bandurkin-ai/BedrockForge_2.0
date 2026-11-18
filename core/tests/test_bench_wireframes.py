@@ -156,7 +156,10 @@ def test_wireframe_exact_sections_and_picks_against_the_surface(tmp_path: Path) 
 def test_hole_intersections_against_the_surface_and_the_solid(tmp_path: Path) -> None:
     info = run("hole_intersections", {"triangles": 30_000, "holes": 400}, tmp_path)
     assert info["holes"] == 400 and info["crossings"] >= info["holes_through_surface"] > 300
-    assert info["at_collar"] == 80 and info["collar_errors"] == 0  # every fifth collar is a vertex: depth 0
+    # every fifth collar is a vertex of the surface: a crossing at depth 0 exactly when the hole goes into the
+    # ground there, none when it goes out into the air over a face
+    assert info["collar_errors"] == 0 and info["collar_grazes"] == 0
+    assert info["at_collar"] + info["collars_in_air"] == 80 and info["at_collar"] >= 70
     assert info["parity_errors"] == 0  # a hole from above to below the surface crosses it an odd number of times
     assert info["enters"] > 0 and info["enters"] - info["leaves"] == info["ends_inside"]
     assert info["plane_error_m"] <= 1e-7 and info["max_error_m"] <= 1e-3

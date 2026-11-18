@@ -232,12 +232,16 @@ def test_shared_edge_vertex_station_on_the_surface_and_a_touch() -> None:
     station = holes([(30.0, 60.0, 130.0, 200.0)], [(0, 0.0, 0.0, -90.0), (0, 30.0, 0.0, -90.0), (0, 80.0, 0.0, -90.0)])
     hits = gi.hole_crossings(station, [solid])
     assert hits.depth.tolist() == [30.0, 130.0] and hits.event.tolist() == [gi.ENTER, gi.LEAVE]
-    # a line that only touches a vertical edge of the cube: into one face and out of the other at one point
-    length = 20.0 * math.sqrt(2.0)
-    touch = holes([(-10.0, 10.0, 50.0, 0.0)], [(0, length, NAN, NAN)], coords=[(10.0, -10.0, 50.0)])
-    hits = gi.hole_crossings(touch, [solid])
-    assert hits.depth == pytest.approx([length / 2.0], abs=1e-9) and hits.event.tolist() == [gi.CROSS]
-    assert hits.side.tolist() == [0] and len(gi.inside_intervals(touch, hits)) == 0
+    # a line that only touches a vertical edge of the cube — into one face and out of the other at one point —
+    # does not cross the cube, whichever way it runs and whichever side of the cube the edge is on
+    ways = [(-10.0, 10.0, 10.0, -10.0), (10.0, -10.0, -10.0, 10.0), (90.0, -10.0, 110.0, 10.0),
+            (110.0, 10.0, 90.0, -10.0), (-10.0, 90.0, 10.0, 110.0), (110.0, 90.0, 90.0, 110.0)]  # fmt: skip
+    for x, y, to_x, to_y in ways:
+        touch = holes([(x, y, 50.0, 0.0)], [(0, 20.0 * math.sqrt(2.0), NAN, NAN)], coords=[(to_x, to_y, 50.0)])
+        middle = touch.positions(np.array([0]), np.array([10.0 * math.sqrt(2.0)]))[0]
+        assert middle[2] == 50.0 and {float(middle[0]), float(middle[1])} <= {0.0, 100.0}  # on the edge itself
+        hits = gi.hole_crossings(touch, [solid])
+        assert len(hits) == 0 and len(gi.inside_intervals(touch, hits)) == 0, (x, y)
     # a hole that stops exactly on a face it came to from outside has not crossed it
     stops = holes([(50.0, 50.0, 130.0, 30.0)])
     assert len(gi.hole_crossings(stops, [solid])) == 0

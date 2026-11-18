@@ -1,8 +1,10 @@
 /**
- * «Показать загруженное» (ТЗ 7.13, 7.8): an import of files that ended well (`importing/afterImport.ts`,
- * `onObjectsImported`) holds the view — the first view of the project does not refit to everything when the new
- * layers arrive — and once the lists of the project hold the line files, rasters and wireframes it stored
- * (`result.objects`), the view is fitted to those of them that are not seen (`Scene.reveal`). Objects near what
+ * «Показать загруженное» (ТЗ 7.13, 7.8): an import of files holds the view as soon as the list of jobs shows it
+ * queued or running — the first view of the project does not refit to everything when its layers arrive (they
+ * come with `objects.changed`, before the end of the job is seen). Once the import has ended well
+ * (`importing/afterImport.ts`, `onObjectsImported`) and the lists of the project hold the line files, rasters
+ * and wireframes it stored (`result.objects`), the view is fitted to those of them that are not seen
+ * (`Scene.reveal`). Objects near what
  * is on the screen leave the view as it is; a file far away (466 000 / 4 584 000 against the demo) is shown.
  * Extents come from the lists of the core, not from the geometry: the view does not wait for the parts. A line
  * or raster without heights counts at the floor of the scene. No three.js.
@@ -72,8 +74,20 @@ export interface ShowLoadedDeps {
 export class ShowLoaded {
   private pending: number[] | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private readonly held = new Set<string>();
 
   constructor(private readonly deps: ShowLoadedDeps) {}
+
+  /** The list of jobs changed: an import of files queued or running holds the view (once per job). */
+  jobs(list: readonly { source: string; id: number; kind: string; status: string }[]): void {
+    for (const j of list) {
+      if (j.kind !== "import.objects" || (j.status !== "queued" && j.status !== "running")) continue;
+      const key = `${j.source}:${j.id}`;
+      if (this.held.has(key)) continue;
+      this.held.add(key);
+      this.deps.hold();
+    }
+  }
 
   /** An import of files ended well. */
   imported(job: Parameters<typeof importedObjects>[0]): void {

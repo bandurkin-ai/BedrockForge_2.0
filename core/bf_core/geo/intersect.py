@@ -18,9 +18,12 @@ the hole (a mask over the whole mesh for each hole) and took the depth from the 
     collars crosses it at depth 0 when it goes into the ground, and not at all when it starts on a crest and
     goes out over the face; a station on a surface gives one crossing, not two or none; a hole through a
     vertex crosses the surface once whatever the triangles around it are, and one that only touches a crest
-    does not cross it. This is exact for a collar or a station that is a vertex of the wireframe, bit for bit,
-    and wherever the arithmetic is (whole coordinates); a point that is on an edge only as far as float64 can
-    tell is beside it;
+    does not cross it. The signs of the crossings of a hole so add up to where it ends from where it starts.
+    This is exact for a collar or a station that is a vertex of the wireframe, bit for bit, and wherever the
+    arithmetic is — coordinates in whole metres, halves, eighths: there a station inside an edge, a piece
+    along an edge or in the plane of a face are told as rational numbers tell them
+    (tests/test_geo_intersect_lift.py). A point that is on an edge or a plane only as far as float64 can
+    say is beside it, on the side the rounding puts it;
   * the depth is then moved from the chord to the course itself: the depth at which `Trajectories.positions`
     is on the plane of the triangle (a few steps down the slope of the chord, to `DEPTH_TOL_M`), and the point of the
     mark is `positions(hole, depth)` — on the trace as it is drawn, bit for bit;
@@ -39,7 +42,9 @@ no interval.
 
 Accuracy: the depth of a crossing is that of the exact path to about 1e-8 m (the acceptance of 7.15 is 1 mm).
 What the 1 mm of the pieces can change is only whether a hole that comes out of a surface by less than 1 mm
-and goes back, or passes within 1 mm of its border, is said to cross it.
+and goes back, or passes within 1 mm of its border, is said to cross it — and, for a curved hole that leaves
+its collar on a face within a degree of it, whether it is under the face from the collar or from where it
+goes through it a little further (it is within 1 mm of the face in between).
 
 numba is imported with this module: import it lazily, never before BF-READY.
 """

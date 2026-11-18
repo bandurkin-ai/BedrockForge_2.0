@@ -53,9 +53,10 @@ def same(got: Marks, want: Marks, tol: float = DEPTH) -> bool:
     )
 
 
-def scan(traj: Trajectories, h: int, surface: Callable[[np.ndarray], np.ndarray], step: float = 2.3e-4) -> Marks:
+def scan(traj: Trajectories, h: int, surface: Callable[[np.ndarray], np.ndarray], step: float = 2.3e-4) -> Marks | None:
     """The changes of «above the surface» along a hole: a scan and a bisection. `surface(points)` — its height
-    under the points, NaN beside it (the hole stays what it was). A point on the surface is above it."""
+    under the points, NaN beside it (the hole stays what it was). A point on the surface is above it. None —
+    the hole runs in the plane of a face: the rounding of the scan flips it there at every step."""
     length = float(traj.lengths()[h])
     d = np.unique(np.concatenate([[0.0], np.arange(step, length, step), [length]]))
 
@@ -66,7 +67,9 @@ def scan(traj: Trajectories, h: int, surface: Callable[[np.ndarray], np.ndarray]
 
     s, known = above(d)
     d, s = d[known], s[known]
-    out = []
+    if np.count_nonzero(s[1:] != s[:-1]) > 40:
+        return None
+    out: Marks = []
     for i in np.flatnonzero(s[1:] != s[:-1]):
         a, b = d[i], d[i + 1]
         for _ in range(60):
@@ -133,8 +136,9 @@ def test_collar_on_the_crest_of_a_ridge(offset: np.ndarray) -> None:
 
 
 def test_collar_on_an_edge_inside_a_triangle_and_in_a_valley() -> None:
-    angles = [(90.0, -47.0), (90.0, -60.0), (90.0, 20.0), (90.0, 40.0), (90.0, 60.0), (270.0, -47.0), (270.0, 47.0),
-              (270.0, -1.0), (270.0, 1.0), (300.0, 5.0), (120.0, -52.0), (60.0, -35.0), (17.0, -80.0), (200.0, 70.0)]  # fmt: skip
+    east = [(90.0, -47.0), (90.0, -60.0), (90.0, 20.0), (90.0, 40.0), (90.0, 60.0)]
+    west = [(270.0, -47.0), (270.0, 47.0), (270.0, -1.0), (270.0, 1.0)]
+    angles = [*east, *west, (300.0, 5.0), (120.0, -52.0), (60.0, -35.0), (17.0, -80.0), (200.0, 70.0)]
     places = {
         "crest vertex": (2.0, 2.0, 0.0),
         "crest edge": (2.0, 2.5, 0.0),
@@ -154,7 +158,7 @@ def test_collar_on_an_edge_inside_a_triangle_and_in_a_valley() -> None:
             got = crossings(traj, mesh)
             for h, angle in enumerate(angles):
                 want = scan(traj, h, surface)
-                assert same(got[h], want), (up, name, angle, got[h], want)
+                assert want is not None and same(got[h], want), (up, name, angle, got[h], want)
                 if want and want[0][0] < DEPTH:
                     assert got[h][0][0] == 0.0
                 met.add((up, name, bool(want) and want[0][0] < DEPTH))
@@ -226,7 +230,7 @@ def test_holes_from_the_vertices_of_a_relief_and_through_them(seed: int) -> None
     at_collar = 0
     for h in range(len(nodes)):
         want = scan(from_vertex, h, surface)
-        assert same(got[h], want), (seed, nodes[h], az[h], dip[h], got[h], want)
+        assert want is not None and same(got[h], want), (seed, nodes[h], az[h], dip[h], got[h], want)
         at_collar += bool(want) and want[0][0] < DEPTH
     assert 40 < at_collar < 110  # into the ground and into the air
 
@@ -246,9 +250,9 @@ def test_holes_from_the_vertices_of_a_relief_and_through_them(seed: int) -> None
     crossed = touched = in_plane = 0
     for h in range(len(nodes)):
         want = scan(through, h, surface)
-        if any(b[0] - a[0] < 0.01 for a, b in zip(want, want[1:], strict=False)):
-            in_plane += 1  # the hole runs in the plane of a face: the rounding of the scan flips it there
-            continue  # (the test against rational arithmetic has such holes)
+        if want is None:  # in the plane of a face (the test against rational arithmetic has such holes)
+            in_plane += 1
+            continue
         assert same(got[h], want), (seed, nodes[h], k[h].tolist(), got[h], want)
         at_vertex = any(abs(d - length[h] / 2.0) < DEPTH for d, _s in want)
         crossed += at_vertex
@@ -278,11 +282,9 @@ def dot(a: Vector, b: Vector) -> Fraction:
     return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 
 
-def lifted(points: np.ndarray, depths: np.ndarray, v: np.ndarray, t: np.ndarray) -> Marks | None:
+def lifted(points: np.ndarray, depths: np.ndarray, v: np.ndarray, t: np.ndarray) -> Marks:
     """The crossings of the polyline through `points` moved by `LIFT` with the triangles, in rational numbers;
-    crossings at one place are one (the sign of the sum of their signs; none when it is zero). None — a piece
-    of the polyline lies in the plane of a triangle and goes through the inside of an edge of it: where it
-    leaves the face is beyond float64 unless the piece is level or vertical (`geo/intersect.py`)."""
+    crossings at one place are one (the sign of the sum of their signs; none when it is zero)."""
     lo, hi = v[t].min(axis=1), v[t].max(axis=1)
     found = []
     for k in range(len(points) - 1):
@@ -293,13 +295,6 @@ def lifted(points: np.ndarray, depths: np.ndarray, v: np.ndarray, t: np.ndarray)
         for i in np.flatnonzero(near):
             p0, p1, p2 = (exact(v[c]) for c in t[i])
             n = cross(sub(p1, p0), sub(p2, p0))
-            ea, eb = exact(a), exact(b)
-            if dot(sub(ea, p0), n) == 0 and dot(sub(eb, p0), n) == 0:  # the piece as it is, in the plane
-                for p, q in ((p0, p1), (p1, p2), (p2, p0)):
-                    apart = dot(cross(sub(eb, ea), sub(p, ea)), n) * dot(cross(sub(eb, ea), sub(q, ea)), n)
-                    reach = dot(cross(sub(q, p), sub(ea, p)), n) * dot(cross(sub(q, p), sub(eb, p)), n)
-                    if apart < 0 and reach <= 0 and SKIP_IN_PLANE:
-                        return None
             ga, gb = dot(sub(fa, p0), n), dot(sub(fb, p0), n)
             assert ga != 0 and gb != 0
             if (ga > 0) == (gb > 0):
@@ -339,14 +334,15 @@ def special(rng: np.random.Generator, v: np.ndarray, t: np.ndarray, kinds: str) 
 
 
 def polylines(seed: int, v: np.ndarray, t: np.ndarray, count: int) -> list[np.ndarray]:
-    """Polylines whose vertices are multiples of 1/8 and that meet the wireframe exactly: they start on a
-    vertex, the middle of an edge or a face of it; bend on a vertex or a face; go through a vertex or the
-    middle of an edge; run from vertex to vertex — along edges, across faces, through the solid."""
+    """Polylines whose vertices are multiples of 1/8 and that meet the wireframe exactly: they start and bend
+    on a vertex, the middle of an edge or a face of it; go through a vertex or the middle of an edge; run from
+    vertex to vertex — along edges, in the planes of faces, through the solid; end anywhere, the border of an
+    open surface and the faces themselves not left out."""
     rng = np.random.default_rng(seed)
     lo, hi = v.min(axis=0) - 1.0, v.max(axis=0) + 1.0
 
     def anywhere() -> np.ndarray:
-        return np.asarray(np.round(rng.uniform(lo, hi) * 8.0) / 8.0 + 1.0 / 16.0)  # on no vertex and no level
+        return np.asarray(np.round(rng.uniform(lo, hi) * 8.0) / 8.0)
 
     out = []
     for n in range(count):
@@ -354,7 +350,7 @@ def polylines(seed: int, v: np.ndarray, t: np.ndarray, count: int) -> list[np.nd
         if kind == 0:
             line = [special(rng, v, t, "vef"), anywhere(), anywhere()]
         elif kind == 1:
-            line = [anywhere(), special(rng, v, t, "vf"), anywhere(), special(rng, v, t, "v"), anywhere()]
+            line = [anywhere(), special(rng, v, t, "vef"), anywhere(), special(rng, v, t, "vef"), anywhere()]
         elif kind == 2:
             s, k = special(rng, v, t, "ve"), rng.integers(-12, 13, 3) / 8.0
             line = [s - k, s + k, anywhere()]
@@ -380,15 +376,12 @@ def test_polylines_through_vertices_edges_and_faces_against_rational_arithmetic(
     )
     for h, (p, d) in enumerate(zip(lines, depths, strict=True)):  # the trajectory is the polyline
         assert np.abs(traj.positions(np.full(len(d), h), d) - p).max() <= 1e-12
-    crossed = at_station = in_plane = 0
+    crossed = at_station = 0
     for v, t, solid in ((rv, rt, None), (ov, ot, "outward")):
         mesh = gi.MeshTarget(v, t, solid=solid)
         got = crossings(traj, mesh)
         for h, (p, d) in enumerate(zip(lines, depths, strict=True)):
             want = lifted(p, d, v, t)
-            if want is None:
-                in_plane += 1
-                continue
             assert same(got[h], want), (seed, solid, h, p.tolist(), got[h], want)
             crossed += len(want)
             at_station += sum(1 for depth, _s in want if np.abs(d - depth).min() < DEPTH)
@@ -397,7 +390,6 @@ def test_polylines_through_vertices_edges_and_faces_against_rational_arithmetic(
             assert all(a != b for row in sides for a, b in zip(row, row[1:], strict=False))
             assert sum(len(row) for row in sides) > 100
     assert crossed > 300 and at_station > 60  # … of them at the ends of the pieces of the polylines
-    assert in_plane < len(lines) // 10
 
 
 # --- a graze -----------------------------------------------------------------------------------------------

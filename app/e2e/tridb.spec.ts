@@ -1,8 +1,9 @@
 // Э8, подшаг 8.20 (ADR 0013 §5–§6; ТЗ 7.21, 9.4): «Главная › Загрузка › Каркасы» opens the composition of «Импорт
 // файлов» — the real Micromine TRIDB «ORE SEP 2025» (66 wireframes) and a DXF that holds a line and a wireframe:
 // the drawing shows both its layers and its wireframes. The import puts the wireframes into «Каркасы» of the data
-// tree and into the 3D window, the line file into «Линии»; then every stored wireframe is checked by itself —
-// «Свойства › Проверки» of a wireframe are filled without «Проверить».
+// tree and into the 3D window, the line file into «Линии»; the view moves to the TRIDB, which lies far from the
+// demo (466 000 / 4 584 000) and was not seen — «показать загруженное»; then every stored wireframe is checked by
+// itself — «Свойства › Проверки» of a wireframe are filled without «Проверить».
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
@@ -82,7 +83,7 @@ test("wireframes: «Каркасы» — a real TRIDB and a DXF with lines and a
     await expect(win).toHaveCount(0);
 
     // ---- «Каркасы» and «Линии» of the tree, the 3D window -----------------------------------------------------
-    type Wireframe = { id: number; name: string; stats: { checks?: { state: string; pairs: number } } };
+    type Wireframe = { id: number; name: string; extent: number[]; stats: { checks?: { state: string; pairs: number } } };
     let wireframes: Wireframe[] = [];
     await expect
       .poll(
@@ -102,6 +103,23 @@ test("wireframes: «Каркасы» — a real TRIDB and a DXF with lines and a
     await expect(tree.getByTestId(`tree-wireframe-${ore.id}`)).toBeVisible();
     await expect(tree.getByRole("treeitem", { name: "mixed.dxf, 1 слой" })).toBeVisible();
     await expect.poll(async () => (await state(page)).wireframes.layers, { timeout: 60_000 }).toBe(TRIDB_WIREFRAMES + 1);
+
+    // ---- «показать загруженное»: the view moved to the TRIDB, far from the demo; the drawing near the holes was seen
+    const far = wireframes.filter((w) => w.id !== ore.id).map((w) => w.extent);
+    const lo = [0, 1, 2].map((k) => Math.min(...far.map((e) => e[k])));
+    const hi = [3, 4, 5].map((k) => Math.max(...far.map((e) => e[k])));
+    expect(lo[0]).toBeGreaterThan(400_000); // 461 km east of the holes of the demo
+    await waitFrame(page);
+    const host = (await page.getByTestId("scene-host").boundingBox())!;
+    const onScreen = (p: number[]) => page.evaluate(([x, y, z]) => window.__bfScene!.screen(x, y, z), p as [number, number, number]);
+    const mid = (await onScreen([0, 1, 2].map((k) => (lo[k] + hi[k]) / 2)))!;
+    expect(mid.x).toBeGreaterThan(host.x + 0.25 * host.width);
+    expect(mid.x).toBeLessThan(host.x + 0.75 * host.width);
+    expect(mid.y).toBeGreaterThan(host.y + 0.25 * host.height);
+    expect(mid.y).toBeLessThan(host.y + 0.75 * host.height);
+    const [a, b] = [(await onScreen(lo))!, (await onScreen(hi))!];
+    expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeGreaterThan(0.4 * Math.min(host.width, host.height)); // not a dot
+    expect((await page.evaluate(() => window.__bfScene!.pixels()))!.nonBackground).toBeGreaterThan(5000); // not an empty window
 
     // ---- the checks of every imported wireframe, started by the interface once the import ended ---------------
     type CheckJob = { kind: string; status: string; params: { wireframe_ids: number[] } };

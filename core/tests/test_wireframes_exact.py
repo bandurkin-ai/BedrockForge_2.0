@@ -445,6 +445,56 @@ def test_intersections_refuse_bad_requests(api) -> None:  # type: ignore[no-unty
     refused(c.get(url, params={"wireframes": ",".join(str(i) for i in range(1, 2500))}), 422, "bad_wireframes")
 
 
+def test_intersections_hold_one_wireframe_at_a_time(api, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    """The marks of every wireframe of the project (no `wireframes=`) are those the kernel gives for all of
+    them at once, bit for bit, and are found a wireframe at a time: with a cache too small for two wireframes
+    never more than one of them is in memory."""
+    import gc
+    import weakref
+
+    from bf_core.drillholes.trajectory import trajectories
+
+    c, project, ids = api
+    _r, head, a = marks(c, ids["set"])
+    assert [o["name"] for o in head["objects"]] == ["Куб", "Разлом", "Рельеф"] and head["n"] > 4
+    st = trajectories(project, ids["set"])
+    with dialect.read_tx(project.engine) as conn:
+        targets = exact.set_targets(conn, None)
+    at_once = gi.hole_crossings(st.traj, [exact.geometry(project, t).target(stats) for t, stats in targets])
+    assert a["hole"].tolist() == st.hole_ids[at_once.hole].tolist() and a["obj"].tolist() == at_once.mesh.tolist()
+    assert a["depth"].tobytes() == at_once.depth.tobytes() and a["xyz"].tobytes() == at_once.xyz.tobytes()
+    assert a["event"].tolist() == at_once.event.tolist() and set(a["obj"].tolist()) == {0, 1}
+    parts = [gi.hole_crossings(st.traj, [exact.geometry(project, t).target(stats)]) for t, stats in targets]
+    joined = gi.join(parts)
+    for name in ("hole", "mesh", "depth", "xyz", "triangle", "side", "event"):
+        one, other = getattr(joined, name), getattr(at_once, name)
+        assert one.dtype == other.dtype and one.shape == other.shape and one.tobytes() == other.tobytes(), name
+    assert len(gi.join([])) == 0 and gi.join([]).xyz.shape == (0, 3)
+    del at_once, parts, joined, targets
+
+    exact.forget()
+    monkeypatch.setattr(exact, "CACHE_BYTES", 1024)
+    alive: list[weakref.ReferenceType[np.ndarray]] = []
+    seen: list[tuple[int, int]] = []
+    load, cross = exact._load, gi.hole_crossings
+
+    def loading(*args: Any) -> exact.Geometry:
+        g = load(*args)
+        alive.append(weakref.ref(g.xyz if g.xyz.base is None else g.xyz.base))  # the memory of the vertices
+        return g
+
+    def crossing(traj: Any, meshes: Any, **rest: Any) -> gi.Crossings:
+        gc.collect()
+        seen.append((len(meshes), sum(ref() is not None for ref in alive)))
+        return cross(traj, meshes, **rest)
+
+    monkeypatch.setattr(exact, "_load", loading)
+    monkeypatch.setattr(gi, "hole_crossings", crossing)
+    _r, head, again = marks(c, ids["set"])
+    assert seen == [(1, 1)] * 3 and exact.cache_info()["entries"] == 1  # three wireframes, one at a time
+    assert head["n"] == len(a["depth"]) and all(again[k].tobytes() == a[k].tobytes() for k in a)
+
+
 # --- the cache ---------------------------------------------------------------------------------------------
 
 
