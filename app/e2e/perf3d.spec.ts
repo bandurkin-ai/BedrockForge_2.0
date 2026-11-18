@@ -5,10 +5,14 @@
 // Э7 (ADR 0011 «Замеры», ТЗ 5.3), before the benchmark: the first frame of the whole demo — holes, lines,
 // survey points, the plan on the DTM — after a lost context (≤ 3 s) and a click on a line and on the surface
 // (≤ 50 ms on the CPU); then the lines, the plan and the DTM of the demo are removed.
+// Э8, подшаг 8.27 (долг Э7; ADR 0011 «Замеры», ADR 0013 «Замеры»): the heavy scene — the whole demo, one layer of
+// 1 million line segments, a raster of 4096 px and a DTM of about 200 thousand triangles, the same 60 frames →
+// bench/out/frame_sw_heavy.json; budgets on the counters only (budgets.json → external.frame_sw_heavy).
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 import { close, holesOnlyDemo, launch, setWindowSize, waitFrame } from "./helpers";
 
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -155,5 +159,188 @@ test("perf3d: 2000 holes and a display, 60 frames under software rendering → b
     for (const [key, limit] of Object.entries(limits)) expect(out[key as keyof typeof out] as number, key).toBeLessThanOrEqual(limit);
   } finally {
     await close(app);
+  }
+});
+
+// ---------------------------------------------------------------- the heavy scene (8.27)
+
+// A square of 1.1 km around the demo (its holes: x 4994…5356, y 7994…8256, collars at 420 m).
+const HEAVY = { x0: 4650, y0: 7575, side: 1100 };
+// One layer of lines: 25 000 polylines of 40 segments on 100 levels. A saw of 25 m steps and 100 m teeth: no
+// vertex is nearer than 40 m to a chord of its line, so every level of detail (4 and 32 m) keeps every segment.
+const SAW = { levels: 100, rows: 250, segments: 40, dx: 25, tooth: 100, rowStep: 4, z0: 200, dz: 2 };
+const SEGMENTS = SAW.levels * SAW.rows * SAW.segments;
+// The points of the lower surface: a grid of 317 × 317 at 3.5 m → 2 · 316² = 199 712 triangles.
+const GRID = { n: 317, step: 3.5 };
+const IMAGE_PX = 4096;
+
+function heavyFiles(dir: string): string[] {
+  const lines = path.join(dir, "horizons.dxf");
+  const out = fs.openSync(lines, "w");
+  fs.writeSync(out, "0\r\nSECTION\r\n2\r\nENTITIES\r\n");
+  for (let h = 0; h < SAW.levels; h++) {
+    const level: string[] = [];
+    for (let r = 0; r < SAW.rows; r++) {
+      const y = HEAVY.y0 + r * SAW.rowStep;
+      let e = `0\r\nLWPOLYLINE\r\n8\r\nHORIZONS\r\n90\r\n${SAW.segments + 1}\r\n70\r\n0\r\n38\r\n${SAW.z0 + h * SAW.dz}\r\n`;
+      for (let j = 0; j <= SAW.segments; j++) e += `10\r\n${HEAVY.x0 + 50 + j * SAW.dx}\r\n20\r\n${y + (j % 2) * SAW.tooth}\r\n`;
+      level.push(e);
+    }
+    fs.writeSync(out, level.join(""));
+  }
+  fs.writeSync(out, "0\r\nENDSEC\r\n0\r\nEOF\r\n");
+  fs.closeSync(out);
+
+  const points = path.join(dir, "bedrock.csv");
+  const rows = ["X;Y;Z"];
+  for (let j = 0; j < GRID.n; j++) {
+    for (let i = 0; i < GRID.n; i++) {
+      const x = HEAVY.x0 + i * GRID.step;
+      const y = HEAVY.y0 + j * GRID.step;
+      rows.push(`${x};${y};${(170 + 14 * Math.sin(x / 90) * Math.cos(y / 120) + 4 * Math.sin(y / 31)).toFixed(3)}`);
+    }
+  }
+  fs.writeFileSync(points, `${rows.join("\n")}\n`);
+
+  // an 8-bit RGB PNG of 4096 × 4096 written by hand (no image library in the tests): red grows to the right,
+  // green downwards
+  const image = path.join(dir, "ortho-heavy.png");
+  const row = IMAGE_PX * 3 + 1;
+  const raw = Buffer.alloc(row * IMAGE_PX);
+  for (let y = 0; y < IMAGE_PX; y++) {
+    const at = y * row + 1;
+    const green = (y * 255) / IMAGE_PX;
+    for (let x = 0; x < IMAGE_PX; x++) {
+      raw[at + x * 3] = (x * 255) / IMAGE_PX;
+      raw[at + x * 3 + 1] = green;
+      raw[at + x * 3 + 2] = 160;
+    }
+  }
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const out4 = Buffer.alloc(8 + body.length);
+    out4.writeUInt32BE(data.length, 0);
+    body.copy(out4, 4);
+    out4.writeUInt32BE(zlib.crc32(body), 4 + body.length);
+    return out4;
+  };
+  const head = Buffer.alloc(13);
+  head.writeUInt32BE(IMAGE_PX, 0);
+  head.writeUInt32BE(IMAGE_PX, 4);
+  head.set([8, 2, 0, 0, 0], 8);
+  fs.writeFileSync(image, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", head), chunk("IDAT", zlib.deflateSync(raw, { level: 1 })), chunk("IEND", Buffer.alloc(0))]));
+  const pixel = HEAVY.side / IMAGE_PX;
+  const world = path.join(dir, "ortho-heavy.pgw"); // the centre of the top-left pixel
+  fs.writeFileSync(world, [pixel, 0, 0, -pixel, HEAVY.x0 + pixel / 2, HEAVY.y0 + HEAVY.side - pixel / 2, ""].join("\n"));
+  return [lines, points, image, world];
+}
+
+test("perf3d heavy: the demo, 1 million line segments, a raster and a DTM of 200 thousand triangles → bench/out/frame_sw_heavy.json", async () => {
+  test.setTimeout(900_000);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-perf3d-heavy-"));
+  const paths = heavyFiles(dir);
+  const { app, page } = await launch({ BF_E2E: "1" });
+  try {
+    await setWindowSize(app, 1280, 800);
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
+    await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
+    await waitFrame(page);
+    const demo = await page.evaluate(() => window.__bfScene!.state());
+    expect(demo.lines.layers).toBe(3);
+    expect(demo.wireframes.layers).toBe(1);
+
+    const api = (method: string, url: string, body?: unknown) =>
+      page.evaluate(
+        async ([m, u, b]) => {
+          const c = window.bf!.core()!;
+          const r = await fetch(`${c.baseUrl}/api/v1${u}`, { method: m as string, headers: { "X-BF-Token": c.token, "Content-Type": "application/json" }, body: b === null ? undefined : JSON.stringify(b) });
+          return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+        },
+        [method, url, body ?? null] as const,
+      );
+    type Layer = { id: number; line_count: number; point_count: number };
+    type Wf = { id: number; name: string; triangle_count: number };
+    const layers = async () => ((await api("GET", "/lines/files")).body.files as { layers: Layer[] }[]).flatMap((f) => f.layers);
+
+    // the files as the wizard «Импорт файлов» imports them: one job
+    const loadStart = Date.now();
+    const started = await api("POST", "/import/objects", { files: paths });
+    expect(started.status, JSON.stringify(started.body)).toBe(200);
+    let sawId = 0;
+    let pointsId = 0;
+    await expect
+      .poll(
+        async () => {
+          const all = await layers();
+          sawId = all.find((l) => l.line_count === SAW.levels * SAW.rows)?.id ?? 0;
+          pointsId = all.find((l) => l.point_count === GRID.n * GRID.n)?.id ?? 0;
+          const rasters = (await api("GET", "/rasters")).body.rasters as unknown[];
+          return sawId > 0 && pointsId > 0 && rasters.length === 2;
+        },
+        { timeout: 300_000, intervals: [1000] },
+      )
+      .toBe(true);
+    const importS = (Date.now() - loadStart) / 1000;
+
+    // «Построить ЦТМ» from the points: the second surface of the project
+    const built = await api("POST", "/wireframes/build-dtm", { name: "Подошва", layer_ids: [pointsId] });
+    expect(built.status, JSON.stringify(built.body)).toBe(200);
+    let wf: Wf | undefined;
+    await expect
+      .poll(async () => (wf = ((await api("GET", "/wireframes")).body.wireframes as Wf[]).find((w) => w.name === "Подошва")) !== undefined, { timeout: 300_000, intervals: [1000] })
+      .toBe(true);
+    expect(wf!.triangle_count).toBe(2 * (GRID.n - 1) ** 2);
+    const dtmS = (Date.now() - loadStart) / 1000 - importS;
+    await expect.poll(() => page.evaluate(() => window.__bfScene!.state().wireframes.layers), { timeout: 120_000 }).toBe(2);
+
+    // the points the surface was built from are not a part of the scene measured
+    const run = (id: string, args: Record<string, unknown>) => page.evaluate(([i, a]) => window.__bfScene!.run(i as string, a as Record<string, unknown>), [id, args] as const);
+    expect((await run("layer.show", { layer: "lines", id: pointsId, visible: false })).ok).toBe(true);
+    await page.keyboard.press("f");
+    await waitFrame(page, 600_000);
+    const state = await page.evaluate(() => window.__bfScene!.state());
+    // the scene is what it is called: every segment of the layer and the whole surface are in the frame
+    expect(state.layers).toEqual(expect.arrayContaining([`ln:${sawId}`, `wf:${wf!.id}`]));
+    expect(state.lines.segments).toBeGreaterThanOrEqual(SEGMENTS);
+    expect(state.rasters.count).toBe(2);
+    expect(state.wireframes.layers).toBe(2);
+    expect(state.sets.length).toBe(1);
+
+    const r = await page.evaluate(() => window.__bfScene!.bench(60));
+    const after = await page.evaluate(() => window.__bfScene!.state());
+    const out = {
+      segments: after.lines.segments,
+      line_parts: after.lines.parts,
+      lines_simplified: after.lines.simplified,
+      dtm_triangles: wf!.triangle_count,
+      wireframe_triangles: after.wireframes.triangles,
+      wireframe_parts: after.wireframes.parts,
+      wireframes_simplified: after.wireframes.simplified,
+      rasters: after.rasters.count,
+      raster_px: IMAGE_PX,
+      raster_levels: after.rasters.levels,
+      over: after.lines.over || after.rasters.over || after.wireframes.over,
+      frames: r.frames,
+      ms_per_frame: Math.round(r.ms_per_frame * 10) / 10,
+      ms_median: Math.round(r.ms_median * 10) / 10,
+      calls: r.calls,
+      triangles: r.triangles,
+      gpu_bytes: r.gpu_bytes,
+      gpu_mb: Math.round((r.gpu_bytes / 1024 / 1024) * 10) / 10,
+      import_s: Math.round(importS * 10) / 10,
+      dtm_s: Math.round(dtmS * 10) / 10,
+      renderer: r.gpu.renderer,
+      platform: process.platform,
+    };
+    fs.mkdirSync(path.join(ROOT, "bench", "out"), { recursive: true });
+    fs.writeFileSync(path.join(ROOT, "bench", "out", "frame_sw_heavy.json"), JSON.stringify(out, null, 2));
+    console.log(`frame_sw_heavy: ${JSON.stringify(out)}`);
+    expect(out.over).toBe(false);
+    const limits = JSON.parse(fs.readFileSync(path.join(ROOT, "bench", "budgets.json"), "utf8")).external.frame_sw_heavy.limits as Record<string, number>;
+    for (const [key, limit] of Object.entries(limits)) expect(out[key as keyof typeof out] as number, key).toBeLessThanOrEqual(limit);
+  } finally {
+    await close(app);
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
