@@ -222,11 +222,17 @@ def simplify(local: np.ndarray, tri: np.ndarray, target: int) -> tuple[np.ndarra
 
 def levels(local: np.ndarray, tri: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
     """A part at every level of detail: [0] — as given, [i] — about 1/8ⁱ of its triangles, made from the level
-    before. A level that could not be made smaller is the level before it (the same arrays)."""
+    before. A level that could not be made smaller is the level before it (the same arrays). A new vertex
+    that the decimation put outside the extent of the part (a quadric overshoots on a curved surface) is
+    brought back to it, so the box of a part holds the part at every level."""
     out = [(local, tri)]
+    lo, hi = (local.min(axis=0), local.max(axis=0)) if len(local) else (None, None)
     for _ in range(1, LOD_LEVELS):
         v, t = out[-1]
-        out.append(simplify(v, t, len(t) // LOD_RATIO))
+        sv, st = simplify(v, t, len(t) // LOD_RATIO)
+        if sv is not v:
+            np.clip(sv, lo, hi, out=sv)
+        out.append((sv, st))
     return out
 
 
