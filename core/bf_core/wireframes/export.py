@@ -180,10 +180,17 @@ def request(
     }
 
 
+#: Memory of the export in sizes of the geometry of the largest wireframe (24 bytes a vertex, 12 a triangle).
+#: Measured on a wireframe of 620 000 triangles: TRIDB 2.4, OBJ 3.1, DTM 4.2, STL 5.7, DXF 12.7 (the corners
+#: of its polyfaces in the order of use and their text).
+MEMORY_FACTOR = {"tridb": 4, "obj": 4, "dtm": 6, "stl": 8, "dxf": 16, "dwg": 16}
+
+
 def _memory(params: dict[str, Any]) -> int:
-    """One wireframe at a time: its arrays, its triangles in the order of the file and a portion of the text
-    or of the records being written — about four times its geometry (`largest`, bytes; measured: 3.2×)."""
-    return max(512, 256 + int(int(params.get("largest") or 0) * 4 / 2**20))
+    """One wireframe at a time: its arrays, its triangles in the order of the file and the portion being
+    written (`largest` — the bytes of the geometry of the largest wireframe)."""
+    factor = MEMORY_FACTOR.get(str(params.get("format")), 16)
+    return max(512, 256 + int(int(params.get("largest") or 0) * factor / 2**20))
 
 
 # --- writing -------------------------------------------------------------------------------------------

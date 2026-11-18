@@ -382,9 +382,13 @@ def test_cancel_at_any_step_leaves_nothing(project, files: dict[str, Path], monk
     assert all(store.exists(sha) for sha in owned)
 
 
-def test_broken_wireframes_and_broken_files(project, files: dict[str, Path], tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_broken_wireframes_and_broken_files(  # type: ignore[no-untyped-def]
+    project, files: dict[str, Path], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A wireframe that cannot be read is skipped and said so; a file that breaks half-way leaves nothing of
-    itself; the other files are loaded. When nothing loads, the job fails with the first reason."""
+    itself — its first solid is in the project as `building` by then; the other files are loaded. When nothing
+    loads, the job fails with the first reason."""
+    monkeypatch.setattr("bf_core.importing.object_meshes.PORTION", 1)  # a transaction per wireframe
     v, t = cube(1, 10.0)
     three = build_tridb(
         tmp_path / "three.tridb",
@@ -421,6 +425,9 @@ def test_broken_wireframes_and_broken_files(project, files: dict[str, Path], tmp
     assert rows[0]["info"]["stats"]["volume"] == pytest.approx(1000.0, rel=1e-12)
     assert rows[1]["info"]["stats"]["volume"] is None  # never 0
 
+    with dialect.read_tx(project.engine) as conn:  # the first solid of the cut file was written, then removed
+        assert conn.execute(sa.select(sa.func.max(objects.c.id))).scalar_one() == len(rows) + 1
+        assert conn.execute(sa.select(sa.func.count()).select_from(wireframes)).scalar_one() == len(rows)
     before = state_of(project.engine, project.folder)
     for bad, code in (([cut], "truncated"), ([tmp_path / "нет такого.tridb"], "file_unreadable")):
         with pytest.raises(JobError) as err:

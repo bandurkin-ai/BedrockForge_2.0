@@ -72,8 +72,9 @@ TARGET = "objects"  # `import_log.target`
 PORTION = 25  # layers written by one transaction (about 0.1 s)
 LINE_TOTALS = ("layers", "lines", "points", "vertices", "rasters")  # `import_log.counts` of a line file
 #: Memory a file needs, by its extension, in sizes of the file: a text file of lines or meshes — its arrays,
-#: attributes and the staging (about 6×); a binary file of wireframes holds 36 bytes a triangle and its
-#: vertices, and staging one keeps the mesh, its spatial order and the edge table at once (measured: 11×).
+#: attributes and the staging (about 6×). A binary file of wireframes is little more than its geometry, and
+#: staging a wireframe keeps the mesh, its spatial order and the table of its edges at once: measured 10× the
+#: geometry of a wireframe of 620 000 triangles (a TRIDB of 1 million triangles, 23 MB: 150 MB over the start).
 MEMORY_FACTOR = {".tridb": 12, ".stl": 12, ".dm": 12}
 
 

@@ -11,7 +11,8 @@ process:
                    the blobs again and the finer part table — the slower of the two wireframes (the surface
                    from above, the ore body from below);
   pick_s           the slowest of 250 next clicks: 100 rays straight down, 100 from a camera at an angle, 50
-                   that graze the relief (they pass over many parts);
+                   that graze the relief (they pass over many parts). The collector of Python is run before
+                   them: the one full collection of a fresh process (75 ms) would be taken for a click;
   pick_median_s    their median.
 What is checked against the surface the wireframe was made from (`Surface.height`, float64):
   section_error_m  the largest distance of a point of a section from its plane and from the surface; the
@@ -108,6 +109,7 @@ def _rays(surface: Any, seed: int = 5) -> tuple[Any, Any, Any]:
 
 
 def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
+    import gc
     import statistics
     import time
     from types import SimpleNamespace
@@ -154,6 +156,7 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         assert first_hit is not None and first_hit["wireframe_id"] == ids[1], first_hit
         shell = float(body_distance([first_hit["point"]], **body)[0])
         assert 0.98 < shell <= 1.0 + 1e-9, shell  # on a facet of the ore body: inside its ellipsoid, never outside
+        gc.collect()
         picks, times = [], []
         for o, d in zip(origins, directions, strict=True):
             a = time.perf_counter()
