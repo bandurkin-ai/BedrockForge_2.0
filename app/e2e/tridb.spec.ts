@@ -119,7 +119,10 @@ test("wireframes: «Каркасы» — a real TRIDB and a DXF with lines and a
     expect(mid.y).toBeLessThan(host.y + 0.75 * host.height);
     const [a, b] = [(await onScreen(lo))!, (await onScreen(hi))!];
     expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeGreaterThan(0.4 * Math.min(host.width, host.height)); // not a dot
-    expect((await page.evaluate(() => window.__bfScene!.pixels()))!.nonBackground).toBeGreaterThan(5000); // not an empty window
+    // not an empty window: the parts of the wireframes are fetched after the view moved (slower on Windows)
+    await expect
+      .poll(async () => (await page.evaluate(() => window.__bfScene!.pixels()))!.nonBackground, { timeout: 30_000 })
+      .toBeGreaterThan(5000);
 
     // ---- the checks of every imported wireframe, started by the interface once the import ended ---------------
     type CheckJob = { kind: string; status: string; params: { wireframe_ids: number[] } };
