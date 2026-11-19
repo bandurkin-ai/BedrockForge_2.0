@@ -71,7 +71,9 @@ def _layer_out(row: Any) -> dict[str, Any]:
     out["file_id"] = out.pop("parent_id")
     out.pop("sort_key", None)
     out["attr_schema"] = out["attr_schema"] or []
-    out["cloud"] = cloud_summary(out.pop("meta", None), out["attr_schema"])
+    meta = out.pop("meta", None)
+    out["cloud"] = cloud_summary(meta, out["attr_schema"])
+    out["built"] = meta.get("built") if isinstance(meta, dict) else None  # the operation that made it (ADR 0015 §6)
     # «замкнутость» of the properties: every line is closed, some are, none is (points have no lines)
     lines, closed = int(out["line_count"]), int(out["closed_count"])
     out["closed"] = "none" if closed == 0 else "all" if closed == lines else "some"
