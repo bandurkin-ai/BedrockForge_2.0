@@ -14,6 +14,7 @@ import { bindJobs } from "../modules/jobs/bind";
 import { bindLines } from "../modules/lines/bind";
 import { bindProjects } from "../modules/projects/bind";
 import { bindDataManager } from "../modules/datamanager/bind";
+import { bindBlocks } from "../modules/blocks/bind";
 import { bindRasters } from "../modules/rasters/bind";
 import { bindStripLog } from "../charts/striplog/bind";
 import { bindScene } from "../modules/scene/bind";
@@ -150,6 +151,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindAudit(app);
   bindScene(app);
   bindObjects(app);
+  bindBlocks(app);
   bindLines(app);
   bindRasters(app);
   bindDtm(app);

@@ -9,6 +9,7 @@ import { RastersTree } from "../modules/rasters/RastersTree";
 import { SetsTree } from "../modules/tables/SetsTree";
 import { ViewsTree } from "../modules/views/ViewsTree";
 import { SeriesTree } from "../modules/section/SeriesTree";
+import { BlocksTree } from "../modules/blocks/BlocksTree";
 import { WireframesTree } from "../modules/wireframes/WireframesTree";
 import { sectionActions, sectionPlus } from "./treeSections";
 import { useStore } from "./useStore";
@@ -26,6 +27,7 @@ function sectionMenu(s: TreeSection, reason: (id: string) => string | null, run:
 const CONTENT: Partial<Record<TreeSection, () => JSX.Element>> = {
   views: ViewsTree,
   series: SeriesTree,
+  blocks: BlocksTree,
   holes: SetsTree,
   wireframes: WireframesTree,
   dtm: DtmTree,

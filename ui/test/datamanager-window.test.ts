@@ -148,6 +148,7 @@ describe("the actions of the rows", () => {
     const app = open();
     const got: unknown[] = [];
     app.registry.bind("import.files", async (a) => void got.push(a));
+    app.registry.get("import.files")!.params = { kind: { type: "string" } };
     await importInto(app, "Участок 1");
     expect(got).toEqual([{}]);
     expect(app.store.get().statusNote).toContain("Папка назначения «Участок 1»");

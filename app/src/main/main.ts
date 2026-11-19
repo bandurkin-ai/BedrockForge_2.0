@@ -392,6 +392,7 @@ function registerIpc(): void {
       { name: "Все файлы", extensions: ["*"] },
     ],
     prj: [{ name: "Система координат (.prj)", extensions: ["prj"] }],
+    omf: [{ name: "OMF v1 (Leapfrog OMF 0.9)", extensions: ["omf"] }, { name: "Все файлы", extensions: ["*"] }],
     // «Импорт файлов» (ТЗ 7.8): every extension of the wizard; formats arrive with their stages.
     objects: [
       {

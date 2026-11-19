@@ -74,3 +74,7 @@ def export_objects(svc: Svc, s: Sched, request: Request, body: ObjectsBody) -> d
 from bf_core.projects import catalog_router  # noqa: E402 - /catalog/…: one line of `api/modules.py` for both
 
 router.include_router(catalog_router.router)
+
+from bf_core.exporting import omf_router  # noqa: E402 - the OMF routes (ADR 0017), mounted with this router
+
+router.include_router(omf_router.router)
