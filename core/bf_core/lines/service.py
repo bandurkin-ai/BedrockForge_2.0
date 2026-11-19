@@ -2,8 +2,9 @@
 pages, renaming and colour, deleting a file with its layers.
 
 The version of a layer is `objects.version`: every change raises it (the parts of the 3D view are keyed by it,
-`viz/lines.py`), a stale `expected_version` is a 409 with the current layer. Only objects that are `ready` are
-seen here: what an import is still building does not exist for the interface.
+`viz/lines.py`), a stale `expected_version` is a 409 with the current layer. `rev` is the number of its geometry in
+the journal of versions — the base of a save of the editor (ADR 0015 §1, `versions.py`). Only objects that are
+`ready` are seen here: what an import is still building does not exist for the interface.
 
 A point cloud (ADR 0014 §1, `lines/cloud.py`) is a layer of points with `cloud` in its properties (`cloud_summary`:
 parts, levels, extent, classes, the colour modes it has, the source — LAS or XYZ —, the last «Фильтр земли» and the
@@ -35,7 +36,7 @@ _LAYER = (
     objects.c.id, objects.c.parent_id, objects.c.name, objects.c.version, objects.c.extent, objects.c.sort_key,
     line_layers.c.line_count, line_layers.c.point_count, line_layers.c.length, line_layers.c.closed_count,
     line_layers.c.flat, line_layers.c.color, line_layers.c.attr_schema, line_layers.c.points_only,
-    line_layers.c.origin, objects.c.meta,
+    line_layers.c.origin, line_layers.c.rev, objects.c.meta,
 )  # fmt: skip
 #: what of `meta.cloud.source.las` the properties show (the WKT, the GeoTIFF keys and the VLRs stay in the project)
 _LAS_SHOWN = ("version", "point_format", "record_length", "extra_bytes", "point_count", "scale", "offset",

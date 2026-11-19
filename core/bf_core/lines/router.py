@@ -6,7 +6,8 @@ lines, attribute schema); a PATCH carries `expected_version`, a stale one is a 4
 `GET /lines/layers/{id}/attrs?offset&limit&scope` — attributes by pages with an ETag (If-None-Match → 304); of a
 point cloud — a slice of its blobs with X, Y, Z and the record numbers (`service.cloud_page`). The properties of a
 cloud layer have `cloud` (`service.cloud_summary`).
-The geometry for 3D is `/viz/lines/{id}` (`viz/router.py`).
+The geometry for 3D is `/viz/lines/{id}` (`viz/router.py`); the string editor — `edit_router.py` (new layer, the
+exact geometry, saving with versions, the journal, the return, the move into another layer).
 `POST /lines/export` starts the job `export.lines` (`lines/export.py`): layers or a whole file to STR, Surpac
 STR, DXF, CSV or DAT; a point cloud (alone) to LAS — by its source file (`las: "source"`) or as a new file
 (`"new"`) — or to CSV `X;Y;Z;класс[;h]` (`lines/cloud_export.py`).
@@ -221,3 +222,9 @@ def cloud_dz(svc: Svc, s: Sched, layer_id: int, body: DzBody) -> dict[str, Any]:
         params = dz_job.request(conn, layer_id, body.wireframe_id, heavy_workers=s.heavy_workers)
     key, job_id = s.submit(dz_job.KIND, params, title=dz_job.TITLE)
     return {"source": key, "id": job_id}
+
+
+# The string editor (ТЗ 7.22; ADR 0015 §2): new layer, exact geometry, saving with versions, journal, move.
+from . import edit_router  # noqa: E402 - its routes join this router, after the ones above
+
+router.include_router(edit_router.router)
