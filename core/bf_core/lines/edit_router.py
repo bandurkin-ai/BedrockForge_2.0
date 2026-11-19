@@ -197,6 +197,13 @@ def _move_json(project: Any, layer_id: int, data: bytes) -> tuple[int, int, int,
     offsets, closed = as_lines(ls)
     counts = np.diff(offsets)
     chosen = set(body.lines)
+    if len(chosen) != len(body.lines):
+        from collections import Counter
+
+        twice = min(v for v, k in Counter(body.lines).items() if k > 1)
+        raise ApiError(
+            422, "bad_geometry", f"Линия {twice} названа для переноса дважды.", "Выберите линии для переноса заново."
+        )
     missing = chosen - set(lid.tolist())
     if missing:
         raise ApiError(404, "line_not_found", f"Линии {min(missing)} в слое нет.", "Слой изменился — перечитайте его.")

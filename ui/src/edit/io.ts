@@ -319,6 +319,36 @@ export function rebaseOnSaved(layer: EditLayer, reloaded: LoadedLayer, moved: re
 }
 
 /**
+ * A working copy edited while `sent` was being saved, carried over the answer (`rebased` — `sent` as
+ * `rebaseOnSaved` gave it back): a line untouched since the send takes its rebased object (untouched against the
+ * new base), a line changed since keeps its change under its new stable number, a line not in `sent` (drawn or
+ * brought back by an undo meanwhile) is new to the store, the moved lines are gone.
+ */
+export function carryOver(sent: EditLayer, rebased: EditLayer, moved: readonly number[] = []): (layer: EditLayer) => EditLayer {
+  const gone = new Set(moved);
+  const kept = sent.lines.filter((l) => l.points.length > 0 && !gone.has(l.id));
+  const byId = new Map<number, { sent: EditLine; next: EditLine }>();
+  kept.forEach((l, i) => byId.set(l.id, { sent: l, next: rebased.lines[i] }));
+  return (layer) => {
+    let changed = false;
+    const lines: EditLine[] = [];
+    for (const line of layer.lines) {
+      if (gone.has(line.id)) {
+        changed = true;
+        continue;
+      }
+      const m = byId.get(line.id);
+      let next: EditLine;
+      if (m) next = line === m.sent ? m.next : line.src === m.next.src ? line : { ...line, src: m.next.src };
+      else next = line.src === NEW_LINE ? line : { ...line, src: NEW_LINE };
+      if (next !== line) changed = true;
+      lines.push(next);
+    }
+    return changed ? { lines, nextId: layer.nextId } : layer;
+  };
+}
+
+/**
  * A layer as the core would give it back after a save of `layer` (`lid` for new lines after the greatest one):
  * a new empty layer (`lines.new_layer`) and tests. Untouched closed lines are stored with the repeated vertex.
  */

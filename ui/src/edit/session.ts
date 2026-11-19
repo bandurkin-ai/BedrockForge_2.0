@@ -9,7 +9,7 @@
  */
 import type { SectionLine } from "../viz/section/math";
 import { horizontalPlane, projectToPlane, rayPlane, sectionPlane, type Plane } from "./coords";
-import { moveBody, rebaseOnSaved, saveBody, summarize, type LoadedLayer, type SaveSummary } from "./io";
+import { carryOver, moveBody, rebaseOnSaved, saveBody, summarize, type LoadedLayer, type SaveSummary } from "./io";
 import { EMPTY_SELECTION, layerHistory, lineById, vertexAt, type EditLayer, type History, type Selection, type Vec3, type VertexRef } from "./model";
 import * as ops from "./ops";
 import { linesInBox, nearestSegment, nearestVertex, verticesInBox } from "./pick";
@@ -48,6 +48,9 @@ export class EditSession implements CommandHost {
   assemble: { order: number[]; closed: boolean } | null = null;
   drag: Drag | null = null;
   message: string | null = null;
+  /** A save (or a move) went through but its answer is not read (`GET …/geometry` failed): the next save reads
+   * the layer first and rebases `sent` (`editor.ts`), never sends over the old base. */
+  unsynced: { layerId: number; sent: EditLayer; moved: readonly number[]; name?: string } | null = null;
   private listeners = new Set<() => void>();
   private revision = 0;
   private probed: { x: number; y: number; hit: SnapHit | null } | null = null;
@@ -212,6 +215,10 @@ export class EditSession implements CommandHost {
   // ---- pointer events from the view; true = the event is taken (the view does not rotate or pick)
   pointer(e: EditPointer): boolean {
     const t = this.transform();
+    if (e.type === "leave") {
+      this.leave();
+      return false;
+    }
     if (e.type === "move") return this.onMove(e);
     if (e.type === "down") return this.onDown(e, t);
     if (e.type === "up") return this.onUp(t);
@@ -329,7 +336,12 @@ export class EditSession implements CommandHost {
     if (this.tool === "select") return this.clickSelect(e, t);
     if (this.tool === "insert") return this.insertAt(e, t, this.snap.radius, false) ? undefined : this.say("Щёлкните по сегменту линии");
     let extra: SnapHit | null = null;
-    if (this.wantsProbe() && !(this.probed && Math.hypot(this.probed.x - e.x, this.probed.y - e.y) <= 3)) extra = await this.runProbe(e);
+    if (this.wantsProbe() && !(this.probed && Math.hypot(this.probed.x - e.x, this.probed.y - e.y) <= 3)) {
+      // the core is asked: what the click was meant for may change meanwhile (a key, an undo, another tool)
+      const was = { tool: this.tool, drawing: this.drawing, layer: this.layer };
+      extra = await this.runProbe(e);
+      if (was.tool !== this.tool || was.drawing !== this.drawing || was.layer !== this.layer) return this.say("Точка не поставлена: пока искалась привязка, правка изменилась. Щёлкните ещё раз");
+    }
     const hit = this.resolve(e, extra);
     if (!hit.point) return this.say("Здесь точку поставить нельзя: плоскость построения видна с ребра. Поверните вид или введите координаты");
     this.addPoint(hit.point, t, e);
@@ -466,6 +478,18 @@ export class EditSession implements CommandHost {
     return false;
   }
 
+  /** The cursor left the 3D window (or the editor closes): no hover, no pending probe of the core. */
+  leave(): void {
+    if (this.probeTimer) clearTimeout(this.probeTimer);
+    this.probeTimer = null;
+    this.probeAbort?.abort();
+    this.probeAbort = null;
+    this.probed = null;
+    if (!this.hover) return;
+    this.hover = null;
+    this.emit();
+  }
+
   // ---- commands of the session itself
   setTool(tool: Tool): void {
     if (this.drawing) this.finishDrawing();
@@ -525,8 +549,9 @@ export class EditSession implements CommandHost {
   }
 
   /**
-   * A key of the editor: the command it ran, `lines.save` for the caller to save, or null when the key is not
-   * the editor's (Enter and Backspace only while a line is being drawn).
+   * A key of the editor: Enter, Backspace and Esc the session runs itself (the command id is returned; Enter and
+   * Backspace only while a line is being drawn, else null — not the editor's key); Delete, Ctrl+A, Ctrl+Z,
+   * Ctrl+Y and Ctrl+S give the id of their command for the caller to run through the registry (`editKeys.ts`).
    */
   key(e: EditKey): string | null {
     const id = keyCommand(e);
@@ -540,22 +565,8 @@ export class EditSession implements CommandHost {
       case "lines.escape":
         this.escape();
         return id;
-      case "lines.delete":
-        cmd.deleteSelection(this);
-        return id;
-      case "lines.undo":
-        this.undo();
-        return id;
-      case "lines.redo":
-        this.redo();
-        return id;
-      case "lines.select_all":
-        cmd.selectAll(this);
-        return id;
-      case "lines.save":
-        return id;
       default:
-        return null;
+        return id;
     }
   }
 
@@ -584,19 +595,23 @@ export class EditSession implements CommandHost {
   }
 
   /**
-   * After a save (or a move) the layer as the core gives it back (`GET …/geometry`): the lines keep their ids
-   * and points and take the stable numbers given to them; the steps before the save stay undoable. When the
-   * answer does not line up with the working copy (lines dropped by a move), the working copy is the answer.
+   * After a save (or a move) of `sent` — the working copy the body was made of — the layer as the core gives it
+   * back (`GET …/geometry`): the lines of `sent` keep their ids and points and take the stable numbers given to
+   * them; the steps before the save stay undoable. Edits made while the save was on their way (the save does not
+   * block them) are carried over the new base and stay unsaved. When the answer does not line up with `sent`,
+   * the working copy is the answer — or, with edits made meanwhile, those edits over it, every line unsaved.
    */
-  saved(reloaded: LoadedLayer, moved: readonly number[] = []): void {
-    const next = rebaseOnSaved(this.layer, reloaded, moved);
+  saved(reloaded: LoadedLayer, moved: readonly number[] = [], sent: EditLayer = this.layer): void {
+    const later = this.layer !== sent;
+    const next = rebaseOnSaved(sent, reloaded, moved);
     this.loaded = next ? next.loaded : reloaded;
-    if (next) this.history.rebase(next.layer);
+    if (next) this.history.rebaseSent(sent, next.layer, carryOver(sent, next.layer, moved));
+    else if (later) this.history.savedAs(reloaded.layer);
     else {
       this.history = layerHistory(reloaded.layer);
       this.drawing = null;
     }
-    this.message = `Сохранено: версия ${reloaded.version}`;
+    this.message = later ? `Сохранено: версия ${reloaded.version}. Правки, сделанные во время сохранения, ещё не записаны — сохраните ещё раз` : `Сохранено: версия ${reloaded.version}`;
     this.afterChange();
   }
 }

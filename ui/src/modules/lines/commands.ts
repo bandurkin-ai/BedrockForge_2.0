@@ -14,6 +14,7 @@ export const commands: Command[] = [
   { id: "lines.add_line", title: "Добавить линию", description: "Добавить в слой на правке линию по координатам проекта: points — JSON-массив точек [[x, y, z], …] (точка [x, y] ложится на Z панели), closed — полигон. Только в режиме правки (lines.edit или lines.new_layer); записывает в проект lines.save.", params: { points: { type: "string" }, closed: { type: "boolean" } }, required: ["points"], stage: "Э9" },
   { id: "lines.undo", title: "Отменить", description: "Отменить последнюю правку в редакторе стрингов.", stage: "Э9" },
   { id: "lines.redo", title: "Повторить", description: "Повторить отменённую правку в редакторе стрингов.", stage: "Э9" },
+  { id: "lines.select_all", title: "Выбрать всё", description: "Выбрать все линии слоя на правке в редакторе стрингов (Ctrl+A).", stage: "Э9" },
   { id: "lines.measure", title: "Измерить", description: "Измерения выбранных линий и всего слоя на правке, с несохранёнными правками: вершины, длина 3D и в плане, периметр, площадь полигона в его плоскости и в плане.", stage: "Э9" },
   {
     id: "lines.modify",

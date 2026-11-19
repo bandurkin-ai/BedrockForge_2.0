@@ -1,7 +1,7 @@
 /**
  * Handlers of the commands of the string editor (ADR 0015 §5): `lines.new_layer`, `lines.edit`, `lines.tool`,
  * `lines.add_line` (without a session — a refusal with a hint), `lines.undo`, `lines.redo`, `lines.save`,
- * `lines.measure`, `lines.finish`, `lines.versions`, `lines.move_selected`, `lines.modify`, `lines.snap`. The
+ * `lines.select_all`, `lines.measure`, `lines.finish`, `lines.versions`, `lines.move_selected`, `lines.modify`, `lines.snap`. The
  * ribbon, the panel of the editor, Ctrl+K and Claude run them alike. No React.
  */
 import { SNAP_KINDS, type SnapKind } from "../../edit/snap";
@@ -15,9 +15,9 @@ import { askText } from "../../shell/dialogs";
 import { needWritable, noted, refusal, viewport } from "../../shell/objectRun";
 import { openWindow } from "../../shell/windows";
 import { lineLayers, loadSceneObjects } from "../scene/objects";
-import { EditError, readLineGeometry } from "../../edit/io";
-import { getGeometry, getVersions, moveLines, newLayer } from "./editApi";
-import { currentSession, finishEditor, openEditor, requireSession, saveEditor } from "./editor";
+import { EditError } from "../../edit/io";
+import { getVersions, moveLines, newLayer } from "./editApi";
+import { currentSession, ensureSynced, finishEditor, openEditor, requireSession, saveEditor, syncSaved } from "./editor";
 import { layerText, metres, selectionText } from "./measures";
 import { restoreLayer } from "./versions";
 import { applyModify, modifyBlocked, modifyInfo, type FieldKey, type ModifyAction } from "./modify";
@@ -79,8 +79,11 @@ export async function moveSelected(s: EditSession, targetId: number): Promise<st
   const target = lineLayers().find((l) => l.id === targetId);
   if (!target) throw refusal("line_layer_not_found", `Слой линий №${targetId} не найден.`, "Обновите дерево проекта и выберите слой.");
   if (target.cloud) throw refusal("not_editable", `«${target.name}» — облако точек: линии в него не переносятся.`, "Выберите слой линий.");
-  const ids = cmd.targetLines(s);
   const base = (await getVersions(targetId)).version;
+  await ensureSynced(s);
+  // the lines, the body and the working copy it is made of — at one moment (edits go on during the request)
+  const ids = cmd.targetLines(s);
+  const sent = s.layer;
   let body: ArrayBuffer;
   try {
     body = s.moveBody(targetId, base);
@@ -89,9 +92,10 @@ export async function moveSelected(s: EditSession, targetId: number): Promise<st
     throw e;
   }
   const r = await moveLines(s.layerId, body);
-  s.saved(readLineGeometry(await getGeometry(s.layerId)), ids);
   void loadSceneObjects();
-  return `Перенесено линий ${ids.length} в слой «${target.name}» (версия ${r.target.version}); слой «${s.layerName}» — версия ${r.source.version}`;
+  const text = `Перенесено линий ${ids.length} в слой «${target.name}» (версия ${r.target.version}); слой «${s.layerName}» — версия ${r.source.version}`;
+  if (!(await syncSaved(s, { layerId: s.layerId, sent, moved: ids }))) return `${text}. Слой не удалось перечитать — перед следующим сохранением он будет перечитан автоматически`;
+  return text;
 }
 
 const NUMBER_KEYS: FieldKey[] = ["dx", "dy", "dz", "distance", "tolerance", "step", "iterations"];
@@ -154,6 +158,15 @@ export function bindEditor(app: App): void {
 
   bind("lines.undo", () => (requireSession().undo(), requireSession().message ?? "Отменено"), editing("lines.undo"));
   bind("lines.redo", () => (requireSession().redo(), requireSession().message ?? "Возвращено"), editing("lines.redo"));
+  bind(
+    "lines.select_all",
+    () => {
+      const s = requireSession();
+      cmd.selectAll(s);
+      return `Выбрано линий: ${s.selection.lines.length}`;
+    },
+    editing(null),
+  );
   bind("lines.save", (a) => saveEditor(app, typeof a.note === "string" ? a.note : ""), editing("lines.save"));
 
   bind(

@@ -56,7 +56,10 @@ def not_editable() -> ApiError:
 
 
 def _conflict(conn: sa.Connection, layer_id: int, base: int) -> ApiError:
-    rev = conn.execute(sa.select(line_layers.c.rev).where(line_layers.c.object_id == layer_id)).scalar_one()
+    """409 for a stale base; 404 when the layer (or its file) was deleted since it was read."""
+    rev = conn.execute(sa.select(line_layers.c.rev).where(line_layers.c.object_id == layer_id)).scalar()
+    if rev is None:
+        return store._not_found()
     row = conn.execute(
         sa.select(line_layer_versions.c.author, line_layer_versions.c.created_at).where(
             line_layer_versions.c.layer_id == layer_id, line_layer_versions.c.version == rev
@@ -308,6 +311,13 @@ def _journal_row(
     return int(vid)
 
 
+def _has_journal(conn: sa.Connection, layer_id: int) -> bool:
+    row = conn.execute(
+        sa.select(line_layer_versions.c.id).where(line_layer_versions.c.layer_id == layer_id).limit(1)
+    ).first()
+    return row is not None
+
+
 def _apply(
     conn: sa.Connection,
     bs: BlobStore,
@@ -331,10 +341,7 @@ def _apply(
     if n != 1:
         raise _conflict(conn, layer_id, base)
     old = {r: s for r, s in store.layer_blobs(conn, layer_id).items() if _geometry_role(r)}
-    has_rows = conn.execute(
-        sa.select(line_layer_versions.c.id).where(line_layer_versions.c.layer_id == layer_id).limit(1)
-    ).first()
-    if has_rows is None:
+    if not _has_journal(conn, layer_id):
         assert base_stats is not None, "the first row needs the measures of the base"
         _journal_row(conn, layer_id, base, _first_action(head), base_stats, author=head["author"], shas=old)
     conn.execute(
@@ -394,7 +401,8 @@ def save(
         check_editable(head)
         if int(head["rev"]) != base_version:
             raise _conflict(conn, layer_id, base_version)
-    base_stats = stats_of(ls, head["next_lid"])
+        first = not _has_journal(conn, layer_id)  # rows are written only with a new rev: a stale read is a 409
+    base_stats = stats_of(ls, head["next_lid"]) if first else None
     prepared = Prepared(bs, assemble(ls, lid, head["next_lid"], edit))
     with _discarding(prepared), dialect.write_tx(engine) as conn:
         return _apply(conn, bs, head, base_version, base_stats, prepared, action="save", note=note, author=author)
@@ -449,9 +457,16 @@ def move_lines(
             check_editable(head)
             if int(head["rev"]) != base:
                 raise _conflict(conn, int(head["id"]), base)
+        s_first, t_first = (not _has_journal(conn, i) for i in (source_id, target_id))
     pos = {int(v): i for i, v in enumerate(slid.tolist())}
     if np.any(moved.src < 0) or any(int(s) not in pos for s in moved.src.tolist()):
         raise ApiError(422, "bad_geometry", "Переносимых линий в слое нет: слой изменился.", "Перечитайте слой.")
+    kept = set(moved.src.tolist()) & set(source_edit.src.tolist())
+    if kept:
+        raise ApiError(
+            422, "bad_geometry", f"Линия {min(kept)} осталась в исходном слое: перенос стал бы копированием.",
+            "Выберите линии для переноса заново.",
+        )  # fmt: skip
     m = len(moved.src)
     first = int(thead["next_lid"])
     virtual = concat(tls, take_lines(sls, [pos[int(s)] for s in moved.src.tolist()]))
@@ -466,7 +481,8 @@ def move_lines(
         moved.xyz,
         {len(keep.src) + int(k): v for k, v in moved.new_attrs.items()},
     )
-    s_stats, t_stats = stats_of(sls, shead["next_lid"]), stats_of(tls, thead["next_lid"])
+    s_stats = stats_of(sls, shead["next_lid"]) if s_first else None
+    t_stats = stats_of(tls, thead["next_lid"]) if t_first else None
     sp = Prepared(bs, assemble(sls, slid, shead["next_lid"], source_edit))
     with _discarding(sp):
         tp = Prepared(bs, assemble(virtual, vlid, first + m, target_edit, name=tls.name))

@@ -61,14 +61,15 @@ def line_areas(xyz: np.ndarray, offsets: np.ndarray, closed: np.ndarray) -> tupl
     lk = line[k]
     shoe = a[:, 0] * b[:, 1] - b[:, 0] * a[:, 1]
     plan = np.abs(_sum_by_line(shoe, lk, lines)) * 0.5
-    # In its plane: only vertices with a Z; a line whose Z are all known is exact, one with gaps uses the rest.
-    known = ~np.isnan(p[:, 2])
-    if known.all():
-        cross = np.cross(a, b)
-        newell = np.stack([_sum_by_line(cross[:, i], lk, lines) for i in range(3)], axis=1)
-        area = 0.5 * np.sqrt((newell**2).sum(axis=1))
-    else:
-        for i in np.flatnonzero(closed):
+    # In its plane: only vertices with a Z. Lines whose Z are all known — the Newell vector over all of them at
+    # once; only the closed lines with gaps go one by one, over the vertices that have a Z.
+    cross = np.cross(a, b)
+    newell = np.stack([_sum_by_line(cross[:, i], lk, lines) for i in range(3)], axis=1)
+    area = 0.5 * np.sqrt((newell**2).sum(axis=1))
+    empty = np.isnan(p[:, 2])
+    if empty.any():
+        gaps = np.bincount(line[empty], minlength=lines) > 0
+        for i in np.flatnonzero(gaps & np.asarray(closed, dtype=bool)):
             pts = xyz[int(offsets[i]) : int(offsets[i + 1])]
             area[i] = polygon_area(pts[~np.isnan(pts[:, 2])])
     return np.where(closed, area, 0.0), np.where(closed, plan, 0.0)

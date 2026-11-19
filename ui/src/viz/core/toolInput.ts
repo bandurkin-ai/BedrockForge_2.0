@@ -17,7 +17,8 @@ import { attachPointer, CLICK_MOVE_PX, CLICK_MS, type RawPointer } from "./point
 
 /** An event for a tool: `EditPointer` of `edit/tools.ts` has this shape. */
 export interface ToolPointer {
-  type: "down" | "move" | "up" | "click" | "dblclick";
+  /** `leave` — the cursor left the canvas (the tool drops its hover) */
+  type: "down" | "move" | "up" | "click" | "dblclick" | "leave";
   x: number;
   y: number;
   clientX: number;
@@ -87,6 +88,7 @@ export class ToolInput {
         return this.tool ? this.tool.pointer(tp("dblclick", e, 0)) : false;
       default:
         this.scene.leave();
+        this.tool?.pointer(tp("leave", e, -1));
         return false;
     }
   }

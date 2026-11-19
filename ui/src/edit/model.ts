@@ -260,12 +260,22 @@ export class History<T> {
   }
 
   /**
-   * Puts `state` in place of the committed one without a step and marks it saved (after a save the working
-   * copy takes the stable numbers the core gave its lines; the steps before stay undoable).
+   * After a save of `sent` the working copy takes the stable numbers the core gave its lines (`saved`), without a
+   * step; the steps before stay undoable. The save does not block the edits: `saved` takes the place of
+   * `sent` wherever the history keeps it, so that state reads as saved; a present that is not `sent` (an edit or
+   * an undo made during the save) goes through `carry` and stays unsaved, its steps kept.
    */
-  rebase(state: T): void {
-    this.dropLive();
-    this.base = state;
+  rebaseSent(sent: T, saved: T, carry: (state: T) => T): void {
+    const swap = (s: Step<T>) => (s.state === sent ? { ...s, state: saved } : s);
+    this.past = this.past.map(swap);
+    this.future = this.future.map(swap);
+    this.base = this.base === sent ? saved : carry(this.base);
+    if (this.hasLive) this.live = this.live === sent ? saved : carry(this.live as T);
+    this.saved = saved;
+  }
+
+  /** The store holds `state` (not one of the history): every state of the history reads as unsaved. */
+  savedAs(state: T): void {
     this.saved = state;
   }
 

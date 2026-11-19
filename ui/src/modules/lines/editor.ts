@@ -7,7 +7,7 @@
  * question about unsaved changes in an own window. No React.
  */
 import { bridge } from "../../bridge";
-import { asLoaded, readLineGeometry, saveBody } from "../../edit/io";
+import { asLoaded, readLineGeometry, saveBody, type LoadedLayer } from "../../edit/io";
 import { emptyLayer, MAX_EDIT_VERTICES } from "../../edit/model";
 import { EditSession } from "../../edit/session";
 import type { App } from "../../shell/app";
@@ -142,6 +142,8 @@ function start(app: App, s: EditSession, prev: EditSession | null = null): void 
     stop: () => {
       detach?.();
       feeder.dispose();
+      // no hover and no probe of the core left behind by the session that goes
+      s.leave();
       offs.forEach((fn) => fn());
     },
   };
@@ -189,28 +191,71 @@ export async function reloadEditor(app: App): Promise<string> {
   return `Слой «${s.layerName}» перечитан: версия ${loaded.version}`;
 }
 
-async function reread(s: EditSession): Promise<void> {
-  s.saved(readLineGeometry(await getGeometry(s.layerId)));
+/** Pauses before the second and the third reading of the layer after a save (tests set them to zero). */
+export const rereadTiming = { pauses: [300, 1000] };
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * After a save (or a move, or a save as a new layer) of `sent`: the layer read back and `sent` rebased on it,
+ * the edits made meanwhile carried over (`EditSession.saved`). The reading is tried three times; when all fail
+ * the session keeps `unsynced` and the next save reads first. True — read.
+ */
+export async function syncSaved(s: EditSession, pending: NonNullable<EditSession["unsynced"]>): Promise<boolean> {
+  s.unsynced = pending;
+  for (let i = 0; i <= rereadTiming.pauses.length; i++) {
+    if (i) await pause(rereadTiming.pauses[i - 1]);
+    let loaded: LoadedLayer;
+    try {
+      loaded = readLineGeometry(await getGeometry(pending.layerId));
+    } catch {
+      continue;
+    }
+    if (s.unsynced !== pending) return true; // read meanwhile by another call
+    const switched = pending.layerId !== s.layerId;
+    s.unsynced = null;
+    s.saved(loaded, pending.moved, pending.sent);
+    if (pending.name) s.layerName = pending.name;
+    if (switched && editStore.get().session === s) editStore.set((st) => ({ session: s, generation: st.generation + 1 }));
+    return true;
+  }
+  s.say("Слой сохранён, но не перечитан: перед следующим сохранением он будет перечитан");
+  return false;
+}
+
+const notRead = (s: EditSession) =>
+  refusal("layer_not_reread", `Слой «${s.layerName}» сохранён, но после сохранения его не удалось перечитать — новые правки не записаны.`, "Проверьте, что ядро работает (вкладка «Задания» или перезапуск ядра), и сохраните ещё раз (Ctrl+S): слой будет перечитан, правки сохранятся поверх.");
+
+/** The layer of an earlier save read first (a refusal when it still cannot be read): no body over an old base. */
+export async function ensureSynced(s: EditSession): Promise<void> {
+  if (s.unsynced && !(await syncSaved(s, s.unsynced))) throw notRead(s);
 }
 
 /** `lines.save`: a new version of the layer. */
 export async function saveEditor(app: App, note = ""): Promise<string> {
   const s = requireSession();
   if (s.drawing) s.finishDrawing();
-  if (!s.dirty) return "Изменений нет: сохранять нечего";
+  if (!s.dirty && !s.unsynced) return "Изменений нет: сохранять нечего";
   if (editStore.get().saving) return "Сохранение уже идёт";
   editStore.set({ saving: true });
   try {
+    await ensureSynced(s);
+    if (!s.dirty) return `Слой «${s.layerName}» перечитан: версия ${s.baseVersion}, других изменений нет`;
+    // the body is made of this working copy; edits made while it is on its way stay (and stay unsaved)
+    const sent = s.layer;
+    let version: number;
     try {
-      await putGeometry(s.layerId, s.saveBody(note));
+      version = (await putGeometry(s.layerId, s.saveBody(note))).version;
     } catch (e) {
       const c = conflictOf(e);
       if (!c) throw e;
       return await onConflict(app, s, c);
     }
-    await reread(s);
     void loadSceneObjects();
-    return `Сохранено: слой «${s.layerName}», версия ${s.baseVersion}`;
+    if (!(await syncSaved(s, { layerId: s.layerId, sent, moved: [] }))) {
+      return `Сохранено: слой «${s.layerName}», версия ${version}. Слой не удалось перечитать — перед следующим сохранением он будет перечитан автоматически`;
+    }
+    return `Сохранено: слой «${s.layerName}», версия ${s.baseVersion}${s.dirty ? ". Правки, сделанные во время сохранения, ещё не записаны" : ""}`;
   } finally {
     editStore.set({ saving: false });
   }
@@ -238,11 +283,12 @@ async function saveAsNew(s: EditSession): Promise<string> {
   const old = s.layerName;
   const info = lineLayers().find((l) => l.id === s.layerId);
   const made = await newLayer(`${old} (правка)`, info?.file_id ?? null);
-  await putGeometry(made.id, saveBody(s.layer, asLoaded(made.id, 1, emptyLayer())));
-  s.saved(readLineGeometry(await getGeometry(made.id)));
-  s.layerName = made.name;
-  editStore.set((st) => ({ session: s, generation: st.generation + 1 }));
+  const sent = s.layer;
+  const version = (await putGeometry(made.id, saveBody(sent, asLoaded(made.id, 1, emptyLayer())))).version;
   void loadSceneObjects();
+  if (!(await syncSaved(s, { layerId: made.id, sent, moved: [], name: made.name }))) {
+    return `Сохранено как новый слой «${made.name}» (версия ${version}); слой «${old}» не изменён. Новый слой не удалось перечитать — перед следующим сохранением он будет перечитан, правка продолжится в нём`;
+  }
   return `Сохранено как новый слой «${made.name}» (версия ${s.baseVersion}); слой «${old}» не изменён`;
 }
 

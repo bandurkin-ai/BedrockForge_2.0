@@ -3,8 +3,8 @@
  * Esc, Delete, Ctrl+Z / Ctrl+Y, Ctrl+A, Ctrl+S, and the letters of the tools (V, L, P, T, Y, I — on the Russian
  * layout the same keys). They work while the 3D window or the editor panel was the last place pressed, in the
  * editing mode, not in fields of input and not under a dialog; then they go before the keys of the ribbon (Esc
- * of the editor, not «Снять выбор»). The session runs its keys itself (`session.key()` → the id of the
- * command); `lines.save` and the tools go through the registry.
+ * of the editor, not «Снять выбор»). Enter, Backspace and Esc the session runs itself; Delete, Ctrl+A, Ctrl+Z,
+ * Ctrl+Y, Ctrl+S and the tools are commands of the registry (`keyRun`), as from the ribbon or Ctrl+K.
  */
 import type { EditKey, Tool } from "../../edit/tools";
 import { TOOLS } from "../../edit/tools";
@@ -28,6 +28,22 @@ export const editorKeyAllowed = (c: KeyContext): boolean => c.editing && c.focus
 
 /** The same keys on the Russian layout (ЙЦУКЕН). */
 const RU: Record<string, string> = { м: "v", д: "l", з: "p", е: "t", н: "y", ш: "i" };
+
+/** The command of the registry a key of the session stands for (`session.key()` gave its id), or null. */
+export function keyRun(id: string): { id: string; args: Record<string, unknown>; repeat: boolean } | null {
+  switch (id) {
+    case "lines.undo":
+    case "lines.redo":
+      return { id, args: {}, repeat: true };
+    case "lines.select_all":
+    case "lines.save":
+      return { id, args: {}, repeat: false };
+    case "lines.delete":
+      return { id: "lines.modify", args: { action: "delete" }, repeat: false };
+    default:
+      return null;
+  }
+}
 
 /** A plain letter of a tool, or null. */
 export function toolKey(e: EditKey & { alt?: boolean }): Tool | null {
@@ -71,7 +87,9 @@ export function attachEditorKeys(app: App): () => void {
       if (!e.repeat) void app.run("lines.tool", { tool });
     } else {
       id = s.key(k);
-      if (id === "lines.save" && !e.repeat) void app.run("lines.save");
+      const run = id ? keyRun(id) : null;
+      // a refusal (nothing to undo, nothing selected) is said in the panel, as the session said it before
+      if (run && (run.repeat || !e.repeat)) void app.registry.execute(run.id, run.args).then((r) => void (!r.ok && editStore.get().session === s && s.say(r.result)));
     }
     if (!id) return;
     e.preventDefault();

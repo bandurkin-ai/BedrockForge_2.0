@@ -60,7 +60,8 @@ export const WF_KINDS: readonly SnapKind[] = ["wf-vertex", "wf-edge"];
 export const PROBE_DELAY_MS = 30;
 
 export interface EditPointer {
-  type: "down" | "move" | "up" | "click" | "dblclick";
+  /** `leave` — the cursor left the 3D window */
+  type: "down" | "move" | "up" | "click" | "dblclick" | "leave";
   /** px inside the canvas */
   x: number;
   y: number;
