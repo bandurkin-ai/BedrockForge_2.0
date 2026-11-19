@@ -34,8 +34,8 @@ import numpy as np
 from manifold3d import Manifold
 
 from bf_core.geo.clip import polygon_ring, prism
-from bf_core.geo.meshes import morton_order
 from bf_core.geo.contours import SurfaceError, boundary_edges, surface_mesh, used_vertices
+from bf_core.geo.meshes import morton_order
 from bf_core.geo.solids import SLICE, SolidError, Tick, from_manifold, tick_at, to_manifold, to_project
 
 _VERTICAL = 1e-9  # |nz| / |n| below this: the triangle is vertical

@@ -237,6 +237,7 @@ def test_speed_volume_between_two_hundred_thousand_triangles() -> None:
     started = time.perf_counter()
     level = volume_to_level(a, 100.0)
     level_seconds = time.perf_counter() - started
+    assert level["area"] == pytest.approx(r["area"], rel=0.05)
     print(f"\nvolume_between: {len(a[1])} × {len(b[1])} triangles: {seconds:.2f} s; to a level: {level_seconds:.2f} s")
     assert r["cut"] > 0 and r["fill"] > 0 and r["area"] > 3.9e6
     assert seconds < 30 and level_seconds < 10
