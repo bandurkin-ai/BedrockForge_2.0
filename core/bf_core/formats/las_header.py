@@ -383,7 +383,7 @@ def read_header(path: str | Path) -> LasHeader:
 
 
 __all__ = [
-    "ENCODING_WKT", "FORMAT_LENGTH", "HEAD", "HEAD14", "HEADER_SIZES", "LAST_FORMAT", "MAX_RECORDS", "MAX_WKT",
-    "PROJECTION", "SIGNATURE", "WKT_RECORD", "LasHeader", "LasVlr", "fail", "laz_error", "n_text", "point_dtype",
-    "read_header",
+    "ASCII_RECORD", "DOUBLES_RECORD", "ENCODING_WKT", "FORMAT_LENGTH", "HEAD", "HEAD14", "HEADER_SIZES",
+    "KEYS_RECORD", "LAST_FORMAT", "MAX_RECORDS", "MAX_WKT", "PROJECTION", "SIGNATURE", "WKT_RECORD", "LasHeader",
+    "LasVlr", "fail", "laz_error", "n_text", "point_dtype", "read_header",
 ]  # fmt: skip

@@ -88,7 +88,8 @@ def test_new_file_is_the_reference_bit_for_bit(
     tmp_path: Path, fmt: int, version: tuple[int, int], grid: tuple[tuple[float, ...], tuple[float, ...]]
 ) -> None:
     points = _plain(200, fmt, seed=fmt + 100 * version[1])
-    spec = Spec(version=version, fmt=fmt, scale=grid[0], offset=grid[1], global_encoding=_encoding(version, fmt), **STAMP_BYTES)
+    encoding = _encoding(version, fmt)
+    spec = Spec(version=version, fmt=fmt, scale=grid[0], offset=grid[1], global_encoding=encoding, **STAMP_BYTES)
     xyz, cls, ret = _arrays(points, spec)
     path = tmp_path / "new.las"
     done = write_las(path, xyz, cls, ret, version=version, point_format=fmt, scale=grid[0], offset=grid[1], **STAMP)
@@ -98,7 +99,8 @@ def test_new_file_is_the_reference_bit_for_bit(
     assert _files(tmp_path) == ["new.las"]
     # … and it reads back to the same doubles: read → write → read is bit for bit
     got = open_las(path).read()
-    assert got.xyz.tobytes() == xyz.tobytes() and got.cls.tobytes() == cls.tobytes() and got.ret.tobytes() == ret.tobytes()
+    assert got.xyz.tobytes() == xyz.tobytes()
+    assert got.cls.tobytes() == cls.tobytes() and got.ret.tobytes() == ret.tobytes()
 
 
 @pytest.mark.parametrize("version", VERSIONS)
@@ -142,14 +144,15 @@ def test_coordinates_within_a_scale_and_stable_from_then_on(tmp_path: Path, scal
     rng = np.random.default_rng(20261119)
     n = 300_000
     xyz = np.column_stack(
-        [rng.uniform(5.0e6 - 1500, 5.0e6 + 1500, n), rng.uniform(5.0e6 - 2000, 5.0e6 + 2000, n), rng.normal(-150, 120, n)]
+        [rng.uniform(5e6 - 1500, 5e6 + 1500, n), rng.uniform(5e6 - 2000, 5e6 + 2000, n), rng.normal(-150, 120, n)]
     )
     xyz[:5] = [[5e6, 5e6, 0.0], [5e6 + scale / 2, 5e6 - scale / 2, scale / 2], [5e6 + 1.5 * scale, 5e6, -1.5 * scale],
                [4999999.9995, 5000000.0005, -0.0005], [5e6 - 1500, 5e6 + 2000, 1e3]]  # fmt: skip
     cls = rng.integers(0, 32, n).astype(np.uint8)
     ret = (rng.integers(1, 8, n) | rng.integers(1, 8, n) << 4).astype(np.uint8)
     path = tmp_path / "a.las"
-    grid = {} if offset is None else {"offset": (offset, offset, 0.0)}
+    grid: dict[str, Any] = {} if offset is None else {"offset": (offset, offset, 0.0)}
+    grid["created"] = (2026, 1)
     done = write_las(path, xyz, cls, ret, scale=scale, **grid)
     assert (done.version, done.point_format, done.points) == ((1, 2), 0, n)
     cloud = open_las(path)
@@ -158,18 +161,68 @@ def test_coordinates_within_a_scale_and_stable_from_then_on(tmp_path: Path, scal
     if offset is None:  # a whole origin: the floor of the least coordinates
         assert h.offset == tuple(float(np.floor(v)) for v in xyz.min(axis=0))
     got = cloud.read()
-    # the reference: the nearest node of the grid, ties to even; the tolerance — half a scale (the ADR allows one)
+    # the reference: the nearest node of the grid, ties to even; the tolerance — half a scale and the rounding
+    # of doubles near 5·10⁶ (the ADR allows a whole scale)
     node = np.rint((xyz - np.array(h.offset)) / scale)
     assert np.array_equal(cloud.records()["X"], node[:, 0].astype(np.int32))
     assert got.xyz.tobytes() == (node * scale + np.array(h.offset)).tobytes()
-    assert np.abs(got.xyz - xyz).max() <= 0.5 * scale * (1 + 1e-6)
+    assert np.abs(got.xyz - xyz).max() <= 0.5 * scale + 1e-8
     assert got.cls.tobytes() == cls.tobytes() and got.ret.tobytes() == ret.tobytes()
     assert h.bbox is not None and np.array_equal(h.bbox, [*got.xyz.min(axis=0), *got.xyz.max(axis=0)])
     assert h.points_by_return == tuple(int(((ret & 15) == k).sum()) for k in range(1, 6))
     assert cloud.classes == {int(k): int(v) for k, v in zip(*np.unique(cls, return_counts=True), strict=True)}
     again = tmp_path / "b.las"
-    write_las(again, got.xyz, got.cls, got.ret, scale=scale, offset=h.offset, chunk=70_001)  # … in other chunks
-    assert again.read_bytes() == path.read_bytes()
+    write_las(again, got.xyz, got.cls, got.ret, scale=scale, offset=h.offset, chunk=70_001, created=(2026, 1))
+    assert again.read_bytes() == path.read_bytes()  # … in other chunks: the same file
+
+
+@pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.parametrize("fmt", range(11))
+def test_reader_reads_what_the_writer_writes(tmp_path: Path, fmt: int, version: tuple[int, int]) -> None:
+    """The files of the ADR table: both scales with the offset 5·10⁶, classes 0–31 and 0–255, extra bytes, the
+    CRS as WKT in an EVLR (LAS 1.4) or as GeoTIFF keys."""
+    rng = np.random.default_rng(fmt + 31 * version[1])
+    n, wide = 2000, fmt >= 6
+    for scale, extra in ((0.001, 0), (0.01, 6)):
+        xyz = np.rint(rng.uniform(-1500, 1500, (n, 3)) / scale) * scale + 5e6
+        cls = rng.integers(0, 256 if wide else 32, n).astype(np.uint8)
+        top = 15 if wide else 7
+        ret = (rng.integers(1, top + 1, n) | rng.integers(1, top + 1, n) << 4).astype(np.uint8)
+        crs: dict[str, Any] = {"evlrs": [wkt_vlr(WKT_UTM)]} if version == (1, 4) else {"vlrs": geokey_vlrs(32637)}
+        path = tmp_path / f"{scale}.las"
+        write_las(path, xyz, cls, ret, version=version, point_format=fmt, scale=scale, offset=(5e6,) * 3,
+                  extra_bytes=extra, chunk=700, **crs)  # fmt: skip
+        cloud = open_las(path)
+        h = cloud.header
+        assert (h.version, h.point_format) == (version, fmt)
+        assert (h.record_length, h.extra_bytes) == (FORMAT_SIZE[fmt] + extra, extra)
+        assert (h.point_count, h.scale, h.offset) == (n, (scale,) * 3, (5e6,) * 3)
+        assert (h.wkt, h.epsg) == ((WKT_UTM, None) if version == (1, 4) else (None, 32637)) and not h.geographic
+        got = cloud.read()
+        assert np.abs(got.xyz - xyz).max() <= scale  # the ADR: within a scale; in fact a rounding of doubles
+        assert got.cls.tobytes() == cls.tobytes() and got.ret.tobytes() == ret.tobytes()
+        raw = cloud.records()
+        assert not raw["intensity"].any() and (not extra or raw["extra"].tobytes() == bytes(extra * n))
+        again = tmp_path / "again.las"
+        write_las(again, got.xyz, got.cls, got.ret, version=version, point_format=fmt, scale=scale, offset=h.offset)
+        assert open_las(again).read().xyz.tobytes() == got.xyz.tobytes()  # read → write → read: bit for bit
+
+
+def test_ends_of_int32(tmp_path: Path) -> None:
+    path = tmp_path / "ends.las"
+    lo, hi = -(2**31), 2**31 - 1
+    xyz = np.array([[lo, hi, 0.0], [hi, lo, -0.0], [lo - 0.4, hi + 0.4, 0.5], [-1.5, 2.5, -0.5]])
+    write_las(path, xyz, scale=1.0, offset=(0.0, 0.0, 0.0))
+    raw = open_las(path).records()
+    assert raw["X"].tolist() == [lo, hi, lo, -2] and raw["Y"].tolist() == [hi, lo, hi, 2]  # ties go to even
+    assert raw["Z"].tolist() == [0, 0, 0, 0]
+    for bad in ([lo - 0.6, 0.0, 0.0], [0.0, hi + 0.6, 0.0], [0.0, 0.0, 2.0**31]):
+        beyond = np.array([[0.0, 0.0, 0.0], bad])
+        _fails(lambda beyond=beyond: write_las(path, beyond, scale=1.0, offset=(0.0,) * 3), "unrepresentable")
+    assert _files(tmp_path) == ["ends.las"]
+    with pytest.raises(ValueError), LasWriter(tmp_path / "raw.las") as writer:
+        writer.write_records(raw)  # integers without the offset of their grid
+    assert _files(tmp_path) == ["ends.las"]
 
 
 def test_defaults_of_a_new_file(tmp_path: Path) -> None:
@@ -193,9 +246,8 @@ def test_defaults_of_a_new_file(tmp_path: Path) -> None:
     done = write_las(path, xyz, None, np.array([0x11, 0xF9, 0x22], dtype=np.uint8))
     assert (done.version, done.point_format) == ((1, 4), 6) and open_las(path).read().ret.tolist() == [0x11, 0xF9, 0x22]
     # a version or a format alone: the other follows
-    assert write_las(path, xyz, version=(1, 4)).point_format == 6 and write_las(path, xyz, version=(1, 3)).point_format == 0
-    assert write_las(path, xyz, point_format=3).version == (1, 2) and write_las(path, xyz, point_format=5).version == (1, 3)
-    assert write_las(path, xyz, point_format=8).version == (1, 4)
+    assert [write_las(path, xyz, version=(1, minor)).point_format for minor in (2, 3, 4)] == [0, 0, 6]
+    assert [write_las(path, xyz, point_format=f).version[1] for f in (0, 3, 4, 5, 6, 8, 10)] == [2, 2, 3, 3, 4, 4, 4]
     assert _files(tmp_path) == ["Облако 1.las"]
 
 
@@ -221,8 +273,9 @@ def test_writer_in_parts_with_progress(tmp_path: Path) -> None:
 def test_vlrs_and_the_crs(tmp_path: Path) -> None:
     points = _plain(50, 6, seed=4, spread=10**6)
     theirs = vlr(b"Somebody", 7, b"\x01\x02\x03", b"three bytes")
-    spec = Spec(version=(1, 4), fmt=6, global_encoding=16, vlrs=[theirs, vlr(PROJECTION, 2112, wkt_data(WKT_UTM), b"WKT")],
-                evlrs=[evlr(b"Somebody", 8, bytes(range(200)) * 400, b"long")], **STAMP_BYTES)  # fmt: skip
+    in_vlr = vlr(PROJECTION, 2112, wkt_data(WKT_UTM), b"WKT")
+    in_evlr = evlr(b"Somebody", 8, bytes(range(200)) * 400, b"long")  # too long for a VLR
+    spec = Spec(version=(1, 4), fmt=6, global_encoding=16, vlrs=[theirs, in_vlr], evlrs=[in_evlr], **STAMP_BYTES)
     xyz, cls, ret = _arrays(points, spec)
     path = tmp_path / "crs.las"
     mine = [Vlr("Somebody", 7, b"\x01\x02\x03", "three bytes"), Vlr("LASF_Projection", 2112, wkt_data(WKT_UTM), "WKT")]
@@ -237,7 +290,8 @@ def test_vlrs_and_the_crs(tmp_path: Path) -> None:
     assert h.wkt == WKT_UTM and h.global_encoding == 16 and h.crs_text() == WKT_UTM
     write_las(path, xyz, vlrs=geokey_vlrs(32637, name="WGS 84 / UTM zone 37N"))
     h = open_las(path).header
-    assert (h.version, h.epsg, h.geographic, h.crs_name(), h.global_encoding) == ((1, 2), 32637, False, "WGS 84 / UTM zone 37N", 0)
+    assert (h.version, h.epsg, h.geographic, h.global_encoding) == ((1, 2), 32637, False, 0)
+    assert h.crs_name() == "WGS 84 / UTM zone 37N"
     assert h.geokeys == {"1024": 1, "1026": "WGS 84 / UTM zone 37N", "3072": 32637}
     write_las(path, xyz, vlrs=geokey_vlrs(4326, geographic=True))
     h = open_las(path).header
@@ -265,11 +319,13 @@ def test_refusals_leave_nothing_behind(tmp_path: Path) -> None:
     wide = np.array([0x11, 0x98], dtype=np.uint8)
     _fails(lambda: write_las(path, xyz, None, wide, version=(1, 3)), "unrepresentable")
     _fails(lambda: write_las(path, np.empty((0, 3))), "no_points")
-    for bad in (lambda: write_las(path, np.zeros((3, 2))), lambda: write_las(path, xyz, np.zeros(3, dtype=np.uint8)),
-                lambda: write_las(path, xyz, scale=0.0), lambda: write_las(path, xyz, point_format=11),
-                lambda: write_las(path, xyz, version=(1, 5)), lambda: write_las(path, xyz, scale=float("nan"))):  # fmt: skip
+    wrong: list[dict[str, Any]] = [{"scale": 0.0}, {"scale": float("nan")}, {"offset": (0.0, float("inf"), 0.0)}]
+    wrong += [{"point_format": 11}, {"version": (1, 5)}, {"cls": np.zeros(3, dtype=np.uint8)}]
+    for options in wrong:
         with pytest.raises(ValueError):
-            bad()
+            write_las(path, xyz, **options)
+    with pytest.raises(ValueError):
+        write_las(path, np.zeros((3, 2)))
 
     class Cancelled(Exception):
         pass
@@ -321,7 +377,8 @@ def test_by_the_source_only_the_class_bits_differ(tmp_path: Path, fmt: int, vers
     now = np.frombuffer(out[start:stop], dtype=np.uint8).reshape(n, size)
     byte, bits = _class_bits(fmt)
     differ = was ^ now
-    assert not differ[:, :byte].any() and not differ[:, byte + 1 :].any() and not (differ[:, byte] & ~np.uint8(bits)).any()
+    assert not differ[:, :byte].any() and not differ[:, byte + 1 :].any()  # nothing but the byte of the class
+    assert not (differ[:, byte] & ~np.uint8(bits)).any()  # … and in it nothing but the bits of the class
     expected = before.cls.copy()
     expected[seq] = cls
     assert np.array_equal(now[:, byte] & bits, expected)
