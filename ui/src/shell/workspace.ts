@@ -8,7 +8,7 @@ export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
 export type BottomTab = "table" | "audit" | "stats" | "swath" | "jobs" | "log";
-export type TreeSection = "views" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "audit";
+export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "audit";
 
 export const BOTTOM_TITLES: Record<BottomTab, string> = {
   table: "Таблица",
@@ -21,6 +21,7 @@ export const BOTTOM_TITLES: Record<BottomTab, string> = {
 
 export const TREE_SECTIONS: Record<TreeSection, string> = {
   views: "Виды",
+  series: "Серии разрезов",
   holes: "Скважины",
   wireframes: "Каркасы",
   dtm: "ЦТМ",

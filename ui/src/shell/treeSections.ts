@@ -13,6 +13,7 @@ export interface SectionAction {
 
 const ACTIONS: Partial<Record<TreeSection, SectionAction[]>> = {
   views: [{ label: "Сохранить текущий вид", command: "views.save" }],
+  series: [{ label: "Новая серия…", command: "series.new" }, { label: "Менеджер серий…", command: "series.manager" }],
   holes: [
     { label: "Новый набор…", command: "set.create" },
     { label: "Импорт скважин…", command: "import.open" },
@@ -42,6 +43,7 @@ export interface SectionPlus {
 
 const PLUS: Partial<Record<TreeSection, SectionPlus>> = {
   views: { command: "views.save", title: "Сохранить текущий вид" },
+  series: { command: "series.new", title: "Новая серия разрезов" },
   holes: { title: "Новый набор, импорт скважин, импорт канав" },
   wireframes: { command: "wireframes.upload", title: "Загрузить каркасы" },
   lines: { command: "lines.upload", title: "Загрузить линии и точки: STR, DXF, SHP, MIF, XYZ" },
