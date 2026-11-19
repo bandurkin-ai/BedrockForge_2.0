@@ -15,9 +15,11 @@ import { askText } from "../../shell/dialogs";
 import { needWritable, noted, refusal, viewport } from "../../shell/objectRun";
 import { openWindow } from "../../shell/windows";
 import { lineLayers, loadSceneObjects } from "../scene/objects";
-import { newLayer } from "./editApi";
+import { EditError, readLineGeometry } from "../../edit/io";
+import { getGeometry, getVersions, moveLines, newLayer } from "./editApi";
 import { currentSession, finishEditor, openEditor, requireSession, saveEditor } from "./editor";
 import { layerText, metres, selectionText } from "./measures";
+import { restoreLayer } from "./versions";
 import { applyModify, modifyBlocked, modifyInfo, type FieldKey, type ModifyAction } from "./modify";
 
 const NOT_EDITING = "Откройте слой на правку: меню слоя «Редактировать» или «Моделирование › Новый слой»";
@@ -71,12 +73,33 @@ export function snapPatch(s: EditSession, a: Record<string, unknown>): string {
   return `Привязка ${next.enabled ? "включена" : "выключена"}: ${next.kinds.length} целей, радиус ${next.radius} px, шаг сетки ${metres(next.grid)}${next.project ? ", с проекцией в плоскость разреза" : ""}`;
 }
 
+/** `lines.move_selected {target_id}`: the selected lines into another layer in one request; both get a version. */
+export async function moveSelected(s: EditSession, targetId: number): Promise<string> {
+  if (targetId === s.layerId) throw refusal("same_layer", "Линии уже в этом слое.", "Выберите другой слой.");
+  const target = lineLayers().find((l) => l.id === targetId);
+  if (!target) throw refusal("line_layer_not_found", `Слой линий №${targetId} не найден.`, "Обновите дерево проекта и выберите слой.");
+  if (target.cloud) throw refusal("not_editable", `«${target.name}» — облако точек: линии в него не переносятся.`, "Выберите слой линий.");
+  const ids = cmd.targetLines(s);
+  const base = (await getVersions(targetId)).version;
+  let body: ArrayBuffer;
+  try {
+    body = s.moveBody(targetId, base);
+  } catch (e) {
+    if (e instanceof EditError) throw refusal(e.code, e.message, e.hint);
+    throw e;
+  }
+  const r = await moveLines(s.layerId, body);
+  s.saved(readLineGeometry(await getGeometry(s.layerId)), ids);
+  void loadSceneObjects();
+  return `Перенесено линий ${ids.length} в слой «${target.name}» (версия ${r.target.version}); слой «${s.layerName}» — версия ${r.source.version}`;
+}
+
 const NUMBER_KEYS: FieldKey[] = ["dx", "dy", "dz", "distance", "tolerance", "step", "iterations"];
 
 export function bindEditor(app: App): void {
   const writable = needWritable(app);
   const editing = (id: string | null) => (ctx: CommandContext) => writable(ctx) ?? sessionReason(id)(ctx);
-  const bind = (id: string, run: (a: Record<string, unknown>) => Promise<string | void> | string | void, reason: (ctx: CommandContext) => string | null) => app.registry.bind(id, noted(app, async (a) => run(a)), reason);
+  const bind = (id: string, run: (a: Record<string, unknown>, source: string) => Promise<string | void> | string | void, reason: (ctx: CommandContext) => string | null) => app.registry.bind(id, noted(app, async (a, source) => run(a, source)), reason);
 
   bind(
     "lines.new_layer",
@@ -160,13 +183,16 @@ export function bindEditor(app: App): void {
 
   bind(
     "lines.move_selected",
-    () => {
+    (a) => {
       const s = requireSession();
+      if (typeof a.target_id === "number") return moveSelected(s, a.target_id);
       openWindow("lines-move", "Перенести в другой слой", "medium", { layerId: s.layerId }, ...viewport());
       return "Открыто окно «Перенести в другой слой»: выберите слой";
     },
     editing("lines.move_selected"),
   );
+
+  bind("lines.restore", (a, source) => restoreLayer(app, a.layer_id as number, a.version as number, source === "user"), writable);
 
   bind(
     "lines.modify",

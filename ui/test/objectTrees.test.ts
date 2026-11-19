@@ -70,7 +70,7 @@ describe("«Линии»: files → layers", () => {
   });
 
   it("rename, export and delete are registry commands: a layer is renamed, a file is deleted with its layers", () => {
-    expect(labels(layerMenu(layer(7), true))).toEqual(["Свойства", "Скрыть в 3D", "Экспорт…", "Переименовать…"]);
+    expect(labels(layerMenu(layer(7), true))).toEqual(["Свойства", "Скрыть в 3D", "Экспорт…", "Редактировать", "Версии…", "Переименовать…"]);
     expect(layerMenu(layer(7), true).at(-1)).toEqual({ label: "Переименовать…", command: "object.rename", args: { kind: "lines", id: 7 } });
     expect(layerMenu(layer(7), true)[2]).toEqual({ label: "Экспорт…", command: "lines.export", args: { layer_id: 7 } });
     const menu = fileMenu(lineFile(3, []));

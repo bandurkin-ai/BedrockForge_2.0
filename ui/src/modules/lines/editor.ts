@@ -152,6 +152,8 @@ function start(app: App, s: EditSession, prev: EditSession | null = null): void 
         if (!cur) return null;
         return { layerId: cur.layerId, version: cur.baseVersion, dirty: cur.dirty, tool: cur.tool, lines: cur.layer.lines.length, selection: cur.selection, message: cur.message, hover: cur.hover };
       },
+      /** the vertices of a line of the working copy by its place (−1 — the last), project coordinates */
+      points: (i: number) => editStore.get().session?.layer.lines.at(i)?.points ?? null,
     };
   }
 }

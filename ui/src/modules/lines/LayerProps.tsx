@@ -1,8 +1,9 @@
 /**
  * «Свойства» of a layer of lines or points (ТЗ 7.18; ADR 0011 §5): the name, the colour, visibility, counts,
  * length and closed lines; the attributes of the line picked in the 3D window; the table of attributes of the
- * layer by pages. Changes go through the registry (`object.rename`, `object.color`, `layer.show`). A point cloud
- * has «Свойства» of its own (`CloudProps.tsx`).
+ * layer by pages. Changes go through the registry (`object.rename`, `object.color`, `layer.show`); «Правка» —
+ * the string editor (`lines.edit` / `lines.finish`), «Версии…» and the version of the geometry (ADR 0015 §5).
+ * A point cloud has «Свойства» of its own (`CloudProps.tsx`).
  */
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../../shell/AppContext";
@@ -15,6 +16,7 @@ import css from "../../shell/PropsParts.module.css";
 import { pickedObject, sceneObjects, type LineLayerInfo } from "../scene/objects";
 import { loadAttrs } from "./actions";
 import { CloudProps } from "./CloudProps";
+import { editStore } from "./editState";
 import { ATTR_PAGE, attrText, featureFields, fieldTitle, findLayer, layerFacts, pageStart, pager, pickedLine, pickedTitle, rowFacts, type AttrPage } from "./props";
 import { layerKey } from "./tree";
 
@@ -25,6 +27,8 @@ export function LayerProps({ id }: { id: number }) {
   const picked = useStore(pickedObject, (p) => p.picked);
   const found = useMemo(() => findLayer(files, id), [files, id]);
   const { run, error } = useRun();
+  const edited = useStore(editStore, (s) => s.session?.layerId === id);
+  const dirty = useStore(editStore, (s) => (s.session?.layerId === id ? s.session.dirty : false));
   if (!found) return null;
   const { layer, file } = found;
   if (layer.cloud) return <CloudProps layer={layer} file={file} />; // a point cloud (ADR 0014)
@@ -52,6 +56,24 @@ export function LayerProps({ id }: { id: number }) {
           <input type="checkbox" checked={!hidden.includes(layerKey(id))} onChange={(e) => void run("layer.show", { layer: "lines", id, visible: e.target.checked })} />
           показан в 3D
         </label>
+      </div>
+      <div className={css.row} data-testid="props-layer-edit">
+        {edited ? (
+          <button type="button" className={css.primary} title="Выйти из режима правки; несохранённое будет предложено сохранить" onClick={() => void run("lines.finish", {})}>
+            Завершить правку
+          </button>
+        ) : (
+          <button type="button" className={css.primary} title="Открыть слой в редакторе стрингов (3D-окно)" onClick={() => void run("lines.edit", { layer_id: id })}>
+            Редактировать
+          </button>
+        )}
+        <button type="button" className={css.btn} title="Журнал сохранений слоя и возврат к версии" onClick={() => void run("lines.versions", { layer_id: id })}>
+          Версии…
+        </button>
+        <span className={css.note}>
+          {typeof (layer as { rev?: unknown }).rev === "number" ? `версия геометрии ${(layer as { rev?: number }).rev}` : ""}
+          {edited ? ` · на правке${dirty ? ", есть несохранённые изменения" : ""}` : ""}
+        </span>
       </div>
       <Facts facts={layerFacts(layer, file)} />
       {error && (

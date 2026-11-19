@@ -48,6 +48,7 @@ export const commands: Command[] = [
     stage: "Э7.1",
   },
   { id: "lines.finish", title: "Завершить", description: "Выйти из режима правки; при несохранённых изменениях — вопрос о сохранении.", uiOnly: true, stage: "Э9" },
-  { id: "lines.move_selected", title: "Перенести в другой слой", description: "Перенести выбранные линии в другой слой: оба слоя получают новую версию.", uiOnly: true, stage: "Э9" },
+  { id: "lines.move_selected", title: "Перенести в другой слой", description: "Перенести выбранные линии слоя на правке в другой слой (target_id): оба слоя получают новую версию; несохранённые правки слоя сохраняются вместе с переносом, новые линии сначала сохраните. Без target_id — окно выбора слоя.", params: { target_id: { type: "integer" } }, confirm: true, stage: "Э9" },
   { id: "lines.versions", title: "Версии", description: "Журнал версий слоя: когда, кто, линии и вершины «было → стало»; возврат к версии.", params: { layer_id: { type: "integer" } }, uiOnly: true, stage: "Э9" },
+  { id: "lines.restore", title: "Вернуть версию", description: "Вернуть слой линий к версии version журнала: создаётся новая версия с геометрией той версии, журнал не стирается. Слой на правке перечитывается (несохранённые правки пропадают).", params: { layer_id: { type: "integer" }, version: { type: "integer" } }, required: ["layer_id", "version"], confirm: true, stage: "Э9" },
 ];

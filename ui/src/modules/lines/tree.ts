@@ -69,8 +69,12 @@ export function shownLayers(f: Pick<LineFileInfo, "layers">): { layers: LineLaye
   return { layers: f.layers.slice(0, MAX_LAYER_ROWS), rest: Math.max(0, f.layers.length - MAX_LAYER_ROWS) };
 }
 
-/** A layer; a point cloud adds «Фильтр земли…», «Построить ЦТМ из облака…» and «Карта разностей…» (ADR 0014 §5, §6). */
-export function layerMenu(l: Pick<LineLayerInfo, "id"> & Partial<Pick<LineLayerInfo, "cloud">>, visible: boolean): TreeAction[] {
+/**
+ * A layer; a point cloud adds «Фильтр земли…», «Построить ЦТМ из облака…» and «Карта разностей…» (ADR 0014 §5,
+ * §6), an ordinary layer — «Редактировать» (the string editor; «Завершить правку» for the layer under edit) and
+ * «Версии…» (ADR 0015 §5).
+ */
+export function layerMenu(l: Pick<LineLayerInfo, "id"> & Partial<Pick<LineLayerInfo, "cloud">>, visible: boolean, edited = false): TreeAction[] {
   const cloud: TreeAction[] = l.cloud
     ? [
         { label: "Фильтр земли…", command: "ground.classify", args: { cloud_id: l.id } },
@@ -78,11 +82,18 @@ export function layerMenu(l: Pick<LineLayerInfo, "id"> & Partial<Pick<LineLayerI
         { label: "Карта разностей…", command: "cloud.dz", args: { cloud_id: l.id } },
       ]
     : [];
+  const editor: TreeAction[] = l.cloud
+    ? []
+    : [
+        edited ? { label: "Завершить правку", command: "lines.finish" } : { label: "Редактировать", command: "lines.edit", args: { layer_id: l.id } },
+        { label: "Версии…", command: "lines.versions", args: { layer_id: l.id } },
+      ];
   return [
     { label: "Свойства", local: "properties" },
     { label: visible ? "Скрыть в 3D" : "Показать в 3D", command: "layer.show", args: { layer: "lines", id: l.id, visible: !visible } },
     ...cloud,
     { label: "Экспорт…", command: "lines.export", args: { layer_id: l.id } },
+    ...editor,
     SEPARATOR,
     { label: "Переименовать…", command: "object.rename", args: { kind: "lines", id: l.id } },
   ];

@@ -133,7 +133,7 @@ export function EditToolbar({ app, session }: { app: App; session: EditSession }
           {saving ? "Сохранение…" : (s.message ?? TOOL_HINTS[s.tool])}
         </span>
         <span className={css.grow} />
-        <span data-testid="edit-measure" title={measured ?? layerText(s)}>
+        <span data-testid="edit-measures" title={measured ?? layerText(s)}>
           {measured ?? layerText(s)}
         </span>
         {s.hover?.point && (
