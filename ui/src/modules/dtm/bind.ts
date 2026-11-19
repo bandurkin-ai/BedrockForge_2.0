@@ -13,7 +13,8 @@ import { refresh as refreshJobs } from "../jobs/state";
 import { loadSceneObjects, sceneObjects, type LineLayerInfo } from "../scene/objects";
 import { dtms, wireframeById } from "../wireframes/state";
 import { fromPointsBody } from "./cloud";
-import { bodyOfArgs, cloudLayers, pickCloud, PROFILE_TITLES } from "./ground";
+import { bodyOfArgs, cloudLayers, pickCloud, profileTitle } from "./ground";
+import { loadGroundProfiles } from "./groundProfiles";
 
 /** The cloud of a command: `cloud_id`, else the selected cloud, else the only one; a refusal when there is none. */
 async function commandCloud(app: App, a: Record<string, unknown>, needed: boolean): Promise<LineLayerInfo | null> {
@@ -71,7 +72,7 @@ export function bindDtm(app: App): void {
       await api.post(`/lines/layers/${cloud!.id}/classify`, body);
       showJobs(app);
       await refreshJobs();
-      return `Запущен «Фильтр земли» облака «${cloud!.name}» (профиль «${PROFILE_TITLES[body.profile]}»): ход — на вкладке «Задания»`;
+      return `Запущен «Фильтр земли» облака «${cloud!.name}» (профиль «${profileTitle(await loadGroundProfiles(), body.profile)}»): ход — на вкладке «Задания»`;
     }),
     needProject,
   );

@@ -10,7 +10,8 @@ open pit follow the ideas of Incline Design (MIT, © 2026 Leo Timmins, Lucas Tim
 are listed in ТЗ 7.35 Д-22) — their code was neither read for porting nor ported, this is an implementation of
 its own (ADR 0012, ADR 0014 §7).
 
-Stages (the kernels are in `ground_kernels.py`, `ground_cloth.py`, `ground_grow.py`, `ground_faces.py`):
+Stages (the kernels are in `ground_kernels.py`, `ground_cloth.py`, `ground_grow.py`, `ground_faces.py`; the
+lattice, its blocks and the strips of the threads — `ground_blocks.py`):
   1 index      points by plan cells of CR/2 (counting sort);
   2 noise      a point with fewer than k_min neighbours within r (3D) → class 7, out of everything below;
   3 obstacle   under every particle of the cloth (step CR) — a plane through the lowest returns around it;
@@ -27,7 +28,10 @@ the points of its core. A cloud of 50 million points at 20 points/m² is one blo
 
 The step and the cloud. CR must not be finer than the cloud: with a return in fewer than a quarter of the cells
 of CR/2 (CR under the mean distance between the points) the filter refuses — GroundError `cloud_too_sparse`
-with the step to take; under 35 % the report carries the warning `cloud_sparse`.
+with the step to take; under 35 % the report carries the warning `cloud_sparse`. The share is estimated right
+after the index of the cells, by every point of the cloud (`fill_early`), and a cloud too sparse is refused
+there — before the noise, the obstacle and the cloth of any block; the share the report and the warning go by
+(`fill`) is counted with the noise aside, block by block.
 
 Threads and determinism. The stages run over fixed strips of rows (or of points) on Python threads; the
 kernels release the GIL, a strip writes only its own outputs, reductions are counts and maxima. The growth is
@@ -45,22 +49,20 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
 
+from . import ground_blocks as gb
 from . import ground_cloth as gc
 from . import ground_faces as gf
 from . import ground_grow as gg
 from . import ground_kernels as gk
+from .ground_blocks import STRIP_POINTS, STRIP_ROWS
 
 BLOCK = 2048  # particles a side of a block
 MARGIN_M = 64.0  # margin of a block, m: ≥ 2 widths of the cloth at RI = 3
-PAD = 4  # particles of empty lattice around the cloud
-STRIP_ROWS = 64  # rows of cells (of particles) in a strip
-STRIP_POINTS = 1 << 18  # points in a strip
 WIDTHS = {1: 8.0, 2: 16.0, 3: 32.0}  # RI → width of a gap in the data the cloth rises into by ≤ 0.5 m
 CLOTH_TOL = 1e-4  # a sweep of the cloth moves no particle further, m
 FILL_MIN = 0.25  # share of the cells of CR/2 that hold a return: under it the cloud is too sparse for CR
@@ -109,6 +111,17 @@ _RANGES = {
     "r_b": (1.0, 20.0, "Радиус поиска земли у грани R_б", "м"),
     "noise_r": (0.5, 20.0, "Радиус шума", "м"),
 }
+_WHOLE = {"ri": (min(WIDTHS), max(WIDTHS), "Жёсткость ткани RI"), "noise_k": (1, 20, "Число соседей для шума")}
+
+
+def ranges() -> dict[str, dict[str, Any]]:
+    """The ranges of ТЗ 7.35 Д-22 as the interface shows them: {parameter: {lo, hi, title, unit, whole}}."""
+    out: dict[str, dict[str, Any]] = {
+        k: {"lo": lo, "hi": hi, "title": title, "unit": unit, "whole": False}
+        for k, (lo, hi, title, unit) in _RANGES.items()
+    }
+    out.update({k: {"lo": lo, "hi": hi, "title": title, "unit": "", "whole": True} for k, (lo, hi, title) in _WHOLE.items()})
+    return out
 
 
 def _fmt(value: float) -> str:
@@ -127,39 +140,45 @@ def check_params(p: GroundParams) -> None:
             )
     if p.ri not in WIDTHS:
         raise GroundError("bad_param", "Жёсткость ткани RI: допустимо 1, 2 или 3.", "Исправьте значение параметра.")
-    if p.noise_r is not None and not (isinstance(p.noise_k, int) and 1 <= p.noise_k <= 20):
-        raise GroundError("bad_param", "Число соседей для шума: допустимо от 1 до 20.", "Исправьте значение параметра.")
+    lo, hi, title = _WHOLE["noise_k"]
+    if p.noise_r is not None and not (isinstance(p.noise_k, int) and lo <= p.noise_k <= hi):
+        raise GroundError("bad_param", f"{title}: допустимо от {lo} до {hi}.", "Исправьте значение параметра.")
     if not (0.0 < p.alpha_deg < 90.0 and 0.0 < p.face_deg < 90.0):
         raise GroundError("bad_param", "Углы профиля должны быть между 0° и 90°.", "Выберите профиль заново.")
 
 
 def make_params(profile: str = DEFAULT_PROFILE, **changes: Any) -> GroundParams:
     """Parameters of a profile («plain» — «Равнина», «quarry» — «Карьер») with the fields of the command
-    `ground.classify` laid over: cr, ri, ct, r_b (None or False — faces off), noise ({"r", "k_min"}, or
-    False — off), and any other field of GroundParams. A value of None keeps the profile."""
+    `ground.classify` laid over: cr, ri, ct, r_b, noise ({"r", "k_min"}) and any other field of GroundParams.
+    A value of None keeps the profile. `r_b`, `noise`: False — the stage is off; True — it is on, with the
+    numbers of the profile or, when the profile has it off, the defaults of GroundParams."""
     if profile not in PROFILES:
         raise GroundError("bad_param", f"Неизвестный профиль «{profile}».", "Выберите «Равнина» или «Карьер».")
+    base, default = PROFILES[profile], GroundParams()
     fields: dict[str, Any] = {}
     for key, value in changes.items():
         if key == "noise":
             if value is False:
                 fields["noise_r"] = None
-            elif isinstance(value, dict):
-                if value.get("r") is not None:
-                    fields["noise_r"] = float(value["r"])
-                if value.get("k_min") is not None:
-                    fields["noise_k"] = int(value["k_min"])
-            elif value is not None and value is not True:
+            elif isinstance(value, dict) or value is True:
+                given = value if isinstance(value, dict) else {}
+                if given.get("r") is not None:
+                    fields["noise_r"] = float(given["r"])
+                elif base.noise_r is None:
+                    fields["noise_r"] = default.noise_r
+                if given.get("k_min") is not None:
+                    fields["noise_k"] = int(given["k_min"])
+            elif value is not None:
                 raise GroundError("bad_param", "Шум: ожидается {r, k_min} или false.", "Исправьте параметр.")
-        elif key == "r_b" and value is False:
-            fields["r_b"] = None
+        elif key == "r_b" and isinstance(value, bool):
+            fields["r_b"] = (default.r_b if base.r_b is None else base.r_b) if value else None
         elif value is None:
             continue
         elif key not in GroundParams.__dataclass_fields__:
             raise GroundError("bad_param", f"Неизвестный параметр «{key}».", "Проверьте параметры команды.")
         else:
             fields[key] = int(value) if key in ("ri", "noise_k") else value
-    p = replace(PROFILES[profile], **fields)
+    p = replace(base, **fields)
     check_params(p)
     return p
 
@@ -169,46 +188,6 @@ class GroundResult:
     cls: np.ndarray  # (n,) uint8, ASPRS codes
     h: np.ndarray  # (n,) float32, height above the ground along the normal, m; NaN — no ground near
     report: dict[str, Any]
-
-
-class _Pool:
-    """Strips of a stage on Python threads (the kernels release the GIL); one thread — in place."""
-
-    def __init__(self, threads: int) -> None:
-        self.threads = max(1, int(threads))
-        self._ex = ThreadPoolExecutor(self.threads, thread_name_prefix="bf-ground") if self.threads > 1 else None
-
-    def strips(self, fn: Callable[[int, int], Any], n: int, size: int) -> list[Any]:
-        ranges = [(lo, min(lo + size, n)) for lo in range(0, n, size)]
-        if self._ex is None or len(ranges) < 2:
-            return [fn(lo, hi) for lo, hi in ranges]
-        return list(self._ex.map(lambda r: fn(r[0], r[1]), ranges))
-
-    def even(self, fn: Callable[[int, int], Any], n: int) -> list[Any]:
-        """One strip a thread — for the sweeps of the cloth, whose result does not depend on the strips."""
-        return self.strips(fn, n, -(-n // self.threads))
-
-    def close(self) -> None:
-        if self._ex is not None:
-            self._ex.shutdown(wait=True, cancel_futures=True)
-
-
-@dataclass(frozen=True)
-class _Lattice:
-    ox: float  # whole origin of the cloud (a multiple of CR), project coordinates
-    oy: float
-    c: float  # cell, CR/2
-    ncx: int  # cells of the whole lattice (even)
-    ncy: int
-
-
-@dataclass(frozen=True)
-class _Block:
-    cx0: int  # the cells of the block with its margin
-    cy0: int
-    ncx: int
-    ncy: int
-    core: tuple[int, int, int, int]  # col0, row0, col1, row1 of the core, in the cells of the block
 
 
 def _as_cloud(xyz: Any, ret: Any) -> tuple[np.ndarray, np.ndarray | None]:
@@ -244,8 +223,9 @@ def classify_ground(
     `tick(fraction, stage)` is called between the stages, the blocks and the sweeps of the cloth and may raise
     to cancel. `block` — particles a side of a block (the default suits a job; tests force small blocks).
     The report: counts by class (`classes`), parameters, `blocks`, `threads`, `sweeps` of the cloth by block
-    and level, `seconds` by stage, `fill` (the share of cells with a return), `warnings` [{code, message, hint}],
-    `seeds`, `ground_cells`, `edge_areas`, `face_points`, `noise`, `skipped` (points without coordinates).
+    and level, `seconds` by stage, `fill` (the share of cells with a return; `fill_early` — its estimate after the
+    index), `warnings` [{code, message, hint}], `seeds`, `ground_cells`, `edge_areas`, `face_points`, `noise`,
+    `skipped` (points without coordinates).
     """
     p = params or PROFILES[DEFAULT_PROFILE]
     check_params(p)
@@ -270,27 +250,29 @@ def classify_ground(
         "sweeps": [],
         "seconds": dict.fromkeys(STAGES, 0.0),
     }
-    pool = _Pool(threads)
+    pool = gb.Pool(threads)
     try:
         if tick:
             tick(0.0, STAGES[0])
         box = pool.strips(lambda lo, hi: gk.extent(pts, lo, hi), n, STRIP_POINTS)
         box = [b for b in box if b[4]]
         if box:
-            lat = _lattice(box, p.cr)
+            lat = gb.lattice(box, p.cr)
             margin = _margin_cells(p)
             span = 2 * int(block)
-            blocks = _blocks(lat, span, margin)
-            lists = _split(pts, lat, len(blocks), span, pool)
+            blocks = gb.blocks(lat, span, margin)
+            lists = gb.split(pts, lat, len(blocks), span, pool)
             live = [k for k, ids in enumerate(lists) if ids is not None]
+            index = _early_fill(pts, lists, live, lat, blocks, p, pool, tick, report)
             for done, k in enumerate(live):
-                cand = _candidates(k, lists, lat, span, -(-margin // span))
+                cand = gb.candidates(k, lists, lat, span, -(-margin // span))
 
                 def step(part: float, stage: str, done: int = done) -> None:
                     if tick:
                         tick((done + part) / len(live), stage)
 
-                _run_block(pts, returns, cand, lat, blocks[k], p, pool, step, cls, h, report)
+                _run_block(pts, returns, cand, lat, blocks[k], p, pool, step, cls, h, report, index)
+                index = None
                 report["blocks"] += 1
         report["skipped"] = n - sum(int(b[4]) for b in box)
     finally:
@@ -305,6 +287,26 @@ def classify_ground(
     return GroundResult(cls, h, report)
 
 
+def _sparse(filled: int, inside: int, p: GroundParams) -> tuple[float, GroundError, dict[str, str]]:
+    """The share of the cells with a return, the refusal for a cloud too sparse and the warning for a sparse one."""
+    fill = max(filled / inside, 1e-6)
+    # cells of the step that would hold a return in 40 % of them: the share is 1 − exp(−density · cell²)
+    step = math.ceil(p.cr * math.sqrt(math.log(1.0 - 0.4) / math.log(1.0 - fill)) * 10.0) / 10.0
+    hint = f"Задайте шаг ткани CR не меньше {_fmt(step)} м."
+    cells = f"CR = {_fmt(p.cr)} м"
+    share = f"{max(round(100.0 * fill), 1)} %"
+    refusal = GroundError(
+        "cloud_too_sparse", f"Облако слишком редкое для шага ткани {cells}: точки есть только в {share} ячеек.", hint
+    )
+    warning = {
+        "code": "cloud_sparse",
+        "message": f"Облако редкое для шага ткани {cells} (точки в {share} ячеек): "
+        "земля под растительностью может быть найдена не полностью.",
+        "hint": hint,
+    }
+    return fill, refusal, warning
+
+
 def _check_fill(report: dict[str, Any], p: GroundParams) -> None:
     """The lattice must not be finer than the cloud: with a return in fewer than a quarter of the cells of CR/2
     the growth has nothing to go by and the planes nothing to be fitted to — an error with the step to take;
@@ -313,25 +315,25 @@ def _check_fill(report: dict[str, Any], p: GroundParams) -> None:
     report["fill"] = round(filled / inside, 3) if inside else None
     if not inside or filled >= FILL_LOW * inside:
         return
-    fill = max(filled / inside, 1e-6)
-    # cells of the step that would hold a return in 40 % of them: the share is 1 − exp(−density · cell²)
-    step = math.ceil(p.cr * math.sqrt(math.log(1.0 - 0.4) / math.log(1.0 - fill)) * 10.0) / 10.0
-    hint = f"Задайте шаг ткани CR не меньше {_fmt(step)} м."
-    share = f"{max(round(100.0 * fill), 1)} %"
+    fill, refusal, warning = _sparse(filled, inside, p)
     if fill < FILL_MIN:
-        raise GroundError(
-            "cloud_too_sparse",
-            f"Облако слишком редкое для шага ткани CR = {_fmt(p.cr)} м: точки есть только в {share} ячеек.",
-            hint,
-        )
-    report["warnings"].append(
-        {
-            "code": "cloud_sparse",
-            "message": f"Облако редкое для шага ткани CR = {_fmt(p.cr)} м (точки в {share} ячеек): "
-            "земля под растительностью может быть найдена не полностью.",
-            "hint": hint,
-        }
+        raise refusal
+    report["warnings"].append(warning)
+
+
+def _early_fill(pts, lists, live, lat, blocks, p, pool, tick, report):  # type: ignore[no-untyped-def]
+    """The share of the cells with a point right after the index (`ground_blocks.presence`): under `FILL_MIN`
+    — the refusal of `_check_fill`, now, and not after the noise, the obstacle and the cloth of every block.
+    Returns the index of the only block of a cloud: stage 1 of `_run_block` is done."""
+    t = time.perf_counter()
+    inside, filled, index = gb.presence(
+        pts, lists, live, lat, blocks, pool, (lambda: tick(0.0, STAGES[0])) if tick else None
     )
+    report["fill_early"] = round(filled / inside, 3) if inside else None
+    report["seconds"][STAGES[0]] += time.perf_counter() - t
+    if inside and filled < FILL_MIN * inside:
+        raise _sparse(filled, inside, p)[1]
+    return index if len(blocks) == 1 else None
 
 
 def cloth_width(p: GroundParams) -> float:
@@ -345,58 +347,23 @@ def _margin_cells(p: GroundParams) -> int:
     return 2 * int(math.ceil(margin / p.cr))
 
 
-def _lattice(box: list[Any], cr: float) -> _Lattice:
-    xmin, xmax = min(b[0] for b in box), max(b[1] for b in box)
-    ymin, ymax = min(b[2] for b in box), max(b[3] for b in box)
-    ox = (math.floor(xmin / cr) - PAD) * cr
-    oy = (math.floor(ymin / cr) - PAD) * cr
-    ncx = 2 * (int(math.floor((xmax - ox) / cr)) + 1 + PAD)
-    ncy = 2 * (int(math.floor((ymax - oy) / cr)) + 1 + PAD)
-    return _Lattice(ox, oy, cr / 2.0, ncx, ncy)
+def block_cells(width: float, height: float, p: GroundParams, block: int = BLOCK) -> int:
+    """The cells of the largest block of a cloud of this plan extent, m, with its margin: what the grids of a
+    block are sized by (the estimate of the memory of the job). Never under the real number."""
+    span, margin = 2 * int(block), _margin_cells(p)
+
+    def widest(extent: float) -> int:
+        if not extent < (3 * span + 2 * margin) * p.cr:  # a block with the whole margin on both sides
+            return span + 2 * margin
+        n = 2 * (int(math.floor(max(float(extent), 0.0) / p.cr)) + 2 + 2 * gb.PAD)  # the lattice, at most
+        return max(min(c0 + span + margin, n) - max(c0 - margin, 0) for c0 in range(0, n, span))
+
+    return widest(width) * widest(height)
 
 
-def _blocks(lat: _Lattice, span: int, margin: int) -> list[_Block]:
-    """Blocks of `span` cells a side, row by row, each with `margin` cells around its core."""
-    out = []
-    for by in range(-(-lat.ncy // span)):
-        for bx in range(-(-lat.ncx // span)):
-            c0, r0 = bx * span, by * span
-            c1, r1 = min(c0 + span, lat.ncx), min(r0 + span, lat.ncy)
-            x0, y0 = max(c0 - margin, 0), max(r0 - margin, 0)
-            x1, y1 = min(c1 + margin, lat.ncx), min(r1 + margin, lat.ncy)
-            out.append(_Block(x0, y0, x1 - x0, y1 - y0, (c0 - x0, r0 - y0, c1 - x0, r1 - y0)))
-    return out
-
-
-def _split(pts: np.ndarray, lat: _Lattice, count: int, span: int, pool: _Pool) -> list[Any]:
-    """The numbers of the points of the core of every block (None — the block is empty)."""
-    n = len(pts)
-    if count == 1:
-        return [np.arange(n, dtype=np.int32)]
-    nbx, nby = -(-lat.ncx // span), -(-lat.ncy // span)
-    key = np.empty(n, np.int32)
-    pool.strips(lambda lo, hi: gk.block_keys(pts, lo, hi, lat.ox, lat.oy, lat.c, span, nbx, nby, key), n, STRIP_POINTS)
-    start, order = gk.counting_sort(key, np.arange(n, dtype=np.int32), nbx * nby)
-    return [order[start[b] : start[b + 1]] if start[b + 1] > start[b] else None for b in range(nbx * nby)]
-
-
-def _candidates(k: int, lists: list[Any], lat: _Lattice, span: int, reach: int) -> np.ndarray:
-    """The points block `k` may need: its core and the cores of the blocks within its margin (`reach` blocks)."""
-    if len(lists) == 1:
-        return np.asarray(lists[0])
-    nbx, nby = -(-lat.ncx // span), -(-lat.ncy // span)
-    by, bx = divmod(k, nbx)
-    near = [
-        lists[j * nbx + i]
-        for j in range(max(by - reach, 0), min(by + reach + 1, nby))
-        for i in range(max(bx - reach, 0), min(bx + reach + 1, nbx))
-        if lists[j * nbx + i] is not None
-    ]
-    return np.concatenate(near)
-
-
-def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report) -> None:  # type: ignore[no-untyped-def]
-    """One block: stages 1–8 over its cells (with the margin), then the classes of the points of its core."""
+def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report, index=None) -> None:  # type: ignore[no-untyped-def]
+    """One block: stages 1–8 over its cells (with the margin), then the classes of the points of its core.
+    `index` — stage 1 when it is already done (`_early_fill`)."""
     seconds = report["seconds"]
     t = time.perf_counter()
 
@@ -408,8 +375,8 @@ def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report) -> N
         step(part, STAGES[min(stage + 1, len(STAGES) - 1)])
 
     grid = (lat.ox, lat.oy, lat.c, blk.cx0, blk.cy0, blk.ncx, blk.ncy)
-    start, order = _index(pts, cand, grid, pool)
-    del cand
+    start, order = index or gb.index(pts, cand, grid, pool)
+    del cand, index
     pcls = np.zeros(len(order), np.uint8)
     ph = np.full(len(order), np.nan, np.float32)
     done(0, 0.1)
@@ -452,16 +419,6 @@ def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report) -> N
         STRIP_ROWS,
     )
     done(6, 1.0)
-
-
-def _index(pts, cand, grid, pool):  # type: ignore[no-untyped-def]
-    """Stage 1: the points of the block by its cells → (start, order)."""
-    ox, oy, c, cx0, cy0, ncx, ncy = grid
-    cid = np.empty(len(cand), np.int32)
-    pool.strips(
-        lambda lo, hi: gk.cell_ids(pts, cand, lo, hi, ox, oy, c, cx0, cy0, ncx, ncy, cid), len(cand), STRIP_POINTS
-    )
-    return gk.counting_sort(cid, cand, ncx * ncy)
 
 
 def _lowest(pts, returns, order, start, pcls, grid, p, pool):  # type: ignore[no-untyped-def]

@@ -110,6 +110,65 @@ def counting_sort(key, ids, nkeys):  # type: ignore[no-untyped-def]
     return start, order
 
 
+# --- how full the lattice is -----------------------------------------------------------------------------
+# The share of the cells that hold a point, known right after the index — before the noise, the obstacle and the
+# cloth (`ground._early_fill`). It follows the share counted later (`ground_cloth.obstacle_rows` — a particle is
+# in the system with a return within 2·CR, `ground_grow.edge_rows` — a cell is inside the data when the 6 × 6
+# particles around it are), with what the index alone knows: every point counts, noise too, and a point stands
+# at the centre of its cell.
+
+
+@njit(cache=True, nogil=True)
+def near_rows(start, ncx, ncy, row0, row1, near):  # type: ignore[no-untyped-def]
+    """near[pj, pi] = 1 for the particles of rows [row0, row1) with a cell that holds a point within 2·CR
+    (4 cells) of the particle, by the centre of the cell."""
+    npx = ncx // 2 + 1
+    for pj in range(row0, row1):
+        for pi in range(npx):
+            hit = 0
+            for cj in range(max(2 * pj - 4, 0), min(2 * pj + 4, ncy)):
+                dy = cj + 0.5 - 2 * pj
+                for ci in range(max(2 * pi - 4, 0), min(2 * pi + 4, ncx)):
+                    cell = cj * ncx + ci
+                    if start[cell + 1] > start[cell]:
+                        dx = ci + 0.5 - 2 * pi
+                        if dx * dx + dy * dy <= 16.0:
+                            hit = 1
+                            break
+                if hit == 1:
+                    break
+            near[pj, pi] = hit
+
+
+@njit(cache=True, nogil=True)
+def fill_rows(start, near, ncx, row0, row1):  # type: ignore[no-untyped-def]
+    """(cells inside the data, those of them that hold a point) for the cells of the rows [2·row0, 2·row1):
+    the four cells between particles (pi, pj) and (pi + 1, pj + 1) are inside when the 6 × 6 particles around
+    them are all `near` a point; the border of the grid is not an edge of the data (as in `edge_rows`)."""
+    npy, npx = near.shape
+    inside = 0
+    filled = 0
+    for pj in range(row0, row1):
+        for pi in range(ncx // 2):
+            ok = True
+            for j in range(max(pj - 2, 0), min(pj + 4, npy)):
+                for i in range(max(pi - 2, 0), min(pi + 4, npx)):
+                    if near[j, i] == 0:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if not ok:
+                continue
+            for cj in range(2 * pj, 2 * pj + 2):
+                for ci in range(2 * pi, 2 * pi + 2):
+                    cell = cj * ncx + ci
+                    inside += 1
+                    if start[cell + 1] > start[cell]:
+                        filled += 1
+    return inside, filled
+
+
 # --- noise -----------------------------------------------------------------------------------------------
 
 

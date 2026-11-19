@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
@@ -169,10 +169,21 @@ def test_the_job_is_registered_by_an_explicit_import() -> None:
     from bf_core.jobs.scheduler import OBJECT_JOBS
 
     assert "ground.classify" in OBJECT_JOBS  # its end is announced: the cloud is read again
-    # 10 million points within the gigabyte and 50 million within the 4 GB of ТЗ 7.35; never less than the kernels
-    assert 512 <= kind.estimate_memory({"points": 100_000}) <= 1024
-    assert kind.estimate_memory({"points": 10_000_000}) <= 1536
-    assert kind.estimate_memory({"points": 50_000_000}) <= 4096
+    # the scene «карьер», 20 points/m² at CR = 1 m: 10 million points (2 million cells) within 1.5 GB, 50 million
+    # (8 million cells) within the 4 GB of ТЗ 7.35; never less than the kernels
+    assert 512 <= kind.estimate_memory({"points": 100_000, "cells": 50_000}) <= 1024
+    assert 711 <= kind.estimate_memory({"points": 10_000_000, "cells": 2_010_000}) <= 1536  # measured: 711 MB
+    assert kind.estimate_memory({"points": 50_000_000, "cells": 8_000_000}) <= 4096
+    # the grids of a block (7.1.18): 6 million points in a block of 16 million cells — 1.16 GB measured, and
+    # the estimate was 0.66 GB; a block of CR = 0.1 m with its margin of 64 m is 44 million cells
+    assert 1160 <= kind.estimate_memory({"points": 6_000_000, "cells": 16_100_000}) <= 1600
+    small = kind.estimate_memory({"points": 6_000_000, "cells": 4_000_000})
+    assert kind.estimate_memory({"points": 6_000_000, "cells": 44_302_336}) - small == pytest.approx(2000, abs=5)
+    # parameters stored before `cells`: four cells a point (the sparsest cloud the filter takes), a block at most
+    assert kind.estimate_memory({"points": 100_000}) == kind.estimate_memory({"points": 100_000, "cells": 400_000})
+    full = {"points": 50_000_000, "cells": gj.FULL_BLOCK_CELLS}
+    assert kind.estimate_memory({"points": 50_000_000}) == kind.estimate_memory(full) <= 4096
+    assert gj.FULL_BLOCK_CELLS == ground.block_cells(1e6, 1e6, ground.PROFILES["quarry"]) == (4096 + 2 * 128) ** 2
 
 
 def test_request_checks_the_cloud_and_the_parameters(api, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
@@ -184,6 +195,9 @@ def test_request_checks_the_cloud_and_the_parameters(api, monkeypatch: pytest.Mo
         pts = ls_store.put_layer(conn, store, from_points("Пикеты", scene(52, 300).xyz), file_id=file_id)
     monkeypatch.setattr(gj.os, "cpu_count", lambda: 6)
     # «Карьер» by default
+    box = opened(project, cloud_id).bbox
+    cells = ground.block_cells(box[3] - box[0], box[4] - box[1], ground.PROFILES["quarry"])
+    assert 4 * 100 * 80 <= cells <= 4 * 120 * 100  # cells of 0.5 m over 100 × 80 m and the empty lattice around
     assert request(project, cloud_id) == {
         "cloud_id": cloud_id,
         "profile": "quarry",
@@ -194,22 +208,37 @@ def test_request_checks_the_cloud_and_the_parameters(api, monkeypatch: pytest.Mo
         "noise": {"r": 2.0, "k_min": 3},
         "threads": 6,
         "points": 4700,
+        "cells": cells,
         "name": "Съёмка",
     }
-    # «Равнина»: a stiff cloth, no faces
+    assert 3.5 * cells < request(project, cloud_id, cr=0.5)["cells"] < 4 * cells  # a finer step — more cells
+    # «Равнина»: a stiff cloth, no faces — a stage that is off is false in the stored parameters too
     plain = request(project, cloud_id, profile="plain", heavy_workers=2)
-    assert (plain["profile"], plain["ri"], plain["r_b"], plain["threads"]) == ("plain", 3, None, 3)
+    assert (plain["profile"], plain["ri"], plain["r_b"], plain["threads"]) == ("plain", 3, False, 3)
     # «Свой»: the numbers of the window over the constants of a profile; false switches a stage off
     own = request(project, cloud_id, cr=0.5, ri=1, ct=0.25, r_b=False, noise=False, threads=99)
-    assert (own["cr"], own["ri"], own["ct"], own["r_b"], own["noise"], own["threads"]) == (0.5, 1, 0.25, None, False, 8)
+    assert (own["cr"], own["ri"], own["ct"], own["r_b"], own["noise"], own["threads"]) == (0.5, 1, 0.25, False, False, 8)
+    # one meaning everywhere (7.1.18): null and an empty text — as the profile has it, never «off»
+    for empty in (None, "", "  "):
+        assert request(project, cloud_id, r_b=empty)["r_b"] == 5.0
+        assert request(project, cloud_id, profile="plain", r_b=empty)["r_b"] is False
+    assert request(project, cloud_id, noise=None)["noise"] == {"r": 2.0, "k_min": 3}
+    # true — the stage is on: the number of the profile, or the default of the kernel over «Равнина»
+    assert request(project, cloud_id, r_b=True)["r_b"] == 5.0
+    assert request(project, cloud_id, profile="plain", r_b=True)["r_b"] == ground.GroundParams().r_b == 5.0
+    assert request(project, cloud_id, profile="plain", r_b=True, noise=True)["noise"] == {"r": 2.0, "k_min": 3}
     own = request(project, cloud_id, profile="plain", r_b=7.5, noise={"r": 1.5}, threads=1, heavy_workers=64)
     assert (own["r_b"], own["noise"], own["threads"]) == (7.5, {"r": 1.5, "k_min": 3}, 1)
     assert request(project, cloud_id, noise={"k_min": 5})["noise"] == {"r": 2.0, "k_min": 5}
     assert request(project, cloud_id, heavy_workers=64)["threads"] == 1
-    # what is stored gives the same parameters of the kernel again
+    # what is stored gives the same parameters of the kernel again — and reads as a request does
     assert gj.kernel_params(own) == ground.make_params("plain", r_b=7.5, noise={"r": 1.5})
     assert gj.kernel_params(request(project, cloud_id)) == ground.PROFILES["quarry"]
     assert gj.kernel_params(plain) == ground.PROFILES["plain"]
+    off = request(project, cloud_id, r_b=False, noise=False)
+    assert gj.kernel_params(off) == ground.make_params("quarry", r_b=False, noise=False)
+    assert gj.kernel_params(off).r_b is None and gj.kernel_params(off).noise_r is None  # what the kernel runs with
+    assert gj.kernel_params({**off, "r_b": None, "noise": None}) == ground.PROFILES["quarry"]  # null — the profile
     # the ranges of ТЗ 7.35 Д-22
     for bad in ({"cr": 0.05}, {"cr": 51}, {"ri": 4}, {"ri": 0}, {"ct": 0.01}, {"ct": 6}, {"r_b": 0.5}, {"r_b": 21}):
         refusal(lambda bad=bad: request(project, cloud_id, **bad), 422, "bad_param")
@@ -224,6 +253,54 @@ def test_request_checks_the_cloud_and_the_parameters(api, monkeypatch: pytest.Mo
         refusal(lambda bad=bad: request(project, cloud_id, **bad), 422, "not_a_number")
     refusal(lambda: request(project, 999_999), 404, "line_layer_not_found")
     refusal(lambda: request(project, pts), 409, "not_a_cloud")
+
+
+def test_the_profiles_of_the_kernel_are_what_the_window_is_given(api) -> None:  # type: ignore[no-untyped-def]
+    """7.1.18: `GET /lines/ground/profiles` — the window «Фильтр земли» had a copy of `PROFILES`."""
+    c, _project = api
+    got = ok(c.get(f"{API}/lines/ground/profiles"))
+    # the answer the tests of the interface hold its spare values to (ui/test/groundFilter.test.ts): when the
+    # kernel changes, write the file anew — `json.dumps(ground_job.profiles(), ensure_ascii=False, indent=2)`
+    shared = Path(__file__).parent / "data" / "ground" / "profiles.json"
+    assert got == json.loads(shared.read_text(encoding="utf-8"))
+    assert got["default"] == ground.DEFAULT_PROFILE == "quarry"
+    by_id = {p["id"]: p for p in got["profiles"]}
+    assert list(by_id) == ["quarry", "plain"] and set(by_id) == set(ground.PROFILES)  # the default goes first
+    for name, p in by_id.items():
+        k = ground.PROFILES[name]
+        assert p["title"] == ground.PROFILE_TITLES[name]
+        assert (p["cr"], p["ri"], p["ct"], p["noise"]) == (k.cr, k.ri, k.ct, {"r": k.noise_r, "k_min": k.noise_k})
+        assert (p["alpha_deg"], p["face_deg"], p["edge_areas"]) == (k.alpha_deg, k.face_deg, k.edge_areas)
+        assert f"рост по склону до {k.alpha_deg:g}°" in p["hint"]  # the slope of the hint is the constant
+        # the fields of a profile are those of a request: sent back they give the profile, whatever the base
+        for base in by_id:
+            fields = {key: p[key] for key in ("cr", "ri", "ct", "r_b", "noise")}
+            assert ground.make_params(base, **fields) == replace(ground.PROFILES[base], **{
+                key: getattr(k, key) for key in ("cr", "ri", "ct", "r_b", "noise_r", "noise_k")
+            })
+    assert by_id["quarry"]["r_b"] == 5.0 and by_id["plain"]["r_b"] is False  # false — off; never null
+    assert (by_id["quarry"]["title"], by_id["plain"]["title"]) == ("Карьер", "Равнина")
+    assert "до 55°" in by_id["quarry"]["hint"] and "до 30°" in by_id["plain"]["hint"]
+    assert got["defaults"] == {"cr": 1.0, "ri": 2, "ct": 0.5, "r_b": 5.0, "noise": {"r": 2.0, "k_min": 3}}
+    # the ranges are the ones the kernel checks: their ends are taken, a step outside is refused
+    ranges = got["ranges"]
+    assert set(ranges) == {"cr", "ct", "r_b", "noise_r", "ri", "noise_k"}
+    assert (ranges["cr"]["lo"], ranges["cr"]["hi"], ranges["cr"]["unit"]) == (0.1, 50.0, "м")
+    assert ranges["ri"] == {"lo": 1, "hi": 3, "title": "Жёсткость ткани RI", "unit": "", "whole": True}
+
+    def params(key: str, value: float) -> Any:
+        noise = {"noise_r": {"r": value}, "noise_k": {"k_min": value}}.get(key)
+        return ground.make_params("quarry", **({"noise": noise} if noise else {key: value}))
+
+    for key, r in ranges.items():
+        assert r["title"] and r["whole"] is (key in ("ri", "noise_k")), key
+        step = 1 if r["whole"] else 1e-6
+        for value in (r["lo"], r["hi"]):
+            params(key, value)
+        for value in (r["lo"] - step, r["hi"] + step):
+            with pytest.raises(ground.GroundError) as err:
+                params(key, value)
+            assert err.value.code == "bad_param" and r["title"] in err.value.message, (key, value)
 
 
 # --- the job with a kernel put in its place ----------------------------------------------------------------
@@ -290,7 +367,9 @@ def test_job_gives_the_kernel_the_cloud_and_writes_classes_and_heights(api, kern
 def test_stages_switched_off_are_written_as_off(api, kernel: Kernel) -> None:  # type: ignore[no-untyped-def]
     _c, project = api
     cloud_id = add_cloud(project, scene(55, 3000))
-    _res, _seen, journal = run_job(project, request(project, cloud_id, profile="plain", noise=False))
+    params = request(project, cloud_id, profile="plain", noise=False)
+    assert params["r_b"] is False and params["noise"] is False
+    _res, _seen, journal = run_job(project, params)
     assert kernel.calls[0]["params"] == ground.make_params("plain", noise=False)
     g = state(project, cloud_id)["ground"]
     assert g["params"]["profile"] == "plain" and g["params"]["r_b"] is None and g["params"]["noise_r"] is None
@@ -359,6 +438,35 @@ def test_refusals_of_the_kernel_and_a_cloud_that_is_gone(api, monkeypatch: pytes
     with pytest.raises(JobError) as err:
         run_job(project, {**params, "cloud_id": 999_999})
     assert err.value.code == "line_layer_not_found"
+
+
+# --- the real kernel: a sparse cloud ---------------------------------------------------------------------
+
+
+def test_a_sparse_cloud_is_warned_of_in_the_journal_and_a_too_sparse_one_refused(api) -> None:  # type: ignore[no-untyped-def]
+    """7.1.18: the warnings of the kernel are {code, message, hint} — the journal got the text of the dict,
+    at a level the interface does not know."""
+    _c, project = api
+    rng = np.random.default_rng(62)
+    xy = rng.random((14_400, 2)) * 120.0  # a point a square metre
+    xyz = np.column_stack([xy, 0.02 * xy[:, 0] + rng.normal(0.0, 0.02, len(xy))]) + gen.ORIGIN
+    cloud_id = add_cloud(project, lc.CloudChunk(xyz), "Редкое")
+    before = state(project, cloud_id)
+    # CR = 1.2 m: a point in a third of the cells of 0.6 m — done, with a warning
+    res, _seen, journal = run_job(project, request(project, cloud_id, cr=1.2, threads=2))
+    warned = [line for line in journal if line.startswith("warn: ")]
+    assert len(warned) == 1 and not any(line.startswith("warning") for line in journal), journal
+    assert warned[0].startswith("warn: Облако редкое для шага ткани CR = 1,2 м (точки в 3")
+    assert "земля под растительностью может быть найдена не полностью. Задайте шаг ткани CR не меньше 1," in warned[0]
+    assert "{" not in warned[0] and "code" not in warned[0]  # the text, not the dict
+    assert res["ground"] > 0.9 * len(xyz) and state(project, cloud_id)["version"] == before["version"] + 1
+    # CR = 0.5 m: a point in a tenth of the cells — refused with the step to take, right after the index
+    first = state(project, cloud_id)
+    with pytest.raises(JobError) as err:
+        run_job(project, request(project, cloud_id, cr=0.5))
+    assert err.value.code == "cloud_too_sparse" and "CR = 0,5 м" in err.value.message
+    assert err.value.hint.startswith("Задайте шаг ткани CR не меньше 1,") and not err.value.retry
+    assert state(project, cloud_id) == first and tmp_files(project) == []
 
 
 # --- the real kernel, in a worker --------------------------------------------------------------------------

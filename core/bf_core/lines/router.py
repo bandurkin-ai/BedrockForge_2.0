@@ -11,6 +11,7 @@ The geometry for 3D is `/viz/lines/{id}` (`viz/router.py`).
 STR, DXF, CSV or DAT; a point cloud (alone) to LAS — by its source file (`las: "source"`) or as a new file
 (`"new"`) — or to CSV `X;Y;Z;класс[;h]` (`lines/cloud_export.py`).
 `POST /lines/layers/{id}/classify` — «Фильтр земли» of a point cloud (the job `ground.classify`);
+`GET /lines/ground/profiles` — its profiles, the ranges of its parameters and their titles, as the kernel has them;
 `POST /lines/layers/{id}/dz` {wireframe_id} — its map of differences against a wireframe or a DTM (the job
 `cloud.dz`, `wireframes/cloud_dz.py`): the column `dz` and the colour mode «Отклонение от ЦТМ».
 """
@@ -170,8 +171,19 @@ def export_lines(svc: Svc, s: Sched, body: ExportBody) -> dict[str, Any]:
     return {"source": key, "id": job_id}
 
 
+@router.get("/ground/profiles")
+def ground_profiles() -> dict[str, Any]:
+    """The profiles of «Фильтр земли» («Карьер», «Равнина») with their numbers and constants, the ranges of the
+    parameters and the defaults of the stages — what the window shows (`ground_job.profiles`)."""
+    from . import ground_job
+
+    return ground_job.profiles()
+
+
 class ClassifyBody(BaseModel):
-    """«Фильтр земли» (ТЗ 7.35 Д-22, ADR 0014): a profile and its numbers; an empty number — the profile's."""
+    """«Фильтр земли» (ТЗ 7.35 Д-22, ADR 0014): a profile and its numbers. null, an empty text or a field that
+    is not given — as the profile has it; `r_b`, `noise`: false — faces (noise) are not looked for, true — they
+    are, with the numbers of the profile (the defaults of the kernel when the profile has the stage off)."""
 
     profile: Literal["quarry", "plain"] | None = None
     cr: float | str | None = None

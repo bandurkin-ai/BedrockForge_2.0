@@ -378,6 +378,55 @@ def test_a_step_finer_than_the_cloud_is_refused_with_the_step_to_take() -> None:
     assert res.report["warnings"] == [] and res.report["fill"] > 0.35
 
 
+def _scatter(seed: int, side: float, density: float) -> np.ndarray:
+    """A slope of 2 % with `density` points a square metre at random, σ = 0.02 m."""
+    rng = np.random.default_rng(seed)
+    n = int(side * side * density)
+    xy = rng.random((n, 2)) * side
+    return np.column_stack([xy, 0.02 * xy[:, 0] + rng.normal(0.0, 0.02, n)]) + cloud.ORIGIN
+
+
+def test_a_sparse_cloud_is_refused_right_after_the_index() -> None:
+    """7.1.18: a point a square metre and CR = 0.25 m. The share of the cells with a point is estimated from
+    the index of the cells, so the refusal comes before the noise, the obstacle and the cloth of any block —
+    it used to come after the cloth of every block."""
+    xyz = _scatter(3, 400.0, 1.0)
+    p = ground.make_params("quarry", cr=0.25)
+    said = []
+    for threads, block in ((1, 512), (4, 512), (2, ground.BLOCK)):
+        seen: list[str] = []
+        with pytest.raises(ground.GroundError) as err:
+            ground.classify_ground(xyz, None, p, threads=threads, block=block, tick=lambda f, m: seen.append(m))
+        assert err.value.code == "cloud_too_sparse" and "CR = 0,25 м" in err.value.message
+        assert err.value.hint.startswith("Задайте шаг ткани CR не меньше ")
+        assert set(seen) == {"Индекс ячеек"}, (threads, block)  # nothing after stage 1 was started
+        said.append((err.value.message, err.value.hint))
+    assert said[0] == said[1]  # nine blocks on 1 and on 4 threads: the same numbers
+
+    class Stop(Exception):
+        pass
+
+    def stop(fraction: float, stage: str) -> None:
+        raise Stop
+
+    with pytest.raises(Stop):  # the estimate asks `tick` before every block
+        ground.classify_ground(xyz, None, p, block=512, tick=stop)
+
+
+def test_the_early_share_of_cells_is_the_share_counted_with_the_noise_aside(plain, funnel, benches) -> None:  # type: ignore[no-untyped-def]
+    """`fill_early` (every point, the centres of the cells) against `fill` (the lowest returns, the noise
+    aside): the same within 0.002 on the scenes of Т-З1…Т-З3, where the noise is 50 points of a cloud; never
+    under it, and above by 0.03 at most, on a cloud so sparse that a tenth of its points are noise."""
+    for _scene, res in (plain, funnel, benches):
+        assert abs(res.report["fill_early"] - res.report["fill"]) <= 0.002, res.report["fill"]
+    sparse = ground.classify_ground(_scatter(4, 300.0, 0.5), None, ground.make_params("quarry", cr=2.0), block=64)
+    early, fill = sparse.report["fill_early"], sparse.report["fill"]
+    assert sparse.report["blocks"] > 4 and sparse.report["noise"] > 0.05 * len(sparse.cls)
+    assert 0.35 < fill <= early <= fill + 0.03, (early, fill)
+    # a cloud of a few points has no cell inside the data: there is nothing to estimate
+    assert ground.classify_ground(np.tile([[432_000.0, 6_180_000.0, 250.0]], (5, 1))).report["fill_early"] is None
+
+
 def test_returns_of_a_facade_one_above_another_do_not_pull_the_cloth_down() -> None:
     """A plane through the lowest returns of a facade stands almost upright; continued to a particle beside it
     it gave an obstacle tens of metres under the ground, and the stiff cloth of «Равнина» followed it."""

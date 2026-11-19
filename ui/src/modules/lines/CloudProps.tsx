@@ -18,6 +18,7 @@ import { useStore } from "../../shell/useStore";
 import css from "../../shell/PropsParts.module.css";
 import { CLOUD_STYLES_KEY, cloudStyleOf, type CloudColorMode, type CloudStyle } from "../../viz/lines/cloud";
 import { countsText, lastGround, paramsText } from "../dtm/ground";
+import { groundProfiles, loadGroundProfiles } from "../dtm/groundProfiles";
 import { updateView, viewStore } from "../scene/bind";
 import { pickedObject, type LineFileInfo, type LineLayerInfo } from "../scene/objects";
 import { patchEntry } from "../scene/viewSync";
@@ -139,10 +140,15 @@ export function CloudProps({ layer, file }: { layer: LineLayerInfo; file: LineFi
 /** «Фильтр земли…», «Построить ЦТМ из облака…» and what the last filter was. */
 function GroundRow({ layer, run }: { layer: LineLayerInfo; run: (id: string, args?: Record<string, unknown>) => Promise<boolean> }) {
   const last = lastGround(layer);
+  const profiles = useStore(groundProfiles, (s) => s);
+  const filtered = last !== null;
+  useEffect(() => {
+    if (filtered) void loadGroundProfiles(); // the title of the profile, as the core names it
+  }, [filtered]);
   return (
     <fieldset className={css.group} data-testid="props-cloud-ground">
       <legend>Земля и ЦТМ</legend>
-      <p className={css.note}>{last ? `Последний фильтр земли — ${paramsText(last)}; классы: ${countsText(last.counts)}.` : "Фильтр земли не запускался: точки земли (класс 2) — те, что были в файле."}</p>
+      <p className={css.note}>{last ? `Последний фильтр земли — ${paramsText(profiles, last)}; классы: ${countsText(last.counts)}.` : "Фильтр земли не запускался: точки земли (класс 2) — те, что были в файле."}</p>
       <div className={css.row}>
         <button type="button" className={css.btn} onClick={() => void run("ground.classify", { cloud_id: layer.id })}>
           Фильтр земли…
