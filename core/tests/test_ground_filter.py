@@ -414,10 +414,14 @@ def test_a_sparse_cloud_is_refused_right_after_the_index() -> None:
         ground.classify_ground(xyz, None, p, block=512, tick=stop)
 
 
-def test_the_early_share_of_cells_is_the_share_counted_with_the_noise_aside(plain, funnel, benches) -> None:  # type: ignore[no-untyped-def]
+def test_the_early_share_of_cells_is_the_share_counted_with_the_noise_aside(  # type: ignore[no-untyped-def]
+    plain, funnel, benches, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`fill_early` (every point, the centres of the cells) against `fill` (the lowest returns, the noise
     aside): the same within 0.002 on the scenes of Т-З1…Т-З3, where the noise is 50 points of a cloud; never
-    under it, and above by 0.03 at most, on a cloud so sparse that a tenth of its points are noise."""
+    under it, and above by 0.03 at most, on a cloud so sparse that a tenth of its points are noise. Around the
+    threshold the early share is never the lower one, whatever part of the cloud is noise: what is refused
+    early would have been refused after the cloth."""
     for _scene, res in (plain, funnel, benches):
         assert abs(res.report["fill_early"] - res.report["fill"]) <= 0.002, res.report["fill"]
     sparse = ground.classify_ground(_scatter(4, 300.0, 0.5), None, ground.make_params("quarry", cr=2.0), block=64)
@@ -426,6 +430,18 @@ def test_the_early_share_of_cells_is_the_share_counted_with_the_noise_aside(plai
     assert 0.35 < fill <= early <= fill + 0.03, (early, fill)
     # a cloud of a few points has no cell inside the data: there is nothing to estimate
     assert ground.classify_ground(np.tile([[432_000.0, 6_180_000.0, 250.0]], (5, 1))).report["fill_early"] is None
+    monkeypatch.setattr(ground, "FILL_MIN", 0.0)  # both shares of clouds that are refused
+    for density, cr, noise in (
+        (0.2, 2.4, 0.5),
+        (0.3, 2.35, 0.25),
+        (0.4, 1.7, 0.1),
+        (0.6, 1.38, 0.02),
+        (2.0, 0.76, 0.0),
+    ):
+        res = ground.classify_ground(_scatter(11, 250.0, density), None, ground.make_params("quarry", cr=cr))
+        early, fill = res.report["fill_early"], res.report["fill"]
+        assert 0.2 < early < 0.36 and fill - 0.002 <= early, (density, cr, early, fill)
+        assert abs(res.report["noise"] / len(res.cls) - noise) < 0.5 * noise + 0.01, (density, res.report["noise"])
 
 
 def test_returns_of_a_facade_one_above_another_do_not_pull_the_cloth_down() -> None:

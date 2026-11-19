@@ -72,7 +72,15 @@ export function GroundWindow({ winId, cloudId }: { winId: string; cloudId?: numb
         {clouds.length ? (
           <label className={css.formRow}>
             <span>Облако точек</span>
-            <select className={css.input} aria-label="Облако точек" value={form.cloudId ?? 0} onChange={(e) => setForm(initialGround(table, files, Number(e.target.value) || null))}>
+            <select
+              className={css.input}
+              aria-label="Облако точек"
+              value={form.cloudId ?? 0}
+              onChange={(e) => {
+                touched.current = false; // the form of another cloud: its last filter, nothing typed yet
+                setForm(initialGround(table, files, Number(e.target.value) || null));
+              }}
+            >
               {form.cloudId === null && <option value={0}>— выберите облако —</option>}
               {clouds.map((l) => (
                 <option key={l.id} value={l.id}>

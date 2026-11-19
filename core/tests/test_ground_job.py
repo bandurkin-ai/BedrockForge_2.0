@@ -224,6 +224,17 @@ def test_request_checks_the_cloud_and_the_parameters(api, monkeypatch: pytest.Mo
         assert request(project, cloud_id, r_b=empty)["r_b"] == 5.0
         assert request(project, cloud_id, profile="plain", r_b=empty)["r_b"] is False
     assert request(project, cloud_id, noise=None)["noise"] == {"r": 2.0, "k_min": 3}
+    # … and so it is in the body of the request (JSON false is not the number 0, null is not «off»)
+    from bf_core.lines.router import ClassifyBody
+
+    def posted(raw: str) -> dict[str, Any]:
+        return request(project, cloud_id, **ClassifyBody.model_validate_json(raw).model_dump())
+
+    assert posted('{"r_b": null}')["r_b"] == posted("{}")["r_b"] == 5.0
+    assert posted('{"r_b": false}')["r_b"] is False and posted('{"noise": false}')["noise"] is False
+    assert posted('{"profile": "plain", "r_b": null}')["r_b"] is False  # «Равнина» has no faces
+    assert posted('{"profile": "plain", "r_b": true}')["r_b"] == 5.0 and posted('{"r_b": "7,5"}')["r_b"] == 7.5
+    assert posted('{"noise": {"r": null, "k_min": 4}}')["noise"] == {"r": 2.0, "k_min": 4}
     # true — the stage is on: the number of the profile, or the default of the kernel over «Равнина»
     assert request(project, cloud_id, r_b=True)["r_b"] == 5.0
     assert request(project, cloud_id, profile="plain", r_b=True)["r_b"] == ground.GroundParams().r_b == 5.0
