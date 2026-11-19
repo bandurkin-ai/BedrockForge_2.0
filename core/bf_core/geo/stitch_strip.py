@@ -432,12 +432,12 @@ def strip(
     hh = h * h
     la = np.ascontiguousarray(la, dtype=np.int64)
     lb = np.ascontiguousarray(lb, dtype=np.int64)
+    bound = np.inf
     if ties:
         segments = _tie_segments(ties, n, m)
         if segments is None:
             return None
-    bound = np.inf
-    if not ties:
+    else:
         start, bound = best_start(qa, qb, hh, tick)
         segments = [(0, n, start, m)]
     cost, back = _buffers(n, m)

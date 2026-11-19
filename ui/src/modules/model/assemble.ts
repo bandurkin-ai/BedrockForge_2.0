@@ -215,15 +215,17 @@ export function cancelAssembly(): void {
   c.stop();
 }
 
-/** `model.assemble`: in the layer on edit, else the layer of lines chosen in the tree opens on edit. */
-export async function startAssembly(app: App, deps: AssembleDeps = {}): Promise<string> {
+/** `model.assemble {layer_id}`: in the named layer (opened on edit), else in the layer on edit, else in the layer
+ * of lines chosen in the tree (opened on edit). */
+export async function startAssembly(app: App, layerId: number | null = null, deps: AssembleDeps = {}): Promise<string> {
   let s = currentSession();
-  if (!s) {
+  if (!s || (layerId !== null && s.layerId !== layerId)) {
     const sel = app.store.get().selected;
-    if (sel?.kind !== "lines") throw refusal("not_editing", "Не выбран слой с контурами.", "Выберите в дереве слой линий с замкнутыми контурами или откройте его на правку, затем повторите.");
-    await openEditor(app, sel.id);
+    const id = layerId ?? (sel?.kind === "lines" ? sel.id : null);
+    if (id === null) throw refusal("not_editing", "Не выбран слой с контурами.", "Выберите в дереве слой линий с замкнутыми контурами или откройте его на правку, затем повторите.");
+    await openEditor(app, id);
     s = currentSession();
-    if (!s) throw refusal("not_editing", "Слой не открыт на правку.", "Откройте слой на правку и повторите.");
+    if (!s || s.layerId !== id) throw refusal("not_editing", "Слой не открыт на правку.", "Откройте слой на правку и повторите.");
   }
   beginAssembly(s, deps);
   return `Сборка каркаса из контуров слоя «${s.layerName}»: щёлкайте замкнутые контуры по порядку; «Замкнуть торцы» — плоские крышки; «Создать каркас» — операция «Сшить контуры»`;

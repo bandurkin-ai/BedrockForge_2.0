@@ -153,6 +153,56 @@ def test_best_start_equals_the_full_search() -> None:
     assert differ > 100  # the best start is mostly not the first vertex: the search is really tested
 
 
+def rows(t):  # type: ignore[no-untyped-def]
+    return sorted(map(tuple, np.sort(t, axis=1).tolist()))
+
+
+def full_search_strip(pa, pb, gap):  # type: ignore[no-untyped-def]
+    """The reference: the cost of every start by an unbounded search, the strip of the cheapest one."""
+    n, m = len(pa), len(pb)
+    qa, sa = ss.match_coords(pa)
+    qb, sb = ss.match_coords(pb)
+    hh = (abs(gap) / ((sa + sb) / 2.0)) ** 2
+    full = np.array([ss.start_cost(qa, qb, hh, k) for k in range(m)])
+    s = int(np.argmin(full))
+    cost, back = ss._buffers(n, m)
+    lo, hi = np.full(n + 1, s, dtype=np.int64), np.full(n + 1, s + m, dtype=np.int64)
+    ss._dp_fill(qa, qb, hh, 0, n, s, m, lo, hi, cost, back)
+    tris, moves = np.empty((n + m, 3), dtype=np.int64), np.empty(n + m, dtype=np.int8)
+    ss._dp_trace(back, 0, n, s, m, n, m, np.arange(n), np.arange(n, n + m), tris, moves, 0)
+    return qa, qb, hh, full, tris, moves
+
+
+def test_bounded_search_gives_the_start_and_the_strip_of_the_full_search() -> None:
+    """The search gives up starts and nodes by a lower bound of the cost (9.37): on similar contours (most is
+    given up) and on dissimilar ones the best start, its cost and the strip are those of the full search."""
+    rng = np.random.default_rng(937)
+    unique = same = 0
+    for k in range(160):
+        n, m = (int(x) for x in rng.integers(12, 90, 2))
+        if k % 2:
+            pa = ccw(ellipse(n, 3.0, 1.0 + rng.uniform(0, 1), phase=rng.uniform(0, 6)) + rng.normal(0, 0.02, (n, 2)))
+            pb = ccw(ellipse(m, 2.5, 1.2, cx=rng.normal(0, 0.3), phase=rng.uniform(0, 6)) + rng.normal(0, 0.02, (m, 2)))
+        else:
+            pa, pb = ccw(star(rng, n)), ccw(star(rng, m, *rng.normal(0, 0.3, 2)))
+        gap = float(rng.uniform(0.05, 3.0))
+        qa, qb, hh, full, ref, moves = full_search_strip(pa, pb, gap)
+        s, cost = ss.best_start(qa, qb, hh)
+        assert cost == pytest.approx(full.min(), rel=1e-12, abs=0)
+        assert ss.start_cost(qa, qb, hh, s) == pytest.approx(full.min(), rel=1e-12, abs=0)
+        if int(np.count_nonzero(moves[1:] != moves[:-1])) < 3:
+            continue  # the search that counts turns builds this strip
+        got = ss.strip(pa, pb, np.arange(n), np.arange(n, n + m), gap)
+        assert got is not None
+        if (full > full.min() * (1 + 1e-9)).sum() == m - 1:  # one cheapest start
+            unique += 1
+            assert s == int(np.argmin(full)) and got.tobytes() == ref.tobytes()
+        else:  # starts on one strip cost the same: the same triangles, begun at another node of the strip
+            assert rows(got) == rows(ref)
+            same += 1
+    assert unique > 30 and same > 60
+
+
 def test_best_start_in_portions_with_a_tick(monkeypatch: pytest.MonkeyPatch) -> None:
     rng = np.random.default_rng(5)
     qa, _ = ss.match_coords(ccw(ellipse(300, 3.0, 1.0, phase=0.3)) + rng.normal(0, 0.01, (300, 2)))
