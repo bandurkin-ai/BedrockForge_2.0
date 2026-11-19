@@ -18,7 +18,7 @@ import { chooseLevel, stepBoundaries } from "../core/lod";
 import type { Box3 } from "../core/bounds";
 import type { Vec3 } from "../core/vec3";
 import { bfa1Array, decodeBfa1 } from "../format/bfa1";
-import { readCloudInfo, type CloudInfo } from "./cloud";
+import { readCloudInfo, type CloudInfo, type CloudValueMode } from "./cloud";
 
 /** [xmin, ymin, zmin, xmax, ymax, zmax], absolute float64; null — no vertex has this coordinate (a height). */
 export type Bbox6 = (number | null)[];
@@ -99,6 +99,20 @@ export function sameLayout(a: LinesManifest, b: LinesManifest): boolean {
   return a.parts.every((p, i) => {
     const q = b.parts[i];
     return p.n === q.n && p.points === q.points && p.origin.join() === q.origin.join() && JSON.stringify(p.bbox) === JSON.stringify(q.bbox);
+  });
+}
+
+/**
+ * The levels (`k:lod`) built from `old` that `next` — a manifest of the same layout — makes stale: the ETag of
+ * the part at the level is another one (the points, the classes), or — a cloud shown by `h` or `dz` — the
+ * column of that mode is (`cloud.modes[].key`). The ETags of a manifest are those of «Класс»: new heights or new
+ * differences with the same classes (a filter repeated, another DTM) move none of them.
+ */
+export function staleLevels(old: LinesManifest, next: LinesManifest, built: Iterable<string>, mode: CloudValueMode | null): string[] {
+  const all = mode !== null && mode !== "class" && old.cloud?.keys[mode] !== next.cloud?.keys[mode];
+  return [...built].filter((key) => {
+    const [k, lod] = key.split(":").map(Number);
+    return all || old.parts[k]?.etags[lod] !== next.parts[k]?.etags[lod];
   });
 }
 

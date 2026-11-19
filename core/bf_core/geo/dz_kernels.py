@@ -164,7 +164,9 @@ def surface_dz(vx, vy, vz, tri, box, inv, keys, start, count, items, px, py, pz,
             for level in range(len(inv)):
                 if inv[level] == 0.0:
                     continue
-                key = (np.int64(level) << 56) | (np.int64((x - x0) * inv[level]) << 28) | np.int64((y - y0) * inv[level])
+                ix = np.int64((x - x0) * inv[level])
+                iy = np.int64((y - y0) * inv[level])
+                key = (np.int64(level) << 56) | (ix << 28) | iy
                 h = _slot(key, mask)
                 while keys[h] != key and keys[h] != -1:
                     h = (h + 1) & mask

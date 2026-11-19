@@ -70,8 +70,10 @@ def remap_cloud_dz(meta: Any, new_id: Any) -> Any:
     """`objects.meta` of a layer with `cloud.dz.wireframe_id` renumbered (ADR 0014 §1); anything else — as it
     is. A surface the archive does not have (deleted since) keeps its name and loses its id: the old number
     would point at another object of the new project."""
-    cloud = meta.get("cloud") if isinstance(meta, dict) else None
-    dz = cloud.get("dz") if isinstance(cloud, dict) else None
+    if not isinstance(meta, dict) or not isinstance(meta.get("cloud"), dict):
+        return meta
+    cloud: dict[str, Any] = meta["cloud"]
+    dz = cloud.get("dz")
     if not isinstance(dz, dict) or "wireframe_id" not in dz:
         return meta
     old = dz["wireframe_id"]

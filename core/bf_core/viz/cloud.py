@@ -17,6 +17,10 @@ ETags. A part: the SHA-256 of the key (project, layer, its creation time, the fo
 the blob of the mode, part, level, mode) — a new name or colour of the layer does not make the window load its
 points again, new classes change the ETags of `class` and nothing else. The manifest: the key of a line layer
 (with `objects.version`). A repeated request is answered 304 before anything is read.
+`parts[].etags` of the manifest are those of the mode `class`. Whether what the window shows in `h` or `dz` is
+still what the cloud holds is told by `cloud.modes[].key` — the head of the SHA-256 of the column of the mode:
+new heights or new differences with the classes byte for byte the same (a filter repeated, another DTM) change
+the key of their mode and the ETags of its parts, and no ETag of the manifest.
 """
 
 from __future__ import annotations

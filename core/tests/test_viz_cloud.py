@@ -223,7 +223,24 @@ def test_etags_follow_the_data_of_a_part(shown, monkeypatch: pytest.MonkeyPatch)
             headers={"If-None-Match": before.headers["etag"]},
         )
         assert again.status_code == 304
-    assert c.get(f"{API}/viz/lines/{cloud_id}/parts/1", params={"color": "dz"}).status_code == 200
+    r_dz = c.get(f"{API}/viz/lines/{cloud_id}/parts/1", params={"color": "dz"})
+    assert r_dz.status_code == 200
+    # another DTM: new differences, the classes byte for byte the same (review of Э7.1). No ETag of the manifest
+    # moves — they are those of «class» — so the window learns it from the key of the mode
+    _r, head4, _a = _get(c, str(cloud_id))
+    _classify(project, cloud_id, dz=np.full(N, 0.5, dtype=np.float32))
+    r5, head5, _a = _get(c, str(cloud_id))
+    assert [p["etags"] for p in head5["parts"]] == [p["etags"] for p in head4["parts"]]
+    keys4, keys5 = ({m["mode"]: m["key"] for m in h["cloud"]["modes"]} for h in (head4, head5))
+    assert keys5["dz"] != keys4["dz"] and (keys5["class"], keys5["h"]) == (keys4["class"], keys4["h"])
+    assert head5["version"] == head4["version"] + 1 and r5.headers["etag"] != _r.headers["etag"]
+    stale = {"If-None-Match": r_dz.headers["etag"]}
+    again = c.get(f"{API}/viz/lines/{cloud_id}/parts/1", params={"color": "dz"}, headers=stale)
+    assert again.status_code == 200 and again.headers["etag"] != r_dz.headers["etag"]
+    assert set(binary.decode(again.content)[1]["value"].tolist()) == {150}  # 0.5 m in steps of 0.02 from −2.5
+    for mode, before in (("h", r_h), ("class", r_c)):
+        same = {"If-None-Match": before.headers["etag"]}
+        assert c.get(f"{API}/viz/lines/{cloud_id}/parts/1", params={"color": mode}, headers=same).status_code == 304
     # the tags of a cloud are not the tags of a layer of points
     other = _get(c, str(points_id))[1]["parts"][0]["etags"]
     assert len(other) == 3 and not set(other) & set(head3["parts"][0]["etags"])

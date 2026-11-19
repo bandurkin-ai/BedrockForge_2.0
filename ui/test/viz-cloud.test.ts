@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { build } from "./bfa1-build";
 import { POINT_BUDGET } from "../src/viz/core/budget";
-import { lineLevel, readLinesManifest, sameLayout } from "../src/viz/lines/build";
+import { lineLevel, readLinesManifest, sameLayout, staleLevels } from "../src/viz/lines/build";
 import {
   applyPointBudget,
   classColor,
@@ -58,6 +58,34 @@ describe("the manifest of a cloud", () => {
     const cloud = readLinesManifest(manifest({ classes: {} }));
     expect(sameLayout(cloud, cloud)).toBe(true);
     expect(sameLayout(cloud, { ...cloud, cloud: null })).toBe(false);
+  });
+
+  it("new heights or differences with the same classes: the levels shown by that mode are stale (review of Э7.1)", () => {
+    const cloud = (h: string, dz: string, etags = ["a", "b", "c", "d", "e"]) =>
+      readLinesManifest(manifest({ classes: { "2": 1000 }, modes: [{ mode: "class", key: "c1" }, { mode: "h", key: h }, { mode: "dz", key: dz }] }, [{ k: 0, n: 1000, points: 1000, levels: [1000, 400, 90, 12, 2], bbox: [500_000, 7_000_000, 100, 500_100, 7_000_100, 120], origin: [500_050, 7_000_050, 110], etags }]));
+    const old = cloud("h1", "d1");
+    expect(old.cloud?.keys).toEqual({ class: "c1", h: "h1", dz: "d1" });
+    const built = new Set(["0:4", "0:2"]);
+    // another DTM: the ETags of the manifest are those of «Класс» and do not move; only `dz` is stale
+    const dtm = cloud("h1", "d2");
+    expect(sameLayout(old, dtm)).toBe(true);
+    expect(staleLevels(old, dtm, built, "dz")).toEqual(["0:4", "0:2"]);
+    expect(staleLevels(old, dtm, built, "h")).toEqual([]);
+    expect(staleLevels(old, dtm, built, "class")).toEqual([]);
+    // the filter again with the same classes and other heights
+    expect(staleLevels(old, cloud("h2", "d1"), built, "h")).toEqual(["0:4", "0:2"]);
+    expect(staleLevels(old, cloud("h2", "d1"), built, "dz")).toEqual([]);
+    // a new name: nothing; new classes: the levels whose ETag moved, in any mode
+    expect(staleLevels(old, cloud("h1", "d1"), built, "dz")).toEqual([]);
+    const classes = cloud("h1", "d1", ["a", "b", "x", "d", "e"]);
+    expect(staleLevels(old, classes, built, "class")).toEqual(["0:2"]);
+    expect(staleLevels(old, classes, built, "h")).toEqual(["0:2"]);
+    // an ordinary layer has no mode: by the ETags alone
+    expect(staleLevels(old, classes, built, null)).toEqual(["0:2"]);
+    // a core that sends no keys: the mode is not taken for changed
+    const bare = readLinesManifest(manifest({ classes: {}, modes: [{ mode: "class" }, { mode: "dz" }] }));
+    expect(bare.cloud?.keys).toEqual({});
+    expect(staleLevels(bare, bare, built, "dz")).toEqual([]);
   });
 
   it("junk in `cloud` is dropped: codes out of 0…255, unknown modes; «Класс» is always there", () => {

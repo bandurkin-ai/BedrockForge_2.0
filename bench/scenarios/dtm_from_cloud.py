@@ -9,7 +9,10 @@ the true labels instead: the surface without the filter). Measured — the job `
   thin          the points of the ground by slices of the cloud, one in every cell of the plan — the lower
                 median of the height above the ground (`wireframes/cloud_source.py`);
   triangulate   `geo/dtm.py::build_dtm` over the vertices left;
-  store, lod    the wireframe and its levels of detail (as in `dtm_build`).
+  store, lod    the wireframe and its levels of detail (as in `dtm_build`);
+  dz            the map of differences of the cloud against the surface built — the last step of the job
+                (`wireframes/cloud_dz.py`): every point of the cloud, not only its ground (`dz_s`; `dz_rms_m`,
+                `dz_p95_m`, `dz_max_m` — |dz| of the ground, `dz_outside` — points beside the surface).
 Checked after the job, outside `build_s` (`verify_s`):
   vertices      of the surface — at most 2 million; `cell` — the step of the thinning the job chose;
   foreign       vertices that are not points of the cloud bit for bit (must be 0);
@@ -40,6 +43,7 @@ STAGES = {
     "Проверка каркаса": "store_s",
     "Уровни детализации": "lod_s",
     "Сохранение каркаса в проект": "commit_s",
+    "Карта разностей": "dz_s",
 }
 
 
@@ -205,7 +209,7 @@ def load() -> None:
 
     import bf_core.viz.meshes  # noqa: F401
     import bf_core.wireframes.jobs  # noqa: F401
-    from bf_core.geo import cloud_thin, meshes
+    from bf_core.geo import cloud_thin, dz_kernels, meshes
     from bf_core.geo.dtm import build_dtm
 
     rng = np.random.default_rng(1)
@@ -220,6 +224,7 @@ def load() -> None:
     for key in (pts[:200, 2].copy(), pts[:200, 2].astype(np.float32)):  # Z and the height above the ground
         cloud_thin.cell_medians(cell, key, order, 0, len(cell), out, 0)
     _raster()(v[:, 0], v[:, 1], v[:, 2], np.asarray(t, dtype=np.int64), 0.5, 0.5, 1.0, 4, 4)
+    dz_kernels.warm()  # the map of differences after the surface
 
 
 def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
@@ -256,6 +261,7 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
             built = wf_store.wireframe_info(conn, result["wireframe_id"])["built"]
             cloud = lc.open_cloud(conn, store, prepared["cloud"])
         source = built["sources"][0]
+    dz = (result.get("dz") or [{}])[0]
         hashes = np.load(work / "hash.npy", mmap_mode="r")
         mine = _hash(v)
         at = np.minimum(np.searchsorted(hashes, mine), len(hashes) - 1)
@@ -286,6 +292,11 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         "build_s": round(t1 - t0, 3),
         **stages,
         "verify_s": round(t2 - t1, 3),
+        "dz_points": dz.get("with_dz"),
+        "dz_outside": dz.get("outside"),
+        "dz_rms_m": dz.get("rms"),
+        "dz_p95_m": dz.get("p95"),
+        "dz_max_m": dz.get("max"),
         "foreign": int(len(v) - np.count_nonzero(found)),
         "not_ground": int(np.count_nonzero(classes != 2)),
         "truth_ground": round(float(np.count_nonzero(truth) / max(len(truth), 1)), 4),

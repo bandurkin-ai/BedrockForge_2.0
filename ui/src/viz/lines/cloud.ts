@@ -28,6 +28,8 @@ export interface CloudInfo {
   classes: Record<number, number>;
   /** the value modes the core can answer (`class` always, `h` after the ground filter, `dz` after a DTM) */
   modes: CloudValueMode[];
+  /** the column of a value mode by its content (`modes[].key` of the core): another key — other values */
+  keys: Partial<Record<CloudValueMode, string>>;
   value: CloudValueScale;
   source: { kind?: string; every?: number } | null;
   ground: unknown;
@@ -45,7 +47,7 @@ export const DEFAULT_VALUE_SCALE: CloudValueScale = { step: 0.02, min: -2.5, max
 
 interface CloudHeader {
   classes?: Record<string, number> | null;
-  modes?: { mode: string }[] | null;
+  modes?: { mode: string; key?: string }[] | null;
   value?: Partial<CloudValueScale> | null;
   source?: { kind?: string; every?: number } | null;
   ground?: unknown;
@@ -62,10 +64,12 @@ export function readCloudInfo(h: CloudHeader | null | undefined): CloudInfo | nu
   }
   const modes = (h.modes ?? []).map((m) => m?.mode).filter((m): m is CloudValueMode => m === "class" || m === "h" || m === "dz");
   if (!modes.includes("class")) modes.unshift("class");
+  const keys: CloudInfo["keys"] = {};
+  for (const m of h.modes ?? []) if ((m?.mode === "class" || m?.mode === "h" || m?.mode === "dz") && typeof m.key === "string") keys[m.mode] = m.key;
   const v = h.value ?? {};
   const num = (x: unknown, d: number) => (typeof x === "number" && Number.isFinite(x) ? x : d);
   const value = { step: num(v.step, DEFAULT_VALUE_SCALE.step), min: num(v.min, DEFAULT_VALUE_SCALE.min), max: num(v.max, DEFAULT_VALUE_SCALE.max), empty: num(v.empty, DEFAULT_VALUE_SCALE.empty) };
-  return { classes, modes, value, source: h.source ?? null, ground: h.ground ?? null, dz: h.dz ?? null };
+  return { classes, modes, keys, value, source: h.source ?? null, ground: h.ground ?? null, dz: h.dz ?? null };
 }
 
 /** The mode in force: the asked one when the cloud has it; else «Класс» when there are classes, else «Цвет слоя». */

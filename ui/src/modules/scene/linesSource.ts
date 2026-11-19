@@ -21,7 +21,7 @@ import { shownLevel } from "../../viz/core/lod";
 import { VizError } from "../../viz/error";
 import { THIN_SEGMENTS } from "../../viz/holes/paths";
 import { LabelCache } from "../../viz/labels/sprites";
-import { lineBoundaries, lineLevel, nearestInBox, readLinesManifest, sameLayout, type LinesManifest } from "../../viz/lines/build";
+import { lineBoundaries, lineLevel, nearestInBox, readLinesManifest, sameLayout, staleLevels, type LinesManifest } from "../../viz/lines/build";
 import { applyPointBudget, cloudBoundaries, type CloudBudgetPart, type CloudStyle, type CloudValueMode } from "../../viz/lines/cloud";
 import { LINE_WIDTH_PX, LineLayerView } from "../../viz/lines/layer";
 import { LoadQueue } from "../../viz/load/loader";
@@ -249,11 +249,9 @@ export class LinesSource {
         const visible = !this.input.hidden().includes(lineKey(id));
         const old = this.layers.get(id);
         if (old && sameLayout(old.manifest, m)) {
-          // the same parts: what is shown stays, the levels of another version reload behind it
-          for (const key of [...old.fresh]) {
-            const [k, lod] = key.split(":").map(Number);
-            if (old.manifest.parts[k].etags[lod] !== m.parts[k].etags[lod]) old.fresh.delete(key);
-          }
+          // the same parts: what is shown stays, the levels of another version reload behind it — also those
+          // of a cloud shown by `h` or `dz` whose column changed while its classes did not
+          for (const key of staleLevels(old.manifest, m, old.fresh, old.mode)) old.fresh.delete(key);
           old.manifest = m;
           old.view.manifest = m;
           old.view.setColor(ref.color ?? m.color);

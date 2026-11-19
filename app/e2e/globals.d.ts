@@ -17,8 +17,11 @@ interface BfSceneState {
   pickMs: number;
   /** keys of the layers added to the scene (`ln:<id>`, `rs:<id>`, `dh:…`) */
   layers: string[];
-  /** line and point layers: layers in the scene, parts, segments and markers shown, simplified parts */
-  lines: { layers: number; parts: number; segments: number; points: number; simplified: number; over: boolean };
+  /**
+   * line and point layers: layers in the scene, parts, segments and markers shown, simplified parts; `cloud` —
+   * the points of clouds wanted in the last frame against the point budget of the frame (ADR 0014 §2)
+   */
+  lines: { layers: number; parts: number; segments: number; points: number; simplified: number; over: boolean; cloud: { points: number; budget: number; simplified: boolean; over: boolean } };
   /**
    * rasters: the copy each shows (0 — ≤ 4096 px, 1 — ≤ 1024 px, null — not yet), those drawn as backdrops, those
    * a DTM carries — `covered` (not drawn flat) and `cut` (flat with holes under the surfaces)
@@ -70,7 +73,8 @@ interface Window {
     /** every part of the surfaces at this level of detail (null — by the size on the screen) */
     lod(level: number | null): void;
     run(id: string, args?: Record<string, unknown>): Promise<{ ok: boolean; result: string }>;
-    bench(frames: number): { frames: number; ms_per_frame: number; ms_median: number; calls: number; triangles: number; gpu_bytes: number; gpu: { renderer: string; gpuClass: string } };
+    /** `frames` frames turning a full circle: the largest draw calls, triangles and points of a frame */
+    bench(frames: number): { frames: number; ms_per_frame: number; ms_median: number; calls: number; triangles: number; points: number; gpu_bytes: number; gpu: { renderer: string; gpuClass: string } };
   };
   __bfLose?: { loseContext(): void; restoreContext(): void } | null;
 }

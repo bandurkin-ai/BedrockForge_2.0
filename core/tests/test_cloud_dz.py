@@ -25,6 +25,7 @@ from bf_core.jobs.registry import HANDLER_MODULES, load_handlers
 from bf_core.lines import cloud as lc
 from bf_core.projects.service import projects_of
 from bf_core.storage.blobs import BlobStore
+from bf_core.viz import binary
 from bf_core.wireframes import cloud_dz as cd
 from bf_core.wireframes import jobs as dtm_jobs
 from bf_core.wireframes import store as ws
@@ -180,7 +181,8 @@ def test_solids_walls_broken_triangles_and_triangles_of_every_size() -> None:
     box = np.array(
         [[0, 1, 3], [0, 3, 2], [4, 5, 7], [4, 7, 6], [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
          [0, 2, 6], [0, 6, 4], [1, 3, 7], [1, 7, 5], [0, 0, 1], [3, 3, 3]], dtype=np.int32,
-    )  # fmt: skip — the last two have no area at all
+    )  # fmt: skip
+    # the walls and the last two triangles have no area in plan
     index = dk.surface_index(c, box)
     assert index.triangles == 4  # the walls and the broken triangles are not a surface in plan
     q = np.array([[5.0, 5.0, 9.0], [5.0, 5.0, 2.0], [5.0, 5.0, 5.0], [5.0, 5.0, 14.0], [5.0, 5.0, -3.0],
@@ -316,7 +318,7 @@ def test_dz_of_a_cloud_through_the_api(api) -> None:  # type: ignore[no-untyped-
     layer = ok(c.get(f"{API}/lines/layers/{cloud_id}"))
     assert layer["cloud"]["modes"] == ["class", "dz"] and layer["cloud"]["dz"]["wireframe_id"] == wf_id
     assert [f["name"] for f in layer["attr_schema"]][-1] == "Отклонение от ЦТМ, м"
-    manifest = ok(c.get(f"{API}/viz/lines/{cloud_id}"))
+    manifest = binary.decode(c.get(f"{API}/viz/lines/{cloud_id}").content)[0]
     assert [m["mode"] for m in manifest["cloud"]["modes"]] == ["class", "dz"]
     assert c.get(f"{API}/viz/lines/{cloud_id}/parts/0", params={"lod": 0, "color": "dz"}).status_code == 200
     assert tmp_files(project) == []
