@@ -204,7 +204,7 @@ def test_check_button_runs_the_job_and_gives_the_red_layer(api) -> None:  # type
     assert job["params"]["wireframe_ids"] == [ids["pair"]]
     assert job["result"] == {
         "checked": 1, "failed": 0, "skipped": 0, "lod_parts": 1, "normal_conflicts": 0, "pairs": want.pairs,
-        "triangles": want.triangle_count, "with_defects": [ids["pair"]],
+        "triangles": want.triangle_count, "with_defects": [ids["pair"]], "wireframe_ids": [ids["pair"]],
     }  # fmt: skip
     said = [row["text"] for row in ok(c.get(f"{API}/jobs/{started['source']}/{started['id']}/log"))["lines"]]
     assert any("«Два куба»" in line and "самопересечений" in line for line in said)

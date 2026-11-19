@@ -192,9 +192,12 @@ def test_dtm_settings_raster_and_back_to_wireframes(api) -> None:  # type: ignor
 def test_delete_wireframe_with_its_levels_of_detail(api) -> None:  # type: ignore[no-untyped-def]
     c, project, ids = api
     ok(c.put(f"{API}/wireframes/{ids['relief']}/dtm", json={"expected_version": 1, "raster_id": ids["plan"]}))
-    assert c.get(f"{API}/viz/wireframes/{ids['relief']}/parts/0", params={"lod": 1}).status_code == 200
     with dialect.read_tx(project.engine) as conn:
-        folder = vm.cache_dir(project.folder, vm.mesh_state(conn, ids["relief"]).cache_key())
+        state = vm.mesh_state(conn, ids["relief"])
+        v, t = ws.read_wireframe(conn, BlobStore(project.folder), ids["relief"])
+    folder = vm.cache_dir(project.folder, state.cache_key())
+    vm.build_cache(project.folder, state.cache_key(), v, t, vm.parts_of(project, state))  # as `wireframe.lod` does
+    assert c.get(f"{API}/viz/wireframes/{ids['relief']}/parts/0", params={"lod": 1}).headers["etag"]
     assert sorted(f.name for f in folder.iterdir()) == ["0-1.bfa", "0-2.bfa"]
     assert ok(c.delete(f"{API}/wireframes/{ids['relief']}")) == {"deleted": ids["relief"]}
     assert ("objects.changed", {"kind": "wireframe", "id": ids["relief"], "deleted": True}) in events(c)

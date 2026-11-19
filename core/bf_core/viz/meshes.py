@@ -178,9 +178,7 @@ def part_etag(uid: str, state: MeshState, k: int, lod: int) -> str:
 # --- one part --------------------------------------------------------------------------------------------
 
 
-def encode_part(
-    part: gm.MeshPart, lod: int, local: np.ndarray, tri: np.ndarray, *, standin: bool = False
-) -> bytes:
+def encode_part(part: gm.MeshPart, lod: int, local: np.ndarray, tri: np.ndarray, *, standin: bool = False) -> bytes:
     """BFA1 `mesh` of a part at a level: `local` — float64 offsets from the origin of the part; `standin` — the
     whole part answers for a level not made yet (the key is in the header of a stand-in only)."""
     dtype = "<u2" if len(local) <= MAX_U2_VERTICES else "<u4"

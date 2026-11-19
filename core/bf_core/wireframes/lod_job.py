@@ -156,7 +156,7 @@ def _run(ctx: JobContext) -> dict[str, Any]:
         ctx.log(f"«{state.name}»: каркас удалён во время задания — копии убраны.", "warn")
         return {"wireframe_id": wf_id, "wireframe_ids": [], "parts": made["parts"], "built": made["built"]}
     counts = " / ".join(_n(n) for n in made["triangles"])
-    ctx.log(f"«{state.name}»: частей {_n(made['parts'])}, сделано {_n(made['built'])}; треугольников по уровням {counts}")
+    ctx.log(f"«{state.name}»: частей {_n(made['parts'])}, сделано {_n(made['built'])}; треугольников: {counts}")
     with suppress(JobCancelled):  # the files are written: a cancel this late undoes nothing
         ctx.tick(1.0, "Готово")
     return {
