@@ -116,11 +116,11 @@ _WHOLE = {"ri": (min(WIDTHS), max(WIDTHS), "Жёсткость ткани RI"), 
 
 def ranges() -> dict[str, dict[str, Any]]:
     """The ranges of ТЗ 7.35 Д-22 as the interface shows them: {parameter: {lo, hi, title, unit, whole}}."""
-    out: dict[str, dict[str, Any]] = {
-        k: {"lo": lo, "hi": hi, "title": title, "unit": unit, "whole": False}
-        for k, (lo, hi, title, unit) in _RANGES.items()
-    }
-    out.update({k: {"lo": lo, "hi": hi, "title": title, "unit": "", "whole": True} for k, (lo, hi, title) in _WHOLE.items()})
+    out: dict[str, dict[str, Any]] = {}
+    for k, (lo, hi, title, unit) in _RANGES.items():
+        out[k] = {"lo": lo, "hi": hi, "title": title, "unit": unit, "whole": False}
+    for k, (low, high, title) in _WHOLE.items():
+        out[k] = {"lo": low, "hi": high, "title": title, "unit": "", "whole": True}
     return out
 
 

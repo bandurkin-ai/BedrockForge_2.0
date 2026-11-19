@@ -82,3 +82,28 @@ def test_cloud_csv_reads_back_bit_for_bit(tmp_path: Path) -> None:
     with pytest.raises(FormatError) as info:
         write_cloud_csv(tmp_path / "x.csv", [], total=0, delimiter=",", decimal=",")
     assert info.value.code == "unrepresentable"
+
+
+def test_cloud_csv_writes_h_as_the_shortest_text_of_its_float32(tmp_path: Path) -> None:
+    """7.1.18: `h` of a cloud is a float32; taken through float64 it was written as `0.12999999523162842`.
+    The text is the shortest that reads back to the same float32, bit for bit."""
+    rng = np.random.default_rng(10)
+    h = np.concatenate([[0.13, -2.5, 1e-7, 123456.79, 1 / 3, np.nan, -0.0], rng.normal(0, 3, 2993)]).astype(np.float32)
+    xyz = rng.normal([5e5, 6e6, 300.0], [1e3, 1e3, 50.0], (len(h), 3))
+    cls = np.full(len(h), 2, dtype=np.uint8)
+    for decimal in (".", ","):
+        target = tmp_path / f"h{ord(decimal)}.csv"
+        portions = [(xyz[a : a + 1000], cls[a : a + 1000], h[a : a + 1000]) for a in range(0, len(h), 1000)]
+        write_cloud_csv(target, portions, total=len(h), with_h=True, decimal=decimal)
+        texts = [line.split(";")[4].replace(",", ".") for line in target.read_text(encoding="utf-8").splitlines()[1:]]
+        assert texts[:7] == ["0.13", "-2.5", "1e-7", "123456.79", "0.33333334", "", "-0"], decimal
+        back = np.array([float(t) if t else np.nan for t in texts]).astype(np.float32)
+        assert back.tobytes() == h.tobytes(), decimal  # NaN and −0 included
+        assert max(len(t) for t in texts) <= 15  # 9 significant digits, a sign, a point, an exponent
+        assert np.array_equal(_all(XyzCloud(target, inspect_xyz(target)))[0], xyz)  # X, Y, Z: float64 as before
+    # heights that come as float64 keep every digit of theirs
+    exact = tmp_path / "f8.csv"
+    write_cloud_csv(exact, [(xyz[:3], cls[:3], np.array([0.1 + 0.2, 1.0, np.nan]))], total=3, with_h=True)
+    assert [line.split(";")[4] for line in exact.read_text(encoding="utf-8").splitlines()[1:]] == [
+        "0.30000000000000004", "1", "",
+    ]  # fmt: skip

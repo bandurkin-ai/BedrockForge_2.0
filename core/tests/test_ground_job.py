@@ -217,7 +217,8 @@ def test_request_checks_the_cloud_and_the_parameters(api, monkeypatch: pytest.Mo
     assert (plain["profile"], plain["ri"], plain["r_b"], plain["threads"]) == ("plain", 3, False, 3)
     # «Свой»: the numbers of the window over the constants of a profile; false switches a stage off
     own = request(project, cloud_id, cr=0.5, ri=1, ct=0.25, r_b=False, noise=False, threads=99)
-    assert (own["cr"], own["ri"], own["ct"], own["r_b"], own["noise"], own["threads"]) == (0.5, 1, 0.25, False, False, 8)
+    assert (own["cr"], own["ri"], own["ct"], own["threads"]) == (0.5, 1, 0.25, 8)
+    assert own["r_b"] is False and own["noise"] is False
     # one meaning everywhere (7.1.18): null and an empty text — as the profile has it, never «off»
     for empty in (None, "", "  "):
         assert request(project, cloud_id, r_b=empty)["r_b"] == 5.0
@@ -275,9 +276,10 @@ def test_the_profiles_of_the_kernel_are_what_the_window_is_given(api) -> None:  
         # the fields of a profile are those of a request: sent back they give the profile, whatever the base
         for base in by_id:
             fields = {key: p[key] for key in ("cr", "ri", "ct", "r_b", "noise")}
-            assert ground.make_params(base, **fields) == replace(ground.PROFILES[base], **{
-                key: getattr(k, key) for key in ("cr", "ri", "ct", "r_b", "noise_r", "noise_k")
-            })
+            assert ground.make_params(base, **fields) == replace(
+                ground.PROFILES[base],
+                **{key: getattr(k, key) for key in ("cr", "ri", "ct", "r_b", "noise_r", "noise_k")},
+            )
     assert by_id["quarry"]["r_b"] == 5.0 and by_id["plain"]["r_b"] is False  # false — off; never null
     assert (by_id["quarry"]["title"], by_id["plain"]["title"]) == ("Карьер", "Равнина")
     assert "до 55°" in by_id["quarry"]["hint"] and "до 30°" in by_id["plain"]["hint"]

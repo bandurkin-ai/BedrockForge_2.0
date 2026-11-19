@@ -193,6 +193,16 @@ def test_a_source_that_changed_or_has_no_points_leaves_no_files(store: BlobStore
     with pytest.raises(ValueError, match="triples"):
         cb.stage_cloud(store, lambda: iter([lc.CloudChunk(np.zeros((3, 4)))]))
     assert not store.tmp_dir.exists() or not list(store.tmp_dir.iterdir())
+    # 7.1.18: record 2³² of a source that does not number its records has no number — told to the user, in
+    # Russian with a hint (it was a ValueError: «внутренняя ошибка» of the import)
+    last = cb.columns(lc.CloudChunk(chunk.xyz[:2]), (1 << 32) - 2)[1]
+    assert last.dtype == np.dtype("<u4") and last.tolist() == [(1 << 32) - 2, (1 << 32) - 1]
+    with pytest.raises(FormatError) as err:
+        cb.columns(lc.CloudChunk(chunk.xyz[:2]), (1 << 32) - 1)
+    assert err.value.code == "too_many_points" and "4 294 967 296" in err.value.message
+    assert "каждую k-ю запись" in err.value.hint and err.value.as_dict()["hint"]
+    numbered = lc.CloudChunk(chunk.xyz[:2], seq=np.array([5, 9], dtype=np.uint32))  # its own numbers: any base
+    assert cb.columns(numbered, 1 << 40)[1].tolist() == [5, 9]
 
 
 def test_points_scattered_over_a_continent_are_refused(store: BlobStore, monkeypatch: pytest.MonkeyPatch) -> None:

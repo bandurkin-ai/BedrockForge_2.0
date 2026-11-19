@@ -393,8 +393,9 @@ def test_a_sparse_cloud_is_refused_right_after_the_index() -> None:
     xyz = _scatter(3, 400.0, 1.0)
     p = ground.make_params("quarry", cr=0.25)
     said = []
+    seen: list[str] = []
     for threads, block in ((1, 512), (4, 512), (2, ground.BLOCK)):
-        seen: list[str] = []
+        seen.clear()
         with pytest.raises(ground.GroundError) as err:
             ground.classify_ground(xyz, None, p, threads=threads, block=block, tick=lambda f, m: seen.append(m))
         assert err.value.code == "cloud_too_sparse" and "CR = 0,25 м" in err.value.message

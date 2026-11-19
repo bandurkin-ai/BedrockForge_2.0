@@ -14,8 +14,9 @@ it is skipped and counted (a gap is never a zero), as is a row of another number
 whole number 0–255 is 0 (counted). A pass can be repeated (the cloud is built in two). A UTF-16 file is read by
 the table reader of Э3, at most `FALLBACK_ROWS` rows, with the hint «сохраните в LAS».
 `write_cloud_csv(path, portions, …)` writes `X;Y;Z;класс[;h]`: numbers as the shortest text that reads back to the
-same double (as `repr`; Arrow's formatter), empty `h` as an empty cell, portion by portion, the file under its
-name only when complete.
+same number of their own precision (Arrow's formatter): X, Y, Z — doubles (as `repr`), `h` — the float32 of the
+cloud («0.13», not the double of the same value); empty `h` as an empty cell, portion by portion, the file under
+its name only when complete.
 Error codes: empty_file, unsupported, no_coordinates, no_column, too_many_points, unknown_delimiter,
 unknown_encoding, unrepresentable.
 """
@@ -527,7 +528,10 @@ def write_cloud_csv(
                 tick(rows / max(total, 1), f"Запись точек: {n_text(rows)} из {n_text(total)}")
                 cols = [text(np.ascontiguousarray(xyz[:, k])) for k in range(3)] + [text(np.asarray(cls))]
                 if with_h:
-                    cols.append(text(np.asarray(h, dtype=np.float64) if h is not None else np.full(len(xyz), np.nan)))
+                    # `h` of a cloud is a float32: its own shortest text («0.13»), not that of the float64 of the
+                    # same value («0.12999999523162842»)
+                    heights = np.full(len(xyz), np.nan, np.float32) if h is None else np.asarray(h)
+                    cols.append(text(heights if heights.dtype == np.float32 else heights.astype(np.float64)))
                 if not len(xyz):
                     continue
                 pcsv.write_csv(pa.table(cols, names=[f"c{k}" for k in range(len(cols))]), out, options)

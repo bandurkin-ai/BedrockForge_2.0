@@ -35,7 +35,8 @@ Windows it cannot be removed while it is mapped. A cancel (`tick` raising) or a 
 
 Refused with `{code, message, hint}` (`FormatError`): a source without a point that has a place (`no_points`);
 a source that gives other points in the second pass (`source_changed`); points scattered so wide that the cloud
-would take more than `MAX_PARTS` parts — junk coordinates (`cloud_too_wide`).
+would take more than `MAX_PARTS` parts — junk coordinates (`cloud_too_wide`); more than 2³² records of a source
+that does not number them (`too_many_points`: `seq` is a uint32).
 
 numba is imported with this module: import it lazily, never before BF-READY.
 """
@@ -104,6 +105,14 @@ def too_wide() -> FormatError:
         "cloud_too_wide",
         "Точки облака разбросаны по слишком большой площади.",
         "Проверьте колонки X, Y, Z и единицы координат: точки должны быть в метрах одной системы координат.",
+    )
+
+
+def too_many_records() -> FormatError:
+    return FormatError(
+        "too_many_points",
+        "В источнике облака больше 4 294 967 296 записей: номер записи точки не помещается в 32 бита.",
+        "Загрузите каждую k-ю запись (поле «каждая k-я запись» мастера) или разделите облако на части.",
     )
 
 
@@ -210,7 +219,7 @@ def columns(chunk: Points, base: int) -> tuple[np.ndarray, np.ndarray, np.ndarra
 
     if chunk.seq is None:
         if base + n > 1 << 32:
-            raise ValueError("cloud: more than 2³² records in a source")
+            raise too_many_records()
         seq = np.arange(base, base + n, dtype=np.int64).astype("<u4")
     else:
         seq = column(chunk.seq, "<u4", "the record number")

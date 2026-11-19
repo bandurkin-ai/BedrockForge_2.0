@@ -22,8 +22,10 @@ that is off has no number (None).
 The stored parameters are the resolved numbers (and false for a stage that is off), so a repeated job gives
 the same classes whatever the profiles become; `cells` — the cells of the largest block of the cloud, for the
 estimate of the memory. `profiles()` is what `GET /lines/ground/profiles` answers: the window «Фильтр земли»
-shows the profiles and the ranges of the kernel, not a copy of them. Steps: open the cloud → `geo.ground.warm` («Подготовка ядер»: the kernels are compiled or loaded from
-the cache) → `classify_ground` over the columns of the cloud (`xyz` — a map of the file, not a copy; `ret`) →
+shows the profiles and the ranges of the kernel, not a copy of them.
+
+Steps: open the cloud → `geo.ground.warm` («Подготовка ядер»: the kernels are compiled or loaded from the
+cache) → `classify_ground` over the columns of the cloud (`xyz` — a map of the file, not a copy; `ret`) →
 `stage_values` (`class`, `h` as temp files) → one write transaction (`replace_values`): the new columns, a new
 version, `meta.cloud.classes` and `meta.cloud.ground` {params, counts, algo, at, blocks, threads, seconds}.
 A cancel or a failure before that transaction leaves the cloud as it was and no file; a cloud whose columns
