@@ -23,7 +23,8 @@ color, dz}:
 A vertex without a height is left out and counted in the journal — it is never taken for 0; a line is cut at
 such a vertex. The vertices of the result that come from the sources are their float64 coordinates bit for bit.
 
-Steps: read the sources → `build_dtm` → `stage_wireframe` (spatial order, parts, measures, temp files) → the
+Steps: read the sources (`dtm_sources.py`: the layers inside a read transaction, the clouds thinned after it,
+from columns held open) → `build_dtm` → `stage_wireframe` (spatial order, parts, measures, temp files) → the
 levels of detail of every part into `cache\\mesh\\` → one write transaction that makes the wireframe. A cancel
 or a failure before that transaction leaves nothing (temp files and the cache folder are removed; the folder
 stays when a wireframe of the project has the same geometry — the levels are its own).
@@ -52,10 +53,9 @@ from bf_core.lines.cloud import cloud_meta, not_a_cloud
 
 from . import cloud_source as cs
 from . import store as wf_store
+from .dtm_sources import LAYER, READING, SET, gather, thin_clouds
 
 MAX_SOURCES = 2000
-SET = "drillhole_set"
-LAYER = "line_layer"
 
 
 def _n(x: int) -> str:
@@ -250,161 +250,6 @@ def _memory(params: dict[str, Any]) -> int:
     return max(512, max(int(max(build, thin) / 2**20), dz) + 300)
 
 
-# --- sources ---------------------------------------------------------------------------------------------
-
-
-class Sources:
-    """Points and structural lines gathered from the project, with what was left out."""
-
-    def __init__(self) -> None:
-        self.points: list[np.ndarray] = []
-        self.lines: list[np.ndarray] = []
-        self.boundary: np.ndarray | None = None
-        self.used: list[dict[str, Any]] = []
-        self.skipped = 0  # vertices without a height
-        self.notes: list[tuple[str, str]] = []  # lines of the journal: (text, level)
-        self.cell = 0.0  # the largest step a cloud was thinned with, m
-        self.clouds: list[int] = []  # the clouds among the sources
-
-    def add_points(self, xyz: np.ndarray) -> int:
-        ok = np.isfinite(xyz).all(axis=1)
-        self.skipped += int(len(xyz) - np.count_nonzero(ok))
-        if ok.any():
-            self.points.append(xyz if ok.all() else xyz[ok])
-        return int(np.count_nonzero(ok))
-
-    def add_lines(self, xyz: np.ndarray, offsets: np.ndarray) -> tuple[int, int]:
-        """Every line as a breakline, cut at the vertices that have no height: runs of two or more vertices
-        are structural, a lone vertex is a point. Returns (vertices taken, segments)."""
-        ok = np.isfinite(xyz).all(axis=1)
-        self.skipped += int(len(xyz) - np.count_nonzero(ok))
-        # run starts: the first vertex of a line, or a vertex after one without a height
-        start = np.zeros(len(xyz), dtype=bool)
-        start[offsets[:-1]] = True
-        start[1:] |= ~ok[:-1]
-        start &= ok
-        run = np.cumsum(start)[ok]  # the run of every vertex that has a height
-        pts = xyz[ok]
-        if not len(pts):
-            return 0, 0
-        cuts = np.flatnonzero(np.diff(run)) + 1
-        bounds = np.concatenate([[0], cuts, [len(pts)]])
-        sizes = np.diff(bounds)
-        lone = bounds[:-1][sizes == 1]
-        if len(lone):
-            self.points.append(pts[lone])
-        segments = 0
-        for a, b in zip(bounds[:-1][sizes > 1].tolist(), bounds[1:][sizes > 1].tolist(), strict=True):
-            self.lines.append(pts[a:b])
-            segments += b - a - 1
-        return len(pts), segments
-
-
-def _boundary(ls: Any, ref: dict[str, Any]) -> np.ndarray:
-    """The polygon of the boundary: a closed line of the layer without its repeated first vertex; (k, 3) with
-    `use_z`, else (k, 2)."""
-    closed = np.flatnonzero(np.asarray(ls.closed) != 0)
-    line = ref.get("line")
-    if line is None:
-        if len(closed) != 1:
-            raise JobError(
-                "bad_boundary",
-                f"В слое «{ls.name}» замкнутых линий: {len(closed)} — граница должна быть одна.",
-                "Укажите линию границы или оставьте в слое одну замкнутую линию.",
-            )
-        line = int(closed[0])
-    elif not 0 <= int(line) < ls.line_count or int(line) not in closed.tolist():
-        raise JobError(
-            "bad_boundary",
-            f"Линия {int(line) + 1} слоя «{ls.name}» не замкнута или её нет.",
-            "Выберите замкнутую линию — контур поверхности.",
-        )
-    xyz = np.asarray(ls.line(int(line)), dtype=np.float64)[:-1]  # a closed line repeats its first vertex
-    if ref.get("use_z"):
-        if not np.isfinite(xyz).all():
-            raise JobError(
-                "bad_boundary",
-                f"У линии границы в слое «{ls.name}» есть вершины без высоты.",
-                "Снимите «Учитывать высоты границы» или задайте высоты вершин.",
-            )
-        return xyz
-    return np.ascontiguousarray(xyz[:, :2])
-
-
-CLOUD_WEIGHT = 10  # a cloud in the progress of the reading: as many layers
-READING, THINNING = "Чтение исходных данных", "Прореживание облака"
-
-
-def _is_cloud(conn: sa.Connection, layer_id: int) -> bool:
-    meta = conn.execute(sa.select(objects.c.meta).where(objects.c.id == layer_id, objects.c.kind == LAYER)).scalar()
-    return cloud_meta(meta) is not None
-
-
-def gather(conn: sa.Connection, store: Any, params: dict[str, Any], tick: Callable[[float, str], None]) -> Sources:
-    """Read the sources of the parameters (as `request` returns them) from the project. `tick(share, stage)`."""
-    from bf_core.lines import store as ls_store
-
-    src = Sources()
-    sets = [int(i) for i in params.get("set_ids") or []]
-    clouds = cs.check_sources(params.get("clouds"))
-    layers = []
-    for layer_id in [int(i) for i in params.get("layer_ids") or []]:
-        if not _is_cloud(conn, layer_id):
-            layers.append(layer_id)
-        elif all(c["layer_id"] != layer_id for c in clouds):  # parameters made before the clouds came
-            clouds.append({"layer_id": layer_id, "classes": None, "cell": None})
-    heavy = CLOUD_WEIGHT * len(clouds)
-    total = max(1, len(layers) + len(sets) + heavy + (1 if params.get("boundary") else 0))
-    done = 0
-    for layer_id in layers:
-        ls = ls_store.read_layer(conn, store, layer_id)
-        xyz = np.asarray(ls.xyz, dtype=np.float64).reshape(-1, 3)
-        if ls.points_only or not params.get("breaklines", True):
-            taken = src.add_points(xyz)
-            src.used.append({"kind": LAYER, "id": layer_id, "name": ls.name, "points": taken})
-        else:
-            taken, segments = src.add_lines(xyz, np.asarray(ls.offsets, dtype=np.int64))
-            src.used.append({"kind": LAYER, "id": layer_id, "name": ls.name, "points": taken, "segments": segments})
-        done += 1
-        tick(done / total, READING)
-    for one in cs.take(conn, store, clouds, lambda f: tick((done + heavy * f) / total, THINNING)):
-        src.add_points(one.thinned.xyz)
-        src.cell = max(src.cell, one.thinned.cell)
-        src.clouds.append(one.layer_id)
-        src.used.append({"kind": LAYER, **one.used()})
-        src.notes += one.notes()
-    done += heavy
-    for set_id in sets:
-        name = conn.execute(sa.select(objects.c.name).where(objects.c.id == set_id, objects.c.kind == SET)).scalar()
-        if name is None:
-            raise JobError("set_not_found", "Набор скважин не найден.", "Обновите дерево проекта.")
-        h = dh_holes.c
-        rows = conn.execute(
-            sa.select(h.x, h.y, h.z)
-            .where(h.set_id == set_id, h.x.is_not(None), h.y.is_not(None), h.z.is_not(None))
-            .order_by(h.id)
-        ).all()
-        missing = conn.execute(sa.select(sa.func.count()).select_from(dh_holes).where(h.set_id == set_id)).scalar_one()
-        src.skipped += int(missing) - len(rows)
-        taken = src.add_points(np.array(rows, dtype=np.float64).reshape(-1, 3)) if rows else 0
-        src.used.append({"kind": SET, "id": set_id, "name": str(name), "collars": taken})
-        done += 1
-        tick(done / total, READING)
-    ref = params.get("boundary")
-    if ref:
-        if _is_cloud(conn, int(ref["layer_id"])):
-            raise JobError(
-                "bad_boundary",
-                "Граница поверхности — облако точек: в нём нет замкнутой линии.",
-                "Выберите слой с замкнутой линией — контуром поверхности.",
-            )
-        ls = ls_store.read_layer(conn, store, int(ref["layer_id"]))
-        src.boundary = _boundary(ls, ref)
-        src.used.append({"kind": LAYER, "id": int(ref["layer_id"]), "name": ls.name, "boundary": len(src.boundary)})
-        tick(1.0, READING)
-    return src
-
-
 def remap_built(built: Any, new_id: Callable[[int], int | None]) -> Any:
     """`meta.built` of a wireframe on a `.bfggis` import: the ids of its sources and of its boundary are those
     of the project it was built in. A source the archive does not have (deleted since) keeps its name and
@@ -456,10 +301,14 @@ def model_dtm(ctx: JobContext) -> dict[str, Any]:
     def part(start: float, stop: float, message: str) -> Callable[[float], None]:
         return lambda f: ctx.tick(start + (stop - start) * max(0.0, min(1.0, f)), message)
 
+    def reading(share: float, stage: str) -> None:
+        ctx.tick(0.1 * max(0.0, min(1.0, share)), stage)
+
     ctx.tick(0.0, READING)
     try:
         with dialect.read_tx(engine) as conn:
-            src = gather(conn, store, p, lambda f, stage: ctx.tick(0.1 * max(0.0, min(1.0, f)), stage))
+            src = gather(conn, store, p, reading)
+        thin_clouds(src, reading)  # minutes for a cloud of 10–50 million points: no transaction is held
     except ApiError as exc:
         raise JobError(exc.code, exc.message, exc.hint) from exc
     for text, level in src.notes:

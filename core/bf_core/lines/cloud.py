@@ -21,7 +21,9 @@ the attributes of a point with `store` — the role of the blob they are read fr
 
 Reading: `open_cloud()` gives a `Cloud`; `Cloud.read(role, start, count)` reads a slice from the disk,
 `Cloud.memmap(role)` maps a column for the time of a job (delete the map before the job ends: on Windows a
-mapped blob cannot be collected). Changing: blobs are immutable, so new values of `class`, `h`, `dz` are new
+mapped blob cannot be collected). A reading of minutes goes outside any transaction, from `Cloud.hold()`: the
+columns are kept open, so the reader gets the cloud as it was opened even when its columns are replaced and
+collected meanwhile (`HeldCloud`). Changing: blobs are immutable, so new values of `class`, `h`, `dz` are new
 blobs — `stage_values()` outside the write transaction, `replace_values()` inside it: `objects.version + 1`,
 `meta.cloud.classes / ground / dz`; `xyz`, `seq` and the levels are not touched. A cloud whose blobs are not the
 ones the calculation read is not written over: `cloud_changed`.
@@ -34,10 +36,14 @@ through the source twice).
 
 from __future__ import annotations
 
+import dataclasses
+import os
+import threading
 from collections.abc import Callable, Iterable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import IO, Any, Protocol
 
 import numpy as np
 import sqlalchemy as sa
@@ -228,16 +234,41 @@ class Cloud:
         if start < 0 or count < 0 or start + count > self.count:
             raise ValueError(f"cloud: rows {start}…{start + count} are out of {self.count}")
         try:
-            arr = (
-                np.fromfile(path, dtype=dtype, count=count * width, offset=start * width * dtype.itemsize)
-                if count
-                else np.empty(0, dtype=dtype)
-            )
+            at = start * width * dtype.itemsize
+            arr = self._load(role, path, dtype, count * width, at) if count else np.empty(0, dtype=dtype)
         except OSError as exc:
             raise broken() from exc
         if len(arr) != count * width:
             raise broken()
         return arr.reshape(-1, 3) if width == 3 else arr
+
+    def _load(self, role: str, path: Path, dtype: np.dtype[Any], n: int, offset: int) -> np.ndarray:
+        return np.fromfile(path, dtype=dtype, count=n, offset=offset)
+
+    def hold(self, roles: Iterable[str] | None = None) -> HeldCloud:
+        """This cloud with its columns kept open (`HeldCloud`) — for a reading that lasts, outside any
+        transaction: `with cloud.hold() as held: …`. `roles` — the columns the reading needs (those of them the
+        cloud has; by default every column): a file handle each. A column that went since the cloud was opened
+        — `cloud_changed`."""
+        files: dict[str, IO[bytes]] = {}
+        wanted = None if roles is None else set(roles)
+        try:
+            for role, path in self.paths.items():
+                if wanted is not None and role not in wanted:
+                    continue
+                files[role] = path.open("rb", buffering=0)
+                size = self.count * np.dtype(ROLES[role]).itemsize * (3 if role == "xyz" else 1)
+                if os.fstat(files[role].fileno()).st_size != size:
+                    raise broken()
+        except BaseException as exc:
+            for fh in files.values():
+                fh.close()
+            if isinstance(exc, FileNotFoundError):  # collected between the transaction that read its row and here
+                raise changed() from exc
+            if isinstance(exc, OSError):
+                raise broken() from exc
+            raise
+        return HeldCloud(**{f.name: getattr(self, f.name) for f in dataclasses.fields(Cloud)}, files=files)
 
     def memmap(self, role: str) -> np.ndarray:
         """A column mapped read-only (for the time of a job): the pages are read as they are touched."""
@@ -251,6 +282,41 @@ class Cloud:
         """(start, count) of the rows of part k at a level."""
         part = self.parts[k]
         return part.start, part.n[lod]
+
+
+@dataclass(frozen=True)
+class HeldCloud(Cloud):
+    """A cloud whose columns stay open while it is read (`Cloud.hold`). Blobs are immutable, but a column may
+    lose its owner while a job reads it — «Фильтр земли» writes new `class` and `h`, the layer is deleted — and
+    the collector takes files without an owner (`storage/gc.py`). An open file is not taken from its reader: on
+    Windows the collector cannot remove it (the file is «busy», left for the next pass), elsewhere the removed
+    file is read to its end through the handle. So `read` gives the cloud as it was opened, whole, with no
+    transaction held and no row of the project kept for the job. Only the columns that are held are read
+    (another one, or any after `close` — ValueError). Close it when the reading is over: a held column is not
+    collected on Windows."""
+
+    files: dict[str, IO[bytes]] = field(repr=False, compare=False, default_factory=dict)
+    _lock: Any = field(repr=False, compare=False, default_factory=threading.Lock)
+
+    def _load(self, role: str, path: Path, dtype: np.dtype[Any], n: int, offset: int) -> np.ndarray:
+        fh = self.files.get(role)
+        if fh is None:
+            raise ValueError(f"cloud: the column {role!r} is not held")
+        with self._lock:  # one position a file: slices are read one at a time
+            fh.seek(offset)
+            return np.fromfile(fh, dtype=dtype, count=n)
+
+    def close(self) -> None:
+        for fh in self.files.values():
+            with suppress(OSError):
+                fh.close()
+        self.files.clear()
+
+    def __enter__(self) -> HeldCloud:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
 
 def attr_column(cloud: Cloud, item: Mapping[str, Any], start: int, count: int) -> np.ndarray:

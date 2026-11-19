@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import math
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 
+from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.formats.lineset import from_lines, from_points
 from bf_core.geo import cloud_thin
@@ -23,7 +26,9 @@ from bf_core.lines import cloud_build as cb
 from bf_core.lines import store as ls_store
 from bf_core.projects.service import projects_of
 from bf_core.storage.blobs import BlobStore
+from bf_core.storage.gc import collect
 from bf_core.wireframes import cloud_source as cs
+from bf_core.wireframes import dtm_sources
 from bf_core.wireframes import jobs as dtm_jobs
 from bf_core.wireframes import store as ws
 from tests.test_import_job import API, wait_job
@@ -491,6 +496,102 @@ def test_cloud_is_read_by_slices_and_a_cancel_leaves_nothing(  # type: ignore[no
         run_job(project, {**short, "name": "Нет земли"})
     assert err.value.code == "no_ground" and "Фильтр земли" in err.value.hint
     assert tmp_files(project) == []
+
+
+def test_a_cloud_is_thinned_outside_the_transaction_from_the_columns_it_was_opened_with(  # type: ignore[no-untyped-def]
+    api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """7.1.18: the thinning of 10–50 million points ran inside the read transaction of the job (minutes), and
+    it read the columns by their paths — a `class` that «Фильтр земли» replaced meanwhile has no owner, the
+    collector removes its file (`storage/gc.py`), and the job failed with «файлы облака не найдены»."""
+    _c, project = api
+    store = BlobStore(project.folder)
+    cloud_id = add_cloud(project, scene(48, 20_000))
+    other = add_cloud(project, scene(49, 5000, 40.0, 30.0), "Юг")
+    before = opened(project, cloud_id)
+    want = cs.thin(before, [2])  # the ground of the cloud as the job opens it
+    with dialect.read_tx(project.engine) as conn:
+        params = dtm_jobs.request(conn, clouds=[{"layer_id": cloud_id, "classes": [2]}], name="Снимок", dz=False)
+    in_tx = [0]
+    read_tx = dialect.read_tx
+
+    @contextmanager
+    def counted(engine: Any) -> Iterator[Any]:
+        with read_tx(engine) as conn:
+            in_tx[0] += 1
+            try:
+                yield conn
+            finally:
+                in_tx[0] -= 1
+
+    thin, reports = cs.thin, []
+
+    def meanwhile(cloud: Any, *args: Any, **kw: Any) -> Any:
+        assert in_tx[0] == 0, "the cloud is thinned inside the read transaction of the job"
+        # another job writes new classes: the column the job reads has no owner now, and the collector runs
+        monkeypatch.setattr(dialect, "read_tx", read_tx)
+        set_values(project, opened(project, cloud_id), **{"class": np.full(before.count, 5, dtype=np.uint8)})
+        reports.append(collect(project.engine, store))
+        monkeypatch.setattr(dialect, "read_tx", counted)
+        return thin(cloud, *args, **kw)
+
+    monkeypatch.setattr(dialect, "read_tx", counted)
+    monkeypatch.setattr(cs, "thin", meanwhile)
+    res, seen, _log = run_job(project, params)
+    monkeypatch.setattr(cs, "thin", thin)
+    monkeypatch.setattr(dialect, "read_tx", read_tx)
+    # the file went (or, on Windows, could not go while the job held it open) — and the job read it to its end
+    (gone,) = reports
+    old = store.path_of(before.shas["class"])
+    assert gone.blobs + gone.busy == 1 and (gone.busy == 1) == old.exists()
+    assert "Прореживание облака" in seen and seen[-1] == "Готово"
+    v = vertices(project, res["wireframe_id"])
+    assert rows_of(v) == rows_of(want.xyz) and len(v) == len(want.rows) == res["points"]  # the cloud as opened
+    assert opened(project, cloud_id).classes == {5: before.count}  # … though it has no ground any more
+    # nothing is held once the job is over: the collector takes what was busy
+    assert collect(project.engine, store).busy == 0 and not old.exists()
+    assert tmp_files(project) == []
+    # a held cloud reads as an open one does — the columns it holds, while it holds them
+    cloud = opened(project, other)
+    with cloud.hold() as held:
+        assert held.read("xyz", 7, 100).tobytes() == cloud.read("xyz", 7, 100).tobytes()
+        assert held.read("class").tobytes() == cloud.read("class").tobytes() and held.read("ret", 5, 0).shape == (0,)
+        assert (held.name, held.count, held.bbox, held.shas) == (cloud.name, cloud.count, cloud.bbox, cloud.shas)
+        assert set(held.files) == set(cloud.paths) == {"xyz", "seq", "class", "ret"} and not held.has("h")
+        with pytest.raises(ValueError, match="out of"):
+            held.read("xyz", cloud.count - 1, 2)
+    with pytest.raises(ValueError, match="not held"):
+        held.read("xyz", 0, 1)
+    with cloud.hold(dtm_sources.HELD) as held:  # what the thinning reads; `h` — once the cloud has it
+        assert (
+            set(held.files) == {"xyz", "class"}
+            and held.read("class", 3, 9).tobytes() == cloud.read("class", 3, 9).tobytes()
+        )
+        with pytest.raises(ValueError, match="not held"):
+            held.read("seq", 0, 1)
+    # a column that went between the transaction and the opening of the files: the command is to be repeated
+    gone_cloud = lc.Cloud(
+        **{
+            **{f: getattr(cloud, f) for f in cloud.__dataclass_fields__},
+            "paths": {**cloud.paths, "class": cloud.paths["class"].with_name("0" * 64)},
+        }
+    )
+    with pytest.raises(ApiError) as err:
+        gone_cloud.hold()
+    assert err.value.code == "cloud_changed" and err.value.hint
+    # the job shares the limit of vertices between its clouds as `cloud_source.take` does
+    monkeypatch.setattr(cs, "MAX_VERTICES", 3000)
+    specs = [{"layer_id": other, "classes": None, "cell": 0.1}, {"layer_id": cloud_id, "classes": [5]}]
+    with dialect.read_tx(project.engine) as conn:
+        taken = cs.take(conn, store, specs)
+        src = dtm_sources.gather(conn, store, {"clouds": specs}, lambda share, stage: None)
+    shares: list[float] = []
+    dtm_sources.thin_clouds(src, lambda share, stage: shares.append(share))
+    assert [u["points"] for u in src.used] == [len(t.thinned.rows) for t in taken]
+    assert sum(len(p) for p in src.points) <= 3000
+    assert [p.tobytes() for p in src.points] == [t.thinned.xyz.tobytes() for t in taken]
+    assert src.notes == [note for t in taken for note in t.notes()] and src.clouds == [other, cloud_id]
+    assert shares == sorted(shares) and shares[-1] == 1.0 and not src.held
 
 
 # --- 10 million points -----------------------------------------------------------------------------------
