@@ -356,6 +356,8 @@ function registerIpc(): void {
     xlsx: [{ name: "Excel", extensions: ["xlsx"] }],
     str: [{ name: "Стринги STR", extensions: ["str"] }],
     dxf: [{ name: "AutoCAD DXF", extensions: ["dxf"] }],
+    // a point cloud (ADR 0014 §6)
+    las: [{ name: "Облако точек LAS", extensions: ["las"] }],
     jpg: [{ name: "JPEG", extensions: ["jpg", "jpeg"] }],
     png: [{ name: "PNG", extensions: ["png"] }],
     tif: [{ name: "TIFF, GeoTIFF", extensions: ["tif", "tiff"] }],

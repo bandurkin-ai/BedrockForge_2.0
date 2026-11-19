@@ -6,7 +6,7 @@ export interface CoreInfo {
   version: string;
 }
 
-export type SaveKind = "dat" | "csv" | "xlsx" | "str" | "dxf" | "jpg" | "png" | "tif" | "bmp" | "tridb" | "dwg" | "obj" | "stl" | "dtm" | "any";
+export type SaveKind = "dat" | "csv" | "xlsx" | "str" | "dxf" | "las" | "jpg" | "png" | "tif" | "bmp" | "tridb" | "dwg" | "obj" | "stl" | "dtm" | "any";
 
 export interface BfBridge {
   core(): CoreInfo | null;

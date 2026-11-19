@@ -15,7 +15,7 @@ export const commands: Command[] = [
     id: "lines.export",
     title: "Экспорт линий",
     description:
-      "Слои линий и точек в файл: Micromine STR (str), Surpac STR (surpac), DXF (dxf), CSV (csv) или Micromine DAT (dat); форматы STR пишут только линии. layer_id — один слой, file_id — все слои файла линий, без них — выбранный слой. Открывает окно «Экспорт линий» с этим форматом и слоями: файл выбирает пользователь, экспорт идёт как задание.",
+      "Слои линий и точек в файл: Micromine STR (str), Surpac STR (surpac), DXF (dxf), CSV (csv) или Micromine DAT (dat); форматы STR пишут только линии. Облако точек — отдельно, в LAS (las: по исходному файлу или новый) или CSV (X;Y;Z;класс;h). layer_id — один слой, file_id — все слои файла линий, без них — выбранный слой. Открывает окно «Экспорт линий» с этим форматом и слоями: файл выбирает пользователь, экспорт идёт как задание.",
     params: { format: { type: "string", enum: LINES_FORMAT_IDS }, layer_id: { type: "integer" }, file_id: { type: "integer" } },
     stage: "Э7",
   },

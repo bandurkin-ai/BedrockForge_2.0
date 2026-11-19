@@ -2,7 +2,8 @@
 // the wizard of a cloud — the card of a LAS written here (1.2, format 0: version, records, CRS, classes of the
 // sample), a `.laz` refused with the hint of the core; the import gives a line file with one layer — the cloud —
 // in the data tree and in the 3D window; its «Свойства» tell the classes by their ASPRS names, a class hidden and
-// another colour mode are kept by the project in the view key `cloud_styles`; a click on a point shows its class.
+// another colour mode are kept by the project in the view key `cloud_styles`; a click on a point shows its class;
+// «Экспорт…» of the cloud writes a LAS «по исходному файлу» and a CSV.
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
@@ -161,6 +162,47 @@ test("cloud: wizard «Облако точек» (LAS, LAZ refused) → tree and 
     await expect(point).toContainText("Класс", { timeout: 15_000 });
     await expect(point).toContainText(/2 — земля|5 — высокая растительность/);
     await page.screenshot({ path: shot("cloud-props.png") });
+
+    // ---- the export of the cloud: «Экспорт…» of its row → LAS «по исходному файлу», then CSV -------------------
+    const saveNext = (file: string) =>
+      app.evaluate(({ dialog }, f) => {
+        dialog.showSaveDialog = (async () => ({ canceled: false, filePath: f })) as typeof dialog.showSaveDialog;
+      }, file);
+    const exportCloud = async () => {
+      await row.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Экспорт…" }).click();
+      return page.getByRole("dialog", { name: "Экспорт линий" });
+    };
+    let ex = await exportCloud();
+    const fmt = ex.getByLabel("Формат файла");
+    await expect(fmt).toHaveValue("las");
+    await expect(fmt.locator("option")).toHaveCount(2); // LAS and the CSV of a cloud only
+    await expect(fmt.locator("option[value=csv]")).toHaveText("CSV (X;Y;Z;класс;h) (.csv)");
+    await expect(ex.getByTestId("export-totals")).toContainText("Облако точек: 3 000 точек");
+    await expect(ex.getByLabel("По исходному файлу (меняются только классы)")).toBeChecked();
+    await expect(ex.getByLabel("Новый файл")).toBeEnabled();
+    const lasOut = path.join(dir, "out", "survey-copy.las");
+    fs.mkdirSync(path.dirname(lasOut));
+    await saveNext(lasOut);
+    await ex.getByRole("button", { name: "Сохранить как…" }).click();
+    await expect(ex.getByLabel("Файл экспорта")).toHaveValue(lasOut);
+    await page.screenshot({ path: shot("cloud-export-las.png") });
+    await ex.getByRole("button", { name: "Экспортировать" }).click();
+    await expect(ex).toHaveCount(0);
+    await expect.poll(() => fs.existsSync(lasOut), { timeout: 60_000 }).toBe(true);
+    expect(fs.statSync(lasOut).size).toBe(fs.statSync(survey).size); // the source, the classes in its records
+
+    ex = await exportCloud();
+    await ex.getByLabel("Формат файла").selectOption("csv");
+    await expect(ex).toContainText("Строка на точку облака");
+    await expect(ex.getByTestId("export-las")).toHaveCount(0);
+    const csvOut = path.join(dir, "out", "survey.csv");
+    await saveNext(csvOut);
+    await ex.getByRole("button", { name: "Сохранить как…" }).click();
+    await ex.getByRole("button", { name: "Экспортировать" }).click();
+    await expect(ex).toHaveCount(0);
+    await expect.poll(() => fs.existsSync(csvOut), { timeout: 60_000 }).toBe(true);
+    expect(fs.readFileSync(csvOut, "utf8").trim().split(/\r?\n/).length).toBeGreaterThanOrEqual(3000);
   } finally {
     await close(app);
     fs.rmSync(dir, { recursive: true, force: true });

@@ -174,7 +174,7 @@ describe("the registry of object commands (ТЗ 7.2; ADR 0011 §5)", () => {
   });
 
   it("the formats of the exports and the parameters named in the ADR", () => {
-    expect(app.registry.get("lines.export")!.params!.format.enum).toEqual(["str", "surpac", "dxf", "csv", "dat"]);
+    expect(app.registry.get("lines.export")!.params!.format.enum).toEqual(["str", "surpac", "dxf", "csv", "dat", "las"]);
     expect(app.registry.get("rasters.export")!.params!.format.enum).toEqual(["source", "geotiff"]);
     expect(Object.keys(app.registry.get("raster.set")!.params!)).toEqual(["raster_id", "elevation", "opacity", "x1", "y1", "x2", "y2", "z_top", "z_bottom"]);
     expect(Object.keys(app.registry.get("raster.place_on_section")!.params!)).toEqual(["raster_id", "z_top"]);
