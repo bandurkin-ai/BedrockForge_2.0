@@ -14,6 +14,11 @@ vertices, uw, area, centre, off_plane}], links [[i, j, "overlap" | "centres"]], 
 [{sections, contours}], skipped {open, short, outside, no_height}, off_plane_limit, warnings}. The window shows
 it as the table of «Каркас по серии» and sends the edited links as `links` of the operation `stitch_series`.
 
+`POST /section-series/{id}/impact {params}` — before a change of the parameters is saved (ADR 0016 decision 4,
+`impact.series_impact`): {series_id, version, layer_id, layer, total, outside, moved, examples} — of the `total`
+contours of the contour layer in the windows now, `outside` leave every window of the new geometry, `moved` go to
+the window of another section. Parameters a PATCH would refuse — the same 422 `bad_series` with the field.
+
 Errors {code, message, hint}: 404 `series_not_found`, `line_layer_not_found`; 422 `no_contour_layer` (no layers and
 none set on the series), `bad_section` (k out of the series), `not_lines` (a cloud), `bad_series`.
 """
@@ -139,3 +144,27 @@ def series_links(svc: Svc, series_id: int, body: LinksBody | None = None) -> dic
         ids = _layers(row, body.layers if body else None)
         sc = contours.cached_contours(conn, bs, project.uid, row, ids)
     return {"series_id": series_id, "version": int(row.version), **link_table(geom, sc, names)}
+
+
+class ImpactBody(BaseModel):
+    #: the fields the PATCH would send (the others stay)
+    params: dict[str, Any]
+
+
+@router.post("/{series_id}/impact")
+def series_impact(svc: Svc, series_id: int, body: ImpactBody) -> dict[str, Any]:
+    from bf_core.storage.blobs import BlobStore
+
+    from .base import SeriesError
+    from .impact import series_impact as impact
+
+    project = svc.require_current()
+    bs = BlobStore(project.folder)
+    with dialect.read_tx(project.engine) as conn:
+        row, _geom, _names = _series(conn, series_id)
+        try:
+            out = impact(conn, bs, project.uid, row, body.params)
+        except SeriesError as e:
+            extra = {"field": e.field} if e.field else None
+            raise ApiError(422, e.code, e.message, e.hint or "Проверьте параметры серии.", extra=extra) from e
+    return {"series_id": series_id, "version": int(row.version), **out}
