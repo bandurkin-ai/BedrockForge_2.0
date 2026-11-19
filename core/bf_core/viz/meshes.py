@@ -279,6 +279,11 @@ def build_cache(
     return {"parts": len(parts), "triangles": counts, "bytes": size, "built": built}
 
 
+def cached(folder: Path, state: MeshState, k: int, lod: int) -> bool:
+    """The file of part k at a simplified level is in the cache, whole."""
+    return _read(_cache_file(folder, state.cache_key(), k, lod), k, lod) is not None
+
+
 def drop_cache(folder: Path, key: str) -> None:
     shutil.rmtree(cache_dir(folder, key), ignore_errors=True)
 

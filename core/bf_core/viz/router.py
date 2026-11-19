@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -243,10 +243,18 @@ def wireframe(svc: Svc, wireframe_id: int, if_none_match: IfNoneMatch = None) ->
 
 @router.get("/wireframes/{wireframe_id}/parts/{k}")
 def wireframe_part(
-    svc: Svc, wireframe_id: int, k: int, lod: Annotated[int, Query()] = 0, if_none_match: IfNoneMatch = None
+    svc: Svc,
+    request: Request,
+    wireframe_id: int,
+    k: int,
+    lod: Annotated[int, Query()] = 0,
+    if_none_match: IfNoneMatch = None,
 ) -> Response:
-    """Part k of a wireframe at a level of detail: 0 — every triangle, 1 and 2 — about 1/8 and 1/64 of them."""
+    """Part k of a wireframe at a level of detail: 0 — every triangle, 1 and 2 — about 1/8 and 1/64 of them.
+    A level not made yet — the whole part as a stand-in (`standin` in its header, no ETag, `no-store`) and the
+    job `wireframe.lod` asked for (ADR 0015 §8): the event `wireframes.lod` tells when the levels are there."""
     from . import meshes
+    from .keys import CACHE_HEADERS, matches
 
     project = svc.require_current()
     if lod not in range(meshes.gm.LOD_LEVELS):
@@ -254,7 +262,16 @@ def wireframe_part(
     with dialect.read_tx(project.engine) as conn:
         state = meshes.mesh_state(conn, wireframe_id)
     tag = meshes.part_etag(project.uid, state, k, lod)
-    return _answer(tag, if_none_match, lambda: meshes.part(project, state, k, lod))
+    if matches(if_none_match, tag):
+        return Response(status_code=304, headers={"ETag": tag, **CACHE_HEADERS})
+    body, standin = meshes.part_answer(project, state, k, lod)
+    if not standin:
+        return Response(content=body, media_type=BINARY, headers={"ETag": tag, **CACHE_HEADERS})
+    from bf_core.jobs.service import jobs_of
+    from bf_core.wireframes import lod_job
+
+    lod_job.request(jobs_of(request.app.state.core), project, state, (k, lod))
+    return Response(content=body, media_type=BINARY, headers={"Cache-Control": "no-store"})
 
 
 # --- exact queries on wireframes (ADR 0013 §5, ADR 0007 §5; `wireframes/exact.py`) -------------------------

@@ -19,7 +19,8 @@ not refused because of a check. It is written in one short transaction per wiref
 the checks were made on — a wireframe deleted meanwhile (or whose id another one has taken) gets nothing, and
 the folder of a geometry nobody has any more is removed. A cancel keeps the wireframes checked so far and
 leaves nothing half made: whole levels of a geometry stay, they are its own. Wireframes of one geometry (the
-same blobs) are checked once. The job fails only when none of its wireframes could be checked.
+same blobs) are checked once. The job fails only when none of its wireframes could be checked. `wireframe_ids`
+of the result — the wireframes whose levels are in the cache now (the event `wireframes.lod`, ADR 0015 §8).
 
 The layer — `GET /wireframes/{id}/checks`, BFA1 `checks` (`viz/binary.py`), for display only:
 
@@ -367,7 +368,7 @@ def wireframe_check(ctx: JobContext) -> dict[str, Any]:
     total = max(1, sum(count for _name, count in known.values()))
     out: dict[str, Any] = {
         "checked": 0, "failed": 0, "skipped": 0, "lod_parts": 0, "normal_conflicts": 0, "pairs": 0, "triangles": 0,
-        "with_defects": [],
+        "with_defects": [], "wireframe_ids": [],
     }  # fmt: skip
     records: dict[str, dict[str, Any]] = {}
     error: dict[str, str] | None = None
@@ -389,6 +390,8 @@ def wireframe_check(ctx: JobContext) -> dict[str, Any]:
         except ApiError as exc:  # the files of its geometry are not there: the others are still checked
             record, built = _failed(exc), 0
         out["lod_parts"] += built
+        if record is not None:  # its levels are in the cache: the event `wireframes.lod` names it
+            out["wireframe_ids"].append(wf_id)
         if record is None:
             ctx.log(f"«{name}»: каркас удалён во время проверки — результат не записан.", "warn")
             out["skipped"] += 1

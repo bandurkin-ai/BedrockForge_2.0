@@ -80,11 +80,13 @@ def forget() -> None:
         _asked.clear()
 
 
-def request(sched: Scheduler, project: Any, state: MeshState) -> int | None:
-    """Ask for the levels of a wireframe shown with stand-ins: the id of the job that makes them (one queued
-    or running already, or a new one); None — none is asked (a project opened read-only, a project the
-    scheduler does not hold, `MAX_REQUESTS` spent). Parts asked at once start one job: the lock and the row
-    written by `submit` before it returns."""
+def request(sched: Scheduler, project: Any, state: MeshState, part: tuple[int, int]) -> int | None:
+    """Ask for the levels of a wireframe whose `part` (k, lod) was answered with a stand-in: the id of the job
+    that makes them (one queued or running already, or a new one); None — none is asked (the level is there
+    now, a project opened read-only, a project the scheduler does not hold, `MAX_REQUESTS` spent). Parts asked
+    at once start one job: the lock, and the row `submit` writes before it returns."""
+    from bf_core.viz import meshes as vm
+
     if getattr(project, "read_only", False):
         return None
     wf_id = state.wireframe_id
@@ -94,8 +96,8 @@ def request(sched: Scheduler, project: Any, state: MeshState) -> int | None:
             running = active_job(conn, wf_id)
         if running is not None:
             return running
-        if _asked.get(seen, 0) >= MAX_REQUESTS:
-            return None
+        if vm.cached(project.folder, state, *part) or _asked.get(seen, 0) >= MAX_REQUESTS:
+            return None  # a job has just made it, or the folder cannot be written: the jobs end here
         kind = KIND if state.triangles <= QUICK_TRIANGLES else KIND_HEAVY
         params = {"wireframe_id": wf_id, "key": state.cache_key(), "triangles": state.triangles}
         try:
