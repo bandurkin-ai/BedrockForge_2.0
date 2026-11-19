@@ -139,14 +139,14 @@ def _save_squares(engine: Any, bs: Any, layer_id: int, work: Path, out: dict[str
     xyz, offsets, closed = data["xyz"], data["offsets"], data["closed"]
     m = len(closed)
     with dialect.read_tx(engine) as conn:
-        _head, _ls, lid = versions.read_current(conn, bs, layer_id)
+        head, _ls, lid = versions.read_current(conn, bs, layer_id)
     k = (m // 200) * 100  # a square with an empty Z (every hundredth has one)
     one = xyz.copy()
     one[offsets[k] : offsets[k + 1], 2] += 1.0
     touched = np.zeros(m, dtype=np.uint8)
     touched[k] = 1
     t0 = time.perf_counter()
-    versions.save(engine, bs, layer_id, _edit(lid, touched, closed, offsets, one), base_version=2)
+    versions.save(engine, bs, layer_id, _edit(lid, touched, closed, offsets, one), base_version=int(head["rev"]))
     out["save_nan_s"] = round(time.perf_counter() - t0, 4)
     out["squares"] = m
     with dialect.read_tx(engine) as conn:
@@ -185,7 +185,10 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         touched = np.zeros(n, dtype=np.uint8)
         touched[k] = 1
         t0 = time.perf_counter()
-        v3 = versions.save(engine, bs, layer_id, _edit(lid, touched, closed, offsets, one), base_version=2)
+        # the current version, not 2: --repeat runs the child again on the same prepared project
+        v3 = versions.save(
+            engine, bs, layer_id, _edit(lid, touched, closed, offsets, one), base_version=int(head["rev"])
+        )
         out["save_one_s"] = round(time.perf_counter() - t0, 4)
         with dialect.read_tx(engine) as conn:
             bad += _mismatches(versions.read_current(conn, bs, layer_id)[1], one, offsets, closed)
