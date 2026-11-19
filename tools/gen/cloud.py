@@ -116,6 +116,8 @@ def _discs(rng, count: int, x0, y0, x1, y1, r0: float, r1: float, taken: list, g
         y = y0 + r + rng.random() * (y1 - y0 - 2 * r)
         if all((x - a) ** 2 + (y - b) ** 2 > (r + c + gap) ** 2 for a, b, c in [*taken, *out]):
             out.append((x, y, r))
+    if len(out) < count:
+        raise ValueError(f"no room for {count} objects of radius {r0}–{r1} m in {x1 - x0:.0f} × {y1 - y0:.0f} m")
     return out
 
 
@@ -179,7 +181,9 @@ def _building(rng, parts: _Parts, rect, base: float, height: float, density: flo
         n = int(round(facade * length * height))
         s, e = rng.random(n), rng.normal(0, SIGMA, n)
         nx, ny = (by - ay) / length, -(bx - ax) / length  # outward normal of the facade
-        parts.add(ax + s * (bx - ax) + e * nx, ay + s * (by - ay) + e * ny, base + rng.random(n) * height, BUILDING, T_FACADE)
+        parts.add(
+            ax + s * (bx - ax) + e * nx, ay + s * (by - ay) + e * ny, base + rng.random(n) * height, BUILDING, T_FACADE
+        )
 
 
 def _outliers(rng, parts: _Parts, count: int, x0, y0, x1, y1, top: Field, bottom: Field) -> None:  # type: ignore[no-untyped-def]
@@ -203,15 +207,24 @@ def _outliers(rng, parts: _Parts, count: int, x0, y0, x1, y1, top: Field, bottom
 # --- Т-З1 ------------------------------------------------------------------------------------------------
 
 
-def plain(seed: int, *, side: float = 200.0, density: float = 8.0, order: str = "random") -> Scene:
+def plain(
+    seed: int,
+    *,
+    side: float = 200.0,
+    density: float = 8.0,
+    buildings: int = 6,
+    trees: int = 150,
+    outliers: int = 50,
+    order: str = "random",
+) -> Scene:
     """200 × 200 m, z = 0, σ = 0.02 m, 8 points/m²; 6 buildings 10×10…20×30 m, 5 m high, no ground under
     them; 150 trees with 30 % of the ground under the crown; 50 single outliers."""
     rng = np.random.default_rng(seed)
     parts = _Parts()
-    sizes = [(10, 10), (12, 16), (15, 15), (14, 22), (18, 24), (20, 30)]
-    blocks = _discs(rng, 6, 12, 12, side - 12, side - 12, 19.0, 19.0, [], 2.0)
+    sizes = [(20, 30), (10, 10), (18, 24), (12, 16), (14, 22), (15, 15)][:buildings]
+    blocks = _discs(rng, len(sizes), 12, 12, side - 12, side - 12, 19.0, 19.0, [], 2.0)
     rects = [(x - w / 2, y - h / 2, x + w / 2, y + h / 2) for (x, y, _r), (w, h) in zip(blocks, sizes, strict=True)]
-    trees = _discs(rng, 150, 2, 2, side - 2, side - 2, 2.0, 4.0, blocks, 0.5)
+    trees = _discs(rng, trees, 2, 2, side - 2, side - 2, 2.0, 4.0, blocks, 0.5)
 
     def flat(x, y):  # type: ignore[no-untyped-def]
         return np.zeros(np.shape(x))
@@ -228,7 +241,7 @@ def plain(seed: int, *, side: float = 200.0, density: float = 8.0, order: str = 
     for rect in rects:
         _building(rng, parts, rect, 0.0, 5.0, density, 1.0)
     _trees(rng, parts, trees, flat, density)
-    _outliers(rng, parts, 50, 5, 5, side - 5, side - 5, flat, flat)
+    _outliers(rng, parts, outliers, 5, 5, side - 5, side - 5, flat, flat)
     return parts.scene(rng, ORIGIN, flat, lambda x, y: np.ones(np.shape(x)), (0, 0, side, side), order)
 
 
@@ -423,7 +436,10 @@ def _site(rng, parts: _Parts, x0: float, y0: float, density: float):  # type: ig
     # objects of the plain: buildings and trees in the upper right quarter, bushes anywhere on the plain
     area = (x0 + 380.0, y0 + 380.0, x0 + SITE - 10.0, y0 + SITE - 10.0)
     blocks = _discs(rng, 4, *area, 12.0, 12.0, [], 4.0)
-    rects = [(x - w / 2, y - h / 2, x + w / 2, y + h / 2) for (x, y, _r), (w, h) in zip(blocks, [(8, 8), (10, 14), (12, 12), (9, 16)], strict=True)]
+    rects = [
+        (x - w / 2, y - h / 2, x + w / 2, y + h / 2)
+        for (x, y, _r), (w, h) in zip(blocks, [(8, 8), (10, 14), (12, 12), (9, 16)], strict=True)
+    ]
     trees = _discs(rng, 120, *area, 2.0, 4.0, blocks, 0.5)
     shrubs = _discs(rng, 60, x0 + 10, y0 + 330, x0 + 370, y0 + SITE - 10, 0.8, 1.6, [(dump[0], dump[1], dump_r1)], 1.0)
     for k in range(steps - 1):  # bushes on the berms of the bench pit
@@ -493,7 +509,11 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
-    s = quarry(a.points, a.seed) if a.scene == "quarry" else {"plain": plain, "funnel": funnel, "benches": benches}[a.scene](a.seed)
+    s = (
+        quarry(a.points, a.seed)
+        if a.scene == "quarry"
+        else {"plain": plain, "funnel": funnel, "benches": benches}[a.scene](a.seed)
+    )
     np.savez(a.out, xyz=s.xyz, truth=s.truth, tag=s.tag, ret=s.ret)
     print(f"{a.out}: {len(s)} points")
 
