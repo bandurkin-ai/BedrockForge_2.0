@@ -3,7 +3,9 @@
  * files of the format chosen for its type, in a new folder «‹Проект› — экспорт ГГГГ-ММ-ДД» inside the chosen one.
  * The table «тип → формат» comes from `GET /export/formats` (a type: how many objects, its formats, which of them
  * the core can write now, why not, the default); the job `export.objects` starts with
- * `POST /export/objects {formats, folder, types?, ids?}` and reports the files it wrote and what it skipped.
+ * `POST /export/objects {formats, folder, types?, ids?}` and reports the files it wrote and what it skipped. With
+ * `ids` (the rows of «Менеджер данных») the table counts the chosen objects only; a format asked for that the core
+ * does not write for a type («Исходный файл») is replaced by the default — and told, never silently.
  * Pure model and the calls of the core; no React (ExportObjects.tsx draws it, bind.ts runs `project.export`).
  */
 import { api } from "../../shell/api";
@@ -14,6 +16,7 @@ import { refusal, showJobs, viewport } from "../../shell/objectRun";
 import { errorText } from "../../shell/props";
 import { count, counted } from "../../shell/treeActions";
 import { openWindow } from "../../shell/windows";
+import { catalogRowsOf } from "../datamanager/api";
 import { refresh as refreshJobs } from "../jobs/state";
 import { projectStore } from "./state";
 
@@ -141,6 +144,48 @@ export function toggleType(choice: Choice, kind: string, on: boolean): Choice {
 
 export const setFormat = (choice: Choice, kind: string, format: string): Choice => ({ ...choice, formats: { ...choice.formats, [kind]: format } });
 
+/**
+ * The table counted over the chosen objects (`ids`): a type gets how many of them are of its kind; a type with
+ * none of them is not exported («Среди выбранных нет объектов этого типа»).
+ */
+export function scopeToIds(info: FormatsInfo, counts: Readonly<Record<string, number>>): FormatsInfo {
+  return {
+    ...info,
+    types: info.types.map((t) => {
+      const n = counts[t.kind] ?? 0;
+      return { ...t, count: n, reason: t.reason ?? (n ? null : "Среди выбранных нет объектов этого типа") };
+    }),
+  };
+}
+
+/** How many of the chosen objects are of each kind. */
+export function countKinds(rows: readonly { kind: string }[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of rows) out[r.kind] = (out[r.kind] ?? 0) + 1;
+  return out;
+}
+
+const SOURCE_TITLE = "Исходный файл";
+
+/**
+ * Formats asked for (`formats` of the command, «Исходный файл» of the manager) that the core does not write for a
+ * checked type: the type goes in the format chosen instead — one line per type for the window and the question.
+ */
+export function replacedFormats(info: FormatsInfo, wanted: Readonly<Record<string, string>> | undefined, choice: Choice): string[] {
+  if (!wanted) return [];
+  const out: string[] = [];
+  for (const row of info.types) {
+    const want = wanted[row.kind];
+    if (!want || !choice.types.includes(row.kind) || choice.formats[row.kind] === want) continue;
+    const f = row.formats.find((x) => x.id === want);
+    const name = f?.title ?? (want === "source" ? SOURCE_TITLE : want);
+    const why = (f?.reason ?? "ядро не пишет этот формат для этого типа").replace(/[.\s]+$/, "");
+    const got = row.formats.find((x) => x.id === choice.formats[row.kind])?.title ?? "—";
+    out.push(`${row.title}: «${name}» не записывается — ${why}; выбран «${got}».`);
+  }
+  return out;
+}
+
 /** Objects the export writes: the counts of the checked types. */
 export function chosenObjects(info: FormatsInfo, choice: Choice): number {
   return info.types.filter((t) => choice.types.includes(t.kind)).reduce((n, t) => n + t.count, 0);
@@ -241,21 +286,37 @@ export function parseTypesArg(info: FormatsInfo, value: unknown): string[] | und
 }
 
 /** Our own question before a call of Claude writes files (ТЗ 7.0.11: never window.confirm). */
-export function confirmQuestion(info: FormatsInfo, body: ObjectsExportBody, project: string): ConfirmOptions {
+export function confirmQuestion(info: FormatsInfo, body: ObjectsExportBody, project: string, notes: readonly string[] = []): ConfirmOptions {
   const lines = info.types
     .filter((t) => body.types.includes(t.kind))
     .map((t) => `• ${t.title} (${count(t.count)}) → ${t.formats.find((f) => f.id === body.formats[t.kind])?.title ?? body.formats[t.kind]}`);
   return {
     title: "Экспорт объектов в файлы",
-    message: `Claude просит выгрузить объекты проекта в новую папку «${exportFolderName(project)}» в «${body.folder}»:\n${lines.join("\n")}\nСуществующие файлы не изменяются. Разрешить?`,
+    message: `Claude просит выгрузить ${body.ids?.length ? `выбранные объекты проекта (${count(body.ids.length)})` : "объекты проекта"} в новую папку «${exportFolderName(project)}» в «${body.folder}»:\n${lines.join("\n")}${notes.length ? `\n${notes.join("\n")}` : ""}\nСуществующие файлы не изменяются. Разрешить?`,
     okLabel: "Экспортировать",
   };
 }
 
-// ——— the command `project.export {formats, folder, types?}` ———
+// ——— the command `project.export {formats, folder, types?, ids?, mode?}` ———
 
-/** `project.export` with any of formats, folder, types exports the objects; without them it is the .bfggis window. */
-export const wantsObjects = (a: Record<string, unknown>): boolean => ["formats", "folder", "types"].some((k) => typeof a[k] === "string" && a[k] !== "");
+/** `project.export` with any of formats, folder, types, ids, mode exports the objects; without them it is the .bfggis window. */
+export const wantsObjects = (a: Record<string, unknown>): boolean =>
+  ["formats", "folder", "types", "ids", "mode"].some((k) => typeof a[k] === "string" && a[k] !== "") || typeof a.ids === "number" || (Array.isArray(a.ids) && a.ids.length > 0);
+
+/** `ids` of the command: numbers by commas (or a number, an array); [] — none given; null — not numbers. */
+export function parseIdsArg(value: unknown): number[] | null {
+  if (value === undefined || value === null || value === "") return [];
+  const parts = Array.isArray(value) ? value.map(String) : String(value).split(/[\s,;]+/).filter(Boolean);
+  const out: number[] = [];
+  for (const p of parts) {
+    if (!/^\d+$/.test(p.trim())) return null;
+    const id = Number(p.trim());
+    if (!out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+const MODES = ["objects", "source"];
 
 /**
  * The objects of the project into files: with `folder` the job starts at once (a call of Claude after our own
@@ -263,22 +324,38 @@ export const wantsObjects = (a: Record<string, unknown>): boolean => ["formats",
  */
 export async function exportObjectsCommand(app: App, a: Record<string, unknown>, source: CommandSource): Promise<string> {
   try {
-    const info = await loadFormats();
-    if (info.reason) throw refusal("read_only", info.reason, "Откройте проект для записи.");
+    const all = await loadFormats();
+    if (all.reason) throw refusal("read_only", all.reason, "Откройте проект для записи.");
     if (app.store.get().projectReadOnly) throw refusal("read_only", "Проект открыт только для чтения: экспорт недоступен.", "Откройте проект для записи.");
-    const formats = parseFormatsArg(info, a.formats);
-    const types = parseTypesArg(info, a.types);
+    const ids = parseIdsArg(a.ids);
+    if (ids === null) throw refusal("bad_ids", "Параметр ids не разобран.", "Передайте номера объектов через запятую, например «7, 12».");
+    const mode = typeof a.mode === "string" && a.mode ? a.mode : "objects";
+    if (!MODES.includes(mode)) throw refusal("bad_mode", `Режим «${mode}» не известен.`, "mode — objects (объекты в файлы) или source (исходные файлы объектов).");
+    let counts: Record<string, number> | undefined;
+    if (ids.length) {
+      const { rows, missing } = await catalogRowsOf(ids);
+      if (missing.length) throw refusal("object_not_found", `Объект №${missing[0]} не найден: ничего не экспортировано.`, "Обновите менеджер данных.");
+      counts = countKinds(rows);
+    }
+    const info = counts ? scopeToIds(all, counts) : all;
+    const given = parseFormatsArg(info, a.formats);
+    const kinds = counts ? Object.keys(counts) : info.types.map((t) => t.kind);
+    const formats = mode === "source" ? { ...Object.fromEntries(kinds.map((k) => [k, "source"])), ...given } : given;
+    const types = parseTypesArg(info, a.types) ?? (counts ? info.types.filter((t) => counts[t.kind] && !typeReason(t)).map((t) => t.kind) : undefined);
     const choice = initialChoice(info, { formats, types });
     const folder = typeof a.folder === "string" && a.folder.trim() ? a.folder.trim() : null;
     if (!folder) {
-      openWindow("project-export", "Экспорт проекта", "form", { mode: "objects", formats: choice.formats, types: choice.types }, ...viewport());
-      return "Открыто окно «Экспорт проекта» (объекты в файлы): выберите папку и нажмите «Экспортировать»";
+      const props: Record<string, unknown> = { mode: "objects", formats, types: choice.types };
+      if (counts) Object.assign(props, { ids, counts });
+      openWindow("project-export", "Экспорт проекта", "form", props, ...viewport());
+      const what = counts ? `${mode === "source" ? "исходные файлы выбранных объектов" : "выбранные объекты"} (${count(ids.length)})` : "объекты в файлы";
+      return `Открыто окно «Экспорт проекта» (${what}): выберите папку и нажмите «Экспортировать»`;
     }
     const reason = choiceReason(info, choice, folder);
     if (reason) throw refusal("export_nothing", reason, "Проверьте types и formats: типы без объектов не экспортируются.");
-    const body = exportBody(info, choice, folder);
+    const body = exportBody(info, choice, folder, ids);
     const project = projectStore.get().current?.name ?? app.store.get().projectName ?? "Проект";
-    if (source === "claude" && !(await askConfirm(confirmQuestion(info, body, project)))) return "Отменено пользователем";
+    if (source === "claude" && !(await askConfirm(confirmQuestion(info, body, project, replacedFormats(info, formats, choice))))) return "Отменено пользователем";
     const job = await startObjectsExport(body);
     showJobs(app);
     await refreshJobs();

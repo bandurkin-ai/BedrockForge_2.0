@@ -90,7 +90,23 @@ export function exportReason(lists: ExportableLists, chosen: Chosen, path: strin
   return path ? null : "Выберите файл: «Сохранить как…».";
 }
 
-const safe = (name: string): string => name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/\s+/g, " ").trim();
+const DEVICES = new Set(["con", "prn", "aux", "nul", ...["com", "lpt"].flatMap((port) => [..."123456789¹²³"].map((n) => port + n))]);
+const trimEnd = (name: string): string => name.replace(/[. ]+$/, "");
+
+/** A reserved device name of Windows, bare or with an extension («con», «Aux.txt», «COM1.omf»). */
+export const isDevice = (name: string): boolean => DEVICES.has(name.split(".", 1)[0].replace(/ +$/, "").toLowerCase());
+
+/**
+ * One file name Windows takes as it is — the rules of `core/bf_core/exporting/names.py::clean`: `< > : " / \ ? *`,
+ * the bar and control characters → `_`; dots and spaces at the end go; at most `limit` characters; a device name
+ * (CON, NUL, COM1…) gets `_` in front. Runs of spaces are one space. "" — nothing is left.
+ */
+export function safe(name: string, limit = 120): string {
+  let out = trimEnd(name.replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/g, "_").replace(/\s+/g, " ").trim());
+  if (out.length > limit) out = trimEnd(out.slice(0, limit));
+  if (out && isDevice(out)) out = trimEnd(`_${out}`.slice(0, limit));
+  return out;
+}
 
 /** The name offered in the save window: the only object, else the project, else «Экспорт». */
 export function exportName(lists: ExportableLists, chosen: Chosen, project: string | null): string {
@@ -108,8 +124,8 @@ export function exportBody(chosen: Chosen, path: string): OmfExportBody {
 /** The name the assistant gives (`filename`): no folders, no forbidden characters, `.omf` at the end. */
 export function cleanFileName(raw: unknown, fallback: string): string {
   const text = typeof raw === "string" ? raw.split(/[\\/]/).pop()!.trim() : "";
-  const base = safe(text.replace(/\.omf$/i, "")) || safe(fallback.replace(/\.omf$/i, "")) || "Экспорт";
-  return `${base.slice(0, 120)}.omf`;
+  const base = safe(text.replace(/\.omf$/i, ""), 116) || safe(fallback.replace(/\.omf$/i, ""), 116) || "Экспорт";
+  return `${base}.omf`;
 }
 
 /** `Документы\BedrockForge\Экспорт` beside the folder of projects `…\BedrockForge\Проекты` (decision 9); a folder of

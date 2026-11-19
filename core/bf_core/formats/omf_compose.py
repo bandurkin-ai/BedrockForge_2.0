@@ -3,6 +3,8 @@ and what will not load and why — from the JSON alone, no binary block is read 
 
     compose(f)       OmfComposition of an open `omf_file.OmfFile`
     describe(path)   open + compose; raises FormatError (the file itself cannot be read) or OSError
+    described(path)  the composition `describe` gave for the file as it is (path, size, time of change), else
+                     `describe` — the estimate of memory of a job does not read the JSON again after the wizard
 
 What becomes what (ADR 0017 §2): a surface (triangles or a grid) — a wireframe, a line set — a layer of the line
 file, a regular volume along X, Y, Z — a block model. Not carried over: points, textures, data on the vertices and
@@ -17,6 +19,9 @@ structured list `left_out` and its texts `warnings` for the log, СК and ЦТМ
 
 from __future__ import annotations
 
+import os
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -93,6 +98,7 @@ class OmfEntry:
     dtm: bool = False
     skip: str | None = None
     error: dict[str, str] | None = None
+    packed: dict[str, int] = field(default_factory=dict)  # compressed bytes of the geometry blocks (not shown)
 
     @property
     def label(self) -> str:
@@ -232,6 +238,7 @@ def _entry(f: OmfFile, k: int, uid: str, element: dict[str, Any]) -> OmfEntry:
         if not isinstance(data, list):
             raise damaged(f"{e.label}: список данных имеет неверную структуру.")
         e.data = [_datum(f, u, kind, e.label) for u in data]
+        e.packed = _packed(f, geometry)
         if kind == "points":
             e.skip = "точки не переносятся"
         elif kind == "surface" and e.geometry == "SurfaceGridGeometry":
@@ -263,6 +270,20 @@ def _volume_entry(e: OmfEntry, geometry: dict[str, Any]) -> None:
         e.skip = f"{n_text(e.cells)} ячеек — больше предела {n_text(of.MAX_VOLUME_CELLS)}"
 
 
+def _packed(f: OmfFile, geometry: dict[str, Any]) -> dict[str, int]:
+    """Compressed lengths of the vertices, triangles and segments as the JSON gives them (unchecked: reading
+    checks them) — the estimate of memory of a surface whose counts the JSON does not tell."""
+    out: dict[str, int] = {}
+    for key in ("vertices", "triangles", "segments"):
+        uid = geometry.get(key)
+        obj = f.objects.get(uid) if isinstance(uid, str) else None
+        desc = obj.get("array") if obj is not None else None
+        length = desc.get("length") if isinstance(desc, dict) else None
+        if isinstance(length, int) and not isinstance(length, bool) and length > 0:
+            out[key] = length
+    return out
+
+
 def compose(f: OmfFile) -> OmfComposition:
     """The composition of an open file from its JSON: elements, kinds, sizes, data and what will not load. No
     binary block is read; a broken element gets its `error`, the others are described."""
@@ -278,7 +299,34 @@ def compose(f: OmfFile) -> OmfComposition:
     )
 
 
+CACHE_FILES = 4
+CACHE_ELEMENTS = 10_000  # a larger composition is not kept
+_cache: OrderedDict[tuple[str, int, int], OmfComposition] = OrderedDict()
+_cache_lock = threading.Lock()
+
+
+def _key(path: str | Path) -> tuple[str, int, int]:
+    st = os.stat(path)
+    return str(Path(path).resolve()), int(st.st_size), int(st.st_mtime_ns)
+
+
 def describe(path: str | Path) -> OmfComposition:
     """`compose` of a file: raises FormatError (the file itself cannot be read) or OSError."""
+    key = _key(path)
     with open_omf(path) as f:
-        return compose(f)
+        comp = compose(f)
+    if len(comp.elements) <= CACHE_ELEMENTS:
+        with _cache_lock:
+            _cache[key] = comp
+            _cache.move_to_end(key)
+            while len(_cache) > CACHE_FILES:
+                _cache.popitem(last=False)
+    return comp
+
+
+def described(path: str | Path) -> OmfComposition:
+    """The composition `describe` gave for this very file (unchanged since), else `describe`. Read only."""
+    key = _key(path)
+    with _cache_lock:
+        comp = _cache.get(key)
+    return comp if comp is not None else describe(path)

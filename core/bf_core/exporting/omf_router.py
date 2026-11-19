@@ -2,10 +2,12 @@
 
   * `GET /omf/exportable` → {wireframes: [{id, name, folder, dtm, triangles, available, reason}], line_files:
     [{id, name, folder, layers, points, available, reason}], block_models: [{id, name, folder, cells, available,
-    reason}]} — the three lists of the window «Экспорт OMF»; `reason` {message, hint} of what is not available
-    (a point cloud; a model over 100 million cells);
+    reason}], read_only, reason} — the three lists of the window «Экспорт OMF»; `reason` {message, hint} of an
+    object — why it is not available (a point cloud; a model over 100 million cells); `read_only` — the project is
+    open only for reading (ТЗ 5.7): nothing can be exported, the `reason` of the answer says why (a text, as
+    `GET /export/formats`);
   * `POST /omf/export` {wireframe_ids, line_file_ids, block_model_ids, path, overwrite?} → {source, id} of the job
-    `export.omf` (heavy). 422 `nothing_to_export`, `omf_not_exportable`; 404 `object_not_found`; 409 `files_exist`
+    `export.omf` (heavy). 423 `project_read_only`; 422 `nothing_to_export`, `omf_not_exportable`; 404 `object_not_found`; 409 `files_exist`
     {files} — the file is there and the save window did not ask: the window asks «Заменить?» and repeats with
     `overwrite: true`. The file is written as «‹имя›.omf.part» and renamed when complete.
 The import of OMF is the wizard «Импорт файлов» (`import.objects`, format `omf`).
@@ -24,6 +26,8 @@ from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
+from .router import READ_ONLY
+
 router = APIRouter(prefix="/omf")
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
@@ -36,7 +40,10 @@ def exportable(svc: Svc) -> dict[str, Any]:
 
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
-        return omf_job.exportable(conn)
+        out: dict[str, Any] = dict(omf_job.exportable(conn))
+    out["read_only"] = bool(project.read_only)
+    out["reason"] = READ_ONLY if project.read_only else None
+    return out
 
 
 class ExportBody(BaseModel):
@@ -51,7 +58,7 @@ class ExportBody(BaseModel):
 def export_omf(svc: Svc, s: Sched, body: ExportBody) -> dict[str, Any]:
     from . import omf_job
 
-    project = svc.require_current()
+    project = svc.require_current(writable=True)  # 423: «только просмотр» (ТЗ 5.7), as `POST /export/objects`
     with dialect.read_tx(project.engine) as conn:
         params = omf_job.request(
             conn, path=body.path, wireframe_ids=body.wireframe_ids, line_file_ids=body.line_file_ids,

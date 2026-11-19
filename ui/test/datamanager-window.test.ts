@@ -20,6 +20,15 @@ import { windowStore, type FloatWin } from "../src/shell/windows";
 const row = (id: number, p: Partial<CatalogRow> = {}): CatalogRow => ({ id, kind: "wireframe", name: `Объект ${id}`, folder: null, format: null, size: null, rows: null, modified: null, crs: null, state: "ready", ...p });
 
 const sent: { method: string; path: string; body: unknown }[] = [];
+const requests: string[] = []; // every request: "GET /catalog"
+const FORMATS = {
+  types: [
+    { kind: "wireframe", title: "Каркасы", count: 5, default: "dxf", formats: [{ id: "dxf", title: "DXF", ext: "dxf" }, { id: "source", title: "Исходный файл" }] },
+    { kind: "line_file", title: "Линии", count: 4, default: "str", formats: [{ id: "str", title: "Surpac STR", ext: "str" }] },
+    { kind: "drillhole_set", title: "Наборы скважин", count: 2, default: "csv", formats: [{ id: "csv", title: "CSV", ext: "csv" }] },
+    { kind: "raster", title: "Растры", count: 3, default: "source", formats: [{ id: "source", title: "Исходный файл" }] },
+  ],
+};
 const deleted: string[] = [];
 let catalogRows: CatalogRow[] = []; // what `GET /catalog` answers
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status });
@@ -27,12 +36,17 @@ let moveAnswer: Response | null = null;
 
 beforeEach(() => {
   sent.length = 0;
+  requests.length = 0;
   deleted.length = 0;
   catalogRows = [];
   moveAnswer = null;
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const p = new URL(url).pathname.replace(/^\/api\/v1/, "");
     const method = init?.method ?? "GET";
+    requests.push(`${method} ${p}`);
+    if (p === "/export/formats") return json(FORMATS);
+    if (p === "/projects/current") return json({ project: { uid: "p1", name: "Северный" } });
+    if (p === "/jobs") return json({ jobs: [] });
     if (p.startsWith("/catalog")) sent.push({ method, path: p, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (p === "/catalog/move") return moveAnswer ?? json({ moved: (JSON.parse(String(init?.body)) as { ids: number[] }).ids.length, folder: "x" });
     if (p === "/catalog/folders") return json({ folders: [] });
@@ -113,13 +127,36 @@ describe("the actions of the rows", () => {
     expect(reasons([set, wf]).delete).toBeNull(); // the wireframe is deleted, the set is told
   });
 
-  it("«Экспорт…» and «Исходный файл…» open «Экспорт проекта › Объекты в файлы» with the ids", () => {
-    exportRows([wf, lf, set]);
-    exportRows([wf, set], true);
+  it("«Экспорт…», «Экспорт папки…», «Исходный файл…» — the command `project.export {ids, mode}`: the window with the ids, counted per kind", async () => {
+    const app = open();
+    catalogRows = [wf, lf, set, row(7, { name: "Второе тело", format: "DXF" })];
+    catalogStore.set({ rows: catalogRows, folders: [], loaded: true, error: null });
+    expect(await runRowAction(app, "export", [wf, lf, set])).toBe("Открыто окно «Экспорт проекта» (выбранные объекты (3)): выберите папку и нажмите «Экспортировать»");
+    expect(await exportRows(app, [wf, lf, catalogRows[3]], true)).toContain("исходные файлы выбранных объектов (3)");
     expect(windowStore.get().windows.map((w) => w.props)).toEqual([
-      { mode: "objects", ids: [1, 3, 2], types: ["wireframe", "line_file", "drillhole_set"] },
-      { mode: "objects", ids: [1], types: ["wireframe"], formats: { wireframe: "source" } },
+      { mode: "objects", formats: {}, types: ["drillhole_set", "wireframe", "line_file"], ids: [1, 3, 2], counts: { wireframe: 1, line_file: 1, drillhole_set: 1 } },
+      { mode: "objects", formats: { wireframe: "source", line_file: "source" }, types: ["wireframe", "line_file"], ids: [1, 3, 7], counts: { wireframe: 2, line_file: 1 } },
     ]);
+    // each one is an entry of the command log
+    expect(app.registry.entries().map((e) => [e.commandId, e.args])).toEqual([
+      ["project.export", { ids: "1,3,7", mode: "source" }],
+      ["project.export", { ids: "1,3,2", mode: "objects" }],
+    ]);
+    expect((await app.registry.execute("project.export", { ids: "1,99" }, "claude")).result).toBe("Объект №99 не найден: ничего не экспортировано. Обновите менеджер данных.");
+    expect((await app.registry.execute("project.export", { ids: "1", mode: "x" }, "claude")).result).toContain("Режим «x» не известен.");
+  });
+
+  it("«Обновить» — the command `data.refresh`: the catalog is read again", async () => {
+    const app = open();
+    catalogStore.set({ rows: [], folders: [], loaded: true, error: null });
+    catalogRows = [wf];
+    const { refreshRows } = await import("../src/modules/datamanager/bind");
+    const { bindProjects } = await import("../src/modules/projects/bind");
+    bindProjects(app);
+    app.store.set({ core: "online" });
+    expect(await refreshRows(app)).toBe("Данные перечитаны");
+    expect(app.registry.entries()[0].commandId).toBe("data.refresh");
+    expect(catalogStore.get().rows.map((r) => r.id)).toEqual([1]);
   });
 
   it("one row: `object.delete` (it asks itself); several: `data.delete` — one own question (danger), one entry of the log", async () => {
@@ -142,6 +179,12 @@ describe("the actions of the rows", () => {
     expect(q.message).toContain("1 объект здесь не удаляются");
     expect(await run).toBe("Удалено 3 из 3; не удаляются здесь: «Скважины»");
     expect(deleted).toEqual(["/wireframes/1", "/lines/files/3", "/blocks/4"]);
+    // the lists are read once at the end, not after each object (Э11 11.21)
+    const after = requests.slice(requests.indexOf("DELETE /wireframes/1"));
+    expect(after.filter((r) => r === "GET /catalog")).toHaveLength(1);
+    expect(after.filter((r) => r === "GET /wireframes")).toHaveLength(1);
+    expect(after.filter((r) => r === "GET /blocks")).toHaveLength(1);
+    expect(after.indexOf("GET /catalog")).toBeGreaterThan(after.indexOf("DELETE /blocks/4"));
     const log = app.registry.entries().slice(0, app.registry.entries().length - before);
     expect(log.map((e) => [e.commandId, e.source, e.args, e.ok])).toEqual([["data.delete", "user", { ids: "1,3,4,2" }, true]]);
     expect(calls).toHaveLength(1); // `object.delete` was not called for the several rows
@@ -154,21 +197,28 @@ describe("the actions of the rows", () => {
     expect(app.registry.entries()[0].commandId).toBe("data.delete");
   });
 
-  it("`data.delete` of Claude: the confirmation of the registry, no second question; failures and unknown ids told", async () => {
+  it("`data.delete` of Claude: one question — our own, with the names (not the bare ids of the registry); failures and unknown ids told", async () => {
     const app = open();
     const asked: unknown[] = [];
     app.registry.hooks = { ...app.registry.hooks, confirm: async (c, a) => (asked.push([c.id, a]), true) };
     const ras = row(6, { kind: "raster", name: "Ортофото" });
     catalogRows = [wf, ras, set];
     catalogStore.set({ rows: catalogRows, folders: [], loaded: true, error: null });
-    const r = await app.registry.execute("data.delete", { ids: "1,6" }, "claude");
-    expect(asked).toEqual([["data.delete", { ids: "1,6" }]]);
-    expect(dialogStore.get().queue).toEqual([]);
+    const run = app.registry.execute("data.delete", { ids: "1,6" }, "claude");
+    const q = await answer(true);
+    expect(q).toMatchObject({ title: "Удалить объекты", okLabel: "Удалить", danger: true });
+    expect(q.message).toContain("Claude просит удалить из проекта 2 объекта:\n• Тело (Каркасы)\n• Ортофото (Растры)");
+    const r = await run;
+    expect(asked).toEqual([]); // no second question
     expect(r).toEqual({ ok: true, result: "Удалено 1 из 2 (ошибки: Ортофото: Растр наложен на ЦТМ: «Рельеф». Снимите растр в настройках ЦТМ.)" });
     expect(deleted).toEqual(["/wireframes/1", "/rasters/6"]);
     expect((await app.registry.execute("data.delete", { ids: "1,77" }, "claude")).result).toBe("Объект №77 не найден: ничего не удалено. Обновите менеджер данных.");
     expect((await app.registry.execute("data.delete", { ids: "2" }, "claude")).result).toContain("Эти объекты здесь не удаляются.");
-    expect(app.registry.get("data.delete")!.confirm).toBe(true);
+    const no = app.registry.execute("data.delete", { ids: "1" }, "claude");
+    await answer(false);
+    expect((await no).result).toBe("Отменено пользователем");
+    expect(app.registry.get("data.delete")!.confirm).toBeFalsy(); // the handler asks itself, with the names
+    expect(app.registry.get("data.delete")!.description).toContain("после подтверждения пользователем");
     expect(app.registry.get("data.delete")!.uiOnly).toBeFalsy();
     app.store.set({ projectReadOnly: true });
     expect(app.registry.reason("data.delete")).toBe("Проект открыт только для чтения");
@@ -222,6 +272,14 @@ describe("the table", () => {
     expect(visibleRange(24 * 500, 600, 1000)).toEqual([492, 533]);
     expect(visibleRange(24 * 2000, 600, 1000)[1]).toBe(1000);
     expect(visibleRange(0, 600, 0)).toEqual([0, 0]);
+    // a tall window: the overscan shrinks, ≤ 60 rows (Д-20; Э11 11.21 — 1 060 px drew 61)
+    for (const h of [1060, 1200, 1300, 1440]) {
+      const [a, b] = visibleRange(24 * 300, h, 1000);
+      expect(b - a).toBeLessThanOrEqual(60);
+      expect(a).toBeLessThanOrEqual(300);
+      expect(b).toBeGreaterThanOrEqual(300 + Math.ceil(h / 24));
+    }
+    expect(visibleRange(24 * 300, 1200, 1000)).toEqual([295, 355]);
     expect(scrollToRow(30, 0, 600)).toBe(24 * 31 - 600);
     expect(scrollToRow(2, 0, 600)).toBeNull();
     expect(scrollToRow(2, 240, 600)).toBe(48);

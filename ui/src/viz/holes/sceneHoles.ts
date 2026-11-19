@@ -1,10 +1,12 @@
 /**
  * The hole sets of the 3D window (moved out of `Scene.ts`): a layer per set placed from the scene origin, fat or
- * thin traces by the total of segments, the selected hole drawn over its set. No camera and no frame here: the
+ * thin traces by the total of segments and the class of graphics of the scene (software rendering — 200 thousand,
+ * `budget.ts` `THIN_LINE_SEGMENTS`), the selected hole drawn over its set. No camera and no frame here: the
  * scene gives what a layer draws with and follows the changes (`HolesHost`).
  */
 import type * as THREE from "three";
 import type { Extent } from "../core/bounds";
+import type { GpuClass } from "../core/budget";
 import type { SceneOrigin } from "../core/sceneOrigin";
 import type { BuiltPaths } from "../worker/paths";
 import { HoleSetLayer, type HoleSetContext, type HoleSetStyle, type HoleSetVisibility } from "./holeSet";
@@ -22,13 +24,14 @@ export interface HolesHost {
   /** the visibility of a set changed: the grid follows */
   gridChanged(): void;
   invalidate(): void;
+  /** the class of graphics of the scene: the threshold of thin traces; none — real graphics */
+  gpu?(): GpuClass;
 }
 
 export class SceneHoles {
   private readonly sets = new Map<number, HoleSetLayer>();
   private readonly selection: SelectedHole;
   private selected: { setId: number; name: string } | null = null;
-  private readonly fat = true;
 
   constructor(
     private readonly host: HolesHost,
@@ -65,7 +68,10 @@ export class SceneHoles {
   setPaths(setId: number, k: number, built: BuiltPaths): void {
     const layer = this.sets.get(setId);
     if (!layer) return;
-    layer.setPaths(k, built, this.fat);
+    // fat or thin chosen before the part is built, with its segments counted (the set's built parts follow first)
+    const fat = useFatLines(layer.style.trace, this.segments() + built.segments, this.host.gpu?.());
+    layer.setFat(fat);
+    layer.setPaths(k, built, fat);
     this.updateFat();
     if (this.selected?.setId === setId) this.applySelection();
     this.host.invalidate();
@@ -84,7 +90,7 @@ export class SceneHoles {
   setStyle(setId: number, style: HoleSetStyle): void {
     const layer = this.sets.get(setId);
     if (!layer) return;
-    layer.setStyle(style, useFatLines(style.trace, this.segments()));
+    layer.setStyle(style, useFatLines(style.trace, this.segments(), this.host.gpu?.()));
     if (this.selected?.setId === setId) this.applySelection();
     this.host.invalidate();
   }
@@ -136,6 +142,7 @@ export class SceneHoles {
 
   private updateFat(): void {
     const total = this.segments();
-    for (const l of this.sets.values()) l.setFat(useFatLines(l.style.trace, total));
+    const gpu = this.host.gpu?.();
+    for (const l of this.sets.values()) l.setFat(useFatLines(l.style.trace, total, gpu));
   }
 }

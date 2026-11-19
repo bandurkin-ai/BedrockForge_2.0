@@ -13,8 +13,8 @@ import { errorText } from "../../shell/props";
 import { count } from "../../shell/treeActions";
 import { useStore } from "../../shell/useStore";
 import type { FloatWin } from "../../shell/windows";
-import { bindCatalog, catalogStore, loadCatalog } from "./api";
-import { DATA_MANAGER, dropFiles, exportRows, importInto, moveRows, rowActions, runRowAction, type ActionId } from "./bind";
+import { bindCatalog, catalogStore } from "./api";
+import { DATA_MANAGER, dropFiles, exportRows, importInto, moveRows, refreshRows, rowActions, runRowAction, type ActionId } from "./bind";
 import { ALL, DEFAULT_QUERY, dropFolder, dropReason, folderTree, inNode, moveIds, sortBy, viewRows, type CatalogRow, type ViewQuery } from "./catalog";
 import { DataTable } from "./DataTable";
 import { FolderTree, ROWS_MIME } from "./FolderTree";
@@ -82,7 +82,7 @@ export function DataManager({ initialHeight }: { initialHeight?: number } = {}) 
     const inside = rowsOfNode(state.rows, key);
     openMenu(e.clientX, e.clientY, [
       { label: "Импорт в эту папку…", reason: folder === null ? "Импорт — в папку или в «Все данные»" : app.registry.reason("import.files"), run: () => void report(async () => (await importInto(app, folder ?? ""), "Открыт мастер импорта")) },
-      { label: "Экспорт папки…", reason: inside.length ? null : "В папке нет данных", run: () => void report(async () => (exportRows(inside), "Открыто окно «Экспорт проекта»")) },
+      { label: "Экспорт папки…", reason: inside.length ? null : "В папке нет данных", run: () => void report(() => exportRows(app, inside)) },
     ]);
   };
   const onKey = (e: KeyboardEvent<HTMLDivElement>, page: number) => {
@@ -133,7 +133,7 @@ export function DataManager({ initialHeight }: { initialHeight?: number } = {}) 
         <ToolButton label="Экспорт…" reason={reason("export")} testId="dm-export" onClick={() => run("export")} />
         <ToolButton label="Переименовать…" reason={reason("rename")} testId="dm-rename" onClick={() => run("rename")} />
         <ToolButton label="Удалить…" reason={reason("delete")} testId="dm-delete" onClick={() => run("delete")} />
-        <ToolButton label="Обновить" reason={null} testId="dm-refresh" onClick={() => void report(async () => (await loadCatalog(), "Перечитано"))} />
+        <ToolButton label="Обновить" reason={null} testId="dm-refresh" onClick={() => void report(() => refreshRows(app))} />
       </div>
       <div className={css.body}>
         <FolderTree

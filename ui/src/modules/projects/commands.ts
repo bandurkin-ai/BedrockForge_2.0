@@ -15,8 +15,11 @@ export const commands: Command[] = [
       "Без параметров — окно экспорта всего проекта одним файлом .bfggis. С formats, folder или types — объекты проекта в файлы форматов по типам (Д-17): " +
       "formats — «тип=формат» через запятую (drillhole_set=csv|xlsx|dat, wireframe и dtm=dxf|dwg|tridb|obj|stl|dtm|omf, line_file=str|dxf|surpac|omf, cloud=las|csv, raster=source|geotiff, block_model=omf; не названные — по умолчанию); " +
       "types — какие типы через запятую (по умолчанию все, где есть объекты); folder — папка, в которой создаётся «‹Проект› — экспорт ГГГГ-ММ-ДД». " +
+      "ids — только эти объекты (номера через запятую, как в менеджере данных); mode — objects (объекты в файлы, по умолчанию) или source (исходные файлы объектов: формат «Исходный файл», где ядро его пишет; где нет — формат по умолчанию с предупреждением). " +
       "С folder задание запускается после подтверждения пользователем; без folder открывается окно «Объекты в файлы» с этим выбором.",
     params: {
+      ids: { type: "string", description: "номера объектов через запятую, например «7, 12»" },
+      mode: { type: "string", description: "objects — объекты в файлы; source — исходные файлы объектов" },
       formats: { type: "string", description: "«тип=формат» через запятую, например wireframe=dxf, line_file=str" },
       folder: { type: "string", description: "папка назначения (внутри неё создаётся новая папка экспорта)" },
       types: { type: "string", description: "типы через запятую: drillhole_set, wireframe, dtm, line_file, cloud, raster, block_model" },

@@ -111,6 +111,8 @@ def write_book(
     part_path = path.with_name(path.name + ".part")
     wb = openpyxl.Workbook(write_only=True)
     sheets: set[str] = set()
+    taken = names.Folder(len(str(path.parent)))  # the CSV of long tables: names that differ after cleaning
+    taken.take([path.name])
     files: list[Path] = [path]
     warnings: list[str] = []
     rows = 0
@@ -121,8 +123,7 @@ def write_book(
             columns, n, source = _read(engine, set_id, table)
             rows += n
             if n > XLSX_ROWS:
-                stem = names.shorten(f"{path.stem} — {names.clean(title)}", names.MAX_PATH - len(str(path.parent)) - 5)
-                csv_path = path.parent / f"{stem}.csv"
+                csv_path = path.parent / (taken.claim(f"{path.stem} — {title}", (".csv",)) + ".csv")
                 write_table(csv_path, "csv", columns, n, source=source, project_folder=project_folder, tick=part)
                 files.append(csv_path)
                 warnings.append(

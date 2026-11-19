@@ -9,8 +9,8 @@
   without data) and what the composition left out of the element (data on the nodes, …); the CRS — that of the
   project of the file, if BF2 wrote it; a file with several models puts them into a folder of the tree named
   after it, as its wireframes (`object_meshes.file_folder`);
-* a volume that cannot be read (rotated, broken) is a line of the journal and an entry of `skipped`; the others
-  load. Not enough memory (`out_of_memory`) or disk (`disk_full`) fails the job: its two attempts (`jobs/registry.py`)
+* a volume that cannot be read (rotated, broken, a grid the store refuses — `ApiError` of `CellsWriter`) is a line
+  of the journal and an entry of `skipped`; the others load. Not enough memory (`out_of_memory`) or disk (`disk_full`) fails the job: its two attempts (`jobs/registry.py`)
   start again from nothing;
 * in the final transaction of the job (`log_blocks`) every model gets its row of `import_log`, which owns the
   source file (owner `import`, role `source`) — one blob for all the objects of the file.
@@ -28,6 +28,7 @@ from typing import Any
 
 import sqlalchemy as sa
 
+from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.db.schema import import_log, objects
 from bf_core.formats.errors import FormatError
@@ -56,35 +57,37 @@ class Blocks:
         return sum(int(c["cells"]) for c in self.counts)
 
 
+VERTEX_RATIO = 2  # inflated / compressed bytes of float64 vertices (Leapfrog, BF2: 1.05–1.55)
+INDEX_RATIO = 8  # of int64 triangles (≈ 6)
+
+
+def _mesh_counts(e: Any) -> tuple[int, int]:
+    """(vertices, triangles) of a surface: from the JSON (a grid), else guessed from its compressed blocks."""
+    from bf_core.formats.omf_file import MAX_MESH_TRIANGLES, MAX_MESH_VERTICES
+
+    if e.points is not None and e.triangles is not None:
+        return int(e.points), int(e.triangles)
+    packed = e.packed or {}
+    points = min(VERTEX_RATIO * int(packed.get("vertices", 0)) // 24, MAX_MESH_VERTICES)
+    triangles = min(INDEX_RATIO * int(packed.get("triangles", 0)) // 24, MAX_MESH_TRIANGLES)
+    return points, triangles
+
+
 def memory(path: Any, size: int) -> int:
     """Bytes an OMF file needs (`objects._memory`), from its JSON: the biggest surface staged as a wireframe
-    (about 12 × its arrays) or the portions of the biggest volume; the file × 6 when the JSON cannot be read."""
-    from bf_core.formats.omf_compose import describe
+    (about 12 × its arrays; a triangulated surface — by the sizes of its blocks) or the portions of the biggest
+    volume; the file × 6 when the JSON cannot be read. The composition of the wizard is not read again
+    (`omf_compose.described`)."""
+    from bf_core.formats.omf_compose import described
 
     try:
-        comp = describe(path)
+        comp = described(path)
     except (FormatError, OSError):
         return size * 6
-    mesh = max((12 * (24 * int(e.points or 0) + 12 * int(e.triangles or 0)) for e in comp.elements), default=0)
+    meshes = [_mesh_counts(e) for e in comp.elements if e.kind == "surface" and e.loads]
+    mesh = max((12 * (24 * p + 12 * t) for p, t in meshes), default=0)
     volume = max(((64 + 48 * len(e.data)) << 20 for e in comp.elements if e.kind == "volume" and e.loads), default=0)
     return max(mesh, volume, size)
-
-
-class _Last:
-    """The progress of `read_volume`: a cancel at its last report (1.0, after the cells are staged) is kept for
-    later — the caller drops the staged file, then raises it; any earlier one goes through at once."""
-
-    def __init__(self, tick: Tick) -> None:
-        self.tick = tick
-        self.stopped: BaseException | None = None
-
-    def __call__(self, fraction: float, message: str | None = None) -> None:
-        try:
-            self.tick(fraction, message)
-        except Exception as exc:  # JobCancelled
-            if fraction < 1.0:
-                raise
-            self.stopped = exc
 
 
 def _element_notes(read: Any, key: str) -> list[str]:
@@ -114,16 +117,13 @@ def write_volumes(
     try:
         with open_reader(g.main) as reader:
             for vol in reader.volumes(keys):
-                share = _Last(scaled(tick, done / total, (done + int(vol.entry.cells or 0)) / total))
+                share = scaled(tick, done / total, (done + int(vol.entry.cells or 0)) / total)
                 done += int(vol.entry.cells or 0)
                 tmp.mkdir(parents=True, exist_ok=True)
-                try:
+                try:  # a cancel inside (its last report too) discards the staged cells there
                     vr = read_volume(reader.file, vol, lambda grid, fields: bm.CellsWriter(store, grid, fields),
                                      tmp_dir=tmp, progress=share)  # fmt: skip
-                    if share.stopped is not None:  # a cancel at its last report: the staged cells are ours to drop
-                        vr.staged.discard()
-                        raise share.stopped
-                except FormatError as exc:
+                except (FormatError, ApiError) as exc:  # ApiError: `CellsWriter` refuses the grid or the fields
                     if exc.code in FATAL:
                         raise JobError(exc.code, f"«{label}»: {exc.message}", exc.hint) from exc
                     out.skipped.append({"name": vol.name, "code": exc.code, "message": exc.message, "hint": exc.hint})

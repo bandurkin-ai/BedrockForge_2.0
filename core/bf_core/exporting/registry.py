@@ -348,7 +348,10 @@ def items(conn: sa.Connection, kinds: Iterable[str] | None = None, ids: Iterable
     for r in by_kind.get("block_model", []):
         meta = r.meta or {}
         cells = int(meta.get("cells") or 0)
-        out.append(item(r, "block_model", 8 * cells * (1 + len(meta.get("fields") or [])), cells=cells))
+        counts = (meta.get("grid") or {}).get("counts") or [0, 0, 0]
+        grid_cells = int(counts[0]) * int(counts[1]) * int(counts[2])  # OMF writes the whole grid
+        out.append(item(r, "block_model", 8 * cells * (1 + len(meta.get("fields") or [])), cells=cells,
+                        grid_cells=grid_cells))  # fmt: skip
     order = {k.key: n for n, k in enumerate(KINDS)}
     out = [i for i in out if i.kind in wanted]
     out.sort(key=lambda i: (order[i.kind], names.key(i.folder or ""), names.key(i.name), i.id))

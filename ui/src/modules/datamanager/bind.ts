@@ -1,12 +1,14 @@
 /**
  * «Менеджер данных» (Д-20; ADR 0017 §6): the command `data.manager` and what the window does with its rows — each
  * action is a registry command of the module that owns the object (`object.select`, `layer.show`, `blocks.show`,
- * `object.rename`, `object.delete`, `dataset.move`, `import.files`) or the window «Экспорт проекта › Объекты в
- * файлы» with the chosen ids («Экспорт…», «Исходный файл → Сохранить копию как…» — the format «Исходный файл»).
- * An action that does not fit the chosen rows is unavailable with a Russian reason. Deleting several rows asks
- * once, in our own window (`askConfirm`, danger). No React.
+ * `object.rename`, `object.delete`, `dataset.move`, `import.files`, `data.refresh`) or `project.export {ids, mode}` —
+ * the window «Экспорт проекта › Объекты в файлы» with the chosen ids («Экспорт…», «Экспорт папки…»; «Исходный файл
+ * → Сохранить копию как…» — `mode: "source"`, the format «Исходный файл»). An action that does not fit the chosen
+ * rows is unavailable with a Russian reason. Deleting several rows asks once, in our own window with their names
+ * (`askConfirm`, danger) — a call of Claude too. No React.
  */
 import { bridge } from "../../bridge";
+import { api } from "../../shell/api";
 import type { App } from "../../shell/app";
 import type { CommandSource } from "../../shell/commands";
 import { askConfirm, showMessage } from "../../shell/dialogs";
@@ -15,15 +17,12 @@ import { errorText } from "../../shell/props";
 import { showProperties } from "../../shell/treeRun";
 import { counted } from "../../shell/treeActions";
 import { openWindow } from "../../shell/windows";
-import { blocksStore, deleteBlockModel, loadBlocks } from "../blocks/state";
+import { loadBlocks } from "../blocks/state";
 import { importPaths } from "../importing/bind";
-import { deleteLineFile } from "../lines/actions";
 import { moveIds } from "../projects/bind";
 import { projectStore } from "../projects/state";
-import { deleteRaster } from "../rasters/actions";
 import { loadSceneObjects, sceneObjects } from "../scene/objects";
-import { deleteWireframe } from "../wireframes/state";
-import { catalogStore, loadCatalog } from "./api";
+import { catalogRowsOf, loadCatalog } from "./api";
 import { kindTitle, type CatalogRow } from "./catalog";
 
 export const DATA_MANAGER = "data-manager";
@@ -103,36 +102,38 @@ async function layersOf(fileId: number): Promise<number[]> {
   return sceneObjects.get().files.find((f) => f.id === fileId)?.layers.map((l) => l.id) ?? [];
 }
 
-/** The window «Экспорт проекта › Объекты в файлы» with the chosen objects (their types checked). */
-export function exportRows(rows: readonly CatalogRow[], source = false): string {
-  const chosen = source ? rows.filter((r) => r.format) : [...rows];
-  const types = [...new Set(chosen.map((r) => r.kind))];
-  const props: Record<string, unknown> = { mode: "objects", ids: chosen.map((r) => r.id), types };
-  if (source) props.formats = Object.fromEntries(types.map((k) => [k, "source"]));
-  return openWindow("project-export", "Экспорт проекта", "form", props, ...viewport());
+/**
+ * «Экспорт…», «Экспорт папки…», «Исходный файл…»: the registry command `project.export {ids, mode}` — the window
+ * «Экспорт проекта › Объекты в файлы» with the chosen objects (their types checked); `source` — only the rows that
+ * have a source file, in the format «Исходный файл».
+ */
+export async function exportRows(app: App, rows: readonly CatalogRow[], source = false): Promise<string> {
+  const chosen = source ? rows.filter((r) => r.format) : rows;
+  const r = await app.registry.execute("project.export", { ids: chosen.map((x) => x.id).join(","), mode: source ? "source" : "objects" }, "user");
+  if (!r.ok) throw new Error(r.result);
+  return r.result;
 }
 
-/** The object of the project by the kind of its row: the same functions `object.delete` calls. */
-async function deleteObject(r: CatalogRow): Promise<void> {
+/** What `DELETE` removes an object of the row — the requests of `object.delete`, without its reread (several
+ * rows are deleted one after another, the lists are read once at the end). */
+function deletePath(r: CatalogRow): string {
   const kind = objectKind(r.kind);
-  if (kind === "wireframe") return deleteWireframe(r.id);
-  if (kind === "raster") return deleteRaster(r.id);
-  if (kind === "line_file") return deleteLineFile(r.id);
-  if (kind === "blocks") {
-    if (!blocksStore.get().loaded) await loadBlocks();
-    return deleteBlockModel(r.id);
-  }
+  if (kind === "wireframe") return `/wireframes/${r.id}`;
+  if (kind === "raster") return `/rasters/${r.id}`;
+  if (kind === "line_file") return `/lines/files/${r.id}`;
+  if (kind === "blocks") return `/blocks/${r.id}`;
   throw new Error(`${kindTitle(r.kind)}: удаление — в дереве проекта`);
 }
 
-/** The question of «Удалить…» for several rows (our own window, danger). */
-export function deleteQuestion(ok: readonly CatalogRow[], left: number) {
+/** The question of «Удалить…» for several rows (our own window, danger); `claude` — Claude asks for it. */
+export function deleteQuestion(ok: readonly CatalogRow[], left: number, claude = false) {
   const names = ok.slice(0, 10).map((r) => `• ${r.name} (${kindTitle(r.kind)})`);
   if (ok.length > 10) names.push(`… и ещё ${ok.length - 10}`);
   const skipped = left ? `\n${counted(left, "объект", "объекта", "объектов")} здесь не удаляются (наборы скважин — в дереве; строящиеся — после задания).` : "";
+  const what = counted(ok.length, "объект", "объекта", "объектов");
   return {
     title: "Удалить объекты",
-    message: `Удалить из проекта ${counted(ok.length, "объект", "объекта", "объектов")}?\n${names.join("\n")}${skipped}\nОтменить удаление нельзя.`,
+    message: `${claude ? `Claude просит удалить из проекта ${what}:` : `Удалить из проекта ${what}?`}\n${names.join("\n")}${skipped}\nОтменить удаление нельзя.`,
     okLabel: "Удалить",
     danger: true,
   };
@@ -140,34 +141,33 @@ export function deleteQuestion(ok: readonly CatalogRow[], left: number) {
 
 /**
  * `data.delete {ids}`: several objects of the data in one registry command — one entry of the command log, one
- * question (from the interface — our own window; Claude's call — the confirmation of the registry). Rows the
- * command does not delete (drillhole sets, objects being built) are named in the result; an unknown id refuses all.
+ * question in our own window with the names of the objects, from the interface and from Claude alike (the command
+ * is not `confirm`: the registry would ask with the bare ids — Э11 11.21). Rows the command does not delete
+ * (drillhole sets, objects being built) are named in the result; an unknown id refuses all. The objects go one
+ * after another; the catalog, the scene and the block models are read once at the end.
  */
 export async function deleteData(app: App, a: Record<string, unknown>, source: CommandSource): Promise<string> {
   try {
     const ids = moveIds(a);
     if (!ids.length) throw refusal("no_ids", "Не заданы объекты.", "Передайте ids — номера через запятую.");
-    let rows = catalogStore.get().rows;
-    if (!catalogStore.get().loaded || ids.some((id) => !rows.some((r) => r.id === id))) {
-      await loadCatalog();
-      rows = catalogStore.get().rows;
-    }
-    const missing = ids.filter((id) => !rows.some((r) => r.id === id));
+    const { rows: chosen, missing } = await catalogRowsOf(ids);
     if (missing.length) throw refusal("object_not_found", `Объект №${missing[0]} не найден: ничего не удалено.`, "Обновите менеджер данных.");
-    const chosen = ids.map((id) => rows.find((r) => r.id === id)!);
     const ok = chosen.filter((r) => objectKind(r.kind) !== null && r.state !== "building");
     const left = chosen.filter((r) => !ok.includes(r));
     if (!ok.length) throw refusal("nothing_to_delete", "Эти объекты здесь не удаляются.", "Наборы скважин удаляются в дереве проекта; строящиеся — после конца задания.");
-    if (source === "user" && !(await askConfirm(deleteQuestion(ok, left.length)))) return "Отменено";
+    if (!(await askConfirm(deleteQuestion(ok, left.length, source === "claude")))) return source === "claude" ? "Отменено пользователем" : "Отменено";
     const failed: string[] = [];
     for (const r of ok) {
       try {
-        await deleteObject(r);
+        await api.del(deletePath(r));
       } catch (e) {
         failed.push(`${r.name}: ${errorText(e)}`);
       }
     }
-    await loadCatalog();
+    // once, after every object (after a failure too: what went is gone from the lists)
+    const scene = ok.some((r) => objectKind(r.kind) !== "blocks");
+    const blocks = ok.some((r) => objectKind(r.kind) === "blocks");
+    await Promise.all([loadCatalog(), scene ? loadSceneObjects() : null, blocks ? loadBlocks() : null]);
     const kept = left.length ? `; не удаляются здесь: ${left.map((r) => `«${r.name}»`).join(", ")}` : "";
     if (failed.length === ok.length) throw new Error(`Ничего не удалено: ${failed.join("; ")}`);
     if (failed.length && source === "user") await showMessage({ title: "Удалить объекты", message: `Не удалено: ${failed.length} из ${ok.length}.`, log: failed.join("\n") });
@@ -230,11 +230,9 @@ export async function runRowAction(app: App, id: ActionId, rows: readonly Catalo
       return done.length === 1 ? done[0] : `Показано в 3D: ${done.length}`;
     }
     case "export":
-      exportRows(rows);
-      return "Открыто окно «Экспорт проекта» с выбранными объектами";
+      return exportRows(app, rows);
     case "source":
-      exportRows(rows, true);
-      return "Открыто окно «Экспорт проекта»: исходные файлы выбранных объектов";
+      return exportRows(app, rows, true);
     case "rename":
       return ok("object.rename", { kind: objectKind(one.kind), id: one.id });
     case "delete":
@@ -261,6 +259,13 @@ export async function dropFiles(app: App, files: readonly File[], folder: string
     return reason;
   }
   return importPaths(app, paths, "auto", folder || null);
+}
+
+/** «Обновить»: the registry command `data.refresh` (the project, the jobs and the catalog read again). */
+export async function refreshRows(app: App): Promise<string> {
+  const r = await app.registry.execute("data.refresh", {}, "user");
+  if (!r.ok) throw new Error(r.result);
+  return r.result;
 }
 
 /** Rows dropped on a folder: `dataset.move` (one transaction in the core, then `objects.changed`). */

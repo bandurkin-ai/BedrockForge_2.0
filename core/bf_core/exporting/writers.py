@@ -236,9 +236,13 @@ def _write_omf(item: Item, path: Path, env: Env, tick: Tick) -> Written:
     return Written([path], int(counts.get("size") or path.stat().st_size), list(warnings))
 
 
+OMF_MAX_CELLS = 100_000_000  # `omf_job.MAX_CELLS` (ADR 0017 решение 14): the cells of the grid, written densely
+
+
 def _omf_accepts(item: Item) -> Reason | None:
-    if item.kind == "block_model" and int(item.info.get("cells") or 0) > 100_000_000:
-        return Reason("Модель больше 100 млн ячеек: в OMF не записывается.", "Разделите модель.")
+    cells = max(int(item.info.get("cells") or 0), int(item.info.get("grid_cells") or 0))
+    if item.kind == "block_model" and cells > OMF_MAX_CELLS:
+        return Reason("Сетка модели больше 100 млн ячеек: в OMF не записывается.", "Разделите модель на части.")
     return None
 
 

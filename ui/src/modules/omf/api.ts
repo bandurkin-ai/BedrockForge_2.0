@@ -4,8 +4,10 @@
  * {message, hint} of one that is not; `POST /omf/export {wireframe_ids, line_file_ids, block_model_ids, path,
  * overwrite?}` → the job `export.omf`. 422 `nothing_to_export` / `omf_not_exportable`, 404 `object_not_found`,
  * 409 `files_exist {files}` — the window asks «Заменить?» in its own window and repeats with `overwrite`.
+ * `followExportable` — the lists of the open window, read again on `objects.changed`, the newest answer only.
  */
 import { api } from "../../shell/api";
+import { onCoreEvent } from "../jobs/state";
 
 export interface Reason {
   message: string;
@@ -61,6 +63,44 @@ export interface OmfExportResult {
 export async function loadExportable(): Promise<ExportableLists> {
   const r = await api.get<Partial<ExportableLists>>("/omf/exportable");
   return { wireframes: r.wireframes ?? [], line_files: r.line_files ?? [], block_models: r.block_models ?? [] };
+}
+
+/**
+ * The lists read now and again on every `objects.changed` while the window is open. Only the answer of the newest
+ * read is applied (as `datamanager/api.ts`): an older answer that comes later would put back a list without the
+ * new object, and `keepChosen` would uncheck it (Э11 11.21). `first` — the first answer applied. Returns the
+ * unsubscribe; nothing is applied after it.
+ */
+export function followExportable(
+  apply: (lists: ExportableLists, first: boolean) => void,
+  fail: (e: unknown) => void,
+  load: () => Promise<ExportableLists> = loadExportable,
+  events: (fn: (event: string) => void) => () => void = onCoreEvent,
+): () => void {
+  let seq = 0;
+  let alive = true;
+  let first = true;
+  const read = () => {
+    const mine = ++seq;
+    load().then(
+      (l) => {
+        if (!alive || mine !== seq) return;
+        apply(l, first);
+        first = false;
+      },
+      (e: unknown) => {
+        if (alive && mine === seq) fail(e);
+      },
+    );
+  };
+  read();
+  const off = events((event) => {
+    if (event === "objects.changed") read();
+  });
+  return () => {
+    alive = false;
+    off();
+  };
 }
 
 export function startOmfExport(body: OmfExportBody, overwrite = false): Promise<{ source: string; id: number }> {

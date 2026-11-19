@@ -44,6 +44,7 @@ from typing import Any, BinaryIO
 
 import numpy as np
 
+from bf_core.formats.errors import FormatError
 from bf_core.formats.lineset import LineSet
 from bf_core.formats.meshset import MeshSet, n_text
 from bf_core.formats.omf_file import CHUNK, CRS_PREFIX, DTM_MARK, HEADER_SIZE, MAGIC, UNIT_PREFIX, VERSION
@@ -260,7 +261,8 @@ class OmfWriter:
     def add_volume(self, name: str, grid: Mapping[str, Any], fields: Sequence[Mapping[str, Any]], cells: Cells,
                    color: str | None = None, description: str = "") -> None:  # fmt: skip
         """A regular block model: `grid` and `fields` as `objects.meta` (`blocks/schema.py`), `cells(name)` — the
-        occupied cells of one field in ascending idx: (idx, values) portions."""
+        occupied cells of one field in ascending idx: (idx, values) portions. Cells out of order, of other sizes or
+        a file that cannot be read (pyarrow's `ArrowInvalid` is a ValueError) — FormatError `block_model_broken`."""
         counts = [int(c) for c in grid["counts"]]
         n = counts[0] * counts[1] * counts[2]
         if "tensors" in grid:
@@ -270,12 +272,19 @@ class OmfWriter:
         data: list[str] = []
         for f in fields:
             fname, unit = str(f["name"]), f.get("unit")
-            if f.get("kind", "number") == "number":
-                dense = _dense(n, np.nan, np.float64, cells(fname))
-                data.append(self._scalar(fname, dense, "cells", unit))
-            else:
-                dense = _dense(n, -1, np.int64, cells(fname))
-                data.append(self._mapped(fname, dense, list(f.get("labels") or []), "cells", unit))
+            try:
+                if f.get("kind", "number") == "number":
+                    dense = _dense(n, np.nan, np.float64, cells(fname))
+                    data.append(self._scalar(fname, dense, "cells", unit))
+                else:
+                    dense = _dense(n, -1, np.int64, cells(fname))
+                    data.append(self._mapped(fname, dense, list(f.get("labels") or []), "cells", unit))
+            except (ValueError, IndexError, KeyError) as exc:
+                raise FormatError(
+                    "block_model_broken",
+                    f"Блочная модель «{name}»: файл ячеек повреждён (поле «{fname}») — модель не записана.",
+                    "Загрузите модель в проект заново.",
+                ) from exc
         geometry = self._add("VolumeGridGeometry", origin=[float(c) for c in grid["corner"]],
                              tensor_u=tensors[0], tensor_v=tensors[1], tensor_w=tensors[2],
                              axis_u=[1.0, 0.0, 0.0], axis_v=[0.0, 1.0, 0.0], axis_w=[0.0, 0.0, 1.0])  # fmt: skip

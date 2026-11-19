@@ -2,7 +2,9 @@
  * The part «Объекты в файлы» of the window «Экспорт проекта» (Д-17; ADR 0017 §5): the table «тип → формат» from
  * the core (a format the core cannot write now is shown with its reason), the types checked, the folder; then the
  * job `export.objects` followed in the window — its progress and «Отменить» — and its report: the files written,
- * what was skipped and why, «Показать в папке». The job is seen in «Задания» too.
+ * what was skipped and why, «Показать в папке». The job is seen in «Задания» too. With the chosen objects (`ids`,
+ * `counts` — how many of each kind) the column «Объектов» counts them only; a format asked for that the core does
+ * not write for a type is told above the table (`replacedFormats`).
  */
 import { useEffect, useMemo, useState } from "react";
 import { bridge } from "../../bridge";
@@ -22,8 +24,10 @@ import {
   initialChoice,
   loadFormats,
   relativePath,
+  replacedFormats,
   reportOf,
   reportSummary,
+  scopeToIds,
   setFormat,
   sizeText,
   startObjectsExport,
@@ -39,6 +43,8 @@ export interface ObjectsInitial {
   types?: string[];
   folder?: string;
   ids?: number[];
+  /** the chosen objects (`ids`) of each kind */
+  counts?: Record<string, number>;
 }
 
 const REPORT_ROWS = 300; // a long report keeps its head in the window; the whole list is in the job log
@@ -59,8 +65,9 @@ export function ExportObjects({ winId, project, initial }: { winId: string; proj
     loadFormats()
       .then((i) => {
         if (!alive) return;
-        setInfo(i);
-        setChoice(initialChoice(i, { formats: initial?.formats, types: initial?.types }));
+        const scoped = initial?.counts ? scopeToIds(i, initial.counts) : i;
+        setInfo(scoped);
+        setChoice(initialChoice(scoped, { formats: initial?.formats, types: initial?.types }));
       })
       .catch((e: unknown) => alive && setError(errorText(e)));
     return () => {
@@ -72,6 +79,7 @@ export function ExportObjects({ winId, project, initial }: { winId: string; proj
 
   const reason = info ? (readOnly ? "Проект открыт только для чтения: экспорт недоступен." : choiceReason(info, choice, folder)) : "Читаю форматы…";
   const objects = info ? chosenObjects(info, choice) : 0;
+  const replaced = useMemo(() => (info ? replacedFormats(info, initial?.formats, choice) : []), [info, initial?.formats, choice]);
   const report = useMemo(() => (live?.status === "done" ? reportOf(live.result) : null), [live?.status, live?.result]);
 
   const pick = async () => {
@@ -185,6 +193,13 @@ export function ExportObjects({ winId, project, initial }: { winId: string; proj
   return (
     <>
       {initial?.ids?.length ? <div className={css.note}>Только выбранные объекты: {count(initial.ids.length)}.</div> : null}
+      {replaced.length > 0 && (
+        <ul className={css.warn} data-testid="export-objects-replaced">
+          {replaced.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+      )}
       <table className={css.table} data-testid="export-objects-types">
         <thead>
           <tr>

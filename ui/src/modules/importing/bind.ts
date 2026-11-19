@@ -35,17 +35,28 @@ export function openObjectsWizard(paths: string[], pick: ObjectsPick = "objects"
   else openWindow("import-objects", "Импорт файлов", "normal", { paths, ...(pick === "objects" ? {} : { pick }), ...at }, ...viewport());
 }
 
+/** Why the folder of destination does not apply to some files: drillhole tables go to their own wizard, a
+ * `.bfggis` to the project import — neither takes a folder (Э11 11.21); null — it applies to all. */
+export function folderNote(folder: string | null, holes: number, project: number): string | null {
+  if (!folder || holes + project === 0) return null;
+  const what = [holes && "таблицам скважин", project && "файлу проекта .bfggis"].filter(Boolean).join(" и ");
+  return `Папка «${folder}» не применится к ${what}: они загрузятся без папки. Перенесите их потом в «Менеджере данных».`;
+}
+
 /** Files from the dialog or dropped from Explorer (also onto a folder of «Менеджер данных»: `folder`): drillhole
  * tables go to their wizard, lines, points, rasters, wireframes and OMF to the composition of «Импорт файлов», a
- * `.bfggis` to the project import; what is not loaded yet is told with its stage (ТЗ 7.8). */
+ * `.bfggis` to the project import; what is not loaded yet is told with its stage (ТЗ 7.8), and so is a folder that
+ * does not apply (`folderNote`). */
 export async function importPaths(app: App, paths: string[], prefer: "auto" | "objects" = "auto", folder: string | null = null): Promise<string> {
   const route = routeImport(paths, prefer);
-  if (route.skipped.length) {
+  const note = folderNote(folder, route.holes.length, route.project.length);
+  if (route.skipped.length || note) {
     const loaded = route.holes.length + route.project.length;
+    const skipped = route.skipped.length ? (loaded ? `Загрузится файлов: ${loaded}. Не загрузятся:` : "Эти файлы пока не загружаются:") : null;
     await showMessage({
       title: "Импорт файлов",
-      message: loaded ? `Загрузится файлов: ${loaded}. Не загрузятся:` : "Эти файлы пока не загружаются:",
-      log: route.skipped.join("\n"),
+      message: [note, skipped].filter(Boolean).join("\n"),
+      ...(route.skipped.length ? { log: route.skipped.join("\n") } : {}),
     });
   }
   if (route.objects.length) openObjectsWizard(route.objects, prefer === "objects" ? "lines" : "objects", null, folder);

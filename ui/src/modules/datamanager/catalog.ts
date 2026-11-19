@@ -232,17 +232,22 @@ export function dropReason(rows: readonly CatalogRow[], ids: readonly number[], 
 
 export const ROW_H = 24;
 export const OVERSCAN = 8;
+/** Rows in the DOM at most (Д-20): the overscan shrinks in a tall window. */
+export const MAX_DOM_ROWS = 60;
 
 /**
- * The rows the table draws: those in the viewport and `overscan` above and below — [start, end). 1 000 rows in a
- * window of 600 px — about 40 in the DOM (Д-20: ≤ 60).
+ * The rows the table draws: those in the viewport and up to `overscan` above and below — [start, end), at most
+ * `MAX_DOM_ROWS` (Д-20: ≤ 60; Э11 11.21: a window above ~1 060 px drew 61 and more). 1 000 rows in a window of
+ * 600 px — 41 in the DOM; in 1 200 px — 60 (overscan 5). Only a viewport taller than 60 rows (1 440 px) draws more:
+ * the rows in sight are never left out.
  */
 export function visibleRange(scrollTop: number, viewHeight: number, total: number, rowH = ROW_H, overscan = OVERSCAN): [number, number] {
   if (total <= 0) return [0, 0];
-  const top = Math.max(0, Math.floor(Math.max(0, scrollTop) / rowH) - overscan);
-  const shown = Math.ceil(Math.max(rowH, viewHeight) / rowH) + 2 * overscan;
+  const inView = Math.ceil(Math.max(rowH, viewHeight) / rowH);
+  const over = Math.max(0, Math.min(overscan, Math.floor((MAX_DOM_ROWS - inView) / 2)));
+  const top = Math.max(0, Math.floor(Math.max(0, scrollTop) / rowH) - over);
   const start = Math.min(top, Math.max(0, total - 1));
-  return [start, Math.min(total, start + shown)];
+  return [start, Math.min(total, start + inView + 2 * over)];
 }
 
 /** The scroll that brings the row `i` into the viewport (the keyboard focus); null — it is there already. */

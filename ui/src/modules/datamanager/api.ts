@@ -143,6 +143,17 @@ export async function loadCatalog(): Promise<void> {
   }
 }
 
+/** The rows of the ids (the catalog read again when it lacks one of them) and the ids that are not there. */
+export async function catalogRowsOf(ids: readonly number[]): Promise<{ rows: CatalogRow[]; missing: number[] }> {
+  let rows = catalogStore.get().rows;
+  if (!catalogStore.get().loaded || ids.some((id) => !rows.some((r) => r.id === id))) {
+    await loadCatalog();
+    rows = catalogStore.get().rows;
+  }
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return { rows: ids.flatMap((id) => byId.get(id) ?? []), missing: ids.filter((id) => !byId.has(id)) };
+}
+
 /** Keeps the catalog in step while the window is open; returns the unsubscribe. */
 export function bindCatalog(): () => void {
   let uid = projectStore.get().current?.uid ?? null;

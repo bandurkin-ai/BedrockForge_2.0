@@ -14,10 +14,10 @@ import { useStore } from "../../shell/useStore";
 import { closeWindow } from "../../shell/windows";
 import css from "../../shell/PropsParts.module.css";
 import jobsCss from "../jobs/Jobs.module.css";
-import { cancelJob, jobsStore, onCoreEvent, refresh as refreshJobs, STATUS_TITLES } from "../jobs/state";
+import { cancelJob, jobsStore, refresh as refreshJobs, STATUS_TITLES } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { overwriteQuestion, startWithOverwrite } from "../rasters/export";
-import { loadExportable, startOmfExport, type ExportableLists, type OmfExportResult } from "./api";
+import { followExportable, startOmfExport, type ExportableLists, type OmfExportResult } from "./api";
 import { chosenText, exportBody, exportName, exportReason, initialChosen, keepChosen, LIST_KEYS, LIST_TITLES, NONE, resultText, rowNote, type Chosen, type ListKey } from "./omfExport";
 
 export function OmfExportWindow({ winId, ids }: { winId: string; ids?: number[] }) {
@@ -30,27 +30,17 @@ export function OmfExportWindow({ winId, ids }: { winId: string; ids?: number[] 
   const [job, setJob] = useState<{ source: string; id: number } | null>(null);
   const live = useStore(jobsStore, (s) => (job ? s.jobs.find((j) => j.source === job.source && j.id === job.id) : undefined));
 
-  useEffect(() => {
-    let alive = true;
-    let first = true;
-    const read = () =>
-      loadExportable()
-        .then((l) => {
-          if (!alive) return;
+  useEffect(
+    () =>
+      followExportable(
+        (l, first) => {
           setLists(l);
           setChosen((cur) => (first ? initialChosen(l, ids ?? null) : keepChosen(l, cur)));
-          first = false;
-        })
-        .catch((e: unknown) => alive && setError(errorText(e)));
-    void read();
-    const off = onCoreEvent((event) => {
-      if (event === "objects.changed") void read();
-    });
-    return () => {
-      alive = false;
-      off();
-    };
-  }, [ids]);
+        },
+        (e) => setError(errorText(e)),
+      ),
+    [ids],
+  );
 
   const empty: ExportableLists = { wireframes: [], line_files: [], block_models: [] };
   const l = lists ?? empty;

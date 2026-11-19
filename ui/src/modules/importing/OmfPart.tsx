@@ -42,8 +42,8 @@ export function OmfPart({ file, info, blocks }: { file: string; info: OmfInfo | 
       )}
       {blocks.length > 0 && (
         <ul className={css.issues} aria-label={`Блочные модели ${file}`}>
-          {blocks.map((b) => (
-            <li key={b.name}>Блочная модель {blockEntryText(b)}</li>
+          {blocks.map((b, i) => (
+            <li key={`${i}:${b.name}`}>Блочная модель {blockEntryText(b)}</li>
           ))}
         </ul>
       )}

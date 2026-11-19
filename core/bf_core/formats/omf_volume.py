@@ -23,7 +23,8 @@ bytes, free space checked first → `disk_full`), the files are mapped (`mmap`, 
 taken in ascending `idx` by portions, their OMF numbers computed — nothing is sorted. Memory: a few portions of
 every field (and the mapped pages the system can drop); the maps are closed before their files are removed
 (Windows, ТЗ 17.2.6). A cancel (`progress` raising, also inside a block: every ≤ `STEP` bytes) or a failure
-leaves no temporary file and discards the sink. `MemoryError` → `out_of_memory`, a full disk → `disk_full`.
+leaves no temporary file and discards the sink — the last report (1.0) comes before `sink.finish()`, so a cancel
+there stages nothing either. `MemoryError` → `out_of_memory`, a full disk → `disk_full`.
 """
 
 from __future__ import annotations
@@ -117,7 +118,14 @@ def volume_grid(vol: OmfVolume) -> VolumeGrid:
         t = tensors[a]
         counts[k] = len(t)
         steps[k] = t if sign > 0 else t[::-1]
-        corner[k] = float(vol.origin[k]) if sign > 0 else float(vol.origin[k]) - math.fsum(t)
+        try:
+            span = math.fsum(t)
+        except OverflowError:  # steps near the largest float
+            span = math.inf
+        origin = float(vol.origin[k])
+        corner[k] = origin if sign > 0 else origin - span
+        if not (math.isfinite(origin) and math.isfinite(span) and math.isfinite(corner[k] + span)):
+            raise damaged(f"{label}: начало координат или размер сетки вне диапазона чисел.")
     grid: dict[str, Any] = {"corner": corner, "counts": counts}
     if all(all(s == st[0] for s in st) for st in steps):
         grid["size"] = [st[0] for st in steps]
@@ -209,11 +217,14 @@ def _field(f: OmfFile, data: dict[str, Any], name: str, unit: str | None, n: int
     if cls == "ScalarData":
         meta = {"name": name, "kind": bs.NUMBER, "unit": unit}
         return _Field(meta, lambda _cells: _decoded(f, block, what, n, _numbers, STEP), block, 8)
-    labels_ = legend_labels(f, data, what)
+    try:
+        labels_ = legend_labels(f, data, what, bs.MAX_LABELS)  # at most MAX_LABELS values are inflated
+    except FormatError as exc:
+        if exc.code != "omf_too_large":
+            raise
+        return f"больше {n_text(bs.MAX_LABELS)} подписей"
     if labels_ is None:
         return "у данных нет легенды с подписями"
-    if len(labels_) > bs.MAX_LABELS:
-        return f"больше {n_text(bs.MAX_LABELS)} подписей"
     if block.dtype[1] == "b":
         raise damaged(f"{what}: номера категорий должны быть числами.")
     meta = {"name": name, "kind": bs.CATEGORY, "unit": unit, "labels": labels_}
@@ -351,6 +362,7 @@ def read_volume(
                     return out
 
                 kept = _write(sink, fields, n, portion, gather, (0.6, 1.0), tick)
+            tick(1.0, f"Прочитано ячеек: {n_text(kept)}")  # a cancel here discards the sink: nothing is staged
             staged = sink.finish()
         except BaseException:
             if sink is not None:
@@ -374,7 +386,6 @@ def read_volume(
         warnings.append(f"{label}: в ячейках нет данных — загружены все {n_text(n)} ячеек сетки")
     elif kept < n:
         warnings.append(f"{label}: ячеек без значений {n_text(n - kept)} из {n_text(n)} — не загружены")
-    tick(1.0, f"Прочитано ячеек: {n_text(kept)}")
     fields_out = getattr(staged, "fields", None) or [dict(x.meta) for x in fields]
     source = {"format": "omf", "file": f.path.name, "element": vol.name}
     return VolumeRead(vol.name, vg.grid, fields_out, kept, staged, source, vol.entry.color, warnings)

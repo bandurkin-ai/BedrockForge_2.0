@@ -6,7 +6,7 @@ import type { CommandSource } from "../../shell/commands";
 import { askConfirm, askText, showMessage } from "../../shell/dialogs";
 import { openWindow } from "../../shell/windows";
 import { refresh as refreshJobs } from "../jobs/state";
-import { moveToFolder } from "../datamanager/api";
+import { catalogStore, loadCatalog, moveToFolder } from "../datamanager/api";
 import { exportObjectsCommand, wantsObjects } from "./exportObjectsModel";
 import { createProject, deleteProject, demoProject, openProject, projectStore, refreshCurrent, updateProject } from "./state";
 
@@ -163,6 +163,7 @@ export function bindProjects(app: App): void {
       await guarded(async () => {
         await refreshCurrent(app);
         await refreshJobs();
+        if (catalogStore.get().loaded) await loadCatalog(); // «Менеджер данных» is open (or was)
       });
       return "Данные перечитаны";
     },

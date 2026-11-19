@@ -47,6 +47,9 @@ from bf_core.formats.meshset import MeshSet, drop_unused, source_of
 from bf_core.formats.omf_compose import OmfComposition, OmfData, OmfEntry, compose
 from bf_core.formats.omf_file import (
     FORMAT,
+    MAX_LABELS,
+    MAX_MESH_TRIANGLES,
+    MAX_MESH_VERTICES,
     Block,
     OmfFile,
     damaged,
@@ -93,13 +96,14 @@ def _text(v: Any) -> str:
     return str(v).strip()
 
 
-def legend_labels(f: OmfFile, data: dict[str, Any], what: str) -> list[str] | None:
-    """Labels of MappedData: the first legend that is not colours (numbers and dates become text)."""
+def legend_labels(f: OmfFile, data: dict[str, Any], what: str, limit: int = MAX_LABELS) -> list[str] | None:
+    """Labels of MappedData: the first legend that is not colours (numbers and dates become text). More than
+    `limit` labels — `omf_too_large`, found while the block inflates (no more than `limit` values are read)."""
     for uid in data.get("legends") or []:
         legend = f.get(uid, f"{what}: легенда", "Legend")
         if f.get(legend.get("values"), f"{what}: значения легенды").get("__class__") == "ColorArray":
             continue
-        values = f.array(legend.get("values"), f"{what}: значения легенды")
+        values = f.array(legend.get("values"), f"{what}: значения легенды", max_rows=limit)
         if isinstance(values, np.ndarray):
             if values.ndim != 1:
                 raise damaged(f"{what}: значения легенды должны быть одним столбцом.")
@@ -149,14 +153,14 @@ def column(f: OmfFile, data: dict[str, Any], n: int, what: str) -> tuple[str, np
 
 
 def _xyz(f: OmfFile, uid: Any, what: str) -> np.ndarray:
-    v = f.array(uid, what)
+    v = f.array(uid, what, max_rows=MAX_MESH_VERTICES)
     if not isinstance(v, np.ndarray) or v.ndim != 2 or v.shape[1] != 3 or v.dtype.kind not in "fiu":
         raise damaged(f"{what}: вершины должны быть тройками чисел (Vector3Array).")
     return v.astype(np.float64, copy=False)
 
 
 def _indices(f: OmfFile, uid: Any, width: int, what: str) -> np.ndarray:
-    t = f.array(uid, what)
+    t = f.array(uid, what, max_rows=MAX_MESH_TRIANGLES if width == 3 else MAX_MESH_VERTICES)
     if not isinstance(t, np.ndarray) or t.ndim != 2 or t.shape[1] != width or t.dtype.kind not in "iu":
         raise damaged(f"{what}: номера вершин должны быть целыми числами по {width}.")
     return t

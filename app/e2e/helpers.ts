@@ -259,8 +259,9 @@ export async function saveGridLines(page: Page, layerId: number, baseVersion: nu
   return r.body.version!;
 }
 
-/** Runs a command of the registry as a click would (the hook of the 3D window, BF_E2E=1). */
+/** Runs a command of the registry as a click would (the hook of the 3D window, BF_E2E=1; waits for the hook). */
 export async function runCommand(page: Page, id: string, args: Record<string, unknown> = {}): Promise<{ ok: boolean; result: string }> {
+  await expect.poll(() => page.evaluate(() => typeof window.__bfScene?.run === "function"), { timeout: 60_000, intervals: [100, 200, 400] }).toBe(true);
   return page.evaluate(([i, a]) => window.__bfScene!.run(i as string, a as Record<string, unknown>), [id, args] as const);
 }
 

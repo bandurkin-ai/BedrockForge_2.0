@@ -16,10 +16,12 @@ never inflated here. Cells and nodes of grids go in Fortran order (u fastest, th
 
 A ZIP («PK») is OMF 2 (omf-python 2, Incline Design): refused with `omf2_not_supported` and a hint.
 
-Limits against «bombs» (S4): the JSON offset within [60, size), the JSON ≤ 256 MiB and ≤ 10⁶ objects; a block
-within [60, JSON) with a dtype of the list; a block is inflated by `zlib.decompressobj` in portions of ≤ 16 MiB
-(`max_length`): a size known in advance must match exactly, otherwise the output is at most 1 032 × the
-compressed length (the bound of deflate) and 2³¹ values. Nothing is allocated for more than the limit.
+Limits against «bombs» (S4): the JSON offset within [60, size), the JSON ≤ 64 MiB (its lists of numbers take
+8–12 times more as Python objects) and ≤ 10⁶ objects; a block within [60, JSON) with a dtype of the list; a block
+is inflated by `zlib.decompressobj` in portions of ≤ 16 MiB (`max_length`): a size known in advance must match
+exactly, otherwise the output is at most 1 032 × the compressed length (the bound of deflate), `max_rows` rows the
+caller allows (vertices ≤ 3 × `MAX_MESH_TRIANGLES`, triangles ≤ `MAX_MESH_TRIANGLES`, a legend ≤ `MAX_LABELS`)
+and `MAX_BLOCK` bytes whatever the caller. Nothing is allocated for more than the limit (`omf_too_large`).
 
 Errors — `FormatError` {code, message, hint}, Russian texts: omf_damaged, omf2_not_supported, omf_version,
 omf_too_large, out_of_memory (disk_full — `omf_volume`).
@@ -60,14 +62,18 @@ VERSION = b"OMF-v0.9.0"
 HEADER_SIZE = 60
 ZIP_MAGIC = b"PK"
 
-MAX_JSON = 256 << 20
+MAX_JSON = 64 << 20
 MAX_OBJECTS = 1_000_000
 MAX_DICTS = 4 * MAX_OBJECTS  # every JSON object, nested ones too (a block descriptor is one)
 CHUNK = 16 << 20  # input and output portions of inflating
 MAX_RATIO = 1032  # deflate never inflates more than this (zlib streams stay below it)
 MAX_VALUES = 1 << 31
 MAX_VOLUME_CELLS = 200_000_000  # ADR 0017 решение 14
-MAX_GRID_TRIANGLES = 50_000_000  # of a grid surface (`mesh_io.MAX_TRIANGLES`): its nodes come from the JSON
+MAX_MESH_TRIANGLES = 50_000_000  # `mesh_io.MAX_TRIANGLES` (not imported: no numpy before it is needed)
+MAX_MESH_VERTICES = 3 * MAX_MESH_TRIANGLES  # a vertex of every corner at most (also line vertices, segments)
+MAX_GRID_TRIANGLES = MAX_MESH_TRIANGLES  # of a grid surface: its nodes come from the JSON
+MAX_LABELS = 100_000  # labels of a legend (`blocks.schema.MAX_LABELS`)
+MAX_BLOCK = MAX_MESH_VERTICES * 24  # bytes of any block without a known size: the vertices of the largest mesh
 AXIS_TOL = 1e-9
 
 ARRAY_WIDTH = {"ScalarArray": 1, "Vector2Array": 2, "Vector3Array": 3, "Int2Array": 2, "Int3Array": 3}
@@ -396,15 +402,21 @@ class OmfFile:
             raise damaged(f"{what}: двоичный блок за пределами данных файла (файл обрезан или повреждён).")
         return Block(start, length, str(dtype), width)
 
-    def inflate(self, block: Block, what: str, rows: int | None = None, portion: int | None = None) -> Iterator[bytes]:
+    def inflate(
+        self, block: Block, what: str, rows: int | None = None, portion: int | None = None, max_rows: int | None = None
+    ) -> Iterator[bytes]:
         """The bytes of a block in portions of ≤ `portion` (default `CHUNK`) read and inflated at a time. `rows` —
-        the size known in advance: exactly rows × width values; otherwise at most `MAX_RATIO` × the block length
-        and `MAX_VALUES` values. Several blocks may be inflated in turn (each keeps its own place in the file)."""
+        the size known in advance: exactly rows × width values; otherwise at most `MAX_RATIO` × the block length,
+        `max_rows` rows (when given), `MAX_VALUES` values and `MAX_BLOCK` bytes. Several blocks may be inflated in
+        turn (each keeps its own place in the file)."""
         step = max(int(portion or CHUNK), 1)
         if rows is not None:
             limit = rows * block.row_bytes
         else:
-            limit = min(MAX_RATIO * block.length, MAX_VALUES * block.itemsize)
+            cap = min(MAX_VALUES * block.itemsize, MAX_BLOCK)
+            if max_rows is not None:
+                cap = min(cap, max(int(max_rows), 0) * block.row_bytes)
+            limit = min(MAX_RATIO * block.length, cap)
         d = zlib.decompressobj()
         pos, left, tail, out, counted = block.start, block.length, b"", 0, 0
         try:
@@ -422,7 +434,7 @@ class OmfFile:
                 tail = d.unconsumed_tail
                 out += len(part)
                 if out > limit:
-                    raise self._over(what, rows, limit)
+                    raise self._over(what, rows, limit, block)
                 if part:
                     yield part
                 consumed = block.length - left - len(tail)
@@ -434,7 +446,7 @@ class OmfFile:
                 part = d.flush()  # pending output of the last input: a few hundred bytes at most
                 out += len(part)
                 if out > limit:
-                    raise self._over(what, rows, limit)
+                    raise self._over(what, rows, limit, block)
                 if part:
                     yield part
         except zlib.error:
@@ -448,16 +460,21 @@ class OmfFile:
             raise damaged(f"{what}: размер данных не кратен типу {block.dtype} × {block.width}.")
 
     @staticmethod
-    def _over(what: str, rows: int | None, limit: int) -> FormatError:
+    def _over(what: str, rows: int | None, limit: int, block: Block) -> FormatError:
         if rows is not None:
             return damaged(f"{what}: в двоичном блоке больше значений, чем {n_text(rows)}.")
+        if limit == MAX_RATIO * block.length:
+            return too_large(
+                f"{what}: двоичный блок распаковывается больше чем в {MAX_RATIO} раз — файл повреждён или это «бомба»."
+            )
         return too_large(
-            f"{what}: двоичный блок распаковывается больше чем в {MAX_RATIO} раз или больше чем на "
-            f"{n_text(MAX_VALUES)} значений — файл повреждён или это «бомба»."
+            f"{what}: в двоичном блоке больше {n_text(limit // block.row_bytes)} значений — больше предела "
+            "загрузки (файл повреждён или слишком велик)."
         )
 
-    def read(self, block: Block, what: str, rows: int | None = None) -> np.ndarray:
-        """The values of a block: (n,) for a width of 1, else (n, width); no copy beyond the inflated bytes."""
+    def read(self, block: Block, what: str, rows: int | None = None, max_rows: int | None = None) -> np.ndarray:
+        """The values of a block: (n,) for a width of 1, else (n, width); no copy beyond the inflated bytes.
+        `max_rows` — at most so many rows when the size is not known in advance (`inflate`)."""
         import numpy as np
 
         try:
@@ -469,7 +486,7 @@ class OmfFile:
                     pos += len(part)
             else:
                 acc = bytearray()
-                for part in self.inflate(block, what):
+                for part in self.inflate(block, what, max_rows=max_rows):
                     acc += part
                 buf = np.frombuffer(acc, dtype=np.uint8)
         except MemoryError:
@@ -477,14 +494,18 @@ class OmfFile:
         values = buf.view(np.dtype(block.dtype))
         return values if block.width == 1 else values.reshape(-1, block.width)
 
-    def array(self, uid: Any, what: str, rows: int | None = None) -> np.ndarray | list[Any]:
-        """A numeric array as numpy, or the list of a String/DateTime/ColorArray (`rows` checked too)."""
+    def array(
+        self, uid: Any, what: str, rows: int | None = None, max_rows: int | None = None
+    ) -> np.ndarray | list[Any]:
+        """A numeric array as numpy, or the list of a String/DateTime/ColorArray (`rows`, `max_rows` checked too)."""
         ref = self.block_of(uid, what)
         if isinstance(ref, list):
             if rows is not None and len(ref) != rows:
                 raise damaged(f"{what}: {n_text(len(ref))} значений вместо {n_text(rows)}.")
+            if rows is None and max_rows is not None and len(ref) > max_rows:
+                raise too_large(f"{what}: больше {n_text(max_rows)} значений — больше предела загрузки.")
             return ref
-        return self.read(ref, what, rows)
+        return self.read(ref, what, rows, max_rows)
 
 
 def open_omf(path: str | Path) -> OmfFile:

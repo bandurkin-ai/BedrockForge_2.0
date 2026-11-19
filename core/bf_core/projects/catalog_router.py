@@ -3,7 +3,8 @@
 * `GET /catalog?folder=&kind=&q=&sort=&desc=&offset=&limit=` → `{total, rows}`;
 * `GET /catalog/folders` → `{folders: [{folder, count}]}`;
 * `POST /catalog/move {ids, folder}` → `{moved, folder}` in one transaction, then `objects.changed {kind, id, ids,
-  folder, moved: true}` for each kind of the objects moved; «только просмотр» — 423.
+  folder, moved: true}` for each kind of the objects moved; «только просмотр» — 423; an object a job is still
+  building — 409 `object_not_ready`.
 
 The paths are given in full (no prefix): the router is included by `exporting/router.py`.
 """

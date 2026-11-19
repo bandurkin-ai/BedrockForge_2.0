@@ -245,8 +245,9 @@ def folders(conn: sa.Connection) -> dict[str, Any]:
 
 def move(conn: sa.Connection, ids: Sequence[int], folder: str | None) -> dict[str, list[int]]:
     """Objects of the catalog into `folder` (None or "" — the root) in the caller's transaction. Returns the ids
-    moved by the kind of their objects (for `objects.changed`). ApiError: 404 `object_not_found`, 422
-    `folder_too_long`, `too_many_objects`."""
+    moved by the kind of their objects (for `objects.changed`). Only finished objects move: one a job is still
+    building (its end writes its folder) — 409 `object_not_ready`. ApiError: 404 `object_not_found`, 409
+    `object_not_ready`, 422 `folder_too_long`, `too_many_objects`."""
     wanted = list(dict.fromkeys(int(i) for i in ids))
     if len(wanted) > MAX_MOVE:
         raise ApiError(422, "too_many_objects", "Объектов для переноса больше 20 000.", "Перенесите их частями.")
@@ -256,10 +257,22 @@ def move(conn: sa.Connection, ids: Sequence[int], folder: str | None) -> dict[st
             422, "folder_too_long", f"Путь папки длиннее {MAX_FOLDER} символов.", "Выберите папку с коротким именем."
         )
     by_kind: dict[str, list[int]] = {}
+    building: list[str] = []
     for chunk in _chunks(wanted):
-        for r in conn.execute(sa.select(objects.c.id, objects.c.kind).where(objects.c.id.in_(chunk))):
-            if str(r.kind) in DATA_KINDS:
+        for r in conn.execute(
+            sa.select(objects.c.id, objects.c.kind, objects.c.name, objects.c.state).where(objects.c.id.in_(chunk))
+        ):  # fmt: skip
+            if str(r.kind) not in DATA_KINDS:
+                continue
+            if r.state != "ready":
+                building.append(str(r.name))
+            else:
                 by_kind.setdefault(str(r.kind), []).append(int(r.id))
+    if building:
+        raise ApiError(
+            409, "object_not_ready", f"«{building[0]}» ещё создаётся заданием: его нельзя перенести в другую папку.",
+            "Дождитесь окончания задания и повторите перенос.",
+        )  # fmt: skip
     if sum(len(v) for v in by_kind.values()) != len(wanted):
         raise ApiError(404, "object_not_found", "Часть объектов не найдена.", "Обновите менеджер данных и повторите.")
     for chunk in _chunks(wanted):

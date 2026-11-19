@@ -101,6 +101,7 @@ export class Scene {
         contentChanged: () => this.contentChanged(),
         gridChanged: () => this.refreshGrid(),
         invalidate: () => this.loop.invalidate(),
+        gpu: () => this.gpu.gpuClass,
       },
       this.clipPlanes,
       this.resolution,
