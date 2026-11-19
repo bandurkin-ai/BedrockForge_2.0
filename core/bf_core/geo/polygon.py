@@ -15,7 +15,7 @@ first; the vertices it leaves out (it drops a vertex equal to its neighbour) lie
 triangles and are put back by a fan from that triangle's third corner. If its answer still does not cover
 the outline (a self-touching outline), the ear clipping below is used: it always gives k − 2 triangles —
 where no true ear exists it cuts the least harmful corner, so the cap stays watertight even where it is
-degenerate. Ear clipping is O(k²); it is the rare path.
+degenerate. Ear clipping is O(k²); it is the rare path, refused above `EAR_CLIP_MAX` vertices.
 
 Ported from BF `geo/stitch.py` (planes and polygons, `_ear_clip`, `_covers_outline`, `cap_triangles`).
 Differences: earcut instead of the triangulator of manifold3d (ADR 0015 §7), the fan that restores dropped
@@ -30,6 +30,7 @@ from bf_core.geo.meshes import MeshError
 from bf_core.jit import njit
 
 HINT = "Проверьте контуры и параметры операции."
+EAR_CLIP_MAX = 20_000  # vertices: the O(k²) ear clipping is not tried on a larger outline (about a second)
 
 
 class StitchError(MeshError):
@@ -243,6 +244,12 @@ def triangulate(q: np.ndarray) -> np.ndarray:
     p = np.ascontiguousarray(p - p.mean(axis=0))
     tris = _earcut(p)
     if tris is None:
+        if n > EAR_CLIP_MAX:
+            raise StitchError(
+                f"Полигон из {n} вершин не удаётся разбить на треугольники: его контур касается или пересекает "
+                "сам себя.",
+                code="cap_failed", hint="Поправьте контур (уберите самокасания) или проредите его.",
+            )  # fmt: skip
         tris = np.asarray(ear_clip(p), dtype=np.int64)
     if not ccw:
         tris = (n - 1 - tris)[:, ::-1]
