@@ -3,8 +3,9 @@
 `POST /geometry/stitch/preview {contours, ties, start_cap, end_cap, cap_distance}` — coordinates from the working
 copy of the editor (the contours may be unsaved): at most `MAX_CONTOURS` contours and `MAX_VERTICES` vertices,
 else 422 `preview_too_large` («создайте каркас операцией»). It runs in the process of the API, so without the
-search for self-intersections (`check=False`: ~90 ms of the 288 ms of 20 × 500 vertices, PROGRESS «Э9 С»); the
-operation `stitch` checks them. The answer is BFA1 `mesh`: `xyz` <f4 — offsets from the whole-metre origin of
+search for self-intersections (`check=False`); the operation `stitch` checks them. 20 × 500 vertices: ~45 ms with
+the body checked (`bench/scenarios/stitch.py`, budget 100 ms; was ~290 ms before the bounded search of the best
+start and the strips in threads, 9.37). The answer is BFA1 `mesh`: `xyz` <f4 — offsets from the whole-metre origin of
 the result (float32 only for the view, ui/src/viz/origin.ts), `idx` <u4, and in the header {origin, triangles,
 vertices, closed, volume, warnings, contours, ties}. Nothing is stored.
 
