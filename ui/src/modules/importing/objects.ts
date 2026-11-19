@@ -9,6 +9,7 @@ import { api, CoreError } from "../../shell/api";
 import { logError, logStep, type OpLog } from "../../shell/opLog";
 import { Store } from "../../shell/store";
 import { followJob } from "../jobs/follow";
+import { parseEvery, type CloudCard, type CloudMode } from "./cloud";
 import { baseName } from "./route";
 
 // ---- the composition as the core gives it --------------------------------------------------------------
@@ -60,8 +61,9 @@ export interface FileOk {
   ok: true;
   format: string;
   label: string;
-  /** "lines" — also a drawing with wireframes (DXF, DWG): its `wireframes` are loaded with its layers */
-  kind: "lines" | "points" | "raster" | "wireframes";
+  /** "lines" — also a drawing with wireframes (DXF, DWG): its `wireframes` are loaded with its layers;
+   * "cloud" — a point cloud (a LAS, or a table loaded as one; ADR 0014 §6): its card is `cloud` */
+  kind: "lines" | "points" | "raster" | "wireframes" | "cloud";
   encoding: string | null;
   crs: { name: string | null; epsg: number | null; wkt: string | null } | null;
   sidecars: string[];
@@ -77,8 +79,10 @@ export interface FileOk {
   /** option of the file → the fields to choose it from (`split_by`, `layer_field`) */
   choices: Record<string, string[]>;
   warnings: string[];
-  left_out: { what: string; count: number; reason: string }[];
+  left_out: { what: string; count: number | null; reason: string }[];
   size: number;
+  /** the header of a LAS or the head of a table loaded as a cloud (`kind: "cloud"`) */
+  cloud?: CloudCard;
 }
 
 export interface FileFailed {
@@ -122,7 +126,9 @@ export interface Composition {
 }
 
 /** How a file is read when it is not to be guessed: the encoding; the columns of a table of points; Datamine —
- * the field that divides wireframes, the field whose values are layers of strings ("" — none). */
+ * the field that divides wireframes, the field whose values are layers of strings ("" — none); a point cloud
+ * (ADR 0014 §6) — a table loaded as one (`cloud`), «каждая k-я запись» as typed (`every`), the column of the
+ * class of a table (`class_column`: "" — none; absent — found by its name). */
 export interface FileOptions {
   encoding?: string;
   x?: string;
@@ -130,7 +136,13 @@ export interface FileOptions {
   z?: string;
   split_by?: string;
   layer_field?: string;
+  cloud?: boolean;
+  every?: string;
+  class_column?: string;
 }
+
+/** What is sent for a file: the typed text as the core takes it. */
+export type SentOptions = Omit<FileOptions, "every"> & { every?: number };
 
 /** The choices of the wizard for a file: option → its Russian label. */
 export const CHOICE_TITLES: Record<string, { label: string; none: string }> = {
@@ -139,7 +151,7 @@ export const CHOICE_TITLES: Record<string, { label: string; none: string }> = {
 };
 
 /** The formats whose text the encoding changes (the others are binary, or tell their encoding themselves). */
-const NO_ENCODING = new Set(["tridb", "obj", "stl", "surpac_dtm", "dwg", "raster"]);
+const NO_ENCODING = new Set(["tridb", "obj", "stl", "surpac_dtm", "dwg", "raster", "las"]);
 export const takesEncoding = (f: FileEntry): boolean => !f.ok || !NO_ENCODING.has(f.format);
 
 /** A DWG without ODA File Converter: «Настройка › Внешние программы» (ADR 0009, ADR 0013 §6). */
@@ -224,10 +236,12 @@ export interface ObjectsState {
   error: string | null;
   starting: boolean;
   started: boolean;
+  /** «Облако точек» of the ribbon: every table of the selection is loaded as a cloud; null — «Импорт файлов» */
+  cloud?: CloudMode | null;
 }
 
-export function initialObjects(): ObjectsState {
-  return { paths: [], options: {}, level: { elevation: "", shift: "" }, composition: null, busy: false, error: null, starting: false, started: false };
+export function initialObjects(cloud: CloudMode | null = null): ObjectsState {
+  return { paths: [], options: {}, level: { elevation: "", shift: "" }, composition: null, busy: false, error: null, starting: false, started: false, cloud };
 }
 
 const n = (v: number): string => v.toLocaleString("ru-RU");
@@ -298,19 +312,46 @@ export function withoutFile(s: ObjectsState, path: string): ObjectsState {
 /** The level counts only while the selection has rasters. */
 const levelUsed = (s: ObjectsState): boolean => (s.composition?.totals.rasters ?? 0) > 0;
 
+/** «Каждая k-я запись» typed wrong, by the path of its file. */
+export function everyErrors(s: Pick<ObjectsState, "options" | "paths">): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [path, o] of Object.entries(s.options)) {
+    const e = s.paths.includes(path) ? parseEvery(o.every).error : null;
+    if (e) out[path] = e;
+  }
+  return out;
+}
+
 export function canStartObjects(s: ObjectsState): boolean {
   if (!s.composition || s.busy || s.starting || s.composition.totals.files === 0) return false;
+  if (Object.keys(everyErrors(s)).length) return false;
   return !levelUsed(s) || levelValid(parseLevel(s.level));
 }
 
+/** What is sent of the options of a file: texts that are given; `class_column` — also "" (none); `cloud` —
+ * when set, and for every file in the mode «Облако точек»; `every` — as a number (a wrong one is not sent). */
+function sentOptions(o: FileOptions, cloudMode: boolean): SentOptions {
+  const out: SentOptions = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (k === "every" || k === "cloud" || k === "class_column") continue;
+    if (typeof v === "string" && v.trim() !== "") (out as Record<string, string>)[k] = v;
+  }
+  if (typeof o.class_column === "string") out.class_column = o.class_column;
+  if (o.cloud || cloudMode) out.cloud = true;
+  const every = parseEvery(o.every);
+  if (!every.error && every.every > 1) out.every = every.every;
+  return out;
+}
+
 /** The body of `POST /import/objects`: the level goes as numbers (null — not set). */
-export function startBody(s: ObjectsState): { files: string[]; options: Record<string, FileOptions>; raster_z: { elevation: number | null; shift: number | null }; section: boolean } {
+export function startBody(s: ObjectsState): { files: string[]; options: Record<string, SentOptions>; raster_z: { elevation: number | null; shift: number | null }; section: boolean } {
   const level = parseLevel(s.level);
   const used = levelUsed(s) && levelValid(level);
-  const options: Record<string, FileOptions> = {};
-  for (const [path, o] of Object.entries(s.options)) {
-    const given = Object.fromEntries(Object.entries(o).filter(([, v]) => typeof v === "string" && v.trim() !== ""));
-    if (s.paths.includes(path) && Object.keys(given).length) options[path] = given;
+  const options: Record<string, SentOptions> = {};
+  const cloudMode = !!s.cloud;
+  for (const path of s.paths) {
+    const given = sentOptions(s.options[path] ?? {}, cloudMode);
+    if (Object.keys(given).length) options[path] = given;
   }
   return { files: s.paths, options, raster_z: { elevation: used ? level.elevation : null, shift: used && level.shift ? level.shift : null }, section: true };
 }
@@ -321,14 +362,18 @@ const errorText = (e: unknown): string => (e instanceof CoreError ? e.full : e i
 export const hasDrawing = (paths: readonly string[]): boolean => paths.some((p) => /\.dwg$/i.test(p));
 
 export class ObjectsWizard {
-  readonly store = new Store<ObjectsState>(initialObjects());
+  readonly store: Store<ObjectsState>;
   private seq = 0;
 
-  /** `syncConverter` — gives the core the ODA File Converter of «Настройка» (a restarted core has forgotten it). */
+  /** `syncConverter` — gives the core the ODA File Converter of «Настройка» (a restarted core has forgotten it);
+   * `cloud` — the mode «Облако точек» (every table is a cloud). */
   constructor(
     readonly log: OpLog,
     private readonly syncConverter?: () => Promise<unknown>,
-  ) {}
+    cloud: CloudMode | null = null,
+  ) {
+    this.store = new Store<ObjectsState>(initialObjects(cloud));
+  }
 
   /** Adds files to the selection and reads the composition of all of it (companions pair across the selection). */
   async add(paths: readonly string[]): Promise<void> {
@@ -376,6 +421,7 @@ export class ObjectsWizard {
       for (const f of r.files) {
         if (f.ok) {
           logStep(this.log, `  ${f.file}: ${f.label}${f.rasters.length ? "" : `, ${fileCounts(f)}`}${f.preliminary ? " (предварительно)" : ""}${f.warnings.length ? `; замечаний ${f.warnings.length}` : ""}`);
+          if (f.cloud) logStep(this.log, `    облако: ${f.cloud.summary}${f.cloud.every_chosen > 1 ? `; каждая ${f.cloud.every_chosen}-я запись` : ""}`);
           for (const w of f.wireframes) if (w.error) logStep(this.log, `    каркас «${w.name}» не загрузится: ${w.error.message} ${w.error.hint}`.trimEnd());
         } else logStep(this.log, `  ${f.file}: не прочитан — ${f.error.message} ${f.error.hint}`.trim());
       }

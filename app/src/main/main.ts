@@ -394,7 +394,7 @@ function registerIpc(): void {
     objects: [
       {
         name: "Все поддерживаемые",
-        extensions: [...new Set(["omf", ...wireframeFiles, ...lineFiles, ...rasterFiles, "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"])],
+        extensions: [...new Set(["omf", ...wireframeFiles, ...lineFiles, ...rasterFiles, "las", "laz", "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"])],
       },
       { name: "Все файлы", extensions: ["*"] },
     ],
@@ -409,6 +409,17 @@ function registerIpc(): void {
     ],
     rasters: [
       { name: "Растры и файлы привязки", extensions: rasterFiles },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    // «Облако точек» (ADR 0014 §6): a LAS, or a table of points loaded as a cloud; a .laz is told why it is not read.
+    las: [
+      { name: "Облака точек LAS", extensions: ["las", "laz"] },
+      { name: "Таблицы точек XYZ", extensions: ["xyz", "csv", "txt", "tsv", "prn", "dat"] },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    xyz: [
+      { name: "Таблицы точек XYZ", extensions: ["xyz", "csv", "txt", "tsv", "prn", "dat"] },
+      { name: "Облака точек LAS", extensions: ["las", "laz"] },
       { name: "Все файлы", extensions: ["*"] },
     ],
     trenches: [

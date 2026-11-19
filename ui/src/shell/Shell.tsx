@@ -54,7 +54,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "import-drillholes":
       return <ImportWizard winId={w.id} paths={w.props?.paths as string[] | undefined} mode={w.props?.mode as WizardMode | undefined} />;
     case "import-objects":
-      return <ObjectsWindow winId={w.id} paths={w.props?.paths as string[] | undefined} pick={w.props?.pick as "lines" | "rasters" | "wireframes" | undefined} />;
+      return <ObjectsWindow winId={w.id} paths={w.props?.paths as string[] | undefined} pick={w.props?.pick as "lines" | "rasters" | "wireframes" | undefined} cloud={w.props?.cloud as "las" | "xyz" | undefined} />;
     case "projects":
       return <ProjectsWindow />;
     case "project-export":

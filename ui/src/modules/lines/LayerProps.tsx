@@ -1,7 +1,8 @@
 /**
  * «Свойства» of a layer of lines or points (ТЗ 7.18; ADR 0011 §5): the name, the colour, visibility, counts,
  * length and closed lines; the attributes of the line picked in the 3D window; the table of attributes of the
- * layer by pages. Changes go through the registry (`object.rename`, `object.color`, `layer.show`).
+ * layer by pages. Changes go through the registry (`object.rename`, `object.color`, `layer.show`). A point cloud
+ * has «Свойства» of its own (`CloudProps.tsx`).
  */
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../../shell/AppContext";
@@ -13,6 +14,7 @@ import { useStore } from "../../shell/useStore";
 import css from "../../shell/PropsParts.module.css";
 import { pickedObject, sceneObjects, type LineLayerInfo } from "../scene/objects";
 import { loadAttrs } from "./actions";
+import { CloudProps } from "./CloudProps";
 import { ATTR_PAGE, attrText, featureFields, fieldTitle, findLayer, layerFacts, pageStart, pager, pickedLine, pickedTitle, rowFacts, type AttrPage } from "./props";
 import { layerKey } from "./tree";
 
@@ -25,6 +27,7 @@ export function LayerProps({ id }: { id: number }) {
   const { run, error } = useRun();
   if (!found) return null;
   const { layer, file } = found;
+  if (layer.cloud) return <CloudProps layer={layer} file={file} />; // a point cloud (ADR 0014)
   const line = pickedLine(picked, id);
   return (
     <section className={css.panel} aria-label={`Свойства: ${layer.name}`} data-testid="props-layer">

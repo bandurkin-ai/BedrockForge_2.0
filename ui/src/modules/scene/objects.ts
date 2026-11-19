@@ -9,6 +9,7 @@
 import { api, CoreError } from "../../shell/api";
 import { Store } from "../../shell/store";
 import type { ExactPick } from "../../viz/mesh/exact";
+import type { CloudSummary } from "../lines/classes";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
 
@@ -29,6 +30,8 @@ export interface LineLayerInfo {
   flat: boolean;
   extent: (number | null)[] | null;
   attr_schema: { name: string; type?: string; unit?: string | null; scope?: string }[];
+  /** a point cloud (ADR 0014): its parts, classes, colour modes and source; null / absent — an ordinary layer */
+  cloud?: CloudSummary | null;
 }
 
 export interface LineFileInfo {

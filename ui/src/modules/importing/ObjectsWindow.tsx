@@ -1,6 +1,7 @@
 /** The window «Импорт файлов» for lines, points, rasters and wireframes (ТЗ 7.8; ADR 0011 §5; ADR 0013 §6): the
  * composition of the chosen files (`ObjectsStep`), the operation log in the title (ТЗ 7.9), the start of
- * `import.objects`; the wireframes it stores are checked when it ends (`afterImport.ts`). */
+ * `import.objects`; the wireframes it stores are checked when it ends (`afterImport.ts`). `cloud` — the window
+ * «Облако точек» (ADR 0014 §6): every table of the selection is loaded as a point cloud. */
 import { useEffect, useState } from "react";
 import { bridge } from "../../bridge";
 import { useApp } from "../../shell/AppContext";
@@ -14,16 +15,17 @@ import { refresh as refreshJobs } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { afterStart } from "./afterImport";
 import type { ObjectsPick } from "./bind";
+import type { CloudMode } from "./cloud";
 import { canStartObjects, ObjectsWizard } from "./objects";
 import { ObjectsStep } from "./ObjectsStep";
 import css from "./ImportWizard.module.css";
 
-export function ObjectsWindow({ winId, paths, pick }: { winId: string; paths?: string[]; pick?: ObjectsPick }) {
+export function ObjectsWindow({ winId, paths, pick, cloud }: { winId: string; paths?: string[]; pick?: ObjectsPick; cloud?: CloudMode }) {
   const app = useApp();
   const [wizard] = useState(() => {
     const project = projectStore.get().current;
-    const log = startOpLog("Импорт файлов", "import", { uiVersion: bridge()?.appVersion(), coreVersion: app.store.get().coreVersion, project: project?.name });
-    return new ObjectsWizard(log, () => syncOda(app.store));
+    const log = startOpLog(cloud ? "Облако точек" : "Импорт файлов", "import", { uiVersion: bridge()?.appVersion(), coreVersion: app.store.get().coreVersion, project: project?.name });
+    return new ObjectsWizard(log, () => syncOda(app.store), cloud ?? null);
   });
   const s = useStore(wizard.store, (x) => x);
   useStore(opLogStore, (x) => x.version);
@@ -33,7 +35,7 @@ export function ObjectsWindow({ winId, paths, pick }: { winId: string; paths?: s
   }, [wizard, paths]);
 
   const add = async () => {
-    const files = (await bridge()?.pickFiles(pick ?? "objects", true)) ?? [];
+    const files = (await bridge()?.pickFiles(cloud ?? pick ?? "objects", true)) ?? [];
     if (files.length) await wizard.add(files);
   };
   const start = async () => {
@@ -48,7 +50,7 @@ export function ObjectsWindow({ winId, paths, pick }: { winId: string; paths?: s
   return (
     <div className={css.wrap}>
       <div className={css.top}>
-        <span className={css.steps}>Состав загрузки: что будет создано в проекте и что не загрузится</span>
+        <span className={css.steps}>{cloud ? "Облако точек: что будет загружено и сколько точек" : "Состав загрузки: что будет создано в проекте и что не загрузится"}</span>
         <button
           type="button"
           className={`${css.iconBtn} ${wizard.log.failed ? css.logFailed : ""}`}
