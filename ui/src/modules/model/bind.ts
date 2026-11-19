@@ -2,7 +2,9 @@
  * Commands of the modelling operations (ТЗ 7.23; ADR 0015 §6 «Команды»): the 12 windows `model.*` — one window
  * «model-operation» built from the schema of the core (`OperationWindow.tsx`; `model.dtm` keeps the window
  * «Построение ЦТМ» of `modules/dtm`), `model.operation {op, params, name, folder}` (confirm: a call of Claude runs
- * after the person allows it) and `model.rebuild {wireframe_id | layer_id}` (confirm). A started job is followed
+ * after the person allows it), `model.rebuild {wireframe_id | layer_id}` (confirm) and the panels of the edit mode
+ * `model.assemble {layer_id}` («Собрать из контуров», `assemble.ts`) and `model.triangles {wireframe_id}` («Править
+ * треугольники», `triangles.ts`). A started job is followed
  * (`run.ts`): «Задания» open, the wireframes made are checked, the report opens when it is done.
  */
 import type { App } from "../../shell/app";
@@ -10,6 +12,8 @@ import { needWritable, noted, refusal, showJobs, viewport } from "../../shell/ob
 import { openWindow } from "../../shell/windows";
 import { sceneObjects } from "../scene/objects";
 import { DIALOG_COMMANDS, dialogOps, dialogTitle, type Prefill } from "./opForms";
+import { startAssembly } from "./assemble";
+import { startTriangles } from "./triangles";
 import { afterStart, loadOperations, queueText, refusalOf, startOperation, startRebuild, watchOperations, type RebuildTarget, type Started } from "./run";
 
 /** The props of the window «model-operation». */
@@ -95,6 +99,10 @@ export function bindModel(app: App): void {
       writable,
     );
   }
+
+  const id = (v: unknown): number | null => (typeof v === "number" ? v : null);
+  r.bind("model.assemble", noted(app, (a) => startAssembly(app, id(a.layer_id))), writable);
+  r.bind("model.triangles", noted(app, async (a) => startTriangles(app, id(a.wireframe_id))), writable);
 
   r.bind(
     "model.operation",

@@ -209,7 +209,7 @@ describe("`model.*`, `model.operation` and `model.rebuild` (ADR 0015 §6 «Ко�
       expect(app.registry.get(id)!.confirm, id).toBe(true);
       expect(app.registry.get(id)!.stage, id).toBeUndefined();
     }
-    expect(app.registry.get("model.assemble")!.stage).toBe("Э9"); // a panel of 9.32
+    for (const id of ["model.assemble", "model.triangles"]) expect(app.registry.get(id)!.stage, id).toBeUndefined(); // the panels of 9.32–9.33
     app.store.set({ projectName: null });
     expect(app.registry.reason("model.boolean")).toBe("Откройте или создайте проект");
   });
