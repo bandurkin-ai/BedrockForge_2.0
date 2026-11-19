@@ -3,6 +3,8 @@
  * length and closed lines; the attributes of the line picked in the 3D window; the table of attributes of the
  * layer by pages. Changes go through the registry (`object.rename`, `object.color`, `layer.show`); «Правка» —
  * the string editor (`lines.edit` / `lines.finish`), «Версии…» and the version of the geometry (ADR 0015 §5).
+ * A layer an operation made (isolines, lines of intersection) has the block «Операция» (`model/BuiltProps.tsx`):
+ * the operation, the sources, the parameters, the tolerances, «Перестроить» (ТЗ 7.23; ADR 0015 §6).
  * A point cloud has «Свойства» of its own (`CloudProps.tsx`).
  */
 import { useEffect, useMemo, useState } from "react";
@@ -13,6 +15,8 @@ import { ColorField, Facts, useRun } from "../../shell/PropsParts";
 import { count } from "../../shell/treeActions";
 import { useStore } from "../../shell/useStore";
 import css from "../../shell/PropsParts.module.css";
+import { BuiltProps } from "../model/BuiltProps";
+import { asBuilt } from "../model/report";
 import { pickedObject, sceneObjects, type LineLayerInfo } from "../scene/objects";
 import { loadAttrs } from "./actions";
 import { CloudProps } from "./CloudProps";
@@ -33,6 +37,8 @@ export function LayerProps({ id }: { id: number }) {
   const { layer, file } = found;
   if (layer.cloud) return <CloudProps layer={layer} file={file} />; // a point cloud (ADR 0014)
   const line = pickedLine(picked, id);
+  // `objects.meta.built` of the layer, else of its file (`format: "operation"`)
+  const built = asBuilt((layer as { built?: unknown }).built) ?? asBuilt((file as { built?: unknown }).built);
   return (
     <section className={css.panel} aria-label={`Свойства: ${layer.name}`} data-testid="props-layer">
       <header className={css.head}>
@@ -76,6 +82,7 @@ export function LayerProps({ id }: { id: number }) {
         </span>
       </div>
       <Facts facts={layerFacts(layer, file)} />
+      {built && <BuiltProps built={built} target={{ layer_id: id }} name={layer.name} run={run} />}
       {error && (
         <p className={css.error} role="alert">
           {error}
