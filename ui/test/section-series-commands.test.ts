@@ -138,12 +138,12 @@ describe("commands of series", () => {
   it("every command of series has a button; the print is unavailable with its reason", async () => {
     await open();
     const ribbon = flattenRibbon([seriesTab(DEFAULT_VIEW)]).map((i) => i.command);
-    const inWindows = ["series.create", "series.copy", "series.delete", "series.activate"]; // «Новая серия» and «Менеджер серий»
+    const inWindows = ["series.create", "series.copy", "series.delete", "series.activate", "series.params", "series.rename"]; // «Новая серия», «Менеджер серий», the tree
     for (const c of seriesCommands) expect(ribbon.includes(c.id) || inWindows.includes(c.id), c.id).toBe(true);
     expect(app.registry.reason("series.print")).toBe(PRINT_REASON);
     expect((await app.registry.execute("series.print")).ok).toBe(false);
     expect(app.registry.reason("series.lock")).toBeNull(); // the free line is a section
-    for (const id of ["series.create", "series.copy", "series.delete"]) expect(app.registry.get(id)?.confirm, id).toBe(true);
+    for (const id of ["series.create", "series.copy", "series.delete", "series.rename"]) expect(app.registry.get(id)?.confirm, id).toBe(true);
     for (const id of ["series.new", "series.manager", "series.from_line"]) expect(app.registry.reason(id), id).toBeNull();
     expect((await app.registry.execute("series.manager")).result).toBe("Открыт «Менеджер серий»");
     expect((await app.registry.execute("series.from_line")).ok).toBe(true);

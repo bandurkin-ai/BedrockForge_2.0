@@ -36,6 +36,8 @@ export const seriesCommands: Command[] = [
     required: ["type"],
     confirm: true,
   },
+  { id: "series.params", title: "Параметры серии", description: "Окно параметров серии разрезов.", params: id, required: ["series_id"], uiOnly: true },
+  { id: "series.rename", title: "Переименовать серию", description: "Новое название серии разрезов.", params: { ...id, name: { type: "string" } }, required: ["series_id", "name"], confirm: true },
   { id: "series.copy", title: "Копировать серию", description: "Копия серии под новым номером (те же параметры).", params: id, required: ["series_id"], confirm: true },
   { id: "series.delete", title: "Удалить серию", description: "Удалить серию разрезов; контуры, оцифрованные на её разрезах, остаются.", params: id, required: ["series_id"], confirm: true },
   { id: "series.activate", title: "Сделать серию активной", description: "Показать разрез серии: k — номер разреза, как в интерфейсе (с 1; у ломаного — сегмент); без k — первый. Включает отсечение по окну разреза.", params: { ...id, k: { type: "integer" } }, required: ["series_id"] },

@@ -13,7 +13,7 @@ import { holeSection, stepProfile } from "./bind";
 import { edgeText, moveIndex, resolveGoto, type Move } from "./goto";
 import { needSectionToLock, runLock } from "./lockView";
 import { faultText, seriesApi, seriesFault, type ShadowMode } from "./seriesApi";
-import { activateSeries, copySeries, deleteSeries, openGoto, openNewSeries, openSeriesManager, seriesSaved } from "./seriesActions";
+import { activateSeries, copySeries, deleteSeries, openGoto, openNewSeries, openSeriesManager, openSeriesParams, seriesSaved } from "./seriesActions";
 import { PRINT_REASON } from "./seriesCommands";
 import { fmt, formFromLine, formFromSection, newForm, rangeOver, saveSeries, SHADOW_TITLES, type SeriesForm } from "./seriesForm";
 import { boxCorners, currentSection, ensureTable, loadSeries, putSeries, seriesById, seriesStatus, setActiveSeries, visibleBoxes } from "./seriesState";
@@ -123,6 +123,34 @@ export function bindSeries(app: App): void {
       const res = await saveSeries({ mode: "create" }, createForm(a));
       if (res.ok) return seriesSaved(res.row, true);
       throw new Error("error" in res ? `${res.error}${res.hint ? ` ${res.hint}` : ""}` : "Серия не создана");
+    },
+    needProject,
+  );
+  r.bind(
+    "series.params",
+    (a) => {
+      const row = seriesById(int(a.series_id, "Номер серии"));
+      if (!row) throw new Error("Серия разрезов не найдена: её удалили. Обновите список серий.");
+      openSeriesParams(row);
+      return `Открыты параметры серии «${row.name}»`;
+    },
+    needProject,
+  );
+  r.bind(
+    "series.rename",
+    async (a) => {
+      const row = seriesById(int(a.series_id, "Номер серии"));
+      if (!row) throw new Error("Серия разрезов не найдена: её удалили. Обновите список серий.");
+      const name = typeof a.name === "string" ? a.name.trim() : "";
+      if (!name) throw new Error("Введите название серии");
+      try {
+        putSeries(await seriesApi.patch(row.id, row.version, { name }));
+      } catch (e) {
+        const f = seriesFault(e);
+        if (f.status === 409) await loadSeries();
+        throw new Error(faultText(f));
+      }
+      return `Серия «${row.name}» переименована в «${name}»`;
     },
     needProject,
   );
