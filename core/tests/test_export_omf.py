@@ -94,7 +94,8 @@ def test_demo_and_a_model_go_to_omf_and_back(demo, target, tmp_path: Path) -> No
     pick = {
         "wireframe_ids": [w["id"] for w in offered["wireframes"]],
         "line_file_ids": [f["id"] for f in offered["line_files"] if f["available"]],
-        "block_model_ids": [b["id"] for b in offered["block_models"]],
+        # «Модель 2026» only: the demo has a model of its own (demo/blocks.py, 11.19)
+        "block_model_ids": [b["id"] for b in offered["block_models"] if b["name"] == "Модель 2026"],
     }
     path = tmp_path / "Демо"  # the extension comes with the format
     r = c.post(f"{API}/omf/export", json={"path": str(path), **pick})

@@ -83,7 +83,7 @@ def test_formats_of_the_demo(demo) -> None:  # type: ignore[no-untyped-def]
     assert by["wireframe"]["count"] >= 1 and by["wireframe"]["default"] == "dxf"
     assert by["dtm"]["count"] >= 1
     assert by["line_file"]["count"] >= 1 and by["line_file"]["default"] == "str"
-    assert by["block_model"]["count"] == 0
+    assert by["block_model"]["count"] == 1  # «Блочная модель Au» of the demo (demo/blocks.py, 11.19)
     assert {f["format"]: f["available"] for f in by["block_model"]["formats"]}["dat"] is False
     # the demo is made in the project: no source files — «Исходный файл» is unavailable with the reason
     src = {f["format"]: f for f in by["wireframe"]["formats"]}["source"]

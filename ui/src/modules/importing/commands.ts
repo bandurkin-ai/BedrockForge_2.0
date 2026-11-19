@@ -1,6 +1,6 @@
 import type { Command } from "../../shell/commands";
 
-/** Import (Э3, Э7, Э7.1, Э8, Э11). */
+/** Import (Э3, Э7, Э7.1, Э8, Э11); the export to OMF — `modules/omf/commands.ts`. */
 export const commands: Command[] = [
   {
     id: "import.files",
@@ -17,5 +17,4 @@ export const commands: Command[] = [
   { id: "points.import", title: "Облако точек", description: "Мастер загрузки облака точек: mode las — LAS 1.2–1.4 (LAZ не читается), xyz — таблица точек XYZ, CSV или TXT облаком (колонки X, Y, Z, класс); «каждая k-я запись» прореживает большое облако.", params: { mode: { type: "string", enum: ["las", "xyz"] } }, uiOnly: true, stage: "Э7.1" },
   { id: "rasters.upload", title: "Растры", description: "Изображение с файлом привязки или GeoTIFF.", uiOnly: true, stage: "Э7" },
   { id: "omf.import", title: "Импорт OMF", description: "Импорт файла OMF v1 (Leapfrog OMF 0.9): поверхности — каркасы, линии — слои, регулярные объёмы — блочные модели; состав и что не загрузится — в мастере «Импорт файлов». OMF 2 не читается.", params: { folder: { type: "string" } }, uiOnly: true, stage: "Э11" },
-  { id: "omf.export", title: "Экспорт OMF", description: "Каркасы, линии и блочные модели в один файл OMF v1.", params: { dataset_ids: { type: "string" }, filename: { type: "string" } }, stage: "Э11" },
 ];
