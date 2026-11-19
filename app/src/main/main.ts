@@ -358,6 +358,7 @@ function registerIpc(): void {
     dxf: [{ name: "AutoCAD DXF", extensions: ["dxf"] }],
     // a point cloud (ADR 0014 §6)
     las: [{ name: "Облако точек LAS", extensions: ["las"] }],
+    omf: [{ name: "OMF v1 (Leapfrog OMF 0.9)", extensions: ["omf"] }],
     jpg: [{ name: "JPEG", extensions: ["jpg", "jpeg"] }],
     png: [{ name: "PNG", extensions: ["png"] }],
     tif: [{ name: "TIFF, GeoTIFF", extensions: ["tif", "tiff"] }],

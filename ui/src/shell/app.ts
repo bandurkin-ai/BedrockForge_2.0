@@ -15,6 +15,7 @@ import { bindLines } from "../modules/lines/bind";
 import { bindProjects } from "../modules/projects/bind";
 import { bindDataManager } from "../modules/datamanager/bind";
 import { bindBlocks } from "../modules/blocks/bind";
+import { bindOmf } from "../modules/omf/bind";
 import { bindRasters } from "../modules/rasters/bind";
 import { bindStripLog } from "../charts/striplog/bind";
 import { bindScene } from "../modules/scene/bind";
@@ -152,6 +153,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindScene(app);
   bindObjects(app);
   bindBlocks(app);
+  bindOmf(app);
   bindLines(app);
   bindRasters(app);
   bindDtm(app);
