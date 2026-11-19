@@ -242,6 +242,17 @@ def test_operations_on_wireframes(oc) -> None:  # type: ignore[no-untyped-def]
     out, _ = run_here(project, "edit_triangles", {"wireframe_id": ids["a"], "remove": [0, 1]})
     w = ok(c.get(f"{API}/wireframes/{out['wireframe_ids'][0]}"))
     assert w["triangle_count"] == 10 and not w["stats"]["closed"] and w["name"] == "Куб A (правка)"
+    # «Править треугольники» (9.33): the two back by their exact corners, as the panel sends the vertices of the pick
+    with dialect.read_tx(project.engine) as conn:
+        va, ta = ws.read_wireframe(conn, BlobStore(project.folder), ids["a"])
+    corners = [va[ta[k]].tolist() for k in (0, 1)]
+    out, _ = run_here(project, "edit_triangles", {"wireframe_id": w["id"], "add": corners})
+    back = ok(c.get(f"{API}/wireframes/{out['wireframe_ids'][0]}"))
+    assert back["triangle_count"] == 12 and back["point_count"] == 8 and back["stats"]["closed"]
+    assert back["stats"]["volume"] == pytest.approx(1000.0, rel=REL) and back["built"]["op"] == "edit_triangles"
+    with dialect.read_tx(project.engine) as conn:
+        vb, _ = ws.read_wireframe(conn, BlobStore(project.folder), back["id"])
+    assert {r.tobytes() for r in vb} == {r.tobytes() for r in va}
 
     out, _ = run_here(project, "smooth", {"wireframe_id": ids["relief"], "iterations": 3})
     assert ok(c.get(f"{API}/wireframes/{out['wireframe_ids'][0]}"))["triangle_count"] == 200
