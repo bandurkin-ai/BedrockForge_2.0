@@ -25,7 +25,7 @@ from bf_core.db import dialect
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
-from . import store
+from . import contours_router, store
 from .geometry import SeriesError
 from .schema import KIND
 
@@ -164,3 +164,6 @@ def series_table(svc: Svc, series_id: int, if_none_match: IfNoneMatch = None) ->
     if matches(if_none_match, tag):
         return Response(status_code=304, headers=headers)
     return JSONResponse(_errors(lambda: store.table(r)), headers=headers)
+
+
+router.include_router(contours_router.router)  # …/{id}/contours, …/{id}/links
