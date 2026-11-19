@@ -186,6 +186,7 @@ def test_composition_of_a_selection(files: dict[str, Path], project) -> None:  #
     ]
     assert strings["totals"] == {
         "layers": 2, "lines": 3, "points": 0, "vertices": 13, "rasters": 0, "wireframes": 0, "triangles": 0,
+        "block_models": 0, "cells": 0,
     }  # fmt: skip
     assert strings["wireframes"] == [] and not strings["preliminary"] and strings["choices"] == {}
     assert strings["layers"][0]["length"] == pytest.approx(
@@ -217,7 +218,7 @@ def test_composition_of_a_selection(files: dict[str, Path], project) -> None:  #
     assert "«.bmf»" in rest["model.bmf"]["message"] and ".tridb" in rest["model.bmf"]["hint"]
     assert out["totals"] == {
         "files": 5, "failed": 1, "layers": 3, "lines": 3, "points": 2, "vertices": 13, "rasters": 3,
-        "wireframes": 0, "triangles": 0,
+        "wireframes": 0, "triangles": 0, "block_models": 0, "cells": 0,
     }  # fmt: skip
     assert out["raster_z"] == {"applies": True, "elevation": 250.5, "shift": -5.0}
     assert state_of(project.engine, project.folder) == was  # nothing is written

@@ -30,11 +30,9 @@ the opened file as `ObjectsRead.cloud` — its points are read later, portion by
 (`importing/object_cloud.py`); `inspect=True` gives `formats.las.LasInspect` as `detail`. A `.laz` is told by its
 name: `laz_not_supported` with the hint of ADR 0014. A table of points goes into a cloud when the wizard asks for one
 (the option `cloud` of the file): `formats/points_stream.py`, not through this registry.
-OMF v1 (Э11, ADR 0017 §2; `_omf`): `detail` — `omf_compose.OmfComposition`, `left_out` — what does not load. The
-composition (`inspect=True`) is the JSON alone: `entries` — the surfaces, `volumes` — the volume entries, no layer
-is read. Reading: the line sets are the `layers` (in memory), the surfaces come one at a time (`meshes`, each with
-the notes of its element), `volumes` — the `OmfEntry` of the volumes that load, read later by the import
-(`importing/object_blocks.py`). A ZIP (OMF 2) is refused by `omf_file.open_omf`: `omf2_not_supported`.
+OMF v1 (ADR 0017 §2, `_omf`): `detail` — the `OmfComposition`, `left_out`, `volumes` (entries, read by the import);
+`inspect=True` — the JSON alone; reading — the line sets as `layers`, the surfaces one at a time. OMF 2 (ZIP) —
+`omf2_not_supported` (`omf_file.open_omf`).
 
 Ported from BF `formats/registry.py` (table part: `TABLE_SUFFIXES`; object part: `detect`, `pair_files` of
 `rasters.py`) and `importing/service.py` (`read_table`, `check_supported`); block models and OMF come with
@@ -508,10 +506,12 @@ def _omf(out: ObjectsRead, opener: Any, path: Path, tick: Progress, inspect: boo
         out.crs = _omf_crs(comp.crs, out.warnings)
 
 
-def omf_note(labels: Mapping[str, str], x: Mapping[str, Any]) -> str:
-    """A line of the journal for an entry of `left_out`: «Поверхность «a»: текстуры (2) — …»."""
+def omf_note(labels: Mapping[str, str], x: Mapping[str, Any], own: bool = False) -> str:
+    """A line of the journal for an entry of `left_out`: «Поверхность «a»: текстуры (2) — …»; `own` — without
+    the element (a note of the object made of it)."""
     count = f" ({x['count']})" if x["what"] == "текстуры" else ""
-    return f"{labels.get(x['key'], x['element'])}: {x['what']}{count} — {x['reason']}"
+    text = f"{x['what']}{count} — {x['reason']}"
+    return text if own else f"{labels.get(x['key'], x['element'])}: {text}"
 
 
 def _omf_surfaces(out: ObjectsRead, reader: Any, tick: Progress) -> Iterator[MeshSet]:
@@ -523,7 +523,7 @@ def _omf_surfaces(out: ObjectsRead, reader: Any, tick: Progress) -> Iterator[Mes
     try:
         for mesh in reader.surfaces(skip_bad=True):
             key = mesh.source.get("element")
-            mesh.warnings.extend(f"{x['what']} — {x['reason']}" for x in reader.left_out if x["key"] == key)
+            mesh.warnings.extend(omf_note({}, x, own=True) for x in reader.left_out if x["key"] == key)
             yield mesh
         out.unread.extend(MeshEntry(u["key"], u["name"], None, None, error=u["error"])
                           for u in reader.unread if u["kind"] == "surface")  # fmt: skip

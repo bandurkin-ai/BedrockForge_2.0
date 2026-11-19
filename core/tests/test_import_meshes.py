@@ -142,6 +142,7 @@ def test_composition_with_wireframes(files: dict[str, Path], project) -> None:  
     assert tridb["wireframes"][0]["attrs"] == [{"name": "Руда", "value": "Au"}] and tridb["layers"] == []
     assert tridb["totals"] == {
         "layers": 0, "lines": 0, "points": 0, "vertices": 0, "rasters": 0, "wireframes": 2, "triangles": 262,
+        "block_models": 0, "cells": 0,
     }  # fmt: skip
     mixed = by["mixed.dxf"]  # a drawing: its lines and its wireframes at once
     assert mixed["kind"] == "lines" and [layer["name"] for layer in mixed["layers"]] == ["FAULT"]
@@ -162,6 +163,7 @@ def test_composition_with_wireframes(files: dict[str, Path], project) -> None:  
     assert out["totals"] == {
         "files": 7, "failed": 0, "layers": 1, "lines": 2, "points": 0, "vertices": 3, "rasters": 0,
         "wireframes": 2 + 2 + 1 + 1 + 1 + 66 + 1, "triangles": 262 + 24 + 70 + 192 + 48 + 3590 + 7417,
+        "block_models": 0, "cells": 0,
     }  # fmt: skip
     assert state_of(project.engine, project.folder) == was  # nothing is written
 
@@ -176,7 +178,8 @@ def test_composition_with_wireframes(files: dict[str, Path], project) -> None:  
     broken = files["one.obj"].with_name("model.omf")
     broken.write_bytes(b"OMF")
     seen = inspect_files([str(broken)])
-    assert seen["rest"] == [] and seen["files"][0]["error"]["code"] == "omf_damaged" and seen["files"][0]["error"]["hint"]
+    error = seen["files"][0]["error"]
+    assert seen["rest"] == [] and error["code"] == "omf_damaged" and error["hint"]
 
 
 def test_dwg_without_the_converter_is_told(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
