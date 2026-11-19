@@ -508,8 +508,9 @@ test("perf3d cloud: the demo holes, a cloud of 10 million points, the ground fil
     const clicked = await page.evaluate(() => window.__bfScene!.state());
     expect(clicked.picked).toMatchObject({ kind: "lines", id: layer.id, on: "point" });
     // 900 thousand points on the screen: 23 ms on the development machine against the 50 ms of ТЗ 5.3 — the
-    // time goes to the report; here only a guard against a search that got several times slower
-    expect(clicked.pickMs).toBeLessThan(150);
+    // time goes to the report; here only a guard against a search that got several times slower (the .exe on the
+    // Windows runner: 186 ms in PR #24 — a slower machine, the same search)
+    expect(clicked.pickMs).toBeLessThan(process.platform === "win32" ? 400 : 150);
     await page.keyboard.press("Escape");
     await page.keyboard.press("f");
     await waitFrame(page, 300_000);

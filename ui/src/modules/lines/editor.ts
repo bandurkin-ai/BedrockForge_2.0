@@ -54,7 +54,12 @@ export function formatAt(iso: string | null): string {
 
 async function layerInfo(id: number): Promise<LineLayerInfo> {
   if (!sceneObjects.get().loaded) await loadSceneObjects();
-  const info = lineLayers().find((l) => l.id === id);
+  let info = lineLayers().find((l) => l.id === id);
+  if (!info) {
+    // a layer made a moment ago (another session, Claude) may not be in the lists yet: read them once more
+    await loadSceneObjects();
+    info = lineLayers().find((l) => l.id === id);
+  }
   if (!info) throw refusal("line_layer_not_found", `Слой линий №${id} не найден.`, "Обновите дерево проекта и выберите слой.");
   return info;
 }
