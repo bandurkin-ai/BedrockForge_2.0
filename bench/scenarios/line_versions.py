@@ -9,6 +9,9 @@ it (`lines/versions.py`, `lines/geometry_io.py`):
   save_one_s  a save with one line changed (all the others untouched: their bits from the base version);
   rewrite_s   a save with every line changed (moved by 0,5 m);
   restore_s   the return to version 2 (version 5: the blobs of version 2, no file written).
+  save_nan_s  with `squares`: a second layer of that many closed 10 × 10 squares (the closing vertex stored),
+              one vertex of every hundredth without a Z (NaN) — a save with one square changed. An empty Z
+              must not send the area in its own plane of every closed line through Python (review 9.38).
 What is checked, bit for bit (NaN and −0.0 too):
   bit_mismatches  vertices that differ from what they must be: after the one-line save — the untouched lines
                   from version 2 and the changed line as sent; after the rewrite — as sent; after the return —
@@ -50,6 +53,19 @@ def _lines(vertices: int) -> tuple[Any, Any, Any]:
     return xyz, offsets, closed.astype(np.uint8)
 
 
+def _squares(n: int) -> tuple[Any, Any, Any]:
+    """(xyz, offsets, closed) of `n` closed squares on a grid, every hundredth with one empty Z."""
+    import numpy as np
+
+    corner = np.array([[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0], [0, 0, 0]], dtype=float)
+    i = np.arange(n)
+    shift = np.stack([(i % 1000) * 20.0, (i // 1000) * 20.0, (i % 7) * 0.25], axis=1) + BASE
+    xyz = (corner[None, :, :] + shift[:, None, :]).reshape(-1, 3)
+    xyz[np.arange(0, n, 100) * 5 + 2, 2] = np.nan
+    offsets = np.arange(0, 5 * n + 1, 5, dtype=np.int64)
+    return xyz, offsets, np.ones(n, dtype=np.uint8)
+
+
 def _edit(src: Any, touched: Any, closed: Any, offsets: Any, xyz: Any) -> Any:
     import numpy as np
 
@@ -79,9 +95,18 @@ def prepare(params: dict[str, Any], work: Path) -> None:
         n = len(closed)
         body = _edit(np.full(n, -1), np.ones(n, dtype=np.uint8), closed, offsets, xyz)
         assert versions.save(engine, bs, layer_id, body, base_version=1, note="линии") == 2
+        squares_id = 0
+        if params.get("squares"):
+            sq, sq_offsets, sq_closed = _squares(int(params["squares"]))
+            np.savez(work / "squares.npz", xyz=sq, offsets=sq_offsets, closed=sq_closed)
+            with dialect.write_tx(engine) as conn:
+                squares_id = versions.create_layer(conn, bs, name="КВАДРАТЫ")
+            m = len(sq_closed)
+            body = _edit(np.full(m, -1), np.ones(m, dtype=np.uint8), sq_closed, sq_offsets, sq)
+            assert versions.save(engine, bs, squares_id, body, base_version=1) == 2
     finally:
         engine.dispose()
-    (work / "folder.txt").write_text(f"{folder}\n{layer_id}", encoding="utf-8")
+    (work / "folder.txt").write_text(f"{folder}\n{layer_id}\n{squares_id}", encoding="utf-8")
 
 
 def load() -> None:
@@ -101,6 +126,33 @@ def _mismatches(ls: Any, xyz: Any, offsets: Any, closed: Any) -> int:
     return int(bad.sum()) + int(np.count_nonzero(np.asarray(got_closed, dtype=np.uint8) != closed))
 
 
+def _save_squares(engine: Any, bs: Any, layer_id: int, work: Path, out: dict[str, Any]) -> int:
+    """One square of the layer of squares lifted by 1 m; returns the bit mismatches after the save."""
+    import time
+
+    import numpy as np
+
+    from bf_core.db import dialect
+    from bf_core.lines import versions
+
+    data = np.load(work / "squares.npz")
+    xyz, offsets, closed = data["xyz"], data["offsets"], data["closed"]
+    m = len(closed)
+    with dialect.read_tx(engine) as conn:
+        _head, _ls, lid = versions.read_current(conn, bs, layer_id)
+    k = (m // 200) * 100  # a square with an empty Z (every hundredth has one)
+    one = xyz.copy()
+    one[offsets[k] : offsets[k + 1], 2] += 1.0
+    touched = np.zeros(m, dtype=np.uint8)
+    touched[k] = 1
+    t0 = time.perf_counter()
+    versions.save(engine, bs, layer_id, _edit(lid, touched, closed, offsets, one), base_version=2)
+    out["save_nan_s"] = round(time.perf_counter() - t0, 4)
+    out["squares"] = m
+    with dialect.read_tx(engine) as conn:
+        return _mismatches(versions.read_current(conn, bs, layer_id)[1], one, offsets, closed)
+
+
 def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     import time
 
@@ -110,8 +162,8 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     from bf_core.lines import geometry_io, versions
     from bf_core.storage.blobs import BlobStore
 
-    folder_text, layer_text = (work / "folder.txt").read_text(encoding="utf-8").split("\n")
-    folder, layer_id = Path(folder_text), int(layer_text)
+    folder_text, layer_text, squares_text = (work / "folder.txt").read_text(encoding="utf-8").split("\n")
+    folder, layer_id, squares_id = Path(folder_text), int(layer_text), int(squares_text)
     data = np.load(work / "lines.npz")
     xyz, offsets, closed = data["xyz"], data["offsets"], data["closed"]
     n = len(closed)
@@ -152,6 +204,8 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         with dialect.read_tx(engine) as conn:
             bad += _mismatches(versions.read_current(conn, bs, layer_id)[1], xyz, offsets, closed)
         out["versions"] = [v3, v4, v5]
+        if squares_id:
+            bad += _save_squares(engine, bs, squares_id, work, out)
         out["bit_mismatches"] = int(bad)
     finally:
         engine.dispose()
