@@ -19,6 +19,7 @@ import { BuildDtmWindow } from "../modules/dtm/BuildDtmWindow";
 import { GroundWindow } from "../modules/dtm/GroundWindow";
 import { DzWindow } from "../modules/lines/DzWindow";
 import { LinesExportWindow } from "../modules/lines/LinesExportWindow";
+import { renderLinesWindow } from "../modules/lines/windows";
 import { RasterExportWindow } from "../modules/rasters/RasterExportWindow";
 import type { ExportOptions } from "../modules/wireframes/export";
 import { WireframesExportWindow } from "../modules/wireframes/WireframesExportWindow";
@@ -86,7 +87,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "wireframes-export":
       return <WireframesExportWindow winId={w.id} format={w.props?.format as string | undefined} wireframeIds={w.props?.wireframeIds as number[] | undefined} options={w.props?.options as Partial<ExportOptions> | undefined} />;
     default:
-      return null;
+      return renderLinesWindow(w);
   }
 };
 

@@ -29,6 +29,7 @@ import { displaysUi } from "../downhole/displaysUi";
 import { Legend } from "../downhole/Legend";
 import { Toolbar } from "./Toolbar";
 import { FpsOverlay } from "./FpsOverlay";
+import { EditorHud } from "../lines/EditToolbar";
 import logoMark from "../../assets/logo-mark.png";
 import shell from "../../shell/Shell.module.css";
 import css from "./Scene.module.css";
@@ -266,6 +267,7 @@ function SceneMount() {
         {ui.degraded && !ui.lost && <div className={css.corner}>Графика перезапускалась трижды за минуту: нагрузка снижена</div>}
         {hint && <div className={css.hint}>{hint}</div>}
         {ready && <Legend />}
+        {ready && <EditorHud />}
         {ready && <FpsOverlay />}
         {(ui.loading > 0 || dh.loading > 0 || ui.linesLoading > 0 || ui.rastersLoading > 0 || ui.wireframesLoading > 0) && !ui.lost && <div className={css.corner}>Загрузка…</div>}
         {dh.simplified > 0 && ui.loading === 0 && dh.loading === 0 && !ui.lost && (
