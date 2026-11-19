@@ -10,6 +10,7 @@ import type { Command } from "../../shell/commands";
 import type { RibbonTab } from "../../shell/ribbonConfig";
 import type { ViewState } from "../../shell/workspace";
 import { lockCommand } from "./lockView";
+import { seriesView } from "./state";
 
 const id = { series_id: { type: "integer" as const, description: "Номер объекта серии (id из списка серий)" } };
 const shadow = { type: "string" as const, enum: ["none", "prev", "next", "both"] };
@@ -47,6 +48,7 @@ export const seriesCommands: Command[] = [
   { id: "series.last", title: "Последний разрез", description: "Последний разрез активной серии (End при фокусе 3D-окна)." },
   { id: "series.goto", title: "Перейти к разрезу", description: "Разрез активной серии по имени (например «5050N») или номеру с 1; без них — окно ввода с подсказками (Ctrl+G).", params: { name: { type: "string" }, number: { type: "integer" } } },
   lockCommand,
+  { id: "series.surfaces", title: "Часть каркаса в окне", description: "Под разрезом серии каркасы показаны линиями сечения; on — показывать и сам каркас, обрезанный окном разреза (без on — переключить).", params: { on: { type: "boolean" } } },
   { id: "series.shadow", title: "Тень", description: "Тень активной серии — контуры соседних разрезов: none (нет), prev (предыдущий), next (следующий), both (оба).", params: { mode: shadow }, required: ["mode"] },
   { id: "series.digitize", title: "Контур на разрезе", description: "Оцифровка контура на текущем разрезе серии.", stage: "Э10" },
   { id: "series.stitch", title: "Каркас по серии", description: "Окно «Каркас по серии»: связи контуров соседних разрезов и построение каркаса.", stage: "Э10" },
@@ -54,7 +56,7 @@ export const seriesCommands: Command[] = [
 ];
 
 /** The ribbon tab «Разрезы» (ТЗ 8.1.5): a button for every command of series. */
-export function seriesTab(view: Pick<ViewState, "clip">, locked = false): RibbonTab {
+export function seriesTab(view: Pick<ViewState, "clip">, locked = false, surfaces = seriesView.get().surfaces): RibbonTab {
   return {
     id: "sections",
     title: "Разрезы",
@@ -84,6 +86,7 @@ export function seriesTab(view: Pick<ViewState, "clip">, locked = false): Ribbon
         items: [
           { command: "series.lock", label: "Зафиксировать вид", icon: "lock", hint: "Камера по нормали к разрезу, без вращения", shortcut: "l", active: locked },
           { command: "section.clip", label: "Отсечение", icon: "vwClip", small: true, active: view.clip },
+          { command: "series.surfaces", label: "Часть каркаса в окне", icon: "wireframe", hint: "Кроме линий сечения — сам каркас, обрезанный окном разреза", small: true, active: surfaces },
           { command: "series.shadow", args: { mode: "prev" }, label: "Тень", icon: "copy", hint: "Контуры предыдущего разреза серым пунктиром", small: true },
         ],
       },

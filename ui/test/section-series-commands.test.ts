@@ -12,7 +12,7 @@ import type { SeriesRow } from "../src/modules/section/seriesApi";
 import { createForm, sceneFocused, sceneKey } from "../src/modules/section/seriesBind";
 import { PRINT_REASON, seriesCommands, seriesTab } from "../src/modules/section/seriesCommands";
 import { gotoHints, moveIndex, resolveGoto } from "../src/modules/section/goto";
-import { seriesStore } from "../src/modules/section/seriesState";
+import { seriesStore, seriesView, surfacesHidden } from "../src/modules/section/seriesState";
 import { readForm } from "../src/modules/section/seriesForm";
 import { sectionOf } from "../src/modules/section/state";
 
@@ -148,6 +148,20 @@ describe("commands of series", () => {
     expect((await app.registry.execute("series.manager")).result).toBe("Открыт «Менеджер серий»");
     expect((await app.registry.execute("series.from_line")).ok).toBe(true);
     expect(windowStore.get().windows.at(-1)?.props).toMatchObject({ mode: "create", form: { p1x: "1000", p1y: "5000", s0: "0", s1: "0" } });
+  });
+
+  it("«часть каркаса в окне»: off — the surfaces give way to their lines under the section of a series", async () => {
+    await open();
+    expect(surfacesHidden()).toBe(false);
+    expect((await app.registry.execute("series.surfaces")).result).toBe("Каркасы под разрезом серии: только линии сечения");
+    expect(surfacesHidden()).toBe(false); // the free line: the surfaces stay
+    await app.registry.execute("series.activate", { series_id: 1 });
+    expect(surfacesHidden()).toBe(true);
+    await app.registry.execute("section.clip", { on: false });
+    expect(surfacesHidden()).toBe(false);
+    await app.registry.execute("series.surfaces", { on: true });
+    expect(seriesView.get().surfaces).toBe(true);
+    expect(seriesTab(DEFAULT_VIEW).groups.find((g) => g.title === "Вид")?.items.find((i) => i.command === "series.surfaces")?.active).toBe(true);
   });
 
   it("series.create from flat arguments; series.shadow writes the series", async () => {

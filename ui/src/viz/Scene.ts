@@ -39,7 +39,7 @@ import type { SectionPlane } from "./section/plane";
 import { SectionRig } from "./section/rig";
 import type { BuiltPaths } from "./worker/paths";
 import { orbited, placeFrameLabels, screenOf, watchHost } from "./sceneHooks";
-import type { FrameContext, SceneDebug, SceneEvents, SceneLayer } from "./sceneTypes";
+import type { FrameContext, SceneDebug, SceneEvents, SceneLayer, SectionDataMark } from "./sceneTypes";
 
 export { probeWebGL2 } from "./core/renderer";
 export type { HoleHit } from "./holes/select";
@@ -268,6 +268,10 @@ export class Scene {
     if (cam) { this.rig.setLock(this.sec.lock); this.take(cam); }
   }
 
+  private sectionData: SectionDataMark | null = null;
+  /** The readiness of the lines of the current section of a series (`modules/section/seriesSections.ts`); null — none. */
+  setSectionData(mark: SectionDataMark | null): void { this.sectionData = mark && mark.series !== null ? { ...mark } : null; }
+
   /** The drawing state of a section line (the first point marked: the rubber band follows the cursor). */
   setDrawing(state: DrawState): void {
     this.sec.drawing = state;
@@ -358,7 +362,7 @@ export class Scene {
 
   debug(): SceneDebug {
     const cam = this.rig.state();
-    const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, clipPlanes: this.clipPlanes.length, section: this.sec.line, sectionPlane: this.sec.plane, locked: this.rig.locked };
+    const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, clipPlanes: this.clipPlanes.length, section: this.sec.line, sectionPlane: this.sec.plane, locked: this.rig.locked, sectionData: this.sectionData };
     const content = { gpu: this.renderer.info, sets: [...this.holeSets.keys()], layers: this.layers.keys(), segments: this.totalSegments(), pickMs: this.pickMs };
     return { frames: this.loop.frames, idle: this.idle, lost: this.renderer.lost, stats: this.stats, ...view, ...content };
   }

@@ -31,6 +31,7 @@ import { RastersSource } from "./rastersSource";
 import { NO_OBJECTS, sceneUi } from "./sceneHost";
 import { ShowLoaded } from "./showLoaded";
 import { WireframesSource } from "./wireframesSource";
+import { surfacesHidden, seriesView } from "../section/seriesState";
 
 export interface ObjectSources {
   lines: LinesSource;
@@ -55,10 +56,12 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
   const lines: LinesSource = new LinesSource(scene, { layers: () => lineLayers(), hidden, floor: () => floor, onContent: () => refloor(), cloud: (id) => cloudStyleOf(viewStore.get()[CLOUD_STYLES_KEY], id) });
   const rasters: RastersSource = new RastersSource(scene, { rasters: () => sceneObjects.get().rasters, hidden, floor: () => floor, drapes: () => wireframes.drapes() });
   // after the rasters: before a frame the raster picks its texture, then the DTM that carries it takes it
+  // under the section of a series without «часть каркаса в окне» the surfaces (not the DTMs) give way to their lines
+  const surfaceHidden = () => (surfacesHidden() ? [...hidden(), ...sceneObjects.get().wireframes.filter((w) => !w.dtm).map((w) => `wf:${w.id}`)] : hidden());
   const wireframes: WireframesSource = new WireframesSource(scene, {
     wireframes: () => sceneObjects.get().wireframes,
     rasters: () => sceneObjects.get().rasters,
-    hidden,
+    hidden: surfaceHidden,
     opacity: () => app.store.get().view.wireframeOpacity,
     texture: (id) => rasters.textureOf(id),
     onDrapes: () => rasters.sync(),
@@ -145,6 +148,8 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
   );
   // the section moved or was switched, the style of the traces asks for other marks
   let keys = viewStore.get();
+  let prevSection = keys.section;
+  off.push(seriesView.subscribe(() => wireframes.sync()));
   off.push(
     viewStore.subscribe(() => {
       const k = viewStore.get();
@@ -152,6 +157,10 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
       const clouds = k[CLOUD_STYLES_KEY] !== keys[CLOUD_STYLES_KEY];
       keys = k;
       if (changed) exact.sync();
+      if (k.section !== prevSection) {
+        prevSection = k.section;
+        wireframes.sync();
+      }
       if (clouds) lines.sync();
     }),
   );

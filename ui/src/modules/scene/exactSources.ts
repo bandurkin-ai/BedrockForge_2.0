@@ -12,6 +12,10 @@
  *  - the exact triangle under a click on a surface, `POST /wireframes/pick` with the planes of the section
  *    window: only the answer to the latest click is taken.
  *
+ * With an active series of sections (ADR 0016 §6) the lines are those of its current section, all the shown
+ * wireframes in one packet (`section/seriesSections.ts`: the old section cancelled, the neighbours prepared by
+ * idle time, `sections.cache` on activation); the readiness of the data goes to `Scene.debug().sectionData`.
+ *
  * Lines of sections are one layer of the scene (`sec`), marks — a layer per set (`xm:<set>`). After a lost
  * context everything comes again. A lazy chunk with three.js.
  */
@@ -25,7 +29,10 @@ import { crossedWireframes } from "../../viz/holes/traceStyle";
 import { LabelCache } from "../../viz/labels/sprites";
 import { LoadQueue } from "../../viz/load/loader";
 import { ExactPicker, pickRequest, type AbsRay, type ExactPick } from "../../viz/mesh/exact";
-import { planeReaches, readSection, sectionQuery, SectionLinesView } from "../../viz/mesh/section";
+import { planeReaches, readSection, sectionQuery, SectionLinesView, type SeriesSectionPacket } from "../../viz/mesh/section";
+import { onJobFinished } from "../jobs/state";
+import { SeriesSections } from "../section/seriesSections";
+import { currentSection, seriesStore } from "../section/seriesState";
 import { sectionOf } from "../section/state";
 import { setStyleOf, setVisibilityOf } from "./loaders";
 import type { WireframeInfo } from "./objects";
@@ -77,22 +84,41 @@ export class ExactSource {
   private inflight = 0;
   private generation = 0;
   private disposed = false;
+  /** the lines of the current section of the active series */
+  private readonly series: SeriesSections;
+  private readonly seriesShown = new Set<number>();
+  private readonly off: (() => void)[] = [];
 
   constructor(
     private readonly scene: Scene,
     private readonly input: ExactInput,
   ) {
     this.ctx = { clip: scene.clipPlanes, textures: this.textures, labels: new LabelCache(scene.clipPlanes), pixelRatio: scene.renderer.pixelRatio };
+    this.series = new SeriesSections({
+      load: (path) => this.queue.load({ url: this.url(path), revalidate: false }).then((r) => r.buffer),
+      cancel: (path) => this.cancel(path),
+      post: (path, body) => api.post(path, body),
+      show: (packet) => this.showSeries(packet),
+      onMark: (mark) => scene.setSectionData?.(mark),
+    });
+    // the list of series is read after the view keys; a job of the cache done reads the neighbours anew
+    this.off.push(seriesStore.subscribe(() => this.disposed || this.syncSections()));
+    this.off.push(
+      onJobFinished((job) => {
+        const id = (job.result as { series_id?: unknown } | null | undefined)?.series_id;
+        if (job.status === "done" && job.kind.startsWith("sections.cache") && typeof id === "number") this.series.cacheReady(id);
+      }),
+    );
   }
 
   get idle(): boolean {
-    return this.inflight === 0;
+    return this.inflight === 0 && this.series.loading === 0;
   }
 
   /** For the E2E hook: the section lines per wireframe and the marks per set now in the scene. */
-  stats(): { sections: ReturnType<SectionLinesView["stats"]>; marks: { set: number; marks: number; labels: number; objects: number[] }[] } {
+  stats(): { sections: ReturnType<SectionLinesView["stats"]>; marks: { set: number; marks: number; labels: number; objects: number[] }[]; series: SeriesSections["mark"] } {
     const marks = [...this.marks].flatMap(([set, st]) => (st.view ? [{ set, ...st.view.stats(), objects: st.view.marks.objects.map((o) => o.id) }] : []));
-    return { sections: this.lines?.stats() ?? [], marks };
+    return { sections: this.lines?.stats() ?? [], marks, series: this.series.mark };
   }
 
   /** The lists, the hidden keys, the section or the styles of the traces changed. */
@@ -134,6 +160,8 @@ export class ExactSource {
     this.queue.cancelAll();
     this.lines = null;
     this.sections.clear();
+    this.seriesShown.clear();
+    this.series.reset();
     this.marks.clear();
     this.ctx.labels.dispose();
     this.ctx.labels = new LabelCache(this.scene.clipPlanes);
@@ -146,6 +174,8 @@ export class ExactSource {
 
   dispose(): void {
     this.disposed = true;
+    this.off.forEach((fn) => fn());
+    this.series.dispose();
     this.picker.cancel();
     this.queue.cancelAll();
     this.scene.removeLayer(SECTIONS_KEY, false);
@@ -185,7 +215,62 @@ export class ExactSource {
 
   // ---- lines of sections
 
+  /** The active series under clipping: its section is what is cut (true); otherwise its lines leave (false). */
+  private syncSeries(): boolean {
+    const keys = this.input.keys();
+    const sec = sectionOf(keys);
+    const cur = sec.series && sec.clip ? currentSection(keys) : null;
+    if (!cur) {
+      this.series.set(null);
+      return sec.series !== undefined; // a series not read yet: no free line either
+    }
+    const hidden = new Set(this.input.hidden());
+    const wireframes = this.input
+      .wireframes()
+      .filter((w) => !hidden.has(wireframeKey(w.id)) && w.triangle_count > 0)
+      .map((w) => [w.id, w.version] as const)
+      .sort((a, b) => a[0] - b[0]);
+    this.series.set({ seriesId: cur.row.id, version: cur.row.version, polyline: cur.seg !== null, index: cur.index, steps: cur.steps, wireframes });
+    return true;
+  }
+
+  /** The lines of the packet of the current section in the layer `sec` (null — they leave). */
+  private showSeries(packet: SeriesSectionPacket | null): void {
+    if (this.disposed) return;
+    for (const id of [...this.seriesShown]) if (!packet?.sections.has(id)) (this.lines?.remove(id), this.seriesShown.delete(id));
+    if (packet) {
+      const [x, y, z] = packet.point;
+      if (this.lines && Math.hypot(x - this.lines.origin.x, y - this.lines.origin.y, z - this.lines.origin.z) > SECTION_ORIGIN_REACH_M) {
+        this.scene.removeLayer(SECTIONS_KEY, false);
+        this.lines = null;
+        this.seriesShown.clear();
+      }
+      if (!this.lines) {
+        this.lines = new SectionLinesView({ x: Math.round(x), y: Math.round(y), z: Math.round(z) }, { resolution: this.scene.resolution });
+        this.scene.addLayer(SECTIONS_KEY, this.lines);
+      }
+      const colors = this.colors(this.input.wireframes());
+      for (const [id, s] of packet.sections) {
+        this.lines.set(id, s, colors(id));
+        this.seriesShown.add(id);
+      }
+    } else if (this.lines && !this.sections.size && !this.seriesShown.size) {
+      this.scene.removeLayer(SECTIONS_KEY, false);
+      this.lines = null;
+    }
+    this.scene.invalidate();
+  }
+
   private syncSections(): void {
+    if (this.syncSeries()) {
+      // the free line is not the section: its requests and lines go
+      for (const [id, st] of [...this.sections]) {
+        if (st.loading) this.cancel(st.path);
+        if (!this.seriesShown.has(id)) this.lines?.remove(id);
+        this.sections.delete(id);
+      }
+      return;
+    }
     const { line, clip } = sectionOf(this.input.keys());
     const hidden = new Set(this.input.hidden());
     const wanted = new Map<number, { path: string; color: string | null }>();

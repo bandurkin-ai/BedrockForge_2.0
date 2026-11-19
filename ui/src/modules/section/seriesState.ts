@@ -26,7 +26,9 @@ import { sceneObjects } from "../scene/objects";
 import { currentScene } from "../scene/sceneHost";
 import { patchFields } from "../scene/viewSync";
 import { seriesApi, seriesFault, type SeriesFault, type SeriesRow, type SeriesTable } from "./seriesApi";
-import { freeLine, sectionOf, type ActiveSeries } from "./state";
+import { freeLine, sectionOf, seriesView, type ActiveSeries } from "./state";
+
+export { seriesView } from "./state";
 
 export type { ActiveSeries } from "./state";
 export type Geometry = SeriesGeometry | PolylineGeometry;
@@ -145,6 +147,11 @@ export function seriesStatus(cur: CurrentSection | null = currentSection()): str
 
 /** Why ×2…×5 are off (ADR 0016 decision 7): the plane and the orthographic view of an inclined series would bend. */
 export const VEXAG_INCLINED = "Пока активна наклонная серия, преувеличение — ×1: иначе плоскость разреза искажается";
+
+/** The surfaces of wireframes are hidden now: a series is shown with clipping and «часть каркаса в окне» is off. */
+export function surfacesHidden(keys: Record<string, unknown> = viewStore.get()): boolean {
+  return !seriesView.get().surfaces && sectionOf(keys).clip && currentSection(keys) !== null;
+}
 
 // ---------------------------------------------------------------- the key
 

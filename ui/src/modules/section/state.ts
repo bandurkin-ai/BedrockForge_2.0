@@ -11,6 +11,12 @@ import { DEFAULT_WINDOW, type SectionLine } from "../../viz/section/math";
 
 export const sectionStore = new Store<{ draw: DrawState }>({ draw: DRAW_OFF });
 
+/**
+ * «Часть каркаса в окне» (ADR 0016 §5): under the section of a series the wireframes are shown by their exact
+ * lines; checked — also the surface itself, clipped by the window. A setting of the window, not of the project.
+ */
+export const seriesView = new Store<{ surfaces: boolean }>({ surfaces: true });
+
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** A line from stored state; null when it is missing or broken. */

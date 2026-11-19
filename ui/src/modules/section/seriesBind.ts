@@ -16,7 +16,7 @@ import { faultText, seriesApi, seriesFault, type ShadowMode } from "./seriesApi"
 import { activateSeries, copySeries, deleteSeries, openGoto, openNewSeries, openSeriesManager, openSeriesParams, seriesSaved } from "./seriesActions";
 import { PRINT_REASON } from "./seriesCommands";
 import { fmt, formFromLine, formFromSection, newForm, rangeOver, saveSeries, SHADOW_TITLES, type SeriesForm } from "./seriesForm";
-import { boxCorners, currentSection, ensureTable, loadSeries, putSeries, seriesById, seriesStatus, setActiveSeries, visibleBoxes } from "./seriesState";
+import { boxCorners, currentSection, ensureTable, loadSeries, putSeries, seriesById, seriesStatus, seriesView, setActiveSeries, visibleBoxes } from "./seriesState";
 import { freeLine } from "./state";
 
 export const NO_SERIES = "Нет активной серии разрезов: выберите её в «Менеджере серий» или создайте «Новую серию»";
@@ -206,6 +206,12 @@ export function bindSeries(app: App): void {
   );
 
   r.bind("series.lock", (a) => runLock(a), needSectionToLock);
+  r.bind("series.surfaces", (a) => {
+    const on = typeof a.on === "boolean" ? a.on : !seriesView.get().surfaces;
+    seriesView.set({ surfaces: on });
+    app.store.set({ statusNote: null }); // the ribbon shows the button pressed or not
+    return on ? "Каркасы под разрезом серии: линии сечения и часть каркаса в окне" : "Каркасы под разрезом серии: только линии сечения";
+  });
   r.bind(
     "series.shadow",
     async (a) => {

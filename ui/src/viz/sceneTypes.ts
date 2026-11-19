@@ -83,6 +83,21 @@ export interface SceneLayer {
   dispose?(): void;
 }
 
+/** The readiness of the data of the current section of a series (ADR 0016 §6; E2E 10.26, benchmark `series_step`). */
+export interface SectionDataMark {
+  series: number | null;
+  k: number | null;
+  seg: number | null;
+  /** the lines of the wireframes on this section are in the scene */
+  ready: boolean;
+  /** ms from the change of the section to its lines shown (null while not ready) */
+  ms: number | null;
+  /** shown from the sections kept (no request) */
+  prepared: boolean;
+  /** sections kept now */
+  kept: number;
+}
+
 export interface SceneDebug {
   frames: number;
   idle: boolean;
@@ -98,6 +113,8 @@ export interface SceneDebug {
   sectionPlane: SectionPlane | null;
   /** «Зафиксировать вид» */
   locked: boolean;
+  /** the data of the current section of the active series; null — no series shown */
+  sectionData: SectionDataMark | null;
   gpu: GpuInfo;
   sets: number[];
   /** keys of the layers added with `addLayer` */

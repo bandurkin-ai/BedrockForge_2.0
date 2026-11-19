@@ -76,6 +76,56 @@ export function readSection(buf: ArrayBuffer): WireframeSection {
   return { wireframeId: h.wireframe as number, point: vec(h.point), normal: vec(h.normal), xyz, offsets, closed };
 }
 
+/** The section of a series (ADR 0016 §3, §6): the lines of every wireframe asked on one section (a polyline — a segment). */
+export interface SeriesSectionPacket {
+  series: number;
+  /** the key of the geometry of the series (the cache of the core) */
+  key: string;
+  k: number;
+  seg: number | null;
+  point: Vec3;
+  normal: Vec3;
+  /** the wireframes asked, the lines of each (none — the plane misses it) */
+  sections: Map<number, Pick<WireframeSection, "xyz" | "offsets" | "closed">>;
+  /** asked but gone from the project */
+  missing: number[];
+}
+
+/**
+ * BFA1 `series_section` of `GET /section-series/{id}/sections/{k}/wireframes?ids=`: `xyz <f8`, `offsets <u4`,
+ * `closed <u1` of all the lines, `wf <u4` — the wireframe of each line; split here per wireframe (copies of
+ * slices, float64 kept).
+ */
+export function readSeriesSection(buf: ArrayBuffer): SeriesSectionPacket {
+  const doc = decodeBfa1<{ kind?: string; series?: number; key?: string; k?: number; seg?: number | null; point?: number[]; normal?: number[]; wireframes?: number[]; missing?: number[] }>(buf);
+  const h = doc.header;
+  if (h.kind !== "series_section" || !Number.isSafeInteger(h.series)) throw damaged("это не сечение разреза серии");
+  const closed = bfa1Array(doc, "closed", "<u1");
+  const offsets = bfa1Array(doc, "offsets", "<u4", closed.length + 1);
+  const xyz = bfa1Array(doc, "xyz", "<f8");
+  const wf = bfa1Array(doc, "wf", "<u4", closed.length);
+  if (xyz.length % 3 !== 0 || offsets[0] !== 0 || offsets[offsets.length - 1] * 3 !== xyz.length) throw damaged("границы линий не сходятся с точками");
+  const vec = (v: unknown): Vec3 => (Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number") ? [v[0], v[1], v[2]] : [0, 0, 0]);
+  const ids = Array.isArray(h.wireframes) ? h.wireframes.filter((i): i is number => Number.isSafeInteger(i)) : [];
+  const sections = new Map<number, Pick<WireframeSection, "xyz" | "offsets" | "closed">>();
+  let i = 0;
+  for (const id of ids) {
+    const first = i;
+    while (i < wf.length && wf[i] === id) {
+      if (offsets[i + 1] < offsets[i]) throw damaged("границы линий идут не по порядку");
+      i++;
+    }
+    const p0 = offsets[first];
+    const p1 = offsets[i];
+    const offs = new Uint32Array(i - first + 1);
+    for (let j = first; j <= i; j++) offs[j - first] = offsets[j] - p0;
+    sections.set(id, { xyz: xyz.slice(p0 * 3, p1 * 3), offsets: offs, closed: closed.slice(first, i) });
+  }
+  if (i !== wf.length) throw damaged("линии не по порядку каркасов");
+  const seg = typeof h.seg === "number" ? h.seg : null;
+  return { series: h.series as number, key: String(h.key ?? ""), k: Number(h.k ?? 0), seg, point: vec(h.point), normal: vec(h.normal), sections, missing: Array.isArray(h.missing) ? h.missing.filter((x): x is number => typeof x === "number") : [] };
+}
+
 /** The segments of a section for the video card. */
 export interface SectionSegments {
   /** whole metres: the centre of the extent of the lines */
