@@ -22,14 +22,19 @@ has them one word earlier (marker 42 in word 22). From word 28 — a descriptor 
 the word within a text field, a spare word, the default (the value of an implicit field). Data pages hold whole
 records from their start. Text is Windows-1251 (`encoding` overrides).
 
+Checked on a table written by Datamine Studio itself (`tests/data/real/Datamine_block_model.zip`: the triangles
+of a wireframe, 60 800 records of 9 words): the same header (words 22–24 are 0, 2, 456789), absent data −1e30,
+names cut to 8 characters by Datamine («Elevatio», «Benche~2» — the file holds no longer ones).
+
 Read by the description only, not checked against samples («предварительно», ADR 0013):
   * single precision files — the same words of 4 bytes (a warning says so);
   * more than 69 descriptors do not fit page 1: they are taken as running on over the next pages, or, when that
     does not give valid descriptors, as whole descriptors from the start of each next page (a warning);
-  * a data page may hold records in all 512 words or leave the last 4 spare (508): both give 46 records of the
-    sample. Where the two differ, full pages are looked at: blank words where one more record would be mean 508.
-Not read: big-endian files, `.dmx`, names longer than 8 characters (kept elsewhere in new files; the 8-character
-names are unique there as well).
+  * a data page may hold records in all 512 words or leave the last 4 spare (508): both give the 46 and the 56
+    records of the two samples (11 and 9 words). Where the two differ (a points table of 4 words: 128 or 127),
+    full pages are looked at: blank words where one more record would be mean 508.
+Not read: big-endian files, names longer than 8 characters, and `.dmx` — the compressed tables of Datamine Studio
+(`formats/datamine_dmx.py`: such a file is told for what it is, not called «not a table»).
 Error codes: empty_file, not_datamine, truncated, broken, unsupported, unknown_encoding.
 """
 
@@ -45,6 +50,7 @@ from typing import Any, BinaryIO
 
 import numpy as np
 
+from bf_core.formats.datamine_dmx import dmx_error, is_dmx
 from bf_core.formats.errors import FormatError
 from bf_core.formats.table import Column, Progress, ReadInfo, TableRead, no_progress
 
@@ -380,6 +386,8 @@ def read_header(path: str | Path, encoding: str | None = None) -> DmHeader:
                     continue
                 except FormatError as exc:
                     problem = problem or exc
+    if is_dmx(path):
+        raise dmx_error(path.name)
     if problem is not None:
         raise problem
     raise FormatError(

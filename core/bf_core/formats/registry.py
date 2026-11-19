@@ -17,7 +17,8 @@ format is a `FormatError("unsupported")`.
 Objects (Э7, ADR 0011 §2; wireframes — Э8, ADR 0013 §2): `OBJECT_FORMATS` maps a format to its reader, loaded
 on first use by the name of its module. `detect_object(path)` → `ObjectFormat` by the extension; a `.str` and a
 `.dm` are told by their content (Micromine data file or Surpac text; a Datamine table of a wireframe or of
-strings). `read_objects(path, progress)` → `ObjectsRead` is the one signature of every reader: path → layers
+strings); a binary Surpac `.str` and a Datamine `.dmx` are not read and are told for what they are.
+`read_objects(path, progress)` → `ObjectsRead` is the one signature of every reader: path → layers
 (`lineset.LineSet`), rasters (`raster_image.RasterRead`) and wireframes (`meshset.MeshSet`) + warnings;
 `progress(fraction, message)` reports and may raise to cancel. Wireframes come one at a time (`meshes`): a file
 of a hundred of them is never in memory whole; a DXF or a DWG gives its lines and its wireframes from one pass.
@@ -289,7 +290,7 @@ def detect_object(path: str | Path, filename: str | None = None) -> ObjectFormat
     suffix = Path(filename or path.name).suffix.lower()
     if suffix == ".str":
         from bf_core.formats.micromine_header import _STANDARD_RE, MAGIC
-        from bf_core.formats.str_surpac import is_surpac
+        from bf_core.formats.str_surpac import binary_error, is_surpac, is_surpac_binary
 
         with path.open("rb") as f:
             head = f.read(1 << 16)
@@ -297,6 +298,8 @@ def detect_object(path: str | Path, filename: str | None = None) -> ObjectFormat
             return OBJECT_FORMATS[MICROMINE_STR]
         if is_surpac(head):
             return OBJECT_FORMATS[SURPAC_STR]
+        if is_surpac_binary(head):
+            raise binary_error(Path(filename or path.name).name)
         raise FormatError(
             "unsupported",
             "Файл .str не похож ни на стринги Micromine, ни на текстовые стринги Surpac." if head else "Файл пуст.",
@@ -304,6 +307,10 @@ def detect_object(path: str | Path, filename: str | None = None) -> ObjectFormat
         )
     if suffix == ".dm":
         return _datamine(path)
+    if suffix == ".dmx":  # the compressed tables of Datamine Studio: told by the name, the file is not read
+        from bf_core.formats.datamine_dmx import dmx_error
+
+        raise dmx_error(Path(filename or path.name).name)
     found = _BY_OBJECT_SUFFIX.get(suffix)
     if found is not None:
         return found
