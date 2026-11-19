@@ -277,6 +277,7 @@ def wireframe_part(
 # --- exact queries on wireframes (ADR 0013 §5, ADR 0007 §5; `wireframes/exact.py`) -------------------------
 
 Text = Annotated[str | None, Query(max_length=200)]
+Plane = Annotated[str | None, Query(max_length=1200)]  # 40 numbers of `plane=` (viz/snap.py)
 
 
 @router.get("/wireframes/{wireframe_id}/section")
@@ -337,18 +338,21 @@ def snap_targets(
     set_id: int,
     section: Text = None,
     bbox: Text = None,
+    plane: Plane = None,
     method: Method = "minimum_curvature",
     if_none_match: IfNoneMatch = None,
 ) -> Response:
     """BFA1 `snap` (ADR 0015 §4): collars, paths and the bounds of intervals of the holes in the window of a
-    section (`section=x0,y0,az,towards,away[,length]`) or the extent of the view (`bbox=`), float64 — the exact
-    snap targets of the string editor; over 5 000 holes or 2 million points — `truncated`, collars only."""
+    section (`section=x0,y0,az,towards,away[,length]`), of any plane of a series of sections
+    (`plane=ox,oy,oz,vx,vy,vz,towards,away[,nx,ny,nz,d]…`, ADR 0016 §3) or the extent of the view (`bbox=`),
+    float64 — the exact snap targets of the string editor; over 5 000 holes or 2 million points — `truncated`,
+    collars only."""
     from .keys import set_state
     from .snap import build, parse_window, snap_etag
 
     project = svc.require_current()
     method = _method(method)
-    window = parse_window(section, bbox)
+    window = parse_window(section, bbox, plane)
     with dialect.read_tx(project.engine) as conn:
         state = set_state(conn, set_id)
     tag = snap_etag(project.uid, state, method, window)
