@@ -7,10 +7,10 @@
 // ADR 0015: open ≤ 1.5 s, operation ≤ 5 ms, snap ≤ 2 ms, index ≤ 150 ms; under SwiftShader the limits ×2 — the
 // strict numbers go to the report (bench/out/editor_1m.json, budgets.json → external.editor_1m); the test itself
 // holds wider limits: the same spec runs on the packaged .exe of the Windows runner. «Open» is the command up to the
-// session with every line and the panel; the first frame with the editing layer is `open_frame_ms` (under
-// SwiftShader one `bufferData` of the 30 MB DYNAMIC_DRAW buffer of the overlay takes ~16 s — to the report). An
-// operation is ~50 ms, not 5: every edit rebuilds the own snap source of the whole layer
-// (`EditSession.refreshOwnSource` → `layerSnapSource`, 1 million vertices) — the test holds it below 250 ms.
+// session with every line and the panel; the first frame with the editing layer is `open_frame_ms` (to the report:
+// under SwiftShader the frames of the scene layer `ln:` of Э7 queue ~21 s each before it — a defect of Э7, not of the
+// editor). An operation is ~2 ms since 10.21 (only the chunks of the own snap source with the changed lines are
+// rebuilt) — the test holds it below 50 ms (the .exe of the Windows runner).
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
@@ -24,7 +24,7 @@ const ADR = { open_ms: 1500, op_ms: 5, snap_ms: 2, index_ms: 150 };
  * What the test holds (a slow runner, the packaged .exe on Windows): ×4 of the ADR; the operation, the first frame
  * and the save — by the first measure (Linux, SwiftShader: ~50 ms, ~36 s, ~0.8 s) with a margin.
  */
-const HOLD = { open_ms: 6000, op_ms: 250, snap_ms: 8, index_ms: 600, save_ms: 15_000, open_frame_ms: 150_000 };
+const HOLD = { open_ms: 6000, op_ms: 50, snap_ms: 8, index_ms: 600, save_ms: 15_000, open_frame_ms: 150_000 };
 const OPS = 21; // odd: the line is reversed at the end, the save carries one line
 const QUERIES = 400;
 
