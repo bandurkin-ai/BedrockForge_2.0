@@ -15,7 +15,8 @@ A raster draped on a DTM cannot be deleted: `DELETE /rasters/{id}` → 422 `rast
 `POST /wireframes/build-dtm` starts the job `model.dtm` («Построить ЦТМ», `wireframes/jobs.py`): layers of points
 and lines, collars, and point clouds — `clouds` [{layer_id, classes, cell}] (ADR 0014 §5).
 `POST /wireframes/from-points` {cloud_id, classes [2], l_max, boundary_id, cell} — `terrain.from_points`: the
-same job from the ground of one cloud; 422 `no_ground` — the cloud has no points of the classes.
+same job from the ground of one cloud; 422 `no_ground` — the cloud has no points of the classes. A cloud among
+the sources gets its map of differences against the surface built (`dz`, on by default; `wireframes/cloud_dz.py`).
 `POST /wireframes/pick` {origin, direction, wireframe_ids, clip} — the exact triangle under a click (ADR 0013 §5,
 `wireframes/exact.py`): a ray in project coordinates → {hit: {wireframe_id, name, triangle, distance, point,
 vertices, indices, normal, area, dip, dip_direction} or null}; `clip` — the planes of the section window.
@@ -199,6 +200,7 @@ class BuildDtmBody(BaseModel):
     max_edge: Number | None = None
     to_dtm: bool = True  # «Сразу в раздел ЦТМ»
     color: str | None = Field(default=None, max_length=16)
+    dz: bool = True  # the clouds among the sources get `dz` = Z − the surface built
 
 
 @router.post("/build-dtm")
@@ -223,6 +225,7 @@ def build_dtm(svc: Svc, s: Sched, body: BuildDtmBody) -> dict[str, Any]:
             max_edge=max_edge,
             to_dtm=body.to_dtm,
             color=body.color,
+            dz=body.dz,
         )
     key, job_id = s.submit("model.dtm", params, title="Построение ЦТМ")
     return {"source": key, "id": job_id}
@@ -237,6 +240,7 @@ class FromPointsBody(BaseModel):
     name: str | None = Field(default=None, max_length=400)
     to_dtm: bool = True
     color: str | None = Field(default=None, max_length=16)
+    dz: bool = True  # the cloud gets `dz` = Z − the surface built
 
 
 @router.post("/from-points")
@@ -250,7 +254,7 @@ def from_points(svc: Svc, s: Sched, body: FromPointsBody) -> dict[str, Any]:
     with dialect.read_tx(project.engine) as conn:
         params = dtm_jobs.request_from_points(
             conn, cloud_id=body.cloud_id, classes=body.classes, l_max=l_max, boundary_id=body.boundary_id,
-            cell=cell, name=body.name, to_dtm=body.to_dtm, color=body.color,
+            cell=cell, name=body.name, to_dtm=body.to_dtm, color=body.color, dz=body.dz,
         )  # fmt: skip
     key, job_id = s.submit("model.dtm", params, title="Построение ЦТМ")
     return {"source": key, "id": job_id}

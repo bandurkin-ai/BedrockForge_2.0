@@ -1,7 +1,7 @@
 """Job `model.dtm` — «Построить ЦТМ» from points and lines of the project (ТЗ 7.20, 7.23; ADR 0011 §3).
 
 Parameters {name?, layer_ids, set_ids, clouds, breaklines, boundary {layer_id, line?, use_z?}, max_edge, to_dtm,
-color}:
+color, dz}:
 
 * `layer_ids` — layers of points and of lines (`lines/store.py`). With `breaklines` (the default) every line is
   structural: its segments are edges of the surface; without it the vertices of the lines are plain points.
@@ -16,6 +16,9 @@ color}:
   Z = 0): the outline takes the heights of the surface.
 * `max_edge` — long triangles are peeled from the outside (`geo/dtm.py`).
 * `to_dtm` (the default) — the result goes straight to the section «ЦТМ» with the default settings.
+* `dz` (the default) — every cloud among the sources gets its map of differences against the surface built:
+  the column `dz` = Z − the surface and `meta.cloud.dz` (ADR 0014 §5, `cloud_dz.after_build`) — the last step,
+  after the wireframe is in the project: what goes wrong there is a line of the journal, not a failure.
 
 A vertex without a height is left out and counted in the journal — it is never taken for 0; a line is cut at
 such a vertex. The vertices of the result that come from the sources are their float64 coordinates bit for bit.
@@ -82,6 +85,7 @@ def request(
     max_edge: float | None = None,
     to_dtm: bool = True,
     color: str | None = None,
+    dz: bool = True,
 ) -> dict[str, Any]:
     """Checked parameters of the job `model.dtm` (for the endpoint that starts it); ApiError otherwise."""
     layers = _ids(layer_ids, "Слоёв")
@@ -95,7 +99,7 @@ def request(
             "Не из чего строить поверхность.",
             "Выберите слои точек или линий, облака точек или наборы скважин (их устья).",
         )
-    points = cloud_points = 0
+    points = cloud_points = dz_points = 0
     names: list[str] = []
     wanted = list(dict.fromkeys([*layers, *(c["layer_id"] for c in asked)]))
     if wanted:
@@ -123,6 +127,7 @@ def request(
             if not of:
                 raise cs.no_ground(str(layer.name), c["classes"])
             cloud_points += of
+            dz_points += int(layer.point_count)
             names.append(str(layer.name))
         points += min(cloud_points, cs.MAX_VERTICES)
     if sets:
@@ -150,6 +155,8 @@ def request(
     if asked:
         out["clouds"] = asked
         out["cloud_points"] = cloud_points  # before the thinning: what the thinning itself holds
+        out["dz"] = bool(dz)  # the map of differences of the clouds against the surface built
+        out["dz_points"] = dz_points  # every point of the clouds: what that map holds
     if boundary:
         layer_id = boundary.get("layer_id")
         row = conn.execute(
@@ -199,6 +206,7 @@ def request_from_points(
     name: str | None = None,
     to_dtm: bool = True,
     color: str | None = None,
+    dz: bool = True,
 ) -> dict[str, Any]:
     """Parameters of `model.dtm` for the command `terrain.from_points` (ADR 0014 §5): the ground of one cloud.
     `l_max` — the longest edge; by default 5 CR of the last «Фильтр земли» of the cloud (5 m when it was never
@@ -223,6 +231,7 @@ def request_from_points(
         max_edge=l_max,
         to_dtm=to_dtm,
         color=color,
+        dz=dz,
     )
 
 
@@ -230,10 +239,15 @@ def _memory(params: dict[str, Any]) -> int:
     """The sources, the triangulation (about 2 triangles a point), the mesh in spatial order and one part being
     simplified: about 0.5 KB a point over the libraries (measured: 1 million points — 660 MB at the peak).
     `points` counts a cloud by the vertices it gives (at most 2 million); the thinning before it holds
-    `BYTES_A_POINT` a point of the classes and is over when the triangulation starts."""
-    build = int(params.get("points") or 0) * 600
+    `BYTES_A_POINT` a point of the classes and is over when the triangulation starts. The map of differences
+    after it: the mesh (about 2 triangles a point) with its index and the column of the clouds."""
+    from .cloud_dz import memory_mb
+
+    points = int(params.get("points") or 0)
+    build = points * 600
     thin = int(params.get("cloud_points") or 0) * cs.BYTES_A_POINT
-    return max(512, int(max(build, thin) / 2**20) + 300)
+    dz = memory_mb(int(params.get("dz_points") or 0), 2 * points) if params.get("dz", True) else 0
+    return max(512, max(int(max(build, thin) / 2**20), dz) + 300)
 
 
 # --- sources ---------------------------------------------------------------------------------------------
@@ -250,6 +264,7 @@ class Sources:
         self.skipped = 0  # vertices without a height
         self.notes: list[tuple[str, str]] = []  # lines of the journal: (text, level)
         self.cell = 0.0  # the largest step a cloud was thinned with, m
+        self.clouds: list[int] = []  # the clouds among the sources
 
     def add_points(self, xyz: np.ndarray) -> int:
         ok = np.isfinite(xyz).all(axis=1)
@@ -355,6 +370,7 @@ def gather(conn: sa.Connection, store: Any, params: dict[str, Any], tick: Callab
     for one in cs.take(conn, store, clouds, lambda f: tick((done + heavy * f) / total, THINNING)):
         src.add_points(one.thinned.xyz)
         src.cell = max(src.cell, one.thinned.cell)
+        src.clouds.append(one.layer_id)
         src.used.append({"kind": LAYER, **one.used()})
         src.notes += one.notes()
     done += heavy
@@ -495,9 +511,9 @@ def model_dtm(ctx: JobContext) -> dict[str, Any]:
         del v, t
         key = viz.cache_key(tuple(sorted(staged.shas.items())), staged.render)
         lod = viz.build_cache(
-            ctx.project_folder, key, staged.xyz, staged.tri, staged.parts, part(0.75, 0.97, "Уровни детализации")
+            ctx.project_folder, key, staged.xyz, staged.tri, staged.parts, part(0.75, 0.9, "Уровни детализации")
         )
-        ctx.tick(0.97, "Сохранение каркаса в проект")
+        ctx.tick(0.9, "Сохранение каркаса в проект")
         built = {
             "kind": "dtm",
             "method": report["method"],
@@ -523,9 +539,15 @@ def model_dtm(ctx: JobContext) -> dict[str, Any]:
         f"Создан каркас «{name}»" + (" в разделе «ЦТМ»" if p.get("to_dtm", True) else "")
         + f": частей {_n(lod['parts'])}, треугольников по уровням " + " / ".join(_n(n) for n in lod["triangles"])
     )  # fmt: skip
+    extra: dict[str, Any] = {}
+    if src.clouds and p.get("dz", True):  # the surface is in the project: nothing here fails the job
+        from .cloud_dz import after_build
+
+        extra["dz"] = after_build(ctx, engine, store, wf_id, staged.xyz, staged.tri, src.clouds, (0.91, 0.99))
     with suppress(JobCancelled):  # the wireframe is in the project: a cancel this late undoes nothing
         ctx.tick(1.0, "Готово")
     return {
+        **extra,
         "wireframe_id": wf_id,
         "name": name,
         "dtm": bool(p.get("to_dtm", True)),

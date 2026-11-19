@@ -10,6 +10,9 @@ The geometry for 3D is `/viz/lines/{id}` (`viz/router.py`).
 `POST /lines/export` starts the job `export.lines` (`lines/export.py`): layers or a whole file to STR, Surpac
 STR, DXF, CSV or DAT; a point cloud (alone) to LAS — by its source file (`las: "source"`) or as a new file
 (`"new"`) — or to CSV `X;Y;Z;класс[;h]` (`lines/cloud_export.py`).
+`POST /lines/layers/{id}/classify` — «Фильтр земли» of a point cloud (the job `ground.classify`);
+`POST /lines/layers/{id}/dz` {wireframe_id} — its map of differences against a wireframe or a DTM (the job
+`cloud.dz`, `wireframes/cloud_dz.py`): the column `dz` and the colour mode «Отклонение от ЦТМ».
 """
 
 from __future__ import annotations
@@ -187,4 +190,22 @@ def classify_cloud(svc: Svc, s: Sched, layer_id: int, body: ClassifyBody) -> dic
     with dialect.read_tx(project.engine) as conn:
         params = ground_job.request(conn, layer_id, **body.model_dump(), heavy_workers=s.heavy_workers)
     key, job_id = s.submit("ground.classify", params, title="Фильтр земли")
+    return {"source": key, "id": job_id}
+
+
+class DzBody(BaseModel):
+    """«Карта разностей» (ADR 0014 §5): the wireframe or the DTM the points are measured against."""
+
+    wireframe_id: int
+
+
+@router.post("/layers/{layer_id}/dz")
+def cloud_dz(svc: Svc, s: Sched, layer_id: int, body: DzBody) -> dict[str, Any]:
+    """`cloud.dz`: the job «Карта разностей» writes `dz` = Z − the surface of every point of a cloud (heavy queue)."""
+    from bf_core.wireframes import cloud_dz as dz_job
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        params = dz_job.request(conn, layer_id, body.wireframe_id, heavy_workers=s.heavy_workers)
+    key, job_id = s.submit(dz_job.KIND, params, title=dz_job.TITLE)
     return {"source": key, "id": job_id}

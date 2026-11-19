@@ -89,14 +89,15 @@ def same(got: np.ndarray, want: list[float | None], tol: float = TOL) -> None:
 
 
 def surface(seed: int, n: int = 1500) -> tuple[np.ndarray, np.ndarray]:
-    """A relief at the coordinates of a real site with a pit left without points (a hole after the long
-    triangles are peeled) and a ragged outline."""
+    """A relief at the coordinates of a real site: a ragged outline (the long triangles are peeled) and a hole
+    in the middle (the triangles around the centre are taken out)."""
     rng = np.random.default_rng(seed)
     xy = rng.uniform(0.0, 1.0, (n, 2)) * [120.0, 90.0]
-    xy = xy[np.hypot(xy[:, 0] - 60.0, xy[:, 1] - 45.0) > 18.0]
     z = 5.0 * np.sin(xy[:, 0] / 17.0) + 0.08 * xy[:, 1] + rng.normal(0.0, 0.05, len(xy))
     v, t, _report = build_dtm(np.column_stack([xy, z]) + UTM, max_edge=9.0)
-    return np.asarray(v, dtype=np.float64), np.asarray(t, dtype=np.int32)
+    v, t = np.asarray(v, dtype=np.float64), np.asarray(t, dtype=np.int32)
+    centre = v[t].mean(axis=1)[:, :2] - UTM[:2] - [60.0, 45.0]
+    return v, np.ascontiguousarray(t[np.hypot(centre[:, 0], centre[:, 1]) > 18.0])
 
 
 def interior_edge_midpoints(v: np.ndarray, t: np.ndarray, k: int) -> np.ndarray:
@@ -114,7 +115,8 @@ def test_kernel_against_exact_arithmetic_on_a_surface_with_a_hole() -> None:
     rng = np.random.default_rng(52)
     lo, hi = v.min(axis=0), v.max(axis=0)
     anywhere = rng.uniform(lo - 6.0, hi + 6.0, (3000, 3))  # inside, in the hole, beyond the outline
-    on_vertices = v[::3] + [0.0, 0.0, 1.25]
+    used = np.unique(t)
+    on_vertices = v[used[::3]] + [0.0, 0.0, 1.25]
     on_edges = interior_edge_midpoints(v, t, 400) + [0.0, 0.0, -0.5]
     centres = v[t[::5]].mean(axis=1)
     points = np.concatenate([anywhere, on_vertices, on_edges, centres])
@@ -124,13 +126,14 @@ def test_kernel_against_exact_arithmetic_on_a_surface_with_a_hole() -> None:
     same(got, want)
     inside = np.array([w is not None for w in want])
     assert 0.3 < inside[: len(anywhere)].mean() < 0.8  # the scene has both: points on the surface and off it
-    hole = np.hypot(anywhere[:, 0] - UTM[0] - 60.0, anywhere[:, 1] - UTM[1] - 45.0) < 12.0
-    assert hole.sum() > 50 and np.isnan(got[: len(anywhere)][hole]).all()  # a walk over the triangles would cross
+    hole = np.hypot(anywhere[:, 0] - UTM[0] - 60.0, anywhere[:, 1] - UTM[1] - 45.0) < 10.0
+    assert hole.sum() > 30 and np.isnan(got[: len(anywhere)][hole]).all()  # a walk over the triangles stops here
     a = len(anywhere)
-    assert np.array_equal(got[a : a + len(on_vertices)], np.full(len(on_vertices), 1.25))  # exactly: no interpolation
+    # at a vertex — its own height, no interpolation: the very number Z − Z of the vertex
+    assert np.array_equal(got[a : a + len(on_vertices)], on_vertices[:, 2] - v[used[::3], 2])
     assert not np.isnan(got[a + len(on_vertices) :]).any()  # an edge shared by two triangles is not a crack
     # the points of the surface themselves: exactly 0, whatever their coordinates
-    assert np.array_equal(index.dz(v), np.zeros(len(v)))
+    assert np.array_equal(index.dz(v[used]), np.zeros(len(used)))
     assert index.triangles == len(t) and index.levels >= 1
 
 
@@ -172,7 +175,8 @@ def test_no_cracks_between_triangles_that_do_not_share_vertex_numbers() -> None:
 
 def test_solids_walls_broken_triangles_and_triangles_of_every_size() -> None:
     # a box 10 × 10 × 10: the top and the bottom one over another, vertical walls
-    c = np.array([[x, y, z] for z in (0.0, 10.0) for y in (0.0, 10.0) for x in (0.0, 10.0)]) + UTM
+    here = np.array([UTM[0], UTM[1], 0.0])  # whole heights: the differences below are exact
+    c = np.array([[x, y, z] for z in (0.0, 10.0) for y in (0.0, 10.0) for x in (0.0, 10.0)]) + here
     box = np.array(
         [[0, 1, 3], [0, 3, 2], [4, 5, 7], [4, 7, 6], [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
          [0, 2, 6], [0, 6, 4], [1, 3, 7], [1, 7, 5], [0, 0, 1], [3, 3, 3]], dtype=np.int32,
@@ -180,7 +184,7 @@ def test_solids_walls_broken_triangles_and_triangles_of_every_size() -> None:
     index = dk.surface_index(c, box)
     assert index.triangles == 4  # the walls and the broken triangles are not a surface in plan
     q = np.array([[5.0, 5.0, 9.0], [5.0, 5.0, 2.0], [5.0, 5.0, 5.0], [5.0, 5.0, 14.0], [5.0, 5.0, -3.0],
-                  [0.0, 0.0, 1.0], [10.0, 10.0, 8.0], [10.5, 5.0, 5.0], [5.0, 0.0, 6.0]]) + UTM  # fmt: skip
+                  [0.0, 0.0, 1.0], [10.0, 10.0, 8.0], [10.5, 5.0, 5.0], [5.0, 0.0, 6.0]]) + here  # fmt: skip
     assert index.dz(q).tolist()[:7] == [-1.0, 2.0, 5.0, 4.0, -3.0, 1.0, -2.0]  # the nearest; equally near — the lower
     assert np.isnan(index.dz(q)[7]) and index.dz(q)[8] == -4.0  # beside the box; on its side — the top is nearer
     same(index.dz(q), exact_dz(c, box, q))
@@ -302,9 +306,9 @@ def test_dz_of_a_cloud_through_the_api(api) -> None:  # type: ignore[no-untyped-
     meta = cloud.meta["dz"]
     assert meta["wireframe_id"] == wf_id and meta["name"] == "Земля" and meta["by"] == "ground"
     assert meta["count"] == len(ground) and meta["points"] == res["with_dz"] and meta["at"]
-    assert meta["rms"] == pytest.approx(float(np.sqrt(np.mean(ground**2))), abs=1e-6)
-    assert meta["p95"] == pytest.approx(float(np.percentile(ground, 95, method="lower")), abs=1e-6)
-    assert meta["max"] == pytest.approx(float(ground.max()), abs=1e-6)
+    assert meta["rms"] == pytest.approx(float(np.sqrt(np.mean(ground**2))), abs=6e-5)  # kept to 0.1 mm
+    assert meta["p95"] == pytest.approx(float(np.percentile(ground, 95, method="lower")), abs=6e-5)
+    assert meta["max"] == pytest.approx(float(ground.max()), abs=6e-5)
     log = [row["text"] for row in ok(c.get(f"{API}/jobs/{started['source']}/{started['id']}/log"))["lines"]]
     line = next(text for text in log if "СКО" in text)
     assert "по земле" in line and "P95" in line and "наибольшее" in line and "Земля" in "".join(log)
@@ -372,7 +376,9 @@ def test_refusals_cancel_and_a_cloud_that_changed(api, monkeypatch: pytest.Monke
     real = lc.stage_values
 
     def meanwhile(store: Any, cloud: lc.Cloud, values: Any, tick: Any = None) -> Any:
-        set_values(project, cloud, **{"class": np.full(cloud.count, 5, dtype=np.uint8)})
+        other = real(store, cloud, {"class": np.full(cloud.count, 5, dtype=np.uint8)})
+        with dialect.write_tx(project.engine) as conn:
+            lc.replace_values(conn, store, cloud, other)
         return real(store, cloud, values, tick)
 
     monkeypatch.setattr(lc, "stage_values", meanwhile)
@@ -453,7 +459,7 @@ def test_a_dtm_built_from_a_cloud_gives_the_cloud_its_dz(api, monkeypatch: pytes
     real = cd.compute
 
     def meanwhile(cloud: lc.Cloud, *args: Any, **kw: Any) -> Any:
-        set_values(project, cloud, **{"class": cloud.read("class")})
+        set_values(project, cloud, **{"class": np.full(cloud.count, 2, dtype=np.uint8)})
         return real(cloud, *args, **kw)
 
     monkeypatch.setattr(cd, "compute", meanwhile)

@@ -45,7 +45,7 @@ class Source:
 
 #: Kinds of jobs that make lines, rasters or wireframes of a project, or what «Свойства» tell about them: their
 #: end is an `objects.changed` event.
-OBJECT_JOBS = frozenset({"import.objects", "model.dtm", "wireframe.check", "ground.classify"})
+OBJECT_JOBS = frozenset({"import.objects", "model.dtm", "wireframe.check", "ground.classify", "cloud.dz"})
 
 
 @dataclass
