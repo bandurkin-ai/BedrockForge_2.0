@@ -61,14 +61,18 @@ def test_footprint_with_a_hole_and_under_solid() -> None:
     loops = surface_footprint(v, t)
     assert len(loops) == 1 and loops[0].shape[1] == 2
     q = loops[0] - UTM[:2]
-    assert 0.5 * np.sum(q[:, 0] * np.roll(q[:, 1], -1) - np.roll(q[:, 0], -1) * q[:, 1]) == pytest.approx(5000.0, rel=1e-12)
+    assert 0.5 * np.sum(q[:, 0] * np.roll(q[:, 1], -1) - np.roll(q[:, 0], -1) * q[:, 1]) == pytest.approx(
+        5000.0, rel=1e-12
+    )
     # Remove the triangles around the centre: the hole comes second and runs clockwise.
     centre = v[t].mean(axis=1)[:, :2] - UTM[:2]
     holed = t[~((np.abs(centre[:, 0] - 50) < 10) & (np.abs(centre[:, 1] - 25) < 5))]
     loops = surface_footprint(v, holed)
     assert len(loops) == 2
     q = loops[1] - UTM[:2]
-    assert 0.5 * np.sum(q[:, 0] * np.roll(q[:, 1], -1) - np.roll(q[:, 0], -1) * q[:, 1]) == pytest.approx(-200.0, rel=1e-12)
+    assert 0.5 * np.sum(q[:, 0] * np.roll(q[:, 1], -1) - np.roll(q[:, 0], -1) * q[:, 1]) == pytest.approx(
+        -200.0, rel=1e-12
+    )
     # Solid under the plane z = 10 + 0.1 x down to z = 4: volume = 5000 · (15 − 4) = 55 000.
     sv, st = under_solid(v, t, 4.0)
     stats = mesh_stats(sv, st)
@@ -81,7 +85,9 @@ def test_footprint_with_a_hole_and_under_solid() -> None:
     assert stats["volume"] == pytest.approx(55000.0 - 200 * (15 - 4), rel=1e-12)
     sv, st = under_solid(v, t, 30.0)  # the solid above the surface up to z = 30
     stats = mesh_stats(sv, st)
-    assert stats["closed"] and stats["orientation"] == "outward" and stats["volume"] == pytest.approx(75000.0, rel=1e-12)
+    assert (
+        stats["closed"] and stats["orientation"] == "outward" and stats["volume"] == pytest.approx(75000.0, rel=1e-12)
+    )
     with pytest.raises(SurfaceError) as error:
         under_solid(v, t, 12.0)  # the level crosses the surface
     assert error.value.code == "level_crosses"
@@ -150,7 +156,9 @@ def test_volume_to_level_under_a_pyramid() -> None:
     t = np.array([[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]])
     total = 400 * 12 / 3
     r = volume_to_level((v, t), 100.0)
-    assert r["cut"] == pytest.approx(total, rel=1e-12) and r["fill"] == 0.0 and r["area"] == pytest.approx(400, rel=1e-12)
+    assert (
+        r["cut"] == pytest.approx(total, rel=1e-12) and r["fill"] == 0.0 and r["area"] == pytest.approx(400, rel=1e-12)
+    )
     r = volume_to_level((v, t), 106.0)  # the cap above is a pyramid 10 × 10 × 6
     assert r["cut"] == pytest.approx(100 * 6 / 3, rel=1e-12)
     assert r["fill"] == pytest.approx(100 * 6 / 3 - total + 6 * 400, rel=1e-12)

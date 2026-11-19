@@ -142,34 +142,93 @@ class Grid:
 
 @njit(cache=True, nogil=True)
 def _strictly_inside(x, y, p, a, b, c):  # type: ignore[no-untyped-def]
+    """(x, y) strictly inside the plan triangle a b c: every barycentric weight above 1e-9 (no division)."""
     ax, ay = p[a, 0], p[a, 1]
     bx, by = p[b, 0], p[b, 1]
     cx, cy = p[c, 0], p[c, 1]
     area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
     if area == 0.0:
         return False
-    w0 = ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / area
-    w1 = ((cx - bx) * (y - by) - (cy - by) * (x - bx)) / area
-    w2 = ((ax - cx) * (y - cy) - (ay - cy) * (x - cx)) / area
-    return w0 > 1e-9 and w1 > 1e-9 and w2 > 1e-9
+    s = 1.0 if area > 0.0 else -1.0
+    limit = 1e-9 * abs(area)
+    if s * ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) <= limit:
+        return False
+    if s * ((cx - bx) * (y - by) - (cy - by) * (x - bx)) <= limit:
+        return False
+    return s * ((ax - cx) * (y - cy) - (ay - cy) * (x - cx)) > limit
 
 
 @njit(cache=True, nogil=True)
-def _centroids_inside(p, t, start, stop, cell, gmin, dims, ukeys, runs, ids, big):  # type: ignore[no-untyped-def]
-    """Triangles start…stop−1 whose centroid lies strictly inside another triangle (2D, z = 0)."""
+def _plan_sizes(p, t):  # type: ignore[no-untyped-def]
+    """The longer side of the plan box of every triangle, and the plan box of all of them."""
+    m = t.shape[0]
+    out = np.empty(m, np.float64)
+    box = np.array([np.inf, np.inf, -np.inf, -np.inf])
+    for i in range(m):
+        xa = min(p[t[i, 0], 0], p[t[i, 1], 0], p[t[i, 2], 0])
+        xb = max(p[t[i, 0], 0], p[t[i, 1], 0], p[t[i, 2], 0])
+        ya = min(p[t[i, 0], 1], p[t[i, 1], 1], p[t[i, 2], 1])
+        yb = max(p[t[i, 0], 1], p[t[i, 1], 1], p[t[i, 2], 1])
+        out[i] = max(xb - xa, yb - ya)
+        box[0], box[1], box[2], box[3] = min(box[0], xa), min(box[1], ya), max(box[2], xb), max(box[3], yb)
+    return out, box
+
+
+@njit(cache=True, nogil=True)
+def _plan_grid(p, t, x0, y0, cell, nx, ny, max_cells):  # type: ignore[no-untyped-def]
+    """Triangles listed by the plan cells of their boxes (counting sort): (cell starts nx·ny + 1, ids, big).
+    A triangle whose box covers more than `max_cells` cells is not listed but returned in `big`."""
+    m = t.shape[0]
+    span = np.empty((m, 4), np.int64)
+    counts = np.zeros(nx * ny + 1, np.int64)
+    nbig = 0
+    for i in range(m):
+        xa = min(p[t[i, 0], 0], p[t[i, 1], 0], p[t[i, 2], 0])
+        xb = max(p[t[i, 0], 0], p[t[i, 1], 0], p[t[i, 2], 0])
+        ya = min(p[t[i, 0], 1], p[t[i, 1], 1], p[t[i, 2], 1])
+        yb = max(p[t[i, 0], 1], p[t[i, 1], 1], p[t[i, 2], 1])
+        i0, i1 = _cell_index(xa, x0, cell, nx), _cell_index(xb, x0, cell, nx)
+        j0, j1 = _cell_index(ya, y0, cell, ny), _cell_index(yb, y0, cell, ny)
+        span[i, 0], span[i, 1], span[i, 2], span[i, 3] = i0, i1, j0, j1
+        if (i1 - i0 + 1) * (j1 - j0 + 1) > max_cells:
+            span[i, 0] = -1
+            nbig += 1
+            continue
+        for a in range(i0, i1 + 1):
+            for b in range(j0, j1 + 1):
+                counts[a * ny + b + 1] += 1
+    for k in range(1, nx * ny + 1):
+        counts[k] += counts[k - 1]
+    ids = np.empty(counts[nx * ny], np.int64)
+    fill = counts[:-1].copy()
+    big = np.empty(nbig, np.int64)
+    nb = 0
+    for i in range(m):
+        if span[i, 0] < 0:
+            big[nb] = i
+            nb += 1
+            continue
+        for a in range(span[i, 0], span[i, 1] + 1):
+            for b in range(span[i, 2], span[i, 3] + 1):
+                ids[fill[a * ny + b]] = i
+                fill[a * ny + b] += 1
+    return counts, ids, big
+
+
+@njit(cache=True, nogil=True)
+def _centroids_inside(p, t, start, stop, x0, y0, cell, nx, ny, cells, ids, big):  # type: ignore[no-untyped-def]
+    """Triangles start…stop−1 whose centroid lies strictly inside another triangle (plan)."""
     found = 0
     for i in range(start, stop):
         x = (p[t[i, 0], 0] + p[t[i, 1], 0] + p[t[i, 2], 0]) / 3.0
         y = (p[t[i, 0], 1] + p[t[i, 1], 1] + p[t[i, 2], 1]) / 3.0
-        key = (_cell_index(x, gmin[0], cell, dims[0]) * dims[1] + _cell_index(y, gmin[1], cell, dims[1])) * dims[2]
+        key = _cell_index(x, x0, cell, nx) * ny + _cell_index(y, y0, cell, ny)
         hit = False
-        r = np.searchsorted(ukeys, key)
-        if r < ukeys.shape[0] and ukeys[r] == key:
-            for q in range(runs[r], runs[r + 1]):
-                j = ids[q]
-                if j != i and _strictly_inside(x, y, p, t[j, 0], t[j, 1], t[j, 2]):
-                    hit = True
-                    break
+        for q in range(cells[key], cells[key + 1]):
+            j = ids[q]
+            if j != i and _strictly_inside(x, y, p, t[j, 0], t[j, 1], t[j, 2]):
+                hit = True
+                break
         if not hit:
             for q in range(big.shape[0]):
                 j = big[q]
@@ -182,24 +241,25 @@ def _centroids_inside(p, t, start, stop, cell, gmin, dims, ukeys, runs, ids, big
 
 
 def overlapping_centroids(p: np.ndarray, t: np.ndarray, *, tick: Tick = None, message: str = "") -> int:
-    """Number of triangles whose centroid, in the plane z = 0 of `p` (n×3, z ignored), lies strictly inside
-    another triangle: 0 for a single-valued sheet."""
-    if len(t) < 2:
+    """Number of triangles whose centroid, in plan (x, y of `p`, n×2 or n×3), lies strictly inside another
+    triangle: 0 for a single-valued sheet. A dense plan grid (cells of the median triangle, at most four a
+    triangle), listed by counting sort: about 80 bytes a triangle, linear time."""
+    m = len(t)
+    if m < 2:
         return 0
-    flat = np.ascontiguousarray(p, dtype=np.float64).copy()
-    flat[:, 2] = 0.0
+    flat = np.ascontiguousarray(np.asarray(p, dtype=np.float64)[:, :2])
     tri = np.ascontiguousarray(t, dtype=np.int64)
-    lo, hi = boxes(flat, tri)
-    grid = Grid.build(lo, hi, lo.min(axis=0), hi.max(axis=0))
+    sizes, box = _plan_sizes(flat, tri)
+    box_lo, span = box[:2], np.maximum(box[2:] - box[:2], 1e-9)
+    size = float(np.median(sizes))
+    cell = max(size, float(np.sqrt(span[0] * span[1] / (4.0 * m))), float(span.max()) / MAX_GRID, 1e-9)
+    nx, ny = (np.floor(span / cell).astype(np.int64) + 1).tolist()
+    cells, ids, big = _plan_grid(flat, tri, box_lo[0], box_lo[1], cell, nx, ny, 4 * MAX_CELLS_PER_TRIANGLE)
     found = 0
-    for start in range(0, len(tri), PORTION):
-        stop = min(start + PORTION, len(tri))
-        found += int(
-            _centroids_inside(
-                flat, tri, start, stop, grid.cell, grid.gmin, grid.dims, grid.ukeys, grid.runs, grid.ids, grid.big
-            )
-        )
-        _tick(tick, stop / len(tri), message)
+    for start in range(0, m, PORTION):
+        stop = min(start + PORTION, m)
+        found += int(_centroids_inside(flat, tri, start, stop, box_lo[0], box_lo[1], cell, nx, ny, cells, ids, big))
+        _tick(tick, stop / m, message)
     return found
 
 

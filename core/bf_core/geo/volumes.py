@@ -34,6 +34,7 @@ import numpy as np
 from manifold3d import Manifold
 
 from bf_core.geo.clip import polygon_ring, prism
+from bf_core.geo.meshes import morton_order
 from bf_core.geo.contours import SurfaceError, boundary_edges, surface_mesh, used_vertices
 from bf_core.geo.solids import SLICE, SolidError, Tick, from_manifold, tick_at, to_manifold, to_project
 
@@ -231,6 +232,8 @@ def volume_between(
     tick_at(tick, 0.0, "Объём между поверхностями")
     va, ta, _ = upward(top[0], top[1], "Верхняя поверхность")
     vb, tb, _ = upward(bottom[0], bottom[1], "Нижняя поверхность")
+    # Triangles along a Z-order curve: manifold3d builds and intersects spatially coherent meshes faster.
+    ta, tb = ta[morton_order(va, ta)], tb[morton_order(vb, tb)]
     pa, pb = va[used_vertices(ta, len(va))], vb[used_vertices(tb, len(vb))]
     lo = np.minimum(pa.min(axis=0), pb.min(axis=0))
     hi = np.maximum(pa.max(axis=0), pb.max(axis=0))
