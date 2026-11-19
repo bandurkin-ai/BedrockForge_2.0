@@ -127,6 +127,10 @@ test("cloud: wizard «Облако точек» (LAS, LAZ refused) → tree and 
     const row = tree.getByRole("treeitem", { name: /^survey, 3\s000 точек/ });
     await expect(row).toBeVisible({ timeout: 120_000 });
     await expect.poll(async () => (await page.evaluate(() => window.__bfScene!.state())).lines.layers, { timeout: 60_000 }).toBe(1);
+    // the holes of the demo are hidden meanwhile: «Вписать» takes the visible objects only, so the cloud fills the
+    // view — on the smaller window of the Windows runner it was a few pixels next to the collars and the click missed
+    const sets = ((await api("GET", "/drillholes/sets")).sets as { id: number }[]).map((x) => x.id);
+    for (const id of sets) expect((await run(page, "layer.show", { layer: "set", id, visible: false })).ok).toBe(true);
     expect((await run(page, "scene.view", { view: "top" })).ok).toBe(true);
     expect((await run(page, "scene.fit", {})).ok).toBe(true);
     await waitFrame(page);
@@ -161,6 +165,7 @@ test("cloud: wizard «Облако точек» (LAS, LAZ refused) → tree and 
     const point = props.getByTestId("props-cloud-point");
     await expect(point).toContainText("Класс", { timeout: 15_000 });
     await expect(point).toContainText(/2 — земля|5 — высокая растительность/);
+    for (const id of sets) expect((await run(page, "layer.show", { layer: "set", id, visible: true })).ok).toBe(true);
     await page.screenshot({ path: shot("cloud-props.png") });
 
     // ---- the export of the cloud: «Экспорт…» of its row → LAS «по исходному файлу», then CSV -------------------
