@@ -1,0 +1,690 @@
+{
+ "operations": [
+  {
+   "op": "stitch",
+   "job": "geometry.operation",
+   "title": "Сшить контуры",
+   "dialog": "stitch",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "contours",
+     "label": "Контуры и тай-линии",
+     "type": "lines",
+     "required": true
+    },
+    {
+     "key": "start_cap",
+     "label": "Начальный торец",
+     "type": "choice",
+     "options": [
+      {
+       "value": "flat",
+       "label": "Плоская крышка"
+      },
+      {
+       "value": "point",
+       "label": "В точку"
+      },
+      {
+       "value": "line",
+       "label": "В линию (гребень)"
+      },
+      {
+       "value": "extend",
+       "label": "Продолжение контура"
+      },
+      {
+       "value": "none",
+       "label": "Открыто"
+      }
+     ],
+     "default": "flat"
+    },
+    {
+     "key": "end_cap",
+     "label": "Конечный торец",
+     "type": "choice",
+     "options": [
+      {
+       "value": "flat",
+       "label": "Плоская крышка"
+      },
+      {
+       "value": "point",
+       "label": "В точку"
+      },
+      {
+       "value": "line",
+       "label": "В линию (гребень)"
+      },
+      {
+       "value": "extend",
+       "label": "Продолжение контура"
+      },
+      {
+       "value": "none",
+       "label": "Открыто"
+      }
+     ],
+     "default": "flat"
+    },
+    {
+     "key": "cap_distance",
+     "label": "Длина торца, доля шага разрезов",
+     "type": "number",
+     "default": 0.5,
+     "min": 0
+    }
+   ]
+  },
+  {
+   "op": "extrude",
+   "job": "geometry.operation",
+   "title": "Выдавить",
+   "dialog": "extrude",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "contours",
+     "label": "Полигоны",
+     "type": "lines",
+     "required": true
+    },
+    {
+     "key": "distance",
+     "label": "Расстояние",
+     "type": "number",
+     "required": true,
+     "unit": "м"
+    },
+    {
+     "key": "direction",
+     "label": "Направление",
+     "type": "choice",
+     "default": "normal",
+     "options": [
+      {
+       "value": "normal",
+       "label": "По нормали полигона"
+      },
+      {
+       "value": "vertical",
+       "label": "По вертикали"
+      },
+      {
+       "value": "vector",
+       "label": "По вектору"
+      }
+     ]
+    },
+    {
+     "key": "vector",
+     "label": "Вектор X; Y; Z",
+     "type": "vector",
+     "when": {
+      "direction": "vector"
+     }
+    },
+    {
+     "key": "both_sides",
+     "label": "В обе стороны",
+     "type": "bool",
+     "default": false
+    }
+   ]
+  },
+  {
+   "op": "edit_triangles",
+   "job": "geometry.operation",
+   "title": "Править треугольники",
+   "dialog": null,
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "wireframe_id",
+     "label": "Каркас",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "remove",
+     "label": "Удалить треугольники",
+     "type": "triangles"
+    },
+    {
+     "key": "add",
+     "label": "Добавить треугольники (по три вершины)",
+     "type": "triangles"
+    }
+   ]
+  },
+  {
+   "op": "repair",
+   "job": "geometry.operation",
+   "title": "Исправить каркас",
+   "dialog": "repair",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "wireframe_id",
+     "label": "Каркас",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "weld_on",
+     "label": "Сшить совпадающие вершины",
+     "type": "bool",
+     "default": true
+    },
+    {
+     "key": "weld",
+     "label": "Допуск сшивки",
+     "type": "number",
+     "default": 1e-06,
+     "min": 0,
+     "unit": "м",
+     "when": {
+      "weld_on": true
+     }
+    },
+    {
+     "key": "drop_duplicate",
+     "label": "Удалить повторные треугольники",
+     "type": "bool",
+     "default": true
+    },
+    {
+     "key": "drop_degenerate",
+     "label": "Удалить вырожденные треугольники",
+     "type": "bool",
+     "default": true
+    },
+    {
+     "key": "fix_nonmanifold",
+     "label": "Исправить рёбра с тремя и более треугольниками",
+     "type": "bool",
+     "default": true
+    },
+    {
+     "key": "fill_holes",
+     "label": "Закрыть отверстия",
+     "type": "bool",
+     "default": true
+    },
+    {
+     "key": "orient",
+     "label": "Согласовать нормали",
+     "type": "bool",
+     "default": true
+    }
+   ]
+  },
+  {
+   "op": "simplify",
+   "job": "geometry.operation",
+   "title": "Упростить",
+   "dialog": "simplify",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "wireframe_id",
+     "label": "Каркас",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "target_triangles",
+     "label": "Число треугольников",
+     "type": "integer",
+     "min": 4
+    },
+    {
+     "key": "tolerance",
+     "label": "Допуск отклонения",
+     "type": "number",
+     "min": 0,
+     "unit": "м"
+    }
+   ]
+  },
+  {
+   "op": "smooth",
+   "job": "geometry.operation",
+   "title": "Сгладить",
+   "dialog": "smooth",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "wireframe_id",
+     "label": "Каркас",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "iterations",
+     "label": "Проходов",
+     "type": "integer",
+     "default": 10,
+     "min": 1,
+     "max": 10000
+    },
+    {
+     "key": "strength",
+     "label": "Сила",
+     "type": "number",
+     "default": 0.5,
+     "min": 0,
+     "max": 0.95
+    },
+    {
+     "key": "keep_boundary",
+     "label": "Граница неподвижна",
+     "type": "bool",
+     "default": true
+    }
+   ]
+  },
+  {
+   "op": "merge",
+   "job": "geometry.operation",
+   "title": "В один объект",
+   "dialog": "merge",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "wireframe_ids",
+     "label": "Каркасы",
+     "type": "wireframes",
+     "required": true,
+     "min": 2
+    }
+   ]
+  },
+  {
+   "op": "split",
+   "job": "geometry.operation",
+   "title": "На части",
+   "dialog": "split",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "wireframe_id",
+     "label": "Каркас",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "max_parts",
+     "label": "Не больше частей",
+     "type": "integer",
+     "default": 200,
+     "min": 2,
+     "max": 2000
+    }
+   ]
+  },
+  {
+   "op": "boolean",
+   "job": "geometry.operation",
+   "title": "Булева операция",
+   "dialog": "boolean",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "op",
+     "label": "Действие",
+     "type": "choice",
+     "default": "difference",
+     "options": [
+      {
+       "value": "union",
+       "label": "Объединение"
+      },
+      {
+       "value": "intersection",
+       "label": "Пересечение"
+      },
+      {
+       "value": "difference",
+       "label": "Вычитание (A − B)"
+      }
+     ]
+    },
+    {
+     "key": "a",
+     "label": "Тело A",
+     "type": "wireframe",
+     "required": true,
+     "kinds": [
+      "closed"
+     ]
+    },
+    {
+     "key": "b",
+     "label": "Тело B (одно или несколько)",
+     "type": "wireframes",
+     "required": true,
+     "kinds": [
+      "closed"
+     ],
+     "min": 1
+    }
+   ]
+  },
+  {
+   "op": "clip_plane",
+   "job": "geometry.operation",
+   "title": "Обрезать плоскостью",
+   "dialog": "clip",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "wireframe_id",
+     "label": "Каркас",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "point",
+     "label": "Точка плоскости X; Y; Z",
+     "type": "vector",
+     "required": true
+    },
+    {
+     "key": "normal",
+     "label": "Нормаль X; Y; Z",
+     "type": "vector",
+     "required": true,
+     "default": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "key": "keep",
+     "label": "Оставить",
+     "type": "choice",
+     "default": "both",
+     "options": [
+      {
+       "value": "positive",
+       "label": "По нормали"
+      },
+      {
+       "value": "negative",
+       "label": "Против нормали"
+      },
+      {
+       "value": "both",
+       "label": "Обе части"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "op": "clip_polygon",
+   "job": "geometry.operation",
+   "title": "Обрезать полигоном",
+   "dialog": "clip",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "wireframe_id",
+     "label": "Каркас",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "polygon",
+     "label": "Полигон в плане",
+     "type": "line",
+     "required": true
+    },
+    {
+     "key": "keep",
+     "label": "Оставить",
+     "type": "choice",
+     "default": "inside",
+     "options": [
+      {
+       "value": "inside",
+       "label": "Внутри"
+      },
+      {
+       "value": "outside",
+       "label": "Снаружи"
+      },
+      {
+       "value": "both",
+       "label": "Обе части"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "op": "clip_surface",
+   "job": "geometry.operation",
+   "title": "Обрезать поверхностью",
+   "dialog": "clip",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "wireframe_id",
+     "label": "Каркас",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "surface_id",
+     "label": "Поверхность (ЦТМ, разлом)",
+     "type": "wireframe",
+     "required": true,
+     "kinds": [
+      "open"
+     ]
+    },
+    {
+     "key": "keep",
+     "label": "Оставить",
+     "type": "choice",
+     "default": "both",
+     "options": [
+      {
+       "value": "above",
+       "label": "Над поверхностью"
+      },
+      {
+       "value": "below",
+       "label": "Под поверхностью"
+      },
+      {
+       "value": "both",
+       "label": "Обе части"
+      }
+     ]
+    },
+    {
+     "key": "direction",
+     "label": "Направление",
+     "type": "choice",
+     "default": "auto",
+     "options": [
+      {
+       "value": "auto",
+       "label": "Вверх (или по нормали, если поверхность крутая)"
+      },
+      {
+       "value": "normal",
+       "label": "По нормали поверхности"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "op": "intersection_lines",
+   "job": "geometry.operation",
+   "title": "Линии пересечения",
+   "dialog": "intersection_lines",
+   "result": "lines",
+   "fields": [
+    {
+     "key": "a",
+     "label": "Каркас A",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "b",
+     "label": "Каркас B",
+     "type": "wireframe",
+     "required": true
+    }
+   ]
+  },
+  {
+   "op": "dtm",
+   "job": "model.dtm",
+   "title": "Построить ЦТМ",
+   "dialog": "dtm",
+   "result": "mesh",
+   "fields": [
+    {
+     "key": "layers",
+     "label": "Слои точек и линий",
+     "type": "layers"
+    },
+    {
+     "key": "set_ids",
+     "label": "Устья наборов скважин",
+     "type": "sets"
+    },
+    {
+     "key": "breaklines",
+     "label": "Линии — структурные",
+     "type": "bool",
+     "default": true
+    },
+    {
+     "key": "boundary",
+     "label": "Граница",
+     "type": "line"
+    },
+    {
+     "key": "max_edge",
+     "label": "Наибольшая длина ребра",
+     "type": "number",
+     "min": 0,
+     "unit": "м"
+    }
+   ]
+  },
+  {
+   "op": "contours",
+   "job": "geometry.operation",
+   "title": "Изолинии",
+   "dialog": "contours",
+   "result": "lines",
+   "fields": [
+    {
+     "key": "wireframe_id",
+     "label": "Каркас",
+     "type": "wireframe",
+     "required": true
+    },
+    {
+     "key": "interval",
+     "label": "Шаг",
+     "type": "number",
+     "required": true,
+     "min": 0,
+     "unit": "м"
+    },
+    {
+     "key": "base",
+     "label": "Отсчёт от",
+     "type": "number",
+     "default": 0.0,
+     "unit": "м"
+    },
+    {
+     "key": "major_every",
+     "label": "Основная — каждая",
+     "type": "integer",
+     "default": 5,
+     "min": 0
+    }
+   ]
+  },
+  {
+   "op": "volume_between",
+   "job": "geometry.operation",
+   "title": "Объём",
+   "dialog": "volume_between",
+   "result": "report",
+   "fields": [
+    {
+     "key": "top",
+     "label": "Верхняя поверхность",
+     "type": "wireframe",
+     "required": true,
+     "kinds": [
+      "open"
+     ]
+    },
+    {
+     "key": "mode",
+     "label": "Снизу",
+     "type": "choice",
+     "default": "surface",
+     "options": [
+      {
+       "value": "surface",
+       "label": "Поверхность"
+      },
+      {
+       "value": "level",
+       "label": "Уровень"
+      }
+     ]
+    },
+    {
+     "key": "bottom",
+     "label": "Нижняя поверхность",
+     "type": "wireframe",
+     "kinds": [
+      "open"
+     ],
+     "when": {
+      "mode": "surface"
+     }
+    },
+    {
+     "key": "level",
+     "label": "Уровень Z",
+     "type": "number",
+     "unit": "м",
+     "when": {
+      "mode": "level"
+     }
+    },
+    {
+     "key": "polygon",
+     "label": "Полигон в плане",
+     "type": "line"
+    },
+    {
+     "key": "report_only",
+     "label": "Только отчёт",
+     "type": "bool",
+     "default": false
+    }
+   ]
+  }
+ ]
+}
