@@ -11,6 +11,7 @@ import type { HoleHit } from "./holes/select";
 import type { LabelItem } from "./labels/sprites";
 import type { Origin } from "./origin";
 import type { Ray, SectionLine } from "./section/math";
+import type { SectionPlane } from "./section/plane";
 
 export interface SceneEvents {
   /** a click picked a hole (or nothing) */
@@ -23,6 +24,8 @@ export interface SceneEvents {
   onContextRestored?(): void;
   /** the camera moved, the view resized */
   onCamera?(): void;
+  /** «Зафиксировать вид» on or off (also when a standard view or the end of the section frees it) */
+  onLock?(on: boolean): void;
 }
 
 /** What a layer sees before every frame. */
@@ -46,8 +49,8 @@ export interface PickQuery {
   py: number;
   width: number;
   height: number;
-  /** is a plan point (rendered space) inside the section window */
-  inWindow(x: number, y: number): boolean;
+  /** is a scene point (relative to the scene origin, Z not stretched) inside the section window */
+  inWindow(x: number, y: number, z: number): boolean;
   /** the ray of the cursor, rendered space */
   ray: Ray;
   /** float64: the origin of the layer − the scene origin (scene units, Z not stretched) */
@@ -80,6 +83,21 @@ export interface SceneLayer {
   dispose?(): void;
 }
 
+/** The readiness of the data of the current section of a series (ADR 0016 §6; E2E 10.26, benchmark `series_step`). */
+export interface SectionDataMark {
+  series: number | null;
+  k: number | null;
+  seg: number | null;
+  /** the lines of the wireframes on this section are in the scene */
+  ready: boolean;
+  /** ms from the change of the section to its lines shown (null while not ready) */
+  ms: number | null;
+  /** shown from the sections kept (no request) */
+  prepared: boolean;
+  /** sections kept now */
+  kept: number;
+}
+
 export interface SceneDebug {
   frames: number;
   idle: boolean;
@@ -89,7 +107,14 @@ export interface SceneDebug {
   perspective: boolean;
   vexag: number;
   clipPlanes: number;
+  /** the line of 7.14 when it is the section */
   section: SectionLine | null;
+  /** the plane of the section of any kind (a series, a polyline segment) */
+  sectionPlane: SectionPlane | null;
+  /** «Зафиксировать вид» */
+  locked: boolean;
+  /** the data of the current section of the active series; null — no series shown */
+  sectionData: SectionDataMark | null;
   gpu: GpuInfo;
   sets: number[];
   /** keys of the layers added with `addLayer` */

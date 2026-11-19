@@ -1,5 +1,12 @@
+import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { planeDistance, type Vec3 } from "../src/viz/core/vec3";
+import { windowTest } from "../src/viz/core/bounds";
+import { dot, planeDistance, type Vec3 } from "../src/viz/core/vec3";
+import { cameraBasis, view, viewDirection } from "../src/viz/core/views";
+import { SharedClip } from "../src/viz/section/clip";
+import { planeFromLine, planePoint } from "../src/viz/section/plane";
+import { SectionRig } from "../src/viz/section/rig";
+import { seriesGeometry, type SeriesGeometry } from "../src/viz/section/series";
 import {
   azimuthDeg,
   clipPlanes,
@@ -191,5 +198,104 @@ describe("sections in BF2 (ТЗ 7.14, ADR 0007 §4)", () => {
     expect(side).toEqual([33, 20, -120]);
     expect(viewPlanePoint({ origin: [0, 0, 0], dir: [1, 0, 0] }, target, [0, 0, 1])).toBeNull();
     expect(viewPlanePoint({ origin: [0, 0, -1000], dir: [0, 0, -1] }, target, [0, 0, 1])).toBeNull(); // behind
+  });
+});
+
+describe("the shared plane of the section in the window (Э10 10.14, ADR 0016 §4)", () => {
+  const origin = { x: 512_000, y: 7_012_000, z: 100 };
+  const line: SectionLine = { x0: 512_100.25, y0: 7_011_950.5, az: 63, length: null, towards: 15, away: 25 };
+  const inclined = (seriesGeometry({ type: "inclined", p1: [512_010, 7_012_020, 300], az: 30, phi: 60, s0: 0, s1: 100, step: 20, towards: 10, away: 10 }) as SeriesGeometry).plane(2);
+  const plan = (seriesGeometry({ type: "plan", p1: [512_000, 7_012_000, 400], s0: 0, s1: 100, step: 10, towards: 5, away: 5 }) as SeriesGeometry).plane(3);
+  const gpuInside = (clip: SharedClip, p: Vec3) => clip.planes.every((pl) => pl.distanceToPoint(new THREE.Vector3(...p)) >= 0);
+
+  it("a line of 7.14: the planes on the video card are those of `clipPlanes` at any exaggeration, «Вписать» as windowTest", () => {
+    for (const length of [null, 200]) {
+      const l = { ...line, length };
+      const clip = new SharedClip();
+      for (const e of [1, 5]) {
+        clip.update(planeFromLine(l), true, origin, e);
+        const old = clipPlanes(l, origin);
+        expect(clip.planes.length).toBe(old.length);
+        clip.planes.forEach((pl, i) => {
+          expect([pl.normal.x, pl.normal.y, pl.normal.z]).toEqual(old[i].normal);
+          expect(pl.constant).toBe(old[i].constant);
+        });
+      }
+      const test = clip.boxTest()!;
+      const legacy = windowTest(l, true, origin)!;
+      for (let i = 0; i < 200; i++) {
+        const x = ((i * 37) % 120) - 60;
+        const y = ((i * 53) % 140) - 70;
+        const box = { min: [x - 3, y - 2, -50] as Vec3, max: [x + 3, y + 2, 50] as Vec3 };
+        expect(test(box)).toBe(legacy(box));
+      }
+    }
+    const off = new SharedClip();
+    off.update(planeFromLine(line), false, origin);
+    expect(off.active).toBe(false);
+    expect(off.boxTest()).toBeNull();
+    expect(off.inWindow(1e9, 0, 0)).toBe(true);
+  });
+
+  it("an inclined section at ×1 and ×5 and a plan at ×5: the video card and inWindow(x, y, z) keep the same points", () => {
+    for (const pl of [inclined, plan]) {
+      for (const e of [1, 5]) {
+        const clip = new SharedClip();
+        clip.update(pl, true, origin, e);
+        expect(clip.planes.length).toBe(2);
+        let inside = 0;
+        for (let i = 0; i < 300; i++) {
+          const t = ((i * 29) % 41) - 20.5;
+          const p = planePoint(pl, ((i * 37) % 101) - 50, ((i * 53) % 89) - 44);
+          const q: Vec3 = [p[0] + t * pl.v[0] - origin.x, p[1] + t * pl.v[1] - origin.y, p[2] + t * pl.v[2] - origin.z];
+          const want = t >= -pl.towards && t <= pl.away;
+          expect(clip.inWindow(q[0], q[1], q[2]), `t = ${t}`).toBe(want);
+          expect(gpuInside(clip, [q[0], q[1], q[2] * e]), `×${e}, t = ${t}`).toBe(want);
+          if (want) inside++;
+        }
+        expect(inside).toBeGreaterThan(50);
+      }
+    }
+  });
+
+  it("the rig: ×1 while an inclined section is active, the frame of the view, the trace while clipping is off", () => {
+    const rig = new SectionRig();
+    rig.setLine(line, true);
+    expect(rig.line).toEqual(line);
+    expect(rig.vexag(5)).toBe(5);
+    rig.set(inclined, true);
+    expect(rig.line).toBeNull();
+    expect(rig.vexag(5)).toBe(1);
+    rig.set(plan, false);
+    expect(rig.vexag(5)).toBe(5);
+    rig.refresh(origin, { min: [-100, -100, -500], max: [100, 100, 400] }, 5);
+    expect(rig.clip.active).toBe(false);
+    expect(rig.overlay.group.children.length).toBe(1);
+    expect(rig.frame(null)).toBeNull();
+    rig.set(null, true);
+    rig.refresh(origin, null, 1);
+    expect(rig.overlay.group.children.length).toBe(0);
+    expect(rig.clipOn).toBe(false);
+    rig.dispose();
+  });
+
+  it("the «section» view looks along v̂ with ŵ up: a line as before, an inclined section, a plan with its azimuth", () => {
+    const box = { min: [-200, -200, -300] as Vec3, max: [200, 200, 300] as Vec3 };
+    const opts = { aspect: 1.5, perspective: false, fov: 45, vexag: 1 };
+    const before = view("section", box, opts, { line, origin });
+    const now = view("section", box, opts, { plane: planeFromLine(line), origin });
+    for (const k of ["position", "target", "up"] as const) for (let i = 0; i < 3; i++) expect(now[k][i]).toBeCloseTo(before[k][i], 9);
+    expect(now.half).toBeCloseTo(before.half, 9);
+    const rotated = (seriesGeometry({ type: "plan", p1: [512_000, 7_012_000, 400], az: 120, s0: 0, s1: 50, step: 10, towards: 5, away: 5 }) as SeriesGeometry).plane(1);
+    for (const pl of [inclined, rotated]) {
+      const cam = view("section", box, opts, { plane: pl, origin });
+      const b = cameraBasis(cam);
+      expect(dot(viewDirection(cam), pl.v)).toBeCloseTo(-1, 6);
+      expect(dot(b.y, pl.w)).toBeCloseTo(1, 6);
+      expect(dot(b.x, pl.s)).toBeCloseTo(1, 6);
+      // centred on the plane t = 0
+      const t = dot(pl.v, [cam.target[0] + origin.x - pl.origin[0], cam.target[1] + origin.y - pl.origin[1], cam.target[2] + origin.z - pl.origin[2]]);
+      expect(Math.abs(t)).toBeLessThan(1e-6);
+    }
   });
 });

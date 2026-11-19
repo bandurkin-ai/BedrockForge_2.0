@@ -17,6 +17,7 @@ from bf_core.db import dialect
 from bf_core.db.schema import blob_owners, edit_log, object_refs, objects, project_md, settings
 from bf_core.projects.service import projects_of
 from bf_core.storage.blobs import BlobStore
+from tests.test_section_series_api import series_router  # noqa: F401 — a fixture
 
 pytestmark = pytest.mark.windows
 API = "/api/v1"
@@ -305,3 +306,40 @@ def test_line_versions_are_archived_with_their_files() -> None:
     assert spec.renumber and names.index("objects") < names.index("line_layer_versions")
     assert ID_COLUMNS[("line_layer_versions", "layer_id")] == "objects"
     assert KIND_COLUMNS[("blob_owners", "owner_kind", "owner_id")]["line_version"] == "line_layer_versions"
+
+
+@pytest.mark.usefixtures("series_router")
+def test_roundtrip_series_of_sections(pclient, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """Э10 (ADR 0016 §1, §4): a series keeps its number and parameters, its contour layer and the view key
+    `section.series` follow the new ids; a series without a contour layer comes back as it was."""
+    c = pclient
+    c.post(API + "/projects", json={"name": "Серии"})
+    layer = c.post(f"{API}/lines/layers", json={"name": "Контуры", "color": "#ff8800"}).json()
+    params = {"type": "vertical", "p1": [1000, 5000, 0], "az": 90, "s1": 100, "step": 25}
+    first = c.post(f"{API}/section-series", json={"params": params}).json()
+    series = c.post(
+        f"{API}/section-series",
+        json={"params": {**params, "contour_layer": layer["id"], "template": "Р-{k}"}, "name": "Профили"},
+    ).json()
+    assert c.delete(f"{API}/section-series/{first['id']}").status_code == 200
+    plain = c.post(f"{API}/section-series", json={"params": {**params, "type": "plan", "p1": [0, 0, 400]}}).json()
+    assert (series["number"], plain["number"]) == (2, 3)
+    key = {"line": None, "clip": True, "series": {"id": series["id"], "k": 3, "seg": None}}
+    assert c.put(f"{API}/view/section", json={"value": key, "expected_version": 0}).status_code == 200
+    job = export(c, tmp_path / "Серии")
+    r = c.post(f"{API}/projects/import", json={"path": job["result"]["path"], "mode": "copy"}).json()
+    res = wait_job(c, r["source"], r["id"])["result"]
+    new_ids = {int(k): v for k, v in res["id_maps"]["objects"].items()}
+    c.post(f"{API}/projects/{res['uid']}/open")
+    got = {s["name"]: s for s in c.get(f"{API}/section-series").json()["series"]}
+    assert set(got) == {"Профили", "Серия 3"}
+    s = got["Профили"]
+    assert s["id"] == new_ids[series["id"]] and s["number"] == 2 and s["count"] == 5
+    assert s["params"] == {**series["params"], "contour_layer": new_ids[layer["id"]]}
+    assert got["Серия 3"]["params"] == plain["params"] and got["Серия 3"]["number"] == 3
+    names = [x["name"] for x in c.get(f"{API}/section-series/{s['id']}/table").json()["sections"]]
+    assert names == ["Р-1", "Р-2", "Р-3", "Р-4", "Р-5"]
+    view = c.get(f"{API}/view").json()["values"]["section"]["value"]
+    assert view == {**key, "series": {**key["series"], "id": s["id"]}}
+    # a new series of the imported project continues the numbers
+    assert c.post(f"{API}/section-series", json={"params": params}).json()["number"] == 4

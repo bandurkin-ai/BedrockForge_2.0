@@ -11,6 +11,9 @@ How a series is stitched:
   untouched (bit-identical), first and in input order; new vertices (caps, branch cuts) follow.
 * Pairs of contours on neighbouring sections: assignment by centres (`linear_sum_assignment`); 1 : 1 — a
   strip (`geo/stitch_strip.py`), 1 : N — a branching (`geo/stitch_branch.py`).
+* A series of sections (ТЗ 8.1.4, ADR 0016 §8; `geo/stitch_links.py`): the normal, the section of every
+  contour and the links may be given; then every connected group of contours is a body with caps at its ends.
+  Without them the result is the one above, bit for bit.
 * Tie lines (2, 3): both ends on vertices of two contours that are stitched to each other (within
   `tie_tolerance`, by default 1e-3 of the typical contour size; KD-tree); each becomes an edge of the result.
 * Ends: none, flat cap, pinch-out to a point or to a ridge line, or continuation by a share of the spacing.
@@ -31,9 +34,10 @@ The strips are built at once in threads (`threads`, `stitch_strip.strips`: the s
 them); `progress` is called from the calling thread only.
 
 Works used: H. Fuchs, Z. M. Kedem, S. P. Uselton, «Optimal surface reconstruction from planar contours», 1977.
-Ported from BF `geo/stitch.py` (`stitch_contours`, `_sections`, `_links`, `_edge_faults`, `_pierced`,
-`_first_crossing`) with the same results. Differences: errors with a code and a hint, a limit on the size of
-a pair of contours, progress inside the large steps, the volume in the report.
+Ported from BF `geo/stitch.py` (`stitch_contours`, `_edge_faults`, `_pierced`, `_first_crossing`; `_sections`
+and `_links` are in `geo/stitch_links.py`) with the same results. Differences: errors with a code and a hint,
+a limit on the size of a pair of contours, progress inside the large steps, the volume in the report, given
+sections and links of a series.
 """
 
 from __future__ import annotations
@@ -47,8 +51,16 @@ import numpy as np
 
 from bf_core.geo.checks import orientation_conflicts, self_intersections
 from bf_core.geo.meshes import edge_summary
-from bf_core.geo.polygon import StitchError, area_vector, centroid, clean_polygon, plane_axes, signed_area
+from bf_core.geo.polygon import StitchError, centroid, clean_polygon, signed_area
 from bf_core.geo.stitch_branch import Series
+from bf_core.geo.stitch_links import (
+    SECTIONS_HINT,
+    body_of_triangles,
+    body_report,
+    cap_plan,
+    normal_and_sections,
+    pair_links,
+)
 from bf_core.geo.stitch_strip import MAX_SPANS, strips
 from bf_core.jit import njit
 
@@ -56,7 +68,6 @@ CAPS = ("none", "flat", "point", "line", "extend")
 # Tie ends snap to contour vertices within this share of the typical contour size.
 TIE_SNAP = 1e-3
 TIE_HINT = "Поставьте концы тай-линии на вершины контуров соседних разрезов, которые сшиваются друг с другом."
-SECTIONS_HINT = "Выберите замкнутые контуры, нарисованные на параллельных разрезах (хотя бы на двух)."
 
 StitchProgress = Callable[[float, str], None] | None
 
@@ -66,47 +77,6 @@ class StitchResult:
     vertices: np.ndarray  # (n, 3) float64; the input contour vertices first, in input order, bit-identical
     triangles: np.ndarray  # (m, 3) int32, consistently oriented, normals outward when closed
     report: dict[str, Any] = field(default_factory=dict)
-
-
-def _sections(pos: np.ndarray, tolerance: float | None) -> tuple[list[list[int]], float]:
-    """Contours grouped by position along the normal; the tolerance used."""
-    order = np.argsort(pos, kind="stable")
-    gaps = np.diff(pos[order])
-    if tolerance is None:
-        widest = float(gaps.max()) if len(gaps) else 0.0
-        real = gaps[gaps > max(1e-6, 0.05 * widest)]
-        tolerance = max(1e-6, 0.1 * float(np.median(real))) if len(real) else 1e-6
-    out = [[int(order[0])]]
-    for i, gap in enumerate(gaps):
-        if gap < tolerance:
-            out[-1].append(int(order[i + 1]))
-        else:
-            out.append([int(order[i + 1])])
-    return [sorted(s) for s in out], float(tolerance)
-
-
-def _links(cent: np.ndarray, lower: list[int], upper: list[int]) -> list[tuple[list[int], list[int]]]:
-    """Which contours of two neighbouring sections are stitched: [(lower contours, upper contours)].
-
-    Equal counts: one to one, the pairing with the smallest total distance between centres.
-    Otherwise every contour of the smaller group first gets one of the larger group (same rule),
-    and each remaining contour joins the nearest one of the smaller group (a branching).
-    """
-    from scipy.optimize import linear_sum_assignment
-
-    small, large = (lower, upper) if len(lower) <= len(upper) else (upper, lower)
-    dist = np.linalg.norm(cent[small][:, None, :] - cent[large][None, :, :], axis=2)
-    rows, cols = linear_sum_assignment(dist)
-    children: dict[int, list[int]] = {s: [] for s in small}
-    for r, c in zip(rows, cols, strict=True):
-        children[small[r]].append(large[c])
-    for c in set(range(len(large))) - set(cols.tolist()):
-        children[small[int(np.argmin(dist[:, c]))]].append(large[c])
-    out = []
-    for s in small:
-        kids = sorted(children[s])
-        out.append(([s], kids) if small is lower else (kids, [s]))
-    return out
 
 
 def _edge_faults(tris: np.ndarray, vertex_count: int) -> np.ndarray:
@@ -214,6 +184,25 @@ def _signed_volume(v: np.ndarray, t: np.ndarray) -> float:
     return float(np.einsum("ij,ij->i", a, np.cross(b, c)).sum()) / 6.0
 
 
+def _within_bodies(
+    s: Series, local: np.ndarray, t: np.ndarray, owner: np.ndarray, tri_body: np.ndarray, first: tuple[int, int]
+) -> tuple[int, int]:
+    """A crossing inside one body, or (−1, −1): bodies are separate solids, two of them that touch or cross
+    each other (`first`) get a warning."""
+    for b in np.unique(tri_body).tolist():
+        sub = np.flatnonzero(tri_body == b)
+        i, j = _crossing(local, t[sub])
+        if i >= 0:
+            return int(sub[i]), int(sub[j])
+    i, j = first
+    (a1, b1), (a2, b2) = s.groups[owner[i]]["between"], s.groups[owner[j]]["between"]
+    s.warnings.append(
+        f"Тела {tri_body[i] + 1} и {tri_body[j] + 1} касаются или пересекаются друг с другом (разрезы "
+        f"{min(a1, a2) + 1}–{max(b1, b2) + 1}): каждое тело замкнуто, объёмы — по телам."
+    )
+    return -1, -1
+
+
 def _where(between: tuple[int, int]) -> str:
     if between[0] == between[1]:
         return f"На торце у разреза {between[0] + 1}"
@@ -230,50 +219,6 @@ def _named(contours: tuple[int, ...]) -> str:
     if len(contours) == 1:
         return f" (контур {contours[0] + 1})"
     return f" (контуры {', '.join(str(c + 1) for c in contours[:-1])} и {contours[-1] + 1})"
-
-
-def _normal_and_sections(s: Series, clean: list[np.ndarray], section_tolerance: float | None) -> tuple:
-    """Common normal (put on the series), sections, their levels and the section of every contour."""
-    count = len(clean)
-    normals = np.empty((count, 3))
-    for i in range(count):
-        area = area_vector(s.xyz(np.arange(s.starts[i], s.starts[i + 1])))
-        length = float(np.linalg.norm(area))
-        if length <= 1e-12 * max(float(np.ptp(clean[i], axis=0).max()) ** 2, 1e-300):
-            raise StitchError(f"Контур {i + 1} вырожден: у него нулевая площадь.", code="degenerate_polygon")
-        normals[i] = area / length
-    reference = normals[0]
-    normals[normals @ reference < 0] *= -1.0
-    normal = normals.mean(axis=0)
-    if float(np.linalg.norm(normal)) < 1e-9:
-        raise StitchError(
-            "Плоскости контуров слишком различаются: общее направление разрезов не определяется.",
-            code="stitch_sections", hint=SECTIONS_HINT,
-        )  # fmt: skip
-    normal /= np.linalg.norm(normal)
-    cent3 = np.array([s.xyz(np.arange(s.starts[i], s.starts[i + 1])).mean(axis=0) for i in range(count)])
-    pos = cent3 @ normal
-    if pos[0] > pos[-1] or (pos[0] == pos[-1] and normal[int(np.argmax(np.abs(normal)))] < 0):
-        normal, pos = -normal, -pos
-    for i in range(count):
-        if abs(float(normals[i] @ normal)) < 0.5:
-            raise StitchError(
-                f"Контур {i + 1} лежит не в плоскости разрезов: он развёрнут к остальным больше чем на 60°.",
-                code="stitch_sections", hint=SECTIONS_HINT,
-            )  # fmt: skip
-    s.normal = normal
-    s.u, s.v = plane_axes(normal)
-    sections, tolerance = _sections(pos, section_tolerance)
-    if len(sections) < 2:
-        raise StitchError(
-            "Все контуры лежат на одном разрезе: для сшивки нужны контуры хотя бы на двух разрезах.",
-            code="stitch_sections", hint=SECTIONS_HINT,
-        )  # fmt: skip
-    level = np.array([float(pos[sec].mean()) for sec in sections])
-    section_of = np.empty(count, dtype=np.int64)
-    for k, sec in enumerate(sections):
-        section_of[sec] = k
-    return normal, sections, tolerance, level, section_of
 
 
 def _place_ties(
@@ -338,6 +283,10 @@ def stitch_contours(
     check: bool = True,
     progress: StitchProgress = None,
     threads: int | None = None,
+    normal: Any = None,
+    groups: Sequence[int] | None = None,
+    links: Sequence[Sequence[int]] | None = None,
+    spacing: float | None = None,
 ) -> StitchResult:
     """A triangulated solid from closed contours drawn on a series of sections.
 
@@ -345,11 +294,23 @@ def stitch_contours(
                         dropped), any winding, any orientation of the sections.
     ties                (2, 3) arrays: a tie line between vertices of two contours that are
                         stitched to each other; it becomes an edge of the result.
-    start_cap, end_cap  "none" | "flat" | "point" | "line" | "extend" for the first and the last
-                        section. The first section is the end of the series nearer to the first
-                        contour of the list.
-    cap_distance        length of "point", "line" and "extend" caps as a share of the distance
-                        to the neighbouring section.
+    start_cap, end_cap  "none" | "flat" | "point" | "line" | "extend" at the ends of every body: the
+                        start cap on a contour with no link to the previous section, the end cap on one
+                        with none to the next (by default: the first and the last section). The first
+                        section is the end of the series nearer to the first contour of the list
+                        (with `groups`: the lowest number).
+    cap_distance        length of "point", "line" and "extend" caps as a share of `spacing` or of the
+                        distance to the neighbouring section of the body.
+    normal              direction across the sections (v̂ of a series); default: the mean of the
+                        contours' plane normals. Turned if needed so that the sections follow it.
+    groups              the section of every contour: integers from 0 as the series numbers its sections
+                        (k and k + 1 are neighbours; a number without contours is an empty section, nothing
+                        is stitched across it). Then report["sections"] and StitchError.between use these
+                        numbers (an empty section: position None, no contours).
+    links               (i, j) pairs of contour numbers (from 0) on neighbouring sections that are stitched;
+                        on each pair of sections their groups are 1 : 1, 1 : N or N : 1 (N : M is refused,
+                        code stitch_links). Default: by centres. A contour with no links is a body of its own.
+    spacing             distance between the sections for the length of caps (Δ of a series).
     section_tolerance   contours closer than this along the common normal are on one section
                         (default: a tenth of the median spacing, at least 1e-6).
     tie_tolerance       how far a tie end may be from a contour vertex (default: 1e-3 of the
@@ -360,7 +321,9 @@ def stitch_contours(
 
     The vertices of the contours come first in the result, in input order and bit-identical;
     new vertices (caps, branch cuts) follow. Report: sections, pairs, ties_used, tolerances, normal,
-    warnings, closed and the volume of a closed solid (None otherwise).
+    warnings, closed and the volume of a closed solid (None otherwise); with `groups` or `links` also
+    bodies: [{contours, sections: [first, last], triangles, volume}]. Without `normal`, `groups`, `links`
+    and `spacing` the result is that of Э9 bit for bit.
     """
     now, doing = 0.0, ""
 
@@ -388,16 +351,23 @@ def stitch_contours(
             "Длина замыкания торца (доля расстояния между разрезами) должна быть больше нуля.",
             code="bad_parameter", hint="Задайте положительную долю, например 0,5.",
         )  # fmt: skip
+    if spacing is not None and not (spacing > 0 and math.isfinite(spacing)):
+        raise StitchError(
+            "Расстояние между разрезами должно быть больше нуля.",
+            code="bad_parameter", hint="Задайте шаг серии разрезов в метрах.",
+        )  # fmt: skip
     tell(0.0, "Подготовка контуров")
     clean = [clean_polygon(c, f"Контур {i + 1}") for i, c in enumerate(contours)]
-    if len(clean) < 2:
+    if len(clean) < (1 if groups is not None else 2):
         raise StitchError(
             "Для сшивки нужны контуры хотя бы на двух разрезах.", code="stitch_sections", hint=SECTIONS_HINT
         )
     s = Series(clean)
     s.tick = tick
     count = len(clean)
-    normal, sections, section_tolerance, level, section_of = _normal_and_sections(s, clean, section_tolerance)
+    normal, sections, section_tolerance, level, section_of = normal_and_sections(
+        s, clean, section_tolerance, normal, groups
+    )
 
     # ---- loops: every contour counter-clockwise as seen from the tip of the normal
     cent2 = np.empty((count, 2))
@@ -417,9 +387,10 @@ def stitch_contours(
     # ---- which contours are stitched; branch cuts (all of them before any strip is built)
     jobs: list[dict[str, Any]] = []  # {"between", "lower": loop id, "upper": loop id, "a", "b", "pair", ...}
     pairs: list[dict[str, Any]] = []  # report entries
-    for k in range(len(sections) - 1):
+    linked = pair_links(links, sections, section_of, cent2)
+    for k, entries in linked:
         gap = float(level[k + 1] - level[k])
-        for lower, upper in _links(cent2, sections[k], sections[k + 1]):
+        for lower, upper in entries:
             pairs.append(
                 {"sections": [k, k + 1], "a": lower, "b": upper, "triangles": 0, "branch": len(lower) + len(upper) > 2}
             )
@@ -469,15 +440,12 @@ def stitch_contours(
         s.emit(job["between"], tris, (job["a"], job["b"]))
         pairs[job["pair"]]["triangles"] += len(tris)
 
-    # ---- caps
+    # ---- caps at the ends of every body
     tell(0.82, "Замыкание торцов")
-    last = len(sections) - 1
-    for kind, section, outward, spacing in (
-        (start_cap, 0, -1.0, level[1] - level[0]),
-        (end_cap, last, 1.0, level[last] - level[last - 1]),
+    for kind, outward, contour, section, gap in cap_plan(
+        start_cap, end_cap, linked, sections, section_of, level, spacing
     ):
-        for contour in sections[section]:
-            s.cap(kind, s.loops[contour], outward, float(spacing), cap_distance, section, contour)
+        s.cap(kind, s.loops[contour], outward, gap, cap_distance, section, contour)
 
     # ---- assembly and checks
     tell(0.88, "Проверка тела")
@@ -494,6 +462,8 @@ def stitch_contours(
         for g in s.groups:
             g["tris"] = remap[g["tris"]]
     owner = np.repeat(np.arange(len(s.groups)), [len(g["tris"]) for g in s.groups])
+    grouped = groups is not None or links is not None
+    solids, tri_body = body_of_triangles(s, owner, linked, count) if grouped else ([], None)
     open_edges, nonmanifold = edge_summary(tris, len(local))
     conflicts = orientation_conflicts(tris, len(local))
     closed = open_edges == 0 and nonmanifold == 0
@@ -531,6 +501,8 @@ def stitch_contours(
         crossings = self_intersections(vertices, tris, limit=0, progress=checking).pairs
     if crossings:
         i, j = _crossing(local, tris)
+        if i >= 0 and tri_body is not None and tri_body[i] != tri_body[j]:
+            i, j = _within_bodies(s, local, tris, owner, tri_body, (i, j))
         if i >= 0:
             (a1, b1), (a2, b2) = s.groups[owner[i]]["between"], s.groups[owner[j]]["between"]
             between = (min(a1, a2), max(b1, b2))
@@ -557,7 +529,8 @@ def stitch_contours(
     offset = float(s.centre @ normal)
     report = {
         "sections": [
-            {"position": float(level[k] + offset), "contours": [int(c) for c in sec]} for k, sec in enumerate(sections)
+            {"position": float(level[k] + offset) if sec else None, "contours": [int(c) for c in sec]}
+            for k, sec in enumerate(sections)
         ],
         "pairs": [{**p, "a": [int(c) for c in p["a"]], "b": [int(c) for c in p["b"]]} for p in pairs],
         "ties_used": ties_used,
@@ -568,5 +541,7 @@ def stitch_contours(
         "closed": bool(closed),
         "volume": volume,
     }
+    if tri_body is not None:
+        report["bodies"] = body_report(solids, tri_body, local, tris, section_of, closed)
     tell(1.0, "Готово")
     return StitchResult(vertices, tris, report)

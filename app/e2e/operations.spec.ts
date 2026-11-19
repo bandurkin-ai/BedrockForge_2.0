@@ -7,7 +7,20 @@
 // while a long job of the shared queue (`diag.sleep`, standing for a long import) goes on. The data — layers of
 // contours — is written straight through the core; no clicks in the 3D window (the small window of Windows CI).
 import { expect, test, type Page } from "@playwright/test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { close, coreApi, launch, saveLines, setWindowSize, shot, waitFrame, waitJob, type CoreJob } from "./helpers";
+
+// The cache of numba of both launches (10.11): the first one starts cold (its operations wait for the kernels the
+// workers are compiling — reported), the second one is the start of a program started before — its first operation
+// is held to FIRST_S on Linux (Windows: reported; was ~13 s, the kernels of the stitch compiled while it waited).
+const NUMBA = fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-numba-"));
+// 3 s is the budget of the operation itself (bench `ops_first`); here it is measured through the window and the
+// polling of the job on a loaded CI runner (2,6 s seen at load 9,6) — twice the budget, still far below the 13 s it was
+const FIRST_S = 6;
+let primed = false; // the first launch went to its end: its workers filled the cache
+test.afterAll(() => fs.rmSync(NUMBA, { recursive: true, force: true }));
 
 type Wf = { id: number; name: string; version: number; stats: { closed: boolean; open_edges: number; volume: number | null }; built?: { op?: string; rebuild_of?: number | null; sources?: { id: number | null; version?: number }[] } | null };
 const run = (page: Page, id: string, args: Record<string, unknown> = {}) => page.evaluate(([i, a]) => window.__bfScene!.run(i as string, a as Record<string, unknown>), [id, args] as const);
@@ -103,7 +116,7 @@ async function props(page: Page, w: Wf) {
 test("operations: two contours → 1000 m³, cube − cube, a boolean with an open wireframe is refused and fixed", async () => {
   test.setTimeout(420_000);
   const started = Date.now();
-  const { app, page } = await launch({ BF_E2E: "1" });
+  const { app, page } = await launch({ BF_E2E: "1", NUMBA_CACHE_DIR: NUMBA });
   const times: string[] = [];
   try {
     await setWindowSize(app, 1024, 640); // as small as on the Windows runner
@@ -192,16 +205,17 @@ test("operations: two contours → 1000 m³, cube − cube, a boolean with an op
     expect(fixed.stats.volume!).toBeCloseTo(1000, 6);
     expect((await wireframe(page, "Труба")).stats.closed).toBe(false); // the source is not changed
     await page.screenshot({ path: shot("operations-repair.png") });
+    primed = true;
   } finally {
     await close(app);
   }
-  console.log(`operations: stitch, boolean, refusal, repair — ${times.join(", ")}; всего ${((Date.now() - started) / 1000).toFixed(1)} с`);
+  console.log(`operations: stitch, boolean, refusal, repair (cold cache) — ${times.join(", ")}; всего ${((Date.now() - started) / 1000).toFixed(1)} с`);
 });
 
 test("operations: «Перестроить» after an edit of a contour, while a long job of the shared queue runs", async () => {
   test.setTimeout(420_000);
   const started = Date.now();
-  const { app, page } = await launch({ BF_E2E: "1" });
+  const { app, page } = await launch({ BF_E2E: "1", NUMBA_CACHE_DIR: NUMBA });
   const times: string[] = [];
   let sleep: { source: string; id: number } | null = null;
   try {
@@ -220,6 +234,7 @@ test("operations: «Перестроить» after an edit of a contour, while a
     const first = await stitchInWindow(page, layer, "Контуры", "Рудное тело");
     times.push(`сшивка ${first.toFixed(1)} с`);
     expect(first, "the operation waited for the long job").toBeLessThan(90);
+    if (primed && process.platform === "linux") expect(first, "the first operation after a start").toBeLessThanOrEqual(FIRST_S);
     await stillRunning();
     await expect(page.getByTestId("op-report-made")).toContainText(VOLUME("1 000"));
     const old = await wireframe(page, "Рудное тело");
@@ -287,5 +302,5 @@ test("operations: «Перестроить» after an edit of a contour, while a
     }
     await close(app);
   }
-  console.log(`operations: rebuild beside diag.sleep — ${times.join(", ")}; всего ${((Date.now() - started) / 1000).toFixed(1)} с`);
+  console.log(`operations: rebuild beside diag.sleep${primed ? " (the cache of the first launch)" : ""} — ${times.join(", ")}; всего ${((Date.now() - started) / 1000).toFixed(1)} с`);
 });

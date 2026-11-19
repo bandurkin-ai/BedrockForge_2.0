@@ -10,6 +10,8 @@ import { Icon, type IconName } from "../../shell/Icon";
 import { useStore } from "../../shell/useStore";
 import { VEXAG_STEPS } from "../../shell/workspace";
 import { DEFAULT_WINDOW } from "../../viz/section/math";
+import { isInclined } from "../../viz/section/plane";
+import { sectionPlaneOf, seriesStore, VEXAG_INCLINED } from "../section/seriesState";
 import { sectionOf, sectionStore } from "../section/state";
 import { viewStore } from "./bind";
 import css from "./Scene.module.css";
@@ -59,6 +61,8 @@ export function Toolbar() {
   const keys = useStore(viewStore, (k) => k);
   const drawing = useStore(sectionStore, (s) => s.draw.stage !== "off");
   const { line } = sectionOf(keys);
+  const series = useStore(seriesStore, (s) => s);
+  const inclined = isInclined(sectionPlaneOf(keys, series).plane); // decision 7: an inclined series is shown at ×1
   const [opacity, setOpacity] = useState(view.wireframeOpacity);
   useEffect(() => setOpacity(view.wireframeOpacity), [view.wireframeOpacity]);
   const run = (id: string, args: Record<string, unknown> = {}) => void app.run(id, args);
@@ -99,7 +103,7 @@ export function Toolbar() {
       <div className={css.group} role="group" aria-label="Вертикальное преувеличение" title="Вертикальное преувеличение">
         <Icon name="vwVexag" size={16} />
         {VEXAG_STEPS.map((v) => (
-          <button key={v} type="button" className={`${css.tool} ${css.step}`} aria-pressed={view.vexag === v} aria-label={`Преувеличение ×${v}`} title={`Вертикальное преувеличение ×${v}`} onClick={() => view.vexag !== v && run("scene.style", { vexag: v })}>
+          <button key={v} type="button" className={`${css.tool} ${css.step}`} aria-pressed={view.vexag === v} aria-label={`Преувеличение ×${v}`} title={`Вертикальное преувеличение ×${v}${inclined && v !== 1 ? `. ${VEXAG_INCLINED}` : ""}`} disabled={inclined && v !== 1} onClick={() => view.vexag !== v && run("scene.style", { vexag: v })}>
             ×{v}
           </button>
         ))}

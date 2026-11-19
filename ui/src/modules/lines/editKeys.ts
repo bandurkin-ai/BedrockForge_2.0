@@ -5,12 +5,15 @@
  * editing mode, not in fields of input and not under a dialog; then they go before the keys of the ribbon (Esc
  * of the editor, not «Снять выбор»). Enter, Backspace and Esc the session runs itself; Delete, Ctrl+A, Ctrl+Z,
  * Ctrl+Y, Ctrl+S and the tools are commands of the registry (`keyRun`), as from the ribbon or Ctrl+K.
+ * While a series of sections is active `L` is «Зафиксировать вид» (`series.lock`, ТЗ 8.1 — the ribbon key) and the
+ * tool «Линия» is Shift+L.
  */
 import type { EditKey, Tool } from "../../edit/tools";
 import { TOOLS } from "../../edit/tools";
 import type { App } from "../../shell/app";
 import { dialogStore } from "../../shell/dialogs";
 import { currentScene } from "../scene/sceneHost";
+import { currentSection } from "../section/seriesState";
 import { choiceOpen } from "./choice";
 import { editStore } from "./editState";
 
@@ -45,11 +48,15 @@ export function keyRun(id: string): { id: string; args: Record<string, unknown>;
   }
 }
 
-/** A plain letter of a tool, or null. */
-export function toolKey(e: EditKey & { alt?: boolean }): Tool | null {
+/** The letter of «Линия» that `series.lock` takes while a series is active (`L`, ТЗ 8.1): then it is Shift+L. */
+export const LOCK_LETTER = "l";
+
+/** A plain letter of a tool, or null; `series` — a series of sections is active: L is left to `series.lock`. */
+export function toolKey(e: EditKey & { alt?: boolean }, series = false): Tool | null {
   if (e.ctrl || e.alt || e.key.length !== 1) return null;
   const k = e.key.toLowerCase();
   const latin = RU[k] ?? k;
+  if (series && latin === LOCK_LETTER) return e.shift ? "line" : null;
   return TOOLS.find((t) => t.keys.toLowerCase() === latin)?.id ?? null;
 }
 
@@ -80,7 +87,7 @@ export function attachEditorKeys(app: App): () => void {
     const modal = dialogStore.get().queue.length > 0 || app.palette.get().query !== null || app.store.get().modal > 0 || choiceOpen();
     if (!editorKeyAllowed({ editing: true, typing: isTyping(e.target), modal, focused: editStore.get().focused })) return;
     const k = { key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
-    const tool = toolKey({ ...k, alt: e.altKey });
+    const tool = toolKey({ ...k, alt: e.altKey }, currentSection() !== null);
     let id: string | null;
     if (tool) {
       id = "lines.tool";

@@ -4,7 +4,10 @@
  * point clouds are left out — the snap panel says so), the collars, paths and interval bounds of the visible
  * sets (`GET /viz/sets/{id}/snap` in the window of the section or the extent of the view; over 5 000 holes —
  * collars only), the sections of the visible wireframes on the section plane, and the exact triangle under the
- * cursor (`POST /wireframes/pick`, the pause and the cancel of a stale request — the session). No React.
+ * cursor (`POST /wireframes/pick`, the pause and the cancel of a stale request — the session). On a section of a
+ * series with clipping (ADR 0016 §7): the targets of sets by its window (`snap?plane=`), the wireframes cut by
+ * its plane t = 0 (`section?point=O_k&normal=v̂`) and picked inside its window, the targets of other line layers
+ * outside the window dropped (`windowSource`). No React.
  */
 import type { EditSession } from "../../edit/session";
 import { linesSnapSource, MAX_SNAP_LAYER_VERTICES, readSetSnap, wireframeSectionSource, type SnapSource } from "../../edit/snap";
@@ -12,6 +15,7 @@ import type { WireframeProbe } from "../../edit/tools";
 import { bfa1Array, decodeBfa1 } from "../../viz/format/bfa1";
 import { windowPlanes } from "../../viz/mesh/exact";
 import type { SectionLine } from "../../viz/section/math";
+import { halfSpaces, type SectionPlane } from "../../viz/section/plane";
 import type { LineLayerInfo, WireframeInfo } from "../scene/objects";
 import { getGeometry, getSetSnap, getWireframeSection, pickTriangle } from "./editApi";
 import { editStore } from "./editState";
@@ -28,13 +32,33 @@ export interface SnapInput {
   sets(): readonly number[];
   /** visible wireframes and DTMs */
   wireframes(): readonly WireframeInfo[];
-  section(): { line: SectionLine | null; clip: boolean };
+  /** the section: the free line of 7.14, or the plane of a section of a series (`plane`) */
+  section(): SnapSection;
   /** [xmin, ymin, xmax, ymax] of the view in project coordinates, or null */
   viewBox(): number[] | null;
 }
 
-/** The query of the snap targets of a set: the section window when clipped, else the extent of the view. */
-export function setSnapQuery(section: { line: SectionLine | null; clip: boolean }, box: number[] | null): string {
+export interface SnapSection {
+  line: SectionLine | null;
+  clip: boolean;
+  plane?: SectionPlane | null;
+}
+
+/** The section of a series the snap is limited to: with clipping on, else null. */
+const seriesWindow = (s: SnapSection): SectionPlane | null => (s.clip && s.plane ? s.plane : null);
+
+/** `plane=ox,oy,oz,vx,vy,vz,towards,away[,nx,ny,nz,d]…` of the core (`viz/snap.py`): O_k, v̂, the window and the
+ * ends of a polyline segment as n·(p − O_k) + d ≥ 0. */
+export function planeQuery(p: SectionPlane): string {
+  const o = p.origin;
+  const ends = p.ends.flatMap((e) => [...e.n, e.n[0] * (o[0] - e.at[0]) + e.n[1] * (o[1] - e.at[1]) + e.n[2] * (o[2] - e.at[2])]);
+  return `plane=${[...o, ...p.v, p.towards, p.away, ...ends].join(",")}`;
+}
+
+/** The query of the snap targets of a set: the window of the section (of a series) when clipped, else the extent of the view. */
+export function setSnapQuery(section: SnapSection, box: number[] | null): string {
+  const sp = seriesWindow(section);
+  if (sp) return planeQuery(sp);
   const l = section.line;
   if (l && section.clip) return `section=${[l.x0, l.y0, l.az, l.towards, l.away, ...(l.length === null ? [] : [l.length])].join(",")}`;
   if (box) return `bbox=${box.map((v) => Math.round(v * 100) / 100).join(",")}`;
@@ -45,6 +69,64 @@ export function setSnapQuery(section: { line: SectionLine | null; clip: boolean 
 export function sectionQuery(l: SectionLine): string {
   const q = `x0=${l.x0}&y0=${l.y0}&az=${l.az}`;
   return l.length === null ? q : `${q}&length=${l.length}`;
+}
+
+/** The section of a wireframe on the plane t = 0 of a section of a series (`viz/wireframes/{id}/section`). */
+export function planeSectionQuery(p: SectionPlane): string {
+  return `point=${p.origin.join(",")}&normal=${p.v.join(",")}`;
+}
+
+/** The half-spaces of the window of the section as `[nx, ny, nz, c]`, n·p + c ≥ 0 inside, project coordinates. */
+export function windowClip(section: SnapSection): number[][] | null {
+  const sp = seriesWindow(section);
+  return sp ? halfSpaces(sp) : windowPlanes(section.line, section.clip);
+}
+
+/** A point on a face of the window is kept (the scene tests it again, `ViewTransform.visible`). */
+const FACE_EPS = 1e-6;
+
+const outside = (pl: number[], x: number, y: number, z: number): boolean => {
+  let d = pl[0] * x + pl[1] * y + pl[3];
+  if (pl[2] !== 0) d += pl[2] * z;
+  return !(d >= -FACE_EPS);
+};
+
+const windowed = new WeakMap<SnapSource, { key: string; out: SnapSource }>();
+
+/**
+ * The targets of a source inside the window (`planes` of `windowClip`): the points inside it, the segments not
+ * wholly outside one of its half-spaces (a segment crossing the window keeps its piece in it). Kept per source.
+ */
+export function windowSource(src: SnapSource, planes: readonly number[][]): SnapSource {
+  const key = JSON.stringify(planes);
+  const known = windowed.get(src);
+  if (known?.key === key) return known.out;
+  const out: SnapSource = { key: src.key };
+  if (src.points) {
+    const xyz = src.points.xyz;
+    const keep = new Float64Array(xyz.length);
+    let n = 0;
+    for (let i = 0; i < xyz.length; i += 3) {
+      if (planes.some((pl) => outside(pl, xyz[i], xyz[i + 1], xyz[i + 2]))) continue;
+      keep.set(xyz.subarray(i, i + 3), n);
+      n += 3;
+    }
+    // labels count by the index of the point in the source: a labelled source is kept whole
+    out.points = src.points.labels ? src.points : { kind: src.points.kind, xyz: keep.subarray(0, n) };
+  }
+  if (src.segments) {
+    const xyz = src.segments.xyz;
+    const keep = new Float64Array(xyz.length);
+    let n = 0;
+    for (let i = 0; i < xyz.length; i += 6) {
+      if (planes.some((pl) => outside(pl, xyz[i], xyz[i + 1], xyz[i + 2]) && outside(pl, xyz[i + 3], xyz[i + 4], xyz[i + 5]))) continue;
+      keep.set(xyz.subarray(i, i + 6), n);
+      n += 6;
+    }
+    out.segments = { ...src.segments, xyz: keep.subarray(0, n) };
+  }
+  windowed.set(src, { key, out });
+  return out;
 }
 
 /** Why a layer takes no part in the snap, or null. */
@@ -83,7 +165,7 @@ export class SnapFeeder {
     if (!ids.length) return null;
     return async (ray, signal) => {
       const s = this.input.section();
-      return pickTriangle({ origin: ray.origin, direction: ray.dir, wireframe_ids: ids, clip: windowPlanes(s.line, s.clip) }, signal);
+      return pickTriangle({ origin: ray.origin, direction: ray.dir, wireframe_ids: ids, clip: windowClip(s) }, signal);
     };
   }
 
@@ -147,8 +229,9 @@ export class SnapFeeder {
         return { sources: r.sources, note: r.truncated ? `Скважин в окне больше 5 000: у набора №${id} — только устья` : undefined };
       }));
     }
-    if (section.line && section.clip) {
-      const q = sectionQuery(section.line);
+    const sp = seriesWindow(section);
+    if (sp || (section.line && section.clip)) {
+      const q = sp ? planeSectionQuery(sp) : sectionQuery(section.line as SectionLine);
       for (const w of this.input.wireframes()) {
         if (!(w.triangle_count > 0)) continue;
         jobs.push(this.load(used, `wfsec:${w.id}:${w.version}?${q}`, async () => {
@@ -161,7 +244,9 @@ export class SnapFeeder {
     for (const key of [...this.cache.keys()]) if (!used.has(key)) this.cache.delete(key);
     const answers = await Promise.all(jobs);
     if (this.disposed || generation !== this.generation) return;
-    const sources = answers.flatMap((a) => a.sources);
+    // on a section of a series the other line layers give only their targets in its window
+    const clip = sp ? halfSpaces(sp) : null;
+    const sources = answers.flatMap((a) => a.sources).map((src) => (clip && src.key.startsWith("lines:") ? windowSource(src, clip) : src));
     for (const a of answers) if (a.note) notes.push(a.note);
     const wanted = new Set(sources.map((s) => s.key));
     for (const key of this.shown) if (!wanted.has(key)) this.session.snapIndex.removeSource(key);

@@ -10,6 +10,7 @@
 import type { Vec3 } from "../core/vec3";
 import { VizError } from "../error";
 import { clipPlanes, type Ray, type SectionLine } from "../section/math";
+import { halfSpaces, type SectionPlane } from "../section/plane";
 
 /** A ray in project coordinates (absolute float64); the direction need not be a unit vector. */
 export interface AbsRay {
@@ -43,8 +44,10 @@ export interface PickRequest {
   clip: number[][] | null;
 }
 
-export function pickRequest(ray: AbsRay, wireframeIds: readonly number[], line: SectionLine | null, clip: boolean): PickRequest {
-  return { origin: ray.origin, direction: ray.dir, wireframe_ids: [...new Set(wireframeIds)].sort((a, b) => a - b), clip: windowPlanes(line, clip) };
+/** `plane` — the section of a series (ADR 0016 §6): with clipping its window clips the pick, not the free line. */
+export function pickRequest(ray: AbsRay, wireframeIds: readonly number[], line: SectionLine | null, clip: boolean, plane: SectionPlane | null = null): PickRequest {
+  const window = plane ? (clip ? halfSpaces(plane) : null) : windowPlanes(line, clip);
+  return { origin: ray.origin, direction: ray.dir, wireframe_ids: [...new Set(wireframeIds)].sort((a, b) => a - b), clip: window };
 }
 
 /** The triangle under the click as the core found it. */

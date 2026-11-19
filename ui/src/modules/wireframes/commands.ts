@@ -33,7 +33,7 @@ const DIALOG_PARAMS = {
 const CLIP_OPS = ["clip_plane", "clip_polygon", "clip_surface"];
 
 /** The operations of `model.operation` (ТЗ 7.23; `core/bf_core/ops/schema.py`). */
-export const OPERATION_IDS = ["stitch", "extrude", "edit_triangles", "repair", "simplify", "smooth", "merge", "split", "boolean", "clip_plane", "clip_polygon", "clip_surface", "intersection_lines", "dtm", "contours", "volume_between"];
+export const OPERATION_IDS = ["stitch", "extrude", "edit_triangles", "repair", "simplify", "smooth", "merge", "split", "boolean", "clip_plane", "clip_polygon", "clip_surface", "intersection_lines", "dtm", "contours", "volume_between", "stitch_series"];
 
 const OPERATION =
   "Выполнить операцию моделирования (ТЗ 7.23) как задание: результат — новый объект в папке первого исходного, исходные не меняются; в «Свойствах» результата — операция, исходные, параметры, допуски и «Перестроить». Предусловия проверяются до запуска: отказ называет причину (незамкнутый каркас — число открытых рёбер; исправить — op repair с этим wireframe_id). params — JSON-объект. Каркасы — номера wireframe_id; линии — {layer_id, lines}: lines — номера линий с 0 (null — все линии слоя); line — {layer_id, line} (line null — единственная замкнутая линия слоя). Числа можно с запятой. " +

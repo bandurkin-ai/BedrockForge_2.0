@@ -163,9 +163,24 @@ export function objectViewKeys(o: Pick<SceneObjects, "files" | "rasters"> & Part
 }
 
 let seq = 0;
+let newest: Promise<void> = Promise.resolve();
 
-/** Reads the lists; an answer overtaken by a newer request or by another project is dropped. */
+/** Reads the lists; an answer overtaken by a newer request or by another project is dropped — and the call then
+ * waits for that newer request: a caller that awaits the lists (a new layer opened at once for editing) gets them
+ * fresh, not an early return while the store still has the old ones (Windows CI, editor.spec, PR #24). */
 export async function loadSceneObjects(): Promise<void> {
+  const mine = readSceneObjects();
+  newest = mine;
+  await mine;
+  // overtaken: wait until the newest read settles (it may be overtaken in turn)
+  while (newest !== mine) {
+    const next = newest;
+    await next;
+    if (newest === next) break;
+  }
+}
+
+async function readSceneObjects(): Promise<void> {
   const uid = projectStore.get().current?.uid ?? null;
   const mine = ++seq;
   if (!uid) {

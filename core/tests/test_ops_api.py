@@ -46,7 +46,7 @@ def wf(c: Any, wf_id: int) -> dict[str, Any]:
 def test_listing_check_and_refusals_before_queueing(oc) -> None:  # type: ignore[no-untyped-def]
     c, _project, ids = oc
     ops = ok(c.get(f"{API}/operations"))["operations"]
-    assert len(ops) == 16 and ops[0]["op"] == "stitch" and ops[0]["fields"][0]["type"] == "lines"
+    assert len(ops) == 17 and ops[0]["op"] == "stitch" and ops[0]["fields"][0]["type"] == "lines"
     body = {"op": "boolean", "params": {"op": "difference", "a": ids["a"], "b": ids["open"]}}
     e = refused(c.post(f"{API}/operations/check", json=body), 422, "wireframe_open")
     assert e["message"] == "Каркас «Тело 2» не замкнут: открытых рёбер — 4." and e["fix"]["op"] == "repair"

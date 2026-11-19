@@ -27,8 +27,9 @@ export function screenOf(vp: Mat4 | null, origin: { x: number; y: number; z: num
   return { x: s[0] + r.left, y: s[1] + r.top };
 }
 
-/** The labels of a frame: those in the section window that fit, with their size in pixels (`placeLabels`). */
-export function placeFrameLabels(items: readonly LabelItem[], vp: Mat4, w: number, h: number, ppuAt: (at: Vec3) => number, inWindow: (x: number, y: number) => boolean): number {
+/** The labels of a frame: those in the section window that fit, with their size in pixels (`placeLabels`);
+ * `inWindow` — scene coordinates (the rendered Z divided by `vexag`). */
+export function placeFrameLabels(items: readonly LabelItem[], vp: Mat4, w: number, h: number, ppuAt: (at: Vec3) => number, inWindow: (x: number, y: number, z: number) => boolean, vexag = 1): number {
   return placeLabels(items, {
     width: w,
     height: h,
@@ -36,7 +37,7 @@ export function placeFrameLabels(items: readonly LabelItem[], vp: Mat4, w: numbe
       const s = projectToScreen(vp, p.x, p.y, p.z, w, h);
       return s ? { x: s[0], y: s[1], ppu: ppuAt([p.x, p.y, p.z]) } : null;
     },
-    inWindow: (p) => inWindow(p.x, p.y),
+    inWindow: (p) => inWindow(p.x, p.y, p.z / (vexag || 1)),
   });
 }
 

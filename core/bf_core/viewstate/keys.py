@@ -22,6 +22,8 @@ SWATHS_MAX = 50
 STYLES_MAX = 200
 COLUMNS_TABLES = 200
 COLUMNS_PER_TABLE = 500
+SERIES_K_MAX = 5_000  # sections in a series (ADR 0016 §1)
+SERIES_SEG_MAX = 1_000  # segments of a polyline section
 
 #: `set:3`, `set:3:collars`, `wf:12`… (ТЗ 7.0.10). The id is an object id (renumbered by `.bfggis`).
 HIDDEN_RE = re.compile(r"^(set|wf|ln|rs|bm):(\d{1,12})(?::(collars|paths|intervals))?$")
@@ -97,12 +99,60 @@ def _line(v: Any, strict: bool) -> dict[str, Any] | None:
     return out
 
 
+def _id(v: Any) -> int | None:
+    return v if isinstance(v, int) and not isinstance(v, bool) and 0 < v < 10**12 else None
+
+
+def _series(v: Any, strict: bool) -> dict[str, Any] | None:
+    """The active series of sections (ADR 0016 §4): {id, k, seg} — the object id, the section from 0 and the
+    segment of a polyline section (null for the others)."""
+    if v is None:
+        return None
+    sid = _id(v.get("id")) if isinstance(v, dict) else None
+    if sid is None:
+        _fail(strict, "Серия разрезов: ожидается номер серии id.")
+        return None
+    k, seg = v.get("k", 0), v.get("seg")
+    if isinstance(k, bool) or not isinstance(k, int) or not 0 <= k < SERIES_K_MAX:
+        _fail(strict, "Серия разрезов: номер разреза k — целое от 0.")
+        k = 0
+    if seg is not None and (isinstance(seg, bool) or not isinstance(seg, int) or not 0 <= seg < SERIES_SEG_MAX):
+        _fail(strict, "Серия разрезов: сегмент ломаного разреза — целое от 0.")
+        seg = None
+    return {"id": sid, "k": k, "seg": seg}
+
+
 def _section(v: Any, strict: bool) -> dict[str, Any]:
+    """{line, clip[, series]}: `line` — the last free section line, `series` — the active series, written only
+    when there is one (a key of Э7 reads as it was)."""
     if not isinstance(v, dict):
         _fail(strict, "Разрез: ожидаются line и clip.")
         return {"line": None, "clip": False}
     line = _line(v.get("line"), strict)
-    return {"line": line, "clip": bool(_bool(v.get("clip"), False) and line is not None)}
+    series = _series(v.get("series"), strict)
+    clip = _bool(v.get("clip"), False) and (line is not None or series is not None)
+    out: dict[str, Any] = {"line": line, "clip": bool(clip)}
+    if series is not None:
+        out["series"] = series
+    return out
+
+
+def _section_ids(value: dict[str, Any]) -> tuple[int, ...]:
+    series = value.get("series")
+    return (series["id"],) if series is not None else ()
+
+
+def _section_map(value: dict[str, Any], new_id: Callable[[int], int | None]) -> dict[str, Any]:
+    """The series renumbered or forgotten (a series that is gone: the free line stays; no line — no clip)."""
+    series = value.get("series")
+    if series is None:
+        return value
+    n = new_id(series["id"])
+    if n is not None:
+        return {**value, "series": {**series, "id": n}}
+    out = {k: v for k, v in value.items() if k != "series"}
+    out["clip"] = bool(out["clip"] and out["line"] is not None)
+    return out
 
 
 def _hidden(v: Any, strict: bool) -> list[str]:
@@ -225,7 +275,8 @@ def normalize(key: str, value: Any, *, strict: bool) -> Any:
 
 
 def drop_missing(key: str, value: Any, alive: Callable[[int], bool]) -> Any:
-    """Forget ids of deleted objects (read side): hidden keys, displays, styles, columns, the active set."""
+    """Forget ids of deleted objects (read side): hidden keys, displays, styles, columns, the active set, the
+    active series of sections."""
     if key == "hidden":
         return [k for k in value if alive(int(HIDDEN_RE.match(k).group(2)))]  # type: ignore[union-attr]
     if key == "hide_all":
@@ -238,6 +289,8 @@ def drop_missing(key: str, value: Any, alive: Callable[[int], bool]) -> Any:
         return {k: c for k, c in value.items() if alive(int(k.split(":", 1)[0]))}
     if key == "active" and value["set"] is not None and not alive(value["set"]):
         return {"set": None, "hole": None, "table": None}
+    if key == "section":
+        return _section_map(value, lambda i: i if alive(i) else None)
     return value
 
 
@@ -254,6 +307,8 @@ def ids_in(key: str, value: Any) -> Iterable[int]:
         return (int(k.split(":", 1)[0]) for k in value)
     if key == "active" and value["set"] is not None:
         return (value["set"],)
+    if key == "section":
+        return _section_ids(value)
     return ()
 
 
@@ -285,4 +340,6 @@ def map_ids(key: str, value: Any, new_id: Callable[[int], int | None]) -> Any:
     if key == "active" and value["set"] is not None:
         n = new_id(value["set"])
         return {**value, "set": n} if n is not None else {"set": None, "hole": None, "table": None}
+    if key == "section":
+        return _section_map(value, new_id)
     return value

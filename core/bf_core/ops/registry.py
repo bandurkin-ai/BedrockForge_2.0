@@ -336,6 +336,12 @@ def _volume(src: Sources, raw: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _stitch_series(src: Sources, raw: dict[str, Any]) -> dict[str, Any]:
+    from .run_series import prepare
+
+    return prepare(src, raw)
+
+
 PREPARE: dict[str, Prepare] = {
     "stitch": _stitch,
     "extrude": _extrude,
@@ -352,6 +358,7 @@ PREPARE: dict[str, Prepare] = {
     "intersection_lines": _intersection_lines,
     "contours": _contour_lines,
     "volume_between": _volume,
+    "stitch_series": _stitch_series,
 }
 
 

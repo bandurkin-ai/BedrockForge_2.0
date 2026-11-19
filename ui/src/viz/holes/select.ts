@@ -22,7 +22,7 @@ export interface HoleHit {
   on: "collar" | "trace";
 }
 
-/** `inWindow(x, y)` — rendered-space plan coordinates (the clipping planes are vertical). */
+/** `inWindow(x, y, z)` — scene coordinates (relative to the scene origin, Z not stretched). */
 export function pickHoles(
   layers: Iterable<HoleSetLayer>,
   vp: Mat4,
@@ -31,7 +31,7 @@ export function pickHoles(
   py: number,
   w: number,
   h: number,
-  inWindow: (x: number, y: number) => boolean,
+  inWindow: (x: number, y: number, z: number) => boolean,
 ): HoleHit | null {
   const list = [...layers].filter((l) => l.visibility.set);
   let best: { hit: HoleHit; d: number } | null = null;
@@ -40,7 +40,7 @@ export function pickHoles(
     for (const p of layer.parts) {
       const m = multiply(vp, partModel(p.offset, vexag));
       const pos = p.collars.positions;
-      const hit = nearestPoint(m, pos, p.collars.count, px, py, w, h, best ? best.d : COLLAR_PICK_PX, (s) => inWindow(pos[s * 3] + p.offset[0], pos[s * 3 + 1] + p.offset[1]));
+      const hit = nearestPoint(m, pos, p.collars.count, px, py, w, h, best ? best.d : COLLAR_PICK_PX, (s) => inWindow(pos[s * 3] + p.offset[0], pos[s * 3 + 1] + p.offset[1], pos[s * 3 + 2] + p.offset[2]));
       if (hit) {
         const index = layer.manifest.byPart[p.part.k][hit.index];
         best = { hit: { setId: layer.setId, index, name: layer.manifest.names[index], on: "collar" }, d: hit.distance };
@@ -61,7 +61,8 @@ export function pickHoles(
         const hit = nearestSegment(m, pos, g.slots.length, px, py, w, h, best ? best.d : TRACE_PICK_PX, (s, t) => {
           const x = pos[s * 6] + (pos[s * 6 + 3] - pos[s * 6]) * t + p.offset[0];
           const y = pos[s * 6 + 1] + (pos[s * 6 + 4] - pos[s * 6 + 1]) * t + p.offset[1];
-          return inWindow(x, y);
+          const z = pos[s * 6 + 2] + (pos[s * 6 + 5] - pos[s * 6 + 2]) * t + p.offset[2];
+          return inWindow(x, y, z);
         });
         if (hit) {
           const index = layer.manifest.byPart[p.part.k][g.slots[hit.segment]];

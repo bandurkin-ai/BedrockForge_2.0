@@ -16,9 +16,10 @@ import { drawHint } from "../../viz/section/draw";
 import { emptyOverview } from "../../viz/section/miniPlan";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
-import { SectionMap } from "../section/SectionMap";
+import { miniPlanWanted, SectionMap } from "../section/SectionMap";
 import { sectionPoint } from "../section/bind";
-import { sectionOf, sectionStore } from "../section/state";
+import { sectionOf, sectionStore, seriesRibbon } from "../section/state";
+import { applySectionKey } from "../section/seriesState";
 import { tablesStore } from "../tables/state";
 import { viewStore } from "./bind";
 import { HolesSource } from "./loaders";
@@ -69,10 +70,7 @@ function connect(app: App, scene: Scene, source: HolesSource): () => void {
   const off: (() => void)[] = [];
   let view = app.store.get().view;
   scene.setView(view);
-  const applySection = () => {
-    const s = sectionOf(viewStore.get());
-    scene.setSection(s.line, s.clip);
-  };
+  const applySection = () => applySectionKey(scene);
   applySection();
   off.push(
     app.store.subscribe(() => {
@@ -142,7 +140,8 @@ function SceneMount() {
   const hasSets = useStore(tablesStore, (s) => s.sets.length > 0);
   const hasObjects = useStore(sceneObjects, (o) => o.files.length > 0 || o.rasters.length > 0 || o.wireframes.length > 0);
   const [ready, setReady] = useState(false);
-  const { line, clip } = sectionOf(keys);
+  const sectionKey = sectionOf(keys);
+  const { line, clip } = sectionKey;
 
   useEffect(() => {
     const el = host.current;
@@ -171,6 +170,7 @@ function SceneMount() {
           onPickLayer: (hit: LayerHit | null) => objects?.pick(hit),
           onGroundClick: (p: { x: number; y: number }) => sectionPoint(app, p),
           onContextLost: () => sceneUi.set({ lost: true }),
+          onLock: (on: boolean) => seriesRibbon.set({ locked: on }),
           onContextRestored: () => sceneUi.set({ lost: false, degraded: scene ? scene.renderer.budgetFactor() < 1 : false }),
         };
         try {
@@ -248,11 +248,12 @@ function SceneMount() {
       source?.dispose();
       if (currentScene() === scene) setCurrentScene(null);
       scene?.dispose();
+      seriesRibbon.set({ locked: false });
       if (window.__bfScene) delete window.__bfScene;
     };
   }, [app]);
 
-  const showMap = ready && mapOpen && (line !== null || draw.stage !== "off");
+  const showMap = ready && mapOpen && miniPlanWanted(sectionKey, draw.stage !== "off");
   const overview = useMemo(() => (showMap ? currentScene()?.planOverview() ?? emptyOverview() : emptyOverview()), [showMap, ui.content, ui.sets]);
   const hint = drawHint(draw);
 

@@ -180,3 +180,33 @@ def test_cloud_styles_keep_a_style_per_layer_and_follow_the_ids() -> None:
     assert drop_missing("cloud_styles", value, lambda i: i != 12) == {}
     renumbered = map_ids("cloud_styles", value, lambda i: 40 if i == 12 else None)
     assert renumbered == {"40": {"color": "class", "hidden": [7]}}
+
+
+def test_section_series_key_reads_old_keys_as_they_were_and_follows_the_ids() -> None:
+    """ADR 0016 §4: `section {line, clip, series}`; a key of Э7 reads without changes, `series` only when set."""
+    line = {"x0": 1.0, "y0": 2.0, "az": 30.0, "length": None, "towards": 25.0, "away": 25.0}
+    old = {"line": line, "clip": True}
+    assert normalize("section", old, strict=True) == old and normalize("section", old, strict=False) == old
+    v = normalize("section", {"line": None, "clip": True, "series": {"id": 5, "k": 3}}, strict=True)
+    assert v == {"line": None, "clip": True, "series": {"id": 5, "k": 3, "seg": None}}
+    assert normalize("section", {"line": line, "series": None, "clip": False}, strict=True) == {
+        "line": line,
+        "clip": False,
+    }
+    for bad in ({"id": 0}, {"id": True}, {"id": 5, "k": -1}, {"id": 5, "k": 5000}, {"id": 5, "seg": "1"}, [5]):
+        with pytest.raises(BadValue):
+            normalize("section", {"line": None, "clip": False, "series": bad}, strict=True)
+    # lenient: a broken series is dropped, a broken k is the first section
+    assert normalize("section", {"line": None, "clip": True, "series": {"id": "x"}}, strict=False) == {
+        "line": None,
+        "clip": False,
+    }
+    assert normalize("section", {"line": None, "series": {"id": 5, "k": 1.5}}, strict=False)["series"]["k"] == 0
+    # ids: renumbered on `.bfggis`, forgotten when the series is gone (the free line and its clip stay)
+    assert list(ids_in("section", v)) == [5] and list(ids_in("section", old)) == []
+    assert map_ids("section", v, {5: 50}.get)["series"] == {"id": 50, "k": 3, "seg": None}
+    assert map_ids("section", v, {}.get) == {"line": None, "clip": False}
+    both = normalize("section", {"line": line, "clip": True, "series": {"id": 5, "k": 0, "seg": 2}}, strict=True)
+    assert drop_missing("section", both, lambda i: False) == {"line": line, "clip": True}
+    assert drop_missing("section", both, lambda i: True) == both
+    assert map_ids("section", old, {}.get) == old

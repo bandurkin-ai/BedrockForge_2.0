@@ -30,7 +30,7 @@ const TOOL_ICONS: Record<Tool, IconName> = { select: "edSelect", line: "edPline"
 
 /** The panel in its order. */
 export const PANEL: readonly PanelButton[] = [
-  ...TOOLS.map((t): PanelButton => ({ id: `tool-${t.id}`, command: "lines.tool", args: { tool: t.id }, icon: TOOL_ICONS[t.id], title: t.title, action: t.action, keys: t.keys, group: "tools" })),
+  ...TOOLS.map((t): PanelButton => ({ id: `tool-${t.id}`, command: "lines.tool", args: { tool: t.id }, icon: TOOL_ICONS[t.id], title: t.title, action: t.action, keys: t.id === "line" ? "L; при активной серии разрезов — Shift+L" : t.keys, group: "tools" })),
   ...MODIFY.map((m): PanelButton => ({ id: `modify-${m.id}`, command: "lines.modify", args: { action: m.id }, icon: m.icon, title: m.title, action: m.action, keys: m.keys, group: "modify" })),
   { id: "undo", command: "lines.undo", icon: "edUndo", title: "Отменить", action: "Отменить последнюю правку", keys: "Ctrl+Z", group: "history" },
   { id: "redo", command: "lines.redo", icon: "edRedo", title: "Повторить", action: "Повторить отменённую правку", keys: "Ctrl+Y, Ctrl+Shift+Z", group: "history" },
