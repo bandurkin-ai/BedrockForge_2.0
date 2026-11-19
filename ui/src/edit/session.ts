@@ -13,7 +13,7 @@ import { assembledContours, pickContour, startAssembly, stopAssembly, type Assem
 import { drawingPlane, onSection, placePoint } from "./drawPlane";
 import { addPoint, dropPoint, finishDrawing } from "./drawing";
 import { carryOver, moveBody, rebaseOnSaved, saveBody, summarize, type LoadedLayer, type SaveSummary } from "./io";
-import { EMPTY_SELECTION, layerHistory, lineById, vertexAt, type EditLayer, type History, type Selection, type Vec3, type VertexRef } from "./model";
+import { EMPTY_SELECTION, layerHistory, lineById, vertexAt, type AttrValue, type EditLayer, type History, type Selection, type Vec3, type VertexRef } from "./model";
 import * as ops from "./ops";
 import { boxSelection, clickSelection, nearestSegment, nearestVertex } from "./pick";
 import { SectionLock } from "./lock";
@@ -49,6 +49,8 @@ export class EditSession implements CommandHost {
   clip = false;
   /** «Текущий разрез / все»: on a section of a series only its lines are picked */
   readonly lock = new SectionLock();
+  /** attributes of every new line (a contour on a section of a series: `SECTION_SET`, `SECTION`, `SECTION_NAME`) */
+  newAttrs: Record<string, AttrValue> | undefined = undefined;
   view: SessionView | null = null;
   probe: WireframeProbe | null = null;
   hover: Hover | null = null;
