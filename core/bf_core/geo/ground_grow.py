@@ -39,10 +39,15 @@ from .ground_kernels import fit_plane
 
 @njit(cache=True, nogil=True)
 def _plane_at(a, want, cmin, mx, my, mz, state, gxa, gya, ncx, ncy, c, ct, bx, by, bz, use):  # type: ignore[no-untyped-def]
-    """The plane of the ground at cell `a`: z = mz[a] + o + gx·dx + gy·dy (dx, dy from the return of `a`),
-    least squares over the returns of the cells in state `want` around it (5 × 5) that lie within 2·CT, then CT
-    of the plane so far along its normal. Fewer than three such returns — the plane stays.
-    → (n, o, gx, gy); bx, by, bz hold the n returns around, use — those of the last fit."""
+    """The plane of the ground at cell `a`: z = mz[a] + o + gx·dx + gy·dy (dx, dy from the return of `a`).
+
+    Least squares over the returns of the cells in state `want` around it (5 × 5): first those within 2·CT,
+    then CT of the plane so far (along its normal) — the other level of a step stays out; then twice without
+    the returns more than CT/5 above the plane — vegetation taken on the way does not lift it: under
+    vegetation the ground is the minority of the lowest returns. A fit that cannot be made (fewer than three
+    returns, returns on a line) leaves the plane as it was.
+    → (support, o, gx, gy): support — the returns of the last fit, 0 — the plane is still the one given.
+    """
     aj = a // ncx
     ai = a - aj * ncx
     n = 0
@@ -62,18 +67,25 @@ def _plane_at(a, want, cmin, mx, my, mz, state, gxa, gya, ncx, ncy, c, ct, bx, b
             bz[n] = mz[b] - mz[a]
             n += 1
     o = 0.0
-    for step in range(2):
-        band = ct * (2.0 - step)
+    support = 0
+    for step in range(4):
         norm = math.sqrt(1.0 + gxa * gxa + gya * gya)
+        count = 0
         for k in range(n):
-            use[k] = 1 if abs(bz[k] - (o + gxa * bx[k] + gya * by[k])) <= band * norm else 0
+            r = (bz[k] - (o + gxa * bx[k] + gya * by[k])) / norm
+            if step < 2:
+                use[k] = 1 if abs(r) <= ct * (2.0 - step) else 0
+            elif use[k] and r > 0.2 * ct:
+                use[k] = 0
+            count += use[k]
         ok, a0, b0, c0 = fit_plane(bx, by, bz, use, n)
         if not ok:
             break
         o = a0
         gxa = b0
         gya = c0
-    return n, o, gxa, gya
+        support = count
+    return support, o, gxa, gya
 
 
 @njit(cache=True, nogil=True)
@@ -88,7 +100,7 @@ def _spread(queue, head, tail, want, smooth, cmin, mx, my, mz, state, gx, gy, nc
         head += 1
         aj = a // ncx
         ai = a - aj * ncx
-        _n, o, gxa, gya = _plane_at(a, want, cmin, mx, my, mz, state, gx[a], gy[a], ncx, ncy, c, ct, bx, by, bz, use)
+        _s, o, gxa, gya = _plane_at(a, want, cmin, mx, my, mz, state, gx[a], gy[a], ncx, ncy, c, ct, bx, by, bz, use)
         gx[a] = gxa
         gy[a] = gya
         norm = math.sqrt(1.0 + gxa * gxa + gya * gya)
@@ -205,9 +217,10 @@ def edge_rows(cmin, mask, ncx, row0, row1, edge):  # type: ignore[no-untyped-def
 
 
 @njit(cache=True, nogil=True)
-def plane_rows(cmin, mx, my, mz, state, gx, gy, ncx, ncy, row0, row1, c, ct, band, g, gn):  # type: ignore[no-untyped-def]
+def plane_rows(cmin, mx, my, mz, state, gx, gy, ncx, ncy, row0, row1, c, ct, g, gn, weak):  # type: ignore[no-untyped-def]
     """The plane of every ground cell of rows [row0, row1): g — its height at the centre of the cell, gx, gy —
-    its slope (rewritten), gn — 1 / √(1 + gx² + gy²). Not ground — g is NaN."""
+    its slope (rewritten), gn — 1 / √(1 + gx² + gy²), weak — 1 when no plane could be fitted around the cell
+    (it passes through the return of the cell with the slope the growth left). Not ground — g is NaN."""
     bx = np.empty(25)
     by = np.empty(25)
     bz = np.empty(25)
@@ -215,22 +228,16 @@ def plane_rows(cmin, mx, my, mz, state, gx, gy, ncx, ncy, row0, row1, c, ct, ban
     for cj in range(row0, row1):
         for ci in range(ncx):
             a = cj * ncx + ci
+            weak[a] = 0
             if state[a] != 1:
                 g[a] = np.nan
                 gn[a] = 1.0
                 continue
-            n, o, gxa, gya = _plane_at(a, 1, cmin, mx, my, mz, state, gx[a], gy[a], ncx, ncy, c, ct, bx, by, bz, use)
-            # without the returns above the plane: low vegetation taken on the way lifts it
-            for _ in range(2):
-                for k in range(n):
-                    if use[k] and bz[k] - (o + gxa * bx[k] + gya * by[k]) > band:
-                        use[k] = 0
-                ok, a0, b0, c0 = fit_plane(bx, by, bz, use, n)
-                if not ok:
-                    break
-                o = a0
-                gxa = b0
-                gya = c0
+            support, o, gxa, gya = _plane_at(
+                a, 1, cmin, mx, my, mz, state, gx[a], gy[a], ncx, ncy, c, ct, bx, by, bz, use
+            )
+            if support == 0:
+                weak[a] = 1
             gx[a] = gxa
             gy[a] = gya
             g[a] = mz[a] + o - gxa * mx[a] - gya * my[a]
@@ -252,7 +259,7 @@ def class_of(h, ct):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
-def classify_rows(xyz, order, start, state, g, gx, gy, gn, u, mask, ncx, ncy, row0, row1, ox, oy, c, cr, cx0, cy0, ct, pcls, ph):  # type: ignore[no-untyped-def]
+def classify_rows(xyz, order, start, state, g, gx, gy, gn, weak, u, mask, ncx, ncy, row0, row1, ox, oy, c, cr, cx0, cy0, ct, pcls, ph):  # type: ignore[no-untyped-def]
     """pcls, ph for the points of rows [row0, row1): the height above the ground along the normal and the
     class. Noise keeps class 7 (its height is still measured). No ground cell and no cloth near — NaN, class 1."""
     npy, npx = u.shape
@@ -270,7 +277,10 @@ def classify_rows(xyz, order, start, state, g, gx, gy, gn, u, mask, ncx, ncy, ro
                 z = xyz[i, 2]
                 best = 0.0
                 found = False
-                for reach in range(1, 3):
+                # fitted planes first (3 × 3 cells, then 5 × 5), then the planes left by the growth
+                for attempt in range(4):
+                    reach = 1 + (attempt & 1)
+                    want_weak = attempt >> 1
                     for dj in range(-reach, reach + 1):
                         jj = cj + dj
                         if jj < 0 or jj >= ncy:
@@ -280,7 +290,7 @@ def classify_rows(xyz, order, start, state, g, gx, gy, gn, u, mask, ncx, ncy, ro
                             if ii < 0 or ii >= ncx:
                                 continue
                             b = jj * ncx + ii
-                            if state[b] != 1:
+                            if state[b] != 1 or weak[b] != want_weak:
                                 continue
                             d = (z - (g[b] + gx[b] * (x - (ii + 0.5) * c) + gy[b] * (y - (jj + 0.5) * c))) * gn[b]
                             if not found or abs(d) < abs(best):

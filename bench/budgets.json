@@ -256,6 +256,22 @@
         "stl_error_m": 0.25
       },
       "note": "ADR 0013: DXF, OBJ, STL — 1 млн: чтение ≤ 15 с, запись ≤ 10 с (предложение ADR, уточняется замером); здесь 100 тыс. Surpac DTM и Datamine — предварительно, по тем же пределам."
+    },
+    "cloud_import": {
+      "params": {
+        "points": 1000000
+      },
+      "budget_s": 6.0,
+      "budget_mb": 600,
+      "limits": {
+        "manifest_s": 0.2,
+        "coarse_s": 1.0,
+        "part0_s": 0.1,
+        "api_grew_mb": 150,
+        "max_error_m": 0.0005,
+        "cycle_mismatch": 0
+      },
+      "note": "ADR 0014: облако 1 млн — импорт 0,45 с / 341 МБ (первый замер); части и манифест из среза blobs."
     }
   },
   "full": {
@@ -514,6 +530,22 @@
         "stl_error_m": 0.25
       },
       "note": "ADR 0013: DXF, OBJ, STL — 1 млн: чтение ≤ 15 с, запись ≤ 10 с (предложение ADR, уточняется замером). Surpac DTM и Datamine — предварительно, по тем же пределам."
+    },
+    "cloud_import": {
+      "params": {
+        "points": 10000000
+      },
+      "budget_s": 30.0,
+      "budget_mb": 1500,
+      "limits": {
+        "manifest_s": 0.2,
+        "coarse_s": 1.0,
+        "part0_s": 0.1,
+        "api_grew_mb": 150,
+        "max_error_m": 0.0005,
+        "cycle_mismatch": 0
+      },
+      "note": "ADR 0014: 10 млн — 4,1 с / 366 МБ; 50 млн — 21 с / 387 МБ (вне профилей)."
     }
   },
   "external": {

@@ -60,6 +60,7 @@ CLOTH_TOL = 1e-4  # a sweep of the cloth moves no particle further, m
 ALGO = "CSF (Zhang et al., 2016) как задача с препятствием; рост по склону; грани — версия 1"
 
 Tick = Callable[[float, str], None] | None
+_TRACE: list[dict[str, Any]] | None = None  # tests: a list here receives the grids of every block
 
 STAGES = ("Индекс ячеек", "Шум", "Препятствие", "Ткань", "Рост по склону", "Классы", "Грани")
 
@@ -442,13 +443,14 @@ def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report) -> N
     # 7 classes
     g = np.empty(ncell, np.float64)
     gn = np.empty(ncell, np.float32)
+    weak = np.empty(ncell, np.uint8)
     pool.strips(
-        lambda a, b: gg.plane_rows(cmin, mx, my, mz, state, gx, gy, ncx, ncy, a, b, c, ct, ct / 5.0, g, gn), ncy, STRIP_ROWS
+        lambda a, b: gg.plane_rows(cmin, mx, my, mz, state, gx, gy, ncx, ncy, a, b, c, ct, g, gn, weak), ncy, STRIP_ROWS
     )
     del cmin, mx, my, mz
     pool.strips(
         lambda a, b: gg.classify_rows(
-            pts, order, start, state, g, gx, gy, gn, u, mask, ncx, ncy, a, b, lat.ox, lat.oy, c, cr, blk.cx0, blk.cy0, ct, pcls, ph
+            pts, order, start, state, g, gx, gy, gn, weak, u, mask, ncx, ncy, a, b, lat.ox, lat.oy, c, cr, blk.cx0, blk.cy0, ct, pcls, ph
         ),
         ncy,
         STRIP_ROWS,
@@ -464,6 +466,8 @@ def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report) -> N
                 float(p.r_b), math.cos(math.radians(p.face_deg)), *blk.core,
             )
         )  # fmt: skip
+    if _TRACE is not None:
+        _TRACE.append({"block": blk, "lattice": lat, "order": order, "start": start, "state": state, "weak": weak, "g": g, "u": u, "mask": mask, "pcls": pcls})
     col0, row0, col1, row1 = blk.core
     pool.strips(
         lambda a, b: gk.store_rows(order, start, pcls, ph, ncx, row0 + a, row0 + b, col0, col1, cls, h),
