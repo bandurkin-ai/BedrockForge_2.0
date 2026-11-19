@@ -209,6 +209,7 @@ NORMALIZERS: dict[str, Callable[[Any, bool], Any]] = {
     "collar_styles": _styles,
     "trace_styles": _styles,
     "block_styles": _styles,
+    "cloud_styles": _styles,  # {"<layer id>": {color, hidden: [codes]}} (ADR 0014; body checked by the interface)
     "columns": _columns,
     "active": _active,
 }
@@ -231,7 +232,7 @@ def drop_missing(key: str, value: Any, alive: Callable[[int], bool]) -> Any:
         return {**value, "shown": drop_missing("hidden", value["shown"], alive)}
     if key == "displays":
         return [d for d in value if alive(d["chart"])]
-    if key in ("collar_styles", "trace_styles", "block_styles"):
+    if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
         return {k: s for k, s in value.items() if alive(int(k))}
     if key == "columns":
         return {k: c for k, c in value.items() if alive(int(k.split(":", 1)[0]))}
@@ -247,7 +248,7 @@ def ids_in(key: str, value: Any) -> Iterable[int]:
         return ids_in("hidden", value["shown"])
     if key == "displays":
         return (d["chart"] for d in value)
-    if key in ("collar_styles", "trace_styles", "block_styles"):
+    if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
         return (int(k) for k in value)
     if key == "columns":
         return (int(k.split(":", 1)[0]) for k in value)
@@ -271,7 +272,7 @@ def map_ids(key: str, value: Any, new_id: Callable[[int], int | None]) -> Any:
         return {**value, "shown": [h for h in map(hidden, value["shown"]) if h is not None]}
     if key == "displays":
         return [{**d, "chart": n} for d in value if (n := new_id(d["chart"])) is not None]
-    if key in ("collar_styles", "trace_styles", "block_styles"):
+    if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
         return {str(n): s for k, s in value.items() if (n := new_id(int(k))) is not None}
     if key == "columns":
         out: dict[str, Any] = {}

@@ -6,7 +6,7 @@ export interface CoreInfo {
   version: string;
 }
 
-export type SaveKind = "dat" | "csv" | "xlsx" | "str" | "dxf" | "jpg" | "png" | "tif" | "bmp" | "tridb" | "dwg" | "obj" | "stl" | "dtm" | "any";
+export type SaveKind = "dat" | "csv" | "xlsx" | "str" | "dxf" | "las" | "jpg" | "png" | "tif" | "bmp" | "tridb" | "dwg" | "obj" | "stl" | "dtm" | "any";
 
 export interface BfBridge {
   core(): CoreInfo | null;
@@ -36,7 +36,7 @@ export interface BfBridge {
    * (lines and points), "rasters" (images and their georeference), "wireframes" (TRIDB, DXF, DWG, OBJ, STL,
    * Surpac DTM, Datamine), "trenches" (polylines of trenches), "program"
    * (a program of the user: .exe — «Настройка › Внешние программы»); [] when cancelled. */
-  pickFiles(kind: "tables" | "prj" | "objects" | "lines" | "rasters" | "wireframes" | "trenches" | "program", multi: boolean): Promise<string[]>;
+  pickFiles(kind: "tables" | "prj" | "objects" | "lines" | "rasters" | "wireframes" | "trenches" | "program" | "las" | "xyz", multi: boolean): Promise<string[]>;
   showInFolder(file: string): void;
   /** Disk path of a file dropped from Explorer. */
   pathForFile(file: File): string;

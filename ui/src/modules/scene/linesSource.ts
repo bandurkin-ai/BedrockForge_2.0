@@ -6,19 +6,23 @@
  * coarser than full is «упрощено». Buffers are accounted in `GpuMemory` (parts out of view and finer levels go
  * first). Visibility follows the hidden key `ln:<id>`; a hidden layer that was never shown is not loaded.
  * A rename or a new colour keeps what is built while the parts reload. After a lost context everything comes
- * again. A lazy chunk with three.js.
+ * again. A point cloud (ADR 0014 §2) is a layer of points with five levels: the cell of a level is at most
+ * 2 px on screen, then the point budget of the frame (`POINT_BUDGET`) coarsens the smallest parts on screen
+ * first; its parts are asked in the value mode of its style (`?color=`), a new mode asks them again. A lazy
+ * chunk with three.js.
  */
 import { coreTarget } from "../../shell/api";
 import { apiUrl, authHeaders } from "../../shell/coreClient";
 import type { FrameContext, Scene } from "../../viz/Scene";
 import { boxFromBbox6, scaleZ } from "../../viz/core/bounds";
-import { GpuMemory, MEMORY_BUDGET } from "../../viz/core/budget";
+import { GpuMemory, MEMORY_BUDGET, POINT_BUDGET } from "../../viz/core/budget";
 import { boxInFrustum, frustumPlanes, screenPriority } from "../../viz/core/cull";
 import { shownLevel } from "../../viz/core/lod";
 import { VizError } from "../../viz/error";
 import { THIN_SEGMENTS } from "../../viz/holes/paths";
 import { LabelCache } from "../../viz/labels/sprites";
-import { lineBoundaries, lineLevel, nearestInBox, readLinesManifest, sameLayout, type LinesManifest } from "../../viz/lines/build";
+import { lineBoundaries, lineLevel, nearestInBox, readLinesManifest, sameLayout, staleLevels, type LinesManifest } from "../../viz/lines/build";
+import { applyPointBudget, cloudBoundaries, type CloudBudgetPart, type CloudStyle, type CloudValueMode } from "../../viz/lines/cloud";
 import { LINE_WIDTH_PX, LineLayerView } from "../../viz/lines/layer";
 import { LoadQueue } from "../../viz/load/loader";
 import { GeometryWorker } from "../../viz/worker/client";
@@ -37,10 +41,14 @@ export interface LinesInput {
   floor: () => number;
   /** the layers in the scene changed (others lie under the lowest of them) */
   onContent?: () => void;
+  /** the style of a point cloud kept by the project: colour mode, hidden classes */
+  cloud?: (id: number) => CloudStyle | null | undefined;
 }
 
 interface PartState {
   want: number | null;
+  /** the level by the distance alone (the budget may coarsen `want`): the hysteresis follows it */
+  lod: number | null;
   priority: number;
   loading: Set<number>;
   /** levels not to ask again: failed, or no room on the video card */
@@ -55,6 +63,8 @@ interface LayerState {
   parts: PartState[];
   /** `k:lod` of the levels built from this manifest's version of the layer */
   fresh: Set<string>;
+  /** a cloud: the value mode its levels are asked with; null — not a cloud */
+  mode: CloudValueMode | null;
 }
 
 export const lineKey = (id: number) => `ln:${id}`;
@@ -77,6 +87,8 @@ export class LinesSource {
   private fat = true;
   private over = false;
   private selected: { layerId: number; line: number } | null = null;
+  /** the point budget of clouds in the last frame */
+  private cloudFrame = { points: 0, budget: 0, simplified: false, over: false };
   private disposed = false;
   private publishing = false;
 
@@ -93,9 +105,12 @@ export class LinesSource {
     return this.inflight === 0 && this.asking.size === 0 && this.timer === null;
   }
 
-  /** Layers in the scene, parts and segments shown, the share of simplified parts (E2E, the status note). */
-  stats(): { layers: number; parts: number; segments: number; points: number; simplified: number; over: boolean } {
-    const out = { layers: this.layers.size, parts: 0, segments: 0, points: 0, simplified: 0, over: this.over };
+  /**
+   * Layers in the scene, parts and segments shown, the share of simplified parts (E2E, the status note);
+   * `cloud` — the points of clouds wanted in the last frame against the point budget.
+   */
+  stats(): { layers: number; parts: number; segments: number; points: number; simplified: number; over: boolean; cloud: { points: number; budget: number; simplified: boolean; over: boolean } } {
+    const out = { layers: this.layers.size, parts: 0, segments: 0, points: 0, simplified: 0, over: this.over, cloud: { ...this.cloudFrame } };
     for (const st of this.layers.values()) {
       if (!st.view.visible) continue;
       const s = st.view.stats();
@@ -134,6 +149,7 @@ export class LinesSource {
         if (st.view.visible !== visible) changed = true;
         st.view.setVisible(visible);
         st.view.setColor(l.color);
+        this.restyle(st);
         if (visible && st.manifest.version !== l.version) this.ask(l.id);
       } else if (visible && this.empty.get(l.id) !== l.version) this.ask(l.id);
     }
@@ -233,14 +249,14 @@ export class LinesSource {
         const visible = !this.input.hidden().includes(lineKey(id));
         const old = this.layers.get(id);
         if (old && sameLayout(old.manifest, m)) {
-          // the same parts: what is shown stays, the levels of another version reload behind it
-          for (const key of [...old.fresh]) {
-            const [k, lod] = key.split(":").map(Number);
-            if (old.manifest.parts[k].etags[lod] !== m.parts[k].etags[lod]) old.fresh.delete(key);
-          }
+          // the same parts: what is shown stays, the levels of another version reload behind it — also those
+          // of a cloud shown by `h` or `dz` whose column changed while its classes did not
+          for (const key of staleLevels(old.manifest, m, old.fresh, old.mode)) old.fresh.delete(key);
           old.manifest = m;
+          old.view.manifest = m;
           old.view.setColor(ref.color ?? m.color);
           for (const p of old.parts) p.failed.clear();
+          this.restyle(old);
         } else {
           if (old) this.drop(id);
           this.empty.delete(id);
@@ -248,8 +264,11 @@ export class LinesSource {
           else {
             const view = new LineLayerView(m, { clip: this.scene.clipPlanes, resolution: this.scene.resolution, labels: this.labels, pixelRatio: this.scene.renderer.pixelRatio }, { color: ref.color ?? m.color, visible }, this.input.floor());
             view.setFat(this.fat);
+            view.setCloudStyle(this.input.cloud?.(id));
             if (this.selected?.layerId === id) view.select(this.selected.line);
-            this.layers.set(id, { id, manifest: m, view, bounds: lineBoundaries(m.tols), parts: m.parts.map(() => ({ want: null, priority: 0, loading: new Set(), failed: new Set() })), fresh: new Set() });
+            const bounds = m.cloud ? cloudBoundaries(m.tols) : lineBoundaries(m.tols);
+            const parts = m.parts.map(() => ({ want: null, lod: null, priority: 0, loading: new Set<number>(), failed: new Set<number>() }));
+            this.layers.set(id, { id, manifest: m, view, bounds, parts, fresh: new Set(), mode: view.isCloud ? view.valueMode : null });
             this.scene.addLayer(lineKey(id), view);
           }
           this.input.onContent?.();
@@ -280,25 +299,45 @@ export class LinesSource {
     const inView: string[] = [];
     let work = false;
     let changed = false;
+    const settle = (st: LayerState, k: number, p: PartState, want: number) => {
+      p.want = want;
+      const id = partId(st.id, k);
+      const show = shownLevel(want, st.view.levels(k));
+      if (st.view.show(k, show)) changed = true;
+      if (show !== null) this.memory.touch(id, show, now);
+      if (!st.fresh.has(`${k}:${want}`) && !p.loading.has(want) && !p.failed.has(want)) work = true;
+    };
+    const clouds: { st: LayerState; k: number; p: PartState }[] = [];
+    const budgetParts: CloudBudgetPart[] = [];
     for (const st of this.layers.values()) {
       if (!st.view.visible) continue;
       st.parts.forEach((p, k) => {
         const box = scaleZ(boxFromBbox6(st.view.partBbox(k), origin), ctx.vexag);
         if (!boxInFrustum(box, planes)) {
           p.want = null;
+          p.lod = null;
           return;
         }
-        const id = partId(st.id, k);
-        inView.push(id);
+        inView.push(partId(st.id, k));
         // the level by the place of the part nearest to the camera: where it is seen largest
-        p.want = lineLevel(ctx.pixelsPerUnit(nearestInBox(box, ctx.camera.position)), st.bounds, p.want ?? st.view.shown(k));
+        const ppm = ctx.pixelsPerUnit(nearestInBox(box, ctx.camera.position));
+        p.lod = lineLevel(ppm, st.bounds, p.lod ?? p.want ?? st.view.shown(k));
         p.priority = screenPriority(box, ctx.camera, ctx.options, planes);
-        const show = shownLevel(p.want, st.view.levels(k));
-        if (st.view.show(k, show)) changed = true;
-        if (show !== null) this.memory.touch(id, show, now);
-        if (!st.fresh.has(`${k}:${p.want}`) && !p.loading.has(p.want) && !p.failed.has(p.want)) work = true;
+        if (!st.mode) return settle(st, k, p, p.lod);
+        const part = st.manifest.parts[k];
+        const diag = Math.hypot(box.max[0] - box.min[0], box.max[1] - box.min[1], box.max[2] - box.min[2]);
+        clouds.push({ st, k, p });
+        budgetParts.push({ key: partId(st.id, k), screen: Math.min(ppm * diag, 1e9) || 0, points: part.levels?.length ? part.levels : [part.points], level: p.lod });
       });
     }
+    // the point budget of the frame over every cloud: the smallest parts on screen go coarser first
+    const budget = POINT_BUDGET[this.scene.gpu.gpuClass] * this.scene.renderer.budgetFactor();
+    const r = applyPointBudget(budgetParts, budget);
+    this.cloudFrame = { points: r.points, budget, simplified: r.simplified, over: r.over };
+    clouds.forEach(({ st, k, p }, i) => {
+      st.view.setCut(k, r.levels[i] > (p.lod ?? 0));
+      settle(st, k, p, r.levels[i]);
+    });
     this.memory.setVisible(inView);
     // a loaded level is shown here, a frame after its load: the segments of the frame are counted with it
     if (changed) this.updateFat();
@@ -331,17 +370,19 @@ export class LinesSource {
   private async loadPart(st: LayerState, k: number, lod: number, p: PartState): Promise<void> {
     const gen = this.generation;
     const manifest = st.manifest;
-    const stale = () => gen !== this.generation || this.disposed || this.layers.get(st.id) !== st || st.manifest !== manifest;
+    const mode = st.mode;
+    const stale = () => gen !== this.generation || this.disposed || this.layers.get(st.id) !== st || st.manifest !== manifest || st.mode !== mode;
     p.loading.add(lod);
     this.inflight++;
     this.publish();
     try {
-      const r = await this.queue.load({ url: this.url(`/viz/lines/${st.id}/parts/${k}?lod=${lod}`), priority: p.priority, revalidate: false });
+      const color = mode ? `&color=${mode}` : "";
+      const r = await this.queue.load({ url: this.url(`/viz/lines/${st.id}/parts/${k}?lod=${lod}${color}`), priority: p.priority, revalidate: false });
       if (stale() || !r.buffer) return;
       const built = await this.worker.lines(r.buffer);
       if (stale()) return;
       const id = partId(st.id, k);
-      const bytes = built.positions.byteLength + built.dots.byteLength;
+      const bytes = built.positions.byteLength + built.dots.byteLength + (built.value?.byteLength ?? 0);
       this.memory.limit = this.memoryLimit();
       this.memory.remove(id, lod);
       const room = this.memory.makeRoom(bytes, this.lastFrame);
@@ -370,6 +411,26 @@ export class LinesSource {
       this.inflight--;
       this.publish();
     }
+  }
+
+  /**
+   * The style of a cloud from the project: the palette follows at once; another value mode drops the levels
+   * built in the old one (their values mean something else) and asks the parts again.
+   */
+  private restyle(st: LayerState): void {
+    if (!st.mode) return;
+    st.view.setCloudStyle(this.input.cloud?.(st.id));
+    const mode = st.view.valueMode;
+    if (mode !== st.mode) {
+      st.mode = mode;
+      st.fresh.clear();
+      st.parts.forEach((p, k) => {
+        p.failed.clear();
+        for (const lod of st.view.levels(k)) st.view.dropLevel(k, lod);
+        this.memory.removePart(partId(st.id, k));
+      });
+    }
+    this.scene.invalidate();
   }
 
   /** Lines one pixel wide when the scene holds more than a million segments (ADR 0007 §7). */

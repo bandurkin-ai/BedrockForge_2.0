@@ -14,6 +14,6 @@ export function buildLines(buffer: ArrayBuffer): BuiltLines {
 /** The buffers to transfer back to the main thread, each once. */
 export function lineTransferables(b: BuiltLines): ArrayBuffer[] {
   const set = new Set<ArrayBuffer>();
-  for (const a of [b.positions, b.segStart, b.dots, b.dotPiece, b.line, b.closed, b.labels?.xyz]) if (a && a.buffer instanceof ArrayBuffer) set.add(a.buffer);
+  for (const a of [b.positions, b.segStart, b.dots, b.dotPiece, b.line, b.closed, b.labels?.xyz, b.value]) if (a && a.buffer instanceof ArrayBuffer) set.add(a.buffer);
   return [...set];
 }

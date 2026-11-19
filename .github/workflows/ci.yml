@@ -86,7 +86,8 @@ jobs:
       - run: xvfb-run -a npx playwright test
         working-directory: app
       # artifacts: screenshots and the frames of the 3D window (perf3d → bench/out/frame_sw.json, ADR 0007 §9;
-      # the heavy scene → bench/out/frame_sw_heavy.json, ADR 0013 «Замеры»)
+      # the heavy scene → bench/out/frame_sw_heavy.json, ADR 0013 «Замеры»; the scene with a point cloud →
+      # bench/out/frame_sw_cloud.json, ADR 0014 «Замеры»)
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -95,6 +96,7 @@ jobs:
             artifacts/
             bench/out/frame_sw.json
             bench/out/frame_sw_heavy.json
+            bench/out/frame_sw_cloud.json
           retention-days: 30
           if-no-files-found: ignore
 

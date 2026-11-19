@@ -40,6 +40,8 @@ export interface LinesExportBody {
   layer_ids: number[];
   delimiter?: string;
   decimal?: string;
+  /** LAS of a point cloud: a copy of its source with the classes of the cloud, or a new file */
+  las?: "source" | "new";
 }
 
 /** Starts the job `export.lines`. */

@@ -10,6 +10,10 @@ Job `export.lines` {path, format, layer_ids | file_id, delimiter?, decimal?, enc
 | `dxf`    | AutoCAD `.dxf`           | `dxf_write.write_dxf`           | POINT / TEXT              |
 | `csv`    | `.csv`, `.txt`, `.xyz`   | `points.write_points`           | a row per point           |
 | `dat`    | Micromine `.dat`         | `points.write_points_dat`       | a row per point           |
+| `las`    | `.las`                   | `las_write` (`cloud_export.py`) | point clouds only         |
+
+A point cloud (ADR 0014 §3, §6) is exported alone, to LAS or CSV, by `cloud_export.py`: its columns slice by slice,
+never as a layer in memory (`params.cloud_id`; the job also checks the layers it is given).
 
 `csv` and `dat` take lines too: a row per vertex with the attributes of its line. SHP and MIF/MID have no writer
 (ADR 0011 §2).
@@ -58,6 +62,7 @@ FORMATS: dict[str, Target] = {
     "dxf": Target("DXF", (".dxf",)),
     "csv": Target("CSV", (".csv", ".txt", ".xyz")),
     "dat": Target("Micromine DAT", (".dat",)),
+    "las": Target("LAS", (".las",)),
 }
 OPTIONS = ("delimiter", "decimal", "encoding")
 
@@ -71,7 +76,7 @@ def bad_format() -> ApiError:
         422,
         "bad_format",
         "Неизвестный формат экспорта линий.",
-        "Выберите: Micromine STR, Surpac STR, DXF, CSV или Micromine DAT.",
+        "Выберите: Micromine STR, Surpac STR, DXF, CSV, Micromine DAT или LAS (для облака точек).",
     )
 
 
@@ -98,6 +103,7 @@ def request(
     layer_ids: list[int] | None = None,
     file_id: int | None = None,
     overwrite: bool = False,
+    las: str | None = None,
     **options: Any,
 ) -> dict[str, Any]:
     """Checked parameters of the job `export.lines` (for the endpoint that starts it); ApiError otherwise.
@@ -146,6 +152,9 @@ def request(
         "points": sum(int(r.point_count) for r in rows),
     }
     out.update({k: options[k] for k in OPTIONS if options.get(k) is not None})
+    from .cloud_export import check_cloud
+
+    out.update(check_cloud(conn, ids, format, las))
     return out
 
 
@@ -164,8 +173,12 @@ def late_tick(ctx: JobContext, progress: float, message: str | None = None) -> N
 
 def _memory(params: dict[str, Any]) -> int:
     """The layers as arrays, the vertices in file order (`str_layers.gather`) and the cells of a portion as
-    Python values: about 400 B a vertex."""
-    return max(512, int(int(params.get("points") or 0) * 400 / 2**20) + 256)
+    Python values: about 400 B a vertex. A cloud goes by slices: a portion, and 8 B a point for LAS «по
+    исходнику» (`las_write.rewrite_classes`)."""
+    points = int(params.get("points") or 0)
+    if params.get("cloud_id") is not None:
+        return max(512, int(points * 8 / 2**20) + 384)
+    return max(512, int(points * 400 / 2**20) + 256)
 
 
 # --- the layout of the source file ---------------------------------------------------------------------
@@ -297,18 +310,25 @@ def export_lines(ctx: JobContext) -> dict[str, Any]:
     engine = ctx.engine()
     store = BlobStore(ctx.project_folder)
     ctx.tick(0.0, "Чтение слоёв")
+    from . import cloud_export
+
     try:
         with dialect.read_tx(engine) as conn:
             ids = [int(i) for i in p.get("layer_ids") or []]
             if not ids and p.get("file_id") is not None:
                 ids = ls_store.layer_ids(conn, int(p["file_id"]))
+            # a cloud is never read as a layer: its columns go to the file slice by slice
+            whole = fmt != "las" and not cloud_export.clouds_among(conn, ids)
+            extra = {} if whole else cloud_export.check_cloud(conn, ids, fmt, p.get("las"))
             layers = []
-            for k, layer_id in enumerate(ids):
+            for k, layer_id in enumerate(ids if whole else []):
                 ctx.tick(0.1 * k / len(ids))
                 layers.append(ls_store.read_layer(conn, store, layer_id))
             file_id, file_name, sha = _source_of(conn, ids) if ids else (None, "", None)
     except ApiError as exc:
         raise JobError(exc.code, exc.message, exc.hint) from exc
+    if not whole:
+        return cloud_export.export_cloud(ctx, engine, store, target, {**p, **extra}, file_id, sha)
 
     def part(start: float, stop: float) -> Any:
         def tick(f: float, message: str | None = None) -> None:

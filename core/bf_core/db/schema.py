@@ -402,9 +402,14 @@ BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job", "import"})
 #: loaded; `sidecar:<ext>` — a companion file of a raster (`sidecar:jgw`, `sidecar:tab`, …); `display0/1` —
 #: raster copies ≤ 4096 / ≤ 1024 px; lines: `xyz <f8 N×3`, `offsets <i8`, `closed u1`, `seq <u4`, `attrs` and
 #: `vattrs` (Parquet), or `pack:<n>` — entry n of a blob that holds these files of several small layers
-#: (`lines/pack.py`); wireframes: `xyz <f8`, `tri <i4`. A new role registers here, or add_owner refuses it.
+#: (`lines/pack.py`); wireframes: `xyz <f8`, `tri <i4`; point clouds (ADR 0014 §1, `lines/cloud.py`): `xyz`, `seq`,
+#: `class u1` (ASPRS code), `ret u1` (return number and number of returns), `h <f4` (height above the ground),
+#: `dz <f4` (Z − DTM). A new role registers here, or add_owner refuses it.
 BLOB_ROLES: frozenset[str] = frozenset(
-    {"data", "source", "display0", "display1", "xyz", "offsets", "closed", "seq", "attrs", "vattrs", "tri"}
+    {
+        "data", "source", "display0", "display1", "xyz", "offsets", "closed", "seq", "attrs", "vattrs", "tri",
+        "class", "ret", "h", "dz",
+    }  # fmt: skip
 )
 BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:")
 

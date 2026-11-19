@@ -3,10 +3,17 @@
 `GET /lines/files` — the tree «Линии»: files with their layers; `GET/DELETE /lines/files/{id}` — one file; deleting
 it deletes its layers. `GET/PATCH /lines/layers/{id}` — the properties of a layer (name, colour, length, closed
 lines, attribute schema); a PATCH carries `expected_version`, a stale one is a 409 with the current layer.
-`GET /lines/layers/{id}/attrs?offset&limit&scope` — attributes by pages with an ETag (If-None-Match → 304).
+`GET /lines/layers/{id}/attrs?offset&limit&scope` — attributes by pages with an ETag (If-None-Match → 304); of a
+point cloud — a slice of its blobs with X, Y, Z and the record numbers (`service.cloud_page`). The properties of a
+cloud layer have `cloud` (`service.cloud_summary`).
 The geometry for 3D is `/viz/lines/{id}` (`viz/router.py`).
 `POST /lines/export` starts the job `export.lines` (`lines/export.py`): layers or a whole file to STR, Surpac
-STR, DXF, CSV or DAT.
+STR, DXF, CSV or DAT; a point cloud (alone) to LAS — by its source file (`las: "source"`) or as a new file
+(`"new"`) — or to CSV `X;Y;Z;класс[;h]` (`lines/cloud_export.py`).
+`POST /lines/layers/{id}/classify` — «Фильтр земли» of a point cloud (the job `ground.classify`);
+`GET /lines/ground/profiles` — its profiles, the ranges of its parameters and their titles, as the kernel has them;
+`POST /lines/layers/{id}/dz` {wireframe_id} — its map of differences against a wireframe or a DTM (the job
+`cloud.dz`, `wireframes/cloud_dz.py`): the column `dz` and the colour mode «Отклонение от ЦТМ».
 """
 
 from __future__ import annotations
@@ -115,26 +122,38 @@ def layer_attrs(
     from . import service
 
     project = svc.require_current()
+    store = BlobStore(project.folder)
+    cloud = None
     with dialect.read_tx(project.engine) as conn:
         layer, shas = service.attrs_key(conn, layer_id, scope)
+        if layer.get("cloud") is not None:
+            from .cloud import open_cloud
+
+            cloud = open_cloud(conn, store, layer_id)
     blobs = sorted(shas.items())
     key = json.dumps(["line-attrs", project.uid, layer_id, layer["version"], blobs, scope, offset, limit])
     tag = '"' + hashlib.sha256(key.encode()).hexdigest() + '"'
     headers = {"ETag": tag, **CACHE_HEADERS}
     if matches(if_none_match, tag):
         return Response(status_code=304, headers=headers)
-    page = service.attrs_page(BlobStore(project.folder), layer, shas, scope, offset, limit)
+    if cloud is not None:
+        page = service.cloud_page(cloud, layer, scope, offset, limit)
+    else:
+        page = service.attrs_page(store, layer, shas, scope, offset, limit)
     return JSONResponse(page, headers=headers)
 
 
 class ExportBody(BaseModel):
     path: str = Field(max_length=2000)
-    format: str = Field(max_length=16)  # str | surpac | dxf | csv | dat
+    format: str = Field(max_length=16)  # str | surpac | dxf | csv | dat | las (a point cloud)
     layer_ids: list[int] | None = Field(default=None, max_length=2000)
     file_id: int | None = None  # every layer of a file, when `layer_ids` is not given
     delimiter: str | None = Field(default=None, min_length=1, max_length=1)
     decimal: str | None = Field(default=None, pattern="^[.,]$")
     encoding: str | None = Field(default=None, max_length=20)
+    # LAS of a point cloud: a copy of its source file with the classes of the cloud, or a new file; null — by the
+    # source when the cloud was loaded from a LAS
+    las: Literal["source", "new"] | None = None
     # the file under the name with the format's extension exists: the user agreed to replace it (409 before)
     overwrite: bool = False
 
@@ -149,4 +168,56 @@ def export_lines(svc: Svc, s: Sched, body: ExportBody) -> dict[str, Any]:
         params = export.request(conn, **body.model_dump())
     label = export.FORMATS[body.format].label
     key, job_id = s.submit("export.lines", params, title=f"Экспорт линий ({label})")
+    return {"source": key, "id": job_id}
+
+
+@router.get("/ground/profiles")
+def ground_profiles() -> dict[str, Any]:
+    """The profiles of «Фильтр земли» («Карьер», «Равнина») with their numbers and constants, the ranges of the
+    parameters and the defaults of the stages — what the window shows (`ground_job.profiles`)."""
+    from . import ground_job
+
+    return ground_job.profiles()
+
+
+class ClassifyBody(BaseModel):
+    """«Фильтр земли» (ТЗ 7.35 Д-22, ADR 0014): a profile and its numbers. null, an empty text or a field that
+    is not given — as the profile has it; `r_b`, `noise`: false — faces (noise) are not looked for, true — they
+    are, with the numbers of the profile (the defaults of the kernel when the profile has the stage off)."""
+
+    profile: Literal["quarry", "plain"] | None = None
+    cr: float | str | None = None
+    ri: int | None = None
+    ct: float | str | None = None
+    r_b: float | str | bool | None = None
+    noise: dict[str, Any] | bool | None = None
+
+
+@router.post("/layers/{layer_id}/classify")
+def classify_cloud(svc: Svc, s: Sched, layer_id: int, body: ClassifyBody) -> dict[str, Any]:
+    """`ground.classify`: the job «Фильтр земли» writes the classes and `h` of a point cloud (heavy queue)."""
+    from . import ground_job
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        params = ground_job.request(conn, layer_id, **body.model_dump(), heavy_workers=s.heavy_workers)
+    key, job_id = s.submit("ground.classify", params, title="Фильтр земли")
+    return {"source": key, "id": job_id}
+
+
+class DzBody(BaseModel):
+    """«Карта разностей» (ADR 0014 §5): the wireframe or the DTM the points are measured against."""
+
+    wireframe_id: int
+
+
+@router.post("/layers/{layer_id}/dz")
+def cloud_dz(svc: Svc, s: Sched, layer_id: int, body: DzBody) -> dict[str, Any]:
+    """`cloud.dz`: the job «Карта разностей» writes `dz` = Z − the surface of every point of a cloud (heavy queue)."""
+    from bf_core.wireframes import cloud_dz as dz_job
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        params = dz_job.request(conn, layer_id, body.wireframe_id, heavy_workers=s.heavy_workers)
+    key, job_id = s.submit(dz_job.KIND, params, title=dz_job.TITLE)
     return {"source": key, "id": job_id}

@@ -149,6 +149,21 @@ def is_surpac(head: bytes) -> bool:
     return len(lines) >= 2 and lines[1].split(b",", 1)[0].strip() == b"0" and b"," in lines[1]
 
 
+def is_surpac_binary(head: bytes) -> bool:
+    """The start of a file looks like a binary Surpac string file: the two text lines of a string file (the
+    header and the `0, …` axis record), then records that are not text. Not read (`binary_error`); the layout seen
+    in the owner's sample: five zero bytes, then big-endian records — the string number (int32), Y, X, Z
+    (float64) and the description ending with a zero byte; the last one is number 0 with «END»."""
+    lines = head.lstrip(b"\xef\xbb\xbf").split(b"\n", 2)
+    if len(lines) < 3 or b"\x00" in lines[0] or b"\x00" in lines[1]:
+        return False
+    return lines[1].split(b",", 1)[0].strip() == b"0" and b"," in lines[1] and b"\x00" in lines[2][:4096]
+
+
+def binary_error(name: str) -> FormatError:
+    return _fail("unsupported", f"Файл «{name}» — двоичные стринги Surpac: программа читает только текстовые.")
+
+
 # ---------------------------------------------------------------- reading
 
 
@@ -559,4 +574,13 @@ def _encode(text: str, codec: str) -> bytes:
         ) from exc
 
 
-__all__ = ["SurpacHeader", "SurpacStyle", "SurpacWritten", "is_surpac", "read_surpac", "write_surpac"]
+__all__ = [
+    "SurpacHeader",
+    "SurpacStyle",
+    "SurpacWritten",
+    "binary_error",
+    "is_surpac",
+    "is_surpac_binary",
+    "read_surpac",
+    "write_surpac",
+]

@@ -9,6 +9,7 @@
 import { api, CoreError } from "../../shell/api";
 import { Store } from "../../shell/store";
 import type { ExactPick } from "../../viz/mesh/exact";
+import type { CloudSummary } from "../lines/classes";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
 
@@ -29,6 +30,8 @@ export interface LineLayerInfo {
   flat: boolean;
   extent: (number | null)[] | null;
   attr_schema: { name: string; type?: string; unit?: string | null; scope?: string }[];
+  /** a point cloud (ADR 0014): its parts, classes, colour modes and source; null / absent — an ordinary layer */
+  cloud?: CloudSummary | null;
 }
 
 export interface LineFileInfo {
@@ -213,8 +216,11 @@ export function bindSceneObjects(): void {
 // --- the object picked in the 3D window --------------------------------------------------------------
 
 export type PickedObject =
-  /** `line` — the line (point) of the layer: the row of its attributes; `xyz` — the picked place, absolute */
-  | { kind: "lines"; id: number; line: number; on: "line" | "point"; xyz: [number, number, number] }
+  /**
+   * `line` — the line (point) of the layer: the row of its attributes; `xyz` — the picked place, absolute;
+   * `cloud` — a point of a cloud: the colour mode, its class (when the mode draws classes), `h` / `dz`, m
+   */
+  | { kind: "lines"; id: number; line: number; on: "line" | "point"; xyz: [number, number, number]; cloud?: { mode: "class" | "layer" | "h" | "dz"; class: number | null; value: number | null } }
   | { kind: "raster"; id: number; xyz: [number, number, number] }
   /**
    * a wireframe or a DTM. `xyz` — the picked place: as the level of detail in view shows it, then — once the

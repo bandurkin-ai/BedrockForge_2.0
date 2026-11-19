@@ -1,5 +1,5 @@
-"""/api/v1/viz — geometry and data of drillhole sets, line layers and wireframes for the 3D window (ADR 0007 §1,
-ADR 0011 §3).
+"""/api/v1/viz — geometry and data of drillhole sets, line layers, point clouds and wireframes for the 3D window
+(ADR 0007 §1, ADR 0011 §3, ADR 0014 §2).
 
 Binary answers are BFA1 (`viz/binary.py`) with an ETag of their key (`viz/keys.py`): If-None-Match → 304
 before any calculation; `Cache-Control: no-cache`, so the window asks again after every change.
@@ -184,27 +184,45 @@ def class_counts(svc: Svc, set_id: int, body: ClassBody) -> dict[str, Any]:
 
 @router.get("/lines/{layer_id}")
 def line_layer(svc: Svc, layer_id: int, if_none_match: IfNoneMatch = None) -> Response:
-    """The manifest of a line layer: its extent, the levels of detail and the parts with their ETags."""
-    from . import lines
+    """The manifest of a line layer: its extent, the levels of detail and the parts with their ETags. A point
+    cloud (ADR 0014 §2) answers at the same address: its parts as stored, five levels, classes, colour modes."""
+    from . import cloud, lines
 
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
         state = lines.layer_state(conn, layer_id)
+        points = cloud.view(conn, state)
+    if points is not None:
+        return _answer(
+            cloud.layer_etag(project.uid, state), if_none_match, lambda: cloud.manifest(project, state, points)
+        )
     return _answer(lines.layer_etag(project.uid, state), if_none_match, lambda: lines.manifest(project, state))
 
 
 @router.get("/lines/{layer_id}/parts/{k}")
 def line_part(
-    svc: Svc, layer_id: int, k: int, lod: Annotated[int, Query()] = 0, if_none_match: IfNoneMatch = None
+    svc: Svc,
+    layer_id: int,
+    k: int,
+    lod: Annotated[int, Query()] = 0,
+    color: Annotated[str | None, Query(max_length=16)] = None,
+    if_none_match: IfNoneMatch = None,
 ) -> Response:
-    """Part k of a line layer at a level of detail: 0 — every vertex, 1 and 2 — within 4 and 32 m."""
-    from . import lines
+    """Part k of a line layer at a level of detail: 0 — every vertex, 1 and 2 — within 4 and 32 m. Of a point
+    cloud: levels 0…4 (every point; one in a cell of 0.5, 2, 8, 32 m) and `color` — what the `value` of a point
+    is: `class` (the default), `h` (height above the ground) or `dz` (Z − DTM)."""
+    from . import cloud, lines
 
     project = svc.require_current()
-    if lod not in range(len(lines.LOD_TOL)):
-        raise lines.bad_lod()
     with dialect.read_tx(project.engine) as conn:
         state = lines.layer_state(conn, layer_id)
+        points = cloud.view(conn, state)
+    if points is not None:
+        mode = cloud.check(state, points, k, lod, color)
+        tag = cloud.part_etag(project.uid, state, k, lod, mode)
+        return _answer(tag, if_none_match, lambda: cloud.part(project, state, points, k, lod, mode))
+    if lod not in range(len(lines.LOD_TOL)):
+        raise lines.bad_lod()
     tag = lines.part_etag(project.uid, state, k, lod)
     return _answer(tag, if_none_match, lambda: lines.part(project, state, k, lod))
 

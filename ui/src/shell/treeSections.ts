@@ -20,6 +20,7 @@ const ACTIONS: Partial<Record<TreeSection, SectionAction[]>> = {
   ],
   lines: [
     { label: "Загрузить линии и точки: STR, DXF, SHP, MIF, XYZ…", command: "lines.upload" },
+    { label: "Загрузить облако точек: LAS, XYZ…", command: "points.import", args: { mode: "las" } },
     { label: "Новый слой…", command: "lines.new_layer" },
   ],
   wireframes: [

@@ -1,6 +1,7 @@
 /** Commands of import (ТЗ 7.7, 7.8; ADR 0011 §5; ADR 0013 §6): the drillhole wizard (and its mode «Канавы по
  * полилиниям»), «Импорт файлов» with the composition of lines, points, rasters and wireframes, «Линии»,
- * «Каркасы» and «Растры»; the wireframes an import stored are checked (`afterImport.ts`). */
+ * «Каркасы» and «Растры»; «Облако точек» (`points.import {mode: "las"|"xyz"}`, ADR 0014 §6) — the same window in
+ * the mode of a cloud; the wireframes an import stored are checked (`afterImport.ts`). */
 import { bridge } from "../../bridge";
 import type { App } from "../../shell/app";
 import { showMessage } from "../../shell/dialogs";
@@ -8,6 +9,7 @@ import { openWindow } from "../../shell/windows";
 import { onJobFinished } from "../jobs/state";
 import { loadSets } from "../tables/state";
 import { watchImports } from "./afterImport";
+import { CLOUD_TITLE, type CloudMode } from "./cloud";
 import { routeImport } from "./route";
 import { MODE_TITLES, type WizardMode } from "./wizard";
 
@@ -22,9 +24,11 @@ export function openDrillholeWizard(paths: string[] = [], mode: WizardMode = "ho
 
 export type ObjectsPick = "objects" | "lines" | "rasters" | "wireframes";
 
-/** The composition of lines, points, rasters and wireframes; `pick` — what «Добавить файлы…» of the window offers. */
-export function openObjectsWizard(paths: string[], pick: ObjectsPick = "objects"): void {
-  openWindow("import-objects", "Импорт файлов", "normal", { paths, ...(pick === "objects" ? {} : { pick }) }, ...viewport());
+/** The composition of lines, points, rasters and wireframes; `pick` — what «Добавить файлы…» of the window offers;
+ * `cloud` — the window «Облако точек»: every table is a point cloud, «Добавить файлы…» offers LAS or XYZ. */
+export function openObjectsWizard(paths: string[], pick: ObjectsPick = "objects", cloud: CloudMode | null = null): void {
+  if (cloud) openWindow("import-objects", CLOUD_TITLE, "normal", { paths, cloud }, ...viewport());
+  else openWindow("import-objects", "Импорт файлов", "normal", { paths, ...(pick === "objects" ? {} : { pick }) }, ...viewport());
 }
 
 /** Files from the dialog or dropped from Explorer: drillhole tables go to their wizard, lines, points, rasters
@@ -70,6 +74,20 @@ export function bindImporting(app: App): void {
       const paths = (await bridge()?.pickFiles("objects", true)) ?? [];
       if (!paths.length) return "Отменено";
       return importPaths(app, paths);
+    },
+    needProject,
+  );
+  app.registry.bind(
+    "points.import",
+    async (a) => {
+      const mode: CloudMode = a.mode === "xyz" ? "xyz" : "las";
+      const paths = (await bridge()?.pickFiles(mode, true)) ?? [];
+      if (!paths.length) return "Отменено";
+      const route = routeImport(paths, "objects");
+      if (route.project.length) await showMessage({ title: CLOUD_TITLE, message: "Файл проекта .bfggis загружается командой «Импорт проекта»." });
+      if (!route.objects.length) return "Файлы не загружены";
+      openObjectsWizard(route.objects, "objects", mode);
+      return mode === "las" ? "Открыт мастер «Облако точек» (LAS)" : "Открыт мастер «Облако точек» (XYZ)";
     },
     needProject,
   );

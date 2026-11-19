@@ -15,6 +15,9 @@ the reason), CRS, warnings, and per raster its size and georeference with «Ур
 display copies are not made here. A DXF or a DWG gives its lines and its wireframes at once. `preliminary` marks
 a reader that was not checked on real files (Datamine); `choices` — the fields of the file an option of the
 wizard is chosen from (`split_by`, `layer_field`).
+A point cloud (a LAS, or a table with `cloud` in its options) is told by `object_cloud.summarize_cloud`: `kind`
+"cloud" and `cloud` — the header of the LAS or the head of the table. A layer of more than `CLOUD_HINT_POINTS`
+points read the ordinary way is warned «загрузите как облако».
 The job `import.objects` (`objects.py`) reads the files with the same functions.
 """
 
@@ -38,6 +41,7 @@ LATER = {".omf": "проекты OMF"}
 NUMBER_HINT = "Введите число, например 12,5."
 EMPTY = "В файле нет ни линий, ни точек, ни каркасов."
 TOTALS = ("layers", "lines", "points", "vertices", "rasters", "wireframes", "triangles")
+CLOUD_HINT_POINTS = 2_000_000  # a layer of points bigger than this is better loaded as a cloud (ADR 0014 §1)
 
 Tick = Callable[[float, str | None], None]
 
@@ -294,6 +298,12 @@ def summarize(g: Group, read: Any, elevation: float | None = None, shift: float 
     meshes = [e.as_dict() for e in read.entries]
     loadable = [m for m in meshes if not m["error"]]
     notes = [*read.warnings, *(n for _s, _g, extra in rasters for n in extra)]
+    notes += [
+        f"В слое «{s['name']}» {n_text(s['points'])} точек: загрузите его как облако («Главная › Загрузка › Облако "
+        "точек») — показ и фильтр земли рассчитаны на облака"
+        for s in layers
+        if s["points"] > CLOUD_HINT_POINTS
+    ]
     kind = OBJECT_FORMATS[read.format].kind
     if layers and all(s["points_only"] for s in layers):
         kind = POINTS_KIND
@@ -356,16 +366,21 @@ def inspect_files(
     by_file = options_by_file(options)
     files: list[dict[str, Any]] = []
     totals = dict.fromkeys(("files", "failed", *TOTALS), 0)
+    from . import object_cloud as oc
+
     for g in groups:
+        chosen = by_file.get(option_key(g.main))
         try:
-            read = read_group(
-                g, by_file.get(option_key(g.main)), tick, displays=False, section=section, inspect=True,
-                converter=converter,
-            )  # fmt: skip
-            if not has_content(read):
-                raise FormatError("empty_file", EMPTY, "Проверьте файл.")
-            entry = summarize(g, read, elevation, shift)
-            del read
+            if oc.wanted(g, chosen):  # a cloud: the header of a LAS, the head of a table
+                entry = oc.summarize_cloud(g, chosen)
+            else:
+                read = read_group(
+                    g, chosen, tick, displays=False, section=section, inspect=True, converter=converter
+                )  # fmt: skip
+                if not has_content(read):
+                    raise FormatError("empty_file", EMPTY, "Проверьте файл.")
+                entry = summarize(g, read, elevation, shift)
+                del read
         except (FormatError, OSError) as exc:
             failure = _failure(g.main, exc)
             entry = {"path": failure["path"], "file": failure["file"], "ok": False}

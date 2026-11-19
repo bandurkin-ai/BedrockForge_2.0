@@ -3,10 +3,14 @@
  * 0011 §5; ADR 0013 §6): per file its format, layers (lines, vertices, points), wireframes (`WireframesPart`),
  * coordinate system, warnings and what is left out — a drawing shows both its layers and its wireframes; per
  * raster its size and georeference; the files that will not load, each with the reason; «Уровень растров по Z».
+ * A point cloud (a LAS, or a table loaded as one) has its card (`CloudStep`); a table of points may be loaded as
+ * a cloud by its check box; in the mode «Облако точек» every table is one (ADR 0014 §6).
  */
 import { useEffect, useState } from "react";
 import { useStore } from "../../shell/useStore";
 import { fileCounts, takesEncoding, totalsText, type FileEntry, type FileOk, type FileOptions, type ObjectsWizard } from "./objects";
+import { cloudCard, mayBeCloud, type CloudMode } from "./cloud";
+import { CloudStep } from "./CloudStep";
 import { RasterZLevel } from "./RasterZLevel";
 import { ConverterHelp, FileChoices, Preliminary, WireframesTable } from "./WireframesPart";
 import css from "./ImportWizard.module.css";
@@ -17,6 +21,11 @@ const n = (v: number) => v.toLocaleString("ru-RU");
 const size = (bytes: number) =>
   bytes >= 1 << 20 ? `${(bytes / (1 << 20)).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} МБ` : `${Math.max(1, Math.round(bytes / 1024)).toLocaleString("ru-RU")} КБ`;
 
+const CLOUD_NOTE: Record<CloudMode, string> = {
+  las: "Облака точек LAS 1.2–1.4 (форматы точек 0–10): X, Y, Z, класс и возврат. Сжатые LAZ не читаются — сохраните их как LAS. Большое облако можно проредить: «каждая k-я запись».",
+  xyz: "Таблицы точек XYZ (XYZ, CSV, TXT, DAT) загружаются облаком: колонки X, Y, Z и класс (если есть) находятся по названиям, их можно выбрать. Большую таблицу можно проредить: «каждая k-я запись».",
+};
+
 export function ObjectsStep({ wizard, onAdd, onSettings }: { wizard: ObjectsWizard; onAdd: () => void; onSettings: () => void }) {
   const s = useStore(wizard.store, (x) => x);
   const c = s.composition;
@@ -24,7 +33,7 @@ export function ObjectsStep({ wizard, onAdd, onSettings }: { wizard: ObjectsWiza
   return (
     <>
       {c?.files.map((f) => (
-        <FileBlock key={f.path} wizard={wizard} file={f} options={s.options[f.path] ?? {}} onSettings={onSettings} />
+        <FileBlock key={f.path} wizard={wizard} file={f} options={s.options[f.path] ?? {}} cloudMode={!!s.cloud} onSettings={onSettings} />
       ))}
       {c && c.rest.length > 0 && (
         <section className={css.card} aria-label="Не загрузятся" data-testid="objects-rest">
@@ -51,20 +60,24 @@ export function ObjectsStep({ wizard, onAdd, onSettings }: { wizard: ObjectsWiza
           {totalsText(c.totals)}
         </div>
       ) : (
-        !s.busy && (
+        !s.busy &&
+        (s.cloud ? (
+          <div className={css.note}>{CLOUD_NOTE[s.cloud]}</div>
+        ) : (
           <div className={css.note}>
             Линии и точки: Micromine STR и PIT, Surpac STR, DXF, DWG, SHP (с .dbf, .shx, .prj, .cpg), MIF/MID, Datamine .dm, таблицы точек XYZ (CSV, TXT, DAT). Каркасы: Micromine TRIDB, DXF, DWG
             (через ODA File Converter), OBJ, STL, Surpac DTM с STR того же имени, Datamine (…tr.dm с …pt.dm). Растры: JPG, PNG, TIFF, BMP с файлом привязки того же имени (world-файл, TAB, GRF) или
-            GeoTIFF.
+            GeoTIFF. Облака точек: LAS.
           </div>
-        )
+        ))
       )}
     </>
   );
 }
 
-function FileBlock({ wizard, file, options, onSettings }: { wizard: ObjectsWizard; file: FileEntry; options: FileOptions; onSettings: () => void }) {
+function FileBlock({ wizard, file, options, cloudMode, onSettings }: { wizard: ObjectsWizard; file: FileEntry; options: FileOptions; cloudMode: boolean; onSettings: () => void }) {
   const [all, setAll] = useState(false);
+  const card = cloudCard(file);
   const points = file.ok ? file.format === "points" : file.error.code === "no_coordinates" || file.error.code === "no_column";
   return (
     <section className={css.card} aria-label={`Файл ${file.file}`} data-testid="objects-file">
@@ -108,10 +121,17 @@ function FileBlock({ wizard, file, options, onSettings }: { wizard: ObjectsWizar
             </label>
           )}
           {file.ok && <FileChoices wizard={wizard} file={file} options={options} />}
+          {file.ok && mayBeCloud(file) && !cloudMode && (
+            <label>
+              <input type="checkbox" checked={!!options.cloud} onChange={(e) => void wizard.setOptions(file.path, { cloud: e.target.checked })} aria-label={`Облаком точек ${file.file}`} />
+              облаком точек
+            </label>
+          )}
           {points && <PointColumns options={options} onApply={(patch) => void wizard.setOptions(file.path, patch)} />}
         </div>
       )}
-      {file.ok && file.kind !== "raster" && (
+      {file.ok && card && <CloudStep wizard={wizard} file={file} card={card} options={options} />}
+      {file.ok && !card && file.kind !== "raster" && (
         <>
           <div>
             {fileCounts(file)}
@@ -165,7 +185,8 @@ function FileBlock({ wizard, file, options, onSettings }: { wizard: ObjectsWizar
         <ul className={css.issues} data-testid="objects-warnings">
           {file.left_out.map((x) => (
             <li key={x.what} className={css.warn}>
-              Не загрузится: {x.what} — {n(x.count)} ({x.reason})
+              Не загрузится: {x.what}
+              {x.count === null ? "" : ` — ${n(x.count)}`} ({x.reason})
             </li>
           ))}
           {file.warnings.slice(0, 20).map((w, i) => (

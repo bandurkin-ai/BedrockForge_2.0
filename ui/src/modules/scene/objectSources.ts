@@ -13,6 +13,7 @@
  */
 import type { App } from "../../shell/app";
 import type { LayerHit, Scene } from "../../viz/Scene";
+import { CLOUD_STYLES_KEY, cloudStyleOf } from "../../viz/lines/cloud";
 import type { LinePick } from "../../viz/lines/layer";
 import type { MeshPick, MeshProbe } from "../../viz/mesh/layer";
 import type { RasterPick } from "../../viz/rasters/layer";
@@ -50,7 +51,8 @@ export interface ObjectSources {
 export function connectObjects(app: App, scene: Scene, holes: HolesSource): ObjectSources {
   const hidden = () => app.store.get().view.hidden;
   let floor = 0;
-  const lines: LinesSource = new LinesSource(scene, { layers: () => lineLayers(), hidden, floor: () => floor, onContent: () => refloor() });
+  // a point cloud: its colour mode and hidden classes come from the view key `cloud_styles`
+  const lines: LinesSource = new LinesSource(scene, { layers: () => lineLayers(), hidden, floor: () => floor, onContent: () => refloor(), cloud: (id) => cloudStyleOf(viewStore.get()[CLOUD_STYLES_KEY], id) });
   const rasters: RastersSource = new RastersSource(scene, { rasters: () => sceneObjects.get().rasters, hidden, floor: () => floor, drapes: () => wireframes.drapes() });
   // after the rasters: before a frame the raster picks its texture, then the DTM that carries it takes it
   const wireframes: WireframesSource = new WireframesSource(scene, {
@@ -147,8 +149,10 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
     viewStore.subscribe(() => {
       const k = viewStore.get();
       const changed = k.section !== keys.section || k.trace_styles !== keys.trace_styles;
+      const clouds = k[CLOUD_STYLES_KEY] !== keys[CLOUD_STYLES_KEY];
       keys = k;
       if (changed) exact.sync();
+      if (clouds) lines.sync();
     }),
   );
   let sets = tablesStore.get().sets;
@@ -212,7 +216,7 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
       if (!hit) return select(null);
       if (hit.key.startsWith("ln:")) {
         const h = hit.hit as LinePick;
-        select({ kind: "lines", id: h.layerId, line: h.line, on: h.on, xyz: h.xyz });
+        select({ kind: "lines", id: h.layerId, line: h.line, on: h.on, xyz: h.xyz, ...(h.cloud ? { cloud: h.cloud } : {}) });
       } else if (hit.key.startsWith("rs:")) {
         const h = hit.hit as RasterPick;
         select({ kind: "raster", id: h.rasterId, xyz: h.xyz });

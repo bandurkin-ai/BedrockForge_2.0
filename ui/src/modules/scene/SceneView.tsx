@@ -219,15 +219,17 @@ function SceneMount() {
               const ms: number[] = [];
               let calls = 0;
               let triangles = 0;
+              let points = 0;
               for (let i = 0; i < frames; i++) {
                 s.orbit((2 * Math.PI) / frames);
                 ms.push(s.drawNow());
                 const st = s.debug().stats;
                 calls = Math.max(calls, st.calls);
                 triangles = Math.max(triangles, st.triangles);
+                points = Math.max(points, st.points);
               }
               ms.sort((a, b) => a - b);
-              return { frames, ms_per_frame: ms.reduce((a, b) => a + b, 0) / frames, ms_median: ms[frames >> 1], calls, triangles, gpu_bytes: s.gpuBytes(), gpu: s.gpu };
+              return { frames, ms_per_frame: ms.reduce((a, b) => a + b, 0) / frames, ms_median: ms[frames >> 1], calls, triangles, points, gpu_bytes: s.gpuBytes(), gpu: s.gpu };
             },
             /** a command of the registry, as the ribbon or Claude runs it */
             run: (id: string, args?: Record<string, unknown>) => app.registry.execute(id, args ?? {}),

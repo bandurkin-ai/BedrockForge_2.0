@@ -52,7 +52,7 @@ export type ImportKind = "holes" | "wireframes" | "lines" | "rasters" | "omf" | 
 
 const BY_EXT: Record<string, ImportKind> = {
   tridb: "wireframes", obj: "wireframes", stl: "wireframes", dtm: "wireframes", dwg: "wireframes", dm: "wireframes",
-  str: "lines", pit: "lines", shp: "lines", dbf: "lines", shx: "lines", cpg: "lines", prj: "lines", mif: "lines", mid: "lines", xyz: "lines",
+  str: "lines", pit: "lines", shp: "lines", dbf: "lines", shx: "lines", cpg: "lines", prj: "lines", mif: "lines", mid: "lines", xyz: "lines", las: "lines", laz: "lines",
   dat: "holes", csv: "holes", txt: "holes", tsv: "holes", prn: "holes", xlsx: "holes", xlsm: "holes", xls: "holes",
   jpg: "rasters", jpeg: "rasters", png: "rasters", tif: "rasters", tiff: "rasters", bmp: "rasters",
   jgw: "rasters", jpgw: "rasters", pgw: "rasters", pngw: "rasters", tfw: "rasters", tifw: "rasters", bpw: "rasters", bmpw: "rasters", wld: "rasters", tab: "rasters", grf: "rasters",

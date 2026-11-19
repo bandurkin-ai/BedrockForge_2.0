@@ -25,7 +25,7 @@ from bf_core.storage.blobs import BlobStore, valid_sha
 from .container import ArchiveError, Corrupted, TooNew, open_archive, read_header, read_json
 from .rows import decode_row, read_lines
 from .spec import APP, ID_COLUMNS, KIND_COLUMNS, RETURNED_MAPS, TABLES
-from .view_remap import remap_setting, remap_views, remap_wireframes
+from .view_remap import remap_clouds, remap_setting, remap_views, remap_wireframes
 
 Progress = Callable[[float, str], None]
 
@@ -262,6 +262,7 @@ def _restore(
             raise Corrupted(f"Контрольная сумма не совпала: {member_name}")
     remap_views(conn, maps.get("objects", {}))
     remap_wireframes(conn, maps.get("objects", {}))
+    remap_clouds(conn, maps.get("objects", {}))
     # files: into place and registered (owners came with blob_owners)
     now = dialect.utcnow()
     for sha, tmp in staged.items():

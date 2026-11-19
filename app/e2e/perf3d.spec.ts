@@ -8,6 +8,12 @@
 // Э8, подшаг 8.27 (долг Э7; ADR 0011 «Замеры», ADR 0013 «Замеры»): the heavy scene — the whole demo, one layer of
 // 1 million line segments, a raster of 4096 px and a DTM of about 200 thousand triangles, the same 60 frames →
 // bench/out/frame_sw_heavy.json; budgets on the counters only (budgets.json → external.frame_sw_heavy).
+// Э7.1, подшаг 7.1.17 (ADR 0014 «Замеры»): the scene with a point cloud — the holes of the demo, a cloud of
+// 10 million points (a LAS written here), «Фильтр земли» and the DTM built from its ground → the same 60 frames
+// → bench/out/frame_sw_cloud.json; budgets: draw calls, the points of the frame, video memory
+// (budgets.json → external.frame_sw_cloud); import, filter, DTM, a click on a point and the ms — to the report.
+// A part of a cloud and a part of a surface are a draw call each: 30 parts of the cloud and about 130 of its DTM
+// of 3.9 million triangles — the 40 calls of the other scenes are not the budget of this one.
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
@@ -348,6 +354,197 @@ test("perf3d heavy: the demo, 1 million line segments, a raster and a DTM of 200
     console.log(`frame_sw_heavy: ${JSON.stringify(out)}`);
     expect(out.over).toBe(false);
     const limits = JSON.parse(fs.readFileSync(path.join(ROOT, "bench", "budgets.json"), "utf8")).external.frame_sw_heavy.limits as Record<string, number>;
+    for (const [key, limit] of Object.entries(limits)) expect(out[key as keyof typeof out] as number, key).toBeLessThanOrEqual(limit);
+  } finally {
+    await close(app);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------- the scene with a point cloud (7.1.17)
+
+// A square of 1.1 km around the demo holes: a grid of 3163 × 3163 points at 0.35 m — 10 004 569 points, 9 per m².
+const CLOUD = { x0: 4650, y0: 7575, side: 1100, n: 3163, scale: 0.001 };
+const CLOUD_POINTS = CLOUD.n * CLOUD.n;
+
+/** The relief of the cloud scene, about the level of the demo collars (420 m). */
+const reliefZ = (x: number, y: number) => 405 + 12 * Math.sin(x / 90) * Math.cos(y / 120) + 4 * Math.sin(y / 31);
+
+/**
+ * A LAS 1.2 of point format 0 (ASPRS LAS 1.4 R15, tables 3 and 7), 200 MB, written row by row: the relief with
+ * 2 cm of noise, every point moved up to 8 cm in plan; one point in nine is «vegetation» 1.5–5.5 m above the
+ * ground. No classes: «Фильтр земли» gives them.
+ */
+function cloudFile(dir: string): string {
+  const file = path.join(dir, "survey-10m.las");
+  const step = CLOUD.side / (CLOUD.n - 1);
+  const head = Buffer.alloc(227);
+  head.write("LASF", 0, "ascii");
+  head.writeUInt8(1, 24);
+  head.writeUInt8(2, 25);
+  head.write("BF2 perf3d", 58, "ascii");
+  head.writeUInt16LE(1, 90);
+  head.writeUInt16LE(2026, 92);
+  head.writeUInt16LE(227, 94);
+  head.writeUInt32LE(227, 96);
+  head.writeUInt32LE(0, 100);
+  head.writeUInt8(0, 104);
+  head.writeUInt16LE(20, 105);
+  head.writeUInt32LE(CLOUD_POINTS, 107);
+  head.writeUInt32LE(CLOUD_POINTS, 111);
+  const out = fs.openSync(file, "w");
+  fs.writeSync(out, head);
+  const box = [Infinity, -Infinity, Infinity, -Infinity, Infinity, -Infinity];
+  const row = Buffer.alloc(CLOUD.n * 20);
+  let seed = 20261119;
+  const rnd = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296; // the same file every run
+  for (let j = 0; j < CLOUD.n; j++) {
+    for (let i = 0; i < CLOUD.n; i++) {
+      const x = i * step + (rnd() - 0.5) * 0.16;
+      const y = j * step + (rnd() - 0.5) * 0.16;
+      const up = rnd();
+      const z = reliefZ(CLOUD.x0 + x, CLOUD.y0 + y) + (rnd() - 0.5) * 0.04 + (up < 1 / 9 ? 1.5 + up * 36 : 0);
+      const at = i * 20;
+      const ix = Math.round(x / CLOUD.scale);
+      const iy = Math.round(y / CLOUD.scale);
+      const iz = Math.round(z / CLOUD.scale);
+      row.writeInt32LE(ix, at);
+      row.writeInt32LE(iy, at + 4);
+      row.writeInt32LE(iz, at + 8);
+      row.writeUInt8(1 | (1 << 3), at + 14); // return 1 of 1
+      if (ix < box[0]) box[0] = ix;
+      if (ix > box[1]) box[1] = ix;
+      if (iy < box[2]) box[2] = iy;
+      if (iy > box[3]) box[3] = iy;
+      if (iz < box[4]) box[4] = iz;
+      if (iz > box[5]) box[5] = iz;
+    }
+    fs.writeSync(out, row);
+  }
+  const offset = [CLOUD.x0, CLOUD.y0, 0];
+  const where = Buffer.alloc(96);
+  [CLOUD.scale, CLOUD.scale, CLOUD.scale, ...offset].forEach((v, i) => where.writeDoubleLE(v, i * 8));
+  // max x, min x, max y, min y, max z, min z
+  [1, 0, 3, 2, 5, 4].forEach((b, i) => where.writeDoubleLE(box[b] * CLOUD.scale + offset[i >> 1], 48 + i * 8));
+  fs.writeSync(out, where, 0, 96, 131);
+  fs.closeSync(out);
+  return file;
+}
+
+test("perf3d cloud: the demo holes, a cloud of 10 million points, the ground filter and a DTM from it → bench/out/frame_sw_cloud.json", async () => {
+  test.setTimeout(1_500_000);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-perf3d-cloud-"));
+  const writeStart = Date.now();
+  const file = cloudFile(dir);
+  const writeS = (Date.now() - writeStart) / 1000;
+  const { app, page } = await launch({ BF_E2E: "1" });
+  try {
+    await setWindowSize(app, 1280, 800);
+    await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+    await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
+    await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
+    await waitFrame(page);
+    await holesOnlyDemo(page); // the scene of the budget: the holes, the cloud and its DTM
+
+    const api = (method: string, url: string, body?: unknown) =>
+      page.evaluate(
+        async ([m, u, b]) => {
+          const c = window.bf!.core()!;
+          const r = await fetch(`${c.baseUrl}/api/v1${u}`, { method: m as string, headers: { "X-BF-Token": c.token, "Content-Type": "application/json" }, body: b === null ? undefined : JSON.stringify(b) });
+          return { status: r.status, body: (await r.json()) as Record<string, unknown> };
+        },
+        [method, url, body ?? null] as const,
+      );
+    type Job = { status: string; result: Record<string, unknown> | null; error?: unknown };
+    /** Starts a job of the core and waits for it; seconds from the request to «done». */
+    const job = async (url: string, body: unknown, timeout: number): Promise<{ seconds: number; result: Record<string, unknown> }> => {
+      const t0 = Date.now();
+      const started = await api("POST", url, body);
+      expect(started.status, JSON.stringify(started.body)).toBe(200);
+      let last: Job = { status: "", result: null };
+      await expect
+        .poll(async () => (last = (await api("GET", `/jobs/${started.body.source}/${started.body.id}`)).body as unknown as Job).status, { timeout, intervals: [500] })
+        .toMatch(/done|failed|cancelled/);
+      expect(last.status, JSON.stringify(last)).toBe("done");
+      return { seconds: (Date.now() - t0) / 1000, result: last.result ?? {} };
+    };
+    type Layer = { id: number; point_count: number; cloud: { modes: string[]; classes: Record<string, number> } | null };
+    const cloudLayer = async () => ((await api("GET", "/lines/files")).body.files as { layers: Layer[] }[]).flatMap((f) => f.layers).find((l) => l.cloud !== null);
+
+    // the file as «Импорт файлов» takes it: a `.las` gives a cloud
+    const imported = await job("/import/objects", { files: [file] }, 600_000);
+    const layer = (await cloudLayer())!;
+    expect(layer.point_count).toBe(CLOUD_POINTS);
+    // «Фильтр земли», the profile «Карьер»; then «Построить ЦТМ из облака» — the cloud gets its `dz` with it
+    const filtered = await job(`/lines/layers/${layer.id}/classify`, { profile: "quarry" }, 900_000);
+    expect(filtered.result.ground as number).toBeGreaterThan(0.8 * CLOUD_POINTS);
+    const built = await job("/wireframes/from-points", { cloud_id: layer.id, name: "Земля" }, 900_000);
+    const wfId = built.result.wireframe_id as number;
+    expect(built.result.points as number).toBeLessThanOrEqual(2_000_000);
+    expect((await cloudLayer())!.cloud!.modes).toEqual(["class", "h", "dz"]);
+    await expect.poll(() => page.evaluate(() => window.__bfScene!.state().wireframes.layers), { timeout: 300_000 }).toBe(1);
+
+    await page.keyboard.press("f");
+    await waitFrame(page, 900_000);
+    const state = await page.evaluate(() => window.__bfScene!.state());
+    expect(state.layers).toEqual(expect.arrayContaining([`ln:${layer.id}`, `wf:${wfId}`]));
+    expect(state.sets.length).toBe(1);
+    expect(state.lines.cloud.points).toBeGreaterThan(100_000); // the cloud is in the frame, not a handful of points
+    expect(state.lines.cloud.over).toBe(false);
+
+    // a click on a point of the cloud is answered on the CPU (ТЗ 5.3: ≤ 50 ms), from above
+    await page.keyboard.press("t");
+    await waitFrame(page, 300_000);
+    const target = { x: CLOUD.x0 + 300, y: CLOUD.y0 + 800 };
+    const at = (await page.evaluate((p) => window.__bfScene!.screen(p.x, p.y, 405), target))!;
+    await page.mouse.click(at.x, at.y);
+    await waitFrame(page, 300_000);
+    const clicked = await page.evaluate(() => window.__bfScene!.state());
+    expect(clicked.picked).toMatchObject({ kind: "lines", id: layer.id, on: "point" });
+    // 900 thousand points on the screen: 23 ms on the development machine against the 50 ms of ТЗ 5.3 — the
+    // time goes to the report; here only a guard against a search that got several times slower
+    expect(clicked.pickMs).toBeLessThan(150);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("f");
+    await waitFrame(page, 300_000);
+
+    const before = await page.evaluate(() => window.__bfScene!.state());
+    const r = await page.evaluate(() => window.__bfScene!.bench(60));
+    const after = await page.evaluate(() => window.__bfScene!.state());
+    const out = {
+      cloud_points: CLOUD_POINTS,
+      cloud_parts: after.lines.parts,
+      ground_points: filtered.result.ground as number,
+      dtm_vertices: built.result.points as number,
+      dtm_triangles: built.result.triangles as number,
+      wireframe_triangles: after.wireframes.triangles,
+      wireframe_parts: after.wireframes.parts,
+      wireframes_simplified: after.wireframes.simplified,
+      point_budget: before.lines.cloud.budget,
+      points: before.lines.cloud.points, // of the cloud in the frame, by the levels and the budget of the frame
+      points_simplified: before.lines.cloud.simplified,
+      gl_points: r.points, // the largest number of points drawn in one of the 60 frames
+      over: after.lines.over || after.lines.cloud.over || after.wireframes.over,
+      frames: r.frames,
+      ms_per_frame: Math.round(r.ms_per_frame * 10) / 10,
+      ms_median: Math.round(r.ms_median * 10) / 10,
+      calls: r.calls,
+      triangles: r.triangles,
+      gpu_bytes: r.gpu_bytes,
+      gpu_mb: Math.round((r.gpu_bytes / 1024 / 1024) * 10) / 10,
+      pick_point_ms: Math.round(clicked.pickMs * 10) / 10,
+      las_write_s: Math.round(writeS * 10) / 10,
+      import_s: Math.round(imported.seconds * 10) / 10,
+      filter_s: Math.round(filtered.seconds * 10) / 10,
+      dtm_s: Math.round(built.seconds * 10) / 10,
+      renderer: r.gpu.renderer,
+      platform: process.platform,
+    };
+    fs.mkdirSync(path.join(ROOT, "bench", "out"), { recursive: true });
+    fs.writeFileSync(path.join(ROOT, "bench", "out", "frame_sw_cloud.json"), JSON.stringify(out, null, 2));
+    console.log(`frame_sw_cloud: ${JSON.stringify(out)}`);
+    expect(out.over).toBe(false);
+    const limits = JSON.parse(fs.readFileSync(path.join(ROOT, "bench", "budgets.json"), "utf8")).external.frame_sw_cloud.limits as Record<string, number>;
     for (const [key, limit] of Object.entries(limits)) expect(out[key as keyof typeof out] as number, key).toBeLessThanOrEqual(limit);
   } finally {
     await close(app);

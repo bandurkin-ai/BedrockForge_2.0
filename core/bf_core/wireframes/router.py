@@ -12,7 +12,11 @@ tint, opacity, shade}) and the properties (counts, extent, measures, attributes 
     raster are cleared;
   * `DELETE /wireframes/{id}` — a wireframe other objects refer to → 422 `wireframe_in_use` with their list.
 A raster draped on a DTM cannot be deleted: `DELETE /rasters/{id}` → 422 `raster_in_use` with the DTMs.
-`POST /wireframes/build-dtm` starts the job `model.dtm` («Построить ЦТМ», `wireframes/jobs.py`).
+`POST /wireframes/build-dtm` starts the job `model.dtm` («Построить ЦТМ», `wireframes/jobs.py`): layers of points
+and lines, collars, and point clouds — `clouds` [{layer_id, classes, cell}] (ADR 0014 §5).
+`POST /wireframes/from-points` {cloud_id, classes [2], l_max, boundary_id, cell} — `terrain.from_points`: the
+same job from the ground of one cloud; 422 `no_ground` — the cloud has no points of the classes. A cloud among
+the sources gets its map of differences against the surface built (`dz`, on by default; `wireframes/cloud_dz.py`).
 `POST /wireframes/pick` {origin, direction, wireframe_ids, clip} — the exact triangle under a click (ADR 0013 §5,
 `wireframes/exact.py`): a ray in project coordinates → {hit: {wireframe_id, name, triangle, distance, point,
 vertices, indices, normal, area, dip, dip_direction} or null}; `clip` — the planes of the section window.
@@ -159,6 +163,9 @@ def delete_wireframe(svc: Svc, request: Request, wireframe_id: int) -> dict[str,
     project = svc.require_current(writable=True)
     with dialect.write_tx(project.engine) as conn:
         gone = store.delete_wireframe(conn, wireframe_id)
+        from .cloud_dz import forget_surface
+
+        forget_surface(conn, wireframe_id)  # the clouds measured against it keep its name, not its number
     if gone["shas"] and not gone["shared"]:  # the levels of detail of a geometry nobody has any more
         from bf_core.viz import meshes
 
@@ -177,15 +184,26 @@ class Boundary(BaseModel):
     use_z: bool = False  # the outline is structural: its own heights are kept
 
 
+ClassCode = Annotated[int, Field(ge=0, le=255)]  # ASPRS
+
+
+class CloudSource(BaseModel):
+    layer_id: int  # the cloud
+    classes: list[ClassCode] | None = Field(default=None, max_length=256)  # null — every class but the noise (7)
+    cell: Number | None = None  # the step of the thinning, m; null — max(CR / 2, √(area / 2 million))
+
+
 class BuildDtmBody(BaseModel):
     name: str | None = Field(default=None, max_length=400)
     layer_ids: list[int] = Field(default_factory=list, max_length=2000)  # layers of points and lines
     set_ids: list[int] = Field(default_factory=list, max_length=2000)  # collars of drillhole sets
+    clouds: list[CloudSource] = Field(default_factory=list, max_length=2000)  # point clouds, thinned
     breaklines: bool = True  # lines are structural: their segments are edges of the surface
     boundary: Boundary | None = None
     max_edge: Number | None = None
     to_dtm: bool = True  # «Сразу в раздел ЦТМ»
     color: str | None = Field(default=None, max_length=16)
+    dz: bool = True  # the clouds among the sources get `dz` = Z − the surface built
 
 
 @router.post("/build-dtm")
@@ -201,12 +219,46 @@ def build_dtm(svc: Svc, s: Sched, body: BuildDtmBody) -> dict[str, Any]:
             name=body.name,
             layer_ids=body.layer_ids,
             set_ids=body.set_ids,
+            clouds=[
+                {"layer_id": c.layer_id, "classes": c.classes, "cell": _number(c.cell, "Шаг прореживания")}
+                for c in body.clouds
+            ],
             breaklines=body.breaklines,
             boundary=None if body.boundary is None else body.boundary.model_dump(),
             max_edge=max_edge,
             to_dtm=body.to_dtm,
             color=body.color,
+            dz=body.dz,
         )
+    key, job_id = s.submit("model.dtm", params, title="Построение ЦТМ")
+    return {"source": key, "id": job_id}
+
+
+class FromPointsBody(BaseModel):
+    cloud_id: int
+    classes: list[ClassCode] | None = Field(default_factory=lambda: [2], max_length=256)  # 2 — the ground
+    l_max: Number | None = None  # the longest edge, m; null — 5 CR of the last filter, at least 4 steps
+    boundary_id: int | None = None  # a layer with one closed line — the outline of the surface
+    cell: Number | None = None  # the step of the thinning, m
+    name: str | None = Field(default=None, max_length=400)
+    to_dtm: bool = True
+    color: str | None = Field(default=None, max_length=16)
+    dz: bool = True  # the cloud gets `dz` = Z − the surface built
+
+
+@router.post("/from-points")
+def from_points(svc: Svc, s: Sched, body: FromPointsBody) -> dict[str, Any]:
+    """`terrain.from_points`: the job «Построение ЦТМ» from the points of the classes of a cloud."""
+    from . import jobs as dtm_jobs
+
+    project = svc.require_current(writable=True)
+    l_max = _number(body.l_max, "Наибольшая длина ребра")
+    cell = _number(body.cell, "Шаг прореживания")
+    with dialect.read_tx(project.engine) as conn:
+        params = dtm_jobs.request_from_points(
+            conn, cloud_id=body.cloud_id, classes=body.classes, l_max=l_max, boundary_id=body.boundary_id,
+            cell=cell, name=body.name, to_dtm=body.to_dtm, color=body.color, dz=body.dz,
+        )  # fmt: skip
     key, job_id = s.submit("model.dtm", params, title="Построение ЦТМ")
     return {"source": key, "id": job_id}
 

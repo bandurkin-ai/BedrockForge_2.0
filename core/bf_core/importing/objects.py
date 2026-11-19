@@ -2,14 +2,16 @@
 §3, §5): lines, points, rasters and wireframes. The pairing of the chosen files, their reading and the
 composition the wizard shows (`inspect_files`) are in `object_files.py`; the wireframes — in `object_meshes.py`.
 
-Parameters (`ctx.params`): `files` [paths], `options` {path: {encoding, x, y, z, name, split_by, layer_field}},
+Parameters (`ctx.params`): `files` [paths], `options` {path: {encoding, x, y, z, name, split_by, layer_field, cloud,
+every, class_column}},
 `raster_z` {elevation, shift} — «Уровень растров по Z», `section` {x1, y1, x2, y2, z_top, z_bottom} — where an
 image without a georeference stands (the current section line, resolved by the endpoint), `folder` of the tree
 and `oda` — the ODA File Converter of «Настройка», for DWG.
 
 File by file: read, stage the blobs, then a short transaction that writes the objects as `building` (a line file
 with its layers; a raster with its display copies; every wireframe of a file as an object of its own, taken
-from the reader one at a time; a DXF or a DWG gives a line file and wireframes). When every file is in, the
+from the reader one at a time; a DXF or a DWG gives a line file and wireframes; a LAS, or a table asked for as a
+cloud, gives a line file with one layer — the cloud, built in portions by `object_cloud.py`). When every file is in, the
 source files are staged and one final transaction attaches them (`source`, `sidecar:<ext>`: to the line file or
 the raster, and to the `import_log` row of every wireframe), writes `import_log` and makes everything `ready`.
 Until then a cancel or a failure leaves nothing: the scheduler drops what the job was building
@@ -20,7 +22,8 @@ place on the disk: no intermediate copy.
 
 Result: `files` — an entry per file and kind of its objects: {file, format, kind, object_id, layers, lines,
 points, vertices | rasters, width, height, … | kind "wireframes", object_ids, wireframes, triangles, mesh_points,
-skipped}; `objects` [ids of the line files, rasters and wireframes], `wireframe_ids` (for `wireframe.check`),
+skipped | kind "cloud", cloud_id, points, parts, skipped, every, classes}; `objects` [ids of the line files, rasters
+and wireframes], `wireframe_ids` (for `wireframe.check`), `cloud_ids` (the layers that are clouds),
 `failed` and `rest` [{file, code, message, hint}], totals.
 
 Ported from BF `importing/objects.py` (`import_lines`, `import_rasters`, the palette of layers without a colour).
@@ -41,6 +44,7 @@ from bf_core.formats.errors import FormatError
 from bf_core.jobs.context import JobContext, JobError
 from bf_core.jobs.registry import handler
 
+from . import object_cloud as oc
 from . import object_meshes as om
 from .object_files import (
     EMPTY,
@@ -87,10 +91,13 @@ def _memory(params: dict[str, Any]) -> int:
     from bf_core.formats.registry import IMAGE_SUFFIXES
 
     need = 0.0
+    chosen = options_by_file(params.get("options"))
     for raw in params.get("files") or []:
         path = Path(str(raw))
         size = _size(path)
-        if path.suffix.lower() in IMAGE_SUFFIXES:
+        if path.suffix.lower() in (".las", ".laz") or (chosen.get(option_key(path)) or {}).get("cloud"):
+            size = oc.MEMORY_MB * 2**20  # a cloud is built in portions: the same memory whatever its size
+        elif path.suffix.lower() in IMAGE_SUFFIXES:
             try:
                 from bf_core.formats.raster_image import probe
 
@@ -241,6 +248,27 @@ def _write_raster(
     )  # fmt: skip
 
 
+def _write_cloud(
+    ctx: JobContext, engine: sa.Engine, store: Any, g: Group, chosen: Any, tick: Tick, k: int, fail: Any
+) -> _Done | None:
+    """A LAS, or a table loaded as a cloud: one line file with one layer — the cloud (`object_cloud.py`)."""
+    try:
+        src = oc.open_source(g, chosen)
+        written = oc.write_cloud(ctx, engine, store, g, src, tick, color=PALETTE[k % len(PALETTE)])
+    except (FormatError, OSError) as exc:
+        fail(exc)
+        return None
+    for w in written.warnings:
+        ctx.log(f"{g.main.name}: {w}", "warn")
+    c = written.counts
+    ctx.log(
+        f"{g.main.name}: облако точек — точек {n_text(c['points'])}, частей {n_text(c['parts'])}, "
+        f"классов {len(c['classes'])}" + (f", каждая {c['every']}-я запись" if c["every"] > 1 else ""),
+        "info",
+    )
+    return _Done(g.main, g.main.name, src.format, om.MEDIA, written.settings, written.file_id, "cloud", c)
+
+
 def _span(step: Callable[..., None], low: float, high: float) -> Tick:
     """The part [low, high] of the share of a file in the progress of the job."""
     return lambda fraction, message: step(fraction, message, low, high)
@@ -264,6 +292,7 @@ def _result(files: list[dict[str, Any]], failed: list[dict[str, str]], rest: lis
     for key in ("layers", "lines", "points", "vertices", "rasters", "wireframes", "triangles"):
         out[key] = sum(int(f.get(key) or 0) for f in files)
     out["wireframe_ids"] = [i for f in files for i in f.get("object_ids") or []]
+    out["cloud_ids"] = [int(f["cloud_id"]) for f in files if f.get("cloud_id") is not None]
     return out
 
 
@@ -340,6 +369,11 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
 
             step(0.0, None)
             chosen = options.get(option_key(g.main))
+            if oc.wanted(g, chosen):
+                cloud = _write_cloud(ctx, engine, store, g, chosen, _span(step, 0.0, 1.0), len(done), fail)
+                if cloud is not None:
+                    done.append(cloud)
+                continue
             try:
                 read = read_group(g, chosen, reading, displays=True, section=p.get("section"), converter=p.get("oda"))
                 if not has_content(read):

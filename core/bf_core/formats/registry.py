@@ -17,13 +17,19 @@ format is a `FormatError("unsupported")`.
 Objects (Э7, ADR 0011 §2; wireframes — Э8, ADR 0013 §2): `OBJECT_FORMATS` maps a format to its reader, loaded
 on first use by the name of its module. `detect_object(path)` → `ObjectFormat` by the extension; a `.str` and a
 `.dm` are told by their content (Micromine data file or Surpac text; a Datamine table of a wireframe or of
-strings). `read_objects(path, progress)` → `ObjectsRead` is the one signature of every reader: path → layers
+strings); a binary Surpac `.str` and a Datamine `.dmx` are not read and are told for what they are.
+`read_objects(path, progress)` → `ObjectsRead` is the one signature of every reader: path → layers
 (`lineset.LineSet`), rasters (`raster_image.RasterRead`) and wireframes (`meshset.MeshSet`) + warnings;
 `progress(fraction, message)` reports and may raise to cancel. Wireframes come one at a time (`meshes`): a file
 of a hundred of them is never in memory whole; a DXF or a DWG gives its lines and its wireframes from one pass.
 `inspect=True` gives the composition instead (`entries`, no geometry). `group_files(names)` pairs the files of a
 selection: a main file with its companions (`.dbf .shx .prj .cpg` of a shapefile, `.mid` of a MIF, world / TAB /
 GRF files of an image, the `.str` of a Surpac `.dtm`, the points table `…pt.dm` of a Datamine `…tr.dm`).
+Point clouds (Э7.1, ADR 0014 §3, §6): a `.las` is a cloud (`ObjectFormat.cloud`): `read_objects` opens it and gives
+the opened file as `ObjectsRead.cloud` — its points are read later, portion by portion, by the import
+(`importing/object_cloud.py`); `inspect=True` gives `formats.las.LasInspect` as `detail`. A `.laz` is told by its
+name: `laz_not_supported` with the hint of ADR 0014. A table of points goes into a cloud when the wizard asks for one
+(the option `cloud` of the file): `formats/points_stream.py`, not through this registry.
 
 Ported from BF `formats/registry.py` (table part: `TABLE_SUFFIXES`; object part: `detect`, `pair_files` of
 `rasters.py`) and `importing/service.py` (`read_table`, `check_supported`); block models and OMF come with
@@ -161,7 +167,8 @@ TRIDB, OBJ, STL, SURPAC_DTM, DATAMINE, DATAMINE_STR, DWG = (
     "datamine_str",
     "dwg",
 )
-LINES_KIND, POINTS_KIND, RASTER_KIND, WIREFRAMES_KIND = "lines", "points", "raster", "wireframes"
+LAS = "las"
+LINES_KIND, POINTS_KIND, RASTER_KIND, WIREFRAMES_KIND, CLOUD_KIND = "lines", "points", "raster", "wireframes", "cloud"
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp")
 WORLD_SUFFIXES = (".jgw", ".jpgw", ".pgw", ".pngw", ".tfw", ".tifw", ".bpw", ".bmpw", ".wld")
 POINT_SUFFIXES = (".xyz", ".csv", ".txt", ".tsv", ".prn", ".dat")
@@ -172,7 +179,8 @@ POINT_SUFFIXES = (".xyz", ".csv", ".txt", ".tsv", ".prn", ".dat")
 OPENED, LISTED, DRAWN = "opened", "listed", "drawn"
 SUPPORTED = (
     "Подходят: стринги .str / .pit, чертежи .dxf / .dwg, .shp, .mif, точки .xyz / .csv / .txt / .dat, "
-    "каркасы .tridb / .obj / .stl / .dtm с .str / .dm, растры .jpg / .png / .tif / .bmp с файлом привязки."
+    "каркасы .tridb / .obj / .stl / .dtm с .str / .dm, растры .jpg / .png / .tif / .bmp с файлом привязки, "
+    "облака точек .las."
 )
 
 
@@ -180,7 +188,7 @@ SUPPORTED = (
 class ObjectFormat:
     key: str
     label: str  # for the wizard, in Russian
-    kind: str  # "lines" | "points" | "raster" | "wireframes": what the file usually holds (a drawing gives more)
+    kind: str  # lines | points | raster | wireframes | cloud: what the file usually holds (a drawing gives more)
     suffixes: tuple[str, ...]
     module: str  # imported on first use
     reader: str  # read(path, progress, **options) of that module; of a wireframe format — see `meshes`
@@ -190,6 +198,7 @@ class ObjectFormat:
     meshes: str = ""  # OPENED | LISTED | DRAWN: the format gives wireframes, and how
     inspector: str = ""  # LISTED: inspect(path, progress, **options) → (entries, warnings)
     choices: tuple[tuple[str, str], ...] = ()  # (option, function of the module: header → what to choose from)
+    cloud: bool = False  # a point cloud: `reader(path)` opens the file, `inspector(path)` tells what is in it
 
 
 _F = "bf_core.formats."
@@ -228,6 +237,8 @@ OBJECT_FORMATS: dict[str, ObjectFormat] = {
         ObjectFormat(DATAMINE_STR, "Стринги Datamine (.dm)", LINES_KIND, (".dm",),
                      _F + "datamine_objects", "read_dm_strings", options=("encoding", "layer_field"),
                      choices=(("layer_field", "layer_fields"),)),
+        ObjectFormat(LAS, "Облако точек LAS (.las)", CLOUD_KIND, (".las", ".laz"),
+                     _F + "las", "open_las", inspector="inspect_las", cloud=True),
     )
 }  # fmt: skip
 _BY_CONTENT = (".str", ".dm")  # extensions of two formats: the content of the file tells which
@@ -257,6 +268,7 @@ class ObjectsRead:
     detail: Any = None  # the reader's own result (StrRead, DxfRead, ShpRead, MifRead, PointsRead, RasterRead)
     entries: list[MeshEntry] = field(default_factory=list)
     meshes: Iterator[MeshSet] | list[MeshSet] | None = None
+    cloud: Any = None  # a point cloud opened for reading (`formats.las.LasFile`): its points are not read yet
     unread: list[MeshEntry] = field(default_factory=list)
     preliminary: bool = False  # the reader was not checked on real files (Datamine: ADR 0013 §6)
     choices: dict[str, list[str]] = field(default_factory=dict)  # option → the fields to choose from (inspect)
@@ -289,7 +301,7 @@ def detect_object(path: str | Path, filename: str | None = None) -> ObjectFormat
     suffix = Path(filename or path.name).suffix.lower()
     if suffix == ".str":
         from bf_core.formats.micromine_header import _STANDARD_RE, MAGIC
-        from bf_core.formats.str_surpac import is_surpac
+        from bf_core.formats.str_surpac import binary_error, is_surpac, is_surpac_binary
 
         with path.open("rb") as f:
             head = f.read(1 << 16)
@@ -297,6 +309,8 @@ def detect_object(path: str | Path, filename: str | None = None) -> ObjectFormat
             return OBJECT_FORMATS[MICROMINE_STR]
         if is_surpac(head):
             return OBJECT_FORMATS[SURPAC_STR]
+        if is_surpac_binary(head):
+            raise binary_error(Path(filename or path.name).name)
         raise FormatError(
             "unsupported",
             "Файл .str не похож ни на стринги Micromine, ни на текстовые стринги Surpac." if head else "Файл пуст.",
@@ -304,6 +318,10 @@ def detect_object(path: str | Path, filename: str | None = None) -> ObjectFormat
         )
     if suffix == ".dm":
         return _datamine(path)
+    if suffix == ".dmx":  # the compressed tables of Datamine Studio: told by the name, the file is not read
+        from bf_core.formats.datamine_dmx import dmx_error
+
+        raise dmx_error(Path(filename or path.name).name)
     found = _BY_OBJECT_SUFFIX.get(suffix)
     if found is not None:
         return found
@@ -395,7 +413,19 @@ def read_objects(
     kwargs.update(options or {})
     out = ObjectsRead(fmt.key, fmt.label, preliminary=bool(getattr(module, "PRELIMINARY", False)))
     header: Any = None
-    if fmt.meshes == OPENED:
+    if fmt.cloud:
+        if Path(filename or path.name).suffix.lower() == ".laz":
+            from bf_core.formats.las_header import laz_error
+
+            raise laz_error()
+        if inspect and look is not None:
+            out.detail = look(path)
+            cloud_header = out.detail.header
+        else:
+            out.cloud = read(path)
+            cloud_header = out.cloud.header
+        out.warnings, out.crs = list(cloud_header.warnings), cloud_crs(cloud_header.crs_text(), out.warnings)
+    elif fmt.meshes == OPENED:
         if inspect:
             with read(path, progress=progress, **kwargs) as f:
                 out.entries, out.warnings, header = list(f.entries), list(f.warnings), getattr(f, "header", None)
@@ -425,6 +455,19 @@ def read_objects(
     if inspect and header is not None:
         out.choices = {option: list(fields(header)) for option, fields in choose}
     return out
+
+
+def cloud_crs(text: str | None, warnings: list[str]) -> CrsInfo | None:
+    """The CRS label of a cloud from the text of its file (a WKT, «EPSG:…»); one that cannot be read — a warning."""
+    if not text:
+        return None
+    from bf_core.crs import CrsError, describe
+
+    try:
+        return describe(text)
+    except CrsError:
+        warnings.append("Система координат облака не распознана: облако загружено без метки системы координат.")
+        return None
 
 
 def group_files(names: Sequence[str]) -> tuple[list[FileGroup], list[str]]:

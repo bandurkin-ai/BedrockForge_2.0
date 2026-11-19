@@ -1,8 +1,11 @@
 """Datamine wireframes (`*tr.dm` + `*pt.dm`) and strings (`.dm`) — ТЗ 7.35 Д-13, 9.12; ADR 0009; ADR 0013 §2.
 
-**Preliminary** (`PRELIMINARY`): there are no samples of these files (question № 4 to the owner). The tables are
-read by `formats/datamine.py` (checked on the owner's block model); what the fields mean is taken from the help
-of Datamine Studio and checked on synthetic files only. Every reading says so in its first warning.
+**Preliminary** (`PRELIMINARY`): the only sample is a triangle table of Datamine Studio without its points table
+(`tests/data/real/Datamine_block_model.zip`: `PID1…PID3`, `TRIANGLE` and attributes, as described here); no
+points table in a `.dm` and no strings have been seen (question № 4 to the owner; the owner's `.dmx` wireframe
+has the same fields in both tables, `formats/datamine_dmx.py`). The tables are read by
+`formats/datamine.py` (checked on the owner's block model and on that table); what the fields mean is taken from
+the help of Datamine Studio and checked on synthetic files only. Every reading says so in its first warning.
 
 A wireframe is two tables. Triangles: `TRIANGLE, PID1, PID2, PID3` and any other fields (`GROUP`, `SURFACE`,
 `LINK`, `COLOUR`, attributes) — a record per triangle, `PID1…PID3` are numbers of points. Points: `PID, XP, YP,

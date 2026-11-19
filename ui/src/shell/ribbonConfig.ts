@@ -81,6 +81,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "import.open", label: "Скважины", icon: "drillholes", hint: "Collar, Survey, Assay (DAT, CSV, Excel)" },
             { command: "wireframes.upload", label: "Каркасы", icon: "wireframe", hint: "Micromine TRIDB, DXF, OBJ, STL" },
             { command: "lines.upload", label: "Линии", icon: "lines", hint: "Линии и точки: Micromine STR и PIT, Surpac STR, DXF, SHP, MIF/MID, точки XYZ", small: true },
+            { command: "points.import", args: { mode: "las" }, label: "Облако точек", icon: "cloud", hint: "LAS 1.2–1.4 или таблица точек XYZ облаком; LAZ — сохранить как LAS", small: true },
             { command: "rasters.upload", label: "Растры", icon: "raster", hint: "Изображение + файл привязки (world, TAB, GRF) или GeoTIFF", small: true },
             { command: "import.open", args: { mode: "trenches" }, label: "Канавы", icon: "edPline", hint: "Канавы по полилиниям: STR, DXF или таблица вершин; пробы — по 3D-длине", small: true },
           ],
@@ -220,6 +221,9 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           title: "Поверхности",
           items: [
             { command: "model.dtm", label: "Построить ЦТМ", icon: "plan", hint: "Поверхность из слоёв точек и линий и устьев скважин; граница — замкнутая линия" },
+            { command: "ground.classify", label: "Фильтр земли", icon: "cloud", hint: "Классы точек облака: земля, растительность, шум; профили «Карьер», «Равнина», «Свой»", small: true },
+            { command: "terrain.from_points", label: "Построить ЦТМ из облака", icon: "dtm", hint: "Поверхность из точек земли (класс 2) облака, прореженных по сетке; окно «Построение ЦТМ»", small: true },
+            { command: "cloud.dz", label: "Карта разностей", icon: "chart", hint: "Отклонение точек облака от ЦТМ или каркаса (dz): режим цвета «Отклонение от ЦТМ», СКО, P95 и наибольшее", small: true },
             { command: "model.contours", label: "Изолинии", icon: "lines", small: true },
             { command: "model.volume", label: "Объём", icon: "histogram", small: true },
             { command: "wireframe.dtm", args: { on: true }, label: "В ЦТМ", icon: "dtm", hint: "Перенести выбранный каркас поверхности в раздел «ЦТМ»", small: true },
