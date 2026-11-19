@@ -272,7 +272,13 @@ def max_deviation(points: Any, xyz: Any, tri: Any, *, threads: int = 1, progress
 
 
 def two_sided(
-    source: Surface, vc: np.ndarray, t: np.ndarray, *, centroids: bool = True, threads: int = 1, progress: Progress = None
+    source: Surface,
+    vc: np.ndarray,
+    t: np.ndarray,
+    *,
+    centroids: bool = True,
+    threads: int = 1,
+    progress: Progress = None,
 ) -> float:
     """The sampled symmetric deviation of a result (`vc`, `t`, relative to the origin of `source`) from the
     source surface: source vertices → result, and result vertices plus triangle centroids → source. inf for a

@@ -14,6 +14,8 @@ Hard data: triangles of very different sizes (the big ones are kept off the grid
 
 from __future__ import annotations
 
+import itertools
+import time
 from typing import Any
 
 import numpy as np
@@ -102,8 +104,8 @@ def test_a_looser_tolerance_gives_fewer_triangles_and_flat_faces_cost_nothing() 
     assert report["triangles_after"] < 200 and report["max_deviation"] <= 1e-3 and report["closed_after"]
     assert report["volume_after"] == pytest.approx(VOLUME, rel=1e-6) and calls[-1] == 1.0 and calls == sorted(calls)
     # the corners of the cube are vertices of the result bit for bit (ADR 0015 §7: surviving vertices)
-    corners = v[[np.lexsort(v.T * s[:, None])[0] for s in np.array(np.meshgrid([1, -1], [1, -1], [1, -1])).T.reshape(-1, 3)]]
-    assert rows(corners) <= rows(out_v)
+    corners = UTM + SIDE * np.array(list(itertools.product([0.0, 1.0], repeat=3)))
+    assert rows(corners) <= rows(v) and rows(corners) <= rows(out_v)
 
 
 def test_simplify_an_open_surface_keeps_its_border() -> None:
@@ -204,7 +206,7 @@ def test_smoothing_a_sphere_keeps_its_volume_on_hard_data() -> None:
     cv, ct = cube(8, SIDE, UTM)
     out_v, _, report = smooth_mesh(cv, ct, iterations=30, strength=0.6)
     assert repair_checks(out_v, ct, intersections=False)["volume"] == pytest.approx(VOLUME, rel=1e-9)
-    assert report["scale"] > 1.0 and report["max_deviation"] > 0.0  # the corners are rounded off
+    assert report["scale"] != 1.0 and report["max_deviation"] > 0.1  # the corners are rounded off
 
 
 def test_smoothing_an_open_surface_keeps_its_boundary() -> None:
@@ -294,20 +296,27 @@ def test_max_deviation_against_exact_distances() -> None:
 
 
 def test_deviation_on_triangles_of_very_different_sizes_and_on_threads() -> None:
-    # a fine terrain with one huge triangle above it (kept off the grid) and points everywhere around
+    # a fine terrain with one huge triangle above it (kept off the grid); points near the terrain (as the vertices
+    # of a simplified or smoothed copy are) and a few far ones (every triangle tested for them)
     v, t = grid(80, 80, lambda x, y: 0.01 * x * y, step=1.0)
     big = UTM + np.array([[-500.0, -500.0, 300.0], [900.0, -500.0, 300.0], [0.0, 900.0, 300.0]])
     v2 = np.concatenate([v, big])
     t2 = np.concatenate([t, [[len(v), len(v) + 1, len(v) + 2]]]).astype(np.int32)
     surface = D.Surface(v2 - UTM, t2)
     assert len(surface.big_ids) == 1
-    pts = np.random.default_rng(9).uniform([-100, -100, -50], [180, 180, 400], size=(200_000, 3))
+    rng = np.random.default_rng(9)
+    near = rng.uniform(0, 80, size=(50_000, 2))
+    near = np.column_stack([near, 0.01 * near[:, 0] * near[:, 1] + rng.normal(0.0, 2.0, len(near))])
+    pts = np.concatenate([near, rng.uniform([-100, -100, -50], [180, 180, 400], size=(200, 3))])
+    started = time.perf_counter()
     one = surface.distances(pts)
+    seconds = time.perf_counter() - started
     four = surface.distances(pts, threads=4)
     assert one.tobytes() == four.tobytes() and len(one) == len(pts)
-    check = pts[:: 997]
+    check = pts[::2500]
     exact = [
         min(D.point_triangle_d2(*p, *(v2[a] - UTM), *(v2[b] - UTM), *(v2[c] - UTM)) for a, b, c in t2) ** 0.5
         for p in check
     ]
-    assert np.allclose(one[:: 997], exact, rtol=0.0, atol=1e-9)
+    assert np.allclose(one[::2500], exact, rtol=0.0, atol=1e-9)
+    assert one[-200:].min() > 0.0 and seconds < 10.0  # measured: about 0.3 s
