@@ -53,6 +53,11 @@ class SeriesError(ValueError):
         self.hint = hint
 
 
+def _ru(x: float) -> str:
+    """A number as the window shows it: a decimal comma."""
+    return f"{x:g}".replace(".", ",")
+
+
 def _number(v: Any, what: str, hint: str = "Введите число.") -> float:
     if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(float(v)):
         raise SeriesError(f"{what}: ожидается число.", hint)
@@ -204,7 +209,7 @@ def check(
     if k > MAX_K:
         raise SeriesError(
             f"В серии получается {k} разрезов — больше 5 000.",
-            f"Увеличьте шаг (не меньше {math.ceil((s1 - s0) / (MAX_K - 1) * 100) / 100:g} м) или сократите пределы.",
+            f"Увеличьте шаг (не меньше {_ru(math.ceil((s1 - s0) / (MAX_K - 1) * 100) / 100)} м) или сократите пределы.",
         )
     shadow = params.get("shadow", "prev")
     if shadow not in SHADOWS:
