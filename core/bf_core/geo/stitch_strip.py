@@ -1,6 +1,7 @@
 """The strip between two contours (ADR 0015 §7, «Соответствие вершин», «Тай-линии»).
 
     strip(pa, pb, la, lb, gap, ties, tick)   triangles between two counter-clockwise contours, or None
+    strips(items, threads, tick, done)       strip() of every item, in a pool of threads (the same bits)
     best_start(qa, qb, hh)                   the start of the cheapest strip and its cost (exact)
     start_cost(qa, qb, hh, s)                the cost of the cheapest strip that starts at (0, s)
     match_coords(q)                          a contour brought to its centre and to unit size
@@ -22,6 +23,14 @@ moves take 2·n·m bytes and the bounds of the paths of every start 8·n·m byte
 The search of the best start does at most `BUDGET` cells a call and goes on from where it stopped, so `tick`
 (which may raise to cancel) is called between the portions.
 
+Threads (ADR 0015 «Замеры», ADR 0014 — threads of Python over `nogil` kernels, no `prange`). The strips of a
+series do not depend on each other, and the search of the best start is almost all of a strip (20 contours of
+500 vertices: ~10 ms of the ~11 ms of each of 19 strips), so `strips` runs whole strips in a pool. Every strip
+is computed by the same code from its own input and the results are kept by number, so they are the same, bit
+for bit, for any number of threads. `tick` is called only from the calling thread; when it raises, the strips
+in the threads stop at their next portion and the exception goes on. Strips of at most `MEMORY_SPANS` spans
+run at once (each takes ~10 bytes a span), always at least one.
+
 Ported from BF `geo/stitch.py` (`_span_matrix`, `_dp_fill`, `_dp_bounds`, `_dp_trace`, `_ring_path`,
 `_best_start`, `_match_coords`, `_tie_segments`, `_strip`) with the same paths. Differences: spans computed in
 place (BF stored the n × m matrix), two rows of costs, int32 bounds, the resumable search of the best start,
@@ -31,7 +40,9 @@ the limit on the size of a pair. The kernels release the GIL; numba is imported 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+import os
+import threading
+from collections.abc import Callable, Sequence
 
 import numpy as np
 
@@ -39,8 +50,13 @@ from bf_core.jit import njit
 
 MAX_SPANS = 16_000_000  # n · m of one pair of contours
 BUDGET = 20_000_000  # cells of the search of the best start between two calls of `tick`
+THREADS = 4  # strips at once by default (fewer on a machine with fewer cores)
+MEMORY_SPANS = 2 * MAX_SPANS  # spans of the strips that run at once
+TICK_S = 0.05  # how often `tick` is called while strips run in threads
 
 Tick = Callable[[], None] | None
+# (pa, pb, la, lb, gap, ties): the arguments of `strip` but `tick`
+StripItem = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, "list[tuple[int, int]] | None"]
 
 
 @njit(cache=True, nogil=True, inline="always")
@@ -388,3 +404,79 @@ def strip(
             if tick is not None:
                 tick()
     return tris
+
+
+class _Stopped(Exception):
+    """A strip in a thread stops early: the work was cancelled or another strip failed."""
+
+
+def default_threads() -> int:
+    return max(1, min(THREADS, os.cpu_count() or 1))
+
+
+def _strip_of(item: StripItem, tick: Tick) -> np.ndarray | None:
+    pa, pb, la, lb, gap, ties = item
+    return strip(pa, pb, la, lb, gap, ties, tick)
+
+
+def strips(
+    items: Sequence[StripItem],
+    *,
+    threads: int | None = None,
+    tick: Tick = None,
+    done: Callable[[int], None] | None = None,
+) -> list[np.ndarray | None]:
+    """strip(pa, pb, la, lb, gap, ties) of every item, in its order; with threads > 1 in a pool of threads.
+
+    threads   at most so many strips at once (None: `default_threads()`); the result does not depend on it.
+    tick      called from this thread only, between the portions (one thread) or every `TICK_S`; may raise.
+    done(k)   called when k strips are finished, k = 0 … len − 1 (before the strip k + 1 is waited for).
+    """
+    count = len(items)
+    out: list[np.ndarray | None] = [None] * count
+    threads = default_threads() if threads is None else max(1, int(threads))
+    if threads == 1 or count < 2:
+        for k, item in enumerate(items):
+            if done is not None:
+                done(k)
+            out[k] = _strip_of(item, tick)
+        return out
+    from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+
+    stop = threading.Event()
+
+    def check() -> None:
+        if stop.is_set():
+            raise _Stopped
+
+    spans = [len(item[2]) * len(item[3]) for item in items]
+    pending: dict[Future[np.ndarray | None], int] = {}
+    if done is not None:
+        done(0)
+    with ThreadPoolExecutor(min(threads, count), thread_name_prefix="bf-stitch") as pool:
+        try:
+            following = finished = load = 0
+            while finished < count:
+                while (
+                    following < count
+                    and len(pending) < threads
+                    and (not pending or load + spans[following] <= MEMORY_SPANS)
+                ):
+                    pending[pool.submit(_strip_of, items[following], check)] = following
+                    load += spans[following]
+                    following += 1
+                ready, _ = wait(pending, timeout=TICK_S, return_when=FIRST_COMPLETED)
+                for future in sorted(ready, key=pending.__getitem__):
+                    k = pending.pop(future)
+                    load -= spans[k]
+                    out[k] = future.result()
+                    finished += 1
+                    if done is not None and finished < count:
+                        done(finished)
+                if tick is not None:
+                    tick()
+        except BaseException:
+            stop.set()
+            wait(pending)
+            raise
+    return out

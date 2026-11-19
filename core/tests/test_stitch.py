@@ -4,9 +4,10 @@ sections, UTM coordinates, bit-identical input vertices, errors with the numbers
 
 From BF `tests/test_stitch.py` with the assertions unchanged (the strips are in `test_stitch_strip.py`,
 extrusion and triangle edits in `test_extrude.py`) and new: two squares 10 × 10 ten metres apart, every kind of
-cap with its exact volume, branches no line separates, the limit on a pair, cancellation. Tolerances: volumes
-of prisms, pyramids and extrusions — 1e-9 relative (exact up to float64 rounding in project coordinates);
-morphing and branching cases — bounds stated in each test. No database: pure geometry.
+cap with its exact volume, branches no line separates, the limit on a pair, cancellation, the same bits with
+strips in threads. Tolerances: volumes of prisms, pyramids and extrusions — 1e-9 relative (exact up to float64
+rounding in project coordinates); morphing and branching cases — bounds stated in each test. No database: pure
+geometry.
 """
 
 import time
@@ -519,6 +520,22 @@ def test_a_pair_too_large_is_refused(monkeypatch):
     with pytest.raises(StitchError, match="Между контурами разрезов 2 и 3 контуры слишком подробны") as error:
         stitch_contours([a, b, c])
     assert error.value.code == "stitch_too_large" and error.value.between == (1, 2)
+
+
+def test_strips_in_threads_give_the_same_solid_bit_for_bit():
+    """ADR 0015 «Замеры»: strips at once in threads (ADR 0014, no prange) — vertices, triangles and the report
+    are the same for 1, 2 and 4 threads; with a branching 2 : 1 : 2, tie lines and different vertex counts."""
+    shapes = [ellipse(30 + 7 * i, 30.0 + 5.0 * np.sin(i), 10.0 + i, cx=3.0 * i, phase=0.7 * i) for i in range(7)]
+    contours = [section(s if i % 2 else s[::-1], 20.0 * i) for i, s in enumerate(shapes)]
+    contours += [section(CHILD_1, 140.0), section(CHILD_2, 140.01)]
+    ties = [np.array([contours[1][0], contours[2][5]])]
+    results = [stitch_contours(contours, ties, start_cap="point", end_cap="extend", threads=t) for t in (1, 2, 4)]
+    assert_solid(results[0].vertices, results[0].triangles)
+    assert results[0].report["pairs"][-1]["branch"]
+    for other in results[1:]:
+        assert other.vertices.tobytes() == results[0].vertices.tobytes()
+        assert other.triangles.tobytes() == results[0].triangles.tobytes()
+        assert other.report == results[0].report
 
 
 def test_progress_may_cancel_between_strips():

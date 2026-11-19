@@ -3,11 +3,15 @@ best start against the full search, a strip without a twist, tie lines as edges 
 
 From BF `tests/test_stitch.py` (`test_cap_triangles_cover_a_non_convex_polygon`, the strips of
 `test_contours_of_different_shape_and_vertex_count`, `test_tie_lines_are_edges_of_the_result`,
-`test_very_dissimilar_contours_still_give_a_strip`) and new. Tolerances: areas 1e-9 relative; the best start
+`test_very_dissimilar_contours_still_give_a_strip`) and new: strips in threads — the same bits for 1, 2, 4
+threads, the limit of memory, the stop on a raising tick. Tolerances: areas 1e-9 relative; the best start
 equals the full search to 1e-12 relative (the same path is summed in the same order). No database.
 """
 
 from __future__ import annotations
+
+import threading
+import time
 
 import numpy as np
 import pytest
@@ -226,6 +230,69 @@ def test_very_dissimilar_contours_still_give_a_strip() -> None:
     v, tris, solid = prism_of_strip(a, b, 20.0, [(0, 0), (0, 5)])
     assert has_edge(tris, 0, 12) and has_edge(tris, 0, 12 + 5)
     assert edge_summary(solid, len(v)) == (0, 0)
+
+
+# --- strips in threads -------------------------------------------------------------------------------------
+
+
+def series_items(rng, count=9):  # type: ignore[no-untyped-def]
+    """Strips of a series: shapes, vertex counts and starts differ; one strip with tie lines, one dissimilar pair."""
+    out = []
+    for k in range(count):
+        n, m = int(rng.integers(40, 160)), int(rng.integers(40, 160))
+        lower = ccw(star(rng, n) * [30.0, 14.0])
+        upper = ccw(star(rng, m, *rng.normal(0, 0.3, 2)) * [26.0, 16.0])
+        ties = [(0, 3), (n // 2, m // 2)] if k == 4 else []
+        out.append((lower, upper, np.arange(n), np.arange(n, n + m), 20.0 + k, ties))
+    wide = np.array([[4.83, 4.08], [-2.22, 2.75], [-14.44, 0.44], [-14.12, -3.18], [-12.79, -7.15], [-12.52, -7.96],
+                     [-16.24, -10.97], [-18.23, -10.54], [-2.59, -36.54], [5.39, -38.51], [1.03, -22.21]])  # fmt: skip
+    sliver = np.array([[-56.51, 27.84], [-37.3, 38.77], [-39.46, 38.39], [-41.78, 41.61], [-43.85, 44.86]])
+    out.append((ccw(wide), ccw(sliver), np.arange(11), np.arange(11, 16), 10.85, []))
+    return out
+
+
+@pytest.mark.parametrize("threads", [1, 2, 4])
+def test_strips_in_threads_are_the_same_bit_for_bit(threads: int) -> None:
+    """ADR 0015 «Замеры», ADR 0014: the strips of a series in a pool of threads give what one thread gives."""
+    items = series_items(np.random.default_rng(37))
+    alone = [ss.strip(*item) for item in items]
+    seen: list[int] = []
+    got = ss.strips(items, threads=threads, done=seen.append)
+    assert len(got) == len(items)
+    for a, b in zip(alone, got, strict=True):
+        assert a is not None and b is not None and a.dtype == b.dtype and a.tobytes() == b.tobytes()
+    assert seen == list(range(len(items)))  # k strips finished, in order, before the next is waited for
+
+
+def test_strips_keep_to_the_memory_limit_and_report_crossing_ties(monkeypatch: pytest.MonkeyPatch) -> None:
+    items = series_items(np.random.default_rng(8), 5)
+    whole = ss.strips(items, threads=4)
+    monkeypatch.setattr(ss, "MEMORY_SPANS", 1)  # one strip at a time: always at least one runs
+    assert [t.tobytes() for t in ss.strips(items, threads=4)] == [t.tobytes() for t in whole]  # type: ignore[union-attr]
+    lower, upper = ellipse(40, 30.0, 14.0), ellipse(28, 22.0, 16.0, cx=5.0)
+    crossing = (lower, upper, np.arange(40), np.arange(40, 68), 20.0, [(0, 0), (10, 14), (20, 7)])
+    got = ss.strips([items[0], crossing, items[1]], threads=3)
+    assert got[1] is None and got[0] is not None and got[2] is not None
+
+
+def test_strips_in_threads_stop_when_the_tick_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    rng = np.random.default_rng(3)
+    big = [(ccw(ellipse(400, 3.0, 1.0, phase=0.1 * k)) + rng.normal(0, 0.01, (400, 2)), ccw(ellipse(380, 2.0, 1.5)),
+            np.arange(400), np.arange(400, 780), 1.0, []) for k in range(6)]  # fmt: skip
+    monkeypatch.setattr(ss, "BUDGET", 20_000)  # many portions: the threads look at the stop often
+    monkeypatch.setattr(ss, "TICK_S", 0.001)
+    calls = []
+
+    def tick() -> None:
+        calls.append(1)
+        raise KeyboardInterrupt  # what JobContext.tick raises goes through untouched
+
+    start = time.perf_counter()
+    with pytest.raises(KeyboardInterrupt):
+        ss.strips(big, threads=3, tick=tick)
+    assert len(calls) == 1
+    assert time.perf_counter() - start < 5.0
+    assert not [t for t in threading.enumerate() if t.name.startswith("bf-stitch")]  # the pool is gone
 
 
 def test_kernels_are_cached_and_release_the_gil() -> None:

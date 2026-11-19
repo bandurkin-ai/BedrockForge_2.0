@@ -27,6 +27,8 @@ Self-intersections are not repaired.
 
 Progress and cancellation: `progress(fraction, message)` is called between the strips, between the portions
 of the search of a large pair and during the self-intersection check; it may raise to cancel (JobContext.tick).
+The strips are built at once in threads (`threads`, `stitch_strip.strips`: the same bits for any number of
+them); `progress` is called from the calling thread only.
 
 Works used: H. Fuchs, Z. M. Kedem, S. P. Uselton, «Optimal surface reconstruction from planar contours», 1977.
 Ported from BF `geo/stitch.py` (`stitch_contours`, `_sections`, `_links`, `_edge_faults`, `_pierced`,
@@ -47,7 +49,7 @@ from bf_core.geo.checks import orientation_conflicts, self_intersections
 from bf_core.geo.meshes import edge_summary
 from bf_core.geo.polygon import StitchError, area_vector, centroid, clean_polygon, plane_axes, signed_area
 from bf_core.geo.stitch_branch import Series
-from bf_core.geo.stitch_strip import MAX_SPANS, strip
+from bf_core.geo.stitch_strip import MAX_SPANS, strips
 from bf_core.jit import njit
 
 CAPS = ("none", "flat", "point", "line", "extend")
@@ -335,6 +337,7 @@ def stitch_contours(
     tie_tolerance: float | None = None,
     check: bool = True,
     progress: StitchProgress = None,
+    threads: int | None = None,
 ) -> StitchResult:
     """A triangulated solid from closed contours drawn on a series of sections.
 
@@ -352,7 +355,8 @@ def stitch_contours(
     tie_tolerance       how far a tie end may be from a contour vertex (default: 1e-3 of the
                         typical contour size).
     check               look for self-intersections; StitchError names the pair of sections.
-    progress            callback (fraction, message); may raise to cancel.
+    progress            callback (fraction, message); may raise to cancel. Called from this thread only.
+    threads             strips built at once (None: up to 4, by the cores); the result is the same for any.
 
     The vertices of the contours come first in the result, in input order and bit-identical;
     new vertices (caps, branch cuts) follow. Report: sections, pairs, ties_used, tolerances, normal,
@@ -444,12 +448,17 @@ def stitch_contours(
     tolerance = float(tie_tolerance) if tie_tolerance is not None else TIE_SNAP * float(np.median(sizes))
     ties_used = _place_ties(s, ties, jobs, section_of, tolerance)
 
-    # ---- strips
-    for done, job in enumerate(jobs):
+    # ---- strips: independent of each other, built at once in threads (stitch_strip.strips)
+    def started(done: int) -> None:
         tell(0.05 + 0.75 * done / len(jobs), f"Сшивка контуров: {done + 1} из {len(jobs)}")
+
+    items = []
+    for job in jobs:
         la = np.asarray(s.loops[job["lower"]], dtype=np.int64)
         lb = np.asarray(s.loops[job["upper"]], dtype=np.int64)
-        tris = strip(s.flat(la), s.flat(lb), la, lb, job["gap"], [(i, j) for i, j, _ in job["ties"]], tick)
+        items.append((s.flat(la), s.flat(lb), la, lb, job["gap"], [(i, j) for i, j, _ in job["ties"]]))
+    built = strips(items, threads=threads, tick=tick, done=started)
+    for job, tris in zip(jobs, built, strict=True):
         if tris is None:
             numbers = ", ".join(str(n) for _, _, n in job["ties"])
             raise StitchError(
