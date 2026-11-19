@@ -243,22 +243,28 @@ def grow(cmin, mx, my, mz, state, gx, gy, edge, ncx, ncy, c, ct, tan_up, min_cel
 def edge_rows(cmin, mask, ncx, row0, row1, edge):  # type: ignore[no-untyped-def]
     """edge[cell] = 1 for the cells of rows [row0, row1) that hold a return and stand at the edge of the data:
     one of the 6 × 6 particles around the cell is outside the system (a particle leaves the system 2·CR from
-    the last return, so these are the cells within about CR of the edge)."""
+    the last return, so these are the cells within about CR of the edge).
+    Returns (cells inside the data, those of them that hold a return) — how full the lattice is."""
     npy, npx = mask.shape
+    inside = 0
+    filled = 0
     for cj in range(row0, row1):
         pj = cj // 2
         for ci in range(ncx):
             cell = cj * ncx + ci
-            edge[cell] = 0
-            if cmin[cell] < 0:
-                continue
             pi = ci // 2
-            for j in range(pj - 2, pj + 4):
-                if j < 0 or j >= npy:
-                    continue
-                for i in range(pi - 2, pi + 4):
-                    if i >= 0 and i < npx and not mask[j, i]:
-                        edge[cell] = 1
+            at_edge = pj < 2 or pi < 2 or pj + 4 > npy or pi + 4 > npx
+            if not at_edge:
+                for j in range(pj - 2, pj + 4):
+                    for i in range(pi - 2, pi + 4):
+                        if not mask[j, i]:
+                            at_edge = True
+            edge[cell] = 1 if at_edge and cmin[cell] >= 0 else 0
+            if not at_edge:
+                inside += 1
+                if cmin[cell] >= 0:
+                    filled += 1
+    return inside, filled
 
 
 # --- surface and classes ---------------------------------------------------------------------------------

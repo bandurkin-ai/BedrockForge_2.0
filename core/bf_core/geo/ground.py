@@ -58,6 +58,8 @@ STRIP_ROWS = 64  # rows of cells (of particles) in a strip
 STRIP_POINTS = 1 << 18  # points in a strip
 WIDTHS = {1: 8.0, 2: 16.0, 3: 32.0}  # RI → width of a gap in the data the cloth rises into by ≤ 0.5 m
 CLOTH_TOL = 1e-4  # a sweep of the cloth moves no particle further, m
+FILL_MIN = 0.25  # share of the cells of CR/2 that hold a return: under it the cloud is too sparse for CR
+FILL_LOW = 0.35  # … and under this the report carries a warning
 ALGO = "CSF (Zhang et al., 2016) как задача с препятствием; рост по склону; грани — версия 1"
 
 Tick = Callable[[float, str], None] | None
@@ -255,6 +257,9 @@ def classify_ground(
         "ground_cells": 0,
         "edge_areas": 0,
         "face_points": 0,
+        "cells_inside": 0,
+        "cells_filled": 0,
+        "warnings": [],
         "sweeps": [],
         "seconds": dict.fromkeys(STAGES, 0.0),
     }
@@ -283,6 +288,7 @@ def classify_ground(
         report["skipped"] = n - sum(int(b[4]) for b in box)
     finally:
         pool.close()
+    _check_fill(report, p)
     counts = np.bincount(cls, minlength=8)
     report["classes"] = {int(code): int(counts[code]) for code in (1, 2, 3, 4, 5, 7)}
     report["noise"] = int(counts[7])
@@ -290,6 +296,35 @@ def classify_ground(
     if tick:
         tick(1.0, STAGES[-1])
     return GroundResult(cls, h, report)
+
+
+def _check_fill(report: dict[str, Any], p: GroundParams) -> None:
+    """The lattice must not be finer than the cloud: with a return in fewer than a quarter of the cells of CR/2
+    the growth has nothing to go by and the planes nothing to be fitted to — an error with the step to take;
+    under `FILL_LOW` — a warning in the report."""
+    inside, filled = report.pop("cells_inside"), report.pop("cells_filled")
+    report["fill"] = round(filled / inside, 3) if inside else None
+    if not inside or filled >= FILL_LOW * inside:
+        return
+    fill = max(filled / inside, 1e-6)
+    # cells of the step that would hold a return in 40 % of them: the share is 1 − exp(−density · cell²)
+    step = math.ceil(p.cr * math.sqrt(math.log(1.0 - 0.4) / math.log(1.0 - fill)) * 10.0) / 10.0
+    hint = f"Задайте шаг ткани CR не меньше {_fmt(step)} м."
+    share = f"{max(round(100.0 * fill), 1)} %"
+    if fill < FILL_MIN:
+        raise GroundError(
+            "cloud_too_sparse",
+            f"Облако слишком редкое для шага ткани CR = {_fmt(p.cr)} м: точки есть только в {share} ячеек.",
+            hint,
+        )
+    report["warnings"].append(
+        {
+            "code": "cloud_sparse",
+            "message": f"Облако редкое для шага ткани CR = {_fmt(p.cr)} м (точки в {share} ячеек): "
+            "земля под растительностью может быть найдена не полностью.",
+            "hint": hint,
+        }
+    )
 
 
 def cloth_width(p: GroundParams) -> float:
@@ -475,11 +510,14 @@ def _growth(cells, u, mask, grid, p, pool, report):  # type: ignore[no-untyped-d
     )
     report["seeds"] += int(sum(seeds))
     edge = np.zeros(ncx * ncy, np.uint8)
+    counts = pool.strips(lambda a, b: gg.edge_rows(cmin, mask, ncx, a, b, edge), ncy, STRIP_ROWS)
+    inside, filled = sum(int(k[0]) for k in counts), sum(int(k[1]) for k in counts)
+    report["cells_inside"] += inside
+    report["cells_filled"] += filled
     min_cells = min_edge = 0
     if p.edge_areas:
-        pool.strips(lambda a, b: gg.edge_rows(cmin, mask, ncx, a, b, edge), ncy, STRIP_ROWS)
         # the share of cells that hold a return: a sparse cloud fills an area with fewer of them
-        fill = min(1.0, float(np.count_nonzero(cmin >= 0)) / max(4.0 * float(np.count_nonzero(mask)), 1.0))
+        fill = filled / inside if inside else 1.0
         width = cloth_width(p)
         min_cells = max(int(width * width / (c * c) * fill), 16)
         min_edge = max(int(0.5 * width / c * fill), 4)

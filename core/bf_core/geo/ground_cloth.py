@@ -7,7 +7,8 @@ stands at the corner of four cells, at (cx0·c + i·CR, cy0·c + j·CR) from the
 Obstacle. The height of a plane through the lowest returns of the cells within 1.5·CR of the particle, taken at
 the particle (Д-22, idea 2: on a 70° face the nearest return is a metre away from the surface under the
 particle). The plane is fitted to the lower returns (`ground_kernels.lower_plane`): under vegetation half of
-the cells hold no ground. No return within 2·CR — the particle is outside the system.
+the cells hold no ground; its height is kept between the lowest and the highest of the returns around the
+particle. No return within 2·CR — the particle is outside the system.
 
 Rest position (Д-22, idea 1: solved, not dropped step by step). A membrane under a load p with the one-sided
 constraint u ≤ obstacle:  u = min(h, (Σ neighbours + p·CR²) / number of neighbours)  at every particle; a
@@ -94,6 +95,7 @@ def obstacle_rows(cmin, mx, my, mz, ncx, ncy, npx, row0, row1, c, cr, band, hob,
             mask[pj, pi] = 1
             ok = False
             a = 0.0
+            total = near
             if near >= 3:
                 ok, a, _b, _c = lower_plane(bx, by, bz, use, near, band)
             if not ok:
@@ -105,12 +107,20 @@ def obstacle_rows(cmin, mx, my, mz, ncx, ncy, npx, row0, row1, c, cr, band, hob,
                 total = near + far
                 if total >= 3:
                     ok, a, _b, _c = lower_plane(bx, by, bz, use, total, band)
-                if not ok:
-                    a = 0.0
-                    for k in range(total):
-                        a += bz[k]
-                    a /= total
-            hob[pj, pi] = a
+            if not ok:
+                a = 0.0
+                for k in range(total):
+                    a += bz[k]
+                a /= total
+            # a plane is trusted between its returns, not beyond them: a particle outside their outline (the
+            # edge of the data, the returns of a facade one above another) would get a height from nowhere,
+            # and one such height metres below the ground pulls the whole cloth down
+            lo = bz[0]
+            hi = bz[0]
+            for k in range(1, total):
+                lo = min(lo, bz[k])
+                hi = max(hi, bz[k])
+            hob[pj, pi] = min(max(a, lo), hi)
 
 
 # --- cascade ---------------------------------------------------------------------------------------------
