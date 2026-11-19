@@ -238,6 +238,8 @@ def _entry(f: OmfFile, k: int, uid: str, element: dict[str, Any]) -> OmfEntry:
             nu = len(tensor(geometry.get("tensor_u"), f"{e.label}: шаги u"))
             nv = len(tensor(geometry.get("tensor_v"), f"{e.label}: шаги v"))
             e.counts, e.points, e.triangles = [nu, nv], (nu + 1) * (nv + 1), 2 * nu * nv
+            if e.triangles > of.MAX_GRID_TRIANGLES:
+                e.skip = f"{n_text(e.triangles)} треугольников — больше предела {n_text(of.MAX_GRID_TRIANGLES)}"
         elif kind == "surface" and e.geometry != "SurfaceGeometry":
             e.skip = f"неизвестная геометрия поверхности «{shown(e.geometry, 40)}»"
         elif kind == "lines" and e.geometry != "LineSetGeometry":

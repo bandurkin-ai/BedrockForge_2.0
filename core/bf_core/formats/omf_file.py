@@ -67,6 +67,7 @@ CHUNK = 16 << 20  # input and output portions of inflating
 MAX_RATIO = 1032  # deflate never inflates more than this (zlib streams stay below it)
 MAX_VALUES = 1 << 31
 MAX_VOLUME_CELLS = 200_000_000  # ADR 0017 решение 14
+MAX_GRID_TRIANGLES = 50_000_000  # of a grid surface (`mesh_io.MAX_TRIANGLES`): its nodes come from the JSON
 AXIS_TOL = 1e-9
 
 ARRAY_WIDTH = {"ScalarArray": 1, "Vector2Array": 2, "Vector3Array": 3, "Int2Array": 2, "Int3Array": 3}

@@ -53,7 +53,10 @@ class RawOmf:
         if colours:
             legends.append(
                 self.add(
-                    "Legend", name="c", description="", values=self.strings([[1, 2, 3]] * len(labels), "ColorArray")
+                    "Legend",
+                    name="c",
+                    description="",
+                    values=self.strings([[1, 2, 3]] * len(labels or [0]), "ColorArray"),
                 )
             )
         if labels is not None:

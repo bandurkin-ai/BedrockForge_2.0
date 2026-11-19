@@ -333,12 +333,17 @@ def test_broken_elements_are_described_with_their_error(tmp_path: Path) -> None:
     }
 
 
-def test_volume_over_the_cell_limit_is_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_volume_and_grid_over_the_limits_are_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sizes the JSON alone declares (tensor lists): never built when over the limit."""
     raw = RawOmf()
     raw.volume("big", ([1.0] * 10, [1.0] * 10, [1.0] * 10))
+    grid = raw.add("SurfaceGridGeometry", origin=[0, 0, 0], tensor_u=[1.0] * 100, tensor_v=[1.0] * 100)
+    raw.element("SurfaceElement", "grid", grid)
     monkeypatch.setattr(of, "MAX_VOLUME_CELLS", 999)
-    (e,) = oc.describe(raw.write(tmp_path / "v.omf")).elements
-    assert e.skip == "1 000 ячеек — больше предела 999" and e.as_ is None
+    monkeypatch.setattr(of, "MAX_GRID_TRIANGLES", 19_999)
+    vol, surf = oc.describe(raw.write(tmp_path / "v.omf")).elements
+    assert vol.skip == "1 000 ячеек — больше предела 999" and vol.as_ is None
+    assert surf.skip == "20 000 треугольников — больше предела 19 999" and surf.as_ is None
 
 
 def test_descriptions_of_bf2() -> None:
