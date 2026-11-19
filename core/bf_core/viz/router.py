@@ -314,6 +314,30 @@ def intersections(
     return _answer(tag, if_none_match, lambda: exact.intersections(project, state, method, targets))
 
 
+@router.get("/sets/{set_id}/snap")
+def snap_targets(
+    svc: Svc,
+    set_id: int,
+    section: Text = None,
+    bbox: Text = None,
+    method: Method = "minimum_curvature",
+    if_none_match: IfNoneMatch = None,
+) -> Response:
+    """BFA1 `snap` (ADR 0015 §4): collars, paths and the bounds of intervals of the holes in the window of a
+    section (`section=x0,y0,az,towards,away[,length]`) or the extent of the view (`bbox=`), float64 — the exact
+    snap targets of the string editor; over 5 000 holes or 2 million points — `truncated`, collars only."""
+    from .keys import set_state
+    from .snap import build, parse_window, snap_etag
+
+    project = svc.require_current()
+    method = _method(method)
+    window = parse_window(section, bbox)
+    with dialect.read_tx(project.engine) as conn:
+        state = set_state(conn, set_id)
+    tag = snap_etag(project.uid, state, method, window)
+    return _answer(tag, if_none_match, lambda: build(project, state, method, window))
+
+
 # --- the window «Данные по скважинам» (ТЗ 7.17, ADR 0007 §6) -----------------------------------------------
 
 
