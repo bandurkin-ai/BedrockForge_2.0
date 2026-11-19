@@ -1,5 +1,6 @@
-"""numba kernels of «Исправить каркас» (`geo/repair.py`, ADR 0015 §7): degenerate and repeated triangles,
-adjacency of half-edges, consistent windings, flips of zero-area triangles.
+"""numba kernels of «Исправить каркас» (`geo/repair*.py`, ADR 0015 §7): degenerate and repeated triangles,
+adjacency of half-edges, consistent windings, flips of zero-area triangles, non-manifold patches, boundary
+loops of holes and ear clipping in 3D.
 
 Ported from BF `geo/repair.py` (section «kernels») with the same algorithms. Differences: no `prange` (ADR 0014:
 one thread per kernel; the kernels release the GIL), `nogil=True` everywhere. Vertex coordinates are float64
@@ -336,3 +337,177 @@ def apply_flips(t, plan, approved):  # type: ignore[no-untyped-def]
         a, b = t[i, (k + 1) % 3], t[i, (k + 2) % 3]
         t[i, 0], t[i, 1], t[i, 2] = a, d, c
         t[j, 0], t[j, 1], t[j, 2] = d, b, c
+
+
+@njit(cache=True, nogil=True)
+def part_boxes(v, t, comp, parts):  # type: ignore[no-untyped-def]
+    """The box (low and high corners) of every part."""
+    lo = np.full((parts, 3), np.inf)
+    hi = np.full((parts, 3), -np.inf)
+    for i in range(t.shape[0]):
+        c = comp[i]
+        for k in range(3):
+            for d in range(3):
+                x = v[t[i, k], d]
+                lo[c, d] = min(lo[c, d], x)
+                hi[c, d] = max(hi[c, d], x)
+    return lo, hi
+
+
+# --- non-manifold patches --------------------------------------------------------------------------------------
+
+
+@njit(cache=True, nogil=True)
+def greedy_patches(priority, starts, inc_edge, uses, free_edges):  # type: ignore[no-untyped-def]
+    """Which candidate patches to remove; the incidences of a patch with non-manifold edges are sorted by edge.
+
+    A patch goes only if each of its non-manifold edges keeps two triangles without it, and never when it is a
+    closed body touching another one (no free edges, every such edge used twice)."""
+    removed = np.zeros(len(priority), dtype=np.bool_)
+    for c in priority:
+        s, e = starts[c], starts[c + 1]
+        ok = True
+        paired = free_edges[c] == 0
+        x = s
+        while x < e:
+            y = x + 1
+            while y < e and inc_edge[y] == inc_edge[x]:
+                y += 1
+            if uses[inc_edge[x]] - (y - x) < 2:
+                ok = False
+                break
+            if (y - x) % 2 == 1:
+                paired = False
+            x = y
+        if not ok or paired:
+            continue
+        for x in range(s, e):
+            uses[inc_edge[x]] -= 1
+        removed[c] = True
+    return removed
+
+
+# --- boundary loops ---------------------------------------------------------------------------------------------
+
+
+@njit(cache=True, nogil=True)
+def _corner(t, i, v):  # type: ignore[no-untyped-def]
+    for k in range(3):
+        if t[i, k] == v:
+            return k
+    return 0
+
+
+@njit(cache=True, nogil=True)
+def boundary_loops(t, adj):  # type: ignore[no-untyped-def]
+    """Loops of free edges, traced by turning around each vertex through its fan of triangles (so a vertex where
+    two holes touch belongs to each of them, and windings do not matter).
+
+    Returns (starts, vertices, ok, first half-edge): loop i is vertices[starts[i]:starts[i + 1]] in the direction
+    of its first half-edge; ok is False when the walk met a non-manifold edge."""
+    m = t.shape[0]
+    total = 0
+    for h in range(3 * m):
+        if adj[h] == -1:
+            total += 1
+    seen = np.zeros(3 * m, dtype=np.bool_)
+    verts = np.empty(total, dtype=np.int32)
+    starts = np.empty(total + 1, dtype=np.int64)
+    ok = np.empty(total, dtype=np.bool_)
+    first = np.empty(total, dtype=np.int64)
+    loops = 0
+    p = 0
+    for h0 in range(3 * m):
+        if adj[h0] != -1 or seen[h0]:
+            continue
+        starts[loops] = p
+        first[loops] = h0
+        good = True
+        seen[h0] = True
+        i = h0 // 3
+        k = h0 - 3 * i
+        verts[p] = t[i, k]
+        p += 1
+        v = t[i, (k + 1) % 3]
+        h = h0
+        while True:
+            i = h // 3
+            k = h - 3 * i
+            c = _corner(t, i, v)
+            g = 3 * i + ((c + 2) % 3 if c == k else c)
+            steps = 0
+            while adj[g] >= 0 and steps <= 3 * m:
+                g2 = adj[g]
+                j = g2 // 3
+                c = _corner(t, j, v)
+                g = 3 * j + ((c + 2) % 3 if c == g2 - 3 * j else c)
+                steps += 1
+            if adj[g] != -1:
+                good = False
+                break
+            if g == h0:
+                break
+            if seen[g]:
+                good = False
+                break
+            seen[g] = True
+            verts[p] = v
+            p += 1
+            j = g // 3
+            a = t[j, g - 3 * j]
+            v = t[j, (g - 3 * j + 1) % 3] if a == v else a
+            h = g
+        ok[loops] = good
+        loops += 1
+    starts[loops] = p
+    return starts[: loops + 1], verts[:p], ok[:loops], first[:loops]
+
+
+@njit(cache=True, nogil=True)
+def ear_clip(p, normal):  # type: ignore[no-untyped-def]
+    """Triangulates a closed 3D polygon by cutting, at every step, the sharpest corner that turns the way the
+    polygon does (`normal` is its area vector). Triangles keep the order of the polygon."""
+    n = p.shape[0]
+    prev = np.empty(n, dtype=np.int64)
+    nxt = np.empty(n, dtype=np.int64)
+    for i in range(n):
+        prev[i] = i - 1
+        nxt[i] = i + 1
+    prev[0] = n - 1
+    nxt[n - 1] = 0
+    out = np.empty((n - 2, 3), dtype=np.int64)
+    count = n
+    cur = 0
+    k = 0
+    while count > 3:
+        best = cur
+        best_score = -1e30
+        i = cur
+        for _ in range(count):
+            a, b = prev[i], nxt[i]
+            ux, uy, uz = p[i, 0] - p[a, 0], p[i, 1] - p[a, 1], p[i, 2] - p[a, 2]
+            wx, wy, wz = p[b, 0] - p[i, 0], p[b, 1] - p[i, 1], p[b, 2] - p[i, 2]
+            lu = math.sqrt(ux * ux + uy * uy + uz * uz)
+            lw = math.sqrt(wx * wx + wy * wy + wz * wz)
+            if lu == 0.0 or lw == 0.0:
+                score = 3.0
+            else:
+                turn = (
+                    (uy * wz - uz * wy) * normal[0] + (uz * wx - ux * wz) * normal[1] + (ux * wy - uy * wx) * normal[2]
+                )
+                score = -(ux * wx + uy * wy + uz * wz) / (lu * lw)
+                if turn <= 0.0:
+                    score -= 4.0
+            if score > best_score:
+                best_score = score
+                best = i
+            i = nxt[i]
+        a, b = prev[best], nxt[best]
+        out[k, 0], out[k, 1], out[k, 2] = a, best, b
+        k += 1
+        nxt[a] = b
+        prev[b] = a
+        cur = b
+        count -= 1
+    out[k, 0], out[k, 1], out[k, 2] = prev[cur], cur, nxt[cur]
+    return out

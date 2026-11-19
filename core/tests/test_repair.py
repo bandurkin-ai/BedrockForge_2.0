@@ -70,6 +70,7 @@ def step(report: dict[str, Any], name: str) -> dict[str, Any]:
 def only(**on: Any) -> dict[str, Any]:
     """Arguments of `repair` with every fix off except the named ones."""
     base: dict[str, Any] = {"weld": None, "drop_degenerate": False, "drop_duplicate": False, "orient": False}
+    base.update(fill_holes=False, fix_nonmanifold=False)
     base.update(on)
     return base
 
@@ -97,6 +98,21 @@ def signed_volumes(v: np.ndarray, t: np.ndarray) -> list[float]:
 
 def soup(v: np.ndarray, t: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return v[t.reshape(-1)], np.arange(3 * len(t), dtype=np.int32).reshape(-1, 3)
+
+
+def with_hole(v: np.ndarray, t: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """A block of triangles of the top face removed (a planar hole with a ragged outline)."""
+    c = v[t].mean(axis=1) - UTM
+    gone = (c[:, 2] > SIDE - 1e-6) & (np.abs(c[:, 0] - SIDE / 2) < 16) & (np.abs(c[:, 1] - SIDE / 2) < 16)
+    assert gone.sum() >= 6
+    return v, np.ascontiguousarray(t[~gone])
+
+
+def with_fin(v: np.ndarray, t: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """A triangle standing on an edge of the mesh, its third vertex outside the solid."""
+    a, b = t[0, 0], t[0, 1]
+    x = (v[a] + v[b]) / 2 + np.array([0.0, 0.0, -7.0])
+    return np.concatenate([v, [x]]), np.concatenate([t, [[a, b, len(v)]]]).astype(np.int32)
 
 
 def with_degenerate(v: np.ndarray, t: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -134,6 +150,8 @@ def test_checks_of_a_sound_solid_and_of_every_defect() -> None:
 
     assert repair_checks(*soup(v, t))["open_edges"] == 3 * len(t)
     assert repair_checks(*soup(v, t))["components"] == len(t)
+    assert repair_checks(*with_hole(v, t))["open_edges"] > 0
+    assert repair_checks(*with_fin(v, t))["nonmanifold_edges"] == 1
     assert repair_checks(*with_degenerate(v, t))["degenerate"] == 3
     assert repair_checks(*with_duplicates(v, t))["duplicate"] == 5
     assert repair_checks(*with_flips(v, t))["orientation_conflicts"] > 0
@@ -167,11 +185,11 @@ def test_weld_merges_within_the_tolerance_and_keeps_the_first_vertex() -> None:
     assert_sound(report["after"], VOLUME, rel=1e-12)
     assert out_v.tobytes() == v.tobytes()  # the first of every pair, in the order given
     # a tolerance below the shift leaves the two halves apart
-    assert not repair(both, tt, weld=1e-8)[2]["after"]["closed"]
+    assert not repair(both, tt, weld=1e-8, fill_holes=False)[2]["after"]["closed"]
     # weld=0 merges only exactly equal vertices; so does a tolerance below the spacing of float64 at UTM
     assert repair(*soup(v, t), weld=0.0)[2]["after"]["closed"]
     assert repair(*soup(v, t), weld=1e-300)[2]["after"]["closed"]
-    assert not repair(both, tt, weld=1e-300)[2]["after"]["closed"]
+    assert not repair(both, tt, weld=1e-300, fill_holes=False)[2]["after"]["closed"]
     # weld_on=False is the same as weld=None
     assert repair(*soup(v, t), weld_on=False)[2]["after"]["open_edges"] == 3 * len(t)
     with pytest.raises(MeshError) as bad:
@@ -236,6 +254,8 @@ def test_closed_parts_are_turned_outward_open_ones_keep_their_majority() -> None
         (with_degenerate, {"drop_degenerate": True}, "degenerate"),
         (with_duplicates, {"drop_duplicate": True}, "duplicate"),
         (with_flips, {"orient": True}, "orientation_conflicts"),
+        (with_hole, {"fill_holes": True}, "open_edges"),
+        (with_fin, {"fix_nonmanifold": True}, "nonmanifold_edges"),
     ],
 )
 def test_every_fix_is_switched_on_separately(defect: Any, switch: dict[str, Any], check: str) -> None:
@@ -244,7 +264,7 @@ def test_every_fix_is_switched_on_separately(defect: Any, switch: dict[str, Any]
     # all fixes off: nothing changes; only this one on: its check passes
     same_v, same_t, report = repair(dv, dt, **only())
     assert report["steps"] == [] and report["after"][check] == report["before"][check] and len(same_t) == len(dt)
-    assert np.array_equal(same_t, dt) and same_v.tobytes() == dv.tobytes()
+    assert np.array_equal(same_v[same_t], dv[dt])  # unused vertices are dropped, nothing else changes
     _, _, report = repair(dv, dt, **only(**switch))
     assert len(report["steps"]) == 1 and report["steps"][0]["changed"] > 0
     assert report["after"][check] == 0
@@ -292,4 +312,258 @@ def test_unused_vertices_are_dropped_and_the_rest_keep_their_order() -> None:
     out_v, out_t, report = repair(v2, t + 1)
     assert out_v.tobytes() == v.tobytes() and np.array_equal(out_t, t)
     assert report["before"]["vertices"] == len(v) + 2 and report["after"]["vertices"] == len(v)
-    assert R.TITLES.keys() >= {"weld", "duplicate", "degenerate", "orient"}
+    assert R.TITLES.keys() == {"weld", "duplicate", "degenerate", "nonmanifold", "holes", "orient"}
+
+
+# ---- 9.9: holes, non-manifold edges, everything together, real data
+
+
+def join(*meshes: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+    """Several meshes as one, nothing welded."""
+    base = np.cumsum([0] + [len(m[0]) for m in meshes[:-1]])
+    return np.concatenate([m[0] for m in meshes]), np.concatenate(
+        [m[1] + b for m, b in zip(meshes, base, strict=True)]
+    ).astype(np.int32)
+
+
+def wavy(n: int) -> tuple[np.ndarray, np.ndarray]:
+    """A terrain of n × n cells over 4 km (BF `wavy_surface`): open, normals up, at UTM."""
+    return grid(n, n, lambda x, y: 50.0 * np.sin(x / 300.0) * np.cos(y / 410.0) + 400.0, step=4000.0 / n)  # type: ignore[no-any-return]
+
+
+def test_a_planar_hole_is_closed_exactly() -> None:
+    v, t = box()
+    hv, ht = with_hole(v, t)
+    out_v, out_t, report = repair(hv, ht)
+    # the patch lies in the plane of the face: the volume is the cube's to rounding
+    assert_sound(report["after"], VOLUME, rel=1e-9)
+    assert report["after"]["area"] == pytest.approx(6 * SIDE**2, rel=1e-9)
+    s = step(report, "holes")
+    assert s["filled"] >= 1 and s["changed"] == len(out_t) - len(ht) and s["added_vertices"] == 0
+    assert out_v.tobytes() == R.compact(hv, ht)[0].tobytes()  # every vertex of the loop is in the patch
+
+
+def test_a_cube_without_a_face_is_closed() -> None:
+    """9.9: a 10 m cube with its whole top face missing (a loop of 20 edges, collinear vertices on each side)."""
+    v, t = cube(5, 10.0, UTM)
+    top = v[t].mean(axis=1)[:, 2] > UTM[2] + 10.0 - 1e-9
+    holed = np.ascontiguousarray(t[~top])
+    out_v, out_t, report = repair(v, holed)
+    assert report["before"]["open_edges"] == 20 and top.sum() == 50
+    assert_sound(report["after"], 1000.0, rel=1e-9)
+    s = step(report, "holes")
+    assert (s["filled"], s["skipped_outer"], s["added_vertices"], s["changed"]) == (1, 0, 0, 18)
+    assert out_v.tobytes() == R.compact(v, holed)[0].tobytes() and len(out_t) == len(t) - 50 + 18
+
+
+def test_collinear_vertices_of_planar_holes_stay_in_the_patch() -> None:
+    # an L-shaped and a U-shaped hole in a flat terrain: their sides run along the grid
+    v, t = grid(30, 30, lambda x, y: 0.0 * x, step=2.0)
+    c = (v[t].mean(axis=1) - UTM)[:, :2] / 2.0
+    ell = ((c[:, 0] > 3) & (c[:, 0] < 12) & (c[:, 1] > 3) & (c[:, 1] < 6)) | (
+        (c[:, 0] > 3) & (c[:, 0] < 6) & (c[:, 1] > 3) & (c[:, 1] < 14)
+    )
+    u = (
+        (c[:, 0] > 16)
+        & (c[:, 0] < 27)
+        & (c[:, 1] > 16)
+        & (c[:, 1] < 27)
+        & ~((c[:, 0] > 19) & (c[:, 1] > 19) & (c[:, 0] < 24))
+    )
+    gone = ell | u
+    holed = np.ascontiguousarray(t[~gone])
+    out_v, out_t, report = repair(v, holed)
+    s = step(report, "holes")
+    assert (s["filled"], s["skipped_outer"], s["added_vertices"]) == (2, 1, 0)
+    after = report["after"]
+    assert after["open_edges"] == 4 * 30 and after["self_intersections"] == 0 and after["degenerate"] == 0
+    # nothing overlaps: the patches cover exactly the area taken out
+    assert after["area"] == pytest.approx(60.0 * 60.0, rel=1e-12)
+    assert out_v.tobytes() == R.compact(v, holed)[0].tobytes()  # the collinear vertices of the loops are kept
+
+
+def test_a_fin_on_an_edge_is_removed() -> None:
+    v, t = box()
+    out_v, out_t, report = repair(*with_fin(v, t))
+    assert_sound(report["after"], VOLUME, rel=1e-12)
+    s = step(report, "nonmanifold")
+    assert s["removed_triangles"] == 1 and s["remaining_halfedges"] == 0
+    assert np.array_equal(out_t, t) and out_v.tobytes() == v.tobytes()
+
+
+def test_every_defect_together_with_utm_coordinates() -> None:
+    v, t = box(10)
+    dv, dt = with_hole(v, t)
+    dv, dt = with_degenerate(dv, dt)
+    dv, dt = with_duplicates(dv, dt)
+    dv, dt = with_flips(dv, dt)
+    dv, dt = with_fin(dv, dt)
+    dv, dt = soup(dv, dt[:, ::-1])  # inward as a whole and unwelded
+    before = repair_checks(dv, dt)
+    assert not before["closed"] and before["degenerate"] and before["open_edges"] == 3 * len(dt)
+
+    calls: list[float] = []
+    out_v, out_t, report = repair(dv, dt, progress=calls.append)
+    # every fix is exact here (a planar hole, vertices untouched)
+    assert_sound(report["after"], VOLUME, rel=1e-9)
+    assert report["after"] == repair_checks(out_v, out_t) and report["before"] == before
+    assert [s["step"] for s in report["steps"]] == ["weld", "duplicate", "degenerate", "nonmanifold", "holes", "orient"]
+    assert all(s["title"] and s["changed"] > 0 for s in report["steps"])
+    assert calls == sorted(calls) and calls[-1] == 1.0
+    # kept vertices are bit for bit source ones, in the order of the source; the tip of the fin is gone
+    assert subsequence(out_v, dv) and out_v.dtype == np.float64 and out_t.dtype == np.int32
+    assert len(out_v) == len(R.compact(*with_hole(v, t))[0]) + 1  # the vertex inserted on an edge stays
+
+
+def test_an_open_surface_keeps_its_outer_boundary() -> None:
+    n = 40
+    v, t = wavy(n)
+    c = v[t].mean(axis=1)
+    gone = (np.abs(c[:, 0] - v[:, 0].mean()) < 300) & (np.abs(c[:, 1] - v[:, 1].mean()) < 300)
+    out_v, out_t, report = repair(v, np.ascontiguousarray(t[~gone]))
+    s = step(report, "holes")
+    # the inner hole is closed, the outline of the terrain (4·n edges) is not touched
+    assert s["filled"] == 1 and s["skipped_outer"] == 1 and "оставлена открытой" in s["note"]
+    assert report["after"]["open_edges"] == 4 * n and not report["after"]["closed"]
+    assert report["after"]["orientation_conflicts"] == 0 and report["after"]["self_intersections"] == 0
+    assert step(report, "orient")["changed"] == 0  # the windings of an open surface stay as they were
+    assert np.array_equal(out_v[out_t[: np.count_nonzero(~gone)]], v[t[~gone]])
+
+    out_v, out_t, report = repair(v, t)  # an untouched terrain comes back as it is
+    assert out_v.tobytes() == v.tobytes() and np.array_equal(out_t, t) and report["after"]["open_edges"] == 4 * n
+
+    # explicit limits: a small limit leaves the hole, and the outline can be closed on request
+    _, _, report = repair(v, np.ascontiguousarray(t[~gone]), max_hole_edges=5)
+    assert step(report, "holes")["skipped_large"] == 1 and report["after"]["open_edges"] > 4 * n
+    _, _, report = repair(v, t, keep_outer_boundary=False)
+    assert report["after"]["open_edges"] == 0
+
+
+def test_a_curved_hole_in_a_sphere_is_closed() -> None:
+    v, t = icosphere(4, 100.0)
+    exact = signed_volumes(v, t)[0]
+    c = v[t].mean(axis=1) - UTM
+    gone = c[:, 0] > 80.0  # a cap of the sphere: the loop is not planar (ragged)
+    out_v, _out_t, report = repair(v, np.ascontiguousarray(t[~gone]))
+    assert_sound(report["after"])
+    # the cap is replaced by a flat-ish patch: up to 6 % of the volume is lost, no more
+    assert 0.94 * exact < report["after"]["volume"] < exact
+    assert step(report, "holes")["added_vertices"] == 0 and rows(out_v) <= rows(v)
+
+
+def test_ear_clipping_of_a_loop_that_no_plane_projects_well() -> None:
+    from bf_core.geo.repair_holes import fill_polygon
+
+    k = 24  # a crown: the loop winds twice around the axis, so every projection crosses itself
+    a = np.linspace(0, 4 * np.pi, k, endpoint=False)
+    tri, done = fill_polygon(np.column_stack([np.cos(a), np.sin(a), np.linspace(0, 3, k)]))
+    assert done and tri is not None and len(tri) == k - 2
+    # a triangulation of the polygon: every polygon edge once and forwards, inner edges twice
+    directed = [tuple(e) for e in np.concatenate([tri[:, [0, 1]], tri[:, [1, 2]], tri[:, [2, 0]]]).tolist()]
+    forward = {(i, (i + 1) % k) for i in range(k)}
+    assert forward <= set(directed) and len(set(directed)) == len(directed)
+    assert all((b, a_) in set(directed) for a_, b in directed if (a_, b) not in forward)
+
+
+def test_two_holes_touching_at_a_vertex_are_closed_separately() -> None:
+    v, t = box(8)
+    c = v[t].mean(axis=1) - UTM
+    top = np.flatnonzero(c[:, 2] > SIDE - 1e-6)
+    cell = SIDE / 8
+    in_a = (c[top, 0] > 2 * cell) & (c[top, 0] < 3 * cell) & (c[top, 1] > 2 * cell) & (c[top, 1] < 3 * cell)
+    in_b = (c[top, 0] > 3 * cell) & (c[top, 0] < 4 * cell) & (c[top, 1] > 3 * cell) & (c[top, 1] < 4 * cell)
+    assert in_a.sum() == 2 and in_b.sum() == 2  # two squares of the top face meeting diagonally at one vertex
+    _out_v, out_t, report = repair(v, np.delete(t, top[in_a | in_b], axis=0))
+    assert_sound(report["after"], VOLUME, rel=1e-12)
+    assert step(report, "holes")["filled"] == 2 and len(out_t) == len(t)
+
+
+def test_bodies_touching_along_an_edge_are_separated_not_deleted() -> None:
+    v, t = join(cube(1, 1.0, UTM), cube(1, 1.0, UTM + [1.0, 1.0, 0.0]))
+    out_v, out_t, report = repair(v, t)
+    assert repair(v, t, **only(weld=1e-6))[2]["after"]["nonmanifold_edges"] == 1  # welded: 4 triangles on an edge
+    assert_sound(report["after"], 2.0, rel=1e-12)
+    s = step(report, "nonmanifold")
+    assert s["removed_triangles"] == 0 and s["duplicated_vertices"] == 2 and len(out_t) == 24
+    assert report["after"]["components"] == 2 and len(out_v) == 16
+    assert subsequence(out_v[:14], v) and rows(out_v[14:]) <= rows(out_v[:14])  # the copies come last
+
+
+def test_an_extra_sheet_over_a_face_is_removed() -> None:
+    v, t = box(1)
+    top = np.flatnonzero(np.abs(v[:, 2] - UTM[2] - SIDE) < 1e-9)
+    used = [tri for tri in t.tolist() if set(tri) <= set(top.tolist())]
+    a, b = sorted(set(used[0]) & set(used[1]))  # the diagonal in use
+    c, d = sorted(set(top.tolist()) - {a, b})
+    # the same square triangulated over its other diagonal: not duplicates, but a second sheet
+    _out_v, out_t, report = repair(v, np.concatenate([t, [[c, d, a], [d, c, b]]]).astype(np.int32))
+    assert report["before"]["nonmanifold_edges"] == 4
+    assert_sound(report["after"], VOLUME, rel=1e-12)
+    assert step(report, "nonmanifold")["removed_triangles"] == 2 and len(out_t) == len(t)
+
+
+def test_self_intersections_are_reported_not_fixed() -> None:
+    a = box(4)
+    v, t = join(a, (a[0] + [SIDE / 2 + 1.0, SIDE / 2 + 2.0, SIDE / 2 + 3.0], a[1]))
+    _out_v, out_t, report = repair(v, t)
+    pairs = report["before"]["self_intersections"]
+    assert pairs > 0 and report["after"]["self_intersections"] == pairs and np.array_equal(out_t, t)
+
+
+def assert_repaired(v: np.ndarray, t: np.ndarray) -> dict[str, Any]:
+    """`repair` with every step on: what it must give whatever the mesh."""
+    out_v, out_t, report = repair(v, t)
+    after, steps = report["after"], {s["step"]: s for s in report["steps"]}
+    assert after == repair_checks(out_v, out_t) and after["degenerate"] == 0 and after["duplicate"] == 0
+    copies, added = steps["nonmanifold"]["duplicated_vertices"], steps["holes"]["added_vertices"]
+    kept = len(out_v) - copies - added
+    assert subsequence(out_v[:kept], v) and rows(out_v[kept : kept + copies]) <= rows(v)
+    if steps["nonmanifold"]["remaining_halfedges"] == 0:
+        assert after["nonmanifold_edges"] == 0
+    return report
+
+
+def test_real_faults_and_tridb_wireframes_are_repaired_without_failure() -> None:
+    """10.5 п. 3: `TST-FAULTS.DXF` (a polyface of fault surfaces) and the 121 wireframes of the two TRIDB."""
+    from tests.test_geo_checks import FAULTS, faults_mesh
+
+    if not FAULTS.is_file():
+        pytest.skip("tests/data/real/TST-FAULTS.DXF is not here")
+    report = assert_repaired(*faults_mesh())
+    assert report["before"]["self_intersections"] == 2723 and report["after"]["self_intersections"] >= 2723
+    assert report["after"]["open_edges"] > 0  # the outlines of the faults stay open
+
+    from bf_core.formats.tridb import read_tridb
+
+    for name, count in (("ORE SEP 2025.tridb", 66), ("Rock Model.tridb", 55)):
+        path = FAULTS.parent / name
+        if not path.is_file():
+            continue
+        meshes = list(read_tridb(path))
+        assert len(meshes) == count
+        conflicts = 0
+        for m in meshes:
+            conflicts += assert_repaired(m.xyz, m.tri)["after"]["orientation_conflicts"]
+        assert conflicts <= 1860  # BF finds 1 860 conflicts of normals in «Rock Model» before the repair
+
+
+@pytest.mark.slow
+def test_repair_of_a_million_triangles() -> None:
+    import time
+
+    repair(*box(4))  # compile the kernels first
+    v, t = cube(289, 1000.0, UTM)  # 1 002 252 triangles at UTM coordinates
+    dv, dt = with_flips(v, t)
+    c = v[t].mean(axis=1)
+    gone = (
+        (c[:, 2] > v[:, 2].max() - 1e-6)
+        & (np.abs(c[:, 0] - v[:, 0].mean()) < 100)
+        & (np.abs(c[:, 1] - v[:, 1].mean()) < 100)
+    )
+    dt = np.concatenate([dt[~gone], dt[~gone][:1000]])  # and 1 000 repeated triangles
+    start = time.perf_counter()
+    _out_v, _out_t, report = repair(dv, dt)
+    seconds = time.perf_counter() - start
+    print(f"\nrepair of {len(dt)} triangles: {seconds:.1f} s")
+    assert_sound(report["after"], 1000.0**3, rel=1e-9)
+    assert seconds < 60  # ADR 0015: about 15 s on 1 million (the budget is set by 9.37)

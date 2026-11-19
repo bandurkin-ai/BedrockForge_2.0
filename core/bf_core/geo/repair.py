@@ -1,6 +1,7 @@
 """«Исправить каркас» (ТЗ 7.23 `repair`; ADR 0015 §7): the fixes of a triangle mesh and the report «было → стало».
 
-    repair(xyz, tri, ...)       weld · duplicate · degenerate · orient; (vertices, triangles, report)
+    repair(xyz, tri, ...)       weld · duplicate · degenerate · nonmanifold · holes · orient;
+                                (vertices, triangles, report «было → стало»)
     repair_checks(xyz, tri)     every check of a wireframe in one dictionary (`checks.mesh_checks` + repeated
                                 triangles + connected parts): the «было» and «стало» of the report
 
@@ -19,8 +20,14 @@ The steps, in the order they run (each is switched on separately):
                  edge) → the longest edge is flipped with the neighbour across it, which removes the triangle
                  without opening the surface and without changing the volume; where no flip is possible (a free
                  or non-manifold edge, the new edge exists already) the triangle is dropped.
+    nonmanifold  edges with three or more triangles: fins and extra sheets are removed, bodies touching along an
+                 edge are separated (`repair_nonmanifold.py`).
+    holes        boundary loops closed without new vertices; the outer boundary of an open surface stays open
+                 (`repair_holes.py`). Patches over collinear vertices are flipped, never dropped.
     orient       windings are spread over manifold edges; closed parts are turned outward (positive signed
                  volume), open parts keep the winding most of their triangles had.
+
+Self-intersections are counted in the report, never fixed (ТЗ 7.23).
 
 Ported from BF `geo/repair.py` (`repair`, `_weld`, `_fix_degenerate`, the duplicates, `mesh_checks`).
 Differences: the checks of the report are `checks.mesh_checks` of Э8 (the self-intersections of ADR 0013) plus
@@ -51,8 +58,14 @@ TITLES = {
     "weld": "Сшивка совпадающих вершин",
     "duplicate": "Удаление повторных треугольников",
     "degenerate": "Удаление вырожденных треугольников",
+    "nonmanifold": "Устранение неманифолдных рёбер",
+    "holes": "Закрытие отверстий",
     "orient": "Согласование нормалей",
 }
+NOTE_NONMANIFOLD = (
+    "Часть неманифолдных рёбер оставлена: поверхности сходятся на ребре так, что лишнюю нельзя выбрать "
+    "однозначно — исправьте вручную"
+)
 
 Progress = Callable[[float], None] | None
 
@@ -266,7 +279,11 @@ def repair(
     weld_on: bool = True,
     drop_duplicate: bool = True,
     drop_degenerate: bool = True,
+    fix_nonmanifold: bool = True,
+    fill_holes: bool = True,
     orient: bool = True,
+    max_hole_edges: int | None = None,
+    keep_outer_boundary: bool = True,
     intersections: bool = True,
     progress: Progress = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
@@ -277,7 +294,11 @@ def repair(
     `title`, the counts of the step and a `note` where something was left alone on purpose),
     report["tolerance"] — the weld tolerance or None. The inputs are never changed (a read-only memory map
     will do). `weld` — the tolerance in metres (0 — exactly equal vertices only; None or `weld_on=False` — no
-    welding); `intersections=False` skips the slow count of self-intersections in both checks. `MeshError` —
+    welding); `max_hole_edges` leaves longer boundary loops open; `keep_outer_boundary=False` closes even a loop
+    spanning its whole part (by default the outer boundary of an open surface); `intersections=False` skips the
+    slow count of self-intersections in both checks. Surviving vertices come first, in the order of the input;
+    the copies made by `nonmanifold` and the centroids of `holes` (loops too long to close otherwise) follow
+    them. `MeshError` —
     the mesh is not one (`meshes.check_mesh`) or the tolerance is negative; `progress(fraction)` may raise."""
     if weld is not None and not (float(weld) >= 0.0 and np.isfinite(weld)):
         raise MeshError(
@@ -301,7 +322,7 @@ def repair(
     before = repair_checks(v, t, intersections=intersections, progress=_within(progress, 0.0, share))
     t = np.array(t, dtype=np.int32, order="C")  # a copy of our own: the kernels write into it
     steps: list[dict[str, Any]] = []
-    plan = [tolerance is not None, drop_duplicate, drop_degenerate, orient]
+    plan = [tolerance is not None, drop_duplicate, drop_degenerate, fix_nonmanifold, fill_holes, orient]
     weight = (1.0 - 2.0 * share) / max(sum(plan), 1)
     done = [share]
 
@@ -331,17 +352,73 @@ def repair(
         t, dropped, flips = fix_degenerate(vc, t, len(v), progress=part("degenerate"))
         record("degenerate", dropped + flips, dropped=dropped, flipped=flips)
 
-    if orient:
-        part("orient")
-        info: dict[str, Any] = {"parts": 0, "closed_parts": 0, "turned_outward": 0}
-        flipped = np.zeros(len(t), dtype=np.bool_)
-        conflicts = 0
-        if len(t):
-            k = kernels()
+    k = kernels()
+    adj = adjacency(t, len(v)) if (fix_nonmanifold or fill_holes or orient) and len(t) else None
+    if fix_nonmanifold:
+        from bf_core.geo.repair_nonmanifold import fix_nonmanifold as separate
+
+        part("nonmanifold")
+        found: dict[str, Any] = {"removed_triangles": 0, "removed_area": 0.0, "duplicated_vertices": 0}
+        if adj is not None and np.any(adj == -2):
+            v, t, found = separate(v, t)
+            vc = np.ascontiguousarray(v - centre_of(v))
+            adj = adjacency(t, len(v))
+        remaining = int(np.count_nonzero(adj == -2)) if adj is not None else 0
+        extra = dict(found, remaining_halfedges=remaining)
+        if remaining:
+            extra["note"] = NOTE_NONMANIFOLD
+        record("nonmanifold", found["removed_triangles"] + found["duplicated_vertices"], **extra)
+
+    originals = len(t)
+    flipped = np.zeros(originals, dtype=np.bool_)
+    comp = np.zeros(0, dtype=np.int32)
+    parts = conflicts = 0
+    if (orient or fill_holes) and adj is not None:
+        flip, comp, parts, conflicts = k.propagate(t, adj)
+        if orient:
+            k.flip_linked(t, adj, flip)
+            flipped = flip
+
+    if fill_holes:
+        from bf_core.geo.repair_holes import fill_holes as close
+
+        holes = part("holes")
+        count = len(t)
+        filled: dict[str, Any] = {
+            "filled": 0, "skipped_outer": 0, "skipped_large": 0, "skipped_complex": 0, "added_vertices": 0,
+        }  # fmt: skip
+        if adj is not None:
+            v, t, filled = close(v, vc, t, adj, comp, int(parts), max_hole_edges, keep_outer_boundary, holes)
+            vc = np.ascontiguousarray(v - centre_of(v))
+        added = len(t) - count
+        if added and drop_degenerate:
+            t, _, _ = fix_degenerate(vc, t, len(v), drop=False)
+        notes = []
+        if filled["skipped_outer"]:
+            notes.append(
+                f"Наружная граница незамкнутой поверхности оставлена открытой (контуров: {filled['skipped_outer']})"
+            )
+        if filled["skipped_large"]:
+            notes.append(f"Пропущены отверстия длиннее {max_hole_edges} рёбер (контуров: {filled['skipped_large']})")
+        if filled["skipped_complex"]:
+            notes.append(
+                f"Не закрыты контуры, проходящие через неманифолдные рёбра (контуров: {filled['skipped_complex']})"
+            )
+        extra = dict(filled)
+        if notes:
+            extra["note"] = "; ".join(notes)
+        record("holes", added, **extra)
+        if added and orient:
             adj = adjacency(t, len(v))
             flip, comp, parts, conflicts = k.propagate(t, adj)
             k.flip_linked(t, adj, flip)
-            flipped, info = orient_parts(vc, t, adj, flip, comp, int(parts), len(t))
+            flipped = flipped ^ flip[:originals]
+
+    if orient:
+        part("orient")
+        info: dict[str, Any] = {"parts": 0, "closed_parts": 0, "turned_outward": 0}
+        if adj is not None:
+            flipped, info = orient_parts(vc, t, adj, flipped, comp, int(parts), originals)
         if conflicts:
             info["note"] = f"Поверхность неориентируема: не согласовано рёбер — {int(conflicts)}"
         record("orient", int(np.count_nonzero(flipped)), **info)
