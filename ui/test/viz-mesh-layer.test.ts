@@ -109,10 +109,10 @@ describe("a surface in the scene", () => {
     const { v } = view();
     expect(v.levels(0).sort()).toEqual([0, 2]);
     expect(v.shown(0)).toBe(0);
-    expect(v.stats()).toEqual({ parts: 2, triangles: 6, simplified: 0 });
+    expect(v.stats()).toEqual({ parts: 2, triangles: 6, simplified: 0, standins: 0 });
     expect(v.show(0, 2)).toBe(true);
     expect(v.show(0, 2)).toBe(false);
-    expect(v.stats()).toEqual({ parts: 2, triangles: 4, simplified: 1 });
+    expect(v.stats()).toEqual({ parts: 2, triangles: 4, simplified: 1, standins: 0 });
     const meshes = (v.object.children[0] as THREE.Group).children;
     expect(meshes.map((m) => m.visible)).toEqual([false, true]);
     expect(v.levelTriangles(0, 0)).toBe(4);

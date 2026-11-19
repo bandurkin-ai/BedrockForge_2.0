@@ -119,6 +119,11 @@ export interface BuiltMesh {
   sourceTriangles: number;
   /** fewer triangles than the part has (a coarser level) */
   simplified: boolean;
+  /**
+   * the whole part answering for a level the core has not made yet (`standin` of the header, no ETag, ADR 0015
+   * §8): kept only until the event `wireframes.lod`, then the level is asked again
+   */
+  standin: boolean;
   /** triangles left out: a vertex of theirs has no coordinates */
   dropped: number;
   /** the extent of the vertices in the coordinates of the part: [xmin, ymin, zmin, xmax, ymax, zmax] */
@@ -132,6 +137,7 @@ export interface MeshPartHeader {
   origin: [number, number, number];
   triangles?: number;
   source_triangles?: number;
+  standin?: boolean;
 }
 
 /** The part of a BFA1 `mesh` answer: the header and its two arrays, views of the same buffer. */
@@ -198,6 +204,7 @@ export function buildMeshBuffers(h: MeshPartHeader, xyz: Float32Array, idx: Uint
     vertices,
     sourceTriangles: source,
     simplified: idx.length / 3 < source,
+    standin: h.standin === true,
     dropped: (idx.length - kept) / 3,
     box: triangles ? box : [0, 0, 0, 0, 0, 0],
   };

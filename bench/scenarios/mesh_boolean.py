@@ -64,7 +64,7 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     t1 = time.perf_counter()
     iv, it, ir = boolean(a, b, "intersection", names=["Тело A", "Тело B"])
     t2 = time.perf_counter()
-    whole = abs(signed_volume(*a))
+    whole = abs(signed_volume(a[0] - np.asarray(CENTRE), a[1]))  # relative to the centre: no cancellation
     error = abs(dr["volume"] + ir["volume"] - whole) / whole
     bad = sum(sum(edge_summary(t, len(v))) for v, t in ((dv, dt), (iv, it)))
     return {
