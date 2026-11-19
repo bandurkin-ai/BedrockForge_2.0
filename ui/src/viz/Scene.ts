@@ -5,6 +5,7 @@
  * (the root scaled in Z by the exaggeration); buffers are float32 from the integer origin of their part.
  * Other layers join through `addLayer` (own integer origin, materials with `scene.clipPlanes`, `beforeRender`,
  * labels placed with everyone else's); after a lost context they are dropped and `onRestored` re-adds them.
+ * The hole sets and the selected hole are `holes/sceneHoles.ts`.
  */
 import * as THREE from "three";
 import { groundPoint, projectRay, projectView, ToolInput, type ProjectView, type ToolHandler } from "./core/toolInput";
@@ -119,12 +120,8 @@ export class Scene {
     };
     this.renderer.onLost = () => this.contextLost();
     this.renderer.onRestored = () => this.contextRestored();
-    this.input = new ToolInput({
-      click: (x, y) => this.click(x, y),
-      move: (x, y) => this.pointerMove(x, y),
-      leave: () => undefined,
-      camera: (on) => void (this.rig.controls.enabled = on),
-    });
+    const camera = (on: boolean) => void (this.rig.controls.enabled = on);
+    this.input = new ToolInput({ click: (x, y) => this.click(x, y), move: (x, y) => this.pointerMove(x, y), leave: () => undefined, camera });
     this.cleanup.push(this.input.attach(this.renderer.canvas));
     this.cleanup.push(watchHost(host, () => this.resize(), () => this.applyTheme()));
     this.applyTheme();
