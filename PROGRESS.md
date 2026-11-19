@@ -1,5 +1,5 @@
 # PROGRESS — BedrockForge 2
-Обновлено: 2026-11-19 09:20 UTC · Сессия: https://claude.ai/code/session_01PV4nyXRpeNvYwvQ8xpK6xS · Ветка: claude/bedrockforge-2-dev-l4ghl6 · Режим: норма
+Обновлено: 2026-11-19 09:00 UTC · Сессия: https://claude.ai/code/session_01PV4nyXRpeNvYwvQ8xpK6xS · Ветка: claude/bedrockforge-2-dev-l4ghl6 · Режим: норма
 
 ## Сейчас
 Веха: В3 (Э6.1, Э7, Э7.1, Э8–Э11) · Этап: Э9 «Редактор стрингов, операции с линиями и каркасами» (Э7.1 — PR #21 слит 2026-11-19; Э8 — PR #20 слит 2026-11-18) · PR: —
