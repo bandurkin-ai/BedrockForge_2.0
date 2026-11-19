@@ -56,6 +56,8 @@ def _not_found(what: str = "Слой линий") -> ApiError:
 
 
 def _chunks(arr: np.ndarray, tick: Callable[[], None] | None = None) -> Iterator[bytes]:
+    if arr.nbytes == 0:
+        return  # an empty layer (a new one of the editor): an empty file
     raw = memoryview(np.ascontiguousarray(arr)).cast("B")
     for start in range(0, len(raw), CHUNK):
         if tick is not None:
