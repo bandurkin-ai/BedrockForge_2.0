@@ -298,6 +298,10 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
       title: "Настройки проекта",
       groups: [
         {
+          title: "Данные",
+          items: [{ command: "data.manager", label: "Менеджер данных", icon: "dataManager", hint: "Данные проекта как каталог: папки, поиск, перенос, импорт в папку и экспорт выбранного" }],
+        },
+        {
           title: "Обслуживание",
           items: [{ command: "jobs.clear_finished", label: "Очистить выполненные задания", icon: "clear", hint: "Убрать из списка «Задания» готовые и отменённые задания с их журналами" }],
         },

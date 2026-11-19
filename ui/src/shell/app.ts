@@ -13,6 +13,7 @@ import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
 import { bindLines } from "../modules/lines/bind";
 import { bindProjects } from "../modules/projects/bind";
+import { bindDataManager } from "../modules/datamanager/bind";
 import { bindRasters } from "../modules/rasters/bind";
 import { bindStripLog } from "../charts/striplog/bind";
 import { bindScene } from "../modules/scene/bind";
@@ -142,6 +143,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   };
   const app: App = { registry, store, palette, run };
   bindProjects(app);
+  bindDataManager(app);
   bindJobs(app);
   bindImporting(app);
   bindTables(app);
