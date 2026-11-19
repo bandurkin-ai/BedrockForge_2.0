@@ -1,6 +1,8 @@
 {
   "_comment": "ТЗ 5.3 / 7.33. ci ≈ 1/10 of target volumes, checked on every PR; full — at milestones. Seconds and MB. Layout: an object or a list that fits a line of 120 characters is written on it.",
   "ci": {
+    "wireframe_lod": {"params": {"triangles": 1000000}, "budget_s": 10.0, "budget_mb": 400, "limits": {"standin_s": 0.05, "health_max_s": 0.1, "job_s": 8.0, "lod_jobs": 1}},
+    "wireframes_many": {"params": {"wireframes": 3000}, "budget_s": 12.0, "budget_mb": 700, "limits": {"import_s": 5.0, "mismatches": 0}},
     "mesh_volume": {"params": {"triangles": 1000000}, "budget_s": 2.0, "budget_mb": 600},
     "parquet_filter": {"params": {"nx": 200, "ny": 100, "nz": 100}, "budget_s": 2.0, "budget_mb": 800},
     "project_export": {"params": {"mb": 200, "password": true}, "budget_s": 15.0, "budget_mb": 600},
@@ -167,6 +169,8 @@
     }
   },
   "full": {
+    "wireframe_lod": {"params": {"triangles": 1000000}, "budget_s": 10.0, "budget_mb": 400, "limits": {"standin_s": 0.05, "health_max_s": 0.1, "job_s": 8.0, "lod_jobs": 1}},
+    "wireframes_many": {"params": {"wireframes": 3000}, "budget_s": 12.0, "budget_mb": 700, "limits": {"import_s": 5.0, "mismatches": 0}},
     "mesh_volume": {"params": {"triangles": 10000000}, "budget_s": 10.0, "budget_mb": 2048},
     "parquet_filter": {"params": {"nx": 400, "ny": 250, "nz": 200}, "budget_s": 2.0, "budget_mb": 1024},
     "project_export": {"params": {"mb": 2048, "password": true}, "budget_s": 120.0, "budget_mb": 1024},
