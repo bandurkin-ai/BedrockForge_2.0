@@ -42,7 +42,9 @@ def edit_triangles(src: Sources, p: dict[str, Any], tick: Tick) -> Output:
     add = np.asarray(p["add"], dtype=np.float64).reshape(-1, 3, 3)
     nv, nt = edit(v, t, remove, add)
     if not len(nt):
-        raise failed("empty_result", f"В каркасе «{wf.name}» не осталось треугольников.", "Отметьте меньше треугольников.")
+        raise failed(
+            "empty_result", f"В каркасе «{wf.name}» не осталось треугольников.", "Отметьте меньше треугольников."
+        )
     return _same(wf, "правка", nv, nt, {"removed": int(len(remove)), "added": int(len(add)), "triangles": len(nt)})
 
 
@@ -108,7 +110,9 @@ def split(src: Sources, p: dict[str, Any], tick: Tick) -> Output:
     tick(0.2, "Связные части")
     parts = split_components(v, t)
     if len(parts) < 2:
-        raise failed("single_part", f"Каркас «{wf.name}» — одна связная часть: делить нечего.", "Выберите другой каркас.")
+        raise failed(
+            "single_part", f"Каркас «{wf.name}» — одна связная часть: делить нечего.", "Выберите другой каркас."
+        )
     limit = int(p["max_parts"])
     out = Output(_name(f"{wf.name} (части)"), report={"parts": len(parts), "kept": min(limit, len(parts))})
     for n, (pv, pt) in enumerate(parts[:limit], start=1):
@@ -138,7 +142,9 @@ def boolean(src: Sources, p: dict[str, Any], tick: Tick) -> Output:
     if report.get("flat"):
         out.warnings.append("У результата нет толщины: тела касаются по грани.")
     if report.get("flipped"):
-        out.warnings.append("Вывернутые тела развёрнуты наружу: " + ", ".join(f"«{n}»" for n in report["flipped"]) + ".")
+        out.warnings.append(
+            "Вывернутые тела развёрнуты наружу: " + ", ".join(f"«{n}»" for n in report["flipped"]) + "."
+        )
     return out
 
 

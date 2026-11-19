@@ -30,7 +30,7 @@ def make_project(c: Any, name: str = "Операции") -> tuple[Any, dict[str,
     project = projects_of(c.core).require_current()
     a, b = box((0, 0, 0), (10, 10, 10)), box((5, 5, 5), (15, 15, 15))
     hole = (a[0], a[1][:-2])  # a cube without its face x = 0: a square hole, 4 open edges
-    relief = grid(10, 10, (-5, 25), (-5, 25), lambda x, y: 20.0 + 0.1 * x + 0.05 * y)
+    relief = grid(10, 10, (-5, 25), (-5, 25), lambda x, y: 5.0 + 0.1 * x + 0.05 * y)
     tie = np.array([square(0.0)[0], square(10.0)[0]])
     with dialect.write_tx(project.engine) as conn:
         store = BlobStore(project.folder)

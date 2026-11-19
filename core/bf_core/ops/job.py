@@ -101,7 +101,10 @@ def run(ctx: JobContext) -> dict[str, Any]:
     store = BlobStore(ctx.project_folder)
 
     def part(start: float, stop: float) -> Callable[[float, str], None]:
-        return lambda f, m="": ctx.tick(start + (stop - start) * max(0.0, min(1.0, f)), m or None)
+        def tick(f: float, m: str = "") -> None:
+            ctx.tick(start + (stop - start) * max(0.0, min(1.0, f)), m or None)
+
+        return tick
 
     ctx.tick(0.0, "Чтение исходных")
     try:

@@ -58,9 +58,11 @@ def within(tick: Tick, start: float, stop: float) -> Callable[[float], None]:
 
 
 def staged(tick: Tick, start: float, stop: float, message: str) -> Callable[[float, str], None]:
-    """A `tick(fraction, message)` of a kernel inside [start, stop]; an empty message — `message`."""
+    """A `tick(fraction, message)` of a kernel inside [start, stop]; an empty message — `message`, and so is
+    «Готово» of a kernel: the job is not done when its kernel is."""
 
     def inner(f: float, m: str = "") -> None:
-        tick(start + (stop - start) * max(0.0, min(1.0, float(f or 0.0))), m or message)
+        text = message if not m or m == "Готово" else m
+        tick(start + (stop - start) * max(0.0, min(1.0, float(f or 0.0))), text)
 
     return inner
