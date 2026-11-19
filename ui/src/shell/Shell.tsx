@@ -20,6 +20,7 @@ import { GroundWindow } from "../modules/dtm/GroundWindow";
 import { DzWindow } from "../modules/lines/DzWindow";
 import { LinesExportWindow } from "../modules/lines/LinesExportWindow";
 import { renderLinesWindow } from "../modules/lines/windows";
+import { renderSeriesWindow } from "../modules/section/seriesWindows";
 import { OperationWindow } from "../modules/model/OperationWindow";
 import { ReportWindow } from "../modules/model/ReportWindow";
 import type { ReportProps } from "../modules/model/run";
@@ -94,7 +95,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderLinesWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w);
   }
 };
 

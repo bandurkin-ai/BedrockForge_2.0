@@ -19,6 +19,7 @@ import { projectStore } from "../projects/state";
 import { SectionMap } from "../section/SectionMap";
 import { sectionPoint } from "../section/bind";
 import { sectionOf, sectionStore } from "../section/state";
+import { applySectionKey } from "../section/seriesState";
 import { tablesStore } from "../tables/state";
 import { viewStore } from "./bind";
 import { HolesSource } from "./loaders";
@@ -69,10 +70,7 @@ function connect(app: App, scene: Scene, source: HolesSource): () => void {
   const off: (() => void)[] = [];
   let view = app.store.get().view;
   scene.setView(view);
-  const applySection = () => {
-    const s = sectionOf(viewStore.get());
-    scene.setSection(s.line, s.clip);
-  };
+  const applySection = () => applySectionKey(scene);
   applySection();
   off.push(
     app.store.subscribe(() => {

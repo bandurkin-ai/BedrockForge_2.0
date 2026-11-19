@@ -95,6 +95,7 @@ const PATHS = {
   vwPrev: "M15 6l-6 6 6 6M5 4v16",
   vwNext: "M9 6l6 6-6 6M19 4v16",
   vwToPlane: "M4 7l8-4 8 4v10l-8 4-8-4zM12 3v18M8 12h8",
+  lock: "M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3M12 15v2",
   vwMap: "M4 6l5-2 6 2 5-2v14l-5 2-6-2-5 2V6zM6 15L17 8",
   vwReset: "M4 20L20 4M14 14l6 6M20 14l-6 6",
   vwPerspective: "M3 6l8 3v6l-8 3zM11 9l10-5v16l-10-5",

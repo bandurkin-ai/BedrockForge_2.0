@@ -5,6 +5,7 @@
 import type { CommandContext } from "./commands";
 import type { IconName } from "./Icon";
 import type { ViewState, WorkspaceState } from "./workspace";
+import { seriesTab } from "../modules/section/seriesCommands";
 
 export interface RibbonItem {
   command: string;
@@ -117,8 +118,8 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           title: "Разрез",
           items: [
             ...section,
-            { command: "section.step", args: { direction: -1 }, label: "Предыдущий профиль", icon: "chevronUp", shortcut: "[", small: true, unavailable: NO_SECTION },
-            { command: "section.step", args: { direction: 1 }, label: "Следующий профиль", icon: "chevronDown", shortcut: "]", small: true, unavailable: NO_SECTION },
+            { command: "section.step", args: { direction: -1 }, label: "Предыдущий профиль", icon: "chevronUp", small: true, unavailable: NO_SECTION },
+            { command: "section.step", args: { direction: 1 }, label: "Следующий профиль", icon: "chevronDown", small: true, unavailable: NO_SECTION },
           ],
         },
         {
@@ -159,6 +160,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
         },
       ],
     },
+    seriesTab(view),
     {
       id: "model",
       title: "Моделирование",

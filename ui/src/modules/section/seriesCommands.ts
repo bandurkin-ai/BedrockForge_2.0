@@ -80,7 +80,7 @@ export function seriesTab(view: Pick<ViewState, "clip">, locked = false): Ribbon
       {
         title: "Вид",
         items: [
-          { command: "series.lock", label: "Зафиксировать вид", icon: "vwToPlane", hint: "Камера по нормали к разрезу, без вращения", shortcut: "l", active: locked },
+          { command: "series.lock", label: "Зафиксировать вид", icon: "lock", hint: "Камера по нормали к разрезу, без вращения", shortcut: "l", active: locked },
           { command: "section.clip", label: "Отсечение", icon: "vwClip", small: true, active: view.clip },
           { command: "series.shadow", args: { mode: "prev" }, label: "Тень", icon: "copy", hint: "Контуры предыдущего разреза серым пунктиром", small: true },
         ],
