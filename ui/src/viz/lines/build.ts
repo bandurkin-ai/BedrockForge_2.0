@@ -10,11 +10,15 @@
  * vertex is a point (a marker). An empty height comes as NaN and is never drawn at 0: it takes the lowest
  * height of its part, and a part without any height is flat at local 0 — the layer puts it under the lowest
  * object of the scene, as a raster without an elevation (ТЗ 7.19).
+ *
+ * A point cloud (ADR 0014 §2) is a layer of points with `cloud` in its manifest: five levels that are prefixes
+ * of a part (`levels` — the points of each), and `value u1` in every part (`cloud.ts`).
  */
 import { chooseLevel, stepBoundaries } from "../core/lod";
 import type { Box3 } from "../core/bounds";
 import type { Vec3 } from "../core/vec3";
 import { bfa1Array, decodeBfa1 } from "../format/bfa1";
+import { readCloudInfo, type CloudInfo } from "./cloud";
 
 /** [xmin, ymin, zmin, xmax, ymax, zmax], absolute float64; null — no vertex has this coordinate (a height). */
 export type Bbox6 = (number | null)[];
@@ -30,6 +34,8 @@ export interface LinesPart {
   origin: [number, number, number];
   /** ETag of the part at every level */
   etags: string[];
+  /** a cloud: points of the part at every level (the levels are prefixes of the part) */
+  levels?: number[];
 }
 
 export interface LinesManifest {
@@ -48,6 +54,8 @@ export interface LinesManifest {
   /** the layer has texts (DXF TEXT / MTEXT, MIF Text) */
   labels: boolean;
   parts: LinesPart[];
+  /** a point cloud (ADR 0014); null or absent — an ordinary layer */
+  cloud?: CloudInfo | null;
 }
 
 interface ManifestHeader {
@@ -62,6 +70,7 @@ interface ManifestHeader {
   lods: { lod: number; tol: number }[];
   labels: boolean;
   parts: LinesPart[];
+  cloud?: Parameters<typeof readCloudInfo>[0];
 }
 
 export function readLinesManifest(buf: ArrayBuffer): LinesManifest {
@@ -80,12 +89,13 @@ export function readLinesManifest(buf: ArrayBuffer): LinesManifest {
     tols: h.lods.map((l) => l.tol),
     labels: h.labels === true,
     parts: h.parts,
+    cloud: h.points_only === true ? readCloudInfo(h.cloud) : null,
   };
 }
 
 /** Two manifests describe the same parts (a rename or a new colour): what is built stays while it reloads. */
 export function sameLayout(a: LinesManifest, b: LinesManifest): boolean {
-  if (a.pointsOnly !== b.pointsOnly || a.parts.length !== b.parts.length || a.tols.join() !== b.tols.join()) return false;
+  if (a.pointsOnly !== b.pointsOnly || !a.cloud !== !b.cloud || a.parts.length !== b.parts.length || a.tols.join() !== b.tols.join()) return false;
   return a.parts.every((p, i) => {
     const q = b.parts[i];
     return p.n === q.n && p.points === q.points && p.origin.join() === q.origin.join() && JSON.stringify(p.bbox) === JSON.stringify(q.bbox);
@@ -131,6 +141,10 @@ export interface BuiltLines {
   /** no vertex of the part has a height: it is flat at local 0 and placed by the layer */
   noHeight: boolean;
   labels: PartLabels | null;
+  /** a cloud: the class code or the value of the mode of every point (`cloud.ts`); null — not a cloud */
+  value: Uint8Array | null;
+  /** a cloud: the value mode the part was asked with */
+  mode: string | null;
 }
 
 export interface PartHeader {
@@ -144,6 +158,8 @@ export interface PartHeader {
   points: number;
   simplified?: boolean;
   labels?: { at: number[]; text: string[]; total?: number } | null;
+  cloud?: boolean;
+  mode?: string;
 }
 
 export interface PartArrays {
@@ -151,6 +167,7 @@ export interface PartArrays {
   line: Uint32Array;
   offsets: Uint32Array | null;
   closed: Uint8Array | null;
+  value?: Uint8Array | null;
 }
 
 /**
@@ -159,9 +176,11 @@ export interface PartArrays {
  */
 export function buildLineBuffers(h: PartHeader, a: PartArrays): BuiltLines {
   const { xyz, line, offsets, closed } = a;
+  const value = a.value ?? null;
   const points = xyz.length / 3;
   const n = offsets ? offsets.length - 1 : points;
   if (!Number.isInteger(points) || n < 0 || line.length !== n || (offsets && (offsets[0] !== 0 || offsets[n] !== points))) throw new Error(`lines of part ${h.k}: offsets, lines and vertices disagree`);
+  if (value && (offsets || value.length !== points)) throw new Error(`cloud part ${h.k}: values and points disagree`);
   const zmin = h.bbox ? h.bbox[2] : null;
   const noHeight = zmin === null || zmin === undefined;
   const fill = noHeight ? 0 : Math.fround(zmin - h.origin[2]);
@@ -174,7 +193,7 @@ export function buildLineBuffers(h: PartHeader, a: PartArrays): BuiltLines {
   const out: BuiltLines = {
     k: h.k, lod: h.lod, n, points, pointsOnly: !offsets, simplified: h.simplified === true, origin: h.origin,
     positions: new Float32Array(0), segments: 0, segStart: new Uint32Array(n + 1), dots: xyz, dotPiece: null,
-    line, closed, emptyZ, fill, noHeight, labels: null,
+    line, closed, emptyZ, fill, noHeight, labels: null, value, mode: value ? (h.mode ?? "class") : null,
   };
   if (offsets) {
     let segments = 0;
@@ -241,6 +260,7 @@ export function decodeLinesPart(buffer: ArrayBuffer): { header: PartHeader; arra
       line: bfa1Array(doc, "line", "<u4"),
       offsets: pointsOnly ? null : bfa1Array(doc, "offsets", "<u4"),
       closed: pointsOnly ? null : bfa1Array(doc, "closed", "<u1"),
+      value: pointsOnly && h.cloud === true ? bfa1Array(doc, "value", "<u1") : null,
     },
   };
 }

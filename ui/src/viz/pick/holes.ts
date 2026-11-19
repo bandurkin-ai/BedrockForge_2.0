@@ -31,21 +31,26 @@ export function nearestPoint(
   accept?: (i: number) => boolean,
 ): PointHit | null {
   let best: PointHit | null = null;
-  let bestD = maxPx;
+  // squared distances in the loop (Math.hypot is slow): a million points stay well within a click
+  let bestD2 = maxPx * maxPx;
   for (let i = 0; i < count; i++) {
     const x = xyz[i * 3];
     const y = xyz[i * 3 + 1];
     const z = xyz[i * 3 + 2];
     const cw = m[3] * x + m[7] * y + m[11] * z + m[15];
     if (!(cw > 0)) continue;
+    const sx = (((m[0] * x + m[4] * y + m[8] * z + m[12]) / cw) * 0.5 + 0.5) * w;
+    const dx = sx - px;
+    if (dx * dx > bestD2) continue;
+    const sy = ((-(m[1] * x + m[5] * y + m[9] * z + m[13]) / cw) * 0.5 + 0.5) * h;
+    const dy = sy - py;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > bestD2) continue;
     const nz = (m[2] * x + m[6] * y + m[10] * z + m[14]) / cw;
     if (nz < -1 || nz > 1) continue;
-    const sx = (((m[0] * x + m[4] * y + m[8] * z + m[12]) / cw) * 0.5 + 0.5) * w;
-    const sy = ((-(m[1] * x + m[5] * y + m[9] * z + m[13]) / cw) * 0.5 + 0.5) * h;
-    const d = Math.hypot(sx - px, sy - py);
-    if (d <= bestD && (!accept || accept(i))) {
-      bestD = d;
-      best = { index: i, distance: d, x: sx, y: sy };
+    if (!accept || accept(i)) {
+      bestD2 = d2;
+      best = { index: i, distance: Math.sqrt(d2), x: sx, y: sy };
     }
   }
   return best;

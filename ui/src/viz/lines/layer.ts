@@ -6,7 +6,8 @@
  * by the shader (a disc with a dark rim, no texture), texts are labels placed with everyone else's. Every
  * material takes the shared clipping planes, so only what is in the section window is seen. A part without
  * heights is flat at the «floor» — under the lowest object of the scene. Buffers come from the Worker as
- * they are. The picked line is drawn over in orange.
+ * they are. The picked line is drawn over in orange. A point cloud (ADR 0014 §2) is drawn by `cloudPoints.ts`:
+ * 2 px points coloured by the palette of its mode, hidden classes neither drawn nor picked.
  */
 import * as THREE from "three";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
@@ -20,6 +21,8 @@ import { DEFAULT_FONT, makeLabel, type LabelCache, type LabelItem } from "../lab
 import type { Origin } from "../origin";
 import type { LayerPick, PickQuery, SceneLayer } from "../sceneTypes";
 import { bboxAt, type BuiltLines, type LinesManifest, type LinesPart } from "./build";
+import { cloudMode, cloudPalette, valueMode, valueOf, type CloudColorMode, type CloudStyle, type CloudValueMode } from "./cloud";
+import { CLOUD_POINT_PX, CloudPalette, makeCloudPoints } from "./cloudPoints";
 import { pickLines, type LineHit, type PickPart } from "./pick";
 
 /** A layer without a colour of its own: Slate of the brand palette. */
@@ -48,6 +51,8 @@ export interface LinePick extends LineHit {
   lod: number;
   /** the picked place as shown, absolute float64 */
   xyz: Vec3;
+  /** a point of a cloud: `line` is its number; the class when the mode draws classes, the value of `h` / `dz`, m */
+  cloud?: { mode: CloudColorMode; class: number | null; value: number | null };
 }
 
 type LineObject = LineSegments2 | THREE.LineSegments;
@@ -123,9 +128,15 @@ export class LineLayerView implements SceneLayer {
   private selected: number | null = null;
   private highlight: THREE.Object3D[] = [];
   private stale = false;
+  /** a cloud: the palette and material of every part, the mode, the hidden classes, parts coarsened by the budget */
+  private readonly palette: CloudPalette | null = null;
+  private mode: CloudColorMode = "layer";
+  private hiddenClasses = new Set<number>();
+  private readonly cut = new Set<number>();
 
   constructor(
-    readonly manifest: LinesManifest,
+    /** renewed by the source when a new version has the same parts (`sameLayout`): the cloud may have new modes */
+    public manifest: LinesManifest,
     private readonly ctx: LineLayerContext,
     style: { color: string | null; visible: boolean },
     floor: number,
@@ -135,6 +146,11 @@ export class LineLayerView implements SceneLayer {
     this.color = style.color ?? DEFAULT_LINE_COLOR;
     this.object.visible = style.visible;
     this.floor = floor;
+    if (manifest.cloud) {
+      this.palette = new CloudPalette(ctx.clip, ctx.pixelRatio);
+      this.mode = cloudMode(manifest.cloud, undefined);
+      this.repaint();
+    }
     this.parts = manifest.parts.map((part) => {
       const group = new THREE.Group();
       this.object.add(group);
@@ -165,7 +181,8 @@ export class LineLayerView implements SceneLayer {
       out.parts++;
       out.segments += lv.built.segments;
       out.points += lv.built.dots.length / 3;
-      if (lv.built.simplified) out.simplified++;
+      // a cloud is «упрощено» only by the point budget: its levels by the distance are not seen as such
+      if (this.palette ? this.cut.has(p.part.k) : lv.built.simplified) out.simplified++;
     }
     return out;
   }
@@ -216,9 +233,11 @@ export class LineLayerView implements SceneLayer {
     this.dropLevel(k, built.lod);
     const group = new THREE.Group();
     group.visible = false;
-    const lv: Level = { built, group, line: null, dots: null, labels: [], bytes: built.positions.byteLength + built.dots.byteLength };
+    const lv: Level = { built, group, line: null, dots: null, labels: [], bytes: built.positions.byteLength + built.dots.byteLength + (built.value?.byteLength ?? 0) };
     if (built.segments) group.add((lv.line = makeLine(built.positions, this.color, LINE_WIDTH_PX, this.fat, this.ctx)));
-    if (built.dots.length) group.add((lv.dots = makeDots(built.dots, this.color, built.pointsOnly ? POINT_SIZE_PX : DOT_SIZE_PX, this.ctx)));
+    if (this.palette && built.value) {
+      if (built.dots.length) group.add((lv.dots = makeCloudPoints(built.dots, built.value, this.palette, this.localBox(p))));
+    } else if (built.dots.length) group.add((lv.dots = makeDots(built.dots, this.color, built.pointsOnly ? POINT_SIZE_PX : DOT_SIZE_PX, this.ctx)));
     if (built.labels && built.lod < LABEL_MAX_LOD) {
       const at = new THREE.Vector3();
       const shift = built.pointsOnly ? POINT_SIZE_PX / 2 + 3 : 2;
@@ -242,7 +261,8 @@ export class LineLayerView implements SceneLayer {
     if (!p || !lv) return;
     p.group.remove(lv.group);
     disposeObject(lv.line);
-    disposeObject(lv.dots);
+    if (this.palette) lv.dots?.geometry.dispose(); // the material is the layer's
+    else disposeObject(lv.dots);
     lv.group.clear(); // label materials are shared and stay in the cache
     p.levels.delete(lod);
     if (p.shown === lod) {
@@ -269,6 +289,10 @@ export class LineLayerView implements SceneLayer {
     const next = color ?? DEFAULT_LINE_COLOR;
     if (next === this.color) return;
     this.color = next;
+    if (this.palette) {
+      this.repaint();
+      return;
+    }
     for (const p of this.parts) {
       for (const lv of p.levels.values()) {
         (lv.line?.material as THREE.LineBasicMaterial | undefined)?.color.set(next);
@@ -279,6 +303,41 @@ export class LineLayerView implements SceneLayer {
 
   setVisible(visible: boolean): void {
     this.object.visible = visible;
+  }
+
+  // ---------------------------------------------------------------- a cloud
+
+  get isCloud(): boolean {
+    return this.palette !== null;
+  }
+
+  /** The colour mode in force. */
+  get colorMode(): CloudColorMode {
+    return this.mode;
+  }
+
+  /** What the parts are asked with (`?color=`): «Цвет слоя» asks for the classes. */
+  get valueMode(): CloudValueMode {
+    return valueMode(this.mode);
+  }
+
+  /** The style of the cloud kept by the project (mode, hidden classes); the palette follows at once. */
+  setCloudStyle(style: CloudStyle | null | undefined): void {
+    if (!this.palette || !this.manifest.cloud) return;
+    this.mode = cloudMode(this.manifest.cloud, style?.color);
+    this.hiddenClasses = new Set((style?.hidden ?? []).filter((c) => Number.isInteger(c) && c >= 0 && c <= 255));
+    if (this.repaint()) this.stale = true;
+  }
+
+  /** Part k was coarsened by the point budget of the frame. */
+  setCut(k: number, cut: boolean): void {
+    if (cut) this.cut.add(k);
+    else this.cut.delete(k);
+  }
+
+  private repaint(): boolean {
+    if (!this.palette || !this.manifest.cloud) return false;
+    return this.palette.set(cloudPalette(this.mode, this.hiddenClasses, this.color, this.manifest.cloud.value));
   }
 
   /** Lines with a width in px, or one pixel wide when the scene holds too many segments. */
@@ -320,7 +379,7 @@ export class LineLayerView implements SceneLayer {
       const lv = p.shown === null ? undefined : p.levels.get(p.shown);
       if (!lv) continue;
       const g = p.group.position;
-      parts.push({ k: p.part.k, offset: [q.offset[0] + g.x, q.offset[1] + g.y, q.offset[2] + g.z], box: this.localBox(p), built: lv.built, view: p, lod: lv.built.lod });
+      parts.push({ k: p.part.k, offset: [q.offset[0] + g.x, q.offset[1] + g.y, q.offset[2] + g.z], box: this.localBox(p), built: lv.built, shown: this.palette?.shown ?? null, view: p, lod: lv.built.lod });
     }
     const hit = pickLines(parts, q);
     if (!hit) return null;
@@ -328,6 +387,10 @@ export class LineLayerView implements SceneLayer {
     const g = src.view.group.position;
     const xyz: Vec3 = [this.origin.x + g.x + hit.at[0], this.origin.y + g.y + hit.at[1], this.origin.z + g.z + hit.at[2]];
     const pick: LinePick = { ...hit, layerId: this.layerId, lod: src.lod, xyz };
+    if (this.palette && hit.value !== undefined) {
+      const byClass = src.view.levels.get(src.lod)?.built.mode === "class";
+      pick.cloud = { mode: this.mode, class: byClass ? hit.value : null, value: byClass ? null : valueOf(hit.value, this.manifest.cloud!.value) };
+    }
     return { score: hit.score, hit: pick };
   }
 
@@ -380,9 +443,13 @@ export class LineLayerView implements SceneLayer {
       }
       const dots: number[] = [];
       const count = b.dots.length / 3;
-      for (let d = 0; d < count; d++) if (b.line[b.dotPiece ? b.dotPiece[d] : d] === sel) dots.push(b.dots[d * 3], b.dots[d * 3 + 1], b.dots[d * 3 + 2]);
+      if (b.value) {
+        // a cloud: the points of a part are numbered in a row from its start
+        const d: number = sel - (b.line[0] ?? 0);
+        if (d >= 0 && d < count && b.line[d] === sel && this.palette!.shown[b.value[d]]) dots.push(b.dots[d * 3], b.dots[d * 3 + 1], b.dots[d * 3 + 2]);
+      } else for (let d = 0; d < count; d++) if (b.line[b.dotPiece ? b.dotPiece[d] : d] === sel) dots.push(b.dots[d * 3], b.dots[d * 3 + 1], b.dots[d * 3 + 2]);
       if (dots.length) {
-        const o = makeDots(new Float32Array(dots), SELECT_COLOR, (b.pointsOnly ? POINT_SIZE_PX : DOT_SIZE_PX) + 6, this.ctx);
+        const o = makeDots(new Float32Array(dots), SELECT_COLOR, (b.value ? CLOUD_POINT_PX : b.pointsOnly ? POINT_SIZE_PX : DOT_SIZE_PX) + 6, this.ctx);
         (o.material as THREE.PointsMaterial).depthTest = false;
         this.addHighlight(p, o);
       }
@@ -398,6 +465,7 @@ export class LineLayerView implements SceneLayer {
   dispose(): void {
     this.clearSelection();
     for (const p of this.parts) for (const lod of [...p.levels.keys()]) this.dropLevel(p.part.k, lod);
+    this.palette?.dispose();
     this.object.clear();
   }
 }
