@@ -100,9 +100,7 @@ def add_cloud(project: Any, chunk: lc.CloudChunk, name: str = "Съёмка") ->
     store = BlobStore(project.folder)
     with dialect.write_tx(project.engine) as conn:
         file_id = ls_store.create_file(conn, store, name=f"{name}.las", meta={"format": "las"})
-        return cb.put_cloud(
-            conn, store, [chunk], file_id=file_id, name=name, source={"kind": "las", "every": 1}
-        )
+        return cb.put_cloud(conn, store, [chunk], file_id=file_id, name=name, source={"kind": "las", "every": 1})
 
 
 def opened(project: Any, cloud_id: int) -> lc.Cloud:

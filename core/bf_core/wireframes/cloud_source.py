@@ -229,7 +229,12 @@ def _medians(
 
 
 def thin(
-    cloud: lc.Cloud, classes: Classes = None, cell: float | None = None, *, budget: int = MAX_VERTICES, tick: Tick = None
+    cloud: lc.Cloud,
+    classes: Classes = None,
+    cell: float | None = None,
+    *,
+    budget: int = MAX_VERTICES,
+    tick: Tick = None,
 ) -> Thinned:
     """One source point in every cell of the plan (see the module docstring)."""
     budget = max(4, int(budget))

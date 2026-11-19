@@ -203,15 +203,13 @@ def request_from_points(
     """Parameters of `model.dtm` for the command `terrain.from_points` (ADR 0014 §5): the ground of one cloud.
     `l_max` — the longest edge; by default 5 CR of the last «Фильтр земли» of the cloud (5 m when it was never
     filtered), and not less than 4 steps of the thinning: a shorter one would peel the surface away."""
-    meta = cloud_meta(
-        conn.execute(
-            sa.select(objects.c.meta).where(objects.c.id == cloud_id, objects.c.kind == LAYER, objects.c.state == "ready")
-        ).scalar()
-    )
+    row = conn.execute(
+        sa.select(objects.c.meta).where(objects.c.id == cloud_id, objects.c.kind == LAYER, objects.c.state == "ready")
+    ).first()
+    if row is None:
+        raise ApiError(404, "line_layer_not_found", "Облако точек не найдено.", "Обновите дерево проекта.")
+    meta = cloud_meta(row.meta)
     if meta is None:
-        exists = conn.execute(sa.select(objects.c.id).where(objects.c.id == cloud_id, objects.c.kind == LAYER)).first()
-        if exists is None:
-            raise ApiError(404, "line_layer_not_found", "Облако точек не найдено.", "Обновите дерево проекта.")
         raise not_a_cloud()
     if l_max is None:
         cr = cs.filter_cr(meta)
@@ -454,7 +452,7 @@ def model_dtm(ctx: JobContext) -> dict[str, Any]:
     if edge is not None and edge < 2.0 * src.cell:
         ctx.log(
             f"Наибольшая длина ребра {_num(edge)} м меньше двух шагов прореживания облака "
-            f"({_num(round(src.cell, 4))} м): поверхность может быть обрезана. Увеличьте длину ребра или уменьшите шаг.",
+            f"({_num(round(src.cell, 4))} м): поверхность может быть обрезана — увеличьте длину ребра.",
             "warn",
         )
     if src.skipped:
