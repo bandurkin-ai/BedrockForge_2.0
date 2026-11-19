@@ -17,15 +17,21 @@ are thinned in their planes, `geo/flat.py`, the rest is decimated by pyfqmr). Th
 part are the same float32 numbers at every level, so parts drawn at different
 levels join without cracks; that is also why a level cannot go below what the border of its part needs
 (`triangles` of the answer is what it holds, `simplified` — whether it is fewer than `source_triangles`).
-Levels 1 and 2 are files `cache\\mesh\\<key>\\<k>-<lod>.bfa` (the answers themselves): built for the whole
-wireframe by the job that creates it (`build_cache`), or for one part on its first request; the folder is
-derived data and may be deleted. The key is the SHA-256 of the blobs, the part table, the limits above and
-`ALGO` — the way the levels are made: levels cached by an earlier way are not used, and their folder goes
-when a part of the geometry is made anew on a request.
+Levels 1 and 2 are files `cache\\mesh\\<key>\\<k>-<lod>.bfa` (the answers themselves), made only by jobs, never
+in the process of the API (ADR 0015 §8): the job that creates a wireframe, «Проверить» (`wireframe.check`) and
+`wireframe.lod` (`wireframes/lod_job.py`) call `build_cache`; the folder is derived data and may be deleted.
+The key is the SHA-256 of the blobs, the part table, the limits above and `ALGO` — the way the levels are
+made: levels cached by an earlier way are not used (the job removes their folder).
+
+A stand-in. A part asked at level 1 or 2 whose file is not in the cache is answered whole — every triangle,
+`simplified` false, `standin` true — and the router asks for `wireframe.lod` (no ETag, `no-store`: the window
+asks again after the event `wireframes.lod`). A part of fewer than `geo.meshes.LOD_MIN_TRIANGLES` is drawn as
+it is at every level: its answer is the level itself, with its ETag, and no job is asked for it.
 
 The ETag of a part is the SHA-256 of its key: project, wireframe, creation time, blobs, part, level and the
 limits — not `objects.version`, so a new name, colour or DTM setting re-reads the manifest only.
-numpy and pyfqmr load with this module and its first part: import it lazily, never before BF-READY.
+numpy loads with this module: import it lazily, never before BF-READY. pyfqmr and the numba kernels of the
+levels load only with `build_cache` — in a worker.
 """
 
 from __future__ import annotations
@@ -37,7 +43,8 @@ import shutil
 import threading
 import uuid
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -171,10 +178,13 @@ def part_etag(uid: str, state: MeshState, k: int, lod: int) -> str:
 # --- one part --------------------------------------------------------------------------------------------
 
 
-def encode_part(part: gm.MeshPart, lod: int, local: np.ndarray, tri: np.ndarray) -> bytes:
-    """BFA1 `mesh` of a part at a level: `local` — float64 offsets from the origin of the part."""
+def encode_part(
+    part: gm.MeshPart, lod: int, local: np.ndarray, tri: np.ndarray, *, standin: bool = False
+) -> bytes:
+    """BFA1 `mesh` of a part at a level: `local` — float64 offsets from the origin of the part; `standin` — the
+    whole part answers for a level not made yet (the key is in the header of a stand-in only)."""
     dtype = "<u2" if len(local) <= MAX_U2_VERTICES else "<u4"
-    header = {
+    header: dict[str, Any] = {
         "kind": "mesh",
         "format": FORMAT,
         "k": part.k,
@@ -188,6 +198,8 @@ def encode_part(part: gm.MeshPart, lod: int, local: np.ndarray, tri: np.ndarray)
         "simplified": len(tri) < part.count,
         "index": dtype,
     }
+    if standin:
+        header["standin"] = True
     return binary.encode(header, [("xyz", local.astype("<f4"), "<f4"), ("idx", tri, dtype)])
 
 
@@ -203,10 +215,6 @@ def part_bodies(v: np.ndarray, t: np.ndarray, part: gm.MeshPart, lods: tuple[int
 # --- the cache of the simplified levels ------------------------------------------------------------------
 
 SIMPLIFIED = tuple(range(1, gm.LOD_LEVELS))
-#: a part this small without its levels in the cache is drawn whole: simplifying it saves nothing on the
-#: screen, and made here, in the process of the API, the first simplification (numba compiling, cold) held its
-#: requests for seconds (the demo opened, «Аудит» and «Новый проект» waited)
-SMALL_PART = 4096
 
 
 def cache_dir(folder: Path, key: str) -> Path:
@@ -278,7 +286,6 @@ def drop_cache(folder: Path, key: str) -> None:
 # --- the wireframe of a project --------------------------------------------------------------------------
 
 _lock = threading.Lock()
-_building = threading.Lock()
 _tables: OrderedDict[tuple[Any, ...], list[gm.MeshPart]] = OrderedDict()
 
 
@@ -287,30 +294,55 @@ def forget() -> None:
         _tables.clear()
 
 
-def _paths(project: Any, state: MeshState) -> tuple[Path, Path]:
-    from bf_core.storage.blobs import BlobStore
-
-    store = BlobStore(project.folder)
+def _paths(store: Any, state: MeshState) -> tuple[Path, Path]:
     xyz, tri = state.sha("xyz"), state.sha("tri")
     if xyz is None or tri is None or not store.exists(xyz) or not store.exists(tri):
         raise broken()
     return store.path_of(xyz), store.path_of(tri)
 
 
-def parts_of(project: Any, state: MeshState) -> list[gm.MeshPart]:
-    """The part table: `wireframes.render`, or cut from the triangles as stored when a writer left it empty."""
+@contextmanager
+def mapped(store: Any, state: MeshState) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    """The vertices (float64 n×3) and the triangles (int32 m×3) of a wireframe as stored, mapped from its blobs:
+    only the pages a caller touches are read. The caller drops its own references to them before the block
+    ends (Windows keeps a mapped file locked)."""
+    xyz, tri = _paths(store, state)
+    v = np.memmap(xyz, dtype="<f8", mode="r")
+    t = np.memmap(tri, dtype="<i4", mode="r")
+    try:
+        if len(v) != 3 * state.points or len(t) != 3 * state.triangles:
+            raise broken()
+        yield v.reshape(-1, 3), t.reshape(-1, 3)
+    finally:
+        del v, t
+
+
+def _stored_table(state: MeshState) -> list[gm.MeshPart] | None:
     table = (state.render or {}).get("parts")
-    if table is not None:
-        return [gm.make_part(k, row[0], row[1], row[2:8]) for k, row in enumerate(table)]
+    return None if table is None else [gm.make_part(k, row[0], row[1], row[2:8]) for k, row in enumerate(table)]
+
+
+def table_of(state: MeshState, v: np.ndarray, t: np.ndarray) -> list[gm.MeshPart]:
+    """The part table: `wireframes.render`, or cut from the triangles as stored when a writer left it empty."""
+    stored = _stored_table(state)
+    return stored if stored is not None else gm.parts_table(v, t)
+
+
+def parts_of(project: Any, state: MeshState) -> list[gm.MeshPart]:
+    """The part table of a wireframe of the project (cut from the blobs once and kept: `TABLES_KEPT`)."""
+    from bf_core.storage.blobs import BlobStore
+
+    stored = _stored_table(state)
+    if stored is not None:
+        return stored
     key = (project.uid, *state.key())
     with _lock:
         hit = _tables.get(key)
     if hit is not None:
         return hit
-    xyz, tri = _paths(project, state)
-    v = np.fromfile(xyz, dtype="<f8").reshape(-1, 3)
-    t = np.fromfile(tri, dtype="<i4").reshape(-1, 3)
-    built = gm.parts_table(v, t)
+    with mapped(BlobStore(project.folder), state) as (v, t):
+        built = table_of(state, v, t)
+        del v, t
     with _lock:
         _tables[key] = built
         while len(_tables) > TABLES_KEPT:
@@ -318,12 +350,12 @@ def parts_of(project: Any, state: MeshState) -> list[gm.MeshPart]:
     return built
 
 
-def _bodies(
-    project: Any, state: MeshState, part: gm.MeshPart, lods: tuple[int, ...], *, whole_only: bool = False
-) -> dict[int, bytes]:
-    """Read what a part needs — its rows of the triangle file and the vertices they use — and encode it;
-    `whole_only` — every level asked for is the whole part (a small one, `SMALL_PART`)."""
-    xyz, tri = _paths(project, state)
+def _whole(project: Any, state: MeshState, part: gm.MeshPart, lod: int, *, standin: bool = False) -> bytes:
+    """Read what a part needs — its rows of the triangle file and the vertices they use — and encode it whole
+    at the level `lod` (`standin` — for a level not made yet)."""
+    from bf_core.storage.blobs import BlobStore
+
+    xyz, tri = _paths(BlobStore(project.folder), state)
     t = np.fromfile(tri, dtype="<i4", count=3 * part.count, offset=12 * part.first).reshape(-1, 3)
     if len(t) != part.count:
         raise broken()
@@ -331,11 +363,8 @@ def _bodies(
     try:
         if int(t.max()) >= len(v) or int(t.min()) < 0:
             raise broken()
-        whole = gm.make_part(part.k, 0, part.count, part.bbox)  # `t` holds the rows of this part only
-        if whole_only:
-            local, local_t = gm.part_mesh(v, t, whole)
-            return {lod: encode_part(part, lod, local, local_t) for lod in lods}
-        return part_bodies(v, t, whole, lods)
+        local, local_t = gm.part_mesh(v, t, gm.make_part(part.k, 0, part.count, part.bbox))  # `t`: this part only
+        return encode_part(part, lod, local, local_t, standin=standin)
     finally:
         del v  # the mapping closes with its last reference (Windows keeps a mapped file locked)
 
@@ -370,7 +399,9 @@ def manifest(project: Any, state: MeshState) -> bytes:
     return binary.encode(header, [])
 
 
-def part(project: Any, state: MeshState, k: int, lod: int) -> bytes:
+def part_answer(project: Any, state: MeshState, k: int, lod: int) -> tuple[bytes, bool]:
+    """BFA1 `mesh` of part k at a level and whether it is a stand-in (see the module docstring): level 0 from
+    the blobs, levels 1–2 from the cache; never simplified here."""
     if lod not in range(gm.LOD_LEVELS):
         raise bad_lod()
     parts = parts_of(project, state)
@@ -378,21 +409,14 @@ def part(project: Any, state: MeshState, k: int, lod: int) -> bytes:
         raise part_not_found(k)
     p = parts[k]
     if lod == 0:
-        return _bodies(project, state, p, (0,))[0]
-    key = state.cache_key()
-    path = _cache_file(project.folder, key, k, lod)
-    hit = _read(path, k, lod)
+        return _whole(project, state, p, 0), False
+    hit = _read(_cache_file(project.folder, state.cache_key(), k, lod), k, lod)
     if hit is not None:
-        return hit
-    if p.count <= SMALL_PART:  # not made here: drawn whole until «Проверить» or an import makes its levels
-        return _bodies(project, state, p, (lod,), whole_only=True)[lod]
-    with _building:  # four parts asked at once: pyfqmr holds the interpreter anyway
-        hit = _read(path, k, lod)
-        if hit is not None:
-            return hit
-        bodies = _bodies(project, state, p, SIMPLIFIED)
-        for level, body in bodies.items():
-            _write(_cache_file(project.folder, key, k, level), body)
-        for algo in range(1, ALGO):  # the levels of this geometry made an earlier way: nobody reads them
-            drop_cache(project.folder, cache_key(state.blobs, state.render, algo))
-    return bodies[lod]
+        return hit, False
+    if p.count < gm.LOD_MIN_TRIANGLES:  # `geo.meshes.levels` gives it back as it is: the answer is the level
+        return _whole(project, state, p, lod), False
+    return _whole(project, state, p, lod, standin=True), True
+
+
+def part(project: Any, state: MeshState, k: int, lod: int) -> bytes:
+    return part_answer(project, state, k, lod)[0]
