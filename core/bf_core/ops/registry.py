@@ -48,6 +48,7 @@ class Checked:
     vertices: int = 0  # of the lines read
     job: str = JOB
     job_params: dict[str, Any] = field(default_factory=dict)  # `model.dtm` only
+    src: Sources | None = field(default=None, repr=False)  # the job loads the arrays of these sources
 
     @property
     def size(self) -> int:
@@ -405,7 +406,7 @@ def precheck(
     vertices = sum(
         int(layer.point_count * len(layer.picked) / max(1, layer.line_count)) for layer in src.layers.values()
     )
-    out = Checked(op, OPERATIONS[op]["title"], checked, src.used, src.folder)
+    out = Checked(op, OPERATIONS[op]["title"], checked, src.used, src.folder, src=src)
     out.triangles = sum(int(u.get("triangles") or 0) for u in src.used if u["kind"] == "wireframe")
     out.vertices = vertices
     if out.vertices > MAX_CONTOUR_VERTICES:
