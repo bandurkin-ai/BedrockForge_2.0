@@ -40,7 +40,8 @@ OMEGA_MAX = 1.98  # … and it is raised while the moves shrink slowly (spans of
 COARSEST = 64  # the cascade starts from a grid of at most this many particles a side
 MAX_SWEEPS = 20_000
 CHUNK = 16  # sweeps between two calls of `tick` (cancel)
-THREAD_NODES = 1 << 17  # smaller grids are swept on the calling thread
+THREAD_NODES = 1 << 19  # smaller grids are swept on the calling thread
+INVERSE = np.array([0.0, 1.0, 0.5, 1.0 / 3.0, 0.25])  # 1 / number of neighbours in the system
 
 Rows = Callable[[Callable[[int, int], Any], int], list[Any]] | None
 
@@ -124,49 +125,54 @@ def obstacle_rows(cmin, mx, my, mz, ncx, ncy, npx, row0, row1, c, cr, band, hob,
 
 
 # --- cascade ---------------------------------------------------------------------------------------------
+# The grids of the cascade carry a border of one particle outside the system (mask 0, height 0): a sweep reads
+# the four neighbours of a particle without asking where the grid ends.
 
 
 @njit(cache=True, nogil=True)
 def restrict(h, mask):  # type: ignore[no-untyped-def]
-    """The next coarser grid: node (J, I) stands on the fine node (2J, 2I) and takes its obstacle; when that
-    node is outside the system — the lowest obstacle of the fine nodes around it (3 × 3), if there are any."""
-    ny, nx = h.shape
+    """The next coarser grid (with its border): node (J, I) stands on the fine node (2J, 2I) and takes its
+    obstacle; when that node is outside the system — the lowest obstacle of the fine nodes around it (3 × 3),
+    if there are any."""
+    ny = h.shape[0] - 2
+    nx = h.shape[1] - 2
     my = ny // 2 + 1
     mx = nx // 2 + 1
-    hc = np.zeros((my, mx))
-    mc = np.zeros((my, mx), np.uint8)
+    hc = np.zeros((my + 2, mx + 2))
+    mc = np.zeros((my + 2, mx + 2), np.uint8)
     for jj in range(my):
         for ii in range(mx):
-            if 2 * jj < ny and 2 * ii < nx and mask[2 * jj, 2 * ii]:
-                hc[jj, ii] = h[2 * jj, 2 * ii]
-                mc[jj, ii] = 1
+            if 2 * jj < ny and 2 * ii < nx and mask[2 * jj + 1, 2 * ii + 1]:
+                hc[jj + 1, ii + 1] = h[2 * jj + 1, 2 * ii + 1]
+                mc[jj + 1, ii + 1] = 1
                 continue
             best = 0.0
             any_ = False
             for j in range(max(2 * jj - 1, 0), min(2 * jj + 2, ny)):
                 for i in range(max(2 * ii - 1, 0), min(2 * ii + 2, nx)):
-                    if mask[j, i]:
-                        if not any_ or h[j, i] < best:
-                            best = h[j, i]
+                    if mask[j + 1, i + 1]:
+                        if not any_ or h[j + 1, i + 1] < best:
+                            best = h[j + 1, i + 1]
                         any_ = True
             if any_:
-                hc[jj, ii] = best
-                mc[jj, ii] = 1
+                hc[jj + 1, ii + 1] = best
+                mc[jj + 1, ii + 1] = 1
     return hc, mc
 
 
 @njit(cache=True, nogil=True)
 def prolong(uc, mc, u, h, mask):  # type: ignore[no-untyped-def]
     """The coarse solution carried to the fine grid (mean of the coarse nodes around), not above the obstacle."""
-    ny, nx = h.shape
+    ny = h.shape[0] - 2
+    nx = h.shape[1] - 2
     for j in range(ny):
-        j0 = j // 2
+        j0 = j // 2 + 1
         j1 = j0 + (j & 1)
         for i in range(nx):
-            if not mask[j, i]:
-                u[j, i] = 0.0
+            if not mask[j + 1, i + 1]:
+                u[j + 1, i + 1] = 0.0
                 continue
-            i0 = i // 2
+            i0 = i // 2 + 1
             i1 = i0 + (i & 1)
             s = 0.0
             n = 0
@@ -183,44 +189,33 @@ def prolong(uc, mc, u, h, mask):  # type: ignore[no-untyped-def]
                 if i1 != i0 and mc[j1, i1]:
                     s += uc[j1, i1]
                     n += 1
-            v = h[j, i]
+            v = h[j + 1, i + 1]
             if n > 0 and s / n < v:
                 v = s / n
-            u[j, i] = v
+            u[j + 1, i + 1] = v
 
 
 @njit(cache=True, nogil=True)
 def sweep_rows(u, h, mask, row0, row1, color, load, omega):  # type: ignore[no-untyped-def]
-    """One colour of a projected sweep over rows [row0, row1) → the largest move of a particle."""
-    ny, nx = h.shape
+    """One colour of a projected sweep over rows [row0, row1) of the grid (rows without the border) → the
+    largest move of a particle. A particle outside the system holds 0 and is left out by its mask."""
+    nx = h.shape[1] - 2
     moved = 0.0
-    for j in range(row0, row1):
-        for i in range((j + color) & 1, nx, 2):
+    for j in range(row0 + 1, row1 + 1):
+        for i in range(1 + ((j + color) & 1), nx + 1, 2):
             if not mask[j, i]:
                 continue
-            s = 0.0
-            n = 0
-            if i > 0 and mask[j, i - 1]:
-                s += u[j, i - 1]
-                n += 1
-            if i + 1 < nx and mask[j, i + 1]:
-                s += u[j, i + 1]
-                n += 1
-            if j > 0 and mask[j - 1, i]:
-                s += u[j - 1, i]
-                n += 1
-            if j + 1 < ny and mask[j + 1, i]:
-                s += u[j + 1, i]
-                n += 1
+            ml = mask[j, i - 1]
+            mr = mask[j, i + 1]
+            md = mask[j - 1, i]
+            mu = mask[j + 1, i]
+            n = ml + mr + md + mu
             old = u[j, i]
             new = h[j, i]
             if n > 0:
-                v = old + omega * ((s + load) / n - old)
-                if v < new:
-                    new = v
-            d = abs(new - old)
-            if d > moved:
-                moved = d
+                s = u[j, i - 1] * ml + u[j, i + 1] * mr + u[j - 1, i] * md + u[j + 1, i] * mu
+                new = min(new, old + omega * ((s + load) * INVERSE[n] - old))
+            moved = max(moved, abs(new - old))
             u[j, i] = new
     return moved
 
@@ -228,7 +223,7 @@ def sweep_rows(u, h, mask, row0, row1, color, load, omega):  # type: ignore[no-u
 @njit(cache=True, nogil=True)
 def sweeps(u, h, mask, load, omega, count):  # type: ignore[no-untyped-def]
     """`count` full sweeps on the calling thread → the largest move of a particle in any of them."""
-    ny = h.shape[0]
+    ny = h.shape[0] - 2
     peak = 0.0
     for _ in range(count):
         a = sweep_rows(u, h, mask, 0, ny, 0, load, omega)
@@ -259,18 +254,24 @@ def solve(
     come — their sum at the rate they shrink — stay under 10·`tol`. While the moves shrink slowly and evenly
     (a free span too wide for the over-relaxation) the over-relaxation is raised, up to `OMEGA_MAX`.
     """
-    levels = [(np.ascontiguousarray(hob, np.float64), np.ascontiguousarray(mask, np.uint8))]
-    while max(levels[-1][0].shape) > COARSEST:
+    ny, nx = hob.shape
+    inside = np.zeros((ny + 2, nx + 2), np.uint8)
+    inside[1:-1, 1:-1] = mask
+    top = np.zeros((ny + 2, nx + 2), np.float64)
+    top[1:-1, 1:-1] = np.where(inside[1:-1, 1:-1] != 0, hob, 0.0)
+    levels = [(top, inside)]
+    while max(levels[-1][0].shape) - 2 > COARSEST:
         levels.append(restrict(*levels[-1]))
     counts: list[int] = []
     u = levels[-1][0].copy()  # the coarsest level starts on the obstacle
     for depth in range(len(levels) - 1, -1, -1):
         h, m = levels[depth]
         if depth < len(levels) - 1:
-            fine = np.empty_like(h)
+            fine = np.zeros_like(h)
             prolong(u, levels[depth + 1][1], fine, h, m)
             u = fine
         step_load = load * 4.0**depth
+        height = h.shape[0] - 2
         threaded = rows is not None and h.size >= THREAD_NODES
         done = 0
         w = omega
@@ -282,7 +283,7 @@ def solve(
                 black = partial(_colour, u, h, m, 1, step_load, w)
                 peak = 0.0
                 for _ in range(CHUNK):
-                    peak = max(peak, max(rows(red, h.shape[0])), max(rows(black, h.shape[0])))
+                    peak = max(peak, max(rows(red, height)), max(rows(black, height)))
             else:
                 peak = float(sweeps(u, h, m, step_load, w, CHUNK))
             done += CHUNK
@@ -298,7 +299,7 @@ def solve(
             if rate > 1.0 - 0.5 * (2.0 - w) and w < OMEGA_MAX:
                 w = min(2.0 - 0.5 * (2.0 - w), OMEGA_MAX)
         counts.append(done)
-    return u, counts
+    return np.ascontiguousarray(u[1:-1, 1:-1]), counts
 
 
 # --- seeds -----------------------------------------------------------------------------------------------

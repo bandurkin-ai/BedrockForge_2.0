@@ -392,3 +392,15 @@ def test_filter_in_a_worker_stores_what_the_kernel_gives(api) -> None:  # type: 
     assert built["status"] == "done" and built["result"]["points"] > 5000, built
     w = ok(c.get(f"{API}/wireframes/{built['result']['wireframe_id']}"))
     assert w["built"]["sources"][0]["classes"] == [2] and w["built"]["params"]["max_edge"] == 5.0
+
+
+def test_the_filter_is_started_through_the_api_of_the_layer(api) -> None:  # type: ignore[no-untyped-def]
+    c, project = api
+    s = gen.plain(61, side=60.0, density=2.0, buildings=1, trees=5, outliers=3)
+    cloud_id = add_cloud(project, lc.CloudChunk(s.xyz, None, s.ret), "Через API")
+    started = ok(c.post(f"{API}/lines/layers/{cloud_id}/classify", json={"profile": "plain", "cr": "1,5"}))
+    job = wait_job(c, started["source"], started["id"], timeout=300)
+    assert job["status"] == "done" and job["title"] == "Фильтр земли", job
+    assert job["params"]["profile"] == "plain" and opened(project, cloud_id).classes.get(2, 0) > 0
+    bad = c.post(f"{API}/lines/layers/{cloud_id}/classify", json={"profile": "lake"})
+    assert bad.status_code == 422

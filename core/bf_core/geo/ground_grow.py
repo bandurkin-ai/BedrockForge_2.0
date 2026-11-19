@@ -1,12 +1,15 @@
 """The ground filter, stages 6–8 (`geo/ground.py`, ADR 0014 §4): the growth of the ground from the seeds along
 the slope, the surface of the ground, the height of every point above it and its class, the steep faces.
 
-Growth (Д-22, idea 3). The stiff cloth passes metres under a crest, a berm, the top of a dump — the ground is
-returned from the seeds over the grid of the lowest returns. A cell taken as ground carries a plane fitted to
-the ground returns of the 5 × 5 cells around it; a neighbour joins when its return is not above that plane by
-more than CT along the normal and the plane does not rise towards it steeper than α. Down — any drop: a
-crest, a face, a foot; up — gently only: a wall of a building, a crown, a face steeper than α are not climbed.
-The order is fixed (a queue from the seeds in the order of the cells): one thread, the same result every run.
+Growth (Д-22, idea 3). The stiff cloth passes metres under a crest, a berm, the top of a dump (it rises from
+where it lies on the ground no steeper than its load allows) — the ground is returned from the seeds over the
+grid of the lowest returns. A cell taken as ground carries a plane fitted to the lower ground returns of the
+5 × 5 cells around it; a neighbour joins when its return is not above that plane by more than CT along the
+normal — less what the plane itself may be off at the neighbour (`_doubt`: a plane through three returns says
+little a metre beyond them, and under vegetation it would climb from one bush to the next) — and the plane
+does not rise towards it steeper than α. Down — any drop: a crest, a face, a foot; up — gently only: a wall of
+a building, a crown, a face steeper than α are not climbed. The order is fixed (a queue from the seeds in the
+order of the cells): one thread, the same result every run.
 
 Smooth areas at the edge of the survey. A flat behind a high crest that ends at the edge of the data (the usual
 survey of a pit: a strip around it) and a steep wall cut by that edge are never touched by the cloth and cannot
@@ -253,12 +256,13 @@ def edge_rows(cmin, mask, ncx, row0, row1, edge):  # type: ignore[no-untyped-def
         for ci in range(ncx):
             cell = cj * ncx + ci
             pi = ci // 2
-            at_edge = pj < 2 or pi < 2 or pj + 4 > npy or pi + 4 > npx
-            if not at_edge:
-                for j in range(pj - 2, pj + 4):
-                    for i in range(pi - 2, pi + 4):
-                        if not mask[j, i]:
-                            at_edge = True
+            # the border of the block is not an edge of the data: the lattice of the cloud has empty
+            # particles around the data, a block inside it is cut through the data
+            at_edge = False
+            for j in range(max(pj - 2, 0), min(pj + 4, npy)):
+                for i in range(max(pi - 2, 0), min(pi + 4, npx)):
+                    if not mask[j, i]:
+                        at_edge = True
             edge[cell] = 1 if at_edge and cmin[cell] >= 0 else 0
             if not at_edge:
                 inside += 1

@@ -106,7 +106,7 @@ def test_working_tolerance_is_close_to_the_exact_cloth() -> None:
 
 
 def test_sweeps_on_threads_are_bitwise_the_same() -> None:
-    h, mask = _scene(420, seed=4)
+    h, mask = _scene(1040, seed=4)
     assert h.size >= gc.THREAD_NODES
     serial, counts = gc.solve(h, mask, LOAD)
     for threads in (2, 4, 8):

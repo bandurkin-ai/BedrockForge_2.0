@@ -25,12 +25,17 @@ Blocks. The lattice of cells is anchored to the whole origin of the cloud; it is
 particles a side, each computed with a margin (64 m, at least two widths of the cloth) and giving the classes of
 the points of its core. A cloud of 50 million points at 20 points/m² is one block.
 
+The step and the cloud. CR must not be finer than the cloud: with a return in fewer than a quarter of the cells
+of CR/2 (CR under the mean distance between the points) the filter refuses — GroundError `cloud_too_sparse`
+with the step to take; under 35 % the report carries the warning `cloud_sparse`.
+
 Threads and determinism. The stages run over fixed strips of rows (or of points) on Python threads; the
 kernels release the GIL, a strip writes only its own outputs, reductions are counts and maxima. The growth is
 one thread in a fixed order. `cls` and `h` do not depend on `threads` bit for bit (ADR 0014, Т-З4).
 
-Input: `xyz` (n, 3) float64 project coordinates (a view or a memory map is not copied), `ret` (n,) uint8 —
-return number in the low 4 bits, number of returns in the high 4 (the cloud blob `ret`), optional.
+Input: `xyz` (n, 3) float64 project coordinates (a contiguous array or a memory map of the blob is taken as it
+is, anything else is copied once), `ret` (n,) uint8 — return number in the low 4 bits, number of returns in
+the high 4 (the cloud blob `ret`), optional: a last return is preferred as the lowest of its cell.
 Output: `cls` uint8 — ASPRS codes 1, 2, 3, 4, 5, 7; `h` float32 — height above the ground along the normal,
 m (NaN — no ground near). A point with a coordinate that is not finite is left out: class 1, h NaN.
 """
@@ -238,7 +243,9 @@ def classify_ground(
 
     `tick(fraction, stage)` is called between the stages, the blocks and the sweeps of the cloth and may raise
     to cancel. `block` — particles a side of a block (the default suits a job; tests force small blocks).
-    The report: counts by class, parameters, blocks, threads, sweeps of the cloth, seconds by stage.
+    The report: counts by class (`classes`), parameters, `blocks`, `threads`, `sweeps` of the cloth by block
+    and level, `seconds` by stage, `fill` (the share of cells with a return), `warnings` [{code, message, hint}],
+    `seeds`, `ground_cells`, `edge_areas`, `face_points`, `noise`, `skipped` (points without coordinates).
     """
     p = params or PROFILES[DEFAULT_PROFILE]
     check_params(p)

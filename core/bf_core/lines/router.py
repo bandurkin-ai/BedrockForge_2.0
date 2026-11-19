@@ -165,3 +165,26 @@ def export_lines(svc: Svc, s: Sched, body: ExportBody) -> dict[str, Any]:
     label = export.FORMATS[body.format].label
     key, job_id = s.submit("export.lines", params, title=f"Экспорт линий ({label})")
     return {"source": key, "id": job_id}
+
+
+class ClassifyBody(BaseModel):
+    """«Фильтр земли» (ТЗ 7.35 Д-22, ADR 0014): a profile and its numbers; an empty number — the profile's."""
+
+    profile: Literal["quarry", "plain"] | None = None
+    cr: float | str | None = None
+    ri: int | None = None
+    ct: float | str | None = None
+    r_b: float | str | bool | None = None
+    noise: dict[str, Any] | bool | None = None
+
+
+@router.post("/layers/{layer_id}/classify")
+def classify_cloud(svc: Svc, s: Sched, layer_id: int, body: ClassifyBody) -> dict[str, Any]:
+    """`ground.classify`: the job «Фильтр земли» writes the classes and `h` of a point cloud (heavy queue)."""
+    from . import ground_job
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        params = ground_job.request(conn, layer_id, **body.model_dump(), heavy_workers=s.heavy_workers)
+    key, job_id = s.submit("ground.classify", params, title="Фильтр земли")
+    return {"source": key, "id": job_id}
