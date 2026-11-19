@@ -69,12 +69,13 @@ export function shownLayers(f: Pick<LineFileInfo, "layers">): { layers: LineLaye
   return { layers: f.layers.slice(0, MAX_LAYER_ROWS), rest: Math.max(0, f.layers.length - MAX_LAYER_ROWS) };
 }
 
-/** A layer; a point cloud adds «Фильтр земли…» and «Построить ЦТМ из облака…» (ADR 0014 §6). */
+/** A layer; a point cloud adds «Фильтр земли…», «Построить ЦТМ из облака…» and «Карта разностей…» (ADR 0014 §5, §6). */
 export function layerMenu(l: Pick<LineLayerInfo, "id"> & Partial<Pick<LineLayerInfo, "cloud">>, visible: boolean): TreeAction[] {
   const cloud: TreeAction[] = l.cloud
     ? [
         { label: "Фильтр земли…", command: "ground.classify", args: { cloud_id: l.id } },
         { label: "Построить ЦТМ из облака…", command: "terrain.from_points", args: { cloud_id: l.id } },
+        { label: "Карта разностей…", command: "cloud.dz", args: { cloud_id: l.id } },
       ]
     : [];
   return [

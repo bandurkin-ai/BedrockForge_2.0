@@ -82,6 +82,8 @@ export interface FromPointsBody {
   cell: number | null;
   name?: string | null;
   to_dtm?: boolean;
+  /** false — no map of differences of the cloud against the surface built (the core counts it by default) */
+  dz?: false;
 }
 
 /** Where the window sends its build: a single cloud with a plain boundary goes to `from-points` (an empty
@@ -92,7 +94,7 @@ export function requestOf(body: BuildBody): { path: string; body: BuildBody | Fr
   if (c.length === 1 && !body.layer_ids.length && !body.set_ids.length && plain) {
     return {
       path: "/wireframes/from-points",
-      body: { cloud_id: c[0].layer_id, classes: c[0].classes, l_max: body.max_edge, boundary_id: body.boundary?.layer_id ?? null, cell: c[0].cell, name: body.name, to_dtm: body.to_dtm },
+      body: { cloud_id: c[0].layer_id, classes: c[0].classes, l_max: body.max_edge, boundary_id: body.boundary?.layer_id ?? null, cell: c[0].cell, name: body.name, to_dtm: body.to_dtm, ...(body.dz === false ? { dz: false as const } : {}) },
     };
   }
   return { path: "/wireframes/build-dtm", body };

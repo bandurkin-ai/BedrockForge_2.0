@@ -2,7 +2,9 @@
 // классифицирована») → «Свойства» of the cloud → «Фильтр земли…» (the profile «Равнина»; «Свой» with a number out of
 // its range is refused in the window) → the job → class 2 «земля» in «Свойства», the colour mode «Высота над
 // землёй» → «Моделирование › Поверхности › Построить ЦТМ из облака» → the window «Построение ЦТМ» with the cloud and
-// its ground → the DTM in the tree («ЦТМ») and in the 3D window.
+// its ground → the DTM in the tree («ЦТМ») and in the 3D window; the cloud gets its map of differences against it
+// at once (7.1.17: the colour mode «Отклонение от ЦТМ», the summary in «Свойства»), and «Карта разностей…» against
+// the same DTM gives the same measures.
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
@@ -63,7 +65,7 @@ function las(): Buffer {
 const state = (page: Page) => page.evaluate(() => window.__bfScene!.state());
 const run = (p: Page, id: string, args: Record<string, unknown>) => p.evaluate(([i, a]) => window.__bfScene!.run(i as string, a as Record<string, unknown>), [id, args] as const);
 
-test("ground: LAS → «Фильтр земли» («Равнина») → class 2 → «Построить ЦТМ из облака» → the DTM in the tree and in 3D", async () => {
+test("ground: LAS → «Фильтр земли» («Равнина») → class 2 → «Построить ЦТМ из облака» → the DTM in the tree and in 3D → «Карта разностей»", async () => {
   test.setTimeout(420_000);
   const { app, page } = await launch({ BF_E2E: "1" });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-ground-"));
@@ -154,6 +156,43 @@ test("ground: LAS → «Фильтр земли» («Равнина») → class
     expect((await run(page, "scene.fit", {})).ok).toBe(true);
     await waitFrame(page);
     await page.screenshot({ path: shot("ground-dtm.png") });
+
+    // ---- the map of differences of the build: the mode `dz`, the summary in «Свойства» ---------------------------
+    const dtmId = Number((await dtmRow.getAttribute("data-testid"))!.replace("tree-dtm-", ""));
+    type Dz = { wireframe_id: number; name: string; at: string; points: number; outside: number; by: string; count: number; rms: number; p95: number; max: number };
+    const dzOf = async () => {
+      const list = (await api("/lines/files")).files as { name: string; layers: { cloud: { modes: string[]; dz: Dz | null } | null }[] }[];
+      return list.find((f) => f.name === "ground.las")!.layers[0].cloud!;
+    };
+    await expect.poll(async () => (await dzOf()).modes, { timeout: 60_000 }).toContain("dz");
+    const first = (await dzOf()).dz!;
+    expect(first).toMatchObject({ wireframe_id: dtmId, name: "Земля облака", by: "ground", points: 48_000 - first.outside });
+    expect(first.count).toBeGreaterThan(30_000);
+    expect(first.rms).toBeLessThan(0.5); // the ground lies on its own surface
+    const metres = (v: number) => `${v.toLocaleString("ru-RU", { maximumFractionDigits: 3 })} м`;
+    await row.getByText("ground", { exact: true }).click();
+    await expect(props.getByLabel("Режим цвета").locator("option[value=dz]")).not.toHaveAttribute("disabled", "");
+    const summary = props.getByTestId("props-cloud-dz");
+    await expect(summary).toContainText("относительно «Земля облака»");
+    await expect(summary).toContainText(`СКО ${metres(first.rms)}, P95 ${metres(first.p95)}, наибольшее ${metres(first.max)}`);
+    await props.getByLabel("Режим цвета").selectOption("dz");
+    await waitFrame(page);
+    await page.screenshot({ path: shot("ground-dz.png") });
+
+    // ---- «Карта разностей…» against the same DTM: the same measures ---------------------------------------------
+    await props.getByRole("button", { name: "Карта разностей…" }).click();
+    const dz = page.getByRole("dialog", { name: "Карта разностей" });
+    await expect(dz.getByLabel("Каркас или ЦТМ")).toHaveValue(String(dtmId)); // the one compared last
+    await dz.getByRole("button", { name: "Рассчитать" }).click();
+    const result = dz.getByTestId("cloud-dz-result");
+    await expect(result).toContainText("СКО", { timeout: 120_000 });
+    for (const v of [first.rms, first.p95, first.max]) await expect(result).toContainText(metres(v));
+    await page.screenshot({ path: shot("ground-dz-window.png") });
+    await expect.poll(async () => (await dzOf()).dz!.at, { timeout: 60_000 }).not.toBe(first.at);
+    const again = (await dzOf()).dz!;
+    expect({ ...again, at: first.at }).toEqual(first);
+    await dz.getByTestId("cloud-dz").getByRole("button", { name: "Закрыть" }).click();
+    await expect(dz).toHaveCount(0);
   } finally {
     await close(app);
     fs.rmSync(dir, { recursive: true, force: true });

@@ -17,6 +17,7 @@ import { StripLogWindow } from "../charts/striplog/StripLogWindow";
 import { DownholeWindow } from "../modules/downhole/DownholeWindow";
 import { BuildDtmWindow } from "../modules/dtm/BuildDtmWindow";
 import { GroundWindow } from "../modules/dtm/GroundWindow";
+import { DzWindow } from "../modules/lines/DzWindow";
 import { LinesExportWindow } from "../modules/lines/LinesExportWindow";
 import { RasterExportWindow } from "../modules/rasters/RasterExportWindow";
 import type { ExportOptions } from "../modules/wireframes/export";
@@ -80,6 +81,8 @@ const renderWindow: WindowRenderer = (w) => {
       return <BuildDtmWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
     case "dtm-ground":
       return <GroundWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
+    case "cloud-dz":
+      return <DzWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
     case "wireframes-export":
       return <WireframesExportWindow winId={w.id} format={w.props?.format as string | undefined} wireframeIds={w.props?.wireframeIds as number[] | undefined} options={w.props?.options as Partial<ExportOptions> | undefined} />;
     default:

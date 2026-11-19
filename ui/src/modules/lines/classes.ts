@@ -59,7 +59,8 @@ export interface CloudSummary {
     xyz?: { delimiter?: string; columns?: string[]; fields?: Record<string, string | null> } | null;
   } | null;
   ground: unknown;
-  dz: { wireframe_id?: number; name?: string } | null;
+  /** the map of differences (`dz.ts › dzRecord`): with what surface, when, the measures of |dz| */
+  dz: { wireframe_id?: number | null; name?: string; at?: string; points?: number; outside?: number; by?: string; count?: number; rms?: number; p95?: number; max?: number } | null;
 }
 
 export const cloudOf = (l: Pick<LineLayerInfo, "cloud">): CloudSummary | null => l.cloud ?? null;
@@ -125,7 +126,7 @@ export function modeOptions(c: Pick<CloudSummary, "modes">): ModeOption[] {
   const has = new Set(c.modes);
   const why: Partial<Record<CloudColorMode, string>> = {
     h: has.has("h") ? undefined : "появится после «Фильтра земли»",
-    dz: has.has("dz") ? undefined : "появится после расчёта отклонения от ЦТМ",
+    dz: has.has("dz") ? undefined : "появится после «Карты разностей»",
   };
   return (["class", "layer", "h", "dz"] as const).map((mode) => ({ mode, title: MODE_TITLES[mode], why: why[mode] ?? null }));
 }
@@ -169,7 +170,6 @@ export function cloudFacts(l: LineLayerInfo, file?: Pick<LineFileInfo, "name" | 
   facts.push(...extentFacts(l.extent ?? c?.bbox ?? null));
   const crs = file?.crs_name ?? (c?.source?.las?.crs ? "задана в LAS" : null);
   facts.push({ label: "Система координат", value: crs ?? "не задана" });
-  if (c?.dz?.name) facts.push({ label: "ЦТМ для dz", value: c.dz.name });
   return facts;
 }
 

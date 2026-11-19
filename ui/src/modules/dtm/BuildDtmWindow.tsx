@@ -2,7 +2,8 @@
  * The window «Построение ЦТМ» (ТЗ 7.20, 7.35 Д-07, Д-22; ADR 0011 §3, §5, ADR 0014 §5): the sources — layers of
  * points and lines, point clouds (classes, step of the thinning; `CloudSources.tsx`) and the collars of drillhole
  * sets — the boundary, the longest edge, the name, «Сразу в раздел ЦТМ» → the job `model.dtm`, seen in «Задания»;
- * the surface appears in the tree when it is done. `cloudId` — the cloud the window opens with
+ * the surface appears in the tree when it is done; with «Карта разностей для облаков» (on by default) the clouds
+ * among the sources get `dz` against it. `cloudId` — the cloud the window opens with
  * (`terrain.from_points`); a single cloud goes to `POST /wireframes/from-points` (`requestOf`).
  */
 import { useMemo, useState } from "react";
@@ -143,6 +144,12 @@ export function BuildDtmWindow({ winId, cloudId }: { winId: string; cloudId?: nu
           <input type="checkbox" checked={form.toDtm} onChange={(e) => patch({ toDtm: e.target.checked })} />
           Сразу в раздел «ЦТМ»
         </label>
+        {form.clouds.length > 0 && (
+          <label className={css.check} title="dz = Z точки − высота построенной поверхности: режим цвета «Отклонение от ЦТМ», СКО, P95 и наибольшее в «Свойствах» облака">
+            <input type="checkbox" checked={form.dz} onChange={(e) => patch({ dz: e.target.checked })} />
+            Карта разностей для облаков
+          </label>
+        )}
         {error && (
           <p className={css.error} role="alert">
             {error}

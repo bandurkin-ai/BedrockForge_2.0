@@ -5,8 +5,8 @@
  * class, return, `h`, `dz`) and the points by pages. The mode and the hidden classes are kept by the project in
  * the view key `cloud_styles` (`patchEntry`): the 3D window follows at once. The name, the colour and the
  * visibility of the layer go through the registry (`object.rename`, `object.color`, `layer.show`); «Фильтр
- * земли…» and «Построить ЦТМ из облака…» — `ground.classify` and `terrain.from_points` (ADR 0014 §6), with what
- * the last filter was.
+ * земли…», «Построить ЦТМ из облака…» and «Карта разностей…» — `ground.classify`, `terrain.from_points` and
+ * `cloud.dz` (ADR 0014 §5, §6), with what the last filter was and what the map of differences (`cloud.dz`) tells.
  */
 import { useEffect, useState } from "react";
 import { useApp } from "../../shell/AppContext";
@@ -23,6 +23,7 @@ import { updateView, viewStore } from "../scene/bind";
 import { pickedObject, type LineFileInfo, type LineLayerInfo } from "../scene/objects";
 import { patchEntry } from "../scene/viewSync";
 import { loadAttrs } from "./actions";
+import { dzRecord, dzSummary } from "./dz";
 import { classesCount, classLabel, classRows, cloudFacts, cloudOf, modeOf, modeOptions, pointFacts, shownText, withAllClasses, withClass, type CloudPage } from "./classes";
 import { ATTR_PAGE, attrText, pager, pageStart, pickedLine } from "./props";
 import { layerKey } from "./tree";
@@ -137,7 +138,7 @@ export function CloudProps({ layer, file }: { layer: LineLayerInfo; file: LineFi
   );
 }
 
-/** «Фильтр земли…», «Построить ЦТМ из облака…» and what the last filter was. */
+/** «Фильтр земли…», «Построить ЦТМ из облака…», «Карта разностей…», what the last filter was and what `dz` tells. */
 function GroundRow({ layer, run }: { layer: LineLayerInfo; run: (id: string, args?: Record<string, unknown>) => Promise<boolean> }) {
   const last = lastGround(layer);
   const profiles = useStore(groundProfiles, (s) => s);
@@ -156,7 +157,13 @@ function GroundRow({ layer, run }: { layer: LineLayerInfo; run: (id: string, arg
         <button type="button" className={css.btn} onClick={() => void run("terrain.from_points", { cloud_id: layer.id })}>
           Построить ЦТМ из облака…
         </button>
+        <button type="button" className={css.btn} onClick={() => void run("cloud.dz", { cloud_id: layer.id })}>
+          Карта разностей…
+        </button>
       </div>
+      <p className={css.note} data-testid="props-cloud-dz">
+        {dzSummary(dzRecord(layer))}
+      </p>
     </fieldset>
   );
 }

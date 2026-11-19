@@ -1,8 +1,8 @@
 /**
  * The window «Построение ЦТМ» as data (ТЗ 7.20, 7.35 Д-07, Д-22; ADR 0011 §3 `model.dtm`, ADR 0014 §5): the
  * sources — layers of points and lines, collars of drillhole sets, point clouds (the classes taken, the step of
- * the thinning; `cloud.ts`) — the boundary (a closed line of a layer), the longest edge, the name and «Сразу в
- * раздел ЦТМ». Numbers are typed with a comma or a point; an empty field is «not set». Pure.
+ * the thinning; `cloud.ts`) — the boundary (a closed line of a layer), the longest edge, the name, «Сразу в
+ * раздел ЦТМ» and «Карта разностей для облаков» (`dz`: the clouds among the sources get Z − the surface built). Numbers are typed with a comma or a point; an empty field is «not set». Pure.
  */
 import { counted } from "../../shell/treeActions";
 import { parseNumber } from "../importing/objects";
@@ -27,9 +27,11 @@ export interface BuildForm {
   maxEdge: string;
   /** «Сразу в раздел ЦТМ» */
   toDtm: boolean;
+  /** «Карта разностей для облаков»: the clouds among the sources get `dz` against the surface built */
+  dz: boolean;
 }
 
-export const EMPTY_FORM: BuildForm = { name: "", layerIds: [], setIds: [], clouds: [], breaklines: true, boundaryLayer: null, boundaryLine: "", boundaryZ: false, maxEdge: "", toDtm: true };
+export const EMPTY_FORM: BuildForm = { name: "", layerIds: [], setIds: [], clouds: [], breaklines: true, boundaryLayer: null, boundaryLine: "", boundaryZ: false, maxEdge: "", toDtm: true, dz: true };
 
 /** Layers that can give the boundary: the ones with a closed line. */
 export function boundaryLayers(files: readonly LineFileInfo[]): LineLayerInfo[] {
@@ -54,6 +56,8 @@ export interface BuildBody {
   boundary: { layer_id: number; line: number | null; use_z: boolean } | null;
   max_edge: number | null;
   to_dtm: boolean;
+  /** only `false`, and only with clouds: the core counts the map of differences of the clouds by default */
+  dz?: false;
 }
 
 /** The body of `POST /wireframes/build-dtm`, or why the build cannot start. */
@@ -88,6 +92,7 @@ export function buildBody(form: BuildForm, files: readonly LineFileInfo[]): { bo
       boundary,
       max_edge: edge,
       to_dtm: form.toDtm,
+      ...(clouds.list.length && !form.dz ? { dz: false as const } : {}),
     },
     error: null,
   };
