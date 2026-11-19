@@ -153,8 +153,8 @@ def request(
 def _memory(params: dict[str, Any]) -> int:
     """The coordinates are a map of their file (24 bytes a point, pages of the file cache), the returns, the
     new classes and heights (6), the index of the kernel (≤ 12) and the grids of one block. Measured with the
-    scene «карьер»: 1 million points — MEASURED_1M MB at the peak, 10 million — MEASURED_10M MB."""
-    return max(768, int(int(params.get("points") or 0) * 64 / 2**20) + 512)
+    scene «карьер» on 4 threads: 1 million points — 332 MB at the peak, 10 million — 711 MB."""
+    return max(512, int(int(params.get("points") or 0) * 46 / 2**20) + 400)
 
 
 def _classes_text(counts: dict[int, int]) -> str:
