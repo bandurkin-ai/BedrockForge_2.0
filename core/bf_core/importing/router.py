@@ -370,6 +370,11 @@ class ObjectOptions(BaseModel):
     # strings (one of `choices` of the composition; empty — one wireframe, one layer)
     split_by: str | None = Field(default=None, max_length=40)
     layer_field: str | None = Field(default=None, max_length=40)
+    # a point cloud (ADR 0014 §6): a table of points loaded as a cloud (a LAS always is one); «каждая k-я
+    # запись»; the column of the ASPRS class of a table ("" — none)
+    cloud: bool | None = None
+    every: int | None = Field(default=None, ge=1, le=1_000_000)
+    class_column: str | None = Field(default=None, max_length=500)
 
 
 class RasterLevel(BaseModel):
