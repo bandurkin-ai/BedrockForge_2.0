@@ -134,7 +134,8 @@ def test_lines_points_plan_and_dtm(demo) -> None:  # type: ignore[no-untyped-def
     from PIL import Image
 
     c, project, store = demo
-    files = c.get(f"{API}/lines/files").json()["files"]
+    # the files of Э7; the contours and the isolines of Э9 (`demo/contours.py`) — test_demo_contours.py
+    files = [f for f in c.get(f"{API}/lines/files").json()["files"] if f["name"] in (geo.LINES_FILE, geo.SURVEY_FILE)]
     assert [(f["name"], [x["name"] for x in f["layers"]]) for f in files] == [
         ("Рудное тело и дорога", ["Рудное тело", "Дорога"]),
         ("Топосъёмка", ["Пикеты"]),
@@ -205,9 +206,10 @@ def test_lines_points_plan_and_dtm(demo) -> None:  # type: ignore[no-untyped-def
     assert px[row, col].tolist() == [30, 36, 44] and px[5, 5].tolist() != [30, 36, 44]
 
     # the DTM: built from the survey points, the collars and the road, the plan laid on it; the wireframes of
-    # «Каркасы» (Э8, `demo/wireframes.py`, test_demo_wireframes.py) come after it
-    assert [w["name"] for w in wires] == ["Рельеф", "Рудное тело 1", "Рудное тело 2", "Разлом"]
-    assert [w["dtm"] is None for w in wires] == [False, True, True, True]
+    # «Каркасы» (Э8, `demo/wireframes.py`, test_demo_wireframes.py) and the stitched body of Э9
+    # (`demo/contours.py`, test_demo_contours.py) come after it
+    assert [w["name"] for w in wires] == ["Рельеф", "Рудное тело 1", "Рудное тело 2", "Разлом", "Рудное тело 3"]
+    assert [w["dtm"] is None for w in wires] == [False, True, True, True, True]
     dtm = wires[0]
     assert dtm["dtm"] == {"raster_id": plan["id"], "clip": True, "tint": "#ffffff", "opacity": 1.0, "shade": True}
     assert [tuple(r) for r in drape] == [(dtm["id"], plan["id"], "drape")]
@@ -241,11 +243,10 @@ def test_demo_is_the_same_everywhere_and_the_audit_finds_nothing_new(demo) -> No
     with dialect.read_tx(project.engine) as conn:
         set_id = _set(conn)
         collars = geo._collars(conn)
+        e7 = sa.and_(objects.c.kind == "line_file", objects.c.name.in_([geo.LINES_FILE, geo.SURVEY_FILE]))
         layer_ids = [
             i
-            for f in conn.execute(
-                sa.select(objects.c.id).where(objects.c.kind == "line_file").order_by(objects.c.id)
-            ).scalars()
+            for f in conn.execute(sa.select(objects.c.id).where(e7).order_by(objects.c.id)).scalars()
             for i in ls_store.layer_ids(conn, f)
         ]
         got = [ls_store.read_layer(conn, store, i).xyz.tobytes() for i in layer_ids]

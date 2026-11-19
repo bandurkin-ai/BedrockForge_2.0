@@ -44,7 +44,11 @@ test("wireframes of the demo: «Свойства» and «Проверить», t
     const run = (id: string, args: Record<string, unknown>) => page.evaluate(([i, a]) => window.__bfScene!.run(i as string, a as Record<string, unknown>), [id, args] as const);
 
     type Wireframe = { id: number; name: string; dtm: unknown; color: string; triangle_count: number; extent: number[]; stats: { volume: number | null; closed: boolean; checks?: { state: string } } };
-    const all = (await api("GET", "/wireframes")).body.wireframes as Wireframe[];
+    // the body stitched from contours of Э9 (core demo/contours.py) is not the subject here: without it the
+    // section, the marks of crossings and the counts below are those of the wireframes of Э8
+    const stitched = ((await api("GET", "/wireframes")).body.wireframes as Wireframe[]).find((w) => w.name === "Рудное тело 3")!;
+    expect((await api("DELETE", `/wireframes/${stitched.id}`)).status).toBe(200);
+    const all =(await api("GET", "/wireframes")).body.wireframes as Wireframe[];
     const byName = (name: string) => all.find((w) => w.name === name)!;
     const [body, lens, fault, relief] = ["Рудное тело 1", "Рудное тело 2", "Разлом", "Рельеф"].map(byName);
     const solids = [body, lens, fault].map((w) => w.id).sort((a, b) => a - b);

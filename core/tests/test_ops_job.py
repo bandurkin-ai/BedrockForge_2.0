@@ -38,9 +38,14 @@ def numba_cache(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 @pytest.fixture()
 def ops_env(numba_cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Before the core starts: its workers re-import the handlers of the operations by name."""
+    """Before the core starts: its workers re-import the handlers of the operations by name, and its app has the
+    router of the operations (until `api/modules.py` and `jobs/registry.py` list them)."""
+    import bf_core.api.app as app_module
+
     monkeypatch.setenv("NUMBA_CACHE_DIR", str(numba_cache))
     monkeypatch.setenv("BF_EXTRA_JOB_MODULES", "bf_core.ops.job")
+    if "ops" not in app_module.ROUTER_MODULES:
+        monkeypatch.setattr(app_module, "ROUTER_MODULES", (*app_module.ROUTER_MODULES, "ops"))
 
 
 @pytest.fixture()

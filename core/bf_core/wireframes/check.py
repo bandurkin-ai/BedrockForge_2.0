@@ -260,11 +260,11 @@ def _failed(exc: Any) -> dict[str, Any]:
 
 def _arrays(store: Any, state: MeshState) -> tuple[np.ndarray, np.ndarray]:
     """The vertices and the triangles of a wireframe as stored, in memory."""
-    xyz, tri = state.sha("xyz"), state.sha("tri")
-    if xyz is None or tri is None or not store.exists(xyz) or not store.exists(tri):
-        raise ws.broken()
-    v, t = np.fromfile(store.path_of(xyz), dtype="<f8"), np.fromfile(store.path_of(tri), dtype="<i4")
-    if len(v) != 3 * state.points or len(t) != 3 * state.triangles:
+    from bf_core.viz import meshes as vm
+
+    found = vm.files_of(store, state)  # its own blobs or its entry of a pack
+    v, t = found.array("xyz"), found.array("tri")
+    if v is None or t is None or len(v) != 3 * state.points or len(t) != 3 * state.triangles:
         raise ws.broken()
     return v.reshape(-1, 3), t.reshape(-1, 3)
 

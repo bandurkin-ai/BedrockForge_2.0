@@ -5,8 +5,10 @@ Every wireframe of a file is an object of its own (ADR 0013 «Файл с нес
 
 * one at a time: taken from the reader, staged (`wireframes.source.stage_mesh`: the checks of the geometry, the
   spatial order with `seq` — the order of the file, the parts, the measures, the blobs) and written as
-  `building` by a short transaction — a few small ones together (`PORTION`), a large one alone, so a file of a
-  hundred wireframes is never in memory whole and a cancel comes between any two steps;
+  `building` by a short transaction — small ones together (`PORTION`), a large one alone, so a file of a
+  hundred wireframes is never in memory whole and a cancel comes between any two steps. The small ones of a
+  portion (`wireframes.files.PACK_LIMIT`) share one blob — a pack (`pack:<n>`, ADR 0015 §8): thousands of them
+  cost a blob a portion, not three blobs a wireframe;
 * the name of the file's wireframe, or «name (2)» when the project has it (`meta.source.as` keeps that, so an
   export gives the file its own name back); the colour and the attributes of the file; `meta.source` — the rows
   a writer needs for the same file and `file` — the name of the file it came from, without its folder, as the
@@ -53,7 +55,7 @@ __all__ = ["FileFailed", "Meter", "Written", "committed", "has_meshes", "log_mes
 WIREFRAME = "wireframe"  # `import_log.counts.kind` of a wireframe; the kind of its object
 WIREFRAMES = "wireframes"  # the kind of a file entry of the result
 TARGET = "objects"  # `import_log.target`
-PORTION = 25  # wireframes written by one transaction…
+PORTION = 500  # wireframes written by one transaction (the small ones in one pack)…
 PORTION_TRIANGLES = 100_000  # … or fewer: staged wireframes wait in memory, a large one is written at once
 MAX_FOLDER = 200  # `objects.folder`
 MEDIA = "application/octet-stream"
@@ -197,6 +199,7 @@ def write_meshes(
     `FileFailed` when the file cannot be read to its end or gives no wireframe."""
     from bf_core.drillholes.edit import author
     from bf_core.formats.mesh_io import unique_name
+    from bf_core.wireframes import files as wf_files
     from bf_core.wireframes import source as src
     from bf_core.wireframes import store as ws
 
@@ -204,6 +207,7 @@ def write_meshes(
     meta = {"format": read.format, "label": read.label, "filename": label}
     out = Written()
     pending: list[tuple[Any, Any, list[str]]] = []  # (staged, mesh, its notes)
+    held = [0]  # triangles of `pending`
     named: set[str] = set()  # the files of a pair as the sources of the wireframes name them
     said = 0
 
@@ -212,6 +216,7 @@ def write_meshes(
         counts: list[dict[str, Any]] = []
         closed = 0
         try:
+            wf_files.stage_files(store, [staged for staged, _mesh, _notes in pending])  # the pack of the portion
             with dialect.write_tx(engine) as conn:
                 names = sa.select(objects.c.name_key).where(objects.c.kind == ws.WIREFRAME)
                 taken = {str(k) for k in conn.execute(names).scalars()}
@@ -230,6 +235,7 @@ def write_meshes(
             for staged, _mesh, _notes in pending:
                 staged.discard()
             pending.clear()
+            held[0] = 0
         out.ids += ids  # written: only now are they wireframes of the file
         out.counts += counts
         out.closed += closed
@@ -248,16 +254,18 @@ def write_meshes(
             def storing(fraction: float, message: str, title: str = title) -> None:
                 meter.storing(fraction, f"{title}: {message}")
 
-            staged = src.stage_mesh(store, mesh, progress=storing)
+            small = wf_files.array_bytes(mesh.point_count, mesh.triangle_count) <= wf_files.PACK_LIMIT
+            staged = src.stage_mesh(store, mesh, progress=storing, write=not small)  # small: in the pack at flush
             notes = [*mesh.warnings, *check_notes(mesh, staged.stats)]
             pending.append((staged, mesh, notes))
+            held[0] += len(staged.tri)
             named.update(str(mesh.source[k]) for k in PAIRED.get(read.format, ()) if mesh.source.get(k))
             mesh.source.setdefault("file", label)  # «Источник» of the properties: the file as the journal names it
             for note in notes[: max(MAX_NOTES - said, 0)]:
                 ctx.log(f"{label}: {title}: {note}", "warn")
             said += len(notes)
             meter.stored()
-            if len(pending) >= PORTION or sum(len(s.tri) for s, _m, _n in pending) >= PORTION_TRIANGLES:
+            if len(pending) >= PORTION or held[0] >= PORTION_TRIANGLES:
                 flush()
             del mesh, staged
         flush()
@@ -322,21 +330,13 @@ def log_meshes(
     from bf_core.storage.blobs import add_owners
 
     owners: list[tuple[str, str, int, str]] = []
+    insert = sa.insert(import_log)  # the values as parameters: one compiled statement for every row
     for wf_id, counts in zip(written.ids, written.counts, strict=True):
-        res = conn.execute(
-            sa.insert(import_log).values(
-                object_id=wf_id,
-                job_id=job_id,
-                file_name=label,
-                format=fmt,
-                target=TARGET,
-                mapping=dict(settings),
-                counts=counts,
-                sha256=sha,
-                created_at=now,
-            )  # fmt: skip
-        )
-        log_id = int(res.inserted_primary_key[0])  # type: ignore[index]
+        row = dict(
+            object_id=wf_id, job_id=job_id, file_name=label, format=fmt, target=TARGET, mapping=dict(settings),
+            counts=counts, sha256=sha, created_at=now,
+        )  # fmt: skip
+        log_id = int(conn.execute(insert, row).inserted_primary_key[0])  # type: ignore[index]
         owners.append((sha, "import", log_id, "source"))
         owners.extend((side, "import", log_id, role) for role, side in sides.items())
     add_owners(conn, owners)

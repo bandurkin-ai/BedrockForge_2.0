@@ -1,7 +1,8 @@
 """Wireframes of the project and the settings of a digital terrain model (ТЗ 7.20; ADR 0011 §1, §3).
 
 A wireframe is `objects(kind="wireframe")` with a `wireframes` row and the geometry in immutable blobs of the
-owner `object`: `xyz <f8 N×3` (the vertices as given, bit for bit, in their order) and `tri <i4 M×3`. The
+owner `object`: `xyz <f8 N×3` (the vertices as given, bit for bit, in their order) and `tri <i4 M×3` — of its
+own, or an entry `pack:<n>` of a blob shared by the small wireframes of a portion (`files.py`). The
 triangles are stored along a Z-order curve of their centroids (the same triangles: the exact geometry does not
 change), so the parts of the 3D view are runs of consecutive triangles; their table is `wireframes.render`
 {part_triangles, parts [[first, count, xmin, ymin, zmin, xmax, ymax, zmax]]}. The levels of detail are derived
@@ -17,8 +18,9 @@ object would lose the order on PostgreSQL); value — text, number, yes/no or em
 The version of a wireframe is `objects.version`: every change raises it, a stale `expected_version` is a 409
 with the current wireframe. The geometry never changes in place (its ETags do not depend on the version).
 
-Writing: `stage_wireframe` outside the write transaction (order, parts, measures, temp files with fsync),
-`commit_wireframe` inside it; `StagedWireframe.discard()` drops the temp files when the commit does not happen.
+Writing: `stage_wireframe` outside the write transaction (order, parts, measures, temp files with fsync; with
+`write=False` the files of a portion come later, together — `files.stage_files`), `commit_wireframe` inside it;
+`StagedWireframe.discard()` drops the temp files when the commit does not happen. Readers: `files.py`.
 Ported from BF `storage/geometry.py::store_mesh`, `models.py::Wireframe`, `routers/datasets.py::patch_wireframe`.
 """
 
@@ -26,7 +28,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -37,14 +39,16 @@ import sqlalchemy as sa
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.db.schema import blob_owners, object_refs, objects, rasters, wireframes
-from bf_core.storage.blobs import CHUNK, BlobStore
+from bf_core.storage.blobs import BlobStore, add_owners
+
+from . import files as wf_files
 
 WIREFRAME = "wireframe"
 RASTER = "raster"
 OWNER = "object"
 DRAPE = "drape"  # object_refs(src=wireframe, dst=raster): the raster draped on a DTM
 ARRAY_MEDIA = "application/octet-stream"
-ARRAYS: dict[str, str] = {"xyz": "<f8", "tri": "<i4"}
+ARRAYS: dict[str, str] = {"xyz": "<f8", "tri": "<i4"}  # the geometry of a wireframe of its own blobs
 DTM_DEFAULTS: dict[str, Any] = {"clip": True, "tint": "#ffffff", "opacity": 1.0, "shade": True}
 DTM_KEYS = ("clip", "tint", "opacity", "shade")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -61,14 +65,8 @@ def not_found() -> ApiError:
     return ApiError(404, "wireframe_not_found", "Каркас не найден.", "Обновите дерево проекта.")
 
 
-def broken() -> ApiError:
-    return ApiError(500, "wireframe_broken", "Файлы геометрии каркаса не найдены.", "Загрузите каркас заново.")
-
-
-def _chunks(arr: np.ndarray) -> Iterator[bytes]:
-    raw = memoryview(np.ascontiguousarray(arr)).cast("B")
-    for start in range(0, len(raw), CHUNK):
-        yield bytes(raw[start : start + CHUNK])
+broken = wf_files.broken
+blob_roles, blob_shas, geometry_shared = wf_files.blob_roles, wf_files.blob_shas, wf_files.geometry_shared
 
 
 # --- writing ---------------------------------------------------------------------------------------------
@@ -86,22 +84,30 @@ class StagedWireframe:
     extent: list[float] | None
     origin: list[float]
     files: dict[str, Staged] = field(default_factory=dict)
-    shas: dict[str, str] = field(default_factory=dict)
+    shas: dict[str, str] = field(default_factory=dict)  # of the geometry: `xyz` and `tri`, or `pack:<n>`
     seq: np.ndarray | None = None  # <u4: the place of every stored triangle in the mesh as given (source.py)
+    keep_seq: bool = False  # `seq` is stored: the order of the file is not that of the store
+    pack: wf_files.StagedPack | None = None  # the pack of its portion (`files.stage_files`)
+    entry: int = 0
 
     def discard(self) -> None:
         for tmp, _sha, _size in self.files.values():
             tmp.unlink(missing_ok=True)
         self.files.clear()
+        if self.pack is not None:
+            self.pack.discard()  # a pack already moved into place has no temp file left
 
 
 def render_of(parts: Sequence[Any], part_triangles: int) -> dict[str, Any]:
     return {"part_triangles": int(part_triangles), "parts": [[p.first, p.count, *p.bbox] for p in parts]}
 
 
-def stage_wireframe(store: BlobStore, xyz: Any, tri: Any, *, progress: Progress = None) -> StagedWireframe:
+def stage_wireframe(
+    store: BlobStore, xyz: Any, tri: Any, *, progress: Progress = None, write: bool = True
+) -> StagedWireframe:
     """Check the mesh, put its triangles in spatial order, cut the parts, measure it and write the blobs into
-    temporary files (no database access). `progress(fraction, message)` may raise to cancel."""
+    temporary files (no database access); `write=False` — no files yet: `files.stage_files` writes those of a
+    portion together. `progress(fraction, message)` may raise to cancel."""
     from bf_core.geo import meshes
 
     def tick(value: float, message: str) -> None:
@@ -127,10 +133,13 @@ def stage_wireframe(store: BlobStore, xyz: Any, tri: Any, *, progress: Progress 
         v, t, parts, stats, render_of(parts, meshes.PART_TRIANGLES), extent,
         list(meshes.origin_of(tuple(extent))) if extent else [0.0, 0.0, 0.0], seq=seq,
     )  # fmt: skip
+    if not write:
+        tick(1.0, "Части каркаса")
+        return staged
     tick(0.75, "Запись каркаса")
     try:
         for role, arr in (("xyz", v), ("tri", t)):
-            staged.files[role] = store.stage_stream(_chunks(np.asarray(arr, dtype=ARRAYS[role])))
+            staged.files[role] = store.stage_stream(wf_files.chunks(np.asarray(arr, dtype=ARRAYS[role])))
             staged.shas[role] = staged.files[role][1]
         tick(1.0, "Запись каркаса")  # a cancel here must not leave the temp files either
     except BaseException:
@@ -180,41 +189,25 @@ def commit_wireframe(
     if color is not None:
         info["color"] = check_color(color)
     settings = None if dtm is None or dtm is False else _dtm_settings({}, {} if dtm is True else dtm)
-    res = conn.execute(
-        sa.insert(objects).values(
-            kind=WIREFRAME,
-            name=name,
-            name_key=dialect.name_key(name),
-            parent_id=parent_id,
-            folder=folder,
-            sort_key=sort_key,
-            state=state,
-            version=1,
-            meta=info,
-            extent=staged.extent,
-            crs=crs,
-            job_id=job_id,
-            author=author,
-            created_at=now,
-            updated_at=now,
-        )  # fmt: skip
-    )
+    row = dict(
+        kind=WIREFRAME, name=name, name_key=dialect.name_key(name), parent_id=parent_id, folder=folder,
+        sort_key=sort_key, state=state, version=1, meta=info, extent=staged.extent, crs=crs, job_id=job_id,
+        author=author, created_at=now, updated_at=now,
+    )  # fmt: skip
+    res = conn.execute(sa.insert(objects), row)  # the values as parameters: one compiled statement for them all
     wf_id = int(res.inserted_primary_key[0])  # type: ignore[index]
+    if staged.pack is not None:  # the pack of the portion is moved into place once, its wireframes refer to it
+        if staged.pack.sha is None:
+            staged.pack.sha = store.place(conn, staged.pack.file, media_type=ARRAY_MEDIA)
+        add_owners(conn, [(staged.pack.sha, OWNER, wf_id, f"pack:{staged.entry}")])
     for role, tmp in list(staged.files.items()):
         store.commit_staged(conn, tmp, media_type=ARRAY_MEDIA, owner_kind=OWNER, owner_id=wf_id, role=role)
         del staged.files[role]  # in place now: a later discard() must not touch it
-    conn.execute(
-        sa.insert(wireframes).values(
-            object_id=wf_id,
-            point_count=len(staged.xyz),
-            triangle_count=len(staged.tri),
-            origin=staged.origin,
-            stats=staged.stats,
-            render=staged.render,
-            attrs=_attrs_in(attrs),
-            dtm=settings,
-        )
-    )
+    own = dict(
+        object_id=wf_id, point_count=len(staged.xyz), triangle_count=len(staged.tri), origin=staged.origin,
+        stats=staged.stats, render=staged.render, attrs=_attrs_in(attrs), dtm=settings,
+    )  # fmt: skip
+    conn.execute(sa.insert(wireframes), own)
     if raster_id and settings is not None:
         _drape(conn, wf_id, int(raster_id))
     return wf_id
@@ -236,15 +229,6 @@ _COLUMNS = (
     objects.c.crs, objects.c.created_at, wireframes.c.point_count, wireframes.c.triangle_count,
     wireframes.c.origin, wireframes.c.stats, wireframes.c.attrs, wireframes.c.dtm,
 )  # fmt: skip
-
-
-def blob_shas(conn: sa.Connection, wf_id: int) -> dict[str, str]:
-    rows = conn.execute(
-        sa.select(blob_owners.c.role, blob_owners.c.sha256).where(
-            blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == wf_id, blob_owners.c.role.in_(list(ARRAYS))
-        )
-    ).all()
-    return {str(r.role): str(r.sha256) for r in rows}
 
 
 def attrs_list(raw: Any) -> list[dict[str, Any]]:
@@ -316,11 +300,14 @@ def read_wireframe(conn: sa.Connection, store: BlobStore, wf_id: int) -> tuple[n
     """The exact geometry: vertices float64 n×3 and triangles int32 m×3 (in memory)."""
     wireframe_info(conn, wf_id)
     shas = blob_shas(conn, wf_id)
-    if set(shas) != set(ARRAYS):
+    if not wf_files.complete(shas):
         raise broken()
-    xyz = np.fromfile(store.path_of(shas["xyz"]), dtype=ARRAYS["xyz"]).reshape(-1, 3)
-    tri = np.fromfile(store.path_of(shas["tri"]), dtype=ARRAYS["tri"]).reshape(-1, 3)
-    return xyz, tri
+    found = wf_files.wireframe_files(store, shas)
+    xyz, tri = found.array("xyz"), found.array("tri")
+    assert xyz is not None and tri is not None
+    if len(xyz) % 3 or len(tri) % 3:
+        raise broken()
+    return xyz.reshape(-1, 3), tri.reshape(-1, 3)
 
 
 # --- changing --------------------------------------------------------------------------------------------
@@ -585,16 +572,3 @@ def delete_wireframe(conn: sa.Connection, wf_id: int) -> dict[str, Any]:
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == wf_id))
     conn.execute(sa.delete(objects).where(objects.c.id == wf_id))
     return {"id": wf_id, "shas": shas, "render": render, "shared": geometry_shared(conn, shas)}
-
-
-def geometry_shared(conn: sa.Connection, shas: Mapping[str, str]) -> bool:
-    """An object of the project owns the geometry of these blobs {role: sha256}: its derived files in
-    `cache\\mesh\\` (the levels of detail, keyed by the blobs) are in use and must stay."""
-    if not shas:
-        return False
-    owned = (
-        sa.select(sa.func.count())
-        .select_from(blob_owners)
-        .where(blob_owners.c.sha256.in_(list(shas.values())), blob_owners.c.role.in_(list(ARRAYS)))
-    )
-    return bool(conn.execute(owned).scalar_one() > 0)

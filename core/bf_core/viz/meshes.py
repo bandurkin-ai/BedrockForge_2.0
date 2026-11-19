@@ -55,6 +55,7 @@ import sqlalchemy as sa
 from bf_core.api.errors import ApiError
 from bf_core.db.schema import objects, wireframes
 from bf_core.geo import meshes as gm
+from bf_core.wireframes import files
 
 from . import binary
 from .keys import FORMAT, _stamp, etag
@@ -148,8 +149,8 @@ def mesh_state(conn: sa.Connection, wf_id: int) -> MeshState:
     if row is None:
         raise not_found()
     dtm = store.dtm_public(row.dtm, store.drapes(conn, [wf_id]).get(wf_id) if row.dtm is not None else None)
-    shas = store.blob_shas(conn, wf_id)
-    if set(shas) != set(store.ARRAYS):
+    shas = store.blob_shas(conn, wf_id)  # `xyz` and `tri`, or an entry of a pack (`wireframes/files.py`)
+    if not files.complete(shas):
         raise broken()
     return MeshState(
         wf_id,
@@ -297,11 +298,9 @@ def forget() -> None:
         _tables.clear()
 
 
-def _paths(store: Any, state: MeshState) -> tuple[Path, Path]:
-    xyz, tri = state.sha("xyz"), state.sha("tri")
-    if xyz is None or tri is None or not store.exists(xyz) or not store.exists(tri):
-        raise broken()
-    return store.path_of(xyz), store.path_of(tri)
+def files_of(store: Any, state: MeshState) -> files.WireframeFiles:
+    """Where the arrays of a wireframe are: its own blobs or its entry of a pack."""
+    return files.wireframe_files(store, dict(state.blobs))
 
 
 @contextmanager
@@ -309,9 +308,8 @@ def mapped(store: Any, state: MeshState) -> Iterator[tuple[np.ndarray, np.ndarra
     """The vertices (float64 n×3) and the triangles (int32 m×3) of a wireframe as stored, mapped from its blobs:
     only the pages a caller touches are read. The caller drops its own references to them before the block
     ends (Windows keeps a mapped file locked)."""
-    xyz, tri = _paths(store, state)
-    v = np.memmap(xyz, dtype="<f8", mode="r")
-    t = np.memmap(tri, dtype="<i4", mode="r")
+    found = files_of(store, state)
+    v, t = found.mapped("xyz"), found.mapped("tri")
     try:
         if len(v) != 3 * state.points or len(t) != 3 * state.triangles:
             raise broken()
@@ -358,11 +356,9 @@ def _whole(project: Any, state: MeshState, part: gm.MeshPart, lod: int, *, stand
     at the level `lod` (`standin` — for a level not made yet)."""
     from bf_core.storage.blobs import BlobStore
 
-    xyz, tri = _paths(BlobStore(project.folder), state)
-    t = np.fromfile(tri, dtype="<i4", count=3 * part.count, offset=12 * part.first).reshape(-1, 3)
-    if len(t) != part.count:
-        raise broken()
-    v = np.memmap(xyz, dtype="<f8", mode="r").reshape(-1, 3)  # only the pages of this part are read
+    found = files_of(BlobStore(project.folder), state)
+    t = found.array("tri", first=3 * part.first, count=3 * part.count).reshape(-1, 3)  # type: ignore[union-attr]
+    v = found.mapped("xyz").reshape(-1, 3)  # only the pages of this part are read
     try:
         if int(t.max()) >= len(v) or int(t.min()) < 0:
             raise broken()

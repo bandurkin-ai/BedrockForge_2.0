@@ -46,6 +46,7 @@ from bf_core.geo.tri_kernels import BOX_PAD_M, half_spaces
 from bf_core.viz import binary
 from bf_core.viz import meshes as vm
 from bf_core.viz.keys import FORMAT, SetState, _stamp, etag
+from bf_core.wireframes import files
 
 CACHE_BYTES = 768 << 20  # of vertices, triangles and trees kept between requests
 FINE_FROM = 8192  # triangles: a smaller wireframe is scanned by the part table of the store
@@ -186,13 +187,9 @@ def _solid(stats: Any) -> str | None:
 def _load(project: Any, state: vm.MeshState, key: str) -> Geometry:
     from bf_core.storage.blobs import BlobStore
 
-    store = BlobStore(project.folder)
-    shas = (state.sha("xyz"), state.sha("tri"))
-    if any(sha is None or not store.exists(sha) for sha in shas):
-        raise vm.broken()
-    xyz = np.fromfile(store.path_of(str(shas[0])), dtype="<f8")
-    tri = np.fromfile(store.path_of(str(shas[1])), dtype="<i4")
-    if len(xyz) != 3 * state.points or len(tri) != 3 * state.triangles:
+    found = vm.files_of(BlobStore(project.folder), state)  # its own blobs or its entry of a pack
+    xyz, tri = found.array("xyz"), found.array("tri")
+    if xyz is None or tri is None or len(xyz) != 3 * state.points or len(tri) != 3 * state.triangles:
         raise vm.broken()
     xyz, tri = xyz.reshape(-1, 3), tri.reshape(-1, 3)
     table = [[p.first, p.count, *p.bbox] for p in vm.parts_of(project, state)]
@@ -256,7 +253,8 @@ def _states(conn: sa.Connection, ids: Sequence[int] | None) -> list[tuple[vm.Mes
         .order_by(objects.c.id)
     )
     owned = sa.select(blob_owners.c.owner_id, blob_owners.c.role, blob_owners.c.sha256).where(
-        blob_owners.c.owner_kind == store.OWNER, blob_owners.c.role.in_(list(store.ARRAYS))
+        blob_owners.c.owner_kind == store.OWNER,
+        blob_owners.c.role.in_(list(store.ARRAYS)) | blob_owners.c.role.like("pack:%"),
     )
     if ids is not None:
         wanted = sorted({int(i) for i in ids})
@@ -270,8 +268,8 @@ def _states(conn: sa.Connection, ids: Sequence[int] | None) -> list[tuple[vm.Mes
         shas.setdefault(int(owner), {})[str(role)] = str(sha)
     out: list[tuple[vm.MeshState, Any]] = []
     for r in rows:
-        blobs = shas.get(int(r.id), {})
-        if set(blobs) != set(store.ARRAYS):
+        blobs = files.geometry(shas.get(int(r.id), {}))  # `xyz` and `tri`, or an entry of a pack
+        if not files.complete(blobs):
             raise vm.broken()
         state = vm.MeshState(
             int(r.id),
