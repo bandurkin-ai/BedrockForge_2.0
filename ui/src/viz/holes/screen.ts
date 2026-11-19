@@ -36,7 +36,7 @@ export function collarsOnScreen(
   vp: Mat4,
   vexag: number,
   view: { w: number; h: number; left: number; top: number },
-  inWindow: (x: number, y: number) => boolean,
+  inWindow: (x: number, y: number, z: number) => boolean,
   limit: number,
 ): ScreenCollar[] {
   const out: ScreenCollar[] = [];
@@ -47,8 +47,9 @@ export function collarsOnScreen(
       for (let s = 0; s < p.collars.count && out.length < limit; s++) {
         const x = pos[s * 3] + p.offset[0];
         const y = pos[s * 3 + 1] + p.offset[1];
-        if (!inWindow(x, y)) continue;
-        const sp = projectToScreen(vp, x, y, (pos[s * 3 + 2] + p.offset[2]) * vexag, view.w, view.h);
+        const z = pos[s * 3 + 2] + p.offset[2];
+        if (!inWindow(x, y, z)) continue;
+        const sp = projectToScreen(vp, x, y, z * vexag, view.w, view.h);
         if (sp && sp[0] >= 0 && sp[1] >= 0 && sp[0] <= view.w && sp[1] <= view.h) {
           out.push({ setId: layer.setId, name: layer.manifest.names[layer.manifest.byPart[p.part.k][s]], x: view.left + sp[0], y: view.top + sp[1] });
         }

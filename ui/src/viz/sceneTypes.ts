@@ -11,6 +11,7 @@ import type { HoleHit } from "./holes/select";
 import type { LabelItem } from "./labels/sprites";
 import type { Origin } from "./origin";
 import type { Ray, SectionLine } from "./section/math";
+import type { SectionPlane } from "./section/plane";
 
 export interface SceneEvents {
   /** a click picked a hole (or nothing) */
@@ -46,8 +47,8 @@ export interface PickQuery {
   py: number;
   width: number;
   height: number;
-  /** is a plan point (rendered space) inside the section window */
-  inWindow(x: number, y: number): boolean;
+  /** is a scene point (relative to the scene origin, Z not stretched) inside the section window */
+  inWindow(x: number, y: number, z: number): boolean;
   /** the ray of the cursor, rendered space */
   ray: Ray;
   /** float64: the origin of the layer − the scene origin (scene units, Z not stretched) */
@@ -89,7 +90,10 @@ export interface SceneDebug {
   perspective: boolean;
   vexag: number;
   clipPlanes: number;
+  /** the line of 7.14 when it is the section */
   section: SectionLine | null;
+  /** the plane of the section of any kind (a series, a polyline segment) */
+  sectionPlane: SectionPlane | null;
   gpu: GpuInfo;
   sets: number[];
   /** keys of the layers added with `addLayer` */

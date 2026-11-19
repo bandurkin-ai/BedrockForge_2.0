@@ -179,11 +179,11 @@ export interface ProjectView {
   visible?: (x: number, y: number, z: number) => boolean;
 }
 
-/** The view of the last frame in project coordinates; `inWindow` — the section window in rendered plan coordinates. */
-export function projectView(vp: Mat4 | null, origin: Origin | null, vexag: number, size: { w: number; h: number }, inWindow?: (x: number, y: number) => boolean): ProjectView | null {
+/** The view of the last frame in project coordinates; `inWindow` — the section window in scene coordinates (Z not stretched). */
+export function projectView(vp: Mat4 | null, origin: Origin | null, vexag: number, size: { w: number; h: number }, inWindow?: (x: number, y: number, z: number) => boolean): ProjectView | null {
   if (!vp || !origin) return null;
   const view: ProjectView = { matrix: projectMatrix(vp, origin, vexag), width: size.w, height: size.h };
-  if (inWindow) view.visible = (x, y) => inWindow(x - origin.x, y - origin.y);
+  if (inWindow) view.visible = (x, y, z) => inWindow(x - origin.x, y - origin.y, z - origin.z);
   return view;
 }
 
