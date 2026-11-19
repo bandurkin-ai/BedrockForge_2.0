@@ -18,6 +18,7 @@ import type { MarkData } from "../../viz/edit/trianglesMark";
 import { ExactPicker, pickRequest, type ExactPick, type PickRequest } from "../../viz/mesh/exact";
 import type { Scene } from "../../viz/Scene";
 import { editStore } from "../lines/editState";
+import { projectStore } from "../projects/state";
 import { viewStore } from "../scene/bind";
 import { sceneObjects } from "../scene/objects";
 import { currentScene, onScene } from "../scene/sceneHost";
@@ -175,6 +176,9 @@ export class TrianglesController {
     else this.offs.push(onScene(attach));
     // the string editor takes the 3D window: this fix ends
     this.offs.push(editStore.subscribe(() => void (editStore.get().session && this.stop("Правка треугольников закрыта: открыт редактор стрингов"))));
+    // another project (or none): the wireframe is not in it — the fix goes, nothing applied
+    const uid = projectStore.get().current?.uid ?? null;
+    this.offs.push(projectStore.subscribe(() => void ((projectStore.get().current?.uid ?? null) !== uid && this.stop("Правка треугольников закрыта: открыт другой проект, изменения не применены"))));
   }
 
   get edit(): TriEdit | null {

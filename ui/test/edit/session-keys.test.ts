@@ -101,25 +101,29 @@ describe("ending and correcting a line (ТЗ 7.22 «Клавиши»)", () => {
     expect(s.layer.lines[0].points).toHaveLength(1);
   });
 
-  it("Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, Delete, Esc, Ctrl+S in both layouts", async () => {
+  it("Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, Delete, Ctrl+A, Esc, Ctrl+S in both layouts; the commands of the registry are only named", async () => {
     const s = planSession();
     s.setTool("line");
     await draw(s, [[100, 300], [300, 300]]);
     s.key(key("Enter"));
+    const before = s.layer;
     expect(s.key(key("z", true))).toBe("lines.undo");
-    expect(s.layer.lines[0].points).toHaveLength(1);
     expect(s.key(key("Я", true))).toBe("lines.undo");
-    expect(s.layer.lines).toHaveLength(0);
     expect(s.key(key("y", true))).toBe("lines.redo");
     expect(s.key(key("Z", true, true))).toBe("lines.redo");
-    expect(s.layer.lines[0].points).toHaveLength(2);
+    expect(s.key(key("a", true))).toBe("lines.select_all");
+    expect(s.key(key("ф", true))).toBe("lines.select_all");
     cmd.selectAll(s);
     expect(s.key(key("Delete"))).toBe("lines.delete");
-    expect(s.layer.lines).toHaveLength(0);
+    // undo, redo, select all and delete are run by the registry (`editKeys.ts`), not by the session
+    expect(s.layer).toBe(before);
+    expect(s.selection.lines).toHaveLength(1);
     expect(s.key(key("s", true))).toBe("lines.save");
     expect(s.key(key("ы", true))).toBe("lines.save");
     s.setTool("polygon");
     expect(s.key(key("Escape"))).toBe("lines.escape");
+    expect(s.selection.lines).toHaveLength(0); // the first Esc drops the selection
+    s.key(key("Escape"));
     expect(s.tool).toBe("select");
     expect(s.key(key("q"))).toBeNull();
   });

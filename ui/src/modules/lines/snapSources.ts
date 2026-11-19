@@ -69,6 +69,8 @@ export class SnapFeeder {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private abort = new AbortController();
   private disposed = false;
+  /** the run whose answers may still go into the index: an older run answered late is dropped */
+  private generation = 0;
 
   constructor(
     private readonly session: EditSession,
@@ -118,6 +120,7 @@ export class SnapFeeder {
   }
 
   async run(): Promise<void> {
+    const generation = ++this.generation;
     const edited = this.session.layerId;
     const notes: string[] = [];
     const jobs: Promise<Loaded>[] = [];
@@ -157,7 +160,7 @@ export class SnapFeeder {
     }
     for (const key of [...this.cache.keys()]) if (!used.has(key)) this.cache.delete(key);
     const answers = await Promise.all(jobs);
-    if (this.disposed) return;
+    if (this.disposed || generation !== this.generation) return;
     const sources = answers.flatMap((a) => a.sources);
     for (const a of answers) if (a.note) notes.push(a.note);
     const wanted = new Set(sources.map((s) => s.key));
