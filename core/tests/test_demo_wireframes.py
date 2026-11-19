@@ -35,7 +35,8 @@ def test_ore_bodies_and_the_fault(demo) -> None:  # type: ignore[no-untyped-def]
     c, project, store = demo
     listed = c.get(f"{API}/wireframes").json()["wireframes"]
     solids = [w for w in listed if w["dtm"] is None]
-    assert sorted(w["name"] for w in solids) == sorted(NAMES)
+    # and the body stitched from contours of Э9 (`demo/contours.py`, test_demo_contours.py)
+    assert sorted(w["name"] for w in solids) == sorted([*NAMES, "Рудное тело 3"])
     by_name = {w["name"]: w for w in solids}
     body1, body2, fault = (by_name[n] for n in NAMES)
     assert (body1["color"], body2["color"], fault["color"]) == ("#e05d6f", dw.BODY_2_COLOR, dw.FAULT_COLOR)

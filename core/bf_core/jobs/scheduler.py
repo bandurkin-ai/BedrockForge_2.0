@@ -45,7 +45,20 @@ class Source:
 
 #: Kinds of jobs that make lines, rasters or wireframes of a project, or what «Свойства» tell about them: their
 #: end is an `objects.changed` event.
-OBJECT_JOBS = frozenset({"import.objects", "model.dtm", "wireframe.check", "ground.classify", "cloud.dz"})
+OBJECT_JOBS = frozenset(
+    {
+        "import.objects",
+        "model.dtm",
+        "wireframe.check",
+        "ground.classify",
+        "cloud.dz",
+        "geometry.operation",
+        "geometry.operation.heavy",
+    }
+)
+
+#: Jobs whose end makes the levels of detail of wireframes ready: a `wireframes.lod` event.
+LOD_JOBS = frozenset({"wireframe.lod", "wireframe.lod.heavy", "wireframe.check"})
 
 
 @dataclass
@@ -432,6 +445,11 @@ class Scheduler:
         if status == "done" and run.kind in OBJECT_JOBS:
             # the lists of the interface are read again even if the job was over before the interface saw it run
             self.events.publish("objects.changed", {"kind": "job", "job": run.kind, "id": run.job_id})
+        if status == "done" and run.kind in LOD_JOBS:
+            # the window reads again the levels of the parts it was shown as stand-ins (ADR 0015 §8)
+            result = values.get("result")
+            ids = (result.get("wireframe_ids") if isinstance(result, dict) else None) or []
+            self.events.publish("wireframes.lod", {"source": src.key, "job": run.kind, "wireframe_ids": ids})
         self._release(src)
 
     def _release(self, src: Source) -> None:

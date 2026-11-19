@@ -14,6 +14,9 @@
  * covers the colour of the surface, and without the shadows of the relief the image keeps its colours.
  * The texture belongs to the layer of the raster. A click is answered on the CPU (`build.ts::pickMesh`) by the
  * level that is drawn; the exact triangle is then the core's (`exact.ts`).
+ *
+ * A level the core has not made yet comes as a stand-in — the whole part (ADR 0015 §8): it is drawn like any
+ * level, the layer counts the parts shown so («готовятся копии для показа»), and the real level replaces it.
  */
 import * as THREE from "three";
 import type { Vec3 } from "../core/vec3";
@@ -184,6 +187,13 @@ export class MeshLayerView implements SceneLayer {
     return this.parts[k]?.shown ?? null;
   }
 
+  /** Loaded levels of part k that are stand-ins: the whole part until the core makes the level (ADR 0015 §8). */
+  standins(k: number): number[] {
+    const out: number[] = [];
+    for (const [lod, lv] of this.parts[k]?.levels ?? []) if (lv.built.standin) out.push(lod);
+    return out;
+  }
+
   /** Triangles of a loaded level of part k (null — not loaded). */
   levelTriangles(k: number, lod: number): number | null {
     return this.parts[k]?.levels.get(lod)?.built.triangles ?? null;
@@ -233,15 +243,19 @@ export class MeshLayerView implements SceneLayer {
     return true;
   }
 
-  /** Parts and triangles of the levels now shown, and how many shown parts hold fewer triangles than in full. */
-  stats(): { parts: number; triangles: number; simplified: number } {
-    const out = { parts: 0, triangles: 0, simplified: 0 };
+  /**
+   * Parts and triangles of the levels now shown, how many shown parts hold fewer triangles than in full and how
+   * many are stand-ins (shown whole until the core makes their level).
+   */
+  stats(): { parts: number; triangles: number; simplified: number; standins: number } {
+    const out = { parts: 0, triangles: 0, simplified: 0, standins: 0 };
     for (const p of this.parts) {
       const lv = p.shown === null ? undefined : p.levels.get(p.shown);
       if (!lv) continue;
       out.parts++;
       out.triangles += lv.built.triangles;
       if (lv.built.simplified) out.simplified++;
+      if (lv.built.standin) out.standins++;
     }
     return out;
   }

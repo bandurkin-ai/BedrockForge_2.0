@@ -88,7 +88,7 @@ test("perf3d: 2000 holes and a display, 60 frames under software rendering → b
     // comes again from the core after a lost context: the time to its first frame; then a click on the road
     // and a click beside it (the surface with the plan, or a survey point) are answered on the CPU.
     const whole = await page.evaluate(() => window.__bfScene!.state());
-    expect(whole.lines.layers).toBe(3);
+    expect(whole.lines.layers).toBe(6); // the ore strings, the road, the survey points; contours and isolines (Э9)
     expect(whole.wireframes.draped).toHaveLength(1);
     await page.evaluate(() => {
       const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="scene-host"] canvas')!;
@@ -101,7 +101,7 @@ test("perf3d: 2000 holes and a display, 60 frames under software rendering → b
     await waitFrame(page);
     const firstFrameMs = Date.now() - restored;
     const again = await page.evaluate(() => window.__bfScene!.state());
-    expect(again.lines.layers).toBe(3);
+    expect(again.lines.layers).toBe(6);
     expect(again.wireframes.draped).toEqual(whole.wireframes.draped);
     expect(firstFrameMs).toBeLessThanOrEqual(3000);
     await page.keyboard.press("t"); // from above the height of a point does not move it on the screen
@@ -254,8 +254,8 @@ test("perf3d heavy: the demo, 1 million line segments, a raster and a DTM of 200
     await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
     await waitFrame(page);
     const demo = await page.evaluate(() => window.__bfScene!.state());
-    expect(demo.lines.layers).toBe(3);
-    expect(demo.wireframes.layers).toBe(4); // the relief, the two ore bodies and the fault (Э8)
+    expect(demo.lines.layers).toBe(6); // and the contours and isolines of Э9 (core demo/contours.py)
+    expect(demo.wireframes.layers).toBe(5); // the relief, the two ore bodies and the fault (Э8), the stitched body (Э9)
 
     const api = (method: string, url: string, body?: unknown) =>
       page.evaluate(
@@ -275,6 +275,12 @@ test("perf3d heavy: the demo, 1 million line segments, a raster and a DTM of 200
       expect((await api("DELETE", `/wireframes/${w.id}`)).status).toBe(200);
     }
     await expect.poll(() => page.evaluate(() => window.__bfScene!.state().wireframes.layers), { timeout: 60_000 }).toBe(1);
+    // nor the contours and the isolines of Э9: three more line layers, three more draw calls
+    type File = { id: number; name: string };
+    for (const f of ((await api("GET", "/lines/files")).body.files as File[]).filter((x) => ["Контуры по разрезам", "Рельеф (изолинии)"].includes(x.name))) {
+      expect((await api("DELETE", `/lines/files/${f.id}`)).status).toBe(200);
+    }
+    await expect.poll(() => page.evaluate(() => window.__bfScene!.state().lines.layers), { timeout: 60_000 }).toBe(3);
 
     // the files as the wizard «Импорт файлов» imports them: one job
     const loadStart = Date.now();

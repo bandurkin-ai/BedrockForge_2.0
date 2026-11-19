@@ -6,7 +6,8 @@
  * coarser than full is «упрощено». Buffers are accounted in `GpuMemory` (parts out of view and finer levels go
  * first). Visibility follows the hidden key `ln:<id>`; a hidden layer that was never shown is not loaded.
  * A rename or a new colour keeps what is built while the parts reload. After a lost context everything comes
- * again. A point cloud (ADR 0014 §2) is a layer of points with five levels: the cell of a level is at most
+ * again. The layer open in the string editor is hidden while it is edited (the editing layer shows its working
+ * copy) and read again when the editor leaves it after a save (its version changed). A point cloud (ADR 0014 §2) is a layer of points with five levels: the cell of a level is at most
  * 2 px on screen, then the point budget of the frame (`POINT_BUDGET`) coarsens the smallest parts on screen
  * first; its parts are asked in the value mode of its style (`?color=`), a new mode asks them again. A lazy
  * chunk with three.js.
@@ -26,6 +27,7 @@ import { applyPointBudget, cloudBoundaries, type CloudBudgetPart, type CloudStyl
 import { LINE_WIDTH_PX, LineLayerView } from "../../viz/lines/layer";
 import { LoadQueue } from "../../viz/load/loader";
 import { GeometryWorker } from "../../viz/worker/client";
+import { editedLayer, editStore, layerShown } from "../lines/editState";
 import type { LineLayerInfo } from "./objects";
 import { sceneUi } from "./sceneHost";
 
@@ -99,6 +101,14 @@ export class LinesSource {
     this.labels = new LabelCache(scene.clipPlanes);
     this.memory = new GpuMemory(this.memoryLimit());
     this.off.push(scene.onFrame((ctx) => this.frame(ctx)));
+    let edited = editedLayer();
+    this.off.push(
+      editStore.subscribe(() => {
+        if (editedLayer() === edited) return;
+        edited = editedLayer();
+        this.sync();
+      }),
+    );
   }
 
   get idle(): boolean {
@@ -134,6 +144,7 @@ export class LinesSource {
     if (this.disposed) return;
     const list = this.input.layers();
     const hidden = new Set(this.input.hidden());
+    const edited = editedLayer();
     const ids = new Set(list.map((l) => l.id));
     let changed = false;
     for (const id of [...this.layers.keys()]) {
@@ -143,7 +154,7 @@ export class LinesSource {
     }
     for (const id of [...this.empty.keys()]) if (!ids.has(id)) this.empty.delete(id);
     for (const l of list) {
-      const visible = !hidden.has(lineKey(l.id));
+      const visible = layerShown(l.id, hidden, edited);
       const st = this.layers.get(l.id);
       if (st) {
         if (st.view.visible !== visible) changed = true;
@@ -246,7 +257,7 @@ export class LinesSource {
         const ref = this.input.layers().find((l) => l.id === id);
         if (gen !== this.generation || this.disposed || !ref || !r.buffer) return;
         const m = readLinesManifest(r.buffer);
-        const visible = !this.input.hidden().includes(lineKey(id));
+        const visible = layerShown(id, new Set(this.input.hidden()), editedLayer());
         const old = this.layers.get(id);
         if (old && sameLayout(old.manifest, m)) {
           // the same parts: what is shown stays, the levels of another version reload behind it — also those

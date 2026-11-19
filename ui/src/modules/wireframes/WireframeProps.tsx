@@ -3,7 +3,9 @@
  * top (`DtmProps`); then the colour and visibility, the counts and the extent, «Перенести в ЦТМ» of a
  * wireframe, its checks with «Проверить» and where it was imported from (`ChecksProps`; ТЗ 7.21), the triangle
  * picked in the 3D window — its point, dip and dip direction as the core found them (ADR 0013 §6) — and the
- * attributes of the user: add, change, rename, delete (`wireframe.attr`).
+ * attributes of the user: add, change, rename, delete (`wireframe.attr`). A wireframe an operation made has the
+ * block «Операция» (`model/BuiltProps.tsx`): the operation, the sources, the parameters, the tolerances,
+ * «Перестроить» and «Отчёт» (ТЗ 7.23; ADR 0015 §6).
  */
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useApp } from "../../shell/AppContext";
@@ -14,6 +16,8 @@ import { ColorField, Facts, useRun } from "../../shell/PropsParts";
 import { useStore } from "../../shell/useStore";
 import css from "../../shell/PropsParts.module.css";
 import { DtmProps } from "../dtm/DtmProps";
+import { BuiltProps } from "../model/BuiltProps";
+import { asBuilt } from "../model/report";
 import { pickedObject, sceneObjects } from "../scene/objects";
 import { attrNameError, attrValueText, wireframeFacts } from "./attrs";
 import { ChecksBlock, SourceBlock } from "./ChecksProps";
@@ -31,6 +35,7 @@ export function WireframeProps({ id }: { id: number }) {
   const { run, error, setError } = useRun();
   if (!w) return null;
   const triangle = pickedTriangle(picked, id);
+  const built = asBuilt((w as { built?: unknown }).built); // `objects.meta.built` (`GET /wireframes`)
   return (
     <section className={css.panel} aria-label={`Свойства: ${w.name}`} data-testid={w.dtm ? "props-dtm" : "props-wireframe"}>
       <header className={css.head}>
@@ -65,6 +70,7 @@ export function WireframeProps({ id }: { id: number }) {
           </button>
         </div>
       )}
+      {built && <BuiltProps built={built} target={{ wireframe_id: id }} name={w.name} run={run} />}
       <ChecksBlock id={id} stats={w.stats} run={run} />
       <SourceBlock source={w.source} />
       {triangle ? (

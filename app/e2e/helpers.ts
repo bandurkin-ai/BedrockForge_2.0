@@ -100,3 +100,88 @@ export async function holesOnlyDemo(page: Page): Promise<void> {
     });
   await expect.poll(left, { timeout: 60_000, intervals: [100, 200, 400] }).toBe(0);
 }
+
+/** A JSON call of the core straight from the page (the token of the session); `body` — JSON. */
+export async function coreApi<T = Record<string, unknown>>(page: Page, method: string, url: string, body?: unknown): Promise<{ status: number; body: T }> {
+  return page.evaluate(
+    async ([m, u, b]) => {
+      const c = window.bf!.core()!;
+      const headers: Record<string, string> = { "X-BF-Token": c.token };
+      if (b !== undefined) headers["Content-Type"] = "application/json";
+      const r = await fetch(`${c.baseUrl}/api/v1${u}`, { method: m, headers, body: b === undefined ? undefined : JSON.stringify(b) });
+      return { status: r.status, body: (await r.json()) as never };
+    },
+    [method, url, body] as const,
+  );
+}
+
+/** A line of a save: its vertices; a closed one is sent in the storage form (its first vertex repeated). */
+export interface SavedLine {
+  points: number[][];
+  closed?: boolean;
+}
+
+/**
+ * A save of a whole layer of lines straight through the core (`PUT /lines/layers/{id}/geometry`, the BFA1 body of
+ * ui/src/edit/bfa1.ts): every line is new (the lines of `baseVersion` not listed are deleted). → the new version.
+ */
+export async function saveLines(page: Page, layerId: number, baseVersion: number, lines: SavedLine[], note = "e2e"): Promise<number> {
+  const rows = lines.map((l) => (l.closed ? [...l.points, l.points[0]] : l.points));
+  const r = await page.evaluate(
+    async ([id, base, text, ls, shut]) => {
+      const arrays: [string, string, ArrayBufferView][] = [
+        ["src", "<i4", new Int32Array(ls.map(() => -1))],
+        ["touched", "<u1", new Uint8Array(ls.map(() => 1))],
+        ["count", "<u4", new Uint32Array(ls.map((p) => p.length))],
+        ["closed", "<u1", new Uint8Array(shut.map((s) => (s ? 1 : 0)))],
+        ["xyz", "<f8", new Float64Array(ls.flat(2))],
+      ];
+      // "BFA1", u32 header length, JSON, arrays at multiples of 8 (the offsets are in the header)
+      const a8 = (n: number) => Math.ceil(n / 8) * 8;
+      let start = 0;
+      let body: Uint8Array | null = null;
+      while (!body) {
+        let at = start;
+        const table = arrays.map(([name, dtype, data]) => {
+          const row = [name, dtype, (data as unknown as { length: number }).length, at];
+          at = a8(at + data.byteLength);
+          return row;
+        });
+        const head = new TextEncoder().encode(JSON.stringify({ base_version: base, note: text, new_attrs: {}, arrays: table }));
+        const need = a8(8 + head.length);
+        if (need > start) {
+          start = need;
+          continue;
+        }
+        body = new Uint8Array(Math.max(at, need));
+        body.set([0x42, 0x46, 0x41, 0x31]);
+        new DataView(body.buffer).setUint32(4, head.length, true);
+        body.set(head, 8);
+        arrays.forEach(([, , data], k) => body!.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), table[k][3] as number));
+      }
+      const c = window.bf!.core()!;
+      const res = await fetch(`${c.baseUrl}/api/v1/lines/layers/${id}/geometry`, { method: "PUT", headers: { "X-BF-Token": c.token, "Content-Type": "application/octet-stream" }, body });
+      return { status: res.status, body: (await res.json()) as { version?: number } };
+    },
+    [layerId, baseVersion, note, rows, lines.map((l) => !!l.closed)] as const,
+  );
+  expect(r.status, JSON.stringify(r.body)).toBe(200);
+  return r.body.version!;
+}
+
+export type CoreJob = { source: string; id: number; kind: string; status: string; progress?: number; result?: Record<string, unknown> | null; error?: { code: string; message: string } | null };
+
+/** Waits until the job reaches one of `statuses` (by default — its end) and returns it. */
+export async function waitJob(page: Page, source: string, id: number, statuses = ["done", "failed", "cancelled"], timeout = 120_000): Promise<CoreJob> {
+  let last: CoreJob | null = null;
+  await expect
+    .poll(
+      async () => {
+        last = (await coreApi<CoreJob>(page, "GET", `/jobs/${source}/${id}`)).body;
+        return statuses.includes(last.status);
+      },
+      { timeout, intervals: [200, 400, 800] },
+    )
+    .toBe(true);
+  return last!;
+}

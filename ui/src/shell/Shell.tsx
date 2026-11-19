@@ -19,6 +19,10 @@ import { BuildDtmWindow } from "../modules/dtm/BuildDtmWindow";
 import { GroundWindow } from "../modules/dtm/GroundWindow";
 import { DzWindow } from "../modules/lines/DzWindow";
 import { LinesExportWindow } from "../modules/lines/LinesExportWindow";
+import { renderLinesWindow } from "../modules/lines/windows";
+import { OperationWindow } from "../modules/model/OperationWindow";
+import { ReportWindow } from "../modules/model/ReportWindow";
+import type { ReportProps } from "../modules/model/run";
 import { RasterExportWindow } from "../modules/rasters/RasterExportWindow";
 import type { ExportOptions } from "../modules/wireframes/export";
 import { WireframesExportWindow } from "../modules/wireframes/WireframesExportWindow";
@@ -85,8 +89,12 @@ const renderWindow: WindowRenderer = (w) => {
       return <DzWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
     case "wireframes-export":
       return <WireframesExportWindow winId={w.id} format={w.props?.format as string | undefined} wireframeIds={w.props?.wireframeIds as number[] | undefined} options={w.props?.options as Partial<ExportOptions> | undefined} />;
+    case "model-operation":
+      return <OperationWindow winId={w.id} dialog={String(w.props?.dialog ?? "")} op={w.props?.op as string | undefined} wireframeId={w.props?.wireframeId as number | undefined} layerId={w.props?.layerId as number | undefined} />;
+    case "model-report":
+      return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return null;
+      return renderLinesWindow(w);
   }
 };
 

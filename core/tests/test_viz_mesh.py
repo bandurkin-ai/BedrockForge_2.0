@@ -2,7 +2,8 @@
 permutation that makes compact parts; parts of at most 64 000 triangles and 16 km with a whole-metre origin;
 float32 offsets within 0.25 mm; levels of detail of a plane stay on the plane and keep its area (1e-9), the
 border of a part is the same float32 numbers at every level; measures of a cube against the analytic answer
-(1e-12); BFA1 `mesh` with u2/u4 indices, the cache of the levels, ETag and 304."""
+(1e-12); BFA1 `mesh` with u2/u4 indices, the cache of the levels, ETag and 304 (the stand-ins and the job
+`wireframe.lod` — `test_viz_meshes.py`)."""
 
 from __future__ import annotations
 
@@ -347,8 +348,17 @@ def _get(c, url: str, **params):  # type: ignore[no-untyped-def]
     return r, *binary.decode(r.content)
 
 
+def _build(project, wf_id: int) -> dict:  # type: ignore[no-untyped-def]
+    """The levels of every part, as the jobs make them (`wireframe.lod`, «Проверить», the job of a DTM)."""
+    with dialect.read_tx(project.engine) as conn:
+        state = vm.mesh_state(conn, wf_id)
+        v, t = wf_store.read_wireframe(conn, BlobStore(project.folder), wf_id)
+    return vm.build_cache(project.folder, state.cache_key(), v, t, vm.parts_of(project, state))
+
+
 def test_manifest_and_parts_through_the_api(stored) -> None:  # type: ignore[no-untyped-def]
-    c, _project, (v, t), relief, box = stored
+    c, project, (v, t), relief, box = stored
+    _build(project, relief)
     r, head, arrays = _get(c, str(relief))
     assert arrays == {} and head["kind"] == "wireframe" and head["wireframe"] == {"id": relief, "name": "Рельеф"}
     assert head["triangles"] == 96_000 and head["points"] == len(v) and head["part_triangles"] == 64_000
@@ -393,48 +403,45 @@ def test_manifest_and_parts_through_the_api(stored) -> None:  # type: ignore[no-
     assert ph["triangles"] == 48 and not ph["simplified"]  # too small to simplify: the level is the mesh itself
 
 
-def test_levels_are_cached_in_the_project_and_made_again_when_lost(stored, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_levels_are_cached_in_the_project_and_a_lost_one_is_a_standin(stored, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     c, project, _mesh, relief, _box = stored
     with dialect.read_tx(project.engine) as conn:
         state = vm.mesh_state(conn, relief)
     folder = vm.cache_dir(project.folder, state.cache_key())
     assert not folder.exists()
-    # levels made the way of Э7 (pyfqmr alone, ALGO 1) lie in another folder: they are not read, and it goes
-    stale = vm.cache_dir(project.folder, vm.cache_key(state.blobs, state.render, 1))
-    assert vm.ALGO == 2 and stale != folder
-    stale.mkdir(parents=True)
-    (stale / "1-2.bfa").write_bytes(b"made the old way")
-    first = c.get(f"{API}/viz/wireframes/{relief}/parts/1", params={"lod": 2}).content
-    assert binary.decode(first)[0]["lod"] == 2 and not stale.exists()
-    assert sorted(f.name for f in folder.iterdir()) == ["1-1.bfa", "1-2.bfa"]  # both levels of the part, no temp files
-    assert (folder / "1-2.bfa").read_bytes() == first
+    url = f"{API}/viz/wireframes/{relief}/parts/1"
+    assert binary.decode(c.get(url, params={"lod": 2}).content)[0]["standin"]  # never made here
+    assert not folder.exists()
+    built = _build(project, relief)  # the jobs make every level at once
+    assert built["parts"] == built["built"] == 2 and built["triangles"][0] == 96_000
+    assert built["triangles"][1] <= 96_000 / 8 * 1.05
+    assert built["bytes"] == sum(f.stat().st_size for f in folder.iterdir())
+    assert sorted(f.name for f in folder.iterdir()) == ["0-1.bfa", "0-2.bfa", "1-1.bfa", "1-2.bfa"]
+    first = c.get(url, params={"lod": 2}).content
+    assert (folder / "1-2.bfa").read_bytes() == first and "standin" not in binary.decode(first)[0]
     c.get(f"{API}/viz/wireframes/{relief}/parts/0", params={"lod": 0})
-    assert len(list(folder.iterdir())) == 2  # the full level is read from the blobs, never cached
+    assert len(list(folder.iterdir())) == 4  # the full level is read from the blobs, never cached
 
     def boom(*_a, **_k):  # type: ignore[no-untyped-def]
         raise AssertionError("the cached level must be served without pyfqmr")
 
     monkeypatch.setattr(gm, "simplify", boom)
-    assert c.get(f"{API}/viz/wireframes/{relief}/parts/1", params={"lod": 2}).content == first
-    assert c.get(f"{API}/viz/wireframes/{relief}/parts/1", params={"lod": 1}).status_code == 200
+    assert c.get(url, params={"lod": 2}).content == first
+    assert c.get(url, params={"lod": 1}).status_code == 200
     monkeypatch.undo()
-    (folder / "1-2.bfa").write_bytes(first[: len(first) // 2])  # a damaged file is made again
-    assert c.get(f"{API}/viz/wireframes/{relief}/parts/1", params={"lod": 2}).content == first
-    vm.drop_cache(project.folder, state.cache_key())  # cache\ may be deleted without loss
-    assert not folder.exists()
-    assert c.get(f"{API}/viz/wireframes/{relief}/parts/1", params={"lod": 2}).content == first
-    # the job that creates a wireframe makes every level at once
-    vm.drop_cache(project.folder, state.cache_key())
+    (folder / "1-2.bfa").write_bytes(first[: len(first) // 2])  # a damaged file: a stand-in until a job
+    r = c.get(url, params={"lod": 2})
+    assert binary.decode(r.content)[0]["standin"] and "etag" not in r.headers
+    assert _build(project, relief)["built"] == 2 and c.get(url, params={"lod": 2}).content == first
+    seen: list[float] = []
     with dialect.read_tx(project.engine) as conn:
         v, t = wf_store.read_wireframe(conn, BlobStore(project.folder), relief)
-    seen: list[float] = []
-    built = vm.build_cache(project.folder, state.cache_key(), v, t, vm.parts_of(project, state), seen.append)
-    assert built["parts"] == 2 and built["triangles"][0] == 96_000 and seen == [0.5, 1.0]
-    assert built["triangles"][1] <= 96_000 / 8 * 1.05 and built["bytes"] == sum(
-        f.stat().st_size for f in folder.iterdir()
-    )
-    assert sorted(f.name for f in folder.iterdir()) == ["0-1.bfa", "0-2.bfa", "1-1.bfa", "1-2.bfa"]
-    assert (folder / "1-2.bfa").read_bytes() == first
+    parts = vm.parts_of(project, state)
+    again = vm.build_cache(project.folder, state.cache_key(), v, t, parts, seen.append, missing_only=True)
+    assert again["built"] == 0 and seen == [0.5, 1.0]  # «Проверить» of a checked wireframe makes nothing
+    vm.drop_cache(project.folder, state.cache_key())  # cache\ may be deleted without loss
+    assert not folder.exists()
+    assert binary.decode(c.get(url, params={"lod": 2}).content)[0]["standin"]
 
 
 def test_etag_of_a_part_follows_the_geometry_only(stored) -> None:  # type: ignore[no-untyped-def]
@@ -492,7 +499,7 @@ def test_errors_are_russian_with_a_hint(stored) -> None:  # type: ignore[no-unty
     assert c.get(f"{API}/viz/wireframes/{box}").json()["code"] == "wireframe_not_found"
 
 
-def test_a_small_part_without_its_levels_is_drawn_whole_and_not_simplified_here(stored, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_a_tiny_part_without_its_levels_is_drawn_whole_and_not_simplified_here(stored, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     c, project, _mesh, _relief, box = stored
 
     def boom(*_a, **_k):  # type: ignore[no-untyped-def]
@@ -506,4 +513,4 @@ def test_a_small_part_without_its_levels_is_drawn_whole_and_not_simplified_here(
         assert all(np.array_equal(arrays[k], whole[1][k]) for k in arrays)
     with dialect.read_tx(project.engine) as conn:
         state = vm.mesh_state(conn, box)
-    assert not vm.cache_dir(project.folder, state.cache_key()).exists()  # nothing cached: «Проверить» makes them
+    assert not vm.cache_dir(project.folder, state.cache_key()).exists()  # nothing cached: no job is needed

@@ -29,6 +29,9 @@ import { displaysUi } from "../downhole/displaysUi";
 import { Legend } from "../downhole/Legend";
 import { Toolbar } from "./Toolbar";
 import { FpsOverlay } from "./FpsOverlay";
+import { EditorHud } from "../lines/EditToolbar";
+import { AssembleHud } from "../model/AssembleBar";
+import { TrianglesHud } from "../model/TrianglesBar";
 import logoMark from "../../assets/logo-mark.png";
 import shell from "../../shell/Shell.module.css";
 import css from "./Scene.module.css";
@@ -266,6 +269,9 @@ function SceneMount() {
         {ui.degraded && !ui.lost && <div className={css.corner}>Графика перезапускалась трижды за минуту: нагрузка снижена</div>}
         {hint && <div className={css.hint}>{hint}</div>}
         {ready && <Legend />}
+        {ready && <EditorHud />}
+        {ready && <AssembleHud />}
+        {ready && <TrianglesHud />}
         {ready && <FpsOverlay />}
         {(ui.loading > 0 || dh.loading > 0 || ui.linesLoading > 0 || ui.rastersLoading > 0 || ui.wireframesLoading > 0) && !ui.lost && <div className={css.corner}>Загрузка…</div>}
         {dh.simplified > 0 && ui.loading === 0 && dh.loading === 0 && !ui.lost && (
@@ -283,6 +289,11 @@ function SceneMount() {
         {ui.wireframesSimplified && ui.wireframesLoading === 0 && !ui.lost && (
           <div className={`${css.corner} ${css.fifth}`} title="Треугольников в кадре больше бюджета графики: самые мелкие на экране части поверхностей показаны упрощёнными">
             Поверхности упрощены
+          </div>
+        )}
+        {ui.wireframesStandins > 0 && !ui.lost && (
+          <div className={`${css.corner} ${css.sixth}`} data-testid="wireframes-standins" title="Ядро строит упрощённые копии поверхностей (задание «Копии каркаса для показа»); до тех пор части показаны целиком">
+            Готовятся копии для показа
           </div>
         )}
         {ui.software && ui.loading === 0 && !ui.lost && <div className={css.corner} title="WebGL без видеокарты (SwiftShader): 3D медленнее">Программная отрисовка</div>}

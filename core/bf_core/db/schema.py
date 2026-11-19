@@ -347,6 +347,30 @@ line_layers = sa.Table(  # 1 : 1 to objects(kind="line_layer")
     sa.Column("attr_schema", JSONType, nullable=False),  # [{name, kind, unit, scope: feature | vertex}]
     sa.Column("points_only", sa.Boolean, nullable=False),  # no offsets / closed blobs
     sa.Column("origin", JSONType, nullable=False),  # [x, y, z]: whole metres, float32 offsets of the display
+    # Э9 (ADR 0015 §1): the number of the current version of the journal (`line_layer_versions`) — the base of a
+    # save, not `objects.version` (renaming and colour raise that one); `next_lid` — the stable number the next
+    # new line gets (NULL: the line count, the layer has no `lid` blob and the number of a line is its position).
+    sa.Column("rev", sa.Integer, nullable=False, default=1, server_default="1"),
+    sa.Column("next_lid", sa.Integer),
+)
+
+line_layer_versions = sa.Table(  # ТЗ 7.22: the journal of saves of a line layer; files — owner `line_version`
+    "line_layer_versions",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("layer_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("version", sa.Integer, nullable=False),  # 1…N, no gaps
+    sa.Column("action", sa.String(16), nullable=False),  # import create save restore move operation
+    sa.Column("note", sa.String(255)),
+    sa.Column("author", sa.String(100)),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Column("line_count", sa.Integer, nullable=False),
+    sa.Column("point_count", sa.Integer, nullable=False),
+    sa.Column("prev_line_count", sa.Integer, nullable=False),
+    sa.Column("prev_point_count", sa.Integer, nullable=False),
+    # length (3D and plan), area, closed, flat, extent, origin, attr_schema, points_only, next_lid
+    sa.Column("stats", JSONType, nullable=False),
+    sa.UniqueConstraint("layer_id", "version"),
 )
 
 rasters = sa.Table(  # 1 : 1 to objects(kind="raster")
@@ -396,7 +420,8 @@ projects_cache = sa.Table(
 )
 
 #: Kinds of blob owners. A new kind that stores files registers here, or tests/test_db.py fails (ТЗ 6.5).
-BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job", "import"})
+#: `line_version` — a row of `line_layer_versions` (ADR 0015 §1): the files of a saved version of a line layer.
+BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job", "import", "line_version"})
 
 #: Roles of a blob for its owner (ADR 0011 §1). `data` — a file of no particular role; `source` — the file as
 #: loaded; `sidecar:<ext>` — a companion file of a raster (`sidecar:jgw`, `sidecar:tab`, …); `display0/1` —
@@ -404,11 +429,26 @@ BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job", "import"})
 #: `vattrs` (Parquet), or `pack:<n>` — entry n of a blob that holds these files of several small layers
 #: (`lines/pack.py`); wireframes: `xyz <f8`, `tri <i4`; point clouds (ADR 0014 §1, `lines/cloud.py`): `xyz`, `seq`,
 #: `class u1` (ASPRS code), `ret u1` (return number and number of returns), `h <f4` (height above the ground),
-#: `dz <f4` (Z − DTM). A new role registers here, or add_owner refuses it.
+#: `dz <f4` (Z − DTM); `lid <u4` — the stable number of every line of a layer (ADR 0015 §1; no blob: the position).
+#: A new role registers here, or add_owner refuses it.
 BLOB_ROLES: frozenset[str] = frozenset(
     {
-        "data", "source", "display0", "display1", "xyz", "offsets", "closed", "seq", "attrs", "vattrs", "tri",
-        "class", "ret", "h", "dz",
+        "data",
+        "source",
+        "display0",
+        "display1",
+        "xyz",
+        "offsets",
+        "closed",
+        "seq",
+        "attrs",
+        "vattrs",
+        "tri",
+        "class",
+        "ret",
+        "h",
+        "dz",
+        "lid",
     }  # fmt: skip
 )
 BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:")

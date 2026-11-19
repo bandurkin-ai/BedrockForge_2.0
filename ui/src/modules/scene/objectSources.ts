@@ -165,8 +165,12 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
   );
   // the holes may cross the wireframes elsewhere after an edit or an import: a 304 keeps the marks
   off.push(
-    onCoreEvent((event) => {
+    onCoreEvent((event, data) => {
       if (event === "drillholes.changed" || event === "objects.changed") exact.reload();
+      if (event === "wireframes.lod") {
+        const ids = lodReady(data);
+        if (ids) wireframes.levelsReady(ids);
+      }
     }),
   );
   off.push(
@@ -246,4 +250,18 @@ export function connectObjects(app: App, scene: Scene, holes: HolesSource): Obje
       wireframes.dispose();
     },
   };
+}
+
+/**
+ * The wireframes of the open project whose levels of detail the core made: `wireframes.lod {source, job,
+ * wireframe_ids}` (ADR 0015 §8); null — another project, or not the event of the core.
+ */
+export function lodReady(data: string): number[] | null {
+  try {
+    const e = JSON.parse(data) as { source?: unknown; wireframe_ids?: unknown };
+    if (typeof e.source !== "string" || !ofOpenProject({ source: e.source }) || !Array.isArray(e.wireframe_ids)) return null;
+    return e.wireframe_ids.filter((id): id is number => Number.isInteger(id));
+  } catch {
+    return null;
+  }
 }

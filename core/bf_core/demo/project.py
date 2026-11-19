@@ -3,7 +3,8 @@ a fixed seed (no files, no network), so every installation gets the same project
 
 Parts are added by the stages that bring their data types: drillholes and AU/CU assays (Э3), the audit with
 deliberate errors (Э5), a trench, strings of the ore body, the road, the survey points, the plan of the site and
-the DTM with the plan on it (Э7, `geo.py`), wireframes of the ore body and outlines (Э8), the geological map and
+the DTM with the plan on it (Э7, `geo.py`), wireframes of the ore body and outlines (Э8), contours on sections with
+tie lines, the solid stitched from them and the isolines of the relief (Э9, `contours.py`), the geological map and
 the scan of the section Y = 8125 (Э9). A part is a function (conn, store, rng) registered in PARTS.
 """
 
@@ -67,6 +68,7 @@ def _audit(project: Project) -> None:
 
 
 def _register() -> None:
+    from .contours import add_contours, add_isolines
     from .drillholes import add_drillholes
     from .geo import add_lines, add_terrain, add_trench
     from .wireframes import add_wireframes
@@ -76,6 +78,9 @@ def _register() -> None:
     PARTS.extend([("trench", add_trench), ("lines", add_lines), ("terrain", add_terrain)])
     # Э8 (`wireframes.py`): the ore bodies from the strings of the ore lens and the fault; no random numbers
     PARTS.append(("wireframes", add_wireframes))
+    # Э9 (`contours.py`): contours on the sections with tie lines, the solid stitched from them, the isolines of
+    # «Рельеф»; no random numbers
+    PARTS.extend([("contours", add_contours), ("isolines", add_isolines)])
 
 
 _register()

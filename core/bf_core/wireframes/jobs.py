@@ -30,7 +30,8 @@ or a failure before that transaction leaves nothing (temp files and the cache fo
 stays when a wireframe of the project has the same geometry — the levels are its own).
 
 What the surface was built from is kept with it (`meta.built`: sources with their ids and names, parameters,
-the report); a `.bfggis` import renumbers the ids (`remap_built`).
+the report); a `.bfggis` import renumbers the ids (`ops/provenance.py::remap_built`, shared with the
+operations).
 Ported from BF `ops/operations.py::op_dtm`.
 """
 
@@ -50,6 +51,7 @@ from bf_core.db.schema import dh_holes, line_layers, objects
 from bf_core.jobs.context import JobCancelled, JobContext, JobError
 from bf_core.jobs.registry import handler
 from bf_core.lines.cloud import cloud_meta, not_a_cloud
+from bf_core.ops.provenance import remap_built as remap_built  # the record is renumbered there (ADR 0015 §6)
 
 from . import cloud_source as cs
 from . import store as wf_store
@@ -248,28 +250,6 @@ def _memory(params: dict[str, Any]) -> int:
     thin = int(params.get("cloud_points") or 0) * cs.BYTES_A_POINT
     dz = memory_mb(int(params.get("dz_points") or 0), 2 * points) if params.get("dz", True) else 0
     return max(512, max(int(max(build, thin) / 2**20), dz) + 300)
-
-
-def remap_built(built: Any, new_id: Callable[[int], int | None]) -> Any:
-    """`meta.built` of a wireframe on a `.bfggis` import: the ids of its sources and of its boundary are those
-    of the project it was built in. A source the archive does not have (deleted since) keeps its name and
-    loses its id: the old number would point at another object of the new project."""
-
-    def renumbered(value: Any) -> int | None:
-        return new_id(value) if isinstance(value, int) and not isinstance(value, bool) else None
-
-    if not isinstance(built, dict):
-        return built
-    out = dict(built)
-    if isinstance(built.get("sources"), list):
-        out["sources"] = [
-            {**src, "id": renumbered(src.get("id"))} if isinstance(src, dict) else src for src in built["sources"]
-        ]
-    params = built.get("params")
-    if isinstance(params, dict) and isinstance(params.get("boundary"), dict):
-        boundary = params["boundary"]
-        out["params"] = {**params, "boundary": {**boundary, "layer_id": renumbered(boundary.get("layer_id"))}}
-    return out
 
 
 def _geometry_in_use(engine: sa.Engine, shas: Mapping[str, str]) -> bool:

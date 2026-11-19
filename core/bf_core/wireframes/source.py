@@ -4,14 +4,15 @@ The store keeps the triangles of a wireframe along a Z-order curve (ADR 0004: th
 of consecutive triangles). The order of the file is the optional blob `seq <u4 M` of the owner `object`:
 `seq[k]` — the number in the file of the stored triangle k, so `file[seq] = stored`. A wireframe without the
 blob has the order of storage (built in the project, or its file was in the spatial order already). The blob
-is not among `StagedWireframe.shas`: the key of the levels of detail does not depend on it.
+is not among `StagedWireframe.shas`: the key of the levels of detail does not depend on it. A small wireframe of
+a portion keeps it in its entry of the pack (`files.py`) with `xyz` and `tri`.
 
 `objects.meta.source` is `MeshSet.source` — {format, name as the file has it, …, the rows a writer needs to
 give the same file back}. Its `as` is the name that stands for the name of the file: the name the object got
 at import when the name of the mesh was taken in the project. While the object is still called that, a writer
 writes the name of the file (`meshset.name_in_file`); a renamed object is written under its new name.
 
-    stage_mesh(store, mesh)            outside the write transaction: `store.stage_wireframe` and `seq`
+    stage_mesh(store, mesh, write=…)   outside the write transaction: `store.stage_wireframe` and `seq`
     commit_mesh(conn, store, staged, mesh, …)   inside it: the object with colour, attributes, `meta.source`
     read_mesh(conn, store, wf_id)      the wireframe as a writer takes it: the triangles in the order of the file
 """
@@ -24,9 +25,10 @@ from typing import Any
 import numpy as np
 import sqlalchemy as sa
 
-from bf_core.db.schema import blob_owners, objects
+from bf_core.db.schema import objects
 from bf_core.formats.meshset import MeshSet
 from bf_core.storage.blobs import CHUNK, BlobStore
+from bf_core.wireframes import files as wf_files
 from bf_core.wireframes import store as ws
 
 SEQ = "seq"  # the role of the blob
@@ -44,12 +46,19 @@ def in_order(seq: np.ndarray) -> bool:
     return len(seq) == 0 or (int(seq[0]) == 0 and bool(np.all(seq[1:] > seq[:-1])))
 
 
-def stage_mesh(store: BlobStore, mesh: MeshSet, *, progress: ws.Progress = None) -> ws.StagedWireframe:
-    """`store.stage_wireframe` of the geometry of a mesh and the temp file of its `seq` (no database access).
+def stage_mesh(
+    store: BlobStore, mesh: MeshSet, *, progress: ws.Progress = None, write: bool = True
+) -> ws.StagedWireframe:
+    """`store.stage_wireframe` of the geometry of a mesh and the temp file of its `seq` (no database access);
+    `write=False` — no files yet (`files.stage_files` writes those of a portion, `seq` with them).
     `progress(fraction, message)` may raise to cancel: no temp file stays."""
-    staged = ws.stage_wireframe(store, mesh.xyz, mesh.tri, progress=progress)
+    staged = ws.stage_wireframe(store, mesh.xyz, mesh.tri, progress=progress, write=write)
+    staged.keep_seq = staged.seq is not None and not in_order(staged.seq)
+    if not write:
+        return staged
     try:
-        if staged.seq is not None and not in_order(staged.seq):
+        if staged.keep_seq:
+            assert staged.seq is not None
             staged.files[SEQ] = store.stage_stream(_chunks(staged.seq))
     except BaseException:
         staged.discard()
@@ -91,17 +100,7 @@ def commit_mesh(
 
 def read_seq(conn: sa.Connection, store: BlobStore, wf_id: int) -> np.ndarray | None:
     """`seq` of a wireframe (uint32 per stored triangle), or None when it has the order of storage."""
-    sha = conn.execute(
-        sa.select(blob_owners.c.sha256).where(
-            blob_owners.c.owner_kind == ws.OWNER, blob_owners.c.owner_id == wf_id, blob_owners.c.role == SEQ
-        )
-    ).scalar()
-    if sha is None:
-        return None
-    path = store.path_of(str(sha))
-    if not path.is_file():
-        raise ws.broken()
-    return np.fromfile(path, dtype=SEQ_DTYPE)
+    return wf_files.wireframe_files(store, ws.blob_roles(conn, wf_id)).array(SEQ)
 
 
 def file_order(tri: np.ndarray, seq: np.ndarray | None) -> np.ndarray:

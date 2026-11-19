@@ -13,6 +13,7 @@ import { cloudLayers, pickCloud } from "../dtm/ground";
 import { refresh as refreshJobs } from "../jobs/state";
 import { loadSceneObjects, sceneObjects, type LineLayerInfo } from "../scene/objects";
 import { dzJobs, type JobRef } from "./dz";
+import { bindEditor } from "./editCommands";
 import { defaultLayers, fitFormat, formatInfo } from "./export";
 import { findLayer } from "./props";
 
@@ -40,6 +41,7 @@ export async function startDz(cloudId: number, wireframeId: number): Promise<Job
 }
 
 export function bindLines(app: App): void {
+  bindEditor(app);
   app.registry.bind(
     "lines.export",
     noted(app, async (a) => {

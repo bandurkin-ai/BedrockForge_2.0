@@ -7,7 +7,7 @@
  * labels placed with everyone else's); after a lost context they are dropped and `onRestored` re-adds them.
  */
 import * as THREE from "three";
-import { attachPointer } from "./core/pointer";
+import { groundPoint, projectRay, projectView, ToolInput, viewPlaneAt, type ProjectView, type ToolHandler } from "./core/toolInput";
 import { CameraRig } from "./core/camera";
 import { FrameLoop } from "./core/frame";
 import { nonBackgroundPixels, probeWebGL2, Renderer, sceneBytes, type FrameStats, type GpuInfo } from "./core/renderer";
@@ -33,7 +33,7 @@ import { LabelCache, type LabelItem } from "./labels/sprites";
 import { toNdc, viewProjection, type Mat4 } from "./pick/ray";
 import { SharedClip } from "./section/clip";
 import { DRAW_OFF, type DrawState } from "./section/draw";
-import { viewPlanePoint, type SectionLine } from "./section/math";
+import type { Ray, SectionLine } from "./section/math";
 import { buildOverview, type PlanOverview } from "./section/miniPlan";
 import { collarsOnScreen, planSources, type ScreenCollar } from "./holes/screen";
 import { SectionOverlay } from "./section/overlay";
@@ -83,6 +83,7 @@ export class Scene {
   private readonly frameListeners = new Set<(ctx: FrameContext) => void>();
   private readonly cleanup: (() => void)[] = [];
   private readonly light = new THREE.DirectionalLight(0xffffff, 1.6);
+  private readonly input: ToolInput;
   /** frames per second and ms per frame (the counter Ctrl+Shift+F) */
   readonly fps = new FpsTracker();
 
@@ -111,13 +112,8 @@ export class Scene {
     };
     this.renderer.onLost = () => this.contextLost();
     this.renderer.onRestored = () => this.contextRestored();
-    this.cleanup.push(
-      attachPointer(this.renderer.canvas, {
-        click: (x, y) => this.click(x, y),
-        move: (x, y) => this.pointerMove(x, y),
-        leave: () => undefined,
-      }),
-    );
+    this.input = new ToolInput({ click: (x, y) => this.click(x, y), move: (x, y) => this.pointerMove(x, y), leave: () => undefined, camera: (on) => void (this.rig.controls.enabled = on) });
+    this.cleanup.push(this.input.attach(this.renderer.canvas));
     this.cleanup.push(watchHost(host, () => this.resize(), () => this.applyTheme()));
     this.applyTheme();
     this.resize();
@@ -125,13 +121,8 @@ export class Scene {
 
   static probe = probeWebGL2;
 
-  get gpu(): GpuInfo {
-    return this.renderer.info;
-  }
-
-  get canvas(): HTMLCanvasElement {
-    return this.renderer.canvas;
-  }
+  get gpu(): GpuInfo { return this.renderer.info; }
+  get canvas(): HTMLCanvasElement { return this.renderer.canvas; }
 
   /** One more frame (a layer changed its objects). */
   invalidate(): void {
@@ -288,7 +279,7 @@ export class Scene {
     this.drawing = state;
     if (state.stage !== "second") this.overlay.setDraft(null, null, 0);
     else this.pointerMove(-1, -1);
-    this.renderer.canvas.style.cursor = state.stage === "off" ? "" : "crosshair";
+    this.renderer.canvas.style.cursor = state.stage === "off" && !this.input.active ? "" : "crosshair";
     this.loop.invalidate();
   }
 
@@ -374,6 +365,22 @@ export class Scene {
   layerChanged(): void {
     this.layers.place();
     this.contentChanged();
+  }
+
+  /** A tool of the string editor gets the pointer first; null — the scene alone, as before. */
+  setTool(tool: ToolHandler | null): void {
+    this.input.setTool(tool);
+    this.renderer.canvas.style.cursor = tool ? "crosshair" : "";
+  }
+
+  /** The ray under a canvas point (CSS px), project coordinates float64, Z not exaggerated; null — no origin yet. */
+  cursorRay(px: number, py: number): Ray | null {
+    return projectRay(this.lastCam ?? this.rig.state(), this.rig.options(), this.size, this.origin.value, this.vexag, px, py);
+  }
+
+  /** clip ← project coordinates of the last frame, the size of the view and the section window. */
+  projectView(): ProjectView | null {
+    return projectView(this.lastVp, this.origin.value, this.vexag, this.size, (x, y) => this.clip.inWindow(x, y));
   }
 
   // ---------------------------------------------------------------- E2E and diagnostics
@@ -529,19 +536,10 @@ export class Scene {
     this.loop.invalidate();
   }
 
-  /** A point of the screen on the plane through the view centre (BF pickPoint), rendered space. */
-  private viewPoint(px: number, py: number): Vec3 | null {
-    const cam = this.lastCam ?? this.rig.state();
-    const [nx, ny] = toNdc(px, py, this.size.w, this.size.h);
-    return viewPlanePoint(screenRay(cam, this.rig.options(), nx, ny), cam.target, viewDirection(cam));
-  }
-
   private click(px: number, py: number): void {
     if (this.drawing.stage !== "off") {
-      const p = this.viewPoint(px, py);
-      const o = this.origin.value;
-      if (p && o) this.events.onGroundClick?.({ x: p[0] + o.x, y: p[1] + o.y });
-      return;
+      const g = groundPoint(this.lastCam ?? this.rig.state(), this.rig.options(), this.size, this.origin.value, px, py);
+      return void (g && this.events.onGroundClick?.(g));
     }
     const vp = this.lastVp;
     if (!vp) return;
@@ -563,7 +561,7 @@ export class Scene {
     if (!first || !o) return;
     const cam = this.lastCam ?? this.rig.state();
     const start: Vec3 = [first.x - o.x, first.y - o.y, cam.target[2] / (this.vexag || 1)];
-    const p = px >= 0 ? this.viewPoint(px, py) : null;
+    const p = px >= 0 ? viewPlaneAt(cam, this.rig.options(), this.size, px, py) : null;
     const end: Vec3 | null = p ? [p[0], p[1], start[2]] : null;
     const mark = 6 / Math.max(pixelsPerUnit(cam, cam.target, this.size.h, this.rig.options()), 1e-9);
     this.overlay.setDraft(start, end, mark);
