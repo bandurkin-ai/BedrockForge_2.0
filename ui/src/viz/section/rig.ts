@@ -2,10 +2,12 @@
  * The section of the 3D window apart from `Scene.ts` (ТЗ 7.14, 8.1; ADR 0016 §4): the current plane (a line of
  * 7.14 or a section of a series, a polyline segment), clipping by its window (`SharedClip`), the trace while
  * clipping is off and the rubber band of a line being drawn (`SectionOverlay`), the frame of the «section» view
- * and the exaggeration the plane allows (×1 for an inclined one, ADR 0016 решение 7). The scene owns the camera
- * and the origin and calls `refresh` when the origin, the content or the exaggeration change.
+ * and the exaggeration the plane allows (×1 for an inclined one, ADR 0016 решение 7), the lock of the view on the
+ * plane («Зафиксировать вид», `core/lockView.ts`). The scene owns the camera and the origin and calls `refresh`
+ * when the origin, the content or the exaggeration change, `follow` when the section or the exaggeration do.
  */
 import type { Box3, WindowTest } from "../core/bounds";
+import { freeCamera, followSection, lockedView, lockOn, type ViewLock } from "../core/lockView";
 import type { Vec3 } from "../core/vec3";
 import { pixelsPerUnit, type CameraState, type SectionFrame, type ViewOptions } from "../core/views";
 import { viewPlaneAt } from "../core/toolInput";
@@ -24,6 +26,8 @@ export class SectionRig {
   plane: SectionPlane | null = null;
   clipOn = false;
   drawing: DrawState = DRAW_OFF;
+  /** «Зафиксировать вид»: the plane and the direction the view is locked on */
+  lock: ViewLock | null = null;
 
   /** A new section: a plane (with the line it came from, if any) and clipping. */
   set(plane: SectionPlane | null, clip: boolean, line: SectionLine | null = null): void {
@@ -74,6 +78,34 @@ export class SectionRig {
     const mark = 6 / Math.max(pixelsPerUnit(cam, cam.target, size.h, opts), 1e-9);
     this.overlay.setDraft(start, end, mark);
     return true;
+  }
+
+  /** Locks the view on the current plane: the camera to apply, null — no plane or origin (nothing changes). */
+  lockOn(cam: CameraState, origin: Origin | null, vexag: number): CameraState | null {
+    if (!this.plane || !origin) return null;
+    const r = lockOn(cam, this.plane, origin, vexag);
+    this.lock = r.lock;
+    return r.camera;
+  }
+
+  /** Frees the view: the camera with Z up, null — it was not locked. */
+  unlock(cam: CameraState): CameraState | null {
+    if (!this.lock) return null;
+    this.lock = null;
+    return freeCamera(cam);
+  }
+
+  /** The locked view after a new section or exaggeration (a step: moved along v̂); null — not locked or no plane. */
+  follow(cam: CameraState, origin: Origin | null, vexag: number): CameraState | null {
+    if (!this.lock || !this.plane || !origin) return null;
+    const r = followSection(cam, this.lock, this.plane, origin, vexag);
+    this.lock = r.lock;
+    return r.camera;
+  }
+
+  /** «Вписать» or the «section» view while locked (null — not locked). */
+  lockedView(box: Box3, opts: ViewOptions, origin: Origin | null): CameraState | null {
+    return this.lock ? lockedView(this.lock, box, opts, this.frame(origin)) : null;
   }
 
   dispose(): void {

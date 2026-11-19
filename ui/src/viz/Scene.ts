@@ -140,10 +140,8 @@ export class Scene {
   setView(v: { vexag: number; grid: boolean; perspective: boolean }): void {
     if (v.vexag) this.wantVexag = v.vexag;
     this.applyVexag();
-    if (v.grid !== this.gridOn) {
-      this.gridOn = v.grid;
-      this.grid.group.visible = v.grid;
-    }
+    this.gridOn = v.grid;
+    this.grid.group.visible = v.grid;
     if (this.rig.setPerspective(v.perspective)) {
       this.rig.resize(this.size.w, this.size.h);
       this.fit();
@@ -151,21 +149,33 @@ export class Scene {
     this.loop.invalidate();
   }
 
-  /** A standard view: «В план» keeps the centre and the scale, the others fit the content. */
+  /** A standard view: «В план» keeps the centre and the scale, the others fit the content; all but «section» free a locked view. */
   view(preset: ViewPreset): void {
+    if (preset !== "section") this.lockView(false);
     this.first.stop();
     this.turn.cancel();
     const opts = this.rig.options();
-    if (preset === "top") {
-      this.rig.apply(toPlan(this.rig.state(), contentBox(this.extents()), opts));
-      return;
-    }
-    this.rig.apply(view(preset, this.fitBox(), opts, preset === "section" ? this.sec.frame(this.origin.value) : null));
+    if (preset === "top") return void this.rig.apply(toPlan(this.rig.state(), contentBox(this.extents()), opts));
+    this.rig.apply(this.sec.lockedView(this.fitBox(), opts, this.origin.value) ?? view(preset, this.fitBox(), opts, preset === "section" ? this.sec.frame(this.origin.value) : null));
   }
 
   /** «Вписать»: everything visible (with clipping — in the window) without turning the view. */
   fit(): void {
-    this.take(fit(this.rig.state(), this.fitBox(), this.rig.options()));
+    this.take(this.sec.lockedView(this.fitBox(), this.rig.options(), this.origin.value) ?? fit(this.rig.state(), this.fitBox(), this.rig.options()));
+  }
+
+  get locked(): boolean { return this.rig.locked; }
+
+  /** «Зафиксировать вид» (L, ADR 0016 §4; `core/lockView.ts`): orthographic along v̂, ŵ up, no turning, follows `]` / `[`;
+   * false — nothing to lock on (no section) or to free. */
+  lockView(on: boolean): boolean {
+    const cam = on ? this.sec.lockOn(this.rig.state(), this.origin.value, this.vexag) : this.sec.unlock(this.rig.state());
+    if (!cam) return false;
+    const refit = this.rig.setLock(this.sec.lock);
+    this.take(cam);
+    if (refit) this.fit();
+    this.events.onLock?.(on);
+    return true;
   }
 
   /** A camera a command sets: the first view and a smooth turn stop. */
@@ -186,6 +196,7 @@ export class Scene {
 
   /** A smooth turn to look along `from` (gizmo): centre and scale kept, a new turn stops the old. */
   turnTo(from: Vec3): void {
+    if (this.rig.locked) return;
     this.first.stop();
     const opts = this.rig.options();
     const token = this.turn.begin(this.rig.state(), from, performance.now(), { ortho: !opts.perspective, box: contentBox(this.extents()), vexag: this.vexag });
@@ -201,10 +212,7 @@ export class Scene {
   camera(): CameraState { return this.rig.state(); }
 
   /** The camera of a saved view, absolute (null before the first object); the projection comes with the keys. */
-  worldCamera(): WorldCamera | null {
-    const o = this.origin.value;
-    return o ? toWorld(this.rig.state(), o, this.vexag, !this.rig.perspective, this.rig.persp.fov) : null;
-  }
+  worldCamera(): WorldCamera | null { const o = this.origin.value; return o ? toWorld(this.rig.state(), o, this.vexag, !this.rig.perspective, this.rig.persp.fov) : null; }
   setWorldCamera(c: WorldCamera): void { this.take(fromWorld(c, this.origin.value ?? this.origin.ensure([...c.target, ...c.target]), this.vexag, this.rig.state())); }
 
   /** Turns the view by `rad` about the vertical through its centre (smoke scenario, frame benchmark). */
@@ -248,9 +256,16 @@ export class Scene {
   }
 
   private sectionChanged(): void {
-    this.applyVexag();
-    this.sec.refresh(this.origin.value, contentBox(this.extents()), this.vexag);
+    if (!this.applyVexag()) this.sectionFollows();
     this.loop.invalidate();
+  }
+
+  /** The planes and the trace for the section and the exaggeration; a locked view follows the plane or is freed. */
+  private sectionFollows(): void {
+    this.sec.refresh(this.origin.value, contentBox(this.extents()), this.vexag);
+    if (!this.sec.plane) this.lockView(false);
+    const cam = this.sec.follow(this.rig.state(), this.origin.value, this.vexag);
+    if (cam) { this.rig.setLock(this.sec.lock); this.take(cam); }
   }
 
   /** The drawing state of a section line (the first point marked: the rubber band follows the cursor). */
@@ -269,10 +284,7 @@ export class Scene {
 
   setHoles(manifest: HolesManifest, style: HoleSetStyle, visibility: HoleSetVisibility): void {
     this.removeHoles(manifest.setId, false);
-    if (!manifest.parts.length) {
-      this.contentChanged();
-      return;
-    }
+    if (!manifest.parts.length) return void this.contentChanged();
     this.origin.ensure(manifest.parts[0].bbox);
     const layer = new HoleSetLayer(manifest, { clip: this.clipPlanes, resolution: this.resolution, textures: this.textures, labels: this.labels, pixelRatio: this.renderer.pixelRatio }, style, visibility);
     layer.place(this.origin);
@@ -283,8 +295,7 @@ export class Scene {
   }
 
   setPaths(setId: number, k: number, built: BuiltPaths): void {
-    const layer = this.holeSets.get(setId);
-    if (!layer) return;
+    const layer = this.holeSets.get(setId); if (!layer) return;
     layer.setPaths(k, built, this.fat);
     this.updateFat();
     if (this.selected?.setId === setId) this.applySelection();
@@ -294,8 +305,7 @@ export class Scene {
   holes(setId: number): HoleSetLayer | null { return this.holeSets.get(setId) ?? null; }
 
   removeHoles(setId: number, update = true): void {
-    const layer = this.holeSets.get(setId);
-    if (!layer) return;
+    const layer = this.holeSets.get(setId); if (!layer) return;
     if (this.selected?.setId === setId) this.selection.clear();
     this.root.remove(layer.group);
     layer.dispose();
@@ -304,16 +314,14 @@ export class Scene {
   }
 
   setHoleStyle(setId: number, style: HoleSetStyle): void {
-    const layer = this.holeSets.get(setId);
-    if (!layer) return;
+    const layer = this.holeSets.get(setId); if (!layer) return;
     layer.setStyle(style, useFatLines(style.trace, this.totalSegments()));
     if (this.selected?.setId === setId) this.applySelection();
     this.loop.invalidate();
   }
 
   setHoleVisibility(setId: number, v: HoleSetVisibility): void {
-    const layer = this.holeSets.get(setId);
-    if (!layer) return;
+    const layer = this.holeSets.get(setId); if (!layer) return;
     layer.setVisibility(v);
     this.refreshGrid();
     this.loop.invalidate();
@@ -350,7 +358,7 @@ export class Scene {
 
   debug(): SceneDebug {
     const cam = this.rig.state();
-    const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, clipPlanes: this.clipPlanes.length, section: this.sec.line, sectionPlane: this.sec.plane };
+    const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, clipPlanes: this.clipPlanes.length, section: this.sec.line, sectionPlane: this.sec.plane, locked: this.rig.locked };
     const content = { gpu: this.renderer.info, sets: [...this.holeSets.keys()], layers: this.layers.keys(), segments: this.totalSegments(), pickMs: this.pickMs };
     return { frames: this.loop.frames, idle: this.idle, lost: this.renderer.lost, stats: this.stats, ...view, ...content };
   }
@@ -383,15 +391,16 @@ export class Scene {
   // ---------------------------------------------------------------- internals
 
   /** The exaggeration asked, ×1 while an inclined section is active (ADR 0016 решение 7): the centre is kept. */
-  private applyVexag(): void {
+  private applyVexag(): boolean {
     const e = this.sec.vexag(this.wantVexag);
-    if (e === this.vexag) return;
+    if (e === this.vexag) return false;
     const cam = changeVexag(this.rig.state(), this.vexag, e);
     this.vexag = e;
     this.rig.vexag = e;
     this.root.scale.z = e;
     this.rig.apply(cam);
-    this.sec.refresh(this.origin.value, contentBox(this.extents()), e);
+    this.sectionFollows();
+    return true;
   }
 
   private extents(): Extent[] {
@@ -403,9 +412,7 @@ export class Scene {
     return out;
   }
 
-  private fitBox(): Box3 {
-    return fitBox(this.extents(), this.sec.boxTest());
-  }
+  private fitBox(): Box3 { return fitBox(this.extents(), this.sec.boxTest()); }
 
   private totalSegments(): number {
     let n = 0;
@@ -413,10 +420,7 @@ export class Scene {
     return n;
   }
 
-  private updateFat(): void {
-    const total = this.totalSegments();
-    for (const l of this.holeSets.values()) l.setFat(useFatLines(l.style.trace, total));
-  }
+  private updateFat(): void { const total = this.totalSegments(); for (const l of this.holeSets.values()) l.setFat(useFatLines(l.style.trace, total)); }
 
   private applySelection(): void {
     const s = this.selected;

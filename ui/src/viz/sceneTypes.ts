@@ -24,6 +24,8 @@ export interface SceneEvents {
   onContextRestored?(): void;
   /** the camera moved, the view resized */
   onCamera?(): void;
+  /** «Зафиксировать вид» on or off (also when a standard view or the end of the section frees it) */
+  onLock?(on: boolean): void;
 }
 
 /** What a layer sees before every frame. */
@@ -94,6 +96,8 @@ export interface SceneDebug {
   section: SectionLine | null;
   /** the plane of the section of any kind (a series, a polyline segment) */
   sectionPlane: SectionPlane | null;
+  /** «Зафиксировать вид» */
+  locked: boolean;
   gpu: GpuInfo;
   sets: number[];
   /** keys of the layers added with `addLayer` */
