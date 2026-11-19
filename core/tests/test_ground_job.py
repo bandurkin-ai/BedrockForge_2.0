@@ -213,8 +213,15 @@ def test_request_checks_the_cloud_and_the_parameters(api, monkeypatch: pytest.Mo
     # the ranges of ТЗ 7.35 Д-22
     for bad in ({"cr": 0.05}, {"cr": 51}, {"ri": 4}, {"ri": 0}, {"ct": 0.01}, {"ct": 6}, {"r_b": 0.5}, {"r_b": 21}):
         refusal(lambda bad=bad: request(project, cloud_id, **bad), 422, "bad_param")
-    for bad in ({"noise": {"r": 0.1}}, {"noise": {"k_min": 21}}, {"profile": "луна"}, {"cr": float("nan")}):
+    for bad in ({"noise": {"r": 0.1}}, {"noise": {"k_min": 21}}, {"profile": "луна"}, {"ri": 2.5}, {"ri": "два"}):
         refusal(lambda bad=bad: request(project, cloud_id, **bad), 422, "bad_param")
+    # numbers of the window: text with a comma
+    typed = request(project, cloud_id, cr="0,5", ct=" 0.25 ", r_b="7,5", noise={"r": "1,5", "k_min": 4}, ri="3")
+    assert (typed["cr"], typed["ct"], typed["r_b"], typed["ri"]) == (0.5, 0.25, 7.5, 3)
+    assert typed["noise"] == {"r": 1.5, "k_min": 4}
+    assert request(project, cloud_id, cr="", r_b=True, noise=True) == request(project, cloud_id)  # empty: the profile
+    for bad in ({"cr": "мелко"}, {"ct": float("nan")}, {"r_b": "5 м"}, {"noise": {"r": "близко"}}):
+        refusal(lambda bad=bad: request(project, cloud_id, **bad), 422, "not_a_number")
     refusal(lambda: request(project, 999_999), 404, "line_layer_not_found")
     refusal(lambda: request(project, pts), 409, "not_a_cloud")
 

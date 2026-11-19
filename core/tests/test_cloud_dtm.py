@@ -227,6 +227,52 @@ def test_thinning_keeps_one_source_point_a_cell(api) -> None:  # type: ignore[no
     assert tmp_files(project) == []
 
 
+def test_cells_are_squares_of_the_project_grid_on_both_sides_of_zero(api) -> None:  # type: ignore[no-untyped-def]
+    _c, project = api
+    rng = np.random.default_rng(45)
+    xyz = np.column_stack([rng.uniform(-40.0, 40.0, (8000, 2)), rng.normal(0.0, 1.0, 8000)])
+    xyz[:6] = [[0.0, 0.0, 1.0], [-0.0, -1e-9, 2.0], [-1e-9, 0.0, 3.0], [0.74, 0.74, 4.0], [-0.74, 0.0, 5.0], [0, 0, 1]]
+    cloud = opened(project, add_cloud(project, lc.CloudChunk(xyz, np.full(len(xyz), 2, dtype=np.uint8))))
+    stored = cloud.read("xyz")
+    for cell in (0.74, 1.0, 13.0, 1000.0):
+        got = cs.thin(cloud, [2], cell)
+        assert got.rows.tolist() == ref_thin(stored, cloud.read("class"), stored[:, 2], [2], cell)
+    assert len(cs.thin(cloud, [2], 1000.0).rows) == 4  # the four squares that meet at zero
+    # one cell: one vertex — not a surface, and the job says so
+    lone = add_cloud(project, lc.CloudChunk(xyz[:6] + [502.2, 702.2, 0.0], np.full(6, 2, dtype=np.uint8)), "Точка")
+    assert len(cs.thin(opened(project, lone), [2], 5.0).rows) == 1
+    from bf_core.jobs.context import JobError
+
+    with dialect.read_tx(project.engine) as conn:
+        params = dtm_jobs.request(conn, clouds=[{"layer_id": lone, "classes": [2], "cell": 5.0}])
+    with pytest.raises(JobError) as err:
+        run_job(project, params)
+    assert err.value.code == "too_few_points" and tmp_files(project) == []
+
+
+def test_several_clouds_share_the_limit_of_vertices(api, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    _c, project = api
+    big, small = add_cloud(project, scene(46, 30_000), "Север"), add_cloud(project, scene(47, 6000, 40.0, 30.0), "Юг")
+    monkeypatch.setattr(cs, "MAX_VERTICES", 3000)
+    specs = [{"layer_id": big, "classes": [2]}, {"layer_id": small, "classes": None, "cell": 0.1}]
+    shares: list[float] = []
+    with dialect.read_tx(project.engine) as conn:
+        north, south = cs.take(conn, BlobStore(project.folder), specs, shares.append)
+    # in proportion to the points of the classes; every cloud within its share
+    total = north.thinned.of + south.thinned.of
+    assert north.budget == 3000 * north.thinned.of // total and south.budget == 3000 * south.thinned.of // total
+    assert 0.5 * north.budget < len(north.thinned.rows) <= north.budget
+    assert 0.5 * south.budget < len(south.thinned.rows) <= south.budget
+    assert shares == sorted(shares) and shares[0] == 0.0 and shares[-1] == 1.0
+    assert north.thinned.asked is None and north.used()["cell"] == north.thinned.cell > 0.5
+    # the step of the user gave more: it grew, and the journal says from what to what
+    assert south.thinned.asked == 0.1 and south.thinned.cell > 0.1
+    (line, level), (warning, warn) = south.notes()
+    assert level == "info" and "все классы, кроме шума" in line and "подобран" in line
+    assert warn == "warn" and "увеличен с 0,1 до" in warning and "Юг" in warning
+    assert north.notes()[0][0].startswith("Облако «Север»: класс 2 (земля)") and len(north.notes()) == 1
+
+
 def test_default_cell_and_the_limit_of_vertices(api) -> None:  # type: ignore[no-untyped-def]
     _c, project = api
     cloud = opened(project, add_cloud(project, scene(34, 30_000)))

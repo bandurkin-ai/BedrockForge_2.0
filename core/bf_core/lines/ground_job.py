@@ -110,15 +110,17 @@ def request(
     cloud_id: int,
     *,
     profile: str | None = None,
-    cr: float | None = None,
+    cr: float | str | None = None,
     ri: int | None = None,
-    ct: float | None = None,
-    r_b: float | bool | None = None,
+    ct: float | str | None = None,
+    r_b: float | str | bool | None = None,
     noise: dict[str, Any] | bool | None = None,
     threads: int | None = None,
     heavy_workers: int = 1,
 ) -> dict[str, Any]:
-    """Checked parameters of the job `ground.classify` (for the endpoint that starts it); ApiError otherwise."""
+    """Checked parameters of the job `ground.classify` (for the endpoint that starts it); ApiError otherwise.
+    Numbers may come as text with a comma («0,5»); `heavy_workers` — of the scheduler (`Scheduler.heavy_workers`)."""
+    from bf_core.drillholes.edit import parse_number
     from bf_core.geo import ground
     from bf_core.lines.cloud import cloud_meta, not_a_cloud
 
@@ -132,6 +134,13 @@ def request(
     if cloud_meta(row.meta) is None:
         raise not_a_cloud()
     name = str(profile or ground.DEFAULT_PROFILE)
+    cr, ct = parse_number(cr, "Шаг ткани CR"), parse_number(ct, "Порог земли CT")
+    if r_b is not False:
+        r_b = None if r_b is True else parse_number(r_b, "Радиус поиска земли у грани R_б")
+    if isinstance(noise, dict):
+        noise = {"r": parse_number(noise.get("r"), "Радиус шума"), "k_min": noise.get("k_min")}
+    elif noise is not False:
+        noise = None
     try:
         p = _resolve(name, cr, ri, ct, r_b, noise)
     except ground.GroundError as exc:
