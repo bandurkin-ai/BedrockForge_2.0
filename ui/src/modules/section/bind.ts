@@ -15,6 +15,7 @@ import { updateView, viewStore } from "../scene/bind";
 import { currentScene, requireScene } from "../scene/sceneHost";
 import { patchFields } from "../scene/viewSync";
 import { tablesStore } from "../tables/state";
+import { bindSeriesState } from "./seriesState";
 import { cancelSectionDraw, describeLine, sectionOf, sectionStore } from "./state";
 
 const needProject = (ctx: CommandContext) => (ctx.hasProject ? null : "Откройте или создайте проект");
@@ -61,8 +62,10 @@ export function sectionPoint(app: App, p: { x: number; y: number }): void {
 
 export function bindSection(app: App): void {
   const r = app.registry;
+  bindSeriesState(app);
   const sync = () => {
-    const has = current().line !== null;
+    const k = current();
+    const has = k.line !== null || k.series !== undefined;
     if (app.store.get().hasSection !== has) app.store.set({ hasSection: has });
   };
   viewStore.subscribe(sync);
