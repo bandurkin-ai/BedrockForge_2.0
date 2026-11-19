@@ -18,6 +18,8 @@ from typing import Any
 import numpy as np
 
 from bf_core.sections.geometry import SeriesGeometry, series_geometry
+from bf_core.sections.names import section_names
+from bf_core.sections.polyline import PolylineSection
 
 DATA = Path(__file__).parent / "data" / "sections" / "series_cases.json"
 REGEN = os.environ.get("BF_REGEN_SECTION_CASES") == "1"
@@ -36,6 +38,14 @@ RULES = [
     "Section of a point: the window holding tau; several (gaps/overlaps) - the nearest plane |t|, smaller k on a"
     " tie; none or NaN - -1. A line: the window holding all its vertices [tau_min, tau_max]; several - the plane"
     " nearest to (tau_min + tau_max)/2.",
+    "Polyline: L_j = sqrt(dx*dx + dy*dy), s_j = (dx/L, dy/L, 0), v_j = (-s_y, s_x, 0), w = (0, 0, 1), start U_j ="
+    " L_0 + ... + L_(j-1) in order; segment of a point - the nearest in plan (squared distance: the smaller of the ends"
+    " and, for 0 < d.s_j < L_j, (d.v_j)^2), smaller j on a tie, -1 beyond the corridor (closed); u = U_j + d.s_j,"
+    " w = Z, t = d.v_j with d = p - P_j; half-spaces n.p + c >= 0: faces +-v_j at the corridor, the start (s_0 at P_0,"
+    " else the bisector (s_(j-1) + s_j)/sqrt(nx*nx + ny*ny) at P_j) and the end (-s at P_m, else minus the next"
+    " bisector at P_(j+1)), c = -n.P.",
+    "Names (core only): {k} from 1, {s}, {X}, {Y}, {Z} of O_k with a number format; the default of 8.1.2 with the"
+    " precision grown until the names differ.",
     "null in a coordinate is an empty value (NaN); null in an answer - NaN.",
     "Compare numbers: |a - b| <= abs + rel*|b|; cases with exact = true - bit for bit.",
 ]
@@ -252,6 +262,7 @@ def series_answer(case: dict[str, Any]) -> dict[str, Any]:
     assert isinstance(g, SeriesGeometry)
     ks = case.get("sections", range(g.count))
     origins = g.origins()
+    names = section_names(case["params"])
     points = _resolve(case["points"], g)
     p = _arr(points)
     local, sec = g.local(p), g.section_of(p)
@@ -278,6 +289,7 @@ def series_answer(case: dict[str, Any]) -> dict[str, Any]:
         "sections": [
             {
                 "k": int(k),
+                "name": names[k],
                 "s": float(g.offs[k]),
                 "origin": _vec(origins[k]),
                 "towards": float(g.towards[k]),
@@ -288,6 +300,131 @@ def series_answer(case: dict[str, Any]) -> dict[str, Any]:
             for k in ks
         ],
         "points": pts,
+        "lines": [{"xyz": line, "section": int(line_sec[i])} for i, line in enumerate(lines)],
+    }
+
+
+def on(pl: PolylineSection, j: int, a: float, t: float, z: float | None = 0.0) -> list[float | None]:
+    """The point at `a` along segment j of a polyline section, `t` across it, at the level z."""
+    q = pl.vertex(j) + a * pl.s_axes[j] + t * pl.v_axes[j]
+    return [float(q[0]), float(q[1]), z]
+
+
+def wedge(pl: PolylineSection, j: int, r: float) -> list[float | None]:
+    """The point at the distance r from the bend P_j in its outer wedge (of a bend to the left), Z empty."""
+    n = pl.v_axes[j - 1] + pl.v_axes[j]
+    q = pl.vertex(j) - r * n / math.sqrt(n[0] * n[0] + n[1] * n[1])
+    return [float(q[0]), float(q[1]), None]
+
+
+POLYLINES: list[dict[str, Any]] = [
+    {
+        "id": "t8_1_7",
+        "title": "Т8.1-7: ломаная из 3 сегментов на UTM, длины 500 + 520 + 340 — развёртка 1360",
+        "exact": False,
+        "params": {
+            "type": "polyline",
+            "polyline": [[500000.0, 7000000.0], [500300.0, 7000400.0], [500500.0, 7000880.0], [500660.0, 7000580.0]],
+            "corridor": 25.0,
+        },
+        "points": lambda pl: [
+            [500000.0, 7000000.0, 10.0],
+            [500300.0, 7000400.0, 11.0],
+            [500500.0, 7000880.0, 12.0],
+            [500660.0, 7000580.0, 13.0],
+            on(pl, 1, 260.0, 10.0, -50.0),
+            on(pl, 2, 350.0, 0.0),
+            on(pl, 0, 250.0, 30.0),
+            wedge(pl, 1, 5.0),
+            on(pl, 1, 2.0, 6.0),
+        ],
+        "lines": lambda pl: [
+            [on(pl, 0, 10.0, 1.0), on(pl, 1, 100.0, -2.0), on(pl, 2, 300.0, 24.0)],
+            [on(pl, 0, 10.0, 1.0), on(pl, 0, 20.0, 26.0)],
+        ],  # fmt: skip
+    },
+    {
+        "id": "straight_axes",
+        "title": "Ломаная восток → север: излом, внешний клин, концы коридора",
+        "exact": True,
+        "params": {"type": "polyline", "polyline": [[0.0, 0.0], [100.0, 0.0], [100.0, 50.0]], "corridor": 10.0},
+        "points": [
+            [100.0, 0.0, 0.0],
+            [105.0, -5.0, 1.0],
+            [95.0, 5.0, 2.0],
+            [97.0, 8.0, 3.0],
+            [50.0, 10.0, 4.0],
+            [50.0, 10.001, 5.0],
+            [50.0, -10.0, 6.0],
+            [-10.0, 0.0, 7.0],
+            [-7.1, 7.1, 8.0],
+            [100.0, 60.0, 9.0],
+            [50.0, 3.0, None],
+        ],
+        "lines": [[[10.0, 2.0, 0.0], [90.0, -3.0, 5.0], [100.0, 40.0, 1.0]], [[10.0, 2.0, 0.0], [50.0, 20.0, 0.0]], []],
+    },
+    {
+        "id": "zigzag_utm",
+        "title": "Зигзаг из 5 сегментов на UTM, коридор 7,5",
+        "exact": False,
+        "params": {
+            "type": "polyline",
+            "polyline": [
+                [512001.25, 7012003.5],
+                [512101.75, 7012043.125],
+                [512140.5, 7011980.0],
+                [512240.0, 7012001.0],
+                [512250.125, 7012101.0],
+                [512180.0, 7012180.5],
+            ],  # fmt: skip
+            "corridor": 7.5,
+        },
+        "points": lambda pl: (
+            [on(pl, j, a * pl.lengths[j], t, 100.0 + j) for j in range(5) for a, t in ((0.4, -7.0), (0.6, 3.0))]
+            + [on(pl, 4, 30.0, 7.6)]
+        ),
+        "lines": [],
+    },
+]
+
+
+def _resolve_pl(spec: Any, pl: PolylineSection) -> Any:
+    return spec(pl) if callable(spec) else spec
+
+
+def polyline_answer(case: dict[str, Any]) -> dict[str, Any]:
+    pl = series_geometry(case["params"])
+    assert isinstance(pl, PolylineSection)
+    points = _resolve_pl(case["points"], pl)
+    p = _arr(points)
+    seg, local = pl.segment_of(p), pl.local(p)
+    lines = _resolve_pl(case["lines"], pl)
+    flat = [v for line in lines for v in line]
+    offsets = np.cumsum([0] + [len(line) for line in lines])
+    line_sec = pl.line_sections(_arr(flat), offsets) if lines else np.zeros(0, dtype=np.int64)
+    return {
+        "id": case["id"],
+        "title": case["title"],
+        "exact": case["exact"],
+        "params": case["params"],
+        "count": 1,
+        "name": section_names(case["params"])[0],
+        "total": pl.total,
+        "segments": [
+            {
+                "j": j,
+                "start": float(pl.starts[j]),
+                "length": float(pl.lengths[j]),
+                "s": _vec(pl.s_axes[j]),
+                "v": _vec(pl.v_axes[j]),
+                "half_spaces": [_vec(r) for r in pl.half_spaces(j)],
+            }
+            for j in range(pl.segments)
+        ],
+        "points": [
+            {"p": q, "segment": int(seg[i]), "u": _n(local[i, 0]), "w": _n(local[i, 1]), "t": _n(local[i, 2])}
+            for i, q in enumerate(points)
+        ],
         "lines": [{"xyz": line, "section": int(line_sec[i])} for i, line in enumerate(lines)],
     }
 
