@@ -150,7 +150,8 @@ class CellsWriter:
             _NumberStats() if f["kind"] == bs.NUMBER else _CategoryStats(len(f["labels"])) for f in self.fields
         ]
         types = [pa.float64() if f["kind"] == bs.NUMBER else pa.int32() for f in self.fields]
-        self._schema = pa.schema([(bs.IDX, pa.uint64()), *((f["name"], t) for f, t in zip(self.fields, types))])
+        columns = [(f["name"], t) for f, t in zip(self.fields, types, strict=True)]
+        self._schema = pa.schema([(bs.IDX, pa.uint64()), *columns])
         self._buf: list[list[Any]] = [[] for _ in range(len(self.fields) + 1)]
         self._buffered = 0
         self.store.tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -184,7 +185,7 @@ class CellsWriter:
         if missing:
             raise bs.bad_model(f"Нет значений поля «{missing[0]}».")
         cols: list[Any] = [ix]
-        for f, st in zip(self.fields, self._stats):
+        for f, st in zip(self.fields, self._stats, strict=True):
             raw = np.asarray(values[f["name"]])
             if raw.shape != ix.shape:
                 raise bs.bad_model(f"Поле «{f['name']}»: число значений не совпадает с числом ячеек.")
@@ -199,7 +200,7 @@ class CellsWriter:
             cols.append(col)
         self._last = int(ix[-1])
         self.cells += len(ix)
-        for buf, col in zip(self._buf, cols):
+        for buf, col in zip(self._buf, cols, strict=True):
             buf.append(col)
         self._buffered += len(ix)
         while self._buffered >= self.row_group:
@@ -241,7 +242,7 @@ class CellsWriter:
             self.discard()
             raise
         self._done = True
-        fields = [{**f, "stats": st.result()} for f, st in zip(self.fields, self._stats)]
+        fields = [{**f, "stats": st.result()} for f, st in zip(self.fields, self._stats, strict=True)]
         return StagedCells(self.grid, fields, self.cells, (self.path, h.hexdigest(), size))
 
     def discard(self) -> None:
@@ -357,7 +358,7 @@ def _public(row: Mapping[str, Any], size: int | None, brief: bool) -> dict[str, 
         "extent": row["extent"], "crs": row["crs"], "grid": {**grid, "variable": variable},
         "cells": int(meta.get("cells") or 0), "fields": fields, "source": meta.get("source"),
         "warnings": list(meta.get("warnings") or []), "size": size,
-        "created_at": dialect.iso(row["created_at"]), "updated_at": dialect.iso(row["updated_at"]),
+        "created_at": row["created_at"].isoformat(), "updated_at": row["updated_at"].isoformat(),
     }  # fmt: skip
 
 
@@ -372,7 +373,7 @@ def _rows(conn: sa.Connection, *where: Any, brief: bool) -> list[dict[str, Any]]
         .all()
     )
     sizes = _size(conn, [int(r["id"]) for r in rows])
-    return [_public(r, sizes.get(int(r["id"])), brief) for r in rows]
+    return [_public(dict(r), sizes.get(int(r["id"])), brief) for r in rows]
 
 
 def list_block_models(conn: sa.Connection) -> list[dict[str, Any]]:
@@ -464,8 +465,9 @@ def rename_block_model(conn: sa.Connection, bm_id: int, expected_version: int, n
     conn.execute(
         sa.update(objects)
         .where(objects.c.id == bm_id)
-        .values(name=clean, name_key=dialect.name_key(clean), version=objects.c.version + 1,
-                updated_at=dialect.utcnow())  # fmt: skip
+        .values(
+            name=clean, name_key=dialect.name_key(clean), version=objects.c.version + 1, updated_at=dialect.utcnow()
+        )
     )
     return block_model_info(conn, bm_id)
 

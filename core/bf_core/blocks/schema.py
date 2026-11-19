@@ -91,7 +91,8 @@ def check_grid(raw: Mapping[str, Any]) -> dict[str, Any]:
     """The grid of `meta.grid`, checked and normalised (plain floats and ints, `order: "F"`)."""
     if not isinstance(raw, Mapping):
         raise bad_model("Сетка модели не задана.")
-    corner = [_finite(v, f"Угол модели {a.upper()}") for v, a in zip(_triple(raw.get("corner"), "Угол модели"), AXES)]
+    corner_raw = _triple(raw.get("corner"), "Угол модели")
+    corner = [_finite(v, f"Угол модели {a.upper()}") for v, a in zip(corner_raw, AXES, strict=True)]
     tensors_raw, size_raw = raw.get("tensors"), raw.get("size")
     if (tensors_raw is None) == (size_raw is None):
         raise bad_model("У сетки должен быть либо постоянный шаг (size), либо переменный (tensors).")
@@ -112,8 +113,8 @@ def check_grid(raw: Mapping[str, Any]) -> dict[str, Any]:
         grid["counts"] = counts
         grid["tensors"] = tensors
     else:
-        grid["counts"] = [_count(v, a) for v, a in zip(_triple(raw.get("counts"), "Число ячеек"), AXES)]
-        grid["size"] = [_step(v, a) for v, a in zip(_triple(size_raw, "Размер ячейки"), AXES)]
+        grid["counts"] = [_count(v, a) for v, a in zip(_triple(raw.get("counts"), "Число ячеек"), AXES, strict=True)]
+        grid["size"] = [_step(v, a) for v, a in zip(_triple(size_raw, "Размер ячейки"), AXES, strict=True)]
     n = math.prod(grid["counts"])
     if n > MAX_CELLS:
         raise ApiError(
