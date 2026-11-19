@@ -27,8 +27,9 @@ blobs — `stage_values()` outside the write transaction, `replace_values()` ins
 ones the calculation read is not written over: `cloud_changed`.
 
 **The contract of a source** (the readers of LAS and XYZ, the generators of tests): `CloudChunk` — a portion of
-points in the order of the records of the source; `ChunkSource` — a callable that gives the portions from the
-start every time it is called (the builder goes through the source twice).
+points in the order of the records of the source, or any object with the same four arrays (`Points`);
+`ChunkSource` — a callable that gives the portions from the start every time it is called (the builder goes
+through the source twice).
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import sqlalchemy as sa
@@ -90,8 +91,22 @@ class CloudChunk:
     seq: np.ndarray | None = None
 
 
+class Points(Protocol):
+    """What the builder takes from a portion of a source: a `CloudChunk`, or any object with these four arrays
+    under these names (`formats.las.LasChunk`)."""
+
+    @property
+    def xyz(self) -> np.ndarray: ...
+    @property
+    def cls(self) -> np.ndarray | None: ...
+    @property
+    def ret(self) -> np.ndarray | None: ...
+    @property
+    def seq(self) -> np.ndarray | None: ...
+
+
 #: Gives the portions of a source from its start; called twice by the builder, with the same data both times.
-ChunkSource = Callable[[], Iterable[CloudChunk]]
+ChunkSource = Callable[[], Iterable[Points]]
 
 
 def pack_returns(number: Any, count: Any) -> np.ndarray:

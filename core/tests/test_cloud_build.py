@@ -215,6 +215,23 @@ def test_staged_cloud_is_committed_and_read_back(tmp_path: Path) -> None:
         engine.dispose()
 
 
+def test_a_source_may_be_any_object_with_the_four_arrays(store: BlobStore) -> None:
+    """`formats.las.LasChunk` is not a `CloudChunk`: the builder takes a portion by its fields."""
+
+    class Chunk:
+        def __init__(self, a: int, b: int, src: lc.CloudChunk) -> None:
+            assert src.cls is not None and src.ret is not None
+            self.start = a
+            self.xyz, self.cls, self.ret = src.xyz[a:b], src.cls[a:b], src.ret[a:b]
+            self.seq = np.arange(a, min(b, len(src.xyz)), dtype="<u4") * 4
+
+    src = scene(3, 9000)
+    staged = cb.stage_cloud(store, lambda: (Chunk(a, a + 2500, src) for a in range(0, 9000, 2500)))
+    seq = np.fromfile(staged.files["seq"][0], dtype="<u4")
+    staged.discard()
+    assert staged.count == 9000 and np.array_equal(np.sort(seq), np.arange(9000) * 4)
+
+
 # --- 5 million points --------------------------------------------------------------------------------------
 
 BIG = r"""

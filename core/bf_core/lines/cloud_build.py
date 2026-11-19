@@ -63,8 +63,8 @@ from .cloud import (
     ROLES,
     Box,
     ChunkSource,
-    CloudChunk,
     CloudPart,
+    Points,
     Staged,
     StagedCloud,
     commit_cloud,
@@ -177,8 +177,8 @@ def finish_part(
 # --- the points of a source ------------------------------------------------------------------------------
 
 
-def columns(chunk: CloudChunk, base: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """The columns of a portion as the builder takes them (`CloudChunk`); `base` — the points of the stream
+def columns(chunk: Points, base: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The columns of a portion as the builder takes them (`cloud.Points`); `base` — the points of the stream
     before it."""
     xyz = np.ascontiguousarray(chunk.xyz, dtype=np.float64)
     if xyz.ndim != 2 or xyz.shape[1] != 3:
@@ -227,7 +227,7 @@ class CloudData:
         return len(self.xyz)
 
 
-def build_cloud(chunks: Iterable[CloudChunk], *, part_points: int = PART_POINTS) -> CloudData:
+def build_cloud(chunks: Iterable[Points], *, part_points: int = PART_POINTS) -> CloudData:
     """The cloud of the points of a source, built in memory (about 100 bytes a point). No points with
     coordinates — `FormatError("no_points")`."""
     taken = []
@@ -273,7 +273,7 @@ def stage_data(store: BlobStore, data: CloudData, tick: Callable[[], None] | Non
 
 
 def put_cloud(
-    conn: sa.Connection, store: BlobStore, chunks: Iterable[CloudChunk], *, file_id: int, name: str, **kw: Any
+    conn: sa.Connection, store: BlobStore, chunks: Iterable[Points], *, file_id: int, name: str, **kw: Any
 ) -> int:
     """Build in memory, stage and commit in one go (small clouds, tests). Returns the id of the layer."""
     staged = stage_data(store, build_cloud(chunks))
