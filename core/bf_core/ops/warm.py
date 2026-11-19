@@ -36,11 +36,12 @@ Params = Callable[[Mapping[str, Any]], dict[str, Any]]
 STEPS: dict[str, tuple[str, Params]] = {
     "stitch": ("stitch", lambda d: {"contours": [{"layer_id": d["rings"]}]}),
     "stitch_caps": (
-        "stitch", lambda d: {"contours": [{"layer_id": d["rings"]}], "start_cap": "point", "end_cap": "extend"},
+        "stitch",
+        lambda d: {"contours": [{"layer_id": d["rings"]}], "start_cap": "point", "end_cap": "extend"},
     ),  # fmt: skip
     "boolean": ("boolean", lambda d: {"op": "difference", "a": d["a"], "b": d["b"]}),
     "clip_plane": ("clip_plane", lambda d: {"wireframe_id": d["a"], "point": d["middle"], "normal": [0, 0, 1]}),
-    "extrude": ("extrude", lambda d: {"contours": [{"layer_id": d["polygon"]}], "distance": 5, "direction": "vertical"}),
+    "extrude": ("extrude", lambda d: {"contours": [{"layer_id": d["polygon"]}], "distance": 5, "vertical": True}),
     "split": ("split", lambda d: {"wireframe_id": d["two"]}),
     "merge": ("merge", lambda d: {"wireframe_ids": [d["a"], d["b"]]}),
     "edit_triangles": ("edit_triangles", lambda d: {"wireframe_id": d["a"], "remove": [0, 1]}),
@@ -48,7 +49,8 @@ STEPS: dict[str, tuple[str, Params]] = {
     "smooth": ("smooth", lambda d: {"wireframe_id": d["relief"], "iterations": 2}),
     "simplify": ("simplify", lambda d: {"wireframe_id": d["relief"], "target_triangles": 50}),
     "clip_polygon": (
-        "clip_polygon", lambda d: {"wireframe_id": d["relief"], "polygon": {"layer_id": d["polygon"], "line": None}},
+        "clip_polygon",
+        lambda d: {"wireframe_id": d["relief"], "polygon": {"layer_id": d["polygon"], "line": None}},
     ),  # fmt: skip
     "clip_surface": ("clip_surface", lambda d: {"wireframe_id": d["b"], "surface_id": d["relief"]}),
     "contours": ("contours", lambda d: {"wireframe_id": d["relief"], "interval": 1, "major_every": 5}),
@@ -125,8 +127,9 @@ def project(root: Path) -> dict[str, Any]:
                 "a": ws.put_wireframe(conn, store, *a, name="Куб A"),
                 "b": ws.put_wireframe(conn, store, *b, name="Куб B"),
                 "open": ws.put_wireframe(conn, store, a[0], a[1][:-2], name="Без грани"),
-                "two": ws.put_wireframe(conn, store, np.vstack([a[0], far[0]]), np.vstack([a[1], far[1] + 8]),
-                                        name="Два куба"),  # fmt: skip
+                "two": ws.put_wireframe(
+                    conn, store, np.vstack([a[0], far[0]]), np.vstack([a[1], far[1] + 8]), name="Два куба"
+                ),  # fmt: skip
                 "relief": ws.put_wireframe(conn, store, *_surface(lambda x, y: 5.0 + 0.1 * x + 0.05 * y), name="Р"),
                 "flat": ws.put_wireframe(conn, store, *_surface(lambda x, y: 0.0 * x + 6.0), name="Подошва"),
             }

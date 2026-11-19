@@ -4,7 +4,7 @@
     "wireframe_lod": {"params": {"triangles": 1000000}, "budget_s": 10.0, "budget_mb": 400, "limits": {"standin_s": 0.05, "health_max_s": 0.1, "job_s": 8.0, "lod_jobs": 1}},
     "wireframes_many": {"params": {"wireframes": 3000}, "budget_s": 12.0, "budget_mb": 700, "limits": {"import_s": 5.0, "mismatches": 0}},
     "ops_many": {"params": {"parts": 1000}, "budget_s": 10.0, "budget_mb": 700, "limits": {"blobs": 10, "mismatches": 0}},
-    "ops_first": {"params": {"contours": 20, "vertices": 500, "cold": true}, "budget_s": 15.0, "budget_mb": 700, "limits": {"first_stitch_s": 3.0, "first_boolean_s": 3.0, "volume_error": 1e-06}},
+    "ops_first": {"params": {"contours": 20, "vertices": 500}, "budget_s": 15.0, "budget_mb": 700, "limits": {"first_stitch_s": 3.0, "first_boolean_s": 3.0, "volume_error": 1e-06}},
     "mesh_volume": {"params": {"triangles": 1000000}, "budget_s": 2.0, "budget_mb": 600},
     "parquet_filter": {"params": {"nx": 200, "ny": 100, "nz": 100}, "budget_s": 2.0, "budget_mb": 800},
     "project_export": {"params": {"mb": 200, "password": true}, "budget_s": 15.0, "budget_mb": 600},
