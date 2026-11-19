@@ -25,6 +25,37 @@ from bf_core.jit import njit
 
 
 @njit(cache=True, nogil=True)
+def extent(xyz, lo, hi):  # type: ignore[no-untyped-def]
+    """(xmin, xmax, ymin, ymax, count) of the finite points lo ≤ i < hi; count = 0 — none (the rest is 0)."""
+    count = 0
+    xmin = 0.0
+    xmax = 0.0
+    ymin = 0.0
+    ymax = 0.0
+    for i in range(lo, hi):
+        x = xyz[i, 0]
+        y = xyz[i, 1]
+        if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(xyz[i, 2])):
+            continue
+        if count == 0:
+            xmin = x
+            xmax = x
+            ymin = y
+            ymax = y
+        else:
+            if x < xmin:
+                xmin = x
+            if x > xmax:
+                xmax = x
+            if y < ymin:
+                ymin = y
+            if y > ymax:
+                ymax = y
+        count += 1
+    return xmin, xmax, ymin, ymax, count
+
+
+@njit(cache=True, nogil=True)
 def block_keys(xyz, lo, hi, ox, oy, c, span, nbx, nby, key):  # type: ignore[no-untyped-def]
     """key[i] for i in [lo, hi): the block (of `span` cells a side) whose core holds point i; -1 — not finite."""
     for i in range(lo, hi):
@@ -293,3 +324,20 @@ def lower_plane(dx, dy, z, use, n, band):  # type: ignore[no-untyped-def]
         b = b2
         cc = c2
     return True, a, b, cc
+
+
+# --- result ----------------------------------------------------------------------------------------------
+
+
+@njit(cache=True, nogil=True)
+def store_rows(order, start, pcls, ph, ncx, row0, row1, col0, col1, cls, h):  # type: ignore[no-untyped-def]
+    """The classes and heights of the points of the cells [row0, row1) × [col0, col1) (the core of a block)
+    go to the arrays of the cloud. Returns the number of points written."""
+    count = 0
+    for cj in range(row0, row1):
+        for k in range(start[cj * ncx + col0], start[cj * ncx + col1]):
+            i = order[k]
+            cls[i] = pcls[k]
+            h[i] = ph[k]
+            count += 1
+    return count

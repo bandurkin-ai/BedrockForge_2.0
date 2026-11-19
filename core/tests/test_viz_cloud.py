@@ -272,3 +272,38 @@ def test_a_damaged_cloud_is_an_error_with_a_hint_not_a_wrong_picture(shown) -> N
         conn.execute(sa.update(objects).where(objects.c.id == cloud_id).values(meta=broken))
     r = c.get(f"{API}/viz/lines/{cloud_id}")
     assert r.status_code == 500 and r.json()["code"] == "cloud_broken"
+
+
+def test_bench_scenario_of_the_cloud_runs_on_a_small_volume(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """`bench/scenarios/cloud_import.py` from `prepare` to the numbers it reports (ADR 0014 «Замеры»): the
+    stored cloud is the source, the full level is within the float32 step, every level is lighter."""
+    import importlib
+    import json
+    import sys
+    from pathlib import Path
+
+    root = str(Path(__file__).resolve().parents[2])
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    mod = importlib.import_module("bench.scenarios.cloud_import")
+    params = {"points": 150_000}
+    mod.prepare(params, tmp_path)
+    mod.load()
+    info = mod.run(params, tmp_path)
+    json.dumps(info)  # what `bench.run` prints
+    assert info["cycle_mismatch"] == 0 and info["max_error_m"] <= 5e-4 and info["points_lod0"] == 150_000
+    assert info["points_lod4"] < info["points_lod3"] < info["points_lod2"] < info["points_lod1"] < 150_000
+    assert (
+        info["parts"] >= 1 and info["largest_part"] <= lc.PART_POINTS and info["blobs_mb"] == round(4.5 / 1.048576, 1)
+    )
+    assert {"import_s", "import_grew_mb", "manifest_s", "coarse_s", "first_s", "part0_s", "api_grew_mb"} <= set(info)
+    # a changed point is seen by the sum of the hashes, whatever the order of the points
+    xyz = np.random.default_rng(1).uniform(0, 100, (50, 3))
+    seq, cls, ret = np.arange(50), np.zeros(50, dtype=np.uint8), np.ones(50, dtype=np.uint8)
+    base = mod._digest(xyz, seq, cls, ret)
+    order = np.random.default_rng(2).permutation(50)
+    assert mod._digest(xyz[order], seq[order], cls[order], ret[order]) == base
+    moved = xyz.copy()
+    moved[7, 2] = np.nextafter(moved[7, 2], 1e9)
+    assert mod._digest(moved, seq, cls, ret) != base and mod._digest(xyz, seq[::-1], cls, ret) != base
+    assert mod._digest(xyz, seq, np.where(seq == 3, 2, cls), ret) != base

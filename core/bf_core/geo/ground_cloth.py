@@ -13,7 +13,8 @@ Rest position (Д-22, idea 1: solved, not dropped step by step). A membrane unde
 constraint u ≤ obstacle:  u = min(h, (Σ neighbours + p·CR²) / number of neighbours)  at every particle; a
 missing neighbour (the edge of the data) is left out — a free edge. The system is solved on a cascade of
 grids, from at most 64 × 64 up to CR: the coarse solution starts the next finer one, every level is relaxed by
-red-black sweeps with projection (and over-relaxation) until a sweep moves no particle by more than `tol`.
+red-black sweeps with projection (and over-relaxation) until a sweep moves no particle by more than `tol` and
+the moves still to come (their sum by the rate they shrink at) stay under 10·`tol`.
 A red particle reads black ones only, so the strips of one colour may run on any number of threads — the
 result is the same bit for bit. The depth of a pit does not enter: there are no time steps.
 
@@ -32,7 +33,8 @@ from bf_core.jit import njit
 
 from .ground_kernels import lower_plane
 
-OMEGA = 1.9  # over-relaxation of the sweeps: free spans of the cloth are tens of particles wide
+OMEGA = 1.9  # over-relaxation of the sweeps: free spans of the cloth are tens of particles wide …
+OMEGA_MAX = 1.98  # … and it is raised while the moves shrink slowly (spans of hundreds: the crest of a high wall)
 COARSEST = 64  # the cascade starts from a grid of at most this many particles a side
 MAX_SWEEPS = 20_000
 CHUNK = 16  # sweeps between two calls of `tick` (cancel)
@@ -115,8 +117,8 @@ def obstacle_rows(cmin, mx, my, mz, ncx, ncy, npx, row0, row1, c, cr, band, hob,
 
 @njit(cache=True, nogil=True)
 def restrict(h, mask):  # type: ignore[no-untyped-def]
-    """The next coarser grid: node (J, I) stands on the fine node (2J, 2I) and takes the lowest obstacle of the
-    fine nodes around it (3 × 3); it is in the system when one of them is."""
+    """The next coarser grid: node (J, I) stands on the fine node (2J, 2I) and takes its obstacle; when that
+    node is outside the system — the lowest obstacle of the fine nodes around it (3 × 3), if there are any."""
     ny, nx = h.shape
     my = ny // 2 + 1
     mx = nx // 2 + 1
@@ -124,6 +126,10 @@ def restrict(h, mask):  # type: ignore[no-untyped-def]
     mc = np.zeros((my, mx), np.uint8)
     for jj in range(my):
         for ii in range(mx):
+            if 2 * jj < ny and 2 * ii < nx and mask[2 * jj, 2 * ii]:
+                hc[jj, ii] = h[2 * jj, 2 * ii]
+                mc[jj, ii] = 1
+                continue
             best = 0.0
             any_ = False
             for j in range(max(2 * jj - 1, 0), min(2 * jj + 2, ny)):
@@ -209,19 +215,15 @@ def sweep_rows(u, h, mask, row0, row1, color, load, omega):  # type: ignore[no-u
 
 
 @njit(cache=True, nogil=True)
-def sweeps(u, h, mask, load, omega, tol, limit):  # type: ignore[no-untyped-def]
-    """Up to `limit` full sweeps on the calling thread → (sweeps done, the largest move of the last one)."""
+def sweeps(u, h, mask, load, omega, count):  # type: ignore[no-untyped-def]
+    """`count` full sweeps on the calling thread → the largest move of a particle in any of them."""
     ny = h.shape[0]
-    moved = 0.0
-    done = 0
-    while done < limit:
+    peak = 0.0
+    for _ in range(count):
         a = sweep_rows(u, h, mask, 0, ny, 0, load, omega)
         b = sweep_rows(u, h, mask, 0, ny, 1, load, omega)
-        moved = max(a, b)
-        done += 1
-        if moved < tol:
-            break
-    return done, moved
+        peak = max(peak, a, b)
+    return peak
 
 
 def solve(
@@ -237,7 +239,10 @@ def solve(
     """Rest position of the cloth over the obstacle `hob` (ny, nx) of the particles `mask`; `load` = p·CR².
 
     Returns (u, sweeps of every level from the coarsest to the finest). `rows(fn, ny)` runs fn(row0, row1) over
-    strips of rows on threads (None — on the calling thread); `tick()` is called every few sweeps and may raise.
+    strips of rows on threads (None — on the calling thread); `tick()` is called every `CHUNK` sweeps and may
+    raise. A level is done when no particle moved by `tol` in a whole chunk of sweeps and the moves still to
+    come — their sum at the rate they shrink — stay under 10·`tol`. While the moves shrink slowly and evenly
+    (a free span too wide for the over-relaxation) the over-relaxation is raised, up to `OMEGA_MAX`.
     """
     levels = [(np.ascontiguousarray(hob, np.float64), np.ascontiguousarray(mask, np.uint8))]
     while max(levels[-1][0].shape) > COARSEST:
@@ -253,23 +258,30 @@ def solve(
         step_load = load * 4.0**depth
         threaded = rows is not None and h.size >= THREAD_NODES
         done = 0
+        w = omega
+        before = 0.0
+        slow = 0.9  # the slower of the last two rates: the moves of an over-relaxed sweep come in waves
         while done < MAX_SWEEPS:
             if threaded and rows is not None:
-                moved = 0.0
+                peak = 0.0
                 for _ in range(CHUNK):
-                    for color in (0, 1):
-                        moved_c = max(rows(lambda a, b, c=color: sweep_rows(u, h, m, a, b, c, step_load, omega), h.shape[0]))
-                        moved = moved_c if color == 0 else max(moved, moved_c)
-                    done += 1
-                    if moved < tol:
-                        break
+                    red = max(rows(lambda a, b, w=w: sweep_rows(u, h, m, a, b, 0, step_load, w), h.shape[0]))
+                    black = max(rows(lambda a, b, w=w: sweep_rows(u, h, m, a, b, 1, step_load, w), h.shape[0]))
+                    peak = max(peak, red, black)
             else:
-                n, moved = sweeps(u, h, m, step_load, omega, tol, CHUNK)
-                done += n
+                peak = float(sweeps(u, h, m, step_load, w, CHUNK))
+            done += CHUNK
             if tick:
                 tick()
-            if moved < tol:
+            rate = 0.9
+            if before > 0.0 and peak > 0.0:
+                rate = min(max((peak / before) ** (1.0 / CHUNK), 0.5), 0.9995)
+            worst = max(rate, slow)
+            slow, before = rate, peak
+            if peak < tol and peak * worst / (1.0 - worst) < 10.0 * tol:
                 break
+            if rate > 1.0 - 0.5 * (2.0 - w) and w < OMEGA_MAX:
+                w = min(2.0 - 0.5 * (2.0 - w), OMEGA_MAX)
         counts.append(done)
     return u, counts
 

@@ -78,6 +78,9 @@ TILE_SHIFT = 6  # a tile of the streamed build: 2⁶ = 64 m
 MAX_TILE_SHIFT = 11  # … at most 2048 m: 4 million 1 m cells in a tile
 MAX_TILES = 1 << 16
 CHUNK = 1 << 20  # records read back from a temporary file at a time
+#: More parts than this is not a cloud but points scattered over a continent (junk coordinates): refused, so
+#: that `meta.cloud` stays small (150 bytes a part; 200 million points of a survey are about 600 parts).
+MAX_PARTS = 8192
 #: A point in the temporary files of the streamed build (30 bytes).
 REC = np.dtype([("xyz", "<f8", (3,)), ("seq", "<u4"), ("cls", "u1"), ("ret", "u1")])
 
@@ -89,6 +92,14 @@ def source_changed() -> FormatError:
         "source_changed",
         "Источник облака изменился, пока оно загружалось.",
         "Дождитесь, пока файл будет записан полностью, и загрузите облако заново.",
+    )
+
+
+def too_wide() -> FormatError:
+    return FormatError(
+        "cloud_too_wide",
+        "Точки облака разбросаны по слишком большой площади.",
+        "Проверьте колонки X, Y, Z и единицы координат: точки должны быть в метрах одной системы координат.",
     )
 
 
@@ -249,9 +260,12 @@ def build_cloud(chunks: Iterable[Points], *, part_points: int = PART_POINTS) -> 
     codes = codes[order]
     parts: list[CloudPart] = []
     out: list[tuple[np.ndarray, ...]] = []
-    for start, stop in part_rows(*distinct(codes), part_points):
-        rows = order[start:stop]
-        part, *cols = finish_part(start, xyz[rows], seq[rows], cls[rows], ret[rows])
+    rows = part_rows(*distinct(codes), part_points)
+    if len(rows) > MAX_PARTS:
+        raise too_wide()
+    for start, stop in rows:
+        take = order[start:stop]
+        part, *cols = finish_part(start, xyz[take], seq[take], cls[take], ret[take])
         parts.append(part)
         out.append(tuple(cols))
     xyz, seq, cls, ret = (np.concatenate([t[i] for t in out]) for i in range(4))
@@ -422,6 +436,8 @@ def _survey(source: ChunkSource, max_tiles: int, step: Callable[[int], None]) ->
         while len(tiles) > max_tiles and shift < MAX_TILE_SHIFT:
             shift += 1
             tiles, counts = _merge(tiles >> 2, counts, tiles[:0], counts[:0])
+        if len(tiles) > 64 * MAX_PARTS:  # a part is at most 8 × 8 of the widest tiles
+            raise too_wide()
     return _Survey(shift, tiles, counts, box, classes, seen, total)
 
 
@@ -525,12 +541,17 @@ def stage_cloud(
                 nonlocal done
                 assert out is not None
                 share(0.6, 0.4, done, survey.total)
+                if len(parts) >= MAX_PARTS:
+                    raise too_wide()
                 part, *cols = finish_part(done, np.ascontiguousarray(rec["xyz"]), rec["seq"], rec["cls"], rec["ret"])
                 out.write(*cols)
                 parts.append(part)
                 done += len(rec)
 
-            for lo, hi in cut(survey.tiles << (2 * shift), scatter.cum, part_points):
+            squares = cut(survey.tiles << (2 * shift), scatter.cum, part_points)
+            if len(squares) > MAX_PARTS:
+                raise too_wide()
+            for lo, hi in squares:
                 first, count = int(scatter.cum[lo]), int(scatter.cum[hi] - scatter.cum[lo])
                 if count > part_points:  # one tile
                     inside = _big_tile(

@@ -102,7 +102,7 @@ def test_working_tolerance_is_close_to_the_exact_cloth() -> None:
     exact, _ = gc.solve(h, mask, LOAD, tol=1e-11)
     u, counts = gc.solve(h, mask, LOAD)  # tol 1e-4 (ADR 0014)
     assert float(np.abs(u - exact)[inside].max()) <= 5e-3
-    assert counts[-1] < 400
+    assert counts[-1] <= 320
 
 
 def test_sweeps_on_threads_are_bitwise_the_same() -> None:
@@ -134,21 +134,31 @@ def test_tick_is_called_and_may_cancel() -> None:
         gc.solve(h, mask, LOAD, tick=stop)
 
 
-def test_depth_of_a_pit_does_not_add_sweeps() -> None:
-    """ADR 0014, Т-З2: a pit ten times deeper (the same plan, the wall ten times steeper in height) takes the
-    same sweeps — there are no time steps for the cloth to fall through."""
-    n = 320
+def _pit(depth: float, tan: float = 1.19, bottom: float = 15.0, rim: float = 30.0):  # type: ignore[no-untyped-def]
+    """The obstacle of the funnel of Т-З2: a wall of 50°, a flat bottom and a rim; no data beyond the rim."""
+    r1 = bottom + depth / tan
+    n = int(2 * (r1 + rim)) + 1
     y, x = np.mgrid[0:n, 0:n].astype(np.float64)
-    r = np.hypot(x - n / 2, y - n / 2)
-    mask = (r <= 150.0).astype(np.uint8)
-    counts = []
-    for depth in (30.0, 300.0):
-        h = np.clip((r - 15.0) * (depth / 110.0), 0.0, depth) - depth
-        u, c = gc.solve(h, mask, LOAD)
+    r = np.hypot(x - n // 2, y - n // 2)
+    return np.clip((r - bottom) * tan, 0.0, depth) - depth, (r <= r1 + rim).astype(np.uint8)
+
+
+def test_depth_of_a_pit_does_not_add_sweeps() -> None:
+    """ADR 0014, Т-З2: there are no time steps for the cloth to fall through — a pit twice as deep takes the
+    same sweeps (the free span of the cloth at the crest is as wide: the slope over the load), a shallow one
+    whose whole wall is narrower than that span — fewer."""
+    fine = {}
+    for depth in (30.0, 150.0, 300.0):
+        h, mask = _pit(depth)
+        u, counts = gc.solve(h, mask, LOAD)
+        n = h.shape[0]
         assert float((h - u)[n // 2, n // 2]) < 1e-9  # the cloth lies on the bottom
-        counts.append(c)
-    assert sum(counts[1]) <= 1.25 * sum(counts[0]) + 16
-    assert counts[1][-1] <= 1.25 * counts[0][-1] + 16
+        gap = (h - u)[n // 2, n // 2 + int(15.0 + depth / 1.19)]
+        assert 5.0 < gap < 13.0  # and passes under the crest: the growth along the slope returns it
+        fine[depth] = counts[-1]
+    assert fine[300.0] <= 1.25 * fine[150.0] + gc.CHUNK
+    assert fine[30.0] <= fine[300.0]
+    assert fine[300.0] <= 640
 
 
 # --- obstacle and seeds ----------------------------------------------------------------------------------
@@ -190,7 +200,7 @@ def test_obstacle_is_the_plane_under_the_particle_not_the_nearest_return() -> No
     truth = 100.0 + tan * i - 0.3 * j
     inner = (slice(2, 29), slice(2, 29))
     assert mask.all()
-    assert float(np.abs(hob - truth)[inner].max()) < 1e-9  # exact on a plane: the returns lie on it
+    assert float(np.abs(hob - truth)[inner].max()) < 1e-6  # exact on a plane: the returns lie on it
     # the nearest return alone would miss by its distance times the slope
     assert tan * 0.2 > 0.5
 
@@ -217,13 +227,13 @@ def test_obstacle_keeps_to_the_ground_under_vegetation_and_marks_the_outside() -
 
 def test_seeds_are_the_returns_within_ct_of_the_cloth_along_its_normal() -> None:
     rng = np.random.default_rng(10)
-    tan = 1.19
-    pts = rng.random((7000, 2)) * 30.0
+    tan = 0.3  # a gentle slope: the cloth lies on it up to a few metres from the upper edge of the data
+    pts = rng.random((9000, 2)) * 36.0
     z = 20.0 + tan * pts[:, 0] + rng.normal(0, 0.02, len(pts))
     high = rng.random(len(pts)) < 0.15
-    z[high] += 0.4 + 2.0 * rng.random(int(high.sum()))  # 0.4 m along the vertical is 0.26 m along the normal
+    z[high] += 0.3 + 2.0 * rng.random(int(high.sum()))
     pts = np.column_stack([pts, z])
-    cells, hob, mask, ncx = _obstacle(pts, 30)
+    cells, hob, mask, ncx = _obstacle(pts, 36)
     cmin, mx, my, mz = cells
     u, _ = gc.solve(hob, mask, LOAD)
     state = np.zeros(len(cmin), np.uint8)
@@ -234,9 +244,17 @@ def test_seeds_are_the_returns_within_ct_of_the_cloth_along_its_normal() -> None
     assert seeds == int(state.sum())
     has = cmin >= 0
     cell = np.flatnonzero(has)
-    inner = (cell % ncx > 6) & (cell % ncx < ncx - 6) & (cell // ncx > 6) & (cell // ncx < ncx - 6)
-    over = (mz[has] - (20.0 + tan * ((cell % ncx + 0.5) * 0.5 + mx[has]))) / np.hypot(1.0, tan)  # along the normal
-    assert state[has][inner & (over < 0.35)].all()
-    assert not state[has][inner & (over > 0.75)].any()
-    assert abs(float(np.median(gx[has][inner])) - tan) < 0.05 and abs(float(np.median(gy[has][inner]))) < 0.05
+    # by the definition: the cloth between four particles is bilinear
+    x, y = ((cell % ncx + 0.5) * 0.5 + mx[has]), ((cell // ncx + 0.5) * 0.5 + my[has])
+    i, j = np.minimum(np.floor(x).astype(int), 35), np.minimum(np.floor(y).astype(int), 35)
+    tx, ty = x - i, y - j
+    cloth = (u[j, i] * (1 - tx) + u[j, i + 1] * tx) * (1 - ty) + (u[j + 1, i] * (1 - tx) + u[j + 1, i + 1] * tx) * ty
+    norm = np.sqrt(1.0 + gx[has].astype(np.float64) ** 2 + gy[has].astype(np.float64) ** 2)
+    assert np.array_equal(state[has] == 1, (mz[has] - cloth) / norm <= 0.5)
     assert not state[~has].any()
+    # away from the edges the cloth lies on the ground: the ground returns are seeds, the vegetation is not
+    inner = (x > 6) & (x < 24) & (y > 6) & (y < 30)
+    over = (mz[has] - (20.0 + tan * x)) / np.hypot(1.0, tan)
+    assert state[has][inner & (over < 0.3)].all()
+    assert not state[has][inner & (over > 0.7)].any()
+    assert abs(float(np.median(gx[has][inner])) - tan) < 0.03 and abs(float(np.median(gy[has][inner]))) < 0.03

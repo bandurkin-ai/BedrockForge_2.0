@@ -195,6 +195,29 @@ def test_a_source_that_changed_or_has_no_points_leaves_no_files(store: BlobStore
     assert not store.tmp_dir.exists() or not list(store.tmp_dir.iterdir())
 
 
+def test_points_scattered_over_a_continent_are_refused(store: BlobStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Junk coordinates: every point in a 16 km square of its own would make a part a point."""
+    rng = np.random.default_rng(4)
+    wide = lc.CloudChunk(rng.uniform(-4e8, 4e8, (3000, 3)))
+    spot = lc.CloudChunk(np.repeat(UTM[None, :], 3000, axis=0))  # one cell: cut every 100 points
+    for limit, chunk, parts in ((100, wide, 3000), (2, wide, 3000), (25, spot, 30)):
+        monkeypatch.setattr(cb, "MAX_PARTS", limit)
+        for build in (
+            lambda chunk=chunk: cb.build_cloud([chunk], part_points=100),
+            lambda chunk=chunk: cb.stage_cloud(store, portions(chunk, 700), part_points=100, chunk=500),
+        ):
+            with pytest.raises(FormatError) as err:
+                build()
+            assert err.value.code == "cloud_too_wide" and "метрах" in err.value.hint
+            assert not store.tmp_dir.exists() or not list(store.tmp_dir.iterdir())
+        monkeypatch.setattr(cb, "MAX_PARTS", parts)  # as many parts as there are: built
+        data = cb.build_cloud([chunk], part_points=100)
+        staged = cb.stage_cloud(store, portions(chunk, 700), part_points=100, chunk=500)
+        assert len(data.parts) == parts
+        same_cloud(staged, data)
+        staged.discard()
+
+
 def test_staged_cloud_is_committed_and_read_back(tmp_path: Path) -> None:
     engine = make_engine("sqlite", tmp_path)
     migrate.upgrade(engine, "project")
