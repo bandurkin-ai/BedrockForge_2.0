@@ -31,7 +31,7 @@ import {
   typeReason,
   type Choice,
   type FormatsInfo,
-} from "./exportObjects";
+} from "./exportObjectsModel";
 import css from "./Projects.module.css";
 
 export interface ObjectsInitial {

@@ -23,7 +23,7 @@ import {
   sizeText,
   toggleType,
   typeReason,
-} from "../src/modules/projects/exportObjects";
+} from "../src/modules/projects/exportObjectsModel";
 import { projectStore, type ProjectInfo } from "../src/modules/projects/state";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp } from "../src/shell/app";
@@ -288,7 +288,7 @@ describe("the command `project.export`", () => {
 describe("own windows only (ТЗ 7.0.11)", () => {
   it("no window.confirm / prompt / alert / open in the files of the export", () => {
     const dir = path.join(__dirname, "../src/modules/projects");
-    for (const f of ["ExportWindow.tsx", "ExportObjects.tsx", "exportObjects.ts", "bind.ts"]) {
+    for (const f of ["ExportWindow.tsx", "ExportObjects.tsx", "exportObjectsModel.ts", "bind.ts"]) {
       const text = fs.readFileSync(path.join(dir, f), "utf8");
       expect(text, f).not.toMatch(/window\.(confirm|prompt|alert|open)\s*\(|(^|[^.\w])(confirm|prompt|alert)\s*\(/m);
     }

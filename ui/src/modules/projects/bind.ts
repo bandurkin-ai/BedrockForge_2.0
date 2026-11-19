@@ -6,7 +6,7 @@ import type { CommandSource } from "../../shell/commands";
 import { askConfirm, askText, showMessage } from "../../shell/dialogs";
 import { openWindow } from "../../shell/windows";
 import { refresh as refreshJobs } from "../jobs/state";
-import { exportObjectsCommand, wantsObjects } from "./exportObjects";
+import { exportObjectsCommand, wantsObjects } from "./exportObjectsModel";
 import { createProject, deleteProject, demoProject, openProject, projectStore, refreshCurrent, updateProject } from "./state";
 
 const needProject = (ctx: { hasProject: boolean }) => (ctx.hasProject ? null : "Проект не открыт");

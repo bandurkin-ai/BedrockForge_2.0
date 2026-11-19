@@ -224,7 +224,7 @@ def read_table(conn: sa.Connection, set_id: int, table: str) -> tuple[Any, dict[
     return snap, _source(conn, set_id, snap.kind, tname)
 
 
-def table_columns(
+def shown_columns(
     snap: Any,
     source: dict[str, Any] | None,
     *,
@@ -313,7 +313,7 @@ def export_table(ctx: JobContext) -> dict[str, Any]:
     ctx.tick(0.0, "Чтение таблицы")
     with dialect.read_tx(engine) as conn:
         snap, source = read_table(conn, set_id, table)
-    columns, n = table_columns(
+    columns, n = shown_columns(
         snap, source, hole=p.get("hole"), where=p.get("where"), sort=p.get("sort"), desc=bool(p.get("desc")),
         columns=p.get("columns"),
     )  # fmt: skip
