@@ -26,7 +26,8 @@ from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
 from . import store
-from .schema import KIND, SeriesError
+from .geometry import SeriesError
+from .schema import KIND
 
 router = APIRouter(prefix="/section-series")
 Svc = Annotated[ProjectService, Depends(projects)]
@@ -42,7 +43,8 @@ def _errors(fn: Any) -> Any:
     try:
         return fn()
     except SeriesError as e:
-        raise ApiError(422, "bad_series", str(e), e.hint) from e
+        extra = {"field": e.field} if e.field else None
+        raise ApiError(422, e.code, e.message, e.hint or "Проверьте параметры серии.", extra=extra) from e
     except store.NotFound as e:
         raise ApiError(
             404, "series_not_found", "Серия разрезов не найдена: её удалили.", "Обновите список серий."

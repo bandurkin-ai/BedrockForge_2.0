@@ -10,6 +10,8 @@ it lives in the view key `section.series` (decision 13), so stepping through sec
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from typing import Any
 
@@ -19,9 +21,11 @@ from bf_core.db import dialect
 from bf_core.db.schema import objects
 
 from . import schema
-from .schema import KIND, SeriesError
+from .geometry import SeriesError, series_geometry
+from .schema import KIND
 
 MAX_SERIES = 1_000  # series in a project
+TABLE_FORMAT = 1  # bump when the rules of the names or origins change: the ETag of every table changes
 COPY_SUFFIX = " (копия)"
 _AUTO_NAME = re.compile(r"^Серия (\d{1,6})$")
 _LOCK = 0x5EC7_5E21E5  # PostgreSQL advisory lock of the series numbers
@@ -65,31 +69,18 @@ def _alive_layer(conn: sa.Connection) -> Any:
 
 
 def _check(conn: sa.Connection, params: Any) -> dict[str, Any]:
-    from .geometry import count as section_count
-
-    meta = schema.check(params, _alive_layer(conn), section_count)
-    _check_names(meta)
-    return meta
-
-
-def _check_names(meta: dict[str, Any]) -> None:
-    """The template of the names is valid and gives every section its own name (422 otherwise)."""
-    from .table import names
-
-    names(meta)
+    return schema.check(params, _alive_layer(conn))
 
 
 def _out(conn: sa.Connection, r: Any) -> dict[str, Any]:
-    from .geometry import count as section_count
-
     meta = r.meta if isinstance(r.meta, dict) else {}
     params = schema.params_of(meta)
     if params["contour_layer"] is not None and not _alive_layer(conn)(params["contour_layer"]):
         params["contour_layer"] = None  # the layer was deleted since
     try:
-        k = section_count(float(meta["s0"]), float(meta["s1"]), float(meta["step"]))
-    except (KeyError, TypeError, ValueError):
-        k = 0
+        k = series_geometry(meta).count
+    except SeriesError:
+        k = 0  # a meta this version cannot read: listed, without sections
     return {
         "id": int(r.id),
         "name": r.name,
@@ -220,3 +211,18 @@ def copy(conn: sa.Connection, series_id: int, name: Any = None, author: str | No
 def delete(conn: sa.Connection, series_id: int) -> None:
     row(conn, series_id)
     conn.execute(sa.delete(objects).where(objects.c.id == series_id))
+
+
+def table(r: Any) -> dict[str, Any]:
+    """`GET …/table`: `{version, count, sections: [{k, name, s, origin, towards, away}][, segments]}` — the
+    names and origins computed from the parameters (`names.series_table`), never stored."""
+    from .names import series_table
+
+    meta = r.meta if isinstance(r.meta, dict) else {}
+    return {"version": int(r.version), **series_table(meta)}
+
+
+def table_etag(uid: str, r: Any) -> str:
+    """The table changes with the parameters only, and every change of them is a new version."""
+    key = json.dumps(["section_series.table", TABLE_FORMAT, uid, int(r.id), int(r.version)], separators=(",", ":"))
+    return '"' + hashlib.sha256(key.encode("utf-8")).hexdigest() + '"'

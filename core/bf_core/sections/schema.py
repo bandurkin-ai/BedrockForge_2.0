@@ -23,21 +23,21 @@ positions s_k, origins O_k and names are computed (`sections/geometry.py`, `sect
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
+from .geometry import DEFAULT_WINDOW, MAX_K, MAX_LEN, MIN_LEN, MIN_SPAN, TYPES, SeriesError
+from .polyline import DEFAULT_CORRIDOR
+from .polyline import MAX_POINTS as MAX_POLYLINE
+
+__all__ = ["KIND", "SeriesError", "check", "merge", "params_of", "remap_meta"]
+
 KIND = "section_series"
-TYPES = ("vertical", "plan", "inclined", "polyline")
 SHADOWS = ("none", "prev", "next", "both")
-MAX_K = 5_000  # sections in a series (ТЗ 8.1.2)
 MAX_OVERRIDES = 5_000
-MAX_POLYLINE = 1_000  # points of a polyline section
 MAX_TEMPLATE = 200
-MIN_LEN, MAX_LEN = 0.01, 10_000.0  # step, windows and corridor, metres
 MAX_COORD = 1e9  # |coordinate| and |s|, metres: beyond it float64 loses the millimetre
-MIN_SPAN = 1e-6  # P2 ≠ P1, segments of a polyline
-DEFAULT_WINDOW = 25.0
-DEFAULT_CORRIDOR = 25.0
 #: every field of the stored meta, in the order of the table above; `number` and `v` are set by the store
 FIELDS = (
     "type", "p1", "p2", "az", "phi", "s0", "s1", "step", "towards", "away", "overrides", "template",
@@ -45,12 +45,15 @@ FIELDS = (
 )  # fmt: skip
 
 
-class SeriesError(ValueError):
-    """422 `bad_series`: what is wrong (Russian) and what to do."""
-
-    def __init__(self, message: str, hint: str) -> None:
-        super().__init__(message)
-        self.hint = hint
+@contextmanager
+def _at(name: str) -> Iterator[None]:
+    """Errors of the checks inside name the parameter (`field` of the answer) unless they already do."""
+    try:
+        yield
+    except SeriesError as e:
+        if e.field is None:
+            e.field = name
+        raise
 
 
 def _ru(x: float) -> str:
@@ -167,69 +170,90 @@ def _layer(v: Any, alive_layer: Callable[[int], bool]) -> int | None:
     return v
 
 
-def check(
-    params: Any,
-    alive_layer: Callable[[int], bool],
-    count: Callable[[float, float, float], int],
-) -> dict[str, Any]:
-    """The normalized meta of a series (without `v` and `number`); `count(s0, s1, step)` is K of the geometry."""
+def check(params: Any, alive_layer: Callable[[int], bool]) -> dict[str, Any]:
+    """The normalized meta of a series (without `v` and `number`): every field checked here, then the geometry
+    and the names of the sections built from it (`series_geometry`, `section_names` — the same code the table
+    and the windows use), so a stored series always has a table."""
+    from .geometry import count, series_geometry
+    from .names import section_names
+
     if not isinstance(params, dict):
         raise SeriesError("Параметры серии: ожидается набор полей.", "Заполните окно «Новая серия».")
     unknown = sorted(set(params) - set(FIELDS) - {"v", "number"})
     if unknown:
         raise SeriesError(f"Параметры серии: неизвестное поле «{unknown[0][:40]}».", "Проверьте окно серии.")
+
+    def opt(name: str, default: Any) -> Any:
+        v = params.get(name)
+        return default if v is None else v
+
     kind = params.get("type")
     if kind not in TYPES:
-        raise SeriesError("Тип серии: вертикальная, план, наклонная или ломаная.", "Выберите тип серии.")
+        raise SeriesError("Тип серии: вертикальная, план, наклонная или ломаная.", "Выберите тип серии.", field="type")
     meta: dict[str, Any] = {"type": kind}
-    towards = _length(params.get("towards", DEFAULT_WINDOW), "Окно «к себе»")
-    away = _length(params.get("away", DEFAULT_WINDOW), "Окно «от себя»")
-    step = params.get("step")
-    step = _length(towards + away if step is None else step, "Шаг серии")
+    with _at("towards"):
+        towards = _length(opt("towards", DEFAULT_WINDOW), "Окно «к себе»")
+    with _at("away"):
+        away = _length(opt("away", DEFAULT_WINDOW), "Окно «от себя»")
+    with _at("step"):
+        step = _length(opt("step", towards + away), "Шаг серии")
     if kind == "polyline":
-        polyline, corridor = _polyline(params)
-        p1 = _p1(params["p1"]) if params.get("p1") is not None else [*polyline[0], 0.0]
+        with _at("polyline"):
+            polyline, corridor = _polyline(params)
+        with _at("p1"):
+            p1 = _p1(params["p1"]) if params.get("p1") is not None else [*polyline[0], 0.0]
         meta.update(p1=p1, p2=None, az=None, polyline=polyline, corridor=corridor)
         s0 = s1 = 0.0  # one section: the development of the whole polyline
+        k = 1
     else:
         if params.get("polyline") is not None:
-            raise SeriesError("Ломаная задаётся только у ломаного разреза.", "Выберите тип «Ломаная» или уберите её.")
-        if params.get("p1") is None:
-            raise SeriesError("Не задана точка P1.", "Укажите начало линии разреза (для плана — и верхнюю отметку).")
-        p1 = _p1(params["p1"])
+            raise SeriesError(
+                "Ломаная задаётся только у ломаного разреза.",
+                "Выберите тип «Ломаная» или уберите её.",
+                field="polyline",
+            )
+        with _at("p1"):
+            if params.get("p1") is None:
+                raise SeriesError("Не задана точка P1.", "Укажите начало линии (для плана — и верхнюю отметку).")
+            p1 = _p1(params["p1"])
         if kind == "plan" and params.get("p2") is None and params.get("az") is None:
             params = {**params, "az": 90.0}  # plans: north up on the screen (8.1.2)
-        p2, az = _direction(params, p1)
+        with _at("p2" if params.get("p2") is not None else "az"):
+            p2, az = _direction(params, p1)
         meta.update(p1=p1, p2=p2, az=az, polyline=None, corridor=None)
-        s0 = _number(params.get("s0", 0.0), "Начало серии s0")
-        s1 = _number(params.get("s1", s0), "Конец серии s1")
-        if s1 < s0:
-            raise SeriesError("Конец серии раньше начала.", "s1 должен быть не меньше s0 (для плана — верх выше низа).")
-    k = count(s0, s1, step)
+        with _at("s0"):
+            s0 = _number(opt("s0", 0.0), "Начало серии s0")
+        with _at("s1"):
+            s1 = _number(opt("s1", s0), "Конец серии s1")
+            k = count(s0, s1, step)
     if k > MAX_K:
         raise SeriesError(
             f"В серии получается {k} разрезов — больше 5 000.",
             f"Увеличьте шаг (не меньше {_ru(math.ceil((s1 - s0) / (MAX_K - 1) * 100) / 100)} м) или сократите пределы.",
+            field="step",
         )
-    shadow = params.get("shadow", "prev")
+    shadow = opt("shadow", "prev")
     if shadow not in SHADOWS:
-        raise SeriesError("Тень: нет, предыдущий, следующий или оба.", "Выберите вариант тени.")
+        raise SeriesError("Тень: нет, предыдущий, следующий или оба.", "Выберите вариант тени.", field="shadow")
     if params.get("layout") is not None:
-        raise SeriesError("Макет печати серии появится в версии с печатью.", "Оставьте поле макета пустым.")
+        raise SeriesError(
+            "Макет печати серии появится в версии с печатью.", "Оставьте поле макета пустым.", field="layout"
+        )
+    with _at("phi"):
+        phi = _phi(kind, params.get("phi"))
+    with _at("overrides"):
+        overrides = _overrides(params.get("overrides"), k)
+    with _at("template"):
+        template = _template(params.get("template"))
+    with _at("contour_layer"):
+        layer = _layer(params.get("contour_layer"), alive_layer)
     meta.update(
-        phi=_phi(kind, params.get("phi")),
-        s0=s0,
-        s1=s1,
-        step=step,
-        towards=towards,
-        away=away,
-        overrides=_overrides(params.get("overrides"), k),
-        template=_template(params.get("template")),
-        shadow=shadow,
-        contour_layer=_layer(params.get("contour_layer"), alive_layer),
-        layout=None,
-    )
-    return {f: meta[f] for f in FIELDS}
+        phi=phi, s0=s0, s1=s1, step=step, towards=towards, away=away, overrides=overrides, template=template,
+        shadow=shadow, contour_layer=layer, layout=None,
+    )  # fmt: skip
+    out = {f: meta[f] for f in FIELDS}
+    section_names(series_geometry(out), template)  # the geometry takes it; the names exist and differ
+    return out
 
 
 def merge(current: dict[str, Any], change: Any) -> dict[str, Any]:
@@ -239,6 +263,8 @@ def merge(current: dict[str, Any], change: Any) -> dict[str, Any]:
         raise SeriesError("Параметры серии: ожидается набор полей.", "Проверьте окно серии.")
     out = {f: current.get(f) for f in FIELDS}
     out.update(change)
+    if change.get("type") not in (None, "polyline") and "polyline" not in change:
+        out["polyline"] = out["corridor"] = None  # the polyline of a section that is not one any more
     if "az" in change and "p2" not in change:
         out["p2"] = None
     if "p2" in change and "az" not in change:

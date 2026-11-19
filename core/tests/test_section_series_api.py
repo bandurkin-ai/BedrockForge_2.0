@@ -111,7 +111,12 @@ def test_patch_version_conflict_and_merge(sc) -> None:  # type: ignore[no-untype
     assert body["version"] == 2 and body["series"] == v2
     assert sc.get(url).json()["name"] == "Новое"
     # a wrong change leaves the series as it was
-    error_of(sc.patch(url, json={"expected_version": 2, "params": {"step": 0}}), 422, "bad_series")
+    assert (
+        error_of(sc.patch(url, json={"expected_version": 2, "params": {"step": 0}}), 422, "bad_series")["field"]
+        == "step"
+    )
+    bad = error_of(sc.patch(url, json={"expected_version": 2, "params": {"template": "{k!r}"}}), 422, "bad_series")
+    assert bad["field"] == "template"
     assert sc.get(url).json() == v2
     r = sc.patch(url, json={"expected_version": 2, "folder": None, "params": {"az": 0, "shadow": "both"}})
     assert r.json()["params"]["p2"] is None and r.json()["params"]["az"] == 0.0 and r.json()["version"] == 3
@@ -163,7 +168,7 @@ def test_polyline_inclined_and_contour_layer(sc) -> None:  # type: ignore[no-unt
     inc = create(sc, {"type": "inclined", "p1": [5e5, 7e6, 300], "az": 45, "phi": 60, "s1": 50, "step": 10})
     assert inc["count"] == 6 and inc["params"]["phi"] == 60.0
     layer = sc.post(f"{API}/lines/layers", json={"name": "Контуры", "color": "#ff8800"})
-    assert layer.status_code == 200, layer.text
+    assert layer.status_code == 201, layer.text
     lid = layer.json()["id"]
     r = sc.patch(f"{URL}/{inc['id']}", json={"expected_version": 1, "params": {"contour_layer": lid}})
     assert r.status_code == 200 and r.json()["params"]["contour_layer"] == lid
