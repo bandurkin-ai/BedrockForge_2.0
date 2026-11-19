@@ -4,6 +4,7 @@
     pair_links(links, sections, ...)     [(k, [(lower contours, upper contours), ...])] for sections k, k + 1
     cap_plan(start_cap, end_cap, ...)    a cap at every end of every body: (kind, outward, contour, k, spacing)
     bodies(count, links)                 connected groups of contours: one solid each
+    body_of_triangles(...)               the bodies and the body of every triangle
     body_report(...)                     contours, sections, triangles and volume of every body
 
 By default (no `normal`, `groups`, `links`, `spacing`) everything is as in Э9, bit for bit: the normal is the
@@ -23,6 +24,10 @@ Ends of bodies: a contour with no link to the previous section gets the start ca
 one the end cap. The length of a "point", "line" or "extend" cap is a share of `spacing` (by default the
 distance to the neighbouring section of the body; for a contour linked to nothing — the median step
 between the sections).
+
+Bodies are separate solids: with given sections or links only a body that crosses itself fails the check;
+bodies that touch or cross each other (unlinked contours of neighbouring sections whose continued ends meet)
+get a warning.
 """
 
 from __future__ import annotations
@@ -42,7 +47,7 @@ LINKS_HINT = (
 )
 LONE_HINT = "Свяжите контур с контуром соседнего разреза или выберите продление торца или выклинивание."
 # Section numbers above this are refused (a series has up to a few thousand sections).
-MAX_SECTION = 1_000_000
+MAX_SECTION = 100_000
 
 Pairs = list[tuple[int, list[tuple[list[int], list[int]]]]]
 
@@ -191,8 +196,10 @@ def _pair(link: Any, number: int, count: int) -> tuple[int, int]:
     if raw.shape != (2,) or raw.dtype.kind not in "iu":
         raise _bad(f"Связь {number}: ожидается пара номеров контуров.", LINKS_HINT)
     a, b = int(raw[0]), int(raw[1])
-    if not (0 <= a < count and 0 <= b < count) or a == b:
+    if not (0 <= a < count and 0 <= b < count):
         raise _bad(f"Связь {number}: нет таких контуров ({a + 1} и {b + 1}; всего {count}).", LINKS_HINT)
+    if a == b:
+        raise _bad(f"Связь {number}: контур {a + 1} связан сам с собой.", LINKS_HINT)
     return a, b
 
 
@@ -332,18 +339,25 @@ def bodies(count: int, links: Sequence[Sequence[int]]) -> list[list[int]]:
     return _components(edges)
 
 
-def body_report(
-    s: Series, owner: np.ndarray, local: np.ndarray, tris: np.ndarray, pairs: Pairs, section_of: np.ndarray,
-    closed: bool,
-) -> list[dict[str, Any]]:
-    """Per body: contours, first and last section, triangles, volume (None unless the solid is closed)."""
-    count = len(section_of)
+def body_of_triangles(s: Series, owner: np.ndarray, pairs: Pairs, count: int) -> tuple[list[list[int]], np.ndarray]:
+    """The bodies (`bodies` of the links used) and the body of every triangle (`owner`: its group in `s`)."""
     found = bodies(count, [(lower[0], c) for _, entries in pairs for lower, upper in entries for c in lower + upper])
     body_of = np.empty(count, dtype=np.int64)
     for b, group in enumerate(found):
         body_of[group] = b
     of_group = np.array([body_of[g["contours"][0]] for g in s.groups], dtype=np.int64)
-    tri_body = of_group[owner]
+    return found, of_group[owner]
+
+
+def body_report(
+    found: list[list[int]],
+    tri_body: np.ndarray,
+    local: np.ndarray,
+    tris: np.ndarray,
+    section_of: np.ndarray,
+    closed: bool,
+) -> list[dict[str, Any]]:
+    """Per body: contours, first and last section, triangles, volume (None unless the solid is closed)."""
     a, b, c = local[tris[:, 0]], local[tris[:, 1]], local[tris[:, 2]]
     per = np.einsum("ij,ij->i", a, np.cross(b, c))
     volumes = np.bincount(tri_body, weights=per, minlength=len(found)) / 6.0
