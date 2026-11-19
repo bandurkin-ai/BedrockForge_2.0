@@ -106,8 +106,8 @@ export function JobsPanel() {
                       Повторить
                     </button>
                   )}
-                  {j.status === "done" && j.kind === "export.project" && typeof j.result?.path === "string" && (
-                    <button type="button" className={css.btn} onClick={() => bridge()?.showInFolder(String(j.result!.path))}>
+                  {j.status === "done" && (j.kind === "export.project" || j.kind === "export.objects") && typeof (j.result?.folder ?? j.result?.path) === "string" && (
+                    <button type="button" className={css.btn} onClick={() => bridge()?.showInFolder(String(j.result!.folder ?? j.result!.path))}>
                       Показать в папке
                     </button>
                   )}
