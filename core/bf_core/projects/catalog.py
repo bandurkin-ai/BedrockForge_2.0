@@ -84,7 +84,9 @@ def rows(conn: sa.Connection) -> list[dict[str, Any]]:
                 clouds.add(int(lr.parent_id))
     dtm: set[int] = set()
     for chunk in _chunks([i for i in ids if kind[i] == "wireframe"]):
-        for w in conn.execute(sa.select(wireframes.c.object_id, wireframes.c.dtm).where(wireframes.c.object_id.in_(chunk))):
+        for w in conn.execute(
+            sa.select(wireframes.c.object_id, wireframes.c.dtm).where(wireframes.c.object_id.in_(chunk))
+        ):
             if w.dtm:
                 dtm.add(int(w.object_id))
     logs: dict[int, int] = {}  # import → its object
@@ -187,6 +189,13 @@ def _key(sort: str) -> Any:
     return key
 
 
+def in_folder(row_folder: str | None, folder: str | None) -> bool:
+    """A row of `row_folder` is shown in `folder`: the root shows its own rows, a folder — also those of its folders."""
+    if folder is None:
+        return row_folder is None
+    return row_folder is not None and (row_folder == folder or row_folder.startswith(folder + "/"))
+
+
 def page(
     conn: sa.Connection,
     *,
@@ -206,8 +215,7 @@ def page(
     found = rows(conn)
     if folder is not None:
         f = norm_folder(folder)
-        found = [r for r in found if (r["folder"] is None if f is None else
-                                      r["folder"] is not None and (r["folder"] == f or r["folder"].startswith(f + "/")))]  # fmt: skip
+        found = [r for r in found if in_folder(r["folder"], f)]
     if kind:
         found = [r for r in found if r["kind"] == kind]
     if q and q.strip():
