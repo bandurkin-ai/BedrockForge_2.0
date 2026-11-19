@@ -62,6 +62,9 @@ describe("the table «тип → формат» of the core", () => {
     expect(parseFormats({ read_only: true, types: [] }).reason).toBe("Проект открыт только для чтения: экспорт недоступен.");
     expect(parseFormats(null)).toEqual({ types: [], reason: null });
     expect(parseFormats({ types: [{ kind: "x", formats: [{ id: "a" }], available: false }] }).types[0].reason).toBe("Сейчас недоступно");
+    // the shape of exporting/registry.py::formats: `format`, `available`, `reason`, `hint`
+    const core = parseFormats({ types: [{ kind: "wireframe", title: "Каркасы", folder: "Каркасы", count: 1, default: "dxf", formats: [{ format: "dxf", title: "DXF", available: true, reason: null, hint: null }, { format: "dwg", title: "DWG", available: false, reason: "Не найден ODA File Converter.", hint: "Укажите программу: Настройка › Внешние программы." }] }] });
+    expect(core.types[0].formats.map((f) => [f.id, f.reason])).toEqual([["dxf", null], ["dwg", "Не найден ODA File Converter. Укажите программу: Настройка › Внешние программы."]]);
   });
 
   it("a type without objects or without a format the core writes is off with its reason", () => {

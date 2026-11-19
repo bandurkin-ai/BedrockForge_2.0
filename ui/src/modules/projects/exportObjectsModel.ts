@@ -69,7 +69,8 @@ const KIND_ORDER = Object.keys(KIND_TITLES);
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
 const reasonOf = (o: Record<string, unknown>): string | null => {
   const why = str(o.reason) ?? str(o.why);
-  if (why) return why;
+  const hint = str(o.hint);
+  if (why) return hint && !why.includes(hint) ? `${why.replace(/[.\s]+$/, "")}. ${hint}` : why;
   return o.available === false ? "Сейчас недоступно" : null;
 };
 
