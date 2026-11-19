@@ -443,6 +443,7 @@
     }
   },
   "external": {
+    "editor_1m": {"file": "bench/out/editor_1m.json", "limits": {"open_ms": 3000, "snap_ms": 4, "index_ms": 300}, "report": ["op_ms", "undo_ms", "open_frame_ms", "index_best_ms", "snap_median_ms", "save_ms", "snap_targets"]},
     "_comment": "Results written by other checks (ADR 0007 §9): the frame of the 3D window under software rendering, E2E app/e2e/perf3d.spec.ts. Budgets only on deterministic counters; ms go to the report. frame_sw — 2000 holes and a display; frame_sw_heavy (ADR 0011, 0013 «Замеры») — the demo, 1 million line segments, a raster of 4096 px and a DTM of 200 thousand triangles; frame_sw_cloud (ADR 0014 «Замеры») — the holes of the demo, a point cloud of 10 million points, the ground filter and the DTM built from it: `points` — the points of the cloud in the frame against the point budget of software rendering (1 million; 6 — integrated, 20 — discrete).",
     "frame_sw": {
       "file": "bench/out/frame_sw.json",
