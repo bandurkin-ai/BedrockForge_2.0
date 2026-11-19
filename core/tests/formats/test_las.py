@@ -367,6 +367,20 @@ def test_counters_of_1_4(tmp_path: Path) -> None:
     assert cloud.read().xyz.tobytes() == expected[: 30 * 24]
 
 
+def test_wave_packets_after_the_points_are_not_points(tmp_path: Path) -> None:
+    points = random_points(25, 4, seed=15)
+    waves = bytes(range(256)) * 3  # 13 records and a piece, were they taken for points
+    start = 235 + 25 * 57
+    for declared, said in ((None, 25), (0, 0)):  # a header with the counter and one without
+        spec = Spec(version=(1, 3), fmt=4, global_encoding=2, wave_start=start, declared=declared)
+        cloud = open_las(_write(tmp_path, las_bytes(points, spec) + waves))
+        assert (cloud.point_count, cloud.header.declared_count) == (25, said)
+        assert not [w for w in cloud.warnings if "непрочитанные" in w or "обрезан" in w]
+        assert cloud.read().xyz.tobytes() == _expected(points, spec)[0].tobytes()
+    lost = open_las(_write(tmp_path, las_bytes(points, Spec(version=(1, 3), fmt=4, declared=0)) + waves))
+    assert lost.point_count == 25 + len(waves) // 57  # nothing tells where the points end: by the size of the file
+
+
 def test_cut_file_gives_whole_records_and_a_warning(tmp_path: Path) -> None:
     points = random_points(100, 2, seed=9)
     data = las_bytes(points, Spec(fmt=2))
