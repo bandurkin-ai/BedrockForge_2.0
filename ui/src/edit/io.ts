@@ -297,6 +297,47 @@ export function moveBody(layer: EditLayer, loaded: LoadedLayer, ids: readonly nu
   );
 }
 
+/**
+ * The working copy after a save (or a move of `moved` lines out of it) over the layer the core gives back: the
+ * lines keep their ids and points (so they are untouched against the new base) and take their new stable numbers.
+ * Null when the answer does not line up with the working copy line by line.
+ */
+export function rebaseOnSaved(layer: EditLayer, reloaded: LoadedLayer, moved: readonly number[] = []): { layer: EditLayer; loaded: LoadedLayer } | null {
+  const gone = new Set(moved);
+  const present = layer.lines.filter((l) => l.points.length > 0 && !gone.has(l.id));
+  const back = reloaded.layer.lines;
+  if (present.length !== back.length || present.some((l, i) => l.points.length !== back[i].points.length || l.closed !== back[i].closed)) return null;
+  const base = new Map(reloaded.base);
+  const lines = present.map((l, i) => {
+    const line = l.src === back[i].src ? l : { ...l, src: back[i].src };
+    const b = reloaded.base.get(line.src);
+    if (b) base.set(line.src, { ...b, line });
+    return line;
+  });
+  const next: EditLayer = { lines, nextId: layer.nextId };
+  return { layer: next, loaded: { ...reloaded, layer: next, base } };
+}
+
+/**
+ * A layer as the core would give it back after a save of `layer` (`lid` for new lines after the greatest one):
+ * a new empty layer (`lines.new_layer`) and tests. Untouched closed lines are stored with the repeated vertex.
+ */
+export function asLoaded(layerId: number, version: number, layer: EditLayer, pointsOnly = false): LoadedLayer {
+  let next = 0;
+  for (const line of layer.lines) if (line.src >= next) next = line.src + 1;
+  const seen = new Set<number>();
+  const lines = layer.lines
+    .filter((l) => l.points.length > 0)
+    .map((l) => {
+      const src = l.src >= 0 && !seen.has(l.src) ? l.src : next++;
+      seen.add(src);
+      return src === l.src ? l : { ...l, src };
+    });
+  const base = new Map<number, BaseLine>();
+  for (const line of lines) base.set(line.src, { line, count: storedCount(line), closed: repeatsFirst(line) ? 1 : 0 });
+  return { layerId, version, pointsOnly, layer: { lines, nextId: layer.nextId }, base };
+}
+
 /** A working copy made from plain stored data (tests, `lines.add_line` of the assistant). */
 export function layerOf(lines: { points: Vec3[]; closed?: boolean; attrs?: Record<string, unknown> }[]): EditLayer {
   return {

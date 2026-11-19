@@ -259,6 +259,16 @@ export class History<T> {
     if (this.hasLive) this.push(this.live as T, label);
   }
 
+  /**
+   * Puts `state` in place of the committed one without a step and marks it saved (after a save the working
+   * copy takes the stable numbers the core gave its lines; the steps before stay undoable).
+   */
+  rebase(state: T): void {
+    this.dropLive();
+    this.base = state;
+    this.saved = state;
+  }
+
   /** Drops the state set by `replace`: the present is the committed state again. */
   cancel(): void {
     this.dropLive();
