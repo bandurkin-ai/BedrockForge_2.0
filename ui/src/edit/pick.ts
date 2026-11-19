@@ -3,7 +3,7 @@
  * 1 million vertices, so this is brute force over its vertices with the projection written out in place (no
  * allocation per vertex). A vertex without a height is drawn — and hit — at `view.missingZ`.
  */
-import type { EditLayer, VertexRef } from "./model";
+import { EMPTY_SELECTION, type EditLayer, type Selection, type VertexRef } from "./model";
 import { projectSegment, segmentParamAt, SEG_X0, SEG_X1, SEG_Y0, SEG_Y1 } from "./snap";
 import type { ViewTransform } from "./snap";
 
@@ -158,4 +158,34 @@ export function verticesInBox(layer: EditLayer, view: ViewTransform, x0: number,
     return false;
   });
   return refs;
+}
+
+const sameRef = (a: VertexRef, b: VertexRef) => a.line === b.line && a.index === b.index;
+
+/**
+ * The selection after a click of the select tool at (px, py): a vertex within `radiusPx` (Shift adds or takes it
+ * out), else a segment within 8 px (its line; Shift — the same), else nothing (Shift keeps the selection).
+ */
+export function clickSelection(layer: EditLayer, view: ViewTransform, sel: Selection, px: number, py: number, radiusPx: number, shift: boolean): Selection {
+  const v = nearestVertex(layer, view, px, py, radiusPx);
+  if (v) {
+    const has = sel.vertices.some((r) => sameRef(r, v.ref));
+    if (shift) return { lines: sel.lines, vertices: has ? sel.vertices.filter((r) => !sameRef(r, v.ref)) : [...sel.vertices, v.ref] };
+    return { lines: [v.ref.line], vertices: [v.ref] };
+  }
+  const s = nearestSegment(layer, view, px, py, 8);
+  if (s) {
+    const has = sel.lines.includes(s.line);
+    if (shift) return { lines: has ? sel.lines.filter((id) => id !== s.line) : [...sel.lines, s.line], vertices: sel.vertices };
+    return { lines: [s.line], vertices: [] };
+  }
+  return shift ? sel : EMPTY_SELECTION;
+}
+
+/** The selection after a box (Ctrl + drag): the lines and vertices inside it, added to `sel` with Shift. */
+export function boxSelection(layer: EditLayer, view: ViewTransform, sel: Selection, x0: number, y0: number, x1: number, y1: number, add: boolean): Selection {
+  const lines = linesInBox(layer, view, x0, y0, x1, y1);
+  const vertices = verticesInBox(layer, view, x0, y0, x1, y1);
+  if (!add) return { lines, vertices };
+  return { lines: [...new Set([...sel.lines, ...lines])], vertices: [...sel.vertices, ...vertices.filter((v) => !sel.vertices.some((r) => sameRef(r, v)))] };
 }

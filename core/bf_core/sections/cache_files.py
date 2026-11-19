@@ -198,6 +198,7 @@ class Staged:
         self.tag = f"{tag if tag is not None else 'job'}-{uuid.uuid4().hex[:8]}"
         self.files: list[tuple[Path, Path]] = []
         self.made: list[Path] = []  # the folders this job created, deepest last
+        self.keys: set[str] = set()  # of the wireframes written
         self.bytes = 0
 
     def _folders(self) -> None:
@@ -209,7 +210,10 @@ class Staged:
     def add(self, wf_key: str, data: bytes) -> None:
         self._folders()
         tmp = self.dir / f"{wf_key}.{self.tag}.tmp"
+        if wf_key in self.keys:
+            raise ValueError(f"the file of {wf_key} is written already")
         self.files.append((tmp, self.dir / f"{wf_key}.bfa"))
+        self.keys.add(wf_key)
         tmp.write_bytes(data)
         self.bytes += len(data)
 

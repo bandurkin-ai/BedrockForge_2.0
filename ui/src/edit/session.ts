@@ -3,20 +3,26 @@
  * undo, the active tool, the selection and snapping. No React and no three.js here: the 3D view feeds pointer
  * events and a ray under the cursor, the interface subscribes to changes. The commands are in `tools.ts`.
  *
- * Where a point falls: in plan — on the Z of the panel (`zLevel`); with the section clipped — on the vertical
- * plane in the middle of the section window; with a snap — on the target, or on its projection into the section
- * plane (`snap.project`) for hole and wireframe targets. Coordinates are project float64 throughout.
+ * Where a point falls — `drawPlane.ts`; which lines may be picked on a section of a series — `lock.ts`; the own
+ * snap targets, rebuilt only for the lines an edit changed — `ownSnap.ts`. Coordinates are project float64.
  */
 import type { SectionLine } from "../viz/section/math";
-import { horizontalPlane, projectToPlane, rayPlane, sectionPlane, type Plane } from "./coords";
+import type { SectionPlane } from "../viz/section/plane";
+import { rayPlane, type Plane } from "./coords";
+import { assembledContours, pickContour, startAssembly, stopAssembly, type Assembly } from "./assembleMode";
+import { drawingPlane, onSection, placePoint } from "./drawPlane";
+import { addPoint, dropPoint, finishDrawing } from "./drawing";
 import { carryOver, moveBody, rebaseOnSaved, saveBody, summarize, type LoadedLayer, type SaveSummary } from "./io";
 import { EMPTY_SELECTION, layerHistory, lineById, vertexAt, type EditLayer, type History, type Selection, type Vec3, type VertexRef } from "./model";
 import * as ops from "./ops";
-import { linesInBox, nearestSegment, nearestVertex, verticesInBox } from "./pick";
-import { gridSnap, layerSnapSource, PROJECTED_KINDS, SNAP_TITLES, type SnapHit, type ViewTransform } from "./snap";
+import { boxSelection, clickSelection, nearestSegment, nearestVertex } from "./pick";
+import { SectionLock } from "./lock";
+import { OwnSnapSource } from "./ownSnap";
+import { CoreProbe } from "./probe";
+import type { SnapHit, ViewTransform } from "./snap";
 import { SnapIndex } from "./snapIndex";
 import * as cmd from "./tools";
-import { closestOnSegmentToRay, DEFAULT_SNAP, keyCommand, PROBE_DELAY_MS, toolAttrs, WF_KINDS, wireframeHit } from "./tools";
+import { closestOnSegmentToRay, DEFAULT_SNAP, sessionKey } from "./tools";
 import type { CommandHost, EditKey, EditPointer, Hover, SessionView, SnapSettings, Tool, WireframeProbe } from "./tools";
 
 type Drag =
@@ -38,14 +44,18 @@ export class EditSession implements CommandHost {
   /** Level of new points in plan (when the view is not clipped to a section): the Z of the panel. */
   zLevel = 0;
   section: SectionLine | null = null;
+  /** the section of a series the points fall on (its plane t = 0), null — none */
+  plane: SectionPlane | null = null;
   clip = false;
+  /** «Текущий разрез / все»: on a section of a series only its lines are picked */
+  readonly lock = new SectionLock();
   view: SessionView | null = null;
   probe: WireframeProbe | null = null;
   hover: Hover | null = null;
   /** The line being drawn: its id and the end that grows. */
   drawing: { line: number; atStart: boolean } | null = null;
   /** «Собрать из контуров»: closed lines in the order clicked; `closed` — the open ends are capped. */
-  assemble: { order: number[]; closed: boolean } | null = null;
+  assemble: Assembly | null = null;
   drag: Drag | null = null;
   message: string | null = null;
   /** A save (or a move) went through but its answer is not read (`GET …/geometry` failed): the next save reads
@@ -53,10 +63,8 @@ export class EditSession implements CommandHost {
   unsynced: { layerId: number; sent: EditLayer; moved: readonly number[]; name?: string } | null = null;
   private listeners = new Set<() => void>();
   private revision = 0;
-  private probed: { x: number; y: number; hit: SnapHit | null } | null = null;
-  private probeTimer: ReturnType<typeof setTimeout> | null = null;
-  private probeAbort: AbortController | null = null;
-  private sourceLayer: EditLayer | null = null;
+  private readonly prober = new CoreProbe(this, () => this.transform());
+  private readonly own = new OwnSnapSource();
 
   constructor(
     public loaded: LoadedLayer,
@@ -108,14 +116,19 @@ export class EditSession implements CommandHost {
 
   /** The plane new points fall on: the middle of the section window when clipped, else the plan level. */
   drawingPlane(): Plane {
-    return this.clip && this.section ? sectionPlane(this.section) : horizontalPlane(this.zLevel);
+    return drawingPlane(this);
+  }
+
+  /** The lines that may be picked: all, or those on the current section (`lock.ts`). */
+  pickLayer(): EditLayer {
+    return this.lock.pickable(this.layer);
   }
 
   /** The view transform; in plan a target without a height is drawn on the plan level. */
   private transform(): ViewTransform | null {
     const t = this.view?.transform() ?? null;
     if (!t || t.missingZ !== undefined) return t;
-    return { ...t, missingZ: this.clip && this.section ? undefined : this.zLevel };
+    return { ...t, missingZ: onSection(this) ? undefined : this.zLevel };
   }
 
   // ---- state changes (CommandHost)
@@ -144,53 +157,27 @@ export class EditSession implements CommandHost {
     this.emit();
   }
 
+  /** The own snap targets follow the working copy: only the pieces with changed lines are rebuilt. */
   private refreshOwnSource(exclude?: VertexRef): void {
-    const layer = this.layer;
-    if (layer === this.sourceLayer && !exclude) return;
-    this.sourceLayer = exclude ? null : layer;
-    this.snapIndex.setSource(layerSnapSource(layer, "edit", exclude));
+    const c = this.own.update(this.layer, exclude);
+    for (const key of c.removed) this.snapIndex.removeSource(key);
+    for (const s of c.set) this.snapIndex.setSource(s);
   }
 
   viewChanged(): void {
     const t = this.transform();
     if (t) this.snapIndex.setView(t);
-    this.probed = null;
+    this.prober.forget();
   }
 
   // ---- where the cursor points
-  private wantsProbe(): boolean {
-    return this.snap.enabled && !!this.probe && this.snap.kinds.some((k) => WF_KINDS.includes(k));
-  }
-
-  /** Asks the core for the triangle under the cursor; an earlier request still on its way is aborted. */
-  private async runProbe(e: { x: number; y: number; clientX: number; clientY: number }): Promise<SnapHit | null> {
-    const ray = this.view?.ray(e.clientX, e.clientY);
-    const t = this.transform();
-    if (!ray || !t || !this.probe) return null;
-    this.probeAbort?.abort();
-    const abort = new AbortController();
-    this.probeAbort = abort;
-    let hit: SnapHit | null = null;
-    try {
-      const found = await this.probe(ray, abort.signal);
-      if (found) hit = wireframeHit(found.corners, found.name, e.x, e.y, ray, t, new Set(this.snap.kinds), this.snap.radius);
-    } catch {
-      hit = null;
-    }
-    if (abort.signal.aborted) return null;
-    this.probeAbort = null;
-    this.probed = { x: e.x, y: e.y, hit };
-    return hit;
-  }
-
   /** The point a click at this cursor position gives, and what it snapped to. */
   resolve(e: { x: number; y: number; clientX: number; clientY: number }, extra: SnapHit | null = null): Hover {
     const ray = this.view?.ray(e.clientX, e.clientY) ?? null;
-    const plane = this.drawingPlane();
     let snap: SnapHit | null = null;
     if (this.snap.enabled) {
       snap = this.snapIndex.query(e.x, e.y, this.snap.radius, new Set(this.snap.kinds.filter((k) => k !== "grid")), ray ?? undefined);
-      const wf = extra ?? (this.probed && Math.hypot(this.probed.x - e.x, this.probed.y - e.y) <= 3 ? this.probed.hit : null);
+      const wf = extra ?? this.prober.hitAt(e);
       if (wf && (!snap || (wf.kind === "wf-vertex" && snap.kind !== "vertex" && snap.kind !== "collar" && snap.kind !== "interval") || wf.distancePx < snap.distancePx - 4)) snap = wf;
       // The last point of the line being drawn is not a target for its own next point.
       if (snap && this.drawing) {
@@ -199,17 +186,7 @@ export class EditSession implements CommandHost {
         if (last && samePoint(last, snap.point)) snap = null;
       }
     }
-    let point: Vec3 | null = null;
-    if (snap) {
-      point = this.clip && this.section && this.snap.project && PROJECTED_KINDS.has(snap.kind) ? projectToPlane(snap.point, plane) : snap.point;
-    } else if (ray) {
-      point = rayPlane(ray, plane);
-      if (point && this.snap.enabled && this.snap.kinds.includes("grid") && this.snap.grid > 0) {
-        point = gridSnap(point, this.snap.grid, plane);
-        snap = { kind: "grid", point, label: SNAP_TITLES.grid, distancePx: 0 };
-      }
-    }
-    return { point, snap, x: e.x, y: e.y };
+    return { ...placePoint(this, this.snap, snap, ray), x: e.x, y: e.y };
   }
 
   // ---- pointer events from the view; true = the event is taken (the view does not rotate or pick)
@@ -266,17 +243,14 @@ export class EditSession implements CommandHost {
         d.last = p;
       }
     }
-    if (this.wantsProbe() && !d) {
-      if (this.probeTimer) clearTimeout(this.probeTimer);
+    if (this.prober.wanted() && !d) {
       const at = { x: e.x, y: e.y, clientX: e.clientX, clientY: e.clientY };
-      this.probeTimer = setTimeout(() => {
-        void this.runProbe(at).then(() => {
-          if (this.hover && Math.hypot(this.hover.x - at.x, this.hover.y - at.y) <= 3) {
-            this.hover = this.resolve(at);
-            this.emit();
-          }
-        });
-      }, PROBE_DELAY_MS);
+      this.prober.schedule(at, () => {
+        if (this.hover && Math.hypot(this.hover.x - at.x, this.hover.y - at.y) <= 3) {
+          this.hover = this.resolve(at);
+          this.emit();
+        }
+      });
     }
     this.emit();
     return !!d;
@@ -288,7 +262,7 @@ export class EditSession implements CommandHost {
       this.drag = { kind: "box", x0: e.x, y0: e.y, x1: e.x, y1: e.y, add: e.shift };
       return true;
     }
-    const v = nearestVertex(this.layer, t, e.x, e.y, this.snap.radius);
+    const v = nearestVertex(this.pickLayer(), t, e.x, e.y, this.snap.radius);
     if (v) {
       const sel = this.selection;
       if (!sel.vertices.some((r) => sameRef(r, v.ref))) this.setSelection({ lines: e.shift ? sel.lines : [], vertices: e.shift ? [...sel.vertices, v.ref] : [v.ref] });
@@ -296,7 +270,7 @@ export class EditSession implements CommandHost {
       this.drag = { kind: "vertex", ref: v.ref, origin: vertexAt(this.layer, v.ref) as Vec3, moved: false };
       return true;
     }
-    const s = nearestSegment(this.layer, t, e.x, e.y, 6);
+    const s = nearestSegment(this.pickLayer(), t, e.x, e.y, 6);
     if (s && this.selection.lines.includes(s.line)) {
       const ray = this.view?.ray(e.clientX, e.clientY);
       const p = ray ? rayPlane(ray, this.drawingPlane()) : null;
@@ -313,19 +287,12 @@ export class EditSession implements CommandHost {
     if (!d) return false;
     this.drag = null;
     if (d.kind === "box") {
-      if (t && Math.hypot(d.x1 - d.x0, d.y1 - d.y0) > 3) {
-        const lines = linesInBox(this.layer, t, d.x0, d.y0, d.x1, d.y1);
-        const vertices = verticesInBox(this.layer, t, d.x0, d.y0, d.x1, d.y1);
-        const old = this.selection;
-        this.setSelection(d.add
-          ? { lines: [...new Set([...old.lines, ...lines])], vertices: [...old.vertices, ...vertices.filter((v) => !old.vertices.some((r) => sameRef(r, v)))] }
-          : { lines, vertices });
-      } else this.emit();
+      if (t && Math.hypot(d.x1 - d.x0, d.y1 - d.y0) > 3) this.setSelection(boxSelection(this.pickLayer(), t, this.selection, d.x0, d.y0, d.x1, d.y1, d.add));
+      else this.emit();
       return true;
     }
     if (d.moved) this.history.commit(d.kind === "vertex" ? "Перемещение вершины" : "Перемещение линий");
     else if (this.history.pending) this.history.cancel();
-    this.sourceLayer = null;
     this.afterChange();
     // A press without movement is a click: let the click handler select.
     return d.moved;
@@ -336,10 +303,10 @@ export class EditSession implements CommandHost {
     if (this.tool === "select") return this.clickSelect(e, t);
     if (this.tool === "insert") return this.insertAt(e, t, this.snap.radius, false) ? undefined : this.say("Щёлкните по сегменту линии");
     let extra: SnapHit | null = null;
-    if (this.wantsProbe() && !(this.probed && Math.hypot(this.probed.x - e.x, this.probed.y - e.y) <= 3)) {
+    if (this.prober.wanted() && !this.prober.answered(e)) {
       // the core is asked: what the click was meant for may change meanwhile (a key, an undo, another tool)
       const was = { tool: this.tool, drawing: this.drawing, layer: this.layer };
-      extra = await this.runProbe(e);
+      extra = await this.prober.run(e);
       if (was.tool !== this.tool || was.drawing !== this.drawing || was.layer !== this.layer) return this.say("Точка не поставлена: пока искалась привязка, правка изменилась. Щёлкните ещё раз");
     }
     const hit = this.resolve(e, extra);
@@ -349,7 +316,7 @@ export class EditSession implements CommandHost {
 
   /** A new vertex on the segment under the cursor; false when there is none within `radius`. */
   private insertAt(e: EditPointer, t: ViewTransform, radius: number, selectLine: boolean): boolean {
-    const s = nearestSegment(this.layer, t, e.x, e.y, radius);
+    const s = nearestSegment(this.pickLayer(), t, e.x, e.y, radius);
     if (!s) return false;
     const line = lineById(this.layer, s.line) as NonNullable<ReturnType<typeof lineById>>;
     const a = line.points[s.segment];
@@ -360,86 +327,33 @@ export class EditSession implements CommandHost {
     return true;
   }
 
-  /** Adds a point with the active drawing tool (a click or typed coordinates). */
+  /** Adds a point with the active drawing tool (a click or typed coordinates; `drawing.ts`). */
   addPoint(p: Vec3, t: ViewTransform | null = null, e: { x: number; y: number } | null = null): void {
-    if (this.tool === "point") {
-      const made = ops.addLine(this.layer, [p], false);
-      return this.edit(made.layer, "Точка", { lines: [made.id], vertices: [] });
-    }
-    if (this.tool !== "line" && this.tool !== "polygon" && this.tool !== "tie") return;
-    const drawing = this.drawing && lineById(this.layer, this.drawing.line) ? this.drawing : null;
-    if (!drawing) {
-      // A click on the end of an open line continues that line.
-      const v = t && e && this.tool === "line" ? nearestVertex(this.layer, t, e.x, e.y, this.snap.radius) : null;
-      const line = v ? lineById(this.layer, v.ref.line) : null;
-      if (v && line && !line.closed && line.points.length > 1 && (v.ref.index === 0 || v.ref.index === line.points.length - 1)) {
-        this.drawing = { line: line.id, atStart: v.ref.index === 0 };
-        this.setSelection({ lines: [line.id], vertices: [] });
-        return this.say("Продолжение линии: следующие точки добавляются к её концу");
-      }
-      const made = ops.addLine(this.layer, [p], false, toolAttrs(this.tool));
-      this.drawing = { line: made.id, atStart: false };
-      return this.edit(made.layer, this.tool === "tie" ? "Тай-линия" : "Новая линия", { lines: [made.id], vertices: [] });
-    }
-    const line = lineById(this.layer, drawing.line) as NonNullable<ReturnType<typeof lineById>>;
-    // A click on the first point closes the line.
-    const first = line.points[drawing.atStart ? line.points.length - 1 : 0];
-    if (line.points.length >= 3 && samePoint(first, p)) {
-      this.edit(ops.setClosed(this.layer, line.id, true), "Замыкание линии");
-      return this.finishDrawing();
-    }
-    this.edit(ops.appendPoint(this.layer, line.id, p, drawing.atStart), "Точка линии");
-    if (this.tool === "tie") this.finishDrawing();
+    addPoint(this, p, t, e);
   }
 
   private clickSelect(e: EditPointer, t: ViewTransform): void {
     if (this.assemble) return this.clickAssemble(e, t);
-    const sel = this.selection;
-    const v = nearestVertex(this.layer, t, e.x, e.y, this.snap.radius);
-    if (v) {
-      const has = sel.vertices.some((r) => sameRef(r, v.ref));
-      if (e.shift) return this.setSelection({ lines: sel.lines, vertices: has ? sel.vertices.filter((r) => !sameRef(r, v.ref)) : [...sel.vertices, v.ref] });
-      return this.setSelection({ lines: [v.ref.line], vertices: [v.ref] });
-    }
-    const s = nearestSegment(this.layer, t, e.x, e.y, 8);
-    if (s) {
-      const has = sel.lines.includes(s.line);
-      if (e.shift) return this.setSelection({ lines: has ? sel.lines.filter((id) => id !== s.line) : [...sel.lines, s.line], vertices: sel.vertices });
-      return this.setSelection({ lines: [s.line], vertices: [] });
-    }
-    if (!e.shift) this.setSelection(EMPTY_SELECTION);
+    const next = clickSelection(this.pickLayer(), t, this.selection, e.x, e.y, this.snap.radius, e.shift);
+    if (next !== this.selection) this.setSelection(next);
   }
 
   // ---- «Собрать из контуров»
   startAssemble(): void {
     if (this.drawing) this.finishDrawing();
     this.tool = "select";
-    this.assemble = { order: [], closed: false };
-    this.selection = EMPTY_SELECTION;
-    this.say("Сборка каркаса: щёлкайте замкнутые контуры по порядку — каркас растёт от контура к контуру");
+    startAssembly(this);
   }
-
   stopAssemble(): void {
-    this.assemble = null;
-    this.selection = EMPTY_SELECTION;
-    this.say(null);
+    stopAssembly(this);
   }
-
   /** Contours of the assembly that still exist, in order (a line may have been deleted meanwhile). */
   assembled(): number[] {
-    return (this.assemble?.order ?? []).filter((id) => lineById(this.layer, id)?.closed);
+    return assembledContours(this);
   }
-
   /** Adds the picked contour (or takes it out, with a second click). */
   pickContour(id: number): void {
-    const a = this.assemble;
-    const line = a ? lineById(this.layer, id) : undefined;
-    if (!a || !line) return;
-    if (!line.closed || line.points.length < 3) return this.say("Контур должен быть замкнутым: выберите его в режиме правки и нажмите «Замкнуть»");
-    a.order = a.order.includes(id) ? a.order.filter((x) => x !== id) : [...a.order, id];
-    this.selection = { lines: [...a.order], vertices: [] };
-    const n = a.order.length;
-    this.say(n === 0 ? "Щёлкните первый контур" : n === 1 ? "Щёлкните следующий контур" : `Контуров в каркасе: ${n}. Следующий контур — щелчок; «Замкнуть торцы» закроет каркас`);
+    pickContour(this, id);
   }
 
   dropLastContour(): void {
@@ -454,8 +368,8 @@ export class EditSession implements CommandHost {
   }
 
   private clickAssemble(e: EditPointer, t: ViewTransform): void {
-    const v = nearestVertex(this.layer, t, e.x, e.y, this.snap.radius);
-    const s = v ? null : nearestSegment(this.layer, t, e.x, e.y, 8);
+    const v = nearestVertex(this.pickLayer(), t, e.x, e.y, this.snap.radius);
+    const s = v ? null : nearestSegment(this.pickLayer(), t, e.x, e.y, 8);
     const id = v?.ref.line ?? s?.line;
     if (id === undefined) return this.say("Щёлкните по линии контура");
     this.pickContour(id);
@@ -474,17 +388,13 @@ export class EditSession implements CommandHost {
       this.finishDrawing();
       return true;
     }
-    if (this.tool === "select" && t && !nearestVertex(this.layer, t, e.x, e.y, this.snap.radius)) return this.insertAt(e, t, 8, true);
+    if (this.tool === "select" && t && !nearestVertex(this.pickLayer(), t, e.x, e.y, this.snap.radius)) return this.insertAt(e, t, 8, true);
     return false;
   }
 
   /** The cursor left the 3D window (or the editor closes): no hover, no pending probe of the core. */
   leave(): void {
-    if (this.probeTimer) clearTimeout(this.probeTimer);
-    this.probeTimer = null;
-    this.probeAbort?.abort();
-    this.probeAbort = null;
-    this.probed = null;
+    this.prober.stop();
     if (!this.hover) return;
     this.hover = null;
     this.emit();
@@ -500,26 +410,11 @@ export class EditSession implements CommandHost {
 
   /** Ends the line being drawn: a polygon closes, a line left with one point goes away. */
   finishDrawing(): void {
-    const d = this.drawing;
-    this.drawing = null;
-    const line = d ? lineById(this.layer, d.line) : null;
-    if (line) {
-      if (this.tool === "polygon" && !line.closed && line.points.length >= 3) this.edit(ops.setClosed(this.layer, line.id, true), "Замыкание полигона");
-      else if (line.points.length < 2 && this.tool !== "point") this.edit(ops.deleteLines(this.layer, [line.id]), "Отмена линии", EMPTY_SELECTION);
-      else if (this.tool === "polygon" && line.points.length < 3) this.say("Полигону нужно не меньше трёх вершин: линия оставлена незамкнутой");
-    }
-    this.emit();
+    finishDrawing(this);
   }
-
   /** Backspace: takes the last point off the line being drawn (the line goes with its only point). */
   dropPoint(): boolean {
-    const d = this.drawing;
-    const line = d ? lineById(this.layer, d.line) : null;
-    if (!d || !line || !line.points.length) return false;
-    const index = d.atStart ? 0 : line.points.length - 1;
-    this.edit(ops.deleteVertices(this.layer, [{ line: line.id, index }]), "Удаление точки", { lines: [line.id], vertices: [] });
-    if (!lineById(this.layer, line.id)) this.say("Линия убрана: точек не осталось");
-    return true;
+    return dropPoint(this);
   }
 
   /** Esc: ends a drag or the drawing, else drops the selection, else returns to the select tool. */
@@ -527,7 +422,6 @@ export class EditSession implements CommandHost {
     if (this.drag) {
       this.drag = null;
       if (this.history.pending) this.history.cancel();
-      this.sourceLayer = null;
       return this.afterChange();
     }
     if (this.drawing) return this.finishDrawing();
@@ -548,26 +442,9 @@ export class EditSession implements CommandHost {
     this.afterChange();
   }
 
-  /**
-   * A key of the editor: Enter, Backspace and Esc the session runs itself (the command id is returned; Enter and
-   * Backspace only while a line is being drawn, else null — not the editor's key); Delete, Ctrl+A, Ctrl+Z,
-   * Ctrl+Y and Ctrl+S give the id of their command for the caller to run through the registry (`editKeys.ts`).
-   */
+  /** A key of the editor (`tools.sessionKey`): the id of its command, null — not the editor's key. */
   key(e: EditKey): string | null {
-    const id = keyCommand(e);
-    switch (id) {
-      case "lines.finish":
-        if (!this.drawing) return null;
-        this.finishDrawing();
-        return id;
-      case "lines.drop_point":
-        return this.dropPoint() ? id : null;
-      case "lines.escape":
-        this.escape();
-        return id;
-      default:
-        return id;
-    }
+    return sessionKey(this, e);
   }
 
   /** The last point of the line being drawn, or the selected vertex: what relative coordinates count from. */

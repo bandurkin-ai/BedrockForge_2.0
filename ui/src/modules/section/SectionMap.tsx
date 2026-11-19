@@ -2,12 +2,40 @@
  * The mini-plan beside a section (ТЗ 7.14; BF `SectionMap.tsx`): the collars and traces of the visible sets
  * (≤ 20 000 points, «упрощено» beyond), the line with its window and the side it is seen from (an orange
  * triangle). While a line is being drawn, two clicks on the plan draw it too. × hides it (`section.plan`).
+ * With an active series of sections (ADR 0016 §4) — the traces of its sections, the current one as the line.
  */
 import { useMemo, useRef } from "react";
 import { Icon } from "../../shell/Icon";
+import { useStore } from "../../shell/useStore";
 import type { SectionLine } from "../../viz/section/math";
-import { PLAN_H, PLAN_W, planFrame, type PlanOverview } from "../../viz/section/miniPlan";
+import { overviewBounds, PLAN_H, PLAN_W, planFrame, seriesTraces, type PlanFrame, type PlanOverview, type SeriesTraces } from "../../viz/section/miniPlan";
+import { viewStore } from "../scene/bind";
 import css from "../scene/Scene.module.css";
+import { currentSection, seriesStore } from "./seriesState";
+
+const TRACE = { stroke: "var(--accent)", strokeWidth: 1, opacity: 0.45, fill: "none" } as const;
+
+/** The traces of a series on a plan frame: the others thin, the current one as the section line. */
+export function SeriesLines({ f, traces }: { f: PlanFrame; traces: SeriesTraces }) {
+  const d = (l: [number, number, number, number]) => `M${f.sx(l[0]).toFixed(1)} ${f.sy(l[1]).toFixed(1)}L${f.sx(l[2]).toFixed(1)} ${f.sy(l[3]).toFixed(1)}`;
+  const others = traces.lines.filter((_, i) => i !== traces.active);
+  return (
+    <g data-testid="series-traces" data-count={traces.lines.length}>
+      {others.length > 0 && <path style={TRACE} d={others.map(d).join("")} />}
+      {traces.active !== null && <path className={css.smSection} d={d(traces.lines[traces.active])} data-testid="series-trace-active" />}
+    </g>
+  );
+}
+
+/** The traces of the active series for the overview, null — no active series. */
+function useSeriesTraces(overview: PlanOverview): SeriesTraces | null {
+  const keys = useStore(viewStore, (k) => k);
+  const state = useStore(seriesStore, (s) => s);
+  return useMemo(() => {
+    const cur = currentSection(keys, state);
+    return cur ? seriesTraces(cur.geom, cur.index, overviewBounds(overview, [])) : null;
+  }, [keys, state, overview]);
+}
 
 export function SectionMap({ overview, section, draft, drawing, onPoint, onClose }: {
   overview: PlanOverview;
@@ -19,7 +47,8 @@ export function SectionMap({ overview, section, draft, drawing, onPoint, onClose
   onClose: () => void;
 }) {
   const svg = useRef<SVGSVGElement>(null);
-  const f = useMemo(() => planFrame(overview, section), [overview, section]);
+  const traces = useSeriesTraces(overview);
+  const f = useMemo(() => planFrame(overview, section, PLAN_W, PLAN_H, traces?.extent ?? []), [overview, section, traces]);
   const pts = (list: [number, number][]) => list.map(([x, y]) => `${f.sx(x).toFixed(1)},${f.sy(y).toFixed(1)}`).join(" ");
   const click = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!drawing || !svg.current) return;
@@ -66,6 +95,7 @@ export function SectionMap({ overview, section, draft, drawing, onPoint, onClose
               )}
             </>
           )}
+          {traces && <SeriesLines f={f} traces={traces} />}
           {draft && <circle className={css.smDraft} cx={f.sx(draft.x)} cy={f.sy(draft.y)} r={4} />}
         </g>
         <g className={css.smNorth} transform={`translate(${PLAN_W - 12} 16)`}>

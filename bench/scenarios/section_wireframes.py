@@ -16,6 +16,7 @@ ore body are closed. The folder of the cache is removed before the job: every re
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any
 
@@ -53,10 +54,12 @@ def prepare(params: dict[str, Any], work: Path) -> None:
             del v, t, staged
         sx, sy = surface.side
         ox, oy, _oz = surface.origin
-        # across the grid at 63°: P1 at the west corner, the planes over 90 % of the surface
-        span = 0.9 * min(sx, sy)
-        series = {"type": "vertical", "p1": [ox + 0.05 * sx, oy + 0.95 * sy, 0.0], "az": AZIMUTH, "s0": 0.0}
-        series |= {"s1": span, "step": span / (k - 1), "towards": 1.0, "away": 1.0}
+        # across the grid at 63°, the middle section through the centre of the surface and of the ore body
+        span = 0.85 * min(sx, sy)
+        sa, ca = math.sin(math.radians(AZIMUTH)), math.cos(math.radians(AZIMUTH))
+        p1 = [ox + 0.5 * sx + 0.5 * span * ca, oy + 0.5 * sy - 0.5 * span * sa, 0.0]  # P1 = C − span/2 · v̂
+        series = {"type": "vertical", "p1": p1, "az": AZIMUTH, "s0": 0.0, "s1": span, "step": span / (k - 1)}
+        series |= {"towards": 1.0, "away": 1.0}
         with dialect.write_tx(engine) as conn:
             sid = series_store.create(conn, series, "Профили")["id"]
     finally:

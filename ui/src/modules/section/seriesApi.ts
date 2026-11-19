@@ -51,7 +51,7 @@ export interface SeriesTable {
 }
 
 /** What `POST` and `PATCH` send: a parameter left out keeps its value (`PATCH`) or its default (`POST`). */
-export type SeriesParamsIn = Partial<Omit<SeriesMeta, "layout">>;
+export type SeriesParamsIn = Partial<Omit<SeriesMeta, "layout" | "p1">> & { p1?: number[] | null };
 
 export interface SeriesFault {
   status: number;

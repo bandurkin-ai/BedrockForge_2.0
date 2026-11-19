@@ -162,6 +162,29 @@ export function keyCommand(e: EditKey): string | null {
   return null;
 }
 
+/** What `sessionKey` needs of a session: the keys it runs itself. */
+export interface KeyHost {
+  readonly drawing: { line: number; atStart: boolean } | null;
+  finishDrawing(): void;
+  dropPoint(): boolean;
+  escape(): void;
+}
+
+/**
+ * A key of the editor: Enter, Backspace and Esc the session runs itself (the command id is returned; Enter and
+ * Backspace only while a line is being drawn, else null — not the editor's key); Delete, Ctrl+A, Ctrl+Z,
+ * Ctrl+Y and Ctrl+S give the id of their command for the caller to run through the registry (`editKeys.ts`).
+ */
+export function sessionKey(s: KeyHost, e: EditKey): string | null {
+  const id = keyCommand(e);
+  if (id === "lines.finish") {
+    if (!s.drawing) return null;
+    s.finishDrawing();
+  } else if (id === "lines.drop_point") return s.dropPoint() ? id : null;
+  else if (id === "lines.escape") s.escape();
+  return id;
+}
+
 // ---- commands
 
 /** What the commands need of a session. */

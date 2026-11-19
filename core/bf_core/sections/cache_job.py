@@ -239,13 +239,17 @@ def _run(ctx: JobContext) -> dict[str, Any]:
     first = min(max(int(ctx.params.get("first") or 0), 0), total)
     count = min(max(int(ctx.params.get("count") or total), 0), total - first)
     slots = [wf.slot(geom, i) for i in range(first, first + count)]
-    work = max(1, sum(s.triangles for s in found) * len(slots))
+    geometries = {s.cache_key(): s for s in reversed(found)}  # wireframes of one geometry share their file
+    work = max(1, sum(s.triangles for s in geometries.values()) * len(slots))
     done = [0]
     staged = cache_files.Staged(folder, key, ctx.id)
     written: list[int] = []
     blobs = BlobStore(folder)
     try:
         for st in found:
+            if st.cache_key() in staged.keys:
+                written.append(st.wireframe_id)
+                continue
 
             def step(st: Any = st) -> None:
                 ctx.tick(0.98 * done[0] / work, STEP)
@@ -280,7 +284,7 @@ def _run(ctx: JobContext) -> dict[str, Any]:
         "total": total,
         "wireframe_ids": written,
         "missing": sorted(missing),
-        "files": len(written),
+        "files": len(staged.keys),
         "bytes": staged.bytes,
         "removed": len(removed),
     }
