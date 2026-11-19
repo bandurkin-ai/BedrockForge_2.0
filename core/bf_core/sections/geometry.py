@@ -86,7 +86,9 @@ def _number(v: Any, what: str, name: str) -> float:
 def _length(v: Any, what: str, name: str) -> float:
     f = _number(v, what, name)
     if not MIN_LEN <= f <= MAX_LEN:
-        raise SeriesError(f"{what}: от 0,01 до 10 000 м (задано {_ru(f)}).", "Введите расстояние в этих пределах.", field=name)
+        raise SeriesError(
+            f"{what}: от 0,01 до 10 000 м (задано {_ru(f)}).", "Введите расстояние в этих пределах.", field=name
+        )
     return f
 
 
@@ -259,8 +261,7 @@ class SeriesGeometry:
 
     def section_of_depth(self, tau: Any, *, tick: Tick | None = None) -> np.ndarray:
         """int64 the section of every depth τ, −1 — none."""
-        from . import kernels
-
+        kernels = _kernels()
         t = np.ascontiguousarray(np.asarray(tau, dtype=np.float64).reshape(-1))
         out = np.empty(len(t), dtype=np.int64)
         for a in range(0, len(t), BATCH):
@@ -271,8 +272,7 @@ class SeriesGeometry:
 
     def section_of(self, xyz: Any, *, tick: Tick | None = None) -> np.ndarray:
         """int64 the section of every point, −1 — none (Т8.1-2)."""
-        from . import kernels
-
+        kernels = _kernels()
         p = _rows(xyz)
         out = np.empty(len(p), dtype=np.int64)
         tau = np.empty(min(len(p), BATCH))
@@ -287,8 +287,7 @@ class SeriesGeometry:
     def line_sections(self, xyz: Any, offsets: Any, *, tick: Tick | None = None) -> np.ndarray:
         """int64 the section of every line (vertices offsets[i]:offsets[i+1] of xyz), −1 — the line is in no
         window as a whole (or is empty, or a vertex has a NaN that matters)."""
-        from . import kernels
-
+        kernels = _kernels()
         p = _rows(xyz)
         offs = _offsets(offsets, len(p))
         n = len(offs) - 1
@@ -313,6 +312,13 @@ class SeriesGeometry:
             self.s0, self.step, self.offs, self.lo, self.hi,
             float(self.lo.min()), float(self.hi.max()), reach, self.partition,
         )  # fmt: skip
+
+
+def _kernels() -> Any:
+    """The numba kernels, imported on the first bulk call (numba is not imported before BF-READY)."""
+    from . import kernels
+
+    return kernels
 
 
 def _tick(tick: Tick | None, done: int, total: int) -> None:
@@ -345,7 +351,9 @@ def _windows(
     tw, aw = np.full(k, towards), np.full(k, away)
     if overrides:
         if not isinstance(overrides, Mapping):
-            raise SeriesError("Свои окна разрезов: ожидается набор «номер → окно».", "Проверьте окна.", field="overrides")
+            raise SeriesError(
+                "Свои окна разрезов: ожидается набор «номер → окно».", "Проверьте окна.", field="overrides"
+            )
         for key, win in overrides.items():
             i = int(key) if isinstance(key, int) or (isinstance(key, str) and key.isdigit()) else -1
             if not 0 <= i < k or not isinstance(win, Mapping):

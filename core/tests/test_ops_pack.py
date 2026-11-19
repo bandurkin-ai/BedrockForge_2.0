@@ -178,13 +178,28 @@ def test_export_delete_collect_and_bfggis_of_the_packed_parts(split, tmp_path: P
     assert not store.exists(pack_sha)  # the last of its wireframes is gone: the pack goes with the collection
 
 
-@pytest.mark.parametrize("stage", ["Запись каркаса", "Сохранение результата в проект"])
-def test_a_cancel_while_the_pack_is_written_leaves_nothing(split, stage: str) -> None:  # type: ignore[no-untyped-def]
+class Late(Ctx):
+    """Cancelled at the tick of `stop_at` from `after` of the run on: «Запись каркаса» of `stage_files` (0.9–0.92),
+    not that of the big part, which writes its own blobs first."""
+
+    after = 0.0
+
+    def tick(self, progress: float | None = None, message: str | None = None) -> None:
+        self.seen.append(str(message))
+        if message == self.stop_at and (progress or 0.0) >= self.after:
+            raise JobCancelled()
+
+
+@pytest.mark.parametrize(
+    ("stage", "after"), [("Запись каркаса", 0.0), ("Запись каркаса", 0.91), ("Сохранение результата в проект", 0.0)]
+)
+def test_a_cancel_while_the_files_are_written_leaves_nothing(split, stage: str, after: float) -> None:  # type: ignore[no-untyped-def]
     c, project, src, _given = split
     before = wireframe_names(c)
     files = len(blob_files(project))
-    ctx = Ctx(project, ops_job.job_params(checked(project, "split", {"wireframe_id": src, "max_parts": COUNT + 1})),
-              stage)  # fmt: skip
+    ctx = Late(project, ops_job.job_params(checked(project, "split", {"wireframe_id": src, "max_parts": COUNT + 1})),
+               stage)  # fmt: skip
+    ctx.after = after
     try:
         with pytest.raises(JobCancelled):
             ops_job.run(ctx)

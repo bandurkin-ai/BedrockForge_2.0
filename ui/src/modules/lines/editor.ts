@@ -156,6 +156,8 @@ function start(app: App, s: EditSession, prev: EditSession | null = null): void 
       },
       /** the vertices of a line of the working copy by its place (−1 — the last), project coordinates */
       points: (i: number) => editStore.get().session?.layer.lines.at(i)?.points ?? null,
+      /** the open session itself: the timings of app/e2e/perfEditor.spec.ts (snap index, queries) */
+      session: () => editStore.get().session,
     };
   }
 }
