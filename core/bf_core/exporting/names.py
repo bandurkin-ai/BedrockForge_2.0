@@ -30,8 +30,7 @@ MAX_PATH = 259
 EMPTY = "без имени"
 _BAD = re.compile(r'[<>:"/\\|?*\x00-\x1f\x7f]')
 _DEVICES = frozenset(
-    {"con", "prn", "aux", "nul"}
-    | {f"{port}{n}" for port in ("com", "lpt") for n in [*"123456789", "¹", "²", "³"]}
+    {"con", "prn", "aux", "nul"} | {f"{port}{n}" for port in ("com", "lpt") for n in [*"123456789", "¹", "²", "³"]}
 )
 _SUFFIX = re.compile(r"\.[A-Za-z][A-Za-z0-9]{1,4}$")
 

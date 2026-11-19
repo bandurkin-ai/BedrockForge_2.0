@@ -11,7 +11,7 @@ default (decision 6) unless it is unavailable:
 | type            | objects                                  | formats                                         |
 |-----------------|------------------------------------------|-------------------------------------------------|
 | `drillhole_set` | `objects(kind="drillhole_set")`          | CSV (folder of the set), XLSX (book), DAT, source |
-| `wireframe`     | `wireframe` without `dtm`                | DXF, DWG (ODA), TRIDB, OBJ, STL, Surpac DTM, OMF, source |
+| `wireframe`     | `wireframe` without `dtm`            | DXF, DWG (ODA), TRIDB, OBJ, STL, Surpac DTM, OMF, source |
 | `dtm`           | `wireframe` with `dtm`                   | the same                                        |
 | `line_file`     | `line_file` without a cloud              | Micromine STR, DXF, Surpac STR, OMF, source     |
 | `cloud`         | `line_file` with a cloud layer           | LAS, CSV, source                                |
@@ -35,7 +35,17 @@ from typing import Any
 
 import sqlalchemy as sa
 
-from bf_core.db.schema import blob_owners, blobs, dh_holes, dh_tables, import_log, line_layers, objects, rasters, wireframes
+from bf_core.db.schema import (
+    blob_owners,
+    blobs,
+    dh_holes,
+    dh_tables,
+    import_log,
+    line_layers,
+    objects,
+    rasters,
+    wireframes,
+)
 
 from . import names
 
@@ -251,7 +261,9 @@ def _sources(conn: sa.Connection, ids: Sequence[int]) -> dict[int, list[Source]]
 
 
 def _sides(roles: dict[str, str]) -> tuple[tuple[str, str], ...]:
-    return tuple(sorted(("." + role.split(":", 1)[1], sha) for role, sha in roles.items() if role.startswith("sidecar:")))
+    return tuple(
+        sorted(("." + role.split(":", 1)[1], sha) for role, sha in roles.items() if role.startswith("sidecar:"))
+    )
 
 
 def _file_name(name: str | None) -> str:
@@ -282,14 +294,14 @@ def items(conn: sa.Connection, kinds: Iterable[str] | None = None, ids: Iterable
         return Item(int(r.id), kind, str(r.name), r.folder, max(size, 1), src, info)
 
     sets = [int(r.id) for r in by_kind.get("drillhole_set", [])]
-    table_rows = dict(
-        conn.execute(
+    table_rows: dict[int, Any] = dict(
+        conn.execute(  # type: ignore[arg-type]
             sa.select(dh_tables.c.set_id, sa.func.sum(dh_tables.c.row_count)).where(dh_tables.c.set_id.in_(sets))
             .group_by(dh_tables.c.set_id)
         ).all()
     ) if sets else {}  # fmt: skip
-    holes = dict(
-        conn.execute(
+    holes: dict[int, Any] = dict(
+        conn.execute(  # type: ignore[arg-type]
             sa.select(dh_holes.c.set_id, sa.func.count()).where(dh_holes.c.set_id.in_(sets)).group_by(dh_holes.c.set_id)
         ).all()
     ) if sets else {}  # fmt: skip
@@ -321,11 +333,15 @@ def items(conn: sa.Connection, kinds: Iterable[str] | None = None, ids: Iterable
             clouds = [int(lr.id) for lr in own if isinstance((lr.meta or {}).get("cloud"), dict)]
             kind = "cloud" if clouds else "line_file"
             ids_ = [int(lr.id) for lr in own]
-            out.append(item(r, kind, 24 * points, points=points, layer_ids=ids_, cloud_id=clouds[0] if clouds else None))
+            out.append(
+                item(r, kind, 24 * points, points=points, layer_ids=ids_, cloud_id=clouds[0] if clouds else None)
+            )
     ras = {int(r.id): r for r in by_kind.get("raster", [])}
     if ras:
         for rr in conn.execute(
-            sa.select(rasters.c.object_id, rasters.c.width, rasters.c.height).where(rasters.c.object_id.in_(sorted(ras)))
+            sa.select(rasters.c.object_id, rasters.c.width, rasters.c.height).where(
+                rasters.c.object_id.in_(sorted(ras))
+            )
         ):
             pixels = int(rr.width) * int(rr.height)
             out.append(item(ras[int(rr.object_id)], "raster", blob_size.get(int(rr.object_id), pixels), pixels=pixels))
@@ -343,7 +359,10 @@ def _blob_sizes(conn: sa.Connection, sources: dict[int, list[Source]]) -> dict[i
     shas = sorted({s.sha256 for found in sources.values() for s in found})
     if not shas:
         return {}
-    size = dict(conn.execute(sa.select(blobs.c.sha256, blobs.c.size).where(blobs.c.sha256.in_(shas))).all())
+    size: dict[str, int] = {
+        str(r.sha256): int(r.size)
+        for r in conn.execute(sa.select(blobs.c.sha256, blobs.c.size).where(blobs.c.sha256.in_(shas)))
+    }
     return {obj_id: sum(int(size.get(s.sha256) or 0) for s in found) for obj_id, found in sources.items()}
 
 

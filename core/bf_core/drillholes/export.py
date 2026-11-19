@@ -154,9 +154,7 @@ def _cell_text(v: Any, kind: str, decimal: str) -> str:
     return str(v)
 
 
-def _write_csv(
-    path: Path, columns: list[Any], n: int, delimiter: str, decimal: str, encoding: str, tick: Any
-) -> None:
+def _write_csv(path: Path, columns: list[Any], n: int, delimiter: str, decimal: str, encoding: str, tick: Any) -> None:
     with path.open("w", encoding=encoding, newline="") as fh:
         w = csv.writer(fh, delimiter=delimiter)
         w.writerow([c.name for c in columns])

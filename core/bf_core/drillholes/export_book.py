@@ -126,7 +126,9 @@ def write_book(
                 write_table(csv_path, "csv", columns, n, source=source, project_folder=project_folder, tick=part)
                 files.append(csv_path)
                 warnings.append(
-                    f"Таблица «{title}» длиннее листа Excel ({n:,} строк): записана в «{csv_path.name}»".replace(",", " ")
+                    f"Таблица «{title}» длиннее листа Excel ({n:,} строк): записана в «{csv_path.name}»".replace(
+                        ",", " "
+                    )
                 )
                 continue
             sheet_rows(wb.create_sheet(sheet_name(title, sheets)), columns, n, part)

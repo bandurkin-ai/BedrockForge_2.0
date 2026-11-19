@@ -95,7 +95,9 @@ def _write_source(item: Item, path: Path, env: Env, tick: Tick) -> Written:
             notes.append(f"Исходный файл «{s.name}» уже записан: «{before.name}»")
             continue
         if not store.exists(s.sha256):
-            raise _format_error("source_missing", f"Исходный файл «{s.name}» не найден в проекте.", "Загрузите его заново.")
+            raise _format_error(
+                "source_missing", f"Исходный файл «{s.name}» не найден в проекте.", "Загрузите его заново."
+            )
         size += _copy(store.path_of(s.sha256), target, tick, k / len(pairs), (k + 1) / len(pairs))
         files.append(target)
         env.sources_written[s.sha256] = target
@@ -142,7 +144,9 @@ def _set_tables(fmt: str) -> Any:
 def _set_book(item: Item, path: Path, env: Env, tick: Tick) -> Written:
     from bf_core.drillholes.export_book import write_book
 
-    files, _rows, warnings = write_book(path, item.id, engine=env.engine, project_folder=env.store.root.parent, tick=tick)
+    files, _rows, warnings = write_book(
+        path, item.id, engine=env.engine, project_folder=env.store.root.parent, tick=tick
+    )
     return Written(files, sum(f.stat().st_size for f in files), warnings)
 
 
@@ -359,8 +363,9 @@ register(Writer("cloud", "las", "LAS", _write_cloud("las"), lambda _i, _e: (".la
 register(Writer("cloud", "csv", "CSV", _write_cloud("csv"), lambda _i, _e: (".csv",)))
 _source_writer("cloud")
 
-register(Writer("raster", "source", "Исходный файл с привязкой", _write_raster_source, _raster_source_suffixes))
-register(Writer("raster", "geotiff", "GeoTIFF", _write_geotiff, lambda _i, _e: (".tif",),
+register(Writer("raster", "source", "Исходный файл с привязкой", _write_raster_source, _raster_source_suffixes,
+                accepts=_has_source))  # fmt: skip
+register(Writer("raster", "geotiff", "GeoTIFF", _write_geotiff, lambda _i, _e: (".tif",), accepts=_has_source,
                 memory=lambda i: _mb(int(i.info.get("pixels") or 0) * 4, 384)))  # fmt: skip
 
 _omf("block_model")
