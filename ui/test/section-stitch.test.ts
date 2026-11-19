@@ -1,10 +1,12 @@
 // Э10 10.24 (ADR 0016 §8): «Каркас по серии» — the automatic links of the core, edited by clicks (link, unlink,
 // 1 → N, only neighbouring sections), the bodies and the groups N : M follow; the edited links go into the
 // parameters of `stitch_series` as pairs of lines (layer_id, lid), untouched — none (the core links itself).
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setCurrentScene } from "../src/modules/scene/sceneHost";
 import {
-  bodiesOf, clickContour, conflictsOf, contourTitle, initialState, linkLines, resetLinks, sectionsText, stitchParams, type LinkContour, type LinkTable,
+  bodiesOf, clickContour, conflictsOf, contourTitle, initialState, linkLines, LINKS_KEY, resetLinks, sectionsText, showLinks, stitchParams, type LinkContour, type LinkTable,
 } from "../src/modules/section/seriesStitch";
+import type { Scene } from "../src/viz/Scene";
 
 const contour = (i: number, k: number, lid: number, layer = 9, x = 100): LinkContour => ({
   i, k, name: k >= 0 ? `${5000 + 25 * k}N` : null, layer_id: layer, lid, vertices: 4, uw: k >= 0 ? [x, 50] : null, area: 100, centre: k >= 0 ? [500000 + x, 7000000 + 25 * k, 50] : null, off_plane: 0,
@@ -123,5 +125,67 @@ describe("series.stitch and series.digitize", () => {
     windowStore.set({ windows: [] });
     seriesStore.set({ list: [], loaded: false, tables: {} });
     viewStore.set({});
+  });
+});
+
+/** The groups N : M as before 10.28: the union of every contour for every pair of sections (the reference). */
+function conflictsBefore(t: LinkTable, pairs: readonly [number, number][]) {
+  const byK = new Map<number, [number, number][]>();
+  for (const p of pairs) byK.set(t.contours[p[0]].k, [...(byK.get(t.contours[p[0]].k) ?? []), p]);
+  const out: { sections: [number, number]; contours: number[] }[] = [];
+  for (const [k, mine] of [...byK.entries()].sort((x, y) => x[0] - y[0])) {
+    const used = new Set(mine.flat());
+    for (const g of bodiesOf(t, mine)) {
+      const members = g.filter((i) => used.has(i));
+      const low = members.filter((i) => t.contours[i].k === k).length;
+      if (low > 1 && members.length - low > 1) out.push({ sections: [k, k + 1] as [number, number], contours: members });
+    }
+  }
+  return out;
+}
+
+describe("10.28: the groups N : M of a big series", () => {
+  it("the same groups as before, from the contours the links touch only (100 contours × 500 sections)", () => {
+    const K = 500;
+    const N = 100;
+    const contours: LinkContour[] = [];
+    for (let k = 0; k < K; k++) for (let j = 0; j < N; j++) contours.push(contour(k * N + j, k, k * N + j));
+    contours.push(contour(K * N, -1, K * N)); // outside the windows
+    const t: LinkTable = { ...table(), count: K, contours, links: [], names: [] };
+    const pairs: [number, number][] = [];
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    for (let k = 0; k + 1 < K; k++)
+      for (let j = 0; j < N; j++) {
+        pairs.push([k * N + j, (k + 1) * N + j]);
+        if (rnd() < 0.05) pairs.push([k * N + j, (k + 1) * N + ((j + 1) % N)]);
+      }
+    pairs.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+    const small = pairs.filter(([a]) => t.contours[a].k < 40);
+    expect(conflictsOf(t, small)).toEqual(conflictsBefore(t, small));
+    expect(conflictsOf(t, small).length).toBeGreaterThan(0);
+    const t0 = performance.now();
+    const all = conflictsOf(t, pairs);
+    expect(performance.now() - t0).toBeLessThan(500); // was ≈ 25 million steps a click
+    expect(all.every((c) => c.contours.length >= 4)).toBe(true);
+  });
+});
+
+describe("10.28: the links in the 3D window", () => {
+  afterEach(() => setCurrentScene(null));
+
+  it("«none» while the layer is being made: no layer is added", async () => {
+    const log: string[] = [];
+    const scene = { addLayer: (k: string) => log.push(k), removeLayer: (k: string) => log.push(`-${k}`), layerChanged: () => undefined, invalidate: () => undefined, onRestored: () => () => undefined, onFrame: () => () => undefined };
+    setCurrentScene(scene as unknown as Scene);
+    const lines = linkLines(table(), [[0, 1]])!;
+    const made = showLinks(lines);
+    const gone = showLinks(null); // the window closed before the layer came
+    await Promise.all([made, gone]);
+    expect(log).toEqual([]);
+    await showLinks(lines);
+    expect(log).toEqual([LINKS_KEY]);
+    await showLinks(null);
+    expect(log).toEqual([LINKS_KEY, `-${LINKS_KEY}`]);
   });
 });

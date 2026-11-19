@@ -14,7 +14,9 @@ import { PRINT_REASON, seriesCommands, seriesTab } from "../src/modules/section/
 import { gotoHints, moveIndex, resolveGoto } from "../src/modules/section/goto";
 import { seriesStore, seriesView, surfacesHidden } from "../src/modules/section/seriesState";
 import { readForm } from "../src/modules/section/seriesForm";
-import { sectionOf } from "../src/modules/section/state";
+import { sectionOf, seriesRibbon } from "../src/modules/section/state";
+import { setCurrentScene } from "../src/modules/scene/sceneHost";
+import type { Scene } from "../src/viz/Scene";
 
 const LINE = { x0: 1000, y0: 5000, az: 90, length: null, towards: 12.5, away: 12.5 };
 
@@ -45,6 +47,7 @@ async function open(): Promise<void> {
     if (path === "/section-series" && method === "GET") return json({ series: [row(1), POLY], limit: 1000 });
     if (path === "/section-series" && method === "POST") return json({ ...row(3, body.params), name: body.name ?? "Серия 3" });
     if (path === "/section-series/1/table") return json(table);
+    if (path === "/section-series/2/table") return json({ version: 1, count: 1, sections: [{ k: 0, name: "Ломаный", s: 0, origin: [0, 0, 0], towards: 10, away: 10 }] });
     if (path === "/section-series/1" && method === "PATCH") return json({ ...row(1, body.params), version: 2 });
     if (path === "/lines/files") return json({ files: [] });
     if (path === "/rasters") return json({ rasters: [] });
@@ -138,12 +141,12 @@ describe("commands of series", () => {
   it("every command of series has a button; the print is unavailable with its reason", async () => {
     await open();
     const ribbon = flattenRibbon([seriesTab(DEFAULT_VIEW)]).map((i) => i.command);
-    const inWindows = ["series.create", "series.copy", "series.delete", "series.activate", "series.params", "series.rename"]; // «Новая серия», «Менеджер серий», the tree
+    const inWindows = ["series.create", "series.copy", "series.delete", "series.activate", "series.params", "series.rename", "series.window"]; // «Новая серия», «Менеджер серий», the tree
     for (const c of seriesCommands) expect(ribbon.includes(c.id) || inWindows.includes(c.id), c.id).toBe(true);
     expect(app.registry.reason("series.print")).toBe(PRINT_REASON);
     expect((await app.registry.execute("series.print")).ok).toBe(false);
     expect(app.registry.reason("series.lock")).toBeNull(); // the free line is a section
-    for (const id of ["series.create", "series.copy", "series.delete", "series.rename"]) expect(app.registry.get(id)?.confirm, id).toBe(true);
+    for (const id of ["series.create", "series.copy", "series.delete", "series.rename", "series.window"]) expect(app.registry.get(id)?.confirm, id).toBe(true);
     for (const id of ["series.new", "series.manager", "series.from_line"]) expect(app.registry.reason(id), id).toBeNull();
     expect((await app.registry.execute("series.manager")).result).toBe("Открыт «Менеджер серий»");
     expect((await app.registry.execute("series.from_line")).ok).toBe(true);
@@ -175,6 +178,73 @@ describe("commands of series", () => {
     await app.registry.execute("series.activate", { series_id: 1 });
     expect((await app.registry.execute("series.shadow", { mode: "both" })).result).toBe("Тень серии «Профили»: оба");
     expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({ expected_version: 1, params: { shadow: "both" } });
+  });
+});
+
+describe("10.28: the commands of the review", () => {
+  const patches = () => calls.filter((c) => c.method === "PATCH");
+
+  it("series.window: the own window of section k (from 1) — the side not given stays; without both — the window of the series", async () => {
+    await open();
+    const r = await app.registry.execute("series.window", { series_id: 1, k: 3, towards: 10 });
+    expect(r).toEqual({ ok: true, result: "Разрез 3 серии «Профили»: своё окно 10 / 12,5 м" });
+    expect(patches().at(-1)?.body).toEqual({ expected_version: 1, params: { overrides: { "2": { towards: 10 } } } });
+    const back = await app.registry.execute("series.window", { series_id: 1, k: 3 });
+    expect(back.result).toBe("Разрез 3 серии «Профили»: окно серии");
+    expect(patches().at(-1)?.body).toEqual({ expected_version: 2, params: { overrides: {} } });
+    expect((await app.registry.execute("series.window", { series_id: 1, k: 6, towards: 5 })).result).toBe("Разрез 6: в серии «Профили» разрезы с 1 по 5");
+    expect((await app.registry.execute("series.window", { series_id: 1, k: 1, away: -1 })).result).toBe("Окно «от себя»: нужно число больше 0, м");
+    expect((await app.registry.execute("series.window", { series_id: 2, k: 1, towards: 5 })).result).toMatch(/У ломаного разреза окно — коридор/);
+  });
+
+  it("a read-only project: the commands that change series are unavailable (series.digitize had it already)", async () => {
+    await open();
+    await app.registry.execute("series.activate", { series_id: 1 });
+    app.store.set({ projectReadOnly: true });
+    for (const id of ["series.create", "series.rename", "series.copy", "series.delete", "series.shadow", "series.window", "series.digitize", "series.stitch"]) expect(app.registry.reason(id), id).toBe("Проект открыт только для чтения");
+    expect(app.registry.reason("series.activate")).toBeNull(); // looking is not changing
+    expect((await app.registry.execute("series.copy", { series_id: 1 })).ok).toBe(false);
+    expect(calls.some((c) => c.path === "/section-series/1/copy")).toBe(false);
+  });
+
+  it("«Тень» without a mode toggles off / the previous section; the ribbon knows the shadow of the active series", async () => {
+    await open();
+    expect(seriesRibbon.get().shadow).toBeNull();
+    await app.registry.execute("series.activate", { series_id: 1 });
+    expect(seriesRibbon.get().shadow).toBe("prev");
+    expect((await app.registry.execute("series.shadow")).result).toBe("Тень серии «Профили»: нет");
+    expect(patches().at(-1)?.body).toMatchObject({ params: { shadow: "none" } });
+    expect(seriesRibbon.get().shadow).toBe("none");
+    const tab = (shadow: typeof seriesRibbon extends { get(): { shadow: infer S } } ? S : never) => flattenRibbon([seriesTab(DEFAULT_VIEW, { shadow })]).find((i) => i.command === "series.shadow")!;
+    expect(tab(seriesRibbon.get().shadow).active).toBe(false);
+    expect((await app.registry.execute("series.shadow")).result).toBe("Тень серии «Профили»: предыдущий");
+    expect(tab(seriesRibbon.get().shadow).active).toBe(true);
+    await app.registry.execute("section.set", { x0: 1, y0: 2, az: 0 }); // the free line: no series, no shadow
+    expect(seriesRibbon.get().shadow).toBeNull();
+  });
+
+  it("«Перейти» on a polyline section goes to its segments (its table has one row)", async () => {
+    await open();
+    await app.registry.execute("series.activate", { series_id: 2 });
+    const r = await app.registry.execute("series.goto", { number: 3 });
+    expect(r.result).toBe("Серия «Ломаный» · сегмент 3 из 3");
+    expect(k()).toEqual({ id: 2, k: 0, seg: 2 });
+  });
+
+  it("a step of `]` shows the section in the scene once: the scene follows the key, the series only when the list comes", async () => {
+    await open();
+    await app.registry.execute("series.activate", { series_id: 1 });
+    const shown: string[] = [];
+    const scene = { setSection: () => shown.push("line"), setSectionPlane: () => shown.push("plane"), onRestored: () => () => undefined, onFrame: () => () => undefined, debug: () => ({ sets: [] }) };
+    setCurrentScene(scene as unknown as Scene);
+    try {
+      await app.registry.execute("series.next");
+      expect(shown).toEqual([]); // `SceneView` applies the changed key `section` (as for every change of it)
+      seriesStore.set((st) => ({ list: st.list.map((r) => (r.id === 1 ? { ...r, version: 9 } : r)) })); // the series read again
+      expect(shown).toEqual(["plane"]);
+    } finally {
+      setCurrentScene(null);
+    }
   });
 });
 

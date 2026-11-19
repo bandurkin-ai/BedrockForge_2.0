@@ -24,7 +24,7 @@ export function GotoWindow({ winId }: { winId: string }) {
     if (cur) void ensureTable(cur.row.id).catch(() => undefined);
   }, [cur?.row.id, cur?.row.version]);
   if (!cur) return <p className={css.note}>Нет активной серии разрезов.</p>;
-  const hints = table ? gotoHints(table.sections, text) : [];
+  const hints = table ? gotoHints(table.sections, text, 10, cur.steps) : [];
   const go = async (k: number | null) => {
     const r = await app.registry.execute("series.goto", k === null ? { name: text } : { number: k + 1 });
     if (!r.ok) return setError(r.result);
@@ -36,12 +36,12 @@ export function GotoWindow({ winId }: { winId: string }) {
       data-testid="series-goto"
       onSubmit={(e) => {
         e.preventDefault();
-        const exact = table ? resolveGoto(table.sections, text) : null;
+        const exact = table ? resolveGoto(table.sections, text, cur.steps) : null;
         void go(exact ?? hints[pick]?.k ?? null);
       }}
     >
       <label className={css.field}>
-        <span>Имя или номер разреза (1–{cur.steps})</span>
+        <span>{cur.seg !== null ? "Номер сегмента" : "Имя или номер разреза"} (1–{cur.steps})</span>
         <input
           className={css.input}
           autoFocus

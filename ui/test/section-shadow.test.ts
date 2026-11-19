@@ -125,3 +125,49 @@ describe("ShadowSource", () => {
     src.dispose();
   });
 });
+
+describe("ShadowSource 10.28", () => {
+  const scene = (log: string[]): ShadowTarget => ({ addLayer: (k) => void log.push(k), removeLayer: (k) => void log.push(`-${k}`), layerChanged: () => undefined, invalidate: () => undefined });
+
+  it("after «нет» the shadow comes back: no If-None-Match without a layer (a 304 would leave it empty)", async () => {
+    const calls: (string | null)[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+      const tag = (init?.headers as Record<string, string>)["If-None-Match"] ?? null;
+      calls.push(tag);
+      // the core answers a 304 to the tag it gave
+      return tag === '"e1"' ? new Response(null, { status: 304 }) : new Response(contours([[X0, 100, 1]]), { status: 200, headers: { ETag: '"e1"' } });
+    }));
+    setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
+    const log: string[] = [];
+    const src = new ShadowSource(scene(log), async () => new ShadowLayer("#888888"));
+    src.sync(at(2, row("prev")), () => 7);
+    await src.pending;
+    expect(src.segments).toBe(4);
+    src.sync(at(2, row("none")), () => 7);
+    expect(src.segments).toBe(0);
+    src.sync(at(2, row("prev")), () => 7);
+    await src.pending;
+    expect(calls).toEqual([null, null]);
+    expect(src.segments).toBe(4);
+    expect(log).toEqual(["shadow", "-shadow", "shadow"]);
+    src.dispose();
+  });
+
+  it("«нет» while the layer is being made: the layer is not added", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(contours([[X0, 100, 1]]), { status: 200, headers: { ETag: '"e1"' } })));
+    setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
+    const log: string[] = [];
+    let release: () => void = () => undefined;
+    const made: ShadowLayer[] = [];
+    const src = new ShadowSource(scene(log), () => new Promise<ShadowLayer>((res) => (release = () => res(made[made.push(new ShadowLayer("#888888")) - 1]))));
+    src.sync(at(2, row("prev")), () => 7);
+    await new Promise((r) => setTimeout(r, 0)); // the answer read, the layer being made
+    src.sync(at(2, row("none")), () => 7); // the mode «нет» before the layer came
+    release();
+    await src.pending;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(log).toEqual([]);
+    expect(src.segments).toBe(0);
+    src.dispose();
+  });
+});

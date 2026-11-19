@@ -5,7 +5,7 @@
 import type { CommandContext } from "./commands";
 import type { IconName } from "./Icon";
 import type { ViewState, WorkspaceState } from "./workspace";
-import { seriesTab } from "../modules/section/seriesCommands";
+import { seriesTab, type SeriesFlags } from "../modules/section/seriesCommands";
 
 export interface RibbonItem {
   command: string;
@@ -43,7 +43,8 @@ export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean
   { label: "Проверить скважину", prompt: "Проверь выбранную скважину: данные устья, инклинометрию, опробование и замечания аудита. Покажи её на разрезе.", needsHole: true },
 ];
 
-export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
+/** `series` — the pressed buttons of «Разрезы» (the ribbon passes them; elsewhere the defaults do). */
+export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial<SeriesFlags> = {}): RibbonTab[] {
   const views: RibbonItem[] = [
     { command: "scene.view", args: { view: "top" }, label: "В план", icon: "cubeTop", hint: "Вид сверху на то, что сейчас на экране", shortcut: "t" },
     { command: "scene.view", args: { view: "front" }, label: "Сбоку Z/X", icon: "cubeLeft", hint: "Вид сбоку на север: Z вверх, X вправо", shortcut: "x" },
@@ -160,7 +161,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
         },
       ],
     },
-    seriesTab(view),
+    seriesTab(view, series),
     {
       id: "model",
       title: "Моделирование",

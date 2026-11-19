@@ -32,7 +32,7 @@ import { ExactPicker, pickRequest, type AbsRay, type ExactPick } from "../../viz
 import { planeReaches, readSection, sectionQuery, SectionLinesView, type SeriesSectionPacket } from "../../viz/mesh/section";
 import { onJobFinished } from "../jobs/state";
 import { SeriesSections } from "../section/seriesSections";
-import { currentSection, seriesStore } from "../section/seriesState";
+import { currentSection, geometryKey, pickSection, seriesStore } from "../section/seriesState";
 import { sectionOf } from "../section/state";
 import { setStyleOf, setVisibilityOf } from "./loaders";
 import type { WireframeInfo } from "./objects";
@@ -100,6 +100,7 @@ export class ExactSource {
       post: (path, body) => api.post(path, body),
       show: (packet) => this.showSeries(packet),
       onMark: (mark) => scene.setSectionData?.(mark),
+      onError: (e) => this.fail(e, "Сечения каркасов на разрезе серии не построены"),
     });
     // the list of series is read after the view keys; a job of the cache done reads the neighbours anew
     this.off.push(seriesStore.subscribe(() => this.disposed || this.syncSections()));
@@ -142,9 +143,10 @@ export class ExactSource {
   async pick(ray: AbsRay): Promise<ExactPick | null | undefined> {
     const hidden = new Set(this.input.hidden());
     const ids = this.input.wireframes().filter((w) => !hidden.has(wireframeKey(w.id))).map((w) => w.id);
-    const { line, clip } = sectionOf(this.input.keys());
+    // the window of the section shown: of the free line, or of the section of the active series
+    const { line, clip, plane } = pickSection(this.input.keys());
     try {
-      return await this.picker.pick(pickRequest(ray, ids, line, clip));
+      return await this.picker.pick(pickRequest(ray, ids, line, clip, plane));
     } catch {
       return undefined; // the surface stays selected by the level in view
     }
@@ -230,7 +232,7 @@ export class ExactSource {
       .filter((w) => !hidden.has(wireframeKey(w.id)) && w.triangle_count > 0)
       .map((w) => [w.id, w.version] as const)
       .sort((a, b) => a[0] - b[0]);
-    this.series.set({ seriesId: cur.row.id, version: cur.row.version, polyline: cur.seg !== null, index: cur.index, steps: cur.steps, wireframes });
+    this.series.set({ seriesId: cur.row.id, geometry: geometryKey(cur.row), polyline: cur.seg !== null, index: cur.index, steps: cur.steps, wireframes });
     return true;
   }
 

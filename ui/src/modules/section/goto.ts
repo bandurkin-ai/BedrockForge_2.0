@@ -24,18 +24,19 @@ export function edgeText(move: 1 | -1, polyline: boolean): string {
 const key = (s: string) => s.trim().toLocaleLowerCase("ru-RU").replace(/\s+/g, " ");
 
 /**
- * A section by what was typed: its name (case and spaces aside), otherwise a whole number from 1 to K. A name
- * that looks like a number wins over the number (a plan «100» is a name). Null — none.
+ * A section by what was typed: its name (case and spaces aside), otherwise a whole number from 1 to `steps` (K,
+ * or the segments of a polyline section — its table has one section). A name that looks like a number wins over
+ * the number (a plan «100» is a name). Null — none.
  */
-export function resolveGoto(sections: readonly Pick<SeriesSectionRow, "k" | "name">[], query: string | number): number | null {
-  if (typeof query === "number") return Number.isInteger(query) && query >= 1 && query <= sections.length ? query - 1 : null;
+export function resolveGoto(sections: readonly Pick<SeriesSectionRow, "k" | "name">[], query: string | number, steps = sections.length): number | null {
+  if (typeof query === "number") return Number.isInteger(query) && query >= 1 && query <= steps ? query - 1 : null;
   const q = key(query);
   if (!q) return null;
   const byName = sections.find((s) => key(s.name) === q);
   if (byName) return byName.k;
   if (/^\d+$/.test(q)) {
     const n = Number(q);
-    return n >= 1 && n <= sections.length ? n - 1 : null;
+    return n >= 1 && n <= steps ? n - 1 : null;
   }
   return null;
 }
@@ -45,9 +46,16 @@ export interface GotoHint {
   label: string;
 }
 
-/** Up to `limit` suggestions: names starting with the text, then containing it, then the number typed. */
-export function gotoHints(sections: readonly Pick<SeriesSectionRow, "k" | "name">[], query: string, limit = 10): GotoHint[] {
+/** Up to `limit` suggestions: names starting with the text, then containing it, then the number typed. `steps`
+ * above the rows of the table — the segments of a polyline section: they are offered by number («Сегмент 2»). */
+export function gotoHints(sections: readonly Pick<SeriesSectionRow, "k" | "name">[], query: string, limit = 10, steps = sections.length): GotoHint[] {
   const q = key(query);
+  if (steps > sections.length) {
+    const n = /^\d+$/.test(q) ? Number(q) : null;
+    const all = Array.from({ length: Math.min(steps, limit) }, (_, i) => i);
+    const ks = q ? (n !== null && n >= 1 && n <= steps ? [n - 1] : []) : all;
+    return ks.map((k) => ({ k, label: `Сегмент ${k + 1}` }));
+  }
   const label = (s: Pick<SeriesSectionRow, "k" | "name">) => `${s.k + 1}. ${s.name}`;
   if (!q) return sections.slice(0, limit).map((s) => ({ k: s.k, label: label(s) }));
   const out: GotoHint[] = [];

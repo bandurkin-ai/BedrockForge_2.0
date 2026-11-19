@@ -4,7 +4,8 @@
  * k − 1 and k + 1) with `If-None-Match` → the scene layer `shadow` (`viz/section/shadow.ts`). The request is made
  * again when the section, the mode, the series or the version of its layer of contours change: after a save of a
  * contour the layer has a new version, the core a new ETag and the shadow of the neighbour follows; the same
- * contours are a 304 and the layer stays. No series, no contour layer or the mode «нет» — no layer. No React.
+ * contours are a 304 and the layer stays. No series, no contour layer or the mode «нет» — no layer (and no ETag:
+ * a 304 would leave it without lines). No React.
  */
 import { coreTarget } from "../../shell/api";
 import { apiUrl, authHeaders } from "../../shell/coreClient";
@@ -66,6 +67,8 @@ export class ShadowSource {
   private etag: { path: string; tag: string } | null = null;
   private abort: AbortController | null = null;
   private disposed = false;
+  /** every `show` takes a number: a layer made for an older one is not added */
+  private shown = 0;
   /** the request in flight (tests wait for it) */
   pending: Promise<void> | null = null;
 
@@ -96,7 +99,8 @@ export class ShadowSource {
     const target = coreTarget();
     if (!target) return;
     const headers: Record<string, string> = authHeaders(target, {});
-    if (this.etag?.path === path) headers["If-None-Match"] = this.etag.tag;
+    // a 304 keeps the lines that are there: asked only while the layer shows them
+    if (this.etag?.path === path && this.layer) headers["If-None-Match"] = this.etag.tag;
     let lines: ShadowLines | null;
     try {
       const r = await fetch(apiUrl(target, path), { headers, signal });
@@ -119,7 +123,9 @@ export class ShadowSource {
   }
 
   private async show(lines: ShadowLines | null): Promise<void> {
+    const n = ++this.shown;
     if (!lines || !lines.xyz.length) {
+      this.etag = null;
       if (this.layer) {
         this.scene.removeLayer(SHADOW_KEY);
         this.layer.dispose();
@@ -129,7 +135,8 @@ export class ShadowSource {
     }
     if (!this.layer) {
       const layer = await this.make();
-      if (this.disposed) return layer.dispose();
+      // disposed, or another `show` came while the layer was made (none — no layer; others — that one adds it)
+      if (this.disposed || n !== this.shown || this.layer) return layer.dispose();
       layer.show(lines);
       this.layer = layer;
       this.scene.addLayer(SHADOW_KEY, layer);
@@ -142,6 +149,7 @@ export class ShadowSource {
   /** After a lost context the scene has no layer: everything is asked again. */
   reset(): void {
     this.abort?.abort();
+    this.shown++;
     this.layer = null;
     this.sig = null;
     this.etag = null;

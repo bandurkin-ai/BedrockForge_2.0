@@ -8,6 +8,7 @@ import { Store } from "../../shell/store";
 import { DRAW_OFF, type DrawState } from "../../viz/section/draw";
 import { currentScene } from "../scene/sceneHost";
 import { DEFAULT_WINDOW, type SectionLine } from "../../viz/section/math";
+import type { ShadowMode } from "./seriesApi";
 
 export const sectionStore = new Store<{ draw: DrawState }>({ draw: DRAW_OFF });
 
@@ -16,6 +17,12 @@ export const sectionStore = new Store<{ draw: DrawState }>({ draw: DRAW_OFF });
  * lines; checked — also the surface itself, clipped by the window. A setting of the window, not of the project.
  */
 export const seriesView = new Store<{ surfaces: boolean }>({ surfaces: true });
+
+/**
+ * What the buttons of the tab «Разрезы» show pressed besides `seriesView`: the view is locked (`Scene` →
+ * `onLock`), the shadow of the active series (null — no active series). The ribbon is built anew on each change.
+ */
+export const seriesRibbon = new Store<{ locked: boolean; shadow: ShadowMode | null }>({ locked: false, shadow: null });
 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
@@ -77,6 +84,22 @@ export function sectionOf(keys: Record<string, unknown>): SectionKey {
   const series = normalizeSeries(s.series);
   if (series) return { line: null, clip: s.clip === true, series, free: line };
   return { line, clip: line !== null && s.clip === true };
+}
+
+let lastActive: ActiveSeries | null = null;
+
+/**
+ * The active series of the view keys as a selector of `useStore` (`useSyncExternalStore`): the same object while
+ * id, k and seg are the same — `sectionOf(k).series` is a new object on every call, and a snapshot that is never
+ * equal to the last one re-renders without end (React 18).
+ */
+export function activeSeriesOf(keys: Record<string, unknown>): ActiveSeries | null {
+  const s = sectionOf(keys).series ?? null;
+  if (!s) return null;
+  const last = lastActive;
+  if (last && last.id === s.id && last.k === s.k && last.seg === s.seg) return last;
+  lastActive = s;
+  return s;
 }
 
 /** The last free line of the key, whether or not a series is active. */

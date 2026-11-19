@@ -26,7 +26,7 @@ import { sceneObjects } from "../scene/objects";
 import { currentScene } from "../scene/sceneHost";
 import { patchFields } from "../scene/viewSync";
 import { seriesApi, seriesFault, type SeriesFault, type SeriesRow, type SeriesTable } from "./seriesApi";
-import { freeLine, sectionOf, seriesView, type ActiveSeries } from "./state";
+import { freeLine, sectionOf, seriesRibbon, seriesView, type ActiveSeries } from "./state";
 
 export { seriesView } from "./state";
 
@@ -66,6 +66,15 @@ export function geometryOf(row: SeriesRow): Geometry | null {
     geoms.set(key, g);
   }
   return geoms.get(key) ?? null;
+}
+
+/**
+ * What the sections of a series are made of: type, axes, range, step, windows and own windows, the polyline —
+ * not its name, template of names, shadow or layer of contours (a rename keeps the sections prepared).
+ */
+export function geometryKey(row: SeriesRow): string {
+  const p = row.params;
+  return JSON.stringify([p.type, p.p1, p.p2, p.az, p.phi, p.s0, p.s1, p.step, p.towards, p.away, p.overrides ?? {}, p.polyline, p.corridor]);
 }
 
 /** Steps of the series: K sections, or the segments of a polyline section. */
@@ -126,6 +135,13 @@ export function sectionPlaneOf(keys: Record<string, unknown> = viewStore.get(), 
   return { plane: line ? planeFromLine(line) : null, clip: sec.clip && line !== null, line, series: null, pending: false };
 }
 
+/** The section an exact pick is clipped by: the plane of the active series, else the free line (`pickRequest`). */
+export function pickSection(keys: Record<string, unknown> = viewStore.get(), state: SeriesState = seriesStore.get()): { line: SectionLine | null; clip: boolean; plane: SectionPlane | null } {
+  const s = sectionPlaneOf(keys, state);
+  if (s.pending) return { line: null, clip: false, plane: null };
+  return s.series ? { line: null, clip: s.clip, plane: s.plane } : { line: s.line, clip: s.clip, plane: null };
+}
+
 type SectionTarget = { setSection(line: SectionLine | null, clip: boolean): void; setSectionPlane(plane: SectionPlane | null, clip: boolean, line?: SectionLine | null): void };
 
 /** Shows the section of the view keys in the scene (`SceneView` on every change of the key `section`). */
@@ -155,12 +171,12 @@ export function surfacesHidden(keys: Record<string, unknown> = viewStore.get()):
 
 // ---------------------------------------------------------------- the key
 
-/** Makes a series active at section k (segment `seg`), or the free line again (null); `clip` — set it too. */
+/** Makes a series active at section k (segment `seg`), or the free line again (null); `clip` — set it too.
+ * The scene follows the key itself (`SceneView` on every change of `section`): once per step. */
 export function setActiveSeries(sel: ActiveSeries | null, clip?: boolean): void {
   const patch: Record<string, unknown> = { series: sel ? { id: sel.id, k: sel.k, seg: sel.seg } : null };
   if (clip !== undefined) patch.clip = clip;
   updateView("section", patchFields(patch));
-  applySectionKey(currentScene());
 }
 
 // ---------------------------------------------------------------- the list and the tables
@@ -254,7 +270,9 @@ export function bindSeriesState(app: App): void {
     void loadSeries();
   }));
   let shown = "";
-  const follow = () => {
+  /** `list` — the series changed (read after the key): the scene is shown the section; a change of the key the
+   * scene follows by itself (`SceneView`), so a step of `]` shows the section once. */
+  const follow = (list: boolean) => {
     const s = seriesStore.get();
     const sel = sectionOf(viewStore.get()).series ?? null;
     if (sel && s.loaded && !s.error && !seriesById(sel.id, s) && projectStore.get().current) {
@@ -264,13 +282,18 @@ export function bindSeriesState(app: App): void {
     }
     const cur = currentSection();
     if (cur && !(s.tables[cur.row.id]?.version === cur.row.version)) void ensureTable(cur.row.id).catch(() => undefined);
+    const shadow = cur ? (cur.row.params.shadow ?? "prev") : null;
+    if (seriesRibbon.get().shadow !== shadow) seriesRibbon.set({ shadow });
     const key = cur ? `${cur.row.id}:${cur.row.version}:${cur.index}` : sel ? "pending" : "";
     if (key !== shown) {
       shown = key;
-      applySectionKey(currentScene());
+      if (list) applySectionKey(currentScene());
     }
   };
-  unbind.push(seriesStore.subscribe(follow), viewStore.subscribe(follow));
+  unbind.push(
+    seriesStore.subscribe(() => follow(true)),
+    viewStore.subscribe(() => follow(false)),
+  );
 }
 
 // ---------------------------------------------------------------- the range over the data

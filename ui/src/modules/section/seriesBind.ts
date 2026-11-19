@@ -8,6 +8,7 @@ import type { App } from "../../shell/app";
 import type { CommandContext, CommandSource } from "../../shell/commands";
 import { dialogStore } from "../../shell/dialogs";
 import { eventShortcut, type KeyLike } from "../../shell/keys";
+import { needWritable } from "../../shell/objectRun";
 import { viewStore } from "../scene/bind";
 import { holeSection, stepProfile } from "./bind";
 import { edgeText, moveIndex, resolveGoto, type Move } from "./goto";
@@ -15,12 +16,14 @@ import { needSectionToLock, runLock } from "./lockView";
 import { faultText, seriesApi, seriesFault, type ShadowMode } from "./seriesApi";
 import { activateSeries, copySeries, deleteSeries, openGoto, openNewSeries, openSeriesManager, openSeriesParams, seriesSaved } from "./seriesActions";
 import { PRINT_REASON } from "./seriesCommands";
-import { fmt, formFromLine, formFromSection, newForm, rangeOver, saveSeries, SHADOW_TITLES, type SeriesForm } from "./seriesForm";
+import { fmt, formFromLine, formFromSection, newForm, overridesWith, rangeOver, saveSeries, SHADOW_TITLES, type SeriesForm } from "./seriesForm";
 import { boxCorners, currentSection, ensureTable, loadSeries, putSeries, seriesById, seriesStatus, seriesView, setActiveSeries, visibleBoxes } from "./seriesState";
 import { freeLine } from "./state";
 
 export const NO_SERIES = "Нет активной серии разрезов: выберите её в «Менеджере серий» или создайте «Новую серию»";
 const NO_SECTION = "Сначала задайте разрез: линию (S) или серию";
+const GONE = "Серия разрезов не найдена: её удалили. Обновите список серий.";
+const CHANGED = "Серию только что изменили в другом окне: список обновлён — повторите правку.";
 
 const needProject = (ctx: CommandContext) => (ctx.hasProject ? null : "Откройте или создайте проект");
 const needSeries = (ctx: CommandContext) => needProject(ctx) ?? (currentSection() ? null : NO_SERIES);
@@ -31,6 +34,47 @@ const int = (v: unknown, what: string): number => {
   if (typeof v !== "number" || !Number.isInteger(v)) throw new Error(`${what}: нужно целое число`);
   return v;
 };
+
+/** A window side: absent — undefined, otherwise a number > 0. */
+const side = (v: unknown, what: string): number | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "number" || !Number.isFinite(v) || !(v > 0)) throw new Error(`${what}: нужно число больше 0, м`);
+  return v;
+};
+
+/** A change of a stored series: the answer of the core in the list; a 409 reads the list again. */
+async function patchSeries(id: number, version: number, change: Parameters<typeof seriesApi.patch>[2]): Promise<void> {
+  try {
+    putSeries(await seriesApi.patch(id, version, change));
+  } catch (e) {
+    const f = seriesFault(e);
+    if (f.status === 409) {
+      await loadSeries();
+      throw new Error(CHANGED);
+    }
+    throw new Error(faultText(f));
+  }
+}
+
+/** `series.window`: the own window of section k (from 1) of a series; without towards and away — that of the series. */
+export async function seriesWindow(a: Record<string, unknown>): Promise<string> {
+  const row = seriesById(int(a.series_id, "Номер серии"));
+  if (!row) throw new Error(GONE);
+  if (row.params.type === "polyline") throw new Error("У ломаного разреза окно — коридор: задайте его в параметрах серии");
+  const k = int(a.k, "Номер разреза") - 1;
+  if (k < 0 || k >= row.count) throw new Error(`Разрез ${k + 1}: в серии «${row.name}» разрезы с 1 по ${row.count}`);
+  const towards = side(a.towards, "Окно «к себе»");
+  const away = side(a.away, "Окно «от себя»");
+  let win: { towards: number; away: number } | null = null;
+  if (towards !== undefined || away !== undefined) {
+    // the side not given stays as it is now (the table has the window in force)
+    const now = towards === undefined || away === undefined ? (await ensureTable(row.id)).sections[k] : undefined;
+    win = { towards: towards ?? now?.towards ?? row.params.towards ?? 25, away: away ?? now?.away ?? row.params.away ?? 25 };
+  }
+  await patchSeries(row.id, row.version, { params: { overrides: overridesWith(row.params, k, win) } });
+  const where = `Разрез ${k + 1} серии «${row.name}»`;
+  return win ? `${where}: своё окно ${fmt(win.towards)} / ${fmt(win.away)} м` : `${where}: окно серии`;
+}
 
 /** A move along the active series; without one `]` / `[` move the free line one window on. */
 export function moveSeries(app: App, move: Move): string {
@@ -67,6 +111,8 @@ export function createForm(a: Record<string, unknown>): SeriesForm {
 
 export function bindSeries(app: App): void {
   const r = app.registry;
+  const writable = needWritable(app);
+  const writableSeries = (ctx: CommandContext) => writable(ctx) ?? needSeries(ctx);
   const keys = () => viewStore.get();
   const hidden = () => app.store.get().view.hidden;
 
@@ -124,7 +170,7 @@ export function bindSeries(app: App): void {
       if (res.ok) return seriesSaved(res.row, true);
       throw new Error("error" in res ? `${res.error}${res.hint ? ` ${res.hint}` : ""}` : "Серия не создана");
     },
-    needProject,
+    writable,
   );
   r.bind(
     "series.params",
@@ -140,19 +186,13 @@ export function bindSeries(app: App): void {
     "series.rename",
     async (a) => {
       const row = seriesById(int(a.series_id, "Номер серии"));
-      if (!row) throw new Error("Серия разрезов не найдена: её удалили. Обновите список серий.");
+      if (!row) throw new Error(GONE);
       const name = typeof a.name === "string" ? a.name.trim() : "";
       if (!name) throw new Error("Введите название серии");
-      try {
-        putSeries(await seriesApi.patch(row.id, row.version, { name }));
-      } catch (e) {
-        const f = seriesFault(e);
-        if (f.status === 409) await loadSeries();
-        throw new Error(faultText(f));
-      }
+      await patchSeries(row.id, row.version, { name });
       return `Серия «${row.name}» переименована в «${name}»`;
     },
-    needProject,
+    writable,
   );
   r.bind(
     "series.copy",
@@ -160,7 +200,7 @@ export function bindSeries(app: App): void {
       const row = await copySeries(int(a.series_id, "Номер серии"));
       return `Создана копия «${row.name}» (серия ${row.number})`;
     },
-    needProject,
+    writable,
   );
   r.bind(
     "series.delete",
@@ -169,8 +209,9 @@ export function bindSeries(app: App): void {
       const name = seriesById(id)?.name ?? String(id);
       return (await deleteSeries(id, source !== "claude")) ? `Серия «${name}» удалена; её контуры остались` : "Удаление серии отменено";
     },
-    needProject,
+    writable,
   );
+  r.bind("series.window", seriesWindow, writable);
   r.bind(
     "series.activate",
     (a) => {
@@ -196,7 +237,7 @@ export function bindSeries(app: App): void {
       }
       const table = await ensureTable(cur.row.id);
       const what = typeof a.number === "number" ? a.number : String(a.name ?? "");
-      const k = resolveGoto(table.sections, what);
+      const k = resolveGoto(table.sections, what, cur.steps);
       if (k === null) throw new Error(`Разрез «${what}» не найден в серии «${cur.row.name}»: имя разреза или номер от 1 до ${cur.steps}`);
       const text = activateSeries(cur.row.id, k);
       app.store.set({ statusNote: seriesStatus() ?? text });
@@ -217,18 +258,13 @@ export function bindSeries(app: App): void {
     async (a) => {
       const cur = currentSection();
       if (!cur) throw new Error(NO_SERIES);
-      const mode = a.mode as ShadowMode;
+      // without a mode — the button of the ribbon: off, or the previous section
+      const mode = (a.mode ?? ((cur.row.params.shadow ?? "prev") === "none" ? "prev" : "none")) as ShadowMode;
       if (!(mode in SHADOW_TITLES)) throw new Error("Тень: none, prev, next или both");
-      try {
-        putSeries(await seriesApi.patch(cur.row.id, cur.row.version, { params: { shadow: mode } }));
-      } catch (e) {
-        const f = seriesFault(e);
-        if (f.status === 409) await loadSeries();
-        throw new Error(faultText(f));
-      }
+      await patchSeries(cur.row.id, cur.row.version, { params: { shadow: mode } });
       return `Тень серии «${cur.row.name}»: ${SHADOW_TITLES[mode].toLowerCase()}`;
     },
-    needSeries,
+    writableSeries,
   );
   r.bind(
     "series.print",

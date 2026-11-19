@@ -18,7 +18,7 @@ import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { miniPlanWanted, SectionMap } from "../section/SectionMap";
 import { sectionPoint } from "../section/bind";
-import { sectionOf, sectionStore } from "../section/state";
+import { sectionOf, sectionStore, seriesRibbon } from "../section/state";
 import { applySectionKey } from "../section/seriesState";
 import { tablesStore } from "../tables/state";
 import { viewStore } from "./bind";
@@ -170,6 +170,7 @@ function SceneMount() {
           onPickLayer: (hit: LayerHit | null) => objects?.pick(hit),
           onGroundClick: (p: { x: number; y: number }) => sectionPoint(app, p),
           onContextLost: () => sceneUi.set({ lost: true }),
+          onLock: (on: boolean) => seriesRibbon.set({ locked: on }),
           onContextRestored: () => sceneUi.set({ lost: false, degraded: scene ? scene.renderer.budgetFactor() < 1 : false }),
         };
         try {
@@ -247,6 +248,7 @@ function SceneMount() {
       source?.dispose();
       if (currentScene() === scene) setCurrentScene(null);
       scene?.dispose();
+      seriesRibbon.set({ locked: false });
       if (window.__bfScene) delete window.__bfScene;
     };
   }, [app]);

@@ -150,14 +150,42 @@ export function conflictsOf(table: LinkTable, pairs: readonly [number, number][]
   }
   const out: { sections: [number, number]; contours: number[] }[] = [];
   for (const [k, mine] of [...byK.entries()].sort((x, y) => x[0] - y[0])) {
-    const used = new Set(mine.flat());
-    for (const g of bodiesOf(table, mine)) {
-      const members = g.filter((i) => used.has(i));
+    // the groups of the contours these links touch — not of every contour of the series (100 × 500 per click)
+    for (const members of linkedGroups(table, mine)) {
       const low = members.filter((i) => table.contours[i].k === k).length;
       if (low > 1 && members.length - low > 1) out.push({ sections: [k, k + 1], contours: members });
     }
   }
   return out;
+}
+
+/** Connected groups of the linkable contours of `pairs` only, each sorted, in the order of their first contour. */
+function linkedGroups(table: LinkTable, pairs: readonly [number, number][]): number[][] {
+  const parent = new Map<number, number>();
+  const find = (x: number): number => {
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    for (let y = x; y !== r; ) {
+      const next = parent.get(y)!;
+      parent.set(y, r);
+      y = next;
+    }
+    return r;
+  };
+  for (const [a, b] of pairs) {
+    if (!parent.has(a)) parent.set(a, a);
+    if (!parent.has(b)) parent.set(b, b);
+    parent.set(find(a), find(b));
+  }
+  const groups = new Map<number, number[]>();
+  for (const i of parent.keys()) {
+    if (!linkable(table.contours[i])) continue;
+    const r = find(i);
+    const g = groups.get(r);
+    if (g) g.push(i);
+    else groups.set(r, [i]);
+  }
+  return [...groups.values()].map((g) => g.sort((x, y) => x - y)).sort((x, y) => x[0] - y[0]);
 }
 
 /** «между 5050N и 5075N» */
@@ -189,6 +217,8 @@ export function linkLines(table: LinkTable, pairs: readonly [number, number][]):
 // ---------------------------------------------------------------- the links in the 3D window
 
 let links: { layer: ShadowLayer; scene: unknown } | null = null;
+/** every call takes a number: a layer made for an older call (or before «none») is not added */
+let linksCall = 0;
 
 function accent(): string {
   const css = typeof document === "undefined" ? null : getComputedStyle(document.documentElement);
@@ -197,6 +227,7 @@ function accent(): string {
 
 /** Shows the links between the centres in the 3D window (null — none): dashed, not clipped, not picked. */
 export async function showLinks(lines: ShadowLines | null): Promise<void> {
+  const call = ++linksCall;
   const scene = currentScene();
   if (links && (links.scene !== scene || !lines)) {
     (links.scene as { removeLayer(k: string): void } | null)?.removeLayer(LINKS_KEY);
@@ -206,7 +237,7 @@ export async function showLinks(lines: ShadowLines | null): Promise<void> {
   if (!scene || !lines) return;
   if (!links) {
     const layer = new (await import("../../viz/section/shadow")).ShadowLayer(accent());
-    if (links || currentScene() !== scene) return layer.dispose();
+    if (call !== linksCall || links || currentScene() !== scene) return layer.dispose();
     layer.show(lines);
     links = { layer, scene };
     scene.addLayer(LINKS_KEY, layer);

@@ -14,7 +14,7 @@ import css from "../tables/Tables.module.css";
 import { viewStore } from "../scene/bind";
 import type { SeriesRow } from "./seriesApi";
 import { ensureTable, geometryOf, seriesStore, stepsOf, type SeriesState } from "./seriesState";
-import { sectionOf, type ActiveSeries } from "./state";
+import { activeSeriesOf, type ActiveSeries } from "./state";
 
 /** Rows of sections under one series before «Перейти…» (decision 8). */
 export const TREE_SECTIONS_MAX = 1000;
@@ -77,7 +77,7 @@ export function seriesMenu(row: SeriesRow, active: boolean): SeriesAction[] {
 export function SeriesTree() {
   const app = useApp();
   const state = useStore(seriesStore, (s) => s);
-  const active = useStore(viewStore, (k) => sectionOf(k).series ?? null);
+  const active = useStore(viewStore, activeSeriesOf);
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set(active ? [active.id] : []));
   useEffect(() => {
     if (active) setExpanded((e) => (e.has(active.id) ? e : new Set([...e, active.id])));

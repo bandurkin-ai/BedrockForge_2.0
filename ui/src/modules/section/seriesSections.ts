@@ -2,10 +2,12 @@
  * The sections of the wireframes on the current section of the active series (ADR 0016 §6; ТЗ 8.1.5): on a new
  * k — the packet of section k (`GET /section-series/{id}/sections/{k}/wireframes?ids=`, ≤ 200 wireframes a
  * request); the request of the old section is cancelled and its lines leave at once; an answer that came for a
- * section no longer current is not shown. Once the packet is shown and nothing happens for `idleMs` — the
- * neighbours k ± 1, then k ± 2, one at a time; up to 5 sections are kept: a prepared section is shown without
- * a request. On activating the series and on a change of its wireframes (their versions) — `POST …/cache`
- * (`sections.cache`); its job done reads the neighbours anew. `mark` — the readiness of the data of the section
+ * section no longer current is not shown; a failed one is said (`onError`: {message, hint} of the core) and asked
+ * again on the next `set`. Once the packet is shown and nothing happens for `idleMs` — the neighbours k ± 1, then
+ * k ± 2, one at a time; up to 5 sections are kept: a prepared section is shown without a request. On activating
+ * the series and on a change of its geometry or wireframes (their versions; not of its name, shadow or layer of
+ * contours) — `POST …/cache` (`sections.cache`) around k, again when k has gone farther than `CACHE_REACH` from it
+ * in a long series; its job done reads the neighbours anew. `mark` — the readiness of the data of the section
  * (`Scene.debug().sectionData`, the E2E of 10.26 and the benchmark `series_step`).
  *
  * No three.js and no DOM here: the loads, the timers and the clock are given (`SeriesSectionsDeps`).
@@ -18,10 +20,15 @@ export type { SectionDataMark } from "../../viz/sceneTypes";
 export const MAX_IDS = 200;
 export const KEEP_SECTIONS = 5;
 export const IDLE_MS = 150;
+/** In a series of more than `CACHE_LONG` sections the cache of the core is asked again around k once k has gone
+ * farther than `CACHE_REACH` from the k it was asked around (the job prepares a window of sections, not all). */
+export const CACHE_LONG = 500;
+export const CACHE_REACH = 40;
 
 export interface SeriesTarget {
   seriesId: number;
-  version: number;
+  /** what the planes of its sections are made of (`geometryKey`): not its version — a new name or shadow keeps them */
+  geometry: string;
   /** a polyline: `index` is the segment (k = 0, seg = index) */
   polyline: boolean;
   index: number;
@@ -38,6 +45,8 @@ export interface SeriesSectionsDeps {
   /** the lines of the current section (null — none: the old ones leave) */
   show(packet: SeriesSectionPacket | null): void;
   onMark?(mark: SectionDataMark): void;
+  /** the packet of the current section failed (not a cancel): the message of the core for the window */
+  onError?(error: unknown): void;
   now?(): number;
   setTimer?(fn: () => void, ms: number): unknown;
   clearTimer?(handle: unknown): void;
@@ -66,9 +75,13 @@ function merge(parts: SeriesSectionPacket[]): SeriesSectionPacket {
 
 export class SeriesSections {
   private target: SeriesTarget | null = null;
-  /** `${series}:${version}:${wireframes}` — the sections kept belong to it */
+  /** `${series}:${geometry}:${wireframes}` — the sections kept belong to it */
   private sig = "";
   private cached = "";
+  /** the k the cache of the core was asked around */
+  private cachedAround = 0;
+  /** the current section whose packet failed: the next `set` asks it again */
+  private failed: number | null = null;
   private readonly kept = new Map<number, SeriesSectionPacket>();
   private readonly inflight = new Map<number, { paths: string[]; promise: Promise<SeriesSectionPacket | null> }>();
   private timer: unknown = null;
@@ -96,9 +109,10 @@ export class SeriesSections {
   set(target: SeriesTarget | null): void {
     if (this.disposed) return;
     const ids = target?.wireframes.map(([id]) => id) ?? [];
-    const sig = target && ids.length ? `${target.seriesId}:${target.version}:${target.wireframes.map(([i, v]) => `${i}.${v}`).join(",")}` : "";
+    const sig = target && ids.length ? `${target.seriesId}:${target.geometry}:${target.wireframes.map(([i, v]) => `${i}.${v}`).join(",")}` : "";
     const same = sig === this.sig && target?.index === this.target?.index;
-    if (same && (this.target || !sig)) return; // the same section, or still none
+    if (same && (this.target || !sig) && this.failed === null) return; // the same section, or still none
+    this.failed = null;
     this.stopIdle();
     if (sig !== this.sig) {
       this.cancelAll();
@@ -113,10 +127,11 @@ export class SeriesSections {
       return;
     }
     const t = this.target;
-    // the series became active or its wireframes changed: the cache of the core for them
-    const cacheKey = sig;
-    if (cacheKey !== this.cached) {
-      this.cached = cacheKey;
+    // the series became active, its geometry or wireframes changed, or k went far in a long series: the cache
+    const far = t.steps > CACHE_LONG && Math.abs(t.index - this.cachedAround) > CACHE_REACH;
+    if (sig !== this.cached || far) {
+      this.cached = sig;
+      this.cachedAround = t.index;
       void this.deps.post(`/section-series/${t.seriesId}/cache`, { wireframe_ids: ids.slice(0, MAX_IDS), around: t.index }).catch(() => undefined);
     }
     // requests of sections that are not the one shown now nor its neighbours go
@@ -197,12 +212,21 @@ export class SeriesSections {
     const known = this.inflight.get(index);
     if (known) return known.promise;
     const paths = packetPaths(t, index, t.wireframes.map(([id]) => id));
-    const promise = Promise.all(paths.map((p) => this.deps.load(p)))
+    const promise: Promise<SeriesSectionPacket | null> = Promise.all(paths.map((p) => this.deps.load(p)))
       .then((bufs) => {
         if (bufs.some((b) => b === null)) return this.kept.get(index) ?? null;
         return merge(bufs.map((b) => readSeriesSection(b!)));
       })
-      .catch(() => null)
+      .catch((e: unknown) => {
+        // dropped (another section): not an error; a neighbour read ahead: asked again when it is current
+        const live = this.inflight.get(index)?.promise === promise && !this.disposed;
+        if (live && this.target && index === this.target.index) {
+          this.failed = index;
+          this.setMark({ ...this.base(this.target), ready: false, ms: null, prepared: false });
+          this.deps.onError?.(e);
+        }
+        return null;
+      })
       .finally(() => {
         if (this.inflight.get(index)?.promise === promise) this.inflight.delete(index);
       });

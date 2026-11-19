@@ -24,11 +24,11 @@ import { fromWorld, toWorld, type WorldCamera } from "./core/worldCamera";
 import type { Vec3 } from "./core/vec3";
 import { AxesGizmo } from "./gizmo/AxesGizmo";
 import { Grid } from "./grid";
-import { HoleSetLayer, type HoleSetStyle, type HoleSetVisibility } from "./holes/holeSet";
-import { holeIndex, type HolesManifest } from "./holes/manifest";
+import type { HoleSetLayer, HoleSetStyle, HoleSetVisibility } from "./holes/holeSet";
+import type { HolesManifest } from "./holes/manifest";
 import { MarkerTextures } from "./holes/markers";
-import { useFatLines } from "./holes/paths";
-import { pickHoles, SelectedHole } from "./holes/select";
+import { SceneHoles } from "./holes/sceneHoles";
+import { pickHoles } from "./holes/select";
 import { LabelCache, type LabelItem } from "./labels/sprites";
 import { toNdc, viewProjection, type Mat4 } from "./pick/ray";
 import type { DrawState } from "./section/draw";
@@ -61,16 +61,14 @@ export class Scene {
   private grid: Grid;
   private readonly gizmo: AxesGizmo;
   private readonly turn = new TurnController();
-  private readonly holeSets = new Map<number, HoleSetLayer>();
+  /** the hole sets and the selected hole (`holes/sceneHoles.ts`) */
+  private readonly sets: SceneHoles;
   private readonly layers = new LayerSet(this.root, this.origin);
-  private readonly selection: SelectedHole;
-  private selected: { setId: number; name: string } | null = null;
   /** shown (×1 while an inclined section is active) and asked by the view key */
   private vexag = 1;
   private wantVexag = 1;
   private gridOn = true;
   private readonly first = new FirstView();
-  private fat = true;
   private size = { w: 1, h: 1 };
   private lastCam: CameraState | null = null;
   private lastVp: Mat4 | null = null;
@@ -94,7 +92,18 @@ export class Scene {
     this.clipPlanes = this.sec.clip.planes;
     this.labels = new LabelCache(this.clipPlanes);
     this.grid = new Grid(this.labels);
-    this.selection = new SelectedHole(this.clipPlanes, this.resolution);
+    this.sets = new SceneHoles(
+      {
+        root: this.root,
+        origin: this.origin,
+        context: () => ({ clip: this.clipPlanes, resolution: this.resolution, textures: this.textures, labels: this.labels, pixelRatio: this.renderer.pixelRatio }),
+        contentChanged: () => this.contentChanged(),
+        gridChanged: () => this.refreshGrid(),
+        invalidate: () => this.loop.invalidate(),
+      },
+      this.clipPlanes,
+      this.resolution,
+    );
     this.rig = new CameraRig(this.renderer.canvas);
     this.loop = new FrameLoop((now) => this.draw(now));
     this.three.add(this.root, new THREE.HemisphereLight(0xffffff, 0x445566, 1.4), this.light, this.light.target);
@@ -110,7 +119,12 @@ export class Scene {
     };
     this.renderer.onLost = () => this.contextLost();
     this.renderer.onRestored = () => this.contextRestored();
-    this.input = new ToolInput({ click: (x, y) => this.click(x, y), move: (x, y) => this.pointerMove(x, y), leave: () => undefined, camera: (on) => void (this.rig.controls.enabled = on) });
+    this.input = new ToolInput({
+      click: (x, y) => this.click(x, y),
+      move: (x, y) => this.pointerMove(x, y),
+      leave: () => undefined,
+      camera: (on) => void (this.rig.controls.enabled = on),
+    });
     this.cleanup.push(this.input.attach(this.renderer.canvas));
     this.cleanup.push(watchHost(host, () => this.resize(), () => this.applyTheme()));
     this.applyTheme();
@@ -119,21 +133,34 @@ export class Scene {
 
   static probe = probeWebGL2;
 
-  get gpu(): GpuInfo { return this.renderer.info; }
-  get canvas(): HTMLCanvasElement { return this.renderer.canvas; }
+  get gpu(): GpuInfo {
+    return this.renderer.info;
+  }
+
+  get canvas(): HTMLCanvasElement {
+    return this.renderer.canvas;
+  }
 
   /** One more frame (a layer changed its objects). */
-  invalidate(): void { this.loop.invalidate(); }
+  invalidate(): void {
+    this.loop.invalidate();
+  }
 
   /** No frame pending and the last change drawn («кадр готов»). */
   get idle(): boolean {
     return this.loop.idle && !this.renderer.lost;
   }
 
-  onRestored(fn: () => void): () => void { this.restoredListeners.add(fn); return () => this.restoredListeners.delete(fn); }
+  onRestored(fn: () => void): () => void {
+    this.restoredListeners.add(fn);
+    return () => this.restoredListeners.delete(fn);
+  }
 
   /** Before every frame (levels of detail, parts in view): do not change the scene here — ask for a frame. */
-  onFrame(fn: (ctx: FrameContext) => void): () => void { this.frameListeners.add(fn); return () => this.frameListeners.delete(fn); }
+  onFrame(fn: (ctx: FrameContext) => void): () => void {
+    this.frameListeners.add(fn);
+    return () => this.frameListeners.delete(fn);
+  }
 
   // ---------------------------------------------------------------- view
 
@@ -164,7 +191,9 @@ export class Scene {
     this.take(this.sec.lockedView(this.fitBox(), this.rig.options(), this.origin.value) ?? fit(this.rig.state(), this.fitBox(), this.rig.options()));
   }
 
-  get locked(): boolean { return this.rig.locked; }
+  get locked(): boolean {
+    return this.rig.locked;
+  }
 
   /** «Зафиксировать вид» (L, ADR 0016 §4; `core/lockView.ts`): orthographic along v̂, ŵ up, no turning, follows `]` / `[`;
    * false — nothing to lock on (no section) or to free. */
@@ -186,7 +215,10 @@ export class Scene {
   }
 
   /** An import arrives: no refit of the first view; `reveal` — fitted to boxes not seen («Показать загруженное»). */
-  holdView(): void { this.first.stop(); }
+  holdView(): void {
+    this.first.stop();
+  }
+
   reveal(bboxes: ArrayLike<number>[]): boolean {
     const o = bboxes.length ? this.origin.ensure(bboxes[0]) : null;
     const cam = o && revealCamera(this.rig.state(), this.rig.options(), bboxes.map((b) => boxFromBbox6(b, o)));
@@ -209,17 +241,29 @@ export class Scene {
     });
   }
 
-  camera(): CameraState { return this.rig.state(); }
+  camera(): CameraState {
+    return this.rig.state();
+  }
 
   /** The camera of a saved view, absolute (null before the first object); the projection comes with the keys. */
-  worldCamera(): WorldCamera | null { const o = this.origin.value; return o ? toWorld(this.rig.state(), o, this.vexag, !this.rig.perspective, this.rig.persp.fov) : null; }
-  setWorldCamera(c: WorldCamera): void { this.take(fromWorld(c, this.origin.value ?? this.origin.ensure([...c.target, ...c.target]), this.vexag, this.rig.state())); }
+  worldCamera(): WorldCamera | null {
+    const o = this.origin.value;
+    return o ? toWorld(this.rig.state(), o, this.vexag, !this.rig.perspective, this.rig.persp.fov) : null;
+  }
+
+  setWorldCamera(c: WorldCamera): void {
+    this.take(fromWorld(c, this.origin.value ?? this.origin.ensure([...c.target, ...c.target]), this.vexag, this.rig.state()));
+  }
 
   /** Turns the view by `rad` about the vertical through its centre (smoke scenario, frame benchmark). */
-  orbit(rad: number): void { this.rig.apply(orbited(this.rig.state(), rad)); }
+  orbit(rad: number): void {
+    this.rig.apply(orbited(this.rig.state(), rad));
+  }
 
   /** Runs `step` before every frame until it returns false (frames go on meanwhile). */
-  animate(step: (now: number) => boolean): void { this.loop.animate(step); }
+  animate(step: (now: number) => boolean): void {
+    this.loop.animate(step);
+  }
 
   /** One frame now, the GPU waited for: its ms (the frame benchmark of perf3d). */
   drawNow(): number {
@@ -230,7 +274,9 @@ export class Scene {
   }
 
   /** Estimated bytes of buffers and textures on the video card. */
-  gpuBytes(): number { return sceneBytes(this.three); }
+  gpuBytes(): number {
+    return sceneBytes(this.three);
+  }
 
   /** Loading order of a part (smaller — sooner): parts nearer the centre of the screen first. */
   partPriority(bbox: ArrayLike<number>): number {
@@ -239,7 +285,9 @@ export class Scene {
     return screenPriority(scaleZ(boxFromBbox6(bbox, o), this.vexag), this.rig.state(), this.rig.options());
   }
 
-  viewOptions(): ViewOptions { return this.rig.options(); }
+  viewOptions(): ViewOptions {
+    return this.rig.options();
+  }
 
   // ---------------------------------------------------------------- section
 
@@ -265,12 +313,17 @@ export class Scene {
     this.sec.refresh(this.origin.value, contentBox(this.extents()), this.vexag);
     if (!this.sec.plane) this.lockView(false);
     const cam = this.sec.follow(this.rig.state(), this.origin.value, this.vexag);
-    if (cam) { this.rig.setLock(this.sec.lock); this.take(cam); }
+    if (cam) {
+      this.rig.setLock(this.sec.lock);
+      this.take(cam);
+    }
   }
 
   private sectionData: SectionDataMark | null = null;
   /** The readiness of the lines of the current section of a series (`modules/section/seriesSections.ts`); null — none. */
-  setSectionData(mark: SectionDataMark | null): void { this.sectionData = mark && mark.series !== null ? { ...mark } : null; }
+  setSectionData(mark: SectionDataMark | null): void {
+    this.sectionData = mark && mark.series !== null ? { ...mark } : null;
+  }
 
   /** The drawing state of a section line (the first point marked: the rubber band follows the cursor). */
   setDrawing(state: DrawState): void {
@@ -282,69 +335,56 @@ export class Scene {
   }
 
   /** Collars and traces of the visible sets for the mini-plan (≤ 20 000 points). */
-  planOverview(): PlanOverview { return buildOverview(planSources(this.holeSets.values())); }
+  planOverview(): PlanOverview {
+    return buildOverview(planSources(this.sets.layers()));
+  }
 
   // ---------------------------------------------------------------- holes
 
   setHoles(manifest: HolesManifest, style: HoleSetStyle, visibility: HoleSetVisibility): void {
-    this.removeHoles(manifest.setId, false);
-    if (!manifest.parts.length) return void this.contentChanged();
-    this.origin.ensure(manifest.parts[0].bbox);
-    const layer = new HoleSetLayer(manifest, { clip: this.clipPlanes, resolution: this.resolution, textures: this.textures, labels: this.labels, pixelRatio: this.renderer.pixelRatio }, style, visibility);
-    layer.place(this.origin);
-    this.holeSets.set(manifest.setId, layer);
-    this.root.add(layer.group);
-    this.applySelection();
-    this.contentChanged();
+    this.sets.set(manifest, style, visibility);
   }
 
   setPaths(setId: number, k: number, built: BuiltPaths): void {
-    const layer = this.holeSets.get(setId); if (!layer) return;
-    layer.setPaths(k, built, this.fat);
-    this.updateFat();
-    if (this.selected?.setId === setId) this.applySelection();
-    this.loop.invalidate();
+    this.sets.setPaths(setId, k, built);
   }
 
-  holes(setId: number): HoleSetLayer | null { return this.holeSets.get(setId) ?? null; }
+  holes(setId: number): HoleSetLayer | null {
+    return this.sets.get(setId);
+  }
 
   removeHoles(setId: number, update = true): void {
-    const layer = this.holeSets.get(setId); if (!layer) return;
-    if (this.selected?.setId === setId) this.selection.clear();
-    this.root.remove(layer.group);
-    layer.dispose();
-    this.holeSets.delete(setId);
-    if (update) this.contentChanged();
+    this.sets.remove(setId, update);
   }
 
   setHoleStyle(setId: number, style: HoleSetStyle): void {
-    const layer = this.holeSets.get(setId); if (!layer) return;
-    layer.setStyle(style, useFatLines(style.trace, this.totalSegments()));
-    if (this.selected?.setId === setId) this.applySelection();
-    this.loop.invalidate();
+    this.sets.setStyle(setId, style);
   }
 
   setHoleVisibility(setId: number, v: HoleSetVisibility): void {
-    const layer = this.holeSets.get(setId); if (!layer) return;
-    layer.setVisibility(v);
-    this.refreshGrid();
-    this.loop.invalidate();
+    this.sets.setVisibility(setId, v);
   }
 
   select(hole: { setId: number; name: string } | null): void {
-    this.selected = hole;
-    this.applySelection();
-    this.loop.invalidate();
+    this.sets.select(hole);
   }
 
   // ---------------------------------------------------------------- other layers
 
-  addLayer(key: string, layer: SceneLayer): void { this.layers.add(key, layer); this.contentChanged(); }
+  addLayer(key: string, layer: SceneLayer): void {
+    this.layers.add(key, layer);
+    this.contentChanged();
+  }
 
-  removeLayer(key: string, update = true): void { if (this.layers.remove(key) && update) this.contentChanged(); }
+  removeLayer(key: string, update = true): void {
+    if (this.layers.remove(key) && update) this.contentChanged();
+  }
 
   /** A layer changed its extent, origin or visibility: the grid, «Вписать» and near / far follow. */
-  layerChanged(): void { this.layers.place(); this.contentChanged(); }
+  layerChanged(): void {
+    this.layers.place();
+    this.contentChanged();
+  }
 
   /** A tool of the string editor gets the pointer first; null — the scene alone, as before. */
   setTool(tool: ToolHandler | null): void {
@@ -353,17 +393,22 @@ export class Scene {
   }
 
   /** The ray under a canvas point (CSS px), project coordinates float64, Z not exaggerated; null — no origin yet. */
-  cursorRay(px: number, py: number): Ray | null { return projectRay(this.lastCam ?? this.rig.state(), this.rig.options(), this.size, this.origin.value, this.vexag, px, py); }
+  cursorRay(px: number, py: number): Ray | null {
+    return projectRay(this.lastCam ?? this.rig.state(), this.rig.options(), this.size, this.origin.value, this.vexag, px, py);
+  }
 
   /** clip ← project coordinates of the last frame, the size of the view and the section window. */
-  projectView(): ProjectView | null { return projectView(this.lastVp, this.origin.value, this.vexag, this.size, this.sec.inWindow); }
+  projectView(): ProjectView | null {
+    return projectView(this.lastVp, this.origin.value, this.vexag, this.size, this.sec.inWindow);
+  }
 
   // ---------------------------------------------------------------- E2E and diagnostics
 
   debug(): SceneDebug {
     const cam = this.rig.state();
-    const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, clipPlanes: this.clipPlanes.length, section: this.sec.line, sectionPlane: this.sec.plane, locked: this.rig.locked, sectionData: this.sectionData };
-    const content = { gpu: this.renderer.info, sets: [...this.holeSets.keys()], layers: this.layers.keys(), segments: this.totalSegments(), pickMs: this.pickMs };
+    const section = { clipPlanes: this.clipPlanes.length, section: this.sec.line, sectionPlane: this.sec.plane, locked: this.rig.locked, sectionData: this.sectionData };
+    const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, ...section };
+    const content = { gpu: this.renderer.info, sets: this.sets.ids(), layers: this.layers.keys(), segments: this.sets.segments(), pickMs: this.pickMs };
     return { frames: this.loop.frames, idle: this.idle, lost: this.renderer.lost, stats: this.stats, ...view, ...content };
   }
 
@@ -377,11 +422,13 @@ export class Scene {
   collarsOnScreen(limit = 500): ScreenCollar[] {
     if (!this.lastVp) return [];
     const r = this.renderer.canvas.getBoundingClientRect();
-    return collarsOnScreen(this.holeSets.values(), this.lastVp, this.vexag, { w: this.size.w, h: this.size.h, left: r.left, top: r.top }, this.sec.inWindow, limit);
+    return collarsOnScreen(this.sets.layers(), this.lastVp, this.vexag, { w: this.size.w, h: this.size.h, left: r.left, top: r.top }, this.sec.inWindow, limit);
   }
 
   /** A project point on the screen (client px) as last drawn, for the E2E; null — out of the view. */
-  screenOf(abs: Vec3): { x: number; y: number } | null { return screenOf(this.lastVp, this.origin.value, this.vexag, this.size, this.renderer.canvas, abs); }
+  screenOf(abs: Vec3): { x: number; y: number } | null {
+    return screenOf(this.lastVp, this.origin.value, this.vexag, this.size, this.renderer.canvas, abs);
+  }
 
   dispose(): void {
     this.loop.dispose();
@@ -411,26 +458,13 @@ export class Scene {
     const o = this.origin.value;
     if (!o) return [];
     const out: Extent[] = [];
-    for (const l of this.holeSets.values()) out.push({ box: l.extent(o), visible: l.visible });
+    this.sets.extents(o, out);
     this.layers.extents(o, out);
     return out;
   }
 
-  private fitBox(): Box3 { return fitBox(this.extents(), this.sec.boxTest()); }
-
-  private totalSegments(): number {
-    let n = 0;
-    for (const l of this.holeSets.values()) n += l.segments;
-    return n;
-  }
-
-  private updateFat(): void { const total = this.totalSegments(); for (const l of this.holeSets.values()) l.setFat(useFatLines(l.style.trace, total)); }
-
-  private applySelection(): void {
-    const s = this.selected;
-    const layer = s ? this.holeSets.get(s.setId) ?? null : null;
-    const index = layer && s ? holeIndex(layer.manifest, s.name) : -1;
-    this.selection.update(layer, index, this.renderer.pixelRatio, layer?.style.collar.size ?? 10, this.textures.get("circle"));
+  private fitBox(): Box3 {
+    return fitBox(this.extents(), this.sec.boxTest());
   }
 
   private contentChanged(): void {
@@ -443,12 +477,16 @@ export class Scene {
 
   private refreshGrid(): void {
     const css = getComputedStyle(this.host);
-    this.grid.update(contentBox(this.extents()), this.origin.value, { line: css.getPropertyValue("--text-dim").trim() || "#8a99a8", text: css.getPropertyValue("--text-faint").trim() || "#7d8d9e" });
+    const colors = { line: css.getPropertyValue("--text-dim").trim() || "#8a99a8", text: css.getPropertyValue("--text-faint").trim() || "#7d8d9e" };
+    this.grid.update(contentBox(this.extents()), this.origin.value, colors);
     this.grid.group.visible = this.gridOn;
   }
 
   /** Part offsets, the planes and the overlay after the scene origin moved. */
-  private placeAll(): void { for (const l of this.holeSets.values()) l.place(this.origin); this.layerChanged(); }
+  private placeAll(): void {
+    this.sets.place();
+    this.layerChanged();
+  }
 
   private depthBox(): Box3 | null {
     const box = contentBox(this.extents());
@@ -476,14 +514,14 @@ export class Scene {
     const ppuAt = (at: Vec3) => pixelsPerUnit(cam, at, h, opts);
     const ctx: FrameContext = { camera: cam, options: opts, width: w, height: h, vexag: this.vexag, pixelsPerUnit: ppuAt };
     const ppu = ppuAt(cam.target);
-    for (const l of this.holeSets.values()) l.beforeRender(ppu);
+    for (const l of this.sets.layers()) l.beforeRender(ppu);
     for (const fn of this.frameListeners) fn(ctx);
     this.layers.beforeRender(ctx);
     this.light.position.set(...cam.position);
     this.light.target.position.set(...cam.target);
     this.three.updateMatrixWorld();
     const items: LabelItem[] = [];
-    for (const l of this.holeSets.values()) l.labelItems(items);
+    for (const l of this.sets.layers()) l.labelItems(items);
     this.layers.labels(items);
     // the grid seen edge-on (a side view, a section) keeps its lines, its values would be a heap
     if (Math.abs(viewDirection(cam)[2]) > 0.15) this.grid.labelItems(items);
@@ -523,7 +561,7 @@ export class Scene {
     const t0 = performance.now();
     const { w, h } = this.size;
     const inWindow = this.sec.inWindow;
-    const hit = pickHoles(this.holeSets.values(), vp, this.vexag, px, py, w, h, inWindow);
+    const hit = pickHoles(this.sets.layers(), vp, this.vexag, px, py, w, h, inWindow);
     // no hole under the cursor: the other layers answer (lines and points first, then surfaces)
     const ray = screenRay(this.lastCam ?? this.rig.state(), this.rig.options(), ...toNdc(px, py, w, h));
     const other = hit ? null : this.layers.pick({ vp, vexag: this.vexag, px, py, width: w, height: h, inWindow, ray });
@@ -532,13 +570,14 @@ export class Scene {
     this.events.onPickLayer?.(other);
   }
 
-  private pointerMove(px: number, py: number): void { if (this.sec.draft(this.lastCam ?? this.rig.state(), this.rig.options(), this.size, this.origin.value, px, py)) this.loop.invalidate(); }
+  private pointerMove(px: number, py: number): void {
+    if (this.sec.draft(this.lastCam ?? this.rig.state(), this.rig.options(), this.size, this.origin.value, px, py)) this.loop.invalidate();
+  }
 
   /** Drops everything with GPU resources (the context is gone or the scene closes). */
   private disposeContent(): void {
-    for (const id of [...this.holeSets.keys()]) this.removeHoles(id, false);
+    this.sets.clear();
     this.layers.clear();
-    this.selection.clear();
     this.grid.dispose();
     this.sec.dispose();
     this.labels.dispose();

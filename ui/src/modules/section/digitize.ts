@@ -7,7 +7,9 @@
  *                          attributes of new lines `SECTION_SET` (the number of the series in the project),
  *                          `SECTION` (k + 1), `SECTION_NAME` — they reach the save as `new_attrs` (ADR 0015)
  *     applyEditSection()   sets them on the session; the editor calls it on every change of the section, so the
- *                          drawing plane follows `]` / `[` (one session: nothing unsaved is lost)
+ *                          drawing plane follows `]` / `[` (one session: nothing unsaved is lost); a line being
+ *                          drawn is finished first (as Enter: a polygon closes) — it stays on its own section
+ *                          with its attributes, the next click starts a new line on the new one
  *     series.digitize      clipping on, the layer of contours of the series (the one of the series; else the layer
  *                          on edit; else a new «Контуры <серия>» in the file «Серии разрезов», kept as the layer
  *                          of the series), opened on edit with the tool «Полигон»
@@ -46,6 +48,8 @@ export interface EditSection {
   attrs: Record<string, AttrValue> | undefined;
   /** changes when anything above does */
   key: string;
+  /** where points go: the plane (or the free line) and clipping — not the name of the section */
+  place: string;
   /** the active series is not read yet: the session keeps what it has */
   pending: boolean;
 }
@@ -80,15 +84,29 @@ export function editSection(keys: Record<string, unknown> = viewStore.get(), sta
   if (cur && shown.plane) {
     const on = shown.clip;
     const key = `series:${cur.row.id}:${cur.row.version}:${cur.k}:${cur.seg}:${on}:${cur.name ?? ""}`;
-    return { line: null, plane: shown.plane, clip: on, test: on ? sectionTest(cur) : null, attrs: on ? sectionAttrs(cur) : undefined, key, pending: false };
+    const p = shown.plane;
+    const place = `series:${cur.row.id}:${cur.k}:${cur.seg}:${on}:${p.origin.join(",")}:${p.v.join(",")}:${p.towards}:${p.away}`;
+    return { line: null, plane: p, clip: on, test: on ? sectionTest(cur) : null, attrs: on ? sectionAttrs(cur) : undefined, key, place, pending: false };
   }
   const key = `line:${JSON.stringify(shown.line)}:${shown.clip}:${shown.pending}`;
-  return { line: shown.line, plane: null, clip: shown.clip, test: null, attrs: undefined, key, pending: shown.pending };
+  const place = `line:${JSON.stringify(shown.line)}:${shown.clip}`;
+  return { line: shown.line, plane: null, clip: shown.clip, test: null, attrs: undefined, key, place, pending: shown.pending };
 }
+
+/** The place each session draws on now. */
+const places = new WeakMap<EditSession, string>();
 
 /** The session draws on the section: its plane, clipping, the lock of «текущий разрез» and the new attributes. */
 export function applyEditSection(s: EditSession, sec: EditSection = editSection()): void {
   if (sec.pending) return;
+  const was = places.get(s);
+  places.set(s, sec.place);
+  if (s.drawing && was !== undefined && was !== sec.place) {
+    // the section changed under a line being drawn (`]`, the tree, Claude): it ends where it was drawn
+    const before = s.message;
+    s.finishDrawing();
+    if (s.message === before) s.say("Линия завершена на прежнем разрезе: следующий щелчок начинает новую на этом");
+  }
   s.section = sec.line;
   s.plane = sec.plane;
   s.clip = sec.clip;

@@ -1,7 +1,8 @@
 /**
  * «Менеджер серий» (ТЗ 8.1; ADR 0016 §4): the list of the series of the project (create, copy, delete — after an
  * own question, make active), the parameters of the chosen one (its window «Параметры…»), the lines of its
- * sections on a plan and the table of its sections with their own windows (`SeriesTable.tsx`).
+ * sections on a plan and the table of its sections with their own windows (`SeriesTable.tsx`). Every action is a
+ * command of the registry (`series.copy`, `series.delete`, `series.activate`): logged, with its reason when off.
  */
 import { useMemo, useState } from "react";
 import { useApp } from "../../shell/AppContext";
@@ -11,12 +12,12 @@ import { emptyOverview, overviewBounds, planFrame, seriesTraces } from "../../vi
 import { viewStore } from "../scene/bind";
 import { currentScene } from "../scene/sceneHost";
 import type { SeriesRow } from "./seriesApi";
-import { activateSeries, copySeries, deleteSeries, openNewSeries, openSeriesParams } from "./seriesActions";
+import { openNewSeries, openSeriesParams } from "./seriesActions";
 import { fmt, newForm, SHADOW_TITLES, TYPE_TITLES } from "./seriesForm";
 import { boxCorners, geometryOf, seriesStore, visibleBoxes } from "./seriesState";
 import { SeriesLines } from "./SectionMap";
 import { SeriesTable } from "./SeriesTable";
-import { freeLine, sectionOf } from "./state";
+import { freeLine, activeSeriesOf } from "./state";
 
 const PW = 300;
 const PH = 200;
@@ -59,19 +60,18 @@ function SeriesPlan({ row, current }: { row: SeriesRow; current: number }) {
 export function SeriesManager({ selected: initial }: { selected?: number }) {
   const app = useApp();
   const state = useStore(seriesStore, (s) => s);
-  const active = useStore(viewStore, (k) => sectionOf(k).series ?? null);
+  const active = useStore(viewStore, activeSeriesOf);
   const [picked, setPicked] = useState<number | null>(initial ?? active?.id ?? null);
   const [error, setError] = useState<string | null>(null);
   const row = state.list.find((r) => r.id === picked) ?? state.list[0] ?? null;
-  const note = (text: string) => app.store.set({ statusNote: text });
-  const act = async (fn: () => Promise<void> | void) => {
+  /** A command of the registry: its result in the status line, its refusal under the table. */
+  const act = async (command: "series.copy" | "series.delete" | "series.activate", seriesId: number) => {
     setError(null);
-    try {
-      await fn();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    const r = await app.registry.execute(command, { series_id: seriesId });
+    if (r.ok) app.store.set({ statusNote: r.result });
+    else setError(r.result);
   };
+  const off = (command: string) => app.registry.reason(command) ?? undefined;
   const create = () => openNewSeries(newForm(freeLine(viewStore.get()), boxCorners(visibleBoxes(app.store.get().view.hidden))));
   return (
     <div className={css.win} data-testid="series-manager">
@@ -80,7 +80,7 @@ export function SeriesManager({ selected: initial }: { selected?: number }) {
           <div className={css.layers} role="listbox" aria-label="Серии разрезов" style={{ maxHeight: "none", flex: 1 }}>
             {state.list.length === 0 && <span className={css.note}>{state.loaded ? "В проекте нет серий разрезов" : "Список серий читается…"}</span>}
             {state.list.map((r) => (
-              <div key={r.id} role="option" aria-selected={r.id === row?.id} tabIndex={0} data-testid={`series-row-${r.id}`} className={css.check} style={{ cursor: "pointer", fontWeight: r.id === row?.id ? 600 : undefined }} onClick={() => setPicked(r.id)} onDoubleClick={() => act(() => note(activateSeries(r.id, 0)))} onKeyDown={(e) => e.key === "Enter" && setPicked(r.id)}>
+              <div key={r.id} role="option" aria-selected={r.id === row?.id} tabIndex={0} data-testid={`series-row-${r.id}`} className={css.check} style={{ cursor: "pointer", fontWeight: r.id === row?.id ? 600 : undefined }} onClick={() => setPicked(r.id)} onDoubleClick={() => void act("series.activate", r.id)} onKeyDown={(e) => e.key === "Enter" && setPicked(r.id)}>
                 <span>{r.number}.</span> <span>{r.name}</span>
                 <span className={css.count} style={{ marginLeft: "auto", color: "var(--text-faint)" }}>
                   {active?.id === r.id ? "● " : ""}
@@ -93,10 +93,10 @@ export function SeriesManager({ selected: initial }: { selected?: number }) {
             <button type="button" className={css.btn} data-testid="series-new" onClick={create}>
               Создать…
             </button>
-            <button type="button" className={css.btn} data-testid="series-copy" disabled={!row} onClick={() => row && act(async () => note(`Создана копия «${(await copySeries(row.id)).name}»`))}>
+            <button type="button" className={css.btn} data-testid="series-copy" disabled={!row || !!off("series.copy")} title={off("series.copy")} onClick={() => row && void act("series.copy", row.id)}>
               Копировать
             </button>
-            <button type="button" className={css.btn} data-testid="series-delete" disabled={!row} onClick={() => row && act(async () => void ((await deleteSeries(row.id)) && note(`Серия «${row.name}» удалена`)))}>
+            <button type="button" className={css.btn} data-testid="series-delete" disabled={!row || !!off("series.delete")} title={off("series.delete")} onClick={() => row && void act("series.delete", row.id)}>
               Удалить
             </button>
           </div>
@@ -110,7 +110,7 @@ export function SeriesManager({ selected: initial }: { selected?: number }) {
                 <button type="button" className={css.btn} data-testid="series-edit" onClick={() => openSeriesParams(row)}>
                   Параметры…
                 </button>
-                <button type="button" className={css.primary} data-testid="series-activate" disabled={active?.id === row.id} onClick={() => act(() => note(activateSeries(row.id, 0)))}>
+                <button type="button" className={css.primary} data-testid="series-activate" disabled={active?.id === row.id} onClick={() => void act("series.activate", row.id)}>
                   Сделать активной
                 </button>
               </div>

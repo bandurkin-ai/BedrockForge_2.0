@@ -9,7 +9,8 @@ import type { SnapSource } from "../src/edit/snap";
 import type { EditPointer } from "../src/edit/tools";
 import { applyEditSection, editSection, sectionAttrs } from "../src/modules/section/digitize";
 import type { SeriesRow } from "../src/modules/section/seriesApi";
-import { currentSection, type SeriesState } from "../src/modules/section/seriesState";
+import { currentSection, pickSection, type SeriesState } from "../src/modules/section/seriesState";
+import { pickRequest } from "../src/viz/mesh/exact";
 import { planeQuery, planeSectionQuery, setSnapQuery, SnapFeeder, windowClip, windowSource } from "../src/modules/lines/snapSources";
 import type { LineLayerInfo } from "../src/modules/scene/objects";
 import { setCoreTarget } from "../src/shell/api";
@@ -99,6 +100,55 @@ describe("editSection", () => {
     s.lock.setScope("all");
     s.pointer(click(20, 300));
     expect(s.selection.lines).toEqual([a.id]);
+  });
+});
+
+describe("10.28: the section changes under a line being drawn", () => {
+  it("`]` in the middle of a polygon ends it on its own section (as Enter); the next click starts one on the new", async () => {
+    const s = session();
+    applyEditSection(s, editSection(keys(2), STATE));
+    s.setTool("polygon");
+    for (const [x, y] of [[20, 300], [180, 310], [170, 120]]) {
+      s.pointer(click(x, y));
+      await tick();
+    }
+    expect(s.drawing).not.toBeNull();
+    // the name of the section read later: the same place, the drawing goes on
+    const unnamed = { ...STATE, tables: {} };
+    applyEditSection(s, editSection(keys(2), unnamed));
+    applyEditSection(s, editSection(keys(2), STATE));
+    expect(s.drawing).not.toBeNull();
+    applyEditSection(s, editSection(keys(3), STATE)); // `]`
+    expect(s.drawing).toBeNull();
+    expect(s.layer.lines).toHaveLength(1);
+    expect(s.layer.lines[0].closed).toBe(true);
+    expect(s.message).toMatch(/Линия завершена на прежнем разрезе/);
+    s.pointer(click(40, 280));
+    await tick();
+    expect(s.layer.lines).toHaveLength(2); // a new line, not the old one continued on section 4
+    const g = currentSection(keys(0), STATE)!.geom;
+    for (const p of s.layer.lines[0].points) expect(Math.abs(g.local(p as Vec3, 2)[2])).toBeLessThanOrEqual(1e-9);
+    expect(Math.abs(g.local(s.layer.lines[1].points[0] as Vec3, 3)[2])).toBeLessThanOrEqual(1e-9);
+    s.finishDrawing();
+    const header = decodeBfa1<{ new_attrs: Record<string, Record<string, unknown>> }>(s.saveBody()).header;
+    expect(header.new_attrs[0]).toMatchObject({ SECTION: 3 });
+    expect(Object.keys(header.new_attrs)).toHaveLength(1); // the one-point line of section 4 went away on finish
+  });
+});
+
+describe("10.28: the exact pick under a series is clipped by the window of its section", () => {
+  it("pickSection gives the plane of the series; pickRequest — its half-spaces (was `clip: null`)", () => {
+    const cur = currentSection(keys(2), STATE)!;
+    const sec = pickSection(keys(2), STATE);
+    expect(sec).toEqual({ line: null, clip: true, plane: cur.plane });
+    const ray = { origin: [X0, Y0, 500] as Vec3, dir: [0, 0, -1] as Vec3 };
+    expect(pickRequest(ray, [3], sec.line, sec.clip, sec.plane).clip).toEqual(halfSpaces(cur.plane));
+    expect(pickRequest(ray, [3], null, false, cur.plane).clip).toBeNull();
+    // the free line: its window, as before
+    const line = { x0: X0, y0: Y0, az: 45, length: null, towards: 10, away: 20 };
+    const free = pickSection({ section: { line, clip: true } }, STATE);
+    expect(free).toEqual({ line, clip: true, plane: null });
+    expect(pickRequest(ray, [3], free.line, free.clip, free.plane).clip).toHaveLength(2);
   });
 });
 

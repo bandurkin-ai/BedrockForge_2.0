@@ -10,6 +10,7 @@ import type { Command } from "../../shell/commands";
 import type { RibbonTab } from "../../shell/ribbonConfig";
 import type { ViewState } from "../../shell/workspace";
 import { lockCommand } from "./lockView";
+import type { ShadowMode } from "./seriesApi";
 import { seriesView } from "./state";
 
 const id = { series_id: { type: "integer" as const, description: "Номер объекта серии (id из списка серий)" } };
@@ -41,6 +42,14 @@ export const seriesCommands: Command[] = [
   { id: "series.rename", title: "Переименовать серию", description: "Новое название серии разрезов.", params: { ...id, name: { type: "string" } }, required: ["series_id", "name"], confirm: true },
   { id: "series.copy", title: "Копировать серию", description: "Копия серии под новым номером (те же параметры).", params: id, required: ["series_id"], confirm: true },
   { id: "series.delete", title: "Удалить серию", description: "Удалить серию разрезов; контуры, оцифрованные на её разрезах, остаются.", params: id, required: ["series_id"], confirm: true },
+  {
+    id: "series.window",
+    title: "Окно разреза серии",
+    description: "Своё окно разреза k серии (k — номер с 1, как в таблице разрезов): towards / away — к себе / от себя, м (> 0; не заданная сторона остаётся, как сейчас). Без towards и away — окно серии. У ломаного разреза окно — коридор (в параметрах серии).",
+    params: { ...id, k: { type: "integer" }, towards: { type: "number" }, away: { type: "number" } },
+    required: ["series_id", "k"],
+    confirm: true,
+  },
   { id: "series.activate", title: "Сделать серию активной", description: "Показать разрез серии: k — номер разреза, как в интерфейсе (с 1; у ломаного — сегмент); без k — первый. Включает отсечение по окну разреза.", params: { ...id, k: { type: "integer" } }, required: ["series_id"] },
   { id: "series.first", title: "Первый разрез", description: "Первый разрез активной серии (Home при фокусе 3D-окна)." },
   { id: "series.prev", title: "Предыдущий разрез", description: "Предыдущий разрез активной серии (у ломаного — сегмент); без серии — линия разреза на ширину окна назад." },
@@ -49,14 +58,24 @@ export const seriesCommands: Command[] = [
   { id: "series.goto", title: "Перейти к разрезу", description: "Разрез активной серии по имени (например «5050N») или номеру с 1; без них — окно ввода с подсказками (Ctrl+G).", params: { name: { type: "string" }, number: { type: "integer" } } },
   lockCommand,
   { id: "series.surfaces", title: "Часть каркаса в окне", description: "Под разрезом серии каркасы показаны линиями сечения; on — показывать и сам каркас, обрезанный окном разреза (без on — переключить).", params: { on: { type: "boolean" } } },
-  { id: "series.shadow", title: "Тень", description: "Тень активной серии — контуры соседних разрезов: none (нет), prev (предыдущий), next (следующий), both (оба).", params: { mode: shadow }, required: ["mode"] },
+  { id: "series.shadow", title: "Тень", description: "Тень активной серии — контуры соседних разрезов: none (нет), prev (предыдущий), next (следующий), both (оба); без mode — переключить: выключить тень или показать предыдущий разрез.", params: { mode: shadow } },
   { id: "series.digitize", title: "Контур на разрезе", description: "Оцифровка контура на текущем разрезе серии: отсечение по окну, правка слоя контуров серии. layer_id — слой линий для контуров; без него — слой серии (или новый).", params: { layer_id: { type: "integer" } }, stage: "Э10" },
   { id: "series.stitch", title: "Каркас по серии", description: "Окно «Каркас по серии»: связи контуров соседних разрезов и построение каркаса.", stage: "Э10" },
   { id: "series.print", title: "Печать серии", description: "Пакетная печать разрезов серии по макету (этап Э22)." },
 ];
 
+/** The pressed buttons of the tab: the view locked, «Часть каркаса в окне», the shadow of the active series. */
+export interface SeriesFlags {
+  locked: boolean;
+  surfaces: boolean;
+  /** null — no active series */
+  shadow: ShadowMode | null;
+}
+
 /** The ribbon tab «Разрезы» (ТЗ 8.1.5): a button for every command of series. */
-export function seriesTab(view: Pick<ViewState, "clip">, locked = false, surfaces = seriesView.get().surfaces): RibbonTab {
+export function seriesTab(view: Pick<ViewState, "clip">, flags: Partial<SeriesFlags> = {}): RibbonTab {
+  const { locked = false, surfaces = seriesView.get().surfaces, shadow = null } = flags;
+  const shadowOn = shadow !== null && shadow !== "none";
   return {
     id: "sections",
     title: "Разрезы",
@@ -84,10 +103,10 @@ export function seriesTab(view: Pick<ViewState, "clip">, locked = false, surface
       {
         title: "Вид",
         items: [
-          { command: "series.lock", label: "Зафиксировать вид", icon: "lock", hint: "Камера по нормали к разрезу, без вращения", shortcut: "l", active: locked },
+          { command: "series.lock", label: "Зафиксировать вид", icon: "lock", hint: "Камера по нормали к разрезу, без вращения. В правке стрингов при активной серии L — этот вид, инструмент «Линия» — Shift+L", shortcut: "l", active: locked },
           { command: "section.clip", label: "Отсечение", icon: "vwClip", small: true, active: view.clip },
           { command: "series.surfaces", label: "Часть каркаса в окне", icon: "wireframe", hint: "Кроме линий сечения — сам каркас, обрезанный окном разреза", small: true, active: surfaces },
-          { command: "series.shadow", args: { mode: "prev" }, label: "Тень", icon: "copy", hint: "Контуры предыдущего разреза серым пунктиром", small: true },
+          { command: "series.shadow", label: "Тень", icon: "copy", hint: shadowOn ? "Тень включена — щелчок выключает" : "Контуры предыдущего разреза серым пунктиром", small: true, active: shadowOn },
         ],
       },
       {

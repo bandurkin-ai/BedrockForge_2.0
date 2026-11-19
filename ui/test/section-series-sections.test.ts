@@ -75,7 +75,7 @@ function harness(cancellable = true) {
   return { s, loads, cancelled, posts, shown, marks, pending, answer, tick, flush };
 }
 
-const target = (index: number, extra: Partial<SeriesTarget> = {}): SeriesTarget => ({ seriesId: 7, version: 1, polyline: false, index, steps: 10, wireframes: [[1, 1], [2, 1], [3, 4]], ...extra });
+const target = (index: number, extra: Partial<SeriesTarget> = {}): SeriesTarget => ({ seriesId: 7, geometry: "g1", polyline: false, index, steps: 10, wireframes: [[1, 1], [2, 1], [3, 4]], ...extra });
 
 describe("the sections of wireframes on a series", () => {
   it("BFA1 series_section split per wireframe, float64 kept; the paths of a packet ≤ 200 wireframes each", () => {
@@ -160,7 +160,7 @@ describe("the sections of wireframes on a series", () => {
     h.s.set(target(0, { wireframes: [[1, 1], [2, 1], [3, 5]] }));
     expect(h.posts).toHaveLength(2);
     expect(h.loads.at(-1)).toContain("sections/0/"); // asked again: the kept lines were of the old geometry
-    h.s.set(target(0, { version: 2, wireframes: [[1, 1], [2, 1], [3, 5]] }));
+    h.s.set(target(0, { geometry: "g2", wireframes: [[1, 1], [2, 1], [3, 5]] }));
     expect(h.posts).toHaveLength(3);
     // no wireframes shown — nothing to cut, the lines leave
     h.s.set(target(0, { wireframes: [] }));
