@@ -40,12 +40,22 @@ const SERIES_K_MAX = 5000;
 const SERIES_SEG_MAX = 1000;
 const int = (v: unknown, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < max;
 
-/** `section.series` as the core reads it (not strict): no id — no series; a broken k is 0, a broken seg — null. */
+/** The answer of `normalizeSeries` per stored key: the same key — the same object (a stable snapshot of `useStore`). */
+const normalized = new WeakMap<object, ActiveSeries | null>();
+
+/**
+ * `section.series` as the core reads it (not strict): no id — no series; a broken k is 0, a broken seg — null. The
+ * same stored key gives the same object: `useStore(viewStore, (k) => sectionOf(k).series)` is a snapshot of
+ * `useSyncExternalStore`, and a new object on every read is an endless render (React #185) once a series is active.
+ */
 export function normalizeSeries(raw: unknown): ActiveSeries | null {
   if (!raw || typeof raw !== "object") return null;
+  const known = normalized.get(raw);
+  if (known !== undefined) return known;
   const r = raw as Record<string, unknown>;
-  if (!int(r.id, 1e12) || r.id === 0) return null;
-  return { id: r.id, k: int(r.k, SERIES_K_MAX) ? r.k : 0, seg: int(r.seg, SERIES_SEG_MAX) ? r.seg : null };
+  const out = !int(r.id, 1e12) || r.id === 0 ? null : { id: r.id, k: int(r.k, SERIES_K_MAX) ? r.k : 0, seg: int(r.seg, SERIES_SEG_MAX) ? r.seg : null };
+  normalized.set(raw, out);
+  return out;
 }
 
 export interface SectionKey {

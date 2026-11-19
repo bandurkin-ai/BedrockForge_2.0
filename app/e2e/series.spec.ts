@@ -7,7 +7,7 @@
 //     coordinates (squares 20 × 20 m, Ctrl+S on each, `]` between them) — the shadow shows the contour of the
 //     section before; «Каркас по серии» → one body of three contours → a closed wireframe of 30 000 m³ (the default
 //     caps reach Δ/2 beyond the end sections, as Т8.1-4); the tree «Серии разрезов» — a click goes to the section.
-//  2. The demo project: «Серия через скважину» — every station of the hole is in the window of the section and drawn
+//  2. The demo project: «Серия через скважину» of the most inclined hole — every station of the hole is in the window of the section and drawn
 //     (Т8.1-7); the step `]` timed to the mark of the data of the section (`Scene.debug().sectionData`) on a series of
 //     26 sections over the ore body, cold and prefetched (k + 1 read in idle time) → bench/out/series_step.json
 //     (budgets.json → external.series_step). The shadow of the ore series: the contours of the section before.
@@ -73,11 +73,14 @@ async function sceneKey(page: Page, key: string): Promise<void> {
   await page.keyboard.press(key);
 }
 
-/** The section shown: «разрез n из 5 · name» in the status line and the data of the section k ready. */
-async function shown(page: Page, n: number, name: string, seriesId: number): Promise<void> {
+/**
+ * The section shown: «разрез n из 5 · name» in the status line; with wireframes in the project also the mark of the
+ * data of section k (`sectionData`; none while there is no wireframe to cut).
+ */
+async function shown(page: Page, n: number, name: string, seriesId: number, data = false): Promise<void> {
   await expect(status(page)).toHaveText(`Серия «Рудное тело» · разрез ${n} из 5 · ${name}`, { timeout: 15_000 });
-  await expect.poll(async () => (await state(page)).sectionData?.k ?? (await state(page)).exact.series.k, { timeout: 15_000 }).toBe(n - 1);
-  expect((await state(page)).exact.series.series).toBe(seriesId);
+  if (!data) return;
+  await expect.poll(async () => (await state(page)).sectionData, { timeout: 30_000 }).toMatchObject({ series: seriesId, k: n - 1, ready: true });
 }
 
 /** A closed square 20 × 20 m in the section Y = y (X 990…1010, Z −10…10), typed in: absolute start, then @@. */
@@ -104,6 +107,7 @@ test("series: «Новая серия» K = 5, ] [ End Home Ctrl+G, L keeps the 
   const { app, page } = await launch({ BF_E2E: "1" });
   try {
     await setWindowSize(app, 1024, 640); // as small as on the Windows runner
+    page.on("pageerror", (e) => console.log(`PAGEERROR ${e.message}\n${e.stack}`));
     await emptyProject(page, "Серии разрезов");
     // the edges of a box 20 × 20 m along the series: the 3D window has something to fit and to clip
     const guide = await newLineLayer(page, "Опоры");
@@ -247,6 +251,7 @@ test("series: «Новая серия» K = 5, ] [ End Home Ctrl+G, L keeps the 
     const follow = page.getByTestId("stitch-follow");
     await expect(follow).toHaveAttribute("data-status", "done", { timeout: 120_000 });
     const stitchS = (Date.now() - t0) / 1000;
+    console.log(`series: «Создать каркас» → задание готово за ${stitchS.toFixed(1)} с`);
     const wfs = (await coreApi<{ wireframes: Wf[] }>(page, "GET", "/wireframes")).body.wireframes;
     expect(wfs).toHaveLength(1);
     expect(wfs[0].stats.closed).toBe(true);
@@ -261,8 +266,9 @@ test("series: «Новая серия» K = 5, ] [ End Home Ctrl+G, L keeps the 
     const node = page.getByTestId(`series-tree-${id}`);
     await node.scrollIntoViewIfNeeded();
     await node.click();
-    await page.getByTestId(`series-tree-${id}-4`).click();
-    await shown(page, 5, "5100N", id);
+    await page.getByTestId(`series-tree-${id}-3`).click();
+    await shown(page, 4, "5075N", id, true);
+    expect((await state(page)).exact.sections.find((s) => s.wireframe === wfs[0].id)?.lines).toBe(1);
     await page.screenshot({ path: shot("series-tree.png") });
   } finally {
     await close(app);
@@ -321,7 +327,9 @@ test("series: the demo — «Серия через скважину» shows the 
       const [a, b] = [h.stations[0], h.stations[h.stations.length - 1]];
       return Math.hypot(b[1] - a[1], b[2] - a[2]);
     };
-    const hole = [...traj].sort((a, b) => reach(b) - reach(a))[0];
+    // a hole, not the trench «К-01» (horizontal at the surface): deeper than 20 m, the farthest in plan
+    const drop = (h: { stations: number[][] }) => Math.abs(h.stations[0][3] - h.stations[h.stations.length - 1][3]);
+    const hole = traj.filter((h) => drop(h) > 20).sort((a, b) => reach(b) - reach(a))[0];
     expect(reach(hole), "no inclined hole in the demo").toBeGreaterThan(5);
     expect((await run(page, "series.through_hole", { hole_id: hole.name, set_id: set.id })).ok).toBe(true);
     const form = page.getByTestId("series-window");
@@ -413,12 +421,12 @@ test("series: the demo — «Серия через скважину» shows the 
     const st = await state(page);
     const out = {
       sections: bench.count,
-      step_ms: r1(p95(coldMs)),
       step_median_ms: r1(median(coldMs)),
+      step_p95_ms: r1(p95(coldMs)),
       step_max_ms: r1(Math.max(...coldMs)),
       step_mark_median_ms: r1(median(cold.filter((s) => !s.mark.prepared).map((s) => s.mark.ms ?? 0))),
-      step_prefetched_ms: r1(p95(warmMs)),
       step_prefetched_median_ms: r1(median(warmMs)),
+      step_prefetched_p95_ms: r1(p95(warmMs)),
       steps_cold: coldMs.length,
       steps_prefetched: warmMs.length,
       section_lines: median(lines),
@@ -432,9 +440,10 @@ test("series: the demo — «Серия через скважину» shows the 
     fs.writeFileSync(path.join(ROOT, "bench", "out", "series_step.json"), JSON.stringify(out, null, 2));
     console.log(`series_step: ${JSON.stringify(out)}`);
     expect(out.section_lines).toBeGreaterThan(0);
-    // what the test holds (the packaged .exe on a slow runner): ×4 of the budget
-    expect(out.step_ms).toBeLessThanOrEqual(1200);
-    expect(out.step_prefetched_ms).toBeLessThanOrEqual(400);
+    // budgets.json → external.series_step holds the medians (300 / 100 ms; p95 of ~15 steps is their maximum, noisy
+    // under SwiftShader); the test holds ×4 of them — the same file runs on the packaged .exe of the Windows runner
+    expect(out.step_median_ms).toBeLessThanOrEqual(1200);
+    expect(out.step_prefetched_median_ms).toBeLessThanOrEqual(400);
   } finally {
     await close(app);
   }

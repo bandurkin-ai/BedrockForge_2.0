@@ -12,6 +12,10 @@ import { overviewBounds, PLAN_H, PLAN_W, planFrame, seriesTraces, type PlanFrame
 import { viewStore } from "../scene/bind";
 import css from "../scene/Scene.module.css";
 import { currentSection, seriesStore } from "./seriesState";
+import type { SectionKey } from "./state";
+
+/** The mini-plan (when open) shows the free line, a line being drawn or the traces of the active series. */
+export const miniPlanWanted = (key: Pick<SectionKey, "line" | "series">, drawing: boolean): boolean => key.line !== null || !!key.series || drawing;
 
 const TRACE = { stroke: "var(--accent)", strokeWidth: 1, opacity: 0.45, fill: "none" } as const;
 

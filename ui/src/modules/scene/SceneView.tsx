@@ -16,7 +16,7 @@ import { drawHint } from "../../viz/section/draw";
 import { emptyOverview } from "../../viz/section/miniPlan";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
-import { SectionMap } from "../section/SectionMap";
+import { miniPlanWanted, SectionMap } from "../section/SectionMap";
 import { sectionPoint } from "../section/bind";
 import { sectionOf, sectionStore } from "../section/state";
 import { applySectionKey } from "../section/seriesState";
@@ -140,7 +140,8 @@ function SceneMount() {
   const hasSets = useStore(tablesStore, (s) => s.sets.length > 0);
   const hasObjects = useStore(sceneObjects, (o) => o.files.length > 0 || o.rasters.length > 0 || o.wireframes.length > 0);
   const [ready, setReady] = useState(false);
-  const { line, clip } = sectionOf(keys);
+  const sectionKey = sectionOf(keys);
+  const { line, clip } = sectionKey;
 
   useEffect(() => {
     const el = host.current;
@@ -250,7 +251,7 @@ function SceneMount() {
     };
   }, [app]);
 
-  const showMap = ready && mapOpen && (line !== null || draw.stage !== "off");
+  const showMap = ready && mapOpen && miniPlanWanted(sectionKey, draw.stage !== "off");
   const overview = useMemo(() => (showMap ? currentScene()?.planOverview() ?? emptyOverview() : emptyOverview()), [showMap, ui.content, ui.sets]);
   const hint = drawHint(draw);
 
