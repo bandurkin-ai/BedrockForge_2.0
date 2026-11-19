@@ -5,7 +5,9 @@ A field: {key, label, type, required?, default?, options? [{value, label}], kind
 Types: `wireframe` / `wireframes` (an object id / ids; `kinds` — «closed» or «open» limits the choice),
 `lines` (contours: [{layer_id, lines}] — `lines` are `lid`s, null — every line of the layer), `line`
 ({layer_id, line}: one closed line; `line` null — the only closed line of the layer), `layers` and `sets`
-(ids), `number`, `integer`, `bool`, `choice`, `vector` (three numbers), `triangles` (picked in the 3D window).
+(ids), `number`, `integer`, `bool`, `choice`, `vector` (three numbers), `triangles` (picked in the 3D window),
+`series` (the id of a series of sections), `links` (pairs of contours [{layer_id, line}, {layer_id, line}] — the
+table of «Каркас по серии»; null — the automatic links, `POST /section-series/{id}/links`).
 `when` — {key: value}: the field is shown and sent only while that other field has that value. Pure data: no
 numpy, no database.
 """
@@ -269,6 +271,20 @@ OPERATIONS: dict[str, dict[str, Any]] = {
             _f("level", "Уровень Z", "number", unit="м", when={"mode": "level"}),
             _f("polygon", "Полигон в плане", "line"),
             _f("report_only", "Только отчёт", "bool", default=False),
+        ],
+    },
+    "stitch_series": {
+        "title": "Каркас по серии",
+        "dialog": "stitch_series",  # the window of the series (ADR 0016 §8): the table of links, the bodies
+        "result": MESH,
+        "fields": [
+            _f("series_id", "Серия разрезов", "series", required=True),
+            _f("layer_ids", "Слои контуров (по умолчанию — слой контуров серии)", "layers"),
+            _f("links", "Связи контуров (по умолчанию — автоматические)", "links"),
+            _f("start_cap", "Начальный торец", "choice", options=CAPS, default="extend"),
+            _f("end_cap", "Конечный торец", "choice", options=CAPS, default="extend"),
+            _f("cap_distance", "Длина торца, доля шага серии", "number", default=0.5, min=0),
+            _f("single", "Одним каркасом", "bool", default=False),
         ],
     },
 }

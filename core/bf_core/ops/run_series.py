@@ -30,6 +30,7 @@ from .output import MeshOut, Output, Tick, failed, staged
 from .sources import Sources
 
 MAX_NAME = 200
+MAX_LINKS = 200_000  # links in the parameters
 LINKS_HINT = (
     "Свяжите контуры соседних разрезов в таблице связей: каждая группа — один к одному или разветвление одного "
     "контура на несколько."
@@ -55,6 +56,136 @@ def attached(src: Sources) -> SeriesSource:
     found = vars(src).get("series")
     assert isinstance(found, SeriesSource), "the series is attached by registry.precheck"
     return found
+
+
+# --- the check of the parameters (`registry.precheck`) ------------------------------------------------------
+
+
+def _series(src: Sources, value: Any) -> SeriesSource:
+    """The series, recorded in the sources (role «series», with its number and version)."""
+    import sqlalchemy as sa
+
+    from bf_core.api.errors import ApiError
+    from bf_core.db.schema import objects
+    from bf_core.sections.geometry import SeriesError, SeriesGeometry, series_geometry
+    from bf_core.sections.names import section_names
+    from bf_core.sections.schema import KIND
+
+    from . import params as P
+    from .sources import _missing
+
+    sid = P.object_id(value, "серия разрезов")
+    row = None
+    if sid is not None:
+        row = src.conn.execute(
+            sa.select(objects.c.id, objects.c.kind, objects.c.name, objects.c.version, objects.c.meta)
+            .where(objects.c.id == sid)
+        ).first()  # fmt: skip
+    if row is None:
+        raise _missing("серия разрезов", value, src.known.get("series"), "series")
+    if row.kind != KIND:
+        raise ApiError(
+            422, "wrong_kind", f"«{row.name}» — не серия разрезов.", "Выберите серию разрезов.", {"role": "series"}
+        )
+    meta = dict(row.meta) if isinstance(row.meta, dict) else {}
+    try:
+        geom = series_geometry(meta)
+        section_names(meta)
+    except SeriesError as e:
+        raise ApiError(422, e.code, e.message, e.hint or "Проверьте параметры серии.", {"role": "series"}) from e
+    if not isinstance(geom, SeriesGeometry):
+        raise P.bad(
+            "series_polyline", f"«{row.name}» — ломаный разрез: это один разрез, а каркас по серии строится по "
+            "серии параллельных разрезов.", "Выберите вертикальную или наклонную серию или серию планов.",
+        )  # fmt: skip
+    number = meta.get("number")
+    number = number if isinstance(number, int) and not isinstance(number, bool) else None
+    src.used.append(
+        {"role": "series", "kind": KIND, "id": int(row.id), "name": str(row.name), "version": int(row.version),
+         "number": number}
+    )  # fmt: skip
+    return SeriesSource(int(row.id), str(row.name), number, int(row.version), meta)
+
+
+def _link_end(raw: Any, number: int, side: str, layers: dict[int, Any]) -> dict[str, int]:
+    """{layer_id, line}: a line (`lid`) of one of the layers of the operation."""
+    from . import params as P
+
+    hint = "Обновите таблицу связей окна «Каркас по серии»."
+    if not isinstance(raw, dict):
+        raise P.bad("bad_links", f"Связь {number}: неверная ссылка на контур ({side}).", hint)
+    layer_id = P.object_id(raw.get("layer_id"), "слой контура")
+    line = raw.get("line")
+    if layer_id not in layers:
+        raise P.bad("bad_links", f"Связь {number}: слой контура ({side}) не выбран для операции.", hint)
+    layer = layers[layer_id]
+    if isinstance(line, bool) or not isinstance(line, int) or line < 0:
+        raise P.bad("bad_links", f"Связь {number}: неверный номер линии ({side}).", hint)
+    if line not in layer.lid_set:
+        raise P.bad(
+            "line_missing", f"Связь {number}: в слое «{layer.name}» нет линии {line + 1}: она удалена или слой "
+            "изменён.", hint, layer_id=layer.id, lines=[line],
+        )  # fmt: skip
+    return {"layer_id": int(layer.id), "line": int(line)}
+
+
+@dataclass
+class _Picked:
+    id: int
+    name: str
+    lid_set: set[int]
+
+
+def prepare(src: Sources, raw: dict[str, Any]) -> dict[str, Any]:
+    """The checked parameters: {series_id, layer_ids, links (null — automatic), start_cap, end_cap, cap_distance,
+    single}; the series is attached to `src` for the run."""
+    from . import params as P
+    from .registry import CAPS
+
+    series = _series(src, raw.get("series_id"))
+    ids = raw.get("layer_ids")
+    if ids is None:
+        layer_id = series.meta.get("contour_layer")
+        if not isinstance(layer_id, int) or isinstance(layer_id, bool):
+            raise P.bad(
+                "no_contours", f"У серии «{series.name}» не задан слой контуров.",
+                "Выберите слои контуров или задайте слой контуров в параметрах серии.",
+            )  # fmt: skip
+        ids = [layer_id]
+    layers: dict[int, _Picked] = {}
+    closed = 0
+    for k, value in enumerate(P.id_list(ids, "Слои контуров")):
+        layer = src.layer(value, f"layers[{k}]")
+        layers[layer.id] = _Picked(layer.id, layer.name, set(layer.lids.tolist()))
+        closed += int(layer.closed.sum())
+    if not closed:
+        raise P.bad(
+            "too_few_contours", "В выбранных слоях нет замкнутых контуров.",
+            "Замкните линии в редакторе («Замкнуть») или выберите другие слои.",
+        )  # fmt: skip
+    links = raw.get("links")
+    if links is not None:
+        if not isinstance(links, list) or len(links) > MAX_LINKS:
+            raise P.bad("bad_links", "Связи контуров заданы неверно.", "Обновите таблицу связей окна «Каркас по серии».")
+        checked = []
+        for number, link in enumerate(links, start=1):
+            if not isinstance(link, list | tuple) or len(link) != 2:
+                raise P.bad("bad_links", f"Связь {number}: ожидается пара контуров.", "Обновите таблицу связей.")
+            checked.append([_link_end(link[0], number, "первый", layers), _link_end(link[1], number, "второй", layers)])
+        links = checked
+    attach(src, series)
+    return {
+        "series_id": series.id,
+        "layer_ids": list(layers),
+        "links": links,
+        "start_cap": P.choice(raw, "start_cap", "Начальный торец", CAPS, "extend"),
+        "end_cap": P.choice(raw, "end_cap", "Конечный торец", CAPS, "extend"),
+        "cap_distance": P.number(raw, "cap_distance", "Длина торца", 0.5, positive=True),
+        "single": P.flag(raw, "single", False),
+    }
+
+
+# --- the run ----------------------------------------------------------------------------------------------------
 
 
 def _name(text: str) -> str:
@@ -101,6 +232,21 @@ def _heights(sc: Any, kept: np.ndarray, names: list[str]) -> None:
                 "empty_z", f"Разрез {names[int(sc.section[i])]}, {sc.label(i)}: у вершин нет высоты (пустая отметка "
                 "не считается нулём).", "Задайте высоты вершин в редакторе или выберите другие слои.",
             )  # fmt: skip
+
+
+def _degenerate(sc: Any, kept: np.ndarray, uw: np.ndarray, offsets: np.ndarray, names: list[str]) -> None:
+    """A contour of zero area in the plane of its section (ADR 0016 «Риски»): refused with its line and section."""
+    from bf_core.sections.links import centres
+
+    _cu, _cw, area, box = centres(uw, offsets)
+    size = np.max(box[:, 2:] - box[:, :2], axis=1)
+    flat = np.flatnonzero(np.abs(area) <= 1e-12 * np.maximum(size * size, 1e-300))
+    if len(flat):
+        i = int(kept[flat[0]])
+        raise failed(
+            "degenerate_polygon", f"Разрез {names[int(sc.section[i])]}, {sc.label(i)}: контур вырожден — у него "
+            "нулевая площадь в плоскости разреза.", "Поправьте контур в редакторе или удалите его.",
+        )  # fmt: skip
 
 
 def _given_links(sc: Any, kept: np.ndarray, links: list[Any], names: list[str], warnings: list[str]) -> np.ndarray:
@@ -184,11 +330,11 @@ def stitch_series(src: Sources, p: dict[str, Any], tick: Tick) -> Output:
             f"{skipped['short']}, вне окон разрезов — {skipped['outside']}."
         )
     section = sc.section[kept]
+    offsets = np.concatenate([[0], np.cumsum(np.diff(sc.offsets)[kept])]).astype(np.int64)
+    uw = projected(geom, np.vstack([sc.points(int(i)) for i in kept]))
+    _degenerate(sc, kept, uw, offsets, names)
     if p.get("links") is None:
-        offsets = np.concatenate([[0], np.cumsum(np.diff(sc.offsets)[kept])]).astype(np.int64)
-        xyz = np.vstack([sc.points(int(i)) for i in kept])
-        pairs, _how = auto_links(projected(geom, xyz), offsets, section, geom.step, None,
-                                 staged(tick, 0.05, 0.1, "Связи контуров"))  # fmt: skip
+        pairs, _how = auto_links(uw, offsets, section, geom.step, None, staged(tick, 0.05, 0.1, "Связи контуров"))
     else:
         pairs = _given_links(sc, kept, p["links"], names, warnings)
     found = bodies(len(kept), pairs.tolist())

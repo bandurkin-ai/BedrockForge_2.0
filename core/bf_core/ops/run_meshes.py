@@ -204,6 +204,13 @@ def clip_surface(src: Sources, p: dict[str, Any], tick: Tick) -> Output:
     return _parts(wf, f"обрезка «{surface.name}»", result, titles)
 
 
+def stitch_series(src: Sources, p: dict[str, Any], tick: Tick) -> Output:
+    """«Каркас по серии» (`run_series.py`): contours of a series → wireframes (not in `job.LINE_OPS`)."""
+    from .run_series import stitch_series as run
+
+    return run(src, p, tick)
+
+
 RUNS = {
     "edit_triangles": edit_triangles,
     "repair": repair,
@@ -215,4 +222,5 @@ RUNS = {
     "clip_plane": clip_plane,
     "clip_polygon": clip_polygon,
     "clip_surface": clip_surface,
+    "stitch_series": stitch_series,
 }

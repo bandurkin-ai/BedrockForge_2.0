@@ -21,7 +21,8 @@ ALGORITHM = 1
 
 #: Parameters that hold object ids (one or a list), at any depth of the parameters.
 REF_KEYS = frozenset(
-    {"wireframe_id", "wireframe_ids", "surface_id", "layer_id", "layer_ids", "set_ids", "a", "b", "top", "bottom"}
+    {"wireframe_id", "wireframe_ids", "surface_id", "layer_id", "layer_ids", "set_ids", "a", "b", "top", "bottom",
+     "series_id"}
 )
 
 NewId = Callable[[int], "int | None"]

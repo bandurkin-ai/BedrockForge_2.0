@@ -25,7 +25,7 @@ from bf_core.db import dialect
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
-from . import contours_router, store
+from . import contours_router, store, view_router
 from .geometry import SeriesError
 from .schema import KIND
 
@@ -167,3 +167,4 @@ def series_table(svc: Svc, series_id: int, if_none_match: IfNoneMatch = None) ->
 
 
 router.include_router(contours_router.router)  # …/{id}/contours, …/{id}/links
+router.include_router(view_router.router)  # …/{id}/sections/{k}/wireframes, …/{id}/cache
