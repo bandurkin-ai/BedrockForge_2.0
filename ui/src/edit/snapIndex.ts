@@ -109,6 +109,9 @@ export class SnapIndex {
   private ccols = 0;
   private crows = 0;
 
+  /** (cell, segment) pairs of the count pass, filled into the grids without walking the cells again */
+  private pairCell = EMPTY_I32;
+  private pairSeg = EMPTY_I32;
   private readonly seg = new Float64Array(8);
   private readonly mask = new Uint8Array(SNAP_KINDS.length);
 
@@ -287,6 +290,9 @@ export class SnapIndex {
     const cStart = this.cStart;
     const seg = this.seg;
     const scratch = new Int32Array(Math.max(cols + rows, ccols + crows) + 4);
+    let pairCell = this.pairCell;
+    let pairSeg = this.pairSeg;
+    let pairs = 0;
     for (const range of this.sRanges) {
       const segments = range.source.segments as { kind: SnapKind; xyz: Float64Array };
       const xyz = segments.xyz;
@@ -306,20 +312,35 @@ export class SnapIndex {
         sY0[g] = seg[SEG_Y0];
         sX1[g] = seg[SEG_X1];
         sY1[g] = seg[SEG_Y1];
-        // Read back as float32: the fill pass below must walk exactly the same cells.
+        // Read back as float32: the cells are those of the stored ends, as the query sees them.
         const x0 = sX0[g];
         const y0 = sY0[g];
         const x1 = sX1[g];
         const y1 = sY1[g];
         const span = Math.abs(((x1 / CELL) | 0) - ((x0 / CELL) | 0)) + Math.abs(((y1 / CELL) | 0) - ((y0 / CELL) | 0)) + 1;
-        if (span <= FINE_SPAN) {
-          sLevel[g] = 0;
-          const count = walkCells(x0, y0, x1, y1, CELL, cols, rows, scratch);
-          for (let c = 0; c < count; c++) fStart[scratch[c] + 1]++;
-        } else {
-          sLevel[g] = 1;
-          const count = walkCells(x0, y0, x1, y1, coarse, ccols, crows, scratch);
-          for (let c = 0; c < count; c++) cStart[scratch[c] + 1]++;
+        const fine = span <= FINE_SPAN;
+        sLevel[g] = fine ? 0 : 1;
+        const count = fine ? walkCells(x0, y0, x1, y1, CELL, cols, rows, scratch) : walkCells(x0, y0, x1, y1, coarse, ccols, crows, scratch);
+        if (pairs + count > pairCell.length) {
+          const size = Math.max(1024, 2 * (pairs + count), sTotal * 2);
+          const cellsGrown = new Int32Array(size);
+          const segsGrown = new Int32Array(size);
+          cellsGrown.set(pairCell.subarray(0, pairs));
+          segsGrown.set(pairSeg.subarray(0, pairs));
+          this.pairCell = pairCell = cellsGrown;
+          this.pairSeg = pairSeg = segsGrown;
+        }
+        // a coarse cell is kept as −(cell + 1)
+        for (let c = 0; c < count; c++, pairs++) {
+          const cell = scratch[c];
+          pairSeg[pairs] = g;
+          if (fine) {
+            pairCell[pairs] = cell;
+            fStart[cell + 1]++;
+          } else {
+            pairCell[pairs] = -cell - 1;
+            cStart[cell + 1]++;
+          }
         }
       }
     }
@@ -329,15 +350,11 @@ export class SnapIndex {
     if (this.cItems.length < cStart[ccells]) this.cItems = new Int32Array(cStart[ccells]);
     const fItems = this.fItems;
     const cItems = this.cItems;
-    for (let g = 0; g < sTotal; g++) {
-      const level = sLevel[g];
-      if (level === 0) {
-        const count = walkCells(sX0[g], sY0[g], sX1[g], sY1[g], CELL, cols, rows, scratch);
-        for (let c = 0; c < count; c++) fItems[fStart[scratch[c]]++] = g;
-      } else if (level === 1) {
-        const count = walkCells(sX0[g], sY0[g], sX1[g], sY1[g], coarse, ccols, crows, scratch);
-        for (let c = 0; c < count; c++) cItems[cStart[scratch[c]]++] = g;
-      }
+    // the pairs are in the order of the segments: every cell lists its segments in ascending order, as before
+    for (let i = 0; i < pairs; i++) {
+      const cell = pairCell[i];
+      if (cell >= 0) fItems[fStart[cell]++] = pairSeg[i];
+      else cItems[cStart[-cell - 1]++] = pairSeg[i];
     }
     for (let c = cells; c > 0; c--) fStart[c] = fStart[c - 1];
     fStart[0] = 0;
