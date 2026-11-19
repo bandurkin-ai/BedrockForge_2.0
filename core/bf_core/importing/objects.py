@@ -208,7 +208,7 @@ def _write_lines(ctx: JobContext, engine: sa.Engine, store: Any, g: Group, read:
         om.MEDIA,
         {"encoding": summary["encoding"], "sidecars": summary["sidecars"]},
         file_id,
-        summary["kind"],
+        "lines" if summary["kind"] == "omf" else summary["kind"],  # the line sets of an OMF file
         {k: summary["totals"][k] for k in LINE_TOTALS},
     )
 
@@ -410,6 +410,9 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
                     if written.companions:  # the other file of a pair, chosen or found next to the file
                         item.companions.update(written.companions)
                         item.settings["sidecars"] = sorted(path.name for path in written.companions.values())
+            for volume in read.volumes:  # block models of an OMF file: `object_blocks.py` (Э11.3)
+                ctx.log(f"{label}: объём «{volume.name}» не загружен: блочные модели OMF в этой сборке не читаются",
+                        "warn")  # fmt: skip
             if item is not None:
                 done.append(item)
             del read  # keep the memory for the next file

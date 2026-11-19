@@ -108,7 +108,7 @@ def legend_labels(f: OmfFile, data: dict[str, Any], what: str) -> list[str] | No
     return None
 
 
-def _codes(values: list[Any]) -> tuple[np.ndarray, list[str]]:
+def text_codes(values: list[Any]) -> tuple[np.ndarray, list[str]]:
     """Codes of texts in the order of first appearance; an empty text is −1."""
     labels: dict[str, int] = {}
     codes = np.empty(len(values), dtype=np.int32)
@@ -143,7 +143,7 @@ def column(f: OmfFile, data: dict[str, Any], n: int, what: str) -> tuple[str, np
         values = f.array(data.get("array"), what, rows=n)
         if isinstance(values, np.ndarray):
             values = values.tolist()
-        codes, labels = _codes(values)
+        codes, labels = text_codes(values)
         return "category", codes, labels
     return None
 

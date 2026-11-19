@@ -205,6 +205,7 @@ def write_meshes(
 
     label, who = g.main.name, author()
     meta = {"format": read.format, "label": read.label, "filename": label}
+    crs = read.crs.wkt if read.crs is not None else None  # OMF: the CRS of its project (a mesh file has none)
     out = Written()
     pending: list[tuple[Any, Any, list[str]]] = []  # (staged, mesh, its notes)
     held = [0]  # triangles of `pending`
@@ -224,7 +225,8 @@ def write_meshes(
                     name = unique_name(mesh.name, taken, ws.MAX_NAME)
                     wf_id = src.commit_mesh(
                         conn, store, staged, mesh, name=name, meta={**meta, "warnings": notes[:MAX_NOTES]},
-                        folder=folder, state="building", job_id=ctx.id, author=who,
+                        folder=folder, state="building", job_id=ctx.id, author=who, crs=crs,
+                        dtm=True if mesh.source.get("dtm") else None,  # OMF: «BedrockForge: ЦТМ» (ADR 0017 решение 8)
                     )  # fmt: skip
                     ids.append(wf_id)
                     closed += bool(staged.stats.get("closed"))

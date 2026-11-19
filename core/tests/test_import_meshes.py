@@ -172,11 +172,11 @@ def test_composition_with_wireframes(files: dict[str, Path], project) -> None:  
             ("ore.dm", {".dm": "nodes.dm"})
         ] and rest == []
     assert [g.main.name for g in plan(paths(files, "nodes.dm"))[0]] == ["nodes.dm"]
-    # what does not load says why: a later stage, a DWG without the converter (the text of Д-13)
-    later = files["one.obj"].with_name("model.omf")
-    later.write_bytes(b"OMF")
-    seen = inspect_files([str(later)])
-    assert seen["files"] == [] and "OMF" in seen["rest"][0]["message"] and ".tridb" in seen["rest"][0]["hint"]
+    # what does not load says why: a broken OMF, a DWG without the converter (the text of Д-13)
+    broken = files["one.obj"].with_name("model.omf")
+    broken.write_bytes(b"OMF")
+    seen = inspect_files([str(broken)])
+    assert seen["rest"] == [] and seen["files"][0]["error"]["code"] == "omf_damaged" and seen["files"][0]["error"]["hint"]
 
 
 def test_dwg_without_the_converter_is_told(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -520,7 +520,7 @@ def test_broken_wireframes_and_broken_files(  # type: ignore[no-untyped-def]
             run_job(project.folder, {"files": [str(p) for p in bad]})
         assert err.value.code == code and bad[0].name in err.value.message and err.value.hint
     with pytest.raises(JobError) as err:
-        run_job(project.folder, {"files": [str(files["one.obj"].with_suffix(".omf"))]})
+        run_job(project.folder, {"files": [str(files["one.obj"].with_suffix(".bmf"))]})
     assert err.value.code == "nothing_to_import" and ".tridb" in err.value.hint
     assert state_of(project.engine, project.folder) == before and len(before["objects"]) == len(was["objects"]) + 3
 

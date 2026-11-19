@@ -396,34 +396,38 @@ class OmfFile:
             raise damaged(f"{what}: двоичный блок за пределами данных файла (файл обрезан или повреждён).")
         return Block(start, length, str(dtype), width)
 
-    def inflate(self, block: Block, what: str, rows: int | None = None) -> Iterator[bytes]:
-        """The bytes of a block in portions of ≤ `CHUNK`. `rows` — the size known in advance: exactly rows × width
-        values; otherwise at most `MAX_RATIO` × the block length and `MAX_VALUES` values."""
+    def inflate(self, block: Block, what: str, rows: int | None = None, portion: int | None = None) -> Iterator[bytes]:
+        """The bytes of a block in portions of ≤ `portion` (default `CHUNK`) read and inflated at a time. `rows` —
+        the size known in advance: exactly rows × width values; otherwise at most `MAX_RATIO` × the block length
+        and `MAX_VALUES` values. Several blocks may be inflated in turn (each keeps its own place in the file)."""
+        step = max(int(portion or CHUNK), 1)
         if rows is not None:
             limit = rows * block.row_bytes
         else:
             limit = min(MAX_RATIO * block.length, MAX_VALUES * block.itemsize)
-        before = self.read_bytes
         d = zlib.decompressobj()
-        self._f.seek(block.start)
-        left, tail, out = block.length, b"", 0
+        pos, left, tail, out, counted = block.start, block.length, b"", 0, 0
         try:
             while not d.eof:
                 if not tail:
                     if not left:
                         break
-                    tail = self._f.read(min(left, CHUNK))
+                    self._f.seek(pos)
+                    tail = self._f.read(min(left, step))
                     if not tail:
                         raise damaged(f"{what}: файл обрезан внутри двоичного блока.")
                     left -= len(tail)
-                part = d.decompress(tail, min(CHUNK, limit - out + 1))
+                    pos += len(tail)
+                part = d.decompress(tail, min(step, limit - out + 1))
                 tail = d.unconsumed_tail
                 out += len(part)
                 if out > limit:
                     raise self._over(what, rows, limit)
                 if part:
                     yield part
-                self.read_bytes = before + block.length - left - len(tail)
+                consumed = block.length - left - len(tail)
+                self.read_bytes += consumed - counted
+                counted = consumed
                 if self.tick is not None:
                     self.tick(self.read_bytes)
             if not d.eof:
@@ -437,7 +441,7 @@ class OmfFile:
             raise damaged(f"{what}: двоичный блок повреждён (данные zlib не распаковываются).") from None
         if not d.eof:
             raise damaged(f"{what}: двоичный блок обрезан.")
-        self.read_bytes = before + block.length
+        self.read_bytes += block.length - counted
         if rows is not None and out != limit:
             raise damaged(f"{what}: в двоичном блоке {n_text(out // block.row_bytes)} значений вместо {n_text(rows)}.")
         if out % block.row_bytes:
