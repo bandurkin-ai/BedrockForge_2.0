@@ -287,6 +287,11 @@ function SceneMount() {
             Поверхности упрощены
           </div>
         )}
+        {ui.wireframesStandins > 0 && !ui.lost && (
+          <div className={`${css.corner} ${css.sixth}`} data-testid="wireframes-standins" title="Ядро строит упрощённые копии поверхностей (задание «Копии каркаса для показа»); до тех пор части показаны целиком">
+            Готовятся копии для показа
+          </div>
+        )}
         {ui.software && ui.loading === 0 && !ui.lost && <div className={css.corner} title="WebGL без видеокарты (SwiftShader): 3D медленнее">Программная отрисовка</div>}
         {ui.error && <div className={`${css.note} ${css.error}`}>{ui.error}</div>}
         {ready && !hasSets && !hasObjects && !ui.error && <div className={css.note}>Нет объектов для показа. Загрузите скважины: «Главная» → «Скважины» или перетащите файлы в окно.</div>}

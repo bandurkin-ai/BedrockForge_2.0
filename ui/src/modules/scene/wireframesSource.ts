@@ -10,6 +10,11 @@
  * never shown is not loaded. Colour, opacity and the settings of a DTM follow the list of the project
  * without reloading anything; the image of a draped raster is the texture of the raster's own layer.
  * After a lost context everything comes again. A lazy chunk with three.js.
+ *
+ * A level the core has not made yet comes as a stand-in — the whole part, no ETag, `no-store` (ADR 0015 §8):
+ * it is shown, never kept as «the part in full» (its finer levels are still wanted) and not asked again for
+ * other simplified levels; the scene says «Готовятся копии для показа». The event `wireframes.lod`
+ * (`levelsReady`) asks levels 1–2 of those parts again, and the real level replaces the stand-in.
  */
 import type * as THREE from "three";
 import { coreTarget } from "../../shell/api";
@@ -59,6 +64,8 @@ interface PartState {
   triangles: number[];
   /** the finest level worth asking: a coarser one that came back whole is the full part */
   floor: number;
+  /** levels in flight when `wireframes.lod` came: a stand-in made before it is asked once more */
+  again: Set<number>;
 }
 
 interface LayerState {
@@ -112,14 +119,15 @@ export class WireframesSource {
    * Surfaces in the scene; of the visible ones — parts and triangles shown, how many parts are shown at every
    * level, the DTMs that show an image (E2E, the status notes).
    */
-  stats(): { layers: number; parts: number; triangles: number; simplified: number; shown: number[]; draped: number[]; budgeted: boolean; over: boolean } {
-    const out = { layers: this.layers.size, parts: 0, triangles: 0, simplified: 0, shown: [] as number[], draped: [] as number[], budgeted: this.budgeted, over: this.over };
+  stats(): { layers: number; parts: number; triangles: number; simplified: number; standins: number; shown: number[]; draped: number[]; budgeted: boolean; over: boolean } {
+    const out = { layers: this.layers.size, parts: 0, triangles: 0, simplified: 0, standins: 0, shown: [] as number[], draped: [] as number[], budgeted: this.budgeted, over: this.over };
     for (const st of this.layers.values()) {
       if (!st.view.visible) continue;
       const s = st.view.stats();
       out.parts += s.parts;
       out.triangles += s.triangles;
       out.simplified += s.simplified;
+      out.standins += s.standins;
       st.parts.forEach((_, k) => {
         const lod = st.view.shown(k);
         if (lod !== null) out.shown[lod] = (out.shown[lod] ?? 0) + 1;
@@ -163,6 +171,30 @@ export class WireframesSource {
     this.drapesChanged();
     this.scene.invalidate();
     this.publish();
+  }
+
+  /**
+   * The core made the levels of detail of these wireframes (the event `wireframes.lod`, ADR 0015 §8): levels 1–2
+   * of their parts shown as stand-ins are asked again; the stand-in stays on the screen until the level comes.
+   */
+  levelsReady(ids: readonly number[]): void {
+    if (this.disposed) return;
+    for (const id of ids) {
+      const st = this.layers.get(id);
+      if (!st) continue;
+      st.parts.forEach((p, k) => {
+        for (const lod of p.loading) if (lod > 0) p.again.add(lod);
+        const levels = new Set(st.view.standins(k).filter((lod) => lod > 0));
+        if (!levels.size) return;
+        // the level wanted now comes with them: while the stand-in was shown it was not asked
+        if (p.want !== null && p.want > 0 && st.view.levelTriangles(k, p.want) === null) levels.add(p.want);
+        for (const lod of levels) {
+          p.failed.delete(lod);
+          if (!p.loading.has(lod)) void this.loadPart(st, k, lod);
+        }
+      });
+    }
+    this.scene.invalidate();
   }
 
   /** The picked surface glows (null — none). */
@@ -277,7 +309,7 @@ export class WireframesSource {
           else {
             const view = new MeshLayerView(m, { clip: this.scene.clipPlanes }, { color: ref.color ?? m.color, opacity: this.input.opacity(), visible });
             view.select(this.selected === id);
-            const parts = m.parts.map((p) => ({ want: null, priority: 0, loading: new Set<number>(), failed: new Set<number>(), triangles: levelTriangles(p.n, m.ratios), floor: 0 }));
+            const parts = m.parts.map((p) => ({ want: null, priority: 0, loading: new Set<number>(), failed: new Set<number>(), triangles: levelTriangles(p.n, m.ratios), floor: 0, again: new Set<number>() }));
             const st: LayerState = { id, manifest: m, view, coarsest: Math.max(0, m.ratios.length - 1), parts, rasterId: null, clip: false };
             this.layers.set(id, st);
             this.style(st, ref, visible);
@@ -353,7 +385,9 @@ export class WireframesSource {
     const p = st.parts[k];
     const can = (lod: number) => st.view.levelTriangles(k, lod) === null && !p.loading.has(lod) && !p.failed.has(lod);
     if (can(st.coarsest)) return st.coarsest;
-    return p.want !== null && can(p.want) ? p.want : null;
+    if (p.want === null || !can(p.want)) return null;
+    // a stand-in answers for every simplified level until `wireframes.lod`: they would come whole as well
+    return p.want > 0 && st.view.standins(k).length ? null : p.want;
   }
 
   private schedule(): void {
@@ -403,7 +437,8 @@ export class WireframesSource {
       }
       st.view.setLevel(k, built);
       p.triangles[lod] = built.triangles;
-      if (!built.simplified) {
+      // a stand-in is whole only for now: the finer levels stay wanted
+      if (!built.simplified && !built.standin) {
         // the level came back whole (a small part, or one that cannot be simplified): nothing finer to ask
         p.floor = Math.max(p.floor, lod);
         for (let l = 0; l < lod; l++) p.triangles[l] = built.triangles;
@@ -416,6 +451,8 @@ export class WireframesSource {
     } finally {
       p.loading.delete(lod);
       this.inflight--;
+      // `wireframes.lod` came while this answer was on its way: a stand-in it brought is asked once more
+      if (p.again.delete(lod) && !stale() && st.view.standins(k).includes(lod)) void this.loadPart(st, k, lod);
       this.publish();
     }
   }
@@ -428,9 +465,11 @@ export class WireframesSource {
       this.publishing = false;
       if (this.disposed) return;
       const loading = this.inflight + this.asking.size;
+      let standins = 0;
+      for (const st of this.layers.values()) if (st.view.visible) standins += st.view.stats().standins;
       const ui = sceneUi.get();
-      if (ui.wireframesLoading === loading && ui.wireframes === this.layers.size && ui.wireframesSimplified === this.budgeted && ui.wireframesOver === this.over) return;
-      sceneUi.set({ wireframesLoading: loading, wireframes: this.layers.size, wireframesSimplified: this.budgeted, wireframesOver: this.over });
+      if (ui.wireframesLoading === loading && ui.wireframes === this.layers.size && ui.wireframesSimplified === this.budgeted && ui.wireframesOver === this.over && ui.wireframesStandins === standins) return;
+      sceneUi.set({ wireframesLoading: loading, wireframes: this.layers.size, wireframesSimplified: this.budgeted, wireframesOver: this.over, wireframesStandins: standins });
     });
   }
 }
