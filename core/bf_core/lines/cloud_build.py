@@ -33,6 +33,10 @@ memory, going through the source twice by its portions:
 Files are read and written through `seek`, never mapped: a mapped file counts into the memory of the job, and on
 Windows it cannot be removed while it is mapped. A cancel (`tick` raising) or a failure leaves no file behind.
 
+Refused with `{code, message, hint}` (`FormatError`): a source without a point that has a place (`no_points`);
+a source that gives other points in the second pass (`source_changed`); points scattered so wide that the cloud
+would take more than `MAX_PARTS` parts — junk coordinates (`cloud_too_wide`).
+
 numba is imported with this module: import it lazily, never before BF-READY.
 """
 
