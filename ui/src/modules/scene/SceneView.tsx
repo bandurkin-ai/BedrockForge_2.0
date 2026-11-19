@@ -30,6 +30,8 @@ import { Legend } from "../downhole/Legend";
 import { Toolbar } from "./Toolbar";
 import { FpsOverlay } from "./FpsOverlay";
 import { EditorHud } from "../lines/EditToolbar";
+import { AssembleHud } from "../model/AssembleBar";
+import { TrianglesHud } from "../model/TrianglesBar";
 import logoMark from "../../assets/logo-mark.png";
 import shell from "../../shell/Shell.module.css";
 import css from "./Scene.module.css";
@@ -268,6 +270,8 @@ function SceneMount() {
         {hint && <div className={css.hint}>{hint}</div>}
         {ready && <Legend />}
         {ready && <EditorHud />}
+        {ready && <AssembleHud />}
+        {ready && <TrianglesHud />}
         {ready && <FpsOverlay />}
         {(ui.loading > 0 || dh.loading > 0 || ui.linesLoading > 0 || ui.rastersLoading > 0 || ui.wireframesLoading > 0) && !ui.lost && <div className={css.corner}>Загрузка…</div>}
         {dh.simplified > 0 && ui.loading === 0 && dh.loading === 0 && !ui.lost && (
