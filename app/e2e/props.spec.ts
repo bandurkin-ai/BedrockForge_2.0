@@ -192,7 +192,7 @@ test("properties: raster shift and section, layer attributes and pick, DTM windo
 
     // ---- 7.28: «Построить ЦТМ» of the ribbon opens its window ---------------------------------------------
     await page.getByRole("tab", { name: "Моделирование" }).click();
-    await page.getByRole("button", { name: "Построить ЦТМ" }).click();
+    await page.getByRole("button", { name: "Построить ЦТМ", exact: true }).click();
     const build = page.getByRole("dialog", { name: "Построение ЦТМ" });
     await expect(build.getByLabel("Слой «Рельеф точки»")).toBeChecked(); // the selected layer is a source already
     await build.getByLabel("Слой «Рельеф точки»").uncheck();
