@@ -20,11 +20,15 @@ import { windowStore, type FloatWin } from "../src/shell/windows";
 const row = (id: number, p: Partial<CatalogRow> = {}): CatalogRow => ({ id, kind: "wireframe", name: `Объект ${id}`, folder: null, format: null, size: null, rows: null, modified: null, crs: null, state: "ready", ...p });
 
 const sent: { method: string; path: string; body: unknown }[] = [];
+const deleted: string[] = [];
+let catalogRows: CatalogRow[] = []; // what `GET /catalog` answers
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status });
 let moveAnswer: Response | null = null;
 
 beforeEach(() => {
   sent.length = 0;
+  deleted.length = 0;
+  catalogRows = [];
   moveAnswer = null;
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     const p = new URL(url).pathname.replace(/^\/api\/v1/, "");
@@ -32,7 +36,12 @@ beforeEach(() => {
     if (p.startsWith("/catalog")) sent.push({ method, path: p, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (p === "/catalog/move") return moveAnswer ?? json({ moved: (JSON.parse(String(init?.body)) as { ids: number[] }).ids.length, folder: "x" });
     if (p === "/catalog/folders") return json({ folders: [] });
-    if (p === "/catalog") return json({ total: 0, rows: [] });
+    if (p === "/catalog") return json({ total: catalogRows.length, rows: catalogRows });
+    if (method === "DELETE") {
+      deleted.push(p);
+      return p === "/rasters/6" ? json({ code: "raster_in_use", message: "Растр наложен на ЦТМ: «Рельеф».", hint: "Снимите растр в настройках ЦТМ." }, 422) : json({ deleted: 1 });
+    }
+    if (p === "/blocks") return json({ block_models: [{ id: 4, name: "Модель" }] });
     return json({ code: "not_found", message: "Нет", hint: "" }, 404);
   });
   setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
@@ -113,7 +122,7 @@ describe("the actions of the rows", () => {
     ]);
   });
 
-  it("one row: `object.delete` asks itself; several: one own question (danger), then each without asking again", async () => {
+  it("one row: `object.delete` (it asks itself); several: `data.delete` — one own question (danger), one entry of the log", async () => {
     const app = open();
     const calls: [unknown, string][] = [];
     app.registry.bind("object.delete", async (a, source) => {
@@ -123,38 +132,59 @@ describe("the actions of the rows", () => {
     expect(await deleteRows(app, [wf])).toBe("удалено");
     expect(calls).toEqual([[{ kind: "wireframe", id: 1 }, "user"]]);
 
-    calls.length = 0;
+    catalogRows = [wf, set, lf, bm];
+    catalogStore.set({ rows: catalogRows, folders: [], loaded: true, error: null });
+    const before = app.registry.entries().length;
     const run = deleteRows(app, [wf, lf, bm, set]);
     const q = await answer(true);
-    expect(q.danger).toBe(true);
-    expect(q.okLabel).toBe("Удалить");
+    expect(q).toMatchObject({ title: "Удалить объекты", okLabel: "Удалить", danger: true });
     expect(q.message).toContain("Удалить из проекта 3 объекта?\n• Тело (Каркасы)\n• Контуры.str (Линии)\n• Модель (Блочные модели)");
     expect(q.message).toContain("1 объект здесь не удаляются");
-    expect(await run).toBe("Удалено 3 из 3");
-    expect(calls).toEqual([[{ kind: "wireframe", id: 1 }, "claude"], [{ kind: "line_file", id: 3 }, "claude"], [{ kind: "blocks", id: 4 }, "claude"]]);
+    expect(await run).toBe("Удалено 3 из 3; не удаляются здесь: «Скважины»");
+    expect(deleted).toEqual(["/wireframes/1", "/lines/files/3", "/blocks/4"]);
+    const log = app.registry.entries().slice(0, app.registry.entries().length - before);
+    expect(log.map((e) => [e.commandId, e.source, e.args, e.ok])).toEqual([["data.delete", "user", { ids: "1,3,4,2" }, true]]);
+    expect(calls).toHaveLength(1); // `object.delete` was not called for the several rows
 
-    calls.length = 0;
+    deleted.length = 0;
     const no = deleteRows(app, [wf, lf]);
     await answer(false);
     expect(await no).toBe("Отменено");
-    expect(calls).toEqual([]);
+    expect(deleted).toEqual([]);
+    expect(app.registry.entries()[0].commandId).toBe("data.delete");
+  });
+
+  it("`data.delete` of Claude: the confirmation of the registry, no second question; failures and unknown ids told", async () => {
+    const app = open();
+    const asked: unknown[] = [];
+    app.registry.hooks = { ...app.registry.hooks, confirm: async (c, a) => (asked.push([c.id, a]), true) };
+    const ras = row(6, { kind: "raster", name: "Ортофото" });
+    catalogRows = [wf, ras, set];
+    catalogStore.set({ rows: catalogRows, folders: [], loaded: true, error: null });
+    const r = await app.registry.execute("data.delete", { ids: "1,6" }, "claude");
+    expect(asked).toEqual([["data.delete", { ids: "1,6" }]]);
+    expect(dialogStore.get().queue).toEqual([]);
+    expect(r).toEqual({ ok: true, result: "Удалено 1 из 2 (ошибки: Ортофото: Растр наложен на ЦТМ: «Рельеф». Снимите растр в настройках ЦТМ.)" });
+    expect(deleted).toEqual(["/wireframes/1", "/rasters/6"]);
+    expect((await app.registry.execute("data.delete", { ids: "1,77" }, "claude")).result).toBe("Объект №77 не найден: ничего не удалено. Обновите менеджер данных.");
+    expect((await app.registry.execute("data.delete", { ids: "2" }, "claude")).result).toContain("Эти объекты здесь не удаляются.");
+    expect(app.registry.get("data.delete")!.confirm).toBe(true);
+    expect(app.registry.get("data.delete")!.uiOnly).toBeFalsy();
+    app.store.set({ projectReadOnly: true });
+    expect(app.registry.reason("data.delete")).toBe("Проект открыт только для чтения");
   });
 
   it("an action not available is refused with its reason", async () => {
     await expect(runRowAction(open(), "rename", [set])).rejects.toThrow("Наборы скважин: переименование — в дереве проекта");
   });
 
-  it("«Импорт…» of a folder: the folder goes to `import.files` once it takes it (11.11), else the status says so", async () => {
+  it("«Импорт…» of a folder: `import.files {folder}` (11.11)", async () => {
     const app = open();
     const got: unknown[] = [];
     app.registry.bind("import.files", async (a) => void got.push(a));
-    app.registry.get("import.files")!.params = { kind: { type: "string" } };
     await importInto(app, "Участок 1");
-    expect(got).toEqual([{}]);
-    expect(app.store.get().statusNote).toContain("Папка назначения «Участок 1»");
-    app.registry.get("import.files")!.params = { kind: { type: "string" }, folder: { type: "string" } };
-    await importInto(app, "Участок 1");
-    expect(got[1]).toEqual({ folder: "Участок 1" });
+    await importInto(app, "");
+    expect(got).toEqual([{ folder: "Участок 1" }, {}]);
   });
 });
 

@@ -8,14 +8,22 @@
  */
 import { bridge } from "../../bridge";
 import type { App } from "../../shell/app";
+import type { CommandSource } from "../../shell/commands";
 import { askConfirm, showMessage } from "../../shell/dialogs";
-import { needProject, viewport } from "../../shell/objectRun";
+import { needProject, needWritable, refusal, viewport } from "../../shell/objectRun";
+import { errorText } from "../../shell/props";
 import { showProperties } from "../../shell/treeRun";
 import { counted } from "../../shell/treeActions";
 import { openWindow } from "../../shell/windows";
+import { blocksStore, deleteBlockModel, loadBlocks } from "../blocks/state";
 import { importPaths } from "../importing/bind";
+import { deleteLineFile } from "../lines/actions";
+import { moveIds } from "../projects/bind";
 import { projectStore } from "../projects/state";
+import { deleteRaster } from "../rasters/actions";
 import { loadSceneObjects, sceneObjects } from "../scene/objects";
+import { deleteWireframe } from "../wireframes/state";
+import { catalogStore, loadCatalog } from "./api";
 import { kindTitle, type CatalogRow } from "./catalog";
 
 export const DATA_MANAGER = "data-manager";
@@ -38,6 +46,8 @@ export function bindDataManager(app: App): void {
     },
     needProject,
   );
+
+  app.registry.bind("data.delete", (a, source) => deleteData(app, a, source), needWritable(app));
 }
 
 // ——— the actions of the rows ———
@@ -102,44 +112,84 @@ export function exportRows(rows: readonly CatalogRow[], source = false): string 
   return openWindow("project-export", "Экспорт проекта", "form", props, ...viewport());
 }
 
-/** Runs a bound command as already confirmed: the person said «Удалить» once for all the rows. */
-async function runConfirmed(app: App, id: string, args: Record<string, unknown>): Promise<string> {
-  const c = app.registry.get(id);
-  if (!c?.run) throw new Error(`Команда «${id}» недоступна`);
-  const out = await c.run(args, "claude"); // "claude": the handler does not ask again (it was asked here)
-  return out || "Выполнено";
+/** The object of the project by the kind of its row: the same functions `object.delete` calls. */
+async function deleteObject(r: CatalogRow): Promise<void> {
+  const kind = objectKind(r.kind);
+  if (kind === "wireframe") return deleteWireframe(r.id);
+  if (kind === "raster") return deleteRaster(r.id);
+  if (kind === "line_file") return deleteLineFile(r.id);
+  if (kind === "blocks") {
+    if (!blocksStore.get().loaded) await loadBlocks();
+    return deleteBlockModel(r.id);
+  }
+  throw new Error(`${kindTitle(r.kind)}: удаление — в дереве проекта`);
 }
 
-/** «Удалить…»: one row — the command asks itself; several — one own question (danger), then each of them. */
-export async function deleteRows(app: App, rows: readonly CatalogRow[]): Promise<string> {
-  const ok = rows.filter((r) => objectKind(r.kind) !== null && r.state !== "building");
-  const left = rows.length - ok.length;
-  if (!ok.length) return "Нечего удалять";
-  if (ok.length === 1 && !left) {
-    const r = await app.registry.execute("object.delete", { kind: objectKind(ok[0].kind), id: ok[0].id }, "user");
-    if (!r.ok) throw new Error(r.result);
-    return r.result;
-  }
+/** The question of «Удалить…» for several rows (our own window, danger). */
+export function deleteQuestion(ok: readonly CatalogRow[], left: number) {
   const names = ok.slice(0, 10).map((r) => `• ${r.name} (${kindTitle(r.kind)})`);
   if (ok.length > 10) names.push(`… и ещё ${ok.length - 10}`);
-  const skipped = left ? `\n${counted(left, "объект", "объекта", "объектов")} здесь не удаляются (наборы скважин — в дереве).` : "";
-  const yes = await askConfirm({
+  const skipped = left ? `\n${counted(left, "объект", "объекта", "объектов")} здесь не удаляются (наборы скважин — в дереве; строящиеся — после задания).` : "";
+  return {
     title: "Удалить объекты",
     message: `Удалить из проекта ${counted(ok.length, "объект", "объекта", "объектов")}?\n${names.join("\n")}${skipped}\nОтменить удаление нельзя.`,
     okLabel: "Удалить",
     danger: true,
-  });
-  if (!yes) return "Отменено";
-  const failed: string[] = [];
-  for (const r of ok) {
-    try {
-      await runConfirmed(app, "object.delete", { kind: objectKind(r.kind), id: r.id });
-    } catch (e) {
-      failed.push(`${r.name}: ${e instanceof Error ? e.message : String(e)}`);
+  };
+}
+
+/**
+ * `data.delete {ids}`: several objects of the data in one registry command — one entry of the command log, one
+ * question (from the interface — our own window; Claude's call — the confirmation of the registry). Rows the
+ * command does not delete (drillhole sets, objects being built) are named in the result; an unknown id refuses all.
+ */
+export async function deleteData(app: App, a: Record<string, unknown>, source: CommandSource): Promise<string> {
+  try {
+    const ids = moveIds(a);
+    if (!ids.length) throw refusal("no_ids", "Не заданы объекты.", "Передайте ids — номера через запятую.");
+    let rows = catalogStore.get().rows;
+    if (!catalogStore.get().loaded || ids.some((id) => !rows.some((r) => r.id === id))) {
+      await loadCatalog();
+      rows = catalogStore.get().rows;
     }
+    const missing = ids.filter((id) => !rows.some((r) => r.id === id));
+    if (missing.length) throw refusal("object_not_found", `Объект №${missing[0]} не найден: ничего не удалено.`, "Обновите менеджер данных.");
+    const chosen = ids.map((id) => rows.find((r) => r.id === id)!);
+    const ok = chosen.filter((r) => objectKind(r.kind) !== null && r.state !== "building");
+    const left = chosen.filter((r) => !ok.includes(r));
+    if (!ok.length) throw refusal("nothing_to_delete", "Эти объекты здесь не удаляются.", "Наборы скважин удаляются в дереве проекта; строящиеся — после конца задания.");
+    if (source === "user" && !(await askConfirm(deleteQuestion(ok, left.length)))) return "Отменено";
+    const failed: string[] = [];
+    for (const r of ok) {
+      try {
+        await deleteObject(r);
+      } catch (e) {
+        failed.push(`${r.name}: ${errorText(e)}`);
+      }
+    }
+    await loadCatalog();
+    const kept = left.length ? `; не удаляются здесь: ${left.map((r) => `«${r.name}»`).join(", ")}` : "";
+    if (failed.length === ok.length) throw new Error(`Ничего не удалено: ${failed.join("; ")}`);
+    if (failed.length && source === "user") await showMessage({ title: "Удалить объекты", message: `Не удалено: ${failed.length} из ${ok.length}.`, log: failed.join("\n") });
+    return `Удалено ${ok.length - failed.length} из ${ok.length}${failed.length ? ` (ошибки: ${failed.join("; ")})` : ""}${kept}`;
+  } catch (e) {
+    const text = errorText(e);
+    if (source === "user") app.store.set({ statusNote: text });
+    throw new Error(text);
   }
-  if (failed.length) await showMessage({ title: "Удалить объекты", message: `Не удалено: ${failed.length} из ${ok.length}.`, log: failed.join("\n") });
-  return `Удалено ${ok.length - failed.length} из ${ok.length}`;
+}
+
+/** «Удалить…»: one row — `object.delete` (it asks itself); several — `data.delete` (one question). Both are
+ * registry commands: each run is an entry of the command log. */
+export async function deleteRows(app: App, rows: readonly CatalogRow[]): Promise<string> {
+  const ok = rows.filter((r) => objectKind(r.kind) !== null && r.state !== "building");
+  if (!ok.length) return "Нечего удалять";
+  const r =
+    ok.length === 1 && rows.length === 1
+      ? await app.registry.execute("object.delete", { kind: objectKind(ok[0].kind), id: ok[0].id }, "user")
+      : await app.registry.execute("data.delete", { ids: rows.map((x) => x.id).join(",") }, "user");
+  if (!r.ok) throw new Error(r.result);
+  return r.result;
 }
 
 /** Runs an action of the menu or of the toolbar for the chosen rows. */
@@ -194,18 +244,13 @@ export async function runRowAction(app: App, id: ActionId, rows: readonly Catalo
 
 // ——— import into a folder, files dropped from Explorer ———
 
-/** Whether `import.files` takes the folder of destination (it does from 11.11 on). */
-export const importTakesFolder = (app: App): boolean => Boolean(app.registry.get("import.files")?.params?.folder);
-
-/** «Импорт…» of a folder: the wizard with the folder of destination (while `import.files` has no `folder`, the
- * objects go to the root and the status bar says so). */
+/** «Импорт…» of a folder: the import wizard with that folder of destination (`import.files {folder}`, 11.11). */
 export async function importInto(app: App, folder: string): Promise<void> {
-  if (importTakesFolder(app)) return void (await app.run("import.files", folder ? { folder } : {}));
-  await app.run("import.files");
-  if (folder) app.store.set({ statusNote: `Папка назначения «${folder}» при импорте ещё не задаётся: перенесите объекты на папку после загрузки.` });
+  await app.run("import.files", folder ? { folder } : {});
 }
 
-/** Files dropped from Explorer on a folder of the manager: the import wizard (the same route as a drop on the app). */
+/** Files dropped from Explorer on a folder of the manager: the import wizard with that folder of destination (the
+ * same route as a drop on the app, `importing/bind.ts::importPaths`). */
 export async function dropFiles(app: App, files: readonly File[], folder: string): Promise<string> {
   const b = bridge();
   const paths = b ? files.map((f) => b.pathForFile(f)).filter(Boolean) : [];
@@ -215,9 +260,7 @@ export async function dropFiles(app: App, files: readonly File[], folder: string
     await showMessage({ title: "Импорт файлов", message: reason });
     return reason;
   }
-  const out = await importPaths(app, paths);
-  if (folder && !importTakesFolder(app)) app.store.set({ statusNote: `Папка назначения «${folder}» при импорте ещё не задаётся: перенесите объекты на папку после загрузки.` });
-  return out;
+  return importPaths(app, paths, "auto", folder || null);
 }
 
 /** Rows dropped on a folder: `dataset.move` (one transaction in the core, then `objects.changed`). */
