@@ -5,8 +5,9 @@
 * `POST /export/objects {formats, folder, types?, ids?}` → the job `export.objects` (`job.py`) {source, id};
   423 `project_read_only`; 422 `export_nothing`, `bad_format`, `path_not_absolute`; 404 `folder_not_found`.
 
-The paths are given in full here (no prefix of the router): the router of OMF (`omf_router.py`, `/omf/…`) can be
-included into this one.
+The paths are given in full here (no prefix of the router), so other routers can be included into this one:
+the catalog of «Менеджер данных» (`projects/catalog_router.py`, `/catalog/…`) is, the router of OMF
+(`omf_router.py`, `/omf/…`) can be.
 """
 
 from __future__ import annotations
@@ -68,3 +69,8 @@ def export_objects(svc: Svc, s: Sched, request: Request, body: ObjectsBody) -> d
         )  # fmt: skip
     key, job_id = s.submit(job.KIND, params, title="Экспорт объектов проекта")
     return {"source": key, "id": job_id}
+
+
+from bf_core.projects import catalog_router  # noqa: E402 - /catalog/…: one line of `api/modules.py` for both
+
+router.include_router(catalog_router.router)
