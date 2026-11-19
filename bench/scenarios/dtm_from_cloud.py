@@ -261,7 +261,7 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
             built = wf_store.wireframe_info(conn, result["wireframe_id"])["built"]
             cloud = lc.open_cloud(conn, store, prepared["cloud"])
         source = built["sources"][0]
-    dz = (result.get("dz") or [{}])[0]
+        dz = (result.get("dz") or [{}])[0]
         hashes = np.load(work / "hash.npy", mmap_mode="r")
         mine = _hash(v)
         at = np.minimum(np.searchsorted(hashes, mine), len(hashes) - 1)

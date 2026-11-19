@@ -18,6 +18,8 @@ difference and that have none; the measures of |dz| — root mean square, the 95
 the lower 95 %), the largest — by the points of the ground (class 2), `by: "ground"`, or by every point when
 the cloud has no ground under the surface, `by: "all"`. A cancel or a failure before the transaction leaves
 the cloud as it was and no file; a cloud whose columns were replaced meanwhile is not written over.
+A wireframe that is deleted leaves the column and its name in the record; the id goes (`forget_surface`): the
+number of a deleted object may be given to another one, and a `.bfggis` import renumbers it (`archive`).
 Memory: 4 bytes a point for the column, 6 more for the measures, a slice a thread, the index.
 """
 
@@ -109,6 +111,21 @@ def memory_mb(points: int, triangles: int) -> int:
 
 def _memory(params: dict[str, Any]) -> int:
     return max(512, 300 + memory_mb(int(params.get("points") or 0), int(params.get("triangles") or 0)))
+
+
+def forget_surface(conn: sa.Connection, wireframe_id: int) -> int:
+    """Inside the write transaction that deletes a wireframe: the clouds whose `dz` was counted against it keep
+    the column and the name of the surface, `meta.cloud.dz.wireframe_id` becomes null. Returns how many."""
+    rows = conn.execute(sa.select(objects.c.id, objects.c.meta).where(objects.c.kind == LAYER)).all()
+    changed = 0
+    for layer_id, meta in rows:
+        cloud = lc.cloud_meta(meta)
+        record = cloud.get("dz") if cloud else None
+        if cloud is not None and isinstance(record, dict) and record.get("wireframe_id") == wireframe_id:
+            cloud["dz"] = {**record, "wireframe_id": None}
+            conn.execute(sa.update(objects).where(objects.c.id == layer_id).values(meta={**meta, "cloud": cloud}))
+            changed += 1
+    return changed
 
 
 # --- the calculation -------------------------------------------------------------------------------------

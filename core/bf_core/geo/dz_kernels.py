@@ -18,11 +18,15 @@
 * The triangles need no neighbours and no order: holes, several pieces and overhangs are fine. (The walk of
   `dtm_kernels.locate` needs the neighbours of a convex triangulation and stops at the first hole.)
 
-The index is a hash table of square cells in plan, by levels: the cell of level j is `c0 · 2^j`, c0 — the 5 %
-quantile of the sizes of the triangles; a triangle goes to the first level where it spans at most `SPAN` cells
-and is listed in the cells its box touches — at most 3 × 3. A far outlier vertex or a few huge triangles
-therefore cost nothing: memory is 60–90 bytes a triangle whatever the extent. Coordinates are float64,
-counted from a whole origin near the surface (the shift is exact); no `fastmath`. The kernels release the GIL.
+The index: square cells in plan, by levels — the cell of level j is `c0 · 2^j`, c0 the median size of the
+triangles; a triangle goes to the first level where it spans at most `SPAN` cells and is listed in the cells
+its box touches, at most 3 × 3. The cells are kept by blocks of 8 × 8: a small hash table of the blocks that
+have triangles (it stays in the cache of the processor) and the cells of a block side by side, in the order
+the triangles come — a stored wireframe and a stored cloud are both in spatial order, so neighbours are read
+together. Only what has triangles takes memory: a far outlier vertex or a few huge triangles cost nothing
+(30–50 bytes a triangle whatever the extent); scattered triangles that would waste blocks get blocks of one
+cell. Coordinates are float64, counted from a whole origin near the surface (the shift is exact); no
+`fastmath`. The kernels release the GIL.
 """
 
 from __future__ import annotations
@@ -36,9 +40,10 @@ import numpy as np
 from bf_core.jit import njit
 
 SPAN = 2.0  # a triangle spans at most this many cells of its level along an axis
-QUANTILE = 0.05  # of the sizes of the triangles: the cell of level 0
-MAX_CELLS = 1 << 26  # cells along an axis at level 0 (a cell number takes 28 bits of a key)
-MAX_LOAD = 0.6  # of the hash table
+MAX_CELLS = 1 << 26  # cells along an axis at level 0 (a block number takes 28 bits of a key)
+BLOCK_BITS = 3  # a block is 8 × 8 cells
+WASTE = 8  # cells a triangle the blocks may take, with `SPARE` more: beyond it — blocks of one cell
+SPARE = 1 << 16
 
 
 @njit(cache=True, nogil=True, inline="always")
@@ -51,17 +56,41 @@ def _side(ax, ay, bx, by, px, py):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True, inline="always")
-def _slot(key, mask):  # type: ignore[no-untyped-def]
-    """A slot of the table for a key. The constants fit int64; int64 arithmetic wraps, the mask keeps ≥ 0."""
+def _find(keys, key):  # type: ignore[no-untyped-def]
+    """The slot of a key in the table of blocks, or the free slot it would take. The constants fit int64;
+    int64 arithmetic wraps, the mask keeps the slot ≥ 0."""
+    mask = len(keys) - 1
     h = key * 0x5851F42D4C957F2D
     h ^= h >> 31
     h *= 0x2545F4914F6CDD1D
     h ^= h >> 29
-    return h & mask
+    h &= mask
+    while keys[h] != key and keys[h] != -1:
+        h = (h + 1) & mask
+    return h
+
+
+@njit(cache=True, nogil=True, inline="always")
+def _cells(vxy, tri, t, s, x0, y0, c0, levels):  # type: ignore[no-untyped-def]
+    """The level of triangle t (of size s) and the cells of that level its box touches."""
+    level = 0
+    cell = c0
+    while s > SPAN * cell and level < levels - 1:
+        cell *= 2.0
+        level += 1
+    inv = 1.0 / cell
+    a = tri[t, 0]
+    b = tri[t, 1]
+    c = tri[t, 2]
+    ix0 = np.int64((min(vxy[a, 0], vxy[b, 0], vxy[c, 0]) - x0) * inv)
+    ix1 = np.int64((max(vxy[a, 0], vxy[b, 0], vxy[c, 0]) - x0) * inv)
+    iy0 = np.int64((min(vxy[a, 1], vxy[b, 1], vxy[c, 1]) - y0) * inv)
+    iy1 = np.int64((max(vxy[a, 1], vxy[b, 1], vxy[c, 1]) - y0) * inv)
+    return np.int64(level), ix0, ix1, iy0, iy1
 
 
 @njit(cache=True, nogil=True)
-def tri_sizes(vx, vy, tri, size):  # type: ignore[no-untyped-def]
+def tri_sizes(vxy, tri, size):  # type: ignore[no-untyped-def]
     """`size[t]` — the longer side of the box of triangle t in plan, −1 — the triangle has no area in plan.
     Returns (triangles with an area, the lows and the highs of their boxes)."""
     n = 0
@@ -73,14 +102,14 @@ def tri_sizes(vx, vy, tri, size):  # type: ignore[no-untyped-def]
         a = tri[t, 0]
         b = tri[t, 1]
         c = tri[t, 2]
-        area2 = _side(vx[a], vy[a], vx[b], vy[b], vx[c], vy[c])
+        area2 = _side(vxy[a, 0], vxy[a, 1], vxy[b, 0], vxy[b, 1], vxy[c, 0], vxy[c, 1])
         if not (area2 > 0.0 or area2 < 0.0):  # zero; a NaN fails both
             size[t] = -1.0
             continue
-        lx = min(vx[a], vx[b], vx[c])
-        hx = max(vx[a], vx[b], vx[c])
-        ly = min(vy[a], vy[b], vy[c])
-        hy = max(vy[a], vy[b], vy[c])
+        lx = min(vxy[a, 0], vxy[b, 0], vxy[c, 0])
+        hx = max(vxy[a, 0], vxy[b, 0], vxy[c, 0])
+        ly = min(vxy[a, 1], vxy[b, 1], vxy[c, 1])
+        hy = max(vxy[a, 1], vxy[b, 1], vxy[c, 1])
         s = max(hx - lx, hy - ly)
         if not s < np.inf:
             size[t] = -1.0
@@ -95,63 +124,74 @@ def tri_sizes(vx, vy, tri, size):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
-def fill_cells(vx, vy, tri, size, x0, y0, c0, levels, keys, start, count, items):  # type: ignore[no-untyped-def]
-    """The cells of the triangles. With an empty `items`: the keys of the cells into `keys` (−1 — free) and the
-    triangles of every cell into `count`; returns (entries, cells), or (−1, cells) as soon as the table is too
-    full. With `items` of the size counted: `start` and the triangles of every cell, in their order."""
-    mask = len(keys) - 1
-    limit = int(MAX_LOAD * len(keys))
-    counting = len(items) == 0
-    if not counting:
-        at = 0
-        for h in range(len(keys)):
-            start[h] = at
-            at += count[h]
-            count[h] = 0
-    entries = 0
-    cells = 0
-    for t in range(len(tri)):
-        s = size[t]
-        if s < 0.0:
+def build_cells(vxy, tri, size, x0, y0, c0, levels, bits, max_cells):  # type: ignore[no-untyped-def]
+    """The triangles by the cells of the plan: (keys of the blocks — −1 is a free slot, the number of the block
+    of a slot, `start` — where the triangles of every cell begin in `items`, `items`). A block is
+    `2^bits × 2^bits` cells; cell (ix, iy) of a level is cell `(iy & m) << bits | ix & m` of the block
+    `level << 56 | (ix >> bits) << 28 | iy >> bits`. More than `max_cells` cells: `start` comes back empty."""
+    n = len(tri)
+    m = (1 << bits) - 1
+    per = 1 << (2 * bits)
+    keys = np.full(1024, -1, np.int64)
+    block = np.zeros(1024, np.int32)
+    blocks = 0
+    for t in range(n):  # the blocks that have triangles, numbered as they are met
+        if size[t] < 0.0:
             continue
-        level = 0
-        cell = c0
-        while s > SPAN * cell and level < levels - 1:
-            cell *= 2.0
-            level += 1
-        inv = 1.0 / cell
-        a = tri[t, 0]
-        b = tri[t, 1]
-        c = tri[t, 2]
-        ix0 = np.int64((min(vx[a], vx[b], vx[c]) - x0) * inv)
-        ix1 = np.int64((max(vx[a], vx[b], vx[c]) - x0) * inv)
-        iy0 = np.int64((min(vy[a], vy[b], vy[c]) - y0) * inv)
-        iy1 = np.int64((max(vy[a], vy[b], vy[c]) - y0) * inv)
+        level, ix0, ix1, iy0, iy1 = _cells(vxy, tri, t, size[t], x0, y0, c0, levels)
+        for by in range(iy0 >> bits, (iy1 >> bits) + 1):
+            for bx in range(ix0 >> bits, (ix1 >> bits) + 1):
+                key = (level << 56) | (bx << 28) | by
+                h = _find(keys, key)
+                if keys[h] != -1:
+                    continue
+                keys[h] = key
+                block[h] = blocks
+                blocks += 1
+                if 2 * blocks > len(keys):  # the table is kept at most half full
+                    more = np.full(2 * len(keys), -1, np.int64)
+                    numbers = np.zeros(2 * len(keys), np.int32)
+                    for j in range(len(keys)):
+                        if keys[j] != -1:
+                            g = _find(more, keys[j])
+                            more[g] = keys[j]
+                            numbers[g] = block[j]
+                    keys = more
+                    block = numbers
+    if blocks * per > max_cells:
+        return keys, block, np.zeros(0, np.int64), np.zeros(0, np.int32)
+    start = np.zeros(blocks * per + 1, np.int64)
+    for t in range(n):  # the triangles of every cell, counted one cell ahead
+        if size[t] < 0.0:
+            continue
+        level, ix0, ix1, iy0, iy1 = _cells(vxy, tri, t, size[t], x0, y0, c0, levels)
         for iy in range(iy0, iy1 + 1):
             for ix in range(ix0, ix1 + 1):
-                key = (np.int64(level) << 56) | (ix << 28) | iy
-                h = _slot(key, mask)
-                while keys[h] != key and keys[h] != -1:
-                    h = (h + 1) & mask
-                if counting:
-                    if keys[h] == -1:
-                        if cells >= limit:
-                            return -1, cells
-                        keys[h] = key
-                        cells += 1
-                else:
-                    items[start[h] + count[h]] = t
-                count[h] += 1
-                entries += 1
-    return entries, cells
+                h = _find(keys, (level << 56) | ((ix >> bits) << 28) | (iy >> bits))
+                start[block[h] * per + (((iy & m) << bits) | (ix & m)) + 1] += 1
+    for c in range(blocks * per):
+        start[c + 1] += start[c]
+    items = np.empty(start[blocks * per], np.int32)
+    at = start[: blocks * per].copy()
+    for t in range(n):
+        if size[t] < 0.0:
+            continue
+        level, ix0, ix1, iy0, iy1 = _cells(vxy, tri, t, size[t], x0, y0, c0, levels)
+        for iy in range(iy0, iy1 + 1):
+            for ix in range(ix0, ix1 + 1):
+                h = _find(keys, (level << 56) | ((ix >> bits) << 28) | (iy >> bits))
+                c = block[h] * per + (((iy & m) << bits) | (ix & m))
+                items[at[c]] = t
+                at[c] += 1
+    return keys, block, start, items
 
 
 @njit(cache=True, nogil=True)
-def surface_dz(vx, vy, vz, tri, box, inv, keys, start, count, items, px, py, pz, out):  # type: ignore[no-untyped-def]
+def surface_dz(vxy, vz, tri, box, inv, bits, keys, block, start, items, px, py, pz, out):  # type: ignore[no-untyped-def]
     """`out[q]` = pz[q] − the height of the surface at (px[q], py[q]); NaN — no triangle covers the point.
     `box` — the lows and the highs of the surface in plan; `inv` — 1 / cell of the levels that have triangles,
-    0 for the others."""
-    mask = len(keys) - 1
+    0 for the others; the rest — `build_cells`."""
+    m = (1 << bits) - 1
     x0 = box[0]
     y0 = box[1]
     for q in range(len(px)):
@@ -166,24 +206,22 @@ def surface_dz(vx, vy, vz, tri, box, inv, keys, start, count, items, px, py, pz,
                     continue
                 ix = np.int64((x - x0) * inv[level])
                 iy = np.int64((y - y0) * inv[level])
-                key = (np.int64(level) << 56) | (ix << 28) | iy
-                h = _slot(key, mask)
-                while keys[h] != key and keys[h] != -1:
-                    h = (h + 1) & mask
+                h = _find(keys, (np.int64(level) << 56) | ((ix >> bits) << 28) | (iy >> bits))
                 if keys[h] == -1:
                     continue
-                for e in range(start[h], start[h] + count[h]):
+                c = (np.int64(block[h]) << (2 * bits)) | ((iy & m) << bits) | (ix & m)
+                for e in range(start[c], start[c + 1]):
                     t = items[e]
                     a = tri[t, 0]
                     b = tri[t, 1]
-                    c = tri[t, 2]
-                    ax = vx[a]
-                    ay = vy[a]
-                    bx = vx[b]
-                    by = vy[b]
+                    c3 = tri[t, 2]
+                    ax = vxy[a, 0]
+                    ay = vxy[a, 1]
+                    bx = vxy[b, 0]
+                    by = vxy[b, 1]
                     d0 = _side(ax, ay, bx, by, x, y)
-                    cx = vx[c]
-                    cy = vy[c]
+                    cx = vxy[c3, 0]
+                    cy = vxy[c3, 1]
                     d1 = _side(bx, by, cx, cy, x, y)
                     if (d0 < 0.0 and d1 > 0.0) or (d0 > 0.0 and d1 < 0.0):
                         continue
@@ -195,12 +233,12 @@ def surface_dz(vx, vy, vz, tri, box, inv, keys, start, count, items, px, py, pz,
                     elif x == bx and y == by:
                         zs = vz[b]
                     elif x == cx and y == cy:
-                        zs = vz[c]
+                        zs = vz[c3]
                     else:
                         s = d0 + d1 + d2
                         if s == 0.0:
                             continue
-                        zs = vz[a] + (d2 * (vz[b] - vz[a]) + d0 * (vz[c] - vz[a])) / s
+                        zs = vz[a] + (d2 * (vz[b] - vz[a]) + d0 * (vz[c3] - vz[a])) / s
                     d = z - zs
                     if not found or abs(d) < abs(best) or (abs(d) == abs(best) and d > best):
                         best = d
@@ -212,24 +250,24 @@ def surface_dz(vx, vy, vz, tri, box, inv, keys, start, count, items, px, py, pz,
 class SurfaceIndex:
     """The triangles of a surface by the cells of the plan (see the module docstring)."""
 
-    origin: tuple[float, float]  # whole metres: X and Y of the arrays below are counted from it
-    vx: np.ndarray
-    vy: np.ndarray
+    origin: tuple[float, float]  # whole metres: X and Y of `vxy` are counted from it
+    vxy: np.ndarray  # n×2
     vz: np.ndarray
     tri: np.ndarray  # int32 m×3
     box: np.ndarray  # the lows and the highs of the triangles that have an area in plan
     inv: np.ndarray  # 1 / cell by level, 0 — the level has no triangles
+    bits: int  # a block is 2^bits × 2^bits cells
     keys: np.ndarray
+    block: np.ndarray
     start: np.ndarray
-    count: np.ndarray
     items: np.ndarray
     triangles: int  # with an area in plan
     levels: int  # that have triangles
 
     @property
     def nbytes(self) -> int:
-        arrays = (self.vx, self.vy, self.vz, self.keys, self.start, self.count, self.items)
-        return int(sum(a.nbytes for a in arrays))
+        """Of the index itself, without the triangles and the heights it was given."""
+        return int(sum(a.nbytes for a in (self.vxy, self.keys, self.block, self.start, self.items)))
 
     def dz(self, xyz: Any) -> np.ndarray:
         """Z − the surface for points n×3 (float64, project coordinates); NaN — no surface at the point."""
@@ -242,23 +280,24 @@ class SurfaceIndex:
             py = p[:, 1] - self.origin[1]
             pz = np.array(p[:, 2], dtype=np.float64)
             surface_dz(
-                self.vx, self.vy, self.vz, self.tri, self.box, self.inv,
-                self.keys, self.start, self.count, self.items, px, py, pz, out,
+                self.vxy, self.vz, self.tri, self.box, self.inv, self.bits,
+                self.keys, self.block, self.start, self.items, px, py, pz, out,
             )  # fmt: skip
         return out
 
 
 def _empty(origin: tuple[float, float]) -> SurfaceIndex:
     f, i = np.zeros(0, dtype=np.float64), np.zeros(0, dtype=np.int64)
+    none = np.zeros(0, dtype=np.int32)
     return SurfaceIndex(
-        origin, f, f, f, np.zeros((0, 3), dtype=np.int32), np.zeros(4), f, i, i, np.zeros(0, dtype=np.int32),
-        np.zeros(0, dtype=np.int32), 0, 0,
-    )  # fmt: skip
+        origin, np.zeros((0, 2)), f, np.zeros((0, 3), dtype=np.int32), np.zeros(4), f, 0, i, none, i, none, 0, 0
+    )
 
 
-def surface_index(xyz: Any, tri: Any) -> SurfaceIndex:
+def surface_index(xyz: Any, tri: Any, *, block_bits: int = BLOCK_BITS) -> SurfaceIndex:
     """The index of a surface: vertices n×3 (float64, project coordinates) and triangles m×3 (vertex numbers).
-    ValueError — a vertex number out of the list or a vertex without a coordinate."""
+    ValueError — a vertex number out of the list or a vertex without a coordinate. `block_bits` — for tests:
+    0 gives blocks of one cell, what scattered triangles get by themselves."""
     v = np.asarray(xyz, dtype=np.float64)
     t = np.ascontiguousarray(tri, dtype=np.int32)
     if v.ndim != 2 or v.shape[1] != 3 or t.ndim != 2 or t.shape[1] != 3:
@@ -275,32 +314,25 @@ def surface_index(xyz: Any, tri: Any) -> SurfaceIndex:
         raise ValueError("dz: a vertex of the surface has no coordinate")
     origin = (float(math.floor(v[used, 0].min())), float(math.floor(v[used, 1].min())))
     del used
-    vx, vy, vz = v[:, 0] - origin[0], v[:, 1] - origin[1], np.array(v[:, 2], dtype=np.float64)
+    vxy = np.empty((len(v), 2), dtype=np.float64)
+    vxy[:, 0] = v[:, 0] - origin[0]
+    vxy[:, 1] = v[:, 1] - origin[1]
+    vz = np.array(v[:, 2], dtype=np.float64)
     size = np.empty(len(t), dtype=np.float64)
-    n, x0, y0, x1, y1 = tri_sizes(vx, vy, t, size)
+    n, x0, y0, x1, y1 = tri_sizes(vxy, t, size)
     if not n:
         return _empty(origin)
     sizes = size[size >= 0.0]
-    extent = max(x1 - x0, y1 - y0)
-    c0 = max(float(np.quantile(sizes, QUANTILE)), extent / MAX_CELLS)
+    c0 = max(float(np.median(sizes)), max(x1 - x0, y1 - y0) / MAX_CELLS)
     levels = 1
     while SPAN * c0 * 2.0 ** (levels - 1) < float(sizes.max()):
         levels += 1
     del sizes
-    none = np.zeros(0, dtype=np.int32)
-    cap = 1024
-    while cap < 2 * n:
-        cap *= 2
-    while True:
-        keys = np.full(cap, -1, dtype=np.int64)
-        count = np.zeros(cap, dtype=np.int32)
-        start = np.zeros(cap, dtype=np.int64)
-        entries, _cells = fill_cells(vx, vy, t, size, x0, y0, c0, levels, keys, start, count, none)
-        if entries >= 0:
-            break
-        cap *= 2  # more cells than the table was made for
-    items = np.empty(entries, dtype=np.int32)
-    fill_cells(vx, vy, t, size, x0, y0, c0, levels, keys, start, count, items)
+    bits = int(block_bits)
+    keys, block, start, items = build_cells(vxy, t, size, x0, y0, c0, levels, bits, WASTE * n + SPARE)
+    if bits and not len(start):  # scattered triangles: whole blocks would be mostly empty cells
+        bits = 0
+        keys, block, start, items = build_cells(vxy, t, size, x0, y0, c0, levels, bits, 1 << 62)
     # the levels that have triangles: the others are not looked into
     inv = np.zeros(levels, dtype=np.float64)
     level = np.zeros(len(t), dtype=np.int64)
@@ -311,7 +343,9 @@ def surface_index(xyz: Any, tri: Any) -> SurfaceIndex:
     for j in np.unique(level[size >= 0.0]).tolist():
         inv[j] = 1.0 / (c0 * 2.0**j)
     box = np.array([x0, y0, x1, y1], dtype=np.float64)
-    return SurfaceIndex(origin, vx, vy, vz, t, box, inv, keys, start, count, items, int(n), int(np.count_nonzero(inv)))
+    return SurfaceIndex(
+        origin, vxy, vz, t, box, inv, bits, keys, block, start, items, int(n), int(np.count_nonzero(inv))
+    )
 
 
 def warm() -> None:

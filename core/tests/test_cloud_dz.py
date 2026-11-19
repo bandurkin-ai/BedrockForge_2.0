@@ -125,6 +125,8 @@ def test_kernel_against_exact_arithmetic_on_a_surface_with_a_hole() -> None:
     got = index.dz(points)
     want = exact_dz(v, t, points)
     same(got, want)
+    one_cell = dk.surface_index(v, t, block_bits=0)  # blocks of one cell: the same answers, bit for bit
+    assert (index.bits, one_cell.bits) == (3, 0) and one_cell.dz(points).tobytes() == got.tobytes()
     inside = np.array([w is not None for w in want])
     assert 0.3 < inside[: len(anywhere)].mean() < 0.8  # the scene has both: points on the surface and off it
     hole = np.hypot(anywhere[:, 0] - UTM[0] - 60.0, anywhere[:, 1] - UTM[1] - 45.0) < 10.0
@@ -203,6 +205,19 @@ def test_solids_walls_broken_triangles_and_triangles_of_every_size() -> None:
     where = np.concatenate([rng.uniform([-600, -500, 0], [2700, 2700, 100], (1500, 3)),
                             rng.uniform([-2, -2, 0], [22, 22, 60], (1500, 3))]) + UTM  # fmt: skip
     same(index.dz(where), exact_dz(v, t, where))
+
+    # triangles far from one another: blocks of 8 × 8 cells would be all but empty — the index takes blocks of
+    # one cell by itself and stays small
+    k = 4000
+    corner = np.column_stack([rng.uniform(0, 4e5, (k, 2)), rng.uniform(0, 50, k)]) + UTM
+    v = (corner[:, None, :] + rng.uniform(0.2, 1.5, (k, 3, 3))).reshape(-1, 3)
+    t = np.arange(3 * k, dtype=np.int32).reshape(-1, 3)
+    index = dk.surface_index(v, t)
+    assert index.bits == 0 and index.triangles == k and index.nbytes < 1 << 20
+    where = np.concatenate([v.reshape(k, 3, 3).mean(axis=1) + [0.0, 0.0, 2.0], corner[:500] - [3.0, 3.0, 0.0]])
+    got = index.dz(where)
+    same(got[:300], exact_dz(v, t, where[:300]))
+    assert not np.isnan(got[:k]).any() and np.isnan(got[k:]).all()
 
     # nothing to measure against: an empty surface, walls only; no points
     for vv, tt in ((np.zeros((0, 3)), np.zeros((0, 3), np.int32)), (c, box[4:12])):
@@ -393,11 +408,24 @@ def test_refusals_cancel_and_a_cloud_that_changed(api, monkeypatch: pytest.Monke
     # no ground among the classes now: the measures are of every point
     res, _seen, journal = run_dz(project, params)
     assert opened(project, cloud_id).meta["dz"]["by"] == "all" and any("по всем точкам" in line for line in journal)
-    # the wireframe went while the job waited
+    # a surface that lies elsewhere in plan: nothing to write, the cloud keeps the column it has
+    far = put_surface(project, v + [5000.0, 0.0, 0.0], t, "Соседний участок")
+    kept = opened(project, cloud_id)
+    with pytest.raises(JobError) as err:
+        run_dz(project, request(project, cloud_id, far))
+    assert err.value.code == "no_overlap" and "Соседний участок" in err.value.message and err.value.hint
+    assert opened(project, cloud_id).shas == kept.shas and tmp_files(project) == []
+    # the wireframe went while the job waited; the cloud keeps the column and the name of the surface, not its
+    # number — SQLite may give it to the next object of the project
+    assert opened(project, cloud_id).meta["dz"]["wireframe_id"] == wf_id
     ok(c.delete(f"{API}/wireframes/{wf_id}"))
     with pytest.raises(JobError) as err:
         run_dz(project, params)
     assert err.value.code == "wireframe_not_found"
+    left = opened(project, cloud_id)
+    assert left.meta["dz"]["wireframe_id"] is None and left.meta["dz"]["name"] == "Рельеф"
+    assert left.shas == kept.shas and left.version == kept.version
+    assert ok(c.get(f"{API}/lines/layers/{cloud_id}"))["cloud"]["modes"] == ["class", "dz"]
 
 
 def run_dtm(project: Any, params: dict[str, Any], cancel: threading.Event | None = None, at: str = "") -> Any:
@@ -479,6 +507,14 @@ def test_a_dtm_built_from_a_cloud_gives_the_cloud_its_dz(api, monkeypatch: pytes
 def test_bfggis_cycle_renumbers_the_surface_of_dz(api, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     """`meta.cloud.dz.wireframe_id` is an object id: in a copy of the project the surface has another number,
     and a surface deleted before the export must not come back as some other object."""
+    from bf_core.archive.view_remap import remap_cloud_dz
+
+    meta = {"cloud": {"format": 1, "dz": {"wireframe_id": 7, "name": "Рельеф", "rms": 0.1}}, "source": {"a": 1}}
+    assert remap_cloud_dz(meta, {7: 12}.get)["cloud"]["dz"] == {"wireframe_id": 12, "name": "Рельеф", "rms": 0.1}
+    assert remap_cloud_dz(meta, {}.get)["cloud"]["dz"] == {"wireframe_id": None, "name": "Рельеф", "rms": 0.1}
+    assert remap_cloud_dz(meta, {7: 12}.get)["source"] == {"a": 1} and meta["cloud"]["dz"]["wireframe_id"] == 7
+    for other in ({"cloud": {"dz": None}}, {"built": {}}, None, {"cloud": {"dz": {"name": "x"}}}):
+        assert remap_cloud_dz(other, {7: 12}.get) is other  # nothing to renumber: not written again
     c, project = api
     spare = put_surface(project, *surface(67, 200), "Лишний")  # a gap in the ids of the copy
     first, second = add_cloud(project, scene(68, 6000), "Север"), add_cloud(project, scene(69, 5000), "Юг")

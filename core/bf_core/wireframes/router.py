@@ -163,6 +163,9 @@ def delete_wireframe(svc: Svc, request: Request, wireframe_id: int) -> dict[str,
     project = svc.require_current(writable=True)
     with dialect.write_tx(project.engine) as conn:
         gone = store.delete_wireframe(conn, wireframe_id)
+        from .cloud_dz import forget_surface
+
+        forget_surface(conn, wireframe_id)  # the clouds measured against it keep its name, not its number
     if gone["shas"] and not gone["shared"]:  # the levels of detail of a geometry nobody has any more
         from bf_core.viz import meshes
 
