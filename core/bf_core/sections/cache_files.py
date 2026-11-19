@@ -9,13 +9,16 @@ when K ≤ 500, else k ± 50 around the section of the window; the segments of a
     closed <u1   lines
     lines <u4    count + 1: section first + j holds the lines lines[j] … lines[j + 1] − 1
 
-with the header {kind, format, series, wireframe, axis, first, count, total}. A request reads one section by a
+with the header {kind, format, series, wireframe, axis, first, count, total, made}. A request reads one section by a
 few short reads of the open file (`read_slot`: no map, a mapped file could not be replaced on Windows); a file
 whose header does not match its name or is damaged is a miss. The job writes every file under a temporary
-name and moves them all in place at its end (`Staged`): a cancel leaves no file (`discard`), a reader sees an
-old file or a new one, whole. Not more than `LIMIT_BYTES` a project: the folders used least recently (their
-time is set by a write and by a read, `touch`) go first (`trim`, at the end of every job; a temporary file
-older than `STALE_S` — of a worker that was killed — goes too).
+name, section after section (`Staged.write`: one section in memory; the header — `HEAD_BYTES` reserved at the
+start — is written last), and moves them all in place at its end (`Staged.commit`): a cancel leaves no file
+(`discard`), a reader sees an old file or a new one, whole; a job cancelled after its last tick does not put
+its window over the file of the job that replaced it (`made` in the header). Not more than `LIMIT_BYTES` a
+project: the folders used least recently (their time is set by a write and by a read, `touch`) go first
+(`trim`, at the end of every job), never one with a fresh temporary file (a job writes into it); a temporary
+file older than `STALE_S` — of a worker that was killed — goes.
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ import struct
 import time
 import uuid
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -147,34 +151,85 @@ def touch(folder: Path | str, key: str) -> None:
 
 # --- writing -----------------------------------------------------------------------------------------------
 
+HEAD_BYTES = 4096  # b"BFA1", u32 length, the JSON header padded with spaces: `xyz` starts right after it
 
-def encode_file(key: str, wf_key: str, axis: str, first: int, total: int, cuts: Sequence[Any]) -> bytes:
-    """BFA1 `series_sections` of the lines `cuts` (`geo.section.Section`) of sections first, first + 1, …"""
-    from bf_core.viz import binary
 
-    from .wf_sections import CACHE_FORMAT
+class _Layout:
+    """The layout of one file, section by section: `add` gives the bytes of the points of a section to write
+    next (a view, no copy), `tail` the small arrays after them, `head` the first `HEAD_BYTES` — the header is
+    known only at the end, so its place is reserved (JSON may end in spaces)."""
 
-    counts = np.array([len(c) for c in cuts], dtype=np.int64)
-    points = np.array([len(c.xyz) for c in cuts], dtype=np.int64)
-    starts = np.concatenate([[0], np.cumsum(points)]).astype(np.int64)
-    if int(starts[-1]) * 3 >= U4 or int(counts.sum()) >= U4:
-        raise ValueError("too many points for one file of the cache")
-    xyz = np.concatenate([c.xyz for c in cuts]) if cuts else np.zeros((0, 3))
-    offsets = np.concatenate([[0], *[c.offsets[1:] + starts[i] for i, c in enumerate(cuts)]]).astype(np.int64)
-    closed = np.concatenate([c.closed for c in cuts]) if cuts else np.zeros(0, dtype=np.bool_)
-    lines = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
-    header = {
-        "kind": FILE_KIND,
-        "format": CACHE_FORMAT,
-        "series": key,
-        "wireframe": wf_key,
-        "axis": axis,
-        "first": int(first),
-        "count": len(cuts),
-        "total": int(total),
-    }
-    arrays = [("xyz", xyz, "<f8"), ("offsets", offsets, "<u4"), ("closed", closed, "<u1"), ("lines", lines, "<u4")]
-    return binary.encode(header, arrays)
+    def __init__(self, key: str, wf_key: str, axis: str, first: int, total: int, made: int) -> None:
+        from .wf_sections import CACHE_FORMAT
+
+        self.header: dict[str, Any] = {
+            "kind": FILE_KIND, "format": CACHE_FORMAT, "series": key, "wireframe": wf_key, "axis": axis,
+            "first": int(first), "count": 0, "total": int(total), "made": int(made),
+        }  # fmt: skip
+        self.points = 0
+        self.offsets: list[np.ndarray] = [np.zeros(1, dtype=np.int64)]
+        self.closed: list[np.ndarray] = []
+        self.lines = [0]
+        self.table: list[tuple[str, str, int, int]] = []
+
+    def add(self, cut: Any) -> memoryview:
+        xyz = np.ascontiguousarray(cut.xyz, dtype="<f8").reshape(-1)
+        n = len(xyz) // 3
+        if (self.points + n) * 3 >= U4 or self.lines[-1] + len(cut) >= U4:
+            raise ValueError("too many points for one file of the cache")
+        self.offsets.append(np.asarray(cut.offsets[1:], dtype=np.int64) + self.points)
+        self.closed.append(np.asarray(cut.closed, dtype=np.bool_))
+        self.lines.append(self.lines[-1] + len(cut))
+        self.points += n
+        self.header["count"] += 1
+        return memoryview(xyz).cast("B")
+
+    def tail(self) -> list[Any]:
+        at = HEAD_BYTES + self.points * 24  # f8×3: a multiple of 8
+        self.table = [("xyz", "<f8", 3 * self.points, HEAD_BYTES)]
+        out: list[Any] = []
+        arrays = [
+            ("offsets", np.concatenate(self.offsets).astype("<u4"), "<u4"),
+            ("closed", np.concatenate(self.closed).astype("<u1") if self.closed else np.zeros(0, "<u1"), "<u1"),
+            ("lines", np.asarray(self.lines, dtype="<u4"), "<u4"),
+        ]
+        for name, arr, dtype in arrays:
+            self.table.append((name, dtype, int(arr.size), at))
+            pad = -arr.nbytes % 8
+            out += [memoryview(arr).cast("B"), b"\0" * pad]
+            at += arr.nbytes + pad
+        return out
+
+    def head(self) -> bytes:
+        from bf_core.viz import binary
+
+        text = json.dumps({**self.header, "arrays": self.table}, ensure_ascii=False, separators=(",", ":"))
+        body = text.encode("utf-8")
+        if len(body) > HEAD_BYTES - 8:
+            raise ValueError("the header of a file of the cache is too long")
+        return binary.MAGIC + struct.pack("<I", HEAD_BYTES - 8) + body + b" " * (HEAD_BYTES - 8 - len(body))
+
+
+def encode_file(key: str, wf_key: str, axis: str, first: int, total: int, cuts: Sequence[Any], made: int = 0) -> bytes:
+    """BFA1 `series_sections` of the lines `cuts` (`geo.section.Section`) of sections first, first + 1, … in one
+    buffer (the job writes the file section by section, `Staged.write`)."""
+    layout = _Layout(key, wf_key, axis, first, total, made)
+    body = [layout.add(c) for c in cuts]
+    tail = layout.tail()
+    return b"".join([layout.head(), *body, *tail])
+
+
+def _stamp(path: Path, key: str, wf_key: str) -> tuple[int, int, int] | None:
+    """(first, count, made — the start of the job that wrote it, ns) of a file of the cache; None — none."""
+    try:
+        with open(path, "rb") as f:
+            header = _header(f, key, wf_key)
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    if header is None:
+        return None
+    made = header.get("made")
+    return int(header["first"]), int(header["count"]), int(made) if isinstance(made, int) else 0
 
 
 def _replace(tmp: Path, final: Path, tries: int = 20) -> None:
@@ -189,15 +244,29 @@ def _replace(tmp: Path, final: Path, tries: int = 20) -> None:
             time.sleep(0.05)
 
 
+@dataclass
+class _File:
+    tmp: Path
+    final: Path
+    wf_key: str
+    first: int
+    count: int
+
+
 class Staged:
-    """The files a job writes for one series, under temporary names until `commit`."""
+    """The files a job writes for one series, under temporary names until `commit`.
+
+    `made` — when the job began (ns, in the header of its files): a job cancelled after its last tick still
+    commits, and its window must not go over the file of the job that replaced it (`commit`)."""
 
     def __init__(self, folder: Path | str, key: str, tag: str | int | None = None) -> None:
         self.folder = Path(folder)
+        self.key = key
         self.dir = series_dir(folder, key)
         self.tag = f"{tag if tag is not None else 'job'}-{uuid.uuid4().hex[:8]}"
-        self.files: list[tuple[Path, Path]] = []
-        self.made: list[Path] = []  # the folders this job created, deepest last
+        self.made = time.time_ns()
+        self.files: list[_File] = []
+        self.made_dirs: list[Path] = []  # the folders this job created, deepest last
         self.keys: set[str] = set()  # of the wireframes written
         self.bytes = 0
 
@@ -205,36 +274,82 @@ class Staged:
         for d in (self.folder / "cache", root(self.folder), self.dir):
             if not d.is_dir():
                 d.mkdir(parents=True, exist_ok=True)
-                self.made.append(d)
+                self.made_dirs.append(d)
 
-    def add(self, wf_key: str, data: bytes) -> None:
+    def _open(self, tmp: Path) -> Any:
         self._folders()
-        tmp = self.dir / f"{wf_key}.{self.tag}.tmp"
+        try:
+            return open(tmp, "wb")
+        except FileNotFoundError:  # `trim` of another job took the folder just now
+            self._folders()
+            return open(tmp, "wb")
+
+    def write(self, wf_key: str, axis: str, first: int, total: int, cuts: Iterable[Any]) -> None:
+        """The file of a wireframe from its lines on the sections first, first + 1, … — computed one by one by
+        `cuts` (a generator): one section in memory at a time. An error (a cancel among them) leaves no file."""
         if wf_key in self.keys:
             raise ValueError(f"the file of {wf_key} is written already")
-        self.files.append((tmp, self.dir / f"{wf_key}.bfa"))
+        tmp = self.dir / f"{wf_key}.{self.tag}.tmp"
+        layout = _Layout(self.key, wf_key, axis, first, total, self.made)
+        try:
+            with self._open(tmp) as f:
+                f.write(b"\0" * HEAD_BYTES)
+                for cut in cuts:
+                    f.write(layout.add(cut))
+                for part in layout.tail():
+                    f.write(part)
+                size = f.tell()
+                f.seek(0)
+                f.write(layout.head())
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+        finally:
+            close = getattr(cuts, "close", None)
+            if close is not None:
+                close()  # a generator over mapped blobs lets them go now
+        self.files.append(_File(tmp, self.dir / f"{wf_key}.bfa", wf_key, int(first), int(layout.header["count"])))
         self.keys.add(wf_key)
-        tmp.write_bytes(data)
-        self.bytes += len(data)
+        self.bytes += size
 
-    def commit(self) -> None:
-        """Every file under its own name: no tick in between, so a cancel comes before or after all of them."""
-        for tmp, final in self.files:
-            _replace(tmp, final)
+    def _keep_old(self, f: _File) -> bool:
+        """The file in place stays: a later job wrote it (its `made` is later), or it holds this window."""
+        have = _stamp(f.final, self.key, f.wf_key)
+        if have is None:
+            return False
+        first, count, made = have
+        return made > self.made or (first <= f.first and f.first + f.count <= first + count)
+
+    def commit(self) -> list[str]:
+        """Every file under its own name: no tick in between, so a cancel comes before or after all of them.
+        A file in place that a later job wrote, or that holds this window, stays. Returns the wireframes whose
+        files are not in place because their folder went meanwhile (`trim` of another job): not an error —
+        those sections are just not cached."""
+        lost = []
+        for f in self.files:
+            if self._keep_old(f):
+                f.tmp.unlink(missing_ok=True)
+                continue
+            try:
+                _replace(f.tmp, f.final)
+            except FileNotFoundError:
+                f.tmp.unlink(missing_ok=True)
+                lost.append(f.wf_key)
         self.files = []
-        self.made = []
+        self.made_dirs = []
+        return lost
 
     def discard(self) -> None:
         """Nothing of this job stays: its temporary files and the folders it made (when empty)."""
-        for tmp, _final in self.files:
-            tmp.unlink(missing_ok=True)
+        for f in self.files:
+            f.tmp.unlink(missing_ok=True)
         self.files = []
-        for d in reversed(self.made):
+        for d in reversed(self.made_dirs):
             try:
                 d.rmdir()
             except OSError:
                 break  # not empty: somebody else's files are there
-        self.made = []
+        self.made_dirs = []
 
 
 # --- the limit of a project --------------------------------------------------------------------------------
@@ -251,14 +366,17 @@ def trim(folder: Path | str, keep: Iterable[str] = (), limit: int = LIMIT_BYTES)
         dirs = [d for d in base.iterdir() if d.is_dir()]
     except OSError:
         return []
+    busy: set[str] = set()
     for d in dirs:
         total = 0
         try:
             for p in d.iterdir():
                 st = p.stat()
-                if p.suffix == ".tmp" and now - st.st_mtime > STALE_S:
-                    p.unlink(missing_ok=True)
-                    continue
+                if p.suffix == ".tmp":
+                    if now - st.st_mtime > STALE_S:
+                        p.unlink(missing_ok=True)
+                        continue
+                    busy.add(d.name)  # a job is writing into it: its commit would find no folder
                 total += st.st_size
             found.append((d.stat().st_mtime, d.name, total))
         except OSError:
@@ -268,7 +386,7 @@ def trim(folder: Path | str, keep: Iterable[str] = (), limit: int = LIMIT_BYTES)
     for _mtime, name, total in sorted(found):
         if used <= limit:
             break
-        if name in kept:
+        if name in kept or name in busy:
             continue
         shutil.rmtree(base / name, ignore_errors=True)
         used -= total

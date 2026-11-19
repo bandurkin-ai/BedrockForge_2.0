@@ -51,6 +51,7 @@ def _ids(text: str | None, what: str, hint: str) -> list[int] | None:
 
 
 def _layers(series: Any, given: list[int] | None) -> list[int]:
+    from .base import is_id
     from .schema import params_of
 
     if given is None:
@@ -64,6 +65,10 @@ def _layers(series: Any, given: list[int] | None) -> list[int]:
     ids = list(dict.fromkeys(int(i) for i in given))
     if not ids or len(ids) > MAX_LAYERS:
         raise ApiError(422, "bad_query", f"Слоёв контуров — от 1 до {MAX_LAYERS}.", "Выберите меньше слоёв.")
+    if not all(is_id(i) for i in ids):  # an id beyond int64 never reaches SQL
+        raise ApiError(
+            422, "bad_query", "Номера слоёв контуров заданы неверно.", "Обновите дерево проекта и выберите слои заново."
+        )
     return ids
 
 

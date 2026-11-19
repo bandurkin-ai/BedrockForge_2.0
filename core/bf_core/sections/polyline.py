@@ -32,7 +32,7 @@ from typing import Any
 
 import numpy as np
 
-from .base import DEFAULT_CORRIDOR  # noqa: E402, F401
+from .base import DEFAULT_CORRIDOR, as_float  # noqa: E402, F401
 from .base import MAX_POLYLINE as MAX_POINTS  # noqa: E402
 from .geometry import (
     BATCH,
@@ -206,17 +206,16 @@ def polyline_section(meta: Mapping[str, Any]) -> PolylineSection:
     xy = []
     for p in pts:
         ok = isinstance(p, list | tuple | np.ndarray) and len(p) in (2, 3)
-        if not ok or not all(not isinstance(c, bool) and isinstance(c, int | float) for c in p[:2]):
+        c = [as_float(x) for x in p[:2]] if ok else []  # None: not a number, not finite, beyond float64
+        if not ok or None in c:
             raise SeriesError(
                 "Вершина ломаной: ожидаются X и Y.", "Укажите координаты вершин числами.", field="polyline"
             )
-        xy.append([float(p[0]) + 0.0, float(p[1]) + 0.0])
+        xy.append([float(x) + 0.0 for x in c])  # type: ignore[arg-type]
     points = np.array(xy)
-    if not np.isfinite(points).all():
-        raise SeriesError("Вершина ломаной: ожидаются числа.", "Укажите координаты вершин числами.", field="polyline")
-    corridor = meta.get("corridor")
-    corridor = DEFAULT_CORRIDOR if corridor is None else corridor
-    if isinstance(corridor, bool) or not isinstance(corridor, int | float) or not MIN_LEN <= corridor <= MAX_LEN:
+    raw = meta.get("corridor")
+    corridor = as_float(DEFAULT_CORRIDOR if raw is None else raw)
+    if corridor is None or not MIN_LEN <= corridor <= MAX_LEN:
         raise SeriesError(
             "Ширина коридора: от 0,01 до 10 000 м.", "Введите расстояние в этих пределах.", field="corridor"
         )

@@ -38,6 +38,7 @@ import sqlalchemy as sa
 from bf_core.api.errors import ApiError
 from bf_core.db.schema import objects, wireframes
 
+from .base import is_id
 from .geometry import SeriesGeometry
 from .polyline import PolylineSection
 
@@ -161,7 +162,7 @@ def parse_ids(text: str | None) -> list[int]:
 
 def check_ids(ids: Sequence[int]) -> list[int]:
     out = sorted({int(i) for i in ids})
-    if len(out) > MAX_WIREFRAMES or any(i < 0 for i in out):
+    if len(out) > MAX_WIREFRAMES or not all(is_id(i) for i in out):  # 0 < id < 10¹²: never beyond int64 to SQL
         raise bad_wireframes()
     return out
 

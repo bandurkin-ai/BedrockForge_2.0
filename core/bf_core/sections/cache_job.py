@@ -14,10 +14,11 @@
 
 The job maps the blobs of a wireframe (only the pages of the parts a plane touches are read), cuts it by every
 plane (`wf_sections.cut` — the call of the requests, so a file holds the very lines a request would cut) and
-writes its file under a temporary name; all of them go in place at the end (`cache_files.Staged`), then the
-folders over 2 GB a project go (`cache_files.trim`). A tick between two planes: a cancel within ~0.1 s of
-10 million triangles. The window learns of the end by the event `job` (its `result`: series_id, key, first,
-count, wireframe_ids) and reads the sections again (the ETag of an answer does not depend on where it came from).
+writes its file under a temporary name section by section (one section in memory); all of them go in place at
+the end (`cache_files.Staged`), then the folders over 2 GB a project go (`cache_files.trim`). A tick between two
+planes: a cancel within ~0.1 s of 10 million triangles. The window learns of the end by the event `job` (its
+`result`: series_id, key, first, count, wireframe_ids) and reads the sections again (the ETag of an answer does
+not depend on where it came from).
 
 `cache_state` — `GET …/cache`: the key, how many sections are ready for the wireframes asked, the job.
 
@@ -26,8 +27,9 @@ numpy loads with this module, numba with the first cut: the router imports it la
 
 from __future__ import annotations
 
+import math
 import threading
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
@@ -178,9 +180,15 @@ def cache_state(project: Any, series_id: int, ids: Sequence[int] | None) -> dict
 
 
 def _memory(params: dict[str, Any]) -> int:
-    """MB: the blobs are mapped; the edges of the parts one plane touches (~32 bytes a triangle, at most a
-    million at a time) and the lines of one wireframe on all its sections."""
-    return 384
+    """MB: the libraries; the blobs are mapped (the page cache, not the process); the edges of the parts one plane
+    touches (~32 bytes a triangle, at most a million at a time) and its lines (≤ ~64 bytes a triangle crossed);
+    one section is in memory at a time (`cache_files.Staged.write`), of the others only the offsets of their lines
+    (~8·√T lines a section of T triangles, 9 bytes a line)."""
+    triangles = max(int(params.get("triangles") or 0), 0)
+    count = max(int(params.get("count") or 0), 0)
+    touched = min(triangles, 1_000_000)
+    lines = count * 8 * math.sqrt(triangles) * 9
+    return 192 + math.ceil((96 * touched + lines) / 2**20)
 
 
 def _gone(engine: sa.Engine, state: Any) -> bool:
@@ -194,24 +202,24 @@ def _gone(engine: sa.Engine, state: Any) -> bool:
             return True
 
 
-def _cuts(blobs: Any, state: Any, slots: Sequence[wf.Slot], step: Callable[[], None]) -> list[Any]:
-    """The lines of one wireframe on every plane, from its mapped blobs and its part table — the arrays
-    `wireframes/exact.py` keeps, so the numbers of a request."""
+def _cuts(blobs: Any, state: Any, slots: Sequence[wf.Slot], step: Callable[[], None]) -> Iterator[Any]:
+    """The lines of one wireframe on every plane, one after another, from its mapped blobs and its part table —
+    the arrays `wireframes/exact.py` keeps, so the numbers of a request."""
     from bf_core.viz import meshes as vm
 
     with vm.mapped(blobs, state) as (v, t):
         table = [[p.first, p.count, *p.bbox] for p in vm.table_of(state, v, t)]
         parts = np.array(table, dtype=np.float64).reshape(-1, 8)
-        out = []
         try:
             for s in slots:
                 step()
-                out.append(wf.cut(v, t, parts, s))
-        except ValueError as exc:  # a triangle of a vertex that is not there
-            raise vm.broken() from exc
+                try:
+                    cut = wf.cut(v, t, parts, s)
+                except ValueError as exc:  # a triangle of a vertex that is not there
+                    raise vm.broken() from exc
+                yield cut
         finally:
             del v, t
-    return out
 
 
 def _run(ctx: JobContext) -> dict[str, Any]:
@@ -256,21 +264,27 @@ def _run(ctx: JobContext) -> dict[str, Any]:
                 done[0] += st.triangles
 
             try:
-                cuts = _cuts(blobs, st, slots, step)
+                staged.write(st.cache_key(), axis, first, total, _cuts(blobs, st, slots, step))
             except (OSError, ApiError):
                 if not _gone(engine, st):
                     raise
                 ctx.log(f"«{st.name}»: каркас удалён во время задания — пропущен.", "warn")
                 missing.append(st.wireframe_id)
                 continue
-            staged.add(st.cache_key(), cache_files.encode_file(key, st.cache_key(), axis, first, total, cuts))
             written.append(st.wireframe_id)
-            del cuts
         ctx.tick(0.99, STEP)  # the last chance to cancel: nothing is in place yet
-        staged.commit()
+        lost = set(staged.commit())
     except BaseException:
         staged.discard()
         raise
+    if lost:
+        ctx.log(
+            f"«{r.name}»: папку сечений серии освободили во время задания (предел кеша 2 ГБ) — сечения "
+            f"{len(lost)} каркасов не сохранены, они будут вычисляться по запросу.",
+            "warn",
+        )
+        file_of = {st.wireframe_id: st.cache_key() for st in found}
+        written = [i for i in written if file_of[i] not in lost]
     removed = cache_files.trim(folder, keep={key})
     ctx.log(f"«{r.name}»: сечения {len(written)} каркасов на {count} разрезах, {staged.bytes / 1e6:.1f} МБ")
     with suppress(JobCancelled):  # the files are in place: a cancel this late undoes nothing

@@ -35,6 +35,7 @@ LIMIT_EPS = 1e-9  # relative: a shift of the centres of exactly Δ is linked
 OVERLAP, CENTRES = 1, 2
 HOW = {OVERLAP: "overlap", CENTRES: "centres"}
 _MESSAGE = "Связи контуров"
+PAIR_BUFFER = 1 << 20  # candidate pairs a call of the kernel may write (17 bytes each): 10⁴ × 10⁴ in portions
 
 
 def _kernels() -> Any:
@@ -94,14 +95,16 @@ def auto_links(
     present = np.unique(ks)
     limit = float(step) * (1.0 + LIMIT_EPS)
     out: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
-    pairs = [int(k) for k in present if k + 1 in set(present.tolist())]
+    pairs = present[np.isin(present + 1, present)].tolist()  # the sections k with contours on k + 1 too
     for done, k in enumerate(pairs):
         lower = order[np.searchsorted(ks, k) : np.searchsorted(ks, k, side="right")]
         upper = order[np.searchsorted(ks, k + 1) : np.searchsorted(ks, k + 1, side="right")]
-        size = len(lower) * len(upper)
+        rows = max(1, PAIR_BUFFER // len(upper))  # contours of k at a time: the order of the pairs is kept
+        size = min(rows, len(lower)) * len(upper)
         a, b, how = np.empty(size, np.int64), np.empty(size, np.int64), np.empty(size, np.int8)
-        n = kernels.section_pair(uw, offsets, lower, upper, box, cu, cw, limit, a, b, how)
-        out.append((a[:n], b[:n], how[:n]))
+        for r0 in range(0, len(lower), rows):
+            n = kernels.section_pair(uw, offsets, lower[r0 : r0 + rows], upper, box, cu, cw, limit, a, b, how)
+            out.append((a[:n].copy(), b[:n].copy(), how[:n].copy()))
         if tick is not None:
             tick((done + 1) / len(pairs), _MESSAGE)
     if not out:

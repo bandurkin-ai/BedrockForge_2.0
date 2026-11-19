@@ -27,7 +27,20 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from .base import DEFAULT_CORRIDOR, DEFAULT_WINDOW, MAX_K, MAX_LEN, MAX_POLYLINE, MIN_LEN, MIN_SPAN, TYPES, SeriesError
+from .base import (
+    DEFAULT_CORRIDOR,
+    DEFAULT_WINDOW,
+    MAX_K,
+    MAX_LEN,
+    MAX_POLYLINE,
+    MIN_LEN,
+    MIN_SPAN,
+    TYPES,
+    SeriesError,
+    as_float,
+    is_id,
+    section_key,
+)
 
 __all__ = ["KIND", "SeriesError", "check", "merge", "params_of", "remap_meta"]
 
@@ -60,9 +73,14 @@ def _ru(x: float) -> str:
 
 
 def _number(v: Any, what: str, hint: str = "Введите число.") -> float:
-    if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(float(v)):
+    f = as_float(v)
+    if f is None:
+        if isinstance(v, int) and not isinstance(v, bool):  # beyond float64
+            raise SeriesError(
+                f"{what}: слишком большое значение.", "Проверьте единицы: координаты и расстояния — в метрах."
+            )
         raise SeriesError(f"{what}: ожидается число.", hint)
-    f = float(v) + 0.0  # −0.0 → 0.0
+    f += 0.0  # −0.0 → 0.0
     if abs(f) > MAX_COORD:
         raise SeriesError(
             f"{what}: слишком большое значение.", "Проверьте единицы: координаты и расстояния — в метрах."
@@ -135,20 +153,25 @@ def _overrides(v: Any, count: int) -> dict[str, dict[str, float]]:
         return {}
     if not isinstance(v, dict) or len(v) > MAX_OVERRIDES:
         raise SeriesError("Свои окна разрезов: ожидается набор «номер → окно».", "Не больше 5 000 записей.")
-    out: dict[str, dict[str, float]] = {}
-    for key, w in sorted(v.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else -1):
-        k = str(key)
-        if not k.isdigit() or len(k) > 6 or not isinstance(w, dict):
-            raise SeriesError(f"Свои окна разрезов: неверная запись «{k[:20]}».", "Номер разреза — целое от 0.")
-        if int(k) >= count:
+    checked: list[tuple[int, Any]] = []
+    for key, w in v.items():
+        i = section_key(key) if isinstance(key, str) else None  # the keys of JSON are strings
+        if i is None or not isinstance(w, dict):
             raise SeriesError(
-                f"Своё окно задано разрезу {int(k) + 1}, а в серии их {count}.",
+                f"Свои окна разрезов: неверная запись «{str(key)[:20]}».", "Номер разреза — целое от 0, цифрами."
+            )
+        checked.append((i, w))
+    out: dict[str, dict[str, float]] = {}
+    for i, w in sorted(checked, key=lambda kw: kw[0]):
+        if i >= count:
+            raise SeriesError(
+                f"Своё окно задано разрезу {i + 1}, а в серии их {count}.",
                 "Удалите свои окна разрезов за пределами серии или расширьте её.",
             )
         extra = set(w) - {"towards", "away"}
         if extra or not w:
-            raise SeriesError(f"Своё окно разреза {int(k) + 1}: ожидаются «к себе» и «от себя».", "Проверьте окно.")
-        out[str(int(k))] = {name: _length(x, f"Окно разреза {int(k) + 1}") for name, x in w.items()}
+            raise SeriesError(f"Своё окно разреза {i + 1}: ожидаются «к себе» и «от себя».", "Проверьте окно.")
+        out[str(i)] = {name: _length(x, f"Окно разреза {i + 1}") for name, x in w.items()}
     return out
 
 
@@ -163,7 +186,7 @@ def _template(v: Any) -> str | None:
 def _layer(v: Any, alive_layer: Callable[[int], bool]) -> int | None:
     if v is None:
         return None
-    if isinstance(v, bool) or not isinstance(v, int) or v <= 0 or not alive_layer(v):
+    if not is_id(v) or not alive_layer(v):  # an id beyond int64 never reaches SQL
         raise SeriesError("Слой контуров серии не найден.", "Выберите существующий слой линий или создайте новый.")
     return v
 

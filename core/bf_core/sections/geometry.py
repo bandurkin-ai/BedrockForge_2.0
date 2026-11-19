@@ -54,7 +54,17 @@ if TYPE_CHECKING:
 # progress(fraction 0…1 or None, message or None); it may raise (JobCancelled) to cancel the calculation.
 Tick = Callable[[float | None, str | None], None]
 
-from .base import DEFAULT_WINDOW, MAX_K, MAX_LEN, MIN_LEN, MIN_SPAN, TYPES, SeriesError  # noqa: E402, F401
+from .base import (  # noqa: E402, F401
+    DEFAULT_WINDOW,
+    MAX_K,
+    MAX_LEN,
+    MIN_LEN,
+    MIN_SPAN,
+    TYPES,
+    SeriesError,
+    as_float,
+    section_key,
+)
 
 K_EPS = 1e-9  # in the formula of K
 ABUT_EPS = 1e-9  # relative: windows of neighbours abut
@@ -67,9 +77,10 @@ def _ru(x: float) -> str:
 
 
 def _number(v: Any, what: str, name: str) -> float:
-    if isinstance(v, bool) or not isinstance(v, int | float) or not math.isfinite(float(v)):
+    f = as_float(v)  # None for an integer beyond float64 too (10**400)
+    if f is None:
         raise SeriesError(f"{what}: ожидается число.", "Введите число.", field=name)
-    return float(v) + 0.0  # −0.0 → 0.0
+    return f + 0.0  # −0.0 → 0.0
 
 
 def _length(v: Any, what: str, name: str) -> float:
@@ -344,8 +355,8 @@ def _windows(
                 "Свои окна разрезов: ожидается набор «номер → окно».", "Проверьте окна.", field="overrides"
             )
         for key, win in overrides.items():
-            i = int(key) if isinstance(key, int) or (isinstance(key, str) and key.isdigit()) else -1
-            if not 0 <= i < k or not isinstance(win, Mapping):
+            i = section_key(key)  # «²», «١», 5 000 digits — none
+            if i is None or not i < k or not isinstance(win, Mapping):
                 raise SeriesError(
                     f"Своё окно задано несуществующему разрезу «{str(key)[:20]}».",
                     f"Номера разрезов серии — от 1 до {k}.",

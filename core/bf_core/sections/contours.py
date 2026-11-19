@@ -18,8 +18,9 @@ so the window, the shadow and the operation see the same polygon. A vertex with 
 does not depend on left empty (NaN) does not move the contour out of its window (`geometry.dot`).
 
 The caches are per process (the API: the shadow and the table of links while the window steps through a
-series): up to `CACHE_BYTES` of lines, least recently used dropped first; a new `rev` of a layer or a new
-version of a series is another key, so nothing stale is served.
+series): up to `CACHE_BYTES` of arrays in both of them, every buffer counted once (the vertices of a series of
+several layers are a copy; a series holds its layers), least recently used dropped first; a new `rev` of a layer
+or a new version of a series is another key, so nothing stale is served.
 """
 
 from __future__ import annotations
@@ -132,7 +133,10 @@ def series_contours(geom: Any, layers: Sequence[LayerLines], tick: Tick | None =
     """The contours of `layers` on the sections of `geom` (`SeriesGeometry` or `PolylineSection`)."""
     from .geometry import SeriesGeometry
 
-    xyz = np.vstack([layer.xyz for layer in layers]) if layers else np.zeros((0, 3))
+    if len(layers) == 1:
+        xyz = layers[0].xyz  # one layer: its vertices, no copy (the cache counts the buffer once)
+    else:
+        xyz = np.vstack([layer.xyz for layer in layers]) if layers else np.zeros((0, 3))
     counts = np.concatenate([np.diff(layer.offsets) for layer in layers]) if layers else np.zeros(0, np.int64)
     offsets = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
     layer = np.concatenate([np.full(layer.count, layer.layer_id, dtype=np.int64) for layer in layers]) \
@@ -180,19 +184,43 @@ _series: OrderedDict[tuple[Any, ...], SeriesContours] = OrderedDict()
 
 
 def _remember(cache: OrderedDict[tuple[Any, ...], Any], key: tuple[Any, ...], value: Any) -> None:
+    """Into `cache`, then the least recently used go until both caches hold at most `CACHE_BYTES` (every buffer
+    once: a series refers to its layers, and of one layer shares their vertices) and `CACHE_ENTRIES` each; the
+    entry just put stays, even alone over the limit."""
+    other = _series if cache is _lines else _lines
     with _lock:
         cache[key] = value
         cache.move_to_end(key)
-        while len(cache) > CACHE_ENTRIES or (
-            len(cache) > 1 and sum(_size(v) for v in cache.values()) > CACHE_BYTES
-        ):  # fmt: skip
+        while len(cache) > CACHE_ENTRIES:
             cache.popitem(last=False)
+        while _held() > CACHE_BYTES:
+            if len(cache) > 1:
+                cache.popitem(last=False)
+            elif other:
+                other.popitem(last=False)
+            else:
+                break
 
 
-def _size(v: Any) -> int:
+def _arrays(v: Any) -> list[np.ndarray]:
     if isinstance(v, LayerLines):
-        return v.nbytes
-    return int(v.section.nbytes + v.off.nbytes + v.layer.nbytes)  # the lines themselves are in `_lines`
+        return [v.xyz, v.offsets, v.lid]
+    out = [v.xyz, v.offsets, v.layer, v.lid, v.section, v.off]
+    for layer in v.layers:  # held by the series even when `_lines` dropped them
+        out += _arrays(layer)
+    return out
+
+
+def _held() -> int:
+    """Bytes of the arrays of both caches, every buffer once (a view counts as its base)."""
+    seen: dict[int, int] = {}
+    for cache in (_lines, _series):
+        for v in cache.values():
+            for a in _arrays(v):
+                while isinstance(a.base, np.ndarray):
+                    a = a.base
+                seen[id(a)] = a.nbytes
+    return sum(seen.values())
 
 
 def _recall(cache: OrderedDict[tuple[Any, ...], Any], key: tuple[Any, ...]) -> Any:
