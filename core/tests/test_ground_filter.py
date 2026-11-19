@@ -348,3 +348,40 @@ def test_blocks_keep_the_thresholds_of_tz2(funnel) -> None:  # type: ignore[no-u
     dev = dtm_deviation(scene, res.cls, lambda x, y: np.hypot(x - centre[0], y - centre[1]) < radius - 2.0)
     assert float(np.sqrt((dev**2).mean())) <= 0.15
     assert float((res.cls != whole.cls).mean()) < 0.01
+
+
+# --- other steps of the cloth ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("changes", [{"cr": 2.0}, {"cr": 0.5}, {"ct": 0.2}, {"ri": 1}, {"noise": False}])
+def test_benches_hold_with_other_parameters(benches, changes) -> None:  # type: ignore[no-untyped-def]
+    scene, _res = benches
+    res = ground.classify_ground(scene.xyz, None, ground.make_params("quarry", **changes), threads=2)
+    got = res.cls == 2
+    assert got[scene.tag == cloud.T_WALL].mean() >= 0.95, changes
+    assert got[np.isin(scene.tag, (cloud.T_BERM, cloud.T_TOP, cloud.T_FLOOR))].mean() >= 0.98, changes
+    assert not got[scene.tag == cloud.T_ROOF].any()
+    if changes.get("ct") == 0.2:
+        assert res.report["classes"][3] > 0  # low vegetation: between CT and 0.5 m
+
+
+def test_a_step_finer_than_the_cloud_is_refused_with_the_step_to_take() -> None:
+    scene = cloud.funnel(505, depth=30.0)  # 2 points/m²: a point every 0.7 m
+    with pytest.raises(ground.GroundError) as err:
+        ground.classify_ground(scene.xyz, None, ground.make_params("quarry", cr=0.5))
+    assert err.value.code == "cloud_too_sparse"
+    assert "CR = 0,5 м" in err.value.message and err.value.hint == "Задайте шаг ткани CR не меньше 1 м."
+    res = ground.classify_ground(scene.xyz, None, ground.make_params("quarry", cr=0.8))
+    assert [w["code"] for w in res.report["warnings"]] == ["cloud_sparse"] and 0.25 <= res.report["fill"] < 0.35
+    assert scores(scene, res.cls)["recall"] >= 0.98
+    res = ground.classify_ground(scene.xyz, None, QUARRY)
+    assert res.report["warnings"] == [] and res.report["fill"] > 0.35
+
+
+def test_returns_of_a_facade_one_above_another_do_not_pull_the_cloth_down() -> None:
+    """A plane through the lowest returns of a facade stands almost upright; continued to a particle beside it
+    it gave an obstacle tens of metres under the ground, and the stiff cloth of «Равнина» followed it."""
+    scene = cloud.plain(606, side=120.0, buildings=2, trees=30, outliers=10)
+    res = ground.classify_ground(scene.xyz, None, ground.make_params("plain", cr=0.4))
+    s = scores(scene, res.cls)
+    assert s["recall"] >= 0.99 and s["false"] <= 0.01, s
