@@ -177,8 +177,19 @@ def test_refusals_of_the_precheck(sc) -> None:  # type: ignore[no-untyped-def]
     none = make_series(c, None)
     e = refused(c.post(check, json={"op": "stitch_series", "params": {"series_id": none["id"]}}), 422, "no_contours")
     assert "«Серия 2»" in e["message"]
-    poly = ok(c.post(f"{API}/section-series", json={"params": {
-        "type": "polyline", "polyline": [[0, 0], [100, 0], [100, 100]], "p1": [0, 0, 0], "contour_layer": layer}}))
+    poly = ok(
+        c.post(
+            f"{API}/section-series",
+            json={
+                "params": {
+                    "type": "polyline",
+                    "polyline": [[0, 0], [100, 0], [100, 100]],
+                    "p1": [0, 0, 0],
+                    "contour_layer": layer,
+                }
+            },
+        )
+    )
     refused(c.post(check, json={"op": "stitch_series", "params": {"series_id": poly["id"]}}), 422, "series_polyline")
     refused(c.post(check, json={"op": "stitch_series", "params": {"series_id": 999_999}}), 422, "source_missing")
     refused(c.post(check, json={"op": "stitch_series", "params": {"series_id": layer}}), 422, "wrong_kind")

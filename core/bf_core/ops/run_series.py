@@ -21,6 +21,7 @@ k + 1 and of contours by their place in the call, both are replaced here. Nothin
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -166,7 +167,9 @@ def prepare(src: Sources, raw: dict[str, Any]) -> dict[str, Any]:
     links = raw.get("links")
     if links is not None:
         if not isinstance(links, list) or len(links) > MAX_LINKS:
-            raise P.bad("bad_links", "Связи контуров заданы неверно.", "Обновите таблицу связей окна «Каркас по серии».")
+            raise P.bad(
+                "bad_links", "Связи контуров заданы неверно.", "Обновите таблицу связей окна «Каркас по серии»."
+            )
         checked = []
         for number, link in enumerate(links, start=1):
             if not isinstance(link, list | tuple) or len(link) != 2:
@@ -234,6 +237,12 @@ def _heights(sc: Any, kept: np.ndarray, names: list[str]) -> None:
             )  # fmt: skip
 
 
+def _within(tick: Tick, start: float, stop: float, message: str) -> Callable[[float | None, str | None], None]:
+    """The `tick(fraction or None, message or None)` of the kernels of a series inside [start, stop] of the run."""
+    inner = staged(tick, start, stop, message)
+    return lambda f, m: inner(f or 0.0, m or "")
+
+
 def _degenerate(sc: Any, kept: np.ndarray, uw: np.ndarray, offsets: np.ndarray, names: list[str]) -> None:
     """A contour of zero area in the plane of its section (ADR 0016 «Риски»): refused with its line and section."""
     from bf_core.sections.links import centres
@@ -268,9 +277,7 @@ def _given_links(sc: Any, kept: np.ndarray, links: list[Any], names: list[str], 
             )  # fmt: skip
         pairs.add((ia, ib) if ka < kb else (ib, ia))
     if lost:
-        warnings.append(
-            f"Связей пропущено: {lost} — их линии не замкнуты или не лежат в окнах разрезов серии."
-        )
+        warnings.append(f"Связей пропущено: {lost} — их линии не замкнуты или не лежат в окнах разрезов серии.")
     return np.array(sorted(pairs), dtype=np.int64).reshape(-1, 2)
 
 
@@ -285,14 +292,20 @@ def _split(vertices: np.ndarray, triangles: np.ndarray, firsts: list[int]) -> li
     rows = np.concatenate([t[:, 0], t[:, 1], t[:, 2]])
     cols = np.concatenate([t[:, 1], t[:, 2], t[:, 0]])
     graph = coo_matrix((np.ones(len(rows), dtype=np.int8), (rows, cols)), shape=(n, n))
-    _count, label = connected_components(graph, directed=False)
+    count, label = connected_components(graph, directed=False)
+    by_vertex = np.argsort(label, kind="stable")  # within a part: in their order
+    v_start = np.searchsorted(label[by_vertex], np.arange(count + 1))
+    rank = np.empty(n, dtype=np.int64)
+    rank[by_vertex] = np.arange(n) - v_start[label[by_vertex]]
+    tri_label = label[t[:, 0]]
+    by_tri = np.argsort(tri_label, kind="stable")
+    t_start = np.searchsorted(tri_label[by_tri], np.arange(count + 1))
     out = []
     for first in firsts:
-        part = label[t[:, 0]] == label[first]
-        used = np.flatnonzero(label == label[first])
-        remap = np.full(n, -1, dtype=np.int64)
-        remap[used] = np.arange(len(used))
-        out.append((vertices[used], remap[t[part]].astype(np.int32)))
+        part = int(label[first])
+        verts = vertices[by_vertex[v_start[part] : v_start[part + 1]]]
+        tris = rank[t[by_tri[t_start[part] : t_start[part + 1]]]]
+        out.append((np.ascontiguousarray(verts), np.ascontiguousarray(tris, dtype=np.int32)))
     return out
 
 
@@ -311,7 +324,7 @@ def stitch_series(src: Sources, p: dict[str, Any], tick: Tick) -> Output:
     names = section_names(series.meta)
     tick(0.0, "Контуры серии")
     layers = _layers(src)
-    sc = series_contours(geom, layers, staged(tick, 0.0, 0.05, "Контуры серии"))
+    sc = series_contours(geom, layers, _within(tick, 0.0, 0.05, "Контуры серии"))
     kept = np.flatnonzero(sc.section >= 0)
     order = np.lexsort((np.arange(len(kept)), sc.section[kept]))  # by section, then as the layers give them
     kept = kept[order]
@@ -334,7 +347,7 @@ def stitch_series(src: Sources, p: dict[str, Any], tick: Tick) -> Output:
     uw = projected(geom, np.vstack([sc.points(int(i)) for i in kept]))
     _degenerate(sc, kept, uw, offsets, names)
     if p.get("links") is None:
-        pairs, _how = auto_links(uw, offsets, section, geom.step, None, staged(tick, 0.05, 0.1, "Связи контуров"))
+        pairs, _how = auto_links(uw, offsets, section, geom.step, None, _within(tick, 0.05, 0.1, "Связи контуров"))
     else:
         pairs = _given_links(sc, kept, p["links"], names, warnings)
     found = bodies(len(kept), pairs.tolist())
