@@ -74,7 +74,7 @@ def test_formats_of_the_demo(demo) -> None:  # type: ignore[no-untyped-def]
         assert CYRILLIC.search(t["title"]) and CYRILLIC.search(t["folder"])
         assert [f["format"] for f in t["formats"]] == EXPECTED[t["kind"]]
         for f in t["formats"]:
-            assert set(f) == {"format", "title", "available", "reason", "hint"}
+            assert set(f) == {"format", "title", "ext", "available", "reason", "hint"}
             assert f["available"] == (f["reason"] is None)
             if not f["available"]:
                 assert CYRILLIC.search(f["reason"]), (t["kind"], f)

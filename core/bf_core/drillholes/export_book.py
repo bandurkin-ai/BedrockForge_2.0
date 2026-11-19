@@ -137,6 +137,25 @@ def write_book(
         tick(0.95, "Запись книги")
         wb.save(part_path)
         os.replace(part_path, path)
+    except BaseException:
+        _discard(wb)
+        raise
     finally:
         part_path.unlink(missing_ok=True)
     return files, rows, warnings
+
+
+def _discard(wb: Any) -> None:
+    """The sheets of a book not saved (a cancel): their temporary files are closed and removed."""
+    for ws in wb.worksheets:
+        writer = getattr(ws, "_writer", None)
+        try:
+            if not ws.closed:
+                ws.close()
+        except Exception:  # noqa: BLE001 - a sheet half written: only its file matters
+            pass
+        if writer is not None:
+            try:
+                writer.cleanup()
+            except Exception:  # noqa: BLE001 - nothing left to remove
+                pass

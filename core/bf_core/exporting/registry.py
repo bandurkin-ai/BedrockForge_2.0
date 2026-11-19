@@ -375,7 +375,9 @@ def formats(conn: sa.Connection, env: Env) -> dict[str, Any]:
     /export/formats` (ADR 0017 §5):
 
         {"types": [{"kind", "title", "folder", "count", "default": format | null,
-                    "formats": [{"format", "title", "available", "reason", "hint"}]}]}
+                    "formats": [{"format", "title", "ext", "available", "reason", "hint"}]}]}
+
+    `ext` — the extension of the main file («.dxf»; "" — a folder of files, or the extension of the source).
 
     «Исходный файл» is available when at least one object of the type has one."""
     load_writers()
@@ -388,7 +390,10 @@ def formats(conn: sa.Connection, env: Env) -> dict[str, Any]:
             why = reason_of(w, env)
             if why is None and own and all(w.accepts(i) is not None for i in own):
                 why = w.accepts(own[0])
-            rows.append({"format": w.format, "title": w.title, "available": why is None, **_public(why)})
+            rows.append(
+                {"format": w.format, "title": w.title, "ext": _ext(w, k.key, env), "available": why is None,
+                 **_public(why)}
+            )  # fmt: skip
         default = next((r["format"] for r in rows if r["available"]), None)
         out.append({"kind": k.key, "title": k.title, "folder": k.folder, "count": len(own), "default": default,
                     "formats": rows})  # fmt: skip
@@ -397,3 +402,12 @@ def formats(conn: sa.Connection, env: Env) -> dict[str, Any]:
 
 def _public(why: Reason | None) -> dict[str, str | None]:
     return {"reason": None, "hint": None} if why is None else {"reason": why.message, "hint": why.hint or None}
+
+
+def _ext(w: Writer, kind: str, env: Env) -> str:
+    if w.write is None or w.format == SOURCE:
+        return ""
+    try:
+        return w.suffixes(Item(0, kind, "x", None), env)[0]
+    except Exception:  # noqa: BLE001 - a writer that needs the object (a raster) shows no extension
+        return ""
