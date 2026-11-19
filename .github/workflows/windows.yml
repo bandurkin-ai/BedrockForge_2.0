@@ -24,7 +24,9 @@ jobs:
     name: Сборка .exe и дымовой E2E
     if: github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft
     runs-on: windows-latest
-    timeout-minutes: 60
+    # 60 → 80 (Э10): pytest ~23 min, builds ~15, the smoke E2E of all the specs on the .exe ~25 (series, perfEditor —
+    # Э10); the last run was cut at 60 min inside the E2E. Billed by the time used, not by the limit.
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
