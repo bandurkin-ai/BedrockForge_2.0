@@ -101,7 +101,7 @@ describe("the form of a series", () => {
   });
 
   it("errors of the core name the field of the window; 409 asks in an own window", async () => {
-    const calls = core((method, path, body) => {
+    const calls = core((method, _path, body) => {
       if (method === "POST") return json({ code: "bad_series", message: "Окно «к себе»: от 0,01 до 10 000 м.", hint: "Введите расстояние в этих пределах.", field: "towards" }, 422);
       if (method === "PATCH" && body.expected_version === 1) return json({ code: "version_conflict", message: "Серию разрезов только что изменили в другом окне.", hint: "Параметры серии обновлены — проверьте их и повторите изменение.", version: 4, series: row(1, 4, {}, "Профили-2") }, 409);
       if (method === "PATCH") return json(row(1, 5));
