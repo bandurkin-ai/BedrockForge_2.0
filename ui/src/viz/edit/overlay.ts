@@ -116,6 +116,8 @@ export class EditOverlay implements SceneLayer {
   private readonly cursor: THREE.Points;
   private readonly draft: THREE.LineSegments;
   private readonly mats: Record<"cursor" | "snap", THREE.PointsMaterial>;
+  /** the box is counted again only for another layer object (a hover changes nothing in it) */
+  private boxOf: { layer: EditLayer; missingZ: number; box: number[] | null } | null = null;
 
   constructor(clip: THREE.Plane[], origin: Origin, colors: OverlayColors, pixelRatio = 1) {
     this.origin = origin;
@@ -149,7 +151,9 @@ export class EditOverlay implements SceneLayer {
 
   /** Shows the state; true — the box or the origin changed (the scene re-places the layer and counts its extent). */
   update(s: OverlayState): boolean {
-    const box = layerBbox(s.layer, s.missingZ);
+    const known = this.boxOf;
+    const box = known && known.layer === s.layer && Object.is(known.missingZ, s.missingZ) ? known.box : layerBbox(s.layer, s.missingZ);
+    this.boxOf = { layer: s.layer, missingZ: s.missingZ, box };
     let moved = false;
     if (outOfReach(this.origin, box)) {
       this.origin = boxOrigin(box as number[]);

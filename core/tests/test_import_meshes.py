@@ -23,6 +23,7 @@ from bf_core.db.schema import blob_owners, blobs, import_log, objects, wireframe
 from bf_core.formats.meshset import MeshSet
 from bf_core.jobs.context import JobCancelled, JobError
 from bf_core.storage.blobs import BlobStore
+from bf_core.wireframes import files as wf_files
 from bf_core.wireframes import source as src
 from bf_core.wireframes import store as ws
 from tests.formats.test_datamine_objects import write_pair
@@ -105,6 +106,9 @@ def stored(project: Any) -> list[dict[str, Any]]:
             own = sa.and_(blob_owners.c.owner_kind == "object", blob_owners.c.owner_id == row["id"])
             row["roles"] = set(conn.execute(sa.select(blob_owners.c.role).where(own)).scalars())
             row["info"] = ws.wireframe_info(conn, row["id"]) if row["state"] == "ready" else None
+            # the arrays of its own blobs or of its entry of a pack (a small wireframe of a portion: `pack:<n>`)
+            found = wf_files.wireframe_files(BlobStore(project.folder), ws.blob_roles(conn, row["id"]))
+            row["arrays"] = set(found.parts)
     return out
 
 
@@ -263,14 +267,16 @@ def test_real_tridb_is_imported(project, name: str, count: int, points: int, tri
         assert row["meta"]["source"] == {**ref.source, "file": name} == got.source
         assert (row["meta"]["format"], row["meta"]["filename"]) == ("tridb", name)
         assert row["info"]["source"] == {"format": "tridb", "file": name, "name": ref.source["name"]}
-        assert {"xyz", "tri"} <= row["roles"] <= {"xyz", "tri", "seq"}
+        assert {"xyz", "tri"} <= row["arrays"] <= {"xyz", "tri", "seq"}
+        packed = len(row["roles"]) == 1 and next(iter(row["roles"])).startswith("pack:")
+        assert row["roles"] == row["arrays"] or packed
         stats, file = row["info"]["stats"], declared(ref.source)
         assert {"area", "volume", "closed", "open_edges", "nonmanifold_edges", "degenerate"} <= set(stats)
         for key in ("volume", "area"):
             if stats[key] is not None and file[key] is not None:
                 worst = max(worst, abs(stats[key] - file[key]) / max(abs(file[key]), 1e-300))
     assert worst <= 1e-9, worst  # ТЗ 9.12; measured ≤ 1.4e-13
-    assert any("seq" in r["roles"] for r in rows)  # the store keeps another order: the order of the file is kept
+    assert any("seq" in r["arrays"] for r in rows)  # the store keeps another order: the order of the file is kept
 
     sha = sha_of(REAL / name)
     with dialect.read_tx(project.engine) as conn:
@@ -506,7 +512,7 @@ def test_broken_wireframes_and_broken_files(  # type: ignore[no-untyped-def]
         orphans = set(conn.execute(sa.select(blobs.c.sha256)).scalars()) - set(
             conn.execute(sa.select(blob_owners.c.sha256)).scalars()
         )
-        assert len(orphans) >= 2  # its vertices and its triangles
+        assert len(orphans) >= 1  # its vertices and its triangles: the pack of its portion (a small wireframe)
         assert conn.execute(sa.select(sa.func.count()).select_from(wireframes)).scalar_one() == len(rows)
     before = state_of(project.engine, project.folder)
     for bad, code in (([cut], "truncated"), ([tmp_path / "нет такого.tridb"], "file_unreadable")):
