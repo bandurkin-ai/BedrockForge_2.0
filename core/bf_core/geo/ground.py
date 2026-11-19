@@ -402,12 +402,7 @@ def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report) -> N
     )  # fmt: skip
     done(5, 0.9)
     if p.r_b is not None:
-        report["face_points"] += int(
-            gf.faces(
-                pts, order, start, pcls, ph, state, g, gx, gy, ncx, ncy, lat.ox, lat.oy, lat.c, p.cr,
-                blk.cx0, blk.cy0, p.ct, float(p.r_b), math.cos(math.radians(p.face_deg)), *blk.core,
-            )
-        )  # fmt: skip
+        report["face_points"] += _faces(pts, order, start, pcls, ph, (state, g, gx, gy), grid, blk.core, p, pool)
     col0, row0, col1, row1 = blk.core
     pool.strips(
         lambda a, b: gk.store_rows(order, start, pcls, ph, ncx, row0 + a, row0 + b, col0, col1, cls, h),
@@ -497,6 +492,31 @@ def _growth(cells, u, mask, grid, p, pool, report):  # type: ignore[no-untyped-d
     return state, gx, gy
 
 
+def _faces(pts, order, start, pcls, ph, ground, grid, core, p, pool) -> int:  # type: ignore[no-untyped-def]
+    """Stage 8: the points of steep faces with ground above and below become ground (pcls, ph of the core)."""
+    ox, oy, c, cx0, cy0, ncx, ncy = grid
+    col0, row0, col1, row1 = core
+    r_b = float(p.r_b)
+    kb = int(math.ceil(r_b / c))
+    reach = int(math.ceil(2.5 * p.cr / c)) + 1  # the widest patch of a voxel
+    box = (max(col0 - reach, 0), max(row0 - reach, 0), min(col1 + reach, ncx), min(row1 + reach, ncy))
+    high, low, longest = gf.relief(ground[0], ground[1], start, ncx, ncy, kb)
+    lattice = (ncx, ncy, ox, oy, c)
+    vox = gf.voxels(pts, order, start, pcls, high, low, longest, lattice, kb, p.ct, box)
+    if not len(vox[1]):
+        return 0
+    par = (p.cr, p.ct, r_b, math.cos(math.radians(p.face_deg)))
+    hills, cell0, cols = (high, low), (cx0, cy0), (col0, col1)
+    turned = pool.strips(
+        lambda a, b: gf.face_rows(
+            pts, order, start, pcls, ph, ground, hills, vox, lattice, cell0, row0 + a, row0 + b, cols, box, par
+        ),
+        row1 - row0,
+        STRIP_ROWS,
+    )
+    return int(sum(turned))
+
+
 def _planes(cells, state, gx, gy, grid, p, pool):  # type: ignore[no-untyped-def]
     """Stage 7, the surface: the plane of every ground cell → (g, gn, weak); gx, gy are rewritten."""
     cmin, mx, my, mz = cells
@@ -522,3 +542,7 @@ def warm() -> None:
     ret = np.full(len(cloud), 0x11, np.uint8)
     classify_ground(cloud, ret, PROFILES["quarry"], block=8)
     classify_ground(cloud, None, PROFILES["plain"])
+    # a memory map of a blob is read-only — another signature of every kernel that takes the points
+    cloud.setflags(write=False)
+    ret.setflags(write=False)
+    classify_ground(cloud, ret, PROFILES["quarry"], block=8)

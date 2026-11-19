@@ -1,10 +1,16 @@
 """Job `model.dtm` — «Построить ЦТМ» from points and lines of the project (ТЗ 7.20, 7.23; ADR 0011 §3).
 
-Parameters {name?, layer_ids, set_ids, breaklines, boundary {layer_id, line?, use_z?}, max_edge, to_dtm, color}:
+Parameters {name?, layer_ids, set_ids, clouds, breaklines, boundary {layer_id, line?, use_z?}, max_edge, to_dtm,
+color}:
 
 * `layer_ids` — layers of points and of lines (`lines/store.py`). With `breaklines` (the default) every line is
   structural: its segments are edges of the surface; without it the vertices of the lines are plain points.
 * `set_ids` — collars of drillhole sets (those that have X, Y and Z).
+* `clouds` — point clouds [{layer_id, classes, cell?}] (ADR 0014 §5, `cloud_source.py`): the points of the
+  classes (null — every class but the noise), one in every cell of the plan of `cell` metres (by default
+  max(CR / 2, √(area / 2 million))), so that all the clouds together give at most 2 million vertices. A cloud is
+  read by slices, never as a layer; a cloud among `layer_ids` is a cloud of every class but the noise.
+  `request_from_points` — the command `terrain.from_points {cloud_id, classes [2], l_max, boundary_id?, cell?}`.
 * `boundary` — a closed line of a layer (`line` — its number from 0; by default the only closed line of the
   layer): the surface is cut by it. Its heights are ignored unless `use_z` (a digitised outline often lies at
   Z = 0): the outline takes the heights of the surface.
@@ -39,7 +45,9 @@ from bf_core.db import dialect
 from bf_core.db.schema import dh_holes, line_layers, objects
 from bf_core.jobs.context import JobCancelled, JobContext, JobError
 from bf_core.jobs.registry import handler
+from bf_core.lines.cloud import cloud_meta, not_a_cloud
 
+from . import cloud_source as cs
 from . import store as wf_store
 
 MAX_SOURCES = 2000
@@ -68,6 +76,7 @@ def request(
     name: str | None = None,
     layer_ids: Any = None,
     set_ids: Any = None,
+    clouds: Any = None,
     breaklines: bool = True,
     boundary: dict[str, Any] | None = None,
     max_edge: float | None = None,
@@ -77,26 +86,45 @@ def request(
     """Checked parameters of the job `model.dtm` (for the endpoint that starts it); ApiError otherwise."""
     layers = _ids(layer_ids, "Слоёв")
     sets = _ids(set_ids, "Наборов скважин")
-    if not layers and not sets:
+    asked = cs.check_sources(clouds)
+    _ids([c["layer_id"] for c in asked], "Облаков точек")
+    if not layers and not sets and not asked:
         raise ApiError(
             422,
             "no_sources",
             "Не из чего строить поверхность.",
-            "Выберите слои точек или линий, или наборы скважин (их устья).",
+            "Выберите слои точек или линий, облака точек или наборы скважин (их устья).",
         )
-    points = 0
+    points = cloud_points = 0
     names: list[str] = []
-    if layers:
+    wanted = list(dict.fromkeys([*layers, *(c["layer_id"] for c in asked)]))
+    if wanted:
         rows = conn.execute(
-            sa.select(objects.c.id, objects.c.name, line_layers.c.point_count)
+            sa.select(objects.c.id, objects.c.name, objects.c.meta, line_layers.c.point_count)
             .join(line_layers, line_layers.c.object_id == objects.c.id)
-            .where(objects.c.id.in_(layers), objects.c.kind == LAYER, objects.c.state == "ready")
+            .where(objects.c.id.in_(wanted), objects.c.kind == LAYER, objects.c.state == "ready")
         ).all()
         found = {int(r.id): r for r in rows}
-        if len(found) != len(layers):
+        if len(found) != len(wanted):
             raise ApiError(404, "line_layer_not_found", "Слой линий или точек не найден.", "Обновите дерево проекта.")
-        points += sum(int(r.point_count) for r in rows)
+        named = {c["layer_id"] for c in asked}
+        for i in [i for i in layers if cloud_meta(found[i].meta) is not None]:
+            layers.remove(i)  # a cloud among the layers: read by slices, every class but the noise
+            if i not in named:
+                asked.append({"layer_id": i, "classes": None, "cell": None})
+        points += sum(int(found[i].point_count) for i in layers)
         names += [str(found[i].name) for i in layers]
+        for c in asked:
+            row = found[c["layer_id"]]
+            meta = cloud_meta(row.meta)
+            if meta is None:
+                raise not_a_cloud()
+            of = cs.count_of(meta.get("classes"), c["classes"])
+            if not of:
+                raise cs.no_ground(str(row.name), c["classes"])
+            cloud_points += of
+            names.append(str(row.name))
+        points += min(cloud_points, cs.MAX_VERTICES)
     if sets:
         rows = conn.execute(
             sa.select(objects.c.id, objects.c.name).where(
@@ -119,6 +147,9 @@ def request(
         "to_dtm": bool(to_dtm),
         "points": points,
     }
+    if asked:
+        out["clouds"] = asked
+        out["cloud_points"] = cloud_points  # before the thinning: what the thinning itself holds
     if boundary:
         layer_id = boundary.get("layer_id")
         row = conn.execute(
@@ -157,10 +188,54 @@ def request(
     return out
 
 
+def request_from_points(
+    conn: sa.Connection,
+    *,
+    cloud_id: int,
+    classes: Any = (cs.GROUND,),
+    l_max: float | None = None,
+    boundary_id: int | None = None,
+    cell: float | None = None,
+    name: str | None = None,
+    to_dtm: bool = True,
+    color: str | None = None,
+) -> dict[str, Any]:
+    """Parameters of `model.dtm` for the command `terrain.from_points` (ADR 0014 §5): the ground of one cloud.
+    `l_max` — the longest edge; by default 5 CR of the last «Фильтр земли» of the cloud (5 m when it was never
+    filtered), and not less than 4 steps of the thinning: a shorter one would peel the surface away."""
+    meta = cloud_meta(
+        conn.execute(
+            sa.select(objects.c.meta).where(objects.c.id == cloud_id, objects.c.kind == LAYER, objects.c.state == "ready")
+        ).scalar()
+    )
+    if meta is None:
+        exists = conn.execute(sa.select(objects.c.id).where(objects.c.id == cloud_id, objects.c.kind == LAYER)).first()
+        if exists is None:
+            raise ApiError(404, "line_layer_not_found", "Облако точек не найдено.", "Обновите дерево проекта.")
+        raise not_a_cloud()
+    if l_max is None:
+        cr = cs.filter_cr(meta)
+        step = cs.check_cell(cell) or cs.cell_of(meta["bbox"], cr)
+        l_max = max(5.0 * (cr or cs.DEFAULT_CR), 4.0 * step)
+    return request(
+        conn,
+        name=name,
+        clouds=[{"layer_id": int(cloud_id), "classes": None if classes is None else list(classes), "cell": cell}],
+        boundary=None if boundary_id is None else {"layer_id": int(boundary_id)},
+        max_edge=l_max,
+        to_dtm=to_dtm,
+        color=color,
+    )
+
+
 def _memory(params: dict[str, Any]) -> int:
     """The sources, the triangulation (about 2 triangles a point), the mesh in spatial order and one part being
-    simplified: about 0.5 KB a point over the libraries (measured: 1 million points — 660 MB at the peak)."""
-    return max(512, int(int(params.get("points") or 0) * 600 / 2**20) + 300)
+    simplified: about 0.5 KB a point over the libraries (measured: 1 million points — 660 MB at the peak).
+    `points` counts a cloud by the vertices it gives (at most 2 million); the thinning before it holds
+    `BYTES_A_POINT` a point of the classes and is over when the triangulation starts."""
+    build = int(params.get("points") or 0) * 600
+    thin = int(params.get("cloud_points") or 0) * cs.BYTES_A_POINT
+    return max(512, int(max(build, thin) / 2**20) + 300)
 
 
 # --- sources ---------------------------------------------------------------------------------------------
@@ -175,6 +250,8 @@ class Sources:
         self.boundary: np.ndarray | None = None
         self.used: list[dict[str, Any]] = []
         self.skipped = 0  # vertices without a height
+        self.notes: list[tuple[str, str]] = []  # lines of the journal: (text, level)
+        self.cell = 0.0  # the largest step a cloud was thinned with, m
 
     def add_points(self, xyz: np.ndarray) -> int:
         ok = np.isfinite(xyz).all(axis=1)
@@ -241,14 +318,30 @@ def _boundary(ls: Any, ref: dict[str, Any]) -> np.ndarray:
     return np.ascontiguousarray(xyz[:, :2])
 
 
-def gather(conn: sa.Connection, store: Any, params: dict[str, Any], tick: Callable[[float], None]) -> Sources:
-    """Read the sources of the parameters (as `request` returns them) from the project."""
+CLOUD_WEIGHT = 10  # a cloud in the progress of the reading: as many layers
+READING, THINNING = "Чтение исходных данных", "Прореживание облака"
+
+
+def _is_cloud(conn: sa.Connection, layer_id: int) -> bool:
+    meta = conn.execute(sa.select(objects.c.meta).where(objects.c.id == layer_id, objects.c.kind == LAYER)).scalar()
+    return cloud_meta(meta) is not None
+
+
+def gather(conn: sa.Connection, store: Any, params: dict[str, Any], tick: Callable[[float, str], None]) -> Sources:
+    """Read the sources of the parameters (as `request` returns them) from the project. `tick(share, stage)`."""
     from bf_core.lines import store as ls_store
 
     src = Sources()
-    layers = [int(i) for i in params.get("layer_ids") or []]
     sets = [int(i) for i in params.get("set_ids") or []]
-    total = max(1, len(layers) + len(sets) + (1 if params.get("boundary") else 0))
+    clouds = cs.check_sources(params.get("clouds"))
+    layers = []
+    for layer_id in [int(i) for i in params.get("layer_ids") or []]:
+        if not _is_cloud(conn, layer_id):
+            layers.append(layer_id)
+        elif all(c["layer_id"] != layer_id for c in clouds):  # parameters made before the clouds came
+            clouds.append({"layer_id": layer_id, "classes": None, "cell": None})
+    heavy = CLOUD_WEIGHT * len(clouds)
+    total = max(1, len(layers) + len(sets) + heavy + (1 if params.get("boundary") else 0))
     done = 0
     for layer_id in layers:
         ls = ls_store.read_layer(conn, store, layer_id)
@@ -260,7 +353,13 @@ def gather(conn: sa.Connection, store: Any, params: dict[str, Any], tick: Callab
             taken, segments = src.add_lines(xyz, np.asarray(ls.offsets, dtype=np.int64))
             src.used.append({"kind": LAYER, "id": layer_id, "name": ls.name, "points": taken, "segments": segments})
         done += 1
-        tick(done / total)
+        tick(done / total, READING)
+    for one in cs.take(conn, store, clouds, lambda f: tick((done + heavy * f) / total, THINNING)):
+        src.add_points(one.thinned.xyz)
+        src.cell = max(src.cell, one.thinned.cell)
+        src.used.append({"kind": LAYER, **one.used()})
+        src.notes += one.notes()
+    done += heavy
     for set_id in sets:
         name = conn.execute(sa.select(objects.c.name).where(objects.c.id == set_id, objects.c.kind == SET)).scalar()
         if name is None:
@@ -276,13 +375,19 @@ def gather(conn: sa.Connection, store: Any, params: dict[str, Any], tick: Callab
         taken = src.add_points(np.array(rows, dtype=np.float64).reshape(-1, 3)) if rows else 0
         src.used.append({"kind": SET, "id": set_id, "name": str(name), "collars": taken})
         done += 1
-        tick(done / total)
+        tick(done / total, READING)
     ref = params.get("boundary")
     if ref:
+        if _is_cloud(conn, int(ref["layer_id"])):
+            raise JobError(
+                "bad_boundary",
+                "Граница поверхности — облако точек: в нём нет замкнутой линии.",
+                "Выберите слой с замкнутой линией — контуром поверхности.",
+            )
         ls = ls_store.read_layer(conn, store, int(ref["layer_id"]))
         src.boundary = _boundary(ls, ref)
         src.used.append({"kind": LAYER, "id": int(ref["layer_id"]), "name": ls.name, "boundary": len(src.boundary)})
-        tick(1.0)
+        tick(1.0, READING)
     return src
 
 
@@ -337,12 +442,21 @@ def model_dtm(ctx: JobContext) -> dict[str, Any]:
     def part(start: float, stop: float, message: str) -> Callable[[float], None]:
         return lambda f: ctx.tick(start + (stop - start) * max(0.0, min(1.0, f)), message)
 
-    ctx.tick(0.0, "Чтение исходных данных")
+    ctx.tick(0.0, READING)
     try:
         with dialect.read_tx(engine) as conn:
-            src = gather(conn, store, p, part(0.0, 0.1, "Чтение исходных данных"))
+            src = gather(conn, store, p, lambda f, stage: ctx.tick(0.1 * max(0.0, min(1.0, f)), stage))
     except ApiError as exc:
         raise JobError(exc.code, exc.message, exc.hint) from exc
+    for text, level in src.notes:
+        ctx.log(text, level)
+    edge = p.get("max_edge")
+    if edge is not None and edge < 2.0 * src.cell:
+        ctx.log(
+            f"Наибольшая длина ребра {_num(edge)} м меньше двух шагов прореживания облака "
+            f"({_num(round(src.cell, 4))} м): поверхность может быть обрезана. Увеличьте длину ребра или уменьшите шаг.",
+            "warn",
+        )
     if src.skipped:
         ctx.log(f"Пропущено вершин без высоты: {_n(src.skipped)} (пустая отметка не считается нулём)", "warn")
     points = np.concatenate(src.points) if src.points else None

@@ -4,6 +4,11 @@ pages, renaming and colour, deleting a file with its layers.
 The version of a layer is `objects.version`: every change raises it (the parts of the 3D view are keyed by it,
 `viz/lines.py`), a stale `expected_version` is a 409 with the current layer. Only objects that are `ready` are
 seen here: what an import is still building does not exist for the interface.
+
+A point cloud (ADR 0014 §1, `lines/cloud.py`) is a layer of points with `cloud` in its properties (`cloud_summary`:
+parts, levels, extent, classes, the colour modes it has, the source — LAS or XYZ —, the last «Фильтр земли» and the
+DTM of `dz`). Its attributes come from its blobs, not from a table: a page is a slice of the columns `class`, `ret`,
+`h`, `dz` with X, Y, Z (float64) and the number of the record of the source of every point (`cloud_page`).
 """
 
 from __future__ import annotations
@@ -30,8 +35,34 @@ _LAYER = (
     objects.c.id, objects.c.parent_id, objects.c.name, objects.c.version, objects.c.extent, objects.c.sort_key,
     line_layers.c.line_count, line_layers.c.point_count, line_layers.c.length, line_layers.c.closed_count,
     line_layers.c.flat, line_layers.c.color, line_layers.c.attr_schema, line_layers.c.points_only,
-    line_layers.c.origin,
+    line_layers.c.origin, objects.c.meta,
 )  # fmt: skip
+#: what of `meta.cloud.source.las` the properties show (the WKT, the GeoTIFF keys and the VLRs stay in the project)
+_LAS_SHOWN = ("version", "point_format", "record_length", "extra_bytes", "point_count", "scale", "offset",
+              "system_id", "software", "created", "epsg")  # fmt: skip
+
+
+def cloud_summary(meta: Mapping[str, Any] | None, schema: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    """The cloud part of the properties of a layer (None — the layer is not a cloud)."""
+    cloud = (meta or {}).get("cloud")
+    if not isinstance(cloud, Mapping):
+        return None
+    source = dict(cloud.get("source") or {})
+    las = source.pop("las", None)
+    if isinstance(las, Mapping):
+        source["las"] = {k: las.get(k) for k in _LAS_SHOWN}
+        source["las"]["crs"] = bool(las.get("wkt") or las.get("geokeys"))
+    stores = {f.get("store") for f in schema or []}
+    return {
+        "parts": len(cloud.get("parts") or []),
+        "levels": list(cloud.get("levels") or []),
+        "bbox": cloud.get("bbox"),
+        "classes": dict(cloud.get("classes") or {}),
+        "modes": ["class", *(m for m in ("h", "dz") if m in stores)],
+        "source": source,
+        "ground": cloud.get("ground"),
+        "dz": cloud.get("dz"),
+    }
 
 
 def _layer_out(row: Any) -> dict[str, Any]:
@@ -39,6 +70,7 @@ def _layer_out(row: Any) -> dict[str, Any]:
     out["file_id"] = out.pop("parent_id")
     out.pop("sort_key", None)
     out["attr_schema"] = out["attr_schema"] or []
+    out["cloud"] = cloud_summary(out.pop("meta", None), out["attr_schema"])
     # «замкнутость» of the properties: every line is closed, some are, none is (points have no lines)
     lines, closed = int(out["line_count"]), int(out["closed_count"])
     out["closed"] = "none" if closed == 0 else "all" if closed == lines else "some"
@@ -188,6 +220,35 @@ def attrs_key(conn: sa.Connection, layer_id: int, scope: str) -> tuple[dict[str,
 
 def _cell(v: Any) -> Any:
     return None if isinstance(v, float) and not math.isfinite(v) else v
+
+
+def _number(v: float) -> float | int | None:
+    if not math.isfinite(v):
+        return None
+    return int(v) if v.is_integer() and abs(v) < 2**53 else v
+
+
+def cloud_page(cloud: Any, layer: Mapping[str, Any], scope: str, offset: int, limit: int) -> dict[str, Any]:
+    """Rows [offset, offset + limit) of the attributes of a cloud in its storage order — row i is the point i, the
+    `line` of a part of the 3D window (`viz/cloud.py`): the fields of `attr_schema` read from their blobs
+    (`lines.cloud.attr_column`; an empty `h`, `dz` is null), `xyz` — X, Y, Z as float64, `seq` — the number of the
+    record of the source. A cloud has no attributes by vertex: `scope="vertex"` gives no fields."""
+    from bf_core.lines.cloud import attr_column
+
+    total = int(cloud.count)
+    fields = [dict(f) for f in layer["attr_schema"] if f.get("scope", "feature") == scope and cloud.has(f.get("store"))]
+    out: dict[str, Any] = {
+        "layer_id": layer["id"], "version": layer["version"], "scope": scope, "fields": fields, "total": total,
+        "offset": offset, "limit": limit, "rows": [], "xyz": [], "seq": [],
+    }  # fmt: skip
+    if scope != "feature" or offset >= total:
+        return out
+    count = min(limit, total - offset)
+    columns = [attr_column(cloud, f, offset, count).tolist() for f in fields]
+    out["rows"] = [[_number(c[i]) for c in columns] for i in range(count)]
+    out["xyz"] = cloud.read("xyz", offset, count).tolist()
+    out["seq"] = cloud.read("seq", offset, count).tolist()
+    return out
 
 
 def attrs_page(

@@ -3,10 +3,13 @@
 `GET /lines/files` — the tree «Линии»: files with their layers; `GET/DELETE /lines/files/{id}` — one file; deleting
 it deletes its layers. `GET/PATCH /lines/layers/{id}` — the properties of a layer (name, colour, length, closed
 lines, attribute schema); a PATCH carries `expected_version`, a stale one is a 409 with the current layer.
-`GET /lines/layers/{id}/attrs?offset&limit&scope` — attributes by pages with an ETag (If-None-Match → 304).
+`GET /lines/layers/{id}/attrs?offset&limit&scope` — attributes by pages with an ETag (If-None-Match → 304); of a
+point cloud — a slice of its blobs with X, Y, Z and the record numbers (`service.cloud_page`). The properties of a
+cloud layer have `cloud` (`service.cloud_summary`).
 The geometry for 3D is `/viz/lines/{id}` (`viz/router.py`).
 `POST /lines/export` starts the job `export.lines` (`lines/export.py`): layers or a whole file to STR, Surpac
-STR, DXF, CSV or DAT.
+STR, DXF, CSV or DAT; a point cloud (alone) to LAS — by its source file (`las: "source"`) or as a new file
+(`"new"`) — or to CSV `X;Y;Z;класс[;h]` (`lines/cloud_export.py`).
 """
 
 from __future__ import annotations
@@ -115,26 +118,38 @@ def layer_attrs(
     from . import service
 
     project = svc.require_current()
+    store = BlobStore(project.folder)
+    cloud = None
     with dialect.read_tx(project.engine) as conn:
         layer, shas = service.attrs_key(conn, layer_id, scope)
+        if layer.get("cloud") is not None:
+            from .cloud import open_cloud
+
+            cloud = open_cloud(conn, store, layer_id)
     blobs = sorted(shas.items())
     key = json.dumps(["line-attrs", project.uid, layer_id, layer["version"], blobs, scope, offset, limit])
     tag = '"' + hashlib.sha256(key.encode()).hexdigest() + '"'
     headers = {"ETag": tag, **CACHE_HEADERS}
     if matches(if_none_match, tag):
         return Response(status_code=304, headers=headers)
-    page = service.attrs_page(BlobStore(project.folder), layer, shas, scope, offset, limit)
+    if cloud is not None:
+        page = service.cloud_page(cloud, layer, scope, offset, limit)
+    else:
+        page = service.attrs_page(store, layer, shas, scope, offset, limit)
     return JSONResponse(page, headers=headers)
 
 
 class ExportBody(BaseModel):
     path: str = Field(max_length=2000)
-    format: str = Field(max_length=16)  # str | surpac | dxf | csv | dat
+    format: str = Field(max_length=16)  # str | surpac | dxf | csv | dat | las (a point cloud)
     layer_ids: list[int] | None = Field(default=None, max_length=2000)
     file_id: int | None = None  # every layer of a file, when `layer_ids` is not given
     delimiter: str | None = Field(default=None, min_length=1, max_length=1)
     decimal: str | None = Field(default=None, pattern="^[.,]$")
     encoding: str | None = Field(default=None, max_length=20)
+    # LAS of a point cloud: a copy of its source file with the classes of the cloud, or a new file; null — by the
+    # source when the cloud was loaded from a LAS
+    las: Literal["source", "new"] | None = None
     # the file under the name with the format's extension exists: the user agreed to replace it (409 before)
     overwrite: bool = False
 

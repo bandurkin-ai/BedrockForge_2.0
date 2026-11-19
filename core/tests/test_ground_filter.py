@@ -282,3 +282,69 @@ def test_tick_reports_the_stages_and_cancels() -> None:
 
     with pytest.raises(Stop):
         ground.classify_ground(scene.xyz, None, QUARRY, threads=4, tick=stop)
+
+
+# --- Т-З4, «Блоки» ---------------------------------------------------------------------------------------
+
+
+def _two_pits(seed: int) -> cloud.Scene:
+    """The funnel of Т-З2 (60 m deep) and the benches of Т-З3 side by side: 290 × 190 m, six blocks of 128 m."""
+    a, b = cloud.funnel(seed, depth=60.0), cloud.benches(seed + 1)
+    shift = np.array([a.extent[2] - b.extent[0] + 20.0, 0.0, 0.0])
+    return cloud.Scene(
+        xyz=np.ascontiguousarray(np.vstack([a.xyz, b.xyz + shift])),
+        truth=np.concatenate([a.truth, b.truth]),
+        tag=np.concatenate([a.tag, b.tag]),
+        ret=np.concatenate([a.ret, b.ret]),
+        origin=a.origin,
+        ground_z=a.ground_z,
+        ground_cos=a.ground_cos,
+        extent=(a.extent[0], a.extent[1], b.extent[2] + shift[0], max(a.extent[3], b.extent[3])),
+    )
+
+
+def test_tz4_threads_and_repeats_give_the_same_bytes() -> None:
+    scene = _two_pits(404)
+    first = ground.classify_ground(scene.xyz, scene.ret, QUARRY, threads=1, block=128)
+    assert first.report["blocks"] >= 4
+    got = first.cls == 2
+    assert got[scene.tag == cloud.T_WALL].mean() >= 0.95 and got[scene.tag == cloud.T_SLOPE].mean() >= 0.98
+    for threads in (2, 4, 8, 1):
+        again = ground.classify_ground(scene.xyz, scene.ret, QUARRY, threads=threads, block=128)
+        assert again.cls.tobytes() == first.cls.tobytes(), threads
+        assert again.h.tobytes() == first.h.tobytes(), threads  # NaN included: the bytes, not the values
+        assert again.report["sweeps"] == first.report["sweeps"]
+    # and so are the vertices of the DTM built from the ground
+    v1, t1, _ = build_dtm(scene.xyz[first.cls == 2])
+    v2, t2, _ = build_dtm(scene.xyz[again.cls == 2])
+    assert v1.tobytes() == v2.tobytes() and t1.tobytes() == t2.tobytes()
+    # one block and threads: the same again
+    whole = ground.classify_ground(scene.xyz, scene.ret, QUARRY, threads=1)
+    for threads in (2, 8):
+        again = ground.classify_ground(scene.xyz, scene.ret, QUARRY, threads=threads)
+        assert again.cls.tobytes() == whole.cls.tobytes() and again.h.tobytes() == whole.h.tobytes()
+
+
+def test_blocks_keep_the_thresholds_of_tz1(plain) -> None:  # type: ignore[no-untyped-def]
+    scene, whole = plain
+    res = ground.classify_ground(scene.xyz, None, PLAIN, threads=2, block=128)
+    assert res.report["blocks"] == 4
+    s = scores(scene, res.cls)
+    assert s["recall"] >= 0.99 and s["false"] <= 0.01, s
+    assert (res.cls[scene.tag == cloud.T_OUTLIER] == 7).all()
+    dev = dtm_deviation(scene, res.cls)
+    assert float(np.sqrt((dev**2).mean())) <= 0.1
+    assert float((res.cls != whole.cls).mean()) < 0.001  # the seams of the blocks do not show
+
+
+def test_blocks_keep_the_thresholds_of_tz2(funnel) -> None:  # type: ignore[no-untyped-def]
+    scene, whole = funnel
+    res = ground.classify_ground(scene.xyz, None, QUARRY, threads=2, block=128)
+    assert res.report["blocks"] >= 16
+    s = scores(scene, res.cls)
+    assert s["slope"] >= 0.98, s
+    x0, y0, x1, y1 = scene.extent
+    centre, radius = ((x0 + x1) / 2, (y0 + y1) / 2), (x1 - x0) / 2
+    dev = dtm_deviation(scene, res.cls, lambda x, y: np.hypot(x - centre[0], y - centre[1]) < radius - 2.0)
+    assert float(np.sqrt((dev**2).mean())) <= 0.15
+    assert float((res.cls != whole.cls).mean()) < 0.01

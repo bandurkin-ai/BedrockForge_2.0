@@ -7,8 +7,9 @@ wall stand metres above the ground surface. They are returned here.
 Candidates are the points that are neither ground nor noise and have ground both higher and lower than
 themselves within R_б (a coarse grid of the highest and the lowest ground height sorts out the vegetation of
 flat ground at once). The candidates are gathered into voxels of c × c × c (c = CR/2); the plane of a voxel
-is the principal plane of the voxel centres within 1.5·CR — so the cost does not grow with the density of the
-cloud or the height of the wall. A voxel is a face when
+is the principal plane of the voxel centres within 1.5·CR (2.5·CR where there are fewer than 12 of them: a
+sparse wall, its upper and lower edge) — so the cost does not grow with the density of the cloud or the height
+of the wall. A voxel is a face when
 
   * the patch is flat: at least 6 voxels, their spread across the plane ≤ CT/2 and much less than along it;
   * the plane is steeper than `face` (60°);
@@ -139,41 +140,8 @@ def _bins_of(xyz, order, pcls, s, e, top, bottom, c, bins):  # type: ignore[no-u
 
 
 @njit(cache=True, nogil=True)
-def faces(  # type: ignore[no-untyped-def]
-    xyz,
-    order,
-    start,
-    pcls,
-    ph,
-    state,
-    g,
-    gx,
-    gy,
-    ncx,
-    ncy,
-    ox,
-    oy,
-    c,
-    cr,
-    cx0,
-    cy0,
-    ct,
-    r_b,
-    cos_face,
-    col0,
-    row0,
-    col1,
-    row1,
-):
-    """Points of steep faces with ground above and below → pcls 2, ph — the distance to the plane of the face.
-
-    Only the cells [row0, row1) × [col0, col1) (the core of the block) are classified; the voxels around them
-    take part in the planes. Returns the number of points turned to ground.
-    """
-    kb = int(math.ceil(r_b / c))
-    kf = int(math.ceil(1.5 * cr / c))
-    rf2 = (1.5 * cr) ** 2
-    # the highest and the lowest ground of coarse squares of kb cells
+def relief(state, g, start, ncx, ncy, kb):  # type: ignore[no-untyped-def]
+    """The highest and the lowest ground of coarse squares of kb cells, and the longest cell (in points)."""
     mbx = (ncx + kb - 1) // kb
     mby = (ncy + kb - 1) // kb
     high = np.full((mby, mbx), -np.inf)
@@ -190,11 +158,18 @@ def faces(  # type: ignore[no-untyped-def]
                     high[cj // kb, ci // kb] = v
                 if v < low[cj // kb, ci // kb]:
                     low[cj // kb, ci // kb] = v
-    # the cells whose voxels are needed: the core and the reach of a patch around it
-    j0 = max(row0 - kf - 1, 0)
-    j1 = min(row1 + kf + 1, ncy)
-    i0 = max(col0 - kf - 1, 0)
-    i1 = min(col1 + kf + 1, ncx)
+    return high, low, longest
+
+
+@njit(cache=True, nogil=True)
+def voxels(xyz, order, start, pcls, high, low, longest, grid, kb, ct, box):  # type: ignore[no-untyped-def]
+    """The candidates of the cells of `box` (i0, j0, i1, j1) gathered into voxels of c × c × c.
+
+    → (vstart, vbin, vx, vy, vz): the voxels of a cell are vstart[cell] : vstart[cell + 1], ascending in the
+    vertical bin vbin; vx, vy, vz — the mean point of a voxel (X, Y from the origin of the cloud).
+    """
+    ncx, ncy, ox, oy, c = grid
+    i0, j0, i1, j1 = box
     bins = np.empty(max(longest, 1), np.int64)
     vstart = np.zeros(ncx * ncy + 1, np.int32)
     for cj in range(j0, j1):
@@ -212,8 +187,6 @@ def faces(  # type: ignore[no-untyped-def]
     for cell in range(ncx * ncy):
         vstart[cell + 1] += vstart[cell]
     nv = vstart[ncx * ncy]
-    if nv == 0:
-        return 0
     vbin = np.empty(nv, np.int64)
     vx = np.zeros(nv)
     vy = np.zeros(nv)
@@ -250,69 +223,118 @@ def faces(  # type: ignore[no-untyped-def]
         vx[v] /= vn[v]
         vy[v] /= vn[v]
         vz[v] /= vn[v]
-    # the plane of every voxel of the core and the ground it meets
+    return vstart, vbin, vx, vy, vz
+
+
+@njit(cache=True, nogil=True)
+def _patch(v, cj, ci, reach, radius2, vox, ncx, box):  # type: ignore[no-untyped-def]
+    """The voxels within √radius2 of voxel v (reach cells and bins around) → (count, the mean offset from v,
+    the covariance of the offsets: xx, xy, xz, yy, yz, zz)."""
+    vstart, vbin, vx, vy, vz = vox
+    i0, j0, i1, j1 = box
+    x0 = vx[v]
+    y0 = vy[v]
+    z0 = vz[v]
+    cnt = 0
+    sx = 0.0
+    sy = 0.0
+    sz = 0.0
+    sxx = 0.0
+    sxy = 0.0
+    sxz = 0.0
+    syy = 0.0
+    syz = 0.0
+    szz = 0.0
+    for jj in range(max(cj - reach, j0), min(cj + reach + 1, j1)):
+        for ii in range(max(ci - reach, i0), min(ci + reach + 1, i1)):
+            other = jj * ncx + ii
+            a = vstart[other]
+            b = vstart[other + 1]
+            if a == b:
+                continue
+            w = _first_bin(vbin, a, b, vbin[v] - reach)
+            while w < b and vbin[w] <= vbin[v] + reach:
+                dx = vx[w] - x0
+                dy = vy[w] - y0
+                dz = vz[w] - z0
+                if dx * dx + dy * dy + dz * dz <= radius2:
+                    cnt += 1
+                    sx += dx
+                    sy += dy
+                    sz += dz
+                    sxx += dx * dx
+                    sxy += dx * dy
+                    sxz += dx * dz
+                    syy += dy * dy
+                    syz += dy * dz
+                    szz += dz * dz
+                w += 1
+    if cnt == 0:
+        return 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    sx /= cnt
+    sy /= cnt
+    sz /= cnt
+    return (
+        cnt,
+        sx,
+        sy,
+        sz,
+        sxx / cnt - sx * sx,
+        sxy / cnt - sx * sy,
+        sxz / cnt - sx * sz,
+        syy / cnt - sy * sy,
+        syz / cnt - sy * sz,
+        szz / cnt - sz * sz,
+    )
+
+
+@njit(cache=True, nogil=True)
+def face_rows(xyz, order, start, pcls, ph, ground, relief_, vox, grid, cell0, row0, row1, cols, box, par):  # type: ignore[no-untyped-def]
+    """Points of steep faces with ground above and below, rows [row0, row1) × columns `cols` of the cells
+    → pcls 2, ph — the distance to the plane of the face. Returns the number of points turned to ground.
+
+    ground = (state, g, gx, gy) of the cells; relief_ = (high, low); vox — the voxels of `box`; grid =
+    (ncx, ncy, ox, oy, c); cell0 = (cx0, cy0); par = (CR, CT, R_б, cos of the face angle). A strip reads the
+    voxels and the ground and writes only the points of its own rows.
+    """
+    state, g, gx, gy = ground
+    high, low = relief_
+    vstart, vbin, vx, vy, vz = vox
+    ncx, ncy, _ox, _oy, c = grid
+    ox = grid[2]
+    oy = grid[3]
+    cx0, cy0 = cell0
+    cr, ct, r_b, cos_face = par
+    col0, col1 = cols
+    kb = int(math.ceil(r_b / c))
     turned = 0
     lateral = 0.5 * r_b
     thick2 = (0.5 * ct) ** 2
-    for cj in range(max(row0, j0), min(row1, j1)):
-        for ci in range(max(col0, i0), min(col1, i1)):
+    for cj in range(row0, row1):
+        for ci in range(col0, col1):
             cell = cj * ncx + ci
             if vstart[cell] == vstart[cell + 1]:
                 continue
             top, bottom = _span_of(high, low, cj, ci, kb, ct)
             for v in range(vstart[cell], vstart[cell + 1]):
+                # the patch: 1.5·CR around the voxel; a sparse wall (or its upper and lower edge) — 2.5·CR
+                radius = 1.5 * cr
+                cnt, sx, sy, sz, cxx, cxy, cxz, cyy, cyz, czz = _patch(
+                    v, cj, ci, int(math.ceil(radius / c)), radius * radius, vox, ncx, box
+                )
+                if cnt < 2 * MIN_VOXELS:
+                    radius = 2.5 * cr
+                    cnt, sx, sy, sz, cxx, cxy, cxz, cyy, cyz, czz = _patch(
+                        v, cj, ci, int(math.ceil(radius / c)), radius * radius, vox, ncx, box
+                    )
+                if cnt < MIN_VOXELS:
+                    continue
+                l0, l1, nx, ny, nz = _plane_of(cxx, cxy, cxz, cyy, cyz, czz)
+                if abs(nz) > cos_face or l0 > thick2 or l0 > 0.1 * l1 or l1 < 0.04 * radius * radius:
+                    continue
                 x0 = vx[v]
                 y0 = vy[v]
                 z0 = vz[v]
-                cnt = 0
-                sx = 0.0
-                sy = 0.0
-                sz = 0.0
-                sxx = 0.0
-                sxy = 0.0
-                sxz = 0.0
-                syy = 0.0
-                syz = 0.0
-                szz = 0.0
-                for jj in range(max(cj - kf, j0), min(cj + kf + 1, j1)):
-                    for ii in range(max(ci - kf, i0), min(ci + kf + 1, i1)):
-                        other = jj * ncx + ii
-                        a = vstart[other]
-                        b = vstart[other + 1]
-                        if a == b:
-                            continue
-                        w = _first_bin(vbin, a, b, vbin[v] - kf)
-                        while w < b and vbin[w] <= vbin[v] + kf:
-                            dx = vx[w] - x0
-                            dy = vy[w] - y0
-                            dz = vz[w] - z0
-                            if dx * dx + dy * dy + dz * dz <= rf2:
-                                cnt += 1
-                                sx += dx
-                                sy += dy
-                                sz += dz
-                                sxx += dx * dx
-                                sxy += dx * dy
-                                sxz += dx * dz
-                                syy += dy * dy
-                                syz += dy * dz
-                                szz += dz * dz
-                            w += 1
-                if cnt < MIN_VOXELS:
-                    continue
-                sx /= cnt
-                sy /= cnt
-                sz /= cnt
-                l0, l1, nx, ny, nz = _plane_of(
-                    sxx / cnt - sx * sx,
-                    sxy / cnt - sx * sy,
-                    sxz / cnt - sx * sz,
-                    syy / cnt - sy * sy,
-                    syz / cnt - sy * sz,
-                    szz / cnt - sz * sz,
-                )
-                if abs(nz) > cos_face or l0 > thick2 or l0 > 0.1 * l1 or l1 < 0.04 * rf2:
-                    continue
                 # the plane passes through the centre of the patch
                 qx = x0 + sx
                 qy = y0 + sy
