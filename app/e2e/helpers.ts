@@ -185,3 +185,76 @@ export async function waitJob(page: Page, source: string, id: number, statuses =
     .toBe(true);
   return last!;
 }
+
+/** A new empty layer of lines through the core (`POST /lines/layers`) → its id and version. */
+export async function newLineLayer(page: Page, name: string): Promise<{ id: number; version: number }> {
+  const made = await coreApi<{ id: number; version: number }>(page, "POST", "/lines/layers", { name });
+  expect(made.status, JSON.stringify(made.body)).toBe(201);
+  return { id: made.body.id, version: made.body.version };
+}
+
+/** A grid of open lines: `lines` rows of `vertices` points `step` m apart from (x0, y0), a gentle relief in Z. */
+export interface GridLines {
+  lines: number;
+  vertices: number;
+  x0: number;
+  y0: number;
+  step: number;
+}
+
+/**
+ * A whole layer of `grid.lines × grid.vertices` vertices written through the core like `saveLines`, but made in the
+ * page: a million vertices are not sent through the protocol of Playwright. → the new version.
+ */
+export async function saveGridLines(page: Page, layerId: number, baseVersion: number, grid: GridLines, note = "e2e"): Promise<number> {
+  const r = await page.evaluate(
+    async ([id, base, text, g]) => {
+      const n = g.lines;
+      const m = g.vertices;
+      const xyz = new Float64Array(n * m * 3);
+      for (let i = 0, k = 0; i < n; i++) {
+        for (let j = 0; j < m; j++) {
+          xyz[k++] = g.x0 + j * g.step;
+          xyz[k++] = g.y0 + i * g.step + 0.25 * Math.sin(j / 7 + i);
+          xyz[k++] = 300 + 10 * Math.sin(j / 50) + 5 * Math.cos(i / 40);
+        }
+      }
+      const arrays: [string, string, ArrayBufferView][] = [
+        ["src", "<i4", new Int32Array(n).fill(-1)],
+        ["touched", "<u1", new Uint8Array(n).fill(1)],
+        ["count", "<u4", new Uint32Array(n).fill(m)],
+        ["closed", "<u1", new Uint8Array(n)],
+        ["xyz", "<f8", xyz],
+      ];
+      // the same layout as `saveLines`: "BFA1", u32 header length, JSON, arrays at multiples of 8
+      const a8 = (v: number) => Math.ceil(v / 8) * 8;
+      let start = 0;
+      let body: Uint8Array | null = null;
+      while (!body) {
+        let at = start;
+        const table = arrays.map(([name, dtype, data]) => {
+          const row = [name, dtype, (data as unknown as { length: number }).length, at];
+          at = a8(at + data.byteLength);
+          return row;
+        });
+        const head = new TextEncoder().encode(JSON.stringify({ base_version: base, note: text, new_attrs: {}, arrays: table }));
+        const need = a8(8 + head.length);
+        if (need > start) {
+          start = need;
+          continue;
+        }
+        body = new Uint8Array(Math.max(at, need));
+        body.set([0x42, 0x46, 0x41, 0x31]);
+        new DataView(body.buffer).setUint32(4, head.length, true);
+        body.set(head, 8);
+        arrays.forEach(([, , data], k) => body!.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), table[k][3] as number));
+      }
+      const c = window.bf!.core()!;
+      const res = await fetch(`${c.baseUrl}/api/v1/lines/layers/${id}/geometry`, { method: "PUT", headers: { "X-BF-Token": c.token, "Content-Type": "application/octet-stream" }, body });
+      return { status: res.status, body: (await res.json()) as { version?: number } };
+    },
+    [layerId, baseVersion, note, grid] as const,
+  );
+  expect(r.status, JSON.stringify(r.body)).toBe(200);
+  return r.body.version!;
+}
