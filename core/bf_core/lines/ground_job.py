@@ -247,6 +247,8 @@ def ground_classify(ctx: JobContext) -> dict[str, Any]:
         staged.discard()  # what the transaction took is no longer among the staged files
     ctx.log(f"После фильтра: {_classes_text(counts)}")
     ctx.log(f"Фильтр земли: блоков {_n(blocks)}, потоков {threads}, время {_num(seconds)} с")
+    for text in result.report.get("warnings") or []:  # a sparse cloud, a guessed resolution… (geo/ground.py)
+        ctx.log(str(text), "warning")
     with suppress(JobCancelled):  # the classes are in the project: a cancel this late undoes nothing
         ctx.tick(1.0, "Готово")
     return {

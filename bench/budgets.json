@@ -286,6 +286,21 @@
         "rms_normal_m": 0.15
       },
       "note": "ADR 0014: ЦТМ из облака 1 млн — 5,2 с / 564 МБ (первый замер); СКО по нормали без зоны 2 м у вертикальных стенок уступов (2,5D ЦТМ стенку не передаёт), полное — справочно."
+    },
+    "ground_classify": {
+      "params": {
+        "points": 1000000
+      },
+      "budget_s": 15.0,
+      "budget_mb": 1024,
+      "limits": {
+        "classify_s": 8,
+        "recall_miss": 0.02,
+        "false_ground": 0.02,
+        "walls_miss": 0.05,
+        "mismatch": 0
+      },
+      "note": "ADR 0014: фильтр земли 1 млн — 2,5 с / 326 МБ (4 потока); ТЗ Д-22."
     }
   },
   "full": {
@@ -574,6 +589,21 @@
         "rms_normal_m": 0.15
       },
       "note": "ADR 0014: 10 млн — 13,5 с / 1132 МБ, 1,94 млн вершин."
+    },
+    "ground_classify": {
+      "params": {
+        "points": 10000000
+      },
+      "budget_s": 90.0,
+      "budget_mb": 4096,
+      "limits": {
+        "classify_s": 20,
+        "recall_miss": 0.02,
+        "false_ground": 0.02,
+        "walls_miss": 0.05,
+        "mismatch": 0
+      },
+      "note": "ТЗ Д-22: 10 млн ≤ 90 с / 4 ГБ на 4 ядрах; замер 3,5 с / 721 МБ."
     }
   },
   "external": {
