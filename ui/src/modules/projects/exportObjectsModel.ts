@@ -322,7 +322,7 @@ export function reportOf(result: Record<string, unknown> | null | undefined): Ex
   const skipped = (Array.isArray(r.skipped) ? r.skipped : []).flatMap((s) => {
     if (!s || typeof s !== "object") return [];
     const o = s as Record<string, unknown>;
-    return [{ object: str(o.object) ?? str(o.name) ?? "Объект", reason: str(o.reason) ?? "причина не указана" }];
+    return [{ object: str(o.object) ?? str(o.name) ?? "Объект", reason: reasonOf(o) ?? "причина не указана" }];
   });
   return { folder: str(r.folder) ?? str(r.path), files, skipped, bytes: files.reduce((n, f) => n + (f.size ?? 0), 0) };
 }

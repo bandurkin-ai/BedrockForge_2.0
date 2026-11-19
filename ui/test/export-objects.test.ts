@@ -168,6 +168,8 @@ describe("the report of `export.objects`", () => {
     expect(reportSummary(r)).toBe("Записано 3 файла (1,5 МБ); пропущено 2 объекта");
     expect(reportSummary(reportOf(null))).toBe("Файлы не записаны");
     expect(reportOf({ path: "D:\\a" }).folder).toBe("D:\\a"); // the field the «Задания» tab reads
+    // the shape of exporting/job.py: a skipped object with its reason and hint
+    expect(reportOf({ folder: null, files: [], skipped: [{ object: "Модель", object_id: 4, kind: "block_model", reason: "Писатель OMF — подшаг 11.4.", hint: "Выберите другой формат." }] }).skipped).toEqual([{ object: "Модель", reason: "Писатель OMF — подшаг 11.4. Выберите другой формат." }]);
   });
 
   it("sizes in Russian and paths inside the folder", () => {
