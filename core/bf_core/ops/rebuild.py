@@ -47,18 +47,20 @@ def _dtm_params(conn: sa.Connection, built: dict[str, Any], wf_id: int, meta: di
     for s in built.get("sources") or []:
         if not isinstance(s, dict):
             continue
-        sid = s.get("id")
-        there = sid is not None and conn.execute(sa.select(objects.c.id).where(objects.c.id == sid)).first()
-        if not there:
+        raw = s.get("id")
+        if not isinstance(raw, int) or isinstance(raw, bool):
+            raise _gone(s)
+        sid = int(raw)
+        if conn.execute(sa.select(objects.c.id).where(objects.c.id == sid)).first() is None:
             raise _gone(s)
         if s.get("kind") == "drillhole_set":
-            sets.append(int(sid))
+            sets.append(sid)
         elif "boundary" in s:
-            boundary = {"layer_id": int(sid), "line": kept.get("line"), "use_z": bool(kept.get("use_z"))}
+            boundary = {"layer_id": sid, "line": kept.get("line"), "use_z": bool(kept.get("use_z"))}
         elif "classes" in s:
-            clouds.append({"layer_id": int(sid), "classes": s.get("classes"), "cell": s.get("cell")})
+            clouds.append({"layer_id": sid, "classes": s.get("classes"), "cell": s.get("cell")})
         else:
-            layers.append(int(sid))
+            layers.append(sid)
     dtm = conn.execute(sa.select(wireframes.c.dtm).where(wireframes.c.object_id == wf_id)).scalar()
     params = built.get("params") or {}
     return {
