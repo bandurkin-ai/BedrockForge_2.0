@@ -148,7 +148,7 @@ function Form({ winId, specs, op, pre, onStarted }: { winId: string; specs: OpSp
         <button type="button" className={css.btn} onClick={() => closeWindow(winId)}>
           Отмена
         </button>
-        <button type="button" className={css.primary} disabled={!built.params || busy || !!now?.refusal} data-testid="op-run" onClick={() => void start()}>
+        <button type="button" className={css.primary} disabled={!built.params || busy || !!refusal} data-testid="op-run" onClick={() => void start()}>
           Выполнить
         </button>
       </div>
