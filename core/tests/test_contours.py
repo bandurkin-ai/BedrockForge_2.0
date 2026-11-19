@@ -91,10 +91,10 @@ def test_contours_of_a_cone() -> None:
         assert c["closed"] and c["major"] == (int(c["z"]) % 5 == 0)
         p = c["points"]
         radius = np.hypot(p[:, 0] - UTM[0], p[:, 1] - UTM[1])
-        # The levels at whole metres pass through the rings of nodes (r = 2 (20 − L)): exact to 1e-9 m there.
-        if int(c["z"]) % 1 == 0 and 2 * (20 - c["z"]) <= rings:
-            assert radius.max() == pytest.approx(2 * (20 - c["z"]), abs=1e-9)
-        assert (radius <= 2 * (20 - c["z"]) + 1e-9).all()
+        # Every level passes through a ring of nodes (r = 2 (20 − L) ≤ 40): exact to 1e-9 m there, inside the
+        # circle between the nodes (chords).
+        assert radius.max() == pytest.approx(2 * (20 - c["z"]), abs=1e-9)
+        assert (radius <= 2 * (20 - c["z"]) + 1e-9).all() and len(p) == sectors
 
 
 def test_contours_through_vertices_have_no_duplicates_and_no_gaps() -> None:

@@ -94,13 +94,8 @@ def upward(vertices: Any, triangles: Any, name: str = "Поверхность") 
     return v, t, nz
 
 
-def surface_footprint(vertices: Any, triangles: Any) -> list[np.ndarray]:
-    """Outline loops of a surface in plan, each (k, 2) float64 without the repeated closing point: the outer
-    loops counter-clockwise, holes clockwise; sorted by signed area, largest first."""
-    v, t, _ = upward(vertices, triangles)
-    ea, eb = boundary_edges(t, len(v))
-    if len(ea) == 0:
-        raise SurfaceError("surface_closed", "Поверхность замкнута — у неё нет контура в плане.", "")
+def _loops(ea: np.ndarray, eb: np.ndarray) -> list[np.ndarray]:
+    """Boundary half-edges (start → end, the surface on the left) walked into loops of vertex numbers."""
     outgoing: dict[int, list[int]] = {}
     for k, s in enumerate(ea.tolist()):
         outgoing.setdefault(s, []).append(k)
@@ -119,7 +114,18 @@ def surface_footprint(vertices: Any, triangles: Any) -> list[np.ndarray]:
             if nxt is None:
                 break
             k = nxt
-        loops.append(v[np.array(loop), :2].copy())
+        loops.append(np.array(loop, dtype=np.int64))
+    return loops
+
+
+def surface_footprint(vertices: Any, triangles: Any) -> list[np.ndarray]:
+    """Outline loops of a surface in plan, each (k, 2) float64 without the repeated closing point: the outer
+    loops counter-clockwise, holes clockwise; sorted by signed area, largest first."""
+    v, t, _ = upward(vertices, triangles)
+    ea, eb = boundary_edges(t, len(v))
+    if len(ea) == 0:
+        raise SurfaceError("surface_closed", "Поверхность замкнута — у неё нет контура в плане.", "")
+    loops = [v[loop, :2].copy() for loop in _loops(ea, eb)]
     o = np.floor(v[ea, :2].mean(axis=0))
 
     def signed(p: np.ndarray) -> float:
@@ -131,7 +137,11 @@ def surface_footprint(vertices: Any, triangles: Any) -> list[np.ndarray]:
 
 def _column(v: np.ndarray, t: np.ndarray, base_z: float, name: str) -> tuple[np.ndarray, np.ndarray]:
     """Closed solid between an upward surface and the plane z = base_z, oriented outward. Vertices: the used
-    vertices of the surface (bit for bit), then their copies on the plane."""
+    vertices of the surface (bit for bit), then the copies of its outline on the plane. The floor is the
+    outline triangulated in plan (holes and separate parts included), not a copy of every triangle: a million
+    coplanar triangles would make manifold3d slow."""
+    import manifold3d
+
     used = used_vertices(t, len(v))
     index = np.full(len(v), -1, np.int64)
     index[used] = np.arange(len(used))
@@ -140,8 +150,6 @@ def _column(v: np.ndarray, t: np.ndarray, base_z: float, name: str) -> tuple[np.
     ea, eb = boundary_edges(top, n, name)
     if len(ea) == 0:
         raise SurfaceError("surface_closed", f"Поверхность «{name}» замкнута — тело под ней построить нельзя.", "")
-    walls = np.concatenate([np.column_stack([ea, ea + n, eb + n]), np.column_stack([ea, eb + n, eb])])
-    tris = np.concatenate([top, top[:, [0, 2, 1]] + n, walls])
     zs = v[used, 2]
     if base_z > zs.min():
         if base_z < zs.max():
@@ -151,14 +159,29 @@ def _column(v: np.ndarray, t: np.ndarray, base_z: float, name: str) -> tuple[np.
                 f"{_fmt(zs.max())}).",
                 "Тело строится только до уровня ниже или выше всей поверхности.",
             )
-        tris = tris[:, [0, 2, 1]]
     elif base_z == zs.min():
         raise SurfaceError(
             "level_crosses",
             f"Уровень {_fmt(base_z)} касается поверхности «{name}».",
             "Задайте уровень ниже её наименьшей отметки.",
         )
-    bottom = v[used].copy()
+    loops = _loops(ea, eb)
+    ring = np.concatenate(loops)  # the outline vertices, loop by loop: the floor vertices n, n + 1, …
+    starts = np.cumsum([0] + [len(loop) for loop in loops])
+    floor_of = n + np.arange(len(ring))
+    follow = np.arange(len(ring)) + 1
+    follow[starts[1:] - 1] = starts[:-1]  # the last vertex of a loop is followed by its first
+    a, b = ring, ring[follow]
+    fa, fb = floor_of, floor_of[follow]
+    walls = np.concatenate([np.column_stack([a, fa, fb]), np.column_stack([a, fb, b])])
+    flat = v[used[ring], :2]
+    o = np.floor(flat.min(axis=0))
+    pieces = [np.ascontiguousarray(flat[starts[i] : starts[i + 1]] - o) for i in range(len(loops))]
+    floor = np.asarray(manifold3d.triangulate(pieces), dtype=np.int64).reshape(-1, 3) + n
+    tris = np.concatenate([top, floor[:, ::-1], walls])
+    if base_z > zs.min():
+        tris = tris[:, [0, 2, 1]]
+    bottom = v[used[ring]].copy()
     bottom[:, 2] = base_z
     return np.concatenate([v[used], bottom]), tris
 
