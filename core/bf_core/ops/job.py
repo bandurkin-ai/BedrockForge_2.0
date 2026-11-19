@@ -7,8 +7,10 @@ One attempt: a failed operation fails the same way again.
 Steps: inside one read transaction the preconditions again (`registry.precheck` — the objects may have changed
 since the request) and the arrays of the sources (`Sources.load`) → the run (`run_meshes`, `run_lines`; between
 its stages and the portions of its kernels `tick` reports and may cancel; a call of manifold3d is one stage —
-it cannot be cancelled inside, PROGRESS «Э9 Т») → the meshes staged (`wireframes.store.stage_wireframe`) and the
-layers (`lines.store.stage_layers`) into temporary files → one write transaction that makes every object of the
+it cannot be cancelled inside, PROGRESS «Э9 Т») → the meshes staged (`wireframes.store.stage_wireframe`; the small
+ones without files, then `wireframes.files.stage_files` puts them into one pack `pack:<n>` — the thousand parts of
+«На части» are a few blobs, not two a part) and the layers (`lines.store.stage_layers`) into temporary files → one
+write transaction that makes every object of the
 result: wireframes in the folder of the first source, lines — a line file (`meta.format = "operation"`) with its
 layers; each gets `meta.built` (`ops/provenance.py`). A cancel or a failure before that transaction leaves
 neither objects nor temporary files; the sources are only read.
@@ -38,6 +40,8 @@ from .registry import HEAVY_JOB, JOB, Checked
 LINE_OPS = frozenset({"stitch", "extrude", "intersection_lines", "contours", "volume_between"})
 TITLE = "Операция с каркасами и линиями"
 LINE_FILE = "line_file"
+MAX_NAME = 200
+LOGGED = 20  # wireframes of a result named in the log one by one; the rest — in one line
 
 
 def _n(x: float) -> str:
@@ -124,18 +128,25 @@ def run(ctx: JobContext) -> dict[str, Any]:
     return _write(ctx, engine, store, checked, out)
 
 
-def _free_file_name(conn: sa.Connection, name: str) -> str:
-    base = " ".join(name.split())[:200] or "Линии"
-    taken = set(conn.execute(sa.select(objects.c.name_key).where(objects.c.kind == LINE_FILE)).scalars())
+def _names(conn: sa.Connection, kind: str) -> set[str]:
+    return {str(k) for k in conn.execute(sa.select(objects.c.name_key).where(objects.c.kind == kind)).scalars()}
+
+
+def _free(name: str, taken: set[str], default: str) -> str:
+    """`name`, or «name (2)», «name (3)»… — the first whose `name_key` is not `taken`, which it then is: one query
+    for the thousand parts of «На части», not one a part (as `wireframes/store.py::free_name`)."""
+    base = " ".join(str(name).split())[:MAX_NAME] or default
     candidate, k = base, 1
     while dialect.name_key(candidate) in taken:
         k += 1
-        candidate = base[: 200 - len(f" ({k})")] + f" ({k})"
+        candidate = base[: MAX_NAME - len(f" ({k})")] + f" ({k})"
+    taken.add(dialect.name_key(candidate))
     return candidate
 
 
 def _write(ctx: JobContext, engine: sa.Engine, store: Any, checked: Checked, out: Any) -> dict[str, Any]:
     from bf_core.lines import store as ls_store
+    from bf_core.wireframes import files as wf_files
     from bf_core.wireframes import store as wf_store
 
     from .provenance import jsonable, record
@@ -158,12 +169,15 @@ def _write(ctx: JobContext, engine: sa.Engine, store: Any, checked: Checked, out
         for k, m in enumerate(out.meshes):
 
             def progress(f: float, message: str, k: int = k) -> None:
-                ctx.tick(0.8 + 0.12 * (k + max(0.0, min(1.0, f))) / n, message)
+                ctx.tick(0.8 + 0.1 * (k + max(0.0, min(1.0, f))) / n, message)
 
-            try:
-                meshes.append(wf_store.stage_wireframe(store, m.vertices, m.triangles, progress=progress))
+            small = wf_files.array_bytes(len(m.vertices), len(m.triangles)) <= wf_files.PACK_LIMIT
+            try:  # a small one gets no files yet: it goes into the pack of the result (`stage_files`)
+                meshes.append(wf_store.stage_wireframe(store, m.vertices, m.triangles, progress=progress,
+                                                       write=not small))  # fmt: skip
             except ApiError as exc:
                 raise JobError(exc.code, exc.message, exc.hint) from exc
+        wf_files.stage_files(store, meshes, lambda k: ctx.tick(0.9 + 0.02 * k / n, "Запись каркаса"))
         if out.layers:
             layers = ls_store.stage_layers(store, out.layers, lambda _k: ctx.tick(0.93, "Запись линий"))
         ctx.tick(0.95, "Сохранение результата в проект")
@@ -172,16 +186,17 @@ def _write(ctx: JobContext, engine: sa.Engine, store: Any, checked: Checked, out
             tolerances=out.tolerances, rebuild_of=p.get("rebuild_of"),
         )  # fmt: skip
         with dialect.write_tx(engine) as conn:
+            taken = _names(conn, wf_store.WIREFRAME) if meshes else set()
             for m, staged in zip(out.meshes, meshes, strict=True):
                 given = name if name and len(out.meshes) == 1 else m.name
                 wf_id = wf_store.commit_wireframe(
-                    conn, store, staged, name=wf_store.free_name(conn, given), color=m.color, attrs=m.attrs,
+                    conn, store, staged, name=_free(given, taken, "Каркас"), color=m.color, attrs=m.attrs,
                     meta={"built": built}, folder=folder,
                 )  # fmt: skip
                 result["wireframe_ids"].append(wf_id)
             if layers:
                 file_id = ls_store.create_file(
-                    conn, store, name=_free_file_name(conn, name or out.name),
+                    conn, store, name=_free(name or out.name, _names(conn, LINE_FILE), "Линии"),
                     meta={"format": "operation", "built": built}, folder=folder,
                 )  # fmt: skip
                 ids = ls_store.commit_layers(conn, store, layers, file_id=file_id)
@@ -191,12 +206,15 @@ def _write(ctx: JobContext, engine: sa.Engine, store: Any, checked: Checked, out
         for one in [*meshes, *layers]:
             one.discard()
         raise
-    for wf_id, staged in zip(result["wireframe_ids"], meshes, strict=True):
+    for wf_id, staged in list(zip(result["wireframe_ids"], meshes, strict=True))[:LOGGED]:
         volume = staged.stats.get("volume")
         ctx.log(
             f"Создан каркас № {wf_id}: треугольников {_n(len(staged.tri))}"
             + (f", объём {_num(volume)} м³" if volume is not None else ", не замкнут")
         )
+    if len(meshes) > LOGGED:
+        ctx.log(f"Созданы ещё каркасы: {_n(len(meshes) - LOGGED)} (№ {result['wireframe_ids'][LOGGED]}–"
+                f"{result['wireframe_ids'][-1]})")  # fmt: skip
     if result["layer_ids"]:
         ctx.log(f"Создан файл линий № {result['file_id']}: слоёв {len(result['layer_ids'])}")
     result["volumes"] = [s.stats.get("volume") for s in meshes]
