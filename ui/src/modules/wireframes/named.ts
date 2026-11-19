@@ -1,10 +1,11 @@
 /**
  * How the objects of the data tree are called in messages (ADR 0011 §5): a layer of lines, a raster, a
- * wireframe — or, when it holds the settings of a relief, a DTM. No React.
+ * wireframe — or, when it holds the settings of a relief, a DTM; a block model. No React.
  */
 import type { App } from "../../shell/app";
 import { refusal } from "../../shell/objectRun";
 import { KIND_TITLES, type ObjectKind } from "../../shell/selection";
+import { blockById } from "../blocks/state";
 import { lineLayers, sceneObjects } from "../scene/objects";
 import { wireframeById, type WireframeInfo } from "./state";
 
@@ -13,6 +14,7 @@ export function objectName(kind: ObjectKind, id: number): string | null {
   if (kind === "lines") return lineLayers().find((l) => l.id === id)?.name ?? null;
   if (kind === "raster") return sceneObjects.get().rasters.find((r) => r.id === id)?.name ?? null;
   if (kind === "wireframe") return wireframeById(id)?.name ?? null;
+  if (kind === "blocks") return blockById(id)?.name ?? null;
   return null;
 }
 

@@ -1,6 +1,6 @@
 /**
- * Objects of the data tree (ADR 0011 §5): `object.select` — the selected layer of lines, raster, wireframe or
- * DTM (`AppState.selected`; a click in the 3D window calls it too); `selection.clear` — «Снять выбор» (Esc);
+ * Objects of the data tree (ADR 0011 §5): `object.select` — the selected layer of lines, raster, wireframe,
+ * DTM or block model (`AppState.selected`; a click in the 3D window calls it too); `selection.clear` — «Снять выбор» (Esc);
  * `wireframe.dtm` — «Перенести в ЦТМ» / «Вернуть в каркасы» and the settings of a DTM; `wireframe.attr` — the
  * attributes of the user. Rename, colour and delete of any object — `objectCommands.ts`; the checks of a
  * wireframe — `checkCommands.ts`; the export of wireframes — `exportCommands.ts`.
@@ -10,6 +10,7 @@ import { needProject, noted } from "../../shell/objectRun";
 import { KIND_TITLES, keepSelected, sameObject, type ObjectKind, type Selected } from "../../shell/selection";
 import { selectWithProperties } from "../../shell/treeRun";
 import { dtmChanges, dtmSummary, hasSettings } from "../dtm/props";
+import { blocksStore, loadBlocks } from "../blocks/state";
 import { projectStore } from "../projects/state";
 import { loadSceneObjects, pickedObject, sceneObjects } from "../scene/objects";
 import { cancelSectionDraw } from "../section/state";
@@ -34,7 +35,8 @@ export function bindObjects(app: App): void {
     uid = cur;
     select(null);
   });
-  const exists = (kind: ObjectKind, id: number) => objectName(kind, id) !== null;
+  // block models have their own list: `blocks/bind.ts` drops a selected one that is gone
+  const exists = (kind: ObjectKind, id: number) => kind === "blocks" || objectName(kind, id) !== null;
   sceneObjects.subscribe(() => {
     const s = app.store.get().selected;
     // lists that are not read yet (the project is opening) say nothing about their objects
@@ -50,10 +52,10 @@ export function bindObjects(app: App): void {
 
   r.bind(
     "object.select",
-    (a) => {
+    async (a) => {
       const kind = a.kind as ObjectKind;
       const id = Number(a.id);
-      if (kind === "blocks") throw new Error("Блочные модели появятся на этапе Э17");
+      if (kind === "blocks" && !blocksStore.get().loaded) await loadBlocks();
       const name = objectName(kind, id);
       if (name === null) {
         const t = KIND_TITLES[kind];

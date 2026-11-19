@@ -102,8 +102,8 @@ export const commands: Command[] = [
   {
     id: "object.rename",
     title: "Переименовать объект",
-    description: `Новое название слоя линий (lines), растра (raster), каркаса или ЦТМ (wireframe). ${OBJECT} Без name название спрашивается в окне.`,
-    params: { kind: { type: "string", enum: ["wireframe", "lines", "raster"] }, id: { type: "integer" }, name: { type: "string" } },
+    description: `Новое название слоя линий (lines), растра (raster), каркаса или ЦТМ (wireframe), блочной модели (blocks). ${OBJECT} Без name название спрашивается в окне.`,
+    params: { kind: { type: "string", enum: ["wireframe", "lines", "raster", "blocks"] }, id: { type: "integer" }, name: { type: "string" } },
     confirm: true,
     stage: "Э7",
   },
@@ -118,8 +118,8 @@ export const commands: Command[] = [
   {
     id: "object.delete",
     title: "Удалить объект",
-    description: `Удалить из проекта каркас или ЦТМ (wireframe), растр (raster; растр, наложенный на ЦТМ, не удаляется) или файл линий со всеми его слоями (line_file, id — номер файла). Отдельный слой линий не удаляется. ${OBJECT} Отменить удаление нельзя.`,
-    params: { kind: { type: "string", enum: ["wireframe", "raster", "line_file"] }, id: { type: "integer" } },
+    description: `Удалить из проекта каркас или ЦТМ (wireframe), растр (raster; растр, наложенный на ЦТМ, не удаляется), блочную модель (blocks) или файл линий со всеми его слоями (line_file, id — номер файла). Отдельный слой линий не удаляется. ${OBJECT} Отменить удаление нельзя.`,
+    params: { kind: { type: "string", enum: ["wireframe", "raster", "blocks", "line_file"] }, id: { type: "integer" } },
     confirm: true,
     stage: "Э7",
   },
