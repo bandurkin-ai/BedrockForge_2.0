@@ -1,7 +1,9 @@
 /**
- * The window «Построение ЦТМ» (ТЗ 7.20, 7.35 Д-07; ADR 0011 §3, §5): the sources — layers of points and lines
- * and the collars of drillhole sets — the boundary, the longest edge, the name, «Сразу в раздел ЦТМ» → the job
- * `model.dtm`, seen in «Задания»; the surface appears in the tree when it is done.
+ * The window «Построение ЦТМ» (ТЗ 7.20, 7.35 Д-07, Д-22; ADR 0011 §3, §5, ADR 0014 §5): the sources — layers of
+ * points and lines, point clouds (classes, step of the thinning; `CloudSources.tsx`) and the collars of drillhole
+ * sets — the boundary, the longest edge, the name, «Сразу в раздел ЦТМ» → the job `model.dtm`, seen in «Задания»;
+ * the surface appears in the tree when it is done. `cloudId` — the cloud the window opens with
+ * (`terrain.from_points`); a single cloud goes to `POST /wireframes/from-points` (`requestOf`).
  */
 import { useMemo, useState } from "react";
 import { api } from "../../shell/api";
@@ -17,14 +19,16 @@ import { layerCounts, shownLayers } from "../lines/tree";
 import { sceneObjects } from "../scene/objects";
 import { tablesStore } from "../tables/state";
 import { boundaryLayers, buildBody, initialForm, sourcesText, type BuildForm } from "./build";
+import { requestOf } from "./cloud";
+import { CloudSources } from "./CloudSources";
 
-export function BuildDtmWindow({ winId }: { winId: string }) {
+export function BuildDtmWindow({ winId, cloudId }: { winId: string; cloudId?: number }) {
   const app = useApp();
   const files = useStore(sceneObjects, (o) => o.files);
   const sets = useStore(tablesStore, (s) => s.sets);
   const [form, setForm] = useState<BuildForm>(() => {
     const selected = app.store.get().selected;
-    return initialForm(sceneObjects.get().files, selected?.kind === "lines" ? selected.id : null);
+    return initialForm(sceneObjects.get().files, cloudId ?? (selected?.kind === "lines" ? selected.id : null));
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,12 +37,16 @@ export function BuildDtmWindow({ winId }: { winId: string }) {
   const outlines = boundaryLayers(files);
   const outline = outlines.find((l) => l.id === form.boundaryLayer);
   const built = buildBody(form, files);
+  const clouds = files.flatMap((f) => f.layers).filter((l) => !!l.cloud);
+  const lineFiles = files.map((f) => ({ ...f, layers: f.layers.filter((l) => !l.cloud) })).filter((f) => f.layers.length);
+  const cloudOnly = !!built.body && requestOf(built.body).path === "/wireframes/from-points";
 
   const start = async () => {
     if (!built.body) return;
     setBusy(true);
     try {
-      await api.post("/wireframes/build-dtm", built.body);
+      const { path, body } = requestOf(built.body);
+      await api.post(path, body);
       showJobs(app);
       await refreshJobs();
       closeWindow(winId);
@@ -57,9 +65,11 @@ export function BuildDtmWindow({ winId }: { winId: string }) {
         </label>
         <fieldset className={css.group}>
           <legend>Источники: точки и линии</legend>
-          {files.length === 0 && sets.length === 0 && <p className={css.note}>В проекте нет ни слоёв точек и линий, ни наборов скважин: загрузите рельеф («Главная › Загрузка › Линии»).</p>}
+          {lineFiles.length === 0 && sets.length === 0 && (
+            <p className={css.note}>{clouds.length ? "Слоёв точек и линий и наборов скважин нет: источник — облако точек ниже." : "В проекте нет ни слоёв точек и линий, ни облаков, ни наборов скважин: загрузите рельеф («Главная › Загрузка › Линии» или «Облако точек»)."}</p>
+          )}
           <div className={css.layers} data-testid="dtm-sources">
-            {files.map((f) => {
+            {lineFiles.map((f) => {
               const { layers: rows, rest } = shownLayers(f); // a DXF may hold thousands of layers
               return (
                 <div key={f.id} style={{ display: "contents" }}>
@@ -88,14 +98,15 @@ export function BuildDtmWindow({ winId }: { winId: string }) {
               </label>
             ))}
           </div>
-          <p className={css.note} data-testid="dtm-sources-total">
-            {sourcesText(form, files, sets)}. Вершина без высоты пропускается — нулём она не считается.
-          </p>
           <label className={css.check} title="Отрезки линий становятся рёбрами поверхности: бровки и подошвы не срезаются">
             <input type="checkbox" checked={form.breaklines} onChange={(e) => patch({ breaklines: e.target.checked })} />
             Линии — структурные (их отрезки — рёбра поверхности)
           </label>
         </fieldset>
+        <CloudSources clouds={clouds} picks={form.clouds} onChange={(next) => patch({ clouds: next })} />
+        <p className={css.note} data-testid="dtm-sources-total">
+          {sourcesText(form, files, sets)}. Вершина без высоты пропускается — нулём она не считается.
+        </p>
         <fieldset className={css.group}>
           <legend>Граница</legend>
           <label className={css.formRow}>
@@ -126,7 +137,7 @@ export function BuildDtmWindow({ winId }: { winId: string }) {
         </fieldset>
         <label className={css.formRow}>
           <span>Наибольшая длина ребра, м</span>
-          <input className={css.input} inputMode="decimal" value={form.maxEdge} placeholder="без ограничения" aria-label="Наибольшая длина ребра, м" onChange={(e) => patch({ maxEdge: e.target.value })} />
+          <input className={css.input} inputMode="decimal" value={form.maxEdge} placeholder={cloudOnly ? "по облаку: 5 шагов ткани фильтра" : "без ограничения"} aria-label="Наибольшая длина ребра, м" onChange={(e) => patch({ maxEdge: e.target.value })} />
         </label>
         <label className={css.check}>
           <input type="checkbox" checked={form.toDtm} onChange={(e) => patch({ toDtm: e.target.checked })} />

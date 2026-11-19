@@ -69,10 +69,18 @@ export function shownLayers(f: Pick<LineFileInfo, "layers">): { layers: LineLaye
   return { layers: f.layers.slice(0, MAX_LAYER_ROWS), rest: Math.max(0, f.layers.length - MAX_LAYER_ROWS) };
 }
 
-export function layerMenu(l: Pick<LineLayerInfo, "id">, visible: boolean): TreeAction[] {
+/** A layer; a point cloud adds «Фильтр земли…» and «Построить ЦТМ из облака…» (ADR 0014 §6). */
+export function layerMenu(l: Pick<LineLayerInfo, "id"> & Partial<Pick<LineLayerInfo, "cloud">>, visible: boolean): TreeAction[] {
+  const cloud: TreeAction[] = l.cloud
+    ? [
+        { label: "Фильтр земли…", command: "ground.classify", args: { cloud_id: l.id } },
+        { label: "Построить ЦТМ из облака…", command: "terrain.from_points", args: { cloud_id: l.id } },
+      ]
+    : [];
   return [
     { label: "Свойства", local: "properties" },
     { label: visible ? "Скрыть в 3D" : "Показать в 3D", command: "layer.show", args: { layer: "lines", id: l.id, visible: !visible } },
+    ...cloud,
     { label: "Экспорт…", command: "lines.export", args: { layer_id: l.id } },
     SEPARATOR,
     { label: "Переименовать…", command: "object.rename", args: { kind: "lines", id: l.id } },

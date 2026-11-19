@@ -271,7 +271,7 @@ describe("the window «Построение ЦТМ» (ТЗ 7.20, Д-07)", () => 
   });
 
   it("tells why the build cannot start", () => {
-    expect(buildBody(EMPTY_FORM, files).error).toBe("Не из чего строить поверхность: отметьте слои точек или линий либо наборы скважин (их устья).");
+    expect(buildBody(EMPTY_FORM, files).error).toBe("Не из чего строить поверхность: отметьте слои точек или линий, облака точек либо наборы скважин (их устья).");
     expect(buildBody({ ...EMPTY_FORM, layerIds: [11], maxEdge: "0" }, files).error).toContain("положительное число");
     expect(buildBody({ ...EMPTY_FORM, layerIds: [11], maxEdge: "сто" }, files).error).toContain("положительное число");
     expect(buildBody({ ...EMPTY_FORM, layerIds: [11], boundaryLayer: 22 }, files).error).toBe("В слое «Бровки» замкнутых линий: 3. Укажите номер линии границы.");

@@ -4,7 +4,9 @@
  * («Класс», «Цвет слоя», `h`, `dz` — those the cloud has), the point picked in the 3D window (X, Y, Z of the core,
  * class, return, `h`, `dz`) and the points by pages. The mode and the hidden classes are kept by the project in
  * the view key `cloud_styles` (`patchEntry`): the 3D window follows at once. The name, the colour and the
- * visibility of the layer go through the registry (`object.rename`, `object.color`, `layer.show`).
+ * visibility of the layer go through the registry (`object.rename`, `object.color`, `layer.show`); «Фильтр
+ * земли…» and «Построить ЦТМ из облака…» — `ground.classify` and `terrain.from_points` (ADR 0014 §6), with what
+ * the last filter was.
  */
 import { useEffect, useState } from "react";
 import { useApp } from "../../shell/AppContext";
@@ -15,6 +17,7 @@ import { count } from "../../shell/treeActions";
 import { useStore } from "../../shell/useStore";
 import css from "../../shell/PropsParts.module.css";
 import { CLOUD_STYLES_KEY, cloudStyleOf, type CloudColorMode, type CloudStyle } from "../../viz/lines/cloud";
+import { countsText, lastGround, paramsText } from "../dtm/ground";
 import { updateView, viewStore } from "../scene/bind";
 import { pickedObject, type LineFileInfo, type LineLayerInfo } from "../scene/objects";
 import { patchEntry } from "../scene/viewSync";
@@ -65,6 +68,7 @@ export function CloudProps({ layer, file }: { layer: LineLayerInfo; file: LineFi
         </label>
       </div>
       <Facts facts={cloudFacts(layer, file)} />
+      <GroundRow layer={layer} run={run} />
       {error && (
         <p className={css.error} role="alert">
           {error}
@@ -129,6 +133,25 @@ export function CloudProps({ layer, file }: { layer: LineLayerInfo; file: LineFi
       <PickedPoint layer={layer} line={line} />
       <PointsTable key={`${layer.id}:${layer.version}`} layer={layer} picked={line} />
     </section>
+  );
+}
+
+/** «Фильтр земли…», «Построить ЦТМ из облака…» and what the last filter was. */
+function GroundRow({ layer, run }: { layer: LineLayerInfo; run: (id: string, args?: Record<string, unknown>) => Promise<boolean> }) {
+  const last = lastGround(layer);
+  return (
+    <fieldset className={css.group} data-testid="props-cloud-ground">
+      <legend>Земля и ЦТМ</legend>
+      <p className={css.note}>{last ? `Последний фильтр земли — ${paramsText(last)}; классы: ${countsText(last.counts)}.` : "Фильтр земли не запускался: точки земли (класс 2) — те, что были в файле."}</p>
+      <div className={css.row}>
+        <button type="button" className={css.btn} onClick={() => void run("ground.classify", { cloud_id: layer.id })}>
+          Фильтр земли…
+        </button>
+        <button type="button" className={css.btn} onClick={() => void run("terrain.from_points", { cloud_id: layer.id })}>
+          Построить ЦТМ из облака…
+        </button>
+      </div>
+    </fieldset>
   );
 }
 

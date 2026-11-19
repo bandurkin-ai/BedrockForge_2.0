@@ -16,6 +16,7 @@ import { startEvents } from "../modules/jobs/state";
 import { StripLogWindow } from "../charts/striplog/StripLogWindow";
 import { DownholeWindow } from "../modules/downhole/DownholeWindow";
 import { BuildDtmWindow } from "../modules/dtm/BuildDtmWindow";
+import { GroundWindow } from "../modules/dtm/GroundWindow";
 import { LinesExportWindow } from "../modules/lines/LinesExportWindow";
 import { RasterExportWindow } from "../modules/rasters/RasterExportWindow";
 import type { ExportOptions } from "../modules/wireframes/export";
@@ -76,7 +77,9 @@ const renderWindow: WindowRenderer = (w) => {
     case "raster-export":
       return <RasterExportWindow winId={w.id} rasterId={w.props?.rasterId as number | undefined} format={w.props?.format as "source" | "geotiff" | undefined} />;
     case "dtm-build":
-      return <BuildDtmWindow winId={w.id} />;
+      return <BuildDtmWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
+    case "dtm-ground":
+      return <GroundWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
     case "wireframes-export":
       return <WireframesExportWindow winId={w.id} format={w.props?.format as string | undefined} wireframeIds={w.props?.wireframeIds as number[] | undefined} options={w.props?.options as Partial<ExportOptions> | undefined} />;
     default:
