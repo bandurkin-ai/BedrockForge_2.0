@@ -46,3 +46,34 @@ def pclient(tmp_path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyp
     with TestClient(create_app(st), base_url="http://127.0.0.1:5555", headers={"X-BF-Token": TOKEN}) as c:
         c.core = st  # type: ignore[attr-defined]
         yield c
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _drop_caches_after_module():  # type: ignore[no-untyped-def]
+    """The caches of the API process (exact geometry 768 MB, contours, layouts, trajectories) live as long as the
+    process; in one pytest process of the whole suite they piled up from module to module — on the Windows runner
+    the memory ran out at the end of `-m windows` (PR #24). Each module starts with them empty."""
+    yield
+    import gc
+    import sys
+
+    for name, fn in (
+        ("bf_core.wireframes.exact", "forget"),
+        ("bf_core.viz.meshes", "forget"),
+        ("bf_core.sections.contours", "clear_caches"),
+    ):
+        mod = sys.modules.get(name)
+        if mod is not None:
+            getattr(mod, fn)()
+    for name, attrs in (
+        ("bf_core.drillholes.trajectory", ("_cache",)),
+        ("bf_core.viz.lines", ("_cache",)),
+        ("bf_core.viz.holes", ("_cache",)),
+        ("bf_core.wireframes.lod_job", ("_asked",)),
+    ):
+        mod = sys.modules.get(name)
+        for attr in attrs if mod is not None else ():
+            cache = getattr(mod, attr, None)
+            if hasattr(cache, "clear"):
+                cache.clear()
+    gc.collect()
