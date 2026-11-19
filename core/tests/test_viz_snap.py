@@ -175,3 +175,133 @@ def test_5000_holes_by_100_intervals_answer_a_window_within_budget(pclient) -> N
         assert not head["truncated"] and head["holes"] >= 100 and len(a["bound_depth"]) > 0
     print(f"snap 5000×100, window of {head['holes']} holes: {min(best) * 1000:.0f} ms (cold {cold * 1000:.0f} ms)")
     assert min(best) <= 0.3
+
+
+# --- the window of any plane of a series of sections (ADR 0016 §3, подшаг 10.4) -------------------------------
+
+
+def plane_param(origin: Any, v: Any, towards: float, away: float, bounds: Any = ()) -> str:
+    """`plane=`; the extra half-spaces [n, c] (project coordinates) go as n·(p − O) + d ≥ 0, d = c + n·O."""
+    o = np.asarray(origin, dtype=np.float64)
+    nums = [*o.tolist(), *np.asarray(v, dtype=np.float64).tolist(), towards, away]
+    for row in np.asarray(bounds, dtype=np.float64).reshape(-1, 4):
+        nums += [*row[:3].tolist(), float(row[3] + row[:3] @ o)]
+    return ",".join(repr(float(x)) for x in nums)
+
+
+def targets_in(
+    full: dict[str, Any], head: dict[str, Any], a: dict[str, np.ndarray], planes: np.ndarray
+) -> tuple[set[Any], set[Any]]:
+    """(the bounds of the answer, the bounds of the whole set inside the half-spaces) as {(hole, depth)}."""
+
+    def pairs(head: dict[str, Any], arrays: dict[str, np.ndarray], keep: np.ndarray | None) -> set[Any]:
+        h, d = arrays["bound_hole"].astype(np.int64), arrays["bound_depth"]
+        names = [head["names"][i] for i in h]
+        keep = np.ones(len(d), dtype=bool) if keep is None else keep
+        return {(n, float(x)) for n, x, k in zip(names, d, keep, strict=True) if k}
+
+    b = full["arrays"]["bounds"].reshape(-1, 3)
+    inside = np.ones(len(b), dtype=bool)
+    for nx, ny, nz, c in planes.tolist():
+        inside &= b @ np.array([nx, ny, nz]) + c >= -1e-9
+    return pairs(head, a, None), pairs(full["head"], full["arrays"], inside)
+
+
+@pytest.fixture()
+def whole(demo):  # type: ignore[no-untyped-def]
+    c, set_id = demo
+    _r, head, arrays = snap(c, set_id)
+    return c, set_id, {"head": head, "arrays": arrays}
+
+
+@pytest.mark.parametrize("az", [90.0, 37.5, 0.0, 180.0, 270.0])
+def test_vertical_plane_is_the_section_window_bit_for_bit(whole, az) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.sections.geometry import series_geometry
+
+    c, set_id, full = whole
+    collars = full["arrays"]["collars"].reshape(-1, 3)
+    x0, y0 = (float(np.median(collars[:, i])) for i in (0, 1))
+    g = series_geometry({"type": "vertical", "p1": [x0, y0, 0], "az": az, "s0": -20, "s1": 20, "step": 10,
+                         "towards": 6, "away": 4})  # fmt: skip
+    for k in (0, 2, 4):
+        pl = g.plane(k)
+        o = pl.origin
+        r_sec, head, _a = snap(c, set_id, section=f"{float(o[0])!r},{float(o[1])!r},{az!r},6,4")
+        r_pl, _h, a = snap(c, set_id, plane=plane_param(o, pl.v, 6, 4))
+        assert r_pl.content == r_sec.content, (az, k)  # the same answer, bit for bit
+        assert r_pl.headers["etag"] != r_sec.headers["etag"]
+        got, want = targets_in(full, head, a, pl.half_spaces())  # the window of the geometry of the series
+        assert got == want
+    assert head["holes"] > 0
+
+
+def test_inclined_plan_and_polyline_segment_windows(whole) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.sections.geometry import series_geometry
+
+    c, set_id, full = whole
+    collars = full["arrays"]["collars"].reshape(-1, 3)
+    lo, mid, hi = collars.min(axis=0), np.median(collars, axis=0), collars.max(axis=0)
+    cases = []
+    g = series_geometry({"type": "inclined", "p1": mid.tolist(), "az": 30, "phi": 60, "s0": -40, "s1": 40,
+                         "step": 20, "towards": 10, "away": 10})  # fmt: skip
+    cases += [g.plane(k) for k in range(g.count)]
+    plan = series_geometry({"type": "plan", "p1": [mid[0], mid[1], hi[2]], "s1": 200, "step": 25, "towards": 12.5,
+                            "away": 12.5})  # fmt: skip
+    cases += [plan.plane(k) for k in (0, 2, 4)]
+    pl = series_geometry({"type": "polyline", "corridor": 15,
+                          "polyline": [[lo[0], mid[1]], [mid[0], mid[1]], [mid[0], hi[1]]]})  # fmt: skip
+    cases += [pl.plane(0, seg) for seg in range(2)]
+    some = 0
+    for p in cases:
+        hs = p.half_spaces()
+        _r, head, a = snap(c, set_id, plane=plane_param(p.origin, p.v, p.towards, p.away, hs[2:]))
+        got, want = targets_in(full, head, a, hs)
+        assert got == want, p
+        assert 0 <= head["holes"] <= full["head"]["holes"]
+        some += head["holes"] > 0
+    assert some >= len(cases) // 2  # the windows go through the data
+    # a plan window holds the levels of its slab only
+    p = plan.plane(2)
+    _r, _h, a = snap(c, set_id, plane=plane_param(p.origin, p.v, p.towards, p.away))
+    z = a["bounds"].reshape(-1, 3)[:, 2]
+    assert len(z) and np.all(np.abs(z - p.origin[2]) <= 12.5 + 1e-9)
+
+
+def test_bad_plane_windows_are_422(demo) -> None:  # type: ignore[no-untyped-def]
+    c, set_id = demo
+    url = f"{API}/viz/sets/{set_id}/snap"
+    for plane in (
+        "1,2,3,0,1,0,5",  # 7 numbers
+        "1,2,3,0,1,0,5,5,1,0",  # a half-space of two numbers
+        "1,2,3,0,2,0,5,5",  # v̂ is not a unit vector
+        "1,2,3,0,1,0,-1,5",  # a negative depth
+        "1,2,3,0,1,0,5,5,0,0,0,1",  # a zero normal
+        "1,2,3,0,1,0,5,x",
+        ",".join(["1,2,3,0,1,0,5,5"] + ["1,0,0,0"] * 9),  # more than 8 half-spaces
+    ):
+        r = c.get(url, params={"plane": plane})
+        assert r.status_code == 422 and r.json()["code"] == "bad_window" and r.json()["hint"], plane
+    r = c.get(url, params={"plane": "1,2,3,0,1,0,5,5", "section": "1,2,90,5,5"})
+    assert r.status_code == 422 and r.json()["code"] == "bad_window"
+    assert c.get(url, params={"plane": "1,2,3,0,1,0,5,5," + ",".join(["1,0,0,0"] * 8)}).status_code == 200
+
+
+@pytest.mark.slow
+def test_5000_holes_by_100_intervals_answer_an_inclined_window_within_budget(pclient) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.sections.geometry import series_geometry
+
+    pclient.post(f"{API}/projects", json={"name": "Замер привязки по плоскости"})
+    set_id = _big_set(pclient)
+    g = series_geometry({"type": "inclined", "p1": [500_495.0, 6_000_245.0, 400.0], "az": 0, "phi": 60,
+                         "s0": 0, "s1": 120, "step": 40, "towards": 10, "away": 10})  # fmt: skip
+    p = g.plane(0)
+    snap(pclient, set_id, plane=plane_param(p.origin, p.v, 10, 10))  # cold: trajectories, the snapshot
+    best = []
+    for k in range(g.count):
+        p = g.plane(k)
+        t0 = time.perf_counter()
+        _r, head, a = snap(pclient, set_id, plane=plane_param(p.origin, p.v, 10, 10))
+        best.append(time.perf_counter() - t0)
+        assert not head["truncated"] and head["holes"] >= 100 and len(a["bound_depth"]) > 0
+    print(f"snap 5000×100, inclined window of {head['holes']} holes: {min(best) * 1000:.0f} ms")
+    assert min(best) <= 0.3
