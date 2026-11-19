@@ -72,6 +72,8 @@ def test_sample_loads_as_wireframes_and_a_line_file(project) -> None:  # type: i
     ctx = run_job(project.folder, {"files": [str(V1)], "folder": "Импорт"})
     res = ctx.result
     assert res["wireframes"] == 2 and res["layers"] == 1 and res["failed"] == [], res
+    assert res["block_models"] == 1 and res["cells"] == 3000 and len(res["block_model_ids"]) == 1
+    assert not set(res["block_model_ids"]) & set(res["wireframe_ids"])
     ref = reference()
     store = BlobStore(project.folder)
     from bf_core.lines import store as ls
@@ -103,10 +105,21 @@ def test_sample_loads_as_wireframes_and_a_line_file(project) -> None:  # type: i
         line = ref["lines"][0]
         assert line.name == "Random Line" and line.point_count > 0
         log = conn.execute(sa.select(import_log).order_by(import_log.c.id)).mappings().all()
-        assert [r["counts"]["kind"] for r in log] == ["lines", "wireframe", "wireframe"]
+        assert [r["counts"]["kind"] for r in log] == ["lines", "block_model", "wireframe", "wireframe"]
         assert {r["sha256"] for r in log} == {sha_of(V1)} and {r["format"] for r in log} == {"omf"}
         owners = conn.execute(sa.select(blob_owners.c.owner_kind).where(blob_owners.c.sha256 == sha_of(V1))).all()
-        assert len(owners) == 3  # the line file and the journal rows of the two wireframes own one blob
+        assert len(owners) == 4  # the line file and the journal rows of the wireframes and the model own one blob
+        from bf_core.blocks import store as bm
+
+        (model,) = bm.list_block_models(conn)
+        info = bm.block_model_info(conn, model["id"])
+        idx, values = bm.read_cells(conn, store, model["id"])
+    assert model["name"] == "vol" and model["folder"] == "Импорт" and model["cells"] == 3000
+    assert info["grid"]["counts"] == [10, 15, 20] and info["source"] == {
+        "format": "omf", "file": "test_file.omf", "element": "vol"
+    }  # fmt: skip
+    assert [f["name"] for f in info["fields"]] == ["Random Data"] and info["fields"][0]["stats"]["count"] == 3000
+    assert np.array_equal(idx, np.arange(3000, dtype=np.uint64)) and np.isfinite(values["Random Data"]).all()
     text = "\n".join(ctx.lines)
     assert "Точки «Random Points»: элемент — точки не переносятся" in text  # Д-21: what is not carried over
     assert "текстуры (2)" in text and "текстуры (1)" in text and "данные на вершинах линий" in text
@@ -128,7 +141,7 @@ def test_cancel_at_any_step_leaves_nothing(project) -> None:  # type: ignore[no-
         break
     else:
         raise AssertionError("the job never finished")
-    assert ticks >= 5, ticks  # reading, the layer, every wireframe, the source file
+    assert ticks >= 6, ticks  # reading, the layer, every wireframe, the block model, the source file
 
 
 @pytest.mark.parametrize("path", [V2, MCLAUGHLIN], ids=["v2", "mclaughlin"])
@@ -174,7 +187,7 @@ def test_wizard_and_job_through_the_api(pclient) -> None:  # type: ignore[no-unt
     r = pclient.post(f"{API}/import/objects", json={"files": [str(V1)]})
     assert r.status_code == 200, r.text
     job = wait_job(pclient, r.json()["source"], r.json()["id"])
-    assert job["status"] == "done" and job["result"]["wireframes"] == 2, job
+    assert job["status"] == "done" and job["result"]["wireframes"] == 2 and job["result"]["block_models"] == 1, job
     tree = pclient.get(f"{API}/wireframes").json()["wireframes"]
     assert sorted((w["name"], w["folder"]) for w in tree) == [
         ("gridsurf", "test_file.omf"), ("trisurf", "test_file.omf"),
@@ -183,3 +196,5 @@ def test_wizard_and_job_through_the_api(pclient) -> None:  # type: ignore[no-unt
     assert [(f["name"], [layer["name"] for layer in f["layers"]]) for f in files] == [
         ("test_file.omf", ["Random Line"])
     ]
+    models = pclient.get(f"{API}/blocks").json()["block_models"]
+    assert [(b["name"], b["cells"], b["grid"]["counts"]) for b in models] == [("vol", 3000, [10, 15, 20])]

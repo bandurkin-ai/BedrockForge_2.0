@@ -44,6 +44,7 @@ from bf_core.formats.errors import FormatError
 from bf_core.jobs.context import JobContext, JobError
 from bf_core.jobs.registry import handler
 
+from . import object_blocks as ob
 from . import object_cloud as oc
 from . import object_meshes as om
 from .object_files import (
@@ -97,6 +98,8 @@ def _memory(params: dict[str, Any]) -> int:
         size = _size(path)
         if path.suffix.lower() in (".las", ".laz") or (chosen.get(option_key(path)) or {}).get("cloud"):
             size = oc.MEMORY_MB * 2**20  # a cloud is built in portions: the same memory whatever its size
+        elif path.suffix.lower() == ".omf":
+            size = ob.memory(path, size)
         elif path.suffix.lower() in IMAGE_SUFFIXES:
             try:
                 from bf_core.formats.raster_image import probe
@@ -124,6 +127,7 @@ class _Done:
     kind: str = ""  # "lines" | "points" | "raster" of that object
     counts: dict[str, Any] = field(default_factory=dict)
     meshes: om.Written | None = None  # the wireframes of the file
+    blocks: ob.Blocks | None = None  # the block models of an OMF file
     companions: dict[str, Path] = field(default_factory=dict)  # suffix → the file kept as `sidecar:<ext>`
     source: tuple[Path, str, int] | None = None
     sidecars: dict[str, tuple[Path, str, int]] = field(default_factory=dict)
@@ -291,7 +295,10 @@ def _result(files: list[dict[str, Any]], failed: list[dict[str, str]], rest: lis
     out: dict[str, Any] = {"files": files, "objects": ids, "failed": failed, "rest": rest}
     for key in ("layers", "lines", "points", "vertices", "rasters", "wireframes", "triangles"):
         out[key] = sum(int(f.get(key) or 0) for f in files)
-    out["wireframe_ids"] = [i for f in files for i in f.get("object_ids") or []]
+    for key in ("block_models", "cells"):
+        out[key] = sum(int(f.get(key) or 0) for f in files if f.get("kind") == ob.BLOCK_MODELS)
+    out["wireframe_ids"] = [i for f in files if f.get("kind") == om.WIREFRAMES for i in f.get("object_ids") or []]
+    out["block_model_ids"] = [i for f in files if f.get("kind") == ob.BLOCK_MODELS for i in f["object_ids"]]
     out["cloud_ids"] = [int(f["cloud_id"]) for f in files if f.get("cloud_id") is not None]
     return out
 
@@ -385,11 +392,14 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
                 ctx.log(f"{label}: {w}", "warn")
             item: _Done | None = None
             meshes = om.has_meshes(read)
+            # shares of the file: lines → wireframes → block models (an OMF file has all three)
+            blocks = 0.9 if read.volumes else 1.0
+            lines_top = (0.75 if read.volumes else 0.85) if meshes else blocks
             if read.rasters:
                 item = _write_raster(ctx, engine, store, g, read, level)
                 ctx.log(f"{label}: растр {item.counts['width']} × {item.counts['height']} пикселей", "info")
             elif any(layer.point_count for layer in read.layers):
-                item = _write_lines(ctx, engine, store, g, read, _span(step, 0.7, 0.85 if meshes else 1.0))
+                item = _write_lines(ctx, engine, store, g, read, _span(step, 0.7, lines_top))
                 c = item.counts
                 ctx.log(
                     f"{label}: слоёв — {n_text(c['layers'])}, линий — {n_text(c['lines'])}, "
@@ -398,7 +408,8 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
                 )
             if meshes:
                 lazy = not isinstance(read.meshes, list)
-                meter.start(_span(step, 0.0 if lazy else 0.85 if item is not None else 0.7, 1.0), lazy)
+                low = lines_top if item is not None else 0.0 if lazy and not read.volumes else 0.7
+                meter.start(_span(step, low, blocks), lazy)
                 try:
                     written = om.write_meshes(ctx, engine, store, g, read, meter, folder)
                 except om.FileFailed as bad:
@@ -410,9 +421,12 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
                     if written.companions:  # the other file of a pair, chosen or found next to the file
                         item.companions.update(written.companions)
                         item.settings["sidecars"] = sorted(path.name for path in written.companions.values())
-            for volume in read.volumes:  # block models of an OMF file: `object_blocks.py` (Э11.3)
-                ctx.log(f"{label}: объём «{volume.name}» не загружен: блочные модели OMF в этой сборке не читаются",
-                        "warn")  # fmt: skip
+            if read.volumes:
+                found = ob.write_volumes(ctx, engine, store, g, read, _span(step, blocks, 1.0), folder)
+                if found.ids:
+                    if item is None:
+                        item = _Done(g.main, label, read.format, om.MEDIA, _settings(g, chosen))
+                    item.blocks = found
             if item is not None:
                 done.append(item)
             del read  # keep the memory for the next file
@@ -478,6 +492,19 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
                             "kind": item.kind,
                             **item.counts,
                         }  # fmt: skip
+                    )
+                if item.blocks is not None:  # every block model: its row of the journal, which owns the source
+                    files.append(
+                        ob.log_blocks(
+                            conn,
+                            item.blocks,
+                            label=item.label,
+                            fmt=item.format,
+                            settings=item.settings,
+                            sha=sha,
+                            job_id=ctx.id,
+                            now=now,
+                        )  # fmt: skip
                     )
                 if item.meshes is not None:  # every wireframe: its row of the journal, which owns the files
                     files.append(

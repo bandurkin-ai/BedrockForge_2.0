@@ -2,7 +2,7 @@
  * A layer of lines or points in the scene (ТЗ 7.18, ADR 0011 §4; BF `setLines` 1587–1659): one `SceneLayer`
  * per layer of the project, a group per part placed at `part origin − layer origin` (whole metres, float64),
  * and in it the levels of detail that are loaded — one is shown. Lines are `LineSegments2` (width in px) or
- * plain `LineSegments` when the scene is heavy (ADR 0007 §7), points and one-vertex lines are markers drawn
+ * plain `LineSegments` when the scene is heavy for its class of graphics (ADR 0007 §7; `budget.ts`), points and one-vertex lines are markers drawn
  * by the shader (a disc with a dark rim, no texture), texts are labels placed with everyone else's. Every
  * material takes the shared clipping planes, so only what is in the section window is seen. A part without
  * heights is flat at the «floor» — under the lowest object of the scene. Buffers come from the Worker as
@@ -56,6 +56,18 @@ export interface LinePick extends LineHit {
 }
 
 type LineObject = LineSegments2 | THREE.LineSegments;
+
+/**
+ * Segments of a layer at its finest level, from the manifest alone: what the scene may have to draw before a
+ * part is built, so fat or thin lines are chosen before the first build (Э11 11.18). A polyline of n vertices
+ * has n − 1 segments (a closed one — one more, not counted); points and clouds have none.
+ */
+export function manifestSegments(m: Pick<LinesManifest, "pointsOnly" | "parts" | "cloud">): number {
+  if (m.pointsOnly || m.cloud) return 0;
+  let n = 0;
+  for (const p of m.parts) n += Math.max(0, p.points - p.n);
+  return n;
+}
 
 function makeLine(positions: Float32Array, color: THREE.ColorRepresentation, width: number, fat: boolean, ctx: LineLayerContext): LineObject {
   if (fat) {
@@ -185,6 +197,11 @@ export class LineLayerView implements SceneLayer {
       if (this.palette ? this.cut.has(p.part.k) : lv.built.simplified) out.simplified++;
     }
     return out;
+  }
+
+  /** Segments of a loaded level of part k (0 — not loaded). */
+  levelSegments(k: number, lod: number): number {
+    return this.parts[k]?.levels.get(lod)?.built.segments ?? 0;
   }
 
   /** The level for what has no height: parts and the extent follow (the scene is told by the caller). */

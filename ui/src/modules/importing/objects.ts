@@ -10,6 +10,7 @@ import { logError, logStep, type OpLog } from "../../shell/opLog";
 import { Store } from "../../shell/store";
 import { followJob } from "../jobs/follow";
 import { parseEvery, type CloudCard, type CloudMode } from "./cloud";
+import { blockEntryText, leftOutText, type LeftOut, type OmfBlockEntry, type OmfInfo } from "./omf";
 import { baseName } from "./route";
 
 // ---- the composition as the core gives it --------------------------------------------------------------
@@ -62,8 +63,10 @@ export interface FileOk {
   format: string;
   label: string;
   /** "lines" — also a drawing with wireframes (DXF, DWG): its `wireframes` are loaded with its layers;
-   * "cloud" — a point cloud (a LAS, or a table loaded as one; ADR 0014 §6): its card is `cloud` */
-  kind: "lines" | "points" | "raster" | "wireframes" | "cloud";
+   * "cloud" — a point cloud (a LAS, or a table loaded as one; ADR 0014 §6): its card is `cloud`;
+   * "omf" — an OMF v1 file (ADR 0017 §2): its elements in `omf`, its surfaces in `wireframes`, its volumes in
+   * `block_models`, its line sets counted in `totals.layers` */
+  kind: "lines" | "points" | "raster" | "wireframes" | "cloud" | "omf";
   encoding: string | null;
   crs: { name: string | null; epsg: number | null; wkt: string | null } | null;
   sidecars: string[];
@@ -71,7 +74,7 @@ export interface FileOk {
   rasters: RasterEntry[];
   /** the first of them (the core cuts a long list); every one that has no `error` is loaded */
   wireframes: WireframeEntry[];
-  totals: { layers: number; lines: number; points: number; vertices: number; rasters: number; wireframes: number; triangles: number };
+  totals: { layers: number; lines: number; points: number; vertices: number; rasters: number; wireframes: number; triangles: number; block_models?: number; cells?: number };
   /** wireframes of the file that will not load */
   unread: number;
   /** the reader was not checked on real files (Datamine) */
@@ -79,10 +82,13 @@ export interface FileOk {
   /** option of the file → the fields to choose it from (`split_by`, `layer_field`) */
   choices: Record<string, string[]>;
   warnings: string[];
-  left_out: { what: string; count: number | null; reason: string }[];
+  left_out: LeftOut[];
   size: number;
   /** the header of a LAS or the head of a table loaded as a cloud (`kind: "cloud"`) */
   cloud?: CloudCard;
+  /** an OMF file: the volumes that load and the whole composition of its elements */
+  block_models?: OmfBlockEntry[];
+  omf?: OmfInfo;
 }
 
 export interface FileFailed {
@@ -113,6 +119,8 @@ export interface Totals {
   rasters: number;
   wireframes: number;
   triangles: number;
+  block_models?: number;
+  cells?: number;
 }
 
 export interface Composition {
@@ -238,15 +246,26 @@ export interface ObjectsState {
   started: boolean;
   /** «Облако точек» of the ribbon: every table of the selection is loaded as a cloud; null — «Импорт файлов» */
   cloud?: CloudMode | null;
+  /** the folder of the tree the objects go to («А/Б»; `import.files {folder}`); null — the folder of each file */
+  folder?: string | null;
 }
 
-export function initialObjects(cloud: CloudMode | null = null): ObjectsState {
-  return { paths: [], options: {}, level: { elevation: "", shift: "" }, composition: null, busy: false, error: null, starting: false, started: false, cloud };
+export function initialObjects(cloud: CloudMode | null = null, folder: string | null = null): ObjectsState {
+  return { paths: [], options: {}, level: { elevation: "", shift: "" }, composition: null, busy: false, error: null, starting: false, started: false, cloud, folder };
+}
+
+/** The folder of `import.files {folder}`: spaces squeezed, at most 200 characters (the core's limit); "" — none. */
+export function cleanFolder(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "string") throw new Error("Папка задаётся текстом, например «Импорт/Карьер»");
+  const folder = raw.trim().replace(/\s+/g, " ").replace(/^\/+|\/+$/g, "");
+  if (folder.length > 200) throw new Error("Название папки длиннее 200 символов: сократите его");
+  return folder || null;
 }
 
 const n = (v: number): string => v.toLocaleString("ru-RU");
 
-const COUNTED = [["layers", "слоёв"], ["lines", "линий"], ["vertices", "вершин"], ["points", "точек"], ["rasters", "растров"], ["wireframes", "каркасов"], ["triangles", "треугольников"]] as const;
+const COUNTED = [["layers", "слоёв"], ["lines", "линий"], ["vertices", "вершин"], ["points", "точек"], ["rasters", "растров"], ["wireframes", "каркасов"], ["triangles", "треугольников"], ["block_models", "блочных моделей"], ["cells", "ячеек"]] as const;
 
 /** «Файлов: 2 · слоёв: 5 · линий: 120 · вершин: 3 400 · точек: 25 · растров: 1 · каркасов: 66 · треугольников:
  * 3 590 · не прочитано: 1» */
@@ -270,18 +289,20 @@ export function fileCounts(f: FileOk): string {
   if (t.wireframes || f.unread) parts.push(`каркасов: ${n(t.wireframes)}`);
   if (t.triangles) parts.push(`треугольников: ${n(t.triangles)}`);
   if (f.unread) parts.push(`не загрузятся: ${n(f.unread)}`);
+  if (t.block_models) parts.push(`блочных моделей: ${n(t.block_models)}`);
+  if (t.cells) parts.push(`ячеек: ${n(t.cells)}`);
   return parts.join(" · ");
 }
 
 function sumTotals(files: readonly FileEntry[]): Totals {
-  const t: Totals = { files: 0, failed: 0, layers: 0, lines: 0, points: 0, vertices: 0, rasters: 0, wireframes: 0, triangles: 0 };
+  const t: Totals = { files: 0, failed: 0, layers: 0, lines: 0, points: 0, vertices: 0, rasters: 0, wireframes: 0, triangles: 0, block_models: 0, cells: 0 };
   for (const f of files) {
     if (!f.ok) {
       t.failed++;
       continue;
     }
     t.files++;
-    for (const [k] of COUNTED) t[k] += f.totals[k] ?? 0;
+    for (const [k] of COUNTED) t[k] = (t[k] ?? 0) + (f.totals[k] ?? 0);
   }
   return t;
 }
@@ -343,8 +364,8 @@ function sentOptions(o: FileOptions, cloudMode: boolean): SentOptions {
   return out;
 }
 
-/** The body of `POST /import/objects`: the level goes as numbers (null — not set). */
-export function startBody(s: ObjectsState): { files: string[]; options: Record<string, SentOptions>; raster_z: { elevation: number | null; shift: number | null }; section: boolean } {
+/** The body of `POST /import/objects`: the level goes as numbers (null — not set); `folder` — when one is given. */
+export function startBody(s: ObjectsState): { files: string[]; options: Record<string, SentOptions>; raster_z: { elevation: number | null; shift: number | null }; section: boolean; folder?: string } {
   const level = parseLevel(s.level);
   const used = levelUsed(s) && levelValid(level);
   const options: Record<string, SentOptions> = {};
@@ -353,7 +374,7 @@ export function startBody(s: ObjectsState): { files: string[]; options: Record<s
     const given = sentOptions(s.options[path] ?? {}, cloudMode);
     if (Object.keys(given).length) options[path] = given;
   }
-  return { files: s.paths, options, raster_z: { elevation: used ? level.elevation : null, shift: used && level.shift ? level.shift : null }, section: true };
+  return { files: s.paths, options, raster_z: { elevation: used ? level.elevation : null, shift: used && level.shift ? level.shift : null }, section: true, ...(s.folder ? { folder: s.folder } : {}) };
 }
 
 const errorText = (e: unknown): string => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
@@ -366,13 +387,14 @@ export class ObjectsWizard {
   private seq = 0;
 
   /** `syncConverter` — gives the core the ODA File Converter of «Настройка» (a restarted core has forgotten it);
-   * `cloud` — the mode «Облако точек» (every table is a cloud). */
+   * `cloud` — the mode «Облако точек» (every table is a cloud); `folder` — the folder of the tree for the objects. */
   constructor(
     readonly log: OpLog,
     private readonly syncConverter?: () => Promise<unknown>,
     cloud: CloudMode | null = null,
+    folder: string | null = null,
   ) {
-    this.store = new Store<ObjectsState>(initialObjects(cloud));
+    this.store = new Store<ObjectsState>(initialObjects(cloud, folder));
   }
 
   /** Adds files to the selection and reads the composition of all of it (companions pair across the selection). */
@@ -423,6 +445,8 @@ export class ObjectsWizard {
           logStep(this.log, `  ${f.file}: ${f.label}${f.rasters.length ? "" : `, ${fileCounts(f)}`}${f.preliminary ? " (предварительно)" : ""}${f.warnings.length ? `; замечаний ${f.warnings.length}` : ""}`);
           if (f.cloud) logStep(this.log, `    облако: ${f.cloud.summary}${f.cloud.every_chosen > 1 ? `; каждая ${f.cloud.every_chosen}-я запись` : ""}`);
           for (const w of f.wireframes) if (w.error) logStep(this.log, `    каркас «${w.name}» не загрузится: ${w.error.message} ${w.error.hint}`.trimEnd());
+          for (const b of f.block_models ?? []) logStep(this.log, `    блочная модель ${blockEntryText(b)}`);
+          if (f.omf) for (const x of f.left_out) logStep(this.log, `    не загрузится: ${leftOutText(x)}`);
         } else logStep(this.log, `  ${f.file}: не прочитан — ${f.error.message} ${f.error.hint}`.trim());
       }
       for (const x of r.rest) logStep(this.log, `  ${x.file}: не загрузится — ${x.message}`);

@@ -16,15 +16,14 @@ import { coreTarget } from "../../shell/api";
 import { apiUrl, authHeaders } from "../../shell/coreClient";
 import type { FrameContext, Scene } from "../../viz/Scene";
 import { boxFromBbox6, scaleZ } from "../../viz/core/bounds";
-import { GpuMemory, MEMORY_BUDGET, POINT_BUDGET } from "../../viz/core/budget";
+import { fatLines, GpuMemory, MEMORY_BUDGET, POINT_BUDGET } from "../../viz/core/budget";
 import { boxInFrustum, frustumPlanes, screenPriority } from "../../viz/core/cull";
 import { shownLevel } from "../../viz/core/lod";
 import { VizError } from "../../viz/error";
-import { THIN_SEGMENTS } from "../../viz/holes/paths";
 import { LabelCache } from "../../viz/labels/sprites";
 import { lineBoundaries, lineLevel, nearestInBox, readLinesManifest, sameLayout, staleLevels, type LinesManifest } from "../../viz/lines/build";
 import { applyPointBudget, cloudBoundaries, type CloudBudgetPart, type CloudStyle, type CloudValueMode } from "../../viz/lines/cloud";
-import { LINE_WIDTH_PX, LineLayerView } from "../../viz/lines/layer";
+import { LINE_WIDTH_PX, LineLayerView, manifestSegments } from "../../viz/lines/layer";
 import { LoadQueue } from "../../viz/load/loader";
 import { GeometryWorker } from "../../viz/worker/client";
 import { editedLayer, editStore, layerShown } from "../lines/editState";
@@ -273,6 +272,7 @@ export class LinesSource {
           this.empty.delete(id);
           if (!m.parts.length) this.empty.set(id, m.version);
           else {
+            if (visible) this.updateFat(manifestSegments(m)); // before the first build of the layer
             const view = new LineLayerView(m, { clip: this.scene.clipPlanes, resolution: this.scene.resolution, labels: this.labels, pixelRatio: this.scene.renderer.pixelRatio }, { color: ref.color ?? m.color, visible }, this.input.floor());
             view.setFat(this.fat);
             view.setCloudStyle(this.input.cloud?.(id));
@@ -409,10 +409,12 @@ export class LinesSource {
         this.over = true;
         return;
       }
+      // the level is counted instead of the one the part shows before it is built: fat or thin at once
+      const shownNow = st.view.shown(k);
+      this.updateFat(Math.max(0, built.segments - (shownNow === null ? 0 : st.view.levelSegments(k, shownNow))));
       st.view.setLevel(k, built);
       st.fresh.add(`${k}:${lod}`);
       this.memory.add(id, lod, bytes, lod === manifest.tols.length - 1, performance.now());
-      this.updateFat();
       this.scene.invalidate();
     } catch (e) {
       if (!stale()) p.failed.add(lod);
@@ -444,11 +446,16 @@ export class LinesSource {
     this.scene.invalidate();
   }
 
-  /** Lines one pixel wide when the scene holds more than a million segments (ADR 0007 §7). */
-  private updateFat(): void {
-    let total = this.scene.debug().segments;
+  /**
+   * Lines one pixel wide when the scene holds more segments than its class of graphics draws fat (ADR 0007 §7;
+   * `THIN_LINE_SEGMENTS`: a million, software rendering — 200 thousand). `extra` — the segments about to come
+   * (a new layer by its manifest, a level before it is built): the choice is made before the build, so a heavy
+   * layer is never built and drawn fat first (Э11 11.18: ~21 s a frame under SwiftShader).
+   */
+  private updateFat(extra = 0): void {
+    let total = this.scene.debug().segments + extra;
     for (const st of this.layers.values()) total += st.view.stats().segments;
-    const fat = LINE_WIDTH_PX > 1 && total <= THIN_SEGMENTS;
+    const fat = fatLines(LINE_WIDTH_PX, total, this.scene.gpu.gpuClass);
     if (fat === this.fat) return;
     this.fat = fat;
     for (const st of this.layers.values()) st.view.setFat(fat);
