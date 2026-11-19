@@ -13,8 +13,8 @@ cloud or the height of the wall. A voxel is a face when
   * the patch is flat: at least 6 voxels, their spread across the plane ≤ CT/2 and much less than along it;
   * the plane is steeper than `face` (60°);
   * the plane meets ground above and below the voxel: a ground cell within R_б in plan (and within R_б/2 along
-    the strike of the plane — straight up and down the face) whose plane passes within CT of the plane of the
-    face, one higher than the voxel and one lower.
+    the strike of the plane — straight up and down the face) whose plane, continued half a cell beyond the
+    cell, passes within CT of the plane of the face; one such cell higher than the voxel and one lower.
 
 A wall of a bench has a crest and a foot. A facade has a foot but a roof instead of a crest, a crown has
 neither, vegetation on a slope is not flat. The points of a face voxel within CT/2 of its plane become ground
@@ -140,7 +140,30 @@ def _bins_of(xyz, order, pcls, s, e, top, bottom, c, bins):  # type: ignore[no-u
 
 @njit(cache=True, nogil=True)
 def faces(  # type: ignore[no-untyped-def]
-    xyz, order, start, pcls, ph, state, g, gx, gy, ncx, ncy, ox, oy, c, cr, cx0, cy0, ct, r_b, cos_face, col0, row0, col1, row1
+    xyz,
+    order,
+    start,
+    pcls,
+    ph,
+    state,
+    g,
+    gx,
+    gy,
+    ncx,
+    ncy,
+    ox,
+    oy,
+    c,
+    cr,
+    cx0,
+    cy0,
+    ct,
+    r_b,
+    cos_face,
+    col0,
+    row0,
+    col1,
+    row1,
 ):
     """Points of steep faces with ground above and below → pcls 2, ph — the distance to the plane of the face.
 
@@ -310,7 +333,10 @@ def faces(  # type: ignore[no-untyped-def]
                             continue
                         height = g[other]
                         s0 = nx * (dx + x0 - qx) + ny * (dy + y0 - qy) + nz * (height - qz)
-                        reach = 0.5 * c * (abs(nx + nz * gx[other]) + abs(ny + nz * gy[other]))
+                        # the plane of the ground cell over the cell and half a cell around it: the cell next
+                        # to a vertical wall holds the foot of the wall, its ground of the upper level is a
+                        # few points at the crest that have no cell of their own
+                        reach = c * (abs(nx + nz * gx[other]) + abs(ny + nz * gy[other]))
                         if abs(s0) > ct + reach:
                             continue
                         if height > z0:

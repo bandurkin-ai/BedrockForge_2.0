@@ -47,6 +47,7 @@ from typing import Any
 import numpy as np
 
 from . import ground_cloth as gc
+from . import ground_faces as gf
 from . import ground_grow as gg
 from . import ground_kernels as gk
 
@@ -60,7 +61,6 @@ CLOTH_TOL = 1e-4  # a sweep of the cloth moves no particle further, m
 ALGO = "CSF (Zhang et al., 2016) как задача с препятствием; рост по склону; грани — версия 1"
 
 Tick = Callable[[float, str], None] | None
-_TRACE: list[dict[str, Any]] | None = None  # tests: a list here receives the grids of every block
 
 STAGES = ("Индекс ячеек", "Шум", "Препятствие", "Ткань", "Рост по склону", "Классы", "Грани")
 
@@ -121,9 +121,7 @@ def check_params(p: GroundParams) -> None:
     if p.ri not in WIDTHS:
         raise GroundError("bad_param", "Жёсткость ткани RI: допустимо 1, 2 или 3.", "Исправьте значение параметра.")
     if p.noise_r is not None and not (isinstance(p.noise_k, int) and 1 <= p.noise_k <= 20):
-        raise GroundError(
-            "bad_param", "Число соседей для шума: допустимо от 1 до 20.", "Исправьте значение параметра."
-        )
+        raise GroundError("bad_param", "Число соседей для шума: допустимо от 1 до 20.", "Исправьте значение параметра.")
     if not (0.0 < p.alpha_deg < 90.0 and 0.0 < p.face_deg < 90.0):
         raise GroundError("bad_param", "Углы профиля должны быть между 0° и 90°.", "Выберите профиль заново.")
 
@@ -356,9 +354,7 @@ def _candidates(k: int, lists: list[Any], lat: _Lattice, span: int, reach: int) 
 
 
 def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report) -> None:  # type: ignore[no-untyped-def]
-    c, cr, ct = lat.c, p.cr, p.ct
-    ncx, ncy = blk.ncx, blk.ncy
-    ncell = ncx * ncy
+    """One block: stages 1–8 over its cells (with the margin), then the classes of the points of its core."""
     seconds = report["seconds"]
     t = time.perf_counter()
 
@@ -369,105 +365,49 @@ def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report) -> N
         t = now
         step(part, STAGES[min(stage + 1, len(STAGES) - 1)])
 
-    # 1 index
-    cid = np.empty(len(cand), np.int32)
-    pool.strips(
-        lambda lo, hi: gk.cell_ids(pts, cand, lo, hi, lat.ox, lat.oy, c, blk.cx0, blk.cy0, ncx, ncy, cid),
-        len(cand),
-        STRIP_POINTS,
-    )
-    start, order = gk.counting_sort(cid, cand, ncell)
-    del cid, cand
+    grid = (lat.ox, lat.oy, lat.c, blk.cx0, blk.cy0, blk.ncx, blk.ncy)
+    start, order = _index(pts, cand, grid, pool)
+    del cand
     pcls = np.zeros(len(order), np.uint8)
     ph = np.full(len(order), np.nan, np.float32)
     done(0, 0.1)
-    # 2 noise
-    if p.noise_r is not None:
-        radius, k_min = float(p.noise_r), int(p.noise_k)
-        pool.strips(
-            lambda a, b: gk.noise_rows(pts, order, start, ncx, ncy, a, b, lat.ox, lat.oy, c, blk.cx0, blk.cy0, radius, k_min, pcls),
-            ncy,
-            STRIP_ROWS,
-        )
-    cmin = np.empty(ncell, np.int32)
-    mx = np.zeros(ncell, np.float32)
-    my = np.zeros(ncell, np.float32)
-    mz = np.zeros(ncell, np.float64)
-    use_ret = returns is not None
-    rets = returns if use_ret else np.zeros(1, np.uint8)
-    pool.strips(
-        lambda a, b: gk.minima_rows(pts, rets, use_ret, order, start, pcls, ncx, a, b, lat.ox, lat.oy, c, blk.cx0, blk.cy0, cmin, mx, my, mz),
-        ncy,
-        STRIP_ROWS,
-    )
+    cells = _lowest(pts, returns, order, start, pcls, grid, p, pool)
     done(1, 0.3)
-    # 3 obstacle
-    npx, npy = ncx // 2 + 1, ncy // 2 + 1
-    hob = np.zeros((npy, npx), np.float64)
-    mask = np.zeros((npy, npx), np.uint8)
-    pool.strips(
-        lambda a, b: gc.obstacle_rows(cmin, mx, my, mz, ncx, ncy, npx, a, b, c, cr, ct / 5.0, hob, mask), npy, STRIP_ROWS
-    )
+    hob, mask = _obstacle(cells, grid, p, pool)
     done(2, 0.4)
-    # 4 cloth
     width = cloth_width(p)
-    load = 4.0 / (width * width) * cr * cr
     u, sweeps = gc.solve(
-        hob, mask, load, tol=CLOTH_TOL, rows=pool.even if pool.threads > 1 else None, tick=lambda: step(0.5, STAGES[3])
+        hob,
+        mask,
+        4.0 / (width * width) * p.cr * p.cr,
+        tol=CLOTH_TOL,
+        rows=pool.even if pool.threads > 1 else None,
+        tick=lambda: step(0.5, STAGES[3]),
     )
     del hob
     report["sweeps"].append(sweeps)
     done(3, 0.6)
-    # 5 seeds, 6 growth
-    state = np.zeros(ncell, np.uint8)
-    gx = np.zeros(ncell, np.float32)
-    gy = np.zeros(ncell, np.float32)
-    seeds = pool.strips(
-        lambda a, b: gc.seed_rows(cmin, mx, my, mz, u, ncx, a, b, c, cr, ct, state, gx, gy), ncy, STRIP_ROWS
-    )
-    report["seeds"] += int(sum(seeds))
-    edge = np.zeros(ncell, np.uint8)
-    min_cells = min_edge = 0
-    if p.edge_areas:
-        pool.strips(lambda a, b: gg.edge_rows(cmin, mask, ncx, a, b, edge), ncy, STRIP_ROWS)
-        # the share of cells that hold a return: a sparse cloud fills an area with fewer of them
-        fill = min(1.0, float(np.count_nonzero(cmin >= 0)) / max(4.0 * float(np.count_nonzero(mask)), 1.0))
-        min_cells = max(int(width * width / (c * c) * fill), 16)
-        min_edge = max(int(0.5 * width / c * fill), 4)
-    tan_up = math.tan(math.radians(p.alpha_deg))
-    ground, areas, _area_cells = gg.grow(cmin, mx, my, mz, state, gx, gy, edge, ncx, ncy, c, ct, tan_up, min_cells, min_edge)
-    del edge
-    report["ground_cells"] += int(ground)
-    report["edge_areas"] += int(areas)
+    state, gx, gy = _growth(cells, u, mask, grid, p, pool, report)
     done(4, 0.75)
-    # 7 classes
-    g = np.empty(ncell, np.float64)
-    gn = np.empty(ncell, np.float32)
-    weak = np.empty(ncell, np.uint8)
-    pool.strips(
-        lambda a, b: gg.plane_rows(cmin, mx, my, mz, state, gx, gy, ncx, ncy, a, b, c, ct, g, gn, weak), ncy, STRIP_ROWS
-    )
-    del cmin, mx, my, mz
+    g, gn, weak = _planes(cells, state, gx, gy, grid, p, pool)
+    del cells
+    ncx, ncy = blk.ncx, blk.ncy
     pool.strips(
         lambda a, b: gg.classify_rows(
-            pts, order, start, state, g, gx, gy, gn, weak, u, mask, ncx, ncy, a, b, lat.ox, lat.oy, c, cr, blk.cx0, blk.cy0, ct, pcls, ph
+            pts, order, start, state, g, gx, gy, gn, weak, u, mask, ncx, ncy, a, b,
+            lat.ox, lat.oy, lat.c, p.cr, blk.cx0, blk.cy0, p.ct, pcls, ph,
         ),
         ncy,
         STRIP_ROWS,
-    )
+    )  # fmt: skip
     done(5, 0.9)
-    # 8 faces
     if p.r_b is not None:
-        from . import ground_faces as gf
-
         report["face_points"] += int(
             gf.faces(
-                pts, order, start, pcls, ph, state, g, gx, gy, ncx, ncy, lat.ox, lat.oy, c, cr, blk.cx0, blk.cy0, ct,
-                float(p.r_b), math.cos(math.radians(p.face_deg)), *blk.core,
+                pts, order, start, pcls, ph, state, g, gx, gy, ncx, ncy, lat.ox, lat.oy, lat.c, p.cr,
+                blk.cx0, blk.cy0, p.ct, float(p.r_b), math.cos(math.radians(p.face_deg)), *blk.core,
             )
         )  # fmt: skip
-    if _TRACE is not None:
-        _TRACE.append({"block": blk, "lattice": lat, "order": order, "start": start, "state": state, "weak": weak, "g": g, "u": u, "mask": mask, "pcls": pcls})
     col0, row0, col1, row1 = blk.core
     pool.strips(
         lambda a, b: gk.store_rows(order, start, pcls, ph, ncx, row0 + a, row0 + b, col0, col1, cls, h),
@@ -475,6 +415,101 @@ def _run_block(pts, returns, cand, lat, blk, p, pool, step, cls, h, report) -> N
         STRIP_ROWS,
     )
     done(6, 1.0)
+
+
+def _index(pts, cand, grid, pool):  # type: ignore[no-untyped-def]
+    """Stage 1: the points of the block by its cells → (start, order)."""
+    ox, oy, c, cx0, cy0, ncx, ncy = grid
+    cid = np.empty(len(cand), np.int32)
+    pool.strips(
+        lambda lo, hi: gk.cell_ids(pts, cand, lo, hi, ox, oy, c, cx0, cy0, ncx, ncy, cid), len(cand), STRIP_POINTS
+    )
+    return gk.counting_sort(cid, cand, ncx * ncy)
+
+
+def _lowest(pts, returns, order, start, pcls, grid, p, pool):  # type: ignore[no-untyped-def]
+    """Stage 2: noise (class 7 in pcls) and the lowest return of every cell → (cmin, mx, my, mz)."""
+    ox, oy, c, cx0, cy0, ncx, ncy = grid
+    if p.noise_r is not None:
+        radius, k_min = float(p.noise_r), int(p.noise_k)
+        pool.strips(
+            lambda a, b: gk.noise_rows(pts, order, start, ncx, ncy, a, b, ox, oy, c, cx0, cy0, radius, k_min, pcls),
+            ncy,
+            STRIP_ROWS,
+        )
+    cmin = np.empty(ncx * ncy, np.int32)
+    mx = np.zeros(ncx * ncy, np.float32)
+    my = np.zeros(ncx * ncy, np.float32)
+    mz = np.zeros(ncx * ncy, np.float64)
+    use_ret = returns is not None
+    rets = returns if use_ret else np.zeros(1, np.uint8)
+    pool.strips(
+        lambda a, b: gk.minima_rows(
+            pts, rets, use_ret, order, start, pcls, ncx, a, b, ox, oy, c, cx0, cy0, cmin, mx, my, mz
+        ),
+        ncy,
+        STRIP_ROWS,
+    )
+    return cmin, mx, my, mz
+
+
+def _obstacle(cells, grid, p, pool):  # type: ignore[no-untyped-def]
+    """Stage 3: the obstacle under every particle and the particles of the system → (hob, mask)."""
+    cmin, mx, my, mz = cells
+    c, ncx, ncy = grid[2], grid[5], grid[6]
+    npx, npy = ncx // 2 + 1, ncy // 2 + 1
+    hob = np.zeros((npy, npx), np.float64)
+    mask = np.zeros((npy, npx), np.uint8)
+    pool.strips(
+        lambda a, b: gc.obstacle_rows(cmin, mx, my, mz, ncx, ncy, npx, a, b, c, p.cr, p.ct / 5.0, hob, mask),
+        npy,
+        STRIP_ROWS,
+    )
+    return hob, mask
+
+
+def _growth(cells, u, mask, grid, p, pool, report):  # type: ignore[no-untyped-def]
+    """Stages 5–6: seeds by the cloth, the growth along the slope → (state, gx, gy) of the cells."""
+    cmin, mx, my, mz = cells
+    c, ncx, ncy = grid[2], grid[5], grid[6]
+    state = np.zeros(ncx * ncy, np.uint8)
+    gx = np.zeros(ncx * ncy, np.float32)
+    gy = np.zeros(ncx * ncy, np.float32)
+    seeds = pool.strips(
+        lambda a, b: gc.seed_rows(cmin, mx, my, mz, u, ncx, a, b, c, p.cr, p.ct, state, gx, gy), ncy, STRIP_ROWS
+    )
+    report["seeds"] += int(sum(seeds))
+    edge = np.zeros(ncx * ncy, np.uint8)
+    min_cells = min_edge = 0
+    if p.edge_areas:
+        pool.strips(lambda a, b: gg.edge_rows(cmin, mask, ncx, a, b, edge), ncy, STRIP_ROWS)
+        # the share of cells that hold a return: a sparse cloud fills an area with fewer of them
+        fill = min(1.0, float(np.count_nonzero(cmin >= 0)) / max(4.0 * float(np.count_nonzero(mask)), 1.0))
+        width = cloth_width(p)
+        min_cells = max(int(width * width / (c * c) * fill), 16)
+        min_edge = max(int(0.5 * width / c * fill), 4)
+    tan_up = math.tan(math.radians(p.alpha_deg))
+    ground, areas, _cells = gg.grow(
+        cmin, mx, my, mz, state, gx, gy, edge, ncx, ncy, c, p.ct, tan_up, min_cells, min_edge
+    )
+    report["ground_cells"] += int(ground)
+    report["edge_areas"] += int(areas)
+    return state, gx, gy
+
+
+def _planes(cells, state, gx, gy, grid, p, pool):  # type: ignore[no-untyped-def]
+    """Stage 7, the surface: the plane of every ground cell → (g, gn, weak); gx, gy are rewritten."""
+    cmin, mx, my, mz = cells
+    c, ncx, ncy = grid[2], grid[5], grid[6]
+    g = np.empty(ncx * ncy, np.float64)
+    gn = np.empty(ncx * ncy, np.float32)
+    weak = np.empty(ncx * ncy, np.uint8)
+    pool.strips(
+        lambda a, b: gg.plane_rows(cmin, mx, my, mz, state, gx, gy, ncx, ncy, a, b, c, p.ct, g, gn, weak),
+        ncy,
+        STRIP_ROWS,
+    )
+    return g, gn, weak
 
 
 def warm() -> None:

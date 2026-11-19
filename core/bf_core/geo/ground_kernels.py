@@ -253,8 +253,11 @@ def minima_rows(xyz, ret, use_ret, order, start, pcls, ncx, row0, row1, ox, oy, 
 
 
 @njit(cache=True, nogil=True)
-def fit_plane(dx, dy, z, use, n):  # type: ignore[no-untyped-def]
-    """Least squares z = a + b·dx + c·dy over the entries with use[k] != 0 → (ok, a, b, c).
+def fit_plane_stats(dx, dy, z, use, n):  # type: ignore[no-untyped-def]
+    """Least squares z = a + b·dx + c·dy over the entries with use[k] != 0
+    → (ok, a, b, c, count, mean dx, mean dy, sxx, sxy, syy) — the last five are the centred sums of the plan
+    positions: the leverage of a place (ex, ey from the mean) is 1/count + (syy·ex² − 2·sxy·ex·ey + sxx·ey²) /
+    (sxx·syy − sxy²), the variance of the fitted height there in units of the variance of a return.
 
     Not ok: fewer than 3 points, or points on a line (the narrow extent under a tenth of the wide one) —
     the slope across such a set is not defined.
@@ -270,7 +273,7 @@ def fit_plane(dx, dy, z, use, n):  # type: ignore[no-untyped-def]
             sy += dy[k]
             sz += z[k]
     if cnt < 3:
-        return False, 0.0, 0.0, 0.0
+        return False, 0.0, 0.0, 0.0, cnt, 0.0, 0.0, 0.0, 0.0, 0.0
     sx /= cnt
     sy /= cnt
     sz /= cnt
@@ -292,10 +295,17 @@ def fit_plane(dx, dy, z, use, n):  # type: ignore[no-untyped-def]
     det = sxx * syy - sxy * sxy
     trace = sxx + syy
     if det <= 0.01 * 0.25 * trace * trace:
-        return False, 0.0, 0.0, 0.0
+        return False, 0.0, 0.0, 0.0, cnt, 0.0, 0.0, 0.0, 0.0, 0.0
     b = (sxz * syy - syz * sxy) / det
     cc = (syz * sxx - sxz * sxy) / det
-    return True, sz - b * sx - cc * sy, b, cc
+    return True, sz - b * sx - cc * sy, b, cc, cnt, sx, sy, sxx, sxy, syy
+
+
+@njit(cache=True, nogil=True)
+def fit_plane(dx, dy, z, use, n):  # type: ignore[no-untyped-def]
+    """Least squares z = a + b·dx + c·dy over the entries with use[k] != 0 → (ok, a, b, c); see above."""
+    ok, a, b, cc, _n, _sx, _sy, _sxx, _sxy, _syy = fit_plane_stats(dx, dy, z, use, n)
+    return ok, a, b, cc
 
 
 @njit(cache=True, nogil=True)

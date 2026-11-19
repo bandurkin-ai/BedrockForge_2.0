@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -226,6 +227,10 @@ def sweeps(u, h, mask, load, omega, count):  # type: ignore[no-untyped-def]
     return peak
 
 
+def _colour(u, h, mask, color, load, omega, row0, row1):  # type: ignore[no-untyped-def]
+    return sweep_rows(u, h, mask, row0, row1, color, load, omega)
+
+
 def solve(
     hob: np.ndarray,
     mask: np.ndarray,
@@ -263,11 +268,11 @@ def solve(
         slow = 0.9  # the slower of the last two rates: the moves of an over-relaxed sweep come in waves
         while done < MAX_SWEEPS:
             if threaded and rows is not None:
+                red = partial(_colour, u, h, m, 0, step_load, w)
+                black = partial(_colour, u, h, m, 1, step_load, w)
                 peak = 0.0
                 for _ in range(CHUNK):
-                    red = max(rows(lambda a, b, w=w: sweep_rows(u, h, m, a, b, 0, step_load, w), h.shape[0]))
-                    black = max(rows(lambda a, b, w=w: sweep_rows(u, h, m, a, b, 1, step_load, w), h.shape[0]))
-                    peak = max(peak, red, black)
+                    peak = max(peak, max(rows(red, h.shape[0])), max(rows(black, h.shape[0])))
             else:
                 peak = float(sweeps(u, h, m, step_load, w, CHUNK))
             done += CHUNK

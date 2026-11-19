@@ -32,30 +32,33 @@ import numpy as np
 
 from bf_core.jit import njit
 
-from .ground_kernels import fit_plane
+from .ground_kernels import fit_plane_stats
+
+FIRM = 6  # returns that carry the plane of a ground cell; fewer — the plane is fitted over a wider window
 
 # --- growth ----------------------------------------------------------------------------------------------
 
 
 @njit(cache=True, nogil=True)
-def _plane_at(a, want, cmin, mx, my, mz, state, gxa, gya, ncx, ncy, c, ct, bx, by, bz, use):  # type: ignore[no-untyped-def]
+def _plane_at(a, want, reach, cmin, mx, my, mz, state, gxa, gya, ncx, ncy, c, ct, bx, by, bz, use):  # type: ignore[no-untyped-def]
     """The plane of the ground at cell `a`: z = mz[a] + o + gx·dx + gy·dy (dx, dy from the return of `a`).
 
-    Least squares over the returns of the cells in state `want` around it (5 × 5): first those within 2·CT,
+    Least squares over the returns of the cells in state `want` within `reach` cells of it: first those within 2·CT,
     then CT of the plane so far (along its normal) — the other level of a step stays out; then twice without
     the returns more than CT/5 above the plane — vegetation taken on the way does not lift it: under
     vegetation the ground is the minority of the lowest returns. A fit that cannot be made (fewer than three
     returns, returns on a line) leaves the plane as it was.
-    → (support, o, gx, gy): support — the returns of the last fit, 0 — the plane is still the one given.
+    → (support, o, gx, gy, …): support — the returns of the last fit, 0 — the plane is still the one given;
+    the rest are the sums of that fit for `_doubt`.
     """
     aj = a // ncx
     ai = a - aj * ncx
     n = 0
-    for dj in range(-2, 3):
+    for dj in range(-reach, reach + 1):
         jj = aj + dj
         if jj < 0 or jj >= ncy:
             continue
-        for di in range(-2, 3):
+        for di in range(-reach, reach + 1):
             ii = ai + di
             if ii < 0 or ii >= ncx:
                 continue
@@ -68,24 +71,44 @@ def _plane_at(a, want, cmin, mx, my, mz, state, gxa, gya, ncx, ncy, c, ct, bx, b
             n += 1
     o = 0.0
     support = 0
+    ex = 0.0
+    ey = 0.0
+    sxx = 0.0
+    sxy = 0.0
+    syy = 0.0
     for step in range(4):
         norm = math.sqrt(1.0 + gxa * gxa + gya * gya)
-        count = 0
         for k in range(n):
             r = (bz[k] - (o + gxa * bx[k] + gya * by[k])) / norm
             if step < 2:
                 use[k] = 1 if abs(r) <= ct * (2.0 - step) else 0
             elif use[k] and r > 0.2 * ct:
                 use[k] = 0
-            count += use[k]
-        ok, a0, b0, c0 = fit_plane(bx, by, bz, use, n)
+        ok, a0, b0, c0, count, ex0, ey0, sxx0, sxy0, syy0 = fit_plane_stats(bx, by, bz, use, n)
         if not ok:
             break
         o = a0
         gxa = b0
         gya = c0
         support = count
-    return support, o, gxa, gya
+        ex = ex0
+        ey = ey0
+        sxx = sxx0
+        sxy = sxy0
+        syy = syy0
+    return support, o, gxa, gya, ex, ey, sxx, sxy, syy
+
+
+@njit(cache=True, nogil=True)
+def _doubt(support, ex, ey, sxx, sxy, syy, dx, dy):  # type: ignore[no-untyped-def]
+    """How far the height of a fitted plane may be off at (dx, dy), in standard deviations of a return: the
+    root of the leverage of the place (0.3 inside ten returns, 1 and more beyond three). No fit — 1."""
+    if support == 0:
+        return 1.0
+    ax = dx - ex
+    ay = dy - ey
+    lev = 1.0 / support + (syy * ax * ax - 2.0 * sxy * ax * ay + sxx * ay * ay) / (sxx * syy - sxy * sxy)
+    return math.sqrt(lev)
 
 
 @njit(cache=True, nogil=True)
@@ -100,7 +123,9 @@ def _spread(queue, head, tail, want, smooth, cmin, mx, my, mz, state, gx, gy, nc
         head += 1
         aj = a // ncx
         ai = a - aj * ncx
-        _s, o, gxa, gya = _plane_at(a, want, cmin, mx, my, mz, state, gx[a], gy[a], ncx, ncy, c, ct, bx, by, bz, use)
+        support, o, gxa, gya, ex, ey, sxx, sxy, syy = _plane_at(
+            a, want, 2, cmin, mx, my, mz, state, gx[a], gy[a], ncx, ncy, c, ct, bx, by, bz, use
+        )
         gx[a] = gxa
         gy[a] = gya
         norm = math.sqrt(1.0 + gxa * gxa + gya * gya)
@@ -122,10 +147,12 @@ def _spread(queue, head, tail, want, smooth, cmin, mx, my, mz, state, gx, gy, nc
                 dy = dj * c + my[b] - my[a]
                 rise = gxa * dx + gya * dy
                 over = (mz[b] - mz[a] - o - rise) / norm
-                if over > ct:
+                # above the plane — by CT less what the plane itself may be off there (never under CT/10)
+                room = ct * max(1.0 - _doubt(support, ex, ey, sxx, sxy, syy, dx, dy), 0.1)
+                if over > room:
                     continue
                 if smooth:
-                    if over < -ct:
+                    if over < -room:
                         continue
                 elif rise > tan_up * math.sqrt(dx * dx + dy * dy):
                     continue
@@ -179,7 +206,27 @@ def grow(cmin, mx, my, mz, state, gx, gy, edge, ncx, ncy, c, ct, tan_up, min_cel
                     queue[tail] = trial[k]
                     tail += 1
                 tail = _spread(
-                    queue, head, tail, 1, False, cmin, mx, my, mz, state, gx, gy, ncx, ncy, c, ct, tan_up, bx, by, bz, use
+                    queue,
+                    head,
+                    tail,
+                    1,
+                    False,
+                    cmin,
+                    mx,
+                    my,
+                    mz,
+                    state,
+                    gx,
+                    gy,
+                    ncx,
+                    ncy,
+                    c,
+                    ct,
+                    tan_up,
+                    bx,
+                    by,
+                    bz,
+                    use,
                 )
                 areas += 1
                 area_cells += n
@@ -195,7 +242,8 @@ def grow(cmin, mx, my, mz, state, gx, gy, edge, ncx, ncy, c, ct, tan_up, min_cel
 @njit(cache=True, nogil=True)
 def edge_rows(cmin, mask, ncx, row0, row1, edge):  # type: ignore[no-untyped-def]
     """edge[cell] = 1 for the cells of rows [row0, row1) that hold a return and stand at the edge of the data:
-    one of the 4 × 4 particles around the cell is outside the system."""
+    one of the 6 × 6 particles around the cell is outside the system (a particle leaves the system 2·CR from
+    the last return, so these are the cells within about CR of the edge)."""
     npy, npx = mask.shape
     for cj in range(row0, row1):
         pj = cj // 2
@@ -205,10 +253,10 @@ def edge_rows(cmin, mask, ncx, row0, row1, edge):  # type: ignore[no-untyped-def
             if cmin[cell] < 0:
                 continue
             pi = ci // 2
-            for j in range(pj - 1, pj + 3):
+            for j in range(pj - 2, pj + 4):
                 if j < 0 or j >= npy:
                     continue
-                for i in range(pi - 1, pi + 3):
+                for i in range(pi - 2, pi + 4):
                     if i >= 0 and i < npx and not mask[j, i]:
                         edge[cell] = 1
 
@@ -220,11 +268,15 @@ def edge_rows(cmin, mask, ncx, row0, row1, edge):  # type: ignore[no-untyped-def
 def plane_rows(cmin, mx, my, mz, state, gx, gy, ncx, ncy, row0, row1, c, ct, g, gn, weak):  # type: ignore[no-untyped-def]
     """The plane of every ground cell of rows [row0, row1): g — its height at the centre of the cell, gx, gy —
     its slope (rewritten), gn — 1 / √(1 + gx² + gy²), weak — 1 when no plane could be fitted around the cell
-    (it passes through the return of the cell with the slope the growth left). Not ground — g is NaN."""
-    bx = np.empty(25)
-    by = np.empty(25)
-    bz = np.empty(25)
-    use = np.empty(25, np.uint8)
+    (it passes through the return of the cell with the slope the growth left). Not ground — g is NaN.
+
+    The plane is fitted over 5 × 5 cells; when fewer than `FIRM` returns carry it (a sparse cloud, vegetation)
+    — over 9 × 9: three returns of low vegetation must not make a plane of their own.
+    """
+    bx = np.empty(81)
+    by = np.empty(81)
+    bz = np.empty(81)
+    use = np.empty(81, np.uint8)
     for cj in range(row0, row1):
         for ci in range(ncx):
             a = cj * ncx + ci
@@ -233,9 +285,18 @@ def plane_rows(cmin, mx, my, mz, state, gx, gy, ncx, ncy, row0, row1, c, ct, g, 
                 g[a] = np.nan
                 gn[a] = 1.0
                 continue
-            support, o, gxa, gya = _plane_at(
-                a, 1, cmin, mx, my, mz, state, gx[a], gy[a], ncx, ncy, c, ct, bx, by, bz, use
+            support, o, gxa, gya, _ex, _ey, _sxx, _sxy, _syy = _plane_at(
+                a, 1, 2, cmin, mx, my, mz, state, gx[a], gy[a], ncx, ncy, c, ct, bx, by, bz, use
             )
+            if support < FIRM:
+                wide, o2, gx2, gy2, _ex, _ey, _sxx, _sxy, _syy = _plane_at(
+                    a, 1, 4, cmin, mx, my, mz, state, gx[a], gy[a], ncx, ncy, c, ct, bx, by, bz, use
+                )
+                if wide > support:
+                    support = wide
+                    o = o2
+                    gxa = gx2
+                    gya = gy2
             if support == 0:
                 weak[a] = 1
             gx[a] = gxa
@@ -259,7 +320,9 @@ def class_of(h, ct):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
-def classify_rows(xyz, order, start, state, g, gx, gy, gn, weak, u, mask, ncx, ncy, row0, row1, ox, oy, c, cr, cx0, cy0, ct, pcls, ph):  # type: ignore[no-untyped-def]
+def classify_rows(
+    xyz, order, start, state, g, gx, gy, gn, weak, u, mask, ncx, ncy, row0, row1, ox, oy, c, cr, cx0, cy0, ct, pcls, ph
+):  # type: ignore[no-untyped-def]
     """pcls, ph for the points of rows [row0, row1): the height above the ground along the normal and the
     class. Noise keeps class 7 (its height is still measured). No ground cell and no cloth near — NaN, class 1."""
     npy, npx = u.shape
