@@ -26,7 +26,7 @@ from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
 from . import contours_router, store, view_router
-from .geometry import SeriesError
+from .base import SeriesError
 from .schema import KIND
 
 router = APIRouter(prefix="/section-series")

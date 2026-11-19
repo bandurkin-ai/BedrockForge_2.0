@@ -54,23 +54,12 @@ if TYPE_CHECKING:
 # progress(fraction 0…1 or None, message or None); it may raise (JobCancelled) to cancel the calculation.
 Tick = Callable[[float | None, str | None], None]
 
-TYPES = ("vertical", "plan", "inclined", "polyline")
-MAX_K = 5_000  # sections in a series (ТЗ 8.1.2)
+from .base import DEFAULT_WINDOW, MAX_K, MAX_LEN, MIN_LEN, MIN_SPAN, TYPES, SeriesError  # noqa: E402, F401
+
 K_EPS = 1e-9  # in the formula of K
 ABUT_EPS = 1e-9  # relative: windows of neighbours abut
-MIN_LEN, MAX_LEN = 0.01, 10_000.0  # the step and the windows, m
-MIN_SPAN = 1e-6  # P2 ≠ P1, m
-DEFAULT_WINDOW = 25.0
 BATCH = 1 << 20  # points between two ticks (a few ms)
 _MESSAGE = "Разрезы серии"
-
-
-class SeriesError(ValueError):
-    """422 `bad_series`: what is wrong (Russian) and what to do; `field` — the parameter, when known."""
-
-    def __init__(self, message: str, hint: str = "", *, code: str = "bad_series", field: str | None = None) -> None:
-        super().__init__(message)
-        self.code, self.message, self.hint, self.field = code, message, hint, field
 
 
 def _ru(x: float) -> str:

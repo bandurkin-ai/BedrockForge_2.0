@@ -27,9 +27,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from .geometry import DEFAULT_WINDOW, MAX_K, MAX_LEN, MIN_LEN, MIN_SPAN, TYPES, SeriesError
-from .polyline import DEFAULT_CORRIDOR
-from .polyline import MAX_POINTS as MAX_POLYLINE
+from .base import DEFAULT_CORRIDOR, DEFAULT_WINDOW, MAX_K, MAX_LEN, MAX_POLYLINE, MIN_LEN, MIN_SPAN, TYPES, SeriesError
 
 __all__ = ["KIND", "SeriesError", "check", "merge", "params_of", "remap_meta"]
 

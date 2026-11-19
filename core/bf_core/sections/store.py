@@ -21,7 +21,7 @@ from bf_core.db import dialect
 from bf_core.db.schema import objects
 
 from . import schema
-from .geometry import SeriesError, series_geometry
+from .base import SeriesError
 from .schema import KIND
 
 MAX_SERIES = 1_000  # series in a project
@@ -78,6 +78,8 @@ def _out(conn: sa.Connection, r: Any) -> dict[str, Any]:
     if params["contour_layer"] is not None and not _alive_layer(conn)(params["contour_layer"]):
         params["contour_layer"] = None  # the layer was deleted since
     try:
+        from .geometry import series_geometry  # numpy: after BF-READY
+
         k = series_geometry(meta).count
     except SeriesError:
         k = 0  # a meta this version cannot read: listed, without sections

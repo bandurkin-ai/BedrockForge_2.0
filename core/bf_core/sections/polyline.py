@@ -32,6 +32,8 @@ from typing import Any
 
 import numpy as np
 
+from .base import DEFAULT_CORRIDOR  # noqa: E402, F401
+from .base import MAX_POLYLINE as MAX_POINTS  # noqa: E402
 from .geometry import (
     BATCH,
     MAX_LEN,
@@ -47,8 +49,6 @@ from .geometry import (
     dot,
 )
 
-MAX_POINTS = 1_000  # vertices of a polyline (ADR 0016 §1)
-DEFAULT_CORRIDOR = 25.0
 TURN_EPS = 1e-6  # |ŝ_{j−1} + ŝ_j| below it: the polyline turns back
 UP = np.array([0.0, 0.0, 1.0])
 

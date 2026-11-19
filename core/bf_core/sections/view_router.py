@@ -31,7 +31,7 @@ from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
 from . import store
-from .geometry import SeriesError
+from .base import SeriesError
 
 router = APIRouter()
 Svc = Annotated[ProjectService, Depends(projects)]
