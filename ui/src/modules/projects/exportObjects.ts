@@ -7,9 +7,15 @@
  * Pure model and the calls of the core; no React (ExportObjects.tsx draws it, bind.ts runs `project.export`).
  */
 import { api } from "../../shell/api";
-import type { ConfirmOptions } from "../../shell/dialogs";
-import { refusal } from "../../shell/objectRun";
+import type { App } from "../../shell/app";
+import type { CommandSource } from "../../shell/commands";
+import { askConfirm, type ConfirmOptions } from "../../shell/dialogs";
+import { refusal, showJobs, viewport } from "../../shell/objectRun";
+import { errorText } from "../../shell/props";
 import { count, counted } from "../../shell/treeActions";
+import { openWindow } from "../../shell/windows";
+import { refresh as refreshJobs } from "../jobs/state";
+import { projectStore } from "./state";
 
 export interface FormatOption {
   id: string;
@@ -243,6 +249,45 @@ export function confirmQuestion(info: FormatsInfo, body: ObjectsExportBody, proj
     message: `Claude просит выгрузить объекты проекта в новую папку «${exportFolderName(project)}» в «${body.folder}»:\n${lines.join("\n")}\nСуществующие файлы не изменяются. Разрешить?`,
     okLabel: "Экспортировать",
   };
+}
+
+// ——— the command `project.export {formats, folder, types?}` ———
+
+/** `project.export` with any of formats, folder, types exports the objects; without them it is the .bfggis window. */
+export const wantsObjects = (a: Record<string, unknown>): boolean => ["formats", "folder", "types"].some((k) => typeof a[k] === "string" && a[k] !== "");
+
+/**
+ * The objects of the project into files: with `folder` the job starts at once (a call of Claude after our own
+ * question), without it the window «Объекты в файлы» opens with the choice. Failures are Russian texts with a hint.
+ */
+export async function exportObjectsCommand(app: App, a: Record<string, unknown>, source: CommandSource): Promise<string> {
+  try {
+    const info = await loadFormats();
+    if (info.reason) throw refusal("read_only", info.reason, "Откройте проект для записи.");
+    if (app.store.get().projectReadOnly) throw refusal("read_only", "Проект открыт только для чтения: экспорт недоступен.", "Откройте проект для записи.");
+    const formats = parseFormatsArg(info, a.formats);
+    const types = parseTypesArg(info, a.types);
+    const choice = initialChoice(info, { formats, types });
+    const folder = typeof a.folder === "string" && a.folder.trim() ? a.folder.trim() : null;
+    if (!folder) {
+      openWindow("project-export", "Экспорт проекта", "form", { mode: "objects", formats: choice.formats, types: choice.types }, ...viewport());
+      return "Открыто окно «Экспорт проекта» (объекты в файлы): выберите папку и нажмите «Экспортировать»";
+    }
+    const reason = choiceReason(info, choice, folder);
+    if (reason) throw refusal("export_nothing", reason, "Проверьте types и formats: типы без объектов не экспортируются.");
+    const body = exportBody(info, choice, folder);
+    const project = projectStore.get().current?.name ?? app.store.get().projectName ?? "Проект";
+    if (source === "claude" && !(await askConfirm(confirmQuestion(info, body, project)))) return "Отменено пользователем";
+    const job = await startObjectsExport(body);
+    showJobs(app);
+    await refreshJobs();
+    const what = info.types.filter((t) => body.types.includes(t.kind)).map((t) => `${t.title} → ${body.formats[t.kind]}`).join(", ");
+    return `Запущено задание №${job.id} «export.objects»: ${what}; папка «${exportFolderName(project)}» в «${folder}». Ход — на вкладке «Задания»`;
+  } catch (e) {
+    const text = errorText(e);
+    if (source === "user") app.store.set({ statusNote: text });
+    throw new Error(text);
+  }
 }
 
 // ——— the report of a finished job ———

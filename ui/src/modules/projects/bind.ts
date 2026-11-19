@@ -6,6 +6,7 @@ import type { CommandSource } from "../../shell/commands";
 import { askConfirm, askText, showMessage } from "../../shell/dialogs";
 import { openWindow } from "../../shell/windows";
 import { refresh as refreshJobs } from "../jobs/state";
+import { exportObjectsCommand, wantsObjects } from "./exportObjects";
 import { createProject, deleteProject, demoProject, openProject, projectStore, refreshCurrent, updateProject } from "./state";
 
 const needProject = (ctx: { hasProject: boolean }) => (ctx.hasProject ? null : "Проект не открыт");
@@ -108,9 +109,12 @@ export function bindProjects(app: App): void {
 
   r.bind(
     "project.export",
-    () => {
-      openWindow("project-export", "Экспорт проекта", "form", undefined, ...viewport());
-      return "Открыто окно экспорта";
+    async (a, source) => {
+      if (!wantsObjects(a)) {
+        openWindow("project-export", "Экспорт проекта", "form", undefined, ...viewport());
+        return "Открыто окно экспорта";
+      }
+      return exportObjectsCommand(app, a, source);
     },
     needProject,
   );
