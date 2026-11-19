@@ -55,6 +55,9 @@ def _warm_kernels() -> None:
             v, t = gm.check_mesh(np.c_[x.ravel() + 500_000.0, y.ravel() + 7_000_000.0, z.ravel()], tri)
             for p in gm.parts_table(v, t):
                 gm.levels(*gm.part_mesh(v, t, p))
+        from bf_core.ops.preview import warm
+
+        warm()
     except Exception:  # noqa: BLE001 - a warm-up never stops the worker; the view compiles them itself then
         logging.getLogger("bf_core.worker").exception("warm-up of the kernels failed")
 
