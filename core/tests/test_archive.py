@@ -294,3 +294,14 @@ def test_roundtrip_lines_rasters_dtm_renumbered(ac, tmp_path: Path) -> None:  # 
     assert wf["object_id"] == ids[95] and wf["dtm"] == dtm and wf["attrs"] == {"Участок": "Север"}
     assert (ref["src_id"], ref["dst_id"]) == (ids[95], ids[90])
     assert (st["x"], st["y"], st["z"]) == (xyz[0, 0], xyz[0, 1], 401.123_456_789_012_3) and st["set_id"] == ids[60]
+
+
+def test_line_versions_are_archived_with_their_files() -> None:
+    """Э9 (ADR 0015 §1): the journal is renumbered and the owner `line_version` follows its rows."""
+    from bf_core.archive.spec import ID_COLUMNS, KIND_COLUMNS
+
+    names = [t.name for t in TABLES]
+    spec = TABLES[names.index("line_layer_versions")]
+    assert spec.renumber and names.index("objects") < names.index("line_layer_versions")
+    assert ID_COLUMNS[("line_layer_versions", "layer_id")] == "objects"
+    assert KIND_COLUMNS[("blob_owners", "owner_kind", "owner_id")]["line_version"] == "line_layer_versions"

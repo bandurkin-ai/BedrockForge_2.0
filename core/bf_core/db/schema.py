@@ -430,11 +430,25 @@ BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job", "import", "line_v
 #: (`lines/pack.py`); wireframes: `xyz <f8`, `tri <i4`; point clouds (ADR 0014 §1, `lines/cloud.py`): `xyz`, `seq`,
 #: `class u1` (ASPRS code), `ret u1` (return number and number of returns), `h <f4` (height above the ground),
 #: `dz <f4` (Z − DTM); `lid <u4` — the stable number of every line of a layer (ADR 0015 §1; no blob: the position).
-A new role registers here, or add_owner refuses it.
+#: A new role registers here, or add_owner refuses it.
 BLOB_ROLES: frozenset[str] = frozenset(
     {
-        "data", "source", "display0", "display1", "xyz", "offsets", "closed", "seq", "attrs", "vattrs", "tri",
-        "class", "ret", "h", "dz", "lid",
+        "data",
+        "source",
+        "display0",
+        "display1",
+        "xyz",
+        "offsets",
+        "closed",
+        "seq",
+        "attrs",
+        "vattrs",
+        "tri",
+        "class",
+        "ret",
+        "h",
+        "dz",
+        "lid",
     }  # fmt: skip
 )
 BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:")

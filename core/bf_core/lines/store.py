@@ -27,7 +27,7 @@ import sqlalchemy as sa
 
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
-from bf_core.db.schema import blob_owners, line_layers, objects
+from bf_core.db.schema import blob_owners, line_layer_versions, line_layers, objects
 from bf_core.formats.lineset import AttrField, LineSet
 from bf_core.storage.blobs import CHUNK, BlobStore, add_owners
 
@@ -36,10 +36,11 @@ from . import pack
 LINE_FILE = "line_file"
 LINE_LAYER = "line_layer"
 OWNER = "object"
+VERSION_OWNER = "line_version"  # a row of line_layer_versions (ADR 0015 §1)
 ARRAY_MEDIA = "application/octet-stream"
 PARQUET_MEDIA = "application/vnd.apache.parquet"
 #: role → dtype of the raw arrays of a layer
-ARRAYS: dict[str, str] = {"xyz": "<f8", "offsets": "<i8", "closed": "u1", "seq": "<u4"}
+ARRAYS: dict[str, str] = {"xyz": "<f8", "offsets": "<i8", "closed": "u1", "seq": "<u4", "lid": "<u4"}
 TABLES = ("attrs", "vattrs")
 #: A layer whose files together are at most this many bytes goes into the pack of its portion (`stage_layers`).
 PACK_LIMIT = 1 << 20
@@ -506,6 +507,15 @@ def read_layer(conn: sa.Connection, store: BlobStore, layer_id: int) -> LineSet:
 # --- deleting ------------------------------------------------------------------------------------------
 
 
+def drop_version_owners(conn: sa.Connection, layer_ids: Sequence[int]) -> None:
+    """Before layers are deleted (their journal goes by cascade): the files of their versions lose that owner, so
+    the storage cleanup can remove the ones the current state does not keep."""
+    rows = sa.select(line_layer_versions.c.id).where(line_layer_versions.c.layer_id.in_(list(layer_ids)))
+    conn.execute(
+        sa.delete(blob_owners).where(blob_owners.c.owner_kind == VERSION_OWNER, blob_owners.c.owner_id.in_(rows))
+    )
+
+
 def delete_file(conn: sa.Connection, file_id: int) -> list[int]:
     """The file object, its layers (cascade) and the file references of all of them. Returns the ids gone."""
     _file_row(conn, file_id)
@@ -513,6 +523,7 @@ def delete_file(conn: sa.Connection, file_id: int) -> list[int]:
     from bf_core.drillholes.store import drop_import_owners
 
     drop_import_owners(conn, ids)  # import_log goes by cascade: its source files must not stay owned
+    drop_version_owners(conn, ids)  # so do the versions of the layers (line_layer_versions, ADR 0015 §1)
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id.in_(ids)))
     conn.execute(sa.delete(objects).where(objects.c.id == file_id))
     return ids

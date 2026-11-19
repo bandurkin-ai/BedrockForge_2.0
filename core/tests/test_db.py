@@ -191,3 +191,78 @@ def test_migration_0005_keeps_surveys_and_adds_station_coordinates(db_url: str, 
         depth = conn.execute(sa.text("SELECT depth FROM dh_surveys")).scalar_one()
     assert not {"line_layers", "rasters", "wireframes"} & names and not {"x", "y", "z"} & cols and depth == 5.5
     engine.dispose()
+
+
+def test_migration_0006_line_versions_keeps_e7_layers(db_url: str, tmp_path: Path) -> None:
+    """Э9 (ADR 0015 §1): an Э7 layer reads unchanged with rev = 1 and next_lid NULL; the journal and its file owner
+    come and go with the revision; the owner kind `line_version` and the role `lid` are registered."""
+    engine = make_engine(db_url, tmp_path)
+    migrate.upgrade(engine, "project", "0005")
+    now = dialect.utcnow()
+    obj = dict(sort_key=0.0, state="ready", version=3, meta={}, created_at=now, updated_at=now)
+    layer = dict(
+        object_id=2, line_count=1, point_count=5, length=40.0, closed_count=1, flat=True, color="#ff8800",
+        attr_schema=[{"name": "NAME", "kind": "text", "unit": None, "scope": "feature"}], points_only=False,
+        origin=[512_346.0, 6_234_567.0, 100.0],
+    )  # fmt: skip
+    with dialect.write_tx(engine) as conn:
+        conn.execute(sa.insert(schema.objects).values(id=1, kind="line_file", name="f", name_key="f", **obj))
+        conn.execute(
+            sa.insert(schema.objects).values(id=2, parent_id=1, kind="line_layer", name="L", name_key="l", **obj)
+        )
+        conn.execute(sa.text(
+            "INSERT INTO line_layers (object_id, line_count, point_count, length, closed_count, flat, color, "
+            "attr_schema, points_only, origin) VALUES (:object_id, :line_count, :point_count, :length, "
+            ":closed_count, :flat, :color, :attr_schema, :points_only, :origin)"
+        ).bindparams(
+            sa.bindparam("attr_schema", type_=dialect.JSONType), sa.bindparam("origin", type_=dialect.JSONType)
+        ), layer)  # fmt: skip
+        conn.execute(sa.insert(schema.blobs).values(sha256="c" * 64, size=8, media_type="x", created_at=now))
+        conn.execute(sa.insert(schema.blob_owners).values(sha256="c" * 64, owner_kind="object", owner_id=2, role="xyz"))
+    migrate.upgrade(engine, "project")
+    with dialect.read_tx(engine) as conn:
+        row = conn.execute(sa.select(schema.line_layers)).mappings().one()
+        assert {k: row[k] for k in layer} == layer  # the Э7 row reads as it was
+        assert (row["rev"], row["next_lid"]) == (1, None)
+    with dialect.write_tx(engine) as conn:
+        vid = conn.execute(
+            sa.insert(schema.line_layer_versions).values(
+                layer_id=2,
+                version=1,
+                action="import",
+                created_at=now,
+                line_count=1,
+                point_count=5,
+                prev_line_count=0,
+                prev_point_count=0,
+                stats={"area": 100.0},
+            )  # fmt: skip
+        ).inserted_primary_key[0]
+        conn.execute(
+            sa.insert(schema.blob_owners).values(sha256="c" * 64, owner_kind="line_version", owner_id=vid, role="lid")
+        )
+    with pytest.raises(sa.exc.DBAPIError) as err, dialect.write_tx(engine) as conn:  # version numbers are unique
+        conn.execute(
+            sa.insert(schema.line_layer_versions).values(
+                layer_id=2,
+                version=1,
+                action="save",
+                created_at=now,
+                line_count=0,
+                point_count=0,
+                prev_line_count=0,
+                prev_point_count=0,
+                stats={},
+            )  # fmt: skip
+        )
+    assert dialect.is_integrity_error(err.value)
+    migrate.downgrade(engine, "project", "0005")
+    with dialect.read_tx(engine) as conn:
+        names = set(sa.inspect(conn).get_table_names())
+        cols = {c["name"] for c in sa.inspect(conn).get_columns("line_layers")}
+        kinds = set(conn.execute(sa.text("SELECT owner_kind FROM blob_owners")).scalars())
+        count = conn.execute(sa.text("SELECT point_count FROM line_layers")).scalar_one()
+    assert "line_layer_versions" not in names and not {"rev", "next_lid"} & cols
+    assert kinds == {"object"} and count == 5  # the layer keeps its files; the version owner is gone
+    engine.dispose()
+    assert "line_version" in schema.BLOB_OWNER_KINDS and schema.valid_blob_role("lid")

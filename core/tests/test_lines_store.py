@@ -294,3 +294,33 @@ def test_blob_roles_are_registered(project) -> None:  # type: ignore[no-untyped-
         assert not valid_blob_role(role), role
     with pytest.raises(ValueError, match="BLOB_ROLES"), dialect.write_tx(engine) as conn:
         add_owner(conn, "a" * 64, "object", 1, "lod1")
+
+
+def test_delete_file_drops_the_owners_of_layer_versions(project, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """Э9 (ADR 0015 §1): the journal goes by cascade, its files lose the owner `line_version` explicitly."""
+    from bf_core.db.schema import line_layer_versions
+
+    engine, store = project
+    with dialect.write_tx(engine) as conn:
+        file_id = _file(conn, store, tmp_path)
+        a = ls_store.put_layer(conn, store, from_lines("1", [_square()]), file_id=file_id)
+        old = store.put_bytes(conn, b"old version", media_type="x", owner_kind="object", owner_id=a)
+        vid = conn.execute(
+            sa.insert(line_layer_versions).values(
+                layer_id=a,
+                version=1,
+                action="import",
+                created_at=dialect.utcnow(),
+                line_count=1,
+                point_count=5,
+                prev_line_count=0,
+                prev_point_count=0,
+                stats={},
+            )  # fmt: skip
+        ).inserted_primary_key[0]
+        add_owner(conn, old, ls_store.VERSION_OWNER, int(vid), "xyz")
+    with dialect.write_tx(engine) as conn:
+        ls_store.delete_file(conn, file_id)
+    with dialect.read_tx(engine) as conn:
+        assert conn.execute(sa.select(sa.func.count()).select_from(blob_owners)).scalar_one() == 0
+        assert conn.execute(sa.select(sa.func.count()).select_from(line_layer_versions)).scalar_one() == 0
