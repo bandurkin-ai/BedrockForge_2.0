@@ -1,24 +1,28 @@
 """The warm-up of the operations in the workers (10.11; PROGRESS «Э9 9.36»: the first operation after a start took
-~13 s — the numba kernels of the stitch, of the checks of the body and of the store compiled while the user waited).
+~13 s — the numba kernels of the stitch, of the checks of a body and of the store compiled while the user waited).
 
-`warm(order)` runs every step of `order` once as its job runs (`ops/job.py::run`: the preconditions again, the
-sources read from their blobs, the kernels, `stage_wireframe`, the files, the write) on a tiny project in a
-temporary folder — the same calls with the same dtypes, so whatever kernel an operation needs is compiled into
-NUMBA_CACHE_DIR, or loaded from it, and stays in the memory of the process; nothing there is written by hand to
-follow the kernels. The step `view` is the section by a plane and by a section line and the click of the 3D view
-(`wireframes/exact.py`): they run in the process of the API, which then loads them from the cache.
+`warm(order)` runs every step of `order` once as its job runs (`ops/job.py::run`: the preconditions, the sources read
+from their blobs, the kernels, `stage_wireframe`, the files, the write) on a tiny project in a temporary folder —
+the same calls with the same dtypes, so whatever kernel an operation needs is compiled into NUMBA_CACHE_DIR, or
+loaded from it, and stays in the memory of the process; no list of kernels is kept by hand. The operations are
+`STEPS` (every one of `registry.PREPARE`; «Построить ЦТМ» is the job `model.dtm`); beside them (`OTHER`) the checks
+of a body, the job `wireframe.check` the window starts after an operation, the simplified copies of the view, the
+preview of a stitch, the section and the click of the view (the last three run in the process of the API, which
+loads them from the cache).
 
-The workers call it in a thread after «ready» (`jobs/worker.py::_warm_kernels`): the quick worker in the order
-`ORDER` — the stitch first, the usual first operation —, the heavy one from the other end (`reversed`), so that on
-a cold cache both compile at once and each finds the other's half in the cache when they meet. Measured on Linux,
-4 cores: every step ~25 s in one process on a cold cache (the stitch ~8 s of it), ~1.5 s from the cache; the
-first stitch after it ~0.07 s (was ~0.9 s from the cache, ~8 s cold). A step that fails is logged; the next
-one goes on. `stop` (an event) ends it between steps.
+The workers call it in a thread after «ready» (`jobs/worker.py::_warm_kernels`), the quick one in the order `QUICK`
+— the checks of a body, then the operations, the stitch first —, the heavy one in `HEAVY` — the strips of a stitch
+(`preview`) meanwhile, then what follows an operation and what the API needs, then the operations backwards: on a
+cold cache the two halves of the first stitch compile at once and each worker finds the other's in the cache. The
+quick worker does not start a step while one of its jobs runs. Linux, 4 cores, the first stitch after a start:
+cold cache ~13 s → ~3 s in the E2E (the warm-up ready for it in ~7 s, all of it in ~30 s); from the cache the
+warm-up takes ~3 s and the stitch ~0.07 s (was ~0.9 s). A step that fails is logged; the next one goes on.
 """
 
 from __future__ import annotations
 
 import logging
+import shutil
 import tempfile
 import threading
 import time
@@ -53,12 +57,19 @@ STEPS: dict[str, tuple[str, Params]] = {
     "volume_between": ("volume_between", lambda d: {"top": d["relief"], "bottom": d["flat"]}),
 }
 OPS = tuple(STEPS)
-#: steps that are not operations: the levels of detail of the view and their LOD jobs (`levels`), the preview of a
-#: stitch (`preview`, `ops/preview.py::warm`), the section and the click of the view (`view`)
-OTHER = ("levels", "preview", "view")
-QUICK = (*OPS, *OTHER)  # the quick worker: the operations first, the stitch the very first
-HEAVY = ("levels", "view", "preview", *reversed(OPS))  # the heavy one: what the process of the API needs first
+#: steps that are not operations: the checks of a body (`checks`: those of the stitch and of `wireframe.check`),
+#: the job `wireframe.check` itself (`check`: the levels of detail and the checks — the window starts it after an
+#: operation), the simplified copies of the view (`levels`), the preview of a stitch (`preview`: its strips, without
+#: the checks), the section and the click of the view (`view`)
+OTHER = ("checks", "check", "levels", "preview", "view")
+#: The quick worker: the checks of a body, then the operations — the stitch first; the heavy one meanwhile the strips
+#: of a stitch (`preview`), so that on a cold cache the first stitch has its two halves compiled at once (~5 s, not
+#: ~8 s), then what follows an operation and what the process of the API needs, then the operations backwards.
+QUICK = ("checks", *OPS, "levels", "preview", "view", "check")
+HEAVY = ("preview", "check", "levels", "view", *reversed(OPS), "checks")
 X0, Y0, Z0 = 512_345.678, 6_789_012.345, 250.0  # a UTM position, as the data of a deposit
+PREFIX = "bf-warm-"  # the temporary folder of the warm-up project
+STALE_S = 24 * 3600
 
 
 def _cube(lo: float, hi: float) -> tuple[Any, Any]:
@@ -189,6 +200,36 @@ def view(folder: Path, wf_id: int) -> None:
         engine.dispose()
 
 
+def checks(folder: Path, wf_id: int) -> None:
+    """The checks of a closed body on a wireframe as stored (`geo/checks.py::run_checks`, as `wireframe.check` calls
+    it; the stitch calls the same kernels on its result)."""
+    from bf_core.db import dialect
+    from bf_core.geo import checks as gc
+    from bf_core.storage.blobs import BlobStore
+    from bf_core.wireframes import store as ws
+
+    engine = dialect.create_engine(dialect.sqlite_url(str(folder / "project.sqlite")))
+    try:
+        with dialect.read_tx(engine) as conn:
+            v, t = ws.read_wireframe(conn, BlobStore(folder), wf_id)
+    finally:
+        engine.dispose()
+    gc.run_checks(v, t)
+
+
+def check(folder: Path, wf_id: int, job_id: int = 1) -> None:
+    """The job `wireframe.check` of a wireframe, as a worker runs it: its levels of detail and its checks."""
+    from bf_core.jobs.context import JobContext
+    from bf_core.wireframes import check as wf_check
+
+    job = {"id": job_id, "params": {"wireframe_ids": [wf_id]}, "project_folder": str(folder)}
+    ctx = JobContext(job, _quiet, threading.Event())
+    try:
+        wf_check.wireframe_check(ctx)
+    finally:
+        ctx.close()
+
+
 def levels() -> None:
     """The simplified copies of the view (`viz/meshes.py`: `wireframe.lod`, the parts of the 3D view in the process
     of the API — made there cold, they held its requests for ~7 s at the first view): a tilted plane (flat areas)
@@ -208,23 +249,41 @@ def levels() -> None:
             gm.levels(*gm.part_mesh(v, t, p))
 
 
-def warm(order: Iterable[str] = QUICK, *, stop: threading.Event | None = None) -> dict[str, float]:
+def _sweep(root: Path) -> None:
+    """Warm-up folders left by a worker that was stopped in the middle (a day old: never one being used)."""
+    now = time.time()
+    for old in root.glob(f"{PREFIX}*"):
+        try:
+            if old.is_dir() and now - old.stat().st_mtime > STALE_S:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
+            continue
+
+
+def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None) -> dict[str, float]:
     """Every step of `order` (`STEPS` and `OTHER`) on a warm-up project in a temporary folder, removed at the end.
-    → seconds a step (a failed step is logged and missing). Never raises but for the project itself."""
+    `busy()` true — a job of the worker runs: the next step waits for its end (the quick worker: its jobs are not
+    slowed by the warm-up, but by a step already going). → seconds a step (a failed step is logged and missing).
+    Never raises but for the project itself."""
     from .preview import warm as warm_preview
 
     log = logging.getLogger("bf_core.ops.warm")
     took: dict[str, float] = {}
-    with tempfile.TemporaryDirectory(prefix="bf-warm-", ignore_cleanup_errors=True) as tmp:
+    _sweep(Path(tempfile.gettempdir()))
+    with tempfile.TemporaryDirectory(prefix=PREFIX, ignore_cleanup_errors=True) as tmp:
         ids = project(Path(tmp))
         folder = Path(ids["folder"])
         for k, name in enumerate(order):
-            if stop is not None and stop.is_set():
-                break
+            while busy is not None and busy():
+                time.sleep(0.05)
             t0 = time.perf_counter()
             try:
                 if name == "levels":
                     levels()
+                elif name == "checks":
+                    checks(folder, int(ids["a"]))
+                elif name == "check":
+                    check(folder, int(ids["a"]), job_id=k + 1)
                 elif name == "preview":
                     warm_preview()
                 elif name == "view":

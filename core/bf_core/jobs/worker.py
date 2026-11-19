@@ -11,6 +11,7 @@ import os
 import queue
 import threading
 import traceback
+from collections.abc import Callable
 from multiprocessing.connection import Connection
 from typing import Any
 
@@ -34,20 +35,27 @@ def _worker_log(queue_name: str) -> None:
         pass
 
 
-def _warm_kernels(queue_name: str = "quick") -> None:
+def _warm_kernels(queue_name: str = "quick", busy: Callable[[], bool] | None = None) -> None:
     """Compile the numba kernels of the operations, of the view and of the preview of a stitch once, here, into
     NUMBA_CACHE_DIR, or load them from it (`ops/warm.py`): the quick worker the operations first (the stitch the
-    very first), the heavy one what the process of the API needs first (the simplified copies, the section, the
-    click) and the operations from the other end. Made cold where they were needed, they held the first view of a
-    wireframe for ~7 s and the first operation for ~13 s (PROGRESS «Э9 9.36»)."""
+    very first), the heavy one the strips of a stitch, `wireframe.check`, what the process of the API needs (the
+    simplified copies, the section, the click) and the operations from the other end. Made cold where they were
+    needed, they held the first view of a
+    wireframe for ~7 s and the first operation for ~13 s (PROGRESS «Э9 9.36»). `busy()` — a job runs: the next step
+    waits for its end."""
     import logging
+    import time
 
+    log = logging.getLogger("bf_core.worker")
     try:
         from bf_core.ops import warm
 
-        warm.warm(warm.QUICK if queue_name == "quick" else warm.HEAVY)
+        order = warm.QUICK if queue_name == "quick" else warm.HEAVY
+        t0 = time.perf_counter()
+        took = warm.warm(order, busy=busy)
+        log.info("warm-up: %d of %d steps in %.1f s", len(took), len(order), time.perf_counter() - t0)
     except Exception:  # noqa: BLE001 - a warm-up never stops the worker; the job compiles them itself then
-        logging.getLogger("bf_core.worker").exception("warm-up of the kernels failed")
+        log.exception("warm-up of the kernels failed")
 
 
 def main(conn: Connection, queue_name: str) -> None:
@@ -127,8 +135,9 @@ def _main(conn: Connection, queue_name: str) -> None:
     threading.Thread(target=reader, name="worker-reader", daemon=True).start()
     threading.Thread(target=beat, name="worker-beat", daemon=True).start()
     send(("ready",))
-    if not os.environ.get("BF_NO_WARMUP"):  # in a thread: the worker takes jobs at once
-        threading.Thread(target=_warm_kernels, args=(queue_name,), name="worker-warm", daemon=True).start()
+    if not os.environ.get("BF_NO_WARMUP"):  # in a thread: the worker takes jobs at once; the quick one's are not slowed
+        busy = (lambda: current["id"] is not None) if queue_name == "quick" else None
+        threading.Thread(target=_warm_kernels, args=(queue_name, busy), name="worker-warm", daemon=True).start()
     while True:
         job = jobs.get()
         if job is None:
