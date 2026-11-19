@@ -22,7 +22,7 @@ files. Otherwise each field is inflated once into a temporary file of `tmp_dir` 
 bytes, free space checked first → `disk_full`), the files are mapped (`mmap`, read only) and the BF2 cells are
 taken in ascending `idx` by portions, their OMF numbers computed — nothing is sorted. Memory: a few portions of
 every field (and the mapped pages the system can drop); the maps are closed before their files are removed
-(Windows, ТЗ 17.2.6). A cancel (`progress` raising, also inside a block: every ≤ `portion` bytes) or a failure
+(Windows, ТЗ 17.2.6). A cancel (`progress` raising, also inside a block: every ≤ `STEP` bytes) or a failure
 leaves no temporary file and discards the sink. `MemoryError` → `out_of_memory`, a full disk → `disk_full`.
 """
 
@@ -45,7 +45,8 @@ from bf_core.formats.omf_file import Block, OmfFile, damaged, n_text, out_of_mem
 from bf_core.formats.omf_read import OmfVolume, legend_labels, text_codes
 from bf_core.formats.table import Progress, no_progress
 
-PORTION = 1 << 20  # cells a portion (= a row group of `blocks.schema.ROW_GROUP`)
+PORTION = 1 << 19  # cells a portion given to the sink (it gathers them into row groups of 10⁶)
+STEP = 1 << 20  # bytes read and inflated at a time from a block of a field
 DISK_MARGIN = 64 << 20
 _IDENTITY = [(0, 1.0), (1, 1.0), (2, 1.0)]
 HINT_DISK = "Освободите место на диске (временная папка проекта) или разделите модель на части."
@@ -127,15 +128,22 @@ def volume_grid(vol: OmfVolume) -> VolumeGrid:
 
 
 def omf_numbers(idx: np.ndarray, vg: VolumeGrid) -> np.ndarray:
-    """OMF cell numbers (iu + nu·(iv + nv·iw)) of BF2 cells `idx` (int64)."""
+    """OMF cell numbers (iu + nu·(iv + nv·iw)) of BF2 cells `idx` (int64; any integer array of numbers < 2³¹)."""
     nx, ny = int(vg.grid["counts"][0]), int(vg.grid["counts"][1])
-    coord = [idx % nx, (idx // nx) % ny, idx // (nx * ny)]
+    rest, ix = np.divmod(idx, nx)
+    iz, iy = np.divmod(rest, ny)
+    del rest
+    coord = (ix, iy, iz)
     ia = []
     for a in range(3):
         k, sign = vg.placed[a]
         ia.append(coord[k] if sign > 0 else (vg.omf_counts[a] - 1) - coord[k])
-    nu, nv = vg.omf_counts[0], vg.omf_counts[1]
-    return ia[0] + nu * (ia[1] + nv * ia[2])  # type: ignore[no-any-return]
+    del coord, ix, iy, iz
+    out = ia[2] * vg.omf_counts[1]
+    out += ia[1]
+    out *= vg.omf_counts[0]
+    out += ia[0]
+    return out
 
 
 # --- fields -----------------------------------------------------------------------------------------------
@@ -144,7 +152,7 @@ def omf_numbers(idx: np.ndarray, vg: VolumeGrid) -> np.ndarray:
 @dataclass
 class _Field:
     meta: dict[str, Any]  # {name, kind, unit, labels?}
-    values: Callable[[int], Iterator[np.ndarray]]  # portion bytes → float64 / int32 arrays in OMF order
+    values: Callable[[int], Iterator[np.ndarray]]  # (cells a piece) → float64 / int32 arrays in OMF order
     block: Block | None
     itemsize: int
 
@@ -193,14 +201,14 @@ def _field(f: OmfFile, data: dict[str, Any], name: str, unit: str | None, n: int
         if len(labels) > bs.MAX_LABELS:
             return f"больше {n_text(bs.MAX_LABELS)} разных значений"
         meta = {"name": name, "kind": bs.CATEGORY, "unit": unit, "labels": labels}
-        return _Field(meta, lambda portion: _slices(codes, max(portion // 4, 1)), None, 4)
+        return _Field(meta, lambda cells: _slices(codes, cells), None, 4)
     ref = f.block_of(data.get("array"), what)
     if not isinstance(ref, Block) or ref.width != 1:
         raise damaged(f"{what}: значения ячеек должны быть одним столбцом чисел (ScalarArray).")
     block = ref
     if cls == "ScalarData":
         meta = {"name": name, "kind": bs.NUMBER, "unit": unit}
-        return _Field(meta, lambda portion: _decoded(f, block, what, n, _numbers, portion), block, 8)
+        return _Field(meta, lambda _cells: _decoded(f, block, what, n, _numbers, STEP), block, 8)
     labels_ = legend_labels(f, data, what)
     if labels_ is None:
         return "у данных нет легенды с подписями"
@@ -210,7 +218,7 @@ def _field(f: OmfFile, data: dict[str, Any], name: str, unit: str | None, n: int
         raise damaged(f"{what}: номера категорий должны быть числами.")
     meta = {"name": name, "kind": bs.CATEGORY, "unit": unit, "labels": labels_}
     convert = _mapped(len(labels_))
-    return _Field(meta, lambda portion: _decoded(f, block, what, n, convert, portion), block, 4)
+    return _Field(meta, lambda _cells: _decoded(f, block, what, n, convert, STEP), block, 4)
 
 
 def _fields(f: OmfFile, vol: OmfVolume, n: int) -> tuple[list[_Field], list[str]]:
@@ -263,6 +271,11 @@ class _Mapped:
         assert self.values is not None
         return self.values[at]  # a copy: no view outlives the map
 
+    def drop_pages(self) -> None:
+        """Lets the system take back the pages read so far (Linux: they leave the RSS, stay in the file cache)."""
+        if self._mm is not None and hasattr(self._mm, "madvise") and hasattr(mmap, "MADV_DONTNEED"):
+            self._mm.madvise(mmap.MADV_DONTNEED)
+
     def close(self) -> None:
         self.values = None
         if self._mm is not None:
@@ -313,7 +326,7 @@ def read_volume(
             share = 1.0 if vg.identity else 0.6
             f.tick = lambda b: tick(share * min(1.0, (b - start) / total), f"Чтение: {label}")
             if not fields or vg.identity:
-                streams = [_Take(x.values(portion * x.itemsize), x.meta["name"]) for x in fields]
+                streams = [_Take(x.values(portion), x.meta["name"]) for x in fields]
                 by_cells = None if any(x.block is not None for x in fields) else (0.0, 1.0)
                 kept = _write(sink, fields, n, portion, lambda s, e: [st.take(e - s) for st in streams], by_cells, tick)
             else:
@@ -325,14 +338,17 @@ def read_volume(
                 for i, x in enumerate(fields):
                     path = tmp / f"{i}.bin"
                     with open(path, "wb") as fh:
-                        for part in x.values(portion * x.itemsize):
+                        for part in x.values(portion):
                             fh.write(part.data)
                     mapped.append(_Mapped(path, np.float64 if x.itemsize == 8 else np.int32))
                 f.tick = None
 
                 def gather(s: int, e: int) -> list[np.ndarray]:
-                    at = omf_numbers(np.arange(s, e, dtype=np.int64), vg)
-                    return [m.take(at) for m in mapped]
+                    at = omf_numbers(np.arange(s, e, dtype=np.int32 if n < 2**31 else np.int64), vg)
+                    out = [m.take(at) for m in mapped]
+                    for m in mapped:
+                        m.drop_pages()
+                    return out
 
                 kept = _write(sink, fields, n, portion, gather, (0.6, 1.0), tick)
             staged = sink.finish()
