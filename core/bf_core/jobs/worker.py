@@ -34,6 +34,34 @@ def _worker_log(queue_name: str) -> None:
         pass
 
 
+def _warm_kernels() -> None:
+    """Compile the numba kernels of the simplified copies of wireframes once, here, into NUMBA_CACHE_DIR: the
+    process of the API then loads them from the cache. Made there cold, they held its requests for ~7 s at the
+    first view of a wireframe (the audit of the demo waited for its findings). A small mesh: a tilted plane (flat
+    areas) and a bumpy one, through the same calls and dtypes as a view."""
+    import logging
+
+    try:
+        import numpy as np
+
+        from bf_core.geo import meshes as gm
+
+        n = 9
+        x, y = np.meshgrid(np.arange(n, dtype=float), np.arange(n, dtype=float))
+        idx = np.arange(n * n).reshape(n, n)
+        a, b, c, d = idx[:-1, :-1].ravel(), idx[:-1, 1:].ravel(), idx[1:, :-1].ravel(), idx[1:, 1:].ravel()
+        tri = np.r_[np.c_[a, b, d], np.c_[a, d, c]]
+        for z in (0.1 * x, np.sin(x) * np.cos(y)):
+            v, t = gm.check_mesh(np.c_[x.ravel() + 500_000.0, y.ravel() + 7_000_000.0, z.ravel()], tri)
+            for p in gm.parts_table(v, t):
+                gm.levels(*gm.part_mesh(v, t, p))
+        from bf_core.ops.preview import warm
+
+        warm()
+    except Exception:  # noqa: BLE001 - a warm-up never stops the worker; the view compiles them itself then
+        logging.getLogger("bf_core.worker").exception("warm-up of the kernels failed")
+
+
 def main(conn: Connection, queue_name: str) -> None:
     conn.send(("hello",))  # before any import: the scheduler sees the process is alive and the pipe works
     _worker_log(queue_name)
@@ -111,6 +139,8 @@ def _main(conn: Connection, queue_name: str) -> None:
     threading.Thread(target=reader, name="worker-reader", daemon=True).start()
     threading.Thread(target=beat, name="worker-beat", daemon=True).start()
     send(("ready",))
+    if queue_name == "quick" and not os.environ.get("BF_NO_WARMUP"):
+        threading.Thread(target=_warm_kernels, name="worker-warm", daemon=True).start()
     while True:
         job = jobs.get()
         if job is None:

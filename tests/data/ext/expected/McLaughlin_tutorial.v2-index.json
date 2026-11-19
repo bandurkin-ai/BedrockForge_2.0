@@ -1,0 +1,51 @@
+{
+  "format": "OMF 2 (index.json.gz layout, Incline Design)",
+  "project": "McLaughlin project",
+  "application": "Incline 0.3.3",
+  "parquet_files": 13,
+  "elements": [
+    {
+      "name": "Designs",
+      "geometry": "Composite",
+      "attributes": []
+    },
+    {
+      "name": "mclaughlin_bm",
+      "geometry": "BlockModel",
+      "attributes": [
+        "au",
+        "density",
+        "rocktype",
+        "hardness"
+      ],
+      "subblocks": 2817920,
+      "grid": {
+        "type": "Regular",
+        "size": [
+          1066.8,
+          2255.52,
+          414.528
+        ],
+        "count": [
+          1,
+          1,
+          1
+        ]
+      },
+      "parquet_columns": [
+        "parent_u",
+        "parent_v",
+        "parent_w",
+        "corner_min_u",
+        "corner_min_v",
+        "corner_min_w",
+        "corner_max_u",
+        "corner_max_v",
+        "corner_max_w"
+      ],
+      "parquet_rows": 2817920
+    }
+  ],
+  "file": "minelib/McLaughlin_tutorial.omf",
+  "bytes": 2282839
+}

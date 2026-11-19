@@ -1,14 +1,19 @@
 /**
  * State of the wizard «Импорт скважин» (ТЗ 7.7): steps «Устья» → «Инклинометрия» → «Интервалы и события» →
- * «Импорт». Files added at any step go to the step of their detected kind. No React here.
+ * «Импорт». Files added at any step go to the step of their detected kind. In the mode «Канавы по полилиниям»
+ * (ТЗ 7.35 Д-16) step 1 is the file of polylines (`trenches.ts`), step 2 — an optional table of samples,
+ * mapped as any table of the wizard; the job is `import.trenches`. No React here.
  */
 import { api, CoreError } from "../../shell/api";
 import { logError, logStep, type OpLog } from "../../shell/opLog";
 import { followJob } from "../jobs/follow";
 import { Store } from "../../shell/store";
+import { initialTrench, linesSpec, PREVIEW_LIMIT, trenchProblem, trenchSummary, type TrenchPreview, type TrenchState } from "./trenches";
 
 export type TableKind = "collar" | "survey" | "assay" | "interval" | "event";
-export type StepId = "collar" | "survey" | "tables" | "import";
+export type StepId = "collar" | "survey" | "trenches" | "tables" | "import";
+/** What the wizard loads: drillholes from tables, or trenches along polylines. */
+export type WizardMode = "holes" | "trenches";
 
 export const STEPS: { id: StepId; title: string }[] = [
   { id: "collar", title: "Устья" },
@@ -16,6 +21,16 @@ export const STEPS: { id: StepId; title: string }[] = [
   { id: "tables", title: "Интервалы и события" },
   { id: "import", title: "Импорт" },
 ];
+
+const TRENCH_STEPS: { id: StepId; title: string }[] = [
+  { id: "trenches", title: "Канавы по полилиниям" },
+  { id: "tables", title: "Пробы канав" },
+  { id: "import", title: "Импорт" },
+];
+
+export const stepsOf = (mode: WizardMode): { id: StepId; title: string }[] => (mode === "trenches" ? TRENCH_STEPS : STEPS);
+export const MODE_TITLES: Record<WizardMode, string> = { holes: "Импорт скважин", trenches: "Импорт канав" };
+const SET_NAMES: Record<WizardMode, string> = { holes: "Скважины", trenches: "Канавы" };
 
 export const KIND_TITLES: Record<TableKind, string> = {
   collar: "Устья (Collar)",
@@ -87,7 +102,12 @@ export interface FileEntry {
 }
 
 export interface WizardState {
+  mode: WizardMode;
   step: StepId;
+  /** the file of polylines of the mode «Канавы по полилиниям» */
+  trench: TrenchState;
+  /** the chosen set has a table of samples already: the samples of the trenches replace it (confirmed) */
+  replaceSamples: boolean;
   files: FileEntry[];
   setMode: "new" | "existing";
   setId: number | null;
@@ -108,8 +128,11 @@ export interface SetInfo {
   tables: { name: string; kind: string; rows: number }[];
 }
 
-export function initialState(): WizardState {
-  return { step: "collar", files: [], setMode: "new", setId: null, setName: "Скважины", crs: null, crsName: null, sets: [], starting: false, started: false, error: null };
+export function initialState(mode: WizardMode = "holes"): WizardState {
+  return {
+    mode, step: stepsOf(mode)[0].id, trench: initialTrench(), replaceSamples: false, files: [], setMode: "new", setId: null, setName: SET_NAMES[mode],
+    crs: null, crsName: null, sets: [], starting: false, started: false, error: null,
+  };
 }
 
 let nextId = 1;
@@ -117,6 +140,7 @@ const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 const stem = (p: string) => baseName(p).replace(/\.[^.]+$/, "");
 
 export function filesOf(s: WizardState, step: StepId): FileEntry[] {
+  if (s.mode === "trenches") return step === "tables" ? s.files : []; // one step of tables: the samples
   return s.files.filter((f) => stepOf(f.kind) === step || (f.kind === null && step === s.step && f.check === null));
 }
 
@@ -162,15 +186,109 @@ export function replaces(s: WizardState, f: FileEntry): string | null {
   return old ? `таблицу «${old.name}» (${old.rows.toLocaleString("ru-RU")} строк)` : null;
 }
 
+/** The table of samples of the trenches: the only file of the wizard, when it is samples or intervals. */
+export function sampleFile(s: WizardState): FileEntry | null {
+  const f = s.files[0];
+  return s.files.length === 1 && (f.kind === "assay" || f.kind === "interval") ? f : null;
+}
+
+/** The samples of the trenches would replace the table of samples of the chosen set, for all its holes. */
+export function needsReplace(s: WizardState): boolean {
+  const f = sampleFile(s);
+  return f !== null && f.kind === "assay" && replaces(s, f) !== null;
+}
+
+/** Why the trenches cannot be imported yet, in words; null — they can (ТЗ 7.35 Д-16). */
+export function trenchBlocker(s: WizardState): string | null {
+  const problem = trenchProblem(s.trench);
+  if (problem) return problem;
+  if (s.files.length > 1) return "Пробы канав — одна таблица: уберите лишние файлы";
+  if (s.files.length === 1) {
+    const f = s.files[0];
+    if (!sampleFile(s)) return f.kind === null && !f.check ? "Таблица проб читается…" : "Пробы канав — таблица проб или интервальная таблица: выберите её тип";
+    if (!ready(f)) return f.busy ? "Таблица проб читается…" : "Исправьте таблицу проб на шаге «Пробы канав»";
+    if (needsReplace(s) && !s.replaceSamples) return "Подтвердите замену таблицы проб набора";
+  }
+  if (s.setMode === "existing" ? s.setId === null : !s.setName.trim()) return "Выберите набор или введите название нового";
+  return null;
+}
+
 export function canStart(s: WizardState): boolean {
-  if (!s.files.length || !s.files.every(ready) || s.starting || clashOf(s)) return false;
+  if (s.starting) return false;
+  if (s.mode === "trenches") return trenchBlocker(s) === null;
+  if (!s.files.length || !s.files.every(ready) || clashOf(s)) return false;
   return s.setMode === "existing" ? s.setId !== null : s.setName.trim().length > 0;
 }
 
-export class Wizard {
-  readonly store = new Store<WizardState>(initialState());
+/** The body of `POST /import/trenches`. */
+export function trenchBody(s: WizardState): Record<string, unknown> {
+  const f = sampleFile(s);
+  return {
+    set_id: s.setMode === "existing" ? s.setId : null,
+    set_name: s.setMode === "new" ? s.setName.trim() : null,
+    crs: s.crs,
+    lines: linesSpec(s.trench),
+    samples: f && {
+      path: f.path, options: f.options, kind: f.kind, mapping: f.mapping, components: f.components, attributes: f.attributes,
+      force: f.force, table_name: f.tableName || null, replace: s.setMode === "existing" && s.replaceSamples,
+    },
+  };
+}
 
-  constructor(readonly log: OpLog) {}
+export class Wizard {
+  readonly store: Store<WizardState>;
+  private trenchSeq = 0;
+
+  constructor(readonly log: OpLog, mode: WizardMode = "holes") {
+    this.store = new Store<WizardState>(initialState(mode));
+  }
+
+  /** Drillholes from tables, or trenches along polylines: the steps change, the chosen files stay. */
+  setMode(mode: WizardMode): void {
+    const s = this.store.get();
+    if (s.mode === mode) return;
+    logStep(this.log, `Режим мастера: ${MODE_TITLES[mode]}`);
+    this.store.set({ mode, step: stepsOf(mode)[0].id, setName: s.setName === SET_NAMES[s.mode] ? SET_NAMES[mode] : s.setName, error: null });
+  }
+
+  // ---- «Канавы по полилиниям» -----------------------------------------------------------------------
+
+  /** The file of polylines: a new one starts from the defaults (names by the string, every layer). */
+  async setTrenchFile(path: string): Promise<void> {
+    logStep(this.log, `Файл линий канав: ${path}`);
+    this.store.set({ trench: { ...initialTrench(), path, name: baseName(path) } });
+    await this.inspectTrench();
+  }
+
+  /** A change of how the trenches are read, named or directed; the preview follows unless `inspect` is false. */
+  async patchTrench(patch: Partial<TrenchState>, inspect = true): Promise<void> {
+    // other names: trenches ticked «Обратить» under the old names are not there any more
+    const renamed = "nameFrom" in patch || "nameField" in patch || "layers" in patch || "columns" in patch;
+    this.store.set((s) => ({ trench: { ...s.trench, ...(renamed ? { reversed: [] } : {}), ...patch } }));
+    if (inspect) await this.inspectTrench();
+  }
+
+  /** Reads what the file gives; an answer overtaken by a newer request is dropped. */
+  async inspectTrench(): Promise<void> {
+    const t = this.store.get().trench;
+    const mine = ++this.trenchSeq;
+    const set = (p: Partial<TrenchState>) => mine === this.trenchSeq && this.store.set((s) => ({ trench: { ...s.trench, ...p } }));
+    if (!t.path) return;
+    if (t.nameFrom === "field" && !t.nameField.trim() && t.preview && t.preview.format !== "points") return; // the field is being chosen
+    set({ busy: true, error: null });
+    try {
+      const r = await api.post<TrenchPreview>("/import/trenches/inspect", { lines: linesSpec(t), limit: PREVIEW_LIMIT });
+      if (mine !== this.trenchSeq) return;
+      logStep(this.log, `${t.name}: ${trenchSummary(r)}; параметры ${JSON.stringify({ ...linesSpec(t), path: t.name })}`);
+      for (const w of r.warnings) logStep(this.log, `  замечание: ${w}`);
+      set({ preview: r, busy: false });
+    } catch (e) {
+      if (mine !== this.trenchSeq) return;
+      const msg = e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e);
+      logError(this.log, msg, e instanceof CoreError ? e : undefined);
+      set({ preview: null, busy: false, error: msg });
+    }
+  }
 
   private patch(id: number, p: Partial<FileEntry>): void {
     this.store.set((s) => ({ files: s.files.map((f) => (f.id === id ? { ...f, ...p } : f)) }));
@@ -277,6 +395,7 @@ export class Wizard {
     const s = this.store.get();
     if (!canStart(s)) return null;
     this.store.set({ starting: true, error: null });
+    if (s.mode === "trenches") return this.submit("/import/trenches", trenchBody(s), (b) => ({ ...b, lines: { ...(b.lines as object), path: s.trench.name } }));
     const body = {
       set_id: s.setMode === "existing" ? s.setId : null,
       set_name: s.setMode === "new" ? s.setName.trim() : null,
@@ -286,9 +405,13 @@ export class Wizard {
         attributes: f.attributes, force: f.force, table_name: f.tableName || null,
       })),
     };
-    logStep(this.log, `Запуск импорта: ${JSON.stringify({ ...body, files: body.files.map((f) => ({ ...f, path: baseName(f.path) })) })}`);
+    return this.submit("/drillholes/import", body, (b) => ({ ...b, files: body.files.map((f) => ({ ...f, path: baseName(f.path) })) }));
+  }
+
+  private async submit(url: string, body: Record<string, unknown>, shown: (body: Record<string, unknown>) => unknown): Promise<{ source: string; id: number } | null> {
+    logStep(this.log, `Запуск импорта: ${JSON.stringify(shown(body))}`);
     try {
-      const r = await api.post<{ source: string; id: number }>("/drillholes/import", body);
+      const r = await api.post<{ source: string; id: number }>(url, body);
       logStep(this.log, `Задание №${r.id} поставлено в очередь; журнал продолжится до его окончания`);
       followJob(this.log, r);
       this.store.set({ starting: false, started: true });

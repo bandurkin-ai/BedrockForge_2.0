@@ -33,6 +33,8 @@ export interface RibbonTab {
 const NO_SECTION = (c: CommandContext) => (c.hasSection ? null : "Сначала проведите линию разреза");
 const NO_SET = (c: CommandContext) => (c.hasSet ? null : "Нет активного набора скважин");
 const NO_HOLE = (c: CommandContext) => (c.hasHole ? null : "Скважина не выбрана");
+const NOTHING_SELECTED = (c: CommandContext) => (c.hasHole || c.hasObject ? null : "Ничего не выбрано");
+const NO_OBJECT = (c: CommandContext) => (c.hasObject ? null : "Объект не выбран: щёлкните слой линий, растр, каркас или ЦТМ в дереве или в 3D-окне");
 
 export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean }[] = [
   { label: "Сводка по проекту", prompt: "Дай краткую сводку по проекту: наборы скважин и каркасы, объём данных, компоненты, состояние аудита и что стоит проверить в первую очередь." },
@@ -78,8 +80,10 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "import.files", label: "Импорт файлов", icon: "import", hint: "Можно перетащить файлы в окно" },
             { command: "import.open", label: "Скважины", icon: "drillholes", hint: "Collar, Survey, Assay (DAT, CSV, Excel)" },
             { command: "wireframes.upload", label: "Каркасы", icon: "wireframe", hint: "Micromine TRIDB, DXF, OBJ, STL" },
-            { command: "lines.upload", label: "Линии", icon: "lines", hint: "Micromine STR, Surpac STR, DXF", small: true },
-            { command: "rasters.upload", label: "Растры", icon: "raster", hint: "Изображение + файл привязки или GeoTIFF", small: true },
+            { command: "lines.upload", label: "Линии", icon: "lines", hint: "Линии и точки: Micromine STR и PIT, Surpac STR, DXF, SHP, MIF/MID, точки XYZ", small: true },
+            { command: "points.import", args: { mode: "las" }, label: "Облако точек", icon: "cloud", hint: "LAS 1.2–1.4 или таблица точек XYZ облаком; LAZ — сохранить как LAS", small: true },
+            { command: "rasters.upload", label: "Растры", icon: "raster", hint: "Изображение + файл привязки (world, TAB, GRF) или GeoTIFF", small: true },
+            { command: "import.open", args: { mode: "trenches" }, label: "Канавы", icon: "edPline", hint: "Канавы по полилиниям: STR, DXF или таблица вершин; пробы — по 3D-длине", small: true },
           ],
         },
         {
@@ -94,11 +98,14 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           title: "Выделение",
           items: [
             { command: "palette.open", args: { query: "скв " }, label: "Найти скважину", icon: "search", small: true },
-            { command: "hole.select", args: { hole_id: null }, label: "Снять выбор", icon: "clear", shortcut: "escape", small: true, unavailable: NO_HOLE },
+            { command: "selection.clear", label: "Снять выбор", icon: "clear", hint: "Снять выбор скважины и объекта: линии, растра, каркаса, ЦТМ", shortcut: "escape", small: true, unavailable: NOTHING_SELECTED },
+            { command: "object.rename", label: "Переименовать объект", icon: "edit", hint: "Новое название выбранного слоя линий, растра, каркаса или ЦТМ", small: true, unavailable: NO_OBJECT },
+            { command: "object.color", label: "Цвет объекта", icon: "palette", hint: "Цвет выбранного слоя линий, каркаса или ЦТМ — в панели «Свойства»", small: true, unavailable: NO_OBJECT },
+            { command: "object.delete", label: "Удалить объект", icon: "trash", hint: "Удалить выбранный растр, каркас или ЦТМ из проекта", small: true, unavailable: NO_OBJECT },
           ],
         },
         { title: "Ассистент", items: [assistant] },
-        { title: "Настройка", items: [{ command: "settings.open", label: "Настройка", icon: "gear", hint: "Быстрые клавиши, папка данных проектов, число исполнителей" }, { command: "license.open", label: "Лицензия", icon: "audit", small: true }, { command: "app.about", label: "О производителе", icon: "info", small: true }] },
+        { title: "Настройка", items: [{ command: "settings.open", label: "Настройка", icon: "gear", hint: "Быстрые клавиши, папка данных проектов, число исполнителей, внешние программы" }, { command: "license.open", label: "Лицензия", icon: "audit", small: true }, { command: "app.about", label: "О производителе", icon: "info", small: true }] },
       ],
     },
     {
@@ -164,8 +171,8 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "lines.save", label: "Сохранить", icon: "edSave", shortcut: "ctrl+s", small: true },
             { command: "lines.versions", label: "Версии", icon: "list", small: true },
             { command: "lines.finish", label: "Завершить", icon: "close", small: true },
-            { command: "lines.export", args: { format: "str" }, label: "В STR", icon: "export", small: true },
-            { command: "lines.export", args: { format: "dxf" }, label: "В DXF", icon: "export", small: true },
+            { command: "lines.export", args: { format: "str" }, label: "В STR", icon: "export", hint: "Экспорт линий: Micromine STR; в окне — Surpac STR, DXF, CSV, Micromine DAT и выбор слоёв", small: true },
+            { command: "lines.export", args: { format: "dxf" }, label: "В DXF", icon: "export", hint: "Экспорт линий и точек в DXF; в окне — другие форматы и выбор слоёв", small: true },
           ],
         },
         {
@@ -182,11 +189,13 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           title: "Правка каркасов",
           items: [
             { command: "model.repair", label: "Исправить", icon: "audit" },
-            { command: "model.self_intersections", label: "Самопересечения", icon: "search", small: true },
+            { command: "wireframe.check", label: "Проверить", icon: "audit", hint: "Проверка выбранного каркаса или ЦТМ: согласованность нормалей, самопересечения, копии для показа; итог — в «Свойствах»", small: true, unavailable: NO_OBJECT },
+            { command: "model.self_intersections", label: "Самопересечения", icon: "search", hint: "Пересекающиеся треугольники выбранного каркаса — красным в 3D-окне, числа — в «Свойствах»", small: true, unavailable: NO_OBJECT },
             { command: "model.simplify", label: "Упростить", icon: "edSimplify", small: true },
             { command: "model.smooth", label: "Сгладить", icon: "edSmooth", small: true },
             { command: "model.merge", label: "В один объект", icon: "plus", small: true },
             { command: "model.split", label: "На части", icon: "columns", small: true },
+            { command: "wireframe.attr", label: "Атрибуты", icon: "list", hint: "Атрибуты пользователя выбранного каркаса или ЦТМ: добавить, изменить, переименовать, удалить — в «Свойствах»", small: true, unavailable: NO_OBJECT },
           ],
         },
         {
@@ -195,17 +204,39 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
             { command: "model.boolean", label: "Булева", icon: "quad" },
             { command: "model.clip", label: "Обрезать", icon: "section" },
             { command: "model.intersection", label: "Линии пересечения", icon: "lines", small: true },
-            { command: "wireframe.export", args: { format: "dxf" }, label: "Каркас в DXF", icon: "export", small: true },
-            { command: "wireframe.export", args: { format: "obj" }, label: "Каркас в OBJ", icon: "export", small: true },
+          ],
+        },
+        {
+          title: "Экспорт каркасов",
+          items: [
+            { command: "wireframe.export", label: "Каркас в TRIDB", icon: "export", hint: "Окно «Экспорт каркасов»: выбранный каркас или ЦТМ в Micromine TRIDB; там же — DXF, DWG, OBJ, STL, Surpac DTM и выбор каркасов", small: true },
+            { command: "wireframe.export", args: { format: "dxf" }, label: "Каркас в DXF", icon: "export", hint: "Каркасы в AutoCAD DXF (сетки POLYFACE); в окне — выбор каркасов", small: true },
+            { command: "wireframe.export", args: { format: "dwg" }, label: "Каркас в DWG", icon: "export", hint: "Каркасы в AutoCAD DWG через ODA File Converter; в окне — версия DWG", small: true },
+            { command: "wireframe.export", args: { format: "obj" }, label: "Каркас в OBJ", icon: "export", hint: "Каркасы в Wavefront OBJ", small: true },
+            { command: "wireframe.export", args: { format: "stl" }, label: "Каркас в STL", icon: "export", hint: "Каркасы в STL: двоичный (float32) или текстовый", small: true },
+            { command: "wireframe.export", args: { format: "dtm" }, label: "Каркас в Surpac DTM", icon: "export", hint: "Каркасы в Surpac DTM с файлом точек STR", small: true },
           ],
         },
         {
           title: "Поверхности",
           items: [
-            { command: "model.dtm", label: "Построить ЦТМ", icon: "plan" },
+            { command: "model.dtm", label: "Построить ЦТМ", icon: "plan", hint: "Поверхность из слоёв точек и линий и устьев скважин; граница — замкнутая линия" },
+            { command: "ground.classify", label: "Фильтр земли", icon: "cloud", hint: "Классы точек облака: земля, растительность, шум; профили «Карьер», «Равнина», «Свой»", small: true },
+            { command: "terrain.from_points", label: "Построить ЦТМ из облака", icon: "dtm", hint: "Поверхность из точек земли (класс 2) облака, прореженных по сетке; окно «Построение ЦТМ»", small: true },
+            { command: "cloud.dz", label: "Карта разностей", icon: "chart", hint: "Отклонение точек облака от ЦТМ или каркаса (dz): режим цвета «Отклонение от ЦТМ», СКО, P95 и наибольшее", small: true },
             { command: "model.contours", label: "Изолинии", icon: "lines", small: true },
             { command: "model.volume", label: "Объём", icon: "histogram", small: true },
-            { command: "wireframe.dtm", args: { on: true }, label: "В ЦТМ", icon: "dtm", small: true },
+            { command: "wireframe.dtm", args: { on: true }, label: "В ЦТМ", icon: "dtm", hint: "Перенести выбранный каркас поверхности в раздел «ЦТМ»", small: true },
+            { command: "dtm.settings", label: "Настройки ЦТМ", icon: "properties", hint: "Растр на рельефе, «Скрыть данные за ЦТМ», цвет и непрозрачность растра, тени — вверху «Свойств»", small: true },
+          ],
+        },
+        {
+          title: "Растры",
+          items: [
+            { command: "rasters.export", label: "Экспорт растра", icon: "export", hint: "Исходный файл с привязкой (world-файл, .prj) или GeoTIFF" },
+            { command: "raster.place_on_section", label: "На текущий разрез", icon: "section", hint: "Поставить выбранный растр в плоскость линии разреза", small: true, unavailable: NO_SECTION },
+            { command: "raster.shift", label: "Сдвинуть по Z", icon: "vwVexag", hint: "Сдвинуть выбранный растр по высоте: плюс — вверх, минус — вниз", small: true },
+            { command: "raster.set", label: "Свойства растра", icon: "raster", hint: "Высота, непрозрачность и края выбранного растра — в панели «Свойства»", small: true },
           ],
         },
       ],

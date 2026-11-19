@@ -1,5 +1,9 @@
 """Rows of `settings` on a `.bfggis` import (ADR 0007 §2): the view scope is optional and carries object ids
-inside keys and values; code lists links carry the set id in the key. Other scopes are copied as they are."""
+inside keys and values; code lists links carry the set id in the key. Other scopes are copied as they are.
+
+Object ids kept inside `objects.meta` are renumbered here too: the keys of saved views (`remap_views`) and the
+surface the `dz` of a point cloud was counted against (`remap_clouds`). What wireframes and line layers were
+built from (`meta.built`) is renumbered by `ops/provenance.py::remap_objects`."""
 
 from __future__ import annotations
 
@@ -41,3 +45,36 @@ def remap_views(conn: Any, objects_map: dict[int, int]) -> int:
     for view_id, meta in rows:
         conn.execute(sa.update(objects).where(objects.c.id == view_id).values(meta=remap_meta(meta, objects_map.get)))
     return len(rows)
+
+
+def remap_cloud_dz(meta: Any, new_id: Any) -> Any:
+    """`objects.meta` of a layer with `cloud.dz.wireframe_id` renumbered (ADR 0014 §1); anything else — as it
+    is. A surface the archive does not have (deleted since) keeps its name and loses its id: the old number
+    would point at another object of the new project."""
+    if not isinstance(meta, dict) or not isinstance(meta.get("cloud"), dict):
+        return meta
+    cloud: dict[str, Any] = meta["cloud"]
+    dz = cloud.get("dz")
+    if not isinstance(dz, dict) or "wireframe_id" not in dz:
+        return meta
+    old = dz["wireframe_id"]
+    new = new_id(old) if isinstance(old, int) and not isinstance(old, bool) else None
+    return {**meta, "cloud": {**cloud, "dz": {**dz, "wireframe_id": new}}}
+
+
+def remap_clouds(conn: Any, objects_map: dict[int, int]) -> int:
+    """The surface of the map of differences of every point cloud (`meta.cloud.dz`) on a `.bfggis` import.
+    Returns how many clouds were renumbered."""
+    import sqlalchemy as sa
+
+    from bf_core.db.schema import objects
+    from bf_core.lines.store import LINE_LAYER
+
+    rows = conn.execute(sa.select(objects.c.id, objects.c.meta).where(objects.c.kind == LINE_LAYER)).all()
+    changed = 0
+    for layer_id, meta in rows:
+        renumbered = remap_cloud_dz(meta, objects_map.get)
+        if renumbered is not meta:
+            conn.execute(sa.update(objects).where(objects.c.id == layer_id).values(meta=renumbered))
+            changed += 1
+    return changed

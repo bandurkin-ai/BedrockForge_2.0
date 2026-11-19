@@ -5,24 +5,36 @@ import { askConfirm, showMessage } from "./dialogs";
 import { eventShortcut, formatShortcut, isComplete } from "./keys";
 import { buildRibbon, flattenRibbon } from "./ribbonConfig";
 import { assign, defaultShortcuts, effectiveShortcuts, functionKey, holderOf, isReserved } from "./shortcuts";
+import { ExternalTools } from "./ExternalTools";
 import { GeneralSettings } from "./GeneralSettings";
 import { useStore } from "./useStore";
 import css from "./SettingsWindow.module.css";
 
-/** «Настройка» (ТЗ 7.0.6, 7.3, 7.6): own hotkeys; folder of projects and job workers. */
-export function SettingsWindow({ tab: initialTab }: { tab?: string }) {
-  const [tab, setTab] = useState(initialTab === "general" ? "general" : "shortcuts");
+const TABS = [
+  { id: "shortcuts", label: "Быстрые клавиши" },
+  { id: "general", label: "Общие" },
+  { id: "tools", label: "Внешние программы" },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+const tabOf = (tab: string | undefined): TabId => TABS.find((t) => t.id === tab)?.id ?? "shortcuts";
+
+/**
+ * «Настройка» (ТЗ 7.0.6, 7.3, 7.6; ADR 0013 §6): own hotkeys; folder of projects and job workers; programs of
+ * the user that BF2 runs. `asked` changes when `settings.open` names a tab of the window already open.
+ */
+export function SettingsWindow({ tab: initialTab, asked }: { tab?: string; asked?: number }) {
+  const [tab, setTab] = useState<TabId>(tabOf(initialTab));
+  useEffect(() => setTab(tabOf(initialTab)), [initialTab, asked]);
   return (
     <div className={css.wrap}>
       <div className={css.tabs} role="tablist">
-        <button type="button" role="tab" aria-selected={tab === "shortcuts"} className={`${css.tab} ${tab === "shortcuts" ? css.tabActive : ""}`} onClick={() => setTab("shortcuts")}>
-          Быстрые клавиши
-        </button>
-        <button type="button" role="tab" aria-selected={tab === "general"} className={`${css.tab} ${tab === "general" ? css.tabActive : ""}`} onClick={() => setTab("general")}>
-          Общие
-        </button>
+        {TABS.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={`${css.tab} ${tab === t.id ? css.tabActive : ""}`} onClick={() => setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
       </div>
-      {tab === "shortcuts" ? <Shortcuts /> : <GeneralSettings />}
+      {tab === "shortcuts" ? <Shortcuts /> : tab === "general" ? <GeneralSettings /> : <ExternalTools />}
     </div>
   );
 }

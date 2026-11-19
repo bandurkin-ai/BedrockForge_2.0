@@ -1,4 +1,5 @@
-"""/api/v1/viz — geometry and data of drillhole sets for the 3D window (ADR 0007 §1).
+"""/api/v1/viz — geometry and data of drillhole sets, line layers, point clouds and wireframes for the 3D window
+(ADR 0007 §1, ADR 0011 §3, ADR 0014 §2).
 
 Binary answers are BFA1 (`viz/binary.py`) with an ETag of their key (`viz/keys.py`): If-None-Match → 304
 before any calculation; `Cache-Control: no-cache`, so the window asks again after every change.
@@ -8,7 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -176,6 +177,182 @@ def class_counts(svc: Svc, set_id: int, body: ClassBody) -> dict[str, Any]:
     if ref.key not in snap.data:
         raise data_changed()
     return calc(snap, t, ref, bounds)
+
+
+# --- line and point layers (ADR 0011 §3) ---------------------------------------------------------------
+
+
+@router.get("/lines/{layer_id}")
+def line_layer(svc: Svc, layer_id: int, if_none_match: IfNoneMatch = None) -> Response:
+    """The manifest of a line layer: its extent, the levels of detail and the parts with their ETags. A point
+    cloud (ADR 0014 §2) answers at the same address: its parts as stored, five levels, classes, colour modes."""
+    from . import cloud, lines
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        state = lines.layer_state(conn, layer_id)
+        points = cloud.view(conn, state)
+    if points is not None:
+        return _answer(
+            cloud.layer_etag(project.uid, state), if_none_match, lambda: cloud.manifest(project, state, points)
+        )
+    return _answer(lines.layer_etag(project.uid, state), if_none_match, lambda: lines.manifest(project, state))
+
+
+@router.get("/lines/{layer_id}/parts/{k}")
+def line_part(
+    svc: Svc,
+    layer_id: int,
+    k: int,
+    lod: Annotated[int, Query()] = 0,
+    color: Annotated[str | None, Query(max_length=16)] = None,
+    if_none_match: IfNoneMatch = None,
+) -> Response:
+    """Part k of a line layer at a level of detail: 0 — every vertex, 1 and 2 — within 4 and 32 m. Of a point
+    cloud: levels 0…4 (every point; one in a cell of 0.5, 2, 8, 32 m) and `color` — what the `value` of a point
+    is: `class` (the default), `h` (height above the ground) or `dz` (Z − DTM)."""
+    from . import cloud, lines
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        state = lines.layer_state(conn, layer_id)
+        points = cloud.view(conn, state)
+    if points is not None:
+        mode = cloud.check(state, points, k, lod, color)
+        tag = cloud.part_etag(project.uid, state, k, lod, mode)
+        return _answer(tag, if_none_match, lambda: cloud.part(project, state, points, k, lod, mode))
+    if lod not in range(len(lines.LOD_TOL)):
+        raise lines.bad_lod()
+    tag = lines.part_etag(project.uid, state, k, lod)
+    return _answer(tag, if_none_match, lambda: lines.part(project, state, k, lod))
+
+
+# --- wireframes and DTMs (ADR 0011 §3) -----------------------------------------------------------------
+
+
+@router.get("/wireframes/{wireframe_id}")
+def wireframe(svc: Svc, wireframe_id: int, if_none_match: IfNoneMatch = None) -> Response:
+    """The manifest of a wireframe: colour, DTM settings, extent, levels of detail, parts with their ETags."""
+    from . import meshes
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        state = meshes.mesh_state(conn, wireframe_id)
+    return _answer(meshes.manifest_etag(project.uid, state), if_none_match, lambda: meshes.manifest(project, state))
+
+
+@router.get("/wireframes/{wireframe_id}/parts/{k}")
+def wireframe_part(
+    svc: Svc,
+    request: Request,
+    wireframe_id: int,
+    k: int,
+    lod: Annotated[int, Query()] = 0,
+    if_none_match: IfNoneMatch = None,
+) -> Response:
+    """Part k of a wireframe at a level of detail: 0 — every triangle, 1 and 2 — about 1/8 and 1/64 of them.
+    A level not made yet — the whole part as a stand-in (`standin` in its header, no ETag, `no-store`) and the
+    job `wireframe.lod` asked for (ADR 0015 §8): the event `wireframes.lod` tells when the levels are there."""
+    from . import meshes
+    from .keys import CACHE_HEADERS, matches
+
+    project = svc.require_current()
+    if lod not in range(meshes.gm.LOD_LEVELS):
+        raise meshes.bad_lod()
+    with dialect.read_tx(project.engine) as conn:
+        state = meshes.mesh_state(conn, wireframe_id)
+    tag = meshes.part_etag(project.uid, state, k, lod)
+    if matches(if_none_match, tag):
+        return Response(status_code=304, headers={"ETag": tag, **CACHE_HEADERS})
+    body, standin = meshes.part_answer(project, state, k, lod)
+    if not standin:
+        return Response(content=body, media_type=BINARY, headers={"ETag": tag, **CACHE_HEADERS})
+    from bf_core.jobs.service import jobs_of
+    from bf_core.wireframes import lod_job
+
+    lod_job.request(jobs_of(request.app.state.core), project, state, (k, lod))
+    return Response(content=body, media_type=BINARY, headers={"Cache-Control": "no-store"})
+
+
+# --- exact queries on wireframes (ADR 0013 §5, ADR 0007 §5; `wireframes/exact.py`) -------------------------
+
+Text = Annotated[str | None, Query(max_length=200)]
+
+
+@router.get("/wireframes/{wireframe_id}/section")
+def wireframe_section(
+    svc: Svc,
+    wireframe_id: int,
+    point: Text = None,
+    normal: Text = None,
+    x0: Text = None,
+    y0: Text = None,
+    az: Text = None,
+    length: Text = None,
+    offset: Text = None,
+    if_none_match: IfNoneMatch = None,
+) -> Response:
+    """BFA1 `section`: the lines where a plane cuts the wireframe, float64 project coordinates (ТЗ 7.14). The
+    plane — `point=x,y,z` and `normal=x,y,z`, or a section line `x0`, `y0`, `az` with `length` (the lines are
+    cut at its ends) and `offset` (the plane moved along the normal)."""
+    from bf_core.wireframes import exact
+
+    from . import meshes
+
+    project = svc.require_current()
+    plane = exact.parse_plane(point, normal, x0, y0, az, length, offset)
+    with dialect.read_tx(project.engine) as conn:
+        state = meshes.mesh_state(conn, wireframe_id)
+    tag = exact.section_etag(project.uid, state, plane)
+    return _answer(tag, if_none_match, lambda: exact.section(project, state, plane))
+
+
+@router.get("/sets/{set_id}/intersections")
+def intersections(
+    svc: Svc,
+    set_id: int,
+    wireframes: Annotated[str | None, Query(max_length=40_000)] = None,
+    method: Method = "minimum_curvature",
+    if_none_match: IfNoneMatch = None,
+) -> Response:
+    """BFA1 `intersections` (ADR 0007 §5): where the holes of the set cross the wireframes `wireframes=1,2,3`
+    (no parameter — every wireframe of the project), exactly by the triangles; depths to 1 mm and better."""
+    from bf_core.wireframes import exact
+
+    from .keys import set_state
+
+    project = svc.require_current()
+    method = _method(method)
+    ids = exact.parse_ids(wireframes)
+    with dialect.read_tx(project.engine) as conn:
+        state = set_state(conn, set_id)
+        targets = exact.set_targets(conn, ids)
+    tag = exact.intersections_etag(project.uid, state, method, targets)
+    return _answer(tag, if_none_match, lambda: exact.intersections(project, state, method, targets))
+
+
+@router.get("/sets/{set_id}/snap")
+def snap_targets(
+    svc: Svc,
+    set_id: int,
+    section: Text = None,
+    bbox: Text = None,
+    method: Method = "minimum_curvature",
+    if_none_match: IfNoneMatch = None,
+) -> Response:
+    """BFA1 `snap` (ADR 0015 §4): collars, paths and the bounds of intervals of the holes in the window of a
+    section (`section=x0,y0,az,towards,away[,length]`) or the extent of the view (`bbox=`), float64 — the exact
+    snap targets of the string editor; over 5 000 holes or 2 million points — `truncated`, collars only."""
+    from .keys import set_state
+    from .snap import build, parse_window, snap_etag
+
+    project = svc.require_current()
+    method = _method(method)
+    window = parse_window(section, bbox)
+    with dialect.read_tx(project.engine) as conn:
+        state = set_state(conn, set_id)
+    tag = snap_etag(project.uid, state, method, window)
+    return _answer(tag, if_none_match, lambda: build(project, state, method, window))
 
 
 # --- the window «Данные по скважинам» (ТЗ 7.17, ADR 0007 §6) -----------------------------------------------

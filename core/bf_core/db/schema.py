@@ -181,6 +181,10 @@ dh_surveys = sa.Table(
     sa.Column("azimuth", sa.Double),
     sa.Column("dip", sa.Double),
     sa.Column("attrs", JSONType),
+    # Э7 (ADR 0011 §1): a station with coordinates (trench vertices) — they win over the desurvey method.
+    sa.Column("x", sa.Double),
+    sa.Column("y", sa.Double),
+    sa.Column("z", sa.Double),
     sa.Index(None, "set_id", "hole_id", "depth"),
     sa.Index(None, "hole_id"),  # cascades from dh_holes and «скважина без данных» checks
 )
@@ -326,6 +330,78 @@ charts = sa.Table(  # 1 : 1 to objects(kind="chart"): saved displays along holes
     sa.Column("auto_name", sa.Boolean, nullable=False, default=False),
 )
 
+# --- lines, rasters, wireframes (Э7, ADR 0011 §1) ----------------------------------------------------
+# A line file is objects(kind="line_file") with its source schema in `meta` and the `source` blob; its layers
+# are objects(kind="line_layer", parent_id=file) with geometry in blobs (BLOB_ROLES) and a row here.
+
+line_layers = sa.Table(  # 1 : 1 to objects(kind="line_layer")
+    "line_layers",
+    project_md,
+    sa.Column("object_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("line_count", sa.Integer, nullable=False),  # 0 for a layer of points
+    sa.Column("point_count", sa.Integer, nullable=False),  # vertices (points)
+    sa.Column("length", sa.Double, nullable=False),
+    sa.Column("closed_count", sa.Integer, nullable=False),
+    sa.Column("flat", sa.Boolean, nullable=False),  # every line lies at one level (points: all at one level)
+    sa.Column("color", sa.String(16)),  # #rrggbb
+    sa.Column("attr_schema", JSONType, nullable=False),  # [{name, kind, unit, scope: feature | vertex}]
+    sa.Column("points_only", sa.Boolean, nullable=False),  # no offsets / closed blobs
+    sa.Column("origin", JSONType, nullable=False),  # [x, y, z]: whole metres, float32 offsets of the display
+    # Э9 (ADR 0015 §1): the number of the current version of the journal (`line_layer_versions`) — the base of a
+    # save, not `objects.version` (renaming and colour raise that one); `next_lid` — the stable number the next
+    # new line gets (NULL: the line count, the layer has no `lid` blob and the number of a line is its position).
+    sa.Column("rev", sa.Integer, nullable=False, default=1, server_default="1"),
+    sa.Column("next_lid", sa.Integer),
+)
+
+line_layer_versions = sa.Table(  # ТЗ 7.22: the journal of saves of a line layer; files — owner `line_version`
+    "line_layer_versions",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("layer_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("version", sa.Integer, nullable=False),  # 1…N, no gaps
+    sa.Column("action", sa.String(16), nullable=False),  # import create save restore move operation
+    sa.Column("note", sa.String(255)),
+    sa.Column("author", sa.String(100)),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Column("line_count", sa.Integer, nullable=False),
+    sa.Column("point_count", sa.Integer, nullable=False),
+    sa.Column("prev_line_count", sa.Integer, nullable=False),
+    sa.Column("prev_point_count", sa.Integer, nullable=False),
+    # length (3D and plan), area, closed, flat, extent, origin, attr_schema, points_only, next_lid
+    sa.Column("stats", JSONType, nullable=False),
+    sa.UniqueConstraint("layer_id", "version"),
+)
+
+rasters = sa.Table(  # 1 : 1 to objects(kind="raster")
+    "rasters",
+    project_md,
+    sa.Column("object_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("width", sa.Integer, nullable=False),
+    sa.Column("height", sa.Integer, nullable=False),
+    # affine (6), affine_z or null, source (geotiff/world/tab/grf/section/manual), crs, pixel, rotation,
+    # corners3d f64 4×3, residuals of the reference points of the other files
+    sa.Column("georef", JSONType),
+    sa.Column("elevation", sa.Double),  # null: under the lowest object
+    sa.Column("vertical", sa.Boolean, nullable=False, default=False),
+    sa.Column("opacity", sa.Double, nullable=False, default=1.0),  # 0.05…1
+    sa.Column("version", sa.Integer, nullable=False, default=1),
+)
+
+wireframes = sa.Table(  # 1 : 1 to objects(kind="wireframe"); a DTM is a wireframe with `dtm` set (ТЗ 7.20)
+    "wireframes",
+    project_md,
+    sa.Column("object_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("point_count", sa.Integer, nullable=False),
+    sa.Column("triangle_count", sa.Integer, nullable=False),
+    sa.Column("origin", JSONType, nullable=False),
+    sa.Column("stats", JSONType, nullable=False),
+    sa.Column("render", JSONType),  # parts and LOD (the files themselves are in cache\mesh\)
+    sa.Column("attrs", JSONType, nullable=False),  # attributes set by the user
+    # null, or {clip, tint, opacity, shade}; the draped raster is object_refs(src=wireframe, dst=raster, role=drape)
+    sa.Column("dtm", JSONType),
+)
+
 # --- instance level -------------------------------------------------------------------------------
 
 instance_jobs, instance_job_log = _jobs(instance_md)
@@ -344,4 +420,45 @@ projects_cache = sa.Table(
 )
 
 #: Kinds of blob owners. A new kind that stores files registers here, or tests/test_db.py fails (ТЗ 6.5).
-BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job", "import"})
+#: `line_version` — a row of `line_layer_versions` (ADR 0015 §1): the files of a saved version of a line layer.
+BLOB_OWNER_KINDS: frozenset[str] = frozenset({"object", "job", "import", "line_version"})
+
+#: Roles of a blob for its owner (ADR 0011 §1). `data` — a file of no particular role; `source` — the file as
+#: loaded; `sidecar:<ext>` — a companion file of a raster (`sidecar:jgw`, `sidecar:tab`, …); `display0/1` —
+#: raster copies ≤ 4096 / ≤ 1024 px; lines: `xyz <f8 N×3`, `offsets <i8`, `closed u1`, `seq <u4`, `attrs` and
+#: `vattrs` (Parquet), or `pack:<n>` — entry n of a blob that holds these files of several small layers
+#: (`lines/pack.py`); wireframes: `xyz <f8`, `tri <i4`; point clouds (ADR 0014 §1, `lines/cloud.py`): `xyz`, `seq`,
+#: `class u1` (ASPRS code), `ret u1` (return number and number of returns), `h <f4` (height above the ground),
+#: `dz <f4` (Z − DTM); `lid <u4` — the stable number of every line of a layer (ADR 0015 §1; no blob: the position).
+#: A new role registers here, or add_owner refuses it.
+BLOB_ROLES: frozenset[str] = frozenset(
+    {
+        "data",
+        "source",
+        "display0",
+        "display1",
+        "xyz",
+        "offsets",
+        "closed",
+        "seq",
+        "attrs",
+        "vattrs",
+        "tri",
+        "class",
+        "ret",
+        "h",
+        "dz",
+        "lid",
+    }  # fmt: skip
+)
+BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:")
+
+
+def valid_blob_role(role: str) -> bool:
+    if role in BLOB_ROLES:
+        return True
+    for prefix in BLOB_ROLE_PREFIXES:
+        rest = role[len(prefix) :] if role.startswith(prefix) else ""
+        if 0 < len(rest) <= 16 and rest.isascii() and rest.isalnum() and rest == rest.lower():
+            return True
+    return False

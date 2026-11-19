@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_TRACE_STYLE, depthText, isLabelDepth, normalizeTraceStyle, tickDepths } from "../src/viz/holes/traceStyle";
+import { crossedWireframes, DEFAULT_TRACE_STYLE, depthText, isLabelDepth, normalizeTraceStyle, tickDepths } from "../src/viz/holes/traceStyle";
 
 describe("hole trace style", () => {
   it("keeps valid stored values and drops broken ones", () => {
@@ -9,6 +9,34 @@ describe("hole trace style", () => {
     expect(DEFAULT_TRACE_STYLE.endDepth).toBe(false);
     expect(normalizeTraceStyle({ endDepth: true }).endDepth).toBe(true);
     expect(normalizeTraceStyle({ endDepth: "yes" }).endDepth).toBe(false);
+  });
+
+  it("marks crossings with wireframes, and with DTMs only when asked: a DTM built through the collars is crossed by every hole at 0 m", () => {
+    const relief = { id: 1, triangle_count: 5000, dtm: { raster_id: null } };
+    const ore = { id: 2, triangle_count: 800, dtm: null };
+    const fault = { id: 3, triangle_count: 200, dtm: null };
+    const empty = { id: 4, triangle_count: 0, dtm: null };
+    const pit = { id: 5, triangle_count: 900, dtm: { raster_id: 7 } };
+    const all = [relief, ore, fault, empty, pit];
+    const shown = (id: number) => id !== 3 && id !== 5; // the fault and the pit are hidden
+    const on = { ...DEFAULT_TRACE_STYLE, intersections: true };
+    const ids = (style: Parameters<typeof crossedWireframes>[1]) => crossedWireframes(all, style, shown).map((w) => w.id);
+
+    expect(DEFAULT_TRACE_STYLE).toMatchObject({ intersections: false, withWireframes: true, withDtm: false, onlyVisible: true });
+    expect(ids(DEFAULT_TRACE_STYLE)).toEqual([]); // crossings are off
+    expect(ids(on)).toEqual([2]); // wireframes only: not the relief, not what is hidden, not what has no triangles
+    expect(ids({ ...on, onlyVisible: false })).toEqual([2, 3]);
+    expect(ids({ ...on, withDtm: true })).toEqual([1, 2]);
+    expect(ids({ ...on, withDtm: true, onlyVisible: false })).toEqual([1, 2, 3, 5]);
+    expect(ids({ ...on, withDtm: true, withWireframes: false, onlyVisible: false })).toEqual([1, 5]); // DTMs alone
+    expect(ids({ ...on, withWireframes: false })).toEqual([]);
+    // the demo: a relief through the collars and nothing else — no request at all by default
+    expect(crossedWireframes([relief], on, () => true)).toEqual([]);
+    expect(crossedWireframes([relief], { ...on, withDtm: true }, () => true)).toEqual([relief]);
+    // a style stored before the setting was there has no DTMs; a broken value is no
+    expect(normalizeTraceStyle({ intersections: true, withWireframes: true }).withDtm).toBe(false);
+    expect(normalizeTraceStyle({ withDtm: true }).withDtm).toBe(true);
+    expect(normalizeTraceStyle({ withDtm: "да" }).withDtm).toBe(false);
   });
 
   it("puts ticks at multiples of the step and writes every n-th", () => {

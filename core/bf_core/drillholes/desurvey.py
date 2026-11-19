@@ -12,6 +12,9 @@ Station rules (BF `geo/trajectory.py`): survey rows with a missing or out-of-ran
 azimuth outside 0…360, dip outside -90…90) are skipped; of equal depths the first row wins; without valid
 stations the collar azimuth and dip are used, without those the hole is vertical; a first station below
 the collar gives its orientation up to the collar; the path is extended to TD with the last orientation.
+A station with coordinates (`Surveys.x, y, z` — a vertex of a trench, ТЗ 7.35 Д-16) wins over the method: the
+path goes through it exactly and is straight from the station above, linear in depth; such a station needs no
+angles (`stations.py`).
 
 Methods (displacement of a course of length L between unit directions t1 above and t2 below):
   minimum_curvature  circular arc, L/2 · RF · (t1 + t2), RF = 2/β · tan(β/2) — the default;
@@ -74,6 +77,8 @@ def _delta(method, along, seg, ax, ay, az, bx, by, bz):  # type: ignore[no-untyp
     if method == TANGENT:
         return along * ax, along * ay, along * az
     if method == AVERAGE_ANGLE:
+        if ax == bx and ay == by and az == bz:  # one direction; also a segment between stations with coordinates
+            return along * ax, along * ay, along * az
         ha = math.hypot(ax, ay)
         hb = math.hypot(bx, by)
         dip = 0.5 * (math.atan2(az, ha) + math.atan2(bz, hb))
@@ -118,125 +123,8 @@ def _delta(method, along, seg, ax, ay, az, bx, by, bz):  # type: ignore[no-untyp
 
 
 @njit(cache=True, nogil=True)
-def _group_surveys(hole, depth, azimuth, dip, n_holes):  # type: ignore[no-untyped-def]
-    """Valid stations grouped by hole, ascending by depth, without repeated depths (the first row wins).
-
-    Returns start (n_holes + 1), depth, azimuth, dip, «hole has survey rows», invalid rows, repeated depths.
-    """
-    m = hole.shape[0]
-    start = np.zeros(n_holes + 1, dtype=np.int64)
-    seen = np.zeros(n_holes, dtype=np.bool_)
-    valid = np.zeros(m, dtype=np.bool_)
-    for i in range(m):
-        h = hole[i]
-        seen[h] = True
-        d = depth[i]
-        if 0.0 <= d < np.inf and 0.0 <= azimuth[i] <= 360.0 and -90.0 <= dip[i] <= 90.0:  # NaN fails
-            valid[i] = True
-            start[h + 1] += 1
-    for h in range(n_holes):
-        start[h + 1] += start[h]
-    n = start[n_holes]
-    gd = np.empty(n, dtype=np.float64)
-    ga = np.empty(n, dtype=np.float64)
-    gp = np.empty(n, dtype=np.float64)
-    fill = start[:n_holes].copy()
-    for i in range(m):  # counting sort by hole: stable, O(rows)
-        if valid[i]:
-            k = fill[hole[i]]
-            gd[k] = depth[i] + 0.0  # -0.0 becomes 0.0
-            ga[k] = azimuth[i]
-            gp[k] = dip[i]
-            fill[hole[i]] = k + 1
-    w = 0
-    for h in range(n_holes):
-        a = start[h]
-        b = start[h + 1]
-        for k in range(a + 1, b):
-            if gd[k] < gd[k - 1]:  # rarely: rows of a hole usually come ordered
-                order = np.argsort(gd[a:b], kind="mergesort")  # stable
-                gd[a:b] = gd[a:b][order]
-                ga[a:b] = ga[a:b][order]
-                gp[a:b] = gp[a:b][order]
-                break
-        start[h] = w
-        for k in range(a, b):
-            if w > start[h] and gd[k] == gd[w - 1]:
-                continue
-            gd[w] = gd[k]
-            ga[w] = ga[k]
-            gp[w] = gp[k]
-            w += 1
-    start[n_holes] = w
-    return start, gd[:w], ga[:w], gp[:w], seen, m - n, n - w
-
-
-@njit(cache=True, nogil=True)
 def _collar_has_angles(azimuth: float, dip: float) -> bool:
     return 0.0 <= azimuth <= 360.0 and -90.0 <= dip <= 90.0
-
-
-@njit(cache=True, nogil=True)
-def _count_stations(collar_row, cx, cy, cz, ctd, caz, cdip, start, gd, counts, source):  # type: ignore[no-untyped-def]
-    for h in range(counts.shape[0]):
-        r = collar_row[h]
-        if r < 0 or not (math.isfinite(cx[r]) and math.isfinite(cy[r]) and math.isfinite(cz[r])):
-            continue  # no coordinates: no trajectory
-        a = start[h]
-        b = start[h + 1]
-        if b > a:
-            source[h] = SOURCE_SURVEY
-            n = b - a + (1 if gd[a] > 0.0 else 0)
-            last = gd[b - 1]
-        else:
-            source[h] = SOURCE_COLLAR if _collar_has_angles(caz[r], cdip[r]) else SOURCE_VERTICAL
-            n = 1
-            last = 0.0
-        if math.isfinite(ctd[r]) and ctd[r] > last:
-            n += 1
-        counts[h] = n
-
-
-@njit(cache=True, nogil=True)
-def _fill_stations(method, h0, h1, collar_row, cx, cy, cz, ctd, caz, cdip, start, gd, ga, gp, offsets, md, xyz, dirs):  # type: ignore[no-untyped-def]
-    for h in range(h0, h1):
-        o = offsets[h]
-        end = offsets[h + 1]
-        if end == o:
-            continue
-        r = collar_row[h]
-        a = start[h]
-        b = start[h + 1]
-        k = o
-        if b > a:
-            if gd[a] > 0.0:  # the first station is below the collar: its orientation up to the collar
-                md[k] = 0.0
-                dirs[k, 0], dirs[k, 1], dirs[k, 2] = _unit(ga[a], gp[a])
-                k += 1
-            for s in range(a, b):
-                md[k] = gd[s]
-                dirs[k, 0], dirs[k, 1], dirs[k, 2] = _unit(ga[s], gp[s])
-                k += 1
-        else:
-            md[k] = 0.0
-            if _collar_has_angles(caz[r], cdip[r]):
-                dirs[k, 0], dirs[k, 1], dirs[k, 2] = _unit(caz[r], cdip[r])
-            else:
-                dirs[k, 0], dirs[k, 1], dirs[k, 2] = _unit(0.0, -90.0)
-            k += 1
-        if k < end:  # extension to TD with the last orientation
-            md[k] = ctd[r]
-            dirs[k] = dirs[k - 1]
-        xyz[o, 0] = cx[r]
-        xyz[o, 1] = cy[r]
-        xyz[o, 2] = cz[r]
-        for k in range(o + 1, end):
-            seg = md[k] - md[k - 1]
-            dx, dy, dz = _delta(method, seg, seg, dirs[k - 1, 0], dirs[k - 1, 1], dirs[k - 1, 2],
-                                dirs[k, 0], dirs[k, 1], dirs[k, 2])  # fmt: skip
-            xyz[k, 0] = xyz[k - 1, 0] + dx
-            xyz[k, 1] = xyz[k - 1, 1] + dy
-            xyz[k, 2] = xyz[k - 1, 2] + dz
 
 
 @njit(cache=True, nogil=True)
@@ -336,6 +224,9 @@ class Surveys:
     depth: npt.ArrayLike
     azimuth: npt.ArrayLike
     dip: npt.ArrayLike
+    x: npt.ArrayLike | None = None  # coordinates of the station (a trench vertex): NaN or None = not given
+    y: npt.ArrayLike | None = None
+    z: npt.ArrayLike | None = None
 
 
 @dataclass(frozen=True, eq=False)
@@ -349,13 +240,14 @@ class Paths:
 
 @dataclass(frozen=True, eq=False)
 class Trajectories:
-    """Stations of all holes: hole `h` owns `offsets[h]:offsets[h + 1]` (empty = no trajectory)."""
+    """Stations of all holes: hole `h` owns `offsets[h]:offsets[h + 1]` (empty = no trajectory). A station with
+    coordinates between two courses is listed twice, with the direction of the course above and of the one below."""
 
     method: str
     offsets: np.ndarray  # int64 (n_holes + 1,)
     md: np.ndarray  # measured depth, ascending within a hole from 0
     xyz: np.ndarray  # (n_stations, 3) station positions
-    dirs: np.ndarray  # (n_stations, 3) unit direction at the station
+    dirs: np.ndarray  # (n_stations, 3) unit direction at the station; of a straight segment — chord / depth range
     source: np.ndarray  # uint8 (n_holes,): SOURCE_NONE | SOURCE_SURVEY | SOURCE_COLLAR | SOURCE_VERTICAL
     skipped: np.ndarray  # indices of holes with a collar row or survey rows but without coordinates
     invalid_stations: int  # survey rows skipped for a missing or out-of-range value (all holes)
@@ -464,13 +356,14 @@ def desurvey(
         _column(v, n, f"collars.{k}")
         for k, v in (("td", collars.td), ("azimuth", collars.azimuth), ("dip", collars.dip))
     )
+    from .stations import count_stations, fill_stations, group_surveys  # they import the kernels of this module
+
     if surveys is None:
         surveys = Surveys(np.empty(0, dtype=np.int64), *(np.empty(0) for _ in range(3)))
     s_hole = _index(surveys.hole, "surveys.hole")
     m = len(s_hole)
-    sd, sa, sp = (
-        _column(v, m, f"surveys.{k}")
-        for k, v in (("depth", surveys.depth), ("azimuth", surveys.azimuth), ("dip", surveys.dip))
+    sd, sa, sp, sx, sy, sz = (
+        _column(getattr(surveys, k), m, f"surveys.{k}") for k in ("depth", "azimuth", "dip", "x", "y", "z")
     )
 
     top = max(int(c_hole.max(initial=-1)), int(s_hole.max(initial=-1))) + 1
@@ -486,10 +379,10 @@ def desurvey(
 
     if tick is not None:
         tick(0.0, "Траектории: инклинометрия")
-    start, gd, ga, gp, seen, invalid, repeated = _group_surveys(s_hole, sd, sa, sp, n_holes)
+    start, gd, ga, gp, gx, gy, gz, seen, invalid, repeated = group_surveys(s_hole, sd, sa, sp, sx, sy, sz, n_holes)
     counts = np.zeros(n_holes, dtype=np.int64)
     source = np.zeros(n_holes, dtype=np.uint8)
-    _count_stations(collar_row, cx, cy, cz, ctd, caz, cdip, start, gd, counts, source)
+    count_stations(collar_row, cx, cy, cz, ctd, caz, cdip, start, gd, gx, counts, source)
     offsets = np.zeros(n_holes + 1, dtype=np.int64)
     np.cumsum(counts, out=offsets[1:])
     total = int(offsets[-1])
@@ -499,8 +392,8 @@ def desurvey(
     for h0 in range(0, n_holes, _HOLE_CHUNK):
         if tick is not None:
             tick(h0 / n_holes, f"Траектории: скважин {h0} из {n_holes}")
-        _fill_stations(code, h0, min(n_holes, h0 + _HOLE_CHUNK), collar_row, cx, cy, cz, ctd, caz, cdip,
-                       start, gd, ga, gp, offsets, md, xyz, dirs)  # fmt: skip
+        fill_stations(code, h0, min(n_holes, h0 + _HOLE_CHUNK), collar_row, cx, cy, cz, ctd, caz, cdip,
+                      start, gd, ga, gp, gx, gy, gz, offsets, md, xyz, dirs)  # fmt: skip
     seen[c_hole] = True
     skipped = np.flatnonzero(seen & (counts == 0))
     if tick is not None:

@@ -43,6 +43,24 @@ class Source:
     folder: str | None = None
 
 
+#: Kinds of jobs that make lines, rasters or wireframes of a project, or what «Свойства» tell about them: their
+#: end is an `objects.changed` event.
+OBJECT_JOBS = frozenset(
+    {
+        "import.objects",
+        "model.dtm",
+        "wireframe.check",
+        "ground.classify",
+        "cloud.dz",
+        "geometry.operation",
+        "geometry.operation.heavy",
+    }
+)
+
+#: Jobs whose end makes the levels of detail of wireframes ready: a `wireframes.lod` event.
+LOD_JOBS = frozenset({"wireframe.lod", "wireframe.lod.heavy", "wireframe.check"})
+
+
 @dataclass
 class Running:
     job_id: int
@@ -204,7 +222,9 @@ class Scheduler:
         self.wake()
 
     def retry(self, key: str, job_id: int) -> int:
-        """«Повторить» a failed job: a new job with the same parameters (the same files)."""
+        """«Повторить» a failed job: a new job with the same parameters (the same files) and `retry_of` {id, since
+        — when the first job of the chain of retries started (UTC, ISO; None — it never ran)}: an export
+        replaces the files it wrote itself before it failed (`wireframes/export.py`)."""
         src = self.source(key)
         if src is None:
             raise LookupError(key)
@@ -213,7 +233,11 @@ class Scheduler:
             raise LookupError(job_id)
         if (old["params"] or {}).get("encrypted"):
             raise PermissionError("password")  # the password is not kept: the user starts the job again
-        _, new_id = self.submit(old["kind"], old["params"], title=old["title"], source=key)
+        params = dict(old["params"] or {})
+        before = params.get("retry_of")
+        since = before.get("since") if isinstance(before, dict) else None
+        params["retry_of"] = {"id": job_id, "since": since or old.get("started_at")}
+        _, new_id = self.submit(old["kind"], params, title=old["title"], source=key)
         return new_id
 
     def restart_workers(self) -> None:
@@ -418,6 +442,14 @@ class Scheduler:
                     .values(status=status, finished_at=dialect.utcnow(), **values)
                 )
         self._publish(src, run.job_id)
+        if status == "done" and run.kind in OBJECT_JOBS:
+            # the lists of the interface are read again even if the job was over before the interface saw it run
+            self.events.publish("objects.changed", {"kind": "job", "job": run.kind, "id": run.job_id})
+        if status == "done" and run.kind in LOD_JOBS:
+            # the window reads again the levels of the parts it was shown as stand-ins (ADR 0015 §8)
+            result = values.get("result")
+            ids = (result.get("wireframe_ids") if isinstance(result, dict) else None) or []
+            self.events.publish("wireframes.lod", {"source": src.key, "job": run.kind, "wireframe_ids": ids})
         self._release(src)
 
     def _release(self, src: Source) -> None:

@@ -7,6 +7,8 @@
 export type GpuClass = "integrated" | "discrete" | "software";
 
 export const TRIANGLE_BUDGET: Readonly<Record<GpuClass, number>> = { integrated: 8_000_000, discrete: 30_000_000, software: 1_000_000 };
+/** Points of point clouds per frame (ADR 0014 §2): the same rule — the smallest parts on screen go coarser first. */
+export const POINT_BUDGET: Readonly<Record<GpuClass, number>> = { integrated: 6_000_000, discrete: 20_000_000, software: 1_000_000 };
 
 const GB = 1024 ** 3;
 /** Software rendering keeps buffers in RAM: the budget of integrated graphics. */

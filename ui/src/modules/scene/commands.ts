@@ -30,8 +30,11 @@ export const commands: Command[] = [
   {
     id: "holes.trace_style",
     title: "Стволы: линия и риски",
-    description: "Стиль стволов набора в 3D: толщина и цвет, риски глубины (шаг, длина, подписи), глубина на забое, пересечения с каркасами и блоками. Без параметров стиля открывает форму.",
-    params: { set_id: { type: "integer" }, width: { type: "number" }, color: { type: "string" }, ticks: { type: "boolean" }, tickStep: { type: "number" }, tickLabels: { type: "boolean" }, labelStep: { type: "number" }, endDepth: { type: "boolean" }, intersections: { type: "boolean" } },
+    description: "Стиль стволов набора в 3D: толщина и цвет, риски глубины (шаг, длина, подписи), глубина на забое, пересечения с каркасами и блоками (intersections; withDtm — и с ЦТМ: по умолчанию ЦТМ не отмечаются). Без параметров стиля открывает форму.",
+    params: {
+      set_id: { type: "integer" }, width: { type: "number" }, color: { type: "string" }, ticks: { type: "boolean" }, tickStep: { type: "number" }, tickLabels: { type: "boolean" }, labelStep: { type: "number" }, endDepth: { type: "boolean" },
+      intersections: { type: "boolean" }, withDtm: { type: "boolean", description: "Отмечать пересечения и с ЦТМ (рельефом)" },
+    },
     stage: "Э6",
   },
   {

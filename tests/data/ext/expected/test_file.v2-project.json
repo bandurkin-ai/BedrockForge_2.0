@@ -1,0 +1,47 @@
+{
+  "format": "OMF 2 (omf-python 2.0.0a0 layout, project.json)",
+  "project": "Test project",
+  "elements": [
+    {
+      "schema": "org.omf.v2.element.pointset",
+      "name": "Random Points",
+      "attributes": [
+        "rand attr",
+        "More rand attr"
+      ]
+    },
+    {
+      "schema": "org.omf.v2.element.lineset",
+      "name": "Random Line",
+      "attributes": [
+        "rand vert attr",
+        "rand segment attr"
+      ]
+    },
+    {
+      "schema": "org.omf.v2.element.surface",
+      "name": "trisurf",
+      "attributes": [
+        "rand vert attr",
+        "rand face attr"
+      ]
+    },
+    {
+      "schema": "org.omf.v2.element.surfacetensorgrid",
+      "name": "gridsurf",
+      "attributes": [
+        "rand vert attr",
+        "rand face attr"
+      ]
+    },
+    {
+      "schema": "org.omf.v2.element.blockmodel.tensorgrid",
+      "name": "vol",
+      "attributes": [
+        "random attr"
+      ]
+    }
+  ],
+  "file": "v2/test_file.omf",
+  "bytes": 42171
+}

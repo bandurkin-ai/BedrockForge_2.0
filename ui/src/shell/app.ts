@@ -4,14 +4,19 @@
  */
 import { bindAudit } from "../modules/audit/bind";
 import { bindDownhole } from "../modules/downhole/bind";
+import { bindDtm } from "../modules/dtm/bind";
+import { bindModel } from "../modules/model/bind";
 import { bindImporting } from "../modules/importing/bind";
 import { bindJobs } from "../modules/jobs/bind";
+import { bindLines } from "../modules/lines/bind";
 import { bindProjects } from "../modules/projects/bind";
+import { bindRasters } from "../modules/rasters/bind";
 import { bindStripLog } from "../charts/striplog/bind";
 import { bindScene } from "../modules/scene/bind";
 import { bindSection } from "../modules/section/bind";
 import { bindTables } from "../modules/tables/bind";
 import { bindViews } from "../modules/views/bind";
+import { bindObjects } from "../modules/wireframes/bind";
 import { createRegistry } from "./catalog";
 import { logText, opLogStore, openLogWindow } from "./opLog";
 import type { Command, CommandSource } from "./commands";
@@ -20,7 +25,7 @@ import { formatArgs, type CommandRegistry } from "./registry";
 import { loadSettings, saveSettings } from "./settings";
 import { commandContext, INITIAL_STATE, Store, type AppState } from "./store";
 import { toggleAbout } from "./aboutInfo";
-import { openWindow } from "./windows";
+import { focusWindow, openWindow, updateWindow, windowStore } from "./windows";
 import { BOTTOM_TITLES, setPanel, type BottomTab, type PanelId } from "./workspace";
 
 export interface App {
@@ -45,17 +50,18 @@ export function createApp(opts: { persist?: boolean } = {}): App {
     lastProject: loaded?.settings.lastProject ?? null,
     projectsDir: loaded?.settings.projectsDir ?? null,
     heavyWorkers: loaded?.settings.heavyWorkers ?? 1,
+    odaConverter: loaded?.settings.odaConverter ?? null,
   });
   const palette = new Store<{ query: string | null }>({ query: null });
 
   if (loaded?.writable) {
     let last = "";
     store.subscribe(() => {
-      const { workspace, shortcuts, lastProject, projectsDir, heavyWorkers } = store.get();
-      const key = JSON.stringify([workspace, shortcuts, lastProject, projectsDir, heavyWorkers]);
+      const { workspace, shortcuts, lastProject, projectsDir, heavyWorkers, odaConverter } = store.get();
+      const key = JSON.stringify([workspace, shortcuts, lastProject, projectsDir, heavyWorkers, odaConverter]);
       if (key !== last) {
         last = key;
-        saveSettings({ version: 1, workspace, shortcuts, lastProject, projectsDir, heavyWorkers });
+        saveSettings({ version: 1, workspace, shortcuts, lastProject, projectsDir, heavyWorkers, odaConverter });
       }
     });
   }
@@ -93,7 +99,11 @@ export function createApp(opts: { persist?: boolean } = {}): App {
     palette.set({ query: typeof a.query === "string" ? a.query : "" });
   });
   registry.bind("settings.open", (a) => {
-    openWindow("settings", "Настройка", "form", { tab: a.tab ?? "shortcuts" }, ...viewport());
+    // one window: asked for a tab while it is open, it comes to the front on that tab (`asked` tells the calls apart)
+    const open = windowStore.get().windows.find((w) => w.kind === "settings");
+    if (!open) return void openWindow("settings", "Настройка", "form", { tab: a.tab ?? "shortcuts" }, ...viewport());
+    if (typeof a.tab === "string") updateWindow(open.id, { props: { tab: a.tab, asked: Number(open.props?.asked ?? 0) + 1 } });
+    focusWindow(open.id);
   });
   registry.bind("app.about", () => {
     toggleAbout();
@@ -134,6 +144,11 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindTables(app);
   bindAudit(app);
   bindScene(app);
+  bindObjects(app);
+  bindLines(app);
+  bindRasters(app);
+  bindDtm(app);
+  bindModel(app);
   bindViews(app);
   bindSection(app);
   bindStripLog(app);

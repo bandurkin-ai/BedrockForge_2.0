@@ -1,11 +1,11 @@
 import { useApp } from "./AppContext";
 import { AuditPanel } from "../modules/audit/AuditPanel";
 import { JobsPanel } from "../modules/jobs/JobsPanel";
-import { HoleCard } from "../modules/tables/HoleCard";
 import { SceneView } from "../modules/scene/SceneView";
 import { TablePanel } from "../modules/tables/TablePanel";
 import { CommandLog } from "./CommandLog";
 import { Icon } from "./Icon";
+import { PropertiesPanel } from "./PropertiesPanel";
 import { useStore } from "./useStore";
 import { BOTTOM_TITLES, type BottomTab } from "./workspace";
 import css from "./Shell.module.css";
@@ -55,7 +55,7 @@ export function RightDock() {
       </div>
       <div className={css.dockBody}>
         {tab === "properties" ? (
-          <HoleCard />
+          <PropertiesPanel />
         ) : (
           <div className={css.empty}>Ассистент Claude появится на этапе Э23. Без интернета ассистент недоступен, остальное работает.</div>
         )}

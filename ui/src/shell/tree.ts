@@ -51,18 +51,19 @@ export function buildFolders(objects: TreeObject[]): FolderNode {
 export type ImportKind = "holes" | "wireframes" | "lines" | "rasters" | "omf" | "project";
 
 const BY_EXT: Record<string, ImportKind> = {
-  tridb: "wireframes", obj: "wireframes", stl: "wireframes", dtm: "wireframes",
-  str: "lines",
-  dat: "holes", csv: "holes", txt: "holes", xlsx: "holes", xlsm: "holes", xls: "holes",
+  tridb: "wireframes", obj: "wireframes", stl: "wireframes", dtm: "wireframes", dwg: "wireframes", dm: "wireframes",
+  str: "lines", pit: "lines", shp: "lines", dbf: "lines", shx: "lines", cpg: "lines", prj: "lines", mif: "lines", mid: "lines", xyz: "lines", las: "lines", laz: "lines",
+  dat: "holes", csv: "holes", txt: "holes", tsv: "holes", prn: "holes", xlsx: "holes", xlsm: "holes", xls: "holes",
   jpg: "rasters", jpeg: "rasters", png: "rasters", tif: "rasters", tiff: "rasters", bmp: "rasters",
-  jgw: "rasters", jpgw: "rasters", pgw: "rasters", pngw: "rasters", tfw: "rasters", tifw: "rasters", bpw: "rasters", wld: "rasters", tab: "rasters", grf: "rasters",
+  jgw: "rasters", jpgw: "rasters", pgw: "rasters", pngw: "rasters", tfw: "rasters", tifw: "rasters", bpw: "rasters", bmpw: "rasters", wld: "rasters", tab: "rasters", grf: "rasters",
   omf: "omf",
   bfggis: "project",
 };
 
 /**
  * Import type of dropped files (ТЗ 7.1, 7.8): the most specific kind wins (a .tridb with a .txt is
- * still wireframes). DXF may be lines or wireframes — the wizard decides from content; here: wireframes.
+ * still wireframes). DXF and DWG may be lines or wireframes, Datamine .dm — wireframes or strings: here they
+ * are wireframes (`importing/route.ts` sends them to the composition of «Импорт файлов», which shows both).
  */
 export function detectImportKind(names: string[]): ImportKind | null {
   const kinds = names.map((n) => {

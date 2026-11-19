@@ -348,15 +348,31 @@ function registerIpc(): void {
   });
   // System file dialogs for .bfggis (ТЗ 7.4): the path goes to the core, which reads and writes the file itself.
   const bfggis = [{ name: "Проект BedrockForge", extensions: ["bfggis"] }];
-  // Table export (ТЗ 9.12): DAT, CSV, XLSX — the filter follows the chosen format.
+  // Table export (ТЗ 9.12): DAT, CSV, XLSX; export of lines and rasters (ТЗ 7.18, 7.19; ADR 0011 §5): STR, DXF,
+  // the kind of the source image or GeoTIFF — the filter follows the chosen format.
   const tableFilters: Record<string, Electron.FileFilter[]> = {
     dat: [{ name: "Micromine DAT", extensions: ["dat"] }],
     csv: [{ name: "CSV", extensions: ["csv"] }],
     xlsx: [{ name: "Excel", extensions: ["xlsx"] }],
+    str: [{ name: "Стринги STR", extensions: ["str"] }],
+    dxf: [{ name: "AutoCAD DXF", extensions: ["dxf"] }],
+    // a point cloud (ADR 0014 §6)
+    las: [{ name: "Облако точек LAS", extensions: ["las"] }],
+    jpg: [{ name: "JPEG", extensions: ["jpg", "jpeg"] }],
+    png: [{ name: "PNG", extensions: ["png"] }],
+    tif: [{ name: "TIFF, GeoTIFF", extensions: ["tif", "tiff"] }],
+    bmp: [{ name: "BMP", extensions: ["bmp"] }],
+    // export of wireframes (ТЗ 7.21, 9.4; ADR 0013 §5): a Surpac DTM comes with its .str of the same name
+    tridb: [{ name: "Micromine TRIDB", extensions: ["tridb"] }],
+    dwg: [{ name: "AutoCAD DWG", extensions: ["dwg"] }],
+    obj: [{ name: "Wavefront OBJ", extensions: ["obj"] }],
+    stl: [{ name: "STL", extensions: ["stl"] }],
+    dtm: [{ name: "Surpac DTM", extensions: ["dtm"] }],
+    any: [{ name: "Все файлы", extensions: ["*"] }],
   };
   ipcMain.handle("bf:pick-save", async (e, defaultName: string, kind?: string) => {
     if (!mainWin || !fromMain(e.sender)) return null;
-    const filters = (kind && tableFilters[String(kind)]) || bfggis;
+    const filters = kind && Object.hasOwn(tableFilters, String(kind)) ? tableFilters[String(kind)] : bfggis;
     const r = await dialog.showSaveDialog(mainWin, { defaultPath: path.join(app.getPath("documents"), path.basename(String(defaultName))), filters });
     return r.canceled || !r.filePath ? null : r.filePath;
   });
@@ -366,6 +382,10 @@ function registerIpc(): void {
     return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
   });
   // Table files of the import wizards (ТЗ 7.7) and .prj of a coordinate system: several files at once.
+  const lineFiles = ["str", "pit", "dxf", "shp", "dbf", "shx", "prj", "cpg", "mif", "mid", "xyz"];
+  // wireframes (ADR 0013 §2): a drawing gives its lines too; .dtm comes with its .str, Datamine — two .dm tables
+  const wireframeFiles = ["tridb", "dxf", "dwg", "obj", "stl", "dtm", "str", "dm"];
+  const rasterFiles = ["jpg", "jpeg", "png", "tif", "tiff", "bmp", "jgw", "jpgw", "pgw", "pngw", "tfw", "tifw", "bpw", "bmpw", "wld", "tab", "grf", "prj"];
   const fileFilters: Record<string, Electron.FileFilter[]> = {
     tables: [
       { name: "Таблицы скважин", extensions: ["dat", "csv", "txt", "tsv", "prn", "xlsx", "xlsm", "xls"] },
@@ -376,10 +396,40 @@ function registerIpc(): void {
     objects: [
       {
         name: "Все поддерживаемые",
-        extensions: ["omf", "tridb", "dxf", "obj", "stl", "str", "jpg", "jpeg", "png", "tif", "tiff", "bmp", "jgw", "jpgw", "pgw", "pngw", "tfw", "tifw", "bpw", "wld", "tab", "grf", "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"],
+        extensions: [...new Set(["omf", ...wireframeFiles, ...lineFiles, ...rasterFiles, "las", "laz", "dat", "csv", "txt", "xlsx", "xlsm", "xls", "bfggis"])],
       },
       { name: "Все файлы", extensions: ["*"] },
     ],
+    // «Линии», «Каркасы», «Растры», «Канавы» (ТЗ 7.18, 7.19, 7.21, 7.35 Д-16; ADR 0011 §5): a main file with its companions.
+    lines: [
+      { name: "Линии и точки", extensions: [...lineFiles, "csv", "txt", "tsv", "prn", "dat"] },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    wireframes: [
+      { name: "Каркасы", extensions: wireframeFiles },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    rasters: [
+      { name: "Растры и файлы привязки", extensions: rasterFiles },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    // «Облако точек» (ADR 0014 §6): a LAS, or a table of points loaded as a cloud; a .laz is told why it is not read.
+    las: [
+      { name: "Облака точек LAS", extensions: ["las", "laz"] },
+      { name: "Таблицы точек XYZ", extensions: ["xyz", "csv", "txt", "tsv", "prn", "dat"] },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    xyz: [
+      { name: "Таблицы точек XYZ", extensions: ["xyz", "csv", "txt", "tsv", "prn", "dat"] },
+      { name: "Облака точек LAS", extensions: ["las", "laz"] },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    trenches: [
+      { name: "Линии канав", extensions: ["str", "pit", "dxf", "csv", "txt", "tsv", "prn", "dat", "xyz"] },
+      { name: "Все файлы", extensions: ["*"] },
+    ],
+    // «Настройка › Внешние программы» (ADR 0013 §6): a program of the user; only Windows names them by .exe.
+    program: [...(process.platform === "win32" ? [{ name: "Программы", extensions: ["exe"] }] : []), { name: "Все файлы", extensions: ["*"] }],
   };
   ipcMain.handle("bf:pick-files", async (e, kind: string, multi: boolean) => {
     if (!mainWin || !fromMain(e.sender)) return [];

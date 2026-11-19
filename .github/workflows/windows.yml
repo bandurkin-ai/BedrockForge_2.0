@@ -99,13 +99,8 @@ jobs:
           Get-Content SHA256SUMS.txt
           Get-ChildItem *.exe | ForEach-Object { "{0}: {1:N0} MB" -f $_.Name, ($_.Length / 1MB) } | Tee-Object -Append $env:GITHUB_STEP_SUMMARY
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: BedrockForge-windows
-          path: |
-            app/release/*.exe
-            app/release/SHA256SUMS.txt
-          retention-days: 30
+      # The .exe is not uploaded (saves Actions storage): the build and the smoke E2E are the check; size and
+      # SHA-256 go to the run summary. Installers for people come from release.yml (workflow_dispatch).
       - uses: actions/upload-artifact@v7
         if: always()
         with: { name: windows-e2e, path: artifacts/, retention-days: 30, if-no-files-found: ignore }

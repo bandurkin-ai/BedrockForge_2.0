@@ -9,10 +9,23 @@ import { dialogStore, showMessage } from "./dialogs";
 import { LicenseWindow } from "./LicenseWindow";
 import { importPaths } from "../modules/importing/bind";
 import { ImportWizard } from "../modules/importing/ImportWizard";
+import { ObjectsWindow } from "../modules/importing/ObjectsWindow";
+import type { WizardMode } from "../modules/importing/wizard";
 import { OpLogWindow } from "./OpLogWindow";
 import { startEvents } from "../modules/jobs/state";
 import { StripLogWindow } from "../charts/striplog/StripLogWindow";
 import { DownholeWindow } from "../modules/downhole/DownholeWindow";
+import { BuildDtmWindow } from "../modules/dtm/BuildDtmWindow";
+import { GroundWindow } from "../modules/dtm/GroundWindow";
+import { DzWindow } from "../modules/lines/DzWindow";
+import { LinesExportWindow } from "../modules/lines/LinesExportWindow";
+import { renderLinesWindow } from "../modules/lines/windows";
+import { OperationWindow } from "../modules/model/OperationWindow";
+import { ReportWindow } from "../modules/model/ReportWindow";
+import type { ReportProps } from "../modules/model/run";
+import { RasterExportWindow } from "../modules/rasters/RasterExportWindow";
+import type { ExportOptions } from "../modules/wireframes/export";
+import { WireframesExportWindow } from "../modules/wireframes/WireframesExportWindow";
 import { StylesImportWindow } from "../modules/downhole/StylesImportWindow";
 import { SetStyleWindow } from "../modules/scene/SetStyleWindow";
 import { ExportWindow } from "../modules/projects/ExportWindow";
@@ -22,6 +35,7 @@ import { restoreLast } from "../modules/projects/state";
 import { bridge } from "../bridge";
 import { api } from "./api";
 import { Palette } from "./Palette";
+import { pushOdaPath } from "./odaTool";
 import { SettingsWindow } from "./SettingsWindow";
 import { WindowLayer, type WindowRenderer } from "./WindowLayer";
 import { Header } from "./Header";
@@ -38,13 +52,15 @@ import css from "./Shell.module.css";
 const renderWindow: WindowRenderer = (w) => {
   switch (w.kind) {
     case "settings":
-      return <SettingsWindow tab={w.props?.tab as string | undefined} />;
+      return <SettingsWindow tab={w.props?.tab as string | undefined} asked={w.props?.asked as number | undefined} />;
     case "license":
       return <LicenseWindow />;
     case "op-log":
       return <OpLogWindow logId={w.props?.logId as number | undefined} />;
     case "import-drillholes":
-      return <ImportWizard winId={w.id} paths={w.props?.paths as string[] | undefined} />;
+      return <ImportWizard winId={w.id} paths={w.props?.paths as string[] | undefined} mode={w.props?.mode as WizardMode | undefined} />;
+    case "import-objects":
+      return <ObjectsWindow winId={w.id} paths={w.props?.paths as string[] | undefined} pick={w.props?.pick as "lines" | "rasters" | "wireframes" | undefined} cloud={w.props?.cloud as "las" | "xyz" | undefined} />;
     case "projects":
       return <ProjectsWindow />;
     case "project-export":
@@ -61,8 +77,24 @@ const renderWindow: WindowRenderer = (w) => {
       return <DownholeWindow winId={w.id} setId={Number(w.props?.setId)} form={(w.props?.form as "grade" | "lith" | "event" | undefined) ?? "grade"} chartId={typeof w.props?.chartId === "number" ? w.props.chartId : null} table={(w.props?.table as string | null) ?? null} field={(w.props?.field as string | null) ?? null} focus={(w.props?.focus as string | undefined) ?? null} />;
     case "styles-import":
       return <StylesImportWindow winId={w.id} token={String(w.props?.token ?? "")} />;
+    case "lines-export":
+      return <LinesExportWindow winId={w.id} format={w.props?.format as string | undefined} layerIds={w.props?.layerIds as number[] | undefined} />;
+    case "raster-export":
+      return <RasterExportWindow winId={w.id} rasterId={w.props?.rasterId as number | undefined} format={w.props?.format as "source" | "geotiff" | undefined} />;
+    case "dtm-build":
+      return <BuildDtmWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
+    case "dtm-ground":
+      return <GroundWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
+    case "cloud-dz":
+      return <DzWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
+    case "wireframes-export":
+      return <WireframesExportWindow winId={w.id} format={w.props?.format as string | undefined} wireframeIds={w.props?.wireframeIds as number[] | undefined} options={w.props?.options as Partial<ExportOptions> | undefined} />;
+    case "model-operation":
+      return <OperationWindow winId={w.id} dialog={String(w.props?.dialog ?? "")} op={w.props?.op as string | undefined} wireframeId={w.props?.wireframeId as number | undefined} layerId={w.props?.layerId as number | undefined} />;
+    case "model-report":
+      return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return null;
+      return renderLinesWindow(w);
   }
 };
 
@@ -91,6 +123,7 @@ export function Shell() {
     restoreLast(app).catch((e: unknown) => void showMessage({ title: "Проект", message: e instanceof Error ? e.message : String(e) }));
     const heavy = app.store.get().heavyWorkers;
     if (heavy !== 1) void api.put("/jobs/workers", { heavy }).catch(() => undefined);
+    void pushOdaPath(app.store); // «Настройка › Внешние программы»: the core does not keep the path itself
   }, [app, coreOnline]);
   useEffect(() => startEvents(), []);
 

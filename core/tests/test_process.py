@@ -140,3 +140,22 @@ def test_job_runs_while_the_core_watches_its_stdin(tmp_path) -> None:  # type: i
     finally:
         if proc.poll() is None:
             proc.kill()
+
+
+@pytest.mark.windows
+def test_start_objects_leave_the_collector() -> None:
+    """After BF-READY what the start has built is frozen (`gc.freeze`): a full collection no longer walks it
+    (it took tens of milliseconds, in the middle of a click)."""
+    import gc
+
+    from bf_core.__main__ import settle_garbage
+
+    before = gc.get_freeze_count()
+    try:
+        settle_garbage()
+        frozen = gc.get_freeze_count()
+        assert frozen > before + 10_000  # the interpreter, pytest and the imported modules
+        gc.collect()
+        assert gc.get_freeze_count() == frozen  # … stay where they are
+    finally:
+        gc.unfreeze()

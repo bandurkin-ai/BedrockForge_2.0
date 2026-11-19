@@ -170,3 +170,13 @@ def test_hide_all_api_and_bfggis(demo, tmp_path: Path) -> None:  # type: ignore[
     new_set = job["result"]["id_maps"]["objects"][str(set_id)]
     got = c.get(f"{API}/view").json()["values"]["hide_all"]["value"]
     assert got == {"on": True, "shown": [f"set:{new_set}"]}
+
+
+def test_cloud_styles_keep_a_style_per_layer_and_follow_the_ids() -> None:
+    from bf_core.viewstate.keys import drop_missing, map_ids
+
+    value = normalize("cloud_styles", {"12": {"color": "class", "hidden": [7]}, "x": {}}, strict=False)
+    assert value == {"12": {"color": "class", "hidden": [7]}}
+    assert drop_missing("cloud_styles", value, lambda i: i != 12) == {}
+    renumbered = map_ids("cloud_styles", value, lambda i: 40 if i == 12 else None)
+    assert renumbered == {"40": {"color": "class", "hidden": [7]}}

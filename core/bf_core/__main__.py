@@ -114,6 +114,17 @@ def _watch_parent(request_shutdown) -> None:  # type: ignore[no-untyped-def]
     threading.Thread(target=target, name="parent-watch", daemon=True).start()
 
 
+def settle_garbage() -> None:
+    """What the start of the core has built — the application, its routers and the modules they import —
+    stays to the end: one full collection now, then these objects are taken out of the reach of the collector.
+    A later full collection looks only at what was made since: with everything in its reach it took 75 ms and
+    fell on a click in the 3D window (Э8, замеры 8.19)."""
+    import gc
+
+    gc.collect()
+    gc.freeze()
+
+
 def serve(args: argparse.Namespace) -> int:
     import logging
 
@@ -165,6 +176,7 @@ def serve(args: argparse.Namespace) -> int:
             await asyncio.sleep(0.01)
         if server.started:
             print(f"BF-READY port={port} version={bf_core.__version__}", flush=True)
+            settle_garbage()  # after the line the shell waits for: the start is not made longer
         await serve_task
 
     asyncio.run(run())
