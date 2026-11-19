@@ -35,6 +35,26 @@ def _worker_log(queue_name: str) -> None:
         pass
 
 
+def _lower_this_thread() -> None:
+    """The warm-up runs at the lowest priority of this thread only: at the start of the program it must not take the
+    processor from the window (its first frame under a software renderer — perf3d, ≤ 3 s on CI) nor from a job.
+    Linux: the nice of a thread is its own (`setpriority` by the native id); Windows: the background mode of the
+    thread (lower processor and disk priority). Elsewhere, or refused — the warm-up runs as it is."""
+    import os
+    import sys
+
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            kernel32.SetThreadPriority(kernel32.GetCurrentThread(), 0x00010000)  # THREAD_MODE_BACKGROUND_BEGIN
+        elif sys.platform.startswith("linux"):
+            os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), 19)
+    except (OSError, AttributeError):
+        pass
+
+
 def _warm_kernels(queue_name: str = "quick", busy: Callable[[], bool] | None = None) -> None:
     """Compile the numba kernels of the operations, of the view and of the preview of a stitch once, here, into
     NUMBA_CACHE_DIR, or load them from it (`ops/warm.py`): the quick worker the operations first (the stitch the
@@ -47,6 +67,7 @@ def _warm_kernels(queue_name: str = "quick", busy: Callable[[], bool] | None = N
     import time
 
     log = logging.getLogger("bf_core.worker")
+    _lower_this_thread()
     try:
         from bf_core.ops import warm
 
