@@ -74,21 +74,28 @@ def _dp_fill(a, b, hh, i0, di, j0, dj, lo, hi, cost, back):  # type: ignore[no-u
         if r > 0:
             up_lo = lo[r - 1] if lo[r - 1] > j0 else j0
             up_hi = hi[r - 1] if hi[r - 1] < last else last
+        jb = left % m if left >= 0 else 0  # j mod m, kept without a division per cell
+        ax, ay = a[ia, 0], a[ia, 1]
+        run = np.inf  # cost of the cell to the left, kept out of memory (the chain of the row is the slow part)
         for j in range(left, right + 1):
             if r == 0 and j == j0:
-                cost[0, j] = 0.0
+                run = 0.0
                 back[0, j] = 0
-                continue
-            best = np.inf
-            move = 0
-            if up_lo <= j <= up_hi:
-                best = cost[prv, j]
-                move = 1
-            if j > left and cost[cur, j - 1] < best:
-                best = cost[cur, j - 1]
+            else:
+                # As in BF: along the first contour (from the row above) wins a tie.
+                best = run
                 move = 2
-            cost[cur, j] = best + _span(a, b, hh, ia, j % m)
-            back[r, j] = move
+                if up_lo <= j <= up_hi and cost[prv, j] <= best:
+                    best = cost[prv, j]
+                    move = 1
+                dx = ax - b[jb, 0]
+                dy = ay - b[jb, 1]
+                run = best + math.sqrt(dx * dx + dy * dy + hh)
+                back[r, j] = move
+            cost[cur, j] = run
+            jb += 1
+            if jb == m:
+                jb = 0
         if right >= left:
             cells += right - left + 1
     return cost[di & 1, last], cells

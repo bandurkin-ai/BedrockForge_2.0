@@ -36,14 +36,22 @@ class StitchError(MeshError):
     """Message in Russian, shown to the user; `code` and `hint` as in every error of bf-core.
 
     `between` = (section a, section b): zero-based indices of the sections (as in `report["sections"]`)
-    where the problem is; (k, k) means the cap of section k; None if unknown.
+    where the problem is; (k, k) means the cap of section k; None if unknown. `contours`: zero-based
+    indices of the contours (in the order given) that take part, () if unknown.
     """
 
     def __init__(
-        self, message: str, between: tuple[int, int] | None = None, *, code: str = "stitch_failed", hint: str = HINT
+        self,
+        message: str,
+        between: tuple[int, int] | None = None,
+        *,
+        code: str = "stitch_failed",
+        hint: str = HINT,
+        contours: tuple[int, ...] = (),
     ) -> None:
         super().__init__(code, message, hint)
         self.between = between
+        self.contours = tuple(int(c) for c in contours)
 
 
 # --- planes and polygons -----------------------------------------------------------------------------------
