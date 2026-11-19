@@ -39,9 +39,20 @@ test("«Аудит»: demo errors, run, filter by rule, «устарел», Exce
         const r = await (await fetch(`${c.baseUrl}/api/v1/audit/sets/${sets.sets[0].id}`, { headers: h })).json();
         return r.result?.created_at as string; // not run_id: SQLite gives the freed id again
       });
+    // no audit of the demo may still be queued or running: its late end would pass for the run of the button,
+    // and the button's own run, ending after the edit below, would leave the result fresh (seen with the jobs
+    // the demo of Э9 adds — checks and levels of detail of its wireframes)
+    const auditsBusy = () =>
+      page.evaluate(async () => {
+        const c = window.bf!.core()!;
+        const r = await (await fetch(`${c.baseUrl}/api/v1/jobs`, { headers: { "X-BF-Token": c.token } })).json();
+        return (r.jobs as { kind: string; status: string }[]).filter((j) => j.kind === "audit.run" && (j.status === "queued" || j.status === "running")).length;
+      });
+    await expect.poll(auditsBusy, { timeout: 120_000 }).toBe(0);
     const first = await lastRun();
     await panel.getByRole("button", { name: "Запустить аудит" }).click();
     await expect.poll(lastRun, { timeout: 60_000 }).not.toBe(first);
+    await expect.poll(auditsBusy, { timeout: 60_000 }).toBe(0);
     await panel.getByRole("tab", { name: "Аудит" }).click();
     await page.evaluate(async () => {
       const c = window.bf!.core()!;
