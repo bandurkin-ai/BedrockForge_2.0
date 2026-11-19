@@ -50,7 +50,7 @@ export const seriesCommands: Command[] = [
   lockCommand,
   { id: "series.surfaces", title: "Часть каркаса в окне", description: "Под разрезом серии каркасы показаны линиями сечения; on — показывать и сам каркас, обрезанный окном разреза (без on — переключить).", params: { on: { type: "boolean" } } },
   { id: "series.shadow", title: "Тень", description: "Тень активной серии — контуры соседних разрезов: none (нет), prev (предыдущий), next (следующий), both (оба).", params: { mode: shadow }, required: ["mode"] },
-  { id: "series.digitize", title: "Контур на разрезе", description: "Оцифровка контура на текущем разрезе серии.", stage: "Э10" },
+  { id: "series.digitize", title: "Контур на разрезе", description: "Оцифровка контура на текущем разрезе серии: отсечение по окну, правка слоя контуров серии. layer_id — слой линий для контуров; без него — слой серии (или новый).", params: { layer_id: { type: "integer" } }, stage: "Э10" },
   { id: "series.stitch", title: "Каркас по серии", description: "Окно «Каркас по серии»: связи контуров соседних разрезов и построение каркаса.", stage: "Э10" },
   { id: "series.print", title: "Печать серии", description: "Пакетная печать разрезов серии по макету (этап Э22)." },
 ];
