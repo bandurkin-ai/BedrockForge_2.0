@@ -2,6 +2,29 @@
   "_comment": "ТЗ 5.3 / 7.33. ci ≈ 1/10 of target volumes, checked on every PR; full — at milestones. Seconds and MB. Layout: an object or a list that fits a line of 120 characters is written on it.",
   "ci": {
     "section_wireframes": {"params": {"triangles": 1000000, "sections": 100}, "budget_s": 3.0, "budget_mb": 600, "limits": {"batch_warm_s": 0.1, "batch_cached_s": 0.02, "cache_job_s": 10.0}, "note": "ADR 0016: пакет 1 млн ≤ 100 мс, из файлов ≤ 20 мс, кеш 100 разрезов ≤ 10 с"},
+    "section_series": {
+      "params": {"points": 1000000, "contours": 100, "vertices": 500, "shadow": 2000, "holes": 5000, "intervals": 100},
+      "budget_s": 15.0,
+      "budget_mb": 800,
+      "limits": {
+        "points_s": 0.05,
+        "points_gaps_s": 0.1,
+        "table_s": 0.05,
+        "links_first_s": 0.2,
+        "links_s": 0.2,
+        "links_cross_s": 0.2,
+        "shadow_s": 0.05,
+        "stitch_series_s": 5.0,
+        "snap_s": 0.3,
+        "points_mismatches": 0,
+        "links_wrong": 0,
+        "shadow_wrong": 0,
+        "bodies_wrong": 0,
+        "volume_error": 0.01,
+        "snap_missed": 0
+      },
+      "note": "ADR 0016 «Замеры», ТЗ 8.1.5: «Каркас по серии» 100 × 500 ≤ 10 с (ci ≤ 5 с; замер 0,9–1,0 с: 4 тела, ветвь 1 → 2); разрез 10⁶ точек ≤ 50 мс (замер 9–18 мс; окна с зазорами 23–40 мс); таблица K = 5 000 ≤ 50 мс (11–21 мс); автосвязи ≤ 0,2 с (11–24 мс); тень k ± 1 из 2 000 контуров ≤ 50 мс (4–12 мс); привязка по наклонной плоскости 5 000 × 100 ≤ 0,3 с (37–129 мс; первый запрос 0,4–0,55 с — в отчёт)."
+    },
     "wireframe_lod": {"params": {"triangles": 1000000}, "budget_s": 10.0, "budget_mb": 400, "limits": {"standin_s": 0.05, "health_max_s": 0.1, "job_s": 8.0, "lod_jobs": 1}},
     "wireframes_many": {"params": {"wireframes": 3000}, "budget_s": 12.0, "budget_mb": 700, "limits": {"import_s": 5.0, "mismatches": 0}},
     "ops_many": {"params": {"parts": 1000}, "budget_s": 10.0, "budget_mb": 700, "limits": {"blobs": 10, "mismatches": 0}},
@@ -222,6 +245,29 @@
   },
   "full": {
     "section_wireframes": {"params": {"triangles": 10000000, "sections": 100}, "budget_s": 10.0, "budget_mb": 1500, "limits": {"batch_warm_s": 0.3, "batch_cached_s": 0.1, "cache_job_s": 60.0}, "note": "ADR 0016, ТЗ 5.3 и 8.1.5: пакет 10 млн ≤ 300 мс, кеш 100 разрезов ≤ 60 с"},
+    "section_series": {
+      "params": {"points": 10000000, "contours": 100, "vertices": 500, "shadow": 2000, "holes": 5000, "intervals": 100},
+      "budget_s": 30.0,
+      "budget_mb": 2048,
+      "limits": {
+        "points_s": 0.5,
+        "points_gaps_s": 1.0,
+        "table_s": 0.05,
+        "links_first_s": 0.2,
+        "links_s": 0.2,
+        "links_cross_s": 0.2,
+        "shadow_s": 0.05,
+        "stitch_series_s": 10.0,
+        "snap_s": 0.3,
+        "points_mismatches": 0,
+        "links_wrong": 0,
+        "shadow_wrong": 0,
+        "bodies_wrong": 0,
+        "volume_error": 0.01,
+        "snap_missed": 0
+      },
+      "note": "ADR 0016, ТЗ 8.1.5: разрез 10⁷ точек ≤ 0,5 с (замер 0,11–0,14 с; окна с зазорами 0,25–0,29 с); остальное — объёмы ТЗ, как в ci («Каркас по серии» 100 × 500 ≤ 10 с — замер 1,2–1,4 с)."
+    },
     "wireframe_lod": {"params": {"triangles": 1000000}, "budget_s": 10.0, "budget_mb": 400, "limits": {"standin_s": 0.05, "health_max_s": 0.1, "job_s": 8.0, "lod_jobs": 1}},
     "wireframes_many": {"params": {"wireframes": 3000}, "budget_s": 12.0, "budget_mb": 700, "limits": {"import_s": 5.0, "mismatches": 0}},
     "mesh_volume": {"params": {"triangles": 10000000}, "budget_s": 10.0, "budget_mb": 2048},
