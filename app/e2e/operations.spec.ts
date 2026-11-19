@@ -67,9 +67,10 @@ async function execute(page: Page, op: string): Promise<number> {
 
 /** Closes the window of the job and the report (they cover the tree on a small window). */
 async function closeWindows(page: Page): Promise<void> {
+  // the report opens over the window of the job: it goes first
+  for (const r of await page.getByTestId("op-report").all()) await r.getByRole("button", { name: "Закрыть", exact: true }).click();
   const follow = page.getByTestId("op-follow");
   if (await follow.count()) await follow.getByTestId("op-close").click();
-  for (const r of await page.getByTestId("op-report").all()) await r.getByRole("button", { name: "Закрыть", exact: true }).click();
   await expect(page.getByTestId("op-follow")).toHaveCount(0);
   await expect(page.getByTestId("op-report")).toHaveCount(0);
 }
