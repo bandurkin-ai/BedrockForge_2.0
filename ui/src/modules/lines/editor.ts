@@ -21,6 +21,7 @@ import { tablesStore } from "../tables/state";
 import { askChoice, CANCEL } from "./choice";
 import { conflictOf, getGeometry, newLayer, putGeometry, type Conflict } from "./editApi";
 import { editStore } from "./editState";
+import { attachEditorKeys } from "./editKeys";
 import { attachSession, viewBox } from "./editScene";
 import { SnapFeeder } from "./snapSources";
 
@@ -90,7 +91,7 @@ function start(app: App, s: EditSession, prev: EditSession | null = null): void 
     s.tool = prev.tool;
   }
   applySection(s);
-  editStore.set((st) => ({ session: s, generation: st.generation + 1, saving: false, snapNotes: [] }));
+  editStore.set((st) => ({ session: s, generation: st.generation + 1, saving: false, snapNotes: [], focused: true }));
   app.store.set({ editing: true });
   const hidden = () => new Set(app.store.get().view.hidden);
   const feeder = new SnapFeeder(s, {
@@ -103,7 +104,7 @@ function start(app: App, s: EditSession, prev: EditSession | null = null): void 
       return sc ? viewBox(sc) : null;
     },
   });
-  const offs: (() => void)[] = [];
+  const offs: (() => void)[] = [attachEditorKeys(app)];
   let detach: (() => void) | null = null;
   offs.push(
     onScene((scene) => {

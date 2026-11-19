@@ -1,0 +1,35 @@
+/* The panel of the string editor over the 3D window (ADR 0015 §5): brand tokens only (docs/brand/README.md). */
+.panel { position: absolute; top: 8px; left: 8px; max-width: calc(100% - 16px); z-index: 6; display: flex; flex-direction: column; gap: 2px; padding: 4px 6px; border-radius: 6px; background: color-mix(in srgb, var(--bg-elev) 96%, transparent); border: 1px solid var(--border); box-shadow: var(--shadow); color: var(--text); font: 12px var(--font); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.layer { display: inline-flex; align-items: center; gap: 6px; max-width: 220px; font: 600 12px var(--font-brand); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swatch { flex: none; width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--border-strong); }
+.version { color: var(--text-dim); font: 400 11px var(--font); }
+.dirty { color: var(--highlight); }
+.group { display: inline-flex; align-items: center; gap: 1px; padding-left: 4px; border-left: 1px solid var(--border); }
+.group:first-of-type { border-left: 0; padding-left: 0; }
+.tool { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 28px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text-dim); cursor: pointer; padding: 0; }
+.tool:hover:not([aria-disabled="true"]) { background: var(--bg-hover); color: var(--text); }
+.tool[aria-pressed="true"] { background: var(--bg-active); color: var(--text); border-color: var(--accent); }
+.tool[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+.tool > svg { width: 18px; height: 18px; }
+.save[aria-disabled="false"] { color: var(--accent); }
+.field { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
+.field input, .coord input { height: 24px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-input); color: var(--text); font: 12px var(--font); }
+.field input { width: 72px; }
+.field input:focus, .coord input:focus { outline: none; border-color: var(--accent); }
+.coord { display: inline-flex; flex-direction: column; min-width: 220px; flex: 1 1 260px; }
+.coord input { width: 100%; }
+.invalid { border-color: var(--danger) !important; }
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; min-height: 18px; color: var(--text-dim); font-size: 11px; }
+.status > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grow { flex: 1; }
+.error { color: var(--danger); }
+.xyz { color: var(--text); font-variant-numeric: tabular-nums; }
+.muted { color: var(--text-faint); }
+.snapWrap { position: relative; display: inline-flex; align-items: center; }
+.popover { position: absolute; top: calc(100% + 4px); left: 0; z-index: 7; display: grid; gap: 4px; min-width: 260px; padding: 8px 10px; border-radius: 6px; background: var(--bg-elev); border: 1px solid var(--border-strong); box-shadow: var(--shadow); color: var(--text); }
+.popover h5 { margin: 0 0 2px; font: 600 12px var(--font-brand); }
+.check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.note { color: var(--warn); font-size: 11px; }
+.snapLabel { position: absolute; z-index: 5; padding: 1px 6px; border-radius: 3px; background: color-mix(in srgb, var(--bg-elev) 92%, transparent); border: 1px solid var(--highlight); color: var(--text); font-size: 11px; white-space: nowrap; pointer-events: none; }
+.box { position: absolute; z-index: 5; border: 1px dashed var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; }
