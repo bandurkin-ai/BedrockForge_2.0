@@ -21,7 +21,10 @@ Memory and time. Spans are computed where they are needed, not stored; the cheap
 moves take 2·n·m bytes and the bounds of the paths of every start 8·n·m bytes. A pair has at most
 `MAX_SPANS` spans (n·m), otherwise StitchError (thin the contours): about 160 MB and a second at the limit.
 The search of the best start does at most `BUDGET` cells a call and goes on from where it stopped, so `tick`
-(which may raise to cancel) is called between the portions.
+(which may raise to cancel) is called between the portions. It gives up a start as soon as a lower bound of
+its cost (the cost so far plus √hh a remaining step, the last step at the span of its end node) exceeds the
+cost of the best start found so far: that start cannot win, and the halves of its band are bounded by the
+paths of the band instead of its own. The best start and its cost are those of the full search.
 
 Threads (ADR 0015 «Замеры», ADR 0014 — threads of Python over `nogil` kernels, no `prange`). The strips of a
 series do not depend on each other, and the search of the best start is almost all of a strip (20 contours of
@@ -33,8 +36,9 @@ run at once (each takes ~10 bytes a span), always at least one.
 
 Ported from BF `geo/stitch.py` (`_span_matrix`, `_dp_fill`, `_dp_bounds`, `_dp_trace`, `_ring_path`,
 `_best_start`, `_match_coords`, `_tie_segments`, `_strip`) with the same paths. Differences: spans computed in
-place (BF stored the n × m matrix), two rows of costs, int32 bounds, the resumable search of the best start,
-the limit on the size of a pair. The kernels release the GIL; numba is imported with this module.
+place (BF stored the n × m matrix), two rows of costs, int32 bounds, the resumable search of the best start
+that gives up starts by the bound, the limit on the size of a pair, strips in threads. The kernels release the
+GIL; numba is imported with this module.
 """
 
 from __future__ import annotations
@@ -53,6 +57,7 @@ BUDGET = 20_000_000  # cells of the search of the best start between two calls o
 THREADS = 4  # strips at once by default (fewer on a machine with fewer cores)
 MEMORY_SPANS = 2 * MAX_SPANS  # spans of the strips that run at once
 TICK_S = 0.05  # how often `tick` is called while strips run in threads
+BOUND_MARGIN = 1e-9  # relative: a start is given up only when it certainly costs more than the best one
 
 Tick = Callable[[], None] | None
 # (pa, pb, la, lb, gap, ties): the arguments of `strip` but `tick`
@@ -68,28 +73,41 @@ def _span(a, b, hh, i, j):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
-def _dp_fill(a, b, hh, i0, di, j0, dj, lo, hi, cost, back):  # type: ignore[no-untyped-def]
-    """Cheapest monotone path from node (i0, j0) to (i0 + di, j0 + dj); returns its cost and the cells visited.
+def _dp_fill(a, b, hh, i0, di, j0, dj, lo, hi, cost, back, bound=np.inf):  # type: ignore[no-untyped-def]
+    """Cheapest monotone path from node (i0, j0) to (i0 + di, j0 + dj) → (its cost, the cells visited, stopped).
 
     Row r is vertex (i0 + r) mod n of the first contour, column j is vertex j mod m of the second
-    (columns are absolute, 0..2m). Only columns lo[r]..hi[r] of each row are visited. `back` gets
-    1 where the path came along the first contour (from the row above) and 2 along the second.
-    `cost` (2, 2m + 1) keeps the rows r − 1 and r.
+    (columns are absolute, 0..2m). Only columns lo[r]..hi[r] of each row are visited (lo, hi do not
+    decrease). `back` gets 1 where the path came along the first contour (from the row above) and 2 along
+    the second. `cost` (2, 2m + 1) keeps the rows r − 1 and r.
+
+    `bound` (the search of the best start): only paths that cost at most `bound` are of interest. From
+    node (r, j) a path takes (di − r) + (last − j) more steps, each a span of at least √hh, the last one
+    the span of the end node: the cost of the node plus these is a lower bound of every path through it.
+    Nodes whose bound exceeds `bound` · (1 + BOUND_MARGIN) — far above the rounding of the sums (~1e-16
+    relative a step, ≤ 1e4 steps) — are left out: the ends of every row are cut to the first and the last
+    node within it, and the next row starts no further left. Every node of a path that costs at most
+    `bound` stays, so then the cost and the path are those of the full search; otherwise the search
+    stops (cost inf, stopped True) — the start costs more than `bound` for certain.
     """
     n, m = len(a), len(b)
     last = j0 + dj
     cells = 0
+    h = math.sqrt(hh)  # no span is shorter
+    w_end = _span(a, b, hh, (i0 + di) % n, last % m)
+    limit = bound * (1.0 + BOUND_MARGIN)
+    cut = limit < np.inf
+    up_lo, up_hi = j0, j0 - 1  # the nodes of the row above
     for r in range(di + 1):
         ia = (i0 + r) % n
         cur = r & 1
         prv = 1 - cur
         left = lo[r] if lo[r] > j0 else j0
+        if cut and r > 0 and up_lo > left:
+            left = up_lo
         right = hi[r] if hi[r] < last else last
-        up_lo = j0
-        up_hi = j0 - 1
-        if r > 0:
-            up_lo = lo[r - 1] if lo[r - 1] > j0 else j0
-            up_hi = hi[r - 1] if hi[r - 1] < last else last
+        steps = (di - r) + last  # steps to the end from column 0 of this row, less the column
+        tail = cut and r < di
         jb = left % m if left >= 0 else 0  # j mod m, kept without a division per cell
         ax, ay = a[ia, 0], a[ia, 1]
         run = np.inf  # cost of the cell to the left, kept out of memory (the chain of the row is the slow part)
@@ -108,13 +126,54 @@ def _dp_fill(a, b, hh, i0, di, j0, dj, lo, hi, cost, back):  # type: ignore[no-u
                 dy = ay - b[jb, 1]
                 run = best + math.sqrt(dx * dx + dy * dy + hh)
                 back[r, j] = move
+                if tail and j > up_hi and run + (steps - j - 1) * h + w_end > limit:
+                    # Reached along the row only: the bound of every node further right is not smaller.
+                    right = j - 1
+                    break
             cost[cur, j] = run
             jb += 1
             if jb == m:
                 jb = 0
         if right >= left:
             cells += right - left + 1
-    return cost[di & 1, last], cells
+        if tail:
+            while left <= right and cost[cur, left] + (steps - left - 1) * h + w_end > limit:
+                left += 1
+            while right >= left and cost[cur, right] + (steps - right - 1) * h + w_end > limit:
+                right -= 1
+            if right < left:
+                return np.inf, cells, True
+        up_lo, up_hi = left, right
+    c = cost[di & 1, last]
+    if cut and not c <= limit:
+        return np.inf, cells, True
+    return c, cells, False
+
+
+@njit(cache=True, nogil=True)
+def _greedy(a, b, hh, i0, di, j0, dj):  # type: ignore[no-untyped-def]
+    """The cost of one path from (i0, j0) to (i0 + di, j0 + dj): at every node the shorter next span (the bound
+    of the first search of the best start; summed in the order the search sums it, so the search finds no more)."""
+    n, m = len(a), len(b)
+    r, j = 0, j0
+    total = 0.0
+    while r < di or j < j0 + dj:
+        if r < di and j < j0 + dj:
+            down = _span(a, b, hh, (i0 + r + 1) % n, j % m)
+            along = _span(a, b, hh, (i0 + r) % n, (j + 1) % m)
+            if down <= along:
+                total += down
+                r += 1
+            else:
+                total += along
+                j += 1
+        elif r < di:
+            r += 1
+            total += _span(a, b, hh, (i0 + r) % n, j % m)
+        else:
+            j += 1
+            total += _span(a, b, hh, (i0 + r) % n, j % m)
+    return total
 
 
 @njit(cache=True, nogil=True)
@@ -242,7 +301,10 @@ def _best_start(a, b, hh, cost, back, first, last, lo, hi, stack, state, best, b
         for r in range(n + 1):
             lo[r] = 0
             hi[r] = m
-        c, cells = _dp_fill(a, b, hh, 0, n, 0, m, lo, hi, cost, back)
+        c, cells, stopped = _dp_fill(a, b, hh, 0, n, 0, m, lo, hi, cost, back, _greedy(a, b, hh, 0, n, 0, m))
+        if stopped:  # not expected: the greedy path is one of the paths searched
+            c, more, _ = _dp_fill(a, b, hh, 0, n, 0, m, lo, hi, cost, back)
+            cells += more
         done += cells
         best[0] = c
         state[1] = 0
@@ -266,12 +328,18 @@ def _best_start(a, b, hh, cost, back, first, last, lo, hi, stack, state, best, b
         for r in range(n + 1):
             lo[r] = first[lo_s, r]
             hi[r] = last[hi_s, r]
-        c, cells = _dp_fill(a, b, hh, 0, n, s, m, lo, hi, cost, back)
+        c, cells, stopped = _dp_fill(a, b, hh, 0, n, s, m, lo, hi, cost, back, best[0])
         done += cells
-        _dp_bounds(back, n, s, m, first[s], last[s])
-        if c < best[0]:
-            best[0] = c
-            state[1] = s
+        if stopped:
+            # s costs more than the best start: its path is not known, the paths of the band bound both halves
+            for r in range(n + 1):
+                first[s, r] = first[lo_s, r]
+                last[s, r] = last[hi_s, r]
+        else:
+            _dp_bounds(back, n, s, m, first[s], last[s])
+            if c < best[0]:
+                best[0] = c
+                state[1] = s
         stack[top, 0], stack[top, 1] = lo_s, s
         stack[top + 1, 0], stack[top + 1, 1] = s, hi_s
         top += 2
@@ -306,7 +374,7 @@ def start_cost(qa: np.ndarray, qb: np.ndarray, hh: float, s: int) -> float:
     cost, back = _buffers(n, m)
     lo = np.zeros(n + 1, dtype=np.int64)
     hi = np.full(n + 1, 2 * m, dtype=np.int64)
-    c, _ = _dp_fill(qa, qb, float(hh), 0, n, int(s), m, lo, hi, cost, back)
+    c, _, _ = _dp_fill(qa, qb, float(hh), 0, n, int(s), m, lo, hi, cost, back)
     return float(c)
 
 
@@ -368,8 +436,10 @@ def strip(
         segments = _tie_segments(ties, n, m)
         if segments is None:
             return None
-    else:
-        segments = [(0, n, best_start(qa, qb, hh, tick)[0], m)]
+    bound = np.inf
+    if not ties:
+        start, bound = best_start(qa, qb, hh, tick)
+        segments = [(0, n, start, m)]
     cost, back = _buffers(n, m)
     tris = np.empty((n + m, 3), dtype=np.int64)
     moves = np.empty(n + m, dtype=np.int8)
@@ -379,7 +449,9 @@ def strip(
             continue
         lo = np.full(di + 1, j0, dtype=np.int64)
         hi = np.full(di + 1, j0 + dj, dtype=np.int64)
-        _dp_fill(qa, qb, hh, i0, di, j0, dj, lo, hi, cost, back)
+        # Without ties the cost of the path is known: only the nodes that can lie on it are visited (the same path).
+        if _dp_fill(qa, qb, hh, i0, di, j0, dj, lo, hi, cost, back, bound)[2]:
+            _dp_fill(qa, qb, hh, i0, di, j0, dj, lo, hi, cost, back)  # not expected
         _dp_trace(back, i0, di, j0, dj, n, m, la, lb, tris, moves, k)
         k += di + dj
     if int(np.count_nonzero(moves[1:] != moves[:-1])) < 3:

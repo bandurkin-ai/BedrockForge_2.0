@@ -110,6 +110,9 @@ export const getSetSnap = (setId: number, query: string, signal?: AbortSignal): 
 /** BFA1 `section` of a wireframe on a section line. */
 export const getWireframeSection = (id: number, query: string, signal?: AbortSignal): Promise<ArrayBuffer> => raw("GET", `/viz/wireframes/${id}/section?${query}`, null, "bytes", signal) as Promise<ArrayBuffer>;
 
+/** «Собрать из контуров»: BFA1 `mesh` of the stitch of the contours of the working copy (ADR 0015 §6). */
+export const stitchPreview = (body: unknown, signal?: AbortSignal): Promise<ArrayBuffer> => raw("POST", "/geometry/stitch/preview", { json: body }, "bytes", signal) as Promise<ArrayBuffer>;
+
 /** The exact triangle a ray (project coordinates) meets first among the wireframes, or null. */
 export async function pickTriangle(body: { origin: number[]; direction: number[]; wireframe_ids: number[]; clip: number[][] | null }, signal?: AbortSignal): Promise<{ corners: [number, number, number][]; name: string } | null> {
   const r = (await raw("POST", "/wireframes/pick", { json: body }, "json", signal)) as { hit: { vertices: [number, number, number][]; name?: string } | null } | null;

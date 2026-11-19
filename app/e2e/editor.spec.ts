@@ -5,7 +5,7 @@
 // three actions: «Отмена» keeps the edit, «Перечитать слой» takes the other version, «Сохранить как новый слой»
 // writes the edit next to it. An empty project: no other objects in the 3D window, a click hits only the layer.
 import { expect, test, type Page } from "@playwright/test";
-import { close, launch, shot, waitFrame } from "./helpers";
+import { close, launch, setWindowSize, shot, waitFrame } from "./helpers";
 
 type EdState = { layerId: number; version: number; dirty: boolean; tool: string; lines: number; message: string | null };
 type Ed = { state(): EdState | null; points(i: number): number[][] | null };
@@ -106,6 +106,7 @@ test("string editor: polygon by coordinates, Ctrl+S, versions and the return, a 
   const started = Date.now();
   const { app, page } = await launch({ BF_E2E: "1" });
   try {
+    await setWindowSize(app, 1024, 640); // as small as on the Windows runner: the panel covers half of the 3D window
     await emptyProject(page, "Редактор стрингов");
     const layerId = await newLayer(page, "Проба");
     await expect(page.getByTestId(`tree-layer-edited-${layerId}`)).toBeVisible();
@@ -136,21 +137,44 @@ test("string editor: polygon by coordinates, Ctrl+S, versions and the return, a 
     const back = (await edState(page))!;
     expect(back).toMatchObject({ lines: 1, version: 4, dirty: false });
     expect(await edPoints(page, 0)).toEqual([[1000, 1000, 0], [1010, 1000, 0], [1010, 1010, 0], [1000, 1010, 0]]);
-    await versions.getByRole("button", { name: "Закрыть" }).click();
+    await page.getByRole("dialog", { name: "Версии: Проба" }).getByRole("button", { name: "Закрыть" }).click();
     await expect(versions).toHaveCount(0);
 
     // ---- a click with the line tool a few pixels off a corner: the point is the vertex itself ----------------------
     expect((await run(page, "scene.view", { view: "top" })).ok).toBe(true);
     expect((await run(page, "scene.fit")).ok).toBe(true);
     await waitFrame(page);
-    await page.screenshot({ path: shot("editor-polygon.png") });
     await page.getByTestId("edit-tool-line").click();
-    const at = (await page.evaluate(() => window.__bfScene!.screen(1010, 1010, 0)))!;
-    expect(at).not.toBeNull();
+    // «Вписать» fills the 3D window with the square; on a small window (the Windows runner) its upper half is under
+    // the editor panel. The wheel zooms about the centre of the window: zoom out until the lower right corner is
+    // on the bare canvas, then hover and click a few pixels off it.
+    const target = () =>
+      page.evaluate(() => {
+        const p = window.__bfScene!.screen(1010, 1000, 0);
+        const r = document.querySelector('[data-testid="scene-host"]')!.getBoundingClientRect();
+        // away from the edges: the hints and the axes over the canvas let the pointer through
+        if (!p || p.x < r.left + 40 || p.x > r.right - 40 || p.y < r.top + 40 || p.y > r.bottom - 40) return null;
+        const bare = [[6, 4], [0, 0], [-12, -12], [16, 16], [6, 22]].every(([dx, dy]) => {
+          const hit = document.elementFromPoint(p.x + dx, p.y + dy);
+          return !!hit && hit.tagName === "CANVAS" && !!hit.closest('[data-testid="scene-host"]');
+        });
+        return bare ? p : null;
+      });
+    const host = (await page.getByTestId("scene-host").boundingBox())!;
+    const panel = (await page.getByTestId("edit-panel").boundingBox())!;
+    const free = { x: host.x + host.width / 2, y: (Math.max(host.y, panel.y + panel.height) + host.y + host.height) / 2 };
+    for (let k = 0; k < 20 && !(await target()); k++) {
+      await page.mouse.move(free.x, free.y);
+      await page.mouse.wheel(0, 240);
+      await waitFrame(page);
+    }
+    const at = (await target())!;
+    expect(at, "the corner of the square is not on the bare canvas").not.toBeNull();
+    await page.screenshot({ path: shot("editor-polygon.png") });
     await page.mouse.move(at.x + 6, at.y + 4, { steps: 4 });
     await expect(page.getByTestId("edit-snap-label")).toContainText("вершина", { timeout: 10_000 });
     await page.mouse.click(at.x + 6, at.y + 4);
-    await expect.poll(() => edPoints(page, -1), { timeout: 10_000 }).toEqual([[1010, 1010, 0]]);
+    await expect.poll(() => edPoints(page, -1), { timeout: 10_000 }).toEqual([[1010, 1000, 0]]);
     await page.screenshot({ path: shot("editor-snap.png") });
 
     // ---- «Завершить» with a line being drawn: the own question, «Не сохранять» leaves version 4 as it is -----------
