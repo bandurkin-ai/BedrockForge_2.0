@@ -16,7 +16,9 @@ import { close, coreApi, launch, saveLines, setWindowSize, shot, waitFrame, wait
 // workers are compiling — reported), the second one is the start of a program started before — its first operation
 // is held to FIRST_S on Linux (Windows: reported; was ~13 s, the kernels of the stitch compiled while it waited).
 const NUMBA = fs.mkdtempSync(path.join(os.tmpdir(), "bf-e2e-numba-"));
-const FIRST_S = 3;
+// 3 s is the budget of the operation itself (bench `ops_first`); here it is measured through the window and the
+// polling of the job on a loaded CI runner (2,6 s seen at load 9,6) — twice the budget, still far below the 13 s it was
+const FIRST_S = 6;
 let primed = false; // the first launch went to its end: its workers filled the cache
 test.afterAll(() => fs.rmSync(NUMBA, { recursive: true, force: true }));
 
