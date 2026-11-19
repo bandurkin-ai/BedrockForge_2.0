@@ -115,15 +115,15 @@ def request(
         points += sum(int(found[i].point_count) for i in layers)
         names += [str(found[i].name) for i in layers]
         for c in asked:
-            row = found[c["layer_id"]]
-            meta = cloud_meta(row.meta)
+            layer = found[c["layer_id"]]
+            meta = cloud_meta(layer.meta)
             if meta is None:
                 raise not_a_cloud()
             of = cs.count_of(meta.get("classes"), c["classes"])
             if not of:
-                raise cs.no_ground(str(row.name), c["classes"])
+                raise cs.no_ground(str(layer.name), c["classes"])
             cloud_points += of
-            names.append(str(row.name))
+            names.append(str(layer.name))
         points += min(cloud_points, cs.MAX_VERTICES)
     if sets:
         rows = conn.execute(
