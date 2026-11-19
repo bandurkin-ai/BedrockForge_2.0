@@ -44,7 +44,7 @@
 - [x] 10.27 [Ф · kernel-engineer] Замеры и бюджеты — файлы: `bench/scenarios/section_series.py`, `bench/budgets.json` (оркестратор), шаг `]` в `series.spec` → `bench/out/series_step.json`; тесты: `bench.run --profile ci --check`; `full` — в отчёт; критерий: ТЗ 8.1.5 — каркас по серии 100 × 500 ≤ 10 с, кеш 100 разрезов × 10 млн ≤ 60 с, пакет разреза 10 млн ≤ 300 мс (из кеша ≤ 100 мс), шаг до готовности данных ≤ 300 / ≤ 100 мс с упреждением
 - [x] 10.28 [Ф · reviewer (opus / high)] Ревью и исправления (1–2 подшага) — файлы: —; тесты: полный набор; критерий: находки исправлены или записаны в «Допущения»
 - [x] 10.29 [Ф · docs-writer] Документация — файлы: `docs/USER_GUIDE.md` («Серии разрезов»), `docs/CHECKLIST.md` (8.1 — № 199–202, ручные проверки Э10 с Т8.1-9), `CHANGELOG.md`; тесты: —; критерий: строки CHECKLIST отмечены; руководство — по-русски, фирменный стиль
-- [ ] 10.30 [Ф · оркестратор + test-runner] Полный набор и PR «Э10. Серии разрезов» — файлы: —; тесты: pytest, ruff, mypy, vitest, typecheck, E2E, `bench --profile ci --check`, лицензии, `--selftest`; критерий: CI `ci` и `windows` зелёные; слияние merge commit
+- [x] 10.30 [Ф · оркестратор + test-runner] Полный набор и PR «Э10. Серии разрезов» — файлы: —; тесты: pytest, ruff, mypy, vitest, typecheck, E2E, `bench --profile ci --check`, лицензии, `--selftest`; критерий: CI `ci` и `windows` зелёные; слияние merge commit
 
 Э9 — завершён, PR #22 слит 2026-11-19
 

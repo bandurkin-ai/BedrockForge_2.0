@@ -200,9 +200,14 @@ test("series: «Новая серия» K = 5, ] [ End Home Ctrl+G, L keeps the 
     for (let i = 0; i < 3; i++) expect((await state(page)).camera.dir[i]).toBeCloseTo(locked.camera.dir[i], 12);
     await page.screenshot({ path: shot("series-locked.png") });
 
-    // ---- the shadow «предыдущий» (the ribbon button), kept in the series ------------------------------------------------
+    // ---- the shadow «предыдущий» (the ribbon button is a switch off / previous; a new series has «предыдущий»), kept in
+    // the series ---------------------------------------------------------------------------------------------------------
+    const shadowOf = async () => (await seriesList(page)).find((r) => r.id === id)!.params.shadow;
+    await expect.poll(shadowOf, { timeout: 15_000 }).toBe("prev");
     await ribbon(page, "Тень");
-    await expect.poll(async () => (await seriesList(page)).find((r) => r.id === id)!.params.shadow, { timeout: 15_000 }).toBe("prev");
+    await expect.poll(shadowOf, { timeout: 15_000 }).toBe("none");
+    await ribbon(page, "Тень");
+    await expect.poll(shadowOf, { timeout: 15_000 }).toBe("prev");
 
     // ---- «Контур на разрезе» on 5025N, 5050N, 5075N by typed coordinates; ] between them, the shadow follows ------------
     await sceneKey(page, "Home");
