@@ -28,6 +28,14 @@ export const commands: Command[] = [
     stage: "Э2",
   },
   { id: "project.import", title: "Импорт проекта", description: "Открыть проект из файла .bfggis.", params: { path: { type: "string" } }, uiOnly: true, stage: "Э2" },
-  { id: "dataset.move", title: "В папку", description: "Переместить объект в папку дерева (путь через «/», пусто — в корень).", params: { kind: { type: "string" }, id: { type: "integer" }, folder: { type: "string" } }, required: ["kind", "id", "folder"], confirm: true, stage: "Э3" },
+  {
+    id: "dataset.move",
+    title: "В папку",
+    description: "Переместить объекты данных в папку дерева и менеджера данных (путь через «/», пусто — в корень): id — один объект, ids — номера через запятую (наборы скважин, каркасы, ЦТМ, файлы линий, облака, растры, блочные модели). Одной транзакцией; объект с неверным номером — ничего не переносится.",
+    params: { kind: { type: "string" }, id: { type: "integer" }, ids: { type: "string" }, folder: { type: "string" } },
+    required: ["folder"],
+    confirm: true,
+    stage: "Э3",
+  },
   { id: "data.refresh", title: "Обновить", description: "Перечитать данные проекта из ядра.", stage: "Э2" },
 ];

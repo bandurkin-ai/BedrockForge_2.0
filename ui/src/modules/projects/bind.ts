@@ -6,6 +6,7 @@ import type { CommandSource } from "../../shell/commands";
 import { askConfirm, askText, showMessage } from "../../shell/dialogs";
 import { openWindow } from "../../shell/windows";
 import { refresh as refreshJobs } from "../jobs/state";
+import { moveToFolder } from "../datamanager/api";
 import { exportObjectsCommand, wantsObjects } from "./exportObjectsModel";
 import { createProject, deleteProject, demoProject, openProject, projectStore, refreshCurrent, updateProject } from "./state";
 
@@ -25,6 +26,19 @@ async function guarded<T>(fn: () => Promise<T>, source: CommandSource = "claude"
     if (source === "user") await showMessage({ title: "Проекты", message: text });
     throw new Error(text);
   }
+}
+
+/** The objects of `dataset.move`: `id`, or `ids` — numbers by commas (the data manager moves several at once). */
+export function moveIds(a: Record<string, unknown>): number[] {
+  const out = typeof a.id === "number" ? [a.id] : [];
+  if (typeof a.ids === "string") {
+    for (const part of a.ids.split(/[,;\s]+/).filter(Boolean)) {
+      const n = Number(part);
+      if (!Number.isInteger(n) || n <= 0) throw new Error(`Номер объекта «${part}» — не целое число больше 0`);
+      out.push(n);
+    }
+  }
+  return [...new Set(out)];
 }
 
 export function openImport(path: string): void {
@@ -128,6 +142,19 @@ export function bindProjects(app: App): void {
       return "Открыто окно импорта";
     },
     needCore,
+  );
+
+  r.bind(
+    "dataset.move",
+    async (a, source) => {
+      const ids = moveIds(a);
+      if (!ids.length) throw new Error("Укажите объект: id или ids (номера через запятую)");
+      const folder = typeof a.folder === "string" ? a.folder : "";
+      const moved = await guarded(() => moveToFolder(ids, folder), source);
+      const where = folder.trim() ? `в папку «${folder.trim().replace(/^\/+|\/+$/g, "")}»` : "в корень";
+      return `Перенесено ${moved} из ${ids.length} ${where}`;
+    },
+    needProject,
   );
 
   r.bind(

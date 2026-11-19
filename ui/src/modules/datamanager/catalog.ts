@@ -227,3 +227,28 @@ export function dropReason(rows: readonly CatalogRow[], ids: readonly number[], 
   if (!moveIds(rows, ids, folder).length) return folder ? `Уже в папке «${folder}»` : "Уже в корне";
   return null;
 }
+
+// ——— the virtual scroll of the table ———
+
+export const ROW_H = 24;
+export const OVERSCAN = 8;
+
+/**
+ * The rows the table draws: those in the viewport and `overscan` above and below — [start, end). 1 000 rows in a
+ * window of 600 px — about 40 in the DOM (Д-20: ≤ 60).
+ */
+export function visibleRange(scrollTop: number, viewHeight: number, total: number, rowH = ROW_H, overscan = OVERSCAN): [number, number] {
+  if (total <= 0) return [0, 0];
+  const top = Math.max(0, Math.floor(Math.max(0, scrollTop) / rowH) - overscan);
+  const shown = Math.ceil(Math.max(rowH, viewHeight) / rowH) + 2 * overscan;
+  const start = Math.min(top, Math.max(0, total - 1));
+  return [start, Math.min(total, start + shown)];
+}
+
+/** The scroll that brings the row `i` into the viewport (the keyboard focus); null — it is there already. */
+export function scrollToRow(i: number, scrollTop: number, viewHeight: number, rowH = ROW_H): number | null {
+  const top = i * rowH;
+  if (top < scrollTop) return top;
+  if (top + rowH > scrollTop + viewHeight) return top + rowH - viewHeight;
+  return null;
+}
