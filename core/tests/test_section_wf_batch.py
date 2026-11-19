@@ -103,10 +103,23 @@ def same(a: gs.Section, b: gs.Section) -> None:
 SERIES = {
     # planes y = LO.y + 10 k: through rows of vertices of the cube, its two faces at k = 0 and k = 10
     "vertical": {"type": "vertical", "p1": [LO[0] - 20.0, LO[1], 0.0], "az": 90, "s0": 0, "s1": 100, "step": 10},
-    "oblique": {"type": "vertical", "p1": [LO[0] - 40.0, LO[1] + 10.0, 0.0], "az": 63, "s0": -20, "s1": 120,
-                "step": 17.5},  # fmt: skip
-    "inclined": {"type": "inclined", "p1": [*(LO + [50.0, 50.0, 60.0])], "az": 117, "phi": 50, "s0": -60,
-                 "s1": 60, "step": 15},  # fmt: skip
+    "oblique": {
+        "type": "vertical",
+        "p1": [LO[0] - 40.0, LO[1] + 10.0, 0.0],
+        "az": 63,
+        "s0": -20,
+        "s1": 120,
+        "step": 17.5,
+    },
+    "inclined": {
+        "type": "inclined",
+        "p1": [*(LO + [50.0, 50.0, 60.0])],
+        "az": 117,
+        "phi": 50,
+        "s0": -60,
+        "s1": 60,
+        "step": 15,
+    },
     "plan": {"type": "plan", "p1": [*(LO + [0.0, 0.0, SIDE])], "s0": 0, "s1": 100, "step": 12.5},
 }
 
