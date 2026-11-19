@@ -143,6 +143,9 @@ export function seriesStatus(cur: CurrentSection | null = currentSection()): str
   return `Серия «${cur.row.name}» · ${what} ${cur.index + 1} из ${cur.steps}${name}`;
 }
 
+/** Why ×2…×5 are off (ADR 0016 decision 7): the plane and the orthographic view of an inclined series would bend. */
+export const VEXAG_INCLINED = "Пока активна наклонная серия, преувеличение — ×1: иначе плоскость разреза искажается";
+
 // ---------------------------------------------------------------- the key
 
 /** Makes a series active at section k (segment `seg`), or the free line again (null); `clip` — set it too. */

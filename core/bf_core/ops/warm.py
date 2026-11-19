@@ -57,6 +57,9 @@ STEPS: dict[str, tuple[str, Params]] = {
     "intersection_lines": ("intersection_lines", lambda d: {"a": d["a"], "b": d["relief"]}),
     "volume_level": ("volume_between", lambda d: {"top": d["relief"], "level": d["level"]}),
     "volume_between": ("volume_between", lambda d: {"top": d["relief"], "bottom": d["flat"]}),
+    # the windows and the automatic links of a series (`sections/link_kernels.py`, ~0.4 s at the first call; the
+    # same kernels serve `POST /section-series/{id}/links` of the process of the API)
+    "stitch_series": ("stitch_series", lambda d: {"series_id": d["series"]}),
 }
 OPS = tuple(STEPS)
 #: steps that are not operations: the checks of a body (`checks`: those of the stitch and of `wireframe.check`),
@@ -99,13 +102,15 @@ def _surface(z: Callable[[Any, Any], Any]) -> tuple[Any, Any]:
 
 def project(root: Path) -> dict[str, Any]:
     """The warm-up project in `root`: two crossing cubes, a cube without a face, two cubes in one wireframe, a
-    relief and a flat surface, three contours with a tie line, a polygon. → its folder and the ids."""
+    relief and a flat surface, three contours with a tie line, a polygon, a series of three plans through the
+    contours. → its folder and the ids."""
     import numpy as np
 
     from bf_core.db import dialect
     from bf_core.formats.lineset import from_lines
     from bf_core.lines import store as ls_store
     from bf_core.projects.project import create_folder
+    from bf_core.sections import store as series_store
     from bf_core.storage.blobs import BlobStore
     from bf_core.wireframes import store as ws
 
@@ -143,6 +148,9 @@ def project(root: Path) -> dict[str, Any]:
             square = np.column_stack([ring * 0.4 + 3.0, np.zeros(4)]) + (X0, Y0, Z0)
             ids["polygon"] = ls_store.put_layer(conn, store, from_lines("Полигон", [square], closed=[True]),
                                                 file_id=file_id)  # fmt: skip
+            plans = {"type": "plan", "p1": [X0, Y0, Z0 + 20.0], "s0": 0.0, "s1": 20.0, "step": 10.0,
+                     "towards": 5.0, "away": 5.0, "contour_layer": ids["rings"]}  # the contours on k = 2, 1, 0
+            ids["series"] = series_store.create(conn, plans, "Планы")["id"]  # fmt: skip
     finally:
         engine.dispose()
     ids["middle"] = [X0, Y0, Z0 + 5.0]

@@ -1,11 +1,12 @@
 /**
  * The floating windows of series of sections, drawn by the window layer of the shell: «Новая серия» and the
- * parameters of a series (`series-edit`), «Менеджер серий» (`series-manager`). Null — not a window of series
+ * parameters of a series (`series-edit`), «Менеджер серий» (`series-manager`), «Перейти к разрезу» (`series-goto`). Null — not a window of series
  * (`Shell.tsx` asks this before the windows of the string editor).
  */
 import type { ReactNode } from "react";
 import type { FloatWin } from "../../shell/windows";
-import { SERIES_MANAGER, SERIES_WINDOW } from "./seriesActions";
+import { GotoWindow } from "./GotoWindow";
+import { SERIES_GOTO, SERIES_MANAGER, SERIES_WINDOW } from "./seriesActions";
 import type { SeriesForm } from "./seriesForm";
 import { SeriesManager } from "./SeriesManager";
 import { SeriesWindow } from "./SeriesWindow";
@@ -19,6 +20,8 @@ export function renderSeriesWindow(w: FloatWin): ReactNode {
     }
     case SERIES_MANAGER:
       return <SeriesManager selected={typeof w.props?.selected === "number" ? w.props.selected : undefined} />;
+    case SERIES_GOTO:
+      return <GotoWindow winId={w.id} />;
     default:
       return null;
   }

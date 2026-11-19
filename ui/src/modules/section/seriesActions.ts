@@ -13,7 +13,8 @@ import { sectionOf } from "./state";
 
 export const SERIES_WINDOW = "series-edit";
 export const SERIES_MANAGER = "series-manager";
-export const SERIES_WINDOWS = [SERIES_WINDOW, SERIES_MANAGER];
+export const SERIES_GOTO = "series-goto";
+export const SERIES_WINDOWS = [SERIES_WINDOW, SERIES_MANAGER, SERIES_GOTO];
 
 function viewport(): [number, number] {
   return typeof window === "undefined" ? [1280, 800] : [window.innerWidth, window.innerHeight];
@@ -38,6 +39,10 @@ const need = (id: number): SeriesRow => {
   if (!row) throw new Error("Серия разрезов не найдена: её удалили. Обновите список серий.");
   return row;
 };
+
+export function openGoto(): string {
+  return openWindow(SERIES_GOTO, "Перейти к разрезу", "compact", undefined, ...viewport());
+}
 
 /** Makes a series active at section k (from 0; a polyline — segment k), clipping on; the table is read for the names. */
 export function activateSeries(id: number, k = 0): string {
