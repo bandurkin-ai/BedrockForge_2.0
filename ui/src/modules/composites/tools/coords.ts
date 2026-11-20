@@ -1,5 +1,5 @@
 /** «Координаты проб» (ТЗ 8.2.1; ADR 0018 §6): a copy of the table with XB, YB, ZB, XM, YM, ZM, XE, YE, ZE by the
- * trajectories — a new table «‹Таблица› — координаты». Stub of 12.25. */
+ * trajectories — a new table «‹Таблица› — координаты»; a hole without a trajectory — empty and a line of the log. */
 import type { ToolSpec } from "../params";
 
 export const coords: ToolSpec = {
@@ -14,3 +14,9 @@ export const coords: ToolSpec = {
   writes: "table",
   note: "Начало, середина и конец каждой пробы по траектории; скважина без траектории — пусто и запись в журнале.",
 };
+
+/** The columns the copy gets, in their order (begin, middle, end). */
+export const COORD_COLUMNS = ["XB", "YB", "ZB", "XM", "YM", "ZM", "XE", "YE", "ZE"] as const;
+
+/** «Пробы — координаты» (ADR 0018 §2). */
+export const coordsName = (table: string | null): string => `${table ?? "‹Таблица›"} — координаты`;

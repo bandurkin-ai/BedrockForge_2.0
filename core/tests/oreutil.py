@@ -217,3 +217,61 @@ def ref_lines(samples: list[tuple[float, float, float]], eps: float = 1e-6) -> l
     if cur:
         lines.append(cur)
     return lines
+
+
+def ref_soft(ls: list[float], gs: list[float], p: OreParams) -> tuple[list[tuple[int, int]], list[tuple[Any, ...]]]:
+    """Step 2 — прирезка по этапам: the ore units [a, b) the stages end with and the log of the decisions
+    (stage, what, a, b[, passed]). Every sum is taken directly over the samples of the fragment."""
+    units = [[ore, a, b, True] for ore, a, b in ref_units(gs, p.cutoff)]  # ore, a, b, changed at the last stage
+    log: list[tuple[Any, ...]] = []
+    stage = 0
+    while True:
+        stage += 1
+        changed = False
+        accepted = set()
+        for i in range(len(units) - 2):
+            up, mid, low = units[i], units[i + 1], units[i + 2]
+            if not up[0] or not (up[3] or mid[3] or low[3]):
+                continue
+            if not le(sums(ls, gs, mid[1], mid[2])[0], p.m_waste_max):
+                log.append((stage, "gap", mid[1], mid[2]))
+                continue
+            m_up, mc_up = sums(ls, gs, up[1], mid[2])
+            m_low, mc_low = sums(ls, gs, mid[1], low[2])
+            ok_up, ok_low = ge(mc_up / m_up, p.cutoff), ge(mc_low / m_low, p.cutoff)
+            log.append((stage, "upper", up[1], mid[2], ok_up))
+            log.append((stage, "lower", mid[1], low[2], ok_low))
+            if ok_up and ok_low:
+                accepted.add(i)
+        joined: list[list[Any]] = []  # ore, a, b, joined at this stage
+        i = 0
+        while i < len(units):
+            j = i
+            while j in accepted:
+                j += 2
+            if j > i:
+                log.append((stage, "joined", units[i][1], units[j][2]))
+                changed = True
+            joined.append([units[i][0], units[i][1], units[j][2], j > i])
+            i = j + 1
+        units = []
+        waits = False
+        k = 0
+        while k < len(joined):
+            ore, a, b, new = joined[k]
+            if ore and not new and not waits and not ref_k(ls, gs, a, b, p):
+                log.append((stage, "demoted", a, b))
+                if units and not units[-1][0]:
+                    a = units.pop()[1]
+                if k + 1 < len(joined) and not joined[k + 1][0]:
+                    k += 1
+                    b = joined[k][2]
+                units.append([False, a, b, True])
+                changed = waits = True
+            else:
+                units.append([ore, a, b, new])
+                if ore:
+                    waits = False
+            k += 1
+        if not changed:
+            return [(a, b) for ore, a, b, _ in units if ore], log
