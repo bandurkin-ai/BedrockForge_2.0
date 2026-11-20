@@ -8,9 +8,10 @@ Revisions: an interval table — `dh_tables.rev`; collars and surveys — `objec
 
 A table made by sample processing (composites, coding, merging, coordinates, ore intervals — `dh_results`, ADR
 0018 решение 24) is read only: its cells and rows are not edited (422 `result_read_only`: «правьте источник и
-перестройте»); columns may be added, renamed and deleted. The hand edit of ore intervals has its own route
-(`composite.ore_intervals_edit`) and does not come here. The check is in `write_row`, `journal` (cells, rows,
-undo), `bump` (rows added or removed; a find and replace — its records of the newest journal group).
+перестройте»); columns may be added, renamed and deleted. The hand edit of ore intervals has its own
+route (`POST /composites/results/{id}/edit`, `composites/ore_edit_job.py`) and does not come here. The check
+is in `write_row`, `journal` (cells, rows, undo), `bump` (rows added or removed; a find and replace — its
+records of the newest journal group).
 """
 
 from __future__ import annotations

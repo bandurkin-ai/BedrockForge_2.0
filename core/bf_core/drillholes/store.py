@@ -253,12 +253,137 @@ class TableData:
 
     name: str
     kind: str  # assay | interval | event
-    holes: Sequence[str]
+    holes: Sequence[str]  # the hole of every row (a list or an object array)
     from_m: Any  # Sequence[float | None] or a float64 array (NaN = missing)
     to_m: Any
     columns: list[ColumnSpec]
     values: list[Sequence[Any]]  # one sequence per column, in `columns` order
     qual: list[Sequence[int]] | None = None  # per number column: 0 plain, 1 below / 2 above limit
+
+
+def _hole_codes(holes: Any) -> tuple[Any, list[str]]:
+    """(the index of the name of every row, the names): millions of rows name some thousand holes."""
+    import numpy as np
+    import pandas as pd
+
+    codes, names = pd.factorize(np.asarray(holes, dtype=object), use_na_sentinel=False)
+    return codes, names.tolist()
+
+
+def encode_vectors(matrix: Any) -> list[bytes | None]:
+    """Rows of a float64 matrix → the vectors of `dh_rows.num`: little-endian, cut after the last value of the
+    row (None — no value at all). One `tobytes` per width met, not per row."""
+    import numpy as np
+
+    n, w = matrix.shape
+    if not w or not n:
+        return [None] * n
+    present = ~np.isnan(matrix)
+    widths = np.where(present.any(axis=1), w - np.argmax(present[:, ::-1], axis=1), 0)
+    out: list[bytes | None] = [None] * n
+    for width in np.unique(widths).tolist():
+        if not width:
+            continue
+        whole = width == w and bool((widths == w).all())  # the usual case: every row as wide as the table
+        rows = None if whole else np.flatnonzero(widths == width)
+        part = matrix if rows is None else matrix[rows, :width]
+        blob = np.ascontiguousarray(part, dtype="<f8").tobytes()
+        step = 8 * int(width)
+        cut: list[bytes | None] = [blob[k : k + step] for k in range(0, len(blob), step)]
+        if rows is None:
+            return cut
+        for r, b in zip(rows.tolist(), cut, strict=True):
+            out[r] = b
+    return out
+
+
+def _matrix(columns: Sequence[Any], start: int, stop: int) -> Any:
+    """Rows [start, stop) of the number columns as one C-ordered float64 matrix."""
+    import numpy as np
+
+    out = np.empty((stop - start, len(columns)), dtype="<f8")
+    for k, col in enumerate(columns):
+        out[:, k] = col[start:stop]
+    return out
+
+
+def _driver_floats(a: Any) -> list[float | None]:
+    """float64 → driver values: NaN → None (SQL NULL)."""
+    import numpy as np
+
+    out: list[float | None] = a.tolist()
+    for i in np.flatnonzero(np.isnan(a)).tolist():
+        out[i] = None
+    return out
+
+
+def _driver_quals(quals: Sequence[Any], start: int, stop: int) -> list[bytes | None]:
+    """`dh_rows.qual` of the rows [start, stop): one byte per number slot, None — all plain."""
+    import numpy as np
+
+    k = len(quals)
+    q = np.empty((stop - start, k), dtype=np.uint8)
+    for j, col in enumerate(quals):
+        q[:, j] = col[start:stop]
+    marked = np.flatnonzero(q.any(axis=1)) if k else np.zeros(0, dtype=np.int64)
+    out: list[bytes | None] = [None] * (stop - start)
+    if len(marked):
+        blob = q[marked].tobytes()
+        for r, at in zip(marked.tolist(), range(0, len(blob), k), strict=True):
+            out[r] = blob[at : at + k]
+    return out
+
+
+def _driver_texts(texts: Sequence[tuple[str, Any]], start: int, stop: int) -> list[str | None]:
+    """`dh_rows.txt` of the rows [start, stop) — `{slot: text}` as JSON, None when every column is empty
+    (None, NaN, ""). Rows are grouped by the values of all the columns and the JSON is written once per group
+    — a table of millions of rows has some dozen rocks and flags; values that are not text (numbers, flags of
+    an attribute column) are written row by row, as given."""
+    import json
+
+    import numpy as np
+    import pandas as pd
+
+    m = stop - start
+    group = np.zeros(m, dtype=np.int64)
+    span = 1  # group < span
+    parts = []
+    for slot, col in texts:
+        try:
+            codes, uniques = pd.factorize(col[start:stop], use_na_sentinel=True)
+        except TypeError:  # values that cannot be grouped (lists)
+            return _texts_by_row(texts, start, stop)
+        labels = uniques.tolist()
+        if any(type(v) is not str for v in labels):  # equal values of other types (1, 1.0, True) merge: not here
+            return _texts_by_row(texts, start, stop)
+        if "" in labels:
+            codes = np.where(codes == labels.index(""), -1, codes)
+        if span > 2**40:  # many columns of many values: renumber the groups met so far
+            group, met = pd.factorize(group)
+            span = len(met)
+        group = group * (len(labels) + 1) + (codes + 1)
+        span *= len(labels) + 1
+        parts.append((slot, codes, labels))
+    of_row, met = pd.factorize(group)
+    first = np.empty(len(met), dtype=np.int64)
+    first[of_row[::-1]] = np.arange(m - 1, -1, -1, dtype=np.int64)  # the first row of every group
+    made = np.empty(len(met), dtype=object)
+    for g, r in enumerate(first.tolist()):
+        txt = {slot: labels[codes[r]] for slot, codes, labels in parts if codes[r] >= 0}
+        made[g] = json.dumps(txt, ensure_ascii=False) if txt else None
+    out: list[str | None] = made[of_row].tolist()
+    return out
+
+
+def _texts_by_row(texts: Sequence[tuple[str, Any]], start: int, stop: int) -> list[str | None]:
+    import json
+
+    cols = [(slot, col[start:stop].tolist()) for slot, col in texts]
+    out: list[str | None] = []
+    for r in range(stop - start):
+        txt = {slot: vals[r] for slot, vals in cols if not (vals[r] is None or vals[r] == "" or vals[r] != vals[r])}
+        out.append(json.dumps(txt, ensure_ascii=False) if txt else None)
+    return out
 
 
 def write_table(
@@ -306,52 +431,40 @@ def write_table(
                 )
             )
         known = hole_ids(conn, set_id)
-        ensure_holes(conn, set_id, data.holes, known)
-    import json
-
+        codes, names = _hole_codes(data.holes)
+        ensure_holes(conn, set_id, names, known)
     import numpy as np
 
     n = len(data.holes)
-    # All number columns as one float64 matrix: a row's vector is a slice of it, cut after its last value.
-    matrix = np.empty((n, len(number_slots)), dtype="<f8")
-    for k, i in enumerate(number_slots):
-        matrix[:, k] = np.asarray(data.values[i], dtype=float)
-    present = ~np.isnan(matrix)
-    widths = (
-        np.where(present.any(axis=1), len(number_slots) - np.argmax(present[:, ::-1], axis=1), 0)
-        if number_slots
-        else np.zeros(n, dtype=int)
-    )
+    hole_of = np.array([known[h] for h in names], dtype=np.int64)[codes] if n else np.zeros(0, dtype=np.int64)
+    del codes, names
     from_m = np.asarray(data.from_m, dtype=float)
     to_m = np.asarray(data.to_m, dtype=float)
-    hole_of = np.array([known[h] for h in data.holes], dtype=np.int64)
-    texts = [(str(slot_of[i]), data.values[i]) for i in text_slots]
-    columns = ("table_id", "hole_id", "from_m", "to_m", "num", "qual", "txt")
+    # columns as arrays once (a list of an import becomes one; an array of a job is used as it is): a portion
+    # takes its rows from them — no matrix of the whole table, no row-by-row work
+    numbers = [np.asarray(data.values[i], dtype=float) for i in number_slots]
+    texts = [(str(slot_of[i]), np.asarray(data.values[i], dtype=object)) for i in text_slots]
+    quals = None if data.qual is None else [np.asarray(q) for q in data.qual[: len(number_slots)]]
+    fixed: dict[str, int | None] = {"table_id": table_id}
+    if quals is None:
+        fixed["qual"] = None
+    if not texts:
+        fixed["txt"] = None
     for start in range(0, n, BATCH):
         tick(start / max(n, 1), f"«{data.name}»: строк {start} из {n}")
         stop = min(n, start + BATCH)
-        batch = []
-        for r in range(start, stop):
-            w = int(widths[r])
-            txt = {slot: vals[r] for slot, vals in texts if vals[r] not in (None, "")} if texts else None
-            qual = None
-            if data.qual is not None:
-                q = [int(data.qual[k][r]) for k in range(len(number_slots))]
-                qual = bytes(q) if any(q) else None
-            f, t = from_m[r], to_m[r]
-            batch.append(
-                (
-                    table_id,
-                    int(hole_of[r]),
-                    None if f != f else float(f),
-                    None if t != t else float(t),
-                    matrix[r, :w].tobytes() if w else None,
-                    qual,
-                    json.dumps(txt, ensure_ascii=False) if txt else None,
-                )
-            )
+        columns: dict[str, list[Any]] = {
+            "hole_id": hole_of[start:stop].tolist(),
+            "from_m": _driver_floats(from_m[start:stop]),
+            "to_m": _driver_floats(to_m[start:stop]),
+            "num": encode_vectors(_matrix(numbers, start, stop)),
+        }
+        if quals is not None:
+            columns["qual"] = _driver_quals(quals, start, stop)
+        if texts:
+            columns["txt"] = _driver_texts(texts, start, stop)
         with dialect.write_tx(engine) as conn:
-            dialect.bulk_insert(conn, dh_rows, columns, batch)
+            dialect.bulk_insert_columns(conn, dh_rows, fixed, columns)
     with dialect.write_tx(engine) as conn:
         conn.execute(sa.update(dh_tables).where(dh_tables.c.id == table_id).values(row_count=n))
         if swap:

@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 from bf_core.composites import ore_job as oj
 from bf_core.db import dialect
-from bf_core.db.schema import dh_columns, dh_holes, dh_results, dh_tables, objects
+from bf_core.db.schema import dh_columns, dh_holes, dh_results, dh_tables
 from bf_core.drillholes.store import ColumnSpec
 from bf_core.jobs.context import JobCancelled
 from bf_core.projects.service import projects_of
@@ -24,7 +24,8 @@ from tests.test_composites_jobs import rows_of, tables
 from tests.test_import_job import API, wait_job
 
 C = f"{API}/composites"
-MODULES = ("bf_core.composites.jobs", "bf_core.composites.jobs_prep", "bf_core.composites.ore_job")
+MODULES = ("bf_core.composites.jobs", "bf_core.composites.jobs_prep", "bf_core.composites.ore_job",
+           "bf_core.composites.ore_protocol_job", "bf_core.composites.ore_conditions_job")  # fmt: skip
 LABEL = "8,0 м @ 2,84 г/т (МС 22,7)"
 _ids = itertools.count(97_001)
 EX = EXAMPLES["T8.2-12"]
@@ -160,7 +161,9 @@ def test_t8_2_12_by_a_set_in_a_worker(gkz) -> None:  # type: ignore[no-untyped-d
     shown = next(x for x in charts(c, set_id) if x["id"] == res["chart_id"])  # the display «Рудные интервалы»
     assert shown["name"] == "Рудные интервалы" and shown["kind"] == "striplog"
     track = shown["settings"]["tracks"][0]
-    assert track["table"] == tid and track["field"] == "CLASS" and track["hidden"] == ["frame"]
+    # the table by its name key, as every display (`viz/keys.table_by_key`): «Рудные интервалы» loads in 3D
+    assert track["table"] == dialect.name_key("Рудные интервалы") and track["field"] == "CLASS"
+    assert track["hidden"] == ["frame"]
     assert track["catColors"]["ore"] == "#f46a1a" and track["label"]["template"] == "{LABEL}"
     assert shown["settings"]["allHoles"] is True
 
@@ -193,7 +196,7 @@ def test_repeat_overwrites_the_columns_and_the_display_follows(gkz) -> None:  # 
         depth = row["from"]
         assert ore_id[i] == (1 if 3 <= depth < 14 else 2 if 17 <= depth < 22 else 3 if 28 <= depth < 33 else None)
     shown = [x for x in charts(c, set_id) if x["name"].startswith("Рудные интервалы")]
-    assert len(shown) == 1 and shown[0]["settings"]["tracks"][0]["table"] == str(two["table_id"])
+    assert len(shown) == 1 and shown[0]["settings"]["tracks"][0]["table"] == dialect.name_key(two["name"])
     other = ore_here(project, {"body": body(set_id, table, name="Рудные · вариант")})  # another name: its display
     assert other["chart_id"] != one["chart_id"] and other["name"] == "Рудные · вариант"
 
@@ -203,9 +206,9 @@ def test_cancel_leaves_nothing(gkz) -> None:  # type: ignore[no-untyped-def]
     before = sorted(tables(c, set_id))
     seen = [0]
     done = ore_here(project, {"body": body(set_id, table)}, seen=seen)
-    assert c.delete(f"{C}/results/{done['result_id']}").status_code == 200
-    with dialect.write_tx(project.engine) as conn:  # the display of the deleted result goes too (here: by hand)
-        conn.execute(sa.delete(objects).where(objects.c.id == done["chart_id"]))
+    r = c.delete(f"{C}/results/{done['result_id']}")  # the display of the deleted result goes with it
+    assert r.status_code == 200 and r.json()["deleted_charts"] == [done["chart_id"]], r.text
+    assert charts(c, set_id) == []
     assert seen[0] >= 4
     for at in range(1, seen[0] + 1):
         with pytest.raises(JobCancelled):
@@ -306,3 +309,79 @@ def test_algo_is_that_of_the_kernel() -> None:
     from bf_core.composites.ore_intervals import ALGO
 
     assert oj.ALGO == f"ore-{ALGO}"  # a change of the rules makes the results «устарел» and closes their protocol
+
+
+# --- «Анализ кондиций» (12.23) -------------------------------------------------------------------------------
+
+
+def cond_body(set_id: int, table: str, **kw: Any) -> dict[str, Any]:
+    out = {k: v for k, v in body(set_id, table).items() if k not in ("cutoff", "m_min", "m_waste_max")}
+    return {**out, "cutoffs": [0.5, 1.0, 2.0], "m_min": [2.0, 3.0], "m_waste_max": [3.0, 5.0], **kw}
+
+
+def test_conditions_3_by_2_by_2_is_12_rows(gkz, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.composites import ore_conditions_job as ocj
+    from bf_core.composites.ore_protocol_job import parse_export, run_export
+
+    c, project, set_id, table, _holes = gkz
+    with dialect.read_tx(project.engine) as conn:
+        params, _t = ocj.parse_conditions(conn, cond_body(set_id, table))
+    out = ocj.run_conditions(project.engine, project.folder, params, job_id=next(_ids), tick=lambda *_a: None)
+    v = out["variants"]
+    assert out["count"] == len(v) == 12 and out["unit"] == "г/т"
+    assert [(x["m_min"], x["m_waste_max"], x["cutoff"]) for x in v][:3] == [(2.0, 3.0, 0.5), (2.0, 3.0, 1.0),
+                                                                            (2.0, 3.0, 2.0)]  # fmt: skip
+    one = next(x for x in v if (x["cutoff"], x["m_min"], x["m_waste_max"]) == (1.0, 3.0, 5.0))
+    done = ore_here(project, {"body": body(set_id, table)})  # the variant is the result of the same parameters
+    ore = {x["cls"]: x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"][0]["report"]["summary"]
+           ["classes"]}["ore"]  # fmt: skip
+    assert one["count"] == ore["count"] == 9 and one["m_sum"] == ore["m"] and one["mc_sum"] == ore["mc"]
+    assert one["mc_min"] == 3.0 and one["c_mean"] == ore["c"]
+    recs = [x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "conditions"]
+    assert len(recs) == 1 and recs[0]["table_id"] is None and recs[0]["stale"] is False
+    assert recs[0]["params"]["table"] == table and recs[0]["params"]["field"] == "AU"
+    assert recs[0]["name"] == "Анализ кондиций · AU" and len(recs[0]["report"]["variants"]) == 12
+    assert done["result_id"] != recs[0]["id"]
+
+    with dialect.read_tx(project.engine) as conn:  # the table of the variants to XLSX: «Кондиции»
+        rec = dict(conn.execute(sa.select(dh_results).where(dh_results.c.id == recs[0]["id"])).mappings().one())
+        ex, _t = parse_export(conn, rec, {"format": "xlsx", "path": str(tmp_path / "кондиции.xlsx")})
+    run_export(project.engine, project.folder, ex, job_id=next(_ids), tick=lambda *_a: None)
+    import openpyxl
+
+    wb = openpyxl.load_workbook(tmp_path / "кондиции.xlsx")
+    assert wb.sheetnames == ["Параметры", "Кондиции"]
+    rows = list(wb["Кондиции"].iter_rows(values_only=True))
+    assert len(rows) == 13 and rows[0][2] == "Сб, г/т"
+    hit = next(r for r in rows[1:] if r[:3] == (3, 5, 1))
+    assert hit[5] == 9 and hit[6] == ore["m"]
+
+
+def test_conditions_job_exclude_and_refusals(gkz) -> None:  # type: ignore[no-untyped-def]
+    c, project, set_id, table, _holes = gkz
+    r = c.post(f"{C}/conditions", json=cond_body(set_id, table, cutoffs=[0.1 * i for i in range(1, 21)],
+                                                 m_min=[1, 2, 3, 4, 5, 6], m_waste_max=[1, 2]))  # fmt: skip
+    assert r.status_code == 422 and r.json()["code"] == "ore_bad_param" and r.json()["param"] == "cutoffs", r.text
+    assert "240" in r.json()["message"]
+    for over, code, param in [({"m_min": [2, -1]}, "ore_bad_param", "m_min"), ({"cutoffs": []}, "ore_bad_param",
+                              "cutoffs"), ({"exclude": {"field": "CU"}}, "bad_param", "exclude"),
+                              ({"exclude": {"field": "НЕТ", "values": ["1"]}}, "field_not_found", None)]:  # fmt: skip
+        r = c.post(f"{C}/conditions", json=cond_body(set_id, table, **over))
+        assert r.status_code == 422 and r.json()["code"] == code, (over, r.text)
+        if param:
+            assert r.json()["param"] == param, (over, r.text)
+    req = cond_body(set_id, table, exclude={"field": "CU", "values": ["0"]})  # CU 0 at every 7th sample
+    r = c.post(f"{C}/conditions", json=req)
+    assert r.status_code == 200, r.text
+    job = wait_job(c, r.json()["source"], r.json()["id"], timeout=240)
+    assert job["status"] == "done", job
+    res = job["result"]
+    assert len(res["variants"]) == 12 and ["composites.changed", {"set_id": set_id}] in res["events"]
+    rec = next(x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "conditions")
+    assert rec["report"]["excluded"] == 3 * len([i for i in range(N) if i % 7 == 0])
+    assert rec["params"]["exclude"] == {"field": "CU", "values": ["0"]}
+    r = c.post(f"{C}/results/{rec['id']}/rebuild", json={})  # again: the record replaced
+    assert r.status_code == 200, r.text
+    assert wait_job(c, r.json()["source"], r.json()["id"], timeout=240)["status"] == "done"
+    recs = [x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "conditions"]
+    assert len(recs) == 1 and recs[0]["id"] != rec["id"]

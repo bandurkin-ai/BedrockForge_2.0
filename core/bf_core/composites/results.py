@@ -339,7 +339,8 @@ def _not_found() -> ApiError:
 
 def delete_result(conn: sa.Connection, result_id: int) -> dict[str, Any]:
     """Deletes a result: its table (op of TABLE_OPS), its columns in place (hidden, journal `column`), the
-    record. Returns {"set_id", "deleted_tables": [ids], "changed": [{"table", "rev"}]} for events and caches."""
+    record; of «Рудные интервалы» — also its display. Returns {"set_id", "deleted_tables": [ids], "changed":
+    [{"table", "rev"}], "deleted_charts": [ids]} for events and caches."""
     r = conn.execute(sa.select(dh_results).where(dh_results.c.id == result_id)).mappings().first()
     if r is None:
         raise _not_found()
@@ -371,12 +372,26 @@ def delete_result(conn: sa.Connection, result_id: int) -> dict[str, Any]:
         before, after, key = bump_table(conn, set_id, int(tid))
         shift_marks(conn, set_id, key, before, after, [c.name for c in cols])
         changed.append({"table": str(tid), "rev": after[1]})
+    charts: list[int] = []
     if r["op"] in TABLE_OPS and r["table_id"] is not None:
         tid = int(r["table_id"])
-        state = conn.execute(sa.select(dh_tables.c.state).where(dh_tables.c.id == tid)).scalar()
-        if state == "building":
+        t = conn.execute(sa.select(dh_tables.c.state, dh_tables.c.name_key).where(dh_tables.c.id == tid)).first()
+        if t is not None and t.state == "building":
             raise ApiError(409, "result_busy", "Результат сейчас пересчитывается.", "Дождитесь окончания задания.")
+        if r["op"] == "ore" and t is not None:  # its display «Рудные интервалы» (`ore_job.display_settings`)
+            charts = _drop_displays(conn, set_id, {"op": "ore", "table": t.name_key})
         conn.execute(sa.delete(dh_tables).where(dh_tables.c.id == tid))  # the record goes with it (CASCADE)
         deleted.append(tid)
     conn.execute(sa.delete(dh_results).where(dh_results.c.id == result_id))
-    return {"set_id": set_id, "deleted_tables": deleted, "changed": changed}
+    return {"set_id": set_id, "deleted_tables": deleted, "changed": changed, "deleted_charts": charts}
+
+
+def _drop_displays(conn: sa.Connection, set_id: int, origin: dict[str, Any]) -> list[int]:
+    """The saved striplogs of the set made for this result table (`settings.origin`); their ids."""
+    from bf_core.charts import service as charts
+
+    shown = charts.list_charts(conn, set_id, "striplog")
+    ids = [int(c["id"]) for c in shown if (c["settings"] or {}).get("origin") == origin]
+    for i in ids:
+        charts.delete(conn, i)
+    return ids

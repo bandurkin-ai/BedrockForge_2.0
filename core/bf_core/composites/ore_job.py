@@ -468,13 +468,14 @@ def sample_columns(made: OreMade) -> list[tuple[ColumnSpec, np.ndarray]]:
 # --- the display «Рудные интервалы» --------------------------------------------------------------------------
 
 
-def display_settings(table_id: int, name: str) -> dict[str, Any]:
-    """The striplog of the result (`ui/src/charts/striplog/model.ts`): every hole of the set, a tube coloured by
-    CLASS (`frame` hidden by default, решение 20) with the label LABEL."""
+def display_settings(name: str) -> dict[str, Any]:
+    """The striplog of the result table `name` (`ui/src/charts/striplog/model.ts`): every hole of the set, a tube
+    coloured by CLASS (`frame` hidden by default, решение 20) with the label LABEL. The track names its table by
+    `dh_tables.name_key`, as every display does (`viz/keys.table_by_key`): it follows a replaced table."""
     from .ore_set import CLASS_NAMES
 
     label = {"on": True, "template": "{LABEL}", "decimals": None, "size": 12, "color": "#f3f6fb", "place": "outside"}
-    track = {"id": "ore-class", "table": str(table_id), "field": "CLASS", "type": "color", "width": 110,
+    track = {"id": "ore-class", "table": dialect.name_key(name), "field": "CLASS", "type": "color", "width": 110,
              "color": CLASS_COLORS["ore"], "min": "", "max": "", "log": False, "boundaries": True, "form": "tube",
              "catColors": dict(CLASS_COLORS), "catOrder": list(CLASS_NAMES), "hidden": ["frame"],
              "label": label}  # fmt: skip
@@ -483,13 +484,13 @@ def display_settings(table_id: int, name: str) -> dict[str, Any]:
             "origin": {"op": OP, "table": dialect.name_key(name)}}  # fmt: skip
 
 
-def put_display(conn: sa.Connection, set_id: int, table_id: int, name: str) -> int:
-    """The display of the result table `name`: the one made for a table of this name is pointed at `table_id`,
+def put_display(conn: sa.Connection, set_id: int, name: str) -> int:
+    """The display of the result table `name`: the one made for a table of this name gets its settings again,
     else a new one (named as the table; a name taken by another display — « (2)»). Returns its id."""
     from bf_core.charts import service as charts
     from bf_core.drillholes.edit import author
 
-    settings = display_settings(table_id, name)
+    settings = display_settings(name)
     shown = charts.list_charts(conn, set_id, "striplog")
     mine = next((c for c in shown if (c["settings"] or {}).get("origin") == settings["origin"]), None)
     if mine is not None:
@@ -564,7 +565,7 @@ def run_ore(
     shown: dict[str, int] = {}
 
     def after(conn: sa.Connection, res: dict[str, Any]) -> None:
-        shown["chart"] = put_display(conn, spec.set_id, int(res["table_id"]), str(res["name"]))
+        shown["chart"] = put_display(conn, spec.set_id, str(res["name"]))
 
     with sink.guarded(engine, job_id):
         tid = sink.build_table(engine, spec.set_id, out, job_id=job_id,

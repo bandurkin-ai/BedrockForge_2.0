@@ -5,9 +5,10 @@ write transactions, job claim, JSON access. SQLite (desktop project / instance) 
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from itertools import chain, repeat
 from typing import Any
 
 import sqlalchemy as sa
@@ -255,6 +256,55 @@ def bulk_insert(conn: Connection, table: sa.Table, columns: Sequence[str], rows:
     placeholder = "?" if conn.dialect.name == "sqlite" else "%s"
     sql = f"INSERT INTO {table.name} ({', '.join(columns)}) VALUES ({', '.join([placeholder] * len(columns))})"
     conn.exec_driver_sql(sql, list(map(tuple, rows)))
+
+
+#: Bound values of one SQLite statement of many rows: under the limit of every build (999 before 3.32), and
+#: where the statement is fastest (some hundred rows; longer ones gain nothing).
+SQLITE_ROW_VARS = 900
+
+
+def bulk_insert_columns(
+    conn: Connection, table: sa.Table, fixed: Mapping[str, int | None], columns: Mapping[str, Sequence[Any]]
+) -> None:
+    """Many rows given by columns (interval tables of millions of rows, ADR 0003 §4): `columns` — name → the
+    values of every row (lists of equal length, in driver form as for `bulk_insert`), `fixed` — columns with
+    one value in all the rows (an integer or NULL).
+
+    SQLite: statements of many rows each (`VALUES (…), (…), …`) on the driver cursor, inside the transaction
+    of `conn` — one statement run for some hundred rows instead of one per row, the fixed values as literals;
+    a failure comes as the SQLAlchemy error the same statement would give. PostgreSQL: `bulk_insert`."""
+    lists = list(columns.values())
+    n = len(lists[0]) if lists else 0
+    if not n:
+        return
+    names = [*fixed, *columns]
+    if conn.dialect.name != "sqlite":
+        consts = [repeat(v, n) for v in fixed.values()]
+        bulk_insert(conn, table, names, list(zip(*consts, *lists, strict=True)))
+        return
+    literals = ["NULL" if v is None else str(int(v)) for v in fixed.values()]
+    row = f"({', '.join([*literals, *['?'] * len(lists)])})"
+    head = f"INSERT INTO {table.name} ({', '.join(names)}) VALUES "
+    width = len(lists)
+    per = max(1, SQLITE_ROW_VARS // width)
+    flat = list(chain.from_iterable(zip(*lists, strict=True)))
+    full = n - n % per
+    sql = head + ", ".join([row] * per)
+    step = per * width
+    cur = conn.connection.driver_connection.cursor()  # type: ignore[union-attr]
+    try:
+        for k in range(0, full * width, step):
+            cur.execute(sql, flat[k : k + step])
+        if full < n:
+            sql = head + ", ".join([row] * (n - full))
+            cur.execute(sql, flat[full * width :])
+    except Exception as exc:
+        dbapi = conn.dialect.dbapi
+        if dbapi is None or not isinstance(exc, dbapi.Error):
+            raise
+        raise sa.exc.DBAPIError.instance(head + row, None, exc, dbapi.Error, hide_parameters=True) from exc
+    finally:
+        cur.close()
 
 
 def bulk_update(

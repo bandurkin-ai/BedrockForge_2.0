@@ -21,9 +21,8 @@ from .drillholes import SET_NAME
 
 COMPOSITES_NAME = "Композиты 2 м"
 ORE_NAME = "Рудные интервалы"
-#: job ids of the results (no job row: the demo makes them in this process)
-_JOB_COMPOSITES = 0
-_JOB_ORE = 0
+#: the job id of the tables being built (no job row: the demo makes them in this process)
+_JOB = 0
 
 
 def composites_body(set_id: int, table: str) -> dict[str, Any]:
@@ -44,8 +43,9 @@ def _samples_table(project: Project) -> tuple[int, str] | None:
         ).scalar()
         if set_id is None:
             return None
+        key = dialect.name_key("Пробы")
         table = conn.execute(
-            sa.select(dh_tables.c.id).where(dh_tables.c.set_id == set_id, dh_tables.c.name_key == dialect.name_key("Пробы"))
+            sa.select(dh_tables.c.id).where(dh_tables.c.set_id == set_id, dh_tables.c.name_key == key)
         ).scalar()
     return None if table is None else (int(set_id), str(table))
 
@@ -63,5 +63,5 @@ def add_samples(project: Project) -> None:
     def tick(_f: float | None = None, _m: str | None = None) -> None:
         return None
 
-    cj.run(project.engine, project.folder, {"body": composites_body(set_id, table)}, job_id=_JOB_COMPOSITES, tick=tick)
-    oj.run_ore(project.engine, project.folder, {"body": ore_body(set_id, table)}, job_id=_JOB_ORE, tick=tick)
+    cj.run(project.engine, project.folder, {"body": composites_body(set_id, table)}, job_id=_JOB, tick=tick)
+    oj.run_ore(project.engine, project.folder, {"body": ore_body(set_id, table)}, job_id=_JOB, tick=tick)

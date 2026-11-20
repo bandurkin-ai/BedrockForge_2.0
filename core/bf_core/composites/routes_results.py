@@ -2,7 +2,7 @@
 
 `composites/router.py` includes this router under the prefix `/composites`. Events: `composites.changed
 {set_id}` after a deletion, `drillholes.changed {set_id, table, rev}` for every table that lost columns or
-was deleted (rev 0).
+was deleted (rev 0), `objects.changed {kind: "chart", set_id, id, deleted}` for the display of an ore result.
 """
 
 from __future__ import annotations
@@ -52,5 +52,7 @@ def delete_result(svc: Svc, request: Request, result_id: int) -> dict[str, Any]:
         events.publish("drillholes.changed", {"set_id": set_id, "table": t["table"], "rev": t["rev"]})
     for tid in out["deleted_tables"]:
         events.publish("drillholes.changed", {"set_id": set_id, "table": str(tid), "rev": 0})
+    for cid in out["deleted_charts"]:  # the display «Рудные интервалы» of an ore result
+        events.publish("objects.changed", {"kind": "chart", "set_id": set_id, "id": cid, "deleted": True})
     publish_changed(request, set_id)
     return {"deleted": result_id, **out}

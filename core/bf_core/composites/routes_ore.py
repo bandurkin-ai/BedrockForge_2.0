@@ -16,10 +16,18 @@ its preview, the protocol of a hole, «Перестроить».
     (`OreEvents.records` without `hole`; `row0`, `row1` — samples of the hole, 0-based) and the form И1, сл. 17
     (`rows`, `columns`, `cells`). `set_summary` — the summary of the whole table when it has ≤ 200 000 rows
     (cached by revisions and parameters), else null; the protocol of a result has null. Nothing is written.
-    The protocol only of a fresh result of the current `algo`: otherwise 409 `stale` (решение 19).
+    The protocol only of a fresh result of the current `algo`: otherwise 409 `stale` (решение 19). The manual
+    edits of the hole (`report.edits`) are applied: the rows (MANUAL), the samples and the protocol after them.
+  * `POST /results/{id}/protocol` {format, path, holes?, overwrite?} → {source, id} of `composite.ore_protocol`
+    (`ore_protocol_job`): XLSX / CSV; 409 `stale`, `files_exist {files}`.
+  * `POST /results/{id}/edit` {hole, action, from, to} → {rows, violations, report {edits}, hole}: the hole in
+    one transaction (`ore_edit_job`; решение 24); 422 `ore_edit_refused`, 409 `stale`.
+  * `POST /conditions` {…, cutoffs[], m_min[], m_waste_max[], exclude?} → {source, id} of
+    `composite.conditions_analysis` (`ore_conditions_job`): a result without a table, `report.variants`.
   * `POST /results/{id}/rebuild` {drop_lost?} of an ore result: the job with its params on the current samples
-    (found by name), the table replaced; the same hash — no computation; 409 `dependents_lost` as
-    `routes_run.rebuild`. Other results — `routes_prep.rebuild`.
+    (found by name), the table replaced; the same hash — no computation, unless the result has manual edits
+    (they are lost: computed again); 409 `dependents_lost` as `routes_run.rebuild`. «Анализ кондиций» — its job
+    again. Other results — `routes_prep.rebuild`.
 
 Registered before `routes_prep` and `routes_run`: their `/results/{id}/rebuild` and `/{op}/preview` take any op.
 """
@@ -32,7 +40,7 @@ from collections import OrderedDict
 from typing import Annotated, Any
 
 import sqlalchemy as sa
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query, Request
 
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
@@ -126,20 +134,23 @@ def _whole(project: Any, spec: Any) -> dict[str, Any] | None:
     return out
 
 
-def _protocol(made: Any, unit: str | None) -> dict[str, Any]:
+def _protocol(made: Any, unit: str | None, edits: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """The protocol of the hole (`ore_protocol.hole_protocol`, 12.15): `events` — the records of the kernel without
     `hole` (`row0`, `row1` — its samples, 0-based; `n`, `mark`, `text`), and the form И1, сл. 17 — `rows`,
-    `columns`, `cells`; `algo`, `mode`, `stats`."""
+    `columns`, `cells`; `algo`, `mode`, `stats`; with manual edits — also `edits`, `violations` (12.17)."""
     from .ore_protocol import hole_protocol
 
-    hp = hole_protocol(made.lines, made.kernel, 0, unit=unit or "").as_dict()
+    hp = hole_protocol(made.lines, made.kernel, 0, unit=unit or "", edits=edits or None).as_dict()
     events = [{k: v for k, v in e.items() if k != "hole"} for e in hp["events"]]
     return {**{k: v for k, v in hp.items() if k not in ("hole", "unit", "intervals")}, "events": events}
 
 
-def _form(project: Any, spec: Any, hole_id: int, hole: str) -> tuple[dict[str, Any], Any]:
-    """The answer of the preview and of the protocol for one hole (without `set_summary`)."""
+def _form(project: Any, spec: Any, hole_id: int, hole: str,
+          edits: list[dict[str, Any]] | None = None) -> tuple[dict[str, Any], Any]:  # fmt: skip
+    """The answer of the preview and of the protocol for one hole (without `set_summary`); `edits` — the manual
+    edits of the hole stored in the result (`report.edits`): the rows, the samples and the protocol after them."""
     from . import jobs_coding as jc
+    from . import ore_edit_job as oe
     from . import ore_job as oj
     from .jobs_prep import clean
     from .routes_run import _nulls
@@ -147,8 +158,9 @@ def _form(project: Any, spec: Any, hole_id: int, hole: str) -> tuple[dict[str, A
     src, dom = oj.read_ore(project.engine, spec, holes=[hole_id])
     with jc.reading(project):
         made = oj.compute_ore(spec, src, dom, _st(project, spec))
-    out = oj.out_table(spec, src, made, None)
-    values = {c.name: _nulls(v) for c, v in zip(out.columns, out.values, strict=True) if c.name not in ("X", "Y", "Z")}
+    made, manual, _he = oe.with_edits(spec, src, made, edits if src.rows else None)
+    out = oe.hole_rows(spec, src, made, manual, None)
+    values = oe.values_of(out)["values"]
     samples = {spec.field: _nulls(src.numbers[spec.field])}
     samples.update({c.name: _nulls(v) for c, v in oj.sample_columns(made)})
     notes = list(made.journal)
@@ -159,7 +171,7 @@ def _form(project: Any, spec: Any, hole_id: int, hole: str) -> tuple[dict[str, A
         "unit": spec.unit,
         "samples": {"from": _nulls(src.from_m), "to": _nulls(src.to_m), "values": samples},
         "result": {"from": _nulls(out.from_m), "to": _nulls(out.to_m), "values": values},
-        "protocol": clean(_protocol(made, spec.unit)),
+        "protocol": clean(_protocol(made, spec.unit, edits if src.rows else None)),
         "summary": clean(made.res.summary),
         "set_summary": None,
         "notes": notes,
@@ -204,36 +216,92 @@ def _record(conn: Any, result_id: int) -> dict[str, Any] | None:
     return None if rec is None else dict(rec)
 
 
+def record_of(conn: Any, result_id: int) -> dict[str, Any]:
+    """The record of a result; 404 `result_not_found`."""
+    rec = _record(conn, result_id)
+    if rec is None:
+        raise ApiError(404, "result_not_found", "Результат обработки не найден.", "Обновите дерево проекта.")
+    return rec
+
+
+def stale_reason(conn: Any, rec: dict[str, Any], algo: str) -> str | None:
+    """Why a result is out of date for its protocol, export or edit (решение 19); None — fresh."""
+    from . import results
+
+    reason = results._reason(conn, results._state(conn, int(rec["set_id"])), rec["inputs"] or {})
+    if reason is None and rec["algo"] != algo:
+        reason = "изменились правила выделения интервалов в этой версии программы"
+    return reason
+
+
+def fresh_spec(conn: Any, rec: dict[str, Any], what: str = "откройте протокол") -> Any:
+    """`OreSpec` of a fresh ore result on its current tables: 422 `no_protocol` — not an ore result, 409 `stale`
+    — out of date or of another `algo` (решение 19)."""
+    from . import ore_job as oj
+
+    if rec["op"] != oj.OP:
+        raise ApiError(422, "no_protocol", "У этого результата нет протокола оконтуривания.",
+                       "Протокол есть у результата «Рудные интервалы».")  # fmt: skip
+    reason = stale_reason(conn, rec, oj.ALGO)
+    if reason is not None:
+        raise ApiError(409, "stale", f"Результат устарел: {reason}.", f"Перестройте результат, затем {what}.")
+    params = _current_params(conn, rec)
+    params.pop("_rows")
+    return oj.parse_ore(conn, {k: v for k, v in params.items() if k != "name"})
+
+
 @router.get("/results/{result_id}/protocol")
 def protocol(svc: Svc, result_id: int, hole: Annotated[str, Query(min_length=1)]) -> dict[str, Any]:
-    from . import ore_job as oj
-    from . import results
+    from . import ore_edit_job as oe
 
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
-        rec = _record(conn, result_id)
-        if rec is None:
-            raise ApiError(404, "result_not_found", "Результат обработки не найден.", "Обновите дерево проекта.")
-        if rec["op"] != oj.OP:
-            raise ApiError(422, "no_protocol", "У этого результата нет протокола оконтуривания.",
-                           "Протокол есть у результата «Рудные интервалы».")  # fmt: skip
-        set_id = int(rec["set_id"])
-        reason = results._reason(conn, results._state(conn, set_id), rec["inputs"] or {})
-        if reason is None and rec["algo"] != oj.ALGO:
-            reason = "изменились правила выделения интервалов в этой версии программы"
-        if reason is not None:
-            hint = "Перестройте результат, затем откройте протокол."
-            raise ApiError(409, "stale", f"Результат устарел: {reason}.", hint)
-        params = _current_params(conn, rec)
-        params.pop("_rows")
-        spec = oj.parse_ore(conn, {k: v for k, v in params.items() if k != "name"})
+        rec = record_of(conn, result_id)
+        spec = fresh_spec(conn, rec)
         hole_id = conn.execute(
-            sa.select(dh_holes.c.id).where(dh_holes.c.set_id == set_id, dh_holes.c.name == hole)
+            sa.select(dh_holes.c.id).where(dh_holes.c.set_id == spec.set_id, dh_holes.c.name == hole)
         ).scalar()
         if hole_id is None:
             raise ApiError(404, "hole_not_found", f"Скважины «{hole}» нет в наборе.", "Выберите скважину из списка.")
-    answer, _made = _form(project, spec, int(hole_id), hole)
+    answer, _made = _form(project, spec, int(hole_id), hole, oe.hole_edits(rec["report"], hole))
     return answer
+
+
+@router.post("/results/{result_id}/protocol")
+def protocol_export(svc: Svc, s: Sched, result_id: int, body: Payload) -> dict[str, Any]:
+    """The protocol (or the variants of «Анализ кондиций») to XLSX / CSV: the job `composite.ore_protocol`."""
+    from . import ore_protocol_job as pj
+
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        params, title = pj.parse_export(conn, record_of(conn, result_id), _body(body))
+    key, job_id = s.submit(pj.KIND, params, title=title)
+    return {"source": key, "id": job_id}
+
+
+@router.post("/results/{result_id}/edit")
+def edit(svc: Svc, request: Request, result_id: int, body: Payload) -> dict[str, Any]:
+    """Manual edit of the intervals of one hole (`ore_edit_job`; решение 24)."""
+    from . import ore_edit_job as oe
+
+    project = svc.require_current(writable=True)
+    out = oe.edit_result(project, result_id, _body(body))
+    events = request.app.state.core.events
+    for name, payload in out.pop("events"):
+        events.publish(name, payload)
+    return out
+
+
+@router.post("/conditions")
+def conditions(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
+    """«Анализ кондиций»: the job `composite.conditions_analysis` (a result without a table)."""
+    from . import ore_conditions_job as cj
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        params, title = cj.parse_conditions(conn, _body(body))
+    key, job_id = s.submit(cj.KIND, params, title=title)
+    return {"source": key, "id": job_id}
 
 
 # --- «Перестроить» -----------------------------------------------------------------------------------------
@@ -250,6 +318,14 @@ def rebuild(
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
         rec = _record(conn, result_id)
+        if rec is not None and rec["op"] == "conditions":
+            from . import ore_conditions_job as ocj
+
+            again = _current_params(conn, rec)
+            again.pop("_rows")
+            params, title = ocj.parse_conditions(conn, {**again, "name": rec["name"]})
+            key, job_id = s.submit(ocj.KIND, params, title=f"Перестроить: {rec['name']}")
+            return {"source": key, "id": job_id}
         if rec is None or rec["op"] != oj.OP:
             return routes_prep.rebuild(svc, s, result_id, body)
         table = conn.execute(
@@ -270,5 +346,7 @@ def rebuild(
             )
     rows = again.pop("_rows")
     params = {"body": {**again, "name": table.name, "replace": True}, "rows": rows, "rebuild": result_id}
+    if (rec["report"] or {}).get("edits"):  # computed again from the samples: the manual edits are lost
+        params.pop("rebuild")
     key, job_id = s.submit(oj.KIND, params, title=f"Перестроить: {table.name}")
     return {"source": key, "id": job_id}

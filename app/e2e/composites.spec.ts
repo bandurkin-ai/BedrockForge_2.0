@@ -42,7 +42,8 @@ const column = (got: Rows, name: string) => {
   return key === undefined ? null : got.rows.map((r) => r[key]);
 };
 
-const toolWindow = (page: Page, testId: string) => page.getByRole("dialog").filter({ has: page.getByTestId(testId) });
+/** The window of a tool: its form (`testId`), then its job (one tool window is open at a time). */
+const toolWindow = (page: Page, testId: string) => page.getByRole("dialog").filter({ has: page.getByTestId(testId).or(page.getByTestId("composites-job")) });
 
 /** «Применить» → «Заменить?» of the table the demo has → the job of the window is done. */
 async function applyReplacing(page: Page, win: ReturnType<typeof toolWindow>, name: string, timeout: number): Promise<void> {
@@ -140,7 +141,7 @@ test("sample processing: composites L = 2 with the preview, ore intervals of Д-
     const classes = ore.getByTestId("ore-classes");
     await expect(classes.locator("rect[data-value='ore']").first()).toBeAttached({ timeout: 30_000 }); // coloured by class
     await expect(ore.getByTestId("ore-final").locator("rect[data-value='ore']").first()).toBeAttached();
-    await expect(ore.getByTestId("ore-final").locator("text").first()).toContainText(/м @ .* г\/т \(МС /); // LABEL
+    await expect(ore.getByTestId("ore-final").locator("text").filter({ hasText: /^\d+,\d м @ \d+,\d\d г\/т \(МС \d+,\d\)$/ }).first()).toBeAttached(); // LABEL
     await expect(ore.getByTestId("ore-legend")).toBeVisible();
     await page.screenshot({ path: shot("composites-ore-preview.png") });
     await ore.getByTestId("ore-tab-protocol").click();
@@ -171,10 +172,11 @@ test("sample processing: composites L = 2 with the preview, ore intervals of Д-
     const shown = (await legendOf())!;
     console.log(`ore display: holes ${shown.holes}, intervals ${shown.intervals}, labels ${shown.labels} of ${labels.length}`);
     expect(shown.labels).toBe(labels.length);
-    expect(shown.intervals).toBe(oreRows.rows.length);
-    await page.screenshot({ path: shot("composites-ore-3d.png") });
+    expect(shown.intervals).toBe(cls.filter((c) => c !== "frame").length); // «frame» hidden by default (решение 20)
     await ore.getByRole("button", { name: "Закрыть", exact: true }).last().click();
     await expect(ore).toHaveCount(0);
+    await waitFrame(page);
+    await page.screenshot({ path: shot("composites-ore-3d.png") });
     console.log(`ore: ${((Date.now() - started) / 1000).toFixed(1)} s`);
 
     // ---- 3. «Урезка»: the analysis; the threshold is written only by «Применить» -------------------------------
