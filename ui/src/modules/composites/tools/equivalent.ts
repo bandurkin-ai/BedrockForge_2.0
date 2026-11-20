@@ -103,12 +103,12 @@ export interface Metal {
 /** How much of the base one unit of the other metal is worth: (P_e·R_e·k_e)/(P₁·R₁·k₁). */
 export const metalFactor = (base: Metal, other: Metal): number => (other.price * other.recovery * kFactor(other.unit, other.priceUnit)) / (base.price * base.recovery * kFactor(base.unit, base.priceUnit));
 
-/** Eq of one sample; a missing grade — null unless `nanZero` (then it counts as 0). */
+/** Eq of one sample; a missing grade — null unless `nanZero` (then it counts as 0). A sample without a single grade
+ * is missing even with `nanZero` (as the core: a gap never becomes zero). */
 export function equivalentValue(base: Metal, others: readonly Metal[], grades: Record<string, number | null | undefined>, nanZero = false): number | null {
-  const g = (f: string): number | null => {
-    const v = grades[f];
-    return typeof v === "number" && Number.isFinite(v) ? v : nanZero ? 0 : null;
-  };
+  const has = (f: string): boolean => typeof grades[f] === "number" && Number.isFinite(grades[f]);
+  if (!has(base.field) && !others.some((o) => has(o.field))) return null;
+  const g = (f: string): number | null => (has(f) ? (grades[f] as number) : nanZero ? 0 : null);
   let eq = g(base.field);
   if (eq === null) return null;
   for (const o of others) {

@@ -154,6 +154,10 @@ describe("«Эквивалент металла»", () => {
     expect(equivalentValue(AU, [CU], { AU: 1, CU: null })).toBeNull();
     expect(equivalentValue(AU, [CU], { AU: 1, CU: null }, true)).toBe(1);
     expect(equivalentValue(AU, [CU], { AU: Number.NaN, CU: 1 })).toBeNull();
+    expect(equivalentValue(AU, [CU], { AU: null, CU: 1 }, true)!).toBeCloseTo(1.399656, 6);
+    // a sample without a single grade stays missing even with «считать нулём» (the core: NaN, never 0)
+    expect(equivalentValue(AU, [CU], { AU: null, CU: Number.NaN }, true)).toBeNull();
+    expect(equivalentValue(AU, [CU], {}, true)).toBeNull();
   });
 
   it("units: by the unit of the field, the price by the grade; given ones win", () => {

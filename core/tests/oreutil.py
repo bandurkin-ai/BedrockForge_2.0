@@ -461,7 +461,9 @@ def check_reference(
     return classes, logged
 
 
-def ref_nested(ls: list[float], gs: list[float], rows: list[tuple[Any, ...]], p: OreParams) -> list[tuple[str, int, int]]:
+def ref_nested(
+    ls: list[float], gs: list[float], rows: list[tuple[Any, ...]], p: OreParams
+) -> list[tuple[str, int, int]]:
     """The nested rows (class, a, b) of the `ore` rows of a line, in the order of the kernel: the waste
     stretches of an interval, its frame above, its frame below (whole samples until M reaches Мпп; not beyond
     the line and not into another `ore` row)."""
