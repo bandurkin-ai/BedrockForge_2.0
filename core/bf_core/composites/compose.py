@@ -10,7 +10,9 @@ are empty (the summary of the set does not need them).
 
 Methods: "length" — `length.composite_by_length` over the whole holes; "domain" — the stretches of constant
 code (`domains.domain_stretches`: a field of the samples or of another table; a hole the domain table does not
-have, or an empty code — stretches without a domain, DOMAIN empty) and composites by length inside each;
+have, or an empty code — stretches without a domain, DOMAIN empty) and composites by length inside each; by
+wireframes — the stretches inside the bodies (`coding.body_stretches`, the geometry through the project of
+`jobs_coding.reading`; `st` None — read here), DOMAIN — the name of the body, empty outside them;
 "bench" — `benches.composite_by_benches`, Z_верх by default — the highest collar of the set rounded up to H
 (the same for the job and for the preview of one hole); FLAG «пологая» besides «мало проб».
 
@@ -112,6 +114,17 @@ def _domain_codes(spec: RunSpec, src: source.Lines, dom: source.Lines | None, li
     return table, codes, labels
 
 
+def _wireframe_codes(spec: RunSpec, lines: Any, st: Any, tix: np.ndarray, threads: int) -> tuple[Any, ...]:
+    """(the stretches inside the bodies, their codes, the DOMAIN text of a code, lines for the journal, report)."""
+    from . import coding
+    from .jobs_coding import read_bodies
+
+    wf = spec.domain.wireframes  # type: ignore[union-attr]
+    s = coding.body_stretches(lines, st.traj, tix[lines.holes], read_bodies(wf), n_bodies=len(wf.targets),
+                              threads=threads)  # fmt: skip
+    return s.lines, s.code, np.array([*s.names, None], dtype=object), s.journal, s.report
+
+
 def compute(
     spec: RunSpec,
     src: source.Lines,
@@ -135,10 +148,18 @@ def compute(
     density = lines.take(src.numbers[spec.density]) if spec.density else None
     texts = [lines.take(src.codes[n]) for n in spec.texts]
     depth = np.asarray(ends, dtype=float)[lines.holes] if lines.n_holes else np.zeros(0)
+    by_wf = spec.method == "domain" and spec.domain is not None and spec.domain.wireframes is not None
+    if by_wf and st is None:  # the summary of the set: the bodies need the paths
+        from .jobs_coding import reading_project
+        from .source import trajectories
+
+        st = trajectories(reading_project(), spec.set_id)
     tix = _dense(st, src.hole_db_ids)
     kw = {"density": density, "by_density": density is not None, "texts": texts, "threads": threads, "tick": tick}
     domain = None
     marks: list[tuple[str, np.ndarray]] = []
+    notes: list[str] = []
+    extra: dict[str, Any] = {}
     kernel = spec.kernel
     try:
         if spec.method == "bench":
@@ -157,10 +178,13 @@ def compute(
         elif spec.method == "domain":
             from .domains import composite_by_domains, domain_numbers, domain_stretches, domain_text
 
-            table, codes, labels = _domain_codes(spec, src, dom, lines)
+            if by_wf:
+                table, codes, labels, notes, extra["coding"] = _wireframe_codes(spec, lines, st, tix, threads)
+            else:
+                table, codes, labels = _domain_codes(spec, src, dom, lines)
             d = domain_stretches(lines, table, codes, origin=kernel.origin, ends=depth, threads=threads)
             c = composite_by_domains(lines, values, kernel, d, **kw)  # type: ignore[arg-type]
-            text = spec.domain is not None and spec.domain.kind == "text"
+            text = spec.domain is not None and spec.domain.kind in ("text", "wireframes")
             domain = domain_text(c.domain, labels[:-1]) if text else domain_numbers(c.domain, labels)
         else:
             from .length import composite_by_length
@@ -198,13 +222,14 @@ def compute(
              np.full(n, None, dtype=object) if domain is None else domain,
              flag_column([(FLAG_LOW, c.values.low), *marks], n)]  # fmt: skip
     out = sink.OutTable(spec.name, [src.holes[i] for i in hole.tolist()], cl.frm, cl.to, cols, vals)
-    journal = list(lines.notes(spec.table_name)) + list(c.journal)
+    journal = list(lines.notes(spec.table_name)) + notes + list(c.journal)
     if src.skipped:
         journal.insert(0, f"Таблица «{spec.table_name}»: строк без «от» или «до» — {src.skipped}, в расчёт не вошли.")
     if no_traj and n and st is not None and spec.method != "bench":
         journal.append(f"Скважин без траектории — {no_traj}: X, Y, Z композитов пусты.")
     report = {
         **c.report,
+        **extra,
         "kernel": asdict(kernel),
         "rows_in": src.rows,
         "skipped": src.skipped,

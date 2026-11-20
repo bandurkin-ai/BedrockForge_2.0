@@ -1,8 +1,7 @@
 """Jobs of sample preparation (ТЗ 8.2.2; ADR 0018 §3, §6–7, решения 3, 8, 11, 12, 18, 26): the column operations
 `composite.topcut`, `composite.equivalent`, `composite.declus` — fields written in place into the source table in
 one transaction (`sink.commit` with `columns`: rev + 1, one journal group, the other results follow), a
-`dh_results` record with the report. `composite.code` (coding by wireframes, a new table) comes with the kernel of
-12.7 (`coding.py`); until then the routes answer 422 `not_ready`.
+`dh_results` record with the report. `composite.code` (coding by wireframes, a new table) — `jobs_coding.py`.
 
     spec = parse_prep(conn, body, op)              # the body of `POST /composites/{op}` → PrepSpec; ApiError 422 / 404
     made = compute_lines(spec, src, dom, st)       # the columns and the report: the job and the preview
@@ -13,9 +12,10 @@ Bodies (ADR 0018 §10; the window sends the source as `params.ts::sourceBody`):
                  nan_zero?, name?}                                                         → <name> (<base>EQ)
     declus      {set_id, table, field, method, cmin?, cmax?, ncell?, noff?, minmax?, anisy?, anisz?, nx?, ny?}
                                                                                            → DECL_W
-`domain` of the top cut — {table, field} (no table — the same table), a field name of the table, or
-{wireframe_ids} (12.7 — `not_ready`). A sample takes the code of its own field, or of the row of the other table
-with the greatest length inside it (`intervals.mode_by_length`); no domain — the group «» (ADR 0018, 12.8).
+`domain` of the top cut — {table, field} (no table — the same table) or a field name of the table; {wireframe_ids}
+— 422 `not_ready` with the way round: code the samples by wireframes, then the domain is their field CODE. A
+sample takes the code of its own field, or of the row of the other table with the greatest length inside it
+(`intervals.mode_by_length`); no domain — the group «» (ADR 0018, 12.8).
 The points of the declustering are the middles of the samples on the trajectories of the set.
 
 A column of these names that the table already has and that the same operation did not write is never
@@ -142,6 +142,13 @@ def _domain(conn: sa.Connection, set_id: int, t: Any, raw: Any) -> cj.DomainSpec
         return None
     if isinstance(raw, dict) and not raw.get("wireframe_ids") and not str(raw.get("field") or "").strip():
         raise cj._bad("domain_missing", "Не выбрано поле домена.", "Выберите поле домена или «без домена».", "domain")
+    if isinstance(raw, dict) and raw.get("wireframe_ids"):
+        raise cj._bad(
+            "not_ready",
+            "Урезка: домены по каркасам не поддерживаются.",
+            "Закодируйте пробы каркасами («Кодировать каркасами») и выберите домен по полю CODE.",
+            "domain",
+        )
     return cj.parse_domain(conn, set_id, t, raw)
 
 

@@ -102,8 +102,9 @@ def _reference(d: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
         "short_m": _short_stretches(d, span, 0.5 * float(params.get("length", 2.0))),  # f_min = 0.5, as given
         "no_collar": int(holes - collar.sum()),
         "sampled_m": float(ln.sum()),
-        "merge_m": float(ln[both].sum()),  # samples of the holes the lithology has: it covers them whole
-        "merge_au": float((ln * au)[both & have].sum()),
+        # where either table is: the lithology covers its holes whole, the other holes have their samples only
+        "merge_m": float(d["depth"][with_litho].sum() + ln[~both].sum()),
+        "metal_au": float((ln * au)[have].sum()),
         "au_n": int(have.sum()),
         "au_mean": float((ln * au)[have].sum() / ln[have].sum()),
         "au_max": float(np.nanmax(au)),

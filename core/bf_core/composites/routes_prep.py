@@ -8,7 +8,10 @@
     `project_read_only`; 422 {code, message, hint, param} — out of the ranges of 8.2.2 (`bad_param`, `unit_unknown`,
     StatsError of `stats/*` the same way); 404 `table_not_found`, 422 `field_not_found`; 409 `column_exists` — a
     field of that name the operation did not write.
-  * `POST /coding` — 422 `not_ready` until the kernel of coding by wireframes is in this build (12.7).
+  * `POST /coding` {set_id, table, wireframe_ids, split?, name?, replace?} → {source, id} of `composite.code`
+    (heavy, `jobs_coding`): a new table «‹Таблица› — коды» with CODE (and INSIDE_FRAC without the division). 422
+    `wireframe_open` {param: wireframe_ids} — an open wireframe, before the job; `wireframe_not_found`; 409
+    `table_exists` {name, suggested, lost} as `/run`.
   * `POST /topcut/analysis` {set_id, table, field, domain?, percentiles?, decile_limit?, percentile_limit?} → the
     answer of `topcut.topcut_analysis` as it is (field, limits, domains [{domain, n, …, curves, deciles, top,
     quantiles}]): synchronous, over the whole table; nothing is written (решение 8).
@@ -18,9 +21,13 @@
     `set_summary` — the summary of the whole table (top cut: when computed for the thresholds or ≤ 200 000 rows;
     equivalent: ≤ 200 000 rows), else null. The top cut adds `thresholds` {domain: T | null}. Nothing is written.
     `POST /declus/preview` — 422 `no_preview` (the weights depend on all the samples; the window has none);
-    `POST /coding/preview` — `not_ready` (12.7).
+    `POST /coding/preview` {params, hole_id} → the same answer: `result.values` — the fields, CODE, INSIDE_FRAC
+    (without the division), the parts of a sample cut at the boundaries (with it); `set_summary` null (the job's
+    report has it). `POST /domain/preview` — `routes_run.preview` with the project for domains by wireframes.
   * `POST /results/{id}/rebuild` {drop_lost?} — of a top cut, an equivalent, a DECL_W: the same job with the params
-    of the result on the current table (the same hash — no computation); other results — `routes_run.rebuild`.
+    of the result on the current table (the same hash — no computation); of coding by wireframes — `composite.code`
+    on the current source with the same bodies (checked again: 422 `wireframe_open`, `wireframe_not_found`; 409
+    `dependents_lost` as `routes_run.rebuild`); other results — `routes_run.rebuild`.
 
 Registered before `routes_run` (its `/{op}/preview` takes any op). The kernels are imported lazily.
 """
@@ -57,15 +64,6 @@ def _body(raw: Any) -> dict[str, Any]:
     return raw
 
 
-def _coding_not_ready() -> ApiError:
-    return ApiError(
-        422,
-        "not_ready",
-        "Кодирование каркасами: расчёт ещё не подключён в этой сборке.",
-        "Обновите приложение до сборки с кодированием каркасами.",
-    )
-
-
 def _submit(svc: ProjectService, s: Scheduler, body: dict[str, Any], op: str) -> dict[str, Any]:
     from . import jobs_prep as jp
 
@@ -93,10 +91,24 @@ def declus(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
     return _submit(svc, s, body, "declus")
 
 
+def _submit_coding(s: Scheduler, spec: Any, body: dict[str, Any], title: str, **more: Any) -> dict[str, Any]:
+    from . import jobs_coding as jc
+
+    params = {"body": body, "rows": spec.rows, "triangles": spec.wf.triangles(), **more}
+    key, job_id = s.submit(jc.KIND, params, title=title)
+    return {"source": key, "id": job_id}
+
+
 @router.post("/coding")
-def coding(svc: Svc, body: Payload) -> dict[str, Any]:
-    svc.require_current(writable=True)
-    raise _coding_not_ready()  # TODO(12.7): `composite.code` with `composites/coding.py`
+def coding(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
+    from . import jobs_coding as jc
+    from .routes_run import _taken
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        spec = jc.parse_coding(conn, _body(body))
+        _taken(conn, spec.set_id, spec.name, spec.replace)
+    return _submit_coding(s, spec, {**spec.body, "replace": spec.replace}, f"{spec.name} ({spec.table_name})")
 
 
 # --- the analysis of the top cut ---------------------------------------------------------------------------
@@ -243,8 +255,46 @@ def declus_preview(svc: Svc, body: Payload) -> dict[str, Any]:
 
 @router.post("/coding/preview")
 def coding_preview(svc: Svc, body: Payload) -> dict[str, Any]:
-    svc.require_current()
-    raise _coding_not_ready()  # TODO(12.7)
+    from . import jobs_coding as jc
+    from . import source
+    from .routes_run import _hole, _nulls, _samples
+
+    raw = _body(body)
+    params = {k: v for k, v in _body(raw.get("params")).items() if k != "name"}
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        spec = jc.parse_coding(conn, params)
+        hole = _hole(conn, spec.set_id, raw.get("hole_id"))
+    src = source.read(project.engine, spec.set_id, spec.table_id, spec.fields, holes=[raw["hole_id"]])
+    st = source.trajectories(project, spec.set_id)
+    made = jc.compute_coding(spec, src, st, jc.bodies(project, spec.wf))
+    out = made.out
+    notes = list(made.journal)
+    if not src.rows:
+        notes.insert(0, f"В скважине {hole} нет проб в таблице «{spec.table_name}».")
+    return {
+        "hole": hole,
+        "samples": {"from": _nulls(src.from_m), "to": _nulls(src.to_m), "values": _samples(src, spec.fields)},
+        "result": {
+            "from": _nulls(out.from_m),
+            "to": _nulls(out.to_m),
+            "values": {c.name: _nulls(v) for c, v in zip(out.columns, out.values, strict=True)},
+        },
+        "summary": made.report["summary"],
+        "set_summary": None,
+        "notes": notes,
+    }
+
+
+@router.post("/domain/preview")
+def domain_preview(svc: Svc, body: Payload) -> dict[str, Any]:
+    """`routes_run.preview` of composites by domains, with the project the bodies of a domain by wireframes are
+    read from (registered before `routes_run`: this path is taken here first)."""
+    from . import jobs_coding as jc
+    from .routes_run import preview
+
+    with jc.reading(svc.require_current()):
+        return preview(svc, "domain", body)
 
 
 # --- «Перестроить» -----------------------------------------------------------------------------------------
@@ -262,8 +312,13 @@ def rebuild(
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
         rec = conn.execute(sa.select(dh_results).where(dh_results.c.id == result_id)).mappings().first()
-        if rec is None or rec["op"] not in PREP_OPS:
-            return routes_run.rebuild(svc, s, result_id, body)
+        coded = _rebuild_coding(conn, dict(rec), body) if rec is not None and rec["op"] == "coding" else None
+    if coded is not None:
+        spec, again, title = coded
+        return _submit_coding(s, spec, again, title, rebuild=result_id)
+    if rec is None or rec["op"] not in PREP_OPS:
+        return routes_run.rebuild(svc, s, result_id, body)
+    with dialect.read_tx(project.engine) as conn:
         table = conn.execute(
             sa.select(dh_tables.c.name, dh_tables.c.state, dh_tables.c.row_count).where(
                 dh_tables.c.id == rec["table_id"]
@@ -283,3 +338,32 @@ def rebuild(
     params = {"body": again, "rows": int(table.row_count or 0), "rebuild": result_id}
     key, job_id = s.submit(jp.KINDS[rec["op"]], params, title=f"Перестроить: {rec['name']}")
     return {"source": key, "id": job_id}
+
+
+def _rebuild_coding(conn: Any, rec: dict[str, Any], body: dict[str, Any] | None) -> tuple[Any, dict[str, Any], str]:
+    """Coding by wireframes again: its params on the current source table (found by name) and the same bodies."""
+    from . import jobs as cj
+    from . import jobs_coding as jc
+    from . import routes_run
+
+    q = sa.select(dh_tables.c.name, dh_tables.c.state).where(dh_tables.c.id == rec["table_id"])
+    table = conn.execute(q).first()
+    if table is None or table.state != "ready":
+        raise ApiError(409, "result_busy", "Результат сейчас пересчитывается.", "Дождитесь окончания задания.")
+    set_id = int(rec["set_id"])
+    now = [routes_run._current(conn, set_id, t) for t in (rec["inputs"] or {}).get("tables") or []]
+    if not now:
+        raise ApiError(409, "source_gone", "Источник результата не найден.", "Удалите результат.")
+    lost = cj.lost_dependents(conn, int(rec["table_id"]))
+    if lost and not (body or {}).get("drop_lost"):
+        names = ", ".join(f"«{x['name']}»" for x in lost)
+        raise ApiError(
+            409,
+            "dependents_lost",
+            f"При перестроении пропадут результаты: {names}.",
+            "Подтвердите перестроение или сначала сохраните эти результаты.",
+            {"lost": lost},
+        )
+    again = {**(rec["params"] or {}), "set_id": set_id, "name": table.name, "table": str(now[0].id), "replace": True}
+    spec = jc.parse_coding(conn, again)  # the bodies are still there and closed
+    return spec, again, f"Перестроить: {table.name}"

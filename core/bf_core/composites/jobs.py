@@ -1,5 +1,6 @@
 """Jobs of composites (ТЗ 8.2.2–8.2.3; ADR 0018 §2–3, §6, решения 18, 26): `composite.run` — by length, by domains
-(a field of the samples or of another interval table; by wireframes — with 12.7), by benches; «Перестроить».
+(a field of the samples or of another interval table, or the bodies of closed wireframes — `jobs_coding`), by
+benches; «Перестроить».
 
     spec = parse_run(conn, body)            # the body of `POST /composites/run` → RunSpec; ApiError 422 / 404
     made = compose.compute(spec, src, dom, ends, st)   # the rows of the new table, the report (job and preview)
@@ -96,22 +97,31 @@ class RunSpec:
 
     def read_fields(self) -> list[str]:
         """Fields read from the samples: the chosen ones, the density, the domain field of the same table."""
-        own = [self.domain.field] if self.domain is not None and self.domain.table_id == self.table_id else []
+        d = self.domain
+        own = [d.field] if d is not None and d.wireframes is None and d.table_id == self.table_id else []
         return list(dict.fromkeys([*self.fields, *([self.density] if self.density else []), *own]))
 
     def other_domain(self) -> DomainSpec | None:
         """The domain when it is a field of another table (read on its own)."""
-        return self.domain if self.domain is not None and self.domain.table_id != self.table_id else None
+        d = self.domain
+        return d if d is not None and d.wireframes is None and d.table_id != self.table_id else None
 
     def tables(self) -> list[tuple[int, list[str]]]:
         """(table id, fields) read — for `results.make_inputs`."""
         d = self.other_domain()
         return [(self.table_id, self.read_fields()), *([(d.table_id, [d.field])] if d else [])]
 
+    def mesh_ids(self) -> list[int]:
+        """The wireframes of a domain by wireframes — `inputs.meshes`."""
+        d = self.domain
+        return [] if d is None or d.wireframes is None else d.wireframes.ids
+
     def hash_params(self) -> dict[str, Any]:
         """What the result depends on besides the data (not the name of the table)."""
         d = self.domain
         dom = None if d is None else {"table": dialect.name_key(d.table_name), "field": d.field}
+        if d is not None and d.wireframes is not None:
+            dom = {"wireframes": d.wireframes.keys(), "names": d.wireframes.names()}
         return {"method": self.method, "fields": self.fields, "density": self.density, "domain": dom,
                 **asdict(self.kernel)}  # fmt: skip
 
@@ -120,8 +130,9 @@ class RunSpec:
 class DomainSpec:
     table_id: int
     table_name: str
-    field: str  # stored name
-    kind: str  # number | text
+    field: str  # stored name ("" — by wireframes)
+    kind: str  # number | text | wireframes
+    wireframes: Any = None  # jobs_coding.Wireframes: the bodies by priority, DOMAIN — their names
 
 
 def _names(raw: Any) -> list[str]:
@@ -163,12 +174,15 @@ def default_name(method: str, p: Any) -> str:
 
 
 def parse_domain(conn: sa.Connection, set_id: int, table: Any, raw: Any) -> DomainSpec:
-    """`domain` of the body: {table, field} (no table — the samples) or a field name of the samples; wireframes —
-    not in this build (12.7)."""
+    """`domain` of the body: {table, field} (no table — the samples), a field name of the samples, or
+    {wireframe_ids} — closed bodies by priority (`jobs_coding.parse_wireframes`: 422 `wireframe_open`)."""
     from .source import _fields
 
     if isinstance(raw, dict) and raw.get("wireframe_ids"):
-        raise not_ready("Домены по каркасам")  # TODO(12.7): the stretches inside solids of `coding.py`
+        from .jobs_coding import parse_wireframes
+
+        wf = parse_wireframes(conn, raw["wireframe_ids"])
+        return DomainSpec(int(table.id), str(table.name), "", "wireframes", wf)
     if isinstance(raw, str) and raw.strip():
         raw = {"field": raw}
     if not isinstance(raw, dict) or not isinstance(raw.get("field"), str) or not raw["field"].strip():
@@ -455,19 +469,20 @@ def run(
     tick: Callable[[float | None, str | None], None],
 ) -> dict[str, Any]:
     """The body of `composite.run` (the handler and the tests in the process)."""
-    from . import compose, results, source, strips
+    from . import compose, jobs_coding, results, source, strips
 
     t0 = time.perf_counter()
     body, rebuild = _body_of(params)
     with dialect.read_tx(engine) as conn:
         spec = parse_run(conn, body)
-        inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True)
+        inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True, meshes=spec.mesh_ids())
     tick(0.02, "Чтение проб")
     cache = folder / "cache" / "tables"
     src = source.read(engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache)
     d = spec.other_domain()
     dom = None if d is None else source.read(engine, spec.set_id, d.table_id, [d.field], cache_dir=cache)
-    st = source.trajectories(SimpleNamespace(engine=engine, uid=f"job:{folder}"), spec.set_id)
+    project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
+    st = source.trajectories(project, spec.set_id)
     algo = ALGO[spec.method]
     stations = source.stations_bytes(st, src.hole_db_ids.tolist())
     sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=algo)
@@ -477,9 +492,10 @@ def run(
     with dialect.read_tx(engine) as conn:
         ends = compose.hole_depths(conn, spec.set_id, src.hole_db_ids)
     tick(0.1, "Композиты")
-    made = compose.compute(
-        spec, src, dom, ends, st, threads=strips.default_threads(), tick=lambda f: tick(0.1 + 0.5 * f, None)
-    )
+    with jobs_coding.reading(project, keep=False):  # domains by wireframes read their geometry
+        made = compose.compute(
+            spec, src, dom, ends, st, threads=strips.default_threads(), tick=lambda f: tick(0.1 + 0.5 * f, None)
+        )
     return _store(engine, folder, spec, made, op=spec.method, inputs=inputs, sha=sha, algo=algo, job_id=job_id,
                   t0=t0, tick=tick)  # fmt: skip
 
