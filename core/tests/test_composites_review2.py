@@ -92,3 +92,28 @@ def test_snapshot_keys_columns_by_casefold_and_live_only(db_url: str, tmp_path: 
     np.testing.assert_array_equal(got.column(live["AU"]).to_numpy(zero_copy_only=False), au)
     np.testing.assert_array_equal(got.column(live["CU"]).to_numpy(zero_copy_only=False), cu)
     engine.dispose()
+
+
+# --- № 10: a field named as an own column gets a free name -------------------------------------------------
+
+
+def test_fields_x_and_x_src_never_make_two_columns_of_one_name(demo) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    from bf_core.composites.compose import own_names
+    from tests.test_composites_jobs import body, rows_of, run_here
+
+    assert own_names(["X", "X_SRC", "AU"], ["X", "Y"]) == {"X": "X_SRC_2", "X_SRC": "X_SRC", "AU": "AU"}
+    assert own_names(["x", "X_src", "x_SRC_2"], ["X"]) == {"x": "x_SRC_3", "X_src": "X_src", "x_SRC_2": "x_SRC_2"}
+    c, project, set_id, table = demo
+    base = f"{API}/drillholes/sets/{set_id}/tables/{table}"
+    for name, expr in (("X", "AU * 2"), ("X_SRC", "AU * 3")):
+        r = c.post(f"{base}/columns", json={"name": name, "expression": expr})
+        assert r.status_code == 200, r.text
+    done = run_here(project, {"body": body(set_id, table, fields=["AU", "X", "X_SRC"], name="Композиты X")})
+    got = rows_of(c, set_id, str(done["table_id"]))
+    names = [x["name"] for x in got["columns"]]
+    assert len({n.casefold() for n in names}) == len(names), names
+    key = {x["name"]: x["key"] for x in got["columns"]}
+    for r in got["rows"]:
+        au = r[key["AU"]]
+        if au is not None:
+            assert r[key["X_SRC_2"]] == pytest.approx(au * 2) and r[key["X_SRC"]] == pytest.approx(au * 3)

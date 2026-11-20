@@ -404,12 +404,13 @@ def table_columns(spec: OreSpec, made: OreMade, xyz: np.ndarray | None) -> tuple
     """The columns of «Рудные интервалы» after FROM and TO (the module docstring), in their order."""
     from bf_core.drillholes.store import ColumnSpec
 
+    from .compose import own_names
     from .ore_set import BASIS_NAMES, CLASS_NAMES
 
     res, t = made.res, made.res.table()
     n = len(res)
     unit = spec.unit
-    taken = {o.casefold() for o in OWN}
+    labels = own_names(spec.means, OWN)
     kind, domain = domain_column(made)
     cols = [ColumnSpec("LENGTH", "number", "м"), ColumnSpec("M", "number", "м"),
             ColumnSpec("C", "number", unit, "component"), ColumnSpec("MC", "number", f"м·{unit}" if unit else None),
@@ -420,8 +421,7 @@ def table_columns(spec: OreSpec, made: OreMade, xyz: np.ndarray | None) -> tuple
                               _names_of(t["BASIS"], BASIS_NAMES), t["N_SAMPLES"], t["WASTE_LEN"], t["NESTED"],
                               _nan0(t["ORE_ID"]), t["FLAG"], domain]  # fmt: skip
     for name in spec.means:
-        cols.append(ColumnSpec(f"{name}_SRC" if name.casefold() in taken else name, "number", spec.units.get(name),
-                               spec.roles.get(name, "value")))  # fmt: skip
+        cols.append(ColumnSpec(labels[name], "number", spec.units.get(name), spec.roles.get(name, "value")))
         vals.append(res.fields[name])
     if xyz is None:
         xyz = np.full((n, 3), np.nan)

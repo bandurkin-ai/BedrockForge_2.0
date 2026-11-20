@@ -253,7 +253,7 @@ def compute_coding(
 
     from . import coding, sink
     from . import intervals as iv
-    from .compose import Made, _dense
+    from .compose import Made, _dense, own_names
     from .compose_tables import _column, _summary
     from .jobs_prep import clean
 
@@ -265,12 +265,11 @@ def compute_coding(
     except ValueError as exc:  # CompositeError `wireframe_open`, `wireframe_orientation` → 422
         raise cj.as_api(exc) from None
     cl = c.lines
-    taken = {o.casefold() for o in OWN}
+    labels = own_names(src.fields, OWN)
     cols, vals = [], []
     for name in src.fields:
         raw = src.numbers[name] if src.fields[name].kind == "number" else src.codes[name]
-        label = f"{name}_SRC" if name.casefold() in taken else name
-        col, v = _column(src, name, label, cl.take(raw))
+        col, v = _column(src, name, labels[name], cl.take(raw))
         cols.append(col)
         vals.append(v)
     cols.append(ColumnSpec("CODE", "text"))

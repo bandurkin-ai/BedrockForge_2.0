@@ -17,14 +17,15 @@ wireframes — the stretches inside the bodies (`coding.body_stretches`, the geo
 (the same for the job and for the preview of one hole); FLAG «пологая» besides «мало проб».
 
 Columns of the table (ТЗ 8.2.3): LENGTH, X, Y, Z, the chosen fields (units and roles of the source; a field
-named as one of these columns gets «_SRC»), DENSITY, SAMPLED_LEN, N_SAMPLES, DOMAIN (the label of a text domain field,
-the number of a numeric one; none — empty), FLAG. Missing values stay missing (NaN, None), never 0.
+named as one of these columns gets «_SRC», «_SRC_2»… — the first name free: `own_names`), DENSITY, SAMPLED_LEN,
+N_SAMPLES, DOMAIN (the label of a text domain field, the number of a numeric one; none — empty), FLAG. Missing
+values stay missing (NaN, None), never 0.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any, cast
 
@@ -45,6 +46,27 @@ class Made:
     out: sink.OutTable
     report: dict[str, Any]
     journal: list[str]
+
+
+def own_names(fields: Iterable[str], reserved: Iterable[str]) -> dict[str, str]:
+    """The column of every field of the source in a result table: its own name, or — when it is one of `reserved`
+    (the columns the operation makes) — «<name>_SRC», «<name>_SRC_2»…, the first one free of the reserved names, the
+    other fields and the names given before (casefold): the fields `X` and `X_SRC` never make two columns of one
+    name, and `X_SRC` keeps its own."""
+    names = list(fields)
+    own = {r.casefold() for r in reserved}
+    taken = own | {f.casefold() for f in names}
+    out: dict[str, str] = {}
+    for f in names:
+        if f.casefold() not in own:
+            out[f] = f
+            continue
+        label, k = f"{f}_SRC", 2
+        while label.casefold() in taken:
+            label, k = f"{f}_SRC_{k}", k + 1
+        taken.add(label.casefold())
+        out[f] = label
+    return out
 
 
 def hole_depths(conn: sa.Connection, set_id: int, hole_db_ids: Any) -> np.ndarray:
@@ -226,21 +248,17 @@ def compute(
     if spec.method != "bench":
         xyz = _midpoints(tix, st, hole, (cl.frm + cl.to) / 2.0)
     no_traj = int(np.count_nonzero(tix < 0))
-    taken = {o.casefold() for o in OWN}
-
-    def own(name: str) -> str:
-        return f"{name}_SRC" if name.casefold() in taken else name
-
+    label = own_names([*spec.numbers, *spec.texts], OWN)
     cols = [ColumnSpec("LENGTH", "number", "м"), ColumnSpec("X", "number", "м"), ColumnSpec("Y", "number", "м"),
             ColumnSpec("Z", "number", "м")]  # fmt: skip
     vals: list[np.ndarray] = [cl.to - cl.frm, xyz[:, 0], xyz[:, 1], xyz[:, 2]]
     for k, name in enumerate(spec.numbers):
         role = src.fields[name].role if src.fields[name].role in ("component", "value") else "value"
-        cols.append(ColumnSpec(own(name), "number", spec.units.get(name), role))
+        cols.append(ColumnSpec(label[name], "number", spec.units.get(name), role))
         vals.append(np.ascontiguousarray(c.values.values[:, k]))
     for k, name in enumerate(spec.texts):
         labels_k = np.array([*src.labels[name], None], dtype=object)
-        cols.append(ColumnSpec(own(name), "text"))
+        cols.append(ColumnSpec(label[name], "text"))
         vals.append(labels_k[c.values.texts[k]])  # −1 → the last one: None
     beat(1.0)
     cols += [ColumnSpec("DENSITY", "number", spec.units.get(spec.density) if spec.density else None),
