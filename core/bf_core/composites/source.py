@@ -449,9 +449,12 @@ def stations_bytes(st: Any, hole_db_ids: Sequence[int], *, tick: Tick | None = N
 
 
 def _canon(a: np.ndarray) -> np.ndarray:
-    """float64 LE with one NaN pattern and +0.0 for −0.0: equal values give equal bytes."""
-    a = np.asarray(a, dtype="<f8")
-    return np.where(np.isnan(a), np.nan, a + 0.0).astype("<f8")
+    """float64 LE with one NaN pattern and +0.0 for −0.0: equal values give equal bytes (a new array)."""
+    out = np.asarray(a, dtype="<f8") + 0.0
+    gaps = np.isnan(out)
+    if gaps.any():
+        out[gaps] = np.nan
+    return out  # type: ignore[no-any-return]
 
 
 def _canonical_order(lines: Lines) -> np.ndarray | None:
@@ -478,9 +481,11 @@ def input_hash(
     """SHA-256 (hex) of the inputs of a result (ADR 0018 §2). `tick` — after every column."""
     h = hashlib.sha256()
 
-    def put(tag: str, data: bytes) -> None:
-        h.update(tag.encode() + len(data).to_bytes(8, "little"))
-        h.update(data)  # not joined with the tag: a column of 5 million rows is not copied for it
+    def put(tag: str, data: Any) -> None:
+        """`data` — bytes or a C-contiguous array: hashed as it lies, a column of 5 million rows is not copied."""
+        view = memoryview(data)
+        h.update(tag.encode() + view.nbytes.to_bytes(8, "little"))
+        h.update(view)
         _beat(tick)
 
     put("params", json.dumps(params, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode())
@@ -492,14 +497,14 @@ def input_hash(
             return a if o is None else a[o]
 
         put("holes", "\0".join(lines.holes).encode())
-        put("starts", lines.starts.astype("<i8").tobytes())
-        put("from", _canon(arr(lines.from_m)).tobytes())
-        put("to", _canon(arr(lines.to_m)).tobytes())
+        put("starts", np.ascontiguousarray(lines.starts, dtype="<i8"))
+        put("from", _canon(arr(lines.from_m)))
+        put("to", _canon(arr(lines.to_m)))
         for name in sorted(lines.numbers):
-            put("num:" + name, _canon(arr(lines.numbers[name])).tobytes())
+            put("num:" + name, _canon(arr(lines.numbers[name])))
         for name in sorted(lines.codes):
             put("txt:" + name, "\0".join(lines.labels[name]).encode())
-            put("codes:" + name, arr(lines.codes[name]).astype("<i4").tobytes())
+            put("codes:" + name, np.ascontiguousarray(arr(lines.codes[name]), dtype="<i4"))
     if stations is not None:
         put("stations", stations)
     for key in meshes:

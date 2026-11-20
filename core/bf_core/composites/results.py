@@ -16,7 +16,9 @@ Operations that make a table (TABLE_OPS) have `table_id` = that table (deleted w
 operations that write columns in place have `table_id` = the table with the columns; `report["written"]`
 lists the columns by table name key: `[{"table": name_key, "columns": ["AU_CUT", "AU_CUT_F"]}]` (the ore
 intervals write ORE_ID, ORE_CLS into the samples next to their own table). Deleting a result removes its
-table and hides its columns (a journal record `column`: «Отменить» in the journal brings them back).
+table and hides its columns (a journal record `column`: «Отменить» in the journal brings them back) — but not
+those a later result wrote again (`written_later`: two ore results on one table of samples; the last one
+holds the values).
 
 No numpy here: the list of tables of a set (`drillholes/router.py`) reads the origins at every open.
 """
@@ -333,6 +335,35 @@ def bump_table(conn: sa.Connection, set_id: int, table_id: int) -> tuple[tuple[s
 # --- deletion ---------------------------------------------------------------------------------------
 
 
+def _pairs(report: dict[str, Any] | None) -> set[tuple[str, str]]:
+    return {
+        (str(w.get("table")), str(n).casefold())
+        for w in (report or {}).get("written") or []
+        for n in w.get("columns") or []
+    }
+
+
+def written_later(conn: sa.Connection, r: Any) -> set[tuple[str, str]]:
+    """(table name key, column casefold) of the columns `r` wrote that a later result of the set wrote too: they
+    hold that one's values now (two «Рудные интервалы» on one table of samples both write ORE_ID / ORE_CLS) — a
+    deletion or an edit of `r` leaves them to it. The record ids ascend with the writes (`record` inserts)."""
+    mine = _pairs(r["report"])
+    if not mine:
+        return set()
+    later: set[tuple[str, str]] = set()
+    q = sa.select(dh_results.c.report).where(dh_results.c.set_id == r["set_id"], dh_results.c.id > r["id"])
+    for o in conn.execute(q):
+        later |= _pairs(o.report) & mine
+    return later
+
+
+def own_columns(conn: sa.Connection, r: Any, table_key: str) -> set[str]:
+    """The columns (casefold) of the table `table_key` that hold the values of the result `r`: those it wrote, but
+    not those a later result wrote again (`written_later`)."""
+    later = written_later(conn, r)
+    return {n for t, n in _pairs(r["report"]) if t == table_key and (t, n) not in later}
+
+
 def _not_found() -> ApiError:
     return ApiError(404, "result_not_found", "Результат обработки не найден.", "Обновите дерево проекта.")
 
@@ -347,6 +378,7 @@ def delete_result(conn: sa.Connection, result_id: int) -> dict[str, Any]:
     set_id = int(r["set_id"])
     deleted: list[int] = []
     changed: list[dict[str, Any]] = []
+    later = written_later(conn, r)
     for w in (r["report"] or {}).get("written") or []:
         tid = conn.execute(
             sa.select(dh_tables.c.id).where(
@@ -355,7 +387,7 @@ def delete_result(conn: sa.Connection, result_id: int) -> dict[str, Any]:
         ).scalar()
         if tid is None or (r["op"] in TABLE_OPS and tid == r["table_id"]):
             continue
-        wanted = {str(n).casefold() for n in w.get("columns") or []}
+        wanted = {str(n).casefold() for n in w.get("columns") or []} - {n for t, n in later if t == w.get("table")}
         cols = [
             c
             for c in conn.execute(

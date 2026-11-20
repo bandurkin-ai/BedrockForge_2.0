@@ -490,3 +490,59 @@ def test_snapshot_read_of_an_event_table_and_of_an_empty_one(tmp_path: Path) -> 
         assert key is not None
     pq.write_table(pa.table({"__id": pa.array([], type=pa.int64())}), cache / f"{tid}-{key[-2]}-{key[-1]}.parquet")
     assert source.read(engine, set_id, tid, ["V"], cache_dir=cache).source == "rows"
+
+
+def _hash_as_before(tables: list[source.Lines], params: dict[str, Any], stations: bytes | None, algo: str) -> str:
+    """SHA-256 of the inputs as 12.19 defined it (every part: tag, length, bytes): the stored hashes of results
+    must not change with the way the columns are fed to it."""
+    import hashlib
+    import json
+
+    h = hashlib.sha256()
+
+    def put(tag: str, data: bytes) -> None:
+        h.update(tag.encode() + len(data).to_bytes(8, "little") + data)
+
+    def canon(a: np.ndarray) -> bytes:
+        a = np.asarray(a, dtype="<f8")
+        return np.where(np.isnan(a), np.nan, a + 0.0).astype("<f8").tobytes()
+
+    put("params", json.dumps(params, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode())
+    put("algo", algo.encode())
+    for lines in tables:
+        order = source._canonical_order(lines)
+        pick = (lambda a: a) if order is None else (lambda a, o=order: a[o])
+        put("holes", "\0".join(lines.holes).encode())
+        put("starts", lines.starts.astype("<i8").tobytes())
+        put("from", canon(pick(lines.from_m)))
+        put("to", canon(pick(lines.to_m)))
+        for name in sorted(lines.numbers):
+            put("num:" + name, canon(pick(lines.numbers[name])))
+        for name in sorted(lines.codes):
+            put("txt:" + name, "\0".join(lines.labels[name]).encode())
+            put("codes:" + name, pick(lines.codes[name]).astype("<i4").tobytes())
+    if stations is not None:
+        put("stations", stations)
+    return h.hexdigest()
+
+
+@pytest.mark.parametrize("layout", ["lines", "ties"])
+def test_input_hash_is_the_hash_of_12_19(tmp_path: Path, layout: str) -> None:
+    """The columns are hashed as they lie (no copy of 5 million rows per column), with ticks between them — the
+    digest is the one the results already store: −0.0 as +0.0, any NaN as one NaN, ties in a canonical order."""
+    engine, set_id, tid = setup("sqlite", tmp_path, _layout_rows(layout))
+    lines = source.read(engine, set_id, tid, ["AU", "CU", "LITH"])
+    au = lines.numbers["AU"]
+    au[3] = -0.0
+    au[7:9] = np.frombuffer(b"\x01\x00\x00\x00\x00\x00\xf8\xff" + b"\xff\xff\xff\xff\xff\xff\xff\x7f", dtype="<f8")
+    lines.from_m[0] = -0.0
+    beats: list[Any] = []
+    p = {"length": 2.0, "поле": "AU"}
+    got = source.input_hash([lines, lines], p, stations=b"\x01\x02", algo="length-1", tick=lambda a, b: beats.append(a))
+    assert got == _hash_as_before([lines, lines], p, b"\x01\x02", "length-1")
+    assert source.input_hash([lines], p) == _hash_as_before([lines], p, None, "")
+    assert len(beats) >= 2 * 7 and (layout != "ties" or source._canonical_order(lines) is not None)
+    plus = source.read(engine, set_id, tid, ["AU", "CU", "LITH"])
+    plus.numbers["AU"][3] = 0.0
+    plus.numbers["AU"][7:9] = np.nan
+    assert source.input_hash([plus], p) == source.input_hash([lines], p)  # equal values — equal hashes

@@ -144,3 +144,98 @@ def test_contacts_have_no_edit(gkz) -> None:  # type: ignore[no-untyped-def]  # 
     assert r.status_code == 422 and r.json()["code"] == "ore_edit_refused", r.text
     assert "контакт" in r.json()["message"]
     assert c.get(f"{API}/drillholes/sets/{set_id}/tables").status_code == 200
+
+
+# --- the review of 12.33, part 1 (подшаг 12.34) ---------------------------------------------------------------
+
+
+def _samples(c: Any, set_id: int, table: str) -> list[tuple[Any, ...]]:
+    s = rows_of(c, set_id, table)
+    k = cols(s)
+    return [(r["hole"], r["from"], r[k["ORE_ID"]], r[k["ORE_CLS"]]) for r in s["rows"]]
+
+
+def _two(c: Any, project: Any, set_id: int, table: str) -> tuple[dict[str, Any], dict[str, Any], list[Any]]:
+    """Two ore results on one table of samples: the second («строгий») wrote ORE_ID / ORE_CLS last."""
+    one = ore_here(project, {"body": body(set_id, table)})
+    first = _samples(c, set_id, table)
+    two = ore_here(project, {"body": body(set_id, table, name="Рудные · строгий", mode="strict")})
+    now = _samples(c, set_id, table)
+    assert now != first  # the fields hold the values of the second one
+    return one, two, now
+
+
+def test_two_ore_results_delete_the_first(gkz) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    """№ 3: deleting the earlier result keeps ORE_ID / ORE_CLS of the later one (it wrote them last); deleting the
+    later one hides them."""
+    c, project, set_id, table, _holes = gkz
+    one, two, now = _two(c, project, set_id, table)
+    r = c.delete(f"{C}/results/{one['result_id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["changed"] == []
+    assert _samples(c, set_id, table) == now
+    rec = next(x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "ore")
+    assert rec["id"] == two["result_id"] and rec["stale"] is False
+    assert c.delete(f"{C}/results/{two['result_id']}").status_code == 200
+    assert not {"ORE_ID", "ORE_CLS"} & set(cols(rows_of(c, set_id, table)))
+
+
+def test_two_ore_results_edit_the_first(gkz) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    """№ 3: an edit of the earlier result writes its own table, not ORE_ID / ORE_CLS of the later one."""
+    c, project, set_id, table, holes = gkz
+    one, two, now = _two(c, project, set_id, table)
+    before = rows_of(c, set_id, str(one["table_id"]))
+    r = c.post(f"{C}/results/{one['result_id']}/edit", json={"hole": holes[1], **SPLIT})
+    assert r.status_code == 200, r.text
+    assert rows_of(c, set_id, str(one["table_id"]))["rows"] != before["rows"]  # the edit is in its table
+    assert _samples(c, set_id, table) == now
+    assert all(e[0] != "drillholes.changed" or e[1]["table"] != table for e in r.json().get("events", []))
+    recs = {x["id"]: x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"]}
+    assert recs[one["result_id"]]["stale"] is False and recs[two["result_id"]]["stale"] is False
+    r = c.post(f"{C}/results/{two['result_id']}/edit", json={"hole": holes[1], **SPLIT})  # the later one writes
+    assert r.status_code == 200, r.text
+    assert _samples(c, set_id, table) != now
+
+
+def test_user_columns_survive_on_unchanged_rows(gkz) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    """№ 10: a field the user added to the result table keeps its values on the rows of the edited hole that the
+    edit did not change; the changed rows lose them — said in `warnings`."""
+    from bf_core.composites import results
+    from bf_core.db.schema import dh_columns, dh_rows
+    from bf_core.drillholes.snapshot import snapshots
+    from bf_core.drillholes.store import pack, unpack
+
+    c, project, set_id, table, holes = gkz
+    done = ore_here(project, {"body": body(set_id, table)})
+    rid, tid = done["result_id"], int(done["table_id"])
+    with dialect.write_tx(project.engine) as conn:
+        slots = [int(s) for s in conn.execute(sa.select(dh_columns.c.slot).where(dh_columns.c.table_id == tid,
+                                                                                  dh_columns.c.kind == "number")).scalars()]
+        slot = max(slots) + 1
+        conn.execute(sa.insert(dh_columns).values(table_id=tid, name="ПРИМ", kind="number", slot=slot, role="value",
+                                                  deleted=False, position=999))  # fmt: skip
+        for r in conn.execute(sa.select(dh_rows.c.id, dh_rows.c.num).where(dh_rows.c.table_id == tid)).all():
+            nums = unpack(r.num, slot + 1)
+            nums[slot] = float(r.id)
+            conn.execute(sa.update(dh_rows).where(dh_rows.c.id == r.id).values(num=pack(list(nums))))
+        results.bump_table(conn, set_id, tid)
+    snapshots.forget(set_id)
+    old = rows_of(c, set_id, str(tid))
+    k = cols(old)
+    mark = {(r["hole"], r["from"], r["to"]): r[k["ПРИМ"]] for r in old["rows"]}
+    assert all(v is not None for v in mark.values())
+    r = c.post(f"{C}/results/{rid}/edit", json={"hole": holes[1], **SPLIT})
+    assert r.status_code == 200, r.text
+    new = rows_of(c, set_id, str(tid))
+    kept = lost = 0
+    for row in new["rows"]:
+        span = (row["hole"], row["from"], row["to"])
+        if span in mark:
+            assert row[k["ПРИМ"]] == mark[span], span
+            kept += row["hole"] == holes[1]
+        else:
+            assert row["hole"] == holes[1] and row[k["ПРИМ"]] is None, span
+            lost += 1
+    assert kept >= 2 and lost >= 2
+    warnings = r.json()["warnings"]
+    assert len(warnings) == 1 and "ПРИМ" in warnings[0]

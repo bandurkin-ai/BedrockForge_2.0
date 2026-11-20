@@ -327,7 +327,10 @@ def edit_result(project: Any, result_id: int, body: dict[str, Any]) -> dict[str,
             conn.execute(
                 sa.update(dh_tables).where(dh_tables.c.id == tid).values(row_count=dh_tables.c.row_count + delta)
             )
-        wrote = write_sample_columns(conn, spec.table_id, src.row_ids, oj.sample_columns(after))
+        key = conn.execute(sa.select(dh_tables.c.name_key).where(dh_tables.c.id == spec.table_id)).scalar_one()
+        mine = results.own_columns(conn, rec, key)  # not those a later ore result on these samples wrote again
+        sample = [(s, v) for s, v in oj.sample_columns(after) if s.name.casefold() in mine]
+        wrote = write_sample_columns(conn, spec.table_id, src.row_ids, sample)
         samples_rev = None
         if wrote:
             b, a, key = results.bump_table(conn, spec.set_id, spec.table_id)
