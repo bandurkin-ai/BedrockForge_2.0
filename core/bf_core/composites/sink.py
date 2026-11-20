@@ -471,14 +471,16 @@ def write_snapshot(engine: sa.Engine, cache_dir: Path, table_id: int, out: OutTa
     with dialect.read_tx(engine) as conn:
         t = conn.execute(sa.select(dh_tables).where(dh_tables.c.id == table_id)).one()
         cols = conn.execute(
-            sa.select(dh_columns.c.id, dh_columns.c.name).where(dh_columns.c.table_id == table_id)
+            sa.select(dh_columns.c.id, dh_columns.c.name).where(
+                dh_columns.c.table_id == table_id, dh_columns.c.deleted.is_(False)
+            )
         ).all()
         holes = store.hole_ids(conn, int(t.set_id))
         if ids is None or int(t.row_count or 0) != n:
             ids = _row_ids(conn, table_id)
     if len(ids) != n:
         raise ValueError("rows of the table differ from the arrays")
-    key_of = {c.name: f"c{c.id}" for c in cols}
+    key_of = {c.name.casefold(): f"c{c.id}" for c in cols}  # by casefold, as `_column_slots` finds them
     codes, names = store.hole_codes(out.holes, out.hole_index)
     hole_of = np.array([holes[h] for h in names], dtype=np.int64)[codes] if n else np.zeros(0, dtype=np.int64)
     arrays: dict[str, Any] = {
@@ -488,10 +490,11 @@ def write_snapshot(engine: sa.Engine, cache_dir: Path, table_id: int, out: OutTa
         "to": pa.array(np.asarray(out.to_m, dtype=float), type=pa.float64()),
     }
     for spec, vals in zip(out.columns, out.values, strict=True):
+        key = key_of[spec.name.casefold()]
         if spec.kind == "number":
-            arrays[key_of[spec.name]] = pa.array(np.asarray(vals, dtype=float), type=pa.float64())
+            arrays[key] = pa.array(np.asarray(vals, dtype=float), type=pa.float64())
         else:
-            arrays[key_of[spec.name]] = _text_column(vals)
+            arrays[key] = _text_column(vals)
     path = cache_dir / f"{table_id}-{results._token(t.created_at)}-{t.rev}.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")

@@ -62,3 +62,33 @@ def test_a_table_deleted_during_the_job_is_409_source_gone(demo) -> None:  # typ
     assert e.value.status == 409 and e.value.code == "source_gone", e.value.code
     assert "«Пробы»" in e.value.message and e.value.hint
     assert c.get(f"{C}/results?set_id={set_id}").json()["results"] == []
+
+
+# --- № 9: the snapshot finds its columns by casefold, live ones only ---------------------------------------
+
+
+def test_snapshot_keys_columns_by_casefold_and_live_only(db_url: str, tmp_path: Path) -> None:
+    import numpy as np
+    import pyarrow.parquet as pq
+
+    from bf_core.composites import sink
+    from bf_core.db.schema import dh_columns
+    from bf_core.drillholes.store import ColumnSpec
+    from tests.test_composites_results import setup
+
+    engine, _set_id, src = setup(db_url, tmp_path)  # «Пробы»: AU, CU
+    with dialect.write_tx(engine) as conn:  # a hidden text column «au» after the live AU
+        conn.execute(sa.insert(dh_columns).values(table_id=src, name="au", kind="text", slot=0, role="value",
+                                                  deleted=True, position=9))  # fmt: skip
+        live = {r.name: f"c{r.id}" for r in conn.execute(
+            sa.select(dh_columns.c.id, dh_columns.c.name).where(dh_columns.c.table_id == src,
+                                                                dh_columns.c.deleted.is_(False)))}  # fmt: skip
+    au, cu = np.array([1.0, np.nan, 0.5, 2.0]), np.array([0.1, 0.2, 0.3, 0.4])
+    out = sink.OutTable("Пробы", ["A", "A", "B", "B"], np.array([0.0, 1.0, 0.0, 2.0]), np.array([1.0, 2.0, 2.0, 3.0]),
+                        [ColumnSpec("au", "number"), ColumnSpec("Cu", "number")], [au, cu])  # fmt: skip
+    path = sink.write_snapshot(engine, tmp_path / "cache", src, out)
+    got = pq.read_table(path)
+    assert {live["AU"], live["CU"]} <= set(got.column_names)
+    np.testing.assert_array_equal(got.column(live["AU"]).to_numpy(zero_copy_only=False), au)
+    np.testing.assert_array_equal(got.column(live["CU"]).to_numpy(zero_copy_only=False), cu)
+    engine.dispose()
