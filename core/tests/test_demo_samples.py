@@ -1,7 +1,7 @@
 """Demo sample processing of Э12 (demo/samples.py; ТЗ 7.5, 8.2, 7.35 Д-26; подшаг 12.32): «Композиты 2 м» of
 «Пробы» and «Рудные интервалы» by the bodies of their jobs — ordinary results of «Обработка проб» (fresh, not
-stale), the table of intervals with LABEL, ORE_ID / ORE_CLS of the samples, the display «Рудные интервалы»; the
-audit of the demo is made after them (not stale); the rest of the demo is as before."""
+stale), the table of intervals with LABEL, ORE_ID / ORE_CLS of the samples, no display along holes (the track
+of the one the job makes loads in 3D); the audit of the demo is made after them (not stale)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from bf_core.composites import ore_job as oj
 from bf_core.demo import samples as ds
 from tests.test_composites_jobs import rows_of, tables
 from tests.test_import_job import API
@@ -60,9 +61,10 @@ def test_composites_and_ore_intervals_of_the_demo(demo) -> None:  # type: ignore
     assert ore_cls.count("ore") > 500 and None in ore_cls  # the sample without AU has no class (not waste)
     assert res["ore"]["written"] == [{"table": "пробы", "columns": ["ORE_ID", "ORE_CLS"]}]
 
-    # the display «Рудные интервалы»: its track names the table so that the 3D layer loads it
-    chart = next(x for x in c.get(f"{API}/charts?set_id={set_id}").json()["charts"] if x["name"] == ds.ORE_NAME)
-    track = chart["settings"]["tracks"][0]
+    # no display along holes in the demo (the one of its job is removed); the track of the display the job makes
+    # names the table so that the 3D layer loads it
+    assert c.get(f"{API}/charts?set_id={set_id}").json()["charts"] == []
+    track = oj.display_settings(ds.ORE_NAME)["tracks"][0]
     r = c.get(f"{API}/viz/sets/{set_id}/intervals/0", params={"table": track["table"], "fields": "CLASS,LABEL"})
     assert r.status_code == 200, r.text
 

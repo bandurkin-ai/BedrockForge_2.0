@@ -52,6 +52,7 @@ def _samples_table(project: Project) -> tuple[int, str] | None:
 
 def add_samples(project: Project) -> None:
     """«Композиты 2 м» and «Рудные интервалы» of the set «Скважины 2025»."""
+    from bf_core.charts import service as charts
     from bf_core.composites import jobs as cj
     from bf_core.composites import ore_job as oj
 
@@ -64,4 +65,8 @@ def add_samples(project: Project) -> None:
         return None
 
     cj.run(project.engine, project.folder, {"body": composites_body(set_id, table)}, job_id=_JOB, tick=tick)
-    oj.run_ore(project.engine, project.folder, {"body": ore_body(set_id, table)}, job_id=_JOB, tick=tick)
+    made = oj.run_ore(project.engine, project.folder, {"body": ore_body(set_id, table)}, job_id=_JOB, tick=tick)
+    # the display «Рудные интервалы» is not kept: the demo has no displays along holes of its own (the specs of
+    # Э6 start from none); «Применить» or «Перестроить» of the result makes it again
+    with dialect.write_tx(project.engine) as conn:
+        charts.delete(conn, int(made["chart_id"]))

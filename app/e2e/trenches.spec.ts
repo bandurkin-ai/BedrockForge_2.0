@@ -94,7 +94,9 @@ test("trenches: the demo trench in 3D; «Импорт канав…» from a DXF
     expect(card.type.title).toBe("Канава");
     expect(card.surveys).toBe(9); // a station at every vertex of the polyline
     expect(Math.abs(card.trajectory.length! - head.td)).toBeLessThan(1e-6); // «от/до» run along the polyline
-    expect(Object.values(card.tables).map((t) => [t.name, t.rows > 100])).toEqual([["Пробы", true]]); // 2 m samples
+    // 2 m samples (the tables of «Обработка проб» of the demo, Э12, hold the trench too)
+    const processed = ["Композиты 2 м", "Рудные интервалы"];
+    expect(Object.values(card.tables).filter((t) => !processed.includes(t.name)).map((t) => [t.name, t.rows > 100])).toEqual([["Пробы", true]]);
     const first = await state(page);
     expect(first.sets).toEqual([sets[0].id]);
 
