@@ -6,11 +6,13 @@
  * interface asks our own question (`danger`); the assistant's calls are confirmed by the registry (`confirm`).
  */
 import type { App } from "../../shell/app";
-import type { CommandSource } from "../../shell/commands";
+import type { CommandContext, CommandSource } from "../../shell/commands";
 import { askConfirm } from "../../shell/dialogs";
 import { needProject, needWritable, noted, refusal, showJobs, viewport } from "../../shell/objectRun";
 import { openWindow } from "../../shell/windows";
 import { refresh as refreshJobs } from "../jobs/state";
+import { sceneObjects } from "../scene/objects";
+import { tablesStore } from "../tables/state";
 import { deleteResult, editOre, exportProtocol, loadFields, loadTables, rebuildResult, renameOnExists, resolveTable, startTool, type Started, type TableRow } from "./api";
 import { checkParams, firstError, parseNames, sourceFromArgs, toolBody, valuesFromArgs, type FormValues, type SourceState, type ToolSpec } from "./params";
 import { TOOLS } from "./tools";
@@ -71,6 +73,24 @@ async function started(app: App, tool: ToolSpec, s: Started | null): Promise<str
   return startedText(tool, s);
 }
 
+/**
+ * Why a tool of sample processing is unavailable (ADR 0018 decision 25): no project or read-only, no active set,
+ * the active set has no interval tables (once its tables are read), «Кодировать каркасами» — no closed wireframe in
+ * the project (once the wireframes are read; a body not checked yet counts as possible).
+ */
+export function toolReason(app: App, tool: ToolSpec, ctx: CommandContext): string | null {
+  const base = needWritable(app)(ctx);
+  if (base) return base;
+  if (!ctx.hasSet) return "Нет активного набора скважин";
+  const tabs = tablesStore.get().tabs;
+  if (tabs.length && !tabs.some((t) => t.kind === "assay" || t.kind === "interval")) return "В наборе нет таблиц проб";
+  if (tool.source.wireframes) {
+    const scene = sceneObjects.get();
+    if (scene.loaded && !scene.wireframes.some((w) => !w.dtm && w.stats?.closed !== false)) return "В проекте нет замкнутых каркасов";
+  }
+  return null;
+}
+
 function bindTool(app: App, tool: ToolSpec): void {
   app.registry.bind(
     tool.command,
@@ -82,7 +102,7 @@ function bindTool(app: App, tool: ToolSpec): void {
       const body = await jobBody(tool, a);
       return started(app, tool, await startTool(tool.endpoint, body, renameOnExists));
     }),
-    needWritable(app),
+    (ctx) => toolReason(app, tool, ctx),
   );
 }
 
