@@ -118,22 +118,21 @@ def aggregate_strip(  # type: ignore[no-untyped-def]
     out, out_rho, out_len, out_n, out_low,
 ):  # fmt: skip
     """Values of the targets of holes [h0, h1) (ТЗ 8.2.2). For target [c0; c1] and field f, over the samples
-    with a value and a weight, l — the overlap: out = Σ l·w·g / Σ l·w; L_f = Σ l. `w`, `rho` — per sample or
-    empty (w = 1; no density). L_f < p_min·(c1 − c0) → `out_low` and, without `fill`, NaN. `fill` not NaN —
-    the part of the target without a value takes it: out = (out·L_f + fill·(c1 − c0 − L_f)) / (c1 − c0).
-    out_rho = Σ l·ρ / Σ l; out_len, out_n — length and number of the samples with a value in any field
-    (no fields — of all the samples)."""
+    with a value, l — the overlap: out = Σ l·w·g / Σ l·w; L_f = Σ l. `w`, `rho` — per sample or empty (w = 1;
+    no density). A sample without a weight (NaN, ≤ 0) takes the mean weight of the target, Σ l·w / Σ l over
+    its samples that have one; no weight in the whole target — w = 1. L_f < p_min·(c1 − c0) → `out_low` and,
+    without `fill`, NaN. `fill` not NaN — the part of the target without a value takes it:
+    out = (out·L_f + fill·(c1 − c0 − L_f)) / (c1 − c0). out_rho = Σ l·ρ / Σ l; out_len, out_n — length and
+    number of the samples with a value in any field (no fields — of all the samples)."""
     nf = vals.shape[1]
     use_w = w.shape[0] > 0
     use_rho = rho.shape[0] > 0
     use_fill = fill == fill
-    num = np.zeros(nf)
-    den = np.zeros(nf)
-    fl = np.zeros(nf)
-    snum = np.zeros((DEPTH, nf))
-    sden = np.zeros((DEPTH, nf))
-    sfl = np.zeros((DEPTH, nf))
-    sc = np.zeros((DEPTH, 3))
+    # per field: 0 Σ l·w·g, 1 Σ l·w (samples with a weight); 2 Σ l·g, 3 Σ l (without one); 4 Σ l
+    acc = np.zeros((nf, 5))
+    st = np.zeros((DEPTH, nf, 5))
+    sc = np.zeros(5)  # 0 Σ l·ρ, 1 Σ l (with ρ); 2 Σ l (sampled); 3 Σ l·w, 4 Σ l (with a weight)
+    ss = np.zeros((DEPTH, 5))
     for h in range(h0, h1):
         sh = t_src[h]
         r0 = 0
@@ -150,12 +149,10 @@ def aggregate_strip(  # type: ignore[no-untyped-def]
             while p < r1 and s_to[p] <= c0:
                 p += 1
             for f in range(nf):
-                num[f] = 0.0
-                den[f] = 0.0
-                fl[f] = 0.0
-            rn = 0.0
-            rd = 0.0
-            al = 0.0
+                for c in range(5):
+                    acc[f, c] = 0.0
+            for c in range(5):
+                sc[c] = 0.0
             cnt = 0
             k = 0
             depth = 0
@@ -172,69 +169,75 @@ def aggregate_strip(  # type: ignore[no-untyped-def]
                     lw = ln
                     if use_w:
                         lw = ln * w[i]
-                    wok = lw > 0.0  # a sample without a weight (NaN, ≤ 0) is not averaged
+                    wok = lw > 0.0
+                    if use_w and wok:
+                        sc[3] += lw
+                        sc[4] += ln
                     anyv = nf == 0
                     for f in range(nf):
                         v = vals[i, f]
                         if v == v:
                             anyv = True
+                            acc[f, 4] += ln
                             if wok:
-                                num[f] += lw * v
-                                den[f] += lw
-                                fl[f] += ln
+                                acc[f, 0] += lw * v
+                                acc[f, 1] += lw
+                            else:
+                                acc[f, 2] += ln * v
+                                acc[f, 3] += ln
                     if anyv:
-                        al += ln
+                        sc[2] += ln
                         cnt += 1
                     if use_rho:
                         r = rho[i]
                         if r == r:
-                            rn += ln * r
-                            rd += ln
+                            sc[0] += ln * r
+                            sc[1] += ln
                     k += 1
                     if (k & 7) == 0:  # a block of 8 samples is full: push it on the cascade
                         m = k >> 3
                         while (m & 1) == 0:
                             depth -= 1
                             for f in range(nf):
-                                num[f] = snum[depth, f] + num[f]
-                                den[f] = sden[depth, f] + den[f]
-                                fl[f] = sfl[depth, f] + fl[f]
-                            rn = sc[depth, 0] + rn
-                            rd = sc[depth, 1] + rd
-                            al = sc[depth, 2] + al
+                                for c in range(5):
+                                    acc[f, c] = st[depth, f, c] + acc[f, c]
+                            for c in range(5):
+                                sc[c] = ss[depth, c] + sc[c]
                             m >>= 1
                         for f in range(nf):
-                            snum[depth, f] = num[f]
-                            sden[depth, f] = den[f]
-                            sfl[depth, f] = fl[f]
-                            num[f] = 0.0
-                            den[f] = 0.0
-                            fl[f] = 0.0
-                        sc[depth, 0] = rn
-                        sc[depth, 1] = rd
-                        sc[depth, 2] = al
-                        rn = 0.0
-                        rd = 0.0
-                        al = 0.0
+                            for c in range(5):
+                                st[depth, f, c] = acc[f, c]
+                                acc[f, c] = 0.0
+                        for c in range(5):
+                            ss[depth, c] = sc[c]
+                            sc[c] = 0.0
                         depth += 1
                 i += 1
             while depth > 0:
                 depth -= 1
                 for f in range(nf):
-                    num[f] = snum[depth, f] + num[f]
-                    den[f] = sden[depth, f] + den[f]
-                    fl[f] = sfl[depth, f] + fl[f]
-                rn = sc[depth, 0] + rn
-                rd = sc[depth, 1] + rd
-                al = sc[depth, 2] + al
+                    for c in range(5):
+                        acc[f, c] = st[depth, f, c] + acc[f, c]
+                for c in range(5):
+                    sc[c] = ss[depth, c] + sc[c]
             length = c1 - c0
             need = p_min * length * (1.0 - REL)
-            low = nf == 0 and al < need
+            low = nf == 0 and sc[2] < need
             for f in range(nf):
-                lf = fl[f]
+                num = acc[f, 0]
+                den = acc[f, 1]
+                if acc[f, 3] > 0.0:  # samples without a weight
+                    if sc[4] > 0.0:
+                        mean_w = sc[3] / sc[4]
+                        num += mean_w * acc[f, 2]
+                        den += mean_w * acc[f, 3]
+                    else:
+                        num = acc[f, 2]
+                        den = acc[f, 3]
+                lf = acc[f, 4]
                 g = np.nan
-                if den[f] > 0.0:
-                    g = num[f] / den[f]
+                if den > 0.0:
+                    g = num / den
                 if lf < need:
                     low = True
                     if not use_fill:
@@ -247,11 +250,11 @@ def aggregate_strip(  # type: ignore[no-untyped-def]
                         else:
                             g = fill
                 out[t, f] = g
-            if rd > 0.0:
-                out_rho[t] = rn / rd
+            if sc[1] > 0.0:
+                out_rho[t] = sc[0] / sc[1]
             else:
                 out_rho[t] = np.nan
-            out_len[t] = al
+            out_len[t] = sc[2]
             out_n[t] = cnt
             out_low[t] = low
 

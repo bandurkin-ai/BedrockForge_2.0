@@ -58,11 +58,12 @@ _BLOCK_ROWS = 16384  # rows of a block of `stack_fields`
 
 
 class CompositeError(ValueError):
-    """An operation cannot run: {code, message, hint} in Russian, shown to the user (API — 422)."""
+    """An operation cannot run: {code, message, hint} in Russian, shown to the user (API — 422). `param` —
+    the key of the parameter at fault, when there is one."""
 
-    def __init__(self, code: str, message: str, hint: str = "") -> None:
+    def __init__(self, code: str, message: str, hint: str = "", *, param: str | None = None) -> None:
         super().__init__(message)
-        self.code, self.message, self.hint = code, message, hint
+        self.code, self.message, self.hint, self.param = code, message, hint, param
 
     def as_dict(self) -> dict[str, str]:
         return {"code": self.code, "message": self.message, "hint": self.hint}
@@ -376,8 +377,10 @@ def aggregate(
     """Values of the targets [c0; c1] over the samples of `lines` (ТЗ 8.2.2). `values` — float64 [n, n_fields]
     in line order (`stack_fields`); `weight`, `density` — per sample, in line order, or None.
 
-    For a field: l_i — the overlap of sample i that has a value (and a weight > 0, when weights are given);
-    g_c = Σ l_i·w_i·g_i / Σ l_i·w_i (w = 1 without weights); L_f = Σ l_i. No such sample — NaN, never 0.
+    For a field: l_i — the overlap of sample i that has a value; g_c = Σ l_i·w_i·g_i / Σ l_i·w_i (w = 1
+    without weights); L_f = Σ l_i. No such sample — NaN, never 0. A sample without a weight (NaN, ≤ 0) is
+    not lost: it takes the mean weight of the target, Σ l·w / Σ l over its samples that have one (a density
+    measured on a part of the samples); no weight in the whole target — w = 1.
     L_f < p_min·(c1 − c0) → `low` and g_c = NaN. `fill` (not NaN: 0 or a number) — the part of the target
     without a value takes it: g_c = (g_c·L_f + fill·(c1 − c0 − L_f)) / (c1 − c0), and p_min only marks `low`.
     ρ_c = Σ l_i·ρ_i / Σ l_i over the samples with a density. Sums — in the order of the samples, pairwise

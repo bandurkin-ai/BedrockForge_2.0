@@ -281,7 +281,10 @@ def test_aggregate_gaps_and_missing_values() -> None:
     assert ag.density[0] == 2.75 and ag.density[1] == 3.0 and math.isnan(ag.density[2])
     w = iv.aggregate(lines, vals, tg, weight=rho, density=rho, p_min=0.5)
     assert w.values[0, 0] == pytest.approx(8.5 / 5.5, rel=1e-12)
-    assert math.isnan(w.values[2, 0])  # the sample 4–6 has no density: it cannot be weighted, not «ρ = 0»
+    assert w.values[2, 0] == 4.0 and math.isnan(w.density[2])  # no density in 4–6 at all: w = 1, not «ρ = 0»
+    part = iv.aggregate(lines, col(1.0, 2.0, 5.0, 4.0), _spans([0.0], [4.0]), weight=rho)  # 3–4 has no density
+    mean_w = (2.5 * 1 + 3.0 * 2) / 3  # it takes the mean density of the composite
+    assert part.values[0, 0] == pytest.approx((2.5 * 1 + 3.0 * 2 * 2 + mean_w * 5) / (2.5 + 6.0 + mean_w), rel=1e-12)
     strict = iv.aggregate(lines, vals[:, :1], tg, p_min=0.75)
     assert math.isnan(strict.values[1, 0]) and strict.low.tolist() == [False, True, False]
     zero = iv.aggregate(lines, vals[:, :1], tg, p_min=0.75, fill=0.0)  # unsampled 3–4 counts as 0
@@ -341,13 +344,16 @@ def test_aggregate_against_brute_force() -> None:
         r = np.arange(lines.starts[h], lines.starts[h + 1])
         ln = np.minimum(lines.to[r], tg.to[t]) - np.maximum(lines.frm[r], tg.frm[t])
         r, ln = r[ln > 0], ln[ln > 0]
+        with_w = ~np.isnan(rho[r])
+        mean_w = math.fsum(ln[with_w] * rho[r][with_w]) / math.fsum(ln[with_w]) if with_w.any() else 1.0
+        wt = np.where(with_w, rho[r], mean_w)  # a sample without a density takes the mean one of the target
         for f in range(vals.shape[1]):
-            ok = ~np.isnan(vals[r, f]) & ~np.isnan(rho[r])
+            ok = ~np.isnan(vals[r, f])
             lf = math.fsum(ln[ok])
             if lf < 0.5 * (tg.to[t] - tg.frm[t]) * (1 - 1e-9):
                 assert math.isnan(ag.values[t, f])
             else:
-                want = math.fsum(ln[ok] * rho[r][ok] * vals[r, f][ok]) / math.fsum(ln[ok] * rho[r][ok])
+                want = math.fsum(ln[ok] * wt[ok] * vals[r, f][ok]) / math.fsum(ln[ok] * wt[ok])
                 assert ag.values[t, f] == pytest.approx(want, rel=1e-12)
         got: dict[int, float] = {}
         for c, x in zip(codes[r].tolist(), ln.tolist(), strict=True):
