@@ -92,13 +92,16 @@ class OutTable:
     columns: list[store.ColumnSpec]
     values: list[np.ndarray]
     row_ids: np.ndarray | None = None  # dh_rows.id of every row once the table is built, when the database told
+    #: optional (hole names, the index into them of every row) — `holes` once more, as the kernel had them
+    hole_index: tuple[Sequence[str], np.ndarray] | None = None
 
 
 def build_table(engine: sa.Engine, set_id: int, out: OutTable, *, job_id: int, tick: store.Tick = _noop) -> int:
     """The table in state `building` (invisible); returns its id. Its name is settled by `commit`. The keys of
     its rows are kept in `out.row_ids` (SQLite) for the snapshot."""
     values = [cast(Sequence[Any], v) for v in out.values]
-    data = store.TableData(out.name, "interval", out.holes, out.from_m, out.to_m, out.columns, values)
+    data = store.TableData(out.name, "interval", out.holes, out.from_m, out.to_m, out.columns, values,
+                           hole_index=out.hole_index)  # fmt: skip
     res = store.write_table(engine, set_id, data, job_id=job_id, tick=tick, swap=False)
     out.row_ids = res["row_ids"]
     return int(res["table_id"])
@@ -298,7 +301,7 @@ def with_dependents(out: OutTable, deps: Sequence[Dependent]) -> OutTable:
                 vals.append(np.asarray(v))
             else:
                 cols[at], vals[at] = spec, np.asarray(v)
-    return OutTable(out.name, out.holes, out.from_m, out.to_m, cols, vals, out.row_ids)
+    return OutTable(out.name, out.holes, out.from_m, out.to_m, cols, vals, out.row_ids, out.hole_index)
 
 
 def _row_ids(conn: sa.Connection, table_id: int) -> np.ndarray:
@@ -463,7 +466,7 @@ def write_snapshot(engine: sa.Engine, cache_dir: Path, table_id: int, out: OutTa
     if len(ids) != n:
         raise ValueError("rows of the table differ from the arrays")
     key_of = {c.name: f"c{c.id}" for c in cols}
-    codes, names = store.hole_codes(out.holes)
+    codes, names = store.hole_codes(out.holes, out.hole_index)
     hole_of = np.array([holes[h] for h in names], dtype=np.int64)[codes] if n else np.zeros(0, dtype=np.int64)
     arrays: dict[str, Any] = {
         "__id": pa.array(np.asarray(ids, dtype=np.int64)),

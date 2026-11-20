@@ -374,7 +374,9 @@ def _layout_rows(layout: str, n: int = 900) -> list[Any]:
     elif layout == "shuffled":
         random.Random(6).shuffle(rows)
     elif layout == "gaps":
-        rows = [(r[0], None if k % 17 == 3 else r[1], None if k % 23 == 5 else r[2], *r[3:]) for k, r in enumerate(rows)]
+        rows = [
+            (r[0], None if k % 17 == 3 else r[1], None if k % 23 == 5 else r[2], *r[3:]) for k, r in enumerate(rows)
+        ]
         rows[40] = (rows[40][0], None, rows[40][2], 1.0, 1.0, "только в пропущенной")
     elif layout == "ties":
         rows = [rows[k - 1] if k % 9 == 4 else r for k, r in enumerate(rows)]
@@ -467,7 +469,12 @@ def test_snapshot_read_of_an_event_table_and_of_an_empty_one(tmp_path: Path) -> 
     import pyarrow.parquet as pq
 
     engine, set_id, _tid = setup("sqlite", tmp_path)
-    rows = [("B", 5.0, None, 1.0, "x"), ("A", 7.0, None, 2.0, None), ("A", 1.0, 1.5, 3.0, "y"), ("A", None, 2.0, 4.0, "z")]
+    rows = [
+        ("B", 5.0, None, 1.0, "x"),
+        ("A", 7.0, None, 2.0, None),
+        ("A", 1.0, 1.5, 3.0, "y"),
+        ("A", None, 2.0, 4.0, "z"),
+    ]
     for name, data in (("События", rows), ("Пусто", [])):
         table = dh.TableData(name, "event", [r[0] for r in data], [r[1] for r in data], [r[2] for r in data],
                              [dh.ColumnSpec("V", "number"), dh.ColumnSpec("T", "text")],
@@ -477,7 +484,10 @@ def test_snapshot_read_of_an_event_table_and_of_an_empty_one(tmp_path: Path) -> 
         snap = _snapshot_file(engine, set_id, tid, cache, 2)
         keys = {c.name: c.key for c in snap.columns if c.key.startswith("c")}
         want = _reference_lines(snap, keys, event=True)
-        for got in (source.read(engine, set_id, tid, ["V", "T"], cache_dir=cache), source.read(engine, set_id, tid, ["V", "T"])):
+        for got in (
+            source.read(engine, set_id, tid, ["V", "T"], cache_dir=cache),
+            source.read(engine, set_id, tid, ["V", "T"]),
+        ):
             assert got.row_ids.tolist() == want["row_ids"] and got.skipped == want["skipped"]
             assert got.holes == want["holes"] and got.starts.tolist() == want["starts"]
             assert got.from_m.tolist() == want["from"] and got.to_m.tolist() == want["to"]

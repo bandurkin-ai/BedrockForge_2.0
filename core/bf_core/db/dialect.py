@@ -4,6 +4,7 @@ write transactions, job claim, JSON access. SQLite (desktop project / instance) 
 
 from __future__ import annotations
 
+import threading
 import unicodedata
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
@@ -128,10 +129,65 @@ def write_tx(engine: Engine) -> Iterator[Connection]:
             yield conn
 
 
-#: SQLite, a connection that writes the portions of a big table (`write_portions`): the WAL is folded into the
-#: file every so many pages (64 MB) instead of 1000, and the page cache holds a portion whole.
-BULK_WAL_PAGES = 16384
+#: SQLite, the connection that writes the portions of a big table (`write_portions`): it keeps so much of
+#: pages (a portion whole), and after every so many portions it waits until the WAL is folded whole, so that
+#: the next portion starts the WAL anew — the WAL stays within those portions (some 150 MB).
 BULK_CACHE_KB = 65536
+BULK_WAL_PORTIONS = 16
+
+
+class _WalFolder:
+    """A thread that folds the WAL of a SQLite file into it (PASSIVE checkpoints on a connection of its own)
+    when asked: the writer goes on with the next portion while the WAL and the file are synced — a quarter of
+    the time of a table of millions of rows. PASSIVE takes what no reader and no writer needs and never makes
+    them wait. A failure (the file is busy, the engine is gone) ends the folding: the data are in the WAL, and
+    the connections fold it themselves, as ever."""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+        self._cond = threading.Condition()
+        self._asked = 0  # commits asked to be folded
+        self._done = 0  # … and folded (or given up)
+        self._stop = False
+        self._thread = threading.Thread(target=self._run, name="bf-wal-fold", daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        try:
+            with _driver(self._engine) as raw:
+                while True:
+                    with self._cond:
+                        self._cond.wait_for(lambda: self._stop or self._asked > self._done)
+                        asked, stop = self._asked, self._stop
+                    if asked > self._done:
+                        raw.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchall()
+                    with self._cond:
+                        self._done = asked
+                        self._cond.notify_all()
+                    if stop:
+                        return
+        except Exception:  # noqa: BLE001, S110 - best effort (see the class docstring)
+            pass
+        finally:
+            with self._cond:
+                self._stop = True
+                self._done = float("inf")  # type: ignore[assignment]
+                self._cond.notify_all()
+
+    def fold(self, wait: bool = False) -> None:
+        """What is committed by now is to be folded; `wait` — until it is (a minute at most)."""
+        with self._cond:
+            self._asked += 1
+            asked = self._asked
+            self._cond.notify_all()
+            if wait:
+                self._cond.wait_for(lambda: self._done >= asked, timeout=60.0)
+
+    def close(self) -> None:
+        with self._cond:
+            self._stop = True
+            self._cond.notify_all()
+        self._thread.join()
 
 
 @contextmanager
@@ -144,26 +200,40 @@ def write_portions(engine: Engine) -> Iterator[Callable[[], AbstractContextManag
                     bulk_insert_columns(conn, …)
 
     Each `tx()` is a transaction of its own, as `write_tx`: readers and writers get in between, a failure or a
-    cancel leaves the portions committed so far. SQLite: they share one connection — every `write_tx` opens
-    and closes its own, and closing the last connection of a file folds the whole WAL into it (a checkpoint
-    and two syncs per portion); the connection folds the WAL every BULK_WAL_PAGES pages and keeps BULK_CACHE_KB
-    of pages. Both settings die with the connection; the foreign keys are checked as on any other."""
+    cancel leaves the portions committed so far; the foreign keys are checked as on any connection.
+
+    SQLite: the portions share one connection (every `write_tx` opens and closes its own, and closing the last
+    connection of a file folds the whole WAL into it) that keeps BULK_CACHE_KB of pages and does not fold the
+    WAL at its commits: a thread does it meanwhile (`_WalFolder`), asked after every commit; after every
+    BULK_WAL_PORTIONS portions the writer waits for it, and the WAL starts anew. The thread ends with the block,
+    after a last folding; the settings die with the connection."""
     with engine.connect() as conn:
-        sqlite = is_sqlite(engine)
-        if sqlite:
+        folder = None
+        if is_sqlite(engine):
             raw = conn.connection.driver_connection
             assert raw is not None
-            raw.execute(f"PRAGMA wal_autocheckpoint={int(BULK_WAL_PAGES)}")
+            raw.execute("PRAGMA wal_autocheckpoint=0")
             raw.execute(f"PRAGMA cache_size=-{int(BULK_CACHE_KB)}")
+            folder = _WalFolder(engine)
+        done = 0
 
         @contextmanager
         def tx() -> Iterator[Connection]:
-            if sqlite:
+            nonlocal done
+            if folder is not None:
                 conn.info["bf_begin"] = "BEGIN IMMEDIATE"
             with conn.begin():
                 yield conn
+            done += 1
+            if folder is not None:
+                folder.fold(wait=done % BULK_WAL_PORTIONS == 0)
 
-        yield tx
+        try:
+            yield tx
+        finally:
+            if folder is not None:
+                folder.fold()
+                folder.close()
 
 
 @contextmanager

@@ -160,6 +160,7 @@ def compute(
         if release:
             for name in list(src.numbers):
                 del src.numbers[name]
+
     texts = [lines.take(src.codes[n]) for n in spec.texts]
     depth = np.asarray(ends, dtype=float)[lines.holes] if lines.n_holes else np.zeros(0)
     by_wf = spec.method == "domain" and spec.domain is not None and spec.domain.wireframes is not None
@@ -240,7 +241,8 @@ def compute(
              np.full(n, None, dtype=object) if domain is None else domain,
              flag_column([(FLAG_LOW, c.values.low), *marks], n)]  # fmt: skip
     holes = np.array(src.holes, dtype=object)[hole] if n else np.zeros(0, dtype=object)
-    out = sink.OutTable(spec.name, cast("Sequence[str]", holes), cl.frm, cl.to, cols, vals)
+    out = sink.OutTable(spec.name, cast("Sequence[str]", holes), cl.frm, cl.to, cols, vals,
+                        hole_index=(src.holes, hole))  # fmt: skip
     journal = list(lines.notes(spec.table_name)) + notes + list(c.journal)
     if skipped:
         journal.insert(0, f"Таблица «{spec.table_name}»: строк без «от» или «до» — {skipped}, в расчёт не вошли.")

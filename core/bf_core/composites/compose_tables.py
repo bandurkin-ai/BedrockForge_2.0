@@ -173,7 +173,8 @@ def merge_compute(
             cols.append(spec_k)
             vals.append(v)
     ml = m.lines
-    out = sink.OutTable(spec.name, _holes(holes, ml.hole_ids()), ml.frm, ml.to, cols, vals)
+    rows_hole = ml.hole_ids()
+    out = sink.OutTable(spec.name, _holes(holes, rows_hole), ml.frm, ml.to, cols, vals, hole_index=(holes, rows_hole))
     report = {**m.report, "summary": {"before": before, "after": _summary_of(ml.lengths(), merged0)},
               "edits": [], "journal": m.journal}  # fmt: skip
     return Made(out, report, list(m.journal))
@@ -202,7 +203,9 @@ def coords_compute(
     for name, v in c.columns().items():
         cols.append(ColumnSpec(name if name.casefold() not in taken else f"{name}_TRAJ", "number", "м"))
         vals.append(v)
-    out = sink.OutTable(spec.name, _holes(src.holes, src.hole_of()), src.from_m, src.to_m, cols, vals)
+    rows_hole = src.hole_of()
+    out = sink.OutTable(spec.name, _holes(src.holes, rows_hole), src.from_m, src.to_m, cols, vals,
+                        hole_index=(src.holes, rows_hole))  # fmt: skip
     journal = list(c.journal)
     if src.skipped:
         journal.insert(

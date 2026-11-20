@@ -259,39 +259,40 @@ class TableData:
     columns: list[ColumnSpec]
     values: list[Sequence[Any]]  # one sequence per column, in `columns` order
     qual: list[Sequence[int]] | None = None  # per number column: 0 plain, 1 below / 2 above limit
+    #: optional (hole names, the index into them of every row): `holes` given once more, ready for the writer
+    hole_index: tuple[Sequence[str], Any] | None = None
 
 
-def hole_codes(holes: Any) -> tuple[Any, list[str]]:
-    """(the index of the name of every row, the names): millions of rows name some thousand holes."""
+def hole_codes(holes: Any, index: tuple[Sequence[str], Any] | None = None) -> tuple[Any, list[str]]:
+    """(the index of the name of every row, the names): millions of rows name some thousand holes. `index` —
+    (names, the index of every row), when the caller has it: nothing is looked up then."""
     import numpy as np
     import pandas as pd
 
+    if index is not None and len(index[1]) == len(holes):
+        return np.asarray(index[1]), list(index[0])
     codes, names = pd.factorize(np.asarray(holes, dtype=object), use_na_sentinel=False)
     return codes, list(names)
 
 
 def encode_vectors(matrix: Any) -> list[bytes | None]:
     """Rows of a float64 matrix → the vectors of `dh_rows.num`: little-endian, cut after the last value of the
-    row (None — no value at all). One `tobytes` per width met, not per row."""
+    row (None — no value at all). One `tobytes` of the matrix cut into rows; only the rows whose last column
+    is empty are looked at again."""
     import numpy as np
 
     n, w = matrix.shape
     if not w or not n:
         return [None] * n
-    if not np.isnan(matrix[:, -1]).any():  # the usual case: every row as wide as the table
-        blob = np.ascontiguousarray(matrix, dtype="<f8").tobytes()
-        return [blob[k : k + 8 * w] for k in range(0, len(blob), 8 * w)]
-    present = ~np.isnan(matrix)
-    widths = np.where(present.any(axis=1), w - np.argmax(present[:, ::-1], axis=1), 0)
-    out: list[bytes | None] = [None] * n
-    for width in np.unique(widths).tolist():
-        if not width:
-            continue
-        rows = np.flatnonzero(widths == width)
-        blob = np.ascontiguousarray(matrix[rows, :width], dtype="<f8").tobytes()
-        step = 8 * int(width)
-        for r, at in zip(rows.tolist(), range(0, len(blob), step), strict=True):
-            out[r] = blob[at : at + step]
+    step = 8 * w
+    blob = np.ascontiguousarray(matrix, dtype="<f8").tobytes()
+    out: list[bytes | None] = [blob[k : k + step] for k in range(0, len(blob), step)]
+    short = np.flatnonzero(np.isnan(matrix[:, -1]))
+    if len(short):
+        present = ~np.isnan(matrix[short])
+        widths = np.where(present.any(axis=1), w - np.argmax(present[:, ::-1], axis=1), 0)
+        for r, width in zip(short.tolist(), widths.tolist(), strict=True):
+            out[r] = blob[r * step : r * step + 8 * width] if width else None
     return out
 
 
@@ -332,45 +333,75 @@ def _driver_quals(quals: Sequence[Any], start: int, stop: int) -> list[bytes | N
     return out
 
 
-def _driver_texts(texts: Sequence[tuple[str, Any]], start: int, stop: int) -> list[str | None]:
-    """`dh_rows.txt` of the rows [start, stop) — `{slot: text}` as JSON, None when every column is empty
-    (None, NaN, ""). Rows are grouped by the values of all the columns and the JSON is written once per group
-    — a table of millions of rows has some dozen rocks and flags; values that are not text (numbers, flags of
-    an attribute column) are written row by row, as given."""
-    import json
+class _Texts:
+    """`dh_rows.txt` of a table — `{slot: text}` as JSON, None when every column is empty (None, NaN, "").
 
-    import numpy as np
-    import pandas as pd
+    The rows are grouped by the values of all the text columns once, and the JSON of a group is written once —
+    a table of millions of rows has some dozen rocks and flags; a portion then takes the texts of its rows.
+    With more groups than GROUPS (a column of sample numbers) the JSON is written portion by portion, for the
+    groups met there. Values that are not text (numbers, flags of an attribute column: equal ones of different
+    types — 1, 1.0, True — would fall into one group) are written row by row, as given."""
 
-    m = stop - start
-    group = np.zeros(m, dtype=np.int64)
-    span = 1  # group < span
-    parts = []
-    for slot, col in texts:
-        try:
-            codes, uniques = pd.factorize(col[start:stop], use_na_sentinel=True)
-        except TypeError:  # values that cannot be grouped (lists)
-            return _texts_by_row(texts, start, stop)
-        labels = uniques.tolist()
-        if any(type(v) is not str for v in labels):  # equal values of other types (1, 1.0, True) merge: not here
-            return _texts_by_row(texts, start, stop)
-        if "" in labels:
-            codes = np.where(codes == labels.index(""), -1, codes)
-        if span > 2**40:  # many columns of many values: renumber the groups met so far
-            group, met = pd.factorize(group)
-            span = len(met)
-        group = group * (len(labels) + 1) + (codes + 1)
-        span *= len(labels) + 1
-        parts.append((slot, codes, labels))
-    of_row, met = pd.factorize(group)
-    first = np.empty(len(met), dtype=np.int64)
-    first[of_row[::-1]] = np.arange(m - 1, -1, -1, dtype=np.int64)  # the first row of every group
-    made = np.empty(len(met), dtype=object)
-    for g, r in enumerate(first.tolist()):
-        txt = {slot: labels[codes[r]] for slot, codes, labels in parts if codes[r] >= 0}
-        made[g] = json.dumps(txt, ensure_ascii=False) if txt else None
-    out: list[str | None] = made[of_row].tolist()
-    return out
+    GROUPS = 65_536
+
+    def __init__(self, texts: Sequence[tuple[str, Any]]) -> None:
+        import numpy as np
+        import pandas as pd
+
+        self.texts = list(texts)
+        self.by_row = False
+        n = len(self.texts[0][1]) if self.texts else 0
+        group = np.zeros(n, dtype=np.int64)
+        span = 1  # group < span
+        self.parts: list[tuple[str, Any, list[str]]] = []
+        for slot, col in self.texts:
+            try:
+                codes, uniques = pd.factorize(col, use_na_sentinel=True)
+            except TypeError:  # values that cannot be grouped (lists)
+                self.by_row = True
+                return
+            labels = uniques.tolist()
+            if any(type(v) is not str for v in labels):
+                self.by_row = True
+                return
+            if "" in labels:
+                codes = np.where(codes == labels.index(""), -1, codes)
+            if span > 2**40:  # many columns of many values: renumber the groups met so far
+                group, met = pd.factorize(group)
+                span = len(met)
+            group = group * (len(labels) + 1) + (codes + 1)
+            span *= len(labels) + 1
+            self.parts.append((slot, codes, labels))
+        self.of_row, met = pd.factorize(group)
+        self.first = np.empty(len(met), dtype=np.int64)  # a row of every group
+        self.first[self.of_row] = np.arange(n, dtype=np.int64)
+        self.made = self._json(self.first) if len(met) <= self.GROUPS else None
+
+    def _json(self, rows: Any) -> Any:
+        """The JSON of the groups whose rows are given (an object array)."""
+        import json
+
+        import numpy as np
+
+        made = np.empty(len(rows), dtype=object)
+        for g, r in enumerate(rows.tolist()):
+            txt = {slot: labels[codes[r]] for slot, codes, labels in self.parts if codes[r] >= 0}
+            made[g] = json.dumps(txt, ensure_ascii=False) if txt else None
+        return made
+
+    def portion(self, start: int, stop: int) -> list[str | None]:
+        import numpy as np
+
+        if self.by_row:
+            return _texts_by_row(self.texts, start, stop)
+        groups = self.of_row[start:stop]
+        out: list[str | None]
+        if self.made is not None:
+            out = self.made[groups].tolist()
+        else:
+            met, of_row = np.unique(groups, return_inverse=True)
+            out = self._json(self.first[met])[of_row].tolist()
+        return out
 
 
 def _texts_by_row(texts: Sequence[tuple[str, Any]], start: int, stop: int) -> list[str | None]:
@@ -431,7 +462,7 @@ def write_table(
                 )
             )
         known = hole_ids(conn, set_id)
-        codes, names = hole_codes(data.holes)
+        codes, names = hole_codes(data.holes, data.hole_index)
         ensure_holes(conn, set_id, names, known)
     import numpy as np
 
@@ -443,12 +474,12 @@ def write_table(
     # columns as arrays once (a list of an import becomes one; an array of a job is used as it is): a portion
     # takes its rows from them — no matrix of the whole table, no row-by-row work
     numbers = [np.asarray(data.values[i], dtype=float) for i in number_slots]
-    texts = [(str(slot_of[i]), np.asarray(data.values[i], dtype=object)) for i in text_slots]
+    texts = _Texts([(str(slot_of[i]), np.asarray(data.values[i], dtype=object)) for i in text_slots])
     quals = None if data.qual is None else [np.asarray(q) for q in data.qual[: len(number_slots)]]
     fixed: dict[str, int | None] = {"table_id": table_id}
     if quals is None:
         fixed["qual"] = None
-    if not texts:
+    if not text_slots:
         fixed["txt"] = None
     ids: list[Any] | None = []  # the row keys in the order of the arrays; None — the database did not tell
     with dialect.write_portions(engine) as portion:
@@ -463,8 +494,8 @@ def write_table(
             }
             if quals is not None:
                 columns["qual"] = _driver_quals(quals, start, stop)
-            if texts:
-                columns["txt"] = _driver_texts(texts, start, stop)
+            if text_slots:
+                columns["txt"] = texts.portion(start, stop)
             with portion() as conn:
                 keys = dialect.bulk_insert_columns(conn, dh_rows, fixed, columns)
             if keys is None:

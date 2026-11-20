@@ -244,13 +244,17 @@ def _hard_table(n: int, seed: int = 7) -> dh.TableData:
     )
 
 
+@pytest.mark.parametrize("groups", [65_536, 8])
 def test_bulk_rows_are_what_the_row_by_row_writer_stored(
-    db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, groups: int
 ) -> None:
     """The vectorized writer in several portions (statements of many rows and their remainder) stores, bit
-    for bit, the vectors, flags and text maps of a row-by-row encoder; missing stays missing, never 0."""
+    for bit, the vectors, flags and text maps of a row-by-row encoder; missing stays missing, never 0. The
+    text maps are written once per group of equal texts — for the whole table, or (more groups than `groups`:
+    a column of sample numbers) portion by portion."""
     engine, s1, _ = _setup(db_url, tmp_path)
     monkeypatch.setattr(dh, "BATCH", 257)
+    monkeypatch.setattr(dh._Texts, "GROUPS", groups)
     with dialect.write_tx(engine) as conn:
         dh.replace_collars(conn, s1, [dh.CollarRow(f"С-{i:03d}", 1.0, 2.0, 3.0, 100.0) for i in range(30, -1, -1)])
     data = _hard_table(1500)
@@ -321,6 +325,31 @@ def test_row_keys_come_in_the_order_of_the_arrays(db_url: str, tmp_path: Path, m
         assert res["row_ids"] is None
     empty = dh.write_table(engine, s1, table("Пусто", [], [], []), job_id=None, tick=noop)
     assert empty["rows"] == 0 and (empty["row_ids"] is None or len(empty["row_ids"]) == 0)
+
+
+def test_holes_given_as_names_and_an_index(db_url: str, tmp_path: Path) -> None:
+    """`hole_index` — the holes of the rows once more, as (names, index): the writer looks nothing up and
+    stores the same rows; an index of another length is not used."""
+    import numpy as np
+
+    engine, s1, _ = _setup(db_url, tmp_path)
+    names = ["Б-2", "А-1", "В-3"]
+    index = np.array([1, 1, 0, 2, 0, 1], dtype=np.int32)
+    holes = [names[i] for i in index.tolist()]
+    au = [float(i) for i in range(6)]
+    plain = table("Интервалы", holes, au, ["x"] * 6)
+    plain.kind = "interval"
+    fast = table("Быстрая", np.array(holes, dtype=object), au, ["x"] * 6)  # type: ignore[arg-type]
+    fast.kind, fast.hole_index = "interval", (names, index)
+    wrong = table("Не та", holes, au, ["x"] * 6)
+    wrong.kind, wrong.hole_index = "interval", (["Г-4"], np.array([0, 0]))
+    got = [
+        _stored_rows(engine, dh.write_table(engine, s1, t, job_id=None, tick=noop)["table_id"])
+        for t in (plain, fast, wrong)
+    ]
+    assert got[0] == got[1] == got[2] and [g[0] for g in got[0]] == holes
+    with dialect.read_tx(engine) as conn:
+        assert sorted(dh.hole_ids(conn, s1)) == sorted(names)  # «Г-4» of the unused index is not a hole
 
 
 @pytest.mark.parametrize("gone", ["hole", "table"])
