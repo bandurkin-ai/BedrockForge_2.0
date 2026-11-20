@@ -343,10 +343,14 @@ def commit(engine: sa.Engine, c: Commit) -> dict[str, Any]:
             _still_there(conn, c, co.table_id)
         name, rev = c.name, None
         replaced: list[int] = []
+        own_cols: dict[str, Any] = {}
         if c.table is not None:
             name, replaced = _settle_name(conn, c)
             store.swap_in(conn, c.set_id, c.table)
             rev = int(conn.execute(sa.select(dh_tables.c.rev).where(dh_tables.c.id == c.table)).scalar_one())
+            live = (dh_columns.c.table_id == c.table) & dh_columns.c.deleted.is_(False)
+            made = conn.execute(sa.select(dh_columns.c.name).where(live)).scalars()
+            own_cols = {"table_columns": list(made)}  # what the operation made: the rest is the user's (`lost`)
         changed, written, shifts = [], [], []
         for co in c.columns:
             w = write_columns(conn, c.set_id, co)
@@ -367,7 +371,7 @@ def commit(engine: sa.Engine, c: Commit) -> dict[str, Any]:
             inputs=c.inputs,
             sha256=c.sha256,
             algo=c.algo,
-            report={**c.report, "written": written},
+            report={**c.report, "written": written, **own_cols},
             job_id=c.job_id,
         )
         for key, before, after, names in shifts:  # the new record follows too, unless it read what it wrote

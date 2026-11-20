@@ -50,6 +50,8 @@ from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
+from .results import with_meshes
+
 router = APIRouter()
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
@@ -329,7 +331,8 @@ def rebuild(
                 409, "result_busy", "Таблица результата сейчас пересчитывается.", "Дождитесь окончания задания."
             )
         set_id = int(rec["set_id"])
-        again = {**(rec["params"] or {}), "set_id": set_id, "table": str(rec["table_id"])}
+        again = {**with_meshes(conn, rec["params"] or {}, rec["inputs"] or {}), "set_id": set_id,
+                 "table": str(rec["table_id"])}  # fmt: skip
         dom = again.get("domain")
         tables_in = (rec["inputs"] or {}).get("tables") or []
         if isinstance(dom, dict) and dom.get("field"):
@@ -354,16 +357,8 @@ def _rebuild_coding(conn: Any, rec: dict[str, Any], body: dict[str, Any] | None)
     now = [routes_run._current(conn, set_id, t) for t in (rec["inputs"] or {}).get("tables") or []]
     if not now:
         raise ApiError(409, "source_gone", "Источник результата не найден.", "Удалите результат.")
-    lost = cj.lost_dependents(conn, int(rec["table_id"]))
-    if lost and not (body or {}).get("drop_lost"):
-        names = ", ".join(f"«{x['name']}»" for x in lost)
-        raise ApiError(
-            409,
-            "dependents_lost",
-            f"При перестроении пропадут результаты: {names}.",
-            "Подтвердите перестроение или сначала сохраните эти результаты.",
-            {"lost": lost},
-        )
-    again = {**(rec["params"] or {}), "set_id": set_id, "name": table.name, "table": str(now[0].id), "replace": True}
+    cj.refuse_lost(conn, int(rec["table_id"]), body)
+    params = with_meshes(conn, rec["params"] or {}, rec["inputs"] or {})  # the bodies by name and geometry now
+    again = {**params, "set_id": set_id, "name": table.name, "table": str(now[0].id), "replace": True}
     spec = jc.parse_coding(conn, again)  # the bodies are still there and closed
     return spec, again, f"Перестроить: {table.name}"

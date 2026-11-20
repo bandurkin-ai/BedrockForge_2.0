@@ -7,6 +7,7 @@ merge never make two columns of one name; no dead branches in `routes_run`."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import sqlalchemy as sa
@@ -117,3 +118,87 @@ def test_fields_x_and_x_src_never_make_two_columns_of_one_name(demo) -> None:  #
         au = r[key["AU"]]
         if au is not None:
             assert r[key["X_SRC_2"]] == pytest.approx(au * 2) and r[key["X_SRC"]] == pytest.approx(au * 3)
+
+
+# --- № 3: the columns of the user and ORE_* are listed in `lost` -------------------------------------------
+
+
+def test_lost_lists_the_columns_of_the_user_and_ore(demo) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    from tests.test_composites_jobs import body, run_here, tables
+    from tests.test_composites_prep import prep_here
+    from tests.test_ore_job import body as ore_body
+    from tests.test_ore_job import ore_here
+
+    c, project, set_id, table = demo
+    first = run_here(project, {"body": body(set_id, table)})
+    tid, rid = str(first["table_id"]), first["result_id"]
+    prep_here(project, {"body": {"set_id": set_id, "table": tid, "field": "AU", "value": 1.0}}, "topcut")  # repeated
+    r = c.post(f"{API}/drillholes/sets/{set_id}/tables/{tid}/columns", json={"name": "МОЯ", "expression": "AU * 2"})
+    assert r.status_code == 200, r.text
+    r = c.post(f"{C}/results/{rid}/rebuild", json={})
+    assert r.status_code == 409 and r.json()["code"] == "dependents_lost", r.text
+    assert r.json()["lost"] == [{"kind": "column", "name": "МОЯ"}]  # not the own columns, not AU_CUT of the top cut
+    assert "колонки «МОЯ»" in r.json()["message"] and r.json()["hint"]
+    ore_here(project, {"body": ore_body(set_id, tid, name="Рудные")})  # ORE_ID, ORE_CLS into the composites
+    name = tables(c, set_id)  # «Заменить?» of a new run under the name of the composites
+    comp = next(n for n, t in name.items() if t["table"] == tid)
+    r = c.post(f"{C}/run", json={**body(set_id, table), "name": comp})
+    assert r.status_code == 409 and r.json()["code"] == "table_exists", r.text
+    lost = r.json()["lost"]
+    assert {"kind": "column", "name": "ORE_ID"} in lost and {"kind": "column", "name": "ORE_CLS"} in lost, lost
+    assert {"kind": "column", "name": "МОЯ"} in lost and not any(x["name"] == "AU_CUT" for x in lost), lost
+    assert c.post(f"{C}/results/{rid}/rebuild", json={"drop_lost": True}).status_code == 200
+
+
+# --- № 4: «Перестроить» after `.bfggis` finds the wireframes by name and geometry ---------------------------
+
+
+def test_rebuild_after_bfggis_takes_the_wireframes_by_inputs_meshes(demo, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    """Coding and composites by domains by wireframes → `.bfggis` (the ids renumbered: «Рельеф» before the bodies is
+    deleted, the bodies move down one id — an old id names another body) → «Перестроить» takes the same bodies."""
+    from tests.test_composites_jobs import body, rows_of, run_here
+    from tests.test_composites_prep import run_coding_here, wireframe_ids
+    from tests.test_composites_results import _wait
+    from tests.test_import_job import wait_job
+
+    c, project, set_id, table = demo
+    wf = wireframe_ids(c)
+    one, two = wf["Рудное тело 1"], wf["Рудное тело 2"]
+    coded = run_coding_here(project, {"body": {"set_id": set_id, "table": table, "wireframe_ids": [one]}})
+    dom = {"wireframe_ids": [two, one]}
+    by_wf = run_here(project, {"body": body(set_id, table, method="domain", name="Композиты по телу", domain=dom)})
+    before = {k: rows_of(c, set_id, str(d["table_id"]))["rows"] for k, d in (("coding", coded), ("domain", by_wf))}
+    assert wf["Рельеф"] < one and c.delete(f"{API}/wireframes/{wf['Рельеф']}").status_code == 200
+    r = c.post(f"{API}/projects/export", json={"path": str(tmp_path / "Каркасы")}).json()
+    job = _wait(c, r["source"], r["id"])
+    assert job["status"] == "done", job
+    r = c.post(f"{API}/projects/import", json={"path": job["result"]["path"], "mode": "copy"}).json()
+    job = _wait(c, r["source"], r["id"])
+    assert job["status"] == "done", job
+    maps = job["result"]["id_maps"]
+    assert c.post(f"{API}/projects/{job['result']['uid']}/open").status_code == 200
+    now = wireframe_ids(c)
+    assert now["Рудное тело 2"] == one  # the old id of «Рудное тело 1» names another body now
+    new_set = maps["objects"][str(set_id)]
+    listed = {x["op"]: x for x in c.get(f"{C}/results?set_id={new_set}").json()["results"]}
+    for op in ("coding", "domain"):
+        r = c.post(f"{C}/results/{listed[op]['id']}/rebuild", json={})
+        assert r.status_code == 200, (op, r.text)
+        done = wait_job(c, r.json()["source"], r.json()["id"], timeout=180)
+        assert done["status"] == "done" and done["result"]["fresh"] is True, (op, done)  # the same bodies
+        got = rows_of(c, new_set, str(listed[op]["table_id"]))["rows"]
+        same = [{k: v for k, v in x.items() if k != "id"} for x in got]
+        assert same == [{k: v for k, v in x.items() if k != "id"} for x in before[op]], op
+    with dialect.read_tx(projects_of_c(c).engine) as conn:
+        from bf_core.composites.results import current_meshes
+
+        assert current_meshes(conn, listed["domain"]["inputs"]) == [now["Рудное тело 2"], now["Рудное тело 1"]]
+        with pytest.raises(ApiError) as e:
+            current_meshes(conn, {"meshes": [{"name": "Нет такого", "key": "x"}]})
+    assert e.value.status == 409 and e.value.code == "source_gone" and "«Нет такого»" in e.value.message
+
+
+def projects_of_c(c: Any) -> Any:
+    from bf_core.projects.service import projects_of
+
+    return projects_of(c.core).require_current()

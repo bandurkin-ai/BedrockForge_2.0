@@ -197,6 +197,7 @@ def ore_preview(svc: Svc, body: Payload) -> dict[str, Any]:
 
 def _current_params(conn: Any, rec: dict[str, Any]) -> dict[str, Any]:
     """The params of a result on the current tables of its inputs (found by name: a replaced one has another id)."""
+    from .results import with_meshes
     from .routes_run import _current
 
     set_id = int(rec["set_id"])
@@ -204,7 +205,7 @@ def _current_params(conn: Any, rec: dict[str, Any]) -> dict[str, Any]:
     now = [_current(conn, set_id, t) for t in tables]
     if not now:
         raise ApiError(409, "source_gone", "Источник результата не найден.", "Удалите результат.")
-    again = {**(rec["params"] or {}), "set_id": set_id, "table": str(now[0].id)}
+    again = {**with_meshes(conn, rec["params"] or {}, rec["inputs"] or {}), "set_id": set_id, "table": str(now[0].id)}
     dom = again.get("domain")
     if isinstance(dom, dict) and str(dom.get("field") or "").strip():
         again["domain"] = {**dom, "table": str(now[1].id if len(now) > 1 else now[0].id)}
@@ -334,16 +335,7 @@ def rebuild(
         if table is None or table.state != "ready":
             raise ApiError(409, "result_busy", "Результат сейчас пересчитывается.", "Дождитесь окончания задания.")
         again = _current_params(conn, rec)
-        lost = cj.lost_dependents(conn, int(rec["table_id"]))
-        if lost and not (body or {}).get("drop_lost"):
-            names = ", ".join(f"«{x['name']}»" for x in lost)
-            raise ApiError(
-                409,
-                "dependents_lost",
-                f"При перестроении пропадут результаты: {names}.",
-                "Подтвердите перестроение или сначала сохраните эти результаты.",
-                {"lost": lost},
-            )
+        cj.refuse_lost(conn, int(rec["table_id"]), body)
     rows = again.pop("_rows")
     params = {"body": {**again, "name": table.name, "replace": True}, "rows": rows, "rebuild": result_id}
     if (rec["report"] or {}).get("edits"):  # computed again from the samples: the manual edits are lost

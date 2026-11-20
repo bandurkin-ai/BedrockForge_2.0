@@ -98,6 +98,43 @@ def make_inputs(
     }
 
 
+def current_meshes(conn: sa.Connection, inputs: dict[str, Any]) -> list[int]:
+    """The ids of the wireframes of `inputs.meshes` now, in their order (the priority), as the tables are found by
+    name: the wireframe of that name with the same geometry (`cache_key`) first, else the first of that name (its
+    geometry changed: computed again) — `.bfggis` and a re-import give other ids. 409 `source_gone` — none of it."""
+    from bf_core.viz.meshes import mesh_state
+
+    out: list[int] = []
+    for m in inputs.get("meshes") or []:
+        ids = conn.execute(
+            sa.select(objects.c.id)
+            .where(objects.c.kind == "wireframe", objects.c.name_key == dialect.name_key(str(m.get("name"))),
+                   objects.c.state == "ready")
+            .order_by(objects.c.id)
+        ).scalars().all()  # fmt: skip
+        same = [int(i) for i in ids if mesh_state(conn, int(i)).cache_key() == m.get("key")]
+        if not ids:
+            raise ApiError(409, "source_gone", f"Каркас «{m.get('name')}» удалён.",
+                           "Удалите результат или постройте его заново с другими каркасами.")  # fmt: skip
+        out.append(same[0] if same else int(ids[0]))
+    return out
+
+
+def with_meshes(conn: sa.Connection, params: dict[str, Any], inputs: dict[str, Any]) -> dict[str, Any]:
+    """`params` of a result with `wireframe_ids` (of coding; of a domain by wireframes) — the current ids of its
+    `inputs.meshes` (`current_meshes`); without meshes — as they are."""
+    if not inputs.get("meshes"):
+        return dict(params)
+    ids = current_meshes(conn, inputs)
+    out = dict(params)
+    if out.get("wireframe_ids"):
+        out["wireframe_ids"] = ids
+    dom = out.get("domain")
+    if isinstance(dom, dict) and dom.get("wireframe_ids"):
+        out["domain"] = {**dom, "wireframe_ids": ids}
+    return out
+
+
 # --- «устарел» ------------------------------------------------------------------------------------
 
 
@@ -362,6 +399,29 @@ def own_columns(conn: sa.Connection, r: Any, table_key: str) -> set[str]:
     not those a later result wrote again (`written_later`)."""
     later = written_later(conn, r)
     return {n for t, n in _pairs(r["report"]) if t == table_key and (t, n) not in later}
+
+
+def user_columns(conn: sa.Connection, table_id: int, deps: Iterable[Any]) -> list[dict[str, Any]]:
+    """The live columns of a result table that its operation did not make (`report.table_columns` of its record)
+    and the records `deps` (its dependents) did not write: added by the user, ORE_* of
+    «Рудные интервалы» — a rebuild or «Заменить» loses them: [{"kind": "column", "name"}]. Not a result table, or
+    a record of an earlier build without `table_columns` — none."""
+    own = conn.execute(
+        sa.select(dh_results.c.report).where(dh_results.c.table_id == table_id, dh_results.c.op.in_(TABLE_OPS))
+    ).first()
+    made = (own.report or {}).get("table_columns") if own is not None else None
+    if made is None:
+        return []
+    key = conn.execute(sa.select(dh_tables.c.name_key).where(dh_tables.c.id == table_id)).scalar()
+    keep = {str(n).casefold() for n in made}
+    for r in deps:
+        keep |= {n for t, n in _pairs(r["report"]) if t == key}
+    cols = conn.execute(
+        sa.select(dh_columns.c.name)
+        .where(dh_columns.c.table_id == table_id, dh_columns.c.deleted.is_(False))
+        .order_by(dh_columns.c.position, dh_columns.c.id)
+    ).scalars()
+    return [{"kind": "column", "name": n} for n in cols if n.casefold() not in keep]
 
 
 def _not_found() -> ApiError:

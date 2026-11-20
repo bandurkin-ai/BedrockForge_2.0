@@ -131,6 +131,7 @@ def rebuild(
 ) -> dict[str, Any]:
     """The parameters of the result on the current tables (found by name: a replaced source has another id)."""
     from . import jobs as cj
+    from . import results
     from .results import OP_TITLES
 
     project = svc.require_current(writable=True)
@@ -154,17 +155,9 @@ def rebuild(
         now = [_current(conn, set_id, t) for t in (rec["inputs"] or {}).get("tables") or []]
         if not now:
             raise ApiError(409, "source_gone", "Источник результата не найден.", "Удалите результат.")
-        lost = cj.lost_dependents(conn, int(rec["table_id"]))
-        if lost and not (body or {}).get("drop_lost"):
-            names = ", ".join(f"«{x['name']}»" for x in lost)
-            raise ApiError(
-                409,
-                "dependents_lost",
-                f"При перестроении пропадут результаты: {names}.",
-                "Подтвердите перестроение или сначала сохраните эти результаты.",
-                {"lost": lost},
-            )
-    again = {**(rec["params"] or {}), "set_id": set_id, "name": table.name, "replace": True}
+        cj.refuse_lost(conn, int(rec["table_id"]), body)
+        now_params = results.with_meshes(conn, rec["params"] or {}, rec["inputs"] or {})  # ids of now
+    again = {**now_params, "set_id": set_id, "name": table.name, "replace": True}
     if rec["op"] == "merge":
         again["tables"] = [str(t.id) for t in now]
     else:

@@ -338,14 +338,27 @@ def dependents(conn: sa.Connection, table_id: int) -> list[dict[str, Any]]:
 
 
 def lost_dependents(conn: sa.Connection, table_id: int) -> list[dict[str, Any]]:
-    """What a replacement of the table loses: dependents without a way to repeat them (for «Заменить?»)."""
-    from .results import OP_TITLES
+    """What a replacement of the table loses (for «Заменить?», «Перестроить»): the dependents without a way to
+    repeat them, then the columns of the user (`results.user_columns`: {kind: "column", name}) — the columns of
+    the dependents are not among them (repeated, or gone with the result listed)."""
+    from .results import OP_TITLES, user_columns
 
-    return [
-        {"id": int(r["id"]), "op": r["op"], "title": OP_TITLES.get(r["op"], r["op"]), "name": r["name"]}
-        for r in dependents(conn, table_id)
-        if r["op"] not in _registered()
-    ]
+    deps, known = dependents(conn, table_id), _registered()
+    lost = [{"id": int(r["id"]), "op": r["op"], "title": OP_TITLES.get(r["op"], r["op"]), "name": r["name"]}
+            for r in deps if r["op"] not in known]  # fmt: skip
+    return lost + user_columns(conn, table_id, deps)
+
+
+def refuse_lost(conn: sa.Connection, table_id: int, body: dict[str, Any] | None) -> None:
+    """409 `dependents_lost` {lost} when a rebuild of the table loses something and `drop_lost` is not given."""
+    lost = lost_dependents(conn, table_id)
+    if not lost or (body or {}).get("drop_lost"):
+        return
+    parts = {"результаты": [x for x in lost if x.get("kind") != "column"],
+             "колонки": [x for x in lost if x.get("kind") == "column"]}  # fmt: skip
+    what = "; ".join(f"{k} {', '.join(f'«{x["name"]}»' for x in v)}" for k, v in parts.items() if v)
+    hint = "Подтвердите перестроение или сначала сохраните эти результаты и колонки."
+    raise ApiError(409, "dependents_lost", f"При перестроении пропадут {what}.", hint, {"lost": lost})
 
 
 def _replaced_table(conn: sa.Connection, set_id: int, name: str) -> int | None:
