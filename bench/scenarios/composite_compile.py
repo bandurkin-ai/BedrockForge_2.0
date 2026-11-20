@@ -6,8 +6,9 @@ empty (the first start after an install), the second finds what the first one le
 `composites.warm.warm()` — the step `composites` of the warm-up of the workers and of the API process
 (`ops/warm.py`) — and then every operation of the stage once on a set of 24 holes: composites by length, by
 domains and by benches, merging, coordinates, the analysis of the top cut, the top cut, the equivalent,
-declustering, the ore intervals of Д-26 and the analysis of conditions (the functions their handlers call), the
-previews of one hole and a hand edit of an ore interval.
+declustering, coding by wireframes (with the division and without it), the ore intervals of Д-26, the analysis
+of conditions and the protocol to XLSX (the functions their handlers call), the previews of one hole and a hand
+edit of an ore interval.
   compile_s     the compilation of the kernels: `warm_cold_s` + `left_s`;
   warm_cold_s   `warm()` with the empty cache;
   left_s        what the operations still waited for after it: their time with the empty cache less their time
@@ -39,7 +40,7 @@ def every(meta: dict[str, Any], engine: Any, folder: Path) -> None:
     from bf_core.composites import jobs as cj
     from bf_core.composites import jobs_prep
 
-    from . import _samples, composite_merge, composite_preview, composites, declus, topcut_analysis
+    from . import _samples, composite_coding, composite_merge, composite_preview, composites, declus, topcut_analysis
 
     def tick(_p: float | None = None, _m: str | None = None) -> None:
         pass
@@ -55,6 +56,8 @@ def every(meta: dict[str, Any], engine: Any, folder: Path) -> None:
         body = composite_preview.request(meta, op, {})
         jobs_prep.run_prep(engine, folder, {"body": body}, op, job_id=6 + k, tick=tick)
     declus.job(meta, engine, folder, {"cmin": 5.0, "cmax": 50.0}, job_id=8)
+    for k, how in enumerate(composite_coding.NAMES):
+        composite_coding.job(meta, engine, folder, how, job_id=11 + k)
     svc = _samples.service(engine, folder)
     hole = composite_preview.hole_ids(engine, meta["set_id"], 1)[0]
     for op in composite_preview.OPS:
@@ -64,11 +67,15 @@ def every(meta: dict[str, Any], engine: Any, folder: Path) -> None:
 
 def ore(meta: dict[str, Any], engine: Any, folder: Path, svc: Any, hole: int) -> None:
     """Д-26 on the same set (12.10–12.17, 12.22–12.23): the ore intervals (the job), the analysis of conditions,
-    the preview of a hole and a hand edit — an interval cut where two ore samples meet."""
+    the protocol to XLSX, the preview of a hole and a hand edit — an interval cut where two ore samples meet."""
+    import tempfile
+
     import numpy as np
 
     from bf_core.api.errors import ApiError
     from bf_core.composites import ore_conditions_job, ore_edit_job, ore_job, routes_ore, source
+
+    from . import ore_protocol
 
     def tick(_p: float | None = None, _m: str | None = None) -> None:
         pass
@@ -79,6 +86,9 @@ def ore(meta: dict[str, Any], engine: Any, folder: Path, svc: Any, hole: int) ->
                            job_id=9, tick=tick)  # fmt: skip
     lists = {"cutoffs": [cutoff, 1.0], "m_min": [2.0], "m_waste_max": [2.0, 4.0]}
     ore_conditions_job.run_conditions(engine, folder, {"body": {**params, **lists}}, job_id=10, tick=tick)
+    with tempfile.TemporaryDirectory(prefix="bf-bench-warm-") as tmp:  # before the edit: the result is as computed
+        ore_protocol.export({**meta, "result_id": made["result_id"]}, engine, folder, Path(tmp) / ore_protocol.FILE, 3,
+                            job_id=13)  # fmt: skip
     routes_ore.ore_preview(svc, {"params": {**params, "cutoff": cutoff}, "hole_id": hole})
     rows = source.read(engine, meta["set_id"], made["table_id"], ["ORE_ID", "NESTED"])
     samples = source.read(engine, meta["set_id"], meta["samples"], ["AU"])
@@ -123,9 +133,9 @@ def fresh() -> None:
     warm()
     t2 = time.perf_counter()
     warmed = _kernels(cache)
-    from . import _samples
+    from . import _samples, composite_coding
 
-    _samples.warm(every)
+    _samples.warm(every, more=composite_coding.store_bodies({}))
     t3 = time.perf_counter()
     out: dict[str, Any] = {"import_s": t1 - t0, "warm_s": t2 - t1, "jobs_s": t3 - t2,
                            "left": sorted(_kernels(cache) - warmed)}  # fmt: skip

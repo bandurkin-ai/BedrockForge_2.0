@@ -135,9 +135,13 @@ class Texts:
         import numpy as np
 
         made = np.empty(len(rows), dtype=object)
-        for g, r in enumerate(rows.tolist()):
-            txt = {slot: labels[codes[r]] for slot, codes, labels in self.parts if codes[r] >= 0}
-            made[g] = json.dumps(txt, ensure_ascii=False) if txt else None
+        # the codes of these rows as lists and one encoder (what `json.dumps(…, ensure_ascii=False)` makes anew
+        # on every call): half a million labels of ore intervals are groups of their own
+        cols = [(slot, codes[rows].tolist(), labels) for slot, codes, labels in self.parts]
+        encode = json.JSONEncoder(ensure_ascii=False).encode
+        for g in range(len(rows)):
+            txt = {slot: labels[of_row[g]] for slot, of_row, labels in cols if of_row[g] >= 0}
+            made[g] = encode(txt) if txt else None
         return made
 
     def portion(self, start: int, stop: int) -> list[str | None]:

@@ -30,7 +30,8 @@ from typing import Any
 
 from . import _samples
 
-STAGES = {"read": ("read",), "lines": ("lines",), "kernel": ("kernel",), "hash": ("hash",), "write": ("record",)}
+STAGES: dict[str, tuple[str, ...]] = {"read": ("read",), "lines": ("lines",), "kernel": ("kernel",),
+                                      "hash": ("hash",), "write": ("record",)}  # fmt: skip
 FIELD = "AU"
 LISTS = {"cutoffs": [0.3, 0.5, 1.0], "m_min": [1.0, 2.0], "m_waste_max": [2.0, 4.0]}
 

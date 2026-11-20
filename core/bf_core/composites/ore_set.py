@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Context, Decimal
 from typing import Any
 
 import numpy as np
@@ -124,11 +124,15 @@ class OreSet:
         return out
 
 
+_WIDE = Context(prec=400)  # every digit of any double (the default 28 refuse a grade of 1e30 of a wrong base)
+
+
 def _ru(x: float, digits: int) -> str:
     """A number with `digits` decimals as it is written by hand: half up on its shortest notation, comma."""
     if not math.isfinite(x):
         return "—"
-    return str(Decimal(repr(x)).quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP)).replace(".", ",")
+    rounded = Decimal(repr(x)).quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP, context=_WIDE)
+    return f"{rounded:f}".replace(".", ",")
 
 
 def label(m: float, c: float, mc: float, unit: str = "") -> str:
@@ -160,7 +164,7 @@ def labels_of(m: np.ndarray, mc: np.ndarray, unit: str = "") -> list[str]:
     """`label(m, mc / m, mc, unit)` of many intervals — the same strings (500 thousand in a quarter of a second,
     not in eight); the numbers `_half_up` does not take go to `label`."""
     m, mc = np.asarray(m, dtype=np.float64), np.asarray(mc, dtype=np.float64)
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         c = mc / m
     plain = np.ones(len(m), dtype=bool)
     for x in (m, c, mc):
