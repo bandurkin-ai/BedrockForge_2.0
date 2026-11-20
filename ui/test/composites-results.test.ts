@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ResultRow } from "../src/modules/composites/api";
 import { bindComposites } from "../src/modules/composites/bind";
 import { ResultFacts } from "../src/modules/composites/ResultProps";
-import { eventSet, findResult, loadSetResults, paramsArgs, rebuildWarning, recordFacts, resetResults, resultLabel, resultMenu, resultsStore, sourceFacts, staleText, tabMark, toolOfOp, writtenColumns } from "../src/modules/composites/results";
+import { eventSet, findResult, loadSetResults, paramsArgs, rebuildQuestion, rebuildWarning, recordFacts, resetResults, resultLabel, resultMenu, resultsStore, sourceFacts, staleText, tabMark, toolOfOp, writtenColumns } from "../src/modules/composites/results";
 import { openResultProps, RESULT_WINDOW, ResultRows, runResultAction, TabMark } from "../src/modules/composites/ResultsTree";
 import { renderCompositesWindow } from "../src/modules/composites/ToolWindow";
 import { toolValues } from "../src/modules/composites/bind";
@@ -113,6 +113,45 @@ describe("the results of a set", () => {
     expect(resultsStore.get().bySet).toEqual({});
   });
 
+  it("asked again while a read is running — read once more after it, the newer answer stays", async () => {
+    const answers: ((r: Response) => void)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        sent.push({ method: "GET", path: new URL(url).pathname.replace("/api/v1", "") });
+        return new Promise<Response>((res) => answers.push(res));
+      }),
+    );
+    const first = loadSetResults(3);
+    const again = loadSetResults(3); // an event during the read
+    const third = loadSetResults(3); // one more — the same queued read
+    expect(third).toBe(again);
+    await vi.waitFor(() => expect(answers).toHaveLength(1));
+    answers[0](json({ results: [result()] })); // read before the change: fresh
+    await first;
+    await vi.waitFor(() => expect(answers).toHaveLength(2));
+    expect(resultsStore.get().bySet[3][0].stale).toBe(false);
+    answers[1](json({ results: [result({ stale: true, reason: "изменена таблица «Пробы»" })] }));
+    await again;
+    expect(resultsStore.get().bySet[3][0].stale).toBe(true);
+    expect(sent.filter((r) => r.path === "/composites/results")).toHaveLength(2);
+    expect(answers).toHaveLength(2);
+  });
+
+  it("a read queued for the previous project is not made", async () => {
+    const answers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(async () => new Promise<Response>((res) => answers.push(res))));
+    const first = loadSetResults(3);
+    const again = loadSetResults(3);
+    resetResults();
+    await vi.waitFor(() => expect(answers).toHaveLength(1));
+    answers[0](json({ results: [result()] }));
+    await first;
+    await again;
+    expect(answers).toHaveLength(1);
+    expect(resultsStore.get().bySet).toEqual({});
+  });
+
   it("show «устарел» with the reason, the name or the written columns", () => {
     expect(staleText(STALE)).toBe("устарел: изменена таблица «Пробы»");
     expect(staleText(result())).toBeNull();
@@ -182,18 +221,33 @@ describe("the tree", () => {
     expect(sent.at(-1)?.path).toBe("/composites/results?set_id=3");
   });
 
-  it("«Перестроить» goes to its route; with manual edits it warns first", async () => {
-    await runResultAction(app, result(), "rebuild");
+  it("«Перестроить» always asks our own question (decision 11); manual edits are warned of in its text", async () => {
+    const answer = async (ok: boolean) => {
+      await vi.waitFor(() => expect(dialogStore.get().queue).toHaveLength(1));
+      const d = dialogStore.get().queue[0];
+      if (d.kind !== "confirm") throw new Error("not a confirm");
+      d.resolve(ok);
+      closeDialog(d.id);
+      return d.options;
+    };
+    const run = runResultAction(app, result(), "rebuild");
+    const asked = await answer(true);
+    await run;
+    expect(asked).toMatchObject({ title: "Перестроить результат", okLabel: "Перестроить", danger: true });
+    expect(asked.message).toBe("Перестроить «Композиты 2 м»? Таблица-результат будет пересчитана по текущим данным.");
     expect(sent.filter((r) => r.method === "POST").map((r) => r.path)).toEqual(["/composites/results/9/rebuild"]);
+
+    const cut = runResultAction(app, TOPCUT, "rebuild");
+    expect((await answer(false)).message).toContain("Записанные поля будут пересчитаны");
+    await cut;
+    expect(sent.filter((r) => r.path === "/composites/results/11/rebuild")).toHaveLength(0);
+
     const ore = result({ id: 20, op: "ore", report: { edits: [{ action: "split" }, { action: "move" }] } });
     expect(rebuildWarning(ore)).toBe("Ручных правок: 2. При перестроении они будут потеряны.");
-    const run = runResultAction(app, ore, "rebuild");
-    await vi.waitFor(() => expect(dialogStore.get().queue).toHaveLength(1));
-    const d = dialogStore.get().queue[0];
-    expect(d.kind === "confirm" && d.options.danger).toBe(true);
-    if (d.kind === "confirm") d.resolve(false);
-    closeDialog(d.id);
-    await run;
+    expect(rebuildQuestion(ore)).toContain("\n\nРучных правок: 2. При перестроении они будут потеряны.");
+    const edited = runResultAction(app, ore, "rebuild");
+    expect((await answer(false)).message).toContain("Ручных правок: 2");
+    await edited;
     expect(sent.filter((r) => r.path === "/composites/results/20/rebuild")).toHaveLength(0);
   });
 
