@@ -22,6 +22,7 @@ import { CompositeWindow } from "./CompositeWindow";
 import { DeclusWindow } from "./DeclusWindow";
 import { EquivalentWindow } from "./EquivalentWindow";
 import { CoordsWindow, MergeWindow } from "./MergeWindow";
+import { OreWindow } from "./OreWindow";
 import { ResultProps } from "./ResultProps";
 import { RESULT_WINDOW } from "./ResultsTree";
 import { NO_SOURCE, rangeText, shown, sourceFromArgs, toolBody, type FormValues, type ParamSpec, type SourceState, type ToolSpec } from "./params";
@@ -339,5 +340,6 @@ export function renderCompositesWindow(w: FloatWin): ReactNode | null {
   if (tool.id === "equivalent") return <EquivalentWindow winId={w.id} args={args} />;
   if (tool.id === "topcut") return <TopcutWindow winId={w.id} args={args} />;
   if (tool.id === "declus") return <DeclusWindow winId={w.id} args={args} />;
+  if (tool.id === "ore") return <OreWindow winId={w.id} args={args} />;
   return <ToolWindow winId={w.id} tool={tool} args={args} />;
 }

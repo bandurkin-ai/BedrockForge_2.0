@@ -9,8 +9,8 @@ the kernel, the table built aside, the final transaction, the snapshot of the re
   domain  the same inside the stretches of one rock: `domain` "table" — ROCK of «Литология» (another table: its
           rows are laid on the holes of the samples), "field" — ROCK of the samples themselves;
   bench   benches of `bench` m from the highest collar (`composite_bench` runs this module with it).
-Before every job the project is as `prepare` left it (`_samples.reset`: on a repeated run — the earlier result
-deleted, `reset_s`), so a job never sees the table of another one. Per method `m`:
+Before every job the project is as `prepare` left it (`_samples.fresh`: after another job the database is
+copied back — `restore_s`), so a job never sees the table of another one. Per method `m`:
   m_s           the job from its start to the end of the final transaction — what the target of ТЗ counts;
   m_read_s      `source.read` (the samples, the table of the domain);  m_traj_s — the trajectories of the set;
   m_hash_s      SHA-256 of the inputs;  m_kernel_s — the kernel alone (ADR: ≤ 3 с);  m_compute_s — the kernel
@@ -83,12 +83,13 @@ def measure(meta: dict[str, Any], engine: Any, folder: Path, method: str, params
     out, took, ticks, read_from = job(meta, engine, folder, method, params)
     report = _samples.report_of(engine, out["result_id"])
     ref = meta["ref"]
-    want = ref["span_collar_m"] if method == "bench" else ref["span_m"]
-    got = report["summary"]["after"]["length"]
-    assert read_from[0] == "parquet", read_from
+    covered = report["summary"]["after"]["length"] + report.get("short_len", 0.0) + report.get("cut_len", 0.0)
+    assert read_from[0] == _samples.read_from(meta["rows"]), read_from
     assert not out["fresh"] and out["rows"] == report["summary"]["after"]["count"] > 0, out
     assert report["rows_in"] == meta["rows"] and report["skipped"] == 0, (report["rows_in"], report["skipped"])
-    assert _samples.close(got, want, 1e-9), (method, got, want)
+    assert _samples.close(covered, ref["span_collar_m"] if method == "bench" else ref["span_m"], 1e-9), covered
+    if method == "domain" and isinstance(body(meta, method, params)["domain"], dict):
+        assert _samples.close(report["short_len"], ref["short_m"], 1e-9), (report["short_len"], ref["short_m"])
     return {
         f"{method}_s": round(took["done"], 3),
         **_samples.timings(took, STAGES, f"{method}_"),
@@ -111,17 +112,18 @@ def load() -> None:
 
 
 def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
-    meta, engine, folder = _samples.opened(work)
-    info: dict[str, Any] = {"rows": meta["rows"]}
+    info: dict[str, Any] = {}
+    restore_s = 0.0
+    for method in params.get("methods", ["length", "domain"]):
+        meta, engine, folder, took = _samples.fresh(work)
+        restore_s += took
+        try:
+            info.update(measure(meta, engine, folder, method, params))
+        finally:
+            engine.dispose()
+        gc.collect()
+    info["rows"] = meta["rows"]
     if "cold_read_s" in meta:
         info["cold_read_s"] = meta["cold_read_s"]
-    reset_s = 0.0
-    try:
-        for method in params.get("methods", ["length", "domain"]):
-            reset_s += _samples.reset(engine, folder, meta)
-            gc.collect()
-            info.update(measure(meta, engine, folder, method, params))
-    finally:
-        engine.dispose()
-    info["reset_s"] = round(reset_s, 3)
+    info["restore_s"] = round(restore_s, 3)
     return info

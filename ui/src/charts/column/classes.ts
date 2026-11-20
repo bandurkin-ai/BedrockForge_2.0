@@ -138,7 +138,7 @@ export function finalRows(rows: ResultRows, showFrame: boolean): FinalRow[] {
     const c = oreClass(cls[i]);
     if (!c || !finite(a) || !finite(b) || b <= a) continue;
     if (c === "frame" && !showFrame) continue;
-    const isNested = nested[i] === 1 || nested[i] === true || c === "waste_in" || c === "frame";
+    const isNested = nested[i] === 1 || c === "waste_in" || c === "frame";
     const label = c === "ore" && typeof labels[i] === "string" ? (labels[i] as string) : "";
     out.push({ index: i, from: a, to: b, cls: c, nested: isNested, label });
   }

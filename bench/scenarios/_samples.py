@@ -27,8 +27,9 @@ of its stages:
     took["read"]      seconds inside every call of `source.read`;   took["@read"] — when the last one returned
 
 The clock replaces the attribute of the module for the time of the call (the handler looks it up there), so a
-renamed stage fails loudly instead of measuring nothing. `reset` makes a repeated run (`--repeat`) the same as the
-first one: the results an earlier run left are deleted as «Удалить» does, the tables have their snapshots again.
+renamed stage fails loudly instead of measuring nothing. Every job starts from the project as `build` left it
+(`fresh`): the database and the snapshots are put aside in `build` and copied back before a job that follows
+another one — a repeated run (`--repeat`) does the work of the first one, a job never sees the table of another.
 `warm` loads the kernels outside the timing: the same handlers on a set of 24 holes in a project of its own.
 `ref` of the meta — what the results are checked against (computed from the arrays, not by the kernels).
 """
@@ -38,6 +39,7 @@ from __future__ import annotations
 import contextlib
 import gc
 import json
+import shutil
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -45,6 +47,7 @@ from types import SimpleNamespace
 from typing import Any
 
 PROJECT = "Замер обработки проб"
+DB, KEPT, USED = "project.sqlite", "kept.sqlite", "used"
 SET, SAMPLES, LITHO = "Скважины", "Пробы", "Литология"
 UNITS = {"AU": "г/т", "AG": "г/т", "AS": "г/т"}  # the other grades — %
 DENSITY, ROCK = "DENSITY", "ROCK"
@@ -58,7 +61,26 @@ def _noop(_p: float | None = None, _m: str | None = None) -> None:
 # --- the data -------------------------------------------------------------------------------------------------
 
 
-def _reference(d: dict[str, Any]) -> dict[str, Any]:
+def _short_stretches(d: dict[str, Any], span: Any, least: float) -> float:
+    """Metres of the stretches of one rock shorter than `least` (f_min·L: they get no composite, ТЗ 8.2.2).
+    Consecutive intervals of one rock are one stretch; an interval without a rock and the hole below its
+    lithology have none and are stretches too."""
+    import numpy as np
+
+    rocks = {r: k for k, r in enumerate(sorted({r for r in d["l_rock"].tolist() if r is not None}))}
+    code = np.array([rocks.get(r, -1) for r in d["l_rock"].tolist()], dtype=np.int64)
+    h, a, b = d["l_hole"], d["l_from"], d["l_to"]
+    last = np.flatnonzero(np.append(h[1:] != h[:-1], True))  # the last interval of every hole
+    tail = last[span[h[last]] > b[last] + 1e-9]
+    at = tail + 1  # the stretch from the lithology to the bottom of the hole goes after it
+    h, code = np.insert(h, at, h[tail]), np.insert(code, at, -1)
+    a, b = np.insert(a, at, b[tail]), np.insert(b, at, span[d["l_hole"][tail]])
+    first = np.flatnonzero(np.append(True, (h[1:] != h[:-1]) | (code[1:] != code[:-1])))
+    length = b[np.append(first[1:] - 1, len(h) - 1)] - a[first]
+    return float(length[length < least * (1.0 - 1e-9)].sum())
+
+
+def _reference(d: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
     """What the scenarios check their results against, from the arrays of the generator."""
     import numpy as np
 
@@ -77,6 +99,7 @@ def _reference(d: dict[str, Any]) -> dict[str, Any]:
     return {
         "span_m": float(span.sum()),
         "span_collar_m": float(span[collar].sum()),
+        "short_m": _short_stretches(d, span, 0.5 * float(params.get("length", 2.0))),  # f_min = 0.5, as given
         "no_collar": int(holes - collar.sum()),
         "sampled_m": float(ln.sum()),
         "merge_m": float(ln[both].sum()),  # samples of the holes the lithology has: it covers them whole
@@ -87,7 +110,9 @@ def _reference(d: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def write_set(engine: Any, folder: Path, name: str, d: dict[str, Any], *, cold: bool = False) -> dict[str, Any]:
+def write_set(
+    engine: Any, folder: Path, name: str, d: dict[str, Any], params: dict[str, Any], *, cold: bool = False
+) -> dict[str, Any]:
     """The set of `arrays` in the project: collars, surveys, «Пробы», «Литология», the snapshots."""
     import numpy as np
 
@@ -122,7 +147,7 @@ def write_set(engine: Any, folder: Path, name: str, d: dict[str, Any], *, cold: 
     }  # fmt: skip
     out: dict[str, Any] = {"set_id": set_id, "holes": len(names), "rows": len(d["a_hole"]),
                            "litho_rows": len(d["l_hole"]), "numbers": [*grades, DENSITY], "grades": list(grades),
-                           "ref": _reference(d)}  # fmt: skip
+                           "ref": _reference(d, params)}  # fmt: skip
     for key, data in tables.items():
         out[key] = int(store.write_table(engine, set_id, data, job_id=None, tick=_noop)["table_id"])
     del tables, d
@@ -169,14 +194,26 @@ def _project(root: Path, params: dict[str, Any], seed: int, *, cold: bool = Fals
     try:
         d = arrays(int(params["holes"]), int(params["per_hole"]), fields=int(params.get("fields", 10)),
                    litho_per_hole=int(params.get("litho_per_hole", 20)), seed=seed)  # fmt: skip
-        return {"folder": str(folder), **write_set(engine, folder, SET, d, cold=cold)}
+        return {"folder": str(folder), **write_set(engine, folder, SET, d, params, cold=cold)}
     finally:
         engine.dispose()
 
 
 def build(work: Path, params: dict[str, Any], *, cold: bool = False) -> dict[str, Any]:
-    """The project of a scenario in `work` (`prepare`); the meta — also in `work/samples.json`."""
+    """The project of a scenario in `work` (`prepare`); the meta — also in `work/samples.json`. The database
+    (its journal written into it) and the names of the snapshots are kept for `fresh`."""
+    import sqlite3
+
     meta = _project(work, params, 12, cold=cold)
+    folder = Path(meta["folder"])
+    con = sqlite3.connect(folder / DB)
+    try:
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        con.close()
+    shutil.copyfile(folder / DB, work / KEPT)
+    cache = folder / "cache" / "tables"
+    meta["snapshots"] = sorted(f.name for f in cache.iterdir()) if cache.is_dir() else []
     (work / "samples.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     return meta
 
@@ -187,7 +224,32 @@ def opened(work: Path) -> tuple[dict[str, Any], Any, Path]:
 
     meta = json.loads((work / "samples.json").read_text(encoding="utf-8"))
     folder = Path(meta["folder"])
-    return meta, dialect.create_engine(dialect.sqlite_url(str(folder / "project.sqlite"))), folder
+    return meta, dialect.create_engine(dialect.sqlite_url(str(folder / DB))), folder
+
+
+def fresh(work: Path) -> tuple[dict[str, Any], Any, Path, float]:
+    """`opened` for a job that writes: the project as `build` left it — after another job (of this run or of an
+    earlier one of `--repeat`) the database is copied back and the snapshots of results go; the trajectories a
+    job of this process cached are forgotten, as in a worker that has just started. The last item — the
+    seconds it took (0 before the first job). No engine of the project may be open."""
+    meta = json.loads((work / "samples.json").read_text(encoding="utf-8"))
+    folder = Path(meta["folder"])
+    t0 = time.perf_counter()
+    if (work / USED).exists():
+        for tail in ("-wal", "-shm"):
+            (folder / (DB + tail)).unlink(missing_ok=True)
+        shutil.copyfile(work / KEPT, folder / DB)
+        cache = folder / "cache" / "tables"
+        for f in cache.iterdir() if cache.is_dir() else ():
+            if f.name not in meta["snapshots"]:
+                f.unlink()
+        from bf_core.drillholes import trajectory
+
+        with trajectory._lock:
+            trajectory._cache.clear()
+    (work / USED).touch()
+    took = time.perf_counter() - t0
+    return (*opened(work), took)
 
 
 def service(engine: Any, folder: Path) -> Any:
@@ -215,31 +277,6 @@ def warm(job: Callable[[dict[str, Any], Any, Path], Any], fields: int = 10) -> N
 
 
 # --- a run ----------------------------------------------------------------------------------------------------
-
-
-def reset(engine: Any, folder: Path, meta: dict[str, Any], tables: tuple[str, ...] = ("samples", "litho")) -> float:
-    """The project as `build` left it: every result of the set deleted (`results.delete_result`, its cache files),
-    the snapshots of `tables` at their current revision. Returns the seconds it took (0 on a first run)."""
-    import sqlalchemy as sa
-
-    from bf_core.composites import results
-    from bf_core.db import dialect
-    from bf_core.db.schema import dh_results
-    from bf_core.drillholes.snapshot import drop_cache_files
-
-    t0 = time.perf_counter()
-    gone: list[int] = []
-    newest = sa.select(dh_results.c.id).where(dh_results.c.set_id == meta["set_id"]).order_by(dh_results.c.id.desc())
-    while True:
-        with dialect.write_tx(engine) as conn:
-            rid = conn.execute(newest.limit(1)).scalar()  # one at a time: a table takes the records on it along
-            if rid is None:
-                break
-            gone += results.delete_result(conn, int(rid))["deleted_tables"]
-    if gone:
-        drop_cache_files(folder / "cache" / "tables", gone)
-    snapshot(engine, folder, meta["set_id"], [meta[t] for t in tables])
-    return time.perf_counter() - t0
 
 
 @contextlib.contextmanager
@@ -302,6 +339,14 @@ def report_of(engine: Any, result_id: int) -> dict[str, Any]:
     with dialect.read_tx(engine) as conn:
         rep = conn.execute(sa.select(dh_results.c.report).where(dh_results.c.id == result_id)).scalar_one()
     return dict(rep or {})
+
+
+def read_from(rows: int) -> str:
+    """Where `source.read` takes a table of that many rows from, once it was opened: its snapshot — "parquet" —
+    or, under 100 000 rows (no snapshot is kept), `dh_rows` — "rows"."""
+    from bf_core.drillholes.snapshot import PARQUET_FROM
+
+    return "parquet" if rows >= PARQUET_FROM else "rows"
 
 
 def peak_mb() -> float | None:
