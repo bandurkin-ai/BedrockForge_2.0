@@ -122,8 +122,8 @@ test("OMF and data: the block model of the demo, objects to files, OMF out and b
     expect((await runCommand(page, "omf.export")).ok).toBe(true);
     const omfWin = page.getByRole("dialog", { name: "Экспорт OMF" });
     await expect(omfWin.getByTestId(`omf-export-row-${bmId}`)).toHaveAttribute("data-available", "yes", { timeout: 30_000 });
-    // «Все» of each list: checked by the window (initialChosen) — `check()` keeps it so, or checks it
-    for (const list of ["Каркасы и ЦТМ", "Файлы линий", "Блочные модели"]) await omfWin.getByLabel(`Все: ${list}`).check();
+    // the window opens with every object that can be written checked (initialChosen of the first reading)
+    for (const list of ["Каркасы и ЦТМ", "Файлы линий", "Блочные модели"]) await expect(omfWin.getByLabel(`Все: ${list}`)).toBeChecked();
     await expect(omfWin.getByTestId(`omf-export-row-${bmId}`).getByRole("checkbox")).toBeChecked();
     await expect(omfWin.getByTestId("omf-export-chosen")).not.toBeEmpty();
     const omfFile = path.join(dir, "Демо.omf");
