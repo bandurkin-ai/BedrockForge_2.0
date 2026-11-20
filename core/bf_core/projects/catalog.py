@@ -59,52 +59,42 @@ def norm_folder(folder: str | None) -> str | None:
 
 
 def rows(conn: sa.Connection) -> list[dict[str, Any]]:
-    """Every row of the catalog, unsorted."""
+    """Every row of the catalog, unsorted. The catalog is the whole project: whole-table queries (a join or a
+    GROUP BY), not IN lists of every id — 1 000 objects of a working project in ≈ 30 ms (bench `catalog`)."""
     objs = conn.execute(
         sa.select(
-            objects.c.id, objects.c.kind, objects.c.name, objects.c.folder, objects.c.meta, objects.c.crs,
-            objects.c.state, objects.c.updated_at,
+            objects.c.id, objects.c.kind, objects.c.name, objects.c.folder, objects.c.crs, objects.c.state,
+            objects.c.updated_at,
         ).where(objects.c.kind.in_(DATA_KINDS))
     ).all()  # fmt: skip
     if not objs:
         return []
-    ids = [int(r.id) for r in objs]
     kind = {int(r.id): str(r.kind) for r in objs}
-    files = [i for i in ids if kind[i] == "line_file"]
-    layer_of: dict[int, int] = {}  # layer → its file
+    layer, parent = objects.alias("layer"), objects.alias("parent")
     clouds: set[int] = set()
-    for chunk in _chunks(files):
-        for lr in conn.execute(
-            sa.select(objects.c.id, objects.c.parent_id, objects.c.meta).where(
-                objects.c.parent_id.in_(chunk), objects.c.kind == "line_layer"
-            )
-        ):
-            layer_of[int(lr.id)] = int(lr.parent_id)
-            if isinstance((lr.meta or {}).get("cloud"), dict):
-                clouds.add(int(lr.parent_id))
-    dtm: set[int] = set()
-    for chunk in _chunks([i for i in ids if kind[i] == "wireframe"]):
-        for w in conn.execute(
-            sa.select(wireframes.c.object_id, wireframes.c.dtm).where(wireframes.c.object_id.in_(chunk))
-        ):
-            if w.dtm:
-                dtm.add(int(w.object_id))
-    logs: dict[int, int] = {}  # import → its object
+    for file_id, meta in conn.execute(
+        sa.select(layer.c.parent_id, layer.c.meta)
+        .select_from(layer.join(parent, parent.c.id == layer.c.parent_id))
+        .where(layer.c.kind == "line_layer", parent.c.kind == "line_file")
+    ):  # fmt: skip
+        if isinstance((meta or {}).get("cloud"), dict):
+            clouds.add(int(file_id))
+    dtm = {int(w.object_id) for w in conn.execute(sa.select(wireframes.c.object_id, wireframes.c.dtm)) if w.dtm}
     formats: dict[int, list[str]] = {}
-    for chunk in _chunks(ids):
-        for lg in conn.execute(
-            sa.select(import_log.c.id, import_log.c.object_id, import_log.c.file_name, import_log.c.format)
-            .where(import_log.c.object_id.in_(chunk))
-            .order_by(import_log.c.id.desc())
-        ):  # fmt: skip
-            obj = int(lg.object_id)
-            logs[int(lg.id)] = obj
-            label = _format_label(lg.file_name, lg.format)
-            found = formats.setdefault(obj, [])
-            if label and label not in found and (kind[obj] == "drillhole_set" or not found):
-                found.append(label)
-    size = _sizes(conn, ids, layer_of, logs)
-    counts = _set_rows(conn, [i for i in ids if kind[i] == "drillhole_set"])
+    for obj_id, file_name, fmt in conn.execute(
+        sa.select(import_log.c.object_id, import_log.c.file_name, import_log.c.format)
+        .where(import_log.c.object_id.is_not(None))
+        .order_by(import_log.c.id.desc())
+    ):  # fmt: skip
+        obj = int(obj_id)
+        if obj not in kind:
+            continue
+        label = _format_label(file_name, fmt)
+        found = formats.setdefault(obj, [])
+        if label and label not in found and (kind[obj] == "drillhole_set" or not found):
+            found.append(label)
+    size = _sizes(conn, kind)
+    counts = _set_rows(conn)
     out = []
     for r in objs:
         obj = int(r.id)
@@ -126,53 +116,46 @@ def _format_label(file_name: Any, fmt: Any) -> str | None:
     return str(fmt).upper() if fmt else None
 
 
-def _sizes(conn: sa.Connection, ids: list[int], layer_of: dict[int, int], logs: dict[int, int]) -> dict[int, int]:
+def _sizes(conn: sa.Connection, kind: dict[int, str]) -> dict[int, int]:
     """Bytes of each object: its blobs, those of its layers and of its imports; a blob of several owners counts
-    by the share of the owners that are this object's (its size × theirs / all its owners)."""
-    owner_of: dict[tuple[str, int], int] = {("object", i): i for i in ids}
-    owner_of.update({("object", layer): file for layer, file in layer_of.items()})
-    owner_of.update({("import", log): obj for log, obj in logs.items()})
-    held: dict[str, dict[int, set[tuple[str, int]]]] = {}  # blob → object of the catalog → its owners of it
-    for owner_kind, owner_ids in (("object", [*ids, *layer_of]), ("import", list(logs))):
-        for chunk in _chunks(owner_ids):
-            for b in conn.execute(
-                sa.select(blob_owners.c.sha256, blob_owners.c.owner_id).where(
-                    blob_owners.c.owner_kind == owner_kind, blob_owners.c.owner_id.in_(chunk)
-                )
-            ):
-                owner = (owner_kind, int(b.owner_id))
-                held.setdefault(str(b.sha256), {}).setdefault(owner_of[owner], set()).add(owner)
-    if not held:
-        return {}
-    shas = sorted(held)
-    owners: dict[str, set[tuple[str, int]]] = {}
-    length: dict[str, int] = {}
-    for chunk in _chunks(shas):
-        for b in conn.execute(
-            sa.select(blob_owners.c.sha256, blob_owners.c.owner_kind, blob_owners.c.owner_id).where(
-                blob_owners.c.sha256.in_(chunk)
-            )
-        ):
-            owners.setdefault(str(b.sha256), set()).add((str(b.owner_kind), int(b.owner_id)))
-        for b in conn.execute(sa.select(blobs.c.sha256, blobs.c.size).where(blobs.c.sha256.in_(chunk))):
-            length[str(b.sha256)] = int(b.size)
-    out: dict[int, float] = {}
-    for sha, by_object in held.items():
-        everyone = max(1, len(owners.get(sha, ())))
-        for obj, mine in by_object.items():
-            out[obj] = out.get(obj, 0.0) + length.get(sha, 0) * len(mine) / everyone
-    return {k: int(round(v)) for k, v in out.items()}
-
-
-def _set_rows(conn: sa.Connection, sets: list[int]) -> dict[int, int]:
+    by the share of the owners that are this object's (its size × theirs / all its owners) — summed in SQL: a row
+    of an owner adds size / owners to the object it counts for (a layer — for its file, an import — for its
+    object)."""
+    owners = (
+        sa.select(blob_owners.c.sha256, sa.func.count().label("n")).group_by(blob_owners.c.sha256).subquery("owners")
+    )
+    owner = objects.alias("owner")
+    by_import = sa.and_(blob_owners.c.owner_kind == "import", import_log.c.id == blob_owners.c.owner_id)
+    by_object = sa.and_(blob_owners.c.owner_kind == "object", owner.c.id == blob_owners.c.owner_id)
+    of = sa.case(
+        (blob_owners.c.owner_kind == "import", import_log.c.object_id),
+        (owner.c.kind == "line_layer", owner.c.parent_id),
+        else_=blob_owners.c.owner_id,
+    )
+    query = (
+        sa.select(of.label("obj"), sa.func.sum(sa.cast(blobs.c.size, sa.Float) / owners.c.n))
+        .select_from(
+            blob_owners.join(blobs, blobs.c.sha256 == blob_owners.c.sha256)
+            .join(owners, owners.c.sha256 == blob_owners.c.sha256)
+            .outerjoin(import_log, by_import)
+            .outerjoin(owner, by_object)
+        )
+        .where(blob_owners.c.owner_kind.in_(("object", "import")))
+        .group_by(of)
+    )  # fmt: skip
     out: dict[int, int] = {}
-    for chunk in _chunks(sets):
-        for table, column in ((dh_holes, None), (dh_surveys, None), (dh_tables, dh_tables.c.row_count)):
-            agg = sa.func.count() if column is None else sa.func.sum(column)
-            for set_id, n in conn.execute(
-                sa.select(table.c.set_id, agg).where(table.c.set_id.in_(chunk)).group_by(table.c.set_id)
-            ):
-                out[int(set_id)] = out.get(int(set_id), 0) + int(n or 0)
+    for obj, total in conn.execute(query):
+        if obj is not None and int(obj) in kind:
+            out[int(obj)] = int(round(total or 0.0))
+    return out
+
+
+def _set_rows(conn: sa.Connection) -> dict[int, int]:
+    out: dict[int, int] = {}
+    for table, agg in ((dh_holes, sa.func.count()), (dh_surveys, sa.func.count()),
+                       (dh_tables, sa.func.sum(dh_tables.c.row_count))):  # fmt: skip
+        for set_id, n in conn.execute(sa.select(table.c.set_id, agg).group_by(table.c.set_id)):
+            out[int(set_id)] = out.get(int(set_id), 0) + int(n or 0)
     return out
 
 
