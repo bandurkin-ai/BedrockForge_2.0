@@ -417,19 +417,18 @@ def _run_strip(  # type: ignore[no-untyped-def]
             i0 = e
             while e < nel and eb[e] < ub[u + 1]:
                 e += 1
-            if uo[u] == ou.U_ORE:
-                if strict:
-                    nw, ne = steps.split_layers(
-                        i0, e, mode == ou.MODE_STRICT_EXCL, eb, eo, em, emc, cb, mpp, c_min, m_min, mc_min,
-                        st_a, st_b, st_k, st_h, pd, pm, sm,
-                        wb, wo, wm, wmc, nw, hole, line, p_row, p_from, p_to, ev_i, ev_f, ne,
-                    )  # fmt: skip
-                else:
-                    wb[nw] = ub[u]
-                    wo[nw] = ou.U_ORE
-                    wm[nw] = um[u]
-                    wmc[nw] = umc[u]
-                    nw += 1
+            if e - i0 < 3 or (uo[u] == ou.U_ORE and not strict):
+                wb[nw] = ub[u]  # fewer than three elementary units: no waste inside to cut, no chain to join
+                wo[nw] = uo[u]
+                wm[nw] = um[u]
+                wmc[nw] = umc[u]
+                nw += 1
+            elif uo[u] == ou.U_ORE:
+                nw, ne = steps.split_layers(
+                    i0, e, mode == ou.MODE_STRICT_EXCL, eb, eo, em, emc, cb, mpp, c_min, m_min, mc_min,
+                    st_a, st_b, st_k, st_h, pd, pm, sm,
+                    wb, wo, wm, wmc, nw, hole, line, p_row, p_from, p_to, ev_i, ev_f, ne,
+                )  # fmt: skip
             else:
                 nw, ne = steps.join_near(
                     i0, e, u > 0, u + 1 < nu, strict, eb, eo, em, emc, cb, mpp, c_min, m_min, mc_min,

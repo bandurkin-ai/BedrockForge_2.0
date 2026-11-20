@@ -98,7 +98,8 @@ def test_grade_at_the_cutoff_is_ore_and_missing_is_not_zero() -> None:
     table = res.table()
     assert [CLASS_NAMES[c] for c in table["CLASS"]] == ["ore", "ore"] and table["ORE_ID"].tolist() == [1, 2]
     assert table["FROM"].tolist() == [0.0, 4.0] and table["TO"].tolist() == [3.0, 6.0]
-    assert table["C"].tolist() == [1.0, 1.0] and table["MC"].tolist() == [3.0, 2.0] and table["M"].tolist() == [3.0, 2.0]
+    assert table["C"].tolist() == [1.0, 1.0] and table["MC"].tolist() == [3.0, 2.0]
+    assert table["M"].tolist() == [3.0, 2.0]
     assert table["BASIS"].tolist() == [ou.BASIS_THICKNESS, ou.BASIS_THICKNESS] and table["FLAG"].tolist() == [0, 0]
     assert res.ore_cls.tolist() == [0, 0, 0, -1, 0, 0] and res.ore_id.tolist() == [1, 1, 1, 0, 2, 2]
     assert res.summary["missing"] == 1 and res.summary["lines"] == 2 and res.summary["length"] == 5.0
@@ -134,8 +135,10 @@ def test_table_fields_and_summary() -> None:
     ]  # fmt: skip
     assert all(len(col) == len(res) for col in table.values())
     ore = table["CLASS"] == ou.CLS_ORE
-    assert table["HOLE"][ore].tolist() == [0, 0, 0, 1, 1, 1, 2] and table["ORE_ID"][ore].tolist() == [1, 2, 3, 1, 2, 3, 1]
-    assert table["DOMAIN"][ore].tolist() == [0, 0, 0, 1, 1, 1, 2] and table["LENGTH"][ore].tolist()[:3] == [8.0, 5.0, 5.0]
+    assert table["HOLE"][ore].tolist() == [0, 0, 0, 1, 1, 1, 2]
+    assert table["ORE_ID"][ore].tolist() == [1, 2, 3, 1, 2, 3, 1]
+    assert table["DOMAIN"][ore].tolist() == [0, 0, 0, 1, 1, 1, 2]
+    assert table["LENGTH"][ore].tolist()[:3] == [8.0, 5.0, 5.0]
     assert close(table["C"][ore][0], 2.8375) and close(table["MC"][ore][0], 22.7)
     assert table["AG"][ore].tolist()[:3] == [6.5, 19.0, 30.0]  # the mean of the rows 3…10, 17…21, 28…32
     assert res.labels("г/т")[int(np.flatnonzero(ore)[0])] == "8,0 м @ 2,84 г/т (МС 22,7)"
@@ -152,7 +155,8 @@ def test_table_fields_and_summary() -> None:
     assert close(by_class["ore"]["c"], 95.8 / 44.0) and close(by_class["ore"]["m_mean"], 44.0 / 7)
     assert by_class["interlayer"]["count"] == 2 and close(by_class["interlayer"]["c"], 0.6)
     assert not by_class["ore"]["nested"] and by_class["frame"]["nested"] and by_class["waste_in"]["nested"]
-    assert close(math.fsum(e["m"] for e in by_class.values() if not e["nested"]), 76.0) and res.summary["length"] == 76.0
+    assert close(math.fsum(e["m"] for e in by_class.values() if not e["nested"]), 76.0)
+    assert res.summary["length"] == 76.0
     by_domain = {(e["domain"], e["cls"]): e for e in res.summary["domains"]}
     assert [e["domain"] for e in res.summary["domains"]] == sorted(e["domain"] for e in res.summary["domains"])
     for code in (0, 1):
@@ -161,6 +165,11 @@ def test_table_fields_and_summary() -> None:
         assert close(math.fsum(e["m"] for (d, _), e in by_domain.items() if d == code and not e["nested"]), 34.0)
     assert by_domain[2, "ore"]["count"] == 1 and (2, "interlayer") not in by_domain
     assert (res.summary["holes"], res.summary["samples"], res.summary["lines"]) == (3, n, 3)
+    # sparse domain codes (the keys of the groups do not fit 16 bits): the same sums
+    far = OreLines.of([0, 34, 68, 76], frm, frm + 1.0, grade, None, domain * 70_000)
+    sparse = run_set(far, example_params("T8.2-12", "strict_excl"))
+    assert sparse.summary["classes"] == res.summary["classes"]
+    assert [{**e, "domain": e["domain"] // 70_000} for e in sparse.summary["domains"]] == res.summary["domains"]
     # the thickness from a field weighs the other fields as well
     half = OreLines.of([0, 34], a.frm, a.to, a.grade, np.where(np.arange(34) % 2 == 0, 0.5, 1.5))
     res = run_set(half, example_params("T8.2-12", "soft"), fields={"AG": np.arange(34.0)}, nested=False)
