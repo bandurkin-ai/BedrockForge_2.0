@@ -10,8 +10,15 @@ BFA1 `snap`, float64 project coordinates (the editor snaps to them exactly, noth
   same desurvey (`Trajectories.positions`).
 
 The holes are chosen by the window of a section (`section=x0,y0,az,towards,away[,length]` — the window of
-`geo/section.py::section_window`) or by the extent of the view (`bbox=xmin,ymin,xmax,ymax[,zmin,zmax]` in the
-order of an extent: `xmin,ymin,zmin,xmax,ymax,zmax`); the box of the path of a hole has to reach into it. The
+`geo/section.py::section_window`), by the window of any plane (`plane=` below) or by the extent of the view
+(`bbox=xmin,ymin,xmax,ymax[,zmin,zmax]` in the order of an extent: `xmin,ymin,zmin,xmax,ymax,zmax`); the box of
+the path of a hole has to reach into it.
+
+`plane=ox,oy,oz,vx,vy,vz,towards,away[,nx,ny,nz,d]…` — a section of a series (ADR 0016 §2–§3): the origin O_k,
+the direction of view v̂ (a unit vector) and the window −towards ≤ (p − O_k)·v̂ ≤ away; up to 8 more half-spaces
+n·(p − O_k) + d ≥ 0 (unit n) bound it — the limits of u, the corridor and the bisectors of a segment of a
+polyline section. The faces are built by the expression of `SectionWindow.planes` with the normal −v̂: a vertical
+plane (φ = 90°) gives the half-spaces of `section=` bit for bit, and the same answer. The
 bounds are kept inside the window only. More than 5 000 holes or 2 million points: `truncated`, collars only.
 The header: `{kind, format, set, version, method, holes, names, truncated}`. ETag — the state of the set (its
 version and every table revision), the method and the window.
@@ -32,6 +39,8 @@ from .keys import FORMAT, SetState, etag
 
 MAX_HOLES = 5_000
 MAX_POINTS = 2_000_000
+MAX_BOUNDS = 8  # half-spaces of `plane=` beyond the two faces
+UNIT_TOL = 1e-6  # |‖v̂‖ − 1| of the directions of `plane=`
 TOL = 0.01  # metres from the arc: the display paths of ADR 0007
 EPS = 1e-9  # a bound on a face of the window is inside it
 
@@ -54,11 +63,40 @@ def _numbers(text: str, sizes: tuple[int, ...], what: str, hint: str) -> list[fl
     return values
 
 
-def parse_window(section: str | None, bbox: str | None) -> Window:
+def _unit(v: list[float], what: str) -> np.ndarray:
+    n = np.array(v, dtype=np.float64)
+    if abs(math.sqrt(sum(x * x for x in v)) - 1.0) > UNIT_TOL:
+        raise ApiError(422, "bad_window", f"{what}: ожидается единичный вектор.", "Передайте оси разреза из серии.")
+    return n
+
+
+def plane_window(text: str) -> Window:
+    """The window of `plane=` (see the module): the two faces of the slab and the extra half-spaces, k×4."""
+    sizes = tuple(8 + 4 * m for m in range(MAX_BOUNDS + 1))
+    v = _numbers(
+        text, sizes, "Окно плоскости", "Укажите O, v̂, глубину окна к себе и от себя и полуплоскости по 4 числа."
+    )
+    if v[6] < 0.0 or v[7] < 0.0:
+        raise ApiError(422, "bad_window", "Окно плоскости задано неверно.", "Глубина окна не может быть меньше нуля.")
+    point = np.array(v[:3], dtype=np.float64)
+    normal = -_unit(v[3:6], "Направление взгляда v̂")  # the normal of `SectionWindow`: towards the viewer
+    nc = float(normal @ point)
+    planes = [np.array([[*normal, -nc + v[7]], [*(-normal), nc + v[6]]]) + 0.0]
+    for i in range(8, len(v), 4):
+        n = _unit(v[i : i + 3], "Нормаль полуплоскости")
+        planes.append(np.array([[*n, v[i + 3] - float(n @ point)]]) + 0.0)
+    return Window(np.vstack(planes), ("plane", *v))
+
+
+def parse_window(section: str | None, bbox: str | None, plane: str | None = None) -> Window:
     from bf_core.geo.section import section_window
 
-    if section and bbox:
-        raise ApiError(422, "bad_window", "Задано и окно разреза, и охват вида.", "Укажите что-то одно.")
+    if sum(1 for w in (section, bbox, plane) if w) > 1:
+        raise ApiError(
+            422, "bad_window", "Задано несколько окон сразу.", "Укажите что-то одно: разрез, плоскость или охват."
+        )
+    if plane:
+        return plane_window(plane)
     if section:
         v = _numbers(section, (5, 6), "Окно разреза", "Укажите x0, y0, азимут, глубину окна к себе и от себя.")
         try:

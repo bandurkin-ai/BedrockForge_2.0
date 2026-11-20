@@ -31,11 +31,12 @@ const show = (w: Row, visible: boolean): TreeAction => ({
   args: { layer: "wireframe", id: w.id, visible: !visible },
 });
 
-/** The check and the export (the window «Экспорт каркасов» with this wireframe); rename and delete are
+/** The check and the export (the window «Экспорт каркасов» with this wireframe, «Экспорт OMF» with it checked); rename and delete are
  * registry commands too: they ask in their own windows. */
 const edit = (w: Row): TreeAction[] => [
   { label: "Проверить", command: "wireframe.check", args: { wireframe_id: w.id } },
   { label: "Экспорт…", command: "wireframe.export", args: { wireframe_id: w.id } },
+  { label: "Экспорт OMF…", command: "omf.export", args: { dataset_ids: String(w.id) } },
   SEPARATOR,
   { label: "Переименовать…", command: "object.rename", args: { kind: "wireframe", id: w.id } },
   { label: "Удалить…", command: "object.delete", args: { kind: "wireframe", id: w.id } },

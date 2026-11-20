@@ -5,7 +5,9 @@ Parts are added by the stages that bring their data types: drillholes and AU/CU 
 deliberate errors (Э5), a trench, strings of the ore body, the road, the survey points, the plan of the site and
 the DTM with the plan on it (Э7, `geo.py`), wireframes of the ore body and outlines (Э8), contours on sections with
 tie lines, the solid stitched from them and the isolines of the relief (Э9, `contours.py`), the geological map and
-the scan of the section Y = 8125 (Э9). A part is a function (conn, store, rng) registered in PARTS.
+the scan of the section Y = 8125 (Э9), the series of sections of «Рудное тело 3» and the plans of the relief (Э10,
+`sections.py`), the block model around the ore bodies (Э11, `blocks.py`). A part is a function (conn, store,
+rng) registered in PARTS.
 """
 
 from __future__ import annotations
@@ -68,9 +70,11 @@ def _audit(project: Project) -> None:
 
 
 def _register() -> None:
+    from .blocks import add_blocks
     from .contours import add_contours, add_isolines
     from .drillholes import add_drillholes
     from .geo import add_lines, add_terrain, add_trench
+    from .sections import add_plans
     from .wireframes import add_wireframes
 
     PARTS.append(("drillholes", add_drillholes))
@@ -81,6 +85,11 @@ def _register() -> None:
     # Э9 (`contours.py`): contours on the sections with tie lines, the solid stitched from them, the isolines of
     # «Рельеф»; no random numbers
     PARTS.extend([("contours", add_contours), ("isolines", add_isolines)])
+    # Э10 (`sections.py`): the series of the contours is made with them (`add_contours`), the plans after the
+    # isolines they take their levels and contour layer from; no random numbers
+    PARTS.append(("plans", add_plans))
+    # Э11 (`blocks.py`): the block model around the ore bodies; a generator of its own, not the demo stream
+    PARTS.append(("blocks", add_blocks))
 
 
 _register()

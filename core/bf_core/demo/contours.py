@@ -11,6 +11,9 @@ them and the isolines of the relief — what «Сшить контуры» and �
   «Рельеф (изолинии)»     the isolines of the DTM «Рельеф» every 2 m (every 10 m — «Основные»), attribute ELEV,
                           with the record of an operation `contours`.
 
+Э10 (`sections.py`): the contours also carry `SECTION_SET`, `SECTION`, `SECTION_NAME` of the series «Разрезы
+рудного тела 3», which is made right after the layer, with it as its contour layer.
+
 Nothing is taken from the random stream of the demo: the parts before it stay as they were. Coordinates are
 float64 in centimetres, as the strings of Э7 are; the vertices of the contours reach the solid bit for bit.
 The kernels (numba) are imported inside the functions: this module is imported with the demo, before BF-READY.
@@ -111,22 +114,28 @@ def add_contours(conn: sa.Connection, store: BlobStore, _rng: random.Random) -> 
     from bf_core.ops.provenance import record
     from bf_core.wireframes import store as wf
 
+    from .sections import add_ore_series, next_number, section_attrs
+
     drawn = section_contours()
     contours = [c for c, _ in drawn]
     ties = tie_lines(contours)
     lines = [*contours, *(t for t, _ in ties)]
+    closed = [True] * len(contours) + [False] * len(ties)
+    number = next_number(conn)  # of the series «Разрезы рудного тела 3», made right after the layer (Э10)
     layer = from_lines(
         CONTOURS,
         lines,
-        closed=[True] * len(contours) + [False] * len(ties),
+        closed=closed,
         attrs={
             "Разрез": [s for _, s in drawn] + [s for _, s in ties],
             ROLE: [None] * len(contours) + [TIE] * len(ties),
+            **section_attrs(lines, closed, number),
         },
         color=CONTOURS_COLOR,
     )
     meta: dict[str, Any] = {"format": "demo", "label": "демо-данные", "filename": None, "fields": [], "warnings": []}
     layer_id = ls.put_layer(conn, store, layer, file_id=_file(conn, store, CONTOURS_FILE, meta))
+    add_ore_series(conn, layer_id, number)
 
     # «Сшить контуры» on the whole layer: the closed lines are the contours, the lines marked TIE the ties
     params = {

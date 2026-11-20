@@ -1,6 +1,6 @@
 /**
  * The editing layer of the 3D window (ADR 0015 §5; `SceneLayer`, key `edit`): the lines of the working copy in
- * one buffer with a range per line (a changed line is rewritten in place), tie lines dashed, the selected lines
+ * one STATIC_DRAW buffer with a range per line (a changed line is rewritten in place by `bufferSubData`), tie lines dashed, the selected lines
  * over them, the vertex marks of the selected lines and of those near the cursor (≤ 20 000), the selected
  * vertices, the rubber band and the mark of the cursor or of the snap target — float32 from an integer origin
  * (`viz/origin.ts`), clipped like the rest, drawn over the depth of everything else. The box of the selection
@@ -64,7 +64,9 @@ class Segments {
     if (this.attr?.array !== b.positions) {
       this.geometry.dispose();
       this.attr = new THREE.BufferAttribute(b.positions, 3);
-      this.attr.setUsage(THREE.DynamicDrawUsage);
+      // the first upload of a layer of 1 million vertices (~30 MB) is STATIC_DRAW: DYNAMIC_DRAW of that size takes
+      // tens of seconds under SwiftShader (10.12); edits after it go by ranges (`bufferSubData`, below)
+      this.attr.setUsage(THREE.StaticDrawUsage);
       this.geometry.setAttribute("position", this.attr);
       if (b.lengths) {
         this.dist = new THREE.BufferAttribute(b.lengths, 1);

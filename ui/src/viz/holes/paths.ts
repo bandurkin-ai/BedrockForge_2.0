@@ -1,7 +1,8 @@
 /**
  * Hole traces of a part (ADR 0007 §7; BF `makeLines` 2372, `applyTraceStyle` 562–570): one line object per
  * kind of hole in the part — `LineSegments2` with a width in pixels, or plain `THREE.LineSegments` when the
- * width is at most 1 px or the scene holds more than a million segments. Design holes are dashed (the dash
+ * width is at most 1 px or the scene holds more segments than its class of graphics draws fat (`budget.ts`
+ * `THIN_LINE_SEGMENTS`: a million; software rendering — 200 thousand). Design holes are dashed (the dash
  * is kept in pixels: its scale follows the zoom), trenches have their own colour unless the set has one.
  * Buffers come from the Worker as they are (no copy); the materials take the shared clipping planes.
  */
@@ -10,12 +11,13 @@ import { InstancedInterleavedBuffer, InterleavedBufferAttribute } from "three";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
+import { fatLines, THIN_LINE_SEGMENTS, type GpuClass } from "../core/budget";
 import { DEFAULT_TRACE_STYLE, type TraceStyle } from "./traceStyle";
 import { TRENCH_COLOR } from "./colors";
 import { KIND_DESIGN, KIND_TRENCH, type BuiltPaths, type PathGroup } from "../worker/paths";
 
-/** Above this many segments in the scene the traces are drawn 1 px wide (ADR 0007 §7). */
-export const THIN_SEGMENTS = 1_000_000;
+/** Above this many segments in the scene the traces are drawn 1 px wide (ADR 0007 §7); real graphics. */
+export const THIN_SEGMENTS = THIN_LINE_SEGMENTS.integrated;
 const DASH_PX = 8;
 const GAP_PX = 5;
 
@@ -31,9 +33,9 @@ export function traceColor(kind: number, style: TraceStyle): string {
   return kind === KIND_TRENCH && style.color === DEFAULT_TRACE_STYLE.color ? TRENCH_COLOR : style.color;
 }
 
-/** Fat lines only when they are wider than a pixel and the scene is not too heavy. */
-export function useFatLines(style: TraceStyle, sceneSegments: number): boolean {
-  return style.width > 1 && sceneSegments <= THIN_SEGMENTS;
+/** Fat lines only when they are wider than a pixel and the scene is not too heavy for the class of graphics. */
+export function useFatLines(style: TraceStyle, sceneSegments: number, gpu?: GpuClass): boolean {
+  return fatLines(style.width, sceneSegments, gpu);
 }
 
 function fatLine(g: PathGroup, style: TraceStyle, clip: THREE.Plane[], resolution: THREE.Vector2): TraceLine {

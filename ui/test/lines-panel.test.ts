@@ -42,7 +42,7 @@ describe("the panel of the editor", () => {
     expect(buttonState(PANEL.find((b) => b.id === "modify-join")!, s, none).reason).toMatch(/ровно две/);
     // the reason of the registry goes first
     expect(buttonState(close, s, () => "Проект открыт только для чтения").reason).toBe("Проект открыт только для чтения");
-    expect(PANEL.find((b) => b.id === "tool-line")!.keys).toBe("L");
+    expect(PANEL.find((b) => b.id === "tool-line")!.keys).toBe("L; при активной серии разрезов — Shift+L");
     expect(PANEL.find((b) => b.id === "modify-delete")!.keys).toBe("Delete");
   });
 

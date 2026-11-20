@@ -22,7 +22,7 @@ import { projectStore } from "../projects/state";
 import { viewStore } from "../scene/bind";
 import { sceneObjects } from "../scene/objects";
 import { currentScene, onScene } from "../scene/sceneHost";
-import { sectionOf } from "../section/state";
+import { pickSection } from "../section/seriesState";
 import { afterStart, queueText, refusalOf, startOperation, type OperationBody, type Started } from "./run";
 
 export type TriMode = "remove" | "add";
@@ -223,11 +223,11 @@ export class TrianglesController {
     const sc = this.scene;
     const ray = sc?.cursorRay(x, y);
     if (!t || !sc || !ray) return;
-    const { line, clip } = sectionOf(viewStore.get());
+    const { line, clip, plane } = pickSection(viewStore.get());
     trianglesStore.set({ busy: true });
     let pick: ExactPick | null | undefined;
     try {
-      pick = await this.picker.pick(pickRequest(ray, [t.wireframeId], line, clip));
+      pick = await this.picker.pick(pickRequest(ray, [t.wireframeId], line, clip, plane));
     } catch (e) {
       if (!this.stopped) trianglesStore.set({ busy: false, message: textOf(e) });
       return;

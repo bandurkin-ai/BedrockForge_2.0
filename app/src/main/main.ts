@@ -358,6 +358,7 @@ function registerIpc(): void {
     dxf: [{ name: "AutoCAD DXF", extensions: ["dxf"] }],
     // a point cloud (ADR 0014 §6)
     las: [{ name: "Облако точек LAS", extensions: ["las"] }],
+    omf: [{ name: "OMF v1 (Leapfrog OMF 0.9)", extensions: ["omf"] }],
     jpg: [{ name: "JPEG", extensions: ["jpg", "jpeg"] }],
     png: [{ name: "PNG", extensions: ["png"] }],
     tif: [{ name: "TIFF, GeoTIFF", extensions: ["tif", "tiff"] }],
@@ -392,6 +393,7 @@ function registerIpc(): void {
       { name: "Все файлы", extensions: ["*"] },
     ],
     prj: [{ name: "Система координат (.prj)", extensions: ["prj"] }],
+    omf: [{ name: "OMF v1 (Leapfrog OMF 0.9)", extensions: ["omf"] }, { name: "Все файлы", extensions: ["*"] }],
     // «Импорт файлов» (ТЗ 7.8): every extension of the wizard; formats arrive with their stages.
     objects: [
       {

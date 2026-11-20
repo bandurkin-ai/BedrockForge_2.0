@@ -1,8 +1,34 @@
 {
   "_comment": "ТЗ 5.3 / 7.33. ci ≈ 1/10 of target volumes, checked on every PR; full — at milestones. Seconds and MB. Layout: an object or a list that fits a line of 120 characters is written on it.",
   "ci": {
+    "section_wireframes": {"params": {"triangles": 1000000, "sections": 100}, "budget_s": 3.0, "budget_mb": 600, "limits": {"batch_warm_s": 0.1, "batch_cached_s": 0.02, "cache_job_s": 10.0}, "note": "ADR 0016: пакет 1 млн ≤ 100 мс, из файлов ≤ 20 мс, кеш 100 разрезов ≤ 10 с"},
+    "section_series": {
+      "params": {"points": 1000000, "contours": 100, "vertices": 500, "shadow": 2000, "holes": 5000, "intervals": 100},
+      "budget_s": 15.0,
+      "budget_mb": 800,
+      "limits": {
+        "points_s": 0.05,
+        "points_gaps_s": 0.1,
+        "table_s": 0.05,
+        "links_first_s": 0.2,
+        "links_s": 0.2,
+        "links_cross_s": 0.2,
+        "shadow_s": 0.05,
+        "stitch_series_s": 5.0,
+        "snap_s": 0.3,
+        "points_mismatches": 0,
+        "links_wrong": 0,
+        "shadow_wrong": 0,
+        "bodies_wrong": 0,
+        "volume_error": 0.01,
+        "snap_missed": 0
+      },
+      "note": "ADR 0016 «Замеры», ТЗ 8.1.5: «Каркас по серии» 100 × 500 ≤ 10 с (ci ≤ 5 с; замер 0,9–1,0 с: 4 тела, ветвь 1 → 2); разрез 10⁶ точек ≤ 50 мс (замер 9–18 мс; окна с зазорами 23–40 мс); таблица K = 5 000 ≤ 50 мс (11–21 мс); автосвязи ≤ 0,2 с (11–24 мс); тень k ± 1 из 2 000 контуров ≤ 50 мс (4–12 мс); привязка по наклонной плоскости 5 000 × 100 ≤ 0,3 с (37–129 мс; первый запрос 0,4–0,55 с — в отчёт)."
+    },
     "wireframe_lod": {"params": {"triangles": 1000000}, "budget_s": 10.0, "budget_mb": 400, "limits": {"standin_s": 0.05, "health_max_s": 0.1, "job_s": 8.0, "lod_jobs": 1}},
     "wireframes_many": {"params": {"wireframes": 3000}, "budget_s": 12.0, "budget_mb": 700, "limits": {"import_s": 5.0, "mismatches": 0}},
+    "ops_many": {"params": {"parts": 1000}, "budget_s": 10.0, "budget_mb": 700, "limits": {"blobs": 10, "mismatches": 0}},
+    "ops_first": {"params": {"contours": 20, "vertices": 500}, "budget_s": 15.0, "budget_mb": 700, "limits": {"first_stitch_s": 3.0, "first_boolean_s": 3.0, "volume_error": 1e-06}},
     "mesh_volume": {"params": {"triangles": 1000000}, "budget_s": 2.0, "budget_mb": 600},
     "parquet_filter": {"params": {"nx": 200, "ny": 100, "nz": 100}, "budget_s": 2.0, "budget_mb": 800},
     "project_export": {"params": {"mb": 200, "password": true}, "budget_s": 15.0, "budget_mb": 600},
@@ -215,9 +241,54 @@
       "budget_mb": 400,
       "limits": {"read_s": 0.25, "save_one_s": 0.5, "rewrite_s": 1.0, "restore_s": 0.1, "save_nan_s": 0.5, "bit_mismatches": 0},
       "note": "ADR 0015: версии слоя 100 тыс. вершин — по первому замеру; расхождений битов 0. save_nan_s (ревью 9.38) — слой 20 тыс. замкнутых квадратов, у каждого сотого вершина без Z: правка одного — в бюджете save_one_s."
+    },
+    "omf_io": {
+      "params": {"grid": [125, 100, 80], "fields": 5, "categories": 1, "axes_grid": [100, 125, 80], "triangles": 1000000},
+      "budget_s": 60.0,
+      "budget_mb": 600,
+      "limits": {"compose_s": 1.0, "import_s": 10.0, "export_s": 10.0, "axes_import_s": 10.0, "surface_import_s": 6.0, "surface_export_s": 3.0, "import_mb": 600, "export_mb": 600, "axes_mb": 600, "surface_mb": 600, "mismatches": 0, "max_error_m": 0.0},
+      "note": "ADR 0017 «Замеры»: импорт и экспорт OMF 1 млн × 5 полей ≤ 10 с, ≤ 600 МБ; поверхность 1 млн треугольников: импорт ≤ 6 с, экспорт ≤ 3 с."
+    },
+    "catalog": {
+      "params": {"objects": 1000},
+      "budget_s": 5.0,
+      "budget_mb": 300,
+      "limits": {"page_s": 0.05, "api_s": 0.1, "sorted_s": 0.05, "search_s": 0.05, "folders_s": 0.05, "move_s": 0.5, "mismatches": 0},
+      "note": "ADR 0017 «Замеры»: каталог 1 000 объектов — ядро ≤ 50 мс (GET /catalog?offset=0&limit=2000, как просит менеджер данных), перенос 1 000 в папку ≤ 0,5 с; список 1 000 в E2E 11.19 не вошёл — его заменяет этот замер. api_s — тот же запрос по HTTP (TestClient, jsonable_encoder): не бюджет ADR, сторож."
+    },
+    "objects_export": {
+      "params": {"mb": 32},
+      "budget_s": 30.0,
+      "budget_mb": 800,
+      "limits": {"export_s": 30.0, "mismatches": 0},
+      "note": "ADR 0017 «Замеры»: export.objects — демо ≤ 30 с; сверх демо 32 МиБ данных тех же долей, что и 1 ГБ full (каркасы, облако, линии, скважины, модель)."
     }
   },
   "full": {
+    "section_wireframes": {"params": {"triangles": 10000000, "sections": 100}, "budget_s": 10.0, "budget_mb": 1500, "limits": {"batch_warm_s": 0.3, "batch_cached_s": 0.1, "cache_job_s": 60.0}, "note": "ADR 0016, ТЗ 5.3 и 8.1.5: пакет 10 млн ≤ 300 мс, кеш 100 разрезов ≤ 60 с"},
+    "section_series": {
+      "params": {"points": 10000000, "contours": 100, "vertices": 500, "shadow": 2000, "holes": 5000, "intervals": 100},
+      "budget_s": 30.0,
+      "budget_mb": 2048,
+      "limits": {
+        "points_s": 0.5,
+        "points_gaps_s": 1.0,
+        "table_s": 0.05,
+        "links_first_s": 0.2,
+        "links_s": 0.2,
+        "links_cross_s": 0.2,
+        "shadow_s": 0.05,
+        "stitch_series_s": 10.0,
+        "snap_s": 0.3,
+        "points_mismatches": 0,
+        "links_wrong": 0,
+        "shadow_wrong": 0,
+        "bodies_wrong": 0,
+        "volume_error": 0.01,
+        "snap_missed": 0
+      },
+      "note": "ADR 0016, ТЗ 8.1.5: разрез 10⁷ точек ≤ 0,5 с (замер 0,11–0,14 с; окна с зазорами 0,25–0,29 с); остальное — объёмы ТЗ, как в ci («Каркас по серии» 100 × 500 ≤ 10 с — замер 1,2–1,4 с)."
+    },
     "wireframe_lod": {"params": {"triangles": 1000000}, "budget_s": 10.0, "budget_mb": 400, "limits": {"standin_s": 0.05, "health_max_s": 0.1, "job_s": 8.0, "lod_jobs": 1}},
     "wireframes_many": {"params": {"wireframes": 3000}, "budget_s": 12.0, "budget_mb": 700, "limits": {"import_s": 5.0, "mismatches": 0}},
     "mesh_volume": {"params": {"triangles": 10000000}, "budget_s": 10.0, "budget_mb": 2048},
@@ -438,9 +509,32 @@
       "budget_mb": 1024,
       "limits": {"read_s": 0.5, "save_one_s": 1.0, "rewrite_s": 3.0, "restore_s": 0.2, "save_nan_s": 1.0, "bit_mismatches": 0},
       "note": "ADR 0015: ориентир ≤ 0,5 с, ≤ 1 с, ≤ 3 с, ≤ 0,2 с; замер 0,07 / 0,76 / 1,3 / 0,007 с, 0,4 ГБ. save_nan_s (ревью 9.38) — 100 тыс. замкнутых квадратов, у каждого сотого вершина без Z: замер 0,31 с (до 9.38 — 6,1 с)."
+    },
+    "omf_io": {
+      "params": {"grid": [400, 250, 200], "fields": 20, "categories": 4, "axes_grid": [100, 125, 80], "triangles": 1000000},
+      "budget_s": 600.0,
+      "budget_mb": 2048,
+      "limits": {"compose_s": 1.0, "import_s": 480.0, "export_s": 240.0, "axes_import_s": 10.0, "surface_import_s": 6.0, "surface_export_s": 3.0, "import_mb": 2048, "export_mb": 1024, "mismatches": 0, "max_error_m": 0.0},
+      "note": "ADR 0017 «Замеры»: импорт OMF 20 млн × 20 полей ≤ 8 мин (ТЗ 5.3), пик ≤ 2 ГБ (ТЗ 7.24), цель ≤ 2 мин; экспорт ≤ 4 мин, ≤ 1 ГБ (ориентир); состав для мастера ≤ 1 с. Замер 11.20: импорт 36 с, 0,9 ГБ; экспорт 71 с, 0,4 ГБ; файл 1,5 ГБ — состав 1 мс; весь прогон с проверкой ячеек 160 с."
+    },
+    "catalog": {
+      "params": {"objects": 1000},
+      "budget_s": 5.0,
+      "budget_mb": 300,
+      "limits": {"page_s": 0.05, "api_s": 0.1, "sorted_s": 0.05, "search_s": 0.05, "folders_s": 0.05, "move_s": 0.5, "mismatches": 0},
+      "note": "ADR 0017 «Замеры»: каталог 1 000 объектов — ядро ≤ 50 мс, перенос 1 000 в папку ≤ 0,5 с (тот же объём, что и ci)."
+    },
+    "objects_export": {
+      "params": {"mb": 1024},
+      "budget_s": 180.0,
+      "budget_mb": 1536,
+      "limits": {"export_s": 180.0, "mismatches": 0},
+      "note": "ADR 0017 «Замеры», ADR 0010: export.objects — демо и 1 ГиБ данных (по счёту задания) ≤ 3 мин, ≤ 1,5 ГБ. Замер 11.20: 44 с, 0,8 ГБ, файлов 4,8 ГБ; из них каркасы DXF (13 млн треугольников) 31 с, скважины CSV (1 млн строк) 6 с, модель OMF 4 с."
     }
   },
   "external": {
+    "series_step": {"file": "bench/out/series_step.json", "limits": {"step_median_ms": 300, "step_prefetched_median_ms": 100}, "report": ["step_p95_ms", "step_prefetched_p95_ms", "step_mark_median_ms", "section_lines", "shadow_lines", "steps_cold", "steps_prefetched"]},
+    "editor_1m": {"file": "bench/out/editor_1m.json", "limits": {"open_ms": 3000, "snap_ms": 4, "index_ms": 300, "op_ms": 10}, "report": ["undo_ms", "open_frame_ms", "index_best_ms", "snap_median_ms", "save_ms", "snap_targets"]},
     "_comment": "Results written by other checks (ADR 0007 §9): the frame of the 3D window under software rendering, E2E app/e2e/perf3d.spec.ts. Budgets only on deterministic counters; ms go to the report. frame_sw — 2000 holes and a display; frame_sw_heavy (ADR 0011, 0013 «Замеры») — the demo, 1 million line segments, a raster of 4096 px and a DTM of 200 thousand triangles; frame_sw_cloud (ADR 0014 «Замеры») — the holes of the demo, a point cloud of 10 million points, the ground filter and the DTM built from it: `points` — the points of the cloud in the frame against the point budget of software rendering (1 million; 6 — integrated, 20 — discrete).",
     "frame_sw": {
       "file": "bench/out/frame_sw.json",

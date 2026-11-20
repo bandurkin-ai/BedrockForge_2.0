@@ -11,6 +11,7 @@ import os
 import queue
 import threading
 import traceback
+from collections.abc import Callable
 from multiprocessing.connection import Connection
 from typing import Any
 
@@ -34,32 +35,48 @@ def _worker_log(queue_name: str) -> None:
         pass
 
 
-def _warm_kernels() -> None:
-    """Compile the numba kernels of the simplified copies of wireframes once, here, into NUMBA_CACHE_DIR: the
-    process of the API then loads them from the cache. Made there cold, they held its requests for ~7 s at the
-    first view of a wireframe (the audit of the demo waited for its findings). A small mesh: a tilted plane (flat
-    areas) and a bumpy one, through the same calls and dtypes as a view."""
-    import logging
+def _lower_this_thread() -> None:
+    """The warm-up runs at the lowest priority of this thread only: at the start of the program it must not take the
+    processor from the window (its first frame under a software renderer — perf3d, ≤ 3 s on CI) nor from a job.
+    Linux: the nice of a thread is its own (`setpriority` by the native id); Windows: the background mode of the
+    thread (lower processor and disk priority). Elsewhere, or refused — the warm-up runs as it is."""
+    import os
+    import sys
 
     try:
-        import numpy as np
+        if sys.platform == "win32":
+            import ctypes
 
-        from bf_core.geo import meshes as gm
+            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            kernel32.SetThreadPriority(kernel32.GetCurrentThread(), 0x00010000)  # THREAD_MODE_BACKGROUND_BEGIN
+        elif sys.platform.startswith("linux"):
+            os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), 19)
+    except (OSError, AttributeError):
+        pass
 
-        n = 9
-        x, y = np.meshgrid(np.arange(n, dtype=float), np.arange(n, dtype=float))
-        idx = np.arange(n * n).reshape(n, n)
-        a, b, c, d = idx[:-1, :-1].ravel(), idx[:-1, 1:].ravel(), idx[1:, :-1].ravel(), idx[1:, 1:].ravel()
-        tri = np.r_[np.c_[a, b, d], np.c_[a, d, c]]
-        for z in (0.1 * x, np.sin(x) * np.cos(y)):
-            v, t = gm.check_mesh(np.c_[x.ravel() + 500_000.0, y.ravel() + 7_000_000.0, z.ravel()], tri)
-            for p in gm.parts_table(v, t):
-                gm.levels(*gm.part_mesh(v, t, p))
-        from bf_core.ops.preview import warm
 
-        warm()
-    except Exception:  # noqa: BLE001 - a warm-up never stops the worker; the view compiles them itself then
-        logging.getLogger("bf_core.worker").exception("warm-up of the kernels failed")
+def _warm_kernels(queue_name: str = "quick", busy: Callable[[], bool] | None = None) -> None:
+    """Compile the numba kernels of the operations, of the view and of the preview of a stitch once, here, into
+    NUMBA_CACHE_DIR, or load them from it (`ops/warm.py`): the quick worker the operations first (the stitch the
+    very first), the heavy one the strips of a stitch, `wireframe.check`, what the process of the API needs (the
+    simplified copies, the section, the click) and the operations from the other end. Made cold where they were
+    needed, they held the first view of a
+    wireframe for ~7 s and the first operation for ~13 s (PROGRESS «Э9 9.36»). `busy()` — a job runs: the next step
+    waits for its end."""
+    import logging
+    import time
+
+    log = logging.getLogger("bf_core.worker")
+    _lower_this_thread()
+    try:
+        from bf_core.ops import warm
+
+        order = warm.QUICK if queue_name == "quick" else warm.HEAVY
+        t0 = time.perf_counter()
+        took = warm.warm(order, busy=busy)
+        log.info("warm-up: %d of %d steps in %.1f s", len(took), len(order), time.perf_counter() - t0)
+    except Exception:  # noqa: BLE001 - a warm-up never stops the worker; the job compiles them itself then
+        log.exception("warm-up of the kernels failed")
 
 
 def main(conn: Connection, queue_name: str) -> None:
@@ -139,8 +156,9 @@ def _main(conn: Connection, queue_name: str) -> None:
     threading.Thread(target=reader, name="worker-reader", daemon=True).start()
     threading.Thread(target=beat, name="worker-beat", daemon=True).start()
     send(("ready",))
-    if queue_name == "quick" and not os.environ.get("BF_NO_WARMUP"):
-        threading.Thread(target=_warm_kernels, name="worker-warm", daemon=True).start()
+    if not os.environ.get("BF_NO_WARMUP"):  # in a thread: the worker takes jobs at once; the quick one's are not slowed
+        busy = (lambda: current["id"] is not None) if queue_name == "quick" else None
+        threading.Thread(target=_warm_kernels, args=(queue_name, busy), name="worker-warm", daemon=True).start()
     while True:
         job = jobs.get()
         if job is None:

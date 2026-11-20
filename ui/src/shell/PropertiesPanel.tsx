@@ -1,8 +1,9 @@
 /**
  * The «Свойства» tab of the right dock (ТЗ 7.0.3; ADR 0011 §5): the object chosen by `object.select` — in the
  * tree or by a click in the 3D window — shows its panel: a layer of lines, a raster, a wireframe or a DTM (its
- * settings at the top, Д-07). The card of the selected hole stays below it; without an object it is alone.
+ * settings at the top, Д-07), a block model. The card of the selected hole stays below it; without an object it is alone.
  */
+import { BlockProps } from "../modules/blocks/BlockProps";
 import { LayerProps } from "../modules/lines/LayerProps";
 import { RasterProps } from "../modules/rasters/RasterProps";
 import { HoleCard } from "../modules/tables/HoleCard";
@@ -23,6 +24,7 @@ export function PropertiesPanel() {
       {selected.kind === "lines" && <LayerProps key={key} id={selected.id} />}
       {selected.kind === "raster" && <RasterProps key={key} id={selected.id} />}
       {selected.kind === "wireframe" && <WireframeProps key={key} id={selected.id} />}
+      {selected.kind === "blocks" && <BlockProps key={key} id={selected.id} />}
       {hole && <HoleCard />}
     </div>
   );

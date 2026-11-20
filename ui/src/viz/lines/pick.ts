@@ -34,8 +34,8 @@ export interface PickView {
   py: number;
   width: number;
   height: number;
-  /** is a plan point (rendered space) inside the section window */
-  inWindow(x: number, y: number): boolean;
+  /** is a scene point (Z not stretched) inside the section window */
+  inWindow(x: number, y: number, z: number): boolean;
 }
 
 export interface LineHit {
@@ -75,12 +75,13 @@ export function pickLines(parts: Iterable<PickPart>, v: PickView): LineHit | nul
     const m = multiply(v.vp, partModel(p.offset, v.vexag));
     if (p.box && !boxNear(m, p.box, px, py, w, h, POINT_PICK_PX)) continue;
     const b = p.built;
-    const [ox, oy] = p.offset;
+    const [ox, oy, oz] = p.offset;
     const dots = b.dots;
     const value = b.value ?? null;
     const shown = value ? (p.shown ?? null) : null;
     if (dots.length) {
-      const accept = shown ? (i: number) => shown[value![i]] === 1 && v.inWindow(dots[i * 3] + ox, dots[i * 3 + 1] + oy) : (i: number) => v.inWindow(dots[i * 3] + ox, dots[i * 3 + 1] + oy);
+      const inside = (i: number) => v.inWindow(dots[i * 3] + ox, dots[i * 3 + 1] + oy, dots[i * 3 + 2] + oz);
+      const accept = shown ? (i: number) => shown[value![i]] === 1 && inside(i) : inside;
       const hit = nearestPoint(m, dots, dots.length / 3, px, py, w, h, score * POINT_PICK_PX, accept);
       if (hit) {
         const piece = b.dotPiece ? b.dotPiece[hit.index] : hit.index;
@@ -91,7 +92,7 @@ export function pickLines(parts: Iterable<PickPart>, v: PickView): LineHit | nul
     }
     const pos = b.positions;
     if (!b.segments) continue;
-    const hit = nearestSegment(m, pos, b.segments, px, py, w, h, score * LINE_PICK_PX, (s, t) => v.inWindow(pos[s * 6] + (pos[s * 6 + 3] - pos[s * 6]) * t + ox, pos[s * 6 + 1] + (pos[s * 6 + 4] - pos[s * 6 + 1]) * t + oy));
+    const hit = nearestSegment(m, pos, b.segments, px, py, w, h, score * LINE_PICK_PX, (s, t) => v.inWindow(pos[s * 6] + (pos[s * 6 + 3] - pos[s * 6]) * t + ox, pos[s * 6 + 1] + (pos[s * 6 + 4] - pos[s * 6 + 1]) * t + oy, pos[s * 6 + 2] + (pos[s * 6 + 5] - pos[s * 6 + 2]) * t + oz));
     if (hit) {
       const piece = pieceOfSegment(b.segStart, hit.segment);
       const o = hit.segment * 6;

@@ -101,7 +101,7 @@ def test_wireframe_formats_by_extension_and_dm_by_content(files: dict[str, Path]
         detect_object(files["table.dm"])
     assert info.value.code == "not_wireframe" and "PID1" in info.value.message
     with pytest.raises(FormatError) as info:
-        detect_object(files["body.obj"].with_suffix(".omf"))
+        detect_object(files["body.obj"].with_suffix(".bmf"))
     assert info.value.code == "unsupported" and ".tridb" in info.value.hint and ".dwg" in info.value.hint
     stored = files["body.obj"].rename(files["body.obj"].with_name("upload-3"))  # an upload under another name
     assert detect_object(stored, filename="Тело.OBJ").key == "obj"
@@ -303,8 +303,9 @@ def test_pairs_of_a_selection() -> None:
         "ore.stl": (("stl",), {}),
         "plan.dwg": (("dwg",), {}),
         "plan.dxf": (("dxf",), {}),
+        "model.omf": (("omf",), {}),
     }
-    assert rest == ["model.omf", "pit.prj"]
+    assert rest == ["pit.prj"]
     assert {".tridb", ".obj", ".stl", ".dtm", ".dm", ".dwg"} <= set(registry.OBJECT_SUFFIXES)
     # a `.str` alone is strings, as before; twice the same name is one file
     alone, _ = group_files(["pit.str", "pit.str"])

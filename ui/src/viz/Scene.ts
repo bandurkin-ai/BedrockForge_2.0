@@ -5,14 +5,15 @@
  * (the root scaled in Z by the exaggeration); buffers are float32 from the integer origin of their part.
  * Other layers join through `addLayer` (own integer origin, materials with `scene.clipPlanes`, `beforeRender`,
  * labels placed with everyone else's); after a lost context they are dropped and `onRestored` re-adds them.
+ * The hole sets and the selected hole are `holes/sceneHoles.ts`.
  */
 import * as THREE from "three";
-import { groundPoint, projectRay, projectView, ToolInput, viewPlaneAt, type ProjectView, type ToolHandler } from "./core/toolInput";
+import { groundPoint, projectRay, projectView, ToolInput, type ProjectView, type ToolHandler } from "./core/toolInput";
 import { CameraRig } from "./core/camera";
 import { FrameLoop } from "./core/frame";
 import { nonBackgroundPixels, probeWebGL2, Renderer, sceneBytes, type FrameStats, type GpuInfo } from "./core/renderer";
 import { FpsTracker } from "./core/stats";
-import { boxFromBbox6, contentBox, fitBox, scaleZ, union, windowTest, type Box3, type Extent } from "./core/bounds";
+import { boxFromBbox6, contentBox, fitBox, scaleZ, union, type Box3, type Extent } from "./core/bounds";
 import { FirstView } from "./core/firstView";
 import { revealCamera } from "./core/reveal";
 import { screenPriority } from "./core/cull";
@@ -24,22 +25,22 @@ import { fromWorld, toWorld, type WorldCamera } from "./core/worldCamera";
 import type { Vec3 } from "./core/vec3";
 import { AxesGizmo } from "./gizmo/AxesGizmo";
 import { Grid } from "./grid";
-import { HoleSetLayer, type HoleSetStyle, type HoleSetVisibility } from "./holes/holeSet";
-import { holeIndex, type HolesManifest } from "./holes/manifest";
+import type { HoleSetLayer, HoleSetStyle, HoleSetVisibility } from "./holes/holeSet";
+import type { HolesManifest } from "./holes/manifest";
 import { MarkerTextures } from "./holes/markers";
-import { useFatLines } from "./holes/paths";
-import { pickHoles, SelectedHole } from "./holes/select";
+import { SceneHoles } from "./holes/sceneHoles";
+import { pickHoles } from "./holes/select";
 import { LabelCache, type LabelItem } from "./labels/sprites";
 import { toNdc, viewProjection, type Mat4 } from "./pick/ray";
-import { SharedClip } from "./section/clip";
-import { DRAW_OFF, type DrawState } from "./section/draw";
+import type { DrawState } from "./section/draw";
 import type { Ray, SectionLine } from "./section/math";
 import { buildOverview, type PlanOverview } from "./section/miniPlan";
 import { collarsOnScreen, planSources, type ScreenCollar } from "./holes/screen";
-import { SectionOverlay } from "./section/overlay";
+import type { SectionPlane } from "./section/plane";
+import { SectionRig } from "./section/rig";
 import type { BuiltPaths } from "./worker/paths";
 import { orbited, placeFrameLabels, screenOf, watchHost } from "./sceneHooks";
-import type { FrameContext, SceneDebug, SceneEvents, SceneLayer } from "./sceneTypes";
+import type { FrameContext, SceneDebug, SceneEvents, SceneLayer, SectionDataMark } from "./sceneTypes";
 
 export { probeWebGL2 } from "./core/renderer";
 export type { HoleHit } from "./holes/select";
@@ -53,26 +54,22 @@ export class Scene {
   private readonly loop: FrameLoop;
   private readonly three = new THREE.Scene();
   private readonly root = new THREE.Group();
-  private readonly clip = new SharedClip();
+  private readonly sec = new SectionRig();
   /** the size of the view in px: the `resolution` of every LineMaterial (shared, updated on resize) */
   readonly resolution = new THREE.Vector2(1, 1);
   private textures = new MarkerTextures();
   private labels: LabelCache;
   private grid: Grid;
-  private overlay = new SectionOverlay();
   private readonly gizmo: AxesGizmo;
   private readonly turn = new TurnController();
-  private readonly holeSets = new Map<number, HoleSetLayer>();
+  /** the hole sets and the selected hole (`holes/sceneHoles.ts`) */
+  private readonly sets: SceneHoles;
   private readonly layers = new LayerSet(this.root, this.origin);
-  private readonly selection: SelectedHole;
-  private selected: { setId: number; name: string } | null = null;
-  private section: SectionLine | null = null;
-  private clipOn = false;
+  /** shown (×1 while an inclined section is active) and asked by the view key */
   private vexag = 1;
+  private wantVexag = 1;
   private gridOn = true;
   private readonly first = new FirstView();
-  private fat = true;
-  private drawing: DrawState = DRAW_OFF;
   private size = { w: 1, h: 1 };
   private lastCam: CameraState | null = null;
   private lastVp: Mat4 | null = null;
@@ -93,14 +90,25 @@ export class Scene {
     private readonly events: SceneEvents = {},
   ) {
     this.renderer = new Renderer(host);
-    this.clipPlanes = this.clip.planes;
+    this.clipPlanes = this.sec.clip.planes;
     this.labels = new LabelCache(this.clipPlanes);
     this.grid = new Grid(this.labels);
-    this.selection = new SelectedHole(this.clipPlanes, this.resolution);
+    this.sets = new SceneHoles(
+      {
+        root: this.root,
+        origin: this.origin,
+        context: () => ({ clip: this.clipPlanes, resolution: this.resolution, textures: this.textures, labels: this.labels, pixelRatio: this.renderer.pixelRatio }),
+        contentChanged: () => this.contentChanged(),
+        gridChanged: () => this.refreshGrid(),
+        invalidate: () => this.loop.invalidate(), gpu: () => this.gpu.gpuClass,
+      },
+      this.clipPlanes,
+      this.resolution,
+    );
     this.rig = new CameraRig(this.renderer.canvas);
     this.loop = new FrameLoop((now) => this.draw(now));
     this.three.add(this.root, new THREE.HemisphereLight(0xffffff, 0x445566, 1.4), this.light, this.light.target);
-    this.root.add(this.grid.group, this.overlay.group);
+    this.root.add(this.grid.group, this.sec.overlay.group);
     this.gizmo = new AxesGizmo(host, (dir) => this.turnTo(dir));
     this.rig.onChange = () => {
       this.loop.invalidate();
@@ -112,7 +120,8 @@ export class Scene {
     };
     this.renderer.onLost = () => this.contextLost();
     this.renderer.onRestored = () => this.contextRestored();
-    this.input = new ToolInput({ click: (x, y) => this.click(x, y), move: (x, y) => this.pointerMove(x, y), leave: () => undefined, camera: (on) => void (this.rig.controls.enabled = on) });
+    const camera = (on: boolean) => void (this.rig.controls.enabled = on);
+    this.input = new ToolInput({ click: (x, y) => this.click(x, y), move: (x, y) => this.pointerMove(x, y), leave: () => undefined, camera });
     this.cleanup.push(this.input.attach(this.renderer.canvas));
     this.cleanup.push(watchHost(host, () => this.resize(), () => this.applyTheme()));
     this.applyTheme();
@@ -121,8 +130,13 @@ export class Scene {
 
   static probe = probeWebGL2;
 
-  get gpu(): GpuInfo { return this.renderer.info; }
-  get canvas(): HTMLCanvasElement { return this.renderer.canvas; }
+  get gpu(): GpuInfo {
+    return this.renderer.info;
+  }
+
+  get canvas(): HTMLCanvasElement {
+    return this.renderer.canvas;
+  }
 
   /** One more frame (a layer changed its objects). */
   invalidate(): void {
@@ -148,17 +162,10 @@ export class Scene {
   // ---------------------------------------------------------------- view
 
   setView(v: { vexag: number; grid: boolean; perspective: boolean }): void {
-    if (v.vexag !== this.vexag && v.vexag) {
-      const cam = changeVexag(this.rig.state(), this.vexag, v.vexag);
-      this.vexag = v.vexag;
-      this.rig.vexag = v.vexag;
-      this.root.scale.z = v.vexag;
-      this.rig.apply(cam);
-    }
-    if (v.grid !== this.gridOn) {
-      this.gridOn = v.grid;
-      this.grid.group.visible = v.grid;
-    }
+    if (v.vexag) this.wantVexag = v.vexag;
+    this.applyVexag();
+    this.gridOn = v.grid;
+    this.grid.group.visible = v.grid;
     if (this.rig.setPerspective(v.perspective)) {
       this.rig.resize(this.size.w, this.size.h);
       this.fit();
@@ -166,23 +173,35 @@ export class Scene {
     this.loop.invalidate();
   }
 
-  /** A standard view: «В план» keeps the centre and the scale, the others fit the content. */
+  /** A standard view: «В план» keeps the centre and the scale, the others fit the content; all but «section» free a locked view. */
   view(preset: ViewPreset): void {
+    if (preset !== "section") this.lockView(false);
     this.first.stop();
     this.turn.cancel();
     const opts = this.rig.options();
-    if (preset === "top") {
-      this.rig.apply(toPlan(this.rig.state(), contentBox(this.extents()), opts));
-      return;
-    }
-    const origin = this.origin.value;
-    const frame = preset === "section" && this.section && origin ? { line: this.section, origin } : null;
-    this.rig.apply(view(preset, this.fitBox(), opts, frame));
+    if (preset === "top") return void this.rig.apply(toPlan(this.rig.state(), contentBox(this.extents()), opts));
+    this.rig.apply(this.sec.lockedView(this.fitBox(), opts, this.origin.value) ?? view(preset, this.fitBox(), opts, preset === "section" ? this.sec.frame(this.origin.value) : null));
   }
 
   /** «Вписать»: everything visible (with clipping — in the window) without turning the view. */
   fit(): void {
-    this.take(fit(this.rig.state(), this.fitBox(), this.rig.options()));
+    this.take(this.sec.lockedView(this.fitBox(), this.rig.options(), this.origin.value) ?? fit(this.rig.state(), this.fitBox(), this.rig.options()));
+  }
+
+  get locked(): boolean {
+    return this.rig.locked;
+  }
+
+  /** «Зафиксировать вид» (L, ADR 0016 §4; `core/lockView.ts`): orthographic along v̂, ŵ up, no turning, follows `]` / `[`;
+   * false — nothing to lock on (no section) or to free. */
+  lockView(on: boolean): boolean {
+    const cam = on ? this.sec.lockOn(this.rig.state(), this.origin.value, this.vexag) : this.sec.unlock(this.rig.state());
+    if (!cam) return false;
+    const refit = this.rig.setLock(this.sec.lock);
+    this.take(cam);
+    if (refit) this.fit();
+    this.events.onLock?.(on);
+    return true;
   }
 
   /** A camera a command sets: the first view and a smooth turn stop. */
@@ -196,6 +215,7 @@ export class Scene {
   holdView(): void {
     this.first.stop();
   }
+
   reveal(bboxes: ArrayLike<number>[]): boolean {
     const o = bboxes.length ? this.origin.ensure(bboxes[0]) : null;
     const cam = o && revealCamera(this.rig.state(), this.rig.options(), bboxes.map((b) => boxFromBbox6(b, o)));
@@ -205,6 +225,7 @@ export class Scene {
 
   /** A smooth turn to look along `from` (gizmo): centre and scale kept, a new turn stops the old. */
   turnTo(from: Vec3): void {
+    if (this.rig.locked) return;
     this.first.stop();
     const opts = this.rig.options();
     const token = this.turn.begin(this.rig.state(), from, performance.now(), { ortho: !opts.perspective, box: contentBox(this.extents()), vexag: this.vexag });
@@ -226,6 +247,7 @@ export class Scene {
     const o = this.origin.value;
     return o ? toWorld(this.rig.state(), o, this.vexag, !this.rig.perspective, this.rig.persp.fov) : null;
   }
+
   setWorldCamera(c: WorldCamera): void {
     this.take(fromWorld(c, this.origin.value ?? this.origin.ensure([...c.target, ...c.target]), this.vexag, this.rig.state()));
   }
@@ -266,18 +288,44 @@ export class Scene {
 
   // ---------------------------------------------------------------- section
 
+  /** The section of a line of 7.14 (null — none) and clipping by its window. */
   setSection(line: SectionLine | null, clip: boolean): void {
-    this.section = line;
-    this.clipOn = clip && line !== null;
-    this.clip.update(line, this.clipOn, this.origin.value);
-    this.overlay.setLine(line, this.clipOn, this.origin.value, contentBox(this.extents()));
+    this.sec.setLine(line, clip);
+    this.sectionChanged();
+  }
+
+  /** A section of any kind (a series, a polyline segment; ADR 0016 §4); `line` — the line of 7.14 it came from. */
+  setSectionPlane(plane: SectionPlane | null, clip: boolean, line: SectionLine | null = null): void {
+    this.sec.set(plane, clip, line);
+    this.sectionChanged();
+  }
+
+  private sectionChanged(): void {
+    if (!this.applyVexag()) this.sectionFollows();
     this.loop.invalidate();
+  }
+
+  /** The planes and the trace for the section and the exaggeration; a locked view follows the plane or is freed. */
+  private sectionFollows(): void {
+    this.sec.refresh(this.origin.value, contentBox(this.extents()), this.vexag);
+    if (!this.sec.plane) this.lockView(false);
+    const cam = this.sec.follow(this.rig.state(), this.origin.value, this.vexag);
+    if (cam) {
+      this.rig.setLock(this.sec.lock);
+      this.take(cam);
+    }
+  }
+
+  private sectionData: SectionDataMark | null = null;
+  /** The readiness of the lines of the current section of a series (`modules/section/seriesSections.ts`); null — none. */
+  setSectionData(mark: SectionDataMark | null): void {
+    this.sectionData = mark && mark.series !== null ? { ...mark } : null;
   }
 
   /** The drawing state of a section line (the first point marked: the rubber band follows the cursor). */
   setDrawing(state: DrawState): void {
-    this.drawing = state;
-    if (state.stage !== "second") this.overlay.setDraft(null, null, 0);
+    this.sec.drawing = state;
+    if (state.stage !== "second") this.sec.overlay.setDraft(null, null, 0);
     else this.pointerMove(-1, -1);
     this.renderer.canvas.style.cursor = state.stage === "off" && !this.input.active ? "" : "crosshair";
     this.loop.invalidate();
@@ -285,69 +333,37 @@ export class Scene {
 
   /** Collars and traces of the visible sets for the mini-plan (≤ 20 000 points). */
   planOverview(): PlanOverview {
-    return buildOverview(planSources(this.holeSets.values()));
+    return buildOverview(planSources(this.sets.layers()));
   }
 
   // ---------------------------------------------------------------- holes
 
   setHoles(manifest: HolesManifest, style: HoleSetStyle, visibility: HoleSetVisibility): void {
-    this.removeHoles(manifest.setId, false);
-    if (!manifest.parts.length) {
-      this.contentChanged();
-      return;
-    }
-    this.origin.ensure(manifest.parts[0].bbox);
-    const layer = new HoleSetLayer(manifest, { clip: this.clipPlanes, resolution: this.resolution, textures: this.textures, labels: this.labels, pixelRatio: this.renderer.pixelRatio }, style, visibility);
-    layer.place(this.origin);
-    this.holeSets.set(manifest.setId, layer);
-    this.root.add(layer.group);
-    this.applySelection();
-    this.contentChanged();
+    this.sets.set(manifest, style, visibility);
   }
 
   setPaths(setId: number, k: number, built: BuiltPaths): void {
-    const layer = this.holeSets.get(setId);
-    if (!layer) return;
-    layer.setPaths(k, built, this.fat);
-    this.updateFat();
-    if (this.selected?.setId === setId) this.applySelection();
-    this.loop.invalidate();
+    this.sets.setPaths(setId, k, built);
   }
 
   holes(setId: number): HoleSetLayer | null {
-    return this.holeSets.get(setId) ?? null;
+    return this.sets.get(setId);
   }
 
   removeHoles(setId: number, update = true): void {
-    const layer = this.holeSets.get(setId);
-    if (!layer) return;
-    if (this.selected?.setId === setId) this.selection.clear();
-    this.root.remove(layer.group);
-    layer.dispose();
-    this.holeSets.delete(setId);
-    if (update) this.contentChanged();
+    this.sets.remove(setId, update);
   }
 
   setHoleStyle(setId: number, style: HoleSetStyle): void {
-    const layer = this.holeSets.get(setId);
-    if (!layer) return;
-    layer.setStyle(style, useFatLines(style.trace, this.totalSegments()));
-    if (this.selected?.setId === setId) this.applySelection();
-    this.loop.invalidate();
+    this.sets.setStyle(setId, style);
   }
 
   setHoleVisibility(setId: number, v: HoleSetVisibility): void {
-    const layer = this.holeSets.get(setId);
-    if (!layer) return;
-    layer.setVisibility(v);
-    this.refreshGrid();
-    this.loop.invalidate();
+    this.sets.setVisibility(setId, v);
   }
 
   select(hole: { setId: number; name: string } | null): void {
-    this.selected = hole;
-    this.applySelection();
-    this.loop.invalidate();
+    this.sets.select(hole);
   }
 
   // ---------------------------------------------------------------- other layers
@@ -380,15 +396,16 @@ export class Scene {
 
   /** clip ← project coordinates of the last frame, the size of the view and the section window. */
   projectView(): ProjectView | null {
-    return projectView(this.lastVp, this.origin.value, this.vexag, this.size, (x, y) => this.clip.inWindow(x, y));
+    return projectView(this.lastVp, this.origin.value, this.vexag, this.size, this.sec.inWindow);
   }
 
   // ---------------------------------------------------------------- E2E and diagnostics
 
   debug(): SceneDebug {
     const cam = this.rig.state();
-    const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, clipPlanes: this.clipPlanes.length, section: this.section };
-    const content = { gpu: this.renderer.info, sets: [...this.holeSets.keys()], layers: this.layers.keys(), segments: this.totalSegments(), pickMs: this.pickMs };
+    const section = { clipPlanes: this.clipPlanes.length, section: this.sec.line, sectionPlane: this.sec.plane, locked: this.rig.locked, sectionData: this.sectionData };
+    const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, ...section };
+    const content = { gpu: this.renderer.info, sets: this.sets.ids(), layers: this.layers.keys(), segments: this.sets.segments(), pickMs: this.pickMs };
     return { frames: this.loop.frames, idle: this.idle, lost: this.renderer.lost, stats: this.stats, ...view, ...content };
   }
 
@@ -402,7 +419,7 @@ export class Scene {
   collarsOnScreen(limit = 500): ScreenCollar[] {
     if (!this.lastVp) return [];
     const r = this.renderer.canvas.getBoundingClientRect();
-    return collarsOnScreen(this.holeSets.values(), this.lastVp, this.vexag, { w: this.size.w, h: this.size.h, left: r.left, top: r.top }, (x, y) => this.clip.inWindow(x, y), limit);
+    return collarsOnScreen(this.sets.layers(), this.lastVp, this.vexag, { w: this.size.w, h: this.size.h, left: r.left, top: r.top }, this.sec.inWindow, limit);
   }
 
   /** A project point on the screen (client px) as last drawn, for the E2E; null — out of the view. */
@@ -421,41 +438,35 @@ export class Scene {
 
   // ---------------------------------------------------------------- internals
 
+  /** The exaggeration asked, ×1 while an inclined section is active (ADR 0016 решение 7): the centre is kept. */
+  private applyVexag(): boolean {
+    const e = this.sec.vexag(this.wantVexag);
+    if (e === this.vexag) return false;
+    const cam = changeVexag(this.rig.state(), this.vexag, e);
+    this.vexag = e;
+    this.rig.vexag = e;
+    this.root.scale.z = e;
+    this.rig.apply(cam);
+    this.sectionFollows();
+    return true;
+  }
+
   private extents(): Extent[] {
     const o = this.origin.value;
     if (!o) return [];
     const out: Extent[] = [];
-    for (const l of this.holeSets.values()) out.push({ box: l.extent(o), visible: l.visible });
+    this.sets.extents(o, out);
     this.layers.extents(o, out);
     return out;
   }
 
   private fitBox(): Box3 {
-    return fitBox(this.extents(), windowTest(this.section, this.clipOn, this.origin.value));
-  }
-
-  private totalSegments(): number {
-    let n = 0;
-    for (const l of this.holeSets.values()) n += l.segments;
-    return n;
-  }
-
-  private updateFat(): void {
-    const total = this.totalSegments();
-    for (const l of this.holeSets.values()) l.setFat(useFatLines(l.style.trace, total));
-  }
-
-  private applySelection(): void {
-    const s = this.selected;
-    const layer = s ? this.holeSets.get(s.setId) ?? null : null;
-    const index = layer && s ? holeIndex(layer.manifest, s.name) : -1;
-    this.selection.update(layer, index, this.renderer.pixelRatio, layer?.style.collar.size ?? 10, this.textures.get("circle"));
+    return fitBox(this.extents(), this.sec.boxTest());
   }
 
   private contentChanged(): void {
     this.refreshGrid();
-    this.clip.update(this.section, this.clipOn, this.origin.value);
-    this.overlay.setLine(this.section, this.clipOn, this.origin.value, contentBox(this.extents()));
+    this.sec.refresh(this.origin.value, contentBox(this.extents()), this.vexag);
     // the first view: fitted again while the layers of the opened project arrive (`core/firstView.ts`)
     if (this.first.grown(contentBox(this.extents()))) this.rig.apply(view("iso", this.fitBox(), this.rig.options(), null));
     this.loop.invalidate();
@@ -463,13 +474,14 @@ export class Scene {
 
   private refreshGrid(): void {
     const css = getComputedStyle(this.host);
-    this.grid.update(contentBox(this.extents()), this.origin.value, { line: css.getPropertyValue("--text-dim").trim() || "#8a99a8", text: css.getPropertyValue("--text-faint").trim() || "#7d8d9e" });
+    const colors = { line: css.getPropertyValue("--text-dim").trim() || "#8a99a8", text: css.getPropertyValue("--text-faint").trim() || "#7d8d9e" };
+    this.grid.update(contentBox(this.extents()), this.origin.value, colors);
     this.grid.group.visible = this.gridOn;
   }
 
   /** Part offsets, the planes and the overlay after the scene origin moved. */
   private placeAll(): void {
-    for (const l of this.holeSets.values()) l.place(this.origin);
+    this.sets.place();
     this.layerChanged();
   }
 
@@ -499,19 +511,19 @@ export class Scene {
     const ppuAt = (at: Vec3) => pixelsPerUnit(cam, at, h, opts);
     const ctx: FrameContext = { camera: cam, options: opts, width: w, height: h, vexag: this.vexag, pixelsPerUnit: ppuAt };
     const ppu = ppuAt(cam.target);
-    for (const l of this.holeSets.values()) l.beforeRender(ppu);
+    for (const l of this.sets.layers()) l.beforeRender(ppu);
     for (const fn of this.frameListeners) fn(ctx);
     this.layers.beforeRender(ctx);
     this.light.position.set(...cam.position);
     this.light.target.position.set(...cam.target);
     this.three.updateMatrixWorld();
     const items: LabelItem[] = [];
-    for (const l of this.holeSets.values()) l.labelItems(items);
+    for (const l of this.sets.layers()) l.labelItems(items);
     this.layers.labels(items);
     // the grid seen edge-on (a side view, a section) keeps its lines, its values would be a heap
     if (Math.abs(viewDirection(cam)[2]) > 0.15) this.grid.labelItems(items);
     else for (const l of this.grid.labels) l.sprite.visible = false;
-    placeFrameLabels(items, vp, w, h, ppuAt, (x, y) => this.clip.inWindow(x, y));
+    placeFrameLabels(items, vp, w, h, ppuAt, this.sec.inWindow, this.vexag);
     this.renderer.render(this.three, this.rig.camera);
     this.stats = this.renderer.stats();
     this.gizmo.update(cam, this.vexag < 0);
@@ -537,7 +549,7 @@ export class Scene {
   }
 
   private click(px: number, py: number): void {
-    if (this.drawing.stage !== "off") {
+    if (this.sec.drawing.stage !== "off") {
       const g = groundPoint(this.lastCam ?? this.rig.state(), this.rig.options(), this.size, this.origin.value, px, py);
       return void (g && this.events.onGroundClick?.(g));
     }
@@ -545,8 +557,8 @@ export class Scene {
     if (!vp) return;
     const t0 = performance.now();
     const { w, h } = this.size;
-    const inWindow = (x: number, y: number) => this.clip.inWindow(x, y);
-    const hit = pickHoles(this.holeSets.values(), vp, this.vexag, px, py, w, h, inWindow);
+    const inWindow = this.sec.inWindow;
+    const hit = pickHoles(this.sets.layers(), vp, this.vexag, px, py, w, h, inWindow);
     // no hole under the cursor: the other layers answer (lines and points first, then surfaces)
     const ray = screenRay(this.lastCam ?? this.rig.state(), this.rig.options(), ...toNdc(px, py, w, h));
     const other = hit ? null : this.layers.pick({ vp, vexag: this.vexag, px, py, width: w, height: h, inWindow, ray });
@@ -556,25 +568,15 @@ export class Scene {
   }
 
   private pointerMove(px: number, py: number): void {
-    const first = this.drawing.stage === "second" ? this.drawing.first : null;
-    const o = this.origin.value;
-    if (!first || !o) return;
-    const cam = this.lastCam ?? this.rig.state();
-    const start: Vec3 = [first.x - o.x, first.y - o.y, cam.target[2] / (this.vexag || 1)];
-    const p = px >= 0 ? viewPlaneAt(cam, this.rig.options(), this.size, px, py) : null;
-    const end: Vec3 | null = p ? [p[0], p[1], start[2]] : null;
-    const mark = 6 / Math.max(pixelsPerUnit(cam, cam.target, this.size.h, this.rig.options()), 1e-9);
-    this.overlay.setDraft(start, end, mark);
-    this.loop.invalidate();
+    if (this.sec.draft(this.lastCam ?? this.rig.state(), this.rig.options(), this.size, this.origin.value, px, py)) this.loop.invalidate();
   }
 
   /** Drops everything with GPU resources (the context is gone or the scene closes). */
   private disposeContent(): void {
-    for (const id of [...this.holeSets.keys()]) this.removeHoles(id, false);
+    this.sets.clear();
     this.layers.clear();
-    this.selection.clear();
     this.grid.dispose();
-    this.overlay.dispose();
+    this.sec.dispose();
     this.labels.dispose();
     this.textures.dispose();
   }

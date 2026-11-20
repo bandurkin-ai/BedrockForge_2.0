@@ -16,15 +16,14 @@ import { coreTarget } from "../../shell/api";
 import { apiUrl, authHeaders } from "../../shell/coreClient";
 import type { FrameContext, Scene } from "../../viz/Scene";
 import { boxFromBbox6, scaleZ } from "../../viz/core/bounds";
-import { GpuMemory, MEMORY_BUDGET, POINT_BUDGET } from "../../viz/core/budget";
+import { fatLines, GpuMemory, MEMORY_BUDGET, POINT_BUDGET } from "../../viz/core/budget";
 import { boxInFrustum, frustumPlanes, screenPriority } from "../../viz/core/cull";
 import { shownLevel } from "../../viz/core/lod";
 import { VizError } from "../../viz/error";
-import { THIN_SEGMENTS } from "../../viz/holes/paths";
 import { LabelCache } from "../../viz/labels/sprites";
 import { lineBoundaries, lineLevel, nearestInBox, readLinesManifest, sameLayout, staleLevels, type LinesManifest } from "../../viz/lines/build";
 import { applyPointBudget, cloudBoundaries, type CloudBudgetPart, type CloudStyle, type CloudValueMode } from "../../viz/lines/cloud";
-import { LINE_WIDTH_PX, LineLayerView } from "../../viz/lines/layer";
+import { LINE_WIDTH_PX, LineLayerView, manifestSegments } from "../../viz/lines/layer";
 import { LoadQueue } from "../../viz/load/loader";
 import { GeometryWorker } from "../../viz/worker/client";
 import { editedLayer, editStore, layerShown } from "../lines/editState";
@@ -87,6 +86,12 @@ export class LinesSource {
   private generation = 0;
   private lastFrame = 0;
   private fat = true;
+  /**
+   * Shown layers counted by their finest level (the manifest), not by what they show: their manifest made the
+   * lines thin before the first build, and they keep them so until hidden or removed — a coarse level built first
+   * does not turn the scene fat and every layer rebuilt, then thin again (Э11 11.21; ADR 0017, 11.18).
+   */
+  private readonly heavy = new Set<number>();
   private over = false;
   private selected: { layerId: number; line: number } | null = null;
   /** the point budget of clouds in the last frame */
@@ -147,6 +152,7 @@ export class LinesSource {
     const edited = editedLayer();
     const ids = new Set(list.map((l) => l.id));
     let changed = false;
+    const shownNow: number[] = [];
     for (const id of [...this.layers.keys()]) {
       if (ids.has(id)) continue;
       this.drop(id);
@@ -157,13 +163,19 @@ export class LinesSource {
       const visible = layerShown(l.id, hidden, edited);
       const st = this.layers.get(l.id);
       if (st) {
-        if (st.view.visible !== visible) changed = true;
+        if (st.view.visible !== visible) {
+          changed = true;
+          if (visible) shownNow.push(l.id);
+          else this.heavy.delete(l.id);
+        }
         st.view.setVisible(visible);
         st.view.setColor(l.color);
         this.restyle(st);
         if (visible && st.manifest.version !== l.version) this.ask(l.id);
       } else if (visible && this.empty.get(l.id) !== l.version) this.ask(l.id);
     }
+    // a layer shown again is weighed by its manifest before its parts come, as a new one
+    if (shownNow.length) this.weigh(shownNow);
     if (changed) this.contentChanged();
     this.scene.invalidate();
   }
@@ -193,6 +205,7 @@ export class LinesSource {
     this.generation++;
     this.queue.cancelAll();
     this.layers.clear();
+    this.heavy.clear();
     this.empty.clear();
     this.asking.clear();
     this.labels.dispose();
@@ -230,6 +243,7 @@ export class LinesSource {
     if (!st) return;
     st.parts.forEach((_, k) => this.memory.removePart(partId(id, k)));
     this.layers.delete(id);
+    this.heavy.delete(id);
     this.scene.removeLayer(lineKey(id));
   }
 
@@ -274,12 +288,13 @@ export class LinesSource {
           if (!m.parts.length) this.empty.set(id, m.version);
           else {
             const view = new LineLayerView(m, { clip: this.scene.clipPlanes, resolution: this.scene.resolution, labels: this.labels, pixelRatio: this.scene.renderer.pixelRatio }, { color: ref.color ?? m.color, visible }, this.input.floor());
-            view.setFat(this.fat);
             view.setCloudStyle(this.input.cloud?.(id));
             if (this.selected?.layerId === id) view.select(this.selected.line);
             const bounds = m.cloud ? cloudBoundaries(m.tols) : lineBoundaries(m.tols);
             const parts = m.parts.map(() => ({ want: null, lod: null, priority: 0, loading: new Set<number>(), failed: new Set<number>() }));
             this.layers.set(id, { id, manifest: m, view, bounds, parts, fresh: new Set(), mode: view.isCloud ? view.valueMode : null });
+            if (visible) this.weigh([id]); // before the first build of the layer: it has no LineObject yet
+            view.setFat(this.fat);
             this.scene.addLayer(lineKey(id), view);
           }
           this.input.onContent?.();
@@ -409,10 +424,13 @@ export class LinesSource {
         this.over = true;
         return;
       }
+      // the level is counted instead of the one the part shows before it is built: fat or thin at once
+      // (a layer counted by its manifest already counts its finest level)
+      const shownNow = st.view.shown(k);
+      this.updateFat(this.heavy.has(st.id) ? 0 : Math.max(0, built.segments - (shownNow === null ? 0 : st.view.levelSegments(k, shownNow))));
       st.view.setLevel(k, built);
       st.fresh.add(`${k}:${lod}`);
       this.memory.add(id, lod, bytes, lod === manifest.tols.length - 1, performance.now());
-      this.updateFat();
       this.scene.invalidate();
     } catch (e) {
       if (!stale()) p.failed.add(lod);
@@ -444,14 +462,39 @@ export class LinesSource {
     this.scene.invalidate();
   }
 
-  /** Lines one pixel wide when the scene holds more than a million segments (ADR 0007 §7). */
-  private updateFat(): void {
-    let total = this.scene.debug().segments;
-    for (const st of this.layers.values()) total += st.view.stats().segments;
-    const fat = LINE_WIDTH_PX > 1 && total <= THIN_SEGMENTS;
+  /**
+   * Lines one pixel wide when the scene holds more segments than its class of graphics draws fat (ADR 0007 §7;
+   * `THIN_LINE_SEGMENTS`: a million, software rendering — 200 thousand). `extra` — the segments about to come
+   * (a new layer by its manifest, a level before it is built): the choice is made before the build, so a heavy
+   * layer is never built and drawn fat first (Э11 11.18: ~21 s a frame under SwiftShader). A layer of `heavy`
+   * counts its finest level until it is hidden or removed.
+   */
+  private updateFat(extra = 0): void {
+    let total = this.scene.debug().segments + extra;
+    for (const st of this.layers.values()) {
+      const shown = st.view.stats().segments;
+      total += this.heavy.has(st.id) && st.view.visible ? Math.max(shown, manifestSegments(st.manifest)) : shown;
+    }
+    const fat = fatLines(LINE_WIDTH_PX, total, this.scene.gpu.gpuClass);
     if (fat === this.fat) return;
     this.fat = fat;
     for (const st of this.layers.values()) st.view.setFat(fat);
+  }
+
+  /**
+   * Layers about to be shown weighed by their manifests: counted by their finest level, they decide fat or thin
+   * lines before their parts are built; those that leave the scene thin stay counted so (`heavy`), the others go
+   * back to what they show.
+   */
+  private weigh(ids: readonly number[]): void {
+    const some = ids.filter((id) => {
+      const st = this.layers.get(id);
+      return st && manifestSegments(st.manifest) > 0;
+    });
+    if (!some.length) return;
+    for (const id of some) this.heavy.add(id);
+    this.updateFat();
+    if (this.fat) for (const id of some) this.heavy.delete(id);
   }
 
   /** The state for the notes of the window; set after the frame that found it out, once. */

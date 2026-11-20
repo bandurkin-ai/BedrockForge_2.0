@@ -3,10 +3,13 @@
  * camera by default (plans and sections true to scale) or a perspective one, Z up, turned by OrbitControls
  * (left — rotate, wheel — zoom, right — pan). The pure view math works on `CameraState` (float64); this
  * module reads the state from three.js and applies a state back. Rendered space: relative to the scene
- * origin, Z stretched by the vertical exaggeration.
+ * origin, Z stretched by the vertical exaggeration. «Зафиксировать вид» (`setLock`, ADR 0016 §4): orthographic,
+ * turning off, the camera held on the locked direction and up after every move (OrbitControls rounds its
+ * position through spherical coordinates), panning and zooming as before.
  */
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { holdLock, type HeldView } from "./lockView";
 import { DEFAULT_FOV, type CameraState, type ViewOptions } from "./views";
 import type { Vec3 } from "./vec3";
 
@@ -21,6 +24,9 @@ export class CameraRig {
   onChange: () => void = () => {};
   /** the user took the view with the mouse: a smooth turn under way stops */
   onUserStart: () => void = () => {};
+  private held: HeldView | null = null;
+  /** the projection the view asks for (orthographic while locked) */
+  private wantPerspective = false;
 
   constructor(private readonly dom: HTMLElement) {
     this.ortho.up.set(0, 0, 1);
@@ -31,6 +37,22 @@ export class CameraRig {
 
   get perspective(): boolean {
     return this.camera === this.persp;
+  }
+
+  get locked(): boolean {
+    return this.held !== null;
+  }
+
+  /**
+   * Locks the view on `held` (null — frees it): orthographic while locked, the asked projection after; turning
+   * off. True — the projection changed (the caller fits the view again).
+   */
+  setLock(held: HeldView | null): boolean {
+    this.held = held;
+    const switched = this.switchTo(held ? false : this.wantPerspective);
+    this.controls.enableRotate = !held;
+    this.hold();
+    return switched;
   }
 
   options(): ViewOptions {
@@ -67,6 +89,7 @@ export class CameraRig {
     c.updateProjectionMatrix();
     c.lookAt(this.controls.target);
     this.controls.update();
+    this.hold();
     this.onChange();
   }
 
@@ -84,8 +107,13 @@ export class CameraRig {
     }
   }
 
-  /** Orthographic or perspective; the caller fits the view again (BF setPerspective). */
+  /** Orthographic or perspective (kept for later while locked); the caller fits the view again (BF setPerspective). */
   setPerspective(on: boolean): boolean {
+    this.wantPerspective = on;
+    return this.switchTo(on && !this.held);
+  }
+
+  private switchTo(on: boolean): boolean {
     const next = on ? this.persp : this.ortho;
     if (next === this.camera) return false;
     const target = this.controls.target.clone();
@@ -112,11 +140,25 @@ export class CameraRig {
     this.controls.dispose();
   }
 
+  /** Back on the locked direction and up, the target and the distance kept. */
+  private hold(): void {
+    if (!this.held) return;
+    const s = holdLock(this.state(), this.held);
+    const c = this.camera;
+    c.position.set(s.position[0], s.position[1], s.position[2]);
+    c.up.set(s.up[0], s.up[1], s.up[2]);
+    c.lookAt(this.controls.target);
+  }
+
   private makeControls(): OrbitControls {
     const controls = new OrbitControls(this.camera, this.dom);
     controls.screenSpacePanning = true;
     controls.enableDamping = false;
-    controls.addEventListener("change", () => this.onChange());
+    controls.enableRotate = !this.held;
+    controls.addEventListener("change", () => {
+      this.hold();
+      this.onChange();
+    });
     controls.addEventListener("start", () => this.onUserStart());
     return controls;
   }

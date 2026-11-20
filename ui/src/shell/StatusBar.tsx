@@ -1,17 +1,22 @@
 import { useApp } from "./AppContext";
 import { auditStore, statusText } from "../modules/audit/state";
 import { displaysUi } from "../modules/downhole/displaysUi";
+import { viewStore } from "../modules/scene/bind";
+import { currentSection, seriesStatus, seriesStore } from "../modules/section/seriesState";
 import { useStore } from "./useStore";
 import css from "./StatusBar.module.css";
 
 const CORE_TEXT = { starting: "Запуск ядра…", online: "Ядро работает", offline: "Нет связи с ядром" } as const;
 
-/** Status bar (ТЗ 7.0.5): core · project · set · selection · view · Claude · audit. */
+/** Status bar (ТЗ 7.0.5, 8.1): core · project · set · selection · view · the section of the active series · Claude · audit. */
 export function StatusBar() {
   const app = useApp();
   const s = useStore(app.store, (x) => x);
   const audit = useStore(auditStore, (x) => x.result);
   const simplified = useStore(displaysUi, (x) => x.simplified > 0);
+  const keys = useStore(viewStore, (k) => k);
+  const series = useStore(seriesStore, (x) => x);
+  const section = s.projectName ? seriesStatus(currentSection(keys, series)) : null;
   const nf = new Intl.NumberFormat("ru-RU");
   const parts = [
     <span key="core" data-testid="core-status">
@@ -28,6 +33,7 @@ export function StatusBar() {
       {simplified ? " · упрощено" : ""}
     </span>,
   );
+  if (section) parts.push(<span key="series" data-testid="series-status">{section}</span>);
   if (s.statusNote)
     parts.push(
       <span key="note" role="status" title="Закрыть" onClick={() => app.store.set({ statusNote: null })}>

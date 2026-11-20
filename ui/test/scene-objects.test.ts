@@ -60,6 +60,34 @@ describe("objects of the scene", () => {
     expect(sceneObjects.get().rasters).toBe(first.rasters);
   });
 
+  it("a read overtaken by a newer one waits for it: the caller gets the fresh lists (a new layer opened at once)", async () => {
+    setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
+    projectStore.set({ current: { uid: "p1" } as ProjectInfo });
+    let call = 0;
+    let release: () => void = () => undefined;
+    const slow = new Promise<void>((r) => (release = r));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: RequestInfo | URL) => {
+        const u = String(url);
+        // the first read of the lists answers late with the old ones; the second, started after it, has the new layer
+        const n = u.endsWith("/lines/files") ? ++call : call;
+        if (n === 2 && u.endsWith("/lines/files")) await slow;
+        const lines = n === 1 ? [files[1]] : files;
+        return new Response(JSON.stringify(u.endsWith("/lines/files") ? { files: lines } : u.endsWith("/wireframes") ? { wireframes: [] } : { rasters: [] }), { status: 200 });
+      }),
+    );
+    const mine = loadSceneObjects(); // the caller's read (old lists)
+    const other = loadSceneObjects(); // started by an event — overtakes it, answers later
+    let done = false;
+    void mine.then(() => (done = true));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(done).toBe(false); // not before the newer read
+    release();
+    await Promise.all([mine, other]);
+    expect(lineLayers().map((l) => l.id)).toEqual([11, 12, 21]);
+  });
+
   it("the lists are read for the open project; unchanged lists keep their identity", async () => {
     setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
     projectStore.set({ current: { uid: "p1" } as ProjectInfo });

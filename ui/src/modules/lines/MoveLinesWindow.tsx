@@ -21,7 +21,9 @@ export function moveTargets(layers: readonly { id: number; name: string; cloud?:
 
 export function MoveLinesWindow({ winId, layerId }: { winId: string; layerId: number }) {
   const app = useApp();
-  const layers = useStore(sceneObjects, (o) => lineLayers(o));
+  // the files are kept by reference; `lineLayers` makes a new array on every call (an endless re-render)
+  const files = useStore(sceneObjects, (o) => o.files);
+  const layers = useMemo(() => lineLayers({ files }), [files]);
   const session = useStore(editStore, (s) => s.session);
   const [filter, setFilter] = useState("");
   const [target, setTarget] = useState<number | null>(null);

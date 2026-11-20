@@ -5,6 +5,7 @@
 import type { CommandContext } from "./commands";
 import type { IconName } from "./Icon";
 import type { ViewState, WorkspaceState } from "./workspace";
+import { seriesTab, type SeriesFlags } from "../modules/section/seriesCommands";
 
 export interface RibbonItem {
   command: string;
@@ -42,7 +43,8 @@ export const QUICK_PROMPTS: { label: string; prompt: string; needsHole?: boolean
   { label: "Проверить скважину", prompt: "Проверь выбранную скважину: данные устья, инклинометрию, опробование и замечания аудита. Покажи её на разрезе.", needsHole: true },
 ];
 
-export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
+/** `series` — the pressed buttons of «Разрезы» (the ribbon passes them; elsewhere the defaults do). */
+export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial<SeriesFlags> = {}): RibbonTab[] {
   const views: RibbonItem[] = [
     { command: "scene.view", args: { view: "top" }, label: "В план", icon: "cubeTop", hint: "Вид сверху на то, что сейчас на экране", shortcut: "t" },
     { command: "scene.view", args: { view: "front" }, label: "Сбоку Z/X", icon: "cubeLeft", hint: "Вид сбоку на север: Z вверх, X вправо", shortcut: "x" },
@@ -66,7 +68,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           items: [
             { command: "project.new", label: "Новый проект", icon: "plus" },
             { command: "project.manage", label: "Проекты", icon: "folder", hint: "Управление проектами: название, описание, состав, все проекты" },
-            { command: "project.export", label: "Экспорт проекта", icon: "export", hint: "Весь проект одним файлом .bfggis…" },
+            { command: "project.export", label: "Экспорт проекта", icon: "export", hint: "Весь проект в .bfggis или все объекты в файлы выбранных форматов" },
             { command: "project.import", label: "Импорт проекта", icon: "import", hint: "Открыть проект из файла .bfggis" },
             { command: "project.demo", label: "Демо-проект", icon: "cube", hint: "48 скважин, пробы, аудит, каркасы рудного тела", small: true },
             { command: "data.refresh", label: "Обновить", icon: "refresh", hint: "Перечитать данные из ядра", small: true },
@@ -117,8 +119,8 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
           title: "Разрез",
           items: [
             ...section,
-            { command: "section.step", args: { direction: -1 }, label: "Предыдущий профиль", icon: "chevronUp", shortcut: "[", small: true, unavailable: NO_SECTION },
-            { command: "section.step", args: { direction: 1 }, label: "Следующий профиль", icon: "chevronDown", shortcut: "]", small: true, unavailable: NO_SECTION },
+            { command: "section.step", args: { direction: -1 }, label: "Предыдущий профиль", icon: "chevronUp", small: true, unavailable: NO_SECTION },
+            { command: "section.step", args: { direction: 1 }, label: "Следующий профиль", icon: "chevronDown", small: true, unavailable: NO_SECTION },
           ],
         },
         {
@@ -159,6 +161,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
         },
       ],
     },
+    seriesTab(view, series),
     {
       id: "model",
       title: "Моделирование",
@@ -294,6 +297,10 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState): RibbonTab[] {
       id: "projsettings",
       title: "Настройки проекта",
       groups: [
+        {
+          title: "Данные",
+          items: [{ command: "data.manager", label: "Менеджер данных", icon: "dataManager", hint: "Данные проекта как каталог: папки, поиск, перенос, импорт в папку и экспорт выбранного" }],
+        },
         {
           title: "Обслуживание",
           items: [{ command: "jobs.clear_finished", label: "Очистить выполненные задания", icon: "clear", hint: "Убрать из списка «Задания» готовые и отменённые задания с их журналами" }],

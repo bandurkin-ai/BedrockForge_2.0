@@ -6,6 +6,7 @@ import { Icon } from "./Icon";
 import { buildRibbon, itemReason, type RibbonItem } from "./ribbonConfig";
 import { effectiveShortcuts, functionKey } from "./shortcuts";
 import { useRegistryVersion, useStore } from "./useStore";
+import { seriesRibbon, seriesView } from "../modules/section/state";
 import css from "./Ribbon.module.css";
 
 export function tooltip(item: RibbonItem, shortcut: string, reason: string | null): string {
@@ -42,7 +43,10 @@ export function Ribbon() {
   const app = useApp();
   const state = useStore(app.store, (s) => s);
   useRegistryVersion(app.registry);
-  const tabs = useMemo(() => buildRibbon(state.workspace, state.view), [state.workspace, state.view]);
+  // the pressed buttons of «Разрезы» live outside `app.store`: the view locked, the surfaces, the shadow
+  const surfaces = useStore(seriesView, (s) => s.surfaces);
+  const { locked, shadow } = useStore(seriesRibbon, (s) => s);
+  const tabs = useMemo(() => buildRibbon(state.workspace, state.view, { locked, surfaces, shadow }), [state.workspace, state.view, locked, surfaces, shadow]);
   const ctx = commandContext(state);
   const shortcuts = useMemo(() => effectiveShortcuts(tabs.flatMap((t) => t.groups.flatMap((g) => g.items)), state.shortcuts), [tabs, state.shortcuts]);
   const ws = state.workspace;

@@ -159,8 +159,9 @@ def test_dtm_is_the_job_model_dtm(proj) -> None:  # type: ignore[no-untyped-def]
 
 def test_the_listing_for_the_windows() -> None:
     ops = listing()
-    assert [o["op"] for o in ops] == list(OPERATIONS) and len(ops) == 16
-    assert len({o["dialog"] for o in ops if o["dialog"]}) == 13  # 13 windows `model.*` (ADR 0015 §6)
+    assert [o["op"] for o in ops] == list(OPERATIONS) and len(ops) == 17
+    # 13 windows `model.*` (ADR 0015 §6) and «Каркас по серии» (ADR 0016 §8)
+    assert len({o["dialog"] for o in ops if o["dialog"]}) == 14
     for o in ops:
         assert o["title"] and o["result"] in ("mesh", "lines", "report") and o["fields"], o
         for f in o["fields"]:

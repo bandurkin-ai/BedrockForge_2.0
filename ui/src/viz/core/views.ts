@@ -5,7 +5,8 @@
  * to the scene origin, Z stretched by the vertical exaggeration.
  */
 import { VizError } from "../error";
-import { sectionDirection, sectionNormal, type SectionLine } from "../section/math";
+import { sectionNormal, type SectionLine } from "../section/math";
+import { isVertical, planeFromLine, renderedAxes, renderedOrigin, type PlaneOrigin, type SectionPlane } from "../section/plane";
 import { boundingSphere, boxCenter, boxSize, scaleZ, type Box3 } from "./bounds";
 import { add, addScaled, cross, distance, dot, length, normalize, scale, sub, type Vec3 } from "./vec3";
 
@@ -38,16 +39,26 @@ export const ISO_DIRECTION: Vec3 = [0.9, -1.2, 0.8];
 export const VERTICAL_NUDGE = 1e-4;
 const Z: Vec3 = [0, 0, 1];
 
-/** The section and the scene origin (absolute), to centre a view on the section plane. */
+/** The section (a line of 7.14 or a plane of any kind) and the scene origin (absolute), to centre a view on it. */
 export interface SectionFrame {
-  line: SectionLine;
-  origin: { x: number; y: number };
+  line?: SectionLine | null;
+  plane?: SectionPlane | null;
+  origin: PlaneOrigin;
+}
+
+/** The plane of a frame: its own, or that of its line. */
+export function framePlane(f: SectionFrame | null): SectionPlane | null {
+  return f?.plane ?? (f?.line ? planeFromLine(f.line) : null);
 }
 
 const tanHalf = (fov: number) => Math.tan(((fov / 2) * Math.PI) / 180);
 
-/** Direction from the target to the camera of a standard view (unit vector). */
-export function presetDirection(preset: ViewPreset, line: SectionLine | null = null): Vec3 {
+/**
+ * Direction from the target to the camera of a standard view (unit vector). "section": from the viewer's side
+ * of the plane (−v̂, rendered space); a plan-like plane a hair off the vertical towards −ŵ, so the screen keeps
+ * ŵ up with Z as the camera up (as «В план»).
+ */
+export function presetDirection(preset: ViewPreset, section: SectionLine | SectionPlane | null = null, vexag = 1): Vec3 {
   switch (preset) {
     case "top": // Y up the screen, X to the right
       return normalize([0, -VERTICAL_NUDGE, 1]);
@@ -56,11 +67,18 @@ export function presetDirection(preset: ViewPreset, line: SectionLine | null = n
     case "side": // looking west: Z up, Y to the right
       return [1, 0, 0];
     case "section": // from the viewer's side of the line: Z up, the line runs to the right
-      if (!line) throw new VizError("no_section_line", "Линия разреза не задана: сначала section.set", "Проведите линию (S) или задайте её командой section.set.");
-      return sectionNormal(line.az);
+      if (!section) throw new VizError("no_section_line", "Линия разреза не задана: сначала section.set", "Проведите линию (S) или задайте её командой section.set.");
+      if (!("v" in section)) return sectionNormal(section.az);
+      return sectionDirectionOf(section, vexag);
     default:
       return normalize(ISO_DIRECTION);
   }
+}
+
+function sectionDirectionOf(p: SectionPlane, vexag: number): Vec3 {
+  const { dir, up } = renderedAxes(p, vexag);
+  if (Math.abs(dir[2]) <= 0.999) return dir;
+  return normalize([dir[0] - up[0] * VERTICAL_NUDGE, dir[1] - up[1] * VERTICAL_NUDGE, dir[2] - up[2] * VERTICAL_NUDGE]);
 }
 
 /**
@@ -105,20 +123,22 @@ export function cameraBasis(cam: CameraState): Basis {
 /**
  * Places the camera on `direction` from the content and sizes the view to hold it (BF lookFrom).
  * `box` is in scene coordinates (Z not stretched). With `section` the view is centred on the section plane
- * and a line of given length is held from end to end with its window.
+ * and a vertical window of given length (a drawn line, a polyline segment) is held from end to end. `up` —
+ * the screen up (rendered space, ⟂ `direction`; «Зафиксировать вид» — ŵ), Z otherwise.
  */
-export function lookFrom(direction: Vec3, box: Box3, opts: ViewOptions, section: SectionFrame | null = null): CameraState {
+export function lookFrom(direction: Vec3, box: Box3, opts: ViewOptions, section: SectionFrame | null = null, up: Vec3 | null = null): CameraState {
   const b = scaleZ(box, opts.vexag);
-  const s = section?.line ?? null;
+  const s = framePlane(section);
   // The points to hold: the corners of the box, or — for a line of given length — the corners of its
   // window from the top to the bottom of the content (the line from end to end, not its bounding box).
   let points: Vec3[] = [];
   for (let i = 0; i < 8; i++) points.push([i & 1 ? b.max[0] : b.min[0], i & 2 ? b.max[1] : b.min[1], i & 4 ? b.max[2] : b.min[2]]);
-  if (s && s.length !== null && section) {
-    const along = sectionDirection(s.az);
-    const n = sectionNormal(s.az);
-    const p0: Vec3 = [s.x0 - section.origin.x, s.y0 - section.origin.y, 0];
-    points = [0, s.length].flatMap((u) => [-s.away, s.towards].flatMap((d) => [b.min[2], b.max[2]].map((z): Vec3 => {
+  if (s && s.u && section && isVertical(s)) {
+    const lim = s.u;
+    const along = s.s;
+    const n: Vec3 = [-s.v[0], -s.v[1], 0];
+    const p0: Vec3 = [s.origin[0] - section.origin.x, s.origin[1] - section.origin.y, 0];
+    points = [lim[0] - s.u0, lim[1] - s.u0].flatMap((u) => [-s.away, s.towards].flatMap((d) => [b.min[2], b.max[2]].map((z): Vec3 => {
       const p = addScaled(addScaled(p0, along, u), n, d);
       return [p[0], p[1], z];
     })));
@@ -130,15 +150,16 @@ export function lookFrom(direction: Vec3, box: Box3, opts: ViewOptions, section:
   let centre = boxCenter(b);
   if (s && section) {
     // Centre on the section plane, so the clipped window is in the middle of the view.
-    const n = sectionNormal(s.az);
-    const c: Vec3 = [s.x0 - section.origin.x, s.y0 - section.origin.y, centre[2]];
+    const n = renderedAxes(s, opts.vexag).dir;
+    const c = renderedOrigin(s, section.origin, opts.vexag);
+    if (isVertical(s)) c[2] = centre[2];
     centre = sub(centre, scale(n, dot(n, sub(centre, c))));
   }
   let dir = normalize(direction);
-  if (Math.hypot(dir[0], dir[1]) < 1e-9) dir = verticalSafe(dir); // exactly vertical: no screen axes otherwise
+  if (!up && Math.hypot(dir[0], dir[1]) < 1e-9) dir = verticalSafe(dir); // exactly vertical: no screen axes otherwise
   const forward = scale(dir, -1);
-  const right = normalize(cross(forward, Z));
-  const up = normalize(cross(right, forward));
+  const right = normalize(cross(forward, up ?? Z));
+  const screenUp = normalize(cross(right, forward));
   // Half extents of the content on the screen axes.
   let halfRight = 0;
   let halfUp = 0;
@@ -146,7 +167,7 @@ export function lookFrom(direction: Vec3, box: Box3, opts: ViewOptions, section:
   for (const p of points) {
     const corner = sub(p, centre);
     halfRight = Math.max(halfRight, Math.abs(dot(corner, right)));
-    halfUp = Math.max(halfUp, Math.abs(dot(corner, up)));
+    halfUp = Math.max(halfUp, Math.abs(dot(corner, screenUp)));
     radius = Math.max(radius, length(corner));
   }
   radius = Math.max(radius, 10);
@@ -155,15 +176,15 @@ export function lookFrom(direction: Vec3, box: Box3, opts: ViewOptions, section:
   if (opts.perspective) {
     const t = tanHalf(opts.fov);
     const dist = half / t + radius;
-    return { position: addScaled(centre, dir, dist), target: centre, up: [...Z], half: dist * t, near: Math.max(dist / 500, 0.1), far: dist * 20 + radius * 4 };
+    return { position: addScaled(centre, dir, dist), target: centre, up: up ? screenUp : [...Z], half: dist * t, near: Math.max(dist / 500, 0.1), far: dist * 20 + radius * 4 };
   }
   const dist = radius * 4 + 100;
-  return { position: addScaled(centre, dir, dist), target: centre, up: [...Z], half, near: 0.1, far: dist * 2 + radius * 4 };
+  return { position: addScaled(centre, dir, dist), target: centre, up: up ? screenUp : [...Z], half, near: 0.1, far: dist * 2 + radius * 4 };
 }
 
 /** A standard view of the content; "section" needs the section (error «Линия разреза не задана»). */
 export function view(preset: ViewPreset, box: Box3, opts: ViewOptions, section: SectionFrame | null = null): CameraState {
-  const dir = presetDirection(preset, section?.line ?? null);
+  const dir = presetDirection(preset, section?.plane ?? section?.line ?? null, opts.vexag);
   return lookFrom(dir, box, opts, preset === "section" ? section : null);
 }
 

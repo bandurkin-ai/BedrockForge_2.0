@@ -315,7 +315,7 @@ function rayInBox(o: Vec3, d: Vec3, box: ArrayLike<number>, far: number): boolea
  * (64 000 of them take about a millisecond). What the section window cuts off is not picked — the next
  * triangle along the ray answers. The exact pick on float64 is the core's (Э8).
  */
-export function pickMesh(parts: Iterable<MeshPickPart>, ray: Ray, vexag: number, inWindow: (x: number, y: number) => boolean): MeshHit | null {
+export function pickMesh(parts: Iterable<MeshPickPart>, ray: Ray, vexag: number, inWindow: (x: number, y: number, z: number) => boolean): MeshHit | null {
   const v = vexag || 1;
   // the ray in scene units (Z not stretched): its parameter stays the distance in rendered space
   const d: Vec3 = [ray.dir[0], ray.dir[1], ray.dir[2] / v];
@@ -361,9 +361,10 @@ export function pickMesh(parts: Iterable<MeshPickPart>, ray: Ray, vexag: number,
       if (!(t > 0 && t < bestT)) continue;
       const hx = ray.origin[0] + ray.dir[0] * t;
       const hy = ray.origin[1] + ray.dir[1] * t;
-      if (!inWindow(hx, hy)) continue;
+      const hz = ray.origin[2] + ray.dir[2] * t;
+      if (!inWindow(hx, hy, hz / v)) continue;
       bestT = t;
-      best = { k: p.k, triangle: i / 3, t, point: [hx, hy, ray.origin[2] + ray.dir[2] * t] };
+      best = { k: p.k, triangle: i / 3, t, point: [hx, hy, hz] };
     }
   }
   return best;

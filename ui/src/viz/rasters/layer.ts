@@ -164,7 +164,7 @@ export class RasterLayerView implements SceneLayer {
   pick(q: PickQuery): LayerPick | null {
     if (!this.mesh.visible) return null;
     const hit = pickQuad(this.local, q.offset, q.vexag, q.ray);
-    if (!hit || (!this.isBackdrop && !q.inWindow(hit.point[0], hit.point[1]))) return null;
+    if (!hit || (!this.isBackdrop && !q.inWindow(hit.point[0], hit.point[1], hit.point[2] / (q.vexag || 1)))) return null;
     const cut = this.holes.uHoleCount.value;
     if (cut) {
       // a click through a hole goes to what is seen there: the surface that carries the image

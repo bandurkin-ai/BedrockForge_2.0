@@ -16,7 +16,8 @@ import { projectStore } from "../projects/state";
 import { viewStore } from "../scene/bind";
 import { lineLayers, loadSceneObjects, sceneObjects, type LineLayerInfo } from "../scene/objects";
 import { currentScene, onScene } from "../scene/sceneHost";
-import { sectionOf } from "../section/state";
+import { applyEditSection, editSection } from "../section/digitize";
+import { seriesStore } from "../section/seriesState";
 import { tablesStore } from "../tables/state";
 import { askChoice, CANCEL } from "./choice";
 import { conflictOf, getGeometry, newLayer, putGeometry, type Conflict } from "./editApi";
@@ -53,7 +54,12 @@ export function formatAt(iso: string | null): string {
 
 async function layerInfo(id: number): Promise<LineLayerInfo> {
   if (!sceneObjects.get().loaded) await loadSceneObjects();
-  const info = lineLayers().find((l) => l.id === id);
+  let info = lineLayers().find((l) => l.id === id);
+  if (!info) {
+    // a layer made a moment ago (another session, Claude) may not be in the lists yet: read them once more
+    await loadSceneObjects();
+    info = lineLayers().find((l) => l.id === id);
+  }
   if (!info) throw refusal("line_layer_not_found", `Слой линий №${id} не найден.`, "Обновите дерево проекта и выберите слой.");
   return info;
 }
@@ -68,12 +74,9 @@ function startLevel(info: LineLayerInfo): number {
   return Math.round(sc.camera().target[2] / (sc.debug().vexag || 1) + o.z);
 }
 
+/** The section of the view on the session: the free line (Э9) or the plane t = 0 of the section of a series. */
 function applySection(s: EditSession): void {
-  const { line, clip } = sectionOf(viewStore.get());
-  s.section = line;
-  s.clip = clip;
-  s.viewChanged();
-  s.touch();
+  applyEditSection(s, editSection());
 }
 
 function e2e(): boolean {
@@ -98,7 +101,10 @@ function start(app: App, s: EditSession, prev: EditSession | null = null): void 
     lines: () => lineLayers().filter((l) => !hidden().has(`ln:${l.id}`)),
     sets: () => tablesStore.get().sets.filter((st) => !hidden().has(`set:${st.id}`)).map((st) => st.id),
     wireframes: () => sceneObjects.get().wireframes.filter((w) => !hidden().has(`wf:${w.id}`)),
-    section: () => sectionOf(viewStore.get()),
+    section: () => {
+      const sec = editSection();
+      return { line: sec.line, clip: sec.clip, plane: sec.plane };
+    },
     viewBox: () => {
       const sc = currentScene();
       return sc ? viewBox(sc) : null;
@@ -113,16 +119,16 @@ function start(app: App, s: EditSession, prev: EditSession | null = null): void 
       feeder.refresh(0);
     }),
   );
-  let section = JSON.stringify(sectionOf(viewStore.get()));
-  offs.push(
-    viewStore.subscribe(() => {
-      const next = JSON.stringify(sectionOf(viewStore.get()));
-      if (next === section) return;
-      section = next;
-      applySection(s);
-      feeder.refresh();
-    }),
-  );
+  // the section, the series read or its table (the name of the section): the plane follows `]` / `[`
+  let section = editSection().key;
+  const follow = () => {
+    const next = editSection();
+    if (next.key === section || next.pending) return;
+    section = next.key;
+    applyEditSection(s, next);
+    feeder.refresh();
+  };
+  offs.push(viewStore.subscribe(follow), seriesStore.subscribe(follow));
   let hiddenKeys = app.store.get().view.hidden;
   offs.push(
     app.store.subscribe(() => {
@@ -156,6 +162,8 @@ function start(app: App, s: EditSession, prev: EditSession | null = null): void 
       },
       /** the vertices of a line of the working copy by its place (−1 — the last), project coordinates */
       points: (i: number) => editStore.get().session?.layer.lines.at(i)?.points ?? null,
+      /** the open session itself: the timings of app/e2e/perfEditor.spec.ts (snap index, queries) */
+      session: () => editStore.get().session,
     };
   }
 }

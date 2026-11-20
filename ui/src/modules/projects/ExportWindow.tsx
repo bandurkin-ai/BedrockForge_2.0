@@ -3,14 +3,43 @@ import { bridge } from "../../bridge";
 import { api, CoreError } from "../../shell/api";
 import { useApp } from "../../shell/AppContext";
 import { useStore } from "../../shell/useStore";
-import { closeWindow } from "../../shell/windows";
+import { closeWindow, windowStore } from "../../shell/windows";
 import { setPanel } from "../../shell/workspace";
 import { refresh } from "../jobs/state";
+import { ExportObjects, type ObjectsInitial } from "./ExportObjects";
 import { exportFileName, projectStore, SUMMARY_TITLES } from "./state";
 import css from "./Projects.module.css";
 
-/** «Экспорт проекта» (ТЗ 7.4): composition, file («Сохранить как»), password (AES-256), view settings → job. */
+export type ExportMode = "bfggis" | "objects";
+
+/**
+ * «Экспорт проекта»: «Проект целиком (.bfggis)» (ТЗ 7.4 — as before: composition, file, password AES-256, view
+ * settings → job) or «Объекты в файлы» (Д-17, ADR 0017 §5 — ExportObjects.tsx). The props of the window
+ * (`mode`, `formats`, `types`, `folder`, `ids` — `project.export` of Claude, the data manager) are read from the
+ * window store: Shell gives the window only its id.
+ */
 export function ExportWindow({ winId }: { winId: string }) {
+  const props = useStore(windowStore, (s) => s.windows.find((w) => w.id === winId)?.props);
+  const [mode, setMode] = useState<ExportMode>(props?.mode === "objects" ? "objects" : "bfggis");
+  const current = useStore(projectStore, (s) => s.current);
+  if (!current) return <div className={css.wrap}>Проект не открыт.</div>;
+  return (
+    <div className={css.wrap} data-testid="project-export">
+      <div className={css.choice} role="radiogroup" aria-label="Что экспортировать" style={{ flexDirection: "row", gap: 16 }}>
+        <label>
+          <input type="radio" name={`${winId}-mode`} checked={mode === "bfggis"} onChange={() => setMode("bfggis")} data-testid="export-mode-bfggis" /> Проект целиком (.bfggis)
+        </label>
+        <label>
+          <input type="radio" name={`${winId}-mode`} checked={mode === "objects"} onChange={() => setMode("objects")} data-testid="export-mode-objects" /> Объекты в файлы
+        </label>
+      </div>
+      {mode === "bfggis" ? <BfggisExport winId={winId} /> : <ExportObjects winId={winId} project={current.name} initial={props as ObjectsInitial | undefined} />}
+    </div>
+  );
+}
+
+/** The whole project into one .bfggis (ТЗ 7.4). */
+function BfggisExport({ winId }: { winId: string }) {
   const app = useApp();
   const current = useStore(projectStore, (s) => s.current);
   const [path, setPath] = useState<string | null>(null);
@@ -18,7 +47,7 @@ export function ExportWindow({ winId }: { winId: string }) {
   const [repeat, setRepeat] = useState("");
   const [view, setView] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  if (!current) return <div className={css.wrap}>Проект не открыт.</div>;
+  if (!current) return null;
 
   const mismatch = password !== repeat;
   const choose = async () => {
@@ -39,7 +68,7 @@ export function ExportWindow({ winId }: { winId: string }) {
   const counts = SUMMARY_TITLES.filter(([k]) => (current.summary[k] ?? 0) > 0);
 
   return (
-    <div className={css.wrap}>
+    <>
       <section className={css.section}>
         <h3>Состав</h3>
         <div className={css.title}>{current.name}</div>
@@ -90,6 +119,6 @@ export function ExportWindow({ winId }: { winId: string }) {
           Отмена
         </button>
       </div>
-    </div>
+    </>
   );
 }

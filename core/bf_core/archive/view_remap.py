@@ -1,8 +1,9 @@
 """Rows of `settings` on a `.bfggis` import (ADR 0007 §2): the view scope is optional and carries object ids
 inside keys and values; code lists links carry the set id in the key. Other scopes are copied as they are.
 
-Object ids kept inside `objects.meta` are renumbered here too: the keys of saved views (`remap_views`) and the
-surface the `dz` of a point cloud was counted against (`remap_clouds`). What wireframes and line layers were
+Object ids kept inside `objects.meta` are renumbered here too: the keys of saved views and the contour layer of
+series of sections (`remap_views`; the view key `section.series` by `map_ids`) and the surface the `dz` of a
+point cloud was counted against (`remap_clouds`). What wireframes and line layers were
 built from (`meta.built`) is renumbered by `ops/provenance.py::remap_objects`."""
 
 from __future__ import annotations
@@ -35,7 +36,8 @@ def remap_setting(row: dict[str, Any], objects: dict[int, int], apply_view: bool
 
 def remap_views(conn: Any, objects_map: dict[int, int]) -> int:
     """Saved views (ТЗ 7.35 Д-09, ADR 0008): ids inside their meta on a `.bfggis` import. Views are objects and
-    always come along; their keys refer to sets, wireframes, displays… of the same archive."""
+    always come along; their keys refer to sets, wireframes, displays, series… of the same archive. Series of
+    sections are renumbered with them (`remap_series`)."""
     import sqlalchemy as sa
 
     from bf_core.db.schema import objects
@@ -44,7 +46,27 @@ def remap_views(conn: Any, objects_map: dict[int, int]) -> int:
     rows = conn.execute(sa.select(objects.c.id, objects.c.meta).where(objects.c.kind == KIND)).all()
     for view_id, meta in rows:
         conn.execute(sa.update(objects).where(objects.c.id == view_id).values(meta=remap_meta(meta, objects_map.get)))
+    remap_series(conn, objects_map)
     return len(rows)
+
+
+def remap_series(conn: Any, objects_map: dict[int, int]) -> int:
+    """Series of sections (ADR 0016 §1): `meta.contour_layer` renumbered (a layer the archive does not have —
+    null); the number of a series stays as it is. Returns how many series were renumbered."""
+    import sqlalchemy as sa
+
+    from bf_core.db.schema import objects
+    from bf_core.sections.schema import KIND
+    from bf_core.sections.schema import remap_meta as remap_series_meta
+
+    rows = conn.execute(sa.select(objects.c.id, objects.c.meta).where(objects.c.kind == KIND)).all()
+    changed = 0
+    for series_id, meta in rows:
+        renumbered = remap_series_meta(meta, objects_map.get)
+        if renumbered is not meta:
+            conn.execute(sa.update(objects).where(objects.c.id == series_id).values(meta=renumbered))
+            changed += 1
+    return changed
 
 
 def remap_cloud_dz(meta: Any, new_id: Any) -> Any:
