@@ -24,7 +24,8 @@ of its stages:
 
     with stages((source, "read", "read"), (compose, "compute", "compute")) as took:
         out = cj.run(engine, folder, {"body": body, "rows": rows}, job_id=1, tick=ticks)
-    took["read"]      seconds inside every call of `source.read`;   took["@read"] — when the last one returned
+    took["read"]      seconds inside every call of `source.read`;   took["@read"] — when the last one returned;
+    took["^read"]     the peak memory of the process (VmHWM, MB) by then
 
 The clock replaces the attribute of the module for the time of the call (the handler looks it up there), so a
 renamed stage fails loudly instead of measuring nothing. Every job starts from the project as `build` left it
@@ -284,8 +285,9 @@ def warm(job: Callable[[dict[str, Any], Any, Path], Any], fields: int = 10) -> N
 @contextlib.contextmanager
 def stages(*spots: tuple[Any, str, str], note: Callable[[str, Any], None] | None = None) -> Iterator[dict[str, float]]:
     """Clocks around functions: `(module, attribute, key)` — the seconds inside every call are added to
-    `took[key]`, `took["@" + key]` is `time.perf_counter()` at the last return; `note(key, result)` sees what a
-    call returned. The attributes are put back at the end."""
+    `took[key]`, `took["@" + key]` is `time.perf_counter()` at the last return and `took["^" + key]` the peak
+    memory of the process by then (MB; absent where it is not known); `note(key, result)` sees what a call
+    returned. The attributes are put back at the end."""
     took: dict[str, float] = {}
     saved: list[tuple[Any, str, Any]] = []
 
@@ -298,6 +300,9 @@ def stages(*spots: tuple[Any, str, str], note: Callable[[str, Any], None] | None
                 t1 = time.perf_counter()
                 took[key] = took.get(key, 0.0) + t1 - t0
                 took["@" + key] = t1
+                peak = peak_mb()
+                if peak is not None:
+                    took["^" + key] = peak
             if note is not None:
                 note(key, out)
             return out

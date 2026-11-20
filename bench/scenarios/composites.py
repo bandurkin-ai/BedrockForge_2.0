@@ -16,8 +16,8 @@ copied back — `restore_s`), so a job never sees the table of another one. Per 
   m_hash_s      SHA-256 of the inputs;  m_kernel_s — the kernel alone (ADR: ≤ 3 с);  m_compute_s — the kernel
                 with the lines before it, the columns and the summary «до/после» after it;
   m_write_s     the table built aside and the final transaction;  m_snapshot_s — the snapshot, after it;
-  m_rows        composites;  m_mb — the peak of the process so far (VmHWM);  m_tick_gap_s — the longest wait
-                between two ticks: how long a cancel may stay unanswered.
+  m_rows        composites;  m_mb — the peak of the process so far (VmHWM), m_read_mb — when the tables were
+                read;  m_tick_gap_s — the longest wait between two ticks: how long a cancel may stay unanswered.
 `cold_read_s` (`cold: true`) — the same columns read from `dh_rows` without the snapshot, timed in `prepare`: the
 line of the report without a budget (решение 16). What is checked (a failure stops the run), against the arrays
 of the generator: the samples came from the snapshot and every one is read; the composites cover the holes —
@@ -96,6 +96,7 @@ def measure(meta: dict[str, Any], engine: Any, folder: Path, method: str, params
         f"{method}_s": round(took["done"], 3),
         **_samples.timings(took, STAGES, f"{method}_"),
         f"{method}_rows": out["rows"],
+        f"{method}_read_mb": took.get("^read"),
         f"{method}_mb": _samples.peak_mb(),
         f"{method}_tick_gap_s": round(ticks.gap, 3),
     }

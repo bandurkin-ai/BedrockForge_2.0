@@ -11,8 +11,8 @@ tables on the merged rows, the table built aside, the final transaction, the sna
   merge_kernel_s   `merge.merge_tables` — the common boundaries;  merge_compute_s — with the 11 columns laid on
                    the rows and the summary «до/после»;
   merge_write_s    the table and the final transaction;  merge_snapshot_s — the snapshot, after it;
-  merge_rows       rows of the result;  merge_mb — the peak of the process (VmHWM);  merge_tick_gap_s — the
-                   longest wait between two ticks.
+  merge_rows       rows of the result;  merge_mb — the peak of the process (VmHWM), merge_read_mb — when both
+                   tables were read;  merge_tick_gap_s — the longest wait between two ticks.
 What is checked (a failure stops the run): the result is where either table is — Σ of its lengths is the length
 of the holes the lithology has (it covers them whole) and the sampled length of the others — and the metal
 Σ l·AU of the samples is kept, both within 1e-9; no fewer rows than samples; the report is in `dh_results`.
@@ -75,6 +75,7 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         "merge_s": round(took["done"], 3),
         **_samples.timings(took, STAGES, "merge_"),
         "merge_rows": out["rows"],
+        "merge_read_mb": took.get("^read"),
         "merge_mb": _samples.peak_mb(),
         "merge_tick_gap_s": round(ticks.gap, 3),
         "rows": meta["rows"],
