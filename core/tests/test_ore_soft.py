@@ -1,6 +1,6 @@
 """Д-26, step 2 — прирезка по этапам and the «смягчённый» mode (ТЗ 7.35, Т8.2-14; ADR 0018 §5, §8): triples
 Р_в, Б, Р_н, некондиционная руда → безрудная, stages until the series stops changing; the stages and the
-decisions are in the events."""
+decisions are in the events. The mode also runs step 4 (сближенные интервалы, `test_ore_examples`)."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from tests.oreutil import (
     EXAMPLES,
     brief,
     check_protocol,
+    check_reference,
     check_rows,
     close,
     events_of,
@@ -22,9 +23,7 @@ from tests.oreutil import (
     make_lines,
     ref_k,
     ref_lines,
-    ref_rows,
     ref_soft,
-    sums,
     unit_line,
 )
 from tests.test_ore_simple import _random_holes
@@ -90,11 +89,11 @@ def test_c_equal_to_cutoff_is_ore() -> None:
 
 def test_stages_use_the_units_of_the_previous_stage() -> None:
     """Т8.2-12 without step 3 (derived): stage 1 rejects the прирезка 14–17 (0,6) taken over the unit 14 and
-    builds 4–14 and 18–22; stage 2 joins them over the units of stage 1."""
+    builds 4–14 and 18–22; stage 2 joins them over the units of stage 1. Step 4 adds the chain 29–33."""
     ex = EXAMPLES["T8.2-12"]
     res = ore_intervals(example_lines("T8.2-12"), example_params("T8.2-12", "soft"), events=True)
     check_rows(res, ex["expect"]["soft"]["intervals"])
-    assert brief(res, "ore") == [("ore", 3.0, 22.0)]
+    assert brief(res, "ore") == [("ore", 3.0, 22.0), ("ore", 28.0, 33.0)]
     assert check_protocol(res, ex["protocol"], ("rejected_c",)) == 2
     log = stage_log(res)
     assert log == [
@@ -195,11 +194,10 @@ def test_soft_matches_the_reference_on_hard_data() -> None:
     for params in (soft(), soft(m_waste_max=5.0, m_min=4.0, mc_min=6.0), soft(cutoff=0.6, c_min=1.0, m_min=2.0)):
         p = params.checked()
         res = ore_intervals(make_lines(holes), p, events=True)
-        got = res.rows()
-        first = 0
-        n = 0
+        seen = check_reference(res, holes, p)
+        assert sum(seen[cls] for cls in ("ore", "subgrade", "waste")) == len(res) > 2000
         decisions = 0
-        for h, hole in enumerate(holes):
+        for hole in holes:
             for line in ref_lines(hole):
                 ls = [hole[i][1] - hole[i][0] for i in line]
                 gs = [hole[i][2] for i in line]
@@ -207,15 +205,6 @@ def test_soft_matches_the_reference_on_hard_data() -> None:
                 decisions += len(log)
                 for a, b in found:  # at the end every ore unit meets К, begins and ends with an ore sample
                     assert ref_k(ls, gs, a, b, p) and gs[a] >= p.cutoff - 1e-9 and gs[b - 1] >= p.cutoff - 1e-9
-                for cls, a, b, basis in ref_rows(ls, gs, found, p):
-                    row = got[n]
-                    n += 1
-                    m, mc = sums(ls, gs, a, b)
-                    assert (row["hole"], row["cls"], row["basis"]) == (h, cls, basis)
-                    assert (row["row0"], row["row1"]) == (first + line[a], first + line[b - 1])
-                    assert close(row["m"], m) and close(row["mc"], mc)
-            first += len(hole)
-        assert n == len(got) and n > 2000
         stages = events_of(res, step=2)
         assert len([e for e in stages if e["kind"] != "unit" or e["decision"]]) == decisions
         assert max(e["stage"] for e in stages) >= 3

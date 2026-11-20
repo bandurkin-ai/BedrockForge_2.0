@@ -12,8 +12,8 @@ import numpy as np
 from . import ore_units as ou
 
 # interval rows: integer and float columns
-IV_HOLE, IV_LINE, IV_CLS, IV_BASIS, IV_N, IV_FLAG, IV_ORE_ID, IV_ROW0, IV_ROW1 = range(9)
-IV_I_COLS = 9
+IV_HOLE, IV_LINE, IV_CLS, IV_BASIS, IV_N, IV_FLAG, IV_ORE_ID, IV_ROW0, IV_ROW1, IV_NESTED = range(10)
+IV_I_COLS = 10
 IV_FROM, IV_TO, IV_M, IV_MC, IV_WASTE = range(5)
 IV_F_COLS = 5
 
@@ -50,6 +50,7 @@ class OreParams:
     mode: str = "strict_excl"
     missing: str = "break"  # "break" — a missing value ends the line; "waste" — пустая порода до missing_max
     missing_max: float = 0.0  # L_н, m along the hole
+    contacts_values: tuple[int, ...] | None = None  # «по контактам»: domain codes of the body; None — every code
 
     def checked(self) -> OreParams:
         """The parameters the kernel runs with: validated, МС and Смин filled in."""
@@ -73,9 +74,17 @@ class OreParams:
         if self.missing not in ("break", "waste"):
             raise _bad(f"Пропуски: неизвестное значение «{self.missing}».", "Выберите «Разрыв» или «Пустая порода».")
         missing_max = number(self.missing_max, "Наибольший неопробованный промежуток")
+        body = self.contacts_values
+        if body is not None:
+            try:
+                body = tuple(sorted({int(v) for v in body}))
+            except (TypeError, ValueError):
+                raise _bad("Домены рудного тела: ожидается список кодов домена.") from None
+            if any(v < 0 for v in body):
+                raise _bad("Домены рудного тела: код домена не может быть отрицательным.")
         return replace(
             self, cutoff=cutoff, m_min=m_min, m_waste_max=m_waste_max, mc_min=mc_min, c_min=c_min,
-            missing_max=missing_max,
+            missing_max=missing_max, contacts_values=body,
         )  # fmt: skip
 
 
@@ -147,7 +156,9 @@ class OreEvents:
 
 @dataclass(frozen=True)
 class OreIntervals:
-    """Result of the kernel: interval rows in the order (hole, FROM) and the classes of the samples."""
+    """Result of the kernel: interval rows and the classes of the samples. The rows with NESTED = 0 go in the
+    order (hole, FROM) and cover every sampling line once; the nested rows (`waste_in`, `frame`; only when
+    asked for) follow their `ore` row: its waste stretches from the top down, the frame above, the frame below."""
 
     params: OreParams
     iv_i: np.ndarray  # int64[rows, IV_I_COLS]
@@ -201,6 +212,11 @@ class OreIntervals:
         return self.iv_i[:, IV_ROW1]
 
     @property
+    def nested(self) -> np.ndarray:
+        """1 — a `waste_in` or `frame` row: it lies over other rows and is not in the sums by class."""
+        return self.iv_i[:, IV_NESTED]
+
+    @property
     def frm(self) -> np.ndarray:
         return self.iv_f[:, IV_FROM]
 
@@ -239,6 +255,7 @@ class OreIntervals:
                     "ore_id": a[IV_ORE_ID],
                     "row0": a[IV_ROW0],
                     "row1": a[IV_ROW1],
+                    "nested": a[IV_NESTED],
                     "from": b[IV_FROM],
                     "to": b[IV_TO],
                     "m": b[IV_M],

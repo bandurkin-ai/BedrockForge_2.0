@@ -4,7 +4,8 @@ compute, after an edit of the source it does; the column operations on a replace
 leaves nothing; values out of the ranges — 422 {code, message, hint}; «только просмотр» — 423; the preview of one
 hole and the summary of the set; result tables are read only (cells and rows — 422, columns may be added).
 
-TODO(12.4, 12.5): domains by lithology and benches — now 422 `not_ready` (the kernels are not in this build)."""
+Domains by a lithology table: no composite crosses a change of the code, DOMAIN is the code; benches: no composite
+crosses a level. TODO(12.7): domains by wireframes — 422 `not_ready`."""
 
 from __future__ import annotations
 
@@ -140,9 +141,12 @@ def test_refusals_say_why(demo) -> None:  # type: ignore[no-untyped-def]
         r = c.post(f"{C}/run", json=bad)
         assert r.status_code == 422 and r.json()["code"] == "bad_param" and r.json()["param"] == param, r.text
         assert r.json()["message"] and r.json()["hint"]
-    for method in ("domain", "bench"):  # TODO(12.4, 12.5)
-        r = c.post(f"{C}/run", json=body(set_id, table, method=method))
-        assert r.status_code == 422 and r.json()["code"] == "not_ready" and r.json()["hint"]
+    r = c.post(f"{C}/run", json=body(set_id, table, method="domain", domain={"wireframe_ids": [1]}))  # TODO(12.7)
+    assert r.status_code == 422 and r.json()["code"] == "not_ready" and r.json()["hint"]
+    r = c.post(f"{C}/run", json=body(set_id, table, method="domain"))
+    assert r.status_code == 422 and r.json()["code"] == "domain_missing" and r.json()["param"] == "domain"
+    r = c.post(f"{C}/run", json=body(set_id, table, method="bench", bench=60))
+    assert r.status_code == 422 and r.json()["param"] == "bench"
     r = c.post(f"{C}/run", json=body(set_id, table, fields=["НЕТ"]))
     assert r.status_code == 422 and r.json()["code"] == "field_not_found"
     r = c.post(f"{C}/run", json=body(set_id, "999999"))
@@ -299,3 +303,66 @@ def test_result_tables_are_read_only(demo) -> None:  # type: ignore[no-untyped-d
         json={"column": key, "value": 0.25},
     )
     assert r.status_code == 200, r.text
+
+
+def add_lithology(project: Any, set_id: int) -> tuple[str, list[float]]:
+    """«Литология»: гранит 0–30, диорит 30–75, гранит 75–TD in every hole; one hole without it."""
+    from bf_core.db.schema import dh_holes
+    from bf_core.drillholes import store
+
+    with dialect.read_tx(project.engine) as conn:
+        holes = conn.execute(sa.select(dh_holes.c.name, dh_holes.c.td).where(dh_holes.c.set_id == set_id)).all()
+    rows = [(h.name, a, b, lith) for h in holes[1:] for a, b, lith in ((0.0, 30.0, "гранит"), (30.0, 75.0, "диорит"),
+                                                                        (75.0, float(h.td), "гранит"))]  # fmt: skip
+    data = store.TableData("Литология", "interval", [r[0] for r in rows], [r[1] for r in rows], [r[2] for r in rows],
+                           [ColumnSpec("LITH", "text")], [[r[3] for r in rows]])  # fmt: skip
+    out = store.write_table(project.engine, set_id, data, job_id=None, tick=lambda _p, _m=None: None)
+    return str(out["table_id"]), [30.0, 75.0]
+
+
+def test_domains_by_lithology_and_benches(demo) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.drillholes.trajectory import interval_xyz, trajectories
+
+    c, project, set_id, table = demo
+    litho, cuts = add_lithology(project, set_id)
+    dom = body(set_id, table, method="domain", domain={"table": litho, "field": "LITH"}, length=4)
+    done = run_here(project, {"body": dom})
+    got = rows_of(c, set_id, str(done["table_id"]))
+    key = {col["name"]: col["key"] for col in got["columns"]}
+    assert done["name"] == "Композиты по доменам"
+    first_hole = sorted({r["hole"] for r in got["rows"]})[0]
+    for row in got["rows"]:
+        a, b, code = row["from"], row["to"], row[key["DOMAIN"]]
+        assert not any(a + 1e-6 < z < b - 1e-6 for z in cuts), row  # no composite crosses a change of LITH
+        if code is not None:
+            assert code == ("диорит" if 30.0 <= (a + b) / 2 < 75.0 else "гранит")
+    assert any(r[key["DOMAIN"]] is None for r in got["rows"] if r["hole"] == first_hole)  # no lithology there
+    rec = next(x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "domain")
+    assert len(rec["inputs"]["tables"]) == 2 and rec["params"]["domain"] == {"table": litho, "field": "LITH"}
+    hole = c.get(f"{API}/drillholes/sets/{set_id}/tables/collar?limit=3").json()["rows"][2]
+    a = c.post(f"{C}/domain/preview", json={"params": dom, "hole_id": hole["hole_id"]}).json()
+    mine = [r for r in got["rows"] if r["hole"] == hole["hole"]]
+    assert a["result"]["values"]["DOMAIN"] == [r[key["DOMAIN"]] for r in mine] and a["set_summary"] is not None
+
+    bench = body(set_id, table, method="bench", bench=10)
+    done = run_here(project, {"body": bench})
+    assert done["name"] == "Композиты по уступам 10 м"
+    got = rows_of(c, set_id, str(done["table_id"]))
+    rec = next(x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "bench")
+    top = rec["report"]["top"]
+    assert top % 10 == 0 and rec["report"]["height"] == 10
+    st = trajectories(project, set_id)
+    with dialect.read_tx(project.engine) as conn:
+        from bf_core.db.schema import dh_holes
+
+        ids = dict(conn.execute(sa.select(dh_holes.c.name, dh_holes.c.id).where(dh_holes.c.set_id == set_id)).all())
+    hole_ids = np.array([ids[r["hole"]] for r in got["rows"]], dtype=np.int64)
+    za, zb = interval_xyz(
+        st, hole_ids, np.array([r["from"] for r in got["rows"]]), np.array([r["to"] for r in got["rows"]])
+    )
+    ka, kb = (top - za[:, 2]) / 10.0, (top - zb[:, 2]) / 10.0
+    lo, hi = np.minimum(ka, kb), np.maximum(ka, kb)
+    assert not np.any(np.floor(hi - 1e-6) > lo + 1e-6), "a composite crosses a bench level"
+    a = c.post(f"{C}/bench/preview", json={"params": bench, "hole_id": hole["hole_id"]}).json()
+    key = {col["name"]: col["key"] for col in got["columns"]}
+    assert a["result"]["values"]["Z"] == [r[key["Z"]] for r in got["rows"] if r["hole"] == hole["hole"]]

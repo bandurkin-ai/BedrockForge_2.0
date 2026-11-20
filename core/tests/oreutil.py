@@ -175,8 +175,11 @@ def ref_simple(ls: list[float], gs: list[float], p: OreParams) -> list[tuple[int
     return out
 
 
-def ref_rows(ls: list[float], gs: list[float], found: list[tuple[int, int]], p: OreParams) -> list[tuple[Any, ...]]:
-    """Rows (class, a, b, basis) of a line from the intervals a mode found (step 5)."""
+def ref_rows(
+    ls: list[float], gs: list[float], found: list[tuple[int, int]], p: OreParams, layers: list[tuple[int, int]] = []
+) -> list[tuple[Any, ...]]:
+    """Rows (class, a, b, basis) of a line from the intervals a mode found and the fragments it excluded
+    (step 5): an interval that meets К is `ore`, the rest falls back to the samples."""
     cls = ["waste" if not ge(g, p.cutoff) else "subgrade" for g in gs]
     owner = [-1] * len(gs)
     basis = {}
@@ -186,9 +189,13 @@ def ref_rows(ls: list[float], gs: list[float], found: list[tuple[int, int]], p: 
             basis[n] = k
             for i in range(a, b):
                 owner[i] = n
+    for n, (a, b) in enumerate(layers):
+        for i in range(a, b):
+            assert owner[i] < 0
+            owner[i] = -2 - n
     rows: list[list[Any]] = []
     for i in range(len(gs)):
-        key = ("ore", owner[i]) if owner[i] >= 0 else (cls[i], -1)
+        key = ("ore", owner[i]) if owner[i] >= 0 else ("interlayer", owner[i]) if owner[i] < -1 else (cls[i], -1)
         if rows and rows[-1][4] == key:
             rows[-1][2] = i + 1
         else:
@@ -275,3 +282,178 @@ def ref_soft(ls: list[float], gs: list[float], p: OreParams) -> tuple[list[tuple
             k += 1
         if not changed:
             return [(a, b) for ore, a, b, _ in units if ore], log
+
+
+def ref_layer_from(ls: list[float], gs: list[float], units: list[list[Any]], i: int, p: OreParams) -> int | None:
+    """The shortest fragment «порода … порода» that begins with the waste unit i (C < Сб, M > Мпп): the index
+    of its last unit."""
+    for j in range(i, len(units)):
+        if units[j][0]:
+            continue
+        m, mc = sums(ls, gs, units[i][1], units[j][2])
+        if not le(m, p.m_waste_max) and not ge(mc / m, p.cutoff):
+            return j
+    return None
+
+
+def ref_strict(
+    ls: list[float], gs: list[float], a: int, b: int, p: OreParams, excl: bool
+) -> tuple[list[tuple[str, int, int]], list[tuple[Any, ...]]]:
+    """Step 3 for the interval [a, b) of step 2: its parts (kind, a, b) from the top down — "ore" (К is checked
+    at step 5), "interlayer" (the excluded fragment) or "waste" (the torn-off waste unit) — and the log
+    (what, a, b). The fragment: the first one from the top above which a кондиционный interval stays; when
+    there is none — the first one."""
+    parts: list[tuple[str, int, int]] = []
+    log: list[tuple[Any, ...]] = []
+    todo = [("scan", a, b)]
+    while todo:
+        kind, a, b = todo.pop()
+        if kind != "scan":
+            parts.append((kind, a, b))
+            continue
+        units = [[ore, a + ua, a + ub] for ore, ua, ub in ref_units(gs[a:b], p.cutoff)]
+        first = chosen = None
+        for i, (ore, s, _) in enumerate(units):
+            if ore:
+                continue
+            t = ref_layer_from(ls, gs, units, i, p)
+            if t is None:
+                continue
+            if first is None:
+                first = (i, t)
+            if ref_k(ls, gs, a, s, p):
+                chosen = (i, t)
+                break
+            log.append(("skipped", s, units[t][2]))
+        chosen = chosen or first
+        if chosen is None:
+            parts.append(("ore", a, b))
+            continue
+        s, e, x = units[chosen[0]][1], units[chosen[1]][2], units[chosen[1]][1]
+        log.append(("interlayer" if excl else "torn", s, e))
+        if excl:
+            todo += [("scan", e, b), ("interlayer", s, e), ("scan", a, s)]
+        else:
+            todo += [("scan", e, b), ("waste", x, e), ("scan", a, x)]
+    return parts, log
+
+
+def brute_layers(ls: list[float], gs: list[float], a: int, b: int, p: OreParams) -> list[tuple[int, int]]:
+    """Every fragment [i, j) of the samples [a, b) that begins and ends with a waste sample, C < Сб, M > Мпп
+    (the sums — over the samples of the fragment, in their order)."""
+    out = []
+    for i in range(a, b):
+        if ge(gs[i], p.cutoff):
+            continue
+        m = 0.0
+        mc = 0.0
+        for j in range(i, b):
+            m += ls[j]
+            mc += ls[j] * gs[j]
+            if not ge(gs[j], p.cutoff) and not le(m, p.m_waste_max) and not ge(mc / m, p.cutoff):
+                out.append((i, j + 1))
+    return out
+
+
+def ref_near(
+    ls: list[float], gs: list[float], found: list[tuple[int, int]], p: OreParams, strict: bool
+) -> tuple[list[tuple[int, int]], list[tuple[Any, ...]]]:
+    """Step 4 — сближенные интервалы in the stretches outside the intervals of step 2 (`found`): a chain grows
+    from an ore unit down by pairs «Б + Р» while M(Б) ≤ Мпп, C of the whole chain ≥ Сб and (strict modes) no
+    fragment «порода … порода» appears in it; it is picked when it meets К and lies farther than Мпп from the
+    intervals. Returns the chains [a, b) and the log (what, a, b)."""
+    out = []
+    log: list[tuple[Any, ...]] = []
+    edges = [0, *[x for ab in found for x in ab], len(gs)]
+    for n in range(0, len(edges), 2):
+        wa, wb = edges[n], edges[n + 1]
+        units = [[ore, wa + ua, wa + ub] for ore, ua, ub in ref_units(gs[wa:wb], p.cutoff)]
+        i = 0
+        while i < len(units):
+            if not units[i][0]:
+                i += 1
+                continue
+            a = units[i][1]
+            j = i
+            while j + 2 < len(units):
+                gap = units[j + 1]
+                if not le(sums(ls, gs, gap[1], gap[2])[0], p.m_waste_max):
+                    break
+                end = units[j + 2][2]
+                m, mc = sums(ls, gs, a, end)
+                if not ge(mc / m, p.cutoff):
+                    log.append(("rejected_c", a, end))
+                    break
+                if strict and brute_layers(ls, gs, a, end, p):
+                    log.append(("layer", a, end))
+                    break
+                j += 2
+            b = units[j][2]
+            if j > i:
+                far_up = wa == 0 or not le(sums(ls, gs, wa, a)[0], p.m_waste_max)
+                far_down = wb == len(gs) or not le(sums(ls, gs, b, wb)[0], p.m_waste_max)
+                if not ref_k(ls, gs, a, b, p):
+                    log.append(("not_k", a, b))
+                elif not (far_up and far_down):
+                    log.append(("close", a, b))
+                else:
+                    log.append(("near_joined", a, b))
+                    out.append((a, b))
+            i = j + 1
+    return out, log
+
+
+def ref_mode(
+    ls: list[float], gs: list[float], p: OreParams
+) -> tuple[list[tuple[Any, ...]], list[tuple[int, int]], list[tuple[Any, ...]]]:
+    """A line in the mode of `p` (not «по контактам»): rows (class, a, b, basis), the candidates of ore
+    intervals [a, b) and the log of steps 3–4."""
+    if p.mode == "simple":
+        found = ref_simple(ls, gs, p)
+        return ref_rows(ls, gs, found, p), found, []
+    units, _ = ref_soft(ls, gs, p)
+    strict = p.mode in ("strict", "strict_excl")
+    found = []
+    layers = []
+    log: list[tuple[Any, ...]] = []
+    for a, b in units:
+        if not strict:
+            found.append((a, b))
+            continue
+        parts, part_log = ref_strict(ls, gs, a, b, p, p.mode == "strict_excl")
+        log += part_log
+        found += [(x, y) for kind, x, y in parts if kind == "ore"]
+        layers += [(x, y) for kind, x, y in parts if kind == "interlayer"]
+    chains, near_log = ref_near(ls, gs, units, p, strict)
+    found = sorted(found + chains)
+    return ref_rows(ls, gs, found, p, layers), found, log + near_log
+
+
+def check_reference(
+    res: OreIntervals, holes: list[list[tuple[float, float, float]]], p: OreParams
+) -> dict[str, int]:
+    """The rows of `res` with NESTED = 0 are those of the plain-Python reference (`ref_mode`), line by line.
+    Returns how many rows of every class and how many log records of every kind the reference gave."""
+    got = [r for r in res.rows() if not r["nested"]]
+    seen: dict[str, int] = {}
+    first = 0
+    n = 0
+    for h, hole in enumerate(holes):
+        for line in ref_lines(hole):
+            ls = [hole[i][1] - hole[i][0] for i in line]
+            gs = [hole[i][2] for i in line]
+            rows, _, log = ref_mode(ls, gs, p)
+            for record in log:
+                seen[record[0]] = seen.get(record[0], 0) + 1
+            for cls, a, b, basis in rows:
+                assert n < len(got), (h, cls, a, b)
+                row = got[n]
+                n += 1
+                m, mc = sums(ls, gs, a, b)
+                assert (row["hole"], row["cls"], row["basis"]) == (h, cls, basis), (row, cls, a, b, basis, gs)
+                assert (row["row0"], row["row1"]) == (first + line[a], first + line[b - 1]), (row, cls, a, b, gs)
+                assert close(row["m"], m) and close(row["mc"], mc)
+                seen[cls] = seen.get(cls, 0) + 1
+        first += len(hole)
+    assert n == len(got)
+    return seen

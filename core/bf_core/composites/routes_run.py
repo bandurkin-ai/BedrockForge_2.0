@@ -158,8 +158,7 @@ def _nulls(a: Any) -> list[Any]:
 
 def _set_summary(project: Any, spec: Any, threads: int) -> dict[str, Any] | None:
     """«До/после» over the whole table (≤ 200 000 rows): cached by the revisions and the parameters."""
-    from . import jobs as cj
-    from . import source
+    from . import compose, source
 
     if spec.rows > SET_SUMMARY_ROWS:
         return None
@@ -175,13 +174,16 @@ def _set_summary(project: Any, spec: Any, threads: int) -> dict[str, Any] | None
         if hit is not None:
             _set_cache.move_to_end(key)
             return hit
-    src = source.read(project.engine, spec.set_id, spec.table_id, spec.read_fields(),
-                      cache_dir=project.folder / "cache" / "tables")  # fmt: skip
+    cache = project.folder / "cache" / "tables"
+    src = source.read(project.engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache)
     if src.rows > SET_SUMMARY_ROWS:
         return None
+    d = spec.other_domain()
+    dom = None if d is None else source.read(project.engine, spec.set_id, d.table_id, [d.field], cache_dir=cache)
     with dialect.read_tx(project.engine) as conn:
-        ends = cj.hole_depths(conn, spec.set_id, src.hole_db_ids)
-    made = cj.compute(spec, src, ends, None, threads=threads)  # X, Y, Z do not enter the summary
+        ends = compose.hole_depths(conn, spec.set_id, src.hole_db_ids)
+    st = source.trajectories(project, spec.set_id) if spec.method == "bench" else None  # benches need the paths
+    made = compose.compute(spec, src, dom, ends, st, threads=threads)  # X, Y, Z do not enter the summary
     out: dict[str, Any] = made.report["summary"]
     with _lock:
         _set_cache[key] = out
@@ -192,8 +194,8 @@ def _set_summary(project: Any, spec: Any, threads: int) -> dict[str, Any] | None
 
 @router.post("/{op}/preview")
 def preview(svc: Svc, op: str, body: Payload) -> dict[str, Any]:
+    from . import compose, source, strips
     from . import jobs as cj
-    from . import source, strips
 
     if op not in PREVIEW_OPS:
         raise ApiError(404, "unknown_operation", f"Нет предпросмотра «{op}».", "Обновите приложение.")
@@ -212,12 +214,13 @@ def preview(svc: Svc, op: str, body: Payload) -> dict[str, Any]:
         ).scalar()
         if hole is None:
             raise ApiError(404, "hole_not_found", "Скважина не найдена в наборе.", "Выберите скважину из списка.")
-        ends = None
     src = source.read(project.engine, spec.set_id, spec.table_id, spec.read_fields(), holes=[hole_id])
+    d = spec.other_domain()
+    dom = None if d is None else source.read(project.engine, spec.set_id, d.table_id, [d.field], holes=[hole_id])
     with dialect.read_tx(project.engine) as conn:
-        ends = cj.hole_depths(conn, spec.set_id, src.hole_db_ids)
+        ends = compose.hole_depths(conn, spec.set_id, src.hole_db_ids)
     st = source.trajectories(project, spec.set_id)
-    made = cj.compute(spec, src, ends, st, threads=1)
+    made = compose.compute(spec, src, dom, ends, st, threads=1)
     samples: dict[str, list[Any]] = {}
     for name in spec.fields:
         if name in src.numbers:
@@ -233,8 +236,8 @@ def preview(svc: Svc, op: str, body: Payload) -> dict[str, Any]:
     notes = list(made.journal)
     if not src.rows:
         notes.insert(0, f"В скважине {hole} нет проб в таблице «{spec.table_name}».")
-    if params.get("domain") and op == "length":
-        notes.append("Домен методом «По длине» не учитывается: выберите метод «По доменам».")
+    if params.get("domain") and op != "domain":
+        notes.append("Домен учитывается только методом «По доменам».")
     return {
         "hole": hole,
         "samples": {"from": _nulls(src.from_m), "to": _nulls(src.to_m), "values": samples},

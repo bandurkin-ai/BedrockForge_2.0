@@ -19,7 +19,8 @@ Comparisons (`ge`, `le`) carry the relative tolerance TOL towards equality: C �
 MC ≥ МС, C ≥ Смин hold at equality within 1e−9; «C < Сб» and «M > Мпп» are their negations.
 
 A unit series of a line: `ub[k]` — the first piece of unit k (`ub[nu]` — the end of the line), `uo[k]` — 1 ore,
-0 waste, `um[k]`, `umc[k]` — M and MC. Units alternate ore / waste.
+0 waste, `um[k]`, `umc[k]` — M and MC. Units alternate ore / waste up to step 2; steps 3–4 (`ore_steps`) cut
+the units, and an excluded fragment «порода … порода» is a unit of its own (`uo[k]` = U_LAYER).
 
 Events (ADR 0018 §9) — one record per decision, two parallel arrays `ev_i[cap, EI_COLS]` (int64) and
 `ev_f[cap, EF_COLS]` (float64); a kernel returns the number of events it wanted to write and writes while
@@ -43,6 +44,8 @@ BASIS_NONE, BASIS_THICKNESS, BASIS_MC = 0, 1, 2
 BASES = ("", "thickness", "mc")
 MODE_STRICT_EXCL, MODE_STRICT, MODE_SOFT, MODE_SIMPLE, MODE_CONTACTS = 0, 1, 2, 3, 4
 MODES = ("strict_excl", "strict", "soft", "simple", "contacts")
+
+U_WASTE, U_ORE, U_LAYER = 0, 1, 2  # a unit of the series: waste, ore, an excluded fragment «порода … порода»
 
 # state of a row of the samples
 ROW_PIECE, ROW_BAD, ROW_OVERLAP, ROW_MISSING, ROW_NO_DOMAIN, ROW_BRIDGED = 0, 1, 2, 3, 4, 5
@@ -71,7 +74,7 @@ KINDS = ("break", "unit", "trim", "gap", "layer", "chain", "interval")
 SIDE_NONE, SIDE_UPPER, SIDE_LOWER = 0, 1, 2  # висячий бок — upper, лежачий бок — lower
 SIDES = ("", "upper", "lower")
 # what the value was compared with
-CMP_NONE, CMP_CB, CMP_MPP, CMP_MRT, CMP_MC, CMP_CMIN, CMP_K = 0, 1, 2, 3, 4, 5, 6
+CMP_NONE, CMP_CB, CMP_MPP, CMP_MRT, CMP_MC, CMP_CMIN, CMP_K, CMP_LAYER = 0, 1, 2, 3, 4, 5, 6, 7
 R_NAN, R_GAP, R_DOMAIN, R_MISSING_MAX = 10, 11, 12, 13  # why a line ended
 COMPARED = {
     CMP_NONE: "",
@@ -81,6 +84,7 @@ COMPARED = {
     CMP_MC: "mc_min",
     CMP_CMIN: "c_min",
     CMP_K: "k",
+    CMP_LAYER: "layer",  # a fragment «порода … порода» would appear (step 4, strict modes)
     R_NAN: "no_value",
     R_GAP: "gap",
     R_DOMAIN: "domain",
@@ -101,6 +105,7 @@ D_BREAK = 10  # the sampling line ends here
 D_MISSING_WASTE = 11  # a missing stretch counted as waste (flag)
 D_ORE = 12  # кондиционный
 D_SUBGRADE = 13  # некондиционный
+D_NOT_SELECTED = 14  # не выбран: a fragment of step 3 that leaves no кондиционный interval above; a chain of step 4
 DECISIONS = (
     "",
     "pass",
@@ -116,6 +121,7 @@ DECISIONS = (
     "missing_waste",
     "ore",
     "subgrade",
+    "not_selected",
 )
 
 

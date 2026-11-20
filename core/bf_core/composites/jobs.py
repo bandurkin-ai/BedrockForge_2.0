@@ -1,8 +1,8 @@
-"""Jobs of composites (ТЗ 8.2.2–8.2.3; ADR 0018 §2–3, §6, решения 18, 26): `composite.run` — by length (by domains
-and by benches — when the kernels of 12.4–12.5 come), «Перестроить» of its results.
+"""Jobs of composites (ТЗ 8.2.2–8.2.3; ADR 0018 §2–3, §6, решения 18, 26): `composite.run` — by length, by domains
+(a field of the samples or of another interval table; by wireframes — with 12.7), by benches; «Перестроить».
 
     spec = parse_run(conn, body)            # the body of `POST /composites/run` → RunSpec; ApiError 422 / 404
-    made = compute(spec, src, ends, st)     # the rows of the new table, the report, the journal (job and preview)
+    made = compose.compute(spec, src, dom, ends, st)   # the rows of the new table, the report (job and preview)
 
 The job (`composite.run`, heavy) reads the chosen columns (`source.read`), the trajectories (X, Y, Z of the
 middle of every composite) and the depths of the holes, hashes the inputs (SHA-256, `source.input_hash`),
@@ -23,7 +23,6 @@ kernel ran with are `report.kernel`; `report.summary {before, after}` — the su
 
 from __future__ import annotations
 
-import math
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
@@ -34,22 +33,19 @@ import sqlalchemy as sa
 
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
-from bf_core.db.schema import dh_columns, dh_holes, dh_results, dh_tables
+from bf_core.db.schema import dh_columns, dh_results, dh_tables
 from bf_core.jobs.context import JobError
 from bf_core.jobs.registry import handler
 
 if TYPE_CHECKING:
-    import numpy as np
-
     from bf_core.jobs.context import JobContext
 
-    from . import sink, source
-    from .length import LengthParams
+    from . import sink
 
 ALGO = {"length": "length-1"}
 METHODS = ("length", "domain", "bench")
-READY = frozenset({"length"})  # TODO(12.4, 12.5): "domain", "bench" — `composites/{domains,benches}.py`
-OWN = ("LENGTH", "X", "Y", "Z", "DENSITY", "SAMPLED_LEN", "N_SAMPLES", "DOMAIN", "FLAG")
+ALGO.update(domain="domain-1", bench="bench-1")
+READY = frozenset(METHODS)
 NAME_MAX = 200
 
 
@@ -86,18 +82,41 @@ class RunSpec:
     texts: list[str]
     units: dict[str, str | None]
     density: str | None
-    length: LengthParams
+    kernel: Any  # LengthParams (length, domain) | BenchParams (bench)
     name: str
     replace: bool
     body: dict[str, Any]  # the request as given, without `replace` — `dh_results.params`
     rows: int = 0
+    domain: DomainSpec | None = None
 
     def read_fields(self) -> list[str]:
-        return list(dict.fromkeys([*self.fields, *([self.density] if self.density else [])]))
+        """Fields read from the samples: the chosen ones, the density, the domain field of the same table."""
+        own = [self.domain.field] if self.domain is not None and self.domain.table_id == self.table_id else []
+        return list(dict.fromkeys([*self.fields, *([self.density] if self.density else []), *own]))
+
+    def other_domain(self) -> DomainSpec | None:
+        """The domain when it is a field of another table (read on its own)."""
+        return self.domain if self.domain is not None and self.domain.table_id != self.table_id else None
+
+    def tables(self) -> list[tuple[int, list[str]]]:
+        """(table id, fields) read — for `results.make_inputs`."""
+        d = self.other_domain()
+        return [(self.table_id, self.read_fields()), *([(d.table_id, [d.field])] if d else [])]
 
     def hash_params(self) -> dict[str, Any]:
         """What the result depends on besides the data (not the name of the table)."""
-        return {"method": self.method, "fields": self.fields, "density": self.density, **asdict(self.length)}
+        d = self.domain
+        dom = None if d is None else {"table": dialect.name_key(d.table_name), "field": d.field}
+        return {"method": self.method, "fields": self.fields, "density": self.density, "domain": dom,
+                **asdict(self.kernel)}  # fmt: skip
+
+
+@dataclass
+class DomainSpec:
+    table_id: int
+    table_name: str
+    field: str  # stored name
+    kind: str  # number | text
 
 
 def _names(raw: Any) -> list[str]:
@@ -126,12 +145,32 @@ def resolve_table(conn: sa.Connection, set_id: int, given: Any) -> Any:
     return row
 
 
-def default_name(method: str, p: LengthParams) -> str:
-    from .length import _m
+def _size(x: float) -> str:
+    return f"{x:.6f}".rstrip("0").rstrip(".").replace(".", ",")
 
+
+def default_name(method: str, p: Any) -> str:
     if method == "domain":
         return "Композиты по доменам"
-    return f"Композиты {_m(p.length).rstrip('0').rstrip(',')} м"
+    if method == "bench":
+        return f"Композиты по уступам {_size(p.bench)} м"
+    return f"Композиты {_size(p.length)} м"
+
+
+def parse_domain(conn: sa.Connection, set_id: int, table: Any, raw: Any) -> DomainSpec:
+    """`domain` of the body: {table, field} (no table — the samples) or a field name of the samples; wireframes —
+    not in this build (12.7)."""
+    from .source import _fields
+
+    if isinstance(raw, dict) and raw.get("wireframe_ids"):
+        raise not_ready("Домены по каркасам")  # TODO(12.7): the stretches inside solids of `coding.py`
+    if isinstance(raw, str) and raw.strip():
+        raw = {"field": raw}
+    if not isinstance(raw, dict) or not isinstance(raw.get("field"), str) or not raw["field"].strip():
+        raise _bad("domain_missing", "Метод «По доменам»: не выбран домен.", "Выберите поле домена.", "domain")
+    t = resolve_table(conn, set_id, raw.get("table") or table.id)
+    f = next(iter(_fields(conn, int(t.id), [raw["field"].strip()]).values()))
+    return DomainSpec(int(t.id), t.name, f.name, f.kind)
 
 
 def parse_run(conn: sa.Connection, body: dict[str, Any]) -> RunSpec:
@@ -147,9 +186,8 @@ def parse_run(conn: sa.Connection, body: dict[str, Any]) -> RunSpec:
         raise _bad(
             "bad_param", f"Метод: неизвестное значение «{method}».", "Допустимо: length, domain, bench.", "method"
         )
-    if method not in READY:
-        raise not_ready("Композиты по доменам" if method == "domain" else "Композиты по уступам")
     t = resolve_table(conn, set_id, body.get("table"))
+    domain = parse_domain(conn, set_id, t, body.get("domain")) if method == "domain" else None
     fields = _names(body.get("fields"))
     if not fields:
         fields = [
@@ -176,7 +214,12 @@ def parse_run(conn: sa.Connection, body: dict[str, Any]) -> RunSpec:
             raise _bad("bad_param", f"Плотность: поле «{d.name}» не числовое.", "Выберите числовое поле.", "density")
         density = d.name
     try:
-        p = LengthParams.of(body)
+        if method == "bench":
+            from .benches import BenchParams
+
+            p: Any = BenchParams.of(body)
+        else:
+            p = LengthParams.of(body)
     except Exception as exc:  # noqa: BLE001 - CompositeError → 422, anything else re-raised
         raise as_api(exc) from None
     name = body.get("name")
@@ -195,11 +238,12 @@ def parse_run(conn: sa.Connection, body: dict[str, Any]) -> RunSpec:
         texts=[n for n in stored if chosen[n].kind == "text"],
         units={n: f.unit for n, f in chosen.items()},
         density=density,
-        length=p,
+        kernel=p,
         name=name,
         replace=body.get("replace") is True,
         body={k: v for k, v in body.items() if k != "replace"},
         rows=int(t.row_count or 0),
+        domain=domain,
     )
 
 
@@ -208,120 +252,6 @@ def memory_mb(params: dict[str, Any]) -> int:
     body = params.get("body") or {}
     n_fields = len(_names(body.get("fields"))) or 10
     return max(256, int(int(params.get("rows") or 0) * (n_fields + 6) * 8 * 3 / 2**20) + 128)
-
-
-# --- the computation (the job and the preview) -------------------------------------------------------------
-
-
-@dataclass
-class Made:
-    out: sink.OutTable
-    report: dict[str, Any]
-    journal: list[str]
-
-
-def hole_depths(conn: sa.Connection, set_id: int, hole_db_ids: Any) -> np.ndarray:
-    """TD of the holes (dh_holes.id, in the given order); NaN — not given."""
-    import numpy as np
-
-    td = {
-        int(r.id): r.td
-        for r in conn.execute(sa.select(dh_holes.c.id, dh_holes.c.td).where(dh_holes.c.set_id == set_id))
-    }
-    got = [td.get(int(h)) for h in np.asarray(hole_db_ids, dtype=np.int64).tolist()]
-    return np.array([math.nan if v is None else float(v) for v in got], dtype=float)
-
-
-def _midpoints(st: Any, hole_db_ids: np.ndarray, hole_of: np.ndarray, depth: np.ndarray) -> tuple[np.ndarray, int]:
-    """X, Y, Z (n, 3) at the depths; NaN for holes without a trajectory. Returns (xyz, holes without one)."""
-    import numpy as np
-
-    xyz = np.full((len(depth), 3), np.nan)
-    if st is None:
-        return xyz, len(hole_db_ids)
-    tix = np.array([st.index.get(int(h), -1) for h in hole_db_ids.tolist()], dtype=np.int64)
-    skipped = np.asarray(st.traj.skipped, dtype=np.int64)
-    good = (tix >= 0) & ~np.isin(tix, skipped)
-    rows = np.flatnonzero(good[hole_of]) if len(hole_of) else np.zeros(0, dtype=np.int64)
-    if len(rows):
-        xyz[rows] = st.traj.positions(tix[hole_of[rows]], depth[rows])
-    return xyz, int(np.count_nonzero(~good))
-
-
-def compute(
-    spec: RunSpec,
-    src: source.Lines,
-    ends: Any,
-    st: Any,
-    *,
-    threads: int = 1,
-    tick: Callable[[float], None] | None = None,
-) -> Made:
-    """Composites by length of the lines `src` (all the holes of the table, or one for the preview)."""
-    import numpy as np
-
-    from bf_core.drillholes.store import ColumnSpec
-
-    from . import intervals as iv
-    from . import sink
-    from .length import FLAG_LOW, composite_by_length, flag_column, summary
-
-    lines = iv.build_lines(src.hole_of().astype(np.int64), src.from_m, src.to_m)
-    values = iv.stack_fields(lines, [src.numbers[n] for n in spec.numbers])
-    density = lines.take(src.numbers[spec.density]) if spec.density else None
-    texts = [lines.take(src.codes[n]) for n in spec.texts]
-    depth = np.asarray(ends, dtype=float)[lines.holes] if lines.n_holes else np.zeros(0)
-    try:
-        c = composite_by_length(lines, values, spec.length, density=density, by_density=density is not None,
-                                texts=texts, ends=depth, threads=threads, tick=tick)  # fmt: skip
-    except Exception as exc:  # noqa: BLE001 - CompositeError → 422
-        raise as_api(exc) from None
-    cl = c.lines
-    hole = cl.hole_ids().astype(np.int64)  # dense index of src.holes
-    n = cl.n
-    xyz, no_traj = _midpoints(st, src.hole_db_ids, hole, (cl.frm + cl.to) / 2.0)
-    taken = {o.casefold() for o in OWN}
-
-    def own(name: str) -> str:
-        return f"{name}_SRC" if name.casefold() in taken else name
-
-    cols: list[ColumnSpec] = [ColumnSpec("LENGTH", "number", "м"), ColumnSpec("X", "number", "м"),
-                              ColumnSpec("Y", "number", "м"), ColumnSpec("Z", "number", "м")]  # fmt: skip
-    vals: list[np.ndarray] = [cl.to - cl.frm, xyz[:, 0], xyz[:, 1], xyz[:, 2]]
-    for k, name in enumerate(spec.numbers):
-        role = src.fields[name].role if src.fields[name].role in ("component", "value") else "value"
-        cols.append(ColumnSpec(own(name), "number", spec.units.get(name), role))
-        vals.append(np.ascontiguousarray(c.values.values[:, k]))
-    for k, name in enumerate(spec.texts):
-        labels = np.array([*src.labels[name], None], dtype=object)
-        cols.append(ColumnSpec(own(name), "text"))
-        vals.append(labels[c.values.texts[k]])  # −1 → the last one: None
-    cols += [ColumnSpec("DENSITY", "number", spec.units.get(spec.density) if spec.density else None),
-             ColumnSpec("SAMPLED_LEN", "number", "м"), ColumnSpec("N_SAMPLES", "number"),
-             ColumnSpec("DOMAIN", "text"), ColumnSpec("FLAG", "text")]  # fmt: skip
-    vals += [c.values.density, c.values.sampled, c.values.count.astype(float), np.full(n, None, dtype=object),
-             flag_column([(FLAG_LOW, c.values.low)], n)]  # fmt: skip
-    names = [src.holes[i] for i in hole.tolist()]
-    out = sink.OutTable(spec.name, names, cl.frm, cl.to, cols, vals)
-    journal = list(lines.notes(spec.table_name)) + list(c.journal)
-    if src.skipped:
-        journal.insert(0, f"Таблица «{spec.table_name}»: строк без «от» или «до» — {src.skipped}, в расчёт не вошли.")
-    if no_traj and n:
-        journal.append(f"Скважин без траектории — {no_traj}: X, Y, Z композитов пусты.")
-    report = {
-        **c.report,
-        "kernel": asdict(spec.length),
-        "rows_in": src.rows,
-        "skipped": src.skipped,
-        "no_trajectory": no_traj,
-        "summary": {
-            "before": summary(lines.lengths(), values, spec.numbers),
-            "after": summary(cl.to - cl.frm, c.values.values, spec.numbers),
-        },
-        "journal": journal,
-        "edits": [],
-    }
-    return Made(out, report, journal)
 
 
 # --- dependent operations (решение 18) ---------------------------------------------------------------------
@@ -432,7 +362,7 @@ def run(
     tick: Callable[[float | None, str | None], None],
 ) -> dict[str, Any]:
     """The body of `composite.run` (the handler and the tests in the process)."""
-    from . import results, sink, source, strips
+    from . import compose, results, sink, source, strips
 
     t0 = time.perf_counter()
     body = dict(params.get("body") or {})
@@ -441,15 +371,17 @@ def run(
         body["replace"] = True
     with dialect.read_tx(engine) as conn:
         spec = parse_run(conn, body)
-        inputs = results.make_inputs(conn, spec.set_id, [(spec.table_id, spec.read_fields())], trajectories=True)
+        inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True)
     tick(0.02, "Чтение проб")
     cache = folder / "cache" / "tables"
     src = source.read(engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache)
+    d = spec.other_domain()
+    dom = None if d is None else source.read(engine, spec.set_id, d.table_id, [d.field], cache_dir=cache)
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}")
     st = source.trajectories(project, spec.set_id)
     algo = ALGO[spec.method]
     stations = source.stations_bytes(st, src.hole_db_ids.tolist())
-    sha = source.input_hash([src], spec.hash_params(), stations=stations, algo=algo)
+    sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=algo)
     if rebuild is not None:
         with dialect.write_tx(engine) as conn:
             rec = conn.execute(sa.select(dh_results).where(dh_results.c.id == int(rebuild))).mappings().first()
@@ -458,9 +390,11 @@ def run(
                 return {"set_id": spec.set_id, "result_id": int(rebuild), "table_id": rec["table_id"], "fresh": True,
                         "events": [["composites.changed", {"set_id": spec.set_id}]]}  # fmt: skip
     with dialect.read_tx(engine) as conn:
-        ends = hole_depths(conn, spec.set_id, src.hole_db_ids)
+        ends = compose.hole_depths(conn, spec.set_id, src.hole_db_ids)
     tick(0.1, "Композиты")
-    made = compute(spec, src, ends, st, threads=strips.default_threads(), tick=lambda f: tick(0.1 + 0.5 * f, None))
+    made = compose.compute(
+        spec, src, dom, ends, st, threads=strips.default_threads(), tick=lambda f: tick(0.1 + 0.5 * f, None)
+    )
     with sink.guarded(engine, job_id):
         tid = sink.build_table(engine, spec.set_id, made.out, job_id=job_id,
                                tick=lambda f, m: tick(0.6 + 0.3 * (f or 0.0), m or "Запись таблицы"))  # fmt: skip
