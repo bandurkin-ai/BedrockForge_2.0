@@ -353,6 +353,9 @@ def _run_strip(  # type: ignore[no-untyped-def]
     st_b = np.empty(cap, np.int64)
     st_k = np.empty(cap, np.int8)
     st_h = np.empty(cap, np.int64)
+    pd = np.empty(cap, np.float64)  # running totals of step 3
+    pm = np.empty(cap, np.float64)
+    sm = np.empty(cap, np.float64)
     strict = mode == ou.MODE_STRICT or mode == ou.MODE_STRICT_EXCL
     ni = 0
     ore_no = 0
@@ -412,7 +415,8 @@ def _run_strip(  # type: ignore[no-untyped-def]
                 if strict:
                     nw, ne = steps.split_layers(
                         i0, e, mode == ou.MODE_STRICT_EXCL, eb, eo, em, emc, cb, mpp, c_min, m_min, mc_min,
-                        st_a, st_b, st_k, st_h, wb, wo, wm, wmc, nw, hole, line, p_row, p_from, p_to, ev_i, ev_f, ne,
+                        st_a, st_b, st_k, st_h, pd, pm, sm,
+                        wb, wo, wm, wmc, nw, hole, line, p_row, p_from, p_to, ev_i, ev_f, ne,
                     )  # fmt: skip
                 else:
                     wb[nw] = ub[u]

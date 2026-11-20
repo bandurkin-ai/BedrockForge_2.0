@@ -59,6 +59,8 @@ with К or with Мпп (too close); D_REJ_C — the pair that was not taken; D_N
 
 from __future__ import annotations
 
+import math
+
 from bf_core.jit import njit
 
 from . import ore_units as ou
@@ -213,6 +215,28 @@ def layer_end(s, i1, eo, em, emc, cb, mpp):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
+def _layer_bounds(i0, i1, eo, em, emc, cb, pd, pm, sm):  # type: ignore[no-untyped-def]
+    """Running totals over the elementary units [i0, i1) that tell quickly where no fragment «порода … порода»
+    can begin: `pm[k]` — M of the units before k, `pd[k]` — their MC − Сб·M, `sm[k]` — the least `pd[t + 1]`
+    over the waste units t ≥ k. A fragment (s, t) has M > Мпп and MC − Сб·M < 0, so a waste unit s begins none
+    when `sm[q] ≥ pd[s]` for the first q with `pm[q + 1] − pm[s] > Мпп`. The totals only rule starts out — with
+    the slack of their rounding, returned as (slack of pd, slack of pm); a fragment itself is always decided
+    by the direct sums of `layer_end`."""
+    pd[i0] = 0.0
+    pm[i0] = 0.0
+    total = 0.0
+    for k in range(i0, i1):
+        pm[k + 1] = pm[k] + em[k]
+        pd[k + 1] = pd[k] + (emc[k] - cb * em[k])
+        total += abs(emc[k]) + cb * em[k]
+    sm[i1] = math.inf
+    for k in range(i1 - 1, i0 - 1, -1):
+        sm[k] = min(sm[k + 1], pd[k + 1]) if eo[k] == 0 else sm[k + 1]
+    rel = 1e-13 + 5e-16 * (i1 - i0)
+    return rel * total, rel * pm[i1]
+
+
+@njit(cache=True, nogil=True)
 def _put_unit(a, b, kind, eb, em, emc, wb, wo, wm, wmc, nw):  # type: ignore[no-untyped-def]
     """Unit `nw` of the series w — the elementary units [a, b); returns nw + 1."""
     m = 0.0
@@ -247,13 +271,15 @@ def _emit_units(  # type: ignore[no-untyped-def]
 
 @njit(cache=True, nogil=True)
 def split_layers(  # type: ignore[no-untyped-def]
-    i0, i1, excl, eb, eo, em, emc, cb, mpp, c_min, m_min, mc_min, st_a, st_b, st_k, st_h,
+    i0, i1, excl, eb, eo, em, emc, cb, mpp, c_min, m_min, mc_min, st_a, st_b, st_k, st_h, pd, pm, sm,
     wb, wo, wm, wmc, nw, hole, line, p_row, p_from, p_to, ev_i, ev_f, ne,
 ):  # fmt: skip
     """Step 3 for an interval of step 2 — the elementary units [i0, i1), the first and the last are ore. Its
     parts go to the series w from unit `nw` on: U_ORE (К is checked at step 5), U_LAYER (an excluded
-    fragment), U_WASTE (a torn-off waste unit). `st_*` — scratch of the room of the line. Returns (nw, events)."""
+    fragment), U_WASTE (a torn-off waste unit). `st_*`, `pd`, `pm`, `sm` — scratch of the room of the line.
+    Returns (nw, events)."""
     scan = 3  # a part to look through; the other kinds of the stack are those of the units
+    slack_d, slack_m = _layer_bounds(i0, i1, eo, em, emc, cb, pd, pm, sm)
     st_a[0] = i0
     st_b[0] = i1
     st_k[0] = scan
@@ -275,9 +301,15 @@ def split_layers(  # type: ignore[no-untyped-def]
         c_t = -1
         m_up = 0.0
         mc_up = 0.0
+        q = a  # the first unit with which a fragment that begins with s would be longer than Мпп
         for s in range(a, b):
             if eo[s] == 0 and s >= hint:
-                t = layer_end(s, b, eo, em, emc, cb, mpp)
+                q = max(q, s)
+                while q < b and pm[q + 1] - pm[s] <= mpp - slack_m:
+                    q += 1
+                t = -1
+                if q < b and sm[q] < pd[s] + slack_d:
+                    t = layer_end(s, b, eo, em, emc, cb, mpp)
                 if t >= 0:
                     if f_s < 0:
                         f_s = s
@@ -384,16 +416,20 @@ def join_near(  # type: ignore[no-untyped-def]
             why = ou.CMP_NONE
             if ou.cond_k(m, mc, c_min, m_min, mc_min) == ou.BASIS_NONE:
                 why = ou.CMP_K
-            if why == ou.CMP_NONE and has_up:
+            if why == ou.CMP_NONE and has_up:  # the distance to the interval above: farther than Мпп?
                 d = 0.0
                 for k in range(i0, i):
                     d += em[k]
+                    if not ou.le(d, mpp):
+                        break
                 if ou.le(d, mpp):
                     why = ou.CMP_MPP
             if why == ou.CMP_NONE and has_down:
                 d = 0.0
                 for k in range(j + 1, i1):
                     d += em[k]
+                    if not ou.le(d, mpp):
+                        break
                 if ou.le(d, mpp):
                     why = ou.CMP_MPP
             ne = ou.emit_frag(

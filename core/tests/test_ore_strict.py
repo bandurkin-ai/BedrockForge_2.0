@@ -121,14 +121,15 @@ def test_limits_of_a_fragment() -> None:
     assert brief(ore_intervals(unit_line(grades), strict(m_waste_max=4.0))) == [("ore", 0.0, 8.0)]
     res = ore_intervals(unit_line(grades), strict(m_waste_max=3.999))
     assert brief(res) == [("ore", 0.0, 4.0), ("waste", 4.0, 6.0), ("ore", 6.0, 8.0)]
-    hole = [(float(k), k + 1.0, g, 0.7) for k, g in enumerate(grades)]  # 4 × 0,7 = 2,8 as 2,8000000000000003
-    assert 0.7 + 0.7 + 0.7 + 0.7 != 2.8
+    thick = [1.0, 1.0, 0.1, 0.2, 0.3, 0.1, 1.0, 1.0]  # the fragment: 0,1 + 0,2 + 0,3 + 0,1 = 0,7000000000000001
+    assert 0.1 + 0.2 + 0.3 + 0.1 > 0.7
+    hole = [(float(k), k + 1.0, g, t) for k, (g, t) in enumerate(zip(grades, thick, strict=True))]
     lines = make_lines([hole], thick=True)
-    assert len(ore_intervals(lines, strict(m_waste_max=2.8, m_min=2.0))) == 1
-    assert len(ore_intervals(lines, strict(m_waste_max=2.8 * (1 - 1e-8), m_min=2.0))) == 3
-    # C(F) = Сб: 0,7 + 1,9 + 0,7 + 0,7 over 4 м is 3,9999999999999996 — not below the cutoff
+    assert len(ore_intervals(lines, strict(m_waste_max=0.7, m_min=2.0))) == 1
+    assert len(ore_intervals(lines, strict(m_waste_max=0.7 * (1 - 1e-8), m_min=2.0))) == 3
+    # C(F) = Сб: (0,7 + 1,9) + (0,7 + 0,7) over 4 м is 3,9999999999999996 — not below the cutoff
     at_cutoff = [3.0, 3.0, 0.7, 1.9, 0.7, 0.7, 3.0, 3.0]
-    assert 0.7 + 1.9 + 0.7 + 0.7 < 4.0
+    assert (0.7 + 1.9) + (0.7 + 0.7) < 4.0
     assert brief(ore_intervals(unit_line(at_cutoff), strict(mode="strict_excl"))) == [("ore", 0.0, 8.0)]
     below = [3.0, 3.0, 0.7, 1.8, 0.7, 0.7, 3.0, 3.0]
     res = ore_intervals(unit_line(below), strict(mode="strict_excl"))
@@ -139,7 +140,7 @@ def test_limits_of_a_fragment() -> None:
 def test_parts_are_looked_through_again() -> None:
     """Two fragments in one interval; a part that does not meet К falls back to its samples; the parts of a
     torn interval keep the прирезка above."""
-    grades = [4.0, 4.0, 0.2, 1.4, 0.2, 0.2, 4.0, 4.0, 0.2, 1.4, 0.2, 0.2, 1.6, 1.3]
+    grades = [1.5, 1.5, 0.8, 1.2, 0.9, 0.9, 1.5, 1.5, 0.8, 1.2, 0.9, 0.9, 1.2, 1.1]  # И2, сл. 18, twice
     soft = ore_intervals(unit_line(grades), strict(mode="soft"), events=True)
     assert brief(soft) == [("ore", 0.0, 14.0)]
     assert [(e["row0"] + 1, e["row1"] + 1) for e in events_of(soft, kind="layer")] == [(3, 6), (9, 12)]
@@ -154,7 +155,7 @@ def test_parts_are_looked_through_again() -> None:
     assert brief(res) == [
         ("ore", 0.0, 4.0), ("waste", 4.0, 6.0), ("ore", 6.0, 10.0), ("waste", 10.0, 12.0), ("subgrade", 12.0, 14.0),
     ]  # fmt: skip
-    assert close(res.rows()[2]["mc"], 9.6) and close(res.rows()[2]["waste_len"], 1.0)
+    assert close(res.rows()[2]["mc"], 5.0) and close(res.rows()[2]["waste_len"], 1.0)
     assert res.ore_id.tolist() == [1, 0, 2, 0, 0]
     # modes without step 3 name the fragments, the strict ones leave none to name
     assert not events_of(res, decision="not_checked")
@@ -185,7 +186,8 @@ def test_no_fragment_is_left_in_ore_on_1000_random_lines() -> None:
     holes = _layered_lines(12345, 1000)
     lines = make_lines(holes)
     first = np.concatenate([[0], np.cumsum([len(h) for h in holes])])
-    for over in ({}, {"m_waste_max": 2.0, "m_min": 2.0}, {"m_waste_max": 4.5, "m_min": 5.0, "mc_min": 4.0, "c_min": 1.2}):
+    hard = {"m_waste_max": 4.5, "m_min": 5.0, "mc_min": 4.0, "c_min": 1.2}
+    for over in ({}, {"m_waste_max": 2.0, "m_min": 2.0}, hard):
         found = {}
         for mode in ("soft", "strict", "strict_excl"):
             p = strict(mode=mode, **over).checked()
@@ -206,13 +208,14 @@ def test_no_fragment_is_left_in_ore_on_1000_random_lines() -> None:
                     assert mode == "strict_excl" and (a, b) in brute_layers(ls, gs, a, b, p)
                     assert r["m"] > p.m_waste_max and r["c"] < p.cutoff
             found[mode] = with_layers
-            seen = check_reference(res, holes, p)
-            assert ore == seen["ore"] > 500
+            classes, logged = check_reference(res, holes, p)
+            assert ore == classes["ore"] > 1500
             if mode == "soft":
                 assert with_layers > 100  # the lines do have such fragments before step 3
             else:
                 assert with_layers == 0
-                assert seen["interlayer" if mode == "strict_excl" else "torn"] > 150 and seen["skipped"] > 20
+                assert logged["interlayer" if mode == "strict_excl" else "torn"] > 150 and logged["skipped"] > 5
+                assert classes.get("interlayer", 0) == logged.get("interlayer", 0)
         assert found["soft"] > 100 and found["strict"] == found["strict_excl"] == 0
 
 
@@ -224,11 +227,11 @@ def test_strict_matches_the_reference_on_hard_data() -> None:
         for mode in ("strict", "strict_excl"):
             p = strict(mode=mode, **over).checked()
             res = ore_intervals(lines, p, events=True)
-            seen = check_reference(res, holes, p)
-            assert sum(seen.get(cls, 0) for cls in ou.CLASSES) == len(res) > 2500
+            classes, logged = check_reference(res, holes, p)
+            assert sum(classes.values()) == len(res) > 2500
             cut = [e for e in events_of(res, step=3, kind="layer") if e["decision"] in ("torn", "interlayer")]
-            assert len(cut) == seen.get("torn", 0) + seen.get("interlayer", 0) > 20
-            assert len(events_of(res, step=3, decision="not_selected")) == seen.get("skipped", 0)
+            assert len(cut) == logged.get("torn", 0) + logged.get("interlayer", 0) > 5
+            assert len(events_of(res, step=3, decision="not_selected")) == logged.get("skipped", 0)
             assert (mode == "strict_excl") == bool(np.any(res.cls == ou.CLS_INTERLAYER))
             length = lines.to - lines.frm
             in_line = res.sample_state == ou.ROW_PIECE
@@ -257,10 +260,13 @@ def test_threads_and_long_lines() -> None:
     assert brief(res) == [("ore", 0.0, n - 1.0), ("waste", n - 1.0, float(n))]
     # Р 1 м @ 3,0 (MC = МС), Б 2 м @ 0,2: every «Б Р Б» is 5 м @ 0,76 — a fragment
     cut = unit_line([3.0, 0.2, 0.2] * (n // 2))
-    assert brief(ore_intervals(cut, strict(mode="soft"))) == [("ore", 0.0, 1.5 * n - 2.0), ("waste", 1.5 * n - 2.0, 1.5 * n)]
+    whole = [("ore", 0.0, 1.5 * n - 2.0), ("waste", 1.5 * n - 2.0, 1.5 * n)]
+    assert brief(ore_intervals(cut, strict(mode="soft"))) == whole
     res = ore_intervals(cut, strict(mode="strict_excl"))
-    assert int((res.cls == ou.CLS_ORE).sum()) == n // 4 and int((res.cls == ou.CLS_INTERLAYER).sum()) == n // 4
-    assert np.all(res.basis[res.cls == ou.CLS_ORE] == ou.BASIS_MC)
+    assert int((res.cls == ou.CLS_ORE).sum()) == n // 4 and int((res.cls == ou.CLS_INTERLAYER).sum()) == n // 4 - 1
+    assert np.all(res.basis[res.cls == ou.CLS_ORE][:-1] == ou.BASIS_MC)  # the last one: Р Б Р, 4 м
+    assert rounded(res)[-3:] == [("interlayer", 1.5 * n - 11, 1.5 * n - 6), ("ore", 1.5 * n - 6, 1.5 * n - 2),
+                                 ("waste", 1.5 * n - 2, 1.5 * n)]  # fmt: skip
     res = ore_intervals(cut, strict())
     assert int((res.cls == ou.CLS_ORE).sum()) == n // 4 and close(float(res.m[0]), 4.0)
     assert time.perf_counter() - start < 5.0

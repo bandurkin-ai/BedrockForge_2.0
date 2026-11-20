@@ -194,8 +194,8 @@ def test_soft_matches_the_reference_on_hard_data() -> None:
     for params in (soft(), soft(m_waste_max=5.0, m_min=4.0, mc_min=6.0), soft(cutoff=0.6, c_min=1.0, m_min=2.0)):
         p = params.checked()
         res = ore_intervals(make_lines(holes), p, events=True)
-        seen = check_reference(res, holes, p)
-        assert sum(seen[cls] for cls in ("ore", "subgrade", "waste")) == len(res) > 2000
+        classes, _ = check_reference(res, holes, p)
+        assert sum(classes[cls] for cls in ("ore", "subgrade", "waste")) == len(res) > 2000
         decisions = 0
         for hole in holes:
             for line in ref_lines(hole):

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -176,7 +177,7 @@ def ref_simple(ls: list[float], gs: list[float], p: OreParams) -> list[tuple[int
 
 
 def ref_rows(
-    ls: list[float], gs: list[float], found: list[tuple[int, int]], p: OreParams, layers: list[tuple[int, int]] = []
+    ls: list[float], gs: list[float], found: list[tuple[int, int]], p: OreParams, layers: Sequence[tuple[int, int]] = ()
 ) -> list[tuple[Any, ...]]:
     """Rows (class, a, b, basis) of a line from the intervals a mode found and the fragments it excluded
     (step 5): an interval that meets К is `ore`, the rest falls back to the samples."""
@@ -431,11 +432,12 @@ def ref_mode(
 
 def check_reference(
     res: OreIntervals, holes: list[list[tuple[float, float, float]]], p: OreParams
-) -> dict[str, int]:
+) -> tuple[dict[str, int], dict[str, int]]:
     """The rows of `res` with NESTED = 0 are those of the plain-Python reference (`ref_mode`), line by line.
-    Returns how many rows of every class and how many log records of every kind the reference gave."""
+    Returns the number of rows of every class and the number of log records of every kind of the reference."""
     got = [r for r in res.rows() if not r["nested"]]
-    seen: dict[str, int] = {}
+    classes: dict[str, int] = {}
+    logged: dict[str, int] = {}
     first = 0
     n = 0
     for h, hole in enumerate(holes):
@@ -444,7 +446,7 @@ def check_reference(
             gs = [hole[i][2] for i in line]
             rows, _, log = ref_mode(ls, gs, p)
             for record in log:
-                seen[record[0]] = seen.get(record[0], 0) + 1
+                logged[record[0]] = logged.get(record[0], 0) + 1
             for cls, a, b, basis in rows:
                 assert n < len(got), (h, cls, a, b)
                 row = got[n]
@@ -453,7 +455,7 @@ def check_reference(
                 assert (row["hole"], row["cls"], row["basis"]) == (h, cls, basis), (row, cls, a, b, basis, gs)
                 assert (row["row0"], row["row1"]) == (first + line[a], first + line[b - 1]), (row, cls, a, b, gs)
                 assert close(row["m"], m) and close(row["mc"], mc)
-                seen[cls] = seen.get(cls, 0) + 1
+                classes[cls] = classes.get(cls, 0) + 1
         first += len(hole)
     assert n == len(got)
-    return seen
+    return classes, logged
