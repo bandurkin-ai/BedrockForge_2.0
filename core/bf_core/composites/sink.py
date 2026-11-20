@@ -287,6 +287,47 @@ def write_columns(conn: sa.Connection, set_id: int, out: ColumnsOut) -> dict[str
 
 
 @dataclass
+class Dependent:
+    """A column operation repeated on the new table of a rebuild or «Заменить» (ADR 0018 решение 18): its
+    columns go into the new table in the final transaction and its record moves to that table."""
+
+    op: str
+    name: str
+    params: dict[str, Any]
+    fields: list[str]  # fields of the new table it read
+    sha256: str
+    algo: str
+    report: dict[str, Any]
+    columns: list[tuple[store.ColumnSpec, np.ndarray]]  # values in the row order of the new table
+
+
+def with_dependents(out: OutTable, deps: Sequence[Dependent]) -> OutTable:
+    """The arrays of the new table with the columns of the repeated operations (for its snapshot)."""
+    if not deps:
+        return out
+    cols, vals = list(out.columns), list(out.values)
+    for d in deps:
+        for spec, v in d.columns:
+            at = next((k for k, c in enumerate(cols) if c.name.casefold() == spec.name.casefold()), None)
+            if at is None:
+                cols.append(spec)
+                vals.append(np.asarray(v))
+            else:
+                cols[at], vals[at] = spec, np.asarray(v)
+    return OutTable(out.name, out.holes, out.from_m, out.to_m, cols, vals)
+
+
+def _row_ids(conn: sa.Connection, table_id: int) -> np.ndarray:
+    parts = [
+        np.array([r[0] for r in chunk], dtype=np.int64)
+        for chunk in dialect.iter_driver_rows(
+            conn, "SELECT id FROM dh_rows WHERE table_id = ? ORDER BY id", (table_id,)
+        )
+    ]
+    return np.concatenate(parts) if parts else np.zeros(0, dtype=np.int64)
+
+
+@dataclass
 class Commit:
     set_id: int
     op: str
@@ -300,6 +341,7 @@ class Commit:
     table: int | None = None  # the building table (TABLE_OPS)
     mode: Mode = "new"
     columns: list[ColumnsOut] = field(default_factory=list)
+    dependents: list[Dependent] = field(default_factory=list)  # repeated on `table` (rows in its build order)
 
 
 def commit(engine: sa.Engine, c: Commit) -> dict[str, Any]:
@@ -337,7 +379,25 @@ def commit(engine: sa.Engine, c: Commit) -> dict[str, Any]:
         )
         for key, before, after, names in shifts:  # the new record follows too, unless it read what it wrote
             results.shift_marks(conn, c.set_id, key, before, after, names)
+        if c.table is not None and c.dependents:
+            _repeat(conn, c, c.table, changed)
+            rev = int(conn.execute(sa.select(dh_tables.c.rev).where(dh_tables.c.id == c.table)).scalar_one())
     return {"result_id": rid, "table_id": own, "name": name, "rev": rev, "replaced": replaced, "changed": changed}
+
+
+def _repeat(conn: sa.Connection, c: Commit, table_id: int, changed: list[dict[str, Any]]) -> None:
+    """The dependents of a replaced table, in their order: columns into the new table, records on it."""
+    ids = _row_ids(conn, table_id)  # rows were written in the order of the arrays: ids ascend with it
+    for d in c.dependents:
+        inputs = {"tables": [results.table_input(conn, table_id, d.fields)], "set": None, "meshes": []}
+        w = write_columns(conn, c.set_id, ColumnsOut(table_id, ids, list(d.columns)))
+        names = [s.name for s, _v in d.columns]
+        results.record(conn, set_id=c.set_id, table_id=table_id, op=d.op, name=d.name, params=d.params,
+                       inputs=inputs, sha256=d.sha256, algo=d.algo,
+                       report={**d.report, "written": [{"table": w["table_key"], "columns": names}]},
+                       job_id=c.job_id)  # fmt: skip
+        results.shift_marks(conn, c.set_id, w["table_key"], w["before"], w["after"], names)
+        changed.append({"table": str(table_id), "rev": w["rev"]})
 
 
 def _settle_name(conn: sa.Connection, c: Commit) -> tuple[str, list[int]]:

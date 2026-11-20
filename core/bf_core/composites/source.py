@@ -106,9 +106,16 @@ def _fields(conn: sa.Connection, table_id: int, names: Iterable[str]) -> dict[st
 
 
 def read(
-    engine: sa.Engine, set_id: int, table_id: int, fields: Sequence[str], *, cache_dir: Path | None = None
+    engine: sa.Engine,
+    set_id: int,
+    table_id: int,
+    fields: Sequence[str],
+    *,
+    cache_dir: Path | None = None,
+    holes: Sequence[int] | None = None,
 ) -> Lines:
-    """The chosen columns (names or keys `c<id>`) of a ready table of the set, as lines."""
+    """The chosen columns (names or keys `c<id>`) of a ready table of the set, as lines. `holes` — only the rows
+    of these holes (dh_holes.id; the preview of one hole: an indexed read of `dh_rows`, no snapshot)."""
     with dialect.read_tx(engine) as conn:
         t = conn.execute(
             sa.select(dh_tables).where(
@@ -125,14 +132,14 @@ def read(
         }
         path = None if cache_dir is None else cache_dir / f"{table_id}-{token}-{t.rev}.parquet"
         got = None
-        if path is not None and path.is_file():
+        if path is not None and holes is None and path.is_file():
             try:
                 got = _from_parquet(path, chosen)
             except Exception:  # noqa: BLE001 - a damaged or older snapshot: read the rows instead
                 got = None
         source = "parquet" if got is not None else "rows"
         if got is None:
-            got = _from_rows(conn, table_id, chosen)
+            got = _from_rows(conn, table_id, chosen, holes)
     ids, hole_ids, f, to, cols = got
     return _lines(set_id, t, token, chosen, names, ids, hole_ids, f, to, cols, source)
 
@@ -162,17 +169,25 @@ def _decode(blobs: Sequence[bytes | None], width: int) -> np.ndarray:
     return _decode_vectors(list(blobs), width)
 
 
-def _from_rows(conn: sa.Connection, table_id: int, chosen: dict[str, Field]) -> tuple[Any, ...]:
+def _from_rows(
+    conn: sa.Connection, table_id: int, chosen: dict[str, Field], holes: Sequence[int] | None = None
+) -> tuple[Any, ...]:
     nums = [c for c in chosen.values() if c.kind == "number"]
     texts = [c for c in chosen.values() if c.kind == "text"]
     width = max((c.slot for c in nums), default=-1) + 1
     sel = ["id", "hole_id", "from_m", "to_m"] + (["num"] if nums else [])
     sel += [dialect.json_field_sql(conn, "txt", str(c.slot)) for c in texts]
-    sql = f"SELECT {', '.join(sel)} FROM dh_rows WHERE table_id = ? ORDER BY id"
+    sql = f"SELECT {', '.join(sel)} FROM dh_rows WHERE table_id = ?"
+    args: tuple[Any, ...] = (table_id,)
+    if holes is not None:
+        wanted = sorted({int(h) for h in holes})[:500]  # a preview reads one hole; parameters stay few
+        sql += f" AND hole_id IN ({', '.join('?' * len(wanted))})" if wanted else " AND 0 = 1"
+        args += tuple(wanted)
+    sql += " ORDER BY id"
     parts: list[list[np.ndarray]] = [[], [], [], []]
     mats: list[np.ndarray] = []
     text_parts: dict[str, list[np.ndarray]] = {c.name: [] for c in texts}
-    for chunk in dialect.iter_driver_rows(conn, sql, (table_id,)):
+    for chunk in dialect.iter_driver_rows(conn, sql, args):
         got = list(zip(*chunk, strict=True))
         parts[0].append(np.array(got[0], dtype=np.int64))
         parts[1].append(np.array(got[1], dtype=np.int64))
