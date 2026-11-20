@@ -19,12 +19,14 @@ import { createPreviewer, loadHoles, startTool, type FieldRow, type HoleRow, typ
 import { toolValues, WINDOW_PREFIX } from "./bind";
 import { CodingWindow } from "./CodingWindow";
 import { CompositeWindow } from "./CompositeWindow";
+import { DeclusWindow } from "./DeclusWindow";
 import { EquivalentWindow } from "./EquivalentWindow";
 import { CoordsWindow, MergeWindow } from "./MergeWindow";
 import { ResultProps } from "./ResultProps";
 import { RESULT_WINDOW } from "./ResultsTree";
 import { NO_SOURCE, rangeText, shown, sourceFromArgs, toolBody, type FormValues, type ParamSpec, type SourceState, type ToolSpec } from "./params";
 import { SourcePicker } from "./SourcePicker";
+import { TopcutWindow } from "./TopcutWindow";
 import { summaryRows } from "./tools/composite";
 import { toolById } from "./tools";
 
@@ -335,5 +337,7 @@ export function renderCompositesWindow(w: FloatWin): ReactNode | null {
   if (tool.id === "merge") return <MergeWindow winId={w.id} args={args} />;
   if (tool.id === "coords") return <CoordsWindow winId={w.id} args={args} />;
   if (tool.id === "equivalent") return <EquivalentWindow winId={w.id} args={args} />;
+  if (tool.id === "topcut") return <TopcutWindow winId={w.id} args={args} />;
+  if (tool.id === "declus") return <DeclusWindow winId={w.id} args={args} />;
   return <ToolWindow winId={w.id} tool={tool} args={args} />;
 }
