@@ -406,12 +406,20 @@ def check_file(path: Path, layout: dict[str, Any], tmp: Path) -> dict[str, Any]:
     return {"cells": sink.cells, "mismatches": bad, "grid_ok": _same_grid(read.grid, layout["grid"])}
 
 
-def _corners_error(xyz: Any, tri: Any, want: Any) -> float:
+CHECK_STEP = 1 << 17  # triangles compared at a time: the check stays small next to the stages it follows
+
+
+def _corners_error(xyz: Any, tri: Any, want_xyz: Any, want_tri: Any) -> float:
+    """The largest difference of the corners of the triangles, in the order of the file, by portions."""
     import numpy as np
 
-    got = np.asarray(xyz)[np.asarray(tri)]
-    assert got.shape == want.shape, (got.shape, want.shape)
-    return float(np.abs(got - want).max())
+    xyz, tri = np.asarray(xyz), np.asarray(tri)
+    assert tri.shape == want_tri.shape, (tri.shape, want_tri.shape)
+    error = 0.0
+    for s in range(0, len(tri), CHECK_STEP):
+        got, want = xyz[tri[s : s + CHECK_STEP]], want_xyz[want_tri[s : s + CHECK_STEP]]
+        error = max(error, float(np.abs(got - want).max(initial=0.0)))
+    return error
 
 
 def _stages(work: Path, layouts: dict[str, Any], *, check: bool = True) -> dict[str, Any]:
@@ -487,16 +495,16 @@ def _stages(work: Path, layouts: dict[str, Any], *, check: bool = True) -> dict[
                 out["surface_mb"] = peak.mb
                 if check:
                     with np.load(work / "поверхность.npz") as f:
-                        want = f["xyz"][f["tri"]]
+                        want_xyz, want_tri = f["xyz"], f["tri"]
                     with dialect.read_tx(engine) as conn:
                         mesh = src.read_mesh(conn, store, wf_id)
-                    error = _corners_error(mesh.xyz, mesh.tri, want)
+                    error = _corners_error(mesh.xyz, mesh.tri, want_xyz, want_tri)
                     del mesh
                     with open_reader(target) as reader:
                         (mesh,) = list(reader.surfaces())
-                    out["triangles"] = int(len(want))
-                    out["max_error_m"] = max(error, _corners_error(mesh.xyz, mesh.tri, want))
-                    del mesh, want
+                    out["triangles"] = int(len(want_tri))
+                    out["max_error_m"] = max(error, _corners_error(mesh.xyz, mesh.tri, want_xyz, want_tri))
+                    del mesh, want_xyz, want_tri
         finally:
             engine.dispose()
     finally:

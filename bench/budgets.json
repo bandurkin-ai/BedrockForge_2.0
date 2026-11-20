@@ -248,6 +248,20 @@
       "budget_mb": 600,
       "limits": {"compose_s": 1.0, "import_s": 10.0, "export_s": 10.0, "axes_import_s": 10.0, "surface_import_s": 6.0, "surface_export_s": 3.0, "import_mb": 600, "export_mb": 600, "axes_mb": 600, "surface_mb": 600, "mismatches": 0, "max_error_m": 0.0},
       "note": "ADR 0017 «Замеры»: импорт и экспорт OMF 1 млн × 5 полей ≤ 10 с, ≤ 600 МБ; поверхность 1 млн треугольников: импорт ≤ 6 с, экспорт ≤ 3 с."
+    },
+    "catalog": {
+      "params": {"objects": 1000},
+      "budget_s": 5.0,
+      "budget_mb": 300,
+      "limits": {"page_s": 0.05, "api_s": 0.1, "sorted_s": 0.05, "search_s": 0.05, "folders_s": 0.05, "move_s": 0.5, "mismatches": 0},
+      "note": "ADR 0017 «Замеры»: каталог 1 000 объектов — ядро ≤ 50 мс (GET /catalog?offset=0&limit=2000, как просит менеджер данных), перенос 1 000 в папку ≤ 0,5 с; список 1 000 в E2E 11.19 не вошёл — его заменяет этот замер. api_s — тот же запрос по HTTP (TestClient, jsonable_encoder): не бюджет ADR, сторож."
+    },
+    "objects_export": {
+      "params": {"mb": 32},
+      "budget_s": 30.0,
+      "budget_mb": 800,
+      "limits": {"export_s": 30.0, "mismatches": 0},
+      "note": "ADR 0017 «Замеры»: export.objects — демо ≤ 30 с; сверх демо 32 МиБ данных тех же долей, что и 1 ГБ full (каркасы, облако, линии, скважины, модель)."
     }
   },
   "full": {
@@ -495,6 +509,27 @@
       "budget_mb": 1024,
       "limits": {"read_s": 0.5, "save_one_s": 1.0, "rewrite_s": 3.0, "restore_s": 0.2, "save_nan_s": 1.0, "bit_mismatches": 0},
       "note": "ADR 0015: ориентир ≤ 0,5 с, ≤ 1 с, ≤ 3 с, ≤ 0,2 с; замер 0,07 / 0,76 / 1,3 / 0,007 с, 0,4 ГБ. save_nan_s (ревью 9.38) — 100 тыс. замкнутых квадратов, у каждого сотого вершина без Z: замер 0,31 с (до 9.38 — 6,1 с)."
+    },
+    "omf_io": {
+      "params": {"grid": [400, 250, 200], "fields": 20, "categories": 4, "axes_grid": [100, 125, 80], "triangles": 1000000},
+      "budget_s": 600.0,
+      "budget_mb": 2048,
+      "limits": {"compose_s": 1.0, "import_s": 480.0, "export_s": 240.0, "axes_import_s": 10.0, "surface_import_s": 6.0, "surface_export_s": 3.0, "import_mb": 2048, "export_mb": 1024, "mismatches": 0, "max_error_m": 0.0},
+      "note": "ADR 0017 «Замеры»: импорт OMF 20 млн × 20 полей ≤ 8 мин (ТЗ 5.3), пик ≤ 2 ГБ (ТЗ 7.24), цель ≤ 2 мин; экспорт ≤ 4 мин, ≤ 1 ГБ (ориентир); состав для мастера ≤ 1 с. Замер 11.20: импорт 36 с, 0,9 ГБ; экспорт 71 с, 0,4 ГБ; файл 1,5 ГБ — состав 1 мс; весь прогон с проверкой ячеек 160 с."
+    },
+    "catalog": {
+      "params": {"objects": 1000},
+      "budget_s": 5.0,
+      "budget_mb": 300,
+      "limits": {"page_s": 0.05, "api_s": 0.1, "sorted_s": 0.05, "search_s": 0.05, "folders_s": 0.05, "move_s": 0.5, "mismatches": 0},
+      "note": "ADR 0017 «Замеры»: каталог 1 000 объектов — ядро ≤ 50 мс, перенос 1 000 в папку ≤ 0,5 с (тот же объём, что и ci)."
+    },
+    "objects_export": {
+      "params": {"mb": 1024},
+      "budget_s": 180.0,
+      "budget_mb": 1536,
+      "limits": {"export_s": 180.0, "mismatches": 0},
+      "note": "ADR 0017 «Замеры», ADR 0010: export.objects — демо и 1 ГиБ данных (по счёту задания) ≤ 3 мин, ≤ 1,5 ГБ. Замер 11.20: 44 с, 0,8 ГБ, файлов 4,8 ГБ; из них каркасы DXF (13 млн треугольников) 31 с, скважины CSV (1 млн строк) 6 с, модель OMF 4 с."
     }
   },
   "external": {
