@@ -86,18 +86,22 @@ class OutTable:
     """Rows of a result table: parallel arrays; numbers float64 (NaN — missing), text — None for empty."""
 
     name: str
-    holes: Sequence[str]  # hole name of every row
+    holes: Sequence[str]  # hole name of every row (a list or an object array)
     from_m: np.ndarray
     to_m: np.ndarray
     columns: list[store.ColumnSpec]
     values: list[np.ndarray]
+    row_ids: np.ndarray | None = None  # dh_rows.id of every row once the table is built, when the database told
 
 
 def build_table(engine: sa.Engine, set_id: int, out: OutTable, *, job_id: int, tick: store.Tick = _noop) -> int:
-    """The table in state `building` (invisible); returns its id. Its name is settled by `commit`."""
+    """The table in state `building` (invisible); returns its id. Its name is settled by `commit`. The keys of
+    its rows are kept in `out.row_ids` (SQLite) for the snapshot."""
     values = [cast(Sequence[Any], v) for v in out.values]
     data = store.TableData(out.name, "interval", out.holes, out.from_m, out.to_m, out.columns, values)
-    return int(store.write_table(engine, set_id, data, job_id=job_id, tick=tick, swap=False)["table_id"])
+    res = store.write_table(engine, set_id, data, job_id=job_id, tick=tick, swap=False)
+    out.row_ids = res["row_ids"]
+    return int(res["table_id"])
 
 
 def abort(engine: sa.Engine, job_id: int) -> None:
@@ -174,26 +178,6 @@ def _column_slots(conn: sa.Connection, table_id: int, specs: Sequence[store.Colu
     return out
 
 
-def _encode(matrix: np.ndarray) -> list[bytes | None]:
-    """Rows of a float64 matrix → vectors cut after their last value (None — no value at all), per width."""
-    present = ~np.isnan(matrix)
-    w = matrix.shape[1]
-    widths = np.where(present.any(axis=1), w - np.argmax(present[:, ::-1], axis=1), 0) if w else np.zeros(len(matrix))
-    out: list[bytes | None] = [None] * len(matrix)
-    for width in np.unique(widths).tolist():
-        if not width:
-            continue
-        rows = np.flatnonzero(widths == width)
-        blob = np.ascontiguousarray(matrix[rows, :width], dtype="<f8").tobytes()
-        step = 8 * int(width)
-        cut = [blob[k : k + step] for k in range(0, len(blob), step)]
-        if len(rows) == len(matrix):  # the usual case: every row as wide as the table
-            return list(cut)
-        for r, b in zip(rows.tolist(), cut, strict=True):
-            out[r] = b
-    return out
-
-
 def write_columns(conn: sa.Connection, set_id: int, out: ColumnsOut) -> dict[str, Any]:
     """All columns of an operation in one pass over the table, in the caller's transaction; rev + 1, one
     journal group (`column` per column: «Отменить» hides them). Returns {"rev", "keys": {name: c<id>},
@@ -265,7 +249,7 @@ def write_columns(conn: sa.Connection, set_id: int, out: ColumnsOut) -> dict[str
         rows = np.flatnonzero(dirty)
         parts: list[Any] = []
         if nums:
-            parts.append(_encode(matrix[rows]))
+            parts.append(store.encode_vectors(matrix[rows]))
         if texts:
             parts.append([new_txt[r] for r in rows.tolist()])
         pending.extend(zip(*parts, ids[rows].tolist(), strict=True))
@@ -314,7 +298,7 @@ def with_dependents(out: OutTable, deps: Sequence[Dependent]) -> OutTable:
                 vals.append(np.asarray(v))
             else:
                 cols[at], vals[at] = spec, np.asarray(v)
-    return OutTable(out.name, out.holes, out.from_m, out.to_m, cols, vals)
+    return OutTable(out.name, out.holes, out.from_m, out.to_m, cols, vals, out.row_ids)
 
 
 def _row_ids(conn: sa.Connection, table_id: int) -> np.ndarray:
@@ -445,31 +429,45 @@ def _supersede(conn: sa.Connection, c: Commit, table_id: int | None, written: li
 # --- the snapshot of the new table ---------------------------------------------------------------
 
 
+def _text_column(values: Any) -> Any:
+    """A text column of a result as an Arrow string array (None and "" — null). The rows are grouped by value
+    first: millions of rows repeat some dozen labels, and no string is made per row."""
+    import pandas as pd
+    import pyarrow as pa
+
+    codes, uniques = pd.factorize(np.asarray(values, dtype=object), use_na_sentinel=True)
+    labels = [str(u) for u in uniques.tolist()]
+    if "" in labels:
+        codes = np.where(codes == labels.index(""), -1, codes)
+    index = pa.array(codes.astype(np.int32), mask=codes < 0)
+    return pa.DictionaryArray.from_arrays(index, pa.array(labels, type=pa.string())).cast(pa.string())
+
+
 def write_snapshot(engine: sa.Engine, cache_dir: Path, table_id: int, out: OutTable) -> Path:
     """`cache/tables/<id>-<token>-<rev>.parquet` from the arrays of the job, in the format of the snapshots of
-    the «Таблица» panel (`drillholes.snapshot`): `__id`, `__hole`, `from`, `to`, `c<id>`."""
+    the «Таблица» panel (`drillholes.snapshot`): `__id`, `__hole`, `from`, `to`, `c<id>`. The keys of the rows
+    are those `build_table` kept (`out.row_ids`), else they are read from the table."""
     import pyarrow as pa
     import pyarrow.parquet as pq
 
+    n = len(out.holes)
+    ids = out.row_ids if out.row_ids is not None and len(out.row_ids) == n else None
     with dialect.read_tx(engine) as conn:
         t = conn.execute(sa.select(dh_tables).where(dh_tables.c.id == table_id)).one()
         cols = conn.execute(
             sa.select(dh_columns.c.id, dh_columns.c.name).where(dh_columns.c.table_id == table_id)
         ).all()
         holes = store.hole_ids(conn, int(t.set_id))
-        ids_parts = [
-            np.array([r[0] for r in chunk], dtype=np.int64)
-            for chunk in dialect.iter_driver_rows(
-                conn, "SELECT id FROM dh_rows WHERE table_id = ? ORDER BY id", (table_id,)
-            )
-        ]
-    ids = np.concatenate(ids_parts) if ids_parts else np.zeros(0, dtype=np.int64)
-    if len(ids) != len(out.holes):
+        if ids is None or int(t.row_count or 0) != n:
+            ids = _row_ids(conn, table_id)
+    if len(ids) != n:
         raise ValueError("rows of the table differ from the arrays")
     key_of = {c.name: f"c{c.id}" for c in cols}
+    codes, names = store.hole_codes(out.holes)
+    hole_of = np.array([holes[h] for h in names], dtype=np.int64)[codes] if n else np.zeros(0, dtype=np.int64)
     arrays: dict[str, Any] = {
-        "__id": pa.array(ids),
-        "__hole": pa.array(np.array([holes[h] for h in out.holes], dtype=np.int64)),
+        "__id": pa.array(np.asarray(ids, dtype=np.int64)),
+        "__hole": pa.array(hole_of),
         "from": pa.array(np.asarray(out.from_m, dtype=float), type=pa.float64()),
         "to": pa.array(np.asarray(out.to_m, dtype=float), type=pa.float64()),
     }
@@ -477,9 +475,7 @@ def write_snapshot(engine: sa.Engine, cache_dir: Path, table_id: int, out: OutTa
         if spec.kind == "number":
             arrays[key_of[spec.name]] = pa.array(np.asarray(vals, dtype=float), type=pa.float64())
         else:
-            arrays[key_of[spec.name]] = pa.array(
-                [None if v is None or v == "" else str(v) for v in list(vals)], type=pa.string()
-            )
+            arrays[key_of[spec.name]] = _text_column(vals)
     path = cache_dir / f"{table_id}-{results._token(t.created_at)}-{t.rev}.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")

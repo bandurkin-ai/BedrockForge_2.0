@@ -261,13 +261,13 @@ class TableData:
     qual: list[Sequence[int]] | None = None  # per number column: 0 plain, 1 below / 2 above limit
 
 
-def _hole_codes(holes: Any) -> tuple[Any, list[str]]:
+def hole_codes(holes: Any) -> tuple[Any, list[str]]:
     """(the index of the name of every row, the names): millions of rows name some thousand holes."""
     import numpy as np
     import pandas as pd
 
     codes, names = pd.factorize(np.asarray(holes, dtype=object), use_na_sentinel=False)
-    return codes, names.tolist()
+    return codes, list(names)
 
 
 def encode_vectors(matrix: Any) -> list[bytes | None]:
@@ -278,22 +278,20 @@ def encode_vectors(matrix: Any) -> list[bytes | None]:
     n, w = matrix.shape
     if not w or not n:
         return [None] * n
+    if not np.isnan(matrix[:, -1]).any():  # the usual case: every row as wide as the table
+        blob = np.ascontiguousarray(matrix, dtype="<f8").tobytes()
+        return [blob[k : k + 8 * w] for k in range(0, len(blob), 8 * w)]
     present = ~np.isnan(matrix)
     widths = np.where(present.any(axis=1), w - np.argmax(present[:, ::-1], axis=1), 0)
     out: list[bytes | None] = [None] * n
     for width in np.unique(widths).tolist():
         if not width:
             continue
-        whole = width == w and bool((widths == w).all())  # the usual case: every row as wide as the table
-        rows = None if whole else np.flatnonzero(widths == width)
-        part = matrix if rows is None else matrix[rows, :width]
-        blob = np.ascontiguousarray(part, dtype="<f8").tobytes()
+        rows = np.flatnonzero(widths == width)
+        blob = np.ascontiguousarray(matrix[rows, :width], dtype="<f8").tobytes()
         step = 8 * int(width)
-        cut: list[bytes | None] = [blob[k : k + step] for k in range(0, len(blob), step)]
-        if rows is None:
-            return cut
-        for r, b in zip(rows.tolist(), cut, strict=True):
-            out[r] = b
+        for r, at in zip(rows.tolist(), range(0, len(blob), step), strict=True):
+            out[r] = blob[at : at + step]
     return out
 
 
@@ -386,11 +384,34 @@ def _texts_by_row(texts: Sequence[tuple[str, Any]], start: int, stop: int) -> li
     return out
 
 
+def _check_parents(conn: sa.Connection, table_id: int, hole_ids: Any) -> None:
+    """The table being built and the holes of a portion are there — inside the transaction of the portion,
+    which holds the write lock (`dialect.write_portions`: SQLite checks no foreign key on that connection).
+    Gone (the set, the table or a hole was deleted meanwhile) — IntegrityError, as the foreign key gave."""
+    import numpy as np
+
+    ok = conn.execute(
+        sa.select(dh_tables.c.id).where(dh_tables.c.id == table_id, dh_tables.c.state == "building")
+    ).first()
+    wanted = np.unique(hole_ids).tolist()
+    found = 0
+    for start in range(0, len(wanted), 500):  # ids in portions: under the SQLite parameter limit
+        part = wanted[start : start + 500]
+        found += int(
+            conn.execute(sa.select(sa.func.count()).select_from(dh_holes).where(dh_holes.c.id.in_(part))).scalar_one()
+        )
+    if ok is None or found != len(wanted):
+        what = "the table being built" if ok is None else "a hole of the rows"
+        raise sa.exc.IntegrityError("INSERT INTO dh_rows", None, RuntimeError(f"{what} was deleted meanwhile"))
+
+
 def write_table(
     engine: sa.Engine, set_id: int, data: TableData, *, job_id: int | None, tick: Tick, swap: bool = True
-) -> dict[str, int]:
-    """Builds the table aside, then swaps it in (see the module docstring). Returns {"rows", "table_id"}.
-    `swap=False`: the caller swaps it later with `swap_in` (several files of one import in one transaction)."""
+) -> dict[str, Any]:
+    """Builds the table aside, then swaps it in (see the module docstring). Returns {"rows", "table_id",
+    "row_ids"} — `row_ids`: the keys of the rows in the order of the arrays (int64), or None when the database
+    does not tell them (PostgreSQL). `swap=False`: the caller swaps it later with `swap_in` (several files of
+    one import in one transaction)."""
     if data.kind not in TABLE_KINDS:
         raise ValueError(data.kind)
     now = dialect.utcnow()
@@ -431,7 +452,7 @@ def write_table(
                 )
             )
         known = hole_ids(conn, set_id)
-        codes, names = _hole_codes(data.holes)
+        codes, names = hole_codes(data.holes)
         ensure_holes(conn, set_id, names, known)
     import numpy as np
 
@@ -450,26 +471,35 @@ def write_table(
         fixed["qual"] = None
     if not texts:
         fixed["txt"] = None
-    for start in range(0, n, BATCH):
-        tick(start / max(n, 1), f"«{data.name}»: строк {start} из {n}")
-        stop = min(n, start + BATCH)
-        columns: dict[str, list[Any]] = {
-            "hole_id": hole_of[start:stop].tolist(),
-            "from_m": _driver_floats(from_m[start:stop]),
-            "to_m": _driver_floats(to_m[start:stop]),
-            "num": encode_vectors(_matrix(numbers, start, stop)),
-        }
-        if quals is not None:
-            columns["qual"] = _driver_quals(quals, start, stop)
-        if texts:
-            columns["txt"] = _driver_texts(texts, start, stop)
-        with dialect.write_tx(engine) as conn:
-            dialect.bulk_insert_columns(conn, dh_rows, fixed, columns)
+    ids: list[Any] | None = []  # the row keys in the order of the arrays; None — the database did not tell
+    with dialect.write_portions(engine) as portion:
+        for start in range(0, n, BATCH):
+            tick(start / max(n, 1), f"«{data.name}»: строк {start} из {n}")
+            stop = min(n, start + BATCH)
+            holes_here = hole_of[start:stop]
+            columns: dict[str, list[Any]] = {
+                "hole_id": holes_here.tolist(),
+                "from_m": _driver_floats(from_m[start:stop]),
+                "to_m": _driver_floats(to_m[start:stop]),
+                "num": encode_vectors(_matrix(numbers, start, stop)),
+            }
+            if quals is not None:
+                columns["qual"] = _driver_quals(quals, start, stop)
+            if texts:
+                columns["txt"] = _driver_texts(texts, start, stop)
+            with portion() as conn:
+                _check_parents(conn, table_id, holes_here)
+                keys = dialect.bulk_insert_columns(conn, dh_rows, fixed, columns)
+            if keys is None:
+                ids = None
+            elif ids is not None:
+                ids.append(np.arange(keys[0], keys[1] + 1, dtype=np.int64))
+    row_ids = None if ids is None else (np.concatenate(ids) if ids else np.zeros(0, dtype=np.int64))
     with dialect.write_tx(engine) as conn:
         conn.execute(sa.update(dh_tables).where(dh_tables.c.id == table_id).values(row_count=n))
         if swap:
             swap_in(conn, set_id, table_id)
-    return {"rows": n, "table_id": table_id}
+    return {"rows": n, "table_id": table_id, "row_ids": row_ids}
 
 
 def replaced_by(kind: str, name: str) -> sa.ColumnElement[bool]:

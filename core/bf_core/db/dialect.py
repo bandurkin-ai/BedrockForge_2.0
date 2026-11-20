@@ -5,8 +5,8 @@ write transactions, job claim, JSON access. SQLite (desktop project / instance) 
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime
 from itertools import chain, repeat
 from typing import Any
@@ -126,6 +126,57 @@ def write_tx(engine: Engine) -> Iterator[Connection]:
             conn.info["bf_begin"] = "BEGIN IMMEDIATE"
         with conn.begin():
             yield conn
+
+
+#: SQLite, a connection that writes the portions of a big table (`write_portions`): the WAL is folded into the
+#: file every so many pages (64 MB) instead of 1000, and the page cache holds a portion whole.
+BULK_WAL_PAGES = 16384
+BULK_CACHE_KB = 65536
+
+
+@contextmanager
+def write_portions(engine: Engine) -> Iterator[Callable[[], AbstractContextManager[Connection]]]:
+    """Many short write transactions in a row (the portions of a table built aside, ADR 0003 §4):
+
+        with write_portions(engine) as tx:
+            for portion in portions:
+                with tx() as conn:
+                    …check that the rows the portion refers to exist (`conn` holds the write lock)…
+                    bulk_insert_columns(conn, …)
+
+    Each `tx()` is a transaction of its own, as `write_tx`: readers and writers get in between, a failure or a
+    cancel leaves the portions committed so far. SQLite: they share one connection — every `write_tx` opens
+    and closes its own, and closing the last connection of a file folds the whole WAL into it (a checkpoint
+    and two syncs per portion); the connection folds the WAL every BULK_WAL_PAGES pages and keeps BULK_CACHE_KB
+    of pages.
+
+    SQLite checks no foreign key on this connection (two look-ups per row inserted: a fifth of the time of
+    a table of millions of rows). The caller MUST check the parents of a portion itself, inside its
+    transaction: `BEGIN IMMEDIATE` holds the write lock, so a parent found there cannot be deleted before the
+    commit, and a deletion after it cascades as ever (it runs on a connection that has the keys on).
+    PostgreSQL checks the keys itself, as always. Only inserts belong here: a DELETE on this connection
+    would not cascade. The settings die with the connection."""
+    with engine.connect() as conn:
+        sqlite = is_sqlite(engine)
+        raw = conn.connection.driver_connection
+        if sqlite:
+            assert raw is not None
+            raw.execute(f"PRAGMA wal_autocheckpoint={int(BULK_WAL_PAGES)}")
+            raw.execute(f"PRAGMA cache_size=-{int(BULK_CACHE_KB)}")
+            raw.execute("PRAGMA foreign_keys=OFF")  # outside a transaction: inside one it is ignored
+
+        @contextmanager
+        def tx() -> Iterator[Connection]:
+            if sqlite:
+                conn.info["bf_begin"] = "BEGIN IMMEDIATE"
+            with conn.begin():
+                yield conn
+
+        try:
+            yield tx
+        finally:
+            if sqlite and raw is not None and not conn.in_transaction():
+                raw.execute("PRAGMA foreign_keys=ON")
 
 
 @contextmanager
@@ -265,23 +316,27 @@ SQLITE_ROW_VARS = 900
 
 def bulk_insert_columns(
     conn: Connection, table: sa.Table, fixed: Mapping[str, int | None], columns: Mapping[str, Sequence[Any]]
-) -> None:
+) -> tuple[int, int] | None:
     """Many rows given by columns (interval tables of millions of rows, ADR 0003 §4): `columns` — name → the
     values of every row (lists of equal length, in driver form as for `bulk_insert`), `fixed` — columns with
     one value in all the rows (an integer or NULL).
 
     SQLite: statements of many rows each (`VALUES (…), (…), …`) on the driver cursor, inside the transaction
     of `conn` — one statement run for some hundred rows instead of one per row, the fixed values as literals;
-    a failure comes as the SQLAlchemy error the same statement would give. PostgreSQL: `bulk_insert`."""
+    a failure comes as the SQLAlchemy error the same statement would give. PostgreSQL: `bulk_insert`.
+
+    Returns (first, last) row key when the rows got consecutive keys in the order given — SQLite, when `conn`
+    holds the write lock (`write_tx`, `write_portions`) and the key is the rowid; None — the keys are not
+    known (PostgreSQL: a sequence shared with other writers; no rows)."""
     lists = list(columns.values())
     n = len(lists[0]) if lists else 0
     if not n:
-        return
+        return None
     names = [*fixed, *columns]
     if conn.dialect.name != "sqlite":
         consts = [repeat(v, n) for v in fixed.values()]
         bulk_insert(conn, table, names, list(zip(*consts, *lists, strict=True)))
-        return
+        return None
     literals = ["NULL" if v is None else str(int(v)) for v in fixed.values()]
     row = f"({', '.join([*literals, *['?'] * len(lists)])})"
     head = f"INSERT INTO {table.name} ({', '.join(names)}) VALUES "
@@ -293,11 +348,13 @@ def bulk_insert_columns(
     step = per * width
     cur = conn.connection.driver_connection.cursor()  # type: ignore[union-attr]
     try:
+        first = int(cur.execute(f"SELECT coalesce(max(rowid), 0) + 1 FROM {table.name}").fetchone()[0])
         for k in range(0, full * width, step):
             cur.execute(sql, flat[k : k + step])
         if full < n:
             sql = head + ", ".join([row] * (n - full))
             cur.execute(sql, flat[full * width :])
+        last = cur.lastrowid
     except Exception as exc:
         dbapi = conn.dialect.dbapi
         if dbapi is None or not isinstance(exc, dbapi.Error):
@@ -305,6 +362,7 @@ def bulk_insert_columns(
         raise sa.exc.DBAPIError.instance(head + row, None, exc, dbapi.Error, hide_parameters=True) from exc
     finally:
         cur.close()
+    return (first, int(last)) if last is not None and int(last) - first + 1 == n else None
 
 
 def bulk_update(

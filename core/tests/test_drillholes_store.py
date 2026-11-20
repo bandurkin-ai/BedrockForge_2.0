@@ -300,3 +300,68 @@ def test_bulk_rows_of_odd_tables(db_url: str, tmp_path: Path, monkeypatch: pytes
     with dialect.read_tx(engine) as conn:
         widths = {len(r.num or b"") for r in conn.execute(sa.select(dh_rows.c.num))}
     assert widths == {0, 8}  # «Числа»: the second column is empty — the vector is cut after the first
+
+
+def test_row_keys_come_in_the_order_of_the_arrays(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`row_ids` — the keys of the rows as given (SQLite: without reading them back); None on PostgreSQL."""
+    engine, s1, _ = _setup(db_url, tmp_path)
+    monkeypatch.setattr(dh, "BATCH", 70)
+    dh.write_table(engine, s1, table("Другая", ["Z"] * 33, [1.0] * 33, ["x"] * 33), job_id=None, tick=noop)
+    n = 500
+    holes = [f"H{i % 13}" for i in range(n)]
+    data = table("Пробы", holes, [float(i) for i in range(n)], ["x"] * n)
+    res = dh.write_table(engine, s1, data, job_id=None, tick=noop)
+    with dialect.read_tx(engine) as conn:
+        rows = conn.execute(
+            sa.select(dh_rows.c.id, dh_rows.c.from_m).where(dh_rows.c.table_id == res["table_id"]).order_by(dh_rows.c.id)
+        ).all()
+    assert [r.from_m for r in rows] == [float(i) for i in range(n)]  # the rows are stored in the order given
+    if db_url == "sqlite":
+        assert res["row_ids"].tolist() == [r.id for r in rows]
+    else:
+        assert res["row_ids"] is None
+    empty = dh.write_table(engine, s1, table("Пусто", [], [], []), job_id=None, tick=noop)
+    assert empty["rows"] == 0 and (empty["row_ids"] is None or len(empty["row_ids"]) == 0)
+
+
+@pytest.mark.parametrize("gone", ["hole", "table"])
+def test_a_parent_deleted_between_portions_fails_the_write(
+    db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gone: str
+) -> None:
+    """The portions are written without the foreign keys of SQLite: the writer checks the table and the holes
+    of every portion itself. A hole (or the table) deleted meanwhile fails the write, as the key did, and leaves
+    no row without its hole."""
+    engine, s1, _ = _setup(db_url, tmp_path)
+    monkeypatch.setattr(dh, "BATCH", 100)
+    holes = ["A"] * 150 + ["B"] * 150
+    calls: list[float | None] = []
+
+    def tick(p: float | None, _m: str | None) -> None:
+        calls.append(p)
+        if len(calls) == 2:  # the first portion is committed; the second has rows of A and of B
+            with dialect.write_tx(engine) as conn:
+                if gone == "hole":
+                    conn.execute(sa.delete(dh_holes).where(dh_holes.c.name == "A"))
+                else:
+                    conn.execute(sa.delete(dh_tables).where(dh_tables.c.job_id == 3))
+
+    with pytest.raises(sa.exc.IntegrityError):
+        dh.write_table(engine, s1, table("Пробы", holes, [1.0] * 300, ["x"] * 300), job_id=3, tick=tick)
+    assert len(calls) == 2
+    with dialect.read_tx(engine) as conn:
+        orphans = conn.execute(
+            sa.select(sa.func.count())
+            .select_from(dh_rows)
+            .where(sa.or_(dh_rows.c.hole_id.not_in(sa.select(dh_holes.c.id)),
+                          dh_rows.c.table_id.not_in(sa.select(dh_tables.c.id))))
+        ).scalar_one()  # fmt: skip
+        left = conn.execute(sa.select(sa.func.count()).select_from(dh_rows)).scalar_one()
+    assert orphans == 0 and left == 0  # the rows of the first portion went with their hole (table)
+    # the keys are checked again on every other connection: a row of a missing hole is refused
+    with pytest.raises(Exception) as err, dialect.write_tx(engine) as conn:  # noqa: PT011
+        t = conn.execute(sa.insert(dh_tables).values(set_id=s1, name="T", name_key="t", kind="interval", row_count=0,
+                                                     rev=1, state="building", created_at=dialect.utcnow(),
+                                                     updated_at=dialect.utcnow())).inserted_primary_key  # fmt: skip
+        assert t is not None
+        conn.execute(sa.insert(dh_rows).values(table_id=t[0], hole_id=987654))
+    assert dialect.is_integrity_error(err.value)
