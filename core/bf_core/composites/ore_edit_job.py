@@ -13,8 +13,9 @@ through `drillholes/edit.py`, whose checks refuse such tables): the rows of the 
 written anew (its old row ids reused in order, the rest inserted or deleted; X, Y, Z of the middle, MODE, the
 means of the other fields — as the job writes them; MANUAL from the kernel; a column the user added keeps its
 value on a row of the same span, else it is empty — said in `warnings`), ORE_ID and ORE_CLS of the samples of
-the hole (unless a later ore result on these samples wrote them again: `results.own_columns`), `report.edits` + the edit, `report.summary` by
-class (Σ of the set − the hole before + the hole after; by domain it stays that of the calculation), the
+the hole (unless a later ore result on these samples wrote them again: `results.own_columns`), `report.edits`
++ the edit, `report.summary` by class (Σ of the set − the hole before + the hole after; by domain it stays that
+of the calculation), the
 revisions of both tables. The marks of the results that read the samples but not ORE_ID / ORE_CLS follow the
 new revision (`results.shift_marks`) — the result itself among them: it stays fresh and its protocol opens.
 «Перестроить» computes it again from the samples: the edits are lost (the window warns; `routes_ore.rebuild`).
@@ -157,7 +158,8 @@ def _cell(v: Any) -> Any:
 
 def write_hole_rows(conn: sa.Connection, table_id: int, hole_id: int, out: Any) -> tuple[int, list[str]]:
     """The rows of one hole of a result table replaced by `out` (old ids reused in order). A column the user
-    added keeps its value on a row whose span (from, to) the edit did not change; the other rows have it empty.
+    added keeps its value on a row the edit did not change (the same from, to, CLASS, NESTED); the others have
+    it empty.
     Returns (Δ rows, the names of the columns of the user emptied on some row)."""
     from bf_core.drillholes.store import pack, unpack
 
@@ -172,9 +174,24 @@ def write_hole_rows(conn: sa.Connection, table_id: int, hole_id: int, out: Any) 
         (live[c.name.casefold()], v) for c, v in zip(out.columns, out.values, strict=True) if c.name.casefold() in live
     ]
     user = [(name, kind, slot) for name, (kind, slot) in live.items() if name not in ours]
-    by_span: dict[tuple[float, float], list[Any]] = {}
+    at = {c.name: k for k, c in enumerate(out.columns)}
+    same_by = [n for n in ("CLASS", "NESTED") if n in at and n.casefold() in live]  # a span may hold two rows
+
+    def old_key(o: Any) -> tuple[Any, ...]:
+        nums, txt = unpack(o.num, width), _txt(o.txt)
+        got = []
+        for n in same_by:
+            kind, slot = live[n.casefold()]
+            got.append(_cell(nums[slot]) if kind == "number" else txt.get(str(slot)))
+        return (float(o.from_m), float(o.to_m), *got)
+
+    def new_key(r: int) -> tuple[Any, ...]:
+        got = [_cell(out.values[at[n]][r]) for n in same_by]
+        return (float(out.from_m[r]), float(out.to_m[r]), *(None if v == "" else v for v in got))
+
+    by_span: dict[tuple[Any, ...], list[Any]] = {}
     for o in old:
-        by_span.setdefault((float(o.from_m), float(o.to_m)), []).append(o)
+        by_span.setdefault(old_key(o), []).append(o)
 
     def user_values(o: Any) -> dict[str, Any]:
         nums, txt = unpack(o.num, width), _txt(o.txt)
@@ -186,7 +203,7 @@ def write_hole_rows(conn: sa.Connection, table_id: int, hole_id: int, out: Any) 
     for r in range(n):
         nums: list[float | None] = [None] * width
         txt: dict[str, str] = {}
-        same = by_span.get((float(out.from_m[r]), float(out.to_m[r])))
+        same = by_span.get(new_key(r))
         if same:
             kept = user_values(same.pop(0))
             for name, kind, slot in user:
@@ -215,8 +232,8 @@ def write_hole_rows(conn: sa.Connection, table_id: int, hole_id: int, out: Any) 
     if len(old) > n:
         conn.execute(sa.delete(dh_rows).where(dh_rows.c.id.in_([o.id for o in old[n:]])))
     lost = {name for left in by_span.values() for o in left for name in user_values(o)}
-    names = {c.name.casefold(): c.name for c in conn.execute(
-        sa.select(dh_columns.c.name).where(dh_columns.c.table_id == table_id, dh_columns.c.deleted.is_(False)))}  # fmt: skip
+    q = sa.select(dh_columns.c.name).where(dh_columns.c.table_id == table_id, dh_columns.c.deleted.is_(False))
+    names = {c.name.casefold(): c.name for c in conn.execute(q)}
     return n - len(old), sorted(names.get(x, x) for x in lost)
 
 
@@ -259,8 +276,9 @@ def write_sample_columns(conn: sa.Connection, table_id: int, row_ids: np.ndarray
 
 def _emptied(names: list[str]) -> str:
     fields = ", ".join(f"«{n}»" for n in names)
-    return (f"Поля {fields} очищены в строках скважины, изменённых правкой: заполните их заново."
-            if len(names) > 1 else f"Поле {fields} очищено в строках скважины, изменённых правкой: заполните его заново.")
+    if len(names) > 1:
+        return f"Поля {fields} очищены в строках скважины, изменённых правкой: заполните их заново."
+    return f"Поле {fields} очищено в строках скважины, изменённых правкой: заполните его заново."
 
 
 def shifted_summary(summary: dict[str, Any], before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:

@@ -129,14 +129,16 @@ def target(conn: sa.Connection, set_id: int, table: str) -> Target:
     return Target(set_id, table, row.kind, table_columns(conn, int(table), row.kind), _result_of(conn, int(table)))
 
 
-#: Operations of sample processing that make a table (`composites.results.TABLE_OPS`; no import: no numpy here).
-RESULT_OPS = ("length", "domain", "bench", "coding", "merge", "coords", "ore")
 ROW_ACTIONS = ("update", "insert", "delete", "append")
 
 
 def _result_of(conn: sa.Connection, table_id: int) -> str | None:
+    """The operation of sample processing whose result the table is (`composites.results.TABLE_OPS`), or None."""
+    from bf_core.composites import results  # no numpy there; imported here: `results` imports this module
+
+    ops = sorted(results.TABLE_OPS)
     op = conn.execute(
-        sa.select(dh_results.c.op).where(dh_results.c.table_id == table_id, dh_results.c.op.in_(RESULT_OPS)).limit(1)
+        sa.select(dh_results.c.op).where(dh_results.c.table_id == table_id, dh_results.c.op.in_(ops)).limit(1)
     ).scalar()
     return None if op is None else str(op)
 

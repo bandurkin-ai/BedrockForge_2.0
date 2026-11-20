@@ -313,3 +313,20 @@ def test_bfggis_roundtrip_keeps_results_fresh(cc, tmp_path: Path) -> None:  # ty
     assert by_op["length"]["table_id"] == maps["dh_tables"][str(f["comp"])]
     assert by_op["topcut"]["table_id"] == maps["dh_tables"][str(f["src"])]
     assert by_op["length"]["inputs"]["tables"][0]["key"] == "пробы" and by_op["length"]["job_id"] is None
+
+
+def test_the_edit_check_follows_table_ops(db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review 12.33 № 11: `drillholes/edit.py` knows a result table by `results.TABLE_OPS` itself, not by a copy of
+    it: a new operation that makes a table is refused for editing without a second list to keep in step."""
+    from bf_core.drillholes import edit
+
+    engine, set_id, src = setup(db_url, tmp_path)
+    with dialect.write_tx(engine) as conn:
+        conn.execute(sa.insert(dh_results).values(set_id=set_id, table_id=src, op="newop", name="Новая", params={},
+                                                  inputs={}, sha256="0", algo="x", report={},
+                                                  created_at=dialect.utcnow()))  # fmt: skip
+    with dialect.read_tx(engine) as conn:
+        assert edit._result_of(conn, src) is None
+        monkeypatch.setattr(res, "TABLE_OPS", res.TABLE_OPS | {"newop"})
+        assert edit._result_of(conn, src) == "newop"
+    assert not hasattr(edit, "RESULT_OPS")

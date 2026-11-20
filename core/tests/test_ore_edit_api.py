@@ -209,8 +209,8 @@ def test_user_columns_survive_on_unchanged_rows(gkz) -> None:  # type: ignore[no
     done = ore_here(project, {"body": body(set_id, table)})
     rid, tid = done["result_id"], int(done["table_id"])
     with dialect.write_tx(project.engine) as conn:
-        slots = [int(s) for s in conn.execute(sa.select(dh_columns.c.slot).where(dh_columns.c.table_id == tid,
-                                                                                  dh_columns.c.kind == "number")).scalars()]
+        q = sa.select(dh_columns.c.slot).where(dh_columns.c.table_id == tid, dh_columns.c.kind == "number")
+        slots = [int(s) for s in conn.execute(q).scalars()]
         slot = max(slots) + 1
         conn.execute(sa.insert(dh_columns).values(table_id=tid, name="ПРИМ", kind="number", slot=slot, role="value",
                                                   deleted=False, position=999))  # fmt: skip
@@ -222,14 +222,15 @@ def test_user_columns_survive_on_unchanged_rows(gkz) -> None:  # type: ignore[no
     snapshots.forget(set_id)
     old = rows_of(c, set_id, str(tid))
     k = cols(old)
-    mark = {(r["hole"], r["from"], r["to"]): r[k["ПРИМ"]] for r in old["rows"]}
+    mark = {(r["hole"], r["from"], r["to"], r[k["CLASS"]], r[k["NESTED"]]): r[k["ПРИМ"]] for r in old["rows"]}
+    assert len(mark) == len(old["rows"])
     assert all(v is not None for v in mark.values())
     r = c.post(f"{C}/results/{rid}/edit", json={"hole": holes[1], **SPLIT})
     assert r.status_code == 200, r.text
     new = rows_of(c, set_id, str(tid))
     kept = lost = 0
     for row in new["rows"]:
-        span = (row["hole"], row["from"], row["to"])
+        span = (row["hole"], row["from"], row["to"], row[k["CLASS"]], row[k["NESTED"]])
         if span in mark:
             assert row[k["ПРИМ"]] == mark[span], span
             kept += row["hole"] == holes[1]

@@ -155,6 +155,7 @@ def _contacts(raw: Any, domain: cj.DomainSpec | None) -> tuple[str, ...] | None:
         return None
     items = raw.replace(";", ",").split(",") if isinstance(raw, str) else raw if isinstance(raw, list) else [raw]
     number = domain is not None and domain.kind == "number"
+    field = domain.field if domain is not None else ""
     out: list[str] = []
     for v in items:
         if isinstance(v, bool) or not isinstance(v, (str, int, float)):
@@ -167,7 +168,7 @@ def _contacts(raw: Any, domain: cj.DomainSpec | None) -> tuple[str, ...] | None:
         if number:
             x = float(v) if not isinstance(v, str) else _float(text)
             if not math.isfinite(x):
-                raise cj._bad("bad_param", f"Коды тела: «{text}» — не число, а поле домена «{domain.field}» числовое.",
+                raise cj._bad("bad_param", f"Коды тела: «{text}» — не число, а поле домена «{field}» числовое.",
                               "Например: 1, 2.", "contacts_values")  # fmt: skip
             text = format(x + 0.0, ".15g")
         out.append(text)

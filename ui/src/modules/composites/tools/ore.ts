@@ -9,7 +9,7 @@
 import { api } from "../../../shell/api";
 import { assignLanes, CLASS_STYLE, laneCount, oreClass, type OreClass } from "../../../charts/column/classes";
 import type { IntervalColumns, Started } from "../api";
-import { parseIdList, parseNumber, type Choice, type FormValues, type ParamSpec, type ToolSpec } from "../params";
+import { parseNumber, type Choice, type FormValues, type ParamSpec, type ToolSpec } from "../params";
 
 export const ORE_MODES: readonly Choice[] = [
   { value: "strict_excl", label: "строгий, исключить пустую породу" },
@@ -22,7 +22,7 @@ export const ORE_MODES: readonly Choice[] = [
 /** Thickness, gaps and mode — shared with «Анализ кондиций». */
 export const ORE_COMMON: readonly ParamSpec[] = [
   { key: "mode", label: "Режим", kind: "choice", default: "strict_excl", choices: ORE_MODES },
-  { key: "contacts_values", label: "Коды тела", kind: "text", optional: true, hint: "коды домена через «,»; пусто — все непустые", when: (v) => v.mode === "contacts" },
+  { key: "contacts_values", label: "Коды тела", kind: "text", optional: true, hint: "значения домена или имена тел через «,» (QZ, 2); пусто — все непустые", when: (v) => v.mode === "contacts" },
   { key: "thickness_field", label: "Мощность пробы", kind: "field", numeric: true, optional: true, hint: "пусто — длина по стволу" },
   {
     key: "missing",
@@ -39,7 +39,9 @@ export const ORE_COMMON: readonly ParamSpec[] = [
 
 /**
  * The last step of the body (ТЗ 7.35.4 `composite.ore_intervals`): `thickness_field` → `thickness {source, field?}`,
- * «Коды тела» → `contacts_values` (whole numbers ≥ 0); «по контактам» needs a domain. A string — why not.
+ * «Коды тела» → `contacts_values`: the values of the domain as written (text, names of bodies, numbers), strings
+ * without repeats — the core matches them against the domain (a numeric field by value); «по контактам» needs a
+ * domain. A string — why not.
  */
 export function oreFinish(body: Record<string, unknown>): Record<string, unknown> | string {
   const out: Record<string, unknown> = { ...body };
@@ -50,11 +52,8 @@ export function oreFinish(body: Record<string, unknown>): Record<string, unknown
   delete out.contacts_values;
   if (out.mode === "contacts") {
     if (!out.domain) return "Режим «по контактам»: выберите домен — поле таблицы или каркасы";
-    if (codes) {
-      const list = parseIdList(codes);
-      if (!list) return "«Коды тела»: целые числа не меньше нуля через «,»";
-      out.contacts_values = list;
-    }
+    const list = [...new Set(codes.split(/[,;]/).map((c) => c.trim()).filter(Boolean))];
+    if (list.length) out.contacts_values = list;
   }
   return out;
 }

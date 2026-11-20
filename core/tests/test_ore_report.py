@@ -222,7 +222,9 @@ def test_csv_cells_are_never_formulas(tmp_path: Path) -> None:
     assert {r[1] for r in got[1:]} == {"-1,5"}
 
 
-def test_parts_are_unique_and_a_failed_rename_keeps_the_old_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_parts_are_unique_and_a_failed_rename_keeps_the_old_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """№ 8: a file «X.csv.part» of someone else is never touched; if the second rename fails, the first target
     is as it was."""
     import os
@@ -278,7 +280,7 @@ def test_stale_conditions_are_not_exported(gkz, tmp_path: Path) -> None:  # type
     from bf_core.api.errors import ApiError
 
     with pytest.raises(ApiError) as err:
-        pj.run_export(project.engine, project.folder, {"result_id": rid, "format": "xlsx", "path": str(tmp_path / "к.xlsx"),
-                      "holes": None, "rows": 0}, job_id=next(_ids), tick=lambda *_a: None)  # fmt: skip
+        params = {"result_id": rid, "format": "xlsx", "path": str(tmp_path / "к.xlsx"), "holes": None, "rows": 0}
+        pj.run_export(project.engine, project.folder, params, job_id=next(_ids), tick=lambda *_a: None)
     assert err.value.status == 409 and err.value.code == "stale" and rec["op"] == "conditions"
     assert not (tmp_path / "к.xlsx").exists()

@@ -107,12 +107,15 @@ describe("the body of the job", () => {
     expect(toolBody(ore, src, values({ thickness_field: "TT", mc_min: "2,5", c_min: "1,2" })).body).toMatchObject({ thickness: { source: "field", field: "TT" }, mc_min: 2.5, c_min: 1.2 });
   });
 
-  it("«по контактам» needs a domain; «Коды тела» → contacts_values (решение 22), wrong codes never reach the core", () => {
+  it("«по контактам» needs a domain; «Коды тела» → contacts_values as written (решение 22; review 12.33 № 4)", () => {
     expect(toolBody(ore, src, values({ mode: "contacts" })).reason).toMatch(/выберите домен/);
     const dom = { ...src, domain: { kind: "field" as const, table: "7", field: "LITO" } };
     expect(toolBody(ore, dom, values({ mode: "contacts" })).body).not.toHaveProperty("contacts_values");
-    expect(toolBody(ore, dom, values({ mode: "contacts", contacts_values: "2, 5; 2" })).body).toMatchObject({ domain: { table: "7", field: "LITO" }, contacts_values: [2, 5] });
-    expect(toolBody(ore, dom, values({ mode: "contacts", contacts_values: "2, -1" })).reason).toMatch(/Коды тела/);
+    expect(toolBody(ore, dom, values({ mode: "contacts", contacts_values: "2, 5; 2" })).body).toMatchObject({ domain: { table: "7", field: "LITO" }, contacts_values: ["2", "5"] });
+    // text domains and names of bodies are values too; the core checks them against the domain
+    expect(toolBody(ore, dom, values({ mode: "contacts", contacts_values: " QZ ; Тело 1,QZ" })).body).toMatchObject({ contacts_values: ["QZ", "Тело 1"] });
+    expect(toolBody(ore, dom, values({ mode: "contacts", contacts_values: "2, -1" })).body).toMatchObject({ contacts_values: ["2", "-1"] });
+    expect(toolBody(ore, dom, values({ mode: "contacts", contacts_values: " , ;" })).body).not.toHaveProperty("contacts_values");
     // the codes are a form of «по контактам» only
     expect(toolBody(ore, dom, values({ contacts_values: "2" })).body).not.toHaveProperty("contacts_values");
     expect(oreFinish({ mode: "strict", thickness_field: "" })).toEqual({ mode: "strict", thickness: { source: "length" } });

@@ -11,8 +11,9 @@ second, this writes the sheet XML directly into the zip (≈ 15 times as fast).
 Values: None — an empty cell; str — a shared string; bool, int, float — a number (NaN, ±inf — empty). Styles:
 `HEAD` (bold, Montserrat, stone fill), `NOTE` (italic), `tone_style(tone)` — the fill of a class of the form
 И1, сл. 17 in the brand colours (ADR 0006: those of `charts/column/classes.ts`). Sheet names are made valid
-(≤ 31 UTF-16 units, no `[]:*?/\\`, no «'» at the ends, not «History», unique). Rows carry `r`, cells do not (positional, as the format allows): an
-empty value is `<c/>`. The workbook is readable by Excel, LibreOffice and `openpyxl`.
+(≤ 31 UTF-16 units, no `[]:*?/\\`, no «'» at the ends, not «History», unique; `"` and `'` escaped in the
+attribute). Rows carry `r`, cells do not (positional, as the format allows): an empty value is `<c/>`. The
+workbook is readable by Excel, LibreOffice and `openpyxl`.
 """
 
 from __future__ import annotations

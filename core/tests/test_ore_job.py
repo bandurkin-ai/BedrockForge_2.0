@@ -391,7 +391,8 @@ def test_conditions_job_exclude_and_refusals(gkz) -> None:  # type: ignore[no-un
 
 
 def _text_domain(project: Any, set_id: int, holes: list[str]) -> str:
-    """«Пробы · литология» (an interval table: the set has one «assay»): the samples of Т8.2-12 with LIT «QZ» at 3–12 m, «вмещающие» elsewhere."""
+    """«Пробы · литология» (an interval table: the set has one «assay»): the samples of Т8.2-12 with LIT «QZ» at
+    3–12 m, «вмещающие» elsewhere."""
     from bf_core.drillholes import store
 
     names = [h for h in holes for _ in range(N)]
@@ -430,8 +431,9 @@ def test_contacts_by_text_and_by_value(gkz) -> None:  # type: ignore[no-untyped-
         r = c.post(f"{C}/ore", json={**req, "contacts_values": bad})
         assert r.status_code == 422 and r.json()["code"] == "bad_param", (bad, r.text)
         assert r.json()["param"] == "contacts_values" and r.json()["hint"]
-    r = c.post(f"{C}/conditions", json={**cond_body(set_id, lit), "mode": "contacts",
-                                        "domain": {"table": lit, "field": "LIT"}, "contacts_values": ["QZ"]})  # fmt: skip
+    req = {**cond_body(set_id, lit), "mode": "contacts", "domain": {"table": lit, "field": "LIT"},
+           "contacts_values": ["QZ"]}  # fmt: skip
+    r = c.post(f"{C}/conditions", json=req)
     assert r.status_code == 200, r.text
     job = wait_job(c, r.json()["source"], r.json()["id"], timeout=240)
     assert job["status"] == "done", job

@@ -58,7 +58,7 @@ describe("«Анализ кондиций»: the body of the job", () => {
   it("«по контактам» without a domain is refused as in «Рудные интервалы»; codes → contacts_values", () => {
     expect(toolBody(conditions, SRC, values({ cutoffs: "1", m_min: "1", m_waste_max: "3", mode: "contacts" })).reason).toMatch(/по контактам/);
     const src = { ...SRC, domain: { kind: "field" as const, table: "7", field: "LITO" } };
-    expect(toolBody(conditions, src, values({ cutoffs: "1", m_min: "1", m_waste_max: "3", mode: "contacts", contacts_values: "2, 5" })).body).toMatchObject({ domain: { table: "7", field: "LITO" }, contacts_values: [2, 5] });
+    expect(toolBody(conditions, src, values({ cutoffs: "1", m_min: "1", m_waste_max: "3", mode: "contacts", contacts_values: "2, QZ" })).body).toMatchObject({ domain: { table: "7", field: "LITO" }, contacts_values: ["2", "QZ"] });
   });
 
   it("exclude {field, values} (решение 23): values as typed; a field without values — why not", () => {
