@@ -25,7 +25,7 @@ export interface TableRow {
   rows: number;
   rev: number;
   /** A result of sample processing (`GET …/tables` → `origin`, ADR 0018 §2). */
-  origin?: { result_id: number; op: string; stale: boolean } | null;
+  origin?: { result_id: number; op: string; stale: boolean; reason: string | null } | null;
 }
 
 export interface FieldRow {
@@ -83,16 +83,29 @@ export function resolveTable(tables: readonly TableRow[], given: string): string
 
 // ---- results ----
 
+/** A row of `GET /composites/results?set_id=` (core `composites/results.py::list_results`). */
 export interface ResultRow {
   id: number;
   set_id: number;
   table_id: number | null;
+  /** the name of the result table; null — fields written in place or a report only */
+  table: string | null;
   op: string;
+  op_title: string;
+  makes_table: boolean;
   name: string;
   params: Record<string, unknown>;
-  stale: { reason: string } | null;
-  report: Record<string, unknown> | null;
-  created_at: string;
+  inputs: Record<string, unknown>;
+  sha256: string;
+  algo: string;
+  report: Record<string, unknown>;
+  /** columns written in place */
+  written: string[];
+  job_id: number | null;
+  created_at: string | null;
+  stale: boolean;
+  /** «изменена таблица „Пробы“», «каркас удалён»; null — fresh */
+  reason: string | null;
 }
 
 export async function loadResults(setId: number): Promise<ResultRow[]> {
