@@ -48,6 +48,13 @@ def pclient(tmp_path, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyp
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _demo_without_samples(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The demo of the tests is made without its Э12 results («Композиты 2 м», «Рудные интервалы»; demo/samples.py):
+    the tests of sample processing make these tables themselves. `tests/test_demo_samples.py` switches them on."""
+    monkeypatch.setattr("bf_core.demo.project.SAMPLES", False)
+
+
 @pytest.fixture(autouse=True, scope="module")
 def _drop_caches_after_module():  # type: ignore[no-untyped-def]
     """The caches of the API process (exact geometry 768 MB, contours, layouts, trajectories) live as long as the

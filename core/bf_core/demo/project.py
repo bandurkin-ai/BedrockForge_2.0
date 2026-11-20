@@ -27,6 +27,8 @@ from bf_core.storage.blobs import BlobStore
 DEMO_NAME = "Демо: участок Северный"
 DEMO_DESCRIPTION = {"deposit": "Северное (учебное)", "license": "Учебный участок", "stage": "Разведка"}
 SEED = 7
+#: «Композиты 2 м» and «Рудные интервалы» are made (Э12); the tests of the kernels switch them off (conftest)
+SAMPLES = True
 
 Part = Callable[[sa.Connection, BlobStore, random.Random], None]
 #: (name, part) in the order of creation; later stages append theirs.
@@ -61,6 +63,8 @@ def _samples(project: Project) -> None:
 
     from .samples import add_samples
 
+    if not SAMPLES:
+        return
     try:
         add_samples(project)
     except Exception:  # noqa: BLE001 - the demo opens anyway; the results can be made from «Обработка проб»

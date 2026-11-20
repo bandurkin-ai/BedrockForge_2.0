@@ -18,7 +18,8 @@ C = f"{API}/composites"
 
 
 @pytest.fixture()
-def demo(pclient):  # type: ignore[no-untyped-def]
+def demo(pclient, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    monkeypatch.setattr("bf_core.demo.project.SAMPLES", True)  # off for the other tests (conftest)
     t0 = time.perf_counter()
     r = pclient.post(f"{API}/projects/demo")
     assert r.status_code == 200, r.text

@@ -62,6 +62,7 @@ interface Counts {
   legend: LegendEntry[];
   holes: number;
   intervals: number;
+  labels: number;
 }
 
 interface Built {
@@ -406,10 +407,10 @@ export class DisplaysSource {
     const part = st.manifest.parts[k];
     const build = this.build(d, st, k, level);
     const sig0 = this.sigOf(d, st, 0);
-    if (level === 0) d.counts.set(k, { sig: sig0, legend: build.legend, holes: build.holes, intervals: build.intervals });
+    if (level === 0) d.counts.set(k, { sig: sig0, legend: build.legend, holes: build.holes, intervals: build.intervals, labels: build.labels.length });
     else if (d.counts.get(k)?.sig !== sig0) {
       const full = this.build(d, st, k, 0); // the legend counts the rows, not the merged spans
-      d.counts.set(k, { sig: sig0, legend: full.legend, holes: full.holes, intervals: full.intervals });
+      d.counts.set(k, { sig: sig0, legend: full.legend, holes: full.holes, intervals: full.intervals, labels: full.labels.length });
     }
     const mesh = new DownholeMesh(build, { clip: this.scene.clipPlanes, resolution: this.scene.resolution, side: this.side, labels: this.labels, markers: this.markers, pixelRatio: this.scene.renderer.pixelRatio }, d.scale);
     const id = `${d.shown.key}#${k}`;
@@ -479,14 +480,16 @@ export class DisplaysSource {
       let entries: LegendEntry[] | null = null;
       let holes = 0;
       let intervals = 0;
+      let labels = 0;
       for (const c of d.counts.values()) {
         if (c.sig !== sig0) continue;
         holes += c.holes;
         intervals += c.intervals;
+        labels += c.labels;
         if (!entries) entries = c.legend.map((e) => ({ ...e, counts: [...e.counts] }));
         else for (const e of c.legend) entries.find((x) => x.trackId === e.trackId)?.counts.forEach((_, i, arr) => (arr[i] += e.counts[i] ?? 0));
       }
-      if (entries) legend.push({ key: d.shown.key, chartId: d.shown.chartId, draftKey: d.shown.draftKey, name: d.shown.name, setId: d.shown.setId, holes, intervals, entries });
+      if (entries) legend.push({ key: d.shown.key, chartId: d.shown.chartId, draftKey: d.shown.draftKey, name: d.shown.name, setId: d.shown.setId, holes, intervals, labels, entries });
     }
     if (JSON.stringify(legend) !== JSON.stringify(displaysUi.get().legend)) displaysUi.set({ legend });
   }
