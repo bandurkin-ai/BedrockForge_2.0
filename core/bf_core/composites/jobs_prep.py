@@ -374,8 +374,12 @@ def compute_lines(
     made = compute(spec.op, spec.kernel if kernel is None else kernel, spec.fields, spec.units, src.numbers,
                    src.to_m - src.from_m, codes=codes, names=names, xyz=xyz, threads=threads, tick=tick)  # fmt: skip
     if src.skipped:
-        made.journal.insert(0, f"Таблица «{spec.table_name}»: строк без «от» или «до» — {src.skipped}, поля пусты.")
+        made.journal.insert(0, skipped_note(spec.table_name, src.skipped))
     return made
+
+
+def skipped_note(table: str, n: int) -> str:
+    return f"Таблица «{table}»: строк без «от» или «до» — {n}, поля пусты."
 
 
 # --- the job -----------------------------------------------------------------------------------------------

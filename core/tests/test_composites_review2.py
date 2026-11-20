@@ -202,3 +202,113 @@ def projects_of_c(c: Any) -> Any:
     from bf_core.projects.service import projects_of
 
     return projects_of(c.core).require_current()
+
+
+# --- № 5: the top cut by P — one sort per table and domain -------------------------------------------------
+
+
+def test_settle_is_the_cut_of_topcut_bit_for_bit() -> None:
+    import numpy as np
+
+    from bf_core.composites import topcut as tc
+
+    rng = np.random.default_rng(7)
+    n = 20_000
+    v = rng.lognormal(0.0, 1.2, n)
+    v[rng.random(n) < 0.05] = np.nan
+    ln = rng.uniform(0.5, 2.0, n)
+    ln[:30] = np.nan  # a value without a length
+    codes = rng.integers(-1, 3, n)
+    names = ["ОК", "ПР", "ЗК"]
+    prep = tc.prepare(v, ln, codes=codes, names=names)
+    for raw in ({"percentile": 90}, {"percentile": 97.35}, {"percentile": 99.99}, {"value": 3.5},
+                {"thresholds": "ОК=2; ЗК=5; НЕТ=1"}):  # fmt: skip
+        params = tc.TopcutParams.of(raw)
+        t = tc.topcut(v, ln, params, codes=codes, names=names, field="AU")
+        thr, rep = tc.settle(prep, params, "AU")
+        assert dict(zip(prep.labels, thr, strict=True)) == t.thresholds and rep == t.report, raw
+    for g, s in enumerate(prep.parts):
+        assert prep.percentile(g, 95.5) == tc._f(s.percentiles(95.5)[0])
+
+
+def _holes(project: Any, set_id: int) -> list[int]:
+    from bf_core.db.schema import dh_holes
+
+    with dialect.read_tx(project.engine) as conn:
+        q = sa.select(dh_holes.c.id).where(dh_holes.c.set_id == set_id).order_by(dh_holes.c.id)
+        return [int(i) for i in conn.execute(q).scalars()]
+
+
+def test_a_new_p_does_not_sort_the_table_again(demo, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    from bf_core.composites import routes_prep
+    from bf_core.composites import topcut as tc
+    from tests.test_composites_prep import prep_here
+
+    c, project, set_id, table = demo
+    routes_prep._sorted_cache.clear()
+    from bf_core.db.schema import dh_tables
+
+    with dialect.read_tx(project.engine) as conn:
+        total = int(conn.execute(sa.select(dh_tables.c.row_count).where(dh_tables.c.id == int(table))).scalar_one())
+    whole = [0]
+    real = tc.sort_groups
+
+    def counted(values: Any, *a: Any, **kw: Any) -> Any:
+        whole[0] += len(values) >= total - 5  # the whole table (but rows without FROM or TO), not one hole
+        return real(values, *a, **kw)
+
+    monkeypatch.setattr(tc, "sort_groups", counted)
+    hole = _holes(project, set_id)[3]
+    seen = {}
+    for p in (95, 97.5, 99, 95):
+        req = {"set_id": set_id, "table": table, "field": "AU", "percentile": p}
+        r = c.post(f"{C}/topcut/preview", json={"params": req, "hole_id": hole})
+        assert r.status_code == 200, r.text
+        seen[p] = r.json()
+    assert whole[0] == 1, whole  # one sort of the whole table for every P
+    monkeypatch.setattr(tc, "sort_groups", real)
+    for p, got in seen.items():  # the preview is the job: its thresholds, summary and notes
+        done = prep_here(project, {"body": {"set_id": set_id, "table": table, "field": "AU", "percentile": p}},
+                         "topcut")  # fmt: skip
+        rec = next(x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["id"] == done["result_id"])
+        assert got["thresholds"] == rec["report"]["thresholds"] and got["set_summary"] == rec["report"]["summary"], p
+        assert got["notes"] == rec["report"]["journal"], p
+
+
+def test_one_sort_at_a_time_per_key(demo, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    import threading
+    import time
+
+    from bf_core.composites import jobs_prep as jp
+    from bf_core.composites import routes_prep
+    from bf_core.composites import topcut as tc
+
+    c, project, set_id, table = demo
+    routes_prep._sorted_cache.clear()
+    calls = [0]
+    real = tc.prepare
+
+    def slow(*a: Any, **kw: Any) -> Any:
+        calls[0] += 1
+        time.sleep(0.3)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(tc, "prepare", slow)
+    with dialect.read_tx(project.engine) as conn:
+        specs = [jp.parse_prep(conn, {"set_id": set_id, "table": table, "field": "AU", "percentile": p}, "topcut")
+                 for p in (91, 93, 95, 97, 99)]  # fmt: skip
+    got: list[Any] = []
+    threads = [threading.Thread(target=lambda s=s: got.append(routes_prep._whole(project, s))) for s in specs]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert calls[0] == 1 and len(got) == 5, calls
+    assert len({json_key(g["thresholds"]) for g in got}) == 5  # each P its own thresholds
+    assert routes_prep._gates == {}
+
+
+def json_key(x: Any) -> str:
+    import json
+
+    return json.dumps(x, sort_keys=True)

@@ -234,31 +234,53 @@ def _total(parts: Sequence[Sorted], thr: Sequence[float | None]) -> tuple[dict[s
 # --- the cut -----------------------------------------------------------------------------------------------
 
 
-def topcut(
-    values: Any,
-    lengths: Any,
-    params: TopcutParams,
-    *,
-    codes: Any = None,
-    names: Sequence[str] = (),
-    field: str = "",
-    tick: Tick | None = None,
-) -> Topcut:
-    """`<F>_CUT`, `<F>_CUT_F` and the report (see the module docstring). `tick(fraction)` may raise to cancel."""
+@dataclass
+class Prepared:
+    """One field of a table sorted by domain (`prepare`): the thresholds and the report of any P, value or thresholds
+    by domain (`settle`) in O(log n) per domain — the preview of the top cut keeps it per table and domain."""
+
+    labels: list[str]
+    parts: list[Sorted]
+    n_value: int  # rows with a value (with a length or not)
+    _pos: dict[int, np.ndarray] = field(default_factory=dict, repr=False)  # the percentile positions, made once
+
+    def percentile(self, g: int, p: float) -> float | None:
+        """The percentile P of the group `g` by the rule of BF — `Sorted.percentiles` with its positions kept."""
+        s = self.parts[g]
+        if not s.n:
+            return None
+        pos = self._pos.get(g)
+        if pos is None:
+            pos = self._pos[g] = (s.cw - 0.5 * s.w) / s.total
+        return _f(np.interp(np.atleast_1d(np.float64(p)) / 100.0, pos, s.v)[0])
+
+
+def _arrays(values: Any, lengths: Any) -> tuple[np.ndarray, np.ndarray]:
     v = np.ascontiguousarray(values, dtype=np.float64)
     ln = np.ascontiguousarray(lengths, dtype=np.float64)
     if v.ndim != 1 or ln.shape != v.shape:
         raise ValueError("values and lengths must be 1D of one length")
-    n = v.shape[0]
-    c, labels = _groups(n, codes, names)
-    step = (lambda f: None) if tick is None else tick
-    parts = sort_groups(v, ln, c, len(labels), tick=lambda f: step(0.7 * f))
+    return v, ln
+
+
+def prepare(
+    values: Any, lengths: Any, *, codes: Any = None, names: Sequence[str] = (), tick: Tick | None = None
+) -> Prepared:
+    """The sort of `topcut` without the cut (see the module docstring for the inputs)."""
+    v, ln = _arrays(values, lengths)
+    c, labels = _groups(v.shape[0], codes, names)
+    return Prepared(labels, sort_groups(v, ln, c, len(labels), tick=tick), int(np.count_nonzero(~np.isnan(v))))
+
+
+def settle(prep: Prepared, params: TopcutParams, field: str = "") -> tuple[list[float | None], dict[str, Any]]:
+    """The thresholds by domain (in the order of `prep.labels`) and the report of `topcut` (no pass over the rows)."""
+    labels, parts = prep.labels, prep.parts
     notes: list[str] = []
     thr: list[float | None]
     if params.mode == "value":
         thr = [params.value] * len(labels)
     elif params.mode == "percentile":
-        thr = [_f(s.percentiles(params.percentile)[0]) for s in parts]
+        thr = [prep.percentile(g, params.percentile) for g in range(len(labels))]
     else:
         thr = [params.thresholds.get(name) for name in labels]
         unknown = [k for k in params.thresholds if k not in labels]
@@ -268,21 +290,10 @@ def topcut(
         skipped = [name or "без домена" for name, t, s in zip(labels, thr, parts, strict=True) if t is None and s.n]
         if skipped:
             notes.append(f"Домены без порога не урезаны: {', '.join(skipped)}.")
-    row_t = np.array([math.inf if t is None else t for t in thr], dtype=np.float64)
-    cut = np.empty(n)
-    flag = np.empty(n)
-    for lo in range(0, n, _BLOCK):
-        hi = min(lo + _BLOCK, n)
-        t = np.full(hi - lo, row_t[0]) if c is None else row_t[c[lo:hi]]
-        x = v[lo:hi]
-        cut[lo:hi] = np.minimum(x, t)  # NaN stays NaN
-        flag[lo:hi] = np.where(np.isnan(x), np.nan, (x > t).astype(np.float64))
-        step(0.7 + 0.25 * hi / n)
-    has = ~np.isnan(v)
     n_stat = sum(s.n for s in parts)
-    if int(has.sum()) > n_stat:
+    if prep.n_value > n_stat:
         notes.append(
-            f"Проб со значением, но без длины: {int(has.sum()) - n_stat} — урезаны по порогу домена, "
+            f"Проб со значением, но без длины: {prep.n_value - n_stat} — урезаны по порогу домена, "
             "в перцентиль и отчёт не входят."
         )
     domains = [_row(name, s, t) for name, s, t in zip(labels, parts, thr, strict=True)]
@@ -310,6 +321,36 @@ def topcut(
         "summary": summary,
         "notes": notes,
     }
+    return thr, report
+
+
+def topcut(
+    values: Any,
+    lengths: Any,
+    params: TopcutParams,
+    *,
+    codes: Any = None,
+    names: Sequence[str] = (),
+    field: str = "",
+    tick: Tick | None = None,
+) -> Topcut:
+    """`<F>_CUT`, `<F>_CUT_F` and the report (see the module docstring). `tick(fraction)` may raise to cancel."""
+    v, ln = _arrays(values, lengths)
+    n = v.shape[0]
+    c, labels = _groups(n, codes, names)
+    step = (lambda f: None) if tick is None else tick
+    parts = sort_groups(v, ln, c, len(labels), tick=lambda f: step(0.7 * f))
+    thr, report = settle(Prepared(labels, parts, int(np.count_nonzero(~np.isnan(v)))), params, field)
+    row_t = np.array([math.inf if t is None else t for t in thr], dtype=np.float64)
+    cut = np.empty(n)
+    flag = np.empty(n)
+    for lo in range(0, n, _BLOCK):
+        hi = min(lo + _BLOCK, n)
+        t = np.full(hi - lo, row_t[0]) if c is None else row_t[c[lo:hi]]
+        x = v[lo:hi]
+        cut[lo:hi] = np.minimum(x, t)  # NaN stays NaN
+        flag[lo:hi] = np.where(np.isnan(x), np.nan, (x > t).astype(np.float64))
+        step(0.7 + 0.25 * hi / n)
     step(1.0)
     return Topcut(cut, flag, dict(zip(labels, thr, strict=True)), report)
 

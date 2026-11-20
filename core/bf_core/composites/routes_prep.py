@@ -17,7 +17,8 @@
     quantiles}]): synchronous, over the whole table; nothing is written (решение 8).
   * `POST /topcut/preview`, `POST /equivalent/preview` {params, hole_id} → {hole, samples, result, summary,
     set_summary, notes}: one hole, the same computation as the job; the thresholds of the top cut by percentile
-    come from the whole table (cached by revisions and parameters) — the preview of a hole is the job's rows;
+    come from the whole table, sorted once per revisions, field and domain (any P — a binary search per domain;
+    one sort at a time per key, the requests meanwhile wait for it) — the preview of a hole is the job's rows;
     `set_summary` — the summary of the whole table (top cut: when computed for the thresholds or ≤ 200 000 rows;
     equivalent: ≤ 200 000 rows), else null. The top cut adds `thresholds` {domain: T | null}. Nothing is written.
     `POST /declus/preview` — 422 `no_preview` (the weights depend on all the samples; the window has none);
@@ -167,14 +168,78 @@ def _revisions(conn: Any, spec: Any) -> tuple[Any, ...]:
     return tuple(out)
 
 
+_sorted_cache: OrderedDict[tuple[Any, ...], tuple[Any, int, int]] = OrderedDict()
+_gates: dict[tuple[Any, ...], threading.Lock] = {}
+SORTED_MAX = 1  # 5 million rows sorted with their running sums — some 240 MB
+
+
+def _sorted(project: Any, spec: Any) -> tuple[Any, int, int]:
+    """(`topcut.Prepared`, rows without FROM or TO, rows) of the field of the top cut over the whole table: kept by
+    the revisions, the field and the domain — not by P, the value or the thresholds: a new P is a binary search per
+    domain (решение 27). One computation per key at a time: requests meanwhile wait for it (single-flight)."""
+    from . import jobs_prep as jp
+    from .topcut import prepare
+
+    with dialect.read_tx(project.engine) as conn:
+        key = (project.uid, "topcut", *_revisions(conn, spec),
+               json.dumps({**spec.hash_params(), "kernel": None}, sort_keys=True, ensure_ascii=False))  # fmt: skip
+    with _lock:
+        hit = _sorted_cache.get(key)
+        if hit is not None:
+            _sorted_cache.move_to_end(key)
+            return hit
+        gate = _gates.setdefault(key, threading.Lock())
+    with gate:
+        with _lock:
+            hit = _sorted_cache.get(key)
+        if hit is not None:
+            return hit
+        try:
+            src, dom = jp.read_prep(project.engine, spec, cache_dir=project.folder / "cache" / "tables")
+            codes, names = jp.src_codes(spec, src, dom)
+            f = spec.fields[0]
+            out = (prepare(src.numbers[f], src.to_m - src.from_m, codes=codes, names=names), src.skipped, src.rows)
+            del src, dom
+            with _lock:
+                _sorted_cache[key] = out
+                while len(_sorted_cache) > SORTED_MAX:
+                    _sorted_cache.popitem(last=False)
+        finally:
+            with _lock:
+                _gates.pop(key, None)
+    return out
+
+
+def _whole_topcut(project: Any, spec: Any) -> dict[str, Any] | None:
+    """{thresholds, summary, notes} of the job of the top cut over the whole table, from `_sorted`."""
+    from . import jobs as cj
+    from . import jobs_prep as jp
+    from .topcut import settle
+
+    prep, skipped, rows = _sorted(project, spec)
+    if spec.kernel.mode != "percentile" and rows > SET_SUMMARY_ROWS:
+        return None
+    f = spec.fields[0]
+    try:
+        thr, rep = settle(prep, spec.kernel, f)
+    except ValueError as exc:  # CompositeError → 422
+        raise cj.as_api(exc) from None
+    rep = jp.clean({**rep, "thresholds": dict(zip(prep.labels, thr, strict=True))})
+    notes = [*([jp.skipped_note(spec.table_name, skipped)] if skipped else []), *rep["notes"]]
+    return {"thresholds": rep["thresholds"], "summary": rep["summary"], "notes": notes}
+
+
 def _whole(project: Any, spec: Any) -> dict[str, Any] | None:
     """The job over the whole table — {thresholds, summary, notes}: always for the top cut by percentile (its
-    thresholds), else when the table has ≤ 200 000 rows; None otherwise. Cached by revisions and parameters."""
+    thresholds), else when the table has ≤ 200 000 rows; None otherwise. The top cut — from the table sorted once
+    per field and domain (`_sorted`); the equivalent — cached by revisions and parameters."""
     from . import jobs_prep as jp
 
     by_p = spec.op == "topcut" and spec.kernel.mode == "percentile"
     if not by_p and spec.rows > SET_SUMMARY_ROWS:
         return None
+    if spec.op == "topcut":
+        return _whole_topcut(project, spec)
     with dialect.read_tx(project.engine) as conn:
         key = (project.uid, spec.op, *_revisions(conn, spec),
                json.dumps(spec.hash_params(), sort_keys=True, ensure_ascii=False))  # fmt: skip
