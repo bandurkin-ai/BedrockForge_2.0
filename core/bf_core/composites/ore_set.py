@@ -201,11 +201,11 @@ def _sums(order, key, m, mc, nested, g_key, g_count, g_m, g_mc, c_count, c_m, c_
     qm = np.empty(64, np.float64)
     qmc = np.empty(64, np.float64)
     total = np.empty(64, np.float64)
-    nm = 0
-    nmc = 0
-    km = 0
-    kmc = 0
-    nt = 0
+    nm = np.int64(0)  # not the constant 0: one specialization of `_add_exact` and `_exact_total`
+    nmc = np.int64(0)
+    km = np.int64(0)
+    kmc = np.int64(0)
+    nt = np.int64(0)
     ng = 0
     count = 0
     cls_count = 0
@@ -217,16 +217,16 @@ def _sums(order, key, m, mc, nested, g_key, g_count, g_m, g_mc, c_count, c_m, c_
             g_m[ng] = _exact_total(pm, nm)
             g_mc[ng] = _exact_total(pmc, nmc)
             ng += 1
-            nm = 0
-            nmc = 0
+            nm = np.int64(0)
+            nmc = np.int64(0)
             count = 0
             if key[r] >> 32 != key[order[i - 1]] >> 32:
                 c = key[order[i - 1]] >> 32
                 c_count[c] = cls_count
                 c_m[c] = _exact_total(qm, km)
                 c_mc[c] = _exact_total(qmc, kmc)
-                km = 0
-                kmc = 0
+                km = np.int64(0)
+                kmc = np.int64(0)
                 cls_count = 0
         count += 1
         cls_count += 1
@@ -253,7 +253,11 @@ def _summary(iv: OreIntervals, domain: np.ndarray, with_domains: bool) -> dict[s
     """The summary by class and by (domain, class). Every sum is exactly rounded, whatever the order of the rows."""
     rows = len(iv)
     key = (iv.cls.astype(np.int64) << 32) + (domain.astype(np.int64) + 1)
-    order = np.argsort(key, kind="stable")
+    codes = int(domain.max()) + 2 if rows else 1
+    if len(CLASS_NAMES) * codes <= 1 << 16:  # few domains: 16-bit keys sort in linear time
+        order = np.argsort((iv.cls * codes + domain + 1).astype(np.uint16), kind="stable")
+    else:
+        order = np.argsort(key, kind="stable")
     groups = int(np.count_nonzero(np.diff(key[order]))) + 1 if rows else 0
     g_key = np.empty(groups, np.int64)
     g_count = np.empty(groups, np.int64)

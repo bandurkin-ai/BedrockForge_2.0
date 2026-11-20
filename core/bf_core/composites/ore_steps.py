@@ -61,6 +61,9 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
+from numba import float64, int8, int64
+
 from bf_core.jit import njit
 
 from . import ore_units as ou
@@ -236,7 +239,10 @@ def _layer_bounds(i0, i1, eo, em, emc, cb, pd, pm, sm):  # type: ignore[no-untyp
     return rel * total, rel * pm[i1]
 
 
-@njit(cache=True, nogil=True)
+_I1, _F1 = int64[::1], float64[::1]
+
+
+@njit((int64, int64, int64, _I1, _F1, _F1, _I1, int8[::1], _F1, _F1, int64), cache=True, nogil=True)
 def _put_unit(a, b, kind, eb, em, emc, wb, wo, wm, wmc, nw):  # type: ignore[no-untyped-def]
     """Unit `nw` of the series w — the elementary units [a, b); returns nw + 1."""
     m = 0.0
@@ -251,7 +257,11 @@ def _put_unit(a, b, kind, eb, em, emc, wb, wo, wm, wmc, nw):  # type: ignore[no-
     return nw + 1
 
 
-@njit(cache=True, nogil=True)
+@njit(
+    (*(int64,) * 8, _I1, _F1, _F1, int64, int64, _I1, _F1, _F1, int64[:, ::1], float64[:, ::1], int64),
+    cache=True,
+    nogil=True,
+)
 def _emit_units(  # type: ignore[no-untyped-def]
     a, b, step, kind, ore, cmp, dec, seq, eb, em, emc, hole, line, p_row, p_from, p_to, ev_i, ev_f, ne
 ):
@@ -285,7 +295,7 @@ def split_layers(  # type: ignore[no-untyped-def]
     st_k[0] = scan
     st_h[0] = i0
     top = 1
-    cuts = 0
+    cuts = np.int64(0)
     while top > 0:
         top -= 1
         a = st_a[top]

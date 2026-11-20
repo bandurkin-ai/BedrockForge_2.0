@@ -21,15 +21,15 @@ from tests.meshutil import UTM, cube, grid, icosphere
 
 DEPTH = 1e-6  # metres along the hole (Т8.2-7)
 NAN = math.nan
-O = np.array([UTM[0], UTM[1], 0.0])  # the low corner of the cube Z 0…100
+ORG = np.array([UTM[0], UTM[1], 0.0])  # the low corner of the cube Z 0…100
 
 
 def holes(collars, surveys=(), method="minimum_curvature") -> Trajectories:  # type: ignore[no-untyped-def]
-    """collars [(x, y, z, td)] in metres from `O`, surveys [(hole, depth, azimuth, dip)]."""
+    """collars [(x, y, z, td)] in metres from `ORG`, surveys [(hole, depth, azimuth, dip)]."""
     c = np.array(collars, dtype=float).reshape(-1, 4)
     s = np.array(surveys, dtype=float).reshape(-1, 4)
     return desurvey(
-        Collars(np.arange(len(c)), c[:, 0] + O[0], c[:, 1] + O[1], c[:, 2] + O[2], c[:, 3]),
+        Collars(np.arange(len(c)), c[:, 0] + ORG[0], c[:, 1] + ORG[1], c[:, 2] + ORG[2], c[:, 3]),
         Surveys(s[:, 0].astype(np.int64), s[:, 1], s[:, 2], s[:, 3]),
         method=method,
         n_holes=len(c),
@@ -37,9 +37,9 @@ def holes(collars, surveys=(), method="minimum_curvature") -> Trajectories:  # t
 
 
 def box(low=(0.0, 0.0, 0.0), size=(100.0, 100.0, 100.0), flip=False):  # type: ignore[no-untyped-def]
-    """A closed box of 12 triangles, normals outward (`flip` — inward), metres from `O`."""
+    """A closed box of 12 triangles, normals outward (`flip` — inward), metres from `ORG`."""
     v, t = cube(1, 1.0, offset=[0.0, 0.0, 0.0], seed=None)
-    return v * np.asarray(size, dtype=float) + np.asarray(low, dtype=float) + O, t[:, ::-1] if flip else t
+    return v * np.asarray(size, dtype=float) + np.asarray(low, dtype=float) + ORG, t[:, ::-1] if flip else t
 
 
 def shells(*parts):  # type: ignore[no-untyped-def]
@@ -75,7 +75,7 @@ def close(got, want, tol: float = DEPTH) -> bool:  # type: ignore[no-untyped-def
     return g.shape == w.shape and bool((np.abs(g - w) <= tol).all())
 
 
-CUBE = cube(10, 100.0, offset=O)  # Z 0…100, 10 m cells
+CUBE = cube(10, 100.0, offset=ORG)  # Z 0…100, 10 m cells
 
 
 # --- Т8.2-7 -----------------------------------------------------------------------------------------------
@@ -97,7 +97,9 @@ def test_t8_2_7_vertical_hole_through_a_cube() -> None:
     assert c.code[150:153].tolist() == [0, 0, -1] and c.rows[150:153].tolist() == [149, 150, 150]
     assert c.text()[50:52].tolist() == [None, "Руда"]
     length = c.lines.lengths()
-    assert length.sum() == pytest.approx(300.0, rel=1e-12) and length[c.code == 0].sum() == pytest.approx(100.0, abs=2e-6)
+    assert length.sum() == pytest.approx(300.0, rel=1e-12) and length[c.code == 0].sum() == pytest.approx(
+        100.0, abs=2e-6
+    )
     grade = np.arange(300.0)  # a column of the table: every part takes the value of its sample
     assert c.lines.take(grade).tolist() == c.rows.astype(float).tolist()
     # without it: the code by the middle of the sample and the share of its length inside
@@ -129,11 +131,24 @@ def test_holes_through_vertices_edges_and_faces_of_the_cube() -> None:
     for h, (_xy, want) in enumerate(cases):
         assert close(spans(st.lines, h), want), (h, spans(st.lines, h))
     # collars on the faces: on the top one the hole is above it and enters at depth 0; on the bottom one it is
-    # above it too — inside the cube — and leaves at once
-    traj = holes([(37.3, 61.7, 100.0, 50.0), (37.3, 61.7, 0.0, 50.0), (37.3, 61.7, 100.0, 30.0)],
-                 [(2, 0.0, 0.0, 90.0)])  # fmt: skip
-    st = cg.body_stretches(metres([(0, 50.0), (1, 50.0), (2, 30.0)]), traj, [0, 1, 2], [body("К", CUBE)])
-    assert spans(st.lines) == [(0.0, 50.0)] and st.lines.holes.tolist() == [0]
+    # above it too — inside the cube: it leaves at once going down, and is inside from the collar going up; on
+    # the west wall it is east of it — inside, on the east wall — outside. The collar check says the same.
+    collars = [
+        ((37.3, 61.7, 100.0, 50.0), -90.0, [(0.0, 50.0)]),  # the top face, down
+        ((37.3, 61.7, 0.0, 50.0), -90.0, []),  # the bottom face, down
+        ((37.3, 61.7, 100.0, 30.0), 90.0, []),  # the top face, up
+        ((37.3, 61.7, 0.0, 150.0), 90.0, [(0.0, 100.0)]),  # the bottom face, up: out through the top
+        ((30.0, 60.0, 100.0, 50.0), -90.0, [(0.0, 50.0)]),  # a vertex of the top face, down
+        ((0.0, 37.3, 50.0, 80.0), -90.0, [(0.0, 50.0)]),  # on the west wall, down along it
+        ((100.0, 37.3, 50.0, 80.0), -90.0, []),  # on the east wall
+        ((0.0, 37.3, 50.0, 30.0), -90.0, [(0.0, 30.0)]),  # on the west wall, never crossing: by the collar check
+        ((37.3, 61.7, 0.0, 40.0), 90.0, [(0.0, 40.0)]),  # on the bottom face, up, never crossing
+    ]
+    traj = holes([c for c, _dip, _want in collars], [(h, 0.0, 0.0, dip) for h, (_c, dip, _want) in enumerate(collars)])
+    lines = metres([(h, c[3]) for h, (c, _dip, _want) in enumerate(collars)])
+    st = cg.body_stretches(lines, traj, np.arange(len(collars)), [body("К", CUBE)])
+    for h, (_c, _dip, want) in enumerate(collars):
+        assert close(spans(st.lines, h), want), (h, spans(st.lines, h))
 
 
 # --- curved holes against a bisection ----------------------------------------------------------------------
@@ -182,13 +197,13 @@ def reference(traj: Trajectories, h: int, inside, step: float = 0.01) -> list[tu
 def test_curved_holes_against_bisection(method: str) -> None:
     traj = hard_holes(method)
     lines = metres([(h, 270.0) for h in range(traj.n_holes)], step=2.0)
-    ball = icosphere(2, 45.0, centre=O + [60.0, 55.0, 20.0])
+    ball = icosphere(2, 45.0, centre=ORG + [60.0, 55.0, 20.0])
     a, b, c = (ball[0][ball[1][:, k]] for k in range(3))
     normal = np.cross(b - a, c - a)
     offset = np.einsum("ij,ij->i", normal, a)
 
     def in_cube(p: np.ndarray) -> np.ndarray:
-        return ((p >= O) & (p <= O + 100.0)).all(axis=1)
+        return ((p >= ORG) & (p <= ORG + 100.0)).all(axis=1)
 
     def in_ball(p: np.ndarray) -> np.ndarray:  # a convex polyhedron: under the plane of every face
         return (p @ normal.T < offset).all(axis=1)
@@ -275,7 +290,8 @@ def test_random_stacks_of_boxes_against_brute_force() -> None:
         edges = np.sort(rng.choice(np.arange(1, 3500), size=120, replace=False)) * 0.1
         near = [top - z + d for r in ranges for z, _ in r[:1] for d in (-4e-7, 3e-7)]  # within the tolerance
         f = np.unique(np.concatenate([edges, [x for x in near if 0.0 < x < 350.0]]))
-        lines = iv.build_lines([0] * (len(f) - 1) + [1] * (len(f) - 1), np.tile(f[:-1], 2), np.tile(f[1:], 2))
+        keep = np.flatnonzero(rng.random(len(f) - 1) < 0.9)  # gaps between the samples
+        lines = iv.build_lines([0] * len(keep) + [1] * len(keep), np.tile(f[:-1][keep], 2), np.tile(f[1:][keep], 2))
         st = cg.body_stretches(lines, traj, [0, 1], bodies)
         split, whole = cg.code_samples(lines, st), cg.code_samples(lines, st, split=False)
         for h, collar in ((0, top), (1, top - 250.0)):
@@ -334,11 +350,33 @@ def test_random_stacks_of_boxes_against_brute_force() -> None:
     assert tiny > 0
 
 
+def test_boundaries_nearer_than_the_tolerance_are_one_boundary() -> None:
+    """Bodies that miss each other by less than 1e−6 m (or share a face): no sliver of a third body between
+    them, no sample cut twice, and a sample whose middle fell into the gap is not left without a code."""
+    upper = box((0.0, 0.0, 100.0), (100.0, 100.0, 50.0))  # depths 50…100 of a hole from Z 200
+    lower = box((0.0, 0.0, 50.0), (100.0, 100.0, 50.0 - 5e-7))  # 100 + 5e−7 … 150
+    around = box((-10.0, -10.0, 40.0), (120.0, 120.0, 120.0))  # 40…160, the last in the list
+    traj = holes([(37.3, 61.7, 200.0, 200.0)])
+    frm = np.arange(1.0, 199.0, 2.0)  # the sample 99–101 has its middle on the boundary
+    lines = iv.build_lines([0] * len(frm), frm, frm + 2.0)
+    st = cg.body_stretches(lines, traj, [0], [body("В", upper), body("Н", lower), body("О", around)])
+    assert [st.names[k] for k in st.code] == ["О", "В", "Н", "О"]
+    assert close(spans(st.lines), [(40.0, 50.0), (50.0, 100.0), (100.0, 150.0), (150.0, 160.0)], 1e-9)
+    assert st.lines.frm[2] == st.lines.to[1]  # one boundary
+    split = cg.code_samples(lines, st)
+    mine = split.rows == 49
+    assert close([spans(split.lines)[i] for i in np.flatnonzero(mine)], [(99.0, 100.0), (100.0, 101.0)], 1e-9)
+    assert split.text()[mine].tolist() == ["В", "Н"] and split.report["cut"] == 5  # at 40, 50, 100, 150, 160
+    whole = cg.code_samples(lines, st, split=False)
+    assert whole.text()[49] == "Н" and whole.inside_frac[49] == pytest.approx(0.5, abs=1e-9)  # type: ignore[index]
+    assert whole.inside_frac[[24, 25, 48, 50]].tolist() == [0.5, 1.0, 1.0, 1.0]  # type: ignore[index]
+
+
 # --- refusals ----------------------------------------------------------------------------------------------
 
 
 def test_open_surface_is_refused_with_code_message_and_hint() -> None:
-    surface = grid(8, 8, lambda x, y: 0.0 * x + 50.0, step=10.0, offset=O)
+    surface = grid(8, 8, lambda x, y: 0.0 * x + 50.0, step=10.0, offset=ORG)
     with pytest.raises(cg.CompositeError) as err:
         body("Кровля", surface)
     e = err.value.as_dict()
@@ -363,7 +401,7 @@ def test_open_surface_is_refused_with_code_message_and_hint() -> None:
 
 def test_a_body_turned_inside_out_is_refused_not_coded_wrong() -> None:
     traj, lines = holes([(50.0, 50.0, 150.0, 300.0), (350.0, 50.0, 150.0, 300.0)]), metres([(0, 300.0), (1, 300.0)])
-    v, t = cube(4, 100.0, offset=O, seed=None)
+    v, t = cube(4, 100.0, offset=ORG, seed=None)
     t = t.copy()
     t[:5] = t[:5, ::-1]  # some triangles wound the other way: the normals of neighbours disagree
     with pytest.raises(cg.CompositeError) as err:
@@ -384,7 +422,7 @@ def test_a_body_turned_inside_out_is_refused_not_coded_wrong() -> None:
 
 
 def test_holes_without_a_trajectory_get_no_code_and_never_a_zero() -> None:
-    traj = desurvey(Collars(np.arange(2), [O[0] + 50.0, NAN], [O[1] + 50.0, NAN], [150.0, NAN], [300.0, 100.0]),
+    traj = desurvey(Collars(np.arange(2), [ORG[0] + 50.0, NAN], [ORG[1] + 50.0, NAN], [150.0, NAN], [300.0, 100.0]),
                     n_holes=2)  # fmt: skip
     lines = metres([(3, 200.0), (5, 100.0), (9, 100.0)], step=10.0)  # hole 5 has no collar, 9 is not in the set
     st = cg.body_stretches(lines, traj, [0, 1, -1], [body("Руда", box())])
@@ -411,6 +449,22 @@ def test_samples_below_the_end_of_the_path_take_the_code_of_its_end() -> None:
     assert c.report["below_end"] == 2 + 6 and any("ниже конца траектории — 8" in line for line in c.journal)
 
 
+def test_nothing_to_code() -> None:
+    traj, lines = holes([(50.0, 50.0, 150.0, 200.0)]), metres([(4, 200.0)], step=50.0)
+    c = cg.code_by_wireframes(lines, traj, [0], [], split=False)  # no bodies
+    assert c.code.tolist() == [-1] * 4 and c.inside_frac.tolist() == [0.0] * 4 and c.names == []  # type: ignore[union-attr]
+    none = iv.build_lines([], [], [])  # no samples
+    for split in (True, False):
+        c = cg.code_by_wireframes(none, traj, [], [body("Руда", box())], split=split)
+        assert (
+            c.lines.n == 0
+            and c.code.shape == (0,)
+            and c.report["codes"] == [{"name": "Руда", "rows": 0, "length": 0.0}]
+        )
+    with pytest.raises(ValueError, match="share a trajectory"):
+        cg.body_stretches(metres([(1, 10.0), (2, 10.0)]), traj, [0, 0], [body("Руда", box())])
+
+
 # --- threads, the order of the holes -------------------------------------------------------------------------
 
 
@@ -426,15 +480,17 @@ def field(n: int, seed: int = 3) -> tuple[Trajectories, iv.Lines, list[cg.Body]]
     s_az = np.concatenate([az, az + rng.uniform(-20.0, 20.0, len(bent))]) % 360.0
     dip = rng.uniform(-90.0, -45.0, len(bent))
     s_dip = np.concatenate([dip, np.clip(dip + rng.uniform(-15.0, 25.0, len(bent)), -90.0, 10.0)])
-    traj = desurvey(Collars(np.arange(n), x + O[0], y + O[1], z, td), Surveys(s_hole, s_depth, s_az, s_dip), n_holes=n)
+    traj = desurvey(
+        Collars(np.arange(n), x + ORG[0], y + ORG[1], z, td), Surveys(s_hole, s_depth, s_az, s_dip), n_holes=n
+    )
     per = 20
     cuts = np.sort(rng.uniform(0.0, 1.0, (n, per + 1)), axis=1) * td[:, None]
     keep = rng.random((n, per)) < 0.9  # gaps
     hole = np.repeat(np.arange(n), per).reshape(n, per)
     lines = iv.build_lines(hole[keep], cuts[:, :-1][keep], cuts[:, 1:][keep])
     bodies = [
-        body("Ядро", cube(3, 30.0, offset=O + [40.0, 40.0, 30.0])),
-        body("Шар", icosphere(3, 70.0, centre=O + [60.0, 50.0, 40.0])),
+        body("Ядро", cube(3, 30.0, offset=ORG + [40.0, 40.0, 30.0])),
+        body("Шар", icosphere(3, 70.0, centre=ORG + [60.0, 50.0, 40.0])),
         body("Куб", CUBE),
         body("Пласт", box((-200.0, -200.0, -40.0), (500.0, 500.0, 25.0))),
     ]
@@ -455,6 +511,15 @@ def test_threads_and_the_order_of_the_holes_do_not_change_the_result() -> None:
     assert one[True].report["cut"] > 1000 and (np.bincount(one[False].code + 1, minlength=5) > 100).all()
     inside = [b["inside"] for b in one[True].report["bodies"]]  # holes wholly inside the ball and the cube
     assert inside[1] > 20 and inside[2] > 10
+    # the two ways agree: an uncut sample has the code of its middle; INSIDE_FRAC is the length of the parts of
+    # the sample with its code (without a code — with any) over its length
+    parts, whole = one[True], one[False]
+    size, of = parts.lines.lengths(), parts.rows
+    assert np.array_equal(parts.code[np.bincount(of)[of] == 1], whole.code[np.bincount(of) == 1])
+    mine = np.where(whole.code[of] >= 0, parts.code == whole.code[of], parts.code >= 0)
+    share = np.bincount(of, weights=np.where(mine, size, 0.0), minlength=lines.n) / lines.lengths()
+    assert whole.inside_frac == pytest.approx(share, abs=1e-12)
+    assert share.min() == 0.0 and share.max() == 1.0 and np.count_nonzero((share > 0.0) & (share < 1.0)) > 1000
     for threads in (2, 4, 8):
         for split in (True, False):
             again = cg.code_by_wireframes(lines, traj, dense, bodies, split=split, threads=threads)

@@ -1,8 +1,7 @@
 """Coding of samples by wireframes (ТЗ 8.2.2, Т8.2-7; ADR 0018 §6, решение 6): which closed body every part of
 every hole is inside of, and the code of every sample.
 
-    bodies = [Body.of("Руда", xyz, tri, stats, ordered=True), …]   # the order of the list is the priority;
-                                                                    # or Body(name, exact.Geometry.target(stats))
+    bodies = [Body.of("Руда", xyz, tri, stats, ordered=True), …]   # by priority; or Body(name, Geometry.target(stats))
     st = body_stretches(samples, traj, dense, bodies, threads=…, tick=…) -> Stretches
         st.lines — the stretches of the holes inside the bodies: disjoint, by (hole, FROM); st.code — int32 [n],
         the body of every stretch (its place in the list); st.names — the CODE of every body; st.known
@@ -12,15 +11,14 @@ every hole is inside of, and the code of every sample.
     composites by domains:  domains.domain_stretches(samples, st.lines, st.code);  DOMAIN — st.names
 
 `samples` — `intervals.build_lines` of the table; `traj` — the trajectories of the set; `dense` — per hole of the
-samples, its index in `traj` (`coords.hole_index`), −1 — none. `bodies` may be a generator: one wireframe is
-held at a time (`n_bodies` — their number, for the progress). `check_stats(name, stats)` refuses an open
-wireframe by its stored measures before anything is read.
+samples, its index in `traj` (`coords.hole_index`), −1 — none. `bodies` may be a generator: one wireframe is held
+at a time (`n_bodies` — their number, for the progress). `check_stats(name, stats)` refuses an open wireframe by
+its stored measures before anything is read.
 
 Stretches. `geo/intersect.py` as it is: `hole_crossings` (a tree of boxes in float64, the depth of a crossing on
 the course itself to 1e−8 m — finer than the chords ≤ 1 m of the ТЗ) and `inside_intervals` (entries and exits by
-the side of the triangle), a body at a time, the holes in strips of 4096 on threads. Only the holes whose box
-(grown by half of their longest course: an arc stays within that of its chord) meets the box of the body are
-walked.
+the side of the triangle), a body at a time, the holes in strips of 4096 on threads; only the holes whose box
+(grown by half of their longest course: an arc stays within that of its chord) meets the box of the body.
   * The collar check. A hole that does not cross a body has no entry to tell it by: when its collar is within
     the box of the body, a vertical segment from above the body down to the collar goes through the same
     kernels — the entries less the exits is the number of shells the collar is inside of; more than none — the
@@ -32,7 +30,8 @@ walked.
   * A depth below the end of the path is its end (`Trajectories.positions`, the coordinates of samples): a hole
     that ends inside a body is inside it to the bottom of its last sample.
   * Bodies that overlap: the stretch goes to the first of them in the list. A stretch not longer than
-    `DEPTH_EPS` (1e−6 m) is left out; two stretches of one body nearer than that are one.
+    `DEPTH_EPS` (1e−6 m) is left out; two stretches nearer than that have one boundary (bodies that share a
+    face leave no gap for the middle of a sample to fall into), and of one body — are one stretch.
 
 Samples. With the division (ТЗ 8.2.2: by default) a sample is cut at every boundary of the stretches inside it,
 the parts tile it — the first FROM and the last TO are its own, bit for bit — and each takes the code of its
@@ -62,6 +61,7 @@ from bf_core.jit import njit
 
 from . import intervals as iv
 from . import strips
+from .coords import hole_index
 from .intervals import DEPTH_EPS, CompositeError
 from .strips import Tick
 
@@ -75,8 +75,8 @@ _NAMED = 10  # names of bodies listed in a line of the journal
 @njit(cache=True, nogil=True)
 def _resolve(hole, body, frm, to, n_bodies, eps, o_hole, o_code, o_frm, o_to):  # type: ignore[no-untyped-def]
     """Stretches inside bodies, grouped by hole (those of one body apart) → disjoint stretches, each of the
-    least body that covers it; returns their number. Not longer than `eps` — left out; of one code and not
-    further than `eps` from the one before — joined to it."""
+    least body that covers it; returns their number. Not longer than `eps` — left out; not further than `eps`
+    from the one before — begins where that one ends, and of the same body — is joined to it."""
     n = hole.shape[0]
     active = np.zeros(n_bodies, dtype=np.int64)
     k = 0
@@ -116,12 +116,13 @@ def _resolve(hole, body, frm, to, n_bodies, eps, o_hole, o_code, o_frm, o_to):  
                             break
             if new != cur:
                 if cur >= 0 and x - since > eps:
-                    if k > first and o_code[k - 1] == cur and since - o_to[k - 1] <= eps:
+                    touch = k > first and since - o_to[k - 1] <= eps
+                    if touch and o_code[k - 1] == cur:
                         o_to[k - 1] = x
                     else:
                         o_hole[k] = hole[i]
                         o_code[k] = cur
-                        o_frm[k] = since
+                        o_frm[k] = o_to[k - 1] if touch else since
                         o_to[k] = x
                         k += 1
                 cur = new
@@ -237,7 +238,7 @@ def check_stats(name: str, stats: Mapping[str, Any] | None) -> None:
     """CompositeError `wireframe_open` unless the measures of a wireframe (`wireframes.stats`) say it is a
     closed solid — before its geometry is read."""
     s = stats or {}
-    if s.get("closed") and s.get("orientation") in ("outward", "inward"):
+    if s.get("closed"):
         return
     opened, nonmanifold = int(s.get("open_edges") or 0), int(s.get("nonmanifold_edges") or 0)
     if opened:
@@ -258,10 +259,13 @@ class Body:
     target: gi.MeshTarget
 
     @classmethod
-    def of(cls, name: str, xyz: Any, tri: Any, stats: Mapping[str, Any] | None = None, *, ordered: bool = False) -> Body:
-        """From the arrays of a wireframe and its stored measures (None — measured here); `ordered` — the
-        triangles are in spatial order already (a stored wireframe). CompositeError `wireframe_open`."""
-        if stats is None:
+    def of(
+        cls, name: str, xyz: Any, tri: Any, stats: Mapping[str, Any] | None = None, *, ordered: bool = False
+    ) -> Body:
+        """From the arrays of a wireframe and its stored measures (None, or closed without an orientation —
+        measured here); `ordered` — the triangles are in spatial order already (a stored wireframe).
+        CompositeError `wireframe_open`."""
+        if stats is None or (stats.get("closed") and stats.get("orientation") not in ("outward", "inward")):
             stats = mesh_stats(*mesh_arrays(xyz, tri))
         check_stats(name, stats)
         return cls(name, gi.MeshTarget.from_stats(xyz, tri, stats, ordered=ordered))
@@ -271,7 +275,7 @@ def _checked(body: Body) -> gi.MeshTarget:
     """The tree of a body that can code: said to be a solid, its neighbouring triangles wound one way."""
     target = body.target
     if target.solid is None or target.triangles == 0:
-        check_stats(body.name, {"closed": False})
+        check_stats(body.name, {"closed": False})  # (a surface, or a tree made without the measures)
     conflicts = orientation_conflicts(target.tri, len(target.xyz))
     if conflicts:
         raise CompositeError(
@@ -300,8 +304,8 @@ def _hole_boxes(traj: Trajectories, which: np.ndarray) -> tuple[np.ndarray, np.n
     course[first] = 0.0
     built = np.flatnonzero(off[1:] > off[:-1])  # the holes with stations: their stations are consecutive
     at = np.searchsorted(built, which)
-    lo = np.minimum.reduceat(xyz, off[built], axis=0)[at]
-    hi = np.maximum.reduceat(xyz, off[built], axis=0)[at]
+    lo = np.fmin.reduceat(xyz, off[built], axis=0)[at]  # (a station without coordinates is not a corner)
+    hi = np.fmax.reduceat(xyz, off[built], axis=0)[at]
     grow = 0.5 * np.maximum.reduceat(course, off[built])[at][:, None] + 2.0 * gi.SAGITTA_M
     return lo - grow, hi + grow
 
@@ -460,7 +464,6 @@ def body_stretches(
     counts = np.bincount(o_hole, minlength=samples.n_holes)
     keep = counts > 0
     lines = iv.Lines(samples.holes[keep], strips.offsets(counts[keep]), o_frm, o_to)
-    missing = int(samples.n_holes - place.shape[0])
     journal = []
     unseen = [name for k, name in enumerate(names) if not bool((o_code == k).any())]
     if unseen:
@@ -468,13 +471,8 @@ def body_stretches(
             f"Каркасов, внутри которых стволов нет (или они целиком закрыты телами выше по списку), — {len(unseen)}: "
             f"{_listed(unseen)}."
         )
-    report = {
-        "bodies": per,
-        "holes": int(place.shape[0]),
-        "no_trajectory": missing,
-        "stretches": int(lines.n),
-        "length": float(lines.lengths().sum()),
-    }
+    report = {"bodies": per, "holes": int(place.shape[0]), "no_trajectory": int(samples.n_holes - place.shape[0]),
+              "stretches": int(lines.n), "length": float(lines.lengths().sum())}  # fmt: skip
     return Stretches(lines, o_code, names, known, ends, report, journal)
 
 
@@ -496,15 +494,6 @@ class Coded:
         return np.array([*self.names, None], dtype=object)[self.code]  # −1 → the last one: None
 
 
-def _match(holes: np.ndarray, into: np.ndarray) -> np.ndarray:
-    """For every hole id — its index in the ascending ids `into`, −1 — none."""
-    if into.shape[0] == 0:
-        return np.full(holes.shape[0], -1, dtype=np.int64)
-    pos = np.searchsorted(into, holes)
-    pos[pos == into.shape[0]] = 0
-    return np.where(into[pos] == holes, pos, -1).astype(np.int64)
-
-
 def code_samples(
     samples: iv.Lines, stretches: Stretches, *, split: bool = True, threads: int = 1, tick: Tick | None = None
 ) -> Coded:
@@ -514,7 +503,7 @@ def code_samples(
     st = stretches.lines
     if stretches.known.shape[0] != samples.n_holes:
         raise ValueError("the stretches are not of these samples")
-    src = _match(samples.holes, st.holes)
+    src = hole_index(st.holes, samples.holes)  # the hole of the stretches of every hole of the samples
     known = np.ascontiguousarray(stretches.known, dtype=np.bool_)
     nh = samples.n_holes
     spans = (samples.starts, samples.frm, samples.to, src)
@@ -548,33 +537,31 @@ def code_samples(
     n_rows = np.bincount(code[coded], minlength=n_names)
     by_len = np.bincount(code[coded], weights=length[coded], minlength=n_names)
     per_hole = np.diff(samples.starts)
-    lost = ~known
-    below = samples.to > np.repeat(stretches.ends, per_hole) + DEPTH_EPS  # NaN compares False
+    lost, lost_rows = int(np.count_nonzero(~known)), int(per_hole[~known].sum())
+    below = int(np.count_nonzero(samples.to > np.repeat(stretches.ends, per_hole) + DEPTH_EPS))  # NaN: False
+    cut = int(np.count_nonzero(np.bincount(rows, minlength=samples.n) > 1))
     report = {
         "split": bool(split),
         "rows_in": samples.n,
         "rows": lines.n,
-        "cut": int(np.count_nonzero(np.bincount(rows, minlength=samples.n) > 1)),
+        "cut": cut,
         "length": float(length.sum()),
         "coded": int(np.count_nonzero(coded)),
         "coded_len": float(length[coded].sum()),
         "codes": [
             {"name": name, "rows": int(n_rows[k]), "length": float(by_len[k])} for k, name in enumerate(stretches.names)
         ],
-        "no_trajectory": {"holes": int(np.count_nonzero(lost)), "rows": int(per_hole[lost].sum())},
-        "below_end": int(np.count_nonzero(below)),
+        "no_trajectory": {"holes": lost, "rows": lost_rows},
+        "below_end": below,
     }
     journal = []
-    if report["no_trajectory"]["holes"]:
+    if lost:
         blank = "код пуст" if split else "код и INSIDE_FRAC пусты"
-        journal.append(
-            f"Скважин без траектории — {report['no_trajectory']['holes']} (проб — {report['no_trajectory']['rows']}): "
-            f"{blank}. Проверьте координаты устьев."
-        )
-    if report["below_end"]:
-        journal.append(f"Проб ниже конца траектории — {report['below_end']}: код взят по концу траектории.")
+        journal.append(f"Скважин без траектории — {lost} (проб — {lost_rows}): {blank}. Проверьте координаты устьев.")
+    if below:
+        journal.append(f"Проб ниже конца траектории — {below}: код взят по концу траектории.")
     if split:
-        journal.append(f"Проб разделено на границах тел — {report['cut']}; строк — {lines.n} (было {samples.n}).")
+        journal.append(f"Проб разделено на границах тел — {cut}; строк — {lines.n} (было {samples.n}).")
     empty = [name for k, name in enumerate(stretches.names) if n_rows[k] == 0]
     if empty:
         journal.append(f"Каркасов без проб внутри — {len(empty)}: {_listed(empty)}.")
@@ -596,7 +583,7 @@ def code_by_wireframes(
     `stretches`), the journal — their lines first."""
     st = body_stretches(samples, traj, dense, bodies, n_bodies=n_bodies, threads=threads, tick=_part(tick, 0.0, 0.85))
     c = code_samples(samples, st, split=split, threads=threads, tick=_part(tick, 0.85, 1.0))
-    report = {**c.report, "bodies": st.report["bodies"], "holes": st.report["holes"], "stretches": st.report["stretches"]}
+    report = {**c.report, **{key: st.report[key] for key in ("bodies", "holes", "stretches")}}
     return Coded(c.lines, c.rows, c.code, c.inside_frac, c.names, report, st.journal + c.journal)
 
 
@@ -605,10 +592,9 @@ def warm() -> None:
     into NUMBA_CACHE_DIR or loaded from it (`composites/warm.py`)."""
     from bf_core.drillholes.desurvey import Collars, desurvey
 
-    v = np.array([[x, y, z] for z in (0.0, 4.0) for y in (0.0, 4.0) for x in (0.0, 4.0)])
-    t = np.array([[0, 2, 1], [1, 2, 3], [4, 5, 6], [5, 7, 6], [0, 1, 4], [1, 5, 4], [2, 6, 3], [3, 6, 7],
-                  [0, 4, 2], [2, 4, 6], [1, 3, 5], [3, 7, 5]], dtype=np.int32)  # fmt: skip
-    traj = desurvey(Collars(np.arange(2), [1.0, 2.5], [1.5, 2.0], [6.0, 3.0], [9.0, 0.5]), n_holes=2)
+    v = np.array([[0.0, 0.0, 0.0], [8.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 8.0]])  # a tetrahedron
+    t = np.array([[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]], dtype=np.int32)
+    traj = desurvey(Collars(np.arange(2), [1.25, 2.5], [1.5, 2.0], [6.0, 3.0], [9.0, 0.5]), n_holes=2)
     samples = iv.build_lines([0, 0, 0, 1], [0.0, 3.0, 6.0, 0.0], [3.0, 6.0, 9.0, 0.5])
     for split in (True, False):
         code_by_wireframes(samples, traj, [0, 1], [Body.of("A", v, t), Body.of("B", v + 1.0, t)], split=split)

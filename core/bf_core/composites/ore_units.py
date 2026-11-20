@@ -25,11 +25,19 @@ the units, and an excluded fragment «порода … порода» is a unit 
 Events (ADR 0018 §9) — one record per decision, two parallel arrays `ev_i[cap, EI_COLS]` (int64) and
 `ev_f[cap, EF_COLS]` (float64); a kernel returns the number of events it wanted to write and writes while
 there is room (cap = 0 — events are off, the batch over a set of holes).
+
+One specialization of every kernel (ADR 0018 §5). A helper called from many places with constants in its
+arguments (`emit`, `emit_frag`; `_put_row`, `_put_unit` of the other modules) carries its signature: numba
+otherwise compiles it anew for every pattern of constants («Literal[int](0)» is a type of its own) — 13 copies
+of `emit` and 8 of `_put_row`, 21 s of the first compilation instead of 9. For the same reason a counter that
+a kernel hands on starts as `np.int64(0)`, not as the constant 0.
 """
 
 from __future__ import annotations
 
 import math
+
+from numba import float64, int64
 
 from bf_core.jit import njit
 
@@ -149,7 +157,10 @@ def cond_k(m, mc, c_min, m_min, mc_min):  # type: ignore[no-untyped-def]
     return BASIS_NONE
 
 
-@njit(cache=True, nogil=True)
+_EV = (int64[:, ::1], float64[:, ::1])  # the arrays of the events
+
+
+@njit((*_EV, *(int64,) * 13, *(float64,) * 4), cache=True, nogil=True)
 def emit(  # type: ignore[no-untyped-def]
     ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec, row0, row1, seq, f, t, m, mc
 ):
@@ -175,7 +186,7 @@ def emit(  # type: ignore[no-untyped-def]
     return ne + 1
 
 
-@njit(cache=True, nogil=True)
+@njit((*_EV, *(int64,) * 13, int64[::1], float64[::1], float64[::1], float64, float64), cache=True, nogil=True)
 def emit_frag(  # type: ignore[no-untyped-def]
     ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec, seq, a, b, p_row, p_from, p_to, m, mc
 ):

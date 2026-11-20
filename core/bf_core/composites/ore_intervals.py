@@ -38,6 +38,7 @@ called after every strip and may raise to cancel.
 from __future__ import annotations
 
 import numpy as np
+from numba import float64, int8, int32, int64
 
 from bf_core.jit import njit
 
@@ -76,7 +77,12 @@ ALGO = 1  # version of the rules (ТЗ 7.35.10: answers № 17–24 are in); a c
 READY_MODES = ou.MODES
 
 
-@njit(cache=True, nogil=True)
+_F1 = float64[::1]
+_PIECES = (int64[::1], _F1, _F1, _F1, _F1, int8[::1])  # p_row, p_from, p_to, p_l, p_g, p_miss
+_OUT = (int8[::1], int32[::1], int64[:, ::1], float64[:, ::1])  # s_cls, s_ore, iv_i, iv_f
+
+
+@njit((*(int64,) * 8, float64, *_PIECES, *_OUT, int64), cache=True, nogil=True)
 def _put_row(  # type: ignore[no-untyped-def]
     a, b, cls, basis, ore_id, nested, hole, line, cb,
     p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni,
@@ -357,8 +363,8 @@ def _run_strip(  # type: ignore[no-untyped-def]
     pm = np.empty(cap, np.float64)
     sm = np.empty(cap, np.float64)
     strict = mode == ou.MODE_STRICT or mode == ou.MODE_STRICT_EXCL
-    ni = 0
-    ore_no = 0
+    ni = np.int64(0)  # not the constant 0: one specialization of the kernels they go to (`ore_units`)
+    ore_no = np.int64(0)
     hole_prev = -1
     for j in range(nl):
         hole = line_hole[j]
@@ -366,7 +372,7 @@ def _run_strip(  # type: ignore[no-untyped-def]
         p0 = line_start[j]
         p1 = line_start[j + 1]
         if hole != hole_prev:
-            ore_no = 0
+            ore_no = np.int64(0)
             hole_prev = hole
         nel = ou.elementary(p0, p1, p_l, p_g, cb, eb, eo, em, emc)
         ne = ou.emit_units(nel, eb, eo, em, emc, hole, line, p_row, p_from, p_to, ev_i, ev_f, ne)
@@ -405,8 +411,8 @@ def _run_strip(  # type: ignore[no-untyped-def]
             hole, line, p_row, p_from, p_to, ev_i, ev_f, ne,
         )  # fmt: skip
         # steps 3–4: the series of step 2 → the series w; e — the elementary units of the unit [i0, e)
-        nw = 0
-        e = 0
+        nw = np.int64(0)
+        e = np.int64(0)
         for u in range(nu):
             i0 = e
             while e < nel and eb[e] < ub[u + 1]:
