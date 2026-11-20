@@ -309,7 +309,7 @@ def journal_columns(
                 group_id=group,
                 action="column",
                 row_ref={"table": str(table_id), "column": key},
-                changes={"column": [before, after], "kind": "number"},
+                changes={"column": [before, after]},
                 undone=False,
                 author=who,
                 created_at=now,
