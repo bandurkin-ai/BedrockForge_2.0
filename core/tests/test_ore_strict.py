@@ -37,6 +37,11 @@ def cuts(res: object) -> list[tuple[str, str, int, int]]:
     return [(e["kind"], e["decision"], e["row0"] + 1, e["row1"] + 1) for e in events_of(res, step=3)]  # type: ignore[arg-type]
 
 
+def rounded(res: object, cls: str | None = None) -> list[tuple[str, float, float]]:
+    """`brief` with the depths rounded: 2,3 + 6,0 + 2,3 is 10,600000000000001."""
+    return [(c, round(f, 9), round(t, 9)) for c, f, t in brief(res, cls)]  # type: ignore[arg-type]
+
+
 def test_t8_2_15_strict() -> None:
     """И2, сл. 18: before step 3 — 0–8 м @ 1,225; the fragment 2–6 м (4 м @ 0,95) is torn — ore 0–4 м @ 1,25
     (thickness) and 6–8 м @ 1,5 (MC = МС, mc); the gap 4–6 м (2 м ≤ Мпп) is waste."""
@@ -85,15 +90,15 @@ def test_a_conditioned_interval_stays_above_the_fragment() -> None:
     above — not кондиционный (MC 11,5 < 12); the next one, 10,6–24,9 м, leaves 10,6 м @ 2,45 and is taken.
     «Первый сверху» alone would end with five ore units of 2,3 м and nothing кондиционное."""
     res = ore_intervals(example_lines("T8.2-17"), example_params("T8.2-17", "strict_excl"), events=True)
-    assert brief(res) == [("ore", 0.0, 10.6), ("interlayer", 10.6, 24.9), ("ore", 24.9, 35.5)]
+    assert rounded(res) == [("ore", 0.0, 10.6), ("interlayer", 10.6, 24.9), ("ore", 24.9, 35.5)]
     assert cuts(res) == [("layer", "not_selected", 2, 4), ("layer", "interlayer", 4, 6)]
     passed = events_of(res, decision="not_selected")[0]
     assert passed["compared"] == "k" and close(passed["m"], 14.3) and close(passed["c"], 17.5 / 14.3)
-    assert (passed["from"], passed["to"]) == (2.3, 16.6)
+    assert close(passed["from"], 2.3) and close(passed["to"], 16.6)
     # «разорвать»: the same fragment; its last waste unit leaves, then 2,3–16,6 м is the only one in 0–18,9 м
     res = ore_intervals(example_lines("T8.2-17"), example_params("T8.2-17", "strict"), events=True)
-    assert brief(res, "ore") == [("ore", 0.0, 10.6), ("ore", 24.9, 35.5)]
-    assert brief(res)[1:4] == [("waste", 10.6, 16.6), ("subgrade", 16.6, 18.9), ("waste", 18.9, 24.9)]
+    assert rounded(res, "ore") == [("ore", 0.0, 10.6), ("ore", 24.9, 35.5)]
+    assert rounded(res)[1:4] == [("waste", 10.6, 16.6), ("subgrade", 16.6, 18.9), ("waste", 18.9, 24.9)]
     assert cuts(res) == [
         ("layer", "not_selected", 2, 4), ("layer", "torn", 4, 6), ("gap", "torn", 6, 6),
         ("layer", "not_selected", 2, 4), ("layer", "torn", 2, 4), ("gap", "torn", 4, 4),
@@ -102,7 +107,9 @@ def test_a_conditioned_interval_stays_above_the_fragment() -> None:
     # no fragment leaves a кондиционный interval above: the first one is taken (three ore units of 2,3 м)
     short = make_lines([[(0.0, 2.3, 5.0), (2.3, 8.3, 0.5), (8.3, 10.6, 5.0), (10.6, 16.6, 0.5), (16.6, 18.9, 5.0)]])
     p = example_params("T8.2-17", "strict_excl")
-    assert brief(ore_intervals(short, p)) == [("subgrade", 0.0, 2.3), ("interlayer", 2.3, 16.6), ("subgrade", 16.6, 18.9)]
+    assert brief(ore_intervals(short, p)) == [
+        ("subgrade", 0.0, 2.3), ("interlayer", 2.3, 16.6), ("subgrade", 16.6, 18.9),
+    ]  # fmt: skip
     torn = ore_intervals(short, example_params("T8.2-17", "strict"))
     assert brief(torn) == [("ore", 0.0, 10.6), ("waste", 10.6, 16.6), ("subgrade", 16.6, 18.9)]
     assert brief(ore_intervals(short, example_params("T8.2-17", "soft"))) == [("ore", 0.0, 18.9)]
