@@ -1,6 +1,7 @@
 /**
  * Rename, colour and delete of the objects of the data tree as registry commands (ADR 0011 §5; ТЗ 7.2: a
- * command that changes data is `confirm`): `object.rename`, `object.color`, `object.delete`. Without `kind`
+ * command that changes data is `confirm`): `object.rename`, `object.color`, `object.delete`; a block model
+ * (`kind: "blocks"`, ADR 0017 §3) is renamed and deleted, it has no colour of its own. Without `kind`
  * and `id` they work on the selected object. A call from the interface asks in an own window (the new name,
  * «Удалить?»); a call from Claude was confirmed by the registry already.
  */
@@ -14,6 +15,7 @@ import { selectWithProperties } from "../../shell/treeRun";
 import { deleteLineFile, renameLayer, setLayerColor } from "../lines/actions";
 import { findLayer } from "../lines/props";
 import { deleteRaster, rasterById, renameRaster } from "../rasters/actions";
+import { blocksStore, deleteBlockModel, loadBlocks, renameBlockModel } from "../blocks/state";
 import { loadSceneObjects, sceneObjects } from "../scene/objects";
 import { objectName, objectWhat } from "./named";
 import { deleteWireframe, renameWireframe, setWireframeColor } from "./state";
@@ -28,7 +30,7 @@ function target(app: App, a: Record<string, unknown>): Target {
   if (typeof a.kind === "string" && typeof a.id === "number") return { kind: a.kind as Target["kind"], id: a.id };
   if (a.kind !== undefined || a.id !== undefined) throw new Error("Укажите и kind, и id объекта — или ни того, ни другого: тогда берётся выбранный объект");
   const selected = app.store.get().selected;
-  if (!selected) throw new Error("Объект не выбран: щёлкните слой линий, растр, каркас или ЦТМ в дереве или в 3D-окне");
+  if (!selected) throw new Error("Объект не выбран: щёлкните слой линий, растр, каркас, ЦТМ или блочную модель в дереве или в 3D-окне");
   return selected;
 }
 
@@ -43,6 +45,7 @@ export function bindObjectCommands(app: App): void {
   const r = app.registry;
   const ready = async () => {
     if (!sceneObjects.get().loaded) await loadSceneObjects();
+    if (!blocksStore.get().loaded) await loadBlocks();
   };
 
   r.bind(
@@ -50,7 +53,7 @@ export function bindObjectCommands(app: App): void {
     noted(app, async (a, source) => {
       await ready();
       const t = target(app, a);
-      if (t.kind === "line_file" || t.kind === "blocks") throw new Error("Переименовать можно слой линий, растр, каркас или ЦТМ");
+      if (t.kind === "line_file") throw new Error("Переименовать можно слой линий, растр, каркас, ЦТМ или блочную модель");
       const o = named(t.kind, t.id);
       let name = typeof a.name === "string" ? a.name : null;
       if (name === null) {
@@ -63,6 +66,7 @@ export function bindObjectCommands(app: App): void {
       if (name === o.name) return `Название «${o.name}» не изменено`;
       if (t.kind === "lines") await renameLayer(findLayer(sceneObjects.get().files, t.id)!.layer, name);
       else if (t.kind === "raster") await renameRaster(rasterById(t.id)!, name);
+      else if (t.kind === "blocks") await renameBlockModel(t.id, name);
       else await renameWireframe(t.id, name);
       return `${capital(o.what)} «${o.name}» переименован${o.fem ? "а" : ""} в «${name}»`;
     }),
@@ -101,7 +105,6 @@ export function bindObjectCommands(app: App): void {
         const layers = counted(found.file.layers.length, "слой", "слоя", "слоёв");
         throw new Error(`Слой линий отдельно не удаляется. Удалите файл линий «${found.file.name}» (${layers}) — в его меню в дереве: «Удалить…».`);
       }
-      if (t.kind === "blocks") throw new Error("Блочные модели появятся на этапе Э17");
       // own confirmation of a call from the interface; Claude's call was confirmed by the registry
       const ask = (title: string, message: string) => (source === "user" ? askConfirm({ title, message, okLabel: "Удалить", danger: true }) : Promise.resolve(true));
       if (t.kind === "line_file") {
@@ -116,6 +119,9 @@ export function bindObjectCommands(app: App): void {
       if (t.kind === "raster") {
         if (!(await ask("Удалить растр", `Растр «${o.name}» удаляется из проекта вместе с файлом изображения. Отменить удаление нельзя.`))) return "Отменено";
         await deleteRaster(t.id);
+      } else if (t.kind === "blocks") {
+        if (!(await ask("Удалить блочную модель", `Блочная модель «${o.name}» удаляется из проекта вместе с ячейками и полями. Отменить удаление нельзя.`))) return "Отменено";
+        await deleteBlockModel(t.id);
       } else {
         if (!(await ask(`Удалить: ${o.what}`, `«${o.name}» удаляется из проекта. Отменить удаление нельзя.`))) return "Отменено";
         await deleteWireframe(t.id);

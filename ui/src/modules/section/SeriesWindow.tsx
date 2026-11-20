@@ -7,13 +7,14 @@
  */
 import { useState } from "react";
 import { useApp } from "../../shell/AppContext";
+import { askConfirm } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
 import { closeWindow } from "../../shell/windows";
 import css from "../../shell/PropsParts.module.css";
 import type { SeriesKind } from "../../viz/section/series";
-import type { ShadowMode } from "./seriesApi";
+import { confirmImpact, type ShadowMode } from "./seriesApi";
 import { seriesSaved } from "./seriesActions";
-import { FIELD_LABELS, formFromRow, rangeOver, saveSeries, SHADOW_TITLES, TYPE_TITLES, type FieldId, type SeriesForm } from "./seriesForm";
+import { FIELD_LABELS, formFromRow, rangeOver, readForm, saveSeries, SHADOW_TITLES, TYPE_TITLES, type FieldId, type SeriesForm } from "./seriesForm";
 import { boxCorners, seriesById, seriesStore, visibleBoxes } from "./seriesState";
 
 /** The fields of each type, in the order of the window. */
@@ -48,6 +49,9 @@ export function SeriesWindow({ winId, mode, form: initial, seriesId }: { winId: 
   };
   const submit = async () => {
     setBusy(true);
+    // ADR 0016 decision 4: new geometry of a series with contours is saved after our own question
+    const read = mode === "edit" ? readForm(f) : null;
+    if (read && "params" in read && !(await confirmImpact(seriesId!, read.params, askConfirm))) return setBusy(false);
     const r = await saveSeries(mode === "create" ? { mode } : { mode, id: seriesId!, version }, f);
     setBusy(false);
     if (r.ok) {

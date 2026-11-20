@@ -142,6 +142,7 @@ def test_composition_with_wireframes(files: dict[str, Path], project) -> None:  
     assert tridb["wireframes"][0]["attrs"] == [{"name": "Руда", "value": "Au"}] and tridb["layers"] == []
     assert tridb["totals"] == {
         "layers": 0, "lines": 0, "points": 0, "vertices": 0, "rasters": 0, "wireframes": 2, "triangles": 262,
+        "block_models": 0, "cells": 0,
     }  # fmt: skip
     mixed = by["mixed.dxf"]  # a drawing: its lines and its wireframes at once
     assert mixed["kind"] == "lines" and [layer["name"] for layer in mixed["layers"]] == ["FAULT"]
@@ -162,6 +163,7 @@ def test_composition_with_wireframes(files: dict[str, Path], project) -> None:  
     assert out["totals"] == {
         "files": 7, "failed": 0, "layers": 1, "lines": 2, "points": 0, "vertices": 3, "rasters": 0,
         "wireframes": 2 + 2 + 1 + 1 + 1 + 66 + 1, "triangles": 262 + 24 + 70 + 192 + 48 + 3590 + 7417,
+        "block_models": 0, "cells": 0,
     }  # fmt: skip
     assert state_of(project.engine, project.folder) == was  # nothing is written
 
@@ -172,11 +174,12 @@ def test_composition_with_wireframes(files: dict[str, Path], project) -> None:  
             ("ore.dm", {".dm": "nodes.dm"})
         ] and rest == []
     assert [g.main.name for g in plan(paths(files, "nodes.dm"))[0]] == ["nodes.dm"]
-    # what does not load says why: a later stage, a DWG without the converter (the text of Д-13)
-    later = files["one.obj"].with_name("model.omf")
-    later.write_bytes(b"OMF")
-    seen = inspect_files([str(later)])
-    assert seen["files"] == [] and "OMF" in seen["rest"][0]["message"] and ".tridb" in seen["rest"][0]["hint"]
+    # what does not load says why: a broken OMF, a DWG without the converter (the text of Д-13)
+    broken = files["one.obj"].with_name("model.omf")
+    broken.write_bytes(b"OMF")
+    seen = inspect_files([str(broken)])
+    error = seen["files"][0]["error"]
+    assert seen["rest"] == [] and error["code"] == "omf_damaged" and error["hint"]
 
 
 def test_dwg_without_the_converter_is_told(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -520,7 +523,7 @@ def test_broken_wireframes_and_broken_files(  # type: ignore[no-untyped-def]
             run_job(project.folder, {"files": [str(p) for p in bad]})
         assert err.value.code == code and bad[0].name in err.value.message and err.value.hint
     with pytest.raises(JobError) as err:
-        run_job(project.folder, {"files": [str(files["one.obj"].with_suffix(".omf"))]})
+        run_job(project.folder, {"files": [str(files["one.obj"].with_suffix(".bmf"))]})
     assert err.value.code == "nothing_to_import" and ".tridb" in err.value.hint
     assert state_of(project.engine, project.folder) == before and len(before["objects"]) == len(was["objects"]) + 3
 

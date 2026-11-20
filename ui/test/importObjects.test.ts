@@ -19,7 +19,7 @@ const file = (path: string, p: Partial<FileOk> = {}): FileOk => ({
 
 const composition = (files: Composition["files"], rest: Composition["rest"] = []): Composition => {
   const ok = files.filter((f): f is FileOk => f.ok);
-  const sum = (k: keyof FileOk["totals"]) => ok.reduce((n, f) => n + f.totals[k], 0);
+  const sum = (k: keyof FileOk["totals"]) => ok.reduce((n, f) => n + (f.totals[k] ?? 0), 0);
   return {
     files, rest,
     totals: { files: ok.length, failed: files.length - ok.length, layers: sum("layers"), lines: sum("lines"), points: sum("points"), vertices: sum("vertices"), rasters: sum("rasters"), wireframes: sum("wireframes"), triangles: sum("triangles") },
@@ -154,10 +154,11 @@ describe("where the chosen files go (ТЗ 7.8)", () => {
     expect(r.skipped).toEqual([]);
   });
 
-  it("what comes with later stages is told when nothing else of the selection is an object", () => {
+  it("an OMF file goes to the composition (Э11); a file of no known type is told when nothing else is an object", () => {
     const r = routeImport(["/d/model.omf", "/d/readme.md"]);
-    expect(r.objects).toEqual([]);
-    expect(r.skipped).toEqual(["model.omf — OMF: появится на этапе Э11", "readme.md — тип файла не распознан"]);
+    expect(r.objects).toEqual(["/d/model.omf", "/d/readme.md"]);
+    expect(r.skipped).toEqual([]);
+    expect(routeImport(["/d/readme.md"]).skipped).toEqual(["readme.md — тип файла не распознан"]);
     // next to object files they go to the composition: the core says why each is not loaded
     const mixed = routeImport(["/d/roads.str", "/d/model.omf", "/d/readme.md"]);
     expect(mixed.objects).toEqual(["/d/roads.str", "/d/model.omf", "/d/readme.md"]);

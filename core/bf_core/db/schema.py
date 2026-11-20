@@ -449,6 +449,7 @@ BLOB_ROLES: frozenset[str] = frozenset(
         "h",
         "dz",
         "lid",
+        "cells",  # block models: Parquet of the occupied cells (ADR 0017 §3, blocks/schema.py)
     }  # fmt: skip
 )
 BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:")

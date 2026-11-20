@@ -100,7 +100,7 @@ export class Scene {
         context: () => ({ clip: this.clipPlanes, resolution: this.resolution, textures: this.textures, labels: this.labels, pixelRatio: this.renderer.pixelRatio }),
         contentChanged: () => this.contentChanged(),
         gridChanged: () => this.refreshGrid(),
-        invalidate: () => this.loop.invalidate(),
+        invalidate: () => this.loop.invalidate(), gpu: () => this.gpu.gpuClass,
       },
       this.clipPlanes,
       this.resolution,

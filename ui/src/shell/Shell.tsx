@@ -20,6 +20,8 @@ import { GroundWindow } from "../modules/dtm/GroundWindow";
 import { DzWindow } from "../modules/lines/DzWindow";
 import { LinesExportWindow } from "../modules/lines/LinesExportWindow";
 import { renderLinesWindow } from "../modules/lines/windows";
+import { renderDataManagerWindow } from "../modules/datamanager/DataManager";
+import { OmfExportWindow } from "../modules/omf/OmfExportWindow";
 import { renderSeriesWindow } from "../modules/section/seriesWindows";
 import { OperationWindow } from "../modules/model/OperationWindow";
 import { ReportWindow } from "../modules/model/ReportWindow";
@@ -88,6 +90,8 @@ const renderWindow: WindowRenderer = (w) => {
       return <GroundWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
     case "cloud-dz":
       return <DzWindow winId={w.id} cloudId={typeof w.props?.cloudId === "number" ? w.props.cloudId : undefined} />;
+    case "omf-export":
+      return <OmfExportWindow winId={w.id} ids={w.props?.ids as number[] | undefined} />;
     case "wireframes-export":
       return <WireframesExportWindow winId={w.id} format={w.props?.format as string | undefined} wireframeIds={w.props?.wireframeIds as number[] | undefined} options={w.props?.options as Partial<ExportOptions> | undefined} />;
     case "model-operation":
@@ -95,7 +99,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderSeriesWindow(w) ?? renderLinesWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w);
   }
 };
 

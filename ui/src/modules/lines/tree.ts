@@ -103,6 +103,7 @@ export function layerMenu(l: Pick<LineLayerInfo, "id"> & Partial<Pick<LineLayerI
 export function fileMenu(f: Pick<LineFileInfo, "id">): TreeAction[] {
   return [
     { label: "Экспорт…", command: "lines.export", args: { file_id: f.id } },
+    { label: "Экспорт OMF…", command: "omf.export", args: { dataset_ids: String(f.id) } },
     SEPARATOR,
     { label: "Удалить…", command: "object.delete", args: { kind: "line_file", id: f.id } },
   ];

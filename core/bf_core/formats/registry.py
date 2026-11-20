@@ -30,6 +30,9 @@ the opened file as `ObjectsRead.cloud` — its points are read later, portion by
 (`importing/object_cloud.py`); `inspect=True` gives `formats.las.LasInspect` as `detail`. A `.laz` is told by its
 name: `laz_not_supported` with the hint of ADR 0014. A table of points goes into a cloud when the wizard asks for one
 (the option `cloud` of the file): `formats/points_stream.py`, not through this registry.
+OMF v1 (ADR 0017 §2, `_omf`): `detail` — the `OmfComposition`, `left_out`, `volumes` (entries, read by the import);
+`inspect=True` — the JSON alone; reading — the line sets as `layers`, the surfaces one at a time. OMF 2 (ZIP) —
+`omf2_not_supported` (`omf_file.open_omf`).
 
 Ported from BF `formats/registry.py` (table part: `TABLE_SUFFIXES`; object part: `detect`, `pair_files` of
 `rasters.py`) and `importing/service.py` (`read_table`, `check_supported`); block models and OMF come with
@@ -168,7 +171,9 @@ TRIDB, OBJ, STL, SURPAC_DTM, DATAMINE, DATAMINE_STR, DWG = (
     "dwg",
 )
 LAS = "las"
+OMF = "omf"
 LINES_KIND, POINTS_KIND, RASTER_KIND, WIREFRAMES_KIND, CLOUD_KIND = "lines", "points", "raster", "wireframes", "cloud"
+OMF_KIND = "omf"  # a project of several kinds: wireframes, a line file, block models
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp")
 WORLD_SUFFIXES = (".jgw", ".jpgw", ".pgw", ".pngw", ".tfw", ".tifw", ".bpw", ".bmpw", ".wld")
 POINT_SUFFIXES = (".xyz", ".csv", ".txt", ".tsv", ".prn", ".dat")
@@ -180,7 +185,7 @@ OPENED, LISTED, DRAWN = "opened", "listed", "drawn"
 SUPPORTED = (
     "Подходят: стринги .str / .pit, чертежи .dxf / .dwg, .shp, .mif, точки .xyz / .csv / .txt / .dat, "
     "каркасы .tridb / .obj / .stl / .dtm с .str / .dm, растры .jpg / .png / .tif / .bmp с файлом привязки, "
-    "облака точек .las."
+    "облака точек .las, проекты OMF v1 .omf."
 )
 
 
@@ -239,6 +244,8 @@ OBJECT_FORMATS: dict[str, ObjectFormat] = {
                      choices=(("layer_field", "layer_fields"),)),
         ObjectFormat(LAS, "Облако точек LAS (.las)", CLOUD_KIND, (".las", ".laz"),
                      _F + "las", "open_las", inspector="inspect_las", cloud=True),
+        ObjectFormat(OMF, "Проект OMF v1 (.omf): каркасы, линии, блочные модели", OMF_KIND, (".omf",),
+                     _F + "omf_read", "open_reader", meshes=OMF),
     )
 }  # fmt: skip
 _BY_CONTENT = (".str", ".dm")  # extensions of two formats: the content of the file tells which
@@ -272,6 +279,8 @@ class ObjectsRead:
     unread: list[MeshEntry] = field(default_factory=list)
     preliminary: bool = False  # the reader was not checked on real files (Datamine: ADR 0013 §6)
     choices: dict[str, list[str]] = field(default_factory=dict)  # option → the fields to choose from (inspect)
+    volumes: list[Any] = field(default_factory=list)  # OMF: `omf_compose.OmfEntry` of the volumes that load
+    left_out: list[dict[str, Any]] = field(default_factory=list)  # {key, element, kind, what, count, reason}
 
 
 @dataclass
@@ -425,6 +434,8 @@ def read_objects(
             out.cloud = read(path)
             cloud_header = out.cloud.header
         out.warnings, out.crs = list(cloud_header.warnings), cloud_crs(cloud_header.crs_text(), out.warnings)
+    elif fmt.key == OMF:
+        _omf(out, read, path, progress or no_progress, inspect)
     elif fmt.meshes == OPENED:
         if inspect:
             with read(path, progress=progress, **kwargs) as f:
@@ -455,6 +466,83 @@ def read_objects(
     if inspect and header is not None:
         out.choices = {option: list(fields(header)) for option, fields in choose}
     return out
+
+
+def _omf(out: ObjectsRead, opener: Any, path: Path, tick: Progress, inspect: bool) -> None:
+    """OMF v1 into `out` (see the module docstring)."""
+    from bf_core.formats.meshset import MeshEntry
+    from bf_core.formats.omf_compose import describe
+
+    out.detail = describe(path) if inspect else None
+    if inspect:
+        comp = out.detail
+        out.entries = [
+            MeshEntry(e.key, e.name, e.points, e.triangles, e.color, error=e.error)
+            for e in comp.elements if e.kind == "surface" and (e.loads or e.error)
+        ]  # fmt: skip
+    else:
+        from bf_core.formats.str_layers import scaled
+
+        reader = opener(path, scaled(tick, 0.0, 0.5))
+        try:
+            comp = out.detail = reader.composition
+            out.layers = list(reader.line_layers(skip_bad=True))
+        except BaseException:
+            reader.close()
+            raise
+        has_surfaces = bool(reader.entries(("surface",)))
+        out.meshes = _omf_surfaces(out, reader, scaled(tick, 0.5, 1.0)) if has_surfaces else []
+        if not has_surfaces:
+            reader.close()
+    out.volumes = [e for e in comp.elements if e.kind == "volume" and e.loads]
+    out.left_out = comp.left_out() if inspect else reader.left_out  # the reader's list grows as it reads
+    # Reading, the notes of a surface that loads go with it (its journal lines and `meta.warnings`), not here.
+    own = set() if inspect else {e.key for e in comp.elements if e.kind == "surface" and e.loads}
+    labels = {e.key: e.label for e in comp.elements}
+    out.warnings = [omf_note(labels, x) for x in out.left_out if x["key"] not in own]
+    if comp.crs is None:
+        out.warnings.append("Система координат в файле OMF не указана: объекты загружены без системы координат")
+    else:
+        out.crs = _omf_crs(comp.crs, out.warnings)
+
+
+def omf_note(labels: Mapping[str, str], x: Mapping[str, Any], own: bool = False) -> str:
+    """A line of the journal for an entry of `left_out`: «Поверхность «a»: текстуры (2) — …»; `own` — without
+    the element (a note of the object made of it)."""
+    count = f" ({x['count']})" if x["what"] == "текстуры" else ""
+    text = f"{x['what']}{count} — {x['reason']}"
+    return text if own else f"{labels.get(x['key'], x['element'])}: {text}"
+
+
+def _omf_surfaces(out: ObjectsRead, reader: Any, tick: Progress) -> Iterator[MeshSet]:
+    """The surfaces of an open OMF reader one at a time, each with the notes of its element; the reader is closed
+    with the last one (or when the iteration is dropped). A surface that cannot be read goes to `unread`."""
+    from bf_core.formats.meshset import MeshEntry
+
+    reader.progress = tick
+    try:
+        for mesh in reader.surfaces(skip_bad=True):
+            key = mesh.source.get("element")
+            mesh.warnings.extend(omf_note({}, x, own=True) for x in reader.left_out if x["key"] == key)
+            yield mesh
+        out.unread.extend(MeshEntry(u["key"], u["name"], None, None, error=u["error"])
+                          for u in reader.unread if u["kind"] == "surface")  # fmt: skip
+    finally:
+        reader.close()
+
+
+def _omf_crs(found: Mapping[str, Any], warnings: list[str]) -> CrsInfo | None:
+    """The CRS of the project of an OMF file BF2 wrote («Система координат: ‹имя› (EPSG:…)»): by its EPSG code."""
+    from bf_core.crs import CrsError, describe
+
+    epsg = found.get("epsg")
+    if epsg is not None:
+        try:
+            return describe(f"EPSG:{int(epsg)}")
+        except CrsError:
+            pass
+    warnings.append(f"Система координат «{found.get('name')}» файла OMF не распознана: объекты загружены без неё")
+    return None
 
 
 def cloud_crs(text: str | None, warnings: list[str]) -> CrsInfo | None:

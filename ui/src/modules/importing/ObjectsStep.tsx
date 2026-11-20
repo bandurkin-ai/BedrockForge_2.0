@@ -11,6 +11,8 @@ import { useStore } from "../../shell/useStore";
 import { fileCounts, takesEncoding, totalsText, type FileEntry, type FileOk, type FileOptions, type ObjectsWizard } from "./objects";
 import { cloudCard, mayBeCloud, type CloudMode } from "./cloud";
 import { CloudStep } from "./CloudStep";
+import { leftOutText } from "./omf";
+import { OmfPart } from "./OmfPart";
 import { RasterZLevel } from "./RasterZLevel";
 import { ConverterHelp, FileChoices, Preliminary, WireframesTable } from "./WireframesPart";
 import css from "./ImportWizard.module.css";
@@ -67,7 +69,7 @@ export function ObjectsStep({ wizard, onAdd, onSettings }: { wizard: ObjectsWiza
           <div className={css.note}>
             Линии и точки: Micromine STR и PIT, Surpac STR, DXF, DWG, SHP (с .dbf, .shx, .prj, .cpg), MIF/MID, Datamine .dm, таблицы точек XYZ (CSV, TXT, DAT). Каркасы: Micromine TRIDB, DXF, DWG
             (через ODA File Converter), OBJ, STL, Surpac DTM с STR того же имени, Datamine (…tr.dm с …pt.dm). Растры: JPG, PNG, TIFF, BMP с файлом привязки того же имени (world-файл, TAB, GRF) или
-            GeoTIFF. Облака точек: LAS.
+            GeoTIFF. Облака точек: LAS. OMF v1 (Leapfrog OMF 0.9): поверхности — каркасы, линии — слои, регулярные объёмы — блочные модели; OMF 2 не читается.
           </div>
         ))
       )}
@@ -92,7 +94,7 @@ function FileBlock({ wizard, file, options, cloudMode, onSettings }: { wizard: O
         </button>
       </header>
       {!file.ok && (
-        <div className={css.error}>
+        <div className={css.error} role="alert" data-testid="objects-file-error" data-code={file.error.code}>
           {file.error.message} {file.error.hint}
         </div>
       )}
@@ -139,6 +141,7 @@ function FileBlock({ wizard, file, options, cloudMode, onSettings }: { wizard: O
             {file.crs?.name ? `СК: ${file.crs.name}${file.crs.epsg ? ` (EPSG:${file.crs.epsg})` : ""}` : "СК не задана"}
             {file.sidecars.length > 0 && ` · с файлами: ${file.sidecars.join(", ")}`}
           </div>
+          {file.kind === "omf" && <OmfPart file={file.file} info={file.omf} blocks={file.block_models ?? []} />}
           {file.layers.length > 0 && (
             <table className={css.layers} aria-label={`Слои ${file.file}`}>
               <thead>
@@ -169,7 +172,7 @@ function FileBlock({ wizard, file, options, cloudMode, onSettings }: { wizard: O
             </button>
           )}
           {all && file.totals.layers > file.layers.length && <div className={css.note}>Показаны первые {n(file.layers.length)} слоёв; загрузятся все.</div>}
-          <WireframesTable file={file} />
+          {file.kind !== "omf" && <WireframesTable file={file} />}
         </>
       )}
       {file.ok &&
@@ -183,10 +186,9 @@ function FileBlock({ wizard, file, options, cloudMode, onSettings }: { wizard: O
         ))}
       {file.ok && (file.warnings.length > 0 || file.left_out.length > 0) && (
         <ul className={css.issues} data-testid="objects-warnings">
-          {file.left_out.map((x) => (
-            <li key={x.what} className={css.warn}>
-              Не загрузится: {x.what}
-              {x.count === null ? "" : ` — ${n(x.count)}`} ({x.reason})
+          {file.left_out.map((x, i) => (
+            <li key={`${x.key ?? ""}:${x.what}:${i}`} className={css.warn}>
+              Не загрузится: {leftOutText(x)}
             </li>
           ))}
           {file.warnings.slice(0, 20).map((w, i) => (

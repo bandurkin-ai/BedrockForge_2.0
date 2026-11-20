@@ -1,12 +1,13 @@
 /**
  * Where the files chosen in «Импорт файлов» (or dropped from Explorer) go (ТЗ 7.8; ADR 0011 §5; ADR 0013 §6):
  * tables of drillholes — to their wizard, lines, points, rasters and wireframes — to the composition of
- * objects, a `.bfggis` — to the import of a project. What comes with later stages is told. Pure.
+ * objects, an OMF file (ADR 0017 §2) — to the composition too (the core tells what of it loads; an OMF 2 is refused
+ * there with its hint), a `.bfggis` — to the import of a project. What comes with later stages is told. Pure.
  */
 import { detectImportKind, IMPORT_TITLES, type ImportKind } from "../../shell/tree";
 
-/** Formats of the other object types arrive with their stages (ТЗ 7.8). */
-const LATER: Partial<Record<ImportKind, string>> = { omf: "Э11" };
+/** Formats of the other object types arrive with their stages (ТЗ 7.8): none is waiting now. */
+const LATER: Partial<Record<ImportKind, string>> = {};
 /** Drawings hold lines and wireframes; Datamine `.dm` — wireframes or strings: the core tells by the content. */
 const COMPOSED = new Set(["dxf", "dwg", "dm"]);
 
@@ -33,7 +34,7 @@ export function routeImport(paths: readonly string[], prefer: "auto" | "objects"
   for (const p of paths) {
     const kind = detectImportKind([p]);
     if (kind === "project") out.project.push(p);
-    else if (prefer === "objects" || kind === "lines" || kind === "rasters" || kind === "wireframes" || COMPOSED.has(ext(p))) out.objects.push(p);
+    else if (prefer === "objects" || kind === "lines" || kind === "rasters" || kind === "wireframes" || kind === "omf" || COMPOSED.has(ext(p))) out.objects.push(p);
     else if (kind === "holes") out.holes.push(p);
     else rest.push({ path: p, kind });
   }

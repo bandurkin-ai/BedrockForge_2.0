@@ -8,7 +8,7 @@ import { useApp } from "../../shell/AppContext";
 import { Icon } from "../../shell/Icon";
 import { openLogWindow, opLogStore, startOpLog, stopOpLog } from "../../shell/opLog";
 import { useStore } from "../../shell/useStore";
-import { closeWindow } from "../../shell/windows";
+import { closeWindow, windowStore } from "../../shell/windows";
 import { syncOda } from "../../shell/odaTool";
 import { setPanel } from "../../shell/workspace";
 import { refresh as refreshJobs } from "../jobs/state";
@@ -22,10 +22,15 @@ import css from "./ImportWizard.module.css";
 
 export function ObjectsWindow({ winId, paths, pick, cloud }: { winId: string; paths?: string[]; pick?: ObjectsPick; cloud?: CloudMode }) {
   const app = useApp();
+  // `import.files {folder}`: the folder is a prop of the window (the shell passes the others by name)
+  const [folder] = useState(() => {
+    const f = windowStore.get().windows.find((w) => w.id === winId)?.props?.folder;
+    return typeof f === "string" && f ? f : null;
+  });
   const [wizard] = useState(() => {
     const project = projectStore.get().current;
     const log = startOpLog(cloud ? "Облако точек" : "Импорт файлов", "import", { uiVersion: bridge()?.appVersion(), coreVersion: app.store.get().coreVersion, project: project?.name });
-    return new ObjectsWizard(log, () => syncOda(app.store), cloud ?? null);
+    return new ObjectsWizard(log, () => syncOda(app.store), cloud ?? null, folder);
   });
   const s = useStore(wizard.store, (x) => x);
   useStore(opLogStore, (x) => x.version);
@@ -51,6 +56,11 @@ export function ObjectsWindow({ winId, paths, pick, cloud }: { winId: string; pa
     <div className={css.wrap}>
       <div className={css.top}>
         <span className={css.steps}>{cloud ? "Облако точек: что будет загружено и сколько точек" : "Состав загрузки: что будет создано в проекте и что не загрузится"}</span>
+        {folder && (
+          <span className={css.note} data-testid="objects-folder">
+            Папка в дереве: «{folder}»
+          </span>
+        )}
         <button
           type="button"
           className={`${css.iconBtn} ${wizard.log.failed ? css.logFailed : ""}`}

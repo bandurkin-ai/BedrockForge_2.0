@@ -10,6 +10,19 @@ export const TRIANGLE_BUDGET: Readonly<Record<GpuClass, number>> = { integrated:
 /** Points of point clouds per frame (ADR 0014 §2): the same rule — the smallest parts on screen go coarser first. */
 export const POINT_BUDGET: Readonly<Record<GpuClass, number>> = { integrated: 6_000_000, discrete: 20_000_000, software: 1_000_000 };
 
+/**
+ * Lines wider than a pixel (`LineSegments2`: a quad of two triangles per segment) up to this many segments in the
+ * scene; above — plain 1 px `LineSegments` (ADR 0007 §7). Software rendering fills the quads on the CPU: a layer
+ * of a million fat segments took ~21 s a frame under SwiftShader (the first frame of the editor 32–44 s, Э10
+ * 10.21; Э11 11.18), plain lines of the same layer — a fraction of a second.
+ */
+export const THIN_LINE_SEGMENTS: Readonly<Record<GpuClass, number>> = { integrated: 1_000_000, discrete: 1_000_000, software: 200_000 };
+
+/** Fat lines only when they are wider than a pixel and the scene holds no more segments than its class draws so. */
+export function fatLines(widthPx: number, sceneSegments: number, gpu: GpuClass = "integrated"): boolean {
+  return widthPx > 1 && sceneSegments <= THIN_LINE_SEGMENTS[gpu];
+}
+
 const GB = 1024 ** 3;
 /** Software rendering keeps buffers in RAM: the budget of integrated graphics. */
 export const MEMORY_BUDGET: Readonly<Record<GpuClass, number>> = { integrated: 1.5 * GB, discrete: 4 * GB, software: 1.5 * GB };

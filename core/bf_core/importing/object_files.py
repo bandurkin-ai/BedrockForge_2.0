@@ -18,6 +18,10 @@ wizard is chosen from (`split_by`, `layer_field`).
 A point cloud (a LAS, or a table with `cloud` in its options) is told by `object_cloud.summarize_cloud`: `kind`
 "cloud" and `cloud` — the header of the LAS or the head of the table. A layer of more than `CLOUD_HINT_POINTS`
 points read the ordinary way is warned «загрузите как облако».
+An OMF v1 file (ADR 0017 §2) is told from its JSON alone: `wireframes` — its surfaces, `block_models` — its volumes
+{name, counts, cells, fields}, `omf` — the whole composition (`OmfComposition.as_dict`: elements, data, what will
+not load and why), `left_out` — what the file holds that the import does not take; its line sets are counted in
+`totals.layers` (their lines are known only once read).
 The job `import.objects` (`objects.py`) reads the files with the same functions.
 """
 
@@ -37,10 +41,10 @@ MAX_LAYERS_SHOWN = 500
 POINT_OPTIONS = ("x", "y", "z", "name")  # columns of a table of points (`points.read_points`)
 FILE_SETTINGS = ("split_by", "layer_field")  # choices of the wizard for a file (`registry.read_objects(settings=)`)
 #: Extensions of ТЗ 7.8 that come with later stages: said so, not «unknown format».
-LATER = {".omf": "проекты OMF"}
+LATER: dict[str, str] = {}
 NUMBER_HINT = "Введите число, например 12,5."
 EMPTY = "В файле нет ни линий, ни точек, ни каркасов."
-TOTALS = ("layers", "lines", "points", "vertices", "rasters", "wireframes", "triangles")
+TOTALS = ("layers", "lines", "points", "vertices", "rasters", "wireframes", "triangles", "block_models", "cells")
 CLOUD_HINT_POINTS = 2_000_000  # a layer of points bigger than this is better loaded as a cloud (ADR 0014 §1)
 
 Tick = Callable[[float, str | None], None]
@@ -230,7 +234,9 @@ def has_meshes(read: Any) -> bool:
 
 def has_content(read: Any) -> bool:
     """The file gave something to load: a raster, a layer with points, a wireframe (read or still to read)."""
-    return bool(read.rasters or read.entries or has_meshes(read) or any(ls.point_count for ls in read.layers))
+    return bool(
+        read.rasters or read.entries or read.volumes or has_meshes(read) or any(ls.point_count for ls in read.layers)
+    )
 
 
 def _layer_summary(ls: Any) -> dict[str, Any]:
@@ -284,14 +290,23 @@ def _fields(detail: Any) -> list[dict[str, Any]]:
 
 
 def _left_out(read: Any) -> list[dict[str, Any]]:
-    """What a file holds but the import does not take (the composition says so): [{what, count, reason}].
-    Nothing now — the meshes of a drawing are its wireframes (Э8); what a reader skips is in its warnings."""
-    return []
+    """What a file holds but the import does not take (the composition says so): [{what, count, reason}, …].
+    OMF: {key, element, kind, what, count, reason} of its reader; the others — nothing (the meshes of a drawing
+    are its wireframes, Э8; what a reader skips is in its warnings)."""
+    return [dict(x) for x in read.left_out[:MAX_NOTES]]
+
+
+def _block_models(read: Any) -> list[dict[str, Any]]:
+    """The volumes of an OMF file that load: {name, counts, cells, fields}."""
+    return [
+        {"name": e.name, "counts": e.counts, "cells": e.cells, "fields": [d.name for d in e.data if d.loads]}
+        for e in read.volumes
+    ]
 
 
 def summarize(g: Group, read: Any, elevation: float | None = None, shift: float = 0.0) -> dict[str, Any]:
     """The composition of a read file (also what the journal of the import keeps of it)."""
-    from bf_core.formats.registry import OBJECT_FORMATS, POINTS_KIND, RASTER_KIND, WIREFRAMES_KIND
+    from bf_core.formats.registry import OBJECT_FORMATS, OMF, OMF_KIND, POINTS_KIND, RASTER_KIND, WIREFRAMES_KIND
 
     layers = [_layer_summary(ls) for ls in read.layers if ls.point_count]
     rasters = [_raster_summary(r, elevation, shift) for r in read.rasters]
@@ -305,12 +320,17 @@ def summarize(g: Group, read: Any, elevation: float | None = None, shift: float 
         if s["points"] > CLOUD_HINT_POINTS
     ]
     kind = OBJECT_FORMATS[read.format].kind
-    if layers and all(s["points_only"] for s in layers):
+    omf = read.format == OMF
+    blocks = _block_models(read)
+    if omf:
+        kind = OMF_KIND
+    elif layers and all(s["points_only"] for s in layers):
         kind = POINTS_KIND
     elif meshes and not layers:
         kind = WIREFRAMES_KIND  # also a drawing that holds nothing but meshes
     names = sorted({p.name for p in g.sidecars.values()} | {n for s, _g, _n in rasters for n in s["sidecars"]})
     crs = read.crs
+    omf_layers = sum(1 for e in read.detail.elements if e.kind == "lines" and e.loads) if omf and not layers else 0
     return {
         "path": str(g.main), "file": g.main.name, "ok": True, "format": read.format, "label": read.label,
         "kind": RASTER_KIND if rasters else kind,
@@ -321,11 +341,14 @@ def summarize(g: Group, read: Any, elevation: float | None = None, shift: float 
         "rasters": [s for s, _g, _n in rasters],
         "wireframes": meshes[:MAX_LAYERS_SHOWN],
         "totals": {
-            "layers": len(layers), "lines": sum(s["lines"] for s in layers),
+            "layers": len(layers) or omf_layers, "lines": sum(s["lines"] for s in layers),
             "points": sum(s["points"] for s in layers), "vertices": sum(s["vertices"] for s in layers),
             "rasters": len(rasters), "wireframes": len(loadable),
             "triangles": sum(int(m["triangles"] or 0) for m in loadable),
+            "block_models": len(blocks), "cells": sum(int(b["cells"] or 0) for b in blocks),
         },
+        "block_models": blocks[:MAX_LAYERS_SHOWN],
+        **({"omf": read.detail.as_dict()} if omf and read.detail is not None else {}),
         "unread": len(meshes) - len(loadable),  # wireframes of the file that will not load (their `error` says why)
         "preliminary": bool(read.preliminary),
         "choices": dict(read.choices),
