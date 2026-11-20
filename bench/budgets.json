@@ -262,6 +262,66 @@
       "budget_mb": 800,
       "limits": {"export_s": 30.0, "mismatches": 0},
       "note": "ADR 0017 «Замеры»: export.objects — демо ≤ 30 с; сверх демо 32 МиБ данных тех же долей, что и 1 ГБ full (каркасы, облако, линии, скважины, модель)."
+    },
+    "composites": {
+      "params": {
+                  "holes": 5000,
+                  "per_hole": 100,
+                  "fields": 10,
+                  "length": 2.0,
+                  "methods": ["length", "domain"],
+                  "domain": "table",
+                  "cold": true
+                },
+      "budget_s": 12.0,
+      "budget_mb": 700,
+      "limits": {"length_s": 5.0, "domain_s": 5.5, "length_kernel_s": 0.3, "domain_kernel_s": 0.3},
+      "note": "ADR 0018 «Замеры»: композиты по длине и по доменам (литология — другая таблица), 5 тыс. скважин, 500 тыс. проб, 10 полей; задание до итоговой транзакции при готовом снимке (решение 16) — ориентир ≤ 6 с, ≤ 700 МБ, ядро ≤ 0,3 с. Замер 12.33: 2,5 с и 2,7 с, 582 МБ; cold_read_s 1,8 с — без бюджета."
+    },
+    "composite_bench": {
+      "params": {"holes": 5000, "per_hole": 100, "fields": 10, "methods": ["bench"], "bench": 10.0},
+      "budget_s": 4.0,
+      "budget_mb": 700,
+      "limits": {"bench_s": 3.0, "bench_kernel_s": 0.3},
+      "note": "ADR 0018 «Замеры»: композиты по уступам 10 м — ориентир ≤ 8 с. Замер 12.33: 1,2 с, 511 МБ."
+    },
+    "composite_merge": {
+      "params": {"holes": 5000, "per_hole": 100, "fields": 10, "litho_per_hole": 20},
+      "budget_s": 10.0,
+      "budget_mb": 800,
+      "limits": {"merge_s": 8.0, "merge_kernel_s": 0.3},
+      "note": "ADR 0018 «Замеры»: объединение 500 тыс. + 100 тыс. интервалов — ориентир ≤ 6 с. Замер 12.33: 5,2 с (запись 597 тыс. строк × 11 полей — 4,2 с), 606 МБ; бюджет — замер × 1,5."
+    },
+    "topcut_analysis": {
+      "params": {"holes": 5000, "per_hole": 100, "fields": 10},
+      "budget_s": 2.5,
+      "budget_mb": 600,
+      "limits": {"all_s": 1.0, "domain_s": 1.0},
+      "note": "ADR 0018 «Замеры»: анализ урезки 500 тыс. проб ≤ 1 с — без домена и по домену (текстовое поле). Замер 12.33: 0,23 с и 0,35 с."
+    },
+    "declus": {
+      "params": {
+                  "holes": 1000,
+                  "per_hole": 100,
+                  "fields": 3,
+                  "method": "cell3d",
+                  "cmin": 10.0,
+                  "cmax": 250.0,
+                  "ncell": 25,
+                  "noff": 8,
+                  "anisz": 0.2
+                },
+      "budget_s": 3.0,
+      "budget_mb": 500,
+      "limits": {"declus_s": 2.0, "declus_kernel_s": 0.5},
+      "note": "ADR 0018 «Замеры»: декластеризация 100 тыс. точек, 25 размеров × 8 сдвигов — ≤ 5 с. Замер 12.33: 0,66 с (ядро 0,06 с, запись DECL_W 0,3 с)."
+    },
+    "composite_preview": {
+      "params": {"holes": 5000, "per_hole": 100, "fields": 10, "shown": 20},
+      "budget_s": 8.0,
+      "budget_mb": 600,
+      "limits": {"preview_s": 0.05},
+      "note": "ADR 0018 решение 27: предпросмотр скважины ≤ 50 мс — медиана по 7 операциям (length, domain, bench, merge, coords, topcut, equivalent). Замер 12.33: 12–29 мс."
     }
   },
   "full": {
@@ -530,6 +590,73 @@
       "budget_mb": 1536,
       "limits": {"export_s": 180.0, "mismatches": 0},
       "note": "ADR 0017 «Замеры», ADR 0010: export.objects — демо и 1 ГиБ данных (по счёту задания) ≤ 3 мин, ≤ 1,5 ГБ. Замер 11.20: 44 с, 0,8 ГБ, файлов 4,8 ГБ; из них каркасы DXF (13 млн треугольников) 31 с, скважины CSV (1 млн строк) 6 с, модель OMF 4 с."
+    },
+    "composites": {
+      "params": {
+                  "holes": 50000,
+                  "per_hole": 100,
+                  "fields": 10,
+                  "length": 2.0,
+                  "methods": ["length", "domain"],
+                  "domain": "table",
+                  "cold": true
+                },
+      "budget_s": 75.0,
+      "budget_mb": 2048,
+      "limits": {"length_s": 30.0, "domain_s": 30.0, "length_kernel_s": 3.0, "domain_kernel_s": 3.0},
+      "note": "ТЗ 8.2.3: композиты по длине или доменам, 50 тыс. скважин, 5 млн проб, 10 полей — ≤ 30 с, ≤ 2 ГБ (решение 16: при готовом снимке); ядро ≤ 3 с. Замер 12.33: 25,3 с и 28,0 с (запись 2,5 млн строк 18–20 с), 2,6 ГБ — память не уложилась; cold_read_s 15,7 с — без бюджета."
+    },
+    "composite_bench": {
+      "params": {"holes": 50000, "per_hole": 100, "fields": 10, "methods": ["bench"], "bench": 10.0},
+      "budget_s": 50.0,
+      "budget_mb": 3072,
+      "limits": {"bench_s": 45.0, "bench_kernel_s": 5.0},
+      "note": "ТЗ 8.2.3: композиты по уступам — ≤ 45 с (цели памяти нет). Замер 12.33: 10,9 с, 2,4 ГБ."
+    },
+    "composite_merge": {
+      "params": {"holes": 50000, "per_hole": 100, "fields": 10, "litho_per_hole": 20},
+      "budget_s": 40.0,
+      "budget_mb": 3072,
+      "limits": {"merge_s": 30.0, "merge_kernel_s": 3.0},
+      "note": "ТЗ 8.2.3: объединение 5 млн + 1 млн интервалов — ≤ 30 с. Замер 12.33: 49,6 с (запись 6,0 млн строк × 11 полей — 42,7 с), 2,7 ГБ — не уложились."
+    },
+    "topcut_analysis": {
+      "params": {"holes": 50000, "per_hole": 100, "fields": 10},
+      "budget_s": 8.0,
+      "budget_mb": 2048,
+      "limits": {"all_s": 3.0, "domain_s": 3.0},
+      "note": "ТЗ 8.2.3: анализ урезки 5 млн проб — ≤ 3 с. Замер 12.33: без домена 2,4 с; по домену 4,0 с (чтение текстового поля 3,2 с) — не уложились."
+    },
+    "declus": {
+      "params": {
+                  "holes": 10000,
+                  "per_hole": 100,
+                  "fields": 3,
+                  "method": "cell3d",
+                  "cmin": 10.0,
+                  "cmax": 250.0,
+                  "ncell": 25,
+                  "noff": 8,
+                  "anisz": 0.2
+                },
+      "budget_s": 40.0,
+      "budget_mb": 1024,
+      "limits": {"declus_s": 30.0, "declus_kernel_s": 10.0},
+      "note": "ADR 0018 «Замеры»: декластеризация 1 млн точек — ориентир ≤ 30 с (в ТЗ цели нет). Замер 12.33: 4,6 с (ядро 0,75 с, запись DECL_W 3,0 с), 0,6 ГБ."
+    },
+    "composite_preview": {
+      "params": {"holes": 50000, "per_hole": 100, "fields": 10, "shown": 12},
+      "budget_s": 30.0,
+      "budget_mb": 2048,
+      "limits": {"preview_s": 0.1},
+      "note": "ADR 0018 решение 27: предпросмотр скважины ≤ 100 мс. Замер 12.33: 80–240 мс — не уложились: каждый вызов читает имена и глубины всех 50 тыс. скважин набора."
+    },
+    "composite_compile": {
+      "params": {},
+      "budget_s": 90.0,
+      "budget_mb": 200,
+      "limits": {"compile_s": 60.0, "left_s": 6.0, "load_s": 2.0, "process_mb": 800},
+      "note": "ADR 0018 решение 27: первая компиляция ядер этапа — строкой. Замер 12.33: 29 с (прогрев 26 с + 2,7 с ядер вне прогрева — список в left), из кеша 0,4 с. После дополнения composites/warm.py left_s ужать до 0,5."
     }
   },
   "external": {
