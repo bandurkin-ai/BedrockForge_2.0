@@ -5,7 +5,8 @@ leaves nothing; values out of the ranges — 422 {code, message, hint}; «тол
 hole and the summary of the set; result tables are read only (cells and rows — 422, columns may be added).
 
 Domains by a lithology table: no composite crosses a change of the code, DOMAIN is the code; benches: no composite
-crosses a level. TODO(12.7): domains by wireframes — 422 `not_ready`."""
+crosses a level; domains by the ore body of the demo (12.21): no composite crosses its boundary, DOMAIN is its
+name; an open wireframe — 422 `wireframe_open`."""
 
 from __future__ import annotations
 
@@ -147,8 +148,10 @@ def test_refusals_say_why(demo) -> None:  # type: ignore[no-untyped-def]
         r = c.post(f"{C}/run", json=bad)
         assert r.status_code == 422 and r.json()["code"] == "bad_param" and r.json()["param"] == param, r.text
         assert r.json()["message"] and r.json()["hint"]
-    r = c.post(f"{C}/run", json=body(set_id, table, method="domain", domain={"wireframe_ids": [1]}))  # TODO(12.7)
-    assert r.status_code == 422 and r.json()["code"] == "not_ready" and r.json()["hint"]
+    fault = {w["name"]: w["id"] for w in c.get(f"{API}/wireframes").json()["wireframes"]}["Разлом"]
+    r = c.post(f"{C}/run", json=body(set_id, table, method="domain", domain={"wireframe_ids": [fault]}))
+    assert r.status_code == 422 and r.json()["code"] == "wireframe_open" and r.json()["hint"], r.text
+    assert r.json()["param"] == "wireframe_ids"
     r = c.post(f"{C}/run", json=body(set_id, table, method="domain"))
     assert r.status_code == 422 and r.json()["code"] == "domain_missing" and r.json()["param"] == "domain"
     r = c.post(f"{C}/run", json=body(set_id, table, method="bench", bench=60))
@@ -420,3 +423,41 @@ def test_merge_and_coords(demo) -> None:  # type: ignore[no-untyped-def]
     assert a.status_code == 200 and a.json()["result"]["values"]["ZM"] == [
         r[key["ZM"]] for r in got["rows"] if r["hole"] == hole["hole"]
     ]
+
+
+def test_domains_by_the_ore_body(demo) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.composites import jobs_coding as jc
+
+    c, project, set_id, table = demo
+    ore = {w["name"]: w["id"] for w in c.get(f"{API}/wireframes").json()["wireframes"]}["Рудное тело 1"]
+    req = body(set_id, table, method="domain", domain={"wireframe_ids": [ore]}, name="Композиты по рудному телу")
+    done = run_here(project, {"body": req})
+    got = rows_of(c, set_id, str(done["table_id"]))
+    key = {col["name"]: col["key"] for col in got["columns"]}
+    assert {row[key["DOMAIN"]] for row in got["rows"]} == {"Рудное тело 1", None}
+    rec = next(x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "domain")
+    assert rec["inputs"]["meshes"][0]["name"] == "Рудное тело 1" and rec["report"]["coding"]["stretches"] > 0
+    # the boundaries of the body: where CODE changes along a hole in «Пробы — коды» (cut at the boundary)
+    coded = jc.run_coding(project.engine, project.folder, {"body": {"set_id": set_id, "table": table,
+                          "wireframe_ids": [ore]}}, job_id=next(_ids), tick=lambda *_a: None)  # fmt: skip
+    parts = rows_of(c, set_id, str(coded["table_id"]))
+    pkey = {col["name"]: col["key"] for col in parts["columns"]}
+    rows = sorted(parts["rows"], key=lambda r: (r["hole"], r["from"]))
+    cuts = [(a["hole"], a["to"]) for a, b in zip(rows, rows[1:], strict=False)
+            if a["hole"] == b["hole"] and a[pkey["CODE"]] != b[pkey["CODE"]]]  # fmt: skip
+    assert cuts
+    ends: dict[str, set[float]] = {}
+    for row in got["rows"]:
+        ends.setdefault(row["hole"], set()).update((round(row["from"], 6), round(row["to"], 6)))
+    assert all(round(depth, 6) in ends[hole] for hole, depth in cuts)  # no composite crosses the boundary
+    # the preview of a hole on the boundary is the job's rows
+    hole = cuts[0][0]
+    collars = c.get(f"{API}/drillholes/sets/{set_id}/tables/collar?limit=1000").json()["rows"]
+    hole_id = next(h["hole_id"] for h in collars if h["hole"] == hole)
+    r = c.post(f"{C}/domain/preview", json={"params": req, "hole_id": hole_id})
+    assert r.status_code == 200, r.text
+    a = r.json()
+    mine = sorted((row for row in got["rows"] if row["hole"] == hole), key=lambda x: x["from"])
+    assert a["result"]["values"]["DOMAIN"] == [row[key["DOMAIN"]] for row in mine]
+    assert a["result"]["values"]["AU"] == [row[key["AU"]] for row in mine]
+    assert a["set_summary"] is not None

@@ -3,7 +3,9 @@ domains of a lithology table → AU_CUT, AU_CUT_F in «Пробы» and the repo
 the analysis and the preview write nothing (the threshold is applied only by «Применить»); the preview of a hole
 is the job's rows; the metal equivalent; DECL_W (Σ = n); the column operations repeated on a rebuilt table of
 composites; «Перестроить» with the same hash does not compute; a cancel leaves nothing; refusals {code, message,
-hint, param} (StatsError too). TODO(12.7): `composite.code` — 422 `not_ready`."""
+hint, param} (StatsError too). Coding by wireframes (`composite.code`, 12.21 + 12.7): the ore body of the demo →
+«Пробы — коды» with the samples cut at its boundary (a `spawn` worker); without the division — INSIDE_FRAC; the
+preview of a hole is the job's rows; an open wireframe — 422 `wireframe_open` before the job."""
 
 from __future__ import annotations
 
@@ -25,7 +27,7 @@ from tests.test_composites_jobs import body as run_body
 from tests.test_import_job import API, wait_job
 
 C = f"{API}/composites"
-MODULES = ("bf_core.composites.jobs", "bf_core.composites.jobs_prep")
+MODULES = ("bf_core.composites.jobs", "bf_core.composites.jobs_prep", "bf_core.composites.jobs_coding")
 _ids = itertools.count(95_001)
 
 
@@ -258,9 +260,21 @@ def test_refusals_say_why(demo) -> None:  # type: ignore[no-untyped-def]
     assert r.status_code == 422 and r.json()["code"] == "domain_missing"
     r = c.post(f"{C}/topcut/analysis", json={**src, "decile_limit": 140})
     assert r.status_code == 422 and r.json()["param"] == "decile_limit"
-    for path in ("/coding", "/coding/preview"):  # TODO(12.7)
-        r = c.post(f"{C}{path}", json={"set_id": set_id, "table": table, "wireframe_ids": [1]})
-        assert r.status_code == 422 and r.json()["code"] == "not_ready", r.text
+    wf = wireframe_ids(c)
+    r = c.post(f"{C}/topcut", json={**src, "percentile": 99, "domain": {"wireframe_ids": [wf["Рудное тело 1"]]}})
+    assert r.status_code == 422 and r.json()["code"] == "not_ready" and "CODE" in r.json()["hint"], r.text
+    code = {"set_id": set_id, "table": table}
+    for path, extra in (("/coding", {}), ("/coding/preview", None)):
+        for ids, want in (([wf["Разлом"]], "wireframe_open"), ([10**9], "wireframe_not_found"), ([], "bad_param"),
+                          ([wf["Рудное тело 1"]] * 2, "bad_param")):  # fmt: skip
+            req = {**code, "wireframe_ids": ids}
+            r = c.post(f"{C}{path}", json=req if extra is not None else {"params": req, "hole_id": 1})
+            assert r.status_code == 422 and r.json()["code"] == want, r.text
+            assert r.json()["param"] == "wireframe_ids" and r.json()["hint"], r.text
+    r = c.post(f"{C}/coding", json={**code, "wireframe_ids": [wf["Рудное тело 1"]], "split": "да"})
+    assert r.status_code == 422 and r.json()["param"] == "split"
+    r = c.post(f"{C}/coding", json={**code, "wireframe_ids": [wf["Рудное тело 1"]], "name": "Пробы"})
+    assert r.status_code == 422 and r.json()["code"] == "name_is_source"
     project.read_only = True  # opened in another window (ТЗ 5.7)
     try:
         r = c.post(f"{C}/topcut", json={**src, "percentile": 99})
@@ -268,3 +282,108 @@ def test_refusals_say_why(demo) -> None:  # type: ignore[no-untyped-def]
         assert c.post(f"{C}/topcut/analysis", json=src).status_code == 200  # reading is allowed
     finally:
         project.read_only = False
+
+
+# --- coding by wireframes ------------------------------------------------------------------------------------
+
+
+def wireframe_ids(c: Any) -> dict[str, int]:
+    return {w["name"]: w["id"] for w in c.get(f"{API}/wireframes").json()["wireframes"]}
+
+
+def by_hole(got: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    out: dict[str, list[dict[str, Any]]] = {}
+    for row in sorted(got["rows"], key=lambda r: (r["hole"], r["from"], r["to"])):
+        out.setdefault(row["hole"], []).append(row)
+    return out
+
+
+def test_coding_by_the_ore_body_cuts_samples_at_its_boundary_in_a_worker(demo) -> None:  # type: ignore[no-untyped-def]
+    c, project, set_id, table = demo
+    body = wireframe_ids(c)["Рудное тело 1"]
+    req = {"set_id": set_id, "table": table, "wireframe_ids": [body]}  # the division by default (8.2.2)
+    r = c.post(f"{C}/coding", json=req)
+    assert r.status_code == 200, r.text
+    job = wait_job(c, r.json()["source"], r.json()["id"], timeout=180)
+    assert job["status"] == "done", job
+    res = job["result"]
+    assert ["composites.changed", {"set_id": set_id}] in res["events"] and not res["fresh"]
+    t = tables(c, set_id)["Пробы — коды"]
+    assert t["kind"] == "interval" and t["origin"]["op"] == "coding" and t["origin"]["stale"] is False
+    got, src = rows_of(c, set_id, t["table"]), rows_of(c, set_id, table)
+    names = [col["name"] for col in got["columns"]]
+    assert "CODE" in names and "AU" in names and "INSIDE_FRAC" not in names
+    key = {col["name"]: col["key"] for col in got["columns"]}
+    skey = {col["name"]: col["key"] for col in src["columns"]}
+    assert {row[key["CODE"]] for row in got["rows"]} == {"Рудное тело 1", None}
+    rec = next(x for x in results(c, set_id) if x["op"] == "coding")
+    rep = rec["report"]
+    assert rep["split"] is True and rep["cut"] > 0 and rep["rows"] == len(got["rows"]) > rep["rows_in"]
+    assert rep["kernel"]["wireframes"] == [{"id": body, "name": "Рудное тело 1"}] and rep["summary"]["after"]
+    assert rec["inputs"]["meshes"][0]["name"] == "Рудное тело 1"
+    # the parts tile every sample (its FROM and TO bit for bit) and copy its values; codes change only at a cut
+    parts, samples = by_hole(got), by_hole(src)
+    split_seen = overlapping = 0
+    for hole, rows in samples.items():
+        mine = parts[hole]
+        k, prev_to = 0, -1e9
+        for s in rows:
+            if s["from"] < prev_to - 1e-6:  # the overlapping row of the demo (for «Аудит») is left out, journalled
+                overlapping += 1
+                continue
+            prev_to, first = s["to"], k
+            while k < len(mine) and mine[k]["to"] <= s["to"] + 1e-9:
+                assert mine[k][key["AU"]] == s[skey["AU"]]
+                k += 1
+            assert mine[first]["from"] == s["from"] and mine[k - 1]["to"] == s["to"]
+            assert all(mine[i]["to"] == mine[i + 1]["from"] for i in range(first, k - 1))
+            if k - first > 1:
+                split_seen += 1
+                assert len({mine[i][key["CODE"]] for i in range(first, k)}) > 1
+        assert k == len(mine)
+    assert split_seen == rep["cut"] and overlapping == 1 and any("перекрывающих" in x for x in rep["journal"])
+    # «Перестроить» with the same inputs does not compute
+    r = c.post(f"{C}/results/{rec['id']}/rebuild", json={})
+    assert r.status_code == 200, r.text
+    again = run_coding_here(project, {"body": {**rec["params"], "set_id": set_id, "name": t["name"],
+                                                "table": table, "replace": True}, "rebuild": rec["id"]})  # fmt: skip
+    assert again["fresh"] is True
+
+
+def run_coding_here(project: Any, params: dict[str, Any]) -> dict[str, Any]:
+    from bf_core.composites import jobs_coding as jc
+
+    return jc.run_coding(project.engine, project.folder, params, job_id=next(_ids), tick=lambda *_a: None)
+
+
+def test_coding_without_division_and_the_preview_is_the_job(demo) -> None:  # type: ignore[no-untyped-def]
+    c, project, set_id, table = demo
+    wf = wireframe_ids(c)
+    req = {"set_id": set_id, "table": table, "wireframe_ids": [wf["Рудное тело 2"], wf["Рудное тело 1"]],
+           "split": False, "name": "Коды по середине"}  # fmt: skip
+    done = run_coding_here(project, {"body": req})
+    got = rows_of(c, set_id, str(done["table_id"]))
+    key = {col["name"]: col["key"] for col in got["columns"]}
+    assert len(got["rows"]) == len(rows_of(c, set_id, table)["rows"]) - 1  # the samples (but the overlapping one)
+    frac = np.array([np.nan if r[key["INSIDE_FRAC"]] is None else r[key["INSIDE_FRAC"]] for r in got["rows"]])
+    assert np.all((frac[~np.isnan(frac)] >= 0) & (frac[~np.isnan(frac)] <= 1))
+    assert np.any((frac > 0) & (frac < 1)) and np.any(frac == 1.0)  # samples on the boundary, inside
+    codes = {r[key["CODE"]] for r in got["rows"]}
+    assert {"Рудное тело 1", "Рудное тело 2"} <= codes
+    # the preview of a hole on the boundary: the rows of the job (split: the parts)
+    hole = next(r["hole"] for r, f in zip(got["rows"], frac, strict=True) if 0 < f < 1)
+    collars = c.get(f"{API}/drillholes/sets/{set_id}/tables/collar?limit=1000").json()["rows"]
+    hole_id = next(h["hole_id"] for h in collars if h["hole"] == hole)
+    for split in (False, True):
+        r = c.post(f"{C}/coding/preview", json={"params": {**req, "split": split}, "hole_id": hole_id})
+        assert r.status_code == 200, r.text
+        a = r.json()
+        assert a["hole"] == hole and a["set_summary"] is None and a["summary"]["before"]
+        vals = a["result"]["values"]
+        assert ("INSIDE_FRAC" in vals) is (not split) and len(vals["CODE"]) == len(a["result"]["from"])
+        if not split:
+            mine = [row for row in got["rows"] if row["hole"] == hole]
+            assert vals["CODE"] == [row[key["CODE"]] for row in mine]
+            assert vals["INSIDE_FRAC"] == [row[key["INSIDE_FRAC"]] for row in mine]
+        else:
+            assert len(a["result"]["from"]) > len(a["samples"]["from"])
