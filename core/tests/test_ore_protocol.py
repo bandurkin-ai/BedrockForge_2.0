@@ -334,7 +334,7 @@ def test_protocol_is_the_stored_result_run_again(mode: str) -> None:
                 for r in table
                 if r["hole"] == h
             ]
-            assert pr.intervals == mine  # exact: floats and all
+            assert pr.intervals == [{**r, "manual": 0} for r in mine]  # exact: floats and all
             samples = [r for r in pr.rows if r["sample"]]
             assert [r["ore_id"] for r in samples] == stored.ore_id[a:b].tolist()
             assert [r["cls"] for r in samples] == [

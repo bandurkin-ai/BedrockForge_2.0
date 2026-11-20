@@ -1,13 +1,16 @@
 """Protocol of оконтуривание (ТЗ 7.35 Д-26 «Результат» (4); ADR 0018 §9, решения 10, 19): the decisions of the
 kernel as the form И1, сл. 17 of one hole and as the long form of a set of holes.
 
-    hole_protocol(lines, params, hole=0, *, unit="") -> HoleProtocol       the form and the long form of a hole
-    long_form(lines, params, *, holes=None, tick=None) -> Iterator[LongBlock]   the long form, in blocks of holes
+    hole_protocol(lines, params, hole=0, *, unit="", edits=None) -> HoleProtocol   the form and the long form
+    long_form(lines, params, *, holes=None, edits=None, tick=None) -> Iterator[LongBlock]   in blocks of holes
 
 The protocol is not stored (решение 10): it is the kernel run again with the parameters of the result
 (`ore_intervals(…, events=True)`), so it is that of the stored result while the samples and `ALGO` are the
 same — the caller answers 409 `stale` otherwise (решение 19). A hole does not depend on the other holes: its
 protocol is taken from its own samples, and `HoleProtocol.intervals` are its rows of the table bit for bit.
+A result with manual edits keeps them in `report.edits`; given here as `edits`, they are applied to the hole
+again (`ore_edit`): «Итог» and `intervals` are the rows after them (`manual`), the intervals they made are
+the records of step 6, what they break is in `violations`.
 
 The form (И1, сл. 17). `rows` — the lines of the form from the top of the hole down: the samples of the hole
 (also those outside the sampling lines, with the reason in `note`) and the stretches without samples counted
@@ -37,8 +40,8 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left
-from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -46,7 +49,7 @@ import numpy as np
 from . import ore_units as ou
 from .ore_intervals import ALGO, ore_intervals
 from .ore_set import _ru, label
-from .ore_types import OreEvents, OreLines, OreParams, pieces
+from .ore_types import IV_HOLE, OreEvents, OreLines, OreParams, pieces
 from .strips import Tick
 
 __all__ = [
@@ -141,6 +144,8 @@ def mark(step: int, stage: int, kind: str, side: str, seq: int) -> str:
         return f"N{_sub(seq)}" if step == ou.STEP_UNIT else f"IN{_sub(stage)}"
     if kind == "trim":
         return f"C{_sub(stage if side == '' else 2 * stage - (side == 'upper'))}"
+    if step == ou.STEP_EDIT:
+        return "правка"
     return {"gap": "Б", "layer": "прослой", "chain": "цепочка", "interval": "итог"}.get(kind, "")
 
 
@@ -249,17 +254,33 @@ def _block(events: OreEvents, starts: np.ndarray, h0: int) -> LongBlock:
     )
 
 
+def _edited(sub: OreLines, p: OreParams, hole: int, edits: Sequence[Mapping[str, Any]], found: OreEvents) -> Any:
+    """Hole `hole` of `sub` after its manual edits (`ore_edit`) and the events with its records of step 6 added
+    after those of the hole. Returns (the hole, the events)."""
+    from .ore_edit import edit_hole  # the edit takes the words of the protocol from here
+
+    he = edit_hole(sub, p, edits, hole)
+    extra = he.events()
+    rows = extra.i[:, ou.EI_ROW0 : ou.EI_ROW1 + 1]  # counted from the first sample of the hole
+    rows[rows >= 0] += sub.starts[hole]
+    ev_i = np.concatenate([found.i, extra.i])
+    order = np.argsort(ev_i[:, ou.EI_HOLE], kind="stable")
+    return he, OreEvents(ev_i[order], np.concatenate([found.f, extra.f])[order])
+
+
 def long_form(
     lines: OreLines,
     params: OreParams,
     *,
     holes: Sequence[int] | None = None,
+    edits: Mapping[int, Sequence[Mapping[str, Any]]] | None = None,
     tick: Tick | None = None,
     chunk: int = LONG_CHUNK,
 ) -> Iterator[LongBlock]:
     """The long form of a set of holes (or of `holes` — indices, taken in ascending order), a block of about
-    `chunk` samples at a time: the kernel runs on the holes of a block, nothing else is kept. `tick(fraction)`
-    is called after every block and may raise to cancel."""
+    `chunk` samples at a time: the kernel runs on the holes of a block, nothing else is kept. `edits` — the
+    manual edits of the result by the index of the hole (`report.edits`): the intervals they made are the
+    records of step 6 of their holes. `tick(fraction)` is called after every block and may raise to cancel."""
     p = params.checked()
     total = len(lines.starts) - 1
     if holes is None:
@@ -274,6 +295,8 @@ def long_form(
         sub = lines.holes(h0, h1)
         found = ore_intervals(sub, p, events=True).events
         assert found is not None
+        for h in sorted(h for h, mine in (edits or {}).items() if h0 <= h < h1 and mine):
+            found = _edited(sub, p, h - h0, (edits or {})[h], found)[1]
         yield _block(found, sub.starts, h0)
         if tick is not None:
             tick((k + 1) / len(todo))
@@ -285,7 +308,8 @@ def long_form(
 @dataclass(frozen=True)
 class HoleProtocol:
     """The protocol of a hole: the form И1, сл. 17 (`rows`, `columns`, `cells`), the long form (`events`) and
-    the rows of the table the kernel gives for the hole (`intervals`: all classes, the nested ones too)."""
+    the rows of the table of the hole (`intervals`: all classes, the nested ones too, with `manual`); of a hole
+    with manual edits — also the `edits` applied and the `violations` of the intervals they made."""
 
     hole: int
     unit: str
@@ -296,13 +320,15 @@ class HoleProtocol:
     events: list[dict[str, Any]]
     intervals: list[dict[str, Any]]
     stats: dict[str, int]
+    edits: list[dict[str, Any]] = field(default_factory=list)
+    violations: list[dict[str, Any]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         """What the API answers (JSON: no NaN)."""
         return {
             "hole": self.hole, "unit": self.unit, "algo": ALGO, "mode": self.params.mode, "rows": self.rows,
             "columns": self.columns, "cells": self.cells, "events": self.events, "intervals": self.intervals,
-            "stats": self.stats,
+            "stats": self.stats, "edits": self.edits, "violations": self.violations,
         }  # fmt: skip
 
     def grid(self) -> dict[str, Any]:
@@ -430,14 +456,28 @@ def _stage_series(
     return units, made
 
 
-def hole_protocol(lines: OreLines, params: OreParams, hole: int = 0, *, unit: str = "") -> HoleProtocol:
+def hole_protocol(
+    lines: OreLines,
+    params: OreParams,
+    hole: int = 0,
+    *,
+    unit: str = "",
+    edits: Sequence[Mapping[str, Any]] | None = None,
+) -> HoleProtocol:
     """The protocol of hole `hole` of the lines: the kernel runs on its samples with `params`, the events go
-    to the form И1, сл. 17 and to the long form. `unit` — the unit of the grade field (LABEL)."""
+    to the form И1, сл. 17 and to the long form. `unit` — the unit of the grade field (LABEL). `edits` — the
+    manual edits of the hole (`report.edits`): the result is then the rows after them («Итог», the classes of
+    the samples, `intervals`), the intervals they made are the records of step 6."""
     p = params.checked()
     sub = lines.holes(hole)
     res = ore_intervals(sub, p, events=True, nested=True)
     assert res.events is not None
-    events = _block(res.events, sub.starts, hole).records()
+    happened, after = res.events, None
+    if edits:
+        after, happened = _edited(sub, p, 0, edits, happened)
+        after.intervals.iv_i[:, IV_HOLE] = hole
+        res = after.intervals
+    events = _block(happened, sub.starts, hole).records()
     rows, (pc, where) = _form_rows(sub, p, res.sample_cls, res.sample_ore_id)
     top = {f: where[k] for k, f in enumerate(pc.frm.tolist())}  # the line of the form a piece begins at
     end = {t: where[k] for k, t in enumerate(pc.to.tolist())}
@@ -456,7 +496,7 @@ def hole_protocol(lines: OreLines, params: OreParams, hole: int = 0, *, unit: st
             cells.append({
                 "col": key, "lane": lane, "row0": a, "row1": b, "text": text, "tone": tone,
                 "from": e["from"], "to": e["to"], "m": e["m"], "c": e["c"], "mc": e["mc"],
-                "ore": e.get("ore"), "decision": e.get("decision", ""), "event": index,
+                "ore": e.get("ore"), "decision": e.get("decision", ""), "event": index, "manual": e.get("manual", 0),
             })  # fmt: skip
 
     numbered = [{**e, "index": k, "made": 0} for k, e in enumerate(events)]
@@ -507,9 +547,11 @@ def hole_protocol(lines: OreLines, params: OreParams, hole: int = 0, *, unit: st
              "waste" if e["kind"] == "gap" else tones.get(e["decision"], "none"), e["index"]) for e in found
         ])  # fmt: skip
     intervals = res.rows()
+    manual = [0] * len(intervals) if after is None else after.manual.tolist()
     final: list[tuple[dict[str, Any], str, str, int | None]] = []
-    for r in intervals:
+    for r, flag in zip(intervals, manual, strict=True):
         r["hole"] = hole
+        r["manual"] = flag
         if r["c"] != r["c"]:
             r["c"] = None
         if r["nested"]:
@@ -517,6 +559,7 @@ def hole_protocol(lines: OreLines, params: OreParams, hole: int = 0, *, unit: st
         text = f"{CLASS_TITLES[r['cls']]} {_mcm(r['m'], r['c'], r['mc'])}"
         if r["cls"] == "ore" and r["c"] is not None:
             text = label(r["m"], r["c"], r["mc"], unit)
+        text += " — правка" if flag else ""
         final.append(({**r, "ore": r["cls"] == "ore", "decision": r["basis"]}, text, r["cls"], None))
     column("final", "Итог", "Рудные интервалы: класс, M/C/MC; у кондиционного — подпись", final)
 
@@ -526,4 +569,5 @@ def hole_protocol(lines: OreLines, params: OreParams, hole: int = 0, *, unit: st
             span = f" {_num(e['from'], 2)}–{_num(e['to'], 2)} м" if e["m"] else ""
             why = f"разрыв линии — {COMPARED_TITLES[e['compared']]}{span}"
             r["note"] = why if e["compared"] == "no_value" or not r["note"] else f"{r['note']}; {why}"
-    return HoleProtocol(hole, unit, p, rows, columns, cells, events, intervals, dict(res.stats))
+    done = ([], []) if after is None else (after.edits, after.violations)
+    return HoleProtocol(hole, unit, p, rows, columns, cells, events, intervals, dict(res.stats), *done)

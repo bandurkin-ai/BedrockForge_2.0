@@ -28,7 +28,7 @@ into falls back too. M, MC, WASTE_LEN, the classes of the samples, ORE_ID (1…k
 rows (`waste_in`, `frame`) are written by the kernels of `ore_intervals`.
 
 MANUAL = 1: an interval made by an edit, its nested rows, and every other row that is not a row of the
-calculation (the same class and depths).
+calculation (the same class, depths and NESTED) — what an edit let go, waste it cut, a frame it moved.
 
 Violations — for the intervals made by the edits, as the hole stands after the last one (`code`, `message`,
 `hint`, `from`, `to` of the interval):
@@ -249,7 +249,7 @@ class _Hole:
     def __init__(self, sub: OreLines, p: OreParams) -> None:
         self.p = p
         self.sub = sub
-        self.auto = ore_intervals(sub, p)
+        self.auto = ore_intervals(sub, p, nested=True)
         self.pc: Pieces = pieces(sub, p)
         pc = self.pc
         self.frm: list[float] = pc.frm.tolist()
@@ -261,12 +261,15 @@ class _Hole:
         self.line: list[int] = self.line_of.tolist()
         top = {f: k for k, f in enumerate(self.frm)}
         end = {t: k + 1 for k, t in enumerate(self.to)}
+        self.segs: list[list[Any]] = []
+        self.calculated: set[tuple[Any, ...]] = set()  # the rows of the calculation: (nested, class, from, to)
         iv = self.auto
-        self.segs: list[list[Any]] = [
-            [top[f], end[t], c, b, False]
-            for f, t, c, b in zip(iv.frm.tolist(), iv.to.tolist(), iv.cls.tolist(), iv.basis.tolist(), strict=True)
-        ]
-        self.calculated = {(a, b, c) for a, b, c, _, _ in self.segs}
+        for f, t, c, b, nested in zip(
+            iv.frm.tolist(), iv.to.tolist(), iv.cls.tolist(), iv.basis.tolist(), iv.nested.tolist(), strict=True
+        ):
+            self.calculated.add((nested, c, f, t))
+            if not nested:
+                self.segs.append([top[f], end[t], c, b, False])
 
     # --- depths and sums ---
 
@@ -441,14 +444,14 @@ class _Hole:
     def result(self, hole: int) -> tuple[OreIntervals, np.ndarray, np.ndarray]:
         pc, p = self.pc, self.p
         ns = len(self.segs)
-        cols = np.array([s[:4] for s in self.segs], np.int64).reshape(ns, 4)
+        sa, sb, scls, sbasis = (np.array([s[k] for s in self.segs], np.int64) for k in range(4))
         room = 3 * ns + len(pc.row) + 1
         iv_i = np.empty((room, IV_I_COLS), np.int64)
         iv_f = np.empty((room, IV_F_COLS), np.float64)
         s_cls = np.full(len(self.sub.frm), ou.CLS_NONE, np.int8)
         s_ore = np.zeros(len(self.sub.frm), np.int32)
         ni = _rows(
-            ns, *(np.ascontiguousarray(cols[:, k]) for k in range(4)), self.line_of, pc.line_start, pc.line_no,
+            ns, sa, sb, scls, sbasis, self.line_of, pc.line_start, pc.line_no,
             hole, p.cutoff, p.m_waste_max, pc.row, pc.frm, pc.to, pc.thick, pc.grade, pc.miss,
             s_cls, s_ore, iv_i, iv_f,
         )  # fmt: skip
@@ -456,14 +459,14 @@ class _Hole:
         manual = np.zeros(ni, np.int8)
         made = np.zeros(ni, np.int8)
         k = -1
-        flag = 0
-        for r, nested in enumerate(iv.iv_i[:, IV_NESTED].tolist()):
-            if not nested:  # the rows with NESTED = 0 go in the order of the segments; the nested ones follow theirs
+        by_edit = False
+        keys = zip(iv.iv_i[:, IV_NESTED].tolist(), iv.cls.tolist(), iv.frm.tolist(), iv.to.tolist(), strict=True)
+        for r, key in enumerate(keys):
+            if not key[0]:  # the rows with NESTED = 0 go in the order of the segments; the nested ones follow theirs
                 k += 1
-                a, b, cls, _, by_edit = self.segs[k]
-                flag = int(by_edit or (a, b, cls) not in self.calculated)
+                by_edit = self.segs[k][4]
                 made[r] = by_edit
-            manual[r] = flag
+            manual[r] = by_edit or key not in self.calculated
         return iv, manual, made
 
     def violations(self) -> list[dict[str, Any]]:
@@ -510,8 +513,14 @@ class _Hole:
                         f"{_num(lmc / lm, 3)} (M > Мпп {mpp} м, C < Сб {cb}).",
                         "Разделите интервал по прослою или сдвиньте границу.")  # fmt: skip
                 if cls == ou.CLS_ORE and units != 1:
-                    parts = [self.span(int(i64[1][u]), int(i64[1][u + 1])) for u in range(units) if i8[1][u] == ou.U_ORE]
-                    left = ", ".join(parts[:4]) + (" …" if len(parts) > 4 else "") if parts else "рудных частей не остаётся"
+                    parts = [
+                        self.span(int(i64[1][u]), int(i64[1][u + 1])) for u in range(units) if i8[1][u] == ou.U_ORE
+                    ]
+                    left = (
+                        ", ".join(parts[:4]) + (" …" if len(parts) > 4 else "")
+                        if parts
+                        else "рудных частей не остаётся"
+                    )
                     rule = "наращиванием" if p.mode == "simple" else "прирезкой по этапам"
                     add("trim", a, b, f"Интервал {self.span(a, b)} не получается {rule}: {left}.",
                         "Проверьте границы: средневзвешенное содержание каждой прирезки должно быть ≥ Сб.")  # fmt: skip
@@ -552,8 +561,9 @@ def edit_hole(lines: OreLines, params: OreParams, edits: Sequence[Mapping[str, A
 
 
 def warm() -> None:
-    """The kernels of the edit once, with the dtypes of the route (`composites/warm.py`)."""
+    """The kernels of the edit once, with the dtypes of the route (`composites/warm.py`): the rows of a hole,
+    the checks of the прирезка by stages and of the growth of «упрощённый»."""
     grades = [0.1, 1.8, 0.8, 5.6, 0.7, 4.3, 0.2, 0.3, 2.0, 0.1]
     lines = OreLines.of([0, 10], np.arange(10.0), np.arange(1.0, 11.0), grades)
-    for mode in ("strict_excl", "simple"):
-        edit_hole(lines, OreParams(1.0, 2.0, 2.0, mode=mode), [{"action": "split", "from": 1.0, "to": 4.0}])
+    edit_hole(lines, OreParams(1.0, 2.0, 2.0), [{"action": "merge", "from": 1.0, "to": 9.0}])
+    edit_hole(lines, OreParams(1.0, 2.0, 2.0, mode="simple"), [{"action": "move", "from": 9.0, "to": 6.0}])

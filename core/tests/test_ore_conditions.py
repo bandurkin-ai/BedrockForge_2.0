@@ -18,6 +18,7 @@ from bf_core.composites.ore_conditions import (
     exclusion,
     neighbours,
     variant_row,
+    warm,
 )
 from bf_core.composites.ore_intervals import READY_MODES, OreError, OreLines, OreParams, ore_intervals
 from bf_core.composites.ore_set import run_set
@@ -255,3 +256,7 @@ def test_parameters_limits_and_cancel() -> None:
         conditions_analysis(many, [0.6, 1.0], [1.0, 2.0], [2.0], tick=cancel, threads=2)
     assert ticks == [0.125, 0.25]
     assert set(READY_MODES) >= {"strict_excl", "contacts"} and ou.CLASSES[0] == "ore"
+
+
+def test_warm_runs() -> None:
+    warm()
