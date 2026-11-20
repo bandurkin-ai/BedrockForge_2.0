@@ -171,6 +171,8 @@ export const commands: Command[] = [
       m_min: P("string", "мин. мощности Мрт через «;»"),
       m_waste_max: P("string", "макс. мощности прослоя Мпп через «;»"),
       ...ORE_COMMON,
+      exclude_field: P("string", "поле для исключения проб, например CODE после «Кодировать каркасами»"),
+      exclude_values: P("string", "значения поля exclude_field для исключения через «,», например «Карьер»"),
     },
     stage: STAGE,
   },
