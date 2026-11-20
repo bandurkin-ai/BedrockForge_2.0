@@ -34,7 +34,7 @@ def record(c: Any, set_id: int) -> dict[str, Any]:
     return next(x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "ore")
 
 
-def test_split_writes_the_hole_and_stays_fresh(gkz) -> None:  # type: ignore[no-untyped-def]
+def test_split_writes_the_hole_and_stays_fresh(gkz) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c, project, set_id, table, holes = gkz
     done = ore_here(project, {"body": body(set_id, table)})
     rid, tid = done["result_id"], str(done["table_id"])
@@ -92,7 +92,7 @@ def test_split_writes_the_hole_and_stays_fresh(gkz) -> None:  # type: ignore[no-
     assert (top[0]["from"], top[0]["to"]) == (3.0, 11.0)
 
 
-def test_refused_edit_writes_nothing(gkz) -> None:  # type: ignore[no-untyped-def]
+def test_refused_edit_writes_nothing(gkz) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c, project, set_id, table, holes = gkz
     done = ore_here(project, {"body": body(set_id, table)})
     rid, tid = done["result_id"], str(done["table_id"])
@@ -116,7 +116,7 @@ def test_refused_edit_writes_nothing(gkz) -> None:  # type: ignore[no-untyped-de
     assert r.status_code == 409 and r.json()["code"] == "stale", r.text
 
 
-def test_rebuild_loses_the_edits(gkz) -> None:  # type: ignore[no-untyped-def]
+def test_rebuild_loses_the_edits(gkz) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c, project, set_id, table, holes = gkz
     done = ore_here(project, {"body": body(set_id, table)})
     rid = done["result_id"]
@@ -133,7 +133,7 @@ def test_rebuild_loses_the_edits(gkz) -> None:  # type: ignore[no-untyped-def]
         assert conn.execute(sa.select(sa.func.count()).where(dh_results.c.op == "ore")).scalar() == 1
 
 
-def test_contacts_have_no_edit(gkz) -> None:  # type: ignore[no-untyped-def]
+def test_contacts_have_no_edit(gkz) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     from tests.test_ore_job import add_samples
 
     c, project, set_id, _table, holes = gkz

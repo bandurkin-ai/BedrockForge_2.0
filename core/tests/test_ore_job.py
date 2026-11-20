@@ -384,4 +384,4 @@ def test_conditions_job_exclude_and_refusals(gkz) -> None:  # type: ignore[no-un
     assert r.status_code == 200, r.text
     assert wait_job(c, r.json()["source"], r.json()["id"], timeout=240)["status"] == "done"
     recs = [x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "conditions"]
-    assert len(recs) == 1 and recs[0]["id"] != rec["id"]
+    assert len(recs) == 1 and recs[0]["job_id"] != rec["job_id"]

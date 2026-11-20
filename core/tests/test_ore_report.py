@@ -47,14 +47,16 @@ def sheet(wb: Any, name: str) -> list[tuple[Any, ...]]:
 
 
 def events_of(c: Any, rid: int, holes: list[str]) -> int:
-    return sum(len(c.get(f"{C}/results/{rid}/protocol", params={"hole": h}).json()["protocol"]["events"]) for h in holes)
+    got = [c.get(f"{C}/results/{rid}/protocol", params={"hole": h}).json() for h in holes]
+    return sum(len(g["protocol"]["events"]) for g in got)
 
 
-def test_book_numbers_are_the_table(gkz, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_book_numbers_are_the_table(gkz, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c, project, set_id, table, holes = gkz
     done = ore_here(project, {"body": body(set_id, table)})
     rid, tid = done["result_id"], str(done["table_id"])
-    assert c.post(f"{C}/results/{rid}/edit", json={"hole": holes[1], "action": "split", "from": 3.0, "to": 7.0}).status_code == 200
+    split = {"hole": holes[1], "action": "split", "from": 3.0, "to": 7.0}
+    assert c.post(f"{C}/results/{rid}/edit", json=split).status_code == 200
     folder = tmp_path / "Протоколы ГКЗ"
     folder.mkdir()
     out = export_here(project, rid, folder / "Рудные интервалы · протокол", holes=[holes[1]])
@@ -95,7 +97,7 @@ def test_book_numbers_are_the_table(gkz, tmp_path: Path) -> None:  # type: ignor
     assert [tuple(x) for x in logged] == [(path.name, "xlsx")]
 
 
-def test_csv_with_bom_and_a_cancel_leaves_no_file(gkz, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_csv_with_bom_and_a_cancel_leaves_no_file(gkz, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c, project, set_id, table, holes = gkz
     done = ore_here(project, {"body": body(set_id, table)})
     rid = done["result_id"]
@@ -131,7 +133,7 @@ def test_csv_with_bom_and_a_cancel_leaves_no_file(gkz, tmp_path: Path) -> None: 
         assert conn.execute(sa.select(sa.func.count()).select_from(export_log)).scalar() == 0
 
 
-def test_the_route_and_the_job(gkz, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_the_route_and_the_job(gkz, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     from bf_core.composites import results
 
     c, project, set_id, table, holes = gkz
@@ -163,7 +165,7 @@ def test_the_route_and_the_job(gkz, tmp_path: Path) -> None:  # type: ignore[no-
 
 
 @pytest.mark.windows
-def test_cyrillic_path_on_windows(gkz, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+def test_cyrillic_path_on_windows(gkz, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     """Решение 30: the book is written into a folder with Cyrillic letters and spaces (also on Windows CI)."""
     _c, project, set_id, table, _holes = gkz
     done = ore_here(project, {"body": body(set_id, table)})
