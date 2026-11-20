@@ -254,7 +254,7 @@ def test_bulk_rows_are_what_the_row_by_row_writer_stored(
     a column of sample numbers) portion by portion."""
     engine, s1, _ = _setup(db_url, tmp_path)
     monkeypatch.setattr(dh, "BATCH", 257)
-    monkeypatch.setattr(dh._Texts, "GROUPS", groups)
+    monkeypatch.setattr(dh.Texts, "GROUPS", groups)
     with dialect.write_tx(engine) as conn:
         dh.replace_collars(conn, s1, [dh.CollarRow(f"С-{i:03d}", 1.0, 2.0, 3.0, 100.0) for i in range(30, -1, -1)])
     data = _hard_table(1500)
