@@ -41,7 +41,7 @@ from .ore_intervals import ore_intervals
 from .ore_types import IV_HOLE, IV_LINE, IV_ROW0, OreError, OreIntervals, OreLines, OreParams
 from .strips import Tick, run
 
-__all__ = ["BASIS_NAMES", "CLASS_NAMES", "NESTED_CLASSES", "OreSet", "label", "run_set", "warm"]
+__all__ = ["BASIS_NAMES", "CLASS_NAMES", "NESTED_CLASSES", "OreSet", "label", "labels_of", "run_set", "warm"]
 
 CLASS_NAMES = ou.CLASSES
 BASIS_NAMES = ou.BASES
@@ -117,8 +117,10 @@ class OreSet:
         """LABEL of every row: «8,0 м @ 2,84 г/т (МС 22,7)» for `ore`, empty for the rest (решение 20)."""
         iv = self.intervals
         out = [""] * len(iv)
-        for r in np.flatnonzero(iv.cls == ou.CLS_ORE).tolist():
-            out[r] = label(float(iv.m[r]), float(iv.mc[r]) / float(iv.m[r]), float(iv.mc[r]), unit)
+        rows = np.flatnonzero(iv.cls == ou.CLS_ORE)
+        m, mc = iv.m[rows], iv.mc[rows]
+        for r, text in zip(rows.tolist(), labels_of(m, mc, unit), strict=True):
+            out[r] = text
         return out
 
 
@@ -133,6 +135,45 @@ def label(m: float, c: float, mc: float, unit: str = "") -> str:
     """The label of an ore interval: M and MC with one decimal, C with two, the unit of the field."""
     grade = f"{_ru(c, 2)} {unit}".rstrip()
     return f"{_ru(m, 1)} м @ {grade} (МС {_ru(mc, 1)})"
+
+
+_PLAIN = 1e9  # `_half_up` takes 0 ≤ x < _PLAIN: its halves have at most 13 digits — a double tells them apart
+
+
+def _half_up(x: np.ndarray, digits: int) -> tuple[np.ndarray, np.ndarray]:
+    """`_ru` of many numbers (0 ≤ x < `_PLAIN`, no −0) without Decimal: (whole part, decimals) as integers.
+
+    `_ru` rounds the shortest notation D of x half up: the result is the number of halves t_j = (j + ½)/10^digits
+    not above D. D and t_j are decimals of at most 15 digits that a double tells apart, so t_j ≤ D exactly when
+    the double nearest to t_j — (2j + 1) / (2·10^digits), one correctly rounded division of integers — is ≤ x.
+    ⌊x·10^digits⌋ is within one of ⌊D·10^digits⌋: three halves around it are compared."""
+    scale = 10**digits
+    j = np.floor(x * scale)
+    q = j - 1.0
+    for k in (-1.0, 0.0, 1.0):
+        q += x >= (2.0 * (j + k) + 1.0) / (2.0 * scale)
+    whole = np.floor(q / scale)
+    return whole.astype(np.int64), (q - whole * scale).astype(np.int64)
+
+
+def labels_of(m: np.ndarray, mc: np.ndarray, unit: str = "") -> list[str]:
+    """`label(m, mc / m, mc, unit)` of many intervals — the same strings (500 thousand in a quarter of a second,
+    not in eight); the numbers `_half_up` does not take go to `label`."""
+    m, mc = np.asarray(m, dtype=np.float64), np.asarray(mc, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        c = mc / m
+    plain = np.ones(len(m), dtype=bool)
+    for x in (m, c, mc):
+        plain &= np.isfinite(x) & ~np.signbit(x) & (x < _PLAIN)
+    safe = [np.where(plain, x, 0.0) for x in (m, c, mc)]
+    (m0, m1), (c0, c1), (k0, k1) = _half_up(safe[0], 1), _half_up(safe[1], 2), _half_up(safe[2], 1)
+    tail = f" {unit}".rstrip()
+    out = [f"{a},{b} м @ {d},{e:02d}{tail} (МС {g},{h})"
+           for a, b, d, e, g, h in zip(m0.tolist(), m1.tolist(), c0.tolist(), c1.tolist(), k0.tolist(), k1.tolist(),
+                                       strict=True)]  # fmt: skip
+    for r in np.flatnonzero(~plain).tolist():
+        out[r] = label(float(m[r]), float(mc[r]) / float(m[r]) if m[r] else math.nan, float(mc[r]), unit)
+    return out
 
 
 def _row_domain(iv: OreIntervals, lines: OreLines) -> np.ndarray:
