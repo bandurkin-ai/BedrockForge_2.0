@@ -14,3 +14,10 @@
 - `DeclusParams.of(body)` → `declus_weights(x, y, z, v, p, threads=, tick=)` → `.weights` (NaN без координат или значения), `.report` (`n, n_missing, naive_mean, mean, uniform, best_size, sizes, means, min/max_weight, n_zero, notes`); x, y, z — середины интервалов.
 - Ошибка — `stats.weighted.StatsError` (`code, message, hint, param, as_dict()`); `jobs.as_api` должен её знать (одна строка).
 - Прогрев: `stats.weighted.warm()`, `stats.declus3d.warm()` — из `composites/warm.py`.
+
+## Окно «Рудные интервалы (ГКЗ)» (12.30, 7972bae) — контракт для 12.22–12.23
+- Задание: `POST /composites/ore` `{set_id, table, field, cutoff, m_min, m_waste_max, mc_min?, c_min?, mode, missing, missing_max?, thickness:{source:"length"|"field", field?}, domain?:{table,field}|{wireframe_ids}, contacts_values?:int[], name?}` → `{source, id}`; 409 `table_exists` → повтор с `replace: true`. Пустые `mc_min`/`c_min` не шлются (ядро: Сб·Мрт и Сб).
+- Результат задания: `{set_id, table_id, name, chart_id?}`; окно открывает таблицу и включает отображение в 3D; без `chart_id` ищет отображение «Рудные интервалы» среди отображений набора.
+- Предпросмотр `POST /composites/ore/preview {params, hole_id}` и `GET /composites/results/{id}/protocol?hole=<имя>` — одна форма: `{hole, unit, samples{from,to,values{<поле>, ORE_CLS (имена классов), ORE_ID}}, result{from,to,values{CLASS (имена), NESTED, M, C, MC, BASIS, ORE_ID, N_SAMPLES, WASTE_LEN, FLAG, LABEL}}, protocol{events:[OreEvents.records() без hole]}, summary, set_summary|null, notes[]}`; `row0`/`row1` событий — индексы проб скважины с 0; `summary` — `ore_set._summary` как есть; у GET `summary` может не быть; 409 `stale` — текстом.
+- Экспорт: `POST /composites/results/{id}/protocol {format:"xlsx"|"csv", path, holes?, overwrite?}` → `{source, id}`; 409 `files_exist {files}` → «Заменить?» и `overwrite: true`.
+- 12.31: `tools/conditions.ts::finish` должен звать `oreFinish` из `tools/ore.ts`.

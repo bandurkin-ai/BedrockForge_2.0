@@ -27,7 +27,7 @@ export function toolValues(tool: ToolSpec, args: Record<string, unknown>): FormV
 
 export function openTool(tool: ToolSpec, args: Record<string, unknown> = {}): string {
   const given = Object.fromEntries(Object.entries(args).filter(([, v]) => v !== undefined && v !== null));
-  return openWindow(`${WINDOW_PREFIX}${tool.id}`, tool.title, tool.id === "composite" ? "normal" : "form", Object.keys(given).length ? { args: given } : undefined, ...viewport());
+  return openWindow(`${WINDOW_PREFIX}${tool.id}`, tool.title, tool.id === "composite" || tool.id === "ore" ? "normal" : "form", Object.keys(given).length ? { args: given } : undefined, ...viewport());
 }
 
 /** Every required argument is given (a string — not empty). */
