@@ -17,6 +17,7 @@ import { tablesStore } from "../tables/state";
 import own from "./Composites.module.css";
 import { createPreviewer, loadHoles, startTool, type FieldRow, type HoleRow, type OnExists, type PreviewAnswer, type Previewer, type Started } from "./api";
 import { toolValues, WINDOW_PREFIX } from "./bind";
+import { CompositeWindow } from "./CompositeWindow";
 import { NO_SOURCE, rangeText, shown, sourceFromArgs, toolBody, type FormValues, type ParamSpec, type SourceState, type ToolSpec } from "./params";
 import { SourcePicker } from "./SourcePicker";
 import { summaryRows } from "./tools/composite";
@@ -323,5 +324,6 @@ export function renderCompositesWindow(w: FloatWin): ReactNode | null {
   const tool = toolById(w.kind.slice(WINDOW_PREFIX.length));
   if (!tool) return null;
   const args = (w.props?.args as Record<string, unknown> | undefined) ?? {};
+  if (tool.id === "composite") return <CompositeWindow winId={w.id} args={args} />;
   return <ToolWindow winId={w.id} tool={tool} args={args} />;
 }
