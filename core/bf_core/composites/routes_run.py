@@ -15,7 +15,8 @@
     summary {before, after}, set_summary | null, notes}: synchronous, one hole, the same computation as the job;
     `set_summary` — over the whole table when it has ≤ 200 000 rows (cached by revision and parameters), else
     null (the job's report has it); `op` — length, domain, bench, merge, coords (merge and coords: `samples` — the
-    first table, `set_summary` null). Missing values are null, never 0. Other ops — 422 `not_ready` (12.21–12.22).
+    first table, `set_summary` null). Missing values are null, never 0. The previews of the other ops have routes of
+    their own (`routes_prep`, `routes_ore`, registered first); an op none of them knows — 404 `unknown_operation`.
 
 The kernels are imported lazily (not before BF-READY); a plain `def` route runs in the thread pool of the API.
 """
@@ -43,7 +44,6 @@ Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
 Payload = Annotated[dict[str, Any], Body()]
 SET_SUMMARY_ROWS = 200_000
-PREVIEW_OPS = {"length", "domain", "bench", "merge", "coords", "coding", "topcut", "equivalent", "declus", "ore"}
 
 
 def _body(raw: Any) -> dict[str, Any]:
@@ -138,8 +138,13 @@ def rebuild(
         rec = conn.execute(sa.select(dh_results).where(dh_results.c.id == result_id)).mappings().first()
         if rec is None:
             raise ApiError(404, "result_not_found", "Результат обработки не найден.", "Обновите дерево проекта.")
-        if rec["op"] not in KINDS:
-            raise cj.not_ready(f"Перестроение «{OP_TITLES.get(rec['op'], rec['op'])}»")  # TODO(12.21–12.23)
+        if rec["op"] not in KINDS:  # the other ops are taken by `routes_ore` and `routes_prep`: one of a newer build
+            raise ApiError(
+                422,
+                "not_ready",
+                f"Перестроение «{OP_TITLES.get(rec['op'], rec['op'])}» в этой версии программы недоступно.",
+                "Обновите программу или удалите результат и постройте его заново.",
+            )
         table = conn.execute(
             sa.select(dh_tables.c.name, dh_tables.c.state).where(dh_tables.c.id == rec["table_id"])
         ).first()
@@ -252,10 +257,8 @@ def preview(svc: Svc, op: str, body: Payload) -> dict[str, Any]:
     from . import compose_tables as ct
     from . import jobs as cj
 
-    if op not in PREVIEW_OPS:
+    if op not in KINDS:  # coding, topcut, equivalent, declus, ore: their own routes, registered first
         raise ApiError(404, "unknown_operation", f"Нет предпросмотра «{op}».", "Обновите приложение.")
-    if op not in KINDS:
-        raise cj.not_ready("Предпросмотр этой операции")  # TODO(12.21–12.22): coding, topcut, equivalent, declus, ore
     raw = _body(body)
     params = {k: v for k, v in _body(raw.get("params")).items() if k != "name"}
     project = svc.require_current()
