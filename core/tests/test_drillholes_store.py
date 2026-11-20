@@ -327,9 +327,9 @@ def test_row_keys_come_in_the_order_of_the_arrays(db_url: str, tmp_path: Path, m
 def test_a_parent_deleted_between_portions_fails_the_write(
     db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gone: str
 ) -> None:
-    """The portions are written without the foreign keys of SQLite: the writer checks the table and the holes
-    of every portion itself. A hole (or the table) deleted meanwhile fails the write, as the key did, and leaves
-    no row without its hole."""
+    """The portions are separate transactions on one connection, statements of many rows on the driver cursor:
+    a hole (or the table) deleted between two of them fails the write with the error of the foreign key, as a
+    row-by-row insert did, and leaves no row without its hole."""
     engine, s1, _ = _setup(db_url, tmp_path)
     monkeypatch.setattr(dh, "BATCH", 100)
     holes = ["A"] * 150 + ["B"] * 150
@@ -344,9 +344,9 @@ def test_a_parent_deleted_between_portions_fails_the_write(
                 else:
                     conn.execute(sa.delete(dh_tables).where(dh_tables.c.job_id == 3))
 
-    with pytest.raises(sa.exc.IntegrityError):
+    with pytest.raises(sa.exc.DBAPIError) as err:
         dh.write_table(engine, s1, table("Пробы", holes, [1.0] * 300, ["x"] * 300), job_id=3, tick=tick)
-    assert len(calls) == 2
+    assert dialect.is_integrity_error(err.value) and len(calls) == 2
     with dialect.read_tx(engine) as conn:
         orphans = conn.execute(
             sa.select(sa.func.count())
@@ -356,11 +356,3 @@ def test_a_parent_deleted_between_portions_fails_the_write(
         ).scalar_one()  # fmt: skip
         left = conn.execute(sa.select(sa.func.count()).select_from(dh_rows)).scalar_one()
     assert orphans == 0 and left == 0  # the rows of the first portion went with their hole (table)
-    # the keys are checked again on every other connection: a row of a missing hole is refused
-    with pytest.raises(Exception) as err, dialect.write_tx(engine) as conn:  # noqa: PT011
-        t = conn.execute(sa.insert(dh_tables).values(set_id=s1, name="T", name_key="t", kind="interval", row_count=0,
-                                                     rev=1, state="building", created_at=dialect.utcnow(),
-                                                     updated_at=dialect.utcnow())).inserted_primary_key  # fmt: skip
-        assert t is not None
-        conn.execute(sa.insert(dh_rows).values(table_id=t[0], hole_id=987654))
-    assert dialect.is_integrity_error(err.value)

@@ -4,6 +4,7 @@
  * 8.2.2 never reaches the core), tables named by the assistant are resolved, and the job starts. 409
  * `table_exists`: the assistant takes the free name (« (2)»); «Заменить» is only the window's. Delete from the
  * interface asks our own question (`danger`); the assistant's calls are confirmed by the registry (`confirm`).
+ * «Перестроить» that loses results (409 `dependents_lost`) asks again with the list, then repeats with `drop_lost`.
  */
 import type { App } from "../../shell/app";
 import type { CommandContext, CommandSource } from "../../shell/commands";
@@ -13,7 +14,7 @@ import { openWindow } from "../../shell/windows";
 import { refresh as refreshJobs } from "../jobs/state";
 import { sceneObjects } from "../scene/objects";
 import { tablesStore } from "../tables/state";
-import { deleteResult, editOre, exportProtocol, loadFields, loadTables, rebuildResult, renameOnExists, resolveTable, startTool, type Started, type TableRow } from "./api";
+import { deleteResult, editOre, exportProtocol, loadFields, loadTables, lostList, rebuildResult, renameOnExists, resolveTable, startTool, type OnLost, type Started, type TableRow } from "./api";
 import { checkParams, firstError, parseNames, sourceFromArgs, toolBody, valuesFromArgs, type FormValues, type SourceState, type ToolSpec } from "./params";
 import { TOOLS } from "./tools";
 
@@ -111,13 +112,26 @@ const resultId = (a: Record<string, unknown>): number => {
   return a.result_id;
 };
 
+/**
+ * 409 `dependents_lost` of «Перестроить» (ADR 0018 decision 18): what cannot be repeated is listed in our own
+ * window — for the assistant too: the registry's confirmation did not know the losses.
+ */
+export const askLost: OnLost = (lost) =>
+  askConfirm({
+    title: "Перестроить результат",
+    message: `При перестроении пропадут — их нельзя повторить на новой таблице:\n${lostList(lost) || "• зависимые результаты"}\n\nПерестроить всё равно?`,
+    okLabel: "Перестроить",
+    danger: true,
+  });
+
 export function bindComposites(app: App): void {
   for (const tool of TOOLS) bindTool(app, tool);
 
   app.registry.bind(
     "composite.rebuild",
     noted(app, async (a) => {
-      const s = await rebuildResult(resultId(a));
+      const s = await rebuildResult(resultId(a), askLost);
+      if (!s) return "Отменено";
       showJobs(app);
       await refreshJobs().catch(() => undefined);
       return `Результат №${resultId(a)}: перестроение — задание №${s.id}`;

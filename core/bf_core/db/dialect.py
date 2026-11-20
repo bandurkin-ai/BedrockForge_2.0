@@ -141,29 +141,20 @@ def write_portions(engine: Engine) -> Iterator[Callable[[], AbstractContextManag
         with write_portions(engine) as tx:
             for portion in portions:
                 with tx() as conn:
-                    …check that the rows the portion refers to exist (`conn` holds the write lock)…
                     bulk_insert_columns(conn, …)
 
     Each `tx()` is a transaction of its own, as `write_tx`: readers and writers get in between, a failure or a
     cancel leaves the portions committed so far. SQLite: they share one connection — every `write_tx` opens
     and closes its own, and closing the last connection of a file folds the whole WAL into it (a checkpoint
     and two syncs per portion); the connection folds the WAL every BULK_WAL_PAGES pages and keeps BULK_CACHE_KB
-    of pages.
-
-    SQLite checks no foreign key on this connection (two look-ups per row inserted: a fifth of the time of
-    a table of millions of rows). The caller MUST check the parents of a portion itself, inside its
-    transaction: `BEGIN IMMEDIATE` holds the write lock, so a parent found there cannot be deleted before the
-    commit, and a deletion after it cascades as ever (it runs on a connection that has the keys on).
-    PostgreSQL checks the keys itself, as always. Only inserts belong here: a DELETE on this connection
-    would not cascade. The settings die with the connection."""
+    of pages. Both settings die with the connection; the foreign keys are checked as on any other."""
     with engine.connect() as conn:
         sqlite = is_sqlite(engine)
-        raw = conn.connection.driver_connection
         if sqlite:
+            raw = conn.connection.driver_connection
             assert raw is not None
             raw.execute(f"PRAGMA wal_autocheckpoint={int(BULK_WAL_PAGES)}")
             raw.execute(f"PRAGMA cache_size=-{int(BULK_CACHE_KB)}")
-            raw.execute("PRAGMA foreign_keys=OFF")  # outside a transaction: inside one it is ignored
 
         @contextmanager
         def tx() -> Iterator[Connection]:
@@ -172,11 +163,7 @@ def write_portions(engine: Engine) -> Iterator[Callable[[], AbstractContextManag
             with conn.begin():
                 yield conn
 
-        try:
-            yield tx
-        finally:
-            if sqlite and raw is not None and not conn.in_transaction():
-                raw.execute("PRAGMA foreign_keys=ON")
+        yield tx
 
 
 @contextmanager

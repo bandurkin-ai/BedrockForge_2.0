@@ -119,7 +119,65 @@ export interface Started {
   id: number;
 }
 
-export const rebuildResult = (id: number): Promise<Started> => api.post(`/composites/results/${id}/rebuild`, {});
+/** What a rebuild or a replacement loses (409 `dependents_lost` / `table_exists` → `lost`). */
+export interface LostItem {
+  /** a result: its id, operation and its title; a column of the user (`kind: "column"`) — only its name */
+  id?: number;
+  op?: string;
+  title?: string;
+  kind?: string;
+  name: string;
+}
+
+/** The `lost` of a 409 made safe: an item without `op`/`title` is shown by its name; one without a name — dropped. */
+export function lostItems(raw: unknown): LostItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: LostItem[] = [];
+  for (const x of raw) {
+    if (typeof x === "string") {
+      if (x.trim()) out.push({ name: x });
+      continue;
+    }
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const name = typeof o.name === "string" && o.name.trim() ? o.name : typeof o.id === "number" ? `результат №${o.id}` : "";
+    if (!name) continue;
+    out.push({
+      name,
+      ...(typeof o.id === "number" ? { id: o.id } : {}),
+      ...(typeof o.op === "string" ? { op: o.op } : {}),
+      ...(typeof o.title === "string" && o.title.trim() ? { title: o.title } : {}),
+      ...(typeof o.kind === "string" ? { kind: o.kind } : {}),
+    });
+  }
+  return out;
+}
+
+/** «Урезка „AU 99 %“», «колонка „MY_NOTE“», «„Эквивалент“» — one line of the list of losses. */
+export function lostText(x: LostItem): string {
+  if (x.kind === "column") return `колонка «${x.name}»`;
+  return x.title && x.title !== x.name ? `${x.title} «${x.name}»` : `«${x.name}»`;
+}
+
+/** The list of losses for a question: a line per item; empty — nothing is lost. */
+export const lostList = (lost: readonly LostItem[]): string => lost.map((x) => `• ${lostText(x)}`).join("\n");
+
+/** «Перестроить» loses results that cannot be repeated: ask (our own window); false — nothing is started. */
+export type OnLost = (lost: LostItem[]) => Promise<boolean>;
+
+/**
+ * `POST /results/{id}/rebuild` (ADR 0018 decision 18). 409 `dependents_lost {lost}` → `onLost`: yes — again with
+ * `drop_lost: true`; no — null, nothing started.
+ */
+export async function rebuildResult(id: number, onLost: OnLost): Promise<Started | null> {
+  try {
+    return await api.post<Started>(`/composites/results/${id}/rebuild`, {});
+  } catch (e) {
+    if (!(e instanceof CoreError) || e.status !== 409 || e.code !== "dependents_lost") throw e;
+    if (!(await onLost(lostItems(e.body?.lost)))) return null;
+    return api.post<Started>(`/composites/results/${id}/rebuild`, { drop_lost: true });
+  }
+}
 
 export const exportProtocol = (id: number, body: { format: string; holes?: string[] }): Promise<Started> => api.post(`/composites/results/${id}/protocol`, body);
 
@@ -127,8 +185,8 @@ export const editOre = (id: number, body: { hole: string; action: string; from: 
 
 // ---- jobs ----
 
-/** What to do with 409 `table_exists`: replace the table of that name, take the free name, or nothing. */
-export type OnExists = (name: string, suggested: string | null) => Promise<"replace" | "rename" | "cancel">;
+/** What to do with 409 `table_exists`: replace the table of that name (losing `lost`), take the free name, or nothing. */
+export type OnExists = (name: string, suggested: string | null, lost: LostItem[]) => Promise<"replace" | "rename" | "cancel">;
 
 /** «Композиты 2 м» → «Композиты 2 м (2)»; «… (2)» → «… (3)». */
 export function nextName(name: string): string {
@@ -137,7 +195,7 @@ export function nextName(name: string): string {
 }
 
 /**
- * Starts the job of a tool. 409 `table_exists {name, suggested?}` → `onExists`: «replace» repeats with
+ * Starts the job of a tool. 409 `table_exists {name, suggested?, lost?}` → `onExists`: «replace» repeats with
  * `replace: true`, «rename» — with the free name; null — cancelled, nothing started.
  */
 export async function startTool(endpoint: string, body: Record<string, unknown>, onExists: OnExists): Promise<Started | null> {
@@ -147,7 +205,7 @@ export async function startTool(endpoint: string, body: Record<string, unknown>,
     if (!(e instanceof CoreError) || e.status !== 409 || e.code !== "table_exists") throw e;
     const name = String(e.body?.name ?? body.name ?? "");
     const suggested = typeof e.body?.suggested === "string" ? e.body.suggested : null;
-    const what = await onExists(name, suggested);
+    const what = await onExists(name, suggested, lostItems(e.body?.lost));
     if (what === "cancel") return null;
     const again = what === "replace" ? { ...body, replace: true } : { ...body, name: suggested ?? nextName(name) };
     return api.post<Started>(`/composites${endpoint}`, again);

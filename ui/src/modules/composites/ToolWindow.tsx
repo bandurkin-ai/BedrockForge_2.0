@@ -15,7 +15,7 @@ import jobsCss from "../jobs/Jobs.module.css";
 import { cancelJob, jobsStore, refresh as refreshJobs, STATUS_TITLES } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import own from "./Composites.module.css";
-import { createPreviewer, loadHoles, startTool, type FieldRow, type HoleRow, type OnExists, type PreviewAnswer, type Previewer, type Started } from "./api";
+import { createPreviewer, loadHoles, lostList, startTool, type FieldRow, type HoleRow, type OnExists, type PreviewAnswer, type Previewer, type Started } from "./api";
 import { toolValues, WINDOW_PREFIX } from "./bind";
 import { CodingWindow } from "./CodingWindow";
 import { CompositeWindow } from "./CompositeWindow";
@@ -32,9 +32,11 @@ import { TopcutWindow } from "./TopcutWindow";
 import { summaryRows } from "./tools/composite";
 import { toolById } from "./tools";
 
-/** «Заменить?» of 409 `table_exists` — our own window (ADR 0018 §10). */
-export const askReplace: OnExists = async (name) =>
-  (await askConfirm({ title: "Заменить?", message: `В наборе уже есть таблица «${name}». Заменить её новым результатом?`, okLabel: "Заменить", danger: true })) ? "replace" : "cancel";
+/** «Заменить?» of 409 `table_exists` — our own window (ADR 0018 §10) with what the replacement loses (decision 18). */
+export const askReplace: OnExists = async (name, _suggested, lost = []) => {
+  const losses = lost.length ? `\n\nПри замене пропадут — их нельзя повторить на новой таблице:\n${lostList(lost)}` : "";
+  return (await askConfirm({ title: "Заменить?", message: `В наборе уже есть таблица «${name}». Заменить её новым результатом?${losses}`, okLabel: "Заменить", danger: true })) ? "replace" : "cancel";
+};
 
 export function ParamForm({ params, values, errors, fields, onChange, placeholders = {} }: { params: readonly ParamSpec[]; values: FormValues; errors: Record<string, string>; fields: readonly FieldRow[]; onChange: (v: FormValues) => void; placeholders?: Record<string, string> }) {
   const set = (key: string, v: string | boolean) => onChange({ ...values, [key]: v });

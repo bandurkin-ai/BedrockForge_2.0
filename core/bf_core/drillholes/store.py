@@ -384,27 +384,6 @@ def _texts_by_row(texts: Sequence[tuple[str, Any]], start: int, stop: int) -> li
     return out
 
 
-def _check_parents(conn: sa.Connection, table_id: int, hole_ids: Any) -> None:
-    """The table being built and the holes of a portion are there — inside the transaction of the portion,
-    which holds the write lock (`dialect.write_portions`: SQLite checks no foreign key on that connection).
-    Gone (the set, the table or a hole was deleted meanwhile) — IntegrityError, as the foreign key gave."""
-    import numpy as np
-
-    ok = conn.execute(
-        sa.select(dh_tables.c.id).where(dh_tables.c.id == table_id, dh_tables.c.state == "building")
-    ).first()
-    wanted = np.unique(hole_ids).tolist()
-    found = 0
-    for start in range(0, len(wanted), 500):  # ids in portions: under the SQLite parameter limit
-        part = wanted[start : start + 500]
-        found += int(
-            conn.execute(sa.select(sa.func.count()).select_from(dh_holes).where(dh_holes.c.id.in_(part))).scalar_one()
-        )
-    if ok is None or found != len(wanted):
-        what = "the table being built" if ok is None else "a hole of the rows"
-        raise sa.exc.IntegrityError("INSERT INTO dh_rows", None, RuntimeError(f"{what} was deleted meanwhile"))
-
-
 def write_table(
     engine: sa.Engine, set_id: int, data: TableData, *, job_id: int | None, tick: Tick, swap: bool = True
 ) -> dict[str, Any]:
@@ -476,9 +455,8 @@ def write_table(
         for start in range(0, n, BATCH):
             tick(start / max(n, 1), f"«{data.name}»: строк {start} из {n}")
             stop = min(n, start + BATCH)
-            holes_here = hole_of[start:stop]
             columns: dict[str, list[Any]] = {
-                "hole_id": holes_here.tolist(),
+                "hole_id": hole_of[start:stop].tolist(),
                 "from_m": _driver_floats(from_m[start:stop]),
                 "to_m": _driver_floats(to_m[start:stop]),
                 "num": encode_vectors(_matrix(numbers, start, stop)),
@@ -488,7 +466,6 @@ def write_table(
             if texts:
                 columns["txt"] = _driver_texts(texts, start, stop)
             with portion() as conn:
-                _check_parents(conn, table_id, holes_here)
                 keys = dialect.bulk_insert_columns(conn, dh_rows, fixed, columns)
             if keys is None:
                 ids = None

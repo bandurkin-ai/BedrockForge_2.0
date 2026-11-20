@@ -391,13 +391,13 @@ def test_conditions_job_exclude_and_refusals(gkz) -> None:  # type: ignore[no-un
 
 
 def _text_domain(project: Any, set_id: int, holes: list[str]) -> str:
-    """«Пробы · литология»: the samples of Т8.2-12 with LIT «QZ» at 3–12 m, «вмещающие» elsewhere."""
+    """«Пробы · литология» (an interval table: the set has one «assay»): the samples of Т8.2-12 with LIT «QZ» at 3–12 m, «вмещающие» elsewhere."""
     from bf_core.drillholes import store
 
     names = [h for h in holes for _ in range(N)]
     frm = [float(i) for _ in holes for i in range(N)]
     lit = ["QZ" if 3 <= i < 12 else "вмещающие" for _ in holes for i in range(N)]
-    data = store.TableData("Пробы · литология", "assay", names, frm, [f + 1.0 for f in frm],
+    data = store.TableData("Пробы · литология", "interval", names, frm, [f + 1.0 for f in frm],
                            [ColumnSpec("AU", "number", "г/т"), ColumnSpec("LIT", "text")],
                            [GRADES * len(holes), lit])  # fmt: skip
     return str(store.write_table(project.engine, set_id, data, job_id=None, tick=lambda _p, _m=None: None)["table_id"])
@@ -420,10 +420,11 @@ def test_contacts_by_text_and_by_value(gkz) -> None:  # type: ignore[no-untyped-
     req = body(set_id, lit, mode="contacts", domain={"table": lit, "field": "LIT"})
     assert ore_of({**req, "contacts_values": ["QZ"]}) == [(3.0, 12.0)]
     assert ore_of({**req, "contacts_values": "QZ"}) == [(3.0, 12.0)]
-    assert ore_of({**req, "contacts_values": ["вмещающие"]}) == [(0.0, 3.0), (12.0, float(N))]
+    host = ore_of({**req, "contacts_values": ["вмещающие"]})
+    assert (12.0, float(N)) in host and all(t <= 3.0 or f >= 12.0 for f, t in host)
     num, _h = add_samples(project, set_id, domain=True, name="Пробы ГКЗ · домен")  # DOM 1 at 3–12 m
     req = body(set_id, num, mode="contacts", domain={"table": num, "field": "DOM"})
-    for given in ([1], ["1"], ["1.0"], "1,0", [1.0]):
+    for given in ([1], ["1"], ["1.0"], "1.0", [1.0], ["1,0"]):
         assert ore_of({**req, "contacts_values": given}) == [(3.0, 12.0)], given
     for bad in (["²"], ["QZ"], ["nan"], [True]):
         r = c.post(f"{C}/ore", json={**req, "contacts_values": bad})

@@ -2,7 +2,8 @@
  * Results of sample processing under a set of the data tree (ТЗ 8.0.2, 8.2.3; ADR 0018 §2): the row «Обработка
  * проб» and a row per result — its name, «устарел» with the reason; a double click — the table of the result (a
  * result without one — «Свойства»); the menu: «Открыть таблицу», «Параметры…» (the tool window with the values the
- * core ran with), «Перестроить», «Свойства», «Удалить…» (our own question, `danger` — bind.ts). Rows are `TreeRow`s:
+ * core ran with), «Перестроить» (always our own question, decision 11; losses — a second one, bind.ts), «Свойства»,
+ * «Удалить…» (our own question, `danger` — bind.ts). Rows are `TreeRow`s:
  * the WAI-ARIA keyboard of the tree (shell/tree.ts) works on them as on every row. `TabMark` — the mark of a result
  * table on its tab of the panel «Таблица».
  */
@@ -20,7 +21,7 @@ import { openWindow } from "../../shell/windows";
 import type { ResultRow, TableRow } from "./api";
 import { openTool, WINDOW_PREFIX } from "./bind";
 import own from "./Composites.module.css";
-import { loadSetResults, paramsArgs, rebuildWarning, resultLabel, resultMenu, resultsStore, staleText, tabMark, toolOfOp, watchResults, type ResultAction } from "./results";
+import { loadSetResults, paramsArgs, rebuildQuestion, resultLabel, resultMenu, resultsStore, staleText, tabMark, toolOfOp, watchResults, type ResultAction } from "./results";
 import { toolById } from "./tools";
 
 export const RESULT_WINDOW = `${WINDOW_PREFIX}result`;
@@ -39,8 +40,7 @@ export async function runResultAction(app: App, r: ResultRow, action: ResultActi
       const tool = toolById(toolOfOp(r.op) ?? "");
       if (tool) openTool(tool, paramsArgs(r));
     } else if (action === "rebuild") {
-      const warn = rebuildWarning(r);
-      if (warn && !(await askConfirm({ title: "Перестроить результат", message: `«${resultLabel(r)}»: ${warn}`, okLabel: "Перестроить", danger: true }))) return;
+      if (!(await askConfirm({ title: "Перестроить результат", message: rebuildQuestion(r), okLabel: "Перестроить", danger: true }))) return;
       await app.run("composite.rebuild", { result_id: r.id });
     } else if (action === "props") openResultProps(r);
     else if (action === "delete") {

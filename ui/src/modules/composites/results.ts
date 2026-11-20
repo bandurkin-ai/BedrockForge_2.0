@@ -24,13 +24,28 @@ export interface ResultsState {
 export const resultsStore = new Store<ResultsState>({ bySet: {}, errors: {} });
 
 const inflight = new Map<number, Promise<void>>();
+/** A read asked for while one was running: it goes once the running one ends (its answer may predate the change). */
+const queued = new Map<number, Promise<void>>();
 /** Grows on a new project: a read answered for the previous one is dropped. */
 let epoch = 0;
 
-/** Reads the results of a set; a set the core has no results route for (404) has none. */
+/**
+ * Reads the results of a set; a set the core has no results route for (404) has none. Asked again while a read is
+ * running — one more read after it (not the running one: «устарел» could stay as it was before the change).
+ */
 export function loadSetResults(setId: number): Promise<void> {
   const running = inflight.get(setId);
-  if (running) return running;
+  if (running) {
+    const waiting = queued.get(setId);
+    if (waiting) return waiting;
+    const mine = epoch;
+    const next = running.then(() => {
+      if (queued.get(setId) === next) queued.delete(setId);
+      return mine === epoch ? loadSetResults(setId) : undefined;
+    });
+    queued.set(setId, next);
+    return next;
+  }
   const mine = epoch;
   const p = loadResults(setId)
     .then(
@@ -57,6 +72,7 @@ export function loadSetResults(setId: number): Promise<void> {
 export function resetResults(): void {
   epoch += 1;
   inflight.clear();
+  queued.clear();
   resultsStore.set({ bySet: {}, errors: {} });
 }
 
@@ -197,6 +213,13 @@ export const rebuildWarning = (r: ResultRow): string | null => {
   const n = manualEdits(r);
   return n ? `Ручных правок: ${n}. При перестроении они будут потеряны.` : null;
 };
+
+/** The question of «Перестроить» — asked always (ADR 0018 decision 11); manual edits are warned of in its text. */
+export function rebuildQuestion(r: ResultRow): string {
+  const what = r.makes_table ? "Таблица-результат будет пересчитана" : "Записанные поля будут пересчитаны";
+  const warn = rebuildWarning(r);
+  return `Перестроить «${resultLabel(r)}»? ${what} по текущим данным.${warn ? `\n\n${warn}` : ""}`;
+}
 
 // ---- «Свойства» ----
 
