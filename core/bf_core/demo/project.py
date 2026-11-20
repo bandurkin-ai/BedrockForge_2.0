@@ -7,7 +7,8 @@ the DTM with the plan on it (Э7, `geo.py`), wireframes of the ore body and outl
 tie lines, the solid stitched from them and the isolines of the relief (Э9, `contours.py`), the geological map and
 the scan of the section Y = 8125 (Э9), the series of sections of «Рудное тело 3» and the plans of the relief (Э10,
 `sections.py`), the block model around the ore bodies (Э11, `blocks.py`). A part is a function (conn, store,
-rng) registered in PARTS.
+rng) registered in PARTS. Then «Композиты 2 м» and «Рудные интервалы» by the bodies of their jobs (Э12,
+`samples.py`) and the audit.
 """
 
 from __future__ import annotations
@@ -48,8 +49,22 @@ def create_or_open(svc: ProjectService) -> tuple[Project, bool]:
     for _name, part in PARTS:
         with dialect.write_tx(project.engine) as conn:
             part(conn, store, rng)
+    _samples(project)
     _audit(project)
     return project, True
+
+
+def _samples(project: Project) -> None:
+    """«Композиты 2 м» and «Рудные интервалы» (Э12, `samples.py`): by the bodies of their jobs once the data are
+    written, before the audit (ORE_ID / ORE_CLS move the revision of «Пробы» the audit is made for)."""
+    import logging
+
+    from .samples import add_samples
+
+    try:
+        add_samples(project)
+    except Exception:  # noqa: BLE001 - the demo opens anyway; the results can be made from «Обработка проб»
+        logging.getLogger("bf_core.demo").exception("demo sample processing failed")
 
 
 def _audit(project: Project) -> None:
