@@ -54,7 +54,7 @@ if TYPE_CHECKING:
 
 KIND = "composite.ore_intervals"
 OP = "ore"
-ALGO = "ore-1"
+ALGO = "ore-1"  # f"ore-{ore_intervals.ALGO}" (the version of the rules; not imported here: no numba before BF-READY)
 cj.ALGO.update(ore=ALGO)
 DEFAULT_NAME = "Рудные интервалы"
 SAMPLE_COLUMNS = ("ORE_ID", "ORE_CLS")

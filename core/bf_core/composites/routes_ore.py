@@ -10,11 +10,12 @@ its preview, the protocol of a hole, «Перестроить».
     job: {set_id, result_id, table_id, name, chart_id, rows, columns, replaced, fresh, journal, events}.
   * `POST /ore/preview` {params, hole_id} and `GET /results/{id}/protocol?hole=<name>` → one form: {hole, unit,
     samples {from, to, values {<field>, ORE_CLS (class names), ORE_ID}}, result {from, to, values {CLASS, NESTED,
-    M, C, MC, BASIS, ORE_ID, N_SAMPLES, WASTE_LEN, FLAG, LABEL, …}}, protocol {events}, summary, set_summary,
-    notes}. One hole, the same computation as the job (synchronous, in the thread pool of the API; the kernels
-    imported lazily). `protocol.events` — the records of the kernel (`OreEvents.records` without `hole`; `row0`,
-    `row1` — samples of the hole, 0-based). `set_summary` — the summary of the whole table when it has ≤ 200 000
-    rows (cached by revisions and parameters), else null; the protocol of a result has null. Nothing is written.
+    M, C, MC, BASIS, ORE_ID, N_SAMPLES, WASTE_LEN, FLAG, LABEL, MANUAL, …}}, protocol {events, rows, columns,
+    cells, …}, summary, set_summary, notes}. One hole, the same computation as the job (synchronous, in the thread
+    pool of the API; the kernels imported lazily). `protocol` — `ore_protocol.hole_protocol`: `events`
+    (`OreEvents.records` without `hole`; `row0`, `row1` — samples of the hole, 0-based) and the form И1, сл. 17
+    (`rows`, `columns`, `cells`). `set_summary` — the summary of the whole table when it has ≤ 200 000 rows
+    (cached by revisions and parameters), else null; the protocol of a result has null. Nothing is written.
     The protocol only of a fresh result of the current `algo`: otherwise 409 `stale` (решение 19).
   * `POST /results/{id}/rebuild` {drop_lost?} of an ore result: the job with its params on the current samples
     (found by name), the table replaced; the same hash — no computation; 409 `dependents_lost` as
@@ -125,13 +126,15 @@ def _whole(project: Any, spec: Any) -> dict[str, Any] | None:
     return out
 
 
-def _events(made: Any) -> list[dict[str, Any]]:
-    """The protocol of the hole: the records of the kernel without `hole` (`row0`, `row1` — its samples)."""
-    from .ore_intervals import ore_intervals
+def _protocol(made: Any, unit: str | None) -> dict[str, Any]:
+    """The protocol of the hole (`ore_protocol.hole_protocol`, 12.15): `events` — the records of the kernel without
+    `hole` (`row0`, `row1` — its samples, 0-based; `n`, `mark`, `text`), and the form И1, сл. 17 — `rows`,
+    `columns`, `cells`; `algo`, `mode`, `stats`."""
+    from .ore_protocol import hole_protocol
 
-    iv = ore_intervals(made.lines, made.kernel, events=True, nested=True)
-    assert iv.events is not None
-    return [{k: v for k, v in e.items() if k != "hole"} for e in iv.events.records()]
+    hp = hole_protocol(made.lines, made.kernel, 0, unit=unit or "").as_dict()
+    events = [{k: v for k, v in e.items() if k != "hole"} for e in hp["events"]]
+    return {**{k: v for k, v in hp.items() if k not in ("hole", "unit", "intervals")}, "events": events}
 
 
 def _form(project: Any, spec: Any, hole_id: int, hole: str) -> tuple[dict[str, Any], Any]:
@@ -156,7 +159,7 @@ def _form(project: Any, spec: Any, hole_id: int, hole: str) -> tuple[dict[str, A
         "unit": spec.unit,
         "samples": {"from": _nulls(src.from_m), "to": _nulls(src.to_m), "values": samples},
         "result": {"from": _nulls(out.from_m), "to": _nulls(out.to_m), "values": values},
-        "protocol": {"events": clean(_events(made))},
+        "protocol": clean(_protocol(made, spec.unit)),
         "summary": clean(made.res.summary),
         "set_summary": None,
         "notes": notes,

@@ -237,6 +237,8 @@ def test_preview_is_the_job_and_writes_nothing_protocol_and_stale(gkz) -> None: 
     assert LABEL in v["LABEL"] and "frame" in v["CLASS"]
     ev = p["protocol"]["events"]
     assert ev and all("hole" not in e and 0 <= e["row0"] <= e["row1"] < N for e in ev if e["row0"] >= 0)
+    form = p["protocol"]  # the form И1, сл. 17 (12.15): a line per sample, the columns N, IN₀, stages, итог
+    assert len(form["rows"]) == N and {"n", "in0", "final"} <= {x["key"] for x in form["columns"]} and form["cells"]
     assert {x["cls"] for x in p["summary"]["classes"]} >= {"ore", "interlayer"}
     assert c.get(f"{C}/results?set_id={set_id}").json()["results"] == []  # nothing written
     assert "ORE_ID" not in cols(rows_of(c, set_id, table))
@@ -298,3 +300,9 @@ def test_refusals_say_why(gkz) -> None:  # type: ignore[no-untyped-def]
     assert r.status_code == 409 and r.json()["code"] == "column_exists", r.text
     r = c.post(f"{C}/ore/preview", json={"params": body(set_id, table), "hole_id": 10**9})
     assert r.status_code == 404 and r.json()["code"] == "hole_not_found"
+
+
+def test_algo_is_that_of_the_kernel() -> None:
+    from bf_core.composites.ore_intervals import ALGO
+
+    assert oj.ALGO == f"ore-{ALGO}"  # a change of the rules makes the results «устарел» and closes their protocol
