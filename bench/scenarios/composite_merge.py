@@ -30,7 +30,9 @@ STAGES = {"read": ("read",), "hash": ("hash",), "kernel": ("kernel",), "compute"
           "write": ("table", "commit"), "snapshot": ("snapshot",)}  # fmt: skip
 
 
-def job(meta: dict[str, Any], engine: Any, folder: Path, job_id: int = 1) -> tuple[dict[str, Any], dict[str, float], Any]:
+def job(
+    meta: dict[str, Any], engine: Any, folder: Path, job_id: int = 1
+) -> tuple[dict[str, Any], dict[str, float], Any]:
     """`composites.jobs.run_tables(…, "merge")` with the clocks of its stages."""
     from bf_core.composites import compose_tables, merge, sink, source
     from bf_core.composites import jobs as cj

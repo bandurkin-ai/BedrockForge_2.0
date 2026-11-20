@@ -35,9 +35,9 @@ FIELD = "AU"
 
 def body(meta: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
     keys = ("method", "cmin", "cmax", "ncell", "noff", "minmax", "anisy", "anisz", "nx", "ny")
-    given = {k: params[k] for k in keys if k in params}
-    return {"set_id": meta["set_id"], "table": str(meta["samples"]), "field": FIELD,
-            **{"method": "cell3d", "cmin": 10.0, "cmax": 250.0, "ncell": 25, "noff": 8, "anisz": 0.2, **given}}  # fmt: skip
+    how = {"method": "cell3d", "cmin": 10.0, "cmax": 250.0, "ncell": 25, "noff": 8, "anisz": 0.2}
+    how.update({k: params[k] for k in keys if k in params})
+    return {"set_id": meta["set_id"], "table": str(meta["samples"]), "field": FIELD, **how}
 
 
 def job(

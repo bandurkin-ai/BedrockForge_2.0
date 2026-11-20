@@ -254,8 +254,9 @@ def fresh(work: Path) -> tuple[dict[str, Any], Any, Path, float]:
 
 
 def service(engine: Any, folder: Path) -> Any:
-    """What a route takes as `svc`: the current project (`require_current`)."""
-    project = SimpleNamespace(engine=engine, folder=folder, uid="bench")
+    """What a route takes as `svc`: the current project (`require_current`). Its uid is the folder: the caches
+    of the process (trajectories, summaries) are kept by it, and `warm` opens a project of its own."""
+    project = SimpleNamespace(engine=engine, folder=folder, uid=f"bench:{folder}")
     return SimpleNamespace(require_current=lambda writable=False: project)
 
 

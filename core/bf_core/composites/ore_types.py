@@ -1,11 +1,12 @@
 """Ore intervals by the ГКЗ method (ТЗ 7.35 Д-26, ADR 0018 §8): what goes into the kernel and what comes out —
 the parameters (`OreParams`), the samples (`OreLines`), the result (`OreIntervals`: interval rows and the
-classes of the samples) and the protocol events (`OreEvents`). The codes are those of `ore_units`."""
+classes of the samples), the protocol events (`OreEvents`) and step 0 on its own (`pieces`: the protocol and
+the manual edit of a hole). The codes are those of `ore_units`."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -114,6 +115,60 @@ class OreLines:
                 "ore_bad_lines", "Пробы переданы ядру в неверном виде.", "Сообщите разработчику: это ошибка программы."
             )
         return OreLines(s, cols[0], cols[1], cols[2], th, dm)
+
+    def holes(self, h0: int, h1: int | None = None) -> OreLines:
+        """The holes h0 ≤ h < h1 (one hole by default) as lines of their own — views, nothing is copied."""
+        h1 = h0 + 1 if h1 is None else h1
+        if not 0 <= h0 < h1 <= len(self.starts) - 1:
+            raise OreError("ore_bad_lines", "Скважина не найдена среди проб расчёта.", "Обновите список скважин.")
+        a, b = int(self.starts[h0]), int(self.starts[h1])
+        return OreLines(
+            self.starts[h0 : h1 + 1] - a, self.frm[a:b], self.to[a:b], self.grade[a:b],
+            None if self.thick is None else self.thick[a:b], None if self.domain is None else self.domain[a:b],
+        )  # fmt: skip
+
+
+class Pieces(NamedTuple):
+    """Step 0 of a set of holes (`pieces`): the pieces — `row` (row of the sample, −1 — a stretch without
+    samples), `frm`, `to`, `thick`, `grade`, `miss` (1 — missing, counted as waste); the sampling lines —
+    pieces `line_start[j] : line_start[j + 1]` of hole `line_hole[j]`, its line `line_no[j]`; `state[row]` —
+    ROW_* of every sample."""
+
+    row: np.ndarray
+    frm: np.ndarray
+    to: np.ndarray
+    thick: np.ndarray
+    grade: np.ndarray
+    miss: np.ndarray
+    line_start: np.ndarray
+    line_hole: np.ndarray
+    line_no: np.ndarray
+    state: np.ndarray
+
+
+def pieces(lines: OreLines, params: OreParams) -> Pieces:
+    """Step 0 as the kernel does it (`ore_units.pieces_strip`, the same types of the arguments — nothing is
+    compiled anew). `params` — checked."""
+    rows = len(lines.frm)
+    bridge = params.missing == "waste"
+    room = rows * (2 if bridge else 1) + 1
+    p_row = np.empty(room, np.int64)
+    cols = [np.empty(room, np.float64) for _ in range(4)]
+    p_miss = np.empty(room, np.int8)
+    line_start = np.empty(rows + 2, np.int64)
+    line_hole = np.empty(rows + 1, np.int64)
+    line_no = np.empty(rows + 1, np.int64)
+    state = np.zeros(rows, np.int8)
+    npc, nl, _ = ou.pieces_strip(
+        0, len(lines.starts) - 1, lines.starts, lines.frm, lines.to, lines.grade,
+        lines.thick if lines.thick is not None else np.empty(0, np.float64), lines.thick is not None,
+        lines.domain if lines.domain is not None else np.empty(0, np.int32), lines.domain is not None,
+        bridge, params.missing_max, ou.GAP_EPS, p_row, *cols, p_miss, line_start, line_hole, line_no, state,
+        np.zeros(ou.C_COLS + 2, np.int64), np.empty((0, ou.EI_COLS), np.int64), np.empty((0, ou.EF_COLS), np.float64), 0,
+    )  # fmt: skip
+    return Pieces(
+        p_row[:npc], *(c[:npc] for c in cols), p_miss[:npc], line_start[: nl + 1], line_hole[:nl], line_no[:nl], state
+    )
 
 
 @dataclass(frozen=True)

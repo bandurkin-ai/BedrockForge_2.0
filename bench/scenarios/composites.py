@@ -19,10 +19,12 @@ copied back — `restore_s`), so a job never sees the table of another one. Per 
   m_rows        composites;  m_mb — the peak of the process so far (VmHWM);  m_tick_gap_s — the longest wait
                 between two ticks: how long a cancel may stay unanswered.
 `cold_read_s` (`cold: true`) — the same columns read from `dh_rows` without the snapshot, timed in `prepare`: the
-line of the report without a budget (решение 16). What is checked (a failure stops the run): the samples came
-from the snapshot, every sample is read, the composites of every hole cover its stretch — Σ LENGTH is the sum
-of the holes to their TD (to the bottom of the last sample without one; benches: of the holes with a collar)
-within 1e-9 of it — and the report is in `dh_results`.
+line of the report without a budget (решение 16). What is checked (a failure stops the run), against the arrays
+of the generator: the samples came from the snapshot and every one is read; the composites cover the holes —
+Σ LENGTH and what the report counts as left without a composite (stretches shorter than f_min·L) make the sum of
+the holes to their TD (to the bottom of the last sample without one; benches: of the holes with a collar)
+within 1e-9; by the rocks of «Литология» the length so left is the one found from the contacts themselves
+(1e-9); the report is in `dh_results`.
 """
 
 from __future__ import annotations
