@@ -11,7 +11,9 @@ computes, builds the table aside and commits it in one transaction (`sink`). Par
 «Перестроить» with the same hash and `algo` does not compute: the record follows the current inputs
 (`results.mark_fresh`). Replacing a result table (a rebuild or «Заменить») repeats the operations that wrote
 columns into it (top cut, equivalent, DECL_W — `DEPENDENTS`, registered by their modules) in the order they
-were made, before the final transaction; their records go to the new table (решение 18).
+were made, before the final transaction; their records go to the new table (решение 18). The column operations
+of 12.21 (`jobs_prep`) are registered at the first look at DEPENDENTS; while they repeat, `AGAIN` holds the
+project and the ids of the old and the new table.
 
 The result of the job carries `events` — [[event, data], …]: `drillholes.changed` for the new and the replaced
 tables, `composites.changed {set_id}`; the scheduler publishes them (line of the orchestrator).
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Sequence
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -60,10 +63,12 @@ def not_ready(what: str) -> ApiError:
 
 
 def as_api(exc: Exception) -> ApiError:
-    """CompositeError of a kernel → 422 {code, message, hint, param}."""
+    """CompositeError of a kernel, StatsError of `stats/*` → 422 {code, message, hint, param}."""
+    from bf_core.stats.weighted import StatsError
+
     from .intervals import CompositeError
 
-    if isinstance(exc, CompositeError):
+    if isinstance(exc, (CompositeError, StatsError)):
         return _bad(exc.code, exc.message, exc.hint, exc.param)
     raise exc
 
@@ -274,6 +279,28 @@ class Again:
 DEPENDENTS: dict[str, Callable[[Any, dict[str, Any]], Again]] = {}
 
 
+@dataclass(frozen=True)
+class AgainContext:
+    """What a repeated dependent may read besides the arrays of the new table: the project (a domain of another
+    table, the trajectories), the replaced table and the new one (its id goes into the repeated `params`)."""
+
+    engine: Any
+    set_id: int
+    old_table: int | None
+    new_table: int | None
+
+
+#: Set while `_again` repeats the dependents of one job.
+AGAIN: ContextVar[AgainContext | None] = ContextVar("composites_again", default=None)
+
+
+def _registered() -> dict[str, Callable[[Any, dict[str, Any]], Again]]:
+    """DEPENDENTS with the column operations of 12.21 registered (in the API process too, not only in a worker)."""
+    from . import jobs_prep  # noqa: F401 - registers top cut, equivalent and DECL_W
+
+    return DEPENDENTS
+
+
 def register_dependent(
     op: str,
 ) -> Callable[[Callable[[Any, dict[str, Any]], Again]], Callable[[Any, dict[str, Any]], Again]]:
@@ -303,7 +330,7 @@ def lost_dependents(conn: sa.Connection, table_id: int) -> list[dict[str, Any]]:
     return [
         {"id": int(r["id"]), "op": r["op"], "title": OP_TITLES.get(r["op"], r["op"]), "name": r["name"]}
         for r in dependents(conn, table_id)
-        if r["op"] not in DEPENDENTS
+        if r["op"] not in _registered()
     ]
 
 
@@ -319,7 +346,7 @@ def _replaced_table(conn: sa.Connection, set_id: int, name: str) -> int | None:
     return None if tid is None else int(tid)
 
 
-def _again(engine: sa.Engine, spec: Any, out: sink.OutTable) -> list[sink.Dependent]:
+def _again(engine: sa.Engine, spec: Any, out: sink.OutTable, table_id: int | None = None) -> list[sink.Dependent]:
     from . import sink
 
     if not spec.replace:
@@ -328,15 +355,25 @@ def _again(engine: sa.Engine, spec: Any, out: sink.OutTable) -> list[sink.Depend
         old = _replaced_table(conn, spec.set_id, spec.name)
         deps = [] if old is None else dependents(conn, old)
     made = []
-    for r in deps:
-        fn = DEPENDENTS.get(r["op"])
-        if fn is None:
-            continue  # lost: the route listed it in «Заменить?» before the job was started
-        a = fn(out, r)
-        made.append(sink.Dependent(op=r["op"], name=r["name"], params=a.params or r["params"], fields=a.fields,
-                                   sha256=a.sha256 or r["sha256"], algo=a.algo or r["algo"],
-                                   report={**(r["report"] or {}), **a.report}, columns=a.columns))  # fmt: skip
+    known = _registered()
+    token = AGAIN.set(AgainContext(engine, spec.set_id, old, table_id))
+    try:
+        for r in deps:
+            fn = known.get(r["op"])
+            if fn is None:
+                continue  # lost: the route listed it in «Заменить?» before the job was started
+            made.append(_dependent(r, fn(out, r)))
+    finally:
+        AGAIN.reset(token)
     return made
+
+
+def _dependent(r: dict[str, Any], a: Again) -> sink.Dependent:
+    from . import sink
+
+    return sink.Dependent(op=r["op"], name=r["name"], params=a.params or r["params"], fields=a.fields,
+                          sha256=a.sha256 or r["sha256"], algo=a.algo or r["algo"],
+                          report={**(r["report"] or {}), **a.report}, columns=a.columns)  # fmt: skip
 
 
 # --- the job -----------------------------------------------------------------------------------------------
@@ -383,7 +420,7 @@ def _store(
     with sink.guarded(engine, job_id):
         tid = sink.build_table(engine, spec.set_id, made.out, job_id=job_id,
                                tick=lambda f, m: tick(0.6 + 0.3 * (f or 0.0), m or "Запись таблицы"))  # fmt: skip
-        again = _again(engine, spec, made.out)
+        again = _again(engine, spec, made.out, tid)
         report = {**made.report, "versions": _versions(), "seconds": round(time.perf_counter() - t0, 3)}
         res = sink.commit(engine, sink.Commit(set_id=spec.set_id, op=op, name=spec.name, params=spec.body,
                                               inputs=inputs, sha256=sha, algo=algo, report=report, job_id=job_id,

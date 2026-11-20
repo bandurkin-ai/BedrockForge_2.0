@@ -1,8 +1,8 @@
 """The warm-up of the kernels of composites (ADR 0018 §5, решение 26): every kernel of composites by length and of the
 summary «до/после» once on three holes, with the dtypes of the job and of the preview — compiled into
 NUMBA_CACHE_DIR, or loaded from it, before the first window asks. `ops/warm.py` calls `warm()` as its step
-`composites` (in the workers and in the API process); TODO(12.4–12.6, 12.10–12.14): domains, benches, merging,
-coordinates and Д-26 add their kernels here.
+`composites` (in the workers and in the API process); the kernels of Д-26 — `ore_set.warm`; TODO(12.4–12.6):
+domains, benches, merging and coordinates add their kernels here.
 """
 
 from __future__ import annotations
@@ -28,3 +28,7 @@ def warm() -> None:
                                 texts=[lines.take(codes)], ends=np.array([5.0, np.nan, 8.0]))  # fmt: skip
         summary(c.lines.to - c.lines.frm, c.values.values, ["AU", "AU2"])
     summary(lines.lengths(), values, ["AU", "AU2"])
+
+    from .ore_set import warm as warm_ore
+
+    warm_ore()  # Д-26 (12.10–12.14): the five modes, the events, the nested rows, the means of other fields
