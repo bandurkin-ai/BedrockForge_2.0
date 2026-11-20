@@ -101,9 +101,7 @@ class OreLines:
     domain: np.ndarray | None = None  # int32 codes, −1 — outside the domains; None — no domains
 
     @staticmethod
-    def of(
-        starts: Any, frm: Any, to: Any, grade: Any, thick: Any | None = None, domain: Any | None = None
-    ) -> OreLines:
+    def of(starts: Any, frm: Any, to: Any, grade: Any, thick: Any | None = None, domain: Any | None = None) -> OreLines:
         s = np.ascontiguousarray(starts, dtype=np.int64)
         cols = [np.ascontiguousarray(a, dtype=np.float64) for a in (frm, to, grade)]
         th = None if thick is None else np.ascontiguousarray(thick, dtype=np.float64)
@@ -153,7 +151,10 @@ def pieces(lines: OreLines, params: OreParams) -> Pieces:
     bridge = params.missing == "waste"
     room = rows * (2 if bridge else 1) + 1
     p_row = np.empty(room, np.int64)
-    cols = [np.empty(room, np.float64) for _ in range(4)]
+    p_from = np.empty(room, np.float64)
+    p_to = np.empty(room, np.float64)
+    p_l = np.empty(room, np.float64)
+    p_g = np.empty(room, np.float64)
     p_miss = np.empty(room, np.int8)
     line_start = np.empty(rows + 2, np.int64)
     line_hole = np.empty(rows + 1, np.int64)
@@ -163,12 +164,14 @@ def pieces(lines: OreLines, params: OreParams) -> Pieces:
         0, len(lines.starts) - 1, lines.starts, lines.frm, lines.to, lines.grade,
         lines.thick if lines.thick is not None else np.empty(0, np.float64), lines.thick is not None,
         lines.domain if lines.domain is not None else np.empty(0, np.int32), lines.domain is not None,
-        bridge, params.missing_max, ou.GAP_EPS, p_row, *cols, p_miss, line_start, line_hole, line_no, state,
-        np.zeros(ou.C_COLS + 2, np.int64), np.empty((0, ou.EI_COLS), np.int64), np.empty((0, ou.EF_COLS), np.float64), 0,
+        bridge, params.missing_max, ou.GAP_EPS, p_row, p_from, p_to, p_l, p_g, p_miss,
+        line_start, line_hole, line_no, state, np.zeros(ou.C_COLS + 2, np.int64),
+        np.empty((0, ou.EI_COLS), np.int64), np.empty((0, ou.EF_COLS), np.float64), 0,
     )  # fmt: skip
     return Pieces(
-        p_row[:npc], *(c[:npc] for c in cols), p_miss[:npc], line_start[: nl + 1], line_hole[:nl], line_no[:nl], state
-    )
+        p_row[:npc], p_from[:npc], p_to[:npc], p_l[:npc], p_g[:npc], p_miss[:npc],
+        line_start[: nl + 1], line_hole[:nl], line_no[:nl], state,
+    )  # fmt: skip
 
 
 @dataclass(frozen=True)

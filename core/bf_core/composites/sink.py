@@ -15,7 +15,7 @@ earlier record.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -342,11 +342,15 @@ class Commit:
     mode: Mode = "new"
     columns: list[ColumnsOut] = field(default_factory=list)
     dependents: list[Dependent] = field(default_factory=list)  # repeated on `table` (rows in its build order)
+    #: called last inside the final transaction with its result (may add keys to it): what must be committed
+    #: with the result or not at all — the display «Рудные интервалы» of the ore intervals (`ore_job`)
+    after: Callable[[sa.Connection, dict[str, Any]], None] | None = None
 
 
 def commit(engine: sa.Engine, c: Commit) -> dict[str, Any]:
     """The final transaction (see the module docstring). Returns {"result_id", "table_id", "name", "rev",
-    "replaced": [ids of tables replaced], "changed": [{"table", "rev"}] — tables that got columns}."""
+    "replaced": [ids of tables replaced], "changed": [{"table", "rev"}] — tables that got columns} and what
+    `c.after` added."""
     with dialect.write_tx(engine) as conn:
         name, rev = c.name, None
         replaced: list[int] = []
@@ -382,7 +386,10 @@ def commit(engine: sa.Engine, c: Commit) -> dict[str, Any]:
         if c.table is not None and c.dependents:
             _repeat(conn, c, c.table, changed)
             rev = int(conn.execute(sa.select(dh_tables.c.rev).where(dh_tables.c.id == c.table)).scalar_one())
-    return {"result_id": rid, "table_id": own, "name": name, "rev": rev, "replaced": replaced, "changed": changed}
+        out = {"result_id": rid, "table_id": own, "name": name, "rev": rev, "replaced": replaced, "changed": changed}
+        if c.after is not None:
+            c.after(conn, out)
+    return out
 
 
 def _repeat(conn: sa.Connection, c: Commit, table_id: int, changed: list[dict[str, Any]]) -> None:
