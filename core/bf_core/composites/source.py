@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -407,25 +408,38 @@ def text_codes(values: np.ndarray) -> tuple[np.ndarray, list[str]]:
 # --- trajectories --------------------------------------------------------------------------------------
 
 
-def trajectories(project: Any, set_id: int, method: str = "minimum_curvature", *, tick: Tick | None = None) -> Any:
-    """Trajectories of the set (`drillholes.trajectory`, cached by the set version); `project` needs
-    `engine` and `uid`. With `tick` (a job) they are built on a thread of their own while this one ticks:
-    50 thousand holes take over a second, and the builder has no place to ask for a cancel. A cancel waits
-    for the builder to end (it writes nothing) and is raised then."""
+@contextmanager
+def building(project: Any, set_id: int, method: str = "minimum_curvature") -> Iterator[Any]:
+    """`with building(project, set_id) as started:` — the trajectories of the set are being built on a thread of
+    their own (50 thousand holes take over a second) while the block reads the samples;
+    `trajectories(…, started=started)` takes them. The block ends when the builder has (it writes nothing)."""
+    from concurrent.futures import ThreadPoolExecutor
+
     from bf_core.drillholes.trajectory import trajectories as build
 
-    if tick is None:
-        return build(project, set_id, method)
-    from concurrent.futures import ThreadPoolExecutor
-    from concurrent.futures import TimeoutError as Waiting
-
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="bf-trajectories") as pool:
-        job = pool.submit(build, project, set_id, method)
-        while True:
-            try:
-                return job.result(timeout=0.2)
-            except Waiting:
-                tick(None, None)
+        yield pool.submit(build, project, set_id, method)
+
+
+def trajectories(project: Any, set_id: int, method: str = "minimum_curvature", *, tick: Tick | None = None,
+                 started: Any = None) -> Any:  # fmt: skip
+    """Trajectories of the set (`drillholes.trajectory`, cached by the set version); `project` needs
+    `engine` and `uid`. With `tick` (a job) they are built on a thread of their own while this one ticks:
+    the builder has no place to ask for a cancel. A cancel waits for the builder to end (it writes nothing)
+    and is raised then. `started` — of `building`: they are being built already."""
+    if started is None and tick is None:
+        from bf_core.drillholes.trajectory import trajectories as build
+
+        return build(project, set_id, method)
+    if started is None:
+        with building(project, set_id, method) as job:
+            return trajectories(project, set_id, method, tick=tick, started=job)
+    while True:
+        try:
+            return started.result(timeout=None if tick is None else 0.2)
+        except TimeoutError:
+            assert tick is not None
+            tick(None, None)
 
 
 def stations_bytes(st: Any, hole_db_ids: Sequence[int], *, tick: Tick | None = None) -> bytes:

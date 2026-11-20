@@ -368,11 +368,13 @@ class Commit:
     after: Callable[[sa.Connection, dict[str, Any]], None] | None = None
 
 
-def commit(engine: sa.Engine, c: Commit) -> dict[str, Any]:
+def commit(engine: sa.Engine, c: Commit, *, fold: Any = None) -> dict[str, Any]:
     """The final transaction (see the module docstring). Returns {"result_id", "table_id", "name", "rev",
     "replaced": [ids of tables replaced], "changed": [{"table", "rev"}] — tables that got columns} and what
-    `c.after` added. A table of `c.columns` deleted or replaced while the job ran — 409 `source_gone`."""
-    with dialect.write_tx(engine) as conn:
+    `c.after` added. A table of `c.columns` deleted or replaced while the job ran — 409 `source_gone`.
+    `fold` — of `dialect.fold_later`: the WAL of the transaction (columns of millions of rows) is folded into
+    the file after it, on a thread, while the job writes the snapshot — not inside its commit."""
+    with dialect.write_tx(engine, fold=fold) as conn:
         for co in c.columns:
             _still_there(conn, c, co.table_id)
         name, rev = c.name, None

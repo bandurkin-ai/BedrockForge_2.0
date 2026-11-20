@@ -12,13 +12,15 @@ other 8 numeric fields are averaged into the table. The job is the function its 
 SHA-256 of the inputs, the kernel, the table «Рудные интервалы» built aside, and one final transaction with the
 table, ORE_ID and ORE_CLS of the samples in place, the display and the record of the result:
   ore_s            the job from its start to the end of the final transaction — what Т8.2-19 counts;
-  ore_read_s       `read_ore`;  ore_traj_s — the trajectories;  ore_hash_s — SHA-256 of the inputs;
+  ore_read_s       `read_ore`;  ore_traj_s — the wait for the trajectories after it (they are built on a thread
+                   while the samples are read);  ore_hash_s — SHA-256 of the inputs;
   ore_kernel_s     `ore_set.run_set`: Д-26 with the nested rows, the means of the fields, the summary (ADR: ≤ 5 с);
   ore_compute_s    the kernel with the samples made into its lines before it;
   ore_table_s      the table: the middles on the trajectories, its columns, `sink.build_table`;
   ore_fields_s     ORE_ID and ORE_CLS written into the rows of «Пробы» (`sink.write_columns`, inside the final
-                   transaction);  ore_commit_s — the final transaction with them;  ore_snapshot_s — the snapshot of
-                   the new table, after it;
+                   transaction);  ore_commit_s — the final transaction with them (its WAL is folded into the file
+                   after it, on a thread: `dialect.fold_later`);  ore_snapshot_s — the snapshot of the new table,
+                   after it;
   ore_rows         rows of the table;  ore_mb — the peak of the process at the end of the job (VmHWM), ore_read_mb —
                    when the samples were read;  ore_tick_gap_s — the longest wait between two ticks.
 After the job (not in `ore_s`):

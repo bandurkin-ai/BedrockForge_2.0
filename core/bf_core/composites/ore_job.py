@@ -460,7 +460,8 @@ def out_table(spec: OreSpec, src: source.Lines, made: OreMade, xyz: np.ndarray |
     cols, vals = table_columns(spec, made, xyz)
     at = np.asarray(iv.hole, dtype=np.int64)
     holes: list[str] = np.array(src.holes, dtype=object)[at].tolist() if len(iv) else []
-    return sink.OutTable(spec.name, holes, np.ascontiguousarray(iv.frm), np.ascontiguousarray(iv.to), cols, vals)
+    return sink.OutTable(spec.name, holes, np.ascontiguousarray(iv.frm), np.ascontiguousarray(iv.to), cols, vals,
+                         hole_index=(src.holes, at))  # fmt: skip
 
 
 def sample_columns(made: OreMade) -> list[tuple[ColumnSpec, np.ndarray]]:
@@ -510,9 +511,10 @@ def run_ore(
         inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True, meshes=spec.mesh_ids())
     tick(0.02, "Чтение проб")
     cache = folder / "cache" / "tables"
-    src, dom = read_ore(engine, spec, cache_dir=cache, tick=tick)
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
-    st = source.trajectories(project, spec.set_id, tick=tick)
+    with source.building(project, spec.set_id) as started:  # the trajectories — while the samples are read
+        src, dom = read_ore(engine, spec, cache_dir=cache, tick=tick)
+        st = source.trajectories(project, spec.set_id, tick=tick, started=started)
     stations = source.stations_bytes(st, src.hole_db_ids.tolist(), tick=tick)
     sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=ALGO,
                             tick=tick)  # fmt: skip
@@ -532,21 +534,23 @@ def run_ore(
     def after(conn: sa.Connection, res: dict[str, Any]) -> None:
         shown["chart"] = put_display(conn, spec.set_id, str(res["name"]))
 
-    with sink.guarded(engine, job_id):
-        tid = sink.build_table(engine, spec.set_id, out, job_id=job_id,
-                               tick=lambda f, m: tick(0.6 + 0.3 * (f or 0.0), m or "Запись таблицы"))  # fmt: skip
-        again = cj._again(engine, spec, out, tid)
-        report = {**report_of(made), "unit": spec.unit, "journal": made.journal, "versions": cj._versions(),
-                  "edits": [], "seconds": round(time.perf_counter() - t0, 3)}  # fmt: skip
-        res = sink.commit(engine, sink.Commit(set_id=spec.set_id, op=OP, name=spec.name, params=spec.body,
-                                              inputs=inputs, sha256=sha, algo=ALGO, report=report, job_id=job_id,
-                                              table=tid, mode="replace" if spec.replace else "rename",
-                                              columns=[samples], dependents=again, after=after))  # fmt: skip
-    # no tick from here on: a cancel after the final transaction would report a committed result as cancelled
-    try:
-        sink.write_snapshot(engine, cache, tid, sink.with_dependents(out, again))
-    except Exception:  # noqa: BLE001 - the snapshot only speeds up reading; the table is committed
-        pass
+    with dialect.fold_later(engine) as fold:  # SQLite: the WAL of the final transaction is folded after it
+        with sink.guarded(engine, job_id):
+            tid = sink.build_table(engine, spec.set_id, out, job_id=job_id,
+                                   tick=lambda f, m: tick(0.6 + 0.3 * (f or 0.0), m or "Запись таблицы"))  # fmt: skip
+            again = cj._again(engine, spec, out, tid)
+            report = {**report_of(made), "unit": spec.unit, "journal": made.journal, "versions": cj._versions(),
+                      "edits": [], "seconds": round(time.perf_counter() - t0, 3)}  # fmt: skip
+            res = sink.commit(engine, sink.Commit(set_id=spec.set_id, op=OP, name=spec.name, params=spec.body,
+                                                  inputs=inputs, sha256=sha, algo=ALGO, report=report, job_id=job_id,
+                                                  table=tid, mode="replace" if spec.replace else "rename",
+                                                  columns=[samples], dependents=again, after=after),
+                              fold=fold)  # fmt: skip
+        # no tick from here on: a cancel after the final transaction would report a committed result as cancelled
+        try:
+            sink.write_snapshot(engine, cache, tid, sink.with_dependents(out, again))
+        except Exception:  # noqa: BLE001 - the snapshot only speeds up reading; the table is committed
+            pass
     set_id = spec.set_id
     events: list[list[Any]] = [["drillholes.changed", {"set_id": set_id, "table": str(tid), "rev": res["rev"]}]]
     events += [["drillholes.changed", {"set_id": set_id, "table": str(t), "rev": 0}] for t in res["replaced"]]
