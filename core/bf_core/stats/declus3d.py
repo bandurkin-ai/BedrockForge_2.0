@@ -332,8 +332,10 @@ def declus_weights(
             report["notes"].append("Ни один размер ячейки не изменил среднее в нужную сторону — веса равны 1.")
     total, metal = pair_sums(w, pv)
     n_zero = int((w == 0.0).sum())
-    if n_zero:
+    if n_zero and p.method == "polygon":
         report["notes"].append(f"Проб с нулевым весом: {n_zero} — их полигоны меньше ячейки сетки {nx} × {ny}.")
+    elif n_zero:
+        report["notes"].append(f"Проб с нулевым весом: {n_zero}.")
     report.update({
         "naive_mean": float(pv.mean()),
         "mean": float(metal / total),
