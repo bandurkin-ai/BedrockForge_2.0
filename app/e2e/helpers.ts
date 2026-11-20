@@ -7,8 +7,8 @@ export const ART = path.resolve(__dirname, "..", "..", "artifacts");
 
 /**
  * The numba cache of the launches without the .exe: one for every launch, as the packaged app keeps it in the
- * shared %LOCALAPPDATA% (the kernels compile once, not in every spec: the demo of Э12 makes composites and ore
- * intervals, ~17 s of compilation cold). A spec that wants a cold cache passes its own NUMBA_CACHE_DIR.
+ * shared %LOCALAPPDATA% (the kernels compile once, not in every spec). NUMBA_CACHE_DIR of the run — another folder
+ * (an empty one: the cold cache of a first start on Windows).
  */
 const SHARED_NUMBA = process.env.NUMBA_CACHE_DIR ?? path.join(os.tmpdir(), "bf-e2e-numba");
 
