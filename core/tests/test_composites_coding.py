@@ -102,6 +102,13 @@ def test_t8_2_7_vertical_hole_through_a_cube() -> None:
     )
     grade = np.arange(300.0)  # a column of the table: every part takes the value of its sample
     assert c.lines.take(grade).tolist() == c.rows.astype(float).tolist()
+    # the rows of the table in any order and a row left out: `take` still reads the column of the table
+    order = np.random.default_rng(0).permutation(300)
+    frm = np.append(np.arange(300.0)[order], 5.0)
+    mixed = iv.build_lines(np.full(301, 7), frm, np.append(frm[:-1] + 1.0, 5.0))  # the last row has no length
+    again = cg.code_samples(mixed, st)
+    assert mixed.n_bad == 1 and np.array_equal(again.code, c.code) and np.array_equal(again.rows, c.rows)
+    assert again.lines.take(np.append(grade[order], -1.0)).tolist() == c.lines.take(grade).tolist()
     # without it: the code by the middle of the sample and the share of its length inside
     m = cg.code_samples(lines, st, split=False)
     assert m.lines is lines and m.rows.tolist() == list(range(300))
@@ -468,7 +475,7 @@ def test_nothing_to_code() -> None:
 # --- threads, the order of the holes -------------------------------------------------------------------------
 
 
-def field(n: int, seed: int = 3) -> tuple[Trajectories, iv.Lines, list[cg.Body]]:
+def field(n: int, method: str = "minimum_curvature", seed: int = 3) -> tuple[Trajectories, iv.Lines, list[cg.Body]]:
     rng = np.random.default_rng(seed)
     x, y = rng.uniform(-150.0, 250.0, n), rng.uniform(-150.0, 250.0, n)
     z = rng.uniform(40.0, 160.0, n)  # some collars are inside the bodies
@@ -480,9 +487,8 @@ def field(n: int, seed: int = 3) -> tuple[Trajectories, iv.Lines, list[cg.Body]]
     s_az = np.concatenate([az, az + rng.uniform(-20.0, 20.0, len(bent))]) % 360.0
     dip = rng.uniform(-90.0, -45.0, len(bent))
     s_dip = np.concatenate([dip, np.clip(dip + rng.uniform(-15.0, 25.0, len(bent)), -90.0, 10.0)])
-    traj = desurvey(
-        Collars(np.arange(n), x + ORG[0], y + ORG[1], z, td), Surveys(s_hole, s_depth, s_az, s_dip), n_holes=n
-    )
+    collars, surveys = Collars(np.arange(n), x + ORG[0], y + ORG[1], z, td), Surveys(s_hole, s_depth, s_az, s_dip)
+    traj = desurvey(collars, surveys, method=method, n_holes=n)
     per = 20
     cuts = np.sort(rng.uniform(0.0, 1.0, (n, per + 1)), axis=1) * td[:, None]
     keep = rng.random((n, per)) < 0.9  # gaps
@@ -501,6 +507,29 @@ def same(a: cg.Coded, b: cg.Coded) -> bool:
     cols = [(c.lines.holes, c.lines.starts, c.lines.frm, c.lines.to, c.rows, c.code) for c in (a, b)]
     frac = a.inside_frac is None or np.array_equal(a.inside_frac, b.inside_frac, equal_nan=True)  # type: ignore[arg-type]
     return all(np.array_equal(p, q) for p, q in zip(*cols, strict=True)) and frac and a.report == b.report
+
+
+@pytest.mark.parametrize("method", METHODS)
+def test_codes_of_a_field_of_holes_against_the_boxes_themselves(method: str) -> None:
+    """Thousands of bent holes, collars inside the bodies among them: the code at the middle of every sample is
+    the first box of the list that holds that point of the path."""
+    traj, lines, bodies = field(4000, method)
+    walls = [(ORG + [40.0, 40.0, 30.0], ORG + [70.0, 70.0, 60.0]), (ORG, ORG + 100.0),
+             (ORG + [-200.0, -200.0, -40.0], ORG + [300.0, 300.0, -15.0])]  # fmt: skip
+    c = cg.code_by_wireframes(lines, traj, lines.holes, [bodies[0], bodies[2], bodies[3]], split=False, threads=2)
+
+    def first_box(depth: np.ndarray) -> np.ndarray:
+        p = traj.positions(lines.hole_ids(), depth)
+        out = np.full(lines.n, -1)
+        for k in (2, 1, 0):
+            out[((p >= walls[k][0]) & (p <= walls[k][1])).all(axis=1)] = k
+        return out
+
+    middle = 0.5 * (lines.frm + lines.to)
+    want = first_box(middle)
+    sure = (first_box(middle - 3e-6) == want) & (first_box(middle + 3e-6) == want)  # not on a wall
+    assert np.array_equal(c.code[sure], want[sure]) and np.count_nonzero(~sure) < 10
+    assert (np.bincount(want + 1, minlength=4) > 50).all()
 
 
 def test_threads_and_the_order_of_the_holes_do_not_change_the_result() -> None:
