@@ -73,7 +73,8 @@ def test_a_legend_over_the_labels_is_not_inflated_nor_listed(tmp_path: Path, mon
     def data(raw: RawOmf, n: int) -> list[str]:
         legend = raw.add("Legend", name="L", description="", values=raw.array("ScalarArray", np.arange(1000.0), "<f8"))
         codes = raw.array("ScalarArray", np.zeros(n), "<i8")
-        return [raw.data("MappedData", "Порода", codes, "cells", legends=[legend]), raw.scalar("AU", np.ones(n), "cells")]
+        mapped = raw.data("MappedData", "Порода", codes, "cells", legends=[legend])
+        return [mapped, raw.scalar("AU", np.ones(n), "cells")]
 
     inflated: list[int] = []
     real = of.OmfFile.inflate

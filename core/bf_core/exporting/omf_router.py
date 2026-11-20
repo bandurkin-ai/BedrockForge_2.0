@@ -7,9 +7,10 @@
     open only for reading (ТЗ 5.7): nothing can be exported, the `reason` of the answer says why (a text, as
     `GET /export/formats`);
   * `POST /omf/export` {wireframe_ids, line_file_ids, block_model_ids, path, overwrite?} → {source, id} of the job
-    `export.omf` (heavy). 423 `project_read_only`; 422 `nothing_to_export`, `omf_not_exportable`; 404 `object_not_found`; 409 `files_exist`
-    {files} — the file is there and the save window did not ask: the window asks «Заменить?» and repeats with
-    `overwrite: true`. The file is written as «‹имя›.omf.part» and renamed when complete.
+    `export.omf` (heavy). 423 `project_read_only`; 422 `nothing_to_export`, `omf_not_exportable`; 404
+    `object_not_found`; 409 `files_exist` {files} — the file is there and the save window did not ask: the
+    window asks «Заменить?» and repeats with `overwrite: true`. The file is written as «‹имя›.omf.part» and
+    renamed when complete.
 The import of OMF is the wizard «Импорт файлов» (`import.objects`, format `omf`).
 """
 
@@ -26,12 +27,11 @@ from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
-from .router import READ_ONLY
-
 router = APIRouter(prefix="/omf")
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
 Ids = Annotated[list[int], Field(max_length=5000)]
+READ_ONLY = "Проект открыт только для чтения: экспорт недоступен."  # as `exporting/router.py` (it imports this)
 
 
 @router.get("/exportable")

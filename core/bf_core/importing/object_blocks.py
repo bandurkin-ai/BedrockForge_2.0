@@ -10,8 +10,8 @@
   project of the file, if BF2 wrote it; a file with several models puts them into a folder of the tree named
   after it, as its wireframes (`object_meshes.file_folder`);
 * a volume that cannot be read (rotated, broken, a grid the store refuses — `ApiError` of `CellsWriter`) is a line
-  of the journal and an entry of `skipped`; the others load. Not enough memory (`out_of_memory`) or disk (`disk_full`) fails the job: its two attempts (`jobs/registry.py`)
-  start again from nothing;
+  of the journal and an entry of `skipped`; the others load. Not enough memory (`out_of_memory`) or disk
+  (`disk_full`) fails the job: its two attempts (`jobs/registry.py`) start again from nothing;
 * in the final transaction of the job (`log_blocks`) every model gets its row of `import_log`, which owns the
   source file (owner `import`, role `source`) — one blob for all the objects of the file.
 

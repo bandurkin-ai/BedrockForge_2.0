@@ -26,7 +26,7 @@ from bf_core.storage.blobs import BlobStore
 from tests.formats.omf_builder import RawOmf
 from tests.test_export_objects import _handler_run, _params
 from tests.test_import_job import API
-from tests.test_import_objects import project, run_job  # noqa: F401 - the fixture `project`
+from tests.test_import_objects import run_job
 
 FIELDS = [{"name": "Au", "kind": "number", "unit": "g/t"}]
 
@@ -83,7 +83,10 @@ def test_read_only_project_refuses_the_omf_export(demo, tmp_path: Path) -> None:
     assert not (tmp_path / "x.omf").exists()
 
 
-def test_a_volume_the_store_refuses_is_skipped(project, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_a_volume_the_store_refuses_is_skipped(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.projects.project import create_folder
+
+    folder = create_folder(tmp_path / "projects", "Объёмы", {})
     raw = RawOmf()
     for name, tensors, origin in (
         ("Хорошая", ([1.0, 1.0], [1.0], [1.0]), (0.0, 0.0, 0.0)),
@@ -102,14 +105,18 @@ def test_a_volume_the_store_refuses_is_skipped(project, tmp_path: Path, monkeypa
 
     monkeypatch.setattr(bm, "CellsWriter", picky)
     with np.errstate(over="ignore"):
-        ctx = run_job(project.folder, {"files": [str(path)]})
+        ctx = run_job(folder, {"files": [str(path)]})
     (entry,) = [f for f in ctx.result["files"] if f.get("kind") == "block_models"]
     assert entry["block_models"] == 1 and entry["skipped"] == 2 and entry["cells"] == 2
     text = "\n".join(ctx.lines)
     assert "объём «Огромная» не загружен" in text and "диапазона" in text
     assert "объём «Отказ» не загружен: Сетка модели отклонена." in text
-    with dialect.read_tx(project.engine) as conn:
-        assert [m["name"] for m in bm.list_block_models(conn)] == ["Хорошая"]
+    engine = dialect.create_engine(dialect.sqlite_url(str(folder / "project.sqlite")))
+    try:
+        with dialect.read_tx(engine) as conn:
+            assert [m["name"] for m in bm.list_block_models(conn)] == ["Хорошая"]
+    finally:
+        engine.dispose()
 
 
 def test_a_model_with_broken_cells_is_skipped_by_the_export(demo, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]

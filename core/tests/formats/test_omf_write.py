@@ -16,6 +16,7 @@ import pytest
 
 from bf_core.formats import omf_read as orr
 from bf_core.formats import omf_volume as ov
+from bf_core.formats.errors import FormatError
 from bf_core.formats.lineset import LineSet, from_lines
 from bf_core.formats.meshset import MeshSet
 from bf_core.formats.omf_write import OmfWriter
@@ -153,9 +154,10 @@ def test_a_cancel_or_a_failure_leaves_no_file(tmp_path: Path) -> None:
         w.add_surface("Тело", rng.uniform(size=(300_000, 3)), rng.integers(0, 300_000, (600_000, 3)))
     assert not list(tmp_path.iterdir())
     grid = {"corner": [0.0, 0.0, 0.0], "counts": [4, 1, 1], "size": [1.0, 1.0, 1.0]}
-    with pytest.raises(ValueError, match="ascend"), OmfWriter(path, "П") as w:
+    with pytest.raises(FormatError, match="повреждён") as info, OmfWriter(path, "П") as w:  # review 11.21, № 6
         w.add_volume("m", grid, [{"name": "A"}], lambda _n: [(np.array([2, 1]), np.array([1.0, 2.0]))])
-    with pytest.raises(ValueError, match="ascend"), OmfWriter(path, "П") as w:
+    assert info.value.code == "block_model_broken" and isinstance(info.value.__cause__, ValueError)
+    with pytest.raises(FormatError, match="повреждён"), OmfWriter(path, "П") as w:
         w.add_volume("m", grid, [{"name": "A"}], lambda _n: [(np.array([4]), np.array([1.0]))])
     assert not list(tmp_path.iterdir())
 
