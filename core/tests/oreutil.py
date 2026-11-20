@@ -459,3 +459,26 @@ def check_reference(
         first += len(hole)
     assert n == len(got)
     return classes, logged
+
+
+def ref_nested(ls: list[float], gs: list[float], rows: list[tuple[Any, ...]], p: OreParams) -> list[tuple[str, int, int]]:
+    """The nested rows (class, a, b) of the `ore` rows of a line, in the order of the kernel: the waste
+    stretches of an interval, its frame above, its frame below (whole samples until M reaches Мпп; not beyond
+    the line and not into another `ore` row)."""
+    ore = [(a, b) for cls, a, b, _ in rows if cls == "ore"]
+    out: list[tuple[str, int, int]] = []
+    for n, (a, b) in enumerate(ore):
+        out += [("waste_in", a + x, a + y) for is_ore, x, y in ref_units(gs[a:b], p.cutoff) if not is_ore]
+        lo = ore[n - 1][1] if n else 0
+        hi = ore[n + 1][0] if n + 1 < len(ore) else len(gs)
+        k = a
+        while k > lo and not ge(sums(ls, gs, k, a)[0], p.m_waste_max):
+            k -= 1
+        if k < a:
+            out.append(("frame", k, a))
+        k = b
+        while k < hi and not ge(sums(ls, gs, b, k)[0], p.m_waste_max):
+            k += 1
+        if k > b:
+            out.append(("frame", b, k))
+    return out
