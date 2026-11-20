@@ -16,9 +16,9 @@ numeric fields of the first table (the metal of a merge is the metal of the tabl
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import sqlalchemy as sa
@@ -109,17 +109,34 @@ def _column(src: source.Lines, name: str, label: str, values: np.ndarray) -> tup
     return ColumnSpec(label, "text"), labels[values]  # −1 → None
 
 
-def _summary(lengths: np.ndarray, src: source.Lines, take: Callable[[np.ndarray], np.ndarray]) -> dict[str, Any]:
+def _summary(lengths: np.ndarray, columns: Sequence[tuple[str, np.ndarray]]) -> dict[str, Any]:
+    """`length.summary` of the fields given as columns, one at a time: the sums of a field do not depend on
+    the other fields, so the numbers are those of the matrix of all of them — which is not built."""
     from .length import summary
 
-    nums = [n for n in src.fields if src.fields[n].kind == "number"]
-    vals = np.column_stack([take(src.numbers[n]) for n in nums]) if nums else np.zeros((len(lengths), 0))
-    return summary(lengths, vals, nums)
+    out = summary(lengths, np.zeros((len(lengths), 0)), [])
+    for name, col in columns:
+        one = np.ascontiguousarray(col, dtype=np.float64).reshape(-1, 1)
+        out["fields"].update(summary(lengths, one, [name])["fields"])
+    return out
+
+
+def _numbers(src: source.Lines) -> list[str]:
+    return [n for n in src.fields if src.fields[n].kind == "number"]
+
+
+def _holes(names: Sequence[str], index: np.ndarray) -> Sequence[str]:
+    """The hole name of every row as an object array (`sink.OutTable.holes`): no list of millions of names."""
+    arr = np.array(list(names), dtype=object)[index] if len(index) else np.zeros(0, dtype=object)
+    return cast("Sequence[str]", arr)
 
 
 def merge_compute(
-    spec: TablesSpec, srcs: list[source.Lines], *, threads: int = 1, tick: Callable[[float], None] | None = None
-) -> Made:
+    spec: TablesSpec, srcs: list[source.Lines], *, threads: int = 1, tick: Callable[[float], None] | None = None,
+    release: bool = False,
+) -> Made:  # fmt: skip
+    """`release` (the job: nothing reads `srcs` after it) — a column of a source is dropped once it is laid on
+    the merged rows."""
     from . import intervals as iv
     from . import sink
     from .compose import Made
@@ -131,27 +148,29 @@ def merge_compute(
     for s in srcs:
         r = np.array([rank[h] for h in s.holes], dtype=np.int64)
         lines.append(iv.build_lines(r[s.hole_of()] if len(s.holes) else np.zeros(0, np.int64), s.from_m, s.to_m))
+    first, l0 = srcs[0], lines[0]
+    before = _summary(l0.lengths(), [(n, l0.take(first.numbers[n])) for n in _numbers(first)])
     m = merge_tables(lines, names=[t[1] for t in spec.tables], threads=threads, tick=tick)
     labels = merged_names([(t[1], list(s.fields)) for t, s in zip(spec.tables, srcs, strict=True)])
     cols, vals = [], []
+    merged0: list[tuple[str, np.ndarray]] = []  # the number columns of the first table on the merged rows
     for k, (s, names) in enumerate(zip(srcs, labels, strict=True)):
-        for field, label in zip(s.fields, names, strict=True):
-            raw = s.numbers[field] if s.fields[field].kind == "number" else s.codes[field]
-            got = (
-                m.numbers(k, lines[k].take(raw), threads=threads)
-                if s.fields[field].kind == "number"
-                else m.codes(k, lines[k].take(raw))
-            )
+        for field, label in zip(list(s.fields), names, strict=True):
+            number = s.fields[field].kind == "number"
+            raw = s.numbers[field] if number else s.codes[field]
+            got = m.numbers(k, lines[k].take(raw), threads=threads) if number else m.codes(k, lines[k].take(raw))
+            del raw
+            if release:
+                (s.numbers if number else s.codes).pop(field)
             spec_k, v = _column(s, field, label, got)
+            if k == 0 and number:
+                merged0.append((field, v))
             cols.append(spec_k)
             vals.append(v)
     ml = m.lines
-    out = sink.OutTable(spec.name, [holes[i] for i in ml.hole_ids().tolist()], ml.frm, ml.to, cols, vals)
-    first, l0 = srcs[0], lines[0]
-    report = {**m.report, "summary": {
-        "before": _summary(l0.lengths(), first, l0.take),
-        "after": _summary(ml.lengths(), first, lambda col: m.numbers(0, l0.take(col), threads=threads)),
-    }, "edits": [], "journal": m.journal}  # fmt: skip
+    out = sink.OutTable(spec.name, _holes(holes, ml.hole_ids()), ml.frm, ml.to, cols, vals)
+    report = {**m.report, "summary": {"before": before, "after": _summary(ml.lengths(), merged0)},
+              "edits": [], "journal": m.journal}  # fmt: skip
     return Made(out, report, list(m.journal))
 
 
@@ -178,13 +197,13 @@ def coords_compute(
     for name, v in c.columns().items():
         cols.append(ColumnSpec(name if name.casefold() not in taken else f"{name}_TRAJ", "number", "м"))
         vals.append(v)
-    out = sink.OutTable(spec.name, [src.holes[i] for i in src.hole_of().tolist()], src.from_m, src.to_m, cols, vals)
+    out = sink.OutTable(spec.name, _holes(src.holes, src.hole_of()), src.from_m, src.to_m, cols, vals)
     journal = list(c.journal)
     if src.skipped:
         journal.insert(
             0, f"Таблица «{spec.tables[0][1]}»: строк без «от» или «до» — {src.skipped}, они не скопированы."
         )
-    same = _summary(lines.lengths(), src, lambda col: col)
+    same = _summary(lines.lengths(), [(n, src.numbers[n]) for n in _numbers(src)])
     report = {
         "rows": lines.n,
         "no_trajectory": int(c.no_trajectory.shape[0]),

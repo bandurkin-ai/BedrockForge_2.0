@@ -540,10 +540,11 @@ def run_tables(
     part = lambda f: tick(0.1 + 0.5 * f, None)  # noqa: E731
     threads = strips.default_threads()
     made = (
-        ct.merge_compute(spec, srcs, threads=threads, tick=part)
+        ct.merge_compute(spec, srcs, threads=threads, tick=part, release=True)
         if op == "merge"
         else ct.coords_compute(spec, srcs[0], st, threads=threads, tick=part)
     )
+    del srcs
     return _store(engine, folder, spec, made, op=op, inputs=inputs, sha=sha, algo=algo, job_id=job_id, t0=t0,
                   tick=tick)  # fmt: skip
 
