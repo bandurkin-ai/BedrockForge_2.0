@@ -278,8 +278,6 @@ def test_preview_of_one_hole_is_the_job_and_the_set_summary(demo) -> None:  # ty
     assert r.status_code == 422 and r.json()["param"] == "length"
     r = c.post(f"{C}/length/preview", json={"params": params, "hole_id": 10**9})
     assert r.status_code == 404 and r.json()["code"] == "hole_not_found"
-    r = c.post(f"{C}/ore/preview", json={"params": params, "hole_id": hole["hole_id"]})  # TODO(12.22)
-    assert r.json()["code"] == "not_ready"
 
 
 def test_result_tables_are_read_only(demo) -> None:  # type: ignore[no-untyped-def]
