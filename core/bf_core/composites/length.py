@@ -1,9 +1,25 @@
-"""Composites by length (ТЗ 8.2.2, ADR 0018 §6): the value of a composite and the parameters.
+"""Composites by length (ТЗ 8.2.2, ADR 0018 §6): the partition of the holes, the value of a composite, the
+batch over a set of holes.
 
     p = LengthParams.of({"length": 2, "remainder": "attach", "f_min": 0.5, "p_min": 0.5, "origin": "domain",
                          "unsampled": None})          # the keys of `composite.run`; raises CompositeError
+    c = composite_by_length(lines, values, p, density=rho, by_density=True, texts=[codes], ends=depths,
+                            stretches=None, threads=…, tick=…) -> Composites
+        c.lines (holes, starts, frm, to), c.stretch, c.values (CompositeValues), c.report, c.journal
     v = composite_values(lines, values, targets, density=rho, by_density=True, texts=[codes], p_min=0.5,
-                         unsampled=None, threads=…, tick=…) -> CompositeValues
+                         unsampled=None, threads=…, tick=…) -> CompositeValues     # for any composites
+
+Partition (`intervals.targets`). Without domains the stretch of a hole is [начало; забой]: from the collar
+(depth 0; origin "domain" and "collar" are the same here) or from the top of the first sample ("first") to
+the depth of the hole (`ends`, per hole of the lines; unknown — the bottom of the last sample). With
+`stretches` (domains — `domains.py`) every stretch [a; b] is cut on its own: "domain" — from a; "collar",
+"first" — by the grid of L counted from the collar or from the top of the first sample of the hole, the
+piece above the first boundary of the grid following the rule of the remainder.
+    «равные»:  n = max(1, floor(D/L + 0,5)) composites of D/n, D = b − a
+    «остаток»: n0 = floor(D/L + 1e−9), r = D − n0·L; r ≥ f_min·L — a composite of its own; less — joined to
+               the last one ("attach") or dropped ("drop"); n0 = 0 and r < f_min·L — no composite, a line in
+               the journal
+Composites cover the whole stretch, sampled or not: an unsampled one has no values (NaN) and N_SAMPLES = 0.
 
 Value of a composite [c0; c1] (`intervals.aggregate`), for every numeric field:
     l_i — the overlap of sample i that has a value; w_i = 1 or ρ_i («вес по плотности»)
@@ -35,6 +51,7 @@ import numpy as np
 from bf_core.jit import njit
 
 from . import intervals as iv
+from . import strips
 from .intervals import CompositeError
 from .intervals_kernels import DEPTH
 from .strips import Tick
@@ -166,6 +183,129 @@ def composite_values(
         if len(rows):
             lost = int(np.count_nonzero(~np.isnan(np.asarray(values)[rows]).all(axis=1)))
     return CompositeValues(ag.values, ag.density, ag.sampled, ag.count, ag.low, tuple(modes), lost)
+
+
+# --- partition and batch -----------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Composites:
+    lines: iv.Lines  # the composites: holes, starts, frm (FROM), to (TO)
+    stretch: np.ndarray  # int64 [n]: the row of the stretches every composite lies in (→ DOMAIN)
+    values: CompositeValues
+    report: dict[str, Any]  # numbers for `dh_results.report`
+    journal: list[str]  # lines for the job log
+
+
+def _m(x: float) -> str:
+    return f"{x:.2f}".replace(".", ",")
+
+
+def hole_stretches(lines: iv.Lines, origin: str = "domain", ends: Any = None) -> iv.Lines:
+    """[начало; забой] of every hole of the lines: from the collar (depth 0, or the top of the first sample
+    when it is above the collar) — "domain", "collar" — or from the top of the first sample — "first"; to the
+    depth of the hole `ends` (per hole of the lines; NaN — unknown) or the bottom of the last sample,
+    whichever is deeper."""
+    first = lines.frm[lines.starts[:-1]]
+    last = lines.to[lines.starts[1:] - 1]
+    a = first if origin == "first" else np.minimum(first, 0.0)
+    b = last
+    if ends is not None:
+        deep = np.asarray(ends, dtype=np.float64)
+        if deep.shape[0] != lines.n_holes:
+            raise ValueError("ends must be per hole of the lines")
+        b = np.where(deep > last, deep, last)  # NaN compares False: the bottom of the last sample
+    return iv.Lines(lines.holes, np.arange(lines.n_holes + 1, dtype=np.int64), a.copy(), b.copy())
+
+
+def _origins(lines: iv.Lines, stretches: iv.Lines, origin: str) -> np.ndarray | None:
+    """The depth the grid of every given stretch is counted from; None — from its own start."""
+    if origin == "domain":
+        return None
+    if origin == "collar":
+        return np.zeros(stretches.n, dtype=np.float64)
+    first = np.full(stretches.n_holes, np.nan)
+    at = np.searchsorted(lines.holes, stretches.holes)
+    at[at == lines.n_holes] = 0
+    have = lines.holes[at] == stretches.holes if lines.n_holes else np.zeros(stretches.n_holes, dtype=np.bool_)
+    first[have] = lines.frm[lines.starts[:-1]][at[have]]
+    return np.repeat(first, np.diff(stretches.starts))  # a hole without samples: NaN — from the stretch
+
+
+def composite_by_length(
+    lines: iv.Lines,
+    values: Any,
+    params: LengthParams,
+    *,
+    density: Any = None,
+    by_density: bool = True,
+    texts: Sequence[Any] = (),
+    ends: Any = None,
+    stretches: iv.Lines | None = None,
+    threads: int = 1,
+    tick: Tick | None = None,
+) -> Composites:
+    """Composites by length of a set of holes — the partition and the values (module docstring), on strips of
+    holes. `lines` — the samples (`intervals.build_lines`); `values` — float64 [n, n_fields] in line order;
+    `density`, `texts` — per sample, in line order; `ends` — depths of the holes of the lines; `stretches` —
+    the stretches to cut instead of the whole holes (domains). The result does not depend on `threads`."""
+    p = params.checked()
+    whole = stretches is None
+    st = hole_stretches(lines, p.origin, ends) if stretches is None else stretches
+    origin = None if whole else _origins(lines, st, p.origin)
+
+    def part(lo: float, hi: float) -> Tick | None:
+        return None if tick is None else (lambda f: tick(lo + (hi - lo) * f))
+
+    tg = iv.targets(
+        st,
+        p.length,
+        rule="equal" if p.remainder == "equal" else "remainder",
+        f_min=p.f_min,
+        attach=p.remainder != "drop",
+        origin=origin,
+        threads=threads,
+        tick=part(0.0, 0.1),
+    )
+    v = composite_values(
+        lines,
+        values,
+        tg.lines,
+        density=density,
+        by_density=by_density,
+        texts=texts,
+        p_min=p.p_min,
+        unsampled=p.unsampled,
+        threads=threads,
+        tick=part(0.1, 1.0),
+    )
+    empty = int(np.count_nonzero(v.count == 0))
+    report = {
+        "stretches": st.n,
+        "composites": tg.lines.n,
+        "short": tg.n_short,
+        "short_len": tg.len_short,
+        "cut": tg.n_cut,
+        "cut_len": tg.len_cut,
+        "empty": empty,
+        "low": int(np.count_nonzero(v.low)),
+        "no_density": v.n_no_density,
+        "threads": int(threads),
+        "strip": strips.STRIP_HOLES,
+    }
+    journal = []
+    what = "Скважин" if whole else "Участков"
+    if tg.n_short:
+        journal.append(
+            f"{what} короче f_min·L — {tg.n_short} (всего {_m(tg.len_short)} м): композит не создан (n0 = 0)."
+        )
+    if tg.n_cut:
+        journal.append(f"Остатков короче f_min·L отброшено — {tg.n_cut} (всего {_m(tg.len_cut)} м).")
+    if empty:
+        filled = "без значений (не ноль)" if p.unsampled is None else f"значение {p.unsampled:g}".replace(".", ",")
+        journal.append(f"Композитов на непробованных участках — {empty}: {filled}.")
+    journal.extend(v.notes())
+    return Composites(tg.lines, tg.stretch, v, report, journal)
 
 
 def flag_column(marks: Sequence[tuple[str, np.ndarray]], n: int) -> np.ndarray:

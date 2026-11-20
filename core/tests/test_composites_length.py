@@ -1,4 +1,5 @@
-"""Composites by length (ТЗ 8.2.2, 8.2.4; ADR 0018 §6): Т8.2-1, Т8.2-2 — the value of a composite.
+"""Composites by length (ТЗ 8.2.2, 8.2.4; ADR 0018 §6): Т8.2-1, Т8.2-2 — the value of a composite;
+Т8.2-3, Т8.2-4 — the partition and the batch over a set of holes.
 
 Tolerance — 1e−12 relative (8.2.4) unless a check says «exact»."""
 
@@ -175,3 +176,213 @@ def test_summary_before_and_after() -> None:
         "length": 0.0,
         "fields": {"A": {"mean": None, "metal": None}},
     }
+
+
+# --- Т8.2-3: the partition ---------------------------------------------------------------------------------
+
+
+def metres(depth: float, step: float = 1.0) -> tuple[iv.Lines, np.ndarray]:
+    """A hole sampled by `step` from the collar to `depth` (the last sample is shorter), grade = sample number."""
+    frm = np.arange(0.0, depth, step)
+    to = np.minimum(frm + step, depth)
+    return table(list(frm), list(to), list(np.arange(len(frm)) + 1.0))
+
+
+def bounds(c: cl.Composites) -> tuple[list[float], list[float]]:
+    return c.lines.frm.tolist(), c.lines.to.tolist()
+
+
+def test_t8_2_3_remainder_and_equal_parts() -> None:
+    """Т8.2-3. Скважина 7 м, L = 2: остаток 1 м — отдельный композит; 6,8 м — последний композит 4–6,8;
+    «равные» для 7 м — 4 × 1,75 м. Boundaries — exact."""
+    seven = cl.composite_by_length(*metres(7.0), cl.LengthParams(length=2.0))
+    assert bounds(seven) == ([0.0, 2.0, 4.0, 6.0], [2.0, 4.0, 6.0, 7.0])  # r = 1 = f_min·L: its own composite
+    assert seven.values.values[:, 0] == pytest.approx([1.5, 3.5, 5.5, 7.0], rel=REL)
+    assert seven.journal == [] and seven.report["composites"] == 4 and seven.stretch.tolist() == [0, 0, 0, 0]
+    short = cl.composite_by_length(*metres(6.8), cl.LengthParams(length=2.0))
+    assert bounds(short) == ([0.0, 2.0, 4.0], [2.0, 4.0, 6.8])  # r = 0.8 < 1: joined to the last one
+    assert short.values.values[2, 0] == pytest.approx((5 + 6 + 0.8 * 7) / 2.8, rel=REL)
+    equal = cl.composite_by_length(*metres(7.0), cl.LengthParams(length=2.0, remainder="equal"))
+    assert bounds(equal) == ([0.0, 1.75, 3.5, 5.25], [1.75, 3.5, 5.25, 7.0])
+    assert equal.lines.lengths().tolist() == [1.75] * 4
+    # «отбросить»: the 0.8 m go, with a line in the journal
+    drop = cl.composite_by_length(*metres(6.8), cl.LengthParams(length=2.0, remainder="drop"))
+    assert bounds(drop) == ([0.0, 2.0, 4.0], [2.0, 4.0, 6.0])
+    assert drop.report["cut"] == 1 and drop.report["cut_len"] == pytest.approx(0.8, abs=1e-12)
+    assert "отброшено — 1" in drop.journal[0] and "0,80 м" in drop.journal[0]
+    # f_min = 0.3: 0.8 ≥ 0.6 — a composite of its own
+    own = cl.composite_by_length(*metres(6.8), cl.LengthParams(length=2.0, f_min=0.3))
+    assert bounds(own) == ([0.0, 2.0, 4.0, 6.0], [2.0, 4.0, 6.0, 6.8])
+
+
+def test_hole_shorter_than_the_remainder_goes_to_the_journal() -> None:
+    """n0 = 0 and r < f_min·L: no composite, and it is said in the journal (not silently)."""
+    hole = [1, 1, 2, 3, 3, 3]
+    lines = iv.build_lines(hole, [0.0, 0.5, 0.0, 0.0, 1.0, 2.0], [0.5, 0.9, 1.0, 1.0, 2.0, 3.0])
+    vals = iv.stack_fields(lines, [np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])])
+    c = cl.composite_by_length(lines, vals, cl.LengthParams(length=2.0))
+    # hole 1: 0.9 m < 1 m — nothing; hole 2: 1 m = f_min·L — a composite; hole 3: 0–3 (r = 1 → its own)
+    assert c.lines.holes.tolist() == [2, 3] and bounds(c) == ([0.0, 0.0, 2.0], [1.0, 2.0, 3.0])
+    assert c.stretch.tolist() == [1, 2, 2]
+    assert c.report["short"] == 1 and c.report["short_len"] == pytest.approx(0.9, abs=1e-12)
+    assert "Скважин короче f_min·L — 1" in c.journal[0] and "0,90 м" in c.journal[0]
+
+
+def test_origin_and_the_depth_of_the_hole() -> None:
+    lines, vals = table([12.4, 13.4, 14.4, 15.4], [13.4, 14.4, 15.4, 16.4], [1.0, 2.0, 3.0, 4.0])
+    first = cl.composite_by_length(lines, vals, cl.LengthParams(length=2.0, origin="first"))
+    assert bounds(first) == ([12.4, 14.4], [14.4, 16.4])  # from the top of the first sample
+    assert first.values.values[:, 0] == pytest.approx([1.5, 3.5], rel=REL)
+    for origin in ("domain", "collar"):  # the stretch of a whole hole starts at the collar
+        c = cl.composite_by_length(lines, vals, cl.LengthParams(length=2.0, origin=origin))
+        assert bounds(c)[0] == [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 14.0] and bounds(c)[1][-1] == 16.4
+        assert c.values.count.tolist() == [0, 0, 0, 0, 0, 0, 2, 3]
+        assert np.isnan(c.values.values[:6, 0]).all()  # unsampled: no value, not 0
+        assert c.values.values[6, 0] == pytest.approx((1.0 * 1.0 + 0.6 * 2.0) / 1.6, rel=REL)  # 12–14: 1.6 m
+        assert c.values.low.tolist() == [True] * 6 + [False, False]
+        assert c.report["empty"] == 6 and "непробованных участках — 6: без значений (не ноль)" in c.journal[0]
+    zero = cl.composite_by_length(lines, vals, cl.LengthParams(length=2.0, unsampled=0.0, p_min=0.0))
+    assert zero.values.values[:6, 0].tolist() == [0.0] * 6 and "значение 0" in zero.journal[0]
+    assert zero.values.values[6, 0] == pytest.approx((1.0 * 1.0 + 0.6 * 2.0) / 2.0, rel=REL)
+    # the depth of the hole (collar table): 20 m — the composites go on to the bottom; unknown — the last TO
+    deep = cl.composite_by_length(lines, vals, cl.LengthParams(length=2.0, origin="first"), ends=[20.0])
+    assert deep.lines.frm == pytest.approx([12.4, 14.4, 16.4, 18.4], abs=1e-12)  # the remainder 1.6 ≥ 1: its own
+    assert deep.lines.to == pytest.approx([14.4, 16.4, 18.4, 20.0], abs=1e-12) and deep.lines.to[-1] == 20.0
+    assert deep.values.count.tolist() == [2, 2, 0, 0]
+    for unknown in ([NAN], [5.0]):
+        c = cl.composite_by_length(lines, vals, cl.LengthParams(length=2.0, origin="first"), ends=unknown)
+        assert bounds(c) == bounds(first)
+
+
+def test_t8_2_1_through_the_batch() -> None:
+    """Т8.2-1 as the job runs it: «L = 2 от устья, p_min = 0,5»."""
+    lines, vals = table([0.0, 1.0, 4.0], [1.0, 3.0, 6.0], [1.0, 2.0, 4.0])
+    c = cl.composite_by_length(lines, vals, cl.LengthParams(length=2.0, origin="collar", p_min=0.5))
+    assert bounds(c) == ([0.0, 2.0, 4.0], [2.0, 4.0, 6.0])
+    assert c.values.values[:, 0] == pytest.approx([1.5, 2.0, 4.0], rel=REL)
+    assert c.values.sampled == pytest.approx([2.0, 1.0, 2.0], rel=REL) and not c.values.low.any()
+
+
+def test_given_stretches_are_cut_from_their_start_or_by_a_grid() -> None:
+    """Stretches of domains (12.4 gives them): composites do not leave a stretch; "collar" and "first" count
+    the grid of L from the collar or the top of the first sample of the hole."""
+    lines, vals = metres(20.0)
+    lines = iv.build_lines([1] * 19, lines.frm[1:], lines.to[1:])  # the first sample starts at 1 m
+    vals = vals[1:]
+    st = iv.build_lines([1, 1], [3.0, 12.0], [12.0, 19.0])
+    own = cl.composite_by_length(lines, vals, cl.LengthParams(length=4.0), stretches=st)
+    # 3–12: n0 = 2, r = 1 < 2 joins the last one; 12–19: n0 = 1, r = 3 ≥ 2 — its own
+    assert bounds(own) == ([3.0, 7.0, 12.0, 16.0], [7.0, 12.0, 16.0, 19.0]) and own.stretch.tolist() == [0, 0, 1, 1]
+    collar = cl.composite_by_length(lines, vals, cl.LengthParams(length=4.0, origin="collar"), stretches=st)
+    assert bounds(collar) == ([3.0, 8.0, 12.0, 16.0], [8.0, 12.0, 16.0, 19.0])  # 3–4 joins 4–8; 16–19 its own
+    first = cl.composite_by_length(lines, vals, cl.LengthParams(length=4.0, origin="first"), stretches=st)
+    # the grid 1, 5, 9, 13, 17: 3–5 (2 m) is its own; 12–13 (1 m) joins 13–17; 17–19 is its own
+    assert bounds(first) == ([3.0, 5.0, 9.0, 12.0, 17.0], [5.0, 9.0, 12.0, 17.0, 19.0])
+    assert first.stretch.tolist() == [0, 0, 0, 1, 1]
+    assert "Участков" in cl.composite_by_length(lines, vals, cl.LengthParams(length=100.0), stretches=st).journal[0]
+    other = iv.build_lines([7], [0.0], [5.0])  # a stretch in a hole without samples: from its own start, no values
+    c = cl.composite_by_length(lines, vals, cl.LengthParams(length=4.0, origin="first"), stretches=other)
+    assert bounds(c) == ([0.0], [5.0]) and math.isnan(c.values.values[0, 0]) and c.values.count[0] == 0
+
+
+# --- Т8.2-4: balance ---------------------------------------------------------------------------------------
+
+
+def continuous(rng: np.random.Generator, holes: int, per_hole: int) -> tuple[np.ndarray, ...]:
+    """Continuous sampling from the collar: (hole, frm, to, values [n, 3], density)."""
+    n = holes * per_hole
+    hole = np.repeat(np.arange(holes, dtype=np.int64) + 100, per_hole)
+    step = rng.choice([0.3, 0.5, 1.0, 1.2, 2.5], size=(holes, per_hole))
+    to = np.cumsum(step, axis=1)
+    frm = np.concatenate((np.zeros((holes, 1)), to[:, :-1]), axis=1)
+    return hole, frm.reshape(-1), to.reshape(-1), 10.0 ** rng.uniform(-2, 3, size=(n, 3)), rng.uniform(2.4, 3.4, size=n)
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        cl.LengthParams(length=2.0),
+        cl.LengthParams(length=2.0, remainder="equal"),
+        cl.LengthParams(length=5.0, f_min=0.0, origin="first"),
+        cl.LengthParams(length=0.7, f_min=1.0, p_min=1.0),
+    ],
+)
+def test_t8_2_4_metal_and_length_are_kept(params: cl.LengthParams) -> None:
+    """Т8.2-4. Сплошное опробование без отбрасывания: Σ L_c·g_c = Σ l_i·g_i, суммарные длины равны (1e−12
+    отн.) — in total and in every hole."""
+    rng = np.random.default_rng(12345)
+    hole, frm, to, g, rho = continuous(rng, holes=400, per_hole=60)
+    lines = iv.build_lines(hole, frm, to)
+    c = cl.composite_by_length(lines, g, params, threads=2)
+    lc, li = c.lines.lengths(), to - frm
+    assert c.report["short"] == 0 and c.report["cut"] == 0 and not c.values.low.any()
+    assert math.fsum(lc) == pytest.approx(math.fsum(li), rel=REL)
+    for f in range(3):
+        assert math.fsum(lc * c.values.values[:, f]) == pytest.approx(math.fsum(li * g[:, f]), rel=REL)
+    ch, per = c.lines.hole_ids(), 60
+    for k in (0, 17, 399):
+        mine = ch == 100 + k
+        rows = slice(k * per, (k + 1) * per)
+        assert math.fsum(lc[mine]) == pytest.approx(math.fsum(li[rows]), rel=REL)
+        assert math.fsum(lc[mine] * c.values.values[mine, 0]) == pytest.approx(
+            math.fsum(li[rows] * g[rows, 0]), rel=REL
+        )
+    # the same with density weights: the mass of metal Σ L_c·ρ_c·g_c = Σ l_i·ρ_i·g_i
+    w = cl.composite_by_length(lines, g, params, density=rho)
+    assert math.fsum(lc * w.values.density) == pytest.approx(math.fsum(li * rho), rel=REL)
+    for f in range(3):
+        mass = math.fsum(lc * w.values.density * w.values.values[:, f])
+        assert mass == pytest.approx(math.fsum(li * rho * g[:, f]), rel=REL)
+    # «до/после» of the window agree as well
+    before, after = cl.summary(li, g, ["A", "B", "C"]), cl.summary(lc, c.values.values, ["A", "B", "C"])
+    assert after["length"] == pytest.approx(before["length"], rel=REL)
+    assert after["fields"]["B"]["metal"] == pytest.approx(before["fields"]["B"]["metal"], rel=REL)
+
+
+# --- the batch: order of the holes, threads, cancellation --------------------------------------------------
+
+
+def _batch(hole: np.ndarray, frm: np.ndarray, to: np.ndarray, g: np.ndarray, rho: np.ndarray, threads: int) -> bytes:
+    lines = iv.build_lines(hole, frm, to)
+    vals = iv.stack_fields(lines, list(g.T))
+    codes = (g[:, 0] > 5.0).astype(np.int32) - (g[:, 1] > 500.0)
+    c = cl.composite_by_length(
+        lines, vals, cl.LengthParams(length=2.0, f_min=0.4), density=lines.take(rho), texts=[lines.take(codes)],
+        ends=np.full(lines.n_holes, 70.0), threads=threads,
+    )  # fmt: skip
+    v = c.values
+    parts = (c.lines.holes, c.lines.starts, c.lines.frm, c.lines.to, c.stretch, v.values, v.density, v.sampled)
+    return b"".join(a.tobytes() for a in (*parts, v.count, v.low, v.texts[0]))
+
+
+def test_batch_does_not_depend_on_threads_or_the_order_of_holes() -> None:
+    rng = np.random.default_rng(12345)
+    hole, frm, to, g, rho = continuous(rng, holes=9000, per_hole=8)  # 3 strips of holes, 72 thousand samples
+    g[rng.random(g.shape) < 0.05] = NAN
+    rho[rng.random(len(rho)) < 0.5] = NAN
+    base = _batch(hole, frm, to, g, rho, 1)
+    for threads in (2, 4, 8):
+        assert _batch(hole, frm, to, g, rho, threads) == base
+    p = rng.permutation(len(hole))
+    assert _batch(hole[p], frm[p], to[p], g[p], rho[p], 4) == base
+
+
+def test_batch_reports_progress_and_can_be_cancelled() -> None:
+    rng = np.random.default_rng(1)
+    hole, frm, to, g, _rho = continuous(rng, holes=9000, per_hole=4)
+    lines = iv.build_lines(hole, frm, to)
+    seen: list[float] = []
+    cl.composite_by_length(lines, g, cl.LengthParams(), texts=[np.zeros(lines.n, dtype=np.int32)], tick=seen.append)
+    assert seen == sorted(seen) and seen[0] > 0.0 and seen[-1] == pytest.approx(1.0) and len(seen) >= 12
+
+    class Cancelled(Exception):
+        pass
+
+    def stop(fraction: float) -> None:
+        if fraction > 0.5:
+            raise Cancelled()
+
+    with pytest.raises(Cancelled):
+        cl.composite_by_length(lines, g, cl.LengthParams(), threads=4, tick=stop)
+    with pytest.raises(CompositeError):
+        cl.composite_by_length(lines, g, cl.LengthParams(length=0.01))
