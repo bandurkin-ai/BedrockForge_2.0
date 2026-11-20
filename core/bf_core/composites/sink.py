@@ -337,8 +337,10 @@ class Commit:
 def commit(engine: sa.Engine, c: Commit) -> dict[str, Any]:
     """The final transaction (see the module docstring). Returns {"result_id", "table_id", "name", "rev",
     "replaced": [ids of tables replaced], "changed": [{"table", "rev"}] — tables that got columns} and what
-    `c.after` added."""
+    `c.after` added. A table of `c.columns` deleted or replaced while the job ran — 409 `source_gone`."""
     with dialect.write_tx(engine) as conn:
+        for co in c.columns:
+            _still_there(conn, c, co.table_id)
         name, rev = c.name, None
         replaced: list[int] = []
         if c.table is not None:
@@ -377,6 +379,17 @@ def commit(engine: sa.Engine, c: Commit) -> dict[str, Any]:
         if c.after is not None:
             c.after(conn, out)
     return out
+
+
+def _still_there(conn: sa.Connection, c: Commit, table_id: int) -> None:
+    """409 `source_gone` when the table the columns go into was deleted or replaced while the job ran."""
+    state = conn.execute(sa.select(dh_tables.c.state).where(dh_tables.c.id == table_id)).scalar()
+    if state == "ready":
+        return
+    names = [str(t["name"]) for t in (c.inputs or {}).get("tables") or [] if t.get("name")]
+    what = f"Таблица «{names[0]}»" if names else "Таблица"
+    raise ApiError(409, "source_gone", f"{what} удалена или заменена, пока шло задание: поля не записаны.",
+                   "Запустите операцию заново на текущей таблице.")  # fmt: skip
 
 
 def _repeat(conn: sa.Connection, c: Commit, table_id: int, changed: list[dict[str, Any]]) -> None:
