@@ -445,6 +445,43 @@ def test_merge_and_coords(demo) -> None:  # type: ignore[no-untyped-def]
     ]
 
 
+def test_jobs_compile_no_kernel_after_the_warm_up(demo) -> None:  # type: ignore[no-untyped-def]
+    """Э12 12.33б: the warm-up (`composites/warm.py`) runs the kernels of composites by length, by domains and by
+    benches, of merging and of coordinates with the dtypes of the jobs — a job after it compiles nothing (in a
+    worker: nothing but what is loaded from NUMBA_CACHE_DIR; `bench/scenarios/composite_compile.py` — `left`)."""
+    import sys
+
+    from numba.core.registry import CPUDispatcher
+
+    from bf_core.composites.warm import warm
+
+    def compiled() -> dict[str, int]:
+        return {
+            f"{name}.{key}": len(fn.signatures)
+            for name, mod in list(sys.modules.items())
+            if name.startswith(("bf_core.composites.", "bf_core.stats."))
+            for key, fn in list(vars(mod).items())
+            if isinstance(fn, CPUDispatcher)
+        }
+
+    _c, project, set_id, table = demo
+    litho, _cuts, _bare = add_lithology(project, set_id)
+    warm()
+    before = compiled()
+    for kernel in ("benches._bench_strip", "intervals_kernels.overlay_strip", "intervals_kernels.runs_strip",
+                   "merge._gather"):  # fmt: skip
+        assert before[f"bf_core.composites.{kernel}"] == 1, kernel
+    run_here(project, {"body": body(set_id, table, name="Прогрев: длина")})
+    run_here(project, {"body": body(set_id, table, method="domain", domain={"table": litho, "field": "LITH"},
+                                    name="Прогрев: домены")})  # fmt: skip
+    run_here(project, {"body": body(set_id, table, method="bench", bench=10, name="Прогрев: уступы")})
+    run_here(project, {"body": {"set_id": set_id, "tables": [table, litho], "name": "Прогрев: слияние"}}, op="merge")
+    run_here(project, {"body": {"set_id": set_id, "table": table, "name": "Прогрев: координаты"}}, op="coords")
+    after = compiled()
+    grown = {k: (before.get(k, 0), n) for k, n in after.items() if n > before.get(k, 0)}
+    assert not grown, grown
+
+
 def test_domains_by_the_ore_body(demo) -> None:  # type: ignore[no-untyped-def]
     from bf_core.composites import jobs_coding as jc
 

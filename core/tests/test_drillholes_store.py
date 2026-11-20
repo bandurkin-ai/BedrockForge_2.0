@@ -260,7 +260,8 @@ def test_bulk_rows_are_what_the_row_by_row_writer_stored(
     data = _hard_table(1500)
     ticks: list[float | None] = []
     res = dh.write_table(engine, s1, data, job_id=None, tick=lambda p, _m: ticks.append(p))
-    assert res["rows"] == 1500 and len(ticks) == 6 and ticks[0] == 0.0
+    portions = [p for p in ticks if p is not None]  # the others — signs of life before the first portion
+    assert res["rows"] == 1500 and len(portions) == 6 and portions[0] == 0.0 and len(ticks) > 6
     want = _reference_rows(data)
     got = _stored_rows(engine, res["table_id"])
     assert len(got) == len(want)
@@ -365,6 +366,8 @@ def test_a_parent_deleted_between_portions_fails_the_write(
     calls: list[float | None] = []
 
     def tick(p: float | None, _m: str | None) -> None:
+        if p is None:  # a sign of life before the portions
+            return
         calls.append(p)
         if len(calls) == 2:  # the first portion is committed; the second has rows of A and of B
             with dialect.write_tx(engine) as conn:

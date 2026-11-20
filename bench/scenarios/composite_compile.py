@@ -6,7 +6,8 @@ empty (the first start after an install), the second finds what the first one le
 `composites.warm.warm()` — the step `composites` of the warm-up of the workers and of the API process
 (`ops/warm.py`) — and then every operation of the stage once on a set of 24 holes: composites by length, by
 domains and by benches, merging, coordinates, the analysis of the top cut, the top cut, the equivalent,
-declustering (the functions their handlers call) and the previews of one hole.
+declustering, the ore intervals of Д-26 and the analysis of conditions (the functions their handlers call), the
+previews of one hole and a hand edit of an ore interval.
   compile_s     the compilation of the kernels: `warm_cold_s` + `left_s`;
   warm_cold_s   `warm()` with the empty cache;
   left_s        what the operations still waited for after it: their time with the empty cache less their time
@@ -58,6 +59,46 @@ def every(meta: dict[str, Any], engine: Any, folder: Path) -> None:
     hole = composite_preview.hole_ids(engine, meta["set_id"], 1)[0]
     for op in composite_preview.OPS:
         composite_preview.call(svc, op, {"params": composite_preview.request(meta, op, {}), "hole_id": hole})
+    ore(meta, engine, folder, svc, hole)
+
+
+def ore(meta: dict[str, Any], engine: Any, folder: Path, svc: Any, hole: int) -> None:
+    """Д-26 on the same set (12.10–12.17, 12.22–12.23): the ore intervals (the job), the analysis of conditions,
+    the preview of a hole and a hand edit — an interval cut where two ore samples meet."""
+    import numpy as np
+
+    from bf_core.api.errors import ApiError
+    from bf_core.composites import ore_conditions_job, ore_edit_job, ore_job, routes_ore, source
+
+    def tick(_p: float | None = None, _m: str | None = None) -> None:
+        pass
+
+    cutoff = 0.5
+    params = {"set_id": meta["set_id"], "table": str(meta["samples"]), "field": "AU", "m_min": 2.0, "m_waste_max": 2.0}
+    made = ore_job.run_ore(engine, folder, {"body": {**params, "cutoff": cutoff, "name": "Замер: рудные интервалы"}},
+                           job_id=9, tick=tick)  # fmt: skip
+    lists = {"cutoffs": [cutoff, 1.0], "m_min": [2.0], "m_waste_max": [2.0, 4.0]}
+    ore_conditions_job.run_conditions(engine, folder, {"body": {**params, **lists}}, job_id=10, tick=tick)
+    routes_ore.ore_preview(svc, {"params": {**params, "cutoff": cutoff}, "hole_id": hole})
+    rows = source.read(engine, meta["set_id"], made["table_id"], ["ORE_ID", "NESTED"])
+    samples = source.read(engine, meta["set_id"], meta["samples"], ["AU"])
+    au, f, t = samples.numbers["AU"], samples.from_m, samples.to_m
+    whole = np.flatnonzero((rows.numbers["NESTED"] == 0) & (rows.numbers["ORE_ID"] > 0))  # NaN — not an interval
+    of_row = rows.hole_of()
+    for r in whole.tolist():
+        name = rows.holes[of_row[r]]
+        k = samples.holes.index(name)
+        a, b = int(samples.starts[k]), int(samples.starts[k + 1])
+        inside = np.flatnonzero((f[a:b] >= rows.from_m[r]) & (t[a:b] <= rows.to_m[r])) + a
+        pairs = [i for i in inside[:-1].tolist() if au[i] >= cutoff and au[i + 1] >= cutoff and t[i] == f[i + 1]]
+        if pairs:
+            try:
+                ore_edit_job.edit_result(svc.require_current(), made["result_id"],
+                                         {"hole": name, "action": "split", "from": float(rows.from_m[r]),
+                                          "to": float(t[pairs[0]])})  # fmt: skip
+            except ApiError:  # refused by a rule of Д-26: the kernels of the check have run
+                pass
+            return
 
 
 def _kernels(cache: Path) -> set[str]:

@@ -7,7 +7,7 @@ row), the flags of `qual`, the text maps `{slot: text}` of `txt` as JSON, NULL f
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 
@@ -92,7 +92,8 @@ class Texts:
 
     GROUPS = 65_536
 
-    def __init__(self, texts: Sequence[tuple[str, Any]]) -> None:
+    def __init__(self, texts: Sequence[tuple[str, Any]], beat: Callable[[], None] | None = None) -> None:
+        """`beat` — called after every column (a sign of life of the job: a column of millions of rows)."""
         import numpy as np
         import pandas as pd
 
@@ -120,6 +121,8 @@ class Texts:
             group = group * (len(labels) + 1) + (codes + 1)
             span *= len(labels) + 1
             self.parts.append((slot, codes, labels))
+            if beat is not None:
+                beat()
         self.of_row, met = pd.factorize(group)
         self.first = np.empty(len(met), dtype=np.int64)  # a row of every group
         self.first[self.of_row] = np.arange(n, dtype=np.int64)

@@ -279,6 +279,7 @@ def write_table(
     now = dialect.utcnow()
     number_slots = [i for i, c in enumerate(data.columns) if c.kind == "number"]
     text_slots = [i for i, c in enumerate(data.columns) if c.kind == "text"]
+    tick(None, None)  # before the portions: the holes and the texts of millions of rows take a second
     with dialect.write_tx(engine) as conn:
         res = conn.execute(
             sa.insert(dh_tables).values(
@@ -321,13 +322,16 @@ def write_table(
     n = len(data.holes)
     hole_of = np.array([known[h] for h in names], dtype=np.int64)[codes] if n else np.zeros(0, dtype=np.int64)
     del codes, names
+    tick(None, None)
     from_m = np.asarray(data.from_m, dtype=float)
     to_m = np.asarray(data.to_m, dtype=float)
     # columns as arrays once (a list of an import becomes one; an array of a job is used as it is): a portion
     # takes its rows from them — no matrix of the whole table, no row-by-row work
     numbers = [np.asarray(data.values[i], dtype=float) for i in number_slots]
-    texts = Texts([(str(slot_of[i]), np.asarray(data.values[i], dtype=object)) for i in text_slots])
+    texts = Texts([(str(slot_of[i]), np.asarray(data.values[i], dtype=object)) for i in text_slots],
+                  beat=lambda: tick(None, None))  # fmt: skip
     quals = None if data.qual is None else [np.asarray(q) for q in data.qual[: len(number_slots)]]
+    tick(None, None)
     fixed: dict[str, int | None] = {"table_id": table_id}
     if quals is None:
         fixed["qual"] = None

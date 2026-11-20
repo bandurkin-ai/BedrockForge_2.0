@@ -153,8 +153,12 @@ def merge_compute(
     for s in srcs:
         r = np.array([rank[h] for h in s.holes], dtype=np.int64)
         lines.append(iv.build_lines(r[s.hole_of()] if len(s.holes) else np.zeros(0, np.int64), s.from_m, s.to_m))
+        if tick is not None:
+            tick(0.0)
     first, l0 = srcs[0], lines[0]
     before = _summary(l0.lengths(), first, l0.take)
+    if tick is not None:
+        tick(0.0)
     m = merge_tables(lines, names=[t[1] for t in spec.tables], threads=threads, tick=tick)
     labels = merged_names([(t[1], list(s.fields)) for t, s in zip(spec.tables, srcs, strict=True)])
     cols, vals = [], []
