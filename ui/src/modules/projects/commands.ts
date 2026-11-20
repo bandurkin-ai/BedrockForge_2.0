@@ -18,11 +18,11 @@ export const commands: Command[] = [
       "ids — только эти объекты (номера через запятую, как в менеджере данных); mode — objects (объекты в файлы, по умолчанию) или source (исходные файлы объектов: формат «Исходный файл», где ядро его пишет; где нет — формат по умолчанию с предупреждением). " +
       "С folder задание запускается после подтверждения пользователем; без folder открывается окно «Объекты в файлы» с этим выбором.",
     params: {
-      ids: { type: "string", description: "номера объектов через запятую, например «7, 12»" },
-      mode: { type: "string", description: "objects — объекты в файлы; source — исходные файлы объектов" },
       formats: { type: "string", description: "«тип=формат» через запятую, например wireframe=dxf, line_file=str" },
       folder: { type: "string", description: "папка назначения (внутри неё создаётся новая папка экспорта)" },
       types: { type: "string", description: "типы через запятую: drillhole_set, wireframe, dtm, line_file, cloud, raster, block_model" },
+      ids: { type: "string", description: "номера объектов через запятую, например «7, 12»" },
+      mode: { type: "string", description: "objects — объекты в файлы; source — исходные файлы объектов" },
       project_id: { type: "integer" },
       filename: { type: "string" },
       include_view: { type: "boolean" },

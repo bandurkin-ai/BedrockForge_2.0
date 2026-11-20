@@ -9,7 +9,7 @@ import { setCoreTarget } from "../src/shell/api";
 import { createApp } from "../src/shell/app";
 import { closeDialog, dialogStore } from "../src/shell/dialogs";
 import { closeWindow, windowStore } from "../src/shell/windows";
-import type { ExportableLists } from "../src/modules/omf/api";
+import { followExportable, type ExportableLists } from "../src/modules/omf/api";
 import { bindOmf } from "../src/modules/omf/bind";
 import {
   chosenText,
@@ -19,6 +19,7 @@ import {
   exportName,
   exportReason,
   initialChosen,
+  isDevice,
   keepChosen,
   NONE,
   parseIds,
@@ -80,6 +81,58 @@ describe("the model of the window", () => {
     expect(cleanFileName("Карьер.OMF", "x")).toBe("Карьер.omf");
     expect(cleanFileName(undefined, "Рельеф.omf")).toBe("Рельеф.omf");
     expect(cleanFileName("a:b?", "x")).toBe("a_b_.omf");
+  });
+
+  it("the name of the file by the rules of the core (names.py): devices, dots and spaces at the end, 120 characters (Э11 11.21)", () => {
+    expect(cleanFileName("CON", "x")).toBe("_CON.omf");
+    expect(cleanFileName("nul.omf", "x")).toBe("_nul.omf");
+    expect(cleanFileName("com1", "x")).toBe("_com1.omf");
+    expect(cleanFileName("LPT9.txt", "x")).toBe("_LPT9.txt.omf");
+    expect(cleanFileName("COM¹", "x")).toBe("_COM¹.omf");
+    expect(cleanFileName("Тело. . ", "x")).toBe("Тело.omf");
+    expect(cleanFileName("...", "Рельеф")).toBe("Рельеф.omf");
+    expect(cleanFileName("a\u007fb", "x")).toBe("a_b.omf");
+    expect(cleanFileName("Консоль", "x")).toBe("Консоль.omf"); // not a device
+    expect(cleanFileName("COM10", "x")).toBe("COM10.omf");
+    const long = cleanFileName("я".repeat(300), "x");
+    expect(long.length).toBe(120);
+    expect(cleanFileName(`${"я".repeat(115)}.  x`, "x").length).toBeLessThanOrEqual(120);
+    expect(cleanFileName(`${"я".repeat(115)}. x`, "x")).not.toMatch(/[. ]\.omf$/);
+    expect([isDevice("Aux.txt"), isDevice("con "), isDevice("conx")]).toEqual([true, true, false]);
+    expect(exportName(LISTS, { ...NONE, wireframes: [41] }, null)).toBe("Рудное тело.omf");
+  });
+
+  it("the lists read again on `objects.changed`: an older answer coming late is dropped, the check of a new object stays (Э11 11.21)", async () => {
+    const answers: ((l: ExportableLists) => void)[] = [];
+    let emit: (event: string) => void = () => undefined;
+    let chosen = NONE;
+    const off = followExportable(
+      (l, first) => (chosen = first ? initialChosen(l, null) : keepChosen(l, chosen)),
+      (e) => {
+        throw e;
+      },
+      () => new Promise<ExportableLists>((resolve) => answers.push(resolve)),
+      (fn) => ((emit = fn), () => undefined),
+    );
+    const old: ExportableLists = { ...LISTS, block_models: [] };
+    answers[0](old);
+    await Promise.resolve();
+    expect(chosen.block_models).toEqual([]);
+    emit("objects.changed"); // a read that answers late: the list without the new model
+    emit("objects.changed"); // the newest: the new model is there
+    answers[2](LISTS);
+    await Promise.resolve();
+    chosen = { ...chosen, block_models: [61] }; // the user checks the new model
+    answers[1](old);
+    await Promise.resolve();
+    expect(chosen.block_models).toEqual([61]); // the older answer did not uncheck it
+    emit("jobs.changed");
+    expect(answers).toHaveLength(3);
+    off();
+    emit("objects.changed");
+    answers[3](old);
+    await Promise.resolve();
+    expect(chosen.block_models).toEqual([61]); // nothing after the unsubscribe
   });
 
   it("the report and the notes of the rows", () => {

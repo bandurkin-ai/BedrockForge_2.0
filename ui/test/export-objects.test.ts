@@ -9,6 +9,7 @@ import {
   choiceReason,
   chosenObjects,
   confirmQuestion,
+  countKinds,
   exportBody,
   exportFolderName,
   fitFormat,
@@ -17,8 +18,10 @@ import {
   parseFormatsArg,
   parseTypesArg,
   relativePath,
+  replacedFormats,
   reportOf,
   reportSummary,
+  scopeToIds,
   setFormat,
   sizeText,
   toggleType,
@@ -104,6 +107,31 @@ describe("the table «тип → формат» of the core", () => {
     expect(exportBody(info, c, "D:\\Выгрузка")).toEqual({ formats: { drillhole_set: "xlsx", wireframe: "dxf", line_file: "str" }, folder: "D:\\Выгрузка", types: ["drillhole_set", "wireframe", "line_file"] });
     expect(exportBody(info, c, "D:\\", [5, 7]).ids).toEqual([5, 7]);
     expect(exportBody(info, c, "D:\\", []).ids).toBeUndefined();
+  });
+
+  it("the chosen objects (ids of the manager): «Объектов» and the total count them, not every object of the type (Э11 11.21)", () => {
+    const counts = countKinds([{ kind: "wireframe" }, { kind: "line_file" }, { kind: "line_file" }]);
+    expect(counts).toEqual({ wireframe: 1, line_file: 2 });
+    const scoped = scopeToIds(info, counts);
+    expect(scoped.types.map((t) => [t.kind, t.count])).toEqual([["drillhole_set", 0], ["wireframe", 1], ["dtm", 0], ["line_file", 2], ["raster", 0], ["block_model", 0]]);
+    expect(typeReason(scoped.types[0])).toBe("Среди выбранных нет объектов этого типа");
+    const c = initialChoice(scoped, { types: ["wireframe", "line_file"] });
+    expect(c.types).toEqual(["wireframe", "line_file"]);
+    expect(chosenObjects(scoped, c)).toBe(3); // not 2 + 3 of the whole types
+    expect(chosenObjects(info, c)).toBe(5);
+  });
+
+  it("a format asked for that the core does not write for a type is told, never replaced silently (Э11 11.21)", () => {
+    const wanted = { wireframe: "source", line_file: "omf", raster: "source" };
+    const c = initialChoice(info, { formats: wanted });
+    expect([c.formats.wireframe, c.formats.line_file, c.formats.raster]).toEqual(["dxf", "str", "source"]);
+    expect(replacedFormats(info, wanted, c)).toEqual([
+      "Каркасы: «Исходный файл» не записывается — ядро не пишет этот формат для этого типа; выбран «DXF».",
+      "Линии: «OMF» не записывается — Писатель OMF — подшаг 11.4; выбран «Micromine STR».",
+    ]);
+    expect(replacedFormats(info, wanted, toggleType(c, "wireframe", false))).toHaveLength(1); // an unchecked type is not told
+    expect(replacedFormats(info, undefined, c)).toEqual([]);
+    expect(replacedFormats(info, { raster: "source" }, c)).toEqual([]);
   });
 
   it("the folder the export makes", () => {
@@ -199,6 +227,8 @@ describe("the command `project.export`", () => {
       if (p === "/export/formats") return json(formats);
       if (p === "/export/objects") return refuse ?? json({ source: "project", id: 41 });
       if (p === "/jobs") return json({ jobs: [], workers: { workers: [], heavy_workers: 1, stopped_reason: null } });
+      if (p === "/catalog/folders") return json({ folders: [] });
+      if (p === "/catalog") return json({ total: 3, rows: [{ id: 5, kind: "wireframe", name: "Тело" }, { id: 7, kind: "line_file", name: "Контуры" }, { id: 8, kind: "line_file", name: "Борт" }] });
       return json({ code: "not_found", message: "Нет", hint: "" }, 404);
     });
     setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
@@ -230,9 +260,9 @@ describe("the command `project.export`", () => {
     return d.options.message;
   }
 
-  it("is described for Claude with formats, folder, types; it is not `confirm` as a whole (the .bfggis window)", () => {
+  it("is described for Claude with formats, folder, types, ids, mode; it is not `confirm` as a whole (the .bfggis window)", () => {
     const c = createApp({ persist: false }).registry.get("project.export")!;
-    expect(Object.keys(c.params!)).toEqual(["formats", "folder", "types", "project_id", "filename", "include_view", "start"]);
+    expect(Object.keys(c.params!)).toEqual(["formats", "folder", "types", "ids", "mode", "project_id", "filename", "include_view", "start"]);
     expect(c.confirm).toBeFalsy();
     expect(c.description).toContain("после подтверждения пользователем");
   });
@@ -270,6 +300,18 @@ describe("the command `project.export`", () => {
     expect(await answer(false)).toContain("• Линии (3) → Micromine STR");
     expect((await no).result).toBe("Отменено пользователем");
     expect(sent.some((s) => s.path === "/export/objects")).toBe(false);
+  });
+
+  it("ids and mode «source» (the manager, Claude): only those objects, counted; the replaced format is in the question; ids go with the job", async () => {
+    const app = open();
+    const run = app.registry.execute("project.export", { ids: "5, 7,8", mode: "source", folder: "D:\\Выгрузка" }, "claude");
+    const q = await answer(true);
+    expect(q).toContain("выбранные объекты проекта (3)");
+    expect(q).toContain("• Каркасы (1) → DXF\n• Линии (2) → Micromine STR");
+    expect(q).toContain("Каркасы: «Исходный файл» не записывается — ядро не пишет этот формат для этого типа; выбран «DXF».");
+    expect((await run).ok).toBe(true);
+    expect(sent.find((s) => s.path === "/export/objects")!.body).toEqual({ formats: { wireframe: "dxf", line_file: "str" }, folder: "D:\\Выгрузка", types: ["wireframe", "line_file"], ids: [5, 7, 8] });
+    expect((await app.registry.execute("project.export", { ids: "5,x" }, "claude")).result).toBe("Параметр ids не разобран. Передайте номера объектов через запятую, например «7, 12».");
   });
 
   it("refusals are Russian with a hint: no objects, unknown format, read-only, a 423 of the core", async () => {

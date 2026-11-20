@@ -345,7 +345,8 @@ export async function exportObjectsCommand(app: App, a: Record<string, unknown>,
     const choice = initialChoice(info, { formats, types });
     const folder = typeof a.folder === "string" && a.folder.trim() ? a.folder.trim() : null;
     if (!folder) {
-      const props: Record<string, unknown> = { mode: "objects", formats, types: choice.types };
+      const props: Record<string, unknown> = { mode: "objects", formats: choice.formats, types: choice.types };
+      if (replacedFormats(info, formats, choice).length) props.wanted = formats; // the window tells what was replaced
       if (counts) Object.assign(props, { ids, counts });
       openWindow("project-export", "Экспорт проекта", "form", props, ...viewport());
       const what = counts ? `${mode === "source" ? "исходные файлы выбранных объектов" : "выбранные объекты"} (${count(ids.length)})` : "объекты в файлы";

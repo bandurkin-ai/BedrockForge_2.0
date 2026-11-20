@@ -134,8 +134,8 @@ describe("the actions of the rows", () => {
     expect(await runRowAction(app, "export", [wf, lf, set])).toBe("Открыто окно «Экспорт проекта» (выбранные объекты (3)): выберите папку и нажмите «Экспортировать»");
     expect(await exportRows(app, [wf, lf, catalogRows[3]], true)).toContain("исходные файлы выбранных объектов (3)");
     expect(windowStore.get().windows.map((w) => w.props)).toEqual([
-      { mode: "objects", formats: {}, types: ["drillhole_set", "wireframe", "line_file"], ids: [1, 3, 2], counts: { wireframe: 1, line_file: 1, drillhole_set: 1 } },
-      { mode: "objects", formats: { wireframe: "source", line_file: "source" }, types: ["wireframe", "line_file"], ids: [1, 3, 7], counts: { wireframe: 2, line_file: 1 } },
+      { mode: "objects", formats: { wireframe: "dxf", line_file: "str", drillhole_set: "csv", raster: "source" }, types: ["drillhole_set", "wireframe", "line_file"], ids: [1, 3, 2], counts: { wireframe: 1, line_file: 1, drillhole_set: 1 } },
+      { mode: "objects", formats: { wireframe: "source", line_file: "str", drillhole_set: "csv", raster: "source" }, types: ["wireframe", "line_file"], wanted: { wireframe: "source", line_file: "source" }, ids: [1, 3, 7], counts: { wireframe: 2, line_file: 1 } },
     ]);
     // each one is an entry of the command log
     expect(app.registry.entries().map((e) => [e.commandId, e.args])).toEqual([

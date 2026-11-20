@@ -45,6 +45,8 @@ export interface ObjectsInitial {
   ids?: number[];
   /** the chosen objects (`ids`) of each kind */
   counts?: Record<string, number>;
+  /** the formats asked for, where `formats` had to replace some (told above the table) */
+  wanted?: Record<string, string>;
 }
 
 const REPORT_ROWS = 300; // a long report keeps its head in the window; the whole list is in the job log
@@ -79,7 +81,7 @@ export function ExportObjects({ winId, project, initial }: { winId: string; proj
 
   const reason = info ? (readOnly ? "Проект открыт только для чтения: экспорт недоступен." : choiceReason(info, choice, folder)) : "Читаю форматы…";
   const objects = info ? chosenObjects(info, choice) : 0;
-  const replaced = useMemo(() => (info ? replacedFormats(info, initial?.formats, choice) : []), [info, initial?.formats, choice]);
+  const replaced = useMemo(() => (info ? replacedFormats(info, initial?.wanted ?? initial?.formats, choice) : []), [info, initial?.wanted, initial?.formats, choice]);
   const report = useMemo(() => (live?.status === "done" ? reportOf(live.result) : null), [live?.status, live?.result]);
 
   const pick = async () => {

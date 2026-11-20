@@ -6,7 +6,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp } from "../src/shell/app";
 import { closeWindow, windowStore } from "../src/shell/windows";
-import { importPaths } from "../src/modules/importing/bind";
+import { folderNote, importPaths } from "../src/modules/importing/bind";
+import { OmfPart } from "../src/modules/importing/OmfPart";
+import { closeDialog, dialogStore } from "../src/shell/dialogs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import fs from "node:fs";
+import path from "node:path";
 import { cleanFolder, fileCounts, ObjectsWizard, startBody, totalsText, type Composition, type FileOk } from "../src/modules/importing/objects";
 import { blockEntryText, elementBecomes, elementData, elementNotes, elementSize, leftOutText, omfHeader, type OmfElement } from "../src/modules/importing/omf";
 import { routeImport } from "../src/modules/importing/route";
@@ -164,5 +170,38 @@ describe("omf.import and import.files {kind: omf, folder}", () => {
     const { app } = open([]);
     expect(await importPaths(app, ["/d/model.omf"], "auto", "Карьер")).toBe("Открыт состав импорта файлов");
     expect(windowStore.get().windows.find((w) => w.kind === "import-objects")?.props).toEqual({ paths: ["/d/model.omf"], folder: "Карьер" });
+  });
+
+  it("drillhole tables and a .bfggis dropped onto a folder: the user is told the folder does not apply to them (Э11 11.21)", async () => {
+    expect(folderNote(null, 2, 1)).toBeNull();
+    expect(folderNote("Карьер", 0, 0)).toBeNull();
+    expect(folderNote("Карьер", 2, 0)).toBe("Папка «Карьер» не применится к таблицам скважин: они загрузятся без папки. Перенесите их потом в «Менеджере данных».");
+    expect(folderNote("Карьер", 1, 1)).toContain("к таблицам скважин и файлу проекта .bfggis");
+    const { app } = open([]);
+    app.registry.bind("project.import", async () => "ok");
+    const run = importPaths(app, ["/d/model.omf", "/d/collar.csv", "/d/old.bfggis"], "auto", "Карьер");
+    await vi.waitFor(() => expect(dialogStore.get().queue.length).toBe(1));
+    const d = dialogStore.get().queue[0];
+    expect(d.kind).toBe("message");
+    expect((d.options as { message: string }).message).toBe(folderNote("Карьер", 1, 1));
+    closeDialog(d.id);
+    (d.resolve as () => void)();
+    expect(await run).toBe("Открыт состав импорта файлов, мастер импорта скважин, импорт проекта");
+    expect(windowStore.get().windows.find((w) => w.kind === "import-objects")?.props).toEqual({ paths: ["/d/model.omf"], folder: "Карьер" });
+    dialogStore.set({ queue: [] });
+  });
+});
+
+describe("the block models of an OMF card", () => {
+  it("two block models of one name: keys by their place, not the name (Э11 11.21)", () => {
+    const text = fs.readFileSync(path.join(__dirname, "../src/modules/importing/OmfPart.tsx"), "utf8");
+    expect(text).not.toMatch(/key=\{b\.name\}/);
+    const errors: unknown[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => void errors.push(a));
+    const info = omfFile().omf!;
+    const html = renderToStaticMarkup(createElement(OmfPart, { file: "model.omf", info, blocks: [{ name: "vol", counts: [10, 15, 20], cells: 3000, fields: [] }, { name: "vol", counts: [2, 2, 2], cells: 8, fields: [] }] }));
+    spy.mockRestore();
+    expect(html.match(/Блочная модель/g)).toHaveLength(2);
+    expect(errors.filter((e) => String(e).includes("same key"))).toEqual([]);
   });
 });
