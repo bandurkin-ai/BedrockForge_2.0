@@ -80,7 +80,7 @@ beforeEach(() => {
   setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
   app = createApp({ persist: false });
   bindComposites(app);
-  app.store.set({ projectName: "Проект", projectReadOnly: false });
+  app.store.set({ projectName: "Проект", projectReadOnly: false, setName: "Набор" });
 });
 
 afterEach(() => {

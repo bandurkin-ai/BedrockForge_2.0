@@ -5,7 +5,7 @@ import { api, CoreError } from "../../shell/api";
 import { setPanel } from "../../shell/workspace";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
-import { loadEdits, loadSets, loadTabs, reload, resolveTable, runTool, selectSet, openTable, setWhere, tablesStore, undoEdit } from "./state";
+import { loadEdits, loadSets, loadTabs, reload, resolveTable, rowsLocked, runTool, selectSet, openTable, setWhere, tablesStore, undoEdit } from "./state";
 
 const needProject = (ctx: { hasProject: boolean }) => (ctx.hasProject ? null : "Откройте или создайте проект");
 const errText = (e: unknown) => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
@@ -95,6 +95,8 @@ export function bindTables(app: App): void {
 }
 
 const needTable = (ctx: { hasSet: boolean }) => (ctx.hasSet && tablesStore.get().table ? null : "Откройте таблицу набора");
+/** Cells and rows of a result table are not edited (ADR 0018 decision 24). */
+const needEditable = (ctx: { hasSet: boolean }) => needTable(ctx) ?? rowsLocked(tablesStore.get());
 
 /** The panel tools as registry commands (palette, hotkeys, Claude). */
 function bindTools(app: App): void {
@@ -114,7 +116,7 @@ function bindTools(app: App): void {
     const s = tablesStore.get();
     const r = await tool("replace", { column: a.column, find: a.find, replace: a.replace ?? "", whole: !!a.whole, case: !!a.case, hole: s.hole?.id ?? null, where: s.where || null });
     return `Заменено: ${String(r.replaced)}`;
-  }, needTable);
+  }, needEditable);
   app.registry.bind("table.computed", async (a) => {
     const r = await tool("columns", { name: a.name, expression: a.expression });
     return `Колонка «${String(r.name)}» добавлена`;
@@ -134,7 +136,7 @@ function bindTools(app: App): void {
   app.registry.bind("table.append", async (a) => {
     const r = await tool("append", { source: String(a.source) });
     return `Добавлено строк: ${String(r.rows)}`;
-  }, needTable);
+  }, needEditable);
   app.registry.bind("table.merge", async (a) => {
     const r = await tool("merge", { source: String(a.source), key: ["hole", ...list(a.key)], columns: list(a.columns) });
     return `Совпало строк: ${String(r.matched)} из ${String(r.rows)}`;
