@@ -241,3 +241,25 @@ def test_warm_runs_the_kernels() -> None:
     composites_warm.warm()
     res = ore_intervals(example_lines("T8.2-16"), example_params("T8.2-16", "strict_excl"))
     assert len(res) == 3 and EXAMPLES["T8.2-16"]["expect"]["strict_excl"]["intervals"][1]["cls"] == "interlayer"
+
+
+def test_sums_of_the_summary_are_exact() -> None:
+    """The sums of the summary are those of `math.fsum`: exactly rounded, whatever the order of the rows."""
+    from bf_core.composites.ore_set import _add_exact, _exact_total
+
+    rng = np.random.default_rng(5)
+    cases = [
+        [1e100, 1.0, -1e100, 1e-100, 3.0],
+        [0.1] * 10,
+        [1.0, 1e-16, 1e-16, 1e-16],
+        [2.0**53, 1.0, 1.0, -(2.0**53)],
+        (rng.lognormal(0.0, 12.0, 5000) * rng.choice([-1.0, 1.0], 5000)).tolist(),
+        [],
+    ]
+    for values in cases:
+        for order in (values, values[::-1], sorted(values)):
+            parts = np.empty(64)
+            n = 0
+            for x in order:
+                n = _add_exact(parts, n, x)
+            assert _exact_total(parts, n) == math.fsum(values)

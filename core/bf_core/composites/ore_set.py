@@ -148,16 +148,125 @@ def _row_domain(iv: OreIntervals, lines: OreLines) -> np.ndarray:
     return np.ascontiguousarray(codes[np.cumsum(change) - 1], dtype=np.int32)
 
 
-def _summary(iv: OreIntervals, domain: np.ndarray, with_domains: bool) -> dict[str, Any]:
-    """The summary by class and by (domain, class). Every sum is `math.fsum` over the rows of the group."""
-    cls = iv.cls
-    m = iv.m
-    mc = iv.mc
+@njit(cache=True, nogil=True)
+def _add_exact(parts, n, x):  # type: ignore[no-untyped-def]
+    """Adds x to the sum kept exactly as the non-overlapping parts[:n] (Shewchuk; the algorithm of
+    `math.fsum`). Returns the new n; 64 parts are room for any doubles."""
+    i = 0
+    for j in range(n):
+        y = parts[j]
+        if abs(x) < abs(y):
+            x, y = y, x
+        hi = x + y
+        lo = y - (hi - x)
+        if lo != 0.0:
+            parts[i] = lo
+            i += 1
+        x = hi
+    parts[i] = x
+    return i + 1
 
-    def entry(rows: np.ndarray, code: int) -> dict[str, Any]:
-        count = len(rows)
-        sum_m = math.fsum(m[rows].tolist())
-        sum_mc = math.fsum(mc[rows].tolist())
+
+@njit(cache=True, nogil=True)
+def _exact_total(parts, n):  # type: ignore[no-untyped-def]
+    """The exactly rounded value of the sum kept in parts[:n] (the last step of `math.fsum`)."""
+    if n == 0:
+        return 0.0
+    n -= 1
+    hi = parts[n]
+    lo = 0.0
+    while n > 0:
+        x = hi
+        n -= 1
+        y = parts[n]
+        hi = x + y
+        lo = y - (hi - x)
+        if lo != 0.0:
+            break
+    if n > 0 and ((lo < 0.0 and parts[n - 1] < 0.0) or (lo > 0.0 and parts[n - 1] > 0.0)):
+        y = lo * 2.0
+        x = hi + y
+        if y == x - hi:
+            hi = x
+    return hi
+
+
+@njit(cache=True, nogil=True)
+def _sums(order, key, m, mc, nested, g_key, g_count, g_m, g_mc, c_count, c_m, c_mc):  # type: ignore[no-untyped-def]
+    """One pass over the rows in the order of their key (class · 2³² + domain + 1): the exact sums of M and MC
+    by key (`g_*`, a group per key met) and by class (`c_*`), and of M of the rows that are not nested.
+    Returns (groups, that sum)."""
+    pm = np.empty(64, np.float64)
+    pmc = np.empty(64, np.float64)
+    qm = np.empty(64, np.float64)
+    qmc = np.empty(64, np.float64)
+    total = np.empty(64, np.float64)
+    nm = 0
+    nmc = 0
+    km = 0
+    kmc = 0
+    nt = 0
+    ng = 0
+    count = 0
+    cls_count = 0
+    for i in range(len(order)):
+        r = order[i]
+        if i > 0 and key[r] != key[order[i - 1]]:
+            g_key[ng] = key[order[i - 1]]
+            g_count[ng] = count
+            g_m[ng] = _exact_total(pm, nm)
+            g_mc[ng] = _exact_total(pmc, nmc)
+            ng += 1
+            nm = 0
+            nmc = 0
+            count = 0
+            if key[r] >> 32 != key[order[i - 1]] >> 32:
+                c = key[order[i - 1]] >> 32
+                c_count[c] = cls_count
+                c_m[c] = _exact_total(qm, km)
+                c_mc[c] = _exact_total(qmc, kmc)
+                km = 0
+                kmc = 0
+                cls_count = 0
+        count += 1
+        cls_count += 1
+        nm = _add_exact(pm, nm, m[r])
+        nmc = _add_exact(pmc, nmc, mc[r])
+        km = _add_exact(qm, km, m[r])
+        kmc = _add_exact(qmc, kmc, mc[r])
+        if nested[r] == 0:
+            nt = _add_exact(total, nt, m[r])
+    if len(order) > 0:
+        last = key[order[len(order) - 1]]
+        g_key[ng] = last
+        g_count[ng] = count
+        g_m[ng] = _exact_total(pm, nm)
+        g_mc[ng] = _exact_total(pmc, nmc)
+        ng += 1
+        c_count[last >> 32] = cls_count
+        c_m[last >> 32] = _exact_total(qm, km)
+        c_mc[last >> 32] = _exact_total(qmc, kmc)
+    return ng, _exact_total(total, nt)
+
+
+def _summary(iv: OreIntervals, domain: np.ndarray, with_domains: bool) -> dict[str, Any]:
+    """The summary by class and by (domain, class). Every sum is exactly rounded, whatever the order of the rows."""
+    rows = len(iv)
+    key = (iv.cls.astype(np.int64) << 32) + (domain.astype(np.int64) + 1)
+    order = np.argsort(key, kind="stable")
+    groups = int(np.count_nonzero(np.diff(key[order]))) + 1 if rows else 0
+    g_key = np.empty(groups, np.int64)
+    g_count = np.empty(groups, np.int64)
+    g_m = np.empty(groups, np.float64)
+    g_mc = np.empty(groups, np.float64)
+    c_count = np.zeros(len(CLASS_NAMES), np.int64)
+    c_m = np.zeros(len(CLASS_NAMES), np.float64)
+    c_mc = np.zeros(len(CLASS_NAMES), np.float64)
+    m = np.ascontiguousarray(iv.m)
+    mc = np.ascontiguousarray(iv.mc)
+    _, length = _sums(order, key, m, mc, np.ascontiguousarray(iv.nested), g_key, g_count, g_m, g_mc, c_count, c_m, c_mc)
+
+    def entry(code: int, count: int, sum_m: float, sum_mc: float) -> dict[str, Any]:
         return {
             "cls": CLASS_NAMES[code],
             "nested": CLASS_NAMES[code] in NESTED_CLASSES,
@@ -168,26 +277,17 @@ def _summary(iv: OreIntervals, domain: np.ndarray, with_domains: bool) -> dict[s
             "mc": sum_mc,
         }
 
-    order = np.argsort(cls, kind="stable")
-    bounds = np.searchsorted(cls[order], np.arange(len(CLASS_NAMES) + 1))
-    by_class = []
+    by_class = [
+        entry(code, int(c_count[code]), float(c_m[code]), float(c_mc[code]))
+        for code in range(len(CLASS_NAMES))
+        if c_count[code]
+    ]
     by_domain = []
-    for code in range(len(CLASS_NAMES)):
-        rows = order[bounds[code] : bounds[code + 1]]
-        if len(rows) == 0:
-            continue
-        by_class.append(entry(rows, code))
-        if not with_domains:
-            continue
-        codes = domain[rows]
-        inner = np.argsort(codes, kind="stable")
-        values, starts = np.unique(codes[inner], return_index=True)
-        ends = [*starts[1:].tolist(), len(rows)]
-        for value, lo, hi in zip(values.tolist(), starts.tolist(), ends, strict=True):
-            by_domain.append({"domain": int(value), **entry(rows[inner[lo:hi]], code)})
-    by_domain.sort(key=lambda e: (e["domain"], CLASS_NAMES.index(e["cls"])))
-    length = math.fsum(m[iv.nested == 0].tolist())
-    return {"classes": by_class, "domains": by_domain, "length": length, "rows": len(iv), **iv.stats}
+    if with_domains:
+        for k, count, sum_m, sum_mc in zip(g_key.tolist(), g_count.tolist(), g_m.tolist(), g_mc.tolist(), strict=True):
+            by_domain.append({"domain": (k & 0xFFFFFFFF) - 1, **entry(k >> 32, count, sum_m, sum_mc)})
+        by_domain.sort(key=lambda e: (e["domain"], CLASS_NAMES.index(e["cls"])))
+    return {"classes": by_class, "domains": by_domain, "length": float(length), "rows": rows, **iv.stats}
 
 
 def run_set(
