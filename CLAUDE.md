@@ -38,7 +38,12 @@ app/ оболочка (src/main, src/preload, static/ заставка, e2e/) ·
 | test-runner | haiku / low | Тесты, сборки, логи |
 | explorer | haiku / low | Поиск, чтение больших файлов, справочник BF |
 | docs-writer | sonnet / medium | Руководство, CHANGELOG, CHECKLIST |
+| ci-triager | haiku / low | Разбор упавших проверок CI PR (только чтение) |
 Не больше 4 субагентов одновременно (указание заказчика 2026-11-18, подписка Ultra). Режим расхода — в PROGRESS.md (таблица 13.4 ТЗ).
+Агенты волны, которые правят код, — с `isolation: "worktree"` (своё дерево и ветка); оркестратор сливает их ветки
+`git merge --no-ff` при приёмке. Бриф — навык `/wave-brief`; полный прогон перед push в PR — `/pr-precheck`.
+Хуки (`.claude/hooks/`): запрет `git stash`, `git add -A/.`, `rebase`, `push --force` и push одних `*.md` в открытый PR;
+запрет правки `tests/data/real/**` и lock-файлов; после правки — ruff по файлу и предупреждение о > 600 строках.
 
 ## Чекпойнт (после каждого подшага 30–45 мин)
 тесты → коммит «Э<N>: …» / «wip(Э<N>): …» → PROGRESS.md «Сейчас» и «Следующее
@@ -50,7 +55,8 @@ app/ оболочка (src/main, src/preload, static/ заставка, e2e/) ·
 ## Git
 - Ветка сессии `claude/…` → PR этапа в `main` (заголовок «Э<N>. <Название>», описание — Приложение Ж).
 - Сливать после зелёного CI (`ci` и `windows`), merge commit; затем `git fetch origin main && git merge origin/main`.
-- CI ждать событиями PR (подписка), не опрашивать.
+- CI ждать событиями PR (подписка), не опрашивать. Упавшую проверку разбирает `ci-triager`; одна попытка перезапуска.
+- `paths-ignore` у `pull_request` смотрит на весь diff PR: push одних `*.md` в открытый PR тоже запускает `ci` и `windows`.
 - Экономия минут Actions: `ci` — только PR и push в main; `windows` — только PR не в черновике
   (или вручную, workflow_dispatch). PR держать черновиком, пока этап не готов; правки только docs/*.md CI не запускают.
 - Бюджет Actions $25/мес (windows = 2× Linux; остаток — в PROGRESS.md):
