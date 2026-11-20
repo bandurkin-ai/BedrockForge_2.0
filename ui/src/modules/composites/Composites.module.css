@@ -112,3 +112,84 @@
   color: var(--warn);
   font-size: 12px;
 }
+
+/* ResultsTree (12.27): rows «Обработка проб», the mark «устарел», the mark of a result table on its tab */
+
+.treeCount {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.staleMark {
+  margin-left: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  color: var(--warn);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.staleRow {
+  font-style: italic;
+}
+
+.resultMark {
+  margin-left: 4px;
+  color: var(--brand-orange);
+  font-size: 9px;
+}
+
+/* ResultProps, tool windows (12.27–12.28): tables of rows */
+
+.rows {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.rows th,
+.rows td {
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.rows th {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-family: var(--font-brand);
+}
+
+.rows td.num {
+  text-align: right;
+}
+
+.rows tr[aria-disabled="true"] td {
+  color: var(--text-faint);
+}
+
+.rowButtons {
+  display: flex;
+  gap: 4px;
+}
+
+.iconBtn {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.iconBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

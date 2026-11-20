@@ -10,7 +10,6 @@ import pytest
 
 from bf_core.composites import ore_units as ou
 from bf_core.composites.ore_intervals import OreError, OreLines, OreParams, ore_intervals
-
 from tests.oreutil import (
     EXAMPLES,
     brief,

@@ -71,7 +71,8 @@ def check_rows(res: OreIntervals, expected: list[dict[str, Any]], first_row: int
     rows = res.rows()
     for want in expected:
         a, b = want["samples"]
-        hit = [r for r in rows if r["cls"] == want["cls"] and r["row0"] == first_row + a - 1 and r["row1"] == first_row + b - 1]
+        span = (first_row + a - 1, first_row + b - 1)
+        hit = [r for r in rows if r["cls"] == want["cls"] and (r["row0"], r["row1"]) == span]
         assert len(hit) == 1, (want, [(r["cls"], r["row0"], r["row1"]) for r in rows])
         got = hit[0]
         for key in ("from", "to", "m", "mc", "c"):

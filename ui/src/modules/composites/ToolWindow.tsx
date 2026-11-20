@@ -18,6 +18,8 @@ import own from "./Composites.module.css";
 import { createPreviewer, loadHoles, startTool, type FieldRow, type HoleRow, type OnExists, type PreviewAnswer, type Previewer, type Started } from "./api";
 import { toolValues, WINDOW_PREFIX } from "./bind";
 import { CompositeWindow } from "./CompositeWindow";
+import { ResultProps } from "./ResultProps";
+import { RESULT_WINDOW } from "./ResultsTree";
 import { NO_SOURCE, rangeText, shown, sourceFromArgs, toolBody, type FormValues, type ParamSpec, type SourceState, type ToolSpec } from "./params";
 import { SourcePicker } from "./SourcePicker";
 import { summaryRows } from "./tools/composite";
@@ -321,6 +323,7 @@ export function ToolWindow({ winId, tool, args = {} }: { winId: string; tool: To
 /** The windows `composites-<tool>` (the shell's renderer falls through to this). */
 export function renderCompositesWindow(w: FloatWin): ReactNode | null {
   if (!w.kind.startsWith(WINDOW_PREFIX)) return null;
+  if (w.kind === RESULT_WINDOW) return <ResultProps winId={w.id} resultId={Number(w.props?.resultId)} setId={typeof w.props?.setId === "number" ? w.props.setId : null} />;
   const tool = toolById(w.kind.slice(WINDOW_PREFIX.length));
   if (!tool) return null;
   const args = (w.props?.args as Record<string, unknown> | undefined) ?? {};

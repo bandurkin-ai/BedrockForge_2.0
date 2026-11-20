@@ -33,12 +33,13 @@ import numpy as np
 
 from bf_core.jit import njit
 
+from . import ore_steps as steps
 from . import ore_units as ou
 from .strips import Tick, run
 
-ALGO = 1  # version of the rules; a change of the rules (answers № 17–24) raises it → results go «устарел»
+ALGO = 1  # version of the rules (ТЗ 7.35.10: answers № 17–24 are in); a change raises it → results go «устарел»
 #: Modes the kernel runs now; the rest arrive with подшаги 12.12–12.13.
-READY_MODES = ("simple",)
+READY_MODES = ("simple", "soft")
 
 # interval rows: integer and float columns
 IV_HOLE, IV_LINE, IV_CLS, IV_BASIS, IV_N, IV_FLAG, IV_ORE_ID, IV_ROW0, IV_ROW1 = range(9)
@@ -280,7 +281,9 @@ class OreIntervals:
 
 
 @njit(cache=True, nogil=True)
-def _put_row(a, b, cls, basis, ore_id, hole, line, cb, p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni):  # type: ignore[no-untyped-def]
+def _put_row(  # type: ignore[no-untyped-def]
+    a, b, cls, basis, ore_id, hole, line, cb, p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni
+):
     """Row `ni` of the intervals — the pieces [a, b) — and the classes of their samples; returns ni + 1."""
     m = 0.0
     mc = 0.0
@@ -337,10 +340,16 @@ def _classify(  # type: ignore[no-untyped-def]
         basis = ou.cond_k(um[u], umc[u], c_min, m_min, mc_min) if uo[u] == 1 else ou.BASIS_NONE
         if basis != ou.BASIS_NONE:
             if wa >= 0:
-                ni = _put_row(wa, a, ou.CLS_WASTE, 0, 0, hole, line, cb, p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni)  # fmt: skip
+                ni = _put_row(
+                    wa, a, ou.CLS_WASTE, 0, 0, hole, line, cb,
+                    p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni,
+                )  # fmt: skip
                 wa = -1
             ore_no += 1
-            ni = _put_row(a, b, ou.CLS_ORE, basis, ore_no, hole, line, cb, p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni)  # fmt: skip
+            ni = _put_row(
+                a, b, ou.CLS_ORE, basis, ore_no, hole, line, cb,
+                p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni,
+            )  # fmt: skip
             ne = ou.emit_frag(
                 ev_i, ev_f, ne, hole, line, ou.STEP_CLASS, 0, ou.K_INTERVAL, ou.SIDE_NONE, 1,
                 ou.CMP_MRT if basis == ou.BASIS_THICKNESS else ou.CMP_MC, ou.D_ORE, ore_no,
@@ -360,14 +369,23 @@ def _classify(  # type: ignore[no-untyped-def]
                 k2 += 1
             if ore:
                 if wa >= 0:
-                    ni = _put_row(wa, k, ou.CLS_WASTE, 0, 0, hole, line, cb, p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni)  # fmt: skip
+                    ni = _put_row(
+                        wa, k, ou.CLS_WASTE, 0, 0, hole, line, cb,
+                        p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni,
+                    )  # fmt: skip
                     wa = -1
-                ni = _put_row(k, k2, ou.CLS_SUBGRADE, 0, 0, hole, line, cb, p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni)  # fmt: skip
+                ni = _put_row(
+                    k, k2, ou.CLS_SUBGRADE, 0, 0, hole, line, cb,
+                    p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni,
+                )  # fmt: skip
             elif wa < 0:
                 wa = k
             k = k2
     if wa >= 0:
-        ni = _put_row(wa, ub[nu], ou.CLS_WASTE, 0, 0, hole, line, cb, p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni)  # fmt: skip
+        ni = _put_row(
+            wa, ub[nu], ou.CLS_WASTE, 0, 0, hole, line, cb,
+            p_row, p_from, p_to, p_l, p_g, p_miss, s_cls, s_ore, iv_i, iv_f, ni,
+        )  # fmt: skip
     return ni, ore_no, ne
 
 
@@ -423,6 +441,13 @@ def _run_strip(  # type: ignore[no-untyped-def]
     uo = np.empty(cap, np.int8)
     um = np.empty(cap, np.float64)
     umc = np.empty(cap, np.float64)
+    uchg = np.empty(cap, np.int8)
+    wb = np.empty(cap, np.int64)  # scratch of step 2
+    wo = np.empty(cap, np.int8)
+    wm = np.empty(cap, np.float64)
+    wmc = np.empty(cap, np.float64)
+    wchg = np.empty(cap, np.int8)
+    acc = np.empty(cap, np.int8)
     ni = 0
     ore_no = 0
     hole_prev = -1
@@ -443,6 +468,11 @@ def _run_strip(  # type: ignore[no-untyped-def]
         ub[nel] = eb[nel]
         if mode == ou.MODE_SIMPLE:
             nu, ne = ou.grow_simple(nu, ub, uo, um, umc, cb, hole, line, p_row, p_from, p_to, ev_i, ev_f, ne)
+        elif mode == ou.MODE_SOFT:
+            nu, ne, _ = steps.trim_stages(
+                nu, ub, uo, um, umc, uchg, wb, wo, wm, wmc, wchg, acc, cb, mpp, c_min, m_min, mc_min,
+                hole, line, p_row, p_from, p_to, ev_i, ev_f, ne,
+            )  # fmt: skip
         if ev_i.shape[0] > 0:
             ne = _layers_not_checked(
                 nu, ub, uo, um, umc, nel, eb, eo, em, emc, hole, line, cb, mpp, c_min, m_min, mc_min,

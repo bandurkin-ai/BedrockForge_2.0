@@ -144,7 +144,9 @@ def cond_k(m, mc, c_min, m_min, mc_min):  # type: ignore[no-untyped-def]
 
 
 @njit(cache=True, nogil=True)
-def emit(ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec, row0, row1, seq, f, t, m, mc):  # type: ignore[no-untyped-def]
+def emit(  # type: ignore[no-untyped-def]
+    ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec, row0, row1, seq, f, t, m, mc
+):
     """Writes event `ne` when there is room; returns ne + 1."""
     if ne < ev_i.shape[0]:
         ev_i[ne, EI_HOLE] = hole
@@ -168,7 +170,9 @@ def emit(ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec, row
 
 
 @njit(cache=True, nogil=True)
-def emit_frag(ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec, seq, a, b, p_row, p_from, p_to, m, mc):  # type: ignore[no-untyped-def]
+def emit_frag(  # type: ignore[no-untyped-def]
+    ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec, seq, a, b, p_row, p_from, p_to, m, mc
+):
     """An event about the pieces [a, b): rows of its first and last samples (−1 — none), its depths."""
     if ne >= ev_i.shape[0]:
         return ne + 1
@@ -182,7 +186,9 @@ def emit_frag(ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec
         if p_row[k] >= 0:
             r1 = p_row[k]
             break
-    return emit(ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec, r0, r1, seq, p_from[a], p_to[b - 1], m, mc)
+    return emit(
+        ev_i, ev_f, ne, hole, line, step, stage, kind, side, ore, cmp, dec, r0, r1, seq, p_from[a], p_to[b - 1], m, mc
+    )
 
 
 @njit(cache=True, nogil=True)

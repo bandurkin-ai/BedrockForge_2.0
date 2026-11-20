@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toggleExpanded } from "../../shell/tree";
 import { TreeRow } from "../../shell/TreeRow";
 import { useStore } from "../../shell/useStore";
+import { ResultRows, useResultsBySet } from "../composites/ResultsTree";
 import { DisplayRows } from "../downhole/DisplaysTree";
 import { libraryStore } from "../downhole/library";
 import { loadSets, selectSet, tablesStore, type SetInfo } from "./state";
@@ -17,13 +18,14 @@ let selecting: Promise<void> = Promise.resolve();
 const errText = (e: unknown) => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
 
 /** Sets under «Скважины» in the data tree (ТЗ 7.1, 7.10, 7.35 Д-03): a click — the active set, a double click — its
- * table, the arrow — its displays; menu — tables, displays, rename, delete. */
+ * table, the arrow — its displays and «Обработка проб» (results, ADR 0018 §2); menu — tables, displays, rename, delete. */
 export function SetsTree() {
   const app = useApp();
   const s = useStore(tablesStore, (x) => x);
   const charts = useStore(libraryStore, (x) => x.charts);
   const hidden = useStore(app.store, (x) => x.view.hidden);
   const [collapsed, setCollapsed] = useState<string[]>([]);
+  const results = useResultsBySet(s.sets.map((x) => x.id));
   if (!s.sets.length) return <div className={css.treeNone}>Нет объектов</div>;
   const open = async (set: SetInfo, kind?: string) => {
     await selecting;
@@ -57,6 +59,8 @@ export function SetsTree() {
     <div role="group" aria-label="Наборы скважин">
       {s.sets.map((set) => {
         const hasDisplays = charts.some((c) => c.set_id === set.id && c.kind === "striplog");
+        const setResults = results[set.id] ?? [];
+        const hasChildren = hasDisplays || setResults.length > 0;
         const open_ = !collapsed.includes(String(set.id));
         return (
           <div key={set.id}>
@@ -64,7 +68,7 @@ export function SetsTree() {
               label={set.name}
               ariaLabel={`${set.name}, ${set.holes.toLocaleString("ru-RU")} скв.`}
               level={2}
-              expanded={hasDisplays ? open_ : undefined}
+              expanded={hasChildren ? open_ : undefined}
               onToggle={() => setCollapsed((c) => toggleExpanded(c, String(set.id)))}
               check={{
                 checked: !hidden.includes(`set:${set.id}`),
@@ -94,6 +98,7 @@ export function SetsTree() {
               }}
             />
             {hasDisplays && open_ && <DisplayRows setId={set.id} />}
+            {open_ && <ResultRows setId={set.id} results={setResults} />}
           </div>
         );
       })}
