@@ -167,6 +167,8 @@ def merge_compute(
             del raw
             if release:
                 (s.numbers if number else s.codes).pop(field)
+            if tick is not None:
+                tick(1.0)  # a column of millions of rows: a cancel is answered between two of them
             spec_k, v = _column(s, field, label, got)
             if k == 0 and number:
                 merged0.append((field, v))

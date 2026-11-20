@@ -556,3 +556,77 @@ def test_input_hash_is_the_hash_of_12_19(tmp_path: Path, layout: str) -> None:
     plus.numbers["AU"][3] = 0.0
     plus.numbers["AU"][7:9] = np.nan
     assert source.input_hash([plus], p) == source.input_hash([lines], p)  # equal values — equal hashes
+
+
+def test_one_hole_is_read_without_the_rest_of_the_set(db_url: str, tmp_path: Path) -> None:
+    """The preview of a hole (ADR 0018 решение 27: ≤ 100 мс on 50 thousand holes): its rows by the index of
+    `dh_rows`, its name and its depth by its id — the lines and the depth are those of the whole reading."""
+    from bf_core.composites import compose
+    from bf_core.db.schema import dh_holes
+
+    engine, set_id, tid = setup(db_url, tmp_path, _layout_rows("shuffled"))
+    with dialect.write_tx(engine) as conn:
+        other = dh.create_set(conn, "Другой набор")
+        dh.replace_collars(conn, other, [dh.CollarRow("СКВ-003", 0.0, 0.0, 0.0, 999.0)])
+        ids = dh.hole_ids(conn, set_id)
+        foreign = dh.hole_ids(conn, other)["СКВ-003"]
+        for name, td in (("СКВ-003", 55.5), ("СКВ-017", 80.0)):
+            conn.execute(sa.update(dh_holes).where(dh_holes.c.id == ids[name]).values(td=td, has_collar=True))
+    whole = source.read(engine, set_id, tid, ["AU", "LITH"])
+    for name in ("СКВ-003", "СКВ-029"):
+        one = source.read(engine, set_id, tid, ["AU", "LITH"], holes=[ids[name]])
+        k = whole.holes.index(name)
+        a, b = int(whole.starts[k]), int(whole.starts[k + 1])
+        assert one.holes == [name] and one.hole_db_ids.tolist() == [ids[name]] and one.starts.tolist() == [0, b - a]
+        assert one.row_ids.tolist() == whole.row_ids[a:b].tolist() and one.from_m.tolist() == whole.from_m[a:b].tolist()
+        assert one.numbers["AU"].tobytes() == whole.numbers["AU"][a:b].tobytes()
+        labels = np.array([*whole.labels["LITH"], None], dtype=object)[whole.codes["LITH"][a:b]].tolist()
+        assert np.array([*one.labels["LITH"], None], dtype=object)[one.codes["LITH"]].tolist() == labels
+    none = source.read(engine, set_id, tid, ["AU"], holes=[foreign])  # a hole of another set: no rows, no name
+    assert none.rows == 0 and none.holes == []
+    with dialect.read_tx(engine) as conn:
+        few = [ids["СКВ-017"], 987654, ids["СКВ-003"], foreign, ids["СКВ-003"], ids["СКВ-005"]]
+        got = compose.hole_depths(conn, set_id, few)  # by id; unknown, of another set, without TD — NaN
+        assert got.tolist()[:1] == [80.0] and got[2] == got[4] == 55.5 and np.isnan(got[[1, 3, 5]]).all()
+        every = compose.hole_depths(conn, set_id, whole.hole_db_ids)  # the whole set (more than a few): one read
+        many = compose.hole_depths(conn, set_id, np.tile(whole.hole_db_ids, 10))
+    assert every[whole.holes.index("СКВ-003")] == 55.5 and int(np.isnan(every).sum()) == len(every) - 2
+    assert many.tobytes() == np.tile(every, 10).tobytes()
+
+
+def test_trajectories_tick_while_they_are_built(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The builder of the trajectories has no place to ask for a cancel: with `tick` it runs on a thread of its
+    own and the job ticks meanwhile; a cancel is raised once the builder has ended; its error comes as it is."""
+    import time
+
+    from bf_core.drillholes import trajectory
+    from bf_core.jobs.context import JobCancelled
+
+    built: list[Any] = []
+
+    def slow(project: Any, set_id: int, method: str = "minimum_curvature") -> str:
+        time.sleep(0.7)
+        built.append((project, set_id, method))
+        return "trajectories"
+
+    monkeypatch.setattr(trajectory, "trajectories", slow)
+    beats: list[Any] = []
+    assert source.trajectories("p", 7, tick=lambda p, m: beats.append((p, m))) == "trajectories"
+    assert built == [("p", 7, "minimum_curvature")] and 2 <= len(beats) <= 4 and set(beats) == {(None, None)}
+    assert source.trajectories("p", 8) == "trajectories" and len(beats) <= 4  # no tick — built in place
+
+    def cancel(_p: float | None, _m: str | None) -> None:
+        raise JobCancelled()
+
+    t0 = time.perf_counter()
+    with pytest.raises(JobCancelled):
+        source.trajectories("p", 9, tick=cancel)
+    assert built[-1][1] == 9 and time.perf_counter() - t0 >= 0.6  # the builder was not left running
+
+    def broken(project: Any, set_id: int, method: str = "minimum_curvature") -> str:
+        raise ApiError(404, "set_not_found", "Набор скважин не найден.", "Обновите дерево проекта.")
+
+    monkeypatch.setattr(trajectory, "trajectories", broken)
+    with pytest.raises(ApiError) as err:
+        source.trajectories("p", 1, tick=lambda p, m: None)
+    assert err.value.code == "set_not_found"

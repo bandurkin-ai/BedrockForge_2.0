@@ -349,14 +349,16 @@ def compute(
 
 
 def read_prep(
-    engine: sa.Engine, spec: PrepSpec, *, cache_dir: Any = None, holes: Sequence[int] | None = None
-) -> tuple[source.Lines, source.Lines | None]:
+    engine: sa.Engine, spec: PrepSpec, *, cache_dir: Any = None, holes: Sequence[int] | None = None,
+    tick: Callable[[float | None, str | None], None] | None = None,
+) -> tuple[source.Lines, source.Lines | None]:  # fmt: skip
     from . import source
 
-    src = source.read(engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache_dir, holes=holes)
+    src = source.read(engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache_dir, holes=holes,
+                      tick=tick)  # fmt: skip
     d = spec.other_domain()
     dom = None if d is None else source.read(engine, spec.set_id, d.table_id, [d.field], cache_dir=cache_dir,
-                                             holes=holes)  # fmt: skip
+                                             holes=holes, tick=tick)  # fmt: skip
     return src, dom
 
 
@@ -393,13 +395,14 @@ def run_prep(
         check_columns(conn, spec)
         inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=op == "declus")
     tick(0.02, "Чтение проб")
-    src, dom = read_prep(engine, spec, cache_dir=folder / "cache" / "tables")
+    src, dom = read_prep(engine, spec, cache_dir=folder / "cache" / "tables", tick=tick)
     st = stations = None
     if op == "declus":
-        st = source.trajectories(SimpleNamespace(engine=engine, uid=f"job:{folder}"), spec.set_id)
-        stations = source.stations_bytes(st, src.hole_db_ids.tolist())
+        st = source.trajectories(SimpleNamespace(engine=engine, uid=f"job:{folder}"), spec.set_id, tick=tick)
+        stations = source.stations_bytes(st, src.hole_db_ids.tolist(), tick=tick)
     algo = cj.ALGO[op]
-    sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=algo)
+    sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=algo,
+                            tick=tick)  # fmt: skip
     fresh = cj._fresh(engine, rebuild, spec.set_id, sha, algo, inputs)
     if fresh is not None:
         return fresh

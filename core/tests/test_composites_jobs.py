@@ -242,6 +242,28 @@ def test_cancel_leaves_nothing(demo) -> None:  # type: ignore[no-untyped-def]
         assert sorted(tables(c, set_id)) == before
 
 
+def test_reading_trajectories_and_hash_tick(demo) -> None:  # type: ignore[no-untyped-def]
+    """Э12 12.33б: the phase before the kernel — the columns read one by one, the trajectories (built on a
+    thread while the job ticks), the stations, SHA-256 column by column — asks for a cancel at every step (it
+    was one silent stretch of 5–7 s on 5 million samples); `test_cancel_leaves_nothing` cancels at each."""
+    _c, project, set_id, table = demo
+    for op, params, step in (
+        ("run", {"body": body(set_id, table, name="Тики")}, "Композиты"),
+        ("coords", {"body": {"set_id": set_id, "table": table, "name": "Тики — координаты"}}, "Координаты"),
+    ):
+        said: list[str | None] = []
+
+        def tick(_p: float | None = None, m: str | None = None, said: list[str | None] = said) -> None:
+            said.append(m)
+
+        run = cj.run if op == "run" else (lambda *a, **k: cj.run_tables(*a[:3], "coords", **k))
+        run(project.engine, project.folder, params, job_id=next(_ids), tick=tick)
+        start = said.index("Чтение проб" if op == "run" else "Чтение таблиц")
+        # the demo table is read from `dh_rows` (one portion, then a column at a time); the stations; the parts
+        # of the hash: the parameters, the algorithm, the holes, the starts, «от», «до» and the fields
+        assert said.index(step) - start - 1 >= 1 + 2 + 1 + 6, (op, said[: said.index(step) + 1])
+
+
 @pytest.mark.windows
 def test_cancel_in_a_worker_leaves_nothing(demo) -> None:  # type: ignore[no-untyped-def]
     c, project, set_id, table = demo

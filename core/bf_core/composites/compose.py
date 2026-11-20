@@ -149,11 +149,19 @@ def compute(
     from .jobs import as_api
     from .length import FLAG_LOW, flag_column, summary
 
+    def beat(at: float) -> None:
+        """Between the steps that have no progress of their own (5 million rows: tenths of a second each)."""
+        if tick is not None:
+            tick(at)
+
     lines = iv.build_lines(src.hole_of().astype(np.int64), src.from_m, src.to_m)
+    beat(0.0)
     values = iv.stack_fields(lines, [src.numbers[n] for n in spec.numbers])
     density = lines.take(src.numbers[spec.density]) if spec.density else None
+    beat(0.0)
     before = summary(lines.lengths(), values, spec.numbers)
     rows_in, skipped = src.rows, src.skipped
+    beat(0.0)
 
     def free() -> None:
         """Before the kernel: the columns it gets are in `values`, the domain codes are made."""
@@ -211,6 +219,7 @@ def compute(
     except ValueError as exc:  # CompositeError → 422
         raise as_api(exc) from None
     del values, density, kw
+    beat(1.0)
     cl = c.lines
     hole = cl.hole_ids().astype(np.int64)  # dense index of src.holes
     n = cl.n
@@ -233,6 +242,7 @@ def compute(
         labels_k = np.array([*src.labels[name], None], dtype=object)
         cols.append(ColumnSpec(own(name), "text"))
         vals.append(labels_k[c.values.texts[k]])  # −1 → the last one: None
+    beat(1.0)
     cols += [ColumnSpec("DENSITY", "number", spec.units.get(spec.density) if spec.density else None),
              ColumnSpec("SAMPLED_LEN", "number", "м"), ColumnSpec("N_SAMPLES", "number"),
              ColumnSpec("DOMAIN", "number" if domain is not None and domain.dtype.kind == "f" else "text"),

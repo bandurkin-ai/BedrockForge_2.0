@@ -311,12 +311,14 @@ def run_coding(
         spec = parse_coding(conn, body)
         inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True, meshes=spec.wf.ids)
     tick(0.02, "Чтение проб")
-    src = source.read(engine, spec.set_id, spec.table_id, spec.fields, cache_dir=folder / "cache" / "tables")
+    src = source.read(engine, spec.set_id, spec.table_id, spec.fields, cache_dir=folder / "cache" / "tables",
+                      tick=tick)  # fmt: skip
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
-    st = source.trajectories(project, spec.set_id)
+    st = source.trajectories(project, spec.set_id, tick=tick)
     algo = cj.ALGO["coding"]
-    stations = source.stations_bytes(st, src.hole_db_ids.tolist())
-    sha = source.input_hash([src], spec.hash_params(), stations=stations, meshes=spec.wf.keys(), algo=algo)
+    stations = source.stations_bytes(st, src.hole_db_ids.tolist(), tick=tick)
+    sha = source.input_hash([src], spec.hash_params(), stations=stations, meshes=spec.wf.keys(), algo=algo,
+                            tick=tick)  # fmt: skip
     fresh = cj._fresh(engine, rebuild, spec.set_id, sha, algo, inputs)
     if fresh is not None:
         return fresh
