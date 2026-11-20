@@ -322,6 +322,34 @@
       "budget_mb": 600,
       "limits": {"preview_s": 0.05},
       "note": "ADR 0018 решение 27: предпросмотр скважины ≤ 50 мс — медиана по 7 операциям (length, domain, bench, merge, coords, topcut, equivalent). Замер 12.33: 12–29 мс."
+    },
+    "composite_coding": {
+      "params": {"holes": 5000, "per_hole": 100, "fields": 10, "triangles": 1000000, "bodies": 8},
+      "budget_s": 60.0,
+      "budget_mb": 1500,
+      "limits": {"split_s": 12.0, "whole_s": 12.0},
+      "note": "TODO"
+    },
+    "ore_intervals": {
+      "params": {"holes": 5000, "per_hole": 100, "fields": 10, "cutoff": 0.5, "m_min": 2.0, "m_waste_max": 2.0},
+      "budget_s": 30.0,
+      "budget_mb": 800,
+      "limits": {"ore_s": 4.0, "ore_kernel_s": 0.5, "hashes": 1, "balance_m": 1e-09, "balance_mc": 1e-09},
+      "note": "TODO"
+    },
+    "ore_conditions": {
+      "params": {"holes": 5000, "per_hole": 100, "fields": 10, "cutoffs": [0.3, 0.5, 1.0], "m_min": [1.0, 2.0], "m_waste_max": [2.0, 4.0]},
+      "budget_s": 10.0,
+      "budget_mb": 600,
+      "limits": {"conditions_s": 3.0},
+      "note": "TODO"
+    },
+    "ore_protocol": {
+      "params": {"holes": 5000, "per_hole": 100, "fields": 10, "cutoff": 0.5, "m_min": 2.0, "m_waste_max": 2.0},
+      "budget_s": 60.0,
+      "budget_mb": 800,
+      "limits": {"xlsx_s": 60.0},
+      "note": "TODO"
     }
   },
   "full": {
@@ -657,6 +685,27 @@
       "budget_mb": 200,
       "limits": {"compile_s": 60.0, "left_s": 1.0, "load_s": 2.0, "process_mb": 800},
       "note": "ADR 0018 решение 27: первая компиляция ядер этапа — строкой. Замер 12.33: 29 с (прогрев 26 с + 2,7 с ядер вне прогрева — список в left), из кеша 0,4 с. После 12.33б (composites/warm.py: домены, уступы, объединение, анализ кондиций, ручная правка; сценарий — с рудными интервалами): 36–38 с, left пуст, left_s 0,5 с (разница первого и повторного прогона заданий, не компиляция), из кеша 0,7 с."
+    },
+    "composite_coding": {
+      "params": {"holes": 50000, "per_hole": 100, "fields": 10, "triangles": 1000000, "bodies": 8},
+      "budget_s": 400.0,
+      "budget_mb": 4096,
+      "limits": {"split_s": 90.0, "whole_s": 90.0},
+      "note": "TODO"
+    },
+    "ore_intervals": {
+      "params": {"holes": 50000, "per_hole": 100, "fields": 10, "cutoff": 0.5, "m_min": 2.0, "m_waste_max": 2.0},
+      "budget_s": 200.0,
+      "budget_mb": 3072,
+      "limits": {"ore_s": 20.0, "ore_kernel_s": 5.0, "hashes": 1, "balance_m": 1e-09, "balance_mc": 1e-09},
+      "note": "TODO"
+    },
+    "ore_conditions": {
+      "params": {"holes": 50000, "per_hole": 100, "fields": 10, "cutoffs": [0.3, 0.5, 1.0], "m_min": [1.0, 2.0], "m_waste_max": [2.0, 4.0]},
+      "budget_s": 60.0,
+      "budget_mb": 2048,
+      "limits": {"conditions_s": 30.0},
+      "note": "TODO"
     }
   },
   "external": {

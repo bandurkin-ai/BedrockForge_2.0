@@ -1,6 +1,6 @@
 """The common set of the benches of sample processing (ADR 0018 «Замеры», решения 16 и 27; ТЗ 8.2.3: «50 тыс.
 скважин, 5 млн проб, 10 полей»): `composites`, `composite_bench`, `composite_merge`, `topcut_analysis`, `declus`,
-`composite_preview`, `composite_compile`.
+`composite_preview`, `composite_compile`, `composite_coding`, `ore_intervals`, `ore_conditions`, `ore_protocol`.
 
     meta = build(work, params)        # in `prepare`: the project, the set, the tables, their snapshots
     meta, engine, folder = opened(work)
@@ -107,6 +107,7 @@ def _reference(d: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
         # where either table is: the lithology covers its holes whole, the other holes have their samples only
         "merge_m": float(d["depth"][with_litho].sum() + ln[~both].sum()),
         "metal_au": float((ln * au)[have].sum()),
+        "au_m": float(ln[have].sum()),  # the sampling lines of Д-26: the samples with a grade («разрыв»)
         "au_n": int(have.sum()),
         "au_mean": float((ln * au)[have].sum() / ln[have].sum()),
         "au_max": float(np.nanmax(au)),
@@ -186,7 +187,12 @@ def snapshot(engine: Any, folder: Path, set_id: int, table_ids: list[int]) -> No
     gc.collect()
 
 
-def _project(root: Path, params: dict[str, Any], seed: int, *, cold: bool = False) -> dict[str, Any]:
+More = Callable[[dict[str, Any], Any, Path], dict[str, Any]]
+
+
+def _project(
+    root: Path, params: dict[str, Any], seed: int, *, cold: bool = False, more: More | None = None
+) -> dict[str, Any]:
     from tools.gen.drillholes import arrays
 
     from bf_core.db import dialect
@@ -197,17 +203,23 @@ def _project(root: Path, params: dict[str, Any], seed: int, *, cold: bool = Fals
     try:
         d = arrays(int(params["holes"]), int(params["per_hole"]), fields=int(params.get("fields", 10)),
                    litho_per_hole=int(params.get("litho_per_hole", 20)), seed=seed)  # fmt: skip
-        return {"folder": str(folder), **write_set(engine, folder, SET, d, params, cold=cold)}
+        meta = {"folder": str(folder), **write_set(engine, folder, SET, d, params, cold=cold)}
+        del d
+        if more is not None:
+            meta.update(more(meta, engine, folder))
+        return meta
     finally:
         engine.dispose()
 
 
-def build(work: Path, params: dict[str, Any], *, cold: bool = False) -> dict[str, Any]:
+def build(work: Path, params: dict[str, Any], *, cold: bool = False, more: More | None = None) -> dict[str, Any]:
     """The project of a scenario in `work` (`prepare`); the meta — also in `work/samples.json`. The database
-    (its journal written into it) and the names of the snapshots are kept for `fresh`."""
+    (its journal written into it) and the names of the snapshots are kept for `fresh`. `more(meta, engine,
+    folder)` — what else the scenario needs in the project before that (wireframes, a result): its keys of the
+    meta."""
     import sqlite3
 
-    meta = _project(work, params, 12, cold=cold)
+    meta = _project(work, params, 12, cold=cold, more=more)
     folder = Path(meta["folder"])
     con = sqlite3.connect(folder / DB)
     try:
@@ -264,15 +276,16 @@ def service(engine: Any, folder: Path) -> Any:
     return SimpleNamespace(require_current=lambda writable=False: project)
 
 
-def warm(job: Callable[[dict[str, Any], Any, Path], Any], fields: int = 10) -> None:
-    """`job(meta, engine, folder)` on a set of 24 holes in a project of its own, removed at once: the kernels of
-    the scenario compiled into NUMBA_CACHE_DIR or loaded from it, the modules imported (`load`, not timed)."""
+def warm(job: Callable[[dict[str, Any], Any, Path], Any], fields: int = 10, more: More | None = None) -> None:
+    """`job(meta, engine, folder)` on a set of 24 holes in a project of its own (with what `more` adds to it, as
+    in `build`), removed at once: the kernels of the scenario compiled into NUMBA_CACHE_DIR or loaded from it,
+    the modules imported (`load`, not timed)."""
     import tempfile
 
     from bf_core.db import dialect
 
     with tempfile.TemporaryDirectory(prefix="bf-bench-warm-") as tmp:
-        meta = _project(Path(tmp), {**WARM, "fields": fields}, 13)
+        meta = _project(Path(tmp), {**WARM, "fields": fields}, 13, more=more)
         folder = Path(meta["folder"])
         engine = dialect.create_engine(dialect.sqlite_url(str(folder / "project.sqlite")))
         try:
@@ -321,6 +334,25 @@ def stages(*spots: tuple[Any, str, str], note: Callable[[str, Any], None] | None
     finally:
         for owner, name, fn in reversed(saved):
             setattr(owner, name, fn)
+
+
+@contextlib.contextmanager
+def captured(owner: Any, name: str) -> Iterator[list[tuple[tuple[Any, ...], dict[str, Any], Any]]]:
+    """(args, kwargs, result) of every call of `owner.name` — what a stage of the job was given and what it
+    made, for the checks after the job. Open it before `stages`, so the clock of the stage goes around it."""
+    fn = getattr(owner, name)
+    calls: list[tuple[tuple[Any, ...], dict[str, Any], Any]] = []
+
+    def kept(*args: Any, **kw: Any) -> Any:
+        out = fn(*args, **kw)
+        calls.append((args, kw, out))
+        return out
+
+    setattr(owner, name, kept)
+    try:
+        yield calls
+    finally:
+        setattr(owner, name, fn)
 
 
 class Ticks:
