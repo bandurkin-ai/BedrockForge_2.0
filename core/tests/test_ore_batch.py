@@ -263,7 +263,8 @@ def test_labels_of_many_intervals_are_those_of_one() -> None:
     m = np.concatenate([rng.uniform(0.0, 300.0, n), rng.integers(0, 4000, n) / 20.0 + 0.05, rng.lognormal(0, 3, n)])
     mc = np.concatenate([rng.lognormal(1.0, 2.0, n), rng.integers(0, 90000, n) / 20.0 + 0.05, rng.integers(0, 9, n)])
     hard = np.array([0.25, 2.675, 1.005, 0.05, 0.15, 0.35, 1e-9, 5e-324, 0.049999999999999996, 8.0, 999999999.94,
-                     999999999.95, 1e9, 1e15, 3e20, 1.7976931348623157e308, 0.0, -0.0, -1.25, math.inf, math.nan])  # fmt: skip
+                     999999999.95, 1e9, 1e15, 3e20, 1.7976931348623157e308, 0.0, -0.0, -1.25, math.inf,
+                     math.nan])  # fmt: skip
     with np.errstate(over="ignore"):
         near = np.concatenate([hard, np.nextafter(hard, np.inf), np.nextafter(hard, -np.inf)])
     m = np.concatenate([m, np.nextafter(m[n : 2 * n], np.inf), np.nextafter(m[n : 2 * n], 0.0), near, near[::-1]])
@@ -276,7 +277,7 @@ def test_labels_of_many_intervals_are_those_of_one() -> None:
         "8,0 м @ 2,84 г/т (МС 22,7)", "0,3 м @ 1,13 г/т (МС 0,3)",
     ]  # fmt: skip
     assert labels_of(np.array([5.0]), np.array([5.8])) == ["5,0 м @ 1,16 (МС 5,8)"] and labels_of([], []) == []
-    assert label(1.0, 1e30, 1e30) == f"1,0 м @ 1{'0' * 30},00 (МС 1{'0' * 30},0)"  # a wrong base is written, not refused
+    assert label(1.0, 1e30, 1e30) == f"1,0 м @ 1{'0' * 30},00 (МС 1{'0' * 30},0)"  # a wrong base: written, not refused
     c = np.array([2.675, 1.005, 0.125, 0.135])  # the grade itself on a half: m = 1, C = MC
     assert [t.split(" ")[3] for t in labels_of(np.ones(4), c)] == ["2,68", "1,01", "0,13", "0,14"]
 
