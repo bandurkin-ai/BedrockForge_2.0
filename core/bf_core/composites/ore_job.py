@@ -410,7 +410,7 @@ def table_columns(spec: OreSpec, made: OreMade, xyz: np.ndarray | None) -> tuple
     res, t = made.res, made.res.table()
     n = len(res)
     unit = spec.unit
-    labels = own_names(spec.means, OWN)
+    named = own_names(spec.means, OWN)
     kind, domain = domain_column(made)
     cols = [ColumnSpec("LENGTH", "number", "м"), ColumnSpec("M", "number", "м"),
             ColumnSpec("C", "number", unit, "component"), ColumnSpec("MC", "number", f"м·{unit}" if unit else None),
@@ -421,7 +421,7 @@ def table_columns(spec: OreSpec, made: OreMade, xyz: np.ndarray | None) -> tuple
                               _names_of(t["BASIS"], BASIS_NAMES), t["N_SAMPLES"], t["WASTE_LEN"], t["NESTED"],
                               _nan0(t["ORE_ID"]), t["FLAG"], domain]  # fmt: skip
     for name in spec.means:
-        cols.append(ColumnSpec(labels[name], "number", spec.units.get(name), spec.roles.get(name, "value")))
+        cols.append(ColumnSpec(named[name], "number", spec.units.get(name), spec.roles.get(name, "value")))
         vals.append(res.fields[name])
     if xyz is None:
         xyz = np.full((n, 3), np.nan)
