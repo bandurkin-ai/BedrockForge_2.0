@@ -30,11 +30,13 @@ const ANSWER: PreviewAnswer = toPreview({
 const sent: { path: string; body: Record<string, unknown> }[] = [];
 let pending: ((r: Response) => void)[] = [];
 let answer409 = 0;
+let lost409: unknown = undefined;
 
 beforeEach(() => {
   sent.length = 0;
   pending = [];
   answer409 = 0;
+  lost409 = undefined;
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
@@ -43,7 +45,7 @@ beforeEach(() => {
       sent.push({ path, body });
       if (path.endsWith("/preview")) return new Promise<Response>((res) => pending.push(res));
       if (path === "/composites/run") {
-        if (answer409-- > 0) return Promise.resolve(json({ code: "table_exists", message: "Таблица «Композиты 2 м» уже есть.", hint: "Замените её или дайте другое имя.", name: "Композиты 2 м" }, 409));
+        if (answer409-- > 0) return Promise.resolve(json({ code: "table_exists", message: "Таблица «Композиты 2 м» уже есть.", hint: "Замените её или дайте другое имя.", name: "Композиты 2 м", lost: lost409 }, 409));
         return Promise.resolve(json({ source: "core", id: 7 }));
       }
       return Promise.resolve(json({ code: "not_found", message: "Нет", hint: "" }, 404));
@@ -112,6 +114,19 @@ describe("«Заменить?»", () => {
     closeDialog(d.id);
     expect(await run).toEqual({ source: "core", id: 7 });
     expect(sent.map((r) => r.body.replace)).toEqual([undefined, true]);
+  });
+
+  it("lists what the replacement loses (409 lost); an item without op/title — by its name", async () => {
+    answer409 = 1;
+    lost409 = [{ id: 11, op: "equivalent", title: "Эквивалент", name: "AU_EQ" }, { kind: "column", name: "MY_NOTE" }, "LEGACY", 5];
+    const run = startTool("/run", { set_id: 3, table: "5", method: "length" }, askReplace);
+    await vi.waitFor(() => expect(dialogStore.get().queue).toHaveLength(1));
+    const d = dialogStore.get().queue[0];
+    if (d.kind !== "confirm") throw new Error("not a confirm");
+    expect(d.options.message).toBe("В наборе уже есть таблица «Композиты 2 м». Заменить её новым результатом?\n\nПри замене пропадут — их нельзя повторить на новой таблице:\n• Эквивалент «AU_EQ»\n• колонка «MY_NOTE»\n• «LEGACY»");
+    d.resolve(false);
+    closeDialog(d.id);
+    expect(await run).toBeNull();
   });
 
   it("«Отмена» starts nothing", async () => {

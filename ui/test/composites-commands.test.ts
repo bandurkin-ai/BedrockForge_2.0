@@ -45,10 +45,13 @@ const COLUMNS = {
 let app: App;
 const sent: { method: string; path: string; body: Record<string, unknown> }[] = [];
 let exists = 0; // how many times `POST /composites/run` answers 409
+let lostOnce = 0; // how many times `POST /composites/results/9/rebuild` answers 409 `dependents_lost`
+const LOST = [{ id: 11, op: "topcut", title: "Урезка", name: "AU 99 %" }, { kind: "column", name: "MY_NOTE" }, { id: 12 }, { name: "" }];
 
 beforeEach(() => {
   sent.length = 0;
   exists = 0;
+  lostOnce = 0;
   windowStore.set({ windows: [] });
   vi.stubGlobal(
     "fetch",
@@ -65,6 +68,7 @@ beforeEach(() => {
         if (exists-- > 0) return json({ code: "table_exists", message: "Таблица уже есть.", hint: "Замените или дайте другое имя.", name: "Композиты 2 м", suggested: "Композиты 2 м (2)" }, 409);
         return json({ source: "core", id: 41 });
       }
+      if (path === "/composites/results/9/rebuild" && lostOnce-- > 0) return json({ code: "dependents_lost", message: "При перестроении пропадут результаты.", hint: "Подтвердите перестроение.", lost: LOST }, 409);
       if (path.startsWith("/composites/") && method === "POST") return json({ source: "core", id: 42 });
       if (path.startsWith("/composites/results/") && method === "DELETE") return json({ ok: true });
       return json({ code: "not_found", message: "Нет", hint: "" }, 404);
@@ -193,6 +197,31 @@ describe("window or job", () => {
     closeDialog(d.id);
     expect((await run).result).toBe("Отменено");
     expect(sent.filter((r) => r.method === "DELETE")).toHaveLength(0);
+  });
+
+  it("rebuild: 409 dependents_lost lists the losses in our own window; yes — again with drop_lost, no — nothing", async () => {
+    for (const yes of [true, false]) {
+      sent.length = 0;
+      lostOnce = 1;
+      const run = app.registry.execute("composite.rebuild", { result_id: 9 }, "user");
+      await vi.waitFor(() => expect(dialogStore.get().queue).toHaveLength(1));
+      const d = dialogStore.get().queue[0];
+      if (d.kind !== "confirm") throw new Error("not a confirm");
+      expect(d.options).toMatchObject({ title: "Перестроить результат", okLabel: "Перестроить", danger: true });
+      // an item without op/title (a column of the user, ч. 2 № 3) — by its name; without a name — by its id or dropped
+      expect(d.options.message).toContain("• Урезка «AU 99 %»\n• колонка «MY_NOTE»\n• «результат №12»\n\n");
+      d.resolve(yes);
+      closeDialog(d.id);
+      const r = await run;
+      const p = posts("/composites/results/9/rebuild");
+      if (yes) {
+        expect(r.result).toBe("Результат №9: перестроение — задание №42");
+        expect(p.map((x) => x.body)).toEqual([{}, { drop_lost: true }]);
+      } else {
+        expect(r.result).toBe("Отменено");
+        expect(p.map((x) => x.body)).toEqual([{}]);
+      }
+    }
   });
 
   it("rebuild, protocol and the other jobs go to their routes", async () => {
