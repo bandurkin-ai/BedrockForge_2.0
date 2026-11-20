@@ -468,3 +468,35 @@ def test_marks_and_texts() -> None:
         near["text"] == "Сближенные интервалы · цепочка · пробы 6–8 · 5–8 м · M 3 · C 1,067 · MC 3,2 — не выбран (Мпп)"
     )
     assert np.all([e["hole"] == 0 for e in pr.events])
+
+
+def test_lanes_are_first_fit_and_fast() -> None:
+    """Review 12.33 № 6: the lanes of the columns of the form are those of the plain first fit, in O(n·lanes·log n)
+    — 20 000 records of one hole in well under a second (was O(n²))."""
+    import random
+    import time
+
+    from bf_core.composites.ore_protocol import _lanes
+
+    def plain(spans: list[tuple[int, int]]) -> tuple[list[int], int]:
+        taken: list[list[tuple[int, int]]] = []
+        out = []
+        for a, b in spans:
+            k = next((k for k, lane in enumerate(taken) if all(b < x or a > y for x, y in lane)), len(taken))
+            if k == len(taken):
+                taken.append([])
+            taken[k].append((a, b))
+            out.append(k)
+        return out, max(1, len(taken))
+
+    rng = random.Random(7)
+    for _ in range(200):
+        spans = []
+        for _k in range(rng.randrange(0, 40)):
+            a = rng.randrange(0, 60)
+            spans.append((a, a + rng.randrange(0, 8)))
+        assert _lanes(spans) == plain(spans), spans
+    many = [(2 * i, 2 * i + 1) for i in range(20_000)][::-1] + [(0, 40_000)]
+    t0 = time.perf_counter()
+    lanes, count = _lanes(many)
+    assert time.perf_counter() - t0 < 0.5 and count == 2 and lanes[-1] == 1 and set(lanes[:-1]) == {0}

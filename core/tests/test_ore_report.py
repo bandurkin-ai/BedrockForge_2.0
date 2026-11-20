@@ -175,3 +175,110 @@ def test_cyrillic_path_on_windows(gkz, tmp_path: Path) -> None:  # type: ignore[
     wb = openpyxl.load_workbook(out["path"])
     assert wb.sheetnames[:4] == ["Параметры", "Интервалы", "Сводка", "Протокол"]
     assert sheet(wb, "Интервалы")[1][0] is not None
+
+
+# --- the review of 12.33, part 1 (подшаг 12.34) ---------------------------------------------------------------
+
+
+def _u16(s: str) -> int:
+    return len(s.encode("utf-16-le")) // 2
+
+
+def test_sheet_names_with_quotes_and_the_limits_of_excel(tmp_path: Path) -> None:
+    """№ 1: a hole named `A"1 & <B>` does not break `workbook.xml`; № 7: the name is cut to 31 UTF-16 units first
+    and stripped of «'» after, «History» is reserved by Excel."""
+    from bf_core.composites.ore_xlsx import Book, sheet_name
+
+    path = tmp_path / "кавычки.xlsx"
+    with Book(path) as book:
+        for name in ('Скв. A"1 & <B>', "Скв. O'Neil"):
+            with book.sheet(name) as sh:
+                sh.row([name])
+    wb = openpyxl.load_workbook(path)
+    assert wb.sheetnames == ['Скв. A"1 & <B>', "Скв. O'Neil"]
+    assert sheet(wb, 'Скв. A"1 & <B>') == [('Скв. A"1 & <B>',)]
+    taken: set[str] = set()
+    cut = sheet_name("a" * 30 + "'b", taken)
+    assert cut == "a" * 30 and not cut.endswith("'")
+    wide = sheet_name("𝔸" * 20, taken)  # two UTF-16 units a letter
+    assert _u16(wide) <= 31 and wide == "𝔸" * 15
+    again = sheet_name("𝔸" * 20, taken)
+    assert _u16(again) <= 31 and again.endswith(" (2)")
+    for name in ("History", "history"):
+        assert sheet_name(name, taken).casefold() != "history"
+    assert sheet_name("''", taken) == "Лист"
+
+
+def test_csv_cells_are_never_formulas(tmp_path: Path) -> None:
+    """№ 2: text that starts like a formula (=, +, -, @, tab, CR) gets «'» in the CSV; numbers stay numbers."""
+    from bf_core.composites import ore_report as rep
+
+    path = tmp_path / "формулы.csv"
+    texts = ["=1+1", "+A1", "-2+3", "@SUM(A1)", "\tцмд", "\rcmd", "руда"]
+    rep.write_csv(path, rep.Table("Т", ["=HEAD", "N"], [[t, -1.5] for t in texts]))
+    got = list(csv.reader(io.StringIO(path.read_bytes().decode("utf-8-sig"), newline=""), delimiter=";"))
+    assert got[0] == ["'=HEAD", "N"]
+    assert [r[0] for r in got[1:]] == ["'" + t for t in texts[:-1]] + ["руда"]
+    assert {r[1] for r in got[1:]} == {"-1,5"}
+
+
+def test_parts_are_unique_and_a_failed_rename_keeps_the_old_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """№ 8: a file «X.csv.part» of someone else is never touched; if the second rename fails, the first target
+    is as it was."""
+    import os
+
+    from bf_core.composites import ore_report as rep
+
+    targets = [tmp_path / "X.csv", tmp_path / "X · интервалы.csv"]
+    for k, t in enumerate(targets):
+        t.write_text(f"old{k}")
+    foreign = tmp_path / "X.csv.part"
+    foreign.write_text("чужой")
+
+    def write(parts: list[Path]) -> None:
+        assert all(p.parent == tmp_path for p in parts) and foreign not in parts
+        for k, p in enumerate(parts):
+            p.write_text(f"new{k}")
+
+    real = os.replace
+
+    def fail_second(src: Any, dst: Any) -> None:
+        if Path(dst) == targets[1] and Path(src).name.endswith(".part") and Path(src).read_text() == "new1":
+            raise OSError("занято")
+        real(src, dst)
+
+    monkeypatch.setattr(rep.os, "replace", fail_second)
+    with pytest.raises(OSError):
+        rep.write_files(targets, write)
+    assert [t.read_text() for t in targets] == ["old0", "old1"] and foreign.read_text() == "чужой"
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([*(t.name for t in targets), foreign.name])
+    monkeypatch.setattr(rep.os, "replace", real)
+    rep.write_files(targets, write)
+    assert [t.read_text() for t in targets] == ["new0", "new1"] and foreign.read_text() == "чужой"
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted([*(t.name for t in targets), foreign.name])
+
+
+def test_stale_conditions_are_not_exported(gkz, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    """№ 9 (решение 19): «Анализ кондиций» out of date — 409 `stale`, no file «устарел: …»."""
+    from bf_core.composites import ore_conditions_job as ocj
+    from bf_core.composites import results
+    from tests.test_ore_job import cond_body
+
+    c, project, set_id, table, _holes = gkz
+    with dialect.read_tx(project.engine) as conn:
+        params, _t = ocj.parse_conditions(conn, cond_body(set_id, table))
+    out = ocj.run_conditions(project.engine, project.folder, params, job_id=next(_ids), tick=lambda *_a: None)
+    rid = out["result_id"]
+    with dialect.write_tx(project.engine) as conn:
+        results.bump_table(conn, set_id, int(table))
+    r = c.post(f"{C}/results/{rid}/protocol", json={"format": "xlsx", "path": str(tmp_path / "к.xlsx")})
+    assert r.status_code == 409 and r.json()["code"] == "stale", r.text
+    with dialect.read_tx(project.engine) as conn:  # the job checks it again: the result went stale after the start
+        rec = dict(conn.execute(sa.select(dh_results).where(dh_results.c.id == rid)).mappings().one())
+    from bf_core.api.errors import ApiError
+
+    with pytest.raises(ApiError) as err:
+        pj.run_export(project.engine, project.folder, {"result_id": rid, "format": "xlsx", "path": str(tmp_path / "к.xlsx"),
+                      "holes": None, "rows": 0}, job_id=next(_ids), tick=lambda *_a: None)  # fmt: skip
+    assert err.value.status == 409 and err.value.code == "stale" and rec["op"] == "conditions"
+    assert not (tmp_path / "к.xlsx").exists()

@@ -40,6 +40,7 @@ from __future__ import annotations
 import contextlib
 import gc
 import json
+import os
 import shutil
 import time
 from collections.abc import Callable, Iterator
@@ -241,6 +242,8 @@ def fresh(work: Path) -> tuple[dict[str, Any], Any, Path, float]:
         for tail in ("-wal", "-shm"):
             (folder / (DB + tail)).unlink(missing_ok=True)
         shutil.copyfile(work / KEPT, folder / DB)
+        with open(folder / DB, "rb+") as fh:  # the copy is on the disk before the job: its first sync is its own
+            os.fsync(fh.fileno())
         cache = folder / "cache" / "tables"
         for f in cache.iterdir() if cache.is_dir() else ():
             if f.name not in meta["snapshots"]:

@@ -206,3 +206,24 @@ def test_tick_reports_progress_and_cancels() -> None:
 
     with pytest.raises(Cancelled):
         mg.merge_tables(tables, tick=stop)
+
+
+def test_summary_by_columns_is_the_summary_of_the_matrix() -> None:
+    """Э12 12.33б: the summary «до/после» of a merge is counted column by column (no matrix of 5 million rows ×
+    10 fields); the sums of a field do not depend on the other fields — the numbers are the same bit for bit."""
+    from bf_core.composites.compose_tables import _summary_of
+    from bf_core.composites.length import summary
+
+    rng = np.random.default_rng(4)
+    n = 20_011  # not a multiple of the blocks of the cascade sum
+    ln = np.round(rng.random(n) * 3.0, 2)
+    cols = [rng.lognormal(0.0, 2.0, n) for _ in range(5)]
+    cols[1][rng.random(n) < 0.4] = np.nan
+    cols[2][:] = np.nan  # a field without a value at all
+    cols[3][::3] = 1e-300
+    cols[4][5] = 1e300
+    names = ["A", "B", "C", "D", "E"]
+    whole = summary(ln, np.column_stack(cols), names)
+    assert _summary_of(ln, list(zip(names, cols, strict=True))) == whole
+    assert whole["fields"]["C"] == {"mean": None, "metal": None} and whole["count"] == n
+    assert _summary_of(ln, []) == summary(ln, np.zeros((n, 0)), [])

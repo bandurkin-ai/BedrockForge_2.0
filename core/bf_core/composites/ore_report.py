@@ -1,5 +1,5 @@
 """The files of the protocol of ore intervals (ТЗ 7.35 Д-26 «Результат» (4)–(5); ADR 0018 §9, решения 10, 19, 30;
-подшаг 12.23): what goes into the XLSX book and the CSV files, and their writing — each file as `<name>.part`
+подшаг 12.23): what goes into the XLSX book and the CSV files, and their writing — each file as `<name>.<random>.part`
 next to the target, all renamed at the end (`os.replace`), so a cancel or a failure leaves no file.
 
 XLSX («Рудные интервалы»): «Параметры» (the parameters of the result and of the export), «Интервалы» (the
@@ -17,6 +17,7 @@ from __future__ import annotations
 import csv
 import math
 import os
+import tempfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -245,14 +246,23 @@ def _text(v: Any) -> str:
     if isinstance(v, (int, float)):
         x = float(v)
         return "" if not math.isfinite(x) else number_text(x).replace(".", ",")
-    return str(v)
+    return _safe(str(v))
+
+
+_FORMULA = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _safe(s: str) -> str:
+    """Text that starts like a formula (= + - @, tab, CR) gets «'»: Excel shows it, never runs it (as
+    `audit/report._cell`). Numbers are not text here: −1,5 stays a number."""
+    return "'" + s if s[:1] in _FORMULA else s
 
 
 def write_csv(path: Path, t: Table, tick: Tick = _no_tick) -> None:
     """UTF-8 with BOM (Excel opens it in Russian), «;», decimal comma."""
     with path.open("w", encoding="utf-8-sig", newline="") as fh:
         w = csv.writer(fh, delimiter=";")
-        w.writerow(t.head)
+        w.writerow([_safe(str(h)) for h in t.head])
         batch: list[list[str]] = []
         done = 0
         for row in t.rows:
@@ -268,14 +278,45 @@ def write_csv(path: Path, t: Table, tick: Tick = _no_tick) -> None:
 # --- the files ----------------------------------------------------------------------------------------------
 
 
-def write_files(targets: Sequence[Path], write: Callable[[list[Path]], None]) -> None:
-    """`write(parts)` writes every file under its `.part` name; then all are renamed to the targets. A failure or
-    a cancel (any exception) removes the parts and leaves the targets as they were."""
-    parts = [t.with_name(t.name + ".part") for t in targets]
+def _part(target: Path) -> Path:
+    """A new empty file of our own next to the target (`tempfile`): a «‹name›.part» of someone else is never hit."""
+    fd, name = tempfile.mkstemp(prefix=f"{target.name}.", suffix=".part", dir=target.parent)
+    os.close(fd)
+    return Path(name)
+
+
+def _swap(parts: Sequence[Path], targets: Sequence[Path]) -> None:
+    """The parts become the targets, all or none: the targets there already are moved aside first and come back
+    if a rename fails."""
+    aside: list[tuple[Path, Path]] = []
+    done: list[Path] = []
     try:
-        write(parts)
+        for t in targets:
+            if t.exists():
+                b = _part(t)
+                os.replace(t, b)
+                aside.append((b, t))
         for p, t in zip(parts, targets, strict=True):
             os.replace(p, t)
+            done.append(t)
+    except BaseException:
+        for t in done:
+            t.unlink(missing_ok=True)
+        for b, t in aside:
+            os.replace(b, t)
+        raise
+    for b, _t in aside:
+        b.unlink(missing_ok=True)
+
+
+def write_files(targets: Sequence[Path], write: Callable[[list[Path]], None]) -> None:
+    """`write(parts)` writes every file under a `.part` name of its own (`_part`); then all are renamed to the
+    targets (`_swap`). A failure or a cancel (any exception) removes the parts and leaves the targets as they were."""
+    parts: list[Path] = []
+    try:
+        parts = [_part(t) for t in targets]
+        write(parts)
+        _swap(parts, targets)
     except BaseException:
         for p in parts:
             p.unlink(missing_ok=True)

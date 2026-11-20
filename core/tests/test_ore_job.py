@@ -286,7 +286,7 @@ def test_refusals_say_why(gkz) -> None:  # type: ignore[no-untyped-def]
         ({"mode": "contacts"}, 422, "ore_no_domain", "domain"),
         ({"field": "НЕТ"}, 422, "field_not_found", None),
         ({"thickness": {"source": "field"}}, 422, "bad_param", "thickness"),
-        ({"contacts_values": "1, x"}, 422, "bad_param", "contacts_values"),
+        ({"contacts_values": [{"code": 1}]}, 422, "bad_param", "contacts_values"),
         ({"name": "Пробы ГКЗ"}, 422, "name_is_source", "name"),
     ]
     for over, status, code, param in cases:
@@ -385,3 +385,63 @@ def test_conditions_job_exclude_and_refusals(gkz) -> None:  # type: ignore[no-un
     assert wait_job(c, r.json()["source"], r.json()["id"], timeout=240)["status"] == "done"
     recs = [x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "conditions"]
     assert len(recs) == 1 and recs[0]["job_id"] != rec["job_id"]
+
+
+# --- the review of 12.33, part 1 (подшаг 12.34) ---------------------------------------------------------------
+
+
+def _text_domain(project: Any, set_id: int, holes: list[str]) -> str:
+    """«Пробы · литология»: the samples of Т8.2-12 with LIT «QZ» at 3–12 m, «вмещающие» elsewhere."""
+    from bf_core.drillholes import store
+
+    names = [h for h in holes for _ in range(N)]
+    frm = [float(i) for _ in holes for i in range(N)]
+    lit = ["QZ" if 3 <= i < 12 else "вмещающие" for _ in holes for i in range(N)]
+    data = store.TableData("Пробы · литология", "assay", names, frm, [f + 1.0 for f in frm],
+                           [ColumnSpec("AU", "number", "г/т"), ColumnSpec("LIT", "text")],
+                           [GRADES * len(holes), lit])  # fmt: skip
+    return str(store.write_table(project.engine, set_id, data, job_id=None, tick=lambda _p, _m=None: None)["table_id"])
+
+
+def test_contacts_by_text_and_by_value(gkz) -> None:  # type: ignore[no-untyped-def]
+    """№ 4: the domains of the body are the values of the domain as written — text («QZ») too; a numeric domain
+    by value (1, «1», «1.0» are one); a wrong value is 422, never 500 («²».isdigit())."""
+    c, project, set_id, _table, holes = gkz
+    hole_id = next(h["hole_id"] for h in c.get(f"{API}/drillholes/sets/{set_id}/tables/collar?limit=10").json()["rows"]
+                   if h["hole"] == holes[0])  # fmt: skip
+
+    def ore_of(req: dict[str, Any]) -> list[tuple[float, float]]:
+        r = c.post(f"{C}/ore/preview", json={"params": req, "hole_id": hole_id})
+        assert r.status_code == 200, r.text
+        p = r.json()["result"]
+        return [(p["from"][i], p["to"][i]) for i, x in enumerate(p["values"]["CLASS"]) if x == "ore"]
+
+    lit = _text_domain(project, set_id, holes)
+    req = body(set_id, lit, mode="contacts", domain={"table": lit, "field": "LIT"})
+    assert ore_of({**req, "contacts_values": ["QZ"]}) == [(3.0, 12.0)]
+    assert ore_of({**req, "contacts_values": "QZ"}) == [(3.0, 12.0)]
+    assert ore_of({**req, "contacts_values": ["вмещающие"]}) == [(0.0, 3.0), (12.0, float(N))]
+    num, _h = add_samples(project, set_id, domain=True, name="Пробы ГКЗ · домен")  # DOM 1 at 3–12 m
+    req = body(set_id, num, mode="contacts", domain={"table": num, "field": "DOM"})
+    for given in ([1], ["1"], ["1.0"], "1,0", [1.0]):
+        assert ore_of({**req, "contacts_values": given}) == [(3.0, 12.0)], given
+    for bad in (["²"], ["QZ"], ["nan"], [True]):
+        r = c.post(f"{C}/ore", json={**req, "contacts_values": bad})
+        assert r.status_code == 422 and r.json()["code"] == "bad_param", (bad, r.text)
+        assert r.json()["param"] == "contacts_values" and r.json()["hint"]
+    r = c.post(f"{C}/conditions", json={**cond_body(set_id, lit), "mode": "contacts",
+                                        "domain": {"table": lit, "field": "LIT"}, "contacts_values": ["QZ"]})  # fmt: skip
+    assert r.status_code == 200, r.text
+    job = wait_job(c, r.json()["source"], r.json()["id"], timeout=240)
+    assert job["status"] == "done", job
+    assert {v["count"] for v in job["result"]["variants"] if v["cutoff"] == 0.5} == {3}  # one body in each hole
+
+
+def test_ore_modules_keep_the_size_limit() -> None:
+    """№ 12: a file ≤ ~600 lines (CLAUDE.md): `ore_job` gives its display to `ore_display`."""
+    from pathlib import Path
+
+    folder = Path(oj.__file__).parent
+    long = {p.name: n for p in folder.glob("ore_*.py") if (n := len(p.read_text("utf-8").splitlines())) > 600}
+    assert long == {}
+    assert oj.display_settings is not None and oj.CLASS_COLORS["ore"] == "#f46a1a"

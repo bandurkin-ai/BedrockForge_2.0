@@ -109,7 +109,7 @@ def _column(src: source.Lines, name: str, label: str, values: np.ndarray) -> tup
     return ColumnSpec(label, "text"), labels[values]  # −1 → None
 
 
-def _summary(lengths: np.ndarray, columns: Sequence[tuple[str, np.ndarray]]) -> dict[str, Any]:
+def _summary_of(lengths: np.ndarray, columns: Sequence[tuple[str, np.ndarray]]) -> dict[str, Any]:
     """`length.summary` of the fields given as columns, one at a time: the sums of a field do not depend on
     the other fields, so the numbers are those of the matrix of all of them — which is not built."""
     from .length import summary
@@ -123,6 +123,11 @@ def _summary(lengths: np.ndarray, columns: Sequence[tuple[str, np.ndarray]]) -> 
 
 def _numbers(src: source.Lines) -> list[str]:
     return [n for n in src.fields if src.fields[n].kind == "number"]
+
+
+def _summary(lengths: np.ndarray, src: source.Lines, take: Callable[[np.ndarray], np.ndarray]) -> dict[str, Any]:
+    """The summary of the numeric fields of `src` on the rows `take` lays them on."""
+    return _summary_of(lengths, [(n, take(src.numbers[n])) for n in _numbers(src)])
 
 
 def _holes(names: Sequence[str], index: np.ndarray) -> Sequence[str]:
@@ -149,7 +154,7 @@ def merge_compute(
         r = np.array([rank[h] for h in s.holes], dtype=np.int64)
         lines.append(iv.build_lines(r[s.hole_of()] if len(s.holes) else np.zeros(0, np.int64), s.from_m, s.to_m))
     first, l0 = srcs[0], lines[0]
-    before = _summary(l0.lengths(), [(n, l0.take(first.numbers[n])) for n in _numbers(first)])
+    before = _summary(l0.lengths(), first, l0.take)
     m = merge_tables(lines, names=[t[1] for t in spec.tables], threads=threads, tick=tick)
     labels = merged_names([(t[1], list(s.fields)) for t, s in zip(spec.tables, srcs, strict=True)])
     cols, vals = [], []
@@ -169,7 +174,7 @@ def merge_compute(
             vals.append(v)
     ml = m.lines
     out = sink.OutTable(spec.name, _holes(holes, ml.hole_ids()), ml.frm, ml.to, cols, vals)
-    report = {**m.report, "summary": {"before": before, "after": _summary(ml.lengths(), merged0)},
+    report = {**m.report, "summary": {"before": before, "after": _summary_of(ml.lengths(), merged0)},
               "edits": [], "journal": m.journal}  # fmt: skip
     return Made(out, report, list(m.journal))
 
@@ -203,7 +208,7 @@ def coords_compute(
         journal.insert(
             0, f"Таблица «{spec.tables[0][1]}»: строк без «от» или «до» — {src.skipped}, они не скопированы."
         )
-    same = _summary(lines.lengths(), [(n, src.numbers[n]) for n in _numbers(src)])
+    same = _summary(lines.lengths(), src, lambda col: col)
     report = {
         "rows": lines.n,
         "no_trajectory": int(c.no_trajectory.shape[0]),

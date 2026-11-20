@@ -11,7 +11,7 @@ second, this writes the sheet XML directly into the zip (≈ 15 times as fast).
 Values: None — an empty cell; str — a shared string; bool, int, float — a number (NaN, ±inf — empty). Styles:
 `HEAD` (bold, Montserrat, stone fill), `NOTE` (italic), `tone_style(tone)` — the fill of a class of the form
 И1, сл. 17 in the brand colours (ADR 0006: those of `charts/column/classes.ts`). Sheet names are made valid
-(≤ 31 characters, no `[]:*?/\\`, unique). Rows carry `r`, cells do not (positional, as the format allows): an
+(≤ 31 UTF-16 units, no `[]:*?/\\`, no «'» at the ends, not «History», unique). Rows carry `r`, cells do not (positional, as the format allows): an
 empty value is `<c/>`. The workbook is readable by Excel, LibreOffice and `openpyxl`.
 """
 
@@ -51,7 +51,8 @@ def tone_style(tone: str | None) -> int:
 
 def _esc(s: str) -> str:
     s = _BAD_XML.sub("", s)
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    s = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return s.replace('"', "&quot;").replace("'", "&apos;")  # also safe inside an attribute (a sheet name)
 
 
 def _col(n: int) -> str:
@@ -63,14 +64,35 @@ def _col(n: int) -> str:
     return out
 
 
+def _u16(s: str) -> int:
+    return len(s.encode("utf-16-le")) // 2
+
+
+def _cut(s: str, units: int) -> str:
+    """The longest head of `s` of at most `units` UTF-16 code units (the length Excel counts)."""
+    out, n = [], 0
+    for ch in s:
+        n += 2 if ord(ch) > 0xFFFF else 1
+        if n > units:
+            break
+        out.append(ch)
+    return "".join(out)
+
+
+def _bare(s: str) -> str:
+    return s.strip().strip("'").strip()
+
+
 def sheet_name(name: str, taken: set[str]) -> str:
-    """A valid, unique name of a sheet (the case does not matter to Excel)."""
-    base = _BAD_SHEET.sub("_", name).strip("'").strip() or "Лист"
-    base = base[:31]
+    """A valid, unique name of a sheet (the case does not matter to Excel): ≤ 31 UTF-16 units, cut first and
+    stripped of «'» after (no «'» at either end), not the reserved «History»."""
+    base = _bare(_cut(_bare(_BAD_SHEET.sub("_", name)), 31)) or "Лист"
+    if base.casefold() == "history":
+        base = "History_"
     out, k = base, 2
     while out.casefold() in taken:
         tail = f" ({k})"
-        out, k = base[: 31 - len(tail)] + tail, k + 1
+        out, k = _bare(_cut(base, 31 - _u16(tail))) + tail, k + 1
     taken.add(out.casefold())
     return out
 

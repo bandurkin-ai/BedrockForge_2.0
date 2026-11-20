@@ -144,8 +144,7 @@ def ore_lines(spec: Any, src: Any, dom: Any, st: Any) -> tuple[Any, Any, list[st
     codes, names = oj._domain_codes(spec, src, dom, st, journal)
     kernel = spec.kernel
     if kernel.mode == "contacts" and spec.contacts is not None:
-        wanted = {str(v) for v in spec.contacts}
-        kernel = replace(kernel, contacts_values=tuple(i for i, n in enumerate(names) if n in wanted))
+        kernel = replace(kernel, contacts_values=oj.body_codes(spec.contacts, names)[0])
     thick = src.numbers[spec.thick] if spec.thick else None
     try:
         lines = OreLines.of(src.starts, src.from_m, src.to_m, src.numbers[spec.field], thick, codes)

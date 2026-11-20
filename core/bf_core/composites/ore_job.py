@@ -8,11 +8,12 @@ place, the display «Рудные интервалы», the summary in `report` 
 
 Body (the window «Рудные интервалы (ГКЗ)», docs/progress/e12-kernels-api.md): {set_id, table, field, cutoff, m_min,
 m_waste_max, mc_min?, c_min?, mode, missing, missing_max?, thickness: {source: "length" | "field", field?},
-domain?: {table, field} | {wireframe_ids}, contacts_values?: int[], name?, replace?}. `mc_min` and `c_min` not
+domain?: {table, field} | {wireframe_ids}, contacts_values?: string[], name?, replace?}. `mc_min` and `c_min` not
 given — Сб·Мрт and Сб (the kernel). A domain is a field of the samples, of another interval table (the code with
 the greatest length inside the sample) or the closed bodies (the code by the middle of the sample); the
 calculation goes inside the domains. `contacts_values` — the domain values that are the body in the mode «по
-контактам» (a value matches a domain written the same way: 1 → «1»); not given — every non-empty one.
+контактам», as the domain writes them: text («QZ»), the name of a body, a number by value (1 = «1.0»); not
+given — every non-empty one.
 
 The table: HOLE (the row's hole), FROM, TO, LENGTH, M, C, MC, CLASS, BASIS (names), N_SAMPLES, WASTE_LEN, NESTED,
 ORE_ID (empty for rows outside `ore`), FLAG, DOMAIN, the numeric fields of the samples (weighted by thickness;
@@ -28,6 +29,7 @@ ADR 0006 — those of `charts/column/classes.ts`; `frame` hidden; the label LABE
 
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
@@ -43,6 +45,7 @@ from bf_core.db.schema import dh_columns, dh_results
 from bf_core.jobs.registry import handler
 
 from . import jobs as cj
+from .ore_display import CLASS_COLORS, chart_of, display_settings, put_display  # noqa: F401 - the API of the job
 
 if TYPE_CHECKING:
     from bf_core.drillholes.store import ColumnSpec
@@ -61,25 +64,6 @@ SAMPLE_COLUMNS = ("ORE_ID", "ORE_CLS")
 OWN = ("HOLE", "FROM", "TO", "LENGTH", "M", "C", "MC", "CLASS", "BASIS", "N_SAMPLES", "WASTE_LEN", "NESTED", "ORE_ID",
        "FLAG", "DOMAIN", "MODE", "MANUAL", "X", "Y", "Z", "LABEL")  # fmt: skip
 Tick = Callable[[float], None]
-
-# The colours of the classes: those of `ui/src/charts/column/classes.ts` (brand palette, ADR 0006; решение 20).
-_BRAND = {"anthracite": "#1b222b", "cobalt": "#1f6bff", "copper": "#f46a1a", "stone": "#e6e9ee", "slate": "#8a99a8"}
-
-
-def _mix(a: str, b: str, t: float) -> str:
-    x = [int(_BRAND[a][i : i + 2], 16) for i in (1, 3, 5)]
-    y = [int(_BRAND[b][i : i + 2], 16) for i in (1, 3, 5)]
-    return "#" + "".join(f"{int(np.floor(v + (w - v) * t + 0.5)):02x}" for v, w in zip(x, y, strict=True))
-
-
-CLASS_COLORS = {
-    "ore": _BRAND["copper"],
-    "subgrade": _mix("copper", "stone", 0.55),
-    "waste_in": _mix("slate", "stone", 0.3),
-    "interlayer": _BRAND["cobalt"],
-    "waste": _mix("anthracite", "slate", 0.45),
-    "frame": _mix("slate", "stone", 0.65),
-}
 
 # Where a message of the kernel points: the parameter of the window.
 _PARAMS = (("Бортовое", "cutoff"), ("Минимальная мощность", "m_min"), ("Максимальная мощность", "m_waste_max"),
@@ -115,7 +99,7 @@ class OreSpec:
     units: dict[str, str | None]
     roles: dict[str, str]
     kernel: OreParams  # checked; contacts_values — None (mapped to the codes read: `compute_ore`)
-    contacts: tuple[int, ...] | None
+    contacts: tuple[str, ...] | None  # the domains of the body as written (`_contacts`)
     name: str
     replace: bool
     body: dict[str, Any]  # the request as given, without `replace` — `dh_results.params`
@@ -163,21 +147,47 @@ def _number(conn: sa.Connection, table_id: int, raw: Any, label: str, param: str
     return f
 
 
-def _contacts(raw: Any) -> tuple[int, ...] | None:
-    """`contacts_values`: whole numbers ≥ 0 (a list, or a string «1, 2»); empty — every non-empty domain."""
+def _contacts(raw: Any, domain: cj.DomainSpec | None) -> tuple[str, ...] | None:
+    """`contacts_values`: the domains of the body as the domain writes them (a list, or a string «QZ, 2») — the
+    text of a text field or the name of a body; of a numeric field by value (1, «1», «1.0» → «1», as
+    `jobs_prep.number_names`). Empty — every non-empty domain. A value that is not one — 422 `bad_param`."""
     if raw is None or raw == "" or raw == []:
         return None
     items = raw.replace(";", ",").split(",") if isinstance(raw, str) else raw if isinstance(raw, list) else [raw]
-    out: list[int] = []
+    number = domain is not None and domain.kind == "number"
+    out: list[str] = []
     for v in items:
-        text = str(v).strip()
-        if isinstance(v, str) and not text:
-            continue
-        if isinstance(v, bool) or not text.isdigit():
-            raise cj._bad("bad_param", f"Коды тела: «{text}» — не целое число не меньше нуля.", "Например: 1, 2.",
+        if isinstance(v, bool) or not isinstance(v, (str, int, float)):
+            raise cj._bad("bad_param", f"Коды тела: «{v}» — не значение домена.",
+                          "Перечислите значения домена через «,», как они записаны в домене.",
                           "contacts_values")  # fmt: skip
-        out.append(int(text))
+        text = str(v).strip()
+        if not text:
+            continue
+        if number:
+            x = float(v) if not isinstance(v, str) else _float(text)
+            if not math.isfinite(x):
+                raise cj._bad("bad_param", f"Коды тела: «{text}» — не число, а поле домена «{domain.field}» числовое.",
+                              "Например: 1, 2.", "contacts_values")  # fmt: skip
+            text = format(x + 0.0, ".15g")
+        out.append(text)
     return tuple(sorted(set(out))) or None
+
+
+def _float(text: str) -> float:
+    try:
+        return float(text.replace(",", "."))
+    except ValueError:
+        return math.nan
+
+
+def body_codes(contacts: tuple[str, ...], names: list[str]) -> tuple[tuple[int, ...], list[str]]:
+    """The codes of the domains of the body of «по контактам» (`contacts_values` against the domain of a code, as
+    written) and the values given that no sample has."""
+    wanted = set(contacts)
+    body = tuple(i for i, n in enumerate(names) if (n or "").strip() in wanted)
+    found = {(names[i] or "").strip() for i in body}
+    return body, sorted(wanted - found, key=lambda s: (len(s), s))
 
 
 def _optional(body: dict[str, Any], key: str) -> Any:
@@ -212,7 +222,7 @@ def parse_ore(conn: sa.Connection, body: dict[str, Any]) -> OreSpec:
             raise cj._bad("domain_missing", "Не выбрано поле домена.", "Выберите поле домена или «без домена».",
                           "domain")  # fmt: skip
         domain = cj.parse_domain(conn, set_id, t, raw)
-    contacts = _contacts(body.get("contacts_values"))
+    contacts = _contacts(body.get("contacts_values"), domain)
     try:
         got: dict[str, Any] = {k: body.get(k) for k in ("cutoff", "m_min", "m_waste_max")}  # checked by the kernel
         kernel = OreParams(
@@ -350,13 +360,10 @@ def compute_ore(
     codes, names = _domain_codes(spec, src, dom, st, journal)
     kernel = spec.kernel
     if kernel.mode == "contacts" and spec.contacts is not None:
-        wanted = {str(v) for v in spec.contacts}
-        body = tuple(i for i, n in enumerate(names) if n in wanted)
+        body, miss = body_codes(spec.contacts, names)
         kernel = replace(kernel, contacts_values=body)
-        if len(body) < len(wanted):
-            found = {names[i] for i in body}
-            miss = ", ".join(sorted(wanted - found, key=lambda s: (len(s), s)))
-            journal.append(f"Коды тела без проб в домене: {miss}.")
+        if miss:
+            journal.append(f"Коды тела без проб в домене: {', '.join(miss)}.")
     thick = src.numbers[spec.thick] if spec.thick else None
     try:
         lines = OreLines.of(src.starts, src.from_m, src.to_m, src.numbers[spec.field], thick, codes)
@@ -463,51 +470,6 @@ def sample_columns(made: OreMade) -> list[tuple[ColumnSpec, np.ndarray]]:
 
     return [(ColumnSpec("ORE_ID", "number"), _nan0(made.res.ore_id)),
             (ColumnSpec("ORE_CLS", "text"), _names_of(made.res.ore_cls, CLASS_NAMES))]  # fmt: skip
-
-
-# --- the display «Рудные интервалы» --------------------------------------------------------------------------
-
-
-def display_settings(name: str) -> dict[str, Any]:
-    """The striplog of the result table `name` (`ui/src/charts/striplog/model.ts`): every hole of the set, a tube
-    coloured by CLASS (`frame` hidden by default, решение 20) with the label LABEL. The track names its table by
-    `dh_tables.name_key`, as every display does (`viz/keys.table_by_key`): it follows a replaced table."""
-    from .ore_set import CLASS_NAMES
-
-    label = {"on": True, "template": "{LABEL}", "decimals": None, "size": 12, "color": "#f3f6fb", "place": "outside"}
-    track = {"id": "ore-class", "table": dialect.name_key(name), "field": "CLASS", "type": "color", "width": 110,
-             "color": CLASS_COLORS["ore"], "min": "", "max": "", "log": False, "boundaries": True, "form": "tube",
-             "catColors": dict(CLASS_COLORS), "catOrder": list(CLASS_NAMES), "hidden": ["frame"],
-             "label": label}  # fmt: skip
-    return {"holes": [], "allHoles": True, "tracks": [track], "from": "", "to": "", "scale": 0, "grid": True,
-            "tube": 8, "panel": 0, "labels": True, "form": "lith",
-            "origin": {"op": OP, "table": dialect.name_key(name)}}  # fmt: skip
-
-
-def put_display(conn: sa.Connection, set_id: int, name: str) -> int:
-    """The display of the result table `name`: the one made for a table of this name gets its settings again,
-    else a new one (named as the table; a name taken by another display — « (2)»). Returns its id."""
-    from bf_core.charts import service as charts
-    from bf_core.drillholes.edit import author
-
-    settings = display_settings(name)
-    shown = charts.list_charts(conn, set_id, "striplog")
-    mine = next((c for c in shown if (c["settings"] or {}).get("origin") == settings["origin"]), None)
-    if mine is not None:
-        return int(charts.update(conn, mine["id"], None, settings, mine["version"])["id"])
-    names = {dialect.name_key(c["name"]) for c in charts.list_charts(conn, set_id)}
-    title, k = name, 2
-    while dialect.name_key(title) in names:
-        title, k = f"{name} ({k})", k + 1
-    return int(charts.create(conn, set_id, title, "striplog", settings, author())["id"])
-
-
-def chart_of(conn: sa.Connection, set_id: int, name: str) -> int | None:
-    from bf_core.charts import service as charts
-
-    origin = {"op": OP, "table": dialect.name_key(name)}
-    return next((int(c["id"]) for c in charts.list_charts(conn, set_id, "striplog")
-                 if (c["settings"] or {}).get("origin") == origin), None)  # fmt: skip
 
 
 # --- the job -----------------------------------------------------------------------------------------------

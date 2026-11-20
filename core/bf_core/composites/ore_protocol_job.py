@@ -84,6 +84,8 @@ def parse_export(conn: sa.Connection, rec: dict[str, Any], body: dict[str, Any])
     holes = body.get("holes")
     holes = [str(h).strip() for h in holes if str(h).strip()] if isinstance(holes, list) else None
     rows = 0
+    if rec["op"] == "conditions":
+        fresh_conditions(conn, rec)
     if rec["op"] == "ore":
         spec = fresh_spec(conn, rec, "выгрузите протокол")
         rows = spec.rows
@@ -112,6 +114,16 @@ def parse_export(conn: sa.Connection, rec: dict[str, Any], body: dict[str, Any])
         raise files_exist(clash)
     params = {"result_id": int(rec["id"]), "format": fmt, "path": str(target), "holes": holes, "rows": rows}
     return params, f"Протокол: {rec['name']} ({fmt.upper()})"
+
+
+def fresh_conditions(conn: sa.Connection, rec: dict[str, Any]) -> None:
+    """409 `stale`: «Анализ кондиций» out of date or of another `algo` is not exported (решение 19)."""
+    from . import ore_job as oj
+    from .routes_ore import stale_reason
+
+    reason = stale_reason(conn, rec, oj.ALGO)
+    if reason is not None:
+        raise ApiError(409, "stale", f"Результат устарел: {reason}.", "Перестройте результат, затем выгрузите его.")
 
 
 def _params_rows(rec: dict[str, Any], spec: Any, extra: list[tuple[str, Any]]) -> list[tuple[str, Any]]:
@@ -256,12 +268,9 @@ def _ore_report(
 def _conditions_report(
     conn: sa.Connection, rec: dict[str, Any]
 ) -> tuple[list[rep.Table | rep.HoleSheet], dict[str, Any]]:
-    from . import ore_job as oj
-    from .routes_ore import stale_reason
-
+    fresh_conditions(conn, rec)  # again in the job: the result may have gone stale after the start
     r = rec["report"] or {}
     p = rec["params"] or {}
-    reason = stale_reason(conn, rec, oj.ALGO)
     ex = r.get("exclude") or p.get("exclude")
     rows = [
         ("Результат", rec["name"]),
@@ -275,7 +284,7 @@ def _conditions_report(
         ("Исключено проб", r.get("excluded")),
         ("Проб", r.get("samples")),
         ("Скважин", r.get("holes")),
-        ("Состояние", f"устарел: {reason}" if reason else "актуален"),
+        ("Состояние", "актуален"),
         ("Результат создан", _when(rec["created_at"])),
         ("Выгружено", datetime.now().astimezone().strftime("%d.%m.%Y %H:%M")),
     ]

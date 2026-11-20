@@ -39,7 +39,7 @@ do not apply are None, never zero.
 from __future__ import annotations
 
 import math
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -405,19 +405,24 @@ def _form_rows(sub: OreLines, p: OreParams, cls: np.ndarray, ore_id: np.ndarray)
 
 
 def _lanes(spans: list[tuple[int, int]]) -> tuple[list[int], int]:
-    """A lane for every span so that the spans of a lane do not overlap (first fit, in the order given)."""
-    taken: list[list[tuple[int, int]]] = []
+    """A lane for every span so that the spans of a lane do not overlap (first fit, in the order given). A lane
+    keeps its spans by start (they do not overlap: by end too), so a fit is one bisection: O(n·lanes·log n)."""
+    starts: list[list[int]] = []
+    ends: list[list[int]] = []
     out = []
     for a, b in spans:
-        for k, lane in enumerate(taken):
-            if all(b < x or a > y for x, y in lane):
-                lane.append((a, b))
+        for k, (xs, ys) in enumerate(zip(starts, ends, strict=True)):
+            j = bisect_right(xs, b)  # the spans starting at or before b: the last of them ends last
+            if j == 0 or ys[j - 1] < a:
+                xs.insert(j, a)
+                ys.insert(j, b)
                 out.append(k)
                 break
         else:
-            taken.append([(a, b)])
-            out.append(len(taken) - 1)
-    return out, max(1, len(taken))
+            starts.append([a])
+            ends.append([b])
+            out.append(len(starts) - 1)
+    return out, max(1, len(starts))
 
 
 def _unit_tone(e: dict[str, Any]) -> str:
