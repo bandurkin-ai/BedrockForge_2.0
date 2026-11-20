@@ -17,7 +17,10 @@ import { tablesStore } from "../tables/state";
 import own from "./Composites.module.css";
 import { createPreviewer, loadHoles, startTool, type FieldRow, type HoleRow, type OnExists, type PreviewAnswer, type Previewer, type Started } from "./api";
 import { toolValues, WINDOW_PREFIX } from "./bind";
+import { CodingWindow } from "./CodingWindow";
 import { CompositeWindow } from "./CompositeWindow";
+import { EquivalentWindow } from "./EquivalentWindow";
+import { CoordsWindow, MergeWindow } from "./MergeWindow";
 import { ResultProps } from "./ResultProps";
 import { RESULT_WINDOW } from "./ResultsTree";
 import { NO_SOURCE, rangeText, shown, sourceFromArgs, toolBody, type FormValues, type ParamSpec, type SourceState, type ToolSpec } from "./params";
@@ -328,5 +331,9 @@ export function renderCompositesWindow(w: FloatWin): ReactNode | null {
   if (!tool) return null;
   const args = (w.props?.args as Record<string, unknown> | undefined) ?? {};
   if (tool.id === "composite") return <CompositeWindow winId={w.id} args={args} />;
+  if (tool.id === "coding") return <CodingWindow winId={w.id} args={args} />;
+  if (tool.id === "merge") return <MergeWindow winId={w.id} args={args} />;
+  if (tool.id === "coords") return <CoordsWindow winId={w.id} args={args} />;
+  if (tool.id === "equivalent") return <EquivalentWindow winId={w.id} args={args} />;
   return <ToolWindow winId={w.id} tool={tool} args={args} />;
 }
