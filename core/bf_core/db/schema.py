@@ -239,6 +239,28 @@ dh_rows = sa.Table(
     sa.Index(None, "hole_id"),  # cascades from dh_holes and «скважина без данных» checks
 )
 
+# Э12 (ADR 0018 §2): a result of sample processing — a table of the set (composites, coding, ore intervals…),
+# columns written in place (top cut, equivalent, DECL_W) or neither (conditions analysis: table_id NULL).
+# `inputs` holds no ids (names, revisions, geometry keys): «устарел» is computed on reading, `.bfggis` keeps it.
+dh_results = sa.Table(
+    "dh_results",
+    project_md,
+    sa.Column("id", PK, primary_key=True),
+    sa.Column("set_id", REF, sa.ForeignKey("objects.id", ondelete="CASCADE"), nullable=False),
+    sa.Column("table_id", REF, sa.ForeignKey("dh_tables.id", ondelete="CASCADE")),
+    sa.Column("op", sa.String(16), nullable=False),  # length domain bench coding merge coords topcut … conditions
+    sa.Column("name", sa.String(200), nullable=False),
+    sa.Column("params", JSONType, nullable=False),  # the numbers the kernel ran with
+    sa.Column("inputs", JSONType, nullable=False),  # tables (name_key, token, rev, fields), set version, meshes
+    sa.Column("sha256", sa.String(64), nullable=False),  # of the input bytes and the parameters
+    sa.Column("algo", sa.String(32), nullable=False),  # version of the algorithm of the operation
+    sa.Column("report", JSONType, nullable=False),  # summary before/after, thresholds, written columns, timings
+    sa.Column("job_id", REF),
+    sa.Column("created_at", UtcDateTime, nullable=False),
+    sa.Index(None, "set_id"),
+    sa.Index(None, "table_id"),  # cascades from dh_tables
+)
+
 import_log = sa.Table(
     "import_log",
     project_md,

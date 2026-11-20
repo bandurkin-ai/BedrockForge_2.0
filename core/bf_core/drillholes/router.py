@@ -79,13 +79,17 @@ def list_tables(svc: Svc, set_id: int) -> dict[str, Any]:
             {"table": "collar", "kind": "collar", "name": "Устья", "rows": collars, "rev": s.version},
             {"table": "survey", "kind": "survey", "name": "Инклинометрия", "rows": surveys, "rev": s.version},
         ]
+        from bf_core.composites.results import origins  # Э12: result tables carry {result_id, op, stale}
+
+        made_by = origins(conn, set_id)
         order = sa.case((dh_tables.c.kind == "assay", 0), (dh_tables.c.kind == "interval", 1), else_=2)
         for t in conn.execute(
             sa.select(dh_tables)
             .where(dh_tables.c.set_id == set_id, dh_tables.c.state == "ready")
             .order_by(order, dh_tables.c.id)
         ):
-            tabs.append({"table": str(t.id), "kind": t.kind, "name": t.name, "rows": t.row_count, "rev": t.rev})
+            tab = {"table": str(t.id), "kind": t.kind, "name": t.name, "rows": t.row_count, "rev": t.rev}
+            tabs.append({**tab, "origin": made_by.get(int(t.id))})
     return {"set": {"id": s.id, "name": s.name, "crs": s.crs, "holes": holes}, "tables": tabs}
 
 
