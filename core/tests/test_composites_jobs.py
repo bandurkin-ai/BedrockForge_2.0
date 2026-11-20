@@ -52,7 +52,11 @@ def body(set_id: int, table: str, **kw: Any) -> dict[str, Any]:
 
 
 def run_here(
-    project: Any, params: dict[str, Any], cancel_at: int | None = None, seen: list[int] | None = None
+    project: Any,
+    params: dict[str, Any],
+    cancel_at: int | None = None,
+    seen: list[int] | None = None,
+    op: str = "run",
 ) -> dict[str, Any]:
     """The handler in this process (as the worker runs it); `cancel_at` — the tick that cancels; `seen` counts."""
     seen = [0] if seen is None else seen
@@ -62,6 +66,8 @@ def run_here(
         if cancel_at is not None and seen[0] >= cancel_at:
             raise JobCancelled()
 
+    if op != "run":
+        return cj.run_tables(project.engine, project.folder, params, op, job_id=next(_ids), tick=tick)
     return cj.run(project.engine, project.folder, params, job_id=next(_ids), tick=tick)
 
 
@@ -153,8 +159,8 @@ def test_refusals_say_why(demo) -> None:  # type: ignore[no-untyped-def]
     assert r.status_code == 404 and r.json()["code"] == "table_not_found"
     r = c.post(f"{C}/run", json=body(set_id, table, name="Пробы"))
     assert r.status_code == 422 and r.json()["code"] == "name_is_source"
-    for path in ("/merge", "/coords"):  # TODO(12.5, 12.6)
-        assert c.post(f"{C}{path}", json={"set_id": set_id}).json()["code"] == "not_ready"
+    r = c.post(f"{C}/merge", json={"set_id": set_id, "tables": [table]})
+    assert r.status_code == 422 and r.json()["param"] == "tables"
     project.read_only = True  # opened in another window (ТЗ 5.7)
     try:
         r = c.post(f"{C}/run", json=body(set_id, table))
@@ -267,9 +273,8 @@ def test_preview_of_one_hole_is_the_job_and_the_set_summary(demo) -> None:  # ty
     assert r.status_code == 422 and r.json()["param"] == "length"
     r = c.post(f"{C}/length/preview", json={"params": params, "hole_id": 10**9})
     assert r.status_code == 404 and r.json()["code"] == "hole_not_found"
-    assert (
-        c.post(f"{C}/domain/preview", json={"params": params, "hole_id": hole["hole_id"]}).json()["code"] == "not_ready"
-    )
+    r = c.post(f"{C}/ore/preview", json={"params": params, "hole_id": hole["hole_id"]})  # TODO(12.22)
+    assert r.json()["code"] == "not_ready"
 
 
 def test_result_tables_are_read_only(demo) -> None:  # type: ignore[no-untyped-def]
@@ -305,7 +310,7 @@ def test_result_tables_are_read_only(demo) -> None:  # type: ignore[no-untyped-d
     assert r.status_code == 200, r.text
 
 
-def add_lithology(project: Any, set_id: int) -> tuple[str, list[float]]:
+def add_lithology(project: Any, set_id: int) -> tuple[str, list[float], str]:
     """«Литология»: гранит 0–30, диорит 30–75, гранит 75–TD in every hole; one hole without it."""
     from bf_core.db.schema import dh_holes
     from bf_core.drillholes import store
@@ -317,26 +322,27 @@ def add_lithology(project: Any, set_id: int) -> tuple[str, list[float]]:
     data = store.TableData("Литология", "interval", [r[0] for r in rows], [r[1] for r in rows], [r[2] for r in rows],
                            [ColumnSpec("LITH", "text")], [[r[3] for r in rows]])  # fmt: skip
     out = store.write_table(project.engine, set_id, data, job_id=None, tick=lambda _p, _m=None: None)
-    return str(out["table_id"]), [30.0, 75.0]
+    return str(out["table_id"]), [30.0, 75.0], holes[0].name
 
 
 def test_domains_by_lithology_and_benches(demo) -> None:  # type: ignore[no-untyped-def]
     from bf_core.drillholes.trajectory import interval_xyz, trajectories
 
     c, project, set_id, table = demo
-    litho, cuts = add_lithology(project, set_id)
+    litho, cuts, bare = add_lithology(project, set_id)
     dom = body(set_id, table, method="domain", domain={"table": litho, "field": "LITH"}, length=4)
     done = run_here(project, {"body": dom})
     got = rows_of(c, set_id, str(done["table_id"]))
     key = {col["name"]: col["key"] for col in got["columns"]}
     assert done["name"] == "Композиты по доменам"
-    first_hole = sorted({r["hole"] for r in got["rows"]})[0]
     for row in got["rows"]:
         a, b, code = row["from"], row["to"], row[key["DOMAIN"]]
+        if row["hole"] == bare:
+            assert code is None  # the lithology table does not have the hole: no domain
+            continue
         assert not any(a + 1e-6 < z < b - 1e-6 for z in cuts), row  # no composite crosses a change of LITH
         if code is not None:
             assert code == ("диорит" if 30.0 <= (a + b) / 2 < 75.0 else "гранит")
-    assert any(r[key["DOMAIN"]] is None for r in got["rows"] if r["hole"] == first_hole)  # no lithology there
     rec = next(x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "domain")
     assert len(rec["inputs"]["tables"]) == 2 and rec["params"]["domain"] == {"table": litho, "field": "LITH"}
     hole = c.get(f"{API}/drillholes/sets/{set_id}/tables/collar?limit=3").json()["rows"][2]
@@ -366,3 +372,49 @@ def test_domains_by_lithology_and_benches(demo) -> None:  # type: ignore[no-unty
     a = c.post(f"{C}/bench/preview", json={"params": bench, "hole_id": hole["hole_id"]}).json()
     key = {col["name"]: col["key"] for col in got["columns"]}
     assert a["result"]["values"]["Z"] == [r[key["Z"]] for r in got["rows"] if r["hole"] == hole["hole"]]
+
+
+def test_merge_and_coords(demo) -> None:  # type: ignore[no-untyped-def]
+    c, project, set_id, table = demo
+    litho, _cuts, _bare = add_lithology(project, set_id)
+    merged = run_here(project, {"body": {"set_id": set_id, "tables": [table, litho]}}, op="merge")
+    assert merged["name"] == "Объединение: Пробы, Литология"
+    got = rows_of(c, set_id, str(merged["table_id"]))
+    key = {col["name"]: col["key"] for col in got["columns"]}
+    assert {"AU", "CU", "Номер пробы", "LITH"} <= set(key)
+    for row in got["rows"]:
+        mid, lith = (row["from"] + row["to"]) / 2, row[key["LITH"]]
+        assert lith is None or lith == ("диорит" if 30.0 <= mid < 75.0 else "гранит")
+    rec = next(x for x in c.get(f"{C}/results?set_id={set_id}").json()["results"] if x["op"] == "merge")
+    s = rec["report"]["summary"]
+    assert s["after"]["fields"]["AU"]["metal"] == pytest.approx(s["before"]["fields"]["AU"]["metal"], rel=1e-9)
+    r = c.post(f"{C}/results/{rec['id']}/rebuild", json={})
+    again = wait_job(c, r.json()["source"], r.json()["id"], timeout=180)
+    assert again["status"] == "done" and again["result"]["fresh"] is True, again
+    hole = c.get(f"{API}/drillholes/sets/{set_id}/tables/collar?limit=3").json()["rows"][2]
+    a = c.post(f"{C}/merge/preview", json={"params": {"set_id": set_id, "tables": [table, litho]},
+                                            "hole_id": hole["hole_id"]}).json()  # fmt: skip
+    assert a["result"]["values"]["LITH"] == [r[key["LITH"]] for r in got["rows"] if r["hole"] == hole["hole"]]
+
+    done = run_here(project, {"body": {"set_id": set_id, "table": table}}, op="coords")
+    assert done["name"] == "Пробы — координаты"
+    got = rows_of(c, set_id, str(done["table_id"]))
+    key = {col["name"]: col["key"] for col in got["columns"]}
+    src = rows_of(c, set_id, table)
+    assert len(got["rows"]) == len([r for r in src["rows"] if r["from"] is not None and r["to"] is not None])
+    from bf_core.db.schema import dh_holes
+    from bf_core.drillholes.trajectory import interval_xyz, trajectories
+
+    with dialect.read_tx(project.engine) as conn:
+        ids = dict(conn.execute(sa.select(dh_holes.c.name, dh_holes.c.id).where(dh_holes.c.set_id == set_id)).all())
+    rows = got["rows"]
+    a_xyz, b_xyz = interval_xyz(trajectories(project, set_id), np.array([ids[r["hole"]] for r in rows]),
+                                np.array([r["from"] for r in rows]), np.array([r["to"] for r in rows]))  # fmt: skip
+    begin = np.array([[r[key[k]] for k in ("XB", "YB", "ZB")] for r in rows], dtype=float)
+    end = np.array([[r[key[k]] for k in ("XE", "YE", "ZE")] for r in rows], dtype=float)
+    np.testing.assert_array_equal(begin, a_xyz)  # the points of the «Таблица» panel and 3D, bit for bit
+    np.testing.assert_array_equal(end, b_xyz)
+    a = c.post(f"{C}/coords/preview", json={"params": {"set_id": set_id, "table": table}, "hole_id": hole["hole_id"]})
+    assert a.status_code == 200 and a.json()["result"]["values"]["ZM"] == [
+        r[key["ZM"]] for r in got["rows"] if r["hole"] == hole["hole"]
+    ]

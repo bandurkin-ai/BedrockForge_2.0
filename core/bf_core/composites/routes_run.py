@@ -6,14 +6,16 @@
     no numeric field, a method whose kernel is not in this build (`not_ready`); 404 `table_not_found`,
     `field_not_found`; 409 `table_exists` {name, suggested, lost} — the window asks «Заменить?» (listing `lost`:
     the column operations on that table that cannot be repeated) and repeats with `replace: true`.
-  * `POST /merge`, `POST /coords` — 422 `not_ready` until the kernels of 12.5–12.6.
+  * `POST /merge` {set_id, tables, name?, replace?}, `POST /coords` {set_id, table, name?, replace?} → {source,
+    id} of `composite.merge`, `composite.coords` (heavy); the same refusals, 409 `table_exists` as `/run`.
   * `POST /results/{id}/rebuild` {drop_lost?} → {source, id}: the same job with the parameters of the result on
     the current data; the same hash and algorithm — no computation, «устарел» goes. 409 `dependents_lost` {lost}
     — the operations on the table that cannot be repeated; again with `drop_lost: true`.
   * `POST /{op}/preview` {params, hole_id} → {hole, samples {from, to, values}, result {from, to, values},
     summary {before, after}, set_summary | null, notes}: synchronous, one hole, the same computation as the job;
     `set_summary` — over the whole table when it has ≤ 200 000 rows (cached by revision and parameters), else
-    null (the job's report has it). Missing values are null, never 0.
+    null (the job's report has it); `op` — length, domain, bench, merge, coords (merge and coords: `samples` — the
+    first table, `set_summary` null). Missing values are null, never 0. Other ops — 422 `not_ready` (12.21–12.22).
 
 The kernels are imported lazily (not before BF-READY); a plain `def` route runs in the thread pool of the API.
 """
@@ -50,49 +52,84 @@ def _body(raw: Any) -> dict[str, Any]:
     return raw
 
 
+KINDS = {"length": "composite.run", "domain": "composite.run", "bench": "composite.run",
+         "merge": "composite.merge", "coords": "composite.coords"}  # fmt: skip
+
+
+def _taken(conn: Any, set_id: int, name: str, replace: bool) -> None:
+    """409 `table_exists` {name, suggested, lost} when the name is taken and not to be replaced."""
+    from . import jobs as cj
+    from . import sink
+
+    other = sink._ready(conn, set_id, name)
+    if other is not None and (not replace or other.kind != "interval"):
+        lost = cj.lost_dependents(conn, int(other.id)) if other.kind == "interval" else []
+        raise ApiError(
+            409,
+            "table_exists",
+            f"В наборе уже есть таблица «{name}».",
+            "Выберите «Заменить», чтобы заменить её, или задайте другое название.",
+            {"name": name, "suggested": sink.free_name(conn, set_id, name), "lost": lost},
+        )
+
+
 @router.post("/run")
 def run(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
     from . import jobs as cj
-    from . import sink
 
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
         spec = cj.parse_run(conn, _body(body))
-        other = sink._ready(conn, spec.set_id, spec.name)
-        if other is not None and (not spec.replace or other.kind != "interval"):
-            lost = cj.lost_dependents(conn, int(other.id)) if other.kind == "interval" else []
-            raise ApiError(
-                409,
-                "table_exists",
-                f"В наборе уже есть таблица «{spec.name}».",
-                "Выберите «Заменить», чтобы заменить её, или задайте другое название.",
-                {"name": spec.name, "suggested": sink.free_name(conn, spec.set_id, spec.name), "lost": lost},
-            )
+        _taken(conn, spec.set_id, spec.name, spec.replace)
     params = {"body": {**spec.body, "replace": spec.replace}, "rows": spec.rows}
     key, job_id = s.submit("composite.run", params, title=f"{spec.name} ({spec.table_name})")
     return {"source": key, "id": job_id}
 
 
-@router.post("/merge")
-def merge(svc: Svc, body: Payload) -> dict[str, Any]:
-    from .jobs import not_ready
+def _tables_job(svc: ProjectService, s: Scheduler, body: dict[str, Any], op: str) -> dict[str, Any]:
+    from . import compose_tables as ct
 
-    svc.require_current(writable=True)
-    raise not_ready("Объединение таблиц")  # TODO(12.5): `composites/merge.py`, job `composite.merge`
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        spec = ct.parse_tables(conn, _body(body), op)
+        _taken(conn, spec.set_id, spec.name, spec.replace)
+    params = {"body": {**spec.body, "replace": spec.replace}, "rows": spec.rows}
+    key, job_id = s.submit(KINDS[op], params, title=spec.name)
+    return {"source": key, "id": job_id}
+
+
+@router.post("/merge")
+def merge(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
+    return _tables_job(svc, s, body, "merge")
 
 
 @router.post("/coords")
-def coords(svc: Svc, body: Payload) -> dict[str, Any]:
-    from .jobs import not_ready
+def coords(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
+    return _tables_job(svc, s, body, "coords")
 
-    svc.require_current(writable=True)
-    raise not_ready("Координаты проб")  # TODO(12.6): `composites/coords.py`, job `composite.coords`
+
+def _current(conn: Any, set_id: int, t: dict[str, Any]) -> Any:
+    """The ready table of the set an input names (by its name key); 409 `source_gone` — none."""
+    row = conn.execute(
+        sa.select(dh_tables.c.id, dh_tables.c.row_count).where(
+            dh_tables.c.set_id == set_id, dh_tables.c.name_key == t.get("key"), dh_tables.c.state == "ready"
+        )
+    ).first()
+    if row is None:
+        raise ApiError(
+            409,
+            "source_gone",
+            f"Таблица-источник «{t.get('name')}» удалена.",
+            "Удалите результат или постройте его заново из другой таблицы.",
+        )
+    return row
 
 
 @router.post("/results/{result_id}/rebuild")
 def rebuild(
     svc: Svc, s: Sched, result_id: int, body: Annotated[dict[str, Any] | None, Body()] = None
 ) -> dict[str, Any]:
+    """The parameters of the result on the current tables (found by name: a replaced source has another id)."""
     from . import jobs as cj
     from .results import OP_TITLES
 
@@ -101,28 +138,17 @@ def rebuild(
         rec = conn.execute(sa.select(dh_results).where(dh_results.c.id == result_id)).mappings().first()
         if rec is None:
             raise ApiError(404, "result_not_found", "Результат обработки не найден.", "Обновите дерево проекта.")
-        if rec["op"] not in cj.METHODS or rec["op"] not in cj.READY:
-            raise cj.not_ready(f"Перестроение «{OP_TITLES.get(rec['op'], rec['op'])}»")
+        if rec["op"] not in KINDS:
+            raise cj.not_ready(f"Перестроение «{OP_TITLES.get(rec['op'], rec['op'])}»")  # TODO(12.21–12.23)
         table = conn.execute(
             sa.select(dh_tables.c.name, dh_tables.c.state).where(dh_tables.c.id == rec["table_id"])
         ).first()
         if table is None or table.state != "ready":
             raise ApiError(409, "result_busy", "Результат сейчас пересчитывается.", "Дождитесь окончания задания.")
-        src = ((rec["inputs"] or {}).get("tables") or [{}])[0]
-        src_id = conn.execute(
-            sa.select(dh_tables.c.id, dh_tables.c.row_count).where(
-                dh_tables.c.set_id == rec["set_id"],
-                dh_tables.c.name_key == src.get("key"),
-                dh_tables.c.state == "ready",
-            )
-        ).first()
-        if src_id is None:
-            raise ApiError(
-                409,
-                "source_gone",
-                f"Таблица-источник «{src.get('name')}» удалена.",
-                "Удалите результат или постройте его заново из другой таблицы.",
-            )
+        set_id = int(rec["set_id"])
+        now = [_current(conn, set_id, t) for t in (rec["inputs"] or {}).get("tables") or []]
+        if not now:
+            raise ApiError(409, "source_gone", "Источник результата не найден.", "Удалите результат.")
         lost = cj.lost_dependents(conn, int(rec["table_id"]))
         if lost and not (body or {}).get("drop_lost"):
             names = ", ".join(f"«{x['name']}»" for x in lost)
@@ -133,10 +159,15 @@ def rebuild(
                 "Подтвердите перестроение или сначала сохраните эти результаты.",
                 {"lost": lost},
             )
-    again = {**(rec["params"] or {}), "set_id": int(rec["set_id"]), "table": str(src_id.id), "name": table.name,
-             "replace": True}  # fmt: skip
-    params = {"body": again, "rows": int(src_id.row_count or 0), "rebuild": result_id}
-    key, job_id = s.submit("composite.run", params, title=f"Перестроить: {table.name}")
+    again = {**(rec["params"] or {}), "set_id": set_id, "name": table.name, "replace": True}
+    if rec["op"] == "merge":
+        again["tables"] = [str(t.id) for t in now]
+    else:
+        again["table"] = str(now[0].id)
+    if rec["op"] == "domain" and len(now) > 1 and isinstance(again.get("domain"), dict):
+        again["domain"] = {**again["domain"], "table": str(now[1].id)}
+    params = {"body": again, "rows": sum(int(t.row_count or 0) for t in now), "rebuild": result_id}
+    key, job_id = s.submit(KINDS[rec["op"]], params, title=f"Перестроить: {table.name}")
     return {"source": key, "id": job_id}
 
 
@@ -192,61 +223,83 @@ def _set_summary(project: Any, spec: Any, threads: int) -> dict[str, Any] | None
     return out
 
 
+def _samples(src: Any, names: list[str]) -> dict[str, list[Any]]:
+    import numpy as np
+
+    out: dict[str, list[Any]] = {}
+    for name in names:
+        if name in src.numbers:
+            out[name] = _nulls(src.numbers[name])
+        elif name in src.codes:
+            out[name] = _nulls(np.array([*src.labels[name], None], dtype=object)[src.codes[name]])
+    return out
+
+
+def _hole(conn: Any, set_id: int, hole_id: Any) -> str:
+    if not isinstance(hole_id, int) or isinstance(hole_id, bool):
+        raise ApiError(422, "hole_not_found", "Не выбрана скважина.", "Выберите скважину для предпросмотра.")
+    hole = conn.execute(
+        sa.select(dh_holes.c.name).where(dh_holes.c.id == hole_id, dh_holes.c.set_id == set_id)
+    ).scalar()
+    if hole is None:
+        raise ApiError(404, "hole_not_found", "Скважина не найдена в наборе.", "Выберите скважину из списка.")
+    return str(hole)
+
+
 @router.post("/{op}/preview")
 def preview(svc: Svc, op: str, body: Payload) -> dict[str, Any]:
     from . import compose, source, strips
+    from . import compose_tables as ct
     from . import jobs as cj
 
     if op not in PREVIEW_OPS:
         raise ApiError(404, "unknown_operation", f"Нет предпросмотра «{op}».", "Обновите приложение.")
-    if op in ("merge", "coords", "coding", "topcut", "equivalent", "declus", "ore"):
-        raise cj.not_ready("Предпросмотр этой операции")  # TODO(12.5–12.6, 12.21–12.22)
+    if op not in KINDS:
+        raise cj.not_ready("Предпросмотр этой операции")  # TODO(12.21–12.22): coding, topcut, equivalent, declus, ore
     raw = _body(body)
-    params = _body(raw.get("params"))
-    hole_id = raw.get("hole_id")
-    if not isinstance(hole_id, int) or isinstance(hole_id, bool):
-        raise ApiError(422, "hole_not_found", "Не выбрана скважина.", "Выберите скважину для предпросмотра.")
+    params = {k: v for k, v in _body(raw.get("params")).items() if k != "name"}
     project = svc.require_current()
-    with dialect.read_tx(project.engine) as conn:
-        spec = cj.parse_run(conn, {**{k: v for k, v in params.items() if k != "name"}, "method": op})
-        hole = conn.execute(
-            sa.select(dh_holes.c.name).where(dh_holes.c.id == hole_id, dh_holes.c.set_id == spec.set_id)
-        ).scalar()
-        if hole is None:
-            raise ApiError(404, "hole_not_found", "Скважина не найдена в наборе.", "Выберите скважину из списка.")
-    src = source.read(project.engine, spec.set_id, spec.table_id, spec.read_fields(), holes=[hole_id])
-    d = spec.other_domain()
-    dom = None if d is None else source.read(project.engine, spec.set_id, d.table_id, [d.field], holes=[hole_id])
-    with dialect.read_tx(project.engine) as conn:
-        ends = compose.hole_depths(conn, spec.set_id, src.hole_db_ids)
-    st = source.trajectories(project, spec.set_id)
-    made = compose.compute(spec, src, dom, ends, st, threads=1)
-    samples: dict[str, list[Any]] = {}
-    for name in spec.fields:
-        if name in src.numbers:
-            samples[name] = _nulls(src.numbers[name])
+    notes: list[str] = []
+    set_summary = None
+    if op in ("merge", "coords"):
+        with dialect.read_tx(project.engine) as conn:
+            tspec = ct.parse_tables(conn, params, op)
+            hole = _hole(conn, tspec.set_id, raw.get("hole_id"))
+        srcs = [source.read(project.engine, tspec.set_id, i, f, holes=[raw["hole_id"]]) for i, _n, f in tspec.tables]
+        if op == "merge":
+            made = ct.merge_compute(tspec, srcs)
         else:
-            import numpy as np
-
-            labels = np.array([*src.labels[name], None], dtype=object)
-            samples[name] = _nulls(labels[src.codes[name]])
-    if spec.density and spec.density not in samples:
-        samples[spec.density] = _nulls(src.numbers[spec.density])
+            made = ct.coords_compute(tspec, srcs[0], source.trajectories(project, tspec.set_id))
+        src, fields, table_name = srcs[0], tspec.tables[0][2], tspec.tables[0][1]
+    else:
+        with dialect.read_tx(project.engine) as conn:
+            spec = cj.parse_run(conn, {**params, "method": op})
+            hole = _hole(conn, spec.set_id, raw.get("hole_id"))
+        src = source.read(project.engine, spec.set_id, spec.table_id, spec.read_fields(), holes=[raw["hole_id"]])
+        d = spec.other_domain()
+        dom = None
+        if d is not None:
+            dom = source.read(project.engine, spec.set_id, d.table_id, [d.field], holes=[raw["hole_id"]])
+        with dialect.read_tx(project.engine) as conn:
+            ends = compose.hole_depths(conn, spec.set_id, src.hole_db_ids)
+        made = compose.compute(spec, src, dom, ends, source.trajectories(project, spec.set_id), threads=1)
+        fields = [*spec.fields, *([spec.density] if spec.density else [])]
+        table_name = spec.table_name
+        set_summary = _set_summary(project, spec, strips.default_threads())
+        if params.get("domain") and op != "domain":
+            notes.append("Домен учитывается только методом «По доменам».")
     out = made.out
-    notes = list(made.journal)
     if not src.rows:
-        notes.insert(0, f"В скважине {hole} нет проб в таблице «{spec.table_name}».")
-    if params.get("domain") and op != "domain":
-        notes.append("Домен учитывается только методом «По доменам».")
+        notes.insert(0, f"В скважине {hole} нет проб в таблице «{table_name}».")
     return {
         "hole": hole,
-        "samples": {"from": _nulls(src.from_m), "to": _nulls(src.to_m), "values": samples},
+        "samples": {"from": _nulls(src.from_m), "to": _nulls(src.to_m), "values": _samples(src, fields)},
         "result": {
             "from": _nulls(out.from_m),
             "to": _nulls(out.to_m),
             "values": {c.name: _nulls(v) for c, v in zip(out.columns, out.values, strict=True)},
         },
         "summary": made.report["summary"],
-        "set_summary": _set_summary(project, spec, strips.default_threads()),
-        "notes": notes,
+        "set_summary": set_summary,
+        "notes": [*made.journal, *notes],
     }

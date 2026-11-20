@@ -15,8 +15,8 @@ have, or an empty code — stretches without a domain, DOMAIN empty) and composi
 (the same for the job and for the preview of one hole); FLAG «пологая» besides «мало проб».
 
 Columns of the table (ТЗ 8.2.3): LENGTH, X, Y, Z, the chosen fields (units and roles of the source; a field
-named as one of these columns gets «_SRC»), DENSITY, SAMPLED_LEN, N_SAMPLES, DOMAIN (text: the label, or the
-number of a numeric domain field), FLAG. Missing values stay missing (NaN, None), never 0.
+named as one of these columns gets «_SRC»), DENSITY, SAMPLED_LEN, N_SAMPLES, DOMAIN (the label of a text domain field,
+the number of a numeric one; none — empty), FLAG. Missing values stay missing (NaN, None), never 0.
 """
 
 from __future__ import annotations
@@ -93,6 +93,7 @@ def _domain_codes(spec: RunSpec, src: source.Lines, dom: source.Lines | None, li
 
     d = spec.domain
     assert d is not None
+    lines_of = None
     if dom is None:  # a field of the samples
         table, carrier = lines, src
     else:  # another table: its holes in the index of the samples (holes the samples do not have — left out)
@@ -104,10 +105,9 @@ def _domain_codes(spec: RunSpec, src: source.Lines, dom: source.Lines | None, li
         lines_of = np.flatnonzero(keep)
     if d.kind == "text":
         codes = carrier.codes[d.field]
-        labels = np.array([*carrier.labels[d.field], None], dtype=object)
+        labels: Any = np.array([*carrier.labels[d.field], None], dtype=object)
     else:
-        codes, uniques = number_codes(carrier.numbers[d.field])
-        labels = np.array([*(f"{u:g}" for u in uniques.tolist()), None], dtype=object)
+        codes, labels = number_codes(carrier.numbers[d.field])
     codes = table.take(codes if dom is None else codes[lines_of])
     return table, codes, labels
 
@@ -155,12 +155,13 @@ def compute(
             xyz = b.xyz
             marks.append((FLAG_FLAT, b.flat))
         elif spec.method == "domain":
-            from .domains import composite_by_domains, domain_stretches
+            from .domains import composite_by_domains, domain_numbers, domain_stretches, domain_text
 
             table, codes, labels = _domain_codes(spec, src, dom, lines)
             d = domain_stretches(lines, table, codes, origin=kernel.origin, ends=depth, threads=threads)
             c = composite_by_domains(lines, values, kernel, d, **kw)  # type: ignore[arg-type]
-            domain = labels[c.domain]  # −1 → None
+            text = spec.domain is not None and spec.domain.kind == "text"
+            domain = domain_text(c.domain, labels[:-1]) if text else domain_numbers(c.domain, labels)
         else:
             from .length import composite_by_length
 
@@ -191,7 +192,8 @@ def compute(
         vals.append(labels_k[c.values.texts[k]])  # −1 → the last one: None
     cols += [ColumnSpec("DENSITY", "number", spec.units.get(spec.density) if spec.density else None),
              ColumnSpec("SAMPLED_LEN", "number", "м"), ColumnSpec("N_SAMPLES", "number"),
-             ColumnSpec("DOMAIN", "text"), ColumnSpec("FLAG", "text")]  # fmt: skip
+             ColumnSpec("DOMAIN", "number" if domain is not None and domain.dtype.kind == "f" else "text"),
+             ColumnSpec("FLAG", "text")]  # fmt: skip
     vals += [c.values.density, c.values.sampled, c.values.count.astype(float),
              np.full(n, None, dtype=object) if domain is None else domain,
              flag_column([(FLAG_LOW, c.values.low), *marks], n)]  # fmt: skip

@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 ALGO = {"length": "length-1"}
 METHODS = ("length", "domain", "bench")
-ALGO.update(domain="domain-1", bench="bench-1")
+ALGO.update(domain="domain-1", bench="bench-1", merge="merge-1", coords="coords-1")
 READY = frozenset(METHODS)
 NAME_MAX = 200
 
@@ -319,7 +319,7 @@ def _replaced_table(conn: sa.Connection, set_id: int, name: str) -> int | None:
     return None if tid is None else int(tid)
 
 
-def _again(engine: sa.Engine, spec: RunSpec, out: sink.OutTable) -> list[sink.Dependent]:
+def _again(engine: sa.Engine, spec: Any, out: sink.OutTable) -> list[sink.Dependent]:
     from . import sink
 
     if not spec.replace:
@@ -353,6 +353,64 @@ def _user(exc: ApiError) -> JobError:
     return JobError(exc.code, exc.message, exc.hint, retry=False)
 
 
+def _fresh(
+    engine: sa.Engine, rebuild: Any, set_id: int, sha: str, algo: str, inputs: dict[str, Any]
+) -> dict[str, Any] | None:
+    """«Перестроить» with the same hash and algorithm: no computation, the record follows the inputs."""
+    from . import results
+
+    if rebuild is None:
+        return None
+    with dialect.write_tx(engine) as conn:
+        rec = conn.execute(sa.select(dh_results).where(dh_results.c.id == int(rebuild))).mappings().first()
+        if rec is None or rec["sha256"] != sha or rec["algo"] != algo:
+            return None
+        results.mark_fresh(conn, int(rebuild), inputs)
+    return {"set_id": set_id, "result_id": int(rebuild), "table_id": rec["table_id"], "fresh": True,
+            "events": [["composites.changed", {"set_id": set_id}]]}  # fmt: skip
+
+
+Tick2 = Callable[[float | None, str | None], None]
+
+
+def _store(
+    engine: sa.Engine, folder: Any, spec: Any, made: Any, *, op: str, inputs: dict[str, Any], sha: str, algo: str,
+    job_id: int, t0: float, tick: Tick2,
+) -> dict[str, Any]:  # fmt: skip
+    """The table aside, the repeated dependents, the final transaction, the snapshot; the result of the job."""
+    from . import sink
+
+    with sink.guarded(engine, job_id):
+        tid = sink.build_table(engine, spec.set_id, made.out, job_id=job_id,
+                               tick=lambda f, m: tick(0.6 + 0.3 * (f or 0.0), m or "Запись таблицы"))  # fmt: skip
+        again = _again(engine, spec, made.out)
+        report = {**made.report, "versions": _versions(), "seconds": round(time.perf_counter() - t0, 3)}
+        res = sink.commit(engine, sink.Commit(set_id=spec.set_id, op=op, name=spec.name, params=spec.body,
+                                              inputs=inputs, sha256=sha, algo=algo, report=report, job_id=job_id,
+                                              table=tid, mode="replace" if spec.replace else "rename",
+                                              dependents=again))  # fmt: skip
+    # no tick from here on: a cancel after the final transaction would report a committed result as cancelled
+    try:
+        sink.write_snapshot(engine, folder / "cache" / "tables", tid, sink.with_dependents(made.out, again))
+    except Exception:  # noqa: BLE001 - the snapshot only speeds up reading; the table is committed
+        pass
+    set_id = spec.set_id
+    events: list[list[Any]] = [["drillholes.changed", {"set_id": set_id, "table": str(tid), "rev": res["rev"]}]]
+    events += [["drillholes.changed", {"set_id": set_id, "table": str(t), "rev": 0}] for t in res["replaced"]]
+    events.append(["composites.changed", {"set_id": set_id}])
+    return {"set_id": set_id, "result_id": res["result_id"], "table_id": tid, "name": res["name"],
+            "rows": made.out.from_m.shape[0], "replaced": res["replaced"], "fresh": False,
+            "journal": made.journal, "events": events}  # fmt: skip
+
+
+def _body_of(params: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+    body = dict(params.get("body") or {})
+    rebuild = params.get("rebuild")
+    if rebuild is not None:
+        body["replace"] = True
+    return body, rebuild
+
+
 def run(
     engine: sa.Engine,
     folder: Any,
@@ -362,13 +420,10 @@ def run(
     tick: Callable[[float | None, str | None], None],
 ) -> dict[str, Any]:
     """The body of `composite.run` (the handler and the tests in the process)."""
-    from . import compose, results, sink, source, strips
+    from . import compose, results, source, strips
 
     t0 = time.perf_counter()
-    body = dict(params.get("body") or {})
-    rebuild = params.get("rebuild")
-    if rebuild is not None:
-        body["replace"] = True
+    body, rebuild = _body_of(params)
     with dialect.read_tx(engine) as conn:
         spec = parse_run(conn, body)
         inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True)
@@ -377,44 +432,66 @@ def run(
     src = source.read(engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache)
     d = spec.other_domain()
     dom = None if d is None else source.read(engine, spec.set_id, d.table_id, [d.field], cache_dir=cache)
-    project = SimpleNamespace(engine=engine, uid=f"job:{folder}")
-    st = source.trajectories(project, spec.set_id)
+    st = source.trajectories(SimpleNamespace(engine=engine, uid=f"job:{folder}"), spec.set_id)
     algo = ALGO[spec.method]
     stations = source.stations_bytes(st, src.hole_db_ids.tolist())
     sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=algo)
-    if rebuild is not None:
-        with dialect.write_tx(engine) as conn:
-            rec = conn.execute(sa.select(dh_results).where(dh_results.c.id == int(rebuild))).mappings().first()
-            if rec is not None and rec["sha256"] == sha and rec["algo"] == algo:
-                results.mark_fresh(conn, int(rebuild), inputs)
-                return {"set_id": spec.set_id, "result_id": int(rebuild), "table_id": rec["table_id"], "fresh": True,
-                        "events": [["composites.changed", {"set_id": spec.set_id}]]}  # fmt: skip
+    fresh = _fresh(engine, rebuild, spec.set_id, sha, algo, inputs)
+    if fresh is not None:
+        return fresh
     with dialect.read_tx(engine) as conn:
         ends = compose.hole_depths(conn, spec.set_id, src.hole_db_ids)
     tick(0.1, "Композиты")
     made = compose.compute(
         spec, src, dom, ends, st, threads=strips.default_threads(), tick=lambda f: tick(0.1 + 0.5 * f, None)
     )
-    with sink.guarded(engine, job_id):
-        tid = sink.build_table(engine, spec.set_id, made.out, job_id=job_id,
-                               tick=lambda f, m: tick(0.6 + 0.3 * (f or 0.0), m or "Запись таблицы"))  # fmt: skip
-        again = _again(engine, spec, made.out)
-        report = {**made.report, "versions": _versions(), "seconds": round(time.perf_counter() - t0, 3)}
-        res = sink.commit(engine, sink.Commit(set_id=spec.set_id, op=spec.method, name=spec.name, params=spec.body,
-                                              inputs=inputs, sha256=sha, algo=algo, report=report, job_id=job_id,
-                                              table=tid, mode="replace" if spec.replace else "rename",
-                                              dependents=again))  # fmt: skip
-    # no tick from here on: a cancel after the final transaction would report a committed result as cancelled
-    try:
-        sink.write_snapshot(engine, cache, tid, sink.with_dependents(made.out, again))
-    except Exception:  # noqa: BLE001 - the snapshot only speeds up reading; the table is committed
-        pass
-    events: list[list[Any]] = [["drillholes.changed", {"set_id": spec.set_id, "table": str(tid), "rev": res["rev"]}]]
-    events += [["drillholes.changed", {"set_id": spec.set_id, "table": str(t), "rev": 0}] for t in res["replaced"]]
-    events.append(["composites.changed", {"set_id": spec.set_id}])
-    return {"set_id": spec.set_id, "result_id": res["result_id"], "table_id": tid, "name": res["name"],
-            "rows": made.out.from_m.shape[0], "replaced": res["replaced"], "fresh": False,
-            "journal": made.journal, "events": events}  # fmt: skip
+    return _store(engine, folder, spec, made, op=spec.method, inputs=inputs, sha=sha, algo=algo, job_id=job_id,
+                  t0=t0, tick=tick)  # fmt: skip
+
+
+def run_tables(
+    engine: sa.Engine,
+    folder: Any,
+    params: dict[str, Any],
+    op: str,
+    *,
+    job_id: int,
+    tick: Callable[[float | None, str | None], None],
+) -> dict[str, Any]:
+    """The body of `composite.merge` and `composite.coords`."""
+    from . import compose_tables as ct
+    from . import results, source, strips
+
+    t0 = time.perf_counter()
+    body, rebuild = _body_of(params)
+    with dialect.read_tx(engine) as conn:
+        spec = ct.parse_tables(conn, body, op)
+        inputs = results.make_inputs(
+            conn, spec.set_id, [(i, f) for i, _n, f in spec.tables], trajectories=op == "coords"
+        )
+    tick(0.02, "Чтение таблиц")
+    cache = folder / "cache" / "tables"
+    srcs = [source.read(engine, spec.set_id, i, f, cache_dir=cache) for i, _n, f in spec.tables]
+    algo = ALGO[op]
+    st = None
+    stations = None
+    if op == "coords":
+        st = source.trajectories(SimpleNamespace(engine=engine, uid=f"job:{folder}"), spec.set_id)
+        stations = source.stations_bytes(st, srcs[0].hole_db_ids.tolist())
+    sha = source.input_hash(srcs, spec.hash_params(), stations=stations, algo=algo)
+    fresh = _fresh(engine, rebuild, spec.set_id, sha, algo, inputs)
+    if fresh is not None:
+        return fresh
+    tick(0.1, "Объединение" if op == "merge" else "Координаты")
+    part = lambda f: tick(0.1 + 0.5 * f, None)  # noqa: E731
+    threads = strips.default_threads()
+    made = (
+        ct.merge_compute(spec, srcs, threads=threads, tick=part)
+        if op == "merge"
+        else ct.coords_compute(spec, srcs[0], st, threads=threads, tick=part)
+    )
+    return _store(engine, folder, spec, made, op=op, inputs=inputs, sha=sha, algo=algo, job_id=job_id, t0=t0,
+                  tick=tick)  # fmt: skip
 
 
 def _log_journal(ctx: JobContext, lines: Sequence[str]) -> None:
@@ -431,3 +508,23 @@ def run_job(ctx: JobContext) -> dict[str, Any]:
         raise _user(exc) from None
     _log_journal(ctx, out.get("journal") or [])
     return out
+
+
+def _tables_job(ctx: JobContext, op: str) -> dict[str, Any]:
+    assert ctx.project_folder is not None
+    try:
+        out = run_tables(ctx.engine(), ctx.project_folder, ctx.params, op, job_id=ctx.id, tick=ctx.tick)
+    except ApiError as exc:
+        raise _user(exc) from None
+    _log_journal(ctx, out.get("journal") or [])
+    return out
+
+
+@handler("composite.merge", "Объединение таблиц", queue="heavy", estimate_memory=memory_mb)
+def merge_job(ctx: JobContext) -> dict[str, Any]:
+    return _tables_job(ctx, "merge")
+
+
+@handler("composite.coords", "Координаты проб", queue="heavy", estimate_memory=memory_mb)
+def coords_job(ctx: JobContext) -> dict[str, Any]:
+    return _tables_job(ctx, "coords")
