@@ -98,7 +98,8 @@ def test_stages_use_the_units_of_the_previous_stage() -> None:
     assert check_protocol(res, ex["protocol"], ("rejected_c",)) == 2
     log = stage_log(res)
     assert log == [
-        (1, "joined", 4, 14), (1, "joined", 18, 22), (1, "demoted", 29, 29), (2, "joined", 4, 22), (2, "demoted", 33, 33),
+        (1, "joined", 4, 14), (1, "joined", 18, 22), (1, "demoted", 29, 29),
+        (2, "joined", 4, 22), (2, "demoted", 33, 33),
     ]  # fmt: skip
     gaps = events_of(res, kind="gap")  # 23–28: 6 м > Мпп = 5 м; after sample 29 went to waste — 23–32
     assert [(e["stage"], e["row0"] + 1, e["row1"] + 1, e["decision"]) for e in gaps] == [
