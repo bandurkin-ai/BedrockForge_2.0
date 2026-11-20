@@ -13,7 +13,7 @@ import pytest
 
 from bf_core.composites import topcut as tc
 from bf_core.composites.intervals import CompositeError
-from bf_core.stats.weighted import pair_sums, sort_groups, weighted_percentiles
+from bf_core.stats.weighted import pair_sums, sort_groups, warm, weighted_percentiles
 
 NAN = math.nan
 REL = 1e-12
@@ -82,6 +82,7 @@ def test_pair_sums_is_pairwise_and_exact_enough() -> None:
     s0, s1 = pair_sums(a, b)
     assert s0 == pytest.approx(math.fsum(a), rel=1e-14) and s1 == pytest.approx(math.fsum(a * b), rel=1e-14)
     assert pair_sums(a[:0], b[:0]) == (0.0, 0.0)
+    warm()
 
 
 # --- Т8.2-9 ------------------------------------------------------------------------------------------------

@@ -15,6 +15,7 @@ same functions.
         .metal_at(q)       Σ w·v of the lowest share q of the total weight (a row is split by weight)
         .value_at(q, upper=False)   the value of the row that holds the share q (the bounds of a slice)
     pair_sums(a, b) -> (Σ a, Σ a·b)   pairwise, in the order of the rows (ТЗ 8.0.1)
+    warm()                            compiles the kernels (the `composites` step of the warm-up)
 
 Rows without a value (NaN), without a weight or with a weight ≤ 0 take no part (BF: «samples with a missing or
 non-positive weight are left out»); a missing value never becomes 0. Variance is the population one,
@@ -336,3 +337,10 @@ def weighted_percentiles(values: Any, weights: Any, ps: Any) -> np.ndarray:
     v = np.asarray(values, dtype=np.float64)
     w = np.ones(v.shape) if weights is None else weights
     return sort_groups(v, w)[0].percentiles(ps)
+
+
+def warm() -> None:
+    """Compile the kernels on a few rows (first compilation — in the background)."""
+    rows = np.array([3.0, 1.0, 1.0, 2.0])
+    sort_groups(rows, rows, np.array([0, 1, 0, 1]), 2)
+    pair_sums(rows, rows)
