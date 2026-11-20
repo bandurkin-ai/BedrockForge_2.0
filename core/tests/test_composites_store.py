@@ -344,3 +344,149 @@ def test_result_table_snapshot_opens_without_the_database(db_url: str, tmp_path:
         assert np.array_equal(fast.data[k], slow.data[k], equal_nan=slow.data[k].dtype.kind == "f"), k
     warm = source.read(engine, set_id, done["table_id"], ["AU", "LITH"], cache_dir=cache)
     assert warm.source == "parquet" and warm.labels["LITH"] == ["a", "b", "c"]
+
+
+# --- reading from the snapshot: any layout of the rows, no copies, text as codes (Э12 12.33б) ----------------
+
+
+def _layout_rows(layout: str, n: int = 900) -> list[Any]:
+    """Rows of `ROWS`-like tuples in a layout of the database: "lines" — as an import writes them (by hole name,
+    by depth: nothing to sort), "holes" — hole after hole but not by name, "shuffled" — any order; "gaps" — with
+    rows without «от» or «до» (left out), one of them the only row of its rock; "ties" — rows equal in hole,
+    «от» and «до» (the row id settles the order)."""
+    rnd = random.Random(11)
+    rocks = ["гранит", "диорит", None, "", "сланец", 'кварц "жила"']
+    rows: list[Any] = []
+    for h in range(30):
+        depth = 0.0
+        for _ in range(n // 30):
+            step = rnd.choice([0.5, 1.0, 1.0, 2.5])
+            au = None if rnd.random() < 0.1 else round(rnd.lognormvariate(0.0, 1.5), 4)
+            rows.append((f"СКВ-{h:03d}", depth, depth + step, au, rnd.random(), rnd.choice(rocks)))
+            depth += step + (3.0 if rnd.random() < 0.05 else 0.0)
+    if layout == "holes":
+        rnd2 = random.Random(5)
+        by_hole: dict[str, list[Any]] = {}
+        for r in rows:
+            by_hole.setdefault(r[0], []).append(r)
+        order = sorted(by_hole, key=lambda _k: rnd2.random())
+        rows = [r for h in order for r in by_hole[h]]
+    elif layout == "shuffled":
+        random.Random(6).shuffle(rows)
+    elif layout == "gaps":
+        rows = [(r[0], None if k % 17 == 3 else r[1], None if k % 23 == 5 else r[2], *r[3:]) for k, r in enumerate(rows)]
+        rows[40] = (rows[40][0], None, rows[40][2], 1.0, 1.0, "только в пропущенной")
+    elif layout == "ties":
+        rows = [rows[k - 1] if k % 9 == 4 else r for k, r in enumerate(rows)]
+        rows = [(r[0], r[1], r[2], float(k), r[4], r[5]) for k, r in enumerate(rows)]
+    return rows
+
+
+def _snapshot_file(engine: sa.Engine, set_id: int, tid: int, cache: Path, group: int) -> Any:
+    """The snapshot of the table as the «Таблица» panel keeps it, in row groups of `group` rows (a table of
+    millions of rows has several: every group has a dictionary of its own)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    with dialect.read_tx(engine) as conn:
+        key = snapshot.table_key(conn, "u", set_id, str(tid))
+        assert key is not None
+        snap = snapshot.build_rows(conn, set_id, tid, key, None)
+    arrays = {"__id": pa.array(snap.ids), "__hole": pa.array(snap.hole_ids)}
+    for k, v in snap.data.items():
+        arrays[k] = pa.array(v, type=pa.float64()) if v.dtype.kind == "f" else pa.array(v.tolist(), type=pa.string())
+    cache.mkdir(parents=True, exist_ok=True)
+    pq.write_table(pa.table(arrays), cache / f"{tid}-{key[-2]}-{key[-1]}.parquet", compression="zstd",
+                   row_group_size=group)  # fmt: skip
+    return snap
+
+
+def _reference_lines(snap: Any, keys: dict[str, str], event: bool = False) -> dict[str, Any]:
+    """The lines of a table the slow way: rows with «от» and «до», sorted by (hole name, от, до, row id)."""
+    f, t = snap.data["from"].tolist(), snap.data["to"].tolist()
+    if event:
+        t = [a if b != b else b for a, b in zip(f, t, strict=True)]
+    name = [snap.hole_names[int(h)] for h in snap.hole_ids.tolist()]
+    ids = snap.ids.tolist()
+    rows = [i for i in range(len(ids)) if f[i] == f[i] and t[i] == t[i]]
+    rows.sort(key=lambda i: (name[i], f[i], t[i], ids[i]))
+    holes = sorted({name[i] for i in rows})
+    starts = [0]
+    for h in holes:
+        starts.append(starts[-1] + sum(1 for i in rows if name[i] == h))
+    out: dict[str, Any] = {"row_ids": [ids[i] for i in rows], "from": [f[i] for i in rows], "to": [t[i] for i in rows],
+                           "holes": holes, "starts": starts, "skipped": len(ids) - len(rows)}  # fmt: skip
+    for field, key in keys.items():
+        col = snap.data[key][rows]
+        if col.dtype.kind == "f":
+            out[field] = col
+        else:
+            labels = sorted({v for v in col.tolist() if v not in (None, "")})
+            out[field] = (labels, [labels.index(v) if v not in (None, "") else -1 for v in col.tolist()])
+    return out
+
+
+@pytest.mark.parametrize("layout", ["lines", "holes", "shuffled", "gaps", "ties"])
+@pytest.mark.parametrize("group", [97, 100_000])
+def test_snapshot_read_of_any_layout_is_the_lines_of_the_rows(tmp_path: Path, layout: str, group: int) -> None:
+    """The columns read from the snapshot — one by one, text through the dictionary of the file, rows already
+    in line order not sorted again — are the lines of the slow reference and of the read of `dh_rows`: values
+    bit for bit, codes, labels (a label only skipped rows have is not one), SHA-256; the arrays are float64 /
+    int64 / int32, C-contiguous and writable (one numba specialization of every kernel)."""
+    engine, set_id, tid = setup("sqlite", tmp_path, _layout_rows(layout))
+    cache = tmp_path / "cache" / "tables"
+    snap = _snapshot_file(engine, set_id, tid, cache, group)
+    keys = {c.name: c.key for c in snap.columns if c.key.startswith("c")}
+    want = _reference_lines(snap, keys)
+    beats: list[Any] = []
+    warm = source.read(engine, set_id, tid, ["AU", "CU", "LITH"], cache_dir=cache, tick=lambda p, m: beats.append(p))
+    cold = source.read(engine, set_id, tid, ["AU", "CU", "LITH"])
+    assert (warm.source, cold.source) == ("parquet", "rows") and len(beats) >= 3
+    for got in (warm, cold):
+        assert got.row_ids.tolist() == want["row_ids"] and got.skipped == want["skipped"]
+        assert got.holes == want["holes"] and got.starts.tolist() == want["starts"]
+        assert got.from_m.tolist() == want["from"] and got.to_m.tolist() == want["to"]
+        for field in ("AU", "CU"):
+            assert got.numbers[field].tobytes() == want[field].tobytes(), field
+        assert got.labels["LITH"] == want["LITH"][0] and got.codes["LITH"].tolist() == want["LITH"][1]
+        assert got.hole_ids.tolist() == [snap.hole_ids[snap.position(i)] for i in want["row_ids"]]
+        assert got.hole_of().tolist() == [want["holes"].index(snap.hole_names[int(h)]) for h in got.hole_ids.tolist()]
+        arrays = [got.row_ids, got.from_m, got.to_m, got.starts, got.hole_db_ids, got.codes["LITH"],
+                  *got.numbers.values()]  # fmt: skip
+        assert all(a.flags.c_contiguous and a.flags.writeable for a in arrays)
+        assert [a.dtype.str for a in arrays[:6]] == ["<i8", "<f8", "<f8", "<i8", "<i8", "<i4"]
+        assert all(a.dtype == np.float64 for a in got.numbers.values())
+    assert source.input_hash([warm], {"p": 1}) == source.input_hash([cold], {"p": 1})
+    if layout == "gaps":
+        assert warm.skipped > 50 and "только в пропущенной" not in warm.labels["LITH"]
+
+
+def test_snapshot_read_of_an_event_table_and_of_an_empty_one(tmp_path: Path) -> None:
+    """An event has one depth: «до» follows «от» (a row without «от» is still left out); no rows — no lines."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    engine, set_id, _tid = setup("sqlite", tmp_path)
+    rows = [("B", 5.0, None, 1.0, "x"), ("A", 7.0, None, 2.0, None), ("A", 1.0, 1.5, 3.0, "y"), ("A", None, 2.0, 4.0, "z")]
+    for name, data in (("События", rows), ("Пусто", [])):
+        table = dh.TableData(name, "event", [r[0] for r in data], [r[1] for r in data], [r[2] for r in data],
+                             [dh.ColumnSpec("V", "number"), dh.ColumnSpec("T", "text")],
+                             [[r[3] for r in data], [r[4] for r in data]])  # fmt: skip
+        tid = dh.write_table(engine, set_id, table, job_id=None, tick=noop)["table_id"]
+        cache = tmp_path / "cache" / "tables"
+        snap = _snapshot_file(engine, set_id, tid, cache, 2)
+        keys = {c.name: c.key for c in snap.columns if c.key.startswith("c")}
+        want = _reference_lines(snap, keys, event=True)
+        for got in (source.read(engine, set_id, tid, ["V", "T"], cache_dir=cache), source.read(engine, set_id, tid, ["V", "T"])):
+            assert got.row_ids.tolist() == want["row_ids"] and got.skipped == want["skipped"]
+            assert got.holes == want["holes"] and got.starts.tolist() == want["starts"]
+            assert got.from_m.tolist() == want["from"] and got.to_m.tolist() == want["to"]
+            assert got.numbers["V"].tolist() == want["V"].tolist()
+            assert (got.labels["T"], got.codes["T"].tolist()) == want["T"]
+    assert want["row_ids"] == [] and want["starts"] == [0]
+    # a snapshot that lost a column (an older file): the rows are read instead
+    with dialect.read_tx(engine) as conn:
+        key = snapshot.table_key(conn, "u", set_id, str(tid))
+        assert key is not None
+    pq.write_table(pa.table({"__id": pa.array([], type=pa.int64())}), cache / f"{tid}-{key[-2]}-{key[-1]}.parquet")
+    assert source.read(engine, set_id, tid, ["V"], cache_dir=cache).source == "rows"

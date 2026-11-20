@@ -142,13 +142,13 @@ def test_more_holes_than_sqlite_parameters(db_url: str, tmp_path: Path) -> None:
 # --- the bulk writer against a row-by-row reference (Э12 12.33б) ------------------------------------------
 
 
-def _reference_rows(data: dh.TableData) -> list[tuple[str, float | None, float | None, bytes | None, bytes | None, dict[str, object] | None]]:
+def _reference_rows(data: dh.TableData) -> list[tuple[object, ...]]:
     """What Э4 stores for every row, the slow way: (hole, from, to, vector, qual, text map)."""
     import struct
 
     numbers = [i for i, c in enumerate(data.columns) if c.kind == "number"]
     texts = [i for i, c in enumerate(data.columns) if c.kind == "text"]
-    out = []
+    out: list[tuple[object, ...]] = []
     for r, hole in enumerate(data.holes):
         vals = [float(data.values[i][r]) for i in numbers]
         w = len(vals)
@@ -312,9 +312,8 @@ def test_row_keys_come_in_the_order_of_the_arrays(db_url: str, tmp_path: Path, m
     data = table("Пробы", holes, [float(i) for i in range(n)], ["x"] * n)
     res = dh.write_table(engine, s1, data, job_id=None, tick=noop)
     with dialect.read_tx(engine) as conn:
-        rows = conn.execute(
-            sa.select(dh_rows.c.id, dh_rows.c.from_m).where(dh_rows.c.table_id == res["table_id"]).order_by(dh_rows.c.id)
-        ).all()
+        mine = dh_rows.c.table_id == res["table_id"]
+        rows = conn.execute(sa.select(dh_rows.c.id, dh_rows.c.from_m).where(mine).order_by(dh_rows.c.id)).all()
     assert [r.from_m for r in rows] == [float(i) for i in range(n)]  # the rows are stored in the order given
     if db_url == "sqlite":
         assert res["row_ids"].tolist() == [r.id for r in rows]

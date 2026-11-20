@@ -10,6 +10,12 @@ so the codes do not depend on the order of rows either. The columns are read fro
 the table (`cache/tables/<id>-<token>-<rev>.parquet`, Э6) when it is there, else by a narrow read of
 `dh_rows` (the vectors decoded only up to the last wanted slot, JSON only for the wanted text slots).
 
+5 million rows of 10 fields are read within the memory of the columns themselves (ТЗ 8.2.3: the job — ≤ 2 ГБ):
+the snapshot is read column by column, each put into line order (when the rows are not in it already — an
+import writes them hole by hole, by depth — and then nothing is sorted or copied) and released before the
+next; a text column comes as the dictionary of the file and the indices into it, no string per row. `tick`
+(the job's) is called between the columns, the stations and the parts of the hash: a cancel is answered there.
+
 `input_hash` — SHA-256 of what the result depends on (8.0.2): the bytes of the chosen columns, FROM, TO, the
 hole names, the trajectory stations, the geometry keys of wireframes and the parameters; rows in a canonical
 order, so the same data written in another order gives the same hash.
@@ -19,7 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -32,6 +38,14 @@ from bf_core.db import dialect
 from bf_core.db.schema import dh_columns, dh_holes, dh_tables
 
 from .results import _token
+
+Tick = Callable[[float | None, str | None], None]
+
+
+def _beat(tick: Tick | None) -> None:
+    """A sign of life between two steps of a reading (no progress, no text): a cancel is raised here."""
+    if tick is not None:
+        tick(None, None)
 
 
 @dataclass
@@ -57,7 +71,6 @@ class Lines:
     kind: str  # assay | interval | event
     fields: dict[str, Field]  # by the stored column name
     row_ids: np.ndarray  # int64 dh_rows.id
-    hole_ids: np.ndarray  # int64 dh_holes.id of every row
     holes: list[str]  # hole names in line order (sorted)
     hole_db_ids: np.ndarray  # int64 dh_holes.id of every hole
     starts: np.ndarray  # int64, len(holes) + 1
@@ -72,6 +85,11 @@ class Lines:
     @property
     def rows(self) -> int:
         return len(self.row_ids)
+
+    @property
+    def hole_ids(self) -> np.ndarray:
+        """int64 dh_holes.id of every row (made on demand: the holes and `starts` hold it)."""
+        return np.repeat(self.hole_db_ids, np.diff(self.starts))  # type: ignore[no-any-return]
 
     def hole_of(self) -> np.ndarray:
         """Dense hole index (0…len(holes)-1) of every row."""
@@ -105,6 +123,18 @@ def _fields(conn: sa.Connection, table_id: int, names: Iterable[str]) -> dict[st
     return out
 
 
+def _hole_names(conn: sa.Connection, set_id: int, holes: Sequence[int] | None) -> dict[int, str]:
+    """Names of the holes of the set by id; `holes` — only of these (the preview of one hole)."""
+    q = sa.select(dh_holes.c.id, dh_holes.c.name).where(dh_holes.c.set_id == set_id)
+    if holes is not None:
+        q = q.where(dh_holes.c.id.in_(_few(holes)))
+    return {int(r.id): r.name for r in conn.execute(q)}
+
+
+def _few(holes: Sequence[int]) -> list[int]:
+    return sorted({int(h) for h in holes})[:500]  # a preview reads one hole; parameters stay few
+
+
 def read(
     engine: sa.Engine,
     set_id: int,
@@ -113,6 +143,7 @@ def read(
     *,
     cache_dir: Path | None = None,
     holes: Sequence[int] | None = None,
+    tick: Tick | None = None,
 ) -> Lines:
     """The chosen columns (names or keys `c<id>`) of a ready table of the set, as lines. `holes` — only the rows
     of these holes (dh_holes.id; the preview of one hole: an indexed read of `dh_rows`, no snapshot)."""
@@ -126,40 +157,90 @@ def read(
             raise _not_found()
         chosen = _fields(conn, table_id, fields)
         token = _token(t.created_at)
-        names = {
-            int(r.id): r.name
-            for r in conn.execute(sa.select(dh_holes.c.id, dh_holes.c.name).where(dh_holes.c.set_id == set_id))
-        }
+        names = _hole_names(conn, set_id, holes)
         path = None if cache_dir is None else cache_dir / f"{table_id}-{token}-{t.rev}.parquet"
-        got = None
-        if path is not None and holes is None and path.is_file():
-            try:
-                got = _from_parquet(path, chosen)
-            except Exception:  # noqa: BLE001 - a damaged or older snapshot: read the rows instead
-                got = None
-        source = "parquet" if got is not None else "rows"
-        if got is None:
-            got = _from_rows(conn, table_id, chosen, holes)
+        snapshot = path is not None and holes is None and path.is_file()
+        got = None if snapshot else _from_rows(conn, table_id, chosen, holes, tick)
+    if got is None:
+        assert path is not None
+        try:
+            return _from_parquet(path, set_id, t, token, chosen, names, tick)
+        except Exception as exc:  # noqa: BLE001 - a damaged or older snapshot: read the rows instead
+            from bf_core.jobs.context import JobCancelled
+
+            if isinstance(exc, JobCancelled):
+                raise
+        with dialect.read_tx(engine) as conn:
+            got = _from_rows(conn, table_id, chosen, holes, tick)
     ids, hole_ids, f, to, cols = got
-    return _lines(set_id, t, token, chosen, names, ids, hole_ids, f, to, cols, source)
+    if t.kind == "event":  # one depth: «до» follows «от»
+        to = np.where(np.isnan(to), f, to)
+    lay = _layout(names, ids, hole_ids, f, to)
+    del hole_ids
+    out = _lines(set_id, t, token, chosen, lay, lay.take(ids), lay.take(f), lay.take(to), "rows")
+    del ids, f, to
+    for c in chosen.values():
+        col = lay.take(cols.pop(c.name))
+        if c.kind == "number":
+            out.numbers[c.name] = col
+        else:
+            out.codes[c.name], out.labels[c.name] = text_codes(col)
+        _beat(tick)
+    return out
 
 
-def _from_parquet(path: Path, chosen: dict[str, Field]) -> tuple[Any, ...]:
+def _from_parquet(
+    path: Path, set_id: int, t: Any, token: str, chosen: dict[str, Field], names: dict[int, str], tick: Tick | None
+) -> Lines:
+    """The lines from the snapshot: the fixed columns give the order of the rows, then every chosen column is
+    read, put into it and released — the peak is the columns kept and one more."""
+    import pyarrow as pa
     import pyarrow.parquet as pq
 
-    with pq.ParquetFile(path) as pf:
-        wanted = ["__id", "__hole", "from", "to", *(c.key for c in chosen.values())]
-        tbl = pf.read(columns=wanted)
-    cols: dict[str, np.ndarray] = {}
-    for c in chosen.values():
-        col = tbl.column(c.key)
-        cols[c.name] = (
-            col.to_numpy().astype(float, copy=False)
-            if c.kind == "number"
-            else col.to_numpy(zero_copy_only=False).astype(object, copy=False)
-        )
-    arr = [tbl.column(k).to_numpy() for k in ("__id", "__hole", "from", "to")]
-    return arr[0].astype(np.int64), arr[1].astype(np.int64), arr[2].astype(float), arr[3].astype(float), cols
+    texts = [c.key for c in chosen.values() if c.kind == "text"]
+    with pq.ParquetFile(path, read_dictionary=texts) as pf:
+
+        def column(key: str) -> Any:
+            col = pf.read(columns=[key]).column(0)
+            _beat(tick)
+            return col
+
+        def number(key: str, dtype: Any = np.float64) -> np.ndarray:
+            return np.asarray(column(key).to_numpy(), dtype=dtype)  # nulls of a float column come as NaN
+
+        ids, hole_ids, f, to = number("__id", np.int64), number("__hole", np.int64), number("from"), number("to")
+        if t.kind == "event":
+            to = np.where(np.isnan(to), f, to)
+        lay = _layout(names, ids, hole_ids, f, to)
+        del hole_ids
+        out = _lines(set_id, t, token, chosen, lay, lay.take(ids), lay.take(f), lay.take(to), "parquet")
+        del ids, f, to
+        for c in chosen.values():
+            if c.kind == "number":
+                out.numbers[c.name] = lay.take(number(c.key))
+                continue
+            col = column(c.key)
+            if not pa.types.is_dictionary(col.type):  # not a dictionary in the file: strings, the slow way
+                values = col.to_numpy(zero_copy_only=False).astype(object, copy=False)
+                out.codes[c.name], out.labels[c.name] = text_codes(lay.take(values))
+                continue
+            whole = col.unify_dictionaries().combine_chunks()  # every row group has a dictionary of its own
+            whole = whole.chunk(0) if isinstance(whole, pa.ChunkedArray) else whole
+            index = lay.take(np.asarray(whole.indices.fill_null(-1).to_numpy(zero_copy_only=False), dtype=np.int32))
+            out.codes[c.name], out.labels[c.name] = _dictionary_codes(index, whole.dictionary.to_pylist())
+    return out
+
+
+def _dictionary_codes(index: np.ndarray, values: list[Any]) -> tuple[np.ndarray, list[str]]:
+    """Indices into the dictionary of a text column (−1 — null) → int32 codes into the sorted labels the rows
+    have (−1 — empty): what `text_codes` gives for the strings themselves. "" is empty; a value no row of the
+    lines has (it stood only in rows left out) is not a label."""
+    labels_of = [None if v is None or v == "" else str(v) for v in values]
+    used = np.bincount(index[index >= 0], minlength=len(values)).astype(bool) if len(values) else np.zeros(0, bool)
+    labels = sorted({v for v, u in zip(labels_of, used.tolist(), strict=True) if u and v is not None})
+    at = {v: i for i, v in enumerate(labels)}
+    remap = np.array([*(at.get(v, -1) if v is not None else -1 for v in labels_of), -1], dtype=np.int32)
+    return remap[index], labels  # −1 → the last one: −1
 
 
 def _decode(blobs: Sequence[bytes | None], width: int) -> np.ndarray:
@@ -170,7 +251,11 @@ def _decode(blobs: Sequence[bytes | None], width: int) -> np.ndarray:
 
 
 def _from_rows(
-    conn: sa.Connection, table_id: int, chosen: dict[str, Field], holes: Sequence[int] | None = None
+    conn: sa.Connection,
+    table_id: int,
+    chosen: dict[str, Field],
+    holes: Sequence[int] | None = None,
+    tick: Tick | None = None,
 ) -> tuple[Any, ...]:
     nums = [c for c in chosen.values() if c.kind == "number"]
     texts = [c for c in chosen.values() if c.kind == "text"]
@@ -180,7 +265,7 @@ def _from_rows(
     sql = f"SELECT {', '.join(sel)} FROM dh_rows WHERE table_id = ?"
     args: tuple[Any, ...] = (table_id,)
     if holes is not None:
-        wanted = sorted({int(h) for h in holes})[:500]  # a preview reads one hole; parameters stay few
+        wanted = _few(holes)
         sql += f" AND hole_id IN ({', '.join('?' * len(wanted))})" if wanted else " AND 0 = 1"
         args += tuple(wanted)
     sql += " ORDER BY id"
@@ -200,6 +285,7 @@ def _from_rows(
         for k, c in enumerate(texts):
             text_parts[c.name].append(np.array(got[j + k], dtype=object))
         del chunk, got
+        _beat(tick)
 
     def cat(arrs: list[np.ndarray], dtype: Any) -> np.ndarray:
         return np.concatenate(arrs) if arrs else np.zeros(0, dtype=dtype)
@@ -207,6 +293,7 @@ def _from_rows(
     cols: dict[str, np.ndarray] = {}
     if nums:
         matrix = np.concatenate(mats) if mats else np.zeros((0, width))
+        del mats
         for c in nums:
             cols[c.name] = np.ascontiguousarray(matrix[:, c.slot])
         del matrix
@@ -215,24 +302,50 @@ def _from_rows(
     return cat(parts[0], np.int64), cat(parts[1], np.int64), cat(parts[2], float), cat(parts[3], float), cols
 
 
-def _lines(
-    set_id: int,
-    t: Any,
-    token: str,
-    chosen: dict[str, Field],
-    names: dict[int, str],
-    ids: np.ndarray,
-    hole_ids: np.ndarray,
-    f: np.ndarray,
-    to: np.ndarray,
-    cols: dict[str, np.ndarray],
-    source: str,
-) -> Lines:
-    if t.kind == "event":  # one depth: «до» follows «от»
-        to = np.where(np.isnan(to), f, to)
-    keep = ~np.isnan(f) & ~np.isnan(to)
-    skipped = int(len(keep) - keep.sum())
-    uniq = np.unique(hole_ids[keep]) if len(ids) else np.zeros(0, dtype=np.int64)
+@dataclass
+class _Layout:
+    """Where the rows of a table go in its lines."""
+
+    order: np.ndarray | None  # the rows kept, in line order; None — all of them, as they are
+    skipped: int
+    holes: list[str]
+    hole_db_ids: np.ndarray
+    starts: np.ndarray
+
+    def take(self, column: np.ndarray) -> np.ndarray:
+        """A column of the table in line order: C-contiguous and writable (one numba specialization of every
+        kernel; an Arrow buffer is read-only) — the column itself when nothing moves and it is such."""
+        if self.order is not None:
+            return column[self.order]  # type: ignore[no-any-return]
+        if column.flags.c_contiguous and column.flags.writeable:
+            return column
+        return np.array(column, order="C")
+
+
+def _layout(names: dict[int, str], ids: np.ndarray, hole_ids: np.ndarray, f: np.ndarray, to: np.ndarray) -> _Layout:
+    """The line order of rows: by (hole name, FROM, TO, row id), rows without FROM or TO left out. Rows that
+    already come so (an import writes a table hole by hole, by depth; a result is written in line order) are
+    found by one pass — nothing is sorted and no column is copied."""
+    n = len(ids)
+    keep = ~(np.isnan(f) | np.isnan(to))
+    kept = int(keep.sum())
+    if kept == n and n:
+        cut = np.flatnonzero(hole_ids[1:] != hole_ids[:-1]) + 1
+        runs = hole_ids[np.concatenate(([0], cut))]  # the hole of every run of rows
+        run_names = [names.get(int(h), "") for h in runs.tolist()]
+        by_hole = all(a < b for a, b in zip(run_names, run_names[1:], strict=False)) or (
+            len(np.unique(runs)) == len(runs)
+            and all(a <= b for a, b in zip(zip(run_names, runs.tolist(), strict=True),
+                                           zip(run_names[1:], runs[1:].tolist(), strict=True), strict=False))
+        )  # fmt: skip
+        if by_hole:
+            f0, f1, t0, t1 = f[:-1], f[1:], to[:-1], to[1:]
+            rising = (f1 > f0) | ((f1 == f0) & ((t1 > t0) | ((t1 == t0) & (ids[1:] > ids[:-1]))))
+            rising[cut - 1] = True  # the first row of a hole follows another hole
+            if bool(rising.all()):
+                starts = np.concatenate(([0], cut, [n])).astype(np.int64)
+                return _Layout(None, 0, run_names, np.ascontiguousarray(runs, dtype=np.int64), starts)
+    uniq = np.unique(hole_ids[keep]) if n else np.zeros(0, dtype=np.int64)
     hole_names = [names.get(int(h), "") for h in uniq.tolist()]
     by_name = np.argsort(np.array(hole_names, dtype=object), kind="stable") if hole_names else np.zeros(0, int)
     rank = np.empty(len(uniq), dtype=np.int64)
@@ -240,9 +353,29 @@ def _lines(
     rows = np.flatnonzero(keep)
     h_rank = rank[np.searchsorted(uniq, hole_ids[rows])] if len(rows) else np.zeros(0, dtype=np.int64)
     order = rows[np.lexsort((ids[rows], to[rows], f[rows], h_rank))] if len(rows) else rows
-    h_sorted = rank[np.searchsorted(uniq, hole_ids[order])] if len(order) else np.zeros(0, dtype=np.int64)
-    counts = np.bincount(h_sorted, minlength=len(uniq)) if len(uniq) else np.zeros(0, dtype=np.int64)
-    out = Lines(
+    counts = np.bincount(h_rank, minlength=len(uniq)) if len(uniq) else np.zeros(0, dtype=np.int64)
+    return _Layout(
+        order,
+        n - kept,
+        [hole_names[i] for i in by_name.tolist()],
+        uniq[by_name],
+        np.concatenate(([0], np.cumsum(counts))).astype(np.int64),
+    )
+
+
+def _lines(
+    set_id: int,
+    t: Any,
+    token: str,
+    chosen: dict[str, Field],
+    lay: _Layout,
+    ids: np.ndarray,
+    f: np.ndarray,
+    to: np.ndarray,
+    source: str,
+) -> Lines:
+    """The lines without their columns (the callers add them one by one); `ids`, `f`, `to` — in line order."""
+    return Lines(
         set_id=set_id,
         table_id=int(t.id),
         name=t.name,
@@ -251,23 +384,15 @@ def _lines(
         rev=int(t.rev),
         kind=t.kind,
         fields=chosen,
-        row_ids=ids[order],
-        hole_ids=hole_ids[order],
-        holes=[hole_names[i] for i in by_name.tolist()],
-        hole_db_ids=uniq[by_name],
-        starts=np.concatenate(([0], np.cumsum(counts))).astype(np.int64),
-        from_m=np.ascontiguousarray(f[order]),
-        to_m=np.ascontiguousarray(to[order]),
-        skipped=skipped,
+        row_ids=ids,
+        holes=lay.holes,
+        hole_db_ids=lay.hole_db_ids,
+        starts=lay.starts,
+        from_m=f,
+        to_m=to,
+        skipped=lay.skipped,
         source=source,
     )
-    for c in chosen.values():
-        v = cols[c.name][order]
-        if c.kind == "number":
-            out.numbers[c.name] = np.ascontiguousarray(v, dtype=float)
-        else:
-            out.codes[c.name], out.labels[c.name] = text_codes(v)
-    return out
 
 
 def text_codes(values: np.ndarray) -> tuple[np.ndarray, list[str]]:
@@ -282,19 +407,34 @@ def text_codes(values: np.ndarray) -> tuple[np.ndarray, list[str]]:
 # --- trajectories --------------------------------------------------------------------------------------
 
 
-def trajectories(project: Any, set_id: int, method: str = "minimum_curvature") -> Any:
+def trajectories(project: Any, set_id: int, method: str = "minimum_curvature", *, tick: Tick | None = None) -> Any:
     """Trajectories of the set (`drillholes.trajectory`, cached by the set version); `project` needs
-    `engine` and `uid`."""
+    `engine` and `uid`. With `tick` (a job) they are built on a thread of their own while this one ticks:
+    50 thousand holes take over a second, and the builder has no place to ask for a cancel. A cancel waits
+    for the builder to end (it writes nothing) and is raised then."""
     from bf_core.drillholes.trajectory import trajectories as build
 
-    return build(project, set_id, method)
+    if tick is None:
+        return build(project, set_id, method)
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as Waiting
+
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="bf-trajectories") as pool:
+        job = pool.submit(build, project, set_id, method)
+        while True:
+            try:
+                return job.result(timeout=0.2)
+            except Waiting:
+                tick(None, None)
 
 
-def stations_bytes(st: Any, hole_db_ids: Sequence[int]) -> bytes:
+def stations_bytes(st: Any, hole_db_ids: Sequence[int], *, tick: Tick | None = None) -> bytes:
     """The stations (depth, X, Y, Z) of the holes in the given order — for `input_hash`."""
     out = bytearray()
     skipped = set(np.asarray(st.traj.skipped).tolist())
-    for h in hole_db_ids:
+    for k, h in enumerate(hole_db_ids):
+        if not k % 5000:
+            _beat(tick)
         i = st.index.get(int(h))
         if i is None or i in skipped:
             out += b"\xff" * 8
@@ -333,12 +473,15 @@ def input_hash(
     stations: bytes | None = None,
     meshes: Sequence[str] = (),
     algo: str = "",
+    tick: Tick | None = None,
 ) -> str:
-    """SHA-256 (hex) of the inputs of a result (ADR 0018 §2)."""
+    """SHA-256 (hex) of the inputs of a result (ADR 0018 §2). `tick` — after every column."""
     h = hashlib.sha256()
 
     def put(tag: str, data: bytes) -> None:
-        h.update(tag.encode() + len(data).to_bytes(8, "little") + data)
+        h.update(tag.encode() + len(data).to_bytes(8, "little"))
+        h.update(data)  # not joined with the tag: a column of 5 million rows is not copied for it
+        _beat(tick)
 
     put("params", json.dumps(params, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode())
     put("algo", algo.encode())

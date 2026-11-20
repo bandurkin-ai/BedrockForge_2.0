@@ -478,14 +478,15 @@ def run(
         inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True, meshes=spec.mesh_ids())
     tick(0.02, "Чтение проб")
     cache = folder / "cache" / "tables"
-    src = source.read(engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache)
+    src = source.read(engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache, tick=tick)
     d = spec.other_domain()
-    dom = None if d is None else source.read(engine, spec.set_id, d.table_id, [d.field], cache_dir=cache)
+    dom = None if d is None else source.read(engine, spec.set_id, d.table_id, [d.field], cache_dir=cache, tick=tick)
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
-    st = source.trajectories(project, spec.set_id)
+    st = source.trajectories(project, spec.set_id, tick=tick)
     algo = ALGO[spec.method]
-    stations = source.stations_bytes(st, src.hole_db_ids.tolist())
-    sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=algo)
+    stations = source.stations_bytes(st, src.hole_db_ids.tolist(), tick=tick)
+    sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=algo,
+                            tick=tick)  # fmt: skip
     fresh = _fresh(engine, rebuild, spec.set_id, sha, algo, inputs)
     if fresh is not None:
         return fresh
@@ -494,8 +495,10 @@ def run(
     tick(0.1, "Композиты")
     with jobs_coding.reading(project, keep=False):  # domains by wireframes read their geometry
         made = compose.compute(
-            spec, src, dom, ends, st, threads=strips.default_threads(), tick=lambda f: tick(0.1 + 0.5 * f, None)
-        )
+            spec, src, dom, ends, st, threads=strips.default_threads(), tick=lambda f: tick(0.1 + 0.5 * f, None),
+            release=True,
+        )  # fmt: skip
+    del src, dom
     return _store(engine, folder, spec, made, op=spec.method, inputs=inputs, sha=sha, algo=algo, job_id=job_id,
                   t0=t0, tick=tick)  # fmt: skip
 
@@ -522,14 +525,14 @@ def run_tables(
         )
     tick(0.02, "Чтение таблиц")
     cache = folder / "cache" / "tables"
-    srcs = [source.read(engine, spec.set_id, i, f, cache_dir=cache) for i, _n, f in spec.tables]
+    srcs = [source.read(engine, spec.set_id, i, f, cache_dir=cache, tick=tick) for i, _n, f in spec.tables]
     algo = ALGO[op]
     st = None
     stations = None
     if op == "coords":
-        st = source.trajectories(SimpleNamespace(engine=engine, uid=f"job:{folder}"), spec.set_id)
-        stations = source.stations_bytes(st, srcs[0].hole_db_ids.tolist())
-    sha = source.input_hash(srcs, spec.hash_params(), stations=stations, algo=algo)
+        st = source.trajectories(SimpleNamespace(engine=engine, uid=f"job:{folder}"), spec.set_id, tick=tick)
+        stations = source.stations_bytes(st, srcs[0].hole_db_ids.tolist(), tick=tick)
+    sha = source.input_hash(srcs, spec.hash_params(), stations=stations, algo=algo, tick=tick)
     fresh = _fresh(engine, rebuild, spec.set_id, sha, algo, inputs)
     if fresh is not None:
         return fresh
