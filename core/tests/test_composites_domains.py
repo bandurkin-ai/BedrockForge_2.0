@@ -213,8 +213,8 @@ def test_t8_2_6_no_composite_crosses_a_domain_boundary(origin: str) -> None:
     inside = (nxt < change.shape[0]) & (change[np.minimum(nxt, change.shape[0] - 1)] < key1 - 1e-6)
     assert not inside.any()
 
-    # DOMAIN is the code of the lithology all along the composite
-    for share in (0.02, 0.5, 0.98):
+    # DOMAIN is the code of the lithology all along the composite (probes off the round depths of the rows)
+    for share in (0.01234567, 0.48712345, 0.98765433):
         assert np.array_equal(_code_at(litho, code, ch, c0 + share * (c1 - c0)), c.domain)
     # nothing is lost but what the journal counts: composites + short stretches + dropped remainders
     whole = float(np.maximum(depth, lines.to[lines.starts[1:] - 1]).sum())
