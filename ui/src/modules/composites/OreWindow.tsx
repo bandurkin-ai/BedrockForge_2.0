@@ -9,14 +9,13 @@
  * by class (and domain) of the hole and the set. «Применить» → the job; when it is done, the table opens in the
  * bottom panel and the display «Рудные интервалы» is switched on in 3D.
  */
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { DepthAxis, SampleColumn } from "../../charts/column/SampleColumn";
 import { assignLanes, classTitle, CLASS_STYLE, finalRows, laneCount, legendOf, sampleClasses, textOn, TRIM_COLOR } from "../../charts/column/classes";
 import { colorOf, columnsRange, depthScale, depthText, valueRange, type DepthScale } from "../../charts/column/scale";
 import { AppContext } from "../../shell/AppContext";
 import type { App } from "../../shell/app";
 import { errorText } from "../../shell/props";
-import { useStore } from "../../shell/useStore";
 import { setPanel } from "../../shell/workspace";
 import css from "../../shell/PropsParts.module.css";
 import { chartsOfSet, loadLibrary } from "../downhole/library";
@@ -225,7 +224,8 @@ export async function showOreResult(app: App | null, result: Record<string, unkn
 /** Runs `showOreResult` once when the job of the window is done. */
 function useShowWhenDone(job: Started | null): void {
   const app = useContext(AppContext);
-  const live = useStore(jobsStore, (s) => (job ? s.jobs.find((j) => j.source === job.source && j.id === job.id) : undefined));
+  const get = () => (job ? jobsStore.get().jobs.find((j) => j.source === job.source && j.id === job.id) : undefined);
+  const live = useSyncExternalStore(jobsStore.subscribe, get, get); // a server snapshot too: the window renders statically in tests
   const shownFor = useRef<string | null>(null);
   useEffect(() => {
     if (!job || live?.status !== "done" || !live.result) return;
