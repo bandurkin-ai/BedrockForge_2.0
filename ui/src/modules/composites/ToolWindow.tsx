@@ -19,6 +19,7 @@ import { createPreviewer, loadHoles, startTool, type FieldRow, type HoleRow, typ
 import { toolValues, WINDOW_PREFIX } from "./bind";
 import { CodingWindow } from "./CodingWindow";
 import { CompositeWindow } from "./CompositeWindow";
+import { ConditionsWindow } from "./ConditionsWindow";
 import { DeclusWindow } from "./DeclusWindow";
 import { EquivalentWindow } from "./EquivalentWindow";
 import { CoordsWindow, MergeWindow } from "./MergeWindow";
@@ -341,5 +342,6 @@ export function renderCompositesWindow(w: FloatWin): ReactNode | null {
   if (tool.id === "topcut") return <TopcutWindow winId={w.id} args={args} />;
   if (tool.id === "declus") return <DeclusWindow winId={w.id} args={args} />;
   if (tool.id === "ore") return <OreWindow winId={w.id} args={args} />;
+  if (tool.id === "conditions") return <ConditionsWindow winId={w.id} args={args} />;
   return <ToolWindow winId={w.id} tool={tool} args={args} />;
 }

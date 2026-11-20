@@ -10,10 +10,13 @@ import { useApp } from "../../shell/AppContext";
 import css from "../../shell/PropsParts.module.css";
 import { useStore } from "../../shell/useStore";
 import { closeWindow } from "../../shell/windows";
+import { VariantsTable } from "./ConditionsWindow";
 import own from "./Composites.module.css";
 import type { ResultRow } from "./api";
+import { OreEdit } from "./OreEdit";
 import { loadSetResults, paramFacts, recordFacts, reportFacts, resultLabel, resultMenu, resultsStore, sourceFacts, staleText, watchResults, type Fact } from "./results";
 import { runResultAction } from "./ResultsTree";
+import { toVariants, variantsUnit } from "./tools/conditions";
 
 function FactList({ facts, testId }: { facts: readonly Fact[]; testId?: string }) {
   if (!facts.length) return <p className={css.note}>—</p>;
@@ -111,6 +114,13 @@ export function ResultProps({ winId, resultId, setId }: { winId: string; resultI
     <div className={css.win} data-testid="result-props">
       <div className={css.winBody}>
         <ResultFacts r={r} />
+        {r.op === "conditions" && (
+          <fieldset className={css.group}>
+            <legend>Варианты</legend>
+            <VariantsTable variants={toVariants(r.report)} unit={variantsUnit(r.report)} field={typeof r.params?.field === "string" ? r.params.field : null} />
+          </fieldset>
+        )}
+        {r.op === "ore" && r.table_id !== null && <OreEdit result={r} readOnly={readOnly} />}
       </div>
       <div className={css.footer}>
         {items.map((it) => (
