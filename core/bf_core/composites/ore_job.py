@@ -476,14 +476,15 @@ def sample_columns(made: OreMade) -> list[tuple[ColumnSpec, np.ndarray]]:
 # --- the job -----------------------------------------------------------------------------------------------
 
 
-def read_ore(engine: sa.Engine, spec: OreSpec, *, cache_dir: Any = None,
-             holes: list[int] | None = None) -> tuple[source.Lines, source.Lines | None]:  # fmt: skip
+def read_ore(engine: sa.Engine, spec: OreSpec, *, cache_dir: Any = None, holes: list[int] | None = None,
+             tick: cj.Tick2 | None = None) -> tuple[source.Lines, source.Lines | None]:  # fmt: skip
     from . import source
 
-    src = source.read(engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache_dir, holes=holes)
+    src = source.read(engine, spec.set_id, spec.table_id, spec.read_fields(), cache_dir=cache_dir, holes=holes,
+                      tick=tick)  # fmt: skip
     d = spec.other_domain()
     dom = None if d is None else source.read(engine, spec.set_id, d.table_id, [d.field], cache_dir=cache_dir,
-                                             holes=holes)  # fmt: skip
+                                             holes=holes, tick=tick)  # fmt: skip
     return src, dom
 
 
@@ -509,11 +510,12 @@ def run_ore(
         inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True, meshes=spec.mesh_ids())
     tick(0.02, "Чтение проб")
     cache = folder / "cache" / "tables"
-    src, dom = read_ore(engine, spec, cache_dir=cache)
+    src, dom = read_ore(engine, spec, cache_dir=cache, tick=tick)
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
-    st = source.trajectories(project, spec.set_id)
-    stations = source.stations_bytes(st, src.hole_db_ids.tolist())
-    sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=ALGO)
+    st = source.trajectories(project, spec.set_id, tick=tick)
+    stations = source.stations_bytes(st, src.hole_db_ids.tolist(), tick=tick)
+    sha = source.input_hash([src, *([dom] if dom else [])], spec.hash_params(), stations=stations, algo=ALGO,
+                            tick=tick)  # fmt: skip
     fresh = cj._fresh(engine, rebuild, spec.set_id, sha, ALGO, inputs)
     if fresh is not None:
         with dialect.read_tx(engine) as conn:

@@ -206,10 +206,10 @@ def _ore_report(
     with dialect.read_tx(engine) as conn:
         spec = fresh_spec(conn, rec, "выгрузите протокол")
     tick(0.02, "Чтение проб")
-    src, dom = oj.read_ore(engine, spec, cache_dir=folder / "cache" / "tables")
+    src, dom = oj.read_ore(engine, spec, cache_dir=folder / "cache" / "tables", tick=tick)
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
     by_wf = spec.domain is not None and spec.domain.wireframes is not None
-    st = source.trajectories(project, spec.set_id) if by_wf else None
+    st = source.trajectories(project, spec.set_id, tick=tick) if by_wf else None
     with jobs_coding.reading(project, keep=False):
         lines, kernel, _journal = ore_lines(spec, src, dom, st)
     edits = edits_by_index(rec["report"], src.holes)

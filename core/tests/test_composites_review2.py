@@ -17,6 +17,7 @@ from bf_core.db import dialect
 from bf_core.db.schema import dh_results
 from tests.test_composites_prep import demo  # noqa: F401 - the fixture
 from tests.test_import_job import API
+from tests.test_ore_job import gkz  # noqa: F401 - the fixture
 
 C = f"{API}/composites"
 
@@ -312,3 +313,37 @@ def json_key(x: Any) -> str:
     import json
 
     return json.dumps(x, sort_keys=True)
+
+
+# --- 12.33б: the ore jobs tick while they read, build the paths and hash ------------------------------------
+
+
+def test_ore_jobs_pass_tick_to_reading_paths_and_hash(gkz, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    from bf_core.composites import ore_conditions_job as ocj
+    from bf_core.composites import source
+    from tests.test_ore_job import body as ore_body
+    from tests.test_ore_job import cond_body, ore_here
+    from tests.test_ore_report import export_here
+
+    c, project, set_id, table, _holes = gkz
+    seen: list[tuple[str, bool]] = []
+    for name in ("read", "trajectories", "stations_bytes", "input_hash"):
+        real = getattr(source, name)
+
+        def wrap(*a: Any, _real: Any = real, _name: str = name, **kw: Any) -> Any:
+            if kw.get("holes") is None:  # not the preview of one hole
+                seen.append((_name, kw.get("tick") is not None))
+            return _real(*a, **kw)
+
+        monkeypatch.setattr(source, name, wrap)
+    done = ore_here(project, {"body": ore_body(set_id, table)})
+    assert {n for n, _t in seen} == {"read", "trajectories", "stations_bytes", "input_hash"}, seen
+    assert all(t for _n, t in seen), seen
+    seen.clear()
+    with dialect.read_tx(project.engine) as conn:
+        params, _t = ocj.parse_conditions(conn, cond_body(set_id, table))
+    ocj.run_conditions(project.engine, project.folder, params, job_id=96_101, tick=lambda *_a: None)
+    assert {n for n, _t in seen} >= {"read", "input_hash"} and all(t for _n, t in seen), seen
+    seen.clear()
+    export_here(project, done["result_id"], tmp_path / "Протокол.xlsx")
+    assert {n for n, _t in seen} >= {"read"} and all(t for _n, t in seen), seen

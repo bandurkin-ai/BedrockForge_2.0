@@ -183,11 +183,11 @@ def run_conditions(
         inputs = results.make_inputs(conn, spec.set_id, tables, trajectories=by_wf, meshes=spec.mesh_ids())
     tick(0.02, "Чтение проб")
     cache = folder / "cache" / "tables"
-    src = source.read(engine, spec.set_id, spec.table_id, fields, cache_dir=cache)
+    src = source.read(engine, spec.set_id, spec.table_id, fields, cache_dir=cache, tick=tick)
     d = spec.other_domain()
-    dom = None if d is None else source.read(engine, spec.set_id, d.table_id, [d.field], cache_dir=cache)
+    dom = None if d is None else source.read(engine, spec.set_id, d.table_id, [d.field], cache_dir=cache, tick=tick)
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
-    st = source.trajectories(project, spec.set_id) if by_wf else None
+    st = source.trajectories(project, spec.set_id, tick=tick) if by_wf else None
     with jobs_coding.reading(project, keep=False):
         lines, kernel, journal = ore_lines(spec, src, dom, st)
     mask = exclusion(_column(src, exclude["field"]), exclude["values"]) if exclude else None
@@ -212,7 +212,7 @@ def run_conditions(
         raise oj.as_api(exc) from None
     if found.stats.get("excluded"):
         journal.append(f"Исключено проб по полю «{exclude['field']}»: {found.stats['excluded']}.")  # type: ignore[index]
-    stations = source.stations_bytes(st, src.hole_db_ids.tolist()) if st is not None else None
+    stations = source.stations_bytes(st, src.hole_db_ids.tolist(), tick=tick) if st is not None else None
     hashed = {
         **spec.hash_params(),
         "op": OP,
@@ -221,7 +221,7 @@ def run_conditions(
         "mc_min": oj._optional(body, "mc_min"),
         "c_min": oj._optional(body, "c_min"),
     }
-    sha = source.input_hash([src, *([dom] if dom else [])], hashed, stations=stations, algo=oj.ALGO)
+    sha = source.input_hash([src, *([dom] if dom else [])], hashed, stations=stations, algo=oj.ALGO, tick=tick)
     from .jobs_prep import clean
 
     report = clean(
