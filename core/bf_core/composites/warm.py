@@ -7,6 +7,8 @@ domains, benches, merging and coordinates add their kernels here.
 
 from __future__ import annotations
 
+from typing import Any
+
 
 def warm() -> None:
     import numpy as np
@@ -28,7 +30,23 @@ def warm() -> None:
                                 texts=[lines.take(codes)], ends=np.array([5.0, np.nan, 8.0]))  # fmt: skip
         summary(c.lines.to - c.lines.frm, c.values.values, ["AU", "AU2"])
     summary(lines.lengths(), values, ["AU", "AU2"])
+    _warm_prep(frm, to, au, codes)
 
     from .ore_set import warm as warm_ore
 
     warm_ore()  # Д-26 (12.10–12.14): the five modes, the events, the nested rows, the means of other fields
+
+
+def _warm_prep(frm: Any, to: Any, au: Any, codes: Any) -> None:
+    """The top cut (and its analysis) and the declustering of 12.21 (`jobs_prep`)."""
+    import numpy as np
+
+    from bf_core.stats import declus3d, weighted
+
+    from .topcut import TopcutParams, topcut, topcut_analysis
+
+    weighted.warm()
+    declus3d.warm()
+    ln = np.asarray(to) - np.asarray(frm)
+    topcut(au, ln, TopcutParams(), codes=codes, names=["A", "B"], field="AU")
+    topcut_analysis(au, ln, codes=codes, names=["A", "B"], field="AU")

@@ -194,6 +194,8 @@ def test_name_taken_replace_and_dependents_repeated(demo, monkeypatch: pytest.Mo
                                             inputs=inputs, sha256="0" * 64, algo="topcut-test", report={},
                                             columns=[sink.ColumnsOut(tid, ids, [(ColumnSpec("AU_CUT", "number", "г/т"),
                                                                                  np.minimum(au, 1.0))])]))  # fmt: skip
+    cj._registered()  # the real top cut of 12.21 repeats itself; taken away here to see what «Заменить?» lists
+    monkeypatch.delitem(cj.DEPENDENTS, "topcut")
     r = c.post(f"{C}/run", json=body(set_id, table))
     assert [x["title"] for x in r.json()["lost"]] == ["Урезка"]  # «Заменить?» lists what goes
 

@@ -347,8 +347,6 @@ def _replaced_table(conn: sa.Connection, set_id: int, name: str) -> int | None:
 
 
 def _again(engine: sa.Engine, spec: Any, out: sink.OutTable, table_id: int | None = None) -> list[sink.Dependent]:
-    from . import sink
-
     if not spec.replace:
         return []
     with dialect.read_tx(engine) as conn:

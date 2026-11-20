@@ -326,7 +326,8 @@ def compute(
             after = np.column_stack([*grades, e.values])
             rep = {**e.report, "summary": {"before": summary(lengths, before, list(fields)),
                                            "after": summary(lengths, after, [*fields, kernel.name])}}  # fmt: skip
-            notes = [f"Проб без эквивалента (нет содержания): {e.report['n_missing']}."] if e.report["n_missing"] else []
+            miss = e.report["n_missing"]
+            notes = [f"Проб без эквивалента (нет содержания): {miss}."] if miss else []
             return Made([(ColumnSpec(kernel.name, "number", kernel.base.unit), e.values)], clean(rep), notes)
         from bf_core.stats.declus3d import declus_weights
 
@@ -402,9 +403,10 @@ def run_prep(
     report = {**made.report, "journal": made.journal, "versions": cj._versions(), "edits": [],
               "seconds": round(time.perf_counter() - t0, 3)}  # fmt: skip
     # no tick from here on: the final transaction writes the columns and the record, or nothing
-    res = sink.commit(engine, sink.Commit(set_id=spec.set_id, op=op, name=spec.name, params=spec.body, inputs=inputs,
-                                          sha256=sha, algo=algo, report=report, job_id=job_id,
-                                          columns=[sink.ColumnsOut(spec.table_id, src.row_ids, made.columns)]))  # fmt: skip
+    cols = sink.ColumnsOut(spec.table_id, src.row_ids, made.columns)
+    res = sink.commit(engine, sink.Commit(set_id=spec.set_id, op=op, name=spec.name, params=spec.body,
+                                          inputs=inputs, sha256=sha, algo=algo, report=report, job_id=job_id,
+                                          columns=[cols]))  # fmt: skip
     set_id = spec.set_id
     events: list[list[Any]] = [["drillholes.changed", {"set_id": set_id, "table": c["table"], "rev": c["rev"]}]
                                for c in res["changed"]]  # fmt: skip
@@ -475,8 +477,11 @@ def _again_domain(
         return codes, names, [spec.name], given
     with dialect.read_tx(ctx.engine) as conn:
         tid = conn.execute(
-            sa.select(dh_tables.c.id).where(dh_tables.c.set_id == ctx.set_id, dh_tables.c.state == "ready",
-                                            dh_tables.c.name_key == tables[1].get("key"))  # fmt: skip
+            sa.select(dh_tables.c.id).where(
+                dh_tables.c.set_id == ctx.set_id,
+                dh_tables.c.state == "ready",
+                dh_tables.c.name_key == tables[1].get("key"),
+            )  # fmt: skip
         ).scalar()
         if tid is None:
             raise _failed(rec, f"удалена таблица домена «{tables[1].get('name')}»")
@@ -502,7 +507,8 @@ def again(op: str) -> Callable[[sink.OutTable, dict[str, Any]], cj.Again]:
         params = dict(rec.get("params") or {})
         t0 = time.perf_counter()
         names_of = np.array(list(out.holes), dtype=object)
-        uniq, inv = np.unique(names_of, return_inverse=True) if len(names_of) else (np.zeros(0, object), np.zeros(0, int))
+        empty = (np.zeros(0, dtype=object), np.zeros(0, dtype=np.int64))
+        uniq, inv = np.unique(names_of, return_inverse=True) if len(names_of) else empty
         frm_all, to_all = np.asarray(out.from_m, dtype=float), np.asarray(out.to_m, dtype=float)
         order = np.lexsort((to_all, frm_all, inv)) if len(names_of) else np.zeros(0, dtype=np.int64)
         starts = np.concatenate(([0], np.cumsum(np.bincount(inv, minlength=len(uniq))))).astype(np.int64)
@@ -528,7 +534,9 @@ def again(op: str) -> Callable[[sink.OutTable, dict[str, Any]], cj.Again]:
         cols = [_column(out, w, rec) for w in wanted]
         fields = [s.name for s, _v in cols]
         numbers = {s.name: np.asarray(v, dtype=float)[order] for s, v in cols}
-        codes, names, more = None, [], []
+        codes: np.ndarray | None = None
+        names: list[str] = []
+        more: list[str] = []
         if op == "topcut":
             codes, names, more, given = _again_domain(params.get("domain"), rec, out, ctx, order,
                                                       (holes, starts, frm, to))  # fmt: skip
@@ -537,7 +545,8 @@ def again(op: str) -> Callable[[sink.OutTable, dict[str, Any]], cj.Again]:
         xyz = None
         if op == "declus":
             with dialect.read_tx(ctx.engine) as conn:
-                ids = dict(conn.execute(sa.select(dh_holes.c.name, dh_holes.c.id).where(dh_holes.c.set_id == ctx.set_id)).all())
+                q = sa.select(dh_holes.c.name, dh_holes.c.id).where(dh_holes.c.set_id == ctx.set_id)
+                ids = {str(r.name): int(r.id) for r in conn.execute(q)}
             st = source.trajectories(SimpleNamespace(engine=ctx.engine, uid=f"again:{ctx.engine.url}"), ctx.set_id)
             xyz = middles(st, [ids.get(h, -1) for h in holes], starts, frm, to)
         made = compute(op, kernel, fields, {f: units.get(f) for f in fields}, numbers, to - frm, codes=codes,
