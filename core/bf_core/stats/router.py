@@ -32,3 +32,7 @@ def fields(svc: Svc, set_id: int, table: Annotated[str | None, Query(max_length=
 from . import routes_charts  # noqa: E402
 
 router.include_router(routes_charts.router)
+
+from . import routes_more  # noqa: E402
+
+router.include_router(routes_more.router)
