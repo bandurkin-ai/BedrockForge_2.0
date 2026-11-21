@@ -345,6 +345,59 @@ describe("a drag in the main 3D (Д-01)", () => {
     s.dispose();
   });
 
+  it("a second drag begun before the answer of the first keeps its own angles; a failure of the window's calculation puts the box back", async () => {
+    let answer: (ok: boolean) => void = () => undefined;
+    const run = vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve)));
+    const s = new SwathScene(scene, { labels: () => labels, run });
+    swathsStore.set({ selected: 5 });
+    const layer = layers.get(swathLayerKey(5)) as SwathLayer;
+    const az = of(handlesOf(X, C, HALF), "azimuth");
+    const toward = (deg: number) => screen(pointAt(az, deg));
+    s.handles.pointer(at("down", toward(90)));
+    s.handles.pointer(at("move", toward(120), { button: 0 }));
+    s.handles.pointer(at("up", toward(120)));
+    expect(run).toHaveBeenCalledTimes(1);
+    const first = answer;
+    // the second drag from the held angles, before the first answer
+    expect(s.handles.pointer(at("down", toward(120)))).toBe(true);
+    s.handles.pointer(at("move", toward(150), { button: 0 }));
+    expect(dragStore.get().drag).toEqual({ id: 5, azimuth: 150, dip: 0, roll: 0 });
+    first(false); // the first failed: it lets nothing go — the second drag is on
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(dragStore.get().drag).toEqual({ id: 5, azimuth: 150, dip: 0, roll: 0 });
+    expect(layer.posed).not.toBeNull();
+    s.handles.pointer(at("up", toward(150)));
+    expect(run).toHaveBeenCalledTimes(2);
+    answer(true); // the command went: the window computes the new angles
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(dragStore.get().drag).toBeNull();
+    expect(s.target()!.angles).toEqual({ azimuth: 150, dip: 0, roll: 0 });
+    // the window took them and its calculation was refused (too_many_swaths): the box comes back, nothing held
+    const turned = { ...settings, direction: "angles" as const, azimuth: 150 };
+    liveStore.set({ live: { 5: { settings: turned, result, error: { text: "Слишком много полос", param: "width" } } } });
+    expect(layer.posed).toBeNull();
+    expect(s.target()!.angles).toEqual({ azimuth: 150, dip: 0, roll: 0 }); // the angles of the window's settings
+    s.dispose();
+  });
+
+  it("an old failure of the window does not let go a pose held after it", () => {
+    const s = new SwathScene(scene, { labels: () => labels, run: () => new Promise<boolean>(() => undefined) });
+    const failed = { text: "Слишком много полос", param: "width" };
+    liveStore.set({ live: { 5: { settings, result, error: failed } } });
+    swathsStore.set({ selected: 5 });
+    const layer = layers.get(swathLayerKey(5)) as SwathLayer;
+    const az = of(handlesOf(X, C, HALF), "azimuth");
+    s.handles.pointer(at("down", screen(pointAt(az, 90))));
+    s.handles.pointer(at("move", screen(pointAt(az, 120)), { button: 0 }));
+    s.handles.pointer(at("up", screen(pointAt(az, 120))));
+    liveStore.set({ live: { 5: { settings: { ...settings, direction: "angles", azimuth: 120 }, result, error: failed } } });
+    expect(layer.posed).not.toBeNull();
+    expect(s.target()!.angles).toEqual({ azimuth: 120, dip: 0, roll: 0 });
+    s.dispose();
+  });
+
   it("without a window: the release saves, opens the window, and the 3D does not ask for the new angles itself", async () => {
     liveStore.set({ live: {} });
     windowStore.set({ windows: [] });

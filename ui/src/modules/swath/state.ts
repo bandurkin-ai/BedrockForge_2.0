@@ -30,6 +30,8 @@ export const swathsStore = new Store<SwathsState>({ swaths: [], loaded: false, r
 export interface LiveSwath {
   settings: SwathSettings;
   result: SwathResult | null;
+  /** the last failure of its calculation (a new object every time; null — the last one went well) */
+  error?: object | null;
 }
 
 export const liveStore = new Store<{ live: Record<number, LiveSwath> }>({ live: {} });
