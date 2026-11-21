@@ -93,11 +93,19 @@ def positive(value: Any, param: str, label: str) -> float:
 
 
 def _turn(deg: float, period: float = 360.0) -> float:
-    return math.fmod(math.fmod(deg, period) + period, period)
+    """[0; period): an angle already in range is returned unchanged (fmod, +period only when negative)."""
+    r = math.fmod(deg, period)
+    if r < 0.0:
+        r += period
+        if r >= period:  # a tiny negative angle rounds to the period
+            r = 0.0
+    return r + 0.0
 
 
 def _half_turn(deg: float) -> float:
-    """(−180; 180]."""
+    """(−180; 180]; an angle already in range is returned unchanged."""
+    if -180.0 < deg <= 180.0:
+        return deg + 0.0
     d = _turn(deg)
     return d - 360.0 if d > 180.0 else d
 

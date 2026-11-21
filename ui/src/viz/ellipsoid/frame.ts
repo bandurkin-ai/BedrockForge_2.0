@@ -43,7 +43,15 @@ export interface EllipsoidFrame extends Angles {
 export const VERTICAL = 1 - 1e-12;
 
 const z0 = (x: number) => x + 0; // −0 is written 0
-const fmod360 = (x: number) => ((x % 360) + 360) % 360;
+// [0; 360): an angle already in range is returned unchanged (as `geostat/rotation._turn`).
+const fmod360 = (x: number): number => {
+  let r = x % 360;
+  if (r < 0) {
+    r += 360;
+    if (r >= 360) r = 0;
+  }
+  return r + 0;
+};
 
 function checkFinite(values: readonly number[]): void {
   if (!values.every(Number.isFinite)) throw new RangeError("Углы эллипсоида — числа");
@@ -54,7 +62,7 @@ export function normalizeAngles(a: Angles): Angles {
   checkFinite([a.ang1, a.ang2, a.ang3]);
   if (Math.abs(a.ang2) > 90) throw new RangeError("Угол ang2 (погружение) должен быть от −90° до +90°");
   const ang1 = fmod360(a.ang1);
-  let ang3 = fmod360(a.ang3);
+  let ang3 = a.ang3 > -180 && a.ang3 <= 180 ? a.ang3 + 0 : fmod360(a.ang3);
   if (ang3 > 180) ang3 -= 360;
   return { ang1: z0(ang1 >= 360 ? 0 : ang1), ang2: z0(a.ang2), ang3: z0(ang3) };
 }

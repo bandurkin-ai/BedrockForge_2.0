@@ -106,11 +106,6 @@ def test_t8_6_8_gslib_round_trip_is_bit_for_bit() -> None:
         assert same(ex.from_gslib(ex.to_gslib(m)), m)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="rotation._turn: ((a % 360) + 360) % 360 changes an angle already in range (0.1 → 0.09999999999999432);"
-    " the fix — fmod, then + 360 only when negative — is for rotation.py, frames.json `rules` and frame.ts (16.6)",
-)
 def test_an_angle_in_its_range_is_kept_bit_for_bit() -> None:
     """Т8.6-8 for the angles a user types: an ang1 in [0; 360) and an ang3 in (−180; 180] are not changed."""
     s = Structure("spherical", 1.0, 10.0, 10.0, 10.0, 0.1 + 0.2, 0.0, -0.1)
