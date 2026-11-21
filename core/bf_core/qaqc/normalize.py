@@ -187,7 +187,7 @@ def parse_mapping(raw: Any, columns: Iterable[str]) -> Mapping_:
         if name.casefold() in seen:
             raise bad_param(f"Элемент «{name}» указан дважды.", "Дайте элементам разные имена.", f"{param}.name")
         seen.add(name.casefold())
-        unit = item.get("unit")
+        unit = item.get("unit") if "unit" in item else split_unit(col)[1]  # no key — from the name of the column
         unit = _UNITS.get(str(unit).strip().casefold(), str(unit).strip()) if unit not in (None, "") else None
         dl_col = column(item.get("dl_column"), f"{param}.dl_column")
         elements.append(ElementMap(col, name, unit, dl_col))
