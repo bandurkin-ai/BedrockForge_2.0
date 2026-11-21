@@ -1,6 +1,8 @@
 """The data of charts (ADR 0019 §3, подшаг 13.14): fields of a table, a missing value stays NaN, `length`, the field
 of another table by the sample key (unmatched counted), the domain of another table by the middle of a sample,
-the middles on the hole paths, the cache of columns (an edit raises `rev` — a miss; the limit evicts the oldest),
+the middles on the hole paths, the cache of columns (an edit raises `rev` — a miss; the limit evicts the oldest;
+13.35: a request reads no column twice, the rows of another table are searched hole by hole; 13.36: no lock
+stays after its request, lines of other rows at the same revision drop the columns kept),
 `GET /stats/fields`, nothing heavy imported with the router."""
 
 from __future__ import annotations
@@ -133,6 +135,79 @@ def test_domain_of_another_table_by_the_middle(data) -> None:  # type: ignore[no
     assert own.outside == 0 and own.labels == ["гранит", "диорит"]
 
 
+def _last_before(ka: list[np.ndarray], kb: list[np.ndarray]) -> np.ndarray:
+    """The rule of 13.14, kept as the reference of the kernels of 13.35: for every query a — the position in b
+    of the last b that sorts not after it by the keys (hole first), b before a on ties; −1 — none."""
+    na, nb = ka[0].shape[0], kb[0].shape[0]
+    keys = [np.concatenate((x, y)) for x, y in zip(kb, ka, strict=True)]
+    is_a = np.concatenate((np.zeros(nb, dtype=np.int8), np.ones(na, dtype=np.int8)))
+    order = np.lexsort((is_a, *reversed(keys)))
+    last = np.maximum.accumulate(np.where(order < nb, order, -1))
+    out = np.empty(na, dtype=np.int64)
+    at_a = order >= nb
+    out[order[at_a] - nb] = last[at_a]
+    return out
+
+
+def _lines_of(rng: np.random.Generator, names: list[str], table_id: int, rows: int) -> source.Columns:
+    """A table as `source.read` gives it: holes sorted by name, rows of a hole by (FROM, TO), depths on a grid
+    of 0.5 m with repeats and overlaps, a number and a text column."""
+    names = sorted(names)
+    per = rng.integers(0, rows, len(names))
+    hole = np.repeat(np.arange(len(names)), per)
+    frm = rng.integers(0, 12, len(hole)) * 0.5
+    to = frm + rng.integers(1, 5, len(hole)) * 0.5 + rng.choice([0.0, 1e-9, 4e-7], len(hole))
+    order = np.lexsort((to, frm, hole))
+    frm, to = frm[order], to[order]
+    t = source.Table(1, table_id, f"t{table_id}", f"t{table_id}", "interval", "tok", 1, len(hole))
+    starts = np.concatenate(([0], np.cumsum(per))).astype(np.int64)
+    return source.Columns(
+        t, np.arange(len(hole), dtype=np.int64) + 100 * table_id, names, np.arange(len(names), dtype=np.int64),
+        starts, frm, to, 0, {"V": rng.random(len(hole))}, {"Z": rng.integers(-1, 3, len(hole)).astype(np.int32)},
+        {"Z": ["a", "b", "c"]},
+    )  # fmt: skip
+
+
+def test_another_table_as_the_sort_of_both_gave(tmp_path: Path) -> None:
+    """13.35: `paired` and `domain_at` search the rows of a hole instead of sorting the two tables together —
+    the answers are those of the sort (ties, overlaps, repeated keys, holes of one table only, empty tables)."""
+    rng = np.random.default_rng(1335)
+    holes = [f"H{k}" for k in range(9)]
+    for case in range(60):
+        a = _lines_of(rng, list(rng.choice(holes, int(rng.integers(0, 8)), replace=False)), 1, 9)
+        b = _lines_of(rng, list(rng.choice(holes, int(rng.integers(0, 8)), replace=False)), 2, 7)
+        rank = {name: i for i, name in enumerate(a.holes)}
+        hb = np.array([rank.get(name, -1) for name in b.holes], dtype=np.int64)[b.hole_of().astype(np.int64)]
+        keep = np.flatnonzero(hb >= 0)
+        ha = a.hole_of().astype(np.int64)
+        # the middle of a sample in an interval of the other table
+        mid = 0.5 * (a.from_m + a.to_m)
+        want = np.full(a.n, -1, dtype=np.int64)
+        if a.n and len(keep):
+            at = _last_before([ha, mid], [hb[keep], b.from_m[keep]])
+            ok = at >= 0
+            rows = keep[at[ok]]
+            ok[ok] = (hb[rows] == ha[ok]) & (mid[ok] < b.to_m[rows])
+            want[ok] = keep[at[ok]]
+        dom = source.domain_at(a, b, "Z")
+        codes = [int(b.codes["Z"][r]) if r >= 0 else -1 for r in want.tolist()]
+        assert dom.codes.tolist() == codes and dom.codes.dtype == np.int32, case
+        assert dom.outside == int((want < 0).sum()) and dom.labels == ["a", "b", "c"], case
+        # the sample key
+        want = np.full(a.n, -1, dtype=np.int64)
+        if a.n and len(keep):
+            fa, ta, fb, tb = (np.rint(x * 1e6).astype(np.int64) for x in (a.from_m, a.to_m, b.from_m[keep],
+                                                                         b.to_m[keep]))  # fmt: skip
+            at = _last_before([ha, fa, ta], [hb[keep], fb, tb])
+            ok = at >= 0
+            ok[ok] = (hb[keep][at[ok]] == ha[ok]) & (fb[at[ok]] == fa[ok]) & (tb[at[ok]] == ta[ok])
+            want[ok] = keep[at[ok]]
+        got = source.paired(a, b, "V")
+        assert got.rows.tolist() == want.tolist() and got.unmatched == int((want < 0).sum()), case
+        values = np.array([b.numbers["V"][r] if r >= 0 else np.nan for r in want.tolist()], dtype=np.float64)
+        assert np.array_equal(got.values, values, equal_nan=True), case
+
+
 def test_midpoints_on_the_hole_paths(data) -> None:  # type: ignore[no-untyped-def]
     project, set_id, _, _ = data
     cache = source.ColumnCache()
@@ -170,17 +245,104 @@ def test_cache_hit_edit_misses_and_the_limit_evicts(data) -> None:  # type: igno
     other = SimpleNamespace(engine=project.engine, uid="другой", folder=project.folder)
     source.read(other, set_id, "Пробы", ["AU"], cache=cache)
     assert {k[0] for k in cache.keys()} == {"другой"}
-    # the limit: the lines and two columns of 5 rows fit, the third pushes the oldest out
-    small = source.ColumnCache(limit=5 * 8 * 5 + 2 * 5 * 8 + 300)
+    # the limit: the lines and one column of 5 rows fit, the second pushes the oldest out; `length` is not kept
+    small = source.ColumnCache(limit=5 * 8 * 5 + 5 * 8 + 300)
     source.read(project, set_id, "Пробы", ["AU"], cache=small)
-    source.read(project, set_id, "Пробы", ["length"], cache=small)
+    assert source.read(project, set_id, "Пробы", ["length"], cache=small).number("length")[1] == 1.0
+    assert {k[4] for k in small.keys()} == {"\0lines", "AU"}
     source.read(project, set_id, "Пробы", ["ROCK"], cache=small)
     names = [k[4] for k in small.keys()]
-    assert "ROCK" in names and len(names) < 4 and small.size <= small.limit
+    assert "ROCK" in names and len(names) < 3 and small.size <= small.limit
     got = source.read(project, set_id, "Пробы", ["AU", "ROCK", "length"], cache=small)  # evicted — read again
     assert got.number("AU")[1] == 4.25
     tiny = source.ColumnCache(limit=10)  # nothing fits: read every time, kept nowhere
     assert source.read(project, set_id, "Пробы", ["AU"], cache=tiny).number("AU")[1] == 4.25 and tiny.size == 0
+
+
+def test_a_request_reads_no_column_twice(data, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    """13.35: the columns of a request that do not fit the cache together — those found in it are held while
+    the others are read (they push the found ones out), so a column is read once a request, in one pass."""
+    project, set_id, _, _ = data
+    calls: list[list[str]] = []
+    real = source._read_lines
+
+    def counted(p: Any, t: Any, names: list[str]) -> Any:
+        calls.append(list(names))
+        return real(p, t, names)
+
+    monkeypatch.setattr(source, "_read_lines", counted)
+    small = source.ColumnCache(limit=5 * 8 * 5 + 5 * 8 + 300)  # the lines and one column
+    first = source.read(project, set_id, "Пробы", ["AU"], cache=small)
+    for _ in range(3):
+        got = source.read(project, set_id, "Пробы", ["AU", "ROCK", "length"], cache=small)
+        assert got.number("AU")[1] == 4.25 and got.text("ROCK")[0].tolist() == [-1, 0, 1, 0, 1]
+    assert got.number("AU").tolist()[:4] == first.number("AU").tolist()[:4]
+    assert all(len(names) == 1 for names in calls) and len(calls) == 4, calls  # AU; then one of the two a request
+    assert source.LIMIT_BYTES == 512 * 1024 * 1024 and source.COLUMNS.limit == source.LIMIT_BYTES
+
+
+def test_the_locks_of_the_cache_do_not_stay(data) -> None:  # type: ignore[no-untyped-def]
+    """13.36: the lock of a table (project, table, revision) and of a value lives while it is held or waited
+    for — after the requests, the edits and another project none is left; `clear()` leaves the cache empty."""
+    project, set_id, a, _ = data
+    cache = source.ColumnCache()
+    for _ in range(3):
+        cols = source.read(project, set_id, "Пробы", ["AU", "ROCK"], cache=cache)
+        source.midpoints(project, cols, cache=cache)
+        source.read(project, set_id, "Литология", ["CU"], cache=cache)
+        _edit(project, a)  # another revision: another lock of the table
+    other = SimpleNamespace(engine=project.engine, uid="другой", folder=project.folder)
+    source.read(other, set_id, "Пробы", ["AU"], cache=cache)
+    assert cache._gates == {}
+    with cache.locked(("p", 1)):
+        assert set(cache._gates) == {("p", 1)}
+        waiting = threading.Thread(target=lambda: cache.get(("p", 1), lambda: 7))  # the same key: waits
+        waiting.start()
+        while cache._gates[("p", 1)].users < 2:
+            pass
+        assert cache.peek(("p", 1)) is None
+    waiting.join()
+    assert cache._gates == {} and cache.peek(("p", 1)) == 7
+    with pytest.raises(RuntimeError):
+        cache.get(("p", 2), lambda: (_ for _ in ()).throw(RuntimeError("no value")))
+    assert cache._gates == {}  # a build that failed leaves no lock either
+    cache.clear()
+    assert cache.keys() == [] and cache.size == 0 and cache._gates == {}
+    assert cache.forget(("p",)) == 0
+
+
+def test_lines_of_other_rows_at_the_same_revision_drop_the_columns(data, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    """13.36: a table whose rows changed while its revision stayed (it was written between the look at the
+    revision and the read) — the lines read for a new field have another number of rows than the columns kept:
+    everything kept for that revision goes and the fields of the request are read anew, all of one state."""
+    project, set_id, a, _ = data
+    cache = source.ColumnCache()
+    first = source.read(project, set_id, "Пробы", ["AU"], cache=cache)
+    xyz = source.midpoints(project, first, cache=cache)
+    assert first.n == 5 and xyz.shape == (5, 3) and len(cache.keys()) == 3
+    with dialect.write_tx(project.engine) as conn:  # a row goes, `rev` stays
+        rid = conn.execute(sa.select(sa.func.max(dh_rows.c.id)).where(dh_rows.c.table_id == a)).scalar_one()
+        conn.execute(sa.delete(dh_rows).where(dh_rows.c.id == rid))
+    calls: list[list[str]] = []
+    real = source._read_lines
+
+    def counted(p: Any, t: Any, names: list[str]) -> Any:
+        calls.append(list(names))
+        return real(p, t, names)
+
+    monkeypatch.setattr(source, "_read_lines", counted)
+    assert source.read(project, set_id, "Пробы", ["AU"], cache=cache).n == 5 and calls == []  # nothing new asked
+    got = source.read(project, set_id, "Пробы", ["AU", "ROCK", "length"], cache=cache)
+    assert calls == [["ROCK"], ["AU", "ROCK"]]  # the lines of ROCK are of other rows: both fields anew
+    assert got.n == 4 and got.table.rev == first.table.rev
+    assert {len(got.number("AU")), len(got.text("ROCK")[0]), len(got.number("length")), len(got.row_ids)} == {4}
+    assert got.number("AU") is not first.number("AU") and rid not in got.row_ids.tolist()
+    kept = {k[4]: v for k, v in ((k, cache.peek(k)) for k in cache.keys())}
+    assert set(kept) == {"\0lines", "AU", "ROCK"}  # the middles of the five rows went with their columns
+    assert len(kept["AU"]) == 4 and len(kept["\0lines"][0]) == 4
+    assert source.midpoints(project, got, cache=cache).shape == (4, 3)
+    again = source.read(project, set_id, "Пробы", ["AU", "ROCK"], cache=cache)
+    assert again.number("AU") is got.number("AU") and len(calls) == 2  # from the cache now
 
 
 def test_concurrent_requests_read_once(data) -> None:  # type: ignore[no-untyped-def]

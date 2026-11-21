@@ -16,17 +16,26 @@ The rows are «lines» of `composites/source.read` (Э12): ordered by (hole name
 not depend on the ids the database gave; rows without FROM or TO are left out and counted (`skipped`). The values
 come from the Parquet snapshot of the table (`cache/tables`, Э6) when it is there, else from `dh_rows`.
 
-Cache (`COLUMNS`): LRU of columns by (project, table, token, rev, field), ≤ 256 МБ in all (ADR 0019 §3, решение 4).
-An edit of a row raises `rev`: the old columns are a miss and are dropped when the new ones come; a request of
-another project drops the columns of the previous one; a value bigger than the limit is not kept. Concurrent
-requests of one column read it once (the others wait). numpy and the readers load on first use, not with the
-router (tests/test_process.py)."""
+Cache (`COLUMNS`): LRU of columns by (project, table, token, rev, field), ≤ 512 МБ in all (ADR 0019 §3, решение 4
+gave 256 МБ; 13.35: 5 million rows are 120 МБ of lines and 40 МБ a field — the ten fields of a dendrogram did not
+fit and every recalculation read them again). `length` is not kept: it is TO − FROM of the lines, counted for
+every request. An edit of a row raises `rev`: the old columns are a miss and are dropped when the new ones come;
+a request of another project drops the columns of the previous one; a value bigger than the limit is not kept.
+A request holds the columns it found until it has them all: those read for it may push out of the cache what it
+found there, nothing is read twice. Concurrent requests of one column read it once (the others wait); the lock
+of a table or of a value lives while it is held or waited for — none is kept for what is not being read. Lines
+of another number of rows than the columns kept for the same revision (the table changed while it was read)
+drop all of them: the fields of the request are read anew, nothing of two states of a table is mixed. After a
+read of a snapshot the memory pyarrow keeps for itself goes back to the system (a few hundred МБ at 5 million
+rows). numpy and the readers load on first use, not with the router (tests/test_process.py); the kernel of
+`domain_at` (numba) — with the first domain of another table."""
 
 from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -38,7 +47,7 @@ from bf_core.db import dialect
 from bf_core.db.schema import dh_columns, dh_tables, objects
 
 LENGTH = "length"  # the pseudo-field: TO − FROM (a column of that name in the table wins)
-LIMIT_BYTES = 256 * 1024 * 1024
+LIMIT_BYTES = 512 * 1024 * 1024
 KEY_EPS = 1e-6  # m: FROM and TO of a sample key are equal within it
 TABLE_KINDS = ("assay", "interval", "event")
 _BASE = "\0lines"
@@ -55,7 +64,7 @@ class Table:
     name: str
     name_key: str
     kind: str  # assay | interval | event
-    token: str  # the identity of the table besides its name (`composites.results._token`)
+    token: str  # the identity of the table besides its name (`composites.results.table_token`)
     rev: int
     rows: int
 
@@ -79,9 +88,9 @@ def _table_missing(table: Any) -> ApiError:
 
 
 def _table(r: Any) -> Table:
-    from bf_core.composites.results import _token
+    from bf_core.composites.results import table_token
 
-    return Table(int(r.set_id), int(r.id), r.name, r.name_key, r.kind, _token(r.created_at), int(r.rev),
+    return Table(int(r.set_id), int(r.id), r.name, r.name_key, r.kind, table_token(r.created_at), int(r.rev),
                  int(r.row_count or 0))  # fmt: skip
 
 
@@ -161,6 +170,16 @@ def _nbytes(value: Any) -> int:
     return 64
 
 
+class _Gate:
+    """The lock of one key and how many hold it or wait for it."""
+
+    __slots__ = ("lock", "users")
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.users = 0
+
+
 class ColumnCache:
     """LRU of columns by bytes (module docstring). Keys: (project uid, table id, token, rev, field, …)."""
 
@@ -168,7 +187,7 @@ class ColumnCache:
         self.limit = limit
         self._lock = threading.Lock()
         self._items: OrderedDict[tuple[Any, ...], tuple[Any, int]] = OrderedDict()
-        self._gates: dict[tuple[Any, ...], threading.Lock] = {}
+        self._gates: dict[tuple[Any, ...], _Gate] = {}
         self.size = 0
         self.hits = 0
         self.misses = 0
@@ -209,25 +228,45 @@ class ColumnCache:
         hit = self.peek(key)
         if hit is not None:
             return hit
-        with self._lock:
-            gate = self._gates.setdefault(key, threading.Lock())
-        with gate:
+        with self.locked(key):
             hit = self.peek(key)
             if hit is None:
                 with self._lock:
                     self.misses += 1
                 hit = build()
                 self.put(key, hit)
-            with self._lock:
-                self._gates.pop(key, None)
             return hit
 
-    def locked(self, key: tuple[Any, ...]) -> threading.Lock:
-        """A lock of its own for `key`: `with cache.locked(k):` — one reader of a table at a time."""
+    @contextmanager
+    def locked(self, key: tuple[Any, ...]) -> Iterator[None]:
+        """`with cache.locked(k):` — one holder of `k` at a time (the reader of a table, the builder of a value).
+        The lock is made for the first who asks and goes with the last who held it or waited for it: nothing
+        stays for the tables, revisions and projects that are read no more."""
         with self._lock:
-            return self._gates.setdefault(key, threading.Lock())
+            gate = self._gates.get(key)
+            if gate is None:
+                gate = self._gates[key] = _Gate()
+            gate.users += 1
+        try:
+            with gate.lock:
+                yield
+        finally:
+            with self._lock:
+                gate.users -= 1
+                if not gate.users and self._gates.get(key) is gate:
+                    del self._gates[key]
+
+    def forget(self, head: tuple[Any, ...]) -> int:
+        """Drops every value whose key starts with `head` (all the columns of one revision of a table and what
+        was built of them). → how many went."""
+        with self._lock:
+            gone = [k for k in self._items if k[: len(head)] == head]
+            for k in gone:
+                self._drop(k)
+            return len(gone)
 
     def clear(self) -> None:
+        """Drops every value. The locks are not touched: they are those held or waited for right now."""
         with self._lock:
             self._items.clear()
             self.size = 0
@@ -320,11 +359,23 @@ def read(project: Any, set_id: int, table: str | int | None, fields: Sequence[st
     stored = [f for f in chosen if f.role != LENGTH]
     got: dict[str, Any] = {}
     with cache.locked(head):  # concurrent requests of one table read its columns once
-        missing = [f for f in stored if cache.peek((*head, f.name)) is None]
+        for f in stored:
+            hit = cache.peek((*head, f.name))
+            if hit is not None:
+                got[f.name] = hit  # held: the columns read next may push it out of the cache
+        missing = [f for f in stored if f.name not in got]
         base = cache.peek((*head, _BASE))
         if missing or base is None:
             lines = _read_lines(project, t, [f.name for f in missing])
-            if base is None or len(base[0]) != lines.rows:
+            if base is not None and len(base[0]) != lines.rows:
+                # other rows than the columns kept for this revision have (the table changed while they were
+                # read): they all go — the lines, the fields, what was built of them — and the fields of the
+                # request are read anew, in one pass
+                cache.forget(head)
+                got.clear()
+                base, missing = None, stored
+                lines = _read_lines(project, t, [f.name for f in stored])
+            if base is None:
                 base = tuple(_frozen(a) for a in (lines.row_ids, lines.hole_db_ids, lines.starts, lines.from_m,
                                                   lines.to_m)) + (lines.holes, lines.skipped)  # fmt: skip
                 cache.put((*head, _BASE), base)
@@ -338,61 +389,26 @@ def read(project: Any, set_id: int, table: str | int | None, fields: Sequence[st
     for f in chosen:
         out.infos[f.name] = f
         if f.role == LENGTH:
-            out.numbers[f.name] = cache.get((*head, f.name), lambda: _frozen(np.subtract(to, frm)))
-            continue
-        have: Any = got.get(f.name)
-        if have is None:
-            have = cache.peek((*head, f.name))
-        if have is None:  # evicted between the two looks: read it alone
-            have = _one(project, t, f, base, cache, head)
-        if f.kind == "number":
-            out.numbers[f.name] = have
+            out.numbers[f.name] = _frozen(np.subtract(to, frm))  # not kept: 10 ms and 40 МБ at 5 million rows
+        elif f.kind == "number":
+            out.numbers[f.name] = got[f.name]
         else:
-            out.codes[f.name], out.labels[f.name] = have
+            out.codes[f.name], out.labels[f.name] = got[f.name]
     return out
 
 
 def _read_lines(project: Any, t: Table, names: list[str]) -> Any:
     from bf_core.composites import source as dh_source
 
-    return dh_source.read(project.engine, t.set_id, t.id, names, cache_dir=project.folder / "cache" / "tables")
+    lines = dh_source.read(project.engine, t.set_id, t.id, names, cache_dir=project.folder / "cache" / "tables")
+    if lines.source == "parquet":
+        import pyarrow as pa
 
-
-def _one(project: Any, t: Table, f: FieldInfo, base: tuple[Any, ...], cache: ColumnCache,
-         head: tuple[Any, ...]) -> Any:  # fmt: skip
-    lines = _read_lines(project, t, [f.name])
-    if len(lines.row_ids) != len(base[0]):
-        raise ApiError(409, "table_changed", "Таблица изменилась во время чтения.", "Повторите действие.")
-    value = (_frozen(lines.numbers[f.name]) if f.kind == "number"
-             else (_frozen(lines.codes[f.name]), lines.labels[f.name]))  # fmt: skip
-    cache.put((*head, f.name), value)
-    return value
+        pa.default_memory_pool().release_unused()  # what the pool keeps after the columns were copied out of it
+    return lines
 
 
 # --- another table: by the sample key, by the middle of a sample -----------------------------------------
-
-
-def _hole_map(a: Columns, b: Columns) -> np.ndarray:
-    """For every hole of `b` — its index in `a.holes`, −1 — `a` has no such hole."""
-    rank = {name: i for i, name in enumerate(a.holes)}
-    return np.array([rank.get(name, -1) for name in b.holes], dtype=np.int64)
-
-
-def _last_before(ka: Sequence[np.ndarray], kb: Sequence[np.ndarray]) -> np.ndarray:
-    """For every query a — the position in b of the last b that sorts not after it by the keys (hole first),
-    b before a on ties; −1 — none. Keys are given most significant first."""
-    na, nb = ka[0].shape[0], kb[0].shape[0]
-    if not na or not nb:
-        return np.full(na, -1, dtype=np.int64)
-    keys = [np.concatenate((x, y)) for x, y in zip(kb, ka, strict=True)]
-    is_a = np.concatenate((np.zeros(nb, dtype=np.int8), np.ones(na, dtype=np.int8)))
-    order = np.lexsort((is_a, *reversed(keys)))
-    pos = np.where(order < nb, order, -1)
-    last = np.maximum.accumulate(pos)
-    out = np.empty(na, dtype=np.int64)
-    at_a = order >= nb
-    out[order[at_a] - nb] = last[at_a]
-    return out
 
 
 @dataclass(frozen=True)
@@ -405,26 +421,22 @@ class Paired:
 def paired(a: Columns, b: Columns, name: str, *, eps: float = KEY_EPS) -> Paired:
     """The field `name` of the table `b` for every row of `a` by the sample key (hole, FROM, TO), FROM and TO
     equal within `eps` (two rows of b with one key: the last in line order)."""
+    from . import source_kernels as sk
+
     col = b.number(name)
     if b.table.id == a.table.id:
         return Paired(col, np.arange(a.n, dtype=np.int64), 0)
-    hb = _hole_map(a, b)[b.hole_of()]
-    keep = np.flatnonzero(hb >= 0)
     q = 1.0 / eps
 
     def key(x: np.ndarray) -> np.ndarray:
         return np.rint(x * q).astype(np.int64)
 
-    ha = a.hole_of().astype(np.int64)
-    fa, ta, fb, tb = key(a.from_m), key(a.to_m), key(b.from_m[keep]), key(b.to_m[keep])
-    at = _last_before((ha, fa, ta), (hb[keep], fb, tb))
-    ok = at >= 0
-    ok[ok] = (hb[keep][at[ok]] == ha[ok]) & (fb[at[ok]] == fa[ok]) & (tb[at[ok]] == ta[ok])
-    rows = np.full(a.n, -1, dtype=np.int64)
-    rows[ok] = keep[at[ok]]
+    lo, hi = sk.hole_ranges(a.holes, b.holes, b.starts)
+    rows, unmatched = sk.rows_matching(a.starts, key(a.from_m), key(a.to_m), lo, hi, key(b.from_m), key(b.to_m))
+    ok = rows >= 0
     values = np.full(a.n, np.nan)
     values[ok] = col[rows[ok]]
-    return Paired(values, rows, int(a.n - ok.sum()))
+    return Paired(values, rows, unmatched)
 
 
 @dataclass(frozen=True)
@@ -438,20 +450,17 @@ def domain_at(a: Columns, dom: Columns, name: str) -> Domain:
     """The text field `name` of `dom` for every row of `a`: of the same table — as it is; of another interval
     table — the code of its interval [FROM; TO) that holds the middle (FROM + TO) / 2 of the sample (the one that
     starts last when they overlap)."""
+    from . import source_kernels as sk
+
     codes, labels = dom.text(name)
     if dom.table.id == a.table.id:
         return Domain(codes, labels, 0)
-    hd = _hole_map(a, dom)[dom.hole_of()]
-    keep = np.flatnonzero(hd >= 0)
-    ha = a.hole_of().astype(np.int64)
-    mid = 0.5 * (a.from_m + a.to_m)
-    at = _last_before((ha, mid), (hd[keep], dom.from_m[keep]))
-    ok = at >= 0
-    rows = keep[at[ok]]
-    ok[ok] = (hd[rows] == ha[ok]) & (mid[ok] < dom.to_m[rows])
+    lo, hi = sk.hole_ranges(a.holes, dom.holes, dom.starts)
+    rows, outside = sk.rows_covering(a.starts, 0.5 * (a.from_m + a.to_m), lo, hi, dom.from_m, dom.to_m)
     out = np.full(a.n, -1, dtype=np.int32)
-    out[ok] = codes[keep[at[ok]]]
-    return Domain(out, labels, int(a.n - ok.sum()))
+    ok = rows >= 0
+    out[ok] = codes[rows[ok]]
+    return Domain(out, labels, outside)
 
 
 # --- positions ------------------------------------------------------------------------------------------

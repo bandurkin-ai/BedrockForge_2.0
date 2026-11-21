@@ -38,7 +38,7 @@ from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.db.schema import dh_columns, dh_holes, dh_tables
 
-from .results import _token
+from .results import table_token
 
 Tick = Callable[[float | None, str | None], None]
 
@@ -157,7 +157,7 @@ def read(
         if t is None:
             raise _not_found()
         chosen = _fields(conn, table_id, fields)
-        token = _token(t.created_at)
+        token = table_token(t.created_at)
         names = _hole_names(conn, set_id, holes)
         path = None if cache_dir is None else cache_dir / f"{table_id}-{token}-{t.rev}.parquet"
         snapshot = path is not None and holes is None and path.is_file()

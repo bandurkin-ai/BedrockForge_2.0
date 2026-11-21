@@ -245,20 +245,34 @@ def test_swaths_key_through_the_api_forgets_deleted(demo) -> None:  # type: igno
 # --- .bfggis ----------------------------------------------------------------------------------------------
 
 
-def test_bfggis_cycle_renumbers_the_ids_inside_the_settings(demo, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+@pytest.mark.db
+def test_remap_charts_writes_the_new_parent_as_the_own_set(db_url: str, tmp_path: Path) -> None:
+    """13.36: the window takes `settings.set_id`; after an import it is the new number of the parent, not the
+    old one of the archive (which may now be another set); a swath plot gets no `set_id` of its own."""
+    engine = make_engine(db_url, tmp_path)
+    migrate.upgrade(engine, "project")
+    with dialect.write_tx(engine) as conn:
+        s1 = dh.create_set(conn, "Набор 1")
+        s2 = dh.create_set(conn, "Набор 2")
+        old = s2 + 100  # the number of the set in the archive
+        a = charts.create(conn, s2, "Q-Q", "qq", {"v": 1, "set_id": s1, "y_set_id": old}, None)
+        b = charts.create(conn, s2, "Гистограмма", "histogram", {"v": 1}, None)
+        w = charts.create(conn, None, "Swath", "swath", {"v": 1, "series": [{"set_id": old}]}, None)
+        assert remap_charts(conn, {old: s2, s1: s1}) == 3
+        assert charts.get(conn, a["id"])["settings"] == {"v": 1, "set_id": s2, "y_set_id": s2}
+        assert charts.get(conn, b["id"])["settings"] == {"v": 1, "set_id": s2}
+        assert charts.get(conn, w["id"])["settings"] == {"v": 1, "series": [{"set_id": s2}]}
+        assert remap_charts(conn, {s2: s2}) == 0  # nothing left to change
+    engine.dispose()
+
+
+def test_bfggis_cycle_renumbers_the_ids_inside_the_settings(demo, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     """10.5 п. 5: charts and swath plots come along; ids of other objects inside their settings follow the new
-    numbers, an object the archive does not have becomes null; the view key `swaths` is renumbered too."""
-    if "remap_charts" not in vars(importer):  # until the orchestrator wires the call into `_restore` (13.13)
-        clouds = importer.remap_clouds
-
-        def both(conn: Any, objects_map: dict[int, int]) -> int:
-            remap_charts(conn, objects_map)
-            return clouds(conn, objects_map)
-
-        monkeypatch.setattr(importer, "remap_clouds", both)
+    numbers, an object the archive does not have becomes null; the view key `swaths` is renumbered too; the own
+    `set_id` of a chart of a set becomes its new parent (the window reads it, 13.36)."""
     c, set_id = demo
     gone = post(c, set_id=set_id, kind="histogram", name="Временный", settings={"v": 1}).json()["id"]
-    qq = post(c, set_id=set_id, kind="qq", name="Q-Q", settings={"v": 1, "y_set_id": set_id}).json()
+    qq = post(c, set_id=set_id, kind="qq", name="Q-Q", settings={"v": 1, "set_id": set_id, "y_set_id": set_id}).json()
     assert c.delete(f"{API}/charts/{gone}").status_code == 200  # a gap: the ids after it change on import
     series = [{"kind": "samples", "set_id": set_id, "field": "AU"}, {"kind": "blocks", "model_id": gone}]
     swath = post(c, kind="swath", name="Swath", settings={"v": 1, "series": series}).json()
@@ -277,7 +291,7 @@ def test_bfggis_cycle_renumbers_the_ids_inside_the_settings(demo, tmp_path: Path
         with dialect.read_tx(engine) as conn:
             got = {x["kind"]: x for x in charts.list_charts(conn)}
             assert got["qq"]["id"] == ids[qq["id"]] and got["qq"]["settings"]["y_set_id"] == ids[set_id]
-            assert got["qq"]["set_id"] == ids[set_id]
+            assert got["qq"]["set_id"] == ids[set_id] and got["qq"]["settings"]["set_id"] == ids[set_id]
             s = got["swath"]
             assert s["id"] == ids[swath["id"]] and s["set_id"] is None
             assert s["settings"]["series"] == [

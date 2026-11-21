@@ -235,14 +235,14 @@ def shown_columns(
     """The columns to write (names as in the imported file) of the rows shown (hole, filter, sort) and their
     number. JobError `bad_expression` — the filter does not parse."""
     from .expr import ExprError
-    from .query import _order, mask
+    from .query import mask, order_of
 
     try:
         m = mask(snap, hole, where)
     except ExprError as exc:
         raise JobError("bad_expression", str(exc), "Проверьте выражение фильтра.") from exc
     if sort:
-        order = _order(snap, sort, bool(desc))
+        order = order_of(snap, sort, bool(desc))
         idx = order[m[order]]
     else:
         idx = np.flatnonzero(m)

@@ -24,9 +24,9 @@ MAX_FIELDS = 16
 
 
 def snapshot(project: Any, set_id: int, table: TableRef) -> Any:
-    from bf_core.drillholes.router import _snapshot
+    from bf_core.drillholes.router import snapshot_of
 
-    snap = _snapshot(project, set_id, str(table.id))
+    snap = snapshot_of(project, set_id, str(table.id))
     return snap
 
 

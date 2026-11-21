@@ -323,6 +323,30 @@ def generated(c: Any, tmp_path: Path, n: tuple[int, int, int], name: str) -> tup
     return bm_id, project
 
 
+def test_a_request_holds_a_bounded_amount_of_model_columns(
+    demo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # type: ignore[no-untyped-def]
+    """13.36 (ADR 0019 §3, ≤ 1 ГБ): over `REQUEST_BYTES` the values of a model series are read when it is computed
+    — the same answer in more passes; when even `idx` and the filters do not fit — 422 `too_much_data`."""
+    c, _set_id, _ = demo
+    model_id, project = generated(c, tmp_path, (20, 20, 10), "Модель")
+    with dialect.read_tx(project.engine) as conn:
+        m = bc.model_of(conn, model_id)
+    body = settings(blocks(model_id), blocks(model_id, field="DENSITY", filter={"field": "ZONE", "labels": ["руда"]}))
+    eager = post(c, {"settings": body})
+    full = routes_swath._bytes(m, ["AU", "DENSITY", "ZONE"])
+    held = routes_swath._bytes(m, ["ZONE"]) + routes_swath._bytes(m, ["AU"], idx=False)
+    assert held < full
+    monkeypatch.setattr(routes_swath, "REQUEST_BYTES", held)
+    bc.MODELS.clear()
+    reads = bc.MODELS.reads
+    assert post(c, {"settings": body}) == eager
+    assert bc.MODELS.reads - reads == 3  # idx and ZONE, then AU, then the other field
+    monkeypatch.setattr(routes_swath, "REQUEST_BYTES", held - 1)
+    out = post(c, {"settings": body}, 422)
+    assert out["code"] == "too_much_data" and out["param"] == "series" and out["hint"]
+
+
 @pytest.mark.windows
 def test_model_columns_from_parquet_in_a_cyrillic_path(demo, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     """The columns of a model read from its Parquet file under «Проекты» are those of the file (`idx` uint32),
