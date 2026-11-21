@@ -1,14 +1,20 @@
 /**
  * Small pure pieces of `Scene.ts`, kept apart so that the scene stays within 600 lines (ТЗ 17): the camera of
  * the frame benchmark, where a project point is on the screen (the E2E hook), the labels of a frame placed by
- * the view-projection matrix, the observers of the host element and the pointer shared by the tool of the string
- * editor and the handles of a swath (`ToolChain`). No state of the scene lives here.
+ * the view-projection matrix, the labels of a frame and a step of a smooth turn, what a click picks, the observers of the host element and the pointer shared by the
+ * tool of the string editor and the handles of a swath (`ToolChain`). No state of the scene lives here.
  */
+import type { LayerSet } from "./core/layers";
+import type { TurnController } from "./core/turn";
 import type { ToolHandler, ToolPointer } from "./core/toolInput";
 import type { Vec3 } from "./core/vec3";
-import type { CameraState } from "./core/views";
+import { screenRay, viewDirection, type CameraState, type ViewOptions } from "./core/views";
+import type { Grid } from "./grid";
+import type { HoleSetLayer } from "./holes/holeSet";
+import { pickHoles, type HoleHit } from "./holes/select";
 import { placeLabels, type LabelItem } from "./labels/sprites";
-import { projectToScreen, type Mat4 } from "./pick/ray";
+import { projectToScreen, toNdc, type Mat4 } from "./pick/ray";
+import type { LayerHit } from "./sceneTypes";
 
 /** The camera turned by `rad` about the vertical through its centre (smoke scenario, frame benchmark). */
 export function orbited(c: CameraState, rad: number): CameraState {
@@ -41,6 +47,41 @@ export function placeFrameLabels(items: readonly LabelItem[], vp: Mat4, w: numbe
     },
     inWindow: (p) => inWindow(p.x, p.y, p.z / (vexag || 1)),
   });
+}
+
+/** A step of the smooth turn `token` for `FrameLoop.animate`: the camera of its moment, false once done or replaced. */
+export function turnStep(turn: Pick<TurnController, "frame">, token: number, apply: (camera: CameraState) => void): (now: number) => boolean {
+  return (now) => {
+    const r = turn.frame(token, now);
+    if (!r) return false;
+    apply(r.camera);
+    return !r.done;
+  };
+}
+
+/** The labels of a frame: of the hole sets, the other layers and the grid — not of a grid seen edge-on (a side view, a section): its lines stay, its values would be a heap. */
+export function frameLabelItems(sets: Iterable<HoleSetLayer>, layers: Pick<LayerSet, "labels">, grid: Pick<Grid, "labelItems" | "labels">, camera: CameraState): LabelItem[] {
+  const items: LabelItem[] = [];
+  for (const l of sets) l.labelItems(items);
+  layers.labels(items);
+  if (Math.abs(viewDirection(camera)[2]) > 0.15) grid.labelItems(items);
+  else for (const l of grid.labels) l.sprite.visible = false;
+  return items;
+}
+
+/** What a click at a canvas point picks by the last frame: a hole, else the other layers (lines and points first, then surfaces). */
+export function pickAt(
+  sets: Iterable<HoleSetLayer>,
+  layers: Pick<LayerSet, "pick">,
+  at: { vp: Mat4; camera: CameraState; options: ViewOptions; vexag: number; size: { w: number; h: number }; inWindow: (x: number, y: number, z: number) => boolean },
+  px: number,
+  py: number,
+): { hit: HoleHit | null; other: LayerHit | null } {
+  const { w, h } = at.size;
+  const hit = pickHoles(sets, at.vp, at.vexag, px, py, w, h, at.inWindow);
+  if (hit) return { hit, other: null };
+  const ray = screenRay(at.camera, at.options, ...toNdc(px, py, w, h));
+  return { hit: null, other: layers.pick({ vp: at.vp, vexag: at.vexag, px, py, width: w, height: h, inWindow: at.inWindow, ray }) };
 }
 
 /** Calls `onResize` when the host changes its size and `onTheme` when the theme of the document changes;
