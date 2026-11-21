@@ -15,6 +15,12 @@ the means is a hard boundary, a slope — a soft one (ТЗ 8.8.2). BF has no suc
         Contacts: dist (float64 [n], the distance of the middle of a sample from its contact), side (int8: 0 — A,
         1 — B, −1 — the sample is at no contact), contacts, holes; `.signed()` — the distance with the sign of
         the side (A < 0 < B), NaN — none
+    contact_chart_wireframe(hole, frm, to, crossings, values, flt=None, length=None, weight_values=None,
+                            distance=20, step=1, sides=("снаружи", "внутри"), eps=1e−6, threads=1, tick=None)
+        the same answer for the contact «до каркаса»: `crossings` — `geo.intersect.hole_crossings(traj,
+        [MeshTarget.from_stats(…)], holes=…)` of the wireframe, `hole` — the dense index of the hole of every
+        row in `traj` (`composites.coords.hole_index(st.hole_ids, cols.hole_db_ids)[cols.hole_of()]`; −1 — none)
+    crossing_contacts(hole, frm, to, crossings, reach, eps=1e−6, threads=1, tick=None) -> Contacts   (rows as given)
     warm()
 
 The rule (ADR 0019 §4). The rows of a hole go by depth (`composites.intervals.build_lines`: rows without a
@@ -33,6 +39,16 @@ on an edge) and belongs to the step that starts there. When D is not a whole num
 is shorter and ends at D. `edges` — the 2·n + 1 edges from −D to D, n = ⌈D / b⌉ ≤ MAX_STEPS a side; `mean[i]`,
 `n[i]` — of the step between edges i and i + 1 (side A — the steps below 0).
 
+«До каркаса» (13.8). A contact is a point where the hole crosses the wireframe. A sample belongs to the
+crossing nearest to its middle along the hole (an equal distance — the upper one), whatever lies between them:
+the geometry gives the contact, not the sampling. Its side is told by that crossing: a hole that goes into a
+closed solid there (ENTER) has «снаружи» (side A, d < 0) above it and «внутри» (B, d > 0) below, LEAVE — the
+other way round; a wireframe that is not said to be a solid (CROSS) is taken by its normals — «снаружи» is where
+they look. All the rows with a depth take part (overlapping ones too); those of a hole without a path (−1) are
+counted (`no_path`) and belong to no contact; `contacts` and `holes` count the crossings of the holes that have
+rows. The depth of a crossing is known to 1e−8 m, so `eps` keeps the middles on the edges of the steps here too.
+The sums go in the order of the rows given; `counts` has `no_depth`, `no_path`, `no_domain` (0) and `in_steps`.
+
 Values. The rows go through `stats.select` (the weight — the length by default, the cuts, the rule for values
 below zero) after the runs are found: a sample without a value keeps its place in its run and is not counted.
 The mean of a step is Σ w·c / Σ w, taken as c₀ + Σ w·(c − c₀) / Σ w about the first value c₀ of the step with
@@ -50,6 +66,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from numbers import Real
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -64,10 +81,17 @@ STEP = 1.0  # m: b
 MAX_STEPS = 500  # steps on a side
 DEPTH_EPS = 1e-6  # m: `composites.intervals.DEPTH_EPS` — depths closer than this are one depth
 _BLOCK = 1 << 20  # rows between two calls of `tick`
+SIDES = ("снаружи", "внутри")  # the sides of a wireframe: A (d < 0) and B (d > 0)
+CROSS, ENTER, LEAVE = 0, 1, 2  # `geo.intersect`: `event` of a crossing (ADR 0007 §5)
 CONVENTIONS = (
     "Контакт — граница смежных участков доменов A и B вдоль ствола (зазор не больше 1e−6 м); через пропуск "
     "опробования контакта нет. Проба относится к ближайшему контакту своего участка, расстояние — от середины "
     "пробы по стволу: сторона A — меньше нуля, B — больше. Среднее шага — с весами отбора; шаг без проб пуст."
+)
+CONVENTIONS_WIREFRAME = (
+    "Контакт — пересечение ствола с каркасом. Проба относится к ближайшему пересечению, расстояние — от середины "
+    "пробы по стволу: снаружи каркаса — меньше нуля, внутри — больше. Среднее шага — с весами отбора; шаг без "
+    "проб пуст."
 )
 
 
@@ -196,6 +220,92 @@ def domain_contacts(
     if tick is not None and not found:
         tick(1.0)
     return Contacts(dist, side, sum(int(c) for c, _ in found), sum(int(h) for _, h in found))
+
+
+@njit(cache=True, nogil=True)
+def _crossing_rows(a, e, hole, frm, to, c_hole, c_start, c_depth, c_enter, reach, dist, side, seen):  # type: ignore[no-untyped-def]
+    """Rows a … e − 1: the crossing nearest to the middle of the row among those of its hole — c_hole (ascending,
+    unique) holds the holes that have crossings, c_start[p] : c_start[p + 1] — the crossings of c_hole[p] by
+    depth. Writes `dist` and `side` and marks in `seen` the holes with crossings that have rows."""
+    m = c_hole.shape[0]
+    for i in range(a, e):
+        side[i] = -1
+        dist[i] = np.nan
+        f = frm[i]
+        t = to[i]
+        if not (math.isfinite(f) and math.isfinite(t) and t > f):
+            continue
+        h = hole[i]
+        lo = 0
+        hi = m
+        while lo < hi:
+            mid_p = (lo + hi) >> 1
+            if c_hole[mid_p] < h:
+                lo = mid_p + 1
+            else:
+                hi = mid_p
+        if lo == m or c_hole[lo] != h:
+            continue
+        seen[lo] = 1
+        c0 = c_start[lo]
+        c1 = c_start[lo + 1]
+        mid = 0.5 * (f + t)
+        lo = c0  # the first crossing at or below the middle
+        hi = c1
+        while lo < hi:
+            mid_p = (lo + hi) >> 1
+            if c_depth[mid_p] < mid:
+                lo = mid_p + 1
+            else:
+                hi = mid_p
+        d = np.inf
+        s = -1
+        if lo > c0:  # the crossing above: the row is behind it
+            d = mid - c_depth[lo - 1]
+            s = 1 if c_enter[lo - 1] else 0
+        if lo < c1 and c_depth[lo] - mid < d:  # the crossing below is nearer: the row is before it
+            d = c_depth[lo] - mid
+            s = 0 if c_enter[lo] else 1
+        if d <= reach:
+            dist[i] = d
+            side[i] = s
+
+
+def _array(x: Any, dtype: Any) -> np.ndarray:
+    """A C-contiguous writable array of the dtype (one numba specialization of a kernel)."""
+    a = np.ascontiguousarray(x, dtype=dtype)
+    return a if a.flags.writeable else a.copy()
+
+
+def crossing_contacts(
+    hole: Any, frm: Any, to: Any, crossings: Any, reach: float, *, eps: float = DEPTH_EPS, threads: int = 1,
+    tick: Tick | None = None,
+) -> Contacts:  # fmt: skip
+    """The crossings of the holes with a wireframe as contacts (`geo.intersect.Crossings`, or anything with
+    `hole`, `depth`, `event`, `side` in any order) and, for every row given, the distance of its middle from the
+    nearest crossing of its hole and its side (0 — «снаружи», 1 — «внутри»). `hole` — the id of the hole of
+    every row in the numbering of `crossings.hole`; rows without a depth or with TO ≤ FROM are at no contact."""
+    from bf_core.composites import strips
+
+    c_hole, c_depth = _array(crossings.hole, np.int64), _array(crossings.depth, np.float64)
+    event, sign = np.asarray(crossings.event), np.asarray(crossings.side)
+    enter = (event == ENTER) | ((event == CROSS) & (sign < 0))  # into the solid, or against the normals
+    order = np.lexsort((c_depth, c_hole))
+    c_hole, c_depth, enter = c_hole[order], c_depth[order], np.ascontiguousarray(enter[order])
+    holes, first = np.unique(c_hole, return_index=True)
+    start = np.append(first, c_hole.shape[0]).astype(np.int64)
+    rows = (_array(hole, np.int64), _array(frm, np.float64), _array(to, np.float64))
+    n = rows[0].shape[0]
+    if rows[1].shape != (n,) or rows[2].shape != (n,):
+        raise ValueError("hole, frm and to differ in length")
+    dist, side = np.empty(n, dtype=np.float64), np.empty(n, dtype=np.int8)
+    seen = np.zeros(holes.shape[0], dtype=np.uint8)
+    args = (*rows, holes, start, c_depth, enter, float(reach) + float(eps), dist, side, seen)
+    strips.run(lambda lo, hi: _crossing_rows(lo, hi, *args), n, threads=threads, tick=tick, size=_BLOCK)
+    if tick is not None and n == 0:
+        tick(1.0)
+    met = seen > 0
+    return Contacts(dist, side, int(np.diff(start)[met].sum()), int(met.sum()))
 
 
 # --- the means of the steps --------------------------------------------------------------------------------
@@ -367,6 +477,43 @@ def contact_chart(
     return _chart(sel, found, st, (a, b), counts, CONVENTIONS, eps, _part(tick, 0.8, 1.0))
 
 
+def contact_chart_wireframe(
+    hole: Any, frm: Any, to: Any, crossings: Any, values: Any, flt: SampleFilter | None = None, *,
+    length: Any = None, weight_values: Any = None, distance: Any = None, step: Any = None,
+    sides: tuple[str, str] = SIDES, eps: float = DEPTH_EPS, threads: int = 1, tick: Tick | None = None,
+) -> dict[str, Any]:  # fmt: skip
+    """The contact analysis «до каркаса»: the contacts are the `crossings` of the holes with a wireframe
+    (`geo.intersect.hole_crossings`), the sides — `sides` (outside, inside) — see the module docstring. `hole` —
+    the dense index of the hole of every row in the trajectories the crossings were found on (−1 — none); the
+    other arguments are those of `contact_chart`."""
+    flt = SampleFilter() if flt is None else flt
+    st = steps_of(distance, step)
+    frm_c, to_c = np.asarray(frm, dtype=np.float64), np.asarray(to, dtype=np.float64)
+    n = frm_c.shape[0]
+    hole_c, vals = _column("hole", hole, n, np.int64), _column("values", values, n)
+    with np.errstate(invalid="ignore"):
+        ok = np.isfinite(frm_c) & np.isfinite(to_c) & (to_c > frm_c)
+    keep = None if ok.all() else np.flatnonzero(ok)  # the rows with a depth: the others take no part
+
+    def take(column: np.ndarray) -> np.ndarray:
+        return column if keep is None else column[keep]
+
+    hole_k = take(hole_c)
+    found = crossing_contacts(hole_k, take(frm_c), take(to_c), crossings, st.distance, eps=eps, threads=threads,
+                              tick=_part(tick, 0.0, 0.5))  # fmt: skip
+    sel = _select(flt, take, frm_c, to_c, vals, length, weight_values, _part(tick, 0.5, 0.8))
+    counts = {
+        **sel.counts,
+        "rows": n,
+        "no_depth": n - hole_k.shape[0],
+        "no_domain": 0,
+        "no_path": int(np.count_nonzero(hole_k[sel.rows] < 0)),
+    }
+    sel = Selection(sel.values, sel.weights, sel.rows, counts, sel.weighted).require()
+    return _chart(sel, found, st, (str(sides[0]), str(sides[1])), counts, CONVENTIONS_WIREFRAME, eps,
+                  _part(tick, 0.8, 1.0))  # fmt: skip
+
+
 def warm() -> None:
     """Compile the kernels on a few rows (the `stats` step of the warm-up)."""
     hole = np.array([0, 0, 0, 0, 1], dtype=np.int32)
@@ -375,3 +522,6 @@ def warm() -> None:
     values = np.array([1.0, np.nan, 3.0, 2.0, 5.0])
     for weight in ("length", "none"):
         contact_chart(hole, frm, frm + 1.0, codes, ["a", "b"], "a", "b", values, SampleFilter(weight=weight))
+    event, sign = np.array([ENTER, LEAVE], dtype=np.uint8), np.array([-1, 1], dtype=np.int8)
+    hits = SimpleNamespace(hole=np.array([0, 0]), depth=np.array([1.5, 3.0]), event=event, side=sign)
+    contact_chart_wireframe(hole, frm, frm + 1.0, hits, values)
