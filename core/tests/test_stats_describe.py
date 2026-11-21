@@ -277,9 +277,10 @@ def test_bad_weight_is_counted_not_used() -> None:
     # an interval of no length has no weight by length (BF: to ≤ from)
     sel = select_sample([1.0, 2.0, 3.0], SampleFilter(weight="length"), length=[1.0, 0.0, -1.0])
     assert sel.counts["bad_weight"] == 2 and sel.values.tolist() == [1.0]
+    assert sel.weighted and select_sample([1.0], NONE, length=[2.0]).weights.tolist() == [1.0]
     # without weights every row weighs 1 and none is bad
     sel = select_values(v, None, NONE)
-    assert sel.counts["bad_weight"] == 0 and sel.weights.tolist() == [1.0] * 6
+    assert sel.counts["bad_weight"] == 0 and sel.weights.tolist() == [1.0] * 6 and not sel.weighted
     assert sample_weights("none", length=LENGTH) is None
     assert sample_weights("length_field", length=[2.0, 1.0], weight_values=[3.0, NAN]).tolist()[0] == 6.0
 
@@ -305,6 +306,77 @@ def test_order_of_the_rules() -> None:
     assert c["used"] == 1 and c["rows"] == 7
     left_out = c["missing"] + c["bad_weight"] + c["negative"] + c["zero_excluded"] + c["bottom_excluded"]
     assert left_out + c["top_excluded"] + c["used"] == c["rows"]
+
+
+def bf_filter_values(v: np.ndarray, w: np.ndarray, f: SampleFilter) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict]:
+    """BF `routers/stats.py::filter_values`, line for line (numpy masks) — the reference of the kernel."""
+    total = len(v)
+    index = np.arange(total)
+    missing = ~np.isfinite(v)
+    bad_weight = ~missing & ~(np.isfinite(w) & (w > 0))
+    keep = ~missing & ~bad_weight
+    v, w, index = v[keep], w[keep], index[keep]
+    negative = v < 0
+    n_negative = int(negative.sum())
+    if f.negatives == "exclude":
+        v, w, index = v[~negative], w[~negative], index[~negative]
+    elif f.negatives == "half_abs":
+        v = np.where(negative, np.abs(v) / 2, v)
+    n_zero = 0
+    if f.exclude_zero:
+        zero = v == 0
+        n_zero = int(zero.sum())
+        v, w, index = v[~zero], w[~zero], index[~zero]
+    cut = {"bottom_capped": 0, "bottom_excluded": 0, "capped": 0, "top_excluded": 0}
+    if f.bottom_cut is not None:
+        low = v < f.bottom_cut
+        if f.bottom_mode == "cap":
+            cut["bottom_capped"] = int(low.sum())
+            v = np.where(low, f.bottom_cut, v)
+        else:
+            cut["bottom_excluded"] = int(low.sum())
+            v, w, index = v[~low], w[~low], index[~low]
+    if f.top_cut is not None:
+        high = v > f.top_cut
+        if f.top_mode == "cap":
+            cut["capped"] = int(high.sum())
+            v = np.where(high, f.top_cut, v)
+        else:
+            cut["top_excluded"] = int(high.sum())
+            v, w, index = v[~high], w[~high], index[~high]
+    return v, w, index, {
+        "rows": total, "missing": int(missing.sum()), "bad_weight": int(bad_weight.sum()),
+        "negative": n_negative, "zero_excluded": n_zero, **cut, "used": int(len(v)),
+    }  # fmt: skip
+
+
+def test_kernel_equals_the_filter_of_bf_on_every_combination() -> None:
+    rng = np.random.default_rng(2024)
+    n = 5000
+    v = np.round(rng.normal(0.5, 1.0, n), 1)  # zeros, negatives, values on the cuts
+    v[rng.integers(0, n, 300)] = NAN
+    v[rng.integers(0, n, 20)] = math.inf
+    w = np.round(rng.uniform(-0.2, 2.0, n), 1)
+    w[rng.integers(0, n, 200)] = NAN
+    seen = 0
+    for negatives in sl.NEGATIVES:
+        for exclude_zero in (False, True):
+            for bottom in (None, -0.3, 0.0, 0.2):
+                for top in (None, 0.4, 1.5):
+                    for bottom_mode in sl.CUT_MODES:
+                        for top_mode in sl.CUT_MODES:
+                            flt = SampleFilter(
+                                weight="field", weight_field="W", negatives=negatives, exclude_zero=exclude_zero,
+                                bottom_cut=bottom, bottom_mode=bottom_mode, top_cut=top, top_mode=top_mode,
+                            )  # fmt: skip
+                            for weights in (w, None):
+                                sel = select_values(v, weights, flt)
+                                rv, rw, rows, counts = bf_filter_values(v, np.ones(n) if weights is None else w, flt)
+                                assert sel.counts == counts, flt
+                                assert np.array_equal(sel.rows, rows) and np.array_equal(sel.weights, rw), flt
+                                assert np.array_equal(sel.values, rv), flt
+                                seen += 1
+    assert seen == 3 * 2 * 4 * 3 * 2 * 2 * 2
 
 
 def test_selection_is_cancelled_by_tick() -> None:

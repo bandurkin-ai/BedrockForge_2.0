@@ -6,7 +6,7 @@
     histogram(values, weights, spec, tick=None) -> Histogram
         edges (n + 1), counts, weights (Σ w of a bin), width, below / above / nonpositive (count, weight),
         total_count, total_weight; .percent, .cumulative_percent, .as_dict()
-    histogram_chart(selection, spec, weighted, tick=None) -> dict
+    histogram_chart(selection, spec, weighted=None, tick=None) -> dict
         the answer of `POST /stats/histogram` but the names: counts, statistics with the weights and without
         them (one sort), bins, conventions
     warm()
@@ -329,12 +329,13 @@ def histogram(values: Any, weights: Any, spec: HistogramSpec, *, tick: Tick | No
 
 
 def histogram_chart(
-    selection: Selection, spec: HistogramSpec, *, weighted: bool, tick: Tick | None = None
+    selection: Selection, spec: HistogramSpec, *, weighted: bool | None = None, tick: Tick | None = None
 ) -> dict[str, Any]:
     """The answer of a histogram for the rows of `selection`: counts (with `nonpositive_log`), `stats` — with
-    the weights when `weighted`, then `stats_unweighted` beside them, `bins`, `conventions` (the form of BF).
-    One sort; `tick` goes 0 … 0.8 over the sort and to 1 over the bins."""
+    the weights when `weighted` (None — as the selection was made), then `stats_unweighted` beside them,
+    `bins`, `conventions` (the form of BF). One sort; `tick` goes 0 … 0.8 over the sort and to 1 over the bins."""
     selection.require()
+    weighted = selection.weighted if weighted is None else weighted
     sample = selection.sort(tick=None if tick is None else lambda f: tick(0.8 * f))
     with_weights, plain = describe_both(sample)
     bins = histogram(sample.v, sample.w, spec, tick=None if tick is None else lambda f: tick(0.8 + 0.2 * f))

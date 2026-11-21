@@ -10,7 +10,8 @@
         values of the weight field, "length_field" — length × field (a tonnage weight, e.g. with density)
     select_values(values, weights=None, flt=None, tick=None) -> Selection
     select_sample(values, flt, length=None, weight_values=None, tick=None) -> Selection   # the two in one call
-    Selection: values, weights (float64), rows (int64 — the numbers of the rows taken, ascending), counts
+    Selection: values, weights (float64), rows (int64 — the numbers of the rows taken, ascending), counts,
+        weighted (were weights given: False — every row weighs 1)
         .n   .sort(tick=None) -> `weighted.Sorted` (one sort for the statistics, the bins, the Q-Q)
         .require() -> self, or StatsError `no_values` whose hint says what the rows were left out for
 
@@ -126,6 +127,7 @@ class Selection:
     weights: np.ndarray
     rows: np.ndarray
     counts: dict[str, int]
+    weighted: bool = False  # weights were given; False — every row weighs 1
 
     @property
     def n(self) -> int:
@@ -258,7 +260,7 @@ def select_values(
     if n == 0 and tick is not None:
         tick(1.0)
     counts = dict(zip(COUNT_KEYS, [n, *(int(c) for c in cnt), int(k)], strict=True))
-    return Selection(ov[:k], ow[:k], orow[:k], counts)
+    return Selection(ov[:k], ow[:k], orow[:k], counts, has_w)
 
 
 def select_sample(

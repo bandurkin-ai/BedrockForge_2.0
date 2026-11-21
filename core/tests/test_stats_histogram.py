@@ -66,7 +66,7 @@ def test_chart_of_the_bf_table() -> None:
     """BF `test_histogram_api_weights_filters_and_counts` (the bins of the answer) without the database."""
     au = np.array([1.0, 2.0, -0.01, 0.0, NAN, 40.0])
     length = np.array([1.0, 2.0, 1.0, 2.0, 1.0, 2.0])
-    plain = histogram_chart(select_values(au, None, SampleFilter(weight="none")), HistogramSpec(), weighted=False)
+    plain = histogram_chart(select_values(au, None, SampleFilter(weight="none")), HistogramSpec())
     assert plain["counts"]["rows"] == 6 and plain["counts"]["missing"] == 1 and plain["counts"]["used"] == 5
     assert plain["counts"]["nonpositive_log"] == 0 and not plain["weighted"] and plain["stats_unweighted"] is None
     assert plain["stats"]["mean"] == pytest.approx((1 + 2 - 0.01 + 0 + 40) / 5, rel=REL)
@@ -74,7 +74,7 @@ def test_chart_of_the_bf_table() -> None:
     assert "GSLIB" in plain["conventions"] and "последний закрыт" in plain["conventions"]
 
     flt = SampleFilter(weight="length", negatives="half_abs")
-    by_length = histogram_chart(select_sample(au, flt, length=length), HistogramSpec(), weighted=flt.weighted)
+    by_length = histogram_chart(select_sample(au, flt, length=length), HistogramSpec())
     v, w = np.array([1, 2, 0.005, 0, 40]), np.array([1, 2, 1, 2, 2])
     assert by_length["stats"]["mean"] == pytest.approx((v * w).sum() / w.sum(), rel=REL)
     assert by_length["stats_unweighted"]["mean"] == pytest.approx(v.mean(), rel=REL) and by_length["weighted"]

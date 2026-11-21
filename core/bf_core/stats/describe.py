@@ -4,7 +4,8 @@ the same sort.
 
     describe(sample, weighted=True) -> dict        the statistics of a `Sorted` (JSON-ready: float, int, None)
     describe_both(sample) -> (weighted, plain)     both from one pass
-    moments(sample) -> (Moments, Moments)          the raw numbers (Q-Q takes μ and σ of the values and of ln)
+    moments(sample) -> (Moments, Moments)          the raw numbers (Q-Q takes μ and σ of the values and of ln);
+                                                   `fit=` of the two above takes them when already computed
     hazen(sample, ps) -> float64[len(ps)]          percentiles without weights (numpy method="hazen")
     warm()
 
@@ -249,9 +250,12 @@ def _stats(m: Moments, vmin: float, vmax: float, pct: np.ndarray) -> dict[str, A
     }
 
 
-def describe_both(sample: Sorted) -> tuple[dict[str, Any], dict[str, Any]]:
-    """The statistics with the weights of the sample and without them (see the module docstring)."""
-    weighted, plain = moments(sample)
+def describe_both(
+    sample: Sorted, *, fit: tuple[Moments, Moments] | None = None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The statistics with the weights of the sample and without them (see the module docstring); `fit` —
+    `moments(sample)` when the caller has them already."""
+    weighted, plain = moments(sample) if fit is None else fit
     vmin, vmax = sample.vmin, sample.vmax
     return (
         _stats(weighted, vmin, vmax, sample.percentiles(PERCENTILES)),
@@ -259,9 +263,9 @@ def describe_both(sample: Sorted) -> tuple[dict[str, Any], dict[str, Any]]:
     )
 
 
-def describe(sample: Sorted, *, weighted: bool = True) -> dict[str, Any]:
+def describe(sample: Sorted, *, weighted: bool = True, fit: tuple[Moments, Moments] | None = None) -> dict[str, Any]:
     """The statistics of the sample: with its weights, or with `weighted=False` — every row 1."""
-    return describe_both(sample)[0 if weighted else 1]
+    return describe_both(sample, fit=fit)[0 if weighted else 1]
 
 
 def warm() -> None:
