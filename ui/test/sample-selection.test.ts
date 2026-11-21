@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { ScatterChart } from "../src/charts/scatter/ScatterChart";
 import { computeBox, computeScatter, type ProbPlotResult, type ScatterResult } from "../src/modules/charts/apiMore";
 import { boxFrameGroups, probFrameGroups, scatterSelectionBody, valueSelectionBody } from "../src/modules/charts/selection";
-import { bindSampleSelection } from "../src/modules/charts/selection";
+import { bindSampleSelection, chartEscape } from "../src/modules/charts/selection";
 import { SAMPLE_MARKS_KEY, SelectionScene } from "../src/modules/charts/selectionScene";
 import { markReason } from "../src/modules/tables/ToolBar";
 import { loadPage, showSelection, tablesStore } from "../src/modules/tables/state";
@@ -324,5 +324,68 @@ describe("chart.select_clear", () => {
     expect(sampleSelectionStore.get().current).toBeNull();
     expect(sent.at(-1)).toMatchObject({ method: "DELETE", path: "/stats/selection/t1" });
     expect((await app.registry.execute("chart.select_clear", {}, "claude")).ok).toBe(false);
+  });
+});
+
+describe("Esc of a chart window", () => {
+  // the DOM of the node tests: a window of events, the focus — a field of a fake document
+  const el = (inChart: boolean) => ({ closest: (sel: string) => (inChart && sel.includes("chart-window") ? {} : null) }) as unknown as Element;
+  /** The listeners of a window in their order; `stopImmediatePropagation` stops the rest. */
+  function fakeWindow() {
+    const on: { type: string; fn: (e: unknown) => void }[] = [];
+    return {
+      addEventListener: (type: string, fn: (e: unknown) => void) => void on.push({ type, fn }),
+      removeEventListener: () => undefined,
+      dispatch(type: string, props: Record<string, unknown>) {
+        let stop = false;
+        const e = { type, ...props, stopImmediatePropagation: () => void (stop = true), preventDefault: () => undefined };
+        for (const l of on.filter((x) => x.type === type)) {
+          if (stop) break;
+          l.fn(e);
+        }
+      },
+    };
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("the focus in the window, or pressed there with the focus nowhere since", () => {
+    expect(chartEscape(false, el(true))).toBe(true);
+    expect(chartEscape(true, null)).toBe(true);
+    expect(chartEscape(true, el(false))).toBe(false); // the palette, a dialog, a field took the focus
+    expect(chartEscape(false, null)).toBe(false);
+  });
+
+  it("a click on the chart, then Ctrl+K: Esc is the palette's, the selection stays; the focus elsewhere forgets the click", async () => {
+    stubCore();
+    const win = fakeWindow();
+    const body = el(false);
+    const doc = { activeElement: body as Element | null, body };
+    vi.stubGlobal("window", win);
+    vi.stubGlobal("document", doc);
+    const app = createApp({ persist: false }); // binds the selection with the window of events
+    app.store.set({ projectName: "Проект" });
+    let later = 0;
+    win.addEventListener("keydown", () => void later++); // the palette's own Esc
+    const esc = () => win.dispatch("keydown", { key: "Escape", repeat: false });
+
+    await makeSelection({ set_id: 3, table: null, rows: [101] });
+    win.dispatch("pointerdown", { target: el(true) });
+    app.palette.set({ query: "" }); // Ctrl+K
+    esc();
+    expect(later).toBe(1);
+    expect(sampleSelectionStore.get().current).not.toBeNull();
+    // the palette's field took the focus: the click is forgotten, Esc after it closed — not the chart's
+    win.dispatch("focusin", { target: el(false) });
+    app.palette.set({ query: null });
+    esc();
+    expect(later).toBe(2);
+    expect(sampleSelectionStore.get().current).not.toBeNull();
+    // a click on the chart again, nothing open: Esc clears the selection and goes no farther
+    win.dispatch("pointerdown", { target: el(true) });
+    doc.activeElement = null;
+    esc();
+    expect(later).toBe(2);
+    await flush();
+    expect(sampleSelectionStore.get().current).toBeNull();
   });
 });

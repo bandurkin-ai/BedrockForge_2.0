@@ -12,6 +12,7 @@ import type { AxisKind } from "../../charts/core/axisScale";
 import { selectInside, type AxisPolygon, type SelectTool } from "../../charts/core/lasso";
 import { selectedRows } from "../../charts/scatter/model";
 import type { App } from "../../shell/app";
+import { dialogStore } from "../../shell/dialogs";
 import { needProject } from "../../shell/objectRun";
 import { clearSelection, makeSelection, markedRows, refreshHoleSamples, resetSelection, revalidate, sampleSelectionStore, selectionNotice, setHoleSamples, setSelectionNotice, type SelectionInfo } from "../../shell/sampleSelection";
 import { windowStore } from "../../shell/windows";
@@ -133,8 +134,22 @@ function syncHoleSamples(): void {
   void setHoleSamples(charts && t.hole && t.setId !== null ? { setId: t.setId, table, hole: t.hole.id } : null);
 }
 
+/** The palette, a dialog of the queue or a modal window of the shell is open: Esc is theirs. */
+export const modalOpen = (app: Pick<App, "palette" | "store">): boolean => app.palette.get().query !== null || dialogStore.get().queue.length > 0 || app.store.get().modal > 0;
+
 /**
- * `chart.select_clear`, `Esc` in the window of a chart (the last pressed in, or holding the focus), the table
+ * Esc is the chart window's: the focus is in it, or it was pressed last and the focus went nowhere since (the plot
+ * takes no focus — the focus stays on the page).
+ */
+export function chartEscape(pressedInChart: boolean, focus: Element | null): boolean {
+  if (focus?.closest?.(CHART_WINDOW)) return true;
+  const nowhere = !focus || (typeof document !== "undefined" && (focus === document.body || focus === document.documentElement));
+  return pressedInChart && nowhere;
+}
+
+/**
+ * `chart.select_clear`, `Esc` in the window of a chart (holding the focus, or pressed last with the focus nowhere
+ * since; not while the palette or a modal window is open), the table
  * following the selection, the marks of the selected hole, the 3D layer of every scene, an edit of the data, another
  * project; the notices go to the status bar.
  */
@@ -147,14 +162,16 @@ export function bindSampleSelection(app: App): void {
   );
 
   if (typeof window !== "undefined") {
+    // pressed in a chart window (its plot takes no focus); any focus elsewhere — the palette, a dialog — forgets it
     let inChart = false;
     window.addEventListener("pointerdown", (e) => void (inChart = !!(e.target as Element | null)?.closest?.(CHART_WINDOW)), true);
+    window.addEventListener("focusin", (e) => void (inChart = inChart && !!(e.target as Element | null)?.closest?.(CHART_WINDOW)), true);
     window.addEventListener(
       "keydown",
       (e) => {
         if (e.key !== "Escape" || e.repeat || !sampleSelectionStore.get().current) return;
-        const focus = typeof document !== "undefined" ? (document.activeElement as Element | null) : null;
-        if (!inChart && !focus?.closest?.(CHART_WINDOW)) return;
+        if (modalOpen(app)) return; // Esc closes the palette or the dialog first
+        if (!chartEscape(inChart, typeof document !== "undefined" ? document.activeElement : null)) return;
         // Esc of a chart window clears the selection of samples, not the hole (the ribbon's «Снять выбор»)
         e.stopImmediatePropagation();
         e.preventDefault();
