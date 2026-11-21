@@ -2,7 +2,8 @@
  * The selection of samples in the main 3D (ТЗ 8.3, № 237; ADR 0019 §8): for the selection of the application — the
  * layer `samples:selection` (`viz/holes/sampleMarks.ts`) of its intervals from `GET /stats/selection/{token}/
  * segments` by the desurvey method of its set in the scene; none — no layer. A selection gone (409, 404) is cleared
- * with the reason; the number of segments drawn goes to the store (the counter of the layer for the E2E). After a
+ * with the reason; the number of segments drawn goes to the store (the counter of the layer for the E2E). Only the
+ * newest answer is drawn; the holes of the set in the scene by another method — the segments asked again. After a
  * lost context the layer comes again from the segments kept. A lazy chunk with three.js (`selection.ts` attaches it
  * to every scene).
  */
@@ -16,7 +17,7 @@ import { readSelectionSegments, SampleMarks, type SelectionSegments } from "../.
 export const SAMPLE_MARKS_KEY = "samples:selection";
 const DEFAULT_METHOD = "minimum_curvature";
 
-type SelScene = Pick<Scene, "addLayer" | "removeLayer" | "invalidate" | "clipPlanes" | "resolution" | "holes" | "onRestored">;
+type SelScene = Pick<Scene, "addLayer" | "removeLayer" | "invalidate" | "clipPlanes" | "resolution" | "holes" | "onRestored"> & Partial<Pick<Scene, "onFrame">>;
 
 /** BFA1 of the core; its error `{code, message, hint}` — a CoreError (409 `selection_stale` among them). */
 export async function fetchSegments(token: string, method: string, f: typeof fetch = fetch): Promise<ArrayBuffer> {
@@ -48,6 +49,10 @@ export class SelectionScene {
   private token: string | null = null;
   private data: SelectionSegments | null = null;
   private layer: SampleMarks | null = null;
+  /** the desurvey method the segments were asked by (the manifest of the set in the scene) */
+  private method: string | null = null;
+  /** grows with every request: an answer overtaken by a newer one is dropped */
+  private seq = 0;
   private readonly stops: (() => void)[] = [];
   private disposed = false;
 
@@ -56,6 +61,8 @@ export class SelectionScene {
     private readonly load: (token: string, method: string) => Promise<ArrayBuffer> = (t, m) => fetchSegments(t, m),
   ) {
     this.stops.push(sampleSelectionStore.subscribe(() => this.sync()), scene.onRestored(() => this.restore()));
+    // the holes of the set loaded or loaded again by another method of the trajectory: the segments are asked again
+    if (scene.onFrame) this.stops.push(scene.onFrame(() => this.methodChanged()));
     this.sync();
   }
 
@@ -72,9 +79,24 @@ export class SelectionScene {
     this.token = token;
     this.data = null;
     this.drop();
-    if (!cur) return;
-    const method = this.scene.holes(cur.set_id)?.manifest.method ?? DEFAULT_METHOD;
-    void this.ask(cur.token, method);
+    if (!cur) {
+      this.seq++; // an answer on its way is not for anything now
+      this.method = null;
+      return;
+    }
+    void this.ask(cur.token, this.methodOf(cur.set_id));
+  }
+
+  private methodOf(setId: number): string {
+    return this.scene.holes(setId)?.manifest.method ?? DEFAULT_METHOD;
+  }
+
+  /** Before a frame: the manifest of the set in the scene has another method than the segments drawn. */
+  private methodChanged(): void {
+    const cur = sampleSelectionStore.get().current;
+    if (this.disposed || !cur || cur.token !== this.token || this.method === null) return;
+    const method = this.methodOf(cur.set_id);
+    if (method !== this.method) void this.ask(cur.token, method);
   }
 
   /** The data of the set changed (a trajectory edited): the segments of its selection are read again. */
@@ -82,17 +104,19 @@ export class SelectionScene {
     const cur = sampleSelectionStore.get().current;
     if (!cur || cur.token !== this.token || (setId !== undefined && cur.set_id !== setId)) return;
     // the layer drawn stays until the new segments come
-    void this.ask(cur.token, this.scene.holes(cur.set_id)?.manifest.method ?? DEFAULT_METHOD);
+    void this.ask(cur.token, this.methodOf(cur.set_id));
   }
 
   private async ask(token: string, method: string): Promise<void> {
+    const mine = ++this.seq;
+    this.method = method;
     try {
       const data = readSelectionSegments(await this.load(token, method));
-      if (this.disposed || this.token !== token) return;
+      if (this.disposed || this.token !== token || mine !== this.seq) return;
       this.data = data;
       this.show();
     } catch (e) {
-      if (this.disposed || this.token !== token) return;
+      if (this.disposed || this.token !== token || mine !== this.seq) return;
       if (!handleSelectionError(token, e)) sampleSelectionStore.set({ segments: null });
     }
   }

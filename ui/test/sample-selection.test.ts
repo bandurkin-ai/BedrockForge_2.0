@@ -244,15 +244,23 @@ describe("the frames and lassos of the charts", () => {
 function fakeScene() {
   const layers = new Map<string, SceneLayer>();
   const restored: (() => void)[] = [];
+  const frames: (() => void)[] = [];
+  const holes = { method: "tangential" as string | null };
   return {
     layers,
+    holesMethod: holes,
+    frame: () => frames.forEach((fn) => fn()),
+    onFrame: (fn: () => void) => {
+      frames.push(fn);
+      return () => void frames.splice(frames.indexOf(fn), 1);
+    },
     restore: () => restored.forEach((fn) => fn()),
     addLayer: (key: string, layer: SceneLayer) => void layers.set(key, layer),
     removeLayer: (key: string) => void layers.delete(key),
     invalidate: () => undefined,
     clipPlanes: [] as THREE.Plane[],
     resolution: new THREE.Vector2(800, 600),
-    holes: () => ({ manifest: { method: "tangential" } }) as never,
+    holes: () => (holes.method ? { manifest: { method: holes.method } } : null) as never,
     onRestored: (fn: () => void) => {
       restored.push(fn);
       return () => undefined;
@@ -297,6 +305,33 @@ describe("the selection in 3D", () => {
     expect(scene.layers.size).toBe(0);
     expect(s.count).toBeNull();
     s.dispose();
+  });
+
+  it("only the newest answer is drawn; the holes of the set by another method — the segments asked again", async () => {
+    stubCore();
+    const scene = fakeScene();
+    const pending: { method: string; resolve: (b: ArrayBuffer) => void }[] = [];
+    const s = new SelectionScene(scene as never, (token, method) => new Promise((resolve) => pending.push({ method, resolve: () => resolve(segmentsBuffer(token)) })));
+    await selectRows(3, null, [101, 102, 104, 109]);
+    await flush();
+    expect(pending.map((p) => p.method)).toEqual(["tangential"]);
+    scene.frame(); // the same method: nothing asked
+    expect(pending).toHaveLength(1);
+    // the set loaded again by another method of the trajectory before the first answer
+    scene.holesMethod.method = "minimum_curvature";
+    scene.frame();
+    expect(pending.map((p) => p.method)).toEqual(["tangential", "minimum_curvature"]);
+    pending[1].resolve(new ArrayBuffer(0));
+    await flush();
+    expect(s.count).toBe(3);
+    const drawn = scene.layers.get(SAMPLE_MARKS_KEY);
+    pending[0].resolve(new ArrayBuffer(0)); // the old answer, late: dropped
+    await flush();
+    expect(scene.layers.get(SAMPLE_MARKS_KEY)).toBe(drawn);
+    scene.frame();
+    expect(pending).toHaveLength(2);
+    s.dispose();
+    clearSelection();
   });
 
   it("409 for the segments: the selection goes with the reason", async () => {
