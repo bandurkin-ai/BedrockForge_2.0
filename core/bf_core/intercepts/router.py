@@ -14,13 +14,17 @@
 
 `POST /tt` starts `intercept.tt` (`jobs.py`), `POST /run` — `intercept.run` (`jobs_run.py`); a job kind not
 registered in this build — 422 `not_ready`. The params of a job: {"body": the canonical body (`spec.body`) with
-`replace`, "rows": rows read (memory), "rebuild": result id | absent}. The previews (`POST /tt/preview`,
-`/run/preview`) are `routes_preview`, included here; `/orientation/plane` — 15.13. Plain `def` routes run in the
-thread pool.
+`replace`, "rows": rows read, "triangles": of the wireframes of the orientation (the memory of the job), "rebuild":
+result id | absent}. The previews (`POST /tt/preview`, `/run/preview`) are `routes_preview`, included here.
+  * `POST /orientation/plane` {wireframe_ids} → {alpha, dipdir, spread, triangles, area}: the mean plane of the
+    wireframes («Взять с каркаса»; `plane`). 422 `wireframe_not_found`, `bad_param` (more than 16),
+    `no_orientation` (no triangle with an area).
+Plain `def` routes run in the thread pool.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Annotated, Any
 
 import sqlalchemy as sa
@@ -61,7 +65,9 @@ def _submit(s: Scheduler, kind: str, params: dict[str, Any], title: str) -> dict
 
 
 def _tt_job(s: Scheduler, spec: Any, rebuild: int | None = None) -> dict[str, Any]:
-    params: dict[str, Any] = {"body": spec.body, "rows": spec.rows}
+    from .jobs import mesh_triangles
+
+    params: dict[str, Any] = {"body": spec.body, "rows": spec.rows, "triangles": mesh_triangles(spec)}
     if rebuild is not None:
         params["rebuild"] = rebuild
     title = f"{'Перестроить: ' if rebuild else ''}Истинная мощность ({spec.table_name})"
@@ -69,7 +75,10 @@ def _tt_job(s: Scheduler, spec: Any, rebuild: int | None = None) -> dict[str, An
 
 
 def _run_job(s: Scheduler, spec: Any, rebuild: int | None = None) -> dict[str, Any]:
-    params: dict[str, Any] = {"body": {**spec.body, "replace": spec.replace}, "rows": spec.rows}
+    from .jobs import mesh_triangles
+
+    params: dict[str, Any] = {"body": {**spec.body, "replace": spec.replace}, "rows": spec.rows,
+                              "triangles": mesh_triangles(spec)}  # fmt: skip
     if rebuild is not None:
         params["rebuild"] = rebuild
     title = f"Перестроить: {spec.name}" if rebuild else f"{spec.name} ({spec.table_name})"
@@ -175,3 +184,79 @@ def rebuild(
     if rec["op"] == "tt":
         return _tt_job(s, tspec, result_id)
     return _run_job(s, rspec, result_id)
+
+
+#: triangles of a wireframe taken at a time by `plane` (≈ 150 MB of float64 corners and normals)
+PLANE_CHUNK = 2_000_000
+
+
+def plane(project: Any, meshes: list[tuple[Any, Any]]) -> dict[str, Any]:
+    """The mean plane of the triangles of `meshes` ((MeshState, stats) — `exact.set_targets`): the main
+    eigenvector of Σ S·n·nᵀ (S — the area, n — the unit normal; the side of a triangle does not matter), turned
+    up (n_z ≥ 0); `spread` — the mean angle between the normals and the normal of the plane weighted by area, °;
+    `area`, m². None when no triangle has an area. The wireframes are read one at a time through the cache of
+    `wireframes.exact`, the triangles a part at a time."""
+    import numpy as np
+
+    from bf_core.wireframes import exact
+
+    from .formulas import plane_angles, upper_normal
+
+    def parts() -> Any:
+        for state, _stats in meshes:
+            g = exact.geometry(project, state)
+            for a in range(0, len(g.tri), PLANE_CHUNK):
+                t = g.tri[a : a + PLANE_CHUNK]
+                p0 = g.xyz[t[:, 0]]
+                c = np.cross(g.xyz[t[:, 1]] - p0, g.xyz[t[:, 2]] - p0)  # differences: no rounding of UTM
+                twice = np.sqrt((c * c).sum(axis=1))
+                ok = twice > 0.0
+                yield c[ok] / twice[ok, None], 0.5 * twice[ok]
+            del g
+
+    tensor, area, triangles = np.zeros((3, 3)), 0.0, 0
+    for n, s in parts():
+        tensor += (n * s[:, None]).T @ n
+        area += math.fsum(s.tolist())
+    for state, _stats in meshes:
+        triangles += int(state.triangles)
+    if not area > 0.0:
+        return {"triangles": triangles, "area": 0.0}
+    w, v = np.linalg.eigh(tensor)
+    normal = upper_normal(v[:, int(np.argmax(w))])
+    alpha, dipdir = plane_angles(normal)
+    turned = 0.0
+    for n, s in parts():
+        cos = np.minimum(np.abs(n @ normal), 1.0)
+        turned += math.fsum((s * np.degrees(np.arccos(cos))).tolist())
+    return {"alpha": float(alpha), "dipdir": float(dipdir), "spread": turned / area, "triangles": triangles,
+            "area": area}  # fmt: skip
+
+
+@router.post("/orientation/plane")
+def orientation_plane(svc: Svc, body: Payload) -> dict[str, Any]:
+    """«Взять с каркаса»: α, Aп of the mean plane of the wireframes, the spread of their normals around it."""
+    from bf_core.composites.jobs_coding import _ids
+    from bf_core.wireframes import exact
+
+    from . import spec as sp
+
+    raw = _body(body)
+    project = svc.require_current()
+    if raw.get("wireframe_ids") in (None, "", []):
+        raise sp.bad("bad_param", "Не выбраны каркасы.", "Отметьте каркасы или поверхности тела.", "wireframe_ids")
+    ids = sp._located(lambda: _ids(raw.get("wireframe_ids")), "", "wireframe_ids")
+    if len(ids) > sp.MESH_MAX:
+        raise sp.bad("bad_param", f"Каркасов больше {sp.MESH_MAX}.", f"Выберите не больше {sp.MESH_MAX} каркасов.",
+                     "wireframe_ids")  # fmt: skip
+    with dialect.read_tx(project.engine) as conn:
+        found = {int(s.wireframe_id): (s, st) for s, st in exact.set_targets(conn, ids)}
+    gone = [i for i in ids if i not in found]
+    if gone:
+        raise sp.bad("wireframe_not_found", f"Каркас №{gone[0]} не найден в проекте или пуст.",
+                     "Обновите список каркасов и отметьте их снова.", "wireframe_ids")  # fmt: skip
+    out = plane(project, [found[i] for i in dict.fromkeys(ids)])
+    if "alpha" not in out:
+        raise sp.bad("no_orientation", "У каркасов нет треугольников с площадью: плоскость не определить.",
+                     "Выберите другие каркасы.", "wireframe_ids")  # fmt: skip
+    return out

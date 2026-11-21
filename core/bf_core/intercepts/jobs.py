@@ -17,17 +17,22 @@ holes, the parameters with the names and geometry keys of the wireframes (`TtSpe
 `report` (the panel «Результат», `ui/src/modules/intercepts/results.ts`): `counts` {src: {TT_SRC: rows}, flags:
 {"1", "2", "4", "8": rows}}; `rows`, `length` (Σ LENGTH of the rows in the calculation, m), `tt` (Σ TT, m),
 `with_tt`, `excluded` (out of the calculation: no depth, TO ≤ FROM), `skipped` (no FROM or TO: not read),
-`capped`, `absent` (sources that were not there: «mesh» until 15.13), `sources` (per source of the chain);
+`capped`, `absent` (sources that were not there), `sources` (per source of the chain);
 `journal`, `versions`, `seconds`, `edits` ([]), `written` (by `sink.commit`). NaN is null.
 
 The fields of a table of results (composites, «Рудные интервалы»…) are not repeated when that table is rebuilt:
 «Истинная мощность» is not a registered dependent (ADR 0021 §8) — the rebuild lists it in 409 `dependents_lost`.
-The orientation by wireframes (`mesh`) is not read yet (15.13): the chain goes on to the next source, the report
-lists it in `absent`.
+The orientation by wireframes (`mesh`, 15.13) reads the wireframes of the list one at a time, each leaving the cache
+once read (`orient_mesh.project_source(keep=False)`); the steps «Пересечения стволов: каркас N из M», «Ближайшие
+треугольники…» are the stages of the job. Their geometry keys are in `inputs.meshes` and in the hash: a wireframe
+replaced makes the record «устарел». A d_max beyond 50 m on large wireframes is slow (the search of the nearest
+triangle grows with d_max, `NEAREST_US`): the journal gives the estimate (`mesh_notes`); the range of ТЗ 8.5.4
+stays.
 """
 
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable, Mapping
 from types import SimpleNamespace
@@ -52,6 +57,11 @@ KIND = "intercept.tt"
 OP = "tt"
 UNITS = {"TT": "м", "ALPHA": "°", "DIPDIR": "°", "HOLE_THETA": "°", "HOLE_AZ": "°"}
 Tick = Callable[[float | None, str | None], None]
+#: µs a query of the nearest triangle takes per √(million triangles) and per metre of d_max — measured on a dense
+#: closed body (points inside and around it; 2 and 10 million triangles, d_max 50–200 m: 14–208 µs), an upper
+#: estimate: the search stops at the size of the body
+NEAREST_US = 0.35
+SLOW_S = 10.0  # the estimate of the search the journal warns from
 
 
 def parse(conn: sa.Connection, body: dict[str, Any]) -> TtSpec:
@@ -64,8 +74,36 @@ def parse(conn: sa.Connection, body: dict[str, Any]) -> TtSpec:
 
 
 def memory_mb(params: dict[str, Any]) -> int:
-    """Rows × (7 fields written + the lines, the trajectory parts, the orientation ≈ 16) × 8 B × 3."""
-    return max(256, int(int(params.get("rows") or 0) * 23 * 8 * 3 / 2**20) + 128)
+    """Rows × (7 fields written + the lines, the trajectory parts, the orientation ≈ 16) × 8 B × 3; the wireframes
+    of the orientation — one in memory at a time, the largest not known here: all, ≈ 100 B a triangle with its
+    tree (`params["triangles"]`)."""
+    rows, triangles = int(params.get("rows") or 0), int(params.get("triangles") or 0)
+    return max(256, int((rows * 23 * 8 * 3 + triangles * 100) / 2**20) + 128)
+
+
+def mesh_triangles(spec: Any) -> int:
+    """Triangles of the wireframes of the sources «каркас» of `spec` (`viz.meshes.MeshState.triangles`)."""
+    return sum(int(state.triangles) for s in spec.orientation if s.kind == "mesh" for state, _st in s.meshes)
+
+
+def mesh_notes(spec: Any, rows: int, threads: int = 1) -> list[str]:
+    """A line of the journal for a source «каркас» whose search of the nearest triangle is estimated at
+    `SLOW_S` seconds or more for `rows` intervals: d_max beyond 50 m on large wireframes."""
+    from .orient import _count
+
+    out = []
+    for s in spec.orientation:
+        if s.kind != "mesh" or s.d_max <= 50.0:
+            continue
+        tri = sum(int(state.triangles) for state, _st in s.meshes)
+        us = NEAREST_US * math.sqrt(tri / 1e6) * s.d_max
+        took = rows * us * 1e-6 / max(1, threads)
+        if took >= SLOW_S:
+            d = f"{s.d_max:g}".replace(".", ",")
+            out.append(f"Каркас: d_max = {d} м на каркасах в {_count(tri)} треугольников — поиск ближайшей точки "
+                       f"может занять до {_count(round(took))} с (оценка: до {_count(round(us))} мкс на интервал "
+                       f"без пересечения). Меньший d_max ускорит расчёт.")  # fmt: skip
+    return out
 
 
 def read(
@@ -84,24 +122,29 @@ def read(
 
 def compute(
     spec: TtSpec, lines: source.Lines, tables: Mapping[int, source.Lines], st: Any, project: Any, *,
-    keep: bool = True, threads: int = 1, tick: Callable[[float], None] | None = None,
+    mesh: orient.MeshSource | None = None, keep: bool = True, threads: int = 1,
+    tick: Callable[[float], None] | None = None,
 ) -> TtTable:  # fmt: skip
     """`tt.of_table` with the bodies of domains by wireframes read from `project` (`keep=False` — a job: each
-    wireframe leaves the cache once read). A kernel refusal (an open body…) — ApiError 422."""
+    wireframe leaves the cache once read) and the source «каркас» `mesh` (None — not there: the chain goes on,
+    `absent` names it). A kernel refusal (an open body…) — ApiError 422."""
     from bf_core.composites import jobs_coding
 
     from . import tt
 
     try:
         with jobs_coding.reading(project, keep=keep):
-            return tt.of_table(spec, lines, st, tables=dict(tables), mesh=None, threads=threads, tick=tick)
+            return tt.of_table(spec, lines, st, tables=dict(tables), mesh=mesh, threads=threads, tick=tick)
     except ValueError as exc:  # CompositeError of the bodies → 422; any other — a failure of the job
         raise cj.as_api(exc) from None
 
 
-def job_mesh(project: Any, tick: Tick) -> orient.MeshSource | None:
-    """The source «каркас» of a job: none until 15.13 (the chain goes on, `absent` names it)."""
-    return None
+def job_mesh(project: Any, tick: Tick) -> orient.MeshSource:
+    """The source «каркас» of a job: the wireframes of the project one at a time, each leaving the cache once read;
+    the step that starts is the message of the job («Пересечения стволов: каркас 2 из 5»)."""
+    from . import orient_mesh
+
+    return orient_mesh.project_source(project, keep=False, stage=lambda text: tick(None, text))
 
 
 def report_of(t: TtTable) -> dict[str, Any]:
@@ -150,14 +193,15 @@ def run_tt(engine: sa.Engine, folder: Any, params: dict[str, Any], *, job_id: in
     if fresh is not None:
         return {**fresh, "columns": spec.columns(), "stages": _rounded(stages)}
     tick(0.1, "Истинная мощность")
-    t = compute(spec, lines, tables, st, project, keep=False, threads=strips.default_threads(),
+    threads = strips.default_threads()
+    t = compute(spec, lines, tables, st, project, mesh=job_mesh(project, tick), keep=False, threads=threads,
                 tick=lambda f: tick(0.1 + 0.65 * f, None))  # fmt: skip
     del tables
     t4 = time.perf_counter()
     stages["kernel"] = t4 - t3
     tick(0.8, "Запись")
-    report = {**report_of(t), "journal": t.journal, "versions": cj._versions(), "edits": [],
-              "seconds": round(time.perf_counter() - t0, 3)}  # fmt: skip
+    report = {**report_of(t), "journal": [*mesh_notes(spec, lines.rows, threads), *t.journal],
+              "versions": cj._versions(), "edits": [], "seconds": round(time.perf_counter() - t0, 3)}  # fmt: skip
     cols = sink.ColumnsOut(spec.table_id, lines.row_ids, columns(spec, t))
     del t
     # no tick from here on: the final transaction writes the fields and the record, or nothing

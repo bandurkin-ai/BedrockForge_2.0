@@ -8,7 +8,8 @@
     422 / 404 / 409 `column_exists`); `hole_id` — `dh_holes.id`, 422 / 404 `hole_not_found`. TT_REL = TT / LENGTH
     (empty when LENGTH ≤ 0 or TT is empty); the angles are given whatever `angles` is. `set_summary` — `counts` of
     the whole table when it has ≤ 200 000 rows (cached by the revisions of the tables read and the parameters),
-    else null. `mesh_skipped` — the source «каркас» was not computed (until 15.13 — always, when listed).
+    else null. `mesh_skipped` — the source «каркас» was not computed: its wireframes have more than 2 million
+    triangles (`MESH_TRIANGLES`); the chain went on to the next source and a note says so.
     Empty — null, never 0.
 
   * `POST /run/preview` {params, hole_id} → {hole, unit, samples: {from, to, values, ore}, candidates: [{from, to,
@@ -101,7 +102,7 @@ def _nulls(a: Any) -> list[Any]:
 def tt_preview(svc: Svc, body: Payload) -> dict[str, Any]:
     import numpy as np
 
-    from bf_core.composites import source
+    from bf_core.composites import source, strips
     from bf_core.composites.routes_run import _hole
 
     from . import jobs
@@ -114,12 +115,20 @@ def tt_preview(svc: Svc, body: Payload) -> dict[str, Any]:
         hole = _hole(conn, spec.set_id, raw.get("hole_id"))
     lines, tables = jobs.read(project.engine, spec, holes=[raw["hole_id"]])
     st = source.trajectories(project, spec.set_id)
-    t = jobs.compute(spec, lines, tables, st, project)
+    mesh, skipped = preview_mesh(project, spec)
+    t = jobs.compute(spec, lines, tables, st, project, mesh=mesh)
     rep = jobs.report_of(t)
+
+    def whole(s: Any, tb: Any) -> dict[str, Any]:
+        made = jobs.compute(spec, s, tb, st, project, mesh=mesh, threads=strips.default_threads())
+        return jobs.report_of(made)["counts"]  # type: ignore[no-any-return]
+
     length = lines.to_m - lines.from_m
     with np.errstate(divide="ignore", invalid="ignore"):
         rel = np.where(length > 0.0, t.tt / np.where(length > 0.0, length, 1.0), np.nan)
-    notes = list(t.journal)
+    notes = [*jobs.mesh_notes(spec, spec.rows, strips.default_threads()), *t.journal]
+    if skipped:
+        notes.append(MESH_SKIPPED)
     if not lines.rows:
         notes.insert(0, f"В скважине {hole} нет строк в таблице «{spec.table_name}».")
     return {
@@ -138,10 +147,8 @@ def tt_preview(svc: Svc, body: Payload) -> dict[str, Any]:
             "HOLE_AZ": _nulls(t.azimuth),
         },
         "counts": rep["counts"],
-        "mesh_skipped": "mesh" in rep["absent"],
-        "set_summary": _whole(
-            project, spec, st, lambda s, tb: jobs.report_of(jobs.compute(spec, s, tb, st, project))["counts"]
-        ),
+        "mesh_skipped": skipped,
+        "set_summary": _whole(project, spec, st, whole),
         "notes": notes,
     }
 
@@ -150,8 +157,14 @@ def tt_preview(svc: Svc, body: Payload) -> dict[str, Any]:
 
 
 def preview_mesh(project: Any, spec: Any) -> tuple[Any, bool]:
-    """The source «каркас» of the preview of a hole and whether it is skipped (none until 15.13)."""
-    return None, any(s.kind == "mesh" for s in spec.orientation)
+    """The source «каркас» of the preview of a hole (the wireframes kept in the cache of `wireframes.exact` for the
+    next preview) and whether it is skipped: a source with more than `MESH_TRIANGLES` triangles is not computed —
+    the source answers None, the chain goes on to the next one."""
+    from . import orient_mesh
+
+    skipped = any(s.kind == "mesh" and sum(int(state.triangles) for state, _st in s.meshes) > MESH_TRIANGLES
+                  for s in spec.orientation)  # fmt: skip
+    return orient_mesh.project_source(project, max_triangles=MESH_TRIANGLES), skipped
 
 
 def _candidates(spec: Any, t: Any, orienting: Any) -> list[dict[str, Any]]:
@@ -207,7 +220,7 @@ def run_preview(svc: Svc, body: Payload) -> dict[str, Any]:
     _lines, t, orienting = jobs_run.compute(spec, src, tables, st, project, mesh=mesh)
     with jobs_coding.reading(project):
         cands = _candidates(spec, t, orienting)
-    notes = list(t.journal)
+    notes = [*jobs.mesh_notes(spec, spec.rows, strips.default_threads()), *t.journal]
     if skipped:
         notes.append(MESH_SKIPPED)
     if not src.rows:

@@ -186,15 +186,17 @@ def run_intercepts(
                 **({"chart_id": chart} if chart is not None else {})}  # fmt: skip
     tick(0.1, "Рудные пересечения")
     source_of = jobs.job_mesh if mesh is None else mesh
+    threads = strips.default_threads()
+    slow = jobs.mesh_notes(spec, src.rows, threads)  # an upper estimate: TT is asked of candidates and rows
     _lines, t, _o = compute(spec, src, tables, st, project, mesh=source_of(project, tick), keep=False,
-                        threads=strips.default_threads(), tick=lambda f: tick(0.1 + 0.5 * f, None))  # fmt: skip
+                            threads=threads, tick=lambda f: tick(0.1 + 0.5 * f, None))  # fmt: skip
     del tables, _lines, _o
     t4 = time.perf_counter()
     stages["kernel"] = t4 - t3
     out = out_table(spec, src, t)
-    report = {**report_of(t, src), "unit": spec.unit, "field": spec.field, "journal": t.journal,
+    report = {**report_of(t, src), "unit": spec.unit, "field": spec.field, "journal": [*slow, *t.journal],
               "versions": cj._versions(), "edits": [], "seconds": 0.0}  # fmt: skip
-    rows, journal = t.n, list(t.journal)
+    rows, journal = t.n, list(report["journal"])
     del t, src
     shown: dict[str, int] = {}
 
