@@ -18,6 +18,7 @@ import { blocksStore } from "../blocks/state";
 import { defaultField, getChart, loadFields, type ChartRow } from "../charts/api";
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
+import { onScene } from "../scene/sceneHost";
 import { updateView, viewStore } from "../scene/bind";
 import { dropSwathEntry, shownSwaths, showSwath, SWATHS_KEY } from "../scene/viewSync";
 import { tablesStore } from "../tables/state";
@@ -181,6 +182,18 @@ export function bindSwath(app: App): void {
       /* a malformed event: everything is computed again */
     }
     swathDataChanged();
+  });
+  // the boxes and plots in the main 3D: a lazy chunk with three.js, attached to every new scene
+  let detach: (() => void) | null = null;
+  let generation = 0;
+  onScene((scene) => {
+    const mine = ++generation;
+    detach?.();
+    detach = null;
+    if (!scene) return;
+    void import("./scene").then((m) => {
+      if (mine === generation) detach = m.attachSwathScene(scene);
+    });
   });
 }
 
