@@ -321,8 +321,16 @@ export const updateChart = (id: number, body: { settings?: object; auto_name?: s
 
 export const deleteChart = (id: number): Promise<unknown> => api.del(`/charts/${id}`);
 
+export const getChart = (id: number): Promise<ChartRow> => api.get<ChartRow>(`/charts/${id}`);
+
+/** The answer of `POST /stats/chart/{id}`: the chart as stored and its calculation by the current data. */
+export interface SavedAnswer<T> {
+  chart: ChartRow;
+  result: T;
+}
+
 /** The calculation of a saved chart by its settings and the current data (`chart.open`, the assistant). */
-export const computeSaved = <T>(chartId: number): Promise<T> => api.post<T>(`/stats/chart/${chartId}`, {});
+export const computeSaved = <T>(chartId: number): Promise<SavedAnswer<T>> => api.post<SavedAnswer<T>>(`/stats/chart/${chartId}`, {});
 
 // ---- the newest answer only ----
 
