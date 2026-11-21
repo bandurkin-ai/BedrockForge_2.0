@@ -88,7 +88,9 @@ def gather(recs: Any, inputs: Mapping[str, Any], tick: Tick | None = None) -> di
         if tick is not None:
             tick(i / max(len(elements), 1), f"Расчёт: {element}")
         recs.load(calc.columns_of(recs.schema, element))
-        ctx = calc.context(recs, inputs["config"], inputs["crm"], element, inputs.get("filter"))
+        beat = None if tick is None else (lambda i=i, element=element: tick(i / max(len(elements), 1),
+                                                                             f"Расчёт: {element}"))  # fmt: skip
+        ctx = calc.context(recs, inputs["config"], inputs["crm"], element, inputs.get("filter"), tick=beat)
         part: dict[str, Any] = {"summary": calc.run(ctx, "summary")}
         runs: list[tuple[str, str, dict[str, Any]]] = [("standards", "standards", {}), ("blanks", "blanks", {})]
         runs += [(f"duplicates:{k}", "duplicates", {"kind": k}) for k in DUP_KINDS]

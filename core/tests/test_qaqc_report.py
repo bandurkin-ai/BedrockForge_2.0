@@ -295,3 +295,36 @@ def test_batch_status_by_any_element_and_no_orphan_building(qc, tmp_path: Path, 
     assert res.status_code == 500 and res.json()["code"] == "internal"
     names = [i["name"] for i in qc.get(f"{Q}/reports").json()["items"]]
     assert "Не начат" not in names and len(names) == 1
+
+
+class _CancelInBootstrap(JobContext):
+    """Cancels at the third beat of the computation: the first is the start of the element, the next ones come
+    only from the bootstrap of the external control (every 16 realizations)."""
+
+    def __init__(self, job: dict[str, Any]) -> None:
+        super().__init__(job, lambda _m: None, threading.Event())
+        self.beats = 0
+
+    def tick(self, progress: float | None = None, message: str | None = None) -> None:
+        if message and message.startswith("Расчёт: Элемент"):
+            self.beats += 1
+            if self.beats >= 3:
+                raise JobCancelled()
+
+
+def test_cancel_during_the_bootstrap_drops_the_report(qc, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    settings(qc)
+    did = data(qc, tmp_path, 600)
+    p = project(qc)
+    store = BlobStore(p.folder)
+    with dialect.write_tx(p.engine) as conn:
+        rid = rp.create(conn, store, "В бутстрапе", rp.make_inputs(conn, did, None, ["AU"], "none"))
+    ctx = _CancelInBootstrap({"id": 4242, "params": {"report_id": rid}, "project_folder": str(p.folder)})
+    with pytest.raises(JobCancelled):
+        qj.run_report(ctx)
+    ctx.close()
+    assert ctx.beats >= 3  # the cancel came from inside the bootstrap
+    with dialect.write_tx(p.engine) as conn:  # the job set its id on the report: the scheduler drops it
+        assert drop_partial(conn, 4242) == 1
+        assert conn.execute(sa.select(objects.c.id).where(objects.c.kind == rp.KIND)).first() is None
+    assert qc.get(f"{Q}/reports").json()["items"] == []

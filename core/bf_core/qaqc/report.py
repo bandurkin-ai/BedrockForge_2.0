@@ -147,7 +147,9 @@ def compute(recs: Any, inputs: Mapping[str, Any], tick: Callable[[float, str], N
         if tick is not None:
             tick(i / max(len(elements), 1), f"Элемент {element}")
         recs.load(calc.columns_of(recs.schema, element))
-        ctx = calc.context(recs, inputs["config"], inputs["crm"], element, inputs.get("filter"))
+        beat = None if tick is None else (lambda i=i, element=element: tick(i / max(len(elements), 1),
+                                                                             f"Элемент {element}"))  # fmt: skip
+        ctx = calc.context(recs, inputs["config"], inputs["crm"], element, inputs.get("filter"), tick=beat)
         part: dict[str, Any] = {}
         for section in calc.SECTIONS:
             for params in RUNS.get(section, [{}]):
