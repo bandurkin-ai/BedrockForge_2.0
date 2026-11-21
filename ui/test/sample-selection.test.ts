@@ -133,6 +133,28 @@ describe("the state of the selection", () => {
     expect(notices[0]).toMatch(/^Выделение не сделано: Выделено слишком много проб/);
   });
 
+  it("refusals of the creation in Russian from {message, hint}: 409 selection_stale (token null), 413, 422 bad_request", async () => {
+    const answers = [
+      json({ code: "selection_stale", message: "Таблица «Пробы» изменилась, пока делалось выделение.", hint: "Выделите пробы заново.", token: null }, 409),
+      json({ code: "request_too_large", message: "Запрос слишком большой: 12 МБ, можно не больше 8 МБ.", hint: "Выделите меньше точек." }, 413),
+      json({ code: "bad_request", message: "Тело запроса — не JSON-объект.", hint: "Повторите действие." }, 422),
+    ];
+    stubCore((m, p) => (m === "POST" && p === "/stats/selection" ? (answers.shift() ?? null) : null));
+    expect(await selectRows(3, null, [101])).toBeNull();
+    expect(sampleSelectionStore.get().current).toBeNull();
+    expect(notices.at(-1)).toBe("Выделение не сделано: Таблица «Пробы» изменилась, пока делалось выделение. Выделите пробы заново.");
+    expect(await selectRows(3, null, [101])).toBeNull();
+    expect(notices.at(-1)).toBe("Выделение не сделано: Запрос слишком большой: 12 МБ, можно не больше 8 МБ. Выделите меньше точек.");
+    expect(await selectRows(3, null, [101])).toBeNull();
+    expect(notices.at(-1)).toBe("Выделение не сделано: Тело запроса — не JSON-объект. Повторите действие.");
+    // a selection made — then a 409 at a new one: the old one stays (the token null names none)
+    expect(await selectRows(3, null, [101])).not.toBeNull();
+    const kept = sampleSelectionStore.get().current?.token;
+    answers.push(json({ code: "selection_stale", message: "Таблица изменилась.", hint: "Заново.", token: null }, 409));
+    expect(await selectRows(3, null, [102])).toBeNull();
+    expect(sampleSelectionStore.get().current?.token).toBe(kept);
+  });
+
   it("409 selection_stale after an edit of the table: the selection goes, the reason in the status bar", async () => {
     let stale = false;
     stubCore((m, p) => (stale && m === "GET" && p.startsWith("/stats/selection/t1") ? json(STALE, 409) : null));

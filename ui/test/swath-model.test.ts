@@ -272,6 +272,11 @@ describe("swath plot on screen", () => {
     e.body = { param: "anchor" };
     expect(swathError(e).param).toBe("anchor");
     expect(swathError(new CoreError(422, "too_many_series", "Не больше 12 рядов.", "")).param).toBe("series");
+    // too many samples or blocks for the series (422 too_much_data {param: series}) — at the series, in Russian
+    const big = new CoreError(422, "too_much_data", "Слишком много данных для рядов: 30 000 000 значений.", "Уберите часть рядов или сузьте диапазон.");
+    big.body = { code: "too_much_data", param: "series" };
+    expect(swathError(big)).toEqual({ text: "Слишком много данных для рядов: 30 000 000 значений. Уберите часть рядов или сузьте диапазон.", param: "series" });
+    expect(swathError(new CoreError(422, "too_much_data", "Много.", "")).param).toBe("series");
     expect(swathError(new Error("сеть")).param).toBeNull();
   });
 
