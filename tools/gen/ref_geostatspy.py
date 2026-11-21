@@ -112,6 +112,8 @@ def main(out_dir: Path) -> None:
         "geostatspy.kb2d returns the grid with row 0 = northernmost (y flipped)",
         "geostatspy.gamv counts the self-pair at lag 0 (GSLIB convention): "
         "npairs[0] = n, or 2n for an omnidirectional variogram",
+        "geostatspy.nscore: the score of the minimum sample is taken from the neighbouring rows of the transform "
+        "table (-2.20 instead of -2.50 for the reference set); BF2 stats/transforms.py matches it to 1e-6 elsewhere",
     ]
     ref: dict = {"data": {c: df[c].tolist() for c in ("X", "Y", "V")}}
 
