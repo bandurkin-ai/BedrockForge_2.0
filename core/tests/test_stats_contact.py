@@ -405,3 +405,271 @@ def test_inputs_are_not_changed_and_any_integer_holes_do() -> None:
         assert np.array_equal(a, b, equal_nan=True)
     assert chart(hole.astype(np.int32), frm, to, codes, values, length=lengths) == r
     assert chart(hole * 1_000_003 + 17, frm, to, codes, values, length=lengths) == r  # ids of a database
+
+
+# --- the contact at a wireframe (13.8) ---------------------------------------------------------------------
+
+
+def vertical_holes(collars):  # type: ignore[no-untyped-def]
+    """Trajectories of vertical holes: collars [(x, y, z, td)]."""
+    from bf_core.drillholes.desurvey import Collars, Surveys, desurvey
+
+    c = np.array(collars, dtype=float).reshape(-1, 4)
+    none = np.zeros(0)
+    return desurvey(
+        Collars(np.arange(len(c)), c[:, 0], c[:, 1], c[:, 2], c[:, 3]),
+        Surveys(none.astype(np.int64), none, none, none),
+        n_holes=len(c),
+    )
+
+
+def samples(tds, length=1.0):  # type: ignore[no-untyped-def]
+    """Samples of `length` m from the collar to the depth of every hole: hole, frm, to."""
+    parts = [(np.full(int(td / length), h), np.arange(int(td / length)) * length) for h, td in enumerate(tds)]
+    hole, frm = (np.concatenate(col) for col in zip(*parts, strict=True))
+    return hole, frm, frm + length
+
+
+def cube_case(length: float = 1.0):  # type: ignore[no-untyped-def]
+    """A cube of 10 m on UTM coordinates and vertical holes: four through it (the top face at 4 m, the bottom at
+    14 m), one beside it, one from inside it (its collar 6 m above the bottom), one that ends inside (8 m)."""
+    from bf_core.geo import intersect as gi
+    from tests.meshutil import UTM, cube
+
+    x0, y0, z0 = UTM
+    top = z0 + 14.0
+    collars = [
+        (x0 + 2.5, y0 + 2.5, top, 30.0),
+        (x0 + 7.25, y0 + 3.5, top, 30.0),
+        (x0 + 1.0, y0 + 9.0, top, 30.0),
+        (x0 + 5.0, y0 + 5.0, top, 30.0),  # through the middle of the faces: a vertex of the 2 × 2 cells
+        (x0 + 25.0, y0 + 2.0, top, 30.0),
+        (x0 + 4.0, y0 + 6.0, z0 + 6.0, 20.0),
+        (x0 + 6.0, y0 + 4.0, top, 8.0),
+    ]
+    traj = vertical_holes(collars)
+    v, t = cube(2, 10.0)
+    hits = gi.hole_crossings(traj, [gi.MeshTarget(v, t, solid="outward")])
+    hole, frm, to = samples([c[3] for c in collars], length)
+    z = np.array([c[2] for c in collars])[hole] - 0.5 * (frm + to)
+    in_xy = np.array([abs(c[0] - x0 - 5.0) < 5.0 and abs(c[1] - y0 - 5.0) < 5.0 for c in collars])[hole]
+    inside = in_xy & (z > z0) & (z < z0 + 10.0)
+    return hole, frm, to, hits, inside
+
+
+def test_a_cube_and_vertical_holes_steps_on_both_sides_of_a_face_are_exact() -> None:
+    """13.8: the contact is where a hole crosses the wireframe; 1.0 outside the cube and 3.0 inside — the means
+    of the steps are 1 and 3 exactly, the numbers of samples — those counted by hand."""
+    hole, frm, to, hits, inside = cube_case()
+    assert len(hits) == 4 * 2 + 1 + 1  # the faces of the cube: in and out, out only, in only
+    values = np.where(inside, 3.0, 1.0)
+    r = contact.contact_chart_wireframe(hole, frm, to, hits, values, distance=3.0)
+    assert r["edges"] == [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0] and (r["contacts"], r["holes"]) == (10, 6)
+    assert r["mean"] == [1.0] * 3 + [3.0] * 3
+    # a hole through the cube: 3 samples above the top face, 3 below the bottom, 3 + 3 inside; the hole from
+    # inside: 3 inside above the bottom face, 3 below it; the hole that ends inside: 3 above the top, 3 inside
+    assert r["n"] == [4 * 2 + 1 + 1] * 3 + [4 * 2 + 1 + 1] * 3
+    assert r["a"] == {"label": "снаружи", "n": 30, "mean": 1.0} and r["b"] == {"label": "внутри", "n": 30, "mean": 3.0}
+    assert r["counts"]["rows"] == len(hole) and r["counts"]["in_steps"] == 60 and r["counts"]["no_path"] == 0
+    assert r["weighted"] is True and "каркас" in r["conventions"]
+    json.dumps(r, allow_nan=False)
+    # every sample by itself: the distance of its middle from the nearest face along the hole, its side
+    found = contact.crossing_contacts(hole, frm, to, hits, reach=1e9)
+    mid = 0.5 * (frm + to)
+    faces = {0: (4.0, 14.0), 1: (4.0, 14.0), 2: (4.0, 14.0), 3: (4.0, 14.0), 5: (6.0,), 6: (4.0,)}
+    for i in range(len(hole)):
+        if hole[i] == 4:
+            assert found.side[i] == -1  # the hole beside the cube has no contact
+            continue
+        want = min(abs(mid[i] - f) for f in faces[int(hole[i])])
+        assert found.dist[i] == pytest.approx(want, abs=1e-7) and found.side[i] == int(inside[i]), i
+    # the steps of 0.5 m with 1 m samples and of 1 m with 2 m samples: the middles are on the edges of the steps
+    # as far as the depth of a crossing is known (1e−8 m) — the same steps as the contacts of the domains
+    # «снаружи» | «внутри» coded by the middles give
+    for length, step in ((1.0, 0.5), (2.0, 1.0)):
+        hole, frm, to, hits, inside = cube_case(length)
+        values = np.random.default_rng(8).lognormal(0.0, 1.0, len(hole))
+        r = contact.contact_chart_wireframe(hole, frm, to, hits, values, distance=6.0, step=step)
+        d = contact_chart(hole, frm, to, inside.astype(np.int32), ["снаружи", "внутри"], "снаружи", "внутри", values,
+                          distance=6.0, step=step)  # fmt: skip
+        assert r["n"] == d["n"] and r["mean"] == d["mean"] and (r["a"], r["b"]) == (d["a"], d["b"])
+        assert r["contacts"] == d["contacts"] == 10
+        half = len(r["n"]) // 2  # the middles are 1, 3, 5 … halves of a sample from a face: every second step
+        assert r["n"][half::2] == [0] * (half // 2) == r["n"][half - 1 :: -2] and min(r["n"][half + 1 :: 2]) > 0
+
+
+def test_sides_of_a_wireframe() -> None:
+    """A solid with its normals inward and an open surface: the side is that of the crossing nearest to the
+    sample — inside is behind the surface, where its normals do not look."""
+    from bf_core.geo import intersect as gi
+    from tests.meshutil import UTM, cube, grid
+
+    hole, frm, to, hits, inside = cube_case()
+    values = np.where(inside, 3.0, 1.0)
+    r = contact.contact_chart_wireframe(hole, frm, to, hits, values, distance=3.0)
+    v, t = cube(2, 10.0)
+    traj = vertical_holes([(UTM[0] + 2.5, UTM[1] + 2.5, UTM[2] + 14.0, 30.0)])
+    hole, frm, to = samples([30.0])
+    z = UTM[2] + 14.0 - 0.5 * (frm + to)
+    values = np.where((z > UTM[2]) & (z < UTM[2] + 10.0), 3.0, 1.0)
+    outward = gi.hole_crossings(traj, [gi.MeshTarget(v, t, solid="outward")])
+    one = contact.contact_chart_wireframe(hole, frm, to, outward, values, distance=3.0)
+    turned = gi.hole_crossings(traj, [gi.MeshTarget(v, t[:, ::-1], solid="inward")])
+    assert contact.contact_chart_wireframe(hole, frm, to, turned, values, distance=3.0) == one
+    assert one["mean"] == r["mean"] and one["n"] == [2] * 6
+    # the wireframe is not said to be a solid: the crossings are CROSS, the side — by the normals (outward)
+    plain = gi.hole_crossings(traj, [gi.MeshTarget(v, t)])
+    assert set(plain.event.tolist()) == {gi.CROSS}
+    assert contact.contact_chart_wireframe(hole, frm, to, plain, values, distance=3.0) == one
+    # an open surface with its normals up, 6 m under the collar: «снаружи» is above it, «внутри» — below
+    sv, st = grid(4, 4, lambda x, y: 0.0 * x + 8.0, step=5.0)
+    under = gi.hole_crossings(traj, [gi.MeshTarget(sv, st)])
+    assert len(under) == 1 and under.depth[0] == pytest.approx(6.0, abs=1e-7)
+    values = np.where(0.5 * (frm + to) < 6.0, 1.0, 3.0)
+    s = contact.contact_chart_wireframe(hole, frm, to, under, values, distance=4.0, sides=("кровля", "подошва"))
+    assert s["mean"] == [1.0] * 4 + [3.0] * 4 and s["n"] == [1] * 8 and (s["contacts"], s["holes"]) == (1, 1)
+    assert (s["a"]["label"], s["b"]["label"]) == ("кровля", "подошва")
+    assert (contact.ENTER, contact.LEAVE, contact.CROSS) == (gi.ENTER, gi.LEAVE, gi.CROSS)
+
+
+def test_crossings_given_by_hand() -> None:
+    """Crossings in any order, holes without a path (−1), rows without a depth, holes without rows, a hole whose
+    events do not pair (in, in): the side is that of the nearest crossing."""
+    from types import SimpleNamespace
+
+    hits = SimpleNamespace(
+        hole=np.array([7, 3, 3, 7, 9]), depth=np.array([6.0, 2.0, 5.0, 2.0, 1.0]),
+        event=np.array([contact.ENTER, contact.ENTER, contact.LEAVE, contact.ENTER, contact.ENTER], dtype=np.uint8),
+        side=np.array([-1, -1, 1, -1, -1], dtype=np.int8),
+    )  # fmt: skip
+    hole = np.array([3, 3, 3, 3, 3, 3, 7, 7, 7, 7, -1, -1, 5, 3, 3])
+    frm = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 0.0, 2.0, 4.0, 6.0, 0.0, 1.0, 0.0, NAN, 7.0])
+    to = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 2.0, 4.0, 6.0, 8.0, 1.0, 2.0, 1.0, 9.0, 7.0])
+    values = np.arange(1.0, 16.0)
+    found = contact.crossing_contacts(hole, frm, to, hits, reach=10.0)
+    assert (found.contacts, found.holes) == (4, 2)  # hole 9 has no samples
+    # hole 3: in at 2 m, out at 5 m (3.5 m is as far from both: inside either way). Hole 7: in at 2 m and in at
+    # 6 m — 3 m is inside by the crossing above it, 5 m is nearer to 6 m, which it is still outside of
+    assert found.signed()[:10].tolist() == [-1.5, -0.5, 0.5, 1.5, 0.5, -0.5, -1.0, 1.0, -1.0, 1.0]
+    assert found.side[10:].tolist() == [-1] * 5  # no path, no crossing in the hole, no depth, TO ≤ FROM
+    r = contact.contact_chart_wireframe(hole, frm, to, hits, values, SampleFilter(weight="none"), distance=2.0)
+    assert r["n"] == [3, 2, 2, 3]
+    assert r["mean"] == pytest.approx([(1 + 7 + 9) / 3, (2 + 6) / 2, (3 + 5) / 2, (4 + 8 + 10) / 3], rel=REL)
+    c = r["counts"]
+    assert (c["rows"], c["no_depth"], c["no_path"], c["no_domain"], c["used"], c["in_steps"]) == (15, 2, 2, 0, 13, 10)
+    assert (r["contacts"], r["holes"]) == (4, 2)
+    shuffled = np.random.default_rng(0).permutation(len(hole))
+    again = contact.contact_chart_wireframe(hole[shuffled], frm[shuffled], to[shuffled], hits, values[shuffled],
+                                            SampleFilter(weight="none"), distance=2.0, threads=4)  # fmt: skip
+    assert (again["n"], again["counts"]) == (r["n"], r["counts"]) and again["mean"] == pytest.approx(r["mean"], rel=REL)
+    # no crossing at all: an answer without steps; no value: the refusal
+    none = SimpleNamespace(hole=np.zeros(0), depth=np.zeros(0), event=np.zeros(0), side=np.zeros(0))
+    r = contact.contact_chart_wireframe(hole, frm, to, none, values)
+    assert (r["contacts"], r["holes"], sum(r["n"]), set(r["mean"])) == (0, 0, 0, {None})
+    refused("no_values", None, lambda: contact.contact_chart_wireframe(hole, frm, to, hits, np.full(15, NAN)))
+    refused("bad_param", "distance", lambda: contact.contact_chart_wireframe(hole, frm, to, hits, values, distance=0))
+
+
+# --- the warm-up of the kernels of Э13 (13.8) --------------------------------------------------------------
+
+
+def test_warm_compiles_the_kernels_and_calls_every_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    from types import ModuleType
+
+    from bf_core.stats import warm as stats_warm
+
+    contact.warm()
+    for kernel in (contact._domain_strip, contact._bin, contact._crossing_rows):
+        assert kernel.signatures, kernel
+    # `warm()` goes through the modules of the charts (Г) and of swath and the tab «Статистика» (С)
+    names = stats_warm.MODULES
+    assert {"select", "describe", "histogram", "qq", "dendrogram", "scatter", "boxplot", "probplot", "domain_stats",
+            "ternary", "contact", "swath", "swath_blocks"} <= set(names)  # fmt: skip
+    called: list[str] = []
+    for name in names:
+        full = f"bf_core.stats.{name}"
+        try:
+            module = __import__(full, fromlist=["warm"])
+        except ModuleNotFoundError:  # a module of another track that is not merged yet: `warm` skips it
+            module = ModuleType(full)
+            monkeypatch.setitem(sys.modules, full, module)
+        monkeypatch.setattr(module, "warm", lambda name=name: called.append(name), raising=False)
+    monkeypatch.setattr(stats_warm, "columns", lambda: called.append("columns"))
+    took = stats_warm.warm()
+    assert called == [*names, "columns"] and set(took) == {*names, "columns"}
+
+
+def test_warm_goes_on_after_a_module_that_fails(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from bf_core.stats import histogram
+    from bf_core.stats import warm as stats_warm
+
+    def broken() -> None:
+        raise RuntimeError("no kernel")
+
+    monkeypatch.setattr(histogram, "warm", broken)
+    monkeypatch.setattr(stats_warm, "MODULES", ("histogram", "no_such_module", "contact"))
+    took = stats_warm.warm()
+    assert set(took) == {"contact", "columns"} and "histogram" in caplog.text
+
+
+def test_warm_leaves_nothing_to_compile_for_the_columns_of_the_api() -> None:
+    """After `warm()` the charts on the read-only columns of `stats.source` (numba compiles a kernel anew for a
+    read-only array) compile nothing: the number of specializations of every kernel stays as it was."""
+    import sys
+    from types import SimpleNamespace
+
+    from bf_core.stats import boxplot, correlation, dendrogram, domain_stats, scatter, select, swath, ternary
+    from bf_core.stats import swath_frame as sf
+    from bf_core.stats import warm as stats_warm
+
+    assert set(stats_warm.warm()) >= {"select", "contact", "swath", "columns"}
+
+    def compiled() -> dict[str, int]:
+        out = {}
+        for name, module in list(sys.modules.items()):
+            if name.startswith("bf_core."):
+                for key, obj in vars(module).items():
+                    if hasattr(obj, "signatures") and hasattr(obj, "py_func"):
+                        out[f"{name}.{key}"] = len(obj.signatures)
+        return out
+
+    before = compiled()
+    assert len(before) > 30 and before["bf_core.stats.select._take"] >= 3  # writable, read-only, read-only + weights
+    rng = np.random.default_rng(0)
+    frozen = stats_warm.frozen
+    parts = [hole_of(rng.integers(-1, 3, 300), rng.choice([0.5, 1.0], 300), hole=h) for h in range(40)]
+    hole, frm, to, codes = join(*parts)  # sorted by (hole, FROM), as `stats.source` reads a table
+    frm, to, codes = frozen(frm), frozen(to), frozen(codes)
+    n = len(hole)
+    values, other, third = (frozen(rng.lognormal(0.0, 1.0, n)) for _ in range(3))
+    lengths, field, row_ids = frozen(to - frm), frozen(rng.uniform(1.0, 3.0, n)), frozen(np.arange(n))
+    hits = SimpleNamespace(  # every hole goes into a solid at 50 m and out of it at 120 m
+        hole=np.repeat(np.arange(40), 2), depth=np.tile([50.0, 120.0], 40),
+        event=np.tile(np.array([contact.ENTER, contact.LEAVE], dtype=np.uint8), 40), side=np.tile([-1, 1], 40),
+    )  # fmt: skip
+    for weight in select.WEIGHTS:
+        flt = SampleFilter(weight=weight, weight_field="W" if "field" in weight else None)
+        sel = select.select_sample(values, flt, length=lengths, weight_values=field)
+        boxplot.box_chart(sel, codes, LABELS)
+        domain_stats.domain_stats(sel, codes, LABELS, length=lengths, decl_weights=field)
+        r = chart(hole.astype(np.int32), frm, to, codes, values, flt, length=lengths, weight_values=field)
+        assert r["contacts"] > 100
+        r = contact.contact_chart_wireframe(hole, frm, to, hits, values, flt, length=lengths, weight_values=field)
+        assert r["contacts"] == 80 and r["counts"]["in_steps"] > 1000
+        w = select.sample_weights(weight, lengths, field)
+        for method in correlation.METHODS:
+            dendrogram.dendrogram_chart(["A", "B", "C"], [values, other, third], w, correlation.CorrSpec(method=method))
+        for color in (None, field, codes):
+            scatter.scatter_chart(np.array(values), np.array(other), w, color=color, row_ids=row_ids)
+        scatter.scatter_chart(np.array(values), np.array(other), w, row_ids=row_ids, max_points=1000)
+    ternary.shares(values, other, third)
+    # a swath of samples: their middles come read-only from the cache (the columns of a block model and a
+    # series «внутри блоков» are not warmed: `stats/warm.py` says why)
+    points = frozen(rng.uniform(0.0, 50.0, (n, 3)))
+    f = sf.frame(30.0, -10.0, 5.0)
+    swath.sample_series(points, sel, f, swath.cuboid(f, samples=[swath.sample_bounds(f, points, sel)], width=2.0))
+    after = compiled()
+    assert {k: (before.get(k), v) for k, v in after.items() if before.get(k) != v} == {}
