@@ -66,7 +66,7 @@ def inside_exact(x: float, y: float, poly: list[tuple[float, float]]) -> bool:
 def cloud(n: int = 2000, seed: int = 3):  # type: ignore[no-untyped-def]
     rng = np.random.default_rng(seed)
     x = rng.lognormal(0.0, 1.0, n)
-    y = x ** 0.8 * rng.lognormal(0.2, 0.5, n)
+    y = x**0.8 * rng.lognormal(0.2, 0.5, n)
     return x, y, rng.choice([0.5, 1.0, 1.5, 3.0], n)
 
 
@@ -329,6 +329,30 @@ def test_points_on_the_border_and_frames() -> None:
     refused("bad_param", "polygon", lambda: rows_in_polygon(p, np.zeros((scatter.MAX_VERTICES + 1, 2))))
     refused("bad_param", "rect", lambda: rows_in_rect(p, NAN, 1.0, 0.0, 1.0))
     assert rows_in_polygon(pairs([], []), square).tolist() == []
+
+
+def test_a_lasso_of_many_vertices_by_bands(monkeypatch: pytest.MonkeyPatch) -> None:
+    """13.36: each pair is tested against the sides of its band of Y only — the rows are those of a direct count
+    and of one band (every side); vertices on the borders of the bands and level sides change nothing; at most
+    `MAX_VERTICES` (1000) vertices, the 1001st — 422 `bad_param` {param: polygon} with a hint."""
+    rng = np.random.default_rng(1336)
+    n = scatter.MAX_VERTICES
+    angle = np.sort(rng.random(n)) * 2 * math.pi
+    radius = 0.2 + 0.25 * rng.random(n)
+    star = [(0.5 + r * math.cos(a), 0.5 + r * math.sin(a)) for a, r in zip(angle, radius, strict=True)]
+    stairs = [(0.0, 0.0)] + [(0.1 * (k // 2 + k % 2), 0.1 * (k // 2)) for k in range(1, 20)] + [(0.0, 1.0)]
+    x, y = rng.random(3000), rng.random(3000)
+    x[:200], y[:200] = np.round(x[:200], 1), np.round(y[:200], 1)  # on the corners of the stairs
+    p = pairs(x, y)
+    for poly in (star, stairs):
+        want = [i for i in range(3000) if inside_exact(x[i], y[i], poly)]
+        assert 50 < len(want) < 2950
+        for bands in (1, 10, 256):  # 10: the borders of the bands on the corners of the stairs
+            monkeypatch.setattr(scatter, "BANDS", bands)
+            assert rows_in_polygon(p, poly).tolist() == want, bands
+    with pytest.raises(StatsError) as e:
+        rows_in_polygon(p, star + [(0.5, 0.5)])
+    assert e.value.code == "bad_param" and e.value.param == "polygon" and "1000" in (e.value.hint or "")
 
 
 def test_tick_reports_and_cancels(monkeypatch: pytest.MonkeyPatch) -> None:

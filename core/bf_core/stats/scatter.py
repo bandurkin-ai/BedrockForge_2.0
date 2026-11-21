@@ -35,10 +35,11 @@ cells × cells (100 × 100) equal cells of the axes between the least and the gr
 upper border belongs to the last cell). Up to that — "points": the values in data units, `row` — the number of
 the row (`row_ids[row]` when given: dh_rows.id), `c` — the value of the colour field of the row (None — none).
 
-Inside a lasso: the even-odd rule in the coordinates of the axes (a straight side of the lasso on the screen is
-straight there), a numba kernel over blocks of 2**18 pairs in threads; a point on a border belongs to the
-polygon on its lower and left sides (the crossing rule), so two lassos that share a side never take a point
-twice.
+Inside a lasso (≤ `MAX_VERTICES` = 1000 vertices, else 422 `bad_param` {param: polygon}): the even-odd rule in the
+coordinates of the axes (a straight side of the lasso on the screen is straight there), each pair against the
+sides of its band of Y only (`BANDS`), a numba kernel over blocks of 2**18 pairs in threads; a point on a border
+belongs to the polygon on its lower and left sides (the crossing rule), so two lassos that share a side never
+take a point twice.
 """
 
 from __future__ import annotations
@@ -58,7 +59,8 @@ from .weighted import StatsError, Tick
 
 MAX_POINTS = 200_000
 CELLS = 100
-MAX_VERTICES = 10_000  # of a lasso
+MAX_VERTICES = 1_000  # of a lasso (a hand-drawn lasso is thinned by the window to fewer)
+BANDS = 256  # bands of Y of a lasso: a pair is tested against the sides of its band only
 PARALLEL_FROM = 200_000  # pairs from which the two sides are ranked in two threads
 CONVENTIONS = (
     "МНК: b = cov / σ²x, a = ȳ − b·x̄. RMA: b = sign(r)·σy / σx. Взвешенная — МНК с весами строк. "
@@ -149,25 +151,50 @@ def _grid(u, v, u0, du, v0, dv, nx, ny, a, b, out):  # type: ignore[no-untyped-d
 
 
 @njit(cache=True, nogil=True)
-def _inside(u, v, px, py, x0, x1, y0, y1, a, b, out):  # type: ignore[no-untyped-def]
+def _inside(u, v, px, py, x0, x1, y0, y1, inv, start, sides, a, b, out):  # type: ignore[no-untyped-def]
     """out[i] — is the pair i (a … b − 1) inside the polygon px, py by the even-odd rule: a ray to the right
-    crosses its sides an odd number of times. The box x0 … y1 of the polygon is checked first."""
+    crosses its sides an odd number of times. The box x0 … y1 of the polygon is checked first; then only the
+    sides of the band of Y of the pair (`_bands`: sides[start[k] : start[k + 1]], the side t from the vertex
+    t − 1 to t) — the others cannot cross its ray."""
     m = px.shape[0]
+    nb = start.shape[0] - 1
     for i in range(a, b):
         x = u[i]
         y = v[i]
         if x < x0 or x > x1 or y < y0 or y > y1:
             out[i] = False
             continue
+        k = int((y - y0) * inv)
+        if k > nb - 1:
+            k = nb - 1
         odd = False
-        j = m - 1
-        for t in range(m):
+        for e in range(start[k], start[k + 1]):
+            t = sides[e]
+            j = t - 1 if t > 0 else m - 1
             yt = py[t]
             yj = py[j]
             if (yt > y) != (yj > y) and x < (px[j] - px[t]) * (y - yt) / (yj - yt) + px[t]:
                 odd = not odd
-            j = t
         out[i] = odd
+
+
+def _bands(py: np.ndarray, y0: float, y1: float) -> tuple[float, np.ndarray, np.ndarray]:
+    """The sides of the polygon by bands of Y between y0 and y1: (inv, start [nb + 1], sides). A side crosses the
+    ray of y only when min(y_j, y_t) ≤ y < max(y_j, y_t), so it is listed in the bands from that of its lower end
+    to that of its upper one — the band of a pair is found by the same expression in `_inside`."""
+    m = py.shape[0]
+    nb = max(1, min(BANDS, m)) if y1 > y0 else 1
+    inv = nb / (y1 - y0) if y1 > y0 else 0.0
+    prev = np.roll(py, 1)  # the side t goes from the vertex t − 1
+    lo = np.minimum(((np.minimum(py, prev) - y0) * inv).astype(np.int64), nb - 1)
+    hi = np.minimum(((np.maximum(py, prev) - y0) * inv).astype(np.int64), nb - 1)
+    per = hi - lo + 1
+    sides = np.repeat(np.arange(m, dtype=np.int64), per)
+    band = np.repeat(lo, per) + (np.arange(sides.shape[0]) - np.repeat(np.cumsum(per) - per, per))
+    order = np.argsort(band, kind="stable")
+    start = np.zeros(nb + 1, dtype=np.int64)
+    np.cumsum(np.bincount(band, minlength=nb), out=start[1:])
+    return float(inv), start, np.ascontiguousarray(sides[order])
 
 
 # --- the pairs ---------------------------------------------------------------------------------------------
@@ -400,8 +427,9 @@ def rows_in_polygon(p: Pairs, polygon: Any, *, tick: Tick | None = None, threads
         )  # fmt: skip
     if poly.shape[0] > MAX_VERTICES:
         raise bad_param(
-            "polygon", f"В контуре выделения больше {MAX_VERTICES} точек.", "Обведите область проще или рамкой."
-        )
+            "polygon", f"В контуре выделения больше {MAX_VERTICES} точек.",
+            f"Упростите контур до {MAX_VERTICES} точек или выделите рамкой.",
+        )  # fmt: skip
     if (p.log_x and (poly[:, 0] <= 0.0).any()) or (p.log_y and (poly[:, 1] <= 0.0).any()):
         raise bad_param(
             "polygon", "На логарифмической оси точки контура должны быть больше нуля.",
@@ -411,10 +439,11 @@ def rows_in_polygon(p: Pairs, polygon: Any, *, tick: Tick | None = None, threads
     py = np.ascontiguousarray(np.log10(poly[:, 1]) if p.log_y else poly[:, 1])
     inside = np.zeros(p.n, dtype=np.bool_)
     box = (float(px.min()), float(px.max()), float(py.min()), float(py.max()))
+    bands = _bands(py, box[2], box[3])
     spans = [(a, min(a + _LASSO_BLOCK, p.n)) for a in range(0, p.n, _LASSO_BLOCK)]
 
     def work(span: tuple[int, int]) -> None:
-        _inside(p.u, p.v, px, py, *box, span[0], span[1], inside)
+        _inside(p.u, p.v, px, py, *box, *bands, span[0], span[1], inside)
 
     def done(i: int, _: None) -> None:
         if tick is not None:
