@@ -142,3 +142,35 @@
 
 `q`: 0 — число или пусто, 1 — «<DL» (`v` = DL/2), 2 — «>x»; `dl` в `values` — если DL сопоставлен полем;
 `type: null` — код «не распознано».
+
+## Отчёты: `/reports…` (14.13)
+
+| Маршрут | Ответ |
+|---|---|
+| `GET /reports` | `{items: [report без summary], limit: 200}` по названию, вместе со строящимися (`state: "building"`) |
+| `GET /reports/{id}` | report + `summary`; 404 `qaqc_report_not_found` |
+| `POST /reports {data_id, name?, elements?, filter?, charts?}` | **202** `{report_id, job_id, source, id}` задания `qaqc.report` (очередь `quick`); `charts` — `all` \| `flagged` (по умолчанию) \| `none`; `elements` — все элементы данных по умолчанию; 422 `field_not_found {param: "elements"}`, `bad_param {param: "charts" \| "filter.…" \| "data_id"}`, `too_many_reports`; 404 `qaqc_data_not_found`; 423 |
+| `PUT /reports/{id} {name, expected_version}` | report; 409 `name_taken`, `version_conflict {current}` |
+| `DELETE /reports/{id}` | `{id, deleted: true}` |
+| `GET /reports/{id}/charts` | `{charts: [{key: "img001", section, element, kind?, view?, group?, title}] (≤ 200), total, omitted}`; 409 `report_building` |
+| `PUT /reports/{id}/images/{key}` (тело — байты PNG ≤ 2 МБ) | `{key, images}`; повтор ключа заменяет; 413 `image_too_large`, 415 `not_png`, 422 `too_many_images` (ключ сверх 200), 404 `chart_not_found` |
+| `POST /reports/{id}/rebuild` | 202 как у создания: сохранённые фильтр, элементы и состав графиков на текущих данных и настройке; версия + 1, рисунки и файлы сбрасываются; 409 `source_deleted`, `report_building` |
+
+Расчёты и записи по снимку отчёта — `POST /calc/{section}` и `POST /records` с `report_id` вместо `data_id`.
+События `objects.changed {kind: "qaqc_report", id, deleted?}`; результат задания `{report_id, version, rebuilt, events}`.
+
+Форма отчёта (числа и хеши в примере — для вида):
+
+```json
+{"id": 3, "name": "Отчёт QAQC — Контроль", "version": 1, "state": "ready", "stale": null,
+ "data_name": "Контроль", "data_sha256": "3d89…", "inputs_sha256": "a1f0…", "elements": ["AU", "CU", "AG"],
+ "filter": {"v": 1, "labs": ["LAB1"]}, "charts": "flagged", "created_at": "…", "updated_at": "…", "built_at": "…",
+ "job_id": null, "files": [], "images": 0, "size": 52113, "summary_size": 18044,
+ "summary": {"v": 1, "elements": {"AU": {"summary": {…}, "standards": {…без series}, "blanks": {…без series},
+                                         "duplicates:DUP_F": {…без points, ranked}, "external": {…}}}}}
+```
+
+`stale`: `null`, `data` (у данных с тем же uid другие записи), `config` (изменились настройка или справочник),
+`source_deleted` (данные удалены — расчёт по `report_id` работает, «Перестроить» — 409). Ответы разделов в
+`summary` — те же, что у `POST /calc/{section}`, без построчных ключей `series`, `samples`, `points`, `ranked`,
+`batches` (таблица партий — в XLSX, 14.14); у дубликатов — ключ на тип: `duplicates:DUP_F`, `:DUP_C`, `:DUP_P`.

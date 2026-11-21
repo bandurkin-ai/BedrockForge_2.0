@@ -4,7 +4,7 @@
     samples?} → the answer of `calc.run` (the head {element, unit, counts, limits, notes} and the keys of the
     section); a section is a name of `calc.SECTIONS`. With `group` the series is thinned to `max_points` (100 000
     by default: every warning and failure stays, `thinned {shown, total}`). With `report_id` the records, the
-    settings, the reference and the filter are those of the snapshot of the report (14.13); `filter` of the body
+    settings, the reference and the filter are those of the snapshot of the report (`report.snapshot`); `filter`
     is then ignored. Errors: 404 `unknown_section`, `qaqc_data_not_found`, `qaqc_report_not_found`; 422 `bad_param
     {param}`, `field_not_found {param: element}` and the other refusals of the kernels (`QaqcError`).
   * `POST /records` {data_id | report_id, rows[] | batch + lab} → {records [{row, sample_id, hole, type_code,
@@ -78,7 +78,10 @@ def inputs(project: Any, body: dict[str, Any]) -> Inputs:
         raise ApiError(422, "bad_param", "Нужны данные QAQC или отчёт.", "Выберите данные QAQC во вкладке.",
                        extra={"param": "data_id"})  # fmt: skip
     if report_id is not None:
-        raise ApiError(404, "qaqc_report_not_found", "Отчёт QAQC не найден.", "Обновите раздел «Отчёты».")
+        from . import report as rp
+
+        snap = rp.snapshot(project, report_id)
+        return Inputs(snap.recs, snap.config, snap.crm, snap.filter)
     with dialect.read_tx(project.engine) as conn:
         config, crm = cf.get_config(conn), cf.get_crm(conn)["rows"]
     assert data_id is not None

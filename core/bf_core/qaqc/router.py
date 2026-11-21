@@ -20,7 +20,8 @@
   * `GET /data/{id}/values?field=&q=&limit=` → {values [{value, n}], more, empty}: the values of a field of the
     records for the filter (≤ 1000, by value; `q` — a part of the text, without case). 422 `field_not_found`.
 
-The routes of the parts are included here: `routes_calc` (`/calc/{section}`, `/records`).
+The routes of the parts are included here: `routes_calc` (`/calc/{section}`, `/records`), `routes_reports`
+(`/reports…`).
 numpy, pyarrow and the readers load on the first request, not with this module (tests/test_process.py)."""
 
 from __future__ import annotations
@@ -37,10 +38,11 @@ from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
-from . import routes_calc
+from . import routes_calc, routes_reports
 
 router = APIRouter(prefix="/qaqc")
 router.include_router(routes_calc.router)
+router.include_router(routes_reports.router)
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
 Payload = Annotated[Any, Body()]
