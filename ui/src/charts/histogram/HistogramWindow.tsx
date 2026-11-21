@@ -6,12 +6,13 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { errorText } from "../../shell/props";
-import { updateWindow } from "../../shell/windows";
 import { defaultField, loadFields, type HistogramResult, type StatsFields } from "../../modules/charts/api";
 import type { ChartWindowProps } from "../../modules/charts/bind";
-import { chartName, DEFAULT_HISTOGRAM_VIEW, windowTitle, type HistogramSettings, type HistogramView, type HistogramY } from "../../modules/charts/settings";
+import { useSavedChart } from "../../modules/charts/saved";
+import { DEFAULT_HISTOGRAM_VIEW, type HistogramSettings, type HistogramView, type HistogramY } from "../../modules/charts/settings";
 import { ChartWindow } from "../ChartWindow";
 import { ChartToolbar } from "../core/ChartToolbar";
+import { fieldLabel, FieldSelect, TableSelect } from "../core/Pickers";
 import { NumberInput, SampleFilterForm } from "../SampleFilterForm";
 import css from "../core/Chart.module.css";
 import { HistogramChart } from "./HistogramChart";
@@ -69,7 +70,8 @@ function Seg<T extends string>({ label, value, options, onChange }: { label: str
   );
 }
 
-export function HistogramWindow({ winId, setId, setName, settings }: ChartWindowProps<"histogram">) {
+export function HistogramWindow(props: ChartWindowProps<"histogram">) {
+  const { setId, setName, settings } = props;
   const [s, setS] = useState<HistogramSettings>(settings);
   const [mode, setMode] = useState<BinMode>(binModeOf(settings));
   const [fields, setFields] = useState<StatsFields | null>(null);
@@ -98,8 +100,7 @@ export function HistogramWindow({ winId, setId, setName, settings }: ChartWindow
     };
   }, [setId, s.table]);
 
-  const name = chartName("histogram", s);
-  useEffect(() => updateWindow(winId, { title: windowTitle(name, setName) }), [winId, name, setName]);
+  const saved = useSavedChart("histogram", props, s, setS);
 
   const calc = useMemo(
     () =>
@@ -121,34 +122,15 @@ export function HistogramWindow({ winId, setId, setName, settings }: ChartWindow
 
   const numeric = fields?.numeric ?? [];
   const field = numeric.find((f) => f.name === s.field);
-  const xLabel = field ? `${field.name === "length" ? "Длина интервала" : field.name}${field.unit ? `, ${field.unit}` : ""}` : (s.field ?? "");
+  const xLabel = field ? fieldLabel(field) : (s.field ?? "");
   const fileName = `Гистограмма ${setName} ${s.field ?? ""}`.trim();
 
   const settingsForm = (
     <>
       <fieldset>
         <legend>Данные</legend>
-        <label>
-          Таблица
-          <select value={s.table ?? ""} aria-label="Таблица" onChange={(e) => set({ table: e.target.value || null })}>
-            {(fields?.tables ?? []).map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Поле
-          <select value={s.field ?? ""} aria-label="Поле" onChange={(e) => set({ field: e.target.value || null })}>
-            {numeric.map((f) => (
-              <option key={f.name} value={f.name}>
-                {f.name === "length" ? "Длина интервала" : f.name}
-                {f.unit ? `, ${f.unit}` : ""} ({f.count.toLocaleString("ru-RU")})
-              </option>
-            ))}
-          </select>
-        </label>
+        <TableSelect value={s.table} tables={fields?.tables ?? []} onChange={(table) => set({ table })} />
+        <FieldSelect value={s.field} fields={numeric} onChange={(field) => set({ field })} />
       </fieldset>
       <SampleFilterForm value={s} fields={numeric} onChange={set} />
       <fieldset>
@@ -225,6 +207,7 @@ export function HistogramWindow({ winId, setId, setName, settings }: ChartWindow
       busy={busy}
       error={error}
       empty={empty}
+      note={saved.note}
       chart={result && <HistogramChart ref={svgRef} result={result} y={s.view.y} cumulative={s.view.cumulative} marks={histogramMarks(result, s)} color={s.view.color} xLabel={xLabel} />}
       footer={
         result && (

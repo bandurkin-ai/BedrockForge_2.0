@@ -60,27 +60,58 @@ export interface HistogramSettings extends Base, SampleFilter {
   view: HistogramView;
 }
 
+export interface QQView {
+  /** one scale on both axes (the 1:1 line is the diagonal) */
+  equal: boolean;
+  diagonal: boolean;
+  /** marks P10, P50, P90 */
+  labels: boolean;
+  color: string;
+}
+
+/**
+ * Q-Q (ТЗ 7.26): side X — `set_id`, `table`, `field`, the selection of values, `holes`; against a distribution or
+ * (`distribution: "sample"`) side Y. Empty keys of Y mean «as X»: `y_set_id` — the same set, `y_table` — the
+ * same table of the same set (the first table of another), `y_field` — the same field, `y_weight` — the weight
+ * of X (with its field); `y_holes` empty — all holes. The other selection rules are common to both sides.
+ */
 export interface QQSettings extends Base, SampleFilter {
   field: string | null;
   distribution: "lognormal" | "normal" | "sample";
   y_set_id: number | null;
   y_table: string | null;
   y_field: string | null;
+  y_weight: WeightMode | null;
+  y_weight_field: string | null;
   holes: string[];
   y_holes: string[];
+  /** quantiles of two samples at k / (n + 1), 3…999 */
   quantiles: number;
+  /** logarithmic axes */
   log: boolean;
+  view: QQView;
 }
 
+export interface DendrogramView {
+  matrix: boolean;
+  /** r in the cells of the matrix */
+  values: boolean;
+}
+
+/** Dendrogram (ТЗ 7.27): `fields` empty — every component of the table; < 0 and zeros — as in the histogram. */
 export interface DendrogramSettings extends Base {
   fields: string[];
   method: "pearson" | "spearman";
   log: boolean;
+  /** length or none (ТЗ 7.27) */
   weight: WeightMode;
+  negatives: Negatives;
+  exclude_zero: boolean;
   missing: "pairwise" | "complete";
   linkage: "average" | "complete" | "single" | "weighted";
   distance: "1-r" | "1-abs";
   cut: number | null;
+  view: DendrogramView;
 }
 
 export interface ScatterSettings extends Base {
@@ -142,12 +173,22 @@ const base = (setId: number): Base => ({ v: 1, set_id: setId, table: null });
 const domainBase = (setId: number): DomainBase => ({ ...base(setId), field: null, domain: null, domain_table: null, weight: "length" });
 
 export const DEFAULT_HISTOGRAM_VIEW: HistogramView = { y: "percent", cumulative: true, marks: { mean: true, median: true, p90: false, p975: false, cuts: true }, color: DEFAULT_COLOR };
+export const DEFAULT_QQ_VIEW: QQView = { equal: true, diagonal: true, labels: true, color: DEFAULT_COLOR };
+export const DEFAULT_DENDROGRAM_VIEW: DendrogramView = { matrix: true, values: true };
+
+/** The default view of a kind (a fresh copy); null — the kind has none. */
+export function defaultView(kind: ChartKind): Record<string, unknown> | null {
+  const v = kind === "histogram" ? DEFAULT_HISTOGRAM_VIEW : kind === "qq" ? DEFAULT_QQ_VIEW : kind === "dendrogram" ? DEFAULT_DENDROGRAM_VIEW : null;
+  return v ? (JSON.parse(JSON.stringify(v)) as Record<string, unknown>) : null;
+}
 
 export function defaultSettings<K extends ChartKind>(kind: K, setId: number): SettingsOf[K] {
   const all: SettingsOf = {
-    histogram: { ...base(setId), ...DEFAULT_FILTER, field: null, log: false, bin_width: null, bins: null, start: null, end: null, view: { ...DEFAULT_HISTOGRAM_VIEW, marks: { ...DEFAULT_HISTOGRAM_VIEW.marks } } },
-    qq: { ...base(setId), ...DEFAULT_FILTER, field: null, distribution: "lognormal", y_set_id: null, y_table: null, y_field: null, holes: [], y_holes: [], quantiles: 99, log: true },
-    dendrogram: { ...base(setId), fields: [], method: "pearson", log: false, weight: "length", missing: "pairwise", linkage: "average", distance: "1-r", cut: null },
+    histogram: { ...base(setId), ...DEFAULT_FILTER, field: null, log: false, bin_width: null, bins: null, start: null, end: null, view: defaultView("histogram") as unknown as HistogramView },
+    // grades are checked against a lognormal distribution first (ТЗ 7.26: by default, log axes)
+    qq: { ...base(setId), ...DEFAULT_FILTER, field: null, distribution: "lognormal", y_set_id: null, y_table: null, y_field: null, y_weight: null, y_weight_field: null, holes: [], y_holes: [], quantiles: 99, log: true, view: defaultView("qq") as unknown as QQView },
+    // correlations of logarithms by default (ТЗ 7.27); «<0,01» written as −0,01 becomes half the limit (BF)
+    dendrogram: { ...base(setId), fields: [], method: "pearson", log: true, weight: "length", negatives: "half_abs", exclude_zero: false, missing: "pairwise", linkage: "average", distance: "1-r", cut: null, view: defaultView("dendrogram") as unknown as DendrogramView },
     scatter: { ...base(setId), x: null, y: null, y_table: null, color: null, log_x: false, log_y: false, weight: "none", regression: "ols" },
     box: { ...domainBase(setId), log: false },
     probplot: domainBase(setId),
@@ -162,6 +203,7 @@ export function defaultSettings<K extends ChartKind>(kind: K, setId: number): Se
 
 const ENUMS: Record<string, readonly string[]> = {
   weight: ["none", "length", "field", "length_field"],
+  y_weight: ["none", "length", "field", "length_field"],
   negatives: ["keep", "half_abs", "exclude"],
   bottom_mode: ["exclude", "cap"],
   top_mode: ["exclude", "cap"],
@@ -189,7 +231,7 @@ function accept(key: string, value: unknown, fallback: unknown): unknown {
     return list ? list.slice(0, LIST_LIMIT[key]) : undefined;
   }
   // `distance` is a choice of the dendrogram and a number of the contact analysis: the default tells which
-  if (key in ENUMS && typeof fallback === "string") return typeof value === "string" && ENUMS[key].includes(value) ? value : undefined;
+  if (key in ENUMS && (typeof fallback === "string" || fallback === null)) return typeof value === "string" && ENUMS[key].includes(value) ? value : undefined;
   if (INTEGER.has(key)) return typeof value === "number" && Number.isInteger(value) ? value : undefined;
   if (NUMBER.has(key)) return typeof value === "number" && Number.isFinite(value) ? value : undefined;
   if (typeof fallback === "boolean") return typeof value === "boolean" ? value : undefined;
@@ -210,22 +252,26 @@ export function normalizeSettings<K extends ChartKind>(kind: K, raw: unknown, se
     const got = accept(key, r[key], out[key]);
     if (got !== undefined) out[key] = got;
   }
-  if (kind === "histogram") out.view = normalizeHistogramView(r.view);
+  const view = defaultView(kind);
+  if (view) out.view = normalizeView(view, r.view);
   return out as unknown as SettingsOf[K];
 }
 
-function normalizeHistogramView(raw: unknown): HistogramView {
-  const d = DEFAULT_HISTOGRAM_VIEW;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...d, marks: { ...d.marks } };
-  const r = raw as Record<string, unknown>;
-  const m = (r.marks && typeof r.marks === "object" ? r.marks : {}) as Record<string, unknown>;
-  const flag = (v: unknown, f: boolean) => (typeof v === "boolean" ? v : f);
-  return {
-    y: r.y === "weight" || r.y === "count" ? r.y : "percent",
-    cumulative: flag(r.cumulative, d.cumulative),
-    marks: { mean: flag(m.mean, d.marks.mean), median: flag(m.median, d.marks.median), p90: flag(m.p90, d.marks.p90), p975: flag(m.p975, d.marks.p975), cuts: flag(m.cuts, d.marks.cuts) },
-    color: typeof r.color === "string" && /^#[0-9a-fA-F]{6}$/.test(r.color) ? r.color.toLowerCase() : d.color,
-  };
+/** Choices of the view keys (others: flags, a colour `#rrggbb`, nested objects key by key). */
+const VIEW_ENUMS: Record<string, readonly string[]> = { y: ["percent", "weight", "count"] };
+
+/** The view over its defaults: each key of a valid type replaces the default, others are dropped. */
+function normalizeView(d: Record<string, unknown>, raw: unknown): Record<string, unknown> {
+  const r = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const out: Record<string, unknown> = {};
+  for (const [key, def] of Object.entries(d)) {
+    const v = r[key];
+    if (def && typeof def === "object") out[key] = normalizeView(def as Record<string, unknown>, v);
+    else if (typeof def === "boolean") out[key] = typeof v === "boolean" ? v : def;
+    else if (key in VIEW_ENUMS) out[key] = typeof v === "string" && VIEW_ENUMS[key].includes(v) ? v : def;
+    else out[key] = typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : def;
+  }
+  return out;
 }
 
 /** Settings from the arguments of `chart.<kind>` (the same keys); without `set_id` — the active set. */

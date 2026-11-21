@@ -13,7 +13,9 @@ import { openWindow, type FloatWin } from "../../shell/windows";
 import { tablesStore } from "../tables/state";
 import { histogramRequest, histogramSummary } from "../../charts/histogram/model";
 import { HistogramWindow } from "../../charts/histogram/HistogramWindow";
-import { computeHistogram, defaultField, loadFields } from "./api";
+import { qqRequest, qqSummary } from "../../charts/qq/model";
+import { QQWindow } from "../../charts/qq/QQWindow";
+import { computeHistogram, computeQQ, defaultField, loadFields } from "./api";
 import { CHART_WINDOW_PREFIX } from "./commands";
 import { chartName, isChartKind, settingsFromArgs, windowTitle, type ChartKind, type SettingsOf } from "./settings";
 
@@ -53,6 +55,15 @@ export const CHART_WINDOWS: { [K in ChartKind]?: ChartWindowSpec<K> } = {
       const body = histogramRequest(s);
       if (!body) throw refusal(s.field ? "bad_param" : "field_not_found", s.field ? "Не задано поле веса." : "В таблице нет числовых полей.", s.field ? "Укажите weight_field или другой вес." : "Укажите таблицу с пробами и поле.");
       return histogramSummary(chartName("histogram", s), await computeHistogram(body));
+    },
+  },
+  qq: {
+    render: (p) => createElement(QQWindow, p),
+    prepare: withDefaultField,
+    summary: async (s) => {
+      const body = qqRequest(s);
+      if (!body) throw refusal(s.field ? "bad_param" : "field_not_found", s.field ? "Не задано поле веса." : "В таблице нет числовых полей.", s.field ? "Укажите поле веса или другой вес." : "Укажите таблицу с пробами и поле.");
+      return qqSummary(chartName("qq", s), await computeQQ(body));
     },
   },
 };

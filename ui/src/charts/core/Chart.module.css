@@ -41,3 +41,11 @@
 .stats th:first-child { text-align: left; font-weight: 400; color: var(--text-dim); }
 .stats thead th { font-family: var(--font-brand); font-weight: 600; color: var(--text); }
 .tables { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.diagonal { stroke: var(--text-dim); stroke-width: 1; stroke-dasharray: 6 4; fill: none; }
+.ring { stroke: var(--highlight); stroke-width: 1.5; fill: none; }
+.link { stroke: var(--text); stroke-width: 1.6; fill: none; }
+.leaf { font-size: 11px; font-family: var(--font); fill: var(--text); }
+.cellValue { font-size: 9px; font-family: var(--font); fill: #1a1d24; pointer-events: none; }
+.fieldList { display: flex; flex-direction: column; gap: 1px; max-height: 180px; overflow: auto; }
+.buttons { display: flex; gap: 6px; }
+.buttons button { flex: 1; padding: 1px 6px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; font: inherit; font-size: 12px; }

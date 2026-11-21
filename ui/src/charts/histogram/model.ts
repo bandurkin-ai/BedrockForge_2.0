@@ -82,7 +82,7 @@ export function histogramCsv(r: HistogramResult): string {
 const n = (v: number) => v.toLocaleString("ru-RU");
 
 /** What the selection of values left out or changed, in words (ADR 0019 §3: seen in the window). */
-export function countsNotes(c: SelectCounts, s: HistogramSettings, r?: Pick<HistogramResult, "bins" | "log">): string[] {
+export function countsNotes(c: SelectCounts, s: Pick<HistogramSettings, "negatives">, r?: Pick<HistogramResult, "bins" | "log">): string[] {
   const out = [`строк ${n(c.rows)}, в расчёте ${n(c.used)}`];
   if (c.missing) out.push(`без значения ${n(c.missing)}`);
   if (c.bad_weight) out.push(`без веса или вес ≤ 0: ${n(c.bad_weight)}`);

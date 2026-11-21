@@ -7,7 +7,7 @@
 import { useState, type ReactNode } from "react";
 import css from "./core/Chart.module.css";
 
-export function ChartWindow({ settings, toolbar, chart, footer, busy, error, empty, readOnly }: {
+export function ChartWindow({ settings, toolbar, chart, footer, busy, error, empty, readOnly, note }: {
   settings: ReactNode;
   toolbar?: ReactNode;
   /** the chart; null — nothing computed yet */
@@ -19,6 +19,8 @@ export function ChartWindow({ settings, toolbar, chart, footer, busy, error, emp
   empty?: string;
   /** a project open only for reading: the chart is computed and drawn, not saved */
   readOnly?: boolean;
+  /** a line about saving (read-only project, the chart deleted, a failed save) */
+  note?: string | null;
 }) {
   const [folded, setFolded] = useState(false);
   return (
@@ -39,7 +41,12 @@ export function ChartWindow({ settings, toolbar, chart, footer, busy, error, emp
       )}
       <div className={css.main}>
         {toolbar}
-        {readOnly && <p className={css.muted}>Проект открыт только для чтения: график не сохраняется.</p>}
+        {readOnly && !note && <p className={css.muted}>Проект открыт только для чтения: график не сохраняется.</p>}
+        {note && (
+          <p className={css.muted} data-testid="chart-note">
+            {note}
+          </p>
+        )}
         {error && (
           <p className={css.error} role="alert">
             {error}

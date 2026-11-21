@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { CHART_BUTTONS, CHART_GROUP_TITLE } from "../src/modules/charts/commands";
 import { STATS_BUTTONS } from "../src/modules/stats/commands";
-import { createCalculator, defaultField, type Clock } from "../src/modules/charts/api";
+import { createCalculator, defaultField, fieldsView, nameKey, type Clock, type FieldsAnswer } from "../src/modules/charts/api";
 import { CHART_KINDS, chartName, defaultSettings, needsWeightField, normalizeSettings, parseList, plural, settingsFromArgs, windowTitle } from "../src/modules/charts/settings";
 import { createRegistry, moduleCommands } from "../src/shell/catalog";
 import { commandTools, EMPTY_CONTEXT, validateArgs } from "../src/shell/commands";
@@ -116,8 +116,33 @@ describe("chart settings (ADR 0019 §2)", () => {
   });
 
   it("the default field is the first component", () => {
-    expect(defaultField({ numeric: [{ name: "length", kind: "length", unit: "м", count: 3 }, { name: "DENS", kind: "attribute", unit: null, count: 3 }, { name: "AU", kind: "component", unit: "г/т", count: 3 }] })).toBe("AU");
-    expect(defaultField({ numeric: [{ name: "length", kind: "length", unit: "м", count: 3 }] })).toBeNull();
+    expect(defaultField({ numeric: [{ name: "length", kind: "length", unit: "м", role: "length" }, { name: "DENS", kind: "attribute", unit: null, role: "value" }, { name: "AU", kind: "component", unit: "г/т", role: "component" }] })).toBe("AU");
+    expect(defaultField({ numeric: [{ name: "length", kind: "length", unit: "м", role: "length" }] })).toBeNull();
+  });
+
+  it("GET /stats/fields of the core (13.14) → the tables and the fields of the chosen one", () => {
+    const answer: FieldsAnswer = {
+      set_id: 3,
+      tables: [
+        { id: 11, name: "Пробы", name_key: "пробы", kind: "assay", rows: 7, rev: 2, numbers: [{ name: "AU", unit: "г/т", role: "component" }, { name: "DENS", unit: null, role: "value" }, { name: "length", unit: "м", role: "length" }], texts: [{ name: "ROCK", role: "value", values: null, labels: null, more: false }] },
+        { id: 12, name: "Литология", name_key: "литология", kind: "interval", rows: 4, rev: 1, numbers: [{ name: "length", unit: "м", role: "length" }], texts: [] },
+      ],
+    };
+    const first = fieldsView(answer, null);
+    expect(first.tables).toEqual([
+      { key: "пробы", name: "Пробы", kind: "assay", rows: 7, components: 1 },
+      { key: "литология", name: "Литология", kind: "interval", rows: 4, components: 0 },
+    ]);
+    expect(first.table).toBe("пробы");
+    expect(first.numeric.map((f) => [f.name, f.kind])).toEqual([["AU", "component"], ["DENS", "attribute"], ["length", "length"]]);
+    expect(first.text).toEqual([{ name: "ROCK", count: null, values: [], more: false }]);
+    // by name_key, by the name in another case, by id; a table not in the set — none
+    expect(fieldsView(answer, "литология").table).toBe("литология");
+    expect(fieldsView(answer, "ЛИТОЛОГИЯ").table).toBe("литология");
+    expect(fieldsView(answer, "12").table).toBe("литология");
+    expect(fieldsView(answer, "нет").table).toBeNull();
+    expect(fieldsView({ set_id: 3, tables: [] }, null)).toEqual({ tables: [], table: null, numeric: [], text: [] });
+    expect(nameKey(" Пробы ")).toBe("пробы");
   });
 });
 
