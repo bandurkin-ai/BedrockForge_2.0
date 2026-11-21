@@ -17,6 +17,7 @@ import { errorText } from "../../shell/props";
 import { focusWindow, openWindow, updateWindow, windowStore, type FloatWin } from "../../shell/windows";
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
+import { configChanged, resetConfig, runConfig, runCrm } from "./setup/configStore";
 import { dataStore, dropData, findData, finishRun, openForm, refuseImport, reloadData, resetData, startedRun, upsertData } from "./setup/dataStore";
 import { completeMapping, countLines, defaultDataName, mappingFromArg, mappingProblems } from "./setup/mapping";
 import { deleteData, getData, inspectSource, renameData, sourceBody, startImport, waitJob, type InspectSource, type Mapping, type QaqcData, type ReadOptions, type Started } from "./setupApi";
@@ -26,7 +27,7 @@ export const SETUP_WINDOW = "qaqc-setup";
 export const SETUP_TITLE = "Настройка QAQC";
 
 /** The ids of ADR 0020 §9 bound here (declared in `commands.ts`). */
-export const SETUP_COMMANDS = ["qaqc.setup", "qaqc.import", "qaqc.data_rename", "qaqc.data_refresh", "qaqc.data_delete"] as const;
+export const SETUP_COMMANDS = ["qaqc.setup", "qaqc.import", "qaqc.data_rename", "qaqc.data_refresh", "qaqc.data_delete", "qaqc.config", "qaqc.crm"] as const;
 
 /** Opens the window «Настройка QAQC» (one) on a tab; an open one comes to the front on that tab. */
 export function openSetup(tab: SetupTab = "data"): string {
@@ -222,15 +223,19 @@ export function bindQaqcSetup(app: App): void {
   app.registry.bind("qaqc.data_rename", noted(app, (a) => runRename(a)), can);
   app.registry.bind("qaqc.data_refresh", noted(app, (a, by) => runRefresh(a, by)), can);
   app.registry.bind("qaqc.data_delete", noted(app, (a, by) => runDelete(a, by)), can);
+  app.registry.bind("qaqc.config", noted(app, (a, by) => runConfig(a, by)), can);
+  app.registry.bind("qaqc.crm", noted(app, (a, by) => runCrm(a, by)), can);
   let uid: string | null = null;
   projectStore.subscribe(() => {
     const cur = projectStore.get().current?.uid ?? null;
     if (cur === uid) return;
     uid = cur;
     resetData();
+    resetConfig();
     if (cur) void reloadData();
   });
   onCoreEvent((event, data) => {
+    if (event === "qaqc.changed") return configChanged(data);
     if (event !== "objects.changed") return;
     try {
       const d = JSON.parse(data) as { kind?: unknown };

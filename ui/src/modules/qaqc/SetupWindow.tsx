@@ -8,7 +8,11 @@ import { askConfirm } from "../../shell/dialogs";
 import { setCloseGuard, updateWindow, windowStore } from "../../shell/windows";
 import css from "../../shell/PropsParts.module.css";
 import own from "./setup/Setup.module.css";
+import { CrmTab } from "./setup/CrmTab";
 import { DataTab } from "./setup/DataTab";
+import { DlTab } from "./setup/DlTab";
+import { LimitsTab } from "./setup/LimitsTab";
+import { TypesTab } from "./setup/TypesTab";
 
 export type SetupTab = "data" | "types" | "crm" | "dl" | "limits";
 
@@ -43,8 +47,11 @@ export function SetupWindow({ winId, tab }: { winId: string; tab: SetupTab }) {
   const mark = useDirty(winId);
   const body = (id: SetupTab): ReactNode => {
     if (id === "data") return <DataTab />;
-    void mark(id);
-    return <p className={css.note}>Раздел появится в следующем подшаге.</p>;
+    const onDirty = mark(id);
+    if (id === "types") return <TypesTab onDirty={onDirty} />;
+    if (id === "crm") return <CrmTab onDirty={onDirty} />;
+    if (id === "dl") return <DlTab onDirty={onDirty} />;
+    return <LimitsTab onDirty={onDirty} />;
   };
   return (
     <div className={css.win} data-testid="qaqc-setup">
