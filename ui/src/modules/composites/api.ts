@@ -108,8 +108,19 @@ export interface ResultRow {
   reason: string | null;
 }
 
+/** The prefix of the routes of an operation whose module is not `composites` (ADR 0021 §10: `tt`, `intercepts`). */
+export const OP_API: Readonly<Record<string, string>> = { tt: "/intercepts", intercepts: "/intercepts" };
+
+/** The prefix of the routes of an operation: `/composites` unless `OP_API` names another. */
+export const apiOfOp = (op: string | null | undefined): string => (op && OP_API[op]) || "/composites";
+
+/** result id → its operation, as the lists read so far say (the rebuild goes to the module of the operation). */
+const resultOps = new Map<number, string>();
+
 export async function loadResults(setId: number): Promise<ResultRow[]> {
-  return (await api.get<{ results: ResultRow[] }>(`/composites/results?set_id=${setId}`)).results ?? [];
+  const rows = (await api.get<{ results: ResultRow[] }>(`/composites/results?set_id=${setId}`)).results ?? [];
+  for (const r of rows) if (typeof r.id === "number" && typeof r.op === "string") resultOps.set(r.id, r.op);
+  return rows;
 }
 
 export const deleteResult = (id: number): Promise<unknown> => api.del(`/composites/results/${id}`);
@@ -166,16 +177,18 @@ export const lostList = (lost: readonly LostItem[]): string => lost.map((x) => `
 export type OnLost = (lost: LostItem[]) => Promise<boolean>;
 
 /**
- * `POST /results/{id}/rebuild` (ADR 0018 decision 18). 409 `dependents_lost {lost}` → `onLost`: yes — again with
- * `drop_lost: true`; no — null, nothing started.
+ * `POST {prefix}/results/{id}/rebuild` (ADR 0018 decision 18; ADR 0021 §8: `tt` and `intercepts` — under
+ * `/intercepts`). The prefix is that of the operation of the result as the last list read says (`op` overrides).
+ * 409 `dependents_lost {lost}` → `onLost`: yes — again with `drop_lost: true`; no — null, nothing started.
  */
-export async function rebuildResult(id: number, onLost: OnLost): Promise<Started | null> {
+export async function rebuildResult(id: number, onLost: OnLost, op?: string): Promise<Started | null> {
+  const route = `${apiOfOp(op ?? resultOps.get(id))}/results/${id}/rebuild`;
   try {
-    return await api.post<Started>(`/composites/results/${id}/rebuild`, {});
+    return await api.post<Started>(route, {});
   } catch (e) {
     if (!(e instanceof CoreError) || e.status !== 409 || e.code !== "dependents_lost") throw e;
     if (!(await onLost(lostItems(e.body?.lost)))) return null;
-    return api.post<Started>(`/composites/results/${id}/rebuild`, { drop_lost: true });
+    return api.post<Started>(route, { drop_lost: true });
   }
 }
 
@@ -195,12 +208,13 @@ export function nextName(name: string): string {
 }
 
 /**
- * Starts the job of a tool. 409 `table_exists {name, suggested?, lost?}` → `onExists`: «replace» repeats with
- * `replace: true`, «rename» — with the free name; null — cancelled, nothing started.
+ * Starts the job of a tool (`POST {prefix}{endpoint}`; the prefix — `toolApi(tool)`). 409 `table_exists {name,
+ * suggested?, lost?}` → `onExists`: «replace» repeats with `replace: true`, «rename» — with the free name; null —
+ * cancelled, nothing started.
  */
-export async function startTool(endpoint: string, body: Record<string, unknown>, onExists: OnExists): Promise<Started | null> {
+export async function startTool(endpoint: string, body: Record<string, unknown>, onExists: OnExists, prefix = "/composites"): Promise<Started | null> {
   try {
-    return await api.post<Started>(`/composites${endpoint}`, body);
+    return await api.post<Started>(`${prefix}${endpoint}`, body);
   } catch (e) {
     if (!(e instanceof CoreError) || e.status !== 409 || e.code !== "table_exists") throw e;
     const name = String(e.body?.name ?? body.name ?? "");
@@ -208,7 +222,7 @@ export async function startTool(endpoint: string, body: Record<string, unknown>,
     const what = await onExists(name, suggested, lostItems(e.body?.lost));
     if (what === "cancel") return null;
     const again = what === "replace" ? { ...body, replace: true } : { ...body, name: suggested ?? nextName(name) };
-    return api.post<Started>(`/composites${endpoint}`, again);
+    return api.post<Started>(`${prefix}${endpoint}`, again);
   }
 }
 
@@ -261,8 +275,8 @@ export function toPreview(raw: Record<string, unknown>): PreviewAnswer {
   };
 }
 
-export async function preview(op: string, params: Record<string, unknown>, holeId: number): Promise<PreviewAnswer> {
-  return toPreview(await api.post<Record<string, unknown>>(`/composites/${op}/preview`, { params, hole_id: holeId }));
+export async function preview(op: string, params: Record<string, unknown>, holeId: number, prefix = "/composites"): Promise<PreviewAnswer> {
+  return toPreview(await api.post<Record<string, unknown>>(`${prefix}/${op}/preview`, { params, hole_id: holeId }));
 }
 
 export const PREVIEW_DELAY_MS = 150;
