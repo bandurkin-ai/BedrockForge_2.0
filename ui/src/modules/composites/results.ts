@@ -9,7 +9,7 @@ import { CoreError } from "../../shell/api";
 import { Store } from "../../shell/store";
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
-import { loadResults, type ResultRow, type TableRow } from "./api";
+import { forgetResultOps, loadResults, setResultOpLookup, type ResultRow, type TableRow } from "./api";
 import { numberText } from "./params";
 import { summaryRows } from "./tools/composite";
 import { toolById } from "./tools";
@@ -73,6 +73,7 @@ export function resetResults(): void {
   epoch += 1;
   inflight.clear();
   queued.clear();
+  forgetResultOps();
   resultsStore.set({ bySet: {}, errors: {} });
 }
 
@@ -113,6 +114,8 @@ export const findResult = (id: number): ResultRow | null => {
   }
   return null;
 };
+
+setResultOpLookup((id) => findResult(id)?.op);
 
 // ---- a result as the tree shows it ----
 

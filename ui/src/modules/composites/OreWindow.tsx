@@ -29,6 +29,7 @@ import { OreProtocol, ProtocolExport } from "./OreProtocol";
 import { SourcePicker } from "./SourcePicker";
 import { HolePicker, JobView, ParamForm, ToolFooter, useTool } from "./ToolWindow";
 import { useSetResults } from "./TopcutWindow";
+import { ttFirst, ttResultOf, ttThicknessHint } from "../intercepts/tools";
 import { autoValues, DEFAULT_TABLE, fetchOrePreview, fetchProtocol, ore, summaryLines, type OreAnswer, type OreSummary } from "./tools/ore";
 
 export const PREVIEW_HEIGHT = 340;
@@ -253,7 +254,10 @@ export function OreWindow({ winId, args = {} }: { winId: string; args?: Record<s
   const [protoOf, setProtoOf] = useState<number | null>(null); // null — the preview; a result id — its protocol
   const [proto, setProto] = useState<{ answer: OreAnswer | null; error: string | null }>({ answer: null, error: null });
   const previewer = useRef<Previewer | null>(null);
-  const results = useSetResults(t.src.setId).filter((r) => r.op === "ore");
+  const setResults = useSetResults(t.src.setId);
+  const results = setResults.filter((r) => r.op === "ore");
+  // ADR 0021 decision 16: TT of «Истинная мощность» — first in «Мощность пробы», with its «устарел»
+  const ttHint = ttThicknessHint(t.fields, t.values.thickness_field, ttResultOf(setResults, t.src.table));
   const chosen = results.find((r) => r.id === protoOf) ?? null;
   const field = t.src.fields[0] ?? null;
   const cutoff = typeof t.checked.body?.cutoff === "number" ? t.checked.body.cutoff : null;
@@ -297,7 +301,17 @@ export function OreWindow({ winId, args = {} }: { winId: string; args?: Record<s
           <div>
             <p className={css.note}>{ore.note}</p>
             <SourcePicker needs={ore.source} value={t.src} onChange={t.setSrc} onFields={t.setFields} activeSet={activeSet} />
-            <ParamForm params={ore.params} values={t.values} errors={t.checked.errors} fields={t.fields} onChange={t.setValues} placeholders={{ ...auto, name: DEFAULT_TABLE }} />
+            <ParamForm params={ore.params} values={t.values} errors={t.checked.errors} fields={ttFirst(t.fields)} onChange={t.setValues} placeholders={{ ...auto, name: DEFAULT_TABLE }} />
+            {ttHint && (
+              <p className={ttHint.stale ? css.warn : css.note} data-testid="ore-tt-hint">
+                {ttHint.text}{" "}
+                {ttHint.pick && (
+                  <button type="button" className={css.btn} data-testid="ore-tt-pick" onClick={() => t.setValues({ ...t.values, thickness_field: ttHint.field })}>
+                    Взять TT
+                  </button>
+                )}
+              </p>
+            )}
           </div>
           <fieldset className={css.group} data-testid="composites-preview">
             <legend>Предпросмотр</legend>

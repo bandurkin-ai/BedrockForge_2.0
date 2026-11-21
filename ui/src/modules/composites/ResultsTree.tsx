@@ -21,8 +21,11 @@ import { openWindow } from "../../shell/windows";
 import type { ResultRow, TableRow } from "./api";
 import { openTool, WINDOW_PREFIX } from "./bind";
 import own from "./Composites.module.css";
-import { loadSetResults, paramsArgs, rebuildQuestion, resultLabel, resultMenu, resultsStore, staleText, tabMark, toolOfOp, watchResults, type ResultAction } from "./results";
+import { loadSetResults, paramsArgs, rebuildQuestion, resultLabel, resultsStore, staleText, tabMark, toolOfOp, watchResults, type ResultAction } from "./results";
 import { toolById } from "./tools";
+import { openIntercept } from "../intercepts/bind";
+import { interceptArgs, interceptMenu } from "../intercepts/results";
+import { interceptToolOfOp } from "../intercepts/tools";
 
 export const RESULT_WINDOW = `${WINDOW_PREFIX}result`;
 export const GROUP_TITLE = "Обработка проб";
@@ -37,8 +40,10 @@ export async function runResultAction(app: App, r: ResultRow, action: ResultActi
       if (r.table_id === null) return void openResultProps(r);
       await app.run("table.open", { set_id: r.set_id, kind: String(r.table_id) });
     } else if (action === "params") {
-      const tool = toolById(toolOfOp(r.op) ?? "");
-      if (tool) openTool(tool, paramsArgs(r));
+      const icpt = interceptToolOfOp(r.op); // Э15: `tt`, `intercepts` — the windows of «Пересечения»
+      const tool = icpt ? null : toolById(toolOfOp(r.op) ?? "");
+      if (icpt) openIntercept(icpt, interceptArgs(r));
+      else if (tool) openTool(tool, paramsArgs(r));
     } else if (action === "rebuild") {
       if (!(await askConfirm({ title: "Перестроить результат", message: rebuildQuestion(r), okLabel: "Перестроить", danger: true }))) return;
       await app.run("composite.rebuild", { result_id: r.id });
@@ -56,7 +61,7 @@ export function openResultMenu(app: App, r: ResultRow, e: MouseEvent): void {
   e.preventDefault();
   e.stopPropagation();
   const ro = app.store.get().projectReadOnly === true;
-  const items = resultMenu(r, ro);
+  const items = interceptMenu(r, ro);
   openMenu(
     e.clientX,
     e.clientY,
@@ -70,7 +75,8 @@ export function openResultMenu(app: App, r: ResultRow, e: MouseEvent): void {
 /** The results of these sets as they are read; a set not read yet is read (and kept current). */
 export function useResultsBySet(setIds: readonly number[]): Record<number, ResultRow[]> {
   const bySet = useStore(resultsStore, (s) => s.bySet);
-  const key = setIds.join(",");
+  // The sets not read yet: after `resetResults` (another project) they change and are read again.
+  const key = setIds.filter((id) => bySet[id] === undefined).join(",");
   useEffect(() => {
     watchResults();
     for (const id of setIds) if (resultsStore.get().bySet[id] === undefined) void loadSetResults(id);
@@ -89,7 +95,7 @@ function StaleMark({ r }: { r: ResultRow }) {
 
 /** The title of a result row: what it is, why it is out of date, what a double click does. */
 export function resultTitle(r: ResultRow): string {
-  const what = r.table ? `таблица «${r.table}»` : r.makes_table ? "таблица" : "поля в таблице источника";
+  const what = r.makes_table ? (r.table ? `таблица «${r.table}»` : "таблица") : r.table ? `поля в таблице «${r.table}»` : "поля в таблице источника";
   const stale = staleText(r);
   return `${resultLabel(r)} — ${r.op_title}, ${what}${stale ? `; ${stale}` : ""}. Двойной щелчок — ${r.table_id === null ? "свойства" : "таблица"}, меню — действия`;
 }

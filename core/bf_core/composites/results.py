@@ -47,9 +47,11 @@ OP_TITLES = {
     "declus": "Декластеризация",
     "ore": "Рудные интервалы",
     "conditions": "Анализ кондиций",
+    "tt": "Истинная мощность",
+    "intercepts": "Рудные пересечения",
 }
 #: Operations whose result is a new table of the set (ADR 0018 §3); the others write columns or nothing.
-TABLE_OPS = frozenset({"length", "domain", "bench", "coding", "merge", "coords", "ore"})
+TABLE_OPS = frozenset({"length", "domain", "bench", "coding", "merge", "coords", "ore", "intercepts"})
 
 
 def table_token(created: Any) -> str:
@@ -470,8 +472,8 @@ def delete_result(conn: sa.Connection, result_id: int) -> dict[str, Any]:
         t = conn.execute(sa.select(dh_tables.c.state, dh_tables.c.name_key).where(dh_tables.c.id == tid)).first()
         if t is not None and t.state == "building":
             raise ApiError(409, "result_busy", "Результат сейчас пересчитывается.", "Дождитесь окончания задания.")
-        if r["op"] == "ore" and t is not None:  # its display «Рудные интервалы» (`ore_job.display_settings`)
-            charts = _drop_displays(conn, set_id, {"op": "ore", "table": t.name_key})
+        if r["op"] in ("ore", "intercepts") and t is not None:  # their displays (ore_display, intercepts.display)
+            charts = _drop_displays(conn, set_id, {"op": r["op"], "table": t.name_key})
         conn.execute(sa.delete(dh_tables).where(dh_tables.c.id == tid))  # the record goes with it (CASCADE)
         deleted.append(tid)
     conn.execute(sa.delete(dh_results).where(dh_results.c.id == result_id))

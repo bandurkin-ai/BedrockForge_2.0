@@ -11,6 +11,7 @@ import { bindSwath } from "../modules/swath/bind";
 import { bindStats } from "../modules/stats/bind";
 import { bindQaqc } from "../modules/qaqc/bind";
 import { bindQaqcSetup } from "../modules/qaqc/bindSetup";
+import { bindIntercepts } from "../modules/intercepts/bind";
 import { bindDtm } from "../modules/dtm/bind";
 import { bindModel } from "../modules/model/bind";
 import { bindDigitize } from "../modules/section/digitize";
@@ -179,5 +180,6 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindStats(app);
   bindQaqc(app);
   bindQaqcSetup(app);
+  bindIntercepts(app);
   return app;
 }

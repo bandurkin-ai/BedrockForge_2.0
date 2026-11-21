@@ -54,9 +54,11 @@ export interface ToolSpec {
   id: string;
   command: string;
   title: string;
-  /** The route of the job under `/composites` (ADR 0018 §11). */
+  /** The prefix of the routes of the tool (`/composites` when not given; `/intercepts` — Э15, ADR 0021 §10). */
+  api?: string;
+  /** The route of the job under the prefix of the tool (ADR 0018 §11). */
   endpoint: string;
-  /** The operation of `POST /composites/{op}/preview`; null — no preview. */
+  /** The operation of `POST {api}/{op}/preview`; null — no preview. */
   preview: ((values: FormValues) => string) | null;
   source: SourceNeeds;
   params: readonly ParamSpec[];
@@ -72,6 +74,11 @@ export interface ToolSpec {
   /** The last step of the body (parsing of a tool's own lists); a string — why it cannot be sent. */
   finish?: (body: Record<string, unknown>) => Record<string, unknown> | string;
 }
+
+export const COMPOSITES_API = "/composites";
+
+/** The prefix of the routes of a tool: `/composites` unless the tool names its own. */
+export const toolApi = (tool: Pick<ToolSpec, "api">): string => tool.api ?? COMPOSITES_API;
 
 /** «0,5», «0.5», « 2 » → number; empty or not a number — null. */
 export function parseNumber(text: string): number | null {

@@ -27,7 +27,7 @@ jobs:
     # 60 → 80 (Э10): pytest ~23 min, builds ~15, the smoke E2E of all the specs on the .exe ~25 (series, perfEditor —
     # Э10); the last run was cut at 60 min inside the E2E. Billed by the time used, not by the limit.
     # 80 → 90 (Э14, ADR 0020 decision 25): PR #29 took 77:15 (pytest 27:34, smoke E2E 32:15); Э14 adds ≈ 1.5 min.
-    timeout-minutes: 90
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7

@@ -14,9 +14,11 @@ import { VariantsTable } from "./ConditionsWindow";
 import own from "./Composites.module.css";
 import type { ResultRow } from "./api";
 import { OreEdit } from "./OreEdit";
-import { loadSetResults, paramFacts, recordFacts, reportFacts, resultLabel, resultMenu, resultsStore, sourceFacts, staleText, watchResults, type Fact } from "./results";
+import { loadSetResults, paramFacts, recordFacts, reportFacts, resultLabel, resultsStore, sourceFacts, staleText, watchResults, type Fact } from "./results";
 import { runResultAction } from "./ResultsTree";
 import { toVariants, variantsUnit } from "./tools/conditions";
+import { interceptMenu, interceptParamFacts, interceptReportFacts } from "../intercepts/results";
+import { isInterceptOp } from "../intercepts/tools";
 
 function FactList({ facts, testId }: { facts: readonly Fact[]; testId?: string }) {
   if (!facts.length) return <p className={css.note}>—</p>;
@@ -34,7 +36,9 @@ function FactList({ facts, testId }: { facts: readonly Fact[]; testId?: string }
 
 /** The body of «Свойства» of one result (no store: the tests render it as is). */
 export function ResultFacts({ r }: { r: ResultRow }) {
-  const rep = reportFacts(r);
+  // Э15 (`tt`, `intercepts`): the parameters as the windows name them, the orientation and the summary in Russian
+  const icpt = isInterceptOp(r.op);
+  const rep: ReturnType<typeof reportFacts> = icpt ? { summary: [], facts: interceptReportFacts(r) } : reportFacts(r);
   const stale = staleText(r);
   return (
     <>
@@ -54,7 +58,7 @@ export function ResultFacts({ r }: { r: ResultRow }) {
       </fieldset>
       <fieldset className={css.group}>
         <legend>Параметры</legend>
-        <FactList facts={paramFacts(r)} testId="result-props-params" />
+        <FactList facts={icpt ? interceptParamFacts(r) : paramFacts(r)} testId="result-props-params" />
       </fieldset>
       {(rep.summary.length > 0 || rep.facts.length > 0) && (
         <fieldset className={css.group}>
@@ -109,7 +113,7 @@ export function ResultProps({ winId, resultId, setId }: { winId: string; resultI
         </div>
       </div>
     );
-  const items = resultMenu(r, readOnly).filter((it) => it.action !== "props");
+  const items = interceptMenu(r, readOnly).filter((it) => it.action !== "props");
   return (
     <div className={css.win} data-testid="result-props">
       <div className={css.winBody}>
