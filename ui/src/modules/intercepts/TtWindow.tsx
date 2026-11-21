@@ -3,7 +3,7 @@
  * interval table), the block «Ориентировка», ε_в, the part of the hole and the angles with the ranges of 8.5.4 (a
  * value out of range is marked and never sent), the preview on one hole (`POST /intercepts/tt/preview`, the newest
  * answer only), «Применить» → the job `intercept.tt` followed in the window. `renderInterceptsWindow` — the windows
- * `intercepts-*` for the shell («Рудные пересечения» — 15.16).
+ * `intercepts-*` for the shell («Рудные пересечения» — InterceptsWindow.tsx).
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { errorText } from "../../shell/props";
@@ -16,9 +16,10 @@ import { NO_SOURCE, sourceFromArgs, valuesFromArgs, type FormValues, type Source
 import { SourcePicker } from "../composites/SourcePicker";
 import { askReplace, HolePicker, JobView, ParamForm, ToolFooter } from "../composites/ToolWindow";
 import { startTt, ttPreview, type TtPreview as Answer } from "./api";
-import { TT_WINDOW } from "./bind";
+import { RUN_WINDOW, TT_WINDOW } from "./bind";
 import { OrientationForm } from "./OrientationForm";
-import { DEFAULT_ORIENTATION, interceptBody, orientationFromArgs, TT_TOOL, type OrientationState } from "./params";
+import { InterceptsWindow } from "./InterceptsWindow";
+import { coreErrors, DEFAULT_ORIENTATION, interceptBody, orientationFromArgs, TT_TOOL, type OrientationState } from "./params";
 import { TtPreview } from "./TtPreview";
 
 const NEEDS = TT_TOOL.source;
@@ -48,7 +49,13 @@ export function TtWindow({ winId, args = {} }: { winId: string; args?: Record<st
   const [job, setJob] = useState<Started | null>(null);
   const [activeSet] = useState(() => tablesStore.get().setId);
   const checked = useMemo(() => interceptBody(TT_TOOL, { setId: src.setId, table: src.table }, values, orient), [src, values, orient]);
+  // a refusal of the core with `param` marks its field until the next edit (e15-api.md: «orientation.0.alpha»)
+  const [refused, setRefused] = useState<Record<string, string>>({});
+  useEffect(() => setRefused({}), [checked]);
+  const errors = useMemo(() => ({ ...refused, ...checked.errors }), [refused, checked]);
   const previewer = useRef<Previewer | null>(null);
+  const orientRef = useRef(orient);
+  orientRef.current = orient;
 
   useEffect(() => {
     const p = createPreviewer<Answer>(
@@ -56,7 +63,10 @@ export function TtWindow({ winId, args = {} }: { winId: string; args?: Record<st
         setAnswer(a);
         setPreviewError(null);
       },
-      (e) => setPreviewError(errorText(e)),
+      (e) => {
+        setPreviewError(errorText(e));
+        setRefused(coreErrors(e, orientRef.current));
+      },
       (_op, params, holeId) => ttPreview(params, holeId),
     );
     previewer.current = p;
@@ -79,6 +89,7 @@ export function TtWindow({ winId, args = {} }: { winId: string; args?: Record<st
       }
     } catch (e) {
       setError(errorText(e));
+      setRefused(coreErrors(e, orient));
     } finally {
       setBusy(false);
     }
@@ -90,8 +101,8 @@ export function TtWindow({ winId, args = {} }: { winId: string; args?: Record<st
       <div className={css.winBody}>
         <p className={css.note}>{TT_TOOL.note}</p>
         <SourcePicker needs={NEEDS} value={src} onChange={setSrc} onFields={setFields} activeSet={activeSet} />
-        <OrientationForm setId={src.setId} table={src.table} fields={fields} value={orient} errors={checked.errors} onChange={setOrient} />
-        <ParamForm params={TT_TOOL.params} values={values} errors={checked.errors} fields={fields} onChange={setValues} />
+        <OrientationForm setId={src.setId} table={src.table} fields={fields} value={orient} errors={errors} onChange={setOrient} />
+        <ParamForm params={TT_TOOL.params} values={values} errors={errors} fields={fields} onChange={setValues} />
         <fieldset className={css.group} data-testid="intercepts-tt-preview-box">
           <legend>Предпросмотр</legend>
           <HolePicker setId={src.setId} value={hole?.id ?? null} onChange={(id, name) => setHole(id === null ? null : { id, name })} />
@@ -112,6 +123,8 @@ export function TtWindow({ winId, args = {} }: { winId: string; args?: Record<st
 
 /** The windows `intercepts-*` (the shell's renderer falls through to this). */
 export function renderInterceptsWindow(w: FloatWin): ReactNode | null {
-  if (w.kind !== TT_WINDOW) return null;
-  return <TtWindow winId={w.id} args={(w.props?.args as Record<string, unknown> | undefined) ?? {}} />;
+  const args = (w.props?.args as Record<string, unknown> | undefined) ?? {};
+  if (w.kind === TT_WINDOW) return <TtWindow winId={w.id} args={args} />;
+  if (w.kind === RUN_WINDOW) return <InterceptsWindow winId={w.id} args={args} />;
+  return null;
 }
