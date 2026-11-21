@@ -1,5 +1,5 @@
 /** Axes of a chart in SVG (ADR 0019 §11): grid lines and tick labels of a scale (linear, log10, probability). */
-import type { Scale, Tick } from "./axes";
+import type { Scale, Tick } from "./axisScale";
 import type { PlotBox } from "./PlotFrame";
 import css from "./Chart.module.css";
 

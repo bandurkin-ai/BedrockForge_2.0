@@ -167,8 +167,9 @@ describe("the core: calculation and the command", () => {
         const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
         sent.push({ method, path: `${path}${u.search}`, body });
         if (path === "/stats/fields")
-          return Promise.resolve(json({ tables: [{ key: "пробы", name: "Пробы", kind: "assay", rows: 7 }], table: "пробы", numeric: [{ name: "length", kind: "length", unit: "м", count: 7 }, { name: "AU", kind: "component", unit: "г/т", count: 6 }], text: [] }));
+          return Promise.resolve(json({ set_id: 3, tables: [{ id: 11, name: "Пробы", name_key: "пробы", kind: "assay", rows: 7, rev: 1, numbers: [{ name: "AU", unit: "г/т", role: "component" }, { name: "length", unit: "м", role: "length" }], texts: [] }] }));
         if (path === "/stats/histogram") return new Promise<Response>((resolve) => pending.push({ body, resolve }));
+        if (path === "/charts" && method === "POST") return Promise.resolve(json({ id: 12, version: 1, ...body }));
         return Promise.resolve(json({ code: "not_found", message: "Нет", hint: "" }, 404));
       }),
     );
@@ -208,7 +209,7 @@ describe("the core: calculation and the command", () => {
 
   it("chart.histogram: unavailable without a set; opens the window «‹имя› · ‹набор›» with the first component", async () => {
     expect(app.registry.reason("chart.histogram")).toBeNull();
-    expect(app.registry.reason("chart.qq")).toBe("Функция появится на этапе Э13");
+    expect(app.registry.reason("chart.scatter")).toBe("Функция появится на этапе Э13");
     app.store.set({ setName: null });
     expect(app.registry.reason("chart.histogram")).toBe("Нет активного набора скважин");
     app.store.set({ setName: "Набор" });
@@ -226,7 +227,7 @@ describe("the core: calculation and the command", () => {
     await vi.waitFor(() => expect(pending).toHaveLength(1));
     expect(pending[0].body).toMatchObject({ field: "AU", weight: "none", top_cut: 4, top_mode: "cap" });
     pending[0].resolve(json({ ...RESULT, weighted: false, stats_unweighted: null }));
-    expect(await run).toEqual({ ok: true, result: "Гистограмма · AU · без веса: проб 4, среднее 1.5, медиана 1.2, CV 0.533" });
+    expect(await run).toEqual({ ok: true, result: "«Гистограмма · AU · без веса» (график №12): проб 4, среднее 1.5, медиана 1.2, CV 0.533" });
     expect(histogramSummary("Г", RESULT)).toBe("Г: проб 4, среднее 1.5, медиана 1.2, CV 0.533 (с весом)");
   });
 });

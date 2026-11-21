@@ -5,7 +5,7 @@
  */
 import { forwardRef, useState } from "react";
 import type { HistogramResult } from "../../modules/charts/api";
-import { formatNumber, makeScale } from "../core/axes";
+import { formatNumber, makeScale } from "../core/axisScale";
 import { XAxis, YAxis } from "../core/Axes";
 import { plotBox, PlotFrame } from "../core/PlotFrame";
 import type { HistogramY } from "../../modules/charts/settings";
