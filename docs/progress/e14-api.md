@@ -123,8 +123,47 @@
  "batches": {"total": 13, "failed": 2, "not_assessed": 1, "no_batch": 0}}
 ```
 
-`duplicates` (`kind`: `DUP_F` | `DUP_C` | `DUP_P`) и `external` (`group {lab_main, lab_check}`) — формы ADR 0020 п. 10 в
-реализации К (14.5–14.7): дополняются после их влития.
+`duplicates` (`kind`: `DUP_F` по умолчанию | `DUP_C` | `DUP_P`; `c: [≤ 20 чисел > 0]` — свои содержания для P(c);
+точки всегда прореживаются до `max_points`, 100 000 по умолчанию — все пары сверх порога HARD остаются):
+
+```json
+{"kind": "DUP_C", "pairs": 60, "used": 57,
+ "excluded": {"no_parent": 0, "missing": 2, "negative": 0, "zero": 0, "below": 1},
+ "hard_limit": 20.0, "share_limit": 90.0, "share10": 100.0, "share20": 100.0, "share30": 100.0, "share_at_limit": 100.0,
+ "passed": true,
+ "stats": {"mean1": 1.1209, "mean2": 1.1408, "pearson": 0.99757, "rma": {"a": 0.01244, "b": 1.00666}},
+ "ranked": {"p": [1.754, 3.509], "hard": [0.0281, 0.0983]},
+ "points": {"row": [4, 13], "x1": [0.3032, 3.088], "x2": [0.3145, 3.058], "hard": [1.829, 0.488]},
+ "thinned": {"shown": 57, "total": 57},
+ "th": {"state": "ok", "group": 11, "need": 50, "a": 0.0075, "b": 0.03591, "k": 1.0483580825075305,
+        "groups": {"m": [0.2074, 0.3603], "med": [0.0058, 0.0113], "n": [11, 11]},
+        "precision": [{"c": 0.2191, "p": 14.707, "q": 10}, {"c": 0.58075, "p": 10.238, "q": 50}, {"c": 1.5, "p": "…", "q": null}]}}
+```
+
+`th.state`: `ok`, `few_pairs` (< `need` = 50 пар), `no_fit`; `precision[].q` — 10, 50, 90 для перцентилей средних
+пар, `null` — для заданных `c`; `x1` — исходная проба, `x2` — дубликат. `samples: true` → `samples {row, x1, x2, mean,
+hard, hrd, ampd}` — все взятые пары (для отчёта).
+
+`external` (группы — пары лабораторий по названиям, пустое название первым; x — основная, y — контрольная):
+
+```json
+{"hard_limit": 10.0, "share_limit": 90.0,
+ "groups": [{"lab_main": "LAB1", "lab_check": "EXT", "pairs": 5, "used": 5,
+             "excluded": {"no_parent": 0, "missing": 0, "negative": 0, "zero": 0, "below": 0},
+             "mean_main": 0.54224, "mean_check": 0.5598, "bias": -3.1368, "t": -1.0913, "p": 0.33647, "df": 4,
+             "pearson": 0.98738,
+             "rma": {"a": -0.0083, "b": 1.04769, "a_ci": [-0.0931, 0.2049], "b_ci": [0.7328, 1.2908], "n_boot": 1000, "seed": 12345},
+             "share10": 100.0, "share20": 100.0, "share30": 100.0, "share_at_limit": 100.0, "passed": true, "notes": []}]}
+```
+
+С `group {lab_main, lab_check}` добавляются `points {row, x1, x2, hard}`, `ranked {p, hard}`, `thinned`; бутстрап при
+этом не считается (`intervals: false` по умолчанию: у групп этого ответа `a_ci`, `b_ci` — `null`, `n_boot` — 0), поэтому
+таблицу групп брать из запроса без `group`. t, p, df — `null` при равных разностях (с примечанием в `notes` группы);
+`a_ci`/`b_ci` — `[от, до]` или `null` (меньше трёх пар). `samples: true` → `samples {group, row, x1, x2, mean, hard, hrd,
+ampd}`.
+
+Строки `summary`: `duplicates {DUP_F, DUP_C, DUP_P: {pairs, used, hard_limit, share_at_limit, passed}}`,
+`external {groups, pairs, used, passed, failed}` (без бутстрапа).
 
 ## Записи: `POST /records`
 
@@ -173,7 +212,8 @@
 `stale`: `null`, `data` (у данных с тем же uid другие записи), `config` (изменились настройка или справочник),
 `source_deleted` (данные удалены — расчёт по `report_id` работает, «Перестроить» — 409). Ответы разделов в
 `summary` — те же, что у `POST /calc/{section}`, без построчных ключей `series`, `samples`, `points`, `ranked`,
-`batches` (таблица партий — в XLSX, 14.14); у дубликатов — ключ на тип: `duplicates:DUP_F`, `:DUP_C`, `:DUP_P`.
+`batches` и `th.groups` (таблицы — в XLSX, 14.14); у дубликатов — ключ на тип: `duplicates:DUP_F`, `:DUP_C`,
+`:DUP_P`.
 
 ## Файл отчёта: XLSX (14.14)
 

@@ -13,8 +13,8 @@ groups are filled with the brand tones of their status (the tables by samples ar
 need a line at a time — 12 s a million). «Параметры» (thresholds, types, DL, the CRM rows used, the filter,
 hashes, versions, seed, time) goes last: the shared strings of the sheets before it do not depend on the name of
 the data or the time, so the XML of the data sheets of a report by a filter and of one over the records taken by
-that filter are equal byte for byte (Т8.4-8). The sections «Дубликаты» and «Внешний контроль» are written from
-`calc.SECTIONS` when it has them (14.5–14.7), else the sheet says there are no data.
+that filter are equal byte for byte (Т8.4-8). «Дубликаты»: a line per element and type, the precision of
+Thompson–Howarth, the pairs; «Внешний контроль»: a line per pair of laboratories, the pairs with their group.
 """
 
 from __future__ import annotations
@@ -56,11 +56,9 @@ def gather(recs: Any, inputs: Mapping[str, Any], tick: Tick | None = None) -> di
         ctx = calc.context(recs, inputs["config"], inputs["crm"], element, inputs.get("filter"))
         part = {"summary": calc.run(ctx, "summary"), "standards": calc.run(ctx, "standards", samples=True),
                 "blanks": calc.run(ctx, "blanks", samples=True), "batches": calc.run(ctx, "batches")}  # fmt: skip
-        if "duplicates" in calc.SECTIONS:
-            for kind in DUP_KINDS:
-                part[f"duplicates:{kind}"] = calc.run(ctx, "duplicates", kind=kind)
-        if "external" in calc.SECTIONS:
-            part["external"] = calc.run(ctx, "external")
+        for kind in DUP_KINDS:
+            part[f"duplicates:{kind}"] = calc.run(ctx, "duplicates", kind=kind, samples=True)
+        part["external"] = calc.run(ctx, "external", samples=True)
         out[element] = part
     return out
 
@@ -92,6 +90,10 @@ def _texts(values: Sequence[Any]) -> list[Any]:
 
 def _status(values: Sequence[int]) -> list[str]:
     return [STATUS.get(int(v), str(v)) for v in values]
+
+
+def _yes(value: Any) -> str | None:
+    return None if value is None else ("да" if value else "нет")
 
 
 def _rule(bits: int) -> str | None:
@@ -191,9 +193,13 @@ class _Report:
                         bl["not_assessed"]])  # fmt: skip
                 sh.row(["Партии: всего / с отказом / не оценено / без партии", bt["total"], bt["failed"],
                         bt["not_assessed"], bt["no_batch"]])  # fmt: skip
-                for key, a in part.items():
-                    if key.startswith("duplicates:") or key == "external":
-                        sh.row([f"{key}: пройден", a.get("passed")])
+                for kind, d in (s.get("duplicates") or {}).items():
+                    sh.row([f"Дубликаты {kind}: пар / взято / в пределах порога, % / пройден", d.get("pairs"),
+                            d.get("used"), d.get("share_at_limit"), _yes(d.get("passed"))])  # fmt: skip
+                ext = s.get("external") or {}
+                if ext:
+                    sh.row(["Внешний контроль: групп / пар / взято / пройдено / не пройдено", ext.get("groups"),
+                            ext.get("pairs"), ext.get("used"), ext.get("passed"), ext.get("failed")])  # fmt: skip
                 for u in s["unmapped_codes"]:
                     sh.row(["Код не распознан", u["code"], u["n"]])
                 for note in s["notes"]:
@@ -274,35 +280,80 @@ class _Report:
         sh.table(header, data)
         sh.close()
 
-    # «Дубликаты», «Внешний контроль»: what the sections of 14.5–14.7 answer
-    def generic(self, name: str, keys: Callable[[str], bool], pics: Sequence[bytes]) -> None:
-        found = [(e, k, a) for e, part in self.answers.items() for k, a in part.items() if keys(k)]
-        sh = self.open(name, [14, 28, 18, 18, 18, 18], pics, 8)
-        if not found:
-            sh.row([f"Нет данных: раздел «{name}» в этой версии программы не рассчитывается."], style=NOTE)
-            sh.close()
-            return
-        for element, key, a in found:
-            sh.row([f"{element} — {key}"], style=HEAD)
-            for k, v in a.items():
-                if k in ("element", "unit", "counts", "limits", "notes") or isinstance(v, list | dict):
-                    continue
-                sh.row(["", k, v])
-            for k in ("stats", "excluded", "th"):
-                if isinstance(a.get(k), dict):
-                    for kk, vv in a[k].items():
-                        if not isinstance(vv, list | dict):
-                            sh.row(["", f"{k}.{kk}", vv])
-            groups = a.get("groups")
-            if isinstance(groups, list) and groups:
-                plain = [k for k, v in groups[0].items() if not isinstance(v, list | dict)]
-                sh.table(["Элемент", *plain], [[element] * len(groups), *[[g.get(k) for g in groups] for k in plain]])
-            points = a.get("points")
-            if isinstance(points, dict) and points.get("row"):
-                names = [k for k in points if k != "row"]
-                sh.table(["SAMPLE_ID", *names], [self.sample_ids(points["row"]),
-                                                *[_floats(points[k]) for k in names]])  # fmt: skip
-            sh.row([])
+    # «Дубликаты»
+    def duplicates(self, pics: Sequence[bytes]) -> None:
+        head = ["Элемент", "Тип", "Пар", "Взято", "Без исходной", "Пропуск", "Отрицательные", "Нулевые", "Ниже k·DL",
+                "Порог HARD, %", "Доля в пределах, %", "≤ 10 %", "≤ 20 %", "≤ 30 %", "В пределах порога", "Пройден",
+                "Среднее исходных", "Среднее дубликатов", "r Пирсона", "RMA a", "RMA b", "Т-Х", "Т-Х a", "Т-Х b",
+                "Т-Х K"]  # fmt: skip
+        sh = self.open("Дубликаты", [10, 8] + [12] * (len(head) - 2), pics, len(head) + 1)
+        sh.row(head, style=HEAD)
+        found = [(e, k.split(":", 1)[1], a) for e, part in self.answers.items() for k, a in part.items()
+                 if k.startswith("duplicates:")]  # fmt: skip
+        for element, kind, a in found:
+            ex, st, th = a.get("excluded") or {}, a.get("stats") or {}, a.get("th") or {}
+            rma = st.get("rma") or {}
+            tone = -1 if a.get("passed") is None else (0 if a["passed"] else 2)
+            sh.row([element, kind, a.get("pairs"), a.get("used"), *(ex.get(k) for k in ("no_parent", "missing",
+                    "negative", "zero", "below")), a.get("hard_limit"), a.get("share_limit"), a.get("share10"),
+                    a.get("share20"), a.get("share30"), a.get("share_at_limit"), _yes(a.get("passed")),
+                    st.get("mean1"), st.get("mean2"), st.get("pearson"), rma.get("a"), rma.get("b"), th.get("state"),
+                    th.get("a"), th.get("b"), th.get("k")], style=[self.fills[tone]] * len(head))  # fmt: skip
+        sh.row([])
+        sh.row(["Элемент", "Тип", "Содержание c", "Перцентиль", "P(c), %"], style=HEAD)
+        for element, kind, a in found:
+            for pc in (a.get("th") or {}).get("precision") or []:
+                sh.row([element, kind, pc.get("c"), pc.get("q"), pc.get("p")])
+        sh.row([])
+        cols: list[list[Any]] = [[] for _ in range(9)]
+        for element, kind, a in found:
+            smp = a.get("samples") or {}
+            n = len(smp.get("row", []))
+            cols[0] += [element] * n
+            cols[1] += [kind] * n
+            cols[2] += self.sample_ids(smp.get("row", []))
+            for j, key in enumerate(("x1", "x2", "mean", "hard", "hrd", "ampd"), start=3):
+                cols[j] += list(smp.get(key, []))
+        header = ["Элемент", "Тип", "SAMPLE_ID", "Исходная", "Дубликат", "Среднее", "HARD, %", "HRD, %", "AMPD, %"]
+        sh.table(header, [cols[0], cols[1], cols[2], *(_floats(c) for c in cols[3:])])
+        sh.close()
+
+    # «Внешний контроль»
+    def external(self, pics: Sequence[bytes]) -> None:
+        head = ["Элемент", "Основная", "Контрольная", "Пар", "Взято", "Среднее основной", "Среднее контрольной",
+                "Смещение, %", "t", "p", "df", "r Пирсона", "RMA a", "RMA b", "a: от", "a: до", "b: от", "b: до",
+                "Реализаций", "Зерно", "≤ 10 %", "≤ 20 %", "≤ 30 %", "В пределах порога", "Пройден",
+                "Примечания"]  # fmt: skip
+        sh = self.open("Внешний контроль", [10, 12, 12] + [12] * (len(head) - 3), pics, len(head) + 1)
+        sh.row(head, style=HEAD)
+        for element, part in self.answers.items():
+            for g in part["external"].get("groups", []):
+                rma = g.get("rma") or {}
+                a_ci, b_ci = rma.get("a_ci") or [None, None], rma.get("b_ci") or [None, None]
+                tone = -1 if g.get("passed") is None else (0 if g["passed"] else 2)
+                st = [self.fills[tone]] * len(head)
+                st[7] = self.book.style(fmt=num_fmt(2, "units"), base=self.fills[tone])
+                sh.row([element, g.get("lab_main"), g.get("lab_check"), g.get("pairs"), g.get("used"),
+                        g.get("mean_main"), g.get("mean_check"), g.get("bias"), g.get("t"), g.get("p"), g.get("df"),
+                        g.get("pearson"), rma.get("a"), rma.get("b"), a_ci[0], a_ci[1], b_ci[0], b_ci[1],
+                        rma.get("n_boot"), rma.get("seed"), g.get("share10"), g.get("share20"), g.get("share30"),
+                        g.get("share_at_limit"), _yes(g.get("passed")), "; ".join(g.get("notes") or []) or None],
+                       style=st)  # fmt: skip
+        sh.row([])
+        cols: list[list[Any]] = [[] for _ in range(10)]
+        for element, part in self.answers.items():
+            a = part["external"]
+            smp, groups = a.get("samples") or {}, a.get("groups", [])
+            g = smp.get("group", [])
+            cols[0] += [element] * len(g)
+            cols[1] += [groups[i].get("lab_main") for i in g]
+            cols[2] += [groups[i].get("lab_check") for i in g]
+            cols[3] += self.sample_ids(smp.get("row", []))
+            for j, key in enumerate(("x1", "x2", "mean", "hard", "hrd", "ampd"), start=4):
+                cols[j] += list(smp.get(key, []))
+        header = ["Элемент", "Основная", "Контрольная", "SAMPLE_ID", "Основная лаборатория", "Контрольная лаборатория",
+                  "Среднее", "HARD, %", "HRD, %", "AMPD, %"]  # fmt: skip
+        sh.table(header, [cols[0], _texts(cols[1]), _texts(cols[2]), cols[3], *(_floats(c) for c in cols[4:])])
         sh.close()
 
     # «Партии»
@@ -385,8 +436,8 @@ def write(
             ("Сводка", lambda: rep.summary(omitted)),
             ("Стандарты", lambda: rep.standards(pics("standards"))),
             ("Бланки", lambda: rep.blanks(pics("blanks"))),
-            ("Дубликаты", lambda: rep.generic("Дубликаты", lambda k: k.startswith("duplicates"), pics("duplicates"))),
-            ("Внешний контроль", lambda: rep.generic("Внешний контроль", lambda k: k == "external", pics("external"))),
+            ("Дубликаты", lambda: rep.duplicates(pics("duplicates"))),
+            ("Внешний контроль", lambda: rep.external(pics("external"))),
             ("Партии", rep.batches),
             ("Параметры", lambda: rep.parameters(inputs, meta)),
         ]

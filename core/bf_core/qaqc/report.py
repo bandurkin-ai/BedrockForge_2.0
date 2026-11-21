@@ -15,11 +15,11 @@ of the charts, `sidecar:xlsx` — the book (`report_xlsx`, job `qaqc.report_file
 filter, elements, charts (`all` | `flagged` | `none`), versions {numpy, scipy, pyarrow}, created_at}.
 `inputs_sha256` — SHA-256 of the canonical JSON of what the result depends on (config, crm, filter, elements,
 charts, algo) together with `data_sha256`; the time and the versions are not in it. `summary`: {v, elements: {E:
-{section | "section:kind": answer without `series`, `samples`, `points`, `ranked`, `batches`}}}; `canonical_summary`
-— keys sorted, numbers by `repr`, without `counts.rows` of every answer (Т8.4-8). «Устарел» (`stale`), computed on
-reading: `source_deleted` — no data with that uid; `data` — their records changed; `config` — the settings or the
-reference changed; else null. Errors: 404 `qaqc_report_not_found`, 409 `name_taken`, `version_conflict`,
-`report_building`, `source_deleted`; 422 `too_many_reports`, `bad_param {param}`.
+{section | "section:kind": answer without `series`, `samples`, `points`, `ranked`, `batches`, `th.groups`}}};
+`canonical_summary` — keys sorted, numbers by `repr`, without `counts.rows` of every answer (Т8.4-8).
+«Устарел» (`stale`), computed on reading: `source_deleted` — no data with that uid; `data` — their records
+changed; `config` — the settings or the reference changed; else null. Errors: 404 `qaqc_report_not_found`, 409
+`name_taken`, `version_conflict`, `report_building`, `source_deleted`; 422 `too_many_reports`, `bad_param {param}`.
 """
 
 from __future__ import annotations
@@ -153,6 +153,8 @@ def compute(recs: Any, inputs: Mapping[str, Any], tick: Callable[[float, str], N
                 key = section if not params.get("kind") else f"{section}:{params['kind']}"
                 answer = calc.run(ctx, section, **params)
                 part[key] = {k: v for k, v in answer.items() if k not in STRIP}
+                if isinstance(part[key].get("th"), dict):  # the groups of Thompson–Howarth are points too
+                    part[key]["th"] = {k: v for k, v in part[key]["th"].items() if k != "groups"}
         out[element] = part
     return {"v": 1, "elements": out}
 

@@ -120,7 +120,13 @@ def test_t848_book_numbers_and_byte_equal_sheets(qc, tmp_path: Path) -> None:  #
         qc.post(f"{Q}/calc/batches", json={"report_id": a["id"], "element": e}).json()["total"] for e in a["elements"]
     )
     assert wsb.cell(2, 3).value == bl["batches"][0]["batch"] and wsb.cell(2, 6).value == bl["batches"][0]["n"]
-    assert wb["Дубликаты"].max_row >= 1 and wb["Параметры"]["B2"].value == "Контроль"
+    assert wb["Параметры"]["B2"].value == "Контроль"
+    wsd = wb["Дубликаты"]
+    dup = qc.post(f"{Q}/calc/duplicates", json={"report_id": a["id"], "element": "AU", "kind": "DUP_F"}).json()
+    line = dict(zip([c.value for c in wsd[1]], [c.value for c in wsd[2]], strict=False))
+    assert (line["Элемент"], line["Тип"], line["Пар"], line["Взято"]) == ("AU", "DUP_F", dup["pairs"], dup["used"])
+    assert (line["r Пирсона"], line["RMA b"], line["Т-Х b"]) == (dup["stats"]["pearson"], dup["stats"]["rma"]["b"],
+                                                                 dup["th"]["b"])  # fmt: skip
 
 
 def test_formula_text_long_sheet_and_pictures(qc, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
@@ -162,6 +168,15 @@ def test_formula_text_long_sheet_and_pictures(qc, tmp_path: Path) -> None:  # ty
     blanks_sheet = names.index("Бланки") + 1
     assert set(rels) == {"xl/worksheets/_rels/sheet2.xml.rels", f"xl/worksheets/_rels/sheet{blanks_sheet}.xml.rels"}
     assert len(wb["Стандарты"]._images) == 1 and len(wb["Бланки"]._images) == 1
+    ext = qc.post(f"{Q}/calc/external", json={"report_id": rep["id"], "element": "AU"}).json()
+    wse = wb["Внешний контроль"]
+    line = dict(zip([c.value for c in wse[1]], [c.value for c in wse[2]], strict=False))
+    g = ext["groups"][0]
+    assert (line["Основная"], line["Контрольная"], line["Пар"]) == (g["lab_main"], g["lab_check"], g["pairs"])
+    assert (line["RMA b"], line["b: от"], line["b: до"]) == (
+        g["rma"]["b"],
+        *g["rma"]["b_ci"],
+    )  # the numbers of the API, the interval of the bootstrap too
 
 
 def test_pdf_not_available_and_save(qc, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
