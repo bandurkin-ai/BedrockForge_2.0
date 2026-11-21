@@ -138,6 +138,30 @@ def test_stations_with_coordinates_give_the_chord(method: str) -> None:
         assert d[1] == pytest.approx((xyz[3] - xyz[2]) / np.linalg.norm(xyz[3] - xyz[2]), abs=1e-15)
 
 
+@pytest.mark.parametrize("method", METHODS)
+def test_stations_with_coordinates_among_stations_with_angles(method: str) -> None:
+    """A hole whose first station is below the collar and whose stations are of every kind — angles, angles
+    and coordinates, coordinates only: the direction is the derivative of `positions` on every course."""
+    rng = np.random.Generator(np.random.PCG64(3))
+    md = np.array([10.0, 40.0, 70.0, 100.0, 130.0])
+    for _ in range(10):
+        azimuth = (rng.uniform(0.0, 360.0) + np.cumsum(rng.uniform(-20.0, 20.0, 5))) % 360.0
+        dip = np.clip(rng.uniform(-80.0, -40.0) + np.cumsum(rng.uniform(-10.0, 10.0, 5)), -89.0, 30.0)
+        azimuth[3] = dip[3] = NAN  # the fourth station has coordinates only
+        x, y, z = np.full(5, NAN), np.full(5, NAN), np.full(5, NAN)
+        x[2], y[2], z[2] = rng.uniform(-20.0, 20.0), rng.uniform(-20.0, 20.0), rng.uniform(-65.0, -55.0)
+        x[3], y[3], z[3] = x[2] + rng.uniform(-15.0, 15.0), y[2] + rng.uniform(-15.0, 15.0), z[2] - 20.0
+        traj = desurvey(Collars([0], [0.0], [0.0], [0.0], [150.0], [rng.uniform(0.0, 360.0)], [-70.0]),
+                        Surveys([0] * 5, md, azimuth, dip, x, y, z), method=method)  # fmt: skip
+        depth = rng.uniform(0.2, 149.8, 300)
+        corners = np.concatenate([md, 0.5 * (md[:-1] + md[1:]), [5.0, 140.0]])
+        depth = depth[np.abs(depth[:, None] - corners[None, :]).min(axis=1) > 0.02]
+        d = dr.directions(traj, np.zeros(len(depth), dtype=np.int64), depth)
+        fd = derivative(traj, depth)
+        assert float(np.abs(d - fd / np.linalg.norm(fd, axis=1)[:, None]).max()) < 1e-8
+        assert float(np.abs(np.linalg.norm(d, axis=1) - 1.0).max()) < 1e-14
+
+
 def test_direction_below_the_last_station_above_the_collar_and_without_a_trajectory() -> None:
     """Ниже последней станции — её направление; depths are clipped to the hole as `positions` clips them;
     a hole without a trajectory, an unknown hole and a missing depth — NaN, never a zero."""
