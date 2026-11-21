@@ -241,7 +241,7 @@ def test_columns_go_through_the_cache(tmp_path: Path) -> None:
     cache = ColumnCache(1 << 20)
     a = r.open_file(path, sha="a" * 64, scope="p1", cache=cache)
     a.load([r.v("AU"), r.LAB, r.DATE])
-    assert cache.misses == 0 and len(cache.keys()) == 3  # one read of the file for three columns
+    assert cache.misses == 3 and len(cache.keys()) == 3  # one read of the file for three columns
     b = r.open_file(path, sha="a" * 64, scope="p1", cache=cache)
     assert same(b.number(r.v("AU")), a.number(r.v("AU"))) and cache.hits == 1
     r.open_file(path, sha="a" * 64, scope="p2", cache=cache).number(r.SEQ)

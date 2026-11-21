@@ -24,8 +24,8 @@ float64 or text by dictionary (≤ 40). `row` is not stored: it is the position 
 
 File: Parquet zstd, row groups of 250 000, the schema in the key-value metadata `bf.qaqc` (JSON `v: 1`). Cache:
 `CACHE` — `stats/source.ColumnCache` of 256 МБ; key (scope, sha256 of the file, 0, 0, column): another scope
-(project) drops the columns of the previous one. Limits: ≤ 5 million rows, ≤ 60 elements, ≤ 40 other fields
-(`check_size`, 422 with a hint).
+(project) drops the columns of the previous one; reads of one file go one at a time, each absent column once.
+Limits: ≤ 5 million rows, ≤ 60 elements, ≤ 40 other fields (`check_size`, 422 with a hint).
 """
 
 from __future__ import annotations
@@ -489,19 +489,27 @@ def open_file(path: str | Path, *, sha: str | None = None, scope: Any = None, ca
         return (scope, sha, 0, 0, name)
 
     def load(name: str) -> Any:
-        if sha is None:
-            return _read(path, schema, [name])[name]
-        return cache.get(key(name), lambda: _read(path, schema, [name])[name])
+        return many([name])[name]
 
     def many(names: list[str]) -> dict[str, Any]:
-        got = {} if sha is None else {nm: cache.peek(key(nm)) for nm in names}
-        absent = [nm for nm in names if got.get(nm) is None]
-        if absent:
-            fresh = _read(path, schema, absent)
-            for nm, value in fresh.items():
-                if sha is not None:
+        """The columns from the cache, the absent ones in one read of the file. Reads of one file go one at a time
+        (concurrent requests of the same columns read them once: the second finds them in the cache)."""
+        if sha is None:
+            return _read(path, schema, names)
+        got = {nm: cache.peek(key(nm)) for nm in names}
+        if all(v is not None for v in got.values()):
+            return got
+        with cache.locked(key("\0file")):
+            for nm in names:
+                if got[nm] is None:
+                    got[nm] = cache.peek(key(nm))
+            absent = [nm for nm in names if got[nm] is None]
+            if absent:
+                with cache._lock:
+                    cache.misses += len(absent)
+                for nm, value in _read(path, schema, absent).items():
                     cache.put(key(nm), value)
-                got[nm] = value
+                    got[nm] = value
         return got
 
     load.many = many  # type: ignore[attr-defined]
