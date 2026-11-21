@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 from scipy import stats as sps
 
+from bf_core.qaqc import calc_pairs
 from bf_core.qaqc import external as ext
 from bf_core.qaqc.calc import SECTIONS, calc, canonical, context, run
 from bf_core.qaqc.external import bias, paired_t, realizations, rma_intervals
@@ -25,6 +26,12 @@ from bf_core.stats.bootstrap import draws
 from tests.qaqcutil import CONFIG, FIVE, build, hard_records, json_ready
 
 REL = 1e-12
+
+
+@pytest.fixture(autouse=True)
+def _no_intervals_kept() -> None:
+    """Every test bootstraps for itself: the intervals the process keeps are forgotten first."""
+    calc_pairs.clear_intervals()
 
 
 def pairs(n: int, seed: int, error: float = 0.05) -> tuple[np.ndarray, np.ndarray]:
@@ -143,6 +150,7 @@ def test_one_seed_one_result() -> None:
     # a group does not depend on the groups beside it: its generator starts from the seed anew
     cfg = {**CONFIG, "limits": {**CONFIG["limits"], "n_boot": 300, "seed": 7}}
     alone = calc("external", build(ump(x, y), has_dl=False), cfg, [], "AU")["groups"][0]
+    calc_pairs.clear_intervals()  # bootstrapped anew, not found in the memory of the process
     beside = calc("external", build(ump(x, y) + ump(y, x, "C"), has_dl=False), cfg, [], "AU")["groups"][0]
     assert alone == beside and alone["rma"]["b_ci"] == list(first.b) and alone["rma"]["n_boot"] == 300
     assert alone["rma"]["seed"] == 7 and alone["notes"] == []
@@ -245,7 +253,9 @@ def test_t848_external_by_a_filter_and_over_the_records_taken(number: int) -> No
     flt = FIVE[number]
     part = recs.take(row_mask(recs, parse_filter(flt), map_types(recs.text(TYPE_CODE), cfg)))
     by_filter, taken = context(recs, cfg, ref, "AU", flt), context(part, cfg, ref, "AU")
-    a, b = run(by_filter, "external", samples=True), run(taken, "external", samples=True)
+    a = run(by_filter, "external", samples=True)
+    calc_pairs.clear_intervals()  # the second calculation bootstraps for itself
+    b = run(taken, "external", samples=True)
     assert canonical(a) == canonical(b)  # byte for byte, the intervals of the bootstrap too
     json_ready(a)
     for g in a["groups"][:3]:
@@ -253,10 +263,70 @@ def test_t848_external_by_a_filter_and_over_the_records_taken(number: int) -> No
         params = {"group": key, "max_points": 10, "intervals": False}
         assert canonical(run(by_filter, "external", **params)) == canonical(run(taken, "external", **params))
     assert canonical(run(by_filter, "summary")) == canonical(run(taken, "summary"))
-    assert sum(g["used"] for g in a["groups"]) > 20 or number in (1, 2)  # no UMP under those filters
+    assert sum(g["used"] for g in a["groups"]) > 20 or number == 1  # no UMP under the filter by the types
     if number in (3, 4):  # a filter that cuts across the groups changes them
         whole = {(g["lab_main"], g["lab_check"]): g for g in calc("external", recs, cfg, ref, "AU")["groups"]}
         assert any(whole[g["lab_main"], g["lab_check"]] != g for g in a["groups"])
+
+
+def test_intervals_are_kept_by_the_pairs_and_the_bootstrap_beats(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A change of the filter that leaves a pair of laboratories as it was does not bootstrap it again; other
+    pairs, another seed or number of realizations do. A job is cancelled inside the bootstrap (ревью 14.25, № 11)."""
+    made: list[int] = []
+    real = calc_pairs.rma_intervals
+
+    def counted(x: Any, y: Any, n_boot: int, seed: int, **kw: Any) -> Any:
+        made.append(len(x))
+        return real(x, y, n_boot, seed, **kw)
+
+    monkeypatch.setattr(calc_pairs, "rma_intervals", counted)
+    recs = build(lab_rows(), has_dl=False)
+    cfg = {**CONFIG, "limits": {**CONFIG["limits"], "n_boot": 200}}
+    first = calc("external", recs, cfg, [], "AU")
+    assert made == [40, 20]  # the two groups with a line; one pair and no pairs have none
+    again = calc("external", recs, cfg, [], "AU")
+    assert made == [40, 20] and canonical(again) == canonical(first)  # found, the same bytes
+    # filters that do not touch the pairs of external control: nothing is bootstrapped
+    whole = {(g["lab_main"], g["lab_check"]): g["rma"] for g in first["groups"]}
+    for flt in ({"types": ["UMP", "ORIG"]}, {"crm": ["G-1"]}, {"labs": ["SGS"]}):
+        groups = calc("external", recs, cfg, [], "AU", flt)["groups"]
+        assert len(groups) >= 3 and all(whole[g["lab_main"], g["lab_check"]] == g["rma"] for g in groups), flt
+    assert made == [40, 20]
+    cut = calc("external", recs, cfg, [], "AU", {"where": [{"field": "v:AU", "op": "ge", "value": 1.0}]})
+    assert len(made) == 4 and made[2] < 40 and made[3] < 20  # other pairs — bootstrapped
+    assert cut["groups"][2]["rma"]["b_ci"] != first["groups"][2]["rma"]["b_ci"]
+    for limits in ({"seed": 1}, {"n_boot": 300}):  # another seed, another number of realizations
+        other = calc("external", recs, {**cfg, "limits": {**cfg["limits"], **limits}}, [], "AU")
+        assert other["groups"][2]["rma"]["b_ci"] != first["groups"][2]["rma"]["b_ci"]
+    assert made[4:] == [40, 20, 40, 20]
+    monkeypatch.setattr(ext, "MAX_DRAWS", 4000)  # the bound of the realizations is a part of the key
+    assert calc("external", recs, cfg, [], "AU")["groups"][2]["rma"]["n_boot"] == 100 and len(made) == 10
+    monkeypatch.undo()
+    # the least recently asked go first; what was asked again stays
+    monkeypatch.setattr(calc_pairs, "INTERVALS", 2)
+    calc_pairs.clear_intervals()
+    x, y = pairs(30, 3)
+    for scale in (1.0, 2.0, 1.0, 3.0, 1.0):
+        calc_pairs._intervals(x * scale, y * scale, 50, 1, None)
+    assert len(calc_pairs._kept) == 2
+    monkeypatch.setattr(calc_pairs, "rma_intervals", counted)
+    calc_pairs._intervals(x, y, 50, 1, None)  # still there
+    calc_pairs._intervals(x * 2.0, y * 2.0, 50, 1, None)  # went out when the third came
+    assert made[-1:] == [30] and len(made) == 11
+    calc_pairs.clear_intervals()
+    # the beat of a job: called between the realizations, a cancel raised there stops the calculation
+    beats: list[int] = []
+    run(context(recs, cfg, [], "AU", tick=lambda: beats.append(1)), "external")
+    assert len(beats) == 2 * (200 // 16 + 1)  # every 16 realizations and at the end, a group each
+    calc_pairs.clear_intervals()
+
+    def cancel() -> None:
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        run(context(recs, cfg, [], "AU", tick=cancel), "external")
+    assert len(calc_pairs._kept) == 0  # nothing half-made is kept
+    run(context(recs, cfg, [], "AU", tick=cancel), "summary")  # the line of the summary does not bootstrap
 
 
 def test_bootstrap_of_twenty_thousand_pairs_in_time() -> None:

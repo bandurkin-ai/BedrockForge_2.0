@@ -3,8 +3,9 @@ element → the answers of the tab and the tables of the report, JSON-ready. No 
 records (`qaqc.records`), the settings as `config.get_config` returns them and the rows of the reference.
 
     calc(section, recs, config, crm, element, flt=None, **params) -> dict
-    context(recs, config, crm, element, flt=None) -> Context;  run(ctx, section, **params) -> dict
-        several sections of one element over one filter: the mask, the types and the kernels are computed once
+    context(recs, config, crm, element, flt=None, tick=None) -> Context;  run(ctx, section, **params) -> dict
+        several sections of one element over one filter: the mask, the types and the kernels are computed once;
+        `tick()` — the beat of a job: a long step (the bootstrap of `external`) calls it, a cancel is raised there
     SECTIONS {name: function}        `summary`, `standards`, `blanks`, `batches` here; `duplicates` and
                                      `external` register themselves from `calc_pairs` (their answers — there)
     canonical(answer) -> bytes       the canonical JSON of an answer: keys sorted, numbers by `repr`, UTF-8,
@@ -148,6 +149,7 @@ class Context:
     counts: dict[str, int]
     notes: list[str]
     memo: dict[str, Any] = field(default_factory=dict)
+    tick: Callable[[], None] | None = None  # the beat of a job inside a long step
 
     def take(self, column: np.ndarray) -> np.ndarray:
         """A column of the records for the rows of the filter."""
@@ -168,7 +170,7 @@ class Context:
 
 
 def context(recs: r.Records, config: Mapping[str, Any], crm: Sequence[Mapping[str, Any]], element: Any,
-            flt: Any = None) -> Context:  # fmt: skip
+            flt: Any = None, *, tick: Callable[[], None] | None = None) -> Context:  # fmt: skip
     """The types by the dictionary of codes, the mask of the filter and the rows it leaves (ADR 0020 §5)."""
     el = recs.schema.element(str(element)) if isinstance(element, str) else None
     if el is None:
@@ -191,7 +193,8 @@ def context(recs: r.Records, config: Mapping[str, Any], crm: Sequence[Mapping[st
         "unmapped": int(by_type[0]),
         "missing": int(np.count_nonzero(np.isnan(values) & (types >= CRM))),
     }
-    ctx = Context(recs, el, Limits.parse(config.get("limits")), config, crm, parsed, rows, types, values, counts, [])
+    ctx = Context(recs, el, Limits.parse(config.get("limits")), config, crm, parsed, rows, types, values, counts, [],
+                  tick=tick)  # fmt: skip
     ctx.memo["by_type"] = by_type
     unknown = _unmapped_codes(ctx)
     if unknown:
