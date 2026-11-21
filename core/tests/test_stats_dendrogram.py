@@ -235,6 +235,26 @@ def test_matrix_equals_a_pass_per_pair(method: str, missing: str, weighted: bool
     assert logs.fields[2]["nonpositive"] == int(np.count_nonzero(cols[2] == 0.0)) > 0
 
 
+@pytest.mark.parametrize("method", ["pearson", "spearman"])
+def test_no_row_with_every_field_and_many_fields(method: str) -> None:
+    """Every row lacks a field (all the sums go by pairs); thirty fields (the tables of the pairs are large)."""
+    rng = np.random.default_rng(31)
+    v = rng.normal(size=(600, 5)) + rng.normal(size=(600, 1))
+    v[np.arange(600), rng.integers(0, 5, 600)] = NAN
+    spec = CorrSpec(method=method, log=False, negatives="keep")
+    got = correlations(list(v.T), None, spec)
+    r, n = bf_matrix(v, np.ones(600), method)
+    assert np.array_equal(got.n, n) and np.allclose(got.r, r, rtol=0, atol=ABS)
+    assert got.counts == {"rows": 600, "empty": 0, "bad_weight": 0, "incomplete": 0, "used": 600}
+    wide = rng.normal(size=(300, 30)) + rng.normal(size=(300, 1))
+    wide[rng.random(wide.shape) < 0.1] = NAN
+    w = rng.uniform(0.5, 2.0, 300)
+    got = correlations(list(wide.T), w, spec)
+    r, n = bf_matrix(wide, w, method)
+    assert np.array_equal(got.n, n) and np.allclose(got.r, r, rtol=0, atol=ABS)
+    assert len(dendrogram_chart([f"F{i}" for i in range(30)], list(wide.T), w, spec)["linkage"]) == 29
+
+
 def test_spearman_is_scipy_on_the_shared_rows() -> None:
     names, cols, _ = table(500, seed=2, gaps=0.3)
     cols[1] = np.round(cols[1])  # many ties
