@@ -5,6 +5,13 @@ import path from "node:path";
 
 export const ART = path.resolve(__dirname, "..", "..", "artifacts");
 
+/**
+ * The numba cache of the launches without the .exe: one for every launch, as the packaged app keeps it in the
+ * shared %LOCALAPPDATA% (the kernels compile once, not in every spec). NUMBA_CACHE_DIR of the run — another folder
+ * (an empty one: the cold cache of a first start on Windows).
+ */
+const SHARED_NUMBA = process.env.NUMBA_CACHE_DIR ?? path.join(os.tmpdir(), "bf-e2e-numba");
+
 /** A fresh profile per launch unless `userData` is given (settings survive between launches then). */
 export function launchOptions(extraEnv: Record<string, string> = {}, userData?: string) {
   const exe = process.env.BF_APP_EXE; // packaged BedrockForge.exe on Windows CI
@@ -15,7 +22,7 @@ export function launchOptions(extraEnv: Record<string, string> = {}, userData?: 
     BF_SOFTWARE_GL: "1",
     BF_USER_DATA: data,
     BF_PROJECTS_DIR: path.join(data, "Проекты"),
-    ...(process.env.BF_APP_EXE ? {} : { BF_LOCAL_DIR: path.join(data, "local") }),
+    ...(process.env.BF_APP_EXE ? {} : { BF_LOCAL_DIR: path.join(data, "local"), NUMBA_CACHE_DIR: SHARED_NUMBA }),
     ...extraEnv,
   } as Record<string, string>;
   const args = process.platform === "linux" ? ["--no-sandbox"] : [];

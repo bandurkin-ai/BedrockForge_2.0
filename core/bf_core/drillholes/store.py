@@ -20,6 +20,10 @@ import sqlalchemy as sa
 from bf_core.db import dialect
 from bf_core.db.schema import dh_columns, dh_holes, dh_rows, dh_surveys, dh_tables, import_log, objects
 
+from .store_rows import Texts, driver_floats, driver_quals, encode_vectors, hole_codes, matrix
+
+__all__ = ["encode_vectors", "hole_codes"]  # used by `composites.sink` as `store.…`
+
 BATCH = 50_000
 SET_KIND = "drillhole_set"
 TABLE_KINDS = ("assay", "interval", "event")
@@ -253,24 +257,29 @@ class TableData:
 
     name: str
     kind: str  # assay | interval | event
-    holes: Sequence[str]
+    holes: Sequence[str]  # the hole of every row (a list or an object array)
     from_m: Any  # Sequence[float | None] or a float64 array (NaN = missing)
     to_m: Any
     columns: list[ColumnSpec]
     values: list[Sequence[Any]]  # one sequence per column, in `columns` order
     qual: list[Sequence[int]] | None = None  # per number column: 0 plain, 1 below / 2 above limit
+    #: optional (hole names, the index into them of every row): `holes` given once more, ready for the writer
+    hole_index: tuple[Sequence[str], Any] | None = None
 
 
 def write_table(
     engine: sa.Engine, set_id: int, data: TableData, *, job_id: int | None, tick: Tick, swap: bool = True
-) -> dict[str, int]:
-    """Builds the table aside, then swaps it in (see the module docstring). Returns {"rows", "table_id"}.
-    `swap=False`: the caller swaps it later with `swap_in` (several files of one import in one transaction)."""
+) -> dict[str, Any]:
+    """Builds the table aside, then swaps it in (see the module docstring). Returns {"rows", "table_id",
+    "row_ids"} — `row_ids`: the keys of the rows in the order of the arrays (int64), or None when the database
+    does not tell them (PostgreSQL). `swap=False`: the caller swaps it later with `swap_in` (several files of
+    one import in one transaction)."""
     if data.kind not in TABLE_KINDS:
         raise ValueError(data.kind)
     now = dialect.utcnow()
     number_slots = [i for i, c in enumerate(data.columns) if c.kind == "number"]
     text_slots = [i for i, c in enumerate(data.columns) if c.kind == "text"]
+    tick(None, None)  # before the portions: the holes and the texts of millions of rows take a second
     with dialect.write_tx(engine) as conn:
         res = conn.execute(
             sa.insert(dh_tables).values(
@@ -306,57 +315,55 @@ def write_table(
                 )
             )
         known = hole_ids(conn, set_id)
-        ensure_holes(conn, set_id, data.holes, known)
-    import json
-
+        codes, names = hole_codes(data.holes, data.hole_index)
+        ensure_holes(conn, set_id, names, known)
     import numpy as np
 
     n = len(data.holes)
-    # All number columns as one float64 matrix: a row's vector is a slice of it, cut after its last value.
-    matrix = np.empty((n, len(number_slots)), dtype="<f8")
-    for k, i in enumerate(number_slots):
-        matrix[:, k] = np.asarray(data.values[i], dtype=float)
-    present = ~np.isnan(matrix)
-    widths = (
-        np.where(present.any(axis=1), len(number_slots) - np.argmax(present[:, ::-1], axis=1), 0)
-        if number_slots
-        else np.zeros(n, dtype=int)
-    )
+    hole_of = np.array([known[h] for h in names], dtype=np.int64)[codes] if n else np.zeros(0, dtype=np.int64)
+    del codes, names
+    tick(None, None)
     from_m = np.asarray(data.from_m, dtype=float)
     to_m = np.asarray(data.to_m, dtype=float)
-    hole_of = np.array([known[h] for h in data.holes], dtype=np.int64)
-    texts = [(str(slot_of[i]), data.values[i]) for i in text_slots]
-    columns = ("table_id", "hole_id", "from_m", "to_m", "num", "qual", "txt")
-    for start in range(0, n, BATCH):
-        tick(start / max(n, 1), f"«{data.name}»: строк {start} из {n}")
-        stop = min(n, start + BATCH)
-        batch = []
-        for r in range(start, stop):
-            w = int(widths[r])
-            txt = {slot: vals[r] for slot, vals in texts if vals[r] not in (None, "")} if texts else None
-            qual = None
-            if data.qual is not None:
-                q = [int(data.qual[k][r]) for k in range(len(number_slots))]
-                qual = bytes(q) if any(q) else None
-            f, t = from_m[r], to_m[r]
-            batch.append(
-                (
-                    table_id,
-                    int(hole_of[r]),
-                    None if f != f else float(f),
-                    None if t != t else float(t),
-                    matrix[r, :w].tobytes() if w else None,
-                    qual,
-                    json.dumps(txt, ensure_ascii=False) if txt else None,
-                )
-            )
-        with dialect.write_tx(engine) as conn:
-            dialect.bulk_insert(conn, dh_rows, columns, batch)
+    # columns as arrays once (a list of an import becomes one; an array of a job is used as it is): a portion
+    # takes its rows from them — no matrix of the whole table, no row-by-row work
+    numbers = [np.asarray(data.values[i], dtype=float) for i in number_slots]
+    texts = Texts([(str(slot_of[i]), np.asarray(data.values[i], dtype=object)) for i in text_slots],
+                  beat=lambda: tick(None, None))  # fmt: skip
+    quals = None if data.qual is None else [np.asarray(q) for q in data.qual[: len(number_slots)]]
+    tick(None, None)
+    fixed: dict[str, int | None] = {"table_id": table_id}
+    if quals is None:
+        fixed["qual"] = None
+    if not text_slots:
+        fixed["txt"] = None
+    ids: list[Any] | None = []  # the row keys in the order of the arrays; None — the database did not tell
+    with dialect.write_portions(engine) as portion:
+        for start in range(0, n, BATCH):
+            tick(start / max(n, 1), f"«{data.name}»: строк {start} из {n}")
+            stop = min(n, start + BATCH)
+            columns: dict[str, list[Any]] = {
+                "hole_id": hole_of[start:stop].tolist(),
+                "from_m": driver_floats(from_m[start:stop]),
+                "to_m": driver_floats(to_m[start:stop]),
+                "num": encode_vectors(matrix(numbers, start, stop)),
+            }
+            if quals is not None:
+                columns["qual"] = driver_quals(quals, start, stop)
+            if text_slots:
+                columns["txt"] = texts.portion(start, stop)
+            with portion() as conn:
+                keys = dialect.bulk_insert_columns(conn, dh_rows, fixed, columns)
+            if keys is None:
+                ids = None
+            elif ids is not None:
+                ids.append(np.arange(keys[0], keys[1] + 1, dtype=np.int64))
+    row_ids = None if ids is None else (np.concatenate(ids) if ids else np.zeros(0, dtype=np.int64))
     with dialect.write_tx(engine) as conn:
         conn.execute(sa.update(dh_tables).where(dh_tables.c.id == table_id).values(row_count=n))
         if swap:
             swap_in(conn, set_id, table_id)
-    return {"rows": n, "table_id": table_id}
+    return {"rows": n, "table_id": table_id, "row_ids": row_ids}
 
 
 def replaced_by(kind: str, name: str) -> sa.ColumnElement[bool]:

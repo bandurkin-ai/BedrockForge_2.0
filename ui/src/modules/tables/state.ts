@@ -20,6 +20,16 @@ export interface TabInfo {
   name: string;
   rows: number;
   rev: number;
+  /** A result of sample processing (ADR 0018 §2): its cells and rows are not edited (decision 24). */
+  origin?: { result_id: number; op: string; stale: boolean; reason: string | null } | null;
+}
+
+/** Why the cells and rows of a result table are not edited (ADR 0018 decision 24; the core answers 422 too). */
+export const RESULT_TABLE_LOCKED = "Таблица — результат расчёта; правьте источник и перестройте";
+
+/** The reason the cells and rows of the open table cannot be edited; null — they can. Columns may be added. */
+export function rowsLocked(s: Pick<TablesState, "tabs" | "table">): string | null {
+  return s.tabs.find((t) => t.table === s.table)?.origin ? RESULT_TABLE_LOCKED : null;
 }
 
 export interface ColumnInfo {
@@ -213,6 +223,7 @@ export function findRow(s: TablesState, id: number): { index: number; row: Row }
 
 export async function editCell(row: Row, column: string, value: string): Promise<string | null> {
   const s = tablesStore.get();
+  if (rowsLocked(s)) return rowsLocked(s);
   try {
     await api.patch(`/drillholes/sets/${s.setId}/tables/${s.table}/rows/${row.id}`, { column, value: value === "" ? null : value, rev: s.rev });
     await afterEdit();
@@ -225,6 +236,7 @@ export async function editCell(row: Row, column: string, value: string): Promise
 
 export async function addRow(values: Record<string, string>): Promise<string | null> {
   const s = tablesStore.get();
+  if (rowsLocked(s)) return rowsLocked(s);
   try {
     await api.post(`/drillholes/sets/${s.setId}/tables/${s.table}/rows`, { values, rev: s.rev });
     await afterEdit();
@@ -236,6 +248,7 @@ export async function addRow(values: Record<string, string>): Promise<string | n
 
 export async function deleteRow(row: Row): Promise<string | null> {
   const s = tablesStore.get();
+  if (rowsLocked(s)) return rowsLocked(s);
   try {
     await api.del(`/drillholes/sets/${s.setId}/tables/${s.table}/rows/${row.id}?rev=${s.rev ?? ""}`);
     await afterEdit();

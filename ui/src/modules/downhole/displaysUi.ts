@@ -15,6 +15,8 @@ export interface LegendDisplay {
   setId: number;
   holes: number;
   intervals: number;
+  /** the labels of its intervals in the loaded parts (at full detail; at most MAX_LABELS a part) */
+  labels: number;
   entries: LegendEntry[];
 }
 

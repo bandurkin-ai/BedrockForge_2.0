@@ -442,6 +442,11 @@ class Scheduler:
                     .values(status=status, finished_at=dialect.utcnow(), **values)
                 )
         self._publish(src, run.job_id)
+        if status == "done" and run.kind.startswith("composite."):
+            # a worker cannot publish: the events of a composite job travel in its result
+            result = values.get("result")
+            for ev, data in (result.get("events") if isinstance(result, dict) else None) or []:
+                self.events.publish(ev, data)
         if status == "done" and run.kind in OBJECT_JOBS:
             # the lists of the interface are read again even if the job was over before the interface saw it run
             self.events.publish("objects.changed", {"kind": "job", "job": run.kind, "id": run.job_id})

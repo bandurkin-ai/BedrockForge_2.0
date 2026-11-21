@@ -3,7 +3,8 @@ import { useApp } from "../../shell/AppContext";
 import { Icon } from "../../shell/Icon";
 import { useStore } from "../../shell/useStore";
 import { EditLog } from "./EditLog";
-import { cellText, deleteRow, editCell, editText, fieldStats, findRow, filterHole, loadPage, openTable, PAGE, rowAt, selectSet, setWhere, sortBy, tablesStore, type ColumnInfo, type FieldStats, type Row } from "./state";
+import { TabMark } from "../composites/ResultsTree";
+import { cellText, deleteRow, editCell, editText, fieldStats, findRow, filterHole, loadPage, openTable, PAGE, rowAt, rowsLocked, selectSet, setWhere, sortBy, tablesStore, type ColumnInfo, type FieldStats, type Row } from "./state";
 import { ToolBar } from "./ToolBar";
 import css from "./Tables.module.css";
 
@@ -42,6 +43,7 @@ export function TablePanel() {
           {s.tabs.map((t) => (
             <button key={t.table} type="button" role="tab" aria-selected={t.table === s.table} className={t.table === s.table ? css.tabActive : css.tab} onClick={() => void openTable(t.table)}>
               {t.name} <span className={css.count}>{t.rows.toLocaleString("ru-RU")}</span>
+              <TabMark origin={t.origin} />
             </button>
           ))}
         </div>
@@ -111,7 +113,9 @@ function Grid() {
   }, [first, last, s.version, s.table]);
 
   const cols = s.columns;
+  const locked = rowsLocked(s);
   const startEdit = (row: Row, c: ColumnInfo) => {
+    if (locked) return setMessage(locked);
     const v = editText(row[c.key], c.kind);
     setEditing({ id: row.id, key: c.key, value: v, initial: v });
   };
@@ -179,7 +183,7 @@ function Grid() {
             <div key={index} role="row" className={css.row} style={{ top: index * ROW_H, gridTemplateColumns: template }}>
               <span className={css.rowNo}>
                 {row && (
-                  <button type="button" className={css.del} title="Удалить строку" aria-label="Удалить строку" onClick={() => void deleteRow(row).then(setMessage)}>
+                  <button type="button" className={css.del} title={locked ?? "Удалить строку"} aria-label="Удалить строку" disabled={locked !== null} onClick={() => void deleteRow(row).then(setMessage)}>
                     <Icon name="trash" size={12} />
                   </button>
                 )}
@@ -206,7 +210,7 @@ function Grid() {
                     key={c.key}
                     role="gridcell"
                     className={`${css.cell} ${c.kind === "number" ? css.num : ""} ${c.key === "hole" ? css.holeCell : ""}`}
-                    title={c.key === "hole" ? "Показать только эту скважину" : "Щелчок — правка"}
+                    title={c.key === "hole" ? "Показать только эту скважину" : (locked ?? "Щелчок — правка")}
                     onClick={() => (c.key === "hole" && s.table !== "collar" ? void filterHole({ id: row.hole_id, name: row.hole }) : startEdit(row, c))}
                   >
                     {cellText(row[c.key], c.kind)}

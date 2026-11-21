@@ -4,16 +4,24 @@ write transactions, job claim, JSON access. SQLite (desktop project / instance) 
 
 from __future__ import annotations
 
+import threading
 import unicodedata
-from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from datetime import UTC, datetime
+from itertools import chain, repeat
 from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.pool import NullPool
+
+# `dialect_slots.py` is a part of this module (kept apart for its size): used as `dialect.set_slots`
+from .dialect_slots import SLOT_LABELS as SLOT_LABELS
+from .dialect_slots import SLOT_ROWS as SLOT_ROWS
+from .dialect_slots import SLOT_RUNS as SLOT_RUNS
+from .dialect_slots import set_slots as set_slots
 
 # --- portable types ---------------------------------------------------------------------------
 
@@ -118,13 +126,148 @@ def is_sqlite(bind: Engine | Connection) -> bool:
 
 
 @contextmanager
-def write_tx(engine: Engine) -> Iterator[Connection]:
-    """A write transaction: `BEGIN IMMEDIATE` on SQLite (the writer lock is taken up front, no upgrade deadlock)."""
+def write_tx(engine: Engine, *, fold: _WalFolder | None = None) -> Iterator[Connection]:
+    """A write transaction: `BEGIN IMMEDIATE` on SQLite (the writer lock is taken up front, no upgrade deadlock).
+    `fold` (of `fold_later`; SQLite) — the commit does not fold the WAL into the file itself (after a
+    transaction of millions of rows that is seconds inside the commit): the thread of `fold` does, asked here
+    right after the commit and not waited for."""
     with engine.connect() as conn:
         if is_sqlite(engine):
             conn.info["bf_begin"] = "BEGIN IMMEDIATE"
+            if fold is not None:
+                conn.connection.driver_connection.execute("PRAGMA wal_autocheckpoint=0")  # type: ignore[union-attr]
         with conn.begin():
             yield conn
+        if fold is not None:
+            fold.fold()
+
+
+#: SQLite, the connection that writes the portions of a big table (`write_portions`): it keeps so much of
+#: pages (a portion whole), and after every so many portions it waits until the WAL is folded whole, so that
+#: the next portion starts the WAL anew — the WAL stays within those portions (some 150 MB).
+BULK_CACHE_KB = 65536
+BULK_WAL_PORTIONS = 16
+
+
+class _WalFolder:
+    """A thread that folds the WAL of a SQLite file into it (PASSIVE checkpoints on a connection of its own)
+    when asked: the writer goes on with the next portion while the WAL and the file are synced — a quarter of
+    the time of a table of millions of rows. PASSIVE takes what no reader and no writer needs and never makes
+    them wait. A failure (the file is busy, the engine is gone) ends the folding: the data are in the WAL, and
+    the connections fold it themselves, as ever."""
+
+    def __init__(self, engine: Engine) -> None:
+        self._engine = engine
+        self._cond = threading.Condition()
+        self._asked = 0  # commits asked to be folded
+        self._done = 0  # … and folded (or given up)
+        self._stop = False
+        self._thread = threading.Thread(target=self._run, name="bf-wal-fold", daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        try:
+            with _driver(self._engine) as raw:
+                while True:
+                    with self._cond:
+                        self._cond.wait_for(lambda: self._stop or self._asked > self._done)
+                        asked, stop = self._asked, self._stop
+                    if asked > self._done:
+                        raw.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchall()
+                    with self._cond:
+                        self._done = asked
+                        self._cond.notify_all()
+                    if stop:
+                        return
+        except Exception:  # noqa: BLE001, S110 - best effort (see the class docstring)
+            pass
+        finally:
+            with self._cond:
+                self._stop = True
+                self._done = float("inf")  # type: ignore[assignment]
+                self._cond.notify_all()
+
+    def fold(self, wait: bool = False) -> None:
+        """What is committed by now is to be folded; `wait` — until it is (a minute at most)."""
+        with self._cond:
+            self._asked += 1
+            asked = self._asked
+            self._cond.notify_all()
+            if wait:
+                self._cond.wait_for(lambda: self._done >= asked, timeout=60.0)
+
+    def close(self) -> None:
+        with self._cond:
+            self._stop = True
+            self._cond.notify_all()
+        self._thread.join()
+
+
+@contextmanager
+def write_portions(engine: Engine) -> Iterator[Callable[[], AbstractContextManager[Connection]]]:
+    """Many short write transactions in a row (the portions of a table built aside, ADR 0003 §4):
+
+        with write_portions(engine) as tx:
+            for portion in portions:
+                with tx() as conn:
+                    bulk_insert_columns(conn, …)
+
+    Each `tx()` is a transaction of its own, as `write_tx`: readers and writers get in between, a failure or a
+    cancel leaves the portions committed so far; the foreign keys are checked as on any connection.
+
+    SQLite: the portions share one connection (every `write_tx` opens and closes its own, and closing the last
+    connection of a file folds the whole WAL into it) that keeps BULK_CACHE_KB of pages and does not fold the
+    WAL at its commits: a thread does it meanwhile (`_WalFolder`), asked after every commit; after every
+    BULK_WAL_PORTIONS portions the writer waits for it, and the WAL starts anew. The thread ends with the block,
+    after a last folding; the settings die with the connection."""
+    with engine.connect() as conn:
+        folder = None
+        if is_sqlite(engine):
+            raw = conn.connection.driver_connection
+            assert raw is not None
+            raw.execute("PRAGMA wal_autocheckpoint=0")
+            raw.execute(f"PRAGMA cache_size=-{int(BULK_CACHE_KB)}")
+            folder = _WalFolder(engine)
+        done = 0
+
+        @contextmanager
+        def tx() -> Iterator[Connection]:
+            nonlocal done
+            if folder is not None:
+                conn.info["bf_begin"] = "BEGIN IMMEDIATE"
+            with conn.begin():
+                yield conn
+            done += 1
+            if folder is not None:
+                folder.fold(wait=done % BULK_WAL_PORTIONS == 0)
+
+        try:
+            yield tx
+        finally:
+            if folder is not None:
+                folder.fold()
+                folder.close()
+
+
+@contextmanager
+def fold_later(engine: Engine) -> Iterator[_WalFolder | None]:
+    """For `write_tx(engine, fold=…)` — the big final transaction of a job:
+
+        with fold_later(engine) as fold:
+            with write_tx(engine, fold=fold) as conn: …    # committed: the data are in the WAL
+            …                                              # what the job does after it (the snapshot)
+
+    SQLite: a thread with a connection of its own (`_WalFolder`: PASSIVE, nobody waits for it) folds the WAL
+    into the file after the transaction instead of the commit and of the closing of its connection (the last
+    one of a file folds the whole WAL); the block ends when it is folded. A transaction without `fold` inside
+    the block is as ever. PostgreSQL: None, nothing to do."""
+    folder = _WalFolder(engine) if is_sqlite(engine) else None
+    try:
+        yield folder
+    finally:
+        if folder is not None:
+            folder.fold()
+            folder.close()
 
 
 @contextmanager
@@ -255,6 +398,62 @@ def bulk_insert(conn: Connection, table: sa.Table, columns: Sequence[str], rows:
     placeholder = "?" if conn.dialect.name == "sqlite" else "%s"
     sql = f"INSERT INTO {table.name} ({', '.join(columns)}) VALUES ({', '.join([placeholder] * len(columns))})"
     conn.exec_driver_sql(sql, list(map(tuple, rows)))
+
+
+#: Bound values of one SQLite statement of many rows: under the limit of every build (999 before 3.32), and
+#: where the statement is fastest (some hundred rows; longer ones gain nothing).
+SQLITE_ROW_VARS = 900
+
+
+def bulk_insert_columns(
+    conn: Connection, table: sa.Table, fixed: Mapping[str, int | None], columns: Mapping[str, Sequence[Any]]
+) -> tuple[int, int] | None:
+    """Many rows given by columns (interval tables of millions of rows, ADR 0003 §4): `columns` — name → the
+    values of every row (lists of equal length, in driver form as for `bulk_insert`), `fixed` — columns with
+    one value in all the rows (an integer or NULL).
+
+    SQLite: statements of many rows each (`VALUES (…), (…), …`) on the driver cursor, inside the transaction
+    of `conn` — one statement run for some hundred rows instead of one per row, the fixed values as literals;
+    a failure comes as the SQLAlchemy error the same statement would give. PostgreSQL: `bulk_insert`.
+
+    Returns (first, last) row key when the rows got consecutive keys in the order given — SQLite, when `conn`
+    holds the write lock (`write_tx`, `write_portions`) and the key is the rowid; None — the keys are not
+    known (PostgreSQL: a sequence shared with other writers; no rows)."""
+    lists = list(columns.values())
+    n = len(lists[0]) if lists else 0
+    if not n:
+        return None
+    names = [*fixed, *columns]
+    if conn.dialect.name != "sqlite":
+        consts = [repeat(v, n) for v in fixed.values()]
+        bulk_insert(conn, table, names, list(zip(*consts, *lists, strict=True)))
+        return None
+    literals = ["NULL" if v is None else str(int(v)) for v in fixed.values()]
+    row = f"({', '.join([*literals, *['?'] * len(lists)])})"
+    head = f"INSERT INTO {table.name} ({', '.join(names)}) VALUES "
+    width = len(lists)
+    per = max(1, SQLITE_ROW_VARS // width)
+    flat = list(chain.from_iterable(zip(*lists, strict=True)))
+    full = n - n % per
+    sql = head + ", ".join([row] * per)
+    step = per * width
+    cur = conn.connection.driver_connection.cursor()  # type: ignore[union-attr]
+    try:
+        first = int(cur.execute(f"SELECT coalesce(max(rowid), 0) + 1 FROM {table.name}").fetchone()[0])
+        for k in range(0, full * width, step):
+            cur.execute(sql, flat[k : k + step])
+        if full < n:
+            sql = head + ", ".join([row] * (n - full))
+            cur.execute(sql, flat[full * width :])
+        last = cur.lastrowid
+    except Exception as exc:
+        dbapi = conn.dialect.dbapi
+        if dbapi is None or not isinstance(exc, dbapi.Error):
+            raise
+        raise sa.exc.DBAPIError.instance(head + row, None, exc, dbapi.Error, hide_parameters=True) from exc
+    finally:
+        cur.close()
+    return (first, int(last)) if last is not None and int(last) - first + 1 == n else None
 
 
 def bulk_update(

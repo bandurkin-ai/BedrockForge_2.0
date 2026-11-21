@@ -34,6 +34,12 @@ HANDLER_MODULES: tuple[str, ...] = (
     "bf_core.sections.cache_job",
     "bf_core.exporting.job",
     "bf_core.exporting.omf_job",
+    "bf_core.composites.jobs",
+    "bf_core.composites.jobs_prep",
+    "bf_core.composites.jobs_coding",
+    "bf_core.composites.ore_job",
+    "bf_core.composites.ore_protocol_job",
+    "bf_core.composites.ore_conditions_job",
 )
 
 Queue = str  # "heavy" | "quick"
