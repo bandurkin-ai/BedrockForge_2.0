@@ -29,6 +29,7 @@ from collections.abc import Callable, Mapping
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Depends
+from fastapi.responses import JSONResponse
 
 from bf_core.api.errors import ApiError
 from bf_core.projects.service import projects
@@ -312,7 +313,7 @@ def post_dendrogram(svc: Svc, body: Settings) -> dict[str, Any]:
 
 
 @router.post("/chart/{chart_id}")
-def post_saved(svc: Svc, chart_id: int) -> dict[str, Any]:
+def post_saved(svc: Svc, chart_id: int) -> JSONResponse:
     """The saved chart by its settings and the current data; the set is the one the chart lies in (its id in
     the settings is not renumbered by a `.bfggis` import)."""
     from bf_core.charts import service
@@ -332,4 +333,4 @@ def post_saved(svc: Svc, chart_id: int) -> dict[str, Any]:
     if chart["set_id"] is not None:
         settings["set_id"] = chart["set_id"]
     head = {"id": chart["id"], "kind": chart["kind"], "name": chart["name"], "version": chart["version"]}
-    return {**run(lambda: calc(project, settings)), "chart": head}
+    return JSONResponse({**run(lambda: calc(project, settings)), "chart": head})  # big answers skip the encoder
