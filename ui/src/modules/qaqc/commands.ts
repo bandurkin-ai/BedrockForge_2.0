@@ -62,13 +62,13 @@ export const commands: Command[] = [
     id: "qaqc.import",
     title: "Загрузить контрольные пробы",
     description:
-      "Загрузить данные QAQC (ТЗ 8.4.1): из файла path (CSV, TXT, DAT, XLSX, XLS) или из таблицы table набора set_id. mapping — JSON сопоставления колонок {\"SAMPLE_ID\": \"колонка\", \"TYPE\": …, \"PARENT_ID\", \"CRM_ID\", \"LAB\", \"BATCH\", \"DATE\", \"SEQ\", \"HOLE\", \"elements\": {\"AU\": \"г/т\"}}; без него — автоподбор по именам колонок. replace_id — заменить эти данные (после подтверждения пользователя). Задание «Загрузка QAQC» — на вкладке «Задания».",
+      "Загрузить данные QAQC (ТЗ 8.4.1): из файла path (CSV, TXT, DAT, XLSX, XLS) или из таблицы table набора set_id. mapping — JSON сопоставления колонок в форме ядра: {\"sample_id\": \"колонка\", \"type\": \"колонка\", \"hole\", \"parent_id\", \"crm_id\", \"lab\", \"batch\", \"date\", \"seq\" (колонка или null), \"elements\": [{\"column\": \"AU_ppm\", \"name\": \"AU\", \"unit\": \"ppm\", \"dl_column\": \"AU_DL\"}], \"extra\": [\"колонка\"], \"read\": {\"sheet\": \"лист\"}}; name и unit элемента без значения — из имени колонки; без mapping — автоподбор по именам колонок. replace_id — заменить эти данные (после подтверждения пользователя). Задание «Загрузка QAQC» — на вкладке «Задания».",
     params: {
       path: P("string", "путь к файлу контрольных проб"),
       set_id: P("integer", "номер набора скважин для загрузки из таблицы набора"),
       table: P("string", "таблица набора: имя или номер (без — таблица проб)"),
       name: P("string", "имя данных QAQC (без — по имени файла или таблицы)"),
-      mapping: P("string", "JSON сопоставления колонок"),
+      mapping: P("string", "JSON сопоставления колонок: роли sample_id, type, … сверху, elements [{column, name?, unit?, dl_column?}], extra, read {sheet?}"),
       replace_id: P("integer", "номер данных QAQC, которые заменяются"),
     },
     stage: STAGE,
