@@ -437,6 +437,8 @@ def test_two_million_cells_and_no_dense_centres() -> None:
     density = rng.normal(2.7, 0.05, total)
     codes = rng.integers(0, 3, total).astype(np.int32)
     keep = np.array([True, False, True])
+    for column in (idx, grade, density, codes):
+        column.setflags(write=False)  # as the cache of columns gives them: the warm-up compiled for these
     f = sf.frame(40.0, -30.0, 15.0)
     sb.warm()
     tracemalloc.start()
