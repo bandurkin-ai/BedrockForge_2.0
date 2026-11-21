@@ -3,7 +3,7 @@
  * brand fonts embedded (`charts/striplog/export.ts`, Э6), CSV of the chart's data, «Сбросить вид».
  * The file goes through our own save dialog of the shell (bridge `saveFile`).
  */
-import { useState, type RefObject } from "react";
+import { useState, type ReactNode, type RefObject } from "react";
 import { saveFile } from "../../bridge";
 import { errorText } from "../../shell/props";
 import { pngBytes, svgText } from "../striplog/export";
@@ -28,10 +28,12 @@ export async function exportChart(kind: ExportKind, fileName: string, svg: SVGSV
   return saveFile(`${fileName}.${kind}`, kind, out);
 }
 
-export function ChartToolbar({ svgRef, fileName, csv, csvLabel = "CSV", disabled, onReset }: { svgRef: RefObject<SVGSVGElement | null>; fileName: string; csv: () => string | null; csvLabel?: string; disabled?: boolean; onReset?: () => void }) {
+/** `prepare` runs before a PNG or SVG export (the canvas layer inlines its picture: `PointsCanvas.inlineRasters`). */
+export function ChartToolbar({ svgRef, fileName, csv, csvLabel = "CSV", disabled, onReset, prepare, children }: { svgRef: RefObject<SVGSVGElement | null>; fileName: string; csv: () => string | null; csvLabel?: string; disabled?: boolean; onReset?: () => void; prepare?: (svg: SVGSVGElement | null) => Promise<void>; children?: ReactNode }) {
   const [note, setNote] = useState<string | null>(null);
   const run = (kind: ExportKind) => {
-    exportChart(kind, fileName, svgRef.current, csv)
+    (kind !== "csv" && prepare ? prepare(svgRef.current) : Promise.resolve())
+      .then(() => exportChart(kind, fileName, svgRef.current, csv))
       .then((path) => setNote(path ? `Сохранено: ${path}` : null))
       .catch((e: unknown) => setNote(errorText(e)));
   };
@@ -51,6 +53,7 @@ export function ChartToolbar({ svgRef, fileName, csv, csvLabel = "CSV", disabled
           Сбросить вид
         </button>
       )}
+      {children}
       {note && <span className={css.note}>{note}</span>}
     </div>
   );

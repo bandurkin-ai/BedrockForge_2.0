@@ -18,9 +18,21 @@ import { qqRequest, qqSummary } from "../../charts/qq/model";
 import { QQWindow } from "../../charts/qq/QQWindow";
 import { dendrogramRequest, dendrogramSummary } from "../../charts/dendrogram/model";
 import { DendrogramWindow } from "../../charts/dendrogram/DendrogramWindow";
+import { scatterRequest, scatterSummary } from "../../charts/scatter/model";
+import { ScatterWindow, secondField } from "../../charts/scatter/ScatterWindow";
+import { boxRequest, boxSummary } from "../../charts/box/model";
+import { BoxWindow } from "../../charts/box/BoxWindow";
+import { DomainStatsWindow, domainsRequest, domainsSummary } from "../../charts/domains/DomainStatsWindow";
+import { ternaryRequest, ternarySummary } from "../../charts/ternary/model";
+import { defaultTriple, TernaryWindow } from "../../charts/ternary/TernaryWindow";
+import { probRequest, probSummary } from "../../charts/probplot/model";
+import { ProbPlotWindow } from "../../charts/probplot/ProbPlotWindow";
+import { contactProblem, contactRequest, contactSummary } from "../../charts/contact/model";
+import { ContactWindow } from "../../charts/contact/ContactWindow";
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { computeDendrogram, computeHistogram, computeQQ, defaultField, loadFields, type ChartRow, type DendrogramResult, type HistogramResult, type QQResult } from "./api";
+import { computeBox, computeContact, computeDomains, computeProbPlot, computeScatter, computeTernary, type BoxResult, type ContactResult, type DomainsResult, type ProbPlotResult, type ScatterResult, type TernaryResult } from "./apiMore";
 import { bindSavedCharts } from "./open";
 import { saveNewChart } from "./saved";
 import { chartChanged, chartsStore, componentsReason, dataChanged, loadCharts, readComponents } from "./state";
@@ -97,7 +109,82 @@ export const CHART_WINDOWS: { [K in ChartKind]?: ChartWindowSpec<K> } = {
       return dendrogramSummary(name, await computeDendrogram(body), s.cut);
     },
   },
+  scatter: {
+    render: (p) => createElement(ScatterWindow, p),
+    prepare: withDefaultXY,
+    text: (r, name, s) => scatterSummary(name, r as ScatterResult, s.regression),
+    summary: async (s, name) => {
+      const body = scatterRequest(s);
+      if (!body) throw refusal(s.x && s.y ? "bad_param" : "field_not_found", s.x && s.y ? "Не задано поле веса." : "Нужно два числовых поля.", s.x && s.y ? "Укажите поле веса или другой вес." : "Укажите x и y.");
+      return scatterSummary(name, await computeScatter(body), s.regression);
+    },
+  },
+  box: {
+    render: (p) => createElement(BoxWindow, p),
+    prepare: withDefaultField,
+    text: (r, name) => boxSummary(name, r as BoxResult),
+    summary: async (s, name) => boxSummary(name, await computeBox(needBody(boxRequest(s), s.field))),
+  },
+  domains: {
+    render: (p) => createElement(DomainStatsWindow, p),
+    prepare: withDefaultField,
+    text: (r, name) => domainsSummary(name, r as DomainsResult),
+    summary: async (s, name) => domainsSummary(name, await computeDomains(needBody(domainsRequest(s), s.field))),
+  },
+  probplot: {
+    render: (p) => createElement(ProbPlotWindow, p),
+    prepare: withDefaultField,
+    text: (r, name) => probSummary(name, r as ProbPlotResult),
+    summary: async (s, name) => probSummary(name, await computeProbPlot(needBody(probRequest(s), s.field))),
+  },
+  contact: {
+    render: (p) => createElement(ContactWindow, p),
+    prepare: withDefaultField,
+    text: (r, name) => contactSummary(name, r as ContactResult),
+    summary: async (s, name) => {
+      const body = contactRequest(s);
+      if (!body) throw refusal("bad_param", contactProblem(s) ?? "Параметры не заданы.", "Укажите field, domain, a и b (или wireframe_id), distance и step > 0.");
+      return contactSummary(name, await computeContact(body));
+    },
+  },
+  ternary: {
+    render: (p) => createElement(TernaryWindow, p),
+    prepare: async (s) => {
+      if (s.a && s.b && s.c && s.table) return s;
+      try {
+        const f = await loadFields(s.set_id, s.table);
+        const [a, b, c] = defaultTriple(f);
+        return { ...s, table: s.table ?? f.table, a: s.a ?? a, b: s.b ?? b, c: s.c ?? c };
+      } catch {
+        return s;
+      }
+    },
+    text: (r, name) => ternarySummary(name, r as TernaryResult),
+    summary: async (s, name) => {
+      const body = ternaryRequest(s);
+      if (!body) throw refusal("field_not_found", "Нужно три числовых поля.", "Укажите a, b и c.");
+      return ternarySummary(name, await computeTernary(body));
+    },
+  },
 };
+
+/** The body of a chart by a field, or the refusal: no field, no weight field. */
+function needBody<B>(body: B | null, field: string | null): B {
+  if (body) return body;
+  throw refusal(field ? "bad_param" : "field_not_found", field ? "Не задано поле веса." : "В таблице нет числовых полей.", field ? "Укажите weight_field или другой вес." : "Укажите таблицу с пробами и поле.");
+}
+
+/** The table and fields X (the first component) and Y (the next one) when not given. */
+async function withDefaultXY(s: SettingsOf["scatter"]): Promise<SettingsOf["scatter"]> {
+  if (s.x && s.y && s.table) return s;
+  try {
+    const f = await loadFields(s.set_id, s.table);
+    const x = s.x ?? defaultField(f);
+    return { ...s, table: s.table ?? f.table, x, y: s.y ?? (s.y_table ? null : secondField(f, x)) };
+  } catch {
+    return s;
+  }
+}
 
 /** Without a table — the first table with 2 and more components (else the set's first): the dendrogram opens there. */
 async function withComponents(s: SettingsOf["dendrogram"]): Promise<SettingsOf["dendrogram"]> {

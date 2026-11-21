@@ -112,6 +112,20 @@ export interface DendrogramSettings extends Base {
   view: DendrogramView;
 }
 
+export type Regression = "ols" | "rma" | "weighted" | "none";
+
+export interface ScatterView {
+  /** the 1:1 line */
+  diagonal: boolean;
+  /** the colour of the points without a colour field */
+  color: string;
+}
+
+/**
+ * Scatter (ТЗ 8.3): fields `x`, `y` of the table (`y_table` — another table, rows matched by the sample key),
+ * `color` — a numeric or text field. The weight and the treatment of values < 0 and zeros go to both fields (a pair
+ * with either left out is not drawn); log axes — by log10 (values ≤ 0 counted and not drawn).
+ */
 export interface ScatterSettings extends Base {
   x: string | null;
   y: string | null;
@@ -120,21 +134,48 @@ export interface ScatterSettings extends Base {
   log_x: boolean;
   log_y: boolean;
   weight: WeightMode;
-  regression: "ols" | "rma" | "weighted" | "none";
+  weight_field: string | null;
+  negatives: Negatives;
+  exclude_zero: boolean;
+  /** the line drawn: МНК, RMA, weighted, none (the table lists all three) */
+  regression: Regression;
+  view: ScatterView;
 }
 
-interface DomainBase extends Base {
+/** Charts by domains (ТЗ 8.3): the field, the domain (a text field of the same or of `domain_table`), the selection of values. */
+interface DomainBase extends Base, SampleFilter {
   field: string | null;
   domain: string | null;
   domain_table: string | null;
-  weight: WeightMode;
+}
+
+export interface BoxView {
+  mean: boolean;
+  outliers: boolean;
+  color: string;
 }
 
 export interface BoxSettings extends DomainBase {
+  /** the boxes and whiskers by logarithms on a log10 axis */
   log: boolean;
+  view: BoxView;
 }
-export type ProbPlotSettings = DomainBase;
+
+export interface ProbPlotView {
+  /** points joined by a line */
+  lines: boolean;
+}
+
+export interface ProbPlotSettings extends DomainBase {
+  view: ProbPlotView;
+}
 export type DomainsSettings = DomainBase;
+
+export interface ContactView {
+  /** n of the steps as bars under the means */
+  counts: boolean;
+  color: string;
+}
 
 export interface ContactSettings extends DomainBase {
   a: string | null;
@@ -142,6 +183,11 @@ export interface ContactSettings extends DomainBase {
   distance: number;
   step: number;
   wireframe_id: number | null;
+  view: ContactView;
+}
+
+export interface TernaryView {
+  color: string;
 }
 
 export interface TernarySettings extends Base {
@@ -149,6 +195,7 @@ export interface TernarySettings extends Base {
   b: string | null;
   c: string | null;
   color: string | null;
+  view: TernaryView;
 }
 
 export interface SettingsOf {
@@ -168,15 +215,31 @@ export type ChartSettings = SettingsOf[ChartKind];
 export const DEFAULT_COLOR = "#1f6bff";
 
 const base = (setId: number): Base => ({ v: 1, set_id: setId, table: null });
-const domainBase = (setId: number): DomainBase => ({ ...base(setId), field: null, domain: null, domain_table: null, weight: "length" });
+const domainBase = (setId: number): DomainBase => ({ ...base(setId), ...DEFAULT_FILTER, field: null, domain: null, domain_table: null });
 
 export const DEFAULT_HISTOGRAM_VIEW: HistogramView = { y: "percent", cumulative: true, marks: { mean: true, median: true, p90: false, p975: false, cuts: true }, color: DEFAULT_COLOR };
 export const DEFAULT_QQ_VIEW: QQView = { equal: true, diagonal: true, labels: true, color: DEFAULT_COLOR };
 export const DEFAULT_DENDROGRAM_VIEW: DendrogramView = { matrix: true, values: true };
+export const DEFAULT_SCATTER_VIEW: ScatterView = { diagonal: false, color: DEFAULT_COLOR };
+export const DEFAULT_BOX_VIEW: BoxView = { mean: true, outliers: true, color: DEFAULT_COLOR };
+export const DEFAULT_PROBPLOT_VIEW: ProbPlotView = { lines: false };
+export const DEFAULT_CONTACT_VIEW: ContactView = { counts: true, color: DEFAULT_COLOR };
+export const DEFAULT_TERNARY_VIEW: TernaryView = { color: DEFAULT_COLOR };
+
+const VIEWS: Partial<Record<ChartKind, object>> = {
+  histogram: DEFAULT_HISTOGRAM_VIEW,
+  qq: DEFAULT_QQ_VIEW,
+  dendrogram: DEFAULT_DENDROGRAM_VIEW,
+  scatter: DEFAULT_SCATTER_VIEW,
+  box: DEFAULT_BOX_VIEW,
+  probplot: DEFAULT_PROBPLOT_VIEW,
+  contact: DEFAULT_CONTACT_VIEW,
+  ternary: DEFAULT_TERNARY_VIEW,
+};
 
 /** The default view of a kind (a fresh copy); null — the kind has none. */
 export function defaultView(kind: ChartKind): Record<string, unknown> | null {
-  const v = kind === "histogram" ? DEFAULT_HISTOGRAM_VIEW : kind === "qq" ? DEFAULT_QQ_VIEW : kind === "dendrogram" ? DEFAULT_DENDROGRAM_VIEW : null;
+  const v = VIEWS[kind];
   return v ? (JSON.parse(JSON.stringify(v)) as Record<string, unknown>) : null;
 }
 
@@ -187,11 +250,12 @@ export function defaultSettings<K extends ChartKind>(kind: K, setId: number): Se
     qq: { ...base(setId), ...DEFAULT_FILTER, field: null, distribution: "lognormal", y_set_id: null, y_table: null, y_field: null, holes: [], y_holes: [], quantiles: 99, log: true, view: defaultView("qq") as unknown as QQView },
     // correlations of logarithms by default (ТЗ 7.27); «<0,01» written as −0,01 becomes half the limit (BF)
     dendrogram: { ...base(setId), fields: [], method: "pearson", log: true, weight: "length", negatives: "half_abs", exclude_zero: false, missing: "pairwise", linkage: "average", distance: "1-r", cut: null, view: defaultView("dendrogram") as unknown as DendrogramView },
-    scatter: { ...base(setId), x: null, y: null, y_table: null, color: null, log_x: false, log_y: false, weight: "none", regression: "ols" },
-    box: { ...domainBase(setId), log: false },
-    probplot: domainBase(setId),
-    contact: { ...domainBase(setId), a: null, b: null, distance: 20, step: 1, wireframe_id: null },
-    ternary: { ...base(setId), a: null, b: null, c: null, color: null },
+    scatter: { ...base(setId), x: null, y: null, y_table: null, color: null, log_x: false, log_y: false, weight: "none", weight_field: null, negatives: "keep", exclude_zero: false, regression: "ols", view: defaultView("scatter") as unknown as ScatterView },
+    box: { ...domainBase(setId), log: false, view: defaultView("box") as unknown as BoxView },
+    probplot: { ...domainBase(setId), view: defaultView("probplot") as unknown as ProbPlotView },
+    // ТЗ 8.3: D = 20 м, b = 1 м
+    contact: { ...domainBase(setId), a: null, b: null, distance: 20, step: 1, wireframe_id: null, view: defaultView("contact") as unknown as ContactView },
+    ternary: { ...base(setId), a: null, b: null, c: null, color: null, view: defaultView("ternary") as unknown as TernaryView },
     domains: domainBase(setId),
   };
   return all[kind];
