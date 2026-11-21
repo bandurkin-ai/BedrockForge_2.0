@@ -209,7 +209,8 @@ describe("the core: calculation and the command", () => {
 
   it("chart.histogram: unavailable without a set; opens the window «‹имя› · ‹набор›» with the first component", async () => {
     expect(app.registry.reason("chart.histogram")).toBeNull();
-    expect(app.registry.reason("chart.scatter")).toBe("Функция появится на этапе Э13");
+    // a command without its handler stays unavailable with its stage (every chart of Э13 is bound by 13.28)
+    expect(app.registry.reason("blocks.report")).toBe("Функция появится на этапе Э17");
     app.store.set({ setName: null });
     expect(app.registry.reason("chart.histogram")).toBe("Нет активного набора скважин");
     app.store.set({ setName: "Набор" });

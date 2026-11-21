@@ -18,9 +18,12 @@ import { qqRequest, qqSummary } from "../../charts/qq/model";
 import { QQWindow } from "../../charts/qq/QQWindow";
 import { dendrogramRequest, dendrogramSummary } from "../../charts/dendrogram/model";
 import { DendrogramWindow } from "../../charts/dendrogram/DendrogramWindow";
+import { scatterRequest, scatterSummary } from "../../charts/scatter/model";
+import { ScatterWindow, secondField } from "../../charts/scatter/ScatterWindow";
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { computeDendrogram, computeHistogram, computeQQ, defaultField, loadFields, type ChartRow, type DendrogramResult, type HistogramResult, type QQResult } from "./api";
+import { computeScatter, type ScatterResult } from "./apiMore";
 import { bindSavedCharts } from "./open";
 import { saveNewChart } from "./saved";
 import { chartChanged, chartsStore, componentsReason, dataChanged, loadCharts, readComponents } from "./state";
@@ -97,7 +100,29 @@ export const CHART_WINDOWS: { [K in ChartKind]?: ChartWindowSpec<K> } = {
       return dendrogramSummary(name, await computeDendrogram(body), s.cut);
     },
   },
+  scatter: {
+    render: (p) => createElement(ScatterWindow, p),
+    prepare: withDefaultXY,
+    text: (r, name, s) => scatterSummary(name, r as ScatterResult, s.regression),
+    summary: async (s, name) => {
+      const body = scatterRequest(s);
+      if (!body) throw refusal(s.x && s.y ? "bad_param" : "field_not_found", s.x && s.y ? "Не задано поле веса." : "Нужно два числовых поля.", s.x && s.y ? "Укажите поле веса или другой вес." : "Укажите x и y.");
+      return scatterSummary(name, await computeScatter(body), s.regression);
+    },
+  },
 };
+
+/** The table and fields X (the first component) and Y (the next one) when not given. */
+async function withDefaultXY(s: SettingsOf["scatter"]): Promise<SettingsOf["scatter"]> {
+  if (s.x && s.y && s.table) return s;
+  try {
+    const f = await loadFields(s.set_id, s.table);
+    const x = s.x ?? defaultField(f);
+    return { ...s, table: s.table ?? f.table, x, y: s.y ?? (s.y_table ? null : secondField(f, x)) };
+  } catch {
+    return s;
+  }
+}
 
 /** Without a table — the first table with 2 and more components (else the set's first): the dendrogram opens there. */
 async function withComponents(s: SettingsOf["dendrogram"]): Promise<SettingsOf["dendrogram"]> {
