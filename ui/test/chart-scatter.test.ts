@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeScale } from "../src/charts/core/axisScale";
-import { insidePolygon, rectPath, selectInside, simplifyPath, toAxisPolygon, toViewBox } from "../src/charts/core/lasso";
+import { insidePolygon, limitPath, MAX_POLYGON, rectPath, selectInside, simplifyPath, toAxisPolygon, toViewBox } from "../src/charts/core/lasso";
 import { rgba32 } from "../src/charts/core/palette";
 import { axisMap, mapValue, rasterPoints, rasterRects, rasterSize, rasterUrls } from "../src/charts/core/PointsCanvas";
 import { ScatterChart } from "../src/charts/scatter/ScatterChart";
@@ -343,5 +343,28 @@ describe("the pictures of a raster layer", () => {
     expect(revoked).toEqual(["blob:1", "blob:2"]);
     urls.drop();
     expect(revoked).toHaveLength(2);
+  });
+});
+
+describe("a long lasso: at most 1000 vertices for the core", () => {
+  // a circle of radius 100 px drawn with 5000 points, and a square corner kept
+  const circle = Array.from({ length: 5000 }, (_, i) => ({ x: 200 + 100 * Math.cos((2 * Math.PI * i) / 5000), y: 200 + 100 * Math.sin((2 * Math.PI * i) / 5000) }));
+
+  it("Douglas–Peucker until it fits: the shape kept within a pixel or two", () => {
+    expect(limitPath(circle.slice(0, 10))).toHaveLength(10); // short — as drawn
+    const out = limitPath(circle);
+    expect(out.length).toBeLessThanOrEqual(MAX_POLYGON);
+    expect(out.length).toBeGreaterThan(20);
+    for (const p of out) expect(Math.abs(Math.hypot(p.x - 200, p.y - 200) - 100)).toBeLessThan(1e-9); // vertices of the path
+    // every drawn point is near the simplified outline: the area hardly changes
+    const area = (path: { x: number; y: number }[]) => Math.abs(path.reduce((s, p, i) => s + (path[(i + 1) % path.length].x - p.x) * (path[(i + 1) % path.length].y + p.y), 0)) / 2;
+    expect(area(out) / area(circle)).toBeGreaterThan(0.995);
+    expect(limitPath(circle, 50).length).toBeLessThanOrEqual(50);
+    // a zigzag of 3000 points along a line of a square: the corners stay
+    const square = [...Array.from({ length: 3000 }, (_, i) => ({ x: i / 10, y: i % 2 ? 0.1 : 0 })), { x: 300, y: 300 }, { x: 0, y: 300 }];
+    const sq = limitPath(square);
+    expect(sq.length).toBeLessThanOrEqual(MAX_POLYGON);
+    expect(sq).toContainEqual({ x: 300, y: 300 });
+    expect(sq).toContainEqual({ x: 0, y: 300 });
   });
 });

@@ -206,6 +206,11 @@ describe("the frames and lassos of the charts", () => {
     const r = await computeScatter({ set_id: 3, table: "пробы", x: "AU", y: "AG", log_x: true } as never);
     expect(scatterSelectionBody(r, SQUARE, "lasso", "log", "linear")).toEqual({ chart: { set_id: 3, table: "пробы", x: "AU", y: "AG", log_x: true, kind: "scatter" }, polygon: [[1.5, 1.5], [3.5, 1.5], [3.5, 3.5], [1.5, 3.5]] });
     expect(scatterSelectionBody(r, SQUARE, "rect", "log", "linear")).toMatchObject({ rect: [1.5, 3.5, 1.5, 3.5] });
+    // the core takes ≤ 1000 vertices: a longer polygon goes thinned evenly
+    const ring = Array.from({ length: 2500 }, (_, i) => (2 * Math.PI * i) / 2500);
+    const long = scatterSelectionBody(r, { x: ring.map((a) => 2 + Math.cos(a)), y: ring.map((a) => 2 + Math.sin(a)) }, "lasso", "log", "linear")!;
+    expect((long.polygon as number[][]).length).toBe(1000);
+    expect((long.polygon as number[][])[0]).toEqual([3, 2]);
   });
 
   it("box plots: the boxes the frame covers, the range; the log-probability plot: the series with a point inside", async () => {

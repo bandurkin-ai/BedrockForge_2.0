@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { bridge } from "../../bridge";
 import type { AxisKind } from "../../charts/core/axisScale";
-import { selectInside, type AxisPolygon, type SelectTool } from "../../charts/core/lasso";
+import { MAX_POLYGON, selectInside, type AxisPolygon, type SelectTool } from "../../charts/core/lasso";
 import { selectedRows } from "../../charts/scatter/model";
 import type { App } from "../../shell/app";
 import { dialogStore } from "../../shell/dialogs";
@@ -47,7 +47,10 @@ export function scatterSelectionBody(r: ScatterResult, poly: AxisPolygon, tool: 
   if (!body) return null;
   const chart = { ...body, kind: "scatter" };
   if (tool === "rect") return { chart, rect: [Math.min(...poly.x), Math.max(...poly.x), Math.min(...poly.y), Math.max(...poly.y)] };
-  return { chart, polygon: poly.x.map((x, i) => [x, poly.y[i]]) };
+  // drawn by `useLasso` it has ≤ 1000 vertices already; any other polygon is thinned evenly to what the core takes
+  const step = Math.max(1, poly.x.length / MAX_POLYGON);
+  const at = Array.from({ length: Math.min(poly.x.length, MAX_POLYGON) }, (_, k) => Math.floor(k * step));
+  return { chart, polygon: at.map((i) => [poly.x[i], poly.y[i]]) };
 }
 
 /** The boxes a frame covers (px of the plot, its slots of equal width); null — all of them. */
