@@ -25,10 +25,14 @@ import { BoxWindow } from "../../charts/box/BoxWindow";
 import { DomainStatsWindow, domainsRequest, domainsSummary } from "../../charts/domains/DomainStatsWindow";
 import { ternaryRequest, ternarySummary } from "../../charts/ternary/model";
 import { defaultTriple, TernaryWindow } from "../../charts/ternary/TernaryWindow";
+import { probRequest, probSummary } from "../../charts/probplot/model";
+import { ProbPlotWindow } from "../../charts/probplot/ProbPlotWindow";
+import { contactProblem, contactRequest, contactSummary } from "../../charts/contact/model";
+import { ContactWindow } from "../../charts/contact/ContactWindow";
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { computeDendrogram, computeHistogram, computeQQ, defaultField, loadFields, type ChartRow, type DendrogramResult, type HistogramResult, type QQResult } from "./api";
-import { computeBox, computeDomains, computeScatter, computeTernary, type BoxResult, type DomainsResult, type ScatterResult, type TernaryResult } from "./apiMore";
+import { computeBox, computeContact, computeDomains, computeProbPlot, computeScatter, computeTernary, type BoxResult, type ContactResult, type DomainsResult, type ProbPlotResult, type ScatterResult, type TernaryResult } from "./apiMore";
 import { bindSavedCharts } from "./open";
 import { saveNewChart } from "./saved";
 import { chartChanged, chartsStore, componentsReason, dataChanged, loadCharts, readComponents } from "./state";
@@ -126,6 +130,22 @@ export const CHART_WINDOWS: { [K in ChartKind]?: ChartWindowSpec<K> } = {
     prepare: withDefaultField,
     text: (r, name) => domainsSummary(name, r as DomainsResult),
     summary: async (s, name) => domainsSummary(name, await computeDomains(needBody(domainsRequest(s), s.field))),
+  },
+  probplot: {
+    render: (p) => createElement(ProbPlotWindow, p),
+    prepare: withDefaultField,
+    text: (r, name) => probSummary(name, r as ProbPlotResult),
+    summary: async (s, name) => probSummary(name, await computeProbPlot(needBody(probRequest(s), s.field))),
+  },
+  contact: {
+    render: (p) => createElement(ContactWindow, p),
+    prepare: withDefaultField,
+    text: (r, name) => contactSummary(name, r as ContactResult),
+    summary: async (s, name) => {
+      const body = contactRequest(s);
+      if (!body) throw refusal("bad_param", contactProblem(s) ?? "Параметры не заданы.", "Укажите field, domain, a и b (или wireframe_id), distance и step > 0.");
+      return contactSummary(name, await computeContact(body));
+    },
   },
   ternary: {
     render: (p) => createElement(TernaryWindow, p),
