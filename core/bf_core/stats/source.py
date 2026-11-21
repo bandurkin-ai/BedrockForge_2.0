@@ -64,7 +64,7 @@ class Table:
     name: str
     name_key: str
     kind: str  # assay | interval | event
-    token: str  # the identity of the table besides its name (`composites.results._token`)
+    token: str  # the identity of the table besides its name (`composites.results.table_token`)
     rev: int
     rows: int
 
@@ -88,9 +88,9 @@ def _table_missing(table: Any) -> ApiError:
 
 
 def _table(r: Any) -> Table:
-    from bf_core.composites.results import _token
+    from bf_core.composites.results import table_token
 
-    return Table(int(r.set_id), int(r.id), r.name, r.name_key, r.kind, _token(r.created_at), int(r.rev),
+    return Table(int(r.set_id), int(r.id), r.name, r.name_key, r.kind, table_token(r.created_at), int(r.rev),
                  int(r.row_count or 0))  # fmt: skip
 
 

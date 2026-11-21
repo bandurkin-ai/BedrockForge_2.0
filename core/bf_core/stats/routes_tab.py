@@ -33,6 +33,7 @@ from fastapi import APIRouter
 
 from bf_core.api.errors import ApiError
 
+from . import route_args as ra
 from . import routes_charts as rc
 from .routes_charts import Settings, Svc
 
@@ -43,7 +44,7 @@ MAX_HOLES = 10_000
 
 
 def _bad(param: str, message: str, hint: str) -> ApiError:
-    return rc._bad(param, message, hint)
+    return ra.bad(param, message, hint)
 
 
 def _holes(body: dict[str, Any]) -> list[str]:
@@ -72,9 +73,9 @@ def _points(project: Any, body: dict[str, Any]) -> tuple[dict[str, Any], Any, An
     from . import source
     from .tab import tab_points
 
-    set_id = rc._set_id(body)
-    t, infos = rc.table_of(project, set_id, rc._name(body, "table"))
-    name = rc._name(body, "field")
+    set_id = ra.set_id_of(body)
+    t, infos = rc.table_of(project, set_id, ra.name_of(body, "table"))
+    name = ra.name_of(body, "field")
     field = rc.first_number(t, infos, "field") if name is None else rc.field_of(t, infos, name, "field")
     cols = source.read(project, set_id, t.id, [field.name])
     xyz = source.midpoints(project, cols)  # of the whole table: the cache holds it so

@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 
 import bf_core
 
+from .body_limit import BodyLimitMiddleware
 from .errors import ApiError, api_error_handler, unexpected_error_handler, validation_error_handler
 from .events import EventBus, format_sse
 from .modules import ROUTER_MODULES
@@ -58,6 +59,7 @@ def create_app(state: CoreState, extra_origins: tuple[str, ...] = ()) -> FastAPI
     app.add_exception_handler(RequestValidationError, validation_error_handler)
     app.add_exception_handler(Exception, unexpected_error_handler)
     origins = (APP_ORIGIN, *extra_origins)
+    app.add_middleware(BodyLimitMiddleware)  # the bodies of charts and statistics; inside the guard (added later)
     app.add_middleware(GuardMiddleware, token=state.token, allowed_origins=origins, port=state.port)
 
     base = APIRouter(prefix=API_PREFIX)

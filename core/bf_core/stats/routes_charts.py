@@ -35,12 +35,14 @@ from bf_core.api.errors import ApiError
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
+from .route_args import bad, holes_of, name_of, set_id_of, stats_error
+
 router = APIRouter()
 Svc = Annotated[ProjectService, Depends(projects)]
 Settings = Annotated[dict[str, Any], Body()]
 
 HEAVY = 2
-_SLOTS = threading.BoundedSemaphore(HEAVY)
+SLOTS = threading.BoundedSemaphore(HEAVY)
 FIELD_WEIGHTS = ("field", "length_field")
 
 #: kind → calculation(project, settings) of the charts this module answers for; `routes_more` (13.16) adds its own
@@ -58,14 +60,6 @@ def register(kind: str) -> Callable[[Callable[[Any, dict[str, Any]], dict[str, A
 # --- errors, the settings -----------------------------------------------------------------------------------
 
 
-def _bad(param: str, message: str, hint: str) -> ApiError:
-    return ApiError(422, "bad_param", message, hint, extra={"param": param})
-
-
-def _stats_error(e: Any) -> ApiError:
-    return ApiError(422, e.code, e.message, e.hint, extra={"param": e.param} if e.param else None)
-
-
 def checked(kind: str, settings: Mapping[str, Any]) -> dict[str, Any]:
     """The settings of a calculation without `view`, checked as the stored ones are (`v` may be left out)."""
     from bf_core.charts import kinds
@@ -77,29 +71,6 @@ def checked(kind: str, settings: Mapping[str, Any]) -> dict[str, Any]:
         code = e.code if e.code != "bad_chart" else "bad_param"
         raise ApiError(422, code, str(e), "Проверьте настройки графика.", extra={"param": e.param or "settings"}) from e
     return body
-
-
-def _set_id(settings: Mapping[str, Any], key: str = "set_id") -> int:
-    from bf_core.charts.kinds import is_id
-
-    v: Any = settings.get(key)
-    if not is_id(v):
-        raise _bad(key, "Не выбран набор скважин.", "Выберите набор скважин графика.")
-    return int(v)
-
-
-def _name(settings: Mapping[str, Any], key: str) -> str | None:
-    v = settings.get(key)
-    if v is None or v == "":
-        return None
-    if not isinstance(v, str):
-        raise _bad(key, f"«{key}» задаётся названием.", "Выберите значение из списка.")
-    return v
-
-
-def _holes(settings: Mapping[str, Any], key: str) -> list[str]:
-    v = settings.get(key)
-    return [] if v is None else list(v)  # `kinds.check` made it a list of names
 
 
 # --- the data of a side ---------------------------------------------------------------------------------------
@@ -144,11 +115,13 @@ def first_number(t: Any, infos: list[Any], param: str, skip: tuple[str, ...] = (
     )
     if first is None:
         more = " других" if skip else ""
-        raise _bad(param, f"В таблице «{t.name}» нет{more} числовых полей.", "Выберите другую таблицу набора.")
+        raise bad(param, f"В таблице «{t.name}» нет{more} числовых полей.", "Выберите другую таблицу набора.")
     return first
 
 
-def _fields(project: Any, set_id: int, table: str | None, wanted: dict[str, str | None]) -> tuple[Any, dict[str, str]]:
+def named_fields(
+    project: Any, set_id: int, table: str | None, wanted: dict[str, str | None]
+) -> tuple[Any, dict[str, str]]:
     """The table and the stored names of the fields `wanted` {param: name}; the param `field` (or `y_field`)
     without a name takes the first component of the table (else its first numeric field but `length`)."""
     t, infos = table_of(project, set_id, table)
@@ -192,7 +165,7 @@ def side(
 
     p = "y_" if y else ""
     weight_field = flt.weight_field if flt.weight in FIELD_WEIGHTS else None
-    t, names = _fields(project, set_id, table, {f"{p}field": field, "weight_field": weight_field})
+    t, names = named_fields(project, set_id, table, {f"{p}field": field, "weight_field": weight_field})
     name = names[f"{p}field"]
     read = [name, source.LENGTH]
     if weight_field is not None:
@@ -216,11 +189,11 @@ def run(fn: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     """`fn` in one of the HEAVY slots; the refusals of the kernels become 422 with their code and `param`."""
     from .weighted import StatsError
 
-    with _SLOTS:
+    with SLOTS:
         try:
             return _safe(fn())  # type: ignore[no-any-return]
         except StatsError as e:
-            raise _stats_error(e) from e
+            raise stats_error(e) from e
 
 
 # --- the charts -----------------------------------------------------------------------------------------------
@@ -232,9 +205,9 @@ def histogram_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     from .select import SampleFilter
 
     flt, spec = SampleFilter.from_settings(settings), HistogramSpec.from_settings(settings)
-    set_id = _set_id(settings)
-    field, sel = side(project, set_id, _name(settings, "table"), _name(settings, "field"), flt,
-                      _holes(settings, "holes"))  # fmt: skip
+    set_id = set_id_of(settings)
+    field, sel = side(project, set_id, name_of(settings, "table"), name_of(settings, "field"), flt,
+                      holes_of(settings, "holes"))  # fmt: skip
     return {"field": field, "set_id": set_id, **histogram_chart(sel, spec)}
 
 
@@ -244,21 +217,21 @@ def qq_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     from .select import SampleFilter
 
     flt = SampleFilter.from_settings(settings)
-    set_id = _set_id(settings)
+    set_id = set_id_of(settings)
     distribution = settings.get("distribution") or "lognormal"
     if distribution != "sample":
         check_distribution(distribution)
-    field, x = side(project, set_id, _name(settings, "table"), _name(settings, "field"), flt,
-                    _holes(settings, "holes"))  # fmt: skip
+    field, x = side(project, set_id, name_of(settings, "table"), name_of(settings, "field"), flt,
+                    holes_of(settings, "holes"))  # fmt: skip
     if distribution != "sample":
         return {"field": field, "set_id": set_id, "y_field": None, "y_set_id": None,
                 **qq_chart(x, distribution=distribution)}  # fmt: skip
     quantiles = check_quantiles(QUANTILES if settings.get("quantiles") is None else settings["quantiles"])
-    y_field = _name(settings, "y_field")
+    y_field = name_of(settings, "y_field")
     if y_field is None:
-        raise _bad("y_field", "Не выбрано поле второй выборки.", "Выберите набор и поле стороны Y.")
-    y_set = set_id if settings.get("y_set_id") is None else _set_id(settings, "y_set_id")
-    y_name, y = side(project, y_set, _name(settings, "y_table"), y_field, flt, _holes(settings, "y_holes"), y=True)
+        raise bad("y_field", "Не выбрано поле второй выборки.", "Выберите набор и поле стороны Y.")
+    y_set = set_id if settings.get("y_set_id") is None else set_id_of(settings, "y_set_id")
+    y_name, y = side(project, y_set, name_of(settings, "y_table"), y_field, flt, holes_of(settings, "y_holes"), y=True)
     out = qq_chart(x, distribution="sample", y=y, quantiles=quantiles)
     return {"field": field, "set_id": set_id, "y_field": y_name, "y_set_id": y_set, **out}
 
@@ -272,8 +245,8 @@ def dendrogram_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
 
     corr, tree = CorrSpec.from_settings(settings), TreeSpec.from_settings(settings)
     flt = SampleFilter.from_settings({k: settings.get(k) for k in ("weight", "weight_field")})
-    set_id = _set_id(settings)
-    t, infos = table_of(project, set_id, _name(settings, "table"))
+    set_id = set_id_of(settings)
+    t, infos = table_of(project, set_id, name_of(settings, "table"))
     given = settings.get("fields") or []  # `kinds.check` made it a list of names
     if given:
         chosen = [field_of(t, infos, name, "fields") for name in given]
@@ -283,7 +256,7 @@ def dendrogram_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     weight_field = field_of(t, infos, flt.weight_field, "weight_field").name if (
         flt.weight in FIELD_WEIGHTS and flt.weight_field is not None) else None  # fmt: skip
     read = [f.name for f in chosen] + [source.LENGTH] + ([weight_field] if weight_field else [])
-    cols = only_holes(source.read(project, set_id, t.id, read), _holes(settings, "holes"))
+    cols = only_holes(source.read(project, set_id, t.id, read), holes_of(settings, "holes"))
     weights = sample_weights(flt.weight, cols.number(source.LENGTH),
                              None if weight_field is None else cols.number(weight_field))  # fmt: skip
     out = dendrogram_chart([f.name for f in chosen], [cols.number(f.name) for f in chosen], weights, corr, tree,
@@ -314,8 +287,8 @@ def post_dendrogram(svc: Svc, body: Settings) -> dict[str, Any]:
 
 @router.post("/chart/{chart_id}")
 def post_saved(svc: Svc, chart_id: int) -> JSONResponse:
-    """The saved chart by its settings and the current data; the set is the one the chart lies in (its id in
-    the settings is not renumbered by a `.bfggis` import)."""
+    """The saved chart by its settings and the current data; the set is the one the chart lies in (a `.bfggis`
+    import writes it into the settings too, `archive/chart_remap.py`; the parent wins all the same)."""
     from bf_core.charts import service
     from bf_core.db import dialect
 

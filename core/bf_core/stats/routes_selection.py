@@ -19,7 +19,8 @@
 field). Errors `{code, message, hint, param?}`: 422 `bad_param` {param}, `too_many_rows` {param} (> 200 000),
 the errors of the chart settings (`routes_charts`), `bad_expression`, `bad_method`; 404 `selection_not_found`,
 `set_not_found`, `table_not_found`; 409 `selection_stale` {token} — the table was edited or replaced after the
-selection. Synchronous, in a HEAVY slot of `routes_charts`; numpy loads on the first request."""
+selection ({token: null} — while it was being made: the rows read are not those of one revision). Synchronous,
+in a HEAVY slot of `routes_charts`; numpy loads on the first request."""
 
 from __future__ import annotations
 
@@ -30,6 +31,7 @@ from fastapi.responses import Response
 
 from bf_core.api.errors import ApiError
 
+from . import route_args as ra
 from . import routes_charts as rc
 from .routes_charts import Settings, Svc
 
@@ -39,7 +41,13 @@ BODY_KEYS = ("rows", "chart", "filter")
 
 
 def _bad(param: str, message: str, hint: str) -> ApiError:
-    return rc._bad(param, message, hint)
+    return ra.bad(param, message, hint)
+
+
+def _changed() -> ApiError:
+    """409 `selection_stale` {token: null}: the table changed while the selection was being made."""
+    return ApiError(409, "selection_stale", "Таблица изменилась, пока создавалось выделение.",
+                    "Выделите пробы на графике или в таблице заново.", extra={"token": None})  # fmt: skip
 
 
 def _numbers(v: Any, k: int, param: str, message: str, hint: str) -> list[float]:
@@ -60,7 +68,7 @@ def _table(project: Any, body: dict[str, Any]) -> Any:
 
     from . import source
 
-    set_id = rc._set_id(body)
+    set_id = ra.set_id_of(body)
     table = body.get("table")
     if table is not None and not isinstance(table, str | int) or isinstance(table, bool):
         raise _bad("table", "Таблица задаётся названием или номером.", "Выберите таблицу набора.")
@@ -118,12 +126,12 @@ def _by_value(project: Any, kind: str, settings: dict[str, Any], body: dict[str,
     import numpy as np
 
     from . import selection
-    from .routes_more import _by_domain
+    from .routes_more import by_domain
 
     lo, hi = sorted(_numbers(body.get("range"), 2, "range", "Диапазон выделения — два числа: от и до.",
                              "Выделите область на графике заново."))  # fmt: skip
     groups = _groups(body.get("groups"))
-    d = _by_domain(project, settings)
+    d = by_domain(project, settings)
     sel, codes, labels, cols = d["sel"], d["codes"], d["labels"], d["cols"]
     inside = (sel.values >= lo) & (sel.values <= hi)
     if kind == "box" and settings.get("log") or kind == "probplot":
@@ -163,7 +171,7 @@ def _from_filter(project: Any, body: dict[str, Any]) -> Any:
 
     from bf_core.drillholes.expr import ExprError
     from bf_core.drillholes.query import mask
-    from bf_core.drillholes.router import _expr_error, _snapshot
+    from bf_core.drillholes.router import expr_error, snapshot_of
 
     from . import selection
 
@@ -176,13 +184,13 @@ def _from_filter(project: Any, body: dict[str, Any]) -> Any:
     if hole is not None and (not isinstance(hole, int) or isinstance(hole, bool)):
         raise _bad("hole", "Скважина задаётся номером.", "Выберите скважину заново.")
     t = _table(project, body)
-    snap = _snapshot(project, t.set_id, str(t.id))
+    snap = snapshot_of(project, t.set_id, str(t.id))
     if int(snap.key[-1]) != t.rev:
-        raise ApiError(409, "table_changed", "Таблица изменилась во время запроса.", "Повторите действие.")
+        raise _changed()
     try:
         m = mask(snap, hole, where or None)
     except ExprError as exc:
-        raise _expr_error(exc) from exc
+        raise expr_error(exc) from exc
     n = int(np.count_nonzero(m))
     if n > selection.MAX_ROWS:
         raise selection.too_many(n, "filter")
@@ -198,7 +206,12 @@ def post_selection(svc: Svc, body: Settings) -> dict[str, Any]:
         raise _bad("rows", "Выделение задаётся одним способом: rows, chart или filter.",
                    "Выделите пробы на графике или в таблице заново.")  # fmt: skip
     make = {"rows": _from_rows, "chart": _from_chart, "filter": _from_filter}[given[0]]
-    return rc.run(lambda: make(project, body).info())
+    try:
+        return rc.run(lambda: make(project, body).info())
+    except ApiError as e:
+        if e.code == "table_changed":  # the columns of a chart read across an edit (`stats.source`)
+            raise _changed() from e
+        raise
 
 
 @router.get("/selection/{token}")
@@ -223,7 +236,7 @@ def selection_segments(
         raise bad_method()
     project = svc.require_current()
     sel = selection.current(project, token[:64])
-    with rc._SLOTS:
+    with rc.SLOTS:
         body = selection.segments(project, sel, method)
     return Response(content=body, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
 

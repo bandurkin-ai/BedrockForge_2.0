@@ -20,6 +20,8 @@
 | 422 | `too_many_series` + `param` | настройки не проходят `charts.kinds.check` |
 | 422 | `chart_not_computed` + `param: "kind"` | `/stats/chart/{id}` для вида, который так ещё не считается |
 | 404 | `set_not_found`, `table_not_found`, `chart_not_found` | |
+| 413 | `request_too_large` | тело `/stats/*`, `/charts*` больше 8 МБ (13.36, `api/body_limit.py`; 200 000 id строк укладываются) |
+| 422 | `bad_request` | тело `/stats/*`, `/charts*` вложено глубже 64 уровней (проверка до разбора JSON) |
 
 ## Общие ключи тела (= `charts.settings` без `view`)
 
@@ -108,12 +110,15 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
 
 Тело: `v`, `set_id`, `table`, `x`, `y`, `y_set_id` (`null` — тот же набор), `y_table` (`null` — таблица X; иначе
 строки сопоставляются по ключу пробы «скважина, FROM, TO»; график двух наборов лежит в наборе X), `color`, `log_x`,
-`log_y` (`false`), `weight` (`length`), `weight_field`, `negatives` (`keep`), `exclude_zero`, `regression`
-(`ols` / `rma` / `weighted` / `none` — только вид, ядро считает все три), `holes`. Правила `negatives` и
-`exclude_zero` — к обоим полям (пара с исключённым значением не рисуется); отсечки к рассеянию не применяются.
+`log_y` (`false`), `weight` (`length`), `weight_field`, `negatives` (`keep`), `exclude_zero`, `bottom_cut`,
+`bottom_mode` (`exclude` / `cap`, по умолчанию `exclude`), `top_cut`, `top_mode` (`cap` / `exclude`, по умолчанию
+`cap`), `regression` (`ols` / `rma` / `weighted` / `none` — только вид, ядро считает все три), `holes`. Правила
+`negatives`, `exclude_zero` и отсечки — к обоим полям одной парой значений (пара с исключённым значением не
+рисуется; «заменить» урезает только задетое значение; пара считается один раз, какое бы её значение отсечка ни задела).
 ```
 { set_id, y_set_id, x_field, y_field, color_field | null, log_x, log_y, weighted,
-  counts {rows, missing_x, missing_y, unmatched, bad_weight, negative, zero_excluded, nonpositive_log, used},
+  counts {rows, missing_x, missing_y, unmatched, bad_weight, negative, zero_excluded, bottom_capped,
+          bottom_excluded, capped, top_excluded, nonpositive_log, used},
   mode: "points" | "density",
   // points (≤ 200 000 пар): x[], y[] (данные), row[], c[] | null, color | null
   //   color: {kind: "number", min, max} | {kind: "text", labels[]} (c — индекс в labels, null — пусто)
@@ -126,7 +131,7 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
   conventions }
 ```
 Счётчики делят строки: `rows = missing_x + unmatched + missing_y + bad_weight + zero_excluded (+ negative при
-"exclude") + nonpositive_log + used`; `unmatched` — строки с X без пробы того же ключа в таблице Y.
+"exclude") + bottom_excluded + top_excluded + nonpositive_log + used` (`bottom_capped`, `capped` — пары, оставшиеся с урезанным значением); `unmatched` — строки с X без пробы того же ключа в таблице Y.
 
 ## `POST /stats/box`
 
@@ -172,7 +177,8 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
 { set_id, fields [a, b, c], color_field | null,
   counts {rows, missing, nonpositive_sum (= negative + zero_sum: не рисуются), negative, zero_sum, used},
   a[], b[], c[] (доли, a + b + c = 1), row[],          // ≤ 200 000; больше — равномерно прорежено по строкам
-  total (= counts.used), color_values[] | null (текст — индекс в labels, null — пусто), color | null,
+  total (= counts.used: все пригодные точки до прореживания; окно — «показано len(a) из total»),
+  color_values[] | null (текст — индекс в labels, null — пусто), color | null,
   conventions }
 ```
 
@@ -217,7 +223,8 @@ z] (целые метры, середина габарита), bbox [6] | null}`
 Отказы: 422 `too_many_rows {param: rows | polygon | rect | range | filter}` (> 200 000), `bad_param {param: rows,
 chart, polygon, rect, range, groups, filter, where, hole, table, selection}` (`selection` — жетон другой таблицы),
 ошибки настроек графика (`field_not_found {x}` …), `bad_expression`, `bad_method`; 404 `selection_not_found`;
-409 `selection_stale {token}`, `table_changed`.
+409 `selection_stale {token}` (`token: null` — таблица изменилась, пока выделение создавалось: строки
+прочитаны не из одной ревизии; прежний `table_changed` этого маршрута — тоже `selection_stale`).
 
 ## Вкладка «Статистика» (13.17; ADR 0019 §7): `POST /stats/tab/declus`, `/nscore`, `/backtr`, `/bootstrap`
 
