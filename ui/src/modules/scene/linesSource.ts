@@ -80,6 +80,11 @@ export class LinesSource {
   /** layers without a single vertex: id → version (nothing to show, not asked again) */
   private readonly empty = new Map<number, number>();
   private readonly asking = new Set<number>();
+  /**
+   * Asked again while its manifest was on the way: that answer may be of the version before (a new empty layer
+   * whose lines were saved at once, Windows CI series.spec), so the manifest is asked once more when it comes.
+   */
+  private readonly askAgain = new Set<number>();
   private readonly off: (() => void)[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private inflight = 0;
@@ -208,6 +213,7 @@ export class LinesSource {
     this.heavy.clear();
     this.empty.clear();
     this.asking.clear();
+    this.askAgain.clear();
     this.labels.dispose();
     this.labels = new LabelCache(this.scene.clipPlanes);
     this.memory = new GpuMemory(this.memoryLimit());
@@ -260,7 +266,11 @@ export class LinesSource {
 
   /** The manifest of a layer; a changed one replaces the layer of the scene or, with the same parts, renews it. */
   private ask(id: number): void {
-    if (this.asking.has(id) || this.disposed) return;
+    if (this.disposed) return;
+    if (this.asking.has(id)) {
+      this.askAgain.add(id);
+      return;
+    }
     this.asking.add(id);
     this.publish();
     const gen = this.generation;
@@ -310,7 +320,12 @@ export class LinesSource {
         } else this.fail(e, "Слой линий не загружен");
       })
       .finally(() => {
-        this.asking.delete(id);
+        // an answer of before a lost context leaves alone the asks made since
+        if (gen === this.generation) {
+          this.asking.delete(id);
+          // a newer version was listed while this answer was on the way: ask the manifest of that one
+          if (this.askAgain.delete(id)) this.ask(id);
+        }
         this.publish();
       });
   }
