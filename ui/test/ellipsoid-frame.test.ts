@@ -1,7 +1,7 @@
 // The frame of an anisotropy ellipsoid (ТЗ 8.6.3, 7.35 Д-14; ADR 0022 §6; ТД14-1, Т8.6-3): GSLIB angles ↔ the axes
 // a1, a2, a3, the round trip without loss, the vertical major axis, the ellipsoid matrix over the unit sphere, the
 // second notation of the plane a1–a2; against `core/tests/data/variography/frames.json` of `geostat/rotation.py` when
-// it is there (the core lane writes it; the check is skipped until then).
+// it is there (written by the core lane, 16.6; skipped only in a checkout without it).
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -189,5 +189,36 @@ describe("against the core (frames.json, ТД14-1)", () => {
         close([p.dip, p.dipDirection, p.pitch], [c.plane.dip, c.plane.dip_direction, c.plane.pitch], 1e-9);
       }
     }
+  });
+});
+
+// The other parts of frames.json (16.18): an `exact` case bit for bit, `normalize`, `from_plane` (hint = the dip
+// direction), `directions` (the row u1 of the angles (Az, −p, 0)).
+interface FullFrames {
+  cases: (FrameCase & { exact?: boolean; from_plane?: Angles })[];
+  normalize: { given: [number, number, number]; angles: [number, number, number] }[];
+  directions: { azimuth: number; plunge: number; u: Vec3 }[];
+}
+
+describe("against the core (frames.json: exact, normalize, from_plane, directions)", () => {
+  it.skipIf(!existsSync(FRAMES))("bit for bit where exact; 1e−9 degrees; 1e−12 of the directions", () => {
+    const data = JSON.parse(readFileSync(FRAMES, "utf-8")) as FullFrames;
+    for (const c of data.cases) {
+      if (c.exact) {
+        const f = frameOf(c);
+        expect([f.u1, f.u2, f.u3]).toEqual(c.axes);
+      }
+      if (c.from_plane && c.plane) {
+        const back = anglesOfPlane({ dip: c.plane.dip, dipDirection: c.plane.dip_direction, pitch: c.plane.pitch }, c.plane.dip_direction);
+        angleClose(back, c.from_plane, 1e-9);
+      }
+    }
+    expect(data.normalize.length).toBeGreaterThan(0);
+    for (const n of data.normalize) {
+      const a = normalizeAngles({ ang1: n.given[0], ang2: n.given[1], ang3: n.given[2] });
+      expect([a.ang1, a.ang2, a.ang3]).toEqual(n.angles);
+    }
+    expect(data.directions.length).toBeGreaterThan(0);
+    for (const d of data.directions) close(frameOf({ ang1: d.azimuth, ang2: -d.plunge, ang3: 0 }).u1, d.u, 1e-12);
   });
 });
