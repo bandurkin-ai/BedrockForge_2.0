@@ -1,0 +1,33 @@
+/* Swath plot (ТЗ 7.30; ADR 0019 §11): the frame of the charts (`charts/core/Chart.module.css`) and the theme tokens of the brand (docs/brand, ADR 0006). */
+.host { height: 100%; min-height: 0; }
+.angles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.pair { display: flex; gap: 6px; }
+.pair > * { flex: 1; min-width: 0; }
+.check { flex-direction: row !important; align-items: center; gap: 6px !important; }
+.muted { color: var(--text-faint); font-size: 12px; margin: 0; }
+.series { border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; }
+.seriesHead { display: flex; align-items: center; gap: 4px; }
+.seriesHead input[type="color"] { width: 22px; height: 20px; padding: 0; border: 1px solid var(--border); background: none; }
+.seriesHead button { border: 1px solid var(--border); background: transparent; color: var(--text-dim); border-radius: var(--radius); cursor: pointer; font: inherit; padding: 0 4px; line-height: 18px; min-width: 22px; }
+.seriesHead button:disabled { opacity: 0.4; cursor: default; }
+.seriesHead .on { background: var(--bg-active); color: var(--text); border-color: var(--accent); }
+.grow { flex: 1; min-width: 0; font-family: var(--font-brand); font-weight: 600; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.labels { display: flex; flex-wrap: wrap; gap: 2px 10px; max-height: 120px; overflow: auto; }
+.add { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.add > button { padding: 2px 10px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; font: inherit; }
+.add > button:disabled { opacity: 0.5; cursor: default; }
+.menu { display: flex; flex-direction: column; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-panel); max-height: 220px; overflow: auto; }
+.menu button { text-align: left; border: 0; background: transparent; color: var(--text); padding: 3px 8px; cursor: pointer; font: inherit; font-size: 12px; }
+.menu button:hover { background: var(--bg-hover); }
+.range { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.range input[type="number"] { width: 64px; background: var(--bg-input); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 1px 4px; font: inherit; }
+.range input[type="range"] { flex: 1; min-width: 80px; accent-color: var(--accent); }
+.range button { padding: 1px 8px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; font: inherit; }
+.range button:disabled { opacity: 0.5; cursor: default; }
+.tableBox { overflow: auto; max-height: 320px; }
+.table { border-collapse: collapse; font-size: 12px; }
+.table th, .table td { padding: 1px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.table thead th { font-family: var(--font-brand); font-weight: 600; color: var(--text); text-align: center; position: sticky; top: 0; background: var(--bg-elev); }
+.table td:first-child { color: var(--text-dim); }
+.lit td { background: color-mix(in srgb, var(--highlight) 16%, transparent); }
+.total td { font-weight: 600; border-top: 1px solid var(--border-strong); }

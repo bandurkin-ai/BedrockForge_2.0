@@ -214,3 +214,52 @@ export function patchEntry(entry: string, value: unknown): ViewOp {
     return map;
   };
 }
+
+// ---- the key `swaths` (ADR 0019 §2): swath plots shown in 3D ------------------------------------------
+
+export const SWATHS_KEY = "swaths";
+export const MAX_SWATHS_SHOWN = 50;
+
+export interface SwathEntry {
+  swath: number;
+  visible: boolean;
+}
+
+/** `[{swath, visible}]` as the core reads it (`viewstate/keys.py`): junk dropped, `visible` true unless false,
+ * a repeated id kept once (the first), the newest 50 kept. */
+export function swathEntries(value: unknown): SwathEntry[] {
+  if (!Array.isArray(value)) return [];
+  const out: SwathEntry[] = [];
+  const seen = new Set<number>();
+  for (const v of value) {
+    const d = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+    const id = d?.swath;
+    if (typeof id !== "number" || !Number.isInteger(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ swath: id, visible: typeof d?.visible === "boolean" ? d.visible : true });
+  }
+  return out.slice(-MAX_SWATHS_SHOWN);
+}
+
+/** The swath plots shown in 3D now. */
+export const shownSwaths = (value: unknown): number[] => swathEntries(value).flatMap((e) => (e.visible ? [e.swath] : []));
+
+/** Shows or hides a swath plot in 3D; a new one goes last, past the limit the oldest hidden ones go first. */
+export function showSwath(swath: number, visible: boolean): ViewOp {
+  return (value) => {
+    const list = swathEntries(value);
+    const i = list.findIndex((e) => e.swath === swath);
+    if (i >= 0) list[i] = { swath, visible };
+    else list.push({ swath, visible });
+    while (list.length > MAX_SWATHS_SHOWN) {
+      const hidden = list.findIndex((e) => !e.visible && e.swath !== swath);
+      list.splice(hidden >= 0 ? hidden : 0, 1);
+    }
+    return list;
+  };
+}
+
+/** A deleted swath plot leaves the key. */
+export function dropSwathEntry(swath: number): ViewOp {
+  return (value) => swathEntries(value).filter((e) => e.swath !== swath);
+}
