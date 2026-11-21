@@ -1,11 +1,16 @@
 """Swath plot: which samples are inside the blocks of a model series (ТЗ 7.30, Т7.30-2; ADR 0019 §5) — BF
 `points_in_blocks` on the cells of a regular model: point → (i, j, k) → `idx` → a lookup among the occupied
 cells; no centres or sizes of the cells are built. A part of `stats/swath.py` (13.10) kept apart for its size;
-`swath` re-exports the names.
+`swath` re-exports the names. The selection of a model series by categories (13.11) is here too: the columns
+of a model as the kernels take them, the labels chosen, the cells taken.
 
     cells_of(grid, idx) -> Cells                 the occupied cells of a model series after its selection
     points_in_cells(points, cells, method=None) -> bool[n]
     inside_cells(points, rows, has_rows, k, cells, …) -> bool[n]    the same for the rows of a selection
+    keep_of(labels, chosen) -> bool[len(labels)]    the labels of a category field that a series takes
+    selected_idx(idx, codes=None, keep=None) -> idx of the cells taken (what `cells_of` is given)
+    as_numbers(idx), as_column(values, n, dtype, name), as_keep(keep), as_codes(codes, keep, n) — the columns
+        of a model checked (a ValueError — a mistake of the caller)
 
 A point is inside a cell with its faces (`FACE_TOL` = 1e−6 m, as BF): on a face between two cells either may
 hold it, so up to 2 × 2 × 2 cells are looked at. The cell of a coordinate comes from a table of equal slots of
@@ -22,7 +27,7 @@ uint64 (the Parquet column), uint32 (the cache of columns) or int64. Blocks of 2
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -43,6 +48,64 @@ def as_points(points: Any) -> np.ndarray:
     if p.ndim != 2 or p.shape[1] != 3:
         raise ValueError("points are an n×3 array of x, y, z")
     return p
+
+
+# --- the columns of a model and the selection by categories -----------------------------------------------------
+
+
+def as_numbers(idx: Any) -> np.ndarray:
+    """The column `idx` of a model: 1D, integer (uint64 of the file, uint32 of the cache of columns, int64)."""
+    numbers = np.ascontiguousarray(idx)
+    if numbers.ndim != 1 or numbers.dtype.kind not in "iu":
+        raise ValueError("idx is a 1D integer array")
+    return numbers
+
+
+def as_column(values: Any, n: int, dtype: Any, name: str) -> np.ndarray:
+    out = np.ascontiguousarray(values, dtype=dtype)
+    if out.shape != (n,):
+        raise ValueError(f"{name} must hold a value for every row of idx")
+    return out
+
+
+def as_keep(keep: Any) -> np.ndarray | None:
+    return None if keep is None else np.ascontiguousarray(keep, dtype=np.bool_).reshape(-1)
+
+
+def as_codes(codes: Any, keep: np.ndarray | None, n: int) -> np.ndarray | None:
+    """The column of a selection (int32 codes of the labels, −1 — empty); with `keep` and without, the two go
+    together."""
+    if (codes is None) != (keep is None):
+        raise ValueError("a selection is the column `codes` and the labels `keep` together")
+    return None if codes is None else as_column(codes, n, np.int32, "codes")
+
+
+def keep_of(labels: Sequence[str], chosen: Iterable[str]) -> np.ndarray:
+    """Which labels of a category field (`meta.fields[…].labels`) the series takes: bool by the code of the
+    label. A chosen label that the field does not have (any more) takes nothing."""
+    names = set(chosen)
+    return np.array([label in names for label in labels], dtype=np.bool_)
+
+
+def selected_idx(idx: Any, codes: Any = None, keep: Any = None) -> np.ndarray:
+    """The numbers of the cells that the selection takes, in the type and the order of `idx` (all of them
+    without a selection) — the cells of the series for `cells_of`. A cell without a category (−1, or a code
+    beyond the labels) is not taken."""
+    numbers = as_numbers(idx)
+    flags = as_keep(keep)
+    cd = as_codes(codes, flags, int(numbers.shape[0]))
+    if cd is None or flags is None:
+        return numbers
+    parts = []
+    for a in range(0, int(numbers.shape[0]), BLOCK):
+        part = cd[a : a + BLOCK]
+        ok = (part >= 0) & (part < flags.size)
+        ok[ok] = flags[part[ok]]
+        parts.append(numbers[a : a + BLOCK][ok])
+    return np.concatenate(parts) if parts else numbers
+
+
+# --- the lookup of a point among the cells ----------------------------------------------------------------------
 
 
 @njit(cache=True, nogil=True)
