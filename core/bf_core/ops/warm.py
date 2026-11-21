@@ -304,7 +304,7 @@ def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None
 
                     warm_composites()
                 elif name == "intercepts":
-                    from bf_core.intercepts.tt import warm as warm_intercepts
+                    from bf_core.intercepts.warm import warm as warm_intercepts
 
                     warm_intercepts()
                 elif name == "stats":
