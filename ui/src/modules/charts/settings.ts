@@ -126,17 +126,14 @@ export interface ScatterView {
  * `color` — a numeric or text field. The weight and the treatment of values < 0 and zeros go to both fields (a pair
  * with either left out is not drawn); log axes — by log10 (values ≤ 0 counted and not drawn).
  */
-export interface ScatterSettings extends Base {
+/** The selection of values of the scatter: that of the histogram (ТЗ 8.3 «веса и отсечки»), the cuts on both axes. */
+export interface ScatterSettings extends Base, SampleFilter {
   x: string | null;
   y: string | null;
   y_table: string | null;
   color: string | null;
   log_x: boolean;
   log_y: boolean;
-  weight: WeightMode;
-  weight_field: string | null;
-  negatives: Negatives;
-  exclude_zero: boolean;
   /** the line drawn: МНК, RMA, weighted, none (the table lists all three) */
   regression: Regression;
   view: ScatterView;
@@ -250,7 +247,7 @@ export function defaultSettings<K extends ChartKind>(kind: K, setId: number): Se
     qq: { ...base(setId), ...DEFAULT_FILTER, field: null, distribution: "lognormal", y_set_id: null, y_table: null, y_field: null, holes: [], y_holes: [], quantiles: 99, log: true, view: defaultView("qq") as unknown as QQView },
     // correlations of logarithms by default (ТЗ 7.27); «<0,01» written as −0,01 becomes half the limit (BF)
     dendrogram: { ...base(setId), fields: [], method: "pearson", log: true, weight: "length", negatives: "half_abs", exclude_zero: false, missing: "pairwise", linkage: "average", distance: "1-r", cut: null, view: defaultView("dendrogram") as unknown as DendrogramView },
-    scatter: { ...base(setId), x: null, y: null, y_table: null, color: null, log_x: false, log_y: false, weight: "none", weight_field: null, negatives: "keep", exclude_zero: false, regression: "ols", view: defaultView("scatter") as unknown as ScatterView },
+    scatter: { ...base(setId), x: null, y: null, y_table: null, color: null, log_x: false, log_y: false, ...DEFAULT_FILTER, weight: "none", regression: "ols", view: defaultView("scatter") as unknown as ScatterView },
     box: { ...domainBase(setId), log: false, view: defaultView("box") as unknown as BoxView },
     probplot: { ...domainBase(setId), view: defaultView("probplot") as unknown as ProbPlotView },
     // ТЗ 8.3: D = 20 м, b = 1 м

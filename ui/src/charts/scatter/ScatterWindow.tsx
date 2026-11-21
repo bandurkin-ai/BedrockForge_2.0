@@ -17,7 +17,7 @@ import { ChartToolbar } from "../core/ChartToolbar";
 import { selectInside, type AxisPolygon, type SelectTool } from "../core/lasso";
 import { fieldLabel, FieldSelect, TableSelect, useStatsFields } from "../core/Pickers";
 import { inlineRasters } from "../core/PointsCanvas";
-import { WEIGHTS } from "../SampleFilterForm";
+import { CutInput, WEIGHTS } from "../SampleFilterForm";
 import css from "../core/Chart.module.css";
 import { ScatterChart } from "./ScatterChart";
 import { axisKinds, FIT_TITLES, scatterCalculator, scatterCsv, scatterNotes, scatterRequest, scatterTable } from "./model";
@@ -162,6 +162,8 @@ export function ScatterWindow(props: ChartWindowProps<"scatter">) {
         <label className={css.check}>
           <input type="checkbox" checked={s.exclude_zero} onChange={(e) => set({ exclude_zero: e.target.checked })} /> Исключить нули
         </label>
+        <CutInput label="Отсечка снизу" value={s.bottom_cut} mode={s.bottom_mode} below onChange={(bottom_cut, bottom_mode) => set({ bottom_cut, bottom_mode })} />
+        <CutInput label="Отсечка сверху" value={s.top_cut} mode={s.top_mode} onChange={(top_cut, top_mode) => set({ top_cut, top_mode })} />
       </fieldset>
     </>
   );

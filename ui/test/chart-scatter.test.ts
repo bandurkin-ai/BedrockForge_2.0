@@ -68,6 +68,10 @@ describe("settings → request", () => {
     const r = scatterRequest(base())!;
     expect(r).toMatchObject({ v: 1, set_id: 3, x: "AU", y: "AG", y_table: null, log_x: false, log_y: false, weight: "none", negatives: "keep", regression: "ols" });
     expect("view" in r).toBe(false);
+    // the cuts of the histogram (ТЗ 8.3 «веса и отсечки»): the same names, the core applies them to both axes
+    expect(r).toMatchObject({ bottom_cut: null, bottom_mode: "exclude", top_cut: null, top_mode: "cap" });
+    expect(scatterRequest({ ...base(), bottom_cut: 0.01, top_cut: 30, top_mode: "exclude" })).toMatchObject({ bottom_cut: 0.01, bottom_mode: "exclude", top_cut: 30, top_mode: "exclude" });
+    expect(normalizeSettings("scatter", { x: "AU", top_cut: 50, top_mode: "cap", bottom_mode: "bad" }, 3)).toMatchObject({ top_cut: 50, top_mode: "cap", bottom_mode: "exclude", bottom_cut: null });
     expect(chartName("scatter", base())).toBe("Рассеяние · AU / AG");
     const s = normalizeSettings("scatter", { x: "AU", regression: "rma", log_x: true, view: { diagonal: true, color: "#ABCDEF" } }, 3);
     expect(s).toMatchObject({ x: "AU", regression: "rma", log_x: true, view: { diagonal: true, color: "#abcdef" } });
@@ -114,6 +118,8 @@ describe("lines of the fits", () => {
     expect(scatterTable(POINTS)).toContainEqual(["Взвешенная", "без веса"]);
     expect(scatterSummary("Р", POINTS, "ols")).toBe("Р: пар 5, r Пирсона 1, r Спирмена 1; МНК: b 2, a 1");
     expect(scatterNotes(POINTS)).toEqual(["строк 6, пар в расчёте 5", "без X 1"]);
+    const cut = { ...POINTS, counts: { ...POINTS.counts, bottom_excluded: 2, bottom_capped: 1, capped: 3, top_excluded: 4 } };
+    expect(scatterNotes(cut).slice(2)).toEqual(["ниже отсечки исключено пар 2", "поднято до отсечки пар 1", "урезано пар 3", "выше отсечки исключено пар 4"]);
   });
 });
 
@@ -306,7 +312,7 @@ describe("the window and the command", () => {
 
   it("the window renders its form before any answer", () => {
     const html = renderToStaticMarkup(createElement(ScatterWindow, { winId: "w", setId: 3, setName: "Набор", settings: base() }));
-    for (const label of ["Таблица", "Поле X", "Таблица Y", "Поле Y", "Цвет по полю", "Линия регрессии", "Вес", "Выделение", "Цвет точек"]) expect(html, label).toContain(`aria-label="${label}"`);
+    for (const label of ["Таблица", "Поле X", "Таблица Y", "Поле Y", "Цвет по полю", "Линия регрессии", "Вес", "Отсечка снизу", "Отсечка сверху", "Отсечка сверху: режим", "Выделение", "Цвет точек"]) expect(html, label).toContain(`aria-label="${label}"`);
   });
 
   it("chart.scatter: X — the first component, Y — the next; the assistant gets pairs, r and the line", async () => {

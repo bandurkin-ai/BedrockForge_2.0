@@ -46,6 +46,11 @@ export interface ScatterCounts {
   bad_weight: number;
   negative: number;
   zero_excluded: number;
+  /** the pairs a cut changed or left out (both axes; a pair counts once) */
+  bottom_capped?: number;
+  bottom_excluded?: number;
+  capped?: number;
+  top_excluded?: number;
   /** ≤ 0 on a log axis: counted, not drawn, not in the fits */
   nonpositive_log: number;
   used: number;
