@@ -1,1 +1,1 @@
-"""True thickness and ore intercepts (ADR 0021)."""
+"""True thickness and ore intercepts (ТЗ 8.5, ADR 0021)."""
