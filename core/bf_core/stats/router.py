@@ -27,3 +27,8 @@ def fields(svc: Svc, set_id: int, table: Annotated[str | None, Query(max_length=
 
     project = svc.require_current()
     return source.fields_list(project, set_id, table)
+
+
+from . import routes_charts  # noqa: E402
+
+router.include_router(routes_charts.router)
