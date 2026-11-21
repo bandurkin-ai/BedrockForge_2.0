@@ -104,3 +104,62 @@ export function useStatsFields(setId: number | null, table: string | null, texts
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   return state.key === key ? { fields: state.fields, error: state.error } : { fields: null, error: null };
 }
+
+/**
+ * The domain of the charts by domains (ADR 0019 решение 19): a text field of the same table or of another interval
+ * table of the set (its code goes by the middle of the sample); `empty` — the option «без доменов».
+ */
+export function DomainSelect({ setId, table, tables, domainTable, domain, onChange, empty = "нет — все пробы" }: { setId: number; table: string | null; tables: readonly StatsTable[]; domainTable: string | null; domain: string | null; onChange: (patch: { domain_table: string | null; domain: string | null }) => void; empty?: string | null }) {
+  const own = useStatsFields(setId, domainTable ?? table, true);
+  const texts = own.fields?.text ?? [];
+  return (
+    <>
+      <label>
+        Таблица домена
+        <select value={domainTable ?? ""} aria-label="Таблица домена" title="Другая таблица набора: код берётся по середине пробы" onChange={(e) => onChange({ domain_table: e.target.value || null, domain: null })}>
+          <option value="">та же</option>
+          {tables.filter((t) => t.key !== table).map((t) => (
+            <option key={t.key} value={t.key}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Домен
+        <select value={domain ?? ""} aria-label="Домен" onChange={(e) => onChange({ domain_table: domainTable, domain: e.target.value || null })}>
+          {empty !== null && <option value="">{empty}</option>}
+          {empty === null && !domain && <option value="">— выберите —</option>}
+          {texts.map((f) => (
+            <option key={f.name} value={f.name}>
+              {f.name}
+              {f.count !== null ? ` (${f.count})` : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+    </>
+  );
+}
+
+/** The codes of a text field of a table (≤ 300): the domains A and B of the contact analysis. */
+export function useDomainCodes(setId: number, table: string | null, field: string | null): string[] {
+  const f = useStatsFields(field ? setId : null, table, true);
+  return f.fields?.text.find((t) => t.name === field)?.values ?? [];
+}
+
+/** The source of a chart by domains: the table, the field, the domain (`domainEmpty` null — a domain is required). */
+export function DomainSource({ setId, value, fields, onChange, domainEmpty }: { setId: number; value: { table: string | null; field: string | null; domain: string | null; domain_table: string | null }; fields: StatsFields | null; onChange: (patch: Partial<{ table: string | null; field: string | null; domain: string | null; domain_table: string | null }>) => void; domainEmpty?: string | null }) {
+  const tables = fields?.tables ?? [];
+  return (
+    <fieldset>
+      <legend>Данные</legend>
+      <TableSelect value={value.table} tables={tables} onChange={(table) => onChange({ table, domain: value.domain_table ? value.domain : null })} />
+      <FieldSelect value={value.field} fields={fields?.numeric ?? []} onChange={(field) => onChange({ field })} />
+      <DomainSelect setId={setId} table={value.table ?? fields?.table ?? null} tables={tables} domainTable={value.domain_table} domain={value.domain} onChange={onChange} empty={domainEmpty} />
+    </fieldset>
+  );
+}
+
+/** A field kept only while the table has it (null otherwise). */
+export const keepField = (f: StatsFields | null, name: string | null): string | null => (f && name !== null && f.numeric.some((x) => x.name === name) ? name : null);
