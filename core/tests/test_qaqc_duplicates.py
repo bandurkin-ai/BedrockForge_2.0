@@ -274,7 +274,7 @@ def test_t848_duplicates_by_a_filter_and_over_the_records_taken(number: int) -> 
             json_ready(a)
         used += a["used"]
     assert canonical(run(by_filter, "summary")) == canonical(run(taken, "summary"))
-    assert used > 50 or number in (1, 2)  # the filters by the types and by CRM leave no duplicates
+    assert used > 50 or number == 1  # the filter by the types leaves no duplicates; the one by CRM does not cut them
 
 
 def test_hard_section_holds_every_reason() -> None:
