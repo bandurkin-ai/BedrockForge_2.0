@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { PairScatter } from "../../charts/qaqc/PairScatter";
-import { excludedTotal, pairCsv, pairFacts, pairModel, rankedCsv, rankedModel, verdictTitle } from "../../charts/qaqc/pairModel";
+import { excludedTotal, pairCsv, pairFacts, pairModel, rankedCsv, rankedModel, rankedNote, verdictTitle } from "../../charts/qaqc/pairModel";
 import { RankedHardChart } from "../../charts/qaqc/RankedHardChart";
 import { ChartToolbar, exportChart } from "../../charts/core/ChartToolbar";
 import { csvText, type CsvCell } from "../../charts/core/csv";
@@ -30,7 +30,27 @@ export interface ExternalRef {
 /** What the subtab keeps for the session: the group chosen. */
 export const externalView = new Store<{ group: ExternalRef | null }>({ group: null });
 
-type Detail = ExternalAnswer & { thinned?: Thinned };
+/** A group as the core answers it: beyond ADR 0020 §10 — `share30`. */
+export type ExtGroup = ExternalGroup & { share30?: number | null };
+
+/**
+ * The answer of the core: beyond ADR 0020 §10 — `hard_limit` (`hard_ump`) and `share_limit` at the top; with `group`
+ * — `points` and `ranked`, null when the group is gone under the filter; `thinned` past `max_points`.
+ */
+export type ExtAnswer = Omit<ExternalAnswer, "groups" | "points" | "ranked"> & {
+  hard_limit?: number;
+  share_limit?: number;
+  groups: ExtGroup[];
+  points?: ExternalAnswer["points"] | null;
+  ranked?: ExternalAnswer["ranked"] | null;
+  thinned?: Thinned;
+};
+type Detail = ExtAnswer;
+
+/** The HARD threshold and the share of the criterion of an answer: from its top, else from its limits. */
+export function externalLimits(a: Pick<ExtAnswer, "hard_limit" | "share_limit" | "limits"> | null | undefined): { limit: number | null; share: number } {
+  return { limit: a?.hard_limit ?? a?.limits?.hard_ump ?? null, share: a?.share_limit ?? a?.limits?.hard_share ?? 90 };
+}
 
 const sameGroup = (a: ExternalRef | null, g: ExternalRef) => !!a && (a.lab_main ?? null) === (g.lab_main ?? null) && (a.lab_check ?? null) === (g.lab_check ?? null);
 const refOf = (g: ExternalRef): ExternalRef => ({ lab_main: g.lab_main ?? null, lab_check: g.lab_check ?? null });
@@ -43,10 +63,10 @@ export function chooseExternal(groups: readonly ExternalGroup[], want: ExternalR
 }
 
 /** The points and the ranked HARD of one group. */
-export const loadExternalGroup = (body: CalcBody, group: ExternalRef): Promise<Detail> => calc("external", { ...body, group: { lab_main: group.lab_main, lab_check: group.lab_check } });
+export const loadExternalGroup = (body: CalcBody, group: ExternalRef): Promise<Detail> => calc("external", { ...body, group: { lab_main: group.lab_main, lab_check: group.lab_check } }) as Promise<Detail>;
 
 export interface ExternalLoad {
-  groups: ExternalAnswer;
+  groups: ExtAnswer;
   group: ExternalRef | null;
   detail: Detail | null;
 }
@@ -55,7 +75,7 @@ export interface ExternalLoad {
 export function loadExternal(body: CalcBody, want: ExternalRef | null): Promise<ExternalLoad | typeof DROPPED> {
   return latest("external", async () => {
     const early = want ? loadExternalGroup(body, want).catch(() => null) : null;
-    const groups = await calc("external", body);
+    const groups = (await calc("external", body)) as ExtAnswer;
     const group = chooseExternal(groups.groups, want);
     if (!group) return { groups, group, detail: null };
     const detail = early && sameGroup(want, group) ? await early : null;
@@ -71,24 +91,24 @@ export function withInterval(v: number | null | undefined, ci: readonly [number,
 
 export const EXTERNAL_CSV_HEADER = [
   "lab_main", "lab_check", "pairs", "used", "no_parent", "missing", "negative", "zero", "below", "mean_main", "mean_check", "bias", "t", "p", "df", "pearson",
-  "rma_a", "rma_b", "a_ci_lo", "a_ci_hi", "b_ci_lo", "b_ci_hi", "n_boot", "seed", "share10", "share20", "share_at_limit", "passed", "notes",
+  "rma_a", "rma_b", "a_ci_lo", "a_ci_hi", "b_ci_lo", "b_ci_hi", "n_boot", "seed", "share10", "share20", "share30", "share_at_limit", "passed", "notes",
 ] as const;
 
 /** The CSV of the table: every group, every number as the core answered it (empty — empty, never 0). */
-export function externalCsv(groups: readonly ExternalGroup[]): string {
+export function externalCsv(groups: readonly ExtGroup[]): string {
   const rows: CsvCell[][] = groups.map((g) => [
     g.lab_main, g.lab_check, g.pairs, g.used, g.excluded?.no_parent, g.excluded?.missing, g.excluded?.negative, g.excluded?.zero, g.excluded?.below,
     g.mean_main, g.mean_check, g.bias, g.t, g.p, g.df, g.pearson,
     g.rma?.a, g.rma?.b, g.rma?.a_ci?.[0], g.rma?.a_ci?.[1], g.rma?.b_ci?.[0], g.rma?.b_ci?.[1], g.rma?.n_boot, g.rma?.seed,
-    g.share10, g.share20, g.share_at_limit, g.passed === null || g.passed === undefined ? null : g.passed ? 1 : 0, (g.notes ?? []).join(" | ") || null,
+    g.share10, g.share20, g.share30, g.share_at_limit, g.passed === null || g.passed === undefined ? null : g.passed ? 1 : 0, (g.notes ?? []).join(" | ") || null,
   ]);
   return csvText(EXTERNAL_CSV_HEADER, rows);
 }
 
-const HEAD = ["Основная", "Контроль", "Пар", "В расчёте", "Отброшено", "x̄ осн.", "x̄ контр.", "Смещение", "t", "p", "Ст. св.", "r", "Наклон b [95 %]", "Свободный член a [95 %]", "Реализаций", "≤ 10 %", "≤ 20 %", "≤ порога", "Критерий"];
+const HEAD = ["Основная", "Контроль", "Пар", "В расчёте", "Отброшено", "x̄ осн.", "x̄ контр.", "Смещение", "t", "p", "Ст. св.", "r", "Наклон b [95 %]", "Свободный член a [95 %]", "Реализаций", "≤ 10 %", "≤ 20 %", "≤ 30 %", "≤ порога", "Критерий"];
 
 /** The table of the groups; a group whose t and p are empty shows them «—» with its notes (a mark and a line below). */
-export function ExternalTable({ groups, chosen, limit, onChoose }: { groups: readonly ExternalGroup[]; chosen: ExternalRef | null; limit: number | null; onChoose?: (g: ExternalRef) => void }) {
+export function ExternalTable({ groups, chosen, limit, onChoose }: { groups: readonly ExtGroup[]; chosen: ExternalRef | null; limit: number | null; onChoose?: (g: ExternalRef) => void }) {
   const head = HEAD.map((h) => (h === "≤ порога" && limit !== null ? `≤ ${num(limit, 3)} %` : h));
   const noted = groups.filter((g) => g.notes?.length);
   return (
@@ -130,6 +150,7 @@ export function ExternalTable({ groups, chosen, limit, onChoose }: { groups: rea
                 <td>{int(g.rma?.n_boot)}</td>
                 <td>{pct(g.share10)}</td>
                 <td>{pct(g.share20)}</td>
+                <td>{pct(g.share30)}</td>
                 <td>{pct(g.share_at_limit)}</td>
                 <td className={g.passed === false ? css.fail : undefined}>{verdictTitle(g.passed)}</td>
               </tr>
@@ -148,7 +169,7 @@ export function ExternalTable({ groups, chosen, limit, onChoose }: { groups: rea
 
 interface Loaded {
   key: string;
-  groups: ExternalAnswer;
+  groups: ExtAnswer;
   /** JSON of the group whose points are shown */
   detailFor: string;
   detail: Detail | null;
@@ -213,10 +234,9 @@ export function ExternalTab() {
   const groups = loaded?.groups ?? null;
   const group = groups?.groups.find((g) => sameGroup(view.group, g)) ?? null;
   const detail = loaded && loaded.detailFor === groupKey ? loaded.detail : null;
-  const limits = (detail ?? groups)?.limits;
-  const limit = limits?.hard_ump ?? null;
+  const { limit, share } = externalLimits(detail ?? groups);
   const scatter = useMemo(() => (detail?.points && group && limit !== null ? pairModel(detail.points, limit, group.rma) : null), [detail, group, limit]);
-  const ranked = useMemo(() => (detail?.ranked && group && limit !== null ? rankedModel(detail.ranked, limit, limits?.hard_share ?? 90, group.share_at_limit) : null), [detail, group, limit, limits?.hard_share]);
+  const ranked = useMemo(() => (detail?.ranked && group && limit !== null ? rankedModel(detail.ranked, limit, share, group.share_at_limit) : null), [detail, group, limit, share]);
   if (error && !groups) return <p className={css.error}>{error}</p>;
   if (!groups) return <p className={css.note}>Расчёт…</p>;
   if (!groups.groups.length) return <p className={css.note}>Проб внешнего контроля (UMP) по элементу {groups.element} с этим фильтром нет.</p>;
@@ -267,13 +287,13 @@ export function ExternalTab() {
                 onPick={(i) => pickSample(i === null ? null : { row: detail.points!.row[i], section: "external", lab: group.lab_check, batch: null, facts: pairFacts(detail.points!, i, unit, ["Основная", "Контроль"]) })}
               />
             ) : (
-              !busy && <p className={css.note}>Точки группы не получены.</p>
+              !busy && <p className={css.note}>{detail && detail.points === null ? "Группы с этим фильтром больше нет: выберите другую в таблице." : "Точки группы не получены."}</p>
             )}
           </div>
           {ranked && detail?.ranked && (
             <div className={`${css.chartBox} ${busy ? css.busy : ""}`} style={{ flex: "1 1 400px", maxWidth: 520 }}>
               <ChartToolbar svgRef={rankedRef} fileName={`Ранжированный HARD ${title}`.replace(/[\\/:*?"<>|]/g, "_")} csv={() => rankedCsv(detail.ranked!)} csvLabel="CSV" disabled={!ranked.n} />
-              <RankedHardChart ref={rankedRef} model={ranked} label={`Ранжированный HARD: ${title}`} note={`пар ${int(group.used)}${ranked.n < group.used ? `, показано ${int(ranked.n)}` : ""}`} />
+              <RankedHardChart ref={rankedRef} model={ranked} label={`Ранжированный HARD: ${title}`} note={rankedNote(group.used, ranked.n)} />
             </div>
           )}
         </>

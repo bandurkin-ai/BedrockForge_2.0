@@ -2,13 +2,14 @@
  * The subtab «Дубликаты» (ТЗ 8.4.2; ADR 0020 §4, §11): the switch of the type (field, crushed, pulp — `qaqc.open`
  * with `kind`), the summary (pairs, used, left out by reason, the shares of HARD and the criterion of the type, the
  * means, r, RMA), the scatter x1 — x2 with 1:1, ±10 %, ±20 % and RMA, the ranked HARD with the threshold and the
- * share of the criterion, the Thompson–Howard chart with the table P(c) (or «мало пар»). Each chart exports PNG × 2,
+ * share of the criterion (thinned by the core to 2000 points), the Thompson–Howard chart with the table P(c) (or
+ * why it is not drawn: «мало пар» — fewer than `th.need`, «одно среднее» — `no_fit`). Each chart exports PNG × 2,
  * SVG, CSV. A new key of the calculation or another type makes one request; an overtaken answer is dropped. A click
  * on a point of the scatter opens the card of its sample.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { PairScatter } from "../../charts/qaqc/PairScatter";
-import { excludedRows, excludedTotal, pairCsv, pairFacts, pairModel, rankedCsv, rankedModel, thCsv, thModel, verdictTitle } from "../../charts/qaqc/pairModel";
+import { excludedRows, excludedTotal, type ThBlock, pairCsv, rankedNote, pairFacts, pairModel, rankedCsv, rankedModel, thCsv, thModel, verdictTitle } from "../../charts/qaqc/pairModel";
 import { RankedHardChart } from "../../charts/qaqc/RankedHardChart";
 import { ThChart, ThTable } from "../../charts/qaqc/ThChart";
 import { ChartToolbar } from "../../charts/core/ChartToolbar";
@@ -23,7 +24,7 @@ import { calcBody, calcKey, DROPPED, latest, pickSample, qaqcStore, reportCounts
 import css from "./Qaqc.module.css";
 
 /** The duplicates of one type (a newer load drops this one). */
-export const loadDuplicates = (body: CalcBody): Promise<DuplicatesAnswer | typeof DROPPED> => latest("duplicates", () => calc("duplicates", body));
+export const loadDuplicates = (body: CalcBody): Promise<DupAnswer | typeof DROPPED> => latest("duplicates", () => calc("duplicates", body) as Promise<DupAnswer>);
 
 const safeName = (t: string) => t.replace(/[\\/:*?"<>|]/g, "_");
 
@@ -34,15 +35,26 @@ export function duplicatesNotes(a: Pick<DuplicatesAnswer, "notes"> & { thinned?:
   return out;
 }
 
-/** «Т-Х: мало пар …» — the state of the chart when it is not drawn; null — drawn. */
-export function thStateText(a: Pick<DuplicatesAnswer, "th" | "used">): string | null {
-  if (a.th.state === "ok") return null;
-  if (a.th.state === "few_pairs") return `Мало пар для графика Томпсона–Ховарта: в расчёте ${int(a.used)}, нужно не меньше 50.`;
-  return `График Томпсона–Ховарта не построен: ${a.th.state}.`;
+/** The answer of the core: beyond ADR 0020 §10 — `kind`, the block `th` with `need`, `groups.n`, `precision[].q`. */
+export type DupAnswer = Omit<DuplicatesAnswer, "th"> & { kind?: string; th: ThBlock; thinned?: Thinned };
+
+/**
+ * Why the Thompson–Howard chart is not drawn; null — it is. `few_pairs` — fewer pairs than `need` (max(50,
+ * 2·group): at least two groups make a line); `no_fit` — every group has the same mean of its pairs.
+ */
+export function thStateText(a: { used: number; th: Pick<ThBlock, "state" | "need" | "group"> }): string | null {
+  const th = a.th;
+  if (th.state === "ok") return null;
+  if (th.state === "few_pairs") {
+    const need = th.need ?? Math.max(50, 2 * (th.group || 0));
+    return `Мало пар для графика Томпсона–Ховарта: в расчёте ${int(a.used)}, нужно не меньше ${int(need)} (наибольшее из 50 и двух групп по ${int(th.group)} пар).`;
+  }
+  if (th.state === "no_fit") return "График Томпсона–Ховарта не построен: у всех групп пар одно и то же среднее — прямую через них провести нельзя.";
+  return `График Томпсона–Ховарта не построен: ${th.state}.`;
 }
 
 /** The summary of the duplicates of a type: the pairs, those left out by reason, the shares and the criterion. */
-export function DupSummary({ answer, kind }: { answer: DuplicatesAnswer; kind: DupKind }) {
+export function DupSummary({ answer, kind }: { answer: Omit<DuplicatesAnswer, "th">; kind: DupKind }) {
   const a = answer;
   const left = excludedTotal(a.excluded);
   const u = a.unit ? ` ${a.unit}` : "";
@@ -87,7 +99,7 @@ function ChartBox({ svgRef, name, csv, csvLabel, disabled, busy, children }: { s
 
 interface Loaded {
   key: string;
-  answer: DuplicatesAnswer & { thinned?: Thinned };
+  answer: DupAnswer;
 }
 
 export function DuplicatesTab() {
@@ -187,7 +199,7 @@ export function DuplicatesTab() {
             />
           </ChartBox>
           <ChartBox svgRef={rankedRef} name={`Ранжированный HARD ${title}`} csv={() => rankedCsv(a.ranked)} csvLabel="CSV" disabled={!ranked.n} busy={busy}>
-            <RankedHardChart ref={rankedRef} model={ranked} label={`Ранжированный HARD: ${title}`} note={`пар ${int(a.used)}${ranked.n < a.used ? `, показано ${int(ranked.n)}` : ""}`} />
+            <RankedHardChart ref={rankedRef} model={ranked} label={`Ранжированный HARD: ${title}`} note={rankedNote(a.used, ranked.n)} />
           </ChartBox>
           {th && (
             <ChartBox svgRef={thRef} name={`Томпсон–Ховарт ${title}`} csv={() => thCsv(a.th)} csvLabel="CSV групп" disabled={!th.n} busy={busy}>
