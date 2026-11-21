@@ -31,7 +31,8 @@ from typing import Any
 
 from . import _samples
 
-Spots = Sequence[tuple[Any, str, str]]
+Spots = Sequence[tuple[Any, str, str]]  # (module, attribute, key) — the clocks of `_samples.stages`
+Calc = Callable[[Any, dict[str, Any]], dict[str, Any]]  # the calculation of a route: (project, settings) → answer
 
 
 def project_of(engine: Any, folder: Path) -> Any:
@@ -48,13 +49,10 @@ def forget(models: bool = False) -> None:
     gc.collect()
 
 
-def calculator(kind: str) -> Callable[[Any, dict[str, Any]], dict[str, Any]]:
+def calculator(kind: str) -> Calc:
     from bf_core.stats import router, routes_charts  # noqa: F401 — the routes register their kinds
 
     return routes_charts.CALCULATORS[kind]
-
-
-Calc = Callable[[Any, dict[str, Any]], dict[str, Any]]
 
 
 def ask(project: Any, kind: str | Calc, body: Mapping[str, Any]) -> tuple[dict[str, Any], float, int]:
