@@ -25,63 +25,13 @@ from bf_core.qaqc import normalize as nz
 from bf_core.qaqc import records as r
 from bf_core.qaqc.calc import SECTIONS, calc, canonical, columns_of, context, run, unit_ratio
 from bf_core.qaqc.filters import MAX_WHERE, TYPES, UNMAPPED, Filter, map_types, parse_filter, resolve_field, row_mask
-from bf_core.qaqc.limits import FAIL, NORM, NOT_ASSESSED, WARN, QaqcError
+from bf_core.qaqc.limits import FAIL, NORM, NOT_ASSESSED, WARN
 from bf_core.qaqc.standards import RULE_PAIR, RULE_RUN, RULE_SWAP
+from tests.qaqcutil import BASE, CONFIG, DAY, FIVE, NAN, build, crm_row, hard_records, json_ready, refused
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tools.gen.qaqc import generate  # noqa: E402
-
-NAN = math.nan
-DAY = 86_400_000.0
-BASE = 1_704_067_200_000.0  # 2024-01-01
-CONFIG: dict[str, Any] = {"types": dict(qc.DEFAULT_TYPES), "dl": [], "limits": qc.default_limits(),
-                          "empty_is_orig": True}  # fmt: skip
-
-
-def build(rows: list[dict[str, Any]], unit: str | None = "ppm", has_dl: bool = True) -> r.Records:
-    """Records in memory of the rows {type, crm, lab, batch, day, seq, hole, au, q, prev, dl, zone, depth, id}."""
-    n = len(rows)
-
-    def texts(key: str) -> list[str | None]:
-        return [row.get(key) for row in rows]
-
-    def floats(key: str) -> np.ndarray:
-        return np.array([NAN if row.get(key) is None else row[key] for row in rows], dtype=np.float64)
-
-    schema = r.Schema((r.Element("AU", unit, has_dl),), (r.Extra("Zone", r.TEXT), r.Extra("Depth", r.NUMBER)))
-    day = floats("day")
-    cols: dict[str, Any] = {
-        r.SAMPLE_ID: [row.get("id", f"S{i:05d}") for i, row in enumerate(rows)],
-        r.PARENT_ID: [None] * n, r.HOLE: texts("hole"), r.TYPE_CODE: texts("type"), r.CRM_ID: texts("crm"),
-        r.LAB: texts("lab"), r.BATCH: texts("batch"), r.PARENT_LAB: [None] * n, r.DATE: BASE + day * DAY,
-        r.SEQ: floats("seq"), r.PARENT_ROW: np.full(n, -1, np.int32), r.PREV_ROW: np.full(n, -1, np.int32),
-        r.v("AU"): floats("au"), r.q("AU"): np.array([row.get("q", 0) for row in rows], dtype=np.uint8),
-        r.p("AU"): np.full(n, NAN), r.b("AU"): floats("prev"), r.x("Zone"): texts("zone"),
-        r.x("Depth"): floats("depth"),
-    }  # fmt: skip
-    if has_dl:
-        cols[r.dl("AU")] = floats("dl")
-    return r.Records.of(schema, cols)
-
-
-def crm_row(crm_id: str, mean: float, sd: float, unit: str | None = "ppm", element: str = "AU") -> dict[str, Any]:
-    return {"crm_id": crm_id, "element": element, "mean": mean, "sd": sd, "unit": unit, "source": None}
-
-
-def refused(code: str, param: str | None, call: Any) -> QaqcError:
-    with pytest.raises(QaqcError) as e:
-        call()
-    assert (e.value.code, e.value.param) == (code, param) and e.value.message and e.value.hint
-    return e.value
-
-
-def json_ready(answer: Any) -> None:
-    """Only what JSON holds: no numpy numbers, no NaN (`canonical` refuses those)."""
-    json.loads(canonical(answer))
-    text = json.dumps(answer, allow_nan=False)
-    assert json.loads(text) == json.loads(json.dumps(answer))
-
 
 # --- Т8.4-1, Т8.4-2 through the sections ---------------------------------------------------------------------------
 
@@ -136,8 +86,9 @@ def test_t841_t842_through_the_sections() -> None:
     assert sm["blanks"] == {"groups": 1, "n": 3, "missing": 0, "norm": 2, "fail": 1, "not_assessed": 0}
     for answer in (st, bl, bt, sm):
         json_ready(answer)
-    assert columns_of(recs.schema, "au") == "type_code lab batch crm_id date seq v:AU q:AU b:AU".split()
-    assert columns_of(build([]).schema, "AU")[-1] == "dl:AU" and columns_of(recs.schema, "CU") == []
+    base = "type_code lab batch crm_id date seq parent_row parent_lab v:AU q:AU b:AU p:AU".split()
+    assert columns_of(recs.schema, "au") == base and columns_of(recs.schema, "CU") == []
+    assert columns_of(build([]).schema, "AU") == [*base, "dl:AU"]
     assert set(SECTIONS) >= {"summary", "standards", "blanks", "batches"}
     refused("unknown_section", "section", lambda: calc("nope", recs, cfg, ref, "AU"))
     refused("field_not_found", "element", lambda: calc("standards", recs, cfg, ref, "CU"))
@@ -371,60 +322,6 @@ def test_filter_refusals() -> None:
 
 
 # --- Т8.4-8: by a filter and over the records taken beforehand ----------------------------------------------------
-
-
-def hard_records(n: int = 6000, seed: int = 5) -> tuple[r.Records, dict[str, Any], list[dict[str, Any]]]:
-    rng = np.random.default_rng(seed)
-    kinds = rng.choice(["STD", "CRM", "BLK", "BLANK", "ORIG", None, "DUP_F", "ump", "???", "QA"], n,
-                       p=[0.2, 0.15, 0.1, 0.1, 0.15, 0.05, 0.1, 0.05, 0.05, 0.05])  # fmt: skip
-    crm = np.array(["G-1", "g-1", "G-2", "OREAS 7", "X-0", None, "Z-9"], dtype=object)
-    mu = {"G-1": 1.0, "g-1": 1.0, "G-2": 1.1, "OREAS 7": 4.0, "X-0": 2.0, None: 3.0, "Z-9": 0.5}
-    rows = []
-    for i in range(n):
-        kind = kinds[i]
-        is_crm = kind in ("STD", "CRM")
-        name = crm[rng.integers(0, len(crm))] if is_crm else None
-        if is_crm and rng.random() < 0.03:
-            au: float | None = 0.52  # another standard in the bag: «K-5» of the reference
-        elif is_crm:
-            au = mu[name] * (1 + 0.05 * rng.integers(-8, 9) / 2) + (1e-9 if rng.random() < 0.2 else 0.0)
-        elif kind in ("BLK", "BLANK"):
-            au = float(rng.choice([0.005, 0.02, 0.05, 0.0500001, 0.06, 0.3]))
-        else:
-            au = float(np.round(rng.lognormal(0, 1), 3))
-        rows.append({
-            "id": f"S{i:05d}" if rng.random() > 0.01 else None, "type": kind, "crm": name,
-            "lab": rng.choice(["L1", "L2", "l2", None], p=[0.4, 0.3, 0.2, 0.1]),
-            "batch": None if rng.random() < 0.05 else f"B{rng.integers(0, 150):03d}",
-            "day": None if rng.random() < 0.1 else float(rng.integers(0, 120)) + (0.5 if rng.random() < 0.1 else 0.0),
-            "seq": None if rng.random() < 0.1 else float(rng.integers(1, 40)),
-            "hole": rng.choice(["DH-1", "DH-10", "RC-7", None]), "au": None if rng.random() < 0.04 else au,
-            "q": int(rng.random() < 0.3) if kind in ("BLK", "BLANK") else 0,
-            "prev": None if rng.random() < 0.2 else float(np.round(rng.lognormal(0, 1), 3)),
-            "dl": float(rng.choice([0.02, 0.01])) if rng.random() < 0.1 else None,
-            "zone": rng.choice(["Ox", "Sulf", "Trans", None]),
-            "depth": None if rng.random() < 0.1 else float(rng.integers(0, 300)),
-        })  # fmt: skip
-    ref = [
-        crm_row("G-1", 1.0, 0.05), crm_row("G-2", 1100.0, 55.0, "ppb"), crm_row("oreas 7", 4.0, 0.2),
-        crm_row("X-0", 2.0, 0.1, "oz/t"), crm_row("K-5", 0.52, 0.03), crm_row("G-1", 9.0, 0.1, element="CU"),
-    ]  # fmt: skip
-    cfg = {**CONFIG, "types": {**CONFIG["types"], "QA": "DUP_P"},
-           "dl": [{"element": "AU", "lab": "L1", "value": 0.01, "unit": "ppm"},
-                  {"element": "AU", "lab": "L2", "value": 20.0, "unit": "ppb"}]}  # fmt: skip
-    return build(rows), cfg, ref
-
-
-FIVE = [
-    {"labs": ["L1"]},
-    {"date_from": "2024-01-15", "date_to": "2024-03-20", "types": ["CRM", "BLANK", "ORIG"]},
-    {"crm": ["G-1", "G-2"], "where": [{"field": "seq", "op": "le", "value": 30}]},
-    {"hole_prefix": "DH", "where": [{"field": "x:Zone", "op": "ne", "value": "Trans"},
-                                    {"field": "x:Depth", "op": "between", "value": [20, 250]}]},
-    {"batches": [f"B{i:03d}" for i in range(0, 150, 3)], "date_to": "2024-04-01",
-     "where": [{"field": "sample_id", "op": "ne", "value": "S00010"},
-               {"field": "lab", "op": "in", "value": ["L2", "l1"]}]},
-]  # fmt: skip
 
 
 @pytest.mark.parametrize("number", range(5))

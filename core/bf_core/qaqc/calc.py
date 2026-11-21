@@ -5,7 +5,8 @@ records (`qaqc.records`), the settings as `config.get_config` returns them and t
     calc(section, recs, config, crm, element, flt=None, **params) -> dict
     context(recs, config, crm, element, flt=None) -> Context;  run(ctx, section, **params) -> dict
         several sections of one element over one filter: the mask, the types and the kernels are computed once
-    SECTIONS {name: function}        `summary`, `standards`, `blanks`, `batches` (duplicates, external — 14.5–14.7)
+    SECTIONS {name: function}        `summary`, `standards`, `blanks`, `batches` here; `duplicates` and
+                                     `external` register themselves from `calc_pairs` (their answers — there)
     canonical(answer) -> bytes       the canonical JSON of an answer: keys sorted, numbers by `repr`, UTF-8,
                                      without `counts.rows` — for Т8.4-8 and the hashes of a report
     columns_of(schema, element) -> [column]   what the sections of an element read (`recs.load` — one pass)
@@ -207,8 +208,8 @@ def columns_of(schema: r.Schema, element: str) -> list[str]:
     el = schema.element(element)
     if el is None:
         return []
-    own = [r.v(el.name), r.q(el.name), r.b(el.name)] + ([r.dl(el.name)] if el.has_dl else [])
-    return [r.TYPE_CODE, r.LAB, r.BATCH, r.CRM_ID, r.DATE, r.SEQ, *own]
+    own = [r.v(el.name), r.q(el.name), r.b(el.name), r.p(el.name)] + ([r.dl(el.name)] if el.has_dl else [])
+    return [r.TYPE_CODE, r.LAB, r.BATCH, r.CRM_ID, r.DATE, r.SEQ, r.PARENT_ROW, r.PARENT_LAB, *own]
 
 
 def _unmapped_codes(ctx: Context) -> list[dict[str, Any]]:
@@ -534,12 +535,13 @@ def _batches_line(ctx: Context) -> dict[str, Any]:
 # --- the registry --------------------------------------------------------------------------------------------------
 
 Section = Callable[[Context, Mapping[str, Any]], tuple[dict[str, Any], list[str]]]
-#: the lines of the summary, a section each (14.5–14.7 add `duplicates`, `external`)
+#: the lines of the summary, a section each, and where the notes of their data are kept (`Context.memo`)
 LINES: dict[str, Callable[[Context], dict[str, Any]]] = {
     "standards": _standards_line,
     "blanks": _blanks_line,
     "batches": _batches_line,
 }
+NOTE_KEYS = ["standards", "blanks"]
 
 
 def _summary(ctx: Context, params: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
@@ -551,7 +553,7 @@ def _summary(ctx: Context, params: Mapping[str, Any]) -> tuple[dict[str, Any], l
     for name, line in LINES.items():
         out[name] = line(ctx)
     notes: list[str] = []
-    for key in ("standards", "blanks"):
+    for key in NOTE_KEYS:
         notes += ctx.memo[key].notes
     return out, notes
 
@@ -580,3 +582,6 @@ def calc(section: str, recs: r.Records, config: Mapping[str, Any], crm: Sequence
          flt: Any = None, **params: Any) -> dict[str, Any]:  # fmt: skip
     """A section of QAQC of one element of the records under a filter (see the module docstring)."""
     return run(context(recs, config, crm, element, flt), section, **params)
+
+
+from . import calc_pairs  # noqa: E402, F401  the sections of the pairs register themselves; they need the names above
