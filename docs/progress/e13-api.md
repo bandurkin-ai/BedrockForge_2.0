@@ -218,3 +218,39 @@ z] (целые метры, середина габарита), bbox [6] | null}`
 chart, polygon, rect, range, groups, filter, where, hole, table, selection}` (`selection` — жетон другой таблицы),
 ошибки настроек графика (`field_not_found {x}` …), `bad_expression`, `bad_method`; 404 `selection_not_found`;
 409 `selection_stale {token}`, `table_changed`.
+
+## Вкладка «Статистика» (13.17; ADR 0019 §7): `POST /stats/tab/declus`, `/nscore`, `/backtr`, `/bootstrap`
+
+Ядро — `stats/routes_tab.py` → `stats/tab.py`. Ничего не сохраняется. Точки — интервалы со значением и
+положением: середина пробы на траектории, в плане (`source.midpoints`). `rows` — dh_rows.id точек.
+
+Общие ключи тела: `set_id`, `table` (`name_key` или id; `null` — таблица проб), `field` (`null` — первый
+компонент), `holes` (имена; пусто — все), `declus` — параметры декластеризации `{method: "cell" | "polygon",
+cmin, cmax, ncell, noff, minmax ("min" | "max") | nx, ny, bounds [xmin, xmax, ymin, ymax]}` (имена
+`composite.declus`; пустые — по умолчанию: ячейки 2–50 % габарита, 20 размеров, 8 сдвигов, min; полигоны — сетка
+по числу скважин, границы — габарит точек). У `/declus` — что считать (`null` — ячейки по умолчанию), у остальных
+— веса значений (`null` — без весов).
+
+```
+POST /stats/tab/declus      {…общие, weights: false}
+→ { set_id, table (имя), field, method, count, naive_mean, declustered_mean, weight_min, weight_max, zero_weights,
+    uniform, best_cell_size | null, cell_sizes [0, …] | null, means [plain, …] | null,   // кривая; null — полигоны
+    cmin, cmax, ncell, noff, minmax | nx, ny, bounds [4],
+    notes [], counts {rows, missing, no_position, used},
+    rows [dh_rows.id], weights [] }                         // только при weights: true; Σ weights = count
+POST /stats/tab/nscore      {…общие, zmin, zmax}
+→ { set_id, table, field, count, values [], scores [] (таблица преобразования по возрастанию), table_rows (её строк;
+    < count при весах 0), zmin, zmax, rows [dh_rows.id], sample_scores [] (оценка каждой точки), weighted, counts }
+POST /stats/tab/backtr      {…общие, zmin, zmax, scores [1…20 000], ltail, utail ("linear" | "power" | "hyperbolic"
+                             …, как Э12), ltpar, utpar}
+→ { set_id, table, field, values [число | null] }           // null — у хвоста там нет числа
+POST /stats/tab/bootstrap   {…общие, n_boot (1000), seed (null — случайное, возвращается), confidence (0.95)}
+→ { set_id, table, field, count, n_boot, seed, confidence, weighted,
+    statistics {mean | median | std | cv | p10 | p90: {observed, observed_weighted | null, defined, mean, std,
+                ci_low, ci_high, edges [], counts []}},     // null — не определено ни в одной реализации
+    counts }
+```
+Отказы: 422 `too_many_samples {param: "table"}` (> 20 000 интервалов, совет композитировать — Т7.29-2),
+`no_values`, `too_few_values`, `no_spread`, `bad_input`, `bad_param {param: set_id, table, holes, declus, method,
+cmin, cmax, ncell, noff, minmax, nx, ny, bounds, weights, zmin, zmax, scores, ltail, utail, ltpar, utpar, n_boot,
+seed, confidence}`, `field_not_found` / `field_not_number {field}`; 404 `set_not_found`, `table_not_found`.
