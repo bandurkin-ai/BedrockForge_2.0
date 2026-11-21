@@ -40,3 +40,15 @@ router.include_router(routes_more.router)
 from . import routes_swath  # noqa: E402
 
 router.include_router(routes_swath.router)
+
+from . import routes_selection  # noqa: E402
+
+router.include_router(routes_selection.router)
+
+from . import routes_tab  # noqa: E402
+
+router.include_router(routes_tab.router)  # its own prefix /tab
+
+from . import routes_contact  # noqa: E402
+
+router.include_router(routes_contact.router)  # registers "contact" for /stats/chart/{id} too

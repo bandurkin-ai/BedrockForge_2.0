@@ -105,8 +105,12 @@ def table_page(
     hole: int | None = None,
     where: Annotated[str | None, Query(max_length=2000)] = None,
     coords: bool = False,
+    selection: Annotated[str | None, Query(max_length=64)] = None,
 ) -> dict[str, Any]:
-    """A page of rows (ТЗ 7.10 «Просмотр», «Сортировка», «Выбор скважины», 7.34 п. 21 «Фильтр по выражению»)."""
+    """A page of rows (ТЗ 7.10 «Просмотр», «Сортировка», «Выбор скважины», 7.34 п. 21 «Фильтр по выражению»);
+    `selection` — the token of a selection of samples (ADR 0019 §8): only its rows, `selection {token, n}` in the
+    answer; 404 `selection_not_found`, 409 `selection_stale` (the table changed), 422 `bad_param` {selection}
+    (a selection of another table)."""
     from .expr import ExprError
     from .query import page
 
@@ -116,7 +120,13 @@ def table_page(
     if sort is not None and sort not in {c.key for c in snap.columns}:
         raise ApiError(422, "column_not_found", "Нет такой колонки для сортировки.", "Обновите таблицу.")
     try:
-        out = page(snap, offset=offset, limit=limit, sort=sort, desc=desc, hole=hole, where=where)
+        if selection:
+            sel, chosen = _selected(project, snap, selection)
+            out = _selected_page(snap, chosen, offset=offset, limit=limit, sort=sort, desc=desc, hole=hole,
+                                 where=where)  # fmt: skip
+            out["selection"] = {"token": sel.token, "n": sel.n}
+        else:
+            out = page(snap, offset=offset, limit=limit, sort=sort, desc=desc, hole=hole, where=where)
     except ExprError as exc:
         raise _expr_error(exc) from exc
     out["columns"] = [c.as_dict() for c in snap.columns]
@@ -125,6 +135,44 @@ def table_page(
     if coords and snap.kind in ("assay", "interval", "event") and out["rows"]:
         _add_coords(project, set_id, out["rows"], snap.kind)
     return out
+
+
+def _selected(project: Any, snap: Snapshot, token: str) -> tuple[Any, Any]:
+    """The selection of `token` and the mask of its rows in the snapshot (`stats.selection`)."""
+    from bf_core.stats import selection
+
+    sel = selection.current(project, token)
+    if snap.table != str(sel.table_id) or snap.set_id != sel.set_id:
+        raise ApiError(422, "bad_param", f"Выделение сделано в таблице «{sel.table_name}».",
+                       f"Откройте таблицу «{sel.table_name}» или снимите выделение.",
+                       extra={"param": "selection"})  # fmt: skip
+    if int(snap.key[-1]) != sel.rev:
+        raise selection.stale(sel)
+    return sel, selection.row_mask(sel, snap.key, snap.ids)
+
+
+def _selected_page(snap: Snapshot, chosen: Any, *, offset: int, limit: int, sort: str | None, desc: bool,
+                   hole: int | None, where: str | None) -> dict[str, Any]:  # fmt: skip
+    """`query.page` over the rows of the filter that are in the selection too."""
+    import numpy as np
+
+    from . import query
+
+    m = query.mask(snap, hole, where) & chosen
+    if sort:
+        order = query._order(snap, sort, desc)
+        idx = order[m[order]]
+    else:
+        idx = np.flatnonzero(m)
+    limit = max(1, min(limit, query.MAX_LIMIT))
+    rows = []
+    for i in idx[offset : offset + limit].tolist():
+        row: dict[str, Any] = {"id": int(snap.ids[i]), "hole_id": int(snap.hole_ids[i])}
+        for c in snap.columns:
+            k = c.key
+            row[k] = snap.hole_names.get(int(snap.hole_ids[i])) if k == "hole" else query._cell(snap.data[k][i])
+        rows.append(row)
+    return {"total": int(len(idx)), "offset": offset, "rows": rows}
 
 
 def _add_coords(project: Any, set_id: int, rows: list[dict[str, Any]], kind: str) -> None:

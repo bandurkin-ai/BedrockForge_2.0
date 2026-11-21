@@ -270,10 +270,11 @@ def _prepared(x: Any, y: Any, w: Any, flt: Any, unmatched: Any) -> tuple[Any, An
     return np.where(ok, x, np.nan), np.where(ok, y, np.nan), counts
 
 
-@rc.register("scatter")
-def scatter_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
+def scatter_inputs(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
+    """What a scatter plot is drawn from: the columns of the table X (`cols`, only the rows of `holes`), the
+    values x and y after the rules (`xs`, `ys`: NaN — the row is left out), the weights `w`, the counts, the
+    fields and the log axes. The selection of a density mode (`stats.selection`, 13.19) takes the same pairs."""
     from . import select, source
-    from .scatter import scatter_chart
 
     regression = settings.get("regression")
     if regression is not None and regression not in REGRESSIONS:
@@ -308,9 +309,21 @@ def scatter_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     args = cols.select_args(x, weight_field)
     w = select.sample_weights(flt.weight, args["length"], args["weight_values"])
     xs, ys, counts = _prepared(args["values"], yv, w, flt, unmatched)
-    colors, labels = _color_column(cols, color)
     log_x, log_y = (False if settings.get(k) is None else settings[k] for k in ("log_x", "log_y"))
-    out = scatter_chart(xs, ys, w, log_x=log_x, log_y=log_y, color=colors, row_ids=cols.row_ids)
+    return {"set_id": set_id, "y_set_id": y_set, "x": x, "y": y, "color": color, "cols": cols, "xs": xs, "ys": ys,
+            "w": w, "counts": counts, "log_x": log_x, "log_y": log_y}  # fmt: skip
+
+
+@rc.register("scatter")
+def scatter_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
+    from .scatter import scatter_chart
+
+    d = scatter_inputs(project, settings)
+    set_id, y_set, x, y, color, cols, counts = (d[k] for k in ("set_id", "y_set_id", "x", "y", "color", "cols",
+                                                               "counts"))  # fmt: skip
+    colors, labels = _color_column(cols, color)
+    out = scatter_chart(d["xs"], d["ys"], d["w"], log_x=d["log_x"], log_y=d["log_y"], color=colors,
+                        row_ids=cols.row_ids)  # fmt: skip
     counts.update(nonpositive_log=out["counts"]["nonpositive"], used=out["counts"]["used"])
     st, rng = out["stats"], out["range"]
     answer: dict[str, Any] = {

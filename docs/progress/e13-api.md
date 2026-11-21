@@ -181,3 +181,96 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
 Тело пустое. Расчёт сохранённого графика по его настройкам и текущим данным; набор — тот, в котором лежит
 график. Считаются `histogram`, `qq`, `dendrogram`, `scatter`, `box`, `probplot`, `domains`, `ternary`. Ответ —
 ответ его вида (как выше) + `chart: {id, kind, name, version}`.
+
+## Выделение проб (13.19; ADR 0019 §8)
+
+Ядро — `stats/selection.py`, `stats/routes_selection.py`; фильтр таблицы — `drillholes/router.py`. Выделение —
+строки одной таблицы одной ревизии (`rev`), ≤ 200 000; ядро держит последние 16 (LRU). Чужие id не мешают
+(`unknown`). Правка или замена таблицы — каждый запрос с жетоном отвечает 409 `selection_stale {token}` (окно
+снимает выделение с сообщением).
+
+`POST /stats/selection` — одно из четырёх тел:
+```
+{set_id, table, rows: [dh_rows.id]}                       // точки графика (рассеяние, тернарная): row[] ответа
+{chart: {kind: "scatter", …настройки рассеяния}, polygon: [[x, y], …]}   // режим плотности: строки выбирает ядро;
+{chart: {kind: "scatter", …}, rect: [x0, x1, y0, y1]}     //   координаты в данных, на лог-оси — > 0, проверка в log10
+{chart: {kind: "box" | "probplot", …настройки}, range: [lo, hi], groups: [label | null] | null}
+        // пробы групп (null — без домена или единственная группа графика без доменов; null / [] — все группы),
+        // значение которых после отбора — в [lo; hi] (границы входят; на лог-шкале ящиков и у лог-вероятностного
+        // — только > 0)
+{set_id, table, filter: {where: str | null, hole: dh_holes.id | null}}   // «наоборот»: строки фильтра «Таблицы»
+→ {token, set_id, table_id, table_name, rev, n, unknown, source: "rows" | "scatter" | "box" | "probplot" | "table"}
+```
+`table` — `name_key` или id (`null` — таблица проб набора); у `chart` таблица — таблица X (`table` настроек),
+`holes` настроек действуют. `GET /stats/selection/{token}` → `{…то же, rows: [dh_rows.id по возрастанию]}`
+(отметить точки на открытых графиках). `DELETE /stats/selection/{token}` → `{deleted}`.
+
+`GET /stats/selection/{token}/segments?method=minimum_curvature` — BFA1 `selection_segments`: заголовок `{kind,
+format: 1, token, set_id, table_id, rev, method, n, segments, no_position (скважина без траектории), origin [x, y,
+z] (целые метры, середина габарита), bbox [6] | null}`; массивы `row u4` (dh_rows.id; f8 после 2³²), `hole u4`
+(dh_holes.id), `from f8`, `to f8`, `a f4×3`, `b f4×3` — начало и конец интервала на траектории от `origin`;
+порядок — скважина по имени, FROM. 200 тыс. строк: выделение фильтром + отрезки 0,14 с, 9,6 МБ.
+
+`GET /drillholes/sets/{id}/tables/{table}?selection=<token>` — страница только строк выделения (вместе с `where`,
+`hole`, `sort`); в ответе + `selection {token, n}`.
+
+Отказы: 422 `too_many_rows {param: rows | polygon | rect | range | filter}` (> 200 000), `bad_param {param: rows,
+chart, polygon, rect, range, groups, filter, where, hole, table, selection}` (`selection` — жетон другой таблицы),
+ошибки настроек графика (`field_not_found {x}` …), `bad_expression`, `bad_method`; 404 `selection_not_found`;
+409 `selection_stale {token}`, `table_changed`.
+
+## Вкладка «Статистика» (13.17; ADR 0019 §7): `POST /stats/tab/declus`, `/nscore`, `/backtr`, `/bootstrap`
+
+Ядро — `stats/routes_tab.py` → `stats/tab.py`. Ничего не сохраняется. Точки — интервалы со значением и
+положением: середина пробы на траектории, в плане (`source.midpoints`). `rows` — dh_rows.id точек.
+
+Общие ключи тела: `set_id`, `table` (`name_key` или id; `null` — таблица проб), `field` (`null` — первый
+компонент), `holes` (имена; пусто — все), `declus` — параметры декластеризации `{method: "cell" | "polygon",
+cmin, cmax, ncell, noff, minmax ("min" | "max") | nx, ny, bounds [xmin, xmax, ymin, ymax]}` (имена
+`composite.declus`; пустые — по умолчанию: ячейки 2–50 % габарита, 20 размеров, 8 сдвигов, min; полигоны — сетка
+по числу скважин, границы — габарит точек). У `/declus` — что считать (`null` — ячейки по умолчанию), у остальных
+— веса значений (`null` — без весов).
+
+```
+POST /stats/tab/declus      {…общие, weights: false}
+→ { set_id, table (имя), field, method, count, naive_mean, declustered_mean, weight_min, weight_max, zero_weights,
+    uniform, best_cell_size | null, cell_sizes [0, …] | null, means [plain, …] | null,   // кривая; null — полигоны
+    cmin, cmax, ncell, noff, minmax | nx, ny, bounds [4],
+    notes [], counts {rows, missing, no_position, used},
+    rows [dh_rows.id], weights [] }                         // только при weights: true; Σ weights = count
+POST /stats/tab/nscore      {…общие, zmin, zmax}
+→ { set_id, table, field, count, values [], scores [] (таблица преобразования по возрастанию), table_rows (её строк;
+    < count при весах 0), zmin, zmax, rows [dh_rows.id], sample_scores [] (оценка каждой точки), weighted, counts }
+POST /stats/tab/backtr      {…общие, zmin, zmax, scores [1…20 000], ltail ("linear" | "power" | null), utail
+                             ("linear" | "power" | "hyperbolic" | null; null — крайнее значение таблицы), ltpar, utpar}
+→ { set_id, table, field, values [число | null] }           // null — у хвоста там нет числа
+POST /stats/tab/bootstrap   {…общие, n_boot (1000), seed (null — случайное, возвращается), confidence (0.95)}
+→ { set_id, table, field, count, n_boot, seed, confidence, weighted,
+    statistics {mean | median | std | cv | p10 | p90: {observed, observed_weighted | null, defined, mean, std,
+                ci_low, ci_high, edges [], counts []}},     // null — не определено ни в одной реализации
+    counts }
+```
+Отказы: 422 `too_many_samples {param: "table"}` (> 20 000 интервалов, совет композитировать — Т7.29-2),
+`no_values`, `too_few_values`, `no_spread`, `bad_input`, `bad_param {param: set_id, table, holes, declus, method,
+cmin, cmax, ncell, noff, minmax, nx, ny, bounds, weights, zmin, zmax, scores, ltail, utail, ltpar, utpar, n_boot,
+seed, confidence}`, `field_not_found` / `field_not_number {field}`; 404 `set_not_found`, `table_not_found`.
+
+## `POST /stats/contact` (13.17; ядро 13.7)
+
+Тело: общие ключи отбора + `field`, `domain` (обязательно; текстовое поле), `domain_table` (`null` — та же таблица,
+иначе домен пробы — интервал другой таблицы под её серединой; строки вне интервалов — пробы без домена: контакт
+через них не идёт), `a`, `b` (значения домена; A — сторона < 0), `distance` D (20), `step` b (1; ≤ 500 шагов на
+сторону), `wireframe_id` (`null`), `holes`.
+```
+{ set_id, field, domain, domain_table | null, domain_outside, wireframe_id: null, distance, step, weighted,
+  counts {…counts отбора, rows (все строки), no_depth, overlap, no_domain, in_steps},
+  contacts, holes,                              // контактов A ↔ B и скважин с ними
+  edges [2n + 1] (−D … D), mean [2n] (null — шаг без проб), n [2n],   // сторона A — шаги ниже 0
+  a {label, n, mean | null}, b {label, n, mean | null}, conventions }
+```
+Нет контактов — ответ с `contacts: 0`, не отказ. B ↔ A — зеркало. «До каркаса» (13.8) пока не считается:
+`wireframe_id` — 404 `wireframe_not_found`, 422 `wireframe_open {param: wireframe_id}` (подсказка — «Проверить
+каркас» / «Исправить каркас»), замкнутое тело — 422 `contact_wireframe_unavailable {param: wireframe_id}`.
+Отказы: 422 `bad_param {a, b, step, distance, domain, …}`, `field_not_found` / `field_not_number` /
+`field_not_text {field, domain, weight_field}`, `no_values`; 404 `table_not_found` (`domain_table`).
+`/stats/chart/{id}` считает и `contact`.

@@ -11,6 +11,17 @@ import type { BoxSettings, ContactSettings, DomainsSettings, ProbPlotSettings, S
 type Body<S> = Omit<S, "view">;
 export type Num = number | null;
 
+/** The body each answer was computed from: a frame on its chart sends these settings back (13.33, `charts/selection`). */
+const BODIES = new WeakMap<object, Record<string, unknown>>();
+const remember =
+  <T extends object>(body: object) =>
+  (answer: T): T => {
+    if (answer && typeof answer === "object") BODIES.set(answer, { ...body });
+    return answer;
+  };
+/** The settings (without `view`) of the request whose answer `result` is; undefined — not from here. */
+export const bodyOf = (result: object): Record<string, unknown> | undefined => BODIES.get(result);
+
 /** Rows of the charts by domains: the selection's counts and those without a domain code. */
 export type DomainCounts = SelectCounts & { no_domain: number };
 
@@ -80,7 +91,7 @@ export interface ScatterResult {
   conventions?: string;
 }
 
-export const computeScatter = (body: Body<ScatterSettings>): Promise<ScatterResult> => api.post<ScatterResult>("/stats/scatter", body);
+export const computeScatter = (body: Body<ScatterSettings>): Promise<ScatterResult> => api.post<ScatterResult>("/stats/scatter", body).then(remember<ScatterResult>(body));
 
 // ---- box plot: POST /stats/box ----
 
@@ -119,7 +130,7 @@ export interface BoxResult {
   conventions?: string;
 }
 
-export const computeBox = (body: Body<BoxSettings>): Promise<BoxResult> => api.post<BoxResult>("/stats/box", body);
+export const computeBox = (body: Body<BoxSettings>): Promise<BoxResult> => api.post<BoxResult>("/stats/box", body).then(remember<BoxResult>(body));
 
 // ---- log-probability: POST /stats/probplot ----
 
@@ -143,7 +154,7 @@ export interface ProbPlotResult {
   conventions?: string;
 }
 
-export const computeProbPlot = (body: Body<ProbPlotSettings>): Promise<ProbPlotResult> => api.post<ProbPlotResult>("/stats/probplot", body);
+export const computeProbPlot = (body: Body<ProbPlotSettings>): Promise<ProbPlotResult> => api.post<ProbPlotResult>("/stats/probplot", body).then(remember<ProbPlotResult>(body));
 
 // ---- contact analysis: POST /stats/contact (core 13.17) ----
 

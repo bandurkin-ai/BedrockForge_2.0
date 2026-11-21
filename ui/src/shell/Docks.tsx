@@ -2,6 +2,7 @@ import { useApp } from "./AppContext";
 import { AuditPanel } from "../modules/audit/AuditPanel";
 import { JobsPanel } from "../modules/jobs/JobsPanel";
 import { SceneView } from "../modules/scene/SceneView";
+import { StatsPanel } from "../modules/stats/StatsPanel";
 import { TablePanel } from "../modules/tables/TablePanel";
 import { CommandLog } from "./CommandLog";
 import { Icon } from "./Icon";
@@ -9,10 +10,6 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { useStore } from "./useStore";
 import { BOTTOM_TITLES, type BottomTab } from "./workspace";
 import css from "./Shell.module.css";
-
-const STAGE_TEXT: Partial<Record<BottomTab, string>> = {
-  stats: "Статистика появится на этапе Э13.",
-};
 
 export function BottomDock() {
   const app = useApp();
@@ -30,7 +27,7 @@ export function BottomDock() {
           <Icon name="close" size={14} />
         </button>
       </div>
-      <div className={css.dockBody}>{tab === "log" ? <CommandLog /> : tab === "jobs" ? <JobsPanel /> : tab === "table" ? <TablePanel /> : tab === "audit" ? <AuditPanel /> : <div className={css.empty}>{STAGE_TEXT[tab]}</div>}</div>
+      <div className={css.dockBody}>{tab === "log" ? <CommandLog /> : tab === "jobs" ? <JobsPanel /> : tab === "table" ? <TablePanel /> : tab === "audit" ? <AuditPanel /> : <StatsPanel />}</div>
     </section>
   );
 }
