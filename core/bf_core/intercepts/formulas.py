@@ -36,13 +36,12 @@ from typing import Any
 
 import numpy as np
 
+from . import EPS_DEFAULT, EPS_RANGE, STEP_DEFAULT, STEP_RANGE  # noqa: F401 - ε_в, the part of a hole (ТЗ 8.5.4)
+
 FLAG_PARALLEL = 1  # TT_FLAG: the hole runs almost along the body, TT / l < ε_в (ТЗ 8.5.1)
 FLAG_NO_ORIENTATION = 2  # no source gave an orientation; TT is missing
 FLAG_CORE_LOCAL = 4  # a core measurement was not turned into a world normal; ALPHA and DIPDIR are missing
 FLAG_NO_PATH = 8  # the hole has no trajectory; TT is missing
-
-EPS_DEFAULT, EPS_RANGE = 0.1, (0.01, 0.5)  # ε_в (ТЗ 8.5.4)
-STEP_DEFAULT, STEP_RANGE = 1.0, (0.1, 10.0)  # the part of a hole, m
 
 LEVEL_DEG = 1e-6  # degrees: a plane flatter than this has no dip direction (Aп = 0)
 VERTICAL = 1e-12  # |n_z| of a vertical plane; the level part of d below which a hole has no azimuth

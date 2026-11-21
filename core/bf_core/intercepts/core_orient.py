@@ -61,11 +61,10 @@ from bf_core.composites.strips import Tick
 from bf_core.drillholes.desurvey import Trajectories
 from bf_core.jit import njit
 
+from . import D_CORE_DEFAULT, D_CORE_RANGE, LINES  # d_к, m, and the line β_к is counted from (ТЗ 8.5.4)
 from . import directions as dr
 from .formulas import FLAG_CORE_LOCAL, upper_normal
 
-D_CORE_DEFAULT, D_CORE_RANGE = 10.0, (0.0, 1000.0)  # d_к, m (ТЗ 8.5.4)
-LINES = ("boh", "toh")  # the line β_к is counted from: the bottom or the top of the core
 STEEP_DEG = 1.0  # θ below which the bottom line of the core is not defined
 
 STATE_OK, STATE_LOCAL, STATE_UNUSED = range(3)
