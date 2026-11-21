@@ -15,7 +15,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { answerSaveDialog, close, coreApi, launch, openDemo, placeRight, setWindowSize, shot } from "./helpers";
+import { answerSaveDialog, close, coreApi, launch, moveBy, openDemo, placeRight, setWindowSize, shot } from "./helpers";
 
 const EXE = !!process.env.BF_APP_EXE;
 const LIMIT = (ms: number) => (EXE ? 3 * ms : ms);
@@ -30,6 +30,23 @@ const selection = (page: Page) => page.evaluate(() => (window as unknown as { __
 
 /** «Среднее» of the statistics of a histogram window (the first column — with the weight). */
 const meanOf = (win: Locator) => win.getByTestId("histogram-stats").locator("tr", { has: win.page().locator("th", { hasText: /^Среднее$/ }) }).locator("td").first().innerText();
+
+/** The window made lower (its grip up, up to its top first if need be) so that `target` below it is not covered. */
+async function clearOf(page: Page, win: Locator, target: Locator): Promise<void> {
+  const t = (await target.boundingBox())!;
+  let w = (await win.boundingBox())!;
+  if (w.y + w.height <= t.y || w.x >= t.x + t.width) return;
+  if (t.y - w.y < 200) {
+    await moveBy(page, win, 0, -w.y);
+    w = (await win.boundingBox())!;
+  }
+  const g = (await win.locator(":scope > div").last().boundingBox())!;
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2 - (w.y + w.height - t.y + 8), { steps: 4 });
+  await page.mouse.up();
+  expect((await win.boundingBox())!.y + (await win.boundingBox())!.height).toBeLessThanOrEqual(t.y + 1);
+}
 
 /** The width and height of a PNG file (its IHDR). */
 function pngSize(file: string): { width: number; height: number } {
@@ -115,7 +132,10 @@ test("charts: «Гистограмма» from the menu of a set → «Графи
     await expect(hist).toHaveAttribute("aria-label", `Золото по пробам · ${SET}`);
     // the window open: another edit of the sample — the chart computes again by itself
     const meanEdited = await meanOf(hist);
-    await grid.getByRole("row").nth(1).getByRole("gridcell").nth(col).click();
+    const cell = grid.getByRole("row").nth(1).getByRole("gridcell").nth(col);
+    await cell.scrollIntoViewIfNeeded();
+    await clearOf(page, hist, cell); // the window lower: the cell of the table in sight beneath it
+    await cell.click();
     await grid.getByLabel(`Правка ${first}`).fill("1950");
     await page.keyboard.press("Enter");
     await expect(grid.getByRole("row").nth(1).getByRole("gridcell").nth(col)).toHaveText("1950", { timeout: 10_000 });
