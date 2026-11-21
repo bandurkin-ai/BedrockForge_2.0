@@ -120,6 +120,23 @@ def test_warm_leaves_nothing_to_compile_for_the_columns_of_the_api() -> None:
     f = sf.frame(30.0, -10.0, 5.0)
     swath.sample_series(points, sel, f, swath.cuboid(f, samples=[swath.sample_bounds(f, points, sel)], width=2.0))
     blocks(rng, points, sel, f)
+    # 13.35: a domain and Y of another table — the kernels of `source_kernels` take the columns as read-only
+    # views whatever they are: nothing to compile for the cached columns nor for those of a part of the holes
+    from bf_core.stats import source
+
+    assert before["bf_core.stats.source_kernels.cover"] == before["bf_core.stats.source_kernels.match"] == 1
+    names = [f"H{k:02d}" for k in range(40)]
+    starts = np.arange(0, n + 1, 300, dtype=np.int64)
+    for freeze in (frozen, np.array):
+        a, b = (
+            source.Columns(source.Table(1, table_id, "t", "t", "interval", "tok", 1, n), freeze(np.arange(n)), names,
+                           freeze(np.arange(40)), freeze(starts), freeze(frm), freeze(to), 0, {"V": freeze(values)},
+                           {"Z": freeze(codes)}, {"Z": LABELS})
+            for table_id in (1, 2)
+        )  # fmt: skip
+        dom = source.domain_at(a, b, "Z")
+        assert dom.outside == 0 and np.array_equal(dom.codes, codes)
+        assert source.paired(a, b, "V").unmatched == 0
     after = compiled()
     assert {k: (before.get(k), v) for k, v in after.items() if before.get(k) != v} == {}
 

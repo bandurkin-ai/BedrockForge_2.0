@@ -12,7 +12,8 @@ column). The file of a model never changes in place: a new file is a new SHA —
 file of that model go when the new ones come, so do those of another project (a project closed and another
 opened). A column bigger than the limit is not kept. Concurrent requests of one model read its file once (a
 lock per file): the columns missing are read in one pass over the row groups of the Parquet file, straight into
-arrays of the size of the model (no list of parts, no concatenation). Arrays are shared by requests: read-only.
+arrays of the size of the model (no list of parts, no concatenation); the memory pyarrow keeps for itself after
+that goes back to the system (13.35). Arrays are shared by requests: read-only.
 numpy and pyarrow load on first use (tests/test_process.py)."""
 
 from __future__ import annotations
@@ -174,6 +175,9 @@ def _read(project: Any, m: Model, names: Sequence[str], want_idx: bool) -> dict[
         pos += n
     if pos != m.cells:
         raise store.broken()
+    import pyarrow as pa
+
+    pa.default_memory_pool().release_unused()  # what the pool keeps of the row groups: ~90 МБ at 20 million cells
     return out
 
 
