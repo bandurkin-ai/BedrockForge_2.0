@@ -112,7 +112,7 @@ describe("the answer of the preview", () => {
     const rows = interceptRows(a, "AU");
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ from: 1, to: 6, length: 5, grade: 1.16, lenG: 5.8, tt: null, ttG: null, flag: 2, label: "5,0 м @ 1,16 г/т" });
-    expect(a.summary).toEqual({ intercepts: 1, included: 0, length: 5, len_g: 5.8 });
+    expect(a.summary).toMatchObject({ intercepts: 1, included: 0, length: 5, len_g: 5.8, tt: null, mean: null });
     expect(a.setSummary).toBeNull();
     expect(samplesWithOre(a).values.__ORE).toEqual([null, "руда", "руда", null, null, "руда", null, null, null, "руда"]);
   });
@@ -124,7 +124,7 @@ describe("the answer of the preview", () => {
     expect(bad.samples.values.AU).toEqual([null, "x"]);
     expect(bad.ore).toEqual([null, true]);
     expect(bad.candidates).toEqual([]);
-    expect(bad.summary).toEqual({ intercepts: 2, included: null, length: null, len_g: null });
+    expect(bad.summary).toEqual({ intercepts: 2, included: null, length: null, len_g: null, tt: null, mean: null, waste_len: null, miss_len: null, rows: null, excluded: null, skipped: null });
     expect(renderToStaticMarkup(createElement(InterceptsPreview, { answer: e, field: "AU" }))).toContain("нет проб");
   });
 

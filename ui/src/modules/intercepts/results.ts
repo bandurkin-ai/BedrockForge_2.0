@@ -137,6 +137,7 @@ export function interceptParamFacts(r: ResultRow): Fact[] {
   return out;
 }
 
+/** The names of the keys of `report` (e15-api.md, 15.11–15.12); the same key of `tt` and `intercepts` may differ. */
 const REPORT_LABELS: Record<string, string> = {
   rows: "Строк",
   intercepts: "Пересечений",
@@ -145,24 +146,46 @@ const REPORT_LABELS: Record<string, string> = {
   sum_length: "Σ LENGTH, м",
   tt: "Σ TT, м",
   sum_tt: "Σ TT, м",
+  with_tt: "Строк с TT",
   len_g: "Σ LEN_G",
   sum_len_g: "Σ LEN_G",
   mean: "Среднее содержание",
   waste_len: "Σ WASTE_LEN, м",
   miss_len: "Σ MISS_LEN, м",
-  excluded: "Исключено строк",
+  excluded: "Вне расчёта (нет глубины, TO ≤ FROM)",
+  skipped: "Без FROM или TO (не прочитаны, поля пусты)",
+  capped: "Интервалов с увеличенной частью ствола",
+  unit: "Единица содержания",
+  field: "Поле содержания",
+};
+
+/** `intercepts`: Σ by the main intercepts; the samples out of the rule (overlaps too). */
+const RUN_LABELS: Record<string, string> = {
+  length: "Σ LENGTH основных, м",
+  tt: "Σ TT основных, м",
+  excluded: "Проб вне правила (нет глубины, TO ≤ FROM, перекрытия)",
+  skipped: "Проб без FROM или TO (не прочитаны)",
 };
 
 /** Keys of the report not shown as facts (the columns, the time and versions — in «Результат»). */
-const REPORT_SKIP = new Set(["written", "table_columns", "seconds", "versions", "edits", "summary", "counts", "src", "flags"]);
+const REPORT_SKIP = new Set(["written", "table_columns", "seconds", "versions", "edits", "summary", "counts", "src", "flags", "journal", "absent", "sources"]);
+
+const sourceTitle = (s: unknown): string => SOURCE_TITLES[String(s) as OrientSource] ?? String(s);
 
 /**
  * The summary of a result of Э15: rows by TT_SRC and by the bits of TT_FLAG (`report.counts {src, flags}` or the
- * same keys at the top — the form of the preview), then the numbers of the report with Russian names; an empty
- * value stays «—», never 0.
+ * same keys at the top — the form of the preview), then the numbers of the report with Russian names, the rows by
+ * the source of the chain (`sources`) and the kinds of sources that were not there (`absent`); an empty value stays
+ * «—», never 0.
  */
 export function interceptReportFacts(r: ResultRow): Fact[] {
   const rep = r.report ?? {};
+  const run = r.op === "intercepts";
+  const unit = typeof rep.unit === "string" && rep.unit ? rep.unit : null;
+  const label = (k: string): string => {
+    const base = (run ? RUN_LABELS[k] : undefined) ?? REPORT_LABELS[k] ?? k;
+    return k === "mean" && unit ? `${base}, ${unit}` : base;
+  };
   const out: Fact[] = [];
   const counts = toCounts(rep.counts ?? rep);
   if (counts) {
@@ -171,8 +194,14 @@ export function interceptReportFacts(r: ResultRow): Fact[] {
   }
   for (const [k, v] of Object.entries(rep)) {
     if (REPORT_SKIP.has(k)) continue;
-    if (v === null) out.push({ label: REPORT_LABELS[k] ?? k, value: "—" });
-    else if (typeof v === "number" || typeof v === "string") out.push({ label: REPORT_LABELS[k] ?? k, value: typeof v === "number" ? numberText(v) : v });
+    if (v === null) out.push({ label: label(k), value: "—" });
+    else if (typeof v === "number" || typeof v === "string") out.push({ label: label(k), value: typeof v === "number" ? numberText(v) : v });
   }
+  if (Array.isArray(rep.sources))
+    for (const s of rep.sources as unknown[]) {
+      const o = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
+      if (o.source !== undefined) out.push({ label: `Строк по источнику «${sourceTitle(o.source)}»`, value: num(o.rows) });
+    }
+  if (Array.isArray(rep.absent) && rep.absent.length) out.push({ label: "Источников не было", value: rep.absent.map(sourceTitle).join(", ") });
   return out;
 }

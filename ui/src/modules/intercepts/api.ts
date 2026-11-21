@@ -8,8 +8,9 @@
  * - `POST /tt/preview {params, hole_id}` → `{hole, rows: {from, to, length, TT, TT_REL, TT_FLAG, TT_SRC, ALPHA,
  *   DIPDIR, HOLE_THETA, HOLE_AZ}, counts: {src, flags: {"1", "2", "4", "8"}}, mesh_skipped, set_summary, notes}`.
  * - `POST /run/preview {params, hole_id}` → `{hole, unit, samples: {from, to, values, ore}, candidates: [{from, to,
- *   length, tt, grade, kind, accepted, reason}], result: {from, to, values}, summary: {intercepts, included, length,
- *   len_g}, set_summary, notes}`.
+ *   length, tt, grade, kind, accepted, reason}], result: {from, to, values}, summary, set_summary, notes}`;
+ *   `summary` / `set_summary` — the form of `report` (`counts, rows, intercepts, included, length, tt, len_g, mean,
+ *   waste_len, miss_len, excluded, skipped`; the core of 15.12).
  * - `POST /orientation/plane {wireframe_ids}` → `{alpha, dipdir, spread, triangles, area}` («Взять с каркаса»).
  * - `POST /results/{id}/rebuild` — through `composites/api.rebuildResult` (the prefix by the operation).
  * - the sources of the block: `GET /drillholes/sets/{id}/tables` (kinds `assay`, `interval`, `event` — замеры керна),
@@ -198,11 +199,21 @@ export interface Candidate {
   reason: string | null;
 }
 
+/** `summary` / `set_summary` of `run/preview` — the form of `report` of the record (15.12); left out — null. */
 export interface RunSummary {
   intercepts: number | null;
   included: number | null;
   length: number | null;
   len_g: number | null;
+  /** Σ TT of the main intercepts; null — none has TT */
+  tt: number | null;
+  /** len_g / length; null — no intercepts */
+  mean: number | null;
+  waste_len: number | null;
+  miss_len: number | null;
+  rows: number | null;
+  excluded: number | null;
+  skipped: number | null;
 }
 
 export interface RunPreview {
@@ -232,7 +243,8 @@ function runColumns(raw: unknown): RunColumns {
 function runSummary(raw: unknown): RunSummary | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  return { intercepts: numOrNull(r.intercepts), included: numOrNull(r.included), length: numOrNull(r.length), len_g: numOrNull(r.len_g) };
+  const n = (k: string) => numOrNull(r[k]);
+  return { intercepts: n("intercepts"), included: n("included"), length: n("length"), len_g: n("len_g"), tt: n("tt"), mean: n("mean"), waste_len: n("waste_len"), miss_len: n("miss_len"), rows: n("rows"), excluded: n("excluded"), skipped: n("skipped") };
 }
 
 /** The answer of `POST /intercepts/run/preview` (e15-api.md) made safe to draw: what is left out is empty, never 0. */

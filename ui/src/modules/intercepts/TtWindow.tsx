@@ -18,7 +18,7 @@ import { askReplace, HolePicker, JobView, ParamForm, ToolFooter } from "../compo
 import { startTt, ttPreview, type TtPreview as Answer } from "./api";
 import { RUN_WINDOW, TT_WINDOW } from "./bind";
 import { OrientationForm } from "./OrientationForm";
-import { InterceptsWindow } from "./InterceptsWindow";
+import { InterceptsWindow, useWhenDone } from "./InterceptsWindow";
 import { coreErrors, DEFAULT_ORIENTATION, interceptBody, orientationFromArgs, TT_TOOL, type OrientationState } from "./params";
 import { TtPreview } from "./TtPreview";
 
@@ -47,6 +47,7 @@ export function TtWindow({ winId, args = {} }: { winId: string; args?: Record<st
   const [error, setError] = useState<string | null>(init.note);
   const [busy, setBusy] = useState(false);
   const [job, setJob] = useState<Started | null>(null);
+  useWhenDone(job);
   const [activeSet] = useState(() => tablesStore.get().setId);
   const checked = useMemo(() => interceptBody(TT_TOOL, { setId: src.setId, table: src.table }, values, orient), [src, values, orient]);
   // a refusal of the core with `param` marks its field until the next edit (e15-api.md: «orientation.0.alpha»)

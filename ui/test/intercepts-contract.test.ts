@@ -78,13 +78,19 @@ describe("the bodies of the forms are the examples of the contract", () => {
     setCoreTarget(null);
   });
 
-  it("`/run`: no `angles`; `fields` absent — every numeric field, [] — only `field`; c any finite number; name ≤ 200", () => {
-    const values = { ...defaultValues(RUN_TOOL.params), cutoff: "-0,5" };
+  it("`/run`: no `angles`; `fields` absent — every numeric field, [] — only `field`; c > 0; name ≤ 200", () => {
+    for (const bad of ["0", "-0,5"]) {
+      const r = interceptBody(RUN_TOOL, { setId: 3, table: "12", field: "AU" }, { ...defaultValues(RUN_TOOL.params), cutoff: bad }, st({ enabled: false }));
+      expect(r.body, bad).toBeNull();
+      expect(r.errors.cutoff).toBe("«Бортовое содержание c»: должно быть больше нуля");
+      expect(r.reason).toBe(r.errors.cutoff);
+    }
+    const values = { ...defaultValues(RUN_TOOL.params), cutoff: "0,5" };
     const all = interceptBody(RUN_TOOL, { setId: 3, table: "12", field: "AU", grades: null }, values, st({ enabled: false })).body!;
     expect(all).not.toHaveProperty("angles");
     expect(all).not.toHaveProperty("fields");
     expect(all).not.toHaveProperty("orientation");
-    expect(all).toMatchObject({ cutoff: -0.5, include_cutoff: null, density: null });
+    expect(all).toMatchObject({ cutoff: 0.5, include_cutoff: null, density: null });
     expect(interceptBody(RUN_TOOL, { setId: 3, table: "12", field: "AU", grades: ["AU"] }, values, st({ enabled: false })).body?.fields).toEqual([]);
     const long = interceptBody(RUN_TOOL, { setId: 3, table: "12", field: "AU" }, { ...values, name: "Я".repeat(201) }, st({ enabled: false }));
     expect(long.body).toBeNull();

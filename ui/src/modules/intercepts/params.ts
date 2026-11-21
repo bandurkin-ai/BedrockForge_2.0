@@ -39,7 +39,7 @@ export const TT_PARAMS: readonly ParamSpec[] = [
 
 /** The parameters of the rule of ore intercepts 8.5.3 (the window — 15.16; the command — here). */
 export const RUN_PARAMS: readonly ParamSpec[] = [
-  { key: "cutoff", label: "Бортовое содержание c", kind: "number", default: null, hint: "любое конечное число" },
+  { key: "cutoff", label: "Бортовое содержание c", kind: "number", default: null, hint: "больше нуля" },
   num("l_min", "Мин. длина пересечения L_min", 0, 100, 2, "м"),
   {
     key: "min_by",
@@ -374,6 +374,7 @@ export function argsFromOrientation(list: unknown): Record<string, unknown> {
 
 /** The name of the table of intercepts: at most 200 characters (the core: `NAME_MAX`). */
 export const NAME_MAX = 200;
+const CUTOFF_POSITIVE = "«Бортовое содержание c»: должно быть больше нуля";
 const NAME_LONG = `«Имя таблицы»: не больше ${NAME_MAX} знаков`;
 
 /** The fields «Истинная мощность» writes: never offered as grades (the core leaves them out of `fields` too). */
@@ -401,6 +402,8 @@ export function interceptBody(tool: ToolSpec, src: { setId: number | null; table
   if (tool.id === "tt" && !o.orientation.length) return { body: null, errors: all, reason: "Задайте ориентировку" };
   const c = body.cutoff;
   const c2 = body.include_cutoff;
+  // the core (as `RuleParams.checked`, ТЗ 8.5.4): c > 0, else 422 `bad_param` {param: "cutoff"}
+  if (tool.id === "run" && typeof c === "number" && !(c > 0)) return { body: null, errors: { ...all, cutoff: CUTOFF_POSITIVE }, reason: CUTOFF_POSITIVE };
   if (typeof c === "number" && typeof c2 === "number" && c2 <= c) return { body: null, errors: { ...all, include_cutoff: "«Борт „в том числе“ c2»: должен быть больше c" }, reason: "«Борт „в том числе“ c2»: должен быть больше c" };
   const out: Record<string, unknown> = { set_id: src.setId, table: src.table, ...(tool.source.fields === "one" ? { field: src.field } : {}), ...body };
   if (tool.id === "run") {

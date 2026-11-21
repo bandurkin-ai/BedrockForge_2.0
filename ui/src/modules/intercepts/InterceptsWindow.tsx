@@ -5,15 +5,20 @@
  * (a value out of range is marked and never sent), the block «Ориентировка» (may be switched off: TT empty,
  * TT_SRC «нет»), the preview on one hole (`POST /intercepts/run/preview`, the newest answer only), «Применить» →
  * the job `intercept.run` followed in the window; 409 `table_exists` → «Заменить?» in our own window. A refusal of
- * the core with `param` marks its field (e15-api.md).
+ * the core with `param` marks its field (e15-api.md). When the job is done, the table opens in the bottom panel and
+ * its display «Рудные пересечения» (`chart_id` of the result) is switched on in 3D — as «Рудные интервалы» of Д-26.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { App } from "../../shell/app";
+import { AppContext } from "../../shell/AppContext";
 import { errorText } from "../../shell/props";
 import css from "../../shell/PropsParts.module.css";
-import { refresh as refreshJobs } from "../jobs/state";
+import { jobsStore, refresh as refreshJobs } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { createPreviewer, type FieldRow, type Previewer, type Started } from "../composites/api";
 import { NO_SOURCE, parseNames, sourceFromArgs, valuesFromArgs, type FormValues, type ParamSpec, type SourceState } from "../composites/params";
+import { showOreResult } from "../composites/OreWindow";
+import { loadSetResults } from "../composites/results";
 import { SourcePicker } from "../composites/SourcePicker";
 import { askReplace, HolePicker, JobView, ParamForm, ToolFooter } from "../composites/ToolWindow";
 import { runPreview, startRun, type RunPreview } from "./api";
@@ -85,6 +90,27 @@ function GradesPicker({ choices, value, onChange }: { choices: readonly string[]
   );
 }
 
+/**
+ * Once the job of a window of Э15 is done: the results of its set are read again (the rows `tt` / `intercepts` of
+ * «Обработка проб» in the tree — also when the tree forgot the set), then `then` (the run window: the table in the
+ * bottom panel and the display switched on, `showOreResult`).
+ */
+export function useWhenDone(job: Started | null, then?: (app: App | null, result: Record<string, unknown>) => Promise<void>): void {
+  const app = useContext(AppContext);
+  const get = () => (job ? jobsStore.get().jobs.find((j) => j.source === job.source && j.id === job.id) : undefined);
+  const live = useSyncExternalStore(jobsStore.subscribe, get, get);
+  const shownFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!job || live?.status !== "done" || !live.result) return;
+    const key = `${job.source}:${job.id}`;
+    if (shownFor.current === key) return;
+    shownFor.current = key;
+    const result = live.result as Record<string, unknown>;
+    if (typeof result.set_id === "number") void loadSetResults(result.set_id).catch(() => undefined);
+    if (then) void then(app, result).catch(() => undefined);
+  }, [job, live, app]);
+}
+
 export function InterceptsWindow({ winId, args = {} }: { winId: string; args?: Record<string, unknown> }) {
   const [init] = useState(() => runInitial(args));
   const [src, setSrc] = useState<SourceState>(init.src);
@@ -98,6 +124,7 @@ export function InterceptsWindow({ winId, args = {} }: { winId: string; args?: R
   const [error, setError] = useState<string | null>(init.note);
   const [busy, setBusy] = useState(false);
   const [job, setJob] = useState<Started | null>(null);
+  useWhenDone(job, showOreResult);
   const [activeSet] = useState(() => tablesStore.get().setId);
   const field = src.fields[0] ?? null;
   const density = typeof values.density === "string" ? values.density : "";
