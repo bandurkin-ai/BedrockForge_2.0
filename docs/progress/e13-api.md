@@ -241,8 +241,8 @@ POST /stats/tab/declus      {…общие, weights: false}
 POST /stats/tab/nscore      {…общие, zmin, zmax}
 → { set_id, table, field, count, values [], scores [] (таблица преобразования по возрастанию), table_rows (её строк;
     < count при весах 0), zmin, zmax, rows [dh_rows.id], sample_scores [] (оценка каждой точки), weighted, counts }
-POST /stats/tab/backtr      {…общие, zmin, zmax, scores [1…20 000], ltail, utail ("linear" | "power" | "hyperbolic"
-                             …, как Э12), ltpar, utpar}
+POST /stats/tab/backtr      {…общие, zmin, zmax, scores [1…20 000], ltail ("linear" | "power" | null), utail
+                             ("linear" | "power" | "hyperbolic" | null; null — крайнее значение таблицы), ltpar, utpar}
 → { set_id, table, field, values [число | null] }           // null — у хвоста там нет числа
 POST /stats/tab/bootstrap   {…общие, n_boot (1000), seed (null — случайное, возвращается), confidence (0.95)}
 → { set_id, table, field, count, n_boot, seed, confidence, weighted,
