@@ -7,7 +7,8 @@ pairs of one type and one element (after the filter, in the order of the rows of
         x1, x2 float64[n] (NaN — no value); dl float64[n] — the DL of the laboratory of the second sample (NaN —
         none: `blanks.effective_dl`); no_parent bool[n] — the first sample was not found at the import
         Selection: used bool[n]; excluded {no_parent, missing, negative, zero, below} — each pair under the
-        first reason that holds; no_dl — the pairs taken without a DL (the screening was not applied to them)
+        first reason that holds; reason uint8[n] — 0 for a pair taken, else the place of its reason in
+        `EXCLUDED` from 1; no_dl — the pairs taken without a DL (the screening was not applied to them)
     measure(x1, x2, limit, share_limit=90) -> Pairs          the pairs that are taken:
         hard, hrd float64[n] (%; AMPD = 2·HARD), share10, share20, share30, share_at_limit (% of the pairs
         with HARD ≤ 10, 20, 30 and `limit`; NaN — no pairs), passed (share_at_limit ≥ share_limit; None — no
@@ -50,6 +51,7 @@ class Selection:
 
     used: np.ndarray
     excluded: dict[str, int]
+    reason: np.ndarray
     no_dl: int
 
 
@@ -93,9 +95,12 @@ def select(x1: Any, x2: Any, dl: Any = None, k_dup: float = 5.0, *, no_parent: A
         known = np.isfinite(limit) & (limit > 0.0)
         below = ok & known & gt(k_dup, 0.5 * total / np.where(known, limit, 1.0))
         ok &= ~below
-    counts = (left, missing, negative, zero, below)
-    excluded = {name: int(np.count_nonzero(c)) for name, c in zip(EXCLUDED, counts, strict=True)}
-    return Selection(ok, excluded, int(np.count_nonzero(ok & ~known)))
+    reason = np.zeros(n, dtype=np.uint8)
+    for code, why in enumerate((left, missing, negative, zero, below), start=1):
+        reason[why] = code
+    count = np.bincount(reason, minlength=len(EXCLUDED) + 1)
+    excluded = {name: int(count[code]) for code, name in enumerate(EXCLUDED, start=1)}
+    return Selection(ok, excluded, reason, int(np.count_nonzero(ok & ~known)))
 
 
 def measure(x1: Any, x2: Any, limit: float, share_limit: float = 90.0) -> Pairs:

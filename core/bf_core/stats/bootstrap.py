@@ -11,6 +11,7 @@ the tab «Статистика» are counted in one pass. `resample_groups` and 
         JSON-ready, for the tab: count, n_boot (10 … 5000), seed, confidence, weighted and per statistic
         observed, observed_weighted, mean and std of the realizations, ci_low, ci_high, defined (realizations
         where it is defined), edges and counts (the histogram of 24 bins); None — undefined, never 0
+    draws(n, weights, n_boot, seed) -> iterator of int64[n]     the rows of every realization
 
 Resampling (BF). A realization draws n rows with replacement: `rng.integers(0, n, n)` of
 `numpy.random.default_rng(seed)`; with weights (declustering) a row is drawn with the probability of its
@@ -92,9 +93,10 @@ class _Steps:
         return idx  # type: ignore[no-any-return]
 
 
-def _draws(n: int, w: np.ndarray | None, n_boot: int, seed: Any) -> Iterator[np.ndarray]:
+def draws(n: int, w: np.ndarray | None, n_boot: int, seed: Any) -> Iterator[np.ndarray]:
     """The rows of every realization: n of 0 … n − 1 with replacement (BF: `rng.integers(0, n, n)`; with
-    weights — `searchsorted(cdf, rng.random(n), side="right")`)."""
+    weights — `searchsorted(cdf, rng.random(n), side="right")`). One seed — the same rows; the bootstrap of the
+    pairs of QAQC (`qaqc.external`, ADR 0020 §4) takes its resamples here."""
     rng = np.random.default_rng(seed)
     if w is None:
         for _ in range(n_boot):
@@ -103,6 +105,9 @@ def _draws(n: int, w: np.ndarray | None, n_boot: int, seed: Any) -> Iterator[np.
     steps = _Steps(w)
     for _ in range(n_boot):
         yield steps.rows(rng.random(n))
+
+
+_draws = draws  # the name before Э14
 
 
 def bootstrap(
@@ -119,7 +124,7 @@ def bootstrap(
         raise _bad("n_boot", "Число реализаций должно быть не меньше 1.", "Задайте, например, 1000.")
     w = as_weights(weights, int(x.size))
     out = np.empty(n_boot)
-    for b, idx in enumerate(_draws(int(x.size), w, n_boot, seed)):
+    for b, idx in enumerate(draws(int(x.size), w, n_boot, seed)):
         out[b] = stat(x[idx])
     return out
 
@@ -176,7 +181,7 @@ def realizations(
     w = as_weights(weights, n)
     data = _Sorted(x)
     out = np.empty((n_boot, len(STATISTICS)))
-    for b, idx in enumerate(_draws(n, w, n_boot, seed)):
+    for b, idx in enumerate(draws(n, w, n_boot, seed)):
         out[b] = data.stats(idx)
         if tick is not None and (b + 1) % _TICK == 0:
             tick((b + 1) / n_boot)
