@@ -276,3 +276,38 @@ def test_generated_file_normalizes(tmp_path: Path) -> None:
     assert (recs.index(r.PARENT_ROW)[dup] >= 0).all() and (recs.index(r.PARENT_ROW)[~dup] == -1).all()
     assert c["below_dl"] > 0 and (recs.flags(r.q("AU")) == r.Q_BELOW).sum() == c["elements"]["AU"]["below"]
     assert recs.text(r.LAB).labels == ("EXT", "LAB1", "LAB2", "LAB3")
+
+
+def test_bad_seq_is_a_bad_number_not_a_limit() -> None:
+    """14.25: the bad cells of SEQ are counted in `bad_numbers` only, never as «<DL» or «>x»."""
+    made = run(**small(SEQ=["1", "x", "y", "2", "3", "4"], AU_ppm=["1"] * 6))
+    c = made.counts
+    assert (c["below_dl"], c["above_dl"], c["bad_numbers"]) == (0, 0, 2)
+
+
+def test_read_rows_takes_only_their_row_groups(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """14.25: the card of records reads the row groups of its rows, every column, past the cache."""
+    import pyarrow.parquet as pq
+
+    monkeypatch.setattr(r, "ROW_GROUP", 2)
+    recs = run(**small()).records
+    path = tmp_path / "r.parquet"
+    r.write(recs, path)
+    assert pq.ParquetFile(path).num_row_groups == 3
+    read: list[list[int]] = []
+    real = pq.ParquetFile.read_row_groups
+
+    def spy(self: Any, groups: Any, *a: Any, **kw: Any) -> Any:
+        read.append(list(groups))
+        return real(self, groups, *a, **kw)
+
+    monkeypatch.setattr(pq.ParquetFile, "read_row_groups", spy)
+    sub = r.read_rows(path, np.array([1, 4, 5]))
+    assert read == [[0, 2]] and sub.row.tolist() == [1, 4, 5]
+    whole = r.open_file(path)
+    for name in recs.schema.columns():
+        part = whole.column(name)
+        want = part.take(np.array([1, 4, 5])) if isinstance(part, r.Text) else (
+            part.take([1, 4, 5]) if hasattr(part, "to_pylist") else part[[1, 4, 5]])  # fmt: skip
+        assert same(want, sub.column(name)), name
+    assert r.read_rows(path, np.array([], dtype=np.int64)).n == 0

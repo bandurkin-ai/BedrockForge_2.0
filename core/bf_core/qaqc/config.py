@@ -255,12 +255,18 @@ def read_crm_file(path: str | Path, sheet: str | None = None) -> dict[str, Any]:
     """Rows of a CSV / XLSX for the form of the reference (`POST /crm/read`): columns by names, values parsed;
     rows that `check_crm` would refuse are listed in `problems` [{row, message}] and kept in `rows`."""
     from bf_core.formats.errors import FormatError
+    from bf_core.formats.inspect import inspect_table
+    from bf_core.formats.numbers import parse_value
     from bf_core.formats.registry import read_table
     from bf_core.formats.table import ReadOptions
 
     from .normalize import _key
 
     try:
+        guess = inspect_table(path, ReadOptions(sheet=sheet), limit=1).estimated_rows
+        if guess is not None and guess > 2 * MAX_CRM:  # an estimate of a text file: refused only when far past
+            raise bad(f"В файле около {guess} строк — больше {MAX_CRM}.", "Оставьте нужные стандарты.", "path",
+                      code="too_many_rows")  # fmt: skip
         tab = read_table(path, ReadOptions(sheet=sheet, text_columns=()))
     except FormatError as exc:
         raise ApiError(422, exc.code, exc.message, exc.hint) from exc
@@ -279,18 +285,16 @@ def read_crm_file(path: str | Path, sheet: str | None = None) -> dict[str, Any]:
                        extra={"columns": tab.names})  # fmt: skip
     cols = {f: tab.column(n) for f, n in found.items()}
     texts = {f: cols[f].text() for f in ("crm_id", "element", "unit", "source") if f in cols}
-    nums = {f: cols[f].to_numpy() if cols[f].kind == "number" else None for f in ("mean", "sd")}
+    nums: dict[str, list[Any]] = {}
+    for f in ("mean", "sd"):
+        col = cols[f]
+        nums[f] = col.to_numpy().tolist() if col.kind == "number" else [parse_value(t)[0] for t in col.text()]
     rows: list[dict[str, Any]] = []
     for i in range(tab.rows):
         row: dict[str, Any] = {f: texts[f][i] if f in texts else None for f in ("crm_id", "element", "unit", "source")}
         for f in ("mean", "sd"):
-            arr = nums[f]
-            value = float(arr[i]) if arr is not None else None
-            if arr is None:
-                from bf_core.formats.numbers import parse_value
-
-                value = parse_value(cols[f].text()[i])[0]
-            row[f] = None if value is None or math.isnan(value) else value
+            value = nums[f][i]
+            row[f] = None if value is None or math.isnan(value) else float(value)
         rows.append(row)
     problems = []
     for i, row in enumerate(rows):

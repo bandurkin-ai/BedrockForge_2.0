@@ -215,8 +215,10 @@ def field_values(
     q: Annotated[str, Query(max_length=200)] = "",
     limit: Annotated[int, Query(ge=1, le=MAX_VALUES)] = 200,
 ) -> dict[str, Any]:
+    from . import records as r
     from . import service as sv
 
+    r.watch(svc)
     recs = sv.open_records(svc.require_current(), data_id)
     return values_of(recs, field, q, limit)
 
@@ -240,9 +242,16 @@ def values_of(recs: Any, field: str, q: str = "", limit: int = 200) -> dict[str,
         import pyarrow.compute as pc
 
         arr = recs.ids(field)
-        vc = pc.value_counts(arr.drop_null())
-        pairs = sorted(zip(vc.field("values").to_pylist(), vc.field("counts").to_pylist(), strict=True))
         empty = int(arr.null_count)
+        arr = arr.drop_null()
+        if needle:
+            arr = arr.filter(pc.match_substring(arr, q.strip(), ignore_case=True))
+        vc = pc.value_counts(arr)
+        order = pc.sort_indices(vc.field("values"))
+        more = len(order) > limit
+        cut = vc.take(order[:limit])
+        found = zip(cut.field("values").to_pylist(), cut.field("counts").to_pylist(), strict=True)
+        return {"values": [{"value": v, "n": int(k)} for v, k in found], "more": more, "empty": empty}
     elif kind in ("number", "date"):
         values = recs.date() if kind == "date" else recs.number(field)
         ok = values[~np.isnan(values)]

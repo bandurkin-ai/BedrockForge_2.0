@@ -228,3 +228,20 @@ def test_pairs_through_the_api(qc, tmp_path) -> None:  # type: ignore[no-untyped
     assert one["groups"][0]["rma"]["n_boot"] == 0 and len(one["points"]["row"]) == g["used"]
     bad = qc.post(f"{Q}/calc/duplicates", json={**body, "c": [-1]})
     assert bad.status_code == 422 and bad.json()["code"] == "bad_param"
+
+
+def test_records_skip_the_cache_and_closing_drops_the_columns(qc) -> None:  # type: ignore[no-untyped-def]
+    """14.25: `POST /records` by rows reads past the cache; closing the project drops its columns from the cache;
+    the values of an identifier are filtered and cut in pyarrow."""
+    did = t84(qc)
+    r.CACHE.clear()
+    got = qc.post(f"{Q}/records", json={"data_id": did, "rows": [3, 1]}).json()
+    assert [x["row"] for x in got["records"]] == [3, 1] and r.CACHE.keys() == []
+    assert post(qc, "standards", data_id=did, element="AU").status_code == 200
+    uid = projects_of(qc.core).require_current().uid
+    assert any(k[0] == uid for k in r.CACHE.keys())
+    v = qc.get(f"{Q}/data/{did}/values", params={"field": r.SAMPLE_ID, "q": "s1", "limit": 3}).json()
+    assert v == {"values": [{"value": "S1", "n": 1}, {"value": "S10", "n": 1}, {"value": "S11", "n": 1}],
+                 "more": True, "empty": 0}  # fmt: skip
+    assert qc.post(f"{API}/projects/close").status_code == 200
+    assert not any(k[0] == uid for k in r.CACHE.keys())

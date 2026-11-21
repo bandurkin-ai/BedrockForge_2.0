@@ -24,7 +24,8 @@ float64 or text by dictionary (≤ 40). `row` is not stored: it is the position 
 
 File: Parquet zstd, row groups of 250 000, the schema in the key-value metadata `bf.qaqc` (JSON `v: 1`). Cache:
 `CACHE` — `stats/source.ColumnCache` of 256 МБ; key (scope, sha256 of the file, 0, 0, column): another scope
-(project) drops the columns of the previous one; reads of one file go one at a time, each absent column once.
+(project) drops the columns of the previous one, closing a project drops its own (`watch`); reads of one file
+go one at a time, each absent column once.
 Limits: ≤ 5 million rows, ≤ 60 elements, ≤ 40 other fields (`check_size`, 422 with a hint).
 """
 
@@ -58,6 +59,22 @@ TEXTS = (HOLE, TYPE_CODE, CRM_ID, LAB, BATCH, PARENT_LAB)
 BASE = (SAMPLE_ID, HOLE, TYPE_CODE, PARENT_ID, CRM_ID, LAB, BATCH, DATE, SEQ, PARENT_ROW, PREV_ROW, PARENT_LAB)
 Q_NUMBER, Q_BELOW, Q_ABOVE = 0, 1, 2
 NUMBER, TEXT = "number", "text"
+
+
+_watched: list[Any] = []
+
+
+def watch(svc: Any) -> None:
+    """Once per project service: the columns of a project leave `CACHE` when it is closed (`svc.on_close`)."""
+    if any(w is svc for w in _watched):
+        return
+
+    def closed(project: Any) -> bool:
+        CACHE.forget((project.uid,))
+        return False  # nothing to keep the project for
+
+    svc.on_close.append(closed)
+    _watched.append(svc)
 
 
 def v(e: str) -> str:
@@ -281,6 +298,7 @@ class Records:
     loader: Loader
     row: np.ndarray
     _have: dict[str, Any] = field(default_factory=dict, repr=False)
+    path: Path | None = None  # the file of the records (`open_file`); None — in memory or a `take`
 
     def _get(self, name: str) -> Any:
         hit = self._have.get(name)
@@ -513,4 +531,33 @@ def open_file(path: str | Path, *, sha: str | None = None, scope: Any = None, ca
         return got
 
     load.many = many  # type: ignore[attr-defined]
-    return Records(n, schema, load, np.arange(n, dtype=np.int32))
+    return Records(n, schema, load, np.arange(n, dtype=np.int32), path=Path(path))
+
+
+def read_rows(path: str | Path, rows: np.ndarray) -> Records:
+    """Every column of the given rows of a file (sorted, unique positions): only the row groups that hold them,
+    past the cache — the card of a record reads a few rows, not the columns of every element."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    schema, _n = schema_of(path)
+    pf = pq.ParquetFile(str(path))
+    sizes = np.array([pf.metadata.row_group(g).num_rows for g in range(pf.num_row_groups)], dtype=np.int64)
+    starts = np.concatenate(([0], np.cumsum(sizes)))
+    rows = np.asarray(rows, dtype=np.int64)
+    names = schema.columns()
+    group_of = np.searchsorted(starts, rows, side="right") - 1  # the row group of every row
+    groups = np.unique(group_of)
+    if len(groups):
+        table = pf.read_row_groups(groups.tolist(), columns=names)
+        base = np.concatenate(([0], np.cumsum(sizes[groups])))[:-1]  # where each group read starts in the table
+        local = base[np.searchsorted(groups, group_of)] + rows - starts[group_of]
+        table = table.take(pa.array(local))
+    else:
+        table = pf.schema_arrow.empty_table().select(names)
+    have = {c: _convert(schema.kind(c), table.column(c)) for c in names}
+
+    def nothing(name: str) -> Any:
+        raise KeyError(name)
+
+    return Records(len(rows), schema, nothing, rows.astype(np.int32), have)

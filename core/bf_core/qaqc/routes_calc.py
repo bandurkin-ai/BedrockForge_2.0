@@ -119,6 +119,9 @@ def compute(project: Any, section: str, body: dict[str, Any]) -> dict[str, Any]:
 
 @router.post("/calc/{section}")
 def calc_section(svc: Svc, section: str, body: Payload) -> dict[str, Any]:
+    from . import records as r
+
+    r.watch(svc)
     return compute(svc.require_current(), section, _body(body))
 
 
@@ -165,10 +168,17 @@ def _value(x: Any) -> Any:
 
 
 def records_of(recs: Any, config: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
+    """Every field of the chosen records; of a file only its row groups that hold them (`records.read_rows`)."""
+    import numpy as np
+
     from . import records as r
     from .config import type_of
 
     at, total = _pick(recs, body)
+    if recs.path is not None:
+        rows = np.unique(recs.row[at])
+        recs = r.read_rows(recs.path, rows).take(np.searchsorted(rows, recs.row[at]))
+        at = np.arange(recs.n)
     sch = recs.schema
     cols: dict[str, list[Any]] = {"row": recs.row[at].tolist()}
     for name in (r.SAMPLE_ID, r.PARENT_ID):
@@ -202,6 +212,12 @@ def records_of(recs: Any, config: dict[str, Any], body: dict[str, Any]) -> dict[
 
 @router.post("/records")
 def records(svc: Svc, body: Payload) -> dict[str, Any]:
+    from bf_core.stats.routes_charts import SLOTS
+
+    from . import records as r
+
+    r.watch(svc)
     raw = _body(body)
     got = inputs(svc.require_current(), raw)
-    return records_of(got.recs, got.config, raw)
+    with SLOTS:
+        return records_of(got.recs, got.config, raw)
