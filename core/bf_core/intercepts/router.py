@@ -18,7 +18,7 @@ registered in this build — 422 `not_ready`. The params of a job: {"body": the 
 result id | absent}. The previews (`POST /tt/preview`, `/run/preview`) are `routes_preview`, included here.
   * `POST /orientation/plane` {wireframe_ids} → {alpha, dipdir, spread, triangles, area}: the mean plane of the
     wireframes («Взять с каркаса»; `plane`). 422 `wireframe_not_found`, `bad_param` (more than 16),
-    `no_orientation` (no triangle with an area).
+    `no_orientation` (no triangle with an area); more than `MESH_TRIANGLES` (2 млн) triangles — 422 `bad_param`.
 Plain `def` routes run in the thread pool.
 """
 
@@ -38,6 +38,7 @@ from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
+from .routes_preview import MESH_TRIANGLES
 from .routes_preview import router as preview_router
 
 router = APIRouter(prefix="/intercepts")
@@ -129,24 +130,13 @@ def _record(conn: sa.Connection, result_id: int) -> dict[str, Any]:
 @router.delete("/results/{result_id}")
 def delete_result(svc: Svc, request: Request, result_id: int) -> dict[str, Any]:
     """«Удалить»: the columns of «Истинная мощность» (hidden: «Отменить» in the journal brings them back), the table
-    of «Рудные пересечения» with its display; the record."""
+    of «Рудные пересечения» with its display (`results.delete_result`; the events — `routes_results`); the record."""
     from bf_core.composites import routes_results
-
-    from . import display
 
     project = svc.require_current(writable=True)
     with dialect.read_tx(project.engine) as conn:
-        rec = _record(conn, result_id)
-        key = conn.execute(sa.select(dh_tables.c.name_key).where(dh_tables.c.id == rec["table_id"])).scalar()
-    out = routes_results.delete_result(svc, request, result_id)
-    if rec["op"] == "intercepts" and key is not None and not out["deleted_charts"]:
-        with dialect.write_tx(project.engine) as conn:  # until `results.delete_result` knows this op's display
-            out["deleted_charts"] = display.drop_display(conn, int(rec["set_id"]), key)
-        for cid in out["deleted_charts"]:
-            request.app.state.core.events.publish(
-                "objects.changed", {"kind": "chart", "set_id": rec["set_id"], "id": cid, "deleted": True}
-            )
-    return out
+        _record(conn, result_id)
+    return routes_results.delete_result(svc, request, result_id)
 
 
 @router.post("/results/{result_id}/rebuild")
@@ -190,19 +180,20 @@ def rebuild(
 PLANE_CHUNK = 2_000_000
 
 
-def plane(project: Any, meshes: list[tuple[Any, Any]]) -> dict[str, Any]:
+def plane(project: Any, meshes: list[tuple[Any, Any]], *, keep: bool = True) -> dict[str, Any]:
     """The mean plane of the triangles of `meshes` ((MeshState, stats) — `exact.set_targets`): the main
     eigenvector of Σ S·n·nᵀ (S — the area, n — the unit normal; the side of a triangle does not matter), turned
     up (n_z ≥ 0); `spread` — the mean angle between the normals and the normal of the plane weighted by area, °;
     `area`, m². None when no triangle has an area. The wireframes are read one at a time through the cache of
-    `wireframes.exact`, the triangles a part at a time."""
+    `wireframes.exact`, the triangles a part at a time; `keep=False` — a wireframe leaves the cache after its last
+    pass (as `orient_mesh.StoredTargets`)."""
     import numpy as np
 
     from bf_core.wireframes import exact
 
     from .formulas import plane_angles, upper_normal
 
-    def parts() -> Any:
+    def parts(last: bool) -> Any:
         for state, _stats in meshes:
             g = exact.geometry(project, state)
             for a in range(0, len(g.tri), PLANE_CHUNK):
@@ -212,21 +203,26 @@ def plane(project: Any, meshes: list[tuple[Any, Any]]) -> dict[str, Any]:
                 twice = np.sqrt((c * c).sum(axis=1))
                 ok = twice > 0.0
                 yield c[ok] / twice[ok, None], 0.5 * twice[ok]
+            if last and not keep:
+                exact.drop(g.key)
             del g
 
     tensor, area, triangles = np.zeros((3, 3)), 0.0, 0
-    for n, s in parts():
+    for n, s in parts(False):
         tensor += (n * s[:, None]).T @ n
         area += math.fsum(s.tolist())
     for state, _stats in meshes:
         triangles += int(state.triangles)
     if not area > 0.0:
+        if not keep:
+            for state, _stats in meshes:
+                exact.drop(state.cache_key())
         return {"triangles": triangles, "area": 0.0}
     w, v = np.linalg.eigh(tensor)
     normal = upper_normal(v[:, int(np.argmax(w))])
     alpha, dipdir = plane_angles(normal)
     turned = 0.0
-    for n, s in parts():
+    for n, s in parts(True):
         cos = np.minimum(np.abs(n @ normal), 1.0)
         turned += math.fsum((s * np.degrees(np.arccos(cos))).tolist())
     return {"alpha": float(alpha), "dipdir": float(dipdir), "spread": turned / area, "triangles": triangles,
@@ -255,7 +251,11 @@ def orientation_plane(svc: Svc, body: Payload) -> dict[str, Any]:
     if gone:
         raise sp.bad("wireframe_not_found", f"Каркас №{gone[0]} не найден в проекте или пуст.",
                      "Обновите список каркасов и отметьте их снова.", "wireframe_ids")  # fmt: skip
-    out = plane(project, [found[i] for i in dict.fromkeys(ids)])
+    meshes = [found[i] for i in dict.fromkeys(ids)]
+    if sum(int(state.triangles) for state, _st in meshes) > MESH_TRIANGLES:
+        raise sp.bad("bad_param", f"В каркасах больше {MESH_TRIANGLES:,} треугольников.".replace(",", " "),
+                     "Выберите меньше каркасов или упростите каркас тела.", "wireframe_ids")  # fmt: skip
+    out = plane(project, meshes, keep=False)
     if "alpha" not in out:
         raise sp.bad("no_orientation", "У каркасов нет треугольников с площадью: плоскость не определить.",
                      "Выберите другие каркасы.", "wireframe_ids")  # fmt: skip
