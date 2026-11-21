@@ -211,3 +211,77 @@ def test_routes_import_nothing_heavy() -> None:
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "", f"imported with the routes: {r.stdout.strip()}"
+
+
+def dendro_body(set_id: int, **extra: Any) -> dict[str, Any]:
+    return {"v": 1, "set_id": set_id, "table": None, "fields": [], "method": "pearson", "log": True,
+            "weight": "length", "negatives": "half_abs", "exclude_zero": False, "missing": "pairwise",
+            "linkage": "average", "distance": "1-r", "cut": None, "view": {"matrix": True}, **extra}  # fmt: skip
+
+
+def test_dendrogram_is_the_kernel(demo) -> None:  # type: ignore[no-untyped-def]
+    import numpy as np
+
+    from bf_core.stats.correlation import CorrSpec
+    from bf_core.stats.dendrogram import TreeSpec, dendrogram_chart
+
+    c, set_id = demo
+    r = c.post(f"{S}/dendrogram", json=dendro_body(set_id))
+    assert r.status_code == 200, r.text
+    got = r.json()
+    project = projects_of(c.core).require_current()
+    with source.dialect.read_tx(project.engine) as conn:
+        infos = source.fields_of(conn, source.find_table(conn, set_id, None))
+    comps = [f for f in infos if f.kind == "number" and f.role == "component"]
+    assert len(comps) >= 2 and got["fields"] == [f.name for f in comps]
+    cols = source.read(project, set_id, None, [f.name for f in comps] + ["length"])
+    want = dendrogram_chart([f.name for f in comps], [cols.number(f.name) for f in comps], cols.number("length"),
+                            CorrSpec(), TreeSpec(), units=[f.unit for f in comps])  # fmt: skip
+    assert got == {"set_id": set_id, **routes_charts._safe(want)}
+    assert {"linkage", "order", "leaves", "icoord", "dcoord", "correlation", "pairs", "spec", "counts",
+            "field_counts", "conventions", "groups", "link_groups", "group_count"} <= set(got)  # fmt: skip
+
+    # two fields by any case, Spearman, no weight, a threshold, some holes
+    body = dendro_body(set_id, fields=["au", "CU"], method="spearman", weight="none", cut=0.5, log=False,
+                       holes=["DH-001", "DH-002", "DH-003", "DH-004"])  # fmt: skip
+    r = c.post(f"{S}/dendrogram", json=body)
+    assert r.status_code == 200, r.text
+    keep = np.array([cols.holes[h] in body["holes"] for h in cols.hole_of()])
+    want = dendrogram_chart(["AU", "CU"], [cols.number("AU")[keep], cols.number("CU")[keep]], None,
+                            CorrSpec(method="spearman", log=False), TreeSpec(cut=0.5),
+                            units=[next(f.unit for f in infos if f.name == n) for n in ("AU", "CU")])  # fmt: skip
+    assert r.json() == {"set_id": set_id, **routes_charts._safe(want)}
+    assert r.json()["group_count"] in (1, 2) and r.json()["spec"]["weighted"] is False
+
+    # the saved one
+    r = c.post(f"{API}/charts", json={"set_id": set_id, "kind": "dendrogram", "name": "Дендрограмма",
+                                      "settings": dendro_body(set_id), "auto_name": True})  # fmt: skip
+    saved = c.post(f"{S}/chart/{r.json()['id']}").json()
+    assert saved["chart"]["kind"] == "dendrogram" and saved["correlation"] == got["correlation"]
+
+
+def test_dendrogram_refusals(demo) -> None:  # type: ignore[no-untyped-def]
+    c, set_id = demo
+
+    def fail(status: int = 422, **extra: Any) -> dict[str, Any]:
+        r = c.post(f"{S}/dendrogram", json=dendro_body(set_id, **extra))
+        assert r.status_code == status, r.text
+        out: dict[str, Any] = r.json()
+        assert out["message"] and out["hint"]
+        return out
+
+    assert fail(fields=["AU"])["param"] == "fields"
+    assert fail(fields=["AU", "au"])["param"] == "fields"  # one field named twice
+    out = fail(fields=["AU", "ZN"])
+    assert out["code"] == "field_not_found" and out["param"] == "fields"
+    assert fail(fields=["AU", "Номер пробы"])["code"] == "field_not_number"
+    assert fail(linkage="ward")["param"] == "linkage"
+    assert fail(distance="euclid")["param"] == "distance"
+    assert fail(cut=-1)["param"] == "cut"
+    assert fail(method="kendall")["param"] == "method"
+    assert fail(missing="all")["param"] == "missing"
+    assert fail(log="yes")["param"] == "log"
+    assert fail(weight="field")["param"] == "weight_field"
+    assert fail(fields="AU")["param"] == "fields"
+    out = fail(holes=["нет такой"])
+    assert out["code"] == "too_few_values" and out["param"] == "fields"

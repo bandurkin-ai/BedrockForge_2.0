@@ -69,8 +69,25 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
 
 ## `POST /stats/dendrogram`
 
-После 13.4 (ядро `stats/dendrogram.py` дорожки Г): тело — `fields`, `method`, `log`, `weight`, `missing`,
-`linkage`, `distance`, `cut`; ответ — `{set_id, fields, …ответ ядра}`.
+Тело: `v`, `set_id`, `table`, `fields` (имена без учёта регистра; пусто или `null` — все компоненты таблицы, у таблицы
+без компонентов — её числовые поля, кроме `length`; поле дважды — один раз), `method` (`pearson` / `spearman`), `log`
+(`true`), `weight` (`length`), `weight_field`, `negatives` (`half_abs`), `exclude_zero`, `missing` (`pairwise` /
+`complete`), `linkage` (`average`, `complete`, `single`, `weighted`; Ward — 422 `bad_param`), `distance` (`1-r` /
+`1-abs`; `1-|r|` тоже читается), `cut` (`null` — без групп), `holes`. Отсечки к дендрограмме не применяются.
+
+```
+{ set_id, fields[k], units[k] (null — неизвестна),
+  correlation[k][k] (null — не определено), pairs[k][k], rows, used, nonpositive_log,
+  linkage [[a, b, height, size]], order[k], leaves[k], icoord[k-1][4], dcoord[k-1][4], max_distance,
+  cut | null, groups[k] | null, link_groups[k-1] (null — выше порога) | null, group_count | null,
+  conventions,
+  spec {method, log, missing, negatives, exclude_zero, weighted, linkage, distance},
+  counts {rows, empty, bad_weight, incomplete, used},
+  field_counts [{name, missing, negative, zero_excluded, nonpositive, used}] }
+```
+Отказы: 422 `bad_param` {`fields` (меньше двух полей), `method`, `log`, `missing`, `negatives`, `linkage`,
+`distance`, `cut`, `weight`, `weight_field`}; `field_not_found` / `field_not_number` {`fields`, `weight_field`};
+`too_few_values` / `no_spread` {`fields`} — сообщение называет поля.
 
 ## `POST /stats/chart/{chart_id}`
 
