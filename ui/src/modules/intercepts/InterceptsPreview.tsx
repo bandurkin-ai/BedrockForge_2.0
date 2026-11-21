@@ -152,7 +152,11 @@ function SummaryRows({ hole, set, unit }: { hole: RunSummary | null; set: RunSum
     ["Пересечений", (s) => fmt(s.intercepts, 0)],
     ["в том числе", (s) => fmt(s.included, 0)],
     ["Σ длина, м", (s) => fmt(s.length, 1)],
+    ["Σ TT, м", (s) => fmt(s.tt, 1)],
     [`Σ LEN_G (${lenGTitle(unit)})`, (s) => fmt(s.len_g)],
+    [`Среднее содержание${unit ? `, ${unit}` : ""}`, (s) => fmt(s.mean)],
+    ["Σ WASTE_LEN, м", (s) => fmt(s.waste_len, 1)],
+    ["Σ MISS_LEN, м", (s) => fmt(s.miss_len, 1)],
   ];
   return (
     <table className={own.rows} data-testid="intercepts-run-summary">

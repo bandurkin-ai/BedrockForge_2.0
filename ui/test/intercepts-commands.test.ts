@@ -176,6 +176,10 @@ describe("window or job", () => {
     expect(bad.result).toContain("должен быть больше c");
     const l = await app.registry.execute("intercept.run", { set_id: 3, table: "Пробы", field: "AU", cutoff: 1, l_min: 150 }, "user");
     expect(l.result).toContain("допустимо 0–100 м");
+    // c > 0 (the core: 422 `bad_param` {param: "cutoff"}); nothing is started
+    const zero = await app.registry.execute("intercept.run", { set_id: 3, table: "Пробы", field: "AU", cutoff: 0 }, "user");
+    expect(zero.result).toContain("должно быть больше нуля");
+    expect(runs).toHaveLength(2);
   });
 });
 

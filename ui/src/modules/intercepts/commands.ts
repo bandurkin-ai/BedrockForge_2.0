@@ -66,7 +66,7 @@ export const commands: Command[] = [
       set_id: SET,
       table: P("string", "таблица проб или композитов набора: имя или номер"),
       field: P("string", "поле содержания"),
-      cutoff: P("number", "бортовое содержание c (любое число)"),
+      cutoff: P("number", "бортовое содержание c (больше нуля)"),
       l_min: P("number", "мин. длина пересечения L_min, м (0–100; 2) — или m_min при min_by = tt"),
       min_by: P("string", "критерий приёмки: length — по длине, tt — по истинной мощности", { enum: ["length", "tt"] }),
       waste_max: P("number", "макс. пустая порода внутри пересечения L_п, м (0–50; 2)"),
