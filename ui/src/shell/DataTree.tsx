@@ -17,6 +17,7 @@ import { moveSection, TREE_SECTIONS, type TreeSection } from "./workspace";
 import css from "./DataTree.module.css";
 import shell from "./Shell.module.css";
 import { AuditTree } from "../modules/qaqc/DataRows";
+import { ReportsTree } from "../modules/qaqc/ReportsTree";
 
 /** Context menu of a section header (ТЗ 7.0.13, 7.1 «+»): `treeSections.ts` as menu items. */
 function sectionMenu(s: TreeSection, reason: (id: string) => string | null, run: (id: string, args?: Record<string, unknown>) => void): MenuItem[] {
@@ -27,6 +28,7 @@ function sectionMenu(s: TreeSection, reason: (id: string) => string | null, run:
 
 const CONTENT: Partial<Record<TreeSection, () => JSX.Element>> = {
   audit: AuditTree,
+  reports: ReportsTree,
   views: ViewsTree,
   series: SeriesTree,
   blocks: BlocksTree,
