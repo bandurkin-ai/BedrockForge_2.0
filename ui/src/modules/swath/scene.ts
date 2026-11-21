@@ -9,6 +9,7 @@
  * window is open is computed by the window only (one request after a release). A lazy chunk with three.js
  * (`bind.ts` attaches it to every scene).
  */
+import { bridge } from "../../bridge";
 import { niceTicks } from "../../charts/column/scale";
 import { formatNumber } from "../../charts/core/axisScale";
 import { errorText } from "../../shell/props";
@@ -18,7 +19,8 @@ import { SwathLayer, type SwathLayerContext } from "../../viz/swath/layer";
 import { viewStore } from "../scene/bind";
 import { sceneUi } from "../scene/sceneHost";
 import { shownSwaths, SWATHS_KEY } from "../scene/viewSync";
-import type { Angles } from "../../viz/swath/drag";
+import { handlesOf, pointAt, type Angles, type HandleKind } from "../../viz/swath/drag";
+import { projectToScreen } from "../../viz/pick/ray";
 import { computeSwath, type SwathResult } from "./api";
 import { SwathHandlesControl, type HandleTarget, type HandlesHost } from "./handles";
 import { anglesOf, normalizeSwath, shownRange, type SwathSettings } from "./model";
@@ -92,6 +94,28 @@ export class SwathScene implements HandlesHost {
   /** For the E2E hook and the tests: the swaths drawn and the swath lit. */
   stats(): { id: number; count: number; lit: number | null; chart: boolean }[] {
     return [...this.shown.entries()].flatMap(([id, s]) => (s.layer ? [{ id, count: s.layer.build.count, lit: s.layer.highlighted, chart: !!s.layer.build.chart }] : []));
+  }
+
+  /**
+   * For the E2E hook: a point of a handle of the swath chosen at an angle, degrees, in client px (as the pointer
+   * gives it); null — no handles or the point is not on the screen.
+   */
+  handlePoint(kind: HandleKind, deg: number): { x: number; y: number } | null {
+    const t = this.target();
+    const view = this.scene.projectView();
+    if (!t || !view) return null;
+    const h = handlesOf(t.angles, t.layer.build.centre, t.layer.build.half).find((x) => x.kind === kind)!;
+    const p = pointAt(h, deg);
+    const s = projectToScreen(view.matrix, p[0], p[1], p[2], view.width, view.height);
+    if (!s) return null;
+    const r = this.scene.canvas.getBoundingClientRect();
+    return { x: r.left + s[0], y: r.top + s[1] };
+  }
+
+  /** For the E2E hook: the axis of the swaths of a swath as drawn (its build; a held pose not counted) and whether a pose turns it. */
+  axisOf(id: number): { u: number[]; posed: boolean } | null {
+    const layer = this.shown.get(id)?.layer;
+    return layer ? { u: [...layer.build.u], posed: layer.posed !== null } : null;
   }
 
   sync(): void {
@@ -203,5 +227,17 @@ export class SwathScene implements HandlesHost {
 /** Attaches the swaths to a scene; gives what detaches them. */
 export function attachSwathScene(scene: Scene, run?: HandlesHost["run"]): () => void {
   const s = new SwathScene(scene, { run });
-  return () => s.dispose();
+  const hook = bridge()?.flags?.().e2e === true && typeof window !== "undefined";
+  // BF_E2E=1: the swaths drawn and lit, the handles and their points on the screen (app/e2e/swath.spec.ts)
+  if (hook) window.__bfSwath = { layers: () => s.stats(), handles: () => s.handles.stats(), axis: (id: number) => s.axisOf(id), point: (kind: HandleKind, deg: number) => s.handlePoint(kind, deg) };
+  return () => {
+    s.dispose();
+    if (hook) delete window.__bfSwath;
+  };
+}
+
+declare global {
+  interface Window {
+    __bfSwath?: unknown;
+  }
 }

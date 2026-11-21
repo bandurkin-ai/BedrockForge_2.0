@@ -1,7 +1,9 @@
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { _electron as electron, expect, test, type ElectronApplication, type Locator, type Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 
 export const ART = path.resolve(__dirname, "..", "..", "artifacts");
 
@@ -297,4 +299,108 @@ export async function stubShowInFolder(app: ElectronApplication): Promise<void> 
 
 export async function shownInFolder(app: ElectronApplication): Promise<string[]> {
   return app.evaluate(() => (globalThis as unknown as { __bfShown?: string[] }).__bfShown ?? []);
+}
+
+/** The demo project open (as most specs start), its first frame drawn; `folded` — the ribbon folded (a window of 1024 × 640). */
+export async function openDemo(page: Page, folded = true): Promise<void> {
+  await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+  await page.getByRole("button", { name: "Загрузить демо-проект" }).click();
+  await expect(page.getByTestId("project-selector")).toContainText("Демо", { timeout: 60_000 });
+  if (folded) expect((await runCommand(page, "ribbon.toggle")).ok).toBe(true);
+  await waitFrame(page);
+}
+
+/** A regular block model for `writeOmfBlocks`: the corner, the cell size and counts, number fields of every cell (NaN — empty). */
+export interface OmfBlocks {
+  name: string;
+  corner: [number, number, number];
+  size: [number, number, number];
+  counts: [number, number, number];
+  /** values in the order of OMF (Fortran: x fastest, then y, then z) */
+  fields: { name: string; values: number[] }[];
+}
+
+/**
+ * A small OMF v1 file of one block model (`VolumeElement`, axes +X +Y +Z), written as `formats/omf_write.py` does:
+ * the zlib blocks, the JSON, its offset in the header of 60 bytes. For the import through the core without the
+ * Python of the core (the .exe on CI has none). → the path.
+ */
+export function writeOmfBlocks(file: string, m: OmfBlocks): string {
+  const now = new Date().toISOString();
+  const objects: Record<string, Record<string, unknown>> = {};
+  const add = (cls: string, fields: Record<string, unknown>) => {
+    const uid = randomUUID();
+    objects[uid] = { date_created: now, date_modified: now, ...fields, __class__: cls };
+    return uid;
+  };
+  const blocks: Buffer[] = [];
+  let at = 60;
+  const block = (values: number[]) => {
+    const raw = Buffer.from(new Float64Array(values).buffer);
+    const z = zlib.deflateSync(raw, { level: 3 });
+    blocks.push(z);
+    const out = { start: at, dtype: "<f8", length: z.length };
+    at += z.length;
+    return out;
+  };
+  const n = m.counts[0] * m.counts[1] * m.counts[2];
+  const data = m.fields.map((f) => {
+    expect(f.values.length, `the field ${f.name}`).toBe(n);
+    return add("ScalarData", { name: f.name, description: "", location: "cells", array: add("ScalarArray", { array: block(f.values) }) });
+  });
+  const tensor = (k: number) => Array.from({ length: m.counts[k] }, () => m.size[k]);
+  const geometry = add("VolumeGridGeometry", { origin: m.corner, tensor_u: tensor(0), tensor_v: tensor(1), tensor_w: tensor(2), axis_u: [1, 0, 0], axis_v: [0, 1, 0], axis_w: [0, 0, 1] });
+  const element = add("VolumeElement", { name: m.name, description: "", data, color: [128, 128, 128], subtype: "volume", geometry });
+  const project = randomUUID();
+  objects[project] = { date_created: now, date_modified: now, name: m.name, description: "", author: "", revision: "", date: now, units: "m", elements: [element], origin: [0, 0, 0], __class__: "Project" };
+  const head = Buffer.alloc(60);
+  Buffer.from([0x84, 0x83, 0x82, 0x81]).copy(head, 0);
+  Buffer.from("OMF-v0.9.0", "ascii").copy(head, 4);
+  Buffer.from(project.replace(/-/g, ""), "hex").copy(head, 36);
+  head.writeBigUInt64LE(BigInt(at), 52);
+  fs.writeFileSync(file, Buffer.concat([head, ...blocks, Buffer.from(JSON.stringify(objects), "utf8")]));
+  return file;
+}
+
+/** Files into the project through the core (`POST /import/objects`, the job of «Импорт файлов») → the job, done. */
+export async function importFiles(page: Page, files: string[], timeout = 120_000): Promise<CoreJob> {
+  const r = await coreApi<{ source: string; id: number }>(page, "POST", "/import/objects", { files });
+  expect(r.status, JSON.stringify(r.body)).toBe(200);
+  const job = await waitJob(page, r.body.source, r.body.id, undefined, timeout);
+  expect(job.status, JSON.stringify(job.error)).toBe("done");
+  return job;
+}
+
+/** A free point of the 3D window: the canvas is the topmost element there (no window, panel or label over it). */
+export async function onCanvas(page: Page, x: number, y: number): Promise<boolean> {
+  return page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.tagName === "CANVAS", [x, y] as const);
+}
+
+/** A drag of the title bar of a window by (dx, dy), as a hand does it. */
+export async function moveBy(page: Page, win: Locator, dx: number, dy: number): Promise<void> {
+  const b = (await win.locator(":scope > div").first().boundingBox())!;
+  await page.mouse.move(b.x + 40, b.y + b.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 40 + dx, b.y + b.height / 2 + dy, { steps: 4 });
+  await page.mouse.up();
+}
+
+/**
+ * The window `width` px wide at the right edge of the page: up to the top first (a window of 600 px opened at 640 px
+ * has its grip below the page — as designed, only the title bar is kept on the screen), its grip, then its bar.
+ */
+export async function placeRight(page: Page, win: Locator, width: number): Promise<void> {
+  await moveBy(page, win, 0, -(await win.boundingBox())!.y);
+  const grip = win.locator(":scope > div").last();
+  const g = (await grip.boundingBox())!;
+  const w0 = (await win.boundingBox())!.width;
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(g.x + g.width / 2 - (w0 - width), g.y + g.height / 2, { steps: 4 });
+  await page.mouse.up();
+  const vw = await page.evaluate(() => window.innerWidth);
+  await moveBy(page, win, vw - width - (await win.boundingBox())!.x, 0);
+  const now = (await win.boundingBox())!;
+  expect(Math.round(now.width)).toBe(width);
+  expect(now.x + now.width).toBeGreaterThan(vw - 4);
 }
