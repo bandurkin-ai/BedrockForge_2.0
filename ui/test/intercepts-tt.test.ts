@@ -14,22 +14,27 @@ import { setCoreTarget } from "../src/shell/api";
 
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
 
-// Т8.5-1 (α = 30°, vertical hole: TT = 0,8660254·l), Т8.5-3 (TT = 0, bit 1), no orientation (bit 2, TT empty)
+// Т8.5-1 (α = 30°, vertical hole: TT = 0,8660254·l), Т8.5-3 (TT = 0, bit 1), no orientation (bit 2, TT empty).
+// The form of docs/progress/e15-api.md: `rows` — columns, TT_REL = TT / LENGTH from the core.
 const RAW = {
   hole: "С-1",
-  intervals: {
+  rows: {
     from: [0, 1, 3, 4],
     to: [1, 3, 4, 6],
-    values: {
-      TT: [0.8660254, 1.7320508, 0, null],
-      TT_FLAG: [0, 0, 1, 2],
-      TT_SRC: ["глобальная", "домен", "глобальная", "нет"],
-      ALPHA: [30, 30, 30, null],
-      DIPDIR: [90, 90, 90, null],
-      HOLE_THETA: [0, 0, 60, 0],
-      HOLE_AZ: [0, 0, 90, 0],
-    },
+    length: [1, 2, 1, 2],
+    TT: [0.8660254, 1.7320508, 0, null],
+    TT_REL: [0.8660254, 0.8660254, 0, null],
+    TT_FLAG: [0, 0, 1, 2],
+    TT_SRC: ["глобальная", "домен", "глобальная", "нет"],
+    ALPHA: [30, 30, 30, null],
+    DIPDIR: [90, 90, 90, null],
+    HOLE_THETA: [0, 0, 60, 0],
+    HOLE_AZ: [0, 0, 90, 0],
   },
+  counts: null,
+  mesh_skipped: false,
+  set_summary: null,
+  notes: [],
 };
 
 const sent: { path: string; body: Record<string, unknown> }[] = [];
@@ -56,7 +61,7 @@ afterEach(() => {
 });
 
 describe("the answer of the preview", () => {
-  it("empty stays empty, TT / LENGTH is computed, the counts come from the rows", () => {
+  it("empty stays empty, TT_REL is the core's, the counts come from the rows when the core gives none", () => {
     const a = toTtPreview(RAW);
     expect(a.hole).toBe("С-1");
     expect(a.rows).toHaveLength(4);
@@ -76,10 +81,12 @@ describe("the answer of the preview", () => {
     expect(a.meshSkipped).toBe(true);
     expect(a.notes).toEqual(["пропущено 1"]);
     const e = toTtPreview({});
-    expect(e).toEqual({ hole: "", rows: [], bySrc: {}, byFlag: {}, meshSkipped: false, notes: [] });
-    const bad = toTtPreview({ intervals: { from: [0, null], to: [1, 2], values: { TT: ["x"], LENGTH: [0] } } });
+    expect(e).toEqual({ hole: "", rows: [], bySrc: {}, byFlag: {}, meshSkipped: false, setCounts: null, notes: [] });
+    const bad = toTtPreview({ rows: { from: [0, null], to: [1, 2], TT: ["x"], length: [0] } });
     expect(bad.rows).toHaveLength(1);
     expect(bad.rows[0]).toMatchObject({ tt: null, length: 0, ratio: null, flag: 0, src: "" });
+    // without TT_REL the ratio is TT / LENGTH; LENGTH left out — TO − FROM
+    expect(toTtPreview({ rows: { from: [0], to: [2], TT: [1] } }).rows[0]).toMatchObject({ length: 2, ratio: 0.5 });
   });
 
   it("the bits of TT_FLAG in words; 0 and empty — nothing", () => {

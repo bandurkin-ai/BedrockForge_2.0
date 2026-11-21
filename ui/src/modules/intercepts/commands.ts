@@ -40,6 +40,9 @@ const ORIENTATION: Record<string, ParamSchema> = {
   angles: P("boolean", "записать ALPHA, DIPDIR, HOLE_THETA, HOLE_AZ (по умолчанию да)"),
 };
 
+/** `/run` has no `angles`: the table of intercepts always has the angles (e15-api.md). */
+const RUN_ORIENTATION: Record<string, ParamSchema> = Object.fromEntries(Object.entries(ORIENTATION).filter(([k]) => k !== "angles"));
+
 const WINDOW = "Без обязательных параметров — окно с предпросмотром по выбранной скважине.";
 
 export const commands: Command[] = [
@@ -63,7 +66,7 @@ export const commands: Command[] = [
       set_id: SET,
       table: P("string", "таблица проб или композитов набора: имя или номер"),
       field: P("string", "поле содержания"),
-      cutoff: P("number", "бортовое содержание c"),
+      cutoff: P("number", "бортовое содержание c (любое число)"),
       l_min: P("number", "мин. длина пересечения L_min, м (0–100; 2) — или m_min при min_by = tt"),
       min_by: P("string", "критерий приёмки: length — по длине, tt — по истинной мощности", { enum: ["length", "tt"] }),
       waste_max: P("number", "макс. пустая порода внутри пересечения L_п, м (0–50; 2)"),
@@ -71,8 +74,8 @@ export const commands: Command[] = [
       density: P("string", "поле плотности для взвешивания"),
       missing: P("string", "пропуски: waste — пустая порода с g = 0 (по умолчанию), break — разрыв", { enum: ["waste", "break"] }),
       fields: P("string", "прочие поля содержаний через запятую; не заданы — все числовые"),
-      name: P("string", "имя новой таблицы; занято — « (2)»"),
-      ...ORIENTATION,
+      name: P("string", "имя новой таблицы (до 200 знаков); занято — « (2)»"),
+      ...RUN_ORIENTATION,
     },
     stage: STAGE,
   },
