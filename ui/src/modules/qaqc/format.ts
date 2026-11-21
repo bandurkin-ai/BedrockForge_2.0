@@ -11,10 +11,18 @@ import { RULE_PAIR, RULE_RUN, RULE_SWAP, type DateValue } from "./api";
 export const STATUS_TITLES = ["норма", "предупреждение", "отказ"] as const;
 /** Norm — Cobalt (the data), warning — amber, failure — red: the `--warn` and `--danger` tokens of the dark theme. */
 export const STATUS_COLORS = [BRAND.cobalt, "#f4b13a", "#e5483a"] as const;
+/** The status −1 of the core (no reference, no DL, nothing assessed): index 3, Slate Grey — never the norm. */
+export const NOT_ASSESSED = 3;
+export const QC_STATUS_TITLES = [...STATUS_TITLES, "не оценён"] as const;
+export const QC_STATUS_COLORS = [...STATUS_COLORS, BRAND.slate] as const;
 
-const statusIndex = (s: number): 0 | 1 | 2 => (s >= 2 ? 2 : s >= 1 ? 1 : 0);
-export const statusTitle = (s: number): string => STATUS_TITLES[statusIndex(s)];
-export const statusColor = (s: number): string => STATUS_COLORS[statusIndex(s)];
+/** The status of the core as an index of the titles and colours: 0, 1, 2; −1, none or NaN — 3 «не оценён». */
+export function statusIndex(s: number | null | undefined): 0 | 1 | 2 | 3 {
+  if (typeof s !== "number" || !Number.isFinite(s) || s < 0) return NOT_ASSESSED;
+  return s >= 2 ? 2 : s >= 1 ? 1 : 0;
+}
+export const statusTitle = (s: number | null | undefined): string => QC_STATUS_TITLES[statusIndex(s)];
+export const statusColor = (s: number | null | undefined): string => QC_STATUS_COLORS[statusIndex(s)];
 
 /** Why a point of a control chart has its status: the bits of `rule` (ADR 0020 §4). */
 export function ruleTitles(rule: number): string[] {
@@ -32,7 +40,7 @@ export function statusLabel(status: number, rule = 0): string {
 }
 
 export const BIAS_TITLES = ["норма", "внимание", "недопустимо"] as const;
-export const biasTitle = (c: number | null | undefined): string => (c === null || c === undefined || !Number.isFinite(c) ? "—" : BIAS_TITLES[statusIndex(c)]);
+export const biasTitle = (c: number | null | undefined): string => (c === null || c === undefined || !Number.isFinite(c) || c < 0 ? "—" : BIAS_TITLES[c >= 2 ? 2 : c >= 1 ? 1 : 0]);
 
 const STATES: Record<string, string> = {
   ok: "",

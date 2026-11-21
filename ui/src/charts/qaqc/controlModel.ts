@@ -9,7 +9,7 @@
  */
 import type { StandardGroup, StandardSeries } from "../../modules/qaqc/api";
 import { RULE_RUN, RULE_SWAP } from "../../modules/qaqc/api";
-import { dateMs, dateText, num, statusLabel, STATUS_COLORS } from "../../modules/qaqc/format";
+import { dateMs, dateText, num, QC_STATUS_COLORS, statusIndex, statusLabel } from "../../modules/qaqc/format";
 import { csvText, type CsvCell } from "../core/csv";
 import { formatNumber, type Domain, type Scale, type Tick } from "../core/axisScale";
 import { rgba32 } from "../core/palette";
@@ -36,8 +36,8 @@ export interface ControlModel {
   ma: Float64Array;
   /** points of the series without a date (not drawn on the date axis) */
   noDate: number;
-  /** points drawn by status: norm, warning, failure */
-  byStatus: [number, number, number];
+  /** points drawn by status: norm, warning, failure, not assessed (−1 of the core) */
+  byStatus: [number, number, number, number];
   lines: ControlLine[];
   xDomain: Domain;
   yDomain: Domain;
@@ -80,7 +80,7 @@ export function controlModel(series: StandardSeries, group: Pick<StandardGroup, 
   const idx = new Int32Array(total);
   const status = new Uint8Array(total);
   const ma = new Float64Array(total);
-  const byStatus: [number, number, number] = [0, 0, 0];
+  const byStatus: [number, number, number, number] = [0, 0, 0, 0];
   let n = 0;
   let noDate = 0;
   let xmin = Infinity;
@@ -100,7 +100,7 @@ export function controlModel(series: StandardSeries, group: Pick<StandardGroup, 
       }
       x = t;
     }
-    const st = series.status[i] >= 2 ? 2 : series.status[i] >= 1 ? 1 : 0;
+    const st = statusIndex(series.status[i]);
     xs[n] = x;
     ys[n] = y;
     idx[n] = i;
@@ -128,7 +128,7 @@ export function controlModel(series: StandardSeries, group: Pick<StandardGroup, 
 /** The status of a point of the series in words, with its rules (Т8.4-1). */
 export const pointLabel = (series: StandardSeries, i: number): string => statusLabel(series.status[i], series.rule[i] ?? 0);
 
-export const STATUS_PIXELS = STATUS_COLORS.map((c) => rgba32(c, 0.9));
+export const STATUS_PIXELS = QC_STATUS_COLORS.map((c) => rgba32(c, 0.9));
 
 /** One pixel colour per point drawn (the canvas layer). */
 export function statusPixels(model: ControlModel): Uint32Array {

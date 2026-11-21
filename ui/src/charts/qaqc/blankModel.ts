@@ -8,8 +8,7 @@
  * Pure (tested in node).
  */
 import type { BlankGroup, BlanksAnswer } from "../../modules/qaqc/api";
-import { dateMs, dateText, num, STATUS_COLORS, STATUS_TITLES } from "../../modules/qaqc/format";
-import { BRAND } from "../column/classes";
+import { dateMs, dateText, NOT_ASSESSED, num, QC_STATUS_COLORS, QC_STATUS_TITLES, statusIndex } from "../../modules/qaqc/format";
 import { formatNumber, type Domain, type Scale } from "../core/axisScale";
 import { csvText, type CsvCell } from "../core/csv";
 import { rgba32 } from "../core/palette";
@@ -17,19 +16,16 @@ import type { ControlAxis } from "./controlModel";
 
 export type BlankSeries = NonNullable<BlanksAnswer["series"]>;
 
-/** 0 — норма, 1 — предупреждение, 2 — отказ, 3 — не оценён (no DL). */
+/** 0 — норма, 1 — предупреждение, 2 — отказ, 3 — не оценён (no DL): the statuses of `format.ts`. */
 export type BlankStatus = 0 | 1 | 2 | 3;
-export const NOT_ASSESSED = 3;
-export const BLANK_STATUS_TITLES = [...STATUS_TITLES, "не оценён"] as const;
+export { NOT_ASSESSED };
+export const BLANK_STATUS_TITLES = QC_STATUS_TITLES;
 /** «Не оценён» — Slate Grey of the brand: neither the norm (Cobalt) nor a failure. */
-export const BLANK_STATUS_COLORS = [...STATUS_COLORS, BRAND.slate] as const;
+export const BLANK_STATUS_COLORS = QC_STATUS_COLORS;
 export const BLANK_STATUS_PIXELS = BLANK_STATUS_COLORS.map((c) => rgba32(c, 0.9));
 
 /** The status of the core (−1 or none — not assessed) as an index of the titles and colours. */
-export function blankStatus(s: number | null | undefined): BlankStatus {
-  if (typeof s !== "number" || !Number.isFinite(s) || s < 0) return NOT_ASSESSED;
-  return s >= 2 ? 2 : s >= 1 ? 1 : 0;
-}
+export const blankStatus = (s: number | null | undefined): BlankStatus => statusIndex(s);
 
 export const blankStatusTitle = (s: number | null | undefined): string => BLANK_STATUS_TITLES[blankStatus(s)];
 
@@ -219,6 +215,9 @@ export function carryCsv(series: BlankSeries, carry: BlankPoints): string {
 /** The facts of a blank for its card, in Russian. */
 export function blankFacts(series: BlankSeries, i: number, unit: string | null, group: Pick<BlankGroup, "dl" | "limit"> | null): [string, string][] {
   const u = (v: number | null | undefined) => (finite(v) && unit ? ` ${unit}` : "");
+  // the threshold of the sample itself (its own DL), else that of its laboratory
+  const own = series.limit?.[i];
+  const limit = finite(own) ? own : group?.limit;
   return [
     ["Дата", dateText(dateMs(series.date[i]))],
     ["Номер в партии (SEQ)", num(series.seq[i])],
@@ -226,7 +225,7 @@ export function blankFacts(series: BlankSeries, i: number, unit: string | null, 
     ["Значение", `${num(series.x[i], 6)}${u(series.x[i])}`],
     ["Предыдущая проба партии", `${num(series.prev[i], 6)}${u(series.prev[i])}`],
     ["DL", `${num(group?.dl, 6)}${u(group?.dl)}`],
-    ["Порог k_б·DL", `${num(group?.limit, 6)}${u(group?.limit)}`],
+    ["Порог k_б·DL", `${num(limit, 6)}${u(limit)}`],
     ["Статус", blankStatusTitle(series.status[i])],
   ];
 }

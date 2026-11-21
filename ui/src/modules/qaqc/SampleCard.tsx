@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useApp } from "../../shell/AppContext";
 import { errorText } from "../../shell/props";
 import { loadRecords, type QaqcRecord } from "./api";
-import { num } from "./format";
+import { dateText, num } from "./format";
 import { activeData, DROPPED, latest, pickSample, setHighlight, type SamplePick } from "./state";
 import css from "./Qaqc.module.css";
 
@@ -19,11 +19,42 @@ export function fieldText(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
 }
 
-/** The fields of the record in its order; the service ones (row numbers of the file) are left out. */
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** A value of an element of the record (`values[E]`: v, q — 1 «<DL» (v = DL/2), 2 «>x»). */
+function elementText(e: Record<string, unknown>): string {
+  const v = e.v;
+  if (e.q === 1) return `<DL (${fieldText(v)})`;
+  if (e.q === 2) return `>${fieldText(v)}`;
+  return fieldText(v);
+}
+
+/**
+ * The fields of the record in its order (`POST /qaqc/records`): the service ones (row numbers of the file) left out,
+ * the date (ms, UTC) as a date, the elements of `values` with «<DL» and «>x» and the values of the parent sample
+ * and of the previous sample of the batch, the extra fields of `extra` by their names.
+ */
 export function recordFacts(rec: QaqcRecord): [string, string][] {
-  return Object.entries(rec)
-    .filter(([k]) => k !== "parent_row" && k !== "prev_row")
-    .map(([k, v]) => [k.replace(/^x:/, ""), fieldText(v)]);
+  const out: [string, string][] = [];
+  for (const [k, v] of Object.entries(rec)) {
+    if (k === "parent_row" || k === "prev_row") continue;
+    if (k === "values" && isObject(v)) {
+      for (const [el, e] of Object.entries(v)) {
+        if (!isObject(e)) continue;
+        out.push([el, elementText(e)]);
+        if (e.p !== null && e.p !== undefined) out.push([`${el}: исходная проба`, fieldText(e.p)]);
+        if (e.b !== null && e.b !== undefined) out.push([`${el}: предыдущая проба партии`, fieldText(e.b)]);
+        if (e.dl !== null && e.dl !== undefined) out.push([`${el}: DL`, fieldText(e.dl)]);
+      }
+      continue;
+    }
+    if (k === "extra" && isObject(v)) {
+      for (const [name, x] of Object.entries(v)) out.push([name, fieldText(x)]);
+      continue;
+    }
+    out.push([k.replace(/^x:/, ""), k === "date" && typeof v === "number" ? dateText(v) : fieldText(v)]);
+  }
+  return out;
 }
 
 export function SampleCard({ sample }: { sample: SamplePick }) {
