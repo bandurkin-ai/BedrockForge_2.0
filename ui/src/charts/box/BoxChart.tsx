@@ -1,12 +1,16 @@
 /**
  * Box plots by domains (ТЗ 8.3; ADR 0019 §4, §11): a box Q1…Q3 with the median, whiskers to the extreme values
  * inside 1,5·IQR, the outliers as points, the mean as a diamond, n under each box; a linear or log10 value axis (on
- * the log one the box is of the logarithms). SVG of a fixed size: the PNG is twice it.
+ * the log one the box is of the logarithms). A frame drawn over the boxes (№ 237) selects the samples of the boxes it
+ * covers with a value in its range — the outliers among them — in 3D and in the table; it stays while the selection
+ * is this chart's. SVG of a fixed size: the PNG is twice it.
  */
-import { forwardRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useState } from "react";
 import type { BoxResult } from "../../modules/charts/apiMore";
+import { boxFrameGroups, useChartSelection, valueSelectionBody } from "../../modules/charts/selection";
 import { formatNumber, makeScale } from "../core/axisScale";
 import { YAxis } from "../core/Axes";
+import { useLasso, type AxisPolygon } from "../core/lasso";
 import { seriesColor } from "../core/palette";
 import { plotBox, PlotFrame } from "../core/PlotFrame";
 import css from "../core/Chart.module.css";
@@ -27,16 +31,33 @@ export interface BoxChartProps {
 
 export const BoxChart = forwardRef<SVGSVGElement, BoxChartProps>(function BoxChart({ result: r, mean, outliers, color, yLabel }, ref) {
   const [hover, setHover] = useState<number | null>(null);
+  const [frame, setFrame] = useState<AxisPolygon | null>(null);
   const d = boxDomain(r, r.log);
-  if (!d || !r.groups.length) return null;
-  const sy = makeScale(r.log ? "log" : "linear", d, BOX.y1, BOX.y0);
+  // x of the frame stays in px (the boxes are slots), y — the values
+  const scales = useMemo(() => (d ? { sx: makeScale("linear", { min: BOX.x0, max: BOX.x1 }, BOX.x0, BOX.x1), sy: makeScale(r.log ? "log" : "linear", d, BOX.y1, BOX.y0) } : null), [d?.min, d?.max, r.log]); // eslint-disable-line react-hooks/exhaustive-deps
+  const link = useChartSelection(useCallback(() => setFrame(null), []));
+  useEffect(() => setFrame(null), [r]);
+  const onDone = useCallback(
+    (poly: AxisPolygon | null) => {
+      if (!poly) return;
+      setFrame(poly);
+      const groups = boxFrameGroups(r.groups.map((g) => g.label), Math.min(...poly.x), Math.max(...poly.x), BOX.x0, BOX.x1);
+      void link.select(valueSelectionBody("box", r, [Math.min(...poly.y), Math.max(...poly.y)], groups));
+    },
+    [r, link.select], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const lasso = useLasso("rect", BOX, scales, onDone);
+  if (!d || !scales || !r.groups.length) return null;
+  const sy = scales.sy;
+  const rect = (pts: { x: number; y: number }[]) => pts.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(" ");
+  const shownFrame = frame && (link.ours || link.pending) ? frame : null;
   const slot = (BOX.x1 - BOX.x0) / r.groups.length;
   const half = Math.min(28, slot * 0.32);
   const g = hover !== null ? r.groups[hover] : null;
   return (
     <PlotFrame ref={ref} box={BOX} label={`Ящики с усами: ${yLabel}`} yTitle={`${yLabel}${r.log ? " (log)" : ""}`} xTitle={r.domain ?? undefined} onPointerLeave={() => setHover(null)}>
       <YAxis scale={sy} box={BOX} count={6} />
-      <g data-boxes={r.groups.length}>
+      <g data-boxes={r.groups.length} {...lasso.handlers} style={{ cursor: "crosshair" }}>
         {r.groups.map((grp, i) => {
           const cx = BOX.x0 + slot * (i + 0.5);
           const fill = color ?? seriesColor(i);
@@ -72,6 +93,8 @@ export const BoxChart = forwardRef<SVGSVGElement, BoxChartProps>(function BoxCha
           );
         })}
       </g>
+      {shownFrame && <polygon className={css.ring} data-selection="frame" points={rect(shownFrame.x.map((x, i) => ({ x, y: sy.map(shownFrame.y[i]) ?? BOX.y1 })))} />}
+      {lasso.path && lasso.path.length > 1 && <polygon className={css.ring} strokeDasharray="4 3" points={rect(lasso.path)} />}
       {g && hover !== null && (
         <g className={css.tip} transform={`translate(${Math.min(BOX.x0 + slot * (hover + 0.5) + 12, BOX.x1 - 200)} ${BOX.y0 + 6})`}>
           <rect width={194} height={106} rx={4} />
