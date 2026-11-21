@@ -153,8 +153,8 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any],
 
 def test_rebuild_on_current_tables(cc, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     f = fill(cc)
-    r = cc.post(f"{IC}/results/{f['tt']}/rebuild")
-    assert r.status_code == 422 and r.json()["code"] == "not_ready", r.text  # the jobs come in 15.11–15.12
+    r = cc.post(f"{IC}/results/{f['run']}/rebuild")
+    assert r.status_code == 422 and r.json()["code"] == "not_ready", r.text  # `intercept.run` comes in 15.12
     calls = captured(monkeypatch)
     assert cc.post(f"{IC}/results/{f['tt']}/rebuild").json() == {"source": "p", "id": 1}
     assert cc.post(f"{IC}/results/{f['run']}/rebuild", json={}).status_code == 200
@@ -175,11 +175,14 @@ def test_rebuild_on_current_tables(cc, monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls[-1][1]["body"]["table"] == str(new_src)
 
 
-def test_tt_and_run_routes_up_to_the_job(cc) -> None:  # type: ignore[no-untyped-def]
+def test_tt_and_run_routes_up_to_the_job(cc, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     f = fill(cc)
     base = {"set_id": f["set_id"], "table": str(f["src"])}
+    submit = ir._submit
+    calls = captured(monkeypatch)
     r = cc.post(IC + "/tt", json={**base, "orientation": GLOBAL})
-    assert r.status_code == 422 and r.json()["code"] == "not_ready" and r.json()["hint"]  # own fields: no 409
+    assert r.json() == {"source": "p", "id": 1} and calls[0][0] == "intercept.tt"  # own fields: no 409
+    monkeypatch.setattr(ir, "_submit", submit)
     r = cc.post(IC + "/tt", json={**base, "orientation": GLOBAL, "eps": 0.6})
     assert (r.status_code, r.json()["code"], r.json()["param"]) == (422, "bad_param", "eps")
     assert "от 0,01 до 0,5" in r.json()["message"]
