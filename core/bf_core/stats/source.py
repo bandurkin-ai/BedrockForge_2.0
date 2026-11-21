@@ -22,7 +22,10 @@ fit and every recalculation read them again). `length` is not kept: it is TO −
 every request. An edit of a row raises `rev`: the old columns are a miss and are dropped when the new ones come;
 a request of another project drops the columns of the previous one; a value bigger than the limit is not kept.
 A request holds the columns it found until it has them all: those read for it may push out of the cache what it
-found there, nothing is read twice. Concurrent requests of one column read it once (the others wait). After a
+found there, nothing is read twice. Concurrent requests of one column read it once (the others wait); the lock
+of a table or of a value lives while it is held or waited for — none is kept for what is not being read. Lines
+of another number of rows than the columns kept for the same revision (the table changed while it was read)
+drop all of them: the fields of the request are read anew, nothing of two states of a table is mixed. After a
 read of a snapshot the memory pyarrow keeps for itself goes back to the system (a few hundred МБ at 5 million
 rows). numpy and the readers load on first use, not with the router (tests/test_process.py); the kernel of
 `domain_at` (numba) — with the first domain of another table."""
@@ -31,7 +34,8 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -166,6 +170,16 @@ def _nbytes(value: Any) -> int:
     return 64
 
 
+class _Gate:
+    """The lock of one key and how many hold it or wait for it."""
+
+    __slots__ = ("lock", "users")
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.users = 0
+
+
 class ColumnCache:
     """LRU of columns by bytes (module docstring). Keys: (project uid, table id, token, rev, field, …)."""
 
@@ -173,7 +187,7 @@ class ColumnCache:
         self.limit = limit
         self._lock = threading.Lock()
         self._items: OrderedDict[tuple[Any, ...], tuple[Any, int]] = OrderedDict()
-        self._gates: dict[tuple[Any, ...], threading.Lock] = {}
+        self._gates: dict[tuple[Any, ...], _Gate] = {}
         self.size = 0
         self.hits = 0
         self.misses = 0
@@ -214,25 +228,45 @@ class ColumnCache:
         hit = self.peek(key)
         if hit is not None:
             return hit
-        with self._lock:
-            gate = self._gates.setdefault(key, threading.Lock())
-        with gate:
+        with self.locked(key):
             hit = self.peek(key)
             if hit is None:
                 with self._lock:
                     self.misses += 1
                 hit = build()
                 self.put(key, hit)
-            with self._lock:
-                self._gates.pop(key, None)
             return hit
 
-    def locked(self, key: tuple[Any, ...]) -> threading.Lock:
-        """A lock of its own for `key`: `with cache.locked(k):` — one reader of a table at a time."""
+    @contextmanager
+    def locked(self, key: tuple[Any, ...]) -> Iterator[None]:
+        """`with cache.locked(k):` — one holder of `k` at a time (the reader of a table, the builder of a value).
+        The lock is made for the first who asks and goes with the last who held it or waited for it: nothing
+        stays for the tables, revisions and projects that are read no more."""
         with self._lock:
-            return self._gates.setdefault(key, threading.Lock())
+            gate = self._gates.get(key)
+            if gate is None:
+                gate = self._gates[key] = _Gate()
+            gate.users += 1
+        try:
+            with gate.lock:
+                yield
+        finally:
+            with self._lock:
+                gate.users -= 1
+                if not gate.users and self._gates.get(key) is gate:
+                    del self._gates[key]
+
+    def forget(self, head: tuple[Any, ...]) -> int:
+        """Drops every value whose key starts with `head` (all the columns of one revision of a table and what
+        was built of them). → how many went."""
+        with self._lock:
+            gone = [k for k in self._items if k[: len(head)] == head]
+            for k in gone:
+                self._drop(k)
+            return len(gone)
 
     def clear(self) -> None:
+        """Drops every value. The locks are not touched: they are those held or waited for right now."""
         with self._lock:
             self._items.clear()
             self.size = 0
@@ -333,7 +367,15 @@ def read(project: Any, set_id: int, table: str | int | None, fields: Sequence[st
         base = cache.peek((*head, _BASE))
         if missing or base is None:
             lines = _read_lines(project, t, [f.name for f in missing])
-            if base is None or len(base[0]) != lines.rows:
+            if base is not None and len(base[0]) != lines.rows:
+                # other rows than the columns kept for this revision have (the table changed while they were
+                # read): they all go — the lines, the fields, what was built of them — and the fields of the
+                # request are read anew, in one pass
+                cache.forget(head)
+                got.clear()
+                base, missing = None, stored
+                lines = _read_lines(project, t, [f.name for f in stored])
+            if base is None:
                 base = tuple(_frozen(a) for a in (lines.row_ids, lines.hole_db_ids, lines.starts, lines.from_m,
                                                   lines.to_m)) + (lines.holes, lines.skipped)  # fmt: skip
                 cache.put((*head, _BASE), base)
@@ -348,16 +390,10 @@ def read(project: Any, set_id: int, table: str | int | None, fields: Sequence[st
         out.infos[f.name] = f
         if f.role == LENGTH:
             out.numbers[f.name] = _frozen(np.subtract(to, frm))  # not kept: 10 ms and 40 МБ at 5 million rows
-            continue
-        have: Any = got.get(f.name)
-        if have is None:
-            have = cache.peek((*head, f.name))
-        if have is None:  # evicted between the two looks: read it alone
-            have = _one(project, t, f, base, cache, head)
-        if f.kind == "number":
-            out.numbers[f.name] = have
+        elif f.kind == "number":
+            out.numbers[f.name] = got[f.name]
         else:
-            out.codes[f.name], out.labels[f.name] = have
+            out.codes[f.name], out.labels[f.name] = got[f.name]
     return out
 
 
@@ -370,17 +406,6 @@ def _read_lines(project: Any, t: Table, names: list[str]) -> Any:
 
         pa.default_memory_pool().release_unused()  # what the pool keeps after the columns were copied out of it
     return lines
-
-
-def _one(project: Any, t: Table, f: FieldInfo, base: tuple[Any, ...], cache: ColumnCache,
-         head: tuple[Any, ...]) -> Any:  # fmt: skip
-    lines = _read_lines(project, t, [f.name])
-    if len(lines.row_ids) != len(base[0]):
-        raise ApiError(409, "table_changed", "Таблица изменилась во время чтения.", "Повторите действие.")
-    value = (_frozen(lines.numbers[f.name]) if f.kind == "number"
-             else (_frozen(lines.codes[f.name]), lines.labels[f.name]))  # fmt: skip
-    cache.put((*head, f.name), value)
-    return value
 
 
 # --- another table: by the sample key, by the middle of a sample -----------------------------------------

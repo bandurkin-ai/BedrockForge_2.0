@@ -1,7 +1,8 @@
 """The data of charts (ADR 0019 §3, подшаг 13.14): fields of a table, a missing value stays NaN, `length`, the field
 of another table by the sample key (unmatched counted), the domain of another table by the middle of a sample,
 the middles on the hole paths, the cache of columns (an edit raises `rev` — a miss; the limit evicts the oldest;
-13.35: a request reads no column twice, the rows of another table are searched hole by hole),
+13.35: a request reads no column twice, the rows of another table are searched hole by hole; 13.36: no lock
+stays after its request, lines of other rows at the same revision drop the columns kept),
 `GET /stats/fields`, nothing heavy imported with the router."""
 
 from __future__ import annotations
@@ -278,6 +279,70 @@ def test_a_request_reads_no_column_twice(data, monkeypatch: pytest.MonkeyPatch) 
     assert got.number("AU").tolist()[:4] == first.number("AU").tolist()[:4]
     assert all(len(names) == 1 for names in calls) and len(calls) == 4, calls  # AU; then one of the two a request
     assert source.LIMIT_BYTES == 512 * 1024 * 1024 and source.COLUMNS.limit == source.LIMIT_BYTES
+
+
+def test_the_locks_of_the_cache_do_not_stay(data) -> None:  # type: ignore[no-untyped-def]
+    """13.36: the lock of a table (project, table, revision) and of a value lives while it is held or waited
+    for — after the requests, the edits and another project none is left; `clear()` leaves the cache empty."""
+    project, set_id, a, _ = data
+    cache = source.ColumnCache()
+    for _ in range(3):
+        cols = source.read(project, set_id, "Пробы", ["AU", "ROCK"], cache=cache)
+        source.midpoints(project, cols, cache=cache)
+        source.read(project, set_id, "Литология", ["CU"], cache=cache)
+        _edit(project, a)  # another revision: another lock of the table
+    other = SimpleNamespace(engine=project.engine, uid="другой", folder=project.folder)
+    source.read(other, set_id, "Пробы", ["AU"], cache=cache)
+    assert cache._gates == {}
+    with cache.locked(("p", 1)):
+        assert set(cache._gates) == {("p", 1)}
+        waiting = threading.Thread(target=lambda: cache.get(("p", 1), lambda: 7))  # the same key: waits
+        waiting.start()
+        while cache._gates[("p", 1)].users < 2:
+            pass
+        assert cache.peek(("p", 1)) is None
+    waiting.join()
+    assert cache._gates == {} and cache.peek(("p", 1)) == 7
+    with pytest.raises(RuntimeError):
+        cache.get(("p", 2), lambda: (_ for _ in ()).throw(RuntimeError("no value")))
+    assert cache._gates == {}  # a build that failed leaves no lock either
+    cache.clear()
+    assert cache.keys() == [] and cache.size == 0 and cache._gates == {}
+    assert cache.forget(("p",)) == 0
+
+
+def test_lines_of_other_rows_at_the_same_revision_drop_the_columns(data, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    """13.36: a table whose rows changed while its revision stayed (it was written between the look at the
+    revision and the read) — the lines read for a new field have another number of rows than the columns kept:
+    everything kept for that revision goes and the fields of the request are read anew, all of one state."""
+    project, set_id, a, _ = data
+    cache = source.ColumnCache()
+    first = source.read(project, set_id, "Пробы", ["AU"], cache=cache)
+    xyz = source.midpoints(project, first, cache=cache)
+    assert first.n == 5 and xyz.shape == (5, 3) and len(cache.keys()) == 3
+    with dialect.write_tx(project.engine) as conn:  # a row goes, `rev` stays
+        rid = conn.execute(sa.select(sa.func.max(dh_rows.c.id)).where(dh_rows.c.table_id == a)).scalar_one()
+        conn.execute(sa.delete(dh_rows).where(dh_rows.c.id == rid))
+    calls: list[list[str]] = []
+    real = source._read_lines
+
+    def counted(p: Any, t: Any, names: list[str]) -> Any:
+        calls.append(list(names))
+        return real(p, t, names)
+
+    monkeypatch.setattr(source, "_read_lines", counted)
+    assert source.read(project, set_id, "Пробы", ["AU"], cache=cache).n == 5 and calls == []  # nothing new asked
+    got = source.read(project, set_id, "Пробы", ["AU", "ROCK", "length"], cache=cache)
+    assert calls == [["ROCK"], ["AU", "ROCK"]]  # the lines of ROCK are of other rows: both fields anew
+    assert got.n == 4 and got.table.rev == first.table.rev
+    assert {len(got.number("AU")), len(got.text("ROCK")[0]), len(got.number("length")), len(got.row_ids)} == {4}
+    assert got.number("AU") is not first.number("AU") and rid not in got.row_ids.tolist()
+    kept = {k[4]: v for k, v in ((k, cache.peek(k)) for k in cache.keys())}
+    assert set(kept) == {"\0lines", "AU", "ROCK"}  # the middles of the five rows went with their columns
+    assert len(kept["AU"]) == 4 and len(kept["\0lines"][0]) == 4
+    assert source.midpoints(project, got, cache=cache).shape == (4, 3)
+    again = source.read(project, set_id, "Пробы", ["AU", "ROCK"], cache=cache)
+    assert again.number("AU") is got.number("AU") and len(calls) == 2  # from the cache now
 
 
 def test_concurrent_requests_read_once(data) -> None:  # type: ignore[no-untyped-def]

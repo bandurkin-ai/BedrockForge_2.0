@@ -27,7 +27,7 @@ around the samples (`swath.cuboid`). Refusals `{code, message, hint, param}`: 42
 `too_many_swaths` (width), `bad_param` {param}, `no_data`; 404 `chart_not_found`.
 
 The columns of a model come from `stats.blocks_cache` (≤ 600 МБ, by the SHA-256 of its file), those of a table
-from `stats.source` (≤ 256 МБ, by its `rev`): an edit of the data is a miss, the swath is recomputed (Т7.30-5).
+from `stats.source` (≤ 512 МБ, by its `rev`): an edit of the data is a miss, the swath is recomputed (Т7.30-5).
 At most two heavy calculations at a time (`routes_charts.run`); the kernels of a model series run on `THREADS`
 threads. numpy and the kernels load on the first request, not with this module (tests/test_process.py)."""
 
