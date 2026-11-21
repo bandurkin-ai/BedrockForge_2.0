@@ -233,6 +233,27 @@ def test_triangles_without_area_are_never_the_nearest() -> None:
     assert np.isnan(gn.area_normals(flat, p, np.tile([0.0, 0.0, 1.0], (2, 1)), 100.0)).sum() == 0
 
 
+def test_a_vertex_without_coordinates_takes_its_triangles_out() -> None:
+    """A wireframe read with a hole in its vertices: the triangles of that vertex are never the nearest and
+    add nothing to a sum; the others answer as if those were not there."""
+    v, t = grid(8, 8, relief, step=3.0)
+    bad = v.copy()
+    bad[40] = NAN
+    hit = (t == 40).any(axis=1)
+    assert hit.sum() == 6
+    points = cloud(v, 400, 6.0, seed=15)
+    holed = MeshTarget(bad, t, ordered=True)  # … and its triangles in no spatial order at all: the tree is poor
+    res = gn.nearest_triangles(holed, points)
+    assert res.found.all() and not hit[res.triangle].any() and np.isfinite(res.point).all()
+    rest = np.flatnonzero(~hit)
+    whole = MeshTarget(v, t[rest])
+    want = gn.nearest_triangles(whole, points)
+    assert np.array_equal(res.triangle, rest[want.triangle]) and res.d2.tobytes() == want.d2.tobytes()
+    assert res.point.tobytes() == want.point.tobytes() and res.normal.tobytes() == want.normal.tobytes()
+    sums = gn.area_normals(holed, res.point, res.normal, 5.0)  # summed in the order of each tree
+    assert np.allclose(sums, gn.area_normals(whole, want.point, want.normal, 5.0), rtol=1e-13, atol=1e-12)
+
+
 def test_points_without_coordinates_and_an_empty_mesh() -> None:
     v, t = grid(4, 4, relief)
     p = np.array([[NAN, 0.0, 0.0], [*UTM], [math.inf, 0.0, 0.0], [UTM[0], NAN, UTM[2]]])
