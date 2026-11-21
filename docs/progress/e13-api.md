@@ -255,22 +255,24 @@ POST /stats/tab/bootstrap   {…общие, n_boot (1000), seed (null — слу
 cmin, cmax, ncell, noff, minmax, nx, ny, bounds, weights, zmin, zmax, scores, ltail, utail, ltpar, utpar, n_boot,
 seed, confidence}`, `field_not_found` / `field_not_number {field}`; 404 `set_not_found`, `table_not_found`.
 
-## `POST /stats/contact` (13.17; ядро 13.7)
+## `POST /stats/contact` (13.17; ядра 13.7, 13.8)
 
 Тело: общие ключи отбора + `field`, `domain` (обязательно; текстовое поле), `domain_table` (`null` — та же таблица,
 иначе домен пробы — интервал другой таблицы под её серединой; строки вне интервалов — пробы без домена: контакт
 через них не идёт), `a`, `b` (значения домена; A — сторона < 0), `distance` D (20), `step` b (1; ≤ 500 шагов на
 сторону), `wireframe_id` (`null`), `holes`.
 ```
-{ set_id, field, domain, domain_table | null, domain_outside, wireframe_id: null, distance, step, weighted,
+{ set_id, field, domain | null, domain_table | null, domain_outside, wireframe_id | null, distance, step, weighted,
   counts {…counts отбора, rows (все строки), no_depth, overlap, no_domain, in_steps},
   contacts, holes,                              // контактов A ↔ B и скважин с ними
   edges [2n + 1] (−D … D), mean [2n] (null — шаг без проб), n [2n],   // сторона A — шаги ниже 0
   a {label, n, mean | null}, b {label, n, mean | null}, conventions }
 ```
-Нет контактов — ответ с `contacts: 0`, не отказ. B ↔ A — зеркало. «До каркаса» (13.8) пока не считается:
-`wireframe_id` — 404 `wireframe_not_found`, 422 `wireframe_open {param: wireframe_id}` (подсказка — «Проверить
-каркас» / «Исправить каркас»), замкнутое тело — 422 `contact_wireframe_unavailable {param: wireframe_id}`.
+Нет контактов — ответ с `contacts: 0`, не отказ. B ↔ A — зеркало. «До каркаса» (13.8, `wireframe_id`): контакт —
+пересечение траектории скважины с замкнутым каркасом, `a` — «снаружи», `b` — «внутри»; `domain`, `domain_table`,
+`a`, `b` не используются (в ответе `domain: null`, `domain_table: null`, `domain_outside: 0`, `wireframe_id`;
+`counts.no_path` — строки скважин без траектории). Отказы: 404 `wireframe_not_found`, 422 `wireframe_open` /
+`wireframe_orientation {param: wireframe_id}` (подсказка — «Проверить каркас» / «Исправить каркас»).
 Отказы: 422 `bad_param {a, b, step, distance, domain, …}`, `field_not_found` / `field_not_number` /
 `field_not_text {field, domain, weight_field}`, `no_values`; 404 `table_not_found` (`domain_table`).
 `/stats/chart/{id}` считает и `contact`.

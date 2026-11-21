@@ -88,8 +88,8 @@ def keep_of(labels: Sequence[str], chosen: Iterable[str]) -> np.ndarray:
 
 
 def selected_idx(idx: Any, codes: Any = None, keep: Any = None) -> np.ndarray:
-    """The numbers of the cells that the selection takes, in the type and the order of `idx` (all of them
-    without a selection) — the cells of the series for `cells_of`. A cell without a category (−1, or a code
+    """The numbers of the cells that the selection takes, in the type, the order and read-only as `idx` (all
+    of them without a selection) — the cells of the series for `cells_of`. A cell without a category (−1, or a code
     beyond the labels) is not taken."""
     numbers = as_numbers(idx)
     flags = as_keep(keep)
@@ -102,7 +102,12 @@ def selected_idx(idx: Any, codes: Any = None, keep: Any = None) -> np.ndarray:
         ok = (part >= 0) & (part < flags.size)
         ok[ok] = flags[part[ok]]
         parts.append(numbers[a : a + BLOCK][ok])
-    return np.concatenate(parts) if parts else numbers
+    if not parts:
+        return numbers
+    out = np.concatenate(parts)
+    if not numbers.flags.writeable:  # as the column: one specialization of `_in_cells`, `_mark` for the two
+        out.setflags(write=False)
+    return out
 
 
 # --- the lookup of a point among the cells ----------------------------------------------------------------------

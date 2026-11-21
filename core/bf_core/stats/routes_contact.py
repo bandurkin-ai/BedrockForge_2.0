@@ -16,9 +16,12 @@ of the domain (A — the side below 0); `distance` D and `step` b, m (null — 2
 `counts` — those of the kernel: the selection, `no_depth`, `overlap`, `no_domain`, `in_steps`.
 
 «До каркаса» (`wireframe_id`, ADR 0019 §4: the contact is the crossing of the hole with a closed wireframe, the
-sides — outside / inside) is the kernel of 13.8: here the wireframe is checked (404 `wireframe_not_found`, 422
-`wireframe_open` {param: wireframe_id} with the advice to repair it) and, while that kernel is not there, a
-closed one is refused with 422 `contact_wireframe_unavailable` {param: wireframe_id}.
+sides — `a` «снаружи», `b` «внутри») is `stats.contact.contact_chart_wireframe` (13.8) on the crossings of the
+paths of the holes of the rows (`geo.intersect.hole_crossings` with the tree of the cached geometry, as the coding
+by wireframes of `composites` takes it: `jobs_coding.bodies`, `coding._checked`); `domain`, `domain_table`, `a`,
+`b` are not used then (`domain`, `domain_table` — null, `domain_outside` — 0; `counts.no_path` — rows of holes
+without a trajectory). The wireframe is checked before the table is read: 404 `wireframe_not_found`, 422
+`wireframe_open` / `wireframe_orientation` {param: wireframe_id} with the advice to repair it.
 
 Errors `{code, message, hint, param?}`: 422 `bad_param` {param: a, b, distance, step, domain, …},
 `field_not_found` / `field_not_number` / `field_not_text` {param}, `no_values`, `too_many_series` (the settings);
@@ -40,12 +43,16 @@ router = APIRouter()
 THREADS = 2
 
 
-def _wireframe(project: Any, wireframe_id: Any) -> None:
-    """The wireframe of the mode «до каркаса»: there, closed (its stored measures) — and the mode refused until
-    the kernel of 13.8 is there."""
+_FIX = "Контакт «до каркаса» — с замкнутым телом: проверьте каркас («Проверить каркас») и запустите «Исправить каркас»."
+
+
+def _wireframe(project: Any, wireframe_id: Any) -> Any:
+    """The wireframe of the mode «до каркаса»: there and closed by its stored measures — the `jobs_coding.Wireframes`
+    of it (its geometry is not read yet)."""
     from bf_core.charts.kinds import is_id
     from bf_core.composites.coding import check_stats
     from bf_core.composites.intervals import CompositeError
+    from bf_core.composites.jobs_coding import Wireframes
     from bf_core.db import dialect
     from bf_core.wireframes import exact
 
@@ -61,14 +68,53 @@ def _wireframe(project: Any, wireframe_id: Any) -> None:
     try:
         check_stats(str(state.name), stats)
     except CompositeError as e:
-        hint = (
-            "Контакт «до каркаса» — с замкнутым телом: проверьте каркас («Проверить каркас») и запустите "
-            "«Исправить каркас»."
-        )
-        raise ApiError(422, e.code, e.message, hint, extra={"param": "wireframe_id"}) from e
-    raise ApiError(422, "contact_wireframe_unavailable", "Контактный анализ «до каркаса» в этой версии не считается.",
-                   "Выберите поле доменов и домены A и B — контакт вдоль ствола.",
-                   extra={"param": "wireframe_id"})  # fmt: skip
+        raise ApiError(422, e.code, e.message, _FIX, extra={"param": "wireframe_id"}) from e
+    return Wireframes([found[0]])
+
+
+def _target(project: Any, wf: Any) -> Any:
+    """The tree of boxes of the wireframe (`geo.intersect.MeshTarget`, `solid` set), as the coding by wireframes
+    takes it: closed without a stored orientation — measured here; its neighbouring triangles wound one way."""
+    from bf_core.composites import coding
+    from bf_core.composites.intervals import CompositeError
+    from bf_core.composites.jobs_coding import bodies
+    from bf_core.wireframes.files import broken
+
+    try:
+        return coding._checked(next(bodies(project, wf)))
+    except CompositeError as e:  # `wireframe_open`, `wireframe_orientation`
+        raise ApiError(422, e.code, e.message, _FIX, extra={"param": "wireframe_id"}) from e
+    except ValueError as e:  # a triangle of a vertex that is not there
+        raise broken() from e
+
+
+def _to_wireframe(
+    project: Any, set_id: int, t: Any, field: str, weight_field: str | None, flt: Any, settings: dict[str, Any],
+    wf: Any,
+) -> dict[str, Any]:  # fmt: skip
+    """The contact «до каркаса»: the crossings of the paths of the holes of the rows with the wireframe."""
+    import numpy as np
+
+    from bf_core.composites import coords
+    from bf_core.composites import source as dh_source
+    from bf_core.geo import intersect as gi
+
+    from . import source
+    from .contact import SIDES, contact_chart_wireframe
+
+    read = [field, source.LENGTH, *([weight_field] if weight_field else [])]
+    cols = rc.only_holes(source.read(project, set_id, t.id, read), rc._holes(settings, "holes"))
+    target = _target(project, wf)
+    st = dh_source.trajectories(project, set_id)
+    dense = coords.hole_index(st.hole_ids, cols.hole_db_ids)[cols.hole_of()]
+    hits = gi.hole_crossings(st.traj, [target], holes=np.unique(dense[dense >= 0]))
+    out = contact_chart_wireframe(
+        dense, cols.from_m, cols.to_m, hits, flt=flt, distance=settings.get("distance"), step=settings.get("step"),
+        sides=SIDES, threads=THREADS, **cols.select_args(field, weight_field),
+    )  # fmt: skip
+    head = {"set_id": set_id, "field": field, "domain": None, "domain_table": None, "domain_outside": 0,
+            "wireframe_id": wf.ids[0]}  # fmt: skip
+    return {**head, **out}
 
 
 @rc.register("contact")
@@ -79,11 +125,12 @@ def contact_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
 
     flt = select.SampleFilter.from_settings(settings)
     set_id = rc._set_id(settings)
-    if settings.get("wireframe_id") is not None:
-        _wireframe(project, settings["wireframe_id"])
+    wf = None if settings.get("wireframe_id") is None else _wireframe(project, settings["wireframe_id"])
     t, infos = rc.table_of(project, set_id, rc._name(settings, "table"))
     field = _number(t, infos, settings, "field")
     weight_field = _weight_field(t, infos, flt)
+    if wf is not None:
+        return _to_wireframe(project, set_id, t, field, weight_field, flt, settings, wf)
     dom = _domain(project, set_id, t, infos, settings)
     if dom is None:
         raise rc._bad("domain", "Не выбрано поле доменов.", "Выберите текстовое поле доменов и домены A и B.")

@@ -71,6 +71,10 @@ _FILTERED, _MISSING, _BAD_WEIGHT, _OUTSIDE, _BAD_CELL = range(5)
 _NO_NUMBERS = np.zeros(0, dtype=np.float64)
 _NO_CODES = np.zeros(0, dtype=np.int32)
 _NO_KEEP = np.zeros(0, dtype=np.bool_)
+# Read-only as the columns of `stats.blocks_cache` (numba compiles a kernel anew for a read-only array): a series
+# without a density or a selection takes the specialization of one with them; `keep` is the caller's own.
+_NO_NUMBERS.setflags(write=False)
+_NO_CODES.setflags(write=False)
 Columns = tuple[np.ndarray, ...]
 
 __all__ = [
@@ -367,6 +371,14 @@ def block_bounds(
 # --- the series ---------------------------------------------------------------------------------------------------
 
 
+def _like(copy: np.ndarray, of: np.ndarray) -> np.ndarray:
+    """A copy of the rows of a column read-only when the column is: the tail of the groups goes through the
+    same specialization of `_sums` as the whole groups — slices of the cached columns, read-only."""
+    if not of.flags.writeable:
+        copy.setflags(write=False)
+    return copy
+
+
 class BlockSums:
     """A model series by swath, by portions of its columns in the order of the file (see the module
     docstring). `rows` — the rows to come in all, for `tick`."""
@@ -469,12 +481,14 @@ class BlockSums:
         return out
 
     def _hold(self, cols: Columns, a: int, b: int) -> None:
-        self._held.append(tuple(c[a:b].copy() if c.size else c for c in cols))
+        self._held.append(tuple(_like(c[a:b].copy(), c) if c.size else c for c in cols))
         self._held_rows += b - a
 
     def _join(self) -> Columns:
         held, self._held, self._held_rows = self._held, [], 0
-        return held[0] if len(held) == 1 else tuple(np.concatenate(parts) for parts in zip(*held, strict=True))
+        if len(held) == 1:
+            return held[0]
+        return tuple(_like(np.concatenate(parts), parts[0]) for parts in zip(*held, strict=True))
 
     def _sum_groups(self, groups: Sequence[Columns]) -> None:
         ax, keep = self._ax, self._keep if self._keep is not None else _NO_KEEP
@@ -529,15 +543,23 @@ def block_series(
 
 
 def warm() -> None:
-    """Compile the kernels for the two types of `idx` (the file and the cache of columns) on a few cells."""
+    """Compile the kernels for the two types of `idx` (the cache of columns: uint32 below 2³² cells, else uint64)
+    on a few cells, read-only as `stats.blocks_cache` gives the columns (`keep` — the route's own, writable): the
+    extent with a selection and without, the series with the tonnage and a selection (the volume and no
+    selection take the same specialization), whole groups and the tail of the groups."""
     from . import swath_frame as sf
     from .swath import cuboid
+    from .warm import frozen
 
     grid = {"corner": [0.0, 0.0, 0.0], "counts": [3, 2, 2], "size": [5.0, 5.0, 2.0], "order": "F"}
     f = sf.frame(30.0, -10.0, 5.0)
-    codes, keep = np.array([0, 1, 0, -1], dtype=np.int32), np.array([True, False])
-    values, density = np.array([1.0, 2.0, np.nan, 4.0]), np.ones(4)
+    codes, keep = frozen(np.array([0, 1, 0, -1, 1], dtype=np.int32)), np.array([True, False])
+    values, density = frozen([1.0, 2.0, np.nan, 4.0, 5.0]), frozen(np.ones(5))
     for dtype in (np.uint64, np.uint32):
-        idx = np.array([0, 4, 7, 11], dtype=dtype)
+        idx = frozen(np.array([0, 4, 7, 9, 11], dtype=dtype))
+        block_bounds(f, grid, idx)
         c = cuboid(f, models=[block_bounds(f, grid, idx, codes=codes, keep=keep)], width=2.0)
-        block_series(grid, idx, values, f, c, weight="tonnage", density=density, codes=codes, keep=keep)
+        acc = BlockSums(grid, f, c, weight="tonnage", keep=keep)
+        acc._group = 2  # two whole groups (slices of the columns) and the tail (a copy)
+        acc.add(idx, values, density=density, codes=codes)
+        acc.result()
