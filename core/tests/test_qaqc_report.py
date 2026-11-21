@@ -30,7 +30,22 @@ from tests.test_qaqc_import_api import csv_file, import_csv, qaqc_core  # noqa: 
 
 Q = f"{API}/qaqc"
 FILTER = {"v": 1, "labs": ["LAB1", "lab3"], "date_from": "2024-03-01"}
-PNG = b"\x89PNG\r\n\x1a\n" + b"\0" * 64
+
+
+def png(w: int = 40, h: int = 20) -> bytes:
+    """A real PNG of w × h red pixels (the core reads its IHDR)."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+
+    raw = b"".join(b"\0" + b"\xff\x00\x00" * w for _ in range(h))
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+
+PNG = png()
 
 
 @pytest.fixture()
@@ -196,6 +211,11 @@ def test_charts_and_images(qc, tmp_path: Path) -> None:  # type: ignore[no-untyp
     assert qc.put(f"{Q}/reports/{rid}/images/img001", content=PNG + b"1").json()["images"] == 1  # replaced
     big = qc.put(f"{Q}/reports/{rid}/images/img002", content=PNG + b"\0" * (2 * 2**20))
     assert big.status_code == 413 and big.json()["code"] == "image_too_large"
+    huge = png(1, 1)[:16] + (9000).to_bytes(4, "big") + (10).to_bytes(4, "big") + png(1, 1)[24:]
+    wide = qc.put(f"{Q}/reports/{rid}/images/img002", content=huge)
+    assert wide.status_code == 415 and wide.json()["code"] == "image_size" and wide.json()["hint"]
+    broken = qc.put(f"{Q}/reports/{rid}/images/img002", content=b"\x89PNG\r\n\x1a\n" + b"\0" * 64)
+    assert broken.status_code == 415 and broken.json()["code"] == "not_png"
     jpeg = qc.put(f"{Q}/reports/{rid}/images/img002", content=b"\xff\xd8\xff\xe0" + b"\0" * 64)
     assert jpeg.status_code == 415 and jpeg.json()["code"] == "not_png"
     past = qc.put(f"{Q}/reports/{rid}/images/img201", content=PNG)
@@ -244,3 +264,67 @@ def test_bfggis_cycle_keeps_the_report_and_its_files(qc, tmp_path: Path) -> None
     assert after["images"] == 1 and after["stale"] == "source_deleted"
     calc = qc.post(f"{Q}/calc/standards", json={"report_id": new_id, "element": "CU"}).json()
     assert calc["groups"] == rep["summary"]["elements"]["CU"]["standards"]["groups"]
+
+
+def test_batch_status_by_any_element_and_no_orphan_building(qc, tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """14.25: the summary holds the status of a batch by any element; a report whose job could not be started is
+    not left `building`."""
+    settings(qc)
+    did = data(qc, tmp_path, 400)
+    rep = build(qc, did, charts="none")
+    line = rep["summary"]["batches_any"]
+    per = [qc.post(f"{Q}/calc/batches", json={"report_id": rep["id"], "element": e}).json()["batches"]
+           for e in rep["elements"]]  # fmt: skip
+    status = rp.any_status(per)
+    assert line == {"total": len(status), "failed": list(status.values()).count(2),
+                    "not_assessed": list(status.values()).count(-1)}  # fmt: skip
+    assert line["failed"] >= max(sum(b["status"] == 2 for b in rows) for rows in per)
+    assert rp.any_status([[{"lab": "L", "batch": "B", "status": -1}], [{"lab": "L", "batch": "B", "status": 0}]]) == {
+        ("L", "B"): 0
+    }
+    assert rp.any_status([[{"lab": "L", "batch": "B", "status": 0}], [{"lab": "L", "batch": "B", "status": 2}]]) == {
+        ("L", "B"): 2
+    }
+    from bf_core.jobs.scheduler import Scheduler
+
+    def refuse(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("the queue is closed")
+
+    monkeypatch.setattr(Scheduler, "submit", refuse)
+    res = qc.post(f"{Q}/reports", json={"data_id": did, "charts": "none", "name": "Не начат"})
+    assert res.status_code == 500 and res.json()["code"] == "internal"
+    names = [i["name"] for i in qc.get(f"{Q}/reports").json()["items"]]
+    assert "Не начат" not in names and len(names) == 1
+
+
+class _CancelInBootstrap(JobContext):
+    """Cancels at the third beat of the computation: the first is the start of the element, the next ones come
+    only from the bootstrap of the external control (every 16 realizations)."""
+
+    def __init__(self, job: dict[str, Any]) -> None:
+        super().__init__(job, lambda _m: None, threading.Event())
+        self.beats = 0
+
+    def tick(self, progress: float | None = None, message: str | None = None) -> None:
+        if message and message.startswith("Расчёт: Элемент"):
+            self.beats += 1
+            if self.beats >= 3:
+                raise JobCancelled()
+
+
+def test_cancel_during_the_bootstrap_drops_the_report(qc, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    settings(qc)
+    did = data(qc, tmp_path, 600)
+    p = project(qc)
+    store = BlobStore(p.folder)
+    with dialect.write_tx(p.engine) as conn:
+        rid = rp.create(conn, store, "В бутстрапе", rp.make_inputs(conn, did, None, ["AU"], "none"))
+    ctx = _CancelInBootstrap({"id": 4242, "params": {"report_id": rid}, "project_folder": str(p.folder)})
+    with pytest.raises(JobCancelled):
+        qj.run_report(ctx)
+    ctx.close()
+    assert ctx.beats >= 3  # the cancel came from inside the bootstrap
+    with dialect.write_tx(p.engine) as conn:  # the job set its id on the report: the scheduler drops it
+        assert drop_partial(conn, 4242) == 1
+        assert conn.execute(sa.select(objects.c.id).where(objects.c.kind == rp.KIND)).first() is None
+    assert qc.get(f"{Q}/reports").json()["items"] == []

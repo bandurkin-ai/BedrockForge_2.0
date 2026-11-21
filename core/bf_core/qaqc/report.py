@@ -9,7 +9,7 @@ of the charts, `sidecar:xlsx` — the book (`report_xlsx`, job `qaqc.report_file
     report_id = create(conn, store, name, inputs)                    # `building` until `qaqc.report` ends
     summary = compute(recs, inputs, tick)                             # what the job writes
     snapshot(project, report_id) → Snapshot(recs, config, crm, filter)   # calculations by `report_id`
-    info(conn, report_id, summary=False), list_reports(conn), charts_of(summary, mode), stale_of(conn, meta)
+    info(conn, report_id, summary=False), list_reports(conn), charts_of(summary, mode), stale_of(now_of(conn), meta)
 
 `inputs`: {v, algo: "qaqc-1", data_uid, data_id, data_name, data_sha256, config (without version), crm (rows),
 filter, elements, charts (`all` | `flagged` | `none`), versions {numpy, scipy, pyarrow}, created_at}.
@@ -29,7 +29,7 @@ import json
 import threading
 import uuid
 from collections import OrderedDict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -141,12 +141,15 @@ def compute(recs: Any, inputs: Mapping[str, Any], tick: Callable[[float, str], N
     from . import calc
 
     out: dict[str, Any] = {}
+    tables: list[list[dict[str, Any]]] = []
     elements = list(inputs["elements"])
     for i, element in enumerate(elements):
         if tick is not None:
             tick(i / max(len(elements), 1), f"Элемент {element}")
         recs.load(calc.columns_of(recs.schema, element))
-        ctx = calc.context(recs, inputs["config"], inputs["crm"], element, inputs.get("filter"))
+        beat = None if tick is None else (lambda i=i, element=element: tick(i / max(len(elements), 1),
+                                                                             f"Элемент {element}"))  # fmt: skip
+        ctx = calc.context(recs, inputs["config"], inputs["crm"], element, inputs.get("filter"), tick=beat)
         part: dict[str, Any] = {}
         for section in calc.SECTIONS:
             for params in RUNS.get(section, [{}]):
@@ -156,8 +159,26 @@ def compute(recs: Any, inputs: Mapping[str, Any], tick: Callable[[float, str], N
                 part[key] = {k: v for k, v in answer.items() if k not in strip}
                 if isinstance(part[key].get("th"), dict):  # the groups of Thompson–Howarth are points too
                     part[key]["th"] = {k: v for k, v in part[key]["th"].items() if k != "groups"}
+        tables.append(calc.run(ctx, "batches")["batches"])
         out[element] = part
-    return {"v": 1, "elements": out}
+    return {"v": 1, "elements": out, "batches_any": any_line(any_status(tables))}
+
+
+def any_status(tables: Sequence[Sequence[Mapping[str, Any]]]) -> dict[tuple[Any, Any], int]:
+    """The status of every batch (LAB, BATCH) by any element (ADR 0020 §4, вопрос № 41): a failure if one
+    element fails it; else «норма» if any element assessed it; else −1 «не оценена»."""
+    out: dict[tuple[Any, Any], int] = {}
+    for rows in tables:
+        for b in rows:
+            key, status = (b["lab"], b["batch"]), int(b["status"])
+            was = out.get(key, -1)
+            out[key] = 2 if 2 in (was, status) else (0 if 0 in (was, status) or 1 in (was, status) else -1)
+    return out
+
+
+def any_line(status: Mapping[tuple[Any, Any], int]) -> dict[str, int]:
+    values = list(status.values())
+    return {"total": len(values), "failed": values.count(2), "not_assessed": values.count(-1)}
 
 
 def canonical_summary(summary: Mapping[str, Any]) -> bytes:
@@ -166,7 +187,7 @@ def canonical_summary(summary: Mapping[str, Any]) -> bytes:
         e: {k: {**a, "counts": {c: n for c, n in a.get("counts", {}).items() if c != "rows"}} for k, a in part.items()}
         for e, part in summary["elements"].items()
     }
-    return _canonical({"v": summary.get("v", 1), "elements": body})
+    return _canonical({"v": summary.get("v", 1), "elements": body, "batches_any": summary.get("batches_any")})
 
 
 # --- charts -----------------------------------------------------------------------------------------------------------
@@ -297,10 +318,26 @@ def create(conn: sa.Connection, store: BlobStore, name: Any, inputs: dict[str, A
     return report_id
 
 
+def settings_sha(config: Any, crm: Any) -> dict[str, str]:
+    """SHA-256 of the canonical settings and reference: what «устарел» (`config`) compares."""
+    return {"config_sha256": hashlib.sha256(_canonical(config)).hexdigest(),
+            "crm_sha256": hashlib.sha256(_canonical(crm)).hexdigest()}  # fmt: skip
+
+
 def _meta_of(inputs: Mapping[str, Any]) -> dict[str, Any]:
-    return {"data_uid": inputs["data_uid"], "data_name": inputs["data_name"], "data_sha256": inputs["data_sha256"],
+    return {**settings_sha(inputs["config"], inputs["crm"]), "data_uid": inputs["data_uid"],
+            "data_name": inputs["data_name"], "data_sha256": inputs["data_sha256"],
             "inputs_sha256": inputs_sha256(inputs), "elements": list(inputs["elements"]), "filter": inputs["filter"],
             "charts": inputs["charts"], "built_at": inputs["created_at"]}  # fmt: skip
+
+
+def drop_building(conn: sa.Connection, report_id: int) -> None:
+    """A new report whose job could not be started: the object and its files go."""
+    building = (objects.c.id == report_id) & (objects.c.state == "building")
+    if conn.execute(sa.select(objects.c.id).where(building)).first() is not None:
+        conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER,
+                                                  blob_owners.c.owner_id == report_id))  # fmt: skip
+        conn.execute(sa.delete(objects).where(building))
 
 
 def set_job(conn: sa.Connection, report_id: int, job_id: int) -> None:
@@ -361,24 +398,36 @@ def read_json(conn: sa.Connection, store: BlobStore, report_id: int, role: str) 
     return json.loads(path.read_bytes())
 
 
-def stale_of(conn: sa.Connection, meta: Mapping[str, Any], inputs: Mapping[str, Any] | None) -> str | None:
-    """`source_deleted`, `data`, `config` or None (see the module docstring)."""
+@dataclass
+class Now:
+    """What «устарел» compares with, read once for a list: the hashes of the settings, the records of the data."""
+
+    settings: dict[str, str]
+    data: dict[Any, str | None]  # uid of a data object → SHA-256 of its records
+
+
+def now_of(conn: sa.Connection) -> Now:
     from . import service as sv
 
-    found = find_data(conn, meta.get("data_uid"))
-    if found is None:
+    config, crm = current_settings(conn)
+    rows = conn.execute(
+        sa.select(objects.c.meta, blob_owners.c.sha256)
+        .select_from(objects.outerjoin(blob_owners, (blob_owners.c.owner_kind == OWNER) & (blob_owners.c.owner_id
+                                                     == objects.c.id) & (blob_owners.c.role == sv.ROLE)))
+        .where(objects.c.kind == sv.KIND, objects.c.state == "ready")
+    ).all()  # fmt: skip
+    return Now(settings_sha(config, crm), {(m or {}).get("uid"): sha for m, sha in rows})
+
+
+def stale_of(now: Now, meta: Mapping[str, Any]) -> str | None:
+    """`source_deleted`, `data`, `config` or None (see the module docstring)."""
+    uid = meta.get("data_uid")
+    if uid not in now.data:
         return "source_deleted"
-    try:
-        sha = sv.sha_of(conn, found)
-    except ApiError:
+    if now.data[uid] != meta.get("data_sha256"):
         return "data"
-    if sha != meta.get("data_sha256"):
-        return "data"
-    if inputs is not None:
-        config, crm = current_settings(conn)
-        same = _canonical(config) == _canonical(inputs.get("config"))
-        if not same or _canonical(crm) != _canonical(inputs.get("crm")):
-            return "config"
+    if any(meta.get(k) != v for k, v in now.settings.items()):
+        return "config"
     return None
 
 
@@ -392,13 +441,12 @@ def find_data(conn: sa.Connection, uid: Any) -> int | None:
     return None
 
 
-def _public(conn: sa.Connection, store: BlobStore, row: Any, with_summary: bool) -> dict[str, Any]:
+def _public(conn: sa.Connection, store: BlobStore, row: Any, with_summary: bool, now: Now) -> dict[str, Any]:
     meta = dict(row.meta or {})
     owned = _owned(conn, int(row.id))
-    inputs = read_json(conn, store, int(row.id), INPUTS) if row.state == "ready" else None
     out: dict[str, Any] = {
         "id": int(row.id), "name": row.name, "version": int(row.version), "state": row.state,
-        "stale": stale_of(conn, meta, inputs) if row.state == "ready" else None, "data_name": meta.get("data_name"),
+        "stale": stale_of(now, meta) if row.state == "ready" else None, "data_name": meta.get("data_name"),
         "data_sha256": meta.get("data_sha256"), "inputs_sha256": meta.get("inputs_sha256"),
         "elements": meta.get("elements", []), "filter": meta.get("filter"), "charts": meta.get("charts"),
         "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat(),
@@ -414,14 +462,15 @@ def _public(conn: sa.Connection, store: BlobStore, row: Any, with_summary: bool)
 
 
 def info(conn: sa.Connection, store: BlobStore, report_id: int, summary: bool = False) -> dict[str, Any]:
-    return _public(conn, store, _row(conn, report_id), summary)
+    return _public(conn, store, _row(conn, report_id), summary, now_of(conn))
 
 
 def list_reports(conn: sa.Connection, store: BlobStore) -> list[dict[str, Any]]:
     rows = conn.execute(
         sa.select(objects).where(objects.c.kind == KIND).order_by(objects.c.name_key, objects.c.id)
     ).all()
-    return [_public(conn, store, r, False) for r in rows]
+    now = now_of(conn)
+    return [_public(conn, store, r, False, now) for r in rows]
 
 
 def rename(conn: sa.Connection, store: BlobStore, report_id: int, name: Any, expected: Any) -> dict[str, Any]:

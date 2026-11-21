@@ -249,3 +249,15 @@ def test_bfggis_cycle_keeps_data_config_and_crm(pclient, tmp_path: Path) -> None
     back = sv.open_records(q, new_id)
     assert np.array_equal(back.number(r.v("AU")), au, equal_nan=True)
     assert back.text(r.TYPE_CODE).values() == recs.text(r.TYPE_CODE).values()
+
+
+def test_crm_file_too_long_is_refused_before_reading(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """14.25: an estimate far past 5000 rows is refused before the file is read."""
+    import bf_core.formats.registry as reg
+
+    path = tmp_path / "big.csv"
+    path.write_text("CRM_ID,ELEMENT,MEAN,SD\n" + "A,AU,1,0.1\n" * (2 * cf.MAX_CRM + 500), encoding="utf-8")
+    monkeypatch.setattr(reg, "read_table", lambda *a, **k: pytest.fail("the whole file was read"))
+    with pytest.raises(ApiError) as e:
+        cf.read_crm_file(path)
+    assert e.value.code == "too_many_rows"

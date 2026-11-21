@@ -399,7 +399,7 @@ def normalize(
     cols[r.PREV_ROW] = prev_row
     elements: list[r.Element] = []
     per: dict[str, dict[str, int]] = {}
-    below = above = bad = bad_seq
+    below, above, bad = 0, 0, bad_seq
     for i, e in enumerate(m.elements):
         beat(0.4 + 0.5 * i / len(m.elements), f"Элемент {e.name}")
         got = parse_values(table[e.column])

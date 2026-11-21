@@ -25,7 +25,13 @@ from typing import Any
 
 import numpy as np
 
-ELEMENTS = (("AU", "ppm", -0.5, 1.0, 0.01), ("CU", "%", -1.0, 0.8, 0.001), ("AG", "ppm", 1.0, 1.0, 0.5))
+ELEMENTS = (
+    ("AU", "ppm", -0.5, 1.0, 0.01),
+    ("CU", "%", -1.0, 0.8, 0.001),
+    ("AG", "ppm", 1.0, 1.0, 0.5),
+    ("ZN", "%", -1.5, 0.9, 0.001),
+    ("PB", "%", -2.0, 0.9, 0.001),
+)  # the first three by default (`elements`): the same files as before
 SHARES = {"CRM": 0.30, "BLANK": 0.15, "DUP_F": 0.15, "DUP_C": 0.15, "DUP_P": 0.15, "UMP": 0.10}
 REL = {"DUP_F": 0.15, "DUP_C": 0.08, "DUP_P": 0.04}
 COLUMNS = ("SAMPLE_ID", "HOLE", "TYPE", "PARENT_ID", "CRM_ID", "LAB", "BATCH", "DATE", "SEQ")
@@ -72,6 +78,7 @@ def generate(
     fail: float = 0.01,
     missing: float = 0.002,
     crm_code: str = "CRM",
+    elements: int = 3,
 ) -> Generated:
     import pyarrow as pa
 
@@ -109,7 +116,7 @@ def generate(
 
     cols: dict[str, Any] = {}
     gen = Generated(None)
-    for name, unit, mu, sd, dl in ELEMENTS:
+    for name, unit, mu, sd, dl in ELEMENTS[:elements]:
         orig = rng.lognormal(mu, sd, n)
         v = orig.copy()
         for k, rel in REL.items():

@@ -191,6 +191,18 @@ def test_pdf_not_available_and_save(qc, tmp_path: Path) -> None:  # type: ignore
     one = make_file(qc, rid)
     two = make_file(qc, rid)
     assert one["sha256"] == two["sha256"]  # the same report — the same bytes
+    # 14.25: no reference — «не оценён» (not the fill of «норма»); the seed and the class of a bias — text;
+    # the status of a batch by any element
+    wb = openpyxl.load_workbook(book_path(qc, rid))
+    head = [c.value for c in wb["Стандарты"][1]]
+    row = wb["Стандарты"][2]
+    assert row[head.index("Состояние")].value == "no_reference" and row[0].fill.fgColor.rgb == "FFF4F5F7"
+    params = {r[0].value: r[1].value for r in wb["Параметры"].iter_rows(min_row=2) if r[0].value}
+    assert params["Зерно"] == "12345" and params["seed"] == "12345"
+    batches = wb["Партии"]
+    assert batches.cell(1, 13).value == "Статус по любому элементу"
+    assert {batches.cell(k, 13).value for k in range(2, batches.max_row + 1)} <= set(rx.STATUS.values())
+    assert rx._bias_class(1) == "внимание" and rx._bias_class(None) is None
 
 
 @pytest.mark.windows
@@ -208,5 +220,10 @@ def test_save_to_a_path_with_cyrillic_and_spaces(qc, tmp_path: Path) -> None:  #
     assert res.json() == {"path": str(dst), "size": dst.stat().st_size}
     wb = openpyxl.load_workbook(dst)
     assert wb.sheetnames == list(rx.SHEETS) and len(wb["Стандарты"]._images) == 1
+    bare = qc.post(f"{Q}/reports/{rep['id']}/save", json={"kind": "xlsx", "path": str(folder / "без расширения")})
+    assert bare.status_code == 200 and bare.json()["path"].endswith("без расширения.xlsx")
+    project = projects_of(qc.core).require_current().folder
+    inside = qc.post(f"{Q}/reports/{rep['id']}/save", json={"kind": "xlsx", "path": str(project / "cache" / "x.xlsx")})
+    assert inside.status_code == 422 and inside.json()["code"] == "bad_path"
     gone = qc.post(f"{Q}/reports/{rep['id']}/save", json={"kind": "xlsx", "path": str(tmp_path / "нет" / "x.xlsx")})
     assert gone.status_code == 404 and gone.json()["code"] == "folder_not_found"

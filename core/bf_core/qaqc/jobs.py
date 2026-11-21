@@ -303,6 +303,9 @@ def run_report(ctx: JobContext) -> dict[str, Any]:
     p = ctx.params
     report_id = int(p["report_id"])
     store = BlobStore(ctx.project_folder)  # type: ignore[arg-type]
+    if p.get("inputs") is None:  # a new report: its job is this one (a cancel drops it — `drop_partial`)
+        with dialect.write_tx(ctx.engine()) as conn:
+            rp.set_job(conn, report_id, ctx.id)
     try:
         inputs = p.get("inputs")
         if inputs is None:
