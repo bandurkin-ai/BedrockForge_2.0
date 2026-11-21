@@ -377,7 +377,8 @@ def scatter_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
 @rc.register("ternary")
 def ternary_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     """The shares of `ternary.shares`; more than MAX_TERNARY rows are thinned evenly along the rows (the window
-    draws points, not the density of `ternary_chart`), `total` — all the rows drawn."""
+    draws points, not the density of `ternary_chart`). `total` — every point that has a place on the diagram
+    (= `counts.used`), before the thinning: the window says «показано len(a) из total» when it is more."""
     import numpy as np
 
     from . import source

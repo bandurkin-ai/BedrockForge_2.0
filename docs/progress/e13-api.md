@@ -175,7 +175,8 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
 { set_id, fields [a, b, c], color_field | null,
   counts {rows, missing, nonpositive_sum (= negative + zero_sum: не рисуются), negative, zero_sum, used},
   a[], b[], c[] (доли, a + b + c = 1), row[],          // ≤ 200 000; больше — равномерно прорежено по строкам
-  total (= counts.used), color_values[] | null (текст — индекс в labels, null — пусто), color | null,
+  total (= counts.used: все пригодные точки до прореживания; окно — «показано len(a) из total»),
+  color_values[] | null (текст — индекс в labels, null — пусто), color | null,
   conventions }
 ```
 
