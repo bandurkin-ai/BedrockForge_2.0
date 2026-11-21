@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 
-from .router import Svc, _changed, _snapshot
+from .router import Svc, _changed, snapshot_of
 
 if TYPE_CHECKING:
     from .snapshot import Snapshot
@@ -30,7 +30,7 @@ def _tool(
     from . import edit as e
     from .snapshot import snapshots as cache
 
-    snap = _snapshot(project, set_id, table)
+    snap = snapshot_of(project, set_id, table)
     expected = snap.key[-1] if rev is None else rev
     with dialect.write_tx(project.engine) as conn:
         t = e.target(conn, set_id, table)
@@ -146,7 +146,7 @@ def append_table(svc: Svc, request: Request, set_id: int, table: str, body: Appe
     from . import tools
 
     project = svc.require_current(writable=True)
-    src = _snapshot(project, set_id, body.source)
+    src = snapshot_of(project, set_id, body.source)
 
     def run(conn: Any, t: Any, _snap: Snapshot) -> dict[str, Any]:
         out = tools.append_table(conn, t, e.target(conn, set_id, body.source), src)
@@ -169,7 +169,7 @@ def merge_by_key(svc: Svc, request: Request, set_id: int, table: str, body: Merg
     from . import tools
 
     project = svc.require_current(writable=True)
-    src = _snapshot(project, set_id, body.source)
+    src = snapshot_of(project, set_id, body.source)
     return _tool(
         request,
         project,
@@ -229,7 +229,7 @@ def check_codes(svc: Svc, set_id: int, table: str, column: str) -> dict[str, Any
     from . import tools
 
     project = svc.require_current()
-    snap = _snapshot(project, set_id, table)
+    snap = snapshot_of(project, set_id, table)
     with dialect.read_tx(project.engine) as conn:
         return tools.check_codes(conn, e.target(conn, set_id, table), snap, column)
 

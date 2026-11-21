@@ -31,6 +31,7 @@ from fastapi.responses import Response
 
 from bf_core.api.errors import ApiError
 
+from . import route_args as ra
 from . import routes_charts as rc
 from .routes_charts import Settings, Svc
 
@@ -40,7 +41,7 @@ BODY_KEYS = ("rows", "chart", "filter")
 
 
 def _bad(param: str, message: str, hint: str) -> ApiError:
-    return rc._bad(param, message, hint)
+    return ra.bad(param, message, hint)
 
 
 def _changed() -> ApiError:
@@ -67,7 +68,7 @@ def _table(project: Any, body: dict[str, Any]) -> Any:
 
     from . import source
 
-    set_id = rc._set_id(body)
+    set_id = ra.set_id_of(body)
     table = body.get("table")
     if table is not None and not isinstance(table, str | int) or isinstance(table, bool):
         raise _bad("table", "Таблица задаётся названием или номером.", "Выберите таблицу набора.")
@@ -125,12 +126,12 @@ def _by_value(project: Any, kind: str, settings: dict[str, Any], body: dict[str,
     import numpy as np
 
     from . import selection
-    from .routes_more import _by_domain
+    from .routes_more import by_domain
 
     lo, hi = sorted(_numbers(body.get("range"), 2, "range", "Диапазон выделения — два числа: от и до.",
                              "Выделите область на графике заново."))  # fmt: skip
     groups = _groups(body.get("groups"))
-    d = _by_domain(project, settings)
+    d = by_domain(project, settings)
     sel, codes, labels, cols = d["sel"], d["codes"], d["labels"], d["cols"]
     inside = (sel.values >= lo) & (sel.values <= hi)
     if kind == "box" and settings.get("log") or kind == "probplot":
@@ -170,7 +171,7 @@ def _from_filter(project: Any, body: dict[str, Any]) -> Any:
 
     from bf_core.drillholes.expr import ExprError
     from bf_core.drillholes.query import mask
-    from bf_core.drillholes.router import _expr_error, _snapshot
+    from bf_core.drillholes.router import expr_error, snapshot_of
 
     from . import selection
 
@@ -183,13 +184,13 @@ def _from_filter(project: Any, body: dict[str, Any]) -> Any:
     if hole is not None and (not isinstance(hole, int) or isinstance(hole, bool)):
         raise _bad("hole", "Скважина задаётся номером.", "Выберите скважину заново.")
     t = _table(project, body)
-    snap = _snapshot(project, t.set_id, str(t.id))
+    snap = snapshot_of(project, t.set_id, str(t.id))
     if int(snap.key[-1]) != t.rev:
         raise _changed()
     try:
         m = mask(snap, hole, where or None)
     except ExprError as exc:
-        raise _expr_error(exc) from exc
+        raise expr_error(exc) from exc
     n = int(np.count_nonzero(m))
     if n > selection.MAX_ROWS:
         raise selection.too_many(n, "filter")
@@ -235,7 +236,7 @@ def selection_segments(
         raise bad_method()
     project = svc.require_current()
     sel = selection.current(project, token[:64])
-    with rc._SLOTS:
+    with rc.SLOTS:
         body = selection.segments(project, sel, method)
     return Response(content=body, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
 

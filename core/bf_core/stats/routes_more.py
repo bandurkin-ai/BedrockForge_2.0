@@ -32,6 +32,7 @@ from fastapi.responses import JSONResponse
 
 from bf_core.api.errors import ApiError
 
+from . import route_args as ra
 from . import routes_charts as rc
 from .routes_charts import Settings, Svc
 
@@ -45,20 +46,20 @@ MAX_TERNARY = 200_000  # points of a ternary diagram; more — evenly thinned
 # --- the pieces of the settings ---------------------------------------------------------------------------
 
 
-def _weight_field(t: Any, infos: list[Any], flt: Any) -> str | None:
+def weight_field_of(t: Any, infos: list[Any], flt: Any) -> str | None:
     if flt.weight in rc.FIELD_WEIGHTS and flt.weight_field is not None:
         return str(rc.field_of(t, infos, flt.weight_field, "weight_field").name)
     return None
 
 
-def _number(t: Any, infos: list[Any], settings: dict[str, Any], param: str, skip: tuple[str, ...] = ()) -> str:
-    name = rc._name(settings, param)
+def number_field(t: Any, infos: list[Any], settings: dict[str, Any], param: str, skip: tuple[str, ...] = ()) -> str:
+    name = ra.name_of(settings, param)
     f = rc.first_number(t, infos, param, skip) if name is None else rc.field_of(t, infos, name, param)
     return str(f.name)
 
 
 def _color_field(t: Any, infos: list[Any], settings: dict[str, Any]) -> Any:
-    name = rc._name(settings, "color")
+    name = ra.name_of(settings, "color")
     return None if name is None else rc.field_of(t, infos, name, "color", ("number", "text"))
 
 
@@ -86,12 +87,12 @@ def _color_info(values: list[Any] | None, f: Any, labels: list[str] | None) -> t
     return values, {"kind": "number", "min": min(shown, default=None), "max": max(shown, default=None)}
 
 
-def _domain(project: Any, set_id: int, t: Any, infos: list[Any], settings: dict[str, Any]) -> tuple[Any, str] | None:
+def domain_of(project: Any, set_id: int, t: Any, infos: list[Any], settings: dict[str, Any]) -> tuple[Any, str] | None:
     """(the table of the domain, the stored name of its text field) or None — no domain."""
-    name = rc._name(settings, "domain")
+    name = ra.name_of(settings, "domain")
     if name is None:
         return None
-    table = rc._name(settings, "domain_table")
+    table = ra.name_of(settings, "domain_table")
     dt, dinfos = (t, infos) if table is None else rc.table_of(project, set_id, table)
     return dt, str(rc.field_of(dt, dinfos, name, "domain", ("text",)).name)
 
@@ -108,7 +109,7 @@ def _beside(project: Any, cols: Any, whole: bool, other: Any, what: str, build: 
     return source.COLUMNS.get((project.uid, t.id, t.token, t.rev, f"\0{what} {o.set_id} {o.id}", o.token, o.rev), build)
 
 
-def _domain_codes(project: Any, set_id: int, cols: Any, dom: tuple[Any, str] | None,
+def domain_codes(project: Any, set_id: int, cols: Any, dom: tuple[Any, str] | None,
                   whole: bool) -> tuple[Any, Any, int]:  # fmt: skip
     """(codes for every row of `cols`, labels, rows whose middle no interval of the other table covers)."""
     from . import source
@@ -132,26 +133,26 @@ def _domain_codes(project: Any, set_id: int, cols: Any, dom: tuple[Any, str] | N
 # --- the charts by domains ---------------------------------------------------------------------------------
 
 
-def _by_domain(project: Any, settings: dict[str, Any], decl: bool = False) -> dict[str, Any]:
+def by_domain(project: Any, settings: dict[str, Any], decl: bool = False) -> dict[str, Any]:
     """What the charts by domains share: the selection of the field and the codes of the domain."""
     from . import select, source
     from .domain_stats import DECL_FIELD
 
     flt = select.SampleFilter.from_settings(settings)
-    set_id = rc._set_id(settings)
-    t, infos = rc.table_of(project, set_id, rc._name(settings, "table"))
-    field = _number(t, infos, settings, "field")
-    weight_field = _weight_field(t, infos, flt)
-    dom = _domain(project, set_id, t, infos, settings)
+    set_id = ra.set_id_of(settings)
+    t, infos = rc.table_of(project, set_id, ra.name_of(settings, "table"))
+    field = number_field(t, infos, settings, "field")
+    weight_field = weight_field_of(t, infos, flt)
+    dom = domain_of(project, set_id, t, infos, settings)
     decl_field = next((f.name for f in infos if f.kind == "number" and f.name.casefold() == DECL_FIELD.casefold()),
                       None) if decl else None  # fmt: skip
     read = [field, source.LENGTH, *(n for n in (weight_field, decl_field) if n is not None)]
     if dom is not None and dom[0].id == t.id:
         read.append(dom[1])
-    holes = rc._holes(settings, "holes")
+    holes = ra.holes_of(settings, "holes")
     cols = rc.only_holes(source.read(project, set_id, t.id, read), holes)
     sel = select.select_sample(**cols.select_args(field, weight_field), flt=flt)
-    codes, labels, outside = _domain_codes(project, set_id, cols, dom, not holes)
+    codes, labels, outside = domain_codes(project, set_id, cols, dom, not holes)
     return {
         "set_id": set_id, "field": field, "domain": None if dom is None else dom[1],
         "domain_table": None if dom is None or dom[0].id == t.id else dom[0].name, "domain_outside": outside,
@@ -167,7 +168,7 @@ def _head(d: dict[str, Any]) -> dict[str, Any]:
 def box_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     from .boxplot import box_chart
 
-    d = _by_domain(project, settings)
+    d = by_domain(project, settings)
     out = box_chart(d["sel"], d["codes"], d["labels"], log=False if settings.get("log") is None else settings["log"])
     groups = [{
         "label": b["domain"], "role": b["role"], "n": b["count"], "weight_sum": b["weight_sum"],
@@ -192,7 +193,7 @@ def probplot_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     from .probplot import CONVENTIONS, probability_line
     from .weighted import StatsError
 
-    d = _by_domain(project, settings)
+    d = by_domain(project, settings)
     found = group_samples(d["sel"], d["codes"], d["labels"])
     series, dropped = [], 0
     for g in found.groups:
@@ -223,7 +224,7 @@ def domains_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     from . import source
     from .domain_stats import domain_stats
 
-    d = _by_domain(project, settings, decl=True)
+    d = by_domain(project, settings, decl=True)
     cols, decl = d["cols"], d["decl_field"]
     out = domain_stats(d["sel"], d["codes"], d["labels"], length=cols.number(source.LENGTH),
                        decl_weights=None if decl is None else cols.number(decl))  # fmt: skip
@@ -297,22 +298,22 @@ def scatter_inputs(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
 
     regression = settings.get("regression")
     if regression is not None and regression not in REGRESSIONS:
-        raise rc._bad("regression", f"Линия регрессии «{str(regression)[:40]}» неизвестна.",
+        raise ra.bad("regression", f"Линия регрессии «{str(regression)[:40]}» неизвестна.",
                    "Допустимо: ols — МНК, rma — RMA, weighted — взвешенная, none — без линии.")  # fmt: skip
     keys = ("weight", "weight_field", "negatives", "exclude_zero", "bottom_cut", "bottom_mode", "top_cut", "top_mode")
     flt = select.SampleFilter.from_settings({k: settings.get(k) for k in keys})
-    set_id = rc._set_id(settings)
-    t, infos = rc.table_of(project, set_id, rc._name(settings, "table"))
-    x = _number(t, infos, settings, "x")
-    y_set = set_id if settings.get("y_set_id") is None else rc._set_id(settings, "y_set_id")
-    y_table = rc._name(settings, "y_table")
+    set_id = ra.set_id_of(settings)
+    t, infos = rc.table_of(project, set_id, ra.name_of(settings, "table"))
+    x = number_field(t, infos, settings, "x")
+    y_set = set_id if settings.get("y_set_id") is None else ra.set_id_of(settings, "y_set_id")
+    y_table = ra.name_of(settings, "y_table")
     yt, yinfos = (t, infos) if y_set == set_id and y_table is None else rc.table_of(project, y_set, y_table)
     same = yt.id == t.id
-    y = _number(yt, yinfos, settings, "y", (x,) if same else ())
-    weight_field = _weight_field(t, infos, flt)
+    y = number_field(yt, yinfos, settings, "y", (x,) if same else ())
+    weight_field = weight_field_of(t, infos, flt)
     color = _color_field(t, infos, settings)
     read = [x, source.LENGTH, *(n for n in (weight_field, color and color.name) if n), *([y] if same else [])]
-    holes = rc._holes(settings, "holes")
+    holes = ra.holes_of(settings, "holes")
     cols = rc.only_holes(source.read(project, set_id, t.id, read), holes)
     unmatched = None
     if same:
@@ -384,14 +385,14 @@ def ternary_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     from . import source
     from .ternary import CONVENTIONS, shares
 
-    set_id = rc._set_id(settings)
-    t, infos = rc.table_of(project, set_id, rc._name(settings, "table"))
+    set_id = ra.set_id_of(settings)
+    t, infos = rc.table_of(project, set_id, ra.name_of(settings, "table"))
     names: list[str] = []
     for param in ("a", "b", "c"):
-        names.append(_number(t, infos, settings, param, tuple(names)))
+        names.append(number_field(t, infos, settings, param, tuple(names)))
     color = _color_field(t, infos, settings)
     cols = rc.only_holes(source.read(project, set_id, t.id, [*names, *([color.name] if color else [])]),
-                      rc._holes(settings, "holes"))  # fmt: skip
+                      ra.holes_of(settings, "holes"))  # fmt: skip
     s = shares(*(cols.number(n) for n in names)).require()
     at = np.unique(np.rint(np.linspace(0.0, s.n - 1.0, MAX_TERNARY)).astype(np.int64)) if s.n > MAX_TERNARY else None
 

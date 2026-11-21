@@ -169,18 +169,18 @@ def test_a_table_changed_while_selecting_is_selection_stale(demo, monkeypatch: p
     from bf_core.drillholes import router as dh_router
 
     c, set_id, _project = demo
-    snapshot = dh_router._snapshot
+    snapshot = dh_router.snapshot_of
 
     def older(*args: Any) -> Any:
         snap = snapshot(*args)
         return type("Old", (), {"key": (*snap.key[:-1], int(snap.key[-1]) - 1)})()
 
-    monkeypatch.setattr(dh_router, "_snapshot", older)
+    monkeypatch.setattr(dh_router, "snapshot_of", older)
     r = c.post(f"{S}/selection", json={"set_id": set_id, "table": None, "filter": {"where": "AU > 1", "hole": None}})
     assert r.status_code == 409, r.text
     got = r.json()
     assert got["code"] == "selection_stale" and got["token"] is None and got["message"] and got["hint"]
-    monkeypatch.setattr(dh_router, "_snapshot", snapshot)
+    monkeypatch.setattr(dh_router, "snapshot_of", snapshot)
 
     def edited(*_args: Any, **_kw: Any) -> Any:
         raise ApiError(409, "table_changed", "Таблица изменилась во время чтения.", "Повторите действие.")

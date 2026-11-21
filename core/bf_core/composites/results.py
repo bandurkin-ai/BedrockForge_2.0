@@ -52,9 +52,12 @@ OP_TITLES = {
 TABLE_OPS = frozenset({"length", "domain", "bench", "coding", "merge", "coords", "ore"})
 
 
-def _token(created: Any) -> str:
+def table_token(created: Any) -> str:
     """The identity of a table besides its name — the same token as the snapshot keys (`snapshot._token`)."""
     return "0" if created is None else f"{int(created.timestamp() * 1_000_000):x}"
+
+
+_token = table_token  # the old name: `stats/source.py` (13.35) still imports it
 
 
 # --- inputs ------------------------------------------------------------------------------------
@@ -66,7 +69,7 @@ def table_input(conn: sa.Connection, table_id: int, fields: Iterable[str]) -> di
             dh_tables.c.id == table_id
         )
     ).one()
-    return {"key": row.name_key, "name": row.name, "token": _token(row.created_at), "rev": int(row.rev),
+    return {"key": row.name_key, "name": row.name, "token": table_token(row.created_at), "rev": int(row.rev),
             "fields": list(fields)}  # fmt: skip
 
 
@@ -149,7 +152,7 @@ class _State:
 
 def _state(conn: sa.Connection, set_id: int) -> _State:
     tables = {
-        r.name_key: (_token(r.created_at), int(r.rev), r.name)
+        r.name_key: (table_token(r.created_at), int(r.rev), r.name)
         for r in conn.execute(
             sa.select(dh_tables.c.name, dh_tables.c.name_key, dh_tables.c.rev, dh_tables.c.created_at).where(
                 dh_tables.c.set_id == set_id, dh_tables.c.state == "ready"
@@ -365,7 +368,7 @@ def bump_table(conn: sa.Connection, set_id: int, table_id: int) -> tuple[tuple[s
     now = dialect.utcnow()
     conn.execute(sa.update(dh_tables).where(dh_tables.c.id == table_id).values(rev=dh_tables.c.rev + 1, updated_at=now))
     conn.execute(sa.update(objects).where(objects.c.id == set_id).values(updated_at=now))
-    token = _token(row.created_at)
+    token = table_token(row.created_at)
     return (token, int(row.rev)), (token, int(row.rev) + 1), row.name_key
 
 

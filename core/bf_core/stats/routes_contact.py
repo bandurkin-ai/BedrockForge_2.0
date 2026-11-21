@@ -18,7 +18,7 @@ of the domain (A — the side below 0); `distance` D and `step` b, m (null — 2
 «До каркаса» (`wireframe_id`, ADR 0019 §4: the contact is the crossing of the hole with a closed wireframe, the
 sides — `a` «снаружи», `b` «внутри») is `stats.contact.contact_chart_wireframe` (13.8) on the crossings of the
 paths of the holes of the rows (`geo.intersect.hole_crossings` with the tree of the cached geometry, as the coding
-by wireframes of `composites` takes it: `jobs_coding.bodies`, `coding._checked`); `domain`, `domain_table`, `a`,
+by wireframes of `composites` takes it: `jobs_coding.bodies`, `coding.checked_target`); `domain`, `domain_table`, `a`,
 `b` are not used then (`domain`, `domain_table` — null, `domain_outside` — 0; `counts.no_path` — rows of holes
 without a trajectory). The wireframe is checked before the table is read: 404 `wireframe_not_found`, 422
 `wireframe_open` / `wireframe_orientation` {param: wireframe_id} with the advice to repair it.
@@ -36,6 +36,7 @@ from fastapi.responses import JSONResponse
 
 from bf_core.api.errors import ApiError
 
+from . import route_args as ra
 from . import routes_charts as rc
 from .routes_charts import Settings, Svc
 
@@ -57,7 +58,7 @@ def _wireframe(project: Any, wireframe_id: Any) -> Any:
     from bf_core.wireframes import exact
 
     if not is_id(wireframe_id):
-        raise rc._bad("wireframe_id", "Каркас задаётся номером.", "Выберите каркас из списка.")
+        raise ra.bad("wireframe_id", "Каркас задаётся номером.", "Выберите каркас из списка.")
     with dialect.read_tx(project.engine) as conn:
         found = exact.set_targets(conn, [int(wireframe_id)])
     if not found:
@@ -81,7 +82,7 @@ def _target(project: Any, wf: Any) -> Any:
     from bf_core.wireframes.files import broken
 
     try:
-        return coding._checked(next(bodies(project, wf)))
+        return coding.checked_target(next(bodies(project, wf)))
     except CompositeError as e:  # `wireframe_open`, `wireframe_orientation`
         raise ApiError(422, e.code, e.message, _FIX, extra={"param": "wireframe_id"}) from e
     except ValueError as e:  # a triangle of a vertex that is not there
@@ -103,7 +104,7 @@ def _to_wireframe(
     from .contact import SIDES, contact_chart_wireframe
 
     read = [field, source.LENGTH, *([weight_field] if weight_field else [])]
-    cols = rc.only_holes(source.read(project, set_id, t.id, read), rc._holes(settings, "holes"))
+    cols = rc.only_holes(source.read(project, set_id, t.id, read), ra.holes_of(settings, "holes"))
     target = _target(project, wf)
     st = dh_source.trajectories(project, set_id)
     dense = coords.hole_index(st.hole_ids, cols.hole_db_ids)[cols.hole_of()]
@@ -121,23 +122,23 @@ def _to_wireframe(
 def contact_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     from . import select, source
     from .contact import contact_chart
-    from .routes_more import _domain, _domain_codes, _number, _weight_field
+    from .routes_more import domain_codes, domain_of, number_field, weight_field_of
 
     flt = select.SampleFilter.from_settings(settings)
-    set_id = rc._set_id(settings)
+    set_id = ra.set_id_of(settings)
     wf = None if settings.get("wireframe_id") is None else _wireframe(project, settings["wireframe_id"])
-    t, infos = rc.table_of(project, set_id, rc._name(settings, "table"))
-    field = _number(t, infos, settings, "field")
-    weight_field = _weight_field(t, infos, flt)
+    t, infos = rc.table_of(project, set_id, ra.name_of(settings, "table"))
+    field = number_field(t, infos, settings, "field")
+    weight_field = weight_field_of(t, infos, flt)
     if wf is not None:
         return _to_wireframe(project, set_id, t, field, weight_field, flt, settings, wf)
-    dom = _domain(project, set_id, t, infos, settings)
+    dom = domain_of(project, set_id, t, infos, settings)
     if dom is None:
-        raise rc._bad("domain", "Не выбрано поле доменов.", "Выберите текстовое поле доменов и домены A и B.")
+        raise ra.bad("domain", "Не выбрано поле доменов.", "Выберите текстовое поле доменов и домены A и B.")
     read = [field, source.LENGTH, *([weight_field] if weight_field else []), *([dom[1]] if dom[0].id == t.id else [])]
-    holes = rc._holes(settings, "holes")
+    holes = ra.holes_of(settings, "holes")
     cols = rc.only_holes(source.read(project, set_id, t.id, read), holes)
-    codes, labels, outside = _domain_codes(project, set_id, cols, dom, not holes)
+    codes, labels, outside = domain_codes(project, set_id, cols, dom, not holes)
     args = cols.select_args(field, weight_field)
     out = contact_chart(
         cols.hole_of(), cols.from_m, cols.to_m, codes, labels, settings.get("a"), settings.get("b"), args["values"],

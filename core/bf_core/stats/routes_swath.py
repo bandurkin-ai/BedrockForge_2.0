@@ -331,7 +331,9 @@ def _samples(project: Any, k: int, s: dict[str, Any]) -> Series:
         return out
     set_id = int(out.source_id)
     try:
-        t, names = routes_charts._fields(project, set_id, _text(s, "table", k), {"field": name, "weight_field": wf})
+        t, names = routes_charts.named_fields(
+            project, set_id, _text(s, "table", k), {"field": name, "weight_field": wf}
+        )
         read = [names["field"], *([source.LENGTH] if flt.weight in ("length", "length_field") else []),
                 *([names["weight_field"]] if wf else [])]  # fmt: skip
         cols = source.read(project, set_id, t.id, read)
