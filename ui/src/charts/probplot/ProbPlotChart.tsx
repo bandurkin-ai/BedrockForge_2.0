@@ -2,13 +2,15 @@
  * The log-probability plot (ТЗ 8.3; ADR 0019 §11): the grade on a log10 axis against the probability axis Φ⁻¹(P);
  * the domains as series of their colours with a legend (points, or lines when asked or past 5000 points). A click
  * picks the threshold: the nearest point within 12 px, else the grade under the pointer; the threshold is marked.
- * SVG of a fixed size: the PNG is twice it.
+ * A frame drawn (№ 237) selects the samples of the series it covers with a grade in its range, in 3D and in the
+ * table; it stays while the selection is this chart's. SVG of a fixed size: the PNG is twice it.
  */
-import { forwardRef, useState, type MouseEvent as RMouseEvent } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
 import type { ProbPlotResult } from "../../modules/charts/apiMore";
+import { probFrameGroups, useChartSelection, valueSelectionBody } from "../../modules/charts/selection";
 import { formatNumber, makeScale } from "../core/axisScale";
 import { XAxis, YAxis } from "../core/Axes";
-import { toViewBox } from "../core/lasso";
+import { toViewBox, useLasso, type AxisPolygon } from "../core/lasso";
 import { seriesColor } from "../core/palette";
 import { plotBox, PlotFrame } from "../core/PlotFrame";
 import css from "../core/Chart.module.css";
@@ -30,24 +32,45 @@ export interface ProbPlotChartProps {
 
 export const ProbPlotChart = forwardRef<SVGSVGElement, ProbPlotChartProps>(function ProbPlotChart({ result: r, lines, xLabel, threshold, onPick }, ref) {
   const [hover, setHover] = useState<{ series: number; x: number; p: number } | null>(null);
+  const [frame, setFrame] = useState<AxisPolygon | null>(null);
+  // a drag ends in a frame, not in a click (the threshold)
+  const dragged = useRef(false);
   const d = probDomains(r);
-  if (!d) return null;
-  const sx = makeScale("log", d.x, BOX.x0, BOX.x1);
-  const sy = makeScale("prob", d.p, BOX.y1, BOX.y0);
+  const scales = useMemo(() => (d ? { sx: makeScale("log", d.x, BOX.x0, BOX.x1), sy: makeScale("prob", d.p, BOX.y1, BOX.y0) } : null), [d?.x.min, d?.x.max, d?.p.min, d?.p.max]); // eslint-disable-line react-hooks/exhaustive-deps
+  const link = useChartSelection(useCallback(() => setFrame(null), []));
+  useEffect(() => setFrame(null), [r]);
+  const onDone = useCallback(
+    (poly: AxisPolygon | null) => {
+      if (!poly) return;
+      dragged.current = true;
+      setFrame(poly);
+      const [xlo, xhi] = [Math.min(...poly.x), Math.max(...poly.x)];
+      const groups = probFrameGroups(r, xlo, xhi, Math.min(...poly.y), Math.max(...poly.y));
+      if (groups && !groups.length) return void setFrame(null);
+      void link.select(valueSelectionBody("probplot", r, [xlo, xhi], groups));
+    },
+    [r, link.select], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const lasso = useLasso("rect", BOX, scales, onDone);
+  if (!d || !scales) return null;
+  const { sx, sy } = scales;
+  const shownFrame = frame && (link.ours || link.pending) ? frame : null;
+  const poly = (pts: { x: number; y: number }[]) => pts.map((q) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`).join(" ");
   const series = r.series.map(seriesPoints);
   const total = series.reduce((s, x) => s + x.length, 0);
   const asLines = lines || total > 5000;
-  const at = (e: RMouseEvent<SVGRectElement>) => {
+  const at = (e: RMouseEvent<SVGElement>) => {
     const svg = e.currentTarget.ownerSVGElement;
     return svg ? toViewBox(e.clientX, e.clientY, svg.getBoundingClientRect(), PROB_W, PROB_H) : null;
   };
-  const onClick = (e: RMouseEvent<SVGRectElement>) => {
+  const onClick = (e: RMouseEvent<SVGElement>) => {
+    if (dragged.current) return void (dragged.current = false);
     const p = at(e);
     if (!p || !onPick) return;
     const hit = pickPoint(r, sx, sy, p);
     onPick(hit ? hit.point.x : sx.invert(p.x));
   };
-  const onMove = (e: RMouseEvent<SVGRectElement>) => {
+  const onMove = (e: RMouseEvent<SVGElement>) => {
     const p = at(e);
     const hit = p ? pickPoint(r, sx, sy, p) : null;
     setHover(hit ? { series: hit.series, x: hit.point.x, p: hit.point.p } : null);
@@ -74,7 +97,11 @@ export const ProbPlotChart = forwardRef<SVGSVGElement, ProbPlotChartProps>(funct
           </text>
         </g>
       )}
-      <rect x={BOX.x0} y={BOX.y0} width={BOX.x1 - BOX.x0} height={BOX.y1 - BOX.y0} fill="transparent" style={{ cursor: onPick ? "pointer" : undefined }} onClick={onClick} onMouseMove={onMove} />
+      <g {...lasso.handlers} onClick={onClick} onMouseMove={onMove}>
+        <rect x={BOX.x0} y={BOX.y0} width={BOX.x1 - BOX.x0} height={BOX.y1 - BOX.y0} fill="transparent" style={{ cursor: onPick ? "pointer" : "crosshair" }} />
+      </g>
+      {shownFrame && <polygon className={css.ring} data-selection="frame" pointerEvents="none" points={poly(shownFrame.x.map((x, i) => ({ x: sx.map(x) ?? BOX.x0, y: sy.map(shownFrame.y[i]) ?? BOX.y1 })))} />}
+      {lasso.path && lasso.path.length > 1 && <polygon className={css.ring} strokeDasharray="4 3" pointerEvents="none" points={poly(lasso.path)} />}
       {r.series.length > 1 && (
         <g data-legend="domains" transform={`translate(${BOX.x0 + 10} ${BOX.y0 + 10})`} pointerEvents="none">
           {r.series.map((s, i) => (

@@ -2,9 +2,10 @@ import { useState } from "react";
 import { bridge } from "../../bridge";
 import { api, CoreError } from "../../shell/api";
 import { askConfirm } from "../../shell/dialogs";
+import { sampleSelectionStore, selectByFilter } from "../../shell/sampleSelection";
 import { useStore } from "../../shell/useStore";
 import { refresh as refreshJobs } from "../jobs/state";
-import { addRow, loadTabs, rowsLocked, runTool, setWhere, tablesStore } from "./state";
+import { addRow, loadTabs, rowsLocked, runTool, setWhere, tablesStore, type TablesState } from "./state";
 import css from "./Tables.module.css";
 
 type FieldSpec = { key: string; label: string; kind?: "text" | "column" | "table" | "kind" | "check" | "format" | "codes"; required?: boolean };
@@ -64,9 +65,21 @@ const MENU: ToolId[] = ["replace", "computed", "column", "rename", "delete", "ap
 const ROW_TOOLS: ToolId[] = ["replace", "append"];
 const err = (e: unknown) => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
 
-/** «+ Строка», «Журнал правок», «Инструменты» of the panel (ТЗ 7.10; 7.34 п. 22, 31–36). */
+/** Why «Выделить на графиках» cannot be pressed now; null — it can (ТЗ 8.3, № 237: the rows of the filter). */
+export function markReason(s: Pick<TablesState, "setId" | "table" | "tabs" | "selection">, busy: boolean): string | null {
+  const tab = s.tabs.find((t) => t.table === s.table);
+  if (s.setId === null || !tab) return "Откройте таблицу набора";
+  if (tab.kind !== "assay" && tab.kind !== "interval") return "Выделяются строки интервальной таблицы (пробы, литология…)";
+  if (s.selection) return "Показаны строки выделения";
+  if (busy) return "Выделение делается…";
+  return null;
+}
+
+/** «+ Строка», «Журнал правок», «Выделить на графиках», «Инструменты» of the panel (ТЗ 7.10; 7.34 п. 22, 31–36; 8.3). */
 export function ToolBar({ onLog, logOpen }: { onLog: () => void; logOpen: boolean }) {
   const s = useStore(tablesStore, (x) => x);
+  const selBusy = useStore(sampleSelectionStore, (x) => x.busy);
+  const markWhy = markReason(s, selBusy);
   const [tool, setTool] = useState<ToolId | null>(null);
   const [menu, setMenu] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -155,6 +168,15 @@ export function ToolBar({ onLog, logOpen }: { onLog: () => void; logOpen: boolea
       </button>
       <button type="button" className={logOpen ? css.btnActive : css.btn} onClick={onLog}>
         Журнал правок
+      </button>
+      <button
+        type="button"
+        className={css.btn}
+        disabled={markWhy !== null}
+        title={markWhy ?? "Строки текущего фильтра (выражение, скважина) — выделение проб: отмечаются на открытых графиках и в 3D"}
+        onClick={() => s.setId !== null && void selectByFilter(s.setId, s.table, s.where, s.hole?.id ?? null)}
+      >
+        Выделить на графиках
       </button>
       <span className={css.menuWrap}>
         <button type="button" className={css.btn} onClick={() => setMenu(!menu)} aria-haspopup="menu" aria-expanded={menu} disabled={!s.table}>

@@ -1,8 +1,10 @@
 /**
  * Sets of drillholes and the «Таблица» panel (ТЗ 7.10): the active set, its tabs, pages loaded on demand,
  * sorting (asc → desc → off), the selected hole, a filter by expression, edits with the journal. No React.
+ * «Показать» of the plaque of a selection of samples (ТЗ 8.3, № 237; ADR 0019 §8): only its rows (`selection=`).
  */
 import { api, CoreError } from "../../shell/api";
+import { handleSelectionError, isSelectionGone } from "../../shell/sampleSelection";
 import { Store } from "../../shell/store";
 
 export const PAGE = 200;
@@ -70,6 +72,8 @@ export interface TablesState {
   desc: boolean;
   hole: { id: number; name: string } | null;
   where: string;
+  /** the token of the selection of samples whose rows only are shown («Показать»); null — all rows */
+  selection: string | null;
   error: string | null;
   busy: boolean;
   version: number;
@@ -77,7 +81,7 @@ export interface TablesState {
 
 export const tablesStore = new Store<TablesState>({
   sets: [], setId: null, tabs: [], table: null, columns: [], total: 0, rev: null, pages: {}, sort: null, desc: false,
-  hole: null, where: "", error: null, busy: false, version: 0,
+  hole: null, where: "", selection: null, error: null, busy: false, version: 0,
 });
 
 const text = (e: unknown) => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
@@ -100,7 +104,7 @@ export async function loadSets(pickFirst = false): Promise<SetInfo[]> {
 }
 
 export async function selectSet(setId: number | null, table?: string): Promise<void> {
-  tablesStore.set({ setId, tabs: [], table: null, columns: [], total: 0, pages: {}, hole: null, where: "", sort: null, error: null });
+  tablesStore.set({ setId, tabs: [], table: null, columns: [], total: 0, pages: {}, hole: null, where: "", selection: null, sort: null, error: null });
   if (setId === null) return;
   await loadTabs();
   const tabs = tablesStore.get().tabs;
@@ -125,7 +129,7 @@ export function resolveTable(tabs: TabInfo[], kindOrId: string): string | null {
 
 export async function openTable(table: string | null): Promise<void> {
   generation += 1;
-  tablesStore.set({ table, pages: {}, total: 0, columns: [], sort: null, desc: false, error: null });
+  tablesStore.set({ table, pages: {}, total: 0, columns: [], sort: null, desc: false, selection: null, error: null });
   if (table !== null) await loadPage(0);
 }
 
@@ -136,6 +140,7 @@ function query(offset: number): string {
   if (s.desc) q.set("desc", "true");
   if (s.hole) q.set("hole", String(s.hole.id));
   if (s.where.trim()) q.set("where", s.where.trim());
+  if (s.selection) q.set("selection", s.selection);
   return q.toString();
 }
 
@@ -162,7 +167,11 @@ export async function loadPage(offset: number): Promise<void> {
     if (gen !== generation || now.setId !== s.setId || now.table !== s.table || query(start) !== q) return; // stale
     tablesStore.set((st) => ({ pages: { ...st.pages, [start]: r.rows }, total: r.total, columns: r.columns, rev: r.rev, error: null, version: st.version + 1 }));
   } catch (e) {
-    tablesStore.set({ error: text(e) });
+    // the selection shown is gone (its table changed, the core forgot it): all rows again, the reason in the status bar
+    if (s.selection && isSelectionGone(e)) {
+      handleSelectionError(s.selection, e);
+      if (tablesStore.get().selection === s.selection) void showSelection(null);
+    } else tablesStore.set({ error: text(e) });
   } finally {
     inflight.delete(flight);
     tablesStore.set({ busy: false });
@@ -194,6 +203,13 @@ export async function sortBy(key: string): Promise<void> {
 
 export async function filterHole(hole: { id: number; name: string } | null): Promise<void> {
   tablesStore.set({ hole });
+  await reload();
+}
+
+/** «Показать» of the plaque: only the rows of the selection `token` (null — all rows again). */
+export async function showSelection(token: string | null): Promise<void> {
+  if (tablesStore.get().selection === token) return;
+  tablesStore.set({ selection: token });
   await reload();
 }
 
