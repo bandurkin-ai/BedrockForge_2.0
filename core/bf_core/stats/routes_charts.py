@@ -4,7 +4,8 @@
         → {field, set_id, log, weighted, counts, stats, stats_unweighted | null, bins, conventions}
     POST /stats/qq                body — the settings of a Q-Q chart
         → {field, set_id, y_field | null, y_set_id | null, mode, x, y, points, …} (`stats.qq.qq_chart`)
-    POST /stats/dendrogram        body — the settings of a dendrogram (when `stats.dendrogram` is there, 13.4)
+    POST /stats/dendrogram        body — the settings of a dendrogram (`fields` empty — all the components)
+        → {set_id, fields, units, correlation, pairs, rows, used, …} (`stats.dendrogram.dendrogram_chart`)
     POST /stats/chart/{chart_id}  the saved chart by its settings and the current data (`chart.open`, the
         assistant) → the answer of its kind + `chart {id, kind, name, version}`
 
@@ -28,6 +29,7 @@ from collections.abc import Callable, Mapping
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Depends
+from fastapi.responses import JSONResponse
 
 from bf_core.api.errors import ApiError
 from bf_core.projects.service import projects
@@ -39,7 +41,6 @@ Settings = Annotated[dict[str, Any], Body()]
 
 HEAVY = 2
 _SLOTS = threading.BoundedSemaphore(HEAVY)
-LENGTH_WEIGHTS = ("length", "length_field")
 FIELD_WEIGHTS = ("field", "length_field")
 
 #: kind → calculation(project, settings) of the charts this module answers for; `routes_more` (13.16) adds its own
@@ -104,39 +105,82 @@ def _holes(settings: Mapping[str, Any], key: str) -> list[str]:
 # --- the data of a side ---------------------------------------------------------------------------------------
 
 
-def _fields(project: Any, set_id: int, table: str | None, wanted: dict[str, str | None]) -> tuple[Any, dict[str, str]]:
-    """The table and the stored names of the fields `wanted` {param: name}; the param `field` (or `y_field`)
-    without a name takes the first component of the table (else its first numeric field but `length`)."""
+def table_of(project: Any, set_id: int, table: str | None) -> tuple[Any, list[Any]]:
+    """The table of the set (`name_key` or id; None — the sample table) and its fields (`source.fields_of`)."""
     from bf_core.db import dialect
 
     from . import source
 
     with dialect.read_tx(project.engine) as conn:
         t = source.find_table(conn, set_id, table)
-        infos = source.fields_of(conn, t)
-    by_name = {f.name.casefold(): f for f in infos}
+        return t, source.fields_of(conn, t)
+
+
+def field_of(t: Any, infos: list[Any], name: str, param: str, kinds: tuple[str, ...] = ("number",)) -> Any:
+    """The field `name` (case aside) of the table: 422 `field_not_found` / `field_not_number` /
+    `field_not_text` {param} when it is not there or not of `kinds`."""
+    f = next((f for f in infos if f.name.casefold() == name.casefold()), None)
+    if f is None:
+        raise ApiError(422, "field_not_found", f"В таблице «{t.name}» нет поля «{name[:80]}».",
+                       "Выберите поле из списка колонок.", extra={"param": param})  # fmt: skip
+    if f.kind not in kinds:
+        if f.kind == "number":
+            raise ApiError(422, "field_not_text", f"Поле «{f.name}» — числовое.", "Выберите текстовое поле.",
+                           extra={"param": param})  # fmt: skip
+        raise ApiError(422, "field_not_number", f"Поле «{f.name}» — текстовое.", "Выберите числовое поле.",
+                       extra={"param": param})  # fmt: skip
+    return f
+
+
+def first_number(t: Any, infos: list[Any], param: str, skip: tuple[str, ...] = ()) -> Any:
+    """The field a setting without a name takes: the first component of the table, else its first numeric
+    field but `length`; the names `skip` (case aside) are passed over."""
+    from . import source
+
+    taken = {s.casefold() for s in skip}
+    numbers = [f for f in infos if f.kind == "number" and f.name.casefold() not in taken]
+    first = next((f for f in numbers if f.role == "component"), None) or next(
+        (f for f in numbers if f.role != source.LENGTH), None
+    )
+    if first is None:
+        more = " других" if skip else ""
+        raise _bad(param, f"В таблице «{t.name}» нет{more} числовых полей.", "Выберите другую таблицу набора.")
+    return first
+
+
+def _fields(project: Any, set_id: int, table: str | None, wanted: dict[str, str | None]) -> tuple[Any, dict[str, str]]:
+    """The table and the stored names of the fields `wanted` {param: name}; the param `field` (or `y_field`)
+    without a name takes the first component of the table (else its first numeric field but `length`)."""
+    t, infos = table_of(project, set_id, table)
     out: dict[str, str] = {}
     for param, name in wanted.items():
         if name is None:
-            if param not in ("field", "y_field"):
-                continue
-            numbers = [f for f in infos if f.kind == "number"]
-            first = next((f for f in numbers if f.role == "component"), None) or next(
-                (f for f in numbers if f.role != source.LENGTH), None
-            )
-            if first is None:
-                raise _bad(param, f"В таблице «{t.name}» нет числовых полей.", "Выберите другую таблицу набора.")
-            out[param] = first.name
+            if param in ("field", "y_field"):
+                out[param] = first_number(t, infos, param).name
             continue
-        f = by_name.get(name.casefold())
-        if f is None:
-            raise ApiError(422, "field_not_found", f"В таблице «{t.name}» нет поля «{name[:80]}».",
-                           "Выберите поле из списка колонок.", extra={"param": param})  # fmt: skip
-        if f.kind != "number":
-            raise ApiError(422, "field_not_number", f"Поле «{f.name}» — текстовое.", "Выберите числовое поле.",
-                           extra={"param": param})  # fmt: skip
-        out[param] = f.name
+        out[param] = field_of(t, infos, name, param).name
     return t, out
+
+
+def only_holes(cols: Any, holes: list[str]) -> Any:
+    """The columns of the holes `holes` (names, case aside; unknown names do not matter) — all of them when
+    the list is empty. The rows keep their line order; `row_ids`, the sample key and the domains follow."""
+    import numpy as np
+
+    from . import source
+
+    if not holes:
+        return cols
+    wanted = {h.casefold() for h in holes}
+    chosen = np.array([h.casefold() in wanted for h in cols.holes], dtype=bool)
+    idx = np.flatnonzero(chosen[cols.hole_of()]) if cols.holes else np.zeros(0, dtype=np.int64)
+    sizes = np.diff(cols.starts)[chosen]
+    return source.Columns(
+        cols.table, cols.row_ids[idx], [h for h, c in zip(cols.holes, chosen, strict=True) if c],
+        cols.hole_db_ids[chosen], np.concatenate(([0], np.cumsum(sizes))).astype(np.int64), cols.from_m[idx],
+        cols.to_m[idx], cols.skipped, {k: v[idx] for k, v in cols.numbers.items()},
+        {k: v[idx] for k, v in cols.codes.items()}, dict(cols.labels), dict(cols.infos),
+    )  # fmt: skip
 
 
 def side(
@@ -144,31 +188,17 @@ def side(
 ) -> tuple[str, Any]:
     """(the stored name of the field, `select.Selection`) of one side of a chart: the field of the table of the
     set through the selection `flt` (weights from the same table), only the rows of `holes` when given."""
-    import numpy as np
-
     from . import select, source
 
     p = "y_" if y else ""
     weight_field = flt.weight_field if flt.weight in FIELD_WEIGHTS else None
     t, names = _fields(project, set_id, table, {f"{p}field": field, "weight_field": weight_field})
     name = names[f"{p}field"]
-    read = [name]
-    if flt.weight in LENGTH_WEIGHTS:
-        read.append(source.LENGTH)
+    read = [name, source.LENGTH]
     if weight_field is not None:
         read.append(names["weight_field"])
-    cols = source.read(project, set_id, t.id, read)
-    values = cols.number(name)
-    length = cols.number(source.LENGTH) if flt.weight in LENGTH_WEIGHTS else None
-    wv = cols.number(names["weight_field"]) if weight_field is not None else None
-    if holes:
-        wanted = {h.casefold() for h in holes}
-        chosen = np.array([h.casefold() in wanted for h in cols.holes], dtype=bool)
-        keep = chosen[cols.hole_of()] if cols.holes else np.zeros(cols.n, dtype=bool)
-        values = values[keep]
-        length = None if length is None else length[keep]
-        wv = None if wv is None else wv[keep]
-    return name, select.select_sample(values, flt, length=length, weight_values=wv)
+    cols = only_holes(source.read(project, set_id, t.id, read), holes)
+    return name, select.select_sample(**cols.select_args(name, names.get("weight_field")), flt=flt)
 
 
 def _safe(x: Any) -> Any:
@@ -233,6 +263,34 @@ def qq_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     return {"field": field, "set_id": set_id, "y_field": y_name, "y_set_id": y_set, **out}
 
 
+@register("dendrogram")
+def dendrogram_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
+    from . import source
+    from .correlation import CorrSpec
+    from .dendrogram import TreeSpec, dendrogram_chart
+    from .select import SampleFilter, sample_weights
+
+    corr, tree = CorrSpec.from_settings(settings), TreeSpec.from_settings(settings)
+    flt = SampleFilter.from_settings({k: settings.get(k) for k in ("weight", "weight_field")})
+    set_id = _set_id(settings)
+    t, infos = table_of(project, set_id, _name(settings, "table"))
+    given = settings.get("fields") or []  # `kinds.check` made it a list of names
+    if given:
+        chosen = [field_of(t, infos, name, "fields") for name in given]
+    else:  # all the components; a table without them — its numeric fields but `length`
+        numbers = [f for f in infos if f.kind == "number"]
+        chosen = [f for f in numbers if f.role == "component"] or [f for f in numbers if f.role != source.LENGTH]
+    weight_field = field_of(t, infos, flt.weight_field, "weight_field").name if (
+        flt.weight in FIELD_WEIGHTS and flt.weight_field is not None) else None  # fmt: skip
+    read = [f.name for f in chosen] + [source.LENGTH] + ([weight_field] if weight_field else [])
+    cols = only_holes(source.read(project, set_id, t.id, read), _holes(settings, "holes"))
+    weights = sample_weights(flt.weight, cols.number(source.LENGTH),
+                             None if weight_field is None else cols.number(weight_field))  # fmt: skip
+    out = dendrogram_chart([f.name for f in chosen], [cols.number(f.name) for f in chosen], weights, corr, tree,
+                           units=[f.unit for f in chosen])  # fmt: skip
+    return {"set_id": set_id, **out}
+
+
 @router.post("/histogram")
 def post_histogram(svc: Svc, body: Settings) -> dict[str, Any]:
     project = svc.require_current()
@@ -247,8 +305,15 @@ def post_qq(svc: Svc, body: Settings) -> dict[str, Any]:
     return run(lambda: qq_of(project, settings))
 
 
+@router.post("/dendrogram")
+def post_dendrogram(svc: Svc, body: Settings) -> dict[str, Any]:
+    project = svc.require_current()
+    settings = checked("dendrogram", body)
+    return run(lambda: dendrogram_of(project, settings))
+
+
 @router.post("/chart/{chart_id}")
-def post_saved(svc: Svc, chart_id: int) -> dict[str, Any]:
+def post_saved(svc: Svc, chart_id: int) -> JSONResponse:
     """The saved chart by its settings and the current data; the set is the one the chart lies in (its id in
     the settings is not renumbered by a `.bfggis` import)."""
     from bf_core.charts import service
@@ -268,4 +333,4 @@ def post_saved(svc: Svc, chart_id: int) -> dict[str, Any]:
     if chart["set_id"] is not None:
         settings["set_id"] = chart["set_id"]
     head = {"id": chart["id"], "kind": chart["kind"], "name": chart["name"], "version": chart["version"]}
-    return {**run(lambda: calc(project, settings)), "chart": head}
+    return JSONResponse({**run(lambda: calc(project, settings)), "chart": head})  # big answers skip the encoder
