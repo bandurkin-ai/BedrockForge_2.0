@@ -1,5 +1,6 @@
 /* Swath plot (ТЗ 7.30; ADR 0019 §11): the frame of the charts (`charts/core/Chart.module.css`) and the theme tokens of the brand (docs/brand, ADR 0006). */
 .host { height: 100%; min-height: 0; }
+.dragged { opacity: 0.45; }
 .angles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
 .pair { display: flex; gap: 6px; }
 .pair > * { flex: 1; min-width: 0; }

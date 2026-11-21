@@ -39,7 +39,7 @@ import { collarsOnScreen, planSources, type ScreenCollar } from "./holes/screen"
 import type { SectionPlane } from "./section/plane";
 import { SectionRig } from "./section/rig";
 import type { BuiltPaths } from "./worker/paths";
-import { orbited, placeFrameLabels, screenOf, watchHost } from "./sceneHooks";
+import { orbited, placeFrameLabels, screenOf, ToolChain, watchHost } from "./sceneHooks";
 import type { FrameContext, SceneDebug, SceneEvents, SceneLayer, SectionDataMark } from "./sceneTypes";
 
 export { probeWebGL2 } from "./core/renderer";
@@ -81,6 +81,8 @@ export class Scene {
   private readonly cleanup: (() => void)[] = [];
   private readonly light = new THREE.DirectionalLight(0xffffff, 1.6);
   private readonly input: ToolInput;
+  /** the pointer: the tool of the string editor first, then the handles of a swath, then the scene */
+  private readonly tools = new ToolChain();
   /** frames per second and ms per frame (the counter Ctrl+Shift+F) */
   readonly fps = new FpsTracker();
 
@@ -122,6 +124,7 @@ export class Scene {
     this.renderer.onRestored = () => this.contextRestored();
     const camera = (on: boolean) => void (this.rig.controls.enabled = on);
     this.input = new ToolInput({ click: (x, y) => this.click(x, y), move: (x, y) => this.pointerMove(x, y), leave: () => undefined, camera });
+    this.input.setTool(this.tools);
     this.cleanup.push(this.input.attach(this.renderer.canvas));
     this.cleanup.push(watchHost(host, () => this.resize(), () => this.applyTheme()));
     this.applyTheme();
@@ -130,13 +133,9 @@ export class Scene {
 
   static probe = probeWebGL2;
 
-  get gpu(): GpuInfo {
-    return this.renderer.info;
-  }
+  get gpu(): GpuInfo { return this.renderer.info; }
 
-  get canvas(): HTMLCanvasElement {
-    return this.renderer.canvas;
-  }
+  get canvas(): HTMLCanvasElement { return this.renderer.canvas; }
 
   /** One more frame (a layer changed its objects). */
   invalidate(): void {
@@ -188,9 +187,7 @@ export class Scene {
     this.take(this.sec.lockedView(this.fitBox(), this.rig.options(), this.origin.value) ?? fit(this.rig.state(), this.fitBox(), this.rig.options()));
   }
 
-  get locked(): boolean {
-    return this.rig.locked;
-  }
+  get locked(): boolean { return this.rig.locked; }
 
   /** «Зафиксировать вид» (L, ADR 0016 §4; `core/lockView.ts`): orthographic along v̂, ŵ up, no turning, follows `]` / `[`;
    * false — nothing to lock on (no section) or to free. */
@@ -238,9 +235,7 @@ export class Scene {
     });
   }
 
-  camera(): CameraState {
-    return this.rig.state();
-  }
+  camera(): CameraState { return this.rig.state(); }
 
   /** The camera of a saved view, absolute (null before the first object); the projection comes with the keys. */
   worldCamera(): WorldCamera | null {
@@ -282,9 +277,7 @@ export class Scene {
     return screenPriority(scaleZ(boxFromBbox6(bbox, o), this.vexag), this.rig.state(), this.rig.options());
   }
 
-  viewOptions(): ViewOptions {
-    return this.rig.options();
-  }
+  viewOptions(): ViewOptions { return this.rig.options(); }
 
   // ---------------------------------------------------------------- section
 
@@ -327,7 +320,7 @@ export class Scene {
     this.sec.drawing = state;
     if (state.stage !== "second") this.sec.overlay.setDraft(null, null, 0);
     else this.pointerMove(-1, -1);
-    this.renderer.canvas.style.cursor = state.stage === "off" && !this.input.active ? "" : "crosshair";
+    this.renderer.canvas.style.cursor = state.stage === "off" && !this.tools.tool ? "" : "crosshair";
     this.loop.invalidate();
   }
 
@@ -346,9 +339,7 @@ export class Scene {
     this.sets.setPaths(setId, k, built);
   }
 
-  holes(setId: number): HoleSetLayer | null {
-    return this.sets.get(setId);
-  }
+  holes(setId: number): HoleSetLayer | null { return this.sets.get(setId); }
 
   removeHoles(setId: number, update = true): void {
     this.sets.remove(setId, update);
@@ -385,8 +376,15 @@ export class Scene {
 
   /** A tool of the string editor gets the pointer first; null — the scene alone, as before. */
   setTool(tool: ToolHandler | null): void {
-    this.input.setTool(tool);
+    this.tools.tool = tool;
+    this.tools.reset();
+    this.input.setTool(this.tools);
     this.renderer.canvas.style.cursor = tool ? "crosshair" : "";
+  }
+
+  /** The handles of a swath (Д-01): the pointer after the editor's tool, before the scene; null — none. */
+  setHandles(handles: ToolHandler | null): void {
+    this.tools.handles = handles;
   }
 
   /** The ray under a canvas point (CSS px), project coordinates float64, Z not exaggerated; null — no origin yet. */

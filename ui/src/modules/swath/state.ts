@@ -8,6 +8,7 @@
  */
 import { CoreError } from "../../shell/api";
 import { Store } from "../../shell/store";
+import { windowStore } from "../../shell/windows";
 import { getChart, type ChartRow } from "../charts/api";
 import { invalidateSources, listSwaths, type SwathResult } from "./api";
 import type { SwathSettings } from "./model";
@@ -91,6 +92,23 @@ export function setHover(id: number, index: number | null): void {
   swathsStore.set({ hover: index === null ? null : { id, index } });
 }
 
+/** A handle of Д-01 being dragged: the swath and its angles now (the window shows them, its plot dimmed); null — none. */
+export interface SwathDrag {
+  id: number;
+  azimuth: number;
+  dip: number;
+  roll: number;
+}
+
+export const dragStore = new Store<{ drag: SwathDrag | null }>({ drag: null });
+
+export function setDrag(drag: SwathDrag | null): void {
+  dragStore.set({ drag });
+}
+
+/** The window of a swath is open (its kind is `SWATH_WINDOW` of `bind.ts`): it computes the swath itself. */
+export const swathWindowOpen = (id: number): boolean => windowStore.get().windows.some((w) => w.kind === "swath" && w.props?.swathId === id);
+
 export function selectSwath(id: number | null): void {
   if (swathsStore.get().selected !== id) swathsStore.set({ selected: id });
 }
@@ -98,6 +116,7 @@ export function selectSwath(id: number | null): void {
 export function resetSwaths(): void {
   swathsStore.set({ swaths: [], loaded: false, hover: null, selected: null });
   liveStore.set({ live: {} });
+  dragStore.set({ drag: null });
   invalidateSources();
 }
 

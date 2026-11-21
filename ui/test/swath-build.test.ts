@@ -233,6 +233,7 @@ describe("the source of the scene", () => {
       removeLayer: (k: string) => void layers.delete(k),
       invalidate: () => undefined,
       onRestored: () => () => true,
+      setHandles: () => undefined,
     } as unknown as Scene;
     swathsStore.set({ swaths: [row(5), row(6)], loaded: true, rev: 0, hover: null, selected: null });
     liveStore.set({ live: {} });

@@ -194,6 +194,25 @@ export class SwathLayer implements SceneLayer {
     return this.litIndex;
   }
 
+  private pose: readonly number[] | null = null;
+
+  /**
+   * A drag of a handle (Д-01): the cuboid and its swaths turned by `m` (3 × 3, rows; `drag.rotationBetween`) about
+   * the centre — a matrix, no new geometry; the plot over it is hidden until the answer for the new angles comes
+   * (it stands for the old ones). Null — as built.
+   */
+  setPose(m: readonly number[] | null): void {
+    this.pose = m;
+    if (m) this.object.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1));
+    else this.object.quaternion.identity();
+    this.panel.visible = !m;
+    for (const t of this.texts) t.sprite.visible = !m;
+  }
+
+  get posed(): readonly number[] | null {
+    return this.pose;
+  }
+
   /** Turns the plot toward the viewer and sizes its labels: before every frame. */
   beforeRender(ctx: FrameContext): void {
     if (!this.build.chart) return;
