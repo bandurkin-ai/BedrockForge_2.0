@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useApp } from "../../shell/AppContext";
 import { Icon } from "../../shell/Icon";
+import { sampleSelectionStore, selectedText } from "../../shell/sampleSelection";
 import { useStore } from "../../shell/useStore";
 import { EditLog } from "./EditLog";
 import { TabMark } from "../composites/ResultsTree";
-import { cellText, deleteRow, editCell, editText, fieldStats, findRow, filterHole, loadPage, openTable, PAGE, rowAt, rowsLocked, selectSet, setWhere, sortBy, tablesStore, type ColumnInfo, type FieldStats, type Row } from "./state";
+import { cellText, deleteRow, editCell, editText, fieldStats, findRow, filterHole, loadPage, openTable, PAGE, rowAt, rowsLocked, selectSet, setWhere, showSelection, sortBy, tablesStore, type ColumnInfo, type FieldStats, type Row } from "./state";
 import { ToolBar } from "./ToolBar";
 import css from "./Tables.module.css";
 
 const ROW_H = 24;
 
-/** Нижняя панель «Таблица» (ТЗ 7.10): tabs of the active set, pages on demand, sort, hole, Σ, edits. */
+/**
+ * Нижняя панель «Таблица» (ТЗ 7.10): tabs of the active set, pages on demand, sort, hole, Σ, edits; the plaque of the
+ * selection of samples made on a chart (ТЗ 8.3, № 237): «Выделено N · Показать · Снять».
+ */
 export function TablePanel() {
   const app = useApp();
   const s = useStore(tablesStore, (x) => x);
@@ -71,6 +75,7 @@ export function TablePanel() {
             </button>
           </span>
         )}
+        <SelectionPlaque />
         <span className={css.note}>{s.busy ? "Загрузка…" : `строк: ${s.total.toLocaleString("ru-RU")}`}</span>
         <ToolBar onLog={() => setShowLog(!showLog)} logOpen={showLog} />
       </div>
@@ -80,6 +85,38 @@ export function TablePanel() {
         {showLog && <EditLog onClose={() => setShowLog(false)} />}
       </div>
     </div>
+  );
+}
+
+/**
+ * The selection of samples of the active set (ADR 0019 §8): «Показать» — only its rows (its table opens), again —
+ * all rows; «Снять» — `chart.select_clear` (3D, the table and the charts together).
+ */
+function SelectionPlaque() {
+  const app = useApp();
+  const sel = useStore(sampleSelectionStore, (x) => x.current);
+  const setId = useStore(tablesStore, (x) => x.setId);
+  const table = useStore(tablesStore, (x) => x.table);
+  const shownToken = useStore(tablesStore, (x) => x.selection);
+  if (!sel || sel.set_id !== setId) return null;
+  const shown = shownToken === sel.token;
+  const show = async () => {
+    if (shown) return showSelection(null);
+    const key = String(sel.table_id);
+    if (table !== key) await openTable(key);
+    await showSelection(sel.token);
+  };
+  return (
+    <span className={css.chip} style={{ boxShadow: "inset 3px 0 0 var(--brand-orange)" }} data-testid="selection-plaque" data-n={sel.n} title={`Выделение проб на графике: таблица «${sel.table_name}»`}>
+      {selectedText(sel.n)} ·
+      <button type="button" aria-pressed={shown} title={shown ? "Показать все строки таблицы" : `Показать только выделенные строки таблицы «${sel.table_name}»`} onClick={() => void show()}>
+        {shown ? "Все строки" : "Показать"}
+      </button>
+      ·
+      <button type="button" title="Снять выделение проб: в 3D, в таблице и на графиках (Esc в окне графика)" onClick={() => void app.run("chart.select_clear")}>
+        Снять
+      </button>
+    </span>
   );
 }
 
@@ -103,7 +140,7 @@ function Grid() {
   useEffect(() => {
     box.current?.scrollTo({ top: 0 });
     setTop(0);
-  }, [s.table, s.sort, s.desc, s.hole, s.where, s.setId]);
+  }, [s.table, s.sort, s.desc, s.hole, s.where, s.selection, s.setId]);
 
   const first = Math.max(0, Math.floor(top / ROW_H) - 5);
   const last = Math.min(s.total, Math.ceil((top + height) / ROW_H) + 5);

@@ -2,9 +2,13 @@
  * The scatter plot (ТЗ 8.3; ADR 0019 §11): linear or log10 axes in SVG, the points — SVG circles with a tooltip up to
  * 5000, more on the canvas layer under the lines; more than 200 000 pairs — the density cells 100 × 100; the line of
  * the chosen fit and 1:1; a frame or a lasso in the coordinates of the axes (the selected points in Copper Orange).
+ * The frame or the lasso makes the selection of samples of the application (№ 237: 3D, the table); its points and
+ * those of the hole selected are marked too, whoever made them; the selection gone — the frame goes.
  * SVG of a fixed size: the PNG is twice it, the canvas layer goes in as an image × 2.
  */
-import { forwardRef, useMemo, useState } from "react";
+import { forwardRef, useCallback, useMemo, useState } from "react";
+import { scatterSelectionBody, useChartSelection, useMarkedRows } from "../../modules/charts/selection";
+import { markIndices } from "../../shell/sampleSelection";
 import type { ScatterResult } from "../../modules/charts/apiMore";
 import type { Regression } from "../../modules/charts/settings";
 import { formatNumber, makeScale, type AxisKind } from "../core/axisScale";
@@ -51,15 +55,28 @@ export const ScatterChart = forwardRef<SVGSVGElement, ScatterChartProps>(functio
   // SVG circles take a colour each; the canvas layer — pixels
   const colors = useMemo(() => (raster ? [] : pointColors(r, xs.length, p.color)), [r, p.color, raster]); // eslint-disable-line react-hooks/exhaustive-deps
   const pixels = useMemo(() => (raster ? pointPixels(r, xs.length, p.color) : null), [r, p.color, raster]); // eslint-disable-line react-hooks/exhaustive-deps
-  const lasso = useLasso(p.tool ?? null, BOX, scales, p.onSelect ?? (() => undefined));
+  const onSelect = p.onSelect;
+  const link = useChartSelection(useCallback(() => onSelect?.(null), [onSelect]));
+  const onDone = useCallback(
+    (poly: AxisPolygon | null) => {
+      onSelect?.(poly);
+      if (poly) void link.select(scatterSelectionBody(r, poly, p.tool ?? null, kx, ky));
+    },
+    [onSelect, link.select, r, p.tool, kx, ky], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const lasso = useLasso(p.tool ?? null, BOX, scales, onDone);
+  // the points of the selection of the application (made here, by the table, by the hole selected)
+  const marked = useMarkedRows();
+  const markedIdx = useMemo(() => (r.mode !== "density" && r.row ? markIndices(r.row, marked) : []), [r, marked]);
+  const allSelected = useMemo(() => (markedIdx.length ? [...new Set([...(p.selected ?? []), ...markedIdx])].sort((a, b) => a - b) : (p.selected ?? [])), [p.selected, markedIdx]);
   // the canvas layer is drawn again only for new data, colours, selection or axes — not while a lasso is drawn
-  const rasterKey = useMemo(() => ({}), [r, pixels, p.selected, scales]);
+  const rasterKey = useMemo(() => ({}), [r, pixels, allSelected, scales]);
   if (!d || !scales) return null;
   const { sx, sy } = scales;
   const px = (v: number) => sx.map(v) ?? BOX.x0;
   const py = (v: number) => sy.map(v) ?? BOX.y1;
   const density = r.mode === "density" && r.density ? r.density : null;
-  const selected = p.selected ?? [];
+  const selected = allSelected;
   const isSel = new Set(raster ? [] : selected);
   const fit = p.regression === "none" ? null : fitSegment(r.fits[p.regression], d.x, d.y, kx, ky);
   const diag = p.diagonal ? diagonalPoints(d.x, d.y, kx, ky) : [];
@@ -78,7 +95,7 @@ export const ScatterChart = forwardRef<SVGSVGElement, ScatterChartProps>(functio
           </g>
         )}
         {raster && (
-          <g data-points={xs.length} data-raster="1">
+          <g data-points={xs.length} data-raster="1" data-marked={markedIdx.length || undefined}>
             <RasterLayer
               box={BOX}
               version={rasterKey}
@@ -92,7 +109,7 @@ export const ScatterChart = forwardRef<SVGSVGElement, ScatterChartProps>(functio
           </g>
         )}
         {!density && !raster && (
-          <g data-points={xs.length}>
+          <g data-points={xs.length} data-marked={markedIdx.length || undefined}>
             {xs.map((x, i) => {
               const cx = sx.map(x);
               const cy = sy.map(ys[i]);
