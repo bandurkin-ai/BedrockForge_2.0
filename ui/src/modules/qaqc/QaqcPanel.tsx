@@ -8,6 +8,8 @@
 import { useEffect, useSyncExternalStore, type ComponentType } from "react";
 import { useApp } from "../../shell/AppContext";
 import { QAQC_SECTIONS, SECTION_TITLES, type QaqcSection } from "./commands";
+import { BatchesTab } from "./BatchesTab";
+import { BlanksTab } from "./BlanksTab";
 import { FiltersPanel } from "./FiltersPanel";
 import { StandardsTab } from "./StandardsTab";
 import { activeData, activeElement, loadDatas, qaqcStore } from "./state";
@@ -16,6 +18,8 @@ import css from "./Qaqc.module.css";
 /** The subtabs drawn by their own components; a section without one says that it is not ready. */
 export const SUBTABS: Partial<Record<QaqcSection, ComponentType>> = {
   standards: StandardsTab,
+  blanks: BlanksTab,
+  batches: BatchesTab,
 };
 
 function Pending({ section }: { section: QaqcSection }) {
