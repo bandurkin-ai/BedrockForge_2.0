@@ -36,3 +36,7 @@ router.include_router(routes_charts.router)
 from . import routes_more  # noqa: E402
 
 router.include_router(routes_more.router)
+
+from . import routes_swath  # noqa: E402
+
+router.include_router(routes_swath.router)
