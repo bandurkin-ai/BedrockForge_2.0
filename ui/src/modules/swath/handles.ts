@@ -55,6 +55,8 @@ export class SwathHandlesControl implements ToolHandler {
   private viewOrigin = "";
   private hover: HandleKind | null = null;
   private drag: Drag | null = null;
+  /** grows with every drag: the answer of a release lets go only if no drag came after it */
+  private generation = 0;
   /** the cursor of the canvas before a handle was under it */
   private cursorWas: string | null = null;
   private disposed = false;
@@ -155,6 +157,7 @@ export class SwathHandlesControl implements ToolHandler {
     const handle = this.handlesFor(t.layer, t.angles).find((h) => h.kind === kind)!;
     const start = pick(t.angles);
     this.drag = { id: t.id, layer: t.layer, handle, start, now: start, from };
+    this.generation++;
     this.scene.canvas.style.cursor = "grabbing";
     this.draw(t.layer, start, kind);
     setDrag({ id: t.id, ...start });
@@ -185,10 +188,13 @@ export class SwathHandlesControl implements ToolHandler {
     const rotation = rotationBetween(d.layer.build, frameOf(d.now.azimuth, d.now.dip, d.now.roll));
     this.host.hold(d.id, { rotation, angles: d.now });
     this.refresh();
+    const mine = this.generation;
     void this.host
       .run({ swath_id: d.id, ...d.now })
       .catch(() => false)
       .then((ok) => {
+        // another drag began before the answer: the angles and the pose are its own
+        if (mine !== this.generation) return;
         setDrag(null);
         if (ok || this.disposed) return;
         // the command failed: the box comes back to the angles it has

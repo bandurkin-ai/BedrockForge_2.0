@@ -148,7 +148,7 @@ test("swath: «+» → the window and the box in 3D; each handle its angle, a ty
 
     // ---- 3. Т7.30-3: the swath under the cursor of the plot is lit in 3D --------------------------------------------
     const lit = async () => (await layers(page)).find((l) => l.id === row.id)?.lit ?? null;
-    const plot = win.locator("svg rect[fill=transparent]").first();
+    const plot = win.getByTestId("swath-hover");
     await plot.scrollIntoViewIfNeeded();
     const count = (await layers(page)).find((l) => l.id === row.id)!.count;
     const box = (await plot.boundingBox())!;

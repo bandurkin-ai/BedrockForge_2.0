@@ -82,7 +82,7 @@ describe("groups at the cut", () => {
     expect(clustersAt(RESULT.linkage, 3, RESULT.order, 0.5)).toEqual({ leaf: [0, 0, 1], merge: [0, -1] });
     expect(clustersAt(RESULT.linkage, 3, RESULT.order, 0.8).leaf).toEqual([0, 0, 0]);
     expect(clustersAt(RESULT.linkage, 3, [2, 0, 1], 0.5).leaf).toEqual([1, 1, 0]); // numbered down the leaves
-    expect(dendrogramNotes(RESULT, 0.5)).toContain("групп при пороге 0.5: 2");
+    expect(dendrogramNotes(RESULT, 0.5)).toContain("групп при пороге 0,5: 2");
   });
 
   it("the cut colours the leaves and the links under it; the brand colours first", () => {
@@ -194,7 +194,7 @@ describe("the core: availability and the command", () => {
     expect(win.props?.settings).toMatchObject({ set_id: 5, table: "пробы", fields: [] });
     const a = await app.registry.execute("chart.dendrogram", { set_id: 5, cut: 0.5, method: "spearman" }, "claude");
     expect(sent.find((x) => x.path === "/stats/dendrogram")?.body).toMatchObject({ set_id: 5, table: "пробы", cut: 0.5, method: "spearman" });
-    expect(a.result).toBe("Дендрограмма · все компоненты · Спирмен: полей 3, строк в расчёте 5, групп при пороге 0.5: 2; порядок листьев A, B, C; сильнее всего связаны A и B (r = 1)");
+    expect(a.result).toBe("Дендрограмма · все компоненты · Спирмен: полей 3, строк в расчёте 5, групп при пороге 0,5: 2; порядок листьев A, B, C; сильнее всего связаны A и B (r = 1)");
     expect(dendrogramSummary("Д", RESULT, null)).not.toContain("групп");
   });
 });

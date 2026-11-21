@@ -42,6 +42,44 @@ export function simplifyPath(path: readonly Pt[], minDist = 3): Pt[] {
   return out;
 }
 
+/** The most vertices of a polygon the core takes (`POST /stats/selection`; 1001 — 422 `bad_param {param: polygon}`). */
+export const MAX_POLYGON = 1000;
+
+/** Douglas–Peucker: the vertices of `path` farther than `tol` px from the chord of what is dropped (the ends kept). */
+function douglasPeucker(path: readonly Pt[], tol: number): Pt[] {
+  const keep = new Uint8Array(path.length);
+  keep[0] = keep[path.length - 1] = 1;
+  const stack: [number, number][] = [[0, path.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop()!;
+    const { x: ax, y: ay } = path[a];
+    const dx = path[b].x - ax;
+    const dy = path[b].y - ay;
+    const len = Math.hypot(dx, dy);
+    let far = -1;
+    let best = tol;
+    for (let i = a + 1; i < b; i++) {
+      const d = len > 0 ? Math.abs(dy * (path[i].x - ax) - dx * (path[i].y - ay)) / len : Math.hypot(path[i].x - ax, path[i].y - ay);
+      if (d > best) {
+        best = d;
+        far = i;
+      }
+    }
+    if (far < 0) continue;
+    keep[far] = 1;
+    stack.push([a, far], [far, b]);
+  }
+  return path.filter((_, i) => keep[i]);
+}
+
+/** A drawn path of at most `max` vertices keeping its shape (Douglas–Peucker, the tolerance doubled until it fits). */
+export function limitPath(path: readonly Pt[], max = MAX_POLYGON): Pt[] {
+  if (path.length <= max) return [...path];
+  let out: Pt[] = [...path];
+  for (let tol = 0.25; out.length > max; tol *= 2) out = douglasPeucker(path, tol);
+  return out;
+}
+
 /** Twice the signed area (shoelace); 0 — a degenerate path that selects nothing. */
 export function pathArea(path: readonly Pt[]): number {
   let s = 0;
@@ -152,7 +190,8 @@ export function useLasso(tool: SelectTool | null, box: PlotBox, scales: { sx: Sc
     start.current = null;
     const drawn = current.current;
     setPath(null);
-    onDone(drawn && scales ? toAxisPolygon(drawn, scales.sx, scales.sy) : null);
+    // the core takes ≤ 1000 vertices: a long lasso is simplified in px, its shape kept
+    onDone(drawn && scales ? toAxisPolygon(limitPath(drawn), scales.sx, scales.sy) : null);
   }, [scales, onDone]);
   return { path, handlers: tool ? { onPointerDown, onPointerMove, onPointerUp, onPointerCancel: onPointerUp } : {} };
 }

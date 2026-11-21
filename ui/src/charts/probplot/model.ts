@@ -5,7 +5,8 @@
  * arguments of `composite.topcut` (the threshold only goes to the window: it is not applied by itself — ADR 0018,
  * decision 8), the table, the CSV and the assistant's text. Pure.
  */
-import { createCalculator, type Calculator } from "../../modules/charts/api";
+import type { Calculator } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { computeProbPlot, type ProbPlotResult, type ProbSeries } from "../../modules/charts/apiMore";
 import { needsWeightField, type ProbPlotSettings } from "../../modules/charts/settings";
 import { domainOf, formatNumber, type Domain, type Scale } from "../core/axisScale";
@@ -22,7 +23,7 @@ export function probRequest(s: ProbPlotSettings): ProbPlotRequest | null {
 }
 
 export function probCalculator(apply: (r: ProbPlotResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: ProbPlotRequest) => Promise<ProbPlotResult> = computeProbPlot): Calculator<ProbPlotRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 export interface ProbPoint {

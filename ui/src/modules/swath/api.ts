@@ -170,7 +170,7 @@ export interface SwathResult {
 /** Where a refusal of the core belongs in the window: `width` (over 2000 swaths — at the width field, Т7.30-1),
  * `series` (over 12), another param, or the whole window (null). */
 export function swathError(e: unknown): { text: string; param: string | null } {
-  const param = e instanceof CoreError ? (typeof e.body?.param === "string" ? e.body.param : e.code === "too_many_swaths" ? "width" : e.code === "too_many_series" ? "series" : null) : null;
+  const param = e instanceof CoreError ? (typeof e.body?.param === "string" ? e.body.param : e.code === "too_many_swaths" ? "width" : e.code === "too_many_series" || e.code === "too_much_data" ? "series" : null) : null;
   return { text: errorText(e), param };
 }
 

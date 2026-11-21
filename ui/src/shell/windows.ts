@@ -59,15 +59,34 @@ export function rememberWindowRect(win: Pick<FloatWin, "kind" | "x" | "y" | "w" 
   if (!win.maximized) memory?.put(win.kind, { x: win.x, y: win.y, w: win.w, h: win.h });
 }
 
+/** The top of a new window left centered: below the ribbon while the window still fits. */
+const OPEN_TOP = 60;
+/** A new window is not made lower than this to keep {@link OPEN_TOP} (a smaller screen — it goes up instead). */
+const OPEN_MIN_H = 240;
+
+/**
+ * A new window whole inside the viewport: its size no more than the viewport, moved left and up as far as needed
+ * (the bottom and the resize grip in sight). A window being dragged keeps {@link clampToViewport}.
+ */
+export function fitToViewport(win: Pick<FloatWin, "x" | "y" | "w" | "h">, vw: number, vh: number) {
+  const w = Math.min(win.w, vw);
+  const h = Math.min(win.h, vh);
+  const x = Math.min(Math.max(win.x, 0), Math.max(0, vw - w));
+  const y = Math.min(Math.max(win.y, 0), Math.max(0, vh - h));
+  return { x, y, w, h };
+}
+
 /** The first place of a new window: the remembered one of its kind, shifted past open windows of that kind; else centered. */
 export function initialRect(kind: string, size: WindowSize, open: readonly Pick<FloatWin, "kind">[], vw: number, vh: number, remembered?: WindowRect) {
   if (remembered) {
     const same = open.filter((o) => o.kind === kind).length;
-    return clampToViewport({ x: remembered.x + same * 24, y: remembered.y + same * 24, w: remembered.w, h: remembered.h }, vw, vh);
+    return fitToViewport({ x: remembered.x + same * 24, y: remembered.y + same * 24, w: remembered.w, h: remembered.h }, vw, vh);
   }
-  const { w, h } = WINDOW_SIZES[size];
+  const { w } = WINDOW_SIZES[size];
+  const top = Math.max(OPEN_TOP, (vh - WINDOW_SIZES[size].h) / 2);
+  const h = Math.min(WINDOW_SIZES[size].h, Math.max(OPEN_MIN_H, vh - top)); // below the ribbon: lower rather than off the screen
   const n = open.length;
-  return clampToViewport({ x: (vw - w) / 2 + n * 24, y: Math.max(60, (vh - h) / 2) + n * 24, w, h }, vw, vh);
+  return fitToViewport({ x: (vw - w) / 2 + n * 24, y: top + n * 24, w, h }, vw, vh);
 }
 
 export function openWindow(kind: string, title: string, size: WindowSize = "medium", props?: Record<string, unknown>, vw = 1280, vh = 800): string {

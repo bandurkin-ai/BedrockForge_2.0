@@ -9,9 +9,10 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { bridge } from "../../bridge";
 import type { AxisKind } from "../../charts/core/axisScale";
-import { selectInside, type AxisPolygon, type SelectTool } from "../../charts/core/lasso";
+import { MAX_POLYGON, selectInside, type AxisPolygon, type SelectTool } from "../../charts/core/lasso";
 import { selectedRows } from "../../charts/scatter/model";
 import type { App } from "../../shell/app";
+import { dialogStore } from "../../shell/dialogs";
 import { needProject } from "../../shell/objectRun";
 import { clearSelection, makeSelection, markedRows, refreshHoleSamples, resetSelection, revalidate, sampleSelectionStore, selectionNotice, setHoleSamples, setSelectionNotice, type SelectionInfo } from "../../shell/sampleSelection";
 import { windowStore } from "../../shell/windows";
@@ -46,7 +47,10 @@ export function scatterSelectionBody(r: ScatterResult, poly: AxisPolygon, tool: 
   if (!body) return null;
   const chart = { ...body, kind: "scatter" };
   if (tool === "rect") return { chart, rect: [Math.min(...poly.x), Math.max(...poly.x), Math.min(...poly.y), Math.max(...poly.y)] };
-  return { chart, polygon: poly.x.map((x, i) => [x, poly.y[i]]) };
+  // drawn by `useLasso` it has ≤ 1000 vertices already; any other polygon is thinned evenly to what the core takes
+  const step = Math.max(1, poly.x.length / MAX_POLYGON);
+  const at = Array.from({ length: Math.min(poly.x.length, MAX_POLYGON) }, (_, k) => Math.floor(k * step));
+  return { chart, polygon: at.map((i) => [poly.x[i], poly.y[i]]) };
 }
 
 /** The boxes a frame covers (px of the plot, its slots of equal width); null — all of them. */
@@ -58,10 +62,29 @@ export function boxFrameGroups(labels: readonly (string | null)[], xa: number, x
   return out.length === labels.length ? null : out;
 }
 
-/** The series of the log-probability plot with a point inside the frame (grade lo…hi, P plo…phi as 0…1); null — all. */
-export function probFrameGroups(r: Pick<ProbPlotResult, "series">, xlo: number, xhi: number, plo: number, phi: number): (string | null)[] | null {
-  const hit = r.series.filter((s) => s.points.some(([x, pc]) => x >= xlo && x <= xhi && pc / 100 >= plo && pc / 100 <= phi));
-  return hit.length === r.series.length ? null : hit.map((s) => s.label);
+/**
+ * What a frame on the log-probability plot selects (grade xlo…xhi, P plo…phi as 0…1): the frame narrowed by P too —
+ * every series with a point inside gives the grades of its points inside (min…max); the range is the union of them,
+ * the groups — those series (null — all). The selection is one request (one token), so series narrowed differently
+ * share the union: a series may get a few samples of its own beyond its P band, within the union of grades. null —
+ * no point inside.
+ */
+export function probFrameSelection(r: Pick<ProbPlotResult, "series">, xlo: number, xhi: number, plo: number, phi: number): { range: [number, number]; groups: (string | null)[] | null } | null {
+  let lo = Infinity;
+  let hi = -Infinity;
+  const hit: (string | null)[] = [];
+  for (const s of r.series) {
+    let any = false;
+    for (const [x, pc] of s.points) {
+      if (!(x >= xlo && x <= xhi && pc / 100 >= plo && pc / 100 <= phi)) continue;
+      any = true;
+      lo = Math.min(lo, x);
+      hi = Math.max(hi, x);
+    }
+    if (any) hit.push(s.label);
+  }
+  if (!hit.length) return null;
+  return { range: [lo, hi], groups: hit.length === r.series.length ? null : hit };
 }
 
 /** The body for the box plots and the log-probability plot: their settings, the range of values and the groups. */
@@ -133,8 +156,22 @@ function syncHoleSamples(): void {
   void setHoleSamples(charts && t.hole && t.setId !== null ? { setId: t.setId, table, hole: t.hole.id } : null);
 }
 
+/** The palette, a dialog of the queue or a modal window of the shell is open: Esc is theirs. */
+export const modalOpen = (app: Pick<App, "palette" | "store">): boolean => app.palette.get().query !== null || dialogStore.get().queue.length > 0 || app.store.get().modal > 0;
+
 /**
- * `chart.select_clear`, `Esc` in the window of a chart (the last pressed in, or holding the focus), the table
+ * Esc is the chart window's: the focus is in it, or it was pressed last and the focus went nowhere since (the plot
+ * takes no focus — the focus stays on the page).
+ */
+export function chartEscape(pressedInChart: boolean, focus: Element | null): boolean {
+  if (focus?.closest?.(CHART_WINDOW)) return true;
+  const nowhere = !focus || (typeof document !== "undefined" && (focus === document.body || focus === document.documentElement));
+  return pressedInChart && nowhere;
+}
+
+/**
+ * `chart.select_clear`, `Esc` in the window of a chart (holding the focus, or pressed last with the focus nowhere
+ * since; not while the palette or a modal window is open), the table
  * following the selection, the marks of the selected hole, the 3D layer of every scene, an edit of the data, another
  * project; the notices go to the status bar.
  */
@@ -147,14 +184,16 @@ export function bindSampleSelection(app: App): void {
   );
 
   if (typeof window !== "undefined") {
+    // pressed in a chart window (its plot takes no focus); any focus elsewhere — the palette, a dialog — forgets it
     let inChart = false;
     window.addEventListener("pointerdown", (e) => void (inChart = !!(e.target as Element | null)?.closest?.(CHART_WINDOW)), true);
+    window.addEventListener("focusin", (e) => void (inChart = inChart && !!(e.target as Element | null)?.closest?.(CHART_WINDOW)), true);
     window.addEventListener(
       "keydown",
       (e) => {
         if (e.key !== "Escape" || e.repeat || !sampleSelectionStore.get().current) return;
-        const focus = typeof document !== "undefined" ? (document.activeElement as Element | null) : null;
-        if (!inChart && !focus?.closest?.(CHART_WINDOW)) return;
+        if (modalOpen(app)) return; // Esc closes the palette or the dialog first
+        if (!chartEscape(inChart, typeof document !== "undefined" ? document.activeElement : null)) return;
         // Esc of a chart window clears the selection of samples, not the hole (the ribbon's «Снять выбор»)
         e.stopImmediatePropagation();
         e.preventDefault();

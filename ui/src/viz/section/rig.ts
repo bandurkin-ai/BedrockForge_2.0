@@ -12,6 +12,7 @@ import type { Vec3 } from "../core/vec3";
 import { pixelsPerUnit, type CameraState, type SectionFrame, type ViewOptions } from "../core/views";
 import { viewPlaneAt } from "../core/toolInput";
 import type { Origin } from "../origin";
+import type { SectionDataMark } from "../sceneTypes";
 import { SharedClip } from "./clip";
 import { DRAW_OFF, type DrawState } from "./draw";
 import type { SectionLine } from "./math";
@@ -28,6 +29,8 @@ export class SectionRig {
   drawing: DrawState = DRAW_OFF;
   /** «Зафиксировать вид»: the plane and the direction the view is locked on */
   lock: ViewLock | null = null;
+  /** the readiness of the lines of the current section of a series (`Scene.setSectionData`); null — none */
+  data: SectionDataMark | null = null;
 
   /** A new section: a plane (with the line it came from, if any) and clipping. */
   set(plane: SectionPlane | null, clip: boolean, line: SectionLine | null = null): void {

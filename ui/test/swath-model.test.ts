@@ -243,7 +243,8 @@ describe("swath plot on screen", () => {
   it("draws lines broken at an empty swath, bars, the legend with the totals, the tooltip", () => {
     const look = [{ color: "#1f6bff", line: true, bars: true }, { color: "#f46a1a", line: true, bars: false }];
     const svg = renderToStaticMarkup(createElement(SwathChart, { result, look, range: [0, 3], hover: 1, onHover: () => undefined }));
-    expect(svg).toContain("Модель · AU_CUT, г/т — среднее 2.1 (объём; блоков 16)");
+    expect(svg).toContain("Модель · AU_CUT, г/т — среднее 2,1 (объём; блоков 16)");
+    expect(svg.match(/data-testid="swath-hover"/g)).toHaveLength(1); // the rectangle of the hover (E2E)
     expect((svg.match(/<path /g) ?? []).length).toBe(2);
     expect(svg).toMatch(/M[^"]*L[^"]*L[^"]*"/); // the model: one line over 4 swaths
     expect(svg).toContain("Полоса 2: 110 – 120 м");
@@ -271,6 +272,11 @@ describe("swath plot on screen", () => {
     e.body = { param: "anchor" };
     expect(swathError(e).param).toBe("anchor");
     expect(swathError(new CoreError(422, "too_many_series", "Не больше 12 рядов.", "")).param).toBe("series");
+    // too many samples or blocks for the series (422 too_much_data {param: series}) — at the series, in Russian
+    const big = new CoreError(422, "too_much_data", "Слишком много данных для рядов: 30 000 000 значений.", "Уберите часть рядов или сузьте диапазон.");
+    big.body = { code: "too_much_data", param: "series" };
+    expect(swathError(big)).toEqual({ text: "Слишком много данных для рядов: 30 000 000 значений. Уберите часть рядов или сузьте диапазон.", param: "series" });
+    expect(swathError(new CoreError(422, "too_much_data", "Много.", "")).param).toBe("series");
     expect(swathError(new Error("сеть")).param).toBeNull();
   });
 

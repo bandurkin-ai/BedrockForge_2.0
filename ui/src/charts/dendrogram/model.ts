@@ -4,7 +4,8 @@
  * `fcluster`, criterion «distance»: merges at or below the cut join), the colours of the matrix, the CSV of the
  * matrix in the order of the leaves, the notes and the assistant's text. A missing r stays empty, never 0. Pure.
  */
-import { computeDendrogram, createCalculator, type Calculator, type DendrogramResult, type NumericField } from "../../modules/charts/api";
+import { computeDendrogram, type Calculator, type DendrogramResult, type NumericField } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import type { DendrogramSettings } from "../../modules/charts/settings";
 import { formatNumber } from "../core/axisScale";
 import { csvText } from "../core/csv";
@@ -35,7 +36,7 @@ export function dendrogramRequest(s: DendrogramSettings, numeric?: readonly Nume
 }
 
 export function dendrogramCalculator(apply: (r: DendrogramResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: DendrogramRequest) => Promise<DendrogramResult> = computeDendrogram): Calculator<DendrogramRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 /**

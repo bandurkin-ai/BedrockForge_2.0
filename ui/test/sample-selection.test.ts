@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { ScatterChart } from "../src/charts/scatter/ScatterChart";
 import { computeBox, computeScatter, type ProbPlotResult, type ScatterResult } from "../src/modules/charts/apiMore";
-import { boxFrameGroups, probFrameGroups, scatterSelectionBody, valueSelectionBody } from "../src/modules/charts/selection";
-import { bindSampleSelection } from "../src/modules/charts/selection";
+import { boxFrameGroups, probFrameSelection, scatterSelectionBody, valueSelectionBody } from "../src/modules/charts/selection";
+import { bindSampleSelection, chartEscape } from "../src/modules/charts/selection";
 import { SAMPLE_MARKS_KEY, SelectionScene } from "../src/modules/charts/selectionScene";
 import { markReason } from "../src/modules/tables/ToolBar";
 import { loadPage, showSelection, tablesStore } from "../src/modules/tables/state";
@@ -133,6 +133,28 @@ describe("the state of the selection", () => {
     expect(notices[0]).toMatch(/^Выделение не сделано: Выделено слишком много проб/);
   });
 
+  it("refusals of the creation in Russian from {message, hint}: 409 selection_stale (token null), 413, 422 bad_request", async () => {
+    const answers = [
+      json({ code: "selection_stale", message: "Таблица «Пробы» изменилась, пока делалось выделение.", hint: "Выделите пробы заново.", token: null }, 409),
+      json({ code: "request_too_large", message: "Запрос слишком большой: 12 МБ, можно не больше 8 МБ.", hint: "Выделите меньше точек." }, 413),
+      json({ code: "bad_request", message: "Тело запроса — не JSON-объект.", hint: "Повторите действие." }, 422),
+    ];
+    stubCore((m, p) => (m === "POST" && p === "/stats/selection" ? (answers.shift() ?? null) : null));
+    expect(await selectRows(3, null, [101])).toBeNull();
+    expect(sampleSelectionStore.get().current).toBeNull();
+    expect(notices.at(-1)).toBe("Выделение не сделано: Таблица «Пробы» изменилась, пока делалось выделение. Выделите пробы заново.");
+    expect(await selectRows(3, null, [101])).toBeNull();
+    expect(notices.at(-1)).toBe("Выделение не сделано: Запрос слишком большой: 12 МБ, можно не больше 8 МБ. Выделите меньше точек.");
+    expect(await selectRows(3, null, [101])).toBeNull();
+    expect(notices.at(-1)).toBe("Выделение не сделано: Тело запроса — не JSON-объект. Повторите действие.");
+    // a selection made — then a 409 at a new one: the old one stays (the token null names none)
+    expect(await selectRows(3, null, [101])).not.toBeNull();
+    const kept = sampleSelectionStore.get().current?.token;
+    answers.push(json({ code: "selection_stale", message: "Таблица изменилась.", hint: "Заново.", token: null }, 409));
+    expect(await selectRows(3, null, [102])).toBeNull();
+    expect(sampleSelectionStore.get().current?.token).toBe(kept);
+  });
+
   it("409 selection_stale after an edit of the table: the selection goes, the reason in the status bar", async () => {
     let stale = false;
     stubCore((m, p) => (stale && m === "GET" && p.startsWith("/stats/selection/t1") ? json(STALE, 409) : null));
@@ -206,6 +228,11 @@ describe("the frames and lassos of the charts", () => {
     const r = await computeScatter({ set_id: 3, table: "пробы", x: "AU", y: "AG", log_x: true } as never);
     expect(scatterSelectionBody(r, SQUARE, "lasso", "log", "linear")).toEqual({ chart: { set_id: 3, table: "пробы", x: "AU", y: "AG", log_x: true, kind: "scatter" }, polygon: [[1.5, 1.5], [3.5, 1.5], [3.5, 3.5], [1.5, 3.5]] });
     expect(scatterSelectionBody(r, SQUARE, "rect", "log", "linear")).toMatchObject({ rect: [1.5, 3.5, 1.5, 3.5] });
+    // the core takes ≤ 1000 vertices: a longer polygon goes thinned evenly
+    const ring = Array.from({ length: 2500 }, (_, i) => (2 * Math.PI * i) / 2500);
+    const long = scatterSelectionBody(r, { x: ring.map((a) => 2 + Math.cos(a)), y: ring.map((a) => 2 + Math.sin(a)) }, "lasso", "log", "linear")!;
+    expect((long.polygon as number[][]).length).toBe(1000);
+    expect((long.polygon as number[][])[0]).toEqual([3, 2]);
   });
 
   it("box plots: the boxes the frame covers, the range; the log-probability plot: the series with a point inside", async () => {
@@ -216,9 +243,15 @@ describe("the frames and lassos of the charts", () => {
     const box = await computeBox({ set_id: 3, table: null, field: "AU", domain: "ДОМЕН" } as never);
     expect(valueSelectionBody("box", box, [9, 2], ["A"])).toEqual({ chart: { set_id: 3, table: null, field: "AU", domain: "ДОМЕН", kind: "box" }, range: [2, 9], groups: ["A"] });
     const prob: Pick<ProbPlotResult, "series"> = { series: [{ label: "A", points: [[1, 10], [2, 50]], count: 2, nonpositive: 0, stats: { mean: 1, median: 1, cv: 0, p90: 2 } }, { label: null, points: [[10, 90]], count: 1, nonpositive: 0, stats: { mean: 1, median: 1, cv: 0, p90: 2 } }] };
-    expect(probFrameGroups(prob, 0.5, 3, 0.05, 0.6)).toEqual(["A"]);
-    expect(probFrameGroups(prob, 0.5, 30, 0.05, 0.95)).toBeNull();
-    expect(probFrameGroups(prob, 100, 200, 0.05, 0.95)).toEqual([]);
+    // the frame narrowed by P: grades 0.5…3 at P 5…60 % hold only A's points 1 and 2 (not 10 of the other series)
+    expect(probFrameSelection(prob, 0.5, 3, 0.05, 0.6)).toEqual({ range: [1, 2], groups: ["A"] });
+    // P 5…20 %: only A's point 1 — the range is not the frame's 0.5…30
+    expect(probFrameSelection(prob, 0.5, 30, 0.05, 0.2)).toEqual({ range: [1, 1], groups: ["A"] });
+    expect(probFrameSelection(prob, 0.5, 30, 0.05, 0.95)).toEqual({ range: [1, 10], groups: null });
+    // series narrowed differently: one request — the union of their grades
+    expect(probFrameSelection(prob, 1.5, 30, 0.4, 0.95)).toEqual({ range: [2, 10], groups: null });
+    expect(probFrameSelection(prob, 100, 200, 0.05, 0.95)).toBeNull();
+    expect(probFrameSelection(prob, 0.5, 3, 0.7, 0.95)).toBeNull(); // grades inside, P outside
   });
 
   it("the open scatter marks the points of the selection, whoever made it", async () => {
@@ -238,15 +271,23 @@ describe("the frames and lassos of the charts", () => {
 function fakeScene() {
   const layers = new Map<string, SceneLayer>();
   const restored: (() => void)[] = [];
+  const frames: (() => void)[] = [];
+  const holes = { method: "tangential" as string | null };
   return {
     layers,
+    holesMethod: holes,
+    frame: () => frames.forEach((fn) => fn()),
+    onFrame: (fn: () => void) => {
+      frames.push(fn);
+      return () => void frames.splice(frames.indexOf(fn), 1);
+    },
     restore: () => restored.forEach((fn) => fn()),
     addLayer: (key: string, layer: SceneLayer) => void layers.set(key, layer),
     removeLayer: (key: string) => void layers.delete(key),
     invalidate: () => undefined,
     clipPlanes: [] as THREE.Plane[],
     resolution: new THREE.Vector2(800, 600),
-    holes: () => ({ manifest: { method: "tangential" } }) as never,
+    holes: () => (holes.method ? { manifest: { method: holes.method } } : null) as never,
     onRestored: (fn: () => void) => {
       restored.push(fn);
       return () => undefined;
@@ -293,6 +334,33 @@ describe("the selection in 3D", () => {
     s.dispose();
   });
 
+  it("only the newest answer is drawn; the holes of the set by another method — the segments asked again", async () => {
+    stubCore();
+    const scene = fakeScene();
+    const pending: { method: string; resolve: (b: ArrayBuffer) => void }[] = [];
+    const s = new SelectionScene(scene as never, (token, method) => new Promise((resolve) => pending.push({ method, resolve: () => resolve(segmentsBuffer(token)) })));
+    await selectRows(3, null, [101, 102, 104, 109]);
+    await flush();
+    expect(pending.map((p) => p.method)).toEqual(["tangential"]);
+    scene.frame(); // the same method: nothing asked
+    expect(pending).toHaveLength(1);
+    // the set loaded again by another method of the trajectory before the first answer
+    scene.holesMethod.method = "minimum_curvature";
+    scene.frame();
+    expect(pending.map((p) => p.method)).toEqual(["tangential", "minimum_curvature"]);
+    pending[1].resolve(new ArrayBuffer(0));
+    await flush();
+    expect(s.count).toBe(3);
+    const drawn = scene.layers.get(SAMPLE_MARKS_KEY);
+    pending[0].resolve(new ArrayBuffer(0)); // the old answer, late: dropped
+    await flush();
+    expect(scene.layers.get(SAMPLE_MARKS_KEY)).toBe(drawn);
+    scene.frame();
+    expect(pending).toHaveLength(2);
+    s.dispose();
+    clearSelection();
+  });
+
   it("409 for the segments: the selection goes with the reason", async () => {
     stubCore();
     const scene = fakeScene();
@@ -324,5 +392,68 @@ describe("chart.select_clear", () => {
     expect(sampleSelectionStore.get().current).toBeNull();
     expect(sent.at(-1)).toMatchObject({ method: "DELETE", path: "/stats/selection/t1" });
     expect((await app.registry.execute("chart.select_clear", {}, "claude")).ok).toBe(false);
+  });
+});
+
+describe("Esc of a chart window", () => {
+  // the DOM of the node tests: a window of events, the focus — a field of a fake document
+  const el = (inChart: boolean) => ({ closest: (sel: string) => (inChart && sel.includes("chart-window") ? {} : null) }) as unknown as Element;
+  /** The listeners of a window in their order; `stopImmediatePropagation` stops the rest. */
+  function fakeWindow() {
+    const on: { type: string; fn: (e: unknown) => void }[] = [];
+    return {
+      addEventListener: (type: string, fn: (e: unknown) => void) => void on.push({ type, fn }),
+      removeEventListener: () => undefined,
+      dispatch(type: string, props: Record<string, unknown>) {
+        let stop = false;
+        const e = { type, ...props, stopImmediatePropagation: () => void (stop = true), preventDefault: () => undefined };
+        for (const l of on.filter((x) => x.type === type)) {
+          if (stop) break;
+          l.fn(e);
+        }
+      },
+    };
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("the focus in the window, or pressed there with the focus nowhere since", () => {
+    expect(chartEscape(false, el(true))).toBe(true);
+    expect(chartEscape(true, null)).toBe(true);
+    expect(chartEscape(true, el(false))).toBe(false); // the palette, a dialog, a field took the focus
+    expect(chartEscape(false, null)).toBe(false);
+  });
+
+  it("a click on the chart, then Ctrl+K: Esc is the palette's, the selection stays; the focus elsewhere forgets the click", async () => {
+    stubCore();
+    const win = fakeWindow();
+    const body = el(false);
+    const doc = { activeElement: body as Element | null, body };
+    vi.stubGlobal("window", win);
+    vi.stubGlobal("document", doc);
+    const app = createApp({ persist: false }); // binds the selection with the window of events
+    app.store.set({ projectName: "Проект" });
+    let later = 0;
+    win.addEventListener("keydown", () => void later++); // the palette's own Esc
+    const esc = () => win.dispatch("keydown", { key: "Escape", repeat: false });
+
+    await makeSelection({ set_id: 3, table: null, rows: [101] });
+    win.dispatch("pointerdown", { target: el(true) });
+    app.palette.set({ query: "" }); // Ctrl+K
+    esc();
+    expect(later).toBe(1);
+    expect(sampleSelectionStore.get().current).not.toBeNull();
+    // the palette's field took the focus: the click is forgotten, Esc after it closed — not the chart's
+    win.dispatch("focusin", { target: el(false) });
+    app.palette.set({ query: null });
+    esc();
+    expect(later).toBe(2);
+    expect(sampleSelectionStore.get().current).not.toBeNull();
+    // a click on the chart again, nothing open: Esc clears the selection and goes no farther
+    win.dispatch("pointerdown", { target: el(true) });
+    doc.activeElement = null;
+    esc();
+    expect(later).toBe(2);
+    await flush();
+    expect(sampleSelectionStore.get().current).toBeNull();
   });
 });

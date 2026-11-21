@@ -4,7 +4,8 @@
  * the grid of 10 % shares, the colours by a field, the CSV and the assistant's text. Rows with a missing field or a
  * sum ≤ 0 are counted by the core and not drawn. Pure.
  */
-import { createCalculator, type Calculator } from "../../modules/charts/api";
+import type { Calculator } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { computeTernary, type TernaryResult } from "../../modules/charts/apiMore";
 import type { TernarySettings } from "../../modules/charts/settings";
 import { formatNumber } from "../core/axisScale";
@@ -21,7 +22,7 @@ export function ternaryRequest(s: TernarySettings): TernaryRequest | null {
 }
 
 export function ternaryCalculator(apply: (r: TernaryResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: TernaryRequest) => Promise<TernaryResult> = computeTernary): Calculator<TernaryRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 /** The triangle inside a box: the side fits the width and the height (√3 / 2 of the side), centred. */
@@ -82,7 +83,11 @@ export function ternaryNotes(r: TernaryResult): string[] {
   const c = r.counts;
   const out = [`строк ${n(c.rows)}, точек ${n(c.used)}`];
   if (c.missing) out.push(`с пропуском поля ${n(c.missing)}`);
-  if (c.nonpositive_sum) out.push(`сумма ≤ 0: ${n(c.nonpositive_sum)}`);
+  // the core tells the two apart: a share below zero, the sum 0
+  if (c.negative !== undefined || c.zero_sum !== undefined) {
+    if (c.negative) out.push(`с отрицательным значением ${n(c.negative)}`);
+    if (c.zero_sum) out.push(`сумма 0: ${n(c.zero_sum)}`);
+  } else if (c.nonpositive_sum) out.push(`сумма ≤ 0: ${n(c.nonpositive_sum)}`);
   if (r.total > r.a.length) out.push(`показано ${n(r.a.length)} из ${n(r.total)} (равномерно прорежено)`);
   return out;
 }

@@ -4,7 +4,8 @@
  * the bins, the counters of what the selection left out, the rows of the statistics with and without weights,
  * the assistant's text. A statistic that cannot be computed stays «—», never 0. Pure.
  */
-import { createCalculator, computeHistogram, type Calculator, type Describe, type HistogramResult, type SelectCounts } from "../../modules/charts/api";
+import { computeHistogram, type Calculator, type Describe, type HistogramResult, type SelectCounts } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { needsWeightField, type HistogramSettings, type HistogramY } from "../../modules/charts/settings";
 import { formatNumber } from "../core/axisScale";
 import { csvText } from "../core/csv";
@@ -38,7 +39,7 @@ export function histogramRequest(s: HistogramSettings): HistogramRequest | null 
 
 /** The window's calculation: 300 ms after the last edit, an overtaken answer dropped (ADR 0019 §11). */
 export function histogramCalculator(apply: (r: HistogramResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: HistogramRequest) => Promise<HistogramResult> = computeHistogram): Calculator<HistogramRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 export interface Mark {

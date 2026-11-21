@@ -4,7 +4,8 @@
  * range with «одинаковый масштаб»), the P10 / P50 / P90 marks, the table X / Y / отношение, the notes and the
  * assistant's text. A value that cannot be computed stays «—», never 0. Pure.
  */
-import { computeQQ, createCalculator, type Calculator, type Describe, type QQResult, type QQSide, type QQTuple } from "../../modules/charts/api";
+import { computeQQ, type Calculator, type Describe, type QQResult, type QQSide, type QQTuple } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { needsWeightField, type QQSettings } from "../../modules/charts/settings";
 import { domainOf, formatNumber, type Domain } from "../core/axisScale";
 import { csvText } from "../core/csv";
@@ -24,7 +25,7 @@ export function qqRequest(s: QQSettings): QQRequest | null {
 }
 
 export function qqCalculator(apply: (r: QQResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: QQRequest) => Promise<QQResult> = computeQQ): Calculator<QQRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 export interface QQPoint {

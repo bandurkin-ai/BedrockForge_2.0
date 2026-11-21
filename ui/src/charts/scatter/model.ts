@@ -4,7 +4,8 @@
  * points by a field, the table of r and the fits, the CSV, the notes and the assistant's text. A value that cannot be
  * computed stays «—», never 0. Pure.
  */
-import { createCalculator, type Calculator } from "../../modules/charts/api";
+import type { Calculator } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { computeScatter, type Fit, type ScatterDensity, type ScatterResult } from "../../modules/charts/apiMore";
 import { needsWeightField, type Regression, type ScatterSettings } from "../../modules/charts/settings";
 import { axisValue, domainOf, formatNumber, type AxisKind, type Domain } from "../core/axisScale";
@@ -23,7 +24,7 @@ export function scatterRequest(s: ScatterSettings): ScatterRequest | null {
 }
 
 export function scatterCalculator(apply: (r: ScatterResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: ScatterRequest) => Promise<ScatterResult> = computeScatter): Calculator<ScatterRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 export const axisKinds = (s: Pick<ScatterSettings, "log_x" | "log_y">): { kx: AxisKind; ky: AxisKind } => ({ kx: s.log_x ? "log" : "linear", ky: s.log_y ? "log" : "linear" });
@@ -189,6 +190,11 @@ export function scatterNotes(r: ScatterResult): string[] {
   if (c.bad_weight) out.push(`без веса или вес ≤ 0: ${n(c.bad_weight)}`);
   if (c.negative) out.push(`отрицательных ${n(c.negative)}`);
   if (c.zero_excluded) out.push(`нулей исключено ${n(c.zero_excluded)}`);
+  // the cuts of X and Y: pairs
+  if (c.bottom_excluded) out.push(`ниже отсечки исключено пар ${n(c.bottom_excluded)}`);
+  if (c.bottom_capped) out.push(`поднято до отсечки пар ${n(c.bottom_capped)}`);
+  if (c.capped) out.push(`урезано пар ${n(c.capped)}`);
+  if (c.top_excluded) out.push(`выше отсечки исключено пар ${n(c.top_excluded)}`);
   if (c.nonpositive_log) out.push(`≤ 0 на логарифмической оси не показаны: ${n(c.nonpositive_log)}`);
   if (r.mode === "density" && r.density) out.push(`больше 200 000 пар — плотность ${r.density.nx} × ${r.density.ny}`);
   if (r.log_x || r.log_y) out.push("регрессии и r — по log10 логарифмических осей");

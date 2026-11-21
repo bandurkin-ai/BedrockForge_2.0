@@ -1,7 +1,7 @@
 /**
-* The core's API of the charts (ADR 0019 §10): the fields of a set's tables (`GET /stats/fields`, core 13.14), the
- * calculations `POST /stats/<kind>` and `POST /stats/chart/{id}` (core 13.15; body — the chart's settings), the saved charts `/charts`. `POST /stats/<kind>` (body — the chart's settings), the saved charts `/charts`.
- * `createCalculator` sends the newest settings 300 ms after the last edit and drops an answer that a newer
+ * The core's API of the charts (ADR 0019 §10): the fields of a set's tables (`GET /stats/fields`, core 13.14), the
+ * calculations `POST /stats/<kind>` and `POST /stats/chart/{id}` (core 13.15; body — the chart's settings), the
+ * saved charts `/charts`. `createCalculator` sends the newest settings 300 ms after the last edit and drops an answer that a newer
  * request has overtaken (ADR 0019 §11 «Отклик»).
  */
 import { api, CoreError } from "../../shell/api";

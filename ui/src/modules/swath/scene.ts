@@ -43,6 +43,8 @@ const lookKey = (s: SwathSettings, count: number): string => JSON.stringify([s.s
 /** The turned pose of a swath after a release, until the answer it was turned from is replaced. */
 interface Held {
   result: SwathResult | null;
+  /** the failure of the window's calculation when it was held: a newer one lets it go */
+  failed: object | null;
   rotation: number[];
   angles: Angles;
 }
@@ -79,7 +81,7 @@ export class SwathScene implements HandlesHost {
 
   hold(id: number, pose: { rotation: number[]; angles: Angles } | null): void {
     const st = this.shown.get(id);
-    if (pose) this.held.set(id, { result: st?.result ?? null, ...pose });
+    if (pose) this.held.set(id, { result: st?.result ?? null, failed: liveStore.get().live[id]?.error ?? null, ...pose });
     else {
       this.held.delete(id);
       st?.layer?.setPose(null);
@@ -126,7 +128,15 @@ export class SwathScene implements HandlesHost {
     let changed = false;
     for (const id of [...this.shown.keys()]) if (!wanted.has(id)) changed = this.drop(id) || changed;
     for (const id of [...this.own.keys()]) if (!wanted.has(id) || live[id]) this.own.delete(id);
-    for (const id of [...this.held.keys()]) if (!wanted.has(id)) this.held.delete(id);
+    for (const [id, held] of [...this.held.entries()]) {
+      if (!wanted.has(id)) this.held.delete(id);
+      // the window could not compute the new angles (`too_many_swaths`…): the box comes back to what it draws
+      else if (live[id]?.error && live[id].error !== held.failed) {
+        this.held.delete(id);
+        this.shown.get(id)?.layer?.setPose(null);
+        changed = true;
+      }
+    }
     for (const id of wanted) {
       const row = swaths.find((r) => r.id === id)!;
       const mine = live[id];

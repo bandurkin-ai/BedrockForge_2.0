@@ -43,7 +43,8 @@ export const WEIGHTS: [WeightMode, string][] = [
   ["length_field", "Длина × поле (тоннаж)"],
 ];
 
-function CutInput({ label, value, mode, below, onChange }: { label: string; value: number | null; mode: CutMode; below?: boolean; onChange: (value: number | null, mode: CutMode) => void }) {
+/** A cut and its mode (shared with the scatter, whose cuts go to both axes). */
+export function CutInput({ label, value, mode, below, onChange }: { label: string; value: number | null; mode: CutMode; below?: boolean; onChange: (value: number | null, mode: CutMode) => void }) {
   const beyond = below ? "ниже" : "выше";
   return (
     <div className={css.pair}>

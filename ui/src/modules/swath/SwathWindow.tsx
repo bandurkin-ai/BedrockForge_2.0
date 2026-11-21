@@ -125,8 +125,8 @@ export function SwathWindow(props: SwathWindowProps) {
 
   // the 3D draws what the window has; the swath under the cursor is lit there
   useEffect(() => {
-    if (swathId !== null) setLive(swathId, { settings: s, result });
-  }, [swathId, s, result]);
+    if (swathId !== null) setLive(swathId, { settings: s, result, error });
+  }, [swathId, s, result, error]);
   useEffect(() => () => void (swathId !== null && (setLive(swathId, null), setHover(swathId, null))), [swathId]);
   const hoverTo = (k: number | null) => {
     setHoverLocal(k);

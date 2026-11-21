@@ -5,9 +5,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeScale } from "../src/charts/core/axisScale";
-import { insidePolygon, rectPath, selectInside, simplifyPath, toAxisPolygon, toViewBox } from "../src/charts/core/lasso";
+import { insidePolygon, limitPath, MAX_POLYGON, rectPath, selectInside, simplifyPath, toAxisPolygon, toViewBox } from "../src/charts/core/lasso";
 import { rgba32 } from "../src/charts/core/palette";
-import { axisMap, mapValue, rasterPoints, rasterRects, rasterSize } from "../src/charts/core/PointsCanvas";
+import { axisMap, mapValue, rasterPoints, rasterRects, rasterSize, rasterUrls } from "../src/charts/core/PointsCanvas";
 import { ScatterChart } from "../src/charts/scatter/ScatterChart";
 import { secondField, ScatterWindow } from "../src/charts/scatter/ScatterWindow";
 import { colorLegend, densityRects, diagonalPoints, fitSegment, pointColors, pointPixels, scatterCsv, scatterDomains, scatterNotes, scatterRequest, scatterSummary, scatterTable, selectedRows } from "../src/charts/scatter/model";
@@ -68,6 +68,10 @@ describe("settings → request", () => {
     const r = scatterRequest(base())!;
     expect(r).toMatchObject({ v: 1, set_id: 3, x: "AU", y: "AG", y_table: null, log_x: false, log_y: false, weight: "none", negatives: "keep", regression: "ols" });
     expect("view" in r).toBe(false);
+    // the cuts of the histogram (ТЗ 8.3 «веса и отсечки»): the same names, the core applies them to both axes
+    expect(r).toMatchObject({ bottom_cut: null, bottom_mode: "exclude", top_cut: null, top_mode: "cap" });
+    expect(scatterRequest({ ...base(), bottom_cut: 0.01, top_cut: 30, top_mode: "exclude" })).toMatchObject({ bottom_cut: 0.01, bottom_mode: "exclude", top_cut: 30, top_mode: "exclude" });
+    expect(normalizeSettings("scatter", { x: "AU", top_cut: 50, top_mode: "cap", bottom_mode: "bad" }, 3)).toMatchObject({ top_cut: 50, top_mode: "cap", bottom_mode: "exclude", bottom_cut: null });
     expect(chartName("scatter", base())).toBe("Рассеяние · AU / AG");
     const s = normalizeSettings("scatter", { x: "AU", regression: "rma", log_x: true, view: { diagonal: true, color: "#ABCDEF" } }, 3);
     expect(s).toMatchObject({ x: "AU", regression: "rma", log_x: true, view: { diagonal: true, color: "#abcdef" } });
@@ -114,6 +118,8 @@ describe("lines of the fits", () => {
     expect(scatterTable(POINTS)).toContainEqual(["Взвешенная", "без веса"]);
     expect(scatterSummary("Р", POINTS, "ols")).toBe("Р: пар 5, r Пирсона 1, r Спирмена 1; МНК: b 2, a 1");
     expect(scatterNotes(POINTS)).toEqual(["строк 6, пар в расчёте 5", "без X 1"]);
+    const cut = { ...POINTS, counts: { ...POINTS.counts, bottom_excluded: 2, bottom_capped: 1, capped: 3, top_excluded: 4 } };
+    expect(scatterNotes(cut).slice(2)).toEqual(["ниже отсечки исключено пар 2", "поднято до отсечки пар 1", "урезано пар 3", "выше отсечки исключено пар 4"]);
   });
 });
 
@@ -306,7 +312,7 @@ describe("the window and the command", () => {
 
   it("the window renders its form before any answer", () => {
     const html = renderToStaticMarkup(createElement(ScatterWindow, { winId: "w", setId: 3, setName: "Набор", settings: base() }));
-    for (const label of ["Таблица", "Поле X", "Таблица Y", "Поле Y", "Цвет по полю", "Линия регрессии", "Вес", "Выделение", "Цвет точек"]) expect(html, label).toContain(`aria-label="${label}"`);
+    for (const label of ["Таблица", "Поле X", "Таблица Y", "Поле Y", "Цвет по полю", "Линия регрессии", "Вес", "Отсечка снизу", "Отсечка сверху", "Отсечка сверху: режим", "Выделение", "Цвет точек"]) expect(html, label).toContain(`aria-label="${label}"`);
   });
 
   it("chart.scatter: X — the first component, Y — the next; the assistant gets pairs, r and the line", async () => {
@@ -318,5 +324,47 @@ describe("the window and the command", () => {
     const a = await app.registry.execute("chart.scatter", { x: "AG", y: "AU", log_x: true, regression: "rma" }, "claude");
     expect(sent.find((x) => x.path === "/stats/scatter")?.body).toMatchObject({ x: "AG", y: "AU", log_x: true, regression: "rma", table: "пробы" });
     expect(a.result).toMatch(/^Рассеяние · AG \/ AU.*: пар 5, r Пирсона 1, r Спирмена 1; RMA: b 2, a 1$/);
+  });
+});
+
+describe("the pictures of a raster layer", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("a new picture revokes the one before it at once; dropped — the last one too", () => {
+    let n = 0;
+    const revoked: string[] = [];
+    vi.stubGlobal("URL", { createObjectURL: () => `blob:${++n}`, revokeObjectURL: (u: string) => void revoked.push(u) });
+    const urls = rasterUrls();
+    expect(urls.show(new Blob(["a"]))).toBe("blob:1");
+    expect(revoked).toEqual([]);
+    expect(urls.show(new Blob(["b"]))).toBe("blob:2");
+    expect(revoked).toEqual(["blob:1"]); // not a second later: when the new one is set
+    urls.drop();
+    expect(revoked).toEqual(["blob:1", "blob:2"]);
+    urls.drop();
+    expect(revoked).toHaveLength(2);
+  });
+});
+
+describe("a long lasso: at most 1000 vertices for the core", () => {
+  // a circle of radius 100 px drawn with 5000 points, and a square corner kept
+  const circle = Array.from({ length: 5000 }, (_, i) => ({ x: 200 + 100 * Math.cos((2 * Math.PI * i) / 5000), y: 200 + 100 * Math.sin((2 * Math.PI * i) / 5000) }));
+
+  it("Douglas–Peucker until it fits: the shape kept within a pixel or two", () => {
+    expect(limitPath(circle.slice(0, 10))).toHaveLength(10); // short — as drawn
+    const out = limitPath(circle);
+    expect(out.length).toBeLessThanOrEqual(MAX_POLYGON);
+    expect(out.length).toBeGreaterThan(20);
+    for (const p of out) expect(Math.abs(Math.hypot(p.x - 200, p.y - 200) - 100)).toBeLessThan(1e-9); // vertices of the path
+    // every drawn point is near the simplified outline: the area hardly changes
+    const area = (path: { x: number; y: number }[]) => Math.abs(path.reduce((s, p, i) => s + (path[(i + 1) % path.length].x - p.x) * (path[(i + 1) % path.length].y + p.y), 0)) / 2;
+    expect(area(out) / area(circle)).toBeGreaterThan(0.995);
+    expect(limitPath(circle, 50).length).toBeLessThanOrEqual(50);
+    // a zigzag of 3000 points along a line of a square: the corners stay
+    const square = [...Array.from({ length: 3000 }, (_, i) => ({ x: i / 10, y: i % 2 ? 0.1 : 0 })), { x: 300, y: 300 }, { x: 0, y: 300 }];
+    const sq = limitPath(square);
+    expect(sq.length).toBeLessThanOrEqual(MAX_POLYGON);
+    expect(sq).toContainEqual({ x: 300, y: 300 });
+    expect(sq).toContainEqual({ x: 0, y: 300 });
   });
 });

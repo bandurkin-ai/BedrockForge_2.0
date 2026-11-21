@@ -166,7 +166,7 @@ describe("hit within 8 px", () => {
 describe("the pointer shared by the editor's tool, the handles and the scene", () => {
   const ev = (type: ToolPointer["type"], button = 0): ToolPointer => ({ type, x: 1, y: 2, clientX: 1, clientY: 2, button, shift: false, ctrl: false });
 
-  it("asks the tool first, the handles next; the taker of a press has the drag and its click", () => {
+  it("the tool of the editor, else the handles; the taker of a press has the drag and its click", () => {
     const chain = new ToolChain();
     expect(chain.pointer(ev("down"))).toBe(false); // neither: the scene as before
     expect(chain.pointer(ev("click"))).toBe(false);
@@ -181,16 +181,24 @@ describe("the pointer shared by the editor's tool, the handles and the scene", (
     chain.pointer(ev("up"));
     chain.pointer(ev("click"));
     expect(got).toEqual(["tool:move", "tool:up", "tool:click"]);
+    // a press the tool does not take is the scene's: the handles are not there while a tool is set
     toolTakes = false;
+    got.length = 0;
+    expect(chain.pointer(ev("down"))).toBe(false);
+    chain.pointer(ev("move", -1)); // hover: not lit under the tool
+    chain.pointer(ev("leave", -1));
+    expect(got).toEqual(["tool:down", "tool:move", "tool:leave"]);
+    // the tool gone: the handles have the pointer; the change lets go of their hover first
+    chain.tool = null;
+    got.length = 0;
+    chain.reset();
+    expect(got).toEqual(["handles:leave"]);
     got.length = 0;
     expect(chain.pointer(ev("down"))).toBe(true);
     chain.pointer(ev("move"));
     chain.pointer(ev("up"));
-    expect(got).toEqual(["tool:down", "handles:down", "handles:move", "handles:up"]);
-    got.length = 0;
-    chain.pointer(ev("move", -1)); // hover: both
-    chain.pointer(ev("leave", -1));
-    expect(got).toEqual(["tool:move", "handles:move", "tool:leave", "handles:leave"]);
+    chain.pointer(ev("move", -1));
+    expect(got).toEqual(["handles:down", "handles:move", "handles:up", "handles:move"]);
     // the tool changed in the middle of a drag: the drag is called off
     const cancel = vi.fn();
     chain.handles = { pointer: (e: ToolPointer) => e.type === "down", cancel } as never;
@@ -274,6 +282,28 @@ describe("a drag in the main 3D (Д-01)", () => {
     expect(handles).toBeNull();
   });
 
+  it("while a tool of the editor is set the handles are not lit and leave its cursor alone", () => {
+    const s = new SwathScene(scene, { labels: () => labels, run: vi.fn(async () => true) });
+    swathsStore.set({ selected: 5 });
+    const chain = new ToolChain();
+    chain.handles = s.handles;
+    const ring = screen(pointAt(of(handlesOf(X, C, HALF), "azimuth"), 200));
+    chain.pointer(at("move", ring));
+    expect(canvas.style.cursor).toBe("grab");
+    // Scene.setTool: the tool, the chain reset, the tool's cursor
+    chain.tool = { pointer: () => false };
+    chain.reset();
+    canvas.style.cursor = "crosshair";
+    expect(s.handles.stats().shown.every((h) => !h.lit)).toBe(true);
+    chain.pointer(at("move", ring));
+    chain.pointer(at("move", { x: 5, y: 5 }));
+    chain.pointer(at("move", ring));
+    expect(canvas.style.cursor).toBe("crosshair");
+    expect(s.handles.stats().shown.every((h) => !h.lit)).toBe(true);
+    expect(chain.pointer(at("down", ring))).toBe(false); // the press is the scene's (or the tool's)
+    s.dispose();
+  });
+
   it("turns the cuboid every move without a request; the release runs stats.swath once", async () => {
     const run = vi.fn(async () => true);
     const s = new SwathScene(scene, { labels: () => labels, run });
@@ -342,6 +372,59 @@ describe("a drag in the main 3D (Д-01)", () => {
     await Promise.resolve();
     expect(layer.posed).toBeNull();
     expect(s.target()!.angles).toEqual({ azimuth: 90, dip: 0, roll: 0 });
+    s.dispose();
+  });
+
+  it("a second drag begun before the answer of the first keeps its own angles; a failure of the window's calculation puts the box back", async () => {
+    let answer: (ok: boolean) => void = () => undefined;
+    const run = vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve)));
+    const s = new SwathScene(scene, { labels: () => labels, run });
+    swathsStore.set({ selected: 5 });
+    const layer = layers.get(swathLayerKey(5)) as SwathLayer;
+    const az = of(handlesOf(X, C, HALF), "azimuth");
+    const toward = (deg: number) => screen(pointAt(az, deg));
+    s.handles.pointer(at("down", toward(90)));
+    s.handles.pointer(at("move", toward(120), { button: 0 }));
+    s.handles.pointer(at("up", toward(120)));
+    expect(run).toHaveBeenCalledTimes(1);
+    const first = answer;
+    // the second drag from the held angles, before the first answer
+    expect(s.handles.pointer(at("down", toward(120)))).toBe(true);
+    s.handles.pointer(at("move", toward(150), { button: 0 }));
+    expect(dragStore.get().drag).toEqual({ id: 5, azimuth: 150, dip: 0, roll: 0 });
+    first(false); // the first failed: it lets nothing go — the second drag is on
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(dragStore.get().drag).toEqual({ id: 5, azimuth: 150, dip: 0, roll: 0 });
+    expect(layer.posed).not.toBeNull();
+    s.handles.pointer(at("up", toward(150)));
+    expect(run).toHaveBeenCalledTimes(2);
+    answer(true); // the command went: the window computes the new angles
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(dragStore.get().drag).toBeNull();
+    expect(s.target()!.angles).toEqual({ azimuth: 150, dip: 0, roll: 0 });
+    // the window took them and its calculation was refused (too_many_swaths): the box comes back, nothing held
+    const turned = { ...settings, direction: "angles" as const, azimuth: 150 };
+    liveStore.set({ live: { 5: { settings: turned, result, error: { text: "Слишком много полос", param: "width" } } } });
+    expect(layer.posed).toBeNull();
+    expect(s.target()!.angles).toEqual({ azimuth: 150, dip: 0, roll: 0 }); // the angles of the window's settings
+    s.dispose();
+  });
+
+  it("an old failure of the window does not let go a pose held after it", () => {
+    const s = new SwathScene(scene, { labels: () => labels, run: () => new Promise<boolean>(() => undefined) });
+    const failed = { text: "Слишком много полос", param: "width" };
+    liveStore.set({ live: { 5: { settings, result, error: failed } } });
+    swathsStore.set({ selected: 5 });
+    const layer = layers.get(swathLayerKey(5)) as SwathLayer;
+    const az = of(handlesOf(X, C, HALF), "azimuth");
+    s.handles.pointer(at("down", screen(pointAt(az, 90))));
+    s.handles.pointer(at("move", screen(pointAt(az, 120)), { button: 0 }));
+    s.handles.pointer(at("up", screen(pointAt(az, 120))));
+    liveStore.set({ live: { 5: { settings: { ...settings, direction: "angles", azimuth: 120 }, result, error: failed } } });
+    expect(layer.posed).not.toBeNull();
+    expect(s.target()!.angles).toEqual({ azimuth: 120, dip: 0, roll: 0 });
     s.dispose();
   });
 

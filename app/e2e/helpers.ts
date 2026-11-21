@@ -385,12 +385,8 @@ export async function moveBy(page: Page, win: Locator, dx: number, dy: number): 
   await page.mouse.up();
 }
 
-/**
- * The window `width` px wide at the right edge of the page: up to the top first (a window of 600 px opened at 640 px
- * has its grip below the page — as designed, only the title bar is kept on the screen), its grip, then its bar.
- */
+/** The window `width` px wide at the right edge of the page (the 3D or the tree beside it): its grip, then its bar. */
 export async function placeRight(page: Page, win: Locator, width: number): Promise<void> {
-  await moveBy(page, win, 0, -(await win.boundingBox())!.y);
   const grip = win.locator(":scope > div").last();
   const g = (await grip.boundingBox())!;
   const w0 = (await win.boundingBox())!.width;
