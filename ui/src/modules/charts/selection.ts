@@ -59,10 +59,29 @@ export function boxFrameGroups(labels: readonly (string | null)[], xa: number, x
   return out.length === labels.length ? null : out;
 }
 
-/** The series of the log-probability plot with a point inside the frame (grade lo…hi, P plo…phi as 0…1); null — all. */
-export function probFrameGroups(r: Pick<ProbPlotResult, "series">, xlo: number, xhi: number, plo: number, phi: number): (string | null)[] | null {
-  const hit = r.series.filter((s) => s.points.some(([x, pc]) => x >= xlo && x <= xhi && pc / 100 >= plo && pc / 100 <= phi));
-  return hit.length === r.series.length ? null : hit.map((s) => s.label);
+/**
+ * What a frame on the log-probability plot selects (grade xlo…xhi, P plo…phi as 0…1): the frame narrowed by P too —
+ * every series with a point inside gives the grades of its points inside (min…max); the range is the union of them,
+ * the groups — those series (null — all). The selection is one request (one token), so series narrowed differently
+ * share the union: a series may get a few samples of its own beyond its P band, within the union of grades. null —
+ * no point inside.
+ */
+export function probFrameSelection(r: Pick<ProbPlotResult, "series">, xlo: number, xhi: number, plo: number, phi: number): { range: [number, number]; groups: (string | null)[] | null } | null {
+  let lo = Infinity;
+  let hi = -Infinity;
+  const hit: (string | null)[] = [];
+  for (const s of r.series) {
+    let any = false;
+    for (const [x, pc] of s.points) {
+      if (!(x >= xlo && x <= xhi && pc / 100 >= plo && pc / 100 <= phi)) continue;
+      any = true;
+      lo = Math.min(lo, x);
+      hi = Math.max(hi, x);
+    }
+    if (any) hit.push(s.label);
+  }
+  if (!hit.length) return null;
+  return { range: [lo, hi], groups: hit.length === r.series.length ? null : hit };
 }
 
 /** The body for the box plots and the log-probability plot: their settings, the range of values and the groups. */

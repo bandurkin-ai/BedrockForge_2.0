@@ -7,7 +7,7 @@
  */
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
 import type { ProbPlotResult } from "../../modules/charts/apiMore";
-import { probFrameGroups, useChartSelection, valueSelectionBody } from "../../modules/charts/selection";
+import { probFrameSelection, useChartSelection, valueSelectionBody } from "../../modules/charts/selection";
 import { formatNumber, makeScale } from "../core/axisScale";
 import { XAxis, YAxis } from "../core/Axes";
 import { toViewBox, useLasso, type AxisPolygon } from "../core/lasso";
@@ -45,9 +45,10 @@ export const ProbPlotChart = forwardRef<SVGSVGElement, ProbPlotChartProps>(funct
       dragged.current = true;
       setFrame(poly);
       const [xlo, xhi] = [Math.min(...poly.x), Math.max(...poly.x)];
-      const groups = probFrameGroups(r, xlo, xhi, Math.min(...poly.y), Math.max(...poly.y));
-      if (groups && !groups.length) return void setFrame(null);
-      void link.select(valueSelectionBody("probplot", r, [xlo, xhi], groups));
+      // narrowed by P too: the grades of the points inside, the series that have them
+      const sel = probFrameSelection(r, xlo, xhi, Math.min(...poly.y), Math.max(...poly.y));
+      if (!sel) return void setFrame(null);
+      void link.select(valueSelectionBody("probplot", r, sel.range, sel.groups));
     },
     [r, link.select], // eslint-disable-line react-hooks/exhaustive-deps
   );

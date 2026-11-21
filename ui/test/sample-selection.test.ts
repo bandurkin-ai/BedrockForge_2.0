@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { ScatterChart } from "../src/charts/scatter/ScatterChart";
 import { computeBox, computeScatter, type ProbPlotResult, type ScatterResult } from "../src/modules/charts/apiMore";
-import { boxFrameGroups, probFrameGroups, scatterSelectionBody, valueSelectionBody } from "../src/modules/charts/selection";
+import { boxFrameGroups, probFrameSelection, scatterSelectionBody, valueSelectionBody } from "../src/modules/charts/selection";
 import { bindSampleSelection, chartEscape } from "../src/modules/charts/selection";
 import { SAMPLE_MARKS_KEY, SelectionScene } from "../src/modules/charts/selectionScene";
 import { markReason } from "../src/modules/tables/ToolBar";
@@ -216,9 +216,15 @@ describe("the frames and lassos of the charts", () => {
     const box = await computeBox({ set_id: 3, table: null, field: "AU", domain: "ДОМЕН" } as never);
     expect(valueSelectionBody("box", box, [9, 2], ["A"])).toEqual({ chart: { set_id: 3, table: null, field: "AU", domain: "ДОМЕН", kind: "box" }, range: [2, 9], groups: ["A"] });
     const prob: Pick<ProbPlotResult, "series"> = { series: [{ label: "A", points: [[1, 10], [2, 50]], count: 2, nonpositive: 0, stats: { mean: 1, median: 1, cv: 0, p90: 2 } }, { label: null, points: [[10, 90]], count: 1, nonpositive: 0, stats: { mean: 1, median: 1, cv: 0, p90: 2 } }] };
-    expect(probFrameGroups(prob, 0.5, 3, 0.05, 0.6)).toEqual(["A"]);
-    expect(probFrameGroups(prob, 0.5, 30, 0.05, 0.95)).toBeNull();
-    expect(probFrameGroups(prob, 100, 200, 0.05, 0.95)).toEqual([]);
+    // the frame narrowed by P: grades 0.5…3 at P 5…60 % hold only A's points 1 and 2 (not 10 of the other series)
+    expect(probFrameSelection(prob, 0.5, 3, 0.05, 0.6)).toEqual({ range: [1, 2], groups: ["A"] });
+    // P 5…20 %: only A's point 1 — the range is not the frame's 0.5…30
+    expect(probFrameSelection(prob, 0.5, 30, 0.05, 0.2)).toEqual({ range: [1, 1], groups: ["A"] });
+    expect(probFrameSelection(prob, 0.5, 30, 0.05, 0.95)).toEqual({ range: [1, 10], groups: null });
+    // series narrowed differently: one request — the union of their grades
+    expect(probFrameSelection(prob, 1.5, 30, 0.4, 0.95)).toEqual({ range: [2, 10], groups: null });
+    expect(probFrameSelection(prob, 100, 200, 0.05, 0.95)).toBeNull();
+    expect(probFrameSelection(prob, 0.5, 3, 0.7, 0.95)).toBeNull(); // grades inside, P outside
   });
 
   it("the open scatter marks the points of the selection, whoever made it", async () => {
