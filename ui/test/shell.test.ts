@@ -12,6 +12,7 @@ import {
   normalizeView,
   normalizeWorkspace,
   setPanel,
+  TREE_SECTIONS,
 } from "../src/shell/workspace";
 
 const tabs = buildRibbon(DEFAULT_WORKSPACE, DEFAULT_VIEW);
@@ -116,6 +117,19 @@ describe("workspace (ТЗ 7.0.10, 7.0.14)", () => {
     expect(normalizeWorkspace({ bottom: true, bottomTab: "swath" })).toMatchObject({ bottom: true, bottomTab: "table" });
     const tab = moduleCommands().find((c) => c.id === "panel.set")?.params?.tab;
     expect(tab?.enum).not.toContain("swath");
+  });
+
+  it("the bottom tab «QAQC» and the tree section «Отчёты» (ADR 0020 §11); a stored order without «Отчёты» gets it at the end", () => {
+    expect(BOTTOM_TITLES.qaqc).toBe("QAQC");
+    expect(Object.keys(BOTTOM_TITLES)).toEqual(["table", "audit", "stats", "qaqc", "jobs", "log"]);
+    expect(setPanel(DEFAULT_WORKSPACE, "bottom", true, "qaqc")).toMatchObject({ bottom: true, bottomTab: "qaqc" });
+    expect(normalizeWorkspace({ bottom: true, bottomTab: "qaqc" }).bottomTab).toBe("qaqc");
+    expect(moduleCommands().find((c) => c.id === "panel.set")?.params?.tab?.enum).toEqual(Object.keys(BOTTOM_TITLES));
+    expect(TREE_SECTIONS.reports).toBe("Отчёты");
+    expect(DEFAULT_TREE_ORDER.at(-1)).toBe("reports");
+    const before = DEFAULT_TREE_ORDER.filter((s) => s !== "reports");
+    expect(normalizeWorkspace({ treeOrder: before }).treeOrder).toEqual(DEFAULT_TREE_ORDER);
+    expect(normalizeWorkspace({ treeCollapsed: ["reports", "nope"] }).treeCollapsed).toEqual(["reports"]);
   });
 
   it("the right dock: second call for the open tab closes it", () => {

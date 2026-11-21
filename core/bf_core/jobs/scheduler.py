@@ -442,7 +442,7 @@ class Scheduler:
                     .values(status=status, finished_at=dialect.utcnow(), **values)
                 )
         self._publish(src, run.job_id)
-        if status == "done" and run.kind.startswith("composite."):
+        if status == "done" and run.kind.startswith(("composite.", "qaqc.")):
             # a worker cannot publish: the events of a composite job travel in its result
             result = values.get("result")
             for ev, data in (result.get("events") if isinstance(result, dict) else None) or []:

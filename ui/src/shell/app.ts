@@ -9,6 +9,8 @@ import { bindCharts } from "../modules/charts/bind";
 import { bindSampleSelection } from "../modules/charts/selection";
 import { bindSwath } from "../modules/swath/bind";
 import { bindStats } from "../modules/stats/bind";
+import { bindQaqc } from "../modules/qaqc/bind";
+import { bindQaqcSetup } from "../modules/qaqc/bindSetup";
 import { bindDtm } from "../modules/dtm/bind";
 import { bindModel } from "../modules/model/bind";
 import { bindDigitize } from "../modules/section/digitize";
@@ -175,5 +177,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindSampleSelection(app);
   bindSwath(app);
   bindStats(app);
+  bindQaqc(app);
+  bindQaqcSetup(app);
   return app;
 }

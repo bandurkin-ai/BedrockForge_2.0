@@ -1,0 +1,81 @@
+/* The tab «QAQC» (ТЗ 8.4.3; ADR 0020 §11): the brand palette and fonts (docs/brand, ADR 0006) through the theme tokens. */
+.tab { display: flex; height: 100%; min-height: 0; gap: 12px; padding: 6px 8px; box-sizing: border-box; }
+.side { width: 250px; flex: none; display: flex; flex-direction: column; gap: 8px; overflow: auto; padding-right: 4px; }
+.filters { display: flex; flex-direction: column; gap: 8px; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.body { flex: 1; min-height: 0; overflow: auto; }
+.subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); flex: none; }
+.subtab, .subtabOn { padding: 3px 10px; border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; background: transparent; color: var(--text-dim); cursor: pointer; font: inherit; font-size: 12px; }
+.subtab:hover { background: var(--bg-hover); color: var(--text); }
+.subtabOn { background: var(--bg-active); border-color: var(--border); color: var(--text); font-family: var(--font-brand); font-weight: 600; box-shadow: inset 0 2px 0 var(--highlight); }
+.field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--text-dim); }
+.field input, .field select, .input { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 4px; font: inherit; font-size: 12px; min-width: 0; }
+.group { border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px 6px; margin: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.group legend { font-family: var(--font-brand); font-weight: 600; font-size: 12px; color: var(--text-dim); padding: 0 4px; }
+.checks { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; }
+.check { display: flex; align-items: center; gap: 4px; color: var(--text); }
+.pair { display: flex; gap: 4px; align-items: center; font-size: 12px; color: var(--text-dim); }
+.pair > input { flex: 1; min-width: 0; }
+.counter { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12px; color: var(--text); font-family: var(--font-brand); font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.chip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--border-strong); border-radius: 10px; padding: 0 2px 0 7px; font-size: 11px; color: var(--text); background: var(--bg-hover); max-width: 100%; }
+.chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip button, .x { border: 0; background: none; color: var(--text-dim); cursor: pointer; padding: 0 3px; font: inherit; line-height: 1; }
+.chip button:hover, .x:hover { color: var(--danger); }
+.row { display: flex; gap: 4px; align-items: center; min-width: 0; }
+.row > select, .row > input { flex: 1; min-width: 0; }
+.btn, .primary { padding: 1px 10px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap; }
+.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn:disabled, .primary:disabled { opacity: 0.5; cursor: default; }
+.cond { display: flex; justify-content: space-between; align-items: center; gap: 4px; font-size: 12px; color: var(--text); }
+.cond span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 12px; color: var(--text-dim); font-size: 12px; }
+.note { color: var(--text-faint); font-size: 12px; margin: 0; }
+.error { color: var(--danger); font-size: 12px; margin: 0; }
+.stale { color: var(--warn); font-size: 11px; }
+/* subtabs: a table of groups and a chart beside it */
+.split { display: flex; gap: 12px; align-items: flex-start; min-height: 0; flex-wrap: wrap; }
+.tableBox { max-height: 100%; overflow: auto; flex: 0 1 auto; min-width: 0; }
+.grid { border-collapse: collapse; font-size: 12px; }
+.grid th, .grid td { padding: 1px 6px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.grid thead th { font-family: var(--font-brand); font-weight: 600; color: var(--text); position: sticky; top: 0; background: var(--bg-elev); z-index: 1; }
+.grid tbody th { text-align: left; font-weight: 400; color: var(--text); }
+.grid tbody tr { cursor: pointer; }
+.grid tbody tr:hover { background: var(--bg-hover); }
+.chosen { background: var(--bg-active); }
+.fail { color: var(--danger); }
+.warn { color: var(--warn); }
+/* «не оценён» — Slate Grey of the brand: neither the norm nor a failure */
+.na { color: var(--text-dim); font-style: italic; }
+.chartBox { flex: 1 1 560px; min-width: 360px; display: flex; flex-direction: column; gap: 4px; position: relative; }
+.busy { opacity: 0.55; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--text-dim); padding: 1px 8px; cursor: pointer; font: inherit; font-size: 12px; }
+.seg button[aria-pressed="true"] { background: var(--bg-active); color: var(--text); }
+.card { border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; background: var(--bg-panel); font-size: 12px; max-width: 420px; }
+.card h4 { margin: 0; font-family: var(--font-brand); font-weight: 600; font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.facts { border-collapse: collapse; font-size: 12px; }
+.facts th, .facts td { padding: 0 8px 0 0; text-align: left; vertical-align: top; }
+.facts th { font-weight: 400; color: var(--text-dim); white-space: nowrap; }
+.facts td { color: var(--text); word-break: break-word; }
+/* «Бланки»: the carry-over under the chart; «Партии»: a window of rows of a long table */
+.carry { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.subhead { margin: 0; font-family: var(--font-brand); font-weight: 600; font-size: 12px; color: var(--text); }
+.batches { display: flex; flex-direction: column; gap: 4px; min-height: 0; height: 100%; }
+.summary { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text); }
+.bgrid { display: grid; grid-template-columns: 110px 120px 168px 64px 52px 64px 74px 82px 96px minmax(160px, 1fr); font-size: 12px; min-width: 1010px; }
+.bgrid > span { padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; line-height: 21px; border-bottom: 1px solid var(--border); }
+.bgrid > span:nth-child(-n + 2), .bgrid > span:nth-child(n + 9) { text-align: left; }
+.bhead { position: sticky; top: 0; z-index: 1; background: var(--bg-elev); }
+.bhead > span { font-family: var(--font-brand); font-weight: 600; color: var(--text); }
+.brow { cursor: pointer; }
+.brow:hover > span { background: var(--bg-hover); }
+.brow.chosen > span { background: var(--bg-active); }
+.bscroll { flex: 1; min-height: 120px; overflow: auto; position: relative; border: 1px solid var(--border); border-radius: var(--radius); }
+.bwin { position: absolute; left: 0; right: 0; }
+.pending > span { color: var(--text-faint); }
+/* «Отчёт»: the form and the run beside the list of the reports */
+.reportSide { display: flex; flex-direction: column; gap: 8px; flex: 1 1 300px; min-width: 240px; max-width: 420px; }
+.steps { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--text-dim); }
+.steps > span { border: 1px solid var(--border); border-radius: 10px; padding: 0 7px; }
+.stepOn { border-color: var(--accent) !important; color: var(--text); font-family: var(--font-brand); font-weight: 600; }

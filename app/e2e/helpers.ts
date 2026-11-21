@@ -400,3 +400,17 @@ export async function placeRight(page: Page, win: Locator, width: number): Promi
   expect(Math.round(now.width)).toBe(width);
   expect(now.x + now.width).toBeGreaterThan(vw - 4);
 }
+
+/**
+ * Control samples of QAQC from a CSV through the core (ADR 0020 §10): `POST /qaqc/data/inspect` maps the columns
+ * automatically, `POST /qaqc/data` starts the job `qaqc.import`; resolves with the id of the data when it is done.
+ */
+export async function importQaqc(page: Page, file: string, name: string, timeout = 60_000): Promise<number> {
+  const inspected = await coreApi<{ mapping: Record<string, unknown> }>(page, "POST", "/qaqc/data/inspect", { kind: "file", path: file });
+  expect(inspected.status, JSON.stringify(inspected.body)).toBe(200);
+  const started = await coreApi<{ source: string; id: number }>(page, "POST", "/qaqc/data", { name, source: { kind: "file", path: file }, mapping: inspected.body.mapping });
+  expect(started.status, JSON.stringify(started.body)).toBe(202);
+  const job = await waitJob(page, started.body.source, started.body.id, undefined, timeout);
+  expect(job.status, JSON.stringify(job.error)).toBe("done");
+  return job.result!.data_id as number;
+}
