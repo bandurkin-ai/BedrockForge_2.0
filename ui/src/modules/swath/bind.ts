@@ -24,7 +24,7 @@ import { dropSwathEntry, shownSwaths, showSwath, SWATHS_KEY } from "../scene/vie
 import { tablesStore } from "../tables/state";
 import { computeSwath, createSwath, loadSources, updateSwath, type SwathSources } from "./api";
 import { applyArgs, blockSeries, defaultSwath, matchComponent, normalizeSwath, sampleSeries, swathName, swathRequest, swathSummary, swathTitle, type SwathSeries, type SwathSettings } from "./model";
-import { findSwath, loadSwaths, pushSettings, resetSwaths, swathChanged, swathDataChanged, swathsStore, upsertSwath } from "./state";
+import { findSwath, liveStore, loadSwaths, pushSettings, resetSwaths, swathChanged, swathDataChanged, swathsStore, upsertSwath } from "./state";
 import { SwathWindow } from "./SwathWindow";
 
 export const SWATH_WINDOW = "swath";
@@ -104,22 +104,25 @@ export async function runSwath(app: App, args: Record<string, unknown>, source: 
   const readOnly = app.store.get().projectReadOnly;
   if (args.swath_id !== undefined && args.swath_id !== null) {
     let row = await swathOf(args.swath_id);
-    const before = normalizeSwath(row.settings);
+    // an open window: over its settings as edited (an edit may not be saved yet)
+    const before = liveStore.get().live[row.id]?.settings ?? normalizeSwath(row.settings);
     const settings = applyArgs(before, args);
     const changed = JSON.stringify(settings) !== JSON.stringify(before);
     let note = "";
+    let saved: ChartRow | null = null;
     if (changed && !pushSettings(row.id, settings)) {
       if (readOnly) note = "; проект только для чтения — настройки не сохранены";
       else {
         try {
-          row = await updateSwath(row.id, { settings, ...(row.auto_name ? { auto_name: swathName(settings) } : {}), expected_version: row.version });
-          upsertSwath(row);
+          saved = row = await updateSwath(row.id, { settings, ...(row.auto_name ? { auto_name: swathName(settings) } : {}), expected_version: row.version });
         } catch (e) {
           note = `; настройки не сохранены: ${errorText(e)}`;
         }
       }
     }
+    // the window first: it computes the new settings, the 3D does not ask for them again (one request)
     openSwathWindow(row, settings, { readOnly });
+    if (saved) upsertSwath(saved);
     if (source === "claude") return `${await summary(row, settings, changed)}${note}`;
     return `Открыт swath plot «${row.name}»${note}`;
   }
@@ -192,7 +195,8 @@ export function bindSwath(app: App): void {
     detach = null;
     if (!scene) return;
     void import("./scene").then((m) => {
-      if (mine === generation) detach = m.attachSwathScene(scene);
+      // a release of a handle: `stats.swath` with the angles, through the registry (the log, the notice)
+      if (mine === generation) detach = m.attachSwathScene(scene, async (args) => (await app.registry.execute("stats.swath", { ...args }, "user")).ok);
     });
   });
 }

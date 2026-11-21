@@ -4,7 +4,10 @@
  * it. An open window gives its settings as edited and its last answer (no second request); a swath without a
  * window is computed here by its id (`POST /stats/swath {swath_id}`) and again after an edit of data. A build is
  * made again only when the answer or the look changed; the swath under the cursor of a window is lit without one.
- * After a lost context the layers come again. A lazy chunk with three.js (`bind.ts` attaches it to every scene).
+ * After a lost context the layers come again. The swath chosen has the handles of Д-01 (`handles.ts`): a drag
+ * turns its layer without a request, the turned pose is held until the answer for the new angles. A swath whose
+ * window is open is computed by the window only (one request after a release). A lazy chunk with three.js
+ * (`bind.ts` attaches it to every scene).
  */
 import { niceTicks } from "../../charts/column/scale";
 import { formatNumber } from "../../charts/core/axisScale";
@@ -15,9 +18,11 @@ import { SwathLayer, type SwathLayerContext } from "../../viz/swath/layer";
 import { viewStore } from "../scene/bind";
 import { sceneUi } from "../scene/sceneHost";
 import { shownSwaths, SWATHS_KEY } from "../scene/viewSync";
+import type { Angles } from "../../viz/swath/drag";
 import { computeSwath, type SwathResult } from "./api";
-import { normalizeSwath, shownRange, type SwathSettings } from "./model";
-import { liveStore, swathsStore } from "./state";
+import { SwathHandlesControl, type HandleTarget, type HandlesHost } from "./handles";
+import { anglesOf, normalizeSwath, shownRange, type SwathSettings } from "./model";
+import { liveStore, swathsStore, swathWindowOpen } from "./state";
 
 export const swathLayerKey = (id: number): string => `swath:${id}`;
 
@@ -33,20 +38,55 @@ interface Shown {
 /** The look of a swath in 3D (colours, lines, bars, range, plot) — what a build depends on besides the answer. */
 const lookKey = (s: SwathSettings, count: number): string => JSON.stringify([s.series.map((x) => [x.color, x.line, x.bars]), shownRange(s.range, count), s.view]);
 
-export class SwathScene {
+/** The turned pose of a swath after a release, until the answer it was turned from is replaced. */
+interface Held {
+  result: SwathResult | null;
+  rotation: number[];
+  angles: Angles;
+}
+
+export class SwathScene implements HandlesHost {
   private readonly shown = new Map<number, Shown>();
   private readonly own = new Map<number, SwathResult>();
+  private readonly held = new Map<number, Held>();
   private readonly stops: (() => void)[] = [];
   private disposed = false;
+  readonly handles: SwathHandlesControl;
 
-  /** `labels` — the texts of the plots (tests give them without a canvas). */
+  /** `labels` — the texts of the plots (tests give them without a canvas); `run` — `stats.swath` of a release. */
   constructor(
     private readonly scene: Scene,
-    private readonly opts: { labels?: () => SwathLayerContext["labels"] } = {},
+    private readonly opts: { labels?: () => SwathLayerContext["labels"]; run?: HandlesHost["run"] } = {},
   ) {
+    this.handles = new SwathHandlesControl(scene, this);
     const sync = () => this.sync();
     this.stops.push(swathsStore.subscribe(sync), liveStore.subscribe(sync), viewStore.subscribe(sync), scene.onRestored(() => this.restore()));
     this.sync();
+  }
+
+  target(): HandleTarget | null {
+    const id = swathsStore.get().selected;
+    const layer = id === null ? null : this.shown.get(id)?.layer;
+    if (id === null || !layer) return null;
+    const held = this.held.get(id);
+    if (held) return { id, layer, angles: held.angles };
+    const row = swathsStore.get().swaths.find((r) => r.id === id);
+    const settings = liveStore.get().live[id]?.settings ?? (row ? normalizeSwath(row.settings) : null);
+    return settings ? { id, layer, angles: anglesOf(settings) } : null;
+  }
+
+  hold(id: number, pose: { rotation: number[]; angles: Angles } | null): void {
+    const st = this.shown.get(id);
+    if (pose) this.held.set(id, { result: st?.result ?? null, ...pose });
+    else {
+      this.held.delete(id);
+      st?.layer?.setPose(null);
+      this.scene.invalidate();
+    }
+  }
+
+  run(args: { swath_id: number } & Angles): Promise<boolean> {
+    return this.opts.run ? this.opts.run(args) : Promise.resolve(false);
   }
 
   /** For the E2E hook and the tests: the swaths drawn and the swath lit. */
@@ -62,6 +102,7 @@ export class SwathScene {
     let changed = false;
     for (const id of [...this.shown.keys()]) if (!wanted.has(id)) changed = this.drop(id) || changed;
     for (const id of [...this.own.keys()]) if (!wanted.has(id) || live[id]) this.own.delete(id);
+    for (const id of [...this.held.keys()]) if (!wanted.has(id)) this.held.delete(id);
     for (const id of wanted) {
       const row = swaths.find((r) => r.id === id)!;
       const mine = live[id];
@@ -71,7 +112,8 @@ export class SwathScene {
         st = { result: null, look: "", layer: null, asked: "" };
         this.shown.set(id, st);
       }
-      if (!mine) {
+      // an open window computes its swath (it may not have given its answer yet)
+      if (!mine && !swathWindowOpen(id)) {
         const asked = `${row.version}:${rev}`;
         if (st.asked !== asked) {
           st.asked = asked;
@@ -87,6 +129,10 @@ export class SwathScene {
         st.result = result;
         st.look = look;
         st.layer = this.make(result, settings);
+        // built again from the answer it was turned from (another look): the pose held stays; a new answer lets it go
+        const held = this.held.get(id);
+        if (held && held.result !== result) this.held.delete(id);
+        else if (held) st.layer?.setPose(held.rotation);
         if (st.layer) this.scene.addLayer(swathLayerKey(id), st.layer);
         changed = true;
       }
@@ -97,6 +143,7 @@ export class SwathScene {
       }
     }
     if (changed) this.scene.invalidate();
+    this.handles.refresh();
   }
 
   private make(result: SwathResult, s: SwathSettings): SwathLayer | null {
@@ -139,12 +186,14 @@ export class SwathScene {
 
   /** After a lost context the scene dropped every layer: they are built again from the answers kept. */
   private restore(): void {
+    this.handles.lost();
     for (const st of this.shown.values()) st.layer = null;
     this.sync();
   }
 
   dispose(): void {
     this.disposed = true;
+    this.handles.dispose();
     this.stops.forEach((fn) => fn());
     for (const id of [...this.shown.keys()]) this.drop(id);
     this.scene.invalidate();
@@ -152,7 +201,7 @@ export class SwathScene {
 }
 
 /** Attaches the swaths to a scene; gives what detaches them. */
-export function attachSwathScene(scene: Scene): () => void {
-  const s = new SwathScene(scene);
+export function attachSwathScene(scene: Scene, run?: HandlesHost["run"]): () => void {
+  const s = new SwathScene(scene, { run });
   return () => s.dispose();
 }

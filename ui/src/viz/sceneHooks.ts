@@ -1,8 +1,10 @@
 /**
  * Small pure pieces of `Scene.ts`, kept apart so that the scene stays within 600 lines (ТЗ 17): the camera of
  * the frame benchmark, where a project point is on the screen (the E2E hook), the labels of a frame placed by
- * the view-projection matrix, and the observers of the host element. No state of the scene lives here.
+ * the view-projection matrix, the observers of the host element and the pointer shared by the tool of the string
+ * editor and the handles of a swath (`ToolChain`). No state of the scene lives here.
  */
+import type { ToolHandler, ToolPointer } from "./core/toolInput";
 import type { Vec3 } from "./core/vec3";
 import type { CameraState } from "./core/views";
 import { placeLabels, type LabelItem } from "./labels/sprites";
@@ -52,4 +54,50 @@ export function watchHost(host: HTMLElement, onResize: () => void, onTheme: () =
     ro.disconnect();
     mo.disconnect();
   };
+}
+
+/**
+ * The pointer of the 3D view shared by two takers (ADR 0015 §5, ADR 0019 §6): the tool of the string editor first,
+ * then the handles of a swath (Д-01); what neither takes is the scene's (turning the view, `T`, a click on a
+ * collar — `ToolInput`). A press taken belongs to its taker until the release and the click after it; a double
+ * click — to the first that takes it; moves without a button (hover) and leaving the canvas go to both. With neither set it takes nothing: the old input.
+ */
+export class ToolChain implements ToolHandler {
+  /** the tool of the string editor (`Scene.setTool`) */
+  tool: ToolHandler | null = null;
+  /** the handles of a swath (`Scene.setHandles`) */
+  handles: ToolHandler | null = null;
+  private taker: (ToolHandler & { cancel?(): void }) | null = null;
+
+  /** The tool changed (`ToolInput.setTool` drops the press): a drag in progress is called off. */
+  reset(): void {
+    const t = this.taker;
+    this.taker = null;
+    t?.cancel?.();
+  }
+
+  pointer(e: ToolPointer): boolean {
+    const both = [this.tool, this.handles].filter((x): x is ToolHandler => x !== null);
+    switch (e.type) {
+      case "down":
+        this.taker = both.find((t) => t.pointer(e)) ?? null;
+        return this.taker !== null;
+      case "up":
+        return this.taker ? this.taker.pointer(e) || true : false;
+      case "click": {
+        const t = this.taker;
+        this.taker = null;
+        if (t) return t.pointer(e) || true;
+        return both.some((x) => x.pointer(e));
+      }
+      case "dblclick":
+        return both.some((x) => x.pointer(e));
+      case "move":
+        if (this.taker && e.button === 0) return this.taker.pointer(e) || true;
+        return both.reduce((taken, x) => x.pointer(e) || taken, false);
+      default:
+        for (const x of both) x.pointer(e);
+        return false;
+    }
+  }
 }

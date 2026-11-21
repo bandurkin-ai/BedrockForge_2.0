@@ -4,7 +4,9 @@
  * of the box as numbers, the width (a refusal of the core — over 2000 swaths — is shown at it), the anchor, the
  * series, the 3D view; on the right: the export, the plot, the range «с … по …» with sliders, the notes and the
  * table with Δ from the first series. An edit computes again 300 ms later (an overtaken answer is dropped) and is
- * saved 400 ms later; an edit of data computes again (Т7.30-5). The swath under the cursor is lit in 3D.
+ * saved 400 ms later; an edit of data computes again (Т7.30-5). The swath under the cursor is lit in 3D. While a
+ * handle of the box is dragged in 3D (Д-01) the fields show its angles and the plot stays as it was, dimmed; the
+ * release gives the window the new settings (`stats.swath`), and it computes once.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ChartWindow } from "../../charts/ChartWindow";
@@ -22,7 +24,7 @@ import { loadSources, swathCalculator, swathError, type SwathResult, type SwathS
 import { anglesOf, DIRECTIONS, seriesNote, shownRange, swathCsv, swathProblem, swathRequest, withAngles, withDirection, type SwathSettings } from "./model";
 import { useSavedSwath } from "./saver";
 import { SeriesList } from "./SeriesList";
-import { onPushed, selectSwath, setHover, setLive, swathsStore } from "./state";
+import { dragStore, onPushed, selectSwath, setHover, setLive, swathsStore } from "./state";
 import { SwathTable } from "./SwathTable";
 import css from "./Swath.module.css";
 
@@ -80,6 +82,9 @@ export function SwathWindow(props: SwathWindowProps) {
   const rev = useSyncExternalStore(swathsStore.subscribe, getRev, getRev);
   const getShown = () => swathId !== null && shownSwaths(viewStore.get()[SWATHS_KEY]).includes(swathId);
   const shown3d = useSyncExternalStore(viewStore.subscribe, getShown, getShown);
+  const getDrag = () => dragStore.get().drag;
+  const drag = useSyncExternalStore(dragStore.subscribe, getDrag, getDrag);
+  const dragged = drag !== null && drag.id === swathId ? drag : null;
   const set = (patch: Partial<SwathSettings>) => setS((prev) => ({ ...prev, ...patch }));
 
   useEffect(() => (swathId !== null ? onPushed(swathId, setS) : undefined), [swathId]);
@@ -130,7 +135,7 @@ export function SwathWindow(props: SwathWindowProps) {
 
   const fits = !!result && result.series.length === s.series.length;
   const range = result ? shownRange(s.range, result.count) : ([0, 0] as [number, number]);
-  const angles = anglesOf(s);
+  const angles = dragged ?? anglesOf(s);
   const widthError = error?.param === "width" || error?.param === "anchor" ? error.text : null;
   const seriesError = error?.param === "series" ? error.text : null;
   const generalError = error && !widthError && !seriesError ? error.text : null;
@@ -223,7 +228,13 @@ export function SwathWindow(props: SwathWindowProps) {
         error={problem ?? generalError}
         empty={problem ?? "Расчёт…"}
         note={saved.note}
-        chart={fits && <SwathChart ref={svgRef} result={result!} look={look} range={range} hover={hover} onHover={hoverTo} />}
+        chart={
+          fits && (
+            <div className={dragged ? css.dragged : undefined} data-dragged={dragged ? "true" : undefined}>
+              <SwathChart ref={svgRef} result={result!} look={look} range={range} hover={hover} onHover={hoverTo} />
+            </div>
+          )
+        }
         footer={
           fits && (
             <>
