@@ -5,9 +5,12 @@ this module last); the head of an answer, the filter and the order of the rows a
     duplicates   kind — DUP_F (the default), DUP_C, DUP_P:
                  {kind, pairs (records of the type), used, excluded {no_parent, missing, negative, zero, below},
                  hard_limit, share_limit, share10, share20, share30, share_at_limit, passed, stats {mean1,
-                 mean2, pearson, rma {a, b}}, ranked {p, hard}, points {row, x1, x2, hard}}; max_points=N →
-                 thinned {shown, total}: every pair past the limit of HARD and an even choice of the rest;
-                 samples=True → samples {row, x1, x2, mean, hard, hrd, ampd}: every pair taken
+                 mean2, pearson, rma {a, b}}, ranked {p, hard}, points {row, x1, x2, hard}, th {state (`ok`,
+                 `few_pairs`, `no_fit`), group, need, a, b, k, groups {m, med, n}, precision [{c, p, q}]}};
+                 max_points=N → thinned {shown, total}: every pair past the limit of HARD and an even choice of
+                 the rest; samples=True → samples {row, x1, x2, mean, hard, hrd, ampd}: every pair taken;
+                 c=[…] — more values for the precision P(c) of Thompson–Howarth (q — 10, 50, 90 for the
+                 percentiles of the means of the pairs, None for the given ones)
     the line of the summary: {DUP_F, DUP_C, DUP_P: {pairs, used, hard_limit, share_at_limit, passed}}
 
 x1 is the value of the original sample written into the record at the import (`p:E`), x2 — the value of the
@@ -30,6 +33,7 @@ from .calc import LINES, NOTE_KEYS, SECTIONS, Context, _dl_table, _opt, _thin
 from .duplicates import Pairs, Selection, hard_limit, measure, scatter_stats, select
 from .filters import TYPES
 from .limits import FAIL, NORM, QaqcError, gt
+from .thompson import thompson_howarth
 
 DUP_KINDS = ("DUP_F", "DUP_C", "DUP_P")
 _TITLES = {"DUP_F": "полевые дубликаты", "DUP_C": "дроблёные дубликаты", "DUP_P": "пульповые дубликаты",
@@ -91,6 +95,16 @@ def _points(ctx: Context, at: np.ndarray, x1: np.ndarray, x2: np.ndarray, m: Pai
     return out
 
 
+def _th(x1: np.ndarray, x2: np.ndarray, group: int, c: Any) -> dict[str, Any]:
+    """The block of Thompson–Howarth of the pairs taken."""
+    th = thompson_howarth(x1, x2, group, c)
+    return {
+        "state": th.state, "group": th.group, "need": th.need, "a": _opt(th.a), "b": _opt(th.b), "k": th.k,
+        "groups": {"m": th.m.tolist(), "med": th.med.tolist(), "n": th.size.tolist()},
+        "precision": [{"c": at, "p": _opt(p), "q": q} for q, at, p in th.precision],
+    }  # fmt: skip
+
+
 def _duplicates(ctx: Context, params: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
     kind = params.get("kind") or DUP_KINDS[0]
     if kind not in DUP_KINDS:
@@ -102,6 +116,7 @@ def _duplicates(ctx: Context, params: Mapping[str, Any]) -> tuple[dict[str, Any]
         "hard_limit": d.limit, "share_limit": ctx.limits.hard_share, **_shares(m), "stats": scatter_stats(x1, x2),
         "ranked": {"p": m.ranked_p.tolist(), "hard": m.ranked_hard.tolist()},
         **_points(ctx, d.at[d.used], x1, x2, m, d.limit, params),
+        "th": _th(x1, x2, ctx.limits.th_group, params.get("c")),
     }  # fmt: skip
     if params.get("samples"):
         out["samples"] = {"row": ctx.recs.row[d.at[d.used]].tolist(), "x1": x1.tolist(), "x2": x2.tolist(),
