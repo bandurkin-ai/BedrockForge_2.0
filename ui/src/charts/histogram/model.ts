@@ -6,7 +6,7 @@
  */
 import { createCalculator, computeHistogram, type Calculator, type Describe, type HistogramResult, type SelectCounts } from "../../modules/charts/api";
 import { needsWeightField, type HistogramSettings, type HistogramY } from "../../modules/charts/settings";
-import { formatNumber } from "../core/axes";
+import { formatNumber } from "../core/axisScale";
 import { csvText } from "../core/csv";
 
 export const Y_TITLES: Record<HistogramY, string> = { percent: "Доля, %", weight: "Сумма весов", count: "Число проб" };

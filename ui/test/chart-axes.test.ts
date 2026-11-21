@@ -1,7 +1,7 @@
 // Axes of the charts (ADR 0019 §11): linear, log10 and probability scales; a value the axis cannot show maps to
 // null (never 0); «round» ticks; numbers of axes and forms; CSV of the charts (rules of Э6).
 import { describe, expect, it } from "vitest";
-import { axisValue, domainOf, formatNumber, logTicks, makeScale, normCdf, normInv, numberText, parseNumber, roundUp } from "../src/charts/core/axes";
+import { axisValue, domainOf, formatNumber, logTicks, makeScale, normCdf, normInv, numberText, parseNumber, roundUp } from "../src/charts/core/axisScale";
 import { csvCell, csvText } from "../src/charts/core/csv";
 
 describe("scales", () => {

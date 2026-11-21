@@ -6,7 +6,7 @@
  */
 import { computeQQ, createCalculator, type Calculator, type Describe, type QQResult, type QQSide } from "../../modules/charts/api";
 import { needsWeightField, type QQSettings } from "../../modules/charts/settings";
-import { domainOf, formatNumber, type Domain } from "../core/axes";
+import { domainOf, formatNumber, type Domain } from "../core/axisScale";
 import { csvText } from "../core/csv";
 
 export type QQRequest = Omit<QQSettings, "view">;

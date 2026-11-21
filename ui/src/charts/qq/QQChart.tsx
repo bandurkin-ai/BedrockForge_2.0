@@ -3,7 +3,7 @@
  * the 1:1 line, the P10 / P50 / P90 marks and the tooltip of a point. SVG of a fixed size: the PNG is twice it.
  */
 import { forwardRef, useState } from "react";
-import { formatNumber, makeScale } from "../core/axes";
+import { formatNumber, makeScale } from "../core/axisScale";
 import { XAxis, YAxis } from "../core/Axes";
 import { plotBox, PlotFrame } from "../core/PlotFrame";
 import css from "../core/Chart.module.css";

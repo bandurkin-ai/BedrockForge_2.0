@@ -5,7 +5,7 @@
  * and never sent.
  */
 import { useEffect, useState } from "react";
-import { numberText, parseNumber } from "./core/axes";
+import { numberText, parseNumber } from "./core/axisScale";
 import type { NumericField } from "../modules/charts/api";
 import type { CutMode, Negatives, SampleFilter, WeightMode } from "../modules/charts/settings";
 import css from "./core/Chart.module.css";
