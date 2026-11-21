@@ -7,14 +7,13 @@
 export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
-export type BottomTab = "table" | "audit" | "stats" | "swath" | "jobs" | "log";
+export type BottomTab = "table" | "audit" | "stats" | "jobs" | "log";
 export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "audit";
 
 export const BOTTOM_TITLES: Record<BottomTab, string> = {
   table: "Таблица",
   audit: "Аудит и статистика",
   stats: "Статистика",
-  swath: "Swath plot",
   jobs: "Задания",
   log: "Журнал команд",
 };
@@ -45,7 +44,19 @@ export interface WorkspaceState {
   treeOrder: TreeSection[];
   treeCollapsed: TreeSection[];
   sectionMiniPlan: boolean;
+  /** Last place and size of the floating windows by window kind (ADR 0019 decision 9), at most `WINDOW_MEMORY_LIMIT`. */
+  windows: Record<string, WindowRect>;
 }
+
+/** Place and size of a floating window, px of the app window. */
+export interface WindowRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export const WINDOW_MEMORY_LIMIT = 64;
 
 export const DEFAULT_WORKSPACE: WorkspaceState = {
   left: true,
@@ -60,6 +71,7 @@ export const DEFAULT_WORKSPACE: WorkspaceState = {
   treeOrder: DEFAULT_TREE_ORDER,
   treeCollapsed: [],
   sectionMiniPlan: true,
+  windows: {},
 };
 
 export const SIZE_LIMITS = {
@@ -145,6 +157,7 @@ export function normalizeWorkspace(raw: unknown): WorkspaceState {
     treeOrder: normalizeOrder(r.treeOrder),
     treeCollapsed: Array.isArray(r.treeCollapsed) ? r.treeCollapsed.filter((s): s is TreeSection => typeof s === "string" && s in TREE_SECTIONS) : [],
     sectionMiniPlan: bool(r.sectionMiniPlan, d.sectionMiniPlan),
+    windows: normalizeWindows(r.windows),
   };
   const sizes = (r.sizes && typeof r.sizes === "object" ? r.sizes : {}) as Record<string, unknown>;
   for (const dock of ["left", "right", "bottom"] as const) {
@@ -152,6 +165,38 @@ export function normalizeWorkspace(raw: unknown): WorkspaceState {
     if (typeof size === "number" && Number.isFinite(size)) state = resize(state, dock, size);
   }
   return state;
+}
+
+const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/** A stored rectangle of a window, or null when it is damaged (sizes must be positive). */
+function windowRect(raw: unknown): WindowRect | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const { x, y, w, h } = raw as Record<string, unknown>;
+  if (!finite(x) || !finite(y) || !finite(w) || !finite(h) || w <= 0 || h <= 0) return null;
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+}
+
+/** Remembered windows from the settings file: valid entries only, the last `WINDOW_MEMORY_LIMIT` of them. */
+export function normalizeWindows(raw: unknown): Record<string, WindowRect> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const entries: [string, WindowRect][] = [];
+  for (const [kind, value] of Object.entries(raw as Record<string, unknown>)) {
+    const rect = windowRect(value);
+    if (rect && kind.length > 0 && kind.length <= 64) entries.push([kind, rect]);
+  }
+  return Object.fromEntries(entries.slice(-WINDOW_MEMORY_LIMIT));
+}
+
+/** Remembers where a window of this kind was left; the latest goes last, the oldest past the limit is forgotten. */
+export function rememberWindow(state: WorkspaceState, kind: string, rect: WindowRect): WorkspaceState {
+  const clean = windowRect(rect);
+  if (!clean || !kind || kind.length > 64) return state;
+  const prev = state.windows[kind];
+  if (prev && prev.x === clean.x && prev.y === clean.y && prev.w === clean.w && prev.h === clean.h) return state;
+  const entries = Object.entries(state.windows).filter(([k]) => k !== kind);
+  entries.push([kind, clean]);
+  return { ...state, windows: Object.fromEntries(entries.slice(-WINDOW_MEMORY_LIMIT)) };
 }
 
 export function normalizeView(raw: unknown): ViewState {

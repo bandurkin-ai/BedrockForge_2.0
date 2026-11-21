@@ -12,7 +12,6 @@ import css from "./Shell.module.css";
 
 const STAGE_TEXT: Partial<Record<BottomTab, string>> = {
   stats: "Статистика появится на этапе Э13.",
-  swath: "Swath plot появится на этапе Э13.",
 };
 
 export function BottomDock() {
