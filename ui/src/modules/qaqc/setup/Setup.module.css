@@ -1,0 +1,25 @@
+/* The window «Настройка QAQC» (ADR 0020 §11): brand palette and fonts (ADR 0006) — tabs in Montserrat with the
+   orange mark of the chosen one, tables in Inter with tabular figures. */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); padding: 0 12px; flex: none; }
+.tab { padding: 6px 12px; border: none; border-bottom: 2px solid transparent; background: none; color: var(--text-dim); font: inherit; font-family: var(--font-brand); font-weight: 600; cursor: pointer; }
+.tab:hover { color: var(--text); background: var(--bg-hover); }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--brand-orange); }
+.badge { margin-left: 6px; padding: 0 5px; border-radius: 8px; background: var(--warn); color: var(--bg); font-size: 10px; font-variant-numeric: tabular-nums; }
+.bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.bar .grow { flex: 1; min-width: 0; }
+.stale { color: var(--warn); font-weight: 600; }
+.unknown td { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.bad td { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.cellInput { width: 100%; min-width: 60px; height: 22px; padding: 1px 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--bg-input); color: var(--text); font: inherit; font-variant-numeric: tabular-nums; }
+.cellInput[aria-invalid="true"] { border-color: var(--danger); }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mapGrid { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 4px 8px; align-items: center; }
+.mapGrid > span { color: var(--text-dim); }
+.req::after { content: " *"; color: var(--danger); }
+.fieldError { grid-column: 2; color: var(--danger); margin: -2px 0 2px; font-size: 12px; }
+.elements { display: grid; grid-template-columns: auto minmax(80px, 1fr) minmax(80px, 1fr) minmax(70px, 0.8fr) minmax(90px, 1fr); gap: 4px 8px; align-items: center; }
+.elements .head { color: var(--text-dim); font-size: 11px; }
+.limits { display: grid; grid-template-columns: minmax(180px, 1.6fr) 110px minmax(90px, 1fr); gap: 4px 10px; align-items: center; }
+.limits .range { color: var(--text-faint); font-size: 12px; }
+.limits .err { grid-column: 2 / -1; color: var(--danger); font-size: 12px; margin-top: -2px; }
+.counts { margin: 0; padding-left: 16px; }
