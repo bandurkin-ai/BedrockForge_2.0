@@ -153,8 +153,6 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict[str, Any],
 
 def test_rebuild_on_current_tables(cc, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     f = fill(cc)
-    r = cc.post(f"{IC}/results/{f['run']}/rebuild")
-    assert r.status_code == 422 and r.json()["code"] == "not_ready", r.text  # `intercept.run` comes in 15.12
     calls = captured(monkeypatch)
     assert cc.post(f"{IC}/results/{f['tt']}/rebuild").json() == {"source": "p", "id": 1}
     assert cc.post(f"{IC}/results/{f['run']}/rebuild", json={}).status_code == 200
@@ -197,8 +195,15 @@ def test_tt_and_run_routes_up_to_the_job(cc, monkeypatch: pytest.MonkeyPatch) ->
     r = cc.post(IC + "/run", json=run)
     assert r.status_code == 409 and r.json()["code"] == "table_exists", r.text
     assert r.json()["name"] == "Рудные пересечения" and r.json()["suggested"] == "Рудные пересечения (2)"
-    assert cc.post(IC + "/run", json={**run, "replace": True}).json()["code"] == "not_ready"
-    assert cc.post(IC + "/run", json={**run, "name": "Пересечения 2"}).json()["code"] == "not_ready"
+    calls = captured(monkeypatch)
+    assert cc.post(IC + "/run", json={**run, "replace": True}).json() == {"source": "p", "id": 1}
+    assert cc.post(IC + "/run", json={**run, "name": "Пересечения 2"}).json() == {"source": "p", "id": 2}
+    (k1, p1, t1), (_k2, p2, t2) = calls
+    assert k1 == "intercept.run" and p1["body"]["replace"] is True and t1 == "Рудные пересечения (Пробы)"
+    assert p2["body"]["replace"] is False and p2["body"]["name"] == "Пересечения 2" and t2 == "Пересечения 2 (Пробы)"
+    monkeypatch.setattr(ir, "_submit", submit)
+    r = cc.post(IC + "/run", json={**run, "replace": True, "cutoff": -1})
+    assert (r.status_code, r.json()["code"], r.json()["param"]) == (422, "bad_param", "cutoff")
     assert cc.post(IC + "/run", json=[1]).json()["code"] == "bad_request"
 
 

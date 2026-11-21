@@ -13,6 +13,12 @@
 - Запись в проект «только просмотр» (`POST /tt`, `/run`, `/results/{id}/rebuild`, `DELETE /results/{id}`) — 423
   `project_read_only`. Нет открытого проекта — 409 `no_project`.
 - Задание: ответ `{source, id}` (как Э12); ход и итог — `GET /jobs/{source}/{id}`.
+- Каркасы в заданиях (15.13): читаются по одному (каждый уходит из кеша после чтения); сообщения хода — «Пересечения
+  стволов: каркас N из M», «Ближайшие треугольники: каркас N из M», «Осреднение нормалей: каркас N из M». Ключи
+  геометрии каркасов — во `inputs.meshes` записи и в хеше: каркас заменён (то же имя, другая геометрия) — запись
+  «устарела» («изменён каркас «…»»), «Перестроить» берёт нынешний. d_max > 50 м на больших каркасах — в `journal`
+  задания и в `notes` предпросмотров оценка «поиск ближайшей точки может занять до N с» (при оценке от 10 с);
+  диапазон ТЗ не сужается. Керн — таблица «события» или интервальная (глубина — FROM / середина).
 
 ## Ориентировка (`orientation`) — общая часть `tt` и `run`
 
@@ -78,7 +84,7 @@ stages, events}`; `summary` = `report` записи; `stages` — секунды
 `report` записи `tt` (15.11): `counts {src: {TT_SRC: строк}, flags: {"1", "2", "4", "8": строк}}`, `rows`, `length`
 (Σ LENGTH строк в расчёте, м), `tt` (Σ TT, м), `with_tt` (строк с TT), `excluded` (вне расчёта: нет глубины, TO ≤
 FROM), `skipped` (без FROM или TO — не прочитаны, поля пусты), `capped` (интервалов с увеличенной частью ствола),
-`absent` (виды источников, которых не было: `mesh` до 15.13), `sources` (по источнику цепочки `{source, rows, …}`),
+`absent` (виды источников, которых не было), `sources` (по источнику цепочки `{source, rows, …}`),
 `journal`, `versions {numpy, numba}`, `seconds`, `edits` (`[]`), `written`. NaN — `null`. Таблица-результат с полями
 TT (композиты, «Рудные интервалы») при перестроении теряет их: «Истинная мощность» — в `lost` 409 `dependents_lost`.
 
@@ -94,7 +100,7 @@ TT (композиты, «Рудные интервалы») при перест
 |---|---|
 | `table`, `set_id` | как `tt` |
 | `field` | числовое поле содержания; не выбрано / не число — 422 `bad_param`; 422 `field_not_found` |
-| `cutoff` | борт c — любое конечное число; нет — 422 `bad_param` |
+| `cutoff` | борт c — конечное число больше нуля (ТЗ 8.5.4, как ядро правила); нет, 0 или меньше — 422 `bad_param` |
 | `include_cutoff` | c2 «в том числе», `> cutoff`; `null` / пусто — нет |
 | `l_min` | 0–100 м (2): L_min при `min_by = length`, m_min при `min_by = tt` |
 | `min_by` | `length` (по умолчанию) / `tt` |
@@ -109,14 +115,22 @@ TT (композиты, «Рудные интервалы») при перест
 
 Ответы: 200 `{source, id}` задания `intercept.run` (heavy); 422 / 404 как выше; 409 `table_exists`
 `{name, suggested, lost}` — окно спрашивает «Заменить?» (`lost` — операции над той таблицей, которые не
-повторить) и повторяет с `replace: true` или с `name: suggested`; 423; до 15.12 — 422 `not_ready`.
+повторить) и повторяет с `replace: true` или с `name: suggested`; 423.
 
 Таблица (вид `interval`): HOLE, FROM, TO, LENGTH, TT, TT_FLAG, TT_SRC, ALPHA, DIPDIR, HOLE_THETA, HOLE_AZ, содержания
 (`field` первым, затем `fields`), LEN_G, TT_G, WASTE_LEN, N_INT, X, Y, Z, INCL, LABEL, ID, KIND («основное»,
 «в том числе»), MISS_LEN. Отображение по стволу «Рудные пересечения» — сохранённая колонка (striplog) набора с
 `settings.origin = {op: "intercepts", table: name_key}`.
 
-Итог задания: `{set_id, result_id, table_id, name, chart_id, rows, columns, replaced, fresh, journal, events}`.
+Итог задания: `{set_id, result_id, table_id, name, chart_id, rows, columns, replaced, fresh, summary, journal,
+stages, events}`; `columns` — имена таблицы от HOLE; `summary` = `report` записи; `stages` — секунды `{read,
+trajectories, hash, kernel, write}` (при `fresh: true` — без `kernel`, `write`, без `summary`).
+
+`report` записи `intercepts` (15.12): `counts {src, flags}` (по всем строкам таблицы), `rows`, `intercepts`,
+`included`, `length` (Σ LENGTH основных, м), `tt` (Σ TT основных; `null` — ни у одного нет), `len_g`, `mean` (=
+`len_g / length`; `null` — нет пересечений), `waste_len`, `miss_len`, `excluded` (проб вне правила: нет глубины,
+TO ≤ FROM, перекрытия), `skipped` (без FROM или TO — не прочитаны), `unit` (поля содержания), `field`, `journal`,
+`versions`, `seconds`, `edits` (`[]`), `written` (`[]`), `table_columns`. NaN — `null`.
 
 ## Предпросмотры (синхронно, одна скважина; 15.11–15.12)
 
@@ -134,7 +148,7 @@ TT (композиты, «Рудные интервалы») при перест
 ```
 `TT_REL` = TT / LENGTH (окраска столбца; LENGTH ≤ 0 или TT пусто — `null`); углы — при любом `angles`; строки — в
 порядке скважины по FROM; `counts` — по скважине; `mesh_skipped` — каркасов в списке больше 2 млн треугольников, ориентировка
-по каркасу не считалась (окно сообщает; до 15.13 — всегда, если источник «каркас» в списке); `set_summary` — `counts` по всей таблице при ≤ 200 000 строк, иначе `null`.
+по каркасу не считалась, цепочка перешла к следующему источнику (в `notes` — строка об этом); `set_summary` — `counts` по всей таблице при ≤ 200 000 строк, иначе `null`.
 
 `run/preview` →
 ```json
@@ -149,12 +163,18 @@ TT (композиты, «Рудные интервалы») при перест
  "set_summary": null, "notes": ["…"]}
 ```
 `reason` отказанного кандидата: «короче L_min», «ИМ меньше m_min»; `set_summary` — `summary` по набору при ≤ 200 000
-проб, иначе `null`.
+проб, иначе `null`. Ядро (15.12): `samples.values` — поле содержания, прочие поля таблицы и плотность; кандидаты —
+все кандидаты правила, «в том числе» сразу после своего основного; `tt` кандидата — при `min_by = tt` та, по которой
+принимали, иначе — ориентировки на его [FROM; TO] (нет — `null`); `result.values` — все колонки таблицы после HOLE,
+FROM, TO (шире примера); `summary` и `set_summary` — в форме `report` записи без `journal` и версий (шире примера);
+`mesh_skipped` — как у `tt/preview`.
 
-## `POST /intercepts/orientation/plane` (15.13, желательно)
+## `POST /intercepts/orientation/plane` (15.13)
 
 `{wireframe_ids: [5, 6]}` → `{alpha, dipdir, spread, triangles, area}`: средняя плоскость (главный собственный вектор
-Σ S·n·nᵀ, n_z ≥ 0), `spread` — средневзвешенный по площади угол между нормалями треугольников и плоскостью, °. 422
+Σ S·n·nᵀ, n_z ≥ 0), `spread` — средневзвешенный по площади угол между нормалями треугольников и нормалью плоскости,
+° (0 — плоская поверхность; у закрытой пластины — доля боковых граней × 90°), `area` — м². Сделано в 15.13; проект
+«только просмотр» — можно (ничего не пишет). 422
 `wireframe_not_found`, `bad_param` (не больше 16 каркасов), `no_orientation` (нет треугольников с площадью).
 
 ## Результаты (15.10)

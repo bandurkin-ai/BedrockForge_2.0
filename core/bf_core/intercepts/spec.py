@@ -499,6 +499,8 @@ def parse_run(conn: sa.Connection, body: dict[str, Any]) -> RunSpec:
     tid = int(t.id)
     g = _numeric(conn, tid, body.get("field"), "Поле содержания", "field")
     cutoff = number(body.get("cutoff"), "Бортовое содержание c", "cutoff")
+    if not cutoff > 0.0:  # as `rule.RuleParams.checked` (ТЗ 8.5.4): g ≥ c with c ≤ 0 would take every sample
+        raise bad("bad_param", "Бортовое содержание c должно быть больше нуля.", "Задайте c больше нуля.", "cutoff")
     inc = body.get("include_cutoff")
     c2 = None if inc in (None, "") else number(inc, "Борт «в том числе» c2", "include_cutoff")
     if c2 is not None and not c2 > cutoff:

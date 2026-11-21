@@ -214,12 +214,13 @@ def test_preview_is_the_job_and_writes_nothing(tj) -> None:  # type: ignore[no-u
     rows = p["rows"]
     assert list(rows) == ["from", "to", "length", *FIELDS[:1], "TT_REL", *FIELDS[1:]]
     assert all(len(v) == N for v in rows.values()) and rows["from"] == [float(i) for i in range(N)]
-    assert p["mesh_skipped"] is True and set(rows["TT_SRC"]) == {"глобальная"}  # «каркас» — from 15.13
-    assert p["counts"] == {"src": {"глобальная": N}, "flags": {"1": 0, "2": 0, "4": 0, "8": 0}}
-    assert p["set_summary"] == {"src": {"глобальная": 3 * N}, "flags": {"1": 0, "2": 0, "4": 0, "8": 0}}
+    mesh_src = {"каркас: пересечение", "каркас: ближайшая"}  # the body of the demo (< 2 million triangles)
+    assert p["mesh_skipped"] is False and set(rows["TT_SRC"]) <= {*mesh_src, "глобальная"}
+    assert set(rows["TT_SRC"]) & mesh_src, rows["TT_SRC"]
+    assert sum(p["counts"]["src"].values()) == N and p["counts"]["flags"]["2"] == 0
+    assert sum(p["set_summary"]["src"].values()) == 3 * N
     for tt, rel, length in zip(rows["TT"], rows["TT_REL"], rows["length"], strict=True):
         assert length == 1.0 and rel == tt / length
-    assert any("Каркас" in n or "каркас" in n for n in p["notes"]), p["notes"]
     assert records(c, set_id) == [] and "TT" not in [x["name"] for x in rows_of(c, set_id, table)["columns"]]
 
     tt_here(project, {"body": req})
@@ -227,7 +228,8 @@ def test_preview_is_the_job_and_writes_nothing(tj) -> None:  # type: ignore[no-u
     mine = [i for i, row in enumerate(got["rows"]) if row["hole"] == holes[1]]
     for name in FIELDS:
         assert rows[name] == [col(got, name)[i] for i in mine], name
-    assert records(c, set_id)[0]["report"]["absent"] == ["mesh"]
+    rec = records(c, set_id)[0]
+    assert rec["report"]["absent"] == [] and [m["name"] for m in rec["inputs"]["meshes"]] == ["Рудное тело 1"]
 
     for hole_id, code in ((10**9, 404), (None, 422)):
         r = c.post(f"{IC}/tt/preview", json={"params": req, "hole_id": hole_id})

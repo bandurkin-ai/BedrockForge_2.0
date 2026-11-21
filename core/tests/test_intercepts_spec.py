@@ -213,6 +213,8 @@ def test_run_parameters(demo) -> None:  # type: ignore[no-untyped-def]
                                                                              True)  # fmt: skip
     cases: list[tuple[dict[str, Any], str, str]] = [
         ({"field": "AU"}, "bad_param", "cutoff"),
+        ({"field": "AU", "cutoff": 0}, "bad_param", "cutoff"),  # c > 0 (решение оркестратора, as `RuleParams`)
+        ({"field": "AU", "cutoff": "-0,5"}, "bad_param", "cutoff"),
         ({"field": "", "cutoff": 1}, "bad_param", "field"),
         ({"field": "Номер пробы", "cutoff": 1}, "bad_param", "field"),
         ({"field": "НЕТ", "cutoff": 1}, "field_not_found", "field"),
