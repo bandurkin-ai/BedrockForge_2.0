@@ -20,6 +20,8 @@
 | 422 | `too_many_series` + `param` | настройки не проходят `charts.kinds.check` |
 | 422 | `chart_not_computed` + `param: "kind"` | `/stats/chart/{id}` для вида, который так ещё не считается |
 | 404 | `set_not_found`, `table_not_found`, `chart_not_found` | |
+| 413 | `request_too_large` | тело `/stats/*`, `/charts*` больше 8 МБ (13.36, `api/body_limit.py`; 200 000 id строк укладываются) |
+| 422 | `bad_request` | тело `/stats/*`, `/charts*` вложено глубже 64 уровней (проверка до разбора JSON) |
 
 ## Общие ключи тела (= `charts.settings` без `view`)
 
