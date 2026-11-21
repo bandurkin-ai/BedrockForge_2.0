@@ -7,6 +7,8 @@ import type { IconName } from "./Icon";
 import type { ViewState, WorkspaceState } from "./workspace";
 import { seriesTab, type SeriesFlags } from "../modules/section/seriesCommands";
 import { PREP_BUTTONS, PREP_GROUP_TITLE } from "../modules/composites/commands";
+import { CHART_BUTTONS, CHART_GROUP_TITLE } from "../modules/charts/commands";
+import { STATS_BUTTONS } from "../modules/stats/commands";
 
 export interface RibbonItem {
   command: string;
@@ -257,27 +259,11 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
             { command: "audit.export", label: "Отчёт Excel", icon: "export", small: true, unavailable: NO_SET },
           ],
         },
-        {
-          title: "Графики",
-          items: [
-            { command: "chart.histogram", label: "Гистограмма", icon: "histogram", unavailable: NO_SET },
-            { command: "chart.qq", label: "Q-Q график", icon: "qq", small: true, unavailable: NO_SET },
-            { command: "chart.dendrogram", label: "Дендрограмма", icon: "dendrogram", small: true, unavailable: NO_SET },
-          ],
-        },
+        { title: CHART_GROUP_TITLE, items: CHART_BUTTONS.map((b): RibbonItem => ({ ...b, unavailable: NO_SET })) },
         {
           title: "Статистика",
           items: [
-            ...(
-              [
-                ["declus", "Декластеризация"],
-                ["nscore", "Нормальные оценки"],
-                ["variogram", "Вариограмма"],
-                ["map", "Карта вариограммы"],
-                ["bootstrap", "Бутстрап"],
-                ["local", "Карта неопределённости"],
-              ] as const
-            ).map(([analysis, label], i): RibbonItem => ({ command: "stats.open", args: { analysis }, label, icon: "chart", small: i > 0, unavailable: NO_SET })),
+            ...STATS_BUTTONS.map(({ analysis, label, stage }, i): RibbonItem => ({ command: "stats.open", args: { analysis }, label, icon: "chart", small: i > 0, unavailable: stage ? () => `Появится на этапе ${stage}` : NO_SET })),
             { command: "stats.swath", label: "SWATH PLOT", icon: "swath", small: true },
           ],
         },
