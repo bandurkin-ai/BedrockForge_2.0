@@ -5,7 +5,7 @@
  * job, the field a refusal of the core belongs to, the totals of a finished import. Pure.
  */
 import { CoreError } from "../../../shell/api";
-import type { FieldKey, ImportCounts, InspectAnswer, InspectColumn, Mapping, MappedElement } from "../setupApi";
+import { mappingFromCore, type FieldKey, type ImportCounts, type InspectAnswer, type InspectColumn, type Mapping, type MappedElement } from "../setupApi";
 
 export interface FieldSpec {
   key: FieldKey;
@@ -163,7 +163,7 @@ export function errorPlace(e: unknown): string | null {
   const param = e.body?.param;
   if (typeof param !== "string" || !param) return null;
   const p = param.replace(/^mapping\./, "").replace(/^fields\./, "");
-  return p === "name" || FIELDS.some((f) => f.key === p) ? p : p.startsWith("elements") ? "elements" : "source";
+  return p === "name" || FIELDS.some((f) => f.key === p) ? p : p.startsWith("elements") ? "elements" : p.startsWith("extra") ? "extra" : "source";
 }
 
 /** Turns a column on or off as an element (the unit from its name). */
@@ -183,7 +183,13 @@ export function setField(m: Mapping, key: FieldKey, column: string): Mapping {
 
 export const patchElement = (m: Mapping, column: string, patch: Partial<MappedElement>): Mapping => ({ ...m, elements: m.elements.map((e) => (e.column === column ? { ...e, ...patch } : e)) });
 
-/** A mapping given to `qaqc.import` as JSON text (the assistant); a string — why it is not one. */
+/**
+ * A mapping given to `qaqc.import` as JSON text (the assistant, the form) — the form of the core
+ * (`normalize.parse_mapping`): the roles at the top `{sample_id, type, hole?, parent_id?, crm_id?, lab?, batch?,
+ * date?, seq?}` (a column or null), `elements: [{column, name?, unit?, dl_column?}]` (no name or no unit — from the
+ * name of the column, as the core does), `extra: [column…]`, and `read: {sheet?, encoding?, delimiter?,
+ * header_row?}` of a file (taken apart by the binding). A string — why it is not one.
+ */
 export function mappingFromArg(value: unknown): Mapping | string {
   let raw: unknown = value;
   if (typeof value === "string") {
@@ -195,25 +201,22 @@ export function mappingFromArg(value: unknown): Mapping | string {
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "mapping — не JSON-объект";
   const r = raw as Record<string, unknown>;
-  const fieldsRaw = (r.fields && typeof r.fields === "object" ? r.fields : r) as Record<string, unknown>;
-  const fields: Mapping["fields"] = {};
-  for (const f of FIELDS) {
-    const v = fieldsRaw[f.key] ?? fieldsRaw[f.key.toUpperCase()];
-    if (typeof v === "string" && v) fields[f.key] = v;
+  if ("fields" in r) return "колонки ролей указываются на верхнем уровне (sample_id, type, …), без «fields»";
+  for (const f of FIELDS) if (r[f.key] !== undefined && r[f.key] !== null && typeof r[f.key] !== "string") return `${f.key} — имя колонки или null`;
+  if (r.elements !== undefined && !Array.isArray(r.elements)) return "elements — список объектов {column, name?, unit?, dl_column?}";
+  const items = (r.elements ?? []) as unknown[];
+  for (const [i, e] of items.entries()) {
+    if (!e || typeof e !== "object" || Array.isArray(e) || typeof (e as { column?: unknown }).column !== "string") return `elements[${i}] — объект {column, name?, unit?, dl_column?}`;
   }
-  const elements: MappedElement[] = [];
-  if (Array.isArray(r.elements)) {
-    for (const e of r.elements) {
-      if (typeof e === "string") elements.push({ column: e, ...elementOfName(e) });
-      else if (e && typeof e === "object" && typeof (e as MappedElement).column === "string") {
-        const x = e as Partial<MappedElement> & { column: string };
-        const auto = elementOfName(x.column);
-        elements.push({ column: x.column, name: typeof x.name === "string" && x.name ? x.name : auto.name, unit: typeof x.unit === "string" ? x.unit : auto.unit, ...(typeof x.dl === "string" ? { dl: x.dl } : {}) });
-      }
-    }
-  }
-  const extra = Array.isArray(r.extra) ? r.extra.filter((x): x is string => typeof x === "string") : [];
-  return { fields, elements, extra };
+  if (r.extra !== undefined && !Array.isArray(r.extra)) return "extra — список колонок";
+  const m = mappingFromCore(r) ?? { fields: {}, elements: [], extra: [] };
+  // as the core: no name or no unit key — from the name of the column («AU_ppm» → AU, ppm)
+  const elements: MappedElement[] = m.elements.map((e, i) => {
+    const x = items[i] as Record<string, unknown>;
+    const auto = elementOfName(e.column);
+    return { ...e, name: typeof x.name === "string" && x.name.trim() ? x.name.trim() : auto.name, unit: "unit" in x ? e.unit : auto.unit };
+  });
+  return { ...m, elements };
 }
 
 /** Fills the parts of a mapping the assistant left out from the automatic choice. */

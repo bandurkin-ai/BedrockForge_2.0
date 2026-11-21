@@ -43,6 +43,11 @@ describe("the table of the groups", () => {
     expect(html).toContain("<td>99,1 %</td>");
     expect(html).toContain("не выполнен");
     expect(html.match(/class="[^"]*chosen[^"]*"/g)).toHaveLength(1);
+    // the rows go by the keyboard: in the tab order, the chosen one selected
+    expect(html).toContain('role="grid"');
+    expect(html.match(/tabindex="0"/g)).toHaveLength(2);
+    expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
+    expect(html.match(/aria-selected="false"/g)).toHaveLength(1);
     expect(withInterval(null, null)).toBe("—");
     expect(withInterval(1, null)).toBe("1");
     expect(groupTitle(EMPTY)).toBe("без лаборатории → SGS");

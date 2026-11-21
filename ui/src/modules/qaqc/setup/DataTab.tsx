@@ -28,7 +28,7 @@ export function datesText(d: Pick<QaqcData, "date_from" | "date_to">): string {
 export function sourceText(d: Pick<QaqcData, "source">): string {
   const s = d.source;
   if (!s) return "—";
-  if (s.kind === "table") return `таблица набора${s.name ? ` «${s.name}»` : ""}${s.rev !== undefined ? `, ревизия ${s.rev}` : ""}`;
+  if (s.kind === "table") return `таблица${s.table_name ? ` «${s.table_name}»` : ""} набора${s.set_name ? ` «${s.set_name}»` : ""}${s.rev !== undefined ? `, ревизия ${s.rev}` : ""}`;
   return `файл${s.name ? ` «${s.name}»` : ""}`;
 }
 

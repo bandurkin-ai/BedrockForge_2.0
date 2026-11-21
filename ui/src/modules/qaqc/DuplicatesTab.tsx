@@ -35,6 +35,9 @@ export function duplicatesNotes(a: Pick<DuplicatesAnswer, "notes"> & { thinned?:
   return out;
 }
 
+/** The type the answer is of (its `kind`), else the one asked. */
+export const answerKind = (a: { kind?: string }, asked: DupKind): DupKind => ((DUP_KINDS as readonly string[]).includes(a.kind ?? "") ? (a.kind as DupKind) : asked);
+
 /** The answer of the core: beyond ADR 0020 §10 — `kind`, the block `th` with `need`, `groups.n`, `precision[].q`. */
 export type DupAnswer = Omit<DuplicatesAnswer, "th"> & { kind?: string; th: ThBlock; thinned?: Thinned };
 
@@ -154,7 +157,8 @@ export function DuplicatesTab() {
     );
   if (!a || !scatter || !ranked) return <p className={css.note}>Расчёт…</p>;
   const stale = loaded?.key !== loadKey;
-  const kind = s.dupKind;
+  // the summary and the titles are of the type the answer is of (a newer type may be on its way)
+  const kind = answerKind(a, s.dupKind);
   const unit = a.unit;
   const u = unit ? `, ${unit}` : "";
   const title = `${DUP_TITLES[kind]} дубликаты · ${a.element}`;

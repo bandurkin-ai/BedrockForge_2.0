@@ -84,15 +84,15 @@ export const DEFAULT_TYPES: Record<string, QaqcType> = { ...Object.fromEntries(Q
 const isType = (v: unknown): v is QaqcType => typeof v === "string" && (QAQC_TYPES as readonly string[]).includes(v);
 
 /** The type of a code of a file: the map without case and outer spaces; empty — ORIG when `emptyIsOrig`; else null. */
-export function typeOfCode(code: string, types: Record<string, QaqcType>, emptyIsOrig: boolean): QaqcType | null {
-  const c = normCode(code);
+export function typeOfCode(code: string | null, types: Record<string, QaqcType>, emptyIsOrig: boolean): QaqcType | null {
+  const c = normCode(code ?? "");
   if (!c) return emptyIsOrig ? "ORIG" : null;
   for (const [k, t] of Object.entries(types)) if (normCode(k) === c) return t;
   return null;
 }
 
 export interface CodeRow {
-  /** the code as the files carry it (the first spelling met) */
+  /** the code as the files carry it (the first spelling met); "" — an empty TYPE (the core's null), shown «(пусто)» */
   code: string;
   n: number;
   type: QaqcType | null;
@@ -103,10 +103,11 @@ export function codeRows(data: readonly Pick<QaqcData, "type_codes">[], types: R
   const by = new Map<string, CodeRow>();
   for (const d of data)
     for (const c of d.type_codes ?? []) {
-      const key = normCode(c.code);
+      const code = (c.code ?? "").trim();
+      const key = normCode(code);
       const row = by.get(key);
       if (row) row.n += c.n;
-      else by.set(key, { code: c.code.trim(), n: c.n, type: null });
+      else by.set(key, { code, n: c.n, type: null });
     }
   for (const k of Object.keys(types)) if (!by.has(normCode(k))) by.set(normCode(k), { code: k.trim(), n: 0, type: null });
   const rows = [...by.values()].map((r) => ({ ...r, type: typeOfCode(r.code, types, emptyIsOrig) }));

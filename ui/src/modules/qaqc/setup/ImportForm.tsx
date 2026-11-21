@@ -12,7 +12,7 @@ import { errorText } from "../../../shell/props";
 import { useSnap } from "./useSnap";
 import css from "../../../shell/PropsParts.module.css";
 import { loadSets, loadTables, type SetRow, type TableRow } from "../../composites/api";
-import { inspectSource, type FieldKey, type InspectAnswer, type InspectSource, type Mapping, type QaqcData } from "../setupApi";
+import { inspectSource, mappingToCore, type FieldKey, type InspectAnswer, type InspectSource, type Mapping, type QaqcData } from "../setupApi";
 import { closeForm, dataStore, type FormRequest } from "./dataStore";
 import { cellOf, defaultDataName, FIELDS, mappingProblems, patchElement, problemAt, setField, startMapping, toggleElement } from "./mapping";
 import own from "./Setup.module.css";
@@ -24,7 +24,7 @@ const PREVIEW_ROWS = 50;
 export function importArgs(source: InspectSource, name: string, mapping: Mapping, replaceId: number | null): Record<string, unknown> {
   const read = source.kind === "file" && source.sheet ? { read: { sheet: source.sheet } } : {};
   const where = source.kind === "file" ? { path: source.path } : { set_id: source.set_id, table: source.table };
-  return { ...where, name: name.trim(), mapping: JSON.stringify({ ...mapping, ...read }), ...(replaceId !== null ? { replace_id: replaceId } : {}) };
+  return { ...where, name: name.trim(), mapping: JSON.stringify({ ...mappingToCore(mapping), ...read }), ...(replaceId !== null ? { replace_id: replaceId } : {}) };
 }
 
 function useInspect(source: InspectSource | null) {
@@ -207,7 +207,7 @@ export function ImportForm({ request, list }: { request: FormRequest; list: read
                   const e = mapping.elements.find((x) => x.column === c.name);
                   const err = at(`el:${c.name}`);
                   return (
-                    <ElementRow key={c.name} column={c.name} on={!!e} name={e?.name ?? ""} unit={e?.unit ?? ""} dl={e?.dl ?? ""} dlColumns={numeric.map((x) => x.name).filter((x) => x !== c.name)} error={err} onToggle={(on) => setMapping(toggleElement(mapping, c.name, on))} onPatch={(p) => setMapping(patchElement(mapping, c.name, p))} />
+                    <ElementRow key={c.name} column={c.name} samples={samplesText(c.samples)} on={!!e} name={e?.name ?? ""} unit={e?.unit ?? ""} dl={e?.dl ?? ""} dlColumns={numeric.map((x) => x.name).filter((x) => x !== c.name)} error={err} onToggle={(on) => setMapping(toggleElement(mapping, c.name, on))} onPatch={(p) => setMapping(patchElement(mapping, c.name, p))} />
                   );
                 })}
               </div>
@@ -223,7 +223,7 @@ export function ImportForm({ request, list }: { request: FormRequest; list: read
                 <legend>Прочие поля (фильтр «любое поле»)</legend>
                 <div className={css.row}>
                   {others.map((c) => (
-                    <label key={c.name} className={css.check}>
+                    <label key={c.name} className={css.check} title={samplesText(c.samples) || undefined}>
                       <input type="checkbox" checked={mapping.extra.includes(c.name)} onChange={(e) => setMapping({ ...mapping, extra: e.target.checked ? [...mapping.extra, c.name] : mapping.extra.filter((x) => x !== c.name) })} />
                       {c.name}
                     </label>
@@ -309,11 +309,16 @@ function FieldRow(p: { k: FieldKey; title: string; hint: string; required: boole
   );
 }
 
-function ElementRow(p: { column: string; on: boolean; name: string; unit: string; dl: string; dlColumns: string[]; error: string | null; onToggle: (on: boolean) => void; onPatch: (patch: { name?: string; unit?: string; dl?: string | null }) => void }) {
+/** «1,2; 0,8; <0,01»: the values the core met in the first rows of a column (up to five). */
+export function samplesText(samples: readonly unknown[] | undefined): string {
+  return (samples ?? []).filter((v) => v !== null && v !== undefined && v !== "").map(String).join("; ");
+}
+
+function ElementRow(p: { column: string; samples: string; on: boolean; name: string; unit: string; dl: string; dlColumns: string[]; error: string | null; onToggle: (on: boolean) => void; onPatch: (patch: { name?: string; unit?: string; dl?: string | null }) => void }) {
   return (
     <>
       <input type="checkbox" checked={p.on} aria-label={`${p.column}: элемент`} onChange={(e) => p.onToggle(e.target.checked)} />
-      <span className={css.attrName} title={p.error ?? p.column} style={p.error ? { color: "var(--danger)" } : undefined}>
+      <span className={css.attrName} title={p.error ?? (p.samples ? `${p.column}: ${p.samples}` : p.column)} style={p.error ? { color: "var(--danger)" } : undefined}>
         {p.column}
       </span>
       <input className={own.cellInput} disabled={!p.on} value={p.name} aria-invalid={!!p.error} aria-label={`${p.column}: имя элемента`} onChange={(e) => p.onPatch({ name: e.target.value })} />
