@@ -71,6 +71,9 @@ describe("the triangle", () => {
   it("CSV, notes, the assistant's text", () => {
     expect(ternaryCsv(RES).split("\r\n")).toEqual(['"Строка";"Доля CU";"Доля PB";"Доля ZN"', "7;1;0;0", "8;0;1;0", "9;0.2;0.3;0.5"]);
     expect(ternaryNotes(RES)).toEqual(["строк 5, точек 3", "с пропуском поля 1", "сумма ≤ 0: 1"]);
+    // the core tells the two apart
+    expect(ternaryNotes({ ...RES, counts: { rows: 6, missing: 0, nonpositive_sum: 3, negative: 2, zero_sum: 1, used: 3 } })).toEqual(["строк 6, точек 3", "с отрицательным значением 2", "сумма 0: 1"]);
+    expect(ternaryNotes({ ...RES, counts: { rows: 4, missing: 0, nonpositive_sum: 1, negative: 0, zero_sum: 1, used: 3 } })).toEqual(["строк 4, точек 3", "сумма 0: 1"]);
     expect(ternaryNotes({ ...RES, total: 300_000 })[3]).toMatch(/^показано 3 из/);
     expect(meanShares({ a: [], b: [], c: [] })).toEqual([null, null, null]);
     expect(ternarySummary("Т", RES)).toBe("Т: точек 3; средние доли CU 40 %, PB 43.3 %, ZN 16.7 %");

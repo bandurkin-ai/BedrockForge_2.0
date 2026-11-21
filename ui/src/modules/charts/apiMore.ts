@@ -95,13 +95,31 @@ export const computeScatter = (body: Body<ScatterSettings>): Promise<ScatterResu
 
 // ---- box plot: POST /stats/box ----
 
+/** A group of the charts by domains: a domain, the samples without a code, all samples (no domain field). */
+export type GroupRole = "domain" | "none" | "all";
+
+/** The head of the answers by domains (`_head` of the core). */
+export interface DomainHead {
+  set_id: number;
+  field: string;
+  domain: string | null;
+  /** the table of the domain field when it is not the table of the samples (by the middle of a sample); null — the same */
+  domain_table?: string | null;
+  /** samples whose middle lies in no interval of `domain_table` */
+  domain_outside?: number;
+}
+
 /** One box (a domain; `label` null — samples without a code, shown last). On a log scale the quartiles and the
  * whiskers are of the logarithms, given back in data units; `mean` is the weighted mean of the values. */
 export interface BoxGroup {
   label: string | null;
+  /** "domain" — a domain; "none" — the samples without a code; "all" — one group without a domain field */
+  role?: GroupRole;
   n: number;
   weight_sum: number;
   mean: Num;
+  /** on a log scale — the geometric mean (the mean of the logarithms back in data units); else null */
+  geometric_mean?: Num;
   q1: Num;
   median: Num;
   q3: Num;
@@ -112,14 +130,15 @@ export interface BoxGroup {
   max: Num;
   /** the outliers drawn (the extremes always among them) */
   outliers: number[];
-  /** all outliers of the box */
+  /** all outliers of the box: below the lower whisker, above the upper one, together */
+  outliers_low?: number;
+  outliers_high?: number;
   outliers_total: number;
+  /** values ≤ 0 left out on a log scale */
+  nonpositive?: number;
 }
 
-export interface BoxResult {
-  set_id: number;
-  field: string;
-  domain: string | null;
+export interface BoxResult extends DomainHead {
   log: boolean;
   weighted: boolean;
   counts: DomainCounts & { nonpositive_log?: number };
@@ -136,18 +155,20 @@ export const computeBox = (body: Body<BoxSettings>): Promise<BoxResult> => api.p
 
 export interface ProbSeries {
   label: string | null;
+  role?: GroupRole;
   /** [value, P %], P = (C − w / 2) / W; ≤ 2000, the extremes kept */
   points: [number, number][];
   /** samples of the series (> 0) before thinning */
   count: number;
   nonpositive: number;
+  /** the points were thinned (more than 2000) */
+  thinned?: boolean;
+  /** the correlation of ln(value) with the normal quantile of P — how straight the line is; null — not computed */
+  r?: Num;
   stats: Pick<Describe, "mean" | "median" | "cv"> & { p90: Num };
 }
 
-export interface ProbPlotResult {
-  set_id: number;
-  field: string;
-  domain: string | null;
+export interface ProbPlotResult extends DomainHead {
   weighted: boolean;
   counts: DomainCounts;
   series: ProbSeries[];
@@ -165,10 +186,7 @@ export interface ContactSide {
   mean: Num;
 }
 
-export interface ContactResult {
-  set_id: number;
-  field: string;
-  domain: string | null;
+export interface ContactResult extends DomainHead {
   wireframe_id: number | null;
   distance: number;
   step: number;
@@ -195,7 +213,8 @@ export interface TernaryResult {
   set_id: number;
   fields: [string, string, string];
   color_field: string | null;
-  counts: { rows: number; missing: number; nonpositive_sum: number; used: number };
+  /** `nonpositive_sum` = `negative` (a share below zero) + `zero_sum` (the sum is 0) */
+  counts: { rows: number; missing: number; nonpositive_sum: number; negative?: number; zero_sum?: number; used: number };
   /** shares (a, b, c) / (a + b + c) of each point drawn; ≤ 200 000 (more — evenly thinned, `total` all) */
   a: number[];
   b: number[];
@@ -212,6 +231,7 @@ export const computeTernary = (body: Body<TernarySettings>): Promise<TernaryResu
 
 export interface DomainRow {
   label: string | null;
+  role?: GroupRole;
   n: number;
   length: number;
   mean: Num;
@@ -227,10 +247,7 @@ export interface DomainRow {
   p90: Num;
 }
 
-export interface DomainsResult {
-  set_id: number;
-  field: string;
-  domain: string | null;
+export interface DomainsResult extends DomainHead {
   weighted: boolean;
   counts: DomainCounts;
   rows: DomainRow[];

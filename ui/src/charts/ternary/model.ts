@@ -83,7 +83,11 @@ export function ternaryNotes(r: TernaryResult): string[] {
   const c = r.counts;
   const out = [`строк ${n(c.rows)}, точек ${n(c.used)}`];
   if (c.missing) out.push(`с пропуском поля ${n(c.missing)}`);
-  if (c.nonpositive_sum) out.push(`сумма ≤ 0: ${n(c.nonpositive_sum)}`);
+  // the core tells the two apart: a share below zero, the sum 0
+  if (c.negative !== undefined || c.zero_sum !== undefined) {
+    if (c.negative) out.push(`с отрицательным значением ${n(c.negative)}`);
+    if (c.zero_sum) out.push(`сумма 0: ${n(c.zero_sum)}`);
+  } else if (c.nonpositive_sum) out.push(`сумма ≤ 0: ${n(c.nonpositive_sum)}`);
   if (r.total > r.a.length) out.push(`показано ${n(r.a.length)} из ${n(r.total)} (равномерно прорежено)`);
   return out;
 }

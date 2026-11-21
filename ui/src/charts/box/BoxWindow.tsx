@@ -17,7 +17,7 @@ import { DomainSource, fieldLabel, keepField, useStatsFields } from "../core/Pic
 import { SampleFilterForm } from "../SampleFilterForm";
 import css from "../core/Chart.module.css";
 import { BoxChart } from "./BoxChart";
-import { boxCalculator, boxCsv, BOX_HEADER, boxNotes, boxRequest, boxTable } from "./model";
+import { boxCalculator, boxCsv, boxHeader, boxNotes, boxRequest, boxTable } from "./model";
 
 export function BoxWindow(props: ChartWindowProps<"box">) {
   const { setId, setName } = props;
@@ -84,7 +84,7 @@ export function BoxWindow(props: ChartWindowProps<"box">) {
             <table className={css.stats} data-testid="box-stats">
               <thead>
                 <tr>
-                  {BOX_HEADER.map((h) => (
+                  {boxHeader(result).map((h) => (
                     <th key={h}>{h}</th>
                   ))}
                 </tr>

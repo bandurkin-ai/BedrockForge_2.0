@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeScale } from "../src/charts/core/axisScale";
 import { BoxChart } from "../src/charts/box/BoxChart";
 import { BoxWindow } from "../src/charts/box/BoxWindow";
-import { boxCsv, boxDomain, boxNotes, boxPixels, boxRequest, boxSummary, boxTable, groupLabel } from "../src/charts/box/model";
+import { boxCsv, boxDomain, boxHeader, boxNotes, boxPixels, boxRequest, boxSummary, boxTable, groupLabel } from "../src/charts/box/model";
 import { DomainStatsWindow, domainsCsv, domainsRequest, domainsSummary, domainsTable } from "../src/charts/domains/DomainStatsWindow";
 import type { BoxGroup, BoxResult, DomainRow, DomainsResult } from "../src/modules/charts/apiMore";
 import { bindCharts } from "../src/modules/charts/bind";
@@ -26,10 +26,12 @@ const BOX: BoxResult = {
   set_id: 3,
   field: "AU",
   domain: "ROCK",
+  domain_table: null,
+  domain_outside: 0,
   log: true,
   weighted: true,
   counts: COUNTS,
-  groups: [group("OX", [1, 10, 100]), group("SU", [0.5, 1, 2]), group(null, [2, 3, 4], { mean: null, outliers: [], outliers_total: 0 })],
+  groups: [group("OX", [1, 10, 100], { role: "domain", geometric_mean: 8, outliers_low: 0, outliers_high: 1 }), group("SU", [0.5, 1, 2]), group(null, [2, 3, 4], { mean: null, outliers: [], outliers_total: 0 })],
   outliers_shown: 5000,
   outliers_total: 7312,
 };
@@ -73,18 +75,33 @@ describe("box plots", () => {
       "без значения 1",
       "без кода домена 1",
       `выбросов показано ${(5000).toLocaleString("ru-RU")} из ${(7312).toLocaleString("ru-RU")} (крайние оставлены)`,
-      "квартили и усы — по логарифмам",
+      "квартили и усы — по логарифмам; ◇ — среднее, ○ — среднее геометрическое",
     ]);
     expect(boxNotes({ ...BOX, outliers_shown: 3, outliers_total: 3, log: false }, { negatives: "keep" }).slice(-1)).toEqual(["выбросов 3"]);
     expect(groupLabel(null, null)).toBe("все пробы");
   });
 
+  it("a log scale: the geometric mean — a circle at its value, in the tip and in the assistant's text", () => {
+    const sy = makeScale("log", boxDomain(BOX, true)!, 400, 0);
+    expect(boxPixels(BOX.groups[0], sy)!.geo).toBeCloseTo(sy.map(8)!, 9);
+    expect(boxPixels(BOX.groups[1], sy)!.geo).toBeNull(); // not given — nothing drawn
+    const html = renderToStaticMarkup(createElement(BoxChart, { result: BOX, mean: true, outliers: true, color: null, yLabel: "AU, г/т" }));
+    expect(html.match(/data-geomean="1"/g)).toHaveLength(1);
+    expect(renderToStaticMarkup(createElement(BoxChart, { result: BOX, mean: false, outliers: true, color: null, yLabel: "AU" }))).not.toContain("data-geomean");
+    expect(boxSummary("Я", BOX)).toContain("OX: n 5, среднее 12, среднее геометрическое 8, медиана 10");
+  });
+
   it("the table and its CSV: a missing mean stays «—» / empty", () => {
-    expect(boxTable(BOX)[2]).toEqual(["без домена", "5", "—", "2", "3", "4", "1", "8", "1", "20", "0"]);
-    const csv = boxCsv(BOX).split("\r\n");
+    const lin = { ...BOX, log: false };
+    expect(boxTable(lin)[2]).toEqual(["без домена", "5", "—", "2", "3", "4", "1", "8", "1", "20", "0"]);
+    const csv = boxCsv(lin).split("\r\n");
     expect(csv[0]).toBe('"Домен";"n";"Среднее";"Q1";"Медиана";"Q3";"Ус нижний";"Ус верхний";"Мин";"Макс";"Выбросов"');
     expect(csv[3]).toBe('"без домена";5;;2;3;4;1;8;1;20;0');
-    expect(boxSummary("Я", BOX)).toBe("Я: OX: n 5, среднее 12, медиана 10; SU: n 5, среднее 1.2, медиана 1; без домена: n 5, среднее —, медиана 3");
+    // a log scale: the geometric mean after the mean (none — «—» / empty)
+    expect(boxHeader(BOX)).toEqual(["Домен", "n", "Среднее", "Среднее геом.", "Q1", "Медиана", "Q3", "Ус нижний", "Ус верхний", "Мин", "Макс", "Выбросов"]);
+    expect(boxTable(BOX)[2]).toEqual(["без домена", "5", "—", "—", "2", "3", "4", "1", "8", "1", "20", "0"]);
+    expect(boxCsv(BOX).split("\r\n")[3]).toBe('"без домена";5;;;2;3;4;1;8;1;20;0');
+    expect(boxSummary("Я", lin)).toBe("Я: OX: n 5, среднее 12, медиана 10; SU: n 5, среднее 1.2, медиана 1; без домена: n 5, среднее —, медиана 3");
   });
 });
 
@@ -168,7 +185,7 @@ describe("the windows and the commands", () => {
     expect(windowStore.get().windows[0]).toMatchObject({ kind: "chart-box", title: "Ящики с усами · AU · по LITH · Набор" });
     const a = await app.registry.execute("chart.box", { field: "AU", domain: "ROCK", log: true }, "claude");
     expect(sent.find((x) => x.path === "/stats/box")?.body).toMatchObject({ field: "AU", domain: "ROCK", log: true, table: "пробы" });
-    expect(a.result).toMatch(/: OX: n 5, среднее 12, медиана 10; SU/);
+    expect(a.result).toMatch(/: OX: n 5, среднее 12, среднее геометрическое 8, медиана 10; SU/);
     const d = await app.registry.execute("chart.domains", { domain: "ROCK" }, "claude");
     expect(sent.find((x) => x.path === "/stats/domains")?.body).toMatchObject({ field: "AU", domain: "ROCK" });
     expect(d.result).toMatch(/^По доменам · AU · ROCK.*: проб 10, среднее 1.5/);

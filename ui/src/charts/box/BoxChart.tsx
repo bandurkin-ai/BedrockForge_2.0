@@ -1,6 +1,7 @@
 /**
  * Box plots by domains (ТЗ 8.3; ADR 0019 §4, §11): a box Q1…Q3 with the median, whiskers to the extreme values
- * inside 1,5·IQR, the outliers as points, the mean as a diamond, n under each box; a linear or log10 value axis (on
+ * inside 1,5·IQR, the outliers as points, the mean as a diamond (on a log axis also the geometric mean as a circle),
+ * n under each box; a linear or log10 value axis (on
  * the log one the box is of the logarithms). A frame drawn over the boxes (№ 237) selects the samples of the boxes it
  * covers with a value in its range — the outliers among them — in 3D and in the table; it stays while the selection
  * is this chart's. SVG of a fixed size: the PNG is twice it.
@@ -73,6 +74,7 @@ export const BoxChart = forwardRef<SVGSVGElement, BoxChartProps>(function BoxCha
                   {px.low !== null && <line className={css.curve} x1={cx - half / 2} x2={cx + half / 2} y1={px.low} y2={px.low} />}
                   <rect data-q1={px.q1.toFixed(2)} data-q3={px.q3.toFixed(2)} x={cx - half} y={px.q3} width={half * 2} height={Math.max(1, px.q1 - px.q3)} fill={fill} fillOpacity={0.35} stroke={fill} strokeWidth={1.5} />
                   <line data-median={px.median.toFixed(2)} x1={cx - half} x2={cx + half} y1={px.median} y2={px.median} stroke={fill} strokeWidth={2.5} />
+                  {mean && px.geo !== null && <circle data-geomean="1" className={css.mark} cx={cx} cy={px.geo} r={4} fill="none" />}
                   {mean && px.mean !== null && <path data-mean="1" className={css.mark} d={`M${cx},${px.mean - 5}L${cx + 5},${px.mean}L${cx},${px.mean + 5}L${cx - 5},${px.mean}Z`} fill="none" />}
                   {outliers && (
                     <g data-outliers={px.outliers.length}>
@@ -97,13 +99,14 @@ export const BoxChart = forwardRef<SVGSVGElement, BoxChartProps>(function BoxCha
       {lasso.path && lasso.path.length > 1 && <polygon className={css.ring} strokeDasharray="4 3" points={rect(lasso.path)} />}
       {g && hover !== null && (
         <g className={css.tip} transform={`translate(${Math.min(BOX.x0 + slot * (hover + 0.5) + 12, BOX.x1 - 200)} ${BOX.y0 + 6})`}>
-          <rect width={194} height={106} rx={4} />
+          <rect width={194} height={r.log ? 122 : 106} rx={4} />
           <text x={8} y={16}>{groupLabel(g.label, r.domain)}</text>
           <text x={8} y={32}>n {g.n.toLocaleString("ru-RU")}, среднее {formatNumber(g.mean, 4)}</text>
           <text x={8} y={48}>Q1 {formatNumber(g.q1, 4)}, медиана {formatNumber(g.median, 4)}</text>
           <text x={8} y={64}>Q3 {formatNumber(g.q3, 4)}</text>
           <text x={8} y={80}>усы {formatNumber(g.whisker_low, 4)} … {formatNumber(g.whisker_high, 4)}</text>
           <text x={8} y={96}>выбросов {g.outliers_total.toLocaleString("ru-RU")}</text>
+          {r.log && <text x={8} y={112}>среднее геом. {formatNumber(g.geometric_mean ?? null, 4)}</text>}
         </g>
       )}
     </PlotFrame>
