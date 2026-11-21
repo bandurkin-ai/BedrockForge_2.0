@@ -166,7 +166,7 @@ describe("hit within 8 px", () => {
 describe("the pointer shared by the editor's tool, the handles and the scene", () => {
   const ev = (type: ToolPointer["type"], button = 0): ToolPointer => ({ type, x: 1, y: 2, clientX: 1, clientY: 2, button, shift: false, ctrl: false });
 
-  it("asks the tool first, the handles next; the taker of a press has the drag and its click", () => {
+  it("the tool of the editor, else the handles; the taker of a press has the drag and its click", () => {
     const chain = new ToolChain();
     expect(chain.pointer(ev("down"))).toBe(false); // neither: the scene as before
     expect(chain.pointer(ev("click"))).toBe(false);
@@ -181,16 +181,24 @@ describe("the pointer shared by the editor's tool, the handles and the scene", (
     chain.pointer(ev("up"));
     chain.pointer(ev("click"));
     expect(got).toEqual(["tool:move", "tool:up", "tool:click"]);
+    // a press the tool does not take is the scene's: the handles are not there while a tool is set
     toolTakes = false;
+    got.length = 0;
+    expect(chain.pointer(ev("down"))).toBe(false);
+    chain.pointer(ev("move", -1)); // hover: not lit under the tool
+    chain.pointer(ev("leave", -1));
+    expect(got).toEqual(["tool:down", "tool:move", "tool:leave"]);
+    // the tool gone: the handles have the pointer; the change lets go of their hover first
+    chain.tool = null;
+    got.length = 0;
+    chain.reset();
+    expect(got).toEqual(["handles:leave"]);
     got.length = 0;
     expect(chain.pointer(ev("down"))).toBe(true);
     chain.pointer(ev("move"));
     chain.pointer(ev("up"));
-    expect(got).toEqual(["tool:down", "handles:down", "handles:move", "handles:up"]);
-    got.length = 0;
-    chain.pointer(ev("move", -1)); // hover: both
-    chain.pointer(ev("leave", -1));
-    expect(got).toEqual(["tool:move", "handles:move", "tool:leave", "handles:leave"]);
+    chain.pointer(ev("move", -1));
+    expect(got).toEqual(["handles:down", "handles:move", "handles:up", "handles:move"]);
     // the tool changed in the middle of a drag: the drag is called off
     const cancel = vi.fn();
     chain.handles = { pointer: (e: ToolPointer) => e.type === "down", cancel } as never;
@@ -272,6 +280,28 @@ describe("a drag in the main 3D (Д-01)", () => {
     expect(layers.has(HANDLES_KEY)).toBe(false);
     s.dispose();
     expect(handles).toBeNull();
+  });
+
+  it("while a tool of the editor is set the handles are not lit and leave its cursor alone", () => {
+    const s = new SwathScene(scene, { labels: () => labels, run: vi.fn(async () => true) });
+    swathsStore.set({ selected: 5 });
+    const chain = new ToolChain();
+    chain.handles = s.handles;
+    const ring = screen(pointAt(of(handlesOf(X, C, HALF), "azimuth"), 200));
+    chain.pointer(at("move", ring));
+    expect(canvas.style.cursor).toBe("grab");
+    // Scene.setTool: the tool, the chain reset, the tool's cursor
+    chain.tool = { pointer: () => false };
+    chain.reset();
+    canvas.style.cursor = "crosshair";
+    expect(s.handles.stats().shown.every((h) => !h.lit)).toBe(true);
+    chain.pointer(at("move", ring));
+    chain.pointer(at("move", { x: 5, y: 5 }));
+    chain.pointer(at("move", ring));
+    expect(canvas.style.cursor).toBe("crosshair");
+    expect(s.handles.stats().shown.every((h) => !h.lit)).toBe(true);
+    expect(chain.pointer(at("down", ring))).toBe(false); // the press is the scene's (or the tool's)
+    s.dispose();
   });
 
   it("turns the cuboid every move without a request; the release runs stats.swath once", async () => {

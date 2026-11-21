@@ -57,10 +57,11 @@ export function watchHost(host: HTMLElement, onResize: () => void, onTheme: () =
 }
 
 /**
- * The pointer of the 3D view shared by two takers (ADR 0015 §5, ADR 0019 §6): the tool of the string editor first,
- * then the handles of a swath (Д-01); what neither takes is the scene's (turning the view, `T`, a click on a
- * collar — `ToolInput`). A press taken belongs to its taker until the release and the click after it; a double
- * click — to the first that takes it; moves without a button (hover) and leaving the canvas go to both. With neither set it takes nothing: the old input.
+ * The pointer of the 3D view shared by two takers (ADR 0015 §5, ADR 0019 §6): the tool of the string editor, or
+ * — while there is none — the handles of a swath (Д-01); what it does not take is the scene's (turning the view,
+ * `T`, a click on a collar — `ToolInput`). While a tool is set the handles get nothing: not lit, the cursor is the
+ * tool's (`Scene.setTool`). A press taken belongs to its taker until the release and the click after it. With
+ * neither set it takes nothing: the old input.
  */
 export class ToolChain implements ToolHandler {
   /** the tool of the string editor (`Scene.setTool`) */
@@ -69,15 +70,20 @@ export class ToolChain implements ToolHandler {
   handles: ToolHandler | null = null;
   private taker: (ToolHandler & { cancel?(): void }) | null = null;
 
-  /** The tool changed (`ToolInput.setTool` drops the press): a drag in progress is called off. */
+  /**
+   * The tool changed (`ToolInput.setTool` drops the press): a drag in progress is called off, the handles let go of
+   * the hover and its cursor (before `Scene.setTool` sets the tool's).
+   */
   reset(): void {
     const t = this.taker;
     this.taker = null;
     t?.cancel?.();
+    this.handles?.pointer({ type: "leave", x: 0, y: 0, clientX: 0, clientY: 0, button: -1, shift: false, ctrl: false });
   }
 
   pointer(e: ToolPointer): boolean {
-    const both = [this.tool, this.handles].filter((x): x is ToolHandler => x !== null);
+    const one = this.tool ?? this.handles;
+    const both = one ? [one] : [];
     switch (e.type) {
       case "down":
         this.taker = both.find((t) => t.pointer(e)) ?? null;
