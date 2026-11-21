@@ -12,9 +12,10 @@
     tables (by name) and wireframes (by name and geometry); 404 `result_not_found` (another op too), 409 `source_gone`,
     `result_busy`, `dependents_lost` {lost}, `column_exists`.
 
-A job kind not in this build yet (15.11–15.12) — 422 `not_ready`. The params of a job: {"body": the canonical body
-(`spec.body`) with `replace`, "rows": rows read (memory), "rebuild": result id | absent}. The previews and
-`/orientation/plane` come with their jobs (`routes_preview`, 15.11–15.13). Plain `def` routes run in the thread pool.
+`POST /tt` starts `intercept.tt` (`jobs.py`); a job kind not registered in this build (`intercept.run` until 15.12)
+— 422 `not_ready`. The params of a job: {"body": the canonical body (`spec.body`) with `replace`, "rows": rows read
+(memory), "rebuild": result id | absent}. The previews (`POST /tt/preview`; `/run/preview` — 15.12) are
+`routes_preview`, included here; `/orientation/plane` — 15.13. Plain `def` routes run in the thread pool.
 """
 
 from __future__ import annotations
@@ -32,7 +33,10 @@ from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
+from .routes_preview import router as preview_router
+
 router = APIRouter(prefix="/intercepts")
+router.include_router(preview_router)
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
 Payload = Annotated[dict[str, Any], Body()]
