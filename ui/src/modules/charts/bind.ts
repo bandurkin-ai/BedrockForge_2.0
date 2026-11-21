@@ -5,12 +5,15 @@
  * the number of samples, mean, median, CV. A kind is bound once its window is in `CHART_WINDOWS` — until then
  * its command stays unavailable with the stage (`commands.ts`).
  */
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 import type { App } from "../../shell/app";
 import type { CommandContext, CommandSource } from "../../shell/commands";
 import { needProject, noted, refusal, viewport } from "../../shell/objectRun";
 import { openWindow, type FloatWin } from "../../shell/windows";
 import { tablesStore } from "../tables/state";
+import { histogramRequest, histogramSummary } from "../../charts/histogram/model";
+import { HistogramWindow } from "../../charts/histogram/HistogramWindow";
+import { computeHistogram, defaultField, loadFields } from "./api";
 import { CHART_WINDOW_PREFIX } from "./commands";
 import { chartName, isChartKind, settingsFromArgs, windowTitle, type ChartKind, type SettingsOf } from "./settings";
 
@@ -30,8 +33,29 @@ export interface ChartWindowSpec<K extends ChartKind = ChartKind> {
   prepare?: (settings: SettingsOf[K]) => Promise<SettingsOf[K]>;
 }
 
+/** The first component of the table when no field is given (no answer of the core — the window tells why). */
+async function withDefaultField<S extends { set_id: number; table: string | null; field: string | null }>(s: S): Promise<S> {
+  if (s.field) return s;
+  try {
+    const f = await loadFields(s.set_id, s.table);
+    return { ...s, table: s.table ?? f.table, field: defaultField(f) };
+  } catch {
+    return s;
+  }
+}
+
 /** The chart windows made so far; a kind not here keeps its command unavailable. */
-export const CHART_WINDOWS: { [K in ChartKind]?: ChartWindowSpec<K> } = {};
+export const CHART_WINDOWS: { [K in ChartKind]?: ChartWindowSpec<K> } = {
+  histogram: {
+    render: (p) => createElement(HistogramWindow, p),
+    prepare: withDefaultField,
+    summary: async (s) => {
+      const body = histogramRequest(s);
+      if (!body) throw refusal(s.field ? "bad_param" : "field_not_found", s.field ? "Не задано поле веса." : "В таблице нет числовых полей.", s.field ? "Укажите weight_field или другой вес." : "Укажите таблицу с пробами и поле.");
+      return histogramSummary(chartName("histogram", s), await computeHistogram(body));
+    },
+  },
+};
 
 export const chartWindowKind = (kind: ChartKind): string => `${CHART_WINDOW_PREFIX}${kind}`;
 

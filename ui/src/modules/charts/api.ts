@@ -114,7 +114,8 @@ export interface HistogramResult {
   conventions: string;
 }
 
-export const computeHistogram = (settings: HistogramSettings): Promise<HistogramResult> => api.post<HistogramResult>("/stats/histogram", settings);
+/** Body — the settings without `view` (the core ignores `view` of stored settings too). */
+export const computeHistogram = (body: Omit<HistogramSettings, "view">): Promise<HistogramResult> => api.post<HistogramResult>("/stats/histogram", body);
 
 // ---- saved charts: /charts (ADR 0019 §2, §10) ----
 
