@@ -191,6 +191,18 @@ def test_pdf_not_available_and_save(qc, tmp_path: Path) -> None:  # type: ignore
     one = make_file(qc, rid)
     two = make_file(qc, rid)
     assert one["sha256"] == two["sha256"]  # the same report — the same bytes
+    # 14.25: no reference — «не оценён» (not the fill of «норма»); the seed and the class of a bias — text;
+    # the status of a batch by any element
+    wb = openpyxl.load_workbook(book_path(qc, rid))
+    head = [c.value for c in wb["Стандарты"][1]]
+    row = wb["Стандарты"][2]
+    assert row[head.index("Состояние")].value == "no_reference" and row[0].fill.fgColor.rgb == "FFF4F5F7"
+    params = {r[0].value: r[1].value for r in wb["Параметры"].iter_rows(min_row=2) if r[0].value}
+    assert params["Зерно"] == "12345" and params["seed"] == "12345"
+    batches = wb["Партии"]
+    assert batches.cell(1, 13).value == "Статус по любому элементу"
+    assert {batches.cell(k, 13).value for k in range(2, batches.max_row + 1)} <= set(rx.STATUS.values())
+    assert rx._bias_class(1) == "внимание" and rx._bias_class(None) is None
 
 
 @pytest.mark.windows

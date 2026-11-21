@@ -2,18 +2,21 @@
 
     write(path, recs, inputs, summary, images, tick=None, limit=MAX_LINES)
 
-Sheets, in this order: «Сводка», «Стандарты», «Бланки», «Дубликаты», «Внешний контроль», «Партии», «Параметры».
-A sheet of data: the table by groups (every element), an empty line, the table by samples (or pairs); the
-pictures of its section — a column on the right of the tables. The tables by samples are computed again by the
-same kernels over the records and inputs of the report (`calc.run`, `samples=True`): the numbers are those of the
-API in full float64 precision (a missing value — an empty cell, never 0); a sample is named by its SAMPLE_ID.
-A table longer than a sheet (`limit` lines, 1 048 575 by default) goes on «‹имя› (2)», «(3)» … with its header
-again. Text that starts like a formula gets «'» (`Book(guard=True)`). Statuses — text; the lines of the tables by
-groups are filled with the brand tones of their status (the tables by samples are not: a fill per cell would
-need a line at a time — 12 s a million). «Параметры» (thresholds, types, DL, the CRM rows used, the filter,
-hashes, versions, seed, time) goes last: the shared strings of the sheets before it do not depend on the name of
-the data or the time, so the XML of the data sheets of a report by a filter and of one over the records taken by
-that filter are equal byte for byte (Т8.4-8). «Дубликаты»: a line per element and type, the precision of
+Sheets, in this order: «Сводка», «Стандарты», «Бланки», «Дубликаты», «Внешний контроль», «Партии», «Параметры». A
+sheet of data: the table by groups (every element), an empty line, the table by samples (or pairs); the pictures of
+its section — a column on the right of the tables. The tables by samples are computed again by the same kernels over
+the records and inputs of the report (`calc.run`, `samples=True`): the numbers are those of the API in full float64
+precision (a missing value — an empty cell, never 0); a sample is named by its SAMPLE_ID. A table longer than a
+sheet (`limit` lines, 1 048 575 by default) goes on «‹имя› (2)», «(3)» … with its header again. Text that starts
+like a formula gets «'» (`Book(guard=True)`). Statuses, the class of a bias and the seed — text; the lines of the
+tables by groups are filled with the brand tones of their status («не оценён» — a group without a reference, without
+assessed samples, a laboratory of blanks with nothing assessed); the tables by samples are not (a fill per cell
+would need a line at a time — 12 s a million). The answers of an element go into numpy columns as soon as it is
+computed (`gather`): the lists of one element live at a time, SAMPLE_ID becomes text a chunk at a time. «Партии»
+also has the status of a batch by any element. «Параметры» (thresholds, types, DL, the CRM rows used, the filter,
+hashes, versions, seed, time) goes last: the shared strings of the sheets before it do not depend on the name of the
+data or the time, so the XML of the data sheets of a report by a filter and of one over the records taken by that
+filter are equal byte for byte (Т8.4-8). «Дубликаты»: a line per element and type, the precision of
 Thompson–Howarth, the pairs; «Внешний контроль»: a line per pair of laboratories, the pairs with their group.
 """
 
@@ -35,6 +38,7 @@ MAX_LINES = MAX_ROWS - 1
 SHEETS = ("Сводка", "Стандарты", "Бланки", "Дубликаты", "Внешний контроль", "Партии", "Параметры")
 STATUS = {0: "норма", 1: "предупреждение", 2: "отказ", -1: "не оценён"}
 RULES = {1: "пара", 2: "серия", 4: "подмена"}
+BIAS = {0: "норма", 1: "внимание", 2: "недопустимо"}  # the class of the bias of a CRM (5 and 10 %)
 WARN_FILL = "#F4B13A"
 DAY_MS = 86_400_000
 PIC_GAP = 1
@@ -44,22 +48,64 @@ Tick = Callable[[float, str], None]
 
 # --- the answers -----------------------------------------------------------------------------------------------------
 
+_INTS = frozenset({"group", "row", "status", "rule"})
+_TEXTS = frozenset({"batch"})
+
+
+def _compact(samples: Mapping[str, Any] | None) -> dict[str, np.ndarray]:
+    """The table by samples of an answer as numpy columns: the lists of the answer are dropped at once."""
+    out: dict[str, np.ndarray] = {}
+    for key, values in (samples or {}).items():
+        if key in _INTS:
+            out[key] = np.asarray(values, dtype=np.int64)
+        elif key in _TEXTS:
+            out[key] = np.asarray(values, dtype=object)
+        elif key == "swap":
+            out[key] = np.asarray([", ".join(x) if x else None for x in values], dtype=object)
+        else:
+            out[key] = np.array(values, dtype=np.float64)  # None → NaN: an empty cell
+    return out
+
+
+def _batch_columns(rows: Sequence[Mapping[str, Any]]) -> dict[str, np.ndarray]:
+    out: dict[str, np.ndarray] = {k: np.asarray([b[k] for b in rows], dtype=object) for k in ("lab", "batch")}
+    for k in ("date_from", "date_to"):
+        out[k] = _iso_dates([b[k] for b in rows])
+    for k in ("n", "crm", "blanks", "crm_fail", "blank_fail", "assessed", "status"):
+        out[k] = np.asarray([b[k] for b in rows], dtype=np.int64)
+    return out
+
 
 def gather(recs: Any, inputs: Mapping[str, Any], tick: Tick | None = None) -> dict[str, dict[str, Any]]:
-    """Every section of every element of the report with its tables by samples."""
+    """Every section of every element of the report; the tables by samples (and of batches) of each element go
+    into numpy columns as soon as it is computed — the lists of one element live at a time."""
+    from .report import any_status
+
     out: dict[str, dict[str, Any]] = {}
+    tables: list[list[dict[str, Any]]] = []
     elements = list(inputs["elements"])
     for i, element in enumerate(elements):
         if tick is not None:
             tick(i / max(len(elements), 1), f"Расчёт: {element}")
         recs.load(calc.columns_of(recs.schema, element))
         ctx = calc.context(recs, inputs["config"], inputs["crm"], element, inputs.get("filter"))
-        part = {"summary": calc.run(ctx, "summary"), "standards": calc.run(ctx, "standards", samples=True),
-                "blanks": calc.run(ctx, "blanks", samples=True), "batches": calc.run(ctx, "batches")}  # fmt: skip
-        for kind in DUP_KINDS:
-            part[f"duplicates:{kind}"] = calc.run(ctx, "duplicates", kind=kind, samples=True)
-        part["external"] = calc.run(ctx, "external", samples=True)
+        part: dict[str, Any] = {"summary": calc.run(ctx, "summary")}
+        runs: list[tuple[str, str, dict[str, Any]]] = [("standards", "standards", {}), ("blanks", "blanks", {})]
+        runs += [(f"duplicates:{k}", "duplicates", {"kind": k}) for k in DUP_KINDS]
+        runs.append(("external", "external", {}))
+        for key, section, params in runs:
+            answer = calc.run(ctx, section, samples=True, **params)
+            answer["samples"] = _compact(answer.get("samples"))
+            part[key] = answer
+        rows = calc.run(ctx, "batches")["batches"]
+        tables.append(rows)
+        part["batches"] = _batch_columns(rows)
         out[element] = part
+    status = any_status(tables)
+    del tables
+    for part in out.values():
+        cols = part["batches"]
+        cols["any"] = np.asarray([status[k] for k in zip(cols["lab"], cols["batch"], strict=True)], dtype=np.int64)
     return out
 
 
@@ -70,9 +116,9 @@ def _floats(values: Sequence[Any]) -> np.ndarray:
     return np.array([np.nan if v is None else v for v in values], dtype=np.float64)
 
 
-def _dates(ms: Sequence[Any]) -> np.ndarray:
-    """ms since 1970 (None — no date) → datetime64: days when every date is midnight, else ms."""
-    x = _floats(ms)
+def _dates(ms: np.ndarray) -> np.ndarray:
+    """ms since 1970 (NaN — no date) → datetime64: days when every date is midnight, else ms."""
+    x = np.asarray(ms, dtype=np.float64)
     ok = ~np.isnan(x)
     whole = bool(np.all(np.mod(x[ok], DAY_MS) == 0))
     out = np.full(len(x), np.datetime64("NaT"), dtype="datetime64[ms]")
@@ -84,21 +130,55 @@ def _iso_dates(values: Sequence[Any]) -> np.ndarray:
     return np.array([np.datetime64(v) if v else np.datetime64("NaT") for v in values], dtype="datetime64[D]")
 
 
-def _texts(values: Sequence[Any]) -> list[Any]:
-    return [None if v is None else str(v) for v in values]
-
-
-def _status(values: Sequence[int]) -> list[str]:
-    return [STATUS.get(int(v), str(v)) for v in values]
+def _status(values: np.ndarray) -> np.ndarray:
+    """The texts of statuses (−1, 0, 1, 2) — references to four strings, not a string per row."""
+    names = np.array([STATUS[-1], STATUS[0], STATUS[1], STATUS[2]], dtype=object)
+    return names[np.asarray(values, dtype=np.int64) + 1]  # type: ignore[no-any-return]
 
 
 def _yes(value: Any) -> str | None:
     return None if value is None else ("да" if value else "нет")
 
 
-def _rule(bits: int) -> str | None:
-    names = [t for b, t in RULES.items() if bits & b]
-    return ", ".join(names) or None
+def _rules(bits: np.ndarray) -> np.ndarray:
+    names = np.array([", ".join(t for b, t in RULES.items() if k & b) or None for k in range(8)], dtype=object)
+    return names[np.asarray(bits, dtype=np.int64) & 7]  # type: ignore[no-any-return]
+
+
+def _join(parts: Sequence[np.ndarray], dtype: Any = None) -> np.ndarray:
+    if not parts:
+        return np.empty(0, dtype=dtype or object)
+    return np.concatenate(parts) if dtype is None else np.concatenate(parts).astype(dtype)
+
+
+class _Ids:
+    """The SAMPLE_ID of rows as `Sheet.table` takes a column: sliced, turned into text a chunk at a time."""
+
+    def __init__(self, ids: Any, rows: np.ndarray) -> None:
+        self.ids, self.rows = ids, rows
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __getitem__(self, part: slice) -> list[Any]:
+        rows = self.rows[part]
+        return self.ids.take(rows).to_pylist() if len(rows) else []  # type: ignore[no-any-return]
+
+
+def _tone_of_standard(g: Mapping[str, Any]) -> int:
+    if g["state"] != "ok" or g["norm"] + g["warn"] + g["fail"] == 0:
+        return -1
+    return 2 if g["fail"] else (1 if g["warn"] else 0)
+
+
+def _tone_of_blanks(g: Mapping[str, Any]) -> int:
+    if g["norm"] + g["fail"] == 0:
+        return -1
+    return 2 if g["fail"] else 0
+
+
+def _bias_class(value: Any) -> str | None:
+    return None if value is None else BIAS.get(int(value), str(value))
 
 
 # --- sheets that go on ------------------------------------------------------------------------------------------
@@ -155,15 +235,12 @@ class _Sheets:
 class _Report:
     def __init__(self, book: Book, recs: Any, answers: dict[str, dict[str, Any]], limit: int) -> None:
         self.book, self.recs, self.answers, self.limit = book, recs, answers, limit
-        self.ids = recs.ids(r.SAMPLE_ID)
+        self.ids = recs.ids(r.SAMPLE_ID)  # pyarrow: turned into text a chunk at a time (`_Ids`)
         self.date = book.style(fmt=DATE)
         self.stamp = book.style(fmt=DATETIME)
         self.pct = book.style(fmt=num_fmt(2, "units"))
         self.fills = {0: tone_style("pass"), 1: book.style(fill=WARN_FILL), 2: tone_style("reject"),
                       -1: tone_style("none")}  # fmt: skip
-
-    def sample_ids(self, rows: Sequence[int]) -> list[Any]:
-        return self.ids.take(np.asarray(rows, dtype=np.int64)).to_pylist() if len(rows) else []
 
     def open(self, name: str, widths: Sequence[float], pics: Sequence[bytes], pic_col: int) -> _Sheets:
         out = _Sheets(self.book, name, widths, self.limit)
@@ -217,35 +294,36 @@ class _Report:
         sh.row(head, style=HEAD)
         for element, part in self.answers.items():
             for g in part["standards"]["groups"]:
-                tone = 2 if g["fail"] else (1 if g["warn"] else 0)
+                tone = _tone_of_standard(g)
                 st = [self.fills[tone]] * len(head)
                 st[11] = self.book.style(fmt=num_fmt(2, "units"), fill=None, base=self.fills[tone])
                 sh.row([element, g["crm"], g["lab"], g["state"], g["n"], g["missing"], g["mu"], g["sd"], g["unit"],
-                        g["mean"], g["std"], g["bias"], g["bias_class"], g["norm"], g["warn"], g["fail"],
+                        g["mean"], g["std"], g["bias"], _bias_class(g["bias_class"]), g["norm"], g["warn"], g["fail"],
                         g["pair_fails"], g["run_flags"], g["swaps"]], style=st)  # fmt: skip
         sh.row([])
-        cols: list[list[Any]] = [[] for _ in range(13)]
+        cols: list[list[np.ndarray]] = [[] for _ in range(13)]
         for element, part in self.answers.items():
             a = part["standards"]
-            s, groups = a.get("samples") or {}, a["groups"]
-            g = s.get("group", [])
-            cols[0] += [element] * len(g)
-            cols[1] += [groups[i]["crm"] for i in g]
-            cols[2] += [groups[i]["lab"] for i in g]
-            cols[3] += self.sample_ids(s.get("row", []))
-            cols[4] += list(s.get("date", []))
-            cols[5] += list(s.get("seq", []))
-            cols[6] += list(s.get("batch", []))
-            cols[7] += list(s.get("x", []))
-            cols[8] += list(s.get("z", []))
-            cols[9] += _status(s.get("status", []))
-            cols[10] += [_rule(b) for b in s.get("rule", [])]
-            cols[11] += list(s.get("ma", []))
-            cols[12] += [", ".join(x) if x else None for x in s.get("swap", [])]
+            s, groups = a["samples"], a["groups"]
+            if "group" not in s:
+                continue
+            g = s["group"]
+            cols[0].append(np.full(len(g), element, dtype=object))
+            cols[1].append(np.asarray([x["crm"] for x in groups], dtype=object)[g])
+            cols[2].append(np.asarray([x["lab"] for x in groups], dtype=object)[g])
+            cols[3].append(s["row"])
+            cols[4].append(s["date"])
+            for j, key in enumerate(("seq", "batch", "x", "z"), start=5):
+                cols[j].append(s[key])
+            cols[9].append(_status(s["status"]))
+            cols[10].append(_rules(s["rule"]))
+            cols[11].append(s["ma"])
+            cols[12].append(s["swap"])
         header = ["Элемент", "CRM", "Лаборатория", "SAMPLE_ID", "Дата", "SEQ", "Партия", "Значение", "z", "Статус",
                   "Правило", "Скользящее среднее", "Подмена на"]  # fmt: skip
-        data = [cols[0], cols[1], _texts(cols[2]), cols[3], _dates(cols[4]), _floats(cols[5]), cols[6],
-                _floats(cols[7]), _floats(cols[8]), cols[9], cols[10], _floats(cols[11]), cols[12]]  # fmt: skip
+        data: list[Any] = [_join(c) for c in cols]
+        data[3] = _Ids(self.ids, _join(cols[3], np.int64))
+        data[4] = _dates(_join(cols[4], np.float64))
         sh.table(header, data)
         sh.close()
 
@@ -257,26 +335,27 @@ class _Report:
         sh.row(head, style=HEAD)
         for element, part in self.answers.items():
             for g in part["blanks"]["groups"]:
-                tone = 2 if g["fail"] else (-1 if g["not_assessed"] and not g["norm"] else 0)
                 c = g.get("carryover") or {}
                 sh.row([element, g["lab"], g["n"], g["missing"], g["dl"], g["limit"], "да" if g["mixed"] else "нет",
                         g["norm"], g["fail"], g["not_assessed"], c.get("n"), c.get("pearson")],
-                       style=[self.fills[tone]] * len(head))  # fmt: skip
+                       style=[self.fills[_tone_of_blanks(g)]] * len(head))  # fmt: skip
         sh.row([])
-        cols: list[list[Any]] = [[] for _ in range(10)]
+        cols: list[list[np.ndarray]] = [[] for _ in range(10)]
         for element, part in self.answers.items():
             a = part["blanks"]
-            s, groups = a.get("samples") or {}, a["groups"]
-            g = s.get("group", [])
-            cols[0] += [element] * len(g)
-            cols[1] += [groups[i]["lab"] for i in g]
-            cols[2] += self.sample_ids(s.get("row", []))
-            for j, key in enumerate(("date", "seq", "batch", "x", "status", "prev", "limit"), start=3):
-                cols[j] += list(s.get(key, []))
+            s, groups = a["samples"], a["groups"]
+            if "group" not in s:
+                continue
+            g = s["group"]
+            cols[0].append(np.full(len(g), element, dtype=object))
+            cols[1].append(np.asarray([x["lab"] for x in groups], dtype=object)[g])
+            for j, key in enumerate(("row", "date", "seq", "batch", "x", "status", "prev", "limit"), start=2):
+                cols[j].append(_status(s[key]) if key == "status" else s[key])
         header = ["Элемент", "Лаборатория", "SAMPLE_ID", "Дата", "SEQ", "Партия", "Значение", "Статус",
                   "Предыдущая проба", "Порог"]  # fmt: skip
-        data = [cols[0], _texts(cols[1]), cols[2], _dates(cols[3]), _floats(cols[4]), cols[5], _floats(cols[6]),
-                _status(cols[7]), _floats(cols[8]), _floats(cols[9])]  # fmt: skip
+        data: list[Any] = [_join(c) for c in cols]
+        data[2] = _Ids(self.ids, _join(cols[2], np.int64))
+        data[3] = _dates(_join(cols[3], np.float64))
         sh.table(header, data)
         sh.close()
 
@@ -305,17 +384,20 @@ class _Report:
             for pc in (a.get("th") or {}).get("precision") or []:
                 sh.row([element, kind, pc.get("c"), pc.get("q"), pc.get("p")])
         sh.row([])
-        cols: list[list[Any]] = [[] for _ in range(9)]
+        cols: list[list[np.ndarray]] = [[] for _ in range(9)]
         for element, kind, a in found:
-            smp = a.get("samples") or {}
-            n = len(smp.get("row", []))
-            cols[0] += [element] * n
-            cols[1] += [kind] * n
-            cols[2] += self.sample_ids(smp.get("row", []))
-            for j, key in enumerate(("x1", "x2", "mean", "hard", "hrd", "ampd"), start=3):
-                cols[j] += list(smp.get(key, []))
+            s = a["samples"]
+            if "row" not in s:
+                continue
+            n = len(s["row"])
+            cols[0].append(np.full(n, element, dtype=object))
+            cols[1].append(np.full(n, kind, dtype=object))
+            for j, key in enumerate(("row", "x1", "x2", "mean", "hard", "hrd", "ampd"), start=2):
+                cols[j].append(s[key])
         header = ["Элемент", "Тип", "SAMPLE_ID", "Исходная", "Дубликат", "Среднее", "HARD, %", "HRD, %", "AMPD, %"]
-        sh.table(header, [cols[0], cols[1], cols[2], *(_floats(c) for c in cols[3:])])
+        data: list[Any] = [_join(c) for c in cols]
+        data[2] = _Ids(self.ids, _join(cols[2], np.int64))
+        sh.table(header, data)
         sh.close()
 
     # «Внешний контроль»
@@ -333,45 +415,53 @@ class _Report:
                 tone = -1 if g.get("passed") is None else (0 if g["passed"] else 2)
                 st = [self.fills[tone]] * len(head)
                 st[7] = self.book.style(fmt=num_fmt(2, "units"), base=self.fills[tone])
+                seed = rma.get("seed")
                 sh.row([element, g.get("lab_main"), g.get("lab_check"), g.get("pairs"), g.get("used"),
                         g.get("mean_main"), g.get("mean_check"), g.get("bias"), g.get("t"), g.get("p"), g.get("df"),
                         g.get("pearson"), rma.get("a"), rma.get("b"), a_ci[0], a_ci[1], b_ci[0], b_ci[1],
-                        rma.get("n_boot"), rma.get("seed"), g.get("share10"), g.get("share20"), g.get("share30"),
-                        g.get("share_at_limit"), _yes(g.get("passed")), "; ".join(g.get("notes") or []) or None],
-                       style=st)  # fmt: skip
+                        rma.get("n_boot"), None if seed is None else str(seed), g.get("share10"), g.get("share20"),
+                        g.get("share30"), g.get("share_at_limit"), _yes(g.get("passed")),
+                        "; ".join(g.get("notes") or []) or None], style=st)  # fmt: skip
         sh.row([])
-        cols: list[list[Any]] = [[] for _ in range(10)]
+        cols: list[list[np.ndarray]] = [[] for _ in range(10)]
         for element, part in self.answers.items():
             a = part["external"]
-            smp, groups = a.get("samples") or {}, a.get("groups", [])
-            g = smp.get("group", [])
-            cols[0] += [element] * len(g)
-            cols[1] += [groups[i].get("lab_main") for i in g]
-            cols[2] += [groups[i].get("lab_check") for i in g]
-            cols[3] += self.sample_ids(smp.get("row", []))
-            for j, key in enumerate(("x1", "x2", "mean", "hard", "hrd", "ampd"), start=4):
-                cols[j] += list(smp.get(key, []))
+            s, groups = a["samples"], a.get("groups", [])
+            if "group" not in s:
+                continue
+            g = s["group"]
+            cols[0].append(np.full(len(g), element, dtype=object))
+            cols[1].append(np.asarray([x.get("lab_main") for x in groups], dtype=object)[g])
+            cols[2].append(np.asarray([x.get("lab_check") for x in groups], dtype=object)[g])
+            for j, key in enumerate(("row", "x1", "x2", "mean", "hard", "hrd", "ampd"), start=3):
+                cols[j].append(s[key])
         header = ["Элемент", "Основная", "Контрольная", "SAMPLE_ID", "Основная лаборатория", "Контрольная лаборатория",
                   "Среднее", "HARD, %", "HRD, %", "AMPD, %"]  # fmt: skip
-        sh.table(header, [cols[0], _texts(cols[1]), _texts(cols[2]), cols[3], *(_floats(c) for c in cols[4:])])
+        data: list[Any] = [_join(c) for c in cols]
+        data[3] = _Ids(self.ids, _join(cols[3], np.int64))
+        sh.table(header, data)
         sh.close()
 
     # «Партии»
     def batches(self) -> None:
-        sh = _Sheets(self.book, "Партии", [10, 12, 12, 12, 12] + [10] * 7, self.limit)
-        cols: list[list[Any]] = [[] for _ in range(12)]
-        keys = ("lab", "batch", "date_from", "date_to", "n", "crm", "blanks", "crm_fail", "blank_fail", "assessed",
-                "status")  # fmt: skip
+        sh = _Sheets(self.book, "Партии", [10, 12, 12, 12, 12] + [10] * 8, self.limit)
+        keys = ("lab", "batch", "date_from", "date_to", "n", "crm", "blanks", "crm_fail", "blank_fail", "assessed")
+        cols: list[list[np.ndarray]] = [[] for _ in range(len(keys) + 3)]
         for element, part in self.answers.items():
-            rows = part["batches"]["batches"]
-            cols[0] += [element] * len(rows)
+            b = part["batches"]
+            cols[0].append(np.full(len(b["lab"]), element, dtype=object))
             for j, key in enumerate(keys, start=1):
-                cols[j] += [b[key] for b in rows]
+                cols[j].append(b[key])
+            cols[-2].append(_status(b["status"]))
+            cols[-1].append(_status(b["any"]))
         header = ["Элемент", "Лаборатория", "Партия", "Первая дата", "Последняя дата", "Проб", "CRM", "Бланков",
-                  "Отказов CRM", "Отказов бланков", "Оценено", "Статус"]  # fmt: skip
-        ints = [np.asarray(c, dtype=np.int64) for c in cols[5:11]]
-        sh.table(header, [cols[0], _texts(cols[1]), cols[2], _iso_dates(cols[3]), _iso_dates(cols[4]), *ints,
-                          _status(cols[11])])  # fmt: skip
+                  "Отказов CRM", "Отказов бланков", "Оценено", "Статус", "Статус по любому элементу"]  # fmt: skip
+        data: list[Any] = [_join(c) for c in cols]
+        for j in (3, 4):
+            data[j] = _join(cols[j], "datetime64[D]")
+        for j in range(5, 11):
+            data[j] = _join(cols[j], np.int64)
+        sh.table(header, data)
         sh.close()
 
     # «Параметры»
@@ -386,7 +476,7 @@ class _Report:
                 ("Построен", inputs.get("created_at")),
                 ("Элементы", ", ".join(inputs["elements"])),
                 ("Фильтр", json.dumps(inputs.get("filter"), ensure_ascii=False)),
-                ("Зерно", inputs["config"]["limits"].get("seed")),
+                ("Зерно", str(inputs["config"]["limits"].get("seed"))),
                 ("Пустой код — ORIG", "да" if inputs["config"].get("empty_is_orig") else "нет"),
             ):
                 sh.row([label, value])  # fmt: skip
@@ -395,7 +485,7 @@ class _Report:
             sh.row([])
             sh.row(["Порог", "Значение"], style=HEAD)
             for k, v in inputs["config"]["limits"].items():
-                sh.row([k, v])
+                sh.row([k, str(v) if k == "seed" else v])  # a seed past 2**53 is no float of a cell
             sh.row([])
             sh.row(["Код TYPE", "Тип"], style=HEAD)
             for code, kind in sorted(inputs["config"]["types"].items()):
