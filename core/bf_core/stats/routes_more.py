@@ -96,7 +96,20 @@ def _domain(project: Any, set_id: int, t: Any, infos: list[Any], settings: dict[
     return dt, str(rc.field_of(dt, dinfos, name, "domain", ("text",)).name)
 
 
-def _domain_codes(project: Any, set_id: int, cols: Any, dom: tuple[Any, str] | None) -> tuple[Any, Any, int]:
+def _beside(project: Any, cols: Any, whole: bool, other: Any, what: str, build: Any) -> Any:
+    """`build()` — what the rows of `cols` take from the table of the columns `other` (a domain, Y by the sample
+    key); for a whole table it is kept with the cached columns (`source.COLUMNS`), by the revisions of both: an
+    edit of either is a miss. A part of the holes is computed every time."""
+    from . import source
+
+    if not whole:
+        return build()
+    t, o = cols.table, other.table
+    return source.COLUMNS.get((project.uid, t.id, t.token, t.rev, f"\0{what} {o.set_id} {o.id}", o.token, o.rev), build)
+
+
+def _domain_codes(project: Any, set_id: int, cols: Any, dom: tuple[Any, str] | None,
+                  whole: bool) -> tuple[Any, Any, int]:  # fmt: skip
     """(codes for every row of `cols`, labels, rows whose middle no interval of the other table covers)."""
     from . import source
 
@@ -106,8 +119,14 @@ def _domain_codes(project: Any, set_id: int, cols: Any, dom: tuple[Any, str] | N
     if dt.id == cols.table.id:
         codes, labels = cols.text(name)
         return codes, labels, 0
-    found = source.domain_at(cols, source.read(project, set_id, dt.id, [name]), name)
-    return found.codes, found.labels, found.outside
+    other = source.read(project, set_id, dt.id, [name])
+
+    def build() -> tuple[Any, list[str], int]:
+        found = source.domain_at(cols, other, name)
+        found.codes.flags.writeable = False
+        return found.codes, found.labels, found.outside
+
+    return _beside(project, cols, whole, other, f"domain {name}", build)  # type: ignore[no-any-return]
 
 
 # --- the charts by domains ---------------------------------------------------------------------------------
@@ -129,9 +148,10 @@ def _by_domain(project: Any, settings: dict[str, Any], decl: bool = False) -> di
     read = [field, source.LENGTH, *(n for n in (weight_field, decl_field) if n is not None)]
     if dom is not None and dom[0].id == t.id:
         read.append(dom[1])
-    cols = rc.only_holes(source.read(project, set_id, t.id, read), rc._holes(settings, "holes"))
+    holes = rc._holes(settings, "holes")
+    cols = rc.only_holes(source.read(project, set_id, t.id, read), holes)
     sel = select.select_sample(**cols.select_args(field, weight_field), flt=flt)
-    codes, labels, outside = _domain_codes(project, set_id, cols, dom)
+    codes, labels, outside = _domain_codes(project, set_id, cols, dom, not holes)
     return {
         "set_id": set_id, "field": field, "domain": None if dom is None else dom[1],
         "domain_table": None if dom is None or dom[0].id == t.id else dom[0].name, "domain_outside": outside,
@@ -272,13 +292,19 @@ def scatter_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     weight_field = _weight_field(t, infos, flt)
     color = _color_field(t, infos, settings)
     read = [x, source.LENGTH, *(n for n in (weight_field, color and color.name) if n), *([y] if same else [])]
-    cols = rc.only_holes(source.read(project, set_id, t.id, read), rc._holes(settings, "holes"))
+    holes = rc._holes(settings, "holes")
+    cols = rc.only_holes(source.read(project, set_id, t.id, read), holes)
     unmatched = None
     if same:
         yv = cols.number(y)
     else:
-        found = source.paired(cols, source.read(project, y_set, yt.id, [y]), y)
-        yv, unmatched = found.values, found.rows < 0
+        other = source.read(project, y_set, yt.id, [y])
+
+        def build() -> tuple[Any, Any]:
+            found = source.paired(cols, other, y)
+            return found.values, found.rows < 0
+
+        yv, unmatched = _beside(project, cols, not holes, other, f"paired {y}", build)
     args = cols.select_args(x, weight_field)
     w = select.sample_weights(flt.weight, args["length"], args["weight_values"])
     xs, ys, counts = _prepared(args["values"], yv, w, flt, unmatched)

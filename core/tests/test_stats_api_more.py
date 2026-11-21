@@ -148,6 +148,16 @@ def test_domain_of_another_table(rich) -> None:  # type: ignore[no-untyped-def]
     assert set(got["rows"][0]) >= {"label", "n", "length", "mean", "decl_mean", "median", "std", "cv", "min", "max",
                                    "p10", "p50", "p90"}  # fmt: skip
 
+    # kept beside the cached columns; the other table replaced — a miss
+    assert c.post(f"{S}/domains", json=body).json() == got
+    lc = source.read(project, set_id, "Литология", ["ZONE"])
+    one = dh.TableData(name="Литология", kind="interval", holes=[lc.holes[h] for h in lc.hole_of()],
+                       from_m=lc.from_m, to_m=lc.to_m, columns=[dh.ColumnSpec("ZONE", "text")],
+                       values=[["перв"] * lc.n])  # fmt: skip
+    dh.write_table(project.engine, set_id, one, job_id=None, tick=noop)
+    again = c.post(f"{S}/domains", json=body).json()
+    assert [row["label"] for row in again["rows"]] == ["перв"] + ([None] if again["counts"]["no_domain"] else [])
+
     # the field DECL_W of the table gives the declustered means
     r = c.post(f"{S}/domains", json=by_domain_body(set_id, weight="none"))
     assert r.status_code == 200, r.text

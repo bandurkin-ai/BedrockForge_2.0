@@ -1,6 +1,7 @@
 # Э13 — контракт API графиков для интерфейса (временная справка; удаляется в 13.38)
 
-Источник: ADR 0019 п. 9–10; ядро — `core/bf_core/stats/routes_charts.py` (13.15). Все пути — от `/api/v1`.
+Источник: ADR 0019 п. 9–10; ядро — `core/bf_core/stats/routes_charts.py` (13.15), `routes_more.py` (13.16; форма —
+`ui/src/modules/charts/apiMore.ts`). Все пути — от `/api/v1`.
 Неопределённое число в ответе — `null` (не NaN и не 0).
 
 ## Ошибки
@@ -10,7 +11,9 @@
 | Статус | code | Когда |
 |---|---|---|
 | 422 | `bad_param` + `param` | неверная настройка: `set_id`, `v`, `weight`, `weight_field`, `negatives`, `bottom_cut`, `top_cut`, `log`, `bins`, `bin_width`, `start`, `end`, `distribution`, `quantiles`, `y_field`, `holes`… |
-| 422 | `field_not_found` / `field_not_number` + `param` | поля нет в таблице / поле текстовое (`param`: `field`, `y_field`, `weight_field`) |
+| 422 | `field_not_found` / `field_not_number` / `field_not_text` + `param` | поля нет в таблице / поле текстовое / поле числовое (`param`: `field`, `y_field`, `weight_field`, `fields`, `x`, `y`, `a`, `b`, `c`, `domain`, `color`) |
+| 422 | `no_positive` (+ `param: "log"` у ящиков) | лог-шкала / лог-вероятностный без значений > 0 |
+| 422 | `too_many_domains` + `param` | > 300 доменов с пробами (`domain`) / значений текстового поля цвета (`color`) |
 | 422 | `no_values` | после отбора не осталось значений (подсказка называет причины) |
 | 422 | `too_many_bins` + `param` | больше 1000 бинов (`bins` или `bin_width`) |
 | 422 | `too_few_values`, `no_spread` | Q-Q: меньше двух значений (> 0 для логнормального) / нет разброса |
@@ -89,7 +92,92 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
 `distance`, `cut`, `weight`, `weight_field`}; `field_not_found` / `field_not_number` {`fields`, `weight_field`};
 `too_few_values` / `no_spread` {`fields`} — сообщение называет поля.
 
+## Графики 8.3 (13.16): общее
+
+`field` / `x` / `y` / `a` / `b` / `c`: `null` — первый компонент таблицы (иначе первое числовое, кроме `length`),
+уже занятые поля пропускаются (`y` после `x` той же таблицы; `a`, `b`, `c` — по порядку). `domain` — текстовое
+поле; `domain_table: null` — та же таблица, иначе другая интервальная таблица набора: домен пробы — интервал
+[FROM; TO), в который попадает её середина (`source.domain_at`; `domain_outside` — строки без такого интервала).
+`color` — числовое или текстовое поле той же таблицы (текстовое — ≤ 300 значений). `holes` — как у гистограммы.
+`row` — `dh_rows.id`. Коды домена другой таблицы и Y по ключу пробы хранятся в кеше колонок (по `rev` обеих таблиц).
+Счётчики по доменам `DomainCounts` = `counts` отбора + `no_domain` (+ `nonpositive_log` у ящиков и
+лог-вероятностного). Группа `role`: `domain`; `none` — строки без домена (`label: null`, последней); `all` — без
+поля доменов (одна группа, `label: null`).
+
+## `POST /stats/scatter`
+
+Тело: `v`, `set_id`, `table`, `x`, `y`, `y_set_id` (`null` — тот же набор), `y_table` (`null` — таблица X; иначе
+строки сопоставляются по ключу пробы «скважина, FROM, TO»; график двух наборов лежит в наборе X), `color`, `log_x`,
+`log_y` (`false`), `weight` (`length`), `weight_field`, `negatives` (`keep`), `exclude_zero`, `regression`
+(`ols` / `rma` / `weighted` / `none` — только вид, ядро считает все три), `holes`. Правила `negatives` и
+`exclude_zero` — к обоим полям (пара с исключённым значением не рисуется); отсечки к рассеянию не применяются.
+```
+{ set_id, y_set_id, x_field, y_field, color_field | null, log_x, log_y, weighted,
+  counts {rows, missing_x, missing_y, unmatched, bad_weight, negative, zero_excluded, nonpositive_log, used},
+  mode: "points" | "density",
+  // points (≤ 200 000 пар): x[], y[] (данные), row[], c[] | null, color | null
+  //   color: {kind: "number", min, max} | {kind: "text", labels[]} (c — индекс в labels, null — пусто)
+  // density (> 200 000): density {nx: 100, ny: 100, x: [lo, hi], y: [lo, hi] (данные), counts[iy·nx + ix]
+  //   (от левого нижнего угла; ячейки равны в пространстве осей), max}; c: null, color: null; ключей x/y/row нет
+  pearson | null, spearman | null, n, weight_sum, weighted_pearson | null,
+  fits {ols {a, b} | null, rma {a, b} | null, weighted {a, b} | null},   // y = a + b·x в пространстве осей
+  x_stats {mean, std, min, max}, y_stats {…},  // mean, std — без весов, в пространстве осей (log10 на лог-оси);
+                                               // min, max — в данных
+  conventions }
+```
+Счётчики делят строки: `rows = missing_x + unmatched + missing_y + bad_weight + zero_excluded (+ negative при
+"exclude") + nonpositive_log + used`; `unmatched` — строки с X без пробы того же ключа в таблице Y.
+
+## `POST /stats/box`
+
+Тело: общие ключи отбора + `field`, `domain`, `domain_table`, `log` (`false`), `holes`.
+```
+{ set_id, field, domain | null, domain_table | null, domain_outside, log, weighted,
+  counts {…counts, no_domain, nonpositive_log},
+  groups [{label | null, role, n, weight_sum, mean (взвешенное арифметическое), geometric_mean | null (log),
+           q1, median, q3, whisker_low, whisker_high, min, max, nonpositive, outliers[] (показанные),
+           outliers_low, outliers_high, outliers_total}],
+  outliers_shown, outliers_total, conventions }
+```
+На лог-шкале квартили и усы — по log10, в данных; `min`, `max` — по значениям > 0.
+
+## `POST /stats/probplot`
+
+Тело: как у ящиков без `log`.
+```
+{ set_id, field, domain | null, domain_table | null, domain_outside, weighted,
+  counts {…counts, no_domain, nonpositive_log},
+  series [{label | null, role, points [[value, P %]] (≤ 2000, крайние остаются), count (> 0), nonpositive,
+           thinned, r | null, stats {mean, median, cv | null, p90}}],
+  conventions }
+```
+`stats` — всех проб домена после отбора (с весами), не только > 0.
+
+## `POST /stats/domains`
+
+Тело: как у лог-вероятностного.
+```
+{ set_id, field, domain | null, domain_table | null, domain_outside, weighted,
+  counts {…counts, no_domain},
+  rows [{label | null, role, n, length, weight_sum, mean, decl_mean | null, median, std, cv | null, min, max, p10,
+         p50, p90}],
+  total {label: null, role: "all", …},           // «Итого», Σ n = counts.used
+  decl_field: "DECL_W" | null, decl_hint | null, notes[], conventions }
+```
+
+## `POST /stats/ternary`
+
+Тело: `v`, `set_id`, `table`, `a`, `b`, `c`, `color`, `holes`.
+```
+{ set_id, fields [a, b, c], color_field | null,
+  counts {rows, missing, nonpositive_sum (= negative + zero_sum: не рисуются), negative, zero_sum, used},
+  a[], b[], c[] (доли, a + b + c = 1), row[],          // ≤ 200 000; больше — равномерно прорежено по строкам
+  total (= counts.used), color_values[] | null (текст — индекс в labels, null — пусто), color | null,
+  conventions }
+```
+
 ## `POST /stats/chart/{chart_id}`
 
 Тело пустое. Расчёт сохранённого графика по его настройкам и текущим данным; набор — тот, в котором лежит
-график. Ответ — ответ его вида (как выше) + `chart: {id, kind, name, version}`.
+график. Считаются `histogram`, `qq`, `dendrogram`, `scatter`, `box`, `probplot`, `domains`, `ternary`. Ответ —
+ответ его вида (как выше) + `chart: {id, kind, name, version}`.
