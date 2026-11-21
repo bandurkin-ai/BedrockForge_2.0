@@ -113,7 +113,7 @@ export function ExternalTable({ groups, chosen, limit, onChoose }: { groups: rea
   const noted = groups.filter((g) => g.notes?.length);
   return (
     <>
-      <table className={css.grid} aria-label="Группы внешнего контроля">
+      <table className={css.grid} role="grid" aria-readonly="true" aria-label="Группы внешнего контроля">
         <thead>
           <tr>
             {head.map((h) => (
@@ -126,7 +126,20 @@ export function ExternalTable({ groups, chosen, limit, onChoose }: { groups: rea
             const note = g.notes?.length ? g.notes.join(" ") : undefined;
             const mark = note ? `${noted.indexOf(g) + 1}` : null;
             return (
-              <tr key={`${g.lab_main ?? ""}|${g.lab_check ?? ""}`} className={sameGroup(chosen, g) ? css.chosen : undefined} onClick={() => onChoose?.(refOf(g))}>
+              <tr
+                key={`${g.lab_main ?? ""}|${g.lab_check ?? ""}`}
+                className={sameGroup(chosen, g) ? css.chosen : undefined}
+                tabIndex={0}
+                aria-selected={sameGroup(chosen, g)}
+                title="Щелчок или Enter — рассеяние группы"
+                onClick={() => onChoose?.(refOf(g))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onChoose?.(refOf(g));
+                  }
+                }}
+              >
                 <th>{labTitle(g.lab_main)}</th>
                 <td style={{ textAlign: "left" }}>{labTitle(g.lab_check)}</td>
                 <td>{int(g.pairs)}</td>

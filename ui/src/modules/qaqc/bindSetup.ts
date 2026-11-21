@@ -3,7 +3,7 @@
  * are bound by id): `qaqc.setup` opens the window «Настройка QAQC» on a tab; `qaqc.import` loads control samples
  * from a file or from a table of a set (without a source — the form of the window; with one — read, mapped
  * automatically where the mapping is not given, the job `qaqc.import`); `qaqc.data_rename`, `qaqc.data_refresh`
- * (the import again with the same mapping), `qaqc.data_delete`; `qaqc.config` and `qaqc.crm` save the setup of
+ * (`POST /data/{id}/refresh`: the core imports again from the source and with the mapping it keeps), `qaqc.data_delete`; `qaqc.config` and `qaqc.crm` save the setup of
  * the project and the CRM reference with `expected_version`. A change from the interface asks our own question
  * where the command is marked confirm (the assistant is asked by the registry). The assistant gets the totals.
  */
@@ -20,7 +20,7 @@ import { projectStore } from "../projects/state";
 import { configChanged, resetConfig, runConfig, runCrm } from "./setup/configStore";
 import { dataStore, dropData, findData, finishRun, openForm, refuseImport, reloadData, resetData, startedRun, upsertData } from "./setup/dataStore";
 import { completeMapping, countLines, defaultDataName, mappingFromArg, mappingProblems } from "./setup/mapping";
-import { deleteData, getData, inspectSource, renameData, sourceBody, startImport, waitJob, type InspectSource, type Mapping, type QaqcData, type ReadOptions, type Started } from "./setupApi";
+import { deleteData, getData, inspectSource, refreshData, renameData, sourceBody, startImport, waitJob, type InspectSource, type Mapping, type QaqcData, type ReadOptions, type Started } from "./setupApi";
 import { SetupWindow, SETUP_TABS, type SetupTab } from "./SetupWindow";
 
 export const SETUP_WINDOW = "qaqc-setup";
@@ -69,7 +69,7 @@ function readOptions(mapping: unknown): ReadOptions {
 function parseArgMapping(value: unknown): { mapping: Mapping | null; read: ReadOptions } {
   if (value === undefined || value === null || value === "") return { mapping: null, read: {} };
   const m = mappingFromArg(value);
-  if (typeof m === "string") throw refusal("bad_param", `Сопоставление колонок не разобрано: ${m}.`, "mapping — JSON-объект {fields: {sample_id: «колонка», type: …}, elements: [{column, name, unit}], extra: […]}.");
+  if (typeof m === "string") throw refusal("bad_param", `Сопоставление колонок не разобрано: ${m}.`, "mapping — JSON-объект {sample_id: «колонка», type: «колонка», …, elements: [{column, name?, unit?, dl_column?}], extra: […], read?: {sheet?}}.");
   let raw: unknown = value;
   if (typeof value === "string") raw = JSON.parse(value);
   return { mapping: m, read: readOptions(raw) };
@@ -86,9 +86,19 @@ const dataText = (name: string, id: number | null) => (id !== null ? `«${name}�
 
 /** Follows an import job: the list is read again, the totals go to the window; resolves with the assistant's text. */
 async function follow(job: Started, name: string): Promise<string> {
-  const j = await waitJob(job);
-  const run = dataStore.get().run;
-  const mine = run?.job.source === job.source && run.job.id === job.id;
+  const mineNow = () => {
+    const run = dataStore.get().run;
+    return run?.job.source === job.source && run.job.id === job.id;
+  };
+  let j;
+  try {
+    j = await waitJob(job);
+  } catch (e) {
+    // the project changed or the job is gone: the window stops showing it as running
+    if (mineNow()) finishRun(null);
+    throw e;
+  }
+  const mine = mineNow();
   if (j.status !== "done") {
     if (mine) finishRun(null);
     if (j.status === "cancelled") return `Загрузка ${dataText(name, null)} отменена: ничего не записано`;
@@ -103,6 +113,15 @@ async function follow(job: Started, name: string): Promise<string> {
   return `Загружены данные QAQC ${dataText(name, dataId)}: ${countLines(rows, counts).join("; ")}`;
 }
 
+/** Follows a started import job: in the window for the person, to its end for the assistant. */
+function track(job: Started, name: string, replaceId: number | null, by: "user" | "claude", what: string): Promise<string> | string {
+  startedRun({ job, name, replaceId });
+  if (by === "claude") return follow(job, name);
+  openSetup("data");
+  void follow(job, name).catch(() => undefined); // the window shows the failure of the job
+  return `${what} ${dataText(name, null)}: задание №${job.id}`;
+}
+
 /** Starts the job; a refusal of the core goes to its field of the form. */
 async function start(name: string, source: InspectSource, mapping: Mapping, replaceId: number | null, by: "user" | "claude"): Promise<string> {
   let job: Started;
@@ -112,11 +131,7 @@ async function start(name: string, source: InspectSource, mapping: Mapping, repl
     refuseImport(e);
     throw e;
   }
-  startedRun({ job, name, replaceId });
-  if (by === "claude") return follow(job, name);
-  openSetup("data");
-  void follow(job, name).catch(() => undefined); // the window shows the failure of the job
-  return `Загрузка ${dataText(name, null)}: задание №${job.id}`;
+  return track(job, name, replaceId, by, "Загрузка");
 }
 
 const askReplace = (row: QaqcData | undefined, id: number) =>
@@ -163,19 +178,18 @@ export async function runImport(args: Record<string, unknown>, by: "user" | "cla
   return start(name, source, mapping, replaceId, by);
 }
 
-/** `qaqc.data_refresh {data_id}`: the import again from the same source with the same mapping. */
+/**
+ * `qaqc.data_refresh {data_id}`: the core imports the data again from the source it keeps (the file by its path,
+ * the table of the set) with the mapping it keeps (`POST /data/{id}/refresh`); a source gone — its refusal
+ * (`source_missing`, `file_not_found`).
+ */
 export async function runRefresh(args: Record<string, unknown>, by: "user" | "claude"): Promise<string> {
-  const known = await dataOf(args.data_id);
-  const row = known.mapping && known.source ? known : await getData(known.id);
-  const src = row.source;
-  let source: InspectSource | null = null;
-  if (src?.kind === "table") source = { kind: "table", set_id: src.set_id, table: src.table ?? src.name_key ?? "" };
-  else if (src?.kind === "file" && src.path) source = { kind: "file", path: src.path, ...(src.sheet ? { sheet: src.sheet } : {}) };
-  if (!source || (source.kind === "table" && !source.table)) throw refusal("not_available", `Данные «${row.name}» загружены из файла, путь к нему не сохранён.`, "Загрузите файл заново: «Настройка QAQC → Данные → Загрузить из файла…» с заменой этих данных.");
-  if (!row.mapping) throw refusal("not_available", `У данных «${row.name}» нет сохранённого сопоставления колонок.`, "Загрузите их заново с заменой.");
-  if (by === "user" && !(await askConfirm({ title: "Обновить данные QAQC", message: `Данные «${row.name}» будут загружены заново из ${source.kind === "table" ? "таблицы набора" : "файла"} с прежним сопоставлением колонок. Отчёты, построенные по ним, станут устаревшими.`, okLabel: "Обновить" })))
+  const row = await dataOf(args.data_id);
+  const from = row.source?.kind === "table" ? `таблицы ${row.source.table_name ? `«${row.source.table_name}» ` : ""}набора` : "файла";
+  if (by === "user" && !(await askConfirm({ title: "Обновить данные QAQC", message: `Данные «${row.name}» будут загружены заново из ${from} с прежним сопоставлением колонок. Отчёты, построенные по ним, станут устаревшими.`, okLabel: "Обновить" })))
     return "Отменено";
-  return start(row.name, source, row.mapping, row.id, by);
+  const job = await refreshData(row.id);
+  return track(job, row.name, row.id, by, "Обновление");
 }
 
 /** `qaqc.data_rename {data_id, name}`. */

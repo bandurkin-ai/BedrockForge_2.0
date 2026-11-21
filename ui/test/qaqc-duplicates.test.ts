@@ -12,13 +12,13 @@ import { csvCell } from "../src/charts/core/csv";
 import { axisMap, rasterPoints, rasterSize } from "../src/charts/core/PointsCanvas";
 import { PAIR_BOX, PairScatter } from "../src/charts/qaqc/PairScatter";
 import {
-  atMost, precisionTitle, rankedNote, excludedRows, excludedTotal, lineSegment, nearestPair, PAIR_CSV_HEADER, PAIR_PIXELS, pairCsv, pairFacts, pairLines, pairModel, pairPixels, rankedCsv, rankedModel, rankedPath, thCsv, thFormula, thModel, verdictTitle,
+  atMost, drawOrder, precisionTitle, rankedNote, excludedRows, excludedTotal, lineSegment, nearestPair, PAIR_CSV_HEADER, PAIR_PIXELS, pairCsv, pairFacts, pairLines, pairModel, pairPixels, rankedCsv, rankedModel, rankedPath, thCsv, thFormula, thModel, verdictTitle,
 } from "../src/charts/qaqc/pairModel";
 import { RankedHardChart } from "../src/charts/qaqc/RankedHardChart";
 import { ThChart, ThTable } from "../src/charts/qaqc/ThChart";
 import type { DuplicatesAnswer, PairPoints } from "../src/modules/qaqc/api";
 import { int } from "../src/modules/qaqc/format";
-import { DupSummary, duplicatesNotes, loadDuplicates, thStateText, type DupAnswer } from "../src/modules/qaqc/DuplicatesTab";
+import { answerKind, DupSummary, duplicatesNotes, loadDuplicates, thStateText, type DupAnswer } from "../src/modules/qaqc/DuplicatesTab";
 import { DROPPED } from "../src/modules/qaqc/state";
 import { setCoreTarget } from "../src/shell/api";
 
@@ -123,6 +123,30 @@ describe("the scatter of the pairs", () => {
     expect(html).toContain("r = —");
   });
 
+  it("the pairs above the threshold are drawn over the norm: the SVG sorted, the canvas in two passes", () => {
+    const m = pairModel(POINTS, 10, null);
+    const o = drawOrder(m);
+    expect(Array.from(o.low)).toEqual(H.slice(0, 10).map((h) => h - 1));
+    expect(Array.from(o.high)).toEqual(H.slice(10).map((h) => h - 1));
+    // a point above the threshold placed first in the answer is still drawn last
+    const p: PairPoints = { row: [1, 2, 3], x1: [100, 1, 2], x2: [50, 1.01, 2.02], hard: [33.3, 0.5, 0.5] };
+    const html = renderToStaticMarkup(createElement(PairScatter, { model: pairModel(p, 10, null), points: p, label: "Р", xTitle: "x1", yTitle: "x2", limit: 10, pearson: null, rma: null, picked: null }));
+    expect([...html.matchAll(/data-over="(\d)"/g)].map((r) => r[1])).toEqual(["0", "0", "1"]);
+    // the canvas: the failure colour wins where a norm point lies on the same pixel
+    const same: PairPoints = { row: [1, 2], x1: [5, 5], x2: [5, 5], hard: [50, 0] };
+    const sm = pairModel(same, 10, null);
+    const so = drawOrder(sm);
+    const sx = makeScale("linear", sm.domain, PAIR_BOX.x0, PAIR_BOX.x1);
+    const sy = makeScale("linear", sm.domain, PAIR_BOX.y1, PAIR_BOX.y0);
+    const { w, h } = rasterSize(PAIR_BOX);
+    const buf = new Uint32Array(w * h);
+    const mx = axisMap(sx, PAIR_BOX.x0);
+    const my = axisMap(sy, PAIR_BOX.y0);
+    rasterPoints(buf, w, h, sm.xs, sm.ys, mx, my, pairPixels(sm), 4, so.low);
+    rasterPoints(buf, w, h, sm.xs, sm.ys, mx, my, pairPixels(sm), 4, so.high);
+    expect(new Set(buf.filter((v) => v !== 0))).toEqual(new Set([PAIR_PIXELS[1]]));
+  });
+
   it("the CSV of the pairs is the answer; more than 5000 pairs go to the canvas layer", () => {
     const lines = pairCsv(POINTS).split("\r\n");
     expect(lines[0]).toBe(PAIR_CSV_HEADER.map((h) => `"${h}"`).join(";"));
@@ -200,6 +224,10 @@ describe("Thompson–Howard, the summary, the notes", () => {
     expect(excludedRows(null).every(([, n]) => n === null)).toBe(true);
     expect(excludedTotal(null)).toBeNull();
     expect([true, false, null].map(verdictTitle)).toEqual(["выполнен", "не выполнен", "—"]);
+    // the summary is of the type the answer is of, not of the one chosen meanwhile
+    expect(answerKind({ kind: "DUP_C" }, "DUP_F")).toBe("DUP_C");
+    expect(answerKind({}, "DUP_F")).toBe("DUP_F");
+    expect(answerKind({ kind: "UMP" }, "DUP_P")).toBe("DUP_P");
     const html = renderToStaticMarkup(createElement(DupSummary, { answer: answer(), kind: "DUP_P" }));
     for (const t of ["пульповые дубликаты (DUP_P)", "<th>Пар</th><td>27</td>", "<th>Отброшено</th><td>7</td>", "без исходной пробы</th><td>3</td>", "HARD ≤ 10 % (порог типа)</th><td>50,0 %</td>", "не меньше 90 % пар", "не выполнен"]) expect(html).toContain(t);
     expect(html).toContain("x̄ исходных</th><td>110,5 г/т");

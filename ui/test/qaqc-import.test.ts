@@ -12,7 +12,7 @@ import { DataList } from "../src/modules/qaqc/setup/DataTab";
 import { dataStore, reloadData, resetData } from "../src/modules/qaqc/setup/dataStore";
 import { importArgs } from "../src/modules/qaqc/setup/ImportForm";
 import { autoMapping, countLines, elementOfName, errorPlace, mappingFromArg, mappingProblems, normName, startMapping } from "../src/modules/qaqc/setup/mapping";
-import type { QaqcData } from "../src/modules/qaqc/setupApi";
+import { mappingToCore, type QaqcData } from "../src/modules/qaqc/setupApi";
 import { jobsStore } from "../src/modules/jobs/state";
 import { CoreError, setCoreTarget } from "../src/shell/api";
 import { AppContext } from "../src/shell/AppContext";
@@ -50,10 +50,12 @@ const DATA: QaqcData = {
     { code: "STD", type: "CRM", n: 300 },
     { code: "XX", type: null, n: 7 },
   ],
-  source: { kind: "table", set_id: 3, table: "5", name: "Пробы", rev: 4 },
+  source: { kind: "table", set_id: 3, table_id: 5, set_name: "Север", table_name: "Пробы", rev: 4 },
   stale: true,
   mapping: { fields: { sample_id: "SAMPLE", type: "TYPE" }, elements: [{ column: "AU", name: "AU", unit: "г/т" }], extra: [] },
 };
+
+const CORE_DATA = { ...DATA, mapping: mappingToCore(DATA.mapping!) };
 
 describe("mapping", () => {
   it("chooses the fields by the names of the columns and the rest numeric as elements", () => {
@@ -102,8 +104,16 @@ describe("mapping", () => {
   });
 
   it("reads a mapping of the assistant and the totals of an import", () => {
-    expect(mappingFromArg('{"sample_id": "S", "type": "T", "elements": ["Au_ppm"]}')).toEqual({ fields: { sample_id: "S", type: "T" }, elements: [{ column: "Au_ppm", name: "Au", unit: "ppm" }], extra: [] });
+    // the form of the core: roles at the top, elements [{column, name?, unit?, dl_column?}]
+    expect(mappingFromArg('{"sample_id": "S", "type": "T", "hole": null, "elements": [{"column": "Au_ppm"}, {"column": "CU", "name": "Cu", "unit": null, "dl_column": "DL_CU"}], "extra": ["Z"]}')).toEqual({
+      fields: { sample_id: "S", type: "T" },
+      elements: [{ column: "Au_ppm", name: "Au", unit: "ppm", dl: null }, { column: "CU", name: "Cu", unit: "", dl: "DL_CU" }],
+      extra: ["Z"],
+    });
     expect(mappingFromArg("[1]")).toBe("mapping — не JSON-объект");
+    expect(mappingFromArg('{"fields": {"sample_id": "S"}}')).toContain("без «fields»");
+    expect(mappingFromArg('{"sample_id": "S", "elements": ["Au_ppm"]}')).toBe("elements[0] — объект {column, name?, unit?, dl_column?}");
+    expect(mappingFromArg('{"sample_id": 5}')).toBe("sample_id — имя колонки или null");
     expect(countLines(1200, { no_parent: 3, dup_ids: 0, bad_dates: 2 })).toEqual(["Записей: 1\u00a0200", "исходная проба не найдена: 3", "неразобранные даты: 2"]);
   });
 
@@ -111,7 +121,9 @@ describe("mapping", () => {
     const m = autoMapping(COLUMNS);
     const a = importArgs({ kind: "file", path: "C:/QC/контроль.xlsx", sheet: "Лист2" }, " Контроль ", m, 4);
     expect(a).toMatchObject({ path: "C:/QC/контроль.xlsx", name: "Контроль", replace_id: 4 });
-    expect(JSON.parse(String(a.mapping))).toEqual({ ...m, read: { sheet: "Лист2" } });
+    expect(JSON.parse(String(a.mapping))).toEqual({ ...mappingToCore(m), read: { sheet: "Лист2" } });
+    // what the command reads back is the form's mapping
+    expect(mappingFromArg(a.mapping)).toEqual({ ...m, elements: m.elements.map((e) => ({ dl: null, ...e })) });
   });
 });
 
@@ -135,11 +147,13 @@ describe("commands", () => {
         const method = init?.method ?? "GET";
         const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
         sent.push({ method, path, body });
-        if (path === "/qaqc/data" && method === "GET") return json({ data: [DATA] });
-        if (path === "/qaqc/data/4" && method === "GET") return json(DATA);
+        // the core keeps the mapping in its flat form
+        if (path === "/qaqc/data" && method === "GET") return json({ items: [CORE_DATA], limit: 50 });
+        if (path === "/qaqc/data/4" && method === "GET") return json(CORE_DATA);
+        if (path === "/qaqc/data/4/refresh" && method === "POST") return json({ job_id: 77, source: "project", id: 77 }, 202);
         if (path === "/qaqc/data/inspect") return json({ rows: 3, columns: COLUMNS, preview: [] });
         if (path === "/qaqc/data" && method === "POST") return importAnswer();
-        if (path === "/qaqc/data/4" && method === "PUT") return json({ ...DATA, name: body.name, version: 3 });
+        if (path === "/qaqc/data/4" && method === "PUT") return json({ ...CORE_DATA, name: body.name, version: 3 });
         if (path === "/qaqc/data/4" && method === "DELETE") return json({ ok: true });
         if (path === "/jobs") return json({ jobs, workers: { workers: [], heavy_workers: 1, stopped_reason: null } });
         return json({ code: "not_found", message: "Нет", hint: "" }, 404);
@@ -195,7 +209,9 @@ describe("commands", () => {
     expect(r.ok).toBe(true);
     expect(r.result).toBe("Загружены данные QAQC «qc» (данные QAQC №9): Записей: 400; исходная проба не найдена: 2");
     const [post] = posts();
-    expect(post.body).toMatchObject({ name: "qc", source: { kind: "file", path: "C:/QC/qc.csv" }, mapping: autoMapping(COLUMNS) });
+    expect(post.body).toMatchObject({ name: "qc", source: { kind: "file", path: "C:/QC/qc.csv" }, mapping: mappingToCore(autoMapping(COLUMNS)) });
+    expect(post.body.mapping).toMatchObject({ v: 1, sample_id: "Sample ID", type: "QC_Type", elements: [{ column: "AU_ppm", name: "AU", unit: "ppm", dl_column: "DL_Au" }, { column: "Cu, %", name: "Cu", unit: "%", dl_column: null }, { column: "Ag", name: "Ag", unit: null, dl_column: null }] });
+    expect(post.body.mapping).not.toHaveProperty("fields");
     expect(post.body).not.toHaveProperty("replace_id");
     expect(dataStore.get().done).toEqual({ dataId: 9, name: "qc", rows: 400, counts: { no_parent: 2 } });
   });
@@ -203,7 +219,7 @@ describe("commands", () => {
   it("a refusal of the core is shown at its field and the form stays", async () => {
     importAnswer = () => json({ code: "no_type", message: "В файле нет колонки типа пробы.", hint: "Выберите колонку TYPE.", param: "type" }, 422);
     await app.registry.execute("qaqc.import", {}, "user");
-    const m = JSON.stringify(autoMapping(COLUMNS));
+    const m = JSON.stringify(mappingToCore(autoMapping(COLUMNS)));
     const r = await app.registry.execute("qaqc.import", { path: "C:/QC/qc.csv", name: "qc", mapping: m }, "user");
     expect(r.ok).toBe(false);
     expect(dataStore.get().refused).toEqual({ at: "type", message: "В файле нет колонки типа пробы. Выберите колонку TYPE." });
@@ -212,14 +228,14 @@ describe("commands", () => {
   });
 
   it("a mapping without SAMPLE_ID is refused before the core", async () => {
-    const r = await app.registry.execute("qaqc.import", { path: "C:/QC/qc.csv", mapping: '{"fields": {"type": "QC_Type"}, "elements": ["AU_ppm"]}' }, "claude");
+    const r = await app.registry.execute("qaqc.import", { path: "C:/QC/qc.csv", mapping: '{"type": "QC_Type", "elements": [{"column": "AU_ppm"}]}' }, "claude");
     expect(r.ok).toBe(false);
     expect(r.result).toContain("Выберите колонку номера пробы (SAMPLE_ID)");
     expect(posts()).toHaveLength(0);
     expect(dataStore.get().refused?.at).toBe("sample_id");
   });
 
-  it("«устарели» → «Обновить»: the import again from the same table with the same mapping", async () => {
+  it("«устарели» → «Обновить»: the core imports again from its source with its mapping (`POST /data/{id}/refresh`)", async () => {
     await reloadData();
     const html = renderToStaticMarkup(createElement(DataList, { list: dataStore.get().list, reason: () => null, run: () => undefined }));
     expect(html).toContain("· устарели");
@@ -231,7 +247,9 @@ describe("commands", () => {
     jobs = [doneJob(77, { data_id: 4, rows: 1250, counts: {} })];
     const r = await app.registry.execute("qaqc.data_refresh", { data_id: 4 }, "claude");
     expect(r.result).toBe("Загружены данные QAQC «Контроль 2024» (данные QAQC №4): Записей: 1\u00a0250");
-    expect(posts()[0].body).toEqual({ name: "Контроль 2024", source: { kind: "table", set_id: 3, table: "5" }, mapping: DATA.mapping, replace_id: 4 });
+    expect(posts()).toHaveLength(0);
+    expect(sent.filter((x) => x.method === "POST" && x.path === "/qaqc/data/4/refresh")).toHaveLength(1);
+    expect(dataStore.get().list[0].mapping).toEqual({ ...DATA.mapping, elements: [{ column: "AU", name: "AU", unit: "г/т", dl: null }] });
   });
 
   it("from the interface: «Обновить» and «Удалить» ask our own question", async () => {

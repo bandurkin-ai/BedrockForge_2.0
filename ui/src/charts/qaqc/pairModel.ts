@@ -114,6 +114,16 @@ export function pairModel(points: PairPoints, limit: number, rma?: { a: number |
   return { n, xs: xs.subarray(0, n), ys: ys.subarray(0, n), idx: idx.subarray(0, n), over: over.subarray(0, n), byClass, domain, lines: pairLines(domain, rma) };
 }
 
+/** The order of drawing: the points within the threshold first, those above it over them (never hidden by the norm). */
+export function drawOrder(model: Pick<PairModel, "n" | "over">): { low: Int32Array; high: Int32Array; all: Int32Array } {
+  const all = new Int32Array(model.n);
+  let k = 0;
+  for (let j = 0; j < model.n; j++) if (!model.over[j]) all[k++] = j;
+  const split = k;
+  for (let j = 0; j < model.n; j++) if (model.over[j]) all[k++] = j;
+  return { low: all.subarray(0, split), high: all.subarray(split), all };
+}
+
 /** Within the threshold — Cobalt, above it — the colour of a failure. */
 export const PAIR_COLORS = [STATUS_COLORS[0], STATUS_COLORS[2]] as const;
 export const PAIR_PIXELS = PAIR_COLORS.map((c) => rgba32(c, 0.85));

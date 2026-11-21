@@ -2,8 +2,8 @@
  * The scatter of pairs x1 — x2 (ТЗ 8.4.2; ADR 0020 §4, §11): duplicates (the original — the duplicate) and external
  * control (the main lab — the check lab). A square plot (both axes in one range) with the lines 1:1, ±10 %, ±20 %
  * and RMA, Pearson's r and RMA in the legend; points within the HARD threshold of the type in Cobalt, above it in
- * the colour of a failure. Up to 5000 points are SVG circles with a tooltip each; more go to the canvas layer
- * (`charts/core/PointsCanvas`). A click picks the nearest point (the card of its sample).
+ * the colour of a failure, drawn over the others (the canvas in two passes, the SVG sorted). Up to 5000 points are SVG
+ * circles with a tooltip each; more go to the canvas layer (`charts/core/PointsCanvas`). A click picks the nearest point (the card of its sample).
  * SVG of a fixed size: the PNG is twice it, the canvas layer goes in as an image × 2.
  */
 import { forwardRef, useId, useMemo, type PointerEvent as RPointerEvent } from "react";
@@ -16,7 +16,7 @@ import { toViewBox } from "../core/lasso";
 import { plotBox, PlotFrame } from "../core/PlotFrame";
 import { axisMap, RASTER_FROM, rasterPoints, RasterLayer } from "../core/PointsCanvas";
 import css from "../core/Chart.module.css";
-import { nearestPair, PAIR_COLORS, pairPixels, type PairLineKey, type PairModel } from "./pairModel";
+import { drawOrder, nearestPair, PAIR_COLORS, pairPixels, type PairLineKey, type PairModel } from "./pairModel";
 
 export const PAIR_W = 440;
 export const PAIR_H = 420;
@@ -53,6 +53,7 @@ export const PairScatter = forwardRef<SVGSVGElement, PairScatterProps>(function 
   const sy = useMemo(() => makeScale("linear", model.domain, BOX.y1, BOX.y0), [model]);
   const raster = model.n > RASTER_FROM;
   const pixels = useMemo(() => (raster ? pairPixels(model) : null), [model, raster]);
+  const order = useMemo(() => drawOrder(model), [model]);
   const rasterKey = useMemo(() => ({}), [model, pixels, sx, sy]); // eslint-disable-line react-hooks/exhaustive-deps
   const px = (j: number) => sx.map(model.xs[j]) ?? BOX.x0;
   const py = (j: number) => sy.map(model.ys[j]) ?? BOX.y1;
@@ -83,12 +84,18 @@ export const PairScatter = forwardRef<SVGSVGElement, PairScatterProps>(function 
           <RasterLayer
             box={BOX}
             version={rasterKey}
-            draw={(buf, w, h) => rasterPoints(buf, w, h, model.xs, model.ys, axisMap(sx, BOX.x0), axisMap(sy, BOX.y0), pixels ?? 0, 4)}
+            draw={(buf, w, h) => {
+              const mx = axisMap(sx, BOX.x0);
+              const my = axisMap(sy, BOX.y0);
+              // the norm first, the pairs above the threshold over it
+              rasterPoints(buf, w, h, model.xs, model.ys, mx, my, pixels ?? 0, 4, order.low);
+              rasterPoints(buf, w, h, model.xs, model.ys, mx, my, pixels ?? 0, 4, order.high);
+            }}
           />
         </g>
       ) : (
         <g data-points={model.n}>
-          {Array.from({ length: model.n }, (_, j) => {
+          {Array.from(order.all, (j) => {
             const i = model.idx[j];
             return (
               <circle key={i} cx={px(j)} cy={py(j)} r={3} fill={PAIR_COLORS[model.over[j]]} fillOpacity={0.85} data-over={model.over[j]} pointerEvents="none">

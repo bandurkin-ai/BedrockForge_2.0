@@ -8,7 +8,7 @@ import { useState } from "react";
 import { bridge } from "../../../bridge";
 import { errorText } from "../../../shell/props";
 import css from "../../../shell/PropsParts.module.css";
-import { readCrmFile } from "../setupApi";
+import { readCrmFile, type CrmProblem } from "../setupApi";
 import { checkCrm, crmArgs, crmKey, crmTexts, MAX_CRM, mergeRead, type CrmText } from "./forms";
 import { FormFooter, FormNotes } from "./FormParts";
 import own from "./Setup.module.css";
@@ -25,6 +25,13 @@ const COLS: [keyof CrmText, string, boolean][] = [
   ["source", "Источник", false],
 ];
 
+/** The rows of a file the core refused (`POST /crm/read` `problems`, `row` from 0), up to `max`, then how many more. */
+export function crmProblemLines(problems: readonly CrmProblem[], max = 10): string[] {
+  const out = problems.slice(0, max).map((p) => (/строка\s+\d/i.test(p.message) ? p.message : `Строка ${p.row + 1} файла: ${p.message}`));
+  if (problems.length > max) out.push(`…и ещё ${(problems.length - max).toLocaleString("ru-RU")}`);
+  return out;
+}
+
 /** The errors of the rows of the form: its own check, then the row a refusal of the core names. */
 export function crmErrors(rows: readonly CrmText[], server: { key: string | null; message: string } | null): Map<number, string> {
   const { errors } = checkCrm(rows);
@@ -39,6 +46,7 @@ export function CrmTab({ onDirty }: { onDirty: (on: boolean) => void }) {
   const f = useBaseForm<CrmText[]>("crm", (s) => (s.crm ? crmTexts(s.crm.rows) : null), onDirty);
   const [page, setPage] = useState(0);
   const [readNote, setReadNote] = useState<string | null>(null);
+  const [readProblems, setReadProblems] = useState<string[]>([]);
   if (!f.form) return <FormNotes error={f.st.error} loading />;
   const rows = f.form;
   const checked = checkCrm(rows);
@@ -52,10 +60,13 @@ export function CrmTab({ onDirty }: { onDirty: (on: boolean) => void }) {
     if (!file) return;
     try {
       const read = await readCrmFile(file);
-      f.setForm(mergeRead(rows, read));
-      setReadNote(`Из файла прочитано строк: ${read.length}. Проверьте и сохраните.`);
+      f.setForm(mergeRead(rows, read.rows));
+      const bad = read.problems.length ? ` С ошибками: ${read.problems.length.toLocaleString("ru-RU")} — исправьте их в таблице.` : "";
+      setReadNote(`Из файла прочитано строк: ${read.rows.length.toLocaleString("ru-RU")}.${bad} Проверьте и сохраните.`);
+      setReadProblems(crmProblemLines(read.problems));
     } catch (e) {
       setReadNote(errorText(e));
+      setReadProblems([]);
     }
   };
   const save = () => {
@@ -89,6 +100,13 @@ export function CrmTab({ onDirty }: { onDirty: (on: boolean) => void }) {
           </button>
         </div>
         {readNote && <p className={css.note}>{readNote}</p>}
+        {readProblems.length > 0 && (
+          <ul className={css.warn} data-testid="qaqc-crm-problems" style={{ margin: 0, paddingLeft: 18 }}>
+            {readProblems.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        )}
         {errors.size > 0 && (
           <p className={css.error} data-testid="qaqc-crm-errors">
             Строк с ошибками: {errors.size}; первая — строка {firstBad + 1}: {errors.get(firstBad)}
