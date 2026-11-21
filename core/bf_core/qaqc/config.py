@@ -23,6 +23,7 @@ import sqlalchemy as sa
 
 from bf_core.api.errors import ApiError
 from bf_core.db.schema import settings
+from bf_core.qaqc.limits import Limits, QaqcError
 
 SCOPE = "qaqc"
 CONFIG, CRM = "config", "crm"
@@ -33,37 +34,14 @@ MAX_DL = 2000
 MAX_CODES = 500
 MAX_TEXT = 100
 
+
 #: name → (default, low, high, integer). th_group is odd; sigma_warn < sigma_fail (ADR 0020 §3).
-LIMITS: dict[str, tuple[float, float, float, bool]] = {
-    "sigma_warn": (2, 1, 5, False),
-    "sigma_fail": (3, 1, 5, False),
-    "run": (9, 5, 20, True),
-    "k_blank": (5, 1, 50, False),
-    "k_dup": (5, 0, 50, False),
-    "th_group": (11, 5, 51, True),
-    "hard_p": (10, 1, 100, False),
-    "hard_c": (20, 1, 100, False),
-    "hard_f": (30, 1, 100, False),
-    "hard_ump": (10, 1, 100, False),
-    "hard_share": (90, 50, 100, False),
-    "n_boot": (1000, 100, 5000, True),
-    "seed": (12345, 0, 2**63 - 1, True),
-}
-LIMIT_TITLES = {
-    "sigma_warn": "Порог предупреждения, σ", "sigma_fail": "Порог отказа, σ", "run": "Серия по одну сторону",
-    "k_blank": "Множитель DL бланков", "k_dup": "Множитель DL дубликатов", "th_group": "Группа Томпсона–Ховарта",
-    "hard_p": "Критерий HARD пульповых, %", "hard_c": "Критерий HARD дроблёных, %",
-    "hard_f": "Критерий HARD полевых, %", "hard_ump": "Критерий HARD внешнего контроля, %",
-    "hard_share": "Доля пар в пределах критерия, %", "n_boot": "Число реализаций бутстрапа", "seed": "Зерно",
-}  # fmt: skip
-
-
 def bad(message: str, hint: str, param: str, code: str = "bad_param", **extra: Any) -> ApiError:
     return ApiError(422, code, message, hint, extra={"param": param, **extra})
 
 
 def default_limits() -> dict[str, Any]:
-    return {k: (int(d) if integer else float(d)) for k, (d, _lo, _hi, integer) in LIMITS.items()}
+    return dict(Limits().as_dict())
 
 
 def default_config() -> dict[str, Any]:
@@ -77,32 +55,12 @@ def _number(raw: Any, param: str, title: str) -> float:
 
 
 def check_limits(raw: Any) -> dict[str, Any]:
-    """The limits filled with defaults and checked against the ranges of ТЗ (422 `bad_param {param}`)."""
-    if raw is None:
-        raw = {}
-    if not isinstance(raw, dict):
-        raise bad("Неверные пороги.", "Откройте «Настройка → Пороги» и сохраните заново.", "limits")
-    unknown = sorted(set(raw) - set(LIMITS))
-    if unknown:
-        raise bad(f"Неизвестный порог «{unknown[0]}».", "Обновите окно настройки.", f"limits.{unknown[0]}")
-    out = default_limits()
-    for name, value in raw.items():
-        _d, lo, hi, integer = LIMITS[name]
-        title, param = LIMIT_TITLES[name], f"limits.{name}"
-        x = _number(value, param, title)
-        if integer and not x.is_integer():
-            raise bad(f"{title}: нужно целое число.", "Введите целое число.", param)
-        if not lo <= x <= hi:
-            span = f"от {lo:g} до {hi:g}" if name != "seed" else "от 0"
-            raise bad(f"{title}: {x:g} — вне допустимого диапазона.", f"Допустимо {span}.", param)
-        out[name] = int(x) if integer else x
-    if out["th_group"] % 2 == 0:
-        raise bad(f"Группа Томпсона–Ховарта: {out['th_group']} — чётное число пар.",
-                  "Нужно нечётное число от 5 до 51.", "limits.th_group")  # fmt: skip
-    if not out["sigma_warn"] < out["sigma_fail"]:
-        raise bad("Порог предупреждения не меньше порога отказа.", "Сделайте порог предупреждения меньше.",
-                  "limits.sigma_warn")  # fmt: skip
-    return out
+    """The limits filled with defaults and checked against the ranges of ТЗ (422 `bad_param {param}`).
+    One source of truth — `qaqc.limits.RANGES`; the param is prefixed with `limits.` for the window."""
+    try:
+        return dict(Limits.parse(raw).as_dict())
+    except QaqcError as e:
+        raise bad(e.message, e.hint, f"limits.{e.param}" if e.param else "limits", e.code) from e
 
 
 def type_key(code: Any) -> str:
