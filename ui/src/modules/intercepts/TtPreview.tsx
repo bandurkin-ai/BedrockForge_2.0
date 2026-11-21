@@ -60,6 +60,27 @@ export function countRows(a: Pick<Answer, "bySrc" | "byFlag">): { src: [string, 
   return { src: [...known, ...other], flags };
 }
 
+function Counts({ title, counts, testId }: { title: string; counts: ReturnType<typeof countRows>; testId: string }) {
+  if (!counts.src.length && !counts.flags.length) return null;
+  return (
+    <div className={own.counts} data-testid={testId}>
+      <span className={own.countsTitle}>{title}:</span>
+      {counts.src.map(([s, n]) => (
+        <span key={s}>
+          {s}
+          <b>{n}</b>
+        </span>
+      ))}
+      {counts.flags.map(([t, n, hint]) => (
+        <span key={t} className={own.flag} title={hint}>
+          {t}
+          <b>{n}</b>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function TtPreview({ answer }: { answer: Answer }) {
   const rows = answer.rows.slice(0, ROWS_SHOWN);
   const counts = countRows(answer);
@@ -131,22 +152,8 @@ export function TtPreview({ answer }: { answer: Answer }) {
           </div>
         </>
       )}
-      {(counts.src.length > 0 || counts.flags.length > 0) && (
-        <div className={own.counts} data-testid="intercepts-tt-counts">
-          {counts.src.map(([s, n]) => (
-            <span key={s}>
-              {s}
-              <b>{n}</b>
-            </span>
-          ))}
-          {counts.flags.map(([t, n, hint]) => (
-            <span key={t} className={own.flag} title={hint}>
-              {t}
-              <b>{n}</b>
-            </span>
-          ))}
-        </div>
-      )}
+      <Counts title={`Скважина ${answer.hole || "—"}`} counts={counts} testId="intercepts-tt-counts" />
+      {answer.setCounts ? <Counts title="Таблица" counts={countRows(answer.setCounts)} testId="intercepts-tt-set-counts" /> : <p className={css.note}>Счётчики по всей таблице — после расчёта (больше 200 тыс. строк).</p>}
     </div>
   );
 }

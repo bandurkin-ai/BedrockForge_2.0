@@ -1,14 +1,16 @@
 /**
- * The client of `/api/v1/intercepts` (ADR 0021 §10; errors `{code, message, hint, param?}` in Russian). Every JSON
- * form the interface relies on is here (and in `params.ts` for the body), to be checked against the core:
+ * The client of `/api/v1/intercepts` — every form as docs/progress/e15-api.md (the contract; ADR 0021 §10; errors
+ * `{code, message, hint, param?}` in Russian, `param` — a key of the body or «orientation.0.alpha»):
  *
- * - `POST /tt`, `POST /run` — body of `interceptBody` → `{source, id}` (a job, queue `heavy`); 409 `table_exists
- *   {name, suggested?, lost?}` (`/run`); 422 `bad_param {param}`, 422 `no_orientation`; 404; 423 read-only.
- * - `POST /tt/preview {params, hole_id}` → `TtPreview` (one hole, synchronous): `hole`, `intervals {from, to,
- *   values: {LENGTH?, TT, TT_FLAG, TT_SRC, ALPHA, DIPDIR, HOLE_THETA, HOLE_AZ}}`, `counts? {src: {TT_SRC: n}, flags:
- *   {"1": n, "2": n, "4": n, "8": n}}`, `mesh_skipped?: boolean` (more than 2 млн triangles), `notes?: string[]`.
- * - `POST /run/preview {params, hole_id}` — the window of 15.16 reads it (`runPreviewRaw`).
- * - `POST /orientation/plane {wireframe_ids}` → `{alpha, dipdir, spread}` («Взять с каркаса»).
+ * - `POST /tt`, `POST /run` — the body of `interceptBody` → `{source, id}` (a job, queue `heavy`); `/run` — 409
+ *   `table_exists {name, suggested, lost}` («Заменить?», again with `replace: true` or `name: suggested`); `/tt` — 409
+ *   `column_exists {param, name}`; 422 `bad_param` / `no_orientation` / `not_ready`; 404; 423 read-only.
+ * - `POST /tt/preview {params, hole_id}` → `{hole, rows: {from, to, length, TT, TT_REL, TT_FLAG, TT_SRC, ALPHA,
+ *   DIPDIR, HOLE_THETA, HOLE_AZ}, counts: {src, flags: {"1", "2", "4", "8"}}, mesh_skipped, set_summary, notes}`.
+ * - `POST /run/preview {params, hole_id}` → `{hole, unit, samples: {from, to, values, ore}, candidates: [{from, to,
+ *   length, tt, grade, kind, accepted, reason}], result: {from, to, values}, summary: {intercepts, included, length,
+ *   len_g}, set_summary, notes}`.
+ * - `POST /orientation/plane {wireframe_ids}` → `{alpha, dipdir, spread, triangles, area}` («Взять с каркаса»).
  * - `POST /results/{id}/rebuild` — through `composites/api.rebuildResult` (the prefix by the operation).
  * - the sources of the block: `GET /drillholes/sets/{id}/tables` (kinds `assay`, `interval`, `event` — замеры керна),
  *   `GET …/tables/{table}?limit=1` (fields), `GET …/tables/{table}/stats?column=` (`top` — codes of a field),
@@ -18,10 +20,13 @@ import { api } from "../../shell/api";
 import { startTool, type OnExists, type Started, type TableRow } from "../composites/api";
 import { INTERCEPTS_API } from "./params";
 
+export const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
 // ---- jobs ----
 
 export const startTt = (body: Record<string, unknown>, onExists: OnExists): Promise<Started | null> => startTool("/tt", body, onExists, INTERCEPTS_API);
-export const startRun = (body: Record<string, unknown>, onExists: OnExists): Promise<Started | null> => startTool("/run", body, onExists, INTERCEPTS_API);
+/** `/run` with `replace: false` (the contract); «Заменить» repeats it with `replace: true`. */
+export const startRun = (body: Record<string, unknown>, onExists: OnExists): Promise<Started | null> => startTool("/run", { ...body, replace: false }, onExists, INTERCEPTS_API);
 
 // ---- the sources of the block «Ориентировка» ----
 
@@ -42,12 +47,15 @@ export interface Plane {
   dipdir: number;
   /** the spread of the normals, ° (null — not given) */
   spread: number | null;
+  triangles: number | null;
+  /** м² */
+  area: number | null;
 }
 
 /** The mean plane of wireframes (`POST /orientation/plane`) — «Взять с каркаса». */
 export async function meanPlane(wireframeIds: number[]): Promise<Plane> {
-  const r = await api.post<{ alpha: number; dipdir: number; spread?: number | null }>(`${INTERCEPTS_API}/orientation/plane`, { wireframe_ids: wireframeIds });
-  return { alpha: r.alpha, dipdir: r.dipdir, spread: typeof r.spread === "number" ? r.spread : null };
+  const r = await api.post<Record<string, unknown>>(`${INTERCEPTS_API}/orientation/plane`, { wireframe_ids: wireframeIds });
+  return { alpha: Number(r.alpha), dipdir: Number(r.dipdir), spread: numOrNull(r.spread), triangles: numOrNull(r.triangles), area: numOrNull(r.area) };
 }
 
 // ---- the preview of «Истинная мощность» ----
@@ -96,63 +104,163 @@ export interface TtPreview {
   byFlag: Record<number, number>;
   /** the orientation by wireframes was not computed in the preview (more than 2 млн triangles) */
   meshSkipped: boolean;
+  /** the counts of the whole table (≤ 200 000 rows), else null — after the job, from its report */
+  setCounts: Counts | null;
   notes: string[];
 }
 
-const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+export interface Counts {
+  /** TT_SRC → rows */
+  bySrc: Record<string, number>;
+  /** bit → rows with it */
+  byFlag: Record<number, number>;
+}
+
+/** `counts` of the contract (`{src: {TT_SRC: n}, flags: {"1": n, …}}`); not an object — null. */
+export function toCounts(raw: unknown): Counts | null {
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as { src?: unknown; flags?: unknown };
+  const bySrc: Record<string, number> = {};
+  const byFlag: Record<number, number> = {};
+  if (c.src && typeof c.src === "object") for (const [k, n] of Object.entries(c.src)) if (typeof n === "number") bySrc[k] = n;
+  if (c.flags && typeof c.flags === "object") for (const [k, n] of Object.entries(c.flags)) if (typeof n === "number" && Number.isFinite(Number(k))) byFlag[Number(k)] = n;
+  return { bySrc, byFlag };
+}
+
 const at = (col: unknown, i: number): unknown => (Array.isArray(col) ? col[i] : undefined);
 
 /**
- * The answer of `POST /intercepts/tt/preview` made safe to draw: what the core leaves out is empty, a NaN or a
- * `null` stays empty (not zero), TT / LENGTH is computed here when the core does not give it; the counts are the
+ * The answer of `POST /intercepts/tt/preview` (e15-api.md: `rows` — columns `from, to, length, TT, TT_REL, TT_FLAG,
+ * TT_SRC, ALPHA, DIPDIR, HOLE_THETA, HOLE_AZ`) made safe to draw: a `null` stays empty (not zero), a row without
+ * FROM or TO is not drawn; TT_REL is the core's (computed here only when the core leaves it out); the counts are the
  * core's when given, else counted from the rows.
  */
 export function toTtPreview(raw: Record<string, unknown>): TtPreview {
-  const iv = (raw.intervals ?? raw.result ?? {}) as { from?: unknown; to?: unknown; values?: Record<string, unknown> };
-  const from = Array.isArray(iv.from) ? iv.from : [];
-  const to = Array.isArray(iv.to) ? iv.to : [];
-  const v = iv.values && typeof iv.values === "object" ? iv.values : {};
+  const c = (raw.rows && typeof raw.rows === "object" ? raw.rows : {}) as Record<string, unknown>;
+  const from = Array.isArray(c.from) ? c.from : [];
   const rows: TtRow[] = [];
   for (let i = 0; i < from.length; i += 1) {
     const f = numOrNull(from[i]);
-    const t = numOrNull(to[i]);
+    const t = numOrNull(at(c.to, i));
     if (f === null || t === null) continue;
-    const length = numOrNull(at(v.LENGTH, i)) ?? (t >= f ? t - f : null);
-    const tt = numOrNull(at(v.TT, i));
-    const given = numOrNull(at(v.TT_RATIO, i));
+    const length = numOrNull(at(c.length, i)) ?? (t >= f ? t - f : null);
+    const tt = numOrNull(at(c.TT, i));
+    const src = at(c.TT_SRC, i);
     rows.push({
       from: f,
       to: t,
       length,
       tt,
-      ratio: given ?? (tt !== null && length !== null && length > 0 ? tt / length : null),
-      alpha: numOrNull(at(v.ALPHA, i)),
-      dipdir: numOrNull(at(v.DIPDIR, i)),
-      theta: numOrNull(at(v.HOLE_THETA, i)),
-      azimuth: numOrNull(at(v.HOLE_AZ, i)),
-      src: typeof at(v.TT_SRC, i) === "string" ? (at(v.TT_SRC, i) as string) : "",
-      flag: numOrNull(at(v.TT_FLAG, i)) ?? 0,
+      ratio: c.TT_REL !== undefined ? numOrNull(at(c.TT_REL, i)) : tt !== null && length !== null && length > 0 ? tt / length : null,
+      alpha: numOrNull(at(c.ALPHA, i)),
+      dipdir: numOrNull(at(c.DIPDIR, i)),
+      theta: numOrNull(at(c.HOLE_THETA, i)),
+      azimuth: numOrNull(at(c.HOLE_AZ, i)),
+      src: typeof src === "string" ? src : "",
+      flag: numOrNull(at(c.TT_FLAG, i)) ?? 0,
     });
   }
-  const counts = (raw.counts ?? {}) as { src?: Record<string, unknown>; flags?: Record<string, unknown> };
-  const bySrc: Record<string, number> = {};
-  const byFlag: Record<number, number> = {};
-  if (counts.src && typeof counts.src === "object") {
-    for (const [k, n] of Object.entries(counts.src)) if (typeof n === "number") bySrc[k] = n;
-  } else {
-    for (const r of rows) if (r.src) bySrc[r.src] = (bySrc[r.src] ?? 0) + 1;
-  }
-  if (counts.flags && typeof counts.flags === "object") {
-    for (const [k, n] of Object.entries(counts.flags)) if (typeof n === "number" && Number.isFinite(Number(k))) byFlag[Number(k)] = n;
-  } else {
-    for (const r of rows) for (const b of FLAG_BITS) if (r.flag & b.bit) byFlag[b.bit] = (byFlag[b.bit] ?? 0) + 1;
-  }
-  return { hole: String(raw.hole ?? ""), rows, bySrc, byFlag, meshSkipped: raw.mesh_skipped === true, notes: Array.isArray(raw.notes) ? raw.notes.map(String) : [] };
+  const given = toCounts(raw.counts);
+  const own: Counts = { bySrc: {}, byFlag: {} };
+  if (!given)
+    for (const r of rows) {
+      if (r.src) own.bySrc[r.src] = (own.bySrc[r.src] ?? 0) + 1;
+      for (const b of FLAG_BITS) if (r.flag & b.bit) own.byFlag[b.bit] = (own.byFlag[b.bit] ?? 0) + 1;
+    }
+  const counts = given ?? own;
+  return { hole: String(raw.hole ?? ""), rows, bySrc: counts.bySrc, byFlag: counts.byFlag, meshSkipped: raw.mesh_skipped === true, setCounts: toCounts(raw.set_summary), notes: Array.isArray(raw.notes) ? raw.notes.map(String) : [] };
 }
 
 export async function ttPreview(params: Record<string, unknown>, holeId: number): Promise<TtPreview> {
   return toTtPreview(await api.post<Record<string, unknown>>(`${INTERCEPTS_API}/tt/preview`, { params, hole_id: holeId }));
 }
 
-/** The raw answer of `POST /intercepts/run/preview` (its form — the window of 15.16). */
-export const runPreviewRaw = (params: Record<string, unknown>, holeId: number): Promise<Record<string, unknown>> => api.post(`${INTERCEPTS_API}/run/preview`, { params, hole_id: holeId });
+// ---- the preview of «Рудные пересечения» ----
+
+/** Columns of intervals: FROM, TO and the values by name (`charts/column` draws them). */
+export interface RunColumns {
+  from: (number | null)[];
+  to: (number | null)[];
+  values: Record<string, (number | string | null)[]>;
+}
+
+export interface Candidate {
+  from: number;
+  to: number;
+  length: number | null;
+  /** null — TT empty (no orientation) */
+  tt: number | null;
+  grade: number | null;
+  /** «основное» / «в том числе» */
+  kind: string;
+  accepted: boolean;
+  /** «короче L_min», «ИМ меньше m_min»; null — accepted */
+  reason: string | null;
+}
+
+export interface RunSummary {
+  intercepts: number | null;
+  included: number | null;
+  length: number | null;
+  len_g: number | null;
+}
+
+export interface RunPreview {
+  hole: string;
+  /** the unit of the grade field («г/т»); null — not given */
+  unit: string | null;
+  samples: RunColumns;
+  /** g ≥ c per sample (step 1 of 8.5.3); null — the grade is empty */
+  ore: (boolean | null)[];
+  candidates: Candidate[];
+  result: RunColumns;
+  summary: RunSummary | null;
+  /** the summary of the set (≤ 200 000 samples), else null — after the job, from its report */
+  setSummary: RunSummary | null;
+  notes: string[];
+}
+
+const cell = (v: unknown): number | string | null => (typeof v === "number" ? (Number.isFinite(v) ? v : null) : typeof v === "string" ? v : null);
+
+function runColumns(raw: unknown): RunColumns {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const values: Record<string, (number | string | null)[]> = {};
+  if (r.values && typeof r.values === "object") for (const [k, v] of Object.entries(r.values)) if (Array.isArray(v)) values[k] = v.map(cell);
+  return { from: Array.isArray(r.from) ? r.from.map(numOrNull) : [], to: Array.isArray(r.to) ? r.to.map(numOrNull) : [], values };
+}
+
+function runSummary(raw: unknown): RunSummary | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return { intercepts: numOrNull(r.intercepts), included: numOrNull(r.included), length: numOrNull(r.length), len_g: numOrNull(r.len_g) };
+}
+
+/** The answer of `POST /intercepts/run/preview` (e15-api.md) made safe to draw: what is left out is empty, never 0. */
+export function toRunPreview(raw: Record<string, unknown>): RunPreview {
+  const samples = runColumns(raw.samples);
+  const oreRaw = (raw.samples as { ore?: unknown } | undefined)?.ore;
+  const candidates: Candidate[] = [];
+  for (const c of Array.isArray(raw.candidates) ? raw.candidates : []) {
+    if (!c || typeof c !== "object") continue;
+    const x = c as Record<string, unknown>;
+    const from = numOrNull(x.from);
+    const to = numOrNull(x.to);
+    if (from === null || to === null) continue;
+    candidates.push({ from, to, length: numOrNull(x.length), tt: numOrNull(x.tt), grade: numOrNull(x.grade), kind: typeof x.kind === "string" ? x.kind : "основное", accepted: x.accepted === true, reason: typeof x.reason === "string" && x.reason ? x.reason : null });
+  }
+  return {
+    hole: String(raw.hole ?? ""),
+    unit: typeof raw.unit === "string" && raw.unit.trim() ? raw.unit : null,
+    samples,
+    ore: Array.isArray(oreRaw) ? oreRaw.map((v) => (typeof v === "boolean" ? v : null)) : [],
+    candidates,
+    result: runColumns(raw.result),
+    summary: runSummary(raw.summary),
+    setSummary: runSummary(raw.set_summary),
+    notes: Array.isArray(raw.notes) ? raw.notes.map(String) : [],
+  };
+}
+
+export async function runPreview(params: Record<string, unknown>, holeId: number): Promise<RunPreview> {
+  return toRunPreview(await api.post<Record<string, unknown>>(`${INTERCEPTS_API}/run/preview`, { params, hole_id: holeId }));
+}

@@ -3,7 +3,7 @@
  * (four sources and «если не найдена — глобальная»), the table of domains «код → α, Aп», the ranges of 8.5.4, the
  * check of the values before a request — a value out of range never reaches the core, empty never becomes zero —
  * and the same check of the flat arguments of the commands `intercept.tt`, `intercept.run`. Pure: no React.
- * The body of the requests: `orientation` — a list of 1–2 sources by priority (`{source: "global", alpha, dipdir}`,
+ * The body of the requests (docs/progress/e15-api.md): `orientation` — a list of 1–2 sources by priority (the core takes 1–3) (`{source: "global", alpha, dipdir}`,
  * `{source: "domain", field?, table?, wireframe_ids?, attitudes}`, `{source: "mesh", wireframe_ids, d_max, r_n}`,
  * `{source: "core", table, alpha, beta, line, d_core}`), then `eps`, `step`, `angles` and the parameters of the rule.
  */
@@ -39,7 +39,7 @@ export const TT_PARAMS: readonly ParamSpec[] = [
 
 /** The parameters of the rule of ore intercepts 8.5.3 (the window — 15.16; the command — here). */
 export const RUN_PARAMS: readonly ParamSpec[] = [
-  { key: "cutoff", label: "Бортовое содержание c", kind: "number", min: 0, default: null },
+  { key: "cutoff", label: "Бортовое содержание c", kind: "number", default: null, hint: "любое конечное число" },
   num("l_min", "Мин. длина пересечения L_min", 0, 100, 2, "м"),
   {
     key: "min_by",
@@ -52,7 +52,7 @@ export const RUN_PARAMS: readonly ParamSpec[] = [
     ],
   },
   num("waste_max", "Макс. пустая порода внутри L_п", 0, 50, 2, "м"),
-  { key: "include_cutoff", label: "Борт «в том числе» c2", kind: "number", min: 0, optional: true, default: null, hint: "больше c; пусто — без «в том числе»" },
+  { key: "include_cutoff", label: "Борт «в том числе» c2", kind: "number", optional: true, default: null, hint: "больше c; пусто — без «в том числе»" },
   {
     key: "missing",
     label: "Пропуски",
@@ -93,7 +93,8 @@ export const RUN_TOOL: ToolSpec = {
   endpoint: "/run",
   preview: () => "run",
   source: { table: "one", fields: "one", domain: false },
-  params: [...RUN_PARAMS, ...TT_PARAMS],
+  // `angles` is not a parameter of `/run`: the table of intercepts always has ALPHA, DIPDIR, HOLE_THETA, HOLE_AZ
+  params: [...RUN_PARAMS, ...TT_PARAMS.filter((p) => p.key !== "angles")],
   required: ["set_id", "table", "field", "cutoff"],
   writes: "table",
   note: "Рудные пересечения по правилу ТЗ 8.5.3: серии рудных проб, присоединение через пустую породу, приёмка по L_min или m_min, «в том числе».",
@@ -371,6 +372,13 @@ export function argsFromOrientation(list: unknown): Record<string, unknown> {
 
 // ---- the whole body ----
 
+/** The name of the table of intercepts: at most 200 characters (the core: `NAME_MAX`). */
+export const NAME_MAX = 200;
+const NAME_LONG = `«Имя таблицы»: не больше ${NAME_MAX} знаков`;
+
+/** The fields «Истинная мощность» writes: never offered as grades (the core leaves them out of `fields` too). */
+export const TT_COLUMNS: readonly string[] = ["TT", "TT_FLAG", "TT_SRC", "ALPHA", "DIPDIR", "HOLE_THETA", "HOLE_AZ"];
+
 export interface Body {
   body: Record<string, unknown> | null;
   errors: Record<string, string>;
@@ -381,7 +389,7 @@ export interface Body {
  * The body of `POST /intercepts/tt` (or `/run`, with `RUN_TOOL`): `{set_id, table, [field], orientation, …params}`.
  * The source first, then the parameters, then the block; the first error is the reason.
  */
-export function interceptBody(tool: ToolSpec, src: { setId: number | null; table: string | null; field?: string | null }, values: FormValues, orient: OrientationState): Body {
+export function interceptBody(tool: ToolSpec, src: { setId: number | null; table: string | null; field?: string | null; grades?: readonly string[] | null }, values: FormValues, orient: OrientationState): Body {
   const { body, errors } = checkParams(tool.params, values);
   const o = checkOrientation(orient);
   const all = { ...errors, ...o.errors };
@@ -395,6 +403,55 @@ export function interceptBody(tool: ToolSpec, src: { setId: number | null; table
   const c2 = body.include_cutoff;
   if (typeof c === "number" && typeof c2 === "number" && c2 <= c) return { body: null, errors: { ...all, include_cutoff: "«Борт „в том числе“ c2»: должен быть больше c" }, reason: "«Борт „в том числе“ c2»: должен быть больше c" };
   const out: Record<string, unknown> = { set_id: src.setId, table: src.table, ...(tool.source.fields === "one" ? { field: src.field } : {}), ...body };
+  if (tool.id === "run") {
+    if (typeof body.name === "string" && body.name.length > NAME_MAX) return { body: null, errors: { ...all, name: NAME_LONG }, reason: NAME_LONG };
+    // the contract: c2 and the density absent — null; `fields` absent — every numeric field, [] — only `field`
+    out.include_cutoff = typeof c2 === "number" ? c2 : null;
+    out.density = typeof body.density === "string" ? body.density : null;
+    if (src.grades) out.fields = src.grades.filter((f) => f !== src.field);
+  }
   if (o.orientation.length) out.orientation = o.orientation;
   return { body: out, errors: all, reason: null };
+}
+
+// ---- the errors of the core ----
+
+/** The non-blank rows of the table of domains by their index in the grid (the body sends only these). */
+const realRows = (rows: readonly AttitudeRow[]): number[] => rows.map((r, i) => (blank(r) ? -1 : i)).filter((i) => i >= 0);
+
+/**
+ * `param` of an error of the core (e15-api.md: a key of the body or a path «orientation.0.alpha»,
+ * «orientation.1.attitudes.3.code») → the key of the form that shows it (`CheckedOrientation.errors`, the keys of
+ * the parameters); null — nothing of the form to mark (the set, the table: the message says it).
+ */
+export function formKey(param: string, orient: OrientationState): string | null {
+  const m = /^orientation\.(\d+)\.(.+)$/.exec(param);
+  if (!m) return param === "orientation" || param === "source" ? "orientation" : param === "set_id" || param === "table" ? null : param;
+  const n = Number(m[1]);
+  const rest = m[2];
+  const main = n === 0 && orient.enabled;
+  const fallback = n === 1 && orient.fallback && orient.source !== "global";
+  if (fallback) return rest === "alpha" ? "fallback_alpha" : rest === "dipdir" ? "fallback_dipdir" : "orientation";
+  if (!main) return "orientation";
+  const src = orient.source;
+  if (src === "global") return rest === "alpha" || rest === "dipdir" ? rest : "orientation";
+  if (src === "domain") {
+    const a = /^attitudes\.(\d+)\.(code|alpha|dipdir)$/.exec(rest);
+    if (a) {
+      const i = realRows(orient.attitudes)[Number(a[1])];
+      return i === undefined ? "attitudes" : `attitudes.${i}.${a[2]}`;
+    }
+    return rest.startsWith("attitudes") ? "attitudes" : "domain";
+  }
+  if (src === "mesh") return rest === "d_max" || rest === "r_n" ? rest : "wireframes";
+  return rest === "d_core" ? "d_core" : "core";
+}
+
+/** A refusal of the core with `param` (`CoreError.body`) → {key of the form: message}; nothing to mark — {}. */
+export function coreErrors(e: unknown, orient: OrientationState): Record<string, string> {
+  const body = (e as { body?: Record<string, unknown> } | null)?.body;
+  const param = body && typeof body.param === "string" ? body.param : null;
+  const message = e instanceof Error ? e.message : typeof body?.message === "string" ? body.message : "";
+  const key = param ? formKey(param, orient) : null;
+  return key && message ? { [key]: message } : {};
 }
