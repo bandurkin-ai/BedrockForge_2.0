@@ -91,8 +91,8 @@ export class WireframesSource {
   private readonly empty = new Map<number, number>();
   private readonly asking = new Set<number>();
   /**
-   * Asked again while its manifest was on the way: that answer may be of the version before (a new empty layer
-   * whose lines were saved at once, Windows CI series.spec), so the manifest is asked once more when it comes.
+   * Asked again while its manifest was on the way: that answer may be of the version before (a wireframe
+   * replaced at once after it was made, as the lines of series.spec on Windows CI), so the manifest is asked once more when it comes.
    */
   private readonly askAgain = new Set<number>();
   private readonly off: (() => void)[] = [];
