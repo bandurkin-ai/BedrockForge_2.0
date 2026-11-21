@@ -8,7 +8,7 @@
  * a value on the boundary is on the soft side. Values are float64; nothing missing becomes 0. Pure (tested in node).
  */
 import type { Excluded, PairPoints, ThompsonHoward } from "../../modules/qaqc/api";
-import { num, pct, STATUS_COLORS } from "../../modules/qaqc/format";
+import { int, num, pct, STATUS_COLORS } from "../../modules/qaqc/format";
 import { domainOf, formatNumber, type Domain, type Scale } from "../core/axisScale";
 import { csvText, type CsvCell } from "../core/csv";
 import type { Pt } from "../core/lasso";
@@ -212,6 +212,9 @@ export function rankedPath(model: RankedModel, sx: Scale, sy: Scale): string {
   return parts.join("");
 }
 
+/** «пар 4 000, показано 2 000»: the ranked HARD comes thinned to 2000 points by the core (the shares are of all pairs). */
+export const rankedNote = (used: number, shown: number): string => `пар ${int(used)}${shown < used ? `, показано ${int(shown)} (доли — по всем)` : ""}`;
+
 export const RANKED_CSV_HEADER = ["p", "hard"] as const;
 
 export function rankedCsv(ranked: { p: readonly number[]; hard: readonly number[] }): string {
@@ -220,6 +223,23 @@ export function rankedCsv(ranked: { p: readonly number[]; hard: readonly number[
     ranked.p.map((p, i) => [p, ranked.hard[i]]),
   );
 }
+
+/** A value c of the table P(c): `q` — 10, 50, 90 for the percentiles of the means of the pairs, null — a given c. */
+export interface ThPrecision {
+  c: number;
+  p: number | null;
+  q?: number | null;
+}
+
+/**
+ * The block `th` as the core answers it (core `qaqc/calc_pairs.py`, `thompson.py`): beyond ADR 0020 §10 — `need`
+ * (pairs the method needs: max(50, 2·group)), `groups.n` (pairs in each group), `precision[].q`; `state` — `ok`,
+ * `few_pairs` (fewer than `need` pairs), `no_fit` (every group has the same mean).
+ */
+export type ThBlock = Omit<ThompsonHoward, "groups" | "precision"> & { need?: number; groups: { m: number[]; med: number[]; n?: number[] }; precision: ThPrecision[] };
+
+/** «P10 средних пар», «P50 …», «P90 …»; a given c — «задано». */
+export const precisionTitle = (q: number | null | undefined): string => (typeof q === "number" && Number.isFinite(q) ? `P${q} средних пар` : "задано");
 
 /** The Thompson–Howard chart: the points of the groups, the line med = a + b·m, the domains. */
 export interface ThModel {
@@ -232,7 +252,7 @@ export interface ThModel {
   yDomain: Domain;
 }
 
-export function thModel(th: Pick<ThompsonHoward, "a" | "b" | "groups">): ThModel {
+export function thModel(th: Pick<ThBlock, "a" | "b" | "groups">): ThModel {
   const m = th.groups?.m ?? [];
   const med = th.groups?.med ?? [];
   const total = Math.min(m.length, med.length);
@@ -259,18 +279,18 @@ export function thModel(th: Pick<ThompsonHoward, "a" | "b" | "groups">): ThModel
   return { n, xs: xs.subarray(0, n), ys: ys.subarray(0, n), line, xDomain, yDomain };
 }
 
-export const TH_CSV_HEADER = ["m", "med"] as const;
+export const TH_CSV_HEADER = ["m", "med", "n"] as const;
 
-export function thCsv(th: Pick<ThompsonHoward, "groups">): string {
+export function thCsv(th: Pick<ThBlock, "groups">): string {
   const m = th.groups?.m ?? [];
   return csvText(
     TH_CSV_HEADER,
-    m.map((v, i) => [v, th.groups.med[i]]),
+    m.map((v, i) => [v, th.groups.med[i], th.groups.n?.[i]]),
   );
 }
 
 /** «σ(c) = K·(a + b·c)»: the precision of the line in words (a, b, K), missing — «—». */
-export function thFormula(th: Pick<ThompsonHoward, "a" | "b" | "k">): string {
+export function thFormula(th: Pick<ThBlock, "a" | "b" | "k">): string {
   return `a = ${formatNumber(th.a, 4)}, b = ${formatNumber(th.b, 4)}, K = ${formatNumber(th.k, 6)}, K·b = ${finite(th.k) && finite(th.b) ? formatNumber(th.k * th.b, 4) : "—"}`;
 }
 

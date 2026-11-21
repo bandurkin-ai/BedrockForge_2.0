@@ -12,13 +12,13 @@ import { csvCell } from "../src/charts/core/csv";
 import { axisMap, rasterPoints, rasterSize } from "../src/charts/core/PointsCanvas";
 import { PAIR_BOX, PairScatter } from "../src/charts/qaqc/PairScatter";
 import {
-  atMost, excludedRows, excludedTotal, lineSegment, nearestPair, PAIR_CSV_HEADER, PAIR_PIXELS, pairCsv, pairFacts, pairLines, pairModel, pairPixels, rankedCsv, rankedModel, rankedPath, thCsv, thFormula, thModel, verdictTitle,
+  atMost, precisionTitle, rankedNote, excludedRows, excludedTotal, lineSegment, nearestPair, PAIR_CSV_HEADER, PAIR_PIXELS, pairCsv, pairFacts, pairLines, pairModel, pairPixels, rankedCsv, rankedModel, rankedPath, thCsv, thFormula, thModel, verdictTitle,
 } from "../src/charts/qaqc/pairModel";
 import { RankedHardChart } from "../src/charts/qaqc/RankedHardChart";
 import { ThChart, ThTable } from "../src/charts/qaqc/ThChart";
 import type { DuplicatesAnswer, PairPoints } from "../src/modules/qaqc/api";
 import { int } from "../src/modules/qaqc/format";
-import { DupSummary, duplicatesNotes, loadDuplicates, thStateText } from "../src/modules/qaqc/DuplicatesTab";
+import { DupSummary, duplicatesNotes, loadDuplicates, thStateText, type DupAnswer } from "../src/modules/qaqc/DuplicatesTab";
 import { DROPPED } from "../src/modules/qaqc/state";
 import { setCoreTarget } from "../src/shell/api";
 
@@ -31,11 +31,12 @@ const POINTS: PairPoints = { row: H.map((h) => 200 + h), x1: H.map((h) => 100 + 
 const RANKED = { p: H.map((h) => (100 * h) / 20), hard: [...POINTS.hard] };
 // Т8.4-5: 10 groups, |x1 − x2| = 0,1·m → a = 0, b = 0,1; P(c) = 20,9672 %
 const K = 1 / (Math.SQRT2 * 0.6744897501960817);
-const TH = { state: "ok", group: 11, a: 0, b: 0.1, k: K, groups: { m: H.slice(0, 10), med: H.slice(0, 10).map((m) => 0.1 * m) }, precision: [{ c: 2, p: 200 * K * 0.1 }, { c: 5, p: 200 * K * 0.1 }, { c: 0.5, p: null }] };
+// the block as the core answers it (`qaqc/calc_pairs.py`): `need`, `groups.n`, `precision[].q` beyond ADR 0020 §10
+const TH = { state: "ok", group: 11, need: 50, a: 0, b: 0.1, k: K, groups: { m: H.slice(0, 10), med: H.slice(0, 10).map((m) => 0.1 * m), n: H.slice(0, 10).map(() => 11) }, precision: [{ c: 2, p: 200 * K * 0.1, q: 10 }, { c: 5, p: 200 * K * 0.1, q: 50 }, { c: 0.5, p: null, q: null }] };
 
-function answer(over: Partial<DuplicatesAnswer> = {}): DuplicatesAnswer {
+function answer(over: Partial<DupAnswer> = {}): DupAnswer {
   return {
-    element: "AU", unit: "г/т", counts: { rows: 500, filtered: 400, control: 60, unmapped: 0, missing: 2 }, limits: { hard_p: 10, hard_c: 20, hard_f: 30, hard_share: 90 } as DuplicatesAnswer["limits"], notes: [],
+    kind: "DUP_P", element: "AU", unit: "г/т", counts: { rows: 500, filtered: 400, control: 60, unmapped: 0, missing: 2 }, limits: { hard_p: 10, hard_c: 20, hard_f: 30, hard_share: 90 } as DuplicatesAnswer["limits"], notes: [],
     pairs: 27, used: 20, excluded: { no_parent: 3, missing: 2, negative: 0, zero: 1, below: 1 }, hard_limit: 10, share_limit: 90, share10: 50, share20: 100, share30: 100, share_at_limit: 50, passed: false,
     stats: { mean1: 110.5, mean2: 89.5, pearson: -1, rma: { a: 200, b: -1 } }, ranked: RANKED, points: POINTS, th: TH, ...over,
   };
@@ -166,13 +167,29 @@ describe("Thompson–Howard, the summary, the notes", () => {
     const table = renderToStaticMarkup(createElement(ThTable, { precision: TH.precision, unit: "г/т" }));
     expect(table).toContain("20,97 %");
     expect(table).toContain("<td>—</td>");
+    expect(table).toContain("<th>P10 средних пар</th><td>2</td>");
+    expect(table).toContain("<th>P50 средних пар</th>");
+    expect(table).toContain("<th>задано</th><td>0,5</td>");
+    expect([10, 90, null, undefined].map(precisionTitle)).toEqual(["P10 средних пар", "P90 средних пар", "задано", "задано"]);
+    expect(html).toContain("группа 1 (пар 11)");
     expect(thModel({ a: null, b: null, groups: { m: [1, 2], med: [0.1, 0.2] } }).line).toBeNull();
-    expect(thCsv(TH).split("\r\n")).toHaveLength(11);
+    const thLines = thCsv(TH).split("\r\n");
+    expect(thLines).toHaveLength(11);
+    expect(thLines[0]).toBe('"m";"med";"n"');
+    expect(thLines[1]).toBe("1;0.1;11");
   });
 
-  it("«мало пар»: fewer than 50 pairs — no chart, the reason in words", () => {
+  it("«мало пар» — fewer than `th.need` = max(50, 2·group); `no_fit` — one mean of every group: no chart, the reason in words", () => {
     expect(thStateText(answer())).toBeNull();
-    expect(thStateText(answer({ used: 30, th: { ...TH, state: "few_pairs", a: null, b: null, groups: { m: [], med: [] }, precision: [] } }))).toBe("Мало пар для графика Томпсона–Ховарта: в расчёте 30, нужно не меньше 50.");
+    expect(thStateText(answer({ used: 30, th: { ...TH, state: "few_pairs", a: null, b: null, groups: { m: [], med: [], n: [] }, precision: [] } }))).toBe("Мало пар для графика Томпсона–Ховарта: в расчёте 30, нужно не меньше 50 (наибольшее из 50 и двух групп по 11 пар).");
+    expect(thStateText({ used: 60, th: { state: "few_pairs", need: 62, group: 31 } })).toContain("в расчёте 60, нужно не меньше 62 (наибольшее из 50 и двух групп по 31 пар)");
+    expect(thStateText({ used: 60, th: { state: "few_pairs", group: 31 } })).toContain("нужно не меньше 62"); // no `need`: the rule of the core
+    expect(thStateText({ used: 120, th: { state: "no_fit", need: 50, group: 11 } })).toBe("График Томпсона–Ховарта не построен: у всех групп пар одно и то же среднее — прямую через них провести нельзя.");
+  });
+
+  it("the ranked HARD thinned by the core to 2000 points: the note tells both counts", () => {
+    expect(rankedNote(20, 20)).toBe("пар 20");
+    expect(rankedNote(4000, 2000)).toBe(`пар ${int(4000)}, показано ${int(2000)} (доли — по всем)`);
   });
 
   it("the summary: pairs, those left out by reason, the shares, the criterion of the type", () => {

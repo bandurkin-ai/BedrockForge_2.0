@@ -5,14 +5,13 @@
  * shows no chart. SVG of a fixed size: the PNG is twice it.
  */
 import { forwardRef, useMemo } from "react";
-import type { ThompsonHoward } from "../../modules/qaqc/api";
 import { num, pct } from "../../modules/qaqc/format";
 import { BRAND } from "../column/classes";
 import { formatNumber, makeScale } from "../core/axisScale";
 import { XAxis, YAxis } from "../core/Axes";
 import { plotBox, PlotFrame } from "../core/PlotFrame";
 import css from "../core/Chart.module.css";
-import { thFormula, type ThModel } from "./pairModel";
+import { precisionTitle, thFormula, type ThBlock, type ThModel } from "./pairModel";
 
 export const TH_W = 440;
 export const TH_H = 320;
@@ -21,7 +20,7 @@ const BOX = TH_BOX;
 
 export interface ThChartProps {
   model: ThModel;
-  th: ThompsonHoward;
+  th: ThBlock;
   label: string;
   /** the unit of the element, for the axis titles */
   unit: string | null;
@@ -42,7 +41,7 @@ export const ThChart = forwardRef<SVGSVGElement, ThChartProps>(function ThChart(
       <g data-points={model.n}>
         {Array.from({ length: model.n }, (_, j) => (
           <circle key={j} cx={sx.map(model.xs[j]) ?? BOX.x0} cy={sy.map(model.ys[j]) ?? BOX.y1} r={3.6} fill={BRAND.cobalt} data-group={j}>
-            <title>{`группа ${j + 1}: m̄ ${formatNumber(model.xs[j], 5)} · медиана ${formatNumber(model.ys[j], 5)}`}</title>
+            <title>{`группа ${j + 1}${th.groups.n?.[j] ? ` (пар ${th.groups.n[j]})` : ""}: m̄ ${formatNumber(model.xs[j], 5)} · медиана ${formatNumber(model.ys[j], 5)}`}</title>
           </circle>
         ))}
       </g>
@@ -53,12 +52,13 @@ export const ThChart = forwardRef<SVGSVGElement, ThChartProps>(function ThChart(
   );
 });
 
-/** The table P(c) = 200·σ(c) / c, %: the values c given by the core (P10, P50, P90 of m and those set); empty — «—». */
-export function ThTable({ precision, unit }: { precision: ThompsonHoward["precision"]; unit: string | null }) {
+/** The table P(c) = 200·σ(c) / c, %: the values c of the core (`q` — P10, P50, P90 of the means of the pairs, or a given c); empty — «—». */
+export function ThTable({ precision, unit }: { precision: ThBlock["precision"]; unit: string | null }) {
   return (
     <table className={css.stats} aria-label="Точность P(c)">
       <thead>
         <tr>
+          <th>Значение</th>
           <th>c{unit ? `, ${unit}` : ""}</th>
           <th>P(c)</th>
         </tr>
@@ -66,7 +66,8 @@ export function ThTable({ precision, unit }: { precision: ThompsonHoward["precis
       <tbody>
         {precision.map((r, i) => (
           <tr key={`${r.c}|${i}`}>
-            <th>{num(r.c, 5)}</th>
+            <th>{precisionTitle(r.q)}</th>
+            <td>{num(r.c, 5)}</td>
             <td>{pct(r.p, 2)}</td>
           </tr>
         ))}
