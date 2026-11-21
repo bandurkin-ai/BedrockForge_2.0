@@ -3,7 +3,7 @@ independent of the data object (no `object_refs`): `meta` keeps `data_uid`, the 
 the records. Files of the report (owner `object`, schema.BLOB_ROLES unchanged): `data` — the records file of the
 data (the same blob: the report is reproducible after the data are replaced or deleted), `sidecar:inputs` — JSON
 of the snapshot, `sidecar:summary` — JSON of the results by groups (no tables by samples), `sidecar:img001…` — PNG
-of the charts (14.14 adds `sidecar:xlsx`).
+of the charts, `sidecar:xlsx` — the book (`report_xlsx`, job `qaqc.report_file`).
 
     inputs = make_inputs(conn, data_id, filter, elements, charts)   # the snapshot: config, crm, filter, elements…
     report_id = create(conn, store, name, inputs)                    # `building` until `qaqc.report` ends
@@ -46,7 +46,7 @@ ALGO = "qaqc-1"
 MAX_REPORTS = 200
 MAX_CHARTS = 200
 MAX_NAME = 200
-RECORDS, INPUTS, SUMMARY = "data", "sidecar:inputs", "sidecar:summary"
+RECORDS, INPUTS, SUMMARY, XLSX = "data", "sidecar:inputs", "sidecar:summary", "sidecar:xlsx"
 IMAGE_PREFIX = "sidecar:img"
 JSON_MEDIA = "application/json"
 CHART_MODES = ("all", "flagged", "none")
@@ -315,7 +315,7 @@ def finish(conn: sa.Connection, store: BlobStore, report_id: int, summary: dict[
     if inputs is not None:
         conn.execute(sa.delete(blob_owners).where(
             blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == report_id,
-            blob_owners.c.role.like(f"{IMAGE_PREFIX}%") | (blob_owners.c.role == "sidecar:xlsx")))  # fmt: skip
+            blob_owners.c.role.like(f"{IMAGE_PREFIX}%") | (blob_owners.c.role == XLSX)))  # fmt: skip
         _share_records(conn, report_id, inputs["data_sha256"])
         _put_json(conn, store, report_id, INPUTS, inputs)
         meta.update(_meta_of(inputs))
@@ -401,7 +401,7 @@ def _public(conn: sa.Connection, store: BlobStore, row: Any, with_summary: bool)
         "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat(),
         "built_at": meta.get("built_at"), "job_id": row.job_id,
         "files": [{"kind": role.split(":", 1)[1], "size": size} for role, (_s, size) in sorted(owned.items())
-                  if role == "sidecar:xlsx"],
+                  if role == XLSX],
         "images": sum(1 for role in owned if role.startswith(IMAGE_PREFIX)),
         "size": sum(size for _s, size in owned.values()), "summary_size": meta.get("summary_size"),
     }  # fmt: skip
@@ -498,3 +498,30 @@ def snapshot(project: Any, report_id: int) -> Snapshot:
                        "Перестройте отчёт.")  # fmt: skip
     recs = r.open_file(path, sha=sha, scope=project.uid)
     return Snapshot(recs, inputs["config"], inputs["crm"], inputs.get("filter"), inputs)
+
+
+# --- the pictures and the book --------------------------------------------------------------------------------------
+
+
+def images(conn: sa.Connection, store: BlobStore, report_id: int) -> dict[str, bytes]:
+    """The PNG of the charts by their keys (`img001` …)."""
+    out = {}
+    for role, (sha, _size) in _owned(conn, report_id).items():
+        if role.startswith(IMAGE_PREFIX):
+            path = store.path_of(sha)
+            if path.is_file():
+                out[f"img{role[len(IMAGE_PREFIX) :]}"] = path.read_bytes()
+    return out
+
+
+def file_sha(conn: sa.Connection, report_id: int) -> str | None:
+    found = _owned(conn, report_id).get(XLSX)
+    return None if found is None else found[0]
+
+
+def put_file(conn: sa.Connection, store: BlobStore, report_id: int, staged: tuple[Any, str, int]) -> str:
+    """The book of the report, replacing the previous one (inside the write transaction)."""
+    conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == report_id,
+                                              blob_owners.c.role == XLSX))  # fmt: skip
+    media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return store.commit_staged(conn, staged, media_type=media, owner_kind=OWNER, owner_id=report_id, role=XLSX)

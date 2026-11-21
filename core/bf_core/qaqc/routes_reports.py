@@ -12,6 +12,10 @@
   * `POST /reports/{id}/rebuild` → 202 {report_id, job_id, source, id}: the saved filter, elements and charts on
     the current data and settings (version + 1, the charts and the files are dropped); 409 `source_deleted`,
     `report_building`.
+  * `POST /reports/{id}/files {kind: "xlsx", limit?}` → 202 {report_id, job_id, source, id} of `qaqc.report_file`
+    (quick); `kind: "pdf"` — 422 `not_available` («Э22»); `limit` — lines of a sheet (1000 … 1 048 575, for checks).
+    `POST /reports/{id}/save {kind, path}` → {path, size}: a copy of the built file (409 `file_not_built`; works
+    in a read-only project — it writes nothing into it).
 Events `objects.changed {kind: "qaqc_report", id, deleted?}`; 423 for every change of a read-only project."""
 
 from __future__ import annotations
@@ -191,3 +195,76 @@ def sa_meta(report_id: int) -> Any:
     from bf_core.db.schema import objects
 
     return sa.select(objects.c.meta).where(objects.c.id == report_id)
+
+
+def _kind(raw: dict[str, Any]) -> str:
+    kind = raw.get("kind", "xlsx")
+    if kind == "pdf":
+        raise ApiError(
+            422,
+            "not_available",
+            "PDF отчёта QAQC пока недоступен.",
+            "Появится на этапе Э22 (печать и макеты); сейчас сохраните XLSX.",
+            extra={"param": "kind"},
+        )
+    if kind != "xlsx":
+        raise ApiError(422, "bad_param", "Неизвестный вид файла отчёта.", "Выберите XLSX.", extra={"param": "kind"})
+    return "xlsx"
+
+
+@router.post("/reports/{report_id}/files")
+def build_file(svc: Svc, s: Sched, report_id: int, body: Payload) -> JSONResponse:
+    from . import jobs as qj
+    from . import report_xlsx as rx
+
+    project = svc.require_current(writable=True)
+    raw = _body(body)
+    _kind(raw)
+    limit = raw.get("limit")
+    wrong = isinstance(limit, bool) or not isinstance(limit, int) or not 1000 <= limit <= rx.MAX_LINES
+    if limit is not None and wrong:
+        raise ApiError(422, "bad_param", "Неверный предел строк листа.", f"От 1000 до {rx.MAX_LINES}.",
+                       extra={"param": "limit"})  # fmt: skip
+    with dialect.read_tx(project.engine) as conn:
+        current = _ready(conn, project, report_id)
+    params = {"report_id": report_id, "version": current["version"], "kind": "xlsx", "limit": limit}
+    key, job_id = s.submit(qj.REPORT_FILE, params, title=f"XLSX отчёта QAQC: {current['name']}")
+    return JSONResponse({"report_id": report_id, "job_id": job_id, "source": key, "id": job_id}, status_code=202)
+
+
+@router.post("/reports/{report_id}/save")
+def save_file(svc: Svc, report_id: int, body: Payload) -> dict[str, Any]:
+    import os
+    import shutil
+    import uuid
+    from pathlib import Path
+
+    from . import report as rp
+
+    project = svc.require_current()
+    raw = _body(body)
+    _kind(raw)
+    target = raw.get("path")
+    if not isinstance(target, str) or not target.strip():
+        raise ApiError(422, "bad_param", "Не выбран путь файла.", "Выберите, куда сохранить отчёт.",
+                       extra={"param": "path"})  # fmt: skip
+    dst = Path(target)
+    if not dst.parent.is_dir():
+        raise ApiError(404, "folder_not_found", f"Папка «{dst.parent}» не найдена.", "Выберите другую папку.",
+                       extra={"param": "path"})  # fmt: skip
+    with dialect.read_tx(project.engine) as conn:
+        _ready(conn, project, report_id)
+        sha = rp.file_sha(conn, report_id)
+    src = _store(project).path_of(sha) if sha else None
+    if src is None or not src.is_file():
+        raise ApiError(409, "file_not_built", "Файл XLSX отчёта ещё не сформирован.",
+                       "Нажмите «Сформировать XLSX» и дождитесь конца задания.")  # fmt: skip
+    tmp = dst.with_name(f".{dst.name}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        shutil.copyfile(src, tmp)
+        os.replace(tmp, dst)
+    except OSError as exc:
+        tmp.unlink(missing_ok=True)
+        raise ApiError(409, "file_write_failed", f"Не удалось записать «{dst.name}».",
+                       "Закройте файл в другой программе или выберите другой путь.") from exc  # fmt: skip
+    return {"path": str(dst), "size": dst.stat().st_size}

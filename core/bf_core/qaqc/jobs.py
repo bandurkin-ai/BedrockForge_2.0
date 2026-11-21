@@ -1,5 +1,6 @@
 """The jobs of QAQC (ADR 0020 §6; ADR 0002): `qaqc.import` — a file (CSV, TXT, DAT, XLSX, XLS) or a table of a
-drillhole set → a `qaqc_data` object; `qaqc.report` (quick) — the summary of a report (`run_report`, `report.py`).
+drillhole set → a `qaqc_data` object; `qaqc.report` (quick) — the summary of a report (`run_report`, `report.py`);
+`qaqc.report_file` (quick) — its XLSX (`run_report_file`, `report_xlsx.py`).
 Registered by an explicit import of this module in `jobs/registry.py`.
 
 Params: {name, source: {kind: "file", path, sheet?, encoding?, delimiter?, header_row?} | {kind: "table", set_id,
@@ -324,3 +325,79 @@ def run_report(ctx: JobContext) -> dict[str, Any]:
         raise JobError(exc.code, exc.message, exc.hint) from exc
     return {"report_id": report_id, "version": version, "rebuilt": p.get("inputs") is not None,
             "events": [["objects.changed", {"kind": rp.KIND, "id": report_id}]]}  # fmt: skip
+
+
+REPORT_FILE = "qaqc.report_file"
+
+
+def _stage_file(path: Path) -> tuple[Path, str, int]:
+    """A finished file of the store's temp folder as a staged blob: fsync, SHA-256, size."""
+    import os
+
+    h = hashlib.sha256()
+    with open(path, "rb+") as fh:
+        for chunk in iter(lambda: fh.read(1 << 22), b""):
+            h.update(chunk)
+        os.fsync(fh.fileno())
+    return path, h.hexdigest(), path.stat().st_size
+
+
+@handler(REPORT_FILE, "Файл отчёта QAQC", queue="quick", max_attempts=1)
+def run_report_file(ctx: JobContext) -> dict[str, Any]:
+    """The XLSX of a ready report (`report_xlsx.write`) into a temp file of the store, then the blob `sidecar:xlsx`
+    in the last transaction; a report rebuilt meanwhile (another version) — refused, nothing written."""
+    import uuid
+
+    from bf_core.db import dialect
+    from bf_core.storage.blobs import BlobStore
+
+    from . import records as r
+    from . import report as rp
+    from . import report_xlsx as rx
+    from .limits import QaqcError
+
+    p = ctx.params
+    report_id, version = int(p["report_id"]), int(p["version"])
+    store = BlobStore(ctx.project_folder)  # type: ignore[arg-type]
+    store.tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp = store.tmp_dir / f"{uuid.uuid4().hex}.xlsx"
+    try:
+        with dialect.read_tx(ctx.engine()) as conn:
+            row = conn.execute(sa_report(report_id)).first()
+            if row is None or row.state != "ready":
+                raise JobError("qaqc_report_not_found", "Отчёт QAQC не найден.", "Обновите раздел «Отчёты».")
+            inputs = rp.read_json(conn, store, report_id, rp.INPUTS)
+            summary = rp.read_json(conn, store, report_id, rp.SUMMARY)
+            pics = rp.images(conn, store, report_id)
+            meta = dict(row.meta or {})
+        listed = rp.charts_of(summary, meta.get("charts") or "flagged")
+        ctx.tick(0.0, "Чтение записей")
+        recs = r.open_file(store.path_of(inputs["data_sha256"]))
+        limit = int(p.get("limit") or rx.MAX_LINES)
+        rx.write(tmp, recs, inputs, meta, pics, listed["charts"], listed["omitted"], lambda f, m: ctx.tick(0.9 * f, m),
+                 limit=limit)  # fmt: skip
+        ctx.tick(0.95, "Сохранение")
+        staged = _stage_file(tmp)
+        with dialect.write_tx(ctx.engine()) as conn:
+            now = conn.execute(sa_report(report_id)).first()
+            if now is None or int(now.version) != version:
+                raise JobError("stale", "Отчёт изменили, пока строился файл.", "Сформируйте файл отчёта заново.")
+            sha = rp.put_file(conn, store, report_id, staged)
+    except QaqcError as exc:
+        raise JobError(exc.code, exc.message, exc.hint) from exc
+    except ApiError as exc:
+        raise JobError(exc.code, exc.message, exc.hint) from exc
+    finally:
+        tmp.unlink(missing_ok=True)
+    return {"report_id": report_id, "kind": "xlsx", "sha256": sha, "size": staged[2],
+            "events": [["objects.changed", {"kind": rp.KIND, "id": report_id}]]}  # fmt: skip
+
+
+def sa_report(report_id: int) -> Any:
+    import sqlalchemy as sa
+
+    from bf_core.db.schema import objects
+
+    from . import report as rp
+
+    return sa.select(objects).where(objects.c.id == report_id, objects.c.kind == rp.KIND)
