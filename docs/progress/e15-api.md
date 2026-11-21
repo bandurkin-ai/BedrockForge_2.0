@@ -71,8 +71,16 @@ core_beta, core_line?, d_core?`; `fallback_alpha` / `fallback_dipdir` — вто
 пересечение», «каркас: ближайшая», «керн: замер», «керн: ближайший», «нет»), при `angles` — `ALPHA`, `DIPDIR`,
 `HOLE_THETA`, `HOLE_AZ` (°). Пусто — `null`.
 
-Итог задания (`job.result`): `{set_id, result_id, table_id, name, columns: [..], rows, fresh, summary, events}`;
-`summary` = `report` записи (ниже).
+Итог задания (`job.result`): `{set_id, result_id, table_id, name, columns: [..], rows, fresh, summary, journal,
+stages, events}`; `summary` = `report` записи; `stages` — секунды стадий `{read, trajectories, hash, kernel, write}`
+(при `fresh: true` — без `kernel`, `write`; `summary` тогда нет). Повтор на той же таблице — та же запись (её `id`).
+
+`report` записи `tt` (15.11): `counts {src: {TT_SRC: строк}, flags: {"1", "2", "4", "8": строк}}`, `rows`, `length`
+(Σ LENGTH строк в расчёте, м), `tt` (Σ TT, м), `with_tt` (строк с TT), `excluded` (вне расчёта: нет глубины, TO ≤
+FROM), `skipped` (без FROM или TO — не прочитаны, поля пусты), `capped` (интервалов с увеличенной частью ствола),
+`absent` (виды источников, которых не было: `mesh` до 15.13), `sources` (по источнику цепочки `{source, rows, …}`),
+`journal`, `versions {numpy, numba}`, `seconds`, `edits` (`[]`), `written`. NaN — `null`. Таблица-результат с полями
+TT (композиты, «Рудные интервалы») при перестроении теряет их: «Истинная мощность» — в `lost` 409 `dependents_lost`.
 
 ## `POST /intercepts/run` — «Рудные пересечения»
 
@@ -124,8 +132,9 @@ core_beta, core_line?, d_core?`; `fallback_alpha` / `fallback_dipdir` — вто
  "counts": {"src": {"глобальная": 10, "нет": 2}, "flags": {"1": 0, "2": 2, "4": 0, "8": 0}},
  "mesh_skipped": false, "set_summary": null, "notes": ["…"]}
 ```
-`TT_REL` = TT / LENGTH (окраска столбца); `mesh_skipped` — каркасов в списке больше 2 млн треугольников, ориентировка
-по каркасу не считалась (окно сообщает); `set_summary` — `counts` по всей таблице при ≤ 200 000 строк, иначе `null`.
+`TT_REL` = TT / LENGTH (окраска столбца; LENGTH ≤ 0 или TT пусто — `null`); углы — при любом `angles`; строки — в
+порядке скважины по FROM; `counts` — по скважине; `mesh_skipped` — каркасов в списке больше 2 млн треугольников, ориентировка
+по каркасу не считалась (окно сообщает; до 15.13 — всегда, если источник «каркас» в списке); `set_summary` — `counts` по всей таблице при ≤ 200 000 строк, иначе `null`.
 
 `run/preview` →
 ```json
