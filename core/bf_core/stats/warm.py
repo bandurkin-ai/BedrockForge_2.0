@@ -11,11 +11,11 @@ the API, where the charts are computed).
         the same kernels on read-only columns, as the routes of `stats` give them: the cached columns of
         `stats.source` are read-only, and numba compiles a kernel anew for a read-only array — without this the
         first chart of a whole table would still compile for 0.2 … 0.8 s per kernel after the warm-up. Covered:
-        every chart and the swath of samples. Not covered — the step has to fit the 15 s of ADR 0019: the
-        read-only columns of a block model (`stats.blocks_cache`: `swath_blocks._extent`, four specializations,
-        1.3 s) and a series of samples «внутри блоков» (`swath_cells._in_cells`, `_mark`, 2.6 s) — the first
-        swath of the kind compiles them, once for the cache. Their own `warm()` could take read-only arrays
-        instead of writable ones (the routes give no others) at no cost
+        every chart and the swath of samples. The swath of a block model and of samples «внутри блоков» —
+        by `warm()` of `swath` and `swath_blocks` themselves, on read-only arrays as the routes give them (the
+        columns of `stats.blocks_cache`, the middles of `stats.source`; the empty columns of a series without a
+        density or a selection, the tail of the groups and `selected_idx` are read-only there too — one
+        specialization a type of `idx`, as many as the writable ones before)
     frozen(a) -> a read-only copy of the array
 
 A module that is not there (a branch without it) is skipped; one that fails is logged and the next goes on — a

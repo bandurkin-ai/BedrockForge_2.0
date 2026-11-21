@@ -493,16 +493,19 @@ def sample_series(
 
 
 def warm() -> None:
-    """Compile the kernels on a few rows (the `stats` step of the warm-up)."""
+    """Compile the kernels on a few rows (the `stats` step of the warm-up), read-only as the routes give them:
+    the middles of the samples (`source.midpoints`) and `idx` of the cells «внутри блоков» (`blocks_cache`;
+    `selected_idx` keeps it so) — the bit map and the binary search, for the two types of `idx`."""
     from .select import select_values
+    from .warm import frozen
 
     f = sf.frame(30.0, -10.0, 5.0)
-    pts = np.array([[0.0, 0.0, 0.0], [3.0, 4.0, 1.0], [np.nan, 0.0, 0.0], [9.0, 9.0, 2.0]])
+    pts = frozen([[0.0, 0.0, 0.0], [3.0, 4.0, 1.0], [np.nan, 0.0, 0.0], [9.0, 9.0, 2.0]])
     sel = select_values(np.array([1.0, 2.0, 3.0, np.nan]))
     c = cuboid(f, samples=[sample_bounds(f, pts, sel)], width=2.0)
     grid = {"corner": [0.0, 0.0, 0.0], "counts": [2, 2, 1], "size": [5.0, 5.0, 2.0], "order": "F"}
     for dtype in (np.uint64, np.uint32):
-        cells = cells_of(grid, np.array([0, 3], dtype=dtype))
+        cells = cells_of(grid, frozen(np.array([0, 3], dtype=dtype)))
         sample_series(pts, sel, f, c, cells=cells)
         points_in_cells(pts, cells, method="search")
     swath_means(np.array([0.5, 1.5]), np.ones(2), np.ones(2), 0.0, 1.0, 2)

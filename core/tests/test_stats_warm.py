@@ -115,10 +115,43 @@ def test_warm_leaves_nothing_to_compile_for_the_columns_of_the_api() -> None:
             scatter.scatter_chart(np.array(values), np.array(other), w, color=color, row_ids=row_ids)
         scatter.scatter_chart(np.array(values), np.array(other), w, row_ids=row_ids, max_points=1000)
     ternary.shares(values, other, third)
-    # a swath of samples: their middles come read-only from the cache (the columns of a block model and a
-    # series «внутри блоков» are not warmed: `stats/warm.py` says why)
+    # a swath of samples: their middles come read-only from the cache
     points = frozen(rng.uniform(0.0, 50.0, (n, 3)))
     f = sf.frame(30.0, -10.0, 5.0)
     swath.sample_series(points, sel, f, swath.cuboid(f, samples=[swath.sample_bounds(f, points, sel)], width=2.0))
+    blocks(rng, points, sel, f)
     after = compiled()
     assert {k: (before.get(k), v) for k, v in after.items() if before.get(k) != v} == {}
+
+
+def blocks(rng, points, sel, f) -> None:  # type: ignore[no-untyped-def]
+    """The swath of a block model and of samples «внутри блоков» as `routes_swath` makes them: the columns of
+    `stats.blocks_cache` (read-only; `idx` uint32 below 2³² cells, else uint64), `keep` of the route (writable);
+    a model of several groups and a tail (`GROUP` made small), with a selection and without, every weight."""
+    from bf_core.stats import swath
+    from bf_core.stats import swath_blocks as sb
+    from bf_core.stats import warm as stats_warm
+
+    frozen = stats_warm.frozen
+    grid = {"corner": [0.0, 0.0, 0.0], "counts": [10, 10, 10], "size": [5.0, 5.0, 5.0], "order": "F"}
+    for dtype in (np.uint32, np.uint64):
+        idx = frozen(np.sort(rng.choice(1000, 700, replace=False)).astype(dtype))
+        m = idx.shape[0]
+        values, density = frozen(rng.lognormal(0.0, 1.0, m)), frozen(rng.uniform(2.0, 3.0, m))
+        codes, keep = frozen(rng.integers(-1, 3, m).astype(np.int32)), np.asarray(sb.keep_of(LABELS, ["ORE"]))
+        for group in (sb.GROUP, 128):
+            old, sb.GROUP = sb.GROUP, group
+            try:
+                ext = [sb.block_bounds(f, grid, idx), sb.block_bounds(f, grid, idx, codes=codes, keep=keep)]
+                c = swath.cuboid(f, models=ext, samples=[swath.sample_bounds(f, points, sel)], width=10.0)
+                for weight in sb.WEIGHTS:
+                    dens = density if weight == "tonnage" else None
+                    r = sb.block_series(grid, idx, values, f, c, weight=weight, density=dens)
+                    assert r.counts["rows"] == m and r.total["count"] > 0
+                    sb.block_series(grid, idx, values, f, c, weight=weight, density=dens, codes=codes, keep=keep)
+            finally:
+                sb.GROUP = old
+        for cells in (swath.cells_of(grid, idx), swath.cells_of(grid, sb.selected_idx(idx, codes, keep))):
+            swath.sample_series(points, sel, f, c, cells=cells)
+            swath.points_in_cells(points, cells, method="search")
+            swath.points_in_cells(points, cells, method="bits")
