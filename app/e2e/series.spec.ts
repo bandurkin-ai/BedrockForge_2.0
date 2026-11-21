@@ -313,6 +313,46 @@ async function timedStep(page: Page, seriesId: number, k: number): Promise<{ ms:
   return r as { ms: number; mark: Mark; lines: number };
 }
 
+/**
+ * Cold steps k = from…to, each `]` sent in the page the moment the data of the previous section is ready: the pause
+ * before the key (`pause`, ms from the mark of k − 1 being seen to the keydown) is measured and stays well under the
+ * idle time of the prefetch (`IDLE_MS` = 150 ms of seriesSections.ts), whatever the speed of the runner — a round
+ * trip of Playwright per step (> 150 ms on the Windows runner) let the idle time read k + 1 before its key.
+ * The keydown goes to the element in focus as a key pressed there does (the keys of the scene read `key`/`code`).
+ */
+async function coldSteps(page: Page, seriesId: number, from: number, to: number): Promise<{ ms: number; mark: Mark; lines: number; pause: number }[]> {
+  const r = await page.evaluate(
+    ([sid, k0, k1]) =>
+      new Promise<unknown>((res) => {
+        const out: { ms: number; mark: unknown; lines: number; pause: number }[] = [];
+        const until = performance.now() + 30_000 * (k1 - k0 + 1);
+        const press = (k: number, seen: number) => {
+          let t0 = 0;
+          const poll = () => {
+            const st = window.__bfScene!.state() as unknown as { sectionData: { series: number; k: number; ready: boolean } | null; exact: { sections: { lines: number }[] } };
+            const m = st.sectionData;
+            if (m && m.series === sid && m.k === k && m.ready) {
+              const now = performance.now();
+              out.push({ ms: now - t0, mark: m, lines: st.exact.sections.reduce((a, s) => a + s.lines, 0), pause: t0 - seen });
+              return k < k1 ? press(k + 1, now) : res(out);
+            }
+            if (performance.now() > until) return res(null);
+            setTimeout(poll, 1);
+          };
+          window.addEventListener("keydown", () => (t0 = performance.now()), { capture: true, once: true });
+          const target = document.activeElement ?? document.body;
+          target.dispatchEvent(new KeyboardEvent("keydown", { key: "]", code: "BracketRight", bubbles: true, cancelable: true }));
+          target.dispatchEvent(new KeyboardEvent("keyup", { key: "]", code: "BracketRight", bubbles: true }));
+          poll();
+        };
+        press(k0, performance.now());
+      }),
+    [seriesId, from, to] as const,
+  );
+  expect(r, `the sections ${from + 1}…${to + 1} are not ready`).not.toBeNull();
+  return r as { ms: number; mark: Mark; lines: number; pause: number }[];
+}
+
 test("series: the demo — «Серия через скважину» shows the whole hole; the step ] to the data of the section → bench/out/series_step.json", async () => {
   test.setTimeout(420_000);
   const started = Date.now();
@@ -405,8 +445,9 @@ test("series: the demo — «Серия через скважину» shows the 
     await waitFrame(page, 120_000);
 
     // cold: ] at once after the section is ready — k + 1 is not read yet (idle 150 ms)
-    const cold: { ms: number; mark: Mark; lines: number }[] = [];
-    for (let kk = 1; kk <= 15; kk++) cold.push(await timedStep(page, bench.id, kk));
+    const cold = await coldSteps(page, bench.id, 1, 15);
+    // the pause before each key after the first (its section was ready long before) — far from the idle time
+    expect(Math.max(...cold.slice(1).map((s) => s.pause)), "the pause between the cold steps").toBeLessThan(100);
     // prefetched: the idle time reads k + 1 first — ] then shows it without a request
     const warm: { ms: number; mark: Mark; lines: number }[] = [];
     for (let kk = 16; kk <= 25; kk++) {
@@ -422,7 +463,7 @@ test("series: the demo — «Серия через скважину» shows the 
     const warmMs = warm.filter((s) => s.mark.prepared).map((s) => s.ms);
     expect(coldMs.length, "every cold step was prefetched").toBeGreaterThanOrEqual(8);
     expect(warmMs.length, "the prefetched steps were not prefetched").toBeGreaterThanOrEqual(8);
-    const lines = cold.concat(warm).map((s) => s.lines);
+    const lines = [...cold, ...warm].map((s) => s.lines);
     const st = await state(page);
     const out = {
       sections: bench.count,
