@@ -94,7 +94,7 @@ TT (композиты, «Рудные интервалы») при перест
 |---|---|
 | `table`, `set_id` | как `tt` |
 | `field` | числовое поле содержания; не выбрано / не число — 422 `bad_param`; 422 `field_not_found` |
-| `cutoff` | борт c — любое конечное число; нет — 422 `bad_param` |
+| `cutoff` | борт c — конечное число больше нуля (ТЗ 8.5.4, как ядро правила); нет, 0 или меньше — 422 `bad_param` |
 | `include_cutoff` | c2 «в том числе», `> cutoff`; `null` / пусто — нет |
 | `l_min` | 0–100 м (2): L_min при `min_by = length`, m_min при `min_by = tt` |
 | `min_by` | `length` (по умолчанию) / `tt` |
@@ -109,14 +109,22 @@ TT (композиты, «Рудные интервалы») при перест
 
 Ответы: 200 `{source, id}` задания `intercept.run` (heavy); 422 / 404 как выше; 409 `table_exists`
 `{name, suggested, lost}` — окно спрашивает «Заменить?» (`lost` — операции над той таблицей, которые не
-повторить) и повторяет с `replace: true` или с `name: suggested`; 423; до 15.12 — 422 `not_ready`.
+повторить) и повторяет с `replace: true` или с `name: suggested`; 423.
 
 Таблица (вид `interval`): HOLE, FROM, TO, LENGTH, TT, TT_FLAG, TT_SRC, ALPHA, DIPDIR, HOLE_THETA, HOLE_AZ, содержания
 (`field` первым, затем `fields`), LEN_G, TT_G, WASTE_LEN, N_INT, X, Y, Z, INCL, LABEL, ID, KIND («основное»,
 «в том числе»), MISS_LEN. Отображение по стволу «Рудные пересечения» — сохранённая колонка (striplog) набора с
 `settings.origin = {op: "intercepts", table: name_key}`.
 
-Итог задания: `{set_id, result_id, table_id, name, chart_id, rows, columns, replaced, fresh, journal, events}`.
+Итог задания: `{set_id, result_id, table_id, name, chart_id, rows, columns, replaced, fresh, summary, journal,
+stages, events}`; `columns` — имена таблицы от HOLE; `summary` = `report` записи; `stages` — секунды `{read,
+trajectories, hash, kernel, write}` (при `fresh: true` — без `kernel`, `write`, без `summary`).
+
+`report` записи `intercepts` (15.12): `counts {src, flags}` (по всем строкам таблицы), `rows`, `intercepts`,
+`included`, `length` (Σ LENGTH основных, м), `tt` (Σ TT основных; `null` — ни у одного нет), `len_g`, `mean` (=
+`len_g / length`; `null` — нет пересечений), `waste_len`, `miss_len`, `excluded` (проб вне правила: нет глубины,
+TO ≤ FROM, перекрытия), `skipped` (без FROM или TO — не прочитаны), `unit` (поля содержания), `field`, `journal`,
+`versions`, `seconds`, `edits` (`[]`), `written` (`[]`), `table_columns`. NaN — `null`.
 
 ## Предпросмотры (синхронно, одна скважина; 15.11–15.12)
 
@@ -149,7 +157,11 @@ TT (композиты, «Рудные интервалы») при перест
  "set_summary": null, "notes": ["…"]}
 ```
 `reason` отказанного кандидата: «короче L_min», «ИМ меньше m_min»; `set_summary` — `summary` по набору при ≤ 200 000
-проб, иначе `null`.
+проб, иначе `null`. Ядро (15.12): `samples.values` — поле содержания, прочие поля таблицы и плотность; кандидаты —
+все кандидаты правила, «в том числе» сразу после своего основного; `tt` кандидата — при `min_by = tt` та, по которой
+принимали, иначе — ориентировки на его [FROM; TO] (нет — `null`); `result.values` — все колонки таблицы после HOLE,
+FROM, TO (шире примера); `summary` и `set_summary` — в форме `report` записи без `journal` и версий (шире примера);
+`mesh_skipped` — как у `tt/preview`.
 
 ## `POST /intercepts/orientation/plane` (15.13, желательно)
 

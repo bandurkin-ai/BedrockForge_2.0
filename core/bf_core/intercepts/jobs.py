@@ -44,7 +44,8 @@ if TYPE_CHECKING:
     from bf_core.composites import source
     from bf_core.jobs.context import JobContext
 
-    from .spec import TtSpec
+    from . import orient
+    from .spec import RunSpec, TtSpec
     from .tt import TtTable
 
 KIND = "intercept.tt"
@@ -68,7 +69,7 @@ def memory_mb(params: dict[str, Any]) -> int:
 
 
 def read(
-    engine: sa.Engine, spec: TtSpec, *, cache_dir: Any = None, holes: list[int] | None = None,
+    engine: sa.Engine, spec: TtSpec | RunSpec, *, cache_dir: Any = None, holes: list[int] | None = None,
     tick: Tick | None = None,
 ) -> tuple[source.Lines, dict[int, source.Lines]]:  # fmt: skip
     """The source with the fields its own sources read, and the other tables of the orientation by id."""
@@ -96,6 +97,11 @@ def compute(
             return tt.of_table(spec, lines, st, tables=dict(tables), mesh=None, threads=threads, tick=tick)
     except ValueError as exc:  # CompositeError of the bodies → 422; any other — a failure of the job
         raise cj.as_api(exc) from None
+
+
+def job_mesh(project: Any, tick: Tick) -> orient.MeshSource | None:
+    """The source «каркас» of a job: none until 15.13 (the chain goes on, `absent` names it)."""
+    return None
 
 
 def report_of(t: TtTable) -> dict[str, Any]:
