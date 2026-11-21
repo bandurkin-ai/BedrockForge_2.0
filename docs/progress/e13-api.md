@@ -181,3 +181,40 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
 Тело пустое. Расчёт сохранённого графика по его настройкам и текущим данным; набор — тот, в котором лежит
 график. Считаются `histogram`, `qq`, `dendrogram`, `scatter`, `box`, `probplot`, `domains`, `ternary`. Ответ —
 ответ его вида (как выше) + `chart: {id, kind, name, version}`.
+
+## Выделение проб (13.19; ADR 0019 §8)
+
+Ядро — `stats/selection.py`, `stats/routes_selection.py`; фильтр таблицы — `drillholes/router.py`. Выделение —
+строки одной таблицы одной ревизии (`rev`), ≤ 200 000; ядро держит последние 16 (LRU). Чужие id не мешают
+(`unknown`). Правка или замена таблицы — каждый запрос с жетоном отвечает 409 `selection_stale {token}` (окно
+снимает выделение с сообщением).
+
+`POST /stats/selection` — одно из четырёх тел:
+```
+{set_id, table, rows: [dh_rows.id]}                       // точки графика (рассеяние, тернарная): row[] ответа
+{chart: {kind: "scatter", …настройки рассеяния}, polygon: [[x, y], …]}   // режим плотности: строки выбирает ядро;
+{chart: {kind: "scatter", …}, rect: [x0, x1, y0, y1]}     //   координаты в данных, на лог-оси — > 0, проверка в log10
+{chart: {kind: "box" | "probplot", …настройки}, range: [lo, hi], groups: [label | null] | null}
+        // пробы групп (null — без домена или единственная группа графика без доменов; null / [] — все группы),
+        // значение которых после отбора — в [lo; hi] (границы входят; на лог-шкале ящиков и у лог-вероятностного
+        // — только > 0)
+{set_id, table, filter: {where: str | null, hole: dh_holes.id | null}}   // «наоборот»: строки фильтра «Таблицы»
+→ {token, set_id, table_id, table_name, rev, n, unknown, source: "rows" | "scatter" | "box" | "probplot" | "table"}
+```
+`table` — `name_key` или id (`null` — таблица проб набора); у `chart` таблица — таблица X (`table` настроек),
+`holes` настроек действуют. `GET /stats/selection/{token}` → `{…то же, rows: [dh_rows.id по возрастанию]}`
+(отметить точки на открытых графиках). `DELETE /stats/selection/{token}` → `{deleted}`.
+
+`GET /stats/selection/{token}/segments?method=minimum_curvature` — BFA1 `selection_segments`: заголовок `{kind,
+format: 1, token, set_id, table_id, rev, method, n, segments, no_position (скважина без траектории), origin [x, y,
+z] (целые метры, середина габарита), bbox [6] | null}`; массивы `row u4` (dh_rows.id; f8 после 2³²), `hole u4`
+(dh_holes.id), `from f8`, `to f8`, `a f4×3`, `b f4×3` — начало и конец интервала на траектории от `origin`;
+порядок — скважина по имени, FROM. 200 тыс. строк: выделение фильтром + отрезки 0,14 с, 9,6 МБ.
+
+`GET /drillholes/sets/{id}/tables/{table}?selection=<token>` — страница только строк выделения (вместе с `where`,
+`hole`, `sort`); в ответе + `selection {token, n}`.
+
+Отказы: 422 `too_many_rows {param: rows | polygon | rect | range | filter}` (> 200 000), `bad_param {param: rows,
+chart, polygon, rect, range, groups, filter, where, hole, table, selection}` (`selection` — жетон другой таблицы),
+ошибки настроек графика (`field_not_found {x}` …), `bad_expression`, `bad_method`; 404 `selection_not_found`;
+409 `selection_stale {token}`, `table_changed`.
