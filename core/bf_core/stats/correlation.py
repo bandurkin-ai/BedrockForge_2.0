@@ -12,6 +12,7 @@ one numba kernel over the rows, not from a pass per pair.
         the sums behind r for values already prepared: n, total (Σ w), mean[i, j] (of field i over the rows it
         shares with j), sxx[i, j] = Σ w·(x_i − mean)², sxy[i, j], r — the regressions of a scatter take them
     average_ranks(values) -> float64       ranks from 1, equal values share the mean of their ranks, NaN stays
+    run_tasks(tasks, work, threads, done), thread_count(threads, tasks)    blocks of rows in threads, in order
     warm()
 
 Rules (BF; ТЗ 7.27 «< 0 и нули — как в гистограмме»), for every field apart: a value that is missing (NaN,
@@ -337,12 +338,13 @@ def block_rows(k: int) -> int:
     return int(min(max(_CELLS // max(k, 1), 4096), 65536))
 
 
-def _threads(threads: int | None, tasks: int) -> int:
+def thread_count(threads: int | None, tasks: int) -> int:
+    """Threads for `tasks` tasks: `threads`, or up to MAX_THREADS of the processors of the machine."""
     limit = min(MAX_THREADS, os.cpu_count() or 1) if threads is None else int(threads)
     return max(1, min(limit, tasks))
 
 
-def _run(tasks: list[Any], work: Callable[[Any], Any], threads: int, done: Callable[[int, Any], None]) -> None:
+def run_tasks(tasks: list[Any], work: Callable[[Any], Any], threads: int, done: Callable[[int, Any], None]) -> None:
     """`work(task)` for every task, in `threads` threads; `done(number, result)` — in the order of the tasks,
     in the caller's thread (it may raise to cancel: tasks not started are dropped)."""
     if threads <= 1:
@@ -366,7 +368,7 @@ def _pass(
     k = len(src.columns)
     size, block = 1 + k + 5 * k * k, block_rows(k)
     spans = [(a, min(a + block, n)) for a in range(0, n, block)]
-    workers = _threads(threads, len(spans))
+    workers = thread_count(threads, len(spans))
     bufs: SimpleQueue[np.ndarray] = SimpleQueue()
     for _ in range(workers):
         bufs.put(np.empty((k, min(block, max(n, 1)))))
@@ -394,7 +396,7 @@ def _pass(
             tick(lo + (hi - lo) * (i + 1) / len(spans))
 
     with np.errstate(over="ignore", invalid="ignore"):
-        _run(spans, work, workers, done)
+        run_tasks(spans, work, workers, done)
     return sums.value, rows, counts
 
 
@@ -500,13 +502,13 @@ def _spearman(
     held = present.sum(axis=0)
     whole = (int(np.count_nonzero(held == k)), int(np.count_nonzero(held == 0)), int(np.count_nonzero(held == 1)),
              int(np.count_nonzero((held > 1) & (held < k))))  # fmt: skip
-    workers = _threads(threads, k)
+    workers = thread_count(threads, k)
     if whole[2] + whole[3] == 0:
         # every row is whole or empty: one ranking of a field serves all its pairs
         def rank(j: int) -> None:
             x[j] = average_ranks(x[j])
 
-        _run(list(range(k)), rank, workers, lambda i, _: step(0.1 + 0.5 * (i + 1) / k))
+        run_tasks(list(range(k)), rank, workers, lambda i, _: step(0.1 + 0.5 * (i + 1) / k))
         m = _moments(_Source(list(x), src.weights, None), n, lambda f: step(0.6 + 0.4 * f), threads)[0]
         return m.r, m.n, counts, whole
 
@@ -518,7 +520,7 @@ def _spearman(
         orders[j] = rows[np.argsort(x[j][rows])]
         _rank(x[j], orders[j], present[j], False, own[j])
 
-    _run(list(range(k)), sort, workers, lambda i, _: step(0.1 + 0.3 * (i + 1) / k))
+    run_tasks(list(range(k)), sort, workers, lambda i, _: step(0.1 + 0.3 * (i + 1) / k))
     held_by = present.sum(axis=1)
     r, count = np.eye(k), np.diag(held_by).astype(np.int64)
     r[np.diag_indices(k)] = np.where(held_by > 0, 1.0, np.nan)
@@ -546,7 +548,7 @@ def _spearman(
         r[i, j] = r[j, i] = result[1]
         step(0.4 + 0.6 * (t + 1) / len(pairs))
 
-    _run(pairs, pair, _threads(threads, len(pairs)), put)
+    run_tasks(pairs, pair, thread_count(threads, len(pairs)), put)
     return r, count, counts, whole
 
 
