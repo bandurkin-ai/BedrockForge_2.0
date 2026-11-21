@@ -162,6 +162,34 @@ def test_an_edit_makes_the_selection_stale(demo) -> None:  # type: ignore[no-unt
     assert c.get(f"{S}/selection/{sel['token']}").json()["code"] == "selection_not_found"
 
 
+def test_a_table_changed_while_selecting_is_selection_stale(demo, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    """13.36: a table edited while the selection is made answers 409 `selection_stale` {token: null}, the code
+    of the contract, whichever body (a filter of «Таблица», the density of a chart)."""
+    from bf_core.api.errors import ApiError
+    from bf_core.drillholes import router as dh_router
+
+    c, set_id, _project = demo
+    snapshot = dh_router._snapshot
+
+    def older(*args: Any) -> Any:
+        snap = snapshot(*args)
+        return type("Old", (), {"key": (*snap.key[:-1], int(snap.key[-1]) - 1)})()
+
+    monkeypatch.setattr(dh_router, "_snapshot", older)
+    r = c.post(f"{S}/selection", json={"set_id": set_id, "table": None, "filter": {"where": "AU > 1", "hole": None}})
+    assert r.status_code == 409, r.text
+    got = r.json()
+    assert got["code"] == "selection_stale" and got["token"] is None and got["message"] and got["hint"]
+    monkeypatch.setattr(dh_router, "_snapshot", snapshot)
+
+    def edited(*_args: Any, **_kw: Any) -> Any:
+        raise ApiError(409, "table_changed", "Таблица изменилась во время чтения.", "Повторите действие.")
+
+    monkeypatch.setattr(source, "read", edited)
+    r = c.post(f"{S}/selection", json={"chart": scatter_body(set_id), "polygon": LASSO})
+    assert r.status_code == 409 and r.json()["code"] == "selection_stale" and r.json()["token"] is None
+
+
 def test_box_and_probplot_ranges(demo) -> None:  # type: ignore[no-untyped-def]
     c, set_id, project = demo
     box = {"kind": "box", "v": 1, "set_id": set_id, "table": None, "field": "AU", "weight": "length", "log": True}

@@ -221,7 +221,8 @@ z] (целые метры, середина габарита), bbox [6] | null}`
 Отказы: 422 `too_many_rows {param: rows | polygon | rect | range | filter}` (> 200 000), `bad_param {param: rows,
 chart, polygon, rect, range, groups, filter, where, hole, table, selection}` (`selection` — жетон другой таблицы),
 ошибки настроек графика (`field_not_found {x}` …), `bad_expression`, `bad_method`; 404 `selection_not_found`;
-409 `selection_stale {token}`, `table_changed`.
+409 `selection_stale {token}` (`token: null` — таблица изменилась, пока выделение создавалось: строки
+прочитаны не из одной ревизии; прежний `table_changed` этого маршрута — тоже `selection_stale`).
 
 ## Вкладка «Статистика» (13.17; ADR 0019 §7): `POST /stats/tab/declus`, `/nscore`, `/backtr`, `/bootstrap`
 

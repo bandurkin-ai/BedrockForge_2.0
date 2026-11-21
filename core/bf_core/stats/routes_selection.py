@@ -19,7 +19,8 @@
 field). Errors `{code, message, hint, param?}`: 422 `bad_param` {param}, `too_many_rows` {param} (> 200 000),
 the errors of the chart settings (`routes_charts`), `bad_expression`, `bad_method`; 404 `selection_not_found`,
 `set_not_found`, `table_not_found`; 409 `selection_stale` {token} — the table was edited or replaced after the
-selection. Synchronous, in a HEAVY slot of `routes_charts`; numpy loads on the first request."""
+selection ({token: null} — while it was being made: the rows read are not those of one revision). Synchronous,
+in a HEAVY slot of `routes_charts`; numpy loads on the first request."""
 
 from __future__ import annotations
 
@@ -40,6 +41,12 @@ BODY_KEYS = ("rows", "chart", "filter")
 
 def _bad(param: str, message: str, hint: str) -> ApiError:
     return rc._bad(param, message, hint)
+
+
+def _changed() -> ApiError:
+    """409 `selection_stale` {token: null}: the table changed while the selection was being made."""
+    return ApiError(409, "selection_stale", "Таблица изменилась, пока создавалось выделение.",
+                    "Выделите пробы на графике или в таблице заново.", extra={"token": None})  # fmt: skip
 
 
 def _numbers(v: Any, k: int, param: str, message: str, hint: str) -> list[float]:
@@ -178,7 +185,7 @@ def _from_filter(project: Any, body: dict[str, Any]) -> Any:
     t = _table(project, body)
     snap = _snapshot(project, t.set_id, str(t.id))
     if int(snap.key[-1]) != t.rev:
-        raise ApiError(409, "table_changed", "Таблица изменилась во время запроса.", "Повторите действие.")
+        raise _changed()
     try:
         m = mask(snap, hole, where or None)
     except ExprError as exc:
@@ -198,7 +205,12 @@ def post_selection(svc: Svc, body: Settings) -> dict[str, Any]:
         raise _bad("rows", "Выделение задаётся одним способом: rows, chart или filter.",
                    "Выделите пробы на графике или в таблице заново.")  # fmt: skip
     make = {"rows": _from_rows, "chart": _from_chart, "filter": _from_filter}[given[0]]
-    return rc.run(lambda: make(project, body).info())
+    try:
+        return rc.run(lambda: make(project, body).info())
+    except ApiError as e:
+        if e.code == "table_changed":  # the columns of a chart read across an edit (`stats.source`)
+            raise _changed() from e
+        raise
 
 
 @router.get("/selection/{token}")
