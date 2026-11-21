@@ -5,6 +5,7 @@
 //     («Переименовать…» of the tree) stays when the field changes again.
 //  3. Т7.28-1: a sample edited in «Таблица» → the chart opened again from the tree has another mean (the data are not
 //     stored with a chart: computed at every opening).
+//     The window stays open → the sample edited again → its mean changes by itself (ADR 0019 §2 «Данные»).
 //  4. Т7.25-3: PNG of the chart — twice its size.
 //  5. Т8.3-3: «Рассеяние» (the ribbon «Анализ»), a lasso over the points → the layer of the selection in 3D has as
 //     many segments as samples are selected.
@@ -112,6 +113,13 @@ test("charts: «Гистограмма» from the menu of a set → «Графи
     await expect(hist.getByTestId("histogram-stats")).toBeVisible({ timeout: 30_000 });
     await expect.poll(() => meanOf(hist), { timeout: 15_000 }).not.toBe(meanBefore);
     await expect(hist).toHaveAttribute("aria-label", `Золото по пробам · ${SET}`);
+    // the window open: another edit of the sample — the chart computes again by itself
+    const meanEdited = await meanOf(hist);
+    await grid.getByRole("row").nth(1).getByRole("gridcell").nth(col).click();
+    await grid.getByLabel(`Правка ${first}`).fill("1950");
+    await page.keyboard.press("Enter");
+    await expect(grid.getByRole("row").nth(1).getByRole("gridcell").nth(col)).toHaveText("1950", { timeout: 10_000 });
+    await expect.poll(() => meanOf(hist), { timeout: 15_000 }).not.toBe(meanEdited);
     await page.screenshot({ path: shot("charts-histogram.png") });
 
     // ---- 4. Т7.25-3: PNG twice the chart --------------------------------------------------------------------------------

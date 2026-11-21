@@ -6,7 +6,8 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { errorText } from "../../shell/props";
-import { createCalculator, defaultField, type Calculator } from "../../modules/charts/api";
+import { defaultField, type Calculator } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { computeDomains, type DomainRow, type DomainsResult } from "../../modules/charts/apiMore";
 import type { ChartWindowProps } from "../../modules/charts/bind";
 import { useSavedChart } from "../../modules/charts/saved";
@@ -28,7 +29,7 @@ export function domainsRequest(s: DomainsSettings): DomainsRequest | null {
 }
 
 export function domainsCalculator(apply: (r: DomainsResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: DomainsRequest) => Promise<DomainsResult> = computeDomains): Calculator<DomainsRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 export const DOMAINS_HEADER = ["Домен", "n", "Длина, м", "Среднее", "Декл. среднее", "Медиана", "σ", "CV", "Мин", "Макс", "P10", "P50", "P90"];

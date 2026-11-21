@@ -4,7 +4,8 @@
  * the mean (weight — the length; a step without samples stays empty, never 0) and n, the number of contacts, the CSV
  * and the assistant's text. A step plot of the means shows a hard boundary, a slope — a soft one (8.8.2). Pure.
  */
-import { createCalculator, type Calculator } from "../../modules/charts/api";
+import type { Calculator } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { computeContact, type ContactResult } from "../../modules/charts/apiMore";
 import { needsWeightField, type ContactSettings } from "../../modules/charts/settings";
 import { formatNumber } from "../core/axisScale";
@@ -36,7 +37,7 @@ export function contactRequest(s: ContactSettings): ContactRequest | null {
 }
 
 export function contactCalculator(apply: (r: ContactResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: ContactRequest) => Promise<ContactResult> = computeContact): Calculator<ContactRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 export interface ContactStep {

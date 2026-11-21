@@ -6,7 +6,7 @@
  */
 import { CoreError } from "../../shell/api";
 import { Store } from "../../shell/store";
-import { getChart, invalidateFields, listCharts, loadFields, type ChartRow } from "./api";
+import { createCalculator, getChart, invalidateFields, listCharts, loadFields, type Calculator, type ChartRow } from "./api";
 import { isChartKind } from "./settings";
 
 export interface ChartsState {
@@ -15,9 +15,13 @@ export interface ChartsState {
   loaded: boolean;
   /** set id → the most components among its tables; absent — not read yet */
   components: Record<number, number>;
+  /** the revision of the data of all sets: an edit of an unknown set (or a project opened) */
+  rev: number;
+  /** set id → the revision of its data (`drillholes.changed`): an open chart computes again (ADR 0019 §2 «Данные») */
+  revs: Record<number, number>;
 }
 
-export const chartsStore = new Store<ChartsState>({ charts: [], loaded: false, components: {} });
+export const chartsStore = new Store<ChartsState>({ charts: [], loaded: false, components: {}, rev: 0, revs: {} });
 
 const isSetChart = (c: ChartRow): boolean => c.set_id !== null && isChartKind(c.kind);
 
@@ -68,14 +72,51 @@ export async function readComponents(setId: number): Promise<void> {
   }
 }
 
-/** An edit of the data of a set (all sets without one): its fields are read again. */
+/** An edit of the data of a set (all sets without one): its fields are read again, its charts computed again. */
 export function dataChanged(setId?: number): void {
   invalidateFields(setId);
   chartsStore.set((s) => {
-    if (setId === undefined) return { components: {} };
+    if (setId === undefined) return { components: {}, rev: s.rev + 1 };
     const { [setId]: _gone, ...rest } = s.components;
-    return { components: rest };
+    return { components: rest, revs: { ...s.revs, [setId]: (s.revs[setId] ?? 0) + 1 } };
   });
+}
+
+/** The revision of the data of the sets of a chart's body (`set_id`, and `y_set_id` of Q-Q). */
+export function dataRev(body: { set_id?: unknown; y_set_id?: unknown }): number {
+  const { rev, revs } = chartsStore.get();
+  const of = (id: unknown) => (typeof id === "number" ? (revs[id] ?? 0) : 0);
+  return rev + of(body.set_id) + (body.y_set_id !== body.set_id ? of(body.y_set_id) : 0);
+}
+
+/**
+ * A chart window's calculation (`createCalculator`) with the revision of its set's data in the key, as the swath's
+ * `rev` (ADR 0019 §2 «Данные», Т7.28-1): the same settings after `drillholes.changed` of the set are asked again —
+ * the last settings go again by themselves, the window need not ask.
+ */
+export function dataCalculator<B extends { set_id?: unknown; y_set_id?: unknown }, T>(load: (body: B) => Promise<T>, apply: (answer: T) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void): Calculator<B> {
+  const calc = createCalculator<{ body: B; rev: number }, T>((b) => load(b.body), apply, fail, busy);
+  let last: B | null = null;
+  let rev = 0;
+  const off = chartsStore.subscribe(() => {
+    if (last === null) return;
+    const now = dataRev(last);
+    if (now !== rev) {
+      rev = now;
+      calc.request({ body: last, rev });
+    }
+  });
+  return {
+    request(body) {
+      last = body;
+      rev = dataRev(body);
+      calc.request({ body, rev });
+    },
+    stop() {
+      off();
+      calc.stop();
+    },
+  };
 }
 
 /** Why «Дендрограмма» cannot be built for the set: fewer than 2 components (unknown — no reason). */

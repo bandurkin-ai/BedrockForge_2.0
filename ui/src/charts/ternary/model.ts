@@ -4,7 +4,8 @@
  * the grid of 10 % shares, the colours by a field, the CSV and the assistant's text. Rows with a missing field or a
  * sum ≤ 0 are counted by the core and not drawn. Pure.
  */
-import { createCalculator, type Calculator } from "../../modules/charts/api";
+import type { Calculator } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { computeTernary, type TernaryResult } from "../../modules/charts/apiMore";
 import type { TernarySettings } from "../../modules/charts/settings";
 import { formatNumber } from "../core/axisScale";
@@ -21,7 +22,7 @@ export function ternaryRequest(s: TernarySettings): TernaryRequest | null {
 }
 
 export function ternaryCalculator(apply: (r: TernaryResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: TernaryRequest) => Promise<TernaryResult> = computeTernary): Calculator<TernaryRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 /** The triangle inside a box: the side fits the width and the height (√3 / 2 of the side), centred. */

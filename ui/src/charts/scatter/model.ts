@@ -4,7 +4,8 @@
  * points by a field, the table of r and the fits, the CSV, the notes and the assistant's text. A value that cannot be
  * computed stays «—», never 0. Pure.
  */
-import { createCalculator, type Calculator } from "../../modules/charts/api";
+import type { Calculator } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { computeScatter, type Fit, type ScatterDensity, type ScatterResult } from "../../modules/charts/apiMore";
 import { needsWeightField, type Regression, type ScatterSettings } from "../../modules/charts/settings";
 import { axisValue, domainOf, formatNumber, type AxisKind, type Domain } from "../core/axisScale";
@@ -23,7 +24,7 @@ export function scatterRequest(s: ScatterSettings): ScatterRequest | null {
 }
 
 export function scatterCalculator(apply: (r: ScatterResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: ScatterRequest) => Promise<ScatterResult> = computeScatter): Calculator<ScatterRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 export const axisKinds = (s: Pick<ScatterSettings, "log_x" | "log_y">): { kx: AxisKind; ky: AxisKind } => ({ kx: s.log_x ? "log" : "linear", ky: s.log_y ? "log" : "linear" });

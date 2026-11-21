@@ -5,7 +5,8 @@
  * the CSV and the assistant's text. Shared by the charts by domains: the label of a group and the domain counts.
  * Pure.
  */
-import { createCalculator, type Calculator } from "../../modules/charts/api";
+import type { Calculator } from "../../modules/charts/api";
+import { dataCalculator } from "../../modules/charts/state";
 import { computeBox, type BoxGroup, type BoxResult, type DomainCounts } from "../../modules/charts/apiMore";
 import { needsWeightField, type BoxSettings, type SampleFilter } from "../../modules/charts/settings";
 import { domainOf, formatNumber, type Domain, type Scale } from "../core/axisScale";
@@ -22,7 +23,7 @@ export function boxRequest(s: BoxSettings): BoxRequest | null {
 }
 
 export function boxCalculator(apply: (r: BoxResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: BoxRequest) => Promise<BoxResult> = computeBox): Calculator<BoxRequest> {
-  return createCalculator(load, apply, fail, busy);
+  return dataCalculator(load, apply, fail, busy);
 }
 
 /** A domain as written: samples without a code — «без домена»; one group without a domain field — «все пробы». */
