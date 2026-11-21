@@ -4,7 +4,9 @@
  * wireframes-domains), «Вставить из буфера» and a paste into the grid (Excel: tabs; CSV: «;»). Up to 1 000 rows.
  */
 import { useState } from "react";
+import { errorText } from "../../shell/props";
 import css from "../../shell/PropsParts.module.css";
+import { codesNote, type CodeList } from "./api";
 import own from "./Intercepts.module.css";
 import { ATTITUDES_MAX, fillCodes, parseAttitudeTable, type AttitudeRow } from "./params";
 
@@ -13,7 +15,7 @@ export interface DomainGridProps {
   errors: Record<string, string>;
   onChange: (rows: AttitudeRow[]) => void;
   /** The codes to fill with; null — «Заполнить кодами поля» is unavailable (`fillReason` says why). */
-  loadCodes: (() => Promise<string[]>) | null;
+  loadCodes: (() => Promise<CodeList>) | null;
   fillReason?: string;
 }
 
@@ -35,12 +37,11 @@ export function DomainGrid({ rows, errors, onChange, loadCodes, fillReason }: Do
     if (!loadCodes) return;
     setNote("Чтение кодов…");
     try {
-      const codes = await loadCodes();
-      const next = fillCodes(shownRows, codes);
-      onChange(next);
-      setNote(codes.length ? `Кодов в поле: ${codes.length}; α и Aп новых строк — введите` : "В поле нет текстовых кодов");
+      const got = await loadCodes();
+      onChange(fillCodes(shownRows, got.codes));
+      setNote(codesNote(got));
     } catch (e) {
-      setNote(e instanceof Error ? e.message : String(e));
+      setNote(errorText(e));
     }
   };
   const fromClipboard = async () => {

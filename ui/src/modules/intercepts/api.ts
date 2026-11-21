@@ -14,8 +14,8 @@
  * - `POST /orientation/plane {wireframe_ids}` → `{alpha, dipdir, spread, triangles, area}` («Взять с каркаса»).
  * - `POST /results/{id}/rebuild` — through `composites/api.rebuildResult` (the prefix by the operation).
  * - the sources of the block: `GET /drillholes/sets/{id}/tables` (kinds `assay`, `interval`, `event` — замеры керна),
- *   `GET …/tables/{table}?limit=1` (fields), `GET …/tables/{table}/stats?column=` (`top` — codes of a field),
- *   `GET /wireframes`.
+ *   `GET …/tables/{table}?limit=1` (fields), `GET /intercepts/codes?set_id=&table=&column=` (`{codes, total,
+ *   truncated}` — every code of a field, sorted, up to 1 000), `GET /wireframes`.
  */
 import { api } from "../../shell/api";
 import { startTool, type OnExists, type Started, type TableRow } from "../composites/api";
@@ -37,10 +37,28 @@ export async function loadOrientTables(setId: number): Promise<TableRow[]> {
   return (r.tables ?? []).filter((t) => t.kind === "assay" || t.kind === "interval" || t.kind === "event");
 }
 
-/** The values met in a field (`stats.top`, most frequent first); a numeric field gives none. */
-export async function loadCodes(setId: number, table: string, column: string): Promise<string[]> {
-  const r = await api.get<{ top?: { value: unknown }[] }>(`/drillholes/sets/${setId}/tables/${encodeURIComponent(table)}/stats?column=${encodeURIComponent(column)}`);
-  return (r.top ?? []).map((x) => (x.value === null || x.value === undefined ? "" : String(x.value))).filter((x) => x.trim());
+/** The codes of a domain field for «Заполнить кодами поля»; `total` — every distinct code, `truncated` — more than given. */
+export interface CodeList {
+  codes: string[];
+  total: number;
+  truncated: boolean;
+}
+
+/** Every distinct code of a field (`GET /intercepts/codes`: written as the core writes a domain code, sorted, ≤ 1 000). */
+export async function loadCodes(setId: number, table: string, column: string): Promise<CodeList> {
+  const q = `set_id=${setId}&table=${encodeURIComponent(table)}&column=${encodeURIComponent(column)}`;
+  const r = await api.get<{ codes?: unknown; total?: unknown; truncated?: unknown }>(`${INTERCEPTS_API}/codes?${q}`);
+  const codes = (Array.isArray(r.codes) ? r.codes : []).filter((x): x is string => typeof x === "string" && x.trim() !== "");
+  const total = typeof r.total === "number" && Number.isFinite(r.total) ? Math.max(r.total, codes.length) : codes.length;
+  return { codes, total, truncated: r.truncated === true && total > codes.length };
+}
+
+/** «Кодов в поле: 12; …» / «Кодов в поле: 1 500, показаны 1 000 из 1 500; …» — the note of «Заполнить кодами поля». */
+export function codesNote(got: CodeList): string {
+  if (!got.codes.length) return "В поле нет кодов";
+  const n = (x: number) => x.toLocaleString("ru-RU");
+  const head = got.truncated ? `Кодов в поле: ${n(got.total)}, показаны ${n(got.codes.length)} из ${n(got.total)}` : `Кодов в поле: ${n(got.codes.length)}`;
+  return `${head}; α и Aп новых строк — введите`;
 }
 
 export interface Plane {

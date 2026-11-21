@@ -117,6 +117,18 @@ export const apiOfOp = (op: string | null | undefined): string => (op && OP_API[
 /** result id → its operation, as the lists read so far say (the rebuild goes to the module of the operation). */
 const resultOps = new Map<number, string>();
 
+/** The operation of a result the tree holds (`results.findResult`, registered by `results.ts`). */
+let opLookup: (id: number) => string | undefined = () => undefined;
+
+export function setResultOpLookup(f: (id: number) => string | undefined): void {
+  opLookup = f;
+}
+
+/** Forgets the operations read so far (another project: its ids are not these). */
+export function forgetResultOps(): void {
+  resultOps.clear();
+}
+
 export async function loadResults(setId: number): Promise<ResultRow[]> {
   const rows = (await api.get<{ results: ResultRow[] }>(`/composites/results?set_id=${setId}`)).results ?? [];
   for (const r of rows) if (typeof r.id === "number" && typeof r.op === "string") resultOps.set(r.id, r.op);
@@ -176,19 +188,32 @@ export const lostList = (lost: readonly LostItem[]): string => lost.map((x) => `
 /** «Перестроить» loses results that cannot be repeated: ask (our own window); false — nothing is started. */
 export type OnLost = (lost: LostItem[]) => Promise<boolean>;
 
-/**
- * `POST {prefix}/results/{id}/rebuild` (ADR 0018 decision 18; ADR 0021 §8: `tt` and `intercepts` — under
- * `/intercepts`). The prefix is that of the operation of the result as the last list read says (`op` overrides).
- * 409 `dependents_lost {lost}` → `onLost`: yes — again with `drop_lost: true`; no — null, nothing started.
- */
-export async function rebuildResult(id: number, onLost: OnLost, op?: string): Promise<Started | null> {
-  const route = `${apiOfOp(op ?? resultOps.get(id))}/results/${id}/rebuild`;
+async function rebuildAt(prefix: string, id: number, onLost: OnLost): Promise<Started | null> {
+  const route = `${prefix}/results/${id}/rebuild`;
   try {
     return await api.post<Started>(route, {});
   } catch (e) {
     if (!(e instanceof CoreError) || e.status !== 409 || e.code !== "dependents_lost") throw e;
     if (!(await onLost(lostItems(e.body?.lost)))) return null;
     return api.post<Started>(route, { drop_lost: true });
+  }
+}
+
+/**
+ * `POST {prefix}/results/{id}/rebuild` (ADR 0018 decision 18; ADR 0021 §8: `tt` and `intercepts` — under
+ * `/intercepts`). The prefix is that of the operation of the result: `op`, else the result the tree holds
+ * (`findResult`), else the last list read. Not known and `/composites` answers 422 `not_ready` (an operation of
+ * another module) — again under `/intercepts`. 409 `dependents_lost {lost}` → `onLost`: yes — again with
+ * `drop_lost: true`; no — null, nothing started.
+ */
+export async function rebuildResult(id: number, onLost: OnLost, op?: string): Promise<Started | null> {
+  const known = op ?? opLookup(id) ?? resultOps.get(id);
+  const prefix = apiOfOp(known);
+  try {
+    return await rebuildAt(prefix, id, onLost);
+  } catch (e) {
+    if (known !== undefined || prefix !== "/composites" || !(e instanceof CoreError) || e.status !== 422 || e.code !== "not_ready") throw e;
+    return rebuildAt("/intercepts", id, onLost);
   }
 }
 
