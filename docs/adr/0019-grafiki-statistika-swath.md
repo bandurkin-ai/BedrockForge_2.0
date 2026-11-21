@@ -173,7 +173,7 @@
 | `POST /stats/scatter`, `/stats/box`, `/stats/probplot`, `/stats/ternary`, `/stats/domains`, `/stats/contact` | То же для графиков 8.3; рассеяние ≤ 200 тыс. точек — колонками `x[], y[], row[], c[]`, больше — сетка плотности |
 | `POST /stats/chart/{chart_id}` | Расчёт сохранённого графика по его настройкам и текущим данным (`chart.open`, ассистент) |
 | `POST /stats/tab/declus`, `/nscore`, `/backtr`, `/bootstrap` | Вкладка «Статистика»; 422 `too_many_samples` |
-| `GET /stats/swath/sources`; `POST /stats/swath {settings \| swath_id}` | Наборы с таблицами и полями, модели с числовыми и категориальными полями и сеткой; расчёт swath: система короба, кубоид, `start`, `width`, `count`, центры полос, ряды, примечания; 422 `too_many_swaths`, `too_many_series`, `bad_param`; ряд с удалённым источником — `error` в ряду, не отказ |
+| `GET /stats/swath/sources`; `POST /stats/swath {settings \| swath_id}` | Наборы с таблицами и полями, модели с числовыми и категориальными полями и сеткой; расчёт swath: система короба, кубоид, `start`, `width`, `count`, центры полос, ряды, примечания; 422 `too_many_swaths`, `too_many_series`, `too_much_data` (столбцы моделей одного расчёта > 640 МБ), `bad_param`; ряд с удалённым источником — `error` в ряду, не отказ |
 | `POST /stats/selection`; `GET /stats/selection/{token}/segments`; `GET /drillholes/sets/{id}/tables/{table}?selection=` | Выделение: жетон и число строк; отрезки интервалов для 3D (float32 от целого начала, как части стволов); фильтр таблицы; 409 `selection_stale` |
 
 ### 11. Окна и рисование

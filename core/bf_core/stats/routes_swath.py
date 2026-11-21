@@ -24,10 +24,13 @@ A series answers {index, kind, name, field, unit, weight, weight_name, weight_un
 whose source is gone (its id null, the set, table, model or field missing) carries `error {code, message,
 hint}` and empty numbers — the others are computed. The cuboid is built around the model series, without them
 around the samples (`swath.cuboid`). Refusals `{code, message, hint, param}`: 422 `too_many_series` (series),
-`too_many_swaths` (width), `bad_param` {param}, `no_data`; 404 `chart_not_found`.
+`too_many_swaths` (width), `too_much_data` (series: the model columns over `REQUEST_BYTES`), `bad_param` {param},
+`no_data`; 404 `chart_not_found`.
 
 The columns of a model come from `stats.blocks_cache` (≤ 600 МБ, by the SHA-256 of its file), those of a table
 from `stats.source` (≤ 256 МБ, by its `rev`): an edit of the data is a miss, the swath is recomputed (Т7.30-5).
+A request holds at most `REQUEST_BYTES` of model columns (`_load`: over it the values of a series are read when
+it is computed).
 At most two heavy calculations at a time (`routes_charts.run`); the kernels of a model series run on `THREADS`
 threads. numpy and the kernels load on the first request, not with this module (tests/test_process.py)."""
 
@@ -53,6 +56,9 @@ Svc = Annotated[ProjectService, Depends(projects)]
 THREADS = max(1, min(4, os.cpu_count() or 1))  # of one model series (the groups of rows, `swath_blocks`)
 LABELS = 300  # values of a category field in the sources
 DENSITY_NAMES = ("density", "dens", "плотность", "sg", "rho", "ов", "объемный вес", "объёмный вес")
+#: the columns of models one swath may hold at a time (ADR 0019 §3: «Статистика» ≤ 1 ГБ with the cache ≤ 600 МБ;
+#: two series of 20 million blocks — value, density, domain and `idx`, 480 МБ — are read in one pass)
+REQUEST_BYTES = 640 * 2**20
 BLOCK_WEIGHTS = {"volume": ("объём", "м³"), "tonnage": ("тоннаж", "т"), "none": ("число блоков", "")}
 
 
@@ -151,6 +157,10 @@ class Series:
     density: Any = None
     codes: Any = None
     keep: Any = None
+    model: Any = None  # `blocks_cache.Model`
+    density_name: str | None = None
+    category: str | None = None  # the field of the filter
+    labels: list[str] = dc_field(default_factory=list)
     # samples
     sel: Any = None
     points: Any = None
@@ -168,25 +178,12 @@ def _text(s: dict[str, Any], key: str, k: int) -> str | None:
     return v
 
 
-def _wanted(raw: list[dict[str, Any]]) -> dict[Any, list[str]]:
-    """The fields every series of a model reads (its file is read once for all of them)."""
-    out: dict[Any, list[str]] = {}
-    for s in raw:
-        if s.get("kind") == "blocks" and s.get("model_id") is not None:
-            given = s.get("filter")
-            flt: dict[str, Any] = given if isinstance(given, dict) else {}
-            names = [s.get("field"), s.get("density"), flt.get("field") if flt.get("labels") else None]
-            out.setdefault(s["model_id"], []).extend(str(n) for n in names if isinstance(n, str))
-    return out
-
-
-def _blocks(project: Any, k: int, s: dict[str, Any], wanted: list[str]) -> Series:
-    import numpy as np
-
+def _blocks(project: Any, k: int, s: dict[str, Any]) -> Series:
+    """The series of a model, its fields checked; the columns are read by `_load` for all of them."""
     from bf_core.db import dialect
 
     from . import blocks_cache as bc
-    from .swath_blocks import WEIGHTS, keep_of
+    from .swath_blocks import WEIGHTS
 
     weight = s.get("weight") or "volume"
     if weight not in WEIGHTS:
@@ -233,17 +230,73 @@ def _blocks(project: Any, k: int, s: dict[str, Any], wanted: list[str]) -> Serie
     out.field = field_name
     out.name = f"{m.name} · {field_name}"
     out.unit = (m.field(field_name) or {}).get("unit")
-    try:
-        others = [str(f["name"]) for f in map(m.field, wanted) if f is not None]
-        cols = bc.columns(project, m, [field_name, *([dens] if dens else []), *([cat] if cat else []), *others])
-    except ApiError as e:
-        out.error = _error(e.code, e.message, e.hint)
-        return out
-    out.cols, out.values = cols, cols.number(field_name)
-    out.density = cols.number(dens) if dens else None
-    if cat:
-        out.codes, out.keep = cols.codes(cat), np.asarray(keep_of(m.labels(cat), labels))
+    out.model, out.density_name, out.category, out.labels = m, dens, cat, labels
     return out
+
+
+def _bytes(m: Any, names: list[str], idx: bool = True) -> int:
+    """What the columns `names` (and `idx`) of the model take in the memory."""
+    from . import blocks_cache as bc
+
+    per = sum(8 if (m.field(n) or {}).get("kind") == "number" else 4 for n in dict.fromkeys(names))
+    return m.cells * (per + ((4 if m.cells < bc.U32_CELLS else 8) if idx else 0))
+
+
+def _load(project: Any, series: list[Series]) -> None:
+    """The columns of the model series (ADR 0019 §3, «Статистика» ≤ 1 ГБ). When all the fields of all the models
+    fit `REQUEST_BYTES`, each file is read once for all its series; else only `idx` and the fields of the filters
+    are kept for the whole request and the values of a series are read when it is computed and let go after
+    (`_values`; the cache keeps what it can) — what one request holds is then bounded too, or 422 `too_much_data`."""
+    import numpy as np
+
+    from . import blocks_cache as bc
+    from .swath_blocks import keep_of
+
+    groups: dict[int, list[Series]] = {}
+    for x in series:
+        if x.kind == "blocks" and x.error is None and x.model is not None:
+            groups.setdefault(x.model.id, []).append(x)
+    if not groups:
+        return
+    models = {mid: xs[0].model for mid, xs in groups.items()}
+    own = {mid: [n for x in xs for n in (x.field, x.density_name) if n] for mid, xs in groups.items()}
+    cats = {mid: [x.category for x in xs if x.category] for mid, xs in groups.items()}
+    eager = sum(_bytes(models[mid], own[mid] + cats[mid]) for mid in groups) <= REQUEST_BYTES
+    if not eager:
+        held = sum(_bytes(models[mid], cats[mid]) for mid in groups)
+        one = max(_bytes(x.model, [n for n in (x.field, x.density_name) if n], idx=False)
+                  for xs in groups.values() for x in xs)  # fmt: skip
+        if held + one > REQUEST_BYTES:
+            raise ApiError(422, "too_much_data",
+                           f"Ряды моделей swath требуют {math.ceil((held + one) / 2**20)} МБ памяти — больше "
+                           f"{REQUEST_BYTES // 2**20} МБ на один расчёт.",
+                           "Уберите часть рядов блочных моделей или постройте их в отдельном swath.",
+                           extra={"param": "series"})  # fmt: skip
+    for mid, xs in groups.items():
+        m = models[mid]
+        try:
+            cols = bc.columns(project, m, (own[mid] if eager else []) + cats[mid])
+        except ApiError as e:
+            for x in xs:
+                x.error = _error(e.code, e.message, e.hint)
+            continue
+        for x in xs:
+            x.cols = cols
+            if eager:
+                x.values = cols.number(str(x.field))
+                x.density = cols.number(x.density_name) if x.density_name else None
+            if x.category:
+                x.codes, x.keep = cols.codes(x.category), np.asarray(keep_of(m.labels(x.category), x.labels))
+
+
+def _values(project: Any, x: Series) -> tuple[Any, Any]:
+    """The values and the density of a model series: those `_load` read, else read now (from the cache or the file)."""
+    from . import blocks_cache as bc
+
+    if x.values is not None:
+        return x.values, x.density
+    cols = bc.columns(project, x.model, [n for n in (x.field, x.density_name) if n])
+    return cols.number(str(x.field)), (cols.number(x.density_name) if x.density_name else None)
 
 
 def _samples(project: Any, k: int, s: dict[str, Any]) -> Series:
@@ -389,15 +442,13 @@ def swath_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     raw = settings.get("series") or []
     sw.check_series(len(raw))
     series: list[Series] = []
-    wanted = _wanted(raw)
     for k, s in enumerate(raw):
         kind = s.get("kind")
         if kind not in ("blocks", "samples"):
             raise _bad(f"series[{k}].kind", f"Ряд {k + 1}: вид «{str(kind)[:40]}» неизвестен.",
                        "Ряд — блочная модель (blocks) или пробы (samples).")  # fmt: skip
-        series.append(
-            _blocks(project, k, s, wanted.get(s.get("model_id"), [])) if kind == "blocks" else _samples(project, k, s)
-        )
+        series.append(_blocks(project, k, s) if kind == "blocks" else _samples(project, k, s))
+    _load(project, series)
     _link(series)
 
     ok = [x for x in series if x.error is None]
@@ -421,8 +472,10 @@ def swath_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     cells: dict[int, Any] = {}
     for x in ok:
         if x.kind == "blocks":
-            x.result = sb.block_series(x.grid, x.cols.idx, x.values, f, c, weight=x.weight, density=x.density,
+            values, density = _values(project, x)
+            x.result = sb.block_series(x.grid, x.cols.idx, values, f, c, weight=x.weight, density=density,
                                        codes=x.codes, keep=x.keep, threads=THREADS)  # fmt: skip
+            x.values = x.density = values = density = None  # a series read alone is let go before the next one
             continue
         inside = None
         if x.within is not None:
