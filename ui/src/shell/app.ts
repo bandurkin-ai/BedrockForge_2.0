@@ -6,6 +6,7 @@ import { bindAudit } from "../modules/audit/bind";
 import { bindDownhole } from "../modules/downhole/bind";
 import { bindComposites } from "../modules/composites/bind";
 import { bindCharts } from "../modules/charts/bind";
+import { bindSwath } from "../modules/swath/bind";
 import { bindDtm } from "../modules/dtm/bind";
 import { bindModel } from "../modules/model/bind";
 import { bindDigitize } from "../modules/section/digitize";
@@ -169,5 +170,6 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindDownhole(app);
   bindComposites(app);
   bindCharts(app);
+  bindSwath(app);
   return app;
 }
