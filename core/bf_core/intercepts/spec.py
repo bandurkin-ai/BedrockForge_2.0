@@ -27,12 +27,14 @@ from bf_core.composites import jobs as cj
 from bf_core.db import dialect
 from bf_core.db.schema import dh_columns, dh_results, dh_tables
 
-#: Ranges of 8.5.4: key → (low, high, default, label, unit).
+from . import D_CORE_DEFAULT, D_CORE_RANGE, EPS_DEFAULT, EPS_RANGE, LINES, STEP_DEFAULT, STEP_RANGE
+
+#: Ranges of 8.5.4: key → (low, high, default, label, unit); those the kernels check too — from the package.
 RANGES: dict[str, tuple[float, float, float, str, str]] = {
-    "eps": (0.01, 0.5, 0.1, "Порог «почти параллельна» ε_в", ""),
-    "step": (0.1, 10.0, 1.0, "Часть ствола", " м"),
+    "eps": (*EPS_RANGE, EPS_DEFAULT, "Порог «почти параллельна» ε_в", ""),
+    "step": (*STEP_RANGE, STEP_DEFAULT, "Часть ствола", " м"),
     "d_max": (0.0, 1000.0, 50.0, "Наибольшее расстояние до каркаса d_max", " м"),
-    "d_core": (0.0, 1000.0, 10.0, "Наибольшее расстояние до замера керна d_к", " м"),
+    "d_core": (*D_CORE_RANGE, D_CORE_DEFAULT, "Наибольшее расстояние до замера керна d_к", " м"),
     "r_n": (0.0, 200.0, 0.0, "Радиус осреднения нормали r_n", " м"),
     "l_min": (0.0, 100.0, 2.0, "Наименьшая длина (мощность) пересечения", " м"),
     "waste_max": (0.0, 50.0, 2.0, "Наибольшая внутренняя пустая порода L_п", " м"),
@@ -41,7 +43,6 @@ SOURCES = ("global", "domain", "mesh", "core")
 SRC_MAX = 3
 ATTITUDES_MAX = 1000
 MESH_MAX = 16
-LINES = ("boh", "toh")
 MIN_BY = ("length", "tt")
 MISSING = ("waste", "break")
 TT_COLUMNS = ("TT", "TT_FLAG", "TT_SRC")
