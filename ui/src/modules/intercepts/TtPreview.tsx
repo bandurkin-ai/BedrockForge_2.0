@@ -20,6 +20,9 @@ export function ratioFill(ratio: number | null): string | null {
   return `color-mix(in srgb, var(--accent) ${pct}%, var(--bg-input))`;
 }
 
+/** The core's note of a skipped mesh (MESH_SKIPPED of routes_preview.py). */
+export const isMeshNote = (n: string): boolean => n.includes("2 млн треугольников");
+
 export const ROWS_SHOWN = 500;
 const H = 240;
 const W = 76;
@@ -84,6 +87,9 @@ function Counts({ title, counts, testId }: { title: string; counts: ReturnType<t
 export function TtPreview({ answer }: { answer: Answer }) {
   const rows = answer.rows.slice(0, ROWS_SHOWN);
   const counts = countRows(answer);
+  // `mesh_skipped` comes with the core's note MESH_SKIPPED (routes_preview.py): said once, as the warning
+  const meshNote = answer.meshSkipped ? (answer.notes.find(isMeshNote) ?? null) : null;
+  const notes = meshNote === null ? answer.notes : answer.notes.filter((n) => n !== meshNote);
   return (
     <div data-testid="intercepts-tt-preview">
       <p className={css.note}>
@@ -92,10 +98,10 @@ export function TtPreview({ answer }: { answer: Answer }) {
       </p>
       {answer.meshSkipped && (
         <p className={css.warn} data-testid="intercepts-tt-mesh-skipped">
-          Каркасов больше 2 млн треугольников: ориентировка по каркасу в предпросмотре не считается — её посчитает задание.
+          {meshNote ?? "Каркасов больше 2 млн треугольников: ориентировка по каркасу в предпросмотре не считается — её посчитает задание."}
         </p>
       )}
-      {answer.notes.map((n, i) => (
+      {notes.map((n, i) => (
         <p key={i} className={css.note}>
           {n}
         </p>

@@ -10,25 +10,48 @@ import { errorText, toggleId } from "../../shell/props";
 import css from "../../shell/PropsParts.module.css";
 import { loadFields, loadWireframes, resolveTable, type FieldRow, type TableRow, type WireframeRow } from "../composites/api";
 import { rangeText, type ParamSpec } from "../composites/params";
-import { loadCodes, loadOrientTables } from "./api";
+import { loadCodes, loadOrientTables, type CodeList } from "./api";
 import { DomainGrid } from "./DomainGrid";
 import own from "./Intercepts.module.css";
 import { PlanePicker } from "./PlanePicker";
 import { ALPHA, D_CORE, D_MAX, DIPDIR, ORIENT_SOURCES, R_N, SOURCE_TITLES, type OrientationState } from "./params";
 
-function useRead<T>(load: (() => Promise<T>) | null, deps: unknown[], fail: (e: unknown) => void): T | null {
+/**
+ * The newest read of a list. Its error is its own: cleared (`fail(null)`) when the deps change — a new read, or none
+ * needed — and when the read succeeds.
+ */
+export function useRead<T>(load: (() => Promise<T>) | null, deps: unknown[], fail: (e: unknown) => void): T | null {
   const [value, setValue] = useState<T | null>(null);
   const seq = useRef(0);
   useEffect(() => {
     const mine = ++seq.current;
-    setValue(null);
-    if (!load) return;
-    load().then(
-      (v) => mine === seq.current && setValue(v),
-      (e: unknown) => mine === seq.current && fail(e),
-    );
+    void startRead(load, () => mine === seq.current, setValue, fail);
   }, deps);
   return value;
+}
+
+/** One read of `useRead` (the body of its effect): the old value and error go first; a stale answer is dropped. */
+export async function startRead<T>(load: (() => Promise<T>) | null, current: () => boolean, setValue: (v: T | null) => void, fail: (e: unknown) => void): Promise<void> {
+  setValue(null);
+  fail(null);
+  if (!load) return;
+  try {
+    const v = await load();
+    if (!current()) return;
+    setValue(v);
+    fail(null);
+  } catch (e) {
+    if (current()) fail(e);
+  }
+}
+
+/** The errors of the lists by name: `null` clears that list's error only. */
+export function setListError(m: Readonly<Record<string, string>>, k: string, e: unknown): Record<string, string> {
+  if (e !== null && e !== undefined) return { ...m, [k]: errorText(e) };
+  if (!(k in m)) return m as Record<string, string>;
+  const next = { ...m };
+  delete next[k];
+  return next;
 }
 
 function NumberRow({ p, value, error, onChange, label }: { p: ParamSpec; value: string; error?: string; onChange: (v: string) => void; label?: string }) {
@@ -97,11 +120,12 @@ export interface OrientationFormProps {
 
 export function OrientationForm({ setId, table, fields, value, errors, onChange, optional }: OrientationFormProps) {
   const radio = useId();
-  const [error, setError] = useState<string | null>(null);
-  const fail = (e: unknown) => setError(errorText(e));
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const failOf = (k: string) => (e: unknown) => setErrs((m) => setListError(m, k, e));
+  const error = Object.values(errs)[0] ?? null;
   const set = (patch: Partial<OrientationState>) => onChange({ ...value, ...patch });
   const s = value;
-  const tables = useRead<TableRow[]>(setId === null ? null : () => loadOrientTables(setId), [setId], fail);
+  const tables = useRead<TableRow[]>(setId === null ? null : () => loadOrientTables(setId), [setId], failOf("tables"));
   useEffect(() => {
     // tables named by the assistant («Литология») → their keys, once the list is read
     if (!tables) return;
@@ -111,22 +135,21 @@ export function OrientationForm({ setId, table, fields, value, errors, onChange,
   }, [tables]);
   const domainTable = s.domainTable || table || "";
   const wantDomainFields = s.enabled && s.source === "domain" && s.domainBy === "field" && Boolean(s.domainTable) && s.domainTable !== table;
-  const otherFields = useRead<FieldRow[]>(setId === null || !wantDomainFields ? null : () => loadFields(setId, s.domainTable), [setId, s.domainTable, wantDomainFields], fail);
+  const otherFields = useRead<FieldRow[]>(setId === null || !wantDomainFields ? null : () => loadFields(setId, s.domainTable), [setId, s.domainTable, wantDomainFields], failOf("domain"));
   const domainFields = wantDomainFields ? otherFields : fields;
-  const coreFields = useRead<FieldRow[]>(setId === null || !s.coreTable || s.source !== "core" ? null : () => loadFields(setId, s.coreTable), [setId, s.coreTable, s.source], fail);
+  const coreFields = useRead<FieldRow[]>(setId === null || !s.coreTable || s.source !== "core" ? null : () => loadFields(setId, s.coreTable), [setId, s.coreTable, s.source], failOf("core"));
   const wantWireframes = s.enabled && (s.source === "mesh" || (s.source === "domain" && s.domainBy === "wireframes"));
-  const wireframes = useRead<WireframeRow[]>(wantWireframes ? loadWireframes : null, [wantWireframes], fail);
+  const wireframes = useRead<WireframeRow[]>(wantWireframes ? loadWireframes : null, [wantWireframes], failOf("wireframes"));
 
   const codeField = (domainFields ?? []).find((f) => f.name === s.domainField);
-  let loadDomainCodes: (() => Promise<string[]>) | null = null;
+  let loadDomainCodes: (() => Promise<CodeList>) | null = null;
   let fillReason = "Выберите поле кода домена";
   if (s.domainBy === "wireframes") {
     const names = (wireframes ?? []).filter((w) => s.domainWireframes.includes(w.id)).map((w) => w.name);
-    if (names.length) loadDomainCodes = async () => names;
+    if (names.length) loadDomainCodes = async () => ({ codes: names, total: names.length, truncated: false });
     else fillReason = "Отметьте каркасы-домены";
   } else if (setId !== null && domainTable && codeField) {
-    if (codeField.kind === "text") loadDomainCodes = () => loadCodes(setId, domainTable, codeField.key);
-    else fillReason = "Коды числового поля введите вручную";
+    loadDomainCodes = () => loadCodes(setId, domainTable, codeField.key); // a numeric field too: «.15g», as the core
   }
 
   return (

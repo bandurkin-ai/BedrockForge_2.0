@@ -259,8 +259,8 @@ describe("«Взять с каркаса»", () => {
   it("the mean plane of the wireframes; the block is the last of the global source", async () => {
     const p = await meanPlane([5, 6]);
     expect(sent.at(-1)).toMatchObject({ method: "POST", path: "/intercepts/orientation/plane", body: { wireframe_ids: [5, 6] } });
-    expect(planeText(p)).toBe(`α 32,5°, Aп 118°; разброс нормалей 6,2°; треугольников ${(1204).toLocaleString("ru-RU")}`);
-    expect(planeText({ ...p, spread: null, triangles: null })).toBe("α 32,5°, Aп 118°");
+    expect(planeText(p)).toBe(`α 32,5°, Aп 118,0°; разброс нормалей 6,2°; треугольников ${(1204).toLocaleString("ru-RU")}; площадь ${(5000).toLocaleString("ru-RU")} м²`);
+    expect(planeText({ ...p, spread: null, triangles: null, area: null })).toBe("α 32,5°, Aп 118,0°");
     const html = (source: "global" | "mesh") => renderToStaticMarkup(createElement(OrientationForm, { setId: null, table: null, fields: [], value: { ...DEFAULT_ORIENTATION, source }, errors: {}, onChange: () => undefined }));
     const g = html("global");
     expect(g).toContain("Взять с каркаса");

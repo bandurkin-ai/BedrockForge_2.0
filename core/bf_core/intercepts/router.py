@@ -19,6 +19,8 @@ result id | absent}. The previews (`POST /tt/preview`, `/run/preview`) are `rout
   * `POST /orientation/plane` {wireframe_ids} → {alpha, dipdir, spread, triangles, area}: the mean plane of the
     wireframes («Взять с каркаса»; `plane`). 422 `wireframe_not_found`, `bad_param` (more than 16),
     `no_orientation` (no triangle with an area); more than `MESH_TRIANGLES` (2 млн) triangles — 422 `bad_param`.
+  * `GET /codes?set_id=&table=&column=` → {codes, total, truncated}: the codes of a domain field («Заполнить
+    кодами поля»; `routes_codes`). 404 `set_not_found`, `table_not_found`, `column_not_found`.
 Plain `def` routes run in the thread pool.
 """
 
@@ -38,11 +40,13 @@ from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
+from .routes_codes import router as codes_router
 from .routes_preview import MESH_TRIANGLES
 from .routes_preview import router as preview_router
 
 router = APIRouter(prefix="/intercepts")
 router.include_router(preview_router)
+router.include_router(codes_router)
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
 Payload = Annotated[dict[str, Any], Body()]

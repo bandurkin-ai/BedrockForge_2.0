@@ -11,15 +11,18 @@ import { loadWireframes, type WireframeRow } from "../composites/api";
 import { numberText } from "../composites/params";
 import { meanPlane, type Plane } from "./api";
 import own from "./Intercepts.module.css";
+import { fmt } from "./TtPreview";
 
 /** At most 16 wireframes (e15-api.md: `bad_param` beyond). */
 export const PLANE_MAX = 16;
 
-/** «α 32,5°, Aп 118°; разброс нормалей 6,2°; треугольников 1 204» — what the core found. */
+/** «α 32,5°, Aп 118,0°; разброс нормалей 6,2°; треугольников 1 204; площадь 5 000 м²» — what the core found (one
+ * decimal in the text; the fields α and Aп get the exact values). */
 export function planeText(p: Plane): string {
-  const parts = [`α ${numberText(p.alpha)}°, Aп ${numberText(p.dipdir)}°`];
-  if (p.spread !== null) parts.push(`разброс нормалей ${numberText(p.spread)}°`);
+  const parts = [`α ${fmt(p.alpha, 1)}°, Aп ${fmt(p.dipdir, 1)}°`];
+  if (p.spread !== null) parts.push(`разброс нормалей ${fmt(p.spread, 1)}°`);
   if (p.triangles !== null) parts.push(`треугольников ${p.triangles.toLocaleString("ru-RU")}`);
+  if (p.area !== null) parts.push(`площадь ${p.area.toLocaleString("ru-RU", { maximumFractionDigits: 1 })} м²`);
   return parts.join("; ");
 }
 

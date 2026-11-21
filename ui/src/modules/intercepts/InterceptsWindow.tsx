@@ -8,7 +8,7 @@
  * the core with `param` marks its field (e15-api.md). When the job is done, the table opens in the bottom panel and
  * its display «Рудные пересечения» (`chart_id` of the result) is switched on in 3D — as «Рудные интервалы» of Д-26.
  */
-import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { App } from "../../shell/app";
 import { AppContext } from "../../shell/AppContext";
 import { errorText } from "../../shell/props";
@@ -64,15 +64,16 @@ export function gradeChoices(fields: readonly FieldRow[], field: string | null, 
 
 function GradesPicker({ choices, value, onChange }: { choices: readonly string[]; value: Grades; onChange: (g: Grades) => void }) {
   const list = value ?? [];
+  const radio = useId();
   return (
     <fieldset className={css.group} data-testid="intercepts-run-grades">
       <legend>Поля содержаний сверх основного</legend>
       <label className={css.check}>
-        <input type="radio" checked={value === null} onChange={() => onChange(null)} />
+        <input type="radio" name={radio} checked={value === null} onChange={() => onChange(null)} />
         все числовые (кроме плотности и полей истинной мощности)
       </label>
       <label className={css.check}>
-        <input type="radio" checked={value !== null} onChange={() => onChange(list.filter((x) => choices.includes(x)))} />
+        <input type="radio" name={radio} checked={value !== null} onChange={() => onChange(list.filter((x) => choices.includes(x)))} />
         только отмеченные (ни одного — только основное поле)
       </label>
       {value !== null && (
