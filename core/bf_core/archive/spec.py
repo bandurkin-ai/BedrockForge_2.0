@@ -29,6 +29,8 @@ TABLES: tuple[Table, ...] = (
     Table("dh_tables", renumber=True),
     Table("dh_columns", renumber=True),
     Table("dh_rows"),
+    # Э12 (ADR 0018 §2): results of sample processing; their inputs hold names and revisions, not ids.
+    Table("dh_results"),
     Table("import_log", renumber=True),
     Table("export_log", renumber=True),
     Table("audit_runs", renumber=True),
@@ -65,6 +67,9 @@ ID_COLUMNS: dict[tuple[str, str], str | None] = {
     ("dh_columns", "table_id"): "dh_tables",
     ("dh_rows", "table_id"): "dh_tables",
     ("dh_rows", "hole_id"): "dh_holes",
+    ("dh_results", "set_id"): "objects",
+    ("dh_results", "table_id"): "dh_tables",
+    ("dh_results", "job_id"): None,
     ("import_log", "object_id"): "objects",
     ("import_log", "job_id"): None,
     ("export_log", "object_id"): "objects",

@@ -1,0 +1,155 @@
+/* CurvePlot and the tables of «Урезка» / «Декластеризация» (12.29): brand tokens only (docs/brand/README.md, ADR 0006):
+   data — Cobalt (--accent), the chosen value and the marks — Copper Orange (--brand-orange). */
+
+.plot {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  font-family: var(--font-brand);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  font-family: var(--font);
+}
+
+.pickable {
+  cursor: crosshair;
+}
+
+.pickable:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.frame {
+  fill: var(--bg-input);
+  stroke: var(--border);
+}
+
+.grid {
+  stroke: var(--border);
+  stroke-width: 0.5;
+}
+
+.tick {
+  fill: var(--text-faint);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.axis {
+  fill: var(--text-dim);
+  font-size: 10px;
+}
+
+.empty {
+  fill: var(--text-faint);
+  font-size: 11px;
+}
+
+.line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.dot {
+  fill: var(--accent);
+}
+
+.ref {
+  stroke: var(--text-dim);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.refText {
+  fill: var(--text-dim);
+  font-size: 9px;
+}
+
+.mark {
+  stroke: var(--brand-orange);
+  stroke-width: 1.5;
+}
+
+.point {
+  fill: none;
+  stroke: var(--brand-orange);
+  stroke-width: 2;
+}
+
+.yLabel {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+/* the grid of small curves */
+
+.curves {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 12px;
+}
+
+/* the shares of metal by deciles: a bar of the share, the marked row */
+
+.share {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.bar {
+  display: inline-block;
+  height: 8px;
+  min-width: 1px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+.flagged td,
+.flagged th {
+  color: var(--brand-orange);
+}
+
+.flagged .bar {
+  background: var(--brand-orange);
+}
+
+.flag {
+  color: var(--brand-orange);
+  margin: 0;
+}
+
+.tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.limits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  color: var(--text-dim);
+}
+
+.limits input {
+  width: 56px;
+}

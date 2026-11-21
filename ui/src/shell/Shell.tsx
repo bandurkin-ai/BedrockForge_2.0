@@ -51,6 +51,7 @@ import { StatusBar } from "./StatusBar";
 import { useStore } from "./useStore";
 import { resize } from "./workspace";
 import css from "./Shell.module.css";
+import { renderCompositesWindow } from "../modules/composites/ToolWindow";
 
 const renderWindow: WindowRenderer = (w) => {
   switch (w.kind) {
@@ -99,7 +100,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w);
   }
 };
 

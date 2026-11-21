@@ -6,6 +6,7 @@ import type { CommandContext } from "./commands";
 import type { IconName } from "./Icon";
 import type { ViewState, WorkspaceState } from "./workspace";
 import { seriesTab, type SeriesFlags } from "../modules/section/seriesCommands";
+import { PREP_BUTTONS, PREP_GROUP_TITLE } from "../modules/composites/commands";
 
 export interface RibbonItem {
   command: string;
@@ -280,6 +281,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
             { command: "stats.swath", label: "SWATH PLOT", icon: "swath", small: true },
           ],
         },
+        { title: PREP_GROUP_TITLE, items: PREP_BUTTONS.map((b): RibbonItem => ({ ...b, unavailable: NO_SET })) },
         {
           title: "Таблицы набора",
           items: (

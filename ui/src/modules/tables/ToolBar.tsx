@@ -4,7 +4,7 @@ import { api, CoreError } from "../../shell/api";
 import { askConfirm } from "../../shell/dialogs";
 import { useStore } from "../../shell/useStore";
 import { refresh as refreshJobs } from "../jobs/state";
-import { addRow, loadTabs, runTool, setWhere, tablesStore } from "./state";
+import { addRow, loadTabs, rowsLocked, runTool, setWhere, tablesStore } from "./state";
 import css from "./Tables.module.css";
 
 type FieldSpec = { key: string; label: string; kind?: "text" | "column" | "table" | "kind" | "check" | "format" | "codes"; required?: boolean };
@@ -39,7 +39,7 @@ const TOOLS: Record<ToolId, { title: string; fields: FieldSpec[] }> = {
   },
   rename: { title: "Переименовать колонку", fields: [{ key: "column", label: "Колонка", kind: "column", required: true }, { key: "name", label: "Новое название", required: true }] },
   delete: { title: "Удалить колонку", fields: [{ key: "column", label: "Колонка", kind: "column", required: true }] },
-  append: { title: "Объединить с таблицей", fields: [{ key: "source", label: "Добавить строки из", kind: "table", required: true }] },
+  append: { title: "Добавить строки из таблицы", fields: [{ key: "source", label: "Добавить строки из", kind: "table", required: true }] },
   merge: {
     title: "Слияние по ключу",
     fields: [
@@ -60,6 +60,8 @@ const TOOLS: Record<ToolId, { title: string; fields: FieldSpec[] }> = {
 };
 
 const MENU: ToolId[] = ["replace", "computed", "column", "rename", "delete", "append", "merge", "codes", "export"];
+/** Tools that change cells or rows: not for a result table (ADR 0018 decision 24); columns may be added. */
+const ROW_TOOLS: ToolId[] = ["replace", "append"];
 const err = (e: unknown) => (e instanceof CoreError ? e.full : e instanceof Error ? e.message : String(e));
 
 /** «+ Строка», «Журнал правок», «Инструменты» of the panel (ТЗ 7.10; 7.34 п. 22, 31–36). */
@@ -148,7 +150,7 @@ export function ToolBar({ onLog, logOpen }: { onLog: () => void; logOpen: boolea
 
   return (
     <>
-      <button type="button" className={css.btn} onClick={() => open("row")} disabled={!s.table}>
+      <button type="button" className={css.btn} onClick={() => open("row")} disabled={!s.table || rowsLocked(s) !== null} title={rowsLocked(s) ?? undefined}>
         + Строка
       </button>
       <button type="button" className={logOpen ? css.btnActive : css.btn} onClick={onLog}>
@@ -161,7 +163,7 @@ export function ToolBar({ onLog, logOpen }: { onLog: () => void; logOpen: boolea
         {menu && (
           <div className={css.menu} role="menu">
             {MENU.map((id) => (
-              <button key={id} type="button" role="menuitem" onClick={() => open(id)}>
+              <button key={id} type="button" role="menuitem" disabled={ROW_TOOLS.includes(id) && rowsLocked(s) !== null} title={ROW_TOOLS.includes(id) ? (rowsLocked(s) ?? undefined) : undefined} onClick={() => open(id)}>
                 {TOOLS[id].title}…
               </button>
             ))}

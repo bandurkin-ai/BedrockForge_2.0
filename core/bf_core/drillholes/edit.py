@@ -5,6 +5,13 @@ ADR 0003 §5) and the `edit_log` records (who, what, before → after). Undo app
 transaction and marks the record `undone`; an undone deletion comes back as a new row.
 
 Revisions: an interval table — `dh_tables.rev`; collars and surveys — `objects.version` of the set.
+
+A table made by sample processing (composites, coding, merging, coordinates, ore intervals — `dh_results`, ADR
+0018 решение 24) is read only: its cells and rows are not edited (422 `result_read_only`: «правьте источник и
+перестройте»); columns may be added, renamed and deleted. The hand edit of ore intervals has its own
+route (`POST /composites/results/{id}/edit`, `composites/ore_edit_job.py`) and does not come here. The check
+is in `write_row`, `journal` (cells, rows, undo), `bump` (rows added or removed; a find and replace — its
+records of the newest journal group).
 """
 
 from __future__ import annotations
@@ -19,7 +26,7 @@ import sqlalchemy as sa
 
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
-from bf_core.db.schema import dh_holes, dh_rows, dh_surveys, dh_tables, edit_log, objects
+from bf_core.db.schema import dh_holes, dh_results, dh_rows, dh_surveys, dh_tables, edit_log, objects
 
 from .snapshot import COLLAR_FIELDS, SURVEY_FIELDS, ColumnInfo, table_columns
 from .store import pack, unpack
@@ -85,6 +92,7 @@ class Target:
     table: str  # collar | survey | <id>
     kind: str
     columns: list[ColumnInfo]
+    result: str | None = None  # the operation that made the table (ADR 0018 решение 24): cells, rows read only
 
     def col(self, key: str) -> ColumnInfo:
         for c in self.columns:
@@ -118,7 +126,47 @@ def target(conn: sa.Connection, set_id: int, table: str) -> Target:
     )
     if row is None:
         raise ApiError(404, "table_not_found", "Таблица не найдена.", "Обновите дерево проекта.")
-    return Target(set_id, table, row.kind, table_columns(conn, int(table), row.kind))
+    return Target(set_id, table, row.kind, table_columns(conn, int(table), row.kind), _result_of(conn, int(table)))
+
+
+ROW_ACTIONS = ("update", "insert", "delete", "append")
+
+
+def _result_of(conn: sa.Connection, table_id: int) -> str | None:
+    """The operation of sample processing whose result the table is (`composites.results.TABLE_OPS`), or None."""
+    from bf_core.composites import results  # no numpy there; imported here: `results` imports this module
+
+    ops = sorted(results.TABLE_OPS)
+    op = conn.execute(
+        sa.select(dh_results.c.op).where(dh_results.c.table_id == table_id, dh_results.c.op.in_(ops)).limit(1)
+    ).scalar()
+    return None if op is None else str(op)
+
+
+def refuse_result(t: Target) -> None:
+    """422 when the cells or rows of a result table are to change (ADR 0018 решение 24)."""
+    if t.result is not None:
+        raise ApiError(
+            422,
+            "result_read_only",
+            "Таблица — результат расчёта: ячейки и строки не правятся.",
+            "Правьте источник и перестройте результат («Обработка проб» → «Перестроить»). Колонки добавлять можно.",
+        )
+
+
+def _rows_journaled(conn: sa.Connection, t: Target) -> bool:
+    """The newest journal group (the one this transaction wrote, if any) changes rows of the table."""
+    group = conn.execute(sa.select(sa.func.max(edit_log.c.group_id))).scalar()
+    if group is None:
+        return False
+    for ref, action in conn.execute(
+        sa.select(edit_log.c.row_ref, edit_log.c.action).where(
+            edit_log.c.group_id == group, edit_log.c.scope_id == t.set_id, edit_log.c.undone.is_(False)
+        )
+    ):
+        if action in ROW_ACTIONS and str((ref or {}).get("table")) == t.table:
+            return True
+    return False
 
 
 def revision(conn: sa.Connection, t: Target) -> int:
@@ -129,6 +177,8 @@ def revision(conn: sa.Connection, t: Target) -> int:
 
 def bump(conn: sa.Connection, t: Target, expected: int | None, rows_delta: int = 0) -> int:
     """Next revision; 409 when `expected` is not the current one (someone else changed the table)."""
+    if t.result is not None and (rows_delta or _rows_journaled(conn, t)):
+        refuse_result(t)
     now = dialect.utcnow()
     if t.table in ("collar", "survey"):
         tbl, col, where = objects, objects.c.version, objects.c.id == t.set_id
@@ -155,6 +205,7 @@ def new_group(conn: sa.Connection) -> int:
 def journal(conn: sa.Connection, t: Target, group: int, changes: list[Change], who: str) -> None:
     if not changes:
         return
+    refuse_result(t)
     now = dialect.utcnow()
     conn.execute(
         sa.insert(edit_log),
@@ -255,6 +306,7 @@ def check_row(t: Target, vals: dict[str, Any]) -> None:
 
 def write_row(conn: sa.Connection, t: Target, row_id: int | None, hole_id: int, vals: dict[str, Any]) -> int:
     """Stores the whole row (insert when `row_id` is None); returns the row id."""
+    refuse_result(t)
     attrs = {k[2:]: v for k, v in vals.items() if k.startswith("a:") and v not in (None, "")} or None
     if t.table == "collar":
         values = {k: vals.get(k) for k in COLLAR_KEYS}

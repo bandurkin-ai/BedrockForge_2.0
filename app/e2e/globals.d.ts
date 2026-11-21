@@ -54,7 +54,7 @@ interface BfSceneState {
   /** the level of what has no height of its own: a metre under the lowest object */
   floor: number;
   /** the layer of displays along holes */
-  displays: { legend: { key: string; name: string; holes: number; intervals: number; entries: { title: string; counts: number[] }[] }[]; simplified: number; loading: number; over: boolean };
+  displays: { legend: { key: string; name: string; holes: number; intervals: number; labels: number; entries: { title: string; counts: number[] }[] }[]; simplified: number; loading: number; over: boolean };
 }
 
 interface Window {

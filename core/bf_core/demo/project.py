@@ -7,7 +7,9 @@ the DTM with the plan on it (Э7, `geo.py`), wireframes of the ore body and outl
 tie lines, the solid stitched from them and the isolines of the relief (Э9, `contours.py`), the geological map and
 the scan of the section Y = 8125 (Э9), the series of sections of «Рудное тело 3» and the plans of the relief (Э10,
 `sections.py`), the block model around the ore bodies (Э11, `blocks.py`). A part is a function (conn, store,
-rng) registered in PARTS.
+rng) registered in PARTS. Then the audit. No results of «Обработка проб» (Э12): on a cold numba cache their kernels
+compiled while the demo was made (~20 s more, the demo past 60 s on the Windows runner); they are made from the
+windows of «Обработка проб» (`app/e2e/composites.spec.ts`).
 """
 
 from __future__ import annotations
