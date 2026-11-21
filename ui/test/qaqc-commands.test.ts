@@ -131,7 +131,7 @@ describe("the reasons and the handlers of the tab", () => {
     expect(app.registry.reason("qaqc.filter")).toBe("Загрузите контрольные пробы: «Анализ → QAQC → Настройка»");
     qaqcStore.set({ datas: [DATA] });
     expect(qaqcReason({ ...EMPTY_CONTEXT, hasProject: true })).toBeNull();
-    expect(app.registry.reason("qaqc.report")).toBe("Функция появится на этапе Э14");
+    for (const id of ["qaqc.report", "qaqc.report_open", "qaqc.report_save", "qaqc.report_rebuild", "qaqc.report_rename", "qaqc.report_delete"]) expect(app.registry.reason(id), id).toBeNull();
   });
 
   it("`qaqc.open` reads the data, opens the bottom tab on the section; a wrong data or element is refused with a hint", async () => {

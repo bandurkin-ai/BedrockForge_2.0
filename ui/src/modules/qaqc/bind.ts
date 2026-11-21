@@ -8,14 +8,16 @@
  */
 import type { App } from "../../shell/app";
 import type { CommandContext, CommandSource } from "../../shell/commands";
-import { noted, refusal } from "../../shell/objectRun";
+import { askConfirm } from "../../shell/dialogs";
+import { needWritable, noted, refusal } from "../../shell/objectRun";
 import { setPanel } from "../../shell/workspace";
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
-import { calc, listReports, type CalcCounts, type QaqcData } from "./api";
+import { calc, deleteReport, getReport, listReports, renameReport, type CalcCounts, type QaqcData } from "./api";
 import { DUP_KINDS, DUP_TITLES, QAQC_SECTIONS, SECTION_TITLES, type DupKind, type QaqcSection } from "./commands";
-import { countLabel, filterFromArgs, filterSummary } from "./filters";
+import { countLabel, filterFromArgs, filterJson, filterSummary, listArg } from "./filters";
 import { int, pct, share } from "./format";
+import { CHARTS_MODES, findReport, loadReports, rebuildReason, reportLine, reportsStore, resetReports, runReport, saveXlsx, selectReport, summaryText, type ChartsMode, type ReportRun, type RunSpec } from "./reportRun";
 import { activeData, activeElement, calcBody, loadDatas, qaqcChanged, qaqcStore, reportsChanged, resetQaqc, setData, setDupKind, setElement, setFilter, setSection } from "./state";
 
 export const NEED_PROJECT = "Откройте проект";
@@ -113,6 +115,7 @@ export function bindQaqc(app: App): void {
   const bindAll = () => {
     app.registry.bind("qaqc.open", noted(app, (a, source) => openQaqc(app, a, source)), qaqcReason);
     app.registry.bind("qaqc.filter", noted(app, (a, source) => filterQaqc(app, a, source)), qaqcReason);
+    bindReports(app);
   };
   bindAll();
   // the reason «Загрузите контрольные пробы…» follows the list: the ribbon and Ctrl+K are told by a new binding
@@ -131,7 +134,8 @@ export function bindQaqc(app: App): void {
     if (cur === uid) return;
     uid = cur;
     resetQaqc();
-    if (cur) void loadDatas();
+    resetReports();
+    if (cur) void loadDatas().then(() => loadReports());
   });
   onCoreEvent((event, data) => {
     if (event === "qaqc.changed") return qaqcChanged();
@@ -143,6 +147,120 @@ export function bindQaqc(app: App): void {
       return;
     }
     if (kind === "qaqc_data") void loadDatas().then(qaqcChanged);
-    else if (kind === "qaqc_report") reportsChanged();
+    else if (kind === "qaqc_report") {
+      reportsChanged();
+      void loadReports();
+    }
   });
+}
+
+// ---- the reports (ADR 0020 §7, §9, §10): `qaqc.report`, `report_open`, `report_save`, `report_rebuild`, `report_rename`, `report_delete` ----
+
+export const REPORT_COMMANDS = ["qaqc.report", "qaqc.report_open", "qaqc.report_save", "qaqc.report_rebuild", "qaqc.report_rename", "qaqc.report_delete"] as const;
+
+const reportId = (args: Record<string, unknown>): number => {
+  const id = args.report_id;
+  if (typeof id !== "number" || !Number.isInteger(id)) throw refusal("bad_param", "Не задан номер отчёта QAQC.", "Параметр report_id — номер из раздела дерева «Отчёты».");
+  return id;
+};
+
+function openReportTab(app: App, id: number | null = null): void {
+  setSection("report");
+  if (id !== null) selectReport(id);
+  app.store.set((s) => ({ workspace: setPanel(s.workspace, "bottom", true, "qaqc") }));
+}
+
+/** The answer of a run for the assistant: the report and its totals, or a refusal with the step it stopped at. */
+async function runAnswer(run: ReportRun): Promise<string> {
+  if (run.state === "cancelled") return `Формирование отчёта QAQC «${run.spec.name}» отменено`;
+  if (run.state === "failed") throw refusal("report_failed", `Отчёт QAQC «${run.spec.name}» не сформирован: ${run.error ?? "ошибка"}.`, "Подробности — во вкладке «QAQC › Отчёт» и «Задания»; «Повторить» продолжит с этого шага.");
+  const r = await getReport(run.reportId!);
+  const totals = summaryText(r.summary);
+  return `${reportLine(r)}${run.total ? `; графиков ${int(run.done - run.empty)} из ${int(run.total)}${run.omitted ? ` (сверх 200 — ${int(run.omitted)})` : ""}` : ""}${totals ? `. ${totals}` : ""}${run.path ? `. Сохранён: ${run.path}` : ""}`;
+}
+
+/** Starts a run: the person sees its steps in «QAQC › Отчёт»; the assistant waits for the end. */
+async function startRun(app: App, spec: RunSpec, source: CommandSource): Promise<string> {
+  openReportTab(app, spec.kind === "create" ? null : spec.reportId);
+  if (source === "claude") return runAnswer(await runReport(spec));
+  void runReport(spec);
+  return spec.kind === "rebuild" ? `Перестраивается отчёт QAQC «${spec.name}»` : `Формируется отчёт QAQC «${spec.name}»`;
+}
+
+/** `qaqc.report`: the data (of the tab without `data_id`), the elements (all without them), the filter of the tab. */
+export async function reportQaqc(app: App, args: Record<string, unknown>, source: CommandSource): Promise<string> {
+  const datas = await needDatas();
+  const data = typeof args.data_id === "number" ? datas.find((d) => d.id === args.data_id) : activeData();
+  if (!data) throw refusal("qaqc_data_not_found", `Данные QAQC № ${String(args.data_id)} не найдены.`, `Данные проекта: ${datas.map((d) => `${d.name} (№ ${d.id})`).join(", ")}.`);
+  let elements: string[] | undefined;
+  if (args.elements !== undefined && args.elements !== "") {
+    const list = listArg(args.elements);
+    if (typeof list === "string") throw refusal("bad_param", `Параметр «elements»: ${list}.`, "Элементы — через запятую.");
+    elements = [];
+    for (const want of list) {
+      const el = data.elements.find((e) => e.name.toLowerCase() === want.toLowerCase());
+      if (!el) throw refusal("bad_param", `Элемента «${want}» нет в данных «${data.name}».`, `Элементы: ${data.elements.map((e) => e.name).join(", ") || "нет"}.`);
+      if (!elements.includes(el.name)) elements.push(el.name);
+    }
+    if (!elements.length) elements = undefined;
+  }
+  const charts: ChartsMode = CHARTS_MODES.includes(args.charts as ChartsMode) ? (args.charts as ChartsMode) : "flagged";
+  const name = typeof args.name === "string" && args.name.trim() ? args.name.trim() : undefined;
+  const path = typeof args.path === "string" && args.path.trim() ? args.path.trim() : null;
+  const body = { data_id: data.id, ...(name ? { name } : {}), ...(elements ? { elements } : {}), filter: filterJson(qaqcStore.get().filter), charts };
+  return startRun(app, { kind: "create", body, name: name ?? `Отчёт QAQC — ${data.name}`, charts, path }, source);
+}
+
+async function openReport(app: App, args: Record<string, unknown>, source: CommandSource): Promise<string> {
+  const r = await findReport(reportId(args));
+  openReportTab(app, r.id);
+  if (source !== "claude") return `Открыт отчёт QAQC «${r.name}»`;
+  const full = await getReport(r.id);
+  const totals = summaryText(full.summary);
+  return `${reportLine(full)}; хеши: данные ${full.data_sha256.slice(0, 12)}…, входы ${full.inputs_sha256.slice(0, 12)}…${totals ? `. ${totals}` : ""}`;
+}
+
+async function saveReportFile(args: Record<string, unknown>): Promise<string> {
+  if (args.kind === "pdf") throw refusal("not_available", "PDF отчёта QAQC появится на этапе Э22.", "Сохраните отчёт в XLSX (kind: xlsx).");
+  const r = await getReport(reportId(args)).catch(() => findReport(reportId(args)));
+  const path = await saveXlsx(r, typeof args.path === "string" ? args.path : null);
+  return path ? `Отчёт QAQC «${r.name}» сохранён: ${path}` : "Отменено";
+}
+
+async function rebuildReport(app: App, args: Record<string, unknown>, source: CommandSource): Promise<string> {
+  const r = await getReport(reportId(args)).catch(() => findReport(reportId(args)));
+  const why = rebuildReason(r);
+  if (why) throw refusal(r.stale === "source_deleted" ? "source_deleted" : "report_building", `${why}.`, "Сформируйте новый отчёт по текущим данным.");
+  return startRun(app, { kind: "rebuild", reportId: r.id, name: r.name, charts: r.charts ?? "flagged" }, source);
+}
+
+async function renameReportCmd(args: Record<string, unknown>): Promise<string> {
+  const r = await findReport(reportId(args));
+  const name = typeof args.name === "string" ? args.name.trim() : "";
+  if (!name) throw refusal("name_empty", "Название не может быть пустым.", "Введите название отчёта.");
+  if (name === r.name) return `Отчёт QAQC уже называется «${name}»`;
+  await renameReport(r.id, name, r.version);
+  await loadReports();
+  return `Отчёт QAQC «${r.name}» переименован: «${name}»`;
+}
+
+async function deleteReportCmd(args: Record<string, unknown>, source: CommandSource): Promise<string> {
+  const r = await findReport(reportId(args));
+  if (source === "user" && !(await askConfirm({ title: "Удалить отчёт QAQC", message: `Отчёт «${r.name}» удаляется вместе с файлом XLSX, рисунками и копией записей. Данные QAQC не меняются.`, okLabel: "Удалить", danger: true })))
+    return "Отменено";
+  await deleteReport(r.id);
+  if (reportsStore.get().selected === r.id) selectReport(null);
+  await loadReports();
+  return `Удалён отчёт QAQC «${r.name}»`;
+}
+
+function bindReports(app: App): void {
+  const writable = needWritable(app);
+  const withData = (ctx: CommandContext) => qaqcReason(ctx) ?? writable(ctx);
+  app.registry.bind("qaqc.report", noted(app, (a, by) => reportQaqc(app, a, by)), withData);
+  app.registry.bind("qaqc.report_open", noted(app, (a, by) => openReport(app, a, by)), (ctx) => (ctx.hasProject ? null : NEED_PROJECT));
+  app.registry.bind("qaqc.report_save", noted(app, (a) => saveReportFile(a)), (ctx) => (ctx.hasProject ? null : NEED_PROJECT));
+  app.registry.bind("qaqc.report_rebuild", noted(app, (a, by) => rebuildReport(app, a, by)), writable);
+  app.registry.bind("qaqc.report_rename", noted(app, (a) => renameReportCmd(a)), writable);
+  app.registry.bind("qaqc.report_delete", noted(app, (a, by) => deleteReportCmd(a, by)), writable);
 }
