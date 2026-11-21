@@ -7,13 +7,14 @@
 export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
-export type BottomTab = "table" | "audit" | "stats" | "jobs" | "log";
-export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "audit";
+export type BottomTab = "table" | "audit" | "stats" | "qaqc" | "jobs" | "log";
+export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "audit" | "reports";
 
 export const BOTTOM_TITLES: Record<BottomTab, string> = {
   table: "Таблица",
   audit: "Аудит и статистика",
   stats: "Статистика",
+  qaqc: "QAQC",
   jobs: "Задания",
   log: "Журнал команд",
 };
@@ -28,6 +29,8 @@ export const TREE_SECTIONS: Record<TreeSection, string> = {
   rasters: "Растры",
   blocks: "Блочные модели",
   audit: "Аудит и статистика",
+  /** QAQC reports (ADR 0020 §11); a stored order without it gets it at the end (`normalizeOrder`). */
+  reports: "Отчёты",
 };
 export const DEFAULT_TREE_ORDER = Object.keys(TREE_SECTIONS) as TreeSection[];
 
