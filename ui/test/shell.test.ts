@@ -4,6 +4,7 @@ import { EMPTY_CONTEXT } from "../src/shell/commands";
 import { buildRibbon, flattenRibbon, itemReason } from "../src/shell/ribbonConfig";
 import { assign, defaultShortcuts, effectiveShortcuts, functionKey, normalizeShortcuts } from "../src/shell/shortcuts";
 import {
+  BOTTOM_TITLES,
   DEFAULT_TREE_ORDER,
   DEFAULT_VIEW,
   DEFAULT_WORKSPACE,
@@ -108,6 +109,13 @@ describe("workspace (ТЗ 7.0.10, 7.0.14)", () => {
     expect(w.treeOrder).toHaveLength(DEFAULT_TREE_ORDER.length);
     expect(normalizeWorkspace({ treeOrder: ["holes", "views"] }).treeOrder.slice(0, 2)).toEqual(["holes", "views"]); // moved by the user
     expect(DEFAULT_TREE_ORDER[0]).toBe("views");
+  });
+
+  it("the bottom tab «Swath plot» is gone (Д-01: a floating window); a stored `swath` opens «Таблица»", () => {
+    expect(Object.keys(BOTTOM_TITLES)).not.toContain("swath");
+    expect(normalizeWorkspace({ bottom: true, bottomTab: "swath" })).toMatchObject({ bottom: true, bottomTab: "table" });
+    const tab = moduleCommands().find((c) => c.id === "panel.set")?.params?.tab;
+    expect(tab?.enum).not.toContain("swath");
   });
 
   it("the right dock: second call for the open tab closes it", () => {

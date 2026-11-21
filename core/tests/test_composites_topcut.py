@@ -76,6 +76,34 @@ def test_ties_keep_the_order_of_the_rows() -> None:
     assert np.array_equal(s.v, sv) and np.array_equal(s.w, sw)
 
 
+@pytest.mark.parametrize("shape", ["rounded", "equal", "distinct", "two", "zeros", "sorted", "reversed", "short"])
+def test_ties_of_any_shape_are_the_stable_sort(shape: str) -> None:
+    """13.35: the rows of a run of equal values are put in their order without sorting the run — the sample is
+    that of numpy's stable sort bit for bit (values, weights, the split by groups), for runs of every shape."""
+    rng = np.random.default_rng(1335)
+    n = 40_000
+    v = {
+        "rounded": np.round(rng.lognormal(0.0, 1.5, n), 1),  # grades with one decimal: runs of hundreds of rows
+        "equal": np.full(n, 2.5),
+        "distinct": rng.permutation(n).astype(np.float64),
+        "two": (rng.random(n) < 0.5).astype(np.float64),
+        "zeros": np.where(rng.random(n) < 0.5, 0.0, -0.0) * rng.integers(1, 3, n),  # −0.0 == 0.0: one run
+        "sorted": np.sort(np.round(rng.random(n), 2)),
+        "reversed": np.sort(np.round(rng.random(n), 2))[::-1].copy(),
+        "short": np.array([3.0, 1.0, 1.0]),
+    }[shape]
+    for size in (len(v), 2, 1, 0) if shape == "rounded" else (len(v),):
+        x = np.ascontiguousarray(v[:size])
+        w = rng.uniform(0.1, 3.0, size)
+        order = np.argsort(x, kind="stable")
+        s = sort_groups(x, w)[0]
+        assert s.v.tobytes() == x[order].tobytes() and s.w.tobytes() == w[order].tobytes(), (shape, size)
+        codes = rng.integers(0, 3, size)
+        for g, part in enumerate(sort_groups(x, w, codes, 3)):
+            rows = order[codes[order] == g]
+            assert part.v.tobytes() == x[rows].tobytes() and part.w.tobytes() == w[rows].tobytes(), (shape, size, g)
+
+
 def test_pair_sums_is_pairwise_and_exact_enough() -> None:
     rng = np.random.default_rng(5)
     a, b = rng.lognormal(0, 2, 100_003), rng.lognormal(0, 2, 100_003)

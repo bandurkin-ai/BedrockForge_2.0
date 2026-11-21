@@ -535,7 +535,7 @@ def write_snapshot(engine: sa.Engine, cache_dir: Path, table_id: int, out: OutTa
             arrays[key] = pa.array(np.asarray(vals, dtype=float), type=pa.float64())
         else:
             arrays[key] = _text_column(vals)
-    path = cache_dir / f"{table_id}-{results._token(t.created_at)}-{t.rev}.parquet"
+    path = cache_dir / f"{table_id}-{results.table_token(t.created_at)}-{t.rev}.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     pq.write_table(pa.table(arrays), tmp, compression="zstd")

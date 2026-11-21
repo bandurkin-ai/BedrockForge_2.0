@@ -87,17 +87,40 @@ def pair_sums(a, b):  # type: ignore[no-untyped-def]
 
 @njit(cache=True, nogil=True)
 def _fix_ties(v, order):  # type: ignore[no-untyped-def]
-    """Rows of equal value go in the order of the rows — what a stable sort gives, whatever sort made `order`."""
+    """Rows of equal value go in the order of the rows — what a stable sort gives, whatever sort made `order`.
+    No run of equal values is sorted: the rows are taken in their order and each is put into the next free place
+    of its run (two passes over the rows; grades written with 2–3 decimals are runs of hundreds of rows, and
+    sorting each took half the time of the whole sort — 13.35)."""
     n = order.shape[0]
+    if n < 2:
+        return
+    slot = np.full(n, -1, dtype=np.int64)  # of a row: the first place of its run; −1 — no other row of its value
+    fill = np.empty(n, dtype=np.int64)  # at the first place of a run: its next free place
+    mixed = False
     a = 0
-    while a < n:
-        x = v[order[a]]
-        b = a + 1
-        while b < n and v[order[b]] == x:
-            b += 1
-        if b - a > 1:
-            order[a:b].sort()
-        a = b
+    first = order[0]
+    x = v[first]
+    for j in range(1, n):
+        i = order[j]
+        if v[i] == x:
+            if j == a + 1:
+                slot[first] = a
+                fill[a] = a
+            slot[i] = a
+            if i < order[j - 1]:
+                mixed = True
+        else:
+            a = j
+            first = i
+            x = v[i]
+    if not mixed:
+        return
+    for i in range(n):
+        a = slot[i]
+        if a >= 0:
+            p = fill[a]
+            order[p] = i
+            fill[a] = p + 1
 
 
 @njit(cache=True, nogil=True)

@@ -5,7 +5,7 @@
  * (the root scaled in Z by the exaggeration); buffers are float32 from the integer origin of their part.
  * Other layers join through `addLayer` (own integer origin, materials with `scene.clipPlanes`, `beforeRender`,
  * labels placed with everyone else's); after a lost context they are dropped and `onRestored` re-adds them.
- * The hole sets and the selected hole are `holes/sceneHoles.ts`.
+ * The hole sets and the selected hole are `holes/sceneHoles.ts`, their part of the facade `holes/holeScene.ts`.
  */
 import * as THREE from "three";
 import { groundPoint, projectRay, projectView, ToolInput, type ProjectView, type ToolHandler } from "./core/toolInput";
@@ -20,33 +20,29 @@ import { screenPriority } from "./core/cull";
 import { LayerSet } from "./core/layers";
 import { rebaseCamera, SceneOrigin } from "./core/sceneOrigin";
 import { TurnController } from "./core/turn";
-import { changeVexag, fit, fitDepth, pixelsPerUnit, screenRay, toPlan, view, viewDirection, type CameraState, type ViewOptions, type ViewPreset } from "./core/views";
+import { changeVexag, fit, fitDepth, pixelsPerUnit, toPlan, view, viewDirection, type CameraState, type ViewOptions, type ViewPreset } from "./core/views";
 import { fromWorld, toWorld, type WorldCamera } from "./core/worldCamera";
 import type { Vec3 } from "./core/vec3";
 import { AxesGizmo } from "./gizmo/AxesGizmo";
 import { Grid } from "./grid";
-import type { HoleSetLayer, HoleSetStyle, HoleSetVisibility } from "./holes/holeSet";
-import type { HolesManifest } from "./holes/manifest";
+import { HoleScene } from "./holes/holeScene";
 import { MarkerTextures } from "./holes/markers";
 import { SceneHoles } from "./holes/sceneHoles";
-import { pickHoles } from "./holes/select";
-import { LabelCache, type LabelItem } from "./labels/sprites";
-import { toNdc, viewProjection, type Mat4 } from "./pick/ray";
+import { LabelCache } from "./labels/sprites";
+import { viewProjection, type Mat4 } from "./pick/ray";
 import type { DrawState } from "./section/draw";
 import type { Ray, SectionLine } from "./section/math";
-import { buildOverview, type PlanOverview } from "./section/miniPlan";
-import { collarsOnScreen, planSources, type ScreenCollar } from "./holes/screen";
+import { collarsOnScreen, type ScreenCollar } from "./holes/screen";
 import type { SectionPlane } from "./section/plane";
 import { SectionRig } from "./section/rig";
-import type { BuiltPaths } from "./worker/paths";
-import { orbited, placeFrameLabels, screenOf, watchHost } from "./sceneHooks";
+import { frameLabelItems, orbited, pickAt, placeFrameLabels, screenOf, ToolChain, turnStep, watchHost } from "./sceneHooks";
 import type { FrameContext, SceneDebug, SceneEvents, SceneLayer, SectionDataMark } from "./sceneTypes";
 
 export { probeWebGL2 } from "./core/renderer";
 export type { HoleHit } from "./holes/select";
 export type { FrameContext, LayerHit, LayerPick, PickQuery, SceneDebug, SceneEvents, SceneLayer } from "./sceneTypes";
 
-export class Scene {
+export class Scene extends HoleScene {
   readonly clipPlanes: THREE.Plane[];
   readonly origin = new SceneOrigin();
   readonly renderer: Renderer;
@@ -62,8 +58,6 @@ export class Scene {
   private grid: Grid;
   private readonly gizmo: AxesGizmo;
   private readonly turn = new TurnController();
-  /** the hole sets and the selected hole (`holes/sceneHoles.ts`) */
-  private readonly sets: SceneHoles;
   private readonly layers = new LayerSet(this.root, this.origin);
   /** shown (×1 while an inclined section is active) and asked by the view key */
   private vexag = 1;
@@ -81,6 +75,8 @@ export class Scene {
   private readonly cleanup: (() => void)[] = [];
   private readonly light = new THREE.DirectionalLight(0xffffff, 1.6);
   private readonly input: ToolInput;
+  /** the pointer: the tool of the string editor first, then the handles of a swath, then the scene */
+  private readonly tools = new ToolChain();
   /** frames per second and ms per frame (the counter Ctrl+Shift+F) */
   readonly fps = new FpsTracker();
 
@@ -89,6 +85,7 @@ export class Scene {
     private readonly host: HTMLElement,
     private readonly events: SceneEvents = {},
   ) {
+    super();
     this.renderer = new Renderer(host);
     this.clipPlanes = this.sec.clip.planes;
     this.labels = new LabelCache(this.clipPlanes);
@@ -100,7 +97,8 @@ export class Scene {
         context: () => ({ clip: this.clipPlanes, resolution: this.resolution, textures: this.textures, labels: this.labels, pixelRatio: this.renderer.pixelRatio }),
         contentChanged: () => this.contentChanged(),
         gridChanged: () => this.refreshGrid(),
-        invalidate: () => this.loop.invalidate(), gpu: () => this.gpu.gpuClass,
+        invalidate: () => this.loop.invalidate(),
+        gpu: () => this.gpu.gpuClass,
       },
       this.clipPlanes,
       this.resolution,
@@ -122,6 +120,7 @@ export class Scene {
     this.renderer.onRestored = () => this.contextRestored();
     const camera = (on: boolean) => void (this.rig.controls.enabled = on);
     this.input = new ToolInput({ click: (x, y) => this.click(x, y), move: (x, y) => this.pointerMove(x, y), leave: () => undefined, camera });
+    this.input.setTool(this.tools);
     this.cleanup.push(this.input.attach(this.renderer.canvas));
     this.cleanup.push(watchHost(host, () => this.resize(), () => this.applyTheme()));
     this.applyTheme();
@@ -229,13 +228,7 @@ export class Scene {
     this.first.stop();
     const opts = this.rig.options();
     const token = this.turn.begin(this.rig.state(), from, performance.now(), { ortho: !opts.perspective, box: contentBox(this.extents()), vexag: this.vexag });
-    if (token === null) return;
-    this.loop.animate((now) => {
-      const r = this.turn.frame(token, now);
-      if (!r) return false;
-      this.rig.apply(r.camera);
-      return !r.done;
-    });
+    if (token !== null) this.loop.animate(turnStep(this.turn, token, (c) => this.rig.apply(c)));
   }
 
   camera(): CameraState {
@@ -316,10 +309,9 @@ export class Scene {
     }
   }
 
-  private sectionData: SectionDataMark | null = null;
   /** The readiness of the lines of the current section of a series (`modules/section/seriesSections.ts`); null — none. */
   setSectionData(mark: SectionDataMark | null): void {
-    this.sectionData = mark && mark.series !== null ? { ...mark } : null;
+    this.sec.data = mark && mark.series !== null ? { ...mark } : null;
   }
 
   /** The drawing state of a section line (the first point marked: the rubber band follows the cursor). */
@@ -327,43 +319,8 @@ export class Scene {
     this.sec.drawing = state;
     if (state.stage !== "second") this.sec.overlay.setDraft(null, null, 0);
     else this.pointerMove(-1, -1);
-    this.renderer.canvas.style.cursor = state.stage === "off" && !this.input.active ? "" : "crosshair";
+    this.renderer.canvas.style.cursor = state.stage === "off" && !this.tools.tool ? "" : "crosshair";
     this.loop.invalidate();
-  }
-
-  /** Collars and traces of the visible sets for the mini-plan (≤ 20 000 points). */
-  planOverview(): PlanOverview {
-    return buildOverview(planSources(this.sets.layers()));
-  }
-
-  // ---------------------------------------------------------------- holes
-
-  setHoles(manifest: HolesManifest, style: HoleSetStyle, visibility: HoleSetVisibility): void {
-    this.sets.set(manifest, style, visibility);
-  }
-
-  setPaths(setId: number, k: number, built: BuiltPaths): void {
-    this.sets.setPaths(setId, k, built);
-  }
-
-  holes(setId: number): HoleSetLayer | null {
-    return this.sets.get(setId);
-  }
-
-  removeHoles(setId: number, update = true): void {
-    this.sets.remove(setId, update);
-  }
-
-  setHoleStyle(setId: number, style: HoleSetStyle): void {
-    this.sets.setStyle(setId, style);
-  }
-
-  setHoleVisibility(setId: number, v: HoleSetVisibility): void {
-    this.sets.setVisibility(setId, v);
-  }
-
-  select(hole: { setId: number; name: string } | null): void {
-    this.sets.select(hole);
   }
 
   // ---------------------------------------------------------------- other layers
@@ -385,8 +342,15 @@ export class Scene {
 
   /** A tool of the string editor gets the pointer first; null — the scene alone, as before. */
   setTool(tool: ToolHandler | null): void {
-    this.input.setTool(tool);
+    this.tools.tool = tool;
+    this.tools.reset();
+    this.input.setTool(this.tools);
     this.renderer.canvas.style.cursor = tool ? "crosshair" : "";
+  }
+
+  /** The handles of a swath (Д-01): the pointer after the editor's tool, before the scene; null — none. */
+  setHandles(handles: ToolHandler | null): void {
+    this.tools.handles = handles;
   }
 
   /** The ray under a canvas point (CSS px), project coordinates float64, Z not exaggerated; null — no origin yet. */
@@ -403,7 +367,7 @@ export class Scene {
 
   debug(): SceneDebug {
     const cam = this.rig.state();
-    const section = { clipPlanes: this.clipPlanes.length, section: this.sec.line, sectionPlane: this.sec.plane, locked: this.rig.locked, sectionData: this.sectionData };
+    const section = { clipPlanes: this.clipPlanes.length, section: this.sec.line, sectionPlane: this.sec.plane, locked: this.rig.locked, sectionData: this.sec.data };
     const view = { camera: { ...cam, dir: viewDirection(cam) }, perspective: this.rig.perspective, vexag: this.vexag, ...section };
     const content = { gpu: this.renderer.info, sets: this.sets.ids(), layers: this.layers.keys(), segments: this.sets.segments(), pickMs: this.pickMs };
     return { frames: this.loop.frames, idle: this.idle, lost: this.renderer.lost, stats: this.stats, ...view, ...content };
@@ -517,13 +481,7 @@ export class Scene {
     this.light.position.set(...cam.position);
     this.light.target.position.set(...cam.target);
     this.three.updateMatrixWorld();
-    const items: LabelItem[] = [];
-    for (const l of this.sets.layers()) l.labelItems(items);
-    this.layers.labels(items);
-    // the grid seen edge-on (a side view, a section) keeps its lines, its values would be a heap
-    if (Math.abs(viewDirection(cam)[2]) > 0.15) this.grid.labelItems(items);
-    else for (const l of this.grid.labels) l.sprite.visible = false;
-    placeFrameLabels(items, vp, w, h, ppuAt, this.sec.inWindow, this.vexag);
+    placeFrameLabels(frameLabelItems(this.sets.layers(), this.layers, this.grid, cam), vp, w, h, ppuAt, this.sec.inWindow, this.vexag);
     this.renderer.render(this.three, this.rig.camera);
     this.stats = this.renderer.stats();
     this.gizmo.update(cam, this.vexag < 0);
@@ -553,15 +511,10 @@ export class Scene {
       const g = groundPoint(this.lastCam ?? this.rig.state(), this.rig.options(), this.size, this.origin.value, px, py);
       return void (g && this.events.onGroundClick?.(g));
     }
-    const vp = this.lastVp;
-    if (!vp) return;
+    if (!this.lastVp) return;
     const t0 = performance.now();
-    const { w, h } = this.size;
-    const inWindow = this.sec.inWindow;
-    const hit = pickHoles(this.sets.layers(), vp, this.vexag, px, py, w, h, inWindow);
-    // no hole under the cursor: the other layers answer (lines and points first, then surfaces)
-    const ray = screenRay(this.lastCam ?? this.rig.state(), this.rig.options(), ...toNdc(px, py, w, h));
-    const other = hit ? null : this.layers.pick({ vp, vexag: this.vexag, px, py, width: w, height: h, inWindow, ray });
+    const at = { vp: this.lastVp, camera: this.lastCam ?? this.rig.state(), options: this.rig.options(), vexag: this.vexag, size: this.size, inWindow: this.sec.inWindow };
+    const { hit, other } = pickAt(this.sets.layers(), this.layers, at, px, py);
     this.pickMs = performance.now() - t0;
     this.events.onPick?.(hit);
     this.events.onPickLayer?.(other);

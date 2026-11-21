@@ -21,6 +21,7 @@ ROUTER_MODULES: tuple[str, ...] = (
     "projects",
     "rasters",
     "sections",
+    "stats",
     "storage",
     "styles",
     "viewstate",

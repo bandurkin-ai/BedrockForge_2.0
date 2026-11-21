@@ -202,11 +202,25 @@ def _displays(v: Any, strict: bool) -> list[dict[str, Any]]:
     return out[-DISPLAYS_MAX:]
 
 
-def _swaths(v: Any, strict: bool) -> list[Any]:
+def _swaths(v: Any, strict: bool) -> list[dict[str, Any]]:
+    """[{swath, visible}] — swath plots shown in 3D (ADR 0019 §2): the id of the chart, `visible` true by default;
+    junk dropped, a repeated id kept once (the first), the newest ≤ SWATHS_MAX kept."""
     if not isinstance(v, list):
-        _fail(strict, "Swath plot: ожидается список.")
+        _fail(strict, "Swath plot в 3D: ожидается список.")
         return []
-    return v[-SWATHS_MAX:]
+    out: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for d in v:
+        sid = _id(d.get("swath")) if isinstance(d, dict) else None
+        if sid is None:
+            _fail(strict, "Swath plot в 3D: у каждого — номер swath plot.")
+            continue
+        if isinstance(d, dict) and "visible" in d and not isinstance(d["visible"], bool):
+            _fail(strict, "Swath plot в 3D: «visible» — да или нет.")
+        if sid not in seen:
+            seen.add(sid)
+            out.append({"swath": sid, "visible": _bool(d.get("visible"), True)})
+    return out[-SWATHS_MAX:]
 
 
 def _styles(v: Any, strict: bool) -> dict[str, Any]:
@@ -275,14 +289,16 @@ def normalize(key: str, value: Any, *, strict: bool) -> Any:
 
 
 def drop_missing(key: str, value: Any, alive: Callable[[int], bool]) -> Any:
-    """Forget ids of deleted objects (read side): hidden keys, displays, styles, columns, the active set, the
-    active series of sections."""
+    """Forget ids of deleted objects (read side): hidden keys, displays, swath plots, styles, columns, the active
+    set, the active series of sections."""
     if key == "hidden":
         return [k for k in value if alive(int(HIDDEN_RE.match(k).group(2)))]  # type: ignore[union-attr]
     if key == "hide_all":
         return {**value, "shown": drop_missing("hidden", value["shown"], alive)}
     if key == "displays":
         return [d for d in value if alive(d["chart"])]
+    if key == "swaths":
+        return [d for d in value if alive(d["swath"])]
     if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
         return {k: s for k, s in value.items() if alive(int(k))}
     if key == "columns":
@@ -301,6 +317,8 @@ def ids_in(key: str, value: Any) -> Iterable[int]:
         return ids_in("hidden", value["shown"])
     if key == "displays":
         return (d["chart"] for d in value)
+    if key == "swaths":
+        return (d["swath"] for d in value)
     if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
         return (int(k) for k in value)
     if key == "columns":
@@ -327,6 +345,8 @@ def map_ids(key: str, value: Any, new_id: Callable[[int], int | None]) -> Any:
         return {**value, "shown": [h for h in map(hidden, value["shown"]) if h is not None]}
     if key == "displays":
         return [{**d, "chart": n} for d in value if (n := new_id(d["chart"])) is not None]
+    if key == "swaths":
+        return [{**d, "swath": n} for d in value if (n := new_id(d["swath"])) is not None]
     if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
         return {str(n): s for k, s in value.items() if (n := new_id(int(k))) is not None}
     if key == "columns":

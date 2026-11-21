@@ -33,7 +33,7 @@ def resolver(snap: Snapshot) -> Any:
     return resolve
 
 
-def _order(snap: Snapshot, key: str, desc: bool) -> np.ndarray:
+def order_of(snap: Snapshot, key: str, desc: bool) -> np.ndarray:
     """Indices of all rows sorted by a column, missing last; stable (ties keep the row order)."""
     cached = snap.orders.get((key, desc))
     if cached is not None:
@@ -78,7 +78,7 @@ def mask(snap: Snapshot, hole: int | None = None, where: str | None = None) -> n
     return m
 
 
-def _cell(v: Any) -> Any:
+def cell_value(v: Any) -> Any:
     if isinstance(v, float | np.floating):
         return None if math.isnan(v) else float(v)
     return v
@@ -97,7 +97,7 @@ def page(
     limit = max(1, min(limit, MAX_LIMIT))
     m = mask(snap, hole, where)
     if sort:
-        order = _order(snap, sort, desc)
+        order = order_of(snap, sort, desc)
         idx = order[m[order]]
     else:
         idx = np.flatnonzero(m)
@@ -109,7 +109,7 @@ def page(
     for i in cut.tolist():
         row: dict[str, Any] = {"id": int(snap.ids[i]), "hole_id": int(snap.hole_ids[i])}
         for k in keys:
-            row[k] = holes.get(int(snap.hole_ids[i])) if k == "hole" else _cell(snap.data[k][i])
+            row[k] = holes.get(int(snap.hole_ids[i])) if k == "hole" else cell_value(snap.data[k][i])
         rows.append(row)
     return {"total": total, "offset": offset, "rows": rows}
 

@@ -90,6 +90,11 @@ export class WireframesSource {
   /** wireframes without a triangle to show: id → version (not asked again) */
   private readonly empty = new Map<number, number>();
   private readonly asking = new Set<number>();
+  /**
+   * Asked again while its manifest was on the way: that answer may be of the version before (a wireframe
+   * replaced at once after it was made, as the lines of series.spec on Windows CI), so the manifest is asked once more when it comes.
+   */
+  private readonly askAgain = new Set<number>();
   private readonly off: (() => void)[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private inflight = 0;
@@ -222,6 +227,7 @@ export class WireframesSource {
     this.layers.clear();
     this.empty.clear();
     this.asking.clear();
+    this.askAgain.clear();
     this.memory = new GpuMemory(this.memoryLimit());
     this.over = false;
     this.budgeted = false;
@@ -285,7 +291,11 @@ export class WireframesSource {
 
   /** The manifest of a wireframe; another geometry replaces the layer of the scene, the same one keeps what is built. */
   private ask(id: number): void {
-    if (this.asking.has(id) || this.disposed) return;
+    if (this.disposed) return;
+    if (this.asking.has(id)) {
+      this.askAgain.add(id);
+      return;
+    }
     this.asking.add(id);
     this.publish();
     const gen = this.generation;
@@ -328,7 +338,12 @@ export class WireframesSource {
         } else this.fail(e, "Каркас не загружен");
       })
       .finally(() => {
-        this.asking.delete(id);
+        // an answer of before a lost context leaves alone the asks made since
+        if (gen === this.generation) {
+          this.asking.delete(id);
+          // a newer version was listed while this answer was on the way: ask the manifest of that one
+          if (this.askAgain.delete(id)) this.ask(id);
+        }
         this.publish();
       });
   }

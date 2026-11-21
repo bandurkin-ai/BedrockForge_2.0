@@ -19,7 +19,6 @@ export const commands: Command[] = [
   { id: "hole.select", title: "Выбрать скважину", description: "Выбрать скважину (null — снять выбор).", params: { hole_id: { type: "string", nullable: true }, set_id: { type: "integer" } }, required: ["hole_id"], stage: "Э6" },
   { id: "object.select", title: "Выбрать объект", description: "Выбрать объект проекта: показать его свойства.", params: { kind: { type: "string", enum: ["wireframe", "lines", "raster", "blocks"] }, id: { type: "integer" } }, required: ["kind", "id"], stage: "Э7" },
   { id: "table.open", title: "Таблица набора", description: "Открыть таблицу набора в нижней панели.", params: { kind: { type: "string" }, set_id: { type: "integer" } }, required: ["kind"], stage: "Э4" },
-  { id: "stats.open", title: "Статистика", description: "Открыть анализ вкладки «Статистика».", params: { analysis: { type: "string", enum: ["declus", "nscore", "variogram", "map", "bootstrap", "local"] } }, required: ["analysis"], stage: "Э13" },
   {
     id: "holes.collar_style",
     title: "Устья: значок и подпись",

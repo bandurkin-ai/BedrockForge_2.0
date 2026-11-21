@@ -271,7 +271,7 @@ class Body:
         return cls(name, gi.MeshTarget.from_stats(xyz, tri, stats, ordered=ordered))
 
 
-def _checked(body: Body) -> gi.MeshTarget:
+def checked_target(body: Body) -> gi.MeshTarget:
     """The tree of a body that can code: said to be a solid, its neighbouring triangles wound one way."""
     target = body.target
     if target.solid is None or target.triangles == 0:
@@ -412,7 +412,7 @@ def body_stretches(
     found: list[tuple[np.ndarray, ...]] = []
     for k, body in enumerate(bodies):
         span = (k / max(total, k + 1), (k + 1) / max(total, k + 1))
-        target = _checked(body)
+        target = checked_target(body)
         names.append(body.name)
         low, high = target.xyz.min(axis=0), target.xyz.max(axis=0)
         near = np.flatnonzero((lo <= high + target.pad).all(axis=1) & (hi >= low - target.pad).all(axis=1))

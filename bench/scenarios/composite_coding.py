@@ -125,7 +125,7 @@ def job(
     with _samples.captured(coding, "code_by_wireframes") as calls, _samples.stages(
         (source, "read", "read"), (source, "trajectories", "traj"), (source, "stations_bytes", "hash"),
         (source, "input_hash", "hash"), (exact, "geometry", "geometry"), (exact.Geometry, "target", "trees"),
-        (coding, "_checked", "check"), (coding, "_inside", "cross"), (coding, "_collar_levels", "collars"),
+        (coding, "checked_target", "check"), (coding, "_inside", "cross"), (coding, "_collar_levels", "collars"),
         (coding, "code_samples", "samples"), (coding, "code_by_wireframes", "kernel"),
         (jobs_coding, "compute_coding", "compute"), (sink, "build_table", "table"), (sink, "commit", "commit"),
         (sink, "write_snapshot", "snapshot"),

@@ -1,0 +1,24 @@
+{
+  "comment": "Normalization of the view key swaths — swath plots shown in 3D, [{swath, visible}] ≤ 50 (ADR 0019 §2): shared by pytest (core) and vitest (ui). `cases` — lenient read; `strict_bad` — values a write refuses (422); `long` — 60 entries 1…60 read as the newest 50 (11…60).",
+  "cases": [
+    {"in": null, "out": []},
+    {"in": "5", "out": []},
+    {"in": {}, "out": []},
+    {"in": [], "out": []},
+    {"in": [{"swath": 5}], "out": [{"swath": 5, "visible": true}]},
+    {"in": [{"swath": 5, "visible": false}], "out": [{"swath": 5, "visible": false}]},
+    {"in": [{"swath": 5, "visible": "no"}], "out": [{"swath": 5, "visible": true}]},
+    {"in": [{"swath": 5, "visible": true}, {"swath": 5, "visible": false}], "out": [{"swath": 5, "visible": true}]},
+    {"in": [{"swath": 0}, {"swath": -3}, {"swath": true}, {"swath": "7"}, {"swath": 7.5}, {"chart": 7}, 7, {"swath": 8}], "out": [{"swath": 8, "visible": true}]},
+    {"in": [{"swath": 3, "visible": true, "extra": 1}, {"swath": 1, "visible": false}], "out": [{"swath": 3, "visible": true}, {"swath": 1, "visible": false}]}
+  ],
+  "strict_bad": [
+    null,
+    {"swath": 5},
+    [{"swath": 0}],
+    [{"swath": "5"}],
+    [{"swath": 5, "visible": "yes"}],
+    [5]
+  ],
+  "long": {"count": 60, "kept_from": 11}
+}
