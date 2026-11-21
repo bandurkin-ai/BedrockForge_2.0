@@ -55,6 +55,8 @@ from bf_core.composites.intervals_kernels import REL
 from bf_core.composites.strips import Tick
 from bf_core.jit import njit
 
+from . import INCLUDE_REL
+
 __all__ = [
     "KIND_INCL", "KIND_MAIN", "KIND_TITLES", "REASON_OK", "REASON_SHORT", "REASON_THIN", "REASON_TITLES",
     "Candidates", "Intercepts", "Outcome", "RuleParams", "accept", "candidates", "is_ore", "run",
@@ -282,7 +284,7 @@ class RuleParams:
         include = None
         if self.include_cutoff is not None:
             include = number("include_cutoff", "Борт «в том числе»", positive=True)
-            if not include > cutoff * (1.0 + REL):
+            if not include > cutoff * (1.0 + INCLUDE_REL):
                 raise _bad(
                     "include_cutoff", "Борт «в том числе» должен быть больше бортового содержания.",
                     "Задайте борт «в том числе» выше основного или оставьте его пустым.",
