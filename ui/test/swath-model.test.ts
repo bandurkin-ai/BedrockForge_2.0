@@ -244,6 +244,7 @@ describe("swath plot on screen", () => {
     const look = [{ color: "#1f6bff", line: true, bars: true }, { color: "#f46a1a", line: true, bars: false }];
     const svg = renderToStaticMarkup(createElement(SwathChart, { result, look, range: [0, 3], hover: 1, onHover: () => undefined }));
     expect(svg).toContain("Модель · AU_CUT, г/т — среднее 2,1 (объём; блоков 16)");
+    expect(svg.match(/data-testid="swath-hover"/g)).toHaveLength(1); // the rectangle of the hover (E2E)
     expect((svg.match(/<path /g) ?? []).length).toBe(2);
     expect(svg).toMatch(/M[^"]*L[^"]*L[^"]*"/); // the model: one line over 4 swaths
     expect(svg).toContain("Полоса 2: 110 – 120 м");

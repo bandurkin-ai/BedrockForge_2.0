@@ -161,7 +161,7 @@ export const SwathChart = forwardRef<SVGSVGElement, SwathChartProps>(function Sw
           ))}
         </g>
       )}
-      <rect x={M.left} y={top} width={W - M.left - M.right} height={PLOT_H} fill="transparent" onPointerMove={pick} onPointerLeave={() => onHover(null)} />
+      <rect data-testid="swath-hover" x={M.left} y={top} width={W - M.left - M.right} height={PLOT_H} fill="transparent" onPointerMove={pick} onPointerLeave={() => onHover(null)} />
     </svg>
   );
 });
