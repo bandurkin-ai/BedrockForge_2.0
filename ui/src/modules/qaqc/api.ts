@@ -151,7 +151,8 @@ export interface StandardSeries {
 
 export interface StandardsAnswer extends CalcHead {
   groups: StandardGroup[];
-  series?: StandardSeries;
+  /** with `group`: null — the group is gone under the filter */
+  series?: StandardSeries | null;
   thinned?: Thinned;
 }
 
@@ -163,11 +164,16 @@ export interface BlankGroup {
   norm: number;
   fail: number;
   not_assessed: number;
+  /** samples without a value (counted, in no series) */
+  missing?: number;
+  /** the blanks of the lab have different DL: `dl`, `limit` are null */
+  mixed?: boolean;
 }
 
 export interface BlanksAnswer extends CalcHead {
   groups: BlankGroup[];
-  series?: { row: number[]; date: DateValue[]; seq: (number | null)[]; batch: (string | null)[]; x: number[]; status: number[]; prev: (number | null)[] };
+  /** with `group`: `limit[i]` — k_б·DL of the sample (null — no DL); null — the lab is gone under the filter */
+  series?: { row: number[]; date: DateValue[]; seq: (number | null)[]; batch: (string | null)[]; x: number[]; status: number[]; prev: (number | null)[]; limit?: (number | null)[] } | null;
   carryover?: { n: number; pearson: number | null };
   thinned?: Thinned;
 }
@@ -254,12 +260,16 @@ export interface BatchRow {
   crm_fail: number;
   blank_fail: number;
   status: number;
+  /** CRM and blanks that have a status */
+  assessed?: number;
 }
 
 export interface BatchesAnswer extends CalcHead {
   total: number;
   failed: number;
+  not_assessed?: number;
   no_batch: number;
+  offset?: number;
   batches: BatchRow[];
 }
 
@@ -328,10 +338,23 @@ export interface QaqcReport {
   inputs_sha256: string;
   elements: string[];
   filter: Record<string, unknown>;
+  /** the charts of the report: all, flagged, none */
+  charts?: "all" | "flagged" | "none";
   created_at: string;
+  updated_at?: string;
+  built_at?: string | null;
+  /** the job building it now (null — none) */
+  job_id?: number | null;
   files: { kind: string; size: number }[];
   images: number;
   summary?: Record<string, unknown>;
+}
+
+/** A job started by the core: `{source, id}` of the list of jobs (`job_id` = `id`). */
+export interface StartedJob {
+  job_id: number;
+  source?: string;
+  id?: number;
 }
 
 export interface ReportChart {
@@ -339,16 +362,31 @@ export interface ReportChart {
   section: string;
   element: string;
   kind?: string;
+  /** duplicates: `scatter`, `ranked`, `th` */
+  view?: string;
   group?: Record<string, string | null>;
   title: string;
+}
+
+/** The charts to draw (≤ 200) and those left out over the limit. */
+export interface ReportChartList {
+  charts: ReportChart[];
+  total: number;
+  omitted: number;
 }
 
 export const listReports = async (): Promise<QaqcReport[]> => listOf<QaqcReport>(await api.get<unknown>("/qaqc/reports"), "reports");
 export const getReport = (id: number): Promise<QaqcReport> => api.get<QaqcReport>(`/qaqc/reports/${id}`);
 export const renameReport = (id: number, name: string, expected_version: number): Promise<QaqcReport> => api.put<QaqcReport>(`/qaqc/reports/${id}`, { name, expected_version });
 export const deleteReport = (id: number): Promise<unknown> => api.del<unknown>(`/qaqc/reports/${id}`);
-export const createReport = (body: { data_id: number; name?: string; elements?: string[]; filter: Record<string, unknown>; charts: "all" | "flagged" | "none" }): Promise<{ report_id: number; job_id: number }> => api.post("/qaqc/reports", body);
-export const reportCharts = async (id: number): Promise<ReportChart[]> => listOf<ReportChart>(await api.get<unknown>(`/qaqc/reports/${id}/charts`), "charts");
+export type ReportStarted = StartedJob & { report_id: number };
+export const createReport = (body: { data_id: number; name?: string; elements?: string[]; filter: Record<string, unknown>; charts: "all" | "flagged" | "none" }): Promise<ReportStarted> => api.post("/qaqc/reports", body);
+export async function reportCharts(id: number): Promise<ReportChartList> {
+  const a = (await api.get<unknown>(`/qaqc/reports/${id}/charts`)) as Partial<ReportChartList> | ReportChart[];
+  const charts = listOf<ReportChart>(a, "charts");
+  const r = Array.isArray(a) ? {} : a;
+  return { charts, total: typeof r.total === "number" ? r.total : charts.length, omitted: typeof r.omitted === "number" ? r.omitted : 0 };
+}
 /** A binary body (the PNG of a chart): the errors of the core as with `api`. */
 async function apiBytes(method: string, path: string, bytes: Uint8Array, type: string): Promise<unknown> {
   const target = coreTarget();
@@ -372,6 +410,6 @@ async function apiBytes(method: string, path: string, bytes: Uint8Array, type: s
 
 /** A PNG of a chart of the report (≤ 2 МБ). */
 export const putReportImage = (id: number, key: string, png: Uint8Array): Promise<unknown> => apiBytes("PUT", `/qaqc/reports/${id}/images/${encodeURIComponent(key)}`, png, "image/png");
-export const reportFile = (id: number, kind: "xlsx" | "pdf"): Promise<{ job_id: number }> => api.post(`/qaqc/reports/${id}/files`, { kind });
-export const saveReport = (id: number, kind: "xlsx" | "pdf", path: string): Promise<unknown> => api.post(`/qaqc/reports/${id}/save`, { kind, path });
-export const rebuildReport = (id: number): Promise<{ job_id: number }> => api.post(`/qaqc/reports/${id}/rebuild`, {});
+export const reportFile = (id: number, kind: "xlsx" | "pdf"): Promise<StartedJob> => api.post(`/qaqc/reports/${id}/files`, { kind });
+export const saveReport = (id: number, kind: "xlsx" | "pdf", path: string): Promise<{ path?: string; size?: number }> => api.post(`/qaqc/reports/${id}/save`, { kind, path });
+export const rebuildReport = (id: number): Promise<ReportStarted> => api.post(`/qaqc/reports/${id}/rebuild`, {});

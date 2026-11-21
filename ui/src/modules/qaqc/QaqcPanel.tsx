@@ -10,6 +10,7 @@ import { useApp } from "../../shell/AppContext";
 import { QAQC_SECTIONS, SECTION_TITLES, type QaqcSection } from "./commands";
 import { BatchesTab } from "./BatchesTab";
 import { BlanksTab } from "./BlanksTab";
+import { ReportTab } from "./ReportTab";
 import { FiltersPanel } from "./FiltersPanel";
 import { StandardsTab } from "./StandardsTab";
 import { DuplicatesTab } from "./DuplicatesTab";
@@ -24,6 +25,7 @@ export const SUBTABS: Partial<Record<QaqcSection, ComponentType>> = {
   external: ExternalTab,
   blanks: BlanksTab,
   batches: BatchesTab,
+  report: ReportTab,
 };
 
 function Pending({ section }: { section: QaqcSection }) {
@@ -56,6 +58,13 @@ export function QaqcPanel() {
       </div>
     );
   const data = activeData(s);
+  // the reports keep their own copy of the records: they are listed even when the data are gone
+  if (!data && s.section === "report")
+    return (
+      <div className={css.body} data-testid="qaqc-tab">
+        <ReportTab />
+      </div>
+    );
   if (!data)
     return (
       <div className={css.empty} data-testid="qaqc-tab">
@@ -103,7 +112,7 @@ export function QaqcPanel() {
           ))}
         </div>
         <div className={css.body} role="tabpanel" aria-label={SECTION_TITLES[s.section]}>
-          {!element ? <p className={css.note}>В данных нет элементов: загрузите данные с колонками элементов.</p> : Sub ? <Sub /> : <Pending section={s.section} />}
+          {!element && s.section !== "report" ? <p className={css.note}>В данных нет элементов: загрузите данные с колонками элементов.</p> : Sub ? <Sub /> : <Pending section={s.section} />}
         </div>
       </section>
     </div>

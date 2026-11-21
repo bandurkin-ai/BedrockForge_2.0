@@ -74,3 +74,8 @@
 .bscroll { flex: 1; min-height: 120px; overflow: auto; position: relative; border: 1px solid var(--border); border-radius: var(--radius); }
 .bwin { position: absolute; left: 0; right: 0; }
 .pending > span { color: var(--text-faint); }
+/* «Отчёт»: the form and the run beside the list of the reports */
+.reportSide { display: flex; flex-direction: column; gap: 8px; width: 340px; flex: none; }
+.steps { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--text-dim); }
+.steps > span { border: 1px solid var(--border); border-radius: 10px; padding: 0 7px; }
+.stepOn { border-color: var(--accent) !important; color: var(--text); font-family: var(--font-brand); font-weight: 600; }

@@ -8,7 +8,7 @@
  */
 import { forwardRef, useMemo, type PointerEvent as RPointerEvent } from "react";
 import type { StandardSeries } from "../../modules/qaqc/api";
-import { STATUS_COLORS, STATUS_TITLES } from "../../modules/qaqc/format";
+import { NOT_ASSESSED, QC_STATUS_COLORS, QC_STATUS_TITLES, STATUS_COLORS } from "../../modules/qaqc/format";
 import { BRAND } from "../column/classes";
 import { makeScale } from "../core/axisScale";
 import { XAxis, YAxis } from "../core/Axes";
@@ -105,7 +105,7 @@ export const ControlChart = forwardRef<SVGSVGElement, ControlChartProps>(functio
             const i = model.idx[j];
             const on = batchSet?.has(j);
             return (
-              <circle key={i} cx={px(j)} cy={py(j)} r={on ? 4.5 : 3.2} fill={STATUS_COLORS[model.status[j]]} stroke={on ? BRAND.copper : undefined} strokeWidth={on ? 2 : undefined} data-status={model.status[j]} pointerEvents="none">
+              <circle key={i} cx={px(j)} cy={py(j)} r={on ? 4.5 : 3.2} fill={QC_STATUS_COLORS[model.status[j]]} stroke={on ? BRAND.copper : undefined} strokeWidth={on ? 2 : undefined} data-status={model.status[j]} pointerEvents="none">
                 <title>{`${series.batch[i] ?? "без партии"} · ${model.ys[j]} · ${pointLabel(series, i)}`}</title>
               </circle>
             );
@@ -123,9 +123,9 @@ export const ControlChart = forwardRef<SVGSVGElement, ControlChartProps>(functio
       </g>
       {pickedJ >= 0 && <circle className={css.ring} data-picked={picked ?? undefined} cx={px(pickedJ)} cy={py(pickedJ)} r={8} pointerEvents="none" />}
       <g data-legend="status" transform={`translate(${BOX.x0 + 6} ${BOX.y0 - 8})`} pointerEvents="none">
-        {STATUS_TITLES.map((t, s) => (
-          <g key={t} transform={`translate(${s * 150} 0)`}>
-            <circle cx={4} cy={-3} r={4} fill={STATUS_COLORS[s]} />
+        {QC_STATUS_TITLES.map((t, s) => ({ t, s })).filter(({ s }) => s !== NOT_ASSESSED || model.byStatus[s] > 0).map(({ t, s }) => (
+          <g key={t} data-legend-status={s} transform={`translate(${s * 150} 0)`}>
+            <circle cx={4} cy={-3} r={4} fill={QC_STATUS_COLORS[s]} />
             <text className={css.tick} x={12} y={0}>
               {`${t}: ${model.byStatus[s].toLocaleString("ru-RU")}`}
             </text>

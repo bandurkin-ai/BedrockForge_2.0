@@ -13,7 +13,8 @@ import { axisMap, rasterPoints, rasterSize } from "../src/charts/core/PointsCanv
 import { CONTROL_BOX, ControlChart } from "../src/charts/qaqc/ControlChart";
 import { batchPoints, controlCsv, controlLines, controlModel, CSV_HEADER, dateTicks, maPath, markedPoints, nearestPoint, pointFacts, pointLabel, statusPixels, STATUS_PIXELS } from "../src/charts/qaqc/controlModel";
 import type { StandardSeries, StandardsAnswer } from "../src/modules/qaqc/api";
-import { STATUS_COLORS } from "../src/modules/qaqc/format";
+import { STATUS_COLORS, statusColor, statusTitle } from "../src/modules/qaqc/format";
+import { BRAND } from "../src/charts/column/classes";
 import { fieldText, recordFacts } from "../src/modules/qaqc/SampleCard";
 import { chooseGroup, loadStandards } from "../src/modules/qaqc/StandardsTab";
 import { DROPPED, initialQaqc, pickSample, qaqcStore } from "../src/modules/qaqc/state";
@@ -66,7 +67,7 @@ describe("Т8.4-1: statuses of the series on the chart", () => {
     ]);
     const m = controlModel(T84_1, GROUP, 2, 3, "order");
     expect(Array.from(m.status)).toEqual(T84_1.status);
-    expect(m.byStatus).toEqual([9, 2, 3]);
+    expect(m.byStatus).toEqual([9, 2, 3, 0]);
     expect(Array.from(statusPixels(m))).toEqual(T84_1.status.map((s) => STATUS_PIXELS[s]));
     const html = renderToStaticMarkup(createElement(ControlChart, { model: m, series: T84_1, label: "Карта", yTitle: "AU, г/т", batch: null, picked: null }));
     const fills = [...html.matchAll(/<circle[^>]*fill="(#[0-9a-f]{6})"[^>]*data-status="(\d)"/g)].map((r) => [r[1], Number(r[2])]);
@@ -170,6 +171,27 @@ describe("a click, the batch, the canvas layer, the CSV", () => {
       ["sample_id", "S-1"], ["lab", "ALS"], ["v:AU", "1,16"], ["PROJECT", "Север"], ["date", "—"],
     ]);
     expect(fieldText(Number.NaN)).toBe("—");
+  });
+});
+
+describe("the status −1 of the core: «не оценён» (no reference, units differ)", () => {
+  it("Slate Grey with a title and a legend entry of its own — never the norm", () => {
+    const s: StandardSeries = { ...T84_1, status: T84_1.status.map((v, i) => (i < 3 ? -1 : v)) };
+    const m = controlModel(s, { mu: null, sd: null, mean: 1 }, 2, 3, "order");
+    expect(Array.from(m.status.subarray(0, 4))).toEqual([3, 3, 3, 2]);
+    expect(m.byStatus).toEqual([9, 1, 1, 3]);
+    expect(pointLabel(s, 0)).toBe("не оценён");
+    expect([statusTitle(-1), statusTitle(null), statusTitle(Number.NaN), statusTitle(0)]).toEqual(["не оценён", "не оценён", "не оценён", "норма"]);
+    expect(statusColor(-1)).toBe(BRAND.slate);
+    expect(statusPixels(m)[0]).toBe(STATUS_PIXELS[3]);
+    expect(STATUS_PIXELS[3]).not.toBe(STATUS_PIXELS[0]);
+    const html = renderToStaticMarkup(createElement(ControlChart, { model: m, series: s, label: "Карта", yTitle: "AU, г/т", batch: null, picked: null }));
+    const fills = [...html.matchAll(/<circle[^>]*fill="(#[0-9a-f]{6})"[^>]*data-status="(\d)"/g)].map((r) => [r[1], Number(r[2])]);
+    expect(fills.slice(0, 3)).toEqual([[BRAND.slate, 3], [BRAND.slate, 3], [BRAND.slate, 3]]);
+    expect(fills).not.toContainEqual([STATUS_COLORS[0], 3]);
+    expect(html).toContain("не оценён: 3");
+    // without −1 the legend has no entry «не оценён»
+    expect(renderToStaticMarkup(createElement(ControlChart, { model: controlModel(T84_1, GROUP, 2, 3, "order"), series: T84_1, label: "Карта", yTitle: "AU", batch: null, picked: null }))).not.toContain("не оценён");
   });
 });
 
