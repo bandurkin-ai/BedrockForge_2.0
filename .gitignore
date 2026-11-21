@@ -26,3 +26,6 @@ playwright-report/
 *.key
 license-private*
 .eb-cache/
+
+# subagent worktrees (isolation: worktree)
+.claude/worktrees/
