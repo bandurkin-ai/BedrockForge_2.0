@@ -1,7 +1,7 @@
 """/api/v1/stats — the charts of ТЗ 8.3 (ADR 0019 §10): scatter, box plots, log-probability, ternary, by domains.
 
     POST /stats/scatter    {v, set_id, table, x, y, y_set_id, y_table, color, log_x, log_y, weight, weight_field,
-                            negatives, exclude_zero, regression, holes}
+                            negatives, exclude_zero, bottom_cut, bottom_mode, top_cut, top_mode, regression, holes}
         → {set_id, y_set_id, x_field, y_field, color_field, log_x, log_y, weighted, counts, mode, x[], y[], row[],
            c[] | null, color | null (mode "points") or density (mode "density"), pearson, spearman, n, fits,
            x_stats, y_stats, conventions}
@@ -244,14 +244,19 @@ def domains_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
 
 def _prepared(x: Any, y: Any, w: Any, flt: Any, unmatched: Any) -> tuple[Any, Any, dict[str, int]]:
     """x and y with NaN in the rows the rules leave out (as `select` does, for both fields: a pair with either
-    left out is not drawn) and the counts of those rows. `unmatched` — the rows without a row of the table Y."""
+    left out is not drawn) and the counts of those rows. `unmatched` — the rows without a row of the table Y.
+    The cuts are those of the other charts (ТЗ 8.3, ADR 0019 §4 «отбор общий»), one pair of them for both axes,
+    after the zeros: `bottom_cut` (`bottom_mode` exclude — the pair is left out, cap — the value becomes the cut),
+    then `top_cut` (`top_mode`); a pair counts once in `bottom_capped`, `bottom_excluded`, `capped`,
+    `top_excluded` whichever of its values the cut touched."""
     import numpy as np
 
     fx, fy = np.isfinite(x), np.isfinite(y)
     ok = fx & fy
     lone = fx & unmatched if unmatched is not None else np.zeros_like(fx)
     counts = {"rows": int(x.shape[0]), "missing_x": int((~fx).sum()), "missing_y": int((fx & ~fy & ~lone).sum()),
-              "unmatched": int(lone.sum()), "bad_weight": 0, "negative": 0, "zero_excluded": 0}  # fmt: skip
+              "unmatched": int(lone.sum()), "bad_weight": 0, "negative": 0, "zero_excluded": 0, "bottom_capped": 0,
+              "bottom_excluded": 0, "capped": 0, "top_excluded": 0}  # fmt: skip
     if w is not None:
         heavy = np.isfinite(w) & (w > 0.0)
         counts["bad_weight"] = int((ok & ~heavy).sum())
@@ -267,6 +272,20 @@ def _prepared(x: Any, y: Any, w: Any, flt: Any, unmatched: Any) -> tuple[Any, An
             zero = ok & ((x == 0.0) | (y == 0.0))
             counts["zero_excluded"] = int(zero.sum())
             ok &= ~zero
+        for cut, mode, capped, excluded, beyond in (
+            (flt.bottom_cut, flt.bottom_mode, "bottom_capped", "bottom_excluded", np.less),
+            (flt.top_cut, flt.top_mode, "capped", "top_excluded", np.greater),
+        ):
+            if cut is None:
+                continue
+            bx, by = ok & beyond(x, cut), ok & beyond(y, cut)
+            hit = bx | by
+            if mode == "cap":
+                counts[capped] = int(hit.sum())
+                x, y = np.where(bx, cut, x), np.where(by, cut, y)
+            else:
+                counts[excluded] = int(hit.sum())
+                ok &= ~hit
     return np.where(ok, x, np.nan), np.where(ok, y, np.nan), counts
 
 
@@ -280,8 +299,8 @@ def scatter_inputs(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     if regression is not None and regression not in REGRESSIONS:
         raise rc._bad("regression", f"Линия регрессии «{str(regression)[:40]}» неизвестна.",
                    "Допустимо: ols — МНК, rma — RMA, weighted — взвешенная, none — без линии.")  # fmt: skip
-    flt = select.SampleFilter.from_settings({k: settings.get(k) for k in ("weight", "weight_field", "negatives",
-                                                                          "exclude_zero")})  # fmt: skip
+    keys = ("weight", "weight_field", "negatives", "exclude_zero", "bottom_cut", "bottom_mode", "top_cut", "top_mode")
+    flt = select.SampleFilter.from_settings({k: settings.get(k) for k in keys})
     set_id = rc._set_id(settings)
     t, infos = rc.table_of(project, set_id, rc._name(settings, "table"))
     x = _number(t, infos, settings, "x")

@@ -226,6 +226,50 @@ def test_scatter_points_y_of_another_table_and_colour(rich) -> None:  # type: ig
     assert got["color"]["kind"] == "number" and got["color"]["min"] == min(got["c"]) and got["fits"]["weighted"] is None
 
 
+def test_scatter_takes_the_cuts_on_both_axes(rich) -> None:  # type: ignore[no-untyped-def]
+    """13.36 (ТЗ 8.3, ADR 0019 §4 «отбор общий»): the cuts of the other charts, one pair for both axes; «exclude»
+    leaves the pair out, «cap» clips the value touched; a pair counts once."""
+    from bf_core.stats.scatter import scatter_chart
+
+    c, set_id, project = rich
+    cols = source.read(project, set_id, "Пробы", ["AU", "length"])
+    x = cols.number("AU")
+    lo, hi = (float(q) for q in np.nanpercentile(x, (20.0, 80.0)))
+    base = {"v": 1, "set_id": set_id, "table": "Пробы", "x": "AU", "y": "AU", "weight": "none"}
+    for bottom, top in (("exclude", "cap"), ("cap", "exclude")):
+        body = {**base, "bottom_cut": lo, "bottom_mode": bottom, "top_cut": hi, "top_mode": top}
+        r = c.post(f"{S}/scatter", json=body)
+        assert r.status_code == 200, r.text
+        got = r.json()
+        ok = np.isfinite(x)
+        under, over = ok & (x < lo), ok & (x > hi)
+        v = x.copy()
+        if bottom == "exclude":
+            ok &= ~under
+        else:
+            v = np.where(under, lo, v)
+        if top == "exclude":
+            ok &= ~over
+        else:
+            v = np.where(over, hi, v)
+        want = safe(scatter_chart(np.where(ok, v, np.nan), np.where(ok, v, np.nan), row_ids=cols.row_ids))
+        k = got["counts"]
+        assert k["used"] == want["counts"]["used"] == got["n"] and got["x"] == want["points"]["x"]
+        assert min(got["x"]) >= lo and max(got["y"]) <= hi
+        assert k["bottom_excluded" if bottom == "exclude" else "bottom_capped"] == int(under.sum()) > 0
+        assert k["capped" if top == "cap" else "top_excluded"] == int(over.sum()) > 0
+        assert k["missing_x"] + k["missing_y"] + k["unmatched"] + k["bad_weight"] + k["zero_excluded"] + \
+            k["bottom_excluded"] + k["top_excluded"] + k["nonpositive_log"] + k["used"] == k["rows"]  # fmt: skip
+    # the second axis is cut too: X without a cut of its own range keeps the pairs Y leaves
+    got = c.post(f"{S}/scatter", json={**base, "y": None, "top_cut": lo, "top_mode": "exclude"}).json()
+    y = source.read(project, set_id, "Пробы", [got["y_field"]]).number(got["y_field"])
+    both = np.isfinite(x) & np.isfinite(y)
+    assert got["counts"]["top_excluded"] == int((both & ((x > lo) | (y > lo))).sum()) > int((both & (x > lo)).sum())
+    assert max(got["x"]) <= lo and max(got["y"]) <= lo
+    bad = c.post(f"{S}/scatter", json={**base, "bottom_cut": hi, "top_cut": lo})
+    assert bad.status_code == 422 and bad.json()["param"] == "top_cut"
+
+
 def test_scatter_of_200001_points_is_a_density(rich) -> None:  # type: ignore[no-untyped-def]
     c, set_id, project = rich
     n = 200_001

@@ -108,12 +108,15 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
 
 Тело: `v`, `set_id`, `table`, `x`, `y`, `y_set_id` (`null` — тот же набор), `y_table` (`null` — таблица X; иначе
 строки сопоставляются по ключу пробы «скважина, FROM, TO»; график двух наборов лежит в наборе X), `color`, `log_x`,
-`log_y` (`false`), `weight` (`length`), `weight_field`, `negatives` (`keep`), `exclude_zero`, `regression`
-(`ols` / `rma` / `weighted` / `none` — только вид, ядро считает все три), `holes`. Правила `negatives` и
-`exclude_zero` — к обоим полям (пара с исключённым значением не рисуется); отсечки к рассеянию не применяются.
+`log_y` (`false`), `weight` (`length`), `weight_field`, `negatives` (`keep`), `exclude_zero`, `bottom_cut`,
+`bottom_mode` (`exclude` / `cap`, по умолчанию `exclude`), `top_cut`, `top_mode` (`cap` / `exclude`, по умолчанию
+`cap`), `regression` (`ols` / `rma` / `weighted` / `none` — только вид, ядро считает все три), `holes`. Правила
+`negatives`, `exclude_zero` и отсечки — к обоим полям одной парой значений (пара с исключённым значением не
+рисуется; «заменить» урезает только задетое значение; пара считается один раз, какое бы её значение отсечка ни задела).
 ```
 { set_id, y_set_id, x_field, y_field, color_field | null, log_x, log_y, weighted,
-  counts {rows, missing_x, missing_y, unmatched, bad_weight, negative, zero_excluded, nonpositive_log, used},
+  counts {rows, missing_x, missing_y, unmatched, bad_weight, negative, zero_excluded, bottom_capped,
+          bottom_excluded, capped, top_excluded, nonpositive_log, used},
   mode: "points" | "density",
   // points (≤ 200 000 пар): x[], y[] (данные), row[], c[] | null, color | null
   //   color: {kind: "number", min, max} | {kind: "text", labels[]} (c — индекс в labels, null — пусто)
@@ -126,7 +129,7 @@ top_excluded, used}`; `rows` — строки таблицы (после `holes`
   conventions }
 ```
 Счётчики делят строки: `rows = missing_x + unmatched + missing_y + bad_weight + zero_excluded (+ negative при
-"exclude") + nonpositive_log + used`; `unmatched` — строки с X без пробы того же ключа в таблице Y.
+"exclude") + bottom_excluded + top_excluded + nonpositive_log + used` (`bottom_capped`, `capped` — пары, оставшиеся с урезанным значением); `unmatched` — строки с X без пробы того же ключа в таблице Y.
 
 ## `POST /stats/box`
 
