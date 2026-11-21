@@ -31,7 +31,12 @@ const ACTIONS: Partial<Record<TreeSection, SectionAction[]>> = {
   dtm: [{ label: "Экспорт ЦТМ…", command: "wireframe.export", args: { section: "dtm" } }],
   rasters: [{ label: "Загрузить растр…", command: "rasters.upload" }],
   blocks: [{ label: "Загрузить блочную модель…", command: "import.files", args: { kind: "omf" } }],
-  audit: [{ label: "Новый swath plot…", command: "stats.swath" }],
+  audit: [
+    { label: "Новый swath plot…", command: "stats.swath" },
+    { label: "Загрузить контрольные пробы QAQC…", command: "qaqc.import" },
+    { label: "Настройка QAQC…", command: "qaqc.setup", args: { tab: "data" } },
+  ],
+  reports: [{ label: "Сформировать отчёт QAQC…", command: "qaqc.open", args: { section: "report" } }],
 };
 
 /** «+» of a section: the command it runs at once, or — without `command` — the menu of the section's actions. */
@@ -50,6 +55,7 @@ const PLUS: Partial<Record<TreeSection, SectionPlus>> = {
   rasters: { command: "rasters.upload", title: "Загрузить растр" },
   blocks: { command: "import.files", args: { kind: "omf" }, title: "Загрузить блочную модель" },
   audit: { command: "stats.swath", title: "Новый swath plot" },
+  reports: { command: "qaqc.open", args: { section: "report" }, title: "Сформировать отчёт QAQC" },
 };
 
 export const sectionActions = (s: TreeSection): SectionAction[] => ACTIONS[s] ?? [];
