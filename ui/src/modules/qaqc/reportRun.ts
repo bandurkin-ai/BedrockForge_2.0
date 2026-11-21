@@ -12,8 +12,9 @@
 import { bridge } from "../../bridge";
 import { errorText } from "../../shell/props";
 import { refusal } from "../../shell/objectRun";
+import { int } from "./format";
 import { Store } from "../../shell/store";
-import { cancelJob, type Job } from "../jobs/state";
+import { cancelJob, jobsStore, type Job } from "../jobs/state";
 import { createReport, getReport, listReports, putReportImage, rebuildReport, reportCharts, reportFile, saveReport, type QaqcReport, type ReportChart, type ReportChartList, type ReportStale, type ReportStarted, type StartedJob } from "./api";
 import { reportDrawer } from "./reportCharts";
 import { startedOf, waitJob, type Started } from "./setupApi";
@@ -61,19 +62,49 @@ export interface RunDeps {
   wait(job: Started): Promise<Pick<Job, "status" | "error" | "result">>;
   cancel(job: Started): Promise<void>;
   charts(id: number): Promise<ReportChartList>;
-  drawer(id: number): (chart: ReportChart) => Promise<Uint8Array | null>;
+  /** the drawer of the charts `todo` of a report (it may forget a calculation once its charts are drawn) */
+  drawer(id: number, todo: readonly ReportChart[]): (chart: ReportChart) => Promise<Uint8Array | null>;
   put(id: number, key: string, png: Uint8Array): Promise<unknown>;
   file(id: number): Promise<StartedJob>;
   save(id: number, path: string): Promise<unknown>;
 }
 
+/**
+ * Waits for a job; a job seen in the list of jobs that is gone from it (cleared, another project, the core
+ * restarted) ends the wait as a failure instead of waiting for ever. `waitJob` of the setup has no cancel yet.
+ */
+export function waitOrLost(job: Started, wait: (job: Started) => Promise<Pick<Job, "status" | "error" | "result">> = waitJob, store: Pick<typeof jobsStore, "get" | "subscribe"> = jobsStore): Promise<Pick<Job, "status" | "error" | "result">> {
+  return new Promise((resolve, reject) => {
+    let seen = false;
+    const has = () => store.get().jobs.some((j) => j.source === job.source && j.id === job.id);
+    const off = store.subscribe(() => {
+      if (has()) seen = true;
+      else if (seen) {
+        off();
+        reject(refusal("job_lost", `Задание №${job.id} пропало из списка заданий.`, "Нажмите «Повторить»."));
+      }
+    });
+    seen = has();
+    wait(job).then(
+      (j) => {
+        off();
+        resolve(j);
+      },
+      (e: unknown) => {
+        off();
+        reject(e);
+      },
+    );
+  });
+}
+
 export const DEFAULT_DEPS: RunDeps = {
   create: createReport,
   rebuild: rebuildReport,
-  wait: waitJob,
+  wait: (job) => waitOrLost(job),
   cancel: (job) => cancelJob(job),
   charts: reportCharts,
-  drawer: (id) => reportDrawer(id),
+  drawer: (id, todo) => reportDrawer(id, todo),
   put: putReportImage,
   file: (id) => reportFile(id, "xlsx"),
   save: (id, path) => saveReport(id, "xlsx", path),
@@ -83,103 +114,143 @@ export const runStore = new Store<{ run: ReportRun | null }>({ run: null });
 
 /** The keys of the charts sent, by report: they are not drawn again by «Повторить». */
 const sent = new Map<number, Set<string>>();
-let control: { cancel: boolean; job: Started | null; deps: RunDeps } | null = null;
+
+/** The control of one run: its cancel, the job of its step; `abandon` stops it at once (another project). */
+interface Control {
+  cancel: boolean;
+  job: Started | null;
+  deps: RunDeps;
+  abandoned: Promise<never>;
+  abandon: () => void;
+}
+let control: Control | null = null;
 
 const update = (patch: Partial<ReportRun>) => runStore.set((s) => (s.run ? { run: { ...s.run, ...patch } } : s));
 export const isRunning = (): boolean => runStore.get().run?.state === "running";
 
 class Stop extends Error {
-  constructor(readonly how: "cancelled" | "failed", message = "") {
+  constructor(readonly how: "cancelled" | "failed" | "abandoned", message = "") {
     super(message);
   }
 }
 
-/** Waits for the job of a step; a cancel or a failure stops the run. */
-async function step(started: StartedJob, deps: RunDeps): Promise<Pick<Job, "status" | "error" | "result">> {
+function newControl(deps: RunDeps): Control {
+  let abandon = () => undefined as void;
+  const abandoned = new Promise<never>((_, reject) => {
+    abandon = () => reject(new Stop("abandoned"));
+  });
+  abandoned.catch(() => undefined);
+  return { cancel: false, job: null, deps, abandoned, abandon };
+}
+
+/**
+ * Stops the run at once without waiting for its job (another project, the core restarted): it is forgotten, its
+ * answers change nothing; the job itself is cancelled when the core still has it.
+ */
+export function abandonRun(): void {
+  const ctl = control;
+  control = null;
+  runStore.set({ run: null });
+  if (!ctl) return;
+  ctl.cancel = true;
+  if (ctl.job) void ctl.deps.cancel(ctl.job).catch(() => undefined);
+  ctl.abandon();
+}
+
+/** Waits for the job of a step; a cancel or a failure stops the run, an abandon — at once. */
+async function step(ctl: Control, set: (p: Partial<ReportRun>) => void, started: StartedJob): Promise<Pick<Job, "status" | "error" | "result">> {
   const job = startedOf(started as unknown as Record<string, unknown>);
-  if (control) control.job = job;
-  update({ job });
-  if (control?.cancel) await deps.cancel(job).catch(() => undefined);
-  const j = await deps.wait(job);
-  if (control) control.job = null;
-  update({ job: null });
-  if (j.status === "cancelled" || control?.cancel) throw new Stop("cancelled");
+  ctl.job = job;
+  set({ job });
+  if (ctl.cancel) await ctl.deps.cancel(job).catch(() => undefined);
+  const j = await Promise.race([ctl.deps.wait(job), ctl.abandoned]);
+  ctl.job = null;
+  set({ job: null });
+  if (j.status === "cancelled" || ctl.cancel) throw new Stop("cancelled");
   if (j.status !== "done") throw new Stop("failed", j.error ? `${j.error.message}${j.error.hint ? ` ${j.error.hint}` : ""}` : "Задание завершилось ошибкой: подробности — во вкладке «Задания».");
   return j;
 }
 
-const checkCancel = () => {
-  if (control?.cancel) throw new Stop("cancelled");
+const checkCancel = (ctl: Control) => {
+  if (ctl.cancel) throw new Stop("cancelled");
 };
 
-async function drawCharts(id: number, deps: RunDeps): Promise<void> {
-  const list = await deps.charts(id);
+async function drawCharts(ctl: Control, set: (p: Partial<ReportRun>) => void, id: number): Promise<void> {
+  const list = await Promise.race([ctl.deps.charts(id), ctl.abandoned]);
   const keys = sent.get(id) ?? new Set<string>();
   sent.set(id, keys);
-  update({ total: list.charts.length, omitted: list.omitted, done: 0, empty: 0 });
-  const draw = deps.drawer(id);
-  let done = 0;
+  set({ total: list.charts.length, omitted: list.omitted, done: 0, empty: 0 });
+  const todo = list.charts.filter((c) => !keys.has(c.key));
+  const draw = ctl.deps.drawer(id, todo);
+  let done = list.charts.length - todo.length;
   let empty = 0;
-  for (const chart of list.charts) {
-    checkCancel();
-    if (!keys.has(chart.key)) {
-      const png = await draw(chart);
-      if (png) await deps.put(id, chart.key, png);
-      else empty++;
-      keys.add(chart.key);
-    }
+  set({ done });
+  for (const chart of todo) {
+    checkCancel(ctl);
+    const png = await Promise.race([draw(chart), ctl.abandoned]);
+    if (png) await Promise.race([ctl.deps.put(id, chart.key, png), ctl.abandoned]);
+    else empty++;
+    keys.add(chart.key);
     done++;
-    update({ done, empty });
+    set({ done, empty });
   }
 }
 
 /**
- * Runs the steps of the spec; resolves with the run as it ended (done, failed or cancelled). A second run while
- * one goes on is refused.
+ * Runs the steps of the spec; resolves with the run as it ended (done, failed or cancelled; an abandoned one — as
+ * it was left). A second run while one goes on is refused.
  */
 export async function runReport(spec: RunSpec, deps: RunDeps = DEFAULT_DEPS): Promise<ReportRun> {
   if (isRunning()) throw refusal("report_running", "Отчёт QAQC уже формируется.", "Дождитесь конца или нажмите «Отменить».");
-  control = { cancel: false, job: null, deps };
+  const ctl = newControl(deps);
+  control = ctl;
+  // only the run that is current writes to the store: an abandoned one changes nothing
+  const set = (p: Partial<ReportRun>) => {
+    if (control === ctl) update(p);
+  };
   const reportId = spec.kind === "create" ? null : spec.reportId;
   const first: RunStep = spec.kind === "resume" ? spec.from : "calc";
-  runStore.set({ run: { spec, reportId, step: first, state: "running", job: null, done: 0, total: 0, omitted: 0, empty: 0, cancelling: false, error: null, path: null } });
+  let last: ReportRun = { spec, reportId, step: first, state: "running", job: null, done: 0, total: 0, omitted: 0, empty: 0, cancelling: false, error: null, path: null };
+  runStore.set({ run: last });
   let id = reportId;
   let at: RunStep = first;
   try {
     if (at === "calc") {
-      const started = spec.kind === "rebuild" ? await deps.rebuild(spec.reportId) : await deps.create((spec as { body: CreateBody }).body);
+      const started = await Promise.race([spec.kind === "rebuild" ? deps.rebuild(spec.reportId) : deps.create((spec as { body: CreateBody }).body), ctl.abandoned]);
       id = started.report_id ?? id;
-      update({ reportId: id });
+      set({ reportId: id });
       if (id !== null) sent.delete(id); // a new version: its charts are not sent yet
-      await step(started, deps);
+      await step(ctl, set, started);
       at = "charts";
     }
     if (id === null) throw new Stop("failed", "Ядро не вернуло номер отчёта.");
     if (at === "charts") {
-      update({ step: "charts" });
-      if (spec.charts !== "none") await drawCharts(id, deps);
+      set({ step: "charts" });
+      if (spec.charts !== "none") await drawCharts(ctl, set, id);
       at = "xlsx";
     }
     if (at === "xlsx") {
-      checkCancel();
-      update({ step: "xlsx" });
-      await step(await deps.file(id), deps);
+      checkCancel(ctl);
+      set({ step: "xlsx" });
+      await step(ctl, set, await Promise.race([deps.file(id), ctl.abandoned]));
       at = "save";
     }
     if (at === "save" && spec.path) {
-      checkCancel();
-      update({ step: "save" });
-      await deps.save(id, spec.path);
-      update({ path: spec.path });
+      checkCancel(ctl);
+      set({ step: "save" });
+      await Promise.race([deps.save(id, spec.path), ctl.abandoned]);
+      set({ path: spec.path });
     }
-    update({ state: "done", step: at, cancelling: false });
+    set({ state: "done", step: at, cancelling: false });
   } catch (e) {
-    const cancelled = e instanceof Stop ? e.how === "cancelled" : false;
-    update({ state: cancelled ? "cancelled" : "failed", step: at, cancelling: false, error: cancelled ? null : e instanceof Stop ? e.message : errorText(e), reportId: id });
+    const how = e instanceof Stop ? e.how : "failed";
+    if (how === "abandoned") return { ...last, state: "cancelled", step: at, reportId: id };
+    set({ state: how === "cancelled" ? "cancelled" : "failed", step: at, cancelling: false, error: how === "cancelled" ? null : e instanceof Stop ? e.message : errorText(e), reportId: id });
   } finally {
-    control = null;
+    if (control === ctl) control = null;
   }
-  return runStore.get().run!;
+  last = runStore.get().run ?? { ...last, state: "cancelled", step: at };
+  return last;
 }
 
 /** «Отменить»: the job of the step is cancelled; between the charts the loop stops after the one being drawn. */
@@ -230,6 +301,7 @@ export function selectReport(id: number | null): void {
 }
 
 export function resetReports(): void {
+  abandonRun();
   sent.clear();
   reportsStore.set({ list: null, error: null, selected: null });
 }
@@ -304,7 +376,7 @@ export function summaryText(summary: Record<string, unknown> | undefined): strin
   for (const [el, part] of Object.entries(elements)) {
     const b = part.summary?.batches ?? part.batches;
     const bits: string[] = [];
-    if (b && typeof b.total === "number") bits.push(`партий ${b.total.toLocaleString("ru-RU")}, отказ ${(b.failed ?? 0).toLocaleString("ru-RU")}`);
+    if (b && typeof b.total === "number") bits.push(`партий ${int(b.total)}, отказ ${int(b.failed)}`);
     for (const [key, v] of Object.entries(part)) {
       if (!key.startsWith("duplicates:") || !v || typeof v !== "object") continue;
       const passed = (v as { passed?: boolean | null }).passed;

@@ -11,7 +11,7 @@ import { csvCell } from "../src/charts/core/csv";
 import { plotBox } from "../src/charts/core/PlotFrame";
 import { axisMap, rasterPoints, rasterSize } from "../src/charts/core/PointsCanvas";
 import { CONTROL_BOX, ControlChart } from "../src/charts/qaqc/ControlChart";
-import { batchPoints, controlCsv, controlLines, controlModel, CSV_HEADER, dateTicks, maPath, markedPoints, nearestPoint, pointFacts, pointLabel, statusPixels, STATUS_PIXELS } from "../src/charts/qaqc/controlModel";
+import { batchPoints, paintOrder, controlCsv, controlLines, controlModel, CSV_HEADER, dateTicks, maPath, markedPoints, nearestPoint, pointFacts, pointLabel, statusPixels, STATUS_PIXELS } from "../src/charts/qaqc/controlModel";
 import type { StandardSeries, StandardsAnswer } from "../src/modules/qaqc/api";
 import { STATUS_COLORS, statusColor, statusTitle } from "../src/modules/qaqc/format";
 import { BRAND } from "../src/charts/column/classes";
@@ -71,7 +71,10 @@ describe("Т8.4-1: statuses of the series on the chart", () => {
     expect(Array.from(statusPixels(m))).toEqual(T84_1.status.map((s) => STATUS_PIXELS[s]));
     const html = renderToStaticMarkup(createElement(ControlChart, { model: m, series: T84_1, label: "Карта", yTitle: "AU, г/т", batch: null, picked: null }));
     const fills = [...html.matchAll(/<circle[^>]*fill="(#[0-9a-f]{6})"[^>]*data-status="(\d)"/g)].map((r) => [r[1], Number(r[2])]);
-    expect(fills).toEqual(T84_1.status.map((s) => [STATUS_COLORS[s], s]));
+    // drawn in the paint order: the norm first, the warnings, the failures on top (none hidden under the norm)
+    expect(fills).toEqual(Array.from(paintOrder(m.status), (j) => [STATUS_COLORS[T84_1.status[j]], T84_1.status[j]]));
+    expect(fills.map(([, st]) => st)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2]);
+    expect(Array.from(paintOrder([2, 0, 3, 1, 0]))).toEqual([1, 2, 4, 3, 0]);
     expect(html).toContain("норма: 9");
     expect(html).toContain("предупреждение: 2");
     expect(html).toContain("отказ: 3");
@@ -168,7 +171,11 @@ describe("a click, the batch, the canvas layer, the CSV", () => {
 
   it("the card: the fields of the record without the service ones; numbers with a comma, missing «—»", () => {
     expect(recordFacts({ sample_id: "S-1", lab: "ALS", "v:AU": 1.16, "x:PROJECT": "Север", parent_row: -1, prev_row: 3, date: null })).toEqual([
-      ["sample_id", "S-1"], ["lab", "ALS"], ["v:AU", "1,16"], ["PROJECT", "Север"], ["date", "—"],
+      ["Проба", "S-1"], ["Лаборатория", "ALS"], ["v:AU", "1,16"], ["PROJECT", "Север"], ["Дата", "—"],
+    ]);
+    expect(recordFacts({ row: 0, sample_id: "S0000227", parent_id: "S0000447", type_code: "DUP_F", crm_id: null, batch: "B1", parent_lab: "LAB1", seq: 1, date: 1707523200000, values: { AU: { v: 0.005, q: 1, p: 0.89, b: null } }, extra: { ZONE: "Север" } })).toEqual([
+      ["Строка файла", "1"], ["Проба", "S0000227"], ["Исходная проба", "S0000447"], ["Код типа", "DUP_F"], ["CRM", "—"], ["Партия", "B1"], ["Лаборатория исходной", "LAB1"], ["Номер в партии", "1"], ["Дата", "10.02.2024"],
+      ["AU", "<DL (0,005)"], ["AU: исходная проба", "0,89"], ["ZONE", "Север"],
     ]);
     expect(fieldText(Number.NaN)).toBe("—");
   });

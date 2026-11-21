@@ -13,7 +13,7 @@ import jobsCss from "../jobs/Jobs.module.css";
 import { jobsStore } from "../jobs/state";
 import type { QaqcReport } from "./api";
 import { filterSummary, normalizeFilter } from "./filters";
-import { int } from "./format";
+import { int, onActivateKey } from "./format";
 import { CHARTS_MODES, CHARTS_TITLES, cancelRun, hasXlsx, loadReports, reportsByName, reportsStore, reportStateTitle, resetRun, retrySpec, runReport, runStore, runText, selectReport, staleTitle, type ChartsMode, type ReportRun } from "./reportRun";
 import { reportActions } from "./ReportsTree";
 import { activeData, qaqcStore } from "./state";
@@ -227,7 +227,7 @@ export function ReportTab() {
             </thead>
             <tbody>
               {reportsByName(list).map((r) => (
-                <tr key={r.id} className={r.id === selected ? css.chosen : undefined} data-report={r.id} onClick={() => selectReport(r.id)}>
+                <tr key={r.id} className={r.id === selected ? css.chosen : undefined} data-report={r.id} tabIndex={0} aria-selected={r.id === selected} onClick={() => selectReport(r.id)} onKeyDown={onActivateKey(() => selectReport(r.id))}>
                   <th>{r.name}</th>
                   <td style={{ textAlign: "left" }}>{r.data_name}</td>
                   <td style={{ textAlign: "left" }}>{r.elements.join(", ")}</td>

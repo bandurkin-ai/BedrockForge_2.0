@@ -91,7 +91,7 @@ export function controlModel(series: StandardSeries, group: Pick<StandardGroup, 
     const y = series.x[i];
     if (!finite(y)) continue;
     let x: number;
-    if (axis === "order") x = i + 1;
+    if (axis === "order") x = orderOf(series, i);
     else {
       const t = dateMs(series.date[i]);
       if (t === null) {
@@ -124,6 +124,31 @@ export function controlModel(series: StandardSeries, group: Pick<StandardGroup, 
   const xDomain = axis === "order" ? { min: xmin - 0.5, max: Math.max(xmax, xmin + 1) + 0.5 } : pad(xmin, xmax, 0.02);
   return { axis, n, xs: xs.subarray(0, n), ys: ys.subarray(0, n), idx: idx.subarray(0, n), status: status.subarray(0, n), ma: ma.subarray(0, n), noDate, byStatus, lines, xDomain, yDomain: pad(ymin, ymax) };
 }
+
+/**
+ * The order of drawing (the canvas and the SVG): the norm and «не оценён» first, then the warnings, the failures
+ * last — a violation is never hidden under the norm; within a status the order of the series.
+ */
+export function paintOrder(status: ArrayLike<number>): Int32Array {
+  const rank = (s: number) => (s === 2 ? 2 : s === 1 ? 1 : 0);
+  const count = [0, 0, 0];
+  for (let j = 0; j < status.length; j++) count[rank(status[j])]++;
+  const at = [0, count[0], count[0] + count[1]];
+  const out = new Int32Array(status.length);
+  for (let j = 0; j < status.length; j++) out[at[rank(status[j])]++] = j;
+  return out;
+}
+
+/** The title of the axis «по порядку»: the number in the series, or in the sample shown when the core thinned it. */
+export function orderTitle(thinned: { shown: number; total: number } | null | undefined, what = "пробы"): string {
+  return thinned && thinned.shown < thinned.total ? "Номер в показанной выборке" : `Номер ${what} в ряду`;
+}
+
+/** The position (1…) of a point in the whole series: `pos[i]` when the core gives it, else its index + 1. */
+export const orderOf = (series: { pos?: readonly (number | null)[] }, i: number): number => {
+  const p = series.pos?.[i];
+  return typeof p === "number" && Number.isFinite(p) ? p : i + 1;
+};
 
 /** The status of a point of the series in words, with its rules (Т8.4-1). */
 export const pointLabel = (series: StandardSeries, i: number): string => statusLabel(series.status[i], series.rule[i] ?? 0);

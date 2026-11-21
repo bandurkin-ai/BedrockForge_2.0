@@ -84,6 +84,15 @@ export function dateMs(v: DateValue | undefined): number | null {
 
 const two = (n: number) => String(n).padStart(2, "0");
 
+/** A row of a table chosen from the keyboard as by a click: Enter or Space (the page does not scroll). */
+export const onActivateKey =
+  (run: () => void) =>
+  (e: { key: string; preventDefault(): void }): void => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    run();
+  };
+
 /** «ДД.ММ.ГГГГ», with the time when it is not midnight; null — «—». */
 export function dateText(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";

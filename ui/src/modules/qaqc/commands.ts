@@ -126,6 +126,7 @@ export const commands: Command[] = [
       hard_share: LIMIT("доля пар не выше порога HARD, %: 50–100", " (по умолчанию 90)"),
       n_boot: P("integer", "реализаций бутстрапа: 100–5000 (по умолчанию 1000)"),
       seed: P("integer", "зерно бутстрапа (по умолчанию 12345)"),
+      empty_is_orig: P("boolean", "пустой TYPE — исходная проба (ORIG); false — запись без типа не входит в расчёт"),
     },
     confirm: true,
     stage: STAGE,

@@ -111,7 +111,8 @@ test("QAQC: a CSV through the core → «Стандарты» with the statuses 
     expect(want.series?.status).toEqual(T84_1_STATUS);
     const points = tab.getByTestId("qaqc-control").locator("circle[data-status]");
     await expect(points).toHaveCount(T84_1.length, { timeout: LIMIT(15_000) });
-    expect(await points.evaluateAll((els) => els.map((e) => Number(e.getAttribute("data-status"))))).toEqual(T84_1_STATUS);
+    // the points are drawn in the paint order (the norm first, the failures on top): the same statuses, sorted
+    expect(await points.evaluateAll((els) => els.map((e) => Number(e.getAttribute("data-status"))))).toEqual([...T84_1_STATUS].sort((x, y) => x - y));
     await expect(tab.getByTestId("qaqc-control")).toContainText("отказ: 3");
     await page.screenshot({ path: shot("qaqc-standards.png") });
 

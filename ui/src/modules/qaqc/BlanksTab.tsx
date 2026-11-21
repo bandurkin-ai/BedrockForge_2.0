@@ -9,13 +9,13 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BlankChart, CarryChart } from "../../charts/qaqc/BlankChart";
 import { blankCsv, blankFacts, blankLines, blankModel, carryCsv, carryModel, carryTitle } from "../../charts/qaqc/blankModel";
-import type { ControlAxis } from "../../charts/qaqc/controlModel";
+import { orderTitle, type ControlAxis } from "../../charts/qaqc/controlModel";
 import { ChartToolbar } from "../../charts/core/ChartToolbar";
 import { inlineRasters } from "../../charts/core/PointsCanvas";
 import { errorText } from "../../shell/props";
 import { Store } from "../../shell/store";
 import { calc, type BlankGroup, type BlanksAnswer, type CalcBody } from "./api";
-import { int, labTitle, num } from "./format";
+import { int, labTitle, num, onActivateKey } from "./format";
 import { SampleCard } from "./SampleCard";
 import { calcBody, calcKey, DROPPED, latest, pickSample, qaqcStore, reportCounts } from "./state";
 import css from "./Qaqc.module.css";
@@ -75,7 +75,7 @@ function LabsTable({ groups, chosen, onChoose }: { groups: readonly BlankGroup[]
       </thead>
       <tbody>
         {groups.map((g) => (
-          <tr key={g.lab ?? ""} className={sameLab(chosen, g) ? css.chosen : undefined} onClick={() => onChoose({ lab: g.lab ?? null })}>
+          <tr key={g.lab ?? ""} className={sameLab(chosen, g) ? css.chosen : undefined} tabIndex={0} aria-selected={sameLab(chosen, g)} onClick={() => onChoose({ lab: g.lab ?? null })} onKeyDown={onActivateKey(() => onChoose({ lab: g.lab ?? null }))}>
             <th>{labTitle(g.lab)}</th>
             <td>{int(g.n)}</td>
             <td>{num(g.dl)}</td>
@@ -170,7 +170,7 @@ export function BlanksTab() {
   if (model?.noDate) notes.push(`Без даты: ${int(model.noDate)} — они видны на оси «по порядку».`);
   const onPick = (i: number | null) => {
     if (i === null || !series) return pickSample(null);
-    pickSample({ row: series.row[i], section: "blanks", lab: group?.lab ?? null, batch: series.batch[i] ?? null, facts: blankFacts(series, i, unit, group) });
+    pickSample({ row: series.row[i], section: "blanks", lab: group?.lab ?? null, batch: series.batch[i] ?? null, facts: blankFacts(series, i, unit, group, kBlank) });
   };
   const lines = group ? blankLines(group, kBlank) : [];
   return (
@@ -196,7 +196,7 @@ export function BlanksTab() {
         </ChartToolbar>
         {error && <p className={css.error}>{error}</p>}
         {model && series ? (
-          <BlankChart ref={svgRef} model={model} series={series} label={`Бланки: ${title}`} yTitle={yTitle} batch={batch} picked={picked >= 0 ? picked : null} onPick={onPick} />
+          <BlankChart ref={svgRef} model={model} series={series} orderTitle={orderTitle(answer?.thinned, "бланка")} label={`Бланки: ${title}`} yTitle={yTitle} batch={batch} picked={picked >= 0 ? picked : null} onPick={onPick} />
         ) : (
           !busy && <p className={css.note}>Выберите лабораторию в таблице.</p>
         )}
