@@ -15,6 +15,8 @@ const BOX = plotBox(QQ_W, QQ_H, { left: 66, right: 22, top: 18, bottom: 50 });
 
 export interface QQChartProps {
   points: readonly QQPoint[];
+  /** P10, P50, P90 (`qqMarks`) */
+  marks?: readonly QQPoint[];
   log: boolean;
   equal: boolean;
   diagonal: boolean;
@@ -24,7 +26,7 @@ export interface QQChartProps {
   yLabel: string;
 }
 
-export const QQChart = forwardRef<SVGSVGElement, QQChartProps>(function QQChart({ points, log, equal, diagonal, labels, color, xLabel, yLabel }, ref) {
+export const QQChart = forwardRef<SVGSVGElement, QQChartProps>(function QQChart({ points, marks, log, equal, diagonal, labels, color, xLabel, yLabel }, ref) {
   const [hover, setHover] = useState<number | null>(null);
   const d = qqDomains(points, log, equal);
   if (!d) return null;
@@ -49,14 +51,17 @@ export const QQChart = forwardRef<SVGSVGElement, QQChartProps>(function QQChart(
         ))}
       </g>
       {labels &&
-        labelledPoints(points).map(({ p, index }) => (
-          <g key={p} data-mark={`P${p * 100}`}>
-            <circle className={css.ring} cx={px(points[index].x)} cy={py(points[index].y)} r={r + 3} />
-            <text className={css.markLabel} x={px(points[index].x) + 8} y={py(points[index].y) - 6}>
-              P{p * 100}
-            </text>
-          </g>
-        ))}
+        (marks ?? labelledPoints(points).map(({ p, index }) => ({ ...points[index], p }))).map((m) => {
+          const label = `P${formatNumber(m.p * 100, 3)}`;
+          return (
+            <g key={label} data-mark={label}>
+              <circle className={css.ring} cx={px(m.x)} cy={py(m.y)} r={r + 3} />
+              <text className={css.markLabel} x={px(m.x) + 8} y={py(m.y) - 6}>
+                {label}
+              </text>
+            </g>
+          );
+        })}
       {h && (
         <g className={css.tip} transform={`translate(${Math.min(px(h.x) + 10, BOX.x1 - 190)} ${Math.max(py(h.y) - 64, BOX.y0 + 4)})`}>
           <rect width={184} height={58} rx={4} />

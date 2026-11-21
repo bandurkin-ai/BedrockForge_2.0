@@ -191,7 +191,7 @@ describe("the commands and the tree", () => {
           return Promise.resolve(json({ ...r, name: body.name, auto_name: false, version: r.version + 1 }));
         }
         if (m && method === "DELETE") return Promise.resolve(json({ deleted: Number(m[1]) }));
-        if (path === "/stats/chart/12") return Promise.resolve(json({ chart: stored[0], result: RESULT }));
+        if (path === "/stats/chart/12") return Promise.resolve(json({ ...RESULT, chart: { id: 12, kind: "histogram", name: stored[0].name, version: 1 } }));
         return Promise.resolve(json({ code: "not_found", message: "Нет", hint: "" }, 404));
       }),
     );

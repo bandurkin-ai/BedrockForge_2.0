@@ -193,6 +193,8 @@ export interface HistogramBins {
   width: number;
   below: { count: number; weight: number };
   above: { count: number; weight: number };
+  /** log scale: values ≤ 0, not in any bin */
+  nonpositive?: { count: number; weight: number };
 }
 
 export interface HistogramResult {
@@ -211,52 +213,41 @@ export interface HistogramResult {
 /** Body — the settings without `view` (the core ignores `view` of stored settings too). */
 export const computeHistogram = (body: Omit<HistogramSettings, "view">): Promise<HistogramResult> => api.post<HistogramResult>("/stats/histogram", body);
 
-// ---- Q-Q: POST /stats/qq (ТЗ 7.26; ADR 0019 §4) ----
+// ---- Q-Q: POST /stats/qq (ТЗ 7.26; ADR 0019 §4; core 13.15, `docs/progress/e13-api.md`) ----
 
 /** One side of a Q-Q plot as the core read it. */
 export interface QQSide {
-  set_id: number;
-  /** `name_key` of the table read */
-  table: string;
-  field: string;
-  unit: string | null;
   weighted: boolean;
-  /** holes of the side: those listed and found, or all */
-  holes: number;
   counts: SelectCounts;
   stats: Describe;
 }
 
-/** The fitted distribution: weighted mean and σ (of ln for the lognormal one). */
-export interface QQFit {
-  distribution: "lognormal" | "normal";
-  mu: number | null;
-  sigma: number | null;
-  /** lognormal: values ≤ 0 left out of the logarithms */
-  nonpositive: number;
-}
+/** A point [x, y, P %]: against a distribution x — the quantile of the fitted one, y — the sample; two samples — the quantiles of X and Y. */
+export type QQTuple = [number | null, number | null, number];
 
 export interface QQResult {
-  distribution: QQSettings["distribution"];
+  field: string;
+  set_id: number;
+  y_field: string | null;
+  y_set_id: number | null;
+  mode: "theory" | "sample";
   x: QQSide;
   /** null against a distribution */
   y: QQSide | null;
-  /**
-   * The points as columns: `p` — the probability (0…1); against a distribution `x` — the quantile of the fitted
-   * distribution in the units of the field (lognormal — exp(μ + σ·Φ⁻¹(P))), `y` — the sample at P = (C − w / 2) / W;
-   * two samples — `x`, `y` — the quantiles of X and Y at k / (n + 1). A value that cannot be computed is null.
-   */
-  points: { p: number[]; x: (number | null)[]; y: (number | null)[] };
-  /** points before thinning (the samples used, or the quantiles) */
-  total: number;
-  /** more than 2000 samples: interpolated at 2000 equal steps of P, the extremes kept */
-  thinned: boolean;
-  fit: QQFit | null;
-  /** against a distribution: the correlation of the points */
-  ppcc: number | null;
-  /** two samples: Kolmogorov–Smirnov D of the weighted distributions */
-  ks: number | null;
-  conventions: string;
+  /** ≤ 2000 against a distribution (more samples are interpolated, the extremes kept); `quantiles` of two samples */
+  points: QQTuple[];
+  /** against a distribution: the samples before thinning */
+  count?: number;
+  /** the fitted distribution: weighted mean and σ (of ln for the lognormal one) */
+  distribution?: { name: "lognormal" | "normal"; mu: number | null; sigma: number | null; dropped_nonpositive: number };
+  ppcc?: number | null;
+  /** two samples: Kolmogorov–Smirnov D of the weighted distributions, y / x of each quantile, the extremes */
+  ks?: number | null;
+  ratio?: (number | null)[];
+  extremes?: { x: [number, number]; y: [number, number] };
+  /** the points at P10, P50, P90 */
+  marks?: QQTuple[];
+  conventions?: string;
 }
 
 /** Body — the settings without `view`. */
@@ -323,11 +314,8 @@ export const deleteChart = (id: number): Promise<unknown> => api.del(`/charts/${
 
 export const getChart = (id: number): Promise<ChartRow> => api.get<ChartRow>(`/charts/${id}`);
 
-/** The answer of `POST /stats/chart/{id}`: the chart as stored and its calculation by the current data. */
-export interface SavedAnswer<T> {
-  chart: ChartRow;
-  result: T;
-}
+/** The answer of `POST /stats/chart/{id}`: the answer of its kind and the chart (a kind not computed yet — 422 `chart_not_computed`). */
+export type SavedAnswer<T> = T & { chart: Pick<ChartRow, "id" | "kind" | "name" | "version"> };
 
 /** The calculation of a saved chart by its settings and the current data (`chart.open`, the assistant). */
 export const computeSaved = <T>(chartId: number): Promise<SavedAnswer<T>> => api.post<SavedAnswer<T>>(`/stats/chart/${chartId}`, {});

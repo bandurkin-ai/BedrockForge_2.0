@@ -1,10 +1,10 @@
 /**
- * The Q-Q plot (ТЗ 7.26; ADR 0019 §4, §11; перенос `QQWindow` / `QQChart` BF): the request from the settings, the
- * points the chart draws (on log axes only those > 0 — the CSV has exactly them), the axis ranges (one common
+ * The Q-Q plot (ТЗ 7.26; ADR 0019 §4, §11; перенос `QQWindow` / `QQChart` BF; answer of the core 13.15 — points
+ * [x, y, P %]): the request from the settings, the points the chart draws (on log axes only those > 0 — the CSV has exactly them), the axis ranges (one common
  * range with «одинаковый масштаб»), the P10 / P50 / P90 marks, the table X / Y / отношение, the notes and the
  * assistant's text. A value that cannot be computed stays «—», never 0. Pure.
  */
-import { computeQQ, createCalculator, type Calculator, type Describe, type QQResult, type QQSide } from "../../modules/charts/api";
+import { computeQQ, createCalculator, type Calculator, type Describe, type QQResult, type QQSide, type QQTuple } from "../../modules/charts/api";
 import { needsWeightField, type QQSettings } from "../../modules/charts/settings";
 import { domainOf, formatNumber, type Domain } from "../core/axisScale";
 import { csvText } from "../core/csv";
@@ -19,8 +19,8 @@ export function qqRequest(s: QQSettings): QQRequest | null {
   if (!s.field || needsWeightField(s)) return null;
   const { view: _view, ...data } = s;
   if (s.distribution !== "sample") return data;
-  if (s.y_weight !== null && needsWeightField({ weight: s.y_weight, weight_field: s.y_weight_field })) return null;
-  return { ...data, quantiles: Math.min(QUANTILES_MAX, Math.max(QUANTILES_MIN, Math.round(s.quantiles))) };
+  // side Y without a field compares the same field
+  return { ...data, y_field: s.y_field ?? s.field, quantiles: Math.min(QUANTILES_MAX, Math.max(QUANTILES_MIN, Math.round(s.quantiles))) };
 }
 
 export function qqCalculator(apply: (r: QQResult) => void, fail: (e: unknown) => void, busy?: (on: boolean) => void, load: (body: QQRequest) => Promise<QQResult> = computeQQ): Calculator<QQRequest> {
@@ -34,18 +34,18 @@ export interface QQPoint {
   y: number;
 }
 
-/** The points of the chart: both values finite (and > 0 on log axes). */
-export function qqPoints(r: Pick<QQResult, "points">, log: boolean): QQPoint[] {
-  const { p, x, y } = r.points;
+/** [x, y, P %] → points with both values finite (and > 0 on log axes). */
+function pointsOf(list: readonly QQTuple[] | undefined, log: boolean): QQPoint[] {
   const out: QQPoint[] = [];
-  for (let i = 0; i < p.length; i++) {
-    const a = x[i];
-    const b = y[i];
+  for (const [a, b, pc] of list ?? []) {
     if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b) || (log && (a <= 0 || b <= 0))) continue;
-    out.push({ p: p[i], x: a, y: b });
+    out.push({ p: pc / 100, x: a, y: b });
   }
   return out;
 }
+
+/** The points of the chart: both values finite (and > 0 on log axes). */
+export const qqPoints = (r: Pick<QQResult, "points">, log: boolean): QQPoint[] => pointsOf(r.points, log);
 
 /** The axis ranges: each over its own values, or one common range — then the 1:1 line is the diagonal. */
 export function qqDomains(points: readonly QQPoint[], log: boolean, equal: boolean): { x: Domain; y: Domain } | null {
@@ -67,12 +67,18 @@ export function labelledPoints(points: readonly QQPoint[]): { p: number; index: 
   return LABELLED.map((p) => ({ p, index: points.reduce((best, q, i) => (Math.abs(q.p - p) < Math.abs(points[best].p - p) ? i : best), 0) }));
 }
 
+/** The marks P10, P50, P90: those of the core (exact P), else the nearest points of the chart. */
+export function qqMarks(r: Pick<QQResult, "marks">, points: readonly QQPoint[], log: boolean): QQPoint[] {
+  const own = pointsOf(r.marks, log);
+  return own.length ? own : labelledPoints(points).map(({ p, index }) => ({ ...points[index], p }));
+}
+
 const DIST: Record<"lognormal" | "normal", string> = { lognormal: "логнормальное", normal: "нормальное" };
 
 /** The titles of the axes: against a distribution X — its quantiles, Y — the sample. */
-export function axisTitles(r: Pick<QQResult, "distribution">, xName: string, yName: string): { x: string; y: string } {
-  if (r.distribution === "sample") return { x: xName, y: yName };
-  return { x: `Квантили: ${DIST[r.distribution]} распределение`, y: xName };
+export function axisTitles(r: Pick<QQResult, "mode" | "distribution">, xName: string, yName: string): { x: string; y: string } {
+  if (r.mode === "sample") return { x: xName, y: yName };
+  return { x: `Квантили: ${DIST[r.distribution?.name ?? "lognormal"]} распределение`, y: xName };
 }
 
 /** CSV of the points (ТЗ 7.26 «Экспорт»): exactly the points the chart draws. */
@@ -115,22 +121,26 @@ const n = (v: number) => v.toLocaleString("ru-RU");
 /** The fit and the measure of the agreement, in words. */
 export function qqNotes(r: QQResult): string[] {
   const out: string[] = [];
-  if (r.distribution !== "sample") {
-    const ln = r.fit?.distribution === "lognormal";
-    if (r.fit) out.push(`${ln ? "среднее ln" : "среднее"} ${formatNumber(r.fit.mu, 5)}, ${ln ? "σ ln" : "σ"} ${formatNumber(r.fit.sigma, 5)}`);
+  const shown = r.points.length;
+  if (r.mode === "theory") {
+    const fit = r.distribution;
+    const ln = fit?.name === "lognormal";
+    if (fit) out.push(`${ln ? "среднее ln" : "среднее"} ${formatNumber(fit.mu, 5)}, ${ln ? "σ ln" : "σ"} ${formatNumber(fit.sigma, 5)}`);
     out.push(`PPCC ${formatNumber(r.ppcc, 5)} (1 — точное совпадение)`);
-    if (r.fit?.nonpositive) out.push(`≤ 0 не учтены: ${n(r.fit.nonpositive)}`);
+    if (fit?.dropped_nonpositive) out.push(`≤ 0 не учтены: ${n(fit.dropped_nonpositive)}`);
+    const total = r.count ?? shown;
+    out.push(total > shown ? `точек ${n(shown)} из ${n(total)} (прорежено, крайние оставлены)` : `точек ${n(shown)}`);
   } else {
-    out.push(`квантилей ${n(r.points.p.length)}`, `D Колмогорова–Смирнова ${formatNumber(r.ks, 4)} (0 — одинаковые распределения)`);
+    out.push(`квантилей ${n(shown)}`, `D Колмогорова–Смирнова ${formatNumber(r.ks, 4)} (0 — одинаковые распределения)`);
+    if (r.extremes) out.push(`X ${formatNumber(r.extremes.x[0])}…${formatNumber(r.extremes.x[1])}, Y ${formatNumber(r.extremes.y[0])}…${formatNumber(r.extremes.y[1])}`);
   }
-  out.push(r.thinned ? `точек ${n(r.points.p.length)} из ${n(r.total)} (прорежено, крайние оставлены)` : `точек ${n(r.points.p.length)}`);
   return out;
 }
 
 /** The assistant's text (ADR 0019 §9): the name, samples, mean, median, CV of X; PPCC or D. */
 export function qqSummary(name: string, r: QQResult): string {
   const st = r.x.stats;
-  const fit = r.distribution === "sample" ? `D ${formatNumber(r.ks, 4)}` : `PPCC ${formatNumber(r.ppcc, 4)}`;
+  const fit = r.mode === "sample" ? `D ${formatNumber(r.ks, 4)}` : `PPCC ${formatNumber(r.ppcc, 4)}`;
   const y = r.y ? `; Y: проб ${n(r.y.stats.count)}, среднее ${formatNumber(r.y.stats.mean, 4)}` : "";
   return `${name}: проб ${n(st.count)}, среднее ${formatNumber(st.mean, 4)}, медиана ${formatNumber(st.median, 4)}, CV ${formatNumber(st.cv, 3)}${y}; ${fit}`;
 }

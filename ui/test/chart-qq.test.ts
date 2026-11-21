@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QQChart, QQ_H, QQ_W } from "../src/charts/qq/QQChart";
 import { QQWindow } from "../src/charts/qq/QQWindow";
-import { axisTitles, labelledPoints, qqCsv, qqDomains, qqNotes, qqPoints, qqRequest, qqSummary, qqTable, ratio } from "../src/charts/qq/model";
+import { axisTitles, labelledPoints, qqMarks, qqCsv, qqDomains, qqNotes, qqPoints, qqRequest, qqSummary, qqTable, ratio } from "../src/charts/qq/model";
 import type { Describe, QQResult, QQSide } from "../src/modules/charts/api";
 import { bindCharts } from "../src/modules/charts/bind";
 import { chartName, defaultSettings, normalizeSettings, type QQSettings } from "../src/modules/charts/settings";
@@ -33,30 +33,51 @@ const STATS: Describe = {
   log: null,
 };
 const COUNTS = { rows: 6, missing: 1, bad_weight: 0, negative: 0, zero_excluded: 0, bottom_capped: 0, bottom_excluded: 0, capped: 0, top_excluded: 0, used: 5 };
-const SIDE: QQSide = { set_id: 3, table: "пробы", field: "AU", unit: "г/т", weighted: true, holes: 2, counts: COUNTS, stats: STATS };
+const SIDE: QQSide = { weighted: true, counts: COUNTS, stats: STATS };
 
+// the answers of the core 13.15 (docs/progress/e13-api.md): points [x, y, P %]
 const THEORY: QQResult = {
-  distribution: "lognormal",
+  field: "AU",
+  set_id: 3,
+  y_field: null,
+  y_set_id: null,
+  mode: "theory",
   x: SIDE,
   y: null,
-  points: { p: [0.1, 0.3, 0.5, 0.7, 0.9], x: [0.25, 0.6, 1, 1.8, 4.5], y: [0.2, 0.5, 1, 2, 8] },
-  total: 5,
-  thinned: false,
-  fit: { distribution: "lognormal", mu: 0, sigma: 1.1, nonpositive: 0 },
+  points: [
+    [0.25, 0.2, 10],
+    [0.6, 0.5, 30],
+    [1, 1, 50],
+    [1.8, 2, 70],
+    [4.5, 8, 90],
+  ],
+  count: 5,
+  distribution: { name: "lognormal", mu: 0, sigma: 1.1, dropped_nonpositive: 0 },
   ppcc: 0.9934,
-  ks: null,
-  conventions: "P = (C − w / 2) / W; μ и σ — взвешенные, по ln.",
+  marks: [
+    [0.25, 0.2, 10],
+    [1, 1, 50],
+    [4.5, 8, 90],
+  ],
 };
 
 const TWO: QQResult = {
-  ...THEORY,
-  distribution: "sample",
-  y: { ...SIDE, set_id: 4, field: "AU_CHK", stats: { ...STATS, mean: 2.2, median: 0 } },
-  points: { p: [0.25, 0.5, 0.75], x: [0, 1, 2], y: [0.1, null, 2.4] },
-  total: 3,
-  fit: null,
-  ppcc: null,
+  field: "AU",
+  set_id: 3,
+  y_field: "AU_CHK",
+  y_set_id: 4,
+  mode: "sample",
+  x: SIDE,
+  y: { ...SIDE, stats: { ...STATS, mean: 2.2, median: 0 } },
+  points: [
+    [0, 0.1, 25],
+    [1, null, 50],
+    [2, 2.4, 75],
+  ],
+  ratio: [null, null, 1.2],
+  extremes: { x: [0, 3], y: [0.1, 3.3] },
   ks: 0.12,
+  marks: [],
 };
 
 const base = (): QQSettings => ({ ...defaultSettings("qq", 3), field: "AU" });
@@ -64,7 +85,7 @@ const base = (): QQSettings => ({ ...defaultSettings("qq", 3), field: "AU" });
 describe("settings → request (перенос BF)", () => {
   it("lognormal with log axes by default; waits for a field and weight fields; the view is not sent", () => {
     const d = defaultSettings("qq", 3);
-    expect(d).toMatchObject({ distribution: "lognormal", log: true, quantiles: 99, y_set_id: null, y_field: null, y_weight: null, view: { equal: true, diagonal: true, labels: true } });
+    expect(d).toMatchObject({ distribution: "lognormal", log: true, quantiles: 99, y_set_id: null, y_field: null, view: { equal: true, diagonal: true, labels: true } });
     expect(qqRequest(d)).toBeNull();
     expect(qqRequest({ ...base(), weight: "field" })).toBeNull();
     const r = qqRequest(base())!;
@@ -72,19 +93,18 @@ describe("settings → request (перенос BF)", () => {
     expect("view" in r).toBe(false);
   });
 
-  it("two samples: the quantiles 3…999; side Y needs its weight field only with its own weight", () => {
+  it("two samples: the quantiles 3…999; side Y without a field compares the field of X", () => {
     expect(qqRequest({ ...base(), distribution: "sample", quantiles: 5000 })?.quantiles).toBe(999);
     expect(qqRequest({ ...base(), distribution: "sample", quantiles: 1 })?.quantiles).toBe(3);
-    expect(qqRequest({ ...base(), distribution: "sample", y_weight: "length_field" })).toBeNull();
-    expect(qqRequest({ ...base(), distribution: "sample", y_weight: "length_field", y_weight_field: "DENS" })).toMatchObject({ y_weight: "length_field", y_weight_field: "DENS" });
+    expect(qqRequest({ ...base(), distribution: "sample" })).toMatchObject({ y_field: "AU", y_set_id: null, y_table: null });
+    expect(qqRequest({ ...base(), distribution: "sample", y_field: "AU_CHK", y_set_id: 4 })).toMatchObject({ y_field: "AU_CHK", y_set_id: 4 });
+    expect(qqRequest(base())?.y_field).toBeNull();
   });
 
-  it("stored settings: the view key by key, a bad weight of Y dropped", () => {
-    const s = normalizeSettings("qq", { v: 1, field: "AU", y_weight: "bogus", y_holes: "H1 H2", view: { equal: false, color: "#ABCDEF", junk: 1 } }, 3);
-    expect(s.y_weight).toBeNull();
+  it("stored settings: the view key by key", () => {
+    const s = normalizeSettings("qq", { v: 1, field: "AU", y_holes: "H1 H2", view: { equal: false, color: "#ABCDEF", junk: 1 } }, 3);
     expect(s.y_holes).toEqual(["H1", "H2"]);
     expect(s.view).toEqual({ equal: false, diagonal: true, labels: true, color: "#abcdef" });
-    expect(normalizeSettings("qq", { y_weight: "none" }, 3).y_weight).toBe("none");
     expect(chartName("qq", { ...base(), distribution: "sample", y_holes: ["H1"] })).toBe("Q-Q · AU / AU · часть скважин");
   });
 });
@@ -112,6 +132,13 @@ describe("what the chart shows", () => {
       { p: 0.5, index: 2 },
       { p: 0.9, index: 4 },
     ]);
+    // the marks of the core where given (exact P), else the nearest points
+    expect(qqMarks(THEORY, pts, true).map((m) => m.p)).toEqual([0.1, 0.5, 0.9]);
+    expect(qqMarks(TWO, qqPoints(TWO, false), false)).toEqual([
+      { p: 0.1, x: 0, y: 0.1 },
+      { p: 0.5, x: 0, y: 0.1 },
+      { p: 0.9, x: 2, y: 2.4 },
+    ]);
   });
 
   it("CSV of the points = the points of the chart", () => {
@@ -129,7 +156,7 @@ describe("what the chart shows", () => {
 
   it("the chart in SVG: 1:1 line, the marks, a fixed size for the export", () => {
     const pts = qqPoints(THEORY, true);
-    const html = renderToStaticMarkup(createElement(QQChart, { points: pts, log: true, equal: true, diagonal: true, labels: true, color: "#1f6bff", xLabel: "X", yLabel: "Y" }));
+    const html = renderToStaticMarkup(createElement(QQChart, { points: pts, marks: qqMarks(THEORY, pts, true), log: true, equal: true, diagonal: true, labels: true, color: "#1f6bff", xLabel: "X", yLabel: "Y" }));
     expect(html).toContain(`viewBox="0 0 ${QQ_W} ${QQ_H}"`);
     expect(html).toContain('data-line="1:1"');
     for (const m of ["P10", "P50", "P90"]) expect(html).toContain(`data-mark="${m}"`);
@@ -154,7 +181,8 @@ describe("what the chart shows", () => {
 
   it("notes: the fit and PPCC; two samples — D; thinning", () => {
     expect(qqNotes(THEORY)).toEqual(["среднее ln 0, σ ln 1.1", "PPCC 0.9934 (1 — точное совпадение)", "точек 5"]);
-    expect(qqNotes({ ...TWO, thinned: true, total: 5000 })).toEqual(["квантилей 3", "D Колмогорова–Смирнова 0.12 (0 — одинаковые распределения)", `точек 3 из ${(5000).toLocaleString("ru-RU")} (прорежено, крайние оставлены)`]);
+    expect(qqNotes({ ...THEORY, count: 5000 })[2]).toBe(`точек 5 из ${(5000).toLocaleString("ru-RU")} (прорежено, крайние оставлены)`);
+    expect(qqNotes(TWO)).toEqual(["квантилей 3", "D Колмогорова–Смирнова 0.12 (0 — одинаковые распределения)", "X 0…3, Y 0.1…3.3"]);
   });
 
   it("the window renders its form before any answer; two samples — side Y", () => {
@@ -162,7 +190,7 @@ describe("what the chart shows", () => {
     for (const label of ["Режим", "Распределение", "Таблица", "Поле", "Скважины X", "Вес", "Цвет точек"]) expect(html).toContain(`aria-label="${label}"`);
     expect(html).not.toContain('aria-label="Набор Y"');
     const two = renderToStaticMarkup(createElement(QQWindow, { winId: "w", setId: 3, setName: "Набор", settings: { ...base(), distribution: "sample" } }));
-    for (const label of ["Число квантилей", "Набор Y", "Таблица Y", "Поле Y", "Вес Y", "Скважины Y"]) expect(two).toContain(`aria-label="${label}"`);
+    for (const label of ["Число квантилей", "Набор Y", "Таблица Y", "Поле Y", "Скважины Y"]) expect(two).toContain(`aria-label="${label}"`);
   });
 });
 

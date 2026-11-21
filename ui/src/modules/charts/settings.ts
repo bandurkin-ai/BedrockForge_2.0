@@ -71,9 +71,9 @@ export interface QQView {
 
 /**
  * Q-Q (ТЗ 7.26): side X — `set_id`, `table`, `field`, the selection of values, `holes`; against a distribution or
- * (`distribution: "sample"`) side Y. Empty keys of Y mean «as X»: `y_set_id` — the same set, `y_table` — the
- * same table of the same set (the first table of another), `y_field` — the same field, `y_weight` — the weight
- * of X (with its field); `y_holes` empty — all holes. The other selection rules are common to both sides.
+ * (`distribution: "sample"`) side Y: `y_set_id` null — the same set, `y_table` null — the sample table of set Y,
+ * `y_field` null — the field of X, `y_holes` empty — all holes. The selection of values (weight too; its field
+ * from the table of Y) is common to both sides (core 13.15).
  */
 export interface QQSettings extends Base, SampleFilter {
   field: string | null;
@@ -81,8 +81,6 @@ export interface QQSettings extends Base, SampleFilter {
   y_set_id: number | null;
   y_table: string | null;
   y_field: string | null;
-  y_weight: WeightMode | null;
-  y_weight_field: string | null;
   holes: string[];
   y_holes: string[];
   /** quantiles of two samples at k / (n + 1), 3…999 */
@@ -186,7 +184,7 @@ export function defaultSettings<K extends ChartKind>(kind: K, setId: number): Se
   const all: SettingsOf = {
     histogram: { ...base(setId), ...DEFAULT_FILTER, field: null, log: false, bin_width: null, bins: null, start: null, end: null, view: defaultView("histogram") as unknown as HistogramView },
     // grades are checked against a lognormal distribution first (ТЗ 7.26: by default, log axes)
-    qq: { ...base(setId), ...DEFAULT_FILTER, field: null, distribution: "lognormal", y_set_id: null, y_table: null, y_field: null, y_weight: null, y_weight_field: null, holes: [], y_holes: [], quantiles: 99, log: true, view: defaultView("qq") as unknown as QQView },
+    qq: { ...base(setId), ...DEFAULT_FILTER, field: null, distribution: "lognormal", y_set_id: null, y_table: null, y_field: null, holes: [], y_holes: [], quantiles: 99, log: true, view: defaultView("qq") as unknown as QQView },
     // correlations of logarithms by default (ТЗ 7.27); «<0,01» written as −0,01 becomes half the limit (BF)
     dendrogram: { ...base(setId), fields: [], method: "pearson", log: true, weight: "length", negatives: "half_abs", exclude_zero: false, missing: "pairwise", linkage: "average", distance: "1-r", cut: null, view: defaultView("dendrogram") as unknown as DendrogramView },
     scatter: { ...base(setId), x: null, y: null, y_table: null, color: null, log_x: false, log_y: false, weight: "none", regression: "ols" },
@@ -203,7 +201,6 @@ export function defaultSettings<K extends ChartKind>(kind: K, setId: number): Se
 
 const ENUMS: Record<string, readonly string[]> = {
   weight: ["none", "length", "field", "length_field"],
-  y_weight: ["none", "length", "field", "length_field"],
   negatives: ["keep", "half_abs", "exclude"],
   bottom_mode: ["exclude", "cap"],
   top_mode: ["exclude", "cap"],
@@ -231,7 +228,7 @@ function accept(key: string, value: unknown, fallback: unknown): unknown {
     return list ? list.slice(0, LIST_LIMIT[key]) : undefined;
   }
   // `distance` is a choice of the dendrogram and a number of the contact analysis: the default tells which
-  if (key in ENUMS && (typeof fallback === "string" || fallback === null)) return typeof value === "string" && ENUMS[key].includes(value) ? value : undefined;
+  if (key in ENUMS && typeof fallback === "string") return typeof value === "string" && ENUMS[key].includes(value) ? value : undefined;
   if (INTEGER.has(key)) return typeof value === "number" && Number.isInteger(value) ? value : undefined;
   if (NUMBER.has(key)) return typeof value === "number" && Number.isFinite(value) ? value : undefined;
   if (typeof fallback === "boolean") return typeof value === "boolean" ? value : undefined;

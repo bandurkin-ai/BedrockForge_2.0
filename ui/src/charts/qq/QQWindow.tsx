@@ -1,6 +1,7 @@
 /**
  * The window «Q-Q график» (ТЗ 7.26; ADR 0019 §11; перенос `QQWindow` BF): against a fitted distribution (normal,
- * lognormal — by default, log axes) or two samples — side Y is any set, table, field, weight and list of holes;
+ * lognormal — by default, log axes) or two samples — side Y is any set, table, field and list of holes (the
+ * selection of values, the weight too, is common: core 13.15);
  * one scale, the 1:1 line, P10 / P50 / P90, PPCC or D, the table X / Y / отношение, the export (CSV — the points
  * of the chart). An edit computes again 300 ms later; an overtaken answer is dropped.
  */
@@ -10,15 +11,15 @@ import { tablesStore } from "../../modules/tables/state";
 import { defaultField, type QQResult, type StatsFields } from "../../modules/charts/api";
 import type { ChartWindowProps } from "../../modules/charts/bind";
 import { useSavedChart } from "../../modules/charts/saved";
-import { DEFAULT_QQ_VIEW, type QQSettings, type QQView, type WeightMode } from "../../modules/charts/settings";
+import { DEFAULT_QQ_VIEW, type QQSettings, type QQView } from "../../modules/charts/settings";
 import { ChartWindow } from "../ChartWindow";
 import { ChartToolbar } from "../core/ChartToolbar";
 import { fieldLabel, FieldSelect, ListInput, SetSelect, TableSelect, useStatsFields } from "../core/Pickers";
-import { NumberInput, SampleFilterForm, WEIGHTS } from "../SampleFilterForm";
+import { NumberInput, SampleFilterForm } from "../SampleFilterForm";
 import css from "../core/Chart.module.css";
 import { countsNotes } from "../histogram/model";
 import { QQChart } from "./QQChart";
-import { axisTitles, qqCalculator, qqCsv, qqNotes, qqPoints, qqRequest, qqTable } from "./model";
+import { axisTitles, qqCalculator, qqMarks, qqCsv, qqNotes, qqPoints, qqRequest, qqTable } from "./model";
 
 function QQTable({ result }: { result: QQResult }) {
   const rows = qqTable(result.x, result.y);
@@ -66,7 +67,7 @@ export function QQWindow(props: ChartWindowProps<"qq">) {
   const two = s.distribution === "sample";
   const x = useStatsFields(setId, s.table);
   const ySet = s.y_set_id ?? setId;
-  const y = useStatsFields(two ? ySet : null, s.y_table ?? (ySet === setId ? s.table : null));
+  const y = useStatsFields(two ? ySet : null, s.y_table);
 
   // a field or weight field not in the table is replaced: X — by the default field, Y — by «as X»
   useEffect(() => {
@@ -75,7 +76,7 @@ export function QQWindow(props: ChartWindowProps<"qq">) {
   }, [x.fields]);
   useEffect(() => {
     const f = y.fields;
-    if (f) setS((prev) => ({ ...prev, y_field: keep(f, prev.y_field), y_weight_field: keep(f, prev.y_weight_field) }));
+    if (f) setS((prev) => ({ ...prev, y_field: keep(f, prev.y_field) }));
   }, [y.fields]);
 
   const calc = useMemo(
@@ -106,7 +107,6 @@ export function QQWindow(props: ChartWindowProps<"qq">) {
   const titles = result ? axisTitles(result, xName, yName) : { x: xName, y: yName };
   const points = useMemo(() => (result ? qqPoints(result, s.log) : []), [result, s.log]);
   const fileName = `Q-Q ${setName} ${s.field ?? ""}${two ? ` ${s.y_field ?? s.field ?? ""}` : ""}`.trim();
-  const yWeightFields = y.fields?.numeric ?? [];
 
   const settingsForm = (
     <>
@@ -141,27 +141,13 @@ export function QQWindow(props: ChartWindowProps<"qq">) {
         <FieldSelect value={s.field} fields={x.fields?.numeric ?? []} onChange={(field) => set({ field })} />
         <ListInput title="Скважины" label="Скважины X" value={s.holes} onChange={(holes) => set({ holes })} />
       </fieldset>
-      <SampleFilterForm value={s} fields={x.fields?.numeric ?? []} onChange={set} legend={two ? "Отбор значений (X и Y)" : "Отбор значений"} />
+      <SampleFilterForm value={s} fields={x.fields?.numeric ?? []} onChange={set} legend={two ? "Отбор значений (X и Y; поле веса — из таблицы Y)" : "Отбор значений"} />
       {two && (
         <fieldset>
           <legend>Выборка Y</legend>
-          <SetSelect label="Набор Y" value={ySet} sets={sets} onChange={(id) => set({ y_set_id: id === setId ? null : id, y_table: null, y_field: null, y_weight_field: null })} />
-          <TableSelect label="Таблица Y" value={y.fields?.table ?? s.y_table} tables={y.fields?.tables ?? []} onChange={(t) => set({ y_table: t, y_field: null, y_weight_field: null })} />
+          <SetSelect label="Набор Y" value={ySet} sets={sets} onChange={(id) => set({ y_set_id: id === setId ? null : id, y_table: null, y_field: null })} />
+          <TableSelect label="Таблица Y" value={y.fields?.table ?? s.y_table} tables={y.fields?.tables ?? []} onChange={(t) => set({ y_table: t, y_field: null })} />
           <FieldSelect label="Поле Y" value={s.y_field} fields={y.fields?.numeric ?? []} empty="как у X" onChange={(f) => set({ y_field: f })} />
-          <label>
-            Вес
-            <select value={s.y_weight ?? ""} aria-label="Вес Y" onChange={(e) => set({ y_weight: (e.target.value || null) as WeightMode | null })}>
-              <option value="">как у X</option>
-              {WEIGHTS.map(([v, t]) => (
-                <option key={v} value={v}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          {(s.y_weight === "field" || s.y_weight === "length_field") && (
-            <FieldSelect title="Поле веса" label="Поле веса Y" value={s.y_weight_field} fields={yWeightFields.filter((f) => f.kind !== "length")} empty="— выберите —" onChange={(f) => set({ y_weight_field: f })} />
-          )}
           <ListInput title="Скважины" label="Скважины Y" value={s.y_holes} onChange={(y_holes) => set({ y_holes })} />
         </fieldset>
       )}
@@ -197,7 +183,7 @@ export function QQWindow(props: ChartWindowProps<"qq">) {
       error={error ?? fieldsError}
       empty={empty}
       note={saved.note}
-      chart={result && points.length > 0 && <QQChart ref={svgRef} points={points} log={s.log} equal={s.view.equal} diagonal={s.view.diagonal} labels={s.view.labels} color={s.view.color} xLabel={titles.x} yLabel={titles.y} />}
+      chart={result && points.length > 0 && <QQChart ref={svgRef} points={points} marks={qqMarks(result, points, s.log)} log={s.log} equal={s.view.equal} diagonal={s.view.diagonal} labels={s.view.labels} color={s.view.color} xLabel={titles.x} yLabel={titles.y} />}
       footer={
         result && (
           <>

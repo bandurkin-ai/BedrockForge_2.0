@@ -47,9 +47,8 @@ export async function openSavedChart(args: Record<string, unknown>, source: "use
   openChartWindow(kind, settings, setName, { chart: row });
   if (source !== "claude") return `Открыт график «${row.name}»`;
   const answer = await computeSaved(row.id);
-  upsertChart(answer.chart);
-  const name = savedName(answer.chart.name, answer.chart);
-  return spec.text ? spec.text(answer.result, name, normalizeSettings(kind, answer.chart.settings, setId) as never) : `Открыт график ${name}`;
+  const name = savedName(answer.chart.name, { ...row, ...answer.chart });
+  return spec.text ? spec.text(answer, name, settings as never) : `Открыт график ${name}`;
 }
 
 /** The name given by hand; a version changed meanwhile (a save of the window) is taken and tried once more. */
