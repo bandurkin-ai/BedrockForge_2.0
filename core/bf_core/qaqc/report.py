@@ -152,7 +152,8 @@ def compute(recs: Any, inputs: Mapping[str, Any], tick: Callable[[float, str], N
             for params in RUNS.get(section, [{}]):
                 key = section if not params.get("kind") else f"{section}:{params['kind']}"
                 answer = calc.run(ctx, section, **params)
-                part[key] = {k: v for k, v in answer.items() if k not in STRIP}
+                strip = () if section == "summary" else STRIP  # the summary's `batches` is a line of totals
+                part[key] = {k: v for k, v in answer.items() if k not in strip}
                 if isinstance(part[key].get("th"), dict):  # the groups of Thompson–Howarth are points too
                     part[key]["th"] = {k: v for k, v in part[key]["th"].items() if k != "groups"}
         out[element] = part

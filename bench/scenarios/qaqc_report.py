@@ -68,8 +68,10 @@ def xlsx(engine: Any, folder: Path, report_id: int, job_id: int) -> dict[str, An
 
     if XLSX_JOB not in load_handlers():
         return {"xlsx_s": None, "xlsx": f"нет задания {XLSX_JOB} (подшаг 14.14)"}
+    with dialect.read_tx(engine) as conn:
+        version = report.info(conn, BlobStore(folder), report_id)["version"]
     t0 = time.perf_counter()
-    _qaqc.job(folder, XLSX_JOB, {"report_id": report_id, **XLSX_PARAMS}, job_id)
+    _qaqc.job(folder, XLSX_JOB, {"report_id": report_id, "version": version, "limit": None, **XLSX_PARAMS}, job_id)
     seconds = time.perf_counter() - t0
     with dialect.read_tx(engine) as conn:
         files = {f["kind"]: f["size"] for f in report.info(conn, BlobStore(folder), report_id)["files"]}
