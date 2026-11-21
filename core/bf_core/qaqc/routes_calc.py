@@ -1,9 +1,11 @@
 """/api/v1/qaqc — the sections of the tab and the cards of records (ADR 0020 §6, §10; подшаг 14.12).
 
   * `POST /calc/{section}` {data_id | report_id, element, filter?, group?, kind?, offset?, limit?, max_points?,
-    samples?} → the answer of `calc.run` (the head {element, unit, counts, limits, notes} and the keys of the
-    section); a section is a name of `calc.SECTIONS`. With `group` the series is thinned to `max_points` (100 000
-    by default: every warning and failure stays, `thinned {shown, total}`). With `report_id` the records, the
+    samples?, c?, intervals?} → the answer of `calc.run` (the head {element, unit, counts, limits, notes} and the
+    keys of the section); a section is a name of `calc.SECTIONS`. With `group` (for `duplicates` always) the
+    points are thinned to `max_points` (100 000 by default: every warning and failure stays, `thinned {shown,
+    total}`); the points of a group of `external` go without the bootstrap (`intervals: false` unless given);
+    `c` — up to 20 contents > 0 for the precision P(c) of Thompson–Howarth. With `report_id` the records, the
     settings, the reference and the filter are those of the snapshot of the report (`report.snapshot`); `filter`
     is then ignored. Errors: 404 `unknown_section`, `qaqc_data_not_found`, `qaqc_report_not_found`; 422 `bad_param
     {param}`, `field_not_found {param: element}` and the other refusals of the kernels (`QaqcError`).
@@ -34,7 +36,7 @@ Payload = Annotated[Any, Body()]
 MAX_POINTS = 100_000
 MAX_ROWS = 1000
 MAX_BATCH = 5000
-PARAMS = ("group", "kind", "offset", "limit", "max_points", "samples")
+PARAMS = ("group", "kind", "offset", "limit", "max_points", "samples", "c", "intervals")
 
 
 def qaqc_error(e: Any) -> ApiError:
@@ -100,8 +102,10 @@ def compute(project: Any, section: str, body: dict[str, Any]) -> dict[str, Any]:
                                    f"Разделы: {', '.join(calc.SECTIONS)}.", param="section"))  # fmt: skip
     got = inputs(project, body)
     params = {k: body[k] for k in PARAMS if body.get(k) is not None}
-    if "group" in params:
+    if "group" in params or section == "duplicates":
         params.setdefault("max_points", MAX_POINTS)
+    if section == "external" and "group" in params:
+        params.setdefault("intervals", False)  # the points of a group: the bootstrap is in the groups already
     with SLOTS:
         try:
             element = body.get("element")

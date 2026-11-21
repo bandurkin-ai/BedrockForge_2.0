@@ -203,3 +203,28 @@ def test_records_by_rows_and_by_batch(qc) -> None:  # type: ignore[no-untyped-de
     assert [x["row"] for x in batch["records"]] == [14, 15, 16] and batch["total"] == 3
     bad = qc.post(f"{Q}/records", json={"data_id": did, "rows": [99]})
     assert bad.status_code == 422 and bad.json()["param"] == "rows"
+
+
+def test_pairs_through_the_api(qc, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """duplicates and external (14.5–14.7) by their names in `SECTIONS`: the answers are those of the kernels; the
+    points of duplicates are thinned by default; the points of a group of external go without the bootstrap."""
+    from tests.test_qaqc_import_api import csv_file, import_csv
+
+    did = import_csv(qc, csv_file(tmp_path, 600))["data_id"]
+    body = {"data_id": did, "element": "AU", "kind": "DUP_C", "c": [1.5]}
+    dup = qc.post(f"{Q}/calc/duplicates", json=body).json()
+    assert dup["kind"] == "DUP_C" and dup["pairs"] == 90 and dup["thinned"]["total"] == dup["used"]
+    assert dup["th"]["state"] == "ok" and 1.5 in [p["c"] for p in dup["th"]["precision"]]
+    p = projects_of(qc.core).require_current()
+    with dialect.read_tx(p.engine) as conn:
+        config, crm = cf.get_config(conn), cf.get_crm(conn)["rows"]
+    recs = sv.open_records(p, did)
+    direct = calc.calc("duplicates", recs, config, crm, "AU", None, kind="DUP_C", c=[1.5], max_points=100_000)
+    assert calc.canonical(dup) == calc.canonical(direct)
+    ext = post(qc, "external", data_id=did, element="AU").json()
+    g = ext["groups"][0]
+    assert g["lab_check"] == "EXT" and g["rma"]["n_boot"] > 0 and g["rma"]["b_ci"] is not None
+    one = post(qc, "external", data_id=did, element="AU", group={"lab_main": g["lab_main"], "lab_check": "EXT"}).json()
+    assert one["groups"][0]["rma"]["n_boot"] == 0 and len(one["points"]["row"]) == g["used"]
+    bad = qc.post(f"{Q}/calc/duplicates", json={**body, "c": [-1]})
+    assert bad.status_code == 422 and bad.json()["code"] == "bad_param"
