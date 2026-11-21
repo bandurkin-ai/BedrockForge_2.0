@@ -75,7 +75,8 @@ export function openResultMenu(app: App, r: ResultRow, e: MouseEvent): void {
 /** The results of these sets as they are read; a set not read yet is read (and kept current). */
 export function useResultsBySet(setIds: readonly number[]): Record<number, ResultRow[]> {
   const bySet = useStore(resultsStore, (s) => s.bySet);
-  const key = setIds.join(",");
+  // The sets not read yet: after `resetResults` (another project) they change and are read again.
+  const key = setIds.filter((id) => bySet[id] === undefined).join(",");
   useEffect(() => {
     watchResults();
     for (const id of setIds) if (resultsStore.get().bySet[id] === undefined) void loadSetResults(id);
