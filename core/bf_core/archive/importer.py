@@ -23,6 +23,7 @@ from bf_core.projects.lock import ProjectLock
 from bf_core.projects.project import DB_FILE, SUFFIX, folder_name, make_dirs, read_manifest, write_manifest
 from bf_core.storage.blobs import BlobStore, valid_sha
 
+from .chart_remap import remap_charts
 from .container import ArchiveError, Corrupted, TooNew, open_archive, read_header, read_json
 from .rows import decode_row, read_lines
 from .spec import APP, ID_COLUMNS, KIND_COLUMNS, RETURNED_MAPS, TABLES
@@ -264,6 +265,7 @@ def _restore(
     remap_views(conn, maps.get("objects", {}))
     remap_built_records(conn, maps.get("objects", {}))  # `meta.built` of wireframes and line layers
     remap_clouds(conn, maps.get("objects", {}))
+    remap_charts(conn, maps.get("objects", {}))  # ids inside the settings of charts (ADR 0019 §2)
     # files: into place and registered (owners came with blob_owners)
     now = dialect.utcnow()
     for sha, tmp in staged.items():
