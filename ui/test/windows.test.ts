@@ -70,9 +70,18 @@ describe("place and size of floating windows are remembered (ADR 0019 decision 9
   it("a new window opens where the last of its kind was left, inside the app window; next ones are shifted", () => {
     expect(initialRect("chart-histogram", "normal", [], 1280, 800, rect)).toEqual(rect);
     expect(initialRect("chart-histogram", "normal", [{ kind: "chart-histogram" }, { kind: "qq" }], 1280, 800, rect)).toEqual({ ...rect, x: 124, y: 104 });
-    // remembered on a larger screen: the title bar stays reachable, the size fits the viewport
-    expect(initialRect("chart-histogram", "normal", [], 1024, 640, { x: 1500, y: 900, w: 1400, h: 900 })).toEqual({ x: 964, y: 610, w: 1024, h: 640 });
+    // remembered on a larger screen: the whole window in the viewport (its bottom and the grip too), the size fits it
+    expect(initialRect("chart-histogram", "normal", [], 1024, 640, { x: 1500, y: 900, w: 1400, h: 900 })).toEqual({ x: 0, y: 0, w: 1024, h: 640 });
+    expect(initialRect("chart-histogram", "normal", [], 1024, 640, { x: 700, y: 500, w: 600, h: 400 })).toEqual({ x: 424, y: 240, w: 600, h: 400 });
     expect(initialRect("chart-histogram", "normal", [], 1280, 800)).toEqual({ x: 210, y: 100, w: 860, h: 600 }); // never left — centered
+    // «normal» 860 × 600 on 1024 × 640: below the ribbon and lower, the bottom on the screen
+    expect(initialRect("chart-histogram", "normal", [], 1024, 640)).toEqual({ x: 82, y: 60, w: 860, h: 580 });
+    const next = initialRect("chart-histogram", "normal", [{ kind: "qq" }], 1024, 640);
+    expect(next.y + next.h).toBeLessThanOrEqual(640);
+    expect(next.x + next.w).toBeLessThanOrEqual(1024);
+    // a screen smaller than the window: as wide as the screen, below the ribbon to its bottom
+    expect(initialRect("x", "normal", [], 600, 400)).toEqual({ x: 0, y: 60, w: 600, h: 340 });
+    expect(initialRect("x", "normal", [], 600, 250)).toEqual({ x: 0, y: 10, w: 600, h: 240 });
   });
 
   it("the window layer keeps the memory in the workspace of the user's settings", () => {
