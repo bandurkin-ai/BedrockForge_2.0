@@ -3,6 +3,7 @@
  * four sources, the inputs of the chosen one with the ranges of 8.5.4 (a value out of range is marked and never
  * sent), «Если не найдена — глобальная α, Aп». The lists (tables of the set with events, their fields, wireframes)
  * are read from the core; the newest read only is applied. `optional` — the block can be switched off (TT empty).
+ * «Взять с каркаса» (desired, last) fills α and Aп of the global source from the mean plane of wireframes.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { errorText, toggleId } from "../../shell/props";
@@ -12,6 +13,7 @@ import { rangeText, type ParamSpec } from "../composites/params";
 import { loadCodes, loadOrientTables } from "./api";
 import { DomainGrid } from "./DomainGrid";
 import own from "./Intercepts.module.css";
+import { PlanePicker } from "./PlanePicker";
 import { ALPHA, D_CORE, D_MAX, DIPDIR, ORIENT_SOURCES, R_N, SOURCE_TITLES, type OrientationState } from "./params";
 
 function useRead<T>(load: (() => Promise<T>) | null, deps: unknown[], fail: (e: unknown) => void): T | null {
@@ -150,6 +152,7 @@ export function OrientationForm({ setId, table, fields, value, errors, onChange,
             <>
               <NumberRow p={ALPHA} value={s.alpha} error={errors.alpha} onChange={(v) => set({ alpha: v })} />
               <NumberRow p={DIPDIR} value={s.dipdir} error={errors.dipdir} onChange={(v) => set({ dipdir: v })} />
+              <PlanePicker onPlane={(alpha, dipdir) => set({ alpha, dipdir })} />
             </>
           )}
           {s.source === "domain" && (
