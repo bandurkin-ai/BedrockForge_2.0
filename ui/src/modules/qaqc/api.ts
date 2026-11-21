@@ -147,6 +147,8 @@ export interface StandardSeries {
   ma: (number | null)[];
   /** the CRM it may be (up to three), or null */
   swap: (string | string[] | null)[];
+  /** the position (1…) of the point in the whole series, when the core gives it (a thinned series) */
+  pos?: (number | null)[];
 }
 
 export interface StandardsAnswer extends CalcHead {
@@ -173,7 +175,7 @@ export interface BlankGroup {
 export interface BlanksAnswer extends CalcHead {
   groups: BlankGroup[];
   /** with `group`: `limit[i]` — k_б·DL of the sample (null — no DL); null — the lab is gone under the filter */
-  series?: { row: number[]; date: DateValue[]; seq: (number | null)[]; batch: (string | null)[]; x: number[]; status: number[]; prev: (number | null)[]; limit?: (number | null)[] } | null;
+  series?: { row: number[]; date: DateValue[]; seq: (number | null)[]; batch: (string | null)[]; x: number[]; status: number[]; prev: (number | null)[]; limit?: (number | null)[]; pos?: (number | null)[] } | null;
   carryover?: { n: number; pearson: number | null };
   thinned?: Thinned;
 }

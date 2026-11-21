@@ -12,7 +12,7 @@ import { createRoot } from "react-dom/client";
 import { BlankChart } from "../../charts/qaqc/BlankChart";
 import { blankModel } from "../../charts/qaqc/blankModel";
 import { ControlChart } from "../../charts/qaqc/ControlChart";
-import { controlModel } from "../../charts/qaqc/controlModel";
+import { controlModel, orderTitle } from "../../charts/qaqc/controlModel";
 import { PairScatter } from "../../charts/qaqc/PairScatter";
 import { pairModel, rankedModel, thModel } from "../../charts/qaqc/pairModel";
 import { RankedHardChart } from "../../charts/qaqc/RankedHardChart";
@@ -56,7 +56,7 @@ export function chartElement(chart: ReportChart, answer: unknown, ref?: Ref<SVGS
     const dated = controlModel(a.series, group, a.limits.sigma_warn, a.limits.sigma_fail, "date");
     const model = dated.n > 0 && dated.noDate === 0 ? dated : controlModel(a.series, group, a.limits.sigma_warn, a.limits.sigma_fail, "order");
     if (!model.n) return null;
-    return createElement(ControlChart, { ref, model, series: a.series, label, yTitle: `${a.element}${unitOf(a)}`, batch: null, picked: null });
+    return createElement(ControlChart, { ref, model, series: a.series, label, yTitle: `${a.element}${unitOf(a)}`, batch: null, picked: null, orderTitle: orderTitle(a.thinned) });
   }
   if (chart.section === "blanks") {
     const a = answer as BlanksAnswer;
@@ -65,7 +65,7 @@ export function chartElement(chart: ReportChart, answer: unknown, ref?: Ref<SVGS
     const dated = blankModel(a.series, group, a.limits.k_blank, "date");
     const model = dated.n > 0 && dated.noDate === 0 ? dated : blankModel(a.series, group, a.limits.k_blank, "order");
     if (!model.n) return null;
-    return createElement(BlankChart, { ref, model, series: a.series, label, yTitle: `${a.element}${unitOf(a)}`, batch: null, picked: null });
+    return createElement(BlankChart, { ref, model, series: a.series, label, yTitle: `${a.element}${unitOf(a)}`, batch: null, picked: null, orderTitle: orderTitle(a.thinned, "бланка") });
   }
   if (chart.section === "duplicates") {
     const a = answer as DuplicatesAnswer;
@@ -83,7 +83,8 @@ export function chartElement(chart: ReportChart, answer: unknown, ref?: Ref<SVGS
     const a = answer as ExternalAnswer;
     const group = a.groups?.find((g) => same(chart.group, { lab_main: g.lab_main, lab_check: g.lab_check }));
     if (!a.points || !group) return null;
-    const limit = a.limits.hard_ump;
+    // the threshold of the answer, else that of the setup (as the tab: `ExternalTab.externalLimits`)
+    const limit = (a as { hard_limit?: number | null }).hard_limit ?? a.limits.hard_ump;
     const model = pairModel(a.points, limit, group.rma);
     const u = unitOf(a);
     return model.n ? createElement(PairScatter, { ref, model, points: a.points, label, xTitle: `${labTitle(group.lab_main)}${u}`, yTitle: `${labTitle(group.lab_check)}${u}`, limit, pearson: group.pearson, rma: group.rma, picked: null }) : null;
@@ -124,11 +125,22 @@ export async function elementPng(make: (ref: Ref<SVGSVGElement>) => ReactElement
 }
 
 /**
- * The drawer of the charts of one report: a calculation is asked once for the views that share it; null — the
- * chart has nothing to draw (it is counted as left out).
+ * The drawer of the charts of one report: a calculation is asked once for the views that share it and forgotten
+ * when the last chart of `todo` that needs it is drawn (the answers of every group are not held to the end of a
+ * report); null — the chart has nothing to draw (it is counted as left out).
  */
-export function reportDrawer(reportId: number, toPng: typeof elementPng = elementPng): (chart: ReportChart) => Promise<Uint8Array | null> {
+export function reportDrawer(reportId: number, todo: readonly ReportChart[] = [], toPng: typeof elementPng = elementPng): (chart: ReportChart) => Promise<Uint8Array | null> {
   const answers = new Map<string, Promise<unknown>>();
+  const left = new Map<string, number>();
+  for (const c of todo) left.set(chartCalcKey(c), (left.get(chartCalcKey(c)) ?? 0) + 1);
+  const done = (key: string) => {
+    const n = (left.get(key) ?? 1) - 1;
+    if (n > 0) left.set(key, n);
+    else {
+      left.delete(key);
+      answers.delete(key);
+    }
+  };
   return async (chart) => {
     if (!SECTIONS.includes(chart.section as CalcSection)) return null;
     const key = chartCalcKey(chart);
@@ -138,8 +150,12 @@ export function reportDrawer(reportId: number, toPng: typeof elementPng = elemen
       answers.set(key, answer);
       answer.catch(() => answers.delete(key));
     }
-    const a = await answer;
-    if (!chartElement(chart, a)) return null;
-    return toPng((ref) => chartElement(chart, a, ref)!);
+    try {
+      const a = await answer;
+      if (!chartElement(chart, a)) return null;
+      return await toPng((ref) => chartElement(chart, a, ref)!);
+    } finally {
+      done(key);
+    }
   };
 }

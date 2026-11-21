@@ -7,7 +7,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BlankChart, CarryChart, legendStatuses } from "../src/charts/qaqc/BlankChart";
-import { BLANK_CSV_HEADER, BLANK_STATUS_COLORS, blankBatchPoints, blankCsv, blankFacts, blankModel, blankStatus, blankStatusTitle, carryCsv, carryModel, carryTitle, type BlankSeries } from "../src/charts/qaqc/blankModel";
+import { BLANK_CSV_HEADER, BLANK_STATUS_COLORS, blankBatchPoints, blankCsv, blankFacts, blankModel, blankStatus, blankStatusTitle, carryCsv, carryModel, carryTitle, ownLimits, type BlankSeries } from "../src/charts/qaqc/blankModel";
+import { orderTitle } from "../src/charts/qaqc/controlModel";
 import type { BatchRow, BlankGroup, BlanksAnswer, QaqcData } from "../src/modules/qaqc/api";
 import { BATCH_PAGE, BatchPager, batchDates, batchesSummary, batchFilterArgs, batchReasons, batchStatusTitle, BatchWindow, OVERSCAN, pagesOf, ROW_H, rowWindow } from "../src/modules/qaqc/BatchesTab";
 import { chooseLab, limitNote, loadBlanks } from "../src/modules/qaqc/BlanksTab";
@@ -71,7 +72,7 @@ describe("Т8.4-2: blanks against k_б·DL", () => {
     expect(html).not.toContain("предупреждение:");
     expect(legendStatuses([1, 2, 0, 0])).toEqual([0, 1, 2, 3]);
     const fills = [...html.matchAll(/<circle[^>]*fill="(#[0-9a-f]{6})"[^>]*data-status="(\d)"/g)].map((r) => [r[1], Number(r[2])]);
-    expect(fills).toEqual([[STATUS_COLORS[0], 0], [STATUS_COLORS[0], 0], [STATUS_COLORS[2], 2], [BRAND.slate, 3]]);
+    expect(fills).toEqual([[STATUS_COLORS[0], 0], [STATUS_COLORS[0], 0], [BRAND.slate, 3], [STATUS_COLORS[2], 2]]); // failures drawn last
   });
 
   it("by date: a blank without a date is counted, not drawn; the batch shown is ringed; the card", () => {
@@ -95,6 +96,36 @@ describe("Т8.4-2: blanks against k_б·DL", () => {
     expect(lines).toHaveLength(6);
     expect(lines[2].split(";")[6]).toBe("");
     expect(lines[5].split(";")[4]).toBe("");
+  });
+});
+
+describe("a laboratory with different DL (`mixed`): the threshold of each blank", () => {
+  const MIXED: BlankSeries = { ...T84_2, limit: [0.05, 0.05, 0.1, null, null] };
+  const LABM: BlankGroup = { ...LAB, dl: null, limit: null, mixed: true };
+  it("a dash at each own threshold, the column `limit` in the CSV, the DL of the sample = limit / k_б", () => {
+    const m = blankModel(MIXED, LABM, 5, "order");
+    expect(m.lines).toEqual([]);
+    expect(Array.from(ownLimits(m, MIXED)!)).toEqual([0.05, 0.05, 0.1, Number.NaN]);
+    expect(ownLimits(m, T84_2)).toBeNull();
+    const html = renderToStaticMarkup(createElement(BlankChart, { model: m, series: MIXED, label: "Бланки", yTitle: "AU", batch: null, picked: null }));
+    expect(html.match(/data-own-limit=/g)).toHaveLength(3);
+    const csv = blankCsv(MIXED).trim().split(/\r?\n/);
+    expect(csv[0].endsWith(csvCell("limit"))).toBe(true);
+    expect(csv[3].split(";")[7]).toBe("0.1");
+    const facts = new Map(blankFacts(MIXED, 2, "ppm", LABM, 5));
+    expect(facts.get("Порог k_б·DL")).toBe("0,1 ppm");
+    expect(facts.get("DL")).toBe("0,02 ppm");
+    expect(new Map(blankFacts(MIXED, 3, "ppm", LABM, 5)).get("DL")).toBe("—");
+  });
+
+  it("the axis «по порядку»: the position of the core when it is given; a thinned series is titled so", () => {
+    const m = blankModel({ ...T84_2, pos: [1, 40, 41, 90, 91] }, LAB, 5, "order");
+    expect(Array.from(m.xs)).toEqual([1, 40, 41, 90]);
+    expect(orderTitle(null, "бланка")).toBe("Номер бланка в ряду");
+    expect(orderTitle({ shown: 10, total: 10 })).toBe("Номер пробы в ряду");
+    expect(orderTitle({ shown: 10, total: 900 })).toBe("Номер в показанной выборке");
+    const html = renderToStaticMarkup(createElement(BlankChart, { model: m, series: T84_2, label: "Бланки", yTitle: "AU", batch: null, picked: null, orderTitle: orderTitle({ shown: 4, total: 9 }) }));
+    expect(html).toContain("Номер в показанной выборке");
   });
 });
 

@@ -8,13 +8,13 @@
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ControlChart } from "../../charts/qaqc/ControlChart";
-import { controlCsv, controlModel, pointFacts, type ControlAxis } from "../../charts/qaqc/controlModel";
+import { controlCsv, controlModel, orderTitle, pointFacts, type ControlAxis } from "../../charts/qaqc/controlModel";
 import { ChartToolbar } from "../../charts/core/ChartToolbar";
 import { inlineRasters } from "../../charts/core/PointsCanvas";
 import { errorText } from "../../shell/props";
 import { Store } from "../../shell/store";
 import { calc, type CalcBody, type StandardGroup, type StandardsAnswer } from "./api";
-import { biasTitle, int, labTitle, num, pct, stateTitle } from "./format";
+import { biasTitle, int, labTitle, num, onActivateKey, pct, stateTitle } from "./format";
 import { SampleCard } from "./SampleCard";
 import { calcBody, calcKey, DROPPED, latest, pickSample, qaqcStore, reportCounts } from "./state";
 import css from "./Qaqc.module.css";
@@ -82,7 +82,7 @@ function GroupsTable({ groups, chosen, onChoose }: { groups: readonly StandardGr
         {groups.map((g) => {
           const why = stateTitle(g.state === "ok" ? null : g.state);
           return (
-            <tr key={`${g.crm}|${g.lab ?? ""}`} className={sameGroup(chosen, g) ? css.chosen : undefined} title={why ? `Без оценки: ${why}` : undefined} onClick={() => onChoose(refOf(g))}>
+            <tr key={`${g.crm}|${g.lab ?? ""}`} className={sameGroup(chosen, g) ? css.chosen : undefined} title={why ? `Без оценки: ${why}` : undefined} tabIndex={0} aria-selected={sameGroup(chosen, g)} onClick={() => onChoose(refOf(g))} onKeyDown={onActivateKey(() => onChoose(refOf(g)))}>
               <th>{g.crm}</th>
               <td style={{ textAlign: "left" }}>{labTitle(g.lab)}</td>
               <td>{int(g.n)}</td>
@@ -198,6 +198,7 @@ export function StandardsTab() {
         {group && group.state !== "ok" && <p className={css.note}>Группа без оценки: {stateTitle(group.state)}. Значения показаны без линий μ и σ.</p>}
         {model && series ? (
           <ControlChart
+            orderTitle={orderTitle(answer?.thinned)}
             ref={svgRef}
             model={model}
             series={series}

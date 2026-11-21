@@ -17,7 +17,7 @@ import { rgba32 } from "../core/palette";
 import { plotBox, PlotFrame } from "../core/PlotFrame";
 import { axisMap, RASTER_FROM, rasterPoints, RasterLayer } from "../core/PointsCanvas";
 import css from "../core/Chart.module.css";
-import { batchPoints, dateTicks, maPath, markedPoints, nearestPoint, pointLabel, statusPixels, type ControlLine, type ControlModel } from "./controlModel";
+import { batchPoints, dateTicks, maPath, markedPoints, nearestPoint, paintOrder, pointLabel, statusPixels, type ControlLine, type ControlModel } from "./controlModel";
 
 export const CONTROL_W = 900;
 export const CONTROL_H = 380;
@@ -45,15 +45,18 @@ export interface ControlChartProps {
   /** the index in the series of the point picked */
   picked: number | null;
   onPick?: (seriesIndex: number | null) => void;
+  /** the title of the axis «по порядку» (`orderTitle`: a thinned series is numbered in the sample shown) */
+  orderTitle?: string;
 }
 
-export const ControlChart = forwardRef<SVGSVGElement, ControlChartProps>(function ControlChart({ model, series, label, yTitle, batch, picked, onPick }, ref) {
+export const ControlChart = forwardRef<SVGSVGElement, ControlChartProps>(function ControlChart({ model, series, label, yTitle, batch, picked, onPick, orderTitle = "Номер пробы в ряду" }, ref) {
   const sx = useMemo(() => makeScale("linear", model.xDomain, BOX.x0, BOX.x1), [model]);
   const sy = useMemo(() => makeScale("linear", model.yDomain, BOX.y1, BOX.y0), [model]);
   const raster = model.n > RASTER_FROM;
   const pixels = useMemo(() => (raster ? statusPixels(model) : null), [model, raster]);
   const inBatch = useMemo(() => batchPoints(model, series, batch), [model, series, batch]);
   const marks = useMemo(() => markedPoints(model, series), [model, series]);
+  const order = useMemo(() => paintOrder(model.status), [model]);
   const ma = useMemo(() => maPath(model, sx, sy), [model, sx, sy]);
   const rasterKey = useMemo(() => ({}), [model, pixels, inBatch, sx, sy]); // eslint-disable-line react-hooks/exhaustive-deps
   const px = (j: number) => sx.map(model.xs[j]) ?? BOX.x0;
@@ -69,7 +72,7 @@ export const ControlChart = forwardRef<SVGSVGElement, ControlChartProps>(functio
   const pickedJ = picked === null ? -1 : model.idx.indexOf(picked);
   const batchSet = raster ? null : new Set(inBatch);
   return (
-    <PlotFrame ref={ref} box={BOX} label={label} xTitle={model.axis === "date" ? "Дата" : "Номер пробы в ряду"} yTitle={yTitle}>
+    <PlotFrame ref={ref} box={BOX} label={label} xTitle={model.axis === "date" ? "Дата" : orderTitle} yTitle={yTitle}>
       <YAxis scale={sy} box={BOX} count={6} />
       <XAxis scale={sx} box={BOX} count={8} ticks={model.axis === "date" ? dateTicks(model.xDomain) : undefined} />
       {model.lines.map((l) => {
@@ -94,14 +97,14 @@ export const ControlChart = forwardRef<SVGSVGElement, ControlChartProps>(functio
             draw={(buf, w, h) => {
               const mx = axisMap(sx, BOX.x0);
               const my = axisMap(sy, BOX.y0);
-              rasterPoints(buf, w, h, model.xs, model.ys, mx, my, pixels ?? 0, 4);
+              rasterPoints(buf, w, h, model.xs, model.ys, mx, my, pixels ?? 0, 4, order);
               if (inBatch.length) rasterPoints(buf, w, h, model.xs, model.ys, mx, my, BATCH, 7, inBatch);
             }}
           />
         </g>
       ) : (
         <g data-points={model.n} data-batch={inBatch.length || undefined}>
-          {Array.from({ length: model.n }, (_, j) => {
+          {Array.from(order, (j) => {
             const i = model.idx[j];
             const on = batchSet?.has(j);
             return (

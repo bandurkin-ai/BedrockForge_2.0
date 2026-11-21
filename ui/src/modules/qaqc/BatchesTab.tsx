@@ -7,7 +7,7 @@
  * {offset, limit}` (200 rows, the core allows ≤ 5000) are asked — 20 thousand batches are never asked at once.
  * A click on a batch (or Enter) shows it on the charts and sets the filter to it (`qaqc.filter`).
  */
-import { useEffect, useReducer, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactElement } from "react";
 import { useApp } from "../../shell/AppContext";
 import { errorText } from "../../shell/props";
 import { calc, type BatchesAnswer, type BatchRow, type CalcBody } from "./api";
@@ -246,12 +246,18 @@ export function BatchesTab() {
     setSight((v) => ({ ...v, top: 0 }));
     return () => next?.dispose();
   }, [key]);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => setSight((v) => (v.height === el.clientHeight ? v : { ...v, height: el.clientHeight })));
-    ro.observe(el);
-    return () => ro.disconnect();
+  // the box of the rows appears with the first answer: its size is followed from the moment it is mounted
+  const observer = useRef<ResizeObserver | null>(null);
+  const scrollBox = useCallback((el: HTMLDivElement | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    scrollRef.current = el;
+    if (!el) return;
+    const fit = () => setSight((v) => (!el.clientHeight || v.height === el.clientHeight ? v : { ...v, height: el.clientHeight }));
+    fit();
+    if (typeof ResizeObserver === "undefined") return;
+    observer.current = new ResizeObserver(fit);
+    observer.current.observe(el);
   }, []);
   const total = pager?.head?.total ?? 0;
   const win = rowWindow(sight.top - ROW_H, sight.height, pager?.head ? total : BATCH_PAGE);
@@ -296,7 +302,7 @@ export function BatchesTab() {
       {total === 0 ? (
         <p className={css.note}>Партий с этим фильтром нет.</p>
       ) : (
-        <div ref={scrollRef} className={css.bscroll} role="table" aria-label="Партии" aria-rowcount={total + 1} onScroll={(e) => setSight({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight || sight.height })}>
+        <div ref={scrollBox} className={css.bscroll} role="table" aria-label="Партии" aria-rowcount={total + 1} onScroll={(e) => setSight({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight || sight.height })}>
           <div className={`${css.bgrid} ${css.bhead}`} role="row" aria-rowindex={1}>
             {COLUMNS.map((c) => (
               <span key={c} role="columnheader">

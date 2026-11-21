@@ -67,7 +67,7 @@ describe("the 15 commands of Э14 (ADR 0020 §9)", () => {
     expect(validateArgs(open, { section: "pdf" })).toMatch(/допустимые значения/);
     expect(validateArgs(open, {})).toBe("Не задан параметр «section»");
     expect(Object.keys(by.get("qaqc.filter")!.params!)).toEqual(["labs", "batches", "date_from", "date_to", "crm", "types", "hole_prefix", "where", "reset"]);
-    expect(Object.keys(by.get("qaqc.config")!.params!)).toEqual(["types", "dl", "sigma_warn", "sigma_fail", "run", "k_blank", "k_dup", "th_group", "hard_p", "hard_c", "hard_f", "hard_ump", "hard_share", "n_boot", "seed"]);
+    expect(Object.keys(by.get("qaqc.config")!.params!)).toEqual(["types", "dl", "sigma_warn", "sigma_fail", "run", "k_blank", "k_dup", "th_group", "hard_p", "hard_c", "hard_f", "hard_ump", "hard_share", "n_boot", "seed", "empty_is_orig"]);
     expect(by.get("qaqc.setup")!.params?.tab.enum).toEqual(["data", "types", "crm", "dl", "limits"]);
     expect(by.get("qaqc.report")!.params?.charts.enum).toEqual(["all", "flagged", "none"]);
     expect(by.get("qaqc.report_save")!.params?.kind.enum).toEqual(["xlsx", "pdf"]);

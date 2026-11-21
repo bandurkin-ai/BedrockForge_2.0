@@ -12,7 +12,7 @@ import { dateMs, dateText, NOT_ASSESSED, num, QC_STATUS_COLORS, QC_STATUS_TITLES
 import { formatNumber, type Domain, type Scale } from "../core/axisScale";
 import { csvText, type CsvCell } from "../core/csv";
 import { rgba32 } from "../core/palette";
-import type { ControlAxis } from "./controlModel";
+import { orderOf, type ControlAxis } from "./controlModel";
 
 export type BlankSeries = NonNullable<BlanksAnswer["series"]>;
 
@@ -111,7 +111,7 @@ export function blankModel(series: BlankSeries, group: Pick<BlankGroup, "limit">
     const y = series.x[i];
     if (!finite(y)) continue;
     let x: number;
-    if (axis === "order") x = i + 1;
+    if (axis === "order") x = orderOf(series, i);
     else {
       const t = dateMs(series.date[i]);
       if (t === null) {
@@ -159,6 +159,24 @@ export function carryTitle(carry: BlanksAnswer["carryover"] | undefined, pairs: 
   return `${finite(r) ? `r = ${formatNumber(r, 3)}` : "r не определён"}, пар ${n.toLocaleString("ru-RU")}`;
 }
 
+/**
+ * The own threshold k_б·DL of each point drawn (`limit[i]` of the core; NaN — none); null when the series has no
+ * such column or none of its points has one. Drawn when the laboratory has no common line (its blanks have
+ * different DL).
+ */
+export function ownLimits(p: BlankPoints, series: BlankSeries): Float64Array | null {
+  const lim = series.limit;
+  if (!lim) return null;
+  const out = new Float64Array(p.n);
+  let any = false;
+  for (let j = 0; j < p.n; j++) {
+    const v = lim[p.idx[j]];
+    out[j] = finite(v) ? v : Number.NaN;
+    any ||= finite(v);
+  }
+  return any ? out : null;
+}
+
 /** One pixel colour per point drawn (the canvas layer). */
 export function blankPixels(p: BlankPoints): Uint32Array {
   const out = new Uint32Array(p.n);
@@ -191,12 +209,12 @@ export function nearestBlank(p: BlankPoints, sx: Scale, sy: Scale, px: number, p
   return best;
 }
 
-export const BLANK_CSV_HEADER = ["row", "date", "seq", "batch", "x", "status", "prev"] as const;
+export const BLANK_CSV_HEADER = ["row", "date", "seq", "batch", "x", "status", "prev", "limit"] as const;
 
 /** The CSV of the series: every blank as the core answered (one without a date too), in the order of the series. */
 export function blankCsv(series: BlankSeries): string {
   const rows: CsvCell[][] = [];
-  for (let i = 0; i < series.x.length; i++) rows.push([series.row[i], series.date[i], series.seq[i], series.batch[i], series.x[i], series.status[i], series.prev[i]]);
+  for (let i = 0; i < series.x.length; i++) rows.push([series.row[i], series.date[i], series.seq[i], series.batch[i], series.x[i], series.status[i], series.prev[i], series.limit?.[i] ?? null]);
   return csvText(BLANK_CSV_HEADER, rows);
 }
 
@@ -213,18 +231,20 @@ export function carryCsv(series: BlankSeries, carry: BlankPoints): string {
 }
 
 /** The facts of a blank for its card, in Russian. */
-export function blankFacts(series: BlankSeries, i: number, unit: string | null, group: Pick<BlankGroup, "dl" | "limit"> | null): [string, string][] {
+export function blankFacts(series: BlankSeries, i: number, unit: string | null, group: Pick<BlankGroup, "dl" | "limit"> | null, kBlank?: number | null): [string, string][] {
   const u = (v: number | null | undefined) => (finite(v) && unit ? ` ${unit}` : "");
   // the threshold of the sample itself (its own DL), else that of its laboratory
   const own = series.limit?.[i];
   const limit = finite(own) ? own : group?.limit;
+  // the DL of the sample itself: its threshold over k_б (a lab with different DL has no common one)
+  const dl = finite(own) && finite(kBlank) && kBlank > 0 ? own / kBlank : group?.dl;
   return [
     ["Дата", dateText(dateMs(series.date[i]))],
     ["Номер в партии (SEQ)", num(series.seq[i])],
     ["Партия", series.batch[i] ?? "—"],
     ["Значение", `${num(series.x[i], 6)}${u(series.x[i])}`],
     ["Предыдущая проба партии", `${num(series.prev[i], 6)}${u(series.prev[i])}`],
-    ["DL", `${num(group?.dl, 6)}${u(group?.dl)}`],
+    ["DL", `${num(dl, 6)}${u(dl)}`],
     ["Порог k_б·DL", `${num(limit, 6)}${u(limit)}`],
     ["Статус", blankStatusTitle(series.status[i])],
   ];

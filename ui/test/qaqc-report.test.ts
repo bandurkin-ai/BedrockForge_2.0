@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { QaqcData, QaqcReport, ReportChart, StandardsAnswer } from "../src/modules/qaqc/api";
 import { bindQaqc } from "../src/modules/qaqc/bind";
 import { chartBody, chartCalcKey, chartElement, REPORT_PNG_SCALE, reportDrawer } from "../src/modules/qaqc/reportCharts";
-import { cancelRun, DEFAULT_DEPS, PDF_REASON, rebuildReason, reportLine, reportsStore, resetReports, retrySpec, runReport, runStore, runText, staleTitle, summaryText, type RunDeps, type RunSpec } from "../src/modules/qaqc/reportRun";
+import { abandonRun, cancelRun, DEFAULT_DEPS, isRunning, PDF_REASON, rebuildReason, reportLine, reportsStore, resetReports, retrySpec, runReport, runStore, runText, staleTitle, summaryText, waitOrLost, type RunDeps, type RunSpec } from "../src/modules/qaqc/reportRun";
 import { reportActions, reportLabel } from "../src/modules/qaqc/ReportsTree";
 import { ReportTab, runShare } from "../src/modules/qaqc/ReportTab";
 import { initialQaqc, qaqcStore } from "../src/modules/qaqc/state";
@@ -17,6 +17,7 @@ import { PNG_SCALE } from "../src/charts/core/ChartToolbar";
 import { AppContext } from "../src/shell/AppContext";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp } from "../src/shell/app";
+import { Store } from "../src/shell/store";
 
 const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "Content-Type": "application/json" } });
 const LIMITS = { sigma_warn: 2, sigma_fail: 3, run: 9, k_blank: 5, k_dup: 5, th_group: 11, hard_p: 10, hard_c: 20, hard_f: 30, hard_ump: 10, hard_share: 90, n_boot: 1000, seed: 12345 };
@@ -140,6 +141,50 @@ describe("«Отменить» on each step", () => {
   });
 });
 
+describe("another project: the run is abandoned at once", () => {
+  it("a job that never ends: the run is forgotten, `isRunning` false, a new run starts", async () => {
+    const { log, deps } = stubs({ wait: (job) => (log.push(`wait ${job.id}`), new Promise(() => undefined)) });
+    const going = runReport(CREATE, deps);
+    await vi.waitFor(() => expect(log).toContain("wait 31"));
+    expect(isRunning()).toBe(true);
+    resetReports();
+    expect(runStore.get().run).toBeNull();
+    expect(isRunning()).toBe(false);
+    expect(await going).toMatchObject({ state: "cancelled", step: "calc" });
+    expect(log).toContain("cancel 31");
+    expect(runStore.get().run).toBeNull();
+    const next = await runReport({ ...CREATE, path: null }, stubs().deps);
+    expect(next.state).toBe("done");
+  });
+
+  it("an abandoned run changes nothing of the run after it", async () => {
+    const gate = deferred<Uint8Array>();
+    const { log, deps } = stubs({ drawer: () => async (c) => (log.push(`draw ${c.key}`), c.key === "img002" ? gate.promise : new Uint8Array([1])) });
+    const old = runReport(CREATE, deps);
+    await vi.waitFor(() => expect(log).toContain("draw img002"));
+    abandonRun();
+    const fresh = runReport({ ...CREATE, charts: "none", body: { ...CREATE.body, charts: "none" }, path: null }, stubs().deps);
+    gate.resolve(new Uint8Array([2]));
+    await old;
+    expect(await fresh).toMatchObject({ state: "done", total: 0 });
+    expect(runStore.get().run).toMatchObject({ state: "done", total: 0 });
+    expect(log).not.toContain("put img002");
+  });
+});
+
+describe("a job gone from the list of jobs", () => {
+  it("ends the wait as a failure; a job never seen waits", async () => {
+    const store = new Store<{ jobs: { source: string; id: number }[] }>({ jobs: [{ source: "project", id: 31 }] });
+    const never = () => new Promise<never>(() => undefined);
+    const lost = waitOrLost({ source: "project", id: 31 }, never, store as never);
+    store.set({ jobs: [] });
+    await expect(lost).rejects.toThrow("Задание №31 пропало из списка заданий.");
+    const done = waitOrLost({ source: "project", id: 32 }, async () => ({ status: "done", error: null, result: {} }), store as never);
+    store.set({ jobs: [] });
+    await expect(done).resolves.toMatchObject({ status: "done" });
+  });
+});
+
 describe("«Повторить» after a failure", () => {
   it("sends only the charts missing, then the XLSX", async () => {
     let fail = true;
@@ -188,6 +233,7 @@ describe("«устарел», «Перестроить», «PDF»", () => {
     expect(actions.find((a) => a.label === "Перестроить")?.reason).toMatch(/удалены/);
     expect(reportActions({ ...REPORT, files: [] }, () => null, () => undefined)[1].label).toBe("Сохранить XLSX… (файл будет записан)");
     expect(reportLine({ ...REPORT, stale: "config" })).toBe("Отчёт QAQC «Отчёт QAQC — Контроль» (№ 7, версия 2): готов, устарел: изменились настройка или справочник CRM; данные «Контроль», элементы AU, CU; рисунков 12, файл XLSX готов");
+    expect(summaryText({ v: 1, elements: { CU: { summary: { batches: { total: 13 } } } } })).toBe("CU: партий 13, отказ —");
     expect(summaryText({ v: 1, elements: { AU: { summary: { batches: { total: 13, failed: 2 } }, "duplicates:DUP_F": { passed: true }, "duplicates:DUP_P": { passed: null } } } })).toBe("AU: партий 13, отказ 2; DUP_F — критерий выполнен; DUP_P — критерий не оценён");
   });
 
@@ -199,6 +245,9 @@ describe("«устарел», «Перестроить», «PDF»", () => {
     expect(html).toContain('data-testid="qaqc-report-card"');
     expect(html).toContain("3d89aa");
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*title="Появится на этапе Э22"[^>]*>PDF<\/button>/);
+    // the rows from the keyboard: in the order of Tab, the chosen one marked
+    expect(html).toMatch(/<tr class="[^"]*" data-report="7" tabindex="0" aria-selected="true"/);
+    expect(html).toMatch(/<tr data-report="8" tabindex="0" aria-selected="false"/);
   });
 });
 
@@ -243,14 +292,17 @@ describe("the charts of the report: the tab's components by `report_id`, PNG × 
 
     it("one calculation for the three views of duplicates; a view with nothing to draw — null, no PNG", async () => {
       const made: string[] = [];
-      const draw = reportDrawer(7, async (make) => (made.push(renderToStaticMarkup(make(() => undefined)).slice(0, 40)), new Uint8Array([1])));
       const views = ["scatter", "ranked", "th"].map((view, i) => ({ key: `img00${i + 1}`, section: "duplicates", element: "AU", kind: "DUP_F", view, title: `Дубликаты DUP_F — ${view}, AU` }));
+      const draw = reportDrawer(7, views, async (make) => (made.push(renderToStaticMarkup(make(() => undefined)).slice(0, 40)), new Uint8Array([1])));
       const out = await Promise.all(views.map(draw));
       expect(bodies).toEqual([{ report_id: 7, element: "AU", kind: "DUP_F" }]);
       expect(out.map((p) => p !== null)).toEqual([true, true, false]);
       expect(made).toHaveLength(2);
       expect(chartCalcKey(views[0])).toBe(chartCalcKey(views[1]));
       expect(await draw({ key: "img009", section: "batches", element: "AU", title: "?" })).toBeNull();
+      // the three views drawn: the answer is forgotten — one more chart of the key asks again
+      await draw({ ...views[0], key: "img010" });
+      expect(bodies).toHaveLength(2);
     });
   });
 });

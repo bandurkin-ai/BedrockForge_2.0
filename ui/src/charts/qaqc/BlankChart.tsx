@@ -15,8 +15,8 @@ import { rgba32 } from "../core/palette";
 import { plotBox, PlotFrame, type PlotBox } from "../core/PlotFrame";
 import { axisMap, RASTER_FROM, rasterPoints, RasterLayer } from "../core/PointsCanvas";
 import css from "../core/Chart.module.css";
-import { BLANK_STATUS_COLORS, BLANK_STATUS_TITLES, blankBatchPoints, blankPixels, nearestBlank, type BlankLine, type BlankModel, type BlankPoints, type BlankSeries } from "./blankModel";
-import { dateTicks } from "./controlModel";
+import { BLANK_STATUS_COLORS, BLANK_STATUS_TITLES, blankBatchPoints, blankPixels, nearestBlank, ownLimits, type BlankLine, type BlankModel, type BlankPoints, type BlankSeries } from "./blankModel";
+import { dateTicks, paintOrder } from "./controlModel";
 
 export const BLANK_W = 900;
 export const BLANK_H = 340;
@@ -45,10 +45,13 @@ interface LayerProps {
   title: (i: number, j: number) => string;
   /** the width of an entry of the legend */
   step?: number;
+  /** the own threshold k_б·DL of each point drawn (the blanks of a lab with different DL): a dash at each point */
+  own?: Float64Array | null;
 }
 
 /** The line of the threshold, the points (SVG or canvas), the batch shown, the point picked and the legend. */
-function Layer({ box, width, height, points, series, sx, sy, lines, batch, picked, onPick, title, step = 140 }: LayerProps) {
+function Layer({ box, width, height, points, series, sx, sy, lines, batch, picked, onPick, title, step = 140, own = null }: LayerProps) {
+  const order = useMemo(() => paintOrder(points.status), [points]);
   const raster = points.n > RASTER_FROM;
   const pixels = useMemo(() => (raster ? blankPixels(points) : null), [points, raster]);
   const inBatch = useMemo(() => blankBatchPoints(points, series, batch), [points, series, batch]);
@@ -88,14 +91,14 @@ function Layer({ box, width, height, points, series, sx, sy, lines, batch, picke
             draw={(buf, w, h) => {
               const mx = axisMap(sx, box.x0);
               const my = axisMap(sy, box.y0);
-              rasterPoints(buf, w, h, points.xs, points.ys, mx, my, pixels ?? 0, 4);
+              rasterPoints(buf, w, h, points.xs, points.ys, mx, my, pixels ?? 0, 4, order);
               if (inBatch.length) rasterPoints(buf, w, h, points.xs, points.ys, mx, my, BATCH, 7, inBatch);
             }}
           />
         </g>
       ) : (
         <g data-points={points.n} data-batch={inBatch.length || undefined}>
-          {Array.from({ length: points.n }, (_, j) => {
+          {Array.from(order, (j) => {
             const i = points.idx[j];
             const on = batchSet?.has(j);
             return (
@@ -103,6 +106,14 @@ function Layer({ box, width, height, points, series, sx, sy, lines, batch, picke
                 <title>{title(i, j)}</title>
               </circle>
             );
+          })}
+        </g>
+      )}
+      {own && (
+        <g data-own-limits={own.length} pointerEvents="none">
+          {Array.from({ length: Math.min(points.n, 5000) }, (_, j) => {
+            const y = Number.isFinite(own[j]) ? sy.map(own[j]) : null;
+            return y === null ? null : <line key={j} data-own-limit={own[j]} x1={px(j) - 5} x2={px(j) + 5} y1={y} y2={y} stroke={BLANK_STATUS_COLORS[2]} strokeWidth={1.2} />;
           })}
         </g>
       )}
@@ -134,14 +145,15 @@ interface ChartProps<M extends BlankPoints> {
 
 const tip = (series: BlankSeries, i: number, y: number, status: string) => `${series.batch[i] ?? "без партии"} · ${y} · ${status}`;
 
-export const BlankChart = forwardRef<SVGSVGElement, ChartProps<BlankModel>>(function BlankChart({ model, series, label, yTitle, batch, picked, onPick }, ref) {
+export const BlankChart = forwardRef<SVGSVGElement, ChartProps<BlankModel> & { orderTitle?: string }>(function BlankChart({ model, series, label, yTitle, batch, picked, onPick, orderTitle = "Номер бланка в ряду" }, ref) {
+  const own = useMemo(() => (model.lines.length ? null : ownLimits(model, series)), [model, series]);
   const sx = useMemo(() => makeScale("linear", model.xDomain, BLANK_BOX.x0, BLANK_BOX.x1), [model]);
   const sy = useMemo(() => makeScale("linear", model.yDomain, BLANK_BOX.y1, BLANK_BOX.y0), [model]);
   return (
-    <PlotFrame ref={ref} box={BLANK_BOX} label={label} xTitle={model.axis === "date" ? "Дата" : "Номер бланка в ряду"} yTitle={yTitle}>
+    <PlotFrame ref={ref} box={BLANK_BOX} label={label} xTitle={model.axis === "date" ? "Дата" : orderTitle} yTitle={yTitle}>
       <YAxis scale={sy} box={BLANK_BOX} count={6} />
       <XAxis scale={sx} box={BLANK_BOX} count={8} ticks={model.axis === "date" ? dateTicks(model.xDomain) : undefined} />
-      <Layer box={BLANK_BOX} width={BLANK_W} height={BLANK_H} points={model} series={series} sx={sx} sy={sy} lines={model.lines} batch={batch} picked={picked} onPick={onPick} title={(i, j) => tip(series, i, model.ys[j], BLANK_STATUS_TITLES[model.status[j]])} />
+      <Layer box={BLANK_BOX} width={BLANK_W} height={BLANK_H} points={model} series={series} sx={sx} sy={sy} lines={model.lines} batch={batch} picked={picked} onPick={onPick} own={own} title={(i, j) => tip(series, i, model.ys[j], BLANK_STATUS_TITLES[model.status[j]])} />
     </PlotFrame>
   );
 });

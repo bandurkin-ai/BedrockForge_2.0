@@ -19,6 +19,23 @@ export function fieldText(v: unknown): string {
   return typeof v === "string" ? v : JSON.stringify(v);
 }
 
+/** The Russian titles of the service fields of a record (`POST /qaqc/records`). */
+export const FIELD_TITLES: Record<string, string> = {
+  sample_id: "Проба",
+  parent_id: "Исходная проба",
+  hole: "Скважина",
+  type_code: "Код типа",
+  type: "Тип",
+  crm_id: "CRM",
+  lab: "Лаборатория",
+  batch: "Партия",
+  parent_lab: "Лаборатория исходной",
+  date: "Дата",
+  seq: "Номер в партии",
+  row: "Строка файла",
+};
+export const SAMPLE_TITLE = FIELD_TITLES.sample_id;
+
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** A value of an element of the record (`values[E]`: v, q — 1 «<DL» (v = DL/2), 2 «>x»). */
@@ -52,7 +69,9 @@ export function recordFacts(rec: QaqcRecord): [string, string][] {
       for (const [name, x] of Object.entries(v)) out.push([name, fieldText(x)]);
       continue;
     }
-    out.push([k.replace(/^x:/, ""), k === "date" && typeof v === "number" ? dateText(v) : fieldText(v)]);
+    // the row of the file is counted from 0 by the core, from 1 for people
+    const text = k === "date" && typeof v === "number" ? dateText(v) : k === "row" && typeof v === "number" ? fieldText(v + 1) : fieldText(v);
+    out.push([FIELD_TITLES[k] ?? k.replace(/^x:/, ""), text]);
   }
   return out;
 }
@@ -71,7 +90,7 @@ export function SampleCard({ sample }: { sample: SamplePick }) {
     );
   }, [dataId, sample.row]);
   const fields = rec?.row === sample.row ? rec.facts : null;
-  const id = fields?.find(([k]) => k === "sample_id")?.[1];
+  const id = fields?.find(([k]) => k === SAMPLE_TITLE)?.[1];
   return (
     <section className={css.card} aria-label="Карточка пробы" data-testid="qaqc-card">
       <h4>
