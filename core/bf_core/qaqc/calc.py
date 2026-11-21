@@ -8,6 +8,7 @@ records (`qaqc.records`), the settings as `config.get_config` returns them and t
     SECTIONS {name: function}        `summary`, `standards`, `blanks`, `batches` (duplicates, external — 14.5–14.7)
     canonical(answer) -> bytes       the canonical JSON of an answer: keys sorted, numbers by `repr`, UTF-8,
                                      without `counts.rows` — for Т8.4-8 and the hashes of a report
+    columns_of(schema, element) -> [column]   what the sections of an element read (`recs.load` — one pass)
     unit_ratio(src, dst) -> (num, den) | None        ppm = г/т = g/t, ppb = мг/т = 10⁻³ ppm, % = 10⁴ ppm
 
 Every answer: {element, unit, counts {rows (records given), filtered (after the filter), control (of them — with
@@ -58,8 +59,11 @@ from .standards import NO_REFERENCE, STATES, UNIT_MISMATCH, Standards, standards
 CRM, BLANK = TYPES.index("CRM"), TYPES.index("BLANK")
 MAX_BATCH_PAGE = 5000
 _NAMED = 8  # names listed in a note
-_UNITS = {"ppm": (1, 1), "г/т": (1, 1), "g/t": (1, 1), "ppb": (1, 1000), "мг/т": (1, 1000), "mg/t": (1, 1000),
-          "%": (10_000, 1)}  # fmt: skip
+_UNITS = {
+    **dict.fromkeys(("ppm", "г/т", "g/t", "gpt", "gt", "гт"), (1, 1)),
+    **dict.fromkeys(("ppb", "мг/т", "mg/t"), (1, 1000)),
+    **dict.fromkeys(("%", "pct", "percent"), (10_000, 1)),
+}  # the names `normalize` knows and what a reference may be typed with
 
 
 def unit_ratio(src: Any, dst: Any) -> tuple[int, int] | None:
@@ -196,6 +200,15 @@ def context(recs: r.Records, config: Mapping[str, Any], crm: Sequence[Mapping[st
             "«Настройка → Типы»."
         )
     return ctx
+
+
+def columns_of(schema: r.Schema, element: str) -> list[str]:
+    """The columns of the records the sections of an element read (the filter may ask for more)."""
+    el = schema.element(element)
+    if el is None:
+        return []
+    own = [r.v(el.name), r.q(el.name), r.b(el.name)] + ([r.dl(el.name)] if el.has_dl else [])
+    return [r.TYPE_CODE, r.LAB, r.BATCH, r.CRM_ID, r.DATE, r.SEQ, *own]
 
 
 def _unmapped_codes(ctx: Context) -> list[dict[str, Any]]:

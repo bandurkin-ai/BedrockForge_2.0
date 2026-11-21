@@ -23,7 +23,7 @@ from bf_core.formats.table import Column
 from bf_core.qaqc import config as qc
 from bf_core.qaqc import normalize as nz
 from bf_core.qaqc import records as r
-from bf_core.qaqc.calc import SECTIONS, calc, canonical, context, run, unit_ratio
+from bf_core.qaqc.calc import SECTIONS, calc, canonical, columns_of, context, run, unit_ratio
 from bf_core.qaqc.filters import MAX_WHERE, TYPES, UNMAPPED, Filter, map_types, parse_filter, resolve_field, row_mask
 from bf_core.qaqc.limits import FAIL, NORM, NOT_ASSESSED, WARN, QaqcError
 from bf_core.qaqc.standards import RULE_PAIR, RULE_RUN, RULE_SWAP
@@ -136,6 +136,8 @@ def test_t841_t842_through_the_sections() -> None:
     assert sm["blanks"] == {"groups": 1, "n": 3, "missing": 0, "norm": 2, "fail": 1, "not_assessed": 0}
     for answer in (st, bl, bt, sm):
         json_ready(answer)
+    assert columns_of(recs.schema, "au") == "type_code lab batch crm_id date seq v:AU q:AU b:AU".split()
+    assert columns_of(build([]).schema, "AU")[-1] == "dl:AU" and columns_of(recs.schema, "CU") == []
     assert set(SECTIONS) >= {"summary", "standards", "blanks", "batches"}
     refused("unknown_section", "section", lambda: calc("nope", recs, cfg, ref, "AU"))
     refused("field_not_found", "element", lambda: calc("standards", recs, cfg, ref, "CU"))
@@ -216,7 +218,8 @@ def test_units_are_converted_and_another_unit_is_unit_mismatch() -> None:
     assert unit_ratio("ppb", "ppm") == (1, 1000) and unit_ratio("%", "ppm") == (10_000, 1)
     assert unit_ratio("ppm", "%") == (1, 10_000) and unit_ratio("ppb", "%") == (1, 10_000_000)
     assert unit_ratio("мг/т", "г/т") == (1, 1000) and unit_ratio("г/л", "г/л") == (1, 1) == unit_ratio("ppm", None)
-    assert unit_ratio("г/л", "ppm") is None and unit_ratio("ppm", "oz/t") is None
+    assert unit_ratio("г/л", "ppm") is None and unit_ratio("ppm", "oz/t") is None and unit_ratio("ppt", "ppm") is None
+    assert unit_ratio("pct", "gpt") == (10_000, 1) and unit_ratio("Percent", "%") == (1, 1)
     rows = [{"type": "CRM", "crm": c, "lab": "L1", "au": x} for c, x in
             (("A", 1.16), ("B", 2.5), ("C", 3000.0), ("D", 1.0), ("E", 1.0))]  # fmt: skip
     rows += [{"type": "BLANK", "lab": lab, "au": 0.06} for lab in ("L1", "L2", "L3")]
