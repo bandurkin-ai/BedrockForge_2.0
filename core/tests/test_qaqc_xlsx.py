@@ -208,5 +208,10 @@ def test_save_to_a_path_with_cyrillic_and_spaces(qc, tmp_path: Path) -> None:  #
     assert res.json() == {"path": str(dst), "size": dst.stat().st_size}
     wb = openpyxl.load_workbook(dst)
     assert wb.sheetnames == list(rx.SHEETS) and len(wb["Стандарты"]._images) == 1
+    bare = qc.post(f"{Q}/reports/{rep['id']}/save", json={"kind": "xlsx", "path": str(folder / "без расширения")})
+    assert bare.status_code == 200 and bare.json()["path"].endswith("без расширения.xlsx")
+    project = projects_of(qc.core).require_current().folder
+    inside = qc.post(f"{Q}/reports/{rep['id']}/save", json={"kind": "xlsx", "path": str(project / "cache" / "x.xlsx")})
+    assert inside.status_code == 422 and inside.json()["code"] == "bad_path"
     gone = qc.post(f"{Q}/reports/{rep['id']}/save", json={"kind": "xlsx", "path": str(tmp_path / "нет" / "x.xlsx")})
     assert gone.status_code == 404 and gone.json()["code"] == "folder_not_found"

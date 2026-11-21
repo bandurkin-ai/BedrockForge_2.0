@@ -14,8 +14,9 @@
     `report_building`.
   * `POST /reports/{id}/files {kind: "xlsx", limit?}` → 202 {report_id, job_id, source, id} of `qaqc.report_file`
     (quick); `kind: "pdf"` — 422 `not_available` («Э22»); `limit` — lines of a sheet (1000 … 1 048 575, for checks).
-    `POST /reports/{id}/save {kind, path}` → {path, size}: a copy of the built file (409 `file_not_built`; works
-    in a read-only project — it writes nothing into it).
+    `POST /reports/{id}/save {kind, path}` → {path, size}: a copy of the built file («.xlsx» added to a path
+    without an extension; 409 `file_not_built`, 422 `bad_path` — inside the project folder; works in a read-only
+    project — it writes nothing into it). A picture is a PNG ≤ 2 МБ and ≤ 8192 px a side (415 `image_size`).
 Events `objects.changed {kind: "qaqc_report", id, deleted?}`; 423 for every change of a read-only project."""
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ Sched = Annotated[Scheduler, Depends(jobs)]
 Payload = Annotated[Any, Body()]
 MAX_IMAGE = 2 * 1024 * 1024
 PNG = b"\x89PNG\r\n\x1a\n"
+MAX_PX = 8192
 
 
 def _body(raw: Any) -> dict[str, Any]:
@@ -65,10 +67,16 @@ def _submit(s: Scheduler, project: Any, report_id: int, title: str, inputs: Any 
     params: dict[str, Any] = {"report_id": report_id}
     if inputs is not None:
         params["inputs"] = inputs
-    key, job_id = s.submit(qj.REPORT, params, title=title)
-    if inputs is None:
-        with dialect.write_tx(project.engine) as conn:
-            rp.set_job(conn, report_id, job_id)
+    try:
+        key, job_id = s.submit(qj.REPORT, params, title=title)
+        if inputs is None:  # the job sets it too when it starts: a cancel before this line still finds it
+            with dialect.write_tx(project.engine) as conn:
+                rp.set_job(conn, report_id, job_id)
+    except BaseException:
+        if inputs is None:  # a new report whose job did not start: nothing is left `building`
+            with dialect.write_tx(project.engine) as conn:
+                rp.drop_building(conn, report_id)
+        raise
     return JSONResponse({"report_id": report_id, "job_id": job_id, "source": key, "id": job_id}, status_code=202)
 
 
@@ -162,6 +170,15 @@ async def put_image(svc: Svc, request: Request, report_id: int, key: str) -> dic
             raise ApiError(413, "image_too_large", "Рисунок больше 2 МБ.", "Уменьшите размер графика и повторите.")
     if not bytes(data[:8]) == PNG:
         raise ApiError(415, "not_png", "Рисунок графика должен быть PNG.", "Передайте картинку в формате PNG.")
+    from bf_core.composites.xlsx_drawing import png_size
+
+    try:
+        w, h = png_size(bytes(data[:24]))
+    except ValueError:
+        raise ApiError(415, "not_png", "Рисунок графика — повреждённый PNG.", "Нарисуйте график заново.") from None
+    if not (0 < w <= MAX_PX and 0 < h <= MAX_PX):
+        raise ApiError(415, "image_size", f"Рисунок {w} × {h} пикселей — больше {MAX_PX} по стороне.",
+                       "Уменьшите график и повторите.")  # fmt: skip
 
     def write() -> int:
         with dialect.write_tx(project.engine) as conn:
@@ -249,6 +266,12 @@ def save_file(svc: Svc, report_id: int, body: Payload) -> dict[str, Any]:
         raise ApiError(422, "bad_param", "Не выбран путь файла.", "Выберите, куда сохранить отчёт.",
                        extra={"param": "path"})  # fmt: skip
     dst = Path(target)
+    if not dst.suffix:
+        dst = dst.with_suffix(".xlsx")
+    inside = dst.resolve().is_relative_to(Path(project.folder).resolve())
+    if inside:
+        raise ApiError(422, "bad_path", "Нельзя сохранить файл внутрь папки проекта.",
+                       "Выберите другую папку, например «Документы».", extra={"param": "path"})  # fmt: skip
     if not dst.parent.is_dir():
         raise ApiError(404, "folder_not_found", f"Папка «{dst.parent}» не найдена.", "Выберите другую папку.",
                        extra={"param": "path"})  # fmt: skip
