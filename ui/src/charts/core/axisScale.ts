@@ -34,8 +34,8 @@ export function formatNumber(value: number | null | undefined, digits = 3): stri
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   if (value === 0) return "0";
   const abs = Math.abs(value);
-  if (abs >= 1e6 || abs < 1e-3) return value.toExponential(Math.max(0, digits - 2)).replace("e+", "e");
-  return String(Number(value.toPrecision(digits)));
+  const text = abs >= 1e6 || abs < 1e-3 ? value.toExponential(Math.max(0, digits - 2)).replace("e+", "e") : String(Number(value.toPrecision(digits)));
+  return text.replace(".", ","); // a decimal comma, as everywhere in Russian (the window and the assistant's text)
 }
 
 /** A form field: empty or not a number gives null (the core then uses its default); a decimal comma is accepted. */

@@ -247,7 +247,7 @@ describe("the commands and the tree", () => {
     expect(windowStore.get().windows).toHaveLength(1);
     expect(windowStore.get().windows[0]).toMatchObject({ kind: "chart-histogram", title: "Гистограмма · AU · по длине · Набор", props: { chartId: 12, settings: { field: "AU", table: "пробы" } } });
     const a = await app.registry.execute("chart.open", { chart_id: 12 }, "claude");
-    expect(a.result).toBe("«Гистограмма · AU · по длине» (график №12): проб 3, среднее 1.5, медиана 1, CV 0.4 (с весом)");
+    expect(a.result).toBe("«Гистограмма · AU · по длине» (график №12): проб 3, среднее 1,5, медиана 1, CV 0,4 (с весом)");
     expect((await app.registry.execute("chart.open", { chart_id: 14 })).result).toMatch(/не график набора/);
     expect((await app.registry.execute("chart.open", { chart_id: 77 })).result).toMatch(/График №77 не найден/);
   });

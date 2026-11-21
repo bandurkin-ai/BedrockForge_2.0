@@ -101,7 +101,7 @@ describe("box plots", () => {
     expect(boxHeader(BOX)).toEqual(["Домен", "n", "Среднее", "Среднее геом.", "Q1", "Медиана", "Q3", "Ус нижний", "Ус верхний", "Мин", "Макс", "Выбросов"]);
     expect(boxTable(BOX)[2]).toEqual(["без домена", "5", "—", "—", "2", "3", "4", "1", "8", "1", "20", "0"]);
     expect(boxCsv(BOX).split("\r\n")[3]).toBe('"без домена";5;;;2;3;4;1;8;1;20;0');
-    expect(boxSummary("Я", lin)).toBe("Я: OX: n 5, среднее 12, медиана 10; SU: n 5, среднее 1.2, медиана 1; без домена: n 5, среднее —, медиана 3");
+    expect(boxSummary("Я", lin)).toBe("Я: OX: n 5, среднее 12, медиана 10; SU: n 5, среднее 1,2, медиана 1; без домена: n 5, среднее —, медиана 3");
   });
 });
 
@@ -130,7 +130,7 @@ describe("statistics by domains", () => {
     const csv = domainsCsv(DOMAINS).split("\r\n");
     expect(csv).toHaveLength(4);
     expect(csv[2]).toBe('"SU";4;8;;;;1;;0;9;0.1;;8');
-    expect(domainsSummary("Д", DOMAINS)).toBe("Д: проб 10, среднее 1.5, медиана 1.5, CV 0.667; OX: n 6, среднее 2; SU: n 4, среднее —");
+    expect(domainsSummary("Д", DOMAINS)).toBe("Д: проб 10, среднее 1,5, медиана 1,5, CV 0,667; OX: n 6, среднее 2; SU: n 4, среднее —");
   });
 });
 

@@ -79,8 +79,8 @@ describe("what the chart shows", () => {
 
   it("marks: mean, median, P90, P97,5 and the cuts; a missing value gives no mark", () => {
     const s = { ...base(), top_cut: 4, view: { ...base().view, marks: { mean: true, median: true, p90: true, p975: true, cuts: true } } };
-    expect(histogramMarks(RESULT, s).map((m) => m.label)).toEqual(["Среднее 1.5", "Медиана 1.2", "P90 3", "P97,5 4.5", "Урезка 4"]);
-    expect(histogramMarks({ ...RESULT, stats: { ...STATS, mean: null } }, base()).map((m) => m.label)).toEqual(["Медиана 1.2"]);
+    expect(histogramMarks(RESULT, s).map((m) => m.label)).toEqual(["Среднее 1,5", "Медиана 1,2", "P90 3", "P97,5 4,5", "Урезка 4"]);
+    expect(histogramMarks({ ...RESULT, stats: { ...STATS, mean: null } }, base()).map((m) => m.label)).toEqual(["Медиана 1,2"]);
   });
 
   it("the cumulative curve starts at what lies below the range", () => {
@@ -104,7 +104,7 @@ describe("what the chart shows", () => {
     expect(notes).toContain("урезано 1");
     expect(notes).toContain("вне диапазона: ниже 1, выше 0");
     const rows = statsTable(RESULT.stats, RESULT.stats_unweighted);
-    expect(rows.find((r) => r[0] === "Среднее")).toEqual(["Среднее", "1.5", "1.4"]);
+    expect(rows.find((r) => r[0] === "Среднее")).toEqual(["Среднее", "1,5", "1,4"]);
     expect(rows.find((r) => r[0] === "Асимметрия")).toEqual(["Асимметрия", "—", "—"]); // missing — never 0
     expect(rows.find((r) => r[0] === "Геом. среднее")?.[1]).toBe("—");
     expect(rows.map((r) => r[0])).toEqual(expect.arrayContaining(["P5", "P97,5", "P99", "Дисперсия ln"]));
@@ -116,7 +116,7 @@ describe("what the chart shows", () => {
     expect(html).toContain(`viewBox="0 0 ${HIST_W} ${HIST_H}"`);
     expect(html.match(/<rect[^>]*fill="#1f6bff"/g)).toHaveLength(3);
     expect(html).toContain('data-curve="cumulative"');
-    expect(html).toContain('data-mark="Среднее 1.5"');
+    expect(html).toContain('data-mark="Среднее 1,5"');
     expect(html).not.toContain("NaN");
     const log = renderToStaticMarkup(createElement(HistogramChart, { result: { ...RESULT, log: true, bins: { ...RESULT.bins, edges: [0.01, 0.1, 1, 10] } }, y: "count", cumulative: false, marks: [], color: "#1f6bff", xLabel: "AU" }));
     expect(log).toContain("логарифмическая шкала");
@@ -228,7 +228,7 @@ describe("the core: calculation and the command", () => {
     await vi.waitFor(() => expect(pending).toHaveLength(1));
     expect(pending[0].body).toMatchObject({ field: "AU", weight: "none", top_cut: 4, top_mode: "cap" });
     pending[0].resolve(json({ ...RESULT, weighted: false, stats_unweighted: null }));
-    expect(await run).toEqual({ ok: true, result: "«Гистограмма · AU · без веса» (график №12): проб 4, среднее 1.5, медиана 1.2, CV 0.533" });
-    expect(histogramSummary("Г", RESULT)).toBe("Г: проб 4, среднее 1.5, медиана 1.2, CV 0.533 (с весом)");
+    expect(await run).toEqual({ ok: true, result: "«Гистограмма · AU · без веса» (график №12): проб 4, среднее 1,5, медиана 1,2, CV 0,533" });
+    expect(histogramSummary("Г", RESULT)).toBe("Г: проб 4, среднее 1,5, медиана 1,2, CV 0,533 (с весом)");
   });
 });

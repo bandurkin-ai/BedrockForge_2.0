@@ -76,7 +76,7 @@ describe("the triangle", () => {
     expect(ternaryNotes({ ...RES, counts: { rows: 4, missing: 0, nonpositive_sum: 1, negative: 0, zero_sum: 1, used: 3 } })).toEqual(["строк 4, точек 3", "сумма 0: 1"]);
     expect(ternaryNotes({ ...RES, total: 300_000 })[3]).toMatch(/^показано 3 из/);
     expect(meanShares({ a: [], b: [], c: [] })).toEqual([null, null, null]);
-    expect(ternarySummary("Т", RES)).toBe("Т: точек 3; средние доли CU 40 %, PB 43.3 %, ZN 16.7 %");
+    expect(ternarySummary("Т", RES)).toBe("Т: точек 3; средние доли CU 40 %, PB 43,3 %, ZN 16,7 %");
   });
 });
 

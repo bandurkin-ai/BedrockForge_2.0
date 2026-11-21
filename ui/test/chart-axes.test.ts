@@ -63,11 +63,11 @@ describe("scales", () => {
 
 describe("numbers", () => {
   it("axes and tables: no trailing zeros, exponent for very small and large, «—» for missing", () => {
-    expect(formatNumber(1.23456)).toBe("1.23");
-    expect(formatNumber(2.5)).toBe("2.5");
+    expect(formatNumber(1.23456)).toBe("1,23");
+    expect(formatNumber(2.5)).toBe("2,5");
     expect(formatNumber(0)).toBe("0");
-    expect(formatNumber(1234567)).toBe("1.2e6");
-    expect(formatNumber(0.0001234)).toBe("1.2e-4");
+    expect(formatNumber(1234567)).toBe("1,2e6");
+    expect(formatNumber(0.0001234)).toBe("1,2e-4");
     expect(formatNumber(null)).toBe("—");
     expect(formatNumber(Number.NaN)).toBe("—");
   });

@@ -173,16 +173,16 @@ describe("what the chart shows", () => {
     expect(qqTable(THEORY.x, null)[1]).toEqual(["Среднее", "2", null, null]);
     const rows = qqTable(TWO.x, TWO.y);
     expect(rows.find((r) => r[0] === "Число проб")).toEqual(["Число проб", "5", "5", ""]);
-    expect(rows.find((r) => r[0] === "Среднее")).toEqual(["Среднее", "2", "2.2", "1.1"]);
+    expect(rows.find((r) => r[0] === "Среднее")).toEqual(["Среднее", "2", "2,2", "1,1"]);
     expect(rows.find((r) => r[0] === "Медиана")).toEqual(["Медиана", "1", "0", "0"]);
     expect(ratio(0, 1)).toBeNull();
     expect(ratio(null, 1)).toBeNull();
   });
 
   it("notes: the fit and PPCC; two samples — D; thinning", () => {
-    expect(qqNotes(THEORY)).toEqual(["среднее ln 0, σ ln 1.1", "PPCC 0.9934 (1 — точное совпадение)", "точек 5"]);
+    expect(qqNotes(THEORY)).toEqual(["среднее ln 0, σ ln 1,1", "PPCC 0,9934 (1 — точное совпадение)", "точек 5"]);
     expect(qqNotes({ ...THEORY, count: 5000 })[2]).toBe(`точек 5 из ${(5000).toLocaleString("ru-RU")} (прорежено, крайние оставлены)`);
-    expect(qqNotes(TWO)).toEqual(["квантилей 3", "D Колмогорова–Смирнова 0.12 (0 — одинаковые распределения)", "X 0…3, Y 0.1…3.3"]);
+    expect(qqNotes(TWO)).toEqual(["квантилей 3", "D Колмогорова–Смирнова 0,12 (0 — одинаковые распределения)", "X 0…3, Y 0,1…3,3"]);
   });
 
   it("the window renders its form before any answer; two samples — side Y", () => {
@@ -234,6 +234,6 @@ describe("the core: the command", () => {
     const a = await app.registry.execute("chart.qq", { field: "AU", distribution: "normal" }, "claude");
     expect(sent.find((x) => x.path === "/stats/qq")?.body).toMatchObject({ field: "AU", distribution: "normal" });
     expect(a.result).toMatch(/^Q-Q · AU · нормальное.*: проб 5, среднее 2, медиана 1, CV 0.75; PPCC 0.9934$/);
-    expect(qqSummary("Q", TWO)).toBe("Q: проб 5, среднее 2, медиана 1, CV 0.75; Y: проб 5, среднее 2.2; D 0.12");
+    expect(qqSummary("Q", TWO)).toBe("Q: проб 5, среднее 2, медиана 1, CV 0,75; Y: проб 5, среднее 2,2; D 0,12");
   });
 });
