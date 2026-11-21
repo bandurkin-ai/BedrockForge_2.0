@@ -16,11 +16,16 @@ The rows are «lines» of `composites/source.read` (Э12): ordered by (hole name
 not depend on the ids the database gave; rows without FROM or TO are left out and counted (`skipped`). The values
 come from the Parquet snapshot of the table (`cache/tables`, Э6) when it is there, else from `dh_rows`.
 
-Cache (`COLUMNS`): LRU of columns by (project, table, token, rev, field), ≤ 256 МБ in all (ADR 0019 §3, решение 4).
-An edit of a row raises `rev`: the old columns are a miss and are dropped when the new ones come; a request of
-another project drops the columns of the previous one; a value bigger than the limit is not kept. Concurrent
-requests of one column read it once (the others wait). numpy and the readers load on first use, not with the
-router (tests/test_process.py)."""
+Cache (`COLUMNS`): LRU of columns by (project, table, token, rev, field), ≤ 512 МБ in all (ADR 0019 §3, решение 4
+gave 256 МБ; 13.35: 5 million rows are 120 МБ of lines and 40 МБ a field — the ten fields of a dendrogram did not
+fit and every recalculation read them again). `length` is not kept: it is TO − FROM of the lines, counted for
+every request. An edit of a row raises `rev`: the old columns are a miss and are dropped when the new ones come;
+a request of another project drops the columns of the previous one; a value bigger than the limit is not kept.
+A request holds the columns it found until it has them all: those read for it may push out of the cache what it
+found there, nothing is read twice. Concurrent requests of one column read it once (the others wait). After a
+read of a snapshot the memory pyarrow keeps for itself goes back to the system (a few hundred МБ at 5 million
+rows). numpy and the readers load on first use, not with the router (tests/test_process.py); the kernel of
+`domain_at` (numba) — with the first domain of another table."""
 
 from __future__ import annotations
 
@@ -38,7 +43,7 @@ from bf_core.db import dialect
 from bf_core.db.schema import dh_columns, dh_tables, objects
 
 LENGTH = "length"  # the pseudo-field: TO − FROM (a column of that name in the table wins)
-LIMIT_BYTES = 256 * 1024 * 1024
+LIMIT_BYTES = 512 * 1024 * 1024
 KEY_EPS = 1e-6  # m: FROM and TO of a sample key are equal within it
 TABLE_KINDS = ("assay", "interval", "event")
 _BASE = "\0lines"
@@ -320,7 +325,11 @@ def read(project: Any, set_id: int, table: str | int | None, fields: Sequence[st
     stored = [f for f in chosen if f.role != LENGTH]
     got: dict[str, Any] = {}
     with cache.locked(head):  # concurrent requests of one table read its columns once
-        missing = [f for f in stored if cache.peek((*head, f.name)) is None]
+        for f in stored:
+            hit = cache.peek((*head, f.name))
+            if hit is not None:
+                got[f.name] = hit  # held: the columns read next may push it out of the cache
+        missing = [f for f in stored if f.name not in got]
         base = cache.peek((*head, _BASE))
         if missing or base is None:
             lines = _read_lines(project, t, [f.name for f in missing])
@@ -338,7 +347,7 @@ def read(project: Any, set_id: int, table: str | int | None, fields: Sequence[st
     for f in chosen:
         out.infos[f.name] = f
         if f.role == LENGTH:
-            out.numbers[f.name] = cache.get((*head, f.name), lambda: _frozen(np.subtract(to, frm)))
+            out.numbers[f.name] = _frozen(np.subtract(to, frm))  # not kept: 10 ms and 40 МБ at 5 million rows
             continue
         have: Any = got.get(f.name)
         if have is None:
@@ -355,7 +364,12 @@ def read(project: Any, set_id: int, table: str | int | None, fields: Sequence[st
 def _read_lines(project: Any, t: Table, names: list[str]) -> Any:
     from bf_core.composites import source as dh_source
 
-    return dh_source.read(project.engine, t.set_id, t.id, names, cache_dir=project.folder / "cache" / "tables")
+    lines = dh_source.read(project.engine, t.set_id, t.id, names, cache_dir=project.folder / "cache" / "tables")
+    if lines.source == "parquet":
+        import pyarrow as pa
+
+        pa.default_memory_pool().release_unused()  # what the pool keeps after the columns were copied out of it
+    return lines
 
 
 def _one(project: Any, t: Table, f: FieldInfo, base: tuple[Any, ...], cache: ColumnCache,
@@ -372,29 +386,6 @@ def _one(project: Any, t: Table, f: FieldInfo, base: tuple[Any, ...], cache: Col
 # --- another table: by the sample key, by the middle of a sample -----------------------------------------
 
 
-def _hole_map(a: Columns, b: Columns) -> np.ndarray:
-    """For every hole of `b` — its index in `a.holes`, −1 — `a` has no such hole."""
-    rank = {name: i for i, name in enumerate(a.holes)}
-    return np.array([rank.get(name, -1) for name in b.holes], dtype=np.int64)
-
-
-def _last_before(ka: Sequence[np.ndarray], kb: Sequence[np.ndarray]) -> np.ndarray:
-    """For every query a — the position in b of the last b that sorts not after it by the keys (hole first),
-    b before a on ties; −1 — none. Keys are given most significant first."""
-    na, nb = ka[0].shape[0], kb[0].shape[0]
-    if not na or not nb:
-        return np.full(na, -1, dtype=np.int64)
-    keys = [np.concatenate((x, y)) for x, y in zip(kb, ka, strict=True)]
-    is_a = np.concatenate((np.zeros(nb, dtype=np.int8), np.ones(na, dtype=np.int8)))
-    order = np.lexsort((is_a, *reversed(keys)))
-    pos = np.where(order < nb, order, -1)
-    last = np.maximum.accumulate(pos)
-    out = np.empty(na, dtype=np.int64)
-    at_a = order >= nb
-    out[order[at_a] - nb] = last[at_a]
-    return out
-
-
 @dataclass(frozen=True)
 class Paired:
     values: np.ndarray  # float64 [n of a], NaN — no match (or missing in b)
@@ -405,26 +396,24 @@ class Paired:
 def paired(a: Columns, b: Columns, name: str, *, eps: float = KEY_EPS) -> Paired:
     """The field `name` of the table `b` for every row of `a` by the sample key (hole, FROM, TO), FROM and TO
     equal within `eps` (two rows of b with one key: the last in line order)."""
+    from . import source_kernels as sk
+
     col = b.number(name)
     if b.table.id == a.table.id:
         return Paired(col, np.arange(a.n, dtype=np.int64), 0)
-    hb = _hole_map(a, b)[b.hole_of()]
-    keep = np.flatnonzero(hb >= 0)
     q = 1.0 / eps
 
     def key(x: np.ndarray) -> np.ndarray:
         return np.rint(x * q).astype(np.int64)
 
-    ha = a.hole_of().astype(np.int64)
-    fa, ta, fb, tb = key(a.from_m), key(a.to_m), key(b.from_m[keep]), key(b.to_m[keep])
-    at = _last_before((ha, fa, ta), (hb[keep], fb, tb))
-    ok = at >= 0
-    ok[ok] = (hb[keep][at[ok]] == ha[ok]) & (fb[at[ok]] == fa[ok]) & (tb[at[ok]] == ta[ok])
-    rows = np.full(a.n, -1, dtype=np.int64)
-    rows[ok] = keep[at[ok]]
+    lo, hi = sk.hole_ranges(a.holes, b.holes, b.starts)
+    rows = np.empty(a.n, dtype=np.int64)
+    unmatched = sk.match(np.ascontiguousarray(a.starts, dtype=np.int64), key(a.from_m), key(a.to_m), lo, hi,
+                         key(b.from_m), key(b.to_m), rows)  # fmt: skip
+    ok = rows >= 0
     values = np.full(a.n, np.nan)
     values[ok] = col[rows[ok]]
-    return Paired(values, rows, int(a.n - ok.sum()))
+    return Paired(values, rows, int(unmatched))
 
 
 @dataclass(frozen=True)
@@ -438,20 +427,19 @@ def domain_at(a: Columns, dom: Columns, name: str) -> Domain:
     """The text field `name` of `dom` for every row of `a`: of the same table — as it is; of another interval
     table — the code of its interval [FROM; TO) that holds the middle (FROM + TO) / 2 of the sample (the one that
     starts last when they overlap)."""
+    from . import source_kernels as sk
+
     codes, labels = dom.text(name)
     if dom.table.id == a.table.id:
         return Domain(codes, labels, 0)
-    hd = _hole_map(a, dom)[dom.hole_of()]
-    keep = np.flatnonzero(hd >= 0)
-    ha = a.hole_of().astype(np.int64)
-    mid = 0.5 * (a.from_m + a.to_m)
-    at = _last_before((ha, mid), (hd[keep], dom.from_m[keep]))
-    ok = at >= 0
-    rows = keep[at[ok]]
-    ok[ok] = (hd[rows] == ha[ok]) & (mid[ok] < dom.to_m[rows])
+    lo, hi = sk.hole_ranges(a.holes, dom.holes, dom.starts)
+    rows = np.empty(a.n, dtype=np.int64)
+    outside = sk.cover(np.ascontiguousarray(a.starts, dtype=np.int64), 0.5 * (a.from_m + a.to_m), lo, hi,
+                       np.ascontiguousarray(dom.from_m), np.ascontiguousarray(dom.to_m), rows)  # fmt: skip
     out = np.full(a.n, -1, dtype=np.int32)
-    out[ok] = codes[keep[at[ok]]]
-    return Domain(out, labels, int(a.n - ok.sum()))
+    ok = rows >= 0
+    out[ok] = codes[rows[ok]]
+    return Domain(out, labels, int(outside))
 
 
 # --- positions ------------------------------------------------------------------------------------------
