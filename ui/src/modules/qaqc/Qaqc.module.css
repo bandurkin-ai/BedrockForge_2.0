@@ -45,6 +45,8 @@
 .chosen { background: var(--bg-active); }
 .fail { color: var(--danger); }
 .warn { color: var(--warn); }
+/* «не оценён» — Slate Grey of the brand: neither the norm nor a failure */
+.na { color: var(--text-dim); font-style: italic; }
 .chartBox { flex: 1 1 560px; min-width: 360px; display: flex; flex-direction: column; gap: 4px; position: relative; }
 .busy { opacity: 0.55; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
@@ -56,3 +58,19 @@
 .facts th, .facts td { padding: 0 8px 0 0; text-align: left; vertical-align: top; }
 .facts th { font-weight: 400; color: var(--text-dim); white-space: nowrap; }
 .facts td { color: var(--text); word-break: break-word; }
+/* «Бланки»: the carry-over under the chart; «Партии»: a window of rows of a long table */
+.carry { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.subhead { margin: 0; font-family: var(--font-brand); font-weight: 600; font-size: 12px; color: var(--text); }
+.batches { display: flex; flex-direction: column; gap: 4px; min-height: 0; height: 100%; }
+.summary { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text); }
+.bgrid { display: grid; grid-template-columns: 110px 120px 168px 64px 52px 64px 74px 82px 96px minmax(160px, 1fr); font-size: 12px; min-width: 1010px; }
+.bgrid > span { padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; line-height: 21px; border-bottom: 1px solid var(--border); }
+.bgrid > span:nth-child(-n + 2), .bgrid > span:nth-child(n + 9) { text-align: left; }
+.bhead { position: sticky; top: 0; z-index: 1; background: var(--bg-elev); }
+.bhead > span { font-family: var(--font-brand); font-weight: 600; color: var(--text); }
+.brow { cursor: pointer; }
+.brow:hover > span { background: var(--bg-hover); }
+.brow.chosen > span { background: var(--bg-active); }
+.bscroll { flex: 1; min-height: 120px; overflow: auto; position: relative; border: 1px solid var(--border); border-radius: var(--radius); }
+.bwin { position: absolute; left: 0; right: 0; }
+.pending > span { color: var(--text-faint); }
