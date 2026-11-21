@@ -314,8 +314,8 @@ def post_dendrogram(svc: Svc, body: Settings) -> dict[str, Any]:
 
 @router.post("/chart/{chart_id}")
 def post_saved(svc: Svc, chart_id: int) -> JSONResponse:
-    """The saved chart by its settings and the current data; the set is the one the chart lies in (its id in
-    the settings is not renumbered by a `.bfggis` import)."""
+    """The saved chart by its settings and the current data; the set is the one the chart lies in (a `.bfggis`
+    import writes it into the settings too, `archive/chart_remap.py`; the parent wins all the same)."""
     from bf_core.charts import service
     from bf_core.db import dialect
 
