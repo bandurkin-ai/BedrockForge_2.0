@@ -14,8 +14,9 @@
 
 Ranges (ТЗ 8.4.2, ADR 0020 §3): `sigma_warn`, `sigma_fail` 1–5 and warn < fail; `run` 5–20 (whole); `k_blank`
 1–50; `k_dup` 0–50; `th_group` 5–51 (whole, odd); `hard_p`, `hard_c`, `hard_f`, `hard_ump` 1–100 %; `hard_share`
-50–100 %; `n_boot` 100–5000 (whole); `seed` 0 … 2³² − 1 (whole). A whole threshold takes 9 and 9.0, not 9.5; a
-flag (true, false), a text, NaN are refused. The borders belong to the range.
+50–100 %; `n_boot` 100–5000 (whole); `seed` 0 … 2⁶³ − 1 (whole). A whole threshold takes 9 and 9.0, not 9.5; a
+flag (true, false), a text, NaN are refused. The borders belong to the range. `RANGES` is the one table of the
+ranges and the defaults: the settings of the project are checked by it.
 
 Comparisons (ADR 0020, находка 7: in float64 (1,10 − 1,00) / 0,05 = 2,0000000000000018): `le(a, b)` is
 a ≤ b + 1e−9·max(1, |b|) and `gt(a, b)` is a > b + 1e−9·max(1, |b|) — its negation for numbers, so a value right
@@ -32,7 +33,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
-from numbers import Real
+from numbers import Integral, Real
 from typing import Any
 
 TOL = 1e-9  # the tolerance of a comparison with a threshold, relative from 1 up
@@ -81,7 +82,7 @@ RANGES: dict[str, Range] = {
     "hard_ump": Range(1, 100, 10.0, "Критерий HARD внешнего контроля, %"),
     "hard_share": Range(50, 100, 90.0, "Доля пар в пределах критерия HARD, %"),
     "n_boot": Range(100, 5000, 1000, "Число реализаций бутстрапа", whole=True),
-    "seed": Range(0, 2**32 - 1, 12345, "Зерно генератора", whole=True),
+    "seed": Range(0, 2**63 - 1, 12345, "Зерно генератора", whole=True),
 }
 
 
@@ -105,14 +106,20 @@ def _checked(name: str, value: Any) -> float | int:
     r = RANGES[name]
     if isinstance(value, bool) or not isinstance(value, Real):
         raise _refusal(name)
-    number = float(value)
-    if not (math.isfinite(number) and r.lo <= number <= r.hi):
-        raise _refusal(name)
     if not r.whole:
+        number = float(value)
+        if not (math.isfinite(number) and r.lo <= number <= r.hi):
+            raise _refusal(name)
         return number
-    if not number.is_integer() or (r.odd and int(number) % 2 == 0):
+    if isinstance(value, Integral):
+        whole = int(value)  # as it is: a seed past 2⁵³ does not go through float
+    elif float(value).is_integer():
+        whole = int(float(value))
+    else:
         raise _refusal(name)
-    return int(number)
+    if not r.lo <= whole <= r.hi or (r.odd and whole % 2 == 0):
+        raise _refusal(name)
+    return whole
 
 
 @dataclass(frozen=True)

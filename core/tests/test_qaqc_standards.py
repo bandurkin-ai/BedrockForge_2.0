@@ -177,6 +177,7 @@ def test_defaults_and_ranges_of_the_spec() -> None:
     assert Limits(run=20, k_blank=50, k_dup=50, th_group=5, hard_p=1, hard_f=100, n_boot=100, seed=0).run == 20
     whole = Limits.parse({"run": 12.0, "sigma_warn": np.float64(2.5), "n_boot": np.int64(200)})
     assert (whole.run, whole.sigma_warn, whole.n_boot) == (12, 2.5, 200) and isinstance(whole.run, int)
+    assert Limits(seed=2**63 - 1).seed == 2**63 - 1 and Limits(seed=2**53 + 1).seed == 2**53 + 1  # exact, no float
 
 
 @pytest.mark.parametrize(
@@ -186,8 +187,8 @@ def test_defaults_and_ranges_of_the_spec() -> None:
         ("run", 9.5), ("k_blank", 0.9), ("k_blank", 51), ("k_dup", -0.1), ("k_dup", 50.5), ("th_group", 4),
         ("th_group", 53), ("th_group", 12), ("hard_p", 0), ("hard_c", 101), ("hard_f", 0.5), ("hard_ump", 200),
         ("hard_share", 49), ("hard_share", 101), ("n_boot", 99), ("n_boot", 5001), ("n_boot", 100.5),
-        ("seed", -1), ("seed", 2**32), ("run", True), ("sigma_warn", "2"), ("k_blank", NAN), ("k_blank", math.inf),
-        ("sigma_fail", None),
+        ("seed", -1), ("seed", 2**63), ("seed", 1e30), ("run", True), ("sigma_warn", "2"), ("k_blank", NAN),
+        ("k_blank", math.inf), ("sigma_fail", None),
     ],
 )  # fmt: skip
 def test_threshold_out_of_range_is_bad_param(param: str, value: Any) -> None:
