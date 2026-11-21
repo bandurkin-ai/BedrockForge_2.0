@@ -7,7 +7,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { errorText, toggleId } from "../../shell/props";
 import css from "../../shell/PropsParts.module.css";
-import { loadFields, loadWireframes, type FieldRow, type TableRow, type WireframeRow } from "../composites/api";
+import { loadFields, loadWireframes, resolveTable, type FieldRow, type TableRow, type WireframeRow } from "../composites/api";
 import { rangeText, type ParamSpec } from "../composites/params";
 import { loadCodes, loadOrientTables } from "./api";
 import { DomainGrid } from "./DomainGrid";
@@ -100,6 +100,13 @@ export function OrientationForm({ setId, table, fields, value, errors, onChange,
   const set = (patch: Partial<OrientationState>) => onChange({ ...value, ...patch });
   const s = value;
   const tables = useRead<TableRow[]>(setId === null ? null : () => loadOrientTables(setId), [setId], fail);
+  useEffect(() => {
+    // tables named by the assistant («Литология») → their keys, once the list is read
+    if (!tables) return;
+    const k = (t: string): string => (t ? (resolveTable(tables, t) ?? t) : t);
+    const patch = { domainTable: k(s.domainTable), coreTable: k(s.coreTable) };
+    if (patch.domainTable !== s.domainTable || patch.coreTable !== s.coreTable) set(patch);
+  }, [tables]);
   const domainTable = s.domainTable || table || "";
   const wantDomainFields = s.enabled && s.source === "domain" && s.domainBy === "field" && Boolean(s.domainTable) && s.domainTable !== table;
   const otherFields = useRead<FieldRow[]>(setId === null || !wantDomainFields ? null : () => loadFields(setId, s.domainTable), [setId, s.domainTable, wantDomainFields], fail);
