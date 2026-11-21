@@ -45,7 +45,8 @@
 `counts {rows, missing, no_position, outside_domain, used, no_weight}`, `rows = missing + no_position +
 outside_domain + used`. Опорная точка — центр охвата точек (`origin [x, y, z]`) вычитается до расчёта.
 `sigma2` — дисперсия переменной расчёта (делитель n); у `nscore` — ровно 1; `sigma2_z` — дисперсия значений поля.
-Ошибки: 0 точек — 422 `no_values`; 1 точка — 422 `too_few_values`; все значения равны — 422 `no_spread`.
+Ошибки: 0 точек — 422 `no_values`; 1 точка — 422 `too_few_values`; все значения равны — 422 `no_spread`
+(в теле всех трёх — `counts`); нет ни одного положительного веса при `nscore` — 422 `bad_param {param: "weights"}`.
 
 ## `GET /variography/defaults?set_id&table&field[&domain_table&domain_field&domain_values&weights&transform]`
 
