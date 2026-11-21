@@ -1,5 +1,6 @@
 """The jobs of QAQC (ADR 0020 §6; ADR 0002): `qaqc.import` — a file (CSV, TXT, DAT, XLSX, XLS) or a table of a
-drillhole set → a `qaqc_data` object. Registered by an explicit import of this module in `jobs/registry.py`.
+drillhole set → a `qaqc_data` object; `qaqc.report` (quick) — the summary of a report (`run_report`, `report.py`).
+Registered by an explicit import of this module in `jobs/registry.py`.
 
 Params: {name, source: {kind: "file", path, sheet?, encoding?, delimiter?, header_row?} | {kind: "table", set_id,
 table}, mapping, replace_id?}. Stages: «Чтение файла» (or «Чтение таблицы»), «Нормализация», «Запись записей»;
@@ -281,3 +282,45 @@ def run_import(ctx: JobContext) -> dict[str, Any]:
     return {"data_id": data_id, "name": p["name"], "rows": made.records.n, "replaced": replace_id is not None,
             "counts": counts, "notes": made.notes,
             "events": [["objects.changed", {"kind": sv.KIND, "id": data_id}]]}  # fmt: skip
+
+
+REPORT = "qaqc.report"
+
+
+@handler(REPORT, "Отчёт QAQC", queue="quick", max_attempts=1)
+def run_report(ctx: JobContext) -> dict[str, Any]:
+    """The summary of a report (`report.compute`) over its records and inputs. A new report is `building` until
+    the end (a cancel drops it); a rebuild (`inputs` in the params) changes the report only in the last
+    transaction — a cancelled rebuild leaves the report as it was."""
+    from bf_core.db import dialect
+    from bf_core.storage.blobs import BlobStore
+
+    from . import records as r
+    from . import report as rp
+    from .limits import QaqcError
+
+    p = ctx.params
+    report_id = int(p["report_id"])
+    store = BlobStore(ctx.project_folder)  # type: ignore[arg-type]
+    try:
+        inputs = p.get("inputs")
+        if inputs is None:
+            with dialect.read_tx(ctx.engine()) as conn:
+                inputs = rp.read_json(conn, store, report_id, rp.INPUTS)
+        if inputs is None:
+            raise JobError("qaqc_report_broken", "Нет снимка входов отчёта.", "Создайте отчёт заново.")
+        ctx.tick(0.0, "Чтение записей")
+        path = store.path_of(inputs["data_sha256"])
+        if not path.is_file():
+            raise JobError("qaqc_report_broken", "Файл записей отчёта не найден.", "Создайте отчёт заново.")
+        recs = r.open_file(path)
+        summary = rp.compute(recs, inputs, lambda f, m: ctx.tick(0.05 + 0.9 * f, f"Расчёт: {m}"))
+        ctx.tick(0.97, "Сохранение")
+        with dialect.write_tx(ctx.engine()) as conn:
+            version = rp.finish(conn, store, report_id, summary, inputs if p.get("inputs") is not None else None)
+    except QaqcError as exc:
+        raise JobError(exc.code, exc.message, exc.hint) from exc
+    except ApiError as exc:
+        raise JobError(exc.code, exc.message, exc.hint) from exc
+    return {"report_id": report_id, "version": version, "rebuilt": p.get("inputs") is not None,
+            "events": [["objects.changed", {"kind": rp.KIND, "id": report_id}]]}  # fmt: skip
