@@ -11,7 +11,9 @@ of the records by the dictionary of codes of the settings.
     row_mask(recs, flt, types) -> bool[n] | None        the rows the filter leaves; None — all of them
 
 The model (every key is optional; the conditions are joined by «И»):
-    labs[], batches[], crm[]   names of laboratories, batches, CRM — a record stays when its value is among them
+    labs[], batches[]          names of laboratories, batches — a record stays when its value is among them
+    crm[]                      names of CRM: of the records of the type CRM those stay whose CRM is among them;
+                               the records of the other types (blanks, duplicates, ORIG) are not cut by it
     types[]                    types after the mapping (`TYPES`)
     date_from, date_to         «ГГГГ-ММ-ДД» or «ГГГГ-ММ-ДД чч:мм[:сс]»; both borders belong to the range, a
                                date without the time of day as `date_to` takes the whole day
@@ -25,8 +27,9 @@ too. Texts are compared without case and edge spaces; a record without a value s
 (of a text). A record without a date is outside any range of dates. Not a row filter: the element (it picks
 the columns).
 
-The mask looks only at the fields of the record itself (ADR 0020 §5): a calculation by the filter and one over
-`recs.take(mask)` get the same rows in the same order. Text conditions are decided on the labels of a
+The mask looks only at the fields of the record itself (ADR 0020 §5; its type is one of them — the code of the
+file by the dictionary of the settings): a calculation by the filter and one over `recs.take(mask)` get the
+same rows in the same order. Text conditions are decided on the labels of a
 dictionary column and spread by the codes; identifiers (`sample_id`, `parent_id`) go through pyarrow. Three
 conditions over 1 million records — about 0.01 s.
 """
@@ -368,9 +371,11 @@ def row_mask(recs: r.Records, flt: Filter | None, types: np.ndarray) -> np.ndarr
         wanted = np.zeros(len(TYPES) + 1, dtype=np.bool_)
         wanted[[TYPES.index(t) + 1 for t in flt.types]] = True
         mask &= wanted[types + 1]
-    for names, column in ((flt.labs, r.LAB), (flt.batches, r.BATCH), (flt.crm, r.CRM_ID)):
+    for names, column in ((flt.labs, r.LAB), (flt.batches, r.BATCH)):
         if names:
             mask &= _among(recs.text(column), names)
+    if flt.crm:  # of the CRM samples only: a blank, a duplicate, an ORIG has no CRM to be chosen by
+        mask &= (types != TYPES.index("CRM")) | _among(recs.text(r.CRM_ID), flt.crm)
     if flt.hole_prefix:
         part = name_key(flt.hole_prefix)
         mask &= _by_labels(recs.text(r.HOLE), lambda key: key.startswith(part))

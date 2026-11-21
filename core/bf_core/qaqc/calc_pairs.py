@@ -30,27 +30,40 @@ A record has no parent when the import found none and wrote no value of it (`no_
 there is None: t, p and df of a group whose differences are all equal, the intervals of fewer than three
 pairs — each with a note of the group. Every group draws its bootstrap from the seed of the settings anew
 (`limits.seed`, `limits.n_boot`; n·B ≤ 10⁸ — the realizations made are in `rma.n_boot`).
+
+The intervals of a group are kept by the process (`INTERVALS` groups, the least recently asked go first): the
+key is the pairs themselves — a hash of both columns of values — with the seed and the number of realizations,
+so whatever leaves the pairs of a group as they were (a filter that does not touch it, a threshold that is not
+of the pairs) finds them at once, and nothing stale can be found: other pairs are another key. The bootstrap
+itself calls `Context.tick` between the realizations — a job (the report) is cancelled there.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import hashlib
+import threading
+from collections import OrderedDict
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
+from . import external
 from . import records as r
 from .blanks import effective_dl
 from .calc import LINES, NOTE_KEYS, SECTIONS, Context, _dl_table, _find, _lab_names, _opt, _thin
 from .duplicates import EXCLUDED, Pairs, Selection, hard_limit, measure, scatter_stats, select
-from .external import bias, paired_t, rma_intervals
+from .external import RmaIntervals, bias, paired_t, rma_intervals
 from .filters import TYPES
 from .limits import FAIL, NORM, QaqcError, gt
 from .standards import group_index
 from .thompson import thompson_howarth
 
 DUP_KINDS = ("DUP_F", "DUP_C", "DUP_P")
+INTERVALS = 64  # groups of the external control whose intervals the process keeps
+_kept: OrderedDict[tuple[Any, ...], RmaIntervals] = OrderedDict()
+_lock = threading.Lock()
 _TITLES = {"DUP_F": "полевые дубликаты", "DUP_C": "дроблёные дубликаты", "DUP_P": "пульповые дубликаты",
            "UMP": "внешний контроль"}  # fmt: skip
 
@@ -192,11 +205,39 @@ def _labs(ctx: Context) -> list[_Lab]:
     return ctx.once("external", make)  # type: ignore[no-any-return]
 
 
+def clear_intervals() -> None:
+    """Forget the intervals kept (a test; nothing else needs it: they are kept by the pairs themselves)."""
+    with _lock:
+        _kept.clear()
+
+
+def _intervals(x1: np.ndarray, x2: np.ndarray, n_boot: int, seed: int, beat: Callable[[], None] | None) -> RmaIntervals:
+    """The intervals of the RMA line of a group — from the process's memory when these very pairs were
+    bootstrapped with this seed and this number of realizations before (a change of the filter that leaves the
+    group as it was costs nothing), else the bootstrap; `beat` is called inside it, a job is cancelled there."""
+    digest = hashlib.blake2b(digest_size=16)
+    for values in (x1, x2):
+        digest.update(np.ascontiguousarray(values, dtype=np.float64).data)
+    key = (digest.digest(), int(x1.shape[0]), n_boot, seed, external.MAX_DRAWS)
+    with _lock:
+        hit = _kept.get(key)
+        if hit is not None:
+            _kept.move_to_end(key)
+            return hit
+    out = rma_intervals(x1, x2, n_boot, seed, tick=None if beat is None else (lambda _share: beat()))
+    with _lock:
+        _kept[key] = out
+        _kept.move_to_end(key)
+        while len(_kept) > INTERVALS:
+            _kept.popitem(last=False)
+    return out
+
+
 def _external_group(ctx: Context, d: _PairData, lab: _Lab, intervals: bool) -> dict[str, Any]:
     x1, x2, lim, n = d.x1[lab.used], d.x2[lab.used], ctx.limits, int(lab.used.shape[0])
     stats = scatter_stats(x1, x2)
     t, p, df = paired_t(x1, x2)
-    ci = rma_intervals(x1, x2, lim.n_boot, lim.seed) if intervals and stats["rma"]["b"] is not None else None
+    ci = _intervals(x1, x2, lim.n_boot, lim.seed, ctx.tick) if intervals and stats["rma"]["b"] is not None else None
     notes = []
     if n and t != t:
         notes.append("Все разности пар равны: t-критерий не определён." if n >= 2 else

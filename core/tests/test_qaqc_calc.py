@@ -226,7 +226,9 @@ def filter_rows() -> list[dict[str, Any]]:
         ({"labs": ["l2", "L3"]}, [2, 3, 5]),  # without case
         ({"batches": ["B1"]}, [0, 1, 5]),
         ({"batches": ["B2", "nope"]}, [2, 3]),
-        ({"crm": ["G-1"]}, [0, 5]),
+        ({"crm": ["g-1"]}, [0, 1, 2, 3, 4, 5]),  # the only CRM sample is G-1; the other types are not cut by it
+        ({"crm": ["G-2"]}, [1, 2, 3, 4, 5]),  # the CRM sample goes; the ORIG with «g-1» in CRM_ID is not a CRM
+        ({"crm": ["G-2", "G-1"], "types": ["CRM", "ORIG"]}, [0, 1, 5]),
         ({"types": ["CRM", "blank"]}, [0, 2]),
         ({"types": ["ORIG"]}, [1, 5]),  # an empty code is ORIG; «???» is of no type
         ({"hole_prefix": "dh-1"}, [1, 2, 5]),
@@ -356,9 +358,46 @@ def test_t848_by_a_filter_and_over_the_records_taken_beforehand(number: int) -> 
     assert canonical(calc("summary", recs, cfg, ref, "AU", flt)) == canonical(calc("summary", part, cfg, ref, "AU"))
     line = run(by_filter, "summary")
     assert line["standards"]["n"] > 30 and line["batches"]["total"] > 10 and seen > 10_000
-    assert line["blanks"]["n"] > 30 or number == 2  # a filter by CRM leaves no blanks
+    assert line["blanks"]["n"] > 30  # also under the filter by CRM: it cuts the CRM samples only
     # another filter — another answer
     assert canonical(line) != canonical(calc("summary", recs, cfg, ref, "AU", FIVE[(number + 1) % 5]))
+
+
+def test_filter_by_crm_cuts_only_the_crm_samples() -> None:
+    """`crm[]` chooses among the standards; the blanks, the duplicates, the external control, the ORIG samples
+    and the batches stay as they were (решение ревью 14.25, № 15). By the filter and over the records taken
+    beforehand — still the same bytes: the type of a record is a field of its own (the code of the file)."""
+    recs, cfg, ref = hard_records()
+    flt = {"crm": ["G-1"]}
+    whole, cut = context(recs, cfg, ref, "AU"), context(recs, cfg, ref, "AU", flt)
+    all_groups, groups = run(whole, "standards")["groups"], run(cut, "standards")["groups"]
+    assert {g["crm"] for g in all_groups} > {g["crm"] for g in groups} == {"G-1"}  # both spellings of G-1
+    assert [g for g in all_groups if g["crm"] == "G-1"] == groups  # the groups left are as they were
+    for section, params in (("blanks", {"samples": True}), ("duplicates", {"kind": "DUP_F", "samples": True}),
+                            ("duplicates", {"kind": "DUP_P"}), ("external", {"intervals": False})):  # fmt: skip
+        a, b = run(whole, section, **params), run(cut, section, **params)
+        body = {k: v for k, v in a.items() if k not in ("counts", "notes")}
+        assert body == {k: v for k, v in b.items() if k not in ("counts", "notes")}, section
+        assert (a.get("groups") or a["points"]["row"]) and a["counts"]["filtered"] > b["counts"]["filtered"]
+    one, two = run(whole, "summary"), run(cut, "summary")
+    assert one["types"]["CRM"] > two["types"]["CRM"] > 0
+    others = [k for k in one["types"] if k != "CRM"]
+    assert [one["types"][k] for k in others] == [two["types"][k] for k in others]
+    assert (one["blanks"], one["duplicates"], one["external"]) == (two["blanks"], two["duplicates"], two["external"])
+    first, second = one["batches"], two["batches"]
+    assert first["total"] >= second["total"] > 100 and first["no_batch"] > second["no_batch"]
+    assert first["failed"] >= second["failed"] > 0  # a batch is not failed by a CRM that is cut
+    assert one["unmapped_codes"] == two["unmapped_codes"]
+    # Т8.4-8 with this rule: the mask is of the rows, the records taken by it give the same bytes
+    mask = row_mask(recs, parse_filter(flt), map_types(recs.text(r.TYPE_CODE), cfg))
+    assert mask is not None and int(mask.sum()) == two["counts"]["filtered"]
+    taken = context(recs.take(mask), cfg, ref, "AU")
+    for section, params in (("summary", {}), ("standards", {"samples": True}), ("blanks", {"samples": True}),
+                            ("batches", {}), ("duplicates", {"kind": "DUP_F"}), ("external", {})):  # fmt: skip
+        assert canonical(run(cut, section, **params)) == canonical(run(taken, section, **params)), section
+    # a CRM that is not there: no standards at all, everything else in place
+    none = calc("summary", recs, cfg, ref, "AU", {"crm": ["nowhere"]})
+    assert none["types"]["CRM"] == 0 and none["standards"]["n"] == 0 and none["blanks"] == one["blanks"]
 
 
 def test_hard_sections_hold_every_outcome() -> None:
