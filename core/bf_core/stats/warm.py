@@ -6,7 +6,8 @@ the API, where the charts are computed).
     warm() -> {module: seconds}
         `MODULES` in turn, each by its own `warm()`: the charts (track Г — `select`, `describe`, `histogram`,
         `qq`, `dendrogram` with `correlation`, `scatter`, `boxplot`, `probplot`, `domain_stats`, `ternary`,
-        `contact`), swath (track С — `swath`, `swath_blocks`); then `columns()`
+        `contact`), swath (track С — `swath`, `swath_blocks`), the rows of another table of the set
+        (`source_kernels`, 13.35: a domain or Y of another table); then `columns()`
     columns()
         the same kernels on read-only columns, as the routes of `stats` give them: the cached columns of
         `stats.source` are read-only, and numba compiles a kernel anew for a read-only array — without this the
@@ -32,7 +33,7 @@ from typing import Any
 
 MODULES = (
     "select", "describe", "histogram", "qq", "dendrogram", "scatter", "boxplot", "probplot", "domain_stats",
-    "ternary", "contact", "swath", "swath_blocks",
+    "ternary", "contact", "swath", "swath_blocks", "source_kernels",
 )  # fmt: skip
 
 

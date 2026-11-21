@@ -407,13 +407,11 @@ def paired(a: Columns, b: Columns, name: str, *, eps: float = KEY_EPS) -> Paired
         return np.rint(x * q).astype(np.int64)
 
     lo, hi = sk.hole_ranges(a.holes, b.holes, b.starts)
-    rows = np.empty(a.n, dtype=np.int64)
-    unmatched = sk.match(np.ascontiguousarray(a.starts, dtype=np.int64), key(a.from_m), key(a.to_m), lo, hi,
-                         key(b.from_m), key(b.to_m), rows)  # fmt: skip
+    rows, unmatched = sk.rows_matching(a.starts, key(a.from_m), key(a.to_m), lo, hi, key(b.from_m), key(b.to_m))
     ok = rows >= 0
     values = np.full(a.n, np.nan)
     values[ok] = col[rows[ok]]
-    return Paired(values, rows, int(unmatched))
+    return Paired(values, rows, unmatched)
 
 
 @dataclass(frozen=True)
@@ -433,13 +431,11 @@ def domain_at(a: Columns, dom: Columns, name: str) -> Domain:
     if dom.table.id == a.table.id:
         return Domain(codes, labels, 0)
     lo, hi = sk.hole_ranges(a.holes, dom.holes, dom.starts)
-    rows = np.empty(a.n, dtype=np.int64)
-    outside = sk.cover(np.ascontiguousarray(a.starts, dtype=np.int64), 0.5 * (a.from_m + a.to_m), lo, hi,
-                       np.ascontiguousarray(dom.from_m), np.ascontiguousarray(dom.to_m), rows)  # fmt: skip
+    rows, outside = sk.rows_covering(a.starts, 0.5 * (a.from_m + a.to_m), lo, hi, dom.from_m, dom.to_m)
     out = np.full(a.n, -1, dtype=np.int32)
     ok = rows >= 0
     out[ok] = codes[rows[ok]]
-    return Domain(out, labels, int(outside))
+    return Domain(out, labels, outside)
 
 
 # --- positions ------------------------------------------------------------------------------------------
