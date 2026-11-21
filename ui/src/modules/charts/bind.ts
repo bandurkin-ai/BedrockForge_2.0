@@ -15,7 +15,11 @@ import { histogramRequest, histogramSummary } from "../../charts/histogram/model
 import { HistogramWindow } from "../../charts/histogram/HistogramWindow";
 import { qqRequest, qqSummary } from "../../charts/qq/model";
 import { QQWindow } from "../../charts/qq/QQWindow";
-import { computeHistogram, computeQQ, defaultField, loadFields } from "./api";
+import { dendrogramRequest, dendrogramSummary } from "../../charts/dendrogram/model";
+import { DendrogramWindow } from "../../charts/dendrogram/DendrogramWindow";
+import { onCoreEvent } from "../jobs/state";
+import { computeDendrogram, computeHistogram, computeQQ, defaultField, loadFields } from "./api";
+import { componentsReason, dataChanged, readComponents } from "./state";
 import { CHART_WINDOW_PREFIX } from "./commands";
 import { chartName, isChartKind, settingsFromArgs, windowTitle, type ChartKind, type SettingsOf } from "./settings";
 
@@ -33,6 +37,8 @@ export interface ChartWindowSpec<K extends ChartKind = ChartKind> {
   summary?: (settings: SettingsOf[K]) => Promise<string>;
   /** Fills what the defaults leave empty (the first component) before the window opens. */
   prepare?: (settings: SettingsOf[K]) => Promise<SettingsOf[K]>;
+  /** Why the kind cannot be built besides `chartReason` (the dendrogram: fewer than 2 components). */
+  reason?: (ctx: CommandContext) => string | null;
 }
 
 /** The first component of the table when no field is given (no answer of the core — the window tells why). */
@@ -66,7 +72,30 @@ export const CHART_WINDOWS: { [K in ChartKind]?: ChartWindowSpec<K> } = {
       return qqSummary(chartName("qq", s), await computeQQ(body));
     },
   },
+  dendrogram: {
+    render: (p) => createElement(DendrogramWindow, p),
+    prepare: withComponents,
+    reason: () => componentsReason(tablesStore.get().setId),
+    summary: async (s) => {
+      const f = await loadFields(s.set_id, s.table);
+      const body = dendrogramRequest(s, f.numeric);
+      if (!body) throw refusal("too_few_fields", "Нужно 2 и больше поля.", "Укажите fields или таблицу с компонентами.");
+      return dendrogramSummary(chartName("dendrogram", s), await computeDendrogram(body), s.cut);
+    },
+  },
 };
+
+/** Without a table — the first table with 2 and more components (else the set's first): the dendrogram opens there. */
+async function withComponents(s: SettingsOf["dendrogram"]): Promise<SettingsOf["dendrogram"]> {
+  if (s.table) return s;
+  try {
+    const f = await loadFields(s.set_id);
+    const t = f.tables.find((x) => x.components >= 2) ?? f.tables[0];
+    return t ? { ...s, table: t.key } : s;
+  } catch {
+    return s;
+  }
+}
 
 export const chartWindowKind = (kind: ChartKind): string => `${CHART_WINDOW_PREFIX}${kind}`;
 
@@ -109,8 +138,30 @@ export function bindCharts(app: App): void {
   for (const kind of Object.keys(CHART_WINDOWS)) {
     if (!isChartKind(kind)) continue;
     const spec = CHART_WINDOWS[kind] as ChartWindowSpec;
-    app.registry.bind(`chart.${kind}`, noted(app, (a, source) => runChart(kind, spec, a, source)), chartReason);
+    app.registry.bind(`chart.${kind}`, noted(app, (a, source) => runChart(kind, spec, a, source)), (ctx) => chartReason(ctx) ?? spec.reason?.(ctx) ?? null);
   }
+  // the components of the active set, again after an edit of its data
+  let seen: number | null = null;
+  tablesStore.subscribe(() => {
+    const id = tablesStore.get().setId;
+    if (id === seen) return;
+    seen = id;
+    if (id !== null) void readComponents(id);
+  });
+  onCoreEvent((event, data) => {
+    if (event !== "drillholes.changed" && event !== "objects.changed") return;
+    let setId: number | undefined;
+    try {
+      const d = JSON.parse(data) as { set_id?: unknown; kind?: unknown };
+      if (event === "objects.changed" && d.kind === "chart") return; // a saved chart: the data are the same
+      if (event === "drillholes.changed" && typeof d.set_id === "number") setId = d.set_id;
+    } catch {
+      /* a malformed event: forget all */
+    }
+    dataChanged(setId);
+    const active = tablesStore.get().setId;
+    if (active !== null && (setId === undefined || setId === active)) void readComponents(active);
+  });
 }
 
 /** The chart windows for the shell's window layer (`shell/Shell.tsx`); null — not a chart window. */
