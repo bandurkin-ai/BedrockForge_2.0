@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeScale } from "../src/charts/core/axisScale";
 import { insidePolygon, rectPath, selectInside, simplifyPath, toAxisPolygon, toViewBox } from "../src/charts/core/lasso";
 import { rgba32 } from "../src/charts/core/palette";
-import { axisMap, mapValue, rasterPoints, rasterRects, rasterSize } from "../src/charts/core/PointsCanvas";
+import { axisMap, mapValue, rasterPoints, rasterRects, rasterSize, rasterUrls } from "../src/charts/core/PointsCanvas";
 import { ScatterChart } from "../src/charts/scatter/ScatterChart";
 import { secondField, ScatterWindow } from "../src/charts/scatter/ScatterWindow";
 import { colorLegend, densityRects, diagonalPoints, fitSegment, pointColors, pointPixels, scatterCsv, scatterDomains, scatterNotes, scatterRequest, scatterSummary, scatterTable, selectedRows } from "../src/charts/scatter/model";
@@ -318,5 +318,24 @@ describe("the window and the command", () => {
     const a = await app.registry.execute("chart.scatter", { x: "AG", y: "AU", log_x: true, regression: "rma" }, "claude");
     expect(sent.find((x) => x.path === "/stats/scatter")?.body).toMatchObject({ x: "AG", y: "AU", log_x: true, regression: "rma", table: "пробы" });
     expect(a.result).toMatch(/^Рассеяние · AG \/ AU.*: пар 5, r Пирсона 1, r Спирмена 1; RMA: b 2, a 1$/);
+  });
+});
+
+describe("the pictures of a raster layer", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("a new picture revokes the one before it at once; dropped — the last one too", () => {
+    let n = 0;
+    const revoked: string[] = [];
+    vi.stubGlobal("URL", { createObjectURL: () => `blob:${++n}`, revokeObjectURL: (u: string) => void revoked.push(u) });
+    const urls = rasterUrls();
+    expect(urls.show(new Blob(["a"]))).toBe("blob:1");
+    expect(revoked).toEqual([]);
+    expect(urls.show(new Blob(["b"]))).toBe("blob:2");
+    expect(revoked).toEqual(["blob:1"]); // not a second later: when the new one is set
+    urls.drop();
+    expect(revoked).toEqual(["blob:1", "blob:2"]);
+    urls.drop();
+    expect(revoked).toHaveLength(2);
   });
 });

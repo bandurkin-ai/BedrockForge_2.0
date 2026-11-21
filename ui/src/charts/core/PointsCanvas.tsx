@@ -5,7 +5,7 @@
  * blob URL; `inlineRasters` turns it into a data URL before an export (an SVG loaded as an image takes no blob URLs).
  * The drawing is pure (`rasterPoints`, `rasterRects` — tested in node): 200 000 points ≤ 100 ms.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { axisValue, type AxisKind, type Scale } from "./axisScale";
 import type { PlotBox } from "./PlotFrame";
 
@@ -111,12 +111,36 @@ export async function inlineRasters(svg: SVGSVGElement | null): Promise<void> {
   }
 }
 
+/** The picture shown by a raster layer: a new one revokes the one before it (and takes its place); `drop` — the last. */
+export function rasterUrls(): { show(blob: Blob): string; drop(): void } {
+  let current: string | null = null;
+  const revoke = (url: string | null) => {
+    if (!url) return;
+    BLOBS.delete(url);
+    URL.revokeObjectURL(url);
+  };
+  return {
+    show(blob) {
+      const url = URL.createObjectURL(blob);
+      BLOBS.set(url, blob);
+      revoke(current);
+      current = url;
+      return url;
+    },
+    drop() {
+      revoke(current);
+      current = null;
+    },
+  };
+}
+
 /**
  * The canvas layer inside a chart's SVG: `draw` fills the buffer (w × h raster pixels of the plot box); it runs
  * again when `version` changes. The previous picture stays until the new one is ready.
  */
 export function RasterLayer({ box, draw, version, label = "points", factor = RASTER_SCALE }: { box: PlotBox; draw: (buf: Uint32Array, w: number, h: number) => void; version: unknown; label?: string; factor?: number }) {
   const [href, setHref] = useState<string | null>(null);
+  const urls = useMemo(rasterUrls, []);
   useEffect(() => {
     if (typeof document === "undefined") return;
     const { w, h } = rasterSize(box, factor);
@@ -129,20 +153,15 @@ export function RasterLayer({ box, draw, version, label = "points", factor = RAS
     draw(new Uint32Array(img.data.buffer), w, h);
     ctx.putImageData(img, 0, 0);
     let alive = true;
-    let url: string | null = null;
+    // the old picture stays until the next one is shown, then goes
     canvas.toBlob((blob) => {
-      if (!alive || !blob) return;
-      url = URL.createObjectURL(blob);
-      BLOBS.set(url, blob);
-      setHref(url);
+      if (alive && blob) setHref(urls.show(blob));
     }, "image/png");
     return () => {
       alive = false;
-      // the old picture goes once the next one is shown
-      const old = url;
-      if (old) setTimeout(() => (BLOBS.delete(old), URL.revokeObjectURL(old)), 1000);
     };
   }, [version, box.x0, box.x1, box.y0, box.y1, factor]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => urls.drop(), [urls]);
   if (!href) return null;
   return <image data-layer={label} href={href} x={box.x0} y={box.y0} width={box.x1 - box.x0} height={box.y1 - box.y0} preserveAspectRatio="none" style={{ imageRendering: "auto" }} />;
 }
