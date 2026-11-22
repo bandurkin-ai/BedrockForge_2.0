@@ -16,6 +16,7 @@ import { needProject, needWritable, noted, refusal, showJobs, viewport } from ".
 import { focusWindow, openWindow, windowStore } from "../../shell/windows";
 import { setPanel } from "../../shell/workspace";
 import { onScene } from "../scene/sceneHost";
+import { bindTrends } from "../trends/bind";
 import { refresh as refreshJobs } from "../jobs/state";
 import { loadTables, nextName, resolveTable, type Started, type TableRow } from "../composites/api";
 import { deleteModel, exportModel, fitModel, formatOfPath, importModel, loadModel, loadModels, replaceModel, saveModel, startExperimental, startMap, type ExchangeFormat, type FitWeights } from "./api";
@@ -201,6 +202,7 @@ const noStructures = (id: number) => refusal("no_structures", `В модели �
 const centreNote = (win: string): string => (ellipsoidCentre(workOf(win)!) ? "" : " — появится, когда окно прочитает данные расчёта (центр — середина охвата точек)");
 
 export function bindVariography(app: App): void {
+  bindTrends(app); // the trends of «Геостатистика» (Д-15; modules/trends) — until shell/app.ts names them
   const r = app.registry;
   r.bind(
     "variography.open",
