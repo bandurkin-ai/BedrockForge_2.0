@@ -394,6 +394,8 @@ function registerIpc(): void {
     ],
     prj: [{ name: "Система координат (.prj)", extensions: ["prj"] }],
     omf: [{ name: "OMF v1 (Leapfrog OMF 0.9)", extensions: ["omf"] }, { name: "Все файлы", extensions: ["*"] }],
+    // «Импорт модели вариограммы» (ADR 0022 §12): JSON or the parameters of GSLIB.
+    variogram: [{ name: "Модели вариограмм (JSON, GSLIB)", extensions: ["json", "par", "txt"] }, { name: "Все файлы", extensions: ["*"] }],
     // «Импорт файлов» (ТЗ 7.8): every extension of the wizard; formats arrive with their stages.
     objects: [
       {

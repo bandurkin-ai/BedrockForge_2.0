@@ -18,7 +18,8 @@ import { MapPanel } from "../src/modules/stats/MapPanel";
 import { varioArgs } from "../src/modules/stats/Parts";
 import { initialStats, runModelCurve, setForm, statsStore, type StatsRuns } from "../src/modules/stats/state";
 import { curveFor, VariogramPanel, variogramSeries } from "../src/modules/stats/VariogramPanel";
-import { planBox } from "../src/modules/stats/VarioPlots";
+import { cellColor, gridCellAt, gridDomain, gridEmpty, planBox, rasterGrid } from "../src/modules/stats/VarioPlots";
+import { rgba32 } from "../src/charts/core/palette";
 import { tablesStore } from "../src/modules/tables/state";
 import { setCoreTarget } from "../src/shell/api";
 import { createApp, type App } from "../src/shell/app";
@@ -166,12 +167,22 @@ describe("the panels", () => {
     const html = wrap(createElement(MapPanel, { ctx: CTX }));
     const { empty } = mapFill(SPARSE_MAP);
     expect(html).toContain(`data-cells="${SPARSE_MAP.u.length * SPARSE_MAP.v.length}" data-empty="${empty}"`);
-    expect(html.match(/data-empty="true"/g)).toHaveLength(empty);
-    const group = html.slice(html.indexOf('data-testid="grid-cells"'));
-    const rects = [...group.matchAll(/<rect x="([\d.]+)" y="([\d.]+)"/g)].slice(0, SPARSE_MAP.u.length * SPARSE_MAP.v.length).map((m) => [Number(m[1]), Number(m[2])]);
-    const n = SPARSE_MAP.u.length;
-    expect(rects[1][0]).toBeGreaterThan(rects[0][0]); // i + 1 — east
-    expect(rects[n][1]).toBeLessThan(rects[0][1]); // j + 1 — north, up
+    // the cells — one raster layer, not a <rect> each (n = 100 — 40 401 cells)
+    expect(html.match(/data-empty="true"/g)).toBeNull();
+    expect(html).toContain("data-empty-fill");
+    expect(html).toContain('data-testid="grid-hover"');
+    const nx = 3;
+    const ny = 2;
+    const vals = [[1, null, 3], [4, 5, 6]];
+    const buf = new Uint32Array(30 * 20);
+    expect(rasterGrid(buf, 30, 20, nx, ny, vals, gridDomain(vals))).toBe(5);
+    expect(gridEmpty(vals, nx, ny)).toBe(1);
+    const px = (x: number, y: number) => buf[y * 30 + x];
+    expect(px(5, 15)).toBe(rgba32(cellColor(1, gridDomain(vals))!)); // j = 0 — south, at the bottom; i = 0 — west
+    expect(px(15, 15)).toBe(0); // the empty cell is not painted (the hatching shows), never the colour of 0
+    expect(px(25, 5)).toBe(rgba32(cellColor(6, gridDomain(vals))!)); // j + 1 — north, up; i + 1 — east
+    expect(gridCellAt([10, 20, 30], [0, 5], 21, 4)).toEqual({ i: 1, j: 1 });
+    expect(gridCellAt([10, 20, 30], [0, 5], 40, 4)).toBeNull();
     expect(html).toContain("ΔX (восток), м");
     expect(html).toContain("ΔY (север), м");
     expect(html).toContain("пусто");

@@ -178,16 +178,41 @@ describe("the runner", () => {
     expect(t.previews).toEqual([JSON.stringify(B2)]);
     t.runner.edit(B1);
     t.advance(200);
-    expect(t.previews).toHaveLength(2);
-    t.resolvers[1](PV); // the newer answers first
-    t.resolvers[0](readCalc(A.preview_sampled)); // the overtaken one is dropped
+    expect(t.previews).toHaveLength(1); // one in flight: B1 waits for the answer of B2
+    expect(t.state().previewBusy).toBe(true);
+    t.resolvers[0](readCalc(A.preview_sampled));
+    await flush();
+    expect(t.previews).toEqual([JSON.stringify(B2), JSON.stringify(B1)]); // the newest body after the answer
+    expect(t.state().previewFor).toBe(JSON.stringify(B2));
+    t.resolvers[1](PV);
     await flush();
     expect(t.state().preview).toBe(PV);
     expect(t.state().previewFor).toBe(JSON.stringify(B1));
+    expect(t.state().previewBusy).toBe(false);
     t.runner.edit(B1);
     t.advance(500);
     expect(t.previews).toHaveLength(2);
     expect(t.started).toEqual([]); // no job before «Рассчитать»
+  });
+
+  it("an answer for an older body is not shown when the body was emptied meanwhile; edits in flight coalesce", async () => {
+    const t = setup();
+    t.runner.edit(B1);
+    t.advance(200);
+    t.runner.edit(B2);
+    t.advance(200);
+    t.runner.edit({ set_id: 1, nlag: 8 });
+    t.advance(200);
+    expect(t.previews).toHaveLength(1);
+    t.runner.edit(null);
+    t.resolvers[0](PV);
+    await flush();
+    expect(t.state().preview).toBeNull();
+    expect(t.state().previewBusy).toBe(false);
+    expect(t.previews).toHaveLength(1); // nothing goes for an incomplete body
+    t.runner.edit(B2);
+    t.advance(200);
+    expect(t.previews).toEqual([JSON.stringify(B1), JSON.stringify(B2)]);
   });
 
   it("a drag waits for the release", () => {

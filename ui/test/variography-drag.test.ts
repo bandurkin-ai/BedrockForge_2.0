@@ -2,7 +2,7 @@
 // 11, 19, 22) on the REAL answers of the core (`core/tests/data/variography/window_answers.json`): the handles of
 // the charts (the nugget, the sills of the structures, the ranges of the axis of the chart), their hit and drag; the
 // fit request = the body the core was asked, its answer (`order`, `fixed`) in the window; the save body with `fit`,
-// a taken name — the next free one, the replacement asked in our own window.
+// no name — the free default of the core, a taken name given — asked in our own window, the replacement asked too.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createElement } from "react";
@@ -148,26 +148,64 @@ describe("«Подобрать»", () => {
 describe("«Сохранить»", () => {
   it("the body: the model, the key of its points and the fit — as the core took it", () => {
     const w = newWork({ model: FIT.model, expKey: A.bodies_models.save.exp_key, fitInfo: { weights: "n_h", residual: A.fit.residual, n: A.fit.n, fixed: A.fit.fixed } });
-    expect(saveBody(w, false)).toEqual(A.bodies_models.save);
-    expect(saveBody({ ...w, fitInfo: null }, false)).toEqual({ model: A.bodies_models.save.model, exp_key: A.bodies_models.save.exp_key });
-    expect(saveBody({ ...w, fitInfo: null }, true)).toMatchObject({ fit: null, back: null });
+    expect(saveBody(w, "new")).toEqual(A.bodies_models.save);
+    const bare = { model: A.bodies_models.save.model, exp_key: A.bodies_models.save.exp_key };
+    expect(saveBody({ ...w, fitInfo: null }, "new")).toEqual(bare);
+    // the replacement: null only after an edit dropped them; never had — the keys are not sent (the stored kept)
+    expect(saveBody({ ...w, fitInfo: null, back: null }, "replace")).toEqual({ ...bare, fit: null, back: null });
+    expect(saveBody({ ...w, fitInfo: undefined, back: undefined }, "replace")).toEqual(bare);
+    expect(saveBody({ ...w, fitInfo: undefined }, "other")).toEqual({ ...bare, fit: null, back: null });
   });
 
-  it("a taken name (409 of the core) — the next free one; the window holds the stored model", async () => {
+  it("no name — none sent (the core gives the free default «(N)»); the window holds the stored model", async () => {
     setWork(WIN, newWork({ model: FIT.model, expKey: A.bodies_models.save.exp_key, data: { ...newWork().data, field: "AU" }, defaults: { table_name: "Пробы" } as never }));
     const names: (string | undefined)[] = [];
-    const taken = A.model_taken.body;
     const saved = await saveWork(WIN, undefined, {
-      create: async (b) => {
-        names.push(b.name);
-        if (names.length === 1) throw new CoreError(409, taken.code, taken.message, taken.hint);
-        return A.model_second;
-      },
+      create: async (b) => (names.push(b.name), A.model_second),
       refresh: async () => undefined,
     });
-    expect(names).toEqual([A.model_created.name, A.model_second.name]);
+    expect(names).toEqual([undefined]);
     expect(saved).toEqual(A.model_second);
     expect(workOf(WIN)).toMatchObject({ modelId: A.model_second.id, dirty: false });
+  });
+
+  it("a name given and taken (409 of the core) — «Имя занято» in our own window: another name, or replace that model", async () => {
+    const taken = A.model_taken.body;
+    const start = () => setWork(WIN, newWork({ model: FIT.model, expKey: A.bodies_models.save.exp_key, data: { ...newWork().data, field: "AU" } }));
+    const takenFor = (free: string) => async (b: { name?: string }) => {
+      if (b.name !== free) throw new CoreError(409, taken.code, taken.message, taken.hint);
+      return { id: 9, name: free };
+    };
+    // another name: asked while taken (the third model too), never silently « (2)»
+    start();
+    const asked: string[] = [];
+    const names = ["AU (2)", "Третья"];
+    const saved = await saveWork(WIN, A.model_created.name, {
+      ask: async (q) => (asked.push((q as { title: string }).title), false),
+      askName: async (o) => (asked.push(`${o.title}: ${o.initial}`), names.shift()!),
+      create: takenFor("Третья"),
+      refresh: async () => undefined,
+    });
+    expect(asked).toEqual(["Имя занято", `Другое имя модели: ${A.model_created.name} (2)`, "Имя занято", "Другое имя модели: AU (3)"]);
+    expect(saved).toEqual({ id: 9, name: "Третья" });
+    // cancelled at the name — nothing written
+    start();
+    expect(await saveWork(WIN, "AU", { ask: async () => false, askName: async () => null, create: takenFor("x"), refresh: async () => undefined })).toBeNull();
+    expect(workOf(WIN)!.modelId).toBeNull();
+    // «Заменить»: the stored model of that name, its current version, fit and back reset when the window has none
+    start();
+    const put: unknown[] = [];
+    const got = await saveWork(WIN, A.model_created.name, {
+      ask: async () => true,
+      create: takenFor("x"),
+      list: async () => [{ id: A.model_created.id, name: A.model_created.name } as never],
+      load: async (id) => ({ id, version: 5 }) as never,
+      replace: async (id, b) => (put.push([id, b]), { id, name: A.model_created.name, version: 6 }),
+      refresh: async () => undefined,
+    });
+    expect(got).toEqual(A.model_created);
+    expect(put).toEqual([[A.model_created.id, { name: A.model_created.name, model: A.bodies_models.save.model, exp_key: A.bodies_models.save.exp_key, fit: null, back: null, expected_version: 5 }]]);
+    expect(workOf(WIN)).toMatchObject({ modelId: A.model_created.id, modelVersion: 6, dirty: false });
   });
 
   it("the replacement asks in our own window first; «Отмена» — nothing is written", async () => {
@@ -182,7 +220,8 @@ describe("«Сохранить»", () => {
     expect(put).toEqual([]);
     expect(question).toMatchObject({ title: "Заменить модель", okLabel: "Заменить", danger: true });
     expect(await saveWork(WIN, undefined, { ask: async () => true, replace, refresh: async () => undefined })).toEqual(A.model_created);
-    expect(put[0]).toEqual([A.model_created.id, { model: A.bodies_models.save.model, exp_key: A.bodies_models.save.exp_key, fit: null, back: null, expected_version: A.model_read.version }]);
+    // no edit dropped the fit and the back-transform: their keys are not sent (the stored ones kept)
+    expect(put[0]).toEqual([A.model_created.id, { model: A.bodies_models.save.model, exp_key: A.bodies_models.save.exp_key, expected_version: A.model_read.version }]);
     expect(workOf(WIN)!.dirty).toBe(false);
   });
 
