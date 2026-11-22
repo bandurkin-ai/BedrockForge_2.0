@@ -1,3 +1,4 @@
+import { ModelsTree } from "../modules/variography/ModelsTree";
 import { TrendsTree } from "../modules/trends/TrendsTree";
 import { useState, type DragEvent } from "react";
 import { useApp } from "./AppContext";
@@ -31,6 +32,7 @@ const CONTENT: Partial<Record<TreeSection, () => JSX.Element>> = {
   audit: AuditTree,
   reports: ReportsTree,
   trends: TrendsTree,
+  variograms: ModelsTree,
   views: ViewsTree,
   series: SeriesTree,
   blocks: BlocksTree,
