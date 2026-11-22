@@ -118,7 +118,7 @@ def preview(svc: Svc, body: Payload) -> dict[str, Any]:
 
     raw = _body(body)
     project = svc.require_current()
-    return _slot(lambda: vj.preview(project, raw))  # type: ignore[no-any-return]
+    return _slot(lambda: vj.preview(project, raw, threads=2))  # 2 threads, as the tab (16.28б)  # type: ignore[no-any-return]
 
 
 @router.post("/map")
