@@ -24,6 +24,25 @@ GEOSTATSPY=/tmp/GeostatsPy refenv/bin/python tools/gen/ref_geostatspy.py tests/d
 
 Скрипт останавливается, если замкнутая форма расходится с GeostatsPy более чем на 1e−9.
 
+## Эталоны вариографии (`core/tests/data/variography/`)
+
+Эталоны Э16 лежат рядом с тестами ядра и общие для ядра и интерфейса (ADR 0022; интерфейс сверяет формы с настоящими ответами ядра).
+
+| Файл | Что | Откуда |
+|---|---|---|
+| `frames.json` | Оси a1–a3 по ang1–ang3 (GSLIB setrot), Т8.6-3 | `test_geostat_rotation.py`; тот же файл читают `ellipsoid-*.test.ts` |
+| `model_curves.json` | Значения моделей по осям (сферическая, экспоненциальная, гауссова, до 3 структур), Т8.6-4 | `test_vario_model.py`; тот же файл читает `variography-model.test.ts` |
+| `vmodel_geostatspy.json`, `gamv_geostatspy.json` | `vmodel`, `gamv` GeostatsPy, Д-21 | Из `ref/geostatspy` (набор — 80 точек, зерно `20261118`); GeostatsPy не меняется |
+| `window_answers.json` | Настоящие ответы ядра для окна «Вариография»: `defaults`, `preview`, итог задания | `test_vario_window_answers.py` |
+
+Пересоздать `window_answers.json` (после изменения формы ответа, затем сверить `variography-window.test.ts`):
+
+```bash
+cd core && BF_REGEN_VARIO_WINDOW=1 uv run pytest -q tests/test_vario_window_answers.py
+```
+
+Правило `trunc` для карты вариограммы (`varmap` GeostatsPy, подшаг 16.4): <!-- дописать после 16.4: формулировка правила (как GeostatsPy обрезает/округляет сетку лагов и ячеек карты, чем отличается от определения ядра BF; допуск сверки) -->
+
 ## ext/omf и ext/expected
 
 | Файл | Источник | Лицензия | Что это |
