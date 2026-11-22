@@ -308,7 +308,7 @@ def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None
 
                     warm_intercepts()
                 elif name == "geostat":
-                    from bf_core.geostat.variogram.jobs import warm as warm_geostat
+                    from bf_core.geostat.variogram.warm import warm as warm_geostat
 
                     warm_geostat()
                 elif name == "stats":
