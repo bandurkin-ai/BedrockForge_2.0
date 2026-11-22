@@ -3,8 +3,8 @@
  * (the ribbon tab after «Анализ»). A command without its required arguments opens its window (prefilled with what is
  * given); with them it runs. `confirm` — the delete of a model; the replacement of a stored model (`save` with a
  * model that was saved) asks in the handler, for the assistant too (the registry cannot know it beforehand). No
- * default keys. `variography.ellipsoid`, `variography.show` are bound with the scene (16.19); the trends — by
- * `modules/trends`. `VARIO_BUTTONS` — the buttons of the ribbon group (shell/ribbonConfig.ts puts them in).
+ * default keys. `variography.ellipsoid`, `variography.show` — the ellipsoid of the model in 3D (`scene.ts`); the
+ * trends — by `modules/trends`. `VARIO_BUTTONS` — the buttons of the ribbon group (shell/ribbonConfig.ts puts them in).
  */
 import type { Command, ParamSchema } from "../../shell/commands";
 import type { IconName } from "../../shell/Icon";
@@ -38,9 +38,6 @@ const LAGS: Record<string, ParamSchema> = {
   band_v: P("number", "вертикальная полоса, м (> 0; 2L)"),
   min_pairs: P("integer", "точка строится при числе пар не меньше (1–1000; 30)"),
 };
-
-/** `ellipsoid` and `show` wait for the scene: 16.19 binds them and removes this stage. */
-const SCENE_STAGE = "Э16";
 
 const MODEL_ID = P("integer", "номер сохранённой модели вариограммы");
 const FORMAT = P("string", "формат: json или gslib (nst c0 / it cc ang1 ang2 ang3 / a1 a2 a3)", { enum: ["json", "gslib"] });
@@ -84,10 +81,11 @@ export const commands: Command[] = [
   {
     id: "variography.ellipsoid",
     title: "Эллипсоид в 3D",
-    description: "Эллипсоид анизотропии модели в 3D с ручками углов и дальностей (Д-14): model_id, углы и дальности выбранной структуры.",
+    description:
+      "Эллипсоид анизотропии модели в 3D с ручками углов и дальностей (Д-14): окно модели model_id (открывается, если закрыто), " +
+      "заданные углы и дальности — выбранной структуре (при общих осях углы — всем). Центр — середина охвата точек расчёта.",
     params: { model_id: MODEL_ID, ...ANGLES, a1: P("number", "дальность a1, м"), a2: P("number", "дальность a2, м"), a3: P("number", "дальность a3, м"), structure: P("integer", "номер структуры с 1; по умолчанию — с наибольшей a1") },
     required: ["model_id"],
-    stage: SCENE_STAGE,
   },
   {
     id: "variography.show",
@@ -95,7 +93,6 @@ export const commands: Command[] = [
     description: "Показать или скрыть эллипсоид сохранённой модели вариограммы в 3D.",
     params: { model_id: MODEL_ID, visible: P("boolean", "показать (по умолчанию да)") },
     required: ["model_id"],
-    stage: SCENE_STAGE,
   },
   {
     id: "variography.save",

@@ -9,7 +9,7 @@
 import { Store } from "../../shell/store";
 import { parseNumber } from "../composites/params";
 import type { CalcResult, DataBody, DefaultsAnswer, ModelRow } from "./api";
-import { EMPTY_MODEL, type VModel } from "./model";
+import { EMPTY_MODEL, type Structure, type VModel } from "./model";
 
 // ---- the data ----
 
@@ -290,6 +290,16 @@ export interface Work {
   defaults: DefaultsAnswer | null;
   /** changed since it was read or saved */
   dirty: boolean;
+  /** the ellipsoid of the model in the main 3D (Д-14); absent — not shown */
+  ellipsoid?: EllipsoidShow;
+}
+
+/** The ellipsoid of a window in 3D: shown, the structure with the handles (null — of the largest a1), the centre. */
+export interface EllipsoidShow {
+  visible: boolean;
+  structure: number | null;
+  /** absolute centre, float64; null — the centre of the extent of the points */
+  centre: [number, number, number] | null;
 }
 
 export const newWork = (patch: Partial<Work> = {}): Work => ({ data: DEFAULT_DATA, values: {}, view: "axes", model: EMPTY_MODEL, modelId: null, expKey: null, fix: [], result: null, defaults: null, dirty: false, ...patch });
@@ -299,9 +309,11 @@ export interface VarioState {
   works: Record<string, Work>;
   models: ModelRow[];
   modelsLoaded: boolean;
+  /** a handle of the ellipsoid being dragged (the window waits for the release to compute); null — none */
+  dragging?: { win: string; kind: string } | null;
 }
 
-export const variographyStore = new Store<VarioState>({ works: {}, models: [], modelsLoaded: false });
+export const variographyStore = new Store<VarioState>({ works: {}, models: [], modelsLoaded: false, dragging: null });
 
 export const workOf = (win: string): Work | null => variographyStore.get().works[win] ?? null;
 
@@ -338,3 +350,66 @@ export const setModels = (models: ModelRow[]): void => variographyStore.set({ mo
 
 /** «‹поле› · ‹таблица›» — the default name of a model (e16-api.md). */
 export const defaultModelName = (w: Work): string => [w.data.field, w.defaults?.table_name ?? w.result?.table].filter(Boolean).join(" · ");
+
+// ---- the ellipsoid in 3D (Д-14; ADR 0022 §9) ----
+
+export const DEFAULT_ELLIPSOID: EllipsoidShow = { visible: true, structure: null, centre: null };
+
+export const setEllipsoid = (win: string, patch: Partial<EllipsoidShow>): Work => setWork(win, (w) => ({ ellipsoid: { ...DEFAULT_ELLIPSOID, ...w.ellipsoid, ...patch } }));
+
+export const setDragging = (d: VarioState["dragging"]): void => variographyStore.set({ dragging: d });
+
+/** The centre of the ellipsoid of a window: given, else the middle of the extent of the points (`/defaults`); null — unknown. */
+export function ellipsoidCentre(w: Work): [number, number, number] | null {
+  if (w.ellipsoid?.centre) return w.ellipsoid.centre;
+  const e = w.defaults?.extent;
+  if (e) return [(e.min[0] + e.max[0]) / 2, (e.min[1] + e.max[1]) / 2, (e.min[2] + e.max[2]) / 2];
+  return null;
+}
+
+/** The least range of a drag: L / 2 of the last calculation (or of the defaults); 0 — unknown. */
+export function leastRange(w: Work): number {
+  const lag = Number(w.result?.params.lag ?? w.defaults?.defaults.lag ?? 0);
+  return Number.isFinite(lag) && lag > 0 ? lag / 2 : 0;
+}
+
+/** The structure with the handles: given (if there is one), else the one of the largest a1 (the first of equal ones). */
+export function chosenStructure(w: Pick<Work, "model" | "ellipsoid">): number {
+  const list = w.model.structures;
+  const s = w.ellipsoid?.structure;
+  if (typeof s === "number" && s >= 0 && s < list.length) return s;
+  let best = list.length ? 0 : -1;
+  list.forEach((x, i) => {
+    if (x.a1 > list[best].a1) best = i;
+  });
+  return best;
+}
+
+export type StructurePatch = Partial<Pick<Structure, "ang1" | "ang2" | "ang3" | "a1" | "a2" | "a3">>;
+
+/** The model with the structure `i` changed; its angles — of every structure with «общие оси» (they turn together). */
+export function withStructure(m: VModel, i: number, patch: StructurePatch): VModel {
+  const angles: StructurePatch = {};
+  for (const k of ["ang1", "ang2", "ang3"] as const) if (patch[k] !== undefined) angles[k] = patch[k];
+  const structures = m.structures.map((s, k) => (k === i ? { ...s, ...patch } : m.common_axes ? { ...s, ...angles } : s));
+  return { ...m, structures };
+}
+
+/** The mark `vario:edit` of the frame of an edit (a drag, a cell): `vario:drawn` comes with the frame (`scene.ts`). */
+let editAt: number | null = null;
+export function markEdit(): void {
+  if (typeof performance === "undefined") return;
+  editAt = performance.now();
+  try {
+    performance.mark("vario:edit");
+  } catch {
+    /* no User Timing: the time is still kept */
+  }
+}
+
+/** The time of the last edit not drawn yet, taken once (null — none). */
+export function takeEdit(): number | null {
+  const t = editAt;
+  editAt = null;
+  return t;
+}

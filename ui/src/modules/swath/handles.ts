@@ -12,6 +12,7 @@
 import type { Ray } from "../../viz/section/math";
 import type { Scene } from "../../viz/Scene";
 import type { ToolHandler, ToolPointer } from "../../viz/core/toolInput";
+import { addHandles, removeHandles } from "../../viz/core/handleChain";
 import { dragAngles, handlesOf, hitHandle, rotationBetween, sameAngles, type Angles, type Handle, type HandleKind } from "../../viz/swath/drag";
 import { frameOf } from "../../viz/swath/frame";
 import { SwathHandles } from "../../viz/swath/handle";
@@ -65,7 +66,7 @@ export class SwathHandlesControl implements ToolHandler {
     private readonly scene: HandleScene,
     private readonly host: HandlesHost,
   ) {
-    scene.setHandles(this);
+    addHandles(scene, this);
   }
 
   /** For the tests and the E2E hook: the handles drawn (kind, angle, lit) and the drag now. */
@@ -224,6 +225,6 @@ export class SwathHandlesControl implements ToolHandler {
     this.cancel();
     this.hide();
     this.disposed = true;
-    this.scene.setHandles(null);
+    removeHandles(this.scene, this);
   }
 }
