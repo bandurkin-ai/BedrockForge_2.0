@@ -1,5 +1,5 @@
 // The bottom tab «Статистика» (ТЗ 7.29; ADR 0019 §7; перенос `stats.test.ts` BF): the tab in the shell and its
-// buttons on the ribbon (variogram, map, local — unavailable with the stage Э16), the defaults of the forms and
+// buttons on the ribbon (variogram, map, local — available since Э16, `stats-vario.test.ts`), the defaults of the forms and
 // the bodies of `POST /stats/tab/*`, the facts (a missing number is «—», never 0), `stats.open` for the person
 // and for the assistant, a refusal of 20 001 intervals shown with its hint (Т7.29-2), an overtaken answer and an
 // edit of the data drop the result. The core is a fetch stub.
@@ -49,12 +49,14 @@ describe("the tab in the shell (перенос `stats.test.ts` BF)", () => {
     expect(normalizeWorkspace({ bottomTab: "stats" }).bottomTab).toBe("stats");
   });
 
-  it("puts every analysis on the ribbon; variogram, map, local — unavailable with the stage Э16", () => {
+  it("puts every analysis on the ribbon; all of them need a set (no stage marks since Э16)", () => {
     const items = flattenRibbon(buildRibbon(DEFAULT_WORKSPACE, DEFAULT_VIEW)).filter((i) => i.command === "stats.open");
     expect(items.map((i) => i.args?.analysis)).toEqual(STATS_BUTTONS.map((b) => b.analysis));
     const reason = (ctx: typeof EMPTY_CONTEXT) => Object.fromEntries(items.map((i) => [i.args?.analysis, i.unavailable?.(ctx) ?? null]));
-    expect(reason({ ...EMPTY_CONTEXT, hasProject: true })).toEqual({ declus: "Нет активного набора скважин", nscore: "Нет активного набора скважин", bootstrap: "Нет активного набора скважин", variogram: "Появится на этапе Э16", map: "Появится на этапе Э16", local: "Появится на этапе Э16" });
-    expect(reason({ ...EMPTY_CONTEXT, hasProject: true, hasSet: true })).toMatchObject({ declus: null, nscore: null, bootstrap: null, variogram: "Появится на этапе Э16" });
+    const none = "Нет активного набора скважин";
+    expect(reason({ ...EMPTY_CONTEXT, hasProject: true })).toEqual({ declus: none, nscore: none, bootstrap: none, variogram: none, map: none, local: none });
+    expect(reason({ ...EMPTY_CONTEXT, hasProject: true, hasSet: true })).toEqual({ declus: null, nscore: null, bootstrap: null, variogram: null, map: null, local: null });
+    expect(STATS_BUTTONS.some((b) => b.stage)).toBe(false);
   });
 });
 
@@ -126,7 +128,7 @@ describe("the facts", () => {
 
   it("the panels draw their results; the declustering curve marks the best size and the plain mean", () => {
     const app = createApp({ persist: false });
-    statsStore.set({ ...initialStats(), runs: { declus: { busy: false, error: null, result: DECLUS }, nscore: { busy: false, error: null, result: NSCORE }, backtr: { busy: false, error: null, result: { set_id: 3, table: "Пробы", field: "AU", values: [0.5, null], scores: [-3, 9] } }, bootstrap: { busy: false, error: null, result: BOOT } } });
+    statsStore.set({ ...initialStats(), runs: { declus: { busy: false, error: null, result: DECLUS }, nscore: { busy: false, error: null, result: NSCORE }, backtr: { busy: false, error: null, result: { set_id: 3, table: "Пробы", field: "AU", values: [0.5, null], scores: [-3, 9] } }, bootstrap: { busy: false, error: null, result: BOOT }, variogram: { busy: false, error: null, result: null }, map: { busy: false, error: null, result: null }, local: { busy: false, error: null, result: null } } });
     const wrap = (el: ReturnType<typeof createElement>) => renderToStaticMarkup(createElement(AppContext.Provider, { value: app }, el));
     const d = wrap(createElement(DeclusPanel, { ctx: CTX }));
     expect(d).toContain('data-testid="plot-point"');
@@ -177,16 +179,13 @@ describe("stats.open and the core", () => {
     setCoreTarget(null);
   });
 
-  it("is unavailable without a set; variogram, map, local are refused with the stage Э16", async () => {
+  it("is unavailable without a set; an unknown analysis is refused", async () => {
     expect(app.registry.reason("stats.open")).toBeNull();
     app.store.set({ setName: null });
     expect(app.registry.reason("stats.open")).toBe("Нет активного набора скважин");
     app.store.set({ setName: "Набор" });
-    for (const analysis of ["variogram", "map", "local"]) {
-      const r = await app.registry.execute("stats.open", { analysis }, "claude");
-      expect(r.ok).toBe(false);
-      expect(r.result).toMatch(/появится на этапе Э16/);
-    }
+    const r = await app.registry.execute("stats.open", { analysis: "kriging" }, "claude");
+    expect(r.ok).toBe(false);
     expect(sent).toHaveLength(0);
   });
 
@@ -243,11 +242,12 @@ describe("stats.open and the core", () => {
     expect(statsStore.get()).toMatchObject({ setId: 4, table: null, component: null });
   });
 
-  it("the tab: the analyses with the Э16 ones unavailable, the set, the table, the component", () => {
+  it("the tab: every analysis available, the set, the table, the component", () => {
     const html = renderToStaticMarkup(createElement(AppContext.Provider, { value: app }, createElement(StatsPanel)));
     for (const label of ["Набор скважин", "Таблица", "Компонент"]) expect(html).toContain(`aria-label="${label}"`);
-    expect(html.match(/disabled="" title="Появится на этапе Э16"/g)).toHaveLength(3);
+    expect(html).not.toContain("Появится на этапе");
+    for (const b of STATS_BUTTONS) expect(html).toContain(b.label);
     expect(html).toContain("Декластеризация");
-    expect(html).toContain("Не больше 20 000 интервалов.");
+    expect(html).toContain("Не больше 20 000 интервалов");
   });
 });
