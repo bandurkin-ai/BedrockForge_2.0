@@ -336,15 +336,38 @@ Points.inputs, calc: {params, sampled}}`; `cache/variography/<key>.nscore.parque
 
 ## Вкладка «Статистика» (`/api/v1/stats/tab/*`, 16.17; формы — перенос BF `routers/stats.py`)
 
-Тело — точки вкладки (как прочие `/stats/tab/*`, ≤ 20 000 интервалов; больше — 422 `too_many_samples`).
+Маршруты — `stats/routes_tab_vario.py` (ядра 16.10 — `stats/tab_vario.py`, `stats/local.py`). Синхронно, в слоте
+HEAVY (2 потока); ничего не хранится. Общие ключи тела — как у прочих `/stats/tab/*`: `set_id`, `table` (имя или
+id; null — таблица проб), `field` (null — первый компонент), `holes` (имена; пусто — все). Точки — середины
+интервалов со значением и положением, в плане; пропуск значения — не точка (не ноль, `counts.missing`). Значения
+тела передаются ядрам как есть: число или текст «0,5»/«0.5»; нет, null или "" — умолчание (у модели — только
+числа). Пустой лаг, ячейка, узел — `null`, не 0. Ответы трёх анализов с данными начинаются с `{set_id, table
+(имя), field}`; `counts` = `{rows, missing, no_position, used}`.
 
-- `POST /stats/tab/variogram` `{…, lag, nlag, lag_tol, directions: "omni" | "four", min_pairs}` →
-  `{directions: [{az, h [], gamma [], n []}], sigma2, model?}`; 4 направления — 0°, 45°, 90°, 135°, допуск 22,5°.
-- `POST /stats/tab/variogram-model` `{nugget, structures: [{it, cc, hmaj, hmin, azi}] (≤ 4), h_max, n}` →
-  `{directions: [{az, h [], gamma []}]}` — и без данных.
-- `POST /stats/tab/map` `{…, cell, n, min_pairs}` → `{u [], v [], gamma [][], n [][]}`; N < порога — `null`.
-- `POST /stats/tab/local` `{…, grid {nx ≤ 100, ny ≤ 100}, k, power, radius, realizations 5–300, seed, threshold?}`
-  → `{grid, mean [][], sd [][], p10 [][], p90 [][], prob [][] | null}`; пусто — `null`.
+- `POST /stats/tab/variogram` `{…общие, lag (умолч. круглый шаг охвата/20), nlag 1–200 (10), lag_tol 0…lag
+  (lag/2), directions "omni" | "four", min_pairs 1–1000 (30), standardize false, model {nugget | nug, structures
+  [{it, cc, hmaj, hmin, azi}] ≤ 4}?}` → `{set_id, table, field, count, sigma2, lag, nlag, lag_tol, min_pairs,
+  standardize, lags [k·lag], directions [{az, az_tol, omni, h [] | null, gamma [] | null, n [], few [],
+  model_gamma []?}], model {nugget, sill, structures} | null, counts}`; «four» — 0°, 45°, 90°, 135°, допуск 22,5°;
+  `few` — пар меньше `min_pairs`; `model_gamma` — модель в центрах лагов (только с `model`); `standardize` делит
+  γ на σ².
+- `POST /stats/tab/variogram-model` `{nugget | nug, structures, h_max (умолч. 1,5 × наибольшая дальность), n 2–2000
+  (101), directions}` → `{nugget, sill, structures, h_max, n, directions [{az, h [], gamma [], cov []}]}` — без
+  данных и без открытого набора; нет структур и `h_max` — 422 `bad_param` {param: h_max}.
+- `POST /stats/tab/map` `{…общие, cell (как lag), n 1–100 (10), min_pairs 1–1000 (5), standardize}` → `{set_id,
+  table, field, count, sigma2, cell, nu, nv, min_pairs, standardize, u [2n+1], v [2n+1], gamma [j][i], n [j][i],
+  counts}`; u = ΔX (восток, столбец i), v = ΔY (север, строка j от юга); пар < `min_pairs` — `null`.
+- `POST /stats/tab/local` `{…общие, grid {nx, ny} 2–100 (30), k 1–64 (8), power (0; 10] (2), radius (25 % охвата),
+  realizations 5–300 (50), seed?, threshold?}` → `{set_id, table, field, count, holes, realizations, k, power,
+  radius, seed, threshold, grid {nx, ny, x [nx], y [ny]}, mean [j][i], sd, p10, p90, prob [j][i] | null, empty,
+  counts}`; реализация — скважины интервалов с возвратом; узел без данных в радиусе — `null` (`empty` — сколько);
+  без `seed` зерно выбирается и возвращается; `prob` — доля реализаций ≥ порога (без порога — null).
+
+Ошибки `{code, message, hint, param?}`: 422 `bad_param` {param — ключ тела; модель вариограммы — `model.<ключ>`,
+сетка — `grid.nx`/`grid.ny`}, `field_not_found` / `field_not_number` {field}, `no_values`, `too_few_values`
+(< 2 точек; у `local` — < 3 точек или < 3 скважин), `no_spread` (все значения равны; у `local` — одна точка
+плана), `too_many_samples` {param: table} — больше 20 000 интервалов (20 001 — отказ; подсказка: композиты или
+окно «Вариография»); 404 `set_not_found`, `table_not_found`.
 
 ## Команды (ADR §13) → маршруты
 
