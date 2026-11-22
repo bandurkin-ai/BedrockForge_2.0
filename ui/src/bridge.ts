@@ -36,7 +36,7 @@ export interface BfBridge {
    * (lines and points), "rasters" (images and their georeference), "wireframes" (TRIDB, DXF, DWG, OBJ, STL,
    * Surpac DTM, Datamine), "trenches" (polylines of trenches), "program"
    * (a program of the user: .exe — «Настройка › Внешние программы»); [] when cancelled. */
-  pickFiles(kind: "tables" | "prj" | "objects" | "lines" | "rasters" | "wireframes" | "trenches" | "program" | "las" | "xyz" | "omf", multi: boolean): Promise<string[]>;
+  pickFiles(kind: "tables" | "prj" | "objects" | "lines" | "rasters" | "wireframes" | "trenches" | "program" | "las" | "xyz" | "omf" | "variogram", multi: boolean): Promise<string[]>;
   showInFolder(file: string): void;
   /** Disk path of a file dropped from Explorer. */
   pathForFile(file: File): string;

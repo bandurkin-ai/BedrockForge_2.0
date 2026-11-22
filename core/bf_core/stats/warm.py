@@ -33,7 +33,7 @@ from typing import Any
 
 MODULES = (
     "select", "describe", "histogram", "qq", "dendrogram", "scatter", "boxplot", "probplot", "domain_stats",
-    "ternary", "contact", "swath", "swath_blocks", "source_kernels",
+    "ternary", "contact", "swath", "swath_blocks", "source_kernels", "local",
 )  # fmt: skip
 
 

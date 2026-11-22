@@ -19,8 +19,8 @@ const tabs = buildRibbon(DEFAULT_WORKSPACE, DEFAULT_VIEW);
 const items = flattenRibbon(tabs);
 
 describe("ribbon (ТЗ 7.0.4)", () => {
-  it("has the seven tabs (ADR 0008: + «Настройки проекта»; ADR 0016: + «Разрезы»)", () => {
-    expect(tabs.map((t) => t.title)).toEqual(["Главная", "Вид", "Разрезы", "Моделирование", "Анализ", "Настройки проекта", "Claude"]);
+  it("has the eight tabs (ADR 0008: + «Настройки проекта»; ADR 0016: + «Разрезы»; ADR 0022: + «Геостатистика»)", () => {
+    expect(tabs.map((t) => t.title)).toEqual(["Главная", "Вид", "Разрезы", "Моделирование", "Анализ", "Геостатистика", "Настройки проекта", "Claude"]);
     expect(tabs.every((t) => /^[a-z]{1,16}$/.test(t.id))).toBe(true);
   });
 

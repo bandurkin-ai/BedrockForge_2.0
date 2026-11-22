@@ -1,7 +1,7 @@
 /**
  * The bottom tab «Статистика» (ТЗ 7.29; ADR 0019 §7; перенос `StatsPage.tsx` BF): on the left the analysis, the
- * set, the table and the component; on the right the parameters and the result of the analysis. Variograms, the
- * variogram map and the uncertainty map are of Э16: their buttons are unavailable with that stage. The points
+ * set, the table and the component; on the right the parameters and the result of the analysis. The variogram,
+ * the variogram map and the uncertainty map are of Э16 (ADR 0022 §11). The points
  * are the middles of the intervals in plan (X, Y); more than 20 000 intervals — a refusal with the advice to
  * composite. Results are not stored: they are computed on request and dropped on an edit of the data.
  */
@@ -12,11 +12,14 @@ import { tablesStore } from "../tables/state";
 import { BootstrapPanel } from "./BootstrapPanel";
 import { STATS_BUTTONS } from "./commands";
 import { DeclusPanel } from "./DeclusPanel";
+import { LocalPanel } from "./LocalPanel";
+import { MapPanel } from "./MapPanel";
 import { analysisStage, componentChoices, isTabAnalysis, pickContext } from "./forms";
 import { NscorePanel } from "./NscorePanel";
 import { Field, useWhole } from "./Parts";
 import { setAnalysis, setContext, statsStore, tabSetId } from "./state";
 import css from "./Stats.module.css";
+import { VariogramPanel } from "./VariogramPanel";
 
 interface Loaded {
   key: string;
@@ -56,7 +59,7 @@ export function StatsPanel() {
             return (
               <button key={b.analysis} type="button" role="tab" aria-selected={on} className={on ? css.analysisOn : css.analysis} disabled={!!stage} title={stage ?? undefined} onClick={() => isTabAnalysis(b.analysis) && setAnalysis(b.analysis)}>
                 {b.label}
-                {stage && <span className={css.stage}>Э16</span>}
+                {stage && <span className={css.stage}>{b.stage}</span>}
               </button>
             );
           })}
@@ -92,7 +95,7 @@ export function StatsPanel() {
           </select>
         </Field>
         <p className={css.note} title="Интервал — точка в середине на траектории скважины; декластеризация — в плане (X, Y)">
-          {unit ? `${unit} · ` : ""}по серединам интервалов, в плане. Не больше 20 000 интервалов.
+          {unit ? `${unit} · ` : ""}по серединам интервалов, в плане. Не больше 20 000 интервалов; без предела — окно «Вариография».
         </p>
       </aside>
       <section className={css.main}>
@@ -110,6 +113,12 @@ export function StatsPanel() {
           <DeclusPanel ctx={ctx} />
         ) : s.analysis === "nscore" ? (
           <NscorePanel ctx={ctx} />
+        ) : s.analysis === "variogram" ? (
+          <VariogramPanel ctx={ctx} />
+        ) : s.analysis === "map" ? (
+          <MapPanel ctx={ctx} />
+        ) : s.analysis === "local" ? (
+          <LocalPanel ctx={ctx} />
         ) : (
           <BootstrapPanel ctx={ctx} />
         )}

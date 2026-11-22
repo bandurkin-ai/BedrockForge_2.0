@@ -24,7 +24,7 @@ from .service import read_all
 KIND = "view"
 MAX_VIEWS = 200
 #: the view keys a saved view keeps (camera aside); the active set, styles and columns are not part of a view
-VIEW_KEYS = ("scene", "section", "hidden", "hide_all", "displays", "swaths")
+VIEW_KEYS = ("scene", "section", "hidden", "hide_all", "displays", "swaths", "ellipsoids")
 DEFAULTS: dict[str, Any] = {
     "scene": {},
     "section": {"line": None, "clip": False},
@@ -32,6 +32,7 @@ DEFAULTS: dict[str, Any] = {
     "hide_all": {"on": False, "shown": []},
     "displays": [],
     "swaths": [],
+    "ellipsoids": [],
 }
 _AUTO_NAME = re.compile(r"^Вид (\d{1,6})$")
 

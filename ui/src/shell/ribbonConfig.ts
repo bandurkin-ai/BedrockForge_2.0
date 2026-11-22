@@ -8,6 +8,8 @@ import type { ViewState, WorkspaceState } from "./workspace";
 import { seriesTab, type SeriesFlags } from "../modules/section/seriesCommands";
 import { PREP_BUTTONS, PREP_GROUP_TITLE } from "../modules/composites/commands";
 import { INTERCEPT_BUTTONS, INTERCEPT_GROUP_TITLE } from "../modules/intercepts/commands";
+import { VARIO_BUTTONS, VARIO_GROUP_TITLE, VARIO_TAB_TITLE } from "../modules/variography/commands";
+import { TREND_BUTTONS } from "../modules/trends/commands";
 import { CHART_BUTTONS, CHART_GROUP_TITLE } from "../modules/charts/commands";
 import { STATS_BUTTONS } from "../modules/stats/commands";
 import { QAQC_BUTTONS, QAQC_GROUP_TITLE } from "../modules/qaqc/commands";
@@ -285,6 +287,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
         { title: "Журнал", items: [{ command: "panel.set", args: { panel: "bottom", tab: "log" }, label: "Журнал команд", icon: "list", small: true, active: ws.bottom && ws.bottomTab === "log" }] },
       ],
     },
+    { id: "geostat", title: VARIO_TAB_TITLE, groups: [{ title: VARIO_GROUP_TITLE, items: VARIO_BUTTONS.map((b): RibbonItem => ({ ...b })) }] },
     {
       id: "projsettings",
       title: "Настройки проекта",
@@ -293,6 +296,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
           title: "Данные",
           items: [{ command: "data.manager", label: "Менеджер данных", icon: "dataManager", hint: "Данные проекта как каталог: папки, поиск, перенос, импорт в папку и экспорт выбранного" }],
         },
+        { title: "Геостатистика", items: TREND_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         {
           title: "Обслуживание",
           items: [{ command: "jobs.clear_finished", label: "Очистить выполненные задания", icon: "clear", hint: "Убрать из списка «Задания» готовые и отменённые задания с их журналами" }],

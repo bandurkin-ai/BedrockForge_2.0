@@ -8,7 +8,7 @@ export type Theme = "dark" | "light";
 export type PanelId = "project" | "properties" | "assistant" | "bottom";
 export type RightTab = "properties" | "assistant";
 export type BottomTab = "table" | "audit" | "stats" | "qaqc" | "jobs" | "log";
-export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "audit" | "reports";
+export type TreeSection = "views" | "series" | "holes" | "wireframes" | "dtm" | "lines" | "rasters" | "blocks" | "audit" | "reports" | "trends" | "variograms";
 
 export const BOTTOM_TITLES: Record<BottomTab, string> = {
   table: "Таблица",
@@ -28,6 +28,10 @@ export const TREE_SECTIONS: Record<TreeSection, string> = {
   lines: "Линии",
   rasters: "Растры",
   blocks: "Блочные модели",
+  /** Variogram models (ADR 0022 §15); a stored order without it gets it at the end (`normalizeOrder`). */
+  variograms: "Модели вариограмм",
+  /** Trends (ADR 0022 §15, Д-15); a stored order without it gets it at the end (`normalizeOrder`). */
+  trends: "Тренды",
   audit: "Аудит и статистика",
   /** QAQC reports (ADR 0020 §11); a stored order without it gets it at the end (`normalizeOrder`). */
   reports: "Отчёты",

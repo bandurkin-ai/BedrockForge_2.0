@@ -10,15 +10,15 @@ import { defaultField, type StatsFields } from "../charts/api";
 import { STATS_BUTTONS, type StatsAnalysis } from "./commands";
 import type { BacktrBody, BootstrapAnswer, BootStatistic, DeclusAnswer, DeclusMethod, DeclusParams, LowerTail, NscoreAnswer, TabBody, TabCounts, UpperTail } from "./api";
 
-/** The analyses the tab computes on Э13; the others are of Э16. */
-export type TabAnalysis = "declus" | "nscore" | "bootstrap";
+/** The analyses of the tab: declus, nscore, bootstrap (Э13); variogram, map, local (Э16, `formsVario.ts`). */
+export type TabAnalysis = StatsAnalysis;
 
-export const isTabAnalysis = (a: unknown): a is TabAnalysis => a === "declus" || a === "nscore" || a === "bootstrap";
+export const isTabAnalysis = (a: unknown): a is TabAnalysis => STATS_BUTTONS.some((b) => b.analysis === a);
 
 /** The title of an analysis (the ribbon's label). */
 export const analysisTitle = (a: StatsAnalysis): string => STATS_BUTTONS.find((b) => b.analysis === a)?.label ?? a;
 
-/** Why an analysis cannot be computed now: its stage (variogram, map, local — Э16); null — it can. */
+/** Why an analysis cannot be computed now: its stage (none since Э16); null — it can. */
 export function analysisStage(a: StatsAnalysis): string | null {
   const stage = STATS_BUTTONS.find((b) => b.analysis === a)?.stage;
   return stage ? `Появится на этапе ${stage}` : null;
@@ -127,11 +127,11 @@ export function componentChoices(fields: Pick<StatsFields, "numeric">): { name: 
 // ---- the bodies ----
 
 /** A field that is not right: its text for the form. */
-class Bad extends Error {}
+export class Bad extends Error {}
 
 export type Built<T> = { body: T; reason?: undefined } | { body?: undefined; reason: string };
 
-function build<T>(make: () => T): Built<T> {
+export function build<T>(make: () => T): Built<T> {
   try {
     return { body: make() };
   } catch (e) {
@@ -141,7 +141,7 @@ function build<T>(make: () => T): Built<T> {
 }
 
 /** A number of a field: empty — null; not a number, a fraction where a whole one is asked, out of range — Bad. */
-function num(text: string, label: string, opt: { whole?: boolean; min?: number; max?: number } = {}): number | null {
+export function num(text: string, label: string, opt: { whole?: boolean; min?: number; max?: number } = {}): number | null {
   if (text.trim() === "") return null;
   const v = parseNumber(text);
   if (v === null) throw new Bad(`«${label}» — не число`);
@@ -247,7 +247,7 @@ export function fmt(v: number | null | undefined, digits = 5): string {
   return Number(v.toPrecision(digits)).toLocaleString("ru-RU", { maximumFractionDigits: 10 });
 }
 
-const int = (v: number): string => v.toLocaleString("ru-RU");
+export const int = (v: number): string => v.toLocaleString("ru-RU");
 
 export type Fact = [string, string];
 

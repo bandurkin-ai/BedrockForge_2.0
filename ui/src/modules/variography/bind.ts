@@ -1,0 +1,365 @@
+/**
+ * Handlers of `variography.*` (ADR 0022 §13): without the required arguments a command opens the window
+ * «Вариография · ‹поле›» (`variography`) prefilled with what is given; with them — the values are checked first
+ * against 8.6.4 (out of range never reaches the core), the tables named by the assistant are resolved, then the job
+ * or the request goes. `fit` and `save` act on the working model of a window: the one of `model_id`, else the last
+ * active window. The replacement of a stored model and the delete ask in our own window (`askConfirm`); the
+ * registry asks the assistant only for `delete` (its flag), so the replacement asks it here too.
+ * `variography.ellipsoid`, `variography.show` — the ellipsoid of the window of a model in 3D (`scene.ts`, a lazy chunk
+ * attached to every scene; a stored model not open is opened in a window first: its handles edit that window).
+ */
+import type { App } from "../../shell/app";
+import type { CommandSource } from "../../shell/commands";
+import { askConfirm } from "../../shell/dialogs";
+import { needProject, needWritable, noted, refusal, showJobs, viewport } from "../../shell/objectRun";
+import { focusWindow, openWindow, windowStore } from "../../shell/windows";
+import { setPanel } from "../../shell/workspace";
+import { onScene } from "../scene/sceneHost";
+import { bindTrends } from "../trends/bind";
+import { refresh as refreshJobs } from "../jobs/state";
+import { loadTables, resolveTable, type Started, type TableRow } from "../composites/api";
+import { overwriteQuestion, startWithOverwrite } from "../rasters/export";
+import { deleteModel, exportModel, exportModelFile, formatOfPath, importModel, loadModel, rebuildModel, startExperimental, startMap, type ExchangeFormat, type FitWeights } from "./api";
+import { structureType, type StructureType } from "./model";
+import { fitText, fitWork, refreshModels, saveWork } from "./save";
+import { onCoreEvent } from "../jobs/state";
+import { projectStore } from "../projects/state";
+import {
+  checkValue,
+  chosenStructure,
+  dataFromArgs,
+  ellipsoidCentre,
+  experimentalBody,
+  forgetModel,
+  mapBody,
+  markEdit,
+  newWork,
+  setEllipsoid,
+  setModel,
+  setWork,
+  storedWork,
+  valuesFromArgs,
+  variographyStore,
+  VIEWS,
+  windowOfModel,
+  withStructure,
+  workOf,
+  type DataState,
+  type StructurePatch,
+  type VarioView,
+  type Work,
+} from "./state";
+
+export const VARIO_WINDOW = "variography";
+
+const HINT_RANGE = "Диапазоны — в описании команды (ТЗ 8.6.4); исправьте значение и повторите.";
+
+const given = (a: Record<string, unknown>, k: string) => a[k] !== undefined && a[k] !== null && (typeof a[k] !== "string" || (a[k] as string).trim() !== "");
+
+export const windowTitle = (field: string | null | undefined): string => (field ? `Вариография · ${field}` : "Вариография");
+
+/** Opens a window «Вариография» and gives it its working state (kept when the same window is open already). */
+export function openVariography(args: Record<string, unknown> = {}, work: Partial<Work> = {}): string {
+  const props = Object.fromEntries(Object.entries(args).filter(([, v]) => v !== undefined && v !== null));
+  const data = work.data ?? dataFromArgs(args);
+  const id = openWindow(VARIO_WINDOW, windowTitle(data.field), "normal", Object.keys(props).length ? { args: props } : undefined, ...viewport());
+  if (!workOf(id)) {
+    const view = VIEWS.includes(args.view as VarioView) ? (args.view as VarioView) : "axes";
+    setWork(id, newWork({ data, values: valuesFromArgs(args), view, ...work }));
+  }
+  return id;
+}
+
+/** The last active window «Вариография» that has a working state. */
+export function lastWindow(): string | null {
+  const wins = windowStore.get().windows.filter((w) => w.kind === VARIO_WINDOW && workOf(w.id));
+  return wins.length ? wins.reduce((a, b) => (b.z > a.z ? b : a)).id : null;
+}
+
+function windowFor(a: Record<string, unknown>): string {
+  const win = typeof a.model_id === "number" ? windowOfModel(a.model_id) : lastWindow();
+  if (win) return win;
+  if (typeof a.model_id === "number") throw refusal("no_window", `Модель №${a.model_id} не открыта в окне «Вариография».`, "Откройте её: variography.open с model_id.");
+  throw refusal("no_window", "Нет открытого окна «Вариография».", "Откройте окно и рассчитайте вариограммы осей.");
+}
+
+function key(tables: readonly TableRow[], name: string, what: string): string {
+  const k = resolveTable(tables, name);
+  if (k === null) throw refusal("table_not_found", `${what} «${name}» не найдена среди интервальных таблиц набора.`, "Имена таблиц — в дереве набора скважин.");
+  return k;
+}
+
+/**
+ * The body of `variography.calc` from its arguments: checked with the tables as given, then the tables are
+ * resolved by name and the body is built again. `what` axes → `/experimental`, fan / map → `/map`.
+ */
+export async function calcBody(a: Record<string, unknown>): Promise<{ what: "axes" | "fan" | "map"; body: Record<string, unknown> }> {
+  const what = a.what === "fan" || a.what === "map" ? a.what : "axes";
+  const values = valuesFromArgs(a);
+  const angles = { ang1: Number(a.ang1 ?? 0), ang2: Number(a.ang2 ?? 0), ang3: Number(a.ang3 ?? 0) };
+  const build = (d: DataState) => (what === "axes" ? experimentalBody(d, values, { axes: angles }) : mapBody(d, values, angles, [what]));
+  const data = dataFromArgs(a);
+  const first = build(data);
+  if (!first.body) throw refusal("bad_param", first.reason ?? "Параметры не заданы.", HINT_RANGE);
+  const tables = await loadTables(data.setId!);
+  const resolved: DataState = { ...data, table: key(tables, data.table!, "Таблица") };
+  if (data.domain?.table) resolved.domain = { ...data.domain, table: key(tables, data.domain.table, "Таблица домена") };
+  const r = build(resolved);
+  if (!r.body) throw refusal("bad_param", r.reason ?? "Параметры не заданы.", HINT_RANGE);
+  return { what, body: r.body };
+}
+
+function parseTypes(raw: unknown): StructureType[] | undefined {
+  if (typeof raw !== "string" || !raw.trim()) return undefined;
+  const list = raw.split(/[,;\s]+/).filter(Boolean);
+  const types = list.map(structureType);
+  if (!types.length || types.length > 3 || types.some((t) => t === null)) throw refusal("bad_param", `Структуры «${raw}» заданы неверно.`, "До трёх типов через запятую: spherical, exponential, gaussian.");
+  return types as StructureType[];
+}
+
+const started = async (app: App, what: string, s: Started): Promise<string> => {
+  showJobs(app);
+  await refreshJobs().catch(() => undefined);
+  return `«${what}»: задание №${s.id} поставлено в очередь — ход на вкладке «Задания»`;
+};
+
+const modelId = (a: Record<string, unknown>): number => {
+  if (typeof a.model_id !== "number") throw refusal("model_not_found", "Не задана модель вариограммы.", "Номер модели — в дереве «Геостатистика → Модели вариограмм».");
+  return a.model_id;
+};
+
+/** The window of a stored model: the one open, else a new one read from the core (`read` — the model read then)
+ * with the data of `meta.source`, `meta.transform`, the values of `meta.calc.params`, `meta.fit`, `meta.back`. */
+export async function modelWindow(id: number, view?: unknown): Promise<{ win: string; read: Awaited<ReturnType<typeof loadModel>> | null }> {
+  const open = windowOfModel(id);
+  if (open) return { win: open, read: null };
+  const m = await loadModel(id);
+  // the data, the values, the fit and the back-transform of `meta`: «Рассчитать» → «Сохранить» keeps the source
+  const win = openVariography({ model_id: m.id, view }, storedWork(m));
+  return { win, read: m };
+}
+
+/** The angles and ranges of `variography.ellipsoid`, checked (8.6.4; a range — a positive number of metres). */
+export function ellipsoidPatch(a: Record<string, unknown>): StructurePatch {
+  const out: StructurePatch = {};
+  for (const k of ["ang1", "ang2", "ang3"] as const) {
+    if (!given(a, k)) continue;
+    const r = checkValue(k, String(a[k]).replace(".", ","));
+    if (!r.ok || typeof r.value !== "number") throw refusal("bad_param", r.ok ? `${k}: нужно число` : r.error, HINT_RANGE);
+    out[k] = k === "ang1" && r.value === 360 ? 0 : r.value;
+  }
+  for (const k of ["a1", "a2", "a3"] as const) {
+    if (!given(a, k)) continue;
+    const v = Number(a[k]);
+    if (!Number.isFinite(v) || v <= 0 || v > 100_000) throw refusal("bad_param", `Дальность ${k}: нужно число больше 0 до 100 000 м`, HINT_RANGE);
+    out[k] = v;
+  }
+  return out;
+}
+
+const noStructures = (id: number) => refusal("no_structures", `В модели №${id} нет структур — эллипсоид не построить.`, "Добавьте структуру в таблице модели или подберите модель кнопкой «Подобрать».");
+
+const centreNote = (win: string): string => (ellipsoidCentre(workOf(win)!) ? "" : " — появится, когда окно прочитает данные расчёта (центр — середина охвата точек)");
+
+/** A stored model changed (saved, rebuilt): its window, if it is not edited, takes the new points, their key and
+ * the version (an edited window keeps the version it read: its save is then a 409 `version_conflict`). */
+export async function reloadPoints(id: number, load: typeof loadModel = loadModel): Promise<boolean> {
+  const win = windowOfModel(id);
+  const w = win ? workOf(win) : null;
+  if (!win || !w || w.dirty) return false;
+  const m = await load(id);
+  const cur = workOf(win);
+  if (!cur || cur.dirty || cur.modelId !== id) return false;
+  if (!m.points?.key || m.points.key === cur.expKey) {
+    if (cur.modelVersion !== m.version) setWork(win, { modelVersion: m.version });
+    return false;
+  }
+  setWork(win, { result: m.points, expKey: m.points.key, modelVersion: m.version, dirty: false }); // the same source: `resultFor` kept
+  return true;
+}
+
+/** `POST …/export`: a file there and no `overwrite` — asked «Заменить?» in our own window, then written again; null — not replaced. */
+export async function exportFile(id: number, format: ExchangeFormat, path: string, overwrite = false, deps: { write?: typeof exportModelFile; ask?: typeof askConfirm } = {}): Promise<{ path: string; bytes: number } | null> {
+  const { write = exportModelFile, ask = askConfirm } = deps;
+  return startWithOverwrite((ok) => write(id, format, path, overwrite || ok), (files) => ask(overwriteQuestion(files)));
+}
+
+export function bindVariography(app: App): void {
+  bindTrends(app); // the trends of «Геостатистика» (Д-15; modules/trends) — until shell/app.ts names them
+  const r = app.registry;
+  r.bind(
+    "variography.open",
+    noted(app, async (a) => {
+      if (typeof a.model_id === "number") {
+        const { win, read: m } = await modelWindow(a.model_id, a.view);
+        if (!m) {
+          focusWindow(win);
+          return `Окно модели №${a.model_id} уже открыто`;
+        }
+        return `Открыта модель «${m.name}»${m.stale ? ` — устарела: ${m.stale_reason ?? "изменены данные"}` : ""}`;
+      }
+      openVariography(a);
+      return `Открыто окно «${windowTitle(typeof a.field === "string" ? a.field : null)}»`;
+    }),
+    needProject,
+  );
+  r.bind("variography.models", () => {
+    app.store.set((s) => ({ workspace: setPanel(s.workspace, "project", true) }));
+    return "Модели вариограмм — в дереве проекта, раздел «Геостатистика»";
+  }, needProject);
+  r.bind(
+    "variography.calc",
+    noted(app, async (a, source: CommandSource) => {
+      if (!["set_id", "table", "field"].every((k) => given(a, k))) {
+        openVariography(a);
+        return `Открыто окно «Вариография»${source === "claude" ? ": заданы не все обязательные параметры — set_id, table, field" : ""}`;
+      }
+      const { what, body } = await calcBody(a);
+      return started(app, what === "axes" ? "Вариограммы осей" : what === "fan" ? "Веер" : "Карта вариограмм", what === "axes" ? await startExperimental(body) : await startMap(body));
+    }),
+    needProject,
+  );
+  r.bind(
+    "variography.fit",
+    noted(app, async (a) => {
+      const weights: FitWeights | undefined = a.weights === "n" || a.weights === "n_g2" || a.weights === "n_h" ? a.weights : undefined;
+      return fitText(await fitWork(windowFor(a), { types: parseTypes(a.structures), weights, fixNugget: a.fix_nugget === true }));
+    }),
+    needProject,
+  );
+  r.bind(
+    "variography.ellipsoid",
+    noted(app, async (a) => {
+      const id = modelId(a);
+      const patch = ellipsoidPatch(a);
+      const { win } = await modelWindow(id);
+      const w = workOf(win)!;
+      const n = w.model.structures.length;
+      if (!n) throw noStructures(id);
+      let structure = w.ellipsoid?.structure ?? null;
+      if (given(a, "structure")) {
+        const k = Number(a.structure);
+        if (!Number.isInteger(k) || k < 1 || k > n) throw refusal("bad_param", `Структуры №${String(a.structure)} нет в модели №${id}.`, `Номер структуры — от 1 до ${n}.`);
+        structure = k - 1;
+      }
+      const index = chosenStructure({ model: w.model, ellipsoid: { visible: true, centre: null, structure } });
+      if (Object.keys(patch).length) {
+        markEdit();
+        setModel(win, withStructure(w.model, index, patch));
+      }
+      setEllipsoid(win, { visible: true, structure });
+      return `Эллипсоид модели №${id} в 3D: структура ${index + 1} из ${n}${Object.keys(patch).length ? ", заданные углы и дальности — в таблице модели" : ""}${centreNote(win)}`;
+    }),
+    needProject,
+  );
+  r.bind(
+    "variography.show",
+    noted(app, async (a) => {
+      const id = modelId(a);
+      if (a.visible === false) {
+        const open = windowOfModel(id);
+        if (open && workOf(open)?.ellipsoid) setEllipsoid(open, { visible: false });
+        return `Эллипсоид модели №${id} скрыт`;
+      }
+      const { win } = await modelWindow(id);
+      if (!workOf(win)!.model.structures.length) throw noStructures(id);
+      setEllipsoid(win, { visible: true });
+      return `Эллипсоид модели №${id} показан в 3D${centreNote(win)}`;
+    }),
+    needProject,
+  );
+  r.bind(
+    "variography.save",
+    noted(app, async (a) => {
+      const s = await saveWork(windowFor(a), typeof a.name === "string" ? a.name : undefined);
+      return s ? `Модель вариограммы «${s.name}» сохранена (№${s.id})` : "Отменено";
+    }),
+    needWritable(app),
+  );
+  r.bind(
+    "variography.delete",
+    noted(app, async (a, source) => {
+      const id = modelId(a);
+      if (source === "user" && !(await askConfirm({ title: "Удалить модель", message: `Удалить модель вариограммы №${id} с её экспериментальными точками?`, okLabel: "Удалить", danger: true }))) return "Отменено";
+      await deleteModel(id);
+      forgetModel(id);
+      return `Модель вариограммы №${id} удалена`;
+    }),
+    needWritable(app),
+  );
+  r.bind(
+    "variography.rebuild",
+    noted(app, async (a) => {
+      const id = modelId(a);
+      const row = variographyStore.get().models.find((m) => m.id === id);
+      if (row?.source_lost) throw refusal("source_lost", `Модель №${id}: источник удалён — перестроить нельзя.`, "Набор или таблица модели удалены; модель остаётся с прежними точками.");
+      return started(app, `Перестроить «${row?.name ?? `модель №${id}`}»`, await rebuildModel(id));
+    }),
+    needWritable(app),
+  );
+  r.bind(
+    "variography.export",
+    noted(app, async (a) => {
+      const id = modelId(a);
+      const path = typeof a.path === "string" && a.path.trim() ? a.path.trim() : undefined;
+      const format: ExchangeFormat = a.format === "json" || a.format === "gslib" ? a.format : path ? formatOfPath(path) : "json";
+      if (path) {
+        // the file is there (the core adds the extension of the format): «Заменить?» in our own window (409 `files_exist`)
+        const got = await exportFile(id, format, path, a.overwrite === true);
+        return got ? `Модель №${id} записана: ${got.path}${typeof got.bytes === "number" ? ` (${got.bytes} байт)` : ""}` : "Отменено";
+      }
+      const got = await exportModel(id, format);
+      const text = got.text ?? "";
+      return `${got.filename ?? `модель-${id}.${format === "json" ? "json" : "txt"}`}:\n${text.length > 4000 ? `${text.slice(0, 4000)}…` : text}`;
+    }),
+    needProject,
+  );
+  r.bind(
+    "variography.import",
+    noted(app, async (a) => {
+      if (typeof a.path !== "string" || !a.path.trim()) throw refusal("bad_param", "Не задан файл модели.", "Укажите path — абсолютный путь файла JSON или GSLIB.");
+      const path = a.path.trim();
+      // the format given, else by a known extension; otherwise the core tells it by the content
+      const format: ExchangeFormat | undefined = a.format === "json" || a.format === "gslib" ? a.format : /\.(json|par)$/i.test(path) ? formatOfPath(path) : undefined;
+      const model = await importModel({ ...(format ? { format } : {}), path });
+      openVariography({ import: path }, { model, dirty: true });
+      return `Модель из «${path}» открыта рабочей моделью окна: структур ${model.structures.length} — сохраните кнопкой «Сохранить»`;
+    }),
+    needProject,
+  );
+  // the models of the project: read when it opens, kept by the events of the core (the tree «Модели вариограмм»)
+  let uid: string | null = null;
+  projectStore.subscribe(() => {
+    const cur = projectStore.get().current?.uid ?? null;
+    if (cur === uid) return;
+    uid = cur;
+    variographyStore.set({ models: [], modelsLoaded: false });
+    if (cur) void refreshModels().catch(() => undefined);
+  });
+  onCoreEvent((event, data) => {
+    if (event !== "geostat.changed") return;
+    let id: number | null = null;
+    try {
+      const d = JSON.parse(data) as { kind?: unknown; id?: unknown; deleted?: unknown };
+      if (d.kind !== "variogram_model") return;
+      id = typeof d.id === "number" ? d.id : null;
+      if (d.deleted === true && id !== null) forgetModel(id);
+    } catch {
+      /* a malformed event: the list is read again */
+    }
+    void refreshModels().catch(() => undefined);
+    if (id !== null) void reloadPoints(id).catch(() => undefined);
+  });
+  // the ellipsoids in the main 3D: a lazy chunk with three.js, attached to every new scene
+  let detach: (() => void) | null = null;
+  let generation = 0;
+  onScene((scene) => {
+    const mine = ++generation;
+    detach?.();
+    detach = null;
+    if (!scene) return;
+    void import("./scene").then((m) => {
+      if (mine === generation) detach = m.attachVarioScene(scene);
+    });
+  });
+}

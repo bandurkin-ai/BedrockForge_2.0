@@ -1,3 +1,5 @@
+import { ModelsTree } from "../modules/variography/ModelsTree";
+import { TrendsTree } from "../modules/trends/TrendsTree";
 import { useState, type DragEvent } from "react";
 import { useApp } from "./AppContext";
 import { openMenu, type MenuItem } from "./ContextMenu";
@@ -29,6 +31,8 @@ function sectionMenu(s: TreeSection, reason: (id: string) => string | null, run:
 const CONTENT: Partial<Record<TreeSection, () => JSX.Element>> = {
   audit: AuditTree,
   reports: ReportsTree,
+  trends: TrendsTree,
+  variograms: ModelsTree,
   views: ViewsTree,
   series: SeriesTree,
   blocks: BlocksTree,

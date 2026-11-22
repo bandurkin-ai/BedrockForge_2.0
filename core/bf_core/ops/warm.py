@@ -66,12 +66,12 @@ OPS = tuple(STEPS)
 #: the job `wireframe.check` itself (`check`: the levels of detail and the checks — the window starts it after an
 #: operation), the simplified copies of the view (`levels`), the preview of a stitch (`preview`: its strips, without
 #: the checks), the section and the click of the view (`view`)
-OTHER = ("checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats")
+OTHER = ("checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats", "geostat")
 #: The quick worker: the checks of a body, then the operations — the stitch first; the heavy one meanwhile the strips
 #: of a stitch (`preview`), so that on a cold cache the first stitch has its two halves compiled at once (~5 s, not
 #: ~8 s), then what follows an operation and what the process of the API needs, then the operations backwards.
-QUICK = ("checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats")
-HEAVY = ("preview", "check", "levels", "view", *reversed(OPS), "checks", "composites", "intercepts", "stats")
+QUICK = ("checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats", "geostat")
+HEAVY = ("preview", "check", "levels", "view", *reversed(OPS), "checks", "composites", "intercepts", "stats", "geostat")
 X0, Y0, Z0 = 512_345.678, 6_789_012.345, 250.0  # a UTM position, as the data of a deposit
 PREFIX = "bf-warm-"  # the temporary folder of the warm-up project
 STALE_S = 24 * 3600
@@ -307,6 +307,10 @@ def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None
                     from bf_core.intercepts.warm import warm as warm_intercepts
 
                     warm_intercepts()
+                elif name == "geostat":
+                    from bf_core.geostat.variogram.warm import warm as warm_geostat
+
+                    warm_geostat()
                 elif name == "stats":
                     from bf_core.stats.warm import warm as warm_stats
 

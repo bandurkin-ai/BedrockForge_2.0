@@ -9,8 +9,9 @@ import { refusal } from "../../shell/objectRun";
 import { Store } from "../../shell/store";
 import { loadFields } from "../charts/api";
 import { tablesStore } from "../tables/state";
-import { tabBacktr, tabBootstrap, tabDeclus, tabNscore, type BacktrAnswer, type BootstrapAnswer, type DeclusAnswer, type NscoreAnswer } from "./api";
+import { tabBacktr, tabBootstrap, tabDeclus, tabLocal, tabMap, tabNscore, tabVariogram, tabVariogramModel, type BacktrAnswer, type BootstrapAnswer, type DeclusAnswer, type NscoreAnswer, type TabLocalAnswer, type TabMapAnswer, type TabModelAnswer, type TabVariogramAnswer } from "./api";
 import { backtrBody, bootstrapBody, declusBody, DEFAULT_FORMS, nscoreBody, pickContext, problemOf, type Built, type Problem, type StatsForms, type TabAnalysis, type TabContext } from "./forms";
+import { DEFAULT_VARIO_FORMS, localBody, mapBody, modelBody, variogramBody, type VarioForms } from "./formsVario";
 
 export interface Run<T> {
   busy: boolean;
@@ -20,11 +21,22 @@ export interface Run<T> {
 
 export type BacktrRun = BacktrAnswer & { scores: number[] };
 
+/** The experimental variogram (null — the curve of the model alone) and the curve of the model (null — none). */
+export interface VariogramRun {
+  data: TabVariogramAnswer | null;
+  curve: TabModelAnswer | null;
+}
+
+export type AllForms = StatsForms & VarioForms;
+
 export interface StatsRuns {
   declus: Run<DeclusAnswer>;
   nscore: Run<NscoreAnswer>;
   backtr: Run<BacktrRun>;
   bootstrap: Run<BootstrapAnswer>;
+  variogram: Run<VariogramRun>;
+  map: Run<TabMapAnswer>;
+  local: Run<TabLocalAnswer>;
 }
 
 export type RunKind = keyof StatsRuns;
@@ -39,18 +51,20 @@ export interface StatsState {
   component: string | null;
   /** bumped by an edit of the data: the tab reads the fields again */
   rev: number;
-  forms: StatsForms;
+  forms: AllForms;
   runs: StatsRuns;
 }
 
 const IDLE: Run<never> = { busy: false, error: null, result: null };
-const idleRuns = (): StatsRuns => ({ declus: IDLE, nscore: IDLE, backtr: IDLE, bootstrap: IDLE });
+const idleRuns = (): StatsRuns => ({ declus: IDLE, nscore: IDLE, backtr: IDLE, bootstrap: IDLE, variogram: IDLE, map: IDLE, local: IDLE });
 
-export const initialStats = (): StatsState => ({ analysis: "declus", setId: null, table: null, component: null, rev: 0, forms: DEFAULT_FORMS, runs: idleRuns() });
+export const ALL_DEFAULT_FORMS: AllForms = { ...DEFAULT_FORMS, ...DEFAULT_VARIO_FORMS };
+
+export const initialStats = (): StatsState => ({ analysis: "declus", setId: null, table: null, component: null, rev: 0, forms: ALL_DEFAULT_FORMS, runs: idleRuns() });
 
 export const statsStore = new Store<StatsState>(initialStats());
 
-const tickets: Record<RunKind, number> = { declus: 0, nscore: 0, backtr: 0, bootstrap: 0 };
+const tickets: Record<RunKind, number> = { declus: 0, nscore: 0, backtr: 0, bootstrap: 0, variogram: 0, map: 0, local: 0 };
 
 /** Drops every result; answers still on their way are dropped too. */
 export function clearRuns(): void {
@@ -81,7 +95,7 @@ export function setContext(p: ContextPatch): void {
 
 export const setAnalysis = (analysis: TabAnalysis): void => statsStore.set({ analysis });
 
-export function setForm<K extends keyof StatsForms>(key: K, patch: Partial<StatsForms[K]>): void {
+export function setForm<K extends keyof AllForms>(key: K, patch: Partial<AllForms[K]>): void {
   statsStore.set((s) => ({ forms: { ...s.forms, [key]: { ...s.forms[key], ...patch } } }));
 }
 
@@ -122,6 +136,14 @@ async function compute(kind: RunKind, s: StatsState, c: TabContext): Promise<Sta
   if (kind === "declus") return tabDeclus(checked(declusBody(c, f.declus)));
   if (kind === "nscore") return tabNscore(checked(nscoreBody(c, f.nscore)));
   if (kind === "bootstrap") return tabBootstrap(checked(bootstrapBody(c, f.bootstrap)));
+  if (kind === "map") return tabMap(checked(mapBody(c, f.map)));
+  if (kind === "local") return tabLocal(checked(localBody(c, f.local)));
+  if (kind === "variogram") {
+    const v = f.variogram;
+    const data = await tabVariogram(checked(variogramBody(c, v)));
+    const curve = v.withModel ? await tabVariogramModel(checked(modelBody(v, data))) : null;
+    return { data, curve };
+  }
   const body = checked(backtrBody(c, f.nscore, f.backtr));
   return { ...(await tabBacktr(body)), scores: body.scores };
 }
@@ -142,6 +164,23 @@ export async function runAnalysis<K extends RunKind>(kind: K): Promise<NonNullab
     return result;
   } catch (e) {
     if (ticket === tickets[kind]) setRun(kind, { busy: false, error: problemOf(e) });
+    throw e;
+  }
+}
+
+/**
+ * The curve of the model of the form without data (ТЗ 7.29: «кривая модели — и без данных»): no open set is
+ * needed; the points of an earlier calculation are dropped (they were not of this model).
+ */
+export async function runModelCurve(): Promise<TabModelAnswer> {
+  const ticket = ++tickets.variogram;
+  setRun("variogram", { busy: true, error: null });
+  try {
+    const curve = await tabVariogramModel(checked(modelBody(statsStore.get().forms.variogram, null)));
+    if (ticket === tickets.variogram) setRun("variogram", { busy: false, error: null, result: { data: null, curve } });
+    return curve;
+  } catch (e) {
+    if (ticket === tickets.variogram) setRun("variogram", { busy: false, error: problemOf(e) });
     throw e;
   }
 }

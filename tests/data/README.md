@@ -24,6 +24,30 @@ GEOSTATSPY=/tmp/GeostatsPy refenv/bin/python tools/gen/ref_geostatspy.py tests/d
 
 Скрипт останавливается, если замкнутая форма расходится с GeostatsPy более чем на 1e−9.
 
+## Эталоны вариографии (`core/tests/data/variography/`)
+
+Эталоны Э16 лежат рядом с тестами ядра и общие для ядра и интерфейса (ADR 0022; интерфейс сверяет формы с настоящими ответами ядра).
+
+| Файл | Что | Откуда |
+|---|---|---|
+| `frames.json` | Оси a1–a3 по ang1–ang3 (GSLIB setrot), Т8.6-3 | `test_geostat_rotation.py`; тот же файл читают `ellipsoid-*.test.ts` |
+| `model_curves.json` | Значения моделей по осям (сферическая, экспоненциальная, гауссова, до 3 структур), Т8.6-4 | `test_vario_model.py`; тот же файл читает `variography-model.test.ts` |
+| `vmodel_geostatspy.json`, `gamv_geostatspy.json` | `vmodel`, `gamv` GeostatsPy, Д-21 | Из `ref/geostatspy` (набор — 80 точек, зерно `20261118`); GeostatsPy не меняется |
+| `window_answers.json` | Настоящие ответы ядра для окна «Вариография»: `defaults`, `preview`, итог задания | `test_vario_window_answers.py` |
+
+Пересоздать `window_answers.json` (после изменения формы ответа, затем сверить `variography-window.test.ts`):
+
+```bash
+cd core && BF_REGEN_VARIO_WINDOW=1 uv run pytest -q tests/test_vario_window_answers.py
+```
+
+Правило `trunc` для карты вариограммы (`varmap` GeostatsPy, подшаг 16.4): GeostatsPy `varmapv` берёт ячейку как `int(Δ / ячейка)` — отбрасывает дробную часть (центральная ячейка вдвое шире), ядро BF округляет (`round`). Для сверки `varmap(..., rule="trunc")` (только в тестах): строки эталона перевёрнуты по Y (строка 0 — наибольший y), ячейка с `npairs ≤ minnp` пуста (`min_pairs = minnp + 1`). Допуск: N точно, γ 1e−9 (`test_vario_fan_map.py`).
+
+| Файл | Что | Откуда |
+|---|---|---|
+| `varmap_geostatspy.json` | Шесть случаев `varmapv` (решётка со сдвигами k + ½ ячейки, повторные точки) | `core/tests/data/variography/`; одноразовый генератор — в `test_vario_fan_map.py` |
+| `core/tests/data/stats/tab_vario_answers.json` | Настоящие ответы ядра для вкладки «Статистика» (вариограмма, карта, `local`) | `core/tests` (API вкладки); пересоздать — `BF_REGEN_STATS_TAB_VARIO=1`, затем сверить `stats-vario.test.ts` |
+
 ## ext/omf и ext/expected
 
 | Файл | Источник | Лицензия | Что это |

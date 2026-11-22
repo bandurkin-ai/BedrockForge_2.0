@@ -52,3 +52,7 @@ router.include_router(routes_tab.router)  # its own prefix /tab
 from . import routes_contact  # noqa: E402
 
 router.include_router(routes_contact.router)  # registers "contact" for /stats/chart/{id} too
+
+from . import routes_tab_vario  # noqa: E402
+
+router.include_router(routes_tab_vario.router)  # its own prefix /tab (16.17)

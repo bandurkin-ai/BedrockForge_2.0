@@ -11,7 +11,8 @@
  */
 import type { Ray } from "../../viz/section/math";
 import type { Scene } from "../../viz/Scene";
-import type { ToolHandler, ToolPointer } from "../../viz/core/toolInput";
+import type { ToolPointer } from "../../viz/core/toolInput";
+import { addHandles, removeHandles, type ChainHandler } from "../../viz/core/handleChain";
 import { dragAngles, handlesOf, hitHandle, rotationBetween, sameAngles, type Angles, type Handle, type HandleKind } from "../../viz/swath/drag";
 import { frameOf } from "../../viz/swath/frame";
 import { SwathHandles } from "../../viz/swath/handle";
@@ -50,7 +51,7 @@ interface Drag {
 
 const pick = (a: Angles): Angles => ({ azimuth: a.azimuth, dip: a.dip, roll: a.roll });
 
-export class SwathHandlesControl implements ToolHandler {
+export class SwathHandlesControl implements ChainHandler {
   private view: SwathHandles | null = null;
   private viewOrigin = "";
   private hover: HandleKind | null = null;
@@ -65,7 +66,7 @@ export class SwathHandlesControl implements ToolHandler {
     private readonly scene: HandleScene,
     private readonly host: HandlesHost,
   ) {
-    scene.setHandles(this);
+    addHandles(scene, this);
   }
 
   /** For the tests and the E2E hook: the handles drawn (kind, angle, lit) and the drag now. */
@@ -123,6 +124,12 @@ export class SwathHandlesControl implements ToolHandler {
   private hit(t: HandleTarget, x: number, y: number): HandleKind | null {
     const view = this.scene.projectView();
     return view ? hitHandle(this.handlesFor(t.layer, t.angles), view, x, y) : null;
+  }
+
+  /** A handle of the target within 8 px of (x, y) (`HIT_PX`): the chain lights one handle at a time by it. */
+  hits(x: number, y: number): boolean {
+    const t = this.disposed ? null : this.host.target();
+    return !!t && this.hit(t, x, y) !== null;
   }
 
   pointer(e: ToolPointer): boolean {
@@ -224,6 +231,6 @@ export class SwathHandlesControl implements ToolHandler {
     this.cancel();
     this.hide();
     this.disposed = true;
-    this.scene.setHandles(null);
+    removeHandles(this.scene, this);
   }
 }
