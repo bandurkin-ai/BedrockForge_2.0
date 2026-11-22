@@ -41,7 +41,12 @@ GEOSTATSPY=/tmp/GeostatsPy refenv/bin/python tools/gen/ref_geostatspy.py tests/d
 cd core && BF_REGEN_VARIO_WINDOW=1 uv run pytest -q tests/test_vario_window_answers.py
 ```
 
-Правило `trunc` для карты вариограммы (`varmap` GeostatsPy, подшаг 16.4): <!-- дописать после 16.4: формулировка правила (как GeostatsPy обрезает/округляет сетку лагов и ячеек карты, чем отличается от определения ядра BF; допуск сверки) -->
+Правило `trunc` для карты вариограммы (`varmap` GeostatsPy, подшаг 16.4): GeostatsPy `varmapv` берёт ячейку как `int(Δ / ячейка)` — отбрасывает дробную часть (центральная ячейка вдвое шире), ядро BF округляет (`round`). Для сверки `varmap(..., rule="trunc")` (только в тестах): строки эталона перевёрнуты по Y (строка 0 — наибольший y), ячейка с `npairs ≤ minnp` пуста (`min_pairs = minnp + 1`). Допуск: N точно, γ 1e−9 (`test_vario_fan_map.py`).
+
+| Файл | Что | Откуда |
+|---|---|---|
+| `varmap_geostatspy.json` | Шесть случаев `varmapv` (решётка со сдвигами k + ½ ячейки, повторные точки) | `core/tests/data/variography/`; одноразовый генератор — в `test_vario_fan_map.py` |
+| `core/tests/data/stats/tab_vario_answers.json` | Настоящие ответы ядра для вкладки «Статистика» (вариограмма, карта, `local`) | `core/tests` (API вкладки); пересоздать — `BF_REGEN_STATS_TAB_VARIO=1`, затем сверить `stats-vario.test.ts` |
 
 ## ext/omf и ext/expected
 
