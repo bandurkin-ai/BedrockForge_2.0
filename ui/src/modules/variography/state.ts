@@ -9,6 +9,7 @@
 import { Store } from "../../shell/store";
 import { parseNumber } from "../composites/params";
 import type { CalcResult, DataBody, DefaultsAnswer, FitWeights, ModelRow } from "./api";
+import type { MapCalc } from "./mapCalc";
 import { EMPTY_MODEL, type Structure, type VModel } from "./model";
 
 // ---- the data ----
@@ -298,6 +299,11 @@ export interface Work {
   fitInfo?: FitInfo | null;
   /** the answer of `/back` for the model (normal scores; `back` of the save); an edit drops it */
   back?: Record<string, unknown> | null;
+  /** `job.result` of `variography.map` (the fan, the rose, the map) and the body (JSON) it was computed by */
+  mapCalc?: MapCalc | null;
+  mapFor?: string | null;
+  /** the format of «Экспорт» of the window */
+  exchangeFormat?: "json" | "gslib";
 }
 
 /** `fit` of a stored model: the answer of `/fit` (e16-api.md «Модели вариограмм»). */

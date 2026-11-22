@@ -18,9 +18,11 @@ import { onScene } from "../scene/sceneHost";
 import { bindTrends } from "../trends/bind";
 import { refresh as refreshJobs } from "../jobs/state";
 import { loadTables, resolveTable, type Started, type TableRow } from "../composites/api";
-import { deleteModel, exportModel, formatOfPath, importModel, loadModel, startExperimental, startMap, type ExchangeFormat, type FitWeights } from "./api";
+import { deleteModel, exportModel, formatOfPath, importModel, loadModel, rebuildModel, startExperimental, startMap, type ExchangeFormat, type FitWeights } from "./api";
 import { structureType, type StructureType } from "./model";
-import { fitText, fitWork, saveWork } from "./save";
+import { fitText, fitWork, refreshModels, saveWork } from "./save";
+import { onCoreEvent } from "../jobs/state";
+import { projectStore } from "../projects/state";
 import {
   checkValue,
   chosenStructure,
@@ -35,6 +37,7 @@ import {
   setModel,
   setWork,
   valuesFromArgs,
+  variographyStore,
   VIEWS,
   windowOfModel,
   withStructure,
@@ -155,6 +158,17 @@ const noStructures = (id: number) => refusal("no_structures", `В модели �
 
 const centreNote = (win: string): string => (ellipsoidCentre(workOf(win)!) ? "" : " — появится, когда окно прочитает данные расчёта (центр — середина охвата точек)");
 
+/** A stored model changed (saved, rebuilt): its window, if it is not edited, takes the new points and their key. */
+export async function reloadPoints(id: number, load: typeof loadModel = loadModel): Promise<boolean> {
+  const win = windowOfModel(id);
+  const w = win ? workOf(win) : null;
+  if (!win || !w || w.dirty) return false;
+  const m = await load(id);
+  if (!m.points?.key || m.points.key === w.expKey) return false;
+  setWork(win, { result: m.points, expKey: m.points.key, dirty: false });
+  return true;
+}
+
 export function bindVariography(app: App): void {
   bindTrends(app); // the trends of «Геостатистика» (Д-15; modules/trends) — until shell/app.ts names them
   const r = app.registry;
@@ -259,6 +273,16 @@ export function bindVariography(app: App): void {
     needWritable(app),
   );
   r.bind(
+    "variography.rebuild",
+    noted(app, async (a) => {
+      const id = modelId(a);
+      const row = variographyStore.get().models.find((m) => m.id === id);
+      if (row?.source_lost) throw refusal("source_lost", `Модель №${id}: источник удалён — перестроить нельзя.`, "Набор или таблица модели удалены; модель остаётся с прежними точками.");
+      return started(app, `Перестроить «${row?.name ?? `модель №${id}`}»`, await rebuildModel(id));
+    }),
+    needWritable(app),
+  );
+  r.bind(
     "variography.export",
     noted(app, async (a) => {
       const id = modelId(a);
@@ -283,6 +307,29 @@ export function bindVariography(app: App): void {
     }),
     needProject,
   );
+  // the models of the project: read when it opens, kept by the events of the core (the tree «Модели вариограмм»)
+  let uid: string | null = null;
+  projectStore.subscribe(() => {
+    const cur = projectStore.get().current?.uid ?? null;
+    if (cur === uid) return;
+    uid = cur;
+    variographyStore.set({ models: [], modelsLoaded: false });
+    if (cur) void refreshModels().catch(() => undefined);
+  });
+  onCoreEvent((event, data) => {
+    if (event !== "geostat.changed") return;
+    let id: number | null = null;
+    try {
+      const d = JSON.parse(data) as { kind?: unknown; id?: unknown; deleted?: unknown };
+      if (d.kind !== "variogram_model") return;
+      id = typeof d.id === "number" ? d.id : null;
+      if (d.deleted === true && id !== null) forgetModel(id);
+    } catch {
+      /* a malformed event: the list is read again */
+    }
+    void refreshModels().catch(() => undefined);
+    if (id !== null) void reloadPoints(id).catch(() => undefined);
+  });
   // the ellipsoids in the main 3D: a lazy chunk with three.js, attached to every new scene
   let detach: (() => void) | null = null;
   let generation = 0;

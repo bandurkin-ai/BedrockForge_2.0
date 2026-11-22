@@ -130,6 +130,8 @@ def build(c: Any, tmp: Path) -> dict[str, Any]:
     }
 
 
+TURNS = [((0.0, 0.0, 0.0), 30.0), ((0.0, 0.0, 0.0), 150.0), ((30.0, -20.0, 10.0), 45.0), ((120.0, -60.0, -35.0), 100.0),
+         ((0.0, -90.0, 0.0), 60.0), ((200.0, 10.0, 170.0), 0.0)]  # fmt: skip
 SPH = {"type": "spherical", "c": 0.5, "ang1": 30, "ang2": 0, "ang3": 0, "a1": 60, "a2": 40, "a3": 10}
 
 
@@ -190,6 +192,10 @@ def models_part(c: Any, base: dict[str, Any], tmp: Path) -> dict[str, Any]:
     rebuilt = wait_job(c, r.json()["source"], r.json()["id"], timeout=240)
     assert rebuilt["status"] == "done", rebuilt
     after = answer(c.get(GS + "/models"))
+    from bf_core.geostat.variogram import fan as vfan
+
+    # a click on a ray of the fan / the map: the angles of the plane whose a1 is at θ (`fan.turn`)
+    turns = [{"plane": list(p), "theta": t, "angles": list(vfan.turn(p, t))} for p, t in TURNS]
     return {
         "bodies_models": {"fit_calc": fitcalc, "nscore_calc": nscalc, "fit": fit_body, "map": mapbody,
                           "save": save_body},
@@ -200,6 +206,7 @@ def models_part(c: Any, base: dict[str, Any], tmp: Path) -> dict[str, Any]:
         "model_read": read, "export_json": exp_json, "export_gslib": exp_gslib, "export_path": exp_path,
         "import_json": imp_json, "import_gslib": imp_gslib, "import_path": imp_path, "import_bad": imp_bad,
         "model_deleted": deleted, "models_stale": stale, "job_rebuild": rebuilt["result"], "models_rebuilt": after,
+        "turns": turns,
     }  # fmt: skip
 
 

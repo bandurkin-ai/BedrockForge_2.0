@@ -1,6 +1,7 @@
 /**
  * The variogram map (ТЗ 8.6.4 «Карта вариограмм»; ADR 0022 §5, §15, decision 8): (2nu + 1) × (2nv + 1) cells of γ
- * in the plane, u (along a1) up, v (along a2) to the right; the cells are a raster layer (`charts/core/
+ * in the plane seen from above, u (along a1) up, v (along a2) to the LEFT (at zero angles a2 is west); the cells are
+ * a raster layer (`charts/core/
  * PointsCanvas`) under the vector axes. A cell with N < min_pairs is empty: it is not painted (the hatching shows
  * through, «пусто» in the legend) — never the colour of zero. The colour bar 0 … max(γ, σ²) Cobalt → Copper Orange
  * with σ² marked; a click picks the direction of the major axis through the centre (theta from a1 to a2).
@@ -26,9 +27,11 @@ export interface VarMapChartProps {
   /** the direction picked (theta, °): a line through the centre */
   selected?: number | null;
   onPick?: (theta: number) => void;
+  /** the world directions of a1 and a2 for the titles of the axes («Аз 30° · Пог 0°») */
+  axes?: { a1: string; a2: string };
 }
 
-export const VarMapChart = forwardRef<SVGSVGElement, VarMapChartProps>(function VarMapChart({ map, sigma2, unit = "м", title, selected, onPick }, ref) {
+export const VarMapChart = forwardRef<SVGSVGElement, VarMapChartProps>(function VarMapChart({ map, sigma2, unit = "м", title, selected, onPick, axes }, ref) {
   const [hover, setHover] = useState<{ i: number; j: number } | null>(null);
   const hatch = `vmhatch${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const ext = mapExtent(map);
@@ -50,9 +53,10 @@ export const VarMapChart = forwardRef<SVGSVGElement, VarMapChartProps>(function 
   const span = Math.max(ext.u.max - ext.u.min, ext.v.max - ext.v.min);
   const vc = (ext.v.min + ext.v.max) / 2;
   const uc = (ext.u.min + ext.u.max) / 2;
-  const sx = makeScale("linear", { min: vc - span / 2, max: vc + span / 2 }, box.x0, box.x1);
+  // v grows to the left: the plan seen from above (a2 = west at zero angles)
+  const sx = makeScale("linear", { min: vc - span / 2, max: vc + span / 2 }, box.x1, box.x0);
   const sy = makeScale("linear", { min: uc - span / 2, max: uc + span / 2 }, box.y1, box.y0);
-  const rasterBox = { ...box, x0: sx.map(ext.v.min) as number, x1: sx.map(ext.v.max) as number, y0: sy.map(ext.u.max) as number, y1: sy.map(ext.u.min) as number };
+  const rasterBox = { ...box, x0: sx.map(ext.v.max) as number, x1: sx.map(ext.v.min) as number, y0: sy.map(ext.u.max) as number, y1: sy.map(ext.u.min) as number };
   const cells = map.gamma.reduce((a, r) => a + r.length, 0);
   const empty = map.gamma.reduce((a, r) => a + r.filter((g) => g === null).length, 0);
   const at = (e: RMouseEvent<SVGElement>) => {
@@ -67,7 +71,7 @@ export const VarMapChart = forwardRef<SVGSVGElement, VarMapChartProps>(function 
   const h = hover ? { g: map.gamma[hover.j]?.[hover.i] ?? null, n: map.n[hover.j]?.[hover.i] ?? 0, u: map.u[hover.i], v: map.v[hover.j] } : null;
   const c0 = [sx.map(0), sy.map(0)] as const;
   return (
-    <PlotFrame ref={ref} box={box} label={label} xTitle={`v (a2), ${unit}`} yTitle={`u (a1), ${unit}`} onPointerLeave={() => setHover(null)}>
+    <PlotFrame ref={ref} box={box} label={label} xTitle={`← v (a2${axes ? ` · ${axes.a2}` : ""}), ${unit}`} yTitle={`u (a1${axes ? ` · ${axes.a1}` : ""}), ${unit}`} onPointerLeave={() => setHover(null)}>
       <defs>
         <pattern id={hatch} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <line x1={0} y1={0} x2={0} y2={6} className={css.grid} />
@@ -81,7 +85,7 @@ export const VarMapChart = forwardRef<SVGSVGElement, VarMapChartProps>(function 
       {selected !== null && selected !== undefined && c0[0] !== null && c0[1] !== null && (
         <g data-selected={mod180(selected)}>
           {(() => {
-            const [dx, dy] = polar(selected, span);
+            const [dx, dy] = polar(selected, (box.x1 - box.x0) / 2);
             return <line className={css.mark} x1={c0[0] - dx} y1={c0[1] - dy} x2={c0[0] + dx} y2={c0[1] + dy} />;
           })()}
         </g>

@@ -44,6 +44,8 @@ export const STAGE_TITLES: Record<string, string> = {
   nscore: "нормальные оценки",
   pairs: "пары",
   downhole: "вдоль скважин",
+  fan: "веер",
+  map: "карта",
   write: "запись",
 };
 

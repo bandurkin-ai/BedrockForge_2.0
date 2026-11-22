@@ -26,7 +26,7 @@
    "min_pairs": 5
   },
   "fit": {
-   "key": "ae87a44a78933090fdd554225848ebf5fd1a47c5ca26e7b480fe5f4ad56f15ff",
+   "key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
    "type": "semivariogram",
    "model": {
     "type": "semivariogram",
@@ -90,7 +90,7 @@
      }
     ]
    },
-   "exp_key": "ae87a44a78933090fdd554225848ebf5fd1a47c5ca26e7b480fe5f4ad56f15ff",
+   "exp_key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
    "fit": {
     "weights": "n_h",
     "residual": 39.07421586145099,
@@ -102,7 +102,7 @@
   }
  },
  "job_fit_calc": {
-  "key": "ae87a44a78933090fdd554225848ebf5fd1a47c5ca26e7b480fe5f4ad56f15ff",
+  "key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -515,12 +515,12 @@
   "warnings": [],
   "fresh": false,
   "stages": {
-   "read": 0.002,
+   "read": 0.003,
    "trajectories": 0.004,
-   "pairs": 0.003,
+   "pairs": 0.005,
    "downhole": 0.001,
-   "write": 0.003,
-   "total": 0.019
+   "write": 0.005,
+   "total": 0.025
   }
  },
  "fit": {
@@ -564,7 +564,7 @@
   }
  },
  "job_nscore_axes": {
-  "key": "f1f02be028053ad273b52dc362187630411d8dc260fc0ecb0acfe1a03abae2ba",
+  "key": "7180515373eb3809b5f60a74f29bb996f68cbea23eedb7dce534e7ff68c48480",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -2087,7 +2087,7 @@
   ]
  },
  "job_map": {
-  "key": "951318e605970ac3d7f009f3f7bca0fd1f0fecceed71c1515f54d33628faa597",
+  "key": "712eac47f6cb4bfcec012d8c17420afa28336927eb8b84ed2e48b98673591969",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -2862,12 +2862,12 @@
   "warnings": [],
   "fresh": false,
   "stages": {
-   "read": 0.002,
-   "trajectories": 0.006,
-   "fan": 1.816,
-   "map": 0.74,
-   "write": 0.002,
-   "total": 2.571
+   "read": 0.003,
+   "trajectories": 0.007,
+   "fan": 1.916,
+   "map": 0.658,
+   "write": 0.001,
+   "total": 2.593
   }
  },
  "model_created": {
@@ -2941,7 +2941,7 @@
      {
       "id": 1,
       "name_key": "пробы",
-      "token": "660d36a09fa10",
+      "token": "660d390b00bc5",
       "rev": 1
      }
     ],
@@ -2952,7 +2952,7 @@
      "minimum_curvature"
     ]
    },
-   "exp_key": "ae87a44a78933090fdd554225848ebf5fd1a47c5ca26e7b480fe5f4ad56f15ff",
+   "exp_key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
    "type": "semivariogram",
    "c0": 0.9647884866709614,
    "structures": [
@@ -2983,12 +2983,12 @@
     "scipy": "1.18.1",
     "numba": "0.68.1"
    },
-   "created_at": "2026-11-22T01:30:09.668092+00:00",
+   "created_at": "2026-11-22T01:40:58.452648+00:00",
    "color": "#1f6bff",
-   "sha256": "9c114e3ab6f981b21ec8ebf1124061fcc88564e13e1edf7ae75a793b016769cc"
+   "sha256": "afa0d8e34bc5eb437ef188ae9ff05f0c559e618dfb64d469121be6a5834317ab"
   },
   "points": {
-   "key": "ae87a44a78933090fdd554225848ebf5fd1a47c5ca26e7b480fe5f4ad56f15ff",
+   "key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
    "set_id": 1,
    "table": "1",
    "field": "AU",
@@ -3404,13 +3404,13 @@
   "stale_reason": null,
   "source_lost": false,
   "version": 1,
-  "created_at": "2026-11-22T01:30:09.668237Z",
-  "updated_at": "2026-11-22T01:30:09.668237Z"
+  "created_at": "2026-11-22T01:40:58.452753Z",
+  "updated_at": "2026-11-22T01:40:58.452753Z"
  },
  "export_json": {
   "format": "json",
   "filename": "AU · Пробы.json",
-  "text": "{\n  \"kind\": \"variogram_model\",\n  \"v\": 1,\n  \"source\": {\n    \"set_id\": 1,\n    \"table\": \"1\",\n    \"field\": \"AU\",\n    \"domain\": null,\n    \"weights\": null\n  },\n  \"transform\": \"none\",\n  \"sigma2\": 1.669187430215512,\n  \"calc\": {\n    \"params\": {\n      \"set_id\": 1,\n      \"table\": \"1\",\n      \"field\": \"AU\",\n      \"domain\": null,\n      \"weights\": null,\n      \"transform\": \"none\",\n      \"axes\": {\n        \"ang1\": 30.0,\n        \"ang2\": 0.0,\n        \"ang3\": 0.0\n      },\n      \"directions\": [],\n      \"lag\": 10.0,\n      \"nlag\": 6,\n      \"lag_tol\": 5.0,\n      \"az_tol\": 22.5,\n      \"dip_tol\": 22.5,\n      \"band_h\": 30.0,\n      \"band_v\": 20.0,\n      \"min_pairs\": 5,\n      \"downhole\": true,\n      \"dh_lag\": 2.0,\n      \"dh_nlag\": 15,\n      \"dh_lag_tol\": 1.0,\n      \"seed\": 12345\n    },\n    \"sampled\": null\n  },\n  \"exp_key\": \"ae87a44a78933090fdd554225848ebf5fd1a47c5ca26e7b480fe5f4ad56f15ff\",\n  \"type\": \"semivariogram\",\n  \"c0\": 0.9647884866709614,\n  \"structures\": [\n    {\n      \"type\": \"spherical\",\n      \"c\": 0.5675653493005909,\n      \"ang1\": 30.0,\n      \"ang2\": 0.0,\n      \"ang3\": 0.0,\n      \"a1\": 129.99999999999994,\n      \"a2\": 108.89871732185051,\n      \"a3\": 10.0\n    }\n  ],\n  \"common_axes\": true,\n  \"fit\": {\n    \"weights\": \"n_h\",\n    \"residual\": 39.07421586145099,\n    \"n\": 14,\n    \"fixed\": [\n      \"structures.0.a3\"\n    ]\n  },\n  \"back\": null,\n  \"algo\": \"vario-1\",\n  \"versions\": {\n    \"numpy\": \"2.3.5\",\n    \"scipy\": \"1.18.1\",\n    \"numba\": \"0.68.1\"\n  },\n  \"created_at\": \"2026-11-22T01:30:09.668092+00:00\",\n  \"color\": \"#1f6bff\",\n  \"sha256\": \"9c114e3ab6f981b21ec8ebf1124061fcc88564e13e1edf7ae75a793b016769cc\"\n}\n"
+  "text": "{\n  \"kind\": \"variogram_model\",\n  \"v\": 1,\n  \"source\": {\n    \"set_id\": 1,\n    \"table\": \"1\",\n    \"field\": \"AU\",\n    \"domain\": null,\n    \"weights\": null\n  },\n  \"transform\": \"none\",\n  \"sigma2\": 1.669187430215512,\n  \"calc\": {\n    \"params\": {\n      \"set_id\": 1,\n      \"table\": \"1\",\n      \"field\": \"AU\",\n      \"domain\": null,\n      \"weights\": null,\n      \"transform\": \"none\",\n      \"axes\": {\n        \"ang1\": 30.0,\n        \"ang2\": 0.0,\n        \"ang3\": 0.0\n      },\n      \"directions\": [],\n      \"lag\": 10.0,\n      \"nlag\": 6,\n      \"lag_tol\": 5.0,\n      \"az_tol\": 22.5,\n      \"dip_tol\": 22.5,\n      \"band_h\": 30.0,\n      \"band_v\": 20.0,\n      \"min_pairs\": 5,\n      \"downhole\": true,\n      \"dh_lag\": 2.0,\n      \"dh_nlag\": 15,\n      \"dh_lag_tol\": 1.0,\n      \"seed\": 12345\n    },\n    \"sampled\": null\n  },\n  \"exp_key\": \"c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d\",\n  \"type\": \"semivariogram\",\n  \"c0\": 0.9647884866709614,\n  \"structures\": [\n    {\n      \"type\": \"spherical\",\n      \"c\": 0.5675653493005909,\n      \"ang1\": 30.0,\n      \"ang2\": 0.0,\n      \"ang3\": 0.0,\n      \"a1\": 129.99999999999994,\n      \"a2\": 108.89871732185051,\n      \"a3\": 10.0\n    }\n  ],\n  \"common_axes\": true,\n  \"fit\": {\n    \"weights\": \"n_h\",\n    \"residual\": 39.07421586145099,\n    \"n\": 14,\n    \"fixed\": [\n      \"structures.0.a3\"\n    ]\n  },\n  \"back\": null,\n  \"algo\": \"vario-1\",\n  \"versions\": {\n    \"numpy\": \"2.3.5\",\n    \"scipy\": \"1.18.1\",\n    \"numba\": \"0.68.1\"\n  },\n  \"created_at\": \"2026-11-22T01:40:58.452648+00:00\",\n  \"color\": \"#1f6bff\",\n  \"sha256\": \"afa0d8e34bc5eb437ef188ae9ff05f0c559e618dfb64d469121be6a5834317ab\"\n}\n"
  },
  "export_gslib": {
   "format": "gslib",
@@ -3419,7 +3419,7 @@
  },
  "export_path": {
   "format": "gslib",
-  "path": "/tmp/pytest-of-root/pytest-117/test_window_answers_are_what_t0/модель.par",
+  "path": "/tmp/pytest-of-root/pytest-123/test_window_answers_are_what_t0/модель.par",
   "bytes": 194
  },
  "import_json": {
@@ -3510,22 +3510,22 @@
     "stale": true,
     "stale_reason": "изменена таблица «Пробы»",
     "source_lost": false,
-    "created_at": "2026-11-22T01:30:09.668237Z",
-    "updated_at": "2026-11-22T01:30:09.668237Z"
+    "created_at": "2026-11-22T01:40:58.452753Z",
+    "updated_at": "2026-11-22T01:40:58.452753Z"
    }
   ]
  },
  "job_rebuild": {
   "model_id": 3,
-  "key": "bc3a8b4f977b7bd1094e42eeb428e6ef0642872e91658c847078e667dc9cefe2",
+  "key": "e426d7b0d44192ba8bf5317edfcc5fac7cc0f41d8ee457615481502dd40fe2b1",
   "fresh": false,
   "stages": {
-   "read": 0.005,
+   "read": 0.006,
    "trajectories": 0.005,
    "pairs": 0.003,
    "downhole": 0.001,
-   "write": 0.004,
-   "total": 0.022
+   "write": 0.003,
+   "total": 0.024
   },
   "fit": {
    "weights": "n_h",
@@ -3562,11 +3562,91 @@
     "stale": false,
     "stale_reason": null,
     "source_lost": false,
-    "created_at": "2026-11-22T01:30:09.668237Z",
-    "updated_at": "2026-11-22T01:30:09.887750Z"
+    "created_at": "2026-11-22T01:40:58.452753Z",
+    "updated_at": "2026-11-22T01:40:58.861865Z"
    }
   ]
  },
+ "turns": [
+  {
+   "plane": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "theta": 30.0,
+   "angles": [
+    330.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "plane": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "theta": 150.0,
+   "angles": [
+    210.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "plane": [
+    30.0,
+    -20.0,
+    10.0
+   ],
+   "theta": 45.0,
+   "angles": [
+    345.41229212329534,
+    -7.265190504621295,
+    21.10749121510653
+   ]
+  },
+  {
+   "plane": [
+    120.0,
+    -60.0,
+    -35.0
+   ],
+   "theta": 100.0,
+   "angles": [
+    354.4722046477679,
+    -7.5879271632480005,
+    65.59435170349784
+   ]
+  },
+  {
+   "plane": [
+    0.0,
+    -90.0,
+    0.0
+   ],
+   "theta": 60.0,
+   "angles": [
+    270.0,
+    -30.00000000000001,
+    90.0
+   ]
+  },
+  {
+   "plane": [
+    200.0,
+    10.0,
+    170.0
+   ],
+   "theta": 0.0,
+   "angles": [
+    200.0,
+    10.0,
+    170.0
+   ]
+  }
+ ],
  "rules": "ответы настоящего ядра: job.result, job.error, POST /preview, 422 (test_vario_window_answers.py)",
  "bodies": {
   "axes": {
@@ -3602,7 +3682,7 @@
   }
  },
  "job_axes": {
-  "key": "0b10be9108c8c74a40262b728019f746b5a353c6f45ae92d76fe3849aaf073bc",
+  "key": "300cb1b0ed2b1be0513d6f0e8c7be3eb92036d75df9bbdb2634b94ba774ed051",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -4016,15 +4096,15 @@
   "fresh": false,
   "stages": {
    "read": 0.007,
-   "trajectories": 5.996,
-   "pairs": 3.004,
-   "downhole": 0.569,
-   "write": 0.341,
-   "total": 9.933
+   "trajectories": 6.112,
+   "pairs": 2.966,
+   "downhole": 0.626,
+   "write": 0.329,
+   "total": 10.061
   }
  },
  "job_nscore": {
-  "key": "e7faebb81fe1295ce87bac4885eaf49476cb1d2e26fb76705970a0a1d27aae1b",
+  "key": "dc2d9d3bec391286b2761cacadb50a2ceb1dc28f7c8beac9b59de028dbef3eac",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -4208,12 +4288,12 @@
   ],
   "fresh": false,
   "stages": {
-   "read": 0.003,
+   "read": 0.002,
    "trajectories": 0.002,
-   "nscore": 0.439,
-   "pairs": 0.004,
-   "write": 0.005,
-   "total": 0.461
+   "nscore": 0.414,
+   "pairs": 0.003,
+   "write": 0.004,
+   "total": 0.432
   }
  },
  "job_failed": {

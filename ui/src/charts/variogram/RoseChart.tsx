@@ -1,8 +1,10 @@
 /**
  * The rose of ranges (ТЗ 8.6.4 «Веер»; ADR 0022 §5, decision 8): for each ray of the fan the first distance where
- * γ̂ ≥ q·σ², drawn at theta and theta + 180° in the plane (a1 up, a2 right). A ray whose level is not reached has no
- * range: a dashed spoke to the edge «> h_max» — the outline is broken there, never closed over a zero. A click picks
- * the nearest ray (the direction of the major axis in the plane); the picked one is marked. SVG of `charts/core`.
+ * γ̂ ≥ q·σ², drawn at theta and theta + 180° in the plane seen from above (a1 up, a2 to the left, theta
+ * counter-clockwise — at zero angles a2 is west). A ray whose level is not reached has no range: a dashed spoke to
+ * the edge «> h_max» — the outline is broken there, never closed over a zero. A click picks the nearest ray (the
+ * direction of the major axis in the plane); the picked one is marked. The labels — the world azimuth and plunge of
+ * the axes and the rays (`axes`, `RoseRay.az`). SVG of `charts/core`.
  */
 import { forwardRef, useState, type MouseEvent as RMouseEvent } from "react";
 import { formatNumber } from "../core/axisScale";
@@ -25,9 +27,11 @@ export interface RoseChartProps {
   selected?: number | null;
   onPick?: (theta: number) => void;
   size?: number;
+  /** the world directions of a1 and a2 for the labels of the axes («Аз 30° · Пог 0°») */
+  axes?: { a1: string; a2: string };
 }
 
-export const RoseChart = forwardRef<SVGSVGElement, RoseChartProps>(function RoseChart({ rose, hMax, unit = "м", title, selected, onPick, size = ROSE_SIZE }, ref) {
+export const RoseChart = forwardRef<SVGSVGElement, RoseChartProps>(function RoseChart({ rose, hMax, unit = "м", title, selected, onPick, size = ROSE_SIZE, axes }, ref) {
   const [hover, setHover] = useState<RoseRay | null>(null);
   const box = plotBox(size, size, { left: 26, right: 26, top: 26, bottom: 26 });
   const cx = (box.x0 + box.x1) / 2;
@@ -63,12 +67,17 @@ export const RoseChart = forwardRef<SVGSVGElement, RoseChartProps>(function Rose
         ))}
         <line className={css.grid} x1={cx} x2={cx} y1={box.y0} y2={box.y1} />
         <line className={css.grid} x1={box.x0} x2={box.x1} y1={cy} y2={cy} />
-        <text className={css.axisTitle} x={cx} y={box.y0 - 8} textAnchor="middle">
-          a1
+        <text className={css.axisTitle} x={cx} y={box.y0 - 8} textAnchor="middle" data-axis="a1">
+          {axes ? `a1 · ${axes.a1}` : "a1"}
         </text>
-        <text className={css.axisTitle} x={box.x1 + 4} y={cy + 4}>
+        <text className={css.axisTitle} x={box.x0 - 4} y={cy - 6} textAnchor="start" data-axis="a2">
           a2
         </text>
+        {axes && (
+          <text className={css.tick} x={box.x0 - 4} y={cy + 12} textAnchor="start">
+            {axes.a2}
+          </text>
+        )}
       </g>
       {!radius && (
         <text className={css.tick} data-empty="rose" x={cx} y={cy + 18} textAnchor="middle">
@@ -96,7 +105,7 @@ export const RoseChart = forwardRef<SVGSVGElement, RoseChartProps>(function Rose
                 <g key={key} data-ray={r.theta} data-beyond>
                   <line x1={cx} y1={cy} x2={x} y2={y} stroke={color} strokeOpacity={0.6} strokeDasharray="3 4" />
                   {half === 0 && (
-                    <text className={css.tick} x={x} y={y} dx={4} dy={-3}>
+                    <text className={css.tick} x={x} y={y} dx={x < cx ? -4 : 4} dy={-3} textAnchor={x < cx ? "end" : "start"}>
                       &gt; h
                     </text>
                   )}
@@ -132,8 +141,10 @@ export const RoseChart = forwardRef<SVGSVGElement, RoseChartProps>(function Rose
       </text>
       {hover && (
         <g className={css.tip} pointerEvents="none" transform={`translate(${box.x0} ${box.y0})`}>
-          <rect width={196} height={40} rx={4} />
-          <text x={8} y={15}>θ {formatNumber(hover.theta, 4)}° от a1 к a2</text>
+          <rect width={236} height={40} rx={4} />
+          <text x={8} y={15}>
+            θ {formatNumber(hover.theta, 4)}° от a1 к a2{hover.az === undefined ? "" : ` · Аз ${formatNumber(hover.az, 4)}° · Пог ${formatNumber(hover.plunge ?? 0, 3)}°`}
+          </text>
           <text x={8} y={31}>{hover.range === null ? "Дальность > h_max" : `Дальность ${formatNumber(hover.range, 4)} ${unit}`}{onPick ? " · щелчок — ось" : ""}</text>
         </g>
       )}
