@@ -64,7 +64,8 @@ describe("commands of Э13 (ADR 0019 §9)", () => {
       expect(searchPalette(it.label.toLowerCase(), items, []).some((r) => r.kind === "command" && r.item.label === it.label), it.label).toBe(true);
     }
     expect(searchPalette("анализ графики", items, []).filter((r) => r.kind === "command")).toHaveLength(9);
-    expect(STATS_BUTTONS.filter((b) => b.stage === "Э16").map((b) => b.analysis)).toEqual(["variogram", "map", "local"]);
+    expect(STATS_BUTTONS.map((b) => b.analysis)).toEqual(["declus", "nscore", "variogram", "map", "bootstrap", "local"]);
+    expect(STATS_BUTTONS.filter((b) => b.stage)).toEqual([]); // Э16: variogram, map, local are computed
   });
 });
 

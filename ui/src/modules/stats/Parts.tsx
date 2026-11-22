@@ -2,12 +2,12 @@
  * Shared parts of the panels of the tab «Статистика» (перенос `StatsPage.tsx` BF: Field, NumberInput, RunButton,
  * DeclusFields, Summary): a labelled field, the parameters of declustering (cells or polygons in plan), the facts
  * of an answer, the refusal with its hint — more than 20 000 intervals offers «Композиты» and «Декластеризация»
- * of «Обработка проб» (вопрос № 30).
+ * of «Обработка проб» (вопрос № 30); of a variogram or a map (Э16) — also the window «Вариография» (ADR 0022 решение 21).
  */
 import { useSyncExternalStore, type ReactNode } from "react";
 import { useApp } from "../../shell/AppContext";
 import type { Store } from "../../shell/store";
-import type { DeclusForm, Fact, Problem } from "./forms";
+import type { DeclusForm, Fact, Problem, TabContext } from "./forms";
 import css from "./Stats.module.css";
 
 /** The whole state of a store (with a server snapshot: the panels render in tests without a DOM). */
@@ -104,8 +104,21 @@ export function Facts({ rows, label }: { rows: readonly Fact[]; label: string })
   );
 }
 
+/** The arguments of `variography.open` for the set, the table and the component of the tab. */
+export const varioArgs = (ctx: TabContext, view: "axes" | "map" = "axes"): Record<string, unknown> => ({ set_id: ctx.setId, ...(ctx.table ? { table: ctx.table } : {}), ...(ctx.field ? { field: ctx.field } : {}), view });
+
+/** «Открыть в окне «Вариография»»: the 3D variograms without the limit of 20 000 (ADR 0022 решение 21). */
+export function OpenVarioButton({ ctx, view = "axes" }: { ctx: TabContext; view?: "axes" | "map" }) {
+  const app = useApp();
+  return (
+    <button type="button" className={css.btn} title="Направленные 3D-вариограммы, модель и эллипсоид — без предела 20 000 интервалов" onClick={() => void app.run("variography.open", varioArgs(ctx, view))}>
+      Открыть в окне «Вариография»
+    </button>
+  );
+}
+
 /** A refusal of the core or of the form: the message and its hint; > 20 000 intervals — the ways out (Т7.29-2). */
-export function ProblemBox({ problem }: { problem: Problem }) {
+export function ProblemBox({ problem, vario }: { problem: Problem; vario?: TabContext }) {
   const app = useApp();
   return (
     <div className={css.problem} role="alert" data-code={problem.code}>
@@ -119,6 +132,7 @@ export function ProblemBox({ problem }: { problem: Problem }) {
           <button type="button" className={css.btn} onClick={() => void app.run("composite.declus")}>
             Декластеризация всей таблицы…
           </button>
+          {vario && <OpenVarioButton ctx={vario} />}
         </div>
       )}
     </div>

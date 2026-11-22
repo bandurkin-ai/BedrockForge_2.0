@@ -1,7 +1,7 @@
 /**
  * The command `stats.open` (ADR 0019 §7, §9; ТЗ 7.29): opens the bottom tab «Статистика» on an analysis, with the
  * set, the table and the component of the arguments (absent — kept; another set — its first table and
- * component). variogram, map, local — a refusal with the stage Э16. From the assistant the analysis is computed
+ * component). From the assistant the analysis is computed
  * at once with the forms of the tab and the command answers with its short text (a refusal of the core — with its
  * hint: more than 20 000 intervals — composite). An edit of the data or another project drops the results.
  */
@@ -15,6 +15,7 @@ import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { STATS_BUTTONS, type StatsAnalysis } from "./commands";
 import { analysisTitle, bootstrapText, declusText, isTabAnalysis, nscoreText } from "./forms";
+import { localText, mapText, variogramText } from "./formsVario";
 import { clearRuns, initialStats, runAnalysis, setAnalysis, setContext, statsDataChanged, statsStore } from "./state";
 
 const text = (v: unknown): string | null | undefined => (v === undefined ? undefined : v === null || v === "" ? null : String(v));
@@ -23,7 +24,7 @@ const text = (v: unknown): string | null | undefined => (v === undefined ? undef
 export async function openStats(app: App, args: Record<string, unknown>, source: CommandSource): Promise<string> {
   const analysis = args.analysis as StatsAnalysis;
   const stage = STATS_BUTTONS.find((b) => b.analysis === analysis)?.stage;
-  if (stage || !isTabAnalysis(analysis)) throw refusal("not_available", stage ? `«${analysisTitle(analysis)}» появится на этапе ${stage}.` : `Анализ «${String(analysis)}» неизвестен.`, "Сейчас вкладка считает declus — декластеризацию, nscore — нормальные оценки, bootstrap — бутстрап.");
+  if (stage || !isTabAnalysis(analysis)) throw refusal("not_available", stage ? `«${analysisTitle(analysis)}» появится на этапе ${stage}.` : `Анализ «${String(analysis)}» неизвестен.`, "Вкладка считает declus — декластеризацию, nscore — нормальные оценки, bootstrap — бутстрап, variogram — вариограмму, map — карту вариограммы, local — карту неопределённости.");
   const set = chartSet(args);
   setContext({ ...(typeof args.set_id === "number" ? { setId: args.set_id } : {}), ...(args.table !== undefined ? { table: text(args.table) } : {}), ...(args.component !== undefined ? { component: text(args.component) } : {}) });
   setAnalysis(analysis);
@@ -31,6 +32,12 @@ export async function openStats(app: App, args: Record<string, unknown>, source:
   if (source !== "claude") return `Открыта вкладка «Статистика» · ${analysisTitle(analysis)} · ${set.name}`;
   if (analysis === "declus") return declusText(await runAnalysis("declus"));
   if (analysis === "nscore") return nscoreText(await runAnalysis("nscore"));
+  if (analysis === "variogram") {
+    const r = await runAnalysis("variogram");
+    return r.data ? variogramText(r.data) : "Вариограмма: нет данных.";
+  }
+  if (analysis === "map") return mapText(await runAnalysis("map"));
+  if (analysis === "local") return localText(await runAnalysis("local"));
   return bootstrapText(await runAnalysis("bootstrap"));
 }
 
