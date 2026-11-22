@@ -4,7 +4,8 @@
  * polynomials (200 nodes, 30 terms) over the table of normal scores of the calculation; the tails of `backtr`
  * (linear by default). Shown: the model of Z (C0, the structures), the share Σφ_n² / Var(Z) (< 0,95 — the warning
  * of the core), the residual, and the curves of the three axes — γ of Z by Hermite (points) with the model of Z
- * (the formulas of `model.ts`). The answer goes with «Сохранить» (`back`); an edit of the model drops it.
+ * (the formulas of `model.ts`). The answer goes with «Сохранить» (`back`); an edit of the model drops it; an answer
+ * for a model or a calculation changed during the request is dropped.
  */
 import { useRef, useState } from "react";
 import { ChartToolbar } from "../../charts/core/ChartToolbar";
@@ -70,6 +71,9 @@ export function backSeries(b: BackAnswer): VariogramSeries[] {
   }));
 }
 
+/** The answer of `/back` still applies: the window open with the model (JSON of `modelBody`) and the key it was asked for. */
+export const backFits = (w: Work | null, key: string, asked: string): boolean => w !== null && w.expKey === key && JSON.stringify(modelBody(w.model)) === asked;
+
 export function BackPanel({ work, winId, run = backTransform }: { work: Work; winId: string; run?: typeof backTransform }) {
   const [tails, setTails] = useState<TailsForm>(DEFAULT_TAILS);
   const [error, setError] = useState<Refusal | null>(null);
@@ -82,11 +86,15 @@ export function BackPanel({ work, winId, run = backTransform }: { work: Work; wi
     if (reason || !t.tails || !work.expKey) return;
     setBusy(true);
     setError(null);
+    const key = work.expKey;
+    const model = modelBody(work.model);
+    const asked = JSON.stringify(model);
     try {
-      const got = await run(work.expKey, modelBody(work.model), t.tails);
-      if (workOf(winId)) setWork(winId, { back: got.raw });
+      const got = await run(key, model, t.tails);
+      // the model or the calculation changed during the request: the answer is of another model — dropped
+      if (backFits(workOf(winId), key, asked)) setWork(winId, { back: got.raw });
     } catch (e) {
-      setError(readRefusal(e));
+      if (backFits(workOf(winId), key, asked)) setError(readRefusal(e));
     } finally {
       setBusy(false);
     }

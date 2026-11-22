@@ -37,6 +37,7 @@ import {
   setEllipsoid,
   setModel,
   setWork,
+  storedWork,
   valuesFromArgs,
   variographyStore,
   VIEWS,
@@ -127,13 +128,14 @@ const modelId = (a: Record<string, unknown>): number => {
   return a.model_id;
 };
 
-/** The window of a stored model: the one open, else a new one read from the core (`read` — the model read then). */
+/** The window of a stored model: the one open, else a new one read from the core (`read` — the model read then)
+ * with the data of `meta.source`, `meta.transform`, the values of `meta.calc.params`, `meta.fit`, `meta.back`. */
 export async function modelWindow(id: number, view?: unknown): Promise<{ win: string; read: Awaited<ReturnType<typeof loadModel>> | null }> {
   const open = windowOfModel(id);
   if (open) return { win: open, read: null };
   const m = await loadModel(id);
-  const data: DataState = { ...dataFromArgs({}), setId: m.source.set_id, table: m.source.table, field: m.source.field, transform: m.model.type === "nscore" ? "nscore" : "none" };
-  const win = openVariography({ model_id: m.id, view }, { data, model: m.model, modelId: m.id, modelVersion: m.version, result: m.points, expKey: m.points?.key ?? null });
+  // the data, the values, the fit and the back-transform of `meta`: «Рассчитать» → «Сохранить» keeps the source
+  const win = openVariography({ model_id: m.id, view }, storedWork(m));
   return { win, read: m };
 }
 
@@ -172,7 +174,7 @@ export async function reloadPoints(id: number, load: typeof loadModel = loadMode
     if (cur.modelVersion !== m.version) setWork(win, { modelVersion: m.version });
     return false;
   }
-  setWork(win, { result: m.points, expKey: m.points.key, modelVersion: m.version, dirty: false });
+  setWork(win, { result: m.points, expKey: m.points.key, modelVersion: m.version, dirty: false }); // the same source: `resultFor` kept
   return true;
 }
 
@@ -317,8 +319,9 @@ export function bindVariography(app: App): void {
     noted(app, async (a) => {
       if (typeof a.path !== "string" || !a.path.trim()) throw refusal("bad_param", "Не задан файл модели.", "Укажите path — абсолютный путь файла JSON или GSLIB.");
       const path = a.path.trim();
-      const format: ExchangeFormat = a.format === "json" || a.format === "gslib" ? a.format : formatOfPath(path);
-      const model = await importModel({ format, path });
+      // the format given, else by a known extension; otherwise the core tells it by the content
+      const format: ExchangeFormat | undefined = a.format === "json" || a.format === "gslib" ? a.format : /\.(json|par)$/i.test(path) ? formatOfPath(path) : undefined;
+      const model = await importModel({ ...(format ? { format } : {}), path });
       openVariography({ import: path }, { model, dirty: true });
       return `Модель из «${path}» открыта рабочей моделью окна: структур ${model.structures.length} — сохраните кнопкой «Сохранить»`;
     }),

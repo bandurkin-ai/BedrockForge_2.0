@@ -92,7 +92,6 @@ export function VariographyWindow({ winId }: { winId: string }) {
   const work = useWork(winId);
   const dragging = useSyncExternalStore(variographyStore.subscribe, () => variographyStore.get().dragging?.win === winId, () => false);
   const [run, setRun] = useState<RunnerState>(INITIAL_RUNNER);
-  const [resultFor, setResultFor] = useState<string | null>(null);
   const [jobError, setJobError] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
   const [activeSet] = useState(() => tablesStore.get().setId);
@@ -106,7 +105,9 @@ export function VariographyWindow({ winId }: { winId: string }) {
   const built = work ? experimentalBody(work.data, work.values, { axes: axesOf(work.model) }) : null;
   const body = built?.body ?? null;
   const cur = body ? JSON.stringify(body) : null;
-  useEffect(() => runner.edit(body, dragging), [cur, dragging]);
+  // the body of the result shown (a stored model just opened): no preview needed until it is edited
+  const known = cur !== null && cur === work?.resultFor && !run.auto;
+  useEffect(() => runner.edit(known ? null : body, dragging), [cur, dragging, known]);
 
   // the title follows the field
   const field = work?.data.field ?? null;
@@ -125,8 +126,7 @@ export function VariographyWindow({ winId }: { winId: string }) {
     if (!run.job || !live || !run.jobLive) return;
     if (live.status === "done" && live.result) {
       const r = readJobCalc(live.result);
-      setWork(winId, { result: r, expKey: r.key });
-      setResultFor(run.jobFor);
+      setWork(winId, { result: r, expKey: r.key, resultFor: run.jobFor });
       setJobError(null);
       runner.finished(run.job);
     } else if (live.status === "failed") {
@@ -136,7 +136,7 @@ export function VariographyWindow({ winId }: { winId: string }) {
   }, [live, run.job, run.jobLive]);
 
   if (!work) return <p className={css.note}>Окно закрывается…</p>;
-  const shown = pickShown(cur, work.result, resultFor, run.preview, run.previewFor);
+  const shown = pickShown(cur, work.result, work.resultFor ?? null, run.preview, run.previewFor); // a stored model: its points until the body is edited
   const type = chartType(work.model, work.data.transform);
   const calc = async () => {
     if (!body || busy) return;

@@ -8,7 +8,8 @@
  * - `down` — the first that takes it owns the press: its moves, the release and the click after it; the others drop
  *   their hover (`leave`).
  * - `move` without a press — each in order; a handler that says the cursor is on its handle (`hits`) gets it, the
- *   ones after it get `leave` (one handle lit at a time); a handler without `hits` always gets the move.
+ *   ones after it get `leave` (one handle lit at a time); a handler without `hits` always gets the move (the swath
+ *   box and both ellipsoids say `hits`, so two of their handles are never lit at once).
  * - `click`, `dblclick` without a press — the first that takes it; `leave` — to every one.
  * - `cancel` (the editor's tool came in the middle of a drag) — to the owner of the press.
  *

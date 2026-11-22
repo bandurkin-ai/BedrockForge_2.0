@@ -67,6 +67,8 @@ export function useMapJob(winId: string): MapJob {
   const [busy, setBusy] = useState(false);
   const ref = useRef(job);
   ref.current = job;
+  const alive = useRef(true); // the window open; closed — a job started after it is cancelled at once
+  const seq = useRef(0); // the newest «Рассчитать» only
   const get = () => (job ? (jobsStore.get().jobs.find((j) => j.source === job.job.source && j.id === job.job.id) ?? null) : null);
   const live = useSyncExternalStore(jobsStore.subscribe, get, get);
   useEffect(() => {
@@ -79,23 +81,32 @@ export function useMapJob(winId: string): MapJob {
       setJob(null);
     } else if (live.status === "cancelled") setJob(null);
   }, [live, job]);
-  useEffect(() => () => void (ref.current && cancelJob(ref.current.job).catch(() => undefined)), []); // the window closed
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false; // the window closed
+      if (ref.current) void cancelJob(ref.current.job).catch(() => undefined);
+    };
+  }, []);
   return {
     live: job && live ? live : null,
     error,
     busy,
     async run(body) {
       if (ref.current) void cancelJob(ref.current.job).catch(() => undefined); // the previous one is not wanted any more
+      const mine = ++seq.current;
       setBusy(true);
       setError(null);
       try {
         const started = await startMap(body);
-        setJob({ job: started, body: JSON.stringify(body) });
+        if (!alive.current || mine !== seq.current) return void cancelJob(started).catch(() => undefined); // closed or overtaken meanwhile
+        ref.current = { job: started, body: JSON.stringify(body) };
+        setJob(ref.current);
         await refreshJobs().catch(() => undefined);
       } catch (e) {
-        setError(readRefusal(e));
+        if (alive.current && mine === seq.current) setError(readRefusal(e));
       } finally {
-        setBusy(false);
+        if (alive.current && mine === seq.current) setBusy(false);
       }
     },
     cancel() {

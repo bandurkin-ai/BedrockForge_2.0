@@ -3,14 +3,18 @@
  * §11; ADR 0022 §11): the experimental variogram — the points of each direction sized by their pairs (hollow — fewer
  * than `min_pairs`; a lag without pairs is not drawn, never 0) with the curve of the model and the level σ²; a
  * grid in plan — the variogram map by (ΔX, ΔY) and the maps of `local` by (X, Y): north up, east to the right, one
- * scale on both axes; an empty cell (null) is hatched and «пусто», never painted as 0. SVG with the export panel.
+ * scale on both axes; an empty cell (null) is hatched and «пусто», never painted as 0. The cells of a grid are one
+ * raster layer (`charts/core/PointsCanvas`, as `charts/variogram/VarMapChart`: a map of n = 100 is 40 401 cells) under
+ * the vector axes, the cell under the cursor told by its coordinates. SVG with the export panel.
  */
-import { useId, useRef, type ReactElement } from "react";
+import { useId, useMemo, useRef, useState, type MouseEvent as RMouseEvent } from "react";
 import { XAxis, YAxis } from "../../charts/core/Axes";
 import { ChartToolbar } from "../../charts/core/ChartToolbar";
 import { makeScale, type Domain } from "../../charts/core/axisScale";
-import { rampColor, seriesColor } from "../../charts/core/palette";
+import { toViewBox } from "../../charts/core/lasso";
+import { rampColor, rgba32, seriesColor } from "../../charts/core/palette";
 import { PlotFrame, plotBox, type PlotBox } from "../../charts/core/PlotFrame";
+import { RasterLayer } from "../../charts/core/PointsCanvas";
 import css from "../../charts/core/Chart.module.css";
 import type { VarioPoint } from "./formsVario";
 import { fmt } from "./forms";
@@ -168,9 +172,50 @@ export interface GridPlotProps {
 
 const step = (c: readonly number[]): number => (c.length > 1 ? (c[c.length - 1] - c[0]) / (c.length - 1) : 1);
 
+/** The empty cells of a grid (null or not finite). */
+export function gridEmpty(values: readonly (readonly (number | null)[])[], nx: number, ny: number): number {
+  let empty = 0;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) if (!finite(values[j]?.[i])) empty += 1;
+  return empty;
+}
+
+/**
+ * Paints the cells of a regular grid into a `w × h` buffer (ABGR): column i from the west, row j = 0 at the bottom
+ * (south); an empty cell is not painted (the hatching under it shows). Returns the cells painted.
+ */
+export function rasterGrid(buf: Uint32Array, w: number, h: number, nx: number, ny: number, values: readonly (readonly (number | null)[])[], d: Domain | null): number {
+  if (!d || nx < 1 || ny < 1) return 0;
+  let painted = 0;
+  for (let j = 0; j < ny; j++) {
+    const ya = Math.round(((ny - 1 - j) * h) / ny);
+    const yb = Math.round(((ny - j) * h) / ny);
+    for (let i = 0; i < nx; i++) {
+      const col = cellColor(values[j]?.[i], d);
+      if (!col) continue;
+      const xa = Math.round((i * w) / nx);
+      const xb = Math.round(((i + 1) * w) / nx);
+      const px = rgba32(col);
+      for (let y = ya; y < yb; y++) buf.fill(px, y * w + xa, y * w + xb);
+      painted += 1;
+    }
+  }
+  return painted;
+}
+
+/** The cell (i, j) of a grid under the point (x, y) of the plan; outside — null. */
+export function gridCellAt(xs: readonly number[], ys: readonly number[], x: number, y: number): { i: number; j: number } | null {
+  const dx = step(xs);
+  const dy = step(ys);
+  if (!xs.length || !ys.length || !(dx > 0) || !(dy > 0)) return null;
+  const i = Math.round((x - xs[0]) / dx);
+  const j = Math.round((y - ys[0]) / dy);
+  return i >= 0 && i < xs.length && j >= 0 && j < ys.length ? { i, j } : null;
+}
+
 /** A grid in plan: row j at the height of ys[j] (north up), column i at xs[i] (east right). */
 export function GridPlot({ label, xs, ys, values, xTitle, yTitle, valueTitle, tip, centre = false, fileName, csv }: GridPlotProps) {
   const ref = useRef<SVGSVGElement | null>(null);
+  const [hover, setHover] = useState<{ i: number; j: number } | null>(null);
   const hatch = `sthatch${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const outer = plotBox(GRID_W, GRID_H, { left: 70, right: 76, top: 14, bottom: 46 });
   const dx = step(xs);
@@ -180,27 +225,15 @@ export function GridPlot({ label, xs, ys, values, xTitle, yTitle, valueTitle, ti
   const box = ext ? planBox(outer, ext.x.max - ext.x.min, ext.y.max - ext.y.min) : outer;
   const sx = ext ? makeScale("linear", ext.x, box.x0, box.x1) : null;
   const sy = ext ? makeScale("linear", ext.y, box.y1, box.y0) : null;
-  const dom = gridDomain(values);
-  let empty = 0;
-  const cells: ReactElement[] = [];
-  if (sx && sy) {
-    ys.forEach((y, j) => {
-      xs.forEach((x, i) => {
-        const v = values[j]?.[i] ?? null;
-        const col = cellColor(v, dom);
-        if (!col) empty += 1;
-        const xa = sx.map(x - dx / 2)!;
-        const xb = sx.map(x + dx / 2)!;
-        const ya = sy.map(y + dy / 2)!;
-        const yb = sy.map(y - dy / 2)!;
-        cells.push(
-          <rect key={`${j}-${i}`} x={xa} y={ya} width={Math.max(0.3, xb - xa)} height={Math.max(0.3, yb - ya)} fill={col ?? `url(#${hatch})`} data-empty={col ? undefined : true}>
-            <title>{tip(i, j)}</title>
-          </rect>,
-        );
-      });
-    });
-  }
+  const dom = useMemo(() => gridDomain(values), [values]);
+  const empty = ok ? gridEmpty(values, xs.length, ys.length) : 0;
+  const at = (e: RMouseEvent<SVGElement>) => {
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg || !sx || !sy) return null;
+    const p = toViewBox(e.clientX, e.clientY, svg.getBoundingClientRect(), GRID_W, GRID_H);
+    return gridCellAt(xs, ys, sx.invert(p.x), sy.invert(p.y));
+  };
+  const tipText = hover ? tip(hover.i, hover.j) : null;
   const barX = outer.x1 + 18;
   const barSteps = 24;
   return (
@@ -213,15 +246,24 @@ export function GridPlot({ label, xs, ys, values, xTitle, yTitle, valueTitle, ti
         </defs>
         {sx && sy ? (
           <>
-            <g data-testid="grid-cells" data-cells={xs.length * ys.length} data-empty={empty}>
-              {cells}
-            </g>
+            <rect data-empty-fill x={box.x0} y={box.y0} width={box.x1 - box.x0} height={box.y1 - box.y0} fill={`url(#${hatch})`} />
+            <RasterLayer box={box} label="grid" version={values} draw={(buf, w, h) => void rasterGrid(buf, w, h, xs.length, ys.length, values, dom)} />
+            <g data-testid="grid-cells" data-cells={xs.length * ys.length} data-empty={empty} />
             <XAxis scale={sx} box={box} grid={false} count={5} />
             <YAxis scale={sy} box={box} grid={false} count={5} />
             {centre && sx.map(0) !== null && sy.map(0) !== null && <circle cx={sx.map(0)!} cy={sy.map(0)!} r={2.5} className={css.ring} />}
             <text className={css.tick} x={box.x1 - 4} y={box.y0 + 12} textAnchor="end">
               С ↑
             </text>
+            <rect data-testid="grid-hover" x={box.x0} y={box.y0} width={box.x1 - box.x0} height={box.y1 - box.y0} fill="transparent" style={{ cursor: "crosshair" }} onMouseMove={(e) => setHover(at(e))} onMouseLeave={() => setHover(null)} />
+            {tipText && (
+              <g className={css.tip} pointerEvents="none" transform={`translate(${box.x0 + 6} ${box.y0 + 6})`}>
+                <rect width={Math.min(box.x1 - box.x0 - 12, 16 + tipText.length * 6.2)} height={22} rx={4} />
+                <text x={8} y={15}>
+                  {tipText}
+                </text>
+              </g>
+            )}
             {dom && (
               <g data-testid="grid-bar">
                 {Array.from({ length: barSteps }, (_, k) => {

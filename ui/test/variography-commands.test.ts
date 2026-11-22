@@ -80,7 +80,7 @@ beforeEach(() => {
       if (path === `${V}/fit`) return json({ model: FITTED, residual: 0.0123, n: 45, starts: 8, warnings: [] });
       if (path === `${V}/models` && method === "POST") {
         if (taken-- > 0) return json({ code: "name_taken", message: "Имя занято.", hint: "", param: "name" }, 409);
-        return json({ id: 7, name: body.name });
+        return json({ id: 7, name: body.name ?? "AU · Композиты" }); // no name — the free default of the core
       }
       if (path === `${V}/models` && method === "GET") return json({ models: [{ id: 7, name: "AU · Композиты", set_id: 3, table: "12", field: "AU", transform: "none", type: "semivariogram", color: null, sill: 1.71, structures: 1, stale: false, stale_reason: null, source_lost: false, created_at: "", updated_at: "" }] });
       if (path === `${V}/models/7` && method === "PUT") return json({ id: 7, name: "AU · Композиты" });
@@ -233,14 +233,13 @@ describe("handlers", () => {
     expect((await app.registry.execute("variography.fit", { structures: "spherical, cubic" }, "claude")).result).toMatch(/заданы неверно/);
   });
 
-  it("`save`: new — POST with the default name (taken — the next one); replacement — asks, then PUT", async () => {
+  it("`save`: new — POST without a name (the core gives the free default); replacement — asks, then PUT", async () => {
     await app.registry.execute("variography.open", { set_id: 3, table: "12", field: "AU" });
     const win = lastWindow()!;
     setWork(win, { expKey: "abc", defaults: readDefaults(DEFAULTS) });
-    taken = 1;
     const r = await app.registry.execute("variography.save", {}, "claude");
-    expect(r.result).toBe("Модель вариограммы «AU · Композиты (2)» сохранена (№7)");
-    expect(geostat().filter((x) => x.path.endsWith("/models") && x.method === "POST").map((x) => x.body.name)).toEqual(["AU · Композиты", "AU · Композиты (2)"]);
+    expect(r.result).toBe("Модель вариограммы «AU · Композиты» сохранена (№7)");
+    expect(geostat().filter((x) => x.path.endsWith("/models") && x.method === "POST").map((x) => x.body.name)).toEqual([undefined]);
     expect(geostat().find((x) => x.method === "POST")?.body).toMatchObject({ exp_key: "abc", model: { type: "semivariogram", c0: 0, structures: [], common_axes: true } });
     expect(workOf(win)).toMatchObject({ modelId: 7, dirty: false });
     expect(variographyStore.get().models.map((m) => m.id)).toEqual([7]);

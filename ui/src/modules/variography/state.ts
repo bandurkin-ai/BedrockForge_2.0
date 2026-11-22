@@ -8,7 +8,7 @@
  */
 import { Store } from "../../shell/store";
 import { parseNumber } from "../composites/params";
-import type { CalcResult, DataBody, DefaultsAnswer, FitWeights, ModelRow } from "./api";
+import type { CalcResult, DataBody, DefaultsAnswer, FitWeights, ModelRow, StoredModel } from "./api";
 import type { MapCalc } from "./mapCalc";
 import { EMPTY_MODEL, type Structure, type VModel } from "./model";
 
@@ -287,6 +287,8 @@ export interface Work {
   modelVersion?: number | null;
   /** the key of the last `experimental` (for `fit`, `save`); null — not computed */
   expKey: string | null;
+  /** the body (JSON) `result` was computed by (of a stored model — the body restored from it); absent — unknown */
+  resultFor?: string | null;
   /** the paths of the parameters fixed in the fit (`c0`, `structures.N.c`, `structures.N.a1…a3`) */
   fix: string[];
   result: CalcResult | null;
@@ -297,9 +299,10 @@ export interface Work {
   ellipsoid?: EllipsoidShow;
   /** the weights of «Подобрать» (N / h̄ by default) */
   fitWeights?: FitWeights;
-  /** the fit the model came from (`fit` of the save); an edit of the model drops it — its residual is of another model */
+  /** the fit the model came from (`fit` of the save); an edit of the model drops it (null — the replacement resets
+   * it; absent — none, the replacement keeps the stored one) */
   fitInfo?: FitInfo | null;
-  /** the answer of `/back` for the model (normal scores; `back` of the save); an edit drops it */
+  /** the answer of `/back` for the model (normal scores; `back` of the save); an edit drops it (null, as `fitInfo`) */
   back?: Record<string, unknown> | null;
   /** `job.result` of `variography.map` (the fan, the rose, the map) and the body (JSON) it was computed by */
   mapCalc?: MapCalc | null;
@@ -356,6 +359,60 @@ export function dropWork(win: string): void {
     delete works[win];
     return { works };
   });
+}
+
+// ---- a stored model in a window (`GET /models/{id}`) ----
+
+const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+
+/** The data of a stored model: `meta.source` (its domain, its weights: a field, null — none) and `meta.transform`. */
+export function storedData(m: Pick<StoredModel, "meta" | "source">): DataState {
+  const src = m.source;
+  const dom = rec(src.domain);
+  const domTable = dom.table === undefined || dom.table === null ? "" : String(dom.table);
+  const domain = typeof dom.field === "string" && dom.field ? { table: domTable === src.table ? "" : domTable, field: dom.field, values: Array.isArray(dom.values) ? dom.values.map(String) : [] } : null;
+  const weights: WeightsChoice = typeof src.weights === "string" && src.weights ? { kind: "field", field: src.weights } : { kind: "none" };
+  return { setId: src.set_id, table: src.table, field: src.field, domain, weights, transform: m.meta.transform === "nscore" ? "nscore" : "none" };
+}
+
+/** The values of the form of a stored model: the parameters of its calculation (`meta.calc.params`). */
+export const storedValues = (m: Pick<StoredModel, "meta">): CalcValues => valuesFromArgs(rec(rec(m.meta.calc).params));
+
+const FIT_KEYS: readonly FitWeights[] = ["n_h", "n", "n_g2"];
+const numOr = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** `meta.fit` as the fit of the window; undefined — none stored. */
+export function storedFit(meta: Record<string, unknown>): FitInfo | undefined {
+  const f = rec(meta.fit);
+  if (!meta.fit || typeof meta.fit !== "object") return undefined;
+  const weights = FIT_KEYS.includes(f.weights as FitWeights) ? (f.weights as FitWeights) : "n_h";
+  return { weights, residual: numOr(f.residual), n: numOr(f.n), fixed: Array.isArray(f.fixed) ? f.fixed.map(String) : [] };
+}
+
+/** The working state of a stored model: its data, the values of its calculation, the model, its fit and
+ * back-transform, its points shown as the result of the body restored from it (until the body is edited). */
+export function storedWork(m: StoredModel): Partial<Work> & Pick<Work, "data" | "values"> {
+  const data = storedData(m);
+  const values = storedValues(m);
+  const s = m.model.structures[0];
+  const built = experimentalBody(data, values, { axes: s ? { ang1: s.ang1, ang2: s.ang2, ang3: s.ang3 } : { ang1: 0, ang2: 0, ang3: 0 } });
+  const fitInfo = storedFit(m.meta);
+  const back = m.meta.back && typeof m.meta.back === "object" ? rec(m.meta.back) : undefined;
+  return {
+    data,
+    values,
+    model: m.model,
+    modelId: m.id,
+    modelVersion: m.version,
+    result: m.points,
+    expKey: m.points?.key ?? null,
+    resultFor: built.body ? JSON.stringify(built.body) : null,
+    fix: fitInfo?.fixed ?? [],
+    fitInfo,
+    back,
+    fitWeights: fitInfo?.weights,
+    dirty: false,
+  };
 }
 
 /** The window holding a stored model. */

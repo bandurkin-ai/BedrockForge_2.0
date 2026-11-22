@@ -282,6 +282,18 @@ describe("a drag in the main 3D (Д-01)", () => {
     expect(handles).toBeNull();
   });
 
+  it("`hits` — a handle within 8 px (the chain of the handles lights one at a time by it)", () => {
+    const s = new SwathScene(scene, { labels: () => labels, run: vi.fn(async () => true) });
+    const ring = screen(pointAt(of(handlesOf(X, C, HALF), "azimuth"), 200));
+    expect(s.handles.hits(ring.x, ring.y)).toBe(false); // nothing chosen
+    swathsStore.set({ selected: 5 });
+    expect(s.handles.hits(ring.x, ring.y)).toBe(true);
+    expect(s.handles.hits(ring.x + 7, ring.y)).toBe(true);
+    expect(s.handles.hits(5, 5)).toBe(false);
+    s.dispose();
+    expect(s.handles.hits(ring.x, ring.y)).toBe(false);
+  });
+
   it("while a tool of the editor is set the handles are not lit and leave its cursor alone", () => {
     const s = new SwathScene(scene, { labels: () => labels, run: vi.fn(async () => true) });
     swathsStore.set({ selected: 5 });

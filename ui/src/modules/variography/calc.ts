@@ -3,7 +3,7 @@
  * shows of `job.result` of `variography.experimental` (the form of a calculation and `fresh`, `stages`) and of
  * `POST /preview` (the same form, `key: null`, `sampled`), the refusals (`job.error {code, message, hint}`; 422 of the
  * preview with `counts`), the series of the charts of the axes, and the runner: an edit sends the preview 200 ms
- * later (the core samples ≤ 20 000 points by the seed; the newest answer only), a drag waits for the release; the
+ * later (the core samples ≤ 20 000 points by the seed; one request in flight, the newest body after its answer), a drag waits for the release; the
  * job goes on «Рассчитать» and — after the first one — after every edit settles, the previous unfinished job
  * cancelled. Read against the real answers of the core (`core/tests/data/variography/window_answers.json`). No React.
  */
@@ -232,30 +232,44 @@ export function createRunner(deps: RunnerDeps, onChange: (s: RunnerState) => voi
     }
   };
 
+  // one preview in flight: an edit meanwhile waits for its answer, then the newest body goes (if not the one asked)
+  let inFlight = false;
+  let held = false; // a drag: nothing goes until the release
+  const ask = () => {
+    const body = pending;
+    if (!body || !alive || inFlight) return;
+    const key = JSON.stringify(body);
+    if (key === asked) return;
+    asked = key;
+    inFlight = true;
+    const mine = ++seq;
+    set({ previewBusy: true });
+    const done = (patch: Partial<RunnerState>) => {
+      inFlight = false;
+      if (!alive) return;
+      set(mine === seq ? { ...patch, previewBusy: false } : { previewBusy: false });
+      if (!held && timer === null) ask(); // the body edited meanwhile, settled already
+    };
+    deps.preview(body).then(
+      (a) => done({ preview: a, previewFor: key, previewError: null }),
+      (e: unknown) => done({ previewError: readRefusal(e), previewFor: key, preview: null }),
+    );
+  };
+
   const settle = () => {
     timer = null;
     const body = pending;
     if (!body || !alive) return;
     const key = JSON.stringify(body);
     if (s.auto && key !== s.jobFor) void start(body, key);
-    if (key === asked) return;
-    asked = key;
-    const mine = ++seq;
-    set({ previewBusy: true });
-    deps.preview(body).then(
-      (a) => {
-        if (alive && mine === seq) set({ preview: a, previewFor: key, previewError: null, previewBusy: false });
-      },
-      (e: unknown) => {
-        if (alive && mine === seq) set({ previewError: readRefusal(e), previewFor: key, preview: null, previewBusy: false });
-      },
-    );
+    ask();
   };
 
   return {
     state: () => s,
     edit(body, dragging = false) {
       pending = body;
+      held = body !== null && dragging;
       if (timer !== null) clock.clear(timer);
       timer = null;
       if (!body) {

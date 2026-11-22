@@ -34,7 +34,7 @@ function appSave(): ((name: string) => Promise<string | null>) | null {
 
 function appOpen(): (() => Promise<string | null>) | null {
   const b = bridge();
-  return b ? async () => (await b.pickFiles("objects", false))[0] ?? null : null;
+  return b ? async () => (await b.pickFiles("variogram", false))[0] ?? null : null;
 }
 
 /** The file to write (the dialog of the application; without it — our own window); null — cancelled. `asked` — the
