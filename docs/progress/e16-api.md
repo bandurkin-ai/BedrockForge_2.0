@@ -222,30 +222,49 @@ outside_domain + used`. Опорная точка — центр охвата т
 структуры); без `h` — `n` расстояний от 0 до `h_max` (по умолчанию 1,5 × наибольшей дальности). Ответ:
 `{directions: [{axis?, az, plunge, h [], gamma [], cov []}]}` (cov = C0 + Σc − γ; γ(0) = 0).
 
-## Модели вариограмм — `objects(kind = "variogram_model")`
+## Модели вариограмм — `objects(kind = "variogram_model")` (16.13: `geostat/variogram/{store, routes_model}.py`)
 
 - `GET /variography/models[?set_id]` → `{models: [{id, name, set_id, table, field, transform, type, color, sill,
-  structures: N, stale, stale_reason, source_lost, created_at, updated_at}]}`.
-- `POST /variography/models` `{name?, model, exp_key, color?}` → 200 `{id, name}`; имя по умолчанию «‹поле› ·
-  ‹таблица›», занято — 409 `name_taken {param: "name"}`; нет файла `exp_key` — 404 `result_not_found`; 423.
+  structures: N, stale, stale_reason, source_lost, created_at, updated_at}]}` (по `name`); `sill` = C0 + Σc.
+- `POST /variography/models` `{name?, model, exp_key, color?, fit?, back?}` → 200 `{id, name}`; `name` нет / пусто —
+  «‹поле› · ‹таблица›», занятое — с « (2)», « (3)»; заданное и занятое (без учёта регистра и лишних пробелов) — 409
+  `name_taken {param: "name"}`; `exp_key` не 64 hex — 422 `bad_param {param: "exp_key"}`, нет записи расчёта — 404
+  `result_not_found {param: "exp_key"}`; `color` — `#rrggbb` (по умолчанию `#1f6bff`), иначе 422 `bad_param
+  {param: "color"}`; `fit` — `{weights: n_h | n | n_g2, residual, n, fixed []}` (ответ `/fit`), `back` — ответ
+  `/back` (≤ 256 КБ); 422 `bad_param {param: "model.…" | "fit.…" | "back"}`; 423.
 - `GET /variography/models/{id}` → `{id, name, color, meta: {v, source {set_id, table, field, domain, weights},
-  transform, type, sigma2, c0, structures, common_axes, calc, fit {weights, residual, n, fixed}, back, inputs,
-  sha256, algo: "vario-1", versions {numpy, scipy, numba}, created_at}, points: форма расчёта, stale,
-  stale_reason, source_lost}`; 404 `model_not_found`.
-- `PUT /variography/models/{id}` `{name?, model?, exp_key?, color?}` → `{id, name}`; 404; 409; 423.
+  transform, type, sigma2, c0, structures, common_axes, calc {params, sampled}, fit, back, inputs, exp_key, sha256,
+  algo: "vario-1", versions {numpy, scipy, numba}, created_at, color}, points: форма расчёта, stale, stale_reason,
+  source_lost, version, created_at, updated_at}`; `points` — копия формы в файлах модели (роль `vario`; не зависит
+  от кеша), `points.set_id`, `points.table` — как в `meta.source`; 404 `model_not_found`.
+- `PUT /variography/models/{id}` `{name?, model?, exp_key?, color?, fit?, back?}` → `{id, name}`: только заданные
+  поля; `exp_key` — новые точки и источник (`fit`, `back` не сбрасываются, если не заданы; `fit: null` — сброс);
+  `version` + 1; 404; 409; 422; 423.
 - `DELETE /variography/models/{id}` → `{deleted: id}`; 404; 423.
-- `POST /variography/models/{id}/rebuild` → `{source, id}` задания «Перестроить» (точки на текущих данных с
+- `POST /variography/models/{id}/rebuild` → `{source, id}` задания «Перестроить» (16.15; точки на текущих данных с
   прежними параметрами; параметры модели не меняются, невязка пересчитывается); источник удалён — 409
   `source_lost`.
-- `GET /variography/models/{id}/export?format=json|gslib[&path=]` → без `path`: `{format, filename, text}`; с
-  `path` (абсолютный, кириллица допустима) — файл записан: `{format, path, bytes}`; 422 `bad_param {param: "path"}`.
-  GSLIB: `nst c0` / `it cc ang1 ang2 ang3` / `a1 a2 a3`, числа — `repr` (читаются побитно).
-- `POST /variography/models/import` `{format: json | gslib, text? | path?}` → `{model}` (рабочая модель окна, не
-  сохраняется); битый файл — 422 `bad_file {line?}` с подсказкой.
+- `GET /variography/models/{id}/export?format=json|gslib[&path=]` → без `path`: `{format, filename, text}`
+  (`filename` — имя модели без запрещённых Windows знаков + `.json` / `.par`); с `path` (абсолютный, кириллица
+  допустима) — файл записан байтами UTF-8 (GSLIB — ASCII, «\n» и в Windows): `{format, path, bytes}`; путь не
+  полный, папки нет, запись не удалась — 422 `bad_param {param: "path"}`; формат — 422 `bad_param {param:
+  "format"}`. JSON — поля `meta` без `inputs` с меткой `"kind": "variogram_model"`. Работает и в «только просмотр».
+- `POST /variography/models/import` `{format?, text? | path?}` → `{format, model}` (рабочая модель окна, не
+  сохраняется; без `format` — по содержимому: «{» — JSON, иначе GSLIB; GSLIB — `type: semivariogram`); ровно одно
+  из `text`, `path` (иначе 422 `bad_param {param: "path" | "text"}`); файл > 1 МБ, нет, не читается — 422
+  `bad_param {param: "path"}`; битый файл — 422 `bad_file {line?}` с подсказкой.
 
 «Устарел»: `inputs` (таблицы `{id, name_key, token, rev}` и ключ траекторий набора) сравниваются с текущими при
-чтении; `stale_reason` — «изменена таблица «…»», «изменены траектории»; набор или таблица удалены — `source_lost:
-true`, «Перестроить» недоступно.
+чтении; таблица ищется по id, затем по имени; `stale_reason` — «изменена таблица «…»» (id, token или rev),
+«изменены траектории»; набор или таблица удалены (или их нет в архиве `.bfggis`) — `stale: true`, `stale_reason:
+"источник удалён"`, `source_lost: true`, «Перестроить» недоступно. Событие `geostat.changed {kind:
+"variogram_model", id, deleted?}` — после `POST`, `PUT`, `DELETE`.
+
+Запись расчёта (пишет задание 16.14, читает сохранение — `store.write_result` / `read_result`):
+`cache/variography/<key>.json` `{v: 1, result: форма расчёта, source: spec.Data.canonical() без transform, inputs:
+Points.inputs, calc: {params, sampled}}`; `cache/variography/<key>.nscore.parquet` — таблица нормальных оценок
+(value, score, weight; роль `nscore` модели). `.bfggis`: `geostat/remap.py` перенумеровывает `source.set_id`,
+`source.table`, `source.domain.table`, `inputs.tables[].id` (нет в архиве — `null`).
 
 ## Тренды — `objects(kind = "trend")`
 
