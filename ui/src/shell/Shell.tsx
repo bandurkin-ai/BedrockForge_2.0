@@ -56,6 +56,7 @@ import { renderChartsWindow } from "../modules/charts/bind";
 import { renderSwathWindow } from "../modules/swath/bind";
 import { renderQaqcSetupWindow } from "../modules/qaqc/bindSetup";
 import { renderInterceptsWindow } from "../modules/intercepts/TtWindow";
+import { renderTrendWindow } from "../modules/trends/bind";
 
 const renderWindow: WindowRenderer = (w) => {
   switch (w.kind) {
@@ -104,7 +105,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderTrendWindow(w);
   }
 };
 

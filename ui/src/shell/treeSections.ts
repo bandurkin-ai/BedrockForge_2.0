@@ -12,6 +12,7 @@ export interface SectionAction {
 }
 
 const ACTIONS: Partial<Record<TreeSection, SectionAction[]>> = {
+  trends: [{ label: "Новый тренд…", command: "trend.open" }],
   views: [{ label: "Сохранить текущий вид", command: "views.save" }],
   series: [{ label: "Новая серия…", command: "series.new" }, { label: "Менеджер серий…", command: "series.manager" }],
   holes: [
@@ -47,6 +48,7 @@ export interface SectionPlus {
 }
 
 const PLUS: Partial<Record<TreeSection, SectionPlus>> = {
+  trends: { command: "trend.open", title: "Новый тренд" },
   views: { command: "views.save", title: "Сохранить текущий вид" },
   series: { command: "series.new", title: "Новая серия разрезов" },
   holes: { title: "Новый набор, импорт скважин, импорт канав" },
