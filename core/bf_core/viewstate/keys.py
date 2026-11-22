@@ -19,6 +19,7 @@ VEXAG = (1, 2, 3, 5)
 HIDDEN_MAX = 2000
 DISPLAYS_MAX = 200
 SWATHS_MAX = 50
+ELLIPSOIDS_MAX = 50
 STYLES_MAX = 200
 COLUMNS_TABLES = 200
 COLUMNS_PER_TABLE = 500
@@ -223,6 +224,27 @@ def _swaths(v: Any, strict: bool) -> list[dict[str, Any]]:
     return out[-SWATHS_MAX:]
 
 
+def _ellipsoids(v: Any, strict: bool) -> list[dict[str, Any]]:
+    """[{object, visible}] — the ellipsoids of variogram models and trends shown in 3D (ADR 0022 §9–10): the id of the
+    object, `visible` true by default; junk dropped, a repeated id kept once (the first), the newest ≤ 50 kept."""
+    if not isinstance(v, list):
+        _fail(strict, "Эллипсоиды в 3D: ожидается список.")
+        return []
+    out: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for d in v:
+        oid = _id(d.get("object")) if isinstance(d, dict) else None
+        if oid is None:
+            _fail(strict, "Эллипсоиды в 3D: у каждого — номер модели вариограммы или тренда.")
+            continue
+        if isinstance(d, dict) and "visible" in d and not isinstance(d["visible"], bool):
+            _fail(strict, "Эллипсоиды в 3D: «visible» — да или нет.")
+        if oid not in seen:
+            seen.add(oid)
+            out.append({"object": oid, "visible": _bool(d.get("visible"), True)})
+    return out[-ELLIPSOIDS_MAX:]
+
+
 def _styles(v: Any, strict: bool) -> dict[str, Any]:
     """{"<set id>": style}: the style body is checked by the interface (BF collarStyle/traceStyle)."""
     if not isinstance(v, dict):
@@ -270,6 +292,7 @@ NORMALIZERS: dict[str, Callable[[Any, bool], Any]] = {
     "hide_all": _hide_all,
     "displays": _displays,
     "swaths": _swaths,
+    "ellipsoids": _ellipsoids,
     "collar_styles": _styles,
     "trace_styles": _styles,
     "block_styles": _styles,
@@ -289,8 +312,8 @@ def normalize(key: str, value: Any, *, strict: bool) -> Any:
 
 
 def drop_missing(key: str, value: Any, alive: Callable[[int], bool]) -> Any:
-    """Forget ids of deleted objects (read side): hidden keys, displays, swath plots, styles, columns, the active
-    set, the active series of sections."""
+    """Forget ids of deleted objects (read side): hidden keys, displays, swath plots, ellipsoids, styles, columns,
+    the active set, the active series of sections."""
     if key == "hidden":
         return [k for k in value if alive(int(HIDDEN_RE.match(k).group(2)))]  # type: ignore[union-attr]
     if key == "hide_all":
@@ -299,6 +322,8 @@ def drop_missing(key: str, value: Any, alive: Callable[[int], bool]) -> Any:
         return [d for d in value if alive(d["chart"])]
     if key == "swaths":
         return [d for d in value if alive(d["swath"])]
+    if key == "ellipsoids":
+        return [d for d in value if alive(d["object"])]
     if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
         return {k: s for k, s in value.items() if alive(int(k))}
     if key == "columns":
@@ -319,6 +344,8 @@ def ids_in(key: str, value: Any) -> Iterable[int]:
         return (d["chart"] for d in value)
     if key == "swaths":
         return (d["swath"] for d in value)
+    if key == "ellipsoids":
+        return (d["object"] for d in value)
     if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
         return (int(k) for k in value)
     if key == "columns":
@@ -347,6 +374,8 @@ def map_ids(key: str, value: Any, new_id: Callable[[int], int | None]) -> Any:
         return [{**d, "chart": n} for d in value if (n := new_id(d["chart"])) is not None]
     if key == "swaths":
         return [{**d, "swath": n} for d in value if (n := new_id(d["swath"])) is not None]
+    if key == "ellipsoids":
+        return [{**d, "object": n} for d in value if (n := new_id(d["object"])) is not None]
     if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
         return {str(n): s for k, s in value.items() if (n := new_id(int(k))) is not None}
     if key == "columns":
