@@ -6,7 +6,8 @@ Only the import of `as_1d` is inlined, `typing.Sequence` became `collections.abc
 of `ruff format`.
 
 Part 2 — `brute_force`: every pair of a 3D set by the definitions of ADR 0022 §3 on NumPy (Т8.6-2); written
-apart from the kernel: no grid, no strips, plain `mean` over the pairs of a lag.
+apart from the kernel: no grid, no strips, plain `mean` over the pairs of a lag. `brute_downhole` — the pairs of
+one hole (ADR 0022 §5) as an omnidirectional `brute_force` on the line of depths, the holes set far apart.
 """
 
 from __future__ import annotations
@@ -302,3 +303,11 @@ def brute_force(x, y, z, v, directions, lag, nlag, tol=None):
                 res["pairwise"][k - 1] = 0.5 * _mean(((a[pos] - b[pos]) / ((a[pos] + b[pos]) / 2.0)) ** 2)
         out.append(res)
     return out
+
+
+def brute_downhole(hole, depth, v, lag, nlag, tol=None):
+    """Every pair of one hole: h = abs of the difference of the depths, no direction (both ways), as `brute_force`
+    of an omnidirectional variogram over x = depth, y = 10⁹ · hole (no pair of two holes is within reach)."""
+    hole, depth, v = (np.asarray(a, dtype=float) for a in (hole, depth, v))
+    omni = [(0.0, 0.0, 90.0, 90.0, math.inf, math.inf)]
+    return brute_force(depth, 1e9 * hole, np.zeros(depth.size), v, omni, lag, nlag, tol)[0]

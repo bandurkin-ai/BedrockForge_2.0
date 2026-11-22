@@ -7,12 +7,15 @@
         lag, nlag, lag_tol   L, the number of lags, the tolerance (L / 2 when None); lag k is centred on k·L
         threads, tick        threads over the strips; tick(fraction) after every strip, may raise to cancel
         cells        m of the grid (`pairs.CELLS` when None); the result does not depend on it beyond 1e−12
+    e = calculate(p, directions, lag, nlag, lag_tol=None, *, limit=PAIRS_MAX, seed=SEED, threads, tick, cells)
+        the same over `points.Points` (16.12), sampled when the estimate is above `limit` (below)
+    n = estimate(x, y, z, directions, lag, nlag, lag_tol=None, *, cells=None)   the pair checks of the grid
     dirs = axes(ang1, ang2, ang3, az_tol, dip_tol, band_h, band_v)   the axes a1, a2, a3 of R (8.6.3) as directions
     e.n, e.n_rel                         int64[ndir, nlag]
     e.h, e.gamma, e.rho, e.one_minus_rho, e.pairwise, e.tail, e.head      float64[ndir, nlag], NaN — no value
     e.few(min_pairs=30)                  bool[ndir, nlag]: N < min_pairs («мало пар»; a lag without pairs too)
     e.sums                               PairSums: the raw sums (what is stored), the curves are its properties
-    e.n_points, e.n_missing, e.checks, e.strips, e.cells, e.pw_skipped
+    e.n_points, e.n_missing, e.checks, e.estimate, e.strips, e.cells, e.sampled, e.pw_skipped
     e.to_json(min_pairs, axis=True)      `directions` of the answer (docs/progress/e16-api.md)
 
 Types (ADR 0022 §3). Semivariogram γ = Σ(z_i − z_j)² / (2N). Correlogram ρ = (Σz_t·z_h / N − m_t·m_h) /
@@ -21,14 +24,20 @@ is zero has no ρ. Pairwise relative γ = Σ((z_i − z_j) / ((z_i + z_j) / 2))�
 z_i + z_j > 0; the others are left out and counted (N − N_rel, `pw_skipped`). Normal scores — the semivariogram of
 the scores. A lag without pairs holds NaN in every curve (null in JSON), never 0. Errors — `StatsError` {code,
 message, hint} in Russian: `bad_param` (with `param`), `too_few_values`.
+
+The estimate and the sample (ADR 0022 §4, 8.6.2). The estimate is the number of pair checks of the grid by the
+counts of its cells (`Plan.checks`, the upper bound of the walk, independent of the values); above `limit`
+(2·10⁹) `calculate` takes n′ = ⌊n·√(limit / estimate)⌋ points without replacement, `Generator(PCG64(seed))`
+(`points.sample_size`, `points.sample`), and gives `sampled {n, of, seed}`. The same points, the same seed — the
+same sample and the same result, bit for bit. The variogram along the holes (`downhole`) is never sampled.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -37,6 +46,11 @@ from bf_core.stats.weighted import StatsError
 from . import pairs
 from .pairs import S_D2, S_H, S_HD, S_HH, S_REL, S_T, S_TH, S_TT, Direction, Tick
 
+if TYPE_CHECKING:
+    from .points import Points
+
+PAIRS_MAX = 2_000_000_000  # = spec.PAIRS_MAX: checks of pairs above which the points are sampled (8.6.2)
+SEED = 12345  # = spec.SEED
 _FLAT = 16.0 * np.finfo(np.float64).eps  # a variance below this share of the mean square is rounding: σ = 0
 
 
@@ -233,6 +247,24 @@ def _plan(xs: np.ndarray, ys: np.ndarray, zs: np.ndarray, table: np.ndarray, lag
     return pairs.prepare(xs, ys, zs, table, *lags, cells)
 
 
+def _columns(xyz: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """X, Y, Z of `Points.xyz` [n, 3], contiguous; they must be finite."""
+    a = np.asarray(xyz, dtype=np.float64)
+    if a.ndim != 2 or a.shape[1] != 3 or not np.isfinite(a).all():
+        raise ValueError("the points of a calculation are finite [n, 3] (points.load)")
+    return np.ascontiguousarray(a[:, 0]), np.ascontiguousarray(a[:, 1]), np.ascontiguousarray(a[:, 2])
+
+
+def estimate(
+    x: Any, y: Any, z: Any, directions: Sequence[Direction], lag: float, nlag: int, lag_tol: float | None = None,
+    *, cells: int | None = None,
+) -> int:  # fmt: skip
+    """The pair checks of the grid for the points with a position (ADR 0022 §4): what decides the sample."""
+    lags = pairs.check_lags(lag, nlag, lag_tol)
+    (xs, ys, zs), _ = finite_rows(x, y, z)
+    return _plan(xs, ys, zs, pairs.check_directions(tuple(directions)), lags, cells).checks
+
+
 def _run(
     plan: pairs.Plan, v: np.ndarray, dirs: tuple[Direction, ...], lags: tuple[float, int, float], n_missing: int,
     threads: int, tick: Tick | None,
@@ -265,3 +297,33 @@ def experimental(
     (xs, ys, zs, vs), n_missing = finite_rows(x, y, z, v)
     plan = _plan(xs, ys, zs, table, lags, cells)
     return _run(plan, vs, dirs, lags, n_missing, threads, tick)
+
+
+def calculate(
+    p: Points,
+    directions: Sequence[Direction],
+    lag: float,
+    nlag: int,
+    lag_tol: float | None = None,
+    *,
+    limit: float = PAIRS_MAX,
+    seed: int = SEED,
+    threads: int = 1,
+    tick: Tick | None = None,
+    cells: int | None = None,
+) -> Experimental:
+    """The variograms of the points of a calculation (`points.load`): the estimate over all of them; above `limit`
+    the run goes over the sample of `points.sample` and the answer gives `sampled`."""
+    from . import points
+
+    lags = pairs.check_lags(lag, nlag, lag_tol)
+    dirs = tuple(directions)
+    table = pairs.check_directions(dirs)
+    xs, ys, zs = _columns(p.xyz)
+    if not np.isfinite(p.values).all():
+        raise ValueError("the points of a calculation are finite (points.load)")
+    plan = _plan(xs, ys, zs, table, lags, cells)
+    q, sampled = points.sample(p, points.sample_size(p.n, plan.checks, limit), seed)
+    run_plan = plan if sampled is None else _plan(*_columns(q.xyz), table, lags, cells)
+    e = _run(run_plan, np.ascontiguousarray(q.values, dtype=np.float64), dirs, lags, 0, threads, tick)
+    return replace(e, sampled=sampled, estimate=plan.checks)
