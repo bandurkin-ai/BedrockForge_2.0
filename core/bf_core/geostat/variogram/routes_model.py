@@ -1,0 +1,212 @@
+"""/api/v1/geostat/variography/models — stored variogram models (ADR 0022 §12, §14; e16-api.md «Модели вариограмм»).
+
+  * `GET /models[?set_id]` → {models: [{id, name, set_id, table, field, transform, type, color, sill, structures,
+    stale, stale_reason, source_lost, created_at, updated_at}]}.
+  * `POST /models` {name?, model, exp_key, color?, fit?, back?} → {id, name}: the model with a copy of the points of
+    the calculation `exp_key` (`store.stage`). 409 `name_taken` {param}; 404 `result_not_found`; 423.
+  * `GET /models/{id}` → {id, name, color, meta, points, stale, stale_reason, source_lost, version, …}; 404.
+  * `PUT /models/{id}` {name?, model?, exp_key?, color?, fit?, back?} → {id, name}; 404; 409; 423.
+  * `DELETE /models/{id}` → {deleted: id}; 404; 423.
+  * `GET /models/{id}/export?format=json|gslib[&path=]` → {format, filename, text} or, with an absolute `path`
+    (Cyrillic allowed), the file written: {format, path, bytes}; 422 `bad_param` {param: "path" | "format"}.
+  * `POST /models/import` {format?, text? | path?} → {format, model}: the working model of the window, not
+    stored; a broken file — 422 `bad_file` {line?} with a hint.
+
+Every write publishes `geostat.changed {kind: "variogram_model", id, deleted?}`. «Перестроить» (`/rebuild`) — 16.15.
+Plain `def` routes run in the thread pool.
+"""
+
+from __future__ import annotations
+
+import os
+import uuid
+from pathlib import Path
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Body, Depends, Query, Request
+
+from bf_core.api.errors import ApiError
+from bf_core.db import dialect
+from bf_core.projects.service import projects
+from bf_core.projects.store import ProjectService
+from bf_core.storage.blobs import BlobStore
+
+from . import exchange
+from . import store as ms
+
+router = APIRouter(prefix="/variography")
+Svc = Annotated[ProjectService, Depends(projects)]
+Payload = Annotated[Any, Body()]
+EVENT = "geostat.changed"
+IMPORT_MAX = 1 << 20  # bytes of a model file read by `import` (a GSLIB block or a JSON of a model is < 64 КБ)
+
+
+def _body(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ApiError(422, "bad_request", "Неверные данные запроса.", "Повторите действие из окна вариографии.")
+    return raw
+
+
+def _publish(request: Request, model_id: int, deleted: bool = False) -> None:
+    data: dict[str, Any] = {"kind": ms.KIND, "id": model_id}
+    if deleted:
+        data["deleted"] = True
+    request.app.state.core.events.publish(EVENT, data)
+
+
+def _model(raw: Any, param: str = "model") -> tuple[str, dict[str, Any]]:
+    """(type, the canonical model of the API) of a request; `bad_param {param: "model.structures.1.a2"}`."""
+    try:
+        kind, model = exchange.api_model(raw, param)
+        return kind, exchange.model_form(kind, model)
+    except ValueError as e:
+        raise ms.as_api(e) from e
+
+
+def _author() -> str | None:
+    from bf_core.drillholes.edit import author
+
+    return author()
+
+
+@router.get("/models")
+def list_models(svc: Svc, set_id: Annotated[int | None, Query()] = None) -> dict[str, Any]:
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        return {"models": ms.list_models(conn, set_id)}
+
+
+@router.post("/models")
+def create_model(svc: Svc, request: Request, body: Payload) -> dict[str, Any]:
+    raw = _body(body)
+    project = svc.require_current(writable=True)
+    model = _model(raw.get("model"))
+    ms.check_key(raw.get("exp_key"))
+    for key in ("color", "fit", "back"):  # refused before the files are staged
+        getattr(ms, f"clean_{key}")(raw.get(key))
+    store = BlobStore(project.folder)
+    staged = ms.stage(store, project.folder, raw.get("exp_key"))
+    try:
+        with dialect.write_tx(project.engine) as conn:
+            out = ms.create(conn, store, staged, model, name=raw.get("name"), color=raw.get("color"),
+                            fit=raw.get("fit"), back=raw.get("back"), author=_author())  # fmt: skip
+    finally:
+        staged.discard()  # placed files are gone from `.tmp` already
+    _publish(request, out["id"])
+    return out
+
+
+@router.post("/models/import")
+def import_model(svc: Svc, body: Payload) -> dict[str, Any]:
+    """The model of a file (JSON or GSLIB) for the window; nothing is stored."""
+    raw = _body(body)
+    svc.require_current()
+    fmt = raw.get("format") or None
+    text, path = raw.get("text"), raw.get("path")
+    if (text is None) == (path in (None, "")):
+        raise ms.bad("Не задан файл модели.", "Выберите файл модели вариограммы.", "path" if text is None else "text")
+    data: Any = text
+    if text is None:
+        data = _read(path)
+    elif not isinstance(text, str):
+        raise ms.bad("Текст модели задан неверно.", "Выберите файл модели вариограммы.", "text")
+    try:
+        if fmt is None:
+            fmt = exchange.detect_format(data)
+        fields = exchange.read_model(data, fmt)
+        kind, model = exchange.api_model(fields)
+    except ValueError as e:
+        raise ms.as_api(e) from e
+    return {"format": str(fmt).strip().lower(), "model": exchange.model_form(kind, model)}
+
+
+def _target(path: Any) -> Path:
+    if not isinstance(path, str) or not path.strip() or not Path(path).is_absolute():
+        raise ms.bad("Путь к файлу должен быть полным.", "Выберите файл в окне сохранения.", "path")
+    return Path(path)
+
+
+def _read(path: Any) -> bytes:
+    target = _target(path)
+    try:
+        if target.stat().st_size > IMPORT_MAX:
+            raise ms.bad("Файл слишком большой для модели вариограммы.", "Выберите файл модели (.json, .par).",
+                         "path")  # fmt: skip
+        return target.read_bytes()
+    except OSError as e:
+        raise ms.bad("Файл модели не найден или не читается.", "Выберите файл заново.", "path") from e
+
+
+def _write(target: Path, data: bytes) -> None:
+    if not target.parent.is_dir():
+        raise ms.bad("Папка для файла не найдена.", "Выберите папку заново.", "path")
+    tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "wb") as fh:  # bytes: «\n» stays «\n» on Windows (the text is read back bit for bit)
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, target)
+    except OSError as e:
+        raise ms.bad("Файл не записан: нет доступа к папке или файл открыт в другой программе.",
+                     "Выберите другое место или закройте файл.", "path") from e  # fmt: skip
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+@router.get("/models/{model_id}")
+def get_model(svc: Svc, model_id: int) -> dict[str, Any]:
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        return ms.get(conn, BlobStore(project.folder), model_id)
+
+
+@router.put("/models/{model_id}")
+def put_model(svc: Svc, request: Request, model_id: int, body: Payload) -> dict[str, Any]:
+    raw = _body(body)
+    project = svc.require_current(writable=True)
+    model = None if raw.get("model") is None else _model(raw["model"])
+    for key in ("color", "fit", "back"):
+        getattr(ms, f"clean_{key}")(raw.get(key))
+    store = BlobStore(project.folder)
+    with dialect.read_tx(project.engine) as conn:
+        ms.meta_of(conn, model_id)  # 404 before the files are staged
+    staged = None if raw.get("exp_key") is None else ms.stage(store, project.folder, raw["exp_key"])
+    try:
+        with dialect.write_tx(project.engine) as conn:
+            out = ms.update(conn, store, model_id, name=raw.get("name"), model=model, staged=staged,
+                            color=raw.get("color"), fit=raw.get("fit"), back=raw.get("back"),
+                            has=frozenset(k for k in ("fit", "back") if k in raw))  # fmt: skip
+    finally:
+        if staged is not None:
+            staged.discard()
+    _publish(request, model_id)
+    return out
+
+
+@router.delete("/models/{model_id}")
+def delete_model(svc: Svc, request: Request, model_id: int) -> dict[str, Any]:
+    project = svc.require_current(writable=True)
+    with dialect.write_tx(project.engine) as conn:
+        ms.delete(conn, model_id)
+    _publish(request, model_id, deleted=True)
+    return {"deleted": model_id}
+
+
+@router.get("/models/{model_id}/export")
+def export_model(svc: Svc, model_id: int, format: str = "json", path: str | None = None) -> dict[str, Any]:  # noqa: A002 — the name of the parameter in the API
+    project = svc.require_current()
+    with dialect.read_tx(project.engine) as conn:
+        name, meta = ms.meta_of(conn, model_id)
+    try:
+        fmt = str(format).strip().lower()
+        text = exchange.write_model(meta, fmt)
+        filename = exchange.file_name(name, fmt)
+    except ValueError as e:
+        raise ms.as_api(e) from e
+    if path in (None, ""):
+        return {"format": fmt, "filename": filename, "text": text}
+    target = _target(path)
+    data = text.encode("utf-8")
+    _write(target, data)
+    return {"format": fmt, "path": str(target), "bytes": len(data)}
