@@ -17,13 +17,13 @@ import { focusWindow, setCloseGuard, updateWindow, windowStore, type FloatWin } 
 import { cancelJob, jobsStore, refresh as refreshJobs } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { SaveAsTrendButton } from "../trends/TrendWindow";
-import { previewCalc, startExperimental } from "./api";
+import { FIT_WEIGHTS, previewCalc, startExperimental, type FitWeights } from "./api";
 import { AxisCharts } from "./AxisCharts";
 import { VARIO_WINDOW, windowTitle } from "./bind";
 import { axesOf, calcNotes, chartType, countsLine, createRunner, INITIAL_RUNNER, pickShown, readJobCalc, readRefusal, type Refusal, type Runner, type RunnerState } from "./calc";
 import { DataForm } from "./DataForm";
 import { ModelTable } from "./ModelTable";
-import { CALC_KEYS, checkValues, dropWork, experimentalBody, RANGES, setEllipsoid, setModel, setWork, spanText, valuesFromDefaults, variographyStore, VIEWS, workOf, type VarioView, type Work } from "./state";
+import { CALC_KEYS, checkValues, dropWork, experimentalBody, leastRange, markEdit, RANGES, setDragging, setEllipsoid, setModel, setWork, spanText, valuesFromDefaults, variographyStore, VIEWS, workOf, type FitInfo, type VarioView, type Work } from "./state";
 import own from "./Variography.module.css";
 
 export const VIEW_TITLES: Record<VarioView, string> = { axes: "Оси", downhole: "Вдоль скважин", fan: "Веер", map: "Карта", nscore: "Нормальные оценки" };
@@ -67,6 +67,13 @@ function RefusalView({ r, what }: { r: Refusal; what: string }) {
 }
 
 const JOB_STATUS: Record<string, string> = { queued: "в очереди", running: "идёт" };
+
+/** «Подбор (N / h̄): невязка 39,07 по 14 точкам» and the warnings of the fit. */
+export function fitNotes(f: FitInfo | null | undefined): string[] {
+  if (!f) return [];
+  const res = f.residual === null ? "" : `: невязка ${f.residual.toLocaleString("ru-RU", { maximumSignificantDigits: 4 })}${f.n === null ? "" : ` по ${f.n} точкам`}`;
+  return [`Подбор (веса ${FIT_WEIGHTS[f.weights]})${res}${f.fixed.length ? `; закреплено: ${f.fixed.length}` : ""}`, ...(f.warnings ?? [])];
+}
 
 function useWork(winId: string): Work | null {
   const get = () => variographyStore.get().works[winId] ?? null;
@@ -138,6 +145,14 @@ export function VariographyWindow({ winId }: { winId: string }) {
     focusWindow(winId); // the commands act on the last active window (or on the window of `model_id`)
     void app.run(id, work.modelId !== null ? { model_id: work.modelId } : {});
   };
+  const dragModel = (m: typeof work.model) => {
+    markEdit();
+    setModel(winId, m);
+  };
+  const fit = () => {
+    focusWindow(winId);
+    void app.run("variography.fit", { ...(work.modelId !== null ? { model_id: work.modelId } : {}), weights: work.fitWeights ?? "n_h" });
+  };
   const ellipsoid = () => (work.modelId !== null ? command("variography.show") : setEllipsoid(winId, { visible: !(work.ellipsoid?.visible ?? false) }));
   const view = VIEWS.includes(work.view) ? work.view : "axes";
   const fileName = `Вариография ${work.data.field ?? ""}`.trim();
@@ -145,7 +160,7 @@ export function VariographyWindow({ winId }: { winId: string }) {
 
   let centre: ReactNode;
   if (view === "fan" || view === "map" || view === "nscore") centre = <p className={own.empty}>Вкладка «{VIEW_TITLES[view]}» готовится — расчёт доступен командой «Рассчитать вариограммы» (what = {view === "nscore" ? "axes с нормальными оценками" : view}).</p>;
-  else if (shown.calc) centre = <AxisCharts calc={shown.calc} model={work.model} type={type} fileName={fileName} downholeOnly={view === "downhole"} />;
+  else if (shown.calc) centre = <AxisCharts calc={shown.calc} model={work.model} type={type} fileName={fileName} downholeOnly={view === "downhole"} onModel={dragModel} onDrag={(on) => setDragging(on ? { win: winId, kind: "chart" } : null)} limits={{ minRange: leastRange(work) }} />;
   else centre = <p className={own.empty}>{body ? (run.previewBusy ? "Предпросмотр…" : "Нет расчёта: нажмите «Рассчитать»") : (built?.reason ?? "Задайте данные расчёта")}</p>;
 
   return (
@@ -166,6 +181,11 @@ export function VariographyWindow({ winId }: { winId: string }) {
           {centre}
           <div className={own.notes} data-testid="variography-notes">
             {shown.calc && <p className={css.note}>{countsLine(shown.calc.counts)}</p>}
+            {fitNotes(work.fitInfo).map((t, i) => (
+              <p key={`fit${i}`} className={i ? css.warn : css.note} data-testid={i ? undefined : "variography-fit"}>
+                {t}
+              </p>
+            ))}
             {shown.calc && shown.kind && calcNotes(shown.calc, shown.kind).map((t) => (
               <p key={t} className={shown.calc?.warnings.includes(t) ? css.warn : css.note}>
                 {t}
@@ -195,7 +215,14 @@ export function VariographyWindow({ winId }: { winId: string }) {
         <button type="button" className={css.primary} data-testid="variography-calc" disabled={!body || busy} onClick={() => void calc()}>
           Рассчитать
         </button>
-        <button type="button" className={css.btn} disabled={!work.expKey} title={work.expKey ? "Подбор по осям последнего расчёта" : "Сначала рассчитайте вариограммы осей"} onClick={() => command("variography.fit")}>
+        <select className={css.input} aria-label="Веса подбора" title="Веса подбора" value={work.fitWeights ?? "n_h"} onChange={(e) => setWork(winId, { fitWeights: e.target.value as FitWeights })}>
+          {(Object.keys(FIT_WEIGHTS) as FitWeights[]).map((k) => (
+            <option key={k} value={k}>
+              {FIT_WEIGHTS[k]}
+            </option>
+          ))}
+        </select>
+        <button type="button" className={css.btn} data-testid="variography-fit-run" disabled={!work.expKey} title={work.expKey ? "Подбор по осям последнего расчёта; закреплённые в таблице параметры не меняются" : "Сначала рассчитайте вариограммы осей"} onClick={fit}>
           Подобрать
         </button>
         <button type="button" className={css.btn} disabled={!work.model.structures.length} onClick={ellipsoid}>
