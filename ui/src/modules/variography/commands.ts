@@ -122,8 +122,9 @@ export const commands: Command[] = [
   {
     id: "variography.export",
     title: "Экспорт модели вариограммы",
-    description: "Модель в JSON или параметрах GSLIB: с path — файл записан (путь абсолютный, кириллица допустима); без path — текст модели.",
-    params: { model_id: MODEL_ID, format: FORMAT, path: P("string", "абсолютный путь файла") },
+    description:
+      "Модель в JSON или параметрах GSLIB: с path — файл записан (путь абсолютный, кириллица допустима, вне папки проекта; расширение .json / .par добавляется; существующий файл — вопрос «Заменить?», overwrite: true — без вопроса); без path — текст модели.",
+    params: { model_id: MODEL_ID, format: FORMAT, path: P("string", "абсолютный путь файла"), overwrite: P("boolean", "заменить существующий файл без вопроса") },
     required: ["model_id"],
   },
   {

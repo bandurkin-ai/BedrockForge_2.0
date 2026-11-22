@@ -283,6 +283,8 @@ export interface Work {
   model: VModel;
   /** the stored model it was read from (or saved as); null — new */
   modelId: number | null;
+  /** the version of that model read or saved (`expected_version` of the replacement); absent — unknown */
+  modelVersion?: number | null;
   /** the key of the last `experimental` (for `fit`, `save`); null — not computed */
   expKey: string | null;
   /** the paths of the parameters fixed in the fit (`c0`, `structures.N.c`, `structures.N.a1…a3`) */
@@ -362,7 +364,7 @@ export const windowOfModel = (id: number): string | null => Object.entries(vario
 /** After a delete: the windows of that model keep their model as a new one. */
 export function forgetModel(id: number): void {
   variographyStore.set((s) => ({
-    works: Object.fromEntries(Object.entries(s.works).map(([k, w]) => [k, w.modelId === id ? { ...w, modelId: null, dirty: true } : w])),
+    works: Object.fromEntries(Object.entries(s.works).map(([k, w]) => [k, w.modelId === id ? { ...w, modelId: null, modelVersion: null, dirty: true } : w])),
     models: s.models.filter((m) => m.id !== id),
   }));
 }

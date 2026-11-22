@@ -96,6 +96,13 @@ def inputs_of(conn: sa.Connection, data: sp.Data) -> dict[str, Any]:
             "trajectories": store.trajectories_key(conn, data.set_id)}  # fmt: skip
 
 
+def fresher(inputs: dict[str, Any], p: Points) -> dict[str, Any]:
+    """The inputs of the rows actually read: a table or the trajectories changed between `inputs_of` and
+    `points.load` — the key and the record follow what was read (`p.inputs`), not the earlier look."""
+    late = dict(p.inputs or {})
+    return late if late and late != inputs else inputs
+
+
 def key_of(spec: sp.ExperimentalSpec | sp.MapSpec, inputs: dict[str, Any]) -> str:
     """SHA-256 (64 hex) of the algorithm, the canonical resolved body (with its `op`) and the inputs."""
     payload = {"algo": ALGO, "params": spec.hash_params(), "inputs": inputs}
@@ -294,6 +301,7 @@ def run_experimental(
             return {**hit, "fresh": True, "stages": clock.stages()}
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
     p = points.load(project, raw.data, tick=clock)
+    inputs = fresher(inputs, p)
     spec = raw.resolved(given or sp.defaults_for(p.median_length))
     key = key_of(spec, inputs)
     hit = _cached(folder, key, spec)

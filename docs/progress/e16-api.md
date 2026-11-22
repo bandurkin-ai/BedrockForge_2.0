@@ -120,7 +120,8 @@ DECL_W при наличии, `weights=` (пусто) — без весов, `we
 Ключ (`key`) — SHA-256 `{algo: "vario-1", params: канонические параметры после подстановки умолчаний, inputs:
 {tables [{id, name_key, token, rev}], trajectories}}`. Тот же ключ — расчёт не повторяется: итог читается из кеша
 (`fresh: true`); если в теле заданы оба лага (`lag`, `dh_lag`), ключ известен до чтения таблицы и повтор её не
-читает, иначе точки читаются ради медианы длин. Правка таблицы или траекторий — новый ключ.
+читает, иначе точки читаются ради медианы длин. Правка таблицы или траекторий — новый ключ. Таблицу изменили между
+ранним чтением `inputs` и `points.load` — ключ и запись кеша считаются по `inputs` прочитанных строк (16.29).
 
 Итог (`job.result`) — **форма расчёта** и ещё два поля: `fresh` (итог из кеша) и `stages` — секунды стадий
 `{read, trajectories, nscore?, pairs, downhole?, write, total}` (у повтора — только прочитанные). Форма:
@@ -274,9 +275,13 @@ DECL_W при наличии, `weights=` (пусто) — без весов, `we
   algo: "vario-1", versions {numpy, scipy, numba}, created_at, color}, points: форма расчёта, stale, stale_reason,
   source_lost, version, created_at, updated_at}`; `points` — копия формы в файлах модели (роль `vario`; не зависит
   от кеша), `points.set_id`, `points.table` — как в `meta.source`; 404 `model_not_found`.
-- `PUT /variography/models/{id}` `{name?, model?, exp_key?, color?, fit?, back?}` → `{id, name}`: только заданные
-  поля; `exp_key` — новые точки и источник (`fit`, `back` не сбрасываются, если не заданы; `fit: null` — сброс);
-  `version` + 1; 404; 409; 422; 423.
+- `PUT /variography/models/{id}` `{expected_version, name?, model?, exp_key?, color?, fit?, back?}` → `{id, name,
+  version}`: только заданные поля; `exp_key` — новые точки и источник (`fit`, `back` не сбрасываются, если не заданы;
+  `fit: null` — сброс); `version` + 1. Оптимистичная блокировка (ТЗ раздел 17 п. 11, 16.29): `expected_version` —
+  обязателен (`version` прочитанной модели; нет или не целое ≥ 1 — 422 `bad_param {param: "expected_version"}`);
+  хранится другая — 409 `version_conflict {version}` «Модель вариограммы изменена в другом окне.» с подсказкой,
+  до раскладки файлов; запись — `UPDATE … WHERE version = …`. Окно на 409 спрашивает собственным окном:
+  «Сохранить как новую» (`POST`) или «Перечитать». 404; 409 `name_taken`; 422; 423.
 - `DELETE /variography/models/{id}` → `{deleted: id}`; 404; 423.
 - `POST /variography/models/{id}/rebuild` → `{source, id}` задания `variography.rebuild` «Перестроить» (16.15;
   точки на текущих данных с прежними параметрами `meta.calc.params`, таблицы — по id, затем по имени; параметры
@@ -284,15 +289,23 @@ DECL_W при наличии, `weights=` (пусто) — без весов, `we
   γ самой модели), `back` — по новой таблице нормальных оценок без `curves`, если был); источник удалён — 409
   `source_lost`; 404 `model_not_found`; 423. Стадии — как у `experimental`. Итог: `{model_id, key, fresh, stages,
   fit, back, events: [["geostat.changed", {kind: "variogram_model", id}]]}`; модель — новые `exp_key`, `points`,
-  `stale: false`, `version` + 1.
-- `GET /variography/models/{id}/export?format=json|gslib[&path=]` → без `path`: `{format, filename, text}`
-  (`filename` — имя модели без запрещённых Windows знаков + `.json` / `.par`); с `path` (абсолютный, кириллица
-  допустима) — файл записан байтами UTF-8 (GSLIB — ASCII, «\n» и в Windows): `{format, path, bytes}`; путь не
-  полный, папки нет, запись не удалась — 422 `bad_param {param: "path"}`; формат — 422 `bad_param {param:
-  "format"}`. JSON — поля `meta` без `inputs` с меткой `"kind": "variogram_model"`. Работает и в «только просмотр».
+  `stale: false`, `version` + 1. Модель читается один раз вместе с версией; запись — поверх этой версии: модель
+  сохранили, пока задание считало точки, — задание падает с 409 `version_conflict` «Модель изменили, пока её
+  перестраивали.» (подсказка «Запустите «Перестроить» снова.»), записанное другим окном не затирается.
+- `GET /variography/models/{id}/export?format=json|gslib` → `{format, filename, text}` (`filename` — имя модели без
+  запрещённых Windows знаков + `.json` / `.par`); только чтение, `path` не читается (16.29).
+- `POST /variography/models/{id}/export` `{format?, path, overwrite?}` → `{format, path, bytes}`: файл записан
+  байтами UTF-8 (GSLIB — ASCII, «\n» и в Windows). `path` — абсолютный (кириллица допустима); расширение
+  принудительно по формату (`.json` / `.par`; иное — дописывается: `модель.txt` → `модель.txt.par`); файл есть и
+  нет `overwrite: true` — 409 `files_exist {files: [имя файла]}` (интерфейс спрашивает «Заменить?» собственным
+  окном; диалог приложения, уже спросивший о том же имени, передаёт `overwrite`); путь внутри папки проекта — 422
+  `bad_path {param: "path"}`; путь не полный, папки нет, запись не удалась — 422 `bad_param {param: "path"}`;
+  формат — 422 `bad_param {param: "format"}`; `overwrite` не логическое — 422 `bad_param {param: "overwrite"}`.
+  JSON — поля `meta` без `inputs` с меткой `"kind": "variogram_model"`. Оба маршрута работают и в «только просмотр».
 - `POST /variography/models/import` `{format?, text? | path?}` → `{format, model}` (рабочая модель окна, не
   сохраняется; без `format` — по содержимому: «{» — JSON, иначе GSLIB; GSLIB — `type: semivariogram`); ровно одно
-  из `text`, `path` (иначе 422 `bad_param {param: "path" | "text"}`); файл > 1 МБ, нет, не читается — 422
+  из `text`, `path` (оба — 422 `bad_param {param: "path"}` «Задайте что-то одно: текст или путь к файлу.»; ни
+  одного — 422 `bad_param {param: "path"}`; `text` не строка — `{param: "text"}`); файл > 1 МБ, нет, не читается — 422
   `bad_param {param: "path"}`; битый файл — 422 `bad_file {line?}` с подсказкой.
 
 «Устарел»: `inputs` (таблицы `{id, name_key, token, rev}` и ключ траекторий набора) сравниваются с текущими при
@@ -320,8 +333,12 @@ Points.inputs, calc: {params, sampled}}`; `cache/variography/<key>.nscore.parque
   имя по умолчанию «Тренд · ‹модель›»; углы и `ratios` тела при `model_id` не читаются. Без имени — «Тренд», занятое —
   « (2)»; заданное занятое — 409 `name_taken`. `ratios` — три числа, первое ровно 1, остальные > 0 и ≤ 10⁶; `size`
   > 0 и ≤ 10⁷ м. `kind: "structural"` — 422 `not_ready {param: "kind"}`; `structure` без `model_id` — 422.
-- `PUT /trends/{id}` — заданные поля заменяют хранимые (прочие остаются, `origin` не меняется без `model_id` /
-  `origin`); `{model_id, structure?}` — «Обновить из модели» (копия заново, имя остаётся). Правка модели тренд не
+- `PUT /trends/{id}` `{expected_version, …}` → `{id, name, version}` — заданные поля заменяют хранимые (прочие
+  остаются, `origin` не меняется без `model_id` / `origin`); `{model_id, structure?}` — «Обновить из модели» (копия
+  заново, имя остаётся). `expected_version` обязателен (нет — 422 `bad_param {param: "expected_version"}`); хранится
+  другая — 409 `version_conflict {version}` «Тренд изменён в другом окне.»; запись — `UPDATE … WHERE version = …`
+  (16.29). Окно на 409 спрашивает: «Сохранить как новый» (`POST` со следующим свободным именем) или «Перечитать»;
+  команда ассистента получает отказ ядра. Правка модели тренд не
   меняет; модель удалена — тренд остаётся, в ответе `origin.model_id: null`.
 - `DELETE /trends/{id}` → `{deleted: id}`; есть ссылки — 409 `in_use {usage}` (текст называет до 5 потребителей).
 - `GET /trends/{id}/usage` → `{usage: [{id, kind, name, role}]}` — строки `object_refs(dst_id = тренд)` (потребители
@@ -373,5 +390,5 @@ id; null — таблица проб), `field` (null — первый компо
 
 `variography.calc` → `experimental` (`what: axes`) / `map` (`fan`, `map`); `variography.fit` → `fit`;
 `variography.save` → `POST` / `PUT models`; `variography.delete` → `DELETE models/{id}`; `variography.export` /
-`import` → `export` / `import` (`path`); `trend.save` → `POST` / `PUT trends`; `trend.delete` → `DELETE trends/{id}`.
+`import` → `POST models/{id}/export` (с `path`; без — `GET`, текст) / `import` (`path`); `trend.save` → `POST` / `PUT trends`; `trend.delete` → `DELETE trends/{id}`.
 `variography.open`, `.models`, `.ellipsoid`, `.show`, `trend.show` — только интерфейс.

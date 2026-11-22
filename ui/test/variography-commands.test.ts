@@ -86,7 +86,11 @@ beforeEach(() => {
       if (path === `${V}/models/7` && method === "PUT") return json({ id: 7, name: "AU · Композиты" });
       if (path === `${V}/models/7` && method === "DELETE") return json({ deleted: 7 });
       if (path === `${V}/models/7`) return json({ id: 7, name: "AU", color: null, meta: { v: 1, source: { set_id: 3, table: "12", field: "AU", domain: null, weights: null }, transform: "none", ...FITTED }, points: { key: "abc", directions: [], downhole: null, counts: DEFAULTS.counts }, stale: true, stale_reason: "изменена таблица «Композиты»", source_lost: false });
-      if (path === `${V}/models/7/export`) return u.searchParams.get("path") ? json({ format: "gslib", path: u.searchParams.get("path"), bytes: 42 }) : json({ format: "gslib", filename: "AU.txt", text: "1 0.21\n1 1.5 30 -10 0\n118 79 21\n" });
+      if (path === `${V}/models/7/export` && method === "POST") {
+        if (String(body.path).includes("есть") && body.overwrite !== true) return json({ code: "files_exist", message: "Файл «есть.par» уже есть.", hint: "Подтвердите замену.", files: ["есть.par"] }, 409);
+        return json({ format: "gslib", path: `${String(body.path)}.par`, bytes: 42 });
+      }
+      if (path === `${V}/models/7/export`) return json({ format: "gslib", filename: "AU.txt", text: "1 0.21\n1 1.5 30 -10 0\n118 79 21\n" });
       if (path === `${V}/models/import`) return json({ model: FITTED });
       return json({ code: "not_found", message: "Нет", hint: "" }, 404);
     }),
@@ -247,7 +251,7 @@ describe("handlers", () => {
     const yes = app.registry.execute("variography.save", { model_id: 7 }, "claude");
     await answer(true);
     expect((await yes).ok).toBe(true);
-    expect(geostat().some((x) => x.method === "PUT" && x.path.endsWith("/models/7"))).toBe(true);
+    expect(geostat().find((x) => x.method === "PUT" && x.path.endsWith("/models/7"))?.body.expected_version).toBe(1); // the version saved
   });
 
   it("`delete`: the user is asked in our own window; the windows of the model keep it as new", async () => {
@@ -269,7 +273,17 @@ describe("handlers", () => {
 
   it("`export` without path gives the text, with path writes the file; `import` opens a window with the model", async () => {
     expect((await app.registry.execute("variography.export", { model_id: 7, format: "gslib" }, "claude")).result).toMatch(/^AU\.txt:\n1 0\.21/);
-    expect((await app.registry.execute("variography.export", { model_id: 7, path: "C:\\Модели\\AU.txt" }, "claude")).result).toBe("Модель №7 записана: C:\\Модели\\AU.txt (42 байт)");
+    expect(geostat().find((x) => x.path.endsWith("/export"))).toMatchObject({ method: "GET", query: "?format=gslib" }); // the text: nothing written
+    expect((await app.registry.execute("variography.export", { model_id: 7, path: "C:\\Модели\\AU" }, "claude")).result).toBe("Модель №7 записана: C:\\Модели\\AU.par (42 байт)");
+    expect(geostat().filter((x) => x.path.endsWith("/export")).at(-1)).toMatchObject({ method: "POST", body: { format: "gslib", path: "C:\\Модели\\AU" } });
+    // a file there: «Заменить?» in our own window; «Отмена» — nothing written, «Заменить» — `overwrite: true`
+    const no = app.registry.execute("variography.export", { model_id: 7, format: "gslib", path: "C:\\есть" }, "user");
+    expect(await answer(false)).toMatch(/есть\.par/);
+    expect((await no).result).toBe("Отменено");
+    const yes = app.registry.execute("variography.export", { model_id: 7, format: "gslib", path: "C:\\есть" }, "user");
+    await answer(true);
+    expect((await yes).ok).toBe(true);
+    expect(geostat().filter((x) => x.path.endsWith("/export")).at(-1)?.body).toStrictEqual({ format: "gslib", path: "C:\\есть", overwrite: true });
     const r = await app.registry.execute("variography.import", { path: "C:\\Модели\\AU.json" }, "claude");
     expect(r.ok, r.result).toBe(true);
     expect(geostat().find((x) => x.path.endsWith("/import"))?.body).toStrictEqual({ format: "json", path: "C:\\Модели\\AU.json" });

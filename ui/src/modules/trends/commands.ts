@@ -30,6 +30,7 @@ export const commands: Command[] = [
       "Без углов и без model_id — окно «Тренд». Матрица анизотропии A = diag(1, a1/a2, a1/a3)·R — у ядра.",
     params: {
       trend_id: TREND_ID,
+      expected_version: P("integer", "версия тренда, которую правит окно (по умолчанию — последняя прочитанная)"),
       kind: P("string", "вид тренда: global (structural — с Э19)", { enum: ["global", "structural"] }),
       name: P("string", "имя тренда (по умолчанию «Тренд» или «Тренд · ‹модель›»)"),
       ang1: P("number", "азимут оси a1, ° (0–360)"),

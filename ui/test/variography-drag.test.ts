@@ -171,7 +171,7 @@ describe("«Сохранить»", () => {
   });
 
   it("the replacement asks in our own window first; «Отмена» — nothing is written", async () => {
-    setWork(WIN, newWork({ model: FIT.model, expKey: A.bodies_models.save.exp_key, modelId: A.model_created.id, dirty: true }));
+    setWork(WIN, newWork({ model: FIT.model, expKey: A.bodies_models.save.exp_key, modelId: A.model_created.id, modelVersion: A.model_read.version, dirty: true }));
     const put: unknown[] = [];
     const replace = async (id: number, b: unknown) => {
       put.push([id, b]);
@@ -182,7 +182,46 @@ describe("«Сохранить»", () => {
     expect(put).toEqual([]);
     expect(question).toMatchObject({ title: "Заменить модель", okLabel: "Заменить", danger: true });
     expect(await saveWork(WIN, undefined, { ask: async () => true, replace, refresh: async () => undefined })).toEqual(A.model_created);
-    expect(put[0]).toEqual([A.model_created.id, { model: A.bodies_models.save.model, exp_key: A.bodies_models.save.exp_key, fit: null, back: null }]);
+    expect(put[0]).toEqual([A.model_created.id, { model: A.bodies_models.save.model, exp_key: A.bodies_models.save.exp_key, fit: null, back: null, expected_version: A.model_read.version }]);
     expect(workOf(WIN)!.dirty).toBe(false);
+  });
+
+  it("the model saved in another window (409 `version_conflict`): «Сохранить как новую» or «Перечитать», in our own window", async () => {
+    const c = A.model_conflict.body;
+    const conflict = async (): Promise<never> => {
+      throw new CoreError(409, c.code, c.message, c.hint);
+    };
+    const start = () => setWork(WIN, newWork({ model: FIT.model, expKey: A.bodies_models.save.exp_key, data: { ...newWork().data, field: "AU" }, defaults: { table_name: "Пробы" } as never, modelId: A.model_second.id, modelVersion: 1, dirty: true }));
+    // «Сохранить как новую»: a POST with the name of the window, the window holds the new model
+    start();
+    const questions: { title?: string }[] = [];
+    const made: unknown[] = [];
+    const saved = await saveWork(WIN, undefined, {
+      ask: async (q) => (questions.push(q as never), true),
+      replace: conflict,
+      create: async (b) => (made.push(b), A.model_created),
+      refresh: async () => undefined,
+    });
+    expect(questions.map((q) => q.title)).toEqual(["Заменить модель", "Модель изменена в другом окне"]);
+    expect(made).toHaveLength(1);
+    expect(saved).toEqual(A.model_created);
+    expect(workOf(WIN)).toMatchObject({ modelId: A.model_created.id, modelVersion: 1, dirty: false });
+    // «Перечитать»: the stored model replaces the window's, nothing written
+    start();
+    const answers = [true, false, true];
+    const read = { ...readModel(A.model_read.meta), c0: 0.33 };
+    const got = await saveWork(WIN, undefined, {
+      ask: async () => answers.shift()!,
+      replace: conflict,
+      create: async () => expect.unreachable("not saved as new"),
+      load: async (id) => ({ id, name: "Вторая", color: null, meta: {}, model: read, source: {} as never, points: null, stale: false, stale_reason: null, source_lost: false, version: 2 }),
+      refresh: async () => undefined,
+    });
+    expect(got).toBeNull();
+    expect(workOf(WIN)).toMatchObject({ modelId: A.model_second.id, modelVersion: 2, dirty: false, model: { c0: 0.33 } });
+    // neither: the window stays as it is
+    start();
+    expect(await saveWork(WIN, undefined, { ask: async (q) => (q as { title?: string }).title === "Заменить модель", replace: conflict, refresh: async () => undefined })).toBeNull();
+    expect(workOf(WIN)).toMatchObject({ modelVersion: 1, dirty: true });
   });
 });

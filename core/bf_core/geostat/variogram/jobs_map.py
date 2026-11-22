@@ -24,6 +24,8 @@ changed; what follows the points is computed again: `fit.residual`, `fit.n` with
 fit (трактовка: N / γ² — with γ of the model itself), `back` (the model of Z by the new table of normal scores,
 the tails «linear», no curves) when the model had one. The event `geostat.changed` travels in the result
 (`events`: a worker does not publish). The source lost — 409 `source_lost` (route) / the failure of the job.
+The model is read once, with its version; the write is `UPDATE … WHERE version = …` over it: a model saved (renamed,
+recoloured, refitted) while the points were rebuilt — the job fails with 409 `version_conflict`, nothing written.
 
 Errors — ApiError {code, message, hint, param?} in Russian; in a job — a failure with the same code (no retry).
 """
@@ -121,6 +123,7 @@ def run_map(
             return {**hit, "fresh": True, "stages": clock.stages()}
     project = SimpleNamespace(engine=engine, uid=f"job:{folder}", folder=folder)
     p = points.load(project, raw.data, tick=clock)
+    inputs = vj.fresher(inputs, p)
     spec = raw.resolved(given or sp.defaults_for(p.median_length))
     key = vj.key_of(spec, inputs)
     hit = _cached(folder, key)
@@ -269,13 +272,11 @@ def run_rebuild(engine: sa.Engine, folder: Any, params: dict[str, Any], *, tick:
     folder = Path(folder)
     model_id = int(params["model_id"])
     with dialect.read_tx(engine) as conn:
-        _name, meta = store.meta_of(conn, model_id)
+        _name, meta, version = store.versioned(conn, model_id)
         body = rebuild_body(conn, meta)
     out = vj.run_experimental(engine, folder, {"body": body}, tick=tick, threads=threads)
     key = str(out["key"])
     form = {k: v for k, v in out.items() if k not in ("fresh", "stages")}
-    with dialect.read_tx(engine) as conn:
-        _name, meta = store.meta_of(conn, model_id)  # the model as it is now (renamed or recoloured meanwhile)
     has: set[str] = set()
     fit = meta.get("fit")
     if isinstance(fit, dict):
@@ -289,8 +290,14 @@ def run_rebuild(engine: sa.Engine, folder: Any, params: dict[str, Any], *, tick:
     blobs = BlobStore(folder)
     staged = store.stage(blobs, folder, key)
     try:
-        with dialect.write_tx(engine) as conn:
-            store.update(conn, blobs, model_id, staged=staged, fit=fit, back=back, has=frozenset(has))
+        with dialect.write_tx(engine) as conn:  # a model saved meanwhile: 409, nothing written
+            store.update(conn, blobs, model_id, expected_version=version, staged=staged, fit=fit, back=back,
+                         has=frozenset(has))  # fmt: skip
+    except ApiError as exc:
+        if exc.code != "version_conflict":
+            raise
+        raise store.conflict(int(exc.extra.get("version") or 0), "Модель изменили, пока её перестраивали.",
+                             "Запустите «Перестроить» снова.") from None  # fmt: skip
     finally:
         staged.discard()
     return {"model_id": model_id, "key": key, "fresh": out["fresh"], "stages": out["stages"],

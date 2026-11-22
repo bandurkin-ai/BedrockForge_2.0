@@ -25,7 +25,11 @@ back, inputs, exp_key, sha256, algo: "vario-1", versions {numpy, scipy, numba}, 
 or revision; found by id, then by name), the trajectories changed (the key of `drillholes.trajectory`); the set or a
 table gone — `source_lost` («Перестроить» unavailable). A model whose ids an archive did not have (`remap`) is lost.
 
-Errors: 404 `model_not_found`, `result_not_found` {param}; 409 `name_taken` {param: "name"}; 422 `bad_param` {param}.
+Optimistic locking (ТЗ раздел 17 п. 11): `update` takes the version the caller read; another one now — 409
+`version_conflict` {version} (`UPDATE … WHERE version = …`: a write between the reading and the update is caught too).
+
+Errors: 404 `model_not_found`, `result_not_found` {param}; 409 `name_taken` {param: "name"}, `version_conflict`
+{version}; 422 `bad_param` {param}.
 """
 
 from __future__ import annotations
@@ -354,11 +358,27 @@ def _row(conn: sa.Connection, model_id: int) -> Any:
     return r
 
 
-def update(conn: sa.Connection, store: BlobStore, model_id: int, *, name: Any = None,
+def clean_version(raw: Any) -> int:
+    """`expected_version` of a `PUT` (required): the version of the model (trend) the window read."""
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 1:
+        raise bad("Не задана версия, которую правит окно.", "Перечитайте объект и повторите сохранение.",
+                  "expected_version")  # fmt: skip
+    return raw
+
+
+def conflict(version: int, message: str = "Модель вариограммы изменена в другом окне.",
+             hint: str = "Перечитайте модель или сохраните свою как новую.") -> ApiError:  # fmt: skip
+    return ApiError(409, "version_conflict", message, hint, {"version": version})
+
+
+def update(conn: sa.Connection, store: BlobStore, model_id: int, *, expected_version: int, name: Any = None,
            model: tuple[str, Mapping[str, Any]] | None = None, staged: Staged | None = None, color: Any = None,
            fit: Any = None, back: Any = None, has: frozenset[str] = frozenset()) -> dict[str, Any]:  # fmt: skip
-    """Rename, replace the model, the points (`staged`), the colour, `fit` / `back` (named in `has`): `{id, name}`."""
+    """Rename, replace the model, the points (`staged`), the colour, `fit` / `back` (named in `has`) of the version
+    `expected_version`: `{id, name, version}`; another version — 409 `version_conflict`."""
     row = _row(conn, model_id)
+    if int(row.version) != expected_version:
+        raise conflict(int(row.version))
     meta = dict(row.meta or {})
     final = str(row.name)
     if name is not None:
@@ -379,13 +399,15 @@ def update(conn: sa.Connection, store: BlobStore, model_id: int, *, name: Any = 
         _own_files(conn, store, model_id, staged)
         owned = {role: files[1] for role, files, _media in staged.files}
     meta["sha256"] = _sha(meta, owned.get(VARIO), owned.get(NSCORE))
-    conn.execute(
-        sa.update(objects).where(objects.c.id == model_id).values(
-            name=final, name_key=dialect.name_key(final), meta=_plain(meta), version=int(row.version) + 1,
+    n = conn.execute(
+        sa.update(objects).where(objects.c.id == model_id, objects.c.version == expected_version).values(
+            name=final, name_key=dialect.name_key(final), meta=_plain(meta), version=expected_version + 1,
             updated_at=dialect.utcnow(),
         )
-    )  # fmt: skip
-    return {"id": model_id, "name": final}
+    ).rowcount  # fmt: skip
+    if n != 1:
+        raise conflict(int(_row(conn, model_id).version))
+    return {"id": model_id, "name": final, "version": expected_version + 1}
 
 
 def delete(conn: sa.Connection, model_id: int) -> None:
@@ -507,3 +529,9 @@ def meta_of(conn: sa.Connection, model_id: int) -> tuple[str, dict[str, Any]]:
     """(name, meta) of a model — the export."""
     row = _row(conn, model_id)
     return str(row.name), dict(row.meta or {})
+
+
+def versioned(conn: sa.Connection, model_id: int) -> tuple[str, dict[str, Any], int]:
+    """(name, meta, version) of a model — «Перестроить» writes over the version it read."""
+    row = _row(conn, model_id)
+    return str(row.name), dict(row.meta or {}), int(row.version)

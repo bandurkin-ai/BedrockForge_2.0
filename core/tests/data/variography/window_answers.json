@@ -26,7 +26,7 @@
    "min_pairs": 5
   },
   "fit": {
-   "key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
+   "key": "7c3754b863956ae60465c08bf71f16bc0cfdf95a6f8e49a8e832d1067b794585",
    "type": "semivariogram",
    "model": {
     "type": "semivariogram",
@@ -90,7 +90,7 @@
      }
     ]
    },
-   "exp_key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
+   "exp_key": "7c3754b863956ae60465c08bf71f16bc0cfdf95a6f8e49a8e832d1067b794585",
    "fit": {
     "weights": "n_h",
     "residual": 39.07421586145099,
@@ -102,7 +102,7 @@
   }
  },
  "job_fit_calc": {
-  "key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
+  "key": "7c3754b863956ae60465c08bf71f16bc0cfdf95a6f8e49a8e832d1067b794585",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -515,12 +515,12 @@
   "warnings": [],
   "fresh": false,
   "stages": {
-   "read": 0.003,
+   "read": 0.002,
    "trajectories": 0.004,
-   "pairs": 0.005,
+   "pairs": 0.003,
    "downhole": 0.001,
-   "write": 0.005,
-   "total": 0.025
+   "write": 0.004,
+   "total": 0.022
   }
  },
  "fit": {
@@ -564,7 +564,7 @@
   }
  },
  "job_nscore_axes": {
-  "key": "7180515373eb3809b5f60a74f29bb996f68cbea23eedb7dce534e7ff68c48480",
+  "key": "8cfb5ddd414a384cb3e928b056c937deee0f8a9ecdc3d7cfbce48a8042045044",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -979,13 +979,13 @@
   ],
   "fresh": false,
   "stages": {
-   "read": 0.002,
+   "read": 0.003,
    "trajectories": 0.002,
-   "nscore": 0.002,
-   "pairs": 0.003,
+   "nscore": 0.003,
+   "pairs": 0.005,
    "downhole": 0.001,
-   "write": 0.004,
-   "total": 0.019
+   "write": 0.006,
+   "total": 0.029
   }
  },
  "fit_nscore": {
@@ -2087,7 +2087,7 @@
   ]
  },
  "job_map": {
-  "key": "712eac47f6cb4bfcec012d8c17420afa28336927eb8b84ed2e48b98673591969",
+  "key": "93731f242015eaca6ae300663229b1b15f2825d278a7d35ef077fe3c9ff58b46",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -2862,12 +2862,12 @@
   "warnings": [],
   "fresh": false,
   "stages": {
-   "read": 0.003,
+   "read": 0.002,
    "trajectories": 0.007,
-   "fan": 1.916,
-   "map": 0.658,
-   "write": 0.001,
-   "total": 2.593
+   "fan": 2.033,
+   "map": 0.781,
+   "write": 0.002,
+   "total": 2.831
   }
  },
  "model_created": {
@@ -2889,7 +2889,17 @@
  },
  "model_renamed": {
   "id": 4,
-  "name": "Вторая"
+  "name": "Вторая",
+  "version": 2
+ },
+ "model_conflict": {
+  "status": 409,
+  "body": {
+   "version": 2,
+   "code": "version_conflict",
+   "message": "Модель вариограммы изменена в другом окне.",
+   "hint": "Перечитайте модель или сохраните свою как новую."
+  }
  },
  "model_read": {
   "id": 3,
@@ -2941,7 +2951,7 @@
      {
       "id": 1,
       "name_key": "пробы",
-      "token": "660d390b00bc5",
+      "token": "660d3fb6b665e",
       "rev": 1
      }
     ],
@@ -2952,7 +2962,7 @@
      "minimum_curvature"
     ]
    },
-   "exp_key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
+   "exp_key": "7c3754b863956ae60465c08bf71f16bc0cfdf95a6f8e49a8e832d1067b794585",
    "type": "semivariogram",
    "c0": 0.9647884866709614,
    "structures": [
@@ -2983,12 +2993,12 @@
     "scipy": "1.18.1",
     "numba": "0.68.1"
    },
-   "created_at": "2026-11-22T01:40:58.452648+00:00",
+   "created_at": "2026-11-22T02:10:49.071540+00:00",
    "color": "#1f6bff",
-   "sha256": "afa0d8e34bc5eb437ef188ae9ff05f0c559e618dfb64d469121be6a5834317ab"
+   "sha256": "4602a27ea8bdec2dcacffc843782d1c4616cae64a288fd5d9630dc183bb4fbec"
   },
   "points": {
-   "key": "c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d",
+   "key": "7c3754b863956ae60465c08bf71f16bc0cfdf95a6f8e49a8e832d1067b794585",
    "set_id": 1,
    "table": "1",
    "field": "AU",
@@ -3404,13 +3414,13 @@
   "stale_reason": null,
   "source_lost": false,
   "version": 1,
-  "created_at": "2026-11-22T01:40:58.452753Z",
-  "updated_at": "2026-11-22T01:40:58.452753Z"
+  "created_at": "2026-11-22T02:10:49.071667Z",
+  "updated_at": "2026-11-22T02:10:49.071667Z"
  },
  "export_json": {
   "format": "json",
   "filename": "AU · Пробы.json",
-  "text": "{\n  \"kind\": \"variogram_model\",\n  \"v\": 1,\n  \"source\": {\n    \"set_id\": 1,\n    \"table\": \"1\",\n    \"field\": \"AU\",\n    \"domain\": null,\n    \"weights\": null\n  },\n  \"transform\": \"none\",\n  \"sigma2\": 1.669187430215512,\n  \"calc\": {\n    \"params\": {\n      \"set_id\": 1,\n      \"table\": \"1\",\n      \"field\": \"AU\",\n      \"domain\": null,\n      \"weights\": null,\n      \"transform\": \"none\",\n      \"axes\": {\n        \"ang1\": 30.0,\n        \"ang2\": 0.0,\n        \"ang3\": 0.0\n      },\n      \"directions\": [],\n      \"lag\": 10.0,\n      \"nlag\": 6,\n      \"lag_tol\": 5.0,\n      \"az_tol\": 22.5,\n      \"dip_tol\": 22.5,\n      \"band_h\": 30.0,\n      \"band_v\": 20.0,\n      \"min_pairs\": 5,\n      \"downhole\": true,\n      \"dh_lag\": 2.0,\n      \"dh_nlag\": 15,\n      \"dh_lag_tol\": 1.0,\n      \"seed\": 12345\n    },\n    \"sampled\": null\n  },\n  \"exp_key\": \"c23470dfcfaebfa40f27d92984f05c87edb5bfb838964e1483d55aba60b3102d\",\n  \"type\": \"semivariogram\",\n  \"c0\": 0.9647884866709614,\n  \"structures\": [\n    {\n      \"type\": \"spherical\",\n      \"c\": 0.5675653493005909,\n      \"ang1\": 30.0,\n      \"ang2\": 0.0,\n      \"ang3\": 0.0,\n      \"a1\": 129.99999999999994,\n      \"a2\": 108.89871732185051,\n      \"a3\": 10.0\n    }\n  ],\n  \"common_axes\": true,\n  \"fit\": {\n    \"weights\": \"n_h\",\n    \"residual\": 39.07421586145099,\n    \"n\": 14,\n    \"fixed\": [\n      \"structures.0.a3\"\n    ]\n  },\n  \"back\": null,\n  \"algo\": \"vario-1\",\n  \"versions\": {\n    \"numpy\": \"2.3.5\",\n    \"scipy\": \"1.18.1\",\n    \"numba\": \"0.68.1\"\n  },\n  \"created_at\": \"2026-11-22T01:40:58.452648+00:00\",\n  \"color\": \"#1f6bff\",\n  \"sha256\": \"afa0d8e34bc5eb437ef188ae9ff05f0c559e618dfb64d469121be6a5834317ab\"\n}\n"
+  "text": "{\n  \"kind\": \"variogram_model\",\n  \"v\": 1,\n  \"source\": {\n    \"set_id\": 1,\n    \"table\": \"1\",\n    \"field\": \"AU\",\n    \"domain\": null,\n    \"weights\": null\n  },\n  \"transform\": \"none\",\n  \"sigma2\": 1.669187430215512,\n  \"calc\": {\n    \"params\": {\n      \"set_id\": 1,\n      \"table\": \"1\",\n      \"field\": \"AU\",\n      \"domain\": null,\n      \"weights\": null,\n      \"transform\": \"none\",\n      \"axes\": {\n        \"ang1\": 30.0,\n        \"ang2\": 0.0,\n        \"ang3\": 0.0\n      },\n      \"directions\": [],\n      \"lag\": 10.0,\n      \"nlag\": 6,\n      \"lag_tol\": 5.0,\n      \"az_tol\": 22.5,\n      \"dip_tol\": 22.5,\n      \"band_h\": 30.0,\n      \"band_v\": 20.0,\n      \"min_pairs\": 5,\n      \"downhole\": true,\n      \"dh_lag\": 2.0,\n      \"dh_nlag\": 15,\n      \"dh_lag_tol\": 1.0,\n      \"seed\": 12345\n    },\n    \"sampled\": null\n  },\n  \"exp_key\": \"7c3754b863956ae60465c08bf71f16bc0cfdf95a6f8e49a8e832d1067b794585\",\n  \"type\": \"semivariogram\",\n  \"c0\": 0.9647884866709614,\n  \"structures\": [\n    {\n      \"type\": \"spherical\",\n      \"c\": 0.5675653493005909,\n      \"ang1\": 30.0,\n      \"ang2\": 0.0,\n      \"ang3\": 0.0,\n      \"a1\": 129.99999999999994,\n      \"a2\": 108.89871732185051,\n      \"a3\": 10.0\n    }\n  ],\n  \"common_axes\": true,\n  \"fit\": {\n    \"weights\": \"n_h\",\n    \"residual\": 39.07421586145099,\n    \"n\": 14,\n    \"fixed\": [\n      \"structures.0.a3\"\n    ]\n  },\n  \"back\": null,\n  \"algo\": \"vario-1\",\n  \"versions\": {\n    \"numpy\": \"2.3.5\",\n    \"scipy\": \"1.18.1\",\n    \"numba\": \"0.68.1\"\n  },\n  \"created_at\": \"2026-11-22T02:10:49.071540+00:00\",\n  \"color\": \"#1f6bff\",\n  \"sha256\": \"4602a27ea8bdec2dcacffc843782d1c4616cae64a288fd5d9630dc183bb4fbec\"\n}\n"
  },
  "export_gslib": {
   "format": "gslib",
@@ -3419,7 +3429,23 @@
  },
  "export_path": {
   "format": "gslib",
-  "path": "/tmp/pytest-of-root/pytest-123/test_window_answers_are_what_t0/модель.par",
+  "path": "/tmp/pytest-of-root/pytest-144/test_window_answers_are_what_t0/модель.par",
+  "bytes": 194
+ },
+ "export_exists": {
+  "status": 409,
+  "body": {
+   "files": [
+    "модель.par"
+   ],
+   "code": "files_exist",
+   "message": "Файл «модель.par» уже есть.",
+   "hint": "Подтвердите замену или выберите другое имя файла."
+  }
+ },
+ "export_replaced": {
+  "format": "gslib",
+  "path": "/tmp/pytest-of-root/pytest-144/test_window_answers_are_what_t0/модель.par",
   "bytes": 194
  },
  "import_json": {
@@ -3510,22 +3536,22 @@
     "stale": true,
     "stale_reason": "изменена таблица «Пробы»",
     "source_lost": false,
-    "created_at": "2026-11-22T01:40:58.452753Z",
-    "updated_at": "2026-11-22T01:40:58.452753Z"
+    "created_at": "2026-11-22T02:10:49.071667Z",
+    "updated_at": "2026-11-22T02:10:49.071667Z"
    }
   ]
  },
  "job_rebuild": {
   "model_id": 3,
-  "key": "e426d7b0d44192ba8bf5317edfcc5fac7cc0f41d8ee457615481502dd40fe2b1",
+  "key": "a97dc58eb56fb37f53b20821208766254ac7e26ac34520d3c77a9ba83103238c",
   "fresh": false,
   "stages": {
-   "read": 0.006,
+   "read": 0.005,
    "trajectories": 0.005,
    "pairs": 0.003,
    "downhole": 0.001,
    "write": 0.003,
-   "total": 0.024
+   "total": 0.021
   },
   "fit": {
    "weights": "n_h",
@@ -3562,8 +3588,8 @@
     "stale": false,
     "stale_reason": null,
     "source_lost": false,
-    "created_at": "2026-11-22T01:40:58.452753Z",
-    "updated_at": "2026-11-22T01:40:58.861865Z"
+    "created_at": "2026-11-22T02:10:49.071667Z",
+    "updated_at": "2026-11-22T02:10:49.306614Z"
    }
   ]
  },
@@ -3682,7 +3708,7 @@
   }
  },
  "job_axes": {
-  "key": "300cb1b0ed2b1be0513d6f0e8c7be3eb92036d75df9bbdb2634b94ba774ed051",
+  "key": "92c79b10ac6428a88f43ea9d01438ed29a2f7349f9d763d72a54382258ae912c",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -4096,15 +4122,15 @@
   "fresh": false,
   "stages": {
    "read": 0.007,
-   "trajectories": 6.112,
-   "pairs": 2.966,
-   "downhole": 0.626,
+   "trajectories": 6.116,
+   "pairs": 2.97,
+   "downhole": 0.57,
    "write": 0.329,
-   "total": 10.061
+   "total": 10.007
   }
  },
  "job_nscore": {
-  "key": "dc2d9d3bec391286b2761cacadb50a2ceb1dc28f7c8beac9b59de028dbef3eac",
+  "key": "a00922ae184ac9da0cd09e5d04c5fd125d5888aabf671d422a4265ff252bce5d",
   "set_id": 1,
   "table": "1",
   "field": "AU",
@@ -4290,10 +4316,10 @@
   "stages": {
    "read": 0.002,
    "trajectories": 0.002,
-   "nscore": 0.414,
+   "nscore": 0.427,
    "pairs": 0.003,
-   "write": 0.004,
-   "total": 0.432
+   "write": 0.005,
+   "total": 0.448
   }
  },
  "job_failed": {

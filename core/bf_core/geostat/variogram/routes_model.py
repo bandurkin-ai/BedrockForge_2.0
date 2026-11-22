@@ -5,10 +5,15 @@
   * `POST /models` {name?, model, exp_key, color?, fit?, back?} → {id, name}: the model with a copy of the points of
     the calculation `exp_key` (`store.stage`). 409 `name_taken` {param}; 404 `result_not_found`; 423.
   * `GET /models/{id}` → {id, name, color, meta, points, stale, stale_reason, source_lost, version, …}; 404.
-  * `PUT /models/{id}` {name?, model?, exp_key?, color?, fit?, back?} → {id, name}; 404; 409; 423.
+  * `PUT /models/{id}` {expected_version, name?, model?, exp_key?, color?, fit?, back?} → {id, name, version};
+    `expected_version` (required, the `version` of `GET`) not the stored one — 409 `version_conflict` {version};
+    404; 409 `name_taken`; 422 `bad_param {param: "expected_version"}`; 423.
   * `DELETE /models/{id}` → {deleted: id}; 404; 423.
-  * `GET /models/{id}/export?format=json|gslib[&path=]` → {format, filename, text} or, with an absolute `path`
-    (Cyrillic allowed), the file written: {format, path, bytes}; 422 `bad_param` {param: "path" | "format"}.
+  * `GET /models/{id}/export?format=json|gslib` → {format, filename, text}: reading only.
+  * `POST /models/{id}/export` {format?, path, overwrite?} → {format, path, bytes}: the file written. `path` —
+    absolute (Cyrillic allowed), its extension made that of the format (`.json` / `.par`); an existing file without
+    `overwrite: true` — 409 `files_exist` {files: [the file name]}; inside the folder of the project — 422
+    `bad_path` {param: "path"}; 422 `bad_param` {param: "path" | "format" | "overwrite"}.
   * `POST /models/import` {format?, text? | path?} → {format, model}: the working model of the window, not
     stored; a broken file — 422 `bad_file` {line?} with a hint.
 
@@ -125,8 +130,10 @@ def import_model(svc: Svc, body: Payload) -> dict[str, Any]:
     svc.require_current()
     fmt = raw.get("format") or None
     text, path = raw.get("text"), raw.get("path")
-    if (text is None) == (path in (None, "")):
-        raise ms.bad("Не задан файл модели.", "Выберите файл модели вариограммы.", "path" if text is None else "text")
+    if text is not None and path not in (None, ""):
+        raise ms.bad("Задайте что-то одно: текст или путь к файлу.", "Выберите файл модели вариограммы.", "path")
+    if text is None and path in (None, ""):
+        raise ms.bad("Не задан файл модели.", "Выберите файл модели вариограммы.", "path")
     data: Any = text
     if text is None:
         data = _read(path)
@@ -187,17 +194,20 @@ def get_model(svc: Svc, model_id: int) -> dict[str, Any]:
 def put_model(svc: Svc, request: Request, model_id: int, body: Payload) -> dict[str, Any]:
     raw = _body(body)
     project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        now = ms.versioned(conn, model_id)[2]  # 404 first
+    version = ms.clean_version(raw.get("expected_version"))
+    if now != version:  # 409 before the files are staged
+        raise ms.conflict(now)
     model = None if raw.get("model") is None else _model(raw["model"])
     for key in ("color", "fit", "back"):
         getattr(ms, f"clean_{key}")(raw.get(key))
     store = BlobStore(project.folder)
-    with dialect.read_tx(project.engine) as conn:
-        ms.meta_of(conn, model_id)  # 404 before the files are staged
     staged = None if raw.get("exp_key") is None else _stage(store, project.folder, raw["exp_key"])
     try:
         with dialect.write_tx(project.engine) as conn:
-            out = ms.update(conn, store, model_id, name=raw.get("name"), model=model, staged=staged,
-                            color=raw.get("color"), fit=raw.get("fit"), back=raw.get("back"),
+            out = ms.update(conn, store, model_id, expected_version=version, name=raw.get("name"), model=model,
+                            staged=staged, color=raw.get("color"), fit=raw.get("fit"), back=raw.get("back"),
                             has=frozenset(k for k in ("fit", "back") if k in raw))  # fmt: skip
     finally:
         if staged is not None:
@@ -215,22 +225,56 @@ def delete_model(svc: Svc, request: Request, model_id: int) -> dict[str, Any]:
     return {"deleted": model_id}
 
 
-@router.get("/models/{model_id}/export")
-def export_model(svc: Svc, model_id: int, format: str = "json", path: str | None = None) -> dict[str, Any]:  # noqa: A002 — the name of the parameter in the API
+def _export_text(svc: Svc, model_id: int, format: Any) -> tuple[str, str, str, Path]:  # noqa: A002
+    """(format, file name, text, folder of the project) of the export of a model."""
     from . import exchange
 
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
         name, meta = ms.meta_of(conn, model_id)
     try:
-        fmt = str(format).strip().lower()
+        fmt = str(format or "json").strip().lower()
         text = exchange.write_model(meta, fmt)
         filename = exchange.file_name(name, fmt)
     except ValueError as e:
         raise ms.as_api(e) from e
-    if path in (None, ""):
-        return {"format": fmt, "filename": filename, "text": text}
+    return fmt, filename, text, Path(project.folder)
+
+
+def export_target(path: Any, fmt: str, folder: Path, overwrite: bool) -> Path:
+    """The file of a `POST …/export`: absolute, the extension of the format, outside the project, not replaced
+    silently (409 `files_exist` without `overwrite`)."""
+    from . import exchange
+
     target = _target(path)
+    ext = exchange.EXTENSIONS[fmt]
+    if target.suffix.lower() != ext:
+        target = target.with_name(target.name + ext)
+    if target.resolve().is_relative_to(folder.resolve()):
+        raise ms.bad("Нельзя сохранить файл внутрь папки проекта.", "Выберите другую папку, например «Документы».",
+                     "path", code="bad_path")  # fmt: skip
+    if not target.parent.is_dir():
+        raise ms.bad("Папка для файла не найдена.", "Выберите папку заново.", "path")
+    if not overwrite and (target.exists() or target.is_symlink()):
+        raise ApiError(409, "files_exist", f"Файл «{target.name}» уже есть.",
+                       "Подтвердите замену или выберите другое имя файла.", {"files": [target.name]})  # fmt: skip
+    return target
+
+
+@router.get("/models/{model_id}/export")
+def export_model(svc: Svc, model_id: int, format: str = "json") -> dict[str, Any]:  # noqa: A002 — the name in the API
+    fmt, filename, text, _folder = _export_text(svc, model_id, format)
+    return {"format": fmt, "filename": filename, "text": text}
+
+
+@router.post("/models/{model_id}/export")
+def export_model_file(svc: Svc, model_id: int, body: Payload) -> dict[str, Any]:
+    raw = _body(body)
+    overwrite = raw.get("overwrite", False)
+    if not isinstance(overwrite, bool):
+        raise ms.bad("Флаг замены файла задан неверно.", "Повторите сохранение.", "overwrite")
+    fmt, _filename, text, folder = _export_text(svc, model_id, raw.get("format"))
+    target = export_target(raw.get("path"), fmt, folder, overwrite)
     data = text.encode("utf-8")
     _write(target, data)
     return {"format": fmt, "path": str(target), "bytes": len(data)}

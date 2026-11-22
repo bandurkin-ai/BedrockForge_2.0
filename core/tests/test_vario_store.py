@@ -196,8 +196,12 @@ def test_rename_replace_delete(vc) -> None:  # type: ignore[no-untyped-def]
     key, _ = calc(vc.project, vc.set_id, vc.a)
     mid = save(vc, key).json()["id"]
     other = save(vc, key, name="Другая").json()["id"]
-    r = vc.put(f"{GS}/models/{mid}", json={"name": "другая"})
+    r = vc.put(f"{GS}/models/{mid}", json={"name": "другая", "expected_version": 1})
     assert (r.status_code, r.json()["code"]) == (409, "name_taken")
+    r = vc.put(f"{GS}/models/{mid}", json={"name": "Новая"})  # the version is required
+    assert (r.status_code, r.json()["param"]) == (422, "expected_version"), r.text
+    for v in (True, "1", 0):
+        assert vc.put(f"{GS}/models/{mid}", json={"expected_version": v}).json()["param"] == "expected_version"
     model = {
         "type": "correlogram",
         "c0": 0.0,
@@ -209,8 +213,14 @@ def test_rename_replace_delete(vc) -> None:  # type: ignore[no-untyped-def]
     }
     before = vc.get(f"{GS}/models/{mid}").json()
     key2, form2 = calc(vc.project, vc.set_id, vc.a, transform="nscore")
-    r = vc.put(f"{GS}/models/{mid}", json={"name": "Золото", "model": model, "exp_key": key2, "color": "#8A99A8"})
-    assert r.json() == {"id": mid, "name": "Золото"}, r.text
+    body = {"name": "Золото", "model": model, "exp_key": key2, "color": "#8A99A8", "expected_version": 1}
+    r = vc.put(f"{GS}/models/{mid}", json=body)
+    assert r.json() == {"id": mid, "name": "Золото", "version": 2}, r.text
+    r = vc.put(f"{GS}/models/{mid}", json={**body, "name": "Серебро"})  # another window with the version 1
+    assert (r.status_code, r.json()["code"], r.json()["version"]) == (409, "version_conflict", 2), r.text
+    assert r.json()["message"] == "Модель вариограммы изменена в другом окне." and r.json()["hint"]
+    tmp = BlobStore(vc.project.folder).tmp_dir
+    assert not tmp.exists() or not any(tmp.iterdir())  # the conflict is found before the files are staged
     got = vc.get(f"{GS}/models/{mid}").json()
     assert got["meta"]["type"] == "correlogram" and len(got["meta"]["structures"]) == 2
     assert got["meta"]["transform"] == "nscore" and got["points"] == form2 and got["color"] == "#8a99a8"
@@ -219,11 +229,11 @@ def test_rename_replace_delete(vc) -> None:  # type: ignore[no-untyped-def]
         assert set(ms.owned_files(conn, mid)) == {ms.VARIO, ms.NSCORE}
         path = ms.nscore_file(conn, BlobStore(vc.project.folder), mid)
     assert path is not None and path.read_bytes() == ms.nscore_path(vc.project.folder, key2).read_bytes()
-    assert vc.put(f"{GS}/models/{mid}", json={"fit": None}).status_code == 200
+    assert vc.put(f"{GS}/models/{mid}", json={"fit": None, "expected_version": 2}).status_code == 200
     assert vc.delete(f"{GS}/models/{other}").json() == {"deleted": other}
     assert vc.events[-1] == ("geostat.changed", {"kind": "variogram_model", "id": other, "deleted": True})
     assert vc.delete(f"{GS}/models/{other}").status_code == 404
-    assert vc.put(f"{GS}/models/{other}", json={"name": "x"}).json()["code"] == "model_not_found"
+    assert vc.put(f"{GS}/models/{other}", json={"name": "x", "expected_version": 1}).json()["code"] == "model_not_found"
     assert [m["name"] for m in vc.get(GS + "/models").json()["models"]] == ["Золото"]
 
 
@@ -312,18 +322,52 @@ def test_import_and_export_refusals(vc, tmp_path: Path) -> None:  # type: ignore
     assert (r.json()["code"], r.json()["param"]) == ("bad_param", "format")
     for body, param in (({}, "path"), ({"path": "модель.par"}, "path"), ({"text": 5}, "text"),
                         ({"path": str(tmp_path / "нет.par")}, "path"),
-                        ({"text": "1", "path": "/x"}, "text")):  # fmt: skip
+                        ({"text": "1", "path": "/x"}, "path")):  # fmt: skip
         r = vc.post(GS + "/models/import", json=body)
         assert (r.status_code, r.json()["param"]) == (422, param), (body, r.text)
-    for params in (
+    r = vc.post(GS + "/models/import", json={"text": "1", "path": "/x"})
+    assert r.json()["message"] == "Задайте что-то одно: текст или путь к файлу."
+    for body in (
         {"format": "gslib", "path": "модель.par"},
         {"format": "gslib", "path": str(tmp_path / "нет" / "м.par")},
+        {"format": "gslib"},
     ):
-        r = vc.get(f"{GS}/models/{mid}/export", params=params)
+        r = vc.post(f"{GS}/models/{mid}/export", json=body)
         assert (r.status_code, r.json()["code"], r.json()["param"]) == (422, "bad_param", "path"), r.text
+    r = vc.post(f"{GS}/models/{mid}/export", json={"format": "csv", "path": str(tmp_path / "м.csv")})
+    assert (r.json()["code"], r.json()["param"]) == ("bad_param", "format")
+    r = vc.post(f"{GS}/models/{mid}/export", json={"path": str(tmp_path / "м.json"), "overwrite": "да"})
+    assert (r.json()["code"], r.json()["param"]) == ("bad_param", "overwrite")
     r = vc.get(f"{GS}/models/{mid}/export", params={"format": "csv"})
     assert (r.json()["code"], r.json()["param"]) == ("bad_param", "format")
     assert vc.get(f"{GS}/models/{mid + 9}/export").json()["code"] == "model_not_found"
+    assert vc.post(f"{GS}/models/{mid + 9}/export", json={"path": str(tmp_path / "м.json")}).status_code == 404
+    inside = Path(vc.project.folder) / "модель.json"  # the folder of the project is not a place for a file
+    r = vc.post(f"{GS}/models/{mid}/export", json={"path": str(inside)})
+    assert (r.status_code, r.json()["code"], r.json()["param"]) == (422, "bad_path", "path"), r.text
+    assert not inside.exists()
+
+
+def test_export_writes_by_post_with_the_extension_and_asks_to_replace(vc, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    key, _ = calc(vc.project, vc.set_id, vc.a)
+    mid = save(vc, key).json()["id"]
+    out = tmp_path / "выгрузка"
+    out.mkdir()
+    r = vc.post(f"{GS}/models/{mid}/export", json={"format": "gslib", "path": str(out / "модель.txt")})
+    target = out / "модель.txt.par"  # the extension of the format, whatever the name had
+    assert r.status_code == 200 and r.json() == {"format": "gslib", "path": str(target),
+                                                 "bytes": target.stat().st_size}, r.text  # fmt: skip
+    r = vc.post(f"{GS}/models/{mid}/export", json={"path": str(out / "модель")})
+    assert r.json()["path"] == str(out / "модель.json") and (out / "модель.json").is_file()
+    (out / "модель.json").write_text("чужой файл", "utf-8")
+    r = vc.post(f"{GS}/models/{mid}/export", json={"path": str(out / "модель.json")})
+    assert (r.status_code, r.json()["code"], r.json()["files"]) == (409, "files_exist", ["модель.json"])
+    assert r.json()["hint"] and (out / "модель.json").read_text("utf-8") == "чужой файл"  # not replaced silently
+    r = vc.post(f"{GS}/models/{mid}/export", json={"path": str(out / "модель.json"), "overwrite": True})
+    assert r.status_code == 200 and json.loads((out / "модель.json").read_text("utf-8"))["kind"] == "variogram_model"
+    got = vc.get(f"{GS}/models/{mid}/export", params={"path": str(out / "x.json")}).json()
+    assert set(got) == {"format", "filename", "text"}  # GET reads only: a `path` is not a write
+    assert not (out / "x.json").exists()
 
 
 def test_read_only_project_is_423(vc) -> None:  # type: ignore[no-untyped-def]
@@ -331,7 +375,7 @@ def test_read_only_project_is_423(vc) -> None:  # type: ignore[no-untyped-def]
     mid = save(vc, key).json()["id"]
     vc.project.read_only = True  # opened in another window (ТЗ 5.7)
     try:
-        for r in (save(vc, key, name="Ещё"), vc.put(f"{GS}/models/{mid}", json={"name": "Ещё"}),
+        for r in (save(vc, key, name="Ещё"), vc.put(f"{GS}/models/{mid}", json={"name": "Ещё", "expected_version": 1}),
                   vc.delete(f"{GS}/models/{mid}")):  # fmt: skip
             assert (r.status_code, r.json()["code"]) == (423, "project_read_only") and r.json()["hint"], r.text
         assert vc.get(f"{GS}/models/{mid}").status_code == 200  # reading, export and import go on
@@ -384,7 +428,7 @@ def test_gslib_to_a_path_with_cyrillic(vc, tmp_path: Path) -> None:  # type: ign
     folder = tmp_path / "Модели вариограмм" / "Месторождение «Северное»"
     folder.mkdir(parents=True)
     target = folder / "Золото · Пробы.par"
-    r = vc.get(f"{GS}/models/{mid}/export", params={"format": "gslib", "path": str(target)})
+    r = vc.post(f"{GS}/models/{mid}/export", json={"format": "gslib", "path": str(target)})
     assert r.status_code == 200, r.text
     raw = target.read_bytes()
     assert r.json() == {"format": "gslib", "path": str(target), "bytes": len(raw)}
@@ -394,7 +438,7 @@ def test_gslib_to_a_path_with_cyrillic(vc, tmp_path: Path) -> None:  # type: ign
     back = vc.post(GS + "/models/import", json={"format": "gslib", "path": str(target)}).json()["model"]
     stored = vc.get(f"{GS}/models/{mid}").json()["meta"]
     assert back["c0"] == stored["c0"] and back["structures"] == stored["structures"]
-    again = vc.get(f"{GS}/models/{mid}/export", params={"format": "json", "path": str(folder / "м.json")})
+    again = vc.post(f"{GS}/models/{mid}/export", json={"format": "json", "path": str(folder / "м.json")})
     assert again.status_code == 200 and json.loads((folder / "м.json").read_text("utf-8"))["source"]["field"] == "AU"
 
 
@@ -416,10 +460,13 @@ def test_store_on_the_database(db_url: str, tmp_path: Path) -> None:
         assert first["name"] == "AU · Пробы" and second["name"] == "Вторая"
         with dialect.write_tx(engine) as conn:
             with pytest.raises(Exception) as e:
-                ms.update(conn, store, second["id"], name="au · пробы")
+                ms.update(conn, store, second["id"], expected_version=1, name="au · пробы")
             assert getattr(e.value, "code", None) == "name_taken"
         with dialect.write_tx(engine) as conn:
-            ms.update(conn, store, second["id"], name="Третья", color="#1B222B")
+            ms.update(conn, store, second["id"], expected_version=1, name="Третья", color="#1B222B")
+            with pytest.raises(Exception) as e:  # the version 1 again: another window
+                ms.update(conn, store, second["id"], expected_version=1, name="Четвёртая")
+            assert getattr(e.value, "code", None) == "version_conflict"
         with dialect.read_tx(engine) as conn:
             listed = ms.list_models(conn, set_id)
             got = ms.get(conn, store, first["id"])

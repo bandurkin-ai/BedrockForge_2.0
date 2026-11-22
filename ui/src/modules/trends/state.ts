@@ -38,6 +38,8 @@ export interface TrendValues {
 export interface TrendEdit {
   /** the trend edited; null — a new one */
   trendId: number | null;
+  /** the version of that trend read or saved (`expected_version` of `trend.save`); absent — unknown */
+  version?: number | null;
   values: TrendValues;
   /** of the stored trend (a new one — manual, or «из эллипсоида» of a variogram window) */
   origin: TrendOrigin;
@@ -218,6 +220,7 @@ export function saveArgs(e: TrendEdit): { args: Record<string, unknown> } | { pa
   const args: Record<string, unknown> = { kind: "global", size: s.size, color: s.color };
   if (s.name) args.name = s.name;
   if (e.trendId !== null) args.trend_id = e.trendId;
+  if (e.trendId !== null && typeof e.version === "number") args.expected_version = e.version;
   if (s.centre) args.centre = s.centre.map(numText).join("; ");
   else if (e.trendId !== null) args.centre = ""; // emptied: the centre of the view
   if (e.fromModel && e.trendId === null) return { args: { ...args, model_id: e.fromModel.model_id, structure: e.fromModel.structure } };

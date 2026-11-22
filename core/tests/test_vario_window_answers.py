@@ -2,7 +2,9 @@
 решение 23; e16-api.md): `job.result` of `variography.experimental` (axes; directions with normal scores), the
 failure of a job (`job.error`), `POST /preview` with and without `sampled`, the refusal of the preview (422 with
 `counts`); for 16.24–16.25 — `job.result` of `variography.map` (fan, rose, map), `POST /fit` (with `fix`), `/back`
-(normal scores), `/curve`, the models (create, list, read, replace, 409, export, import, `bad_file`, stale, delete)
+(normal scores), `/curve`, the models (create, list, read, replace with `expected_version`, 409
+`name_taken` and `version_conflict`, export — `GET` the text, `POST` the file, 409 `files_exist`, import, `bad_file`,
+stale, delete)
 and `job.result` of «Перестроить» — all through the real routes and jobs in a `spawn` worker. The file
 `tests/data/variography/window_answers.json` is read by vitest (`ui/test/variography-window.test.ts`,
 `ui/test/variogram-chart.test.ts`, `ui/test/variography-drag.test.ts`, `ui/test/variography-views.test.ts`).
@@ -172,12 +174,17 @@ def models_part(c: Any, base: dict[str, Any], tmp: Path) -> dict[str, Any]:
     created = answer(c.post(GS + "/models", json=save_body))
     second = answer(c.post(GS + "/models", json={**save_body, "fit": None}))
     taken = answer(c.post(GS + "/models", json={**save_body, "name": created["name"]}), 409)
-    renamed = answer(c.put(f"{GS}/models/{second['id']}", json={"name": "Вторая", "color": "#f46a1a"}))
+    put_body = {"name": "Вторая", "color": "#f46a1a", "expected_version": version_of(c, second["id"])}
+    renamed = answer(c.put(f"{GS}/models/{second['id']}", json=put_body))
+    conflict = answer(c.put(f"{GS}/models/{second['id']}", json={**put_body, "name": "Третья"}), 409)
     read = answer(c.get(f"{GS}/models/{created['id']}"))
     exp_json = answer(c.get(f"{GS}/models/{created['id']}/export?format=json"))
     exp_gslib = answer(c.get(f"{GS}/models/{created['id']}/export?format=gslib"))
     target = tmp / "модель.par"
-    exp_path = answer(c.get(f"{GS}/models/{created['id']}/export", params={"format": "gslib", "path": str(target)}))
+    exp_body = {"format": "gslib", "path": str(target)}
+    exp_path = answer(c.post(f"{GS}/models/{created['id']}/export", json=exp_body))
+    exp_exists = answer(c.post(f"{GS}/models/{created['id']}/export", json=exp_body), 409)
+    exp_replaced = answer(c.post(f"{GS}/models/{created['id']}/export", json={**exp_body, "overwrite": True}))
     imp_json = answer(c.post(GS + "/models/import", json={"text": exp_json["text"]}))
     imp_gslib = answer(c.post(GS + "/models/import", json={"format": "gslib", "text": exp_gslib["text"]}))
     imp_path = answer(c.post(GS + "/models/import", json={"path": str(target)}))
@@ -203,11 +210,16 @@ def models_part(c: Any, base: dict[str, Any], tmp: Path) -> dict[str, Any]:
         "job_nscore_axes": nc["result"], "fit_nscore": nfit, "back": back, "back_refused": back_refused,
         "curve": curve, "curve_directions": curve_dirs, "job_map": mj["result"],
         "model_created": created, "model_second": second, "model_taken": taken, "model_renamed": renamed,
-        "model_read": read, "export_json": exp_json, "export_gslib": exp_gslib, "export_path": exp_path,
+        "model_conflict": conflict, "model_read": read, "export_json": exp_json, "export_gslib": exp_gslib,
+        "export_path": exp_path, "export_exists": exp_exists, "export_replaced": exp_replaced,
         "import_json": imp_json, "import_gslib": imp_gslib, "import_path": imp_path, "import_bad": imp_bad,
         "model_deleted": deleted, "models_stale": stale, "job_rebuild": rebuilt["result"], "models_rebuilt": after,
         "turns": turns,
     }  # fmt: skip
+
+
+def version_of(c: Any, model_id: int) -> int:
+    return int(c.get(f"{GS}/models/{model_id}").json()["version"])
 
 
 HEX = set("0123456789abcdef")
@@ -301,6 +313,11 @@ def check_models_part(stored: dict[str, Any]) -> None:
     assert stored["curve_directions"]["directions"][0]["axis"] is None
     assert stored["model_second"]["name"] == stored["model_created"]["name"] + " (2)"
     assert stored["model_taken"]["status"] == 409 and stored["model_taken"]["body"]["code"] == "name_taken"
+    assert stored["model_renamed"]["version"] == 2
+    assert stored["model_conflict"]["body"]["code"] == "version_conflict" and stored["model_conflict"]["body"]["hint"]
+    assert stored["model_conflict"]["body"]["version"] == 2
+    assert stored["export_exists"]["status"] == 409 and stored["export_exists"]["body"]["code"] == "files_exist"
+    assert stored["export_replaced"]["bytes"] == stored["export_path"]["bytes"]
     assert stored["import_bad"]["body"]["code"] == "bad_file" and stored["import_bad"]["body"]["line"] == 3
     assert stored["import_gslib"]["model"] == stored["import_json"]["model"] == stored["fit"]["model"]
     row = stored["models_stale"]["models"][0]
