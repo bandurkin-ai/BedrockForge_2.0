@@ -11,8 +11,10 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from .routes_trend import router as trends_router
+from .variogram.routes import router as calc_router
 from .variogram.routes_model import router as models_router
 
 router = APIRouter(prefix="/geostat")
 router.include_router(models_router)
 router.include_router(trends_router)
+router.include_router(calc_router)
