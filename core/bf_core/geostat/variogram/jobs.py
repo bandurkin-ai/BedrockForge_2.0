@@ -96,8 +96,8 @@ def inputs_of(conn: sa.Connection, data: sp.Data) -> dict[str, Any]:
             "trajectories": store.trajectories_key(conn, data.set_id)}  # fmt: skip
 
 
-def key_of(spec: sp.ExperimentalSpec, inputs: dict[str, Any]) -> str:
-    """SHA-256 (64 hex) of the algorithm, the canonical resolved body and the inputs."""
+def key_of(spec: sp.ExperimentalSpec | sp.MapSpec, inputs: dict[str, Any]) -> str:
+    """SHA-256 (64 hex) of the algorithm, the canonical resolved body (with its `op`) and the inputs."""
     payload = {"algo": ALGO, "params": spec.hash_params(), "inputs": inputs}
     text = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -232,18 +232,19 @@ def _cached(folder: Path, key: str, spec: sp.ExperimentalSpec) -> dict[str, Any]
 class _Clock:
     """Seconds of the stages from the messages of the ticks (`STAGE_KEYS`)."""
 
-    def __init__(self, tick: Tick) -> None:
+    def __init__(self, tick: Tick, keys: dict[str, str] | None = None, at: dict[str, float] | None = None) -> None:
         self.tick, self.t0, self.at = tick, time.perf_counter(), time.perf_counter()
+        self.keys, self.starts = STAGE_KEYS if keys is None else keys, AT if at is None else at
         self.stage: str | None = None
         self.took: dict[str, float] = {}
 
     def __call__(self, progress: float | None = None, message: str | None = None) -> None:
-        key = STAGE_KEYS.get(message or "")
+        key = self.keys.get(message or "")
         if key is not None and key != self.stage:
             self.close()
             self.stage = key
-            if progress is None and key in AT:
-                progress = AT[key]
+            if progress is None and key in self.starts:
+                progress = self.starts[key]
         self.tick(progress, message)
 
     def close(self) -> None:
