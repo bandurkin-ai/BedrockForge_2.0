@@ -12,7 +12,12 @@
   * `POST /models/import` {format?, text? | path?} → {format, model}: the working model of the window, not
     stored; a broken file — 422 `bad_file` {line?} with a hint.
 
-Every write publishes `geostat.changed {kind: "variogram_model", id, deleted?}`. «Перестроить» (`/rebuild`) — 16.15.
+  * `POST /models/{id}/rebuild` → {source, id} of the job `variography.rebuild` (`jobs_map.py`, 16.15): the points
+    on the current data with the parameters of the calc; the model is not changed, `fit.residual` and `back`
+    follow the new points. 409 `source_lost`; 404; 423; 422 `not_ready` (the job not in this build).
+
+Every write publishes `geostat.changed {kind: "variogram_model", id, deleted?}` (the rebuild — through the result of
+its job, `events`). `exp_key` of a record of the map (`variography.map`) — 422 `bad_param {param: "exp_key"}`.
 Plain `def` routes run in the thread pool.
 """
 
@@ -27,6 +32,8 @@ from fastapi import APIRouter, Body, Depends, Query, Request
 
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
+from bf_core.jobs.scheduler import Scheduler
+from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 from bf_core.storage.blobs import BlobStore
@@ -35,6 +42,8 @@ from . import store as ms  # `exchange` (numpy) is imported in the handlers: not
 
 router = APIRouter(prefix="/variography")
 Svc = Annotated[ProjectService, Depends(projects)]
+Sched = Annotated[Scheduler, Depends(jobs)]
+KIND_REBUILD = "variography.rebuild"  # = jobs_map.KIND_REBUILD
 Payload = Annotated[Any, Body()]
 EVENT = "geostat.changed"
 IMPORT_MAX = 1 << 20  # bytes of a model file read by `import` (a GSLIB block or a JSON of a model is < 64 КБ)
@@ -64,6 +73,16 @@ def _model(raw: Any, param: str = "model") -> tuple[str, dict[str, Any]]:
         raise ms.as_api(e) from e
 
 
+def _stage(store: BlobStore, folder: Path, key: Any) -> ms.Staged:
+    """The files of the calc `key` for a model; a record of the map is not a calc of the axes."""
+    staged = ms.stage(store, folder, key)
+    if not isinstance(staged.record["result"].get("directions"), list):
+        staged.discard()
+        raise ms.bad("Ключ — расчёт веера или карты, а не вариограмм по осям.",
+                     "Сохраните модель из расчёта вариограмм по осям.", "exp_key")  # fmt: skip
+    return staged
+
+
 def _author() -> str | None:
     from bf_core.drillholes.edit import author
 
@@ -86,7 +105,7 @@ def create_model(svc: Svc, request: Request, body: Payload) -> dict[str, Any]:
     for key in ("color", "fit", "back"):  # refused before the files are staged
         getattr(ms, f"clean_{key}")(raw.get(key))
     store = BlobStore(project.folder)
-    staged = ms.stage(store, project.folder, raw.get("exp_key"))
+    staged = _stage(store, project.folder, raw.get("exp_key"))
     try:
         with dialect.write_tx(project.engine) as conn:
             out = ms.create(conn, store, staged, model, name=raw.get("name"), color=raw.get("color"),
@@ -174,7 +193,7 @@ def put_model(svc: Svc, request: Request, model_id: int, body: Payload) -> dict[
     store = BlobStore(project.folder)
     with dialect.read_tx(project.engine) as conn:
         ms.meta_of(conn, model_id)  # 404 before the files are staged
-    staged = None if raw.get("exp_key") is None else ms.stage(store, project.folder, raw["exp_key"])
+    staged = None if raw.get("exp_key") is None else _stage(store, project.folder, raw["exp_key"])
     try:
         with dialect.write_tx(project.engine) as conn:
             out = ms.update(conn, store, model_id, name=raw.get("name"), model=model, staged=staged,
@@ -215,3 +234,25 @@ def export_model(svc: Svc, model_id: int, format: str = "json", path: str | None
     data = text.encode("utf-8")
     _write(target, data)
     return {"format": fmt, "path": str(target), "bytes": len(data)}
+
+
+@router.post("/models/{model_id}/rebuild")
+def rebuild_model(svc: Svc, s: Sched, model_id: int) -> dict[str, Any]:
+    from bf_core.jobs.registry import KINDS as REGISTERED
+    from bf_core.stats import source
+
+    from . import jobs_map
+    from . import spec as sp
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        name, meta = ms.meta_of(conn, model_id)
+        body = jobs_map.rebuild_body(conn, meta)
+        spec = sp.parse_experimental(conn, body)
+        rows = next((t.rows for t in source.tables(conn, spec.data.set_id) if t.id == spec.data.table_id), 0)
+    if KIND_REBUILD not in REGISTERED:
+        raise ApiError(422, "not_ready", "«Перестроить» ещё не подключено в этой сборке.", "Обновите программу.")
+    params = {"model_id": model_id, "rows": int(rows), "dirs": 3 if spec.axes is not None else len(spec.directions),
+              "nlag": max(spec.lags.nlag, spec.dh.nlag)}  # fmt: skip
+    key, job_id = s.submit(KIND_REBUILD, params, title=f"Перестроить модель: {name}")
+    return {"source": key, "id": job_id}

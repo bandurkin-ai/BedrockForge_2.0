@@ -51,7 +51,9 @@ outside_domain + used`. Опорная точка — центр охвата т
 ## `GET /variography/defaults?set_id&table&field[&domain_table&domain_field&domain_values&weights&transform]`
 
 `domain_values` — через `;` (пустые части отбрасываются); `domain_table` нет — поле той же таблицы; `weights` нет —
-DECL_W при наличии, `weights=` (пусто) — без весов. Синхронно, в слоте HEAVY. Ответ:
+DECL_W при наличии, `weights=` (пусто) — без весов, `weights=DECL_W` / имя — это поле (сверено с 16.21: «без
+весов» — `weights=`, DECL_W — параметр опущен; `false` текстом — имя поля, 422 `field_not_found`). Синхронно, в
+слоте HEAVY. Ответ:
 
 ```json
 {"set_id": 3, "table": "12", "table_name": "Композиты", "field": "AU", "unit": "г/т",
@@ -175,8 +177,15 @@ DECL_W при наличии, `weights=` (пусто) — без весов. С�
 ```
 
 `plane` — оси плоскости a1, a2, нормаль a3 (по умолчанию горизонтальная). `what` — `fan` (с розой) и / или `map`
-(по умолчанию оба). Стадии: «Чтение таблицы», «Траектории», «Нормальные оценки», «Пары: веер», «Пары: карта»,
-«Запись». Итог:
+(по умолчанию оба). Стадии: «Чтение таблицы», «Траектории», «Нормальные оценки» (только `nscore`), «Пары: веер»,
+«Пары: карта» (только заказанные), «Запись»; доля хода — по числу проверок пар. Отмена — между полосами ядер; запись
+последней, целиком или ничего. Ключ — как у `experimental` (`op: "map"`; тот же набор параметров расчёта осей — другой
+ключ); задан `lag` — ключ известен до чтения таблицы, повтор её не читает. Запись кеша — `<key>.json` (без
+`.sums`, `.nscore`); ключ карты в `/fit` и `exp_key` моделей — 422 `bad_param {param: "key" | "exp_key"}`. Итог
+(`job.result`) — форма ниже и ещё `set_id`, `table`, `field`, `unit`, `transform` (как у формы расчёта), `fresh`,
+`stages {read, trajectories, nscore?, fan?, map?, write, total}`. Замер (Linux, 4 потока, 200 704 композита 2 м на
+1024 скважинах, L = 20 м, 15 лагов, веер 12, карта 41 × 41, слой 2L): выборка 99–108 тыс., read 0,4 с, trajectories
+0,1–0,6 с, fan 5,9–6,2 с, map 1,6–1,7 с, всего 8,3–8,7 с (горизонтальная и повёрнутая плоскость). Итог:
 
 ```json
 {"key": "…", "plane": {"ang1": 0, "ang2": 0, "ang3": 0}, "sigma2": 1.84, "sigma2_z": 1.84, "origin": [x, y, z],
@@ -215,7 +224,8 @@ DECL_W при наличии, `weights=` (пусто) — без весов. С�
 закреплённых параметров (`c0`, `structures.N.c`, `structures.N.a1…a3`); `fix_nugget` — то же, что `c0` в `fix`.
 Начальный C0 — экстраполяция первых трёх лагов вдоль скважин (≥ 0), если `c0` не закреплён.
 
-Ответ: `{model, residual, n, starts: 8, warnings: [..]}` — `model` той же формы (структуры по возрастанию a1),
+Ответ: `{model, residual, n, starts: 8, warnings: [..], order, fixed}` — `model` той же формы (структуры по
+возрастанию a1; `order` — их места в запросе, `fixed` — пути закреплённых в ответе),
 `residual` — взвешенная сумма квадратов, `n` — число точек; предупреждения: «дальность на границе 2·h_max», «точек
 меньше, чем неизвестных», «ось без точек». Ошибки: 422 `bad_param {param: "model.…" | "weights" | "fix"}`,
 `too_few_points`.
@@ -233,7 +243,10 @@ DECL_W при наличии, `weights=` (пусто) — без весов. С�
 
 ## `POST /variography/back` — обратное преобразование (Эрмит), синхронно
 
-`{key, model}` — `key` расчёта с `transform: "nscore"` (иначе 422 `bad_param {param: "key"}`), `model` в единицах Y.
+`{key, model, ltail?, utail?, ltpar?, utpar?}` — `key` расчёта с `transform: "nscore"` (иначе 422 `bad_param
+{param: "key"}`; нет записи — 404 `result_not_found`), `model` в единицах Y (`nscore` / `semivariogram` /
+`correlogram`; `pairwise` — 422 `{param: "model.type"}`); хвосты — как `backtr` (по умолчанию `linear`). Таблица
+нормальных оценок — из `<key>.nscore.parquet` (та же, что у `points.load`).
 Ответ: `{model (единицы Z), share, warning: null | "…", residual, curves: [{axis, h [], gamma_z [], gamma_fit []}]}`;
 `share` — Σφ_n² / Var(Z), < 0,95 — `warning`.
 
@@ -241,7 +254,10 @@ DECL_W при наличии, `weights=` (пусто) — без весов. С�
 
 `{model, directions?: [{az, plunge}], h?: [..], h_max?, n?: 100}` — без `directions` — три оси модели (первой
 структуры); без `h` — `n` расстояний от 0 до `h_max` (по умолчанию 1,5 × наибольшей дальности). Ответ:
-`{directions: [{axis?, az, plunge, h [], gamma [], cov []}]}` (cov = C0 + Σc − γ; γ(0) = 0).
+`{directions: [{axis, az, plunge, h [], gamma [], cov []}]}` (cov = C0 + Σc − γ; γ(0) = 0). `axis` — 1, 2, 3 у осей
+модели, `null` у заданных направлений; оси модели без структур — углов 0. `h` — 1–10 000 чисел ≥ 0; `n` — целое
+2–1000; `h` нет — `n` точек от 0 до `h_max` включительно; модель без структур без `h_max` — 422 `bad_param {param:
+"h_max"}`. Ошибки — 422 `bad_param {param: "h" | "n" | "h_max" | "directions" | "directions.N.az" | "model.…"}`.
 
 ## Модели вариограмм — `objects(kind = "variogram_model")` (16.13: `geostat/variogram/{store, routes_model}.py`)
 
@@ -262,9 +278,13 @@ DECL_W при наличии, `weights=` (пусто) — без весов. С�
   поля; `exp_key` — новые точки и источник (`fit`, `back` не сбрасываются, если не заданы; `fit: null` — сброс);
   `version` + 1; 404; 409; 422; 423.
 - `DELETE /variography/models/{id}` → `{deleted: id}`; 404; 423.
-- `POST /variography/models/{id}/rebuild` → `{source, id}` задания «Перестроить» (16.15; точки на текущих данных с
-  прежними параметрами; параметры модели не меняются, невязка пересчитывается); источник удалён — 409
-  `source_lost`.
+- `POST /variography/models/{id}/rebuild` → `{source, id}` задания `variography.rebuild` «Перестроить» (16.15;
+  точки на текущих данных с прежними параметрами `meta.calc.params`, таблицы — по id, затем по имени; параметры
+  модели не меняются; `fit.residual`, `fit.n` пересчитываются по новым точкам с прежним правилом весов (N / γ² — с
+  γ самой модели), `back` — по новой таблице нормальных оценок без `curves`, если был); источник удалён — 409
+  `source_lost`; 404 `model_not_found`; 423. Стадии — как у `experimental`. Итог: `{model_id, key, fresh, stages,
+  fit, back, events: [["geostat.changed", {kind: "variogram_model", id}]]}`; модель — новые `exp_key`, `points`,
+  `stale: false`, `version` + 1.
 - `GET /variography/models/{id}/export?format=json|gslib[&path=]` → без `path`: `{format, filename, text}`
   (`filename` — имя модели без запрещённых Windows знаков + `.json` / `.par`); с `path` (абсолютный, кириллица
   допустима) — файл записан байтами UTF-8 (GSLIB — ASCII, «\n» и в Windows): `{format, path, bytes}`; путь не
