@@ -31,8 +31,7 @@ from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 from bf_core.storage.blobs import BlobStore
 
-from . import exchange
-from . import store as ms
+from . import store as ms  # `exchange` (numpy) is imported in the handlers: nothing heavy before BF-READY
 
 router = APIRouter(prefix="/variography")
 Svc = Annotated[ProjectService, Depends(projects)]
@@ -56,6 +55,8 @@ def _publish(request: Request, model_id: int, deleted: bool = False) -> None:
 
 def _model(raw: Any, param: str = "model") -> tuple[str, dict[str, Any]]:
     """(type, the canonical model of the API) of a request; `bad_param {param: "model.structures.1.a2"}`."""
+    from . import exchange
+
     try:
         kind, model = exchange.api_model(raw, param)
         return kind, exchange.model_form(kind, model)
@@ -99,6 +100,8 @@ def create_model(svc: Svc, request: Request, body: Payload) -> dict[str, Any]:
 @router.post("/models/import")
 def import_model(svc: Svc, body: Payload) -> dict[str, Any]:
     """The model of a file (JSON or GSLIB) for the window; nothing is stored."""
+    from . import exchange
+
     raw = _body(body)
     svc.require_current()
     fmt = raw.get("format") or None
@@ -195,6 +198,8 @@ def delete_model(svc: Svc, request: Request, model_id: int) -> dict[str, Any]:
 
 @router.get("/models/{model_id}/export")
 def export_model(svc: Svc, model_id: int, format: str = "json", path: str | None = None) -> dict[str, Any]:  # noqa: A002 — the name of the parameter in the API
+    from . import exchange
+
     project = svc.require_current()
     with dialect.read_tx(project.engine) as conn:
         name, meta = ms.meta_of(conn, model_id)

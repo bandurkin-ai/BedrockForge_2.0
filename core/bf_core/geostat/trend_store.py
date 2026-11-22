@@ -18,7 +18,7 @@ Errors: 404 `trend_not_found`; 409 `name_taken` {param: "name"}, `in_use` {usage
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 
@@ -26,8 +26,10 @@ from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.db.schema import object_refs, objects
 
-from . import trend as tr
 from .variogram import store as ms
+
+if TYPE_CHECKING:
+    from . import trend as tr  # numpy: imported in the functions (nothing heavy before BF-READY)
 
 KIND = "trend"
 ROLE = "trend"  # the role of `object_refs` of a consumer (Э18, Э19)
@@ -104,6 +106,8 @@ def _origin_given(raw: Any) -> dict[str, Any] | None:
 
 
 def _of_model(conn: sa.Connection, model_id: Any, structure: Any) -> tuple[tr.Shape, float, dict[str, Any], str]:
+    from . import trend as tr
+
     if isinstance(model_id, bool) or not isinstance(model_id, int):
         raise ApiError(422, "bad_param", "Номер модели задан неверно.", "Выберите модель вариограммы из списка.",
                        {"param": "model_id"})  # fmt: skip
@@ -116,6 +120,8 @@ def _of_model(conn: sa.Connection, model_id: Any, structure: Any) -> tuple[tr.Sh
 
 def _fields(conn: sa.Connection, raw: Mapping[str, Any], old: Mapping[str, Any] | None) -> tuple[dict[str, Any], str]:
     """The `meta` of a trend of a request (over `old` of a `PUT`) and the default name."""
+    from . import trend as tr
+
     base = dict(old or {})
     tr.check_kind(raw.get("kind", base.get("kind")))
     default = DEFAULT_NAME
@@ -220,6 +226,8 @@ def _used(conn: sa.Connection) -> set[int]:
 
 
 def _form(row: Any, models: set[int], used: set[int]) -> dict[str, Any]:
+    from . import trend as tr
+
     meta = row.meta or {}
     s = tr.shape(meta.get("ang1"), meta.get("ang2", 0.0), meta.get("ang3", 0.0), meta.get("ratios"))
     origin = dict(meta.get("origin") or {"type": "manual"})
@@ -244,5 +252,7 @@ def get(conn: sa.Connection, trend_id: int) -> dict[str, Any]:
 
 def matrix_of(conn: sa.Connection, trend_id: int) -> Any:
     """A = `trend.matrix` of a stored trend (Э18, Э19 take it here); 404 `trend_not_found`."""
+    from . import trend as tr
+
     meta = _row(conn, trend_id).meta or {}
     return tr.matrix(meta)
