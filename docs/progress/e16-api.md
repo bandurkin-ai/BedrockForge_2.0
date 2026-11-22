@@ -266,16 +266,32 @@ Points.inputs, calc: {params, sampled}}`; `cache/variography/<key>.nscore.parque
 (value, score, weight; роль `nscore` модели). `.bfggis`: `geostat/remap.py` перенумеровывает `source.set_id`,
 `source.table`, `source.domain.table`, `inputs.tables[].id` (нет в архиве — `null`).
 
-## Тренды — `objects(kind = "trend")`
+## Тренды — `objects(kind = "trend")` (16.16: `geostat/{trend, trend_store, routes_trend}.py`)
 
-- `GET /trends` → `{trends: [{id, name, kind, ang1, ang2, ang3, ratios, size, centre, color, origin, used}]}`.
-- `POST /trends` `{name?, kind: "global", ang1, ang2, ang3, ratios?: [1, r2, r3], size?, centre?, color?,
-  model_id?, structure?}` → `{id, name}`. С `model_id` — копия углов и отношений структуры (по умолчанию — с
-  наибольшей a1), `origin {type: "model", model_id, structure}`; без — `origin {type: "manual"}` (или
-  `"ellipsoid"`, если задан `origin`). `ratios` — [1, a2 / a1, a3 / a1], каждое > 0, первое — 1; `kind: "structural"` — 422 `not_ready`.
-- `PUT /trends/{id}` — те же поля; `DELETE /trends/{id}` → `{deleted: id}`, есть ссылки — 409 `in_use {usage}`.
-- `GET /trends/{id}/usage` → `{usage: [{id, kind, name, role: "trend"}]}`. Матрица A = diag(1, a1/a2, a1/a3)·R —
-  только ядро (`trend.matrix`), в ответах — `matrix [[..],[..],[..]]` у `GET /trends`.
+- Тренд — форма: `{id, name, kind: "global", ang1, ang2, ang3, ratios: [1, r2, r3], size, centre: [x, y, z] | null,
+  color, origin, used: bool, matrix: [[..],[..],[..]], version, created_at, updated_at}`; углы — нормализованные
+  (`rotation.normalize_angles`), `matrix` = A = diag(1, 1/r2, 1/r3)·R (`trend.matrix`, единственный источник A).
+- `GET /trends` → `{trends: [форма]}` (по имени); `GET /trends/{id}` → форма; 404 `trend_not_found`.
+- `POST /trends` `{name?, kind?: "global", ang1, ang2? = 0, ang3? = 0, ratios? = [1, 1, 1], size? = 100, centre?,
+  color? = "#f46a1a", origin?: {type: "manual" | "ellipsoid"}, model_id?, structure?}` → `{id, name}`. Числа — число
+  или «0,5». С `model_id` — копия углов и `[1, a2/a1, a3/a1]` структуры `structure` (с 1; по умолчанию — с
+  наибольшей a1, из равных первая), `size` = её a1 (если не задан), `origin {type: "model", model_id, structure}`,
+  имя по умолчанию «Тренд · ‹модель›»; углы и `ratios` тела при `model_id` не читаются. Без имени — «Тренд», занятое —
+  « (2)»; заданное занятое — 409 `name_taken`. `ratios` — три числа, первое ровно 1, остальные > 0 и ≤ 10⁶; `size`
+  > 0 и ≤ 10⁷ м. `kind: "structural"` — 422 `not_ready {param: "kind"}`; `structure` без `model_id` — 422.
+- `PUT /trends/{id}` — заданные поля заменяют хранимые (прочие остаются, `origin` не меняется без `model_id` /
+  `origin`); `{model_id, structure?}` — «Обновить из модели» (копия заново, имя остаётся). Правка модели тренд не
+  меняет; модель удалена — тренд остаётся, в ответе `origin.model_id: null`.
+- `DELETE /trends/{id}` → `{deleted: id}`; есть ссылки — 409 `in_use {usage}` (текст называет до 5 потребителей).
+- `GET /trends/{id}/usage` → `{usage: [{id, kind, name, role}]}` — строки `object_refs(dst_id = тренд)` (потребители
+  Э18–Э19 пишут `role: "trend"`; любая роль запрещает удаление), по имени.
+- Ошибки `bad_param {param}`: `kind`, `ang1`–`ang3`, `ratios`, `ratios.0`–`.2`, `size`, `centre`, `centre.0`–`.2`,
+  `color`, `origin`, `model_id`, `structure`; модель не найдена — 404 `model_not_found`. Запись — 423 в проекте
+  «только просмотр»; событие `geostat.changed {kind: "trend", id, deleted?}`.
+- Ключ вида `ellipsoids` — `[{object, visible}]` (id модели вариограммы или тренда, `visible` по умолчанию true,
+  повтор — первый, ≤ 50 последних); входит в сохранённые виды; удалённые объекты забываются при чтении. `.bfggis`:
+  `geostat/remap.py` перенумеровывает `origin.model_id` (нет в архиве — null), ключ `ellipsoids` и ссылки
+  `object_refs` — общим механизмом.
 
 ## Вкладка «Статистика» (`/api/v1/stats/tab/*`, 16.17; формы — перенос BF `routers/stats.py`)
 
