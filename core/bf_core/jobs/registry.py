@@ -42,6 +42,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "bf_core.composites.ore_conditions_job",
     "bf_core.intercepts.jobs",
     "bf_core.intercepts.jobs_run",
+    "bf_core.geostat.variogram.jobs",
     "bf_core.qaqc.jobs",
 )
 
