@@ -464,3 +464,43 @@ def test_calculate_samples_above_the_limit():
     assert digest_map(a.map) != digest_map(c.map) and c.sampled["seed"] == 7
     assert a.map.n[8, 8] >= n_new and a.map.n_points == n_new  # the self-pairs of the sample
     assert a.to_json()["warnings"] and a.to_json()["sampled"] == a.sampled
+
+
+# ---- the warm-up (16.5) ------------------------------------------------------------------------------------
+def test_nothing_compiles_after_the_warm_up():
+    """`geostat/variogram/warm.py` runs every kernel of the variography with the dtypes of the jobs and of the
+    tab: the calls after it — on writable and read-only columns — compile nothing, one specialization a kernel."""
+    import sys
+
+    from numba.core.registry import CPUDispatcher
+
+    from bf_core.geostat.variogram import downhole
+    from bf_core.geostat.variogram.warm import PARTS, frozen, warm
+
+    def compiled() -> dict[str, int]:
+        return {f"{name}.{key}": len(f.signatures) for name, mod in list(sys.modules.items())
+                if name.startswith("bf_core.geostat.") for key, f in list(vars(mod).items())
+                if isinstance(f, CPUDispatcher)}  # fmt: skip
+
+    took = warm()
+    assert set(took) == set(PARTS)
+    before = compiled()
+    for kernel in ("pairs._cell_checks", "pairs._strip", "downhole._holes", "fan._rays_strip", "varmap._map_strip"):
+        assert before[f"bf_core.geostat.variogram.{kernel}"] == 1, kernel
+    for wrap in (np.asarray, frozen):
+        x, y, z, v = (wrap(a) for a in cloud(800, seed=30))
+        p = points_of(wrap(np.stack([x, y, z], axis=1)), wrap(v))
+        p = Points(**{**p.__dict__, "hole": wrap(np.repeat(np.arange(80, dtype=np.int32), 10)),
+                      "depth": wrap(np.tile(np.arange(10) * 2.0, 80))})  # fmt: skip
+        ex.calculate(p, ex.axes(30.0, -10.0, 0.0, 22.5, 22.5, 30.0, 20.0), 10.0, 12, threads=4)
+        ex.calculate(p, ex.axes(0.0), 10.0, 12, limit=1e5)
+        downhole.calculate(p, 2.0, 10, threads=4)
+        vm.calculate(p, map_spec(), threads=4)
+        vm.calculate(p, map_spec(), limit=1e5)
+        ex.experimental(x, y, None, v, [pairs.Direction(45.0 * k, 0.0, 22.5, 90.0) for k in range(4)], 10.0, 10)
+        vm.varmap(x, y, None, v, 10.0, nu=5, nv=5)
+        vm.varmap(x, y, None, v, 10.0, nu=5, nv=5, rule="trunc", min_pairs=2)
+        fn.fan(x, y, z, v, 10.0, 8, plane=(10.0, 0.0, 0.0), n=6, tol=45.0, dip_tol=90.0)
+    after = compiled()
+    grown = {k: (before.get(k, 0), n) for k, n in after.items() if n > before.get(k, 0)}
+    assert not grown, grown
