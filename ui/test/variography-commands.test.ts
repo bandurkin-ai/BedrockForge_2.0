@@ -120,14 +120,11 @@ describe("registry", () => {
     expect(commands.filter((c) => c.uiOnly).map((c) => c.id)).toEqual(["variography.models"]);
     for (const c of commands) {
       expect(app.registry.get(c.id), c.id).toBeDefined();
-      expect(c.stage).toBe(["variography.ellipsoid", "variography.show"].includes(c.id) ? "Э16" : undefined);
+      expect(c.stage).toBeUndefined();
       expect(c.title).toMatch(/[А-Яа-яЁё]/);
       expect(c.description).toMatch(/[А-Яа-яЁё]/);
     }
-    // the scene binds these two (16.19) and removes their stage
-    const bound = commands.filter((c) => app.registry.get(c.id)?.run).map((c) => c.id);
-    expect(bound).not.toContain("variography.ellipsoid");
-    expect(bound).toHaveLength(8);
+    expect(commands.filter((c) => app.registry.get(c.id)?.run)).toHaveLength(10);
   });
 
   it("the buttons of «Геостатистика → Вариография» run registry commands", () => {
