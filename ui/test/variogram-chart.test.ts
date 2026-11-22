@@ -2,7 +2,8 @@
 // null — is never drawn as 0; «few» hollow; sized and labelled by N), the model curve of `model.ts`, the variance
 // and sill lines; the rose of ranges (a ray without a range breaks the outline); the variogram map (an empty cell is
 // not painted — never the colour of zero). The curves are the real answer of the core (`window_answers.json`), read
-// by `readCalc`; the rose and the map — of the form of e16-api.md until 16.10.
+// by `readCalc`; the rose and the map — the real `job.result` of `variography.map` (16.25). The plan is seen from
+// above: a1 up, a2 to the LEFT (west at zero angles), θ counter-clockwise from a1 (the mirror of the plane, 16.4–16.5).
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createElement } from "react";
@@ -18,6 +19,7 @@ import {
   curveDirection,
   curvesCsv,
   expPoints,
+  mapColor,
   mapCsv,
   mapDomain,
   measureValues,
@@ -35,6 +37,7 @@ import {
   varianceLevel,
 } from "../src/charts/variogram/scale";
 import { readCalc } from "../src/modules/variography/api";
+import { readMapCalc, roseWithWorld } from "../src/modules/variography/mapCalc";
 import { axisOf, direction, gammaAlong, type VModel } from "../src/modules/variography/model";
 
 // the real `job.result` of `variography.experimental` (core/tests/test_vario_window_answers.py): axis 1 — lags 1–2
@@ -153,48 +156,51 @@ describe("VariogramChart", () => {
   });
 });
 
-describe("rose of ranges", () => {
-  const ROSE = readRose({
-    q: 1.0,
-    level: 1.84,
-    rays: [
-      { theta: 0, range: 85, beyond: false },
-      { theta: 45, range: 60, beyond: false },
-      { theta: 90, range: null, beyond: true },
-      { theta: 135, range: 50, beyond: false },
-    ],
-  })!;
+describe("rose of ranges (the real answer of /map)", () => {
+  const MAPCALC = readMapCalc(ANSWERS.job_map);
+  const ROSE = roseWithWorld(MAPCALC)!;
 
   it("reads the answer; the outline is broken at a ray without a range, closed over all", () => {
     expect(readRose(null)).toBeNull();
-    expect(ROSE.rays[2]).toEqual({ theta: 90, range: null, beyond: true });
+    expect(ROSE.q).toBe(0.75);
+    expect(ROSE.rays.map((r) => r.theta)).toEqual([0, 30, 60, 90, 120, 150]);
+    expect(ROSE.rays.filter((r) => r.range === null).map((r) => [r.theta, r.beyond])).toEqual([[90, true], [120, true]]);
+    // the labels are the world az of the ray of the fan: θ 30° → Аз 330° (a2 — west)
+    expect(ROSE.rays.map((r) => r.az)).toEqual([0, 330, 300, 270, 240, 210]);
     const { runs, closed } = roseRuns(ROSE.rays);
     expect(closed).toBe(false);
-    // 0, 45 | 135, 180, 225 | 315 — the run through 360° joins the first
-    expect(runs.map((r) => r.map((v) => v.theta))).toEqual([[315, 0, 45], [135, 180, 225]]);
+    // 0, 30, 60 | 150 … 240 | 330 — the run through 360° joins the first
+    expect(runs.map((r) => r.map((v) => v.theta))).toEqual([[330, 0, 30, 60], [150, 180, 210, 240]]);
     const all = roseRuns(ROSE.rays.map((r) => ({ ...r, range: 10, beyond: false })));
     expect(all.closed).toBe(true);
     expect(all.runs).toHaveLength(1);
-    expect(all.runs[0]).toHaveLength(8);
+    expect(all.runs[0]).toHaveLength(12);
   });
 
-  it("theta: a1 up, a2 right; the nearest ray mod 180°", () => {
+  it("theta: a1 up, a2 LEFT, counter-clockwise; the nearest ray mod 180°", () => {
     expect(polar(0, 1).map((v) => Number(v.toFixed(12)) + 0)).toEqual([0, -1]);
-    expect(polar(90, 1).map((v) => Number(v.toFixed(12)) + 0)).toEqual([1, 0]);
-    expect(thetaOf(1, 0)).toBeCloseTo(90, 12);
+    expect(polar(90, 1).map((v) => Number(v.toFixed(12)) + 0)).toEqual([-1, 0]);
+    expect(polar(30, 2).map((v) => Number(v.toFixed(12)) + 0)).toEqual([-1, -Number((2 * Math.cos(Math.PI / 6)).toFixed(12))]);
+    expect(thetaOf(-1, 0)).toBeCloseTo(90, 12);
     expect(thetaOf(0, 1)).toBeCloseTo(0, 12);
-    expect(thetaOf(1, -1)).toBeCloseTo(45, 12);
+    expect(thetaOf(-1, -1)).toBeCloseTo(45, 12);
+    expect(thetaOf(1, -1)).toBeCloseTo(135, 12);
+    // a ray drawn at θ points to the world direction of the fan: θ 90° — west, to the left on the screen
+    const west = MAPCALC.fan!.find((d) => d.theta === 90)!;
+    expect(direction(west.az, west.plunge).map((v) => Number(v.toFixed(12)) + 0)).toEqual([-1, 0, 0]);
     expect(nearestRay(ROSE.rays, 170)?.theta).toBe(0);
-    expect(nearestRay(ROSE.rays, 120)?.theta).toBe(135);
+    expect(nearestRay(ROSE.rays, 140)?.theta).toBe(150);
   });
 
-  it("draws the reached rays as points, the others as dashed spokes; nothing reached — a message", () => {
-    const html = render(createElement(RoseChart, { rose: ROSE, hMax: 100, selected: 45 }));
-    expect(count(html, /<circle data-ray=/g)).toBe(6);
-    expect(count(html, /data-beyond=/g)).toBe(2);
+  it("draws the reached rays as points, the others as dashed spokes; world labels; nothing reached — a message", () => {
+    const html = render(createElement(RoseChart, { rose: ROSE, hMax: 60, selected: 30, axes: { a1: "Аз 0° · Пог 0°", a2: "Аз 270° · Пог 0°" } }));
+    expect(count(html, /<circle data-ray=/g)).toBe(8);
+    expect(count(html, /data-beyond=/g)).toBe(4);
     expect(html).toContain('data-runs="2"');
-    expect(html).toContain('data-selected="45"');
-    expect(html).toContain("достигнут: 3 из 4");
+    expect(html).toContain('data-selected="30"');
+    expect(html).toContain("достигнут: 4 из 6");
+    expect(html).toContain("a1 · Аз 0° · Пог 0°");
+    expect(html).toContain("Аз 270° · Пог 0°");
     const none = render(createElement(RoseChart, { rose: { q: 1, level: 1.84, rays: [{ theta: 0, range: null, beyond: true }] } }));
     expect(none).toContain('data-empty="rose"');
     expect(none).not.toContain("<polygon");
@@ -202,7 +208,8 @@ describe("rose of ranges", () => {
 });
 
 describe("variogram map", () => {
-  // 3 × 3 cells (nu = nv = 1, cell 10): the centre is empty, one cell γ = 0 (a real zero)
+  const REAL = readMapCalc(ANSWERS.job_map).map!;
+  // 3 × 3 cells (nu = nv = 1, cell 10): the centre is empty, one cell γ = 0 (a real zero); not symmetric in v alone
   const MAP = readVarMap({
     nu: 1, nv: 1, cell: 10, thickness: "inf", min_pairs: 5,
     u: [-10, 0, 10], v: [-10, 0, 10],
@@ -210,8 +217,18 @@ describe("variogram map", () => {
     n: [[7, 9, 6], [8, 2, 8], [6, 9, 7]],
   })!;
 
-  it("reads the answer: ∞ thickness — null, null cells stay null", () => {
+  it("reads the real answer: 9 × 9 cells, N < min_pairs — empty (null), never 0", () => {
     expect(readVarMap(null)).toBeNull();
+    expect([REAL.nu, REAL.nv, REAL.cell, REAL.thickness, REAL.min_pairs]).toEqual([4, 4, 10, 20, 2]);
+    expect(REAL.u).toEqual([-40, -30, -20, -10, 0, 10, 20, 30, 40]);
+    const cells = REAL.gamma.flatMap((row, j) => row.map((g, i) => [g, REAL.n[j][i]] as const));
+    expect(cells).toHaveLength(81);
+    expect(cells.every(([g, n]) => (g === null) === (n < REAL.min_pairs))).toBe(true);
+    expect(cells.some(([g]) => g === null)).toBe(true);
+    expect(mapDomain(REAL, null)!.max).toBe(Math.max(...cells.flatMap(([g]) => (g === null ? [] : [g]))));
+  });
+
+  it("reads the answer: ∞ thickness — null, null cells stay null", () => {
     expect(MAP.thickness).toBeNull();
     expect(MAP.gamma[1][1]).toBeNull();
     expect(MAP.gamma[0][1]).toBe(0);
@@ -222,18 +239,31 @@ describe("variogram map", () => {
     expect(cellAt(MAP, 16, 0)).toBeNull();
   });
 
-  it("the raster: an empty cell is not painted; a zero has the colour of zero", () => {
+  it("the raster: u (a1) up, v (a2) to the LEFT; an empty cell is not painted; a zero has the colour of zero", () => {
     const w = 30;
     const buf = new Uint32Array(w * w);
     expect(rasterMap(buf, w, w, MAP, mapDomain(MAP, null))).toBe(8);
     const px = (x: number, y: number) => buf[y * w + x];
-    // the centre (u = 0, v = 0)
-    expect(px(15, 15)).toBe(0);
-    // u along a1 up, v along a2 right: gamma[j = 1 (v = 0)][i = 0 (u = −10)] = 0.5 is at the bottom middle
+    expect(px(15, 15)).toBe(0); // the centre: empty
+    // gamma[j = 0 (v = −10: right)][i = 2 (u = 10: top)] = 2 — top right; gamma[j = 2 (v = 10: left)][i = 2] = 1 — top left
+    expect(px(25, 5)).toBe(rgba32(rampColor(1)));
+    expect(px(5, 5)).toBe(rgba32(rampColor(0.5)));
+    // gamma[j = 1 (v = 0)][i = 0 (u = −10)] = 0.5 — bottom middle; gamma[j = 0 (v = −10)][i = 1 (u = 0)] = 0 — right middle
     expect(px(15, 25)).toBe(rgba32(rampColor(0.25)));
-    // gamma[j = 0 (v = −10)][i = 1 (u = 0)] = 0 — left middle: the colour of zero, not transparent
-    expect(px(5, 15)).toBe(rgba32(rampColor(0)));
-    expect(px(5, 15)).not.toBe(0);
+    expect(px(25, 15)).toBe(rgba32(rampColor(0)));
+    expect(px(25, 15)).not.toBe(0);
+    // the real map: the cell of (u, v) lands at x = (v_max − v)·k, y = (u_max − u)·k
+    const W = 90;
+    const real = new Uint32Array(W * W);
+    const dom = mapDomain(REAL, null);
+    expect(rasterMap(real, W, W, REAL, dom)).toBe(REAL.gamma.flat().filter((g) => g !== null).length);
+    // the extent −45…45 m on 90 px: 1 px a metre; the centre of a cell (u, v) is at x = 45 − v, y = 45 − u
+    REAL.gamma.forEach((row, j) =>
+      row.forEach((g, i) => {
+        const at = real[(45 - REAL.u[i]) * W + (45 - REAL.v[j])];
+        expect(at).toBe(g === null ? 0 : rgba32(mapColor(g, dom)!));
+      }),
+    );
     // all empty — nothing painted
     const none = { ...MAP, gamma: MAP.gamma.map((r) => r.map(() => null)) };
     buf.fill(0);
@@ -241,14 +271,15 @@ describe("variogram map", () => {
     expect(buf.every((v) => v === 0)).toBe(true);
   });
 
-  it("the chart: counts, hatching for the empty, the colour bar with σ²; all empty — a message", () => {
-    const html = render(createElement(VarMapChart, { map: MAP, sigma2: 1.84, selected: 30 }));
-    expect(html).toContain('data-cells="9" data-empty="1"');
+  it("the chart: counts, hatching for the empty, the colour bar with σ², world titles; all empty — a message", () => {
+    const html = render(createElement(VarMapChart, { map: REAL, sigma2: ANSWERS.job_map.sigma2, selected: 30, axes: { a1: "Аз 0°", a2: "Аз 270°" } }));
+    expect(html).toContain(`data-cells="81" data-empty="${REAL.gamma.flat().filter((g) => g === null).length}"`);
     expect(html).toContain("data-empty-fill");
     expect(html).toContain("data-colorbar");
-    expect(html).toContain('data-sigma2="1.84"');
+    expect(html).toContain(`data-sigma2="${ANSWERS.job_map.sigma2}"`);
     expect(html).toContain("пусто");
     expect(html).toContain('data-selected="30"');
+    expect(html).toContain("a2 · Аз 270°");
     const none = render(createElement(VarMapChart, { map: { ...MAP, gamma: MAP.gamma.map((r) => r.map(() => null)) }, sigma2: null }));
     expect(none).toContain("Во всех ячейках меньше 5 пар");
     expect(none).not.toContain("data-colorbar");

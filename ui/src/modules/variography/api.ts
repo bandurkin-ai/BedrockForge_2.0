@@ -6,9 +6,10 @@
  *   the median length, `defaults` and `ranges` of the form (`domain_values` joined by «;»).
  * - `POST /experimental`, `POST /map` → `{source, id}` (jobs, queue `heavy`); the result of the job — the form of
  *   the calculation (`readCalc`); `POST /preview` — the same form synchronously (`key: null`, `sampled`).
- * - `POST /fit {key, type, model, weights, fix, fix_nugget}` → `{model, residual, n, starts, warnings}`;
- *   `POST /back {key, model}`; `POST /curve {model, directions?, h?, h_max?, n?}`.
- * - models: `GET /models[?set_id]`, `POST /models {name?, model, exp_key, color?}`, `GET / PUT / DELETE
+ * - `POST /fit {key, type, model, weights, fix, fix_nugget}` → `{model, residual, n, starts, warnings, order, fixed}`;
+ *   `POST /back {key, model, ltail?, utail?, ltpar?, utpar?}` → `{model, share, warning, residual, curves}`;
+ *   `POST /curve {model, directions?, h?, h_max?, n?}` → `{directions: [{axis, az, plunge, h, gamma, cov}]}`.
+ * - models: `GET /models[?set_id]`, `POST /models {name?, model, exp_key, color?, fit?, back?}`, `GET / PUT / DELETE
  *   /models/{id}`, `POST /models/{id}/rebuild`, `GET /models/{id}/export?format[&path]`, `POST /models/import`.
  *
  * An undefined number of an answer stays `null` (a lag without pairs, σ = 0) — never 0.
@@ -256,47 +257,72 @@ export interface FitBody {
 }
 
 export interface FitAnswer {
+  /** the structures ascending by a1 */
   model: VModel;
   residual: number | null;
   n: number | null;
   starts: number | null;
   warnings: string[];
+  /** the place of each answered structure in the request */
+  order: number[];
+  /** the paths fixed in the answer (renumbered by `order`) */
+  fixed: string[];
 }
 
-export async function fitModel(body: FitBody): Promise<FitAnswer> {
-  const r = obj(await api.post(`${VARIO_API}/fit`, body));
-  return { model: readModel(r.model), residual: numOrNull(r.residual), n: numOrNull(r.n), starts: numOrNull(r.starts), warnings: Array.isArray(r.warnings) ? r.warnings.filter((w): w is string => typeof w === "string") : [] };
+const texts = (v: unknown): string[] => (Array.isArray(v) ? v.filter((w): w is string => typeof w === "string") : []);
+
+export function readFit(raw: unknown): FitAnswer {
+  const r = obj(raw);
+  return { model: readModel(r.model), residual: numOrNull(r.residual), n: numOrNull(r.n), starts: numOrNull(r.starts), warnings: texts(r.warnings), order: ints(r.order), fixed: texts(r.fixed) };
 }
+
+export const fitModel = async (body: FitBody): Promise<FitAnswer> => readFit(await api.post(`${VARIO_API}/fit`, body));
 
 export interface BackAnswer {
+  /** the model of Z */
   model: VModel;
+  /** Σφ_n² / Var(Z); < 0,95 — `warning` */
   share: number | null;
   warning: string | null;
   residual: number | null;
   curves: { axis: number; h: (number | null)[]; gamma_z: (number | null)[]; gamma_fit: (number | null)[] }[];
+  /** the answer as it came (`back` of the save) */
+  raw: Record<string, unknown>;
 }
 
-export async function backTransform(key: string, model: Record<string, unknown>): Promise<BackAnswer> {
-  const r = obj(await api.post(`${VARIO_API}/back`, { key, model }));
+export function readBack(raw: unknown): BackAnswer {
+  const r = obj(raw);
   const curves = (Array.isArray(r.curves) ? r.curves : []).map((c) => {
     const o = obj(c);
     return { axis: Number(o.axis ?? 0), h: nums(o.h), gamma_z: nums(o.gamma_z), gamma_fit: nums(o.gamma_fit) };
   });
-  return { model: readModel(r.model), share: numOrNull(r.share), warning: str(r.warning), residual: numOrNull(r.residual), curves };
+  return { model: readModel(r.model), share: numOrNull(r.share), warning: str(r.warning), residual: numOrNull(r.residual), curves, raw: r };
 }
+
+/** The tails of the back-transform (`backtr`; `stats.transforms.check_tails`): absent — linear. */
+export interface Tails {
+  ltail?: "linear" | "power" | null;
+  utail?: "linear" | "power" | "hyperbolic" | null;
+  ltpar?: number;
+  utpar?: number;
+}
+
+export const backTransform = async (key: string, model: Record<string, unknown>, tails: Tails = {}): Promise<BackAnswer> => readBack(await api.post(`${VARIO_API}/back`, { key, model, ...tails }));
 
 export interface CurveAnswer {
   directions: { axis: number | null; az: number; plunge: number; h: (number | null)[]; gamma: (number | null)[]; cov: (number | null)[] }[];
 }
 
-export async function modelCurve(body: { model: Record<string, unknown>; directions?: { az: number; plunge: number }[]; h?: number[]; h_max?: number; n?: number }): Promise<CurveAnswer> {
-  const r = obj(await api.post(`${VARIO_API}/curve`, body));
+export function readCurveAnswer(raw: unknown): CurveAnswer {
+  const r = obj(raw);
   const directions = (Array.isArray(r.directions) ? r.directions : []).map((d) => {
     const o = obj(d);
     return { axis: numOrNull(o.axis), az: Number(o.az ?? 0), plunge: Number(o.plunge ?? 0), h: nums(o.h), gamma: nums(o.gamma), cov: nums(o.cov) };
   });
   return { directions };
 }
+
+export const modelCurve = async (body: { model: Record<string, unknown>; directions?: { az: number; plunge: number }[]; h?: number[]; h_max?: number; n?: number }): Promise<CurveAnswer> => readCurveAnswer(await api.post(`${VARIO_API}/curve`, body));
 
 // ---- stored models ----
 
@@ -381,6 +407,10 @@ export interface SaveBody {
   model: Record<string, unknown>;
   exp_key: string;
   color?: string;
+  /** `{weights, residual, n, fixed}` of the fit; null (PUT) — reset */
+  fit?: { weights: FitWeights; residual: number | null; n: number | null; fixed: string[] } | null;
+  /** the answer of `/back`; null (PUT) — reset */
+  back?: Record<string, unknown> | null;
 }
 
 export const saveModel = (body: SaveBody): Promise<{ id: number; name: string }> => api.post(`${VARIO_API}/models`, body);
@@ -397,8 +427,8 @@ export function exportModel(id: number, format: ExchangeFormat, path?: string): 
   return api.get(`${VARIO_API}/models/${id}/export?${q.toString()}`);
 }
 
-/** The working model of a file or a text (not stored); 422 `bad_file {line?}`. */
-export async function importModel(body: { format: ExchangeFormat; text?: string; path?: string }): Promise<VModel> {
+/** The working model of a file or a text (not stored; no `format` — by the content); 422 `bad_file {line?}`. */
+export async function importModel(body: { format?: ExchangeFormat; text?: string; path?: string }): Promise<VModel> {
   return readModel(obj(await api.post(`${VARIO_API}/models/import`, body)).model);
 }
 

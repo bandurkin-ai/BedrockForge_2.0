@@ -23,3 +23,9 @@
 .emptyRow { color: var(--text-faint); text-align: center !important; white-space: normal !important; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .grow { flex: 1; min-width: 0; }
+/* the drag handles of the charts (16.24): Cobalt, under the cursor / dragged — Copper Orange (as the ellipsoid handles) */
+.handle { stroke: var(--accent); stroke-width: 1.5; fill: var(--accent); cursor: grab; }
+.handle line { stroke-dasharray: 5 3; fill: none; }
+.handleHit { stroke: transparent !important; stroke-width: 12; fill: transparent !important; }
+.handleOn { stroke: var(--highlight); fill: var(--highlight); cursor: grabbing; }
+.handleOn line { stroke-dasharray: none; }

@@ -114,8 +114,8 @@ async function answer(ok: boolean): Promise<string> {
 }
 
 describe("registry", () => {
-  it("has the ten commands `variography.*` of ADR 0022 §13: confirm — the delete, uiOnly — the models", () => {
-    expect(commands.map((c) => c.id)).toEqual(["variography.open", "variography.models", "variography.calc", "variography.fit", "variography.ellipsoid", "variography.show", "variography.save", "variography.delete", "variography.export", "variography.import"]);
+  it("has the ten commands `variography.*` of ADR 0022 §13 and «Перестроить» (16.25): confirm — the delete, uiOnly — the models", () => {
+    expect(commands.map((c) => c.id)).toEqual(["variography.open", "variography.models", "variography.calc", "variography.fit", "variography.ellipsoid", "variography.show", "variography.save", "variography.delete", "variography.rebuild", "variography.export", "variography.import"]);
     expect(commands.filter((c) => c.confirm).map((c) => c.id)).toEqual(["variography.delete"]);
     expect(commands.filter((c) => c.uiOnly).map((c) => c.id)).toEqual(["variography.models"]);
     for (const c of commands) {
@@ -124,7 +124,7 @@ describe("registry", () => {
       expect(c.title).toMatch(/[А-Яа-яЁё]/);
       expect(c.description).toMatch(/[А-Яа-яЁё]/);
     }
-    expect(commands.filter((c) => app.registry.get(c.id)?.run)).toHaveLength(10);
+    expect(commands.filter((c) => app.registry.get(c.id)?.run)).toHaveLength(11);
   });
 
   it("the buttons of «Геостатистика → Вариография» run registry commands", () => {

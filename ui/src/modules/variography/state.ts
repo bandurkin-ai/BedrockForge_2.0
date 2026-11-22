@@ -8,7 +8,8 @@
  */
 import { Store } from "../../shell/store";
 import { parseNumber } from "../composites/params";
-import type { CalcResult, DataBody, DefaultsAnswer, ModelRow } from "./api";
+import type { CalcResult, DataBody, DefaultsAnswer, FitWeights, ModelRow } from "./api";
+import type { MapCalc } from "./mapCalc";
 import { EMPTY_MODEL, type Structure, type VModel } from "./model";
 
 // ---- the data ----
@@ -292,6 +293,26 @@ export interface Work {
   dirty: boolean;
   /** the ellipsoid of the model in the main 3D (Д-14); absent — not shown */
   ellipsoid?: EllipsoidShow;
+  /** the weights of «Подобрать» (N / h̄ by default) */
+  fitWeights?: FitWeights;
+  /** the fit the model came from (`fit` of the save); an edit of the model drops it — its residual is of another model */
+  fitInfo?: FitInfo | null;
+  /** the answer of `/back` for the model (normal scores; `back` of the save); an edit drops it */
+  back?: Record<string, unknown> | null;
+  /** `job.result` of `variography.map` (the fan, the rose, the map) and the body (JSON) it was computed by */
+  mapCalc?: MapCalc | null;
+  mapFor?: string | null;
+  /** the format of «Экспорт» of the window */
+  exchangeFormat?: "json" | "gslib";
+}
+
+/** `fit` of a stored model: the answer of `/fit` (e16-api.md «Модели вариограмм»). */
+export interface FitInfo {
+  weights: FitWeights;
+  residual: number | null;
+  n: number | null;
+  fixed: string[];
+  warnings?: string[];
 }
 
 /** The ellipsoid of a window in 3D: shown, the structure with the handles (null — of the largest a1), the centre. */
@@ -324,8 +345,8 @@ export function setWork(win: string, patch: Partial<Work> | ((w: Work) => Partia
   return next;
 }
 
-/** The model of the table changed (a cell, a drag, a fit): the window is «dirty». */
-export const setModel = (win: string, model: VModel): Work => setWork(win, { model, dirty: true });
+/** The model of the table changed by hand (a cell, a drag): the window is «dirty», the fit and the back-transform of the old model are dropped. */
+export const setModel = (win: string, model: VModel): Work => setWork(win, { model, dirty: true, fitInfo: null, back: null });
 
 export function dropWork(win: string): void {
   variographyStore.set((s) => {

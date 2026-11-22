@@ -17,13 +17,17 @@ import { focusWindow, setCloseGuard, updateWindow, windowStore, type FloatWin } 
 import { cancelJob, jobsStore, refresh as refreshJobs } from "../jobs/state";
 import { tablesStore } from "../tables/state";
 import { SaveAsTrendButton } from "../trends/TrendWindow";
-import { previewCalc, startExperimental } from "./api";
+import { FIT_WEIGHTS, previewCalc, startExperimental, type ExchangeFormat, type FitWeights } from "./api";
 import { AxisCharts } from "./AxisCharts";
+import { BackPanel } from "./BackPanel";
+import { exportFlow, importFlow } from "./exchange";
+import { FanView } from "./FanView";
+import { MapView, useMapJob } from "./MapView";
 import { VARIO_WINDOW, windowTitle } from "./bind";
 import { axesOf, calcNotes, chartType, countsLine, createRunner, INITIAL_RUNNER, pickShown, readJobCalc, readRefusal, type Refusal, type Runner, type RunnerState } from "./calc";
 import { DataForm } from "./DataForm";
 import { ModelTable } from "./ModelTable";
-import { CALC_KEYS, checkValues, dropWork, experimentalBody, RANGES, setEllipsoid, setModel, setWork, spanText, valuesFromDefaults, variographyStore, VIEWS, workOf, type VarioView, type Work } from "./state";
+import { CALC_KEYS, checkValues, defaultModelName, dropWork, experimentalBody, leastRange, markEdit, RANGES, setDragging, setEllipsoid, setModel, setWork, spanText, valuesFromDefaults, variographyStore, VIEWS, workOf, type FitInfo, type VarioView, type Work } from "./state";
 import own from "./Variography.module.css";
 
 export const VIEW_TITLES: Record<VarioView, string> = { axes: "Оси", downhole: "Вдоль скважин", fan: "Веер", map: "Карта", nscore: "Нормальные оценки" };
@@ -68,10 +72,20 @@ function RefusalView({ r, what }: { r: Refusal; what: string }) {
 
 const JOB_STATUS: Record<string, string> = { queued: "в очереди", running: "идёт" };
 
+/** «Подбор (N / h̄): невязка 39,07 по 14 точкам» and the warnings of the fit. */
+export function fitNotes(f: FitInfo | null | undefined): string[] {
+  if (!f) return [];
+  const res = f.residual === null ? "" : `: невязка ${f.residual.toLocaleString("ru-RU", { maximumSignificantDigits: 4 })}${f.n === null ? "" : ` по ${f.n} точкам`}`;
+  return [`Подбор (веса ${FIT_WEIGHTS[f.weights]})${res}${f.fixed.length ? `; закреплено: ${f.fixed.length}` : ""}`, ...(f.warnings ?? [])];
+}
+
 function useWork(winId: string): Work | null {
   const get = () => variographyStore.get().works[winId] ?? null;
   return useSyncExternalStore(variographyStore.subscribe, get, get);
 }
+
+/** The name of the files of a model of the window: the stored one, else «‹поле› · ‹таблица›». */
+const defaultName = (w: Work): string => variographyStore.get().models.find((m) => m.id === w.modelId)?.name ?? defaultModelName(w);
 
 export function VariographyWindow({ winId }: { winId: string }) {
   const app = useApp();
@@ -82,6 +96,7 @@ export function VariographyWindow({ winId }: { winId: string }) {
   const [jobError, setJobError] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
   const [activeSet] = useState(() => tablesStore.get().setId);
+  const mapJob = useMapJob(winId);
   const runner = useMemo<Runner>(() => createRunner({ preview: previewCalc, start: startExperimental, cancel: cancelJob }, setRun), []);
   useEffect(() => () => runner.stop(), [runner]);
   useEffect(() => {
@@ -138,14 +153,24 @@ export function VariographyWindow({ winId }: { winId: string }) {
     focusWindow(winId); // the commands act on the last active window (or on the window of `model_id`)
     void app.run(id, work.modelId !== null ? { model_id: work.modelId } : {});
   };
+  const dragModel = (m: typeof work.model) => {
+    markEdit();
+    setModel(winId, m);
+  };
+  const fit = () => {
+    focusWindow(winId);
+    void app.run("variography.fit", { ...(work.modelId !== null ? { model_id: work.modelId } : {}), weights: work.fitWeights ?? "n_h" });
+  };
   const ellipsoid = () => (work.modelId !== null ? command("variography.show") : setEllipsoid(winId, { visible: !(work.ellipsoid?.visible ?? false) }));
   const view = VIEWS.includes(work.view) ? work.view : "axes";
   const fileName = `Вариография ${work.data.field ?? ""}`.trim();
   const previewRefused = run.previewError && run.previewFor === cur ? run.previewError : null;
 
+  const runCmd = (id: string, args: Record<string, unknown>) => app.run(id, args);
   let centre: ReactNode;
-  if (view === "fan" || view === "map" || view === "nscore") centre = <p className={own.empty}>Вкладка «{VIEW_TITLES[view]}» готовится — расчёт доступен командой «Рассчитать вариограммы» (what = {view === "nscore" ? "axes с нормальными оценками" : view}).</p>;
-  else if (shown.calc) centre = <AxisCharts calc={shown.calc} model={work.model} type={type} fileName={fileName} downholeOnly={view === "downhole"} />;
+  if (view === "fan") centre = <FanView work={work} winId={winId} job={mapJob} />;
+  else if (view === "map") centre = <MapView work={work} winId={winId} job={mapJob} />;
+  else if (shown.calc) centre = <AxisCharts calc={shown.calc} model={work.model} type={type} fileName={fileName} downholeOnly={view === "downhole"} onModel={dragModel} onDrag={(on) => setDragging(on ? { win: winId, kind: "chart" } : null)} limits={{ minRange: leastRange(work) }} />;
   else centre = <p className={own.empty}>{body ? (run.previewBusy ? "Предпросмотр…" : "Нет расчёта: нажмите «Рассчитать»") : (built?.reason ?? "Задайте данные расчёта")}</p>;
 
   return (
@@ -164,8 +189,14 @@ export function VariographyWindow({ winId }: { winId: string }) {
             ))}
           </div>
           {centre}
+          {view === "nscore" && <BackPanel work={work} winId={winId} />}
           <div className={own.notes} data-testid="variography-notes">
             {shown.calc && <p className={css.note}>{countsLine(shown.calc.counts)}</p>}
+            {fitNotes(work.fitInfo).map((t, i) => (
+              <p key={`fit${i}`} className={i ? css.warn : css.note} data-testid={i ? undefined : "variography-fit"}>
+                {t}
+              </p>
+            ))}
             {shown.calc && shown.kind && calcNotes(shown.calc, shown.kind).map((t) => (
               <p key={t} className={shown.calc?.warnings.includes(t) ? css.warn : css.note}>
                 {t}
@@ -195,7 +226,14 @@ export function VariographyWindow({ winId }: { winId: string }) {
         <button type="button" className={css.primary} data-testid="variography-calc" disabled={!body || busy} onClick={() => void calc()}>
           Рассчитать
         </button>
-        <button type="button" className={css.btn} disabled={!work.expKey} title={work.expKey ? "Подбор по осям последнего расчёта" : "Сначала рассчитайте вариограммы осей"} onClick={() => command("variography.fit")}>
+        <select className={css.input} aria-label="Веса подбора" title="Веса подбора" value={work.fitWeights ?? "n_h"} onChange={(e) => setWork(winId, { fitWeights: e.target.value as FitWeights })}>
+          {(Object.keys(FIT_WEIGHTS) as FitWeights[]).map((k) => (
+            <option key={k} value={k}>
+              {FIT_WEIGHTS[k]}
+            </option>
+          ))}
+        </select>
+        <button type="button" className={css.btn} data-testid="variography-fit-run" disabled={!work.expKey} title={work.expKey ? "Подбор по осям последнего расчёта; закреплённые в таблице параметры не меняются" : "Сначала рассчитайте вариограммы осей"} onClick={fit}>
           Подобрать
         </button>
         <button type="button" className={css.btn} disabled={!work.model.structures.length} onClick={ellipsoid}>
@@ -205,6 +243,16 @@ export function VariographyWindow({ winId }: { winId: string }) {
           Сохранить
         </button>
         <SaveAsTrendButton winId={winId} />
+        <button type="button" className={css.btn} disabled={work.modelId === null || app.registry.reason("variography.export") !== null} title={work.modelId === null ? "Экспорт — у сохранённой модели: сначала «Сохранить»" : "Модель в файл JSON или GSLIB"} onClick={() => void exportFlow(runCmd, work.modelId!, defaultName(work), work.exchangeFormat ?? "json").catch(() => undefined)}>
+          Экспорт
+        </button>
+        <select className={css.input} aria-label="Формат экспорта" value={work.exchangeFormat ?? "json"} onChange={(e) => setWork(winId, { exchangeFormat: e.target.value as ExchangeFormat })}>
+          <option value="json">JSON</option>
+          <option value="gslib">GSLIB</option>
+        </select>
+        <button type="button" className={css.btn} disabled={app.registry.reason("variography.import") !== null} title="Модель из файла JSON или GSLIB — в новое окно" onClick={() => void importFlow(runCmd).catch(() => undefined)}>
+          Импорт
+        </button>
       </div>
     </div>
   );

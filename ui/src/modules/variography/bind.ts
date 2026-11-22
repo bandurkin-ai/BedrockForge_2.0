@@ -9,7 +9,6 @@
  * attached to every scene; a stored model not open is opened in a window first: its handles edit that window).
  */
 import type { App } from "../../shell/app";
-import { CoreError } from "../../shell/api";
 import type { CommandSource } from "../../shell/commands";
 import { askConfirm } from "../../shell/dialogs";
 import { needProject, needWritable, noted, refusal, showJobs, viewport } from "../../shell/objectRun";
@@ -18,14 +17,16 @@ import { setPanel } from "../../shell/workspace";
 import { onScene } from "../scene/sceneHost";
 import { bindTrends } from "../trends/bind";
 import { refresh as refreshJobs } from "../jobs/state";
-import { loadTables, nextName, resolveTable, type Started, type TableRow } from "../composites/api";
-import { deleteModel, exportModel, fitModel, formatOfPath, importModel, loadModel, loadModels, replaceModel, saveModel, startExperimental, startMap, type ExchangeFormat, type FitWeights } from "./api";
-import { modelBody, newStructure, structureType, type StructureType, type VModel } from "./model";
+import { loadTables, resolveTable, type Started, type TableRow } from "../composites/api";
+import { deleteModel, exportModel, formatOfPath, importModel, loadModel, rebuildModel, startExperimental, startMap, type ExchangeFormat, type FitWeights } from "./api";
+import { structureType, type StructureType } from "./model";
+import { fitText, fitWork, refreshModels, saveWork } from "./save";
+import { onCoreEvent } from "../jobs/state";
+import { projectStore } from "../projects/state";
 import {
   checkValue,
   chosenStructure,
   dataFromArgs,
-  defaultModelName,
   ellipsoidCentre,
   experimentalBody,
   forgetModel,
@@ -34,9 +35,9 @@ import {
   newWork,
   setEllipsoid,
   setModel,
-  setModels,
   setWork,
   valuesFromArgs,
+  variographyStore,
   VIEWS,
   windowOfModel,
   withStructure,
@@ -80,8 +81,6 @@ function windowFor(a: Record<string, unknown>): string {
   throw refusal("no_window", "Нет открытого окна «Вариография».", "Откройте окно и рассчитайте вариограммы осей.");
 }
 
-const noResult = () => refusal("no_result", "Сначала рассчитайте вариограммы осей.", "Кнопка «Рассчитать» в окне или команда variography.calc.");
-
 function key(tables: readonly TableRow[], name: string, what: string): string {
   const k = resolveTable(tables, name);
   if (k === null) throw refusal("table_not_found", `${what} «${name}» не найдена среди интервальных таблиц набора.`, "Имена таблиц — в дереве набора скважин.");
@@ -108,19 +107,6 @@ export async function calcBody(a: Record<string, unknown>): Promise<{ what: "axe
   return { what, body: r.body };
 }
 
-/** The model of `fit`: the types of `structures` (by position; new ones nested), or one spherical when there is none. */
-export function fitStart(w: Work, types?: StructureType[]): VModel {
-  const m = w.model;
-  const sigma2 = w.result?.sigma2 ?? w.defaults?.sigma2 ?? null;
-  const lag = Number(w.result?.params.lag ?? w.defaults?.defaults.lag ?? 0);
-  const nlag = Number(w.result?.params.nlag ?? 15);
-  const range = lag > 0 ? (lag * nlag) / 2 : undefined;
-  const want = types ?? (m.structures.length ? m.structures.map((s) => s.type) : ["spherical" as const]);
-  const structures = [...m.structures.slice(0, want.length)];
-  while (structures.length < want.length) structures.push(newStructure({ ...m, structures }, want[structures.length], { sigma2, range }));
-  return { ...m, type: w.data.transform === "nscore" ? "nscore" : m.type, structures: structures.map((s, i) => ({ ...s, type: want[i] })) };
-}
-
 function parseTypes(raw: unknown): StructureType[] | undefined {
   if (typeof raw !== "string" || !raw.trim()) return undefined;
   const list = raw.split(/[,;\s]+/).filter(Boolean);
@@ -134,35 +120,6 @@ const started = async (app: App, what: string, s: Started): Promise<string> => {
   await refreshJobs().catch(() => undefined);
   return `«${what}»: задание №${s.id} поставлено в очередь — ход на вкладке «Задания»`;
 };
-
-export async function refreshModels(): Promise<void> {
-  setModels(await loadModels());
-}
-
-/** `POST` (new; a taken name — the next free one) or `PUT` (the replacement, asked in our own window). */
-export async function saveWork(win: string, name?: string): Promise<{ id: number; name: string } | null> {
-  const w = workOf(win);
-  if (!w) throw refusal("no_window", "Окно «Вариография» закрыто.", "Откройте окно снова.");
-  if (!w.expKey) throw noResult();
-  const body = { model: modelBody(w.model), exp_key: w.expKey };
-  let saved: { id: number; name: string };
-  if (w.modelId !== null) {
-    const ok = await askConfirm({ title: "Заменить модель", message: `Заменить сохранённую модель вариограммы №${w.modelId}${name ? ` («${name}»)` : ""} рабочей моделью окна?`, okLabel: "Заменить", danger: true });
-    if (!ok) return null;
-    saved = await replaceModel(w.modelId, { ...(name ? { name } : {}), ...body });
-  } else {
-    const want = name?.trim() || defaultModelName(w) || undefined;
-    try {
-      saved = await saveModel({ ...(want ? { name: want } : {}), ...body });
-    } catch (e) {
-      if (!(e instanceof CoreError) || e.code !== "name_taken" || !want) throw e;
-      saved = await saveModel({ name: nextName(want), ...body });
-    }
-  }
-  setWork(win, { modelId: saved.id, dirty: false });
-  await refreshModels().catch(() => undefined);
-  return saved;
-}
 
 const modelId = (a: Record<string, unknown>): number => {
   if (typeof a.model_id !== "number") throw refusal("model_not_found", "Не задана модель вариограммы.", "Номер модели — в дереве «Геостатистика → Модели вариограмм».");
@@ -200,6 +157,17 @@ export function ellipsoidPatch(a: Record<string, unknown>): StructurePatch {
 const noStructures = (id: number) => refusal("no_structures", `В модели №${id} нет структур — эллипсоид не построить.`, "Добавьте структуру в таблице модели или подберите модель кнопкой «Подобрать».");
 
 const centreNote = (win: string): string => (ellipsoidCentre(workOf(win)!) ? "" : " — появится, когда окно прочитает данные расчёта (центр — середина охвата точек)");
+
+/** A stored model changed (saved, rebuilt): its window, if it is not edited, takes the new points and their key. */
+export async function reloadPoints(id: number, load: typeof loadModel = loadModel): Promise<boolean> {
+  const win = windowOfModel(id);
+  const w = win ? workOf(win) : null;
+  if (!win || !w || w.dirty) return false;
+  const m = await load(id);
+  if (!m.points?.key || m.points.key === w.expKey) return false;
+  setWork(win, { result: m.points, expKey: m.points.key, dirty: false });
+  return true;
+}
 
 export function bindVariography(app: App): void {
   bindTrends(app); // the trends of «Геостатистика» (Д-15; modules/trends) — until shell/app.ts names them
@@ -239,17 +207,8 @@ export function bindVariography(app: App): void {
   r.bind(
     "variography.fit",
     noted(app, async (a) => {
-      const win = windowFor(a);
-      const w = workOf(win)!;
-      if (!w.expKey) throw noResult();
-      const start = fitStart(w, parseTypes(a.structures));
-      const weights: FitWeights = a.weights === "n" || a.weights === "n_g2" ? a.weights : "n_h";
-      const fixNugget = a.fix_nugget === true;
-      const fix = [...new Set([...w.fix, ...(fixNugget ? ["c0"] : [])])];
-      const got = await fitModel({ key: w.expKey, type: start.type, model: modelBody(start), weights, fix, fix_nugget: fixNugget });
-      setModel(win, got.model);
-      const res = got.residual === null ? "" : `, невязка ${got.residual.toLocaleString("ru-RU", { maximumSignificantDigits: 4 })}`;
-      return `Модель подобрана: структур ${got.model.structures.length}${res}${got.n === null ? "" : `, точек ${got.n}`}${got.warnings.length ? `. ${got.warnings.join(" ")}` : ""}`;
+      const weights: FitWeights | undefined = a.weights === "n" || a.weights === "n_g2" || a.weights === "n_h" ? a.weights : undefined;
+      return fitText(await fitWork(windowFor(a), { types: parseTypes(a.structures), weights, fixNugget: a.fix_nugget === true }));
     }),
     needProject,
   );
@@ -314,6 +273,16 @@ export function bindVariography(app: App): void {
     needWritable(app),
   );
   r.bind(
+    "variography.rebuild",
+    noted(app, async (a) => {
+      const id = modelId(a);
+      const row = variographyStore.get().models.find((m) => m.id === id);
+      if (row?.source_lost) throw refusal("source_lost", `Модель №${id}: источник удалён — перестроить нельзя.`, "Набор или таблица модели удалены; модель остаётся с прежними точками.");
+      return started(app, `Перестроить «${row?.name ?? `модель №${id}`}»`, await rebuildModel(id));
+    }),
+    needWritable(app),
+  );
+  r.bind(
     "variography.export",
     noted(app, async (a) => {
       const id = modelId(a);
@@ -338,6 +307,29 @@ export function bindVariography(app: App): void {
     }),
     needProject,
   );
+  // the models of the project: read when it opens, kept by the events of the core (the tree «Модели вариограмм»)
+  let uid: string | null = null;
+  projectStore.subscribe(() => {
+    const cur = projectStore.get().current?.uid ?? null;
+    if (cur === uid) return;
+    uid = cur;
+    variographyStore.set({ models: [], modelsLoaded: false });
+    if (cur) void refreshModels().catch(() => undefined);
+  });
+  onCoreEvent((event, data) => {
+    if (event !== "geostat.changed") return;
+    let id: number | null = null;
+    try {
+      const d = JSON.parse(data) as { kind?: unknown; id?: unknown; deleted?: unknown };
+      if (d.kind !== "variogram_model") return;
+      id = typeof d.id === "number" ? d.id : null;
+      if (d.deleted === true && id !== null) forgetModel(id);
+    } catch {
+      /* a malformed event: the list is read again */
+    }
+    void refreshModels().catch(() => undefined);
+    if (id !== null) void reloadPoints(id).catch(() => undefined);
+  });
   // the ellipsoids in the main 3D: a lazy chunk with three.js, attached to every new scene
   let detach: (() => void) | null = null;
   let generation = 0;

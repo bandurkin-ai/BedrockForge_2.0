@@ -6,9 +6,11 @@
  * the variogram map (readers of `POST /variography/map`, geometry, colour scale, raster; an empty cell is not
  * drawn — it never takes the colour of zero), CSV. Tested in node.
  *
- * Orientation of the rose and the map (the plane of a1, a2; theta from a1 to a2): a1 points up, a2 to the right —
- * for the horizontal plane with zero angles a1 is north and a2 east, a plan. The map's u (along a1) is therefore
- * the vertical axis and v (along a2) the horizontal one.
+ * Orientation of the rose and the map (the plane of a1, a2; theta from a1 to a2): a plan seen from above — a1 points
+ * up, a2 to the LEFT, theta counter-clockwise from a1: at zero angles a2 is west (−1; 0; 0) and u3 = a1 × a2 points
+ * up (the decision of the orchestrator on the mirror of the plane, 16.4–16.5). The map's u (along a1) is the
+ * vertical axis, v (along a2) the horizontal one growing to the left. The labels are the world az / plunge of the
+ * rays (of the fan of the same answer).
  */
 import { formatNumber, type Domain } from "../core/axisScale";
 import { csvText, type CsvCell } from "../core/csv";
@@ -154,6 +156,9 @@ export const modelSill = (m: VModel | null | undefined): number | null => (m && 
 export interface RoseRay {
   /** the angle in the plane from a1 to a2, ° */
   theta: number;
+  /** the world direction of the ray (of the fan of the same θ); absent — unknown */
+  az?: number;
+  plunge?: number;
   /** the first distance where γ̂ ≥ q·σ²; null — not reached */
   range: number | null;
   /** not reached within h_max («> h_max») */
@@ -183,14 +188,14 @@ export function readRose(raw: unknown): RoseData | null {
 
 export const mod180 = (t: number): number => ((t % 180) + 180) % 180;
 
-/** A point of the plane at the angle theta (a1 up, a2 right) and distance r → screen offset (y down). */
+/** A point of the plane at the angle theta (a1 up, a2 left, counter-clockwise) and distance r → screen offset (y down). */
 export function polar(theta: number, r: number): [number, number] {
   const t = (theta * Math.PI) / 180;
-  return [r * Math.sin(t), -r * Math.cos(t)];
+  return [-r * Math.sin(t) + 0, -r * Math.cos(t) + 0];
 }
 
-/** The angle theta of a screen offset (a1 up, a2 right), 0…180 (a direction has no sign). */
-export const thetaOf = (dx: number, dy: number): number => mod180((Math.atan2(dx, -dy) * 180) / Math.PI);
+/** The angle theta of a screen offset (a1 up, a2 left), 0…180 (a direction has no sign). */
+export const thetaOf = (dx: number, dy: number): number => mod180((Math.atan2(-dx, -dy) * 180) / Math.PI);
 
 export interface RoseVertex {
   theta: number;
@@ -273,7 +278,7 @@ export function readVarMap(raw: unknown): VarMapData | null {
 /** The γ of a cell; out of the grid, empty — null. */
 export const mapCell = (m: VarMapData, i: number, j: number): number | null => m.gamma[j]?.[i] ?? null;
 
-/** The extent of the map: u (vertical) and v (horizontal), the outer edges of the cells. */
+/** The extent of the map: u (vertical, up) and v (horizontal, to the left), the outer edges of the cells. */
 export function mapExtent(m: VarMapData): { u: Domain; v: Domain } | null {
   const fu = m.u.filter(Number.isFinite);
   const fv = m.v.filter(Number.isFinite);
@@ -302,7 +307,7 @@ export function mapColor(v: number | null | undefined, d: Domain | null): string
 export const mapTicks = (d: Domain, count = 5): number[] => niceTicks(d.min, d.max, count).filter((t) => t >= d.min - 1e-12 && t <= d.max + 1e-12);
 
 /**
- * The cells into a raster w × h (Uint32 RGBA, row 0 at the top): u along a1 goes up, v along a2 to the right.
+ * The cells into a raster w × h (Uint32 RGBA, row 0 at the top): u along a1 goes up, v along a2 to the left.
  * An empty cell stays 0 (transparent: the hatching under it shows); the number of painted cells is returned.
  */
 export function rasterMap(buf: Uint32Array, w: number, h: number, m: VarMapData, d: Domain | null): number {
@@ -318,8 +323,8 @@ export function rasterMap(buf: Uint32Array, w: number, h: number, m: VarMapData,
       const col = mapColor(m.gamma[j][i], d);
       const uc = m.u[i];
       if (!col || !Number.isFinite(uc) || !Number.isFinite(vc)) continue;
-      const xa = Math.max(0, Math.round((vc - half - ext.v.min) * kx));
-      const xb = Math.min(w, Math.round((vc + half - ext.v.min) * kx));
+      const xa = Math.max(0, Math.round((ext.v.max - (vc + half)) * kx));
+      const xb = Math.min(w, Math.round((ext.v.max - (vc - half)) * kx));
       const ya = Math.max(0, Math.round((ext.u.max - (uc + half)) * ky));
       const yb = Math.min(h, Math.round((ext.u.max - (uc - half)) * ky));
       const px = rgba32(col);
@@ -368,5 +373,5 @@ export function mapCsv(m: VarMapData): string {
 
 /** CSV of the rose. */
 export function roseCsv(r: RoseData): string {
-  return csvText(["θ, °", "Дальность", "Не достигнута"], r.rays.map((x) => [x.theta, x.range, x.beyond ? "да" : ""]));
+  return csvText(["θ, °", "Азимут, °", "Погружение, °", "Дальность", "Не достигнута"], r.rays.map((x) => [x.theta, x.az ?? null, x.plunge ?? null, x.range, x.beyond ? "да" : ""]));
 }
