@@ -122,9 +122,9 @@ def test_td15_2_a_trend_of_a_model_is_a_copy_of_its_axes(tc) -> None:  # type: i
     assert (one["ang1"], one["ang2"], one["ang3"], one["ratios"]) == (30.0, -10.0, 5.0, [1.0, 0.75, 0.2])
     # the model edited: the trend stays («копия»); «Обновить из модели» — PUT with model_id
     edited = {**TWO, "structures": [TWO["structures"][0], {**big, "ang1": 200.0, "a2": 125.0}]}
-    assert tc.put(f"{GS}/models/{mid}", json={"model": edited}).status_code == 200
+    assert tc.put(f"{GS}/models/{mid}", json={"model": edited, "expected_version": 1}).status_code == 200
     assert tc.get(f"{TR}/{tid}").json()["ang1"] == 112.5
-    assert tc.put(f"{TR}/{tid}", json={"model_id": mid}).status_code == 200
+    assert tc.put(f"{TR}/{tid}", json={"model_id": mid, "expected_version": 1}).status_code == 200
     again = tc.get(f"{TR}/{tid}").json()
     assert (again["ang1"], again["ratios"], again["name"]) == (200.0, [1.0, 0.5, 0.05], "Тренд · Золото")
     # the model deleted: the trend stays, its origin has no model
@@ -165,15 +165,20 @@ def test_trend_refusals(tc) -> None:  # type: ignore[no-untyped-def]
     assert tc.post(TR, json={"ang1": 0, "name": "т"}).json()["code"] == "name_taken"
     assert tc.post(TR, json={"ang1": 0}).json()["name"] == "Тренд"
     assert tc.post(TR, json={"ang1": 0}).json()["name"] == "Тренд (2)"
-    assert tc.put(f"{TR}/{ok['id']}", json={"name": "Тренд"}).json()["code"] == "name_taken"
-    r = tc.put(f"{TR}/{ok['id']}", json={"ratios": [1, 0.5, 0.5], "color": "#1F6BFF"})
-    assert r.status_code == 200, r.text
+    assert tc.put(f"{TR}/{ok['id']}", json={"name": "Тренд", "expected_version": 1}).json()["code"] == "name_taken"
+    r = tc.put(f"{TR}/{ok['id']}", json={"ratios": [1, 0.5, 0.5], "color": "#1F6BFF"})  # the version is required
+    assert (r.status_code, r.json()["param"]) == (422, "expected_version"), r.text
+    r = tc.put(f"{TR}/{ok['id']}", json={"ratios": [1, 0.5, 0.5], "color": "#1F6BFF", "expected_version": 1})
+    assert r.json() == {"id": ok["id"], "name": "Т", "version": 2}, r.text
+    r = tc.put(f"{TR}/{ok['id']}", json={"ang1": 45, "expected_version": 1})  # another window with the version 1
+    assert (r.status_code, r.json()["code"], r.json()["version"]) == (409, "version_conflict", 2), r.text
+    assert r.json()["message"] == "Тренд изменён в другом окне." and r.json()["hint"]
     got = tc.get(f"{TR}/{ok['id']}").json()
     assert (got["ang1"], got["ratios"], got["color"], got["name"], got["version"]) == (
         10.0, [1.0, 0.5, 0.5], "#1f6bff", "Т", 2)  # fmt: skip
     for r in (
         tc.get(f"{TR}/9999"),
-        tc.put(f"{TR}/9999", json={"ang1": 1}),
+        tc.put(f"{TR}/9999", json={"ang1": 1, "expected_version": 1}),
         tc.delete(f"{TR}/9999"),
         tc.get(f"{TR}/9999/usage"),
         tc.get(f"{TR}/{mid}"),
@@ -185,7 +190,8 @@ def test_read_only_project_is_423(tc) -> None:  # type: ignore[no-untyped-def]
     tid = tc.post(TR, json={"ang1": 0}).json()["id"]
     tc.project.read_only = True
     try:
-        for r in (tc.post(TR, json={"ang1": 0}), tc.put(f"{TR}/{tid}", json={"ang1": 5}), tc.delete(f"{TR}/{tid}")):
+        for r in (tc.post(TR, json={"ang1": 0}), tc.put(f"{TR}/{tid}", json={"ang1": 5, "expected_version": 1}),
+                  tc.delete(f"{TR}/{tid}")):  # fmt: skip
             assert (r.status_code, r.json()["code"]) == (423, "project_read_only"), r.text
         assert tc.get(TR).status_code == 200 and tc.get(f"{TR}/{tid}/usage").json() == {"usage": []}
     finally:

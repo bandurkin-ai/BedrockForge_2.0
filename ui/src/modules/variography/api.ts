@@ -10,7 +10,9 @@
  *   `POST /back {key, model, ltail?, utail?, ltpar?, utpar?}` → `{model, share, warning, residual, curves}`;
  *   `POST /curve {model, directions?, h?, h_max?, n?}` → `{directions: [{axis, az, plunge, h, gamma, cov}]}`.
  * - models: `GET /models[?set_id]`, `POST /models {name?, model, exp_key, color?, fit?, back?}`, `GET / PUT / DELETE
- *   /models/{id}`, `POST /models/{id}/rebuild`, `GET /models/{id}/export?format[&path]`, `POST /models/import`.
+ *   /models/{id}` (`PUT {expected_version, …}` → `{id, name, version}`; another version stored — 409
+ *   `version_conflict {version}`), `POST /models/{id}/rebuild`, `GET /models/{id}/export?format` (the text),
+ *   `POST /models/{id}/export {format, path, overwrite?}` (the file; 409 `files_exist {files}`), `POST /models/import`.
  *
  * An undefined number of an answer stays `null` (a lag without pairs, σ = 0) — never 0.
  */
@@ -382,6 +384,8 @@ export interface StoredModel {
   stale: boolean;
   stale_reason: string | null;
   source_lost: boolean;
+  /** the version read: `expected_version` of the replacement */
+  version: number;
 }
 
 export async function loadModel(id: number): Promise<StoredModel> {
@@ -399,6 +403,7 @@ export async function loadModel(id: number): Promise<StoredModel> {
     stale: r.stale === true,
     stale_reason: str(r.stale_reason),
     source_lost: r.source_lost === true,
+    version: Number(r.version ?? 1),
   };
 }
 
@@ -414,17 +419,21 @@ export interface SaveBody {
 }
 
 export const saveModel = (body: SaveBody): Promise<{ id: number; name: string }> => api.post(`${VARIO_API}/models`, body);
-export const replaceModel = (id: number, body: Partial<SaveBody>): Promise<{ id: number; name: string }> => api.put(`${VARIO_API}/models/${id}`, body);
+/** The replacement of the version `expected_version` (the one the window read); another one stored — 409 `version_conflict`. */
+export const replaceModel = (id: number, body: Partial<SaveBody> & { expected_version: number }): Promise<{ id: number; name: string; version?: number }> => api.put(`${VARIO_API}/models/${id}`, body);
 export const deleteModel = (id: number): Promise<{ deleted: number }> => api.del(`${VARIO_API}/models/${id}`);
 export const rebuildModel = (id: number): Promise<Started> => api.post<Started>(`${VARIO_API}/models/${id}/rebuild`, {});
 
 export type ExchangeFormat = "json" | "gslib";
 
-/** Without `path` — the text (`{format, filename, text}`); with it — the file is written (`{format, path, bytes}`). */
-export function exportModel(id: number, format: ExchangeFormat, path?: string): Promise<{ format: string; filename?: string; text?: string; path?: string; bytes?: number }> {
-  const q = new URLSearchParams({ format });
-  if (path) q.set("path", path);
-  return api.get(`${VARIO_API}/models/${id}/export?${q.toString()}`);
+/** The text of a model (`{format, filename, text}`): nothing is written. */
+export function exportModel(id: number, format: ExchangeFormat): Promise<{ format: string; filename: string; text: string }> {
+  return api.get(`${VARIO_API}/models/${id}/export?${new URLSearchParams({ format }).toString()}`);
+}
+
+/** The file written (`{format, path, bytes}`; the extension of the format added); a file there — 409 `files_exist {files}` without `overwrite`. */
+export function exportModelFile(id: number, format: ExchangeFormat, path: string, overwrite = false): Promise<{ format: string; path: string; bytes: number }> {
+  return api.post(`${VARIO_API}/models/${id}/export`, { format, path, ...(overwrite ? { overwrite: true } : {}) });
 }
 
 /** The working model of a file or a text (not stored; no `format` — by the content); 422 `bad_file {line?}`. */

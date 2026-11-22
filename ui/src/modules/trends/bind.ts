@@ -18,7 +18,8 @@ import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { updateView, viewStore } from "../scene/bind";
 import { onScene } from "../scene/sceneHost";
-import { createTrend, deleteTrend, loadTrend, loadTrends, trendUsage, updateTrend, usageText, type Trend, type TrendUse } from "./api";
+import { createTrend, deleteTrend, loadTrend, loadTrends, trendUsage, updateTrend, usageText, type Trend, type TrendBody, type TrendUse } from "./api";
+import { nextName } from "../composites/api";
 import {
   bodyOfArgs,
   dropObject,
@@ -52,6 +53,15 @@ export async function refreshTrends(): Promise<void> {
   setTrends(await loadTrends());
 }
 
+/** A trend saved elsewhere: its windows not edited take what is stored (values and version); edited ones keep the
+ * version they read — their save is then a 409 `version_conflict`, asked in our own window. */
+export function followClean(): void {
+  for (const [win, e] of Object.entries(trendsStore.get().edits)) {
+    const t = e.trendId === null || e.dirty ? null : findTrend(e.trendId);
+    if (t && e.version !== t.version) setEdit(win, { values: valuesOf(t), origin: t.origin, version: t.version });
+  }
+}
+
 const notFound = (id: unknown) => refusal("trend_not_found", `Тренд №${String(id)} не найден.`, "Номера трендов — в дереве, раздел «Тренды».");
 
 /** The trend of the arguments: the store, else the core (404 — not found). */
@@ -79,7 +89,7 @@ export function openTrendWindow(t: Trend | null, values: Partial<TrendValues> = 
     }
   }
   const win = openWindow(TREND_WINDOW, trendTitle(t?.name ?? null), "form", { trendId: t?.id ?? null }, ...viewport());
-  if (!editOf(win)) setEdit(win, t ? newEdit({ trendId: t.id, values: valuesOf(t), origin: t.origin }) : newEdit({ values: { ...newEdit().values, ...values } }));
+  if (!editOf(win)) setEdit(win, t ? newEdit({ trendId: t.id, values: valuesOf(t), origin: t.origin, version: t.version }) : newEdit({ values: { ...newEdit().values, ...values } }));
   return win;
 }
 
@@ -102,17 +112,37 @@ async function afterWrite(id: number): Promise<Trend | null> {
   upsertTrend(t);
   const win = windowOfTrend(t.id);
   if (win) {
-    setEdit(win, { values: valuesOf(t), origin: t.origin, fromModel: null, dirty: false });
+    setEdit(win, { values: valuesOf(t), origin: t.origin, version: t.version, fromModel: null, dirty: false });
     updateWindow(win, { title: trendTitle(t.name) });
   }
   return t;
+}
+
+export const trendConflictQuestion = (name: string) => ({
+  title: "Тренд изменён в другом окне",
+  message: `Тренд «${name}» изменили в другом окне, пока вы его правили. Сохранить тренд этого окна как новый? Иначе — перечитать сохранённый.`,
+  okLabel: "Сохранить как новый",
+});
+export const trendRereadQuestion = (name: string) => ({ title: "Перечитать тренд", message: `Перечитать тренд «${name}» из проекта? Правки этого окна будут заменены.`, okLabel: "Перечитать", danger: true });
+
+/** «Сохранить как новый» after a conflict: the fields of the window with the next free name. */
+async function createAsNew(body: TrendBody, name: string): Promise<{ id: number; name: string }> {
+  let want = nextName(body.name ?? name);
+  for (let i = 0; ; i++) {
+    try {
+      return await createTrend({ ...body, name: want });
+    } catch (e) {
+      if (i >= 20 || !(e instanceof CoreError) || e.code !== "name_taken") throw e;
+      want = nextName(want);
+    }
+  }
 }
 
 const usedQuestion = (name: string, list: readonly TrendUse[]) => `Тренд «${name}» используется: ${usageText(list)}. Изменённые оси получат и эти объекты. Изменить тренд?`;
 
 export async function runSave(a: Record<string, unknown>, source: CommandSource): Promise<string> {
   const id = a.trend_id;
-  const fields = Object.keys(a).filter((k) => k !== "trend_id" && given(a, k));
+  const fields = Object.keys(a).filter((k) => k !== "trend_id" && k !== "expected_version" && given(a, k));
   if (id === undefined && !given(a, "ang1") && !given(a, "model_id")) {
     if (a.kind === "structural") throw refusal("not_ready", "Структурный тренд (по замерам или опорному каркасу) будет доступен позже.", "Создайте глобальный тренд: углы и отношения осей.");
     openTrendWindow(null, prefill(a));
@@ -130,7 +160,32 @@ export async function runSave(a: Record<string, unknown>, source: CommandSource)
       const list = await trendUsage(t.id).catch(() => []);
       if (list.length && !(await askConfirm({ title: "Изменить тренд", message: usedQuestion(t.name, list), okLabel: "Изменить", danger: true }))) return "Отменено";
     }
-    const out = await updateTrend(t.id, got.body);
+    const expected = typeof a.expected_version === "number" ? a.expected_version : t.version;
+    let out: { id: number; name: string };
+    try {
+      out = await updateTrend(t.id, got.body, expected);
+    } catch (e) {
+      if (source !== "user" || !(e instanceof CoreError) || e.code !== "version_conflict") throw e;
+      // another window saved the trend meanwhile: «Сохранить как новый» / «Перечитать» (ТЗ раздел 17 п. 11)
+      if (!(await askConfirm(trendConflictQuestion(t.name)))) {
+        if (await askConfirm(trendRereadQuestion(t.name))) {
+          const now = await loadTrend(t.id);
+          upsertTrend(now);
+          await afterWrite(now.id);
+          return `Тренд «${now.name}» перечитан из проекта`;
+        }
+        return "Отменено";
+      }
+      const made = await createAsNew(got.body, t.name);
+      saved = made;
+      const now = await afterWrite(made.id);
+      const win = windowOfTrend(t.id);
+      if (win && now) {
+        setEdit(win, { trendId: now.id, values: valuesOf(now), origin: now.origin, version: now.version, fromModel: null, dirty: false });
+        updateWindow(win, { title: trendTitle(now.name), props: { trendId: now.id } });
+      }
+      return `Тренд «${made.name}» сохранён как новый (№${made.id})`;
+    }
     saved = out;
     const now = await afterWrite(out.id);
     const refresh = got.body.model_id !== undefined;
@@ -208,7 +263,7 @@ export async function saveWindow(app: App, win: string): Promise<string | null> 
   const s = lastSaved();
   if (s && e.trendId === null) {
     const t = findTrend(s.id) ?? null;
-    setEdit(win, { trendId: s.id, ...(t ? { values: valuesOf(t), origin: t.origin } : {}), fromModel: null, dirty: false });
+    setEdit(win, { trendId: s.id, ...(t ? { values: valuesOf(t), origin: t.origin, version: t.version } : {}), fromModel: null, dirty: false });
     updateWindow(win, { title: trendTitle(s.name), props: { trendId: s.id } });
   }
   return null;
@@ -258,7 +313,9 @@ export function bindTrends(app: App): void {
     } catch {
       /* a malformed event: the list is read again */
     }
-    void refreshTrends().catch(() => undefined);
+    void refreshTrends()
+      .then(followClean)
+      .catch(() => undefined);
   });
   // a closed window leaves its edit
   windowStore.subscribe(() => {

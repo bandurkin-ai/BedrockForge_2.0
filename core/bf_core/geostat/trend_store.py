@@ -11,8 +11,8 @@ deleting the model (`ON DELETE RESTRICT`).
 Э19: role `trend`); a trend with such rows is not deleted — 409 `in_use {usage}`. The `.bfggis` import renumbers
 `origin.model_id` (`geostat/remap.py`); the references are rows of `object_refs` and come with the archive.
 
-Errors: 404 `trend_not_found`; 409 `name_taken` {param: "name"}, `in_use` {usage}; 422 `bad_param` {param},
-`not_ready` {param: "kind"}; the model of `model_id` — 404 `model_not_found`.
+Errors: 404 `trend_not_found`; 409 `name_taken` {param: "name"}, `in_use` {usage}, `version_conflict` {version};
+422 `bad_param` {param}, `not_ready` {param: "kind"}; the model of `model_id` — 404 `model_not_found`.
 """
 
 from __future__ import annotations
@@ -177,18 +177,28 @@ def create(conn: sa.Connection, raw: Mapping[str, Any], author: str | None = Non
     return {"id": int(res.inserted_primary_key[0]), "name": final}  # type: ignore[index]
 
 
+def _conflict(version: int) -> ApiError:
+    return ms.conflict(version, "Тренд изменён в другом окне.", "Перечитайте тренд или сохраните свой как новый.")
+
+
 def update(conn: sa.Connection, trend_id: int, raw: Mapping[str, Any]) -> dict[str, Any]:
-    """The fields given replace those stored; `model_id` copies the model again («Обновить из модели»)."""
+    """The fields given replace those stored; `model_id` copies the model again («Обновить из модели»).
+    `expected_version` (required) — the version the window read; another one — 409 `version_conflict` {version}."""
     row = _row(conn, trend_id)
+    version = ms.clean_version(raw.get("expected_version"))
+    if int(row.version) != version:
+        raise _conflict(int(row.version))
     meta, _default = _shape(_fields, conn, raw, row.meta or {})
     final = str(row.name) if raw.get("name") is None else _final_name(conn, raw["name"], DEFAULT_NAME, trend_id)
-    conn.execute(
-        sa.update(objects).where(objects.c.id == trend_id).values(
-            name=final, name_key=dialect.name_key(final), meta=meta, version=int(row.version) + 1,
+    n = conn.execute(
+        sa.update(objects).where(objects.c.id == trend_id, objects.c.version == version).values(
+            name=final, name_key=dialect.name_key(final), meta=meta, version=version + 1,
             updated_at=dialect.utcnow(),
         )
-    )  # fmt: skip
-    return {"id": trend_id, "name": final}
+    ).rowcount  # fmt: skip
+    if n != 1:
+        raise _conflict(int(_row(conn, trend_id).version))
+    return {"id": trend_id, "name": final, "version": version + 1}
 
 
 def usage(conn: sa.Connection, trend_id: int) -> list[dict[str, Any]]:

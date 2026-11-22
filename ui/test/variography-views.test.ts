@@ -208,7 +208,13 @@ describe("the exchange", () => {
     expect(await exportFlow(run, 3, "AU · Пробы", "json", { pickSave: async (n) => `/tmp/${n}` })).toBe(true);
     expect(await exportFlow(run, 3, "AU · Пробы", "json", { pickSave: async () => null })).toBe(false);
     expect(await importFlow(run, { pickOpen: async () => "/tmp/модель.par" })).toBe(true);
-    expect(ran).toEqual([["variography.export", { model_id: 3, format: "json", path: "/tmp/AU · Пробы.json" }], ["variography.import", { path: "/tmp/модель.par" }]]);
+    expect(await exportFlow(run, 3, "AU · Пробы", "gslib", { ask: async () => "/tmp/своё.par" })).toBe(true); // our window asked nothing about replacing
+    expect(ran).toEqual([
+      ["variography.export", { model_id: 3, format: "json", path: "/tmp/AU · Пробы.json", overwrite: true }], // the dialog of the application asked
+      ["variography.import", { path: "/tmp/модель.par" }],
+      ["variography.export", { model_id: 3, format: "gslib", path: "/tmp/своё.par" }],
+    ]);
+    expect(A.export_exists.body).toMatchObject({ code: "files_exist", files: [A.export_path.path.split(/[\\/]/).at(-1)] });
   });
 
   it("an imported model (JSON, GSLIB, a file) is the model that was exported", () => {

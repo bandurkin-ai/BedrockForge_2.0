@@ -381,6 +381,76 @@ def test_rebuild_body_keeps_the_parameters_and_finds_the_tables(proj) -> None:  
     assert (e.value.code, e.value.status) == ("source_lost", 409)
 
 
+def _stored_model(project: Any, set_id: int) -> tuple[int, str]:
+    from bf_core.storage.blobs import BlobStore
+
+    out = vj.run_experimental(project.engine, project.folder, {"body": body(set_id, axes={"ang1": 0}, nlag=4)})
+    kind, model = exchange.api_model(MODEL)
+    blobs = BlobStore(project.folder)
+    staged = ms.stage(blobs, project.folder, out["key"])
+    try:
+        with dialect.write_tx(project.engine) as conn:
+            mid = ms.create(conn, blobs, staged, (kind, exchange.model_form(kind, model)), name="М")["id"]
+    finally:
+        staged.discard()
+    return int(mid), str(out["key"])
+
+
+def test_rebuild_writes_over_the_version_it_read(proj, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    """A model saved while «Перестроить» computes the points: 409 `version_conflict`, the save kept, nothing
+    written over it (ТЗ раздел 17 п. 11)."""
+    from bf_core.storage.blobs import BlobStore
+
+    project, set_id = proj
+    mid, key = _stored_model(project, set_id)
+    real = vj.run_experimental
+
+    def meanwhile(*a: Any, **kw: Any) -> dict[str, Any]:
+        out = real(*a, **kw)
+        with dialect.write_tx(project.engine) as conn:  # another window renames the model
+            ms.update(conn, BlobStore(project.folder), mid, expected_version=1, name="Переименована")
+        return out
+
+    monkeypatch.setattr(vj, "run_experimental", meanwhile)
+    with pytest.raises(ApiError) as e:
+        vm.run_rebuild(project.engine, project.folder, {"model_id": mid})
+    assert (e.value.status, e.value.code) == (409, "version_conflict") and "Перестроить" in e.value.hint
+    with dialect.read_tx(project.engine) as conn:
+        got = ms.get(conn, BlobStore(project.folder), mid)
+    assert (got["name"], got["version"], got["meta"]["exp_key"]) == ("Переименована", 2, key)
+    monkeypatch.setattr(vj, "run_experimental", real)
+    out = vm.run_rebuild(project.engine, project.folder, {"model_id": mid})  # again: the version 2 read, 3 written
+    with dialect.read_tx(project.engine) as conn:
+        assert ms.versioned(conn, mid)[2] == 3 and out["model_id"] == mid
+        with pytest.raises(ApiError) as e:  # the store itself: `UPDATE … WHERE version = …`
+            ms.update(conn, BlobStore(project.folder), mid, expected_version=2, name="Старая")
+    assert (e.value.code, e.value.extra["version"]) == ("version_conflict", 3)
+
+
+@pytest.mark.parametrize("op", ["experimental", "map"])
+def test_the_key_follows_the_inputs_actually_read(proj, monkeypatch: pytest.MonkeyPatch, op: str) -> None:  # type: ignore[no-untyped-def]
+    """The table changed between the early look (`inputs_of`) and `points.load`: the key and the record follow
+    what was read — a later calc on the same data finds it in the cache."""
+    project, set_id = proj
+    req = body(set_id, axes={"ang1": 0}, nlag=4) if op == "experimental" else body(
+        set_id, plane={"ang1": 0, "ang2": 0, "ang3": 0}, nlag=4, fan={"n": 4}, map={"nu": 3, "nv": 3})  # fmt: skip
+    run = vj.run_experimental if op == "experimental" else vm.run_map
+    real = vj.inputs_of
+
+    def early(conn: Any, data: Any) -> dict[str, Any]:
+        got = real(conn, data)
+        return {**got, "tables": [{**t, "rev": int(t["rev"]) - 1} for t in got["tables"]]}  # before the edit
+
+    monkeypatch.setattr(vj, "inputs_of", early)
+    first = run(project.engine, project.folder, {"body": req})
+    monkeypatch.setattr(vj, "inputs_of", real)
+    again = run(project.engine, project.folder, {"body": req})
+    assert again["fresh"] is True and again["key"] == first["key"]
+    parse = spec.parse_map if op == "map" else spec.parse_experimental
+    with dialect.read_tx(project.engine) as conn:
+        assert ms.read_result(project.folder, first["key"])["inputs"] == real(conn, parse(conn, req).data)
+
+
 # --- threads and databases -------------------------------------------------------------------------------------
 
 

@@ -7,8 +7,9 @@
  *   color (lower case), origin {type: manual | model | ellipsoid, model_id? (null — the model deleted), structure?
  *   (from 1)}, used, matrix (A = diag(1, 1/r2, 1/r3)·R), version, created_at, updated_at}`;
  * - `GET /trends` → `{trends}` (by name); `GET /trends/{id}` → a trend, 404 `trend_not_found`;
- * - `POST /trends` → `{id, name}`; `PUT /trends/{id}` → `{id, name}` (`{model_id, structure?}` — «Обновить из
- *   модели»); `DELETE /trends/{id}` → `{deleted}`, 409 `in_use {usage}`; `GET /trends/{id}/usage` → `{usage}`.
+ * - `POST /trends` → `{id, name}`; `PUT /trends/{id} {expected_version, …}` → `{id, name, version}` (`{model_id,
+ *   structure?}` — «Обновить из модели»; another version stored — 409 `version_conflict {version}`); `DELETE
+ *   /trends/{id}` → `{deleted}`, 409 `in_use {usage}`; `GET /trends/{id}/usage` → `{usage}`.
  *
  * An unknown number of an answer stays `null`, never 0. No React.
  */
@@ -128,7 +129,9 @@ export const loadTrends = async (): Promise<Trend[]> => {
 };
 export const loadTrend = async (id: number): Promise<Trend> => readTrend(await api.get(`${TREND_API}/${id}`));
 export const createTrend = (body: TrendBody): Promise<{ id: number; name: string }> => api.post(TREND_API, body);
-export const updateTrend = (id: number, body: TrendBody): Promise<{ id: number; name: string }> => api.put(`${TREND_API}/${id}`, body);
+/** The fields of `body` over the version `expectedVersion` (the one read); another one stored — 409 `version_conflict`. */
+export const updateTrend = (id: number, body: TrendBody, expectedVersion: number): Promise<{ id: number; name: string; version?: number }> =>
+  api.put(`${TREND_API}/${id}`, { ...body, expected_version: expectedVersion });
 export const deleteTrend = (id: number): Promise<{ deleted: number }> => api.del(`${TREND_API}/${id}`);
 export const trendUsage = async (id: number): Promise<TrendUse[]> => readUsage(await api.get(`${TREND_API}/${id}/usage`));
 

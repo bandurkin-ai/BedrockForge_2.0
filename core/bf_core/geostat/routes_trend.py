@@ -5,7 +5,9 @@
   * `POST /trends` {name?, kind?: "global", ang1, ang2?, ang3?, ratios?, size?, centre?, color?, origin?,
     model_id?, structure?} → {id, name}. With `model_id` — a copy of the structure (from 1; by default — the largest
     a1), `origin {type: "model", model_id, structure}`, the name «Тренд · ‹модель›»; 404 `model_not_found`.
-  * `PUT /trends/{id}` — the fields given (with `model_id` — «Обновить из модели»); 404; 409 `name_taken`.
+  * `PUT /trends/{id}` {expected_version, …} — the fields given (with `model_id` — «Обновить из модели»)
+    → {id, name, version}; `expected_version` (required, the `version` read) not the stored one — 409
+    `version_conflict` {version}; 404; 409 `name_taken`; 422 `bad_param {param: "expected_version"}`.
   * `DELETE /trends/{id}` → {deleted: id}; referred to — 409 `in_use {usage}`.
   * `GET /trends/{id}/usage` → {usage: [{id, kind, name, role}]}.
 

@@ -18,7 +18,8 @@ import { onScene } from "../scene/sceneHost";
 import { bindTrends } from "../trends/bind";
 import { refresh as refreshJobs } from "../jobs/state";
 import { loadTables, resolveTable, type Started, type TableRow } from "../composites/api";
-import { deleteModel, exportModel, formatOfPath, importModel, loadModel, rebuildModel, startExperimental, startMap, type ExchangeFormat, type FitWeights } from "./api";
+import { overwriteQuestion, startWithOverwrite } from "../rasters/export";
+import { deleteModel, exportModel, exportModelFile, formatOfPath, importModel, loadModel, rebuildModel, startExperimental, startMap, type ExchangeFormat, type FitWeights } from "./api";
 import { structureType, type StructureType } from "./model";
 import { fitText, fitWork, refreshModels, saveWork } from "./save";
 import { onCoreEvent } from "../jobs/state";
@@ -132,7 +133,7 @@ export async function modelWindow(id: number, view?: unknown): Promise<{ win: st
   if (open) return { win: open, read: null };
   const m = await loadModel(id);
   const data: DataState = { ...dataFromArgs({}), setId: m.source.set_id, table: m.source.table, field: m.source.field, transform: m.model.type === "nscore" ? "nscore" : "none" };
-  const win = openVariography({ model_id: m.id, view }, { data, model: m.model, modelId: m.id, result: m.points, expKey: m.points?.key ?? null });
+  const win = openVariography({ model_id: m.id, view }, { data, model: m.model, modelId: m.id, modelVersion: m.version, result: m.points, expKey: m.points?.key ?? null });
   return { win, read: m };
 }
 
@@ -158,15 +159,27 @@ const noStructures = (id: number) => refusal("no_structures", `В модели �
 
 const centreNote = (win: string): string => (ellipsoidCentre(workOf(win)!) ? "" : " — появится, когда окно прочитает данные расчёта (центр — середина охвата точек)");
 
-/** A stored model changed (saved, rebuilt): its window, if it is not edited, takes the new points and their key. */
+/** A stored model changed (saved, rebuilt): its window, if it is not edited, takes the new points, their key and
+ * the version (an edited window keeps the version it read: its save is then a 409 `version_conflict`). */
 export async function reloadPoints(id: number, load: typeof loadModel = loadModel): Promise<boolean> {
   const win = windowOfModel(id);
   const w = win ? workOf(win) : null;
   if (!win || !w || w.dirty) return false;
   const m = await load(id);
-  if (!m.points?.key || m.points.key === w.expKey) return false;
-  setWork(win, { result: m.points, expKey: m.points.key, dirty: false });
+  const cur = workOf(win);
+  if (!cur || cur.dirty || cur.modelId !== id) return false;
+  if (!m.points?.key || m.points.key === cur.expKey) {
+    if (cur.modelVersion !== m.version) setWork(win, { modelVersion: m.version });
+    return false;
+  }
+  setWork(win, { result: m.points, expKey: m.points.key, modelVersion: m.version, dirty: false });
   return true;
+}
+
+/** `POST …/export`: a file there and no `overwrite` — asked «Заменить?» in our own window, then written again; null — not replaced. */
+export async function exportFile(id: number, format: ExchangeFormat, path: string, overwrite = false, deps: { write?: typeof exportModelFile; ask?: typeof askConfirm } = {}): Promise<{ path: string; bytes: number } | null> {
+  const { write = exportModelFile, ask = askConfirm } = deps;
+  return startWithOverwrite((ok) => write(id, format, path, overwrite || ok), (files) => ask(overwriteQuestion(files)));
 }
 
 export function bindVariography(app: App): void {
@@ -288,8 +301,12 @@ export function bindVariography(app: App): void {
       const id = modelId(a);
       const path = typeof a.path === "string" && a.path.trim() ? a.path.trim() : undefined;
       const format: ExchangeFormat = a.format === "json" || a.format === "gslib" ? a.format : path ? formatOfPath(path) : "json";
-      const got = await exportModel(id, format, path);
-      if (path) return `Модель №${id} записана: ${got.path ?? path}${typeof got.bytes === "number" ? ` (${got.bytes} байт)` : ""}`;
+      if (path) {
+        // the file is there (the core adds the extension of the format): «Заменить?» in our own window (409 `files_exist`)
+        const got = await exportFile(id, format, path, a.overwrite === true);
+        return got ? `Модель №${id} записана: ${got.path}${typeof got.bytes === "number" ? ` (${got.bytes} байт)` : ""}` : "Отменено";
+      }
+      const got = await exportModel(id, format);
       const text = got.text ?? "";
       return `${got.filename ?? `модель-${id}.${format === "json" ? "json" : "txt"}`}:\n${text.length > 4000 ? `${text.slice(0, 4000)}…` : text}`;
     }),

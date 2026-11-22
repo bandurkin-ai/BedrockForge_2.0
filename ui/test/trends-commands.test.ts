@@ -63,8 +63,10 @@ beforeEach(() => {
       if (m && m[2]) return json({ usage: row!.used ? USAGE : [] });
       if (m && method === "GET") return json(row);
       if (m && method === "PUT") {
-        Object.assign(row!, body, body.ratios ? { ratios: body.ratios } : {}, { version: Number(row!.version) + 1 });
-        return json({ id: row!.id, name: row!.name });
+        if (body.expected_version !== row!.version) return json({ code: "version_conflict", message: "Тренд изменён в другом окне.", hint: "Перечитайте тренд или сохраните свой как новый.", version: row!.version }, 409);
+        const { expected_version: _v, ...fields } = body;
+        Object.assign(row!, fields, body.ratios ? { ratios: body.ratios } : {}, { version: Number(row!.version) + 1 });
+        return json({ id: row!.id, name: row!.name, version: row!.version });
       }
       if (m && method === "DELETE") {
         if (row!.used) return json(IN_USE, 409);
@@ -152,7 +154,7 @@ describe("trend.save", () => {
     expect(writes()[0]).toEqual({ method: "POST", path: T, body: { model_id: 3, structure: 1 } });
     const r = await app.registry.execute("trend.save", { trend_id: 4, model_id: 3 });
     expect(r.result).toMatch(/^Тренд «Тренд · Золото» обновлён из модели вариограммы: ang1 112,5°/);
-    expect(writes()[1]).toEqual({ method: "PUT", path: `${T}/4`, body: { model_id: 3 } });
+    expect(writes()[1]).toEqual({ method: "PUT", path: `${T}/4`, body: { model_id: 3, expected_version: 1 } }); // the version read
   });
 
   it("out of range never reaches the core; an unknown trend — 404 in Russian", async () => {
@@ -173,7 +175,7 @@ describe("trend.save", () => {
     const q = app.registry.execute("trend.save", { trend_id: 4, ang1: 120 });
     await answer(true);
     expect((await q).ok).toBe(true);
-    expect(writes()).toEqual([{ method: "PUT", path: `${T}/4`, body: { ang1: 120 } }]);
+    expect(writes()).toEqual([{ method: "PUT", path: `${T}/4`, body: { ang1: 120, expected_version: 1 } }]);
   });
 
   it("`trend_id` alone opens its window, one per trend", async () => {
@@ -223,7 +225,38 @@ describe("the window «Тренд»", () => {
     // a stored one: PUT, the centre emptied — null
     setEdit(win, (e) => ({ values: { ...e.values, ang2: "0", cx: "", cy: "", cz: "" } }));
     expect(await saveWindow(app, win)).toBeNull();
-    expect(writes()[1]).toMatchObject({ method: "PUT", path: `${T}/10`, body: { centre: null, ang1: 45 } });
+    expect(writes()[1]).toMatchObject({ method: "PUT", path: `${T}/10`, body: { centre: null, ang1: 45, expected_version: 1 } });
+    expect(editOf(win)).toMatchObject({ version: 2, dirty: false });
+  });
+
+  it("saved in another window meanwhile (409 `version_conflict`): «Сохранить как новый» or «Перечитать», in our own window", async () => {
+    await app.registry.execute("trend.open", { trend_id: 5 });
+    const win = windowStore.get().windows[0].id;
+    expect(editOf(win)).toMatchObject({ trendId: 5, version: 1 });
+    rows[1] = { ...rows[1], ang1: 33, version: 2 }; // another window saved it
+    setEdit(win, (e) => ({ values: { ...e.values, ang1: "50" }, dirty: true }));
+    // «Перечитать»: the stored trend fills the window, nothing written
+    let saving = saveWindow(app, win);
+    expect(await answer(false)).toMatch(/изменили в другом окне/);
+    expect(await answer(true)).toMatch(/Перечитать тренд «Вручную»/);
+    expect(await saving).toBeNull();
+    expect(editOf(win)).toMatchObject({ version: 2, dirty: false, values: { ang1: "33" } });
+    expect(writes().filter((w) => w.method === "PUT")).toHaveLength(1); // the refused one only
+    // «Сохранить как новый»: a POST with the next free name, the window holds the new trend
+    rows[1] = { ...rows[1], version: 3 };
+    setEdit(win, (e) => ({ values: { ...e.values, ang1: "50" }, dirty: true }));
+    saving = saveWindow(app, win);
+    expect(await answer(true)).toMatch(/Сохранить тренд этого окна как новый/);
+    expect(await saving).toBeNull();
+    const post = writes().filter((w) => w.method === "POST").at(-1)!;
+    expect(post.body).toMatchObject({ name: "Вручную (2)", ang1: 50 });
+    expect(editOf(win)).toMatchObject({ trendId: rows.at(-1)!.id, dirty: false });
+    // the assistant: the refusal of the core, no window
+    const asked = app.registry.execute("trend.save", { trend_id: 5, ang1: 1, expected_version: 1 }, "claude");
+    await answer(true); // `confirm`: the assistant's command is asked first
+    const r = await asked;
+    expect(r.ok).toBe(false);
+    expect(r.result).toMatch(/Тренд изменён в другом окне/);
   });
 });
 
