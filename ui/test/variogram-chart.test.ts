@@ -1,7 +1,10 @@
 // The variogram charts (ТЗ 8.6.4; ADR 0022 §5, §15, decisions 4, 8, 19): experimental points (a lag without pairs —
 // null — is never drawn as 0; «few» hollow; sized and labelled by N), the model curve of `model.ts`, the variance
 // and sill lines; the rose of ranges (a ray without a range breaks the outline); the variogram map (an empty cell is
-// not painted — never the colour of zero). The answers are of the form of e16-api.md, read by `readCalc`.
+// not painted — never the colour of zero). The curves are the real answer of the core (`window_answers.json`), read
+// by `readCalc`; the rose and the map — of the form of e16-api.md until 16.10.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -34,32 +37,13 @@ import {
 import { readCalc } from "../src/modules/variography/api";
 import { axisOf, direction, gammaAlong, type VModel } from "../src/modules/variography/model";
 
-// the form of `job.result` of `variography.experimental` (e16-api.md): lag 2 has no pairs, lag 3 has few
-const CALC = readCalc({
-  key: "3f",
-  set_id: 3,
-  table: "12",
-  field: "AU",
-  unit: "г/т",
-  transform: "none",
-  sigma2: 1.84,
-  sigma2_z: 1.84,
-  origin: [0, 0, 0],
-  counts: { rows: 10, missing: 0, no_position: 0, outside_domain: 0, used: 10, no_weight: 0 },
-  sampled: null,
-  params: {},
-  directions: [
-    {
-      axis: 1, az: 30, plunge: 10, az_tol: 22.5, dip_tol: 22.5, band_h: 30, band_v: 20,
-      lags: [10, 20, 30, 40], h: [9.7, null, 29.1, 40.2], n: [412, 0, 12, 900],
-      gamma: [0.61, null, 1.2, 1.7], rho: [0.33, null, 0.1, 0.02], pairwise: [0.42, null, 0.5, 0.6], n_pw: [410, 0, 12, 898],
-      few: [false, true, true, false],
-    },
-    { axis: 2, az: 120, plunge: 0, az_tol: 22.5, dip_tol: 22.5, band_h: "inf", band_v: 20, lags: [10, 20], h: [null, null], n: [0, 0], gamma: [null, null], rho: [null, null], pairwise: [null, null], n_pw: [0, 0], few: [true, true] },
-  ],
-  downhole: { lag: 2, lag_tol: 1, lags: [2, 4], h: [2, 4], n: [1180, 1150], gamma: [0.3, 0.5], rho: [0.8, 0.7], pairwise: [0.2, 0.3], n_pw: [1180, 1150], few: [false, false] },
-  warnings: [],
-});
+// the real `job.result` of `variography.experimental` (core/tests/test_vario_window_answers.py): axis 1 — lags 1–2
+// without pairs (null), lag 4 with few pairs (N < min_pairs = 800); along the holes — every lag few
+const ANSWERS = JSON.parse(readFileSync(resolve(__dirname, "../../core/tests/data/variography/window_answers.json"), "utf-8"));
+const CALC = readCalc(ANSWERS.job_axes);
+const D1 = CALC.directions[0];
+// a direction of the same answer with no pairs in any lag
+const EMPTY = { ...D1, h: D1.h.map(() => null), n: D1.n.map(() => 0), gamma: D1.gamma.map(() => null), rho: D1.rho.map(() => null), pairwise: D1.pairwise.map(() => null), n_pw: D1.n_pw.map(() => 0), few: D1.few.map(() => true) };
 
 const MODEL: VModel = { type: "semivariogram", c0: 0.2, common_axes: true, structures: [{ type: "spherical", c: 1.5, a1: 60, a2: 40, a3: 10, ang1: 30, ang2: 10, ang3: 0 }] };
 
@@ -68,17 +52,19 @@ const count = (html: string, re: RegExp) => (html.match(re) ?? []).length;
 
 describe("experimental points", () => {
   it("a lag without pairs is not a point; the values of a type; few marked", () => {
-    const c = CALC.directions[0];
-    expect(measureValues(c, "semivariogram")).toEqual([0.61, null, 1.2, 1.7]);
-    expect(measureValues(c, "correlogram").map((v) => (v === null ? null : Number(v.toFixed(12))))).toEqual([0.67, null, 0.9, 0.98]);
-    expect(measureValues(c, "pairwise")).toEqual([0.42, null, 0.5, 0.6]);
+    const c = D1;
+    expect(c.n.slice(0, 2)).toEqual([0, 0]);
+    expect(c.gamma.slice(0, 2)).toEqual([null, null]);
+    expect(measureValues(c, "semivariogram")).toEqual(c.gamma);
+    expect(measureValues(c, "correlogram")).toEqual(c.rho.map((r) => (r === null ? null : 1 - r)));
+    expect(measureValues(c, "pairwise")).toEqual(c.pairwise);
     const pts = expPoints(c, "semivariogram");
-    expect(pts.map((p) => p.k)).toEqual([0, 2, 3]);
-    expect(pts.find((p) => p.k === 2)).toMatchObject({ few: true, n: 12, h: 29.1 });
-    expect(expPoints(c, "pairwise").map((p) => p.n)).toEqual([410, 12, 898]);
+    expect(pts.map((p) => p.k)).toEqual([2, 3, 4, 5]);
+    expect(pts.find((p) => p.k === 3)).toMatchObject({ few: true, n: 772, h: c.h[3] });
+    expect(expPoints(c, "pairwise").map((p) => p.n)).toEqual(c.n_pw.slice(2));
     // NaN, undefined — not a point either
-    expect(expPoints({ ...c, gamma: [NaN, 1, 2, 3], h: [1, 2, undefined as unknown as null, 4] }, "semivariogram").map((p) => p.k)).toEqual([1, 3]);
-    expect(expPoints(CALC.directions[1], "semivariogram")).toEqual([]);
+    expect(expPoints({ ...c, gamma: [NaN, 1, 2, 3, 4, 5], h: [1, 2, undefined as unknown as null, 4, 5, 6] }, "semivariogram").map((p) => p.k)).toEqual([1, 3, 4, 5]);
+    expect(expPoints(EMPTY, "semivariogram")).toEqual([]);
   });
 
   it("marks by N; labels; the variance level by type", () => {
@@ -91,7 +77,7 @@ describe("experimental points", () => {
     expect(varianceLevel("correlogram", 1.84)).toEqual({ value: 1, label: "1" });
     expect(varianceLevel("pairwise", 1.84)).toBeNull();
     expect(varianceLevel("semivariogram", null)).toBeNull();
-    expect(chartHMax(CALC.directions)).toBeCloseTo(40.2 * 1.05, 12);
+    expect(chartHMax(CALC.directions)).toBeCloseTo(60 * 1.05, 12); // the farthest lag centre 6·L
     expect(chartHMax([], MODEL)).toBe(90);
     expect(chartHMax([])).toBeNull();
   });
@@ -121,13 +107,13 @@ describe("VariogramChart", () => {
 
   it("draws only the lags with pairs; few hollow; N as labels; model, sill and σ² lines", () => {
     const html = render(createElement(VariogramChart, { series, type: "semivariogram", model: MODEL, sigma2: CALC.sigma2 }));
-    expect(html).toContain('data-series="Ось 1" data-points="3" data-few="1"');
-    expect(html).toContain('data-series="Вдоль скважин" data-points="2" data-few="0"');
-    expect(count(html, /<circle /g)).toBe(5);
-    expect(count(html, /fill="none"[^>]*data-few="true"/g)).toBe(1);
-    expect(html).toContain(">412<");
-    expect(html).toContain(">900<");
-    expect(html).toContain('data-line="variance" data-value="1.84"');
+    expect(html).toContain('data-series="Ось 1" data-points="4" data-few="1"');
+    expect(html).toContain('data-series="Вдоль скважин" data-points="15" data-few="15"');
+    expect(count(html, /<circle /g)).toBe(19);
+    expect(count(html, /fill="none"[^>]*data-few="true"/g)).toBe(16);
+    expect(html).toContain(">2391<");
+    expect(html).toContain(">772<");
+    expect(html).toContain(`data-line="variance" data-value="${CALC.sigma2}"`);
     expect(html).toContain('data-line="sill" data-value="1.7"');
     expect(html).toContain('data-model="Ось 1"');
     expect(html).not.toContain('data-model="Вдоль скважин"');
@@ -135,15 +121,15 @@ describe("VariogramChart", () => {
   });
 
   it("no point sits on the zero line: a lag without pairs is not at γ = 0", () => {
-    const html = render(createElement(VariogramChart, { series: [{ label: "Ось 1", curve: CALC.directions[0] }], type: "semivariogram", sigma2: 1.84 }));
+    const html = render(createElement(VariogramChart, { series: [{ label: "Ось 1", curve: CALC.directions[0] }], type: "semivariogram", sigma2: CALC.sigma2 }));
     // the y pixel of γ = 0 is the bottom of the plot box (340 − 44 = 296)
     const cys = [...html.matchAll(/<circle cx="[\d.]+" cy="([\d.]+)"/g)].map((m) => Number(m[1]));
-    expect(cys).toHaveLength(3);
+    expect(cys).toHaveLength(4);
     expect(cys.every((y) => y < 296 - 1)).toBe(true);
   });
 
   it("all lags empty — a message, no points; the correlogram as 1 − ρ with the level 1; pairwise without a level", () => {
-    const empty = render(createElement(VariogramChart, { series: [{ label: "Ось 2", curve: CALC.directions[1] }], type: "semivariogram", sigma2: null }));
+    const empty = render(createElement(VariogramChart, { series: [{ label: "Ось 2", curve: EMPTY }], type: "semivariogram", sigma2: null }));
     expect(empty).toContain('data-empty="variogram"');
     expect(empty).toContain("Нет точек");
     expect(count(empty, /<circle /g)).toBe(0);
