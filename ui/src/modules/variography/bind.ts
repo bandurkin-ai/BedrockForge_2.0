@@ -5,7 +5,8 @@
  * or the request goes. `fit` and `save` act on the working model of a window: the one of `model_id`, else the last
  * active window. The replacement of a stored model and the delete ask in our own window (`askConfirm`); the
  * registry asks the assistant only for `delete` (its flag), so the replacement asks it here too.
- * `variography.ellipsoid`, `variography.show` — the scene (16.19).
+ * `variography.ellipsoid`, `variography.show` — the ellipsoid of the window of a model in 3D (`scene.ts`, a lazy chunk
+ * attached to every scene; a stored model not open is opened in a window first: its handles edit that window).
  */
 import type { App } from "../../shell/app";
 import { CoreError } from "../../shell/api";
@@ -14,11 +15,36 @@ import { askConfirm } from "../../shell/dialogs";
 import { needProject, needWritable, noted, refusal, showJobs, viewport } from "../../shell/objectRun";
 import { focusWindow, openWindow, windowStore } from "../../shell/windows";
 import { setPanel } from "../../shell/workspace";
+import { onScene } from "../scene/sceneHost";
 import { refresh as refreshJobs } from "../jobs/state";
 import { loadTables, nextName, resolveTable, type Started, type TableRow } from "../composites/api";
 import { deleteModel, exportModel, fitModel, formatOfPath, importModel, loadModel, loadModels, replaceModel, saveModel, startExperimental, startMap, type ExchangeFormat, type FitWeights } from "./api";
 import { modelBody, newStructure, structureType, type StructureType, type VModel } from "./model";
-import { dataFromArgs, defaultModelName, experimentalBody, forgetModel, mapBody, newWork, setModel, setModels, setWork, valuesFromArgs, VIEWS, windowOfModel, workOf, type DataState, type VarioView, type Work } from "./state";
+import {
+  checkValue,
+  chosenStructure,
+  dataFromArgs,
+  defaultModelName,
+  ellipsoidCentre,
+  experimentalBody,
+  forgetModel,
+  mapBody,
+  markEdit,
+  newWork,
+  setEllipsoid,
+  setModel,
+  setModels,
+  setWork,
+  valuesFromArgs,
+  VIEWS,
+  windowOfModel,
+  withStructure,
+  workOf,
+  type DataState,
+  type StructurePatch,
+  type VarioView,
+  type Work,
+} from "./state";
 
 export const VARIO_WINDOW = "variography";
 
@@ -142,20 +168,49 @@ const modelId = (a: Record<string, unknown>): number => {
   return a.model_id;
 };
 
+/** The window of a stored model: the one open, else a new one read from the core (`read` — the model read then). */
+export async function modelWindow(id: number, view?: unknown): Promise<{ win: string; read: Awaited<ReturnType<typeof loadModel>> | null }> {
+  const open = windowOfModel(id);
+  if (open) return { win: open, read: null };
+  const m = await loadModel(id);
+  const data: DataState = { ...dataFromArgs({}), setId: m.source.set_id, table: m.source.table, field: m.source.field, transform: m.model.type === "nscore" ? "nscore" : "none" };
+  const win = openVariography({ model_id: m.id, view }, { data, model: m.model, modelId: m.id, result: m.points, expKey: m.points?.key ?? null });
+  return { win, read: m };
+}
+
+/** The angles and ranges of `variography.ellipsoid`, checked (8.6.4; a range — a positive number of metres). */
+export function ellipsoidPatch(a: Record<string, unknown>): StructurePatch {
+  const out: StructurePatch = {};
+  for (const k of ["ang1", "ang2", "ang3"] as const) {
+    if (!given(a, k)) continue;
+    const r = checkValue(k, String(a[k]).replace(".", ","));
+    if (!r.ok || typeof r.value !== "number") throw refusal("bad_param", r.ok ? `${k}: нужно число` : r.error, HINT_RANGE);
+    out[k] = k === "ang1" && r.value === 360 ? 0 : r.value;
+  }
+  for (const k of ["a1", "a2", "a3"] as const) {
+    if (!given(a, k)) continue;
+    const v = Number(a[k]);
+    if (!Number.isFinite(v) || v <= 0 || v > 100_000) throw refusal("bad_param", `Дальность ${k}: нужно число больше 0 до 100 000 м`, HINT_RANGE);
+    out[k] = v;
+  }
+  return out;
+}
+
+const noStructures = (id: number) => refusal("no_structures", `В модели №${id} нет структур — эллипсоид не построить.`, "Добавьте структуру в таблице модели или подберите модель кнопкой «Подобрать».");
+
+const centreNote = (win: string): string => (ellipsoidCentre(workOf(win)!) ? "" : " — появится, когда окно прочитает данные расчёта (центр — середина охвата точек)");
+
 export function bindVariography(app: App): void {
   const r = app.registry;
   r.bind(
     "variography.open",
     noted(app, async (a) => {
       if (typeof a.model_id === "number") {
-        const open = windowOfModel(a.model_id);
-        if (open) {
-          focusWindow(open);
+        const { win, read: m } = await modelWindow(a.model_id, a.view);
+        if (!m) {
+          focusWindow(win);
           return `Окно модели №${a.model_id} уже открыто`;
         }
-        const m = await loadModel(a.model_id);
-        const data: DataState = { ...dataFromArgs({}), setId: m.source.set_id, table: m.source.table, field: m.source.field, transform: m.model.type === "nscore" ? "nscore" : "none" };
-        openVariography({ model_id: m.id, view: a.view }, { data, model: m.model, modelId: m.id, result: m.points, expKey: m.points?.key ?? null });
         return `Открыта модель «${m.name}»${m.stale ? ` — устарела: ${m.stale_reason ?? "изменены данные"}` : ""}`;
       }
       openVariography(a);
@@ -193,6 +248,47 @@ export function bindVariography(app: App): void {
       setModel(win, got.model);
       const res = got.residual === null ? "" : `, невязка ${got.residual.toLocaleString("ru-RU", { maximumSignificantDigits: 4 })}`;
       return `Модель подобрана: структур ${got.model.structures.length}${res}${got.n === null ? "" : `, точек ${got.n}`}${got.warnings.length ? `. ${got.warnings.join(" ")}` : ""}`;
+    }),
+    needProject,
+  );
+  r.bind(
+    "variography.ellipsoid",
+    noted(app, async (a) => {
+      const id = modelId(a);
+      const patch = ellipsoidPatch(a);
+      const { win } = await modelWindow(id);
+      const w = workOf(win)!;
+      const n = w.model.structures.length;
+      if (!n) throw noStructures(id);
+      let structure = w.ellipsoid?.structure ?? null;
+      if (given(a, "structure")) {
+        const k = Number(a.structure);
+        if (!Number.isInteger(k) || k < 1 || k > n) throw refusal("bad_param", `Структуры №${String(a.structure)} нет в модели №${id}.`, `Номер структуры — от 1 до ${n}.`);
+        structure = k - 1;
+      }
+      const index = chosenStructure({ model: w.model, ellipsoid: { visible: true, centre: null, structure } });
+      if (Object.keys(patch).length) {
+        markEdit();
+        setModel(win, withStructure(w.model, index, patch));
+      }
+      setEllipsoid(win, { visible: true, structure });
+      return `Эллипсоид модели №${id} в 3D: структура ${index + 1} из ${n}${Object.keys(patch).length ? ", заданные углы и дальности — в таблице модели" : ""}${centreNote(win)}`;
+    }),
+    needProject,
+  );
+  r.bind(
+    "variography.show",
+    noted(app, async (a) => {
+      const id = modelId(a);
+      if (a.visible === false) {
+        const open = windowOfModel(id);
+        if (open && workOf(open)?.ellipsoid) setEllipsoid(open, { visible: false });
+        return `Эллипсоид модели №${id} скрыт`;
+      }
+      const { win } = await modelWindow(id);
+      if (!workOf(win)!.model.structures.length) throw noStructures(id);
+      setEllipsoid(win, { visible: true });
+      return `Эллипсоид модели №${id} показан в 3D${centreNote(win)}`;
     }),
     needProject,
   );
@@ -240,4 +336,16 @@ export function bindVariography(app: App): void {
     }),
     needProject,
   );
+  // the ellipsoids in the main 3D: a lazy chunk with three.js, attached to every new scene
+  let detach: (() => void) | null = null;
+  let generation = 0;
+  onScene((scene) => {
+    const mine = ++generation;
+    detach?.();
+    detach = null;
+    if (!scene) return;
+    void import("./scene").then((m) => {
+      if (mine === generation) detach = m.attachVarioScene(scene);
+    });
+  });
 }
