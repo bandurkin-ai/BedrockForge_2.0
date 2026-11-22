@@ -1,0 +1,25 @@
+/* The window «Вариография» (ТЗ 8.6.4; ADR 0022 §15): data on the left, charts in the centre, the model on the right; the theme tokens of the brand (docs/brand, ADR 0006). */
+.window { min-width: 0; }
+.layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(300px, 420px); gap: 10px; flex: 1; min-height: 0; padding: 8px 12px; overflow: hidden; }
+.left, .right { display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; }
+.centre { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; overflow: auto; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); flex: none; }
+.tab { font-family: var(--font-brand); font-weight: 500; border: 0; background: transparent; padding: 4px 12px; cursor: pointer; color: var(--text-dim); border-bottom: 2px solid transparent; }
+.tab:hover { color: var(--text); }
+.on { color: var(--text); border-bottom-color: var(--accent); }
+.charts { display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start; }
+.chart { margin: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.empty { color: var(--text-faint); margin: 24px 8px; text-align: center; }
+.notes { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.notes p { margin: 0; }
+.refusal { display: flex; flex-direction: column; gap: 2px; }
+.model { font-size: 12px; }
+.model td { padding: 1px 3px; }
+.cell { width: 64px; min-width: 0; padding: 1px 4px; font-variant-numeric: tabular-nums; }
+.bad { border-color: var(--danger) !important; }
+.withFix { display: inline-flex; align-items: center; gap: 3px; }
+.fix { margin: 0; accent-color: var(--accent); }
+.same { color: var(--text-faint); padding: 0 4px; }
+.emptyRow { color: var(--text-faint); text-align: center !important; white-space: normal !important; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
