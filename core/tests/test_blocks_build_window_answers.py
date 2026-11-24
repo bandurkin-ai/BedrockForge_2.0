@@ -22,6 +22,8 @@ from typing import Any
 import numpy as np
 import pytest
 
+from bf_core.blocks import jobs as bj
+from bf_core.blocks.fill import jobs as fj
 from bf_core.db import dialect
 from bf_core.wireframes import store as wf
 from tests.test_archive import wait_job
@@ -39,10 +41,11 @@ SKIPPED = (
     "at",
     "file",
 )  # the times and the size of the file of cells (not the grid's)
-STAGES = {
-    "prototype": ["Охват", "Запись"],
-    "fill": ["Каркасы", "Столбцы", "Граничные родители", "Дробление", "Слияние", "Запись"],
-    "regularize": ["Чтение", "Перекрытия", "Запись"],
+STAGES = {  # the names of the stages as the jobs of the core give them (the `message` of the job)
+    "prototype": [bj.S_EXTENT, bj.S_WRITE],
+    "fill": [fj.S_WIRES, fj.S_COLUMNS, fj.S_BOUNDARY, fj.S_SPLIT, fj.S_MERGE, fj.S_WRITE],
+    "code": [fj.S_WIRES, fj.S_BOUNDARY, fj.S_SPLIT, fj.S_WRITE],
+    "regularize": [bj.S_READ, bj.S_OVERLAP, bj.S_WRITE],
 }
 
 
@@ -315,7 +318,7 @@ def build(c: Any) -> dict[str, Any]:  # noqa: PLR0915
     out["models"] = {str(i): answer(c.get(f"{BL}/{i}")) for i in (pid, plain, fid)}
     out["rules"] = ("ответы настоящего ядра через маршруты /blocks/prototype, /fill, /{id}/code, /{id}/regularize, "
                     "/{id}/rebuild и задания blocks.*; номера заданий и времена не хранятся")  # fmt: skip
-    out["stages"] = STAGES
+    out["stage_names"] = STAGES
     return out
 
 
