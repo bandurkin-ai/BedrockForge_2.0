@@ -27,8 +27,26 @@ def _slice() -> dict[str, float]:
     return {}
 
 
+def _fill() -> dict[str, float]:
+    from bf_core.blocks.fill.warm import warm
+
+    return warm()
+
+
+def _kernels() -> dict[str, float]:
+    from bf_core.blocks.warm_kernels import warm
+
+    return warm()
+
+
 #: name → the warm-up of a module (a function without arguments; the seconds it took, by name)
-WARMS: dict[str, Callable[[], dict[str, float]]] = {"calc": _calc, "report": _report, "slice": _slice}
+WARMS: dict[str, Callable[[], dict[str, float]]] = {
+    "calc": _calc,
+    "report": _report,
+    "slice": _slice,
+    "fill": _fill,  # the order matters: slice and report go first, fill and kernels bring pandas and pyarrow
+    "kernels": _kernels,
+}
 
 
 def warm() -> dict[str, float]:
