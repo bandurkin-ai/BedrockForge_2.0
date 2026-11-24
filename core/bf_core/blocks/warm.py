@@ -14,8 +14,20 @@ def _calc() -> dict[str, float]:
     return warm()
 
 
+def _report() -> dict[str, float]:
+    from bf_core.blocks.report import warm
+
+    return warm()
+
+
+def _slice() -> dict[str, float]:
+    from bf_core.blocks.slice import warm
+
+    return warm()
+
+
 #: name → the warm-up of a module (a function without arguments; the seconds it took, by name)
-WARMS: dict[str, Callable[[], dict[str, float]]] = {"calc": _calc}
+WARMS: dict[str, Callable[[], dict[str, float]]] = {"calc": _calc, "report": _report, "slice": _slice}
 
 
 def warm() -> dict[str, float]:
