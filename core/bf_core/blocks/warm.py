@@ -23,7 +23,8 @@ def _report() -> dict[str, float]:
 def _slice() -> dict[str, float]:
     from bf_core.blocks.slice import warm
 
-    return warm()
+    warm()  # returns nothing: the time of the step is counted by `warm()` below
+    return {}
 
 
 #: name → the warm-up of a module (a function without arguments; the seconds it took, by name)
