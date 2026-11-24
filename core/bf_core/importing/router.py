@@ -375,6 +375,8 @@ class ObjectOptions(BaseModel):
     cloud: bool | None = None
     every: int | None = Field(default=None, ge=1, le=1_000_000)
     class_column: str | None = Field(default=None, max_length=500)
+    # block model import (ADR 0023 §7): the wizard answers (rotation convention, subblocks, columns), see e17-api.md
+    blocks: dict[str, Any] | None = None
 
 
 class RasterLevel(BaseModel):
