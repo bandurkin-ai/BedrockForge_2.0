@@ -20,7 +20,7 @@ import pytest
 
 from bf_core.api.errors import ApiError
 from bf_core.blocks import geometry as geo
-from bf_core.blocks.grid_infer import GridHint, GridScan, Unaligned, infer
+from bf_core.blocks.grid_infer import CROSSES_PARENT, OFF_GRID, GridHint, GridScan, Unaligned, infer
 from bf_core.blocks.schema import GridV2
 from bf_core.formats import blocks_roles as br
 from bf_core.formats.datamine import read_dm, read_header
@@ -531,3 +531,19 @@ def test_real_datamine_the_hint_of_the_header_and_the_same_blocks(real, suffix, 
     ref = infer(c0, d0)
     assert np.array_equal(geo.row_ijk(res.grid, res.p)[0], geo.row_ijk(ref.grid, ref.p)[0])
     assert np.array_equal(geo.row_ijk(res.grid, res.p)[2], geo.row_ijk(ref.grid, ref.p)[2])
+
+
+def test_unaligned_message_keeps_its_commas() -> None:
+    """Only the thousands of a number get a space: the commas of the text stay (defect of 17.11)."""
+    lost = Unaligned()
+    lost.count = 12_345
+    lost.by_reason[OFF_GRID] = 12_000
+    lost.by_reason[CROSSES_PARENT] = 345
+    lost.rows = [0, 5]
+    err = lost.error()
+    assert err is not None
+    assert err.message == (
+        "Блоков, которые нельзя уложить в сетку модели: 12 345 "
+        "(за началом или за краем сетки — 12 000; через границу родителя — 345)."
+    )
+    assert "Блоков, которые" in err.message and "," not in err.message.split(":")[1]
