@@ -331,7 +331,7 @@ def locate_rows(p: np.ndarray, s: np.ndarray | None, w: np.ndarray | None, grid:
         hit = valid & (hi > lo)
         out[hit] = lo[hit]
         return out
-    s64, w64 = np.asarray(s).reshape(-1, 3).astype(np.int64), np.asarray(w).reshape(-1, 3).astype(np.int64)
+    s3, w3 = np.asarray(s).reshape(-1, 3), np.asarray(w).reshape(-1, 3)  # int64 only for the rows looked at
     qs64 = qs.astype(np.int64)
     todo = np.flatnonzero(valid & (hi > lo))
     t = 0
@@ -339,7 +339,8 @@ def locate_rows(p: np.ndarray, s: np.ndarray | None, w: np.ndarray | None, grid:
         row = lo[todo] + t
         live = row < hi[todo]
         todo, row = todo[live], row[live]
-        inside = ((qs64[todo] >= s64[row]) & (qs64[todo] < s64[row] + w64[row])).all(axis=1)
+        s64, w64 = s3[row].astype(np.int64), w3[row].astype(np.int64)
+        inside = ((qs64[todo] >= s64) & (qs64[todo] < s64 + w64)).all(axis=1)
         out[todo[inside]] = row[inside]
         todo = todo[~inside]
         t += 1
