@@ -84,6 +84,29 @@ export const commands: Command[] = [
     params: { model_id: MODEL, x: P("number", "X точки, м"), y: P("number", "Y точки, м"), z: P("number", "Z точки, м"), fields: P("string", "поля через «;»; по умолчанию все") },
     required: ["x", "y", "z"],
   },
+  {
+    id: "blocks.slice",
+    title: "Срез блочной модели плоскостью",
+    description:
+      "Срез блочной модели плоскостью в 3D: растр пикселей (ячейка, подъячейка или отсчёт наклонной плоскости), раскрашенный полем модели (blocks.style), с фильтром и ограничителем модели; блок без значения серый, не нулевого цвета. " +
+      "plane=section — по разрезу: плоскость текущего разреза (линия разреза или разрез серии), срез лежит подложкой под скважинами и идёт за разрезом; plane=x, y или z — перпендикулярно оси проекта на отметке at (по умолчанию — середина модели); " +
+      "plane=point — по точке (x, y, z) и нормали (nx, ny, nz). shift (метры) и cells (ячейки, со знаком) сдвигают плоскость вдоль нормали. on=false выключает срез. Вид сохраняется в проекте. " +
+      "Плоскость мимо модели — пустой срез, строка состояния это говорит. Многоугольники сечения для печати считает ядро (Э22), здесь их нет.",
+    params: {
+      model_id: MODEL,
+      on: P("boolean", "true — показать срез (по умолчанию), false — убрать"),
+      plane: P("string", "section — по разрезу; x, y, z — по оси проекта; point — по точке и нормали", { enum: ["section", "x", "y", "z", "point"] }),
+      at: P("number", "отметка плоскости по оси, м (для plane=x, y, z)"),
+      x: P("number", "X точки плоскости, м (plane=point)"),
+      y: P("number", "Y точки плоскости, м (plane=point)"),
+      z: P("number", "Z точки плоскости, м (plane=point)"),
+      nx: P("number", "составляющая нормали по X (plane=point)"),
+      ny: P("number", "составляющая нормали по Y (plane=point)"),
+      nz: P("number", "составляющая нормали по Z (plane=point); 1 — горизонтальный срез"),
+      shift: P("number", "сдвиг плоскости вдоль нормали, м (со знаком)"),
+      cells: P("number", "сдвиг плоскости вдоль нормали в ячейках модели (со знаком): 1 — на ячейку выше"),
+    },
+  },
 ];
 
 /** The ribbon: the tab «Блочные модели», the group «Вид» (`shell/ribbonConfig.ts`, by the orchestrator). */
@@ -103,4 +126,9 @@ export const SHOW_BUTTONS: readonly ShowButton[] = [
   { command: "blocks.show", args: { mode: "all" }, label: "Все блоки", icon: "blocks" as IconName, hint: "Показать каждую ячейку выбранной модели с рёбрами (до лимита граней)", small: true },
   { command: "blocks.show", args: { visible: false }, label: "Скрыть", icon: "blocks" as IconName, hint: "Убрать выбранную блочную модель из 3D", small: true },
   { command: "blocks.filter", label: "Фильтр", icon: "filter" as IconName, hint: "Фильтр из библиотеки проекта для выбранной модели; без выбора — окно «Фильтры»" },
+  { command: "blocks.slice", label: "Срез", icon: "vwSection" as IconName, hint: "Срез выбранной модели плоскостью: по разрезу, если он нарисован, иначе горизонтальный в середине модели" },
+  { command: "blocks.slice", args: { plane: "section" }, label: "Срез по разрезу", icon: "vwSection" as IconName, hint: "Срез по плоскости текущего разреза: подложка под скважинами, идёт за разрезами серии", small: true },
+  { command: "blocks.slice", args: { cells: 1 }, label: "Срез выше", icon: "chevronUp" as IconName, hint: "Сдвинуть плоскость среза на одну ячейку вдоль нормали (по оси Z — вверх)", small: true },
+  { command: "blocks.slice", args: { cells: -1 }, label: "Срез ниже", icon: "chevronDown" as IconName, hint: "Сдвинуть плоскость среза на одну ячейку против нормали (по оси Z — вниз)", small: true },
+  { command: "blocks.slice", args: { on: false }, label: "Убрать срез", icon: "close" as IconName, hint: "Убрать срез выбранной блочной модели из 3D", small: true },
 ];

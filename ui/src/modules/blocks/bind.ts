@@ -9,6 +9,7 @@ import type { App } from "../../shell/app";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { bindShow } from "./showCommands";
+import { bindSlice } from "./sliceCommands";
 import { blockById, blocksStore, clearBlocks, isBlocksEvent, loadBlocks } from "./state";
 
 let unbind: (() => void)[] = [];
@@ -20,6 +21,7 @@ export function bindBlocks(app: App): void {
   if (uid) void loadBlocks();
   unbind.push(
     bindShow(app), // the display in 3D: `blocks.show`, `.filter`, `.quick`, `.style`, `.pick` and the layers of the scene
+    bindSlice(app), // the slice by a plane, «Срез на разрезе»: `blocks.slice` and its layer
     projectStore.subscribe(() => {
       const cur = projectStore.get().current?.uid ?? null;
       if (cur === uid) return;

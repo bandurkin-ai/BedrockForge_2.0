@@ -79,7 +79,7 @@ const writes = () => sent.filter((s) => s.path === `/view/${BLOCK_STYLES_KEY}`);
 
 describe("registry", () => {
   it("has `blocks.show`, `.filter`, `.quick`, `.style`, `.pick`: Russian, bound, the stage of Э11 is gone; the contract of ADR 0023 §13", () => {
-    expect(commands.map((c) => c.id)).toEqual(["blocks.show", "blocks.filter", "blocks.quick", "blocks.style", "blocks.pick"]);
+    expect(commands.map((c) => c.id)).toEqual(["blocks.show", "blocks.filter", "blocks.quick", "blocks.style", "blocks.pick", "blocks.slice"]);
     for (const c of commands) {
       const r = app.registry.get(c.id)!;
       expect(r.run, c.id).toBeTypeOf("function");
