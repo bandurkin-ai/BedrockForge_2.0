@@ -2,7 +2,7 @@
 name: reviewer
 description: Ревью изменений этапа перед слиянием: ошибки, точность, производительность, безопасность, соответствие ТЗ.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: sonnet
 effort: high
 ---
 Ты — ревьюер BF2. Посмотри git diff origin/main...HEAD и требования этапа в spec.
