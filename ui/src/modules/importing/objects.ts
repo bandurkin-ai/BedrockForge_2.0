@@ -9,9 +9,13 @@ import { api, CoreError } from "../../shell/api";
 import { logError, logStep, type OpLog } from "../../shell/opLog";
 import { Store } from "../../shell/store";
 import { followJob } from "../jobs/follow";
+import { blocksWire, draftErrors, hasErrors, headline, type BlocksDraft, type BlocksInfo } from "../blocks/import/model";
 import { parseEvery, type CloudCard, type CloudMode } from "./cloud";
 import { blockEntryText, leftOutText, type LeftOut, type OmfBlockEntry, type OmfInfo } from "./omf";
+import { parseNumber } from "./numbers";
 import { baseName } from "./route";
+
+export { parseNumber };
 
 // ---- the composition as the core gives it --------------------------------------------------------------
 
@@ -65,8 +69,9 @@ export interface FileOk {
   /** "lines" — also a drawing with wireframes (DXF, DWG): its `wireframes` are loaded with its layers;
    * "cloud" — a point cloud (a LAS, or a table loaded as one; ADR 0014 §6): its card is `cloud`;
    * "omf" — an OMF v1 file (ADR 0017 §2): its elements in `omf`, its surfaces in `wireframes`, its volumes in
-   * `block_models`, its line sets counted in `totals.layers` */
-  kind: "lines" | "points" | "raster" | "wireframes" | "cloud" | "omf";
+   * `block_models`, its line sets counted in `totals.layers`;
+   * "block_model" — a block file (DAT, CSV, DM, FBM; ADR 0023 §7): what the wizard shows is in `blocks` */
+  kind: "lines" | "points" | "raster" | "wireframes" | "cloud" | "omf" | "block_model";
   encoding: string | null;
   crs: { name: string | null; epsg: number | null; wkt: string | null } | null;
   sidecars: string[];
@@ -89,6 +94,8 @@ export interface FileOk {
   /** an OMF file: the volumes that load and the whole composition of its elements */
   block_models?: OmfBlockEntry[];
   omf?: OmfInfo;
+  /** a block file: the roles of the columns, the grid, the check of three centres, the warnings, the refusal */
+  blocks?: BlocksInfo;
 }
 
 export interface FileFailed {
@@ -147,10 +154,15 @@ export interface FileOptions {
   cloud?: boolean;
   every?: string;
   class_column?: string;
+  /** a block model (ADR 0023 §7): what the wizard of blocks was answered; set — the file is loaded as a model even
+   * when its columns do not tell it (`{}` of the core) */
+  blocks?: BlocksDraft | null;
+  /** the name of the block model (the file name without the extension when empty) */
+  name?: string;
 }
 
 /** What is sent for a file: the typed text as the core takes it. */
-export type SentOptions = Omit<FileOptions, "every"> & { every?: number };
+export type SentOptions = Omit<FileOptions, "every" | "blocks"> & { every?: number; blocks?: Record<string, unknown> };
 
 /** The choices of the wizard for a file: option → its Russian label. */
 export const CHOICE_TITLES: Record<string, { label: string; none: string }> = {
@@ -179,21 +191,6 @@ export interface ParsedLevel {
   /** ± for every raster; 0 — not set */
   shift: number;
   errors: { elevation?: string; shift?: string };
-}
-
-const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
-
-/**
- * A number typed with a comma or a point: «12,5», «12.5», «−5», «1 250,5». Empty — null (not set, never 0);
- * anything else — undefined (not a number).
- */
-export function parseNumber(text: string): number | null | undefined {
-  const t = text.replace(/[\s  ]/g, "").replace(/−/g, "-");
-  if (!t) return null;
-  const plain = t.replace(",", ".");
-  if (!NUMBER.test(plain)) return undefined;
-  const v = Number(plain);
-  return Number.isFinite(v) ? v : undefined;
 }
 
 export function parseLevel(level: Level): ParsedLevel {
@@ -282,6 +279,7 @@ export function totalsText(t: Totals): string {
 export function fileCounts(f: FileOk): string {
   const t = f.totals;
   const parts: string[] = [];
+  if (f.kind === "block_model") return `блочных моделей: ${n(t.block_models ?? 0)} · блоков: ${n(t.cells ?? 0)}`;
   if (t.layers || !f.wireframes.length) parts.push(`слоёв: ${n(t.layers)}`);
   if (t.lines) parts.push(`линий: ${n(t.lines)}`);
   if (t.vertices) parts.push(`вершин: ${n(t.vertices)}`);
@@ -343,22 +341,38 @@ export function everyErrors(s: Pick<ObjectsState, "options" | "paths">): Record<
   return out;
 }
 
+/** What is typed wrong in the answers of the wizard of blocks, by the path of the file. */
+export function blocksErrors(s: Pick<ObjectsState, "options" | "paths">): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [path, o] of Object.entries(s.options)) {
+    if (!s.paths.includes(path) || !o.blocks) continue;
+    const e = draftErrors(o.blocks);
+    if (hasErrors(e)) out[path] = Object.values(e)[0] ?? "";
+  }
+  return out;
+}
+
+/** A file the import can make something of: not failed, and a block file whose model the core can build. */
+export const loadable = (f: FileEntry): boolean => f.ok && !(f.kind === "block_model" && f.blocks?.error);
+
 export function canStartObjects(s: ObjectsState): boolean {
   if (!s.composition || s.busy || s.starting || s.composition.totals.files === 0) return false;
-  if (Object.keys(everyErrors(s)).length) return false;
+  if (!s.composition.files.some(loadable)) return false;
+  if (Object.keys(everyErrors(s)).length || Object.keys(blocksErrors(s)).length) return false;
   return !levelUsed(s) || levelValid(parseLevel(s.level));
 }
 
 /** What is sent of the options of a file: texts that are given; `class_column` — also "" (none); `cloud` —
  * when set, and for every file in the mode «Облако точек»; `every` — as a number (a wrong one is not sent). */
-function sentOptions(o: FileOptions, cloudMode: boolean): SentOptions {
+function sentOptions(o: FileOptions, cloudMode: boolean, info: BlocksInfo | null): SentOptions {
   const out: SentOptions = {};
   for (const [k, v] of Object.entries(o)) {
-    if (k === "every" || k === "cloud" || k === "class_column") continue;
+    if (k === "every" || k === "cloud" || k === "class_column" || k === "blocks") continue;
     if (typeof v === "string" && v.trim() !== "") (out as Record<string, string>)[k] = v;
   }
   if (typeof o.class_column === "string") out.class_column = o.class_column;
   if (o.cloud || cloudMode) out.cloud = true;
+  if (o.blocks) out.blocks = blocksWire(o.blocks, info) as Record<string, unknown>;
   const every = parseEvery(o.every);
   if (!every.error && every.every > 1) out.every = every.every;
   return out;
@@ -371,7 +385,8 @@ export function startBody(s: ObjectsState): { files: string[]; options: Record<s
   const options: Record<string, SentOptions> = {};
   const cloudMode = !!s.cloud;
   for (const path of s.paths) {
-    const given = sentOptions(s.options[path] ?? {}, cloudMode);
+    const info = s.composition?.files.find((f) => f.path === path);
+    const given = sentOptions(s.options[path] ?? {}, cloudMode, info?.ok ? (info.blocks ?? null) : null);
     if (Object.keys(given).length) options[path] = given;
   }
   return { files: s.paths, options, raster_z: { elevation: used ? level.elevation : null, shift: used && level.shift ? level.shift : null }, section: true, ...(s.folder ? { folder: s.folder } : {}) };
@@ -445,7 +460,8 @@ export class ObjectsWizard {
           logStep(this.log, `  ${f.file}: ${f.label}${f.rasters.length ? "" : `, ${fileCounts(f)}`}${f.preliminary ? " (предварительно)" : ""}${f.warnings.length ? `; замечаний ${f.warnings.length}` : ""}`);
           if (f.cloud) logStep(this.log, `    облако: ${f.cloud.summary}${f.cloud.every_chosen > 1 ? `; каждая ${f.cloud.every_chosen}-я запись` : ""}`);
           for (const w of f.wireframes) if (w.error) logStep(this.log, `    каркас «${w.name}» не загрузится: ${w.error.message} ${w.error.hint}`.trimEnd());
-          for (const b of f.block_models ?? []) logStep(this.log, `    блочная модель ${blockEntryText(b)}`);
+          if (f.blocks) logStep(this.log, `    блочная модель: ${headline(f.blocks)}${f.blocks.error ? `; не соберётся: ${f.blocks.error.message}` : ""}`);
+          else for (const b of f.block_models ?? []) logStep(this.log, `    блочная модель ${blockEntryText(b)}`);
           if (f.omf) for (const x of f.left_out) logStep(this.log, `    не загрузится: ${leftOutText(x)}`);
         } else logStep(this.log, `  ${f.file}: не прочитан — ${f.error.message} ${f.error.hint}`.trim());
       }

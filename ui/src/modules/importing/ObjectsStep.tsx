@@ -8,6 +8,8 @@
  */
 import { useEffect, useState } from "react";
 import { useStore } from "../../shell/useStore";
+import { BlocksStep } from "../blocks/import/BlocksStep";
+import { CAN_FORCE, emptyDraft } from "../blocks/import/model";
 import { fileCounts, takesEncoding, totalsText, type FileEntry, type FileOk, type FileOptions, type ObjectsWizard } from "./objects";
 import { cloudCard, mayBeCloud, type CloudMode } from "./cloud";
 import { CloudStep } from "./CloudStep";
@@ -69,7 +71,7 @@ export function ObjectsStep({ wizard, onAdd, onSettings }: { wizard: ObjectsWiza
           <div className={css.note}>
             Линии и точки: Micromine STR и PIT, Surpac STR, DXF, DWG, SHP (с .dbf, .shx, .prj, .cpg), MIF/MID, Datamine .dm, таблицы точек XYZ (CSV, TXT, DAT). Каркасы: Micromine TRIDB, DXF, DWG
             (через ODA File Converter), OBJ, STL, Surpac DTM с STR того же имени, Datamine (…tr.dm с …pt.dm). Растры: JPG, PNG, TIFF, BMP с файлом привязки того же имени (world-файл, TAB, GRF) или
-            GeoTIFF. Облака точек: LAS. OMF v1 (Leapfrog OMF 0.9): поверхности — каркасы, линии — слои, регулярные объёмы — блочные модели; OMF 2 не читается.
+            GeoTIFF. Облака точек: LAS. Блочные модели: Micromine DAT и CSV, Datamine .dm и .fbm (центр и размер блока находятся по названиям столбцов; таблицу с другими названиями отметьте «блочной моделью»). OMF v1 (Leapfrog OMF 0.9): поверхности — каркасы, линии — слои, регулярные объёмы — блочные модели; OMF 2 не читается.
           </div>
         ))
       )}
@@ -77,10 +79,13 @@ export function ObjectsStep({ wizard, onAdd, onSettings }: { wizard: ObjectsWiza
   );
 }
 
-function FileBlock({ wizard, file, options, cloudMode, onSettings }: { wizard: ObjectsWizard; file: FileEntry; options: FileOptions; cloudMode: boolean; onSettings: () => void }) {
+export function FileBlock({ wizard, file, options, cloudMode, onSettings }: { wizard: ObjectsWizard; file: FileEntry; options: FileOptions; cloudMode: boolean; onSettings: () => void }) {
   const [all, setAll] = useState(false);
   const card = cloudCard(file);
   const points = file.ok ? file.format === "points" : file.error.code === "no_coordinates" || file.error.code === "no_column";
+  const blocks = file.ok && file.kind === "block_model" && file.blocks ? { ...file, blocks: file.blocks } : null;
+  // a table the core did not take for a block model may be loaded as one: the user names its columns
+  const mayBeBlocks = !blocks && (file.ok ? file.format === "points" : CAN_FORCE.has(file.error.code));
   return (
     <section className={css.card} aria-label={`Файл ${file.file}`} data-testid="objects-file">
       <header className={css.cardHead}>
@@ -129,11 +134,18 @@ function FileBlock({ wizard, file, options, cloudMode, onSettings }: { wizard: O
               облаком точек
             </label>
           )}
-          {points && <PointColumns options={options} onApply={(patch) => void wizard.setOptions(file.path, patch)} />}
+          {mayBeBlocks && (
+            <label>
+              <input type="checkbox" checked={!!options.blocks} onChange={(e) => void wizard.setOptions(file.path, { blocks: e.target.checked ? emptyDraft() : null })} aria-label={`Блочной моделью ${file.file}`} />
+              блочной моделью
+            </label>
+          )}
+          {points && !options.blocks && <PointColumns options={options} onApply={(patch) => void wizard.setOptions(file.path, patch)} />}
         </div>
       )}
       {file.ok && card && <CloudStep wizard={wizard} file={file} card={card} options={options} />}
-      {file.ok && !card && file.kind !== "raster" && (
+      {blocks && <BlocksStep wizard={wizard} file={blocks} options={options} />}
+      {file.ok && !card && !blocks && file.kind !== "raster" && (
         <>
           <div>
             {fileCounts(file)}
