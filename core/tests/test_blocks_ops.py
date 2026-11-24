@@ -248,6 +248,11 @@ def test_the_memory_estimate_follows_the_rows() -> None:
     assert bj.memory_mb({"rows": 20_000_000}) == 3072 and bj.memory_mb({"rows": 10**9}) == 3072
 
 
+def test_the_warm_up_regularizes_a_tiny_model_in_a_temporary_project() -> None:
+    out = bj.warm()
+    assert set(out) == {"regularize"} and out["regularize"] > 0.0
+
+
 def test_commit_of_a_regularized_model_takes_the_name_of_the_source(proj: P) -> None:
     mid = filled(proj)
     out = bj.run_regularize(proj.engine, proj.folder, reg_params(mid))

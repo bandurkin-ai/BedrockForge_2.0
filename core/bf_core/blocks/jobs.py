@@ -33,7 +33,6 @@ from typing import TYPE_CHECKING, Any
 import sqlalchemy as sa
 
 from bf_core.api.errors import ApiError
-from bf_core.blocks import meta as bmeta
 from bf_core.blocks import schema as bs
 from bf_core.db import dialect
 from bf_core.db.schema import objects
@@ -218,6 +217,41 @@ def run_regularize(
     return {**out, "warnings": [], "stages": clock.stages()}
 
 
+# --- the warm-up ------------------------------------------------------------------------------------------------------
+
+
+def warm() -> dict[str, float]:
+    """The kernels of the regularization (numba, `cache=True`): a model of 2 × 2 × 2 parents is regularized in a
+    temporary project (`blocks/warm.py` calls it as a step). The first compilation is ≈ 1.3 s."""
+    import tempfile
+
+    import numpy as np
+
+    from bf_core.blocks import store as bm
+    from bf_core.db import migrate
+
+    t0 = time.perf_counter()
+    with tempfile.TemporaryDirectory(prefix="bf-warm-") as d:
+        engine = dialect.create_engine(dialect.sqlite_url(str(Path(d) / "project.sqlite")))
+        try:
+            migrate.upgrade(engine, "project")
+            store = BlobStore(Path(d))
+            grid = bs.GridV2.of({"corner": [0.0, 0.0, 0.0], "counts": [2, 2, 2], "size": [1.0, 1.0, 1.0]})
+            fields: list[dict[str, Any]] = [{"name": "A", "dtype": "f8", "role": "grade"},
+                                            {"name": "C", "dtype": "cat", "labels": ["a", "b"]}]  # fmt: skip
+            with bm.CellsWriterV2(store, grid, fields) as w:
+                w.write(np.arange(8, dtype=np.uint64), {"A": np.linspace(0.5, 4.0, 8),
+                                                        "C": (np.arange(8) % 2).astype(np.int32)})  # fmt: skip
+                staged = w.finish()
+            with dialect.write_tx(engine) as conn:
+                mid = bm.commit_block_model(conn, store, staged, name="warm")
+            staged.discard()
+            run_regularize(engine, d, {"model_id": mid, "size": [2.0, 2.0, 2.0]}, threads=1)
+        finally:
+            engine.dispose()
+    return {"regularize": time.perf_counter() - t0}
+
+
 # --- the handlers -----------------------------------------------------------------------------------------------------
 
 
@@ -243,9 +277,3 @@ def regularize_job(ctx: JobContext) -> dict[str, Any]:
         return run_regularize(ctx.engine(), ctx.project_folder, {**ctx.params, "job_id": ctx.id}, tick=ctx.tick)
     except ApiError as exc:
         raise _user(exc) from None
-
-
-def model_rows(conn: sa.Connection, model_id: int) -> int:
-    """`rows` of a model for the memory estimate of a job (0 — no such model)."""
-    meta = conn.execute(sa.select(objects.c.meta).where(objects.c.kind == bs.KIND, objects.c.id == model_id)).scalar()
-    return 0 if meta is None else int(bmeta.upgrade(meta)["rows"])
