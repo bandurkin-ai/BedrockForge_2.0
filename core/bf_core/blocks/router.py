@@ -24,9 +24,12 @@ from bf_core.db import dialect
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
+from .routes_calc import router as calc_router
+
 # numpy, pyarrow and the store load on first use, not at the start of the core (tests/test_process.py).
 
 router = APIRouter(prefix="/blocks")
+router.include_router(calc_router)
 Svc = Annotated[ProjectService, Depends(projects)]
 KIND = "block_model"
 
