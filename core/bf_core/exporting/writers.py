@@ -9,7 +9,7 @@ writes (the API loads the registry before BF-READY).
 | `line_file`     | `str`, `dxf`, `surpac` → `lines.export.write_layers` (the layout of its source file); `omf` |
 | `cloud`         | `las` (by the source LAS when there is one, else a new file), `csv` → `lines.cloud_export` |
 | `raster`        | `source` → `rasters.export.write_source`; `geotiff` → `write_geotiff`                |
-| `block_model`   | `omf`; `dat`, `csv` — «этап Э17»                                                     |
+| `block_model`   | `omf`, `dat`, `csv`, `parquet`                                                       |
 | every type but rasters | `source` — the file as loaded, byte for byte (a set: a folder of its files)   |
 
 OMF is written by `bf_core.exporting.omf_job.write_objects(path, *, wireframe_ids, line_file_ids,
@@ -26,8 +26,8 @@ from typing import Any
 
 from bf_core.db import dialect
 
-from . import names
-from .registry import Env, Item, Reason, Tick, Writer, Written, register, unavailable
+from . import blocks_writers, names
+from .registry import Env, Item, Reason, Tick, Writer, Written, register
 
 MB = 2**20
 COPY_CHUNK = 1 << 20
@@ -373,6 +373,7 @@ register(Writer("raster", "geotiff", "GeoTIFF", _write_geotiff, lambda _i, _e: (
                 memory=lambda i: _mb(int(i.info.get("pixels") or 0) * 4, 384)))  # fmt: skip
 
 _omf("block_model")
-for _fmt, _title in (("dat", "Micromine DAT"), ("csv", "CSV")):
-    unavailable("block_model", _fmt, _title, Reason("Экспорт блочных моделей в DAT и CSV — этап Э17.", "Выберите OMF."))
+for _fmt, _title in (("dat", "Micromine DAT"), ("csv", "CSV"), ("parquet", "Parquet")):
+    register(Writer("block_model", _fmt, _title, blocks_writers.write(_fmt), blocks_writers.suffixes(_fmt),
+                    memory=blocks_writers.memory(_fmt)))  # fmt: skip
 _source_writer("block_model")
