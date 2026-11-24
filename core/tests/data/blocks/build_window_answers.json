@@ -1,0 +1,4157 @@
+{
+ "ids": {
+  "wire_a": 2,
+  "wire_b": 3,
+  "far": 4,
+  "surface": 5,
+  "crossing": 6,
+  "prototype": 7,
+  "fill": 9,
+  "plain": 12,
+  "split": 13,
+  "oc": 1,
+  "full": 8
+ },
+ "wireframes": {
+  "status": 200,
+  "body": {
+   "wireframes": [
+    {
+     "id": 2,
+     "name": "Руда",
+     "folder": null,
+     "version": 1,
+     "extent": [
+      10.0,
+      10.0,
+      10.0,
+      50.0,
+      40.0,
+      30.0
+     ],
+     "crs": null,
+     "point_count": 8,
+     "triangle_count": 12,
+     "origin": [
+      30.0,
+      25.0,
+      20.0
+     ],
+     "stats": {
+      "area": 5200.0,
+      "plan_area": 2400.0,
+      "volume": 24000.0,
+      "closed": true,
+      "orientation": "outward",
+      "degenerate": 0,
+      "open_edges": 0,
+      "nonmanifold_edges": 0
+     },
+     "attrs": [],
+     "dtm": null,
+     "color": null,
+     "built": null,
+     "source": null
+    },
+    {
+     "id": 3,
+     "name": "Зона",
+     "folder": null,
+     "version": 1,
+     "extent": [
+      20.0,
+      20.0,
+      10.0,
+      40.0,
+      30.0,
+      30.0
+     ],
+     "crs": null,
+     "point_count": 8,
+     "triangle_count": 12,
+     "origin": [
+      30.0,
+      25.0,
+      20.0
+     ],
+     "stats": {
+      "area": 1600.0,
+      "plan_area": 400.0,
+      "volume": 4000.0,
+      "closed": true,
+      "orientation": "outward",
+      "degenerate": 0,
+      "open_edges": 0,
+      "nonmanifold_edges": 0
+     },
+     "attrs": [],
+     "dtm": null,
+     "color": null,
+     "built": null,
+     "source": null
+    },
+    {
+     "id": 4,
+     "name": "Далеко",
+     "folder": null,
+     "version": 1,
+     "extent": [
+      500.0,
+      500.0,
+      500.0,
+      520.0,
+      520.0,
+      520.0
+     ],
+     "crs": null,
+     "point_count": 8,
+     "triangle_count": 12,
+     "origin": [
+      510.0,
+      510.0,
+      510.0
+     ],
+     "stats": {
+      "area": 2400.0,
+      "plan_area": 800.0,
+      "volume": 8000.0,
+      "closed": true,
+      "orientation": "outward",
+      "degenerate": 0,
+      "open_edges": 0,
+      "nonmanifold_edges": 0
+     },
+     "attrs": [],
+     "dtm": null,
+     "color": null,
+     "built": null,
+     "source": null
+    },
+    {
+     "id": 5,
+     "name": "Поверхность",
+     "folder": null,
+     "version": 1,
+     "extent": [
+      -5.0,
+      -5.0,
+      1.0,
+      75.0,
+      65.0,
+      1.0
+     ],
+     "crs": null,
+     "point_count": 4,
+     "triangle_count": 2,
+     "origin": [
+      35.0,
+      30.0,
+      1.0
+     ],
+     "stats": {
+      "area": 5600.0,
+      "plan_area": 5600.0,
+      "volume": null,
+      "closed": false,
+      "orientation": null,
+      "degenerate": 0,
+      "open_edges": 4,
+      "nonmanifold_edges": 0
+     },
+     "attrs": [],
+     "dtm": null,
+     "color": null,
+     "built": null,
+     "source": null
+    },
+    {
+     "id": 6,
+     "name": "Две оболочки",
+     "folder": null,
+     "version": 1,
+     "extent": [
+      10.0,
+      10.0,
+      10.0,
+      55.0,
+      50.0,
+      40.0
+     ],
+     "crs": null,
+     "point_count": 16,
+     "triangle_count": 24,
+     "origin": [
+      32.0,
+      30.0,
+      25.0
+     ],
+     "stats": {
+      "area": 7000.0,
+      "plan_area": 2800.0,
+      "volume": 28000.0,
+      "closed": true,
+      "orientation": "outward",
+      "degenerate": 0,
+      "open_edges": 0,
+      "nonmanifold_edges": 0
+     },
+     "attrs": [],
+     "dtm": null,
+     "color": null,
+     "built": null,
+     "source": null
+    }
+   ]
+  }
+ },
+ "prototype": {
+  "previews": {
+   "extent": {
+    "request": {
+     "size": [
+      10,
+      10,
+      10
+     ],
+     "extent": [
+      0,
+      0,
+      0,
+      60,
+      50,
+      40
+     ],
+     "levels": [
+      1,
+      1,
+      1
+     ]
+    },
+    "status": 200,
+    "body": {
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ]
+     },
+     "parents": 120,
+     "disk": 2880,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "frame": [
+      [
+       0.0,
+       0.0,
+       0.0
+      ],
+      [
+       60.0,
+       0.0,
+       0.0
+      ],
+      [
+       0.0,
+       50.0,
+       0.0
+      ],
+      [
+       60.0,
+       50.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0,
+       40.0
+      ],
+      [
+       60.0,
+       0.0,
+       40.0
+      ],
+      [
+       0.0,
+       50.0,
+       40.0
+      ],
+      [
+       60.0,
+       50.0,
+       40.0
+      ]
+     ]
+    }
+   },
+   "objects": {
+    "request": {
+     "size": [
+      10,
+      10,
+      5
+     ],
+     "object_ids": [
+      2,
+      3
+     ],
+     "pad": 5,
+     "rotation": 30,
+     "levels": [
+      2,
+      2,
+      1
+     ]
+    },
+    "status": 200,
+    "body": {
+     "grid": {
+      "corner": [
+       15.0,
+       -25.9807621,
+       5.0
+      ],
+      "counts": [
+       7,
+       7,
+       6
+      ],
+      "size": [
+       10.0,
+       10.0,
+       5.0
+      ],
+      "order": "F",
+      "rotation": 30.0,
+      "div": [
+       4,
+       4,
+       2
+      ]
+     },
+     "parents": 294,
+     "disk": 7056,
+     "extent": [
+      -20.0,
+      -25.9807621,
+      5.0,
+      75.6217783,
+      69.6410162,
+      35.0
+     ],
+     "frame": [
+      [
+       15.0,
+       -25.9807621,
+       5.0
+      ],
+      [
+       75.6217783,
+       9.01923789,
+       5.0
+      ],
+      [
+       -20.0,
+       34.6410162,
+       5.0
+      ],
+      [
+       40.6217783,
+       69.6410162,
+       5.0
+      ],
+      [
+       15.0,
+       -25.9807621,
+       35.0
+      ],
+      [
+       75.6217783,
+       9.01923789,
+       35.0
+      ],
+      [
+       -20.0,
+       34.6410162,
+       35.0
+      ],
+      [
+       40.6217783,
+       69.6410162,
+       35.0
+      ]
+     ]
+    }
+   },
+   "pad3": {
+    "request": {
+     "size": [
+      10,
+      10,
+      10
+     ],
+     "extent": [
+      0,
+      0,
+      0,
+      60,
+      50,
+      40
+     ],
+     "levels": [
+      1,
+      1,
+      1
+     ],
+     "pad": [
+      5,
+      5,
+      10
+     ]
+    },
+    "status": 200,
+    "body": {
+     "grid": {
+      "corner": [
+       -10.0,
+       -10.0,
+       -10.0
+      ],
+      "counts": [
+       8,
+       7,
+       6
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ]
+     },
+     "parents": 336,
+     "disk": 8064,
+     "extent": [
+      -10.0,
+      -10.0,
+      -10.0,
+      70.0,
+      60.0,
+      50.0
+     ],
+     "frame": [
+      [
+       -10.0,
+       -10.0,
+       -10.0
+      ],
+      [
+       70.0,
+       -10.0,
+       -10.0
+      ],
+      [
+       -10.0,
+       60.0,
+       -10.0
+      ],
+      [
+       70.0,
+       60.0,
+       -10.0
+      ],
+      [
+       -10.0,
+       -10.0,
+       50.0
+      ],
+      [
+       70.0,
+       -10.0,
+       50.0
+      ],
+      [
+       -10.0,
+       60.0,
+       50.0
+      ],
+      [
+       70.0,
+       60.0,
+       50.0
+      ]
+     ]
+    }
+   },
+   "full": {
+    "request": {
+     "size": [
+      10,
+      10,
+      10
+     ],
+     "extent": [
+      0,
+      0,
+      0,
+      60,
+      50,
+      40
+     ],
+     "levels": [
+      1,
+      1,
+      1
+     ],
+     "full": true
+    },
+    "status": 200,
+    "body": {
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ]
+     },
+     "parents": 120,
+     "disk": 2880,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "frame": [
+      [
+       0.0,
+       0.0,
+       0.0
+      ],
+      [
+       60.0,
+       0.0,
+       0.0
+      ],
+      [
+       0.0,
+       50.0,
+       0.0
+      ],
+      [
+       60.0,
+       50.0,
+       0.0
+      ],
+      [
+       0.0,
+       0.0,
+       40.0
+      ],
+      [
+       60.0,
+       0.0,
+       40.0
+      ],
+      [
+       0.0,
+       50.0,
+       40.0
+      ],
+      [
+       60.0,
+       50.0,
+       40.0
+      ]
+     ]
+    }
+   }
+  },
+  "refused": {
+   "no_extent_and_objects": {
+    "path": "/blocks/prototype/preview",
+    "request": {
+     "size": [
+      10,
+      10,
+      10
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "object_ids",
+     "code": "bad_param",
+     "message": "Нужно задать охват: либо объекты, либо границы по X, Y, Z (не оба сразу).",
+     "hint": "Выберите объекты в менеджере данных или введите границы вручную."
+    }
+   },
+   "both": {
+    "path": "/blocks/prototype/preview",
+    "request": {
+     "size": [
+      10,
+      10,
+      10
+     ],
+     "extent": [
+      0,
+      0,
+      0,
+      60,
+      50,
+      40
+     ],
+     "levels": [
+      1,
+      1,
+      1
+     ],
+     "object_ids": [
+      2
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "object_ids",
+     "code": "bad_param",
+     "message": "Нужно задать охват: либо объекты, либо границы по X, Y, Z (не оба сразу).",
+     "hint": "Выберите объекты в менеджере данных или введите границы вручную."
+    }
+   },
+   "object_missing": {
+    "path": "/blocks/prototype/preview",
+    "request": {
+     "object_ids": [
+      999999
+     ]
+    },
+    "status": 404,
+    "body": {
+     "param": "object_ids.0",
+     "code": "object_not_found",
+     "message": "Объект для охвата не найден.",
+     "hint": "Обновите менеджер данных."
+    }
+   },
+   "size_zero": {
+    "path": "/blocks/prototype/preview",
+    "request": {
+     "size": [
+      10,
+      0,
+      10
+     ],
+     "extent": [
+      0,
+      0,
+      0,
+      60,
+      50,
+      40
+     ],
+     "levels": [
+      1,
+      1,
+      1
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "size",
+     "code": "bad_param",
+     "message": "Размер блока должен быть больше нуля.",
+     "hint": "Задайте размер блока по X, Y, Z в метрах."
+    }
+   },
+   "pad_negative": {
+    "path": "/blocks/prototype/preview",
+    "request": {
+     "size": [
+      10,
+      10,
+      10
+     ],
+     "extent": [
+      0,
+      0,
+      0,
+      60,
+      50,
+      40
+     ],
+     "levels": [
+      1,
+      1,
+      1
+     ],
+     "pad": -1
+    },
+    "status": 422,
+    "body": {
+     "param": "pad",
+     "code": "bad_param",
+     "message": "Отступ не может быть отрицательным.",
+     "hint": "Задайте отступ от охвата 0 или больше."
+    }
+   },
+   "levels": {
+    "path": "/blocks/prototype/preview",
+    "request": {
+     "size": [
+      10,
+      10,
+      10
+     ],
+     "extent": [
+      0,
+      0,
+      0,
+      60,
+      50,
+      40
+     ],
+     "levels": [
+      1,
+      9,
+      0
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "levels.1",
+     "code": "subblock_div",
+     "message": "Уровней субблоков по Y — 9: нужно от 0 до 7.",
+     "hint": "Каждый уровень делит блок пополам по оси (ТЗ 8.7.2): не больше 7 уровней."
+    }
+   },
+   "extent_five": {
+    "path": "/blocks/prototype/preview",
+    "request": {
+     "size": [
+      10,
+      10,
+      10
+     ],
+     "extent": [
+      0,
+      0,
+      0,
+      5,
+      5
+     ],
+     "levels": [
+      1,
+      1,
+      1
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "extent",
+     "code": "bad_param",
+     "message": "Охват задан неверно: нужны шесть чисел.",
+     "hint": "Задайте мин. и макс. по X, Y, Z."
+    }
+   },
+   "too_large": {
+    "path": "/blocks/prototype/preview",
+    "request": {
+     "size": [
+      0.001,
+      0.001,
+      0.001
+     ],
+     "extent": [
+      0,
+      0,
+      0,
+      5000,
+      5000,
+      5000
+     ]
+    },
+    "status": 422,
+    "body": {
+     "code": "block_model_too_large",
+     "message": "В модели 125 000 000 000 000 000 000 ячеек — больше предела 2 000 000 000.",
+     "hint": "Разделите модель на части или укрупните ячейки."
+    }
+   }
+  },
+  "job": {
+   "path": "/blocks/prototype",
+   "request": {
+    "size": [
+     10,
+     10,
+     10
+    ],
+    "extent": [
+     0,
+     0,
+     0,
+     60,
+     50,
+     40
+    ],
+    "levels": [
+     1,
+     1,
+     1
+    ],
+    "name": "Сетка 10 м"
+   },
+   "job": {
+    "kind": "blocks.prototype",
+    "title": "Прототип: Сетка 10 м",
+    "queue": "quick",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 7,
+     "name": "Сетка 10 м",
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ]
+     },
+     "parents": 120,
+     "events": [
+      [
+       "objects.changed",
+       {
+        "kind": "block_model",
+        "id": 7
+       }
+      ]
+     ],
+     "stages": {
+      "extent": 0.0,
+      "write": 0.0,
+      "total": 0.0
+     }
+    }
+   }
+  },
+  "full": {
+   "path": "/blocks/prototype",
+   "request": {
+    "size": [
+     10,
+     10,
+     10
+    ],
+    "extent": [
+     0,
+     0,
+     0,
+     60,
+     50,
+     40
+    ],
+    "levels": [
+     1,
+     1,
+     1
+    ],
+    "full": true,
+    "name": "Все родители"
+   },
+   "job": {
+    "kind": "blocks.prototype",
+    "title": "Прототип: Все родители",
+    "queue": "quick",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 8,
+     "name": "Все родители",
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ]
+     },
+     "parents": 120,
+     "events": [
+      [
+       "objects.changed",
+       {
+        "kind": "block_model",
+        "id": 8
+       }
+      ]
+     ],
+     "stages": {
+      "extent": 0.0,
+      "write": 0.0,
+      "total": 0.0
+     }
+    }
+   }
+  }
+ },
+ "fill": {
+  "jobs": {
+   "both": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": [
+      {
+       "id": 2,
+       "code": "Руда",
+       "priority": 2
+      },
+      {
+       "id": 3
+      }
+     ],
+     "mode": "both",
+     "m": 4,
+     "outside_code": "вне",
+     "name": "Заполнение"
+    },
+    "job": {
+     "kind": "blocks.fill",
+     "title": "Заполнение: «Сетка 10 м»",
+     "queue": "heavy",
+     "status": "done",
+     "progress": 1.0,
+     "message": "Готово",
+     "error": null,
+     "result": {
+      "model_id": 9,
+      "name": "Заполнение",
+      "dropped": [],
+      "rows": 120,
+      "parents": 120,
+      "codes": {
+       "Руда": 24,
+       "Зона": 0,
+       "вне": 96
+      },
+      "volume": {
+       "Руда": 24000.0,
+       "Зона": 0.0,
+       "вне": 96000.0
+      },
+      "stages": {
+       "wireframes": 0.0,
+       "write": 0.0,
+       "total": 0.0,
+       "columns": 0.0,
+       "boundary": 0.0,
+       "split": 0.0,
+       "merge": 0.0
+      },
+      "warnings": [],
+      "events": [
+       [
+        "objects.changed",
+        {
+         "kind": "block_model",
+         "id": 9
+        }
+       ]
+      ]
+     }
+    }
+   },
+   "inside": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ],
+     "mode": "inside",
+     "levels": [
+      0,
+      0,
+      0
+     ],
+     "m": 8
+    },
+    "job": {
+     "kind": "blocks.fill",
+     "title": "Заполнение: «Сетка 10 м»",
+     "queue": "heavy",
+     "status": "done",
+     "progress": 1.0,
+     "message": "Готово",
+     "error": null,
+     "result": {
+      "model_id": 10,
+      "name": "Сетка 10 м (заполнение)",
+      "dropped": [],
+      "rows": 24,
+      "parents": 24,
+      "codes": {
+       "Руда": 24
+      },
+      "volume": {
+       "Руда": 24000.0
+      },
+      "stages": {
+       "wireframes": 0.0,
+       "write": 0.0,
+       "total": 0.0,
+       "columns": 0.0,
+       "boundary": 0.0,
+       "split": 0.0,
+       "merge": 0.0
+      },
+      "warnings": [],
+      "events": [
+       [
+        "objects.changed",
+        {
+         "kind": "block_model",
+         "id": 10
+        }
+       ]
+      ]
+     }
+    }
+   },
+   "outside_far": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": [
+      {
+       "id": 4
+      }
+     ],
+     "mode": "inside",
+     "m": 4
+    },
+    "job": {
+     "kind": "blocks.fill",
+     "title": "Заполнение: «Сетка 10 м»",
+     "queue": "heavy",
+     "status": "done",
+     "progress": 1.0,
+     "message": "Готово",
+     "error": null,
+     "result": {
+      "model_id": 11,
+      "name": "Сетка 10 м (заполнение) (2)",
+      "dropped": [],
+      "rows": 0,
+      "parents": 0,
+      "codes": {
+       "Далеко": 0
+      },
+      "volume": {
+       "Далеко": 0.0
+      },
+      "stages": {
+       "wireframes": 0.0,
+       "write": 0.0,
+       "total": 0.0,
+       "columns": 0.0,
+       "boundary": 0.0,
+       "split": 0.0,
+       "merge": 0.0
+      },
+      "warnings": [
+       "Каркас «Далеко» не пересекает сетку в плане: блоков с его кодом нет.",
+       "В выбранном режиме ни один блок не попал в тела: модель без строк."
+      ],
+      "events": [
+       [
+        "objects.changed",
+        {
+         "kind": "block_model",
+         "id": 11
+        }
+       ]
+      ]
+     }
+    }
+   },
+   "crossing": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": [
+      {
+       "id": 6
+      }
+     ],
+     "mode": "inside",
+     "m": 4
+    },
+    "job": {
+     "kind": "blocks.fill",
+     "title": "Заполнение: «Сетка 10 м»",
+     "queue": "heavy",
+     "status": "failed",
+     "progress": 0.0,
+     "message": "Каркас «Две оболочки»: нормали треугольников не согласованы или оболочки каркаса пересекаются (вертикальных лучей с нарушением — 1).",
+     "error": {
+      "code": "wireframe_orientation",
+      "message": "Каркас «Две оболочки»: нормали треугольников не согласованы или оболочки каркаса пересекаются (вертикальных лучей с нарушением — 1).",
+      "hint": "Заполнять можно только замкнутыми телами: проверьте каркас («Проверить каркас») и запустите «Исправить каркас»."
+     },
+     "result": null
+    }
+   }
+  },
+  "refused": {
+   "mode": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ],
+     "mode": "сбоку"
+    },
+    "status": 422,
+    "body": {
+     "param": "mode",
+     "code": "fill_mode",
+     "message": "Режим «сбоку» неизвестен.",
+     "hint": "Выберите «внутри», «снаружи» или «оба»."
+    }
+   },
+   "m": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ],
+     "m": 99
+    },
+    "status": 422,
+    "body": {
+     "param": "m",
+     "code": "bad_param",
+     "message": "Точек подсетки m = 99: нужно целое число от 1 до 16.",
+     "hint": "Доля объёма считается по m × m × m точкам блока; по умолчанию 4."
+    }
+   },
+   "no_wireframes": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": []
+    },
+    "status": 422,
+    "body": {
+     "param": "wireframes",
+     "code": "bad_param",
+     "message": "Не выбрано ни одного каркаса.",
+     "hint": "Выберите хотя бы один замкнутый каркас."
+    }
+   },
+   "no_prototype": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 777777,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ]
+    },
+    "status": 404,
+    "body": {
+     "code": "block_model_not_found",
+     "message": "Блочная модель не найдена.",
+     "hint": "Обновите дерево проекта."
+    }
+   },
+   "not_prototype": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 12,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "prototype_id",
+     "code": "not_prototype",
+     "message": "Эта модель не прототип: заполнять можно только прототип.",
+     "hint": "Создайте прототип («Блочные модели» → «Прототип») и заполните его."
+    }
+   },
+   "wireframe_missing": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": [
+      {
+       "id": 777777
+      }
+     ]
+    },
+    "status": 404,
+    "body": {
+     "param": "wireframes.0.id",
+     "code": "wireframe_not_found",
+     "message": "Каркас не найден.",
+     "hint": "Обновите список каркасов."
+    }
+   },
+   "wireframe_open": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": [
+      {
+       "id": 2
+      },
+      {
+       "id": 5
+      }
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "wireframes.1.id",
+     "name": "Поверхность",
+     "code": "wireframe_open",
+     "message": "Каркас «Поверхность» не замкнут: открытых рёбер — 4.",
+     "hint": "Заполнять можно только замкнутыми телами: проверьте каркас («Проверить каркас») и запустите «Исправить каркас»."
+    }
+   },
+   "levels": {
+    "path": "/blocks/fill",
+    "request": {
+     "prototype_id": 7,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ],
+     "levels": [
+      1,
+      9,
+      1
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "levels.1",
+     "code": "bad_param",
+     "message": "Уровней по Y = 9: нужно целое число от 0 до 7.",
+     "hint": "Каждый уровень делит блок пополам: от 0 до 7."
+    }
+   }
+  }
+ },
+ "code": {
+  "jobs": {
+   "centre": {
+    "path": "/blocks/12/code",
+    "request": {
+     "expected_version": 1,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ],
+     "mode": "inside",
+     "code_field": "ZONE"
+    },
+    "job": {
+     "kind": "blocks.code",
+     "title": "Кодирование: «Модель (2)»",
+     "queue": "heavy",
+     "status": "done",
+     "progress": 1.0,
+     "message": "Готово",
+     "error": null,
+     "result": {
+      "model_id": 12,
+      "name": "Модель (2)",
+      "version": 2,
+      "rows": 120,
+      "parents": 120,
+      "fields": [
+       "ZONE"
+      ],
+      "dropped": [],
+      "codes": {
+       "Руда": 24
+      },
+      "volume": {
+       "Руда": 24000.0
+      },
+      "stages": {
+       "wireframes": 0.0,
+       "boundary": 0.0,
+       "split": 0.0,
+       "write": 0.0,
+       "total": 0.0
+      },
+      "warnings": [],
+      "events": [
+       [
+        "objects.changed",
+        {
+         "kind": "block_model",
+         "id": 12
+        }
+       ]
+      ]
+     }
+    }
+   },
+   "split": {
+    "path": "/blocks/12/code",
+    "request": {
+     "expected_version": 2,
+     "wireframes": [
+      {
+       "id": 2,
+       "code": "Руда"
+      }
+     ],
+     "mode": "both",
+     "split": true,
+     "m": 4,
+     "outside_code": "вне",
+     "code_field": "KOD",
+     "frac_field": "DOLYA",
+     "name": "С дроблением"
+    },
+    "job": {
+     "kind": "blocks.code",
+     "title": "Кодирование: «Модель (2)»",
+     "queue": "heavy",
+     "status": "done",
+     "progress": 1.0,
+     "message": "Готово",
+     "error": null,
+     "result": {
+      "model_id": 13,
+      "name": "С дроблением",
+      "dropped": [],
+      "rows": 120,
+      "parents": 120,
+      "codes": {
+       "Руда": 24,
+       "вне": 96
+      },
+      "volume": {
+       "Руда": 24000.0,
+       "вне": 96000.0
+      },
+      "stages": {
+       "wireframes": 0.0,
+       "boundary": 0.0,
+       "split": 0.0,
+       "write": 0.0,
+       "total": 0.0
+      },
+      "warnings": [],
+      "events": [
+       [
+        "objects.changed",
+        {
+         "kind": "block_model",
+         "id": 13
+        }
+       ]
+      ]
+     }
+    }
+   }
+  },
+  "refused": {
+   "version": {
+    "path": "/blocks/12/code",
+    "request": {
+     "expected_version": 1,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ]
+    },
+    "status": 409,
+    "body": {
+     "version": 2,
+     "code": "version_conflict",
+     "message": "Модель изменили, пока вы её правили.",
+     "hint": "Перечитайте модель и повторите."
+    }
+   },
+   "no_version": {
+    "path": "/blocks/12/code",
+    "request": {
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ]
+    },
+    "status": 409,
+    "body": {
+     "version": null,
+     "code": "version_conflict",
+     "message": "Не указана версия модели.",
+     "hint": "Перечитайте модель и повторите."
+    }
+   },
+   "field_exists": {
+    "path": "/blocks/12/code",
+    "request": {
+     "expected_version": 2,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ],
+     "code_field": "AU"
+    },
+    "status": 409,
+    "body": {
+     "field": "AU",
+     "param": "code_field",
+     "code": "field_exists",
+     "message": "Поле «AU» в модели уже есть.",
+     "hint": "Задайте другое имя поля."
+    }
+   },
+   "frac_exists": {
+    "path": "/blocks/9/code",
+    "request": {
+     "expected_version": 1,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ],
+     "split": true,
+     "code_field": "K2",
+     "frac_field": "FRAC2"
+    },
+    "status": 422,
+    "body": {
+     "param": "frac_field",
+     "code": "frac_exists",
+     "message": "У модели уже есть поле доли объёма.",
+     "hint": "Не записывайте второе поле доли (frac_field — пусто) или удалите прежнее."
+    }
+   },
+   "empty": {
+    "path": "/blocks/7/code",
+    "request": {
+     "expected_version": 1,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ]
+    },
+    "status": 422,
+    "body": {
+     "code": "block_model_empty",
+     "message": "В модели нет блоков: кодировать нечего.",
+     "hint": "Заполните прототип каркасами (команда «Заполнить каркасами»)."
+    }
+   },
+   "split_type": {
+    "path": "/blocks/12/code",
+    "request": {
+     "expected_version": 2,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ],
+     "split": "да"
+    },
+    "status": 422,
+    "body": {
+     "param": "split",
+     "code": "bad_param",
+     "message": "Признак «с дроблением» — да или нет.",
+     "hint": "Включите или выключите флажок."
+    }
+   },
+   "missing": {
+    "path": "/blocks/777777/code",
+    "request": {
+     "expected_version": 1,
+     "wireframes": [
+      {
+       "id": 2
+      }
+     ]
+    },
+    "status": 404,
+    "body": {
+     "code": "block_model_not_found",
+     "message": "Блочная модель не найдена.",
+     "hint": "Обновите дерево проекта."
+    }
+   }
+  }
+ },
+ "rebuild": {
+  "fields_before": {
+   "status": 200,
+   "body": {
+    "id": 9,
+    "name": "Заполнение",
+    "version": 2,
+    "stale": false,
+    "stale_reason": null,
+    "fields": [
+     {
+      "name": "CODE",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": "Код тела по каркасам",
+      "role": "code",
+      "labels_count": 3,
+      "stats": {
+       "count": 120,
+       "missing": 0,
+       "counts": [
+        24,
+        0,
+        96
+       ]
+      },
+      "source": {
+       "op": "fill",
+       "params": {
+        "source_id": 7,
+        "wireframes": [
+         {
+          "id": 2,
+          "code": "Руда",
+          "priority": 2
+         },
+         {
+          "id": 3,
+          "code": null,
+          "priority": null
+         }
+        ],
+        "mode": "both",
+        "m": 4,
+        "levels": null,
+        "outside_code": "вне",
+        "code_field": "CODE",
+        "frac_field": "FRAC",
+        "name": "Заполнение",
+        "folder": null,
+        "split": true,
+        "expected_version": null,
+        "names": {
+         "wireframes": {
+          "2": "Руда",
+          "3": "Зона"
+         }
+        }
+       },
+       "algo": "fill-1"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "FRAC",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": "Доля объёма блока, занятая телом",
+      "role": "frac",
+      "labels_count": 0,
+      "stats": {
+       "count": 120,
+       "missing": 0,
+       "min": 1.0,
+       "max": 1.0,
+       "mean": 1.0,
+       "std": 0.0
+      },
+      "source": {
+       "op": "fill",
+       "params": {
+        "source_id": 7,
+        "wireframes": [
+         {
+          "id": 2,
+          "code": "Руда",
+          "priority": 2
+         },
+         {
+          "id": 3,
+          "code": null,
+          "priority": null
+         }
+        ],
+        "mode": "both",
+        "m": 4,
+        "levels": null,
+        "outside_code": "вне",
+        "code_field": "CODE",
+        "frac_field": "FRAC",
+        "name": "Заполнение",
+        "folder": null,
+        "split": true,
+        "expected_version": null,
+        "names": {
+         "wireframes": {
+          "2": "Руда",
+          "3": "Зона"
+         }
+        }
+       },
+       "algo": "fill-1"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": true,
+      "deletable": false,
+      "usage": []
+     },
+     {
+      "name": "X",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 120,
+       "missing": 0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "std": 0.0
+      },
+      "source": {
+       "op": "calc",
+       "params": {
+        "expr": "X"
+       },
+       "algo": null
+      },
+      "stale": true,
+      "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     }
+    ]
+   }
+  },
+  "detail_before": {
+   "status": 200,
+   "body": {
+    "name": "Заполнение",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     60.0,
+     50.0,
+     40.0
+    ],
+    "crs": null,
+    "id": 9,
+    "version": 2,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      6,
+      5,
+      4
+     ],
+     "size": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      2,
+      2,
+      2
+     ],
+     "variable": false,
+     "levels": [
+      1,
+      1,
+      1
+     ]
+    },
+    "cells": 120,
+    "rows": 120,
+    "parents": 120,
+    "sub": true,
+    "full": false,
+    "fields": [
+     {
+      "name": "CODE",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": "Код тела по каркасам",
+      "role": "code",
+      "labels": [
+       "Руда",
+       "Зона",
+       "вне"
+      ],
+      "stats": {
+       "count": 120,
+       "missing": 0,
+       "counts": [
+        24,
+        0,
+        96
+       ]
+      },
+      "source": {
+       "op": "fill",
+       "params": {
+        "source_id": 7,
+        "wireframes": [
+         {
+          "id": 2,
+          "code": "Руда",
+          "priority": 2
+         },
+         {
+          "id": 3,
+          "code": null,
+          "priority": null
+         }
+        ],
+        "mode": "both",
+        "m": 4,
+        "levels": null,
+        "outside_code": "вне",
+        "code_field": "CODE",
+        "frac_field": "FRAC",
+        "name": "Заполнение",
+        "folder": null,
+        "split": true,
+        "expected_version": null,
+        "names": {
+         "wireframes": {
+          "2": "Руда",
+          "3": "Зона"
+         }
+        }
+       },
+       "inputs": [],
+       "algo": "fill-1",
+       "versions": {
+        "numpy": "2.3.5",
+        "numba": "0.68.1"
+       }
+      }
+     },
+     {
+      "name": "FRAC",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": "Доля объёма блока, занятая телом",
+      "role": "frac",
+      "stats": {
+       "count": 120,
+       "missing": 0,
+       "min": 1.0,
+       "max": 1.0,
+       "mean": 1.0,
+       "std": 0.0
+      },
+      "source": {
+       "op": "fill",
+       "params": {
+        "source_id": 7,
+        "wireframes": [
+         {
+          "id": 2,
+          "code": "Руда",
+          "priority": 2
+         },
+         {
+          "id": 3,
+          "code": null,
+          "priority": null
+         }
+        ],
+        "mode": "both",
+        "m": 4,
+        "levels": null,
+        "outside_code": "вне",
+        "code_field": "CODE",
+        "frac_field": "FRAC",
+        "name": "Заполнение",
+        "folder": null,
+        "split": true,
+        "expected_version": null,
+        "names": {
+         "wireframes": {
+          "2": "Руда",
+          "3": "Зона"
+         }
+        }
+       },
+       "inputs": [],
+       "algo": "fill-1",
+       "versions": {
+        "numpy": "2.3.5",
+        "numba": "0.68.1"
+       }
+      }
+     },
+     {
+      "name": "X",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 120,
+       "missing": 0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "std": 0.0
+      },
+      "source": {
+       "params": {
+        "expr": "X"
+       },
+       "inputs": [],
+       "algo": null,
+       "versions": {},
+       "op": "calc"
+      }
+     }
+    ],
+    "source": {
+     "op": "fill",
+     "params": {
+      "source_id": 7,
+      "wireframes": [
+       {
+        "id": 2,
+        "code": "Руда",
+        "priority": 2
+       },
+       {
+        "id": 3,
+        "code": null,
+        "priority": null
+       }
+      ],
+      "mode": "both",
+      "m": 4,
+      "levels": null,
+      "outside_code": "вне",
+      "code_field": "CODE",
+      "frac_field": "FRAC",
+      "name": "Заполнение",
+      "folder": null,
+      "split": true,
+      "expected_version": null,
+      "names": {
+       "wireframes": {
+        "2": "Руда",
+        "3": "Зона"
+       }
+      }
+     }
+    },
+    "warnings": [],
+    "checks": null,
+    "groups": [
+     {
+      "rows": 120,
+      "k0": 0,
+      "k1": 3
+     }
+    ],
+    "inputs": {
+     "wireframes": [
+      {
+       "id": 2,
+       "sha": "f4b26b456d49a4c18ff975cc7143b8a359b1c6d2e83993cce709d7096e3d9d57"
+      },
+      {
+       "id": 3,
+       "sha": "ca247e0eaeb422864021467d5b98d2dc11454ecdc00e3ae7ef7d97c1758599e4"
+      }
+     ]
+    },
+    "algo": "fill-1"
+   }
+  },
+  "job": {
+   "path": "/blocks/9/rebuild",
+   "request": {
+    "expected_version": 2
+   },
+   "job": {
+    "kind": "blocks.fill",
+    "title": "Перестроить: «Заполнение»",
+    "queue": "heavy",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 9,
+     "name": "Заполнение",
+     "version": 3,
+     "dropped": [
+      "X"
+     ],
+     "rows": 120,
+     "parents": 120,
+     "codes": {
+      "Руда": 24,
+      "Зона": 0,
+      "вне": 96
+     },
+     "volume": {
+      "Руда": 24000.0,
+      "Зона": 0.0,
+      "вне": 96000.0
+     },
+     "stages": {
+      "wireframes": 0.0,
+      "write": 0.0,
+      "total": 0.0,
+      "columns": 0.0,
+      "boundary": 0.0,
+      "split": 0.0,
+      "merge": 0.0
+     },
+     "warnings": [],
+     "events": [
+      [
+       "objects.changed",
+       {
+        "kind": "block_model",
+        "id": 9
+       }
+      ]
+     ]
+    }
+   }
+  },
+  "refused": {
+   "version": {
+    "path": "/blocks/9/rebuild",
+    "request": {
+     "expected_version": 2
+    },
+    "status": 409,
+    "body": {
+     "version": 3,
+     "code": "version_conflict",
+     "message": "Модель изменили, пока вы её правили.",
+     "hint": "Перечитайте модель и повторите."
+    }
+   },
+   "not_rebuildable": {
+    "path": "/blocks/12/rebuild",
+    "request": {
+     "expected_version": 2
+    },
+    "status": 422,
+    "body": {
+     "code": "not_rebuildable",
+     "message": "Эту модель нельзя перестроить.",
+     "hint": "Перестраиваются модели, созданные заполнением, а также кодированием с дроблением."
+    }
+   },
+   "missing": {
+    "path": "/blocks/777777/rebuild",
+    "request": {
+     "expected_version": 1
+    },
+    "status": 404,
+    "body": {
+     "code": "block_model_not_found",
+     "message": "Блочная модель не найдена.",
+     "hint": "Обновите дерево проекта."
+    }
+   },
+   "source_lost": {
+    "path": "/blocks/13/rebuild",
+    "request": {
+     "expected_version": 1
+    },
+    "status": 409,
+    "body": {
+     "code": "source_lost",
+     "message": "Исходных данных больше нет: каркас № 2 удалён.",
+     "hint": "Восстановите объект или создайте модель заново."
+    }
+   }
+  }
+ },
+ "regularize": {
+  "jobs": {
+   "grades": {
+    "path": "/blocks/12/regularize",
+    "request": {
+     "size": [
+      20,
+      20,
+      20
+     ],
+     "grades": [
+      {
+       "field": "AU",
+       "weight": "volume"
+      }
+     ],
+     "name": "Блоки 20"
+    },
+    "job": {
+     "kind": "blocks.regularize",
+     "title": "Регуляризация: «Модель (2)»",
+     "queue": "heavy",
+     "status": "done",
+     "progress": 1.0,
+     "message": "Готово",
+     "error": null,
+     "result": {
+      "model_id": 14,
+      "name": "Блоки 20",
+      "rows": 18,
+      "totals": {
+       "before": {
+        "volume": 120000.0,
+        "tonnes": null,
+        "metal": {
+         "AU": 6069000.0
+        }
+       },
+       "after": {
+        "volume": 120000.0,
+        "tonnes": null,
+        "metal": {
+         "AU": 7152761.9
+        }
+       },
+       "metal_basis": "volume"
+      },
+      "events": [
+       [
+        "objects.changed",
+        {
+         "kind": "block_model",
+         "id": 14
+        }
+       ]
+      ],
+      "warnings": [],
+      "stages": {
+       "read": 0.0,
+       "overlap": 0.0,
+       "write": 0.0,
+       "total": 0.0
+      }
+     }
+    }
+   },
+   "all": {
+    "path": "/blocks/12/regularize",
+    "request": {
+     "size": [
+      20,
+      20,
+      10
+     ]
+    },
+    "job": {
+     "kind": "blocks.regularize",
+     "title": "Регуляризация: «Модель (2)»",
+     "queue": "heavy",
+     "status": "done",
+     "progress": 1.0,
+     "message": "Готово",
+     "error": null,
+     "result": {
+      "model_id": 15,
+      "name": "Модель (2) (регуляризация)",
+      "rows": 36,
+      "totals": {
+       "before": {
+        "volume": 120000.0,
+        "tonnes": null,
+        "metal": {
+         "AU": 6069000.0
+        }
+       },
+       "after": {
+        "volume": 120000.0,
+        "tonnes": null,
+        "metal": {
+         "AU": 7148666.67
+        }
+       },
+       "metal_basis": "volume"
+      },
+      "events": [
+       [
+        "objects.changed",
+        {
+         "kind": "block_model",
+         "id": 15
+        }
+       ]
+      ],
+      "warnings": [],
+      "stages": {
+       "read": 0.0,
+       "overlap": 0.0,
+       "write": 0.0,
+       "total": 0.0
+      }
+     }
+    }
+   },
+   "tonnes": {
+    "path": "/blocks/12/regularize",
+    "request": {
+     "size": [
+      30,
+      25,
+      20
+     ],
+     "grades": [
+      {
+       "field": "AU",
+       "weight": "tonnes"
+      }
+     ],
+     "density": 2.7
+    },
+    "job": {
+     "kind": "blocks.regularize",
+     "title": "Регуляризация: «Модель (2)»",
+     "queue": "heavy",
+     "status": "done",
+     "progress": 1.0,
+     "message": "Готово",
+     "error": null,
+     "result": {
+      "model_id": 16,
+      "name": "Модель (2) (регуляризация) (2)",
+      "rows": 8,
+      "totals": {
+       "before": {
+        "volume": 120000.0,
+        "tonnes": 324000.0,
+        "metal": {
+         "AU": 16386300.0
+        }
+       },
+       "after": {
+        "volume": 120000.0,
+        "tonnes": 324000.0,
+        "metal": {
+         "AU": 19278000.0
+        }
+       },
+       "metal_basis": "tonnes"
+      },
+      "events": [
+       [
+        "objects.changed",
+        {
+         "kind": "block_model",
+         "id": 16
+        }
+       ]
+      ],
+      "warnings": [],
+      "stages": {
+       "read": 0.0,
+       "overlap": 0.0,
+       "write": 0.0,
+       "total": 0.0
+      }
+     }
+    }
+   },
+   "categories": {
+    "path": "/blocks/9/regularize",
+    "request": {
+     "size": [
+      20,
+      20,
+      20
+     ],
+     "categories": [
+      "CODE"
+     ],
+     "name": "Коды 20"
+    },
+    "job": {
+     "kind": "blocks.regularize",
+     "title": "Регуляризация: «Заполнение»",
+     "queue": "heavy",
+     "status": "done",
+     "progress": 1.0,
+     "message": "Готово",
+     "error": null,
+     "result": {
+      "model_id": 17,
+      "name": "Коды 20",
+      "rows": 18,
+      "totals": {
+       "before": {
+        "volume": 120000.0,
+        "tonnes": null,
+        "metal": {}
+       },
+       "after": {
+        "volume": 120000.0,
+        "tonnes": null,
+        "metal": {}
+       },
+       "metal_basis": "volume"
+      },
+      "events": [
+       [
+        "objects.changed",
+        {
+         "kind": "block_model",
+         "id": 17
+        }
+       ]
+      ],
+      "warnings": [],
+      "stages": {
+       "read": 0.0,
+       "overlap": 0.0,
+       "write": 0.0,
+       "total": 0.0
+      }
+     }
+    }
+   }
+  },
+  "refused": {
+   "size_zero": {
+    "path": "/blocks/12/regularize",
+    "request": {
+     "size": [
+      0,
+      1,
+      1
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "size",
+     "code": "bad_param",
+     "message": "Размер блока: нужны три положительных числа.",
+     "hint": "Задайте размер по X, Y, Z в метрах."
+    }
+   },
+   "no_size": {
+    "path": "/blocks/12/regularize",
+    "request": {},
+    "status": 422,
+    "body": {
+     "param": "size",
+     "code": "bad_param",
+     "message": "Размер блока: нужны три положительных числа.",
+     "hint": "Задайте размер по X, Y, Z в метрах."
+    }
+   },
+   "grade_missing": {
+    "path": "/blocks/12/regularize",
+    "request": {
+     "size": [
+      20,
+      20,
+      20
+     ],
+     "grades": [
+      {
+       "field": "NOPE"
+      }
+     ]
+    },
+    "status": 404,
+    "body": {
+     "code": "block_field_not_found",
+     "message": "Поле «NOPE» не найдено.",
+     "hint": "Обновите свойства модели."
+    }
+   },
+   "tonnes_no_density": {
+    "path": "/blocks/12/regularize",
+    "request": {
+     "size": [
+      20,
+      20,
+      20
+     ],
+     "grades": [
+      {
+       "field": "AU",
+       "weight": "tonnes"
+      }
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "density",
+     "code": "bad_param",
+     "message": "Для веса по тоннажу нужна плотность.",
+     "hint": "Укажите поле плотности или число."
+    }
+   },
+   "category_number": {
+    "path": "/blocks/12/regularize",
+    "request": {
+     "size": [
+      20,
+      20,
+      20
+     ],
+     "categories": [
+      "AU"
+     ]
+    },
+    "status": 422,
+    "body": {
+     "param": "categories.0",
+     "code": "bad_param",
+     "message": "Поле «AU» — не категория.",
+     "hint": "Выберите поле-категорию."
+    }
+   },
+   "version": {
+    "path": "/blocks/12/regularize",
+    "request": {
+     "size": [
+      20,
+      20,
+      20
+     ],
+     "expected_version": 99
+    },
+    "status": 409,
+    "body": {
+     "version": 2,
+     "code": "version_conflict",
+     "message": "Модель изменили, пока вы её правили.",
+     "hint": "Перечитайте модель и повторите."
+    }
+   },
+   "empty": {
+    "path": "/blocks/7/regularize",
+    "request": {
+     "size": [
+      20,
+      20,
+      20
+     ]
+    },
+    "status": 422,
+    "body": {
+     "code": "block_model_empty",
+     "message": "В модели нет блоков.",
+     "hint": "Регуляризовать можно модель с блоками."
+    }
+   },
+   "missing": {
+    "path": "/blocks/777777/regularize",
+    "request": {
+     "size": [
+      20,
+      20,
+      20
+     ]
+    },
+    "status": 404,
+    "body": {
+     "code": "block_model_not_found",
+     "message": "Блочная модель не найдена.",
+     "hint": "Обновите дерево проекта."
+    }
+   }
+  }
+ },
+ "blocks": {
+  "status": 200,
+  "body": {
+   "block_models": [
+    {
+     "name": "Блоки 20",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      60.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 14,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       3,
+       3,
+       2
+      ],
+      "size": [
+       20.0,
+       20.0,
+       20.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "variable": false,
+      "levels": [
+       0,
+       0,
+       0
+      ]
+     },
+     "cells": 18,
+     "rows": 18,
+     "parents": 18,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "г/т",
+       "role": "grade"
+      },
+      {
+       "name": "ZONE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      },
+      {
+       "name": "P_Руда",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "FRAC",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "frac"
+      }
+     ],
+     "source": {
+      "op": "regularize",
+      "params": {
+       "size": [
+        20.0,
+        20.0,
+        20.0
+       ],
+       "grades": [
+        {
+         "field": "AU",
+         "weight": "volume"
+        }
+       ],
+       "density": null,
+       "categories": [
+        "ZONE"
+       ],
+       "names": {
+        "model": {
+         "12": "Модель (2)"
+        }
+       }
+      }
+     },
+     "warnings": []
+    },
+    {
+     "name": "Все родители",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 8,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ],
+      "variable": false,
+      "levels": [
+       1,
+       1,
+       1
+      ]
+     },
+     "cells": 0,
+     "rows": 0,
+     "parents": 0,
+     "sub": true,
+     "full": true,
+     "fields": [],
+     "source": {
+      "op": "prototype",
+      "params": {
+       "size": [
+        10.0,
+        10.0,
+        10.0
+       ],
+       "extent": [
+        0.0,
+        0.0,
+        0.0,
+        60.0,
+        50.0,
+        40.0
+       ],
+       "pad": [
+        0.0,
+        0.0,
+        0.0
+       ],
+       "rotation": 0.0,
+       "levels": [
+        1,
+        1,
+        1
+       ],
+       "full": true
+      }
+     },
+     "warnings": []
+    },
+    {
+     "name": "Заполнение",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 9,
+     "version": 3,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ],
+      "variable": false,
+      "levels": [
+       1,
+       1,
+       1
+      ]
+     },
+     "cells": 120,
+     "rows": 120,
+     "parents": 120,
+     "sub": true,
+     "full": false,
+     "fields": [
+      {
+       "name": "CODE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      },
+      {
+       "name": "FRAC",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "frac"
+      }
+     ],
+     "source": {
+      "op": "fill",
+      "params": {
+       "source_id": 7,
+       "wireframes": [
+        {
+         "id": 2,
+         "code": "Руда",
+         "priority": 2
+        },
+        {
+         "id": 3,
+         "code": null,
+         "priority": null
+        }
+       ],
+       "mode": "both",
+       "m": 4,
+       "levels": null,
+       "outside_code": "вне",
+       "code_field": "CODE",
+       "frac_field": "FRAC",
+       "name": "Заполнение",
+       "folder": null,
+       "split": true,
+       "expected_version": null,
+       "names": {
+        "wireframes": {
+         "2": "Руда",
+         "3": "Зона"
+        }
+       }
+      }
+     },
+     "warnings": []
+    },
+    {
+     "name": "Коды 20",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      60.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 17,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       3,
+       3,
+       2
+      ],
+      "size": [
+       20.0,
+       20.0,
+       20.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "variable": false,
+      "levels": [
+       0,
+       0,
+       0
+      ]
+     },
+     "cells": 18,
+     "rows": 18,
+     "parents": 18,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "CODE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      },
+      {
+       "name": "P_Руда",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "P_Зона",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "P_вне",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "FRAC",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "frac"
+      }
+     ],
+     "source": {
+      "op": "regularize",
+      "params": {
+       "size": [
+        20.0,
+        20.0,
+        20.0
+       ],
+       "grades": [],
+       "density": null,
+       "categories": [
+        "CODE"
+       ],
+       "names": {
+        "model": {
+         "9": "Заполнение"
+        }
+       }
+      }
+     },
+     "warnings": []
+    },
+    {
+     "name": "Модель",
+     "folder": null,
+     "extent": [
+      980.5,
+      2000.25,
+      -300.0,
+      1043.80127,
+      2059.89102,
+      -285.0
+     ],
+     "crs": null,
+     "id": 1,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       1000.5,
+       2000.25,
+       -300.0
+      ],
+      "counts": [
+       10,
+       8,
+       6
+      ],
+      "size": [
+       5.0,
+       5.0,
+       2.5
+      ],
+      "order": "F",
+      "rotation": 30.0,
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "variable": false,
+      "levels": [
+       0,
+       0,
+       0
+      ]
+     },
+     "cells": 350,
+     "rows": 350,
+     "parents": 350,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "г/т",
+       "role": "grade"
+      },
+      {
+       "name": "CU",
+       "kind": "number",
+       "dtype": "f4",
+       "unit": "%",
+       "role": null
+      },
+      {
+       "name": "N",
+       "kind": "number",
+       "dtype": "i2",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "DOM",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      }
+     ],
+     "source": {
+      "op": "import",
+      "format": "dat"
+     },
+     "warnings": []
+    },
+    {
+     "name": "Модель (2)",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 12,
+     "version": 2,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ],
+      "variable": false,
+      "levels": [
+       1,
+       1,
+       1
+      ]
+     },
+     "cells": 120,
+     "rows": 120,
+     "parents": 120,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "г/т",
+       "role": "grade"
+      },
+      {
+       "name": "ZONE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      }
+     ],
+     "source": {
+      "op": "import",
+      "format": "dat"
+     },
+     "warnings": []
+    },
+    {
+     "name": "Модель (2) (регуляризация)",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      60.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 15,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       3,
+       3,
+       4
+      ],
+      "size": [
+       20.0,
+       20.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "variable": false,
+      "levels": [
+       0,
+       0,
+       0
+      ]
+     },
+     "cells": 36,
+     "rows": 36,
+     "parents": 36,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "г/т",
+       "role": "grade"
+      },
+      {
+       "name": "ZONE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      },
+      {
+       "name": "P_Руда",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "FRAC",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "frac"
+      }
+     ],
+     "source": {
+      "op": "regularize",
+      "params": {
+       "size": [
+        20.0,
+        20.0,
+        10.0
+       ],
+       "grades": [
+        {
+         "field": "AU",
+         "weight": "volume"
+        }
+       ],
+       "density": null,
+       "categories": [
+        "ZONE"
+       ],
+       "names": {
+        "model": {
+         "12": "Модель (2)"
+        }
+       }
+      }
+     },
+     "warnings": []
+    },
+    {
+     "name": "Модель (2) (регуляризация) (2)",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 16,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       2,
+       2,
+       2
+      ],
+      "size": [
+       30.0,
+       25.0,
+       20.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "variable": false,
+      "levels": [
+       0,
+       0,
+       0
+      ]
+     },
+     "cells": 8,
+     "rows": 8,
+     "parents": 8,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "г/т",
+       "role": "grade"
+      },
+      {
+       "name": "ZONE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      },
+      {
+       "name": "P_Руда",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "FRAC",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "frac"
+      }
+     ],
+     "source": {
+      "op": "regularize",
+      "params": {
+       "size": [
+        30.0,
+        25.0,
+        20.0
+       ],
+       "grades": [
+        {
+         "field": "AU",
+         "weight": "tonnes"
+        }
+       ],
+       "density": 2.7,
+       "categories": [
+        "ZONE"
+       ],
+       "names": {
+        "model": {
+         "12": "Модель (2)"
+        }
+       }
+      }
+     },
+     "warnings": []
+    },
+    {
+     "name": "С дроблением",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 13,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ],
+      "variable": false,
+      "levels": [
+       1,
+       1,
+       1
+      ]
+     },
+     "cells": 120,
+     "rows": 120,
+     "parents": 120,
+     "sub": true,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "г/т",
+       "role": "grade"
+      },
+      {
+       "name": "ZONE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      },
+      {
+       "name": "KOD",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      },
+      {
+       "name": "DOLYA",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "frac"
+      }
+     ],
+     "source": {
+      "op": "code",
+      "params": {
+       "source_id": 12,
+       "wireframes": [
+        {
+         "id": 2,
+         "code": "Руда",
+         "priority": null
+        }
+       ],
+       "mode": "both",
+       "m": 4,
+       "levels": null,
+       "outside_code": "вне",
+       "code_field": "KOD",
+       "frac_field": "DOLYA",
+       "name": "С дроблением",
+       "folder": null,
+       "split": true,
+       "expected_version": 2,
+       "names": {
+        "wireframes": {
+         "2": "Руда"
+        },
+        "model": {
+         "12": "Модель (2)"
+        }
+       }
+      }
+     },
+     "warnings": []
+    },
+    {
+     "name": "Сетка 10 м",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 7,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ],
+      "variable": false,
+      "levels": [
+       1,
+       1,
+       1
+      ]
+     },
+     "cells": 0,
+     "rows": 0,
+     "parents": 0,
+     "sub": true,
+     "full": false,
+     "fields": [],
+     "source": {
+      "op": "prototype",
+      "params": {
+       "size": [
+        10.0,
+        10.0,
+        10.0
+       ],
+       "extent": [
+        0.0,
+        0.0,
+        0.0,
+        60.0,
+        50.0,
+        40.0
+       ],
+       "pad": [
+        0.0,
+        0.0,
+        0.0
+       ],
+       "rotation": 0.0,
+       "levels": [
+        1,
+        1,
+        1
+       ],
+       "full": false
+      }
+     },
+     "warnings": []
+    },
+    {
+     "name": "Сетка 10 м (заполнение)",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 10,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "variable": false,
+      "levels": [
+       0,
+       0,
+       0
+      ]
+     },
+     "cells": 24,
+     "rows": 24,
+     "parents": 24,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "CODE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      },
+      {
+       "name": "FRAC",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "frac"
+      }
+     ],
+     "source": {
+      "op": "fill",
+      "params": {
+       "source_id": 7,
+       "wireframes": [
+        {
+         "id": 2,
+         "code": null,
+         "priority": null
+        }
+       ],
+       "mode": "inside",
+       "m": 8,
+       "levels": [
+        0,
+        0,
+        0
+       ],
+       "outside_code": "вне",
+       "code_field": "CODE",
+       "frac_field": "FRAC",
+       "name": null,
+       "folder": null,
+       "split": true,
+       "expected_version": null,
+       "names": {
+        "wireframes": {
+         "2": "Руда"
+        }
+       }
+      }
+     },
+     "warnings": []
+    },
+    {
+     "name": "Сетка 10 м (заполнение) (2)",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      60.0,
+      50.0,
+      40.0
+     ],
+     "crs": null,
+     "id": 11,
+     "version": 1,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       2,
+       2,
+       2
+      ],
+      "variable": false,
+      "levels": [
+       1,
+       1,
+       1
+      ]
+     },
+     "cells": 0,
+     "rows": 0,
+     "parents": 0,
+     "sub": true,
+     "full": false,
+     "fields": [
+      {
+       "name": "CODE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      },
+      {
+       "name": "FRAC",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "frac"
+      }
+     ],
+     "source": {
+      "op": "fill",
+      "params": {
+       "source_id": 7,
+       "wireframes": [
+        {
+         "id": 4,
+         "code": null,
+         "priority": null
+        }
+       ],
+       "mode": "inside",
+       "m": 4,
+       "levels": null,
+       "outside_code": "вне",
+       "code_field": "CODE",
+       "frac_field": "FRAC",
+       "name": null,
+       "folder": null,
+       "split": true,
+       "expected_version": null,
+       "names": {
+        "wireframes": {
+         "4": "Далеко"
+        }
+       }
+      }
+     },
+     "warnings": [
+      "Каркас «Далеко» не пересекает сетку в плане: блоков с его кодом нет.",
+      "В выбранном режиме ни один блок не попал в тела: модель без строк."
+     ]
+    }
+   ]
+  }
+ },
+ "models": {
+  "7": {
+   "status": 200,
+   "body": {
+    "name": "Сетка 10 м",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     60.0,
+     50.0,
+     40.0
+    ],
+    "crs": null,
+    "id": 7,
+    "version": 1,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      6,
+      5,
+      4
+     ],
+     "size": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      2,
+      2,
+      2
+     ],
+     "variable": false,
+     "levels": [
+      1,
+      1,
+      1
+     ]
+    },
+    "cells": 0,
+    "rows": 0,
+    "parents": 0,
+    "sub": true,
+    "full": false,
+    "fields": [],
+    "source": {
+     "op": "prototype",
+     "params": {
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "extent": [
+       0.0,
+       0.0,
+       0.0,
+       60.0,
+       50.0,
+       40.0
+      ],
+      "pad": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "rotation": 0.0,
+      "levels": [
+       1,
+       1,
+       1
+      ],
+      "full": false
+     }
+    },
+    "warnings": [],
+    "checks": null,
+    "groups": [],
+    "inputs": null,
+    "algo": null
+   }
+  },
+  "12": {
+   "status": 200,
+   "body": {
+    "name": "Модель (2)",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     60.0,
+     50.0,
+     40.0
+    ],
+    "crs": null,
+    "id": 12,
+    "version": 2,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      6,
+      5,
+      4
+     ],
+     "size": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      2,
+      2,
+      2
+     ],
+     "variable": false,
+     "levels": [
+      1,
+      1,
+      1
+     ]
+    },
+    "cells": 120,
+    "rows": 120,
+    "parents": 120,
+    "sub": false,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": null,
+      "role": "grade",
+      "stats": {
+       "count": 102,
+       "missing": 18,
+       "min": 1.0,
+       "max": 118.0,
+       "mean": 59.5,
+       "std": 34.3353559
+      },
+      "source": null
+     },
+     {
+      "name": "ZONE",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": "Код тела по каркасам",
+      "role": "code",
+      "labels": [
+       "Руда"
+      ],
+      "stats": {
+       "count": 24,
+       "missing": 96,
+       "counts": [
+        24
+       ]
+      },
+      "source": {
+       "params": {
+        "source_id": 12,
+        "wireframes": [
+         {
+          "id": 2,
+          "code": null,
+          "priority": null
+         }
+        ],
+        "mode": "inside",
+        "m": 4,
+        "levels": null,
+        "outside_code": "вне",
+        "code_field": "ZONE",
+        "frac_field": null,
+        "name": null,
+        "folder": null,
+        "split": false,
+        "expected_version": 1,
+        "names": {
+         "wireframes": {
+          "2": "Руда"
+         },
+         "model": {
+          "12": "Модель (2)"
+         }
+        }
+       },
+       "inputs": [
+        "c2f197295fdc6254e4e8a0efd44ef66a05cf74527c1c24494c0a85b5da5c9c8e"
+       ],
+       "algo": "fill-1",
+       "versions": {
+        "numpy": "2.3.5",
+        "numba": "0.68.1"
+       },
+       "op": "code"
+      }
+     }
+    ],
+    "source": {
+     "op": "import",
+     "format": "dat"
+    },
+    "warnings": [],
+    "checks": null,
+    "groups": [
+     {
+      "rows": 120,
+      "k0": 0,
+      "k1": 3
+     }
+    ],
+    "inputs": null,
+    "algo": null
+   }
+  },
+  "9": {
+   "status": 200,
+   "body": {
+    "name": "Заполнение",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     60.0,
+     50.0,
+     40.0
+    ],
+    "crs": null,
+    "id": 9,
+    "version": 3,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      6,
+      5,
+      4
+     ],
+     "size": [
+      10.0,
+      10.0,
+      10.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      2,
+      2,
+      2
+     ],
+     "variable": false,
+     "levels": [
+      1,
+      1,
+      1
+     ]
+    },
+    "cells": 120,
+    "rows": 120,
+    "parents": 120,
+    "sub": true,
+    "full": false,
+    "fields": [
+     {
+      "name": "CODE",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": "Код тела по каркасам",
+      "role": "code",
+      "labels": [
+       "Руда",
+       "Зона",
+       "вне"
+      ],
+      "stats": {
+       "count": 120,
+       "missing": 0,
+       "counts": [
+        24,
+        0,
+        96
+       ]
+      },
+      "source": {
+       "op": "fill",
+       "params": {
+        "source_id": 7,
+        "wireframes": [
+         {
+          "id": 2,
+          "code": "Руда",
+          "priority": 2
+         },
+         {
+          "id": 3,
+          "code": null,
+          "priority": null
+         }
+        ],
+        "mode": "both",
+        "m": 4,
+        "levels": null,
+        "outside_code": "вне",
+        "code_field": "CODE",
+        "frac_field": "FRAC",
+        "name": "Заполнение",
+        "folder": null,
+        "split": true,
+        "expected_version": null,
+        "names": {
+         "wireframes": {
+          "2": "Руда",
+          "3": "Зона"
+         }
+        }
+       },
+       "inputs": [],
+       "algo": "fill-1",
+       "versions": {
+        "numpy": "2.3.5",
+        "numba": "0.68.1"
+       }
+      }
+     },
+     {
+      "name": "FRAC",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": "Доля объёма блока, занятая телом",
+      "role": "frac",
+      "stats": {
+       "count": 120,
+       "missing": 0,
+       "min": 1.0,
+       "max": 1.0,
+       "mean": 1.0,
+       "std": 0.0
+      },
+      "source": {
+       "op": "fill",
+       "params": {
+        "source_id": 7,
+        "wireframes": [
+         {
+          "id": 2,
+          "code": "Руда",
+          "priority": 2
+         },
+         {
+          "id": 3,
+          "code": null,
+          "priority": null
+         }
+        ],
+        "mode": "both",
+        "m": 4,
+        "levels": null,
+        "outside_code": "вне",
+        "code_field": "CODE",
+        "frac_field": "FRAC",
+        "name": "Заполнение",
+        "folder": null,
+        "split": true,
+        "expected_version": null,
+        "names": {
+         "wireframes": {
+          "2": "Руда",
+          "3": "Зона"
+         }
+        }
+       },
+       "inputs": [],
+       "algo": "fill-1",
+       "versions": {
+        "numpy": "2.3.5",
+        "numba": "0.68.1"
+       }
+      }
+     }
+    ],
+    "source": {
+     "op": "fill",
+     "params": {
+      "source_id": 7,
+      "wireframes": [
+       {
+        "id": 2,
+        "code": "Руда",
+        "priority": 2
+       },
+       {
+        "id": 3,
+        "code": null,
+        "priority": null
+       }
+      ],
+      "mode": "both",
+      "m": 4,
+      "levels": null,
+      "outside_code": "вне",
+      "code_field": "CODE",
+      "frac_field": "FRAC",
+      "name": "Заполнение",
+      "folder": null,
+      "split": true,
+      "expected_version": null,
+      "names": {
+       "wireframes": {
+        "2": "Руда",
+        "3": "Зона"
+       }
+      }
+     }
+    },
+    "warnings": [],
+    "checks": null,
+    "groups": [
+     {
+      "rows": 120,
+      "k0": 0,
+      "k1": 3
+     }
+    ],
+    "inputs": {
+     "wireframes": [
+      {
+       "id": 2,
+       "sha": "f4b26b456d49a4c18ff975cc7143b8a359b1c6d2e83993cce709d7096e3d9d57"
+      },
+      {
+       "id": 3,
+       "sha": "ca247e0eaeb422864021467d5b98d2dc11454ecdc00e3ae7ef7d97c1758599e4"
+      }
+     ]
+    },
+    "algo": "fill-1"
+   }
+  }
+ },
+ "rules": "ответы настоящего ядра через маршруты /blocks/prototype, /fill, /{id}/code, /{id}/regularize, /{id}/rebuild и задания blocks.*; номера заданий и времена не хранятся",
+ "stages": {
+  "prototype": 0.0,
+  "fill": 0.0,
+  "regularize": 0.0
+ }
+}
