@@ -8,8 +8,9 @@ import { useEffect } from "react";
 import { fieldLabel, useStatsFields } from "../../charts/core/Pickers";
 import { NumberInput, WEIGHTS } from "../../charts/SampleFilterForm";
 import type { Negatives, WeightMode } from "../charts/settings";
-import type { SourceModel, SwathSources } from "./api";
-import type { BlockSeries, BlockWeight, SampleSeries, SwathSeries } from "./model";
+import type { SeriesAnswer, SourceModel, SwathSources } from "./api";
+import { FilterPick } from "./FilterPick";
+import { seriesIssue, type BlockSeries, type BlockWeight, type SampleSeries, type SwathSeries } from "./model";
 import css from "./Swath.module.css";
 
 function BlockForm({ s, model, onChange }: { s: BlockSeries; model: SourceModel; onChange: (next: SwathSeries) => void }) {
@@ -63,6 +64,7 @@ function BlockForm({ s, model, onChange }: { s: BlockSeries; model: SourceModel;
           </select>
         </label>
       )}
+      <FilterPick value={s.filter_id} onChange={(filter_id) => onChange({ ...s, filter_id })} />
       {s.filter && category && (
         <div className={css.labels} role="group" aria-label={`Значения поля ${category.name}`}>
           {category.labels.map((l) => (
@@ -179,13 +181,14 @@ function SampleForm({ s, all, onChange }: { s: SampleSeries; all: readonly Swath
 }
 
 /** The source of a series («Данные») and its own fields; a source that is gone says so and offers another. */
-export function SeriesForm({ s, index, all, sources, onChange }: { s: SwathSeries; index: number; all: readonly SwathSeries[]; sources: SwathSources | null; onChange: (next: SwathSeries) => void }) {
+export function SeriesForm({ s, index, all, sources, answer, onChange }: { s: SwathSeries; index: number; all: readonly SwathSeries[]; sources: SwathSources | null; answer?: SeriesAnswer; onChange: (next: SwathSeries) => void }) {
   const models = sources?.models ?? [];
   const sets = sources?.sets ?? [];
   const sourceId = s.kind === "blocks" ? s.model_id : s.set_id;
   const value = sourceId === null ? "" : `${s.kind === "blocks" ? "b" : "s"}:${sourceId}`;
   const model = s.kind === "blocks" ? models.find((m) => m.id === s.model_id) : undefined;
   const known = s.kind === "blocks" ? !!model : sets.some((x) => x.id === s.set_id) || (!sources && s.set_id !== null);
+  const issue = seriesIssue(answer);
   const pick = (v: string) => {
     const id = Number(v.slice(2));
     const look = { color: s.color, line: s.line, bars: s.bars };
@@ -193,7 +196,7 @@ export function SeriesForm({ s, index, all, sources, onChange }: { s: SwathSerie
       const m = models.find((x) => x.id === id);
       if (!m) return;
       const field = m.grades.find((g) => m.numbers.some((n) => n.name === g)) ?? m.numbers.find((n) => n.name !== m.density)?.name ?? null;
-      onChange({ kind: "blocks", model_id: id, field, weight: "volume", density: m.density, filter: null, ...look });
+      onChange({ kind: "blocks", model_id: id, field, weight: "volume", density: m.density, filter: null, filter_id: null, ...look });
     } else onChange({ kind: "samples", set_id: id, table: null, field: null, weight: "length", weight_field: null, negatives: "keep", top_cut: null, within: "box", within_series: null, ...look });
   };
   return (
@@ -225,6 +228,11 @@ export function SeriesForm({ s, index, all, sources, onChange }: { s: SwathSerie
       </label>
       {s.kind === "blocks" && model && <BlockForm s={s} model={model} onChange={onChange} />}
       {s.kind === "samples" && s.set_id !== null && <SampleForm s={s} all={all} onChange={onChange} />}
+      {issue && (
+        <p className={css.issue} role="alert" data-testid={`swath-series-issue-${index}`}>
+          {issue}
+        </p>
+      )}
     </>
   );
 }
