@@ -1,13 +1,16 @@
 /**
  * «Свойства» of a block model (ADR 0017 §3): the name with «Переименовать…» and «Удалить…» (`object.rename`,
- * `object.delete` — own windows), «Показать в 3D» disabled with the reason of its stage (Э17), the grid, the
- * fields with their statistics (`GET /blocks/{id}`), the source and what the import did not carry over.
+ * `object.delete` — own windows), «Показать в 3D» / «Скрыть в 3D» (`blocks.show`, Э17), what the display shows now
+ * («упрощено, LOD»), the block of the last click («Выбранный блок»), the grid, the fields with their statistics
+ * (`GET /blocks/{id}`), the source and what the import did not carry over.
  */
 import { useEffect } from "react";
 import { useApp } from "../../shell/AppContext";
 import { Facts, useRun } from "../../shell/PropsParts";
 import { useRegistryVersion, useStore } from "../../shell/useStore";
 import css from "../../shell/PropsParts.module.css";
+import { viewStore } from "../scene/bind";
+import { blocksShowStore, pickedBlockStore, pickedFacts, showText, styleIn } from "./display";
 import { fieldRow, gridFacts, sourceFacts } from "./props";
 import { blocksStore, loadBlockDetails } from "./state";
 
@@ -18,6 +21,10 @@ export function BlockProps({ id }: { id: number }) {
   const details = useStore(blocksStore, (s) => s.details[id]);
   const detailError = useStore(blocksStore, (s) => s.detailErrors[id]);
   const { run, error } = useRun();
+  const shownNow = useStore(viewStore, (k) => styleIn(k, id).visible);
+  const shownInfo = useStore(blocksShowStore, (s) => s.models[id]);
+  const picked = useStore(pickedBlockStore, (s) => s.picked);
+  const pickedHere = picked?.model === id ? picked : null;
   const version = brief?.version;
   const fresh = details !== undefined && details.version === version;
   useEffect(() => {
@@ -39,8 +46,16 @@ export function BlockProps({ id }: { id: number }) {
         </button>
       </header>
       <div className={css.row}>
-        <button type="button" className={css.btn} disabled={show !== null} title={show ? `Показать в 3D\nНедоступно: ${show}` : "Показать в 3D"} data-testid="props-block-show">
-          Показать в 3D
+        <button
+          type="button"
+          className={css.btn}
+          disabled={show !== null}
+          title={show ? `${shownNow ? "Скрыть в 3D" : "Показать в 3D"}\nНедоступно: ${show}` : shownNow ? "Убрать модель из 3D" : "Показать модель в 3D: оболочка, раскраска, фильтр"}
+          onClick={() => void run("blocks.show", { model_id: id, visible: !shownNow })}
+          data-testid="props-block-show"
+          aria-pressed={shownNow}
+        >
+          {shownNow ? "Скрыть в 3D" : "Показать в 3D"}
         </button>
         <button type="button" className={css.btn} disabled={exportReason !== null} title={exportReason ? `Экспорт OMF\nНедоступно: ${exportReason}` : "Записать модель в файл OMF"} onClick={() => void run("omf.export", { dataset_ids: String(id) })}>
           Экспорт OMF…
@@ -49,7 +64,7 @@ export function BlockProps({ id }: { id: number }) {
           Удалить…
         </button>
       </div>
-      {show && <p className={css.note}>{show}: ячейки, раскраска по полю, фильтр.</p>}
+      {show && <p className={css.note}>Показ в 3D недоступен: {show}.</p>}
       <fieldset className={css.group} data-testid="props-block-grid">
         <legend>Сетка</legend>
         <Facts facts={gridFacts(b)} />
@@ -105,6 +120,23 @@ export function BlockProps({ id }: { id: number }) {
           </p>
         )}
       </fieldset>
+      {shownInfo && (
+        <fieldset className={css.group} data-testid="props-block-display" data-state={shownInfo.status}>
+          <legend>Показ в 3D</legend>
+          <p className={shownInfo.status === "error" ? css.error : css.note}>{showText(shownInfo, b.name)}</p>
+          {shownInfo.warnings.map((w) => (
+            <p key={w} className={css.warn}>
+              {w}
+            </p>
+          ))}
+        </fieldset>
+      )}
+      {pickedHere && (
+        <fieldset className={css.group} data-testid="props-block-picked" data-state={pickedHere.status}>
+          <legend>Выбранный блок</legend>
+          <Facts facts={pickedFacts(pickedHere, b)} />
+        </fieldset>
+      )}
       {sourceFacts(b.source).length > 0 && (
         <fieldset className={css.group} data-testid="props-block-source">
           <legend>Источник</legend>
