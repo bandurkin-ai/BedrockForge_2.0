@@ -14,6 +14,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from bf_core.api.errors import ApiError
+from bf_core.blocks.viz_routes import router as _blocks_viz
 from bf_core.db import dialect
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
@@ -21,6 +22,7 @@ from bf_core.projects.store import ProjectService
 # numpy, numba and the viz modules load on first use, not at the start of the core (tests/test_process.py).
 
 router = APIRouter(prefix="/viz")
+router.include_router(_blocks_viz)
 Svc = Annotated[ProjectService, Depends(projects)]
 Method = Annotated[str, Query(max_length=40)]
 IfNoneMatch = Annotated[str | None, Header()]

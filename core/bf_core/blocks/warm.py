@@ -39,6 +39,13 @@ def _kernels() -> dict[str, float]:
     return warm()
 
 
+def _view() -> dict[str, float]:
+    from bf_core.blocks.viz_data import warm
+
+    warm()  # the shell, the merge and the LOD on 8 blocks
+    return {}
+
+
 #: name → the warm-up of a module (a function without arguments; the seconds it took, by name)
 WARMS: dict[str, Callable[[], dict[str, float]]] = {
     "calc": _calc,
@@ -46,6 +53,7 @@ WARMS: dict[str, Callable[[], dict[str, float]]] = {
     "slice": _slice,
     "fill": _fill,  # the order matters: slice and report go first, fill and kernels bring pandas and pyarrow
     "kernels": _kernels,
+    "view": _view,
 }
 
 
