@@ -6,6 +6,7 @@ model are `block_model_broken` when written to OMF."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -139,7 +140,7 @@ def test_a_cancel_at_the_last_report_stages_nothing(tmp_path: Path, monkeypatch:
     from bf_core.storage.blobs import BlobStore
 
     synced: list[int] = []
-    monkeypatch.setattr(bm.os, "fsync", lambda fd: synced.append(fd))
+    monkeypatch.setattr(os, "fsync", lambda fd: synced.append(fd))
     store = BlobStore(tmp_path / "project")
     with pytest.raises(Stop):
         read(volume_file(tmp_path, AXES["identity"]), tmp_path, lambda g, f: bm.CellsWriter(store, g, f),
