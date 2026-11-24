@@ -1,14 +1,20 @@
 """A volume of OMF v1 as a regular block model of BF2, streamed (ТЗ 7.24, 5.3; ADR 0017 §2–3).
 
     volume_grid(vol)                        the BF2 grid of a VolumeElement and how its axes lie
+    block_sink(store)                       the sink factory of the import: `CellsWriter`, `CellsWriterV2` for a turn
     estimate(f, vol)                        {cells, fields, memory, disk} — bytes, before reading
     read_volume(f, vol, make_sink, …)       the occupied cells into a sink (`blocks.store.CellsWriter`) → VolumeRead
 
 Axes. Every grid axis u, v, w lies along +X, +Y, +Z or against them (a permutation and signs, within 1e-9 —
-`omf_file.placement`); a rotated grid is not loaded (the composition says so). The BF2 grid has its corner at the
-minimum corner (`origin` of the geometry + origin of the project, float64; along a negative axis the origin minus
-the sum of its steps), `counts` along X, Y, Z, `size` when the steps of an axis are all equal (bit for bit), else
-`tensors` (the steps along +X, +Y, +Z: reversed for a negative axis). Cell numbers: `idx = i + nx·(j + ny·k)`
+`omf_file.placement`; a Z-turn by a multiple of 90° is one of them: the blocks stay, the cells are renumbered), or
+the grid is turned about Z by another angle (u = (cos φ, sin φ, 0), v = (−sin φ, cos φ, 0), w = +Z —
+`omf_compose.grid_axes`): then the BF2 grid keeps the counts and steps of the file, its corner is the `origin` and
+`rotation` φ (ADR 0023 решения 6, 20; `blocks.schema.GridV2`), the OMF order is the BF2 order, and the sink must be
+a `CellsWriterV2` (`block_sink`). A turn about X or Y, a mirror, a skew → 422 `rotation_unsupported` (ТЗ 8.7.1;
+the composition skips the element). Without a turn the BF2 grid has its corner at the minimum corner (`origin` of
+the geometry + origin of the project, float64; along a negative axis the origin minus the sum of its steps),
+`counts` along X, Y, Z, `size` when the steps of an axis are all equal (bit for bit), else `tensors`
+(the steps along +X, +Y, +Z: reversed for a negative axis). Cell numbers: `idx = i + nx·(j + ny·k)`
 (`blocks/schema.py`); the OMF number of a cell is `iu + nu·(iv + nv·iw)` (Fortran, u fastest).
 
 Fields. Cell data of the element (ScalarData — float64, NaN empty; MappedData — the codes of its first legend
@@ -42,7 +48,8 @@ from typing import IO, Any, Protocol
 import numpy as np
 
 from bf_core.formats.errors import FormatError
-from bf_core.formats.omf_file import Block, OmfFile, damaged, n_text, out_of_memory, placement, tensor
+from bf_core.formats.omf_compose import grid_axes
+from bf_core.formats.omf_file import Block, OmfFile, damaged, n_text, out_of_memory, tensor
 from bf_core.formats.omf_read import OmfVolume, legend_labels, text_codes
 from bf_core.formats.table import Progress, no_progress
 
@@ -64,6 +71,20 @@ class CellsSink(Protocol):
 SinkFactory = Callable[[dict[str, Any], list[dict[str, Any]]], CellsSink]
 
 
+def block_sink(store: Any) -> SinkFactory:
+    """The sink factory of the import: `blocks.store.CellsWriter` (meta v1) for a grid along X, Y, Z,
+    `CellsWriterV2` (meta v2) for a grid turned about Z — the writer v1 would drop its `rotation`."""
+
+    def make(grid: dict[str, Any], fields: list[dict[str, Any]]) -> CellsSink:
+        from bf_core.blocks import store as bm
+
+        if grid.get("rotation"):
+            return bm.CellsWriterV2(store, grid, fields)  # type: ignore[return-value]  # write(p, values): idx = P
+        return bm.CellsWriter(store, grid, fields)
+
+    return make
+
+
 def disk_full(need: int) -> FormatError:
     return FormatError(
         "disk_full", f"Не хватает места на диске для временных файлов модели: нужно ≈ {_gb(need)} ГБ.", HINT_DISK
@@ -79,6 +100,7 @@ class VolumeGrid:
     grid: dict[str, Any]  # meta.grid of `blocks/schema.py` (without order checks: CellsWriter checks)
     placed: list[tuple[int, float]]  # (coordinate axis, sign) of u, v, w
     omf_counts: list[int]  # nu, nv, nw
+    rotation: float = 0.0  # φ about Z, degrees (the grid carries it as `rotation` when it is not 0)
 
     @property
     def cells(self) -> int:
@@ -107,10 +129,13 @@ class VolumeRead:
 def volume_grid(vol: OmfVolume) -> VolumeGrid:
     g, label = vol.geometry, vol.entry.label
     tensors = [tensor(g.get(f"tensor_{a}"), f"{label}: шаги {a}") for a in "uvw"]
-    placed = placement(g, label)
-    if placed is None:
-        raise FormatError("unsupported", f"{label}: модель повёрнута — оси сетки не вдоль X, Y, Z.",
-                          "Сохраните модель без поворота или загрузите другой объём.")  # fmt: skip
+    axes = grid_axes(g, label)
+    if axes is None:
+        from bf_core.blocks.schema import rotation_unsupported
+
+        raise rotation_unsupported()
+    placed = list(_IDENTITY) if axes[0] is None else axes[0]
+    phi = axes[1]
     counts, corner = [0, 0, 0], [0.0, 0.0, 0.0]
     steps: list[list[float]] = [[], [], []]
     for a in range(3):
@@ -132,7 +157,9 @@ def volume_grid(vol: OmfVolume) -> VolumeGrid:
     else:
         grid["tensors"] = {"x": steps[0], "y": steps[1], "z": steps[2]}
     grid["order"] = "F"
-    return VolumeGrid(grid, placed, [len(t) for t in tensors])
+    if phi:
+        grid["rotation"] = phi
+    return VolumeGrid(grid, placed, [len(t) for t in tensors], phi)
 
 
 def omf_numbers(idx: np.ndarray, vg: VolumeGrid) -> np.ndarray:
@@ -332,6 +359,10 @@ def read_volume(
         try:
             fields, notes = _fields(f, vol, n)
             sink = make_sink(dict(vg.grid), [dict(x.meta) for x in fields])
+            kept_grid = getattr(sink, "grid", None)
+            if vg.rotation and isinstance(kept_grid, dict) and "rotation" not in kept_grid:
+                raise FormatError("rotation_unsupported", f"{label}: приёмник ячеек не хранит поворот модели.",
+                                  "Модель с поворотом пишется приёмником версии 2 (`block_sink`).")  # fmt: skip
             total = max(sum(x.block.length for x in fields if x.block is not None), 1)
             start = f.read_bytes
             share = 1.0 if vg.identity else 0.6

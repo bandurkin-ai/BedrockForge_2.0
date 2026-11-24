@@ -19,10 +19,13 @@ file read back gives the same numbers bit for bit; indices are `<i8`.
   segments: numbers — ScalarData (NaN empty), texts — MappedData with a legend of the texts (−1 empty); the unit —
   «Единицы: …» in the description. Not written (warnings): lines of one vertex, lines with a vertex without Z (an
   empty Z never becomes 0), layers of points, vertex attributes.
-* A block model — `VolumeElement` + `VolumeGridGeometry` with `origin` = the corner, axes +X, +Y, +Z and the steps
-  as tensors; every field densely (n cells, Fortran order = `idx`) in portions of `VOLUME_PORTION` cells, filled
-  from the occupied cells in ascending `idx` (`cells(name)` → (idx, values) portions, as `blocks.store.iter_cells`);
-  an empty cell is NaN (numbers) or −1 (categories, MappedData with the labels).
+* A block model — `VolumeElement` + `VolumeGridGeometry` with `origin` = the corner, the axes `axis_u` = (cos φ,
+  sin φ, 0), `axis_v` = (−sin φ, cos φ, 0), `axis_w` = +Z (φ = `grid.rotation`, a turn about Z only: ADR 0023 решения
+  6, 20; 0 gives +X, +Y, +Z bit for bit) and the steps as tensors; a model with sub-blocks is not written
+  (`omf_subblocks`: OMF keeps none — only after the regularization); every field densely (n cells, Fortran
+  order = `idx`) in portions of `VOLUME_PORTION` cells, filled from the occupied cells in ascending `idx`
+  (`cells(name)` → (idx, values) portions, as `blocks.store.iter_cells`); an empty cell is NaN (numbers) or −1
+  (categories, MappedData with the labels).
 * The project — its name, `units: "m"`, the description with «Система координат: ‹имя› (EPSG:…)».
 
 `tick(bytes)` is called after every portion with the uncompressed bytes written so far; it may raise to cancel.
@@ -66,6 +69,15 @@ def rgb(color: str | None) -> list[int]:
         except ValueError:
             pass
     return list(GREY)
+
+
+def subblocks_message(name: str) -> tuple[str, str]:
+    """(message, hint) of `omf_subblocks`: a block model with sub-blocks is exported to OMF only after the
+    regularization (ТЗ 8.7.2; ADR 0023 решение 20)."""
+    return (
+        f"Блочная модель «{name}» с субблоками: OMF не хранит субблоки — экспорт возможен только после регуляризации.",
+        "Выполните регуляризацию модели (вкладка «Блочные модели», «Регуляризация») и экспортируйте результат.",
+    )
 
 
 def crs_line(crs: Mapping[str, Any] | None) -> str | None:
@@ -259,10 +271,19 @@ class OmfWriter:
     # --- block models ---------------------------------------------------------------------------------
 
     def add_volume(self, name: str, grid: Mapping[str, Any], fields: Sequence[Mapping[str, Any]], cells: Cells,
-                   color: str | None = None, description: str = "") -> None:  # fmt: skip
-        """A regular block model: `grid` and `fields` as `objects.meta` (`blocks/schema.py`), `cells(name)` — the
-        occupied cells of one field in ascending idx: (idx, values) portions. Cells out of order, of other sizes or
-        a file that cannot be read (pyarrow's `ArrowInvalid` is a ValueError) — FormatError `block_model_broken`."""
+                   color: str | None = None, description: str = "", *, sub: bool = False) -> None:  # fmt: skip
+        """A regular block model: `grid` and `fields` as `objects.meta` (`blocks/schema.py`; `grid.rotation` — φ about
+        Z, degrees), `cells(name)` — the occupied cells of one field in ascending idx: (idx, values) portions. Cells
+        out of order, of other sizes or a file that cannot be read (pyarrow's `ArrowInvalid` is a ValueError) —
+        FormatError `block_model_broken`; `sub` (the model has sub-block rows) — FormatError `omf_subblocks`; a turn
+        about X or Y in `grid.rotation` — ApiError 422 `rotation_unsupported`."""
+        from bf_core.blocks.schema import parse_rotation
+        from bf_core.sections.geometry import sin_cos_deg
+
+        if sub:
+            raise FormatError("omf_subblocks", *subblocks_message(name))
+        phi = parse_rotation(grid.get("rotation"))
+        sin, cos = sin_cos_deg(phi)
         counts = [int(c) for c in grid["counts"]]
         n = counts[0] * counts[1] * counts[2]
         if "tensors" in grid:
@@ -287,7 +308,7 @@ class OmfWriter:
                 ) from exc
         geometry = self._add("VolumeGridGeometry", origin=[float(c) for c in grid["corner"]],
                              tensor_u=tensors[0], tensor_v=tensors[1], tensor_w=tensors[2],
-                             axis_u=[1.0, 0.0, 0.0], axis_v=[0.0, 1.0, 0.0], axis_w=[0.0, 0.0, 1.0])  # fmt: skip
+                             axis_u=[cos, sin, 0.0], axis_v=[0.0 - sin, cos, 0.0], axis_w=[0.0, 0.0, 1.0])  # fmt: skip
         self._element("VolumeElement", name, geometry, color, "volume", data, description)
 
     # --- the end --------------------------------------------------------------------------------------

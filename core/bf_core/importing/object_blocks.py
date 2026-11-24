@@ -103,7 +103,7 @@ def write_volumes(
     from bf_core.blocks import store as bm
     from bf_core.drillholes.edit import author
     from bf_core.formats.omf_read import open_reader
-    from bf_core.formats.omf_volume import read_volume
+    from bf_core.formats.omf_volume import block_sink, read_volume
     from bf_core.formats.str_layers import scaled
 
     label, who = g.main.name, author()
@@ -121,7 +121,7 @@ def write_volumes(
                 done += int(vol.entry.cells or 0)
                 tmp.mkdir(parents=True, exist_ok=True)
                 try:  # a cancel inside (its last report too) discards the staged cells there
-                    vr = read_volume(reader.file, vol, lambda grid, fields: bm.CellsWriter(store, grid, fields),
+                    vr = read_volume(reader.file, vol, block_sink(store),
                                      tmp_dir=tmp, progress=share)  # fmt: skip
                 except (FormatError, ApiError) as exc:  # ApiError: `CellsWriter` refuses the grid or the fields
                     if exc.code in FATAL:
