@@ -1,0 +1,1881 @@
+{
+ "rules": "ответы настоящего ядра через маршрут /blocks/{id}/report и задание blocks.report (test_blocks_report_window_answers.py); номера заданий и времена не хранятся",
+ "ids": {
+  "model": 1,
+  "gaps": 2,
+  "bare": 3,
+  "filter": 4
+ },
+ "blocks": {
+  "status": 200,
+  "body": {
+   "block_models": [
+    {
+     "name": "Без плотности",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      4.0,
+      2.0,
+      2.0
+     ],
+     "crs": null,
+     "id": 3,
+     "version": 1,
+     "size": 725,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       2,
+       1,
+       1
+      ],
+      "size": [
+       2.0,
+       2.0,
+       2.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "variable": false,
+      "levels": [
+       0,
+       0,
+       0
+      ]
+     },
+     "cells": 2,
+     "rows": 2,
+     "parents": 2,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU_CUT",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "g/t",
+       "role": null
+      }
+     ],
+     "source": {
+      "op": "import",
+      "format": "dat",
+      "file": "m.dat"
+     },
+     "warnings": [],
+     "created_at": "2026-11-24T23:11:04.497110+00:00",
+     "updated_at": "2026-11-24T23:11:04.497110+00:00"
+    },
+    {
+     "name": "Модель",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      16.0,
+      12.0,
+      8.0
+     ],
+     "crs": null,
+     "id": 1,
+     "version": 1,
+     "size": 5207,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       4,
+       3,
+       2
+      ],
+      "size": [
+       4.0,
+       4.0,
+       4.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       4,
+       4,
+       4
+      ],
+      "variable": false,
+      "levels": [
+       2,
+       2,
+       2
+      ]
+     },
+     "cells": 46,
+     "rows": 46,
+     "parents": 19,
+     "sub": true,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU_CUT",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "g/t",
+       "role": "grade"
+      },
+      {
+       "name": "CU_CUT",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "%",
+       "role": "grade"
+      },
+      {
+       "name": "AU",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "g/t",
+       "role": null
+      },
+      {
+       "name": "SG",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "density"
+      },
+      {
+       "name": "DENSITY",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": "density"
+      },
+      {
+       "name": "ALT",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "OXIDE",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": null
+      }
+     ],
+     "source": {
+      "op": "import",
+      "format": "dat",
+      "file": "m.dat"
+     },
+     "warnings": [],
+     "created_at": "2026-11-24T23:11:04.467188+00:00",
+     "updated_at": "2026-11-24T23:11:04.467188+00:00"
+    },
+    {
+     "name": "Пропуски",
+     "folder": null,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      4.0,
+      4.0,
+      2.0
+     ],
+     "crs": null,
+     "id": 2,
+     "version": 1,
+     "size": 1199,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       2,
+       2,
+       1
+      ],
+      "size": [
+       2.0,
+       2.0,
+       2.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "variable": false,
+      "levels": [
+       0,
+       0,
+       0
+      ]
+     },
+     "cells": 4,
+     "rows": 4,
+     "parents": 4,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU_CUT",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "g/t",
+       "role": "grade"
+      },
+      {
+       "name": "CU_CUT",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "%",
+       "role": "grade"
+      },
+      {
+       "name": "ZN_CUT",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "усл. ед.",
+       "role": "grade"
+      }
+     ],
+     "source": {
+      "op": "import",
+      "format": "dat",
+      "file": "m.dat"
+     },
+     "warnings": [],
+     "created_at": "2026-11-24T23:11:04.486530+00:00",
+     "updated_at": "2026-11-24T23:11:04.486530+00:00"
+    }
+   ]
+  }
+ },
+ "model": {
+  "status": 200,
+  "body": {
+   "name": "Модель",
+   "folder": null,
+   "extent": [
+    0.0,
+    0.0,
+    0.0,
+    16.0,
+    12.0,
+    8.0
+   ],
+   "crs": null,
+   "id": 1,
+   "version": 1,
+   "size": 5207,
+   "meta_v": 2,
+   "grid": {
+    "corner": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "counts": [
+     4,
+     3,
+     2
+    ],
+    "size": [
+     4.0,
+     4.0,
+     4.0
+    ],
+    "order": "F",
+    "rotation": 0.0,
+    "div": [
+     4,
+     4,
+     4
+    ],
+    "variable": false,
+    "levels": [
+     2,
+     2,
+     2
+    ]
+   },
+   "cells": 46,
+   "rows": 46,
+   "parents": 19,
+   "sub": true,
+   "full": false,
+   "fields": [
+    {
+     "name": "AU_CUT",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "g/t",
+     "description": null,
+     "role": "grade",
+     "stats": {
+      "count": 46,
+      "missing": 0,
+      "min": 0.10408682779939042,
+      "max": 14.273427806305502,
+      "mean": 1.4988273064049173,
+      "std": 2.159736582306706
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "CU_CUT",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "%",
+     "description": null,
+     "role": "grade",
+     "stats": {
+      "count": 46,
+      "missing": 0,
+      "min": 0.10376505545325032,
+      "max": 1.9411175262652476,
+      "mean": 1.0166690541832542,
+      "std": 0.574970124783483
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "AU",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "g/t",
+     "description": null,
+     "role": null,
+     "stats": {
+      "count": 46,
+      "missing": 0,
+      "min": 0.15613024169908563,
+      "max": 21.41014170945825,
+      "mean": 2.248240959607376,
+      "std": 3.239604873460059
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "SG",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": null,
+     "description": null,
+     "role": "density",
+     "stats": {
+      "count": 45,
+      "missing": 1,
+      "min": 2.217640376696449,
+      "max": 3.0524265968491098,
+      "mean": 2.6371971898684117,
+      "std": 0.21851524427915728
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "DENSITY",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": null,
+     "description": null,
+     "role": "density",
+     "stats": {
+      "count": 46,
+      "missing": 0,
+      "min": 2.6,
+      "max": 2.6,
+      "mean": 2.599999999999999,
+      "std": 8.881784197001252e-16
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "ALT",
+     "kind": "category",
+     "dtype": "cat",
+     "unit": null,
+     "description": null,
+     "role": null,
+     "labels": [
+      "G",
+      "H",
+      "Руда окисл. ёЁ"
+     ],
+     "stats": {
+      "count": 46,
+      "missing": 0,
+      "counts": [
+       17,
+       15,
+       14
+      ]
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "OXIDE",
+     "kind": "category",
+     "dtype": "cat",
+     "unit": null,
+     "description": null,
+     "role": null,
+     "labels": [
+      "Ox",
+      "Sulf"
+     ],
+     "stats": {
+      "count": 29,
+      "missing": 17,
+      "counts": [
+       15,
+       14
+      ]
+     },
+     "file": "cells",
+     "source": null
+    }
+   ],
+   "source": {
+    "op": "import",
+    "format": "dat",
+    "file": "m.dat"
+   },
+   "warnings": [],
+   "checks": null,
+   "groups": [
+    {
+     "rows": 46,
+     "k0": 0,
+     "k1": 1
+    }
+   ],
+   "inputs": null,
+   "algo": null,
+   "created_at": "2026-11-24T23:11:04.467188+00:00",
+   "updated_at": "2026-11-24T23:11:04.467188+00:00"
+  }
+ },
+ "gaps_model": {
+  "status": 200,
+  "body": {
+   "name": "Пропуски",
+   "folder": null,
+   "extent": [
+    0.0,
+    0.0,
+    0.0,
+    4.0,
+    4.0,
+    2.0
+   ],
+   "crs": null,
+   "id": 2,
+   "version": 1,
+   "size": 1199,
+   "meta_v": 2,
+   "grid": {
+    "corner": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "counts": [
+     2,
+     2,
+     1
+    ],
+    "size": [
+     2.0,
+     2.0,
+     2.0
+    ],
+    "order": "F",
+    "rotation": 0.0,
+    "div": [
+     1,
+     1,
+     1
+    ],
+    "variable": false,
+    "levels": [
+     0,
+     0,
+     0
+    ]
+   },
+   "cells": 4,
+   "rows": 4,
+   "parents": 4,
+   "sub": false,
+   "full": false,
+   "fields": [
+    {
+     "name": "AU_CUT",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "g/t",
+     "description": null,
+     "role": "grade",
+     "stats": {
+      "count": 3,
+      "missing": 1,
+      "min": 0.5,
+      "max": 4.0,
+      "mean": 2.1666666666666665,
+      "std": 1.4337208778404378
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "CU_CUT",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "%",
+     "description": null,
+     "role": "grade",
+     "stats": {
+      "count": 0,
+      "missing": 4,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "std": null
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "ZN_CUT",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "усл. ед.",
+     "description": null,
+     "role": "grade",
+     "stats": {
+      "count": 4,
+      "missing": 0,
+      "min": 1.0,
+      "max": 4.0,
+      "mean": 2.5,
+      "std": 1.118033988749895
+     },
+     "file": "cells",
+     "source": null
+    }
+   ],
+   "source": {
+    "op": "import",
+    "format": "dat",
+    "file": "m.dat"
+   },
+   "warnings": [],
+   "checks": null,
+   "groups": [
+    {
+     "rows": 4,
+     "k0": 0,
+     "k1": 0
+    }
+   ],
+   "inputs": null,
+   "algo": null,
+   "created_at": "2026-11-24T23:11:04.486530+00:00",
+   "updated_at": "2026-11-24T23:11:04.486530+00:00"
+  }
+ },
+ "filters": {
+  "status": 200,
+  "body": {
+   "filters": [
+    {
+     "id": 4,
+     "name": "Руда выше борта",
+     "folder": null,
+     "version": 1,
+     "text": "CU_CUT > 0.2",
+     "title": "CU_CUT > 0.2",
+     "fields": [
+      "CU_CUT"
+     ],
+     "note": null,
+     "created_at": "2026-11-24T23:11:04.531119Z",
+     "updated_at": "2026-11-24T23:11:04.531119Z"
+    }
+   ]
+  }
+ },
+ "reports": {
+  "defaults": {
+   "request": {
+    "cutoffs": [
+     0,
+     0.5,
+     1
+    ],
+    "curve": 20,
+    "csv": true
+   },
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ],
+    "source": "str"
+   },
+   "job": {
+    "kind": "blocks.report",
+    "title": "Содержание–тоннаж · Модель",
+    "queue": "quick",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 1,
+     "density": {
+      "field": "SG",
+      "value": null
+     },
+     "cutoff_field": "AU_CUT",
+     "units": {
+      "volume": "м³",
+      "tonnes": "т"
+     },
+     "rows": [
+      {
+       "group": null,
+       "cutoff": 0.0,
+       "blocks": 45,
+       "volume": 1184.0,
+       "tonnes": 3137.484085346492,
+       "grades": {
+        "AU_CUT": {
+         "grade": 1.9480688030829225,
+         "unit": "g/t",
+         "metal": 0.1965064840221547,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 0.8993643315028189,
+         "unit": "%",
+         "metal": 28.21741277018381,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": null,
+       "cutoff": 0.5,
+       "blocks": 38,
+       "volume": 992.0,
+       "tonnes": 2603.290663345117,
+       "grades": {
+        "AU_CUT": {
+         "grade": 2.2717582266855505,
+         "unit": "g/t",
+         "metal": 0.19014102567813107,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 0.9238854642972728,
+         "unit": "%",
+         "metal": 24.05142403205359,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": null,
+       "cutoff": 1.0,
+       "blocks": 20,
+       "volume": 608.0,
+       "tonnes": 1578.9096430372192,
+       "grades": {
+        "AU_CUT": {
+         "grade": 3.23050268488249,
+         "unit": "g/t",
+         "metal": 0.1639904076903258,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 0.8276430318170319,
+         "unit": "%",
+         "metal": 13.067735639284717,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      }
+     ],
+     "curve": {
+      "field": "AU_CUT",
+      "unit": "g/t",
+      "cutoffs": [
+       0.10408682779939042,
+       0.8498416161418173,
+       1.5955964044842443,
+       2.3413511928266715,
+       3.087105981169098,
+       3.832860769511525,
+       4.5786155578539525,
+       5.324370346196379,
+       6.070125134538806,
+       6.815879922881233,
+       7.561634711223659,
+       8.307389499566087,
+       9.053144287908514,
+       9.79889907625094,
+       10.544653864593368,
+       11.290408652935794,
+       12.036163441278221,
+       12.781918229620649,
+       13.527673017963075,
+       14.273427806305502
+      ],
+      "tonnes": [
+       3137.484085346492,
+       1915.0707628417567,
+       864.8995386119336,
+       406.44177625657073,
+       406.44177625657073,
+       364.31875204421357,
+       364.31875204421357,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575,
+       139.04132806460575
+      ],
+      "grade": [
+       1.9480688030829225,
+       2.8222898731152912,
+       4.866664461467412,
+       8.029522625080974,
+       8.029522625080974,
+       8.559697723386142,
+       8.559697723386142,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502
+      ],
+      "metal": [
+       0.1965064840221547,
+       0.17377108208904368,
+       0.13532814592940487,
+       0.10492503649078336,
+       0.10492503649078336,
+       0.10026076546078395,
+       0.10026076546078395,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936,
+       0.06380625455424936
+      ],
+      "metal_unit": "тыс. унц"
+     },
+     "excluded": {
+      "filtered": 0,
+      "no_volume": 0,
+      "no_density": 1,
+      "no_cutoff": 0
+     },
+     "warnings": [],
+     "csv": "Группа;Борт;Блоков;Объём, м³;Тоннаж, т;AU_CUT, содержание (g/t);AU_CUT, металл (тыс. унц);AU_CUT, без содержания, т;AU_CUT, блоков без содержания;CU_CUT, содержание (%);CU_CUT, металл (т);CU_CUT, без содержания, т;CU_CUT, блоков без содержания\r\n;0,0;45;1184,0;3137,484085346492;1,9480688030829225;0,1965064840221547;0,0;0;0,8993643315028189;28,21741277018381;0,0;0\r\n;0,5;38;992,0;2603,290663345117;2,2717582266855505;0,19014102567813107;0,0;0;0,9238854642972728;24,05142403205359;0,0;0\r\n;1,0;20;608,0;1578,9096430372192;3,23050268488249;0,1639904076903258;0,0;0;0,8276430318170319;13,067735639284717;0,0;0\r\n"
+    }
+   }
+  },
+  "groups": {
+   "request": {
+    "grades": [
+     "AU_CUT",
+     "CU_CUT"
+    ],
+    "density": 2.7,
+    "cutoffs": [
+     0.5,
+     1
+    ],
+    "groups": "OXIDE",
+    "categories": {
+     "field": "ALT",
+     "values": [
+      "G",
+      "Руда окисл. ёЁ"
+     ]
+    },
+    "curve": 10,
+    "csv": true
+   },
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ],
+    "source": "str"
+   },
+   "job": {
+    "kind": "blocks.report",
+    "title": "Содержание–тоннаж · Модель",
+    "queue": "quick",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 1,
+     "density": {
+      "field": null,
+      "value": 2.7
+     },
+     "cutoff_field": "AU_CUT",
+     "units": {
+      "volume": "м³",
+      "tonnes": "т"
+     },
+     "rows": [
+      {
+       "group": null,
+       "cutoff": 0.5,
+       "blocks": 26,
+       "volume": 608.0,
+       "tonnes": 1641.6000000000001,
+       "grades": {
+        "AU_CUT": {
+         "grade": 2.3338453989499452,
+         "unit": "g/t",
+         "metal": 0.12317724579640019,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 0.9597639727482131,
+         "unit": "%",
+         "metal": 15.755485376634667,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": null,
+       "cutoff": 1.0,
+       "blocks": 15,
+       "volume": 416.0,
+       "tonnes": 1123.2,
+       "grades": {
+        "AU_CUT": {
+         "grade": 3.0710601109240425,
+         "unit": "g/t",
+         "metal": 0.1109012583631771,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 1.0440900526340107,
+         "unit": "%",
+         "metal": 11.727219471185208,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": "Ox",
+       "cutoff": 0.5,
+       "blocks": 11,
+       "volume": 208.0,
+       "tonnes": 561.6,
+       "grades": {
+        "AU_CUT": {
+         "grade": 1.7099567349738118,
+         "unit": "g/t",
+         "metal": 0.03087473816950563,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 1.139921080022496,
+         "unit": "%",
+         "metal": 6.401796785406337,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": "Ox",
+       "cutoff": 1.0,
+       "blocks": 8,
+       "volume": 160.0,
+       "tonnes": 432.00000000000006,
+       "grades": {
+        "AU_CUT": {
+         "grade": 2.031229918049907,
+         "unit": "g/t",
+         "metal": 0.02821200119330582,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 1.2165371905122921,
+         "unit": "%",
+         "metal": 5.255440663013103,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": "Sulf",
+       "cutoff": 0.5,
+       "blocks": 7,
+       "volume": 160.0,
+       "tonnes": 432.0,
+       "grades": {
+        "AU_CUT": {
+         "grade": 1.1354544112542888,
+         "unit": "g/t",
+         "metal": 0.01577046543111389,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 0.8848649944718969,
+         "unit": "%",
+         "metal": 3.8226167761185947,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": "Sulf",
+       "cutoff": 1.0,
+       "blocks": 3,
+       "volume": 80.0,
+       "tonnes": 216.0,
+       "grades": {
+        "AU_CUT": {
+         "grade": 1.5040320776279075,
+         "unit": "g/t",
+         "metal": 0.010444842898322803,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 1.0914986787013174,
+         "unit": "%",
+         "metal": 2.357637145994846,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": "(пусто)",
+       "cutoff": 0.5,
+       "blocks": 8,
+       "volume": 240.0,
+       "tonnes": 648.0,
+       "grades": {
+        "AU_CUT": {
+         "grade": 3.673476232859699,
+         "unit": "g/t",
+         "metal": 0.07653204219578068,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 0.8535604652947122,
+         "unit": "%",
+         "metal": 5.531071815109735,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": "(пусто)",
+       "cutoff": 1.0,
+       "blocks": 4,
+       "volume": 176.0,
+       "tonnes": 475.20000000000005,
+       "grades": {
+        "AU_CUT": {
+         "grade": 4.728645755944227,
+         "unit": "g/t",
+         "metal": 0.07224441427154848,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": 0.8657705518049784,
+         "unit": "%",
+         "metal": 4.114141662177258,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      }
+     ],
+     "curve": {
+      "field": "AU_CUT",
+      "unit": "g/t",
+      "cutoffs": [
+       0.10408682779939042,
+       1.678458047633403,
+       3.2528292674674155,
+       4.827200487301428,
+       6.4015717071354405,
+       7.975942926969453,
+       9.550314146803466,
+       11.124685366637477,
+       12.69905658647149,
+       14.273427806305502
+      ],
+      "tonnes": [
+       1987.2000000000003,
+       432.00000000000006,
+       216.00000000000003,
+       129.60000000000002,
+       129.60000000000002,
+       129.60000000000002,
+       129.60000000000002,
+       129.60000000000002,
+       129.60000000000002,
+       129.60000000000002
+      ],
+      "grade": [
+       1.9958639478418567,
+       6.042652119561272,
+       10.193350156114002,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502,
+       14.273427806305502
+      ],
+      "metal": [
+       0.12751567494060145,
+       0.08392713562010759,
+       0.07078834459177326,
+       0.05947361626457121,
+       0.05947361626457121,
+       0.05947361626457121,
+       0.05947361626457121,
+       0.05947361626457121,
+       0.05947361626457121,
+       0.05947361626457121
+      ],
+      "metal_unit": "тыс. унц"
+     },
+     "excluded": {
+      "filtered": 15,
+      "no_volume": 0,
+      "no_density": 0,
+      "no_cutoff": 0
+     },
+     "warnings": [],
+     "csv": "Группа;Борт;Блоков;Объём, м³;Тоннаж, т;AU_CUT, содержание (g/t);AU_CUT, металл (тыс. унц);AU_CUT, без содержания, т;AU_CUT, блоков без содержания;CU_CUT, содержание (%);CU_CUT, металл (т);CU_CUT, без содержания, т;CU_CUT, блоков без содержания\r\n;0,5;26;608,0;1641,6000000000001;2,3338453989499452;0,12317724579640019;0,0;0;0,9597639727482131;15,755485376634667;0,0;0\r\n;1,0;15;416,0;1123,2;3,0710601109240425;0,1109012583631771;0,0;0;1,0440900526340107;11,727219471185208;0,0;0\r\nOx;0,5;11;208,0;561,6;1,7099567349738118;0,03087473816950563;0,0;0;1,139921080022496;6,401796785406337;0,0;0\r\nOx;1,0;8;160,0;432,00000000000006;2,031229918049907;0,02821200119330582;0,0;0;1,2165371905122921;5,255440663013103;0,0;0\r\nSulf;0,5;7;160,0;432,0;1,1354544112542888;0,01577046543111389;0,0;0;0,8848649944718969;3,8226167761185947;0,0;0\r\nSulf;1,0;3;80,0;216,0;1,5040320776279075;0,010444842898322803;0,0;0;1,0914986787013174;2,357637145994846;0,0;0\r\n(пусто);0,5;8;240,0;648,0;3,673476232859699;0,07653204219578068;0,0;0;0,8535604652947122;5,531071815109735;0,0;0\r\n(пусто);1,0;4;176,0;475,20000000000005;4,728645755944227;0,07224441427154848;0,0;0;0,8657705518049784;4,114141662177258;0,0;0\r\n"
+    }
+   }
+  },
+  "filtered": {
+   "request": {
+    "grades": [
+     "AU_CUT"
+    ],
+    "cutoffs": [
+     0,
+     1
+    ],
+    "curve": 0,
+    "csv": false,
+    "filter_id": 4,
+    "restrict": {
+     "cond": {
+      "field": "AU",
+      "op": ">",
+      "value": 1
+     }
+    }
+   },
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ],
+    "source": "str"
+   },
+   "job": {
+    "kind": "blocks.report",
+    "title": "Содержание–тоннаж · Модель",
+    "queue": "quick",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 1,
+     "density": {
+      "field": "SG",
+      "value": null
+     },
+     "cutoff_field": "AU_CUT",
+     "units": {
+      "volume": "м³",
+      "tonnes": "т"
+     },
+     "rows": [
+      {
+       "group": null,
+       "cutoff": 0.0,
+       "blocks": 32,
+       "volume": 864.0,
+       "tonnes": 2251.6313597191734,
+       "grades": {
+        "AU_CUT": {
+         "grade": 2.428332716751807,
+         "unit": "g/t",
+         "metal": 0.17579096163520938,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": null,
+       "cutoff": 1.0,
+       "blocks": 19,
+       "volume": 560.0,
+       "tonnes": 1441.16856899316,
+       "grades": {
+        "AU_CUT": {
+         "grade": 3.32615881050731,
+         "unit": "g/t",
+         "metal": 0.15411638911000497,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      }
+     ],
+     "curve": null,
+     "excluded": {
+      "filtered": 14,
+      "no_volume": 0,
+      "no_density": 0,
+      "no_cutoff": 0
+     },
+     "warnings": [],
+     "csv": null
+    }
+   }
+  },
+  "gaps": {
+   "request": {
+    "grades": [
+     "AU_CUT",
+     "CU_CUT",
+     "ZN_CUT"
+    ],
+    "density": 2.5,
+    "cutoffs": [
+     0,
+     1,
+     1000000000.0
+    ],
+    "curve": 6,
+    "csv": true
+   },
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ],
+    "source": "str"
+   },
+   "job": {
+    "kind": "blocks.report",
+    "title": "Содержание–тоннаж · Пропуски",
+    "queue": "quick",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 2,
+     "density": {
+      "field": null,
+      "value": 2.5
+     },
+     "cutoff_field": "AU_CUT",
+     "units": {
+      "volume": "м³",
+      "tonnes": "т"
+     },
+     "rows": [
+      {
+       "group": null,
+       "cutoff": 0.0,
+       "blocks": 3,
+       "volume": 24.0,
+       "tonnes": 60.0,
+       "grades": {
+        "AU_CUT": {
+         "grade": 2.1666666666666665,
+         "unit": "g/t",
+         "metal": 0.004179597053921637,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": null,
+         "unit": "%",
+         "metal": null,
+         "metal_unit": "т",
+         "missing_tonnes": 60.0,
+         "missing_blocks": 3
+        },
+        "ZN_CUT": {
+         "grade": 2.6666666666666665,
+         "unit": "усл. ед.",
+         "metal": null,
+         "metal_unit": null,
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": null,
+       "cutoff": 1.0,
+       "blocks": 2,
+       "volume": 16.0,
+       "tonnes": 40.0,
+       "grades": {
+        "AU_CUT": {
+         "grade": 3.0,
+         "unit": "g/t",
+         "metal": 0.003858089588235358,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": null,
+         "unit": "%",
+         "metal": null,
+         "metal_unit": "т",
+         "missing_tonnes": 40.0,
+         "missing_blocks": 2
+        },
+        "ZN_CUT": {
+         "grade": 3.5,
+         "unit": "усл. ед.",
+         "metal": null,
+         "metal_unit": null,
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": null,
+       "cutoff": 1000000000.0,
+       "blocks": 0,
+       "volume": 0.0,
+       "tonnes": 0.0,
+       "grades": {
+        "AU_CUT": {
+         "grade": null,
+         "unit": "g/t",
+         "metal": null,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "CU_CUT": {
+         "grade": null,
+         "unit": "%",
+         "metal": null,
+         "metal_unit": "т",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        },
+        "ZN_CUT": {
+         "grade": null,
+         "unit": "усл. ед.",
+         "metal": null,
+         "metal_unit": null,
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      }
+     ],
+     "curve": {
+      "field": "AU_CUT",
+      "unit": "g/t",
+      "cutoffs": [
+       0.5,
+       1.2,
+       1.9,
+       2.5999999999999996,
+       3.3,
+       4.0
+      ],
+      "tonnes": [
+       60.0,
+       40.0,
+       40.0,
+       20.0,
+       20.0,
+       20.0
+      ],
+      "grade": [
+       2.1666666666666665,
+       3.0,
+       3.0,
+       4.0,
+       4.0,
+       4.0
+      ],
+      "metal": [
+       0.004179597053921637,
+       0.003858089588235358,
+       0.003858089588235358,
+       0.0025720597254902384,
+       0.0025720597254902384,
+       0.0025720597254902384
+      ],
+      "metal_unit": "тыс. унц"
+     },
+     "excluded": {
+      "filtered": 0,
+      "no_volume": 0,
+      "no_density": 0,
+      "no_cutoff": 1
+     },
+     "warnings": [],
+     "csv": "Группа;Борт;Блоков;Объём, м³;Тоннаж, т;AU_CUT, содержание (g/t);AU_CUT, металл (тыс. унц);AU_CUT, без содержания, т;AU_CUT, блоков без содержания;CU_CUT, содержание (%);CU_CUT, металл (т);CU_CUT, без содержания, т;CU_CUT, блоков без содержания;ZN_CUT, содержание (усл. ед.);ZN_CUT, металл;ZN_CUT, без содержания, т;ZN_CUT, блоков без содержания\r\n;0,0;3;24,0;60,0;2,1666666666666665;0,004179597053921637;0,0;0;;;60,0;3;2,6666666666666665;;0,0;0\r\n;1,0;2;16,0;40,0;3,0;0,003858089588235358;0,0;0;;;40,0;2;3,5;;0,0;0\r\n;1000000000,0;0;0,0;0,0;;;0,0;0;;;0,0;0;;;0,0;0\r\n"
+    }
+   }
+  },
+  "gaps_by_zn": {
+   "request": {
+    "grades": [
+     "AU_CUT",
+     "ZN_CUT"
+    ],
+    "cutoff_field": "ZN_CUT",
+    "density": 2.5,
+    "cutoffs": [
+     0,
+     2
+    ],
+    "curve": 0,
+    "csv": false
+   },
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ],
+    "source": "str"
+   },
+   "job": {
+    "kind": "blocks.report",
+    "title": "Содержание–тоннаж · Пропуски",
+    "queue": "quick",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 2,
+     "density": {
+      "field": null,
+      "value": 2.5
+     },
+     "cutoff_field": "ZN_CUT",
+     "units": {
+      "volume": "м³",
+      "tonnes": "т"
+     },
+     "rows": [
+      {
+       "group": null,
+       "cutoff": 0.0,
+       "blocks": 4,
+       "volume": 32.0,
+       "tonnes": 80.0,
+       "grades": {
+        "AU_CUT": {
+         "grade": 2.1666666666666665,
+         "unit": "g/t",
+         "metal": 0.004179597053921637,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 20.0,
+         "missing_blocks": 1
+        },
+        "ZN_CUT": {
+         "grade": 2.5,
+         "unit": "усл. ед.",
+         "metal": null,
+         "metal_unit": null,
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      },
+      {
+       "group": null,
+       "cutoff": 2.0,
+       "blocks": 3,
+       "volume": 24.0,
+       "tonnes": 60.0,
+       "grades": {
+        "AU_CUT": {
+         "grade": 3.0,
+         "unit": "g/t",
+         "metal": 0.003858089588235358,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 20.0,
+         "missing_blocks": 1
+        },
+        "ZN_CUT": {
+         "grade": 3.0,
+         "unit": "усл. ед.",
+         "metal": null,
+         "metal_unit": null,
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      }
+     ],
+     "curve": null,
+     "excluded": {
+      "filtered": 0,
+      "no_volume": 0,
+      "no_density": 0,
+      "no_cutoff": 0
+     },
+     "warnings": [],
+     "csv": null
+    }
+   }
+  },
+  "unknown_unit": {
+   "request": {
+    "grades": [
+     "ZN_CUT"
+    ],
+    "density": 2.5,
+    "cutoffs": [
+     0
+    ],
+    "curve": 6,
+    "csv": false
+   },
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ],
+    "source": "str"
+   },
+   "job": {
+    "kind": "blocks.report",
+    "title": "Содержание–тоннаж · Пропуски",
+    "queue": "quick",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 2,
+     "density": {
+      "field": null,
+      "value": 2.5
+     },
+     "cutoff_field": "ZN_CUT",
+     "units": {
+      "volume": "м³",
+      "tonnes": "т"
+     },
+     "rows": [
+      {
+       "group": null,
+       "cutoff": 0.0,
+       "blocks": 4,
+       "volume": 32.0,
+       "tonnes": 80.0,
+       "grades": {
+        "ZN_CUT": {
+         "grade": 2.5,
+         "unit": "усл. ед.",
+         "metal": null,
+         "metal_unit": null,
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      }
+     ],
+     "curve": {
+      "field": "ZN_CUT",
+      "unit": "усл. ед.",
+      "cutoffs": [
+       1.0,
+       1.6,
+       2.2,
+       2.8,
+       3.4,
+       4.0
+      ],
+      "tonnes": [
+       80.0,
+       60.0,
+       40.0,
+       40.0,
+       20.0,
+       20.0
+      ],
+      "grade": [
+       2.5,
+       3.0,
+       3.5,
+       3.5,
+       4.0,
+       4.0
+      ],
+      "metal": [
+       null,
+       null,
+       null,
+       null,
+       null,
+       null
+      ],
+      "metal_unit": null
+     },
+     "excluded": {
+      "filtered": 0,
+      "no_volume": 0,
+      "no_density": 0,
+      "no_cutoff": 0
+     },
+     "warnings": [],
+     "csv": null
+    }
+   }
+  },
+  "density_field": {
+   "request": {
+    "grades": [
+     "AU_CUT"
+    ],
+    "density": "DENSITY",
+    "cutoffs": [
+     0
+    ],
+    "curve": 0,
+    "csv": false
+   },
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ],
+    "source": "str"
+   },
+   "job": {
+    "kind": "blocks.report",
+    "title": "Содержание–тоннаж · Модель",
+    "queue": "quick",
+    "status": "done",
+    "progress": 1.0,
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 1,
+     "density": {
+      "field": "DENSITY",
+      "value": null
+     },
+     "cutoff_field": "AU_CUT",
+     "units": {
+      "volume": "м³",
+      "tonnes": "т"
+     },
+     "rows": [
+      {
+       "group": null,
+       "cutoff": 0.0,
+       "blocks": 46,
+       "volume": 1216.0,
+       "tonnes": 3161.6000000000004,
+       "grades": {
+        "AU_CUT": {
+         "grade": 1.8434551114026747,
+         "unit": "g/t",
+         "metal": 0.18738315712057943,
+         "metal_unit": "тыс. унц",
+         "missing_tonnes": 0.0,
+         "missing_blocks": 0
+        }
+       }
+      }
+     ],
+     "curve": null,
+     "excluded": {
+      "filtered": 0,
+      "no_volume": 0,
+      "no_density": 0,
+      "no_cutoff": 0
+     },
+     "warnings": [],
+     "csv": null
+    }
+   }
+  }
+ },
+ "refused": {
+  "not_object": {
+   "status": 422,
+   "body": {
+    "code": "bad_request",
+    "message": "Неверные данные запроса.",
+    "hint": "Повторите действие из окна отчёта."
+   }
+  },
+  "grades_not_list": {
+   "status": 422,
+   "body": {
+    "param": "grades",
+    "code": "bad_param",
+    "message": "Содержания: нужен список полей.",
+    "hint": "Проверьте параметры отчёта."
+   }
+  },
+  "grade_missing": {
+   "status": 404,
+   "body": {
+    "param": "grades.0",
+    "code": "block_field_not_found",
+    "message": "Поле «NOPE» не найдено.",
+    "hint": "Обновите свойства модели."
+   }
+  },
+  "grade_category": {
+   "status": 422,
+   "body": {
+    "param": "grades.0",
+    "code": "bad_param",
+    "message": "Поле «ALT» не числовое.",
+    "hint": "Выберите числовое поле."
+   }
+  },
+  "density_category": {
+   "status": 422,
+   "body": {
+    "param": "density",
+    "code": "bad_param",
+    "message": "Поле «ALT» не числовое.",
+    "hint": "Выберите числовое поле."
+   }
+  },
+  "density_zero": {
+   "status": 422,
+   "body": {
+    "param": "density",
+    "code": "bad_param",
+    "message": "Плотность должна быть больше нуля.",
+    "hint": "Например 2,7 или имя поля SG."
+   }
+  },
+  "no_density": {
+   "status": 422,
+   "body": {
+    "param": "density",
+    "code": "bad_param",
+    "message": "Не найдена плотность: нет меняющегося поля SG или поля с ролью «плотность».",
+    "hint": "Укажите поле плотности или число, например 2,7."
+   }
+  },
+  "cutoffs_empty": {
+   "status": 422,
+   "body": {
+    "param": "cutoffs",
+    "code": "bad_param",
+    "message": "Борта: список из 1–200 чисел.",
+    "hint": "Например [0; 0,5; 1]."
+   }
+  },
+  "cutoff_text": {
+   "status": 422,
+   "body": {
+    "param": "cutoffs.1",
+    "code": "bad_param",
+    "message": "Борт: нужно число.",
+    "hint": "Например 0,5."
+   }
+  },
+  "curve_one": {
+   "status": 422,
+   "body": {
+    "param": "curve",
+    "code": "bad_param",
+    "message": "Точек кривой: 0 (без кривой) или 2–500.",
+    "hint": "Проверьте параметры отчёта."
+   }
+  },
+  "groups_number": {
+   "status": 422,
+   "body": {
+    "param": "groups",
+    "code": "bad_param",
+    "message": "Поле «AU_CUT» не категорийное.",
+    "hint": "Выберите категорийное поле."
+   }
+  },
+  "category_label": {
+   "status": 422,
+   "body": {
+    "param": "categories.values.0",
+    "code": "bad_param",
+    "message": "В поле «ALT» нет категории «нет такой».",
+    "hint": "Выберите подписи из списка категорий поля."
+   }
+  },
+  "filter_missing": {
+   "status": 404,
+   "body": {
+    "code": "filter_not_found",
+    "message": "Фильтр не найден.",
+    "hint": "Обновите список фильтров."
+   }
+  },
+  "restrict_field": {
+   "status": 422,
+   "body": {
+    "field": "ZZZ",
+    "model": "Модель",
+    "code": "filter_field_missing",
+    "message": "В модели «Модель» нет поля «ZZZ», которое нужно фильтру.",
+    "hint": "Выберите другую модель или другой фильтр, либо добавьте поле в модель."
+   }
+  },
+  "model_missing": {
+   "status": 404,
+   "body": {
+    "code": "block_model_not_found",
+    "message": "Блочная модель не найдена.",
+    "hint": "Обновите дерево проекта."
+   }
+  },
+  "too_many_grades": {
+   "status": 422,
+   "body": {
+    "param": "grades",
+    "code": "bad_param",
+    "message": "Не больше 20 содержаний.",
+    "hint": "Проверьте параметры отчёта."
+   }
+  }
+ }
+}
