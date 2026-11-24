@@ -1,0 +1,1751 @@
+{
+ "grids": [
+  {
+   "name": "v1_regular",
+   "raw": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     30,
+     20,
+     20
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "order": "F"
+   },
+   "grid": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     30,
+     20,
+     20
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "order": "F",
+    "rotation": 0.0,
+    "div": [
+     1,
+     1,
+     1
+    ]
+   },
+   "cells": 12000,
+   "levels": [
+    0,
+    0,
+    0
+   ],
+   "subcell": [
+    5.0,
+    5.0,
+    2.5
+   ],
+   "lengths": [
+    150.0,
+    100.0,
+    50.0
+   ],
+   "matrix": [
+    [
+     1.0,
+     -0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "extent": [
+    1000.5,
+    2000.25,
+    -300.0,
+    1150.5,
+    2100.25,
+    -250.0
+   ],
+   "local": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     150.0,
+     0.0,
+     0.0
+    ],
+    [
+     75.0,
+     50.0,
+     25.0
+    ]
+   ],
+   "project": [
+    [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    [
+     1150.5,
+     2000.25,
+     -300.0
+    ],
+    [
+     1075.5,
+     2050.25,
+     -275.0
+    ]
+   ]
+  },
+  {
+   "name": "v1_tensors",
+   "raw": {
+    "corner": [
+     0,
+     0,
+     0
+    ],
+    "counts": [
+     3,
+     2,
+     1
+    ],
+    "tensors": {
+     "x": [
+      1,
+      2,
+      4
+     ],
+     "y": [
+      5,
+      5
+     ],
+     "z": [
+      10
+     ]
+    },
+    "order": "F"
+   },
+   "grid": {
+    "corner": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "counts": [
+     3,
+     2,
+     1
+    ],
+    "tensors": {
+     "x": [
+      1.0,
+      2.0,
+      4.0
+     ],
+     "y": [
+      5.0,
+      5.0
+     ],
+     "z": [
+      10.0
+     ]
+    },
+    "order": "F",
+    "rotation": 0.0,
+    "div": [
+     1,
+     1,
+     1
+    ]
+   },
+   "cells": 6,
+   "levels": [
+    0,
+    0,
+    0
+   ],
+   "subcell": null,
+   "lengths": [
+    7.0,
+    10.0,
+    10.0
+   ],
+   "matrix": [
+    [
+     1.0,
+     -0.0,
+     0.0
+    ],
+    [
+     0.0,
+     1.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "extent": [
+    0.0,
+    0.0,
+    0.0,
+    7.0,
+    10.0,
+    10.0
+   ],
+   "local": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     7.0,
+     0.0,
+     0.0
+    ],
+    [
+     3.5,
+     5.0,
+     5.0
+    ]
+   ],
+   "project": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     7.0,
+     0.0,
+     0.0
+    ],
+    [
+     3.5,
+     5.0,
+     5.0
+    ]
+   ]
+  },
+  {
+   "name": "v2_turned_30_sub",
+   "raw": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     30,
+     20,
+     20
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "rotation": 30,
+    "div": [
+     8,
+     8,
+     4
+    ]
+   },
+   "grid": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     30,
+     20,
+     20
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "order": "F",
+    "rotation": 30.0,
+    "div": [
+     8,
+     8,
+     4
+    ]
+   },
+   "cells": 12000,
+   "levels": [
+    3,
+    3,
+    2
+   ],
+   "subcell": [
+    0.625,
+    0.625,
+    0.625
+   ],
+   "lengths": [
+    150.0,
+    100.0,
+    50.0
+   ],
+   "matrix": [
+    [
+     0.8660254037844387,
+     -0.49999999999999994,
+     0.0
+    ],
+    [
+     0.49999999999999994,
+     0.8660254037844387,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "extent": [
+    950.5,
+    2000.25,
+    -300.0,
+    1130.403810567666,
+    2161.852540378444,
+    -250.0
+   ],
+   "local": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     150.0,
+     0.0,
+     0.0
+    ],
+    [
+     75.0,
+     50.0,
+     25.0
+    ]
+   ],
+   "project": [
+    [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    [
+     1130.403810567666,
+     2075.25,
+     -300.0
+    ],
+    [
+     1040.451905283833,
+     2081.051270189222,
+     -275.0
+    ]
+   ]
+  },
+  {
+   "name": "v2_turned_90",
+   "raw": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     30,
+     20,
+     20
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "rotation": 90,
+    "div": [
+     1,
+     1,
+     1
+    ]
+   },
+   "grid": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     30,
+     20,
+     20
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "order": "F",
+    "rotation": 90.0,
+    "div": [
+     1,
+     1,
+     1
+    ]
+   },
+   "cells": 12000,
+   "levels": [
+    0,
+    0,
+    0
+   ],
+   "subcell": [
+    5.0,
+    5.0,
+    2.5
+   ],
+   "lengths": [
+    150.0,
+    100.0,
+    50.0
+   ],
+   "matrix": [
+    [
+     0.0,
+     -1.0,
+     0.0
+    ],
+    [
+     1.0,
+     0.0,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "extent": [
+    900.5,
+    2000.25,
+    -300.0,
+    1000.5,
+    2150.25,
+    -250.0
+   ],
+   "local": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     150.0,
+     0.0,
+     0.0
+    ],
+    [
+     75.0,
+     50.0,
+     25.0
+    ]
+   ],
+   "project": [
+    [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    [
+     1000.5,
+     2150.25,
+     -300.0
+    ],
+    [
+     950.5,
+     2075.25,
+     -275.0
+    ]
+   ]
+  },
+  {
+   "name": "v2_turned_minus_150",
+   "raw": {
+    "corner": [
+     500000.0,
+     7000000.0,
+     100.0
+    ],
+    "counts": [
+     100,
+     100,
+     100
+    ],
+    "size": [
+     10.0,
+     10.0,
+     10.0
+    ],
+    "rotation": -150.0,
+    "div": [
+     2,
+     4,
+     1
+    ]
+   },
+   "grid": {
+    "corner": [
+     500000.0,
+     7000000.0,
+     100.0
+    ],
+    "counts": [
+     100,
+     100,
+     100
+    ],
+    "size": [
+     10.0,
+     10.0,
+     10.0
+    ],
+    "order": "F",
+    "rotation": -150.0,
+    "div": [
+     2,
+     4,
+     1
+    ]
+   },
+   "cells": 1000000,
+   "levels": [
+    1,
+    2,
+    0
+   ],
+   "subcell": [
+    5.0,
+    2.5,
+    10.0
+   ],
+   "lengths": [
+    1000.0,
+    1000.0,
+    1000.0
+   ],
+   "matrix": [
+    [
+     -0.8660254037844386,
+     0.5000000000000001,
+     0.0
+    ],
+    [
+     -0.5000000000000001,
+     -0.8660254037844386,
+     0.0
+    ],
+    [
+     0.0,
+     0.0,
+     1.0
+    ]
+   ],
+   "extent": [
+    499133.9745962156,
+    6998633.974596215,
+    100.0,
+    500500.0,
+    7000000.0,
+    1100.0
+   ],
+   "local": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ],
+    [
+     1000.0,
+     0.0,
+     0.0
+    ],
+    [
+     500.0,
+     500.0,
+     500.0
+    ]
+   ],
+   "project": [
+    [
+     500000.0,
+     7000000.0,
+     100.0
+    ],
+    [
+     499133.9745962156,
+     6999500.0,
+     100.0
+    ],
+    [
+     499816.98729810776,
+     6999316.987298108,
+     600.0
+    ]
+   ]
+  }
+ ],
+ "upgrades": [
+  {
+   "name": "v1_regular",
+   "meta": {
+    "v": 1,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -300.0
+     ],
+     "counts": [
+      30,
+      20,
+      20
+     ],
+     "size": [
+      5.0,
+      5.0,
+      2.5
+     ],
+     "order": "F"
+    },
+    "cells": 10000,
+    "fields": [
+     {
+      "name": "Au",
+      "kind": "number",
+      "unit": "g/t",
+      "stats": {
+       "count": 9000,
+       "missing": 1000,
+       "min": 0.01,
+       "max": 12.5,
+       "mean": 1.25,
+       "std": 0.75
+      }
+     },
+     {
+      "name": "Порода",
+      "kind": "category",
+      "unit": null,
+      "labels": [
+       "руда",
+       "порода",
+       "дайка"
+      ],
+      "stats": {
+       "count": 7500,
+       "missing": 2500,
+       "counts": [
+        2500,
+        2500,
+        2500
+       ]
+      }
+     }
+    ],
+    "source": {
+     "format": "omf",
+     "file": "model.omf",
+     "element": "Блоки"
+    },
+    "warnings": [
+     "Значения на узлах не перенесены."
+    ]
+   },
+   "v2": {
+    "v": 2,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -300.0
+     ],
+     "counts": [
+      30,
+      20,
+      20
+     ],
+     "size": [
+      5.0,
+      5.0,
+      2.5
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ]
+    },
+    "rows": 10000,
+    "parents": 10000,
+    "sub": false,
+    "full": false,
+    "fields": [
+     {
+      "name": "Au",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "g/t",
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 9000,
+       "missing": 1000,
+       "min": 0.01,
+       "max": 12.5,
+       "mean": 1.25,
+       "std": 0.75
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "Порода",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels": [
+       "руда",
+       "порода",
+       "дайка"
+      ],
+      "stats": {
+       "count": 7500,
+       "missing": 2500,
+       "counts": [
+        2500,
+        2500,
+        2500
+       ]
+      },
+      "file": "cells",
+      "source": null
+     }
+    ],
+    "checks": null,
+    "groups": null,
+    "source": {
+     "op": "import",
+     "format": "omf",
+     "file": "model.omf",
+     "element": "Блоки"
+    },
+    "warnings": [
+     "Значения на узлах не перенесены."
+    ],
+    "inputs": null,
+    "algo": null
+   },
+   "public": {
+    "meta_v": 1,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -300.0
+     ],
+     "counts": [
+      30,
+      20,
+      20
+     ],
+     "size": [
+      5.0,
+      5.0,
+      2.5
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "variable": false,
+     "levels": [
+      0,
+      0,
+      0
+     ]
+    },
+    "cells": 10000,
+    "rows": 10000,
+    "parents": 10000,
+    "sub": false,
+    "full": false,
+    "fields": [
+     {
+      "name": "Au",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "g/t",
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 9000,
+       "missing": 1000,
+       "min": 0.01,
+       "max": 12.5,
+       "mean": 1.25,
+       "std": 0.75
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "Порода",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels": [
+       "руда",
+       "порода",
+       "дайка"
+      ],
+      "stats": {
+       "count": 7500,
+       "missing": 2500,
+       "counts": [
+        2500,
+        2500,
+        2500
+       ]
+      },
+      "file": "cells",
+      "source": null
+     }
+    ],
+    "source": {
+     "op": "import",
+     "format": "omf",
+     "file": "model.omf",
+     "element": "Блоки"
+    },
+    "warnings": [
+     "Значения на узлах не перенесены."
+    ],
+    "checks": null,
+    "groups": null,
+    "inputs": null,
+    "algo": null
+   },
+   "public_brief": {
+    "meta_v": 1,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -300.0
+     ],
+     "counts": [
+      30,
+      20,
+      20
+     ],
+     "size": [
+      5.0,
+      5.0,
+      2.5
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "variable": false,
+     "levels": [
+      0,
+      0,
+      0
+     ]
+    },
+    "cells": 10000,
+    "rows": 10000,
+    "parents": 10000,
+    "sub": false,
+    "full": false,
+    "fields": [
+     {
+      "name": "Au",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "g/t",
+      "role": null
+     },
+     {
+      "name": "Порода",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "role": null
+     }
+    ],
+    "source": {
+     "op": "import",
+     "format": "omf",
+     "file": "model.omf",
+     "element": "Блоки"
+    },
+    "warnings": [
+     "Значения на узлах не перенесены."
+    ]
+   }
+  },
+  {
+   "name": "v1_tensors",
+   "meta": {
+    "v": 1,
+    "grid": {
+     "corner": [
+      0,
+      0,
+      0
+     ],
+     "counts": [
+      3,
+      2,
+      1
+     ],
+     "tensors": {
+      "x": [
+       1,
+       2,
+       4
+      ],
+      "y": [
+       5,
+       5
+      ],
+      "z": [
+       10
+      ]
+     },
+     "order": "F"
+    },
+    "cells": 0,
+    "fields": [],
+    "source": null,
+    "warnings": []
+   },
+   "v2": {
+    "v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      3,
+      2,
+      1
+     ],
+     "tensors": {
+      "x": [
+       1.0,
+       2.0,
+       4.0
+      ],
+      "y": [
+       5.0,
+       5.0
+      ],
+      "z": [
+       10.0
+      ]
+     },
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ]
+    },
+    "rows": 0,
+    "parents": 0,
+    "sub": false,
+    "full": false,
+    "fields": [],
+    "checks": null,
+    "groups": null,
+    "source": null,
+    "warnings": [],
+    "inputs": null,
+    "algo": null
+   },
+   "public": {
+    "meta_v": 1,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      3,
+      2,
+      1
+     ],
+     "tensors": {
+      "x": [
+       1.0,
+       2.0,
+       4.0
+      ],
+      "y": [
+       5.0,
+       5.0
+      ],
+      "z": [
+       10.0
+      ]
+     },
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "variable": true,
+     "levels": [
+      0,
+      0,
+      0
+     ]
+    },
+    "cells": 0,
+    "rows": 0,
+    "parents": 0,
+    "sub": false,
+    "full": false,
+    "fields": [],
+    "source": null,
+    "warnings": [],
+    "checks": null,
+    "groups": null,
+    "inputs": null,
+    "algo": null
+   },
+   "public_brief": {
+    "meta_v": 1,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      3,
+      2,
+      1
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "variable": true,
+     "levels": [
+      0,
+      0,
+      0
+     ]
+    },
+    "cells": 0,
+    "rows": 0,
+    "parents": 0,
+    "sub": false,
+    "full": false,
+    "fields": [],
+    "source": null,
+    "warnings": []
+   }
+  },
+  {
+   "name": "v2_sub",
+   "meta": {
+    "v": 2,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -300.0
+     ],
+     "counts": [
+      30,
+      20,
+      20
+     ],
+     "size": [
+      5.0,
+      5.0,
+      2.5
+     ],
+     "rotation": 30,
+     "div": [
+      8,
+      8,
+      4
+     ]
+    },
+    "rows": 5,
+    "parents": 2,
+    "sub": true,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": "Золото",
+      "role": "grade",
+      "stats": {
+       "count": 4,
+       "missing": 1,
+       "min": 0.5,
+       "max": 3.0,
+       "mean": 1.5,
+       "std": 1.0
+      },
+      "file": "cells",
+      "source": {
+       "op": "import",
+       "params": {},
+       "inputs": [],
+       "algo": null,
+       "versions": {},
+       "at": null
+      }
+     },
+     {
+      "name": "CODE",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": null,
+      "role": "code",
+      "labels": [
+       "Руда",
+       "вне"
+      ],
+      "stats": {
+       "count": 5,
+       "missing": 0,
+       "counts": [
+        3,
+        2
+       ]
+      },
+      "file": "fld:0a1b2c3d",
+      "source": {
+       "op": "fill",
+       "params": {
+        "mode": "both",
+        "m": 4
+       },
+       "inputs": [
+        "abababababababababababababababababababababababababababababababab"
+       ],
+       "algo": "fill-1",
+       "versions": {
+        "numpy": "2.x"
+       },
+       "at": "2026-11-24T00:00:00+00:00"
+      }
+     }
+    ],
+    "checks": {
+     "at": "2026-11-24T00:00:00+00:00",
+     "duplicates": 0,
+     "overlaps": {
+      "n": 0,
+      "method": "exact"
+     },
+     "empty": [],
+     "constant": [],
+     "volume": 1250.0,
+     "examples": []
+    },
+    "groups": [
+     {
+      "rows": 5,
+      "k0": 0,
+      "k1": 3
+     }
+    ],
+    "source": {
+     "op": "fill",
+     "params": {
+      "prototype_id": 21
+     }
+    },
+    "warnings": [],
+    "inputs": {
+     "wireframes": [
+      {
+       "id": 5,
+       "sha": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      }
+     ]
+    },
+    "algo": "fill-1"
+   },
+   "v2": {
+    "v": 2,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -300.0
+     ],
+     "counts": [
+      30,
+      20,
+      20
+     ],
+     "size": [
+      5.0,
+      5.0,
+      2.5
+     ],
+     "order": "F",
+     "rotation": 30.0,
+     "div": [
+      8,
+      8,
+      4
+     ]
+    },
+    "rows": 5,
+    "parents": 2,
+    "sub": true,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": "Золото",
+      "role": "grade",
+      "stats": {
+       "count": 4,
+       "missing": 1,
+       "min": 0.5,
+       "max": 3.0,
+       "mean": 1.5,
+       "std": 1.0
+      },
+      "file": "cells",
+      "source": {
+       "op": "import",
+       "params": {},
+       "inputs": [],
+       "algo": null,
+       "versions": {},
+       "at": null
+      }
+     },
+     {
+      "name": "CODE",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": null,
+      "role": "code",
+      "labels": [
+       "Руда",
+       "вне"
+      ],
+      "stats": {
+       "count": 5,
+       "missing": 0,
+       "counts": [
+        3,
+        2
+       ]
+      },
+      "file": "fld:0a1b2c3d",
+      "source": {
+       "op": "fill",
+       "params": {
+        "mode": "both",
+        "m": 4
+       },
+       "inputs": [
+        "abababababababababababababababababababababababababababababababab"
+       ],
+       "algo": "fill-1",
+       "versions": {
+        "numpy": "2.x"
+       },
+       "at": "2026-11-24T00:00:00+00:00"
+      }
+     }
+    ],
+    "checks": {
+     "at": "2026-11-24T00:00:00+00:00",
+     "duplicates": 0,
+     "overlaps": {
+      "n": 0,
+      "method": "exact"
+     },
+     "empty": [],
+     "constant": [],
+     "volume": 1250.0,
+     "examples": []
+    },
+    "groups": [
+     {
+      "rows": 5,
+      "k0": 0,
+      "k1": 3
+     }
+    ],
+    "source": {
+     "op": "fill",
+     "params": {
+      "prototype_id": 21
+     }
+    },
+    "warnings": [],
+    "inputs": {
+     "wireframes": [
+      {
+       "id": 5,
+       "sha": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      }
+     ]
+    },
+    "algo": "fill-1"
+   },
+   "public": {
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -300.0
+     ],
+     "counts": [
+      30,
+      20,
+      20
+     ],
+     "size": [
+      5.0,
+      5.0,
+      2.5
+     ],
+     "order": "F",
+     "rotation": 30.0,
+     "div": [
+      8,
+      8,
+      4
+     ],
+     "variable": false,
+     "levels": [
+      3,
+      3,
+      2
+     ]
+    },
+    "cells": 5,
+    "rows": 5,
+    "parents": 2,
+    "sub": true,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": "Золото",
+      "role": "grade",
+      "stats": {
+       "count": 4,
+       "missing": 1,
+       "min": 0.5,
+       "max": 3.0,
+       "mean": 1.5,
+       "std": 1.0
+      },
+      "file": "cells",
+      "source": {
+       "op": "import",
+       "params": {},
+       "inputs": [],
+       "algo": null,
+       "versions": {},
+       "at": null
+      }
+     },
+     {
+      "name": "CODE",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": null,
+      "role": "code",
+      "labels": [
+       "Руда",
+       "вне"
+      ],
+      "stats": {
+       "count": 5,
+       "missing": 0,
+       "counts": [
+        3,
+        2
+       ]
+      },
+      "file": "fld:0a1b2c3d",
+      "source": {
+       "op": "fill",
+       "params": {
+        "mode": "both",
+        "m": 4
+       },
+       "inputs": [
+        "abababababababababababababababababababababababababababababababab"
+       ],
+       "algo": "fill-1",
+       "versions": {
+        "numpy": "2.x"
+       },
+       "at": "2026-11-24T00:00:00+00:00"
+      }
+     }
+    ],
+    "source": {
+     "op": "fill",
+     "params": {
+      "prototype_id": 21
+     }
+    },
+    "warnings": [],
+    "checks": {
+     "at": "2026-11-24T00:00:00+00:00",
+     "duplicates": 0,
+     "overlaps": {
+      "n": 0,
+      "method": "exact"
+     },
+     "empty": [],
+     "constant": [],
+     "volume": 1250.0,
+     "examples": []
+    },
+    "groups": [
+     {
+      "rows": 5,
+      "k0": 0,
+      "k1": 3
+     }
+    ],
+    "inputs": {
+     "wireframes": [
+      {
+       "id": 5,
+       "sha": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      }
+     ]
+    },
+    "algo": "fill-1"
+   },
+   "public_brief": {
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -300.0
+     ],
+     "counts": [
+      30,
+      20,
+      20
+     ],
+     "size": [
+      5.0,
+      5.0,
+      2.5
+     ],
+     "order": "F",
+     "rotation": 30.0,
+     "div": [
+      8,
+      8,
+      4
+     ],
+     "variable": false,
+     "levels": [
+      3,
+      3,
+      2
+     ]
+    },
+    "cells": 5,
+    "rows": 5,
+    "parents": 2,
+    "sub": true,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "role": "grade"
+     },
+     {
+      "name": "CODE",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "role": "code"
+     }
+    ],
+    "source": {
+     "op": "fill",
+     "params": {
+      "prototype_id": 21
+     }
+    },
+    "warnings": []
+   }
+  }
+ ],
+ "refusals": [
+  {
+   "name": "rotation_x",
+   "raw": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     30,
+     20,
+     20
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "rotation": {
+     "x": 5,
+     "z": 30
+    },
+    "div": [
+     8,
+     8,
+     4
+    ]
+   },
+   "answer": {
+    "status": 422,
+    "param": "grid.rotation.x",
+    "code": "rotation_unsupported",
+    "message": "Поворот вокруг X/Y в v1 не поддерживается.",
+    "hint": "Сохраните модель в исходной программе без поворота вокруг X и Y (допустим один угол вокруг Z)."
+   }
+  },
+  {
+   "name": "div_3",
+   "raw": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     30,
+     20,
+     20
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "rotation": 30,
+    "div": [
+     3,
+     8,
+     4
+    ]
+   },
+   "answer": {
+    "status": 422,
+    "param": "grid.div.0",
+    "code": "subblock_div",
+    "message": "Деление на субблоки по X — 3: нужна степень двойки от 1 до 128.",
+    "hint": "Субблоки хранятся по подъячейкам 2^L, L ≤ 7 (ТЗ 8.7.2): 1, 2, 4, 8, 16, 32, 64 или 128 по каждой оси."
+   }
+  },
+  {
+   "name": "div_256",
+   "raw": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     30,
+     20,
+     20
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "rotation": 30,
+    "div": [
+     8,
+     8,
+     256
+    ]
+   },
+   "answer": {
+    "status": 422,
+    "param": "grid.div.2",
+    "code": "subblock_div",
+    "message": "Деление на субблоки по Z — 256: нужна степень двойки от 1 до 128.",
+    "hint": "Субблоки хранятся по подъячейкам 2^L, L ≤ 7 (ТЗ 8.7.2): 1, 2, 4, 8, 16, 32, 64 или 128 по каждой оси."
+   }
+  },
+  {
+   "name": "div_tensors",
+   "raw": {
+    "corner": [
+     0,
+     0,
+     0
+    ],
+    "counts": [
+     3,
+     2,
+     1
+    ],
+    "tensors": {
+     "x": [
+      1,
+      2,
+      4
+     ],
+     "y": [
+      5,
+      5
+     ],
+     "z": [
+      10
+     ]
+    },
+    "order": "F",
+    "div": [
+     2,
+     1,
+     1
+    ]
+   },
+   "answer": {
+    "status": 422,
+    "param": "grid.tensors",
+    "code": "variable_grid",
+    "message": "Субблоки: у модели переменный шаг сетки.",
+    "hint": "Субблоки, заполнение и регуляризация — только для сетки с постоянным шагом; модель с переменным шагом можно показать, отфильтровать, экспортировать и посчитать в отчёте."
+   }
+  },
+  {
+   "name": "too_large",
+   "raw": {
+    "corner": [
+     0,
+     0,
+     0
+    ],
+    "counts": [
+     2001,
+     1000,
+     1000
+    ],
+    "size": [
+     1,
+     1,
+     1
+    ]
+   },
+   "answer": {
+    "status": 422,
+    "code": "block_model_too_large",
+    "message": "В модели 2 001 000 000 ячеек — больше предела 2 000 000 000.",
+    "hint": "Разделите модель на части или укрупните ячейки."
+   }
+  }
+ ]
+}

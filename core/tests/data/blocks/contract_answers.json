@@ -1,0 +1,584 @@
+{
+ "list": {
+  "status": 200,
+  "body": {
+   "block_models": [
+    {
+     "id": 1,
+     "name": "Модель",
+     "folder": null,
+     "version": 1,
+     "extent": [
+      1000.5,
+      2000.25,
+      -300.0,
+      1020.5,
+      2015.25,
+      -295.0
+     ],
+     "crs": null,
+     "grid": {
+      "corner": [
+       1000.5,
+       2000.25,
+       -300.0
+      ],
+      "counts": [
+       4,
+       3,
+       2
+      ],
+      "size": [
+       5.0,
+       5.0,
+       2.5
+      ],
+      "order": "F",
+      "variable": false
+     },
+     "cells": 6,
+     "fields": [
+      {
+       "name": "Au",
+       "kind": "number",
+       "unit": "г/т"
+      },
+      {
+       "name": "Порода",
+       "kind": "category",
+       "unit": null
+      }
+     ],
+     "source": {
+      "format": "omf",
+      "file": "model.omf",
+      "element": "Блоки"
+     },
+     "warnings": [],
+     "size": 1050,
+     "created_at": "2026-11-24T21:41:51.888595+00:00",
+     "updated_at": "2026-11-24T21:41:51.888595+00:00"
+    }
+   ]
+  }
+ },
+ "get": {
+  "status": 200,
+  "body": {
+   "id": 1,
+   "name": "Модель",
+   "folder": null,
+   "version": 1,
+   "extent": [
+    1000.5,
+    2000.25,
+    -300.0,
+    1020.5,
+    2015.25,
+    -295.0
+   ],
+   "crs": null,
+   "grid": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     4,
+     3,
+     2
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "order": "F",
+    "variable": false
+   },
+   "cells": 6,
+   "fields": [
+    {
+     "name": "Au",
+     "kind": "number",
+     "unit": "г/т",
+     "stats": {
+      "count": 5,
+      "missing": 1,
+      "min": 0.5,
+      "max": 3.0,
+      "mean": 1.5,
+      "std": 0.9082951062292475
+     }
+    },
+    {
+     "name": "Порода",
+     "kind": "category",
+     "unit": null,
+     "labels": [
+      "руда",
+      "порода"
+     ],
+     "stats": {
+      "count": 5,
+      "missing": 1,
+      "counts": [
+       3,
+       2
+      ]
+     }
+    }
+   ],
+   "source": {
+    "format": "omf",
+    "file": "model.omf",
+    "element": "Блоки"
+   },
+   "warnings": [],
+   "size": 1050,
+   "created_at": "2026-11-24T21:41:51.888595+00:00",
+   "updated_at": "2026-11-24T21:41:51.888595+00:00"
+  }
+ },
+ "get_v2": {
+  "id": 1,
+  "name": "Модель",
+  "folder": null,
+  "version": 1,
+  "extent": [
+   1000.5,
+   2000.25,
+   -300.0,
+   1020.5,
+   2015.25,
+   -295.0
+  ],
+  "crs": null,
+  "size": 1050,
+  "created_at": "2026-11-24T21:41:51.888595+00:00",
+  "updated_at": "2026-11-24T21:41:51.888595+00:00",
+  "stale": false,
+  "stale_reason": null,
+  "meta_v": 1,
+  "grid": {
+   "corner": [
+    1000.5,
+    2000.25,
+    -300.0
+   ],
+   "counts": [
+    4,
+    3,
+    2
+   ],
+   "size": [
+    5.0,
+    5.0,
+    2.5
+   ],
+   "order": "F",
+   "rotation": 0.0,
+   "div": [
+    1,
+    1,
+    1
+   ],
+   "variable": false,
+   "levels": [
+    0,
+    0,
+    0
+   ]
+  },
+  "cells": 6,
+  "rows": 6,
+  "parents": 6,
+  "sub": false,
+  "full": false,
+  "fields": [
+   {
+    "name": "Au",
+    "kind": "number",
+    "dtype": "f8",
+    "unit": "г/т",
+    "description": null,
+    "role": null,
+    "stats": {
+     "count": 5,
+     "missing": 1,
+     "min": 0.5,
+     "max": 3.0,
+     "mean": 1.5,
+     "std": 0.9082951062292475
+    },
+    "file": "cells",
+    "source": null
+   },
+   {
+    "name": "Порода",
+    "kind": "category",
+    "dtype": "cat",
+    "unit": null,
+    "description": null,
+    "role": null,
+    "labels": [
+     "руда",
+     "порода"
+    ],
+    "stats": {
+     "count": 5,
+     "missing": 1,
+     "counts": [
+      3,
+      2
+     ]
+    },
+    "file": "cells",
+    "source": null
+   }
+  ],
+  "source": {
+   "op": "import",
+   "format": "omf",
+   "file": "model.omf",
+   "element": "Блоки"
+  },
+  "warnings": [],
+  "checks": null,
+  "groups": null,
+  "inputs": null,
+  "algo": null
+ },
+ "get_v2_sub": {
+  "id": 1,
+  "name": "Субблоки",
+  "folder": null,
+  "version": 1,
+  "extent": [
+   950.5,
+   2000.25,
+   -300.0,
+   1130.403810567666,
+   2161.852540378444,
+   -250.0
+  ],
+  "crs": null,
+  "size": null,
+  "created_at": "2026-11-24T00:00:00+00:00",
+  "updated_at": "2026-11-24T00:00:00+00:00",
+  "stale": false,
+  "stale_reason": null,
+  "meta_v": 2,
+  "grid": {
+   "corner": [
+    1000.5,
+    2000.25,
+    -300.0
+   ],
+   "counts": [
+    30,
+    20,
+    20
+   ],
+   "size": [
+    5.0,
+    5.0,
+    2.5
+   ],
+   "order": "F",
+   "rotation": 30.0,
+   "div": [
+    8,
+    8,
+    4
+   ],
+   "variable": false,
+   "levels": [
+    3,
+    3,
+    2
+   ]
+  },
+  "cells": 5,
+  "rows": 5,
+  "parents": 2,
+  "sub": true,
+  "full": false,
+  "fields": [
+   {
+    "name": "AU",
+    "kind": "number",
+    "dtype": "f8",
+    "unit": "г/т",
+    "description": "Золото",
+    "role": "grade",
+    "stats": {
+     "count": 4,
+     "missing": 1,
+     "min": 0.5,
+     "max": 3.0,
+     "mean": 1.5,
+     "std": 1.0
+    },
+    "file": "cells",
+    "source": {
+     "op": "import",
+     "params": {},
+     "inputs": [],
+     "algo": null,
+     "versions": {},
+     "at": null
+    }
+   },
+   {
+    "name": "CODE",
+    "kind": "category",
+    "dtype": "cat",
+    "unit": null,
+    "description": null,
+    "role": "code",
+    "labels": [
+     "Руда",
+     "вне"
+    ],
+    "stats": {
+     "count": 5,
+     "missing": 0,
+     "counts": [
+      3,
+      2
+     ]
+    },
+    "file": "fld:0a1b2c3d",
+    "source": {
+     "op": "fill",
+     "params": {
+      "mode": "both",
+      "m": 4
+     },
+     "inputs": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "algo": "fill-1",
+     "versions": {
+      "numpy": "2.x"
+     },
+     "at": "2026-11-24T00:00:00+00:00"
+    }
+   }
+  ],
+  "source": {
+   "op": "fill",
+   "params": {
+    "prototype_id": 21
+   }
+  },
+  "warnings": [],
+  "checks": {
+   "at": "2026-11-24T00:00:00+00:00",
+   "duplicates": 0,
+   "overlaps": {
+    "n": 0,
+    "method": "exact"
+   },
+   "empty": [],
+   "constant": [],
+   "volume": 1250.0,
+   "examples": []
+  },
+  "groups": [
+   {
+    "rows": 5,
+    "k0": 0,
+    "k1": 3
+   }
+  ],
+  "inputs": {
+   "wireframes": [
+    {
+     "id": 5,
+     "sha": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+    }
+   ]
+  },
+  "algo": "fill-1"
+ },
+ "patch": {
+  "status": 200,
+  "body": {
+   "id": 1,
+   "name": "Модель Э17",
+   "folder": null,
+   "version": 2,
+   "extent": [
+    1000.5,
+    2000.25,
+    -300.0,
+    1020.5,
+    2015.25,
+    -295.0
+   ],
+   "crs": null,
+   "grid": {
+    "corner": [
+     1000.5,
+     2000.25,
+     -300.0
+    ],
+    "counts": [
+     4,
+     3,
+     2
+    ],
+    "size": [
+     5.0,
+     5.0,
+     2.5
+    ],
+    "order": "F",
+    "variable": false
+   },
+   "cells": 6,
+   "fields": [
+    {
+     "name": "Au",
+     "kind": "number",
+     "unit": "г/т",
+     "stats": {
+      "count": 5,
+      "missing": 1,
+      "min": 0.5,
+      "max": 3.0,
+      "mean": 1.5,
+      "std": 0.9082951062292475
+     }
+    },
+    {
+     "name": "Порода",
+     "kind": "category",
+     "unit": null,
+     "labels": [
+      "руда",
+      "порода"
+     ],
+     "stats": {
+      "count": 5,
+      "missing": 1,
+      "counts": [
+       3,
+       2
+      ]
+     }
+    }
+   ],
+   "source": {
+    "format": "omf",
+    "file": "model.omf",
+    "element": "Блоки"
+   },
+   "warnings": [],
+   "size": 1050,
+   "created_at": "2026-11-24T21:41:51.888595+00:00",
+   "updated_at": "2026-11-24T21:41:51.917347+00:00"
+  }
+ },
+ "patch_conflict": {
+  "status": 409,
+  "body": {
+   "current": {
+    "id": 1,
+    "name": "Модель Э17",
+    "folder": null,
+    "version": 2,
+    "extent": [
+     1000.5,
+     2000.25,
+     -300.0,
+     1020.5,
+     2015.25,
+     -295.0
+    ],
+    "crs": null,
+    "grid": {
+     "corner": [
+      1000.5,
+      2000.25,
+      -300.0
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "size": [
+      5.0,
+      5.0,
+      2.5
+     ],
+     "order": "F",
+     "variable": false
+    },
+    "cells": 6,
+    "fields": [
+     {
+      "name": "Au",
+      "kind": "number",
+      "unit": "г/т",
+      "stats": {
+       "count": 5,
+       "missing": 1,
+       "min": 0.5,
+       "max": 3.0,
+       "mean": 1.5,
+       "std": 0.9082951062292475
+      }
+     },
+     {
+      "name": "Порода",
+      "kind": "category",
+      "unit": null,
+      "labels": [
+       "руда",
+       "порода"
+      ],
+      "stats": {
+       "count": 5,
+       "missing": 1,
+       "counts": [
+        3,
+        2
+       ]
+      }
+     }
+    ],
+    "source": {
+     "format": "omf",
+     "file": "model.omf",
+     "element": "Блоки"
+    },
+    "warnings": [],
+    "size": 1050,
+    "created_at": "2026-11-24T21:41:51.888595+00:00",
+    "updated_at": "2026-11-24T21:41:51.917347+00:00"
+   },
+   "code": "version_conflict",
+   "message": "Модель изменили, пока вы её правили.",
+   "hint": "Проверьте и повторите."
+  }
+ },
+ "not_found": {
+  "status": 404,
+  "body": {
+   "code": "block_model_not_found",
+   "message": "Блочная модель не найдена.",
+   "hint": "Обновите дерево проекта."
+  }
+ },
+ "delete": {
+  "status": 200,
+  "body": {
+   "deleted": 1
+  }
+ }
+}
