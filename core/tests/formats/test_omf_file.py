@@ -315,7 +315,7 @@ def test_broken_elements_are_described_with_their_error(tmp_path: Path) -> None:
     g = raw.add("VolumeGridGeometry", origin=[0, 0, 0], tensor_u=[1.0], tensor_v=[1.0, -1.0], tensor_w=[1.0])
     raw.element("VolumeElement", "bad tensor", g)
     r = 0.7071067811865476
-    raw.volume("rotated", ([1.0], [1.0], [1.0]), axes=([r, r, 0.0], [-r, r, 0.0], [0.0, 0.0, 1.0]))
+    raw.volume("rotated", ([1.0], [1.0], [1.0]), axes=([1.0, 0.0, 0.0], [0.0, r, r], [0.0, -r, r]))  # about X (Э17)
     raw.volume("swapped", ([2.0], [1.0, 1.0], [1.0]), axes=([0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]))
     c = oc.describe(raw.write(tmp_path / "e.omf"))
     good, nogeom, alien, bad, rotated, swapped = c.elements
@@ -323,7 +323,7 @@ def test_broken_elements_are_described_with_their_error(tmp_path: Path) -> None:
     assert nogeom.error and nogeom.error["code"] == "omf_damaged" and "отсутствующий" in nogeom.error["message"]
     assert alien.skip and "не поддерживается" in alien.skip and alien.kind == "other"
     assert bad.error and "положительными" in bad.error["message"]
-    assert rotated.skip == "модель повёрнута: оси сетки не вдоль X, Y, Z" and rotated.cells == 1
+    assert rotated.skip == "поворот вокруг X/Y в v1 не поддерживается" and rotated.cells == 1
     assert swapped.loads and swapped.cells == 2
     assert {x["element"] for x in c.left_out() if x["what"] == "элемент"} == {
         "no geometry",

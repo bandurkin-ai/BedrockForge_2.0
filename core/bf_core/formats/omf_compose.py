@@ -9,7 +9,8 @@ and what will not load and why — from the JSON alone, no binary block is read 
 What becomes what (ADR 0017 §2): a surface (triangles or a grid) — a wireframe, a line set — a layer of the line
 file, a regular volume along X, Y, Z — a block model. Not carried over: points, textures, data on the vertices and
 faces of surfaces, on the vertices of lines, on the nodes of volumes, data of other kinds (colours, vectors),
-mapped data with colour legends only, rotated volumes, volumes over `MAX_VOLUME_CELLS`. Segment data of a line
+mapped data with colour legends only, volumes turned about X or Y (a turn about Z loads: `grid_axes`), volumes
+over `MAX_VOLUME_CELLS`. Segment data of a line
 loads when it is constant along each line (`loads` None: known only once the line is read). A broken element gets
 its `error` {code, message, hint}; the others are described.
 
@@ -53,6 +54,47 @@ ELEMENT_TITLES = {
 }
 KINDS = {"PointSetElement": "points", "LineSetElement": "lines", "SurfaceElement": "surface", "VolumeElement": "volume"}
 LOADED_AS = {"surface": "каркас", "lines": "слой линий", "volume": "блочная модель"}
+
+
+ROTATION_SKIP = "поворот вокруг X/Y в v1 не поддерживается"  # ТЗ 8.7.1
+AXES_TOL = 1e-6  # unit length, right angles and the plane of the axes of a file (float32 files: ≈ 1e-7)
+
+
+def _unit(v: tuple[float, float, float]) -> tuple[float, float, float] | None:
+    n = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) ** 0.5
+    return None if not n or n != n or n == float("inf") else (v[0] / n, v[1] / n, v[2] / n)
+
+
+def z_turn(geometry: dict[str, Any], what: str) -> float | None:
+    """φ (degrees, (−180; 180]) when the axes u, v, w of a VolumeGridGeometry are a turn about Z — u = (cos φ,
+    sin φ, 0), v = (−sin φ, cos φ, 0), w = +Z within `AXES_TOL` (axes of any length: they are normalised);
+    None — they are not (a turn about X or Y, a mirror, a skew)."""
+    from bf_core.api.errors import ApiError
+    from bf_core.blocks.schema import rotation_of_axes
+
+    eye = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+    axes = [of.vector(geometry.get(f"axis_{n}"), f"{what}: ось {n}", eye[i]) for i, n in enumerate("uvw")]
+    unit = [_unit(a) for a in axes]
+    if any(a is None for a in unit):
+        return None
+    u, v, w = unit
+    assert u is not None and v is not None and w is not None
+    try:
+        return rotation_of_axes(u, v, w, tol=AXES_TOL)
+    except ApiError:
+        return None
+
+
+def grid_axes(geometry: dict[str, Any], what: str) -> tuple[list[tuple[int, float]] | None, float] | None:
+    """How the grid of a VolumeGridGeometry lies: (placed, 0.0) — every axis along +X, +Y, +Z or against them
+    (`omf_file.placement`: a permutation and signs; a Z-turn by a multiple of 90° is one of them — the cells of
+    such a grid are renumbered, the blocks stay where they are); (None, φ) — any other turn about Z by φ; None —
+    anything else (ТЗ 8.7.1: a turn about X or Y is not loaded)."""
+    placed = placement(geometry, what)
+    if placed is not None:
+        return placed, 0.0
+    phi = z_turn(geometry, what)
+    return None if phi is None else (None, phi)
 
 
 @dataclass
@@ -264,8 +306,8 @@ def _volume_entry(e: OmfEntry, geometry: dict[str, Any]) -> None:
         return
     e.counts = [len(tensor(geometry.get(f"tensor_{a}"), f"{e.label}: шаги {a}")) for a in "uvw"]
     e.cells = e.counts[0] * e.counts[1] * e.counts[2]
-    if placement(geometry, e.label) is None:
-        e.skip = "модель повёрнута: оси сетки не вдоль X, Y, Z"
+    if grid_axes(geometry, e.label) is None:
+        e.skip = ROTATION_SKIP
     elif e.cells > of.MAX_VOLUME_CELLS:
         e.skip = f"{n_text(e.cells)} ячеек — больше предела {n_text(of.MAX_VOLUME_CELLS)}"
 

@@ -9,8 +9,10 @@ into one `.omf` that Leapfrog and the import of BF2 read («экспорт → �
 What goes where (`formats/omf_write.py`): a wireframe — a surface (vertices bit for bit, triangles in the order of
 its file, colour, «Описание»; a DTM is marked «BedrockForge: ЦТМ»), a line file — a line set per layer (closed
 lines as loops, attributes of the lines on their segments; layers of points and lines with a vertex without Z
-are not written — warnings), a block model — a volume (axes +X, +Y, +Z, the steps as tensors, every field
-densely: an empty cell is NaN or −1). Not offered: point clouds; block models over `MAX_CELLS` cells. The project:
+are not written — warnings), a block model — a volume (`axis_u/v/w` from its turn about Z, the steps as
+tensors, every field densely: an empty cell is NaN or −1; fields of the files `fld:` too — `read_field`). Not
+offered: point clouds; block models over `MAX_CELLS` cells; block models with sub-blocks — 422 `omf_subblocks`
+«только после регуляризации» (OMF keeps none). The project:
 its name and the line «Система координат: ‹имя› (EPSG:…)» of its CRS.
 
 The file is written as «‹имя›.omf.part» and renamed when complete: a cancel or a failure leaves nothing. A file of
@@ -29,6 +31,7 @@ import sqlalchemy as sa
 from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.db.schema import export_log, line_layers, objects, project_meta, wireframes
+from bf_core.formats.omf_write import subblocks_message
 from bf_core.jobs.context import JobContext, JobError
 from bf_core.jobs.registry import handler
 
@@ -49,6 +52,7 @@ def _reason(message: str, hint: str) -> dict[str, str]:
 
 
 TOO_LARGE = _reason(f"Модель больше {_n(MAX_CELLS)} ячеек: в OMF не записывается.", "Разделите модель на части.")
+SUBBLOCKS = "omf_subblocks"
 CLOUD = _reason("Облако точек в OMF не записывается (точки OMF не переносятся).", "Экспортируйте облако в LAS.")
 
 
@@ -90,8 +94,10 @@ def exportable(conn: sa.Connection) -> dict[str, list[dict[str, Any]]]:
     models = []
     for b in bm.list_block_models(conn):
         big = int(b["cells"]) > MAX_CELLS or _grid_cells(b["grid"]) > MAX_CELLS
+        sub = bool(b.get("sub"))
+        why = _reason(*subblocks_message(str(b["name"]))) if sub else TOO_LARGE if big else None
         models.append({"id": b["id"], "name": b["name"], "folder": b["folder"], "cells": b["cells"],
-                       "available": not big, "reason": TOO_LARGE if big else None})  # fmt: skip
+                       "available": why is None, "reason": why, "code": SUBBLOCKS if sub else None})  # fmt: skip
     return {
         "wireframes": [
             {
@@ -108,6 +114,11 @@ def exportable(conn: sa.Connection) -> dict[str, list[dict[str, Any]]]:
         "line_files": out_files,
         "block_models": models,
     }
+
+
+def subblocks_error(name: str) -> ApiError:
+    """422 `omf_subblocks`: a model with sub-blocks goes to OMF only after the regularization (`blocks.export` too)."""
+    return ApiError(422, SUBBLOCKS, *subblocks_message(name))
 
 
 def _grid_cells(grid: Any) -> int:
@@ -160,6 +171,8 @@ def request(
                                "Обновите дерево проекта и выберите объекты заново.")  # fmt: skip
             if not found["available"]:
                 why = found["reason"]
+                if found.get("code") == SUBBLOCKS:  # the text already names the model
+                    raise ApiError(422, SUBBLOCKS, why["message"], why["hint"])
                 raise ApiError(422, "omf_not_exportable", f"«{found['name']}»: {why['message']}", why["hint"])
             weight = max(weight, _weight(key, found))
     target = target_path(path)
@@ -218,6 +231,8 @@ def write_objects(
     line_layers, block_models, cells, size, files} and the warnings. Objects are read one at a time in short read
     transactions; `progress(fraction, message)` may raise to cancel (nothing is left then). Raises ApiError (an
     object went away), FormatError, OSError."""
+    from bf_core.blocks import meta as bmeta
+    from bf_core.blocks import schema as bs
     from bf_core.blocks import store as bm
     from bf_core.formats.omf_write import OmfWriter
     from bf_core.lines import store as ls
@@ -258,13 +273,17 @@ def write_objects(
         for bm_id in block_model_ids:
             with dialect.read_tx(engine) as conn:
                 info = bm.block_model_info(conn, int(bm_id))
-                sha = bm.cells_sha(conn, int(bm_id))
+                specs = {f["name"]: bmeta.check_field_v2(f) for f in info["fields"]}  # v1 fields too
+                shas = {role: bm.cells_sha(conn, int(bm_id), role) for role in {f["file"] for f in specs.values()}}
+                shas[bs.ROLE] = bm.cells_sha(conn, int(bm_id))
             label[0] = f"Блочная модель «{info['name']}»"
+            if info.get("sub"):
+                raise subblocks_error(str(info["name"]))
 
-            def cells(field: str, sha: str = sha) -> Iterator[tuple[Any, Any]]:
-                return ((i, v[field]) for i, v in bm.iter_cells(store, sha, [field]))
+            def cells(field: str, shas: dict[str, str] = shas, specs: dict[str, Any] = specs) -> Iterator[Any]:
+                return read_field(store, shas, specs[field])
 
-            w.add_volume(info["name"], info["grid"], info["fields"], cells)
+            w.add_volume(info["name"], info["grid"], list(specs.values()), cells, sub=bool(info.get("sub")))
             counts["block_models"] += 1
             counts["cells"] += int(info["cells"])
         if not w.element_count:
@@ -275,6 +294,23 @@ def write_objects(
     counts["size"] = path.stat().st_size
     counts["files"] = [path.name]
     return counts, list(w.warnings)
+
+
+def read_field(store: Any, shas: dict[str, str], spec: dict[str, Any]) -> Iterator[tuple[Any, Any]]:
+    """(idx, values) by row groups of one field of a model (v1, or v2 without sub-blocks: P = idx): from the file
+    `cells`, or from its file `fld:` whose row groups are those of `cells` (`blocks/fields_store.py`)."""
+    from bf_core.blocks import schema as bs
+    from bf_core.blocks import store as bm
+    from bf_core.blocks.fields_store import iter_fields
+
+    name, role = spec["name"], spec.get("file") or bs.ROLE
+    if role == bs.ROLE:
+        for idx, got in bm.iter_cells(store, shas[bs.ROLE], [name], specs={name: spec}):
+            yield idx, got[name]
+        return
+    heads = bm.iter_cells(store, shas[bs.ROLE], [])
+    for (idx, _), got in zip(heads, iter_fields(store, shas[role], [spec]), strict=True):
+        yield idx, got[name]
 
 
 def _sizes(conn: sa.Connection, wf: Sequence[int], files: Sequence[int], models: Sequence[int]) -> list[int]:
