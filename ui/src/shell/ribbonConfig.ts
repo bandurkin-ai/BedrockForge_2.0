@@ -11,6 +11,7 @@ import { INTERCEPT_BUTTONS, INTERCEPT_GROUP_TITLE } from "../modules/intercepts/
 import { VARIO_BUTTONS, VARIO_GROUP_TITLE, VARIO_TAB_TITLE } from "../modules/variography/commands";
 import { TREND_BUTTONS } from "../modules/trends/commands";
 import { FILTER_BUTTONS, FILTER_GROUP_TITLE } from "../modules/blocks/filters/commands";
+import { REPORT_BUTTONS, REPORT_GROUP_TITLE } from "../modules/blocks/report/commands";
 import { CHART_BUTTONS, CHART_GROUP_TITLE } from "../modules/charts/commands";
 import { STATS_BUTTONS } from "../modules/stats/commands";
 import { QAQC_BUTTONS, QAQC_GROUP_TITLE } from "../modules/qaqc/commands";
@@ -299,6 +300,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
         },
         { title: "Геостатистика", items: TREND_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: FILTER_GROUP_TITLE, items: FILTER_BUTTONS.map((b): RibbonItem => ({ ...b })) },
+        { title: REPORT_GROUP_TITLE, items: REPORT_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         {
           title: "Обслуживание",
           items: [{ command: "jobs.clear_finished", label: "Очистить выполненные задания", icon: "clear", hint: "Убрать из списка «Задания» готовые и отменённые задания с их журналами" }],

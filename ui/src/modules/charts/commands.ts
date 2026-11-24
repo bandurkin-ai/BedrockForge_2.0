@@ -164,7 +164,6 @@ export const commands: Command[] = [
   { id: "chart.rename", title: "Переименовать график", description: "Переименовать сохранённый график; ручное имя больше не следует за настройками.", params: { chart_id: CHART_ID, name: P("string", "новое имя; занятое — отказ") }, required: ["chart_id", "name"], stage: STAGE },
   { id: "chart.delete", title: "Удалить график", description: "Удалить сохранённый график (данные проб не меняются).", params: { chart_id: CHART_ID }, required: ["chart_id"], confirm: true, stage: STAGE },
   { id: "chart.select_clear", title: "Снять выделение проб", description: "Снять выделение проб, сделанное рамкой или лассо на графике: в 3D и в таблице (Esc в окне графика).", uiOnly: true, stage: STAGE },
-  { id: "blocks.report", title: "Отчёт по блочной модели", description: "Тоннаж и содержания по бортам.", params: { model_id: { type: "integer" }, grades: { type: "string" } }, required: ["model_id"], stage: "Э17" },
 ];
 
 /** Icons of the chart buttons: `shell/Icon.tsx` has (or gets on acceptance of 13.21) each of them. */
