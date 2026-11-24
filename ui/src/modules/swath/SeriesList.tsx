@@ -5,12 +5,12 @@
  */
 import { useState } from "react";
 import { Icon } from "../../shell/Icon";
-import type { SwathSources } from "./api";
+import type { SeriesAnswer, SwathSources } from "./api";
 import { addSeries, blockSeries, MAX_SERIES, moveSeries, removeSeries, replaceSeries, sampleSeries, type SwathSettings } from "./model";
 import { SeriesForm } from "./SeriesForm";
 import css from "./Swath.module.css";
 
-export function SeriesList({ settings, sources, onChange }: { settings: SwathSettings; sources: SwathSources | null; onChange: (next: SwathSettings) => void }) {
+export function SeriesList({ settings, sources, answers, onChange }: { settings: SwathSettings; sources: SwathSources | null; answers?: readonly SeriesAnswer[]; onChange: (next: SwathSettings) => void }) {
   const [menu, setMenu] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const series = settings.series;
@@ -62,7 +62,7 @@ export function SeriesList({ settings, sources, onChange }: { settings: SwathSet
               <Icon name="trash" size={13} />
             </button>
           </div>
-          <SeriesForm s={s} index={i} all={series} sources={sources} onChange={(next) => onChange(replaceSeries(settings, i, next))} />
+          <SeriesForm s={s} index={i} all={series} sources={sources} answer={answers?.find((a) => a.index === i)} onChange={(next) => onChange(replaceSeries(settings, i, next))} />
         </div>
       ))}
       <div className={css.add}>
