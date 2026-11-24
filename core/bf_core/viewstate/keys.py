@@ -259,6 +259,18 @@ def _styles(v: Any, strict: bool) -> dict[str, Any]:
     return dict(list(out.items())[-STYLES_MAX:])  # insertion order: the oldest go first
 
 
+def _block_styles(v: Any, strict: bool) -> dict[str, Any]:
+    """`_styles` of the block models (ADR 0023 §11, e17-api.md §14): the style of a model may name a filter of the
+    library (`filter_id`: the id of an object `filter` or null); anything else there is junk — null (strict: 422)."""
+    out = _styles(v, strict)
+    for k, style in out.items():
+        fid = style.get("filter_id")
+        if fid is not None and _id(fid) is None:
+            _fail(strict, f"Стиль блочной модели {k}: «filter_id» — номер фильтра или пусто.")
+            out[k] = {**style, "filter_id": None}
+    return out
+
+
 def _columns(v: Any, strict: bool) -> dict[str, list[str]]:
     if not isinstance(v, dict):
         _fail(strict, "Открытые колонки: ожидается набор «набор:таблица → колонки».")
@@ -295,7 +307,7 @@ NORMALIZERS: dict[str, Callable[[Any, bool], Any]] = {
     "ellipsoids": _ellipsoids,
     "collar_styles": _styles,
     "trace_styles": _styles,
-    "block_styles": _styles,
+    "block_styles": _block_styles,
     "cloud_styles": _styles,  # {"<layer id>": {color, hidden: [codes]}} (ADR 0014; body checked by the interface)
     "columns": _columns,
     "active": _active,
@@ -324,7 +336,13 @@ def drop_missing(key: str, value: Any, alive: Callable[[int], bool]) -> Any:
         return [d for d in value if alive(d["swath"])]
     if key == "ellipsoids":
         return [d for d in value if alive(d["object"])]
-    if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
+    if key == "block_styles":  # a filter that is gone: the model shows all blocks (e17-api.md §14)
+        return {
+            k: {**s, "filter_id": None} if s.get("filter_id") is not None and not alive(s["filter_id"]) else s
+            for k, s in value.items()
+            if alive(int(k))
+        }
+    if key in ("collar_styles", "trace_styles", "cloud_styles"):
         return {k: s for k, s in value.items() if alive(int(k))}
     if key == "columns":
         return {k: c for k, c in value.items() if alive(int(k.split(":", 1)[0]))}
@@ -346,7 +364,9 @@ def ids_in(key: str, value: Any) -> Iterable[int]:
         return (d["swath"] for d in value)
     if key == "ellipsoids":
         return (d["object"] for d in value)
-    if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
+    if key == "block_styles":  # the models and the filters they name
+        return (i for k, s in value.items() for i in (int(k), s.get("filter_id")) if i is not None)
+    if key in ("collar_styles", "trace_styles", "cloud_styles"):
         return (int(k) for k in value)
     if key == "columns":
         return (int(k.split(":", 1)[0]) for k in value)
@@ -376,7 +396,15 @@ def map_ids(key: str, value: Any, new_id: Callable[[int], int | None]) -> Any:
         return [{**d, "swath": n} for d in value if (n := new_id(d["swath"])) is not None]
     if key == "ellipsoids":
         return [{**d, "object": n} for d in value if (n := new_id(d["object"])) is not None]
-    if key in ("collar_styles", "trace_styles", "block_styles", "cloud_styles"):
+    if key == "block_styles":  # a filter the archive does not have: null (the old number is another object's)
+        return {
+            str(n): {**s, "filter_id": None if s.get("filter_id") is None else new_id(s["filter_id"])}
+            if "filter_id" in s
+            else s
+            for k, s in value.items()
+            if (n := new_id(int(k))) is not None
+        }
+    if key in ("collar_styles", "trace_styles", "cloud_styles"):
         return {str(n): s for k, s in value.items() if (n := new_id(int(k))) is not None}
     if key == "columns":
         out: dict[str, Any] = {}
