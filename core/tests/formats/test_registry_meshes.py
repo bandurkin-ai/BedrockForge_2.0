@@ -94,9 +94,11 @@ def test_wireframe_formats_by_extension_and_dm_by_content(files: dict[str, Path]
     assert detect_object(files["body.tridb"]).kind == "wireframes" and detect_object(files["mixed.dxf"]).kind == "lines"
     assert detect_object(files["strings.dm"]).kind == "lines" and detect_object(files["oretr.dm"]).meshes
     assert detect_object(Path("чертёж.DWG")).key == "dwg"  # by the name: a DWG is not opened to tell
-    with pytest.raises(FormatError) as info:  # a block model is not a wireframe: said so, with its stage
-        detect_object(files["model.dm"])
-    assert info.value.code == "unsupported" and "блочная модель" in info.value.message and info.value.hint
+    block = detect_object(files["model.dm"])  # a block model goes to the import of blocks (Э17 17.38)
+    assert block.key == "datamine_blocks" and block.kind == "block_model" and not block.meshes
+    with pytest.raises(FormatError) as info:  # the reader of wireframes, lines and points does not take it
+        read_objects(files["model.dm"])
+    assert info.value.code == "block_model" and info.value.hint
     with pytest.raises(FormatError) as info:
         detect_object(files["table.dm"])
     assert info.value.code == "not_wireframe" and "PID1" in info.value.message

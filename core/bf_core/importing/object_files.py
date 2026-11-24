@@ -389,12 +389,15 @@ def inspect_files(
     by_file = options_by_file(options)
     files: list[dict[str, Any]] = []
     totals = dict.fromkeys(("files", "failed", *TOTALS), 0)
+    from . import object_blockfile as obf
     from . import object_cloud as oc
 
     for g in groups:
         chosen = by_file.get(option_key(g.main))
         try:
-            if oc.wanted(g, chosen):  # a cloud: the header of a LAS, the head of a table
+            if obf.is_blockfile(g.main, chosen):  # a block model (ADR 0023 §7): the roles of the columns, the grid
+                entry = obf.inspect_entry(g.main, chosen, tick)
+            elif oc.wanted(g, chosen):  # a cloud: the header of a LAS, the head of a table
                 entry = oc.summarize_cloud(g, chosen)
             else:
                 read = read_group(
