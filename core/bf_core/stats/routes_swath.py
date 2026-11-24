@@ -13,10 +13,15 @@ counts, notes) onto the kernels `stats.swath_frame`, `stats.swath`, `stats.swath
 Settings (`charts.settings` of kind `swath`, v 1; `color`, `line`, `bars`, `range`, `view` are the window's):
 `direction` x | y | z | angles, `azimuth`, `dip`, `roll`, `width` | null (the default width), `anchor` | null,
 `limits` {u, v, w: [lo, hi]} | null (the cuboid of the data), `series` (1 … 12):
-    {kind: "blocks", model_id, field, weight: volume | tonnage | none, density, filter: {field, labels} | null}
+    {kind: "blocks", model_id, field, weight: volume | tonnage | none, density, filter: {field, labels} | null,
+     filter_id: int | null}
     {kind: "samples", set_id, table, field, weight: none | length | field | length_field, weight_field,
      negatives: keep | half_abs | exclude, top_cut, within: box | blocks, within_series: index | null}
 `within_series` — the number (from 0) of the model series the samples are taken inside; null — the first one.
+`filter_id` — a filter of the library (ТЗ 7.35 Д-02): the blocks with f > 0 take part, the rest are `filtered_out`;
+a gone filter or a field the model lacks is the `error` of that series. A model with a turn, sub-blocks or FRAC is
+read by `swath_sub` (its blocks are cut between the swaths in proportion to the volume; samples «внутри блоков» of
+such a series are not yet: `error` `blocks_unsupported` of the samples).
 
 A series answers {index, kind, name, field, unit, weight, weight_name, weight_unit, source_id, within? (samples:
 "box" or the model series), counts, mean [n | null], count [int], weights [n | null], deviation? [n | null]
@@ -161,6 +166,10 @@ class Series:
     density_name: str | None = None
     category: str | None = None  # the field of the filter
     labels: list[str] = dc_field(default_factory=list)
+    filter_id: int | None = None  # a filter of the library
+    mask: Any = None  # bool [rows]: the rows the filter passes
+    warnings: list[str] = dc_field(default_factory=list)
+    sub: Any = None  # `swath_sub.Source` of a model with a turn, sub-blocks or FRAC
     # samples
     sel: Any = None
     points: Any = None
@@ -196,7 +205,11 @@ def _blocks(project: Any, k: int, s: dict[str, Any]) -> Series:
     flt = s.get("filter")
     if flt is not None and not (isinstance(flt, dict) and isinstance(flt.get("labels", []), list)):
         raise _bad(f"series[{k}].filter", f"Ряд {k + 1}: отбор — поле и список значений.", "Задайте отбор заново.")
+    fid = s.get("filter_id")
+    if fid is not None and (isinstance(fid, bool) or not isinstance(fid, int)):
+        raise _bad(f"series[{k}].filter_id", f"Ряд {k + 1}: фильтр задаётся номером.", "Выберите фильтр из библиотеки.")
     out = Series(k, "blocks", name, weight, s.get("model_id"))
+    out.filter_id = fid
     out.weight_name, out.weight_unit = BLOCK_WEIGHTS[weight]
     out.name = f"Модель · {name or '—'}"
     if out.source_id is None:
@@ -231,6 +244,13 @@ def _blocks(project: Any, k: int, s: dict[str, Any]) -> Series:
     out.name = f"{m.name} · {field_name}"
     out.unit = (m.field(field_name) or {}).get("unit")
     out.model, out.density_name, out.category, out.labels = m, dens, cat, labels
+    if not m.plain:
+        from . import swath_sub as ss
+
+        try:
+            out.sub = ss.open_source(project, m)
+        except ApiError as e:
+            out.error = _error(e.code, e.message, e.hint)
     return out
 
 
@@ -254,7 +274,7 @@ def _load(project: Any, series: list[Series]) -> None:
 
     groups: dict[int, list[Series]] = {}
     for x in series:
-        if x.kind == "blocks" and x.error is None and x.model is not None:
+        if x.kind == "blocks" and x.error is None and x.model is not None and x.sub is None:
             groups.setdefault(x.model.id, []).append(x)
     if not groups:
         return
@@ -287,6 +307,27 @@ def _load(project: Any, series: list[Series]) -> None:
                 x.density = cols.number(x.density_name) if x.density_name else None
             if x.category:
                 x.codes, x.keep = cols.codes(x.category), np.asarray(keep_of(m.labels(x.category), x.labels))
+
+
+def _filters(project: Any, series: list[Series]) -> None:
+    """The filters of the library of the model series: the mask of the rows that pass (`swath_sub.filter_mask`);
+    on a model of Э13 it joins the selection by categories (`fold_selection`)."""
+    from . import swath_sub as ss
+
+    folded: dict[tuple[int, int, int], tuple[Any, Any]] = {}  # the same filter on the same selection: once
+    for x in series:
+        if x.kind != "blocks" or x.error is not None or x.filter_id is None:
+            continue
+        try:
+            x.mask, x.warnings = ss.filter_mask(project, int(x.model.id), x.filter_id)
+        except ApiError as e:
+            x.error = _error("source_deleted" if e.code == "block_model_not_found" else e.code, e.message, e.hint)
+            continue
+        if x.sub is None:
+            key = (id(x.mask), id(x.codes), id(x.keep))
+            if key not in folded:
+                folded[key] = ss.fold_selection(x.mask, x.codes, x.keep)
+            x.codes, x.keep = folded[key]
 
 
 def _values(project: Any, x: Series) -> tuple[Any, Any]:
@@ -373,7 +414,10 @@ def _link(series: list[Series]) -> None:
             raise _bad(f"series[{k}].within_series", f"Ряд {k + 1}: отбор «внутри блоков» требует ряда блочной модели.",
                        "Добавьте ряд модели или выберите «в кубоиде».")  # fmt: skip
         x.within = target
-        if x.error is None and series[target].error is not None:
+        if x.error is None and series[target].sub is not None:
+            message = f"Ряд {k + 1}: пробы внутри блоков ряда {target + 1} (поворот, субблоки) пока не отбираются."
+            x.error = _error("blocks_unsupported", message, "Выберите отбор «в кубоиде».")
+        elif x.error is None and series[target].error is not None:
             message = f"Ряд {k + 1}: ряд модели {target + 1} не рассчитан — пробы внутри его блоков не отобрать."
             x.error = _error("within_not_computed", message, "Исправьте ряд модели или выберите «в кубоиде».")
 
@@ -431,6 +475,7 @@ def swath_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
     from . import swath as sw
     from . import swath_blocks as sb
     from . import swath_frame as sf
+    from . import swath_sub as ss
     from .weighted import StatsError
 
     direction = settings.get("direction") or "x"
@@ -451,16 +496,21 @@ def swath_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
                        "Ряд — блочная модель (blocks) или пробы (samples).")  # fmt: skip
         series.append(_blocks(project, k, s) if kind == "blocks" else _samples(project, k, s))
     _load(project, series)
+    _filters(project, series)
     _link(series)
 
     ok = [x for x in series if x.error is None]
     for x in ok:
-        if x.kind == "blocks":
+        if x.kind == "blocks" and x.sub is not None:
+            x.ext = ss.bounds(x.sub, f, mask=x.mask, category=x.category, keep=x.keep, threads=THREADS)
+        elif x.kind == "blocks":
             x.ext = sb.block_bounds(f, x.grid, x.cols.idx, codes=x.codes, keep=x.keep, threads=THREADS)
         else:
             x.ext = sw.sample_bounds(f, x.points, x.sel)
     first = next((x for x in ok if x.kind == "blocks"), None)
-    block = sf.block_side(f.u, sf.grid_sides(first.grid)) if first is not None else None
+    block = None
+    if first is not None:
+        block = ss.block_side(f, first.sub) if first.sub is not None else sf.block_side(f.u, sf.grid_sides(first.grid))
     try:
         exts = {kind: [x.ext for x in ok if x.kind == kind] for kind in ("blocks", "samples")}
         c = sw.cuboid(f, models=exts["blocks"], samples=exts["samples"], limits=settings.get("limits"), width=width,
@@ -473,6 +523,10 @@ def swath_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
 
     cells: dict[int, Any] = {}
     for x in ok:
+        if x.kind == "blocks" and x.sub is not None:
+            x.result = ss.series(x.sub, f, c, field=str(x.field), weight=x.weight, density=x.density_name,
+                                 mask=x.mask, category=x.category, keep=x.keep, threads=THREADS)  # fmt: skip
+            continue
         if x.kind == "blocks":
             values, density = _values(project, x)
             x.result = sb.block_series(x.grid, x.cols.idx, values, f, c, weight=x.weight, density=density,
@@ -487,7 +541,10 @@ def swath_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
             inside = cells[x.within]
         x.result = sw.sample_series(x.points, x.sel, f, c, cells=inside)
 
-    notes = [n for n in (sw.width_note(c),) if n]
+    notes = [n for n in (None if first is not None and first.sub is not None else sw.width_note(c),) if n]
+    notes += [f"Ряд {x.index + 1}: блоки на границе полос делятся между полосами пропорционально объёму."
+              for x in ok if x.sub is not None]  # fmt: skip
+    notes += [f"Ряд {x.index + 1}: {w}" for x in ok for w in x.warnings]
     base = series[0]
     return {"direction": direction, "frame": f.as_dict(), **c.as_dict(),
             "series": [_answer(x, c.count, base) for x in series], "notes": notes}  # fmt: skip

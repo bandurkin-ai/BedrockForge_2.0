@@ -1,6 +1,6 @@
 """Reading a block model (подшаг 17.4; ADR 0023 §2, §15; docs/progress/e17-api.md §2–3): `blocks.model.Model` of v1
 and v2 alike, the portions of `iter`, the slices, the fields of the files `fld:`, the geometry of the rows, the cache of
-the columns of `stats.blocks_cache` (memory, disk, a replaced field), 422 `blocks_unsupported` for swath."""
+the columns of `stats.blocks_cache` (memory, disk, a replaced field), swath of a turn and sub-blocks (17.10)."""
 
 from __future__ import annotations
 
@@ -441,10 +441,10 @@ def test_disk_cache(bproj, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ig
     assert not bc.disk_dir(p).exists()
 
 
-# --- a turn and sub-blocks are not for swath yet --------------------------------------------------------------------
+# --- a turn and sub-blocks are read by swath through `swath_sub` (17.10) ------------------------------------------
 
 
-def test_swath_refuses_a_turn_and_subblocks(bproj) -> None:  # type: ignore[no-untyped-def]
+def test_swath_reads_a_turn_and_subblocks(bproj) -> None:  # type: ignore[no-untyped-def]
     from bf_core.stats import routes_swath
 
     p = project(bproj)
@@ -453,12 +453,11 @@ def test_swath_refuses_a_turn_and_subblocks(bproj) -> None:  # type: ignore[no-u
     sub, *_ = make_sub(p, store)
     plain = make_model(p, store, name="Прямая", grid=PLAIN)
     for model_id in (turned, sub):
-        with dialect.read_tx(p.engine) as conn, pytest.raises(ApiError) as exc:
-            bc.model_of(conn, model_id)
-        assert exc.value.status == 422 and exc.value.code == "blocks_unsupported"
-        assert "поворотом или субблоками" in exc.value.message and exc.value.hint
+        with dialect.read_tx(p.engine) as conn:
+            m = bc.model_of(conn, model_id)  # no 422 `blocks_unsupported` any more
+        assert m.plain is False and m.field("AU") is not None
         series = routes_swath._blocks(p, 0, {"model_id": model_id, "field": "AU"})
-        assert series.error is not None and series.error["code"] == "blocks_unsupported"
+        assert series.error is None and series.sub is not None
     m = cached(p, plain)  # a model without a turn: as before
     assert m.cells == 350 and "rotation" not in m.grid and "div" not in m.grid and m.field("AU") is not None
     assert routes_swath._blocks(p, 0, {"model_id": plain, "field": "AU"}).error is None

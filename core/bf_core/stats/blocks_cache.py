@@ -23,7 +23,8 @@ lost (restart, LRU) is one `np.load` instead of the decoding of zstd. Written be
 renamed; a file that does not fit (size, dtype) is read from the model again. The files are derived data: they go
 without a loss (`clear_disk`).
 
-A model with a turn or sub-blocks (v2) is for swath not yet: `model_of` → 422 `blocks_unsupported` (17.10 lifts it).
+A model with a turn, sub-blocks or a field FRAC (v2) is not `plain`: swath reads its rows itself, by portions
+(`stats.swath_sub`, 17.10), not through these columns (`Model.plain`; `grid` keeps its `rotation` and `div`).
 numpy and pyarrow load on first use (tests/test_process.py)."""
 
 from __future__ import annotations
@@ -57,6 +58,7 @@ class Model:
     sha: str
     cells: int
     shas: dict[str, str] = dfield(default_factory=dict)  # file role → SHA-256 (`sha` is that of `cells`)
+    plain: bool = True  # no turn, no sub-blocks, no FRAC: the cells are boxes along the axes (Э13 reads them)
 
     def field(self, name: str) -> dict[str, Any] | None:
         """The field of that name (case aside), or None."""
@@ -74,21 +76,21 @@ class Model:
 
 
 def model_of(conn: Any, bm_id: int) -> Model:
-    """The model `bm_id` (404 `block_model_not_found`, 409 `block_model_broken` — no file of cells; 422
-    `blocks_unsupported` — a turn or sub-blocks: a swath plot reads the cells as boxes along the axes)."""
+    """The model `bm_id` (404 `block_model_not_found`, 409 `block_model_broken` — no file of cells). A model with a
+    turn, sub-blocks or FRAC is `plain=False` (swath: `stats.swath_sub`); its `grid` is whole."""
     from bf_core.blocks import store
-    from bf_core.blocks.model import is_plain, unsupported
+    from bf_core.blocks.model import is_plain
 
     info = store.block_model_info(conn, bm_id)
     grid = dict(info["grid"])
-    if not is_plain(info):
-        raise unsupported()
-    for key in ("rotation", "div", "levels"):  # the grid as swath knows it (v1)
-        grid.pop(key, None)
     fields = list(info["fields"])
+    plain = is_plain(info) and not any(f.get("role") == "frac" for f in fields)
+    if plain:
+        for key in ("rotation", "div", "levels"):  # the grid as swath knows it (v1)
+            grid.pop(key, None)
     roles = {CELLS, *(str(f.get("file") or CELLS) for f in fields)}
     shas = {role: store.cells_sha(conn, bm_id, role) for role in sorted(roles)}
-    return Model(int(info["id"]), str(info["name"]), grid, fields, shas[CELLS], int(info["cells"]), shas)
+    return Model(int(info["id"]), str(info["name"]), grid, fields, shas[CELLS], int(info["cells"]), shas, plain)
 
 
 def _nbytes(value: Any) -> int:

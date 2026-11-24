@@ -6,7 +6,7 @@ the API, where the charts are computed).
     warm() -> {module: seconds}
         `MODULES` in turn, each by its own `warm()`: the charts (track Г — `select`, `describe`, `histogram`,
         `qq`, `dendrogram` with `correlation`, `scatter`, `boxplot`, `probplot`, `domain_stats`, `ternary`,
-        `contact`), swath (track С — `swath`, `swath_blocks`), the rows of another table of the set
+        `contact`), swath (track С — `swath`, `swath_blocks`, `swath_sub`), the rows of another table of the set
         (`source_kernels`, 13.35: a domain or Y of another table); then `columns()`
     columns()
         the same kernels on read-only columns, as the routes of `stats` give them: the cached columns of
@@ -33,7 +33,7 @@ from typing import Any
 
 MODULES = (
     "select", "describe", "histogram", "qq", "dendrogram", "scatter", "boxplot", "probplot", "domain_stats",
-    "ternary", "contact", "swath", "swath_blocks", "source_kernels", "local",
+    "ternary", "contact", "swath", "swath_blocks", "swath_sub", "source_kernels", "local",
 )  # fmt: skip
 
 
