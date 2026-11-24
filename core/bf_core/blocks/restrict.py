@@ -261,6 +261,8 @@ class Restrictor:
 def prepare(model: Model, rules: Mapping[str, Any] | None, *, conn: sa.Connection, store: BlobStore) -> Restrictor:
     """The restrictor of `rules` (the tree of a filter or a quick restrictor; None — everything passes) on `model`.
     422 `filter_field_missing {field, model}`, `filter_rules`, `expr_syntax`/`expr_field`/`expr_type`."""
+    from .fill import leaf  # noqa: F401  (registers `LEAVES["wireframe"]`; here, not at the top: no import cycle)
+
     if rules is None:
         return Restrictor([], [], None)
     tree = fs.normalize_rules(rules)

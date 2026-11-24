@@ -24,6 +24,7 @@ from bf_core.db import dialect
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
+from .fill.routes import router as fill_router
 from .routes_calc import router as calc_router
 from .routes_report import router as report_router
 from .routes_schemes import router as schemes_router
@@ -34,6 +35,7 @@ router = APIRouter(prefix="/blocks")
 router.include_router(calc_router)
 router.include_router(schemes_router)  # before the routes of `/{bm_id}`: `GET /blocks/schemes` is not a model
 router.include_router(report_router)
+router.include_router(fill_router)
 Svc = Annotated[ProjectService, Depends(projects)]
 KIND = "block_model"
 
