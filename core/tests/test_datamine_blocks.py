@@ -344,6 +344,21 @@ def test_portions_the_limit_and_the_wanted_columns(project) -> None:  # type: ig
     assert sum(p.rows for p in src.chunks(["XC"], 10, limit=25)) == 25 and not list(src.chunks(["XC"], 10, limit=0))
 
 
+def test_windows_of_the_map_give_the_same_rows(project, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The file is mapped a window at a time (the memory of a 20 million model): the windows join without a seam."""
+    path = project.tmp / "windows.dm"
+    octree_dm(path)
+    src = dmb.open_blocks(path)
+    whole = read_all(src, rows=10_000)
+    monkeypatch.setattr(dmb, "WINDOW_BYTES", src.header.page)  # a page: a few windows in this small table
+    parts = list(src.chunks(None, 5))
+    assert len(parts) >= 3 and parts[0].first == 0
+    assert all(a.first + a.rows == b.first for a, b in zip(parts, parts[1:], strict=False))
+    for name in ("XC", "ZINC", "AU"):
+        assert same(np.concatenate([p.numbers[name] for p in parts]), whole[name])
+    assert sum(p.rows for p in src.chunks(["XC"], 5, limit=40)) == 40
+
+
 def test_not_a_block_model_is_refused_with_a_hint(project) -> None:  # type: ignore[no-untyped-def]
     tri = project.tmp / "tri.dm"
     tri.write_bytes(build([F("TRIANGLE"), F("PID1"), F("PID2"), F("PID3")], [[1, 1, 2, 3]]))

@@ -31,7 +31,8 @@ Error codes: those of `datamine.read_header` and `not_block_model`, `empty_file`
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Iterator, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +46,7 @@ from bf_core.formats.errors import FormatError
 __all__ = ["DatamineSource", "is_block_model", "open_blocks"]
 
 SUFFIXES = (".dm", ".fbm")
+WINDOW_BYTES = 64 << 20  # the part of the file mapped at a time
 #: Fields that describe the grid, not the blocks (compared in upper case).
 GRID_FIELDS = frozenset({"XMORIG", "YMORIG", "ZMORIG", "X0", "Y0", "Z0", "NX", "NY", "NZ", "IJK",
                          "ANGLE1", "ANGLE2", "ANGLE3", "ROTAXIS1", "ROTAXIS2", "ROTAXIS3"})  # fmt: skip
@@ -128,6 +130,21 @@ class DatamineSource(BlockSource):
 
     # ------------------------------------------------------------------------------------------------ the portions
 
+    def _portions(self, fields: list[str], rows: int, total: int) -> Generator[dm.DmChunk, None, None]:
+        """`datamine.iter_chunks` over windows of `WINDOW_BYTES` of pages: the file is mapped one window at a time,
+        so the pages already read leave the resident memory of the process (a map of 4 ГБ would stay in it)."""
+        h = self.header
+        window = max(1, WINDOW_BYTES // h.page) * h.per_page  # records of a window: whole pages
+        for base in range(0, total, window):
+            view = replace(h, data_page=h.data_page + base // h.per_page, records=min(window, total - base))
+            inner = dm.iter_chunks(self.path, view, fields=fields, chunk_rows=rows)
+            try:
+                for part in inner:
+                    part.start += base
+                    yield part
+            finally:
+                inner.close()
+
     def chunks(
         self, want: Sequence[str] | None = None, rows: int = CHUNK_ROWS, tick: Tick | None = None,
         limit: int | None = None,
@@ -143,7 +160,7 @@ class DatamineSource(BlockSource):
         traces: dict[str, int] = {}
         damaged: dict[str, int] = {}
         moved: dict[str, int] = {}
-        source = dm.iter_chunks(self.path, h, fields=[*read, *watch], chunk_rows=max(1, rows), max_rows=total)
+        source = self._portions([*read, *watch], max(1, rows), total)
         try:
             for part in source:
                 if tick is not None:
