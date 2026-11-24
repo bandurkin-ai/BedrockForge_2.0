@@ -1,5 +1,5 @@
 """/api/v1/blocks — filling and coding by wireframes, «Перестроить» (подшаг 17.20; ADR 0023 §6, §14;
-docs/progress/e17-api.md §7). The router is included by `blocks/router.py` (prefix `/blocks`).
+docs/progress/e17-api.md §7). The router has no prefix: `blocks/router.py` (prefix `/blocks`) includes it.
 
   * `POST /blocks/fill` {prototype_id, wireframes: [{id, code?, priority?}], mode, levels, m, outside_code,
     code_field, frac_field, name, folder} → {source, id} of the job `blocks.fill` (queue heavy). Checked here, before
@@ -40,7 +40,7 @@ from bf_core.jobs.service import jobs
 from bf_core.projects.service import projects
 from bf_core.projects.store import ProjectService
 
-router = APIRouter(prefix="/blocks")
+router = APIRouter()  # no prefix of its own: `blocks/router.py` (prefix `/blocks`) includes it, as geostat does
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
 Payload = Annotated[Any, Body()]

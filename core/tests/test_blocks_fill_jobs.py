@@ -442,8 +442,7 @@ def test_coding_by_the_centre_adds_fields_to_the_same_model(proj: P) -> None:
     mid = plain_model(proj)
     cut = body(proj, (15.0, 15.0, 5.0), (47.0, 33.0, 31.0), "Зона")  # crosses the parents: the boxes by the points
     seen: list[Any] = []
-    with dialect.read_tx(proj.engine) as conn:
-        sha_before = inputs.model_sha(conn, mid)
+    sha_before = model(proj, mid).shas()["cells"]  # the input of a new field is the file of the rows (a real blob)
     out = run_code(proj, mid, creq(cut, frac_field="ZF", code_field="ZONE"), seen=seen)
     assert stages_of(seen) == ["Каркасы", "Граничные родители", "Дробление", "Запись"]
     assert out["model_id"] == mid and out["version"] == 2 and out["fields"] == ["ZONE", "ZF"]
@@ -728,7 +727,7 @@ def rc(pclient, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def
         monkeypatch.setenv("BF_EXTRA_JOB_MODULES", MODULE)
     importlib.import_module(MODULE)
     if not any(getattr(r, "path", "") == f"{BL}/fill" for r in pclient.app.routes):
-        pclient.app.include_router(routes.router, prefix=API)
+        pclient.app.include_router(routes.router, prefix=BL)
     assert pclient.post(f"{API}/projects", json={"name": "Заполнение"}).status_code == 200
     project = projects_of(pclient.core).require_current()
     pclient.p = P(project.engine, project.folder)

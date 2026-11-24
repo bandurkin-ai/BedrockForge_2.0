@@ -317,7 +317,7 @@ def run_code(
         ins = inputs.inputs_of(conn, [w.id for w in spec.wires], model.id if spec.split else None)
         meshes, warnings = commit.load_meshes(conn, store, grid, spec.wires, infos,
                                               tick=lambda f: clock(0.06 * f, S_WIRES))  # fmt: skip
-        cells = inputs.model_sha(conn, model.id) or ""
+        cells = model.shas()[bs.ROLE]  # the file the rows are read from: the input of the new fields
     commit.check_names(model.fields, spec)
     lab = commit.Labels.of(spec.codes([str(i["name"]) for i in infos]), spec.outside_code, spec.mode)
     n_threads = _threads(threads)
