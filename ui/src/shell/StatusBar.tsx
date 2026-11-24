@@ -1,5 +1,7 @@
 import { useApp } from "./AppContext";
 import { auditStore, statusText } from "../modules/audit/state";
+import { blocksShowStore, blocksSimplified, showStatus } from "../modules/blocks/display";
+import { blocksStore } from "../modules/blocks/state";
 import { displaysUi } from "../modules/downhole/displaysUi";
 import { viewStore } from "../modules/scene/bind";
 import { currentSection, seriesStatus, seriesStore } from "../modules/section/seriesState";
@@ -14,6 +16,8 @@ export function StatusBar() {
   const s = useStore(app.store, (x) => x);
   const audit = useStore(auditStore, (x) => x.result);
   const simplified = useStore(displaysUi, (x) => x.simplified > 0);
+  const blocksLine = useStore(blocksShowStore, (s) => showStatus(blocksStore.get().list, s));
+  const blocksCoarse = useStore(blocksShowStore, (s) => blocksSimplified(s));
   const keys = useStore(viewStore, (k) => k);
   const series = useStore(seriesStore, (x) => x);
   const section = s.projectName ? seriesStatus(currentSection(keys, series)) : null;
@@ -30,9 +34,10 @@ export function StatusBar() {
   parts.push(
     <span key="view" title={simplified ? "Отображения по стволу далеко от камеры показаны объединёнными интервалами (до 4 или 32 м)" : undefined}>
       Вид: {s.view.perspective ? "перспектива" : "ортогональная"}
-      {simplified ? " · упрощено" : ""}
+      {simplified || blocksCoarse ? " · упрощено" : ""}
     </span>,
   );
+  if (blocksLine) parts.push(<span key="blocks" data-testid="blocks-status">{blocksLine}</span>);
   if (section) parts.push(<span key="series" data-testid="series-status">{section}</span>);
   if (s.statusNote)
     parts.push(
