@@ -48,6 +48,8 @@ HANDLER_MODULES: tuple[str, ...] = (
     "bf_core.blocks.export",
     "bf_core.blocks.report",
     "bf_core.blocks.fill.jobs",
+    "bf_core.blocks.jobs",
+    "bf_core.blocks.jobs_fields",
     "bf_core.qaqc.jobs",
 )
 

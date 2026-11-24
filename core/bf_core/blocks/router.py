@@ -26,6 +26,8 @@ from bf_core.projects.store import ProjectService
 
 from .fill.routes import router as fill_router
 from .routes_calc import router as calc_router
+from .routes_fields import router as fields_router
+from .routes_ops import router as ops_router
 from .routes_report import router as report_router
 from .routes_schemes import router as schemes_router
 from .viz_routes import polygons_router
@@ -38,6 +40,8 @@ router.include_router(schemes_router)  # before the routes of `/{bm_id}`: `GET /
 router.include_router(report_router)
 router.include_router(polygons_router)
 router.include_router(fill_router)
+router.include_router(ops_router)
+router.include_router(fields_router)
 Svc = Annotated[ProjectService, Depends(projects)]
 KIND = "block_model"
 
