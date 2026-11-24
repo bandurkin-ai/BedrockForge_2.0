@@ -119,6 +119,11 @@ def _rows_text(rows: list[int]) -> str:
     return ", ".join(str(r + 1) for r in rows[:MAX_ROWS])
 
 
+def _spaced(n: int) -> str:
+    """A whole number with a space between thousands (only the digits are touched, not the commas of a text)."""
+    return f"{n:,}".replace(",", " ")
+
+
 class Unaligned:
     """The blocks the grid cannot hold, over the chunks of a file: `add(first_row, cells)` for every chunk, then
     `raise_if()` — 422 `blocks_unaligned {count, rows}` naming up to 20 rows. `invalid` — rows without a centre or a
@@ -149,10 +154,8 @@ class Unaligned:
         for reason, text in ((OFF_GRID, "за началом или за краем сетки"), (CROSSES_PARENT, "через границу родителя"),
                              (OFF_SUBCELLS, "не по подъячейкам 2^L")):  # fmt: skip
             if self.by_reason[reason]:
-                parts.append(f"{text} — {self.by_reason[reason]:,}".replace(",", " "))
-        message = f"Блоков, которые нельзя уложить в сетку модели: {self.count:,} ({'; '.join(parts)}).".replace(
-            ",", " "
-        )
+                parts.append(f"{text} — {_spaced(self.by_reason[reason])}")
+        message = f"Блоков, которые нельзя уложить в сетку модели: {_spaced(self.count)} ({'; '.join(parts)})."
         hint = (
             f"Строки данных (с 1): {_rows_text(self.rows)}"
             + (" и другие" if self.count > len(self.rows) else "")
