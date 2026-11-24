@@ -40,7 +40,7 @@ MAX_NAME = 200  # a name of a table, a field or a hole inside the settings
 #: top-level keys holding the id of another object
 ID_KEYS = ("y_set_id", "wireframe_id")
 #: keys of a series (swath) holding the id of another object
-SERIES_ID_KEYS = ("set_id", "model_id")
+SERIES_ID_KEYS = ("set_id", "model_id", "filter_id")
 #: lists of names: key → (limit, what it is called in a message)
 NAME_LISTS: dict[str, tuple[int, str]] = {
     "fields": (MAX_FIELDS, "полей"),
