@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "note": "Вычисление калькулятора 8.7.4 (17.6): одни и те же 6 строк; null — пропуск (NaN); категории — коды int32, -1 пусто; результат bool — true/false, cat — коды и подписи.",
+  "schema": {"AU": "num", "CU": "num", "DOMAIN": ["OX", "SULF"], "ZONE": ["1", "2"]},
+  "data": {
+    "AU": [0.5, 2.0, null, 1.0, 3.0, -1.0],
+    "CU": [10, 0, 5, null, 2, 4],
+    "DOMAIN": [0, 1, 1, -1, 0, 1],
+    "ZONE": [0, 1, 1, 0, -1, 1]
+  },
+  "cases": [
+    {"text": "IF(AU > 1, AU*2, 0)", "kind": "num", "out": [0, 4, null, 0, 6, 0], "note": "Т8.7-6: пропуск в условии — NaN; AU = 1 не больше 1"},
+    {"text": "AU * 2 + CU", "kind": "num", "out": [11, 4, null, null, 8, 2]},
+    {"text": "AU > 1", "kind": "bool", "out": [false, true, false, false, true, false], "note": "сравнение с NaN — ложь"},
+    {"text": "AU <> 1", "kind": "bool", "out": [true, true, false, false, true, true], "note": "и «<>» с NaN — ложь"},
+    {"text": "AU = AU", "kind": "bool", "out": [true, true, false, true, true, true]},
+    {"text": "NOT (AU > 1)", "kind": "bool", "out": [true, false, true, true, false, true], "note": "логика двузначная: НЕ от ложного — истина"},
+    {"text": "IF(NOT (AU > 1), 1, 0)", "kind": "num", "out": [1, 0, null, 1, 0, 1], "note": "отметка NaN тянется через NOT"},
+    {"text": "IF(AU > 1 OR ISNULL(AU), 1, 0)", "kind": "num", "out": [0, 1, null, 0, 1, 0], "note": "отметка тянется через OR"},
+    {"text": "IF(ISNULL(AU), -1, AU)", "kind": "num", "out": [0.5, 2, -1, 1, 3, -1], "note": "ISNULL условие определяет"},
+    {"text": "IF(AU, 1, 0)", "kind": "num", "out": [1, 1, null, 1, 1, 1], "note": "число как условие: не ноль — истина, пропуск — NaN"},
+    {"text": "COALESCE(AU, CU, 0)", "kind": "num", "out": [0.5, 2, 5, 1, 3, -1]},
+    {"text": "COALESCE(CU, 0) / 2", "kind": "num", "out": [5, 0, 2.5, 0, 1, 2]},
+    {"text": "ISNULL(CU)", "kind": "bool", "out": [false, false, false, true, false, false]},
+    {"text": "AU / CU", "kind": "num", "out": [0.05, null, null, null, 1.5, -0.25], "note": "деление на ноль — NaN"},
+    {"text": "AU ^ 2", "kind": "num", "out": [0.25, 4, null, 1, 9, 1]},
+    {"text": "ROUND(AU * 2.5, 0)", "kind": "num", "out": [1, 5, null, 3, 8, -3], "note": "половина — от нуля"},
+    {"text": "MAX(AU, CU)", "kind": "num", "out": [10, 2, null, null, 3, 4], "note": "пропуск в аргументе — NaN"},
+    {"text": "CLIP(AU, 0, 2)", "kind": "num", "out": [0.5, 2, null, 1, 2, 0]},
+    {"text": "DOMAIN = 'OX'", "kind": "bool", "out": [true, false, false, false, true, false], "note": "пусто — не равно ничему"},
+    {"text": "DOMAIN <> 'OX'", "kind": "bool", "out": [false, true, true, false, false, true]},
+    {"text": "DOMAIN IN ('OX', 'SULF')", "kind": "bool", "out": [true, true, true, false, true, true]},
+    {"text": "ZONE = 2", "kind": "bool", "out": [false, true, true, false, false, true], "note": "число — по числовому значению подписи"},
+    {"text": "ZONE >= 2 AND AU > 0", "kind": "bool", "out": [false, true, false, false, false, false]},
+    {"text": "AU > 1 AND DOMAIN = 'SULF'", "kind": "bool", "out": [false, true, false, false, false, false]},
+    {"text": "ISNULL(DOMAIN)", "kind": "bool", "out": [false, false, false, true, false, false]},
+    {"text": "IF(DOMAIN = 'OX', 'ore', 'waste')", "kind": "cat", "labels": ["ore", "waste"], "out": [0, 1, 1, -1, 0, 1], "note": "пустая категория в условии — пусто"},
+    {"text": "IF(AU > 1, DOMAIN, 'none')", "kind": "cat", "labels": ["OX", "SULF", "none"], "out": [2, 1, -1, 2, 0, 2]},
+    {"text": "COALESCE(DOMAIN, 'unknown')", "kind": "cat", "labels": ["OX", "SULF", "unknown"], "out": [0, 1, 1, 2, 0, 1]},
+    {"text": "'A'", "kind": "cat", "labels": ["A"], "out": [0, 0, 0, 0, 0, 0]}
+  ]
+}
