@@ -197,8 +197,9 @@ def _cells(inferred: Any, spool: Spool, rows: int, res: Resolved, tick: Tick) ->
                    "Проверьте столбцы центров и размеров.")  # fmt: skip
     three = sorted({int(valid[0]), int(valid[len(valid) // 2]), int(valid[-1])})
     rows3 = [geometry(r, r + 1) for r in three]
-    check3 = inferred.check3(np.vstack([c for c, _ in rows3]),
-                             np.vstack([d for _, d in rows3]) if res.sized else None, three)  # type: ignore[misc]
+    centres3 = np.vstack([c for c, _ in rows3])  # type: ignore[misc]
+    sizes3 = np.vstack([d for _, d in rows3]) if res.sized else None  # type: ignore[misc]
+    check3 = inferred.check3(centres3, sizes3, three)
     if len(valid) != rows:  # rows without a centre or a size are not blocks
         p, s, w = p[valid], None if s is None else s[valid], None if w is None else w[valid]
     return Cells(p, s, w, valid, lost.invalid, check3)
@@ -321,6 +322,7 @@ def import_model(
         if report.finding("outside") or report.finding("crossing"):
             raise bs.bad_model("Блоки не укладываются в сетку модели.", "Проверьте начало и размер родителя в мастере.")
         checks = report.checks
+
         def to_file(ex: dict[str, Any]) -> dict[str, Any]:  # a row of the sorted model → the row of the file
             out = {**ex, "row": int(arr.sel[ex["row"]])}
             if "other_row" in ex:
@@ -394,6 +396,10 @@ def is_blockfile(path: str | Path, chosen: Mapping[str, Any] | None = None) -> b
     path = Path(path)
     if (chosen or {}).get("blocks") is not None or path.suffix.lower() == ".fbm":
         return True
+    if path.suffix.lower() == ".dm":  # told by its fields: the registry sends a block model of Datamine here
+        from bf_core.formats.datamine_blocks import is_block_model
+
+        return is_block_model(path, (chosen or {}).get("encoding"))
     peek = peek_names(path, (chosen or {}).get("encoding"))
     if peek is None:
         return False
