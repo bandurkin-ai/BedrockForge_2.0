@@ -65,12 +65,12 @@ beforeEach(() => {
         rows.push(row(f));
         return json(f);
       }
-      if (path === `${FL}/test` && method === "POST") return json(A.tests.inline.body, 422);
+      if (path === `${FL}/test` && method === "POST") return json(A.tests.inline.body, A.tests.inline.status);
       const m = /^\/filters\/(\d+)(\/usage|\/test)?$/.exec(path);
       const f = m ? stored[Number(m[1])] : undefined;
       if (m && !f) return json({ code: "filter_not_found", message: "Фильтр не найден.", hint: "Обновите список фильтров." }, 404);
       if (m?.[2] === "/usage") return json(Number(m[1]) === TREE_ID ? usage : A.usage_free.body);
-      if (m?.[2] === "/test") return json(A.tests.stored.body, 422);
+      if (m?.[2] === "/test") return json(A.tests.stored.body, A.tests.stored.status);
       if (m && method === "GET") return json(f);
       if (m && method === "PUT") {
         if (body.expected_version !== f!.version) return json({ ...A.conflict.body, version: f!.version }, 409);
@@ -269,22 +269,25 @@ describe("filter.delete and «Где используется»", () => {
 });
 
 describe("«Проверить на модели»", () => {
-  it("the real 422 `not_ready` is told as a notice with its hint — in the command and in the window", async () => {
-    const e = new CoreError(422, "not_ready", A.tests.stored.body.message, A.tests.stored.body.hint);
-    expect(testRefusal(e)).toEqual({ text: "Проверка фильтра на модели ещё не готова. Повторите после обновления программы.", notReady: true });
+  it("an old core: 422 `not_ready` is told as a notice with its hint", () => {
+    const e = new CoreError(422, "not_ready", "Проверка фильтра на модели пока недоступна.", "Обновите программу.");
+    expect(testRefusal(e)).toEqual({ text: "Проверка фильтра на модели пока недоступна. Обновите программу.", notReady: true });
     expect(testRefusal(new CoreError(404, "block_model_not_found", "Блочная модель не найдена.", "Обновите дерево проекта."))).toEqual({ text: "Блочная модель не найдена. Обновите дерево проекта.", notReady: false });
+  });
+
+  it("the real answer of the restrictor {passed, total, weight, warnings}: the command and the window", async () => {
     const r = await app.registry.execute("filter.test", { filter_id: TREE_ID, model_id: A.model_id });
-    expect(r).toEqual({ ok: false, result: "Проверка фильтра на модели ещё не готова. Повторите после обновления программы." });
-    expect(lastTestNote()).toEqual({ kind: "notice", text: r.result });
+    expect(r.ok).toBe(true);
     expect(sent.filter((s) => s.path.endsWith("/test"))).toEqual([{ method: "POST", path: `${FL}/${TREE_ID}/test`, body: { model_id: A.model_id } }]);
-    // the window: a stored clean filter — the command; a changed one — the form as it is (`/filters/test`)
+    const note = lastTestNote();
+    expect(note?.kind).toBe("ok");
+    expect(readTest(A.tests.stored.body)).toEqual({ passed: A.tests.stored.body.passed, total: A.tests.stored.body.total, weight: A.tests.stored.body.weight });
+    // the window: a changed form goes as it is (`/filters/test`)
     await app.registry.execute("filters.manage", { filter_id: TREE_ID });
-    setEdit({ modelId: A.model_id });
-    expect(await testWindow(app)).toEqual({ kind: "notice", text: r.result });
-    setEdit({ dirty: true });
-    expect(await testWindow(app)).toEqual({ kind: "notice", text: r.result });
-    const inline = sent.filter((s) => s.path === `${FL}/test`);
-    expect(inline).toEqual([{ method: "POST", path: `${FL}/test`, body: { model_id: A.model_id, rules: { expr: "AU > 1 and DOMAIN = 2" } } }]);
+    setEdit({ modelId: A.model_id, dirty: true });
+    const inline = await testWindow(app);
+    expect(inline.kind).toBe("ok");
+    expect(sent.filter((s) => s.path === `${FL}/test`)).toEqual([{ method: "POST", path: `${FL}/test`, body: { model_id: A.model_id, rules: { expr: "AU > 1 and DOMAIN = 2" } } }]);
   });
 
   it("without a model, or with a form not finished, nothing is asked of the core", async () => {

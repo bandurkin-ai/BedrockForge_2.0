@@ -12,6 +12,7 @@ import { SetsTree } from "../modules/tables/SetsTree";
 import { ViewsTree } from "../modules/views/ViewsTree";
 import { SeriesTree } from "../modules/section/SeriesTree";
 import { BlocksTree } from "../modules/blocks/BlocksTree";
+import { FiltersTree } from "../modules/blocks/filters/FiltersTree";
 import { WireframesTree } from "../modules/wireframes/WireframesTree";
 import { sectionActions, sectionPlus } from "./treeSections";
 import { useStore } from "./useStore";
@@ -36,6 +37,7 @@ const CONTENT: Partial<Record<TreeSection, () => JSX.Element>> = {
   views: ViewsTree,
   series: SeriesTree,
   blocks: BlocksTree,
+  filters: FiltersTree,
   holes: SetsTree,
   wireframes: WireframesTree,
   dtm: DtmTree,

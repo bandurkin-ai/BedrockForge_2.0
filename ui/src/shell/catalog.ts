@@ -5,7 +5,7 @@ import { CommandRegistry } from "./registry";
 type ModuleExports = { commands: Command[] };
 
 export function moduleCommands(): Command[] {
-  const mods = import.meta.glob<ModuleExports>("../modules/*/commands.ts", { eager: true });
+  const mods = import.meta.glob<ModuleExports>(["../modules/*/commands.ts", "../modules/blocks/filters/commands.ts"], { eager: true });
   return Object.keys(mods)
     .sort()
     .flatMap((k) => mods[k].commands);

@@ -26,6 +26,7 @@ const PATHS = {
   audit: "M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6l8-3zM8.5 12l2.5 2.5 4.5-5",
   trend: "M3 17l6-6 4 4 8-8M15 7h6v6",
   variogram: "M3 20h18M3 20V4M5 17c3-8 6-10 9-11h7",
+  filter: "M4 5h16l-6.2 7.3V19l-3.6-1.8v-4.9z",
   ellipsoid: "M12 4c5 0 9 3.6 9 8s-4 8-9 8-9-3.6-9-8 4-8 9-8zM3 12h18M12 4c-2 2-3 5-3 8s1 6 3 8",
   thickness: "M3 15L15 3M9 21L21 9M8 10l6 6M8 10v3M8 10h3M14 16h-3M14 16v-3",
   intercepts: "M8 3v18M5 8h6M5 15h6M14 9h7M14 12h5M14 15h6",
