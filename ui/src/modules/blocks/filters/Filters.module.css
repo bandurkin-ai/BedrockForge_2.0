@@ -1,0 +1,27 @@
+/* The window «Фильтры» (ТЗ 7.35 Д-02; ADR 0023 §8): the library on the left, the filter on the right; the theme tokens of the brand (docs/brand, ADR 0006). */
+.window { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
+.layout { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 10px; flex: 1; min-height: 0; padding: 8px 12px; overflow: hidden; }
+.left, .right { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }
+.right { overflow: auto; }
+.list { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); margin: 0; padding: 2px; list-style: none; display: flex; flex-direction: column; gap: 1px; }
+.item { display: flex; flex-direction: column; gap: 1px; padding: 4px 8px; border: 0; border-radius: var(--radius); background: transparent; color: var(--text); text-align: left; cursor: pointer; font: inherit; width: 100%; }
+.item:hover { background: var(--bg-hover); }
+.on { background: var(--bg-active); }
+.itemName { font-family: var(--font-brand); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.itemSub { color: var(--text-faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { color: var(--text-faint); margin: 16px 8px; text-align: center; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); flex: none; }
+.tab { font-family: var(--font-brand); font-weight: 500; border: 0; background: transparent; padding: 4px 12px; cursor: pointer; color: var(--text-dim); border-bottom: 2px solid transparent; }
+.tab:hover { color: var(--text); }
+.tabOn { color: var(--text); border-bottom-color: var(--accent); }
+.tree { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.group { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 6px 8px; min-width: 0; }
+.group[aria-invalid="true"], .rule[aria-invalid="true"] { border-color: var(--danger); }
+.children { display: flex; flex-direction: column; gap: 6px; padding-left: 8px; min-width: 0; }
+.rule { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 6px; background: var(--bg-elev); min-width: 0; }
+.mono { font-family: var(--font-mono, ui-monospace, Consolas, monospace); }
+.values { min-height: 48px; height: auto; resize: vertical; flex: 1; min-width: 120px; }
+.text { width: 100%; min-height: 110px; resize: vertical; font-family: var(--font-mono, ui-monospace, Consolas, monospace); height: auto; padding: 6px; }
+.footer { display: flex; gap: 8px; align-items: center; flex: none; padding: 8px 12px 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.test { display: flex; flex-direction: column; gap: 4px; }
