@@ -324,10 +324,14 @@ def test_and_is_the_product_or_is_the_maximum_not_is_one_minus(rc) -> None:  # t
 
 
 def test_the_leaf_of_a_wireframe_is_a_point_of_extension(rc, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.blocks.fill import leaf  # 17.20: the leaf «каркас» registers itself when the module is imported
+
     mid = model(rc)
     wid = plane(rc, 1.5, "Тело")
-    f, warnings = shares(rc, mid, wire(wid))
-    assert not f.any() and len(warnings) == 1 and "«Тело»" in warnings[0]  # until 17.20
+    assert restrict.LEAVES["wireframe"] is leaf.build
+    with pytest.raises(ApiError) as e:  # a plane is a surface, not a body: the leaf wants a closed one (8.7.3, step 1)
+        shares(rc, mid, wire(wid))
+    assert (e.value.status, e.value.code, e.value.extra["param"]) == (422, "wireframe_open", "rules.wireframe.id")
     seen: list[tuple[Any, str]] = []
 
     def builder(b: restrict.Build, body: Any, path: str) -> Any:
