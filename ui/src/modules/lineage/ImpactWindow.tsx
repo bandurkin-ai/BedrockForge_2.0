@@ -11,7 +11,7 @@ import { useApp } from "../../shell/AppContext";
 import { closeWindow, windowStore } from "../../shell/windows";
 import { getImpact, kindTitle, type Impact, type LNode, type LStatus, type Plan } from "./api";
 import { usePulled, useSelect, useStatus, useWatch } from "./hooks";
-import { settleAsk } from "./impactAsk";
+import { abandonAsk, settleAsk } from "./impactAsk";
 import { planPhase, runPhase, type Phase } from "./impactFlow";
 import { LineageBadge, StateMark } from "./LineageBadge";
 import { headLost, jobsOf, planLines, skippedLines } from "./rebuild";
@@ -20,7 +20,7 @@ import css from "./Lineage.module.css";
 /** How many dependents are listed (the counts are of all; the core gives up to 2000). */
 export const LISTED = 200;
 
-const depthText = (d: number): string => (d <= 1 ? "прямой" : `через ${d - 1}`);
+const depthText =(d: number): string => (d <= 1 ? "прямой" : `через ${d - 1}`);
 
 export function ImpactCounts({ impact }: { impact: Impact }) {
   const kinds = Object.entries(impact.byKind).sort((a, b) => b[1] - a[1]);
@@ -207,9 +207,9 @@ export function ImpactWindow({ winId }: { winId: string }) {
     alive.current = true;
     return () => {
       alive.current = false;
-      if (token !== null) settleAsk(token, false); // the cross is «Отмена»
+      if (token !== null) abandonAsk(token, winId); // the cross is «Отмена»
     };
-  }, [token]);
+  }, [token, winId]);
   const put = (next: Phase): void => {
     if (alive.current) setPhase(next);
   };

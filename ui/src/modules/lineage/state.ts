@@ -45,6 +45,9 @@ function currentUid(): string | null {
   return projectStore.get().current?.uid ?? null;
 }
 
+/** The same state, the same cause, the same name (a pinned node whose inputs changed is not the same): nothing to show again. */
+export const sameStatus = (a: LStatus | undefined, b: LStatus): boolean => a !== undefined && a.state === b.state && a.reason === b.reason && a.changed === b.changed && a.name === b.name;
+
 /** What is watched now (for the tests and the summary of `lineage.status`). */
 export const watchedNodes = (): LNode[] => [...watched.values()].map((w) => w.node);
 
@@ -56,10 +59,18 @@ async function read(nodes: LNode[]): Promise<void> {
   try {
     const got = await postStatus(nodes);
     if (currentUid() !== uid) return;
-    const next = { ...lineageStore.get().statuses };
+    const prev = lineageStore.get().statuses;
+    const next = { ...prev };
     // a read overtaken by a newer one still tells about its nodes (the newer one may not have had them)
-    for (const s of got) next[nodeKey(s)] = s;
-    lineageStore.set((s) => ({ statuses: next, version: s.version + 1, error: mine === seq ? null : s.error }));
+    let changed = false;
+    for (const s of got) {
+      const k = nodeKey(s);
+      if (!sameStatus(prev[k], s)) changed = true;
+      next[k] = s;
+    }
+    // `version` is what the panels read impact and origin again by: only a state that really changed moves it (a read that told the
+    // same, as after every event of the core, must not cost a round of requests)
+    lineageStore.set((s) => ({ statuses: next, version: changed ? s.version + 1 : s.version, error: mine === seq ? null : s.error }));
   } catch (e) {
     if (currentUid() === uid) lineageStore.set({ error: errorText(e) });
   }
@@ -119,7 +130,8 @@ export function scheduleRefresh(): void {
 
 /** A state the core just told (the answer of «Закрепить»): into the cache at once, the rest — soon. */
 export function put(status: LStatus): void {
-  lineageStore.set((s) => ({ statuses: { ...s.statuses, [nodeKey(status)]: status }, version: s.version + 1 }));
+  const changed = !sameStatus(lineageStore.get().statuses[nodeKey(status)], status);
+  lineageStore.set((s) => ({ statuses: { ...s.statuses, [nodeKey(status)]: status }, version: changed ? s.version + 1 : s.version }));
   scheduleRefresh();
 }
 

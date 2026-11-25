@@ -14,7 +14,7 @@ import type { FloatWin } from "../../shell/windows";
 import { getImpact, kindTitle, lostOf, planRebuild, postPin, postStatus, startRebuild, STATE_TITLES, type LNode, type LStatus } from "./api";
 import { ImpactWindow } from "./ImpactWindow";
 import { IMPACT_WINDOW, openImpact } from "./impactAsk";
-import { asRefusal, followRebuild, headLost, planLines, skippedLines } from "./rebuild";
+import { asRefusal, followRebuild, headLost, noteEnd, noteLost, planLines, resetOutcome, skippedLines } from "./rebuild";
 import { followEvents, nodeOfSelected, put, scheduleRefresh, summary } from "./state";
 
 /** The node a command is about: `kind` + `id` (+ `sub`), else the object chosen in the tree. */
@@ -101,13 +101,17 @@ export async function runPin(app: App, a: Record<string, unknown>): Promise<stri
 // ---- lineage.rebuild ----
 
 export async function runRebuild(app: App, a: Record<string, unknown>, source: CommandSource): Promise<string> {
+  resetOutcome();
   const node = need(app, a);
+  // `confirmed`: the window «Влияние изменения» showed this plan and the person pressed «Запустить» — no second question about the plan;
+  // a loss of results is then not asked about here either: the window lists it (`takeOutcome`) and asks with its own button
+  const planned = a.confirmed === true;
   const opts = { withDependents: a.with_dependents !== false, dropLost: a.drop_lost === true };
   const plan = await planRebuild(node, opts).catch((e: unknown) => {
     throw asRefusal(e);
   });
   if (headLost(plan)) throw refusal("source_lost", `Источник объекта «${plan.plan[0].name}» удалён.`, "Создайте объект заново из существующих данных.");
-  if (source === "user") {
+  if (source === "user" && !planned) {
     const left = skippedLines(plan);
     const message = `${planLines(plan).join("\n")}${left.length ? `\n\nНе будут перестроены:\n${left.join("\n")}` : ""}\n\nХод — во вкладке «Задания»; отмена остановит оставшиеся объекты.`;
     if (!(await askConfirm({ title: opts.withDependents ? "Перестроить с зависимыми" : "Перестроить объект", message, okLabel: "Перестроить" }))) return "Отменено";
@@ -119,7 +123,10 @@ export async function runRebuild(app: App, a: Record<string, unknown>, source: C
     const lost = lostOf(e);
     if (!lost || opts.dropLost) throw asRefusal(e);
     const what = lost.map((l) => `${l.title} «${l.name}»`).join("\n");
-    if (source !== "user") throw refusal("dependents_lost", `При перестроении пропадут: ${what.replace(/\n/g, "; ")}.`, "Повторите с drop_lost=true, если согласны на потерю.");
+    if (source !== "user" || planned) {
+      if (planned) noteLost(lost);
+      throw refusal("dependents_lost", `При перестроении пропадут: ${what.replace(/\n/g, "; ")}.`, "Повторите с drop_lost=true, если согласны на потерю.");
+    }
     const ok = await askConfirm({ title: "При перестроении пропадут", message: `${what}\n\nСохраните их заранее или согласитесь на потерю.`, okLabel: "Перестроить и потерять", danger: true });
     if (!ok) return "Отменено";
     started = await startRebuild(node, { ...opts, dropLost: true }).catch((e2: unknown) => {
@@ -131,6 +138,7 @@ export async function runRebuild(app: App, a: Record<string, unknown>, source: C
     throw asRefusal(e);
   });
   scheduleRefresh();
+  noteEnd(end);
   if (end.status === "failed") throw refusal("lineage_rebuild_failed", end.text, "Исправьте причину и повторите: готовые объекты не пересчитаются.");
   return end.text;
 }

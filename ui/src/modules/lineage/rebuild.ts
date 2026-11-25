@@ -9,7 +9,7 @@ import { CoreError } from "../../shell/api";
 import { loadJob } from "../blocks/build/api";
 import { projectStore } from "../projects/state";
 import { waitJob } from "../qaqc/setupApi";
-import { kindTitle, refusalOf, STATE_TITLES, type Plan, type Started } from "./api";
+import { kindTitle, refusalOf, STATE_TITLES, type LostItem, type Plan, type Started } from "./api";
 
 /** The lines of the plan: «1. Узел 1 — устарел (изменено: …)», a node made by the job of another — «вместе с …». */
 export function planLines(p: Plan): string[] {
@@ -68,4 +68,31 @@ export async function followRebuild(job: Started): Promise<RebuildEnd> {
 export function asRefusal(e: unknown): CoreError {
   const r = refusalOf(e);
   return new CoreError(0, r.code, r.message, r.hint);
+}
+
+/**
+ * What the last run of the command `lineage.rebuild` ended with, for the window that started it: the registry answers a text, the
+ * window needs the facts — the names of what the rebuild would lose (it asks again with its own button) or how the job ended
+ * (done, failed, cancelled). One run at a time: `runRebuild` resets it at its start, `takeOutcome` reads and clears it.
+ */
+export interface RebuildOutcome {
+  lost: LostItem[] | null;
+  end: RebuildEnd | null;
+}
+
+let outcome: RebuildOutcome = { lost: null, end: null };
+
+export const resetOutcome = (): void => {
+  outcome = { lost: null, end: null };
+};
+export const noteLost = (lost: LostItem[]): void => {
+  outcome = { lost, end: null };
+};
+export const noteEnd = (end: RebuildEnd): void => {
+  outcome = { lost: null, end };
+};
+export function takeOutcome(): RebuildOutcome {
+  const o = outcome;
+  resetOutcome();
+  return o;
 }

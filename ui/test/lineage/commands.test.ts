@@ -8,8 +8,8 @@ import type { App } from "../../src/shell/app";
 import { commandTools } from "../../src/shell/commands";
 import { dialogStore } from "../../src/shell/dialogs";
 import { moduleCommands } from "../../src/shell/catalog";
-import { windowStore } from "../../src/shell/windows";
-import { askImpact, IMPACT_WINDOW, isAsking, settleAsk } from "../../src/modules/lineage/impactAsk";
+import { closeWindow, windowStore } from "../../src/shell/windows";
+import { abandonAsk, askImpact, IMPACT_WINDOW, isAsking, settleAsk } from "../../src/modules/lineage/impactAsk";
 import { runRebuild } from "../../src/modules/lineage/bind";
 import { commands, LINEAGE_BUTTONS } from "../../src/modules/lineage/commands";
 import { statusOf, watch } from "../../src/modules/lineage/state";
@@ -142,6 +142,18 @@ describe("lineage.impact", () => {
     await waitFor(() => windowStore.get().windows.length === 2);
     settleAsk(windowStore.get().windows[1].props!.token as number, false);
     expect(await again).toBe(false);
+  });
+  it("the cleanup of the window (StrictMode runs it while the window stays) does not cancel the question; the cross does", async () => {
+    const asking = askImpact({ ...STUB, id: 2 }, "удалить таблицу");
+    await waitFor(() => windowStore.get().windows.length === 1);
+    const w = windowStore.get().windows[0];
+    const token = w.props!.token as number;
+    abandonAsk(token, w.id); // the window is in the store: only a cleanup of the effect
+    expect(isAsking(token)).toBe(true);
+    closeWindow(w.id); // the cross: out of the store, then the unmount
+    abandonAsk(token, w.id);
+    expect(isAsking(token)).toBe(false);
+    expect(await asking).toBe(false);
   });
   it("the core does not answer — the change is not stopped by the graph", async () => {
     core.force("GET /lineage/impact", { status: 500, body: { code: "error", message: "x", hint: "" } });
