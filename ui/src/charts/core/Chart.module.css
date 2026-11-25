@@ -33,6 +33,10 @@
 .axisTitle { fill: var(--text); font-size: 12px; font-family: var(--font-brand); font-weight: 600; }
 .mark { stroke: var(--highlight); stroke-width: 1.5; }
 .markLabel { fill: var(--highlight); font-size: 10px; font-family: var(--font); }
+.blocksLine { stroke: var(--text); stroke-width: 2; stroke-dasharray: 6 3; fill: none; }
+.softMark { stroke: var(--text-dim); stroke-width: 1; stroke-dasharray: 3 3; }
+.action { padding: 2px 10px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; font: inherit; }
+.action:disabled { opacity: 0.5; cursor: default; }
 .curve { stroke: var(--text); stroke-width: 1.5; fill: none; }
 .tip rect { fill: var(--bg-panel); stroke: var(--border-strong); }
 .tip text { fill: var(--text); font-size: 11px; font-family: var(--font); }

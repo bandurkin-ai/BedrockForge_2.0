@@ -191,6 +191,25 @@ export interface ContactSide {
   mean: Num;
 }
 
+/** The profile of the blocks (`blocks_profile` of the core): the steps of the samples' chart, the mean by the volume of the blocks of STATUS 0. */
+export interface ContactBlocksResult {
+  model_id: number;
+  field: string;
+  distance: number;
+  step: number;
+  weighted: boolean;
+  /** how many rows went where (`rows`, `no_contact`, `beyond`, `no_value`, `no_weight`, `not_estimated`, `in_steps`) */
+  counts: Record<string, number>;
+  edges: number[];
+  mean: Num[];
+  /** blocks in a step and their volume, m³ */
+  n: number[];
+  volume: number[];
+  a: ContactSide;
+  b: ContactSide;
+  conventions?: string;
+}
+
 export interface ContactResult extends DomainHead {
   wireframe_id: number | null;
   distance: number;
@@ -208,6 +227,8 @@ export interface ContactResult extends DomainHead {
   a: ContactSide;
   b: ContactSide;
   conventions?: string;
+  /** with `blocks` in the request */
+  blocks?: ContactBlocksResult;
 }
 
 export const computeContact = (body: Body<ContactSettings>): Promise<ContactResult> => api.post<ContactResult>("/stats/contact", body);

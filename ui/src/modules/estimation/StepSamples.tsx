@@ -5,12 +5,15 @@
  * has it). Under the form — the counts and the declustered means of the core (`GET /estimate/defaults`) and what it matched
  * between the labels of the blocks and the values of the samples.
  */
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
+import { AppContext } from "../../shell/AppContext";
 import css from "../../shell/PropsParts.module.css";
 import { errorText } from "../../shell/props";
 import { loadFields, loadSets, loadTables, resolveTable, type FieldRow, type SetRow, type TableRow } from "../composites/api";
 import { loadCodes, type CodeList } from "../intercepts/api";
 import type { DefaultsAnswer } from "./api";
+import { chartsStore } from "../charts/state";
+import { contactChartsOf } from "./contactLink";
 import { sameName, type WeightsChoice } from "./form";
 import { useLatest, useSel } from "./hooks";
 import { IssueAt, g, nf } from "./Parts";
@@ -52,6 +55,9 @@ export function StepSamples() {
   const codes = useLatest<CodeList>(f.setId === null || !domTable || !dom?.field || !tableKnown ? null : () => loadCodes(f.setId!, domTable, dom.field), [f.setId, domTable, dom?.field, tableKnown], fail);
   const numeric = (fields ?? []).filter((x) => x.kind === "number");
   const data = defaults.data;
+  const app = useContext(AppContext);
+  const charts = useSel(chartsStore, (c) => c.charts);
+  const contacts = contactChartsOf(charts, f);
 
   // the set: the one given, else the first
   useEffect(() => {
@@ -203,6 +209,16 @@ export function StepSamples() {
               ))}
               {!neighbours.length && <p className={css.note}>Выберите поле домена проб: соседними становятся его остальные значения.</p>}
             </div>
+            {contacts.length > 0 && (
+              <div className={mod.links} data-testid="est-soft-contact">
+                <span className={css.note}>График контакта этой пары (расстояние d_м выбираете вы):</span>
+                {contacts.map((c) => (
+                  <button key={c.id} type="button" className={css.btn} disabled={!app} title="Открыть сохранённый график контакта" onClick={() => void app?.registry.execute("chart.open", { chart_id: c.id })}>
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
         <span className={css.note}>Проба соседнего домена попадает в оценку блока, если она не дальше d_м от центра блока (евклидово расстояние). Без мягкой границы — жёсткая.</span>
