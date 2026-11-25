@@ -7,6 +7,7 @@
 import { api, CoreError } from "../../shell/api";
 import { logError, logStep, type OpLog } from "../../shell/opLog";
 import { followJob } from "../jobs/follow";
+import { askImpact } from "../lineage/impactAsk";
 import { Store } from "../../shell/store";
 import { initialTrench, linesSpec, PREVIEW_LIMIT, trenchProblem, trenchSummary, type TrenchPreview, type TrenchState } from "./trenches";
 
@@ -184,6 +185,53 @@ export function replaces(s: WizardState, f: FileEntry): string | null {
   if (f.kind === "survey") return set.holes ? "инклинометрию набора" : null;
   const old = set.tables.find((t) => t.kind === f.kind && (f.kind === "assay" || nameKey(t.name) === nameKey(tableNameOf(f))));
   return old ? `таблицу «${old.name}» (${old.rows.toLocaleString("ru-RU")} строк)` : null;
+}
+
+/** What the import would replace in the chosen set: the collars or the surveys (the set is the node) or a table by its kind and name. */
+export interface Replaced {
+  what: string;
+  table: { kind: string; name: string } | null;
+}
+
+/** The files of the import that replace something of the chosen set (the trenches: the samples, when the replacement is confirmed). */
+export function replacedBy(s: WizardState): Replaced[] {
+  if (s.setMode !== "existing" || s.setId === null) return [];
+  const files = s.mode === "trenches" ? (s.replaceSamples && sampleFile(s) ? [sampleFile(s)!] : []) : s.files;
+  const out: Replaced[] = [];
+  for (const f of files) {
+    const what = replaces(s, f);
+    if (what && f.kind) out.push({ what, table: f.kind === "collar" || f.kind === "survey" ? null : { kind: f.kind, name: tableNameOf(f) } });
+  }
+  return out;
+}
+
+/**
+ * The window «Влияние изменения» before the import replaces what is built from (Д-35; ADR 0025 §7): per replaced table or, for the
+ * collars and the surveys, the set; it opens only when there are dependents. `false` — the person refused: the import does not start.
+ * The tables of the set are read for their numbers; no answer is no reason to stop the import.
+ */
+export async function askReplaced(s: WizardState): Promise<boolean> {
+  const list = replacedBy(s);
+  if (!list.length || s.setId === null) return true;
+  const set = s.sets.find((x) => x.id === s.setId);
+  let tables: { table: string; kind: string; name: string }[] = [];
+  if (list.some((r) => r.table)) {
+    try {
+      tables = (await api.get<{ tables?: typeof tables }>(`/drillholes/sets/${s.setId}/tables`)).tables ?? [];
+    } catch {
+      tables = [];
+    }
+  }
+  const asked = new Set<string>();
+  for (const r of list) {
+    const old = r.table ? tables.find((t) => t.kind === r.table!.kind && (r.table!.kind === "assay" || nameKey(t.name) === nameKey(r.table!.name))) : undefined;
+    const node = old && Number.isInteger(Number(old.table)) ? { kind: "dh_table", id: Number(old.table) } : { kind: "dh_set", id: s.setId };
+    const key = `${node.kind}:${node.id}`;
+    if (asked.has(key)) continue;
+    asked.add(key);
+    if (!(await askImpact(node, `заменить ${r.what}${r.table && set ? ` набора «${set.name}»` : ""}`))) return false;
+  }
+  return true;
 }
 
 /** The table of samples of the trenches: the only file of the wizard, when it is samples or intervals. */
@@ -394,6 +442,7 @@ export class Wizard {
   async start(): Promise<{ source: string; id: number } | null> {
     const s = this.store.get();
     if (!canStart(s)) return null;
+    if (!(await askReplaced(s))) return null; // the person saw what is built from what the import replaces and refused
     this.store.set({ starting: true, error: null });
     if (s.mode === "trenches") return this.submit("/import/trenches", trenchBody(s), (b) => ({ ...b, lines: { ...(b.lines as object), path: s.trench.name } }));
     const body = {

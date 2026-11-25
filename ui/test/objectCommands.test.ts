@@ -7,6 +7,7 @@ import { createApp } from "../src/shell/app";
 import { closeDialog, dialogStore } from "../src/shell/dialogs";
 import { buildRibbon, flattenRibbon } from "../src/shell/ribbonConfig";
 import { windowStore } from "../src/shell/windows";
+import { isAsking, settleAsk } from "../src/modules/lineage/impactAsk";
 import { DEFAULT_VIEW, DEFAULT_WORKSPACE } from "../src/shell/workspace";
 import { projectStore, type ProjectInfo } from "../src/modules/projects/state";
 import { loadSceneObjects, pickedObject, sceneObjects, type LineFileInfo, type LineLayerInfo, type RasterInfo } from "../src/modules/scene/objects";
@@ -42,6 +43,8 @@ function server() {
       { id: 42, name: "Рельеф", version: 4, color: null, point_count: 16, triangle_count: 18, extent: null, dtm: DTM, attrs: [] },
     ] as WireframeInfo[],
   };
+  /** the dependents the graph of dependencies names for `kind:id` (Д-35); none — the window «Влияние изменения» does not open */
+  const impact: Record<string, number> = {};
   const calls: Call[] = [];
   const fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const path = String(url).replace(/^.*\/api\/v1/, "");
@@ -54,6 +57,11 @@ function server() {
       if (path === "/rasters") return json({ rasters: state.rasters });
       if (path === "/wireframes") return json({ wireframes: state.wireframes });
       if (path === "/jobs") return json({ jobs: [], workers: null });
+      if (path.startsWith("/lineage/impact")) {
+        const q = new URLSearchParams(path.split("?")[1]);
+        const n = impact[`${q.get("kind")}:${q.get("id")}`] ?? 0;
+        return json({ total: n, by_kind: n ? { "object:variogram_model": n } : {}, nodes: Array.from({ length: n }, (_, i) => ({ kind: "object:variogram_model", id: 100 + i, sub: "", name: `Модель ${i + 1}`, depth: 1 })), truncated: false });
+      }
       return json({});
     }
     const rasterAt = /^\/rasters\/(\d+)/.exec(path);
@@ -102,7 +110,7 @@ function server() {
     if (/^\/lines\/files\/\d+$/.test(path)) state.files = [];
     return json({ source: "project", id: 7 });
   });
-  return { state, calls, fetch };
+  return { state, calls, fetch, impact };
 }
 
 let core: ReturnType<typeof server>;
@@ -381,6 +389,34 @@ describe("`object.rename`, `object.color`, `object.delete` (ADR 0011 §5)", () =
     expect((await app.registry.execute("object.color", { kind: "lines", id: 11, color: "красный" })).result).toContain("Цвет задаётся как #rrggbb");
     await app.run("object.select", { kind: "raster", id: 31 });
     expect((await app.registry.execute("object.color", { color: "#ffffff" })).result).toBe("Свой цвет есть у слоя линий, каркаса и ЦТМ: выберите один из них");
+  });
+
+  it("delete asks «Влияние изменения» when something is built from the wireframe (Д-35): «Отмена» keeps it, «Продолжить» deletes; no dependents — no window", async () => {
+    const app = await open();
+    core.impact["wireframe:41"] = 2;
+    const run = app.registry.execute("object.delete", { kind: "wireframe", id: 41 });
+    await answer(true); // the own «Удалить?» first
+    await vi.waitFor(() => expect(windowStore.get().windows).toHaveLength(1));
+    const w = windowStore.get().windows[0];
+    expect(w.props).toMatchObject({ kind: "wireframe", id: 41, ask: "удалить каркас «Рудное тело»" });
+    const token = w.props!.token as number;
+    expect(isAsking(token)).toBe(true);
+    settleAsk(token, false);
+    expect(await run).toEqual({ ok: true, result: "Отменено" });
+    expect(core.calls).toEqual([]);
+    windowStore.set({ windows: [] });
+    const again = app.registry.execute("object.delete", { kind: "wireframe", id: 41 });
+    await answer(true);
+    await vi.waitFor(() => expect(windowStore.get().windows).toHaveLength(1));
+    settleAsk(windowStore.get().windows[0].props!.token as number, true);
+    expect((await again).result).toBe("Каркас «Рудное тело» удалён");
+    expect(core.calls).toEqual([{ method: "DELETE", url: "/wireframes/41", body: undefined }]);
+    // nothing is built from the DTM: the question is not shown
+    windowStore.set({ windows: [] });
+    const quiet = app.registry.execute("object.delete", { kind: "wireframe", id: 42 });
+    await answer(true);
+    expect((await quiet).result).toBe("ЦТМ «Рельеф» удалена");
+    expect(windowStore.get().windows).toHaveLength(0);
   });
 
   it("delete: an own «Удалить?» for a person; a layer of lines goes only with its file", async () => {

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { toggleExpanded } from "../../shell/tree";
 import { TreeRow } from "../../shell/TreeRow";
 import { useStore } from "../../shell/useStore";
+import { askImpact } from "../lineage/impactAsk";
 import { ResultRows, useResultsBySet } from "../composites/ResultsTree";
 import { DisplayRows } from "../downhole/DisplaysTree";
 import { libraryStore } from "../downhole/library";
@@ -49,6 +50,7 @@ export function SetsTree() {
   const remove = async (set: SetInfo) => {
     const ok = await askConfirm({ title: "Удалить набор", message: `Набор «${set.name}» удаляется со скважинами, таблицами и историей импорта. Отменить удаление нельзя.`, okLabel: "Удалить", danger: true });
     if (!ok) return;
+    if (!(await askImpact({ kind: "dh_set", id: set.id }, `удалить набор «${set.name}»`))) return; // what is built from it (Д-35)
     try {
       await api.del(`/drillholes/sets/${set.id}`);
       await loadSets();

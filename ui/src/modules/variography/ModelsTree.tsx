@@ -15,6 +15,8 @@ import { showMessage } from "../../shell/dialogs";
 import type { IconName } from "../../shell/Icon";
 import { Glyph } from "../../shell/ObjectRows";
 import { TreeRow } from "../../shell/TreeRow";
+import { useWatch } from "../lineage/hooks";
+import { LineageBadge } from "../lineage/LineageBadge";
 import tree from "../../shell/DataTree.module.css";
 import { INDICATOR, isIndicator, type ExchangeFormat, type ModelRow } from "./api";
 import { exportFlow } from "./exchange";
@@ -88,6 +90,7 @@ export function ModelsTree() {
   const [selected, setSelected] = useState<number | null>(null);
   const list = useMemo(() => modelsByName(models), [models]);
   const run: Run = (id, args) => app.run(id, args);
+  useWatch(list.map((m) => ({ kind: "object:variogram_model", id: m.id }))); // the states of the whole section in one request (Д-35)
   if (!list.length) return <div className={tree.none}>{modelsLoaded ? "Нет моделей — «Сохранить» в окне «Вариография»" : "Нет объектов"}</div>;
   const menu = (m: ModelRow, e: MouseEvent) => {
     e.preventDefault();
@@ -97,7 +100,6 @@ export function ModelsTree() {
   return (
     <div role="group" aria-label="Модели вариограмм">
       {list.map((m) => {
-        const st = staleText(m);
         return (
           <TreeRow
             key={m.id}
@@ -114,7 +116,12 @@ export function ModelsTree() {
                 <Glyph icon={"variogram" as IconName} />
               </>
             }
-            after={st ? <span className={`${tree.count} ${tree.error}`} data-stale title={st}>устарел</span> : <span className={tree.count}>{m.structures}</span>}
+            after={
+              <>
+                <LineageBadge node={{ kind: "object:variogram_model", id: m.id }} />
+                <span className={tree.count}>{m.structures}</span>
+              </>
+            }
             onContextMenu={(e) => menu(m, e)}
           />
         );

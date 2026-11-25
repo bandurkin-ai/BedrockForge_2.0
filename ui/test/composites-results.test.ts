@@ -10,6 +10,8 @@ import type { ResultRow } from "../src/modules/composites/api";
 import { bindComposites } from "../src/modules/composites/bind";
 import { ResultFacts } from "../src/modules/composites/ResultProps";
 import { eventSet, findResult, loadSetResults, paramsArgs, rebuildQuestion, rebuildWarning, recordFacts, resetResults, resultLabel, resultMenu, resultsStore, sourceFacts, staleText, tabMark, toolOfOp, writtenColumns } from "../src/modules/composites/results";
+import { settleAsk } from "../src/modules/lineage/impactAsk";
+import { lineageStore } from "../src/modules/lineage/state";
 import { openResultProps, RESULT_WINDOW, ResultRows, runResultAction, TabMark } from "../src/modules/composites/ResultsTree";
 import { renderCompositesWindow } from "../src/modules/composites/ToolWindow";
 import { toolValues } from "../src/modules/composites/bind";
@@ -55,12 +57,15 @@ const CONDITIONS = result({ id: 12, name: "Анализ кондиций", op: "
 let app: App;
 let list: ResultRow[] = [];
 let listStatus = 200;
+/** the dependents the graph names for the result (`GET /lineage/impact`) */
+let dependents = 0;
 const sent: { method: string; path: string }[] = [];
 
 beforeEach(() => {
   sent.length = 0;
   list = [result(), STALE, TOPCUT, CONDITIONS];
   listStatus = 200;
+  dependents = 0;
   resetResults();
   windowStore.set({ windows: [] });
   vi.stubGlobal(
@@ -74,6 +79,7 @@ beforeEach(() => {
       if (path.startsWith("/composites/results/") && method === "DELETE") return json({ deleted: 9 });
       if (path.endsWith("/rebuild")) return json({ source: "core", id: 50 });
       if (path === "/jobs") return json({ jobs: [] });
+      if (path === "/lineage/impact") return json({ total: dependents, by_kind: dependents ? { "object:variogram_model": dependents } : {}, nodes: Array.from({ length: dependents }, (_, i) => ({ kind: "object:variogram_model", id: 7 + i, sub: "", name: `Модель ${i + 1}`, depth: 1 })), truncated: false });
       return json({ code: "not_found", message: "Нет", hint: "" }, 404);
     }),
   );
@@ -84,6 +90,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  lineageStore.set({ statuses: {}, version: 0 });
   vi.unstubAllGlobals();
   setCoreTarget(null);
   for (const d of dialogStore.get().queue) closeDialog(d.id);
@@ -167,8 +174,13 @@ describe("the tree", () => {
     expect(html).toContain('data-testid="tree-results-3"');
     expect(html).toMatch(/aria-level="3"[^>]*aria-label="Обработка проб, результатов 2, устарели 1"/);
     expect(html).toMatch(/aria-level="4"[^>]*aria-label="Композиты по доменам, устарел: изменена таблица «Пробы»"/);
-    expect(html).toContain('data-testid="result-stale-10"');
-    expect(html).not.toContain('data-testid="result-stale-9"');
+    // the badge is the one of the graph (Д-35): nothing until the state of the node has come, then the word and the chain of the causes
+    expect(html).not.toContain("lineage-badge-dh_result");
+    lineageStore.set({ statuses: { "dh_result:10:": { kind: "dh_result", id: 10, sub: "", state: "stale", name: "Композиты по доменам", reason: "результат «Композиты по доменам» ← изменена таблица «Пробы»", changed: false } }, version: 1 });
+    const warm = render(createElement(ResultRows, { setId: 3, results: [result(), STALE] }));
+    expect(warm).toContain('data-testid="lineage-badge-dh_result-10"');
+    expect(warm).toContain("устарел");
+    expect(warm).not.toContain('data-testid="lineage-badge-dh_result-9"');
     expect(render(createElement(ResultRows, { setId: 3, results: [] }))).toBe("");
   });
 
@@ -219,6 +231,30 @@ describe("the tree", () => {
     await again;
     expect(sent.filter((r) => r.method === "DELETE").map((r) => r.path)).toEqual(["/composites/results/9"]);
     expect(sent.at(-1)?.path).toBe("/composites/results?set_id=3");
+  });
+
+  it("«Удалить» with dependents: after the question the window «Влияние изменения» (Д-35); «Отмена» deletes nothing, «Продолжить» deletes", async () => {
+    dependents = 2;
+    const confirm = async () => {
+      await vi.waitFor(() => expect(dialogStore.get().queue).toHaveLength(1));
+      const d = dialogStore.get().queue[0];
+      if (d.kind === "confirm") d.resolve(true);
+      closeDialog(d.id);
+    };
+    const refused = runResultAction(app, result(), "delete");
+    await confirm();
+    await vi.waitFor(() => expect(windowStore.get().windows).toHaveLength(1));
+    expect(windowStore.get().windows[0].props).toMatchObject({ kind: "dh_result", id: 9, ask: "удалить результат обработки проб №9" });
+    settleAsk(windowStore.get().windows[0].props!.token as number, false);
+    await refused;
+    expect(sent.filter((r) => r.method === "DELETE")).toHaveLength(0);
+    windowStore.set({ windows: [] });
+    const go = runResultAction(app, result(), "delete");
+    await confirm();
+    await vi.waitFor(() => expect(windowStore.get().windows).toHaveLength(1));
+    settleAsk(windowStore.get().windows[0].props!.token as number, true);
+    await go;
+    expect(sent.filter((r) => r.method === "DELETE").map((r) => r.path)).toEqual(["/composites/results/9"]);
   });
 
   it("«Перестроить» always asks our own question (decision 11); manual edits are warned of in its text", async () => {
@@ -300,5 +336,18 @@ describe("«Свойства» and the tab", () => {
     expect(html).toContain("устарел");
     expect(html).toContain("каркас удалён");
     expect(renderToStaticMarkup(createElement(TabMark, { origin: { result_id: 9, op: "length", stale: false, reason: null } }))).toContain("Результат обработки проб");
+  });
+
+  it("the tab of a table of the graph: «◆» and the badge of the node `dh_table` (the quiet dot of «актуален» is not shown)", () => {
+    const origin = { result_id: 10, op: "domain", stale: true, reason: "каркас удалён" };
+    const plain = renderToStaticMarkup(createElement(TabMark, { origin, table: "13" }));
+    expect(plain).toContain("◆");
+    expect(plain).not.toContain("lineage-badge");
+    lineageStore.set({ statuses: { "dh_table:13:": { kind: "dh_table", id: 13, sub: "", state: "stale", name: "Композиты", reason: "таблица «Композиты» ← результат «Композиты» ← изменено: каркас «Руда»", changed: false } }, version: 1 });
+    const stale = renderToStaticMarkup(createElement(TabMark, { origin, table: "13" }));
+    expect(stale).toContain('data-testid="lineage-badge-dh_table-13"');
+    expect(stale).toContain("устарел");
+    lineageStore.set({ statuses: { "dh_table:13:": { kind: "dh_table", id: 13, sub: "", state: "current", name: "Композиты", reason: null, changed: false } }, version: 2 });
+    expect(renderToStaticMarkup(createElement(TabMark, { origin, table: "13" }))).not.toContain("lineage-badge");
   });
 });

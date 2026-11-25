@@ -5,6 +5,7 @@
  * its state itself (the asks of one moment go in one request) and keeps it fresh; a row that has not got the answer yet shows
  * nothing. In a row of the tree: `after={<LineageBadge node={{kind: "dh_result", id}} />}`.
  */
+import type { ReactNode } from "react";
 import { stateTitle, STATE_TITLES, type LNode, type LState, type LStatus } from "./api";
 import { useStatus } from "./hooks";
 import css from "./Lineage.module.css";
@@ -23,8 +24,10 @@ export function StateMark({ status, hideCurrent = false, testId }: { status: Pic
   );
 }
 
-export function LineageBadge({ node, hideCurrent = false }: { node: LNode; hideCurrent?: boolean }) {
+/** `fallback` — what the row shows until the graph has answered (a module that has its own check of the state keeps it there). */
+export function LineageBadge({ node, hideCurrent = false, fallback = null }: { node: LNode; hideCurrent?: boolean; fallback?: ReactNode }) {
   const status = useStatus(node);
-  if (!status || status.state === "deleted") return null;
+  if (!status) return <>{fallback}</>;
+  if (status.state === "deleted") return null;
   return <StateMark status={status} hideCurrent={hideCurrent} testId={`lineage-badge-${node.kind}-${node.id}${node.sub ? `-${node.sub}` : ""}`} />;
 }
