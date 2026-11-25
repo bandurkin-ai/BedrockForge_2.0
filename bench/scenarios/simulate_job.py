@@ -246,8 +246,9 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
         p, x = check_file(ctx, meta, meta["sgs"], out, info)
         t1 = time.perf_counter()
         version = ctx.version(meta["model_id"])
+        # `replace`: `bench.run --repeat` runs the child again on the same project (the fields of the run before stay)
         posted = post.run_post(ctx.engine, ctx.folder, {"simulation_id": meta["sgs"], "thresholds": THRESHOLDS,
-                                                        "expected_version": version})  # fmt: skip
+                                                        "expected_version": version, "replace": True})  # fmt: skip
         info["post_s"] = round(time.perf_counter() - t1, 3)
         info["post_fields"] = len(posted["fields"])
         info["post_err"] = check_post(ctx, meta, p, x, posted)

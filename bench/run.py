@@ -96,8 +96,11 @@ def run_profile(profile: str, repeat: int, only: list[str] | None) -> dict[str, 
                     env=env,
                     capture_output=True,
                     text=True,
-                    check=True,
+                    check=False,
                 )
+                if out.returncode != 0:  # the reason of a failed child goes into the log of the CI (PR #35)
+                    print(f"bench: {name} failed (exit {out.returncode}):\n{out.stderr[-4000:]}", file=sys.stderr)
+                    out.check_returncode()
                 runs.append(json.loads(out.stdout.strip().splitlines()[-1]))
         secs = statistics.median(r["seconds"] for r in runs)
         peaks = [r["peak_mb"] for r in runs if r["peak_mb"] is not None]
