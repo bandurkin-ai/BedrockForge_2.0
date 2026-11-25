@@ -69,18 +69,65 @@ def test_defaults_and_the_canonical_form(sw: SW) -> None:
 def test_the_ranges_of_the_parameters(sw: SW, over: dict[str, Any], param: str) -> None:
     if "secondary" in over:  # a secondary for the SGS of the kind sgs is a mistake; without `kind` it is co-SGS
         refused(lambda: sp.parse_simulation(body(sw, **over, kind="sgs")), 422, "bad_param", param)
-        refused(lambda: sp.parse_simulation(body(sw, **over)), 422, "not_ready", "kind")
+        assert sp.parse_simulation(body(sw, **over)).kind == "cosgs"
         return
     refused(lambda: sp.parse_simulation(body(sw, **over)), 422, "bad_param", param)
 
 
-def test_the_kinds_that_are_not_connected_yet(sw: SW) -> None:
-    refused(lambda: sp.parse_simulation(body(sw, kind="sis")), 422, "not_ready", "kind")
-    refused(lambda: sp.parse_simulation(body(sw, kind="cosgs", secondary={"field": "CU", "rho": 0.5})), 422,
-            "not_ready", "kind")  # fmt: skip
+def test_the_kinds_sis_and_cosgs_are_parsed(sw: SW) -> None:
+    th = {"ik": {"thresholds": [1, 2.5, 4], "models": "median"}}
+    sis = sp.parse_simulation(body(sw, method=th))  # a method without `kind` is SIS
+    m = sis.method
+    assert m is not None and (sis.kind, sis.categorical, m.k, sis.variograms) == ("sis", False, 3, None)
+    assert sis.canonical()["method"] == {"ik": {"thresholds": [1.0, 2.5, 4.0], "categories": None, "labels": None,
+                                                 "models": "median"}}  # fmt: skip
+    assert sp.parse_simulation(sis.canonical()).canonical() == sis.canonical()  # the round trip
+    cats = {"ik": {"categories": [3, 1, 7], "labels": ["a", "b", "c"]}}
+    per = sp.parse_simulation(body(sw, kind="sis", variogram=None, method=cats, variograms=[{"model_id": sw.vy}] * 3))
+    pm = per.method
+    assert pm is not None and per.categorical and pm.categories == (3, 1, 7) and pm.labels == ("a", "b", "c")
+    assert per.variogram is None and len(per.variograms or ()) == 3 and per.search.source == "model"
+    co = sp.parse_simulation(body(sw, secondary={"field": "SG", "rho": None}))
+    assert co.secondary is not None and (co.kind, co.secondary.rho) == ("cosgs", None)
+    given = sp.parse_simulation(body(sw, kind="cosgs", secondary={"field": "SG", "rho": -1}))
+    assert given.secondary is not None and given.secondary.rho == -1.0
     refused(lambda: sp.parse_simulation(body(sw, kind="gauss")), 422, "bad_param", "kind")
     refused(lambda: sp.parse_simulation(body(sw, secondary={"field": "CU", "rho": 1.5}, kind="cosgs")), 422,
             "bad_param", "secondary.rho")  # fmt: skip
+    refused(lambda: sp.parse_simulation(body(sw, kind="cosgs")), 422, "bad_param", "secondary.field")
+    refused(lambda: sp.parse_simulation(body(sw, kind="sis")), 422, "bad_param", "method")
+    refused(lambda: sp.parse_simulation(body(sw, method=th, kind="sgs")), 422, "bad_param", "method")
+
+
+PER2 = {"ik": {"thresholds": [1, 2], "models": "per"}}
+TWO = [{"model_id": 1}] * 2
+
+
+@pytest.mark.parametrize(("over", "param"), [
+    ({"method": {"ik": {"thresholds": [1, 2], "categories": [1, 2]}}}, "method.ik.thresholds"),
+    ({"method": {"ik": {}}}, "method.ik.thresholds"),
+    ({"method": {"ik": {"thresholds": [2, 1]}}}, "method.ik.thresholds.1"),
+    ({"method": {"ik": {"thresholds": list(range(21))}}}, "method.ik.thresholds"),
+    ({"method": {"ik": {"thresholds": [1], "models": "all"}}}, "method.ik.models"),
+    ({"method": {"ik": {"categories": [1]}}}, "method.ik.categories"),
+    ({"method": {"ik": {"categories": [1, 1]}}}, "method.ik.categories"),
+    ({"method": {"ik": {"categories": [1, 256]}}}, "method.ik.categories.1"),
+    ({"method": {"ik": {"categories": [1, 2.5]}}}, "method.ik.categories.1"),
+    ({"method": {"ik": {"categories": list(range(21))}}}, "method.ik.categories"),
+    ({"method": {"ik": {"categories": [1, 2], "labels": ["a"]}}}, "method.ik.labels"),
+    ({"method": {"ik": {"categories": [1, 2], "models": "median"}}, "topcut": 5}, "samples.topcut"),
+    ({"method": PER2, "variogram": None}, "variograms"),
+    ({"method": PER2, "variogram": None, "variograms": [{"model_id": 1}]}, "variograms"),
+    ({"method": PER2, "variograms": TWO}, "variogram"),
+    ({"method": {"ik": {"thresholds": [1, 2], "models": "median"}}, "variograms": TWO}, "variograms"),
+    ({"method": PER2, "variogram": None, "variograms": [{"model_id": 1, "t": 5}] * 2}, "variograms.0.t"),
+    ({"variograms": TWO}, "variograms"),
+])  # fmt: skip
+def test_the_ranges_of_sis(sw: SW, over: dict[str, Any], param: str) -> None:
+    b = body(sw, **{k: v for k, v in over.items() if k != "topcut"})
+    if "topcut" in over:
+        b["samples"] = {**b["samples"], "topcut": {"value": over["topcut"]}}
+    refused(lambda: sp.parse_simulation(b), 422, "bad_param", param)
 
 
 def test_the_run_and_the_post_bodies() -> None:

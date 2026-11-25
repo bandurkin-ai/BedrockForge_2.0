@@ -419,8 +419,8 @@ blob real: Parquet zstd, строки — цели (P, D) родителей р�
 **Как сделано в 18.32** (код — `S/{spec,store,store_check,real,targets,job,post,routes}.py`; настоящие ответы —
 `core/tests/data/simulate/answers.json`, `BF_REGEN_SIMULATE=1`):
 
-- Вид: `sgs` — запускается; `sis`, `cosgs` (в теле `secondary` без `kind` = ко-SGS) разбираются до ошибки 422
-  `not_ready {param: "kind"}` (до 18.33, 18.34). Один проход поиска (`search.passes` — ровно один, умолч.
+- Вид: `sgs`, `sis`, `cosgs` запускаются (18.32б); без `kind`: `secondary` — ко-SGS, `method` — SIS, иначе SGS.
+  Один проход поиска (`search.passes` — ровно один, умолч.
   `[{n_max: 24}]`), `factor` масштабирует радиусы, `n_min` хранится, SGS его не применяет. Эллипсоид по тренду — 422.
   Хвосты `nscore.ltail`/`utail`: `linear | power | none` (верхний ещё `hyperbolic`); `ltpar`/`utpar` > 0 (гипербола ≥ 1).
 - Модель вариограммы — только в нормальных оценках (`meta.transform = "nscore"`, копия в строке, `scale: "y"`, Д-38);
@@ -449,6 +449,27 @@ blob real: Parquet zstd, строки — цели (P, D) родителей р�
   пусто (NaN, не 0). Поля: `source {op: "simulate", algo: "sim-1", inputs [SHA-256 реализаций], params
   {simulation_id, stats, thresholds, prefix}}`; граф: `bm_field` ← `object:simulation`. Отказы до задания: 404, 409
   `version_conflict` (модель), `no_realizations`, `field_exists {field}`, `source_lost`, 422, 423.
+- **SIS и ко-SGS (18.32б).** `kind: sis` + `method {ik: {thresholds: [t…] (1–20, по возрастанию) | categories: [код…]
+  (2–20 целых кодов 0–255 числового поля `samples.field`), labels?: [название…] (по одному на код, ≤ 80 знаков), models:
+  "per" | "median"}}`; `models: per` — `variograms: [{model_id}…]` по одной индикаторной модели на порог (категорию) в
+  порядке списка (у порога `t` сверяется с `method`), `variogram` не задаётся; `median` — одна `variogram`. Модели —
+  в единицах поля (`scale: "z"`, `indicator:<t>`; модель в нормальных оценках без `back` — 422 `variogram_scale`),
+  вид `sgs`/`cosgs` — `variograms` не принимают. Хвосты `nscore.*` — для порогов (как `backtr`), для категорий не
+  используются; урезка проб для категорий — 422 `bad_param {samples.topcut}`. Поле категорий — числовое (`samples.field`,
+  например, код литологии из интервальной таблицы), домен проб задаётся как обычно; пробы с кодом вне списка не участвуют;
+  код пробы берётся из таблицы по `samples.row_id` (у слитых совпадающих проб — у первой). Blob `real` категорий — `u1`
+  (сами коды); у порогов — `f4`. `meta.method` = `{ik: {thresholds | null, categories | null, labels | null, models}}`.
+  `kind: cosgs` — `secondary {field, rho}`: числовое поле блочной модели (422 `field_not_found` / `field_not_number`
+  `{param: "secondary.field"}`), `rho` ∈ [−1; 1] (иначе 422 `bad_param {param: "secondary.rho"}`) или `null` — считается
+  по пробам (`cosgs.colocated_rho`, не меньше 10 пар, иначе 422 `rho`); значение вторичной в узле — среднее по строкам
+  родителя с весом объёма, NaN — пропуск (такой узел моделируется как SGS). Поле — вход графа (`bm_field`).
+  Итог задания ко-SGS: `+ secondary {field, rho, rho_used, pairs (0 — ρ задан), gaps}`, `counts.gap`; то же в
+  `meta.last_run.secondary`, `meta.secondary.rho_used`. Итог SIS-категорий: `meta.last_run.summary` =
+  `{per: [{n, shares: [доля…]}], all: {codes, shares} }` (доли в порядке `categories`).
+- Постобработка SIS-категорий (`POST /simulations/{id}/post`): `stats` ⊂ `["prob", "mode"]` (по умолчанию оба),
+  `thresholds` — 422 `bad_param {thresholds}`; поля `<префикс>PROB_<код>` (f4, доля реализаций с этой категорией, Σ = 1)
+  и `<префикс>MODE` (категориальное, `labels` — названия, самая частая; при равенстве — первая в списке); префикс по
+  умолчанию `‹ПОЛЕ›_SIS_`. Непрерывный SIS и ко-SGS — как SGS (префикс `‹ПОЛЕ›_SIS_`, `‹ПОЛЕ›_COSGS_`).
 - Кадр сетки: пробы, углы модели и эллипсоида приведены к осям сетки (`ang1 + φ`, пробы — `grid.to_local`), центры узлов
   — `(i + ½)·шаг` родителя.
 
@@ -786,9 +807,11 @@ post(realizations: f4[n, N], stats, thresholds) -> dict[str, f8[n]]    # stats/l
 - `core/tests/data/simulate/answers.json` — **настоящие ответы** маршрутов 18.32 на том же синтетическом проекте
   (`BF_REGEN_SIMULATE=1`, `test_simulation_api.py`; число 1e−7; времена, отпечатки, хеши, номера заданий не
   сравниваются). Ключи: `simulation_post`, `simulation_name_taken`, `bad_param`, `bad_param_search`,
-  `variogram_scale`, `not_ready`, `simulation_empty` (до запуска: `file` null), `summary_empty` (409),
+  `variogram_scale`, `sis_no_method`, `cosgs_bad_rho`, `cosgs_not_a_number`, `simulation_empty` (до запуска: `file` null), `summary_empty` (409),
   `simulation_put_conflict`, `run_submit`, `run_result`, `run_version_conflict`, `simulation`, `simulations`, `summary`,
-  `post_version_conflict`, `post_submit`, `post_result`, `post_field_exists`, `run_body_result`, `simulation_delete`.
+  `post_version_conflict`, `post_submit`, `post_result`, `post_field_exists`, `run_body_result`, `sis_post`, `sis_row`,
+  `sis_run_result`, `sis_post_result`, `sis_cat_post`, `sis_cat_run_result`, `sis_cat_summary`, `sis_cat_post_thresholds`,
+  `sis_cat_post_result`, `cosgs_post`, `cosgs_run_result`, `cosgs_row`, `simulation_delete`.
   Образцы `simulation*` в `contract_answers.json` — устарели: интерфейс 18.35 читает этот файл.
 
 ## 14. Трактовки (вне буквы ТЗ; на согласование оркестратора)

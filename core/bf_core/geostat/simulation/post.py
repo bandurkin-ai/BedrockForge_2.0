@@ -22,7 +22,10 @@ thresholds?, replace?}`.
     «simulate», algo, inputs [SHA-256 of the realizations], params {simulation_id, stats, thresholds}} and
     `lineage.record` of every field (inputs: the node `object:simulation`). A cancel, a failure and a stale version
     leave no file and no field.
-Fields (`spec.post_columns`): `<prefix>MEAN`, `STD`, `P10`, `P50`, `P90` (f8), `PROB_GT_<t>` (f4). Heavy imports are
+Fields (`spec.post_columns`): `<prefix>MEAN`, `STD`, `P10`, `P50`, `P90` (f8), `PROB_GT_<t>` (f4). A categorical SIS
+(the blob holds the codes of the categories): `PROB_<code>` (f4: the share of the realizations with that category,
+Σ over the categories = 1) and `MODE` (a category field: the most frequent category, the first of the equal ones in the
+order of the categories; labels — the names of the categories). Heavy imports are
 inside the functions (the process of the API registers this module).
 """
 
@@ -66,15 +69,26 @@ def _noop(_p: float | None = None, _m: str | None = None) -> None:
 # --- the statistics ---------------------------------------------------------------------------------------------------
 
 
-def post(realizations: Any, stats: Sequence[str], thresholds: Sequence[float] = ()) -> dict[str, np.ndarray]:
+def post(realizations: Any, stats: Sequence[str], thresholds: Sequence[float] = (),
+         codes: Sequence[int] | None = None) -> dict[str, np.ndarray]:  # fmt: skip
     """The statistics over the realizations `[n_real, N]` (module docstring) → {key: f8 [N]}; the keys of `stats`
-    (`mean`, `std`, `p10`, `p50`, `p90`) and `prob:<t!r>` of every threshold when `prob` is among them."""
+    (`mean`, `std`, `p10`, `p50`, `p90`) and `prob:<t!r>` of every threshold when `prob` is among them. With `codes`
+    (a categorical SIS): `prob:<code>` of every category (the share of the realizations) and `mode` — the position in
+    `codes` of the most frequent one (int)."""
     import numpy as np
 
     from bf_core.stats import local
 
     r = np.asarray(realizations, dtype=np.float64)
     out: dict[str, np.ndarray] = {}
+    if codes is not None:
+        shares = np.stack([(r == float(c)).mean(axis=0) for c in codes])  # [K, N]
+        if "prob" in stats:
+            for i, c in enumerate(codes):
+                out[f"prob:{c}"] = shares[i]
+        if "mode" in stats:
+            out["mode"] = np.argmax(shares, axis=0).astype(np.int32)
+        return out
     if "mean" in stats:
         out["mean"] = local.local_expectation(r)
     if "std" in stats:
@@ -141,14 +155,14 @@ def plan_post(conn: sa.Connection, store: BlobStore, params: dict[str, Any]) -> 
 
     ident = id_of(params.get("simulation_id"), "моделирование", "simulation_id")
     assert ident is not None
-    pst = parse_post(params)
     row = sc.stored(conn, ident)
     meta = dict(row.meta or {})
+    spec = sc.load_spec(meta)
+    pst = parse_post(params, spec.categorical)
     fresh = sc.freshness(conn, meta)
     if fresh["source_lost"]:
         raise ApiError(409, "source_lost", f"У моделирования «{row.name}» удалён источник: таблица, набор или модель.",
                        "Выберите существующие данные в параметрах или удалите моделирование.")  # fmt: skip
-    spec = sc.load_spec(meta)
     sha = sto.real_sha(conn, ident)
     if sha is None:
         raise ApiError(409, "no_realizations", f"У моделирования «{row.name}» нет реализаций.",
@@ -158,7 +172,10 @@ def plan_post(conn: sa.Connection, store: BlobStore, params: dict[str, Any]) -> 
         raise version_conflict(model.version)
     plan = targets.TargetPlan.of(conn, store, spec, model)
     prefix = pst.prefix or default_prefix(spec.samples.field, spec.kind)
-    columns = post_columns(prefix, pst.stats, pst.thresholds, spec.samples.unit)
+    cats = None
+    if spec.method is not None and spec.method.categorical:
+        cats = (spec.method.categories, spec.method.labels or tuple(str(c) for c in spec.method.categories))
+    columns = post_columns(prefix, pst.stats, pst.thresholds, spec.samples.unit, cats)
     _check_names(model, columns, pst.replace)
     return PostPlan(ident, str(row.name), spec, fresh, model, sha, plan, prefix, columns, pst)
 
@@ -182,6 +199,7 @@ def run_post(engine: sa.Engine, folder: Any, params: dict[str, Any], tick: Tick 
     ident, pst, model, sha, plan, prefix, columns = pl.ident, pl.post, pl.model, pl.sha, pl.plan, pl.prefix, pl.columns
     reals = real.Reals(store, sha)
     nodes = reals.p()
+    codes = pl.spec.method.categories if pl.spec.method is not None and pl.spec.method.categorical else None
     log = [f"Моделирование «{pl.name}»: {len(nodes)} узлов × {reals.n_real} реализаций."]
     if pl.stale["stale"]:
         log.append(f"Моделирование устарело ({pl.stale['stale_reason']}): поля посчитаны по прежним реализациям.")
@@ -191,16 +209,17 @@ def run_post(engine: sa.Engine, folder: Any, params: dict[str, Any], tick: Tick 
     with FieldsWriter(store, model, pst.expected_version) as w:  # type: ignore[arg-type]  # ModelView: settable
         for c in columns:
             w.add(c["name"], c["dtype"], unit=c["unit"], role=c["role"], description=c["description"],
-                  replace=pst.replace)  # fmt: skip
+                  labels=c.get("labels"), replace=pst.replace)  # fmt: skip
         for ch in model.iter(plan.read, CHUNK):
             tick(None, None)
             pos, found = targets.locate(nodes, ch.p)
             ok = plan.mask(ch) & found
-            vals = {c["name"]: np.full(ch.n, np.nan) for c in columns}
+            vals = {c["name"]: np.full(ch.n, -1, dtype=np.int32) if c["dtype"] == "cat" else np.full(ch.n, np.nan)
+                    for c in columns}  # fmt: skip
             if bool(ok.any()):
                 at = pos[ok]
                 lo, hi = int(at.min()), int(at.max()) + 1
-                got = post(reals.rows(lo, hi), pst.stats, pst.thresholds)
+                got = post(reals.rows(lo, hi), pst.stats, pst.thresholds, codes)
                 for c in columns:
                     vals[c["name"]][ok] = got[c["key"]][at - lo]
             w.write(vals)

@@ -19,6 +19,7 @@ The numbers of the realizations are stored as f4 (the contract): `post` and the 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -177,6 +178,20 @@ def stats_of(real: np.ndarray) -> dict[str, Any]:
     if n == 0:
         return _pack(np.zeros(k), np.zeros(k), np.zeros(k), np.zeros(k), np.zeros(k))
     return _pack(np.full(k, float(n)), real.mean(axis=1), real.std(axis=1), real.min(axis=1), real.max(axis=1))
+
+
+def stats_cats(real: np.ndarray, codes: Sequence[int]) -> dict[str, Any]:
+    """The summary of the realizations of a categorical SIS `[n_real, n]` (the codes of the labels): per realization
+    `{n, shares}` (the share of every category in the order of `codes`) and over all of them the mean share."""
+    k, n = int(real.shape[0]), int(real.shape[1])
+    cc = np.asarray(list(codes), dtype=np.int64)
+    shares = np.zeros((k, cc.size))
+    if n:
+        for r in range(k):
+            shares[r] = [float((real[r] == c).sum()) / n for c in cc]
+    per = [{"n": n, "shares": [float(v) for v in shares[r]]} for r in range(k)]
+    return {"per": per, "all": {"codes": [int(c) for c in cc], "shares": [float(v) for v in shares.mean(axis=0)]}
+            if k and n else None}  # fmt: skip
 
 
 def _pack(n: np.ndarray, mean: np.ndarray, std: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> dict[str, Any]:

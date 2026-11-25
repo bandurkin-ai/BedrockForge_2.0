@@ -54,8 +54,8 @@ if TYPE_CHECKING:
     from .spec import SimulationSpec
 
 #: the keys of the body of a simulation that `PUT` replaces whole (the others — `name` — are handled apart)
-KEYS = ("kind", "model_id", "target", "samples", "variogram", "search", "nodes", "seed", "n_real", "secondary",
-        "nscore")  # fmt: skip
+KEYS = ("kind", "model_id", "target", "samples", "variogram", "variograms", "method", "search", "nodes", "seed",
+        "n_real", "secondary", "nscore")  # fmt: skip
 PARQUET_MEDIA = "application/vnd.apache.parquet"
 
 __all__ = ["KEYS", "KIND", "LINEAGE_KIND", "Prepared", "commit_run", "create", "default_name", "delete",
@@ -152,6 +152,8 @@ def commit_run(conn: sa.Connection, store: BlobStore, simulation_id: int, staged
     meta = dict(row.meta or {})
     meta["last_run"] = {**last_run, "params": params_hash(load_spec(meta))}
     meta["inputs"] = inputs
+    if isinstance(meta.get("secondary"), Mapping) and isinstance(last_run.get("secondary"), Mapping):
+        meta["secondary"] = {**meta["secondary"], "rho_used": last_run["secondary"].get("rho_used")}
     meta["origin"] = [float(v) for v in origin]
     conn.execute(sa.delete(blob_owners).where(
         blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == simulation_id, blob_owners.c.role == ROLE))
@@ -233,7 +235,8 @@ def usage_of_variogram(conn: sa.Connection, model_id: int) -> list[dict[str, Any
     rows = conn.execute(sa.select(objects.c.id, objects.c.name, objects.c.meta).where(objects.c.kind == KIND)
                         .order_by(objects.c.name_key, objects.c.id)).all()  # fmt: skip
     for r in rows:
-        v = (r.meta or {}).get("variogram")
-        if isinstance(v, Mapping) and v.get("model_id") == model_id:
+        meta = r.meta or {}
+        named = [meta.get("variogram"), *(meta.get("variograms") or [])]  # SIS: one model per threshold (category)
+        if any(isinstance(v, Mapping) and v.get("model_id") == model_id for v in named):
             out.append({"id": int(r.id), "kind": KIND, "name": r.name, "role": "variogram"})
     return out

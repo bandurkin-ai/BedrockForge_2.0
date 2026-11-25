@@ -19,10 +19,12 @@ from tests import estapi_util as U
 from tests.estapi_util import API, GS, finish, ok, read_only, refused
 from tests.estapi_world import MODEL
 from tests.estutil import vmodel
+from tests.simutil_cat import CODES, LITH, SG, add_lith, add_secondary
 from tests.test_estimate_api_answers import SKIP, answer, diff, job_answer
 
 reg, ea = U.reg, U.ea  # the fixtures
 SIM = f"{GS}/simulations"
+THRESHOLDS = [0.7, 1.0, 1.5]
 MODULES = "bf_core.geostat.simulation.job,bf_core.geostat.simulation.post"
 
 
@@ -43,7 +45,11 @@ def sim_reg(reg, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-de
 @pytest.fixture()
 def sa(sim_reg, ea):  # type: ignore[no-untyped-def]  # noqa: ARG001
     """A core with an open project, the world of the estimation and a variogram model in normal scores."""
-    ea.w.vy = vmodel(ea.w, "AU · Y сим", transform="nscore", model=MODEL)
+    w = ea.w
+    w.vy = vmodel(w, "AU · Y сим", transform="nscore", model=MODEL)
+    w.ind = [vmodel(w, f"AU · индикатор {t}", transform=f"indicator:{t}", model=MODEL) for t in THRESHOLDS]
+    w.lith = add_lith(w.project.engine, w.set_id, [(f"С-{i:02d}", 25.0 * (i % 5)) for i in range(25)])
+    add_secondary(w.project, w.store, w.model, SG)
     return ea
 
 
@@ -55,6 +61,21 @@ def sim_body(w: Any, label: str = "окисл", **over: Any) -> dict[str, Any]:
         "variogram": {"model_id": w.vy}}  # fmt: skip
     out.update(over)
     return out
+
+
+def sis_body(w: Any, **over: Any) -> dict[str, Any]:
+    """SIS by the thresholds, one model of an indicator for each."""
+    return sim_body(w, name="AU · SIS · окисл", variogram=None, variograms=[{"model_id": m} for m in w.ind],
+                    method={"ik": {"thresholds": THRESHOLDS, "models": "per"}}, **over)  # fmt: skip
+
+
+def cat_body(w: Any, **over: Any) -> dict[str, Any]:
+    """SIS by the categories: the codes of the numeric field of the table «Фации», the median model."""
+    samples = {"set_id": w.set_id, "table": str(w.lith), "field": LITH,
+               "domain": {"table": str(w.b), "field": "ZONE", "values": ["окисл"]}}  # fmt: skip
+    return sim_body(w, name="LITH · SIS · окисл", variogram={"model_id": w.vz}, samples=samples,
+                    method={"ik": {"categories": list(CODES), "labels": ["Окисленные", "Переходные", "Первичные"],
+                                   "models": "median"}}, **over)  # fmt: skip
 
 
 def events(c: Any, kind: str | None = None) -> list[dict[str, Any]]:
@@ -98,7 +119,8 @@ def test_the_order_of_the_checks_and_a_read_only_project(sa) -> None:  # type: i
     made = make_sim(sa)
     refused(sa.post(SIM, json=[1]), 422, "bad_request")
     refused(sa.post(SIM, json=sim_body(sa.w, n_real=0)), 422, "bad_param", "n_real")
-    refused(sa.post(SIM, json=sim_body(sa.w, kind="sis")), 422, "not_ready", "kind")
+    refused(sa.post(SIM, json=sim_body(sa.w, kind="sis")), 422, "bad_param", "method")
+    refused(sa.post(SIM, json=sim_body(sa.w, secondary={"field": SG, "rho": 2})), 422, "bad_param", "secondary.rho")
     refused(sa.post(SIM, json=sim_body(sa.w, variogram={"model_id": sa.w.vz})), 422, "variogram_scale",
             "variogram.model_id")  # fmt: skip
     refused(sa.post(SIM, json=sim_body(sa.w, model_id=sa.w.model + 99)), 404, "block_model_not_found", "model_id")
@@ -164,7 +186,7 @@ def test_a_body_run_and_the_refusals_before_the_job(sa) -> None:  # type: ignore
     refused(sa.post(run, json={}), 422, "bad_param", "simulation_id")
     refused(sa.post(run, json={"simulation_id": 999}), 404, "simulation_not_found")
     refused(sa.post(run, json={"simulation": sim_body(sa.w, n_real=101)}), 422, "bad_param", "n_real")
-    refused(sa.post(run, json={"simulation": sim_body(sa.w, kind="sis")}), 422, "not_ready", "kind")
+    refused(sa.post(run, json={"simulation": sim_body(sa.w, kind="sis")}), 422, "bad_param", "method")
     refused(sa.post(run, json={"simulation": sim_body(sa.w, variogram={"model_id": sa.w.vz})}), 422,
             "variogram_scale", "variogram.model_id")  # fmt: skip
     ident = make_sim(sa)["id"]
@@ -201,6 +223,31 @@ def masked(x: Any) -> Any:
     return x
 
 
+def kinds(c: Any) -> dict[str, Any]:
+    """SIS (thresholds, categories) and co-SGS (ρ computed): the rows, the runs, the post-processing."""
+    w, out = c.w, {}
+    thr = c.post(SIM, json=sis_body(w))
+    out["sis_post"] = answer(thr)
+    out["sis_row"] = answer(c.get(f"{SIM}/{thr.json()['id']}"))
+    out["sis_run_result"] = job_answer(c, c.post(f"{GS}/simulate/run", json={"simulation_id": thr.json()["id"]}))[1]
+    version = model_version(c)
+    out["sis_post_result"] = job_answer(c, c.post(f"{SIM}/{thr.json()['id']}/post", json={
+        "expected_version": version, "thresholds": [1.0]}))[1]  # fmt: skip
+    cat = c.post(SIM, json=cat_body(w))
+    out["sis_cat_post"] = answer(cat)
+    out["sis_cat_run_result"] = job_answer(c, c.post(f"{GS}/simulate/run", json={"simulation_id": cat.json()["id"]}))[1]
+    out["sis_cat_summary"] = answer(c.get(f"{SIM}/{cat.json()['id']}/summary"))
+    out["sis_cat_post_thresholds"] = answer(c.post(f"{SIM}/{cat.json()['id']}/post", json={
+        "expected_version": model_version(c), "thresholds": [1.0]}))  # fmt: skip
+    out["sis_cat_post_result"] = job_answer(c, c.post(f"{SIM}/{cat.json()['id']}/post", json={
+        "expected_version": model_version(c)}))[1]  # fmt: skip
+    co = c.post(SIM, json=sim_body(w, name="AU · Ко-SGS · окисл", secondary={"field": SG, "rho": None}))
+    out["cosgs_post"] = answer(co)
+    out["cosgs_run_result"] = job_answer(c, c.post(f"{GS}/simulate/run", json={"simulation_id": co.json()["id"]}))[1]
+    out["cosgs_row"] = answer(c.get(f"{SIM}/{co.json()['id']}"))
+    return out
+
+
 def build(c: Any) -> dict[str, Any]:
     """The answers of the routes of 18.32, in the order a window meets them."""
     w = c.w
@@ -212,7 +259,9 @@ def build(c: Any) -> dict[str, Any]:
     out["bad_param"] = answer(c.post(SIM, json=sim_body(w, n_real=101)))
     out["bad_param_search"] = answer(c.post(SIM, json=sim_body(w, search={"passes": [{"n_max": 129}]})))
     out["variogram_scale"] = answer(c.post(SIM, json=sim_body(w, variogram={"model_id": w.vz}, name="В Z")))
-    out["not_ready"] = answer(c.post(SIM, json=sim_body(w, kind="sis", name="SIS")))
+    out["sis_no_method"] = answer(c.post(SIM, json=sim_body(w, kind="sis", name="SIS")))
+    out["cosgs_bad_rho"] = answer(c.post(SIM, json=sim_body(w, name="Ко", secondary={"field": SG, "rho": 1.5})))
+    out["cosgs_not_a_number"] = answer(c.post(SIM, json=sim_body(w, name="Ко", secondary={"field": "ZONE"})))
     out["simulation_empty"] = answer(c.get(f"{SIM}/{ident}"))  # before the first run: `file` null
     out["summary_empty"] = answer(c.get(f"{SIM}/{ident}/summary"))
     assert c.put(f"{SIM}/{ident}", json={"expected_version": 1, "n_real": 5}).status_code == 200
@@ -231,6 +280,7 @@ def build(c: Any) -> dict[str, Any]:
     out["post_field_exists"] = answer(c.post(f"{SIM}/{ident}/post", json=stale))
     inline = sim_body(w, label="перех", name="AU · SGS · перех")
     out["run_body_result"] = job_answer(c, c.post(f"{GS}/simulate/run", json={"simulation": inline}))[1]
+    out.update(kinds(c))
     out["simulation_delete"] = answer(c.delete(f"{SIM}/{ident}"))
     return json.loads(json.dumps(out, ensure_ascii=False))  # type: ignore[no-any-return]
 
@@ -253,7 +303,19 @@ def test_the_answers_are_what_the_core_answers(sa) -> None:  # type: ignore[no-u
     assert built["bad_param"]["body"]["param"] == "n_real"
     assert built["bad_param_search"]["body"]["param"] == "search.passes.0.n_max"
     assert (built["variogram_scale"]["status"], built["variogram_scale"]["body"]["code"]) == (422, "variogram_scale")
-    assert (built["not_ready"]["status"], built["not_ready"]["body"]["code"]) == (422, "not_ready")
+    assert (built["sis_no_method"]["status"], built["sis_no_method"]["body"]["param"]) == (422, "method")
+    assert built["cosgs_bad_rho"]["body"]["param"] == "secondary.rho"
+    assert built["cosgs_not_a_number"]["body"]["code"] == "field_not_number"
+    assert built["sis_post"]["status"] == 200 and built["sis_row"]["body"]["meta"]["kind"] == "sis"
+    assert len(built["sis_row"]["body"]["meta"]["variograms"]) == 3
+    assert built["sis_post_result"]["body"]["fields"][-1] == "AU_SIS_PROB_GT_1"
+    cats = built["sis_cat_summary"]["body"]["summary"]["all"]
+    assert cats["codes"] == list(CODES) and abs(sum(cats["shares"]) - 1.0) < 1e-12
+    assert built["sis_cat_post_thresholds"]["body"]["param"] == "thresholds"
+    assert built["sis_cat_post_result"]["body"]["fields"] == [*[f"LITH_SIS_PROB_{c}" for c in CODES], "LITH_SIS_MODE"]
+    sec = built["cosgs_run_result"]["body"]["secondary"]
+    assert -1.0 <= sec["rho_used"] <= 1.0 and sec["pairs"] >= 10
+    assert built["cosgs_row"]["body"]["meta"]["kind"] == "cosgs"
     assert built["simulation_empty"]["body"]["file"] is None and built["summary_empty"]["status"] == 409
     assert built["run_result"]["body"]["realizations"] == 5 and built["simulation"]["body"]["file"]["rows"] > 0
     assert built["post_result"]["body"]["fields"][0] == "AU_SGS_MEAN"

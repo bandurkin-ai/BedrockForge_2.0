@@ -77,16 +77,7 @@ def graph_fingerprint(meta: Mapping[str, Any]) -> str:
     """The fingerprint of the node `object:simulation` (ADR 0025): the parameters without the ids of the objects they
     name (a project import renumbers those ids; the objects themselves are in `inputs` with their own fingerprints, so
     naming another object with other contents still changes it) and the inputs' fingerprints."""
-    p = load_spec(meta).hash_params()
-    p.pop("model_id", None)
-    p["samples"] = {k: v for k, v in p["samples"].items() if k not in ("set_id", "table")}
-    if isinstance(p["samples"].get("domain"), dict):
-        p["samples"]["domain"] = {k: v for k, v in p["samples"]["domain"].items() if k != "table"}
-    p["target"] = {k: v for k, v in p["target"].items() if k != "filter_id"}
-    p["variogram"] = {k: v for k, v in (p["variogram"] or {}).items() if k != "model_id"}
-    inputs = sorted(f"{i.get('kind')}:{i.get('fp')}" for i in meta.get("inputs") or [])
-    text = json.dumps([p, inputs], ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return sb.graph_fingerprint(load_spec(meta).hash_params(), meta.get("inputs"))
 
 
 # --- the block model, the variogram model ----------------------------------------------------------------------------
@@ -134,9 +125,28 @@ def check(conn: sa.Connection, spec: SimulationSpec, old: SimulationSpec | None 
     _name, mmeta = block_model(conn, spec.model_id)
     spec = replace(spec, target=sc.check_target(conn, spec, mmeta))  # type: ignore[arg-type]  # `.target` only
     samples, data = sc.canon_samples(conn, spec.samples)
-    assert spec.variogram is not None
-    ref = take_variogram(conn, spec.variogram, "variogram", None if old is None else old.variogram)
-    return replace(spec, samples=samples, variogram=ref).resolved(), data
+    if spec.kind == "sis":  # the indicator models are in the units of the field (scale z; `back` of an nscore one)
+        spec = sc.take_variograms(conn, replace(spec, samples=samples), old)  # type: ignore[arg-type,assignment]
+    else:
+        assert spec.variogram is not None
+        ref = take_variogram(conn, spec.variogram, "variogram", None if old is None else old.variogram)
+        spec = replace(spec, samples=samples, variogram=ref)
+    if spec.secondary is not None:
+        spec = replace(spec, secondary=replace(spec.secondary, field=secondary_field(mmeta, spec.secondary.field)))
+    return spec.resolved(), data
+
+
+def secondary_field(mmeta: Mapping[str, Any], name: str) -> str:
+    """The secondary variable of the co-SGS as the model stores it: a numeric field of the block model (a category
+    field is no variable to correlate with): 422 `field_not_found`, `field_not_number` {param: secondary.field}."""
+    f = sc._field_of(mmeta, name)  # noqa: SLF001
+    if f is None:
+        raise ApiError(422, "field_not_found", f"В блочной модели нет поля «{name[:80]}».",
+                       "Выберите числовое поле модели, например плотность.", {"param": "secondary.field"})
+    if f.get("kind") != "number":
+        raise ApiError(422, "field_not_number", f"Поле «{f['name']}» — категориальное.",
+                       "Выберите числовое поле модели, например плотность.", {"param": "secondary.field"})
+    return str(f["name"])
 
 
 # --- the inputs of the graph and «устарел» --------------------------------------------------------------------------
@@ -145,7 +155,13 @@ def check(conn: sa.Connection, spec: SimulationSpec, old: SimulationSpec | None 
 def inputs_of(conn: sa.Connection, spec: SimulationSpec) -> list[dict[str, Any]]:
     """`meta.inputs` (e18-api §2.3): the tables of the samples and of the domain, the set (trajectories), the variogram
     model, the block model and its fields of the domain and the restrictor."""
-    return sc.inputs_of(conn, spec)  # type: ignore[arg-type]  # the fields it reads are those of a simulation too
+    out = sc.inputs_of(conn, spec)  # type: ignore[arg-type]  # the fields it reads are those of a simulation too
+    if spec.secondary is not None:  # the secondary field of the model: a new content of it makes the row «устарел»
+        ident = f"{spec.model_id}:{spec.secondary.field}"
+        got = sc.fp_of(conn, sc.FIELD, ident)
+        if got is not None and not any(i["kind"] == sc.FIELD and i["id"] == ident for i in out):
+            out.append({"kind": sc.FIELD, "id": ident, "fp": got[1], "name": got[0]})
+    return out
 
 
 def freshness(conn: sa.Connection, meta: Mapping[str, Any]) -> dict[str, Any]:

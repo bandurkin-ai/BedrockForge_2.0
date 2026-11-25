@@ -4,7 +4,7 @@ against the ranges of Д-23. Pure: no database, no numpy (the router loads it). 
 checked against the project by `store_check.py`. The parts — those of the estimation (`estimate/spec_parts.py`):
 `parse_samples`, `parse_target`, `parse_vario(…, simulation=True)`, `parse_search`.
 
-    spec = parse_simulation(body)     # SimulationSpec; ApiError 422 `bad_param` {param}, `not_ready` (SIS, co-SGS)
+    spec = parse_simulation(body)     # SimulationSpec; ApiError 422 `bad_param` {param}
     meta_part = spec.canonical()      # what `objects(kind="simulation").meta` keeps besides origin, inputs, last_run
     run = parse_run(body)             # RunSpec {simulation | simulation_id, expected_version?}
     post = parse_post(body)           # PostSpec {expected_version, prefix?, stats, thresholds, replace}
@@ -14,7 +14,14 @@ A key the body leaves out (or null, or "") takes its default (Д-23): `seed` 123
 takes what is there), the tails of the back-transform «linear» (`nscore.ltail`, `utail`: linear | power | none —
 `hyperbolic` for the upper one; `ltpar`, `utpar` of a power tail > 0, of a hyperbolic one ≥ 1). The search comes from
 the variogram model (`from: model`, the structure with the largest a1) or is manual. The kind: `sgs` (no secondary),
-`cosgs` (with `secondary`), `sis`; the last two are not connected yet (18.33, 18.34) — 422 `not_ready`.
+`cosgs` (with `secondary`), `sis`. Without `kind`: `secondary` — co-SGS, `method` — SIS, else SGS.
+
+SIS (18.33b): `method {ik: {thresholds | categories, labels?, models: per | median}}` — a continuous variable by 1–20
+thresholds (ascending) or 2–20 categories (the integer codes 0–255 of the numeric field of the samples, the label
+of a code is `labels` or the code itself); `variograms` — one indicator model per threshold (category) in the order
+of the list (`models: per`), `variogram` — the one model of the median IK (`models: median`); the models are
+in the units of the field (scale z; `indicator:<t>`), not in normal scores. Co-SGS: `secondary {field, rho}` — the
+numeric field of the block model, ρ −1 … 1 or null (computed from the samples).
 """
 
 from __future__ import annotations
@@ -41,10 +48,11 @@ from bf_core.geostat.estimate.spec_parts import (
     search_from_model,
     text_of,
 )
+from bf_core.geostat.estimate.spec_parts import _thresholds as parse_thresholds
 from bf_core.geostat.variogram.spec import Range, _number, _span, bad, choice
 
 KINDS = ("sgs", "sis", "cosgs")
-RUNNABLE = ("sgs",)  # the kinds this build runs
+RUNNABLE = KINDS  # the kinds this build runs
 ALGO = "sim-1"
 SEED_MAX = 2**63 - 1
 RANGES: dict[str, Range] = {
@@ -59,8 +67,14 @@ LOWER = ("linear", "power", "none")
 UPPER = ("linear", "power", "hyperbolic", "none")
 #: what `simulate.post` can write: the key → the suffix of the field (a probability — `PROB_GT_<t>`)
 STATS = ("mean", "std", "p10", "p50", "p90", "prob")
+#: the statistics of a categorical SIS: the probability of every category (`PROB_<code>`) and the most frequent one
+CAT_STATS = ("prob", "mode")
+IK_MODELS = ("per", "median")
+CATEGORIES_MAX = 20
+CODE_MAX = 255
+LABEL_MAX = 80
 STAT_SUFFIX = {"mean": "MEAN", "std": "STD", "p10": "P10", "p50": "P50", "p90": "P90"}
-STAT_DTYPE = {"mean": "f8", "std": "f8", "p10": "f8", "p50": "f8", "p90": "f8", "prob": "f4"}
+STAT_DTYPE = {"mean": "f8", "std": "f8", "p10": "f8", "p50": "f8", "p90": "f8", "prob": "f4", "mode": "cat"}
 BASE_STATS = ("mean", "std", "p10", "p50", "p90")
 THRESHOLDS_MAX = 20
 PREFIX_MAX = 40
@@ -149,6 +163,65 @@ def parse_secondary(raw: Any, param: str = "secondary") -> Secondary | None:
 
 
 @dataclass(frozen=True)
+class SisMethod:
+    """SIS (18.33): the thresholds of a continuous variable or the categories (codes of the numeric field of the
+    samples), the models — one per threshold / category (`per`) or one for all (`median`)."""
+
+    thresholds: tuple[float, ...]  # () — categories
+    categories: tuple[int, ...]  # () — thresholds
+    labels: tuple[str, ...] | None  # the names of the categories (a window shows them); None — the codes
+    models: str  # per | median
+
+    @property
+    def categorical(self) -> bool:
+        return bool(self.categories)
+
+    @property
+    def k(self) -> int:
+        return len(self.categories or self.thresholds)
+
+    def canonical(self) -> dict[str, Any]:
+        return {"ik": {"thresholds": list(self.thresholds) if self.thresholds else None,
+                       "categories": list(self.categories) if self.categories else None,
+                       "labels": None if self.labels is None else list(self.labels),
+                       "models": self.models}}  # fmt: skip
+
+
+def parse_method(raw: Any, param: str = "method") -> SisMethod:
+    m = obj(raw, "Метод SIS", param)
+    ik = obj(m.get("ik"), "Индикаторы", f"{param}.ik")
+    models = choice(ik.get("models"), IK_MODELS, "per", "Модели индикаторов", f"{param}.ik.models")
+    has_t = ik.get("thresholds") not in (None, "")
+    has_c = ik.get("categories") not in (None, "")
+    if has_t == has_c:
+        raise bad("bad_param", "Для SIS задайте либо пороги, либо категории — что-то одно.",
+                  "Пороги — для непрерывной величины, категории — для кодов литологии.",
+                  f"{param}.ik.thresholds")  # fmt: skip
+    if has_t:
+        return SisMethod(parse_thresholds(ik["thresholds"], f"{param}.ik.thresholds"), (), None, models)
+    given = list_of(ik["categories"], "Категории", f"{param}.ik.categories", CATEGORIES_MAX)
+    codes: list[int] = []
+    for i, c in enumerate(given):
+        v = _number(c, "Код категории", f"{param}.ik.categories.{i}")
+        if v != math.floor(v) or not 0 <= v <= CODE_MAX:
+            raise bad("bad_param", "Код категории: нужно целое число от 0 до 255.", "Задайте код, например, 2.",
+                      f"{param}.ik.categories.{i}")  # fmt: skip
+        codes.append(int(v))
+    if len(codes) < 2 or len(set(codes)) != len(codes):
+        raise bad("bad_param", "Категорий должно быть от 2 до 20, коды — различные.",
+                  "Выберите не меньше двух различных кодов.", f"{param}.ik.categories")  # fmt: skip
+    labels = None
+    if ik.get("labels") not in (None, ""):
+        raw_l = list_of(ik["labels"], "Названия категорий", f"{param}.ik.labels", CATEGORIES_MAX)
+        if len(raw_l) != len(codes):
+            raise bad("bad_param", "Названий категорий должно быть столько же, сколько кодов.",
+                      "Задайте название для каждого кода или уберите список.", f"{param}.ik.labels")  # fmt: skip
+        labels = tuple(str(text_of(t, "Название категории", f"{param}.ik.labels.{i}", LABEL_MAX))
+                       for i, t in enumerate(raw_l))  # fmt: skip
+    return SisMethod((), tuple(codes), labels, models)
+
+
+@dataclass(frozen=True)
 class SimulationSpec:
     name: str | None  # None — the store gives «‹поле› · ‹ВИД› · ‹домен›»
     kind: str  # sgs | sis | cosgs
@@ -157,7 +230,7 @@ class SimulationSpec:
     samples: SampleSel
     variogram: VarioRef | None  # the model in normal scores (`scale: y`)
     variograms: tuple[VarioRef, ...] | None  # SIS: one per threshold (18.33)
-    method: dict[str, Any] | None  # SIS: {ik: {thresholds | categories, models}} (18.33)
+    method: SisMethod | None  # SIS (18.33)
     search: Search  # one pass
     nodes: int
     seed: int
@@ -171,13 +244,23 @@ class SimulationSpec:
         return None
 
     @property
+    def categorical(self) -> bool:
+        return self.method is not None and self.method.categorical
+
+    def search_variogram(self) -> VarioRef | None:
+        """The model whose ranges `from: model` takes: `variogram`, else the middle model of `variograms`."""
+        if self.variogram is not None:
+            return self.variogram
+        return None if not self.variograms else self.variograms[len(self.variograms) // 2]
+
+    @property
     def resolved_search(self) -> bool:
         return self.search.angles is not None and self.search.radii is not None
 
     def resolved(self) -> SimulationSpec:
         """The search filled in from the snapshot of the model (unchanged without one; `manual` — as it is)."""
         s = self.search
-        ref = self.variogram
+        ref = self.search_variogram()
         if s.source != "model" or ref is None or ref.snapshot is None:
             return self
         angles, radii = search_from_model(ref.snapshot)
@@ -189,8 +272,8 @@ class SimulationSpec:
                 "samples": self.samples.canonical(),
                 "variogram": None if self.variogram is None else self.variogram.canonical(),
                 "variograms": None if self.variograms is None else [v.canonical() for v in self.variograms],
-                "method": self.method, "search": self.search.canonical(), "nodes": self.nodes, "seed": self.seed,
-                "n_real": self.n_real,
+                "method": None if self.method is None else self.method.canonical(),
+                "search": self.search.canonical(), "nodes": self.nodes, "seed": self.seed, "n_real": self.n_real,
                 "secondary": None if self.secondary is None else self.secondary.canonical(),
                 "nscore": self.nscore.canonical()}  # fmt: skip
 
@@ -211,19 +294,26 @@ def parse_simulation(body: Mapping[str, Any]) -> SimulationSpec:
         b.pop(key, None)
     name = text_of(b.get("name"), "Имя", "name", required=False)
     secondary = parse_secondary(b.get("secondary"))
-    kind = choice(b.get("kind"), KINDS, "cosgs" if secondary is not None else "sgs", "Вид моделирования", "kind")
+    has_method = b.get("method") not in (None, "")
+    default = "cosgs" if secondary is not None else "sis" if has_method else "sgs"
+    kind = choice(b.get("kind"), KINDS, default, "Вид моделирования", "kind")
     if kind not in RUNNABLE:
         raise not_ready(kind)
-    if secondary is not None and kind == "sgs":
-        raise bad("bad_param", "Вторичная переменная задана для SGS без неё.", "Выберите ко-SGS или уберите её.",
+    if secondary is not None and kind != "cosgs":
+        raise bad("bad_param", "Вторичная переменная нужна только ко-SGS.", "Выберите ко-SGS или уберите её.",
                   "secondary")  # fmt: skip
+    if kind == "cosgs" and secondary is None:
+        raise bad("bad_param", "Для ко-SGS не выбрана вторичная переменная.", "Выберите числовое поле блочной модели.",
+                  "secondary.field")  # fmt: skip
+    if has_method != (kind == "sis"):
+        raise bad("bad_param", "Пороги и категории нужны только SIS." if has_method else "Для SIS не заданы пороги.",
+                  "Выберите SIS или уберите метод." if has_method else "Задайте пороги или категории.",
+                  "method")  # fmt: skip
     model_id = id_of(b.get("model_id"), "блочная модель", "model_id")
     assert model_id is not None
     samples = parse_samples(b.get("samples"))
-    if b.get("variogram") in (None, ""):
-        raise bad("bad_param", "Не выбрана модель вариограммы.", "Выберите сохранённую модель в нормальных оценках.",
-                  "variogram.model_id")  # fmt: skip
-    variogram = parse_vario(b["variogram"], "variogram", simulation=True)
+    method = parse_method(b.get("method")) if kind == "sis" else None
+    variogram, variograms = _variograms(b, kind, method)
     raw_search = obj(b.get("search"), "Поиск", "search")
     if raw_search.get("passes") is None:
         raw_search["passes"] = [{}]
@@ -237,14 +327,45 @@ def parse_simulation(body: Mapping[str, Any]) -> SimulationSpec:
     n_max = search.passes[0].n_max
     if n_max > RANGES["n_max"].hi:
         raise bad("bad_param", "n_max вне диапазона.", "Задайте от 1 до 128.", "search.passes.0.n_max")
+    if method is not None and method.categorical and samples.topcut is not None:
+        raise bad("bad_param", "Для категорий урезка значений не применяется.", "Уберите урезку.", "samples.topcut")
     spec = SimulationSpec(
         name=name, kind=kind, model_id=model_id, target=parse_target(b.get("target")), samples=samples,
-        variogram=variogram, variograms=None, method=None, search=search,
+        variogram=variogram, variograms=variograms, method=method, search=search,
         nodes=_def(b.get("nodes"), "nodes", "nodes"), seed=_def(b.get("seed"), "seed", "seed"),
         n_real=_def(b.get("n_real"), "n_real", "n_real"), secondary=secondary,
         nscore=parse_nscore(b.get("nscore")),
     )  # fmt: skip
     return spec.resolved()
+
+
+def _variograms(b: dict[str, Any], kind: str,
+                method: SisMethod | None) -> tuple[VarioRef | None, tuple[VarioRef, ...] | None]:  # fmt: skip
+    """The models: SGS, co-SGS — one in normal scores (Д-38); SIS — one per threshold (category), or the one of the
+    median IK, in the units of the field."""
+    one = b.get("variogram") not in (None, "")
+    many = b.get("variograms") not in (None, "")
+    if method is None or method.models == "median":
+        if many:
+            raise bad("bad_param", "Модели по порогам задаются только для SIS «модель на порог».",
+                      "Уберите список моделей.", "variograms")  # fmt: skip
+        if not one:
+            raise bad("bad_param", "Не выбрана модель вариограммы.",
+                      "Выберите сохранённую модель" + (" индикатора." if method else " в нормальных оценках."),
+                      "variogram.model_id")  # fmt: skip
+        return parse_vario(b["variogram"], "variogram", simulation=method is None), None
+    if one:
+        raise bad("bad_param", "Для SIS «модель на порог» одна модель не нужна.", "Уберите её или выберите медианную.",
+                  "variogram")  # fmt: skip
+    if not many:
+        raise bad("bad_param", "Не выбраны модели индикаторов.", "Выберите модель для каждого порога (категории).",
+                  "variograms")  # fmt: skip
+    given = list_of(b["variograms"], "Модели индикаторов", "variograms", CATEGORIES_MAX)
+    if len(given) != method.k:
+        raise bad("bad_param", f"Нужно {method.k} моделей — по одной на порог (категорию).",
+                  "Выберите модель для каждого порога (категории).", "variograms")  # fmt: skip
+    ts = method.thresholds
+    return None, tuple(parse_vario(v, f"variograms.{i}", ts[i] if ts else None) for i, v in enumerate(given))
 
 
 def _def(raw: Any, key: str, param: str) -> int:
@@ -299,8 +420,9 @@ def threshold_name(t: float) -> str:
     return format(t, "g").replace(".", "_")
 
 
-def parse_post(body: Mapping[str, Any]) -> PostSpec:
-    """`POST /simulations/{id}/post {expected_version, prefix?, stats?, thresholds?, replace?}`."""
+def parse_post(body: Mapping[str, Any], categorical: bool = False) -> PostSpec:
+    """`POST /simulations/{id}/post {expected_version, prefix?, stats?, thresholds?, replace?}`. A categorical SIS
+    takes `stats` of `CAT_STATS` (default both: `PROB_<code>` of every category and `MODE`), no thresholds."""
     b = obj(body, "Постобработка", "body")
     if b.get("expected_version") in (None, ""):
         raise bad("bad_param", "Не задана версия блочной модели.", "Перечитайте модель и запустите снова.",
@@ -310,6 +432,8 @@ def parse_post(body: Mapping[str, Any]) -> PostSpec:
     if prefix is not None and not _prefix_ok(prefix):
         raise bad("bad_param", "Префикс полей: допустимы буквы, цифры и «_».", "Например, AU_SGS_.", "prefix")
     raw_t = b.get("thresholds")
+    if categorical and raw_t not in (None, "", []):
+        raise bad("bad_param", "У категориального моделирования порогов нет.", "Уберите пороги.", "thresholds")
     given = [] if raw_t in (None, "") else list_of(raw_t, "Пороги", "thresholds", THRESHOLDS_MAX)
     thresholds = tuple(dict.fromkeys(_number(t, "Порог", f"thresholds.{i}") + 0.0 for i, t in enumerate(given)))
     seen: dict[str, float] = {}
@@ -319,14 +443,16 @@ def parse_post(body: Mapping[str, Any]) -> PostSpec:
                       "Оставьте один из них.", "thresholds")  # fmt: skip
         seen[threshold_name(t)] = t
     raw_s = b.get("stats")
+    allowed = CAT_STATS if categorical else STATS
     if raw_s in (None, ""):
-        stats = (*BASE_STATS, *(("prob",) if thresholds else ()))
+        stats = CAT_STATS if categorical else (*BASE_STATS, *(("prob",) if thresholds else ()))
     else:
-        listed = list_of(raw_s, "Статистики", "stats", len(STATS))
-        stats = tuple(dict.fromkeys(choice(s, STATS, "mean", "Статистика", f"stats.{i}") for i, s in enumerate(listed)))
+        listed = list_of(raw_s, "Статистики", "stats", len(allowed))
+        stats = tuple(dict.fromkeys(choice(s, allowed, allowed[0], "Статистика", f"stats.{i}")
+                                    for i, s in enumerate(listed)))  # fmt: skip
         if not stats:
             raise bad("bad_param", "Не выбрано ни одной статистики.", "Отметьте хотя бы одну.", "stats")
-    if "prob" in stats and not thresholds:
+    if "prob" in stats and not thresholds and not categorical:
         raise bad("bad_param", "Для вероятности превышения не заданы пороги.", "Задайте хотя бы один порог.",
                   "thresholds")  # fmt: skip
     if "prob" not in stats:
@@ -343,10 +469,27 @@ def _prefix_ok(text: str) -> bool:
     return re.fullmatch(r"\w{1,40}", text) is not None
 
 
-def post_columns(prefix: str, stats: tuple[str, ...], thresholds: tuple[float, ...],
-                 unit: str | None) -> list[dict[str, Any]]:  # fmt: skip
-    """The fields of the post-processing: [{name, key, dtype, role, unit, description}] in the order of `STATS`."""
+def post_columns(prefix: str, stats: tuple[str, ...], thresholds: tuple[float, ...], unit: str | None,
+                 categories: tuple[tuple[int, ...], tuple[str, ...]] | None = None) -> list[dict[str, Any]]:
+    """The fields of the post-processing: [{name, key, dtype, role, unit, description[, labels]}] in the order of
+    `STATS`. A categorical SIS (`categories` = the codes and the names): `PROB_<code>` (f4) of every category, then
+    `MODE` (the category of the greatest probability, the first of equal ones; a category field)."""
     out: list[dict[str, Any]] = []
+    if categories is not None:
+        codes, names = categories
+        for key in CAT_STATS:
+            if key not in stats:
+                continue
+            if key == "prob":
+                for c, n in zip(codes, names, strict=True):
+                    out.append({"name": f"{prefix}PROB_{c}", "key": f"prob:{c}", "dtype": "f4", "role": None,
+                                "unit": None,
+                                "description": f"Доля реализаций, где узел — «{n}» (код {c})"})  # fmt: skip
+            else:
+                out.append({"name": f"{prefix}MODE", "key": "mode", "dtype": "cat", "role": "code", "unit": None,
+                            "labels": list(names),
+                            "description": "Самая частая категория по реализациям"})  # fmt: skip
+        return out
     for key in STATS:
         if key not in stats:
             continue

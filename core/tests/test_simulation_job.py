@@ -304,7 +304,7 @@ def test_the_refusals_before_the_work(sw: SW) -> None:
     refused(lambda: run(sw, simulation_id=ident + 99), 404, "simulation_not_found")
     refused(lambda: run(sw, simulation_id=ident, expected_version=3), 409, "version_conflict")
     refused(lambda: run(sw), 422, "bad_param", "simulation_id")
-    refused(lambda: run(sw, simulation=body(sw, kind="sis")), 422, "not_ready", "kind")
+    refused(lambda: run(sw, simulation=body(sw, kind="sis")), 422, "bad_param", "method")
     refused(lambda: run(sw, simulation=body(sw, variogram={"model_id": sw.vz})), 422, "variogram_scale",
             "variogram.model_id")  # fmt: skip
     refused(lambda: run(sw, simulation=body(sw, model_id=sw.model + 99)), 404, "block_model_not_found", "model_id")

@@ -141,3 +141,44 @@ def params_hash(spec: EstimationSpec) -> str:
     row whose parameters differ from it is «устарел»."""
     text = json.dumps(spec.hash_params(), ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def without_ids(params: Mapping[str, Any]) -> dict[str, Any]:
+    """`spec.hash_params()` without the numbers of the project's objects it names - the block model, the set, the
+    tables, the filter and the wireframes of its rules, the trend, the variogram models. A project import renumbers
+    them, the objects themselves are among the `inputs` with their own fingerprints (naming another object with other
+    contents still changes the state). The fingerprint of the graph (`lineage/adapt_*`) is made of this."""
+    from bf_core.blocks.filters.schema import remap_ids
+
+    out = dict(params)
+    out.pop("model_id", None)
+    out.pop("trend_id", None)
+    if isinstance(out.get("samples"), Mapping):
+        s = {k: v for k, v in out["samples"].items() if k not in ("set_id", "table")}
+        if isinstance(s.get("domain"), Mapping):
+            s["domain"] = {k: v for k, v in s["domain"].items() if k != "table"}
+        out["samples"] = s
+    if isinstance(out.get("target"), Mapping):
+        t = {k: v for k, v in out["target"].items() if k != "filter_id"}
+        if isinstance(t.get("rules"), Mapping):
+            t["rules"] = remap_ids(t["rules"], lambda _i: 0)
+        out["target"] = t
+
+    def vario(v: Any) -> Any:
+        return {k: x for k, x in v.items() if k != "model_id"} if isinstance(v, Mapping) else v
+
+    if "variogram" in out:
+        out["variogram"] = vario(out["variogram"])
+    if isinstance(out.get("variograms"), list):
+        out["variograms"] = [vario(v) for v in out["variograms"]]
+    return out
+
+
+def graph_fingerprint(params: Mapping[str, Any], inputs: Any) -> str:
+    """SHA-256 of the parameters without the ids (`without_ids`) and of the fingerprints of the inputs (kind and `fp`,
+    not their ids; sorted): what a row of the graph (`object:estimation`, `object:simulation`) depends on."""
+    ins = sorted(f"{i.get('kind')}:{i.get('fp')}" for i in inputs or [] if isinstance(i, Mapping))
+    text = json.dumps([without_ids(params), ins], ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False)  # fmt: skip
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+

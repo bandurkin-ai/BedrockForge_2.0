@@ -15,6 +15,11 @@ What it does:
   * «Нормальные оценки» → «Реализации k / N» — `sgs.simulate` in the frame of the grid: the samples, the angles of
     the variogram model (Д-38: in normal scores, `scale: y`) and of the search ellipsoid are turned by the rotation φ
     of the model (the ellipsoid and the model keep their angles relative to the grid axes: `ang1 + φ`);
+    SIS (`kind: sis`) — `sis.simulate`: the indicator models (one per threshold or category, or the median one; scale
+    z) are turned the same way; the categories are the codes of the numeric field of the samples read by `row_id`
+    (`secondary.sample_codes`), the blob `real` holds their codes (u1). Co-SGS (`kind: cosgs`) — `cosgs.simulate`: the
+    secondary variable is the field of the block model at the nodes (`secondary.node_values`), ρ — given or computed
+    from the samples (`last_run.secondary {field, rho, rho_used, pairs, gaps}`);
   * «Запись» — one Parquet file `real` (`real.write`), and in one transaction the blob, `meta.last_run` + the inputs of
     the row (`store.commit_run`), the row itself for a body, `lineage.record` of the node `object:simulation`. A cancel,
     a failure and a stale version leave no file and no row changed.
@@ -124,32 +129,41 @@ def _threads(want: int, n: int, n_real: int, n_max: int, budget_mb: float | None
 # --- the frame of the grid -----------------------------------------------------------------------------------------
 
 
+def turned(snapshot: Any, phi: float) -> Any:
+    """The variogram model of a snapshot in the axes of the grid: the angle `ang1` of every structure is `ang1 + φ`
+    (the model keeps its angles relative to the axes of the grid)."""
+    from bf_core.geostat.variogram.model import Model, Structure, parse_model
+
+    model = parse_model(snapshot)
+    if phi == 0.0:
+        return model
+    shifted = tuple(Structure(st.type, st.c, st.a1, st.a2, st.a3, st.ang1 + phi, st.ang2, st.ang3)
+                    for st in model.structures)  # fmt: skip
+    return Model(model.c0, shifted, model.common_axes)
+
+
 def grid_frame(spec: SimulationSpec, samples: Any, grid: Any) -> tuple[Any, Any, Any, Any]:
     """(model, ellipsoid, samples, steps) of the kernel in the axes of the grid (docstring of the module): the
-    variogram model and the ellipsoid with `ang1 + φ`, the samples at `grid.to_local(xyz)` (the corner of the model is
-    the origin; a rotation of 0 changes nothing but the origin), the parent size. `spec.search` must be resolved."""
+    variogram model (of SIS — the middle one, `spec.search_variogram`: the others are `turned`) and the ellipsoid with
+    `ang1 + φ`, the samples at `grid.to_local(xyz)` (the corner of the model is the origin; a rotation of 0 changes
+    nothing but the origin), the parent size. `spec.search` must be resolved."""
     import dataclasses
 
     from bf_core.geostat.estimate.search import Ellipsoid
-    from bf_core.geostat.variogram.model import Model, Structure, parse_model
 
     s = spec.search
-    assert spec.variogram is not None and spec.variogram.snapshot is not None
+    ref = spec.search_variogram()
+    assert ref is not None and ref.snapshot is not None
     if s.angles is None or s.radii is None:
         raise ApiError(422, "search_unresolved", "Эллипсоид поиска не определён.",
                        "Выберите модель вариограммы или задайте радиусы поиска вручную.",
                        {"param": "search"})  # fmt: skip
     phi = float(grid.rotation)
-    model = parse_model(spec.variogram.snapshot)
     a1, a2, a3 = s.angles
     factor = float(s.passes[0].factor)
     ell = Ellipsoid.of((a1 + phi, a2, a3), tuple(r * factor for r in s.radii))
-    if phi != 0.0:
-        shifted = tuple(Structure(st.type, st.c, st.a1, st.a2, st.a3, st.ang1 + phi, st.ang2, st.ang3)
-                        for st in model.structures)  # fmt: skip
-        model = Model(model.c0, shifted, model.common_axes)
     local = grid.to_local(samples.xyz)
-    return model, ell, dataclasses.replace(samples, local=local), grid.regular()
+    return turned(ref.snapshot, phi), ell, dataclasses.replace(samples, local=local), grid.regular()
 
 
 def _sampler(spec: SimulationSpec, samples: Any, ell: Any) -> Any:
@@ -178,11 +192,20 @@ def _log(spec: SimulationSpec, res: Any, n: int, notes: list[str]) -> list[str]:
     tot = res.counts.sum(axis=0)
     lines = [f"Смоделировано {_blocks(n)} × {spec.n_real} реализаций (зерно {spec.seed}).", *notes]
     if int(tot[1]):
+        free = "из долей проб" if spec.kind == "sis" else "из N(0, 1)"
         lines.append(f"Узлов без условных данных (пробы и смоделированные соседи не найдены): {int(tot[1])} "
-                     "по всем реализациям — значение взято из N(0, 1) без условия.")  # fmt: skip
+                     f"по всем реализациям — значение взято {free} без условия.")  # fmt: skip
     if int(tot[2]):
         lines.append(f"Узлов в точках проб: {int(tot[2])} — взято значение пробы.")
     return lines
+
+
+def secondary_of(spec: SimulationSpec, res: Any) -> dict[str, Any]:
+    """`last_run.secondary` of a co-SGS: the field, ρ of the row (null — computed), ρ used, the pairs of the computed
+    one (0 — ρ was given), the nodes with no secondary value (modelled as SGS)."""
+    assert spec.secondary is not None
+    return {"field": spec.secondary.field, "rho": spec.secondary.rho, "rho_used": float(res.rho),
+            "pairs": int(res.rho_pairs), "gaps": int(res.n_gap)}
 
 
 def _answer(spec: SimulationSpec, ident: int, res: Any, n: int, clock: _Clock, log: list[str]) -> dict[str, Any]:
@@ -190,9 +213,63 @@ def _answer(spec: SimulationSpec, ident: int, res: Any, n: int, clock: _Clock, l
     cond = res.cond
     return {"simulation_id": ident, "nodes": n, "realizations": spec.n_real, "seconds": round(float(res.seconds), 3),
             "counts": {"degenerate": int(tot[0]), "free": int(tot[1]), "on_sample": int(tot[2]),
+                       **({"gap": int(tot[3])} if tot.size > 3 else {}),
                        "cond": {"min": int(cond.min()), "mean": round(float(cond.mean()), 3), "max": int(cond.max())}},
+            **({"secondary": secondary_of(spec, res)} if spec.kind == "cosgs" else {}),
             "log": log, "stages": clock.stages(),
             "events": [["geostat.changed", {"kind": sto.KIND, "id": ident}]]}  # fmt: skip
+
+
+# --- the kernels -----------------------------------------------------------------------------------------------------
+
+
+class Kernel:
+    """The call of the kernel of the kind of the row with what it needs (the module docstring): `simulate(model, p,
+    grid)` → the result of `sgs.simulate`, `sis.simulate` or `cosgs.simulate` (`real`, `counts`, `cond`, `seconds`,
+    `notes`; a co-SGS adds `rho`, `rho_pairs`, `n_gap`)."""
+
+    def __init__(self, spec: SimulationSpec, project: Any, samples: Any, local: Any, ng: Any, centres: Any, ell: Any,
+                 kmodel: Any, steps: Any, sampler: Any, threads: int, tick: Any) -> None:  # fmt: skip
+        self.spec, self.project, self.samples, self.local = spec, project, samples, local
+        self.ng, self.centres, self.ell, self.kmodel, self.steps = ng, centres, ell, kmodel, steps
+        self.sampler, self.threads, self.tick = sampler, threads, tick
+
+    def simulate(self, model: Any, p: Any, grid: Any) -> Any:
+        spec = self.spec
+        if spec.kind == "sis":
+            return self._sis(grid)
+        from . import sgs as sg
+
+        n_max = spec.search.passes[0].n_max
+        par = sg.SgsParams(self.kmodel, self.ell, self.steps, spec.seed, spec.n_real, n_max, spec.nodes,
+                           *spec.nscore.tails(), spec.nscore.ltpar, spec.nscore.utpar)  # fmt: skip
+        if spec.kind == "cosgs":
+            from . import cosgs, secondary
+
+            assert spec.secondary is not None
+            values = secondary.node_values(model, p, spec.secondary.field, lambda _a, _b: self.tick(None, None))
+            return cosgs.simulate(par, self.local, self.ng, self.centres, values, spec.secondary.rho,
+                                  threads=self.threads, tick=self.tick, sampler=self.sampler)  # fmt: skip
+        return sg.simulate(par, self.local, self.ng, self.centres, threads=self.threads, tick=self.tick,
+                           sampler=self.sampler)  # fmt: skip
+
+    def _sis(self, grid: Any) -> Any:
+        from . import secondary, sis
+
+        spec = self.spec
+        m = spec.method
+        assert m is not None
+        phi = float(grid.rotation)
+        refs = spec.variograms if m.models == "per" else (spec.variogram,)
+        models = tuple(turned(r.snapshot, phi) for r in refs or () if r is not None)
+        lt, ut = spec.nscore.tails()
+        par = sis.SisParams(models, self.ell, self.steps, thresholds=m.thresholds or None,
+                            codes=m.categories or None, seed=spec.seed, n_real=spec.n_real,
+                            n_max=spec.search.passes[0].n_max, nodes=spec.nodes, ltail=lt, utail=ut,
+                            ltpar=spec.nscore.ltpar, utpar=spec.nscore.utpar)  # fmt: skip
+        cat = secondary.sample_codes(self.project, spec, self.samples) if m.categorical else None
+        return sis.simulate(par, self.local, self.ng, self.centres, cat=cat, threads=self.threads, tick=self.tick,
+                            sampler=self.sampler)  # fmt: skip
 
 
 # --- the run ----------------------------------------------------------------------------------------------------------
@@ -261,8 +338,6 @@ def run_simulate(
     ng = NodeGrid.of(grid.counts, p)
     kmodel, ell, local, steps = grid_frame(spec, samples, grid)
     n_max = spec.search.passes[0].n_max
-    par = sg.SgsParams(kmodel, ell, steps, spec.seed, spec.n_real, n_max, spec.nodes, *spec.nscore.tails(),
-                       spec.nscore.ltpar, spec.nscore.utpar)  # fmt: skip
     centres = sg.grid_centres(ng, steps)
     sampler = _sampler(spec, local, ell)
     want = strips.default_threads() if threads is None else int(threads)
@@ -277,10 +352,12 @@ def run_simulate(
             clock(AT_SIM + (AT_WRITE - AT_SIM) * progress, label)
 
     clock(AT_LOAD + 0.04, S_NSCORE)
-    res = sg.simulate(par, local, ng, centres, threads=n_threads, tick=sim_tick, sampler=sampler)
+    k = Kernel(spec, project, samples, local, ng, centres, ell, kmodel, steps, sampler, n_threads, sim_tick)
+    res = k.simulate(model, p, grid)
     clock(AT_WRITE, S_WRITE)
-    staged = real.write(store, p, np.zeros(p.size, dtype=np.int16), res.real)
-    summary = real.stats_of(res.real)
+    cats = spec.method.categories if spec.categorical and spec.method is not None else None
+    staged = real.write(store, p, np.zeros(p.size, dtype=np.int16), res.real, "u1" if cats else "f4")
+    summary = real.stats_cats(res.real, cats) if cats else real.stats_of(res.real)
     res.real = np.empty((0, 0))  # the realizations are in the file now: the memory goes back before the transaction
     now = dialect.utcnow().isoformat()
     log = _log(spec, res, ng.n, list(res.notes))
@@ -320,6 +397,8 @@ def _commit(conn: sa.Connection, store: BlobStore, row: Any, spec: SimulationSpe
             "cond": {"min": int(res.cond.min()), "mean": round(float(res.cond.mean()), 3), "max": int(res.cond.max())},
             "samples": {"rows": int(used.get("rows", 0)), "used": int(used.get("selected", 0))},
             "summary": summary}  # fmt: skip
+    if spec.kind == "cosgs":
+        last["secondary"] = secondary_of(spec, res)
     sto.commit_run(conn, store, ident, staged, last, inputs, [float(v) for v in samples.origin])
     return ident
 
