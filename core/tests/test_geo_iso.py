@@ -315,6 +315,55 @@ def test_tick_is_monotone_in_0_1_and_may_cancel() -> None:
         run(levels=2, tick=stop)
 
 
+@pytest.mark.parametrize("threads", [1, 4])
+def test_cancel_stops_the_wave_at_once_not_after_all_its_chunks(threads: int) -> None:
+    """Review 19.29б: with threads > 1 every chunk of a wave was submitted at once and a cancel from `tick` waited for
+    all of them; at most workers + 1 chunks are in flight now (a few field calls, not the wave)."""
+    import threading
+
+    lock = threading.Lock()
+    calls = [0]
+
+    def counted(p: np.ndarray) -> np.ndarray:
+        with lock:
+            calls[0] += 1
+        return sphere(p)
+
+    class Cancel(Exception):
+        pass
+
+    def stop(fraction: float, message: str) -> None:
+        if fraction > 0.09:
+            raise Cancel
+
+    with pytest.raises(Cancel):
+        run(counted, levels=2, threads=threads, tick=stop, chunk_bricks=2)
+    cancelled = calls[0]
+    calls[0] = 0
+    run(counted, levels=2, threads=threads, chunk_bricks=2)
+    assert cancelled < calls[0] / 4  # a handful of chunks of the whole run
+
+
+def test_a_field_runs_on_one_thread_inside_a_brick_worker() -> None:
+    """The parallelism is on the level of the bricks: the field is told `threads=1` in a worker (no T² threads) and
+    the coarse grid (the calling thread) may still use all of them; the bits are the same."""
+    from bf_core.geo.iso import field_threads
+
+    seen: list[int] = []
+
+    def probe(p: np.ndarray) -> np.ndarray:
+        seen.append(field_threads(4))
+        return sphere(p)
+
+    one = run(probe, levels=2, threads=1)
+    assert set(seen) == {4}  # the serial run keeps the threads for the field
+    seen.clear()
+    many = run(probe, levels=2, threads=4, chunk_bricks=2)
+    assert 4 in seen and 1 in seen  # the coarse grid in the calling thread, the bricks in the workers
+    assert seen.count(1) > seen.count(4)
+    assert same(one, many)
+
+
 def test_bad_parameters_and_a_bad_field_are_errors_in_russian() -> None:
     for kw in ({"h": 0.0}, {"levels": 0}, {"levels": 6}, {"box": ((0, 0, 0), (-1, 1, 1))}):
         with pytest.raises(IsoError) as e:

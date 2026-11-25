@@ -158,10 +158,10 @@ def test_ball_of_a_patch_is_bounded_in_n_patch() -> None:
     old = build_patches(pts, n_patch=300, n_min=40, ball_factor=None)
     new = build_patches(pts, n_patch=300, n_min=40, ball_factor=3.0)
     assert old.sizes.max() > 3 * 300  # the case exists: without the bound the patch is far larger
-    # the count is taken before the x1.25 growth for n_min: a patch that did not grow obeys the bound exactly
-    # (a sparse leaf grown until it reaches a dense area may jump over it, the spec has no bound for that case)
+    # a patch that did not grow obeys the bound exactly; a grown one holds ~n_min points (the least radius), so all do
     r0 = 1.25 * 0.5 * np.linalg.norm(new.leaf_max - new.leaf_min, axis=1)
     assert (new.sizes[new.radii == r0] <= 3 * 300).all()
+    assert new.sizes.max() <= 3 * 300
     assert new.sizes.max() < old.sizes.max() / 2
     assert new.n_patches > old.n_patches
     assert new.leaf_counts.sum() == len(pts) and membership(new, len(pts)).min() >= 1
@@ -196,21 +196,41 @@ def test_patch_order_is_morton_depth_first_and_stable() -> None:
 # ---------------------------------------------------------------- N_min and radii
 
 
-def test_n_min_is_met_and_radius_grows_by_the_factor() -> None:
+def test_n_min_is_met_with_the_least_radius_not_under_r0() -> None:
+    """R = R0 when the ball of R0 holds n_min points, else the distance to the n_min-th nearest point (the least R that
+    does; between the last two steps of the ×1.25 rule of ТЗ 8.9.2, review 19.29б)."""
     pts, _ = canonical(clustered(6000))
     n_min, delta = 80, 0.25
     ps = build_patches(pts, n_patch=400, n_min=n_min, delta=delta)
     sizes = np.diff(ps.indptr)
     assert sizes.min() >= n_min
     r0 = (1 + delta) * 0.5 * np.linalg.norm(ps.leaf_max - ps.leaf_min, axis=1)
-    k = np.log(ps.radii / r0) / np.log(GROWTH)
-    assert (np.abs(k - np.round(k)) < 1e-9).all() and (k > -1e-9).all()
-    assert (k > 0.5).any(), "the clustered set must have patches that needed growing"
-    # minimality: one step less (R / 1.25) would have given fewer than n_min points
-    grown = np.flatnonzero(k > 0.5)
-    for j in grown[:20]:
-        d = np.linalg.norm(pts - ps.centers[j], axis=1)
-        assert (d <= ps.radii[j] / GROWTH).sum() < n_min
+    assert (ps.radii >= r0).all()
+    grown = np.flatnonzero(ps.radii > r0)
+    assert grown.size > 5, "the clustered set must have patches that needed growing"
+    for j in grown:
+        d = np.sort(np.linalg.norm(pts - ps.centers[j], axis=1))
+        assert d[n_min - 1] <= ps.radii[j] <= d[n_min - 1] * (1 + 1e-8)  # the n_min-th point is at the edge
+        assert (d <= r0[j]).sum() < n_min  # R0 did not hold n_min: the old rule would have grown it by 1.25^k
+        # inside the old rule's radius: the first step 1.25^k·R0 that holds n_min points is not smaller
+        k = np.ceil(np.log(d[n_min - 1] / r0[j]) / np.log(GROWTH) - 1e-12)
+        assert ps.radii[j] <= r0[j] * GROWTH**k * (1 + 1e-8)
+    kept = np.flatnonzero(ps.radii == r0)
+    assert kept.size and (sizes[kept] >= n_min).all()
+
+
+def test_a_sparse_patch_next_to_a_dense_core_does_not_swallow_it() -> None:
+    """Review 19.29б: the ball of an empty leaf was grown ×1.25 under n_min, the last step jumped over the edge of a
+    dense core and the patch held the whole core (16 000 points for n_patch = 1000). The least radius for n_min stops
+    at ~n_min points: no patch is over ball_factor · n_patch."""
+    rng = np.random.default_rng(1)
+    core = rng.normal(0, 3.0, (8000, 3)) + np.array([60.0, -40.0, 20.0])
+    sparse = rng.uniform(-200, 200, (1200, 3))
+    pts, _ = canonical(np.vstack([core, sparse]))
+    ps = build_patches(pts, n_patch=300, n_min=40, delta=0.25, extent=([-200.0] * 3, [200.0] * 3))
+    assert ps.sizes.max() <= 3 * 300
+    assert ps.leaf_counts.sum() == len(pts) and membership(ps, len(pts)).min() >= 1
+    assert same(ps, build_patches(pts, n_patch=300, n_min=40, delta=0.25, extent=([-200.0] * 3, [200.0] * 3)))
 
 
 def test_patch_points_are_exactly_the_ball_in_ascending_order() -> None:

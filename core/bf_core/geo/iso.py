@@ -25,9 +25,11 @@ intersections, the volume) and the steps of 8 are `geo.solids`, `geo.checks`, `g
 The result is a function of the field, the box, h and L: not of the order of the bricks, the size of the chunks,
 nor of `threads` (bit for bit). The vertices are numbered by their first use in the triangles, the triangles
 are in the order (the cell of the centroid, the brick, the number in the output of marching_cubes). `tick(fraction,
-message)` is called in the calling thread and may raise to cancel; with `threads` > 1 the field and the store are
-called from the threads of the pool. Memory: the coarse grid (4 bytes a node, at most 1e8 nodes) and the triangles
-(about 100 bytes a triangle at the end of the run); a chunk of bricks is 2^19 field points.
+message)` is called in the calling thread and may raise to cancel (at most `threads` + 1 chunks of a wave are in
+flight, so a cancel waits for those and no more); with `threads` > 1 the field and the store are called from the
+threads of the pool, and `field_threads(t)` tells a field that has threads of its own to use 1 there.
+Memory: the coarse grid (4 bytes a node, at most 1e8 nodes) and the triangles (about 100 bytes a triangle at the end
+of the run); a chunk of bricks is 2^19 field points.
 
 Time and memory (подшаг 19.5; a sphere of 2.06 M triangles, 1.03 M vertices, h = 1, the field a norm — the cost of
 the field itself is not in it; 4 cores): L = 2, dilate = 1: 5.6 s on one thread (2.7 s on 4), peak 0.7 GB, 25.9 M field
@@ -40,8 +42,10 @@ number × the time of a point of its field (19.4: ns a term).
 from __future__ import annotations
 
 import math
+import threading
+from collections import deque
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from typing import Any
@@ -211,6 +215,15 @@ def _assemble(grid: Grid, parts: list[BrickMesh]) -> tuple[np.ndarray, np.ndarra
     return np.ascontiguousarray(verts), np.ascontiguousarray(tri.astype(np.int32))
 
 
+_IN_BRICK = threading.local()
+
+
+def field_threads(threads: int) -> int:
+    """The threads a field may use for one call: 1 inside a brick worker of `isosurface` (the parallelism is on the
+    level of the bricks, not threads inside threads), `threads` elsewhere (the coarse grid, the calling thread)."""
+    return 1 if getattr(_IN_BRICK, "on", False) else max(int(threads), 1)
+
+
 def isosurface(
     field: Field,
     lo: Any,
@@ -249,6 +262,7 @@ def isosurface(
     _tick(tick, 0.08, "Изоповерхность: кирпичи")
 
     def work(lin: np.ndarray) -> tuple[BrickMesh, np.ndarray, dict, int]:
+        _IN_BRICK.on = workers > 1  # only pool threads are marked
         bricks = grid.unlin(lin)
         counters: dict[str, int] = {}
         vals = brick_values(grid, bricks, field, cache, counters)
@@ -262,10 +276,19 @@ def isosurface(
         chunks = [order[i : i + per_chunk] for i in range(0, len(order), per_chunk)]
         wave_total = done + len(order)
         exits: list[np.ndarray] = []
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [pool.submit(work, c) for c in chunks] if workers > 1 else None
-            for i, c in enumerate(chunks):
-                mesh, ex, counters, crossing = futures[i].result() if futures else work(c)
+        pool = ThreadPoolExecutor(max_workers=workers) if workers > 1 else None
+        try:
+            # at most workers + 1 chunks are in flight, so a cancel from `tick` waits for a few chunks, not the wave
+            pending: deque[Future] = deque()
+            nxt = 0
+            for c in chunks:
+                if pool is not None:
+                    while nxt < len(chunks) and len(pending) <= workers:
+                        pending.append(pool.submit(work, chunks[nxt]))
+                        nxt += 1
+                    mesh, ex, counters, crossing = pending.popleft().result()
+                else:
+                    mesh, ex, counters, crossing = work(c)
                 parts.append(mesh)
                 exits.append(ex)
                 stats.nodes += counters.get("nodes", 0)
@@ -273,6 +296,9 @@ def isosurface(
                 stats.meshed_bricks += crossing
                 done += len(c)
                 _tick(tick, 0.08 + 0.8 * done / max(wave_total, 1), "Изоповерхность: кирпичи")
+        finally:
+            if pool is not None:
+                pool.shutdown(wait=True, cancel_futures=True)
         new = np.unique(np.concatenate(exits)) if exits else np.zeros(0, dtype=np.int64)
         new = new[~seen[new]]
         seen[new] = True

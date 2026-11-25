@@ -2,10 +2,12 @@
 
 The model extent (+10 %, in the space after the global anisotropy matrix A) is divided into octree leaves until each
 leaf holds at most `n_patch` points; a patch is the ball around a leaf centre with R = (1 + delta) * half the leaf
-diagonal, grown by x1.25 until it holds at least `n_min` points. A second splitting criterion bounds the work of a
-patch (19.4b): a leaf is split further while the ball of its patch (before the growth for `n_min`) holds more than
-`ball_factor * n_patch` points, so a big sparse leaf next to a dense area does not give a patch of tens of thousands of
-points; the interpolant is the same in kind, only the patches are smaller and more numerous. The result depends
+diagonal, grown (the ×1.25 rule of ТЗ 8.9.2, taken to its limit: to the least R that holds `n_min` points, the
+distance to the n_min-th nearest point) until it holds at least `n_min` points. A second splitting criterion bounds
+the work of a patch (19.4b): a leaf is split further while the ball of its patch (before the growth for `n_min`)
+holds more than `ball_factor * n_patch` points, so a big sparse leaf next to a dense area does not give a patch of
+tens of thousands of points; the interpolant is the same in kind, only the patches are smaller and more numerous.
+The result depends
 only on the points and the parameters: not on the input order of canonically ordered points, not on threads, no
 global state, no side effects.
 
@@ -52,6 +54,8 @@ BALL_FACTOR = 3.0
 MAX_DEPTH = 20
 #: A flat extent (planar or collinear data) gets this share of the largest span along its thin axes.
 _FLAT_SPAN = 1e-3
+#: The ball of the n_min-th nearest point is this share wider than its distance (the rounding of the squares).
+_KTH_SLACK = 1e-9
 _HASH_TAG = b"bf-rbf-patch/1"
 _TICK_EVERY = 64
 
@@ -250,15 +254,26 @@ def _leaves(pts: F8, tree: cKDTree, lo: F8, hi: F8, n_patch: int, delta: float, 
 
 
 def _balls(tree: cKDTree, centers: F8, r0: F8, n_min: int, tick: Tick | None) -> F8:
-    """R_j = R0_j · 1.25^k with the least k giving at least `n_min` points (multiplications in a fixed order)."""
+    """R_j = R0_j when its ball holds `n_min` points, else the least R that does: the distance to the `n_min`-th
+    nearest point (a hair more, so the ball holds it). It lies between R0·1.25^(k−1) and R0·1.25^k, the radius of the
+    rule «grow by 1.25 until n_min points» (ТЗ 8.9.2), and never under R0: the cover and the overlap stay, but a
+    sparse leaf next to a dense core no longer jumps over the core with the last step of 25 % (review 19.29б: a patch
+    of 16 000 points instead of ~100)."""
     radii = r0.copy()
     counts = np.asarray(tree.query_ball_point(centers, radii, return_length=True, workers=1), dtype=np.int64)
+    short = np.flatnonzero(counts < n_min)
+    if short.size:
+        kth = np.asarray(tree.query(centers[short], k=n_min, workers=1)[0], dtype=np.float64).reshape(short.size, -1)
+        radii[short] = np.maximum(radii[short], kth[:, -1] * (1.0 + _KTH_SLACK))
+        if tick is not None:
+            tick()
+    # the net: whatever the rounding left short grows by the old rule (a fixed order of multiplications)
     for _ in range(4000):
+        counts = np.asarray(tree.query_ball_point(centers, radii, return_length=True, workers=1), dtype=np.int64)
         short = np.flatnonzero(counts < n_min)
         if short.size == 0:
             return radii
         radii[short] *= GROWTH
-        counts[short] = tree.query_ball_point(centers[short], radii[short], return_length=True, workers=1)
         if tick is not None:
             tick()
     raise _bad("rbf_patch_radius", "Не удалось подобрать радиус участка: данные вырождены.",

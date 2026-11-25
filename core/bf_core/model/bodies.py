@@ -184,13 +184,13 @@ def _domain_surface(
     brick_cache: BrickCache | None, journal: list[str], timing: dict[str, float],
 ) -> tuple[Any, Any] | None:  # fmt: skip
     """The closed surface f = 0 of a group, post-processed and checked (None — the group has no body in the box)."""
-    from bf_core.geo.iso import isosurface
+    from bf_core.geo.iso import field_threads, isosurface
     from bf_core.geo.iso_post import IsoError, postprocess
 
     group, pf = fit.group, fit.field
 
     def fn(p: F8) -> F8:
-        return pf(p, threads=threads)
+        return pf(p, threads=field_threads(threads))  # 1 inside a brick worker: no threads inside threads
 
     started = time.perf_counter()
     try:
