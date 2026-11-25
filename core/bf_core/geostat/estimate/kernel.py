@@ -364,8 +364,9 @@ def _is_pk(key: str) -> bool:
 def _one_portion(rk: RowKernel, p: Portion, local: bool, trace: _Trace | None = None) -> ChunkResult:
     centres = np.asarray(p.centres, dtype=np.float64).reshape(-1, 3)
     m = centres.shape[0]
-    c = centres if local else centres - rk.samples.origin
-    c = np.ascontiguousarray(c)
+    c = np.ascontiguousarray(centres if local else centres - rk.samples.origin)
+    if not c.flags.writeable:  # local centres of a cached column: one signature for numba (lesson 17.39б)
+        c = c.copy()
     act: np.ndarray = np.asarray(np.isfinite(c).all(axis=1))
     if p.active is not None:
         act &= np.asarray(p.active, dtype=np.bool_).reshape(m)
