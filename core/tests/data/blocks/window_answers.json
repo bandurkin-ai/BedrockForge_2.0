@@ -1,0 +1,857 @@
+{
+ "rules": "ответы настоящего ядра (test_blocks_window_answers.py); времена и размер файла не хранятся",
+ "ids": {
+  "turned": 1,
+  "plain": 2,
+  "filter": 3
+ },
+ "blocks": {
+  "status": 200,
+  "body": {
+   "block_models": [
+    {
+     "name": "Плоская",
+     "folder": null,
+     "extent": [
+      1000.0,
+      2000.0,
+      100.0,
+      1080.0,
+      2060.0,
+      120.0
+     ],
+     "crs": null,
+     "id": 2,
+     "version": 1,
+     "size": 3138,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       1000.0,
+       2000.0,
+       100.0
+      ],
+      "counts": [
+       8,
+       6,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       5.0
+      ],
+      "order": "F",
+      "rotation": 0.0,
+      "div": [
+       1,
+       1,
+       1
+      ],
+      "variable": false,
+      "levels": [
+       0,
+       0,
+       0
+      ]
+     },
+     "cells": 177,
+     "rows": 177,
+     "parents": 177,
+     "sub": false,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "g/t",
+       "role": null
+      },
+      {
+       "name": "OK",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "ROCK",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": null
+      }
+     ],
+     "source": {
+      "op": "import",
+      "format": "dat",
+      "file": "m.dat"
+     },
+     "warnings": [],
+     "created_at": "2026-11-24T23:49:47.445569+00:00",
+     "updated_at": "2026-11-24T23:49:47.445569+00:00"
+    },
+    {
+     "name": "Повёрнутая с субблоками",
+     "folder": null,
+     "extent": [
+      512095.4,
+      7100010.6,
+      255.2,
+      512172.3615242271,
+      7100083.901270188,
+      275.2
+     ],
+     "crs": null,
+     "id": 1,
+     "version": 1,
+     "size": 5873,
+     "meta_v": 2,
+     "grid": {
+      "corner": [
+       512120.4,
+       7100010.6,
+       255.2
+      ],
+      "counts": [
+       6,
+       5,
+       4
+      ],
+      "size": [
+       10.0,
+       10.0,
+       5.0
+      ],
+      "order": "F",
+      "rotation": 30.0,
+      "div": [
+       2,
+       2,
+       2
+      ],
+      "variable": false,
+      "levels": [
+       1,
+       1,
+       1
+      ]
+     },
+     "cells": 225,
+     "rows": 225,
+     "parents": 99,
+     "sub": true,
+     "full": false,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "g/t",
+       "role": "grade"
+      },
+      {
+       "name": "OK",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "FLAT",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": "%",
+       "role": null
+      },
+      {
+       "name": "EMPTYF",
+       "kind": "number",
+       "dtype": "f8",
+       "unit": null,
+       "role": null
+      },
+      {
+       "name": "ROCK",
+       "kind": "category",
+       "dtype": "cat",
+       "unit": null,
+       "role": "code"
+      }
+     ],
+     "source": {
+      "op": "import",
+      "format": "dat",
+      "file": "turned.dat"
+     },
+     "warnings": [],
+     "created_at": "2026-11-24T23:49:47.435095+00:00",
+     "updated_at": "2026-11-24T23:49:47.435095+00:00"
+    }
+   ]
+  }
+ },
+ "turned": {
+  "status": 200,
+  "body": {
+   "name": "Повёрнутая с субблоками",
+   "folder": null,
+   "extent": [
+    512095.4,
+    7100010.6,
+    255.2,
+    512172.3615242271,
+    7100083.901270188,
+    275.2
+   ],
+   "crs": null,
+   "id": 1,
+   "version": 1,
+   "size": 5873,
+   "meta_v": 2,
+   "grid": {
+    "corner": [
+     512120.4,
+     7100010.6,
+     255.2
+    ],
+    "counts": [
+     6,
+     5,
+     4
+    ],
+    "size": [
+     10.0,
+     10.0,
+     5.0
+    ],
+    "order": "F",
+    "rotation": 30.0,
+    "div": [
+     2,
+     2,
+     2
+    ],
+    "variable": false,
+    "levels": [
+     1,
+     1,
+     1
+    ]
+   },
+   "cells": 225,
+   "rows": 225,
+   "parents": 99,
+   "sub": true,
+   "full": false,
+   "fields": [
+    {
+     "name": "AU",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "g/t",
+     "description": "Золото, в пересчёте на сухую массу",
+     "role": "grade",
+     "stats": {
+      "count": 211,
+      "missing": 14,
+      "min": 0.04879576986450612,
+      "max": 14.786401661945995,
+      "mean": 1.470032793152109,
+      "std": 1.8670842415206175
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "OK",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": null,
+     "description": null,
+     "role": null,
+     "stats": {
+      "count": 225,
+      "missing": 0,
+      "min": 0.0,
+      "max": 1.0,
+      "mean": 0.9377777777777778,
+      "std": 0.24155872429691005
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "FLAT",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "%",
+     "description": null,
+     "role": null,
+     "stats": {
+      "count": 225,
+      "missing": 0,
+      "min": 1.0,
+      "max": 1.0,
+      "mean": 1.0,
+      "std": 0.0
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "EMPTYF",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": null,
+     "description": null,
+     "role": null,
+     "stats": {
+      "count": 0,
+      "missing": 225,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "std": null
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "ROCK",
+     "kind": "category",
+     "dtype": "cat",
+     "unit": null,
+     "description": null,
+     "role": "code",
+     "labels": [
+      "руда",
+      "порода",
+      "окисленная",
+      "дайка",
+      "вода"
+     ],
+     "stats": {
+      "count": 204,
+      "missing": 21,
+      "counts": [
+       40,
+       41,
+       41,
+       41,
+       41
+      ]
+     },
+     "file": "cells",
+     "source": null
+    }
+   ],
+   "source": {
+    "op": "import",
+    "format": "dat",
+    "file": "turned.dat"
+   },
+   "warnings": [],
+   "checks": {
+    "at": "2026-11-24T23:49:47Z",
+    "duplicates": 0,
+    "overlaps": {
+     "n": 0,
+     "method": "exact"
+    },
+    "empty": [
+     "EMPTYF"
+    ],
+    "constant": [
+     "FLAT"
+    ],
+    "volume": 49500.0,
+    "examples": []
+   },
+   "groups": [
+    {
+     "rows": 225,
+     "k0": 0,
+     "k1": 3
+    }
+   ],
+   "inputs": null,
+   "algo": null,
+   "created_at": "2026-11-24T23:49:47.435095+00:00",
+   "updated_at": "2026-11-24T23:49:47.435095+00:00"
+  }
+ },
+ "plain": {
+  "status": 200,
+  "body": {
+   "name": "Плоская",
+   "folder": null,
+   "extent": [
+    1000.0,
+    2000.0,
+    100.0,
+    1080.0,
+    2060.0,
+    120.0
+   ],
+   "crs": null,
+   "id": 2,
+   "version": 1,
+   "size": 3138,
+   "meta_v": 2,
+   "grid": {
+    "corner": [
+     1000.0,
+     2000.0,
+     100.0
+    ],
+    "counts": [
+     8,
+     6,
+     4
+    ],
+    "size": [
+     10.0,
+     10.0,
+     5.0
+    ],
+    "order": "F",
+    "rotation": 0.0,
+    "div": [
+     1,
+     1,
+     1
+    ],
+    "variable": false,
+    "levels": [
+     0,
+     0,
+     0
+    ]
+   },
+   "cells": 177,
+   "rows": 177,
+   "parents": 177,
+   "sub": false,
+   "full": false,
+   "fields": [
+    {
+     "name": "AU",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "g/t",
+     "description": null,
+     "role": null,
+     "stats": {
+      "count": 176,
+      "missing": 1,
+      "min": 0.06750886038999138,
+      "max": 3.995209950529607,
+      "mean": 1.8497014761261168,
+      "std": 1.1743357251216
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "OK",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": null,
+     "description": null,
+     "role": null,
+     "stats": {
+      "count": 177,
+      "missing": 0,
+      "min": 0.0,
+      "max": 1.0,
+      "mean": 0.8192090395480226,
+      "std": 0.38484488962545543
+     },
+     "file": "cells",
+     "source": null
+    },
+    {
+     "name": "ROCK",
+     "kind": "category",
+     "dtype": "cat",
+     "unit": null,
+     "description": null,
+     "role": null,
+     "labels": [
+      "руда",
+      "порода",
+      "окисленная",
+      "дайка",
+      "вода"
+     ],
+     "stats": {
+      "count": 177,
+      "missing": 0,
+      "counts": [
+       43,
+       47,
+       46,
+       41,
+       0
+      ]
+     },
+     "file": "cells",
+     "source": null
+    }
+   ],
+   "source": {
+    "op": "import",
+    "format": "dat",
+    "file": "m.dat"
+   },
+   "warnings": [],
+   "checks": null,
+   "groups": [
+    {
+     "rows": 177,
+     "k0": 0,
+     "k1": 3
+    }
+   ],
+   "inputs": null,
+   "algo": null,
+   "created_at": "2026-11-24T23:49:47.445569+00:00",
+   "updated_at": "2026-11-24T23:49:47.445569+00:00"
+  }
+ },
+ "fields": {
+  "status": 200,
+  "body": {
+   "id": 1,
+   "name": "Повёрнутая с субблоками",
+   "version": 1,
+   "stale": false,
+   "stale_reason": null,
+   "fields": [
+    {
+     "name": "AU",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "g/t",
+     "description": "Золото, в пересчёте на сухую массу",
+     "role": "grade",
+     "labels_count": 0,
+     "stats": {
+      "count": 211,
+      "missing": 14,
+      "min": 0.04879576986450612,
+      "max": 14.786401661945995,
+      "mean": 1.470032793152109,
+      "std": 1.8670842415206175
+     },
+     "file": "cells",
+     "source": null,
+     "stale": false,
+     "stale_reason": null,
+     "rebuildable": false,
+     "required": false,
+     "deletable": true,
+     "usage": []
+    },
+    {
+     "name": "OK",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": null,
+     "description": null,
+     "role": null,
+     "labels_count": 0,
+     "stats": {
+      "count": 225,
+      "missing": 0,
+      "min": 0.0,
+      "max": 1.0,
+      "mean": 0.9377777777777778,
+      "std": 0.24155872429691005
+     },
+     "file": "cells",
+     "source": null,
+     "stale": false,
+     "stale_reason": null,
+     "rebuildable": false,
+     "required": false,
+     "deletable": true,
+     "usage": []
+    },
+    {
+     "name": "FLAT",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": "%",
+     "description": null,
+     "role": null,
+     "labels_count": 0,
+     "stats": {
+      "count": 225,
+      "missing": 0,
+      "min": 1.0,
+      "max": 1.0,
+      "mean": 1.0,
+      "std": 0.0
+     },
+     "file": "cells",
+     "source": null,
+     "stale": false,
+     "stale_reason": null,
+     "rebuildable": false,
+     "required": false,
+     "deletable": true,
+     "usage": []
+    },
+    {
+     "name": "EMPTYF",
+     "kind": "number",
+     "dtype": "f8",
+     "unit": null,
+     "description": null,
+     "role": null,
+     "labels_count": 0,
+     "stats": {
+      "count": 0,
+      "missing": 225,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "std": null
+     },
+     "file": "cells",
+     "source": null,
+     "stale": false,
+     "stale_reason": null,
+     "rebuildable": false,
+     "required": false,
+     "deletable": true,
+     "usage": []
+    },
+    {
+     "name": "ROCK",
+     "kind": "category",
+     "dtype": "cat",
+     "unit": null,
+     "description": null,
+     "role": "code",
+     "labels_count": 5,
+     "stats": {
+      "count": 204,
+      "missing": 21,
+      "counts": [
+       40,
+       41,
+       41,
+       41,
+       41
+      ]
+     },
+     "file": "cells",
+     "source": null,
+     "stale": false,
+     "stale_reason": null,
+     "rebuildable": false,
+     "required": false,
+     "deletable": true,
+     "usage": []
+    }
+   ]
+  }
+ },
+ "quick": {
+  "rules": {
+   "op": "and",
+   "items": [
+    {
+     "cond": {
+      "field": "OK",
+      "op": ">",
+      "value": 0.5
+     }
+    },
+    {
+     "cond": {
+      "field": "AU",
+      "op": ">=",
+      "value": 1.5
+     }
+    }
+   ]
+  },
+  "inverted": {
+   "op": "not",
+   "items": [
+    {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "OK",
+        "op": ">",
+        "value": 0.5
+       }
+      },
+      {
+       "cond": {
+        "field": "AU",
+        "op": ">=",
+        "value": 1.5
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "filters": {
+  "saved": {
+   "status": 200,
+   "body": {
+    "id": 3,
+    "name": "Ограничитель · Повёрнутая",
+    "folder": null,
+    "version": 1,
+    "text": "OK > 0.5 AND AU >= 1.5",
+    "title": "OK > 0.5 И AU >= 1.5",
+    "fields": [
+     "OK",
+     "AU"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T23:49:47.457773Z",
+    "updated_at": "2026-11-24T23:49:47.457773Z",
+    "rules": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "OK",
+        "op": ">",
+        "value": 0.5
+       }
+      },
+      {
+       "cond": {
+        "field": "AU",
+        "op": ">=",
+        "value": 1.5
+       }
+      }
+     ]
+    },
+    "wireframes": []
+   }
+  },
+  "twice": {
+   "status": 409,
+   "body": {
+    "param": "name",
+    "code": "name_taken",
+    "message": "Фильтр «Ограничитель · Повёрнутая» уже есть.",
+    "hint": "Введите другое название."
+   }
+  },
+  "missing_field": {
+   "status": 422,
+   "body": {
+    "field": "ZZ",
+    "model": "Повёрнутая с субблоками",
+    "code": "filter_field_missing",
+    "message": "В модели «Повёрнутая с субблоками» нет поля «ZZ», которое нужно фильтру.",
+    "hint": "Выберите другую модель или другой фильтр, либо добавьте поле в модель."
+   }
+  },
+  "bad_value": {
+   "status": 422,
+   "body": {
+    "param": "rules.cond.value",
+    "code": "filter_rules",
+    "message": "У условия нет значения.",
+    "hint": "Введите значение для сравнения."
+   }
+  },
+  "inverted": {
+   "status": 200,
+   "body": {
+    "id": 4,
+    "name": "Обратный",
+    "folder": null,
+    "version": 1,
+    "text": "NOT (OK > 0.5 AND AU >= 1.5)",
+    "title": "НЕ (OK > 0.5 И AU >= 1.5)",
+    "fields": [
+     "OK",
+     "AU"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T23:49:47.545718Z",
+    "updated_at": "2026-11-24T23:49:47.545718Z",
+    "rules": {
+     "op": "not",
+     "items": [
+      {
+       "op": "and",
+       "items": [
+        {
+         "cond": {
+          "field": "OK",
+          "op": ">",
+          "value": 0.5
+         }
+        },
+        {
+         "cond": {
+          "field": "AU",
+          "op": ">=",
+          "value": 1.5
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "wireframes": []
+   }
+  },
+  "list": {
+   "status": 200,
+   "body": {
+    "filters": [
+     {
+      "id": 4,
+      "name": "Обратный",
+      "folder": null,
+      "version": 1,
+      "text": "NOT (OK > 0.5 AND AU >= 1.5)",
+      "title": "НЕ (OK > 0.5 И AU >= 1.5)",
+      "fields": [
+       "OK",
+       "AU"
+      ],
+      "note": null,
+      "created_at": "2026-11-24T23:49:47.545718Z",
+      "updated_at": "2026-11-24T23:49:47.545718Z"
+     },
+     {
+      "id": 3,
+      "name": "Ограничитель · Повёрнутая",
+      "folder": null,
+      "version": 1,
+      "text": "OK > 0.5 AND AU >= 1.5",
+      "title": "OK > 0.5 И AU >= 1.5",
+      "fields": [
+       "OK",
+       "AU"
+      ],
+      "note": null,
+      "created_at": "2026-11-24T23:49:47.457773Z",
+      "updated_at": "2026-11-24T23:49:47.457773Z"
+     }
+    ]
+   }
+  }
+ }
+}

@@ -1,0 +1,24 @@
+/* The window «Блочная модель · …» (ТЗ 8.7.6; ADR 0023 §11): the tabs on top, a panel under them; the theme tokens of the brand (docs/brand, ADR 0006). */
+.window { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
+.tabs { display: flex; gap: 2px; flex: none; padding: 6px 12px 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tab { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-dim); padding: 4px 10px; cursor: pointer; font: inherit; font-family: var(--font-brand); font-weight: 600; white-space: nowrap; }
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.body { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px 12px; }
+.panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; font-size: 12px; }
+.panel fieldset { margin: 0; }
+.gone { margin: 24px 12px; color: var(--text-faint); text-align: center; }
+.block { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--text-dim); padding: 2px 10px; cursor: pointer; font: inherit; }
+.seg button[aria-pressed="true"] { background: var(--bg-active); color: var(--text); }
+.rows { list-style: none; margin: 0; padding: 4px 6px; display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.rows li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rows li[data-on="false"] span { text-decoration: line-through; color: var(--text-faint); }
+.strip { display: inline-block; flex: none; width: 120px; height: 14px; border: 1px solid var(--border); border-radius: 2px; }
+.swatch { display: inline-block; flex: none; width: 18px; height: 12px; border: 1px solid var(--border-strong); border-radius: 2px; }
+.ends { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.nodata { display: flex; align-items: center; gap: 8px; color: var(--text-dim); }
+.cond { display: flex; flex-direction: column; gap: 2px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.cond:last-of-type { border-bottom: 0; }
+.list { flex: 1; min-width: 160px; resize: vertical; font: inherit; }
