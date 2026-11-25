@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+import sqlalchemy as sa
 
 from bf_core.db import dialect
 from bf_core.geostat import rotation
@@ -283,7 +284,9 @@ def test_rebind_finds_the_trend_by_its_name(trends) -> None:  # type: ignore[no-
     moved = {**one.body, "orientation": [{"source": "trend", "trend_id": 4242, "trend": "Структурный"}]}
     assert sp.rebind(moved, [1], [], find)["orientation"][0]["trend_id"] == s
     assert sp.rebind(moved, [1], [])["orientation"][0]["trend_id"] == 4242  # no lookup — as they are
-    lost = {**one.body, "orientation": [{"source": "trend", "trend_id": g, "trend": "Удалён"}]}
+    renamed = {**one.body, "orientation": [{"source": "trend", "trend_id": g, "trend": "Прежнее имя"}]}
+    assert sp.rebind(renamed, [1], [], find)["orientation"][0]["trend_id"] == g  # the id is alive: it is the trend
+    lost = {**one.body, "orientation": [{"source": "trend", "trend_id": 424242, "trend": "Удалён"}]}
     again = sp.rebind(lost, [int(trends["table"])], [], find)
     e = refused({**trends}, sp.parse_tt, orientation=again["orientation"])
     assert (e.status, e.code) == (422, "trend_not_found")
@@ -339,3 +342,64 @@ def test_the_import_of_the_orientation_loads_no_numba() -> None:
     )
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
     assert done.returncode == 0, done.stderr
+
+
+# --- the data a structural trend reads (review of 19.29б: a changed measurement is a changed result) ---------------
+
+
+def test_the_source_trend_of_measurements_follows_its_data(tj) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    """The hash and `inputs` of a result hold what a structural trend reads: after an edit of its table of
+    measurements the result is «устарел» and «Перестроить» computes again (it took the same hash before)."""
+    from bf_core.composites import results
+    from bf_core.db.schema import dh_results, dh_tables
+    from bf_core.drillholes import store as dh
+
+    _c, project, set_id, table_id, holes = tj
+    rows = [(h, d) for h in holes for d in (2.0, 5.0, 8.0)]
+    depth = [d for _h, d in rows]
+    data = dh.TableData("Замеры тренда", "event", [h for h, _d in rows], depth, depth,
+                        [dh.ColumnSpec("ALPHA", "number", "°"), dh.ColumnSpec("AZ_DIP", "number", "°"),
+                         dh.ColumnSpec("DEPTH", "number", "м")],
+                        [[35.0] * len(rows), [120.0] * len(rows), depth])  # fmt: skip
+    meas = int(dh.write_table(project.engine, set_id, data, job_id=None, tick=lambda *_: None)["table_id"])
+    with dialect.write_tx(project.engine) as conn:
+        tid = int(ts.create(conn, {"kind": "structural", "name": "Т замеры", "radius": 500, "source": {
+            "type": "measurements", "set_id": set_id, "table": "Замеры тренда", "alpha": "alpha", "dipdir": "az_dip",
+            "depth": "depth"}})["id"])  # fmt: skip
+    req = body(set_id, table_id, orientation=[{"source": "trend", "trend_id": tid}])
+    first = tt_here(project, {"body": req})
+    rid = int(first["result_id"])
+    with dialect.read_tx(project.engine) as conn:
+        inputs = conn.execute(sa.select(dh_results.c.inputs).where(dh_results.c.id == rid)).scalar_one()
+        assert [t["name"] for t in inputs["tables"]] == ["Пробы ГКЗ", "Замеры тренда"]  # the trend's table, last
+        assert inputs["tables"][1]["fields"] == ["ALPHA", "AZ_DIP", "DEPTH"]
+        assert [r for r in results.list_results(conn, set_id) if r["id"] == rid][0]["stale"] is False
+    assert tt_here(project, {"body": req, "rebuild": rid})["fresh"] is True  # nothing changed: the same hash
+    with dialect.write_tx(project.engine) as conn:  # a measurement of the trend is edited
+        conn.execute(sa.update(dh_tables).where(dh_tables.c.id == meas).values(rev=dh_tables.c.rev + 1))
+    with dialect.read_tx(project.engine) as conn:
+        rec = [r for r in results.list_results(conn, set_id) if r["id"] == rid][0]
+        assert rec["stale"] is True and "Замеры тренда" in str(rec["reason"])
+    again = tt_here(project, {"body": req, "rebuild": rid})
+    assert again["fresh"] is False and int(again["result_id"]) == rid  # computed again, the record follows
+
+
+def test_the_hash_of_a_trend_of_a_mesh_follows_its_geometry(trends) -> None:  # type: ignore[no-untyped-def]
+    one = parse(trends, sp.parse_tt, orientation=[{"source": "trend", "trend_id": trends["s"]}])
+    keys = one.hash_params()["orientation"][0]["data"]
+    assert isinstance(keys["mesh"], str) and keys["mesh"]
+    assert one.orientation[0].trend_meshes() == [trends["wf"][0]]
+    with dialect.write_tx(trends["engine"]) as conn:  # the trend is moved to another wireframe: another geometry key
+        ts.update(conn, trends["s"], {"source": {"type": "mesh", "wireframe_id": trends["wf"][1]},
+                                      "expected_version": 1})  # fmt: skip
+    other = parse(trends, sp.parse_tt, orientation=[{"source": "trend", "trend_id": trends["s"]}])
+    assert other.hash_params() != one.hash_params()
+
+
+def test_a_renamed_trend_is_found_by_its_id(trends) -> None:  # type: ignore[no-untyped-def]
+    with dialect.write_tx(trends["engine"]) as conn:
+        ts.update(conn, trends["g"], {"name": "Новое имя", "expected_version": 1})
+    with dialect.read_tx(trends["engine"]) as conn:
+        find = sp.trend_lookup(conn)
+    assert find(trends["g"], "Глобальный") == trends["g"]  # the id is alive, the name is not the one remembered
+    assert find(999_999, "Глобальный") == 0 and find(trends["s"], "Новое имя") == trends["g"]  # by the name first

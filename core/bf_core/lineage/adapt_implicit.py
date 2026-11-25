@@ -64,10 +64,12 @@ class ImplicitModel(Provider):
         return "неявная модель"
 
     def lookup(self, ctx: Ctx, keys: Sequence[Key]) -> dict[Key, Info]:
+        from bf_core.model import store_base as sb
+
         rows = object_rows(ctx, KIND, keys)
         shas = _shas(ctx, list(rows))
-        return {
-            (i, ""): Info(fingerprint(r.meta or {}, int(r.version), shas[i]), r.name, r.state == "building")
+        return {  # «идёт построение» is in `meta` (the clean-ups of the jobs delete the `building` rows of `objects`)
+            (i, ""): Info(fingerprint(r.meta or {}, int(r.version), shas[i]), r.name, sb.is_building(ctx.conn, r.meta))
             for i, r in rows.items()
         }
 

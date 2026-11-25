@@ -165,15 +165,16 @@ def run_tt(engine: sa.Engine, folder: Any, params: dict[str, Any], *, job_id: in
     """The body of `intercept.tt` (the handler, the tests and the bench in the process). The result: {set_id,
     result_id, table_id, name, columns, rows, fresh, summary (= report), journal, stages {read, trajectories,
     hash, kernel, write: s}, events}."""
-    from bf_core.composites import results, sink, source, strips
+    from bf_core.composites import sink, source, strips
 
+    from . import spec as sp
     from . import tt
 
     t0 = time.perf_counter()
     body, rebuild = cj._body_of(params)
     with dialect.read_tx(engine) as conn:
         spec = parse(conn, body)
-        inputs = results.make_inputs(conn, spec.set_id, spec.tables(), trajectories=True, meshes=spec.mesh_ids())
+        inputs = sp.make_inputs(conn, spec)
     stages: dict[str, float] = {}
     tick(0.02, "Чтение таблицы")
     lines, tables = read(engine, spec, cache_dir=folder / "cache" / "tables", tick=tick)

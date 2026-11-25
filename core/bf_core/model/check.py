@@ -208,7 +208,7 @@ def load(project: Any, model_id: int) -> Loaded:
         shas = bl.shas_of(conn, model_id)
         if set(shas) != set(sb.BLOB_ROLES):
             raise refuse("not_built")
-        spec = ms.load_spec(got["meta"])
+        spec = sb.resolved_spec(got["meta"])
         matrix = js.global_matrix(conn, spec)
         ids = [int(o["wireframe_id"]) for o in got["outputs"]]
         versions = {int(r.id): int(r.version) for r in conn.execute(
@@ -467,6 +467,9 @@ def page(loaded: Loaded, cs: CheckSpec, highlight: float | None = None) -> dict[
             "groups": t.groups, "rows": [_row(t, i, limit) for i in shown]}  # fmt: skip
 
 
+FORMULA = ("=", "+", "-", "@", "\t", "\r")
+
+
 def csv_bytes(loaded: Loaded, cs: CheckSpec, highlight: float | None = None) -> bytes:
     """All the rows of the selection as a file of a table export: «;», decimal comma, UTF-8 with BOM, the headers in
     Russian; a gap is an empty cell."""
@@ -479,12 +482,18 @@ def csv_bytes(loaded: Loaded, cs: CheckSpec, highlight: float | None = None) -> 
     def cell(v: float | None) -> str:
         return "" if v is None else number_text(v).replace(".", ",")
 
+    def safe(text: Any) -> Any:
+        """A name (of a group, of a source) that starts like a formula gets «'»: the spreadsheet shows it, never runs
+        it (`composites/ore_report._safe`)."""
+        return "'" + text if isinstance(text, str) and text[:1] in FORMULA else text
+
     out = io.StringIO(newline="")
     w = csv.writer(out, delimiter=";")
     w.writerow(COLUMNS)
     for i in sel.tolist():
         r = _row(t, i, limit)
-        w.writerow([r["i"], r["group_name"], cell(r["threshold"]), r["type"], r["source"] or "", cell(r["from"]),
+        w.writerow([r["i"], safe(r["group_name"]), cell(r["threshold"]), safe(r["type"]), safe(r["source"] or ""),
+                    cell(r["from"]),
                     cell(r["to"]), "" if r["vertex"] is None else r["vertex"], cell(r["x"]), cell(r["y"]),
                     cell(r["z"]), cell(r["f_model"]), cell(r["f_data"]), cell(r["residual"]), cell(r["distance"]),
                     "да" if r["over"] else ""])  # fmt: skip

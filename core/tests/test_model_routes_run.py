@@ -33,6 +33,13 @@ def start(c: Any, ident: int, what: str, **over: Any) -> dict[str, Any]:
     return ok(r)  # type: ignore[no-any-return]
 
 
+def wait_state(c: Any, ident: int, state: str, timeout: float = 120.0) -> None:
+    end = time.monotonic() + timeout
+    while get(c, ident)["state"] != state:
+        assert time.monotonic() < end, f"the model did not become {state}"
+        time.sleep(0.05)
+
+
 def kids(c: Any, ident: int) -> list[int]:
     with dialect.read_tx(c.project.engine) as conn:
         return [int(i) for i in conn.execute(sa.select(objects.c.id).where(
@@ -76,6 +83,29 @@ def test_refused_before_the_job(im) -> None:  # type: ignore[no-untyped-def]  # 
     refused(c.post(f"{IMP}/models/{mid}/build", json={"expected_version": 4}), 404, "set_not_found", "data.set_id")
 
 
+def test_a_queue_that_refuses_the_job_leaves_the_model_as_it_was(im, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    """The route does not mark the model: nothing to take back when `submit` fails (or the job is cancelled in the
+    queue, or the core stops between the two)."""
+    from bf_core.api.errors import ApiError
+    from bf_core.jobs.scheduler import Scheduler
+
+    c = im
+    mid = ok(c.post(f"{IMP}/models", json=body(c.w)))["id"]
+    seen: list[str] = []
+
+    def refuse(_self: Any, *_a: Any, **_k: Any) -> Any:
+        seen.append(get(c, mid)["state"])  # what the model is while the job is being queued
+        raise ApiError(503, "queue_full", "Очередь заданий переполнена.", "Повторите позже.")
+
+    monkeypatch.setattr(Scheduler, "submit", refuse)
+    refused(c.post(f"{IMP}/models/{mid}/build", json={"expected_version": 1}), 503, "queue_full")
+    assert seen == ["ready"] and get(c, mid)["state"] == "ready"
+    with dialect.read_tx(c.project.engine) as conn:  # `objects.state` is never `building` for a model
+        row = conn.execute(sa.select(objects.c.state, objects.c.job_id).where(objects.c.id == mid)).first()
+    assert tuple(row) == ("ready", None)
+    ok(c.put(f"{IMP}/models/{mid}", json={"expected_version": 1, "levels": 3}))  # not stuck: no 409 `model_building`
+
+
 def test_a_job_that_fails_puts_the_model_into_error(im) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c = im
     ghost = {"name": "Призрак", "type": "domain", "codes": ["НЕТ"]}
@@ -102,7 +132,7 @@ def test_build_update_copy_archive_delete(im, tmp_path: Path) -> None:  # type: 
     mid = ok(c.post(f"{IMP}/models", json=body(c.w)))["id"]
     started = start(c, mid, "build", threads=2)
     assert sorted(started) == ["id", "source"]
-    assert get(c, mid)["state"] == "building"
+    wait_state(c, mid, "building")  # the job marks the model when it starts, not the route when it queues it
     refused(c.post(f"{IMP}/models/{mid}/build", json={"expected_version": 1}), 409, "model_building")
     refused(c.post(f"{IMP}/models/{mid}/update", json={"expected_version": 1}), 409, "model_building")
     refused(c.put(f"{IMP}/models/{mid}", json={"expected_version": 1, "h": 6}), 409, "model_building")

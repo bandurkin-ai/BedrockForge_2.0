@@ -30,7 +30,9 @@ import hashlib
 import io
 import math
 import os
+import platform
 import struct
+import sys
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -139,12 +141,18 @@ def _matrix_bytes(matrix: F8 | None) -> bytes:
     return b"-" if matrix is None else np.ascontiguousarray(matrix, dtype="<f8").tobytes()
 
 
+#: the platform of the run: a solution of the LU is not bit for bit the same on another system or processor (another
+#: BLAS), so the patches of a project taken to another machine are solved again
+PLATFORM = f"{sys.platform}:{platform.machine()}".encode("ascii", "replace")
+
+
 def salt_of(spec: ModelSpec, eta0: float, matrix: F8 | None) -> bytes:
-    """The parameters a solution of a patch depends on besides its points and values (the module text)."""
+    """The parameters a solution of a patch depends on besides its points and values (the module text; the platform
+    too)."""
     sm = spec.smoothing
     target = math.nan if sm.mode != "auto" or sm.cond_target is None else float(sm.cond_target)
     a = math.nan if spec.kernel_radius is None else float(spec.kernel_radius)
-    return b"|".join([PATCH_TAG, spec.kernel.encode("ascii"), struct.pack("<d", a), sm.mode.encode("ascii"),
+    return b"|".join([PATCH_TAG, PLATFORM, spec.kernel.encode("ascii"), struct.pack("<d", a), sm.mode.encode("ascii"),
                       struct.pack("<2d", float(eta0), target), _matrix_bytes(matrix)])  # fmt: skip
 
 

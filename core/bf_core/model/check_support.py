@@ -95,9 +95,12 @@ def _record(
     model_id: int,
     version: int,
     shares: dict[tuple[int, int | None], tuple[float | None, float]],
+    ran_at: Any = None,
 ) -> bool:
     """`support_share` into the entries of `meta.stats.by_group` (the group and the wing); the version of the model,
-    its state and `updated_at` stay. False — nothing written."""
+    its state and `updated_at` stay. False — nothing written: the model is being built, has another version, or was
+    built again since the surfaces were read (`last_run.at` is not `ran_at`: the version does not change with a build,
+    the shares are of the geometry that went)."""
     if getattr(project, "read_only", False) or not shares:
         return False
     try:
@@ -105,7 +108,9 @@ def _record(
             row = sb.stored(conn, model_id)
             meta = dict(row.meta or {})
             stats = meta.get("stats")
-            if int(row.version) != version or row.state == "building" or not isinstance(stats, dict):
+            if int(row.version) != version or sb.is_building(conn, meta) or not isinstance(stats, dict):
+                return False
+            if ((meta.get("last_run") or {}).get("at")) != ran_at:
                 return False
             groups = []
             for g in stats.get("by_group") or []:
@@ -136,7 +141,7 @@ def run(project: Any, model_id: int, req: Request) -> Support:
         shas = bl.shas_of(conn, model_id)
         if sb.ROLE_POINTS not in shas:
             raise refuse("not_built")
-        spec = ms.load_spec(got["meta"])
+        spec = sb.resolved_spec(got["meta"])
         d_max = float(spec.data.d_max) if spec.data is not None else D_MAX
         threshold = req.threshold if req.threshold is not None else parse_support({}, d_max)[1]
         outs = list(got["outputs"])
@@ -183,7 +188,8 @@ def run(project: Any, model_id: int, req: Request) -> Support:
         if req.wireframe_id is not None:
             values, summary, mesh = d, entry, (v, t)
     info = info_of(got)
-    recorded = _record(project, model_id, int(got["version"]), shares)
+    ran_at = (got["meta"].get("last_run") or {}).get("at")
+    recorded = _record(project, model_id, int(got["version"]), shares, ran_at)
     out: dict[str, Any] = {"model": info, "warnings": warnings_of(info), "threshold": threshold, "d_max": d_max,
                            "recorded": recorded, "surfaces": surfaces}  # fmt: skip
     if values is not None and req.format == "json":

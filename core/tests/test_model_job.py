@@ -81,6 +81,7 @@ def meta_of(w: World, mid: int) -> dict[str, Any]:
 
 
 def state_of(w: World, mid: int) -> str:
+    """`objects.state` of the model: «ready» always (the state «идёт построение» is in `meta`)."""
     with dialect.read_tx(w.engine) as conn:
         return str(sb.stored(conn, mid).state)
 
@@ -266,17 +267,28 @@ def test_an_error_puts_the_model_into_error_and_writes_nothing(world: World) -> 
     assert kids(w, again["id"]) == [] and shas(w, again["id"]) == {}
 
 
+def live_job(w: World, status: str = "running") -> int:
+    """A row of `jobs` as the scheduler keeps it (a model is «идёт построение» only while its job is alive)."""
+    from bf_core.jobs import store as js
+
+    ident = js.insert(w.engine, instance=False, queue="heavy", kind=job.KIND_BUILD, title="t", params={}, secret=None,
+                      max_attempts=1, memory_mb=1)
+    js.update(w.engine, False, ident, status=status)
+    return ident
+
+
 def test_the_job_checks_the_version_and_the_building_state(world: World) -> None:
     w = world
     m = make(w, "Версия", groups_of("SS"))
     with pytest.raises(ApiError) as e:
         job.run_build(w.engine, w.project.folder, {"model_id": m["id"], "expected_version": 7}, lambda *_: None)
     assert e.value.status == 409 and e.value.code == "version_conflict" and e.value.extra["version"] == 1
+    other = live_job(w)
     with dialect.write_tx(w.engine) as conn:
-        st.begin(conn, m["id"], 1, job_id=111)  # another job has it
+        st.begin(conn, m["id"], 1, job_id=other)  # another job has it, and it is alive
     with pytest.raises(ApiError) as e2:
         job.run_build(w.engine, w.project.folder, {"model_id": m["id"], "expected_version": 1}, lambda *_: None,
-                      job_id=222)  # fmt: skip
+                      job_id=other + 1000)  # fmt: skip
     assert e2.value.status == 409 and e2.value.code == "model_building"
     assert meta_of(w, m["id"])["state"] == "building"  # the job that has it is not disturbed
     with pytest.raises(ApiError) as e3:
@@ -284,17 +296,36 @@ def test_the_job_checks_the_version_and_the_building_state(world: World) -> None
     assert e3.value.status == 404 and e3.value.code == "model_not_found"
 
 
-def test_the_route_may_have_marked_the_model_and_a_cancel_restores_what_it_says(world: World) -> None:
+def test_a_mark_of_a_job_that_is_gone_is_taken_over_and_a_cancel_puts_back_what_the_model_was(world: World) -> None:
     w = world
-    m = make(w, "Маршрут", groups_of("SS"))
-    with dialect.write_tx(w.engine) as conn:
-        st.begin(conn, m["id"], 1)  # the route (19.16) marks the model before it queues the job
+    m = make(w, "Брошенная", groups_of("SS"))
     err = {"code": "iso_check", "message": "было", "hint": "раньше"}
+    with dialect.write_tx(w.engine) as conn:
+        st.set_state(conn, m["id"], "error", error=err)
+        st.set_state(conn, m["id"], "building", job_id=111)  # a job that never was (killed, cancelled in the queue)
     with pytest.raises(JobCancelled):
-        params = {"model_id": m["id"], "expected_version": 1, "previous_state": "error", "previous_error": err}
-        job.run_build(w.engine, w.project.folder, params, Cancel("Участки"), job_id=5)
+        job.run_build(w.engine, w.project.folder, {"model_id": m["id"], "expected_version": 1}, Cancel("Участки"),
+                      job_id=5)  # fmt: skip
     meta = meta_of(w, m["id"])
-    assert meta["state"] == "error" and meta["error"] == err and state_of(w, m["id"]) == "ready"
+    assert meta["state"] == "error" and meta["error"] == err and "job_id" not in meta and "back" not in meta
+    assert state_of(w, m["id"]) == "ready"  # `objects.state` is never `building`: the clean-ups would drop the model
+
+
+def test_the_job_marks_the_model_itself_and_the_marks_stay_in_meta(world: World) -> None:
+    w = world
+    m = make(w, "Метка", groups_of("SS"))
+    seen: dict[str, Any] = {}
+
+    def tick(_p: float | None, text: str | None) -> None:
+        if text and text.startswith("Участки:") and not seen:
+            seen["meta"] = meta_of(w, m["id"])
+            seen["row"] = state_of(w, m["id"])
+            raise JobCancelled
+
+    with pytest.raises(JobCancelled):
+        job.run_build(w.engine, w.project.folder, {"model_id": m["id"], "expected_version": 1}, tick, job_id=77)
+    assert (seen["meta"]["state"], seen["meta"]["job_id"], seen["row"]) == ("building", 77, "ready")
+    assert meta_of(w, m["id"])["state"] == "ready"
 
 
 def test_a_model_edited_while_it_was_built_is_not_overwritten(world: World) -> None:

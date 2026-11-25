@@ -162,7 +162,8 @@ def test_create_checks_the_project_and_keeps_the_meta(w: W) -> None:
     assert set(meta["versions"]) == {"numpy", "scipy", "numba", "skimage", "manifold3d"} and meta["created_at"]
     assert (meta["outputs"], meta["extent"], meta["name"]) == ([], BOX, got["name"])
     diag = math.sqrt(1000.0**2 + 800.0**2 + 400.0**2)
-    assert meta["h"] == pytest.approx(ms.resolve_h(diag))  # resolved: diagonal / 200 within the range
+    assert meta["h"] is None  # the user gave none: «авто» stays so, the step in use is `h_used`
+    assert meta["h_used"] == pytest.approx(ms.resolve_h(diag))  # resolved: diagonal / 200 within the range
     assert meta["data"]["table"] == str(w.b) and meta["data"]["field"] == "ZONE"
     assert [(i["kind"], i["id"]) for i in meta["inputs"]] == [("dh_set", w.set_id), ("dh_table", w.b)]
     assert all(i["fp"] and i["name"] for i in meta["inputs"])
@@ -297,7 +298,8 @@ def test_update_replaces_the_keys_and_keeps_the_rest(w: W) -> None:
     assert out == {"id": ident, "name": "Литология", "version": 2}
     meta = get(w, ident)["meta"]
     assert (meta["levels"], meta["extent"], meta["name"]) == (3, [0.0, 0.0, -300.0, 500.0, 400.0, 100.0], "Литология")
-    assert meta["h"] == pytest.approx(ms.resolve_h(math.sqrt(500.0**2 + 400.0**2 + 400.0**2)))  # h null — again
+    assert meta["h"] is None
+    assert meta["h_used"] == pytest.approx(ms.resolve_h(math.sqrt(500.0**2 + 400.0**2 + 400.0**2)))  # h null — again
     assert meta["groups"][0]["codes"] == ["окисл"] and meta["created_at"]  # the others stay
     assert put(w, ident, 2, name="Новое имя")["name"] == "Новое имя"
     other = make(w, name="Другая")["id"]
@@ -316,8 +318,9 @@ def test_a_model_that_is_being_built_is_not_written(w: W) -> None:
     with dialect.write_tx(w.project.engine) as conn:
         refused(lambda: st.begin(conn, ident, 9), 409, "version_conflict")
         st.begin(conn, ident, 1, job_id=None)
-    row = rd(w, lambda c: c.execute(sa.select(objects.c.state).where(objects.c.id == ident)).scalar())
-    assert row == "building" and get(w, ident)["state"] == "building"
+    row = rd(w, lambda c: c.execute(sa.select(objects.c.state, objects.c.job_id).where(objects.c.id == ident)).first())
+    assert tuple(row) == ("ready", None)  # `building` lives in `meta`: the clean-ups of the jobs drop `building` rows
+    assert get(w, ident)["state"] == "building"
     refused(lambda: put(w, ident, 1, levels=3), 409, "model_building")
     with dialect.write_tx(w.project.engine) as conn:
         refused(lambda: st.delete(conn, w.store, ident), 409, "model_building")

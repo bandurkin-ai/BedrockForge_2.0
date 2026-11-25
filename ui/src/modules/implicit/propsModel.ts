@@ -91,7 +91,7 @@ export function settingsFacts(meta: Record<string, unknown>): Fact[] {
   const pou = obj(meta.pou);
   const data = obj(meta.data);
   const post = obj(meta.post);
-  const h = numOrNull(meta.h);
+  const h = numOrNull(meta.h) ?? numOrNull(meta.h_used); // `h` is what the user gave (null — «авто»), `h_used` — the step in use
   const levels = numOrNull(meta.levels);
   const clip = str(post.clip) as ClipKind | null;
   const out: Fact[] = [

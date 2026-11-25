@@ -7,7 +7,10 @@ The source `trend` (ТЗ 8.5.2, вопрос № 57; ADR 0026, решение 27
 the project, global or structural (`geostat/trend*.py`). `Source.trend_meta` is its `meta` as stored (read here, by
 the id; 422 `trend_not_found` — none); the canonical body keeps `trend_id` and the name (`trend`): the id is of the
 project, `spec.rebind` finds the trend by its name after a `.bfggis` import. The hash has the name and what the axes
-depend on (angles and ratios, the radius and the kind of the source), no ids.
+depend on (angles and ratios, the radius and the kind of the source) and, for a structural trend, what it reads when it
+is used — the table of the measurements and the trajectories of its set, or the supporting wireframe (`trend_data`: the
+keys of the hash, no ids; the ids of the tables and wireframes go to `inputs` of the result, after the tables and the
+wireframes of the other sources, so `spec.rebind` walks the same lists): a changed measurement is a changed result.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ import sqlalchemy as sa
 from bf_core.api.errors import ApiError
 from bf_core.composites import jobs as cj
 from bf_core.db import dialect
-from bf_core.db.schema import dh_tables
+from bf_core.db.schema import dh_tables, objects
 
 from . import D_CORE_DEFAULT, D_CORE_RANGE, EPS_DEFAULT, EPS_RANGE, LINES, STEP_DEFAULT, STEP_RANGE
 
@@ -131,6 +134,7 @@ class Source:
     trend_id: int = 0  # trend: the trend of the project, its name and `meta` as read by `parse_orientation`
     trend_name: str = ""
     trend_meta: dict[str, Any] = field(default_factory=dict)
+    trend_data: dict[str, Any] = field(default_factory=dict)  # trend: what it reads (`trend_data`)
 
     def canonical(self) -> dict[str, Any]:
         if self.kind == "global":
@@ -157,6 +161,19 @@ class Source:
             return list(self.domain.wireframes.ids)
         return []
 
+    def trend_tables(self, set_id: int) -> list[tuple[int, list[str]]]:
+        """(table id, fields) of the measurements a structural trend reads, when they are in the set `set_id` (the
+        marks «устарел» of a result follow the tables of its own set); else none."""
+        got = self.trend_data.get("table")
+        if self.kind != "trend" or got is None or self.trend_data.get("set_id") != set_id:
+            return []
+        return [(int(got[0]), list(got[1]))]
+
+    def trend_meshes(self) -> list[int]:
+        """The supporting wireframe of a structural trend."""
+        wid = self.trend_data.get("mesh")
+        return [] if self.kind != "trend" or wid is None else [int(wid)]
+
     def table(self) -> tuple[int, list[str]] | None:
         """(table id, fields read) of the source; None — reads no table."""
         d = self.domain
@@ -170,7 +187,7 @@ class Source:
         """What the result depends on: names and geometry keys, no ids (`.bfggis` renumbers them)."""
         if self.kind == "trend":
             return {"source": "trend", "trend_key": dialect.name_key(self.trend_name),
-                    "trend": trend_fingerprint(self.trend_meta)}  # fmt: skip
+                    "trend": trend_fingerprint(self.trend_meta), "data": self.trend_data.get("keys")}  # fmt: skip
         out = {k: v for k, v in self.canonical().items() if k not in ("table", "wireframe_ids")}
         if self.table() is not None:
             out["table_key"] = dialect.name_key(self.table_name)
@@ -188,6 +205,41 @@ def trend_fingerprint(meta: dict[str, Any]) -> dict[str, Any]:
     if isinstance(src, dict):
         out["source"] = {k: v for k, v in src.items() if k not in TREND_IDS}
     return out
+
+
+def trend_data(conn: sa.Connection, meta: dict[str, Any]) -> dict[str, Any]:
+    """What a structural trend reads when it is used (a global one reads nothing): `keys` — for the hash (the name
+    of the table with its token and revision, the key of the trajectories of the set, the key of the geometry of the
+    wireframe: no ids), `table` (id, fields), `set_id`, `mesh` — for `inputs`. A source that is gone has no key."""
+    src = meta.get("source")
+    if meta.get("kind") != "structural" or not isinstance(src, dict):
+        return {}
+    from bf_core.geostat.estimate import store_check as esc
+
+    def ident(value: Any) -> int | None:
+        return None if value is None or isinstance(value, bool) or not str(value).isdigit() else int(value)
+
+    if src.get("type") == "mesh":
+        wid = ident(src.get("wireframe_id"))
+        key = None
+        if wid is not None:
+            from bf_core.viz.meshes import mesh_state
+
+            try:
+                key = str(mesh_state(conn, wid).cache_key())
+            except ApiError:
+                wid = None
+        return {"mesh": wid, "keys": {"mesh": key}}
+    table, set_id = ident(src.get("table")), ident(src.get("set_id"))
+    tab = esc.fp_of(conn, "dh_table", table) if table is not None else None
+    # the paths of the set: its version (collars and surveys), not `trajectories_key` — that one moves with every table
+    # of the set, the columns the result itself writes among them
+    traj = None if set_id is None else conn.execute(sa.select(objects.c.version).where(
+        objects.c.id == set_id, objects.c.kind == "drillhole_set")).scalar()
+    fields = [str(src[k]) for k in ("alpha", "dipdir", "depth") if src.get(k)]
+    keys = {"table": None if tab is None else [dialect.name_key(tab[0]), tab[1]],
+            "traj": traj}  # fmt: skip
+    return {"keys": keys, "set_id": set_id, "table": None if tab is None else (table, fields)}
 
 
 def parse_attitudes(raw: Any) -> list[dict[str, Any]]:
@@ -363,7 +415,7 @@ def _trend(conn: sa.Connection, raw: dict[str, Any], where: str) -> Source:
     except ApiError:
         raise bad("trend_not_found", f"Тренд №{int(text)} не найден в проекте.",
                   "Обновите список трендов и выберите тренд снова.", f"{where}trend_id") from None
-    return Source("trend", trend_id=int(text), trend_name=name, trend_meta=meta)
+    return Source("trend", trend_id=int(text), trend_name=name, trend_meta=meta, trend_data=trend_data(conn, meta))
 
 
 def parse_orientation(conn: sa.Connection, set_id: int, table: Any, body: dict[str, Any]) -> list[Source]:

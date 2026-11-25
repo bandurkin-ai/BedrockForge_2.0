@@ -63,7 +63,7 @@ PREVIEW_DEFAULT, PAGE_DEFAULT = 200_000, 500
 CELLS_AXIS_MAX = 1 << 20  # fine cells along one axis of the extent: h finer than that is a typing error
 #: what a stored `meta` has besides the parameters (written by the store and the job)
 META_ONLY = ("v", "algo", "extent", "outputs", "stats", "inputs", "state", "error", "versions", "last_run",
-             "created_at")  # fmt: skip
+             "created_at", "job_id", "back", "h_used")  # fmt: skip
 
 #: 8.9.4 (and Д-25, Д-32, the parameters of 8.9.3): key → range; the parts of a key path use "_" here.
 RANGES: dict[str, Range] = {
