@@ -416,6 +416,63 @@ blob real: Parquet zstd, строки — цели (P, D) родителей р�
   409 `field_exists`, `version_conflict`.
 - Команды: `simulate.sgs` (+ `secondary`), `simulate.sis`, `simulate.post`; дерево «Геостатистика → Реализации».
 
+**Как сделано в 18.32** (код — `S/{spec,store,store_check,real,targets,job,post,routes}.py`; настоящие ответы —
+`core/tests/data/simulate/answers.json`, `BF_REGEN_SIMULATE=1`):
+
+- Вид: `sgs`, `sis`, `cosgs` запускаются (18.32б); без `kind`: `secondary` — ко-SGS, `method` — SIS, иначе SGS.
+  Один проход поиска (`search.passes` — ровно один, умолч.
+  `[{n_max: 24}]`), `factor` масштабирует радиусы, `n_min` хранится, SGS его не применяет. Эллипсоид по тренду — 422.
+  Хвосты `nscore.ltail`/`utail`: `linear | power | none` (верхний ещё `hyperbolic`); `ltpar`/`utpar` > 0 (гипербола ≥ 1).
+- Модель вариограммы — только в нормальных оценках (`meta.transform = "nscore"`, копия в строке, `scale: "y"`, Д-38);
+  модель в единицах поля — 422 `variogram_scale {param: "variogram.model_id"}`.
+- `GET /simulations` → `{simulations: [{id, name, kind, model_id, label, field, n_real, seed, version, stale,
+  stale_reason, source_lost, last_run {at, nodes, realizations} | null, created_at, updated_at}]}`; `GET
+  /simulations/{id}` → `{id, name, version, meta, file {role: "real", sha, rows, columns} | null, stale, stale_reason,
+  source_lost, created_at, updated_at}`; `POST`/`PUT` → `{id, name, version}`; `DELETE` → `{deleted}`.
+- `meta.last_run` = `{at, job, nodes, realizations, seconds, counts {degenerate, free, on_sample}, cond {min, mean,
+  max}, samples {rows, used}, summary {per [{n, mean, std, min, max}], all {mean, std, min, max}}, params}`
+  (`params` — хеш параметров; «изменены параметры» при другом). `nodes` — число целей (родителей).
+- `POST /simulate/run {simulation | simulation_id, expected_version?}`: `expected_version` — версия **строки**
+  моделирования (необязательно; модель задание не пишет); с телом `simulation` строка создаётся последней
+  транзакцией задания (отмена и сбой её не оставляют), итог несёт `simulation_id`. Ответ `{source, id}`; итог задания
+  `{simulation_id, nodes, realizations, seconds, counts {degenerate, free, on_sample, cond {min, mean, max}}, log,
+  stages {seconds}, events}`. Отказы до задания: 404 `simulation_not_found`, `block_model_not_found`, 409
+  `version_conflict {version}`, `source_lost`, `name_taken`, 422 `bad_param`, `variable_grid`, `variogram_scale`,
+  `not_ready`, 423.
+- `GET /simulations/{id}/summary` → `{simulation_id, nodes, realizations, seconds, counts, cond, samples, summary
+  {per, all}, at}`; 409 `no_realizations` до первого запуска.
+- `POST /simulations/{id}/post` (и `POST /simulate/post {simulation_id, …}`) → `{source, id}`; итог `{simulation_id,
+  model_id, version, prefix, fields, nodes, realizations, log, seconds, events [["objects.changed", {kind:
+  "block_model", id}]]}`. `stats` по умолчанию — `mean, std, p10, p50, p90` (+ `prob`, если есть `thresholds`);
+  `thresholds` без `prob` в `stats` не используются; `PROB_GT_<t>` — доля реализаций **≥ t** (`local_prob_exceed`);
+  значение узла получают все строки модели с этим родителем, лежащие в домене и проходящие ограничитель, остальные —
+  пусто (NaN, не 0). Поля: `source {op: "simulate", algo: "sim-1", inputs [SHA-256 реализаций], params
+  {simulation_id, stats, thresholds, prefix}}`; граф: `bm_field` ← `object:simulation`. Отказы до задания: 404, 409
+  `version_conflict` (модель), `no_realizations`, `field_exists {field}`, `source_lost`, 422, 423.
+- **SIS и ко-SGS (18.32б).** `kind: sis` + `method {ik: {thresholds: [t…] (1–20, по возрастанию) | categories: [код…]
+  (2–20 целых кодов 0–255 числового поля `samples.field`), labels?: [название…] (по одному на код, ≤ 80 знаков), models:
+  "per" | "median"}}`; `models: per` — `variograms: [{model_id}…]` по одной индикаторной модели на порог (категорию) в
+  порядке списка (у порога `t` сверяется с `method`), `variogram` не задаётся; `median` — одна `variogram`. Модели —
+  в единицах поля (`scale: "z"`, `indicator:<t>`; модель в нормальных оценках без `back` — 422 `variogram_scale`),
+  вид `sgs`/`cosgs` — `variograms` не принимают. Хвосты `nscore.*` — для порогов (как `backtr`), для категорий не
+  используются; урезка проб для категорий — 422 `bad_param {samples.topcut}`. Поле категорий — числовое (`samples.field`,
+  например, код литологии из интервальной таблицы), домен проб задаётся как обычно; пробы с кодом вне списка не участвуют;
+  код пробы берётся из таблицы по `samples.row_id` (у слитых совпадающих проб — у первой). Blob `real` категорий — `u1`
+  (сами коды); у порогов — `f4`. `meta.method` = `{ik: {thresholds | null, categories | null, labels | null, models}}`.
+  `kind: cosgs` — `secondary {field, rho}`: числовое поле блочной модели (422 `field_not_found` / `field_not_number`
+  `{param: "secondary.field"}`), `rho` ∈ [−1; 1] (иначе 422 `bad_param {param: "secondary.rho"}`) или `null` — считается
+  по пробам (`cosgs.colocated_rho`, не меньше 10 пар, иначе 422 `rho`); значение вторичной в узле — среднее по строкам
+  родителя с весом объёма, NaN — пропуск (такой узел моделируется как SGS). Поле — вход графа (`bm_field`).
+  Итог задания ко-SGS: `+ secondary {field, rho, rho_used, pairs (0 — ρ задан), gaps}`, `counts.gap`; то же в
+  `meta.last_run.secondary`, `meta.secondary.rho_used`. Итог SIS-категорий: `meta.last_run.summary` =
+  `{per: [{n, shares: [доля…]}], all: {codes, shares} }` (доли в порядке `categories`).
+- Постобработка SIS-категорий (`POST /simulations/{id}/post`): `stats` ⊂ `["prob", "mode"]` (по умолчанию оба),
+  `thresholds` — 422 `bad_param {thresholds}`; поля `<префикс>PROB_<код>` (f4, доля реализаций с этой категорией, Σ = 1)
+  и `<префикс>MODE` (категориальное, `labels` — названия, самая частая; при равенстве — первая в списке); префикс по
+  умолчанию `‹ПОЛЕ›_SIS_`. Непрерывный SIS и ко-SGS — как SGS (префикс `‹ПОЛЕ›_SIS_`, `‹ПОЛЕ›_COSGS_`).
+- Кадр сетки: пробы, углы модели и эллипсоида приведены к осям сетки (`ang1 + φ`, пробы — `grid.to_local`), центры узлов
+  — `(i + ½)·шаг` родителя.
+
 ## 10. Задания
 
 | Вид | Очередь | Маршрут | Стадии | Модуль |
@@ -747,6 +804,15 @@ post(realizations: f4[n, N], stats, thresholds) -> dict[str, f8[n]]    # stats/l
 - `core/tests/data/lineage/answers.json` (`BF_REGEN_LINEAGE=1`, `test_lineage_window_answers.py`) — ответы
   `/lineage/*` (ADR 0025): цепочка заглушек и настоящие результаты; `core/tests/data/stats/contact_blocks_answers.json`
   (`BF_REGEN_CONTACT_BLOCKS=1`, `test_stats_contact_blocks.py`) — профиль блоков у контакта (§8.5).
+- `core/tests/data/simulate/answers.json` — **настоящие ответы** маршрутов 18.32 на том же синтетическом проекте
+  (`BF_REGEN_SIMULATE=1`, `test_simulation_api.py`; число 1e−7; времена, отпечатки, хеши, номера заданий не
+  сравниваются). Ключи: `simulation_post`, `simulation_name_taken`, `bad_param`, `bad_param_search`,
+  `variogram_scale`, `sis_no_method`, `cosgs_bad_rho`, `cosgs_not_a_number`, `simulation_empty` (до запуска: `file` null), `summary_empty` (409),
+  `simulation_put_conflict`, `run_submit`, `run_result`, `run_version_conflict`, `simulation`, `simulations`, `summary`,
+  `post_version_conflict`, `post_submit`, `post_result`, `post_field_exists`, `run_body_result`, `sis_post`, `sis_row`,
+  `sis_run_result`, `sis_post_result`, `sis_cat_post`, `sis_cat_run_result`, `sis_cat_summary`, `sis_cat_post_thresholds`,
+  `sis_cat_post_result`, `cosgs_post`, `cosgs_run_result`, `cosgs_row`, `simulation_delete`.
+  Образцы `simulation*` в `contract_answers.json` — устарели: интерфейс 18.35 читает этот файл.
 
 ## 14. Трактовки (вне буквы ТЗ; на согласование оркестратора)
 
@@ -762,3 +828,7 @@ post(realizations: f4[n, N], stats, thresholds) -> dict[str, f8[n]]    # stats/l
 7. Инспектор показывает до 1000 кандидатов (h_s ≤ радиуса последнего прохода).
 8. `DELETE` строки убирает её из планов (а не 409).
 9. IK: пустой класс — m_k = середина его порогов (крайние — порог); ETYPE по 8.8.1.
+10. Моделирование 18.32: `PROB_GT_<t>` — доля реализаций ≥ t (как `local_prob_exceed`); `expected_version` у
+    `simulate/run` — версия строки, не модели; `dom` = 0 (код домена цели; у одного домена строки); `source.op` полей
+    постобработки — `simulate` (добавлено в `blocks/schema.FIELD_OPS`); отпечаток узла `object:simulation` — без
+    номеров объектов (`.bfggis` их перенумерует), `last_run.params` при импорте пересчитывается (`geostat/remap`).

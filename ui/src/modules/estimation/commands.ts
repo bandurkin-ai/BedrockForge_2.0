@@ -6,7 +6,7 @@
  * takes their `stage` off; the window of the plan (18.22) binds `estimate.plan` and `estimate.plan_delete` the same way; `estimate.run` without
  * arguments opens it), the rest stays «появится на этапе» until its window (`stage`). The parameters are flat (`ParamSchema` has no objects): the pair of the
  * soft boundary of the contact analysis (Д-28, `estimate.open {soft: {a, b, distance}}` of the contract) is `soft_a`, `soft_b`,
- * `soft_distance`; the lists are text («41; 42»). The simulation (`simulate.*`) is Э18б.
+ * `soft_distance`; the lists are text («41; 42»). The simulation (`simulate.*`) is `modules/simulation` (Э18б).
  */
 import type { Command, ParamSchema } from "../../shell/commands";
 import type { IconName } from "../../shell/Icon";
@@ -200,7 +200,8 @@ const icon = (name: string): IconName => name as IconName;
 
 export const ESTIMATE_GROUP_TITLE = "Оценка";
 export const CHECK_GROUP_TITLE = "Проверка";
-export const SIM_GROUP_TITLE = "Моделирование";
+/** The group «Моделирование» of the ribbon is the simulation's (`modules/simulation/commands.ts`, Э18б); the shell takes it from here until it imports it from there. */
+export { SIM_BUTTONS, SIM_GROUP_TITLE } from "../simulation/commands";
 
 export const ESTIMATE_BUTTONS: readonly EstimateButton[] = [
   { command: "estimate.open", label: "Оценка содержаний", icon: icon("blocks"), hint: "Мастер: блочная модель, пробы, метод (NN, IDW, SK, OK, IK), поиск и проходы, выходные поля" },
@@ -218,4 +219,3 @@ export const CHECK_BUTTONS: readonly EstimateButton[] = [
   { command: "estimate.qq", label: "Q-Q", icon: icon("qq"), hint: "Квантили композитов и оценки блоков", small: true },
 ];
 
-export const SIM_BUTTONS: readonly EstimateButton[] = [{ command: "estimate.open", args: { method: "ik" }, label: "Индикаторы", icon: icon("domains"), hint: "Индикаторный кригинг: пороги, модели по порогам, вероятности и E-type" }];

@@ -9,9 +9,11 @@ the model it was copied from (`origin.model_id`; not in the archive — null, th
 estimation (18.11) names the block model, the samples (set, tables), the variogram models, the trend, the filter and the
 wireframes of its inline rules, and keeps the same in `inputs[].id` (a table by the map of the tables, a field of a
 model `"<model>:<name>"` by the map of the objects); an id the archive does not have becomes null (a table of the
-samples — «0») — the row reads (`estimate.store_base.lenient`) and shows «источник удалён». A plan of the
-estimation renumbers `model_id` and `items` (a row the archive does not have leaves the plan). `fp` and `last_run`
-stay as they are: the project keeps its states after the import.
+samples — «0») — the row reads (`estimate.store_base.lenient`) and shows «источник удалён». A simulation
+(18.32) is renumbered as a row of the estimation (its `variogram`, `variograms`, `inputs`, `target`, `samples`; no
+trend, no plans). The hash of the parameters of the last run (`last_run.params`) of both is made again for the new ids.
+A plan of the estimation renumbers `model_id` and `items` (a row the archive does not have leaves the
+plan). `fp` and `last_run` stay as they are (but the hash above): the project keeps its states after the import.
 
 Called once all rows are written: `remap_geostat(conn, maps["objects"], maps["dh_tables"])` in `importer._restore`.
 """
@@ -68,6 +70,7 @@ def trend_meta(meta: Mapping[str, Any], objects_of: Lookup) -> dict[str, Any]:
     return out
 
 
+SIMULATION = "simulation"  # the kind of the stored simulations (`geostat/simulation/store_check.KIND`; 18.32)
 DEAD_TABLE = "0"  # a table of an estimation the archive did not have: no table has this id, the row stays readable
 
 
@@ -88,8 +91,8 @@ def _input(i: Any, objects_of: Lookup, tables_of: Lookup) -> Any:
     return {**i, "id": _new(ident, objects_of)}
 
 
-def estimation_meta(meta: Mapping[str, Any], objects_of: Lookup, tables_of: Lookup) -> dict[str, Any]:
-    """The `meta` of a row of the estimation (18.11) with the ids of the new project."""
+def _ids_meta(meta: Mapping[str, Any], objects_of: Lookup, tables_of: Lookup) -> dict[str, Any]:
+    """The `meta` of a row of the estimation (18.11) or of a simulation with the ids of the new project."""
     out = dict(meta)
     if "model_id" in out:
         out["model_id"] = _new(out["model_id"], objects_of)
@@ -124,6 +127,37 @@ def estimation_meta(meta: Mapping[str, Any], objects_of: Lookup, tables_of: Look
     return out
 
 
+def _rehashed(meta: Mapping[str, Any], out: dict[str, Any], load: Callable[[Mapping[str, Any]], Any],
+              params_hash: Callable[[Any], str]) -> dict[str, Any]:  # fmt: skip
+    """`last_run.params` is the hash of the parameters of the last run, ids included: made again for the new ids when
+    the row was not «устарел» by its parameters before, so it is not after the import (a row that was stays so)."""
+    from bf_core.api.errors import ApiError
+
+    last = out.get("last_run")
+    if isinstance(last, Mapping) and last.get("params") is not None:
+        try:
+            if params_hash(load(meta)) == last["params"]:
+                out["last_run"] = {**last, "params": params_hash(load(out))}
+        except ApiError:
+            pass  # the parameters do not read: the row stays «параметры не читаются»
+    return out
+
+
+def estimation_meta(meta: Mapping[str, Any], objects_of: Lookup, tables_of: Lookup) -> dict[str, Any]:
+    """The `meta` of a row of the estimation (18.11) with the ids of the new project; the hash of the parameters of its
+    last run (`last_run.params`, which holds the ids) is made again (`_rehashed`)."""
+    from bf_core.geostat.estimate import store_base as sb
+
+    return _rehashed(meta, _ids_meta(meta, objects_of, tables_of), sb.load_spec, sb.params_hash)
+
+
+def simulation_meta(meta: Mapping[str, Any], objects_of: Lookup, tables_of: Lookup) -> dict[str, Any]:
+    """The `meta` of a simulation (18.32) with the ids of the new project: as a row of the estimation (`_rehashed`)."""
+    from bf_core.geostat.simulation import store_check as sc
+
+    return _rehashed(meta, _ids_meta(meta, objects_of, tables_of), sc.load_spec, sc.params_hash)
+
+
 def plan_meta(meta: Mapping[str, Any], objects_of: Lookup) -> dict[str, Any]:
     """The `meta` of a plan of the estimation: the block model and the rows in the new project."""
     out = dict(meta)
@@ -146,7 +180,7 @@ def remap_geostat(conn: sa.Connection, objects_map: Mapping[int, int], tables_ma
     changed = 0
     rows = conn.execute(
         sa.select(objects.c.id, objects.c.kind, objects.c.meta).where(
-            objects.c.kind.in_((KIND, TREND, eb.KIND, eb.PLAN))
+            objects.c.kind.in_((KIND, TREND, eb.KIND, eb.PLAN, SIMULATION))
         )
     )
     for model_id, kind, meta in rows.all():
@@ -154,6 +188,8 @@ def remap_geostat(conn: sa.Connection, objects_map: Mapping[int, int], tables_ma
             new = trend_meta(meta or {}, objects_map.get)
         elif kind == eb.KIND:
             new = estimation_meta(meta or {}, objects_map.get, tables_map.get)
+        elif kind == SIMULATION:
+            new = simulation_meta(meta or {}, objects_map.get, tables_map.get)
         elif kind == eb.PLAN:
             new = plan_meta(meta or {}, objects_map.get)
         else:

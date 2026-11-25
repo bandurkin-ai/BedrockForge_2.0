@@ -13,7 +13,7 @@ import { errorText } from "../../shell/props";
 import { Store } from "../../shell/store";
 import { projectStore } from "../projects/state";
 import { loadModel, loadModels, type ModelRow } from "../variography/api";
-import { createEstimation, loadDefaults, loadEstimation, refusalOf, replaceEstimation, type DefaultsAnswer, type Refusal, type Saved, type Triple, type VarioScale } from "./api";
+import { createEstimation, loadDefaults, loadEstimation, refusalOf, replaceEstimation, type DefaultsAnswer, type DefaultsQuery, type Refusal, type Saved, type Triple, type VarioScale } from "./api";
 import { bodyOf, defaultsQueryOf, EMPTY_FORM, formOfMeta, scaleOf, stepOfParam, type EstimationForm, type Issue } from "./form";
 import { bad } from "./formBase";
 import { ALLOWED_FIELDS, anyHy, passesOf, type OutputsForm, type PassForm, type SearchForm, type Tri } from "./formSearch";
@@ -110,59 +110,75 @@ export function resetWizard(): void {
 
 // ---- the defaults of the core ----
 
-let timer: ReturnType<typeof setTimeout> | null = null;
+export const EMPTY_DEFAULTS_STATE = EMPTY_DEFAULTS;
+
+/**
+ * The requester of the defaults of a wizard (the estimation's below, the simulation's in `modules/simulation`): the core is asked
+ * for the defaults of the data of the form after a short pause of the typing; the newest answer only, a request that was asked
+ * already is not asked again, another project drops the answer.
+ */
+export function defaultsRequester(store: Store<{ defaults: DefaultsState }>, query: () => DefaultsQuery | null): (delay?: number) => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return (delay = 200) => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    const q = query();
+    const cur = store.get().defaults;
+    if (!q) {
+      store.set({ defaults: { ...EMPTY_DEFAULTS, seq: cur.seq + 1 } });
+      return;
+    }
+    const key = JSON.stringify(q);
+    if (key === cur.key && cur.phase !== "idle" && cur.phase !== "error") return;
+    const seq = cur.seq + 1;
+    store.set({ defaults: { phase: "loading", key, seq, data: cur.key === key ? cur.data : null, error: null } });
+    const uid = projectStore.get().current?.uid ?? null;
+    const go = () => {
+      timer = null;
+      loadDefaults(q)
+        .then((data) => {
+          if (store.get().defaults.seq === seq && (projectStore.get().current?.uid ?? null) === uid) store.set({ defaults: { phase: "ok", key, seq, data, error: null } });
+        })
+        .catch((e: unknown) => {
+          if (store.get().defaults.seq === seq) store.set({ defaults: { phase: "error", key, seq, data: null, error: issueOfRefusal(refusalOf(e)) } });
+        });
+    };
+    if (delay <= 0) go();
+    else timer = setTimeout(go, delay);
+  };
+}
 
 /** The core is asked for the defaults of the data of the form (after a short pause of the typing); the newest answer only. */
-export function requestDefaults(delay = 200): void {
-  if (timer) clearTimeout(timer);
-  timer = null;
-  const q = defaultsQueryOf(form());
-  const cur = wizardStore.get().defaults;
-  if (!q) {
-    wizardStore.set({ defaults: { ...EMPTY_DEFAULTS, seq: cur.seq + 1 } });
-    return;
-  }
-  const key = JSON.stringify(q);
-  if (key === cur.key && cur.phase !== "idle" && cur.phase !== "error") return;
-  const seq = cur.seq + 1;
-  wizardStore.set({ defaults: { phase: "loading", key, seq, data: cur.key === key ? cur.data : null, error: null } });
-  const uid = projectStore.get().current?.uid ?? null;
-  const go = () => {
-    timer = null;
-    loadDefaults(q)
-      .then((data) => {
-        if (wizardStore.get().defaults.seq === seq && (projectStore.get().current?.uid ?? null) === uid) wizardStore.set({ defaults: { phase: "ok", key, seq, data, error: null } });
-      })
-      .catch((e: unknown) => {
-        if (wizardStore.get().defaults.seq === seq) wizardStore.set({ defaults: { phase: "error", key, seq, data: null, error: issueOfRefusal(refusalOf(e)) } });
-      });
-  };
-  if (delay <= 0) go();
-  else timer = setTimeout(go, delay);
-}
+export const requestDefaults = defaultsRequester(wizardStore, () => defaultsQueryOf(form()));
 
 // ---- the stored models of variogram (Д-38) ----
 
 let varioSeq = 0;
+
+/** The models of the project and which of them have a back transform (`meta.back.model`); the wizard of the simulation reads them the same way. */
+export async function readVariogramModels(): Promise<Pick<VarioState, "rows" | "backs">> {
+  const rows = await loadModels();
+  const backs: Record<number, boolean> = {};
+  await Promise.all(
+    rows
+      .filter((r) => r.transform !== "none")
+      .map(async (r) => {
+        // a model that cannot be read has no back transform for us: it is not offered (the core would refuse it too)
+        backs[r.id] = await loadModel(r.id).then(
+          (m) => !!m.meta.back && typeof m.meta.back === "object" && !!(m.meta.back as Record<string, unknown>).model,
+          () => false,
+        );
+      }),
+  );
+  return { rows, backs };
+}
 
 /** The models of the project with the scale of each: a model in normal scores is Z only with its back transform. */
 export async function loadVariogramModels(): Promise<void> {
   const mine = ++varioSeq;
   const uid = projectStore.get().current?.uid ?? null;
   try {
-    const rows = await loadModels();
-    const backs: Record<number, boolean> = {};
-    await Promise.all(
-      rows
-        .filter((r) => r.transform !== "none")
-        .map(async (r) => {
-          // a model that cannot be read has no back transform for us: it is not offered (the core would refuse it too)
-          backs[r.id] = await loadModel(r.id).then(
-            (m) => !!m.meta.back && typeof m.meta.back === "object" && !!(m.meta.back as Record<string, unknown>).model,
-            () => false,
-          );
-        }),
-    );
+    const { rows, backs } = await readVariogramModels();
     if (mine !== varioSeq || (projectStore.get().current?.uid ?? null) !== uid) return;
     wizardStore.set({ vario: { rows, backs, loaded: true, error: null } });
   } catch (e) {

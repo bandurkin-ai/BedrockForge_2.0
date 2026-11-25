@@ -1,0 +1,1474 @@
+{
+ "_note": "Ответы настоящего ядра (BF_REGEN_SIMULATE=1 uv run pytest -q tests/test_simulation_api.py, 18.32) на синтетическом проекте tests/estapi_world.py (25 скважин, блочная модель из трёх доменов, модель вариограммы в нормальных оценках «AU · Y сим»). Формы: docs/progress/e18-api.md §9. Ключи — как у core/tests/data/estimate/contract_answers.json: {status, body}.",
+ "simulation_post": {
+  "status": 200,
+  "body": {
+   "id": 8,
+   "name": "AU · SGS · окисл",
+   "version": 1
+  }
+ },
+ "simulation_name_taken": {
+  "status": 409,
+  "body": {
+   "param": "name",
+   "code": "name_taken",
+   "message": "«au · sgs · ОКИСЛ» уже есть.",
+   "hint": "Введите другое название."
+  }
+ },
+ "bad_param": {
+  "status": 422,
+  "body": {
+   "param": "n_real",
+   "code": "bad_param",
+   "message": "Число реализаций: значение вне диапазона от 1 до 100.",
+   "hint": "Задайте от 1 до 100."
+  }
+ },
+ "bad_param_search": {
+  "status": 422,
+  "body": {
+   "param": "search.passes.0.n_max",
+   "code": "bad_param",
+   "message": "Наибольшее число проб n_max: значение вне диапазона от 1 до 128.",
+   "hint": "Задайте от 1 до 128."
+  }
+ },
+ "variogram_scale": {
+  "status": 422,
+  "body": {
+   "param": "variogram.model_id",
+   "code": "variogram_scale",
+   "message": "Для моделирования нужна модель вариограммы в нормальных оценках.",
+   "hint": "Постройте вариограмму нормальных оценок и сохраните модель."
+  }
+ },
+ "sis_no_method": {
+  "status": 422,
+  "body": {
+   "param": "method",
+   "code": "bad_param",
+   "message": "Для SIS не заданы пороги.",
+   "hint": "Задайте пороги или категории."
+  }
+ },
+ "cosgs_bad_rho": {
+  "status": 422,
+  "body": {
+   "param": "secondary.rho",
+   "code": "bad_param",
+   "message": "Коэффициент корреляции ρ: значение вне диапазона от -1 до 1.",
+   "hint": "Задайте от -1 до 1."
+  }
+ },
+ "cosgs_not_a_number": {
+  "status": 422,
+  "body": {
+   "param": "secondary.field",
+   "code": "field_not_number",
+   "message": "Поле «ZONE» — категориальное.",
+   "hint": "Выберите числовое поле модели, например плотность."
+  }
+ },
+ "simulation_empty": {
+  "status": 200,
+  "body": {
+   "id": 8,
+   "name": "AU · SGS · окисл",
+   "version": 1,
+   "meta": {
+    "v": 1,
+    "name": "AU · SGS · окисл",
+    "kind": "sgs",
+    "model_id": 2,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "samples": {
+     "set_id": 1,
+     "table": "1",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "2",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": null
+    },
+    "variogram": {
+     "model_id": 4,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 60.0,
+        "a2": 60.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "16e34449025060595fde8ccded90252e49bf7395e6d619fca29b7bd6cca92feb",
+     "scale": "y",
+     "share": null
+    },
+    "variograms": null,
+    "method": null,
+    "search": {
+     "from": "model",
+     "ang1": 0.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 60.0,
+     "r2": 60.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "nodes": 6,
+    "seed": 99,
+    "n_real": 4,
+    "secondary": null,
+    "nscore": {
+     "ltail": "linear",
+     "utail": "linear",
+     "ltpar": null,
+     "utpar": null
+    },
+    "origin": [
+     500050.0,
+     6700050.0,
+     294.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_table",
+      "id": 1,
+      "fp": "66119f4141ea8:1",
+      "name": "Композиты"
+     },
+     {
+      "kind": "dh_table",
+      "id": 2,
+      "fp": "66119f41453a6:1",
+      "name": "Литология"
+     },
+     {
+      "kind": "dh_set",
+      "id": 1,
+      "fp": "traj:1:3:3:minimum_curvature",
+      "name": "Скважины"
+     },
+     {
+      "kind": "object:variogram_model",
+      "id": 4,
+      "fp": "16e34449025060595fde8ccded90252e49bf7395e6d619fca29b7bd6cca92feb",
+      "name": "AU · Y сим"
+     },
+     {
+      "kind": "object:block_model",
+      "id": 2,
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки"
+     },
+     {
+      "kind": "bm_field",
+      "id": "2:ZONE",
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки · ZONE"
+     }
+    ],
+    "algo": "sim-1",
+    "versions": {
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1"
+    },
+    "created_at": "2026-11-25T13:39:17.505771+00:00",
+    "last_run": null
+   },
+   "file": null,
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "created_at": "2026-11-25T13:39:17.505771Z",
+   "updated_at": "2026-11-25T13:39:17.505771Z"
+  }
+ },
+ "summary_empty": {
+  "status": 409,
+  "body": {
+   "code": "no_realizations",
+   "message": "У моделирования «AU · SGS · окисл» нет реализаций.",
+   "hint": "Запустите моделирование и повторите."
+  }
+ },
+ "simulation_put_conflict": {
+  "status": 409,
+  "body": {
+   "version": 2,
+   "code": "version_conflict",
+   "message": "Параметры моделирования изменены в другом окне.",
+   "hint": "Перечитайте параметры или сохраните как новые."
+  }
+ },
+ "run_submit": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 1
+  }
+ },
+ "run_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 8,
+   "nodes": 200,
+   "realizations": 5,
+   "seconds": 8.862,
+   "counts": {
+    "degenerate": 0,
+    "free": 0,
+    "on_sample": 0,
+    "cond": {
+     "min": 24,
+     "mean": 24.0,
+     "max": 24
+    }
+   },
+   "log": [
+    "Смоделировано 200 узлов × 5 реализаций (зерно 99).",
+    "Нормальные оценки: проб 147, таблица из 147 значений."
+   ],
+   "stages": {
+    "samples": 7.15,
+    "scores": 4.661,
+    "realizations": 4.201,
+    "write": 0.025,
+    "total": 16.037
+   },
+   "events": [
+    [
+     "geostat.changed",
+     {
+      "kind": "simulation",
+      "id": 8
+     }
+    ]
+   ]
+  }
+ },
+ "run_version_conflict": {
+  "status": 409,
+  "body": {
+   "version": 2,
+   "code": "version_conflict",
+   "message": "Параметры моделирования изменены в другом окне.",
+   "hint": "Перечитайте параметры или сохраните как новые."
+  }
+ },
+ "simulation": {
+  "status": 200,
+  "body": {
+   "id": 8,
+   "name": "AU · SGS · окисл",
+   "version": 2,
+   "meta": {
+    "v": 1,
+    "name": "AU · SGS · окисл",
+    "kind": "sgs",
+    "model_id": 2,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "samples": {
+     "set_id": 1,
+     "table": "1",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "2",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": null
+    },
+    "variogram": {
+     "model_id": 4,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 60.0,
+        "a2": 60.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "16e34449025060595fde8ccded90252e49bf7395e6d619fca29b7bd6cca92feb",
+     "scale": "y",
+     "share": null
+    },
+    "variograms": null,
+    "method": null,
+    "search": {
+     "from": "model",
+     "ang1": 0.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 60.0,
+     "r2": 60.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "nodes": 6,
+    "seed": 99,
+    "n_real": 5,
+    "secondary": null,
+    "nscore": {
+     "ltail": "linear",
+     "utail": "linear",
+     "ltpar": null,
+     "utpar": null
+    },
+    "origin": [
+     500050.0,
+     6700050.0,
+     294.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_table",
+      "id": 1,
+      "fp": "66119f4141ea8:1",
+      "name": "Композиты"
+     },
+     {
+      "kind": "dh_table",
+      "id": 2,
+      "fp": "66119f41453a6:1",
+      "name": "Литология"
+     },
+     {
+      "kind": "dh_set",
+      "id": 1,
+      "fp": "traj:1:3:3:minimum_curvature",
+      "name": "Скважины"
+     },
+     {
+      "kind": "object:variogram_model",
+      "id": 4,
+      "fp": "16e34449025060595fde8ccded90252e49bf7395e6d619fca29b7bd6cca92feb",
+      "name": "AU · Y сим"
+     },
+     {
+      "kind": "object:block_model",
+      "id": 2,
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки"
+     },
+     {
+      "kind": "bm_field",
+      "id": "2:ZONE",
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки · ZONE"
+     }
+    ],
+    "algo": "sim-1",
+    "versions": {
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1"
+    },
+    "created_at": "2026-11-25T13:39:17.505771+00:00",
+    "last_run": {
+     "at": "2026-11-25T13:39:34.404417+00:00",
+     "job": 1,
+     "nodes": 200,
+     "realizations": 5,
+     "seconds": 8.862,
+     "counts": {
+      "degenerate": 0,
+      "free": 0,
+      "on_sample": 0
+     },
+     "cond": {
+      "min": 24,
+      "mean": 24.0,
+      "max": 24
+     },
+     "samples": {
+      "rows": 500,
+      "used": 147
+     },
+     "summary": {
+      "per": [
+       {
+        "n": 200,
+        "mean": 1.2967936393420059,
+        "std": 0.5442542710624256,
+        "min": 0.32452257305924964,
+        "max": 2.7991869255670725
+       },
+       {
+        "n": 200,
+        "mean": 1.2840047008351818,
+        "std": 0.5312538222827652,
+        "min": 0.31007075079147095,
+        "max": 3.837476385690198
+       },
+       {
+        "n": 200,
+        "mean": 1.2225554563782886,
+        "std": 0.5167835839948678,
+        "min": 0.3895923498898685,
+        "max": 3.747416921716095
+       },
+       {
+        "n": 200,
+        "mean": 1.3447536007237397,
+        "std": 0.618471688442394,
+        "min": 0.24317584692201108,
+        "max": 4.150526858413871
+       },
+       {
+        "n": 200,
+        "mean": 1.4077271425897881,
+        "std": 0.6141094273200224,
+        "min": 0.38973420416784643,
+        "max": 4.627810185210258
+       }
+      ],
+      "all": {
+       "mean": 1.3111669079738009,
+       "std": 0.564974558620495,
+       "min": 0.24317584692201108,
+       "max": 4.627810185210258
+      }
+     },
+     "params": "b0f7dd6a08562a59d4a53b8016d71680fa67295a8a79e368c1fab5a41896a3df"
+    }
+   },
+   "file": {
+    "role": "real",
+    "sha": "9f3795a4ed006a84f8c510920a9ae54713024b7266291d1117ffeb38ce1719fb",
+    "rows": 200,
+    "columns": [
+     "p",
+     "dom",
+     "r001",
+     "r002",
+     "r003",
+     "r004",
+     "r005"
+    ]
+   },
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "created_at": "2026-11-25T13:39:17.505771Z",
+   "updated_at": "2026-11-25T13:39:17.609069Z"
+  }
+ },
+ "simulations": {
+  "status": 200,
+  "body": {
+   "simulations": [
+    {
+     "id": 8,
+     "name": "AU · SGS · окисл",
+     "kind": "sgs",
+     "model_id": 2,
+     "label": "окисл",
+     "field": "AU",
+     "n_real": 5,
+     "seed": 99,
+     "version": 2,
+     "stale": false,
+     "stale_reason": null,
+     "source_lost": false,
+     "last_run": {
+      "at": "2026-11-25T13:39:34.404417+00:00",
+      "nodes": 200,
+      "realizations": 5
+     },
+     "created_at": "2026-11-25T13:39:17.505771Z",
+     "updated_at": "2026-11-25T13:39:17.609069Z"
+    }
+   ]
+  }
+ },
+ "summary": {
+  "status": 200,
+  "body": {
+   "simulation_id": 8,
+   "nodes": 200,
+   "realizations": 5,
+   "seconds": 8.862,
+   "counts": {
+    "degenerate": 0,
+    "free": 0,
+    "on_sample": 0
+   },
+   "cond": {
+    "min": 24,
+    "mean": 24.0,
+    "max": 24
+   },
+   "samples": {
+    "rows": 500,
+    "used": 147
+   },
+   "summary": {
+    "per": [
+     {
+      "n": 200,
+      "mean": 1.2967936393420059,
+      "std": 0.5442542710624256,
+      "min": 0.32452257305924964,
+      "max": 2.7991869255670725
+     },
+     {
+      "n": 200,
+      "mean": 1.2840047008351818,
+      "std": 0.5312538222827652,
+      "min": 0.31007075079147095,
+      "max": 3.837476385690198
+     },
+     {
+      "n": 200,
+      "mean": 1.2225554563782886,
+      "std": 0.5167835839948678,
+      "min": 0.3895923498898685,
+      "max": 3.747416921716095
+     },
+     {
+      "n": 200,
+      "mean": 1.3447536007237397,
+      "std": 0.618471688442394,
+      "min": 0.24317584692201108,
+      "max": 4.150526858413871
+     },
+     {
+      "n": 200,
+      "mean": 1.4077271425897881,
+      "std": 0.6141094273200224,
+      "min": 0.38973420416784643,
+      "max": 4.627810185210258
+     }
+    ],
+    "all": {
+     "mean": 1.3111669079738009,
+     "std": 0.564974558620495,
+     "min": 0.24317584692201108,
+     "max": 4.627810185210258
+    }
+   },
+   "at": "2026-11-25T13:39:34.404417+00:00"
+  }
+ },
+ "post_version_conflict": {
+  "status": 409,
+  "body": {
+   "version": 2,
+   "code": "version_conflict",
+   "message": "Модель изменили, пока вы её правили.",
+   "hint": "Перечитайте модель и повторите."
+  }
+ },
+ "post_submit": {
+  "status": 200,
+  "body": {
+   "source": "project",
+   "id": 2
+  }
+ },
+ "post_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 8,
+   "model_id": 2,
+   "version": 3,
+   "prefix": "AU_SGS_",
+   "fields": [
+    "AU_SGS_MEAN",
+    "AU_SGS_STD",
+    "AU_SGS_P10",
+    "AU_SGS_P50",
+    "AU_SGS_P90",
+    "AU_SGS_PROB_GT_1"
+   ],
+   "nodes": 200,
+   "realizations": 5,
+   "log": [
+    "Моделирование «AU · SGS · окисл»: 200 узлов × 5 реализаций."
+   ],
+   "seconds": 0.455,
+   "events": [
+    [
+     "objects.changed",
+     {
+      "kind": "block_model",
+      "id": 2
+     }
+    ]
+   ]
+  }
+ },
+ "post_field_exists": {
+  "status": 409,
+  "body": {
+   "field": "AU_SGS_MEAN",
+   "code": "field_exists",
+   "message": "Поле «AU_SGS_MEAN» в модели уже есть.",
+   "hint": "Задайте другой префикс или замените поля."
+  }
+ },
+ "run_body_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 9,
+   "nodes": 200,
+   "realizations": 4,
+   "seconds": 0.033,
+   "counts": {
+    "degenerate": 0,
+    "free": 0,
+    "on_sample": 0,
+    "cond": {
+     "min": 24,
+     "mean": 24.0,
+     "max": 24
+    }
+   },
+   "log": [
+    "Смоделировано 200 узлов × 4 реализаций (зерно 99).",
+    "Нормальные оценки: проб 97, таблица из 97 значений."
+   ],
+   "stages": {
+    "samples": 0.05,
+    "scores": 0.009,
+    "realizations": 0.025,
+    "write": 0.024,
+    "total": 0.107
+   },
+   "events": [
+    [
+     "geostat.changed",
+     {
+      "kind": "simulation",
+      "id": 9
+     }
+    ]
+   ]
+  }
+ },
+ "sis_post": {
+  "status": 200,
+  "body": {
+   "id": 10,
+   "name": "AU · SIS · окисл",
+   "version": 1
+  }
+ },
+ "sis_row": {
+  "status": 200,
+  "body": {
+   "id": 10,
+   "name": "AU · SIS · окисл",
+   "version": 1,
+   "meta": {
+    "v": 1,
+    "name": "AU · SIS · окисл",
+    "kind": "sis",
+    "model_id": 2,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "samples": {
+     "set_id": 1,
+     "table": "1",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "2",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": null
+    },
+    "variogram": null,
+    "variograms": [
+     {
+      "t": 0.7,
+      "model_id": 5,
+      "snapshot": {
+       "type": "semivariogram",
+       "c0": 0.1,
+       "structures": [
+        {
+         "type": "spherical",
+         "c": 0.9,
+         "ang1": 0.0,
+         "ang2": 0.0,
+         "ang3": 0.0,
+         "a1": 60.0,
+         "a2": 60.0,
+         "a3": 30.0
+        }
+       ],
+       "common_axes": true
+      },
+      "sha": "ddd61d713652d781a6cd0cd3d126f6b7654419a467954f8f80088878a425ef80",
+      "scale": "z",
+      "share": null
+     },
+     {
+      "t": 1.0,
+      "model_id": 6,
+      "snapshot": {
+       "type": "semivariogram",
+       "c0": 0.1,
+       "structures": [
+        {
+         "type": "spherical",
+         "c": 0.9,
+         "ang1": 0.0,
+         "ang2": 0.0,
+         "ang3": 0.0,
+         "a1": 60.0,
+         "a2": 60.0,
+         "a3": 30.0
+        }
+       ],
+       "common_axes": true
+      },
+      "sha": "0fd78d31743857c46e75f6e42b55573c7ecc91df920fd2d725eaa80e0b184455",
+      "scale": "z",
+      "share": null
+     },
+     {
+      "t": 1.5,
+      "model_id": 7,
+      "snapshot": {
+       "type": "semivariogram",
+       "c0": 0.1,
+       "structures": [
+        {
+         "type": "spherical",
+         "c": 0.9,
+         "ang1": 0.0,
+         "ang2": 0.0,
+         "ang3": 0.0,
+         "a1": 60.0,
+         "a2": 60.0,
+         "a3": 30.0
+        }
+       ],
+       "common_axes": true
+      },
+      "sha": "5df88215973c39863e37b1998735b7ab09e30a19e31a5e8d38f7f942cc09a013",
+      "scale": "z",
+      "share": null
+     }
+    ],
+    "method": {
+     "ik": {
+      "thresholds": [
+       0.7,
+       1.0,
+       1.5
+      ],
+      "categories": null,
+      "labels": null,
+      "models": "per"
+     }
+    },
+    "search": {
+     "from": "model",
+     "ang1": 0.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 60.0,
+     "r2": 60.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "nodes": 6,
+    "seed": 99,
+    "n_real": 4,
+    "secondary": null,
+    "nscore": {
+     "ltail": "linear",
+     "utail": "linear",
+     "ltpar": null,
+     "utpar": null
+    },
+    "origin": [
+     500050.0,
+     6700050.0,
+     294.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_table",
+      "id": 1,
+      "fp": "66119f4141ea8:1",
+      "name": "Композиты"
+     },
+     {
+      "kind": "dh_table",
+      "id": 2,
+      "fp": "66119f41453a6:1",
+      "name": "Литология"
+     },
+     {
+      "kind": "dh_set",
+      "id": 1,
+      "fp": "traj:1:3:3:minimum_curvature",
+      "name": "Скважины"
+     },
+     {
+      "kind": "object:variogram_model",
+      "id": 5,
+      "fp": "ddd61d713652d781a6cd0cd3d126f6b7654419a467954f8f80088878a425ef80",
+      "name": "AU · индикатор 0.7"
+     },
+     {
+      "kind": "object:variogram_model",
+      "id": 6,
+      "fp": "0fd78d31743857c46e75f6e42b55573c7ecc91df920fd2d725eaa80e0b184455",
+      "name": "AU · индикатор 1.0"
+     },
+     {
+      "kind": "object:variogram_model",
+      "id": 7,
+      "fp": "5df88215973c39863e37b1998735b7ab09e30a19e31a5e8d38f7f942cc09a013",
+      "name": "AU · индикатор 1.5"
+     },
+     {
+      "kind": "object:block_model",
+      "id": 2,
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки"
+     },
+     {
+      "kind": "bm_field",
+      "id": "2:ZONE",
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки · ZONE"
+     }
+    ],
+    "algo": "sim-1",
+    "versions": {
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1"
+    },
+    "created_at": "2026-11-25T13:39:35.504903+00:00",
+    "last_run": null
+   },
+   "file": null,
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "created_at": "2026-11-25T13:39:35.504903Z",
+   "updated_at": "2026-11-25T13:39:35.504903Z"
+  }
+ },
+ "sis_run_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 10,
+   "nodes": 200,
+   "realizations": 4,
+   "seconds": 2.736,
+   "counts": {
+    "degenerate": 0,
+    "free": 0,
+    "on_sample": 0,
+    "cond": {
+     "min": 24,
+     "mean": 24.0,
+     "max": 24
+    }
+   },
+   "log": [
+    "Смоделировано 200 узлов × 4 реализаций (зерно 99).",
+    "Индикаторы: проб 147, классов 4; доли 0.227; 0.473; 0.752."
+   ],
+   "stages": {
+    "samples": 0.023,
+    "scores": 0.252,
+    "realizations": 2.493,
+    "write": 0.017,
+    "total": 2.785
+   },
+   "events": [
+    [
+     "geostat.changed",
+     {
+      "kind": "simulation",
+      "id": 10
+     }
+    ]
+   ]
+  }
+ },
+ "sis_post_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 10,
+   "model_id": 2,
+   "version": 4,
+   "prefix": "AU_SIS_",
+   "fields": [
+    "AU_SIS_MEAN",
+    "AU_SIS_STD",
+    "AU_SIS_P10",
+    "AU_SIS_P50",
+    "AU_SIS_P90",
+    "AU_SIS_PROB_GT_1"
+   ],
+   "nodes": 200,
+   "realizations": 4,
+   "log": [
+    "Моделирование «AU · SIS · окисл»: 200 узлов × 4 реализаций."
+   ],
+   "seconds": 0.039,
+   "events": [
+    [
+     "objects.changed",
+     {
+      "kind": "block_model",
+      "id": 2
+     }
+    ]
+   ]
+  }
+ },
+ "sis_cat_post": {
+  "status": 200,
+  "body": {
+   "id": 11,
+   "name": "LITH · SIS · окисл",
+   "version": 1
+  }
+ },
+ "sis_cat_run_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 11,
+   "nodes": 200,
+   "realizations": 4,
+   "seconds": 0.008,
+   "counts": {
+    "degenerate": 0,
+    "free": 0,
+    "on_sample": 0,
+    "cond": {
+     "min": 24,
+     "mean": 24.0,
+     "max": 24
+    }
+   },
+   "log": [
+    "Смоделировано 200 узлов × 4 реализаций (зерно 99).",
+    "Индикаторы: проб 150, классов 3; доли 0.267; 0.233; 0.500."
+   ],
+   "stages": {
+    "samples": 0.031,
+    "scores": 0.01,
+    "realizations": 0.001,
+    "write": 0.015,
+    "total": 0.056
+   },
+   "events": [
+    [
+     "geostat.changed",
+     {
+      "kind": "simulation",
+      "id": 11
+     }
+    ]
+   ]
+  }
+ },
+ "sis_cat_summary": {
+  "status": 200,
+  "body": {
+   "simulation_id": 11,
+   "nodes": 200,
+   "realizations": 4,
+   "seconds": 0.008,
+   "counts": {
+    "degenerate": 0,
+    "free": 0,
+    "on_sample": 0
+   },
+   "cond": {
+    "min": 24,
+    "mean": 24.0,
+    "max": 24
+   },
+   "samples": {
+    "rows": 500,
+    "used": 150
+   },
+   "summary": {
+    "per": [
+     {
+      "n": 200,
+      "shares": [
+       0.2,
+       0.38,
+       0.42
+      ]
+     },
+     {
+      "n": 200,
+      "shares": [
+       0.4,
+       0.27,
+       0.33
+      ]
+     },
+     {
+      "n": 200,
+      "shares": [
+       0.29,
+       0.3,
+       0.41
+      ]
+     },
+     {
+      "n": 200,
+      "shares": [
+       0.26,
+       0.395,
+       0.345
+      ]
+     }
+    ],
+    "all": {
+     "codes": [
+      1,
+      2,
+      3
+     ],
+     "shares": [
+      0.28750000000000003,
+      0.33625,
+      0.37625
+     ]
+    }
+   },
+   "at": "2026-11-25T13:39:39.002295+00:00"
+  }
+ },
+ "sis_cat_post_thresholds": {
+  "status": 422,
+  "body": {
+   "param": "thresholds",
+   "code": "bad_param",
+   "message": "У категориального моделирования порогов нет.",
+   "hint": "Уберите пороги."
+  }
+ },
+ "sis_cat_post_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 11,
+   "model_id": 2,
+   "version": 5,
+   "prefix": "LITH_SIS_",
+   "fields": [
+    "LITH_SIS_PROB_1",
+    "LITH_SIS_PROB_2",
+    "LITH_SIS_PROB_3",
+    "LITH_SIS_MODE"
+   ],
+   "nodes": 200,
+   "realizations": 4,
+   "log": [
+    "Моделирование «LITH · SIS · окисл»: 200 узлов × 4 реализаций."
+   ],
+   "seconds": 0.04,
+   "events": [
+    [
+     "objects.changed",
+     {
+      "kind": "block_model",
+      "id": 2
+     }
+    ]
+   ]
+  }
+ },
+ "cosgs_post": {
+  "status": 200,
+  "body": {
+   "id": 12,
+   "name": "AU · Ко-SGS · окисл",
+   "version": 1
+  }
+ },
+ "cosgs_run_result": {
+  "status": 200,
+  "body": {
+   "simulation_id": 12,
+   "nodes": 200,
+   "realizations": 4,
+   "seconds": 1.664,
+   "counts": {
+    "degenerate": 0,
+    "free": 0,
+    "on_sample": 0,
+    "gap": 0,
+    "cond": {
+     "min": 24,
+     "mean": 24.0,
+     "max": 24
+    }
+   },
+   "secondary": {
+    "field": "SG",
+    "rho": null,
+    "rho_used": -0.24792023271312913,
+    "pairs": 78,
+    "gaps": 0
+   },
+   "log": [
+    "Смоделировано 200 узлов × 4 реализаций (зерно 99).",
+    "Вторичная переменная: значений 200 из 200; ρ = -0.2479 (из 78 пар проба–узел)."
+   ],
+   "stages": {
+    "samples": 0.028,
+    "scores": 0.244,
+    "realizations": 1.425,
+    "write": 0.014,
+    "total": 1.711
+   },
+   "events": [
+    [
+     "geostat.changed",
+     {
+      "kind": "simulation",
+      "id": 12
+     }
+    ]
+   ]
+  }
+ },
+ "cosgs_row": {
+  "status": 200,
+  "body": {
+   "id": 12,
+   "name": "AU · Ко-SGS · окисл",
+   "version": 1,
+   "meta": {
+    "v": 1,
+    "name": "AU · Ко-SGS · окисл",
+    "kind": "cosgs",
+    "model_id": 2,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "samples": {
+     "set_id": 1,
+     "table": "1",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "2",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": null
+    },
+    "variogram": {
+     "model_id": 4,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 60.0,
+        "a2": 60.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "16e34449025060595fde8ccded90252e49bf7395e6d619fca29b7bd6cca92feb",
+     "scale": "y",
+     "share": null
+    },
+    "variograms": null,
+    "method": null,
+    "search": {
+     "from": "model",
+     "ang1": 0.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 60.0,
+     "r2": 60.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "nodes": 6,
+    "seed": 99,
+    "n_real": 4,
+    "secondary": {
+     "field": "SG",
+     "rho": null,
+     "rho_used": -0.24792023271312913
+    },
+    "nscore": {
+     "ltail": "linear",
+     "utail": "linear",
+     "ltpar": null,
+     "utpar": null
+    },
+    "origin": [
+     500050.0,
+     6700050.0,
+     294.0
+    ],
+    "inputs": [
+     {
+      "kind": "dh_table",
+      "id": 1,
+      "fp": "66119f4141ea8:1",
+      "name": "Композиты"
+     },
+     {
+      "kind": "dh_table",
+      "id": 2,
+      "fp": "66119f41453a6:1",
+      "name": "Литология"
+     },
+     {
+      "kind": "dh_set",
+      "id": 1,
+      "fp": "traj:1:3:3:minimum_curvature",
+      "name": "Скважины"
+     },
+     {
+      "kind": "object:variogram_model",
+      "id": 4,
+      "fp": "16e34449025060595fde8ccded90252e49bf7395e6d619fca29b7bd6cca92feb",
+      "name": "AU · Y сим"
+     },
+     {
+      "kind": "object:block_model",
+      "id": 2,
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки"
+     },
+     {
+      "kind": "bm_field",
+      "id": "2:ZONE",
+      "fp": "cells:b210a36cf6532ec75dd04f81b080e659afacf9a74275d70e9270f6d45b5bc280",
+      "name": "Модель оценки · ZONE"
+     },
+     {
+      "kind": "bm_field",
+      "id": "2:SG",
+      "fp": "fld:b441dc650b5247d48efa7c4e39f6ac5f6e58ba22d2e774695168fcccd050a36f",
+      "name": "Модель оценки · SG"
+     }
+    ],
+    "algo": "sim-1",
+    "versions": {
+     "numpy": "2.3.5",
+     "scipy": "1.18.1",
+     "numba": "0.68.1"
+    },
+    "created_at": "2026-11-25T13:39:39.320543+00:00",
+    "last_run": {
+     "at": "2026-11-25T13:39:41.198497+00:00",
+     "job": 8,
+     "nodes": 200,
+     "realizations": 4,
+     "seconds": 1.664,
+     "counts": {
+      "degenerate": 0,
+      "free": 0,
+      "on_sample": 0
+     },
+     "cond": {
+      "min": 24,
+      "mean": 24.0,
+      "max": 24
+     },
+     "samples": {
+      "rows": 500,
+      "used": 147
+     },
+     "summary": {
+      "per": [
+       {
+        "n": 200,
+        "mean": 1.29206296172681,
+        "std": 0.5612124295245488,
+        "min": 0.3247649707624385,
+        "max": 2.800683575504741
+       },
+       {
+        "n": 200,
+        "mean": 1.2802708949381054,
+        "std": 0.555600989710896,
+        "min": 0.32153988204249306,
+        "max": 4.1624361188616295
+       },
+       {
+        "n": 200,
+        "mean": 1.2238255007181715,
+        "std": 0.5536311472484661,
+        "min": 0.3769571882009218,
+        "max": 4.4989698547532075
+       },
+       {
+        "n": 200,
+        "mean": 1.3446980409847418,
+        "std": 0.6590203768402104,
+        "min": 0.2616386753402229,
+        "max": 4.61634347687788
+       }
+      ],
+      "all": {
+       "mean": 1.2852143495919572,
+       "std": 0.5823662358310303,
+       "min": 0.2616386753402229,
+       "max": 4.61634347687788
+      }
+     },
+     "secondary": {
+      "field": "SG",
+      "rho": null,
+      "rho_used": -0.24792023271312913,
+      "pairs": 78,
+      "gaps": 0
+     },
+     "params": "133eed3ca2c0fa078f17afa8161d8b8f70d69dea83d105ed6f26f84e3a53d455"
+    }
+   },
+   "file": {
+    "role": "real",
+    "sha": "1897de81cb62ddb6ff548116c852b3b75f8f81137442d46c6fa152c3f860f028",
+    "rows": 200,
+    "columns": [
+     "p",
+     "dom",
+     "r001",
+     "r002",
+     "r003",
+     "r004"
+    ]
+   },
+   "stale": false,
+   "stale_reason": null,
+   "source_lost": false,
+   "created_at": "2026-11-25T13:39:39.320543Z",
+   "updated_at": "2026-11-25T13:39:39.320543Z"
+  }
+ },
+ "simulation_delete": {
+  "status": 200,
+  "body": {
+   "deleted": 8
+  }
+ }
+}
