@@ -175,6 +175,13 @@ describe("the steps drawn", () => {
     expect(html).toMatch(new RegExp(`<option value="${VID.back}" data-usable="true">[^<]*Y с обратным преобразованием`));
     expect(html).toMatch(/индикатор 0,7/);
   });
+  it("step 3, SIS: a refusal of the core on the models of the indicators is shown on the step (18.36 E2E)", () => {
+    putForm(formOfMeta(meta(SID.sis)));
+    simWizardStore.set({ issue: { param: "variograms.1.model_id", code: "variogram_scale", message: "Модель построена в нормальных оценках.", hint: "Выберите индикаторную модель.", reread: false } });
+    const html = render(createElement(StepVario));
+    expect(html).toContain('data-testid="est-issue-ik-variograms"');
+    expect(html).toContain("Модель построена в нормальных оценках.");
+  });
   it("step 3, categorical SIS: the codes and the names; the median model — one select", async () => {
     putForm(formOfMeta(meta(SID.cat)));
     await loadVariogramModels();

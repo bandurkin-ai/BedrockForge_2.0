@@ -111,6 +111,21 @@ describe("simulate.open and the kinds without arguments", () => {
     await app.registry.execute("simulate.sis", {}, "user");
     expect(simWizardStore.get().form).toMatchObject({ kind: "sis", variogramId: null, variogramIds: [] });
   });
+  it("another kind than the row being edited opens a new row: the stored row of the old kind is not rewritten", async () => {
+    await app.registry.execute("simulate.open", { id: SID.sgs }, "user");
+    expect(simWizardStore.get()).toMatchObject({ form: { kind: "sgs" }, editing: { id: SID.sgs } });
+    await app.registry.execute("simulate.sis", {}, "user");
+    expect(simWizardStore.get()).toMatchObject({ form: { kind: "sis" }, editing: null, saved: null });
+    // the same kind goes on with the row; the new SIS form is unsaved, so the own dialog asks first (18.36в)
+    const reopened = app.registry.execute("simulate.open", { id: SID.sgs }, "user");
+    await waitFor(() => dialogStore.get().queue.length > 0);
+    const d = dialogStore.get().queue[0];
+    if (d.kind === "confirm") d.resolve(true);
+    closeDialog(d.id);
+    await reopened;
+    await app.registry.execute("simulate.sgs", {}, "user");
+    expect(simWizardStore.get().editing).toMatchObject({ id: SID.sgs });
+  });
   it("`id` of `simulate.open` opens the stored row for the edit; the kind of the row decides", async () => {
     const r = await app.registry.execute("simulate.open", { id: SID.co }, "user");
     expect(r.ok).toBe(true);

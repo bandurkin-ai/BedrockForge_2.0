@@ -171,6 +171,8 @@ function Indicators({ f }: { f: SimForm }) {
           </select>
         </label>
         <IssueAt at="method.ik" id="ik" />
+        {/* the core refuses the models of the indicators by `variograms.N…` (per) or `variogram` (median): shown here (18.36 E2E) */}
+        <IssueAt at={["variograms", "variogram"]} id="ik-variograms" />
       </fieldset>
 
       <fieldset className={css.group} data-testid="sim-vario">
