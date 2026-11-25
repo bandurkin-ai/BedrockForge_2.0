@@ -86,7 +86,15 @@ export function quickText(q: QuickRestrict): string {
 }
 
 const isGiven = (a: Record<string, unknown>, k: string): boolean => a[k] !== undefined;
-const listOf = (text: unknown): string[] => (typeof text === "string" ? text.split(";").map((s) => s.trim()).filter(Boolean) : []);
+/** «1; 3» / 5 / [1, 3] → texts of the items; null and «» — none; anything else (a flag, an object) is not a list. */
+function listOf(raw: unknown, what = "Список"): string[] {
+  if (raw === null || raw === undefined) return [];
+  if (typeof raw === "string") return raw.split(";").map((s) => s.trim()).filter(Boolean);
+  if (typeof raw === "number") return [String(raw)];
+  if (Array.isArray(raw) && raw.every((x) => typeof x === "string" || typeof x === "number")) return raw.map((x) => String(x).trim()).filter(Boolean);
+  throw no("bad_param", `${what}: нужен список через «;».`, "Например 1; 3.");
+}
+const COLOUR_KINDS = ["none", "scale", "classes", "categories"] as const;
 /** A value of a condition: a number when it reads as one, else the label of a category. */
 const scalarOf = (text: string): number | string => numberOf(text) ?? text.trim();
 
@@ -163,18 +171,21 @@ export async function runStyle(app: App, a: Record<string, unknown>): Promise<st
     // a field given without a kind: a scale for a number, the codes for a category; no field — no colouring
     if (!isGiven(a, "kind")) colour.kind = colour.field ? kindFor(cur.colour.kind === "none" ? "scale" : cur.colour.kind, f) : "none";
   }
-  if (isGiven(a, "kind")) colour.kind = a.kind as NonNullable<StylePatch["colour"]>["kind"];
+  if (isGiven(a, "kind")) {
+    if (!COLOUR_KINDS.includes(a.kind as (typeof COLOUR_KINDS)[number])) throw no("bad_param", `Вид раскраски «${String(a.kind)}» не известен.`, "Допустимы: none (одним цветом), scale (шкала), classes (градации), categories (категории).");
+    colour.kind = a.kind as NonNullable<StylePatch["colour"]>["kind"];
+  }
   if (isGiven(a, "from")) colour.from = num("from", "Граница шкалы «от»");
   if (isGiven(a, "to")) colour.to = num("to", "Граница шкалы «до»");
   if (isGiven(a, "log")) colour.log = a.log === true;
   if (isGiven(a, "breaks")) {
-    const parts = listOf(a.breaks);
+    const parts = listOf(a.breaks, "Границы градаций");
     const nums = parts.map((p) => numberOf(p));
     if (nums.some((n) => n === null)) throw no("bad_param", "Границы градаций: нужны числа через «;».", "Например 0,5; 1; 2.");
     colour.breaks = nums as number[];
   }
   if (isGiven(a, "hidden")) {
-    const codes = listOf(a.hidden).map((p) => numberOf(p));
+    const codes = listOf(a.hidden, "Скрытые категории").map((p) => numberOf(p));
     if (codes.some((n) => n === null || !Number.isInteger(n) || n < 0)) throw no("bad_param", "Скрытые категории: нужны коды (целые числа) через «;».", "Например 1; 3.");
     const off = new Set(codes as number[]);
     const cats = { ...cur.colour.categories };
