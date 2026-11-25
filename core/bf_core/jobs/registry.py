@@ -22,6 +22,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "bf_core.importing.objects",
     "bf_core.drillholes.export",
     "bf_core.drillholes.from_model",
+    "bf_core.model.job",
     "bf_core.audit.jobs",
     "bf_core.lines.export",
     "bf_core.lines.ground_job",
