@@ -398,11 +398,13 @@ def test_findings_are_russian_with_a_hint_and_examples_are_capped():
 
 
 class Stub:
-    def __init__(self, path: Path) -> None:
-        self.path = path
+    """A store of files by their SHA-256 (the name of a file stands for it)."""
+
+    def __init__(self, path: Path, **others: Path) -> None:
+        self.paths = {"0" * 64: path, **{k: v for k, v in others.items()}}
 
     def path_of(self, sha: str) -> Path:
-        return self.path
+        return self.paths[sha]
 
 
 def test_check_cells_reads_the_cells_file(tmp_path: Path):
@@ -426,8 +428,14 @@ def test_check_cells_reads_the_cells_file(tmp_path: Path):
     assert report.checks["constant"] == ["CONST"] and report.checks["empty"] == ["CALC"]
     cell = 10.0 * 20.0 * 5.0
     assert report.checks["volume"] == pytest.approx(cell * (1 + 0.125 + 0.125 + 0.5 + 0.5), rel=1e-12)
-    meta["fields"][1]["file"] = "fld:11111111"  # FRAC kept in another file: not read, the volume is unknown
-    assert ck.check_cells(Stub(path), "0" * 64, meta).checks["volume"] is None  # type: ignore[arg-type]
+    # FRAC kept in another file (after `blocks.code` with split=false): read from its own file for the volume
+    other = tmp_path / "frac.parquet"
+    pq.write_table(pa.table({"FRAC": table.column("FRAC")}), other, row_group_size=2)
+    meta["fields"][1]["file"] = "fld:11111111"
+    store = Stub(path, **{"1" * 64: other})
+    moved = ck.check_cells(store, {"cells": "0" * 64, "fld:11111111": "1" * 64}, meta)  # type: ignore[arg-type]
+    assert moved.checks["volume"] == pytest.approx(report.checks["volume"], rel=1e-12)
+    assert moved.checks["overlaps"] == report.checks["overlaps"] and moved.checks["constant"] == ["CONST"]
 
 
 # --- runs of one key, the generator -------------------------------------------------------------------------

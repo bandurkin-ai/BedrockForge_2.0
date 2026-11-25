@@ -25,7 +25,7 @@ file), count}] (the fields add `fields`); `checks` — the stored form (`meta.ch
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 import numpy as np
 
 from . import geometry as geo
-from .schema import MAX_EXAMPLES, ROLE, SUB_COLUMNS, GridV2, bad_model
+from .schema import MAX_EXAMPLES, ROLE, GridV2, bad_model
 
 if TYPE_CHECKING:
     from bf_core.storage.blobs import BlobStore
@@ -522,28 +522,36 @@ def check_arrays(
 
 
 def check_cells(
-    store: BlobStore, sha: str, meta: Mapping[str, Any], limit: int = MAX_EXAMPLES, batch_rows: int | None = None
+    store: BlobStore,
+    shas: Mapping[str, str] | str,
+    meta: Mapping[str, Any],
+    limit: int = MAX_EXAMPLES,
+    tick: Callable[[float | None, str | None], None] | None = None,
 ) -> CheckReport:
-    """The stored model (`meta` v2, the file `cells` of the blob `sha`): `blocks.check`. The fields of other files
-    (`fld:…`) are judged by their `stats`; FRAC kept in such a file is not read — the volume is then null."""
-    from .store import iter_cells
+    """The stored model (`meta` v2, `shas` — {file role: SHA-256} of `Model.shas()`, or the SHA-256 of `cells` alone):
+    `blocks.check`. The columns come in the memory form (`Reader`), by the row groups of the files. The fields of other
+    files (`fld:…`) are judged by their `stats`; FRAC kept in such a file is read from its own file for the volume.
+    `tick(fraction, message)` is called per portion and may raise to cancel."""
+    from .model import Reader
 
     grid = GridV2.of(meta["grid"])
     flds = list(meta.get("fields") or [])
     here = [f for f in flds if (f.get("file") or ROLE) == ROLE]
     other = [f for f in flds if (f.get("file") or ROLE) != ROLE]
-    frac = next((f["name"] for f in flds if f.get("role") == "frac"), None)
+    frac = next((str(f["name"]) for f in flds if f.get("role") == "frac"), None)
     sub = bool(meta.get("sub")) and grid.tensors is None
-    names = {f["name"] for f in here}
-    chk = ModelChecker(
-        grid, [{"name": f["name"], "kind": f["kind"]} for f in here], frac if frac in names else None, limit
-    )
-    cols = [*SUB_COLUMNS] if sub else []
-    for idx, data in iter_cells(store, sha, [*cols, *(f["name"] for f in here)], batch_rows):
-        s = np.stack([data[c] for c in SUB_COLUMNS[:3]], axis=1) if sub else None
-        w = np.stack([data[c] for c in SUB_COLUMNS[3:]], axis=1) if sub else None
-        chk.feed(idx, s, w, data)
-    report = chk.finish(other)
-    if frac is not None and frac not in names:
-        report.checks["volume"] = None
-    return report
+    reader = Reader(store, {ROLE: shas} if isinstance(shas, str) else shas, flds, int(meta.get("rows") or 0),
+                    bool(meta.get("sub")))  # fmt: skip
+    if "rows" not in meta:
+        reader.rows = sum(reader.group_sizes())
+    rows = reader.rows
+    chk = ModelChecker(grid, [{"name": f["name"], "kind": f["kind"]} for f in here], frac, limit)
+    names = [str(f["name"]) for f in here]
+    read = names if frac is None or frac in names else [*names, frac]
+    for first, _n, p, s, w, cols in reader.pieces(read, p=True, sub=sub):
+        if tick is not None:
+            tick(min(first / max(rows, 1), 1.0), f"Проверка: {ru_num(first)} из {ru_num(rows)} строк")
+        chk.feed(p, s, w, cols)
+    if tick is not None:
+        tick(1.0, None)
+    return chk.finish(other)
