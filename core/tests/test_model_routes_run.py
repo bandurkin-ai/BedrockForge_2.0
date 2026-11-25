@@ -106,6 +106,20 @@ def test_a_queue_that_refuses_the_job_leaves_the_model_as_it_was(im, monkeypatch
     ok(c.put(f"{IMP}/models/{mid}", json={"expected_version": 1, "levels": 3}))  # not stuck: no 409 `model_building`
 
 
+def test_a_second_build_while_the_first_job_is_queued_or_running_is_refused(im) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
+    c = im
+    mid = ok(c.post(f"{IMP}/models", json=body(c.w)))["id"]
+    started = start(c, mid, "build", threads=2)
+    for what in ("build", "update"):  # at once: the job may still be in the queue, the model is «идёт построение»
+        refused(c.post(f"{IMP}/models/{mid}/{what}", json={"expected_version": 1}), 409, "model_building")
+    refused(c.put(f"{IMP}/models/{mid}", json={"expected_version": 1, "levels": 3}), 409, "model_building")
+    refused(c.delete(f"{IMP}/models/{mid}"), 409, "model_building")
+    assert get(c, mid)["state"] == "building"
+    assert finish(c, started, timeout=600)["status"] == "done"
+    assert get(c, mid)["state"] == "ready"
+    ok(c.put(f"{IMP}/models/{mid}", json={"expected_version": get(c, mid)["version"], "levels": 3}))
+
+
 def test_a_job_that_fails_puts_the_model_into_error(im) -> None:  # type: ignore[no-untyped-def]  # noqa: F811
     c = im
     ghost = {"name": "Призрак", "type": "domain", "codes": ["НЕТ"]}

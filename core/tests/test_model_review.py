@@ -136,6 +136,22 @@ def test_a_mark_with_a_live_job_refuses_and_ends_with_the_job(w: W) -> None:
         st.delete(conn, w.store, ident)
 
 
+def test_a_job_in_the_queue_makes_the_model_building_until_it_ends_any_way(w: W) -> None:
+    ident = make(w)["id"]
+    jid = jobs_store.insert(w.project.engine, instance=False, queue="heavy", kind="implicit.build", title="t",
+                            params={"model_id": ident, "expected_version": 1}, secret=None, max_attempts=1,
+                            memory_mb=1)  # fmt: skip
+    other = make(w, name="Другая")["id"]
+    assert get(w, ident)["state"] == "building" and get(w, other)["state"] == "ready"  # queued, not marked yet
+    with dialect.write_tx(w.project.engine) as conn:
+        assert sb.queued_job(conn, ident) == jid and sb.queued_job(conn, other) is None
+        refused(lambda: st.begin(conn, ident, 1), 409, "model_building")  # a second build, a PUT, a DELETE: refused
+    refused(lambda: put(w, ident, 1, levels=3), 409, "model_building")
+    jobs_store.update(w.project.engine, False, jid, status="cancelled")  # cancelled in the queue: the handler never ran
+    assert get(w, ident)["state"] == "ready"
+    assert put(w, ident, 1, levels=3)["version"] == 2
+
+
 def test_the_first_mark_keeps_what_the_model_goes_back_to(w: W) -> None:
     ident = make(w)["id"]
     err = {"code": "no_contacts", "message": "м", "hint": "п"}

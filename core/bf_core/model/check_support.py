@@ -108,7 +108,7 @@ def _record(
             row = sb.stored(conn, model_id)
             meta = dict(row.meta or {})
             stats = meta.get("stats")
-            if int(row.version) != version or sb.is_building(conn, meta) or not isinstance(stats, dict):
+            if int(row.version) != version or sb.is_building(conn, meta, model_id) or not isinstance(stats, dict):
                 return False
             if ((meta.get("last_run") or {}).get("at")) != ran_at:
                 return False

@@ -69,7 +69,8 @@ class ImplicitModel(Provider):
         rows = object_rows(ctx, KIND, keys)
         shas = _shas(ctx, list(rows))
         return {  # «идёт построение» is in `meta` (the clean-ups of the jobs delete the `building` rows of `objects`)
-            (i, ""): Info(fingerprint(r.meta or {}, int(r.version), shas[i]), r.name, sb.is_building(ctx.conn, r.meta))
+            (i, ""): Info(fingerprint(r.meta or {}, int(r.version), shas[i]), r.name,
+                          sb.is_building(ctx.conn, r.meta, i))
             for i, r in rows.items()
         }
 
