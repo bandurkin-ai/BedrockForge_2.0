@@ -48,6 +48,47 @@ cd core && BF_REGEN_VARIO_WINDOW=1 uv run pytest -q tests/test_vario_window_answ
 | `varmap_geostatspy.json` | Шесть случаев `varmapv` (решётка со сдвигами k + ½ ячейки, повторные точки) | `core/tests/data/variography/`; одноразовый генератор — в `test_vario_fan_map.py` |
 | `core/tests/data/stats/tab_vario_answers.json` | Настоящие ответы ядра для вкладки «Статистика» (вариограмма, карта, `local`) | `core/tests` (API вкладки); пересоздать — `BF_REGEN_STATS_TAB_VARIO=1`, затем сверить `stats-vario.test.ts` |
 
+## Блочные модели и фильтры (`core/tests/data/blocks/`)
+
+Фикстуры Э17 лежат рядом с тестами ядра (не в `tests/data/`: сюда — только реальные данные) и общие для ядра и интерфейса: интерфейс сверяет формы с настоящими ответами ядра (ADR 0023, урок Э14–Э15). Файл — запись ответов, которые пишет тест ядра из настоящих ядер и маршрутов; vitest читает его. Руками не править: после изменения формы ответа перегенерировать и сверить vitest. Времена и размеры файла в фикстуры не пишутся.
+
+| Файл | Что | Тест ядра (`core/tests/`) · флаг | Читает vitest (`ui/test/`) |
+|---|---|---|---|
+| `grids.json`, `contract_answers.json` | Сетки v2 (поворот, `div`, переменный шаг) и формы ответов контракта | `test_blocks_schema_v2.py` · `BF_REGEN_BLOCKS_CONTRACT` | `blocks-window-ui` (`contract_answers`) |
+| `expr_texts.json` | 99 текстов выражений 8.7.4: каноническая запись, позиция ошибки | вручную; `test_calc_parser.py` проверяет разбор | `filters-constructor` |
+| `calc_eval_cases.json` | Случаи вычисления 8.7.4 (пропуски, типы, категории) | вручную; `test_calc_eval.py` | — |
+| `viz_answers.json` | 13 ответов маршрутов показа: оболочка, «все блоки», LOD, срез, блок в точке, 409 и 422 | `test_blocks_viz.py` · `BF_REGEN_BLOCKS_VIZ` | `blocks-display`, `blocks-show-commands`, `blocks-slice-layer`, `blocks-slice-scene`, `blocks-window`, `blocks-window-ui` |
+| `layer_fixture.json` | BFA1 `blocks`, собранный настоящими `lod.view`, `scale_class`, `scale_bins`, `break_class`; лучи выбора, посчитанные простым циклом | `test_blocks_layer_fixture.py` · `BF_REGEN_BLOCKS_LAYER` | `blocks-layer`, `blocks-display`, `blocks-window`, `blocks-window-ui` |
+| `window_answers.json` | Окно «Блочная модель · …»: модель, повёрнутая на 30°, с субблоками; роли, проверки, свойства полей; сохранение быстрого ограничителя в фильтр | `test_blocks_window_answers.py` · `BF_REGEN_BLOCKS_WINDOW` | `blocks-window*` |
+| `filters_window_answers.json` | Окно «Фильтры»: список, `POST /filters/test`, «Где используется», отказы | `test_filters_window_answers.py` · `BF_REGEN_FILTERS_WINDOW` | `filters-window`, `filters-constructor`, `blocks-show-commands` |
+| `swath_filter_answers.json` | Swath по блочной модели с фильтром: запросы и ответы | `test_swath_filter_window_answers.py` · `BF_REGEN_SWATH_FILTER` | `swath-filter` |
+| `import_window_answers.json` | Состав блочных файлов (`POST /import/objects/inspect`: роли, сетка, три центра, коды «пусто», отказы) и итог задания `import.objects` для мастера | `test_blocks_import_window_answers.py` · `BF_REGEN_BLOCKS_IMPORT` | `blocks-import-model`, `blocks-import-wizard`, `blocks-export-model` |
+| `build_window_answers.json` | Прототип, заполнение, кодирование, регуляризация: предпросмотр, стадии, итоги, отказы | `test_blocks_build_window_answers.py` · `BF_REGEN_BLOCKS_BUILD` | `blocks-build-*` |
+| `fields_window_answers.json` | Калькулятор, плотность, категории, схемы, свойства полей | `test_blocks_fields_window_answers.py` · `BF_REGEN_BLOCKS_FIELDS` | `blocks-fields-*` |
+| `report_window_answers.json` | «Содержание–тоннаж»: таблица, кривая, группы, CSV | `test_blocks_report_window_answers.py` · `BF_REGEN_BLOCKS_REPORT` | `blocks-report` |
+| `export_window_answers.json` | Экспорт: форматы, поля, `files_exist`, отказы | `test_blocks_export_window_answers.py` · `BF_REGEN_BLOCKS_EXPORT` | `blocks-export-model`, `blocks-export-window` |
+
+Пересоздать (из папки `core`; затем `npm test -- <файл vitest>` из корня):
+
+```bash
+cd core
+BF_REGEN_BLOCKS_CONTRACT=1 uv run pytest -q tests/test_blocks_schema_v2.py
+BF_REGEN_BLOCKS_VIZ=1      uv run pytest -q tests/test_blocks_viz.py -k answers_kept
+BF_REGEN_BLOCKS_LAYER=1    uv run pytest -q tests/test_blocks_layer_fixture.py
+BF_REGEN_BLOCKS_WINDOW=1   uv run pytest -q tests/test_blocks_window_answers.py
+BF_REGEN_FILTERS_WINDOW=1  uv run pytest -q tests/test_filters_window_answers.py
+BF_REGEN_SWATH_FILTER=1    uv run pytest -q tests/test_swath_filter_window_answers.py
+BF_REGEN_BLOCKS_IMPORT=1   uv run pytest -q tests/test_blocks_import_window_answers.py
+BF_REGEN_BLOCKS_BUILD=1    uv run pytest -q tests/test_blocks_build_window_answers.py
+BF_REGEN_BLOCKS_FIELDS=1   uv run pytest -q tests/test_blocks_fields_window_answers.py
+BF_REGEN_BLOCKS_REPORT=1   uv run pytest -q tests/test_blocks_report_window_answers.py
+BF_REGEN_BLOCKS_EXPORT=1   uv run pytest -q tests/test_blocks_export_window_answers.py
+```
+
+Без флага те же тесты сравнивают сохранённый файл с ответами ядра и падают при расхождении («the answers of the core changed: regenerate with …»). Порядок: ядро → перегенерация → vitest; если форма изменилась, правят и клиент. Фикстуры показа (`viz_answers.json`, `layer_fixture.json`) делят между собой окно модели и слой: перегенерируйте оба и прогоните `blocks-display`, `blocks-layer`, `blocks-window`, `blocks-window-ui`.
+
+Реальные блочные модели (три файла «Для BF» — `.dat`, `.dm`, `.fbm`, одни и те же 169 070 блоков) лежат в `real/` и только читаются: `test_import_blocks.py`, `test_datamine_blocks.py`, `test_blocks_infer.py`; описание — `real/blockmodels-dm-fbm-dat.md`. Повёрнутые и субблочные Datamine и Micromine пока только на синтетике (`dm_builder`, `tools/gen/blockmodel.py`): образцов нет (вопрос № 64).
+
 ## ext/omf и ext/expected
 
 | Файл | Источник | Лицензия | Что это |
