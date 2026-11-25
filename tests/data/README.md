@@ -47,7 +47,7 @@ GEOSTATSPY_WHEEL=/tmp/ref079-wheel/geostatspy-0.0.79-py3-none-any.whl /tmp/ref07
 | Файл | Что | Тест ядра (`core/tests/`) · флаг | Читает vitest (`ui/test/`) |
 |---|---|---|---|
 | `estimate/params.json` | 5 строк «Параметров оценки» (`idw`, `ok_point`, `sk`, `ik`, `ok_block_passes`): тело → каноническая форма и колонки | `test_estimate_spec.py` · `BF_REGEN_ESTIMATE` (переписывает `canonical` и `columns`) | `estimation/form` (и `estimation/harness.ts`) |
-| `estimate/contract_answers.json` | Настоящие ответы маршрутов Э18: `defaults`, `estimations`, `estimation`, `estimation_post`, `estimation_put_conflict`, `bad_param`, `variogram_scale`, `plan`, `run_submit`, `run_field_exists`, `run_result`, `preview`, `xval_submit`, `xval_result`, `xval`, `kna`, `global`, `qq`, `swath`. Ключи `simulation`, `simulate_result`, `simulate_post_result` — образцы контракта Э18б, `inspect` — старый образец; тест их не трогает | `test_estimate_api_answers.py` · `BF_REGEN_ESTIMATE` | `estimation/*` (общая обвязка — `estimation/harness.ts`) |
+| `estimate/contract_answers.json` | Настоящие ответы маршрутов Э18: `defaults`, `estimations`, `estimation`, `estimation_post`, `estimation_put_conflict`, `bad_param`, `variogram_scale`, `plan`, `run_submit`, `run_field_exists`, `run_result`, `preview`, `xval_submit`, `xval_result`, `xval`, `kna`, `global`, `qq`, `swath`. Ключи `simulation`, `simulate_result`, `simulate_post_result` — старые образцы контракта Э18б (настоящие ответы моделирования — `simulate/answers.json`, ниже), `inspect` — старый образец; тест их не трогает | `test_estimate_api_answers.py` · `BF_REGEN_ESTIMATE` | `estimation/*` (общая обвязка — `estimation/harness.ts`) |
 | `estimate/inspect_answers.json` | Инспектор блока: `answers` (`pass_1`, `pass_3`, `few_samples`, `out_of_domain`, `changed`), `errors` (`no_block`, `no_model`, `no_params`, `no_such_row`), `rows` | `test_estimate_inspect_route.py` (`test_the_answers_the_window_is_read_against`) · `BF_REGEN_INSPECT` | `estimation/inspect`, `inspect-review`, `inspect-scene` |
 | `lineage/answers.json` | Граф зависимостей: `status`, `impact`, `origin`, `pin`, `rebuild` (план и запуск) и отказы — по цепочке заглушек (`stub`), по настоящим результатам (`real`: композиты → модель вариограммы) и правилам (`rules`) | `test_lineage_window_answers.py` · `BF_REGEN_LINEAGE` | `lineage/*` (`lineage/harness.ts`) |
 | `stats/contact_blocks_answers.json` | `POST /stats/contact` с `blocks`: профиль блоков у контакта для домена из каркаса (`wireframe`) и из поля модели (`domain`) | `test_stats_contact_blocks.py` · `BF_REGEN_CONTACT_BLOCKS` | `contact-blocks` |
@@ -65,6 +65,23 @@ BF_REGEN_CONTACT_BLOCKS=1  uv run pytest -q tests/test_stats_contact_blocks.py
 ```
 
 Один флаг `BF_REGEN_ESTIMATE` относится к двум тестам: `test_estimate_spec.py` пишет `params.json`, `test_estimate_api_answers.py` — `contract_answers.json` (только ключи этого теста, остальные остаются). Порядок: ядро → перегенерация → vitest (`estimation/*`, `lineage/*`, `contact-blocks`); если форма ответа изменилась, правят и клиент, и `docs/progress/e18-api.md`. После изменения полей оценки, проходов или формы ответа инспектора перегенерируйте `contract_answers.json` и `inspect_answers.json`.
+
+## Моделирование (`core/tests/data/simulate/`)
+
+Фикстура Э18б общая для ядра и интерфейса (ADR 0024 §9, `docs/progress/e18-api.md` §9): интерфейс сверяет формы с настоящими ответами ядра на синтетическом проекте `core/tests/estapi_world.py` (25 скважин, блочная модель из трёх доменов, модель вариограммы в нормальных оценках «AU · Y сим»).
+
+| Файл | Что | Тест ядра (`core/tests/`) · флаг | Читает vitest (`ui/test/simulation/`) |
+|---|---|---|---|
+| `simulate/answers.json` | Настоящие ответы маршрутов Э18б в форме `{status, body}`: строки (`simulation`, `simulations`, `simulation_post`, `simulation_put_conflict`, `simulation_delete`, `simulation_empty`, `simulation_name_taken`, `sis_row`, `cosgs_row`), запуск (`run_submit`, `run_result`, `run_body_result`, `run_version_conflict`, `sis_run_result`, `sis_cat_run_result`, `cosgs_run_result`), сводка (`summary`, `summary_empty`, `sis_cat_summary`), постобработка (`post_submit`, `post_result`, `post_field_exists`, `post_version_conflict`, `sis_post`, `sis_post_result`, `sis_cat_post`, `sis_cat_post_result`, `sis_cat_post_thresholds`, `cosgs_post`) и отказы (`bad_param`, `bad_param_search`, `variogram_scale`, `sis_no_method`, `cosgs_bad_rho`, `cosgs_not_a_number`). Времена, отпечатки, хеши и номера заданий при сверке отбрасываются | `test_simulation_api.py::test_the_answers_are_what_the_core_answers` · `BF_REGEN_SIMULATE` (переписывает файл целиком) | `harness.ts`, `form`, `wizard`, `summary`, `post`, `tree`, `commands`, `review` |
+
+Пересоздать (из папки `core`; затем `npm test -- simulation` из корня):
+
+```bash
+cd core
+BF_REGEN_SIMULATE=1  uv run pytest -q tests/test_simulation_api.py
+```
+
+Без флага тест сравнивает ответы ядра с файлом: расхождение значения, формы или набора ключей — отказ. Порядок: ядро → перегенерация → vitest (`simulation/*`); если форма ответа изменилась, правят и клиент (`ui/src/modules/simulation/api.ts`), и `docs/progress/e18-api.md` §9. Реализации хранятся в файле Parquet, в `answers.json` их нет: только сводки и итоги заданий.
 
 ## Эталоны вариографии (`core/tests/data/variography/`)
 
