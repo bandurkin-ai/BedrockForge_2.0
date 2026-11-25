@@ -306,7 +306,7 @@ describe("step 6: the summary, the preview, the run", () => {
     const lam = A.preview.body.samples.filter((x: { lambda: number | null }) => x.lambda !== null).sort((a: { lambda: number }, b: { lambda: number }) => Math.abs(b.lambda) - Math.abs(a.lambda));
     expect(html.indexOf(`est-preview-sample-${lam[0].i}"`)).toBeGreaterThan(0);
     expect(html.indexOf(`est-preview-sample-${lam[0].i}"`)).toBeLessThan(html.indexOf(`est-preview-sample-${lam[1].i}"`));
-    expect(readPreview({ status: 2, values: { EST: null } }).values.EST).toBeNull();
+    expect(readPreview({ ...A.preview.body, status: 2, values: { EST: null } }).values.EST).toBeNull();
   });
   it("a wrong block or a wrong form is told under the preview, nothing is asked of the core", async () => {
     putForm(form());
