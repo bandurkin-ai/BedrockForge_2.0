@@ -5,9 +5,7 @@ SQLite and PostgreSQL (`-m db`)."""
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -110,18 +108,24 @@ def test_plans_compatibility_and_a_row_deleted_leaves_its_plans(w: W) -> None:
 # --- the hook of the graph (ADR 0025) -------------------------------------------------------------------------------
 
 
-def test_the_graph_gets_the_row_when_the_module_exists(w: W, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[tuple[Any, ...]] = []
-    monkeypatch.setitem(sys.modules, "bf_core.lineage", SimpleNamespace(
-        record=lambda conn, dst, inputs: calls.append((dst, [i["kind"] for i in inputs]))))  # fmt: skip
+def test_the_graph_gets_the_row(w: W) -> None:
+    """create, update and `record_run` write the inputs of the row into the graph (ADR 0025): the same kinds as
+    `meta.inputs`, a field of the model as `bm_field` with its name in `sub`; the row is «актуален»."""
+    from bf_core import lineage
+    from bf_core.db.schema import lineage as lineage_t
+
     ident = make(w)["id"]
     put(w, ident, 1, disc=[2, 2, 2])
     with dialect.write_tx(w.project.engine) as conn:
         st.record_run(conn, ident, sb.load_spec(get(w, ident)["meta"]), {"at": "x"}, get(w, ident)["meta"]["inputs"])
-    kinds = ["dh_table", "dh_table", "dh_set", "object:variogram_model", "object:block_model", "bm_field"]
-    assert calls == [(("object:estimation", ident), kinds)] * 3
-    monkeypatch.delitem(sys.modules, "bf_core.lineage")
-    make(w, name="Без графа")  # no module — nothing, no error
+    with dialect.read_tx(w.project.engine) as conn:
+        rows = conn.execute(sa.select(lineage_t.c.src_kind, lineage_t.c.src_sub).where(
+            lineage_t.c.dst_kind == "object:estimation", lineage_t.c.dst_id == ident)).all()  # fmt: skip
+        state = lineage.status(conn, [lineage.Node("object:estimation", ident)])
+    kinds = sorted({r.src_kind for r in rows})
+    assert kinds == sorted({"dh_table", "dh_set", "object:variogram_model", "object:block_model", "bm_field"})
+    assert all(r.src_sub == r.src_sub.casefold() for r in rows if r.src_kind == "bm_field")
+    assert [s.state for s in state.values()] == ["current"]
 
 
 # --- the same on SQLite and PostgreSQL ------------------------------------------------------------------------------

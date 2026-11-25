@@ -78,7 +78,17 @@ def _lineage(conn: sa.Connection, estimation_id: int, inputs: list[dict[str, Any
         if e.name != "bf_core.lineage":
             raise
         return
-    lineage.record(conn, (LINEAGE_KIND, estimation_id), inputs)
+    lineage.record(conn, lineage.Node(LINEAGE_KIND, estimation_id), [_node(lineage, i) for i in inputs])
+
+
+def _node(lineage: Any, ref: Mapping[str, Any]) -> Any:
+    """An entry of `meta.inputs` → a `lineage.Node`: the graph takes the fingerprint and name itself (one form of
+    `fp` for every kind); a field of a block model `"<model>:<name>"` → `Node("bm_field", model, name.casefold())`."""
+    kind, ident = str(ref["kind"]), ref["id"]
+    if kind == "bm_field":
+        model, _, name = str(ident).partition(":")
+        return lineage.Node(kind, int(model), name.casefold())
+    return lineage.Node(kind, int(ident))
 
 
 # --- writing ----------------------------------------------------------------------------------------------------------

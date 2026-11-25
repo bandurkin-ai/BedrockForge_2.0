@@ -494,6 +494,8 @@ BLOB_ROLES: frozenset[str] = frozenset(
         "cells",  # block models: Parquet of the occupied cells (ADR 0017 §3, blocks/schema.py)
         "vario",  # variogram models: the form of the calculation (JSON, ADR 0022 §12, geostat/variogram/store.py)
         "nscore",  # variogram models: the table of the normal scores (Parquet: value, score, weight)
+        "xval",  # estimation rows: the table of the cross validation (Parquet, ADR 0024 §2, geostat/estimate/xval.py)
+        "real",  # simulations: the realisations (Parquet, ADR 0024 §2, Э18б)
     }  # fmt: skip
 )
 BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:", "fld:")
