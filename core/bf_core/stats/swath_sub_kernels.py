@@ -218,8 +218,28 @@ def _extent(p, s, w, sel, has_sel, g, ni, edges, steps, ax, amp, cells):  # type
 
 @njit(cache=True, nogil=True)
 def _sums(  # type: ignore[no-untyped-def]
-    p, s, w, v, dens, frac, sel, has_sel, has_frac, mode, g, ni, edges, steps, ax, amp, cells, lim, tol, start,
-    width, n,
+    p,
+    s,
+    w,
+    v,
+    dens,
+    frac,
+    sel,
+    has_sel,
+    has_frac,
+    mode,
+    g,
+    ni,
+    edges,
+    steps,
+    ax,
+    amp,
+    cells,
+    lim,
+    tol,
+    start,
+    width,
+    n,
 ):
     """A group of rows into the sums of its swaths: (Σ w, Σ w·v, the number of blocks) by swath and the counts of
     what was left out. Per swath — the cascade of `weighted.pair_sums` (as `swath_blocks._sums`)."""
@@ -359,8 +379,28 @@ def _wrap(kind: str):  # type: ignore[no-untyped-def]
                        steps if tens else None, ax, amp, cells)  # fmt: skip
 
     def sums(  # type: ignore[no-untyped-def]
-        p, s, w, v, dens, frac, sel, has_sel, has_frac, mode, g, ni, edges, steps, ax, amp, cells, lim, tol, start,
-        width, n,
+        p,
+        s,
+        w,
+        v,
+        dens,
+        frac,
+        sel,
+        has_sel,
+        has_frac,
+        mode,
+        g,
+        ni,
+        edges,
+        steps,
+        ax,
+        amp,
+        cells,
+        lim,
+        tol,
+        start,
+        width,
+        n,
     ):
         return _sums(p, s if sub else None, w if sub else None, v, dens, frac, sel, has_sel, has_frac, mode, g, ni,
                      edges if tens else None, steps if tens else None, ax, amp, cells, lim, tol, start, width,
