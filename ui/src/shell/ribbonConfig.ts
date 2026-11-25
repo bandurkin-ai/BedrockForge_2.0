@@ -12,6 +12,7 @@ import { VARIO_BUTTONS, VARIO_GROUP_TITLE, VARIO_TAB_TITLE } from "../modules/va
 import { TREND_BUTTONS } from "../modules/trends/commands";
 import { FILTER_BUTTONS, FILTER_GROUP_TITLE } from "../modules/blocks/filters/commands";
 import { SHOW_BUTTONS, SHOW_GROUP_TITLE } from "../modules/blocks/commands";
+import { CREATE_BUTTONS, CREATE_GROUP_TITLE, FIELD_BUTTONS, FIELD_GROUP_TITLE } from "../modules/blocks/build/commands";
 import { REPORT_BUTTONS, REPORT_GROUP_TITLE } from "../modules/blocks/report/commands";
 import { CHART_BUTTONS, CHART_GROUP_TITLE } from "../modules/charts/commands";
 import { STATS_BUTTONS } from "../modules/stats/commands";
@@ -302,6 +303,8 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
         { title: "Геостатистика", items: TREND_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: FILTER_GROUP_TITLE, items: FILTER_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: SHOW_GROUP_TITLE, items: SHOW_BUTTONS.map((b): RibbonItem => ({ ...b })) },
+        { title: CREATE_GROUP_TITLE, items: CREATE_BUTTONS.map((b): RibbonItem => ({ ...b })) },
+        { title: FIELD_GROUP_TITLE, items: FIELD_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: REPORT_GROUP_TITLE, items: REPORT_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         {
           title: "Обслуживание",

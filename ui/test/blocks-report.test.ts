@@ -98,9 +98,7 @@ beforeEach(() => {
   setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
   app = createApp({ persist: false });
   app.store.set({ projectName: "Проект", projectReadOnly: false, selected: null });
-  // until the orchestrator takes the stub `blocks.report` out of modules/charts/commands.ts and names modules/blocks/report in shell/catalog.ts
-  (app.registry as unknown as { commands: Map<string, unknown> }).commands.delete("blocks.report");
-  app.registry.register(commands);
+  if (!app.registry.get("blocks.report")) app.registry.register(commands); // the catalog names modules/blocks/report now
   bindReport(app);
   blocksStore.set({ list: A.blocks.body.block_models, loaded: true, error: null, details: { [IDS.model]: A.model.body, [IDS.gaps]: A.gaps_model.body }, detailErrors: {} });
   filtersStore.set({ rows: A.filters.body.filters, loaded: true, selected: null, edit: null });

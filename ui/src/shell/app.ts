@@ -26,6 +26,7 @@ import { bindDataManager } from "../modules/datamanager/bind";
 import { bindBlocks } from "../modules/blocks/bind";
 import { bindFilters } from "../modules/blocks/filters/bind";
 import { bindReport } from "../modules/blocks/report/bind";
+import { bindBuild } from "../modules/blocks/build/bind";
 import { bindOmf } from "../modules/omf/bind";
 import { bindRasters } from "../modules/rasters/bind";
 import { bindStripLog } from "../charts/striplog/bind";
@@ -166,6 +167,7 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindBlocks(app);
   bindFilters(app);
   bindReport(app);
+  bindBuild(app);
   bindOmf(app);
   bindLines(app);
   bindRasters(app);

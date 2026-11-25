@@ -147,7 +147,7 @@ export function newApp(): App {
   setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
   const app = createApp({ persist: false });
   app.store.set({ projectName: "Проект", projectReadOnly: false, selected: null });
-  app.registry.register(commands);
+  if (!app.registry.get("blocks.prototype")) app.registry.register(commands); // the catalog names modules/blocks/build now
   bindBuild(app);
   blocksStore.set({ list: A.blocks.body.block_models as BlockModelInfo[], loaded: true, error: null, details: {}, detailErrors: {} });
   sceneObjects.set({ ...sceneObjects.get(), wireframes: A.wireframes.body.wireframes as WireframeInfo[], files: [], loaded: true });

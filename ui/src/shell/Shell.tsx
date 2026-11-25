@@ -59,6 +59,7 @@ import { renderInterceptsWindow } from "../modules/intercepts/TtWindow";
 import { renderTrendWindow } from "../modules/trends/bind";
 import { renderFiltersWindow } from "../modules/blocks/filters/bind";
 import { renderReportWindow } from "../modules/blocks/report/bind";
+import { renderBuildWindow } from "../modules/blocks/build/bind";
 import { renderVariographyWindow } from "../modules/variography/VariographyWindow";
 
 const renderWindow: WindowRenderer = (w) => {
@@ -108,7 +109,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderBuildWindow(w);
   }
 };
 
