@@ -15,7 +15,7 @@ import { refusalOf, STATUS_LABELS, type EstimationRow, type Refusal, type Starte
 import { KNA_PARAMS, KNA_TITLES, readKna, startKna, type BlockAt, type KnaBlock, type KnaBody, type KnaParam, type KnaResult } from "./checksApi";
 import { followJob } from "./checksRun";
 import { estimationStore } from "./state";
-import { setForm, setStep, wizardStore } from "./wizardState";
+import { editPasses, setStep, wizardStore } from "./wizardState";
 
 export const KNA_WINDOW = "estimation-kna";
 export const KNA_TITLE = "Анализ окрестности";
@@ -252,10 +252,8 @@ export async function applyNMax(app: App, rowId: number, nMax: number): Promise<
   if (w.dirty && w.editing?.id !== rowId && !(await askConfirm({ title: "Мастер «Оценка содержаний»", message: "В мастере есть несохранённые изменения. Заменить их строкой из анализа окрестности?", okLabel: "Заменить", danger: true }))) return "Отменено";
   const done = await app.registry.execute("estimate.open", { id: rowId }, "user");
   if (!done.ok) throw refusal("open_failed", done.result || "Мастер не открылся.", "Откройте строку командой «Оценка содержаний».");
-  const f = wizardStore.get().form;
-  const search = withNMax(f.rest.search, nMax);
-  if (!search) throw refusal("no_passes", "В строке нет проходов поиска.", "Задайте проходы на шаге «Поиск и проходы» мастера.");
-  setForm({ rest: { ...f.rest, search } });
+  // the passes of the form (the typed ones, else the core's): n_max in every one, n_min cut to it
+  editPasses((ps) => ps.map((p) => ({ ...p, nMax: String(nMax), nMin: String(Math.min(Number(p.nMin.replace(",", ".")) || nMax, nMax)) })));
   setStep(4);
   return `Строка №${rowId} открыта в мастере: n_max = ${nMax} во всех проходах. Проверьте шаг «Поиск и проходы» и сохраните строку`;
 }

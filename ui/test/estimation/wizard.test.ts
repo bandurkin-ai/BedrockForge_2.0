@@ -161,7 +161,7 @@ describe("the save", () => {
     setForm({ label: "перех" });
     expect(wizardStore.get().issue).toBeNull();
   });
-  it("a refusal of a step the wizard has not got yet (the search of 18.20) takes the person to it", async () => {
+  it("a refusal of the search (step 4) takes the person to it", async () => {
     putForm(form());
     core.force("POST /geostat/estimations", { status: A.bad_param.status, body: A.bad_param.body });
     await expect(saveWizard()).rejects.toThrow("n_max");
@@ -186,7 +186,10 @@ describe("editing a stored row; 409 version_conflict", () => {
     await saveWizard();
     const put = requests(`PUT /geostat/estimations/${ID.row}`)[0].body;
     expect(put).toMatchObject({ expected_version: ROW.version, disc: [2, 2, 2] });
-    expect(put.search).toEqual((A.estimation.body.meta as { search: unknown }).search); // the steps 4–6 go back as they were
+    // the steps 4–5 go back as they were stored: the source of the ellipsoid, the passes, the prefix and the fields
+    const stored = (A.estimation.body.meta as { search: { from: string; passes: unknown }; outputs: unknown });
+    expect(put.search).toEqual({ from: stored.search.from, passes: stored.search.passes });
+    expect(put.outputs).toEqual(stored.outputs);
   });
   it("another version stored: the words of the core, «Перечитать» and «Сохранить как новые»", async () => {
     await startEdit(ID.row);
@@ -265,14 +268,13 @@ describe("the steps drawn", () => {
     putForm(form({ method: "sk", meanMode: "value" }), { step: 3 });
     expect(render(createElement(StepMethod))).toContain('data-testid="est-mean-value"');
   });
-  it("the frame: the six steps, the first three open, the others wait for 18.20; «Далее» stops at the third", () => {
-    putForm(form(), { step: 3 });
+  it("the frame: the six steps are open, «Далее» stops at the sixth", () => {
+    putForm(form(), { step: 6 });
     const html = render(createElement(Wizard, { winId: "w1" }));
     const tag = (id: string) => new RegExp(`<button[^>]*data-testid="${id}"[^>]*>`).exec(html)?.[0] ?? "";
     for (const t of ["Модель и цель", "Пробы", "Метод и вариограмма", "Поиск и проходы", "Выходные поля", "Задание"]) expect(html).toContain(t);
-    for (const n of [4, 5, 6]) expect(tag(`est-step-${n}-tab`)).toContain("disabled");
-    for (const n of [1, 2, 3]) expect(tag(`est-step-${n}-tab`)).not.toContain("disabled");
-    expect(tag("est-step-3-tab")).toContain('aria-current="step"');
+    for (const n of [1, 2, 3, 4, 5, 6]) expect(tag(`est-step-${n}-tab`)).not.toContain("disabled");
+    expect(tag("est-step-6-tab")).toContain('aria-current="step"');
     expect(tag("est-next")).toContain("disabled");
     expect(tag("est-back")).not.toContain("disabled");
     setStep(1);

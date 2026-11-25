@@ -3,6 +3,7 @@
 // models of variogram (Д-38), the query of the defaults. Nothing wrong reaches the core.
 import { describe, expect, it } from "vitest";
 import { applySoft, bodyOf, defaultName, defaultsQueryOf, EMPTY_FORM, formOfArgs, formOfMeta, issueAt, sameName, scaleOf, stepOfParam, thresholdsOf, type EstimationForm } from "../../src/modules/estimation/form";
+import { EMPTY_SEARCH } from "../../src/modules/estimation/formSearch";
 import { A, FIELD, ID, PARAMS } from "./harness";
 
 const CASES = Object.entries(PARAMS.cases) as [string, { body: Record<string, unknown>; canonical: Record<string, unknown> }][];
@@ -18,7 +19,7 @@ const issueOf = (f: EstimationForm, scales: Record<number, "z" | "back" | "y"> =
 
 describe("the stored row → the form → the body", () => {
   for (const [name, c] of CASES) {
-    it(`${name}: the steps 1–3 of the body are the stored ones, the rest goes as stored`, () => {
+    it(`${name}: the steps 1–5 of the body are the stored ones`, () => {
       const form = formOfMeta(c.canonical);
       const got = bodyOf(form);
       expect(got.ok).toBe(true);
@@ -40,8 +41,10 @@ describe("the stored row → the form → the body", () => {
       if (s.method.kind === "sk") expect(b.method.mean).toEqual(s.method.mean);
       if (s.variogram) expect(b.variogram).toEqual({ model_id: s.variogram.model_id });
       if (s.variograms) expect(b.variograms).toEqual(s.variograms.map((v: { model_id: number; t: number }) => ({ model_id: v.model_id, t: v.t })));
-      // what steps 4–6 edit goes back as it was stored
-      expect(b.search).toEqual(s.search);
+      // what steps 4–5 edit goes back as it was stored; «по модели» sends no numbers (the core takes the angles and the radii itself)
+      expect(b.search.from).toBe(s.search.from);
+      for (const k of ["ang1", "ang2", "ang3", "r1", "r2", "r3"]) expect(b.search[k], k).toBe(s.search.from === "manual" ? s.search[k] : undefined);
+      expect(b.search.passes).toEqual(s.search.passes);
       expect(b.outputs).toEqual(s.outputs);
     });
   }
@@ -96,7 +99,11 @@ describe("the body of a new row", () => {
     expect(b.ok && (b.body.method as { ik: { models: string } }).ik.models).toBe("median");
   });
   it("NN and IDW: the model is optional (only for the search)", () => {
-    expect(bodyOf(ok({ method: "nn", variogramId: null })).ok).toBe(true);
+    // without a model the radii are typed (the search is by hand): the core would ask for r1 too
+    const by = { ...EMPTY_SEARCH, from: "manual" as const, r: ["50", "", ""] as [string, string, string] };
+    const nn = bodyOf(ok({ method: "nn", variogramId: null, search: by }));
+    expect(nn.ok && nn.body.search).toEqual({ from: "manual", r1: 50 });
+    expect(issueOf(ok({ method: "nn", variogramId: null }))).toMatchObject({ param: "search.r1", code: "bad_param" });
     const idw = bodyOf(ok({ method: "idw", power: "1,5", variogramId: ID.vario }));
     expect(idw.ok && idw.body.method).toEqual({ kind: "idw", power: 1.5 });
     expect(idw.ok && idw.body.variogram).toEqual({ model_id: ID.vario });

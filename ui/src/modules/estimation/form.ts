@@ -2,33 +2,21 @@
  * The form of the wizard «Оценка содержаний» (ТЗ 8.8.4: модель, ограничитель, поля назначения → пробы → метод и модель
  * вариограммы → поиск и проходы → выходные поля → задание; docs/progress/e18-api.md §3). The numbers are typed text («0,5»); a
  * form is checked here with the words of the core and the place of the wrong thing (`param`, the path of the body): nothing wrong
- * reaches the core. Steps 1–3 are edited by the wizard of 18.19; what steps 4–6 will edit (`search`, `outputs`, `trend_id`, the
- * rules of the restrictor) is kept as it was stored in `rest` and goes back in the body as it is. The ranges mirror
- * `core/bf_core/geostat/estimate/spec_parts.RANGES` (a test compares them with `ranges` of the answer of the core). No React.
+ * reaches the core. Steps 1–3 are edited by the wizard of 18.19, steps 4–5 (`search`, `trend_id`, `outputs`; `formSearch.ts`) by that
+ * of 18.20; the rules of the restrictor are kept as they were stored in `rest` and go back in the body as they are. The ranges
+ * (`formBase.ts`) mirror `core/bf_core/geostat/estimate/spec_parts.RANGES` (a test compares them with `ranges` of the answer of the
+ * core). No React.
  */
-import { numberText, parseNumber } from "../composites/params";
+import { numberText } from "../composites/params";
 import { METHOD_SHORT, METHODS, VARIOGRAM_SCALE_HINT, VARIOGRAM_SCALE_MESSAGE, type DefaultsQuery, type MethodKind, type VarioScale } from "./api";
+import { bad, isIssue, issueAt, numberIn, RANGES, type Issue } from "./formBase";
+import { EMPTY_OUTPUTS, EMPTY_SEARCH, outputsBody, outputsOfMeta, searchBody, searchOfMeta, type OutputsForm, type SearchForm } from "./formSearch";
+
+export { issueAt, RANGES };
+export type { Issue };
 
 export const STEP_TITLES = ["Модель и цель", "Пробы", "Метод и вариограмма", "Поиск и проходы", "Выходные поля", "Задание"] as const;
-export const LAST_EDITED_STEP = 3;
-
-/** `lo`/`hi` — null: no bound; `open` — the lower bound itself is not allowed. */
-interface Bounds {
-  lo: number | null;
-  hi: number | null;
-  integer?: boolean;
-  open?: boolean;
-  unit?: string;
-}
-
-export const RANGES: Record<"power" | "disc" | "soft_dist" | "topcut" | "mean" | "threshold", Bounds> = {
-  power: { lo: 0.5, hi: 5 },
-  disc: { lo: 1, hi: 10, integer: true },
-  soft_dist: { lo: 0, hi: 100_000, unit: "м" },
-  topcut: { lo: null, hi: null },
-  mean: { lo: null, hi: null },
-  threshold: { lo: null, hi: null },
-};
+export const LAST_EDITED_STEP = 6;
 
 export const NAME_MAX = 200;
 export const THRESHOLDS_MAX = 20;
@@ -72,7 +60,10 @@ export interface EstimationForm {
   variogramId: number | null;
   /** IK «модель на порог»: the model of each threshold */
   variogramIds: (number | null)[];
-  /** what steps 4–6 edit: `search`, `outputs`, `trend_id`, the rules of the restrictor — as stored */
+  // steps 4–5
+  search: SearchForm;
+  outputs: OutputsForm;
+  /** what the wizard does not edit (the rules of the restrictor) — as stored */
   rest: Record<string, unknown>;
 }
 
@@ -99,22 +90,12 @@ export const EMPTY_FORM: EstimationForm = {
   ikModels: "per",
   variogramId: null,
   variogramIds: [],
+  search: EMPTY_SEARCH,
+  outputs: EMPTY_OUTPUTS,
   rest: {},
 };
 
 // ---- the words under a field ----
-
-/** The first wrong thing of the form (or the refusal of the core): the words, the hint, the path of the body. */
-export interface Issue {
-  param: string | null;
-  code: string;
-  message: string;
-  hint: string;
-  /** a 409 `version_conflict`: «Перечитать» / «Сохранить как новые» */
-  reread?: boolean;
-}
-
-const bad = (param: string, message: string, hint: string, code = "bad_param"): Issue => ({ param, code, message, hint });
 
 /** The step a path of the body belongs to (1-based); the rest — the last step. */
 export function stepOfParam(param: string | null): number {
@@ -127,19 +108,7 @@ export function stepOfParam(param: string | null): number {
   return 6;
 }
 
-/** Does the issue belong to the field `path` (itself or inside it)? */
-export const issueAt = (issue: Issue | null, ...paths: string[]): Issue | null => (issue && issue.param !== null && paths.some((p) => issue.param === p || issue.param!.startsWith(`${p}.`)) ? issue : null);
-
 // ---- numbers ----
-
-function numberIn(text: string, r: Bounds, label: string, param: string): number | Issue {
-  const v = parseNumber(text);
-  const range = `${r.lo !== null ? `от ${numberText(r.lo)}` : ""}${r.hi !== null ? ` до ${numberText(r.hi)}` : ""}${r.unit ? ` ${r.unit}` : ""}`.trim();
-  if (v === null) return bad(param, `${label}: не число.`, range ? `Введите число ${range}.` : "Введите число, например 0,5.");
-  if (r.integer && !Number.isInteger(v)) return bad(param, `${label}: нужно целое число.`, range ? `Введите целое ${range}.` : "Введите целое число.");
-  if ((r.lo !== null && (r.open ? v <= r.lo : v < r.lo)) || (r.hi !== null && v > r.hi)) return bad(param, `${label}: значение вне диапазона${range ? ` ${range}` : ""}.`, range ? `Задайте число ${range}.` : "Задайте другое число.");
-  return v;
-}
 
 /** «0,5; 1; 2,5» → the numbers; empty items are not allowed (an item that is not a number is an issue with its index). */
 export function thresholdsOf(text: string): number[] | Issue {
@@ -176,7 +145,7 @@ export type Built = { ok: true; body: Record<string, unknown> } | { ok: false; i
 
 const needsVariogram = (f: EstimationForm): boolean => f.method === "sk" || f.method === "ok" || (f.method === "ik" && f.ikModels === "median");
 
-/** The body of `POST /estimations` of the steps 1–3 (the rest goes as stored; absent — the defaults of the core). */
+/** The body of `POST /estimations` (what is not typed is absent: the core gives its defaults). */
 export function bodyOf(f: EstimationForm, ctx: BodyContext = { scales: {} }): Built {
   const fail = (issue: Issue): Built => ({ ok: false, issue });
   // step 1
@@ -271,7 +240,14 @@ export function bodyOf(f: EstimationForm, ctx: BodyContext = { scales: {} }): Bu
   } else if (needsVariogram(f)) {
     return fail(bad("variogram.model_id", "Не выбрана модель вариограммы.", "Выберите сохранённую модель вариограммы."));
   }
-  for (const k of ["search", "outputs", "trend_id"]) if (f.rest[k] !== undefined && f.rest[k] !== null) body[k] = f.rest[k];
+  // steps 4–5: the search with its passes and the output fields (nothing typed — the core's defaults)
+  const hasModel = f.method === "ik" && f.ikModels === "per" ? f.variogramIds.some((id) => id !== null) : f.variogramId !== null;
+  const search = searchBody(f.search, hasModel);
+  if (isIssue(search)) return fail(search);
+  Object.assign(body, search);
+  const outputs = outputsBody(f.outputs, f.method);
+  if (isIssue(outputs)) return fail(outputs);
+  Object.assign(body, outputs);
   return { ok: true, body };
 }
 
@@ -316,7 +292,6 @@ export function formOfMeta(meta: Record<string, unknown>, base: EstimationForm =
   const ids = (Array.isArray(meta.variograms) ? meta.variograms : []).map((v) => (typeof rec(v).model_id === "number" ? (rec(v).model_id as number) : null));
   const disc = Array.isArray(meta.disc) && meta.disc.length === 3 ? (meta.disc.map(text) as [string, string, string]) : base.disc;
   const rest: Record<string, unknown> = {};
-  for (const k of ["search", "outputs", "trend_id"]) if (meta[k] !== undefined && meta[k] !== null) rest[k] = meta[k];
   if (target.rules) rest.rules = target.rules;
   const w = s.weights;
   return {
@@ -343,6 +318,8 @@ export function formOfMeta(meta: Record<string, unknown>, base: EstimationForm =
     ikModels: ik.models === "median" ? "median" : "per",
     variogramId: typeof rec(meta.variogram).model_id === "number" ? (rec(meta.variogram).model_id as number) : null,
     variogramIds: ids,
+    search: searchOfMeta(meta.search, meta.trend_id),
+    outputs: outputsOfMeta(meta.outputs),
     rest,
   };
 }

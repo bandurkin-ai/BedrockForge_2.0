@@ -514,10 +514,10 @@ describe("the section «Параметры оценки» of the tree", () => {
     const run = (id: string, a: Record<string, unknown>) => void calls.push([id, a]);
     const reason = (id: string) => app.registry.reason(id, { hasProject: true, hasSet: true, hasHole: false, hasObject: false, hasSection: false, editing: false, coreOnline: true });
     const items = rowMenu({ id: ID.row, source_lost: false }, reason, run);
-    expect(items.map((i) => i.label)).toEqual(["Изменить", "Выполнить", "Удалить…"]);
+    expect(items.map((i) => i.label)).toEqual(["Изменить", "Параметры…", "Выполнить", "Удалить…"]);
     for (const i of items) i.run?.();
-    expect(calls).toEqual([["estimate.open", { id: ID.row }], ["estimate.run", { estimation_ids: `${ID.row}` }], ["estimate.delete", { id: ID.row }]]);
-    expect(rowMenu({ id: ID.row, source_lost: true }, reason, run)[1].reason).toContain("Источник удалён");
+    expect(calls).toEqual([["estimate.open", { id: ID.row }], ["estimate.params", { id: ID.row }], ["estimate.run", { estimation_ids: `${ID.row}` }], ["estimate.delete", { id: ID.row }]]);
+    expect(rowMenu({ id: ID.row, source_lost: true }, reason, run)[2].reason).toContain("Источник удалён");
     calls.length = 0;
     const plan = planMenu(plan51(), reason, run);
     expect(plan.map((i) => i.label)).toEqual(["Открыть", "Выполнить", "Удалить…"]);

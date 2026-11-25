@@ -55,7 +55,8 @@ export const ID = {
   otherModel: (D.model.id as number) + 1,
   noModel: 999,
   noPlan: 998,
-  job: A.run_submit.body as { source: string; id: number },
+  /** the job the stub of `POST …/run`, `…/kna`, `…/global` hands out (the number of the answer of the core is that of its own project) */
+  job: { source: "proj", id: 5 } as { source: string; id: number },
 };
 export const FIELD: string = D.samples.field;
 export const MODEL_NAME: string = D.model.name;

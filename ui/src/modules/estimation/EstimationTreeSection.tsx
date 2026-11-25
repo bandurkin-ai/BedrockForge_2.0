@@ -49,6 +49,7 @@ export const planTitleText = (p: PlanRow): string => `План «${p.name}»: с
 export function rowMenu(r: Pick<EstimationRow, "id" | "source_lost">, reason: Reason, run: Run): MenuItem[] {
   return [
     { label: "Изменить", reason: reason("estimate.open"), run: () => void run("estimate.open", { id: r.id }) },
+    { label: "Параметры…", reason: reason("estimate.params"), run: () => void run("estimate.params", { id: r.id }) },
     { label: "Выполнить", reason: reason("estimate.run") ?? (r.source_lost ? "Источник удалён: строку нельзя выполнить" : null), run: () => void run("estimate.run", { estimation_ids: String(r.id) }) },
     { label: "Удалить…", reason: reason("estimate.delete"), run: () => void run("estimate.delete", { id: r.id }) },
   ];

@@ -1,7 +1,6 @@
 /**
  * The wizard «Оценка содержаний» (ТЗ 8.8.4): model, restrictor, targets → samples → method and model of variogram → search and
- * passes → output fields → job. Steps 1–3 are here (18.19); 4–6 come with 18.20 (until then the core takes the search from the
- * model of variogram and the output fields of the method — the defaults of 8.8.2). «Сохранить» writes the row of «Параметры оценки»
+ * passes → output fields → job (summary, preview of one block, run). «Сохранить» writes the row of «Параметры оценки»
  * (`POST` / `PUT /estimations`); a 409 `version_conflict` is answered with «Перечитать» / «Сохранить как новые». The window is
  * floating, not modal; closing with unsaved changes asks first (an own dialog).
  */
@@ -13,6 +12,9 @@ import { requestClose, setCloseGuard } from "../../shell/windows";
 import { defaultsQueryOf, LAST_EDITED_STEP, STEP_TITLES, stepOfParam } from "./form";
 import { loadVariogramModels, requestDefaults, rereadEstimation, saveWizard, setIssue, setStep, wizardStore } from "./wizardState";
 import { StepMethod } from "./StepMethod";
+import { StepOutputs } from "./StepOutputs";
+import { StepRun } from "./StepRun";
+import { StepSearch } from "./StepSearch";
 import { StepSamples } from "./StepSamples";
 import { StepTarget } from "./StepTarget";
 import { useSel } from "./hooks";
@@ -37,7 +39,6 @@ export function Wizard({ winId }: { winId: string }) {
   }, [winId]);
 
   const badStep = s.issue ? stepOfParam(s.issue.param) : 0;
-  const edited = s.step <= LAST_EDITED_STEP;
   const save = (asNew: boolean) => void saveWizard({ asNew }).catch(() => undefined); // a refusal stands under its field
   const reason = readOnly ? "Проект открыт только для чтения" : null;
   const conflict = s.issue?.reread ? s.issue : null;
@@ -48,10 +49,9 @@ export function Wizard({ winId }: { winId: string }) {
         <ol className={mod.steps} data-testid="est-steps" aria-label="Шаги мастера">
           {STEP_TITLES.map((t, i) => {
             const n = i + 1;
-            const later = n > LAST_EDITED_STEP;
             return (
               <li key={t}>
-                <button type="button" aria-current={s.step === n ? "step" : undefined} data-bad={badStep === n} disabled={later} title={later ? "Шаг появится в следующем подшаге (18.20): пока ядро берёт поиск и выходные поля по умолчанию" : undefined} data-testid={`est-step-${n}-tab`} onClick={() => setStep(n)}>
+                <button type="button" aria-current={s.step === n ? "step" : undefined} data-bad={badStep === n} data-testid={`est-step-${n}-tab`} onClick={() => setStep(n)}>
                   <span className={mod.no}>{n}</span>
                   <span>{t}</span>
                 </button>
@@ -63,11 +63,10 @@ export function Wizard({ winId }: { winId: string }) {
           {s.step === 1 && <StepTarget />}
           {s.step === 2 && <StepSamples />}
           {s.step === 3 && <StepMethod />}
-          {!edited && (
-            <p className={mod.later} data-testid="est-later">
-              Шаг «{STEP_TITLES[s.step - 1]}» появится в следующем подшаге.
-            </p>
-          )}
+          {s.step === 4 && <StepSearch />}
+          {s.step === 5 && <StepOutputs />}
+          {s.step === 6 && <StepRun />}
+
           {s.issue && s.issue.param === null && !conflict && (
             <p className={css.error} role="alert" data-testid="est-issue-general">
               {s.issue.message} {s.issue.hint}
