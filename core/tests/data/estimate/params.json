@@ -1,0 +1,1388 @@
+{
+ "_note": "Примеры параметров оценки (18.1): body — тело POST /estimations; canonical — spec.parse_estimation(body).canonical() (часть meta строки, docs/progress/e18-api.md §3); columns — spec.columns(). Перегенерация: BF_REGEN_ESTIMATE=1 uv run pytest -q tests/test_estimate_spec.py",
+ "cases": {
+  "idw": {
+   "body": {
+    "name": "AU · IDW · окисл",
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл"
+    },
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "weights": null
+    },
+    "method": {
+     "kind": "idw",
+     "power": 2
+    },
+    "search": {
+     "from": "manual",
+     "ang1": 45,
+     "r1": 100,
+     "r2": 60,
+     "r3": 20,
+     "passes": [
+      {
+       "n_min": 2,
+       "n_max": 16
+      }
+     ]
+    },
+    "outputs": {
+     "prefix": "AU_ID2_"
+    }
+   },
+   "canonical": {
+    "name": "AU · IDW · окисл",
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "sub": "parent",
+    "disc": [
+     4,
+     4,
+     2
+    ],
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": null
+    },
+    "method": {
+     "kind": "idw",
+     "power": 2.0,
+     "mean": {
+      "mode": "declus",
+      "value": null
+     },
+     "ik": null
+    },
+    "variogram": null,
+    "variograms": null,
+    "trend_id": null,
+    "search": {
+     "from": "manual",
+     "ang1": 45.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 100.0,
+     "r2": 60.0,
+     "r3": 20.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 2,
+       "n_max": 16,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "outputs": {
+     "prefix": "AU_ID2_",
+     "fields": [
+      "STATUS",
+      "EST",
+      "NS",
+      "AD",
+      "PASS"
+     ]
+    }
+   },
+   "columns": [
+    {
+     "name": "AU_ID2_STATUS",
+     "key": "STATUS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": "0 — оценён; 1 — вне домена; 2 — мало проб; 3 — вырожденная система"
+    },
+    {
+     "name": "AU_ID2_EST",
+     "key": "EST",
+     "dtype": "f8",
+     "role": "grade",
+     "unit": "г/т",
+     "description": null
+    },
+    {
+     "name": "AU_ID2_NS",
+     "key": "NS",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_ID2_AD",
+     "key": "AD",
+     "dtype": "f4",
+     "role": null,
+     "unit": "м",
+     "description": null
+    },
+    {
+     "name": "AU_ID2_PASS",
+     "key": "PASS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": null
+    }
+   ]
+  },
+  "ok_point": {
+   "body": {
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл"
+    },
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "weights": null
+    },
+    "disc": [
+     1,
+     1,
+     1
+    ],
+    "method": {
+     "kind": "ok"
+    },
+    "variogram": {
+     "model_id": 21,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 30.0,
+        "a2": 30.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "scale": "z"
+    }
+   },
+   "canonical": {
+    "name": null,
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "sub": "parent",
+    "disc": [
+     1,
+     1,
+     1
+    ],
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": null
+    },
+    "method": {
+     "kind": "ok",
+     "power": 2.0,
+     "mean": {
+      "mode": "declus",
+      "value": null
+     },
+     "ik": null
+    },
+    "variogram": {
+     "model_id": 21,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 30.0,
+        "a2": 30.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "scale": "z",
+     "share": null
+    },
+    "variograms": null,
+    "trend_id": null,
+    "search": {
+     "from": "model",
+     "ang1": 0.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 30.0,
+     "r2": 30.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 2.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 3.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "outputs": {
+     "prefix": "AU_OK_",
+     "fields": [
+      "STATUS",
+      "EST",
+      "KV",
+      "NS",
+      "NH",
+      "AD",
+      "PASS",
+      "SLOPE",
+      "KE"
+     ]
+    }
+   },
+   "columns": [
+    {
+     "name": "AU_OK_STATUS",
+     "key": "STATUS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": "0 — оценён; 1 — вне домена; 2 — мало проб; 3 — вырожденная система"
+    },
+    {
+     "name": "AU_OK_EST",
+     "key": "EST",
+     "dtype": "f8",
+     "role": "grade",
+     "unit": "г/т",
+     "description": null
+    },
+    {
+     "name": "AU_OK_KV",
+     "key": "KV",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_NS",
+     "key": "NS",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_NH",
+     "key": "NH",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_AD",
+     "key": "AD",
+     "dtype": "f4",
+     "role": null,
+     "unit": "м",
+     "description": null
+    },
+    {
+     "name": "AU_OK_PASS",
+     "key": "PASS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_SLOPE",
+     "key": "SLOPE",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_KE",
+     "key": "KE",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    }
+   ]
+  },
+  "sk": {
+   "body": {
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл"
+    },
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "weights": "DECL_W"
+    },
+    "disc": [
+     1,
+     1,
+     1
+    ],
+    "method": {
+     "kind": "sk",
+     "mean": {
+      "mode": "value",
+      "value": "2,5"
+     }
+    },
+    "variogram": {
+     "model_id": 21,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 30.0,
+        "a2": 30.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "scale": "z"
+    },
+    "outputs": {
+     "fields": [
+      "EST",
+      "KV",
+      "SLOPE",
+      "NS"
+     ]
+    }
+   },
+   "canonical": {
+    "name": null,
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "sub": "parent",
+    "disc": [
+     1,
+     1,
+     1
+    ],
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": null,
+     "weights": "DECL_W"
+    },
+    "method": {
+     "kind": "sk",
+     "power": 2.0,
+     "mean": {
+      "mode": "value",
+      "value": 2.5
+     },
+     "ik": null
+    },
+    "variogram": {
+     "model_id": 21,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.1,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.9,
+        "ang1": 0.0,
+        "ang2": 0.0,
+        "ang3": 0.0,
+        "a1": 30.0,
+        "a2": 30.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "scale": "z",
+     "share": null
+    },
+    "variograms": null,
+    "trend_id": null,
+    "search": {
+     "from": "model",
+     "ang1": 0.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 30.0,
+     "r2": 30.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 2.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 3.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "outputs": {
+     "prefix": "AU_SK_",
+     "fields": [
+      "STATUS",
+      "EST",
+      "KV",
+      "NS",
+      "SLOPE"
+     ]
+    }
+   },
+   "columns": [
+    {
+     "name": "AU_SK_STATUS",
+     "key": "STATUS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": "0 — оценён; 1 — вне домена; 2 — мало проб; 3 — вырожденная система"
+    },
+    {
+     "name": "AU_SK_EST",
+     "key": "EST",
+     "dtype": "f8",
+     "role": "grade",
+     "unit": "г/т",
+     "description": null
+    },
+    {
+     "name": "AU_SK_KV",
+     "key": "KV",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_SK_NS",
+     "key": "NS",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_SK_SLOPE",
+     "key": "SLOPE",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    }
+   ]
+  },
+  "ik": {
+   "body": {
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл"
+    },
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "weights": null,
+     "topcut": {
+      "value": 30
+     }
+    },
+    "method": {
+     "kind": "ik",
+     "ik": {
+      "thresholds": [
+       0.5,
+       1.0,
+       2.5
+      ],
+      "models": "per"
+     }
+    },
+    "variograms": [
+     {
+      "model_id": 31,
+      "snapshot": {
+       "type": "semivariogram",
+       "c0": 0.0375,
+       "structures": [
+        {
+         "type": "spherical",
+         "c": 0.15,
+         "ang1": 45.0,
+         "ang2": 0.0,
+         "ang3": 0.0,
+         "a1": 80.0,
+         "a2": 50.0,
+         "a3": 20.0
+        }
+       ],
+       "common_axes": true
+      },
+      "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "scale": "z",
+      "t": 0.5
+     },
+     {
+      "model_id": 32,
+      "snapshot": {
+       "type": "semivariogram",
+       "c0": 0.05,
+       "structures": [
+        {
+         "type": "spherical",
+         "c": 0.2,
+         "ang1": 45.0,
+         "ang2": 0.0,
+         "ang3": 0.0,
+         "a1": 80.0,
+         "a2": 50.0,
+         "a3": 20.0
+        }
+       ],
+       "common_axes": true
+      },
+      "sha": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "scale": "z",
+      "t": 1.0
+     },
+     {
+      "model_id": 33,
+      "snapshot": {
+       "type": "semivariogram",
+       "c0": 0.032,
+       "structures": [
+        {
+         "type": "spherical",
+         "c": 0.128,
+         "ang1": 45.0,
+         "ang2": 0.0,
+         "ang3": 0.0,
+         "a1": 80.0,
+         "a2": 50.0,
+         "a3": 20.0
+        }
+       ],
+       "common_axes": true
+      },
+      "sha": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "scale": "z",
+      "t": 2.5
+     }
+    ],
+    "outputs": {
+     "prefix": "AU_IK_",
+     "fields": [
+      "P",
+      "ETYPE",
+      "NS",
+      "PASS"
+     ]
+    }
+   },
+   "canonical": {
+    "name": null,
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": null
+    },
+    "sub": "parent",
+    "disc": [
+     4,
+     4,
+     2
+    ],
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": null,
+     "topcut": {
+      "value": 30.0
+     },
+     "weights": null
+    },
+    "method": {
+     "kind": "ik",
+     "power": 2.0,
+     "mean": {
+      "mode": "declus",
+      "value": null
+     },
+     "ik": {
+      "thresholds": [
+       0.5,
+       1.0,
+       2.5
+      ],
+      "models": "per",
+      "class_means": "declus"
+     }
+    },
+    "variogram": null,
+    "variograms": [
+     {
+      "t": 0.5,
+      "model_id": 31,
+      "snapshot": {
+       "type": "semivariogram",
+       "c0": 0.0375,
+       "structures": [
+        {
+         "type": "spherical",
+         "c": 0.15,
+         "ang1": 45.0,
+         "ang2": 0.0,
+         "ang3": 0.0,
+         "a1": 80.0,
+         "a2": 50.0,
+         "a3": 20.0
+        }
+       ],
+       "common_axes": true
+      },
+      "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "scale": "z",
+      "share": null
+     },
+     {
+      "t": 1.0,
+      "model_id": 32,
+      "snapshot": {
+       "type": "semivariogram",
+       "c0": 0.05,
+       "structures": [
+        {
+         "type": "spherical",
+         "c": 0.2,
+         "ang1": 45.0,
+         "ang2": 0.0,
+         "ang3": 0.0,
+         "a1": 80.0,
+         "a2": 50.0,
+         "a3": 20.0
+        }
+       ],
+       "common_axes": true
+      },
+      "sha": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "scale": "z",
+      "share": null
+     },
+     {
+      "t": 2.5,
+      "model_id": 33,
+      "snapshot": {
+       "type": "semivariogram",
+       "c0": 0.032,
+       "structures": [
+        {
+         "type": "spherical",
+         "c": 0.128,
+         "ang1": 45.0,
+         "ang2": 0.0,
+         "ang3": 0.0,
+         "a1": 80.0,
+         "a2": 50.0,
+         "a3": 20.0
+        }
+       ],
+       "common_axes": true
+      },
+      "sha": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "scale": "z",
+      "share": null
+     }
+    ],
+    "trend_id": null,
+    "search": {
+     "from": "model",
+     "ang1": 45.0,
+     "ang2": 0.0,
+     "ang3": 0.0,
+     "r1": 80.0,
+     "r2": 50.0,
+     "r3": 20.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 2.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 3.0,
+       "n_min": 4,
+       "n_max": 24,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "outputs": {
+     "prefix": "AU_IK_",
+     "fields": [
+      "STATUS",
+      "NS",
+      "PASS",
+      "P",
+      "ETYPE"
+     ]
+    }
+   },
+   "columns": [
+    {
+     "name": "AU_IK_STATUS",
+     "key": "STATUS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": "0 — оценён; 1 — вне домена; 2 — мало проб; 3 — вырожденная система"
+    },
+    {
+     "name": "AU_IK_NS",
+     "key": "NS",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_IK_PASS",
+     "key": "PASS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_IK_P1",
+     "key": "P1",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_IK_P2",
+     "key": "P2",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_IK_P3",
+     "key": "P3",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_IK_ETYPE",
+     "key": "ETYPE",
+     "dtype": "f8",
+     "role": "grade",
+     "unit": "г/т",
+     "description": null
+    }
+   ]
+  },
+  "ok_block_passes": {
+   "body": {
+    "name": "AU · OK блочный · окисл",
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "rules": {
+      "cond": {
+       "field": "Z",
+       "op": ">=",
+       "value": "-300"
+      }
+     }
+    },
+    "sub": "parent",
+    "disc": [
+     4,
+     4,
+     2
+    ],
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "weights": null,
+     "soft": {
+      "domains": [
+       "перех"
+      ],
+      "dist": 5
+     },
+     "topcut": {
+      "field": "AU_CUT"
+     }
+    },
+    "method": {
+     "kind": "ok"
+    },
+    "variogram": {
+     "model_id": 22,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.15,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.45,
+        "ang1": 45.0,
+        "ang2": -10.0,
+        "ang3": 0.0,
+        "a1": 60.0,
+        "a2": 40.0,
+        "a3": 15.0
+       },
+       {
+        "type": "exponential",
+        "c": 0.4,
+        "ang1": 45.0,
+        "ang2": -10.0,
+        "ang3": 0.0,
+        "a1": 150.0,
+        "a2": 90.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+     "scale": "back",
+     "share": 0.97
+    },
+    "search": {
+     "from": "model",
+     "passes": [
+      {
+       "factor": 1,
+       "n_min": 8,
+       "n_max": 24,
+       "n_hole": 4,
+       "n_oct": 4,
+       "k_oct": 3,
+       "n_holes_min": 2,
+       "hy": {
+        "t": 20,
+        "q": 0.5,
+        "mode": "cap"
+       }
+      },
+      {
+       "factor": 2,
+       "n_min": 6,
+       "n_max": 24,
+       "n_hole": 4
+      },
+      {
+       "factor": 3,
+       "n_min": 4,
+       "n_max": 16
+      }
+     ]
+    },
+    "outputs": {
+     "prefix": "AU_OK_",
+     "fields": [
+      "EST",
+      "KV",
+      "NS",
+      "NH",
+      "NHY",
+      "AD",
+      "DMIN",
+      "PASS",
+      "SLOPE",
+      "KE",
+      "LAGR",
+      "SNW",
+      "NOCT"
+     ]
+    }
+   },
+   "canonical": {
+    "name": "AU · OK блочный · окисл",
+    "model_id": 7,
+    "target": {
+     "domain_field": "ZONE",
+     "label": "окисл",
+     "filter_id": null,
+     "rules": {
+      "cond": {
+       "field": "Z",
+       "op": ">=",
+       "value": -300.0
+      }
+     }
+    },
+    "sub": "parent",
+    "disc": [
+     4,
+     4,
+     2
+    ],
+    "samples": {
+     "set_id": 3,
+     "table": "12",
+     "field": "AU",
+     "unit": "г/т",
+     "domain": {
+      "table": "14",
+      "field": "ZONE",
+      "values": [
+       "окисл"
+      ]
+     },
+     "soft": {
+      "domains": [
+       "перех"
+      ],
+      "dist": 5.0
+     },
+     "topcut": {
+      "field": "AU_CUT"
+     },
+     "weights": null
+    },
+    "method": {
+     "kind": "ok",
+     "power": 2.0,
+     "mean": {
+      "mode": "declus",
+      "value": null
+     },
+     "ik": null
+    },
+    "variogram": {
+     "model_id": 22,
+     "snapshot": {
+      "type": "semivariogram",
+      "c0": 0.15,
+      "structures": [
+       {
+        "type": "spherical",
+        "c": 0.45,
+        "ang1": 45.0,
+        "ang2": -10.0,
+        "ang3": 0.0,
+        "a1": 60.0,
+        "a2": 40.0,
+        "a3": 15.0
+       },
+       {
+        "type": "exponential",
+        "c": 0.4,
+        "ang1": 45.0,
+        "ang2": -10.0,
+        "ang3": 0.0,
+        "a1": 150.0,
+        "a2": 90.0,
+        "a3": 30.0
+       }
+      ],
+      "common_axes": true
+     },
+     "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+     "scale": "back",
+     "share": 0.97
+    },
+    "variograms": null,
+    "trend_id": null,
+    "search": {
+     "from": "model",
+     "ang1": 45.0,
+     "ang2": -10.0,
+     "ang3": 0.0,
+     "r1": 150.0,
+     "r2": 90.0,
+     "r3": 30.0,
+     "passes": [
+      {
+       "factor": 1.0,
+       "n_min": 8,
+       "n_max": 24,
+       "n_hole": 4,
+       "n_oct": 4,
+       "k_oct": 3,
+       "n_holes_min": 2,
+       "hy": {
+        "t": 20.0,
+        "q": 0.5,
+        "mode": "cap"
+       }
+      },
+      {
+       "factor": 2.0,
+       "n_min": 6,
+       "n_max": 24,
+       "n_hole": 4,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      },
+      {
+       "factor": 3.0,
+       "n_min": 4,
+       "n_max": 16,
+       "n_hole": 0,
+       "n_oct": 0,
+       "k_oct": 0,
+       "n_holes_min": 0,
+       "hy": null
+      }
+     ]
+    },
+    "outputs": {
+     "prefix": "AU_OK_",
+     "fields": [
+      "STATUS",
+      "EST",
+      "KV",
+      "NS",
+      "NH",
+      "NHY",
+      "AD",
+      "DMIN",
+      "PASS",
+      "SLOPE",
+      "KE",
+      "LAGR",
+      "SNW",
+      "NOCT"
+     ]
+    }
+   },
+   "columns": [
+    {
+     "name": "AU_OK_STATUS",
+     "key": "STATUS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": "0 — оценён; 1 — вне домена; 2 — мало проб; 3 — вырожденная система"
+    },
+    {
+     "name": "AU_OK_EST",
+     "key": "EST",
+     "dtype": "f8",
+     "role": "grade",
+     "unit": "г/т",
+     "description": null
+    },
+    {
+     "name": "AU_OK_KV",
+     "key": "KV",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_NS",
+     "key": "NS",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_NH",
+     "key": "NH",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_NHY",
+     "key": "NHY",
+     "dtype": "i2",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_AD",
+     "key": "AD",
+     "dtype": "f4",
+     "role": null,
+     "unit": "м",
+     "description": null
+    },
+    {
+     "name": "AU_OK_DMIN",
+     "key": "DMIN",
+     "dtype": "f4",
+     "role": null,
+     "unit": "м",
+     "description": null
+    },
+    {
+     "name": "AU_OK_PASS",
+     "key": "PASS",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_SLOPE",
+     "key": "SLOPE",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_KE",
+     "key": "KE",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_LAGR",
+     "key": "LAGR",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_SNW",
+     "key": "SNW",
+     "dtype": "f4",
+     "role": null,
+     "unit": null,
+     "description": null
+    },
+    {
+     "name": "AU_OK_NOCT",
+     "key": "NOCT",
+     "dtype": "i1",
+     "role": null,
+     "unit": null,
+     "description": null
+    }
+   ]
+  }
+ }
+}
