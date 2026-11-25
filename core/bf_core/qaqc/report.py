@@ -315,6 +315,9 @@ def create(conn: sa.Connection, store: BlobStore, name: Any, inputs: dict[str, A
     report_id = int(res.inserted_primary_key[0])  # type: ignore[index]
     _share_records(conn, report_id, inputs["data_sha256"])
     _put_json(conn, store, report_id, INPUTS, inputs)
+    from bf_core import lineage
+
+    lineage.sync(conn, [lineage.Node("object:" + KIND, report_id)])  # built from the data (ADR 0025 §4)
     return report_id
 
 
@@ -494,6 +497,9 @@ def delete(conn: sa.Connection, report_id: int) -> None:
     _row(conn, report_id)
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == report_id))
     conn.execute(sa.delete(objects).where(objects.c.id == report_id))
+    from bf_core import lineage
+
+    lineage.forget_object(conn, KIND, report_id)
 
 
 def put_image(conn: sa.Connection, store: BlobStore, report_id: int, key: str, data: bytes) -> int:

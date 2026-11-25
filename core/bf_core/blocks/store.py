@@ -371,6 +371,10 @@ def commit_block_model(
     store.commit_staged(conn, staged.file, media_type=bs.PARQUET_MEDIA, owner_kind=OWNER, owner_id=bm_id,
                         role=bs.ROLE)  # fmt: skip
     staged.file = None  # in place now: a later discard() must not touch it
+    if inputs:  # made by a fill / a regularization: the reverse index of the graph of dependencies (ADR 0025 §4)
+        from bf_core import lineage
+
+        lineage.sync(conn, [lineage.Node("object:" + bs.KIND, bm_id)])
     return bm_id
 
 
@@ -600,4 +604,7 @@ def delete_block_model(conn: sa.Connection, bm_id: int) -> dict[str, Any]:
     drop_import_owners(conn, [bm_id])
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == bm_id))
     conn.execute(sa.delete(objects).where(objects.c.id == bm_id))
+    from bf_core import lineage
+
+    lineage.forget_object(conn, bs.KIND, bm_id)
     return {"id": bm_id, "shas": shas}

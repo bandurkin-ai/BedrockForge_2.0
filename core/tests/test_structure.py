@@ -68,3 +68,24 @@ def test_router_modules_match_source_tree() -> None:
     on_disk = sorted(p.parent.name for p in pkg.glob("*/router.py") if p.parent.name != "api")
     assert sorted(ROUTER_MODULES) == on_disk, "register the module in bf_core/api/modules.py"
     assert len(discover_routers()) == len(ROUTER_MODULES)
+
+
+def test_computed_object_kinds_have_a_lineage_provider() -> None:
+    """ADR 0025 «Последствия»: a kind of object whose module keeps an `algo` (a computed object) must have a provider
+    in `lineage/providers.py`, or its «устарел» stops at its direct inputs. A module names its object kind in a
+    top-level `KIND = "…"` (job kinds have a dot: `blocks.calc`)."""
+    import re
+
+    from bf_core.lineage import providers
+
+    found: dict[str, str] = {}
+    for path in sorted((ROOT / "core" / "bf_core").rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        if "algo" not in text.lower():
+            continue
+        for kind in re.findall(r'^KIND = "([a-z_]+)"', text, re.MULTILINE):
+            found.setdefault(kind, str(path.relative_to(ROOT)))
+    # the three kinds with an `algo` at the time of the ADR: a scan that finds fewer is broken, not the project clean
+    assert {"block_model", "variogram_model", "qaqc_report"} <= set(found), found
+    missing = {k: f for k, f in found.items() if f"object:{k}" not in providers.registered()}
+    assert not missing, f"no lineage provider (core/bf_core/lineage/adapt_*.py): {missing}"
