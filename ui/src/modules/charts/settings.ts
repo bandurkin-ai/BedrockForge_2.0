@@ -174,13 +174,35 @@ export interface ContactView {
   color: string;
 }
 
+/** The blocks beside the samples (Д-28): the model, the field of its estimate, `status_field` (0 — estimated), the domain field of the model (none — that of the samples). */
+export interface ContactBlocks {
+  model_id: number;
+  field: string;
+  status_field?: string;
+  domain_field?: string;
+}
+
 export interface ContactSettings extends DomainBase {
   a: string | null;
   b: string | null;
   distance: number;
   step: number;
   wireframe_id: number | null;
+  /** the profile of the blocks at the same contact; null — the samples only */
+  blocks: ContactBlocks | null;
   view: ContactView;
+}
+
+/** The blocks of stored settings or arguments: the model and the field are needed, the names are text; else undefined. */
+export function blocksOf(raw: unknown): ContactBlocks | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const name = (v: unknown): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined);
+  const field = name(r.field);
+  if (typeof r.model_id !== "number" || !Number.isInteger(r.model_id) || r.model_id < 1 || !field) return undefined;
+  const status = name(r.status_field);
+  const domain = name(r.domain_field);
+  return { model_id: r.model_id, field, ...(status ? { status_field: status } : {}), ...(domain ? { domain_field: domain } : {}) };
 }
 
 export interface TernaryView {
@@ -251,7 +273,7 @@ export function defaultSettings<K extends ChartKind>(kind: K, setId: number): Se
     box: { ...domainBase(setId), log: false, view: defaultView("box") as unknown as BoxView },
     probplot: { ...domainBase(setId), view: defaultView("probplot") as unknown as ProbPlotView },
     // ТЗ 8.3: D = 20 м, b = 1 м
-    contact: { ...domainBase(setId), a: null, b: null, distance: 20, step: 1, wireframe_id: null, view: defaultView("contact") as unknown as ContactView },
+    contact: { ...domainBase(setId), a: null, b: null, distance: 20, step: 1, wireframe_id: null, blocks: null, view: defaultView("contact") as unknown as ContactView },
     ternary: { ...base(setId), a: null, b: null, c: null, color: null, view: defaultView("ternary") as unknown as TernaryView },
     domains: domainBase(setId),
   };
@@ -284,6 +306,7 @@ export const parseList = (text: string): string[] => [...new Set(text.split(/[,;
 function accept(key: string, value: unknown, fallback: unknown): unknown {
   if (value === undefined) return undefined;
   if (value === null) return fallback === null ? null : undefined;
+  if (key === "blocks") return blocksOf(value);
   if (key in LIST_LIMIT) {
     const list = typeof value === "string" ? parseList(value) : Array.isArray(value) ? [...new Set(value.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean))] : null;
     return list ? list.slice(0, LIST_LIMIT[key]) : undefined;
@@ -333,7 +356,12 @@ function normalizeView(d: Record<string, unknown>, raw: unknown): Record<string,
 }
 
 /** Settings from the arguments of `chart.<kind>` (the same keys); without `set_id` — the active set. */
-export const settingsFromArgs = <K extends ChartKind>(kind: K, args: Record<string, unknown>, activeSet: number): SettingsOf[K] => normalizeSettings(kind, { ...args, set_id: args.set_id ?? activeSet }, activeSet);
+export function settingsFromArgs<K extends ChartKind>(kind: K, args: Record<string, unknown>, activeSet: number): SettingsOf[K] {
+  const given = { ...args, set_id: args.set_id ?? activeSet };
+  // the flat arguments of the commands (`ParamSchema` has no objects): the model and the fields of the profile of the blocks
+  if (kind === "contact" && args.blocks_model_id !== undefined) Object.assign(given, { blocks: { model_id: args.blocks_model_id, field: args.blocks_field, status_field: args.blocks_status_field, domain_field: args.blocks_domain_field } });
+  return normalizeSettings(kind, given, activeSet);
+}
 
 // ---- names after the settings (ТЗ 7.28; ADR 0019 §2) ----
 

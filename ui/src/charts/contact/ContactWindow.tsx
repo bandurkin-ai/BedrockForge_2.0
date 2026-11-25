@@ -3,8 +3,13 @@
  * field of the same or another table), or the crossing of a hole with a closed wireframe («до каркаса»: outside /
  * inside); the mean of the field and n by steps b up to D on both sides, the number of contacts; a step line — a
  * hard boundary, a slope — a soft one (8.8.2). CSV of the steps. An edit computes again 300 ms later.
+ * Д-28: a model of blocks and the field of its estimate add the profile of the blocks as a second line of the same chart
+ * (does the estimate keep the character of the boundary); «Задать мягкую границу…» opens the wizard of the estimation with
+ * the pair A | B and the d_м the person chose (the chart only shows it as two marks — nothing is derived).
  */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AppContext } from "../../shell/AppContext";
+import { blocksStore, loadBlockDetails } from "../../modules/blocks/state";
 import { errorText } from "../../shell/props";
 import { defaultField } from "../../modules/charts/api";
 import type { ContactResult } from "../../modules/charts/apiMore";
@@ -19,9 +24,13 @@ import { DomainSource, fieldLabel, keepField, useDomainCodes, useStatsFields } f
 import { NumberInput, SampleFilterForm } from "../SampleFilterForm";
 import css from "../core/Chart.module.css";
 import { ContactChart } from "./ContactChart";
-import { contactCalculator, contactCsv, contactNotes, contactProblem, contactRequest } from "./model";
+import { blockDefaults, contactCalculator, contactCsv, contactNotes, contactProblem, contactRequest, openSoft, softProblem } from "./model";
 
 const getScene = () => sceneObjects.get();
+const getBlocks = () => blocksStore.get();
+
+/** The block models the profile can read: a regular step, with blocks. */
+const profileModels = (list: ReturnType<typeof getBlocks>["list"]) => list.filter((m) => !m.grid.variable && m.cells > 0);
 
 function CodeSelect({ label, value, codes, onChange }: { label: string; value: string | null; codes: readonly string[]; onChange: (v: string | null) => void }) {
   const list = value && !codes.includes(value) ? [value, ...codes] : codes;
@@ -47,7 +56,11 @@ export function ContactWindow(props: ChartWindowProps<"contact">) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
+  const app = useContext(AppContext);
   const scene = useSyncExternalStore(sceneObjects.subscribe, getScene, getScene);
+  const bs = useSyncExternalStore(blocksStore.subscribe, getBlocks, getBlocks);
+  const [softD, setSoftD] = useState<number | null>(null);
+  const [softNote, setSoftNote] = useState<string | null>(null);
   const set = (patch: Partial<ContactSettings>) => setS((prev) => ({ ...prev, ...patch }));
   const saved = useSavedChart("contact", props, s, setS);
 
@@ -64,6 +77,27 @@ export function ContactWindow(props: ChartWindowProps<"contact">) {
     if (f.fields && request) calc.request(request);
   }, [calc, f.fields, request]);
 
+  const modelId = s.blocks?.model_id ?? null;
+  useEffect(() => {
+    if (modelId !== null) void loadBlockDetails(modelId);
+  }, [modelId]);
+  const models = profileModels(bs.list);
+  const model = modelId === null ? undefined : (bs.details[modelId] ?? bs.list.find((m) => m.id === modelId));
+  const bf = model?.fields ?? [];
+  const chooseModel = (id: number | null) => {
+    if (id === null) return set({ blocks: null });
+    const m = bs.details[id] ?? bs.list.find((x) => x.id === id);
+    const d = m ? blockDefaults(m.fields, s) : null;
+    set({ blocks: { model_id: id, field: d?.field ?? "", ...(d?.status_field ? { status_field: d.status_field } : {}), ...(d?.domain_field ? { domain_field: d.domain_field } : {}) } });
+  };
+  const setBlocks = (patch: { field?: string; status_field?: string | null; domain_field?: string | null }) =>
+    setS((p) => {
+      if (!p.blocks) return p;
+      const next: Record<string, unknown> = { ...p.blocks, ...patch };
+      for (const k of ["status_field", "domain_field"]) if (!next[k]) delete next[k];
+      return { ...p, blocks: next as unknown as NonNullable<ContactSettings["blocks"]> };
+    });
+  const soft = softProblem(s, softD);
   const solids = scene.wireframes.filter((w) => !w.dtm && w.stats?.closed !== false);
   const byWire = s.wireframe_id !== null;
   const info = f.fields?.numeric.find((v) => v.name === s.field);
@@ -110,6 +144,80 @@ export function ContactWindow(props: ChartWindowProps<"contact">) {
           </label>
         </div>
       </fieldset>
+      <fieldset>
+        <legend>Блоки</legend>
+        <label>
+          Блочная модель
+          <select value={modelId ?? ""} aria-label="Блочная модель" onChange={(e) => chooseModel(e.target.value ? Number(e.target.value) : null)}>
+            <option value="">{models.length ? "— без профиля блоков —" : "нет блочных моделей с блоками"}</option>
+            {modelId !== null && !models.some((m) => m.id === modelId) && <option value={modelId}>Модель №{modelId}</option>}
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {s.blocks && (
+          <>
+            <label>
+              Поле оценки
+              <select value={s.blocks.field} aria-label="Поле оценки блоков" onChange={(e) => setBlocks({ field: e.target.value })}>
+                <option value="">— выберите —</option>
+                {bf.filter((x) => x.kind === "number" || x.name === s.blocks?.field).map((x) => (
+                  <option key={x.name} value={x.name}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Статус оценки (0 — оценён)
+              <select value={s.blocks.status_field ?? ""} aria-label="Поле статуса блоков" onChange={(e) => setBlocks({ status_field: e.target.value || null })}>
+                <option value="">все блоки</option>
+                {bf.filter((x) => x.kind === "number").map((x) => (
+                  <option key={x.name} value={x.name}>
+                    {x.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!byWire && (
+              <label>
+                Поле домена модели
+                <select value={s.blocks.domain_field ?? ""} aria-label="Поле домена блоков" onChange={(e) => setBlocks({ domain_field: e.target.value || null })}>
+                  <option value="">{s.domain ? `как у проб (${s.domain})` : "— выберите —"}</option>
+                  {bf.filter((x) => x.kind === "category").map((x) => (
+                    <option key={x.name} value={x.name}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </>
+        )}
+        <span className={css.note}>Среднее поля оценки по блокам рядом с пробами: расстояние — от центра блока до границы, вес — объём.</span>
+      </fieldset>
+      <fieldset>
+        <legend>Мягкая граница</legend>
+        <label>
+          Расстояние d_м, м
+          <NumberInput label="Расстояние d_м" value={softD} placeholder="задайте" title="Расстояние, на котором пробы соседнего домена допускаются у границы; решение за вами" onChange={(v) => (setSoftD(v), setSoftNote(null))} />
+        </label>
+        <button
+          type="button"
+          className={css.action}
+          disabled={!app || soft !== null}
+          title={soft ?? "Открыть мастер оценки с парой доменов A | B и этим расстоянием"}
+          onClick={() => {
+            if (app) void openSoft(app, s, softD).then(setSoftNote);
+          }}
+        >
+          Задать мягкую границу…
+        </button>
+        <span className={css.note}>{softNote ?? (soft && softD !== null ? soft : "График лишь показывает, где проходит d_м: по отметкам на графике решаете вы.")}</span>
+      </fieldset>
       <SampleFilterForm value={s} fields={f.fields?.numeric ?? []} onChange={set} />
       <fieldset>
         <legend>Вид</legend>
@@ -130,7 +238,7 @@ export function ContactWindow(props: ChartWindowProps<"contact">) {
       error={error ?? f.error}
       empty={empty}
       note={saved.note}
-      chart={result && result.contacts > 0 && <ContactChart ref={svgRef} result={result} counts={s.view.counts} xLabel={xLabel} />}
+      chart={result && result.contacts > 0 && <ContactChart ref={svgRef} result={result} counts={s.view.counts} xLabel={xLabel} soft={softD} />}
       footer={
         result && (
           <>
