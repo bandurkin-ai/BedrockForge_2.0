@@ -162,7 +162,10 @@ def test_patch_matrices_turn_the_points_of_that_patch_only(sphere: tuple[F8, F8,
     idx = ps.patch(3)
     x = transform_points(pts[idx], mats[3])  # type: ignore[arg-type]
     c = transform_points(ps.centers[3].reshape(1, 3), mats[3])[0]  # type: ignore[arg-type]
-    one = sy.solve_patch(x, f[idx], "linear", None, 0.0, centre=c, scale=float(ps.radii[3]))
+    from bf_core.model.anisotropy import stretch_of
+
+    scale = float(ps.radii[3]) * stretch_of(mats[3])  # type: ignore[arg-type]  # the radius of the turned ball (19.9)
+    one = sy.solve_patch(x, f[idx], "linear", None, 0.0, centre=c, scale=scale)
     assert np.array_equal(sols[3].lam, one.lam) and np.array_equal(sols[3].points, x)
     with pytest.raises(ApiError):
         solve_patches(pts, f, ps, matrices=[None])

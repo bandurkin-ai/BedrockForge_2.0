@@ -31,7 +31,9 @@ run together. It changes the schedule, never the result.
 
 Per patch: `eta` is a number or a list (the smoothing of 19.10), `radius` the same for the finite-radius kernel,
 `matrices` (A_j of 19.9, or None for a patch) turn the points of that patch — and its centre — before its system is
-built; `evaluate.PatchField(…, matrices=…)` takes the same list. numba is not imported here (the kernels come with
+built, and the scale of its normalised coordinates becomes R_j·‖A_j‖₂ (the radius of the turned ball; `anisotropy.py`
+says why); `evaluate.PatchField(…, matrices=…)` takes the same list and reads
+the scale from the solution. numba is not imported here (the kernels come with
 `solve_patch`).
 """
 
@@ -47,6 +49,7 @@ from numpy.typing import ArrayLike, NDArray
 
 from bf_core.api.errors import ApiError
 
+from .anisotropy import stretch_of
 from .octree import PatchSet, transform_points
 from .system import COND_MAX, MAX_PAIRS, PatchSolution, RbfSingular, single_blas_thread, solve_patch
 
@@ -187,12 +190,12 @@ def solve_patches(
             x = pts[idx]
             c = patches.centers[j]
             a = None if matrices is None else matrices[j]
+            scale = float(patches.radii[j])
             if a is not None:
                 x = transform_points(x, a)
                 c = transform_points(c.reshape(1, 3), a)[0]
-            return solve_patch(
-                x, f[idx], kind, radii_a[j], etas[j] or 0.0, centre=c, scale=float(patches.radii[j]), cond_max=cond_max
-            )
+                scale *= stretch_of(a)  # the radius of the turned ball: x/R stays within the unit ball (19.9)
+            return solve_patch(x, f[idx], kind, radii_a[j], etas[j] or 0.0, centre=c, scale=scale, cond_max=cond_max)
         finally:
             budget.release(need)
 
