@@ -357,19 +357,34 @@ def run_simulate(
     clock(AT_WRITE, S_WRITE)
     cats = spec.method.categories if spec.categorical and spec.method is not None else None
     staged = real.write(store, p, np.zeros(p.size, dtype=np.int16), res.real, "u1" if cats else "f4")
-    summary = real.stats_cats(res.real, cats) if cats else real.stats_of(res.real)
-    res.real = np.empty((0, 0))  # the realizations are in the file now: the memory goes back before the transaction
-    now = dialect.utcnow().isoformat()
-    log = _log(spec, res, ng.n, list(res.notes))
-    try:
+    try:  # from here the file is ours: a failure or a rollback takes the temp file and the placed one away
+        summary = real.stats_cats(res.real, cats) if cats else real.stats_of(res.real)
+        res.real = np.empty((0, 0))  # the realizations are in the file now: the memory goes back before the commit
+        now = dialect.utcnow().isoformat()
+        log = _log(spec, res, ng.n, list(res.notes))
         with dialect.write_tx(engine) as conn:
             ident = _commit(conn, store, row, spec, staged, inputs, samples, ng.n, now, job_id, res, summary,
                             run_author(params))  # fmt: skip
     except BaseException:
-        staged[0].unlink(missing_ok=True)
+        _discard(engine, store, staged)
         raise
     clock(1.0, None)
     return _answer(spec, ident, res, ng.n, clock, log)
+
+
+def _discard(engine: sa.Engine, store: BlobStore, staged: tuple[Path, str, int]) -> None:
+    """The run failed or its transaction rolled back: the temp file goes, and so does the file by the SHA when `blobs`
+    has no row for it (`place` moved it there inside the transaction that did not commit)."""
+    from bf_core.db.schema import blobs
+
+    staged[0].unlink(missing_ok=True)
+    try:
+        with dialect.read_tx(engine) as conn:
+            known = conn.execute(sa.select(blobs.c.sha256).where(blobs.c.sha256 == staged[1])).first()
+        if known is None:
+            store.path_of(staged[1]).unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001 — the original error is the one to report; an orphan file is only garbage
+        pass
 
 
 def run_author(params: dict[str, Any]) -> str | None:

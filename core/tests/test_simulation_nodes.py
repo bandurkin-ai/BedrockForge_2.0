@@ -346,3 +346,14 @@ def test_search_time_per_node() -> None:
         print(f"\nsearch of nodes {counts}: template {tpl.shape[0]}, {us:.2f} µs a node, mean found {cnt.mean():.2f}")
         assert us < 50.0
         assert cnt[-1] == 12 and cnt[0] == 0
+
+
+def test_numba_comes_from_the_one_point() -> None:
+    """The kernels use `bf_core.jit.njit` (the cache locator of the .exe), never `numba` directly."""
+    import inspect
+    import pathlib
+
+    import bf_core.geostat.simulation as pkg
+
+    for path in pathlib.Path(inspect.getfile(pkg)).parent.glob("*.py"):
+        assert "from numba" not in path.read_text(encoding="utf-8"), path.name

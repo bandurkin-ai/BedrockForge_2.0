@@ -280,6 +280,52 @@ def test_a_failure_in_the_commit_leaves_nothing(sw: SW, monkeypatch: pytest.Monk
     assert rows_count(sw) == n0 and left_over(sw) == []  # the row of the body was made in the same transaction
 
 
+def test_a_failure_after_the_write_leaves_no_file(sw: SW, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The summary fails (the temp file is already written), or the commit fails after the file was placed (the row of
+    `blobs` rolls back): no temp file and no orphan file by the SHA."""
+    staged: list[Any] = []
+    real_write = real.write
+
+    def spy(*a: Any, **k: Any) -> Any:
+        out = real_write(*a, **k)
+        staged.append(out)
+        return out
+
+    def boom(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("disk")
+
+    monkeypatch.setattr(real, "write", spy)
+    monkeypatch.setattr(real, "stats_of", boom)
+    with pytest.raises(RuntimeError):
+        run(sw, simulation=body(sw))
+    assert left_over(sw) == [] and not BlobStore(sw.project.folder).path_of(staged[-1][1]).exists()
+    monkeypatch.undo()
+    monkeypatch.setattr(real, "write", spy)
+    monkeypatch.setattr(st, "_lineage", boom)  # after `commit_staged` has put the file in place
+    n0 = rows_count(sw)
+    with pytest.raises(RuntimeError):
+        run(sw, simulation=body(sw))
+    assert rows_count(sw) == n0 and left_over(sw) == []
+    assert not BlobStore(sw.project.folder).path_of(staged[-1][1]).exists()
+
+
+def test_a_stale_version_leaves_no_file_by_the_sha(sw: SW, monkeypatch: pytest.MonkeyPatch) -> None:
+    ident = make(sw)
+    staged: list[Any] = []
+    real_write = real.write
+
+    def write_then_edit(*a: Any, **k: Any) -> Any:
+        out = real_write(*a, **k)
+        staged.append(out)
+        with dialect.write_tx(sw.project.engine) as conn:
+            conn.execute(sa.update(objects).where(objects.c.id == ident).values(version=7))
+        return out
+
+    monkeypatch.setattr(real, "write", write_then_edit)
+    refused(lambda: run(sw, simulation_id=ident), 409, "version_conflict")
+    assert not BlobStore(sw.project.folder).path_of(staged[-1][1]).exists() and left_over(sw) == []
+
+
 def test_a_stale_version_at_the_commit(sw: SW, monkeypatch: pytest.MonkeyPatch) -> None:
     """Another window edits the row while the job runs: 409, the file is not placed."""
     ident = make(sw)

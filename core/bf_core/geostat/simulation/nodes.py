@@ -33,11 +33,11 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 import numpy as np
-from numba import njit
 
 from bf_core.geostat.estimate.cov import CovModel, cov_c
 from bf_core.geostat.estimate.search import Ellipsoid, Searcher, _own
 from bf_core.geostat.estimate.store_base import bad
+from bf_core.jit import njit
 
 Tick = Callable[[float | None, str | None], None]
 
