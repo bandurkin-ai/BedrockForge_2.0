@@ -6,7 +6,7 @@
  * - `implicit.save` — the form of the wizard is written (the buttons of the wizard run this command: the registry, the log, the assistant);
  * - `implicit.update` — «Построить» / «Обновить» (`run.ts`).
  * The list of the models follows the project: read when it opens and on `implicit.changed`; another project — a clean wizard. The
- * groups, «В каркас» and «Удалить» (19.24, `groupCommands.ts`) are bound here too; the rest says «появится на этапе» until its window (19.25–19.26). One app at a time (the tests create several).
+ * groups, «В каркас» and «Удалить» (19.24, `groupCommands.ts`) and the check, the comparison with the holes and «Модель на скважины» (19.25, `checkBind.ts`) are bound here too; `implicit.structural` says «появится на этапе» until its window (19.26). One app at a time (the tests create several).
  */
 import { createElement, type ReactNode } from "react";
 import type { App } from "../../shell/app";
@@ -17,6 +17,7 @@ import { focusWindow, openWindow, updateWindow, windowStore, type FloatWin } fro
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { addGroup, createModel, refusalOf } from "./api";
+import { bindChecks, renderCheckWindow } from "./checkBind";
 import { bindGroupCommands } from "./groupCommands";
 import { forgetGroups, forgetMissing, isGroupWindow } from "./groupKinds";
 import { bodyOf, boundaryGiven, EMPTY_FORM, formOfArgs, formOfMeta, freeName } from "./form";
@@ -172,6 +173,7 @@ export function bindImplicit(app: App): void {
   app.registry.bind("implicit.save", noted(app, (a) => runSave(a)), needWritable(app));
   app.registry.bind("implicit.update", noted(app, (a) => runUpdate(app, a)), needWritable(app));
   bindGroupCommands(app); // the groups (19.24): shells, vein, expand; «В каркас»; «Удалить»
+  bindChecks(app); // the check against the data, the comparison with the holes, «Модель на скважины» (19.25)
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadRows();
   unbind.push(
@@ -201,6 +203,8 @@ export function bindImplicit(app: App): void {
 /** The windows for the shell's window layer (`shell/Shell.tsx`); null — not a window of the implicit modelling. */
 export function renderImplicitWindow(w: FloatWin): ReactNode | null {
   if (w.kind === WIZARD_WINDOW) return createElement(Wizard, { winId: w.id });
+  const check = renderCheckWindow(w);
+  if (check) return check;
   if (!isGroupWindow(w)) return null;
   switch (w.kind) {
     case "implicit-shells":

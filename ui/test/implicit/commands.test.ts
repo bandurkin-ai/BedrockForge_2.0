@@ -1,6 +1,6 @@
 // The commands `implicit.*` of the registry (Э19, 19.22; ADR 0026 «Команды реестра», e19-api.md §12): the declarations (the ribbon, Ctrl+K and
 // the assistant read them), `implicit.new` (the wizard; a boundary creates an empty model), `implicit.domains` (the wizard on the step of the
-// domains; the codes add a domain), `implicit.save`, `implicit.update` («Построить» / «Обновить»); the rest waits for its window and says so.
+// domains; the codes add a domain), `implicit.save`, `implicit.update` («Построить» / «Обновить»); the structural data wait for their window and say so.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Icon } from "../../src/shell/Icon";
 import { createElement } from "react";
@@ -69,8 +69,8 @@ describe("the declarations", () => {
   });
   it("what is bound is available with a project; what waits for its window says so", () => {
     const reason = (id: string) => app.registry.reason(id, ctx);
-    for (const id of ["implicit.new", "implicit.domains", "implicit.save", "implicit.update", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.to_wireframe", "implicit.delete"]) expect(reason(id), id).toBeNull();
-    for (const id of ["implicit.structural", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]) expect(reason(id) ?? "", id).toContain("появится на этапе");
+    for (const id of ["implicit.new", "implicit.domains", "implicit.save", "implicit.update", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.to_wireframe", "implicit.delete", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]) expect(reason(id), id).toBeNull();
+    expect(reason("implicit.structural") ?? "").toContain("появится на этапе"); // the structural data are the window of 19.26
     expect(app.registry.reason("implicit.new", { ...ctx, hasProject: false })).toBe("Откройте или создайте проект");
   });
   it("a project open for reading only: the commands that write say so", () => {
