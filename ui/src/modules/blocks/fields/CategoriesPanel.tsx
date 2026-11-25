@@ -15,7 +15,7 @@ import { closeWindow } from "../../../shell/windows";
 import { sceneObjects } from "../../scene/objects";
 import { blocksStore } from "../state";
 import { argsOfForm, MAX_MAJORITY, MAX_RULES, pickScheme, sameRules, schemeArgsOfForm } from "./classifyForm";
-import { IssueLine, RestrictBox, RunView, useSel } from "./Common";
+import { IssueLine, RestrictBox, RunView, useSel } from "./CommonParts";
 import mod from "./Fields.module.css";
 import { checkRules, refreshSchemes } from "./opsBind";
 import { cancelRun } from "./run";

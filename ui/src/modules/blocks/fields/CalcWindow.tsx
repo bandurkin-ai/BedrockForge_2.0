@@ -21,7 +21,7 @@ import { CategoriesPanel } from "./CategoriesPanel";
 import { DensityPanel } from "./DensityPanel";
 import { FieldProps } from "./FieldProps";
 import type { Tab } from "./common";
-import { IssueLine, ModelPicker, RestrictBox, RunView, useSel } from "./Common";
+import { IssueLine, ModelPicker, RestrictBox, RunView, useSel } from "./CommonParts";
 import mod from "./Fields.module.css";
 import { cancelRun } from "./run";
 import { checkKey, fieldsStore, hasField, isRunning, modelFields, NO_CHECK, setCalc, setCheck, setIssue, TAB_TITLES } from "./state";

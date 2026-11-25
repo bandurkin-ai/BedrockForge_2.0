@@ -13,7 +13,7 @@ import { errorText } from "../../../shell/props";
 import { closeWindow } from "../../../shell/windows";
 import { blocksStore } from "../state";
 import { argsOfForm, METHODS, rowsForLabels } from "./densityForm";
-import { IssueLine, RestrictBox, RunView, useSel } from "./Common";
+import { IssueLine, RestrictBox, RunView, useSel } from "./CommonParts";
 import mod from "./Fields.module.css";
 import { cancelRun } from "./run";
 import { fieldsStore, modelFields, setDensity, setIssue } from "./state";

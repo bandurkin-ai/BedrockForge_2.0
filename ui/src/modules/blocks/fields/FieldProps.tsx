@@ -14,7 +14,7 @@ import { errorText } from "../../../shell/props";
 import { closeWindow } from "../../../shell/windows";
 import { blocksStore } from "../state";
 import type { FieldRow } from "./api";
-import { RunView, useSel } from "./Common";
+import { RunView, useSel } from "./CommonParts";
 import mod from "./Fields.module.css";
 import { editOf, patchOfEdit, refreshProps, rowPlace } from "./propsBind";
 import { deleteReason, RENAME_HINT, rolesFor, roleTitle, sourceText, usageLine } from "./propsText";
