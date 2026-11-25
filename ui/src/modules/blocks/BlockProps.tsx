@@ -3,7 +3,7 @@
  * (`object.rename`, `object.delete` — own windows), «Экспорт…» (`blocks.export`), «Показать в 3D» / «Скрыть в 3D»
  * (`blocks.show`, Э17), what the display shows now («упрощено, LOD»), the block of the last click («Выбранный блок»),
  * the grid with the turn and the sub-blocks, the checks of the import (duplicates, overlaps, empty and constant
- * fields, the rows of the examples), the fields with their statistics (`GET /blocks/{id}`), the source and what the
+ * fields, the rows of the examples; «Перепроверить» — `blocks.check`), the fields with their statistics (`GET /blocks/{id}`), the source and what the
  * import did not carry over.
  */
 import { useEffect } from "react";
@@ -14,6 +14,7 @@ import css from "../../shell/PropsParts.module.css";
 import { viewStore } from "../scene/bind";
 import { blocksShowStore, pickedBlockStore, pickedFacts, showText, styleIn } from "./display";
 import { checkRows, exampleText, fieldRow, gridFacts, MAX_EXAMPLES, sourceFacts, v2 } from "./props";
+import { CheckControl } from "./checkButton";
 import { blocksStore, loadBlockDetails } from "./state";
 
 export function BlockProps({ id }: { id: number }) {
@@ -79,6 +80,7 @@ export function BlockProps({ id }: { id: number }) {
       </fieldset>
       <fieldset className={css.group} data-testid="props-block-checks" data-checked={rows ? "yes" : "no"}>
         <legend>Проверки</legend>
+        <CheckControl id={id} />
         {rows ? (
           <>
             <dl className={css.facts}>
@@ -101,7 +103,7 @@ export function BlockProps({ id }: { id: number }) {
             )}
           </>
         ) : fresh ? (
-          <p className={css.note}>Проверки не выполнялись: модель создана до проверок при импорте.</p>
+          <p className={css.note}>Проверки не выполнялись: модель создана до проверок при импорте. Нажмите «Перепроверить».</p>
         ) : (
           <p className={css.note}>Проверки читаются…</p>
         )}

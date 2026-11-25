@@ -1,0 +1,950 @@
+{
+ "ids": {
+  "clean": 1,
+  "dirty": 2
+ },
+ "clean": {
+  "before": {
+   "status": 200,
+   "body": {
+    "name": "Чистая",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     40.0,
+     30.0,
+     10.0
+    ],
+    "crs": null,
+    "id": 1,
+    "version": 1,
+    "size": 1226,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      5.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "variable": false,
+     "levels": [
+      0,
+      0,
+      0
+     ]
+    },
+    "cells": 24,
+    "rows": 24,
+    "parents": 24,
+    "sub": false,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": null,
+      "role": "grade",
+      "stats": {
+       "count": 23,
+       "missing": 1,
+       "min": 0.2,
+       "max": 2.5000000000000004,
+       "mean": 1.3826086956521737,
+       "std": 0.6888251964241244
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 2.2,
+       "max": 3.3500000000000005,
+       "mean": 2.7750000000000004,
+       "std": 0.34610932762158647
+      },
+      "file": "cells",
+      "source": null
+     }
+    ],
+    "source": {
+     "op": "import",
+     "format": "dat",
+     "file": "m.dat"
+    },
+    "warnings": [],
+    "checks": null,
+    "groups": [
+     {
+      "rows": 24,
+      "k0": 0,
+      "k1": 1
+     }
+    ],
+    "inputs": null,
+    "algo": null,
+    "created_at": "2026-11-25T00:46:22.242487+00:00",
+    "updated_at": "2026-11-25T00:46:22.242487+00:00"
+   }
+  },
+  "check": {
+   "request": {},
+   "status": 200,
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ]
+   },
+   "job": {
+    "kind": "blocks.check",
+    "title": "Проверка блочной модели №1",
+    "queue": "quick",
+    "status": "done",
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 1,
+     "checks": {
+      "at": "2026-11-25T00:46:22Z",
+      "duplicates": 0,
+      "overlaps": {
+       "n": 0,
+       "method": "exact"
+      },
+      "empty": [],
+      "constant": [],
+      "volume": 12000.0,
+      "examples": []
+     },
+     "events": [
+      [
+       "objects.changed",
+       {
+        "kind": "block_model",
+        "id": 1
+       }
+      ]
+     ]
+    }
+   }
+  },
+  "after": {
+   "status": 200,
+   "body": {
+    "name": "Чистая",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     40.0,
+     30.0,
+     10.0
+    ],
+    "crs": null,
+    "id": 1,
+    "version": 1,
+    "size": 1226,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      5.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "variable": false,
+     "levels": [
+      0,
+      0,
+      0
+     ]
+    },
+    "cells": 24,
+    "rows": 24,
+    "parents": 24,
+    "sub": false,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": null,
+      "role": "grade",
+      "stats": {
+       "count": 23,
+       "missing": 1,
+       "min": 0.2,
+       "max": 2.5000000000000004,
+       "mean": 1.3826086956521737,
+       "std": 0.6888251964241244
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 2.2,
+       "max": 3.3500000000000005,
+       "mean": 2.7750000000000004,
+       "std": 0.34610932762158647
+      },
+      "file": "cells",
+      "source": null
+     }
+    ],
+    "source": {
+     "op": "import",
+     "format": "dat",
+     "file": "m.dat"
+    },
+    "warnings": [],
+    "checks": {
+     "at": "2026-11-25T00:46:22Z",
+     "duplicates": 0,
+     "overlaps": {
+      "n": 0,
+      "method": "exact"
+     },
+     "empty": [],
+     "constant": [],
+     "volume": 12000.0,
+     "examples": []
+    },
+    "groups": [
+     {
+      "rows": 24,
+      "k0": 0,
+      "k1": 1
+     }
+    ],
+    "inputs": null,
+    "algo": null,
+    "created_at": "2026-11-25T00:46:22.242487+00:00",
+    "updated_at": "2026-11-25T00:46:22.242487+00:00"
+   }
+  }
+ },
+ "dirty": {
+  "before": {
+   "status": 200,
+   "body": {
+    "name": "С замечаниями",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     40.0,
+     30.0,
+     10.0
+    ],
+    "crs": null,
+    "id": 2,
+    "version": 1,
+    "size": 2668,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      5.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      2,
+      2,
+      2
+     ],
+     "variable": false,
+     "levels": [
+      1,
+      1,
+      1
+     ]
+    },
+    "cells": 26,
+    "rows": 26,
+    "parents": 24,
+    "sub": true,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": null,
+      "role": "grade",
+      "stats": {
+       "count": 26,
+       "missing": 0,
+       "min": 0.1,
+       "max": 3.0,
+       "mean": 1.5499999999999998,
+       "std": 0.87
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 26,
+       "missing": 0,
+       "min": 2.7,
+       "max": 2.7,
+       "mean": 2.7000000000000006,
+       "std": 4.440892098500626e-16
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "EMPTYF",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 0,
+       "missing": 26,
+       "min": null,
+       "max": null,
+       "mean": null,
+       "std": null
+      },
+      "file": "cells",
+      "source": null
+     }
+    ],
+    "source": {
+     "op": "import",
+     "format": "dat",
+     "file": "m.dat"
+    },
+    "warnings": [],
+    "checks": null,
+    "groups": [
+     {
+      "rows": 26,
+      "k0": 0,
+      "k1": 1
+     }
+    ],
+    "inputs": null,
+    "algo": null,
+    "created_at": "2026-11-25T00:46:22.250502+00:00",
+    "updated_at": "2026-11-25T00:46:22.250502+00:00"
+   }
+  },
+  "check": {
+   "request": {},
+   "status": 200,
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ]
+   },
+   "job": {
+    "kind": "blocks.check",
+    "title": "Проверка блочной модели №2",
+    "queue": "quick",
+    "status": "done",
+    "message": "Готово",
+    "error": null,
+    "result": {
+     "model_id": 2,
+     "checks": {
+      "at": "2026-11-25T00:46:22Z",
+      "duplicates": 0,
+      "overlaps": {
+       "n": 4,
+       "method": "exact"
+      },
+      "empty": [
+       "EMPTYF"
+      ],
+      "constant": [
+       "SG"
+      ],
+      "volume": 12125.0,
+      "examples": [
+       {
+        "check": "overlap",
+        "row": 3,
+        "p": 3,
+        "sub": [
+         0,
+         0,
+         0,
+         2,
+         2,
+         2
+        ],
+        "other_row": 4
+       },
+       {
+        "check": "overlap",
+        "row": 11,
+        "p": 10,
+        "sub": [
+         0,
+         0,
+         0,
+         2,
+         2,
+         2
+        ],
+        "other_row": 12
+       }
+      ]
+     },
+     "events": [
+      [
+       "objects.changed",
+       {
+        "kind": "block_model",
+        "id": 2
+       }
+      ]
+     ]
+    }
+   }
+  },
+  "after": {
+   "status": 200,
+   "body": {
+    "name": "С замечаниями",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     40.0,
+     30.0,
+     10.0
+    ],
+    "crs": null,
+    "id": 2,
+    "version": 1,
+    "size": 2668,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      5.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      2,
+      2,
+      2
+     ],
+     "variable": false,
+     "levels": [
+      1,
+      1,
+      1
+     ]
+    },
+    "cells": 26,
+    "rows": 26,
+    "parents": 24,
+    "sub": true,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": null,
+      "role": "grade",
+      "stats": {
+       "count": 26,
+       "missing": 0,
+       "min": 0.1,
+       "max": 3.0,
+       "mean": 1.5499999999999998,
+       "std": 0.87
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 26,
+       "missing": 0,
+       "min": 2.7,
+       "max": 2.7,
+       "mean": 2.7000000000000006,
+       "std": 4.440892098500626e-16
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "EMPTYF",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 0,
+       "missing": 26,
+       "min": null,
+       "max": null,
+       "mean": null,
+       "std": null
+      },
+      "file": "cells",
+      "source": null
+     }
+    ],
+    "source": {
+     "op": "import",
+     "format": "dat",
+     "file": "m.dat"
+    },
+    "warnings": [],
+    "checks": {
+     "at": "2026-11-25T00:46:22Z",
+     "duplicates": 0,
+     "overlaps": {
+      "n": 4,
+      "method": "exact"
+     },
+     "empty": [
+      "EMPTYF"
+     ],
+     "constant": [
+      "SG"
+     ],
+     "volume": 12125.0,
+     "examples": [
+      {
+       "check": "overlap",
+       "row": 3,
+       "p": 3,
+       "sub": [
+        0,
+        0,
+        0,
+        2,
+        2,
+        2
+       ],
+       "other_row": 4
+      },
+      {
+       "check": "overlap",
+       "row": 11,
+       "p": 10,
+       "sub": [
+        0,
+        0,
+        0,
+        2,
+        2,
+        2
+       ],
+       "other_row": 12
+      }
+     ]
+    },
+    "groups": [
+     {
+      "rows": 26,
+      "k0": 0,
+      "k1": 1
+     }
+    ],
+    "inputs": null,
+    "algo": null,
+    "created_at": "2026-11-25T00:46:22.250502+00:00",
+    "updated_at": "2026-11-25T00:46:22.250502+00:00"
+   }
+  }
+ },
+ "missing": {
+  "request": {},
+  "status": 404,
+  "body": {
+   "code": "block_model_not_found",
+   "message": "Блочная модель не найдена.",
+   "hint": "Обновите дерево проекта."
+  }
+ },
+ "read_only": {
+  "request": {},
+  "status": 423,
+  "body": {
+   "code": "project_read_only",
+   "message": "Проект открыт только для чтения: он уже открыт в другом окне BedrockForge.",
+   "hint": "Закройте проект в другом окне и откройте его заново."
+  }
+ },
+ "conflict": {
+  "before": {
+   "status": 200,
+   "body": {
+    "name": "Чистая",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     40.0,
+     30.0,
+     10.0
+    ],
+    "crs": null,
+    "id": 1,
+    "version": 1,
+    "size": 1226,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      5.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "variable": false,
+     "levels": [
+      0,
+      0,
+      0
+     ]
+    },
+    "cells": 24,
+    "rows": 24,
+    "parents": 24,
+    "sub": false,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": null,
+      "role": "grade",
+      "stats": {
+       "count": 23,
+       "missing": 1,
+       "min": 0.2,
+       "max": 2.5000000000000004,
+       "mean": 1.3826086956521737,
+       "std": 0.6888251964241244
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 2.2,
+       "max": 3.3500000000000005,
+       "mean": 2.7750000000000004,
+       "std": 0.34610932762158647
+      },
+      "file": "cells",
+      "source": null
+     }
+    ],
+    "source": {
+     "op": "import",
+     "format": "dat",
+     "file": "m.dat"
+    },
+    "warnings": [],
+    "checks": {
+     "at": "2026-11-25T00:46:22Z",
+     "duplicates": 0,
+     "overlaps": {
+      "n": 0,
+      "method": "exact"
+     },
+     "empty": [],
+     "constant": [],
+     "volume": 12000.0,
+     "examples": []
+    },
+    "groups": [
+     {
+      "rows": 24,
+      "k0": 0,
+      "k1": 1
+     }
+    ],
+    "inputs": null,
+    "algo": null,
+    "created_at": "2026-11-25T00:46:22.242487+00:00",
+    "updated_at": "2026-11-25T00:46:22.242487+00:00"
+   }
+  },
+  "check": {
+   "request": {},
+   "status": 200,
+   "started": {
+    "keys": [
+     "id",
+     "source"
+    ]
+   },
+   "job": {
+    "kind": "blocks.check",
+    "title": "Проверка блочной модели №1",
+    "queue": "quick",
+    "status": "failed",
+    "message": "Модель изменили, пока вы её правили.",
+    "error": {
+     "code": "version_conflict",
+     "message": "Модель изменили, пока вы её правили.",
+     "hint": "Перечитайте модель и повторите."
+    },
+    "result": null
+   }
+  },
+  "after": {
+   "status": 200,
+   "body": {
+    "name": "Чистая",
+    "folder": null,
+    "extent": [
+     0.0,
+     0.0,
+     0.0,
+     40.0,
+     30.0,
+     10.0
+    ],
+    "crs": null,
+    "id": 1,
+    "version": 2,
+    "size": 1226,
+    "meta_v": 2,
+    "grid": {
+     "corner": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "counts": [
+      4,
+      3,
+      2
+     ],
+     "size": [
+      10.0,
+      10.0,
+      5.0
+     ],
+     "order": "F",
+     "rotation": 0.0,
+     "div": [
+      1,
+      1,
+      1
+     ],
+     "variable": false,
+     "levels": [
+      0,
+      0,
+      0
+     ]
+    },
+    "cells": 24,
+    "rows": 24,
+    "parents": 24,
+    "sub": false,
+    "full": false,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": null,
+      "role": "grade",
+      "stats": {
+       "count": 23,
+       "missing": 1,
+       "min": 0.2,
+       "max": 2.5000000000000004,
+       "mean": 1.3826086956521737,
+       "std": 0.6888251964241244
+      },
+      "file": "cells",
+      "source": null
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": null,
+      "role": null,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 2.2,
+       "max": 3.3500000000000005,
+       "mean": 2.7750000000000004,
+       "std": 0.34610932762158647
+      },
+      "file": "cells",
+      "source": null
+     }
+    ],
+    "source": {
+     "op": "import",
+     "format": "dat",
+     "file": "m.dat"
+    },
+    "warnings": [],
+    "checks": {
+     "at": "2026-11-25T00:46:22Z",
+     "duplicates": 0,
+     "overlaps": {
+      "n": 0,
+      "method": "exact"
+     },
+     "empty": [],
+     "constant": [],
+     "volume": 12000.0,
+     "examples": []
+    },
+    "groups": [
+     {
+      "rows": 24,
+      "k0": 0,
+      "k1": 1
+     }
+    ],
+    "inputs": null,
+    "algo": null,
+    "created_at": "2026-11-25T00:46:22.242487+00:00",
+    "updated_at": "2026-11-25T00:46:22.242487+00:00"
+   }
+  }
+ },
+ "rules": "ответы настоящего ядра через маршруты блочных моделей (test_blocks_check_window_answers.py)"
+}
