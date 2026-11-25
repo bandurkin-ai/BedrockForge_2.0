@@ -219,4 +219,8 @@ export const IMPLICIT_BUTTONS: readonly ImplicitButton[] = [
   { command: "implicit.expand", label: "Расширение каркаса", icon: icon("wireframe"), hint: "Поверхность на расстоянии Δ от замкнутого каркаса", small: true },
   { command: "implicit.update", label: "Обновить", icon: icon("refresh"), hint: "Построить модель или пересчитать изменённые участки" },
   { command: "implicit.to_wireframe", label: "В каркас", icon: icon("export"), hint: "Копия выхода модели в обычный каркас", small: true },
+  { command: "implicit.check", label: "Проверка по скважинам", icon: icon("audit"), hint: "Невязки модели по точкам данных, CSV, подсветка в 3D", small: true },
+  { command: "implicit.support", label: "Карта опоры", icon: icon("scatter"), hint: "Поверхность по расстоянию до ближайшей точки данных, доля площади за порогом", small: true },
+  { command: "implicit.compare_holes", label: "Сверка со скважинами", icon: icon("table"), hint: "Матрица «код данных × код модели», несовпавшие интервалы", small: true },
+  { command: "drillholes.from_model", label: "Модель на скважины", icon: icon("intercepts"), hint: "Тела модели или каркасов → новая интервальная таблица набора", small: true },
 ];

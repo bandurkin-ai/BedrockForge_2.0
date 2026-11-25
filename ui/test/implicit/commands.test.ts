@@ -59,7 +59,7 @@ describe("the declarations", () => {
     expect(tools.map((t) => t.name).some((n) => n.endsWith("implicit_domains"))).toBe(true);
   });
   it("the buttons of the ribbon name registered commands, with a hint; the icons that are in the set are drawn", () => {
-    expect(IMPLICIT_BUTTONS.map((b) => b.command)).toEqual(["implicit.new", "implicit.domains", "implicit.shells", "implicit.vein", "implicit.structural", "implicit.expand", "implicit.update", "implicit.to_wireframe"]);
+    expect(IMPLICIT_BUTTONS.map((b) => b.command)).toEqual(["implicit.new", "implicit.domains", "implicit.shells", "implicit.vein", "implicit.structural", "implicit.expand", "implicit.update", "implicit.to_wireframe", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]);
     for (const b of IMPLICIT_BUTTONS) {
       expect(ids).toContain(b.command);
       expect(b.hint).toMatch(/[А-Яа-я]/);
