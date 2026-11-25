@@ -336,9 +336,13 @@ def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None
 
                     warm_blocks()
                 elif name == "stats":
+                    from bf_core.geo import sdf
+                    from bf_core.geostat.estimate import contact as est_contact
                     from bf_core.stats.warm import warm as warm_stats
 
                     warm_stats()
+                    sdf.warm()  # signed distance to a wireframe (Д-28; shared with Э19 8.9.3)
+                    est_contact.warm()  # the profile of the blocks at a contact (Д-28)
                 else:
                     op, params = STEPS[name]
                     run_step(folder, op, params(ids), job_id=k + 1)
