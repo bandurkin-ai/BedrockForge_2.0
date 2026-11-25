@@ -1,0 +1,2121 @@
+{
+ "real": {
+  "dry_run": {
+   "body": {
+    "plan": [
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [],
+      "id": 1,
+      "kind": "dh_result",
+      "name": "Композиты 2 м",
+      "owner": {
+       "id": 1,
+       "kind": "dh_result",
+       "sub": ""
+      },
+      "reason": "изменена таблица «Пробы»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "covered",
+      "covered_by": 0,
+      "deps": [
+       0
+      ],
+      "id": 2,
+      "kind": "dh_table",
+      "name": "Композиты 2 м",
+      "owner": {
+       "id": 1,
+       "kind": "dh_result",
+       "sub": ""
+      },
+      "reason": "результат обработки «Композиты 2 м» ← изменена таблица «Пробы»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       1
+      ],
+      "id": 2,
+      "kind": "object:variogram_model",
+      "name": "Модель AU",
+      "owner": {
+       "id": 2,
+       "kind": "object:variogram_model",
+       "sub": ""
+      },
+      "reason": "изменены траектории",
+      "state": "stale",
+      "sub": ""
+     }
+    ],
+    "skipped": []
+   },
+   "request": {
+    "dry_run": true,
+    "node": {
+     "id": 1,
+     "kind": "dh_result"
+    }
+   },
+   "status": 200
+  },
+  "ids": {
+   "composites": 2,
+   "model": 2,
+   "result": 1,
+   "samples": 1
+  },
+  "impact_samples": {
+   "body": {
+    "by_kind": {
+     "dh_result": 1,
+     "dh_table": 1,
+     "object:variogram_model": 1
+    },
+    "nodes": [
+     {
+      "depth": 1,
+      "id": 1,
+      "kind": "dh_result",
+      "name": "Композиты 2 м",
+      "sub": ""
+     },
+     {
+      "depth": 2,
+      "id": 2,
+      "kind": "dh_table",
+      "name": "Композиты 2 м",
+      "sub": ""
+     },
+     {
+      "depth": 3,
+      "id": 2,
+      "kind": "object:variogram_model",
+      "name": "Модель AU",
+      "sub": ""
+     }
+    ],
+    "total": 3,
+    "truncated": false
+   },
+   "request": {
+    "id": 1,
+    "kind": "dh_table"
+   },
+   "status": 200
+  },
+  "nodes": [
+   {
+    "id": 1,
+    "kind": "dh_result"
+   },
+   {
+    "id": 2,
+    "kind": "dh_table"
+   },
+   {
+    "id": 2,
+    "kind": "object:variogram_model"
+   },
+   {
+    "id": 1,
+    "kind": "dh_table"
+   }
+  ],
+  "origin_model": {
+   "body": {
+    "inputs": [
+     {
+      "fp": null,
+      "fp_now": "<token>:1",
+      "id": 2,
+      "kind": "dh_table",
+      "name": "Композиты 2 м",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "fp": null,
+      "fp_now": "1",
+      "id": 1,
+      "kind": "dh_set",
+      "name": "Скважины",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     }
+    ],
+    "node": {
+     "changed": false,
+     "id": 2,
+     "kind": "object:variogram_model",
+     "name": "Модель AU",
+     "reason": null,
+     "state": "current",
+     "sub": ""
+    }
+   },
+   "request": {
+    "id": 2,
+    "kind": "object:variogram_model"
+   },
+   "status": 200
+  },
+  "origin_model_stale": {
+   "body": {
+    "inputs": [
+     {
+      "fp": null,
+      "fp_now": "<token>:1",
+      "id": 2,
+      "kind": "dh_table",
+      "name": "Композиты 2 м",
+      "reason": "результат обработки «Композиты 2 м» ← изменена таблица «Пробы»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "fp": null,
+      "fp_now": "1",
+      "id": 1,
+      "kind": "dh_set",
+      "name": "Скважины",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     }
+    ],
+    "node": {
+     "changed": false,
+     "id": 2,
+     "kind": "object:variogram_model",
+     "name": "Модель AU",
+     "reason": "изменены траектории",
+     "state": "stale",
+     "sub": ""
+    }
+   },
+   "request": {
+    "id": 2,
+    "kind": "object:variogram_model"
+   },
+   "status": 200
+  },
+  "status_current": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "dh_result",
+      "name": "Композиты 2 м",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "dh_table",
+      "name": "Композиты 2 м",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "object:variogram_model",
+      "name": "Модель AU",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "dh_table",
+      "name": "Пробы",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "dh_result"
+     },
+     {
+      "id": 2,
+      "kind": "dh_table"
+     },
+     {
+      "id": 2,
+      "kind": "object:variogram_model"
+     },
+     {
+      "id": 1,
+      "kind": "dh_table"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "status_stale": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "dh_result",
+      "name": "Композиты 2 м",
+      "reason": "изменена таблица «Пробы»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "dh_table",
+      "name": "Композиты 2 м",
+      "reason": "результат обработки «Композиты 2 м» ← изменена таблица «Пробы»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "object:variogram_model",
+      "name": "Модель AU",
+      "reason": "изменены траектории",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "dh_table",
+      "name": "Пробы",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "dh_result"
+     },
+     {
+      "id": 2,
+      "kind": "dh_table"
+     },
+     {
+      "id": 2,
+      "kind": "object:variogram_model"
+     },
+     {
+      "id": 1,
+      "kind": "dh_table"
+     }
+    ]
+   },
+   "status": 200
+  }
+ },
+ "rules": "ответы настоящего ядра через маршруты /lineage (test_lineage_window_answers.py)",
+ "stub": {
+  "dry_run": {
+   "body": {
+    "plan": [
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [],
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "owner": {
+       "id": 2,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       0
+      ],
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "owner": {
+       "id": 3,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       0
+      ],
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "owner": {
+       "id": 4,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       1
+      ],
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "owner": {
+       "id": 5,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "stub «Узел 2» ← stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       3
+      ],
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "owner": {
+       "id": 6,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "stub «Узел 3» ← stub «Узел 2» ← stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     }
+    ],
+    "skipped": [
+     {
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": "report_stub «Отчёт» нельзя перестроить автоматически",
+      "state": "unsupported",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "dry_run": true,
+    "node": {
+     "id": 2,
+     "kind": "object:stub"
+    }
+   },
+   "status": 200
+  },
+  "dry_run_alone": {
+   "body": {
+    "plan": [
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [],
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "owner": {
+       "id": 2,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     }
+    ],
+    "skipped": []
+   },
+   "request": {
+    "dry_run": true,
+    "node": {
+     "id": 2,
+     "kind": "object:stub"
+    },
+    "with_dependents": false
+   },
+   "status": 200
+  },
+  "ids": {
+   "m": 4,
+   "n1": 2,
+   "n2": 3,
+   "n3": 5,
+   "n4": 6,
+   "report": 7,
+   "s0": 1
+  },
+  "impact_leaf": {
+   "body": {
+    "by_kind": {},
+    "nodes": [],
+    "total": 0,
+    "truncated": false
+   },
+   "request": {
+    "id": 6,
+    "kind": "object:stub"
+   },
+   "status": 200
+  },
+  "impact_missing": {
+   "body": {
+    "code": "lineage_node_not_found",
+    "hint": "Обновите дерево проекта.",
+    "id": 424242,
+    "kind": "object:stub",
+    "message": "Объект не найден."
+   },
+   "request": {
+    "id": 424242,
+    "kind": "object:stub"
+   },
+   "status": 404
+  },
+  "impact_n1": {
+   "body": {
+    "by_kind": {
+     "object:report_stub": 1,
+     "object:stub": 4
+    },
+    "nodes": [
+     {
+      "depth": 1,
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "sub": ""
+     },
+     {
+      "depth": 1,
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "sub": ""
+     },
+     {
+      "depth": 2,
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "sub": ""
+     },
+     {
+      "depth": 3,
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "sub": ""
+     },
+     {
+      "depth": 3,
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "sub": ""
+     }
+    ],
+    "total": 5,
+    "truncated": false
+   },
+   "request": {
+    "id": 2,
+    "kind": "object:stub"
+   },
+   "status": 200
+  },
+  "impact_s0": {
+   "body": {
+    "by_kind": {
+     "object:report_stub": 1,
+     "object:stub": 5
+    },
+    "nodes": [
+     {
+      "depth": 1,
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "sub": ""
+     },
+     {
+      "depth": 2,
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "sub": ""
+     },
+     {
+      "depth": 2,
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "sub": ""
+     },
+     {
+      "depth": 3,
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "sub": ""
+     },
+     {
+      "depth": 4,
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "sub": ""
+     },
+     {
+      "depth": 4,
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "sub": ""
+     }
+    ],
+    "total": 6,
+    "truncated": false
+   },
+   "request": {
+    "id": 1,
+    "kind": "object:stub"
+   },
+   "status": 200
+  },
+  "job_cancelled": {
+   "error": null,
+   "kind": "lineage.rebuild",
+   "message": "Отменено",
+   "queue": "heavy",
+   "result": null,
+   "status": "cancelled",
+   "title": "Перестроить с зависимыми: «Узел 1» (5)"
+  },
+  "job_done": {
+   "error": null,
+   "kind": "lineage.rebuild",
+   "message": "Готово",
+   "queue": "heavy",
+   "result": {
+    "done": 5,
+    "events": [
+     [
+      "objects.changed",
+      {
+       "id": 2,
+       "kind": "stub"
+      }
+     ],
+     [
+      "objects.changed",
+      {
+       "id": 3,
+       "kind": "stub"
+      }
+     ],
+     [
+      "objects.changed",
+      {
+       "id": 4,
+       "kind": "stub"
+      }
+     ],
+     [
+      "objects.changed",
+      {
+       "id": 5,
+       "kind": "stub"
+      }
+     ],
+     [
+      "objects.changed",
+      {
+       "id": 6,
+       "kind": "stub"
+      }
+     ],
+     [
+      "lineage.changed",
+      {
+       "nodes": [
+        {
+         "id": 2,
+         "kind": "object:stub",
+         "sub": ""
+        },
+        {
+         "id": 3,
+         "kind": "object:stub",
+         "sub": ""
+        },
+        {
+         "id": 4,
+         "kind": "object:stub",
+         "sub": ""
+        },
+        {
+         "id": 5,
+         "kind": "object:stub",
+         "sub": ""
+        },
+        {
+         "id": 6,
+         "kind": "object:stub",
+         "sub": ""
+        }
+       ]
+      }
+     ]
+    ],
+    "nodes": [
+     {
+      "id": 2,
+      "job_kind": "stub.rebuild",
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "outcome": "done",
+      "state_after": "current",
+      "sub": ""
+     },
+     {
+      "id": 3,
+      "job_kind": "stub.rebuild",
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "outcome": "done",
+      "state_after": "current",
+      "sub": ""
+     },
+     {
+      "id": 4,
+      "job_kind": "stub.rebuild",
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "outcome": "done",
+      "state_after": "current",
+      "sub": ""
+     },
+     {
+      "id": 5,
+      "job_kind": "stub.rebuild",
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "outcome": "done",
+      "state_after": "current",
+      "sub": ""
+     },
+     {
+      "id": 6,
+      "job_kind": "stub.rebuild",
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "outcome": "done",
+      "state_after": "current",
+      "sub": ""
+     }
+    ]
+   },
+   "status": "done",
+   "title": "Перестроить с зависимыми: «Узел 1» (5)"
+  },
+  "nodes": [
+   {
+    "id": 1,
+    "kind": "object:stub"
+   },
+   {
+    "id": 2,
+    "kind": "object:stub"
+   },
+   {
+    "id": 3,
+    "kind": "object:stub"
+   },
+   {
+    "id": 4,
+    "kind": "object:stub"
+   },
+   {
+    "id": 5,
+    "kind": "object:stub"
+   },
+   {
+    "id": 6,
+    "kind": "object:stub"
+   },
+   {
+    "id": 7,
+    "kind": "object:report_stub"
+   }
+  ],
+  "origin_missing": {
+   "body": {
+    "code": "lineage_node_not_found",
+    "hint": "Обновите дерево проекта.",
+    "id": 424242,
+    "kind": "object:stub",
+    "message": "Объект не найден."
+   },
+   "request": {
+    "id": 424242,
+    "kind": "object:stub"
+   },
+   "status": 404
+  },
+  "origin_n1_lost": {
+   "body": {
+    "inputs": [
+     {
+      "fp": "2",
+      "fp_now": null,
+      "id": 1,
+      "kind": "object:stub",
+      "name": "Источник",
+      "reason": null,
+      "state": "deleted",
+      "sub": ""
+     }
+    ],
+    "node": {
+     "changed": false,
+     "id": 2,
+     "kind": "object:stub",
+     "name": "Узел 1",
+     "reason": "источник удалён: stub «Источник»",
+     "state": "source_lost",
+     "sub": ""
+    }
+   },
+   "request": {
+    "id": 2,
+    "kind": "object:stub"
+   },
+   "status": 200
+  },
+  "origin_n2_current": {
+   "body": {
+    "inputs": [
+     {
+      "fp": "1",
+      "fp_now": "1",
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     }
+    ],
+    "node": {
+     "changed": false,
+     "id": 3,
+     "kind": "object:stub",
+     "name": "Узел 2",
+     "reason": null,
+     "state": "current",
+     "sub": ""
+    }
+   },
+   "request": {
+    "id": 3,
+    "kind": "object:stub"
+   },
+   "status": 200
+  },
+  "origin_n2_stale": {
+   "body": {
+    "inputs": [
+     {
+      "fp": "1",
+      "fp_now": "1",
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "reason": "изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     }
+    ],
+    "node": {
+     "changed": false,
+     "id": 3,
+     "kind": "object:stub",
+     "name": "Узел 2",
+     "reason": "stub «Узел 1» ← изменено: stub «Источник»",
+     "state": "stale",
+     "sub": ""
+    }
+   },
+   "request": {
+    "id": 3,
+    "kind": "object:stub"
+   },
+   "status": 200
+  },
+  "origin_s0": {
+   "body": {
+    "inputs": [],
+    "node": {
+     "changed": false,
+     "id": 1,
+     "kind": "object:stub",
+     "name": "Источник",
+     "reason": null,
+     "state": "current",
+     "sub": ""
+    }
+   },
+   "request": {
+    "id": 1,
+    "kind": "object:stub"
+   },
+   "status": 200
+  },
+  "pin_missing": {
+   "body": {
+    "code": "lineage_node_not_found",
+    "hint": "Обновите дерево проекта.",
+    "id": 424242,
+    "kind": "object:stub",
+    "message": "Объект не найден."
+   },
+   "request": {
+    "node": {
+     "id": 424242,
+     "kind": "object:stub"
+    },
+    "pinned": true
+   },
+   "status": 404
+  },
+  "pin_n1": {
+   "body": {
+    "changed": true,
+    "id": 2,
+    "kind": "object:stub",
+    "name": "Узел 1",
+    "reason": "изменено: stub «Источник»",
+    "state": "pinned",
+    "sub": ""
+   },
+   "request": {
+    "node": {
+     "id": 2,
+     "kind": "object:stub"
+    },
+    "pinned": true
+   },
+   "status": 200
+  },
+  "pin_read_only": {
+   "body": {
+    "code": "project_read_only",
+    "hint": "Закройте проект в другом окне и откройте его заново.",
+    "message": "Проект открыт только для чтения: он уже открыт в другом окне BedrockForge."
+   },
+   "request": {
+    "node": {
+     "id": 2,
+     "kind": "object:stub"
+    },
+    "pinned": true
+   },
+   "status": 423
+  },
+  "rebuild_dry_lost": {
+   "body": {
+    "plan": [
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [],
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "owner": {
+       "id": 3,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "stub «Узел 1» ← источник удалён: stub «Источник»",
+      "state": "source_lost",
+      "sub": ""
+     }
+    ],
+    "skipped": [
+     {
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "reason": "stub «Узел 2» ← stub «Узел 1» ← источник удалён: stub «Источник»",
+      "state": "source_lost",
+      "sub": ""
+     },
+     {
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "reason": "stub «Узел 3» ← stub «Узел 2» ← stub «Узел 1» ← источник удалён: stub «Источник»",
+      "state": "source_lost",
+      "sub": ""
+     },
+     {
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": "report_stub «Отчёт» нельзя перестроить автоматически",
+      "state": "unsupported",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "dry_run": true,
+    "node": {
+     "id": 3,
+     "kind": "object:stub"
+    }
+   },
+   "status": 200
+  },
+  "rebuild_missing": {
+   "body": {
+    "code": "lineage_node_not_found",
+    "hint": "Обновите дерево проекта.",
+    "id": 424242,
+    "kind": "object:stub",
+    "message": "Объект не найден."
+   },
+   "request": {
+    "node": {
+     "id": 424242,
+     "kind": "object:stub"
+    }
+   },
+   "status": 404
+  },
+  "rebuild_pinned": {
+   "body": {
+    "code": "lineage_node_pinned",
+    "hint": "Снимите закрепление, чтобы перестроить объект.",
+    "id": 2,
+    "kind": "object:stub",
+    "message": "Объект «Узел 1» закреплён.",
+    "sub": ""
+   },
+   "request": {
+    "node": {
+     "id": 2,
+     "kind": "object:stub"
+    }
+   },
+   "status": 409
+  },
+  "rebuild_read_only": {
+   "body": {
+    "code": "project_read_only",
+    "hint": "Закройте проект в другом окне и откройте его заново.",
+    "message": "Проект открыт только для чтения: он уже открыт в другом окне BedrockForge."
+   },
+   "request": {
+    "node": {
+     "id": 2,
+     "kind": "object:stub"
+    }
+   },
+   "status": 423
+  },
+  "rebuild_run": {
+   "body": {
+    "id": 0,
+    "job_id": 0,
+    "plan": [
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [],
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "owner": {
+       "id": 2,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       0
+      ],
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "owner": {
+       "id": 3,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "изменено: stub «Узел 1»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       0
+      ],
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "owner": {
+       "id": 4,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "изменено: stub «Узел 1»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       1
+      ],
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "owner": {
+       "id": 5,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       3
+      ],
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "owner": {
+       "id": 6,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "stub «Узел 3» ← изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     }
+    ],
+    "skipped": [
+     {
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": "report_stub «Отчёт» нельзя перестроить автоматически",
+      "state": "unsupported",
+      "sub": ""
+     }
+    ],
+    "source": "<project>"
+   },
+   "request": {
+    "node": {
+     "id": 2,
+     "kind": "object:stub"
+    }
+   },
+   "status": 202
+  },
+  "rebuild_started": {
+   "body": {
+    "id": 0,
+    "job_id": 0,
+    "plan": [
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [],
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "owner": {
+       "id": 2,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       0
+      ],
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "owner": {
+       "id": 3,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       0
+      ],
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "owner": {
+       "id": 4,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       1
+      ],
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "owner": {
+       "id": 5,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "action": "rebuild",
+      "covered_by": null,
+      "deps": [
+       3
+      ],
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "owner": {
+       "id": 6,
+       "kind": "object:stub",
+       "sub": ""
+      },
+      "reason": "stub «Узел 3» ← изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     }
+    ],
+    "skipped": [
+     {
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": "report_stub «Отчёт» нельзя перестроить автоматически",
+      "state": "unsupported",
+      "sub": ""
+     }
+    ],
+    "source": "<project>"
+   },
+   "request": {
+    "node": {
+     "id": 2,
+     "kind": "object:stub"
+    }
+   },
+   "status": 202
+  },
+  "rebuild_unsupported": {
+   "body": {
+    "code": "lineage_rebuild_unsupported",
+    "hint": "Перестройте его командой своего модуля или создайте заново.",
+    "id": 7,
+    "kind": "object:report_stub",
+    "message": "Объект «Отчёт» нельзя перестроить автоматически.",
+    "name": "Отчёт",
+    "sub": ""
+   },
+   "request": {
+    "node": {
+     "id": 7,
+     "kind": "object:report_stub"
+    }
+   },
+   "status": 422
+  },
+  "status_after_cancel": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "object:stub",
+      "name": "Источник",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "reason": "изменено: stub «Узел 1»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "reason": "изменено: stub «Узел 1»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "reason": "изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "reason": "stub «Узел 3» ← изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": "stub «Узел 3» ← изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "object:stub"
+     },
+     {
+      "id": 2,
+      "kind": "object:stub"
+     },
+     {
+      "id": 3,
+      "kind": "object:stub"
+     },
+     {
+      "id": 4,
+      "kind": "object:stub"
+     },
+     {
+      "id": 5,
+      "kind": "object:stub"
+     },
+     {
+      "id": 6,
+      "kind": "object:stub"
+     },
+     {
+      "id": 7,
+      "kind": "object:report_stub"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "status_after_rebuild": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "object:stub",
+      "name": "Источник",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": "изменено: stub «Узел 3»",
+      "state": "stale",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "object:stub"
+     },
+     {
+      "id": 2,
+      "kind": "object:stub"
+     },
+     {
+      "id": 3,
+      "kind": "object:stub"
+     },
+     {
+      "id": 4,
+      "kind": "object:stub"
+     },
+     {
+      "id": 5,
+      "kind": "object:stub"
+     },
+     {
+      "id": 6,
+      "kind": "object:stub"
+     },
+     {
+      "id": 7,
+      "kind": "object:report_stub"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "status_bad_body": {
+   "body": {
+    "code": "bad_param",
+    "hint": "Повторите действие из дерева проекта.",
+    "message": "Не задан список объектов.",
+    "param": "nodes"
+   },
+   "request": {
+    "nodes": "x"
+   },
+   "status": 422
+  },
+  "status_bad_kind": {
+   "body": {
+    "code": "lineage_bad_kind",
+    "hint": "Вид узла — dh_set, dh_table, dh_result, wireframe, bm_field или object:<вид объекта>.",
+    "message": "Неизвестный вид узла «table»."
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "table"
+     }
+    ]
+   },
+   "status": 422
+  },
+  "status_current": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "object:stub",
+      "name": "Источник",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "object:stub"
+     },
+     {
+      "id": 2,
+      "kind": "object:stub"
+     },
+     {
+      "id": 3,
+      "kind": "object:stub"
+     },
+     {
+      "id": 4,
+      "kind": "object:stub"
+     },
+     {
+      "id": 5,
+      "kind": "object:stub"
+     },
+     {
+      "id": 6,
+      "kind": "object:stub"
+     },
+     {
+      "id": 7,
+      "kind": "object:report_stub"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "status_deleted": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 987654,
+      "kind": "object:stub",
+      "name": "",
+      "reason": null,
+      "state": "deleted",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "object:stub",
+      "name": "Источник",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 987654,
+      "kind": "object:stub"
+     },
+     {
+      "id": 1,
+      "kind": "object:stub"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "status_pinned": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "object:stub",
+      "name": "Источник",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": true,
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "reason": "изменено: stub «Источник»",
+      "state": "pinned",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "object:stub"
+     },
+     {
+      "id": 2,
+      "kind": "object:stub"
+     },
+     {
+      "id": 3,
+      "kind": "object:stub"
+     },
+     {
+      "id": 4,
+      "kind": "object:stub"
+     },
+     {
+      "id": 5,
+      "kind": "object:stub"
+     },
+     {
+      "id": 6,
+      "kind": "object:stub"
+     },
+     {
+      "id": 7,
+      "kind": "object:report_stub"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "status_source_lost": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "object:stub",
+      "name": "",
+      "reason": null,
+      "state": "deleted",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "reason": "источник удалён: stub «Источник»",
+      "state": "source_lost",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "reason": "stub «Узел 1» ← источник удалён: stub «Источник»",
+      "state": "source_lost",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "reason": "stub «Узел 1» ← источник удалён: stub «Источник»",
+      "state": "source_lost",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "reason": "stub «Узел 2» ← stub «Узел 1» ← источник удалён: stub «Источник»",
+      "state": "source_lost",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "reason": "stub «Узел 3» ← stub «Узел 2» ← stub «Узел 1» ← источник удалён: stub «Источник»",
+      "state": "source_lost",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": "изменено: stub «Узел 3»",
+      "state": "stale",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "object:stub"
+     },
+     {
+      "id": 2,
+      "kind": "object:stub"
+     },
+     {
+      "id": 3,
+      "kind": "object:stub"
+     },
+     {
+      "id": 4,
+      "kind": "object:stub"
+     },
+     {
+      "id": 5,
+      "kind": "object:stub"
+     },
+     {
+      "id": 6,
+      "kind": "object:stub"
+     },
+     {
+      "id": 7,
+      "kind": "object:report_stub"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "status_stale": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "object:stub",
+      "name": "Источник",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "reason": "изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "reason": "stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "reason": "stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "reason": "stub «Узел 2» ← stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "reason": "stub «Узел 3» ← stub «Узел 2» ← stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": "stub «Узел 3» ← stub «Узел 2» ← stub «Узел 1» ← изменено: stub «Источник»",
+      "state": "stale",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "object:stub"
+     },
+     {
+      "id": 2,
+      "kind": "object:stub"
+     },
+     {
+      "id": 3,
+      "kind": "object:stub"
+     },
+     {
+      "id": 4,
+      "kind": "object:stub"
+     },
+     {
+      "id": 5,
+      "kind": "object:stub"
+     },
+     {
+      "id": 6,
+      "kind": "object:stub"
+     },
+     {
+      "id": 7,
+      "kind": "object:report_stub"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "status_while_running": {
+   "body": {
+    "items": [
+     {
+      "changed": false,
+      "id": 1,
+      "kind": "object:stub",
+      "name": "Источник",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 2,
+      "kind": "object:stub",
+      "name": "Узел 1",
+      "reason": null,
+      "state": "current",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 3,
+      "kind": "object:stub",
+      "name": "Узел 2",
+      "reason": "изменено: stub «Узел 1»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 4,
+      "kind": "object:stub",
+      "name": "Ветка M",
+      "reason": "изменено: stub «Узел 1»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 5,
+      "kind": "object:stub",
+      "name": "Узел 3",
+      "reason": "изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 6,
+      "kind": "object:stub",
+      "name": "Узел 4",
+      "reason": "stub «Узел 3» ← изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     },
+     {
+      "changed": false,
+      "id": 7,
+      "kind": "object:report_stub",
+      "name": "Отчёт",
+      "reason": "stub «Узел 3» ← изменено: stub «Узел 2»",
+      "state": "stale",
+      "sub": ""
+     }
+    ]
+   },
+   "request": {
+    "nodes": [
+     {
+      "id": 1,
+      "kind": "object:stub"
+     },
+     {
+      "id": 2,
+      "kind": "object:stub"
+     },
+     {
+      "id": 3,
+      "kind": "object:stub"
+     },
+     {
+      "id": 4,
+      "kind": "object:stub"
+     },
+     {
+      "id": 5,
+      "kind": "object:stub"
+     },
+     {
+      "id": 6,
+      "kind": "object:stub"
+     },
+     {
+      "id": 7,
+      "kind": "object:report_stub"
+     }
+    ]
+   },
+   "status": 200
+  },
+  "unpin_n1": {
+   "body": {
+    "changed": false,
+    "id": 2,
+    "kind": "object:stub",
+    "name": "Узел 1",
+    "reason": "изменено: stub «Источник»",
+    "state": "stale",
+    "sub": ""
+   },
+   "request": {
+    "node": {
+     "id": 2,
+     "kind": "object:stub"
+    },
+    "pinned": false
+   },
+   "status": 200
+  }
+ }
+}
