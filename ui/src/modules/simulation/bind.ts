@@ -68,7 +68,9 @@ export async function openWizard(app: App, a: Record<string, unknown> = {}): Pro
     const modelId = typeof a.model_id === "number" ? a.model_id : (f.modelId ?? defaultModel(app, null));
     const moved = modelId !== f.modelId;
     // another kind wants other models of variogram; another model — other domains
-    putForm({ ...f, kind, modelId, ...(moved ? { domainField: "", label: "" } : {}), ...(kind !== f.kind ? { variogramId: null, variogramIds: [] } : {}) }, { dirty: simWizardStore.get().dirty });
+    // another kind is another row: the stored row of the old kind is not rewritten (the core refuses a SIS over the keys of an SGS)
+    const detach = kind !== f.kind ? { editing: null, saved: null } : {};
+    putForm({ ...f, kind, modelId, ...(moved ? { domainField: "", label: "" } : {}), ...(kind !== f.kind ? { variogramId: null, variogramIds: [] } : {}) }, { dirty: simWizardStore.get().dirty, ...detach });
   }
   chooseModel(form().modelId);
   if (!simWizardStore.get().vario.loaded) void loadVariogramModels();
