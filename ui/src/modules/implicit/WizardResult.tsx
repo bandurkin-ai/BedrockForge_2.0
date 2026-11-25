@@ -6,7 +6,7 @@
 import css from "../../shell/PropsParts.module.css";
 import { CLIP_TITLES, KERNEL_TITLES, type ClipKind } from "./api";
 import { extentOf, gridOf, TYPE_TITLES } from "./form";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 import mod from "./Wizard.module.css";
 import { GridLine } from "./WizardBoundary";
 import { IssueAt, NumberRow, nf, useRanges } from "./WizardParts";

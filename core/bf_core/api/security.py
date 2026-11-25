@@ -72,7 +72,7 @@ class GuardMiddleware:
             return [
                 (b"access-control-allow-origin", origin.encode()),
                 (b"vary", b"Origin"),
-                (b"access-control-expose-headers", b"ETag, Content-Range, Content-Length"),
+                (b"access-control-expose-headers", b"ETag, Content-Range, Content-Length, X-BF-Support"),
             ]
         return []
 

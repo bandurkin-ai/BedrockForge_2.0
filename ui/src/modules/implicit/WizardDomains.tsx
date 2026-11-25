@@ -12,7 +12,7 @@ import { loadFields, loadSets, loadTables, resolveTable, type FieldRow, type Set
 import { loadCodes, type CodeList } from "../intercepts/api";
 import { lineLayers, sceneObjects } from "../scene/objects";
 import { freeName, isDomain, moveGroup, newDomain, TYPE_TITLES, usedCodes, type GroupForm, type ManualRole } from "./form";
-import { useLatest, useSel } from "./hooks";
+import { useLatest, useSel } from "../estimation/hooks";
 import mod from "./Wizard.module.css";
 import { IssueAt, NumberRow, nf } from "./WizardParts";
 import { setForm, wizardStore } from "./wizardState";

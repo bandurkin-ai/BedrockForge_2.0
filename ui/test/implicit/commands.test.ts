@@ -67,10 +67,10 @@ describe("the declarations", () => {
       if (!["implicit", "vein"].includes(b.icon)) expect(renderToStaticMarkup(createElement(Icon, { name: b.icon }))).toMatch(/<path d="M/);
     }
   });
-  it("what is bound is available with a project; what waits for its window says so", () => {
+  it("every command is bound and available with a project", () => {
     const reason = (id: string) => app.registry.reason(id, ctx);
-    for (const id of ["implicit.new", "implicit.domains", "implicit.save", "implicit.update", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.to_wireframe", "implicit.delete", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]) expect(reason(id), id).toBeNull();
-    expect(reason("implicit.structural") ?? "").toContain("появится на этапе"); // the structural data are the window of 19.26
+    for (const id of ["implicit.new", "implicit.domains", "implicit.save", "implicit.update", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.structural", "implicit.to_wireframe", "implicit.delete", "implicit.check", "implicit.support", "implicit.compare_holes", "drillholes.from_model"]) expect(reason(id), id).toBeNull();
+    for (const c of commands) expect(c.stage, c.id).toBeUndefined(); // every command of Э19 has its handler
     expect(app.registry.reason("implicit.new", { ...ctx, hasProject: false })).toBe("Откройте или создайте проект");
   });
   it("a project open for reading only: the commands that write say so", () => {

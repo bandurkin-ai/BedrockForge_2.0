@@ -83,7 +83,10 @@ export async function reloadSupport(): Promise<SupportAnswer | null> {
 export async function openSupport(modelId: number, threshold: number | null = null): Promise<SupportAnswer | null> {
   const same = supportStore.get().modelId === modelId;
   if (!same) {
+    seq++; // a late answer of the other model is not for this one
+    paint++;
     if (supportShown()) hideSupport();
+    distances = null;
     supportStore.set({ ...fresh(), modelId });
   }
   if (threshold !== null) supportStore.set({ thresholdText: String(threshold).replace(".", ",") });
@@ -123,7 +126,7 @@ export async function showMap(surfaceId?: number): Promise<string> {
   supportStore.set({ painting: true, note: null });
   try {
     const got = await loadSupportMesh(s.modelId, id, t);
-    if (mine !== paint) return "Отменено";
+    if (mine !== paint || supportStore.get().modelId !== s.modelId) return "Отменено";
     const threshold = got.threshold > 0 ? got.threshold : (t ?? 0);
     showSupport({ wireframeId: id, mesh: meshData(got.mesh), values: got.values, threshold });
     distances = got.values;
@@ -132,7 +135,7 @@ export async function showMap(surfaceId?: number): Promise<string> {
     supportStore.set({ painting: false, shownId: id, surfaceId: id, counts, note: surf ? surfaceLine(surf) : null, repaintMs: null });
     return surf ? surfaceLine(surf) : "Карта опоры показана";
   } catch (e) {
-    if (mine !== paint) return "Отменено";
+    if (mine !== paint || supportStore.get().modelId !== s.modelId) return "Отменено";
     const text = errorText(e);
     supportStore.set({ painting: false, note: text });
     return text;

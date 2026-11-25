@@ -164,6 +164,13 @@ describe("palette (ТЗ 7.0.7)", () => {
     expect(searchPalette("анализ графики", items, []).some((r) => r.kind === "command" && r.item.command === "chart.qq")).toBe(true);
   });
 
+  it("the exact label comes first, then the labels that start with the query, then the rest in the order of the ribbon", () => {
+    const mk = (command: string, label: string, group = "Группа") => ({ command, label, group, hint: "" }) as never;
+    const list = [mk("a", "Показать модель", "Сверка"), mk("b", "Модель на скважины"), mk("c", "Модель"), mk("d", "Новая модель")];
+    const order = searchPalette("модель", list, []).map((r) => (r.kind === "command" ? r.item.command : ""));
+    expect(order).toEqual(["c", "b", "a", "d"]);
+  });
+
   it("«скв » searches only holes; at most 60 rows; fast on 50 000 holes", () => {
     const t0 = performance.now();
     const rows = searchPalette("скв 1", items, holes);

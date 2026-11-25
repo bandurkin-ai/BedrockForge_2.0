@@ -19,6 +19,7 @@ import { deleteModelApi, refusalOf, toWireframeApi } from "./api";
 import { COPY_TITLE, COPY_WINDOW, copyStore } from "./copyState";
 import { detailsOf, needModel, NO_MODEL } from "./groupBase";
 import { expands, forgetGroups, shells, veins } from "./groupKinds";
+import { needModelFor } from "./reasons";
 import { implicitStore, loadRows, modelById } from "./state";
 
 /** `implicit.to_wireframe {model_id?, wireframe_id?, name?}`. */
@@ -84,6 +85,6 @@ export function bindGroupCommands(app: App): void {
   app.registry.bind("implicit.shells", noted(app, (a, s) => shells.run(app, a, s)), needWritable(app));
   app.registry.bind("implicit.vein", noted(app, (a, s) => veins.run(app, a, s)), needWritable(app));
   app.registry.bind("implicit.expand", noted(app, (a, s) => expands.run(app, a, s)), needWritable(app));
-  app.registry.bind("implicit.to_wireframe", noted(app, (a) => runToWireframe(app, a)), needWritable(app));
-  app.registry.bind("implicit.delete", noted(app, (a, s) => runDelete(a, s)), needWritable(app));
+  app.registry.bind("implicit.to_wireframe", noted(app, (a) => runToWireframe(app, a)), needModelFor(app, needWritable(app), "built"));
+  app.registry.bind("implicit.delete", noted(app, (a, s) => runDelete(a, s)), needModelFor(app, needWritable(app), "any"));
 }

@@ -96,7 +96,14 @@ describe("the comparison: the answer of the core as it is", () => {
     expect(line).toContain("не совпало интервалов 250");
     expect(line).toContain("H096 0–59,33 м: данные ALV, модель Прочее");
     expect(mismatchRange(a.mismatches.rows[0])).toBe("0–59,33");
-    expect(remarks({ ...a, no_code: { count: 2, length: 4.5 }, no_trajectory: { holes: 1, count: 3, length: 7, }, notes: ["Нет траектории"] }).join(" ")).toContain("без кода");
+    // the shape of the core (`compare_holes.py`: `{holes, intervals, length}`), the contract answer with some holes lost
+    const real = R.compare.body as Record<string, unknown>;
+    expect(real.no_trajectory).toEqual({ holes: 0, intervals: 0, length: 0 });
+    const lost = readCompare({ ...real, no_trajectory: { holes: 1, intervals: 3, length: 7 }, no_code: { count: 2, length: 4.5 }, notes: ["Нет траектории"] });
+    expect(lost.no_trajectory).toEqual({ holes: 1, intervals: 3, length: 7 });
+    const text = remarks(lost).join(" ");
+    expect(text).toContain("без кода");
+    expect(text).toContain("Скважин без траектории: 1, интервалов 3");
   });
 });
 

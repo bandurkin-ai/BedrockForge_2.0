@@ -2,8 +2,7 @@
  * The commands of the implicit modelling (ТЗ 8.9.4; ADR 0026 «Команды реестра»; docs/progress/e19-api.md §12): «Моделирование → Неявные
  * модели». The ribbon, Ctrl+K and the assistant run the same commands; no keys. A command without arguments opens its window (ADR 0021
  * п. 9), with them it executes. The pure declarations are here (the catalog reads them first); the handlers — `bind.ts` as the windows get
- * ready: `implicit.new`, `implicit.domains`, `implicit.save`, `implicit.update` (19.22); the groups, «В каркас», «Удалить» (19.24); the check, the support, the comparison with the holes and «Модель на скважины» (19.25); the rest says «появится на этапе» until its
- * window (`stage`). The parameters are flat (`ParamSchema` has no objects): the box is text «x; y; z; x; y; z», the lists are text
+ * ready: `implicit.new`, `implicit.domains`, `implicit.save`, `implicit.update` (19.22); the groups, «В каркас», «Удалить» (19.24); the check, the support, the comparison with the holes and «Модель на скважины» (19.25); `implicit.structural` (19.26, `structuralCommand.ts`). The parameters are flat (`ParamSchema` has no objects): the box is text «x; y; z; x; y; z», the lists are text
  * («DY; SS»). The commands of Э19б (the stack, the faults, the system of veins, the planned holes) come with 19.38.
  */
 import type { Command, ParamSchema } from "../../shell/commands";
@@ -110,9 +109,23 @@ export const commands: Command[] = [
     id: "implicit.structural",
     title: "Структурные данные",
     description:
-      "Структурный тренд для неявной модели (Д-15): замеры залегания таблицы скважин (или опорный каркас) → тренд с локальными осями анизотропии, который выбирается в мастере. model_id — модель, которой задать тренд; set_id и table — набор скважин и таблица замеров.",
-    params: { model_id: MODEL, set_id: SET, table: TABLE },
-    stage: "Э19 (19.26)",
+      "Структурный тренд для неявной модели (Д-15): замеры залегания таблицы скважин (или опорный каркас) → структурный тренд с локальными осями анизотропии, который становится трендом модели. " +
+      "Без полного источника открывает окно «Новый тренд» (структурный) с подставленными набором и таблицей; сохранённый в нём тренд задаётся модели. " +
+      "С источником (set_id, table, alpha, dipdir — замеры; или wireframe_id — каркас) сохраняет тренд (trend.save) и, если есть модель, записывает его в модель новой версией; чтобы тренд вошёл в поверхность, выполните «Обновить». " +
+      "model_id — модель, которой задать тренд (без неё выбранная в дереве или единственная); set_id, table — набор скважин и таблица замеров; alpha, dipdir, depth — поля угла падения, азимута падения и глубины замера.",
+    params: {
+      model_id: MODEL,
+      set_id: SET,
+      table: TABLE,
+      name: P("string", "название тренда"),
+      source: P("string", "источник: measurements — замеры (set_id, table, alpha, dipdir), mesh — опорный каркас (wireframe_id)", { enum: ["measurements", "mesh"] }),
+      alpha: P("string", "замеры: поле угла падения α (0–90°)"),
+      dipdir: P("string", "замеры: поле азимута падения Aп (0–360°)"),
+      depth: P("string", "замеры: поле глубины замера по стволу; не задано — середина FROM–TO"),
+      wireframe_id: P("integer", "каркас: номер опорного каркаса или поверхности"),
+      r_n: P("number", "каркас: радиус осреднения нормали, м (0–200)"),
+      radius: P("number", "радиус влияния замеров R_тр, м (10–5000; по умолчанию 200)"),
+    },
   },
   {
     id: "implicit.show",

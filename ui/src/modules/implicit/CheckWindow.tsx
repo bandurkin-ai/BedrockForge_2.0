@@ -10,7 +10,7 @@ import css from "../../shell/PropsParts.module.css";
 import { CheckTable } from "./CheckTable";
 import { checkStore, openCheck, reloadCheck, resetCheck, setTab, whenGone, type CheckTab } from "./CheckState";
 import mod from "./Check.module.css";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 import { staleLine } from "./run";
 import { implicitStore } from "./state";
 import { resetSupport } from "./SupportState";

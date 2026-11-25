@@ -8,7 +8,7 @@ import { numberText } from "../composites/params";
 import { issueAt } from "../estimation/formBase";
 import type { Range } from "./api";
 import { rangesOf, type ModelForm } from "./form";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 import { setForm, wizardStore } from "./wizardState";
 
 /** The words under the field `at` (the path of the body, or the fields inside it). */

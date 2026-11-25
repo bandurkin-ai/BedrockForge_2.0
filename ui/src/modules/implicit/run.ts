@@ -43,6 +43,19 @@ export function outputsLine(r: BuildResult): string {
  * (`mode` forces one). The answer is the Russian text of the result.
  */
 export async function runBuild(modelId: number, mode?: "build" | "update"): Promise<string> {
+  if (running.has(modelId)) throw refusal("busy", "Модель уже строится по вашей команде.", "Дождитесь окончания задания или отмените его во вкладке «Задания».");
+  running.add(modelId);
+  try {
+    return await runBuildOnce(modelId, mode);
+  } finally {
+    running.delete(modelId);
+  }
+}
+
+/** the models whose run this window started and waits for: a second start is refused, not queued */
+const running = new Set<number>();
+
+async function runBuildOnce(modelId: number, mode?: "build" | "update"): Promise<string> {
   const row = modelById(modelId);
   if (!row && implicitStore.get().loaded) throw refusal("model_not_found", `Неявная модель №${modelId} не найдена.`, "Номера моделей — в разделе «Неявные модели» дерева.");
   // the version of the model is the one the core stores now (the list could be older: a group saved a moment ago)

@@ -17,7 +17,7 @@ import tree from "../../shell/DataTree.module.css";
 import { useWatch } from "../lineage/hooks";
 import { LineageBadge } from "../lineage/LineageBadge";
 import type { LNode } from "../lineage/api";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 import { implicitStore, loadRows } from "./state";
 import { BRANCH_TITLES, branchMenu, groupTitle, modelMenu, modelTitleText, statsText, stateText, treeItems, type OpenState, type TreeItem } from "./treeModel";
 import { implicitViewStore, pointsShown } from "./viewState";

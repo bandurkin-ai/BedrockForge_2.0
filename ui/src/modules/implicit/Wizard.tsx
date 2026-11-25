@@ -10,7 +10,7 @@ import { askConfirm } from "../../shell/dialogs";
 import css from "../../shell/PropsParts.module.css";
 import { requestClose, setCloseGuard } from "../../shell/windows";
 import { LAST_STEP, STEP_TITLES, stepOfParam } from "./form";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 import mod from "./Wizard.module.css";
 import { WizardBoundary } from "./WizardBoundary";
 import { WizardDomains } from "./WizardDomains";

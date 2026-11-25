@@ -12,7 +12,7 @@ import { DataCheck, FieldIssue, GroupFrame, TextRow } from "./GroupParts";
 import { groupRanges } from "./groupBase";
 import { veins } from "./groupKinds";
 import { formOfMeta } from "./form";
-import { useLatest, useSel } from "./hooks";
+import { useLatest, useSel } from "../estimation/hooks";
 import { implicitStore } from "./state";
 import mod from "./Wizard.module.css";
 import type { VeinBound, VeinForm as Form } from "./VeinState";

@@ -132,6 +132,18 @@ function fail(e: unknown): never {
 
 /** `drillholes.from_model` with the arguments: the table is written; the text of the result. */
 export async function runFromModel(a: Record<string, unknown>): Promise<string> {
+  if (fromRunning) throw refusal("busy", "Запись модели на скважины уже идёт.", "Дождитесь окончания задания или отмените его во вкладке «Задания».");
+  fromRunning = true;
+  try {
+    return await runFromModelOnce(a);
+  } finally {
+    fromRunning = false;
+  }
+}
+
+let fromRunning = false;
+
+async function runFromModelOnce(a: Record<string, unknown>): Promise<string> {
   fromStore.set({ busy: true, error: null, suggested: null, result: null, stage: "Запрос" });
   const uid = projectStore.get().current?.uid ?? null;
   let body: FromModelBody;

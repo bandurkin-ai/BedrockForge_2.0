@@ -124,6 +124,7 @@ export async function rereadModel(): Promise<void> {
  */
 export async function saveWizard(opts: { asNew?: boolean } = {}): Promise<Saved> {
   const s = wizardStore.get();
+  if (s.saving) throw refusal("busy", "Модель уже сохраняется.", "Дождитесь окончания сохранения и повторите.");
   const built = bodyOf(s.form, s.defaults.data);
   if (!built.ok) {
     setIssue(built.issue);
