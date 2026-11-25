@@ -194,15 +194,31 @@ def pick_quantiles(n_first: np.ndarray, row: np.ndarray, eligible: np.ndarray) -
     return out
 
 
-def count_in(rk: kn.RowKernel, centres: np.ndarray, radius: float) -> np.ndarray:
-    """i8 [m]: the samples of the domain D inside the ellipsoid of the radius `radius` (along r1) round each centre."""
+def _tree_of(rk: kn.RowKernel) -> tuple[Any, np.ndarray]:
+    """The tree of the samples of D in the scaled space of the ellipsoid and the matrix that scales a centre."""
     from scipy.spatial import cKDTree
 
-    s = rk.samples
-    pts = rk.local[s.dom == sm.D] @ rk.ell.S.T
-    tree = cKDTree(pts, balanced_tree=False, compact_nodes=False)
-    got = tree.query_ball_point((centres - s.origin) @ rk.ell.S.T, float(radius), return_length=True)
+    pts = rk.local[rk.samples.dom == sm.D] @ rk.ell.S.T
+    return cKDTree(pts, balanced_tree=False, compact_nodes=False), rk.ell.S
+
+
+def count_in(rk: kn.RowKernel, centres: np.ndarray, radius: float) -> np.ndarray:
+    """i8 [m]: the samples of the domain D inside the ellipsoid of the radius `radius` (along r1) round each centre."""
+    tree, scale = _tree_of(rk)
+    got = tree.query_ball_point((centres - rk.samples.origin) @ scale.T, float(radius), return_length=True, workers=-1)
     return np.asarray(got, dtype=np.int64)
+
+
+def enough_in(rk: kn.RowKernel, centres: np.ndarray, radius: float, k: int) -> np.ndarray:
+    """bool [m]: at least `k` samples of D inside the ellipsoid of the radius `radius` round each centre — the same
+    answer as `count_in(...) >= k` without counting the whole ball (k nearest within the radius, many threads)."""
+    tree, scale = _tree_of(rk)
+    k = max(1, int(k))
+    # `query` keeps the distances strictly below the bound, the ball keeps `≤ radius`: the next float up
+    bound = float(np.nextafter(float(radius), np.inf))
+    dist, _ = tree.query((centres - rk.samples.origin) @ scale.T, k=k, distance_upper_bound=bound, workers=-1)
+    last = dist if k == 1 else dist[:, -1]
+    return np.asarray(np.isfinite(last), dtype=bool)
 
 
 def auto_blocks(rk: kn.RowKernel, targets: Targets) -> list[BlockAt]:
@@ -211,8 +227,7 @@ def auto_blocks(rk: kn.RowKernel, targets: Targets) -> list[BlockAt]:
     passes = rk.searcher.passes
     r1 = float(rk.ell.radii[0])
     n_first = count_in(rk, targets.centre, r1 * passes[0].factor)
-    n_far = count_in(rk, targets.centre, r1 * max(p.factor for p in passes))
-    eligible = n_far >= max(1, min(p.n_min for p in passes))
+    eligible = enough_in(rk, targets.centre, r1 * max(p.factor for p in passes), min(p.n_min for p in passes))
     picks = pick_quantiles(n_first, targets.row, eligible)
     if not picks:
         raise ApiError(422, "kna_no_blocks", "Ни у одного блока нет достаточно проб в радиусе поиска.",

@@ -180,6 +180,20 @@ def test_three_auto_blocks_are_dense_medium_and_sparse() -> None:
     assert counts == [int(ranked[int(np.floor(q * (ranked.size - 1) + 0.5))]) for q in (0.9, 0.5, 0.1)]
 
 
+def test_enough_in_is_count_in_at_least_k() -> None:
+    rk = cloud_row()
+    t = grid_targets()
+    for radius in (40.0, 120.0, 400.0):
+        n = kna.count_in(rk, t.centre, radius)
+        for k in (1, 3, 25):
+            assert (kna.enough_in(rk, t.centre, radius, k) == (n >= k)).all()
+    # a sample exactly on the surface of the ball is inside (closed ball, as for `count_in`)
+    centre = np.asarray(rk.samples.origin, dtype=np.float64)[None, :]  # the local origin: the sample is at `edge`
+    edge = rk.local[rk.samples.dom == kna.sm.D][0]
+    r = float(np.linalg.norm(rk.ell.S @ edge))
+    assert kna.count_in(rk, centre, r)[0] >= 1 and kna.enough_in(rk, centre, r, 1)[0]
+
+
 def test_auto_blocks_are_the_same_whatever_the_order_of_samples_and_blocks() -> None:
     ref = kna.auto_blocks(cloud_row(), grid_targets())
     key = [(b.row, b.auto, b.n_r1, tuple(b.centre)) for b in ref]
