@@ -14,6 +14,7 @@ export interface SectionAction {
 const ACTIONS: Partial<Record<TreeSection, SectionAction[]>> = {
   trends: [{ label: "Новый тренд…", command: "trend.open" }],
   variograms: [{ label: "Новое окно «Вариография»", command: "variography.open" }],
+  estimation: [{ label: "Новая оценка (мастер)…", command: "estimate.open" }, { label: "План оценки…", command: "estimate.plan" }],
   views: [{ label: "Сохранить текущий вид", command: "views.save" }],
   series: [{ label: "Новая серия…", command: "series.new" }, { label: "Менеджер серий…", command: "series.manager" }],
   holes: [
@@ -52,6 +53,7 @@ export interface SectionPlus {
 const PLUS: Partial<Record<TreeSection, SectionPlus>> = {
   trends: { command: "trend.open", title: "Новый тренд" },
   variograms: { command: "variography.open", title: "Новое окно «Вариография»" },
+  estimation: { command: "estimate.open", title: "Новая оценка (мастер)" },
   views: { command: "views.save", title: "Сохранить текущий вид" },
   series: { command: "series.new", title: "Новая серия разрезов" },
   holes: { title: "Новый набор, импорт скважин, импорт канав" },
