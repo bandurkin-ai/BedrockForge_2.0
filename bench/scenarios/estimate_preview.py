@@ -52,7 +52,7 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
     t1 = time.perf_counter()
     rows = dep.probes(BLOCKS)
     centres = dep.centres_of(rows)
-    first = kn.estimate_block(rk, centres[0], pool=s)
+    first = kn.estimate_block(rk, centres[0])
     t2 = time.perf_counter()
     info: dict[str, Any] = {"samples": s.n, "compile_s": round(t1 - t0, 4), "cold_s": round(t2 - t1, 4),
                             "preview_s": round(t2 - t0, 4)}  # fmt: skip
@@ -64,7 +64,7 @@ def run(params: dict[str, Any], work: Path) -> dict[str, Any]:
             a = time.perf_counter()
             d = kn.estimate_block(rk, c)
             b = time.perf_counter()
-            kn.estimate_block(rk, c, pool=s)
+            kn.estimate_block(rk, c)
             e = time.perf_counter()
             plain.append(b - a)
             pooled.append(e - b)

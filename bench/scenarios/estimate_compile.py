@@ -69,7 +69,7 @@ def every(ctx: Any, meta: dict[str, Any]) -> int:
     assert len(kna.run_kna(engine, folder, one)["blocks"]) >= 1
     _, s, rk = ew.look(ctx, meta)
     dep = ec.Deposit.of(meta["params"])
-    d = kn.estimate_block(rk, dep.centres_of(dep.probes(1))[0], pool=s)  # the preview and the inspector
+    d = kn.estimate_block(rk, dep.centres_of(dep.probes(1))[0])  # the preview and the inspector
     assert d.counts["candidates"] > 0
     return checked + 4
 
