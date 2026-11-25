@@ -88,13 +88,80 @@ class VariogramModel(Provider):
 
 
 class Trend(Provider):
+    """A global trend is a copy: no inputs. A structural one (Э19) reads its data when it is used: its inputs are the
+    table of the measurements, its set (the trajectories) and, of the other source, the supporting wireframe."""
+
     kind = "object:trend"
 
     def lookup(self, ctx: Ctx, keys: Sequence[Key]) -> dict[Key, Info]:
+        """The fingerprint of a structural trend holds that of its data: whoever was built from the trend (an RBF
+        model, ADR 0026) is «устарел» when the measurements or the wireframe change, as when the trend itself does."""
         return {
-            (i, ""): Info(str(int(r.version)), r.name, r.state == "building")
+            (i, ""): Info(self._fp(ctx, r), r.name, r.state == "building")
             for i, r in object_rows(ctx, "trend", keys).items()
         }
+
+    def _fp(self, ctx: Ctx, r: Any) -> str:
+        from .providers import provider_for
+
+        src, fp = self._source(r), str(int(r.version))
+        if src is None:
+            return fp
+        if src.get("type") == "mesh":
+            refs = [("wireframe", self._id(src.get("wireframe_id")))]
+        else:
+            refs = [("dh_table", self._id(src.get("table"))), ("dh_set", self._id(src.get("set_id")))]
+        for kind, ident in refs:
+            got = provider_for(kind).lookup(ctx, [(ident, "")]) if ident is not None else {}
+            fp += "|" + (got[(ident, "")].fp if ident is not None and (ident, "") in got else "-")
+        return fp
+
+    @staticmethod
+    def _source(r: Any) -> dict[str, Any] | None:
+        meta = r.meta or {}
+        src = meta.get("source")
+        return dict(src) if meta.get("kind") == "structural" and isinstance(src, dict) else None
+
+    @staticmethod
+    def _id(value: Any) -> int | None:
+        try:
+            return None if value is None or isinstance(value, bool) else int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def inputs(self, ctx: Ctx, keys: Sequence[Key]) -> dict[Key, list[InputRef]]:
+        out: dict[Key, list[InputRef]] = {}
+        for i, r in object_rows(ctx, "trend", keys).items():
+            src = self._source(r)
+            if src is None:
+                continue
+            refs: list[InputRef] = []
+            if src.get("type") == "mesh":
+                wid = self._id(src.get("wireframe_id"))
+                found = object_rows(ctx, "wireframe", [(wid, "")]) if wid is not None else {}
+                if wid in found:
+                    refs.append(InputRef(Node("wireframe", int(wid)), None, found[wid].name))
+            else:
+                set_id, table_id = self._id(src.get("set_id")), self._id(src.get("table"))
+                tables = {int(t.id): t for t in set_tables(ctx, set_id)} if set_id is not None else {}
+                if set_id is not None and table_id in tables:
+                    refs.append(InputRef(Node("dh_table", int(table_id)), None, tables[table_id].name))
+                    refs.append(InputRef(Node("dh_set", set_id), None, ""))  # the positions come from the paths
+            out[(i, "")] = refs
+        return out
+
+    def direct(self, ctx: Ctx, key: Key) -> Direct | None:
+        r = object_rows(ctx, "trend", [key]).get(key[0])
+        src = None if r is None else self._source(r)
+        if src is None:
+            return None
+        if src.get("type") == "mesh":
+            wid = self._id(src.get("wireframe_id"))
+            alive = wid is not None and bool(object_rows(ctx, "wireframe", [(wid, "")]))
+            return None if alive else ("удалён опорный каркас тренда", True)
+        set_id, table_id = self._id(src.get("set_id")), self._id(src.get("table"))
+        tables = {int(t.id) for t in set_tables(ctx, set_id)} if set_id is not None else set()
+        return None if table_id in tables else ("удалена таблица замеров тренда", True)
 
 
 class QaqcData(Provider):
