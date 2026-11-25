@@ -59,10 +59,10 @@ describe("the declarations", () => {
     expect(names).not.toContain("ui_estimate_plan");
     expect(names).toContain("ui_estimate_run");
   });
-  it("the commands whose window is not ready say so; the three bound ones are available", () => {
+  it("the commands whose window is not ready say so; the bound ones (the wizard, the run, the deletion, the plan) are available", () => {
     const reason = (id: string) => app.registry.reason(id, { hasProject: true, hasSet: true, hasHole: false, hasObject: false, hasSection: false, editing: false, coreOnline: true });
-    for (const id of ["estimate.plan", "estimate.ellipsoid", "estimate.inspect", "estimate.xval", "estimate.kna", "estimate.global", "estimate.qq", "estimate.swath"]) expect(reason(id)).toMatch(/появится на этапе Э18/);
-    for (const id of ["estimate.open", "estimate.run", "estimate.delete"]) expect(reason(id)).toBeNull();
+    for (const id of ["estimate.ellipsoid", "estimate.inspect", "estimate.xval", "estimate.kna", "estimate.global", "estimate.qq", "estimate.swath"]) expect(reason(id)).toMatch(/появится на этапе Э18/);
+    for (const id of ["estimate.open", "estimate.run", "estimate.delete", "estimate.plan", "estimate.plan_delete"]) expect(reason(id)).toBeNull();
   });
   it("without a project the wizard is not available, with the reason", () => {
     expect(app.registry.reason("estimate.open", { hasProject: false, hasSet: false, hasHole: false, hasObject: false, hasSection: false, editing: false, coreOnline: true })).toBe("Откройте или создайте проект");
@@ -215,7 +215,7 @@ describe("estimate.run", () => {
   });
   it("a plan or rows — one of the two; numbers must be whole; a plan that is not there", async () => {
     await loadRows();
-    expect((await app.registry.execute("estimate.run", {}, "user")).result).toContain("plan_id или estimation_ids");
+    expect((await app.registry.execute("estimate.run", { estimation_ids: "" }, "user")).result).toContain("plan_id или estimation_ids");
     expect((await app.registry.execute("estimate.run", { plan_id: 51, estimation_ids: "41" }, "user")).result).toContain("что-то одно");
     expect((await app.registry.execute("estimate.run", { estimation_ids: "41; x" }, "user")).result).toContain("нужны целые числа");
     expect((await app.registry.execute("estimate.run", { plan_id: 9 }, "user")).result).toContain("План оценки №9 не найден");

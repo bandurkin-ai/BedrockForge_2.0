@@ -65,18 +65,23 @@ export const VARIO_ROWS = [
 
 const JOB = { source: "proj", id: 5 };
 
+export const PLANS = { plans: [{ id: 51, name: "План · Модель", model_id: 7, items: [41, 42], version: 1, created_at: "", updated_at: "" }] };
+
 export interface Core {
   sent: { method: string; path: string; query: string; body: Record<string, unknown> }[];
   force: (route: string, a: Answer) => void;
   /** the result of the job of `POST /estimate/run` */
   job: { status: string; result: unknown; error: unknown };
+  /** the answers of `GET /estimations` and `GET /estimation-plans` (the samples of the contract until a test sets its own) */
+  estimations: unknown;
+  plans: unknown;
   restore: () => void;
 }
 
 export function installCore(): Core {
   const sent: Core["sent"] = [];
   const forced = new Map<string, Answer>();
-  const core: Core = { sent, force: (route, a) => void forced.set(route, a), job: { status: "done", result: A.run_result.body, error: null }, restore: () => vi.unstubAllGlobals() };
+  const core: Core = { sent, force: (route, a) => void forced.set(route, a), job: { status: "done", result: A.run_result.body, error: null }, estimations: A.estimations.body, plans: PLANS, restore: () => vi.unstubAllGlobals() };
   const take = (route: string): Response | null => {
     const f = forced.get(route);
     if (!f) return null;
@@ -95,12 +100,16 @@ export function installCore(): Core {
       const f = take(route);
       if (f) return f;
       if (route === "GET /geostat/estimate/defaults") return json(A.defaults.body);
-      if (route === "GET /geostat/estimations") return json(A.estimations.body);
+      if (route === "GET /geostat/estimations") return json(core.estimations);
       if (route === "GET /geostat/estimations/41") return json(A.estimation.body);
       if (route === "POST /geostat/estimations") return json(A.estimation_post.body);
       if (route === "PUT /geostat/estimations/41") return json({ ...A.estimation_post.body, version: 3 });
       if (route === "DELETE /geostat/estimations/41") return json({ deleted: 41, plans: [51] });
-      if (route === "GET /geostat/estimation-plans") return json({ plans: [{ id: 51, name: "План · Модель", model_id: 7, items: [41, 42], version: 1, created_at: "", updated_at: "" }] });
+      if (route === "GET /geostat/estimation-plans") return json(core.plans);
+      if (route === "GET /geostat/estimation-plans/51") return json(A.plan.body);
+      if (route === "POST /geostat/estimation-plans") return json({ id: 52, name: body.name ?? "План · Модель", version: 1 });
+      if (route === "PUT /geostat/estimation-plans/51") return json({ id: 51, name: body.name ?? "План · Модель", version: 2 });
+      if (route === "DELETE /geostat/estimation-plans/51") return json({ deleted: 51 });
       if (route === "POST /geostat/estimate/run") return json(JOB);
       if (path === "/jobs") return json({ jobs: [{ ...JOB, kind: "estimate.run", title: "Оценка", queue: "heavy", status: core.job.status, progress: 1, message: null, error: core.job.error, params: null, result: core.job.result, attempts: 1, max_attempts: 1, cancel_requested: false, created_at: "", started_at: null, finished_at: null, why_waiting: null }], workers: { workers: [], heavy_workers: 1, stopped_reason: null } });
       if (path === `/jobs/${JOB.source}/${JOB.id}`) return json({ ...JOB, kind: "estimate.run", status: core.job.status, progress: 1, message: null, error: core.job.error, result: core.job.result });

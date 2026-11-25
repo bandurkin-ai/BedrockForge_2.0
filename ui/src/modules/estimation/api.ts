@@ -364,16 +364,47 @@ export interface PlanRow {
   name: string;
   model_id: number;
   version: number;
-  items: PlanItem[] | number[];
+  /** the ids of the rows in the order of the run (`GET /estimation-plans`) */
+  items: number[];
 }
+
+const readItem = (raw: unknown): PlanItem => {
+  const o = obj(raw);
+  return { id: Number(o.id), name: String(o.name ?? ""), method: (METHODS as readonly string[]).includes(String(o.method)) ? (o.method as MethodKind) : "ok", prefix: String(o.prefix ?? ""), label: str(o.label), stale: o.stale === true };
+};
 
 export async function loadPlans(): Promise<PlanRow[]> {
   const r = obj(await api.get(`${GEOSTAT_API}/estimation-plans`));
   return (Array.isArray(r.plans) ? r.plans : []).map((p) => {
     const o = obj(p);
-    return { id: Number(o.id), name: String(o.name ?? ""), model_id: Number(o.model_id), version: Number(o.version ?? 1), items: Array.isArray(o.items) ? (o.items as number[]) : [] };
+    return { id: Number(o.id), name: String(o.name ?? ""), model_id: Number(o.model_id), version: Number(o.version ?? 1), items: Array.isArray(o.items) ? o.items.filter(isNum) : [] };
   });
 }
+
+/** `GET /estimation-plans/{id}`: the plan with its rows in the order of the run (the form of `contract_answers.plan`). */
+export interface PlanDetail {
+  id: number;
+  name: string;
+  model_id: number;
+  version: number;
+  items: PlanItem[];
+}
+
+export function readPlan(raw: unknown): PlanDetail {
+  const o = obj(raw);
+  return { id: Number(o.id), name: String(o.name ?? ""), model_id: Number(o.model_id), version: Number(o.version ?? 1), items: (Array.isArray(o.items) ? o.items : []).map(readItem) };
+}
+
+export async function loadPlan(id: number): Promise<PlanDetail> {
+  return readPlan(await api.get(`${GEOSTAT_API}/estimation-plans/${id}`));
+}
+
+/** `POST /estimation-plans {name?, model_id, items}` (0–100 rows, no repeats) → `{id, name, version}`. */
+export const createPlan = async (body: { name?: string; model_id: number; items: number[] }): Promise<Saved> => readSaved(await api.post(`${GEOSTAT_API}/estimation-plans`, body));
+/** `PUT /estimation-plans/{id} {expected_version, name?, items?}`; another version stored — 409 `version_conflict {version}`. */
+export const replacePlan = async (id: number, version: number, body: { name?: string; items?: number[] }): Promise<Saved> => readSaved(await api.put(`${GEOSTAT_API}/estimation-plans/${id}`, { ...body, expected_version: version }));
+/** The rows stay; only the plan goes. */
+export const deletePlanApi = (id: number): Promise<{ deleted: number }> => api.del(`${GEOSTAT_API}/estimation-plans/${id}`);
 
 // ---- the run ----
 
@@ -386,11 +417,42 @@ export interface RunBody {
 
 export const startRun = async (body: RunBody): Promise<Started> => startedOf(obj(await api.post(`${GEOSTAT_API}/estimate/run`, body)));
 
+/** The samples of a row as the run counted them (`counts.samples`: what was left out and why, how many were averaged). */
+export interface RunSamples {
+  rows: number;
+  missing: number;
+  no_position: number;
+  outside_domain: number;
+  used: number;
+  /** the samples averaged into one (the same place) */
+  merged: number;
+  topcut: number;
+  soft: number;
+  no_weight: number;
+}
+
+export interface RunCounts {
+  targets: number;
+  /** the blocks by the status 0…3 (`STATUS_LABELS`) */
+  by_status: number[];
+  /** the blocks estimated by the pass 1, 2, … */
+  by_pass: number[];
+  /** the blocks with a singular system by the pass 1, 2, … */
+  singular: number[];
+  samples: RunSamples | null;
+}
+
 export interface RunRow {
   estimation_id: number;
   prefix: string;
   label: string | null;
-  counts: { targets: number; by_status: number[] };
+  counts: RunCounts;
+}
+
+/** The rows of a plan that share a prefix: the core wrote them into the same fields (the values of the other domains stay). */
+export interface RunMerged {
+  prefix: string;
+  estimation_ids: number[];
 }
 
 export interface RunResult {
@@ -399,7 +461,17 @@ export interface RunResult {
   plan_id: number | null;
   fields: string[];
   rows: RunRow[];
+  merged: RunMerged[];
   log: string[];
+}
+
+const nums = (v: unknown): number[] => (Array.isArray(v) ? v.map((n) => (isNum(n) ? n : 0)) : []);
+
+function readSamples(raw: unknown): RunSamples | null {
+  const o = obj(raw);
+  if (!Object.keys(o).length) return null;
+  const n = (k: string) => (isNum(o[k]) ? (o[k] as number) : 0);
+  return { rows: n("rows"), missing: n("missing"), no_position: n("no_position"), outside_domain: n("outside_domain"), used: n("used"), merged: n("merged"), topcut: n("topcut"), soft: n("soft"), no_weight: n("no_weight") };
 }
 
 export function readRun(raw: unknown): RunResult | null {
@@ -413,8 +485,9 @@ export function readRun(raw: unknown): RunResult | null {
     rows: (Array.isArray(o.rows) ? o.rows : []).map((r) => {
       const x = obj(r);
       const c = obj(x.counts);
-      return { estimation_id: Number(x.estimation_id), prefix: String(x.prefix ?? ""), label: str(x.label), counts: { targets: Number(c.targets ?? 0), by_status: Array.isArray(c.by_status) ? c.by_status.map((n) => (isNum(n) ? n : 0)) : [] } };
+      return { estimation_id: Number(x.estimation_id), prefix: String(x.prefix ?? ""), label: str(x.label), counts: { targets: Number(c.targets ?? 0), by_status: nums(c.by_status), by_pass: nums(c.by_pass), singular: nums(c.singular), samples: readSamples(c.samples) } };
     }),
+    merged: (Array.isArray(o.merged) ? o.merged : []).map((m) => ({ prefix: String(obj(m).prefix ?? ""), estimation_ids: Array.isArray(obj(m).estimation_ids) ? (obj(m).estimation_ids as unknown[]).filter(isNum) : [] })),
     log: strs(o.log),
   };
 }
