@@ -9,8 +9,9 @@ import { refusal } from "../../shell/objectRun";
 import { errorText } from "../../shell/props";
 import { Store } from "../../shell/store";
 import { defaultsQueryOf as estimationQuery, type EstimationForm } from "../estimation/form";
-import { EMPTY_DEFAULTS_STATE, defaultsRequester, issueOfRefusal, readVariogramModels, type DefaultsState, type VarioState } from "../estimation/wizardState";
+import { EMPTY_DEFAULTS_STATE, defaultsRequester, isVariogramModelEvent, issueOfRefusal, readVariogramModels, type DefaultsState, type VarioState } from "../estimation/wizardState";
 import { loadBlockDetails } from "../blocks/state";
+import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { createSimulation, loadSimulation, refusalOf, replaceSimulation, type Saved, type SimKind } from "./api";
 import { bodyOf, EMPTY_SIM_FORM, formOfMeta, matchIndicators, simStepOfParam, SIM_LAST_STEP, type Issue, type SimForm } from "./form";
@@ -83,6 +84,8 @@ let varioSeq = 0;
 
 export async function loadVariogramModels(): Promise<void> {
   const mine = ++varioSeq;
+  watchVariogramModels();
+  varioReading = true;
   const uid = projectStore.get().current?.uid ?? null;
   try {
     const { rows, backs } = await readVariogramModels();
@@ -91,7 +94,23 @@ export async function loadVariogramModels(): Promise<void> {
   } catch (e) {
     if (mine !== varioSeq) return;
     simWizardStore.set({ vario: { ...EMPTY_VARIO, loaded: true, error: errorText(e) } });
+  } finally {
+    if (mine === varioSeq) varioReading = false;
   }
+}
+
+let varioReading = false;
+
+// the list the wizard read goes stale when a model is saved or deleted in «Вариография»: it is read again while the wizard holds it
+export function onSimVariogramEvent(event: string, data: string): void {
+  if (isVariogramModelEvent(event, data) && projectStore.get().current && (simWizardStore.get().vario.loaded || varioReading)) void loadVariogramModels();
+}
+let watching = false;
+/** The listener is put on at the first read (not when the module is loaded), once. */
+function watchVariogramModels(): void {
+  if (watching) return;
+  watching = true;
+  onCoreEvent(onSimVariogramEvent);
 }
 
 /** «Подобрать по порогам»: for each threshold the model of an indicator of the same threshold (`indicator:<t>`); a threshold without one keeps what was chosen. */

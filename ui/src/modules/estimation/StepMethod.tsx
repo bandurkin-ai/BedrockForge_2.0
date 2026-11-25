@@ -139,6 +139,11 @@ export function StepMethod() {
             {VARIOGRAM_SCALE_MESSAGE}: такая модель не выбирается. {VARIOGRAM_SCALE_HINT} (окно «Вариография», «Нормальные оценки»).
           </p>
         )}
+        <p className={css.note}>
+          <button type="button" className={css.btn} data-testid="est-vario-refresh" title="Прочитать модели вариограмм проекта заново (после сохранения модели в окне «Вариография»)" onClick={() => void loadVariogramModels()}>
+            Обновить список
+          </button>
+        </p>
         {vario.error && (
           <p className={css.error} role="alert">
             {vario.error}{" "}

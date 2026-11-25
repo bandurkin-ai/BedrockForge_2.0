@@ -170,11 +170,11 @@ export interface CondStat {
 
 export interface SimCounts {
   /** nodes whose system was singular */
-  degenerate: number;
+  degenerate: number | null;
   /** nodes with no datum at all (simulated from the prior) */
-  free: number;
+  free: number | null;
   /** nodes that fall on a sample */
-  on_sample: number;
+  on_sample: number | null;
   /** co-SGS: nodes with a gap of the secondary variable (simulated as SGS) */
   gap: number | null;
 }
@@ -208,7 +208,7 @@ const readCond = (raw: unknown): CondStat | null => {
 
 function readCounts(raw: unknown): SimCounts {
   const c = obj(raw);
-  const n = (k: string) => (isNum(c[k]) ? (c[k] as number) : 0);
+  const n = (k: string): number | null => (isNum(c[k]) ? (c[k] as number) : null); // a key the core did not send is unknown, not 0
   return { degenerate: n("degenerate"), free: n("free"), on_sample: n("on_sample"), gap: isNum(c.gap) ? c.gap : null };
 }
 

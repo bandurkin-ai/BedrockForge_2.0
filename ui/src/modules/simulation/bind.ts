@@ -57,6 +57,8 @@ async function knownRow(id: number) {
 export async function openWizard(app: App, a: Record<string, unknown> = {}): Promise<string> {
   if (typeof a.id === "number") {
     await knownRow(a.id);
+    // a form with unsaved changes is not replaced without a word
+    if (simWizardStore.get().dirty && !(await askConfirm({ title: "Открыть строку", message: `Параметры в мастере изменены и не сохранены. Открыть моделирование №${a.id} и отбросить изменения?`, okLabel: "Открыть", danger: true }))) return "Отменено";
     await startEdit(a.id).catch((e: unknown) => {
       const r = refusalOf(e);
       throw refusal(r.code, r.message, r.hint);
@@ -67,8 +69,15 @@ export async function openWizard(app: App, a: Record<string, unknown> = {}): Pro
     const kind: SimKind = a.kind === "sis" || a.kind === "cosgs" || a.kind === "sgs" ? a.kind : f.kind;
     const modelId = typeof a.model_id === "number" ? a.model_id : (f.modelId ?? defaultModel(app, null));
     const moved = modelId !== f.modelId;
+    const kindMoved = kind !== f.kind;
+    const before = simWizardStore.get();
     // another kind wants other models of variogram; another model — other domains
-    putForm({ ...f, kind, modelId, ...(moved ? { domainField: "", label: "" } : {}), ...(kind !== f.kind ? { variogramId: null, variogramIds: [] } : {}) }, { dirty: simWizardStore.get().dirty });
+    const next = { ...f, kind, modelId, ...(moved ? { domainField: "", label: "" } : {}), ...(kindMoved ? { variogramId: null, variogramIds: [] } : {}) };
+    // the parameters of the call (the number of realizations, the seed, ρ, the name…) go into the form as they are
+    const given = formOfArgs(kind, a, next);
+    // a stored row of another kind is not the row of this form any more: the save would write the wrong kind over it
+    const detached = kindMoved && before.editing ? { editing: null, saved: null } : {};
+    putForm(given, { dirty: before.dirty || (kindMoved && !!before.editing) || JSON.stringify(given) !== JSON.stringify(next), ...detached });
   }
   chooseModel(form().modelId);
   if (!simWizardStore.get().vario.loaded) void loadVariogramModels();
@@ -83,7 +92,7 @@ export async function openWizard(app: App, a: Record<string, unknown> = {}): Pro
 export async function kindCommand(app: App, kind: SimKind, a: Record<string, unknown>): Promise<string> {
   const asked = ["set_id", "table", "field", "variogram_id", "variogram_ids", "thresholds", "categories", "secondary_field"].some((k) => a[k] !== undefined);
   // the wizard opens in a read-only project too (to look); the run writes the realizations
-  if (typeof a.id !== "number" && !asked) return openWizard(app, { kind, ...(typeof a.model_id === "number" ? { model_id: a.model_id } : {}) });
+  if (typeof a.id !== "number" && !asked) return openWizard(app, { ...a, kind });
   if (app.store.get().projectReadOnly) throw refusal("project_read_only", "Проект открыт только для чтения.", "Откройте проект для записи: реализации сохраняются в проекте.");
   if (typeof a.id === "number") return runSimulation({ id: a.id });
   const f = formOfArgs(kind, a, { ...EMPTY_SIM_FORM, modelId: typeof a.model_id === "number" ? a.model_id : defaultModel(app, null) });
@@ -96,21 +105,28 @@ export async function kindCommand(app: App, kind: SimKind, a: Record<string, unk
 
 /** The run of a stored row (`id`) or of a body (a new row the job writes last): the job followed to its end; the answer is the text of the result. */
 export async function runSimulation(a: { id: number } | { body: Record<string, unknown> }): Promise<string> {
+  const uid = projectStore.get().current?.uid ?? null;
   const id = "id" in a ? a.id : null;
   const row = id === null ? undefined : await knownRow(id);
   if (runStore.get().phase === "running") throw refusal("busy", "Моделирование уже выполняется.", "Дождитесь конца задания или отмените его во вкладке «Задания».");
   const name = row?.name ?? (typeof (a as { body: { name?: unknown } }).body?.name === "string" ? String((a as { body: { name: string } }).body.name) : "Моделирование");
   runBegin(id, name);
   try {
-    return await followRun(name, id === null ? { simulation: (a as { body: Record<string, unknown> }).body } : { simulation_id: id });
+    return await followRun(name, id === null ? { simulation: (a as { body: Record<string, unknown> }).body } : { simulation_id: id }, uid);
   } catch (e) {
-    runFailed(refusalOf(e));
+    const r = refusalOf(e);
+    // another project opened meanwhile: what was asked of the old one is not written into the new one
+    if (r.code === "project_changed" || projectChanged(uid)) return PROJECT_CHANGED;
+    runFailed(r);
     throw e;
   }
 }
 
+const PROJECT_CHANGED = "Проект изменился: результат больше не показывается";
+const projectChanged = (uid: string | null): boolean => (projectStore.get().current?.uid ?? null) !== uid;
+
 /** The job of the run from the start to the end: the stages (`jobsStore`), the result kept for the wizard. */
-async function followRun(name: string, body: RunBody): Promise<string> {
+async function followRun(name: string, body: RunBody, uid: string | null): Promise<string> {
   let started: Started;
   try {
     started = await startRun(body);
@@ -118,8 +134,8 @@ async function followRun(name: string, body: RunBody): Promise<string> {
     const r = refusalOf(e);
     throw refusal(r.code, r.message, r.hint);
   }
+  if (projectChanged(uid)) return PROJECT_CHANGED;
   runJob(started);
-  const uid = projectStore.get().current?.uid ?? null;
   let end;
   try {
     end = await waitJob(started);
@@ -127,9 +143,9 @@ async function followRun(name: string, body: RunBody): Promise<string> {
     const r = refusalOf(e);
     throw refusal(r.code, r.message, r.hint);
   }
-  if ((projectStore.get().current?.uid ?? null) !== uid) {
+  if (projectChanged(uid)) {
     runReset();
-    return "Проект изменился: результат больше не показывается";
+    return PROJECT_CHANGED;
   }
   void loadRows(); // a cancelled run leaves no realizations, but a row of a body may have been made before: the list is the truth
   if (end.status === "cancelled") {
@@ -204,10 +220,13 @@ export async function postCommand(a: Record<string, unknown>): Promise<string> {
 
 /** The post-processing of the realizations of a row into the fields of its block model; the question «Заменить поля?» comes from the core's `field_exists`. */
 export async function runPost(id: number, a: Record<string, unknown>): Promise<string> {
+  const uid = projectStore.get().current?.uid ?? null;
   const row = await knownRow(id);
   if (!row) throw NO_SIM(id);
-  const info = simulationStore.get().details[id] ?? (await loadDetails(id));
-  const src: PostSource = sourceOf(info?.meta ?? {});
+  // the details a newer read has put in the store count too (`loadDetails` answers null to a read it was overtaken in)
+  const info = simulationStore.get().details[id] ?? (await loadDetails(id)) ?? simulationStore.get().details[id];
+  if (!info) throw refusal("not_ready", "Параметры моделирования ещё читаются.", "Повторите команду через несколько секунд.");
+  const src: PostSource = sourceOf(info.meta);
   const model = blockById(row.model_id);
   if (!model) throw NO_MODEL(row.model_id);
   if (postStore.get().phase === "running") throw refusal("busy", "Постобработка уже выполняется.", "Дождитесь конца задания.");
@@ -221,15 +240,16 @@ export async function runPost(id: number, a: Record<string, unknown>): Promise<s
   }
   postStore.set({ simId: id, phase: "running", job: null, result: null, error: null, issue: null });
   try {
-    return await followPost(row.name, model.name, id, body);
+    return await followPost(row.name, model.name, id, body, uid);
   } catch (e) {
     const r = refusalOf(e);
+    if (r.code === "project_changed" || projectChanged(uid)) return PROJECT_CHANGED;
     postStore.set(r.code === "declined" ? { phase: "idle", error: null } : { phase: "failed", error: r });
     throw e;
   }
 }
 
-async function followPost(name: string, modelName: string, id: number, body: PostBody): Promise<string> {
+async function followPost(name: string, modelName: string, id: number, body: PostBody, uid: string | null): Promise<string> {
   let started: Started;
   try {
     started = await startPost(id, body).catch(async (e: unknown) => {
@@ -244,8 +264,8 @@ async function followPost(name: string, modelName: string, id: number, body: Pos
     const r = refusalOf(e);
     throw refusal(r.code, r.message, r.hint);
   }
+  if (projectChanged(uid)) return PROJECT_CHANGED;
   postStore.set({ job: started });
-  const uid = projectStore.get().current?.uid ?? null;
   let end;
   try {
     end = await waitJob(started);
@@ -253,9 +273,9 @@ async function followPost(name: string, modelName: string, id: number, body: Pos
     const r = refusalOf(e);
     throw refusal(r.code, r.message, r.hint);
   }
-  if ((projectStore.get().current?.uid ?? null) !== uid) {
+  if (projectChanged(uid)) {
     resetPost();
-    return "Проект изменился: результат больше не показывается";
+    return PROJECT_CHANGED;
   }
   if (end.status === "cancelled") {
     postStore.set({ phase: "idle", job: null });

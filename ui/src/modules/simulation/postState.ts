@@ -59,7 +59,11 @@ export const postStore = new Store<PostState>(EMPTY_POST);
 export const setPost = (patch: Partial<PostState>): void => postStore.set({ ...patch, issue: null });
 export const resetPost = (): void => postStore.set(EMPTY_POST);
 /** Another simulation: the form of the old one does not go over (the result stays until the next run). */
-export const choosePost = (simId: number | null): void => postStore.set({ ...EMPTY_POST, simId });
+export const choosePost = (simId: number | null): void => {
+  // a running job belongs to its simulation: another one is not chosen under it (its result would land in the form of the other)
+  if (postStore.get().phase === "running") return;
+  postStore.set({ ...EMPTY_POST, simId });
+};
 
 /** What the form says of a stored row: its kind, the field, the categories, the thresholds of the SIS. */
 export interface PostSource {
@@ -81,10 +85,11 @@ export const defaultPostPrefix = (s: PostSource): string => defaultPrefix(s.fiel
 /** The statistics the form offers for the source, in the order of the core. */
 export const statsFor = (s: PostSource): readonly PostStat[] => (s.categories ? CAT_STATS : POST_STATS);
 
-/** The statistics written: the ones chosen, else the defaults of the kind (a continuous variable — without the probability until thresholds are typed). */
-export function effectiveStats(s: PostSource, chosen: readonly PostStat[] | null): PostStat[] {
+/** The statistics written: the ones chosen, else the defaults of the kind (a continuous variable — with the probability once thresholds are typed, as the core does). */
+export function effectiveStats(s: PostSource, chosen: readonly PostStat[] | null, thresholds = ""): PostStat[] {
   if (chosen) return statsFor(s).filter((k) => chosen.includes(k));
-  return s.categories ? ["prob", "mode"] : ["mean", "std", "p10", "p50", "p90"];
+  if (s.categories) return ["prob", "mode"];
+  return thresholds.trim() ? ["mean", "std", "p10", "p50", "p90", "prob"] : ["mean", "std", "p10", "p50", "p90"];
 }
 
 /** «0,5; 1; 2,5» → the thresholds (≤ 20, distinct); the words under the field otherwise. */
@@ -107,7 +112,7 @@ const PREFIX_RE = /^[\p{L}\p{N}_]{1,40}$/u;
 export function postBodyOf(p: Pick<PostState, "prefix" | "stats" | "thresholds" | "replace">, src: PostSource, modelVersion: number): PostBody | Issue {
   const prefix = p.prefix.trim();
   if (prefix && !PREFIX_RE.test(prefix)) return bad("prefix", prefix.length > PREFIX_MAX ? `Префикс полей длиннее ${PREFIX_MAX} знаков.` : "Префикс полей: допустимы буквы, цифры и «_».", "Например, AU_SGS_.");
-  const stats = effectiveStats(src, p.stats);
+  const stats = effectiveStats(src, p.stats, p.thresholds);
   if (!stats.length) return bad("stats", "Не выбрано ни одной статистики.", "Отметьте хотя бы одну.");
   const body: PostBody = { expected_version: modelVersion, ...(prefix ? { prefix } : {}), ...(p.stats ? { stats } : {}), ...(p.replace ? { replace: true } : {}) };
   if (src.categories) {
@@ -123,8 +128,20 @@ export function postBodyOf(p: Pick<PostState, "prefix" | "stats" | "thresholds" 
   return body;
 }
 
-/** `PROB_GT_<t>`: «format(t, "g")» of the core — six significant digits — with «.» → «_» (the name of a field has no dot). */
-export const thresholdName = (t: number): string => String(Number(t.toPrecision(6))).replace(".", "_");
+/** Python's `format(t, "g")`: six significant digits, no trailing zeros, the exponent («1e-05», «1e+06», «1.23457e+06») below 1e-4 and from 1e6. */
+export function formatG(t: number): string {
+  if (Number.isNaN(t)) return "nan";
+  if (!Number.isFinite(t)) return t < 0 ? "-inf" : "inf";
+  if (t === 0) return Object.is(t, -0) ? "-0" : "0";
+  const [mant, exp] = t.toExponential(5).split("e");
+  const x = Number(exp);
+  const trim = (v: string): string => (v.includes(".") ? v.replace(/0+$/, "").replace(/\.$/, "") : v);
+  if (x < -4 || x >= 6) return `${trim(mant)}e${x < 0 ? "-" : "+"}${String(Math.abs(x)).padStart(2, "0")}`;
+  return trim(t.toFixed(5 - x));
+}
+
+/** `PROB_GT_<t>`: «format(t, "g")» of the core with «.» → «_» (the name of a field has no dot; the sign and the exponent stay). */
+export const thresholdName = (t: number): string => formatG(t).replace(".", "_");
 
 /** The names of the fields the post-processing will write (what the window shows before the run; the core's answer is the truth). */
 export function fieldNames(prefix: string, stats: readonly PostStat[], thresholds: readonly number[], cats: PostSource["categories"]): string[] {

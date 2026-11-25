@@ -104,7 +104,7 @@ export function SummaryWindow(_props: { winId: string }) {
       </div>
       <div className={mod.footer}>
         <span className={mod.grow}>{summary ? `Реализаций: ${summary.realizations}, узлов: ${summary.nodes.toLocaleString("ru-RU")}` : SUMMARY_TITLE}</span>
-        <button type="button" className={css.btn} disabled={id === null} data-testid="sum-post" onClick={() => void app.registry.execute("simulate.post", { id }, "user")}>
+        <button type="button" className={css.btn} disabled={id === null || readOnly} title={readOnly ? "Проект открыт только для чтения: постобработка пишет поля в блочную модель" : "Записать поля по реализациям в блочную модель"} data-testid="sum-post" onClick={() => void app.registry.execute("simulate.post", { id }, "user")}>
           Постобработка…
         </button>
         <button type="button" className={css.btn} disabled={id === null || readOnly} title={readOnly ? "Проект открыт только для чтения" : "Выполнить моделирование заново: прежние реализации заменятся"} data-testid="sum-run" onClick={() => void app.registry.execute("simulate.run", { id }, "user")}>

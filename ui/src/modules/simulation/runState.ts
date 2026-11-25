@@ -52,7 +52,8 @@ export function journalLines(r: RunResult): string[] {
     c.on_sample ? `узлов на пробах ${nf(c.on_sample)}` : "",
     c.gap ? `узлов без вторичной переменной ${nf(c.gap)} (смоделированы как SGS)` : "",
   ].filter(Boolean);
-  out.push(parts.length ? `Узлы: ${parts.join(", ")}.` : "Узлы: вырожденных систем и узлов без проб нет.");
+  const unknown = c.degenerate === null && c.free === null && c.on_sample === null;
+  out.push(parts.length ? `Узлы: ${parts.join(", ")}.` : unknown ? "Узлы: ядро не сообщило число вырожденных систем и узлов без проб." : "Узлы: вырожденных систем и узлов без проб нет.");
   if (r.cond) out.push(`Условных данных в узле: наименьшее ${g(r.cond.min)}, среднее ${g(r.cond.mean)}, наибольшее ${g(r.cond.max)}.`);
   if (r.secondary) {
     const s = r.secondary;
