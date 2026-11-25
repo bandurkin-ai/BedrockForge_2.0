@@ -401,6 +401,23 @@ describe("the window «Фильтры»", () => {
     expect(readRow(A.list.body.filters[0])).toMatchObject({ id: expect.any(Number), version: 1, fields: expect.any(Array) });
   });
 
+  it("unsaved changes: filters.manage and filter.save {} ask in our own window; «Нет» keeps the form, «Да» replaces it", async () => {
+    await app.registry.execute("filters.manage", { filter_id: A.ids.list });
+    setEdit({ name: "Другое имя", dirty: true });
+    const no = app.registry.execute("filters.manage", { filter_id: A.ids.expr });
+    expect(await answer(false)).toContain("несохранённые изменения");
+    expect((await no).result).toBe("Отменено");
+    expect(currentEdit()).toMatchObject({ name: "Другое имя", dirty: true });
+    const noNew = app.registry.execute("filter.save", {});
+    await answer(false);
+    expect((await noNew).result).toBe("Отменено");
+    expect(currentEdit()?.name).toBe("Другое имя");
+    const yes = app.registry.execute("filters.manage", { filter_id: A.ids.expr });
+    await answer(true);
+    expect((await yes).ok).toBe(true);
+    expect(currentEdit()).toMatchObject({ filterId: A.ids.expr, dirty: false });
+  });
+
   it("the tree section: the filters by name, the tooltip tells the filter in words", async () => {
     await refreshFilters();
     const html = render(createElement(FiltersTree));

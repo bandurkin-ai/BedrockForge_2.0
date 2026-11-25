@@ -30,9 +30,6 @@ function useSel<T, R>(store: Store<T>, select: (s: T) => R): R {
 
 export const CLOSE_QUESTION = { title: "Фильтры", message: "Закрыть окно без сохранения изменений фильтра?", okLabel: "Закрыть", danger: true };
 
-/** «Заменить правки?» — a filter put on edit over a changed form. */
-export const REPLACE_QUESTION = { title: "Фильтры", message: "В окне есть несохранённые изменения фильтра. Открыть другой фильтр без сохранения?", okLabel: "Открыть без сохранения", danger: true };
-
 export function FiltersWindow({ winId }: { winId: string }) {
   const app = useApp();
   const edit = useSel(filtersStore, (s) => s.edit);
@@ -78,7 +75,6 @@ export function FiltersWindow({ winId }: { winId: string }) {
 
   const open = (id: number | null) =>
     act(async () => {
-      if (edit.dirty && !(await askConfirm(REPLACE_QUESTION))) return null;
       await (id === null ? app.run("filter.save", {}) : app.run("filters.manage", { filter_id: id }));
       return null;
     });
