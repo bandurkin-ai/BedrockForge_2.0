@@ -8,15 +8,15 @@ import { useMemo } from "react";
 import css from "../../shell/PropsParts.module.css";
 import { blocksStore } from "../blocks/state";
 import { filtersByName, filtersStore } from "../blocks/filters/state";
-import { chooseModel, estimableModels } from "./bind";
-import { defaultName } from "./form";
+import { estimableModels } from "./state";
+import { useHost } from "./host";
 import { IssueAt, Triple, nf } from "./Parts";
 import { useSel } from "./hooks";
 import mod from "./Wizard.module.css";
-import { setForm, wizardStore } from "./wizardState";
 
 export function StepTarget() {
-  const f = useSel(wizardStore, (s) => s.form);
+  const { store, setForm, chooseModel, defaultName, blockGrid } = useHost();
+  const f = useSel(store, (s) => s.form);
   const list = useSel(blocksStore, (s) => s.list);
   const details = useSel(blocksStore, (s) => s.details);
   const filters = useSel(filtersStore, (s) => s.rows);
@@ -113,23 +113,25 @@ export function StepTarget() {
         <IssueAt at="target.filter_id" id="filter" />
       </fieldset>
 
-      <fieldset className={css.group}>
-        <legend>Блок и дискретизация</legend>
-        <div className={mod.radios} role="radiogroup" aria-label="Субблоки">
-          <label>
-            <input type="radio" name="est-sub" checked={f.sub === "parent"} data-testid="est-sub-parent" onChange={() => setForm({ sub: "parent" })} />
-            Оценка в центре родителя, субблоки получают её значение
-          </label>
-          <label>
-            <input type="radio" name="est-sub" checked={f.sub === "own"} data-testid="est-sub-own" onChange={() => setForm({ sub: "own" })} />
-            Каждый субблок оценивается сам, со своей дискретизацией
-          </label>
-        </div>
-        <IssueAt at="sub" id="sub" />
-        <Triple labels={["Точек по X", "Точек по Y", "Точек по Z"]} values={f.disc} onChange={(disc) => setForm({ disc })} testId="est-disc" />
-        <span className={css.note}>Блочная оценка по d_x × d_y × d_z точкам блока (1–10 по оси); 1 × 1 × 1 — точечная оценка в центре.</span>
-        <IssueAt at="disc" id="disc" />
-      </fieldset>
+      {blockGrid && (
+        <fieldset className={css.group}>
+          <legend>Блок и дискретизация</legend>
+          <div className={mod.radios} role="radiogroup" aria-label="Субблоки">
+            <label>
+              <input type="radio" name="est-sub" checked={f.sub === "parent"} data-testid="est-sub-parent" onChange={() => setForm({ sub: "parent" })} />
+              Оценка в центре родителя, субблоки получают её значение
+            </label>
+            <label>
+              <input type="radio" name="est-sub" checked={f.sub === "own"} data-testid="est-sub-own" onChange={() => setForm({ sub: "own" })} />
+              Каждый субблок оценивается сам, со своей дискретизацией
+            </label>
+          </div>
+          <IssueAt at="sub" id="sub" />
+          <Triple labels={["Точек по X", "Точек по Y", "Точек по Z"]} values={f.disc} onChange={(disc) => setForm({ disc })} testId="est-disc" />
+          <span className={css.note}>Блочная оценка по d_x × d_y × d_z точкам блока (1–10 по оси); 1 × 1 × 1 — точечная оценка в центре.</span>
+          <IssueAt at="disc" id="disc" />
+        </fieldset>
+      )}
     </>
   );
 }

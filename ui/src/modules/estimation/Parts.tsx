@@ -5,12 +5,12 @@
 import css from "../../shell/PropsParts.module.css";
 import { issueAt } from "./form";
 import { useSel } from "./hooks";
+import { useHost } from "./host";
 import mod from "./Wizard.module.css";
-import { wizardStore } from "./wizardState";
 
 /** The words under the field `at` (the path of the body, or the fields inside it). */
 export function IssueAt({ at, id }: { at: string | string[]; id: string }) {
-  const issue = useSel(wizardStore, (s) => s.issue);
+  const issue = useSel(useHost().store, (s) => s.issue);
   const hit = issueAt(issue, ...(Array.isArray(at) ? at : [at]));
   if (!hit) return null;
   return (

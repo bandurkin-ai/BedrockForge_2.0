@@ -227,7 +227,7 @@ export const FIELD_TITLES: Record<string, string> = {
 };
 
 /** «AU_OK_»: the field in upper case, every character that is not a letter, a digit or «_» — «_» (`spec_parts.default_prefix`). */
-export function defaultPrefix(field: string, kind: MethodKind): string {
+export function defaultPrefix(field: string, kind: string): string {
   const base = Array.from(field.toUpperCase().replace(/[^\p{L}\p{N}_]/gu, "_")).slice(0, PREFIX_MAX - kind.length - 2).join("");
   return `${base}_${kind.toUpperCase()}_`;
 }

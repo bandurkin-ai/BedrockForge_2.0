@@ -16,9 +16,9 @@ import { chartsStore } from "../charts/state";
 import { contactChartsOf } from "./contactLink";
 import { sameName, type WeightsChoice } from "./form";
 import { useLatest, useSel } from "./hooks";
+import { useHost } from "./host";
 import { IssueAt, g, nf } from "./Parts";
 import mod from "./Wizard.module.css";
-import { setForm, wizardStore } from "./wizardState";
 
 /** «Проб: 1 192 из 1 196 (пропуск значения 4, вне домена 310)»; the parts that are zero are not written. */
 export function countsText(d: DefaultsAnswer): string {
@@ -41,8 +41,9 @@ export function mappingNotes(d: DefaultsAnswer, label: string): { matched: strin
 }
 
 export function StepSamples() {
-  const f = useSel(wizardStore, (s) => s.form);
-  const defaults = useSel(wizardStore, (s) => s.defaults);
+  const { store, setForm } = useHost();
+  const f = useSel(store, (s) => s.form);
+  const defaults = useSel(store, (s) => s.defaults);
   const [error, setError] = useState<string | null>(null);
   const fail = (e: unknown) => setError(errorText(e));
   const sets = useLatest<SetRow[]>(loadSets, [], fail);
