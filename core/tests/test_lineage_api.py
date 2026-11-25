@@ -121,6 +121,19 @@ def chain(stubs, pclient) -> Chain:  # type: ignore[no-untyped-def]
     return Chain(pclient)
 
 
+def spy_events(c: Any) -> list[tuple[str, Any]]:
+    """What the core publishes on the bus from now on."""
+    seen: list[tuple[str, Any]] = []
+    publish = c.core.events.publish
+
+    def spy(name: str, data: Any = None, *a: Any, **kw: Any) -> Any:
+        seen.append((name, data))
+        return publish(name, data, *a, **kw)
+
+    c.core.events.publish = spy
+    return seen
+
+
 def until(pred: Callable[[], bool], timeout: float = 30.0) -> None:
     end = time.monotonic() + timeout
     while time.monotonic() < end:
@@ -194,6 +207,32 @@ def test_impact_of_an_object_nothing_is_built_from_in_an_empty_graph(stubs, pcli
         oid = add(conn, "Одинокий", 1.0)
     r = pclient.get(f"{L}/impact", params={"kind": NODE, "id": oid})
     assert r.status_code == 200 and r.json() == {"total": 0, "by_kind": {}, "nodes": [], "truncated": False}
+
+
+def test_the_index_of_a_project_is_marked_only_after_it_was_written(stubs, pclient, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.lineage import graph
+    from bf_core.lineage import router as lr
+
+    assert pclient.post(API + "/projects", json={"name": "Индекс"}).status_code == 200
+    project = projects_of(pclient.core).require_current()
+    node = {"kind": "object:stub", "id": 12345}
+    calls: list[int] = []
+    real = graph.reindex
+
+    def failing(conn: Any) -> Any:
+        calls.append(1)
+        raise RuntimeError("the write fails")
+
+    monkeypatch.setattr(graph, "reindex", failing)
+    project.read_only = True  # «только просмотр»: a GET writes nothing and does not mark the project
+    assert pclient.get(f"{L}/impact", params=node).status_code == 404
+    assert calls == [] and project.uid not in lr._indexed  # noqa: SLF001
+    project.read_only = False
+    assert pclient.get(f"{L}/impact", params=node).status_code == 500  # the write fails
+    assert calls == [1] and project.uid not in lr._indexed  # noqa: SLF001  (not marked: the next request tries again)
+    monkeypatch.setattr(graph, "reindex", real)
+    assert pclient.get(f"{L}/impact", params=node).status_code == 404
+    assert project.uid in lr._indexed  # noqa: SLF001
 
 
 def test_pin_holds_and_releases_and_refuses(chain: Chain) -> None:
@@ -302,6 +341,7 @@ def test_td35_5_cancel_on_the_second_node_does_not_start_the_third_and_the_fourt
     c = chain.c
     chain.edit_source(5.0)
     chain.mark(chain.n2, hold=True)  # the job of the node 2 waits for a cancel
+    seen = spy_events(c)
     started = chain.start().json()
     order = [i["id"] for i in started["plan"]]
     assert order.index(chain.n2) < order.index(chain.n3) < order.index(chain.n4)
@@ -310,6 +350,9 @@ def test_td35_5_cancel_on_the_second_node_does_not_start_the_third_and_the_fourt
     assert r.status_code == 200, r.text
     job = wait_job(c, started["source"], started["id"], timeout=60)
     assert job["status"] == "cancelled", job
+    # the node finished before the cancel stays built, and its event reaches the bus
+    until(lambda: ("objects.changed", {"kind": "stub", "id": chain.n1}) in seen, 5)
+    assert ("objects.changed", {"kind": "stub", "id": chain.n2}) not in seen
     assert chain.meta(chain.n1)["builds"] == 1  # the first node was finished and stays
     for oid in (chain.n3, chain.n4):  # the third and the fourth were not started
         assert chain.meta(oid).get("started") is None and chain.meta(oid)["builds"] == 0
@@ -322,10 +365,15 @@ def test_a_failed_node_stops_what_is_built_from_it_and_the_others_go_on(chain: C
     c = chain.c
     chain.edit_source(5.0)
     chain.mark(chain.n2, fail=True)
+    seen = spy_events(c)
     started = chain.start().json()
     job = wait_job(c, started["source"], started["id"], timeout=120)
     assert job["status"] == "failed", job
     err = job["error"]
+    assert "events" not in err  # they go to the bus, not into the error the user reads
+    for oid in (chain.n1, chain.m):  # the nodes that were built before the failure announce themselves
+        until(lambda oid=oid: ("objects.changed", {"kind": "stub", "id": oid}) in seen, 5)  # type: ignore[misc]
+    assert any(name == "lineage.changed" for name, _ in seen)
     assert err["code"] == "lineage_rebuild_failed" and "«Узел 2»" in err["message"]
     assert "Заглушка не смогла" in err["message"]
     assert "Не запущено зависимых: 2" in err["message"] and err["hint"]

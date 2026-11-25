@@ -8,9 +8,10 @@
     run_qq(engine, folder, params, tick)           # {estimation_id, quantiles?, weighted?}
     swath_settings(spec, direction="z")            # the series of the swath window (Э13) for the fields of the row
 
-The blocks are those the job wrote: the rows of the block model whose `<prefix>STATUS` is 0 (Д-27); a row with another
-status is not in a sum at all (its EST is empty), and a gap of EST or of the volume is never a zero (8.0.1). The
-weight of a block is its volume, `FRAC` included (`geometry.row_volumes`). Compared:
+The blocks are those the job wrote for THIS row: the blocks of its domain (the field and the label of the target; rows
+of other domains share the prefix's fields, № 77) that pass its restrictor and whose `<prefix>STATUS` is 0 (Д-27); a
+block with another status is not in a sum at all (its EST is empty), and a gap of EST or of the volume is never a zero
+(8.0.1). The weight of a block is its volume, `FRAC` included (`geometry.row_volumes`). Compared:
 
     composites   the samples of the domain D (as the row estimates them: after the top cut and the averaging), naive
                  and declustered by `DECL_W` (the weights of the row); mean, variance (population, Σw(z − m)²/Σw), CV
@@ -44,7 +45,7 @@ from typing import Any
 import numpy as np
 
 from bf_core.api.errors import ApiError
-from bf_core.blocks import geometry
+from bf_core.blocks import calc_job, geometry, restrict
 from bf_core.blocks.model import Chunk, Model
 from bf_core.db import dialect
 from bf_core.jobs.context import JobContext, JobError
@@ -57,6 +58,7 @@ from . import kernel as kn
 from . import samples as sm
 from . import store_base as sb
 from .cov import BlockCov
+from .job_plan import domain_mask
 from .spec import EstimationSpec
 from .spec_parts import Outputs
 from .store_check import freshness
@@ -194,10 +196,45 @@ class Part:
     no_volume: int  # STATUS 0 with a value but without a volume (FRAC empty)
 
 
-def parts(model: Model, f: Fields, cancel: Callable[[], None] | None = None) -> Iterator[Part]:
+@dataclass
+class Domain:
+    """The blocks of the row in the shared fields of its prefix (№ 77): the domain of the target and the restrictor, the
+    same functions the job uses (`job_plan.domain_mask`, `restrict`). `fields` — what a chunk must hold for them."""
+
+    model: Model
+    field: str | None
+    label: Any
+    restrictor: Any  # restrict.Restrictor
+
+    @property
+    def fields(self) -> list[str]:
+        own = [] if self.field is None else [str(self.model.field(self.field)["name"])]
+        return list(dict.fromkeys([*own, *self.restrictor.fields]))
+
+    def inside(self, ch: Chunk) -> np.ndarray:
+        """bool [ch.n]: the block is in the domain of the row."""
+        return domain_mask(self.model, self.field, self.label, ch.cols, ch.n)
+
+    def passes(self, ch: Chunk) -> np.ndarray:
+        """bool [ch.n]: the block passes the restrictor of the target."""
+        return np.asarray(self.restrictor.mask(ch), dtype=np.bool_)
+
+
+def domain_of(conn: Any, store: BlobStore, model: Model, spec: EstimationSpec) -> Domain:
+    """The domain and the restrictor of the target of `spec` on `model` (as `job_plan._row` makes them)."""
+    t = spec.target
+    tree = calc_job.rules_tree(conn, t.filter_id, t.rules)
+    return Domain(model, t.domain_field, t.label, restrict.prepare(model, tree, conn=conn, store=store))
+
+
+def parts(model: Model, f: Fields, cancel: Callable[[], None] | None = None, domain: Domain | None = None
+          ) -> Iterator[Part]:  # fmt: skip
     """The portions of the field with the rows that count. A gap of the value or of the volume leaves the sum (and is
-    counted), a block with another STATUS is not there at all."""
+    counted), a block with another STATUS is not there at all; with `domain` — nor a block of another domain of the
+    prefix (its STATUS is that row's) or one the restrictor of the target does not let pass."""
     names = [f.est, f.status] + ([f.frac] if f.frac else [])
+    if domain is not None:
+        names = list(dict.fromkeys([*names, *domain.fields]))
     for ch in model.iter(names, PORTION):
         if cancel is not None:
             cancel()
@@ -205,9 +242,13 @@ def parts(model: Model, f: Fields, cancel: Callable[[], None] | None = None) -> 
         est = np.asarray(ch.cols[f.est], dtype=np.float64)
         frac = None if f.frac is None else np.asarray(ch.cols[f.frac], dtype=np.float64)
         vol = geometry.row_volumes(model.grid, ch.p, ch.s, ch.w, frac)
+        passed = np.ones(ch.n, dtype=np.bool_)
+        if domain is not None:
+            status = np.where(domain.inside(ch), status, np.nan)  # another domain: no status here at all
+            passed = domain.passes(ch)
         zero = status == 0.0
         have = zero & np.isfinite(est)
-        use = have & np.isfinite(vol) & (vol > 0.0)
+        use = have & np.isfinite(vol) & (vol > 0.0) & passed
         code = status[np.isfinite(status) & (status >= 0.0) & (status <= 3.0)].astype(np.int64)
         rows = np.flatnonzero(use)
         yield Part(ch, rows, est[rows], vol[rows], np.bincount(code, minlength=4).astype(np.int64),
@@ -268,7 +309,9 @@ def global_check(project: Any, spec: EstimationSpec, *, origin: np.ndarray | Non
     beat = lambda: tick(None, None)  # noqa: E731
     tick(0.0, STAGE_READ)
     with dialect.read_tx(project.engine) as conn:
-        model = Model.open(conn, BlobStore(project.folder), spec.model_id)
+        store = BlobStore(project.folder)
+        model = Model.open(conn, store, spec.model_id)
+        domain = domain_of(conn, store, model, spec)
     f = field_names(model, spec)
     if not spec.resolved_search:
         raise ApiError(422, "search_unresolved", "Эллипсоид поиска не определён.",
@@ -287,7 +330,7 @@ def global_check(project: Any, spec: EstimationSpec, *, origin: np.ndarray | Non
 
     def portions() -> Iterator[kn.Portion]:
         nonlocal by_status, empty, no_volume, size
-        for part in parts(model, f, beat):
+        for part in parts(model, f, beat, domain):
             by_status += part.by_status
             empty += part.empty
             no_volume += part.no_volume
@@ -353,7 +396,9 @@ def qq_check(project: Any, spec: EstimationSpec, *, origin: np.ndarray | None = 
     n_q = _quantiles(quantiles)
     tick(0.0, STAGE_READ)
     with dialect.read_tx(project.engine) as conn:
-        model = Model.open(conn, BlobStore(project.folder), spec.model_id)
+        store = BlobStore(project.folder)
+        model = Model.open(conn, store, spec.model_id)
+        domain = domain_of(conn, store, model, spec)
     f = field_names(model, spec)
     s = sm.load(project, spec, origin=origin, cancel=beat)
     d = s.dom == sm.D
@@ -362,7 +407,7 @@ def qq_check(project: Any, spec: EstimationSpec, *, origin: np.ndarray | None = 
     tick(0.3, STAGE_READ)
     vals: list[np.ndarray] = []
     vols: list[np.ndarray] = []
-    for part in parts(model, f, beat):
+    for part in parts(model, f, beat, domain):
         vals.append(part.est)
         vols.append(part.vol)
     tick(0.7, STAGE_STATS)

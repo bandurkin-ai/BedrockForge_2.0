@@ -123,7 +123,8 @@ def run(ctx: JobContext, params: dict[str, Any] | None = None) -> dict[str, Any]
             node_ctx = NodeContext(ctx, step.params, i, total, name)
             kinds[i] = step.job_kind
             result = KINDS[step.job_kind].run(node_ctx) or {}
-        except JobCancelled:
+        except JobCancelled as exc:
+            exc.events = events  # the nodes finished before the cancel stay built: their events go out
             raise
         except (JobError, ApiError) as exc:
             code, message = _failure(exc)
@@ -164,7 +165,7 @@ def _finish(
         names = "; ".join(f"«{r['name']}» — {r['message']}" for r in failed)
         tail = f" Не запущено зависимых: {skipped}." if skipped else ""
         hint = "Исправьте причину и запустите «Перестроить с зависимыми» ещё раз: готовые объекты не пересчитаются."
-        raise JobError("lineage_rebuild_failed", f"Не удалось перестроить: {names}.{tail}", hint)
+        raise JobError("lineage_rebuild_failed", f"Не удалось перестроить: {names}.{tail}", hint, events=events)
     return {"nodes": rows, "done": sum(1 for r in rows if r["outcome"] == DONE), "events": events}
 
 

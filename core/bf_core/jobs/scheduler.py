@@ -22,6 +22,7 @@ from bf_core.api.events import EventBus
 from bf_core.db import dialect
 
 from . import store
+from .event_kinds import LOD_JOBS, OBJECT_JOBS
 from .registry import KINDS, load_handlers
 
 log = logging.getLogger("bf_core.jobs")
@@ -41,24 +42,6 @@ class Source:
     engine: sa.Engine
     instance: bool
     folder: str | None = None
-
-
-#: Kinds of jobs that make lines, rasters or wireframes of a project, or what «Свойства» tell about them: their
-#: end is an `objects.changed` event.
-OBJECT_JOBS = frozenset(
-    {
-        "import.objects",
-        "model.dtm",
-        "wireframe.check",
-        "ground.classify",
-        "cloud.dz",
-        "geometry.operation",
-        "geometry.operation.heavy",
-    }
-)
-
-#: Jobs whose end makes the levels of detail of wireframes ready: a `wireframes.lod` event.
-LOD_JOBS = frozenset({"wireframe.lod", "wireframe.lod.heavy", "wireframe.check"})
 
 
 @dataclass
@@ -413,13 +396,14 @@ class Scheduler:
             store.add_log(src.engine, src.instance, run.job_id, str(msg[2]), str(msg[3]))
         elif kind == "done":
             self._finish(w, "done", result=msg[2], progress=1.0, message="Готово")
-        elif kind == "cancelled":
-            self._finish(w, "cancelled", message="Отменено")
+        elif kind == "cancelled":  # what finished nodes of a job announced travels with the cancel
+            self._finish(w, "cancelled", events=msg[2] if len(msg) > 2 else None, message="Отменено")
         elif kind == "error":
-            err, retry = msg[2], bool(msg[3])
-            self._finish(w, "failed", error=err, message=err.get("message"), retry=retry)
+            err, retry = dict(msg[2]), bool(msg[3])
+            events = err.pop("events", None)  # not a part of the error the user reads
+            self._finish(w, "failed", retry=retry, events=events, error=err, message=err.get("message"))
 
-    def _finish(self, w: Worker, status: str, retry: bool = False, **values: Any) -> None:
+    def _finish(self, w: Worker, status: str, retry: bool = False, events: Any = None, **values: Any) -> None:
         run = w.job
         assert run is not None
         w.job = None
@@ -442,11 +426,11 @@ class Scheduler:
                     .values(status=status, finished_at=dialect.utcnow(), **values)
                 )
         self._publish(src, run.job_id)
-        if status == "done" and run.kind.startswith(("composite.", "qaqc.", "variography.", "lineage.")):
-            # a worker cannot publish: the events of a composite job travel in its result
+        if status == "done":
             result = values.get("result")
-            for ev, data in (result.get("events") if isinstance(result, dict) else None) or []:
-                self.events.publish(ev, data)
+            events = result.get("events") if isinstance(result, dict) else None
+        for ev, data in events or []:  # a worker cannot publish: the events of a job of any kind travel in its
+            self.events.publish(ev, data)  # result (or with its error / cancel) as [[event, data], …]
         if status == "done" and run.kind in OBJECT_JOBS:
             # the lists of the interface are read again even if the job was over before the interface saw it run
             self.events.publish("objects.changed", {"kind": "job", "job": run.kind, "id": run.job_id})

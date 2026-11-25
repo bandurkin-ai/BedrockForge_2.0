@@ -286,6 +286,27 @@ def test_a_row_whose_source_is_gone_is_refused_when_chosen_and_skipped_otherwise
     assert out["results"] == [] and out["warnings"] and "источник удалён" in out["warnings"][0]
 
 
+def test_the_owner_of_the_fields_follows_the_graph_not_the_ids_of_the_source(fresh_ctx: Ctx) -> None:
+    """After `.bfggis` the rows are renumbered: `source.params.estimation_ids` of the fields keep the old ids, the graph
+    follows the new ones — the inspector takes the owner from the graph."""
+    from bf_core import lineage
+    from bf_core.db.schema import objects
+
+    c = fresh_ctx
+    names = [str(f["name"]) for f in c.model().fields if str(f["name"]).startswith("AU_OK_")]
+    assert "AU_OK_STATUS" in names
+    with dialect.write_tx(c.project.engine) as conn:
+        for n in names:
+            field = lineage.Node("bm_field", c.w.big, n.casefold())
+            lineage.record(conn, field, [lineage.Node(st.LINEAGE_KIND, c.eid)])
+        meta = dict(conn.execute(sa.select(objects.c.meta).where(objects.c.id == c.w.big)).scalar_one())
+        for f in meta["fields"]:
+            if str(f["name"]).startswith("AU_OK_"):
+                f["source"] = {**f["source"], "params": {"estimation_ids": [c.eid + 500]}}  # the id before the import
+        conn.execute(sa.update(objects).where(objects.c.id == c.w.big).values(meta=meta))
+    assert [r["estimation_id"] for r in c.run(row=3)["results"]] == [c.eid]  # not `not_estimated`
+
+
 def test_the_refusals_are_in_russian_with_a_hint(ctx: Ctx) -> None:
     run = ctx.run
     refused(lambda: ins.run(ctx.project, parse_inspect({"model_id": 999_999, "row": 0})), 404, "block_model_not_found")

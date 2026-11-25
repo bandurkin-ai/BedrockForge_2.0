@@ -12,7 +12,6 @@ from typing import Any
 import numpy as np
 
 from .kernel import ST_OK, ST_OUT, Portion, RowKernel, _one_portion, _Trace
-from .samples import RowSamples
 from .search import Candidates
 
 
@@ -45,14 +44,14 @@ def estimate_block(
     centre: np.ndarray,
     size: Any = None,
     *,
-    pool: RowSamples | None = None,
     active: bool = True,
     local: bool = False,
 ) -> BlockDetail:
     """One block by the same code as `estimate` (a portion of one block): the values, the pass, the selected samples
     with their weights, every candidate with the reason it was taken or not (`search.Searcher.explain`, Д-30), the
-    ellipsoid of the pass. `pool` — the samples of all domains of the row (`samples.load(all_domains=True)`), for
-    the inspector; the selection is that of the row's own samples. `size` — the size of the block (`own`)."""
+    ellipsoid of the pass. The candidates are those of the samples of the row (`rk.samples`: for the inspector the row
+    is compiled on `samples.load(all_domains=True)`, so the other domains are among them). `size` — the size of the
+    block (`own`)."""
     c = np.asarray(centre, dtype=np.float64).reshape(1, 3)
     sz = None if size is None else np.asarray(size, dtype=np.float64).reshape(1, 3)
     trace = _Trace()
@@ -68,7 +67,7 @@ def estimate_block(
         cand = _empty_candidates()
         k = 0
     else:
-        cand = rk.searcher.explain(cl, k, pool=pool)
+        cand = rk.searcher.explain(cl, k)
     sel = trace.sel if trace.sel is not None else np.empty(0, np.int64)
     lam = trace.lam if trace.lam is not None else np.empty(0)
     cand_lam = np.full(cand.idx.shape[0], math.nan)

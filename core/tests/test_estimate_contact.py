@@ -125,6 +125,14 @@ def test_rows_of_another_domain_or_without_the_other_one_are_at_no_contact() -> 
     assert e.value.code == "variable_grid"
 
 
+def test_a_grid_of_too_many_cells_is_refused_before_anything_is_allocated() -> None:
+    grid = grid_of([1000, 1000, 100], (1, 1, 1))  # 100 million cells: ≈ 2 GB of masks and distances
+    with pytest.raises(ApiError) as e:
+        ec.row_distance(grid, np.array([0, 1], dtype=np.uint64), np.array([0, 1], dtype=np.int32), 0, 1)
+    assert (e.value.status, e.value.code) == (422, "grid_too_large")
+    assert e.value.message and e.value.hint and any("а" <= ch.lower() <= "я" for ch in e.value.message)
+
+
 def test_diagonal_neighbours_are_half_way() -> None:
     """Two cells that touch by an edge only: the pair is one cell away along every axis it moves on (m = 1)."""
     counts = [2, 2, 1]

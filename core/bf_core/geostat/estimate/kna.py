@@ -34,7 +34,6 @@ The recommendation (8.8.5): the smallest `n_max` of the series whose SLOPE is at
 
 from __future__ import annotations
 
-import copy
 import dataclasses
 import math
 import threading
@@ -50,7 +49,6 @@ from bf_core.jobs.registry import handler
 from . import kernel as kn
 from . import samples as sm
 from .kna_blocks import BlockAt, Blocks, Targets
-from .search import Searcher, _hy_mode
 from .spec import EstimationSpec, parse_at, parse_estimation
 
 KIND = "estimate.kna"
@@ -87,19 +85,6 @@ def _f(x: Any) -> float | None:
 # --- the variants of a compiled row ----------------------------------------------------------------------------------
 
 
-def _reshaped(searcher: Searcher, passes: Sequence[Any]) -> Searcher:
-    """The same tree (it is the costly part of a `Searcher`) with other passes: what `Searcher.__init__` derives from
-    the passes is rebuilt. Bit for bit what a new `Searcher` of these passes gives (the test compares them)."""
-    new = copy.copy(searcher)
-    new.passes = tuple(passes)
-    r1 = searcher.ell.radii[0]
-    new._fp = [np.array([r1 * p.factor, searcher.soft, p.hy.t if p.hy else 0.0, p.hy.q if p.hy else 0.0])
-               for p in new.passes]  # fmt: skip
-    new._ip = [np.array([_hy_mode(p.hy), p.n_max, p.n_hole, p.n_oct, p.n_min, p.k_oct, p.n_holes_min], dtype=np.int64)
-               for p in new.passes]  # fmt: skip
-    return new
-
-
 def _fresh(rk: kn.RowKernel, **change: Any) -> kn.RowKernel:
     """A row with other fields; its own cache of the geometry of the blocks (it depends on the discretization)."""
     return dataclasses.replace(rk, _geo={}, _lock=threading.Lock(), **change)
@@ -113,7 +98,7 @@ def _with_passes(rk: kn.RowKernel, *, n_max: int | None = None, scale: float | N
         if scale is not None:
             p = dataclasses.replace(p, factor=p.factor * float(scale))
         passes.append(p)
-    return _fresh(rk, searcher=_reshaped(rk.searcher, passes))
+    return _fresh(rk, searcher=rk.searcher.with_passes(passes))
 
 
 def _with_disc(rk: kn.RowKernel, d: int) -> kn.RowKernel:
@@ -194,15 +179,31 @@ def pick_quantiles(n_first: np.ndarray, row: np.ndarray, eligible: np.ndarray) -
     return out
 
 
-def count_in(rk: kn.RowKernel, centres: np.ndarray, radius: float) -> np.ndarray:
-    """i8 [m]: the samples of the domain D inside the ellipsoid of the radius `radius` (along r1) round each centre."""
+def _tree_of(rk: kn.RowKernel) -> tuple[Any, np.ndarray]:
+    """The tree of the samples of D in the scaled space of the ellipsoid and the matrix that scales a centre."""
     from scipy.spatial import cKDTree
 
-    s = rk.samples
-    pts = rk.local[s.dom == sm.D] @ rk.ell.S.T
-    tree = cKDTree(pts, balanced_tree=False, compact_nodes=False)
-    got = tree.query_ball_point((centres - s.origin) @ rk.ell.S.T, float(radius), return_length=True)
+    pts = rk.local[rk.samples.dom == sm.D] @ rk.ell.S.T
+    return cKDTree(pts, balanced_tree=False, compact_nodes=False), rk.ell.S
+
+
+def count_in(rk: kn.RowKernel, centres: np.ndarray, radius: float) -> np.ndarray:
+    """i8 [m]: the samples of the domain D inside the ellipsoid of the radius `radius` (along r1) round each centre."""
+    tree, scale = _tree_of(rk)
+    got = tree.query_ball_point((centres - rk.samples.origin) @ scale.T, float(radius), return_length=True, workers=-1)
     return np.asarray(got, dtype=np.int64)
+
+
+def enough_in(rk: kn.RowKernel, centres: np.ndarray, radius: float, k: int) -> np.ndarray:
+    """bool [m]: at least `k` samples of D inside the ellipsoid of the radius `radius` round each centre — the same
+    answer as `count_in(...) >= k` without counting the whole ball (k nearest within the radius, many threads)."""
+    tree, scale = _tree_of(rk)
+    k = max(1, int(k))
+    # `query` keeps the distances strictly below the bound, the ball keeps `≤ radius`: the next float up
+    bound = float(np.nextafter(float(radius), np.inf))
+    dist, _ = tree.query((centres - rk.samples.origin) @ scale.T, k=k, distance_upper_bound=bound, workers=-1)
+    last = dist if k == 1 else dist[:, -1]
+    return np.asarray(np.isfinite(last), dtype=bool)
 
 
 def auto_blocks(rk: kn.RowKernel, targets: Targets) -> list[BlockAt]:
@@ -211,8 +212,7 @@ def auto_blocks(rk: kn.RowKernel, targets: Targets) -> list[BlockAt]:
     passes = rk.searcher.passes
     r1 = float(rk.ell.radii[0])
     n_first = count_in(rk, targets.centre, r1 * passes[0].factor)
-    n_far = count_in(rk, targets.centre, r1 * max(p.factor for p in passes))
-    eligible = n_far >= max(1, min(p.n_min for p in passes))
+    eligible = enough_in(rk, targets.centre, r1 * max(p.factor for p in passes), min(p.n_min for p in passes))
     picks = pick_quantiles(n_first, targets.row, eligible)
     if not picks:
         raise ApiError(422, "kna_no_blocks", "Ни у одного блока нет достаточно проб в радиусе поиска.",

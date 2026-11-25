@@ -575,7 +575,12 @@ def delete_fields(conn: sa.Connection, model_id: int, expected_version: int, nam
         meta["fields"] = [f for f in meta["fields"] if f["name"].casefold() not in gone]
 
     meta, old = _modify(conn, model_id, expected_version, edit)
-    return _save(conn, model_id, meta, old + 1)
+    version = _save(conn, model_id, meta, old + 1)
+    from bf_core import lineage
+
+    for name in {str(n).casefold() for n in names}:  # the rows of the graph of a field that is gone
+        lineage.forget(conn, lineage.Node("bm_field", model_id, name))
+    return version
 
 
 def iter_fields(store: BlobStore, sha: str, fields: Sequence[Mapping[str, Any]]) -> Iterator[dict[str, np.ndarray]]:

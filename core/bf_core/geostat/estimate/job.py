@@ -322,28 +322,6 @@ def rebuild_row(svc: Any, cap: Any, node: Node, _body: dict[str, Any]) -> None:
                title=f"Оценка: {row.name}")  # fmt: skip
 
 
-def _field_owner(conn: sa.Connection, node: Node) -> Node | None:
-    """The row that fills a field of an estimation: of the rows the graph records as its inputs (they follow the ids of
-    a `.bfggis` import, `source.params` do not), the one whose prefix starts the name of the field; None — the field
-    is not one of an estimation or the row is gone."""
-    from bf_core.lineage import store as ls
-
-    meta = conn.execute(sa.select(objects.c.meta).where(
-        objects.c.kind == bs.KIND, objects.c.id == node.id)).scalar()  # fmt: skip
-    field = next((f for f in (meta or {}).get("fields") or [] if str(f.get("name", "")).casefold() == node.sub), None)
-    if ((field or {}).get("source") or {}).get("op") != "estimate":
-        return None
-    for ref in ls.inputs_of(conn, [node]).get(node, []):
-        if ref.node.kind != sto.LINEAGE_KIND:
-            continue
-        got = conn.execute(sa.select(objects.c.meta).where(
-            objects.c.id == ref.node.id, objects.c.kind == sb.KIND)).scalar()  # fmt: skip
-        prefix = str(((got or {}).get("outputs") or {}).get("prefix") or "").casefold()
-        if got is not None and prefix and node.sub.startswith(prefix):
-            return ref.node
-    return None
-
-
 def register_rebuild() -> None:
     """`lineage.rebuild.register` for the row (the owner of itself) and for the fields of an estimation (their owner
     is the row); the other fields of a model keep their makers. Safe to repeat."""
@@ -356,7 +334,7 @@ def register_rebuild() -> None:
     prev = cur.owner
 
     def owner(conn: sa.Connection, node: Node) -> Node | None:
-        return _field_owner(conn, node) or prev(conn, node)
+        return sto.field_owner(conn, node) or prev(conn, node)
 
     owner.estimate_aware = True  # type: ignore[attr-defined]
     rb.register("bm_field", owner, cur.prepare)

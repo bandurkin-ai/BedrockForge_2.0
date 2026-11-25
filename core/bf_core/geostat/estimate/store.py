@@ -194,7 +194,33 @@ def delete(conn: sa.Connection, estimation_id: int) -> dict[str, Any]:
     conn.execute(sa.delete(blob_owners).where(
         blob_owners.c.owner_kind == sb.OWNER, blob_owners.c.owner_id == estimation_id))  # fmt: skip
     conn.execute(sa.delete(objects).where(objects.c.id == estimation_id))  # `object_refs` of the row go by cascade
+    from bf_core import lineage
+
+    lineage.forget(conn, lineage.Node(LINEAGE_KIND, estimation_id))  # a reused id inherits no pin and no inputs
     return {"deleted": estimation_id, "plans": plans}
+
+
+def field_owner(conn: sa.Connection, node: Any) -> Any | None:
+    """The row that fills a field of an estimation (`node` — `bm_field`: the model and the casefolded name): of the
+    rows the graph records as its inputs (they follow the ids of a `.bfggis` import, `source.params` do not), the one
+    whose prefix starts the name of the field; None — the field is not one of an estimation or the row is gone."""
+    from bf_core.blocks import schema as bs
+    from bf_core.lineage import store as ls
+
+    meta = conn.execute(sa.select(objects.c.meta).where(
+        objects.c.kind == bs.KIND, objects.c.id == node.id)).scalar()  # fmt: skip
+    field = next((f for f in (meta or {}).get("fields") or [] if str(f.get("name", "")).casefold() == node.sub), None)
+    if ((field or {}).get("source") or {}).get("op") != "estimate":
+        return None
+    for ref in ls.inputs_of(conn, [node]).get(node, []):
+        if ref.node.kind != LINEAGE_KIND:
+            continue
+        got = conn.execute(sa.select(objects.c.meta).where(
+            objects.c.id == ref.node.id, objects.c.kind == sb.KIND)).scalar()  # fmt: skip
+        prefix = str(((got or {}).get("outputs") or {}).get("prefix") or "").casefold()
+        if got is not None and prefix and node.sub.startswith(prefix):
+            return ref.node
+    return None
 
 
 # --- reading ----------------------------------------------------------------------------------------------------------

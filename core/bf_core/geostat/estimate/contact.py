@@ -66,6 +66,9 @@ CONVENTIONS = (
 SIDES = ("снаружи", "внутри")  # `stats.contact.SIDES`
 
 
+MAX_CELLS = 50_000_000  # the grid of the distances: ≈ 21 bytes a cell (two masks, the distance, a shift) ≈ 1 GB
+
+
 def _bad(param: str, message: str, hint: str) -> ApiError:
     return ApiError(422, "bad_param", message, hint, extra={"param": param})
 
@@ -110,6 +113,14 @@ def row_distance(
     if a == b:
         raise _bad("b", "Домены A и B должны различаться.", "Выберите два разных домена.")
     size = grid.regular("Контактный анализ блоков")
+    if int(grid.cells) > MAX_CELLS:  # before anything is allocated: ≈ 21 bytes a cell
+        raise ApiError(
+            422, "grid_too_large",
+            f"Сетка модели ({int(grid.cells):,} ячеек) слишком велика для контактного анализа "
+            f"(не более {MAX_CELLS:,}).".replace(",", " "),
+            "Возьмите модель с более крупными родительскими блоками или анализируйте часть модели.",
+            extra={"param": "model_id"},
+        )  # fmt: skip
     codes = np.asarray(codes)
     p = np.asarray(p, dtype=np.uint64)
     i, j, k = geometry.row_ijk(grid, p)  # 422 for a parent off the grid
