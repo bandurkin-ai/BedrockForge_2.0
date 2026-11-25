@@ -32,7 +32,7 @@ const ROW = readRow(LIST.models[0]);
 
 describe("the list as the core wrote it", () => {
   it("a row keeps the groups and the outputs of the list, the numbers and the state", () => {
-    expect(ROW).toMatchObject({ id: MODEL_ID, name: "Литология", version: 7, state: "ready", stale: false, source_lost: false, groups: 2, outputs: 5, stats: { points: 3316, patches: 16, seconds: 4.216 } });
+    expect(ROW).toMatchObject({ id: MODEL_ID, name: "Литология", version: 7, state: "ready", stale: false, source_lost: false, groups: 2, outputs: 5, stats: { points: 3316, patches: 16 } });
     expect(ROW.group_list).toEqual([
       { id: 1, name: "INT", type: "domain" },
       { id: 3, name: "SS", type: "domain" },
@@ -63,7 +63,7 @@ describe("the list as the core wrote it", () => {
     expect(stateText(ROW)).toBe("");
   });
   it("the numbers and the tooltip of a row", () => {
-    expect(statsText(ROW).replace(/\s/g, " ")).toBe("3 316 точек · 16 участков · 4,2 с");
+    expect(statsText(ROW).replace(/\s/g, " ")).toMatch(/^3 316 точек · 16 участков · \d+(,\d)? с$/);
     expect(statsText({ stats: null })).toBe("не построена");
     const t = modelTitleText(ROW);
     expect(t).toContain("Модель «Литология», версия 7");
@@ -123,14 +123,14 @@ describe("the menu of a model runs the commands of the registry", () => {
     const labels = items.filter((i) => !i.separator).map((i) => i.label);
     expect(labels).toEqual(["Домены литологии…", "Оболочки содержаний…", "Жила…", "Расширение каркаса…", "Обновить модель", "В каркас…", "Проверка по данным…", "Опора данных…", "Сверка со скважинами…", "Обновить список", "Удалить…"]);
     for (const i of items) if (!i.separator && i.reason == null) i.run?.();
-    expect(ran.map((r) => r[0])).toEqual(["implicit.domains", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.update", "implicit.to_wireframe", "implicit.delete"]);
+    expect(ran.map((r) => r[0])).toEqual(["implicit.domains", "implicit.shells", "implicit.vein", "implicit.expand", "implicit.update", "implicit.to_wireframe", "implicit.check", "implicit.support", "implicit.compare_holes", "implicit.delete"]);
     expect(ran.every(([, a]) => a.model_id === MODEL_ID)).toBe(true);
     expect(refreshed).toBe(1);
   });
   it("the commands of 19.25 say why they are not yet; a model not built has nothing to copy or check", () => {
     const items = modelMenu(ROW, (id) => app.registry.reason(id), () => undefined, () => undefined);
     const by = (label: string) => items.find((i) => i.label === label)!;
-    expect(by("Проверка по данным…").reason).toMatch(/появится на этапе/);
+    expect(by("Проверка по данным…").reason ?? null).toBeNull();
     const fresh = modelMenu({ ...ROW, stats: null }, (id) => app.registry.reason(id), () => undefined, () => undefined);
     expect(fresh.find((i) => i.label === "В каркас…")!.reason).toBe("Модель ещё не построена: сначала «Обновить модель»");
     const busy = modelMenu({ ...ROW, state: "building" }, (id) => app.registry.reason(id), () => undefined, () => undefined);

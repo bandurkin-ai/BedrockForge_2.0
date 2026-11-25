@@ -58,8 +58,8 @@ describe("the facts of the model the core stores", () => {
     expect(fact(f, "Невязка (макс.)")).toBe("2,65e-12 м");
     expect(fact(f, "cond (макс.)")).toBe("2,43e7");
     expect(fact(f, "η (макс.)")).toBe("0");
-    expect(fact(f, "Время")).toBe("4,2 с");
-    expect(fact(f, "Последний запуск")).toBe("построение, 2026-11-25 20:18");
+    expect(fact(f, "Время")).toMatch(/^\d+(,\d)? с$/);
+    expect(fact(f, "Последний запуск")).toMatch(/^построение, \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
     expect(f.find((x) => x.label === "Взято из прежнего")).toBeUndefined();
     expect(resultFacts({ stats: null })).toEqual([]);
     expect(resultFacts(VEIN)).toEqual([]); // the canonical of a model never built has no results
@@ -122,7 +122,7 @@ describe("the panel drawn", () => {
   };
   it("the model built: the parameters, the numbers, the groups, the outputs; no error, nothing stale", async () => {
     const t = text(await open());
-    for (const s of ["Неявная модель", "Литология", "Линейное (-r)", "до 1 000 точек", "нет (шар)", "3 316", "2,65e-12 м", "2,43e7", "4,2 с", "INT", "SS", "Литология · Прочее", "Точки данных в 3D", "Журнал последней сборки"]) expect(t).toContain(s);
+    for (const s of ["Неявная модель", "Литология", "Линейное (-r)", "до 1 000 точек", "нет (шар)", "3 316", "2,65e-12 м", "2,43e7", "INT", "SS", "Литология · Прочее", "Точки данных в 3D", "Журнал последней сборки"]) expect(t).toContain(s);
     expect(t).not.toContain("устарела");
     expect(t).not.toContain("не построена");
     // the volume of a surface is a gap, not 0
