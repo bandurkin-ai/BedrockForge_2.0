@@ -82,6 +82,7 @@ class Provider:
 
 
 _REGISTRY: dict[str, Provider] = {}
+_GENERIC: dict[str, Provider] = {}
 
 
 def register(provider: Provider) -> Provider:
@@ -94,9 +95,9 @@ def registered() -> list[str]:
 
 
 def provider_for(kind: str) -> Provider:
-    p = _REGISTRY.get(kind)
+    p = _REGISTRY.get(kind) or _GENERIC.get(kind)
     if p is None and kind.startswith(OBJECT_PREFIX) and len(kind) > len(OBJECT_PREFIX):
-        p = GenericObject(kind)  # any other object: a leaf that changes with its version
+        p = _GENERIC[kind] = _GENERIC.get(kind) or GenericObject(kind)  # any other object: a leaf by its version
     if p is None:
         hint = "Вид узла — dh_set, dh_table, dh_result, wireframe, bm_field или object:<вид объекта>."
         raise ApiError(422, "lineage_bad_kind", f"Неизвестный вид узла «{kind}».", hint)

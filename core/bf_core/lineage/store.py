@@ -12,8 +12,7 @@ query (`IN` of ≤ 500 ids), so the state of a tree section is a handful of quer
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 import sqlalchemy as sa
 
@@ -23,8 +22,7 @@ IN, PIN = "in", "pin"
 CHUNK = 500
 
 
-@dataclass(frozen=True, order=True)
-class Node:
+class Node(NamedTuple):
     """A vertex of the graph: the kind, the id (of the `objects`, `dh_tables` or `dh_results` row) and, for a field
     of a block model (`bm_field`: id — the model), the casefolded name of the field."""
 
@@ -39,8 +37,7 @@ class Node:
         return {"kind": self.kind, "id": self.id, "sub": self.sub}
 
 
-@dataclass(frozen=True)
-class InputRef:
+class InputRef(NamedTuple):
     """One input of a node: the source, its fingerprint when the node was built (None — not compared) and name."""
 
     node: Node
@@ -72,10 +69,10 @@ def inputs_of(conn: sa.Connection, nodes: Iterable[Node]) -> dict[Node, list[Inp
                 .where(c.dst_kind == kind, c.role == IN, c.dst_id.in_([n.id for n in part]))
                 .order_by(c.dst_id, c.dst_sub, c.pos)
             )
-            for r in conn.execute(q):
-                if (int(r.dst_id), r.dst_sub) in wanted:
-                    out.setdefault(Node(kind, int(r.dst_id), r.dst_sub), []).append(
-                        InputRef(Node(r.src_kind, int(r.src_id), r.src_sub), r.src_fp, r.src_name)
+            for dst_id, dst_sub, src_kind, src_id, src_sub, src_fp, src_name in conn.execute(q).all():
+                if (dst_id, dst_sub) in wanted:
+                    out.setdefault(Node(kind, dst_id, dst_sub), []).append(
+                        InputRef(Node(src_kind, src_id, src_sub), src_fp, src_name)
                     )
     return out
 
