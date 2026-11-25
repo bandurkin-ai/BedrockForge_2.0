@@ -17,8 +17,7 @@ import { expect, test, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { close, coreApi, importFiles, launch, runCommand, setWindowSize, shot, waitFrame, waitJob, type CoreJob, type BlockColumns } from "./helpers";
-import { writeDatBlocks } from "./helpers";
+import { close, coreApi, importFiles, launch, runCommand, setWindowSize, shot, waitFrame, waitJob, writeDatBlocks, type BlockColumns, type CoreJob } from "./helpers";
 
 const EXE = !!process.env.BF_APP_EXE;
 const LIMIT = (ms: number) => (EXE ? 1.5 * ms : ms);
@@ -268,7 +267,7 @@ test("1. the wizard: steps 1–6, the preview of a block in 3D, the run, the fie
   expect(await preview(page)).toMatchObject({ source: null, block: false, pose: null });
   await wiz.getByTestId("est-preview-go").click();
   await expect(wiz.getByTestId("est-preview-result")).toBeVisible({ timeout: LIMIT(30_000) });
-  await expect(wiz.getByTestId("est-preview-status")).toContainText("оценка получена", { timeout: 5_000 }).catch(() => undefined);
+  await expect(wiz.getByTestId("est-preview-status")).toHaveAttribute("data-status", "0"); // estimated
   await expect.poll(async () => (await preview(page))?.pose?.pass ?? null, { timeout: LIMIT(30_000) }).not.toBeNull();
   const shown = (await preview(page))!;
   expect(shown.source).toBe("wizard");
@@ -322,5 +321,196 @@ test("1. the wizard: steps 1–6, the preview of a block in 3D, the run, the fie
 
   const took = Date.now() - started;
   console.log(`estimation 1: ${(took / 1000).toFixed(1)} s`);
+  expect(took).toBeLessThan(LIMIT(60_000));
+});
+
+test("2. the cross-validation: «по скважине» → the summary and the table, «Показать ошибки в 3D»", async () => {
+  test.setTimeout(LIMIT(120_000));
+  const started = Date.now();
+  const opened = await runCommand(page, "estimate.xval", { estimation_id: row.id });
+  expect(opened.ok, opened.result).toBe(true);
+  const win = page.getByTestId("estimation-xval");
+  await expect(win).toBeVisible({ timeout: 30_000 });
+  await expect(win.getByTestId("xval-none")).toBeVisible({ timeout: 30_000 }); // no result yet
+  await win.getByTestId("xval-by").selectOption("hole");
+  const before = await lastJobId(page, "estimate.xval");
+  await win.getByTestId("xval-run").click();
+  await lastJob(page, "estimate.xval", LIMIT(90_000), before);
+  await expect(win.getByTestId("xval-summary")).toBeVisible({ timeout: LIMIT(30_000) });
+  await expect(win.getByTestId("xval-table")).toBeVisible({ timeout: LIMIT(30_000) });
+  const rows = Number(await win.getByTestId("xval-table").getAttribute("data-rows"));
+  expect(rows).toBeGreaterThan(0);
+  expect(rows).toBeLessThanOrEqual(SIDE * SIDE * PER_HOLE);
+  await expect(win.getByTestId("xval-statuses")).toContainText("оценён");
+  await win.getByTestId("xval-tab-scatter").click();
+  await expect(win.getByTestId("xval-scatter")).toBeVisible();
+  await win.getByTestId("xval-tab-hist").click();
+  await expect(win.getByTestId("xval-histogram")).toBeVisible();
+  await win.getByTestId("xval-tab-table").click();
+  await page.screenshot({ path: shot("estimation-xval.png") });
+
+  // «Показать ошибки в 3D» = the command `estimate.xval_3d`: the layer of the points in the scene, the legend in the window
+  expect(await layers(page)).not.toContain("xval-errors");
+  await win.getByTestId("xval-3d").click();
+  await expect(win.getByTestId("xval-3d-legend")).toBeVisible({ timeout: LIMIT(30_000) });
+  await expect.poll(() => layers(page), { timeout: LIMIT(30_000) }).toContain("xval-errors");
+  await expect(win.getByTestId("xval-3d")).toHaveText("Скрыть ошибки в 3D");
+  // the same through the registry (Ctrl+K, the assistant): the points go away
+  const hidden = await runCommand(page, "estimate.xval_3d", { estimation_id: row.id, show: false });
+  expect(hidden.ok, hidden.result).toBe(true);
+  await expect.poll(() => layers(page), { timeout: 10_000 }).not.toContain("xval-errors");
+  await win.getByTestId("xval-close").click();
+  await expect(win).toHaveCount(0);
+
+  const took = Date.now() - started;
+  console.log(`estimation 2: ${(took / 1000).toFixed(1)} s`);
+  expect(took).toBeLessThan(LIMIT(60_000));
+});
+
+test("3. the inspector of a block (ТД30-3): a click on a block in 3D → «Блок · i, j, k», the probes with the reasons, the layers of 3D, the filter, «К интервалу», «Скопировать снимок»", async () => {
+  test.setTimeout(LIMIT(120_000));
+  const started = Date.now();
+  const [bi, bj, bk] = [6, 6, NZ - 1]; // the top layer: its top face is outside, a block of the domain 1
+  const tx = CORNER[0] + (bi + 0.5) * SIZE[0];
+  const ty = CORNER[1] + (bj + 0.5) * SIZE[1];
+  const tz = CORNER[2] + (bk + 1) * SIZE[2];
+  const screen = await page.evaluate(([x, y, z]) => window.__bfScene!.screen(x, y, z), [tx, ty, tz] as const);
+  expect(screen).not.toBeNull();
+  const host = (await page.getByTestId("scene-host").boundingBox())!;
+  await blocksHook(page, "click", screen!.x - host.x, screen!.y - host.y);
+  const win = page.getByTestId("estimate-inspect");
+  await expect(win).toBeVisible({ timeout: LIMIT(30_000) });
+  await expect(win).toHaveAttribute("data-state", "ready", { timeout: LIMIT(30_000) });
+  await expect(win.getByTestId("inspect-ijk")).toContainText(`${bi}, ${bj}, ${bk}`);
+  await expect(win.getByTestId("inspect-status")).toHaveText("оценён");
+  await expect(win.getByTestId("inspect-table")).toBeVisible();
+  const selectedRows = win.locator('[data-testid^="inspect-row-"][data-selected="true"]');
+  const taken = await selectedRows.count();
+  expect(taken).toBeGreaterThan(0);
+  // the layers of the inspector in 3D: the ellipsoid of the pass and the segments to the probes taken
+  await expect.poll(async () => (await inspected(page))?.segments?.taken ?? 0, { timeout: LIMIT(30_000) }).toBe(taken);
+  const stats = (await inspected(page))!;
+  expect(stats.ellipsoid).not.toBeNull();
+  [0, 1, 2].forEach((c) => expect(stats.centre![c]).toBeCloseTo(CORNER[c] + ([bi, bj, bk][c] + 0.5) * SIZE[c], 6));
+  await page.screenshot({ path: shot("estimation-inspect.png") });
+
+  // the filter by the reason: the probes taken only
+  const all = await win.locator('[data-testid^="inspect-row-"]').count();
+  await win.getByTestId("inspect-reason").selectOption("selected");
+  await expect.poll(() => win.locator('[data-testid^="inspect-row-"]').count()).toBe(taken);
+  await win.getByTestId("inspect-reason").selectOption("");
+  await expect.poll(() => win.locator('[data-testid^="inspect-row-"]').count()).toBe(all);
+
+  // «К интервалу»: «Данные по скважинам» of the hole of the probe
+  const first = (await selectedRows.first().getAttribute("data-testid"))!.replace("inspect-row-", "");
+  await win.getByTestId(`inspect-interval-${first}`).click();
+  await expect(page.getByRole("dialog", { name: /Данные по скважинам/ })).toBeVisible({ timeout: LIMIT(30_000) });
+  await expect(win.getByTestId("inspect-note")).toContainText("Открыто «Данные по скважинам»");
+  await page.getByRole("dialog", { name: /Данные по скважинам/ }).getByRole("button", { name: "Закрыть" }).first().click().catch(() => undefined);
+
+  // «Скопировать снимок»
+  await win.getByTestId("inspect-copy").click();
+  await expect(win.getByTestId("inspect-note")).toContainText("скопирован", { timeout: 10_000 });
+  await win.getByTestId("inspect-close").click();
+  await expect(win).toHaveCount(0);
+  await expect.poll(async () => (await inspected(page))?.segments ?? null).toBeNull();
+
+  const took = Date.now() - started;
+  console.log(`estimation 3: ${(took / 1000).toFixed(1)} s`);
+  expect(took).toBeLessThan(LIMIT(60_000));
+});
+
+test("4. the graph of dependencies (Д-35): a sample edited → «устарел» at the row and at the field → «Перестроить с зависимыми» → «актуален»", async () => {
+  test.setTimeout(LIMIT(120_000));
+  const started = Date.now();
+  const rowBadge = page.getByTestId(`tree-est-row-${row.id}`).getByTestId(`lineage-badge-object:estimation-${row.id}`);
+  await expect(rowBadge).toHaveAttribute("data-state", "current", { timeout: LIMIT(30_000) });
+
+  // a sample of the table edited through the API of the table (as the panel «Таблица» does)
+  const first = (await coreApi<{ columns: { key: string; name: string }[]; rows: { id: number }[] }>(page, "GET", `/drillholes/sets/${ids.set}/tables/${ids.table}?limit=1`)).body;
+  const au = first.columns.find((c) => c.name === FIELD)!.key;
+  const patched = await coreApi(page, "PATCH", `/drillholes/sets/${ids.set}/tables/${ids.table}/rows/${first.rows[0].id}`, { column: au, value: "9" });
+  expect(patched.status, JSON.stringify(patched.body)).toBe(200);
+  await expect(rowBadge).toHaveAttribute("data-state", "stale", { timeout: LIMIT(30_000) });
+  await expect(rowBadge).toHaveText("устарел");
+  // the field in «Свойства полей»
+  expect((await runCommand(page, "blocks.field.props", { model_id: ids.model })).ok).toBe(true);
+  const fieldsWin = page.getByTestId("fields-window");
+  await expect(fieldsWin).toBeVisible({ timeout: 30_000 });
+  const fieldBadge = fieldsWin.getByTestId(`lineage-badge-bm_field-${ids.model}-${PREFIX.toLowerCase()}est`);
+  await expect(fieldBadge).toHaveAttribute("data-state", "stale", { timeout: LIMIT(30_000) });
+  await page.screenshot({ path: shot("estimation-stale.png") });
+  await fieldsWin.getByTestId("fields-close").click();
+
+  // «Перестроить с зависимыми» of the model of variogram (a table is a source: it is not rebuilt, its dependents are): the plan (a dry run), then the run
+  const impact = await runCommand(page, "lineage.impact", { kind: "object:variogram_model", id: ids.vario });
+  expect(impact.ok, impact.result).toBe(true);
+  const win = page.getByTestId("lineage-impact-window");
+  await expect(win).toBeVisible({ timeout: 30_000 });
+  await expect(win.getByTestId("lineage-lead")).toBeVisible({ timeout: 30_000 });
+  await win.getByTestId("lineage-rebuild").click();
+  await expect(win.getByTestId("lineage-plan")).toBeVisible({ timeout: LIMIT(30_000) });
+  await win.getByTestId("lineage-run").click();
+  await expect(win.getByTestId("lineage-end")).toBeVisible({ timeout: LIMIT(90_000) });
+  await page.screenshot({ path: shot("estimation-rebuilt.png") });
+  await win.getByTestId("lineage-close").click();
+  await expect(rowBadge).toHaveAttribute("data-state", "current", { timeout: LIMIT(30_000) });
+  expect((await rowsList(page))[0].stale).toBe(false);
+
+  const took = Date.now() - started;
+  console.log(`estimation 4: ${(took / 1000).toFixed(1)} s`);
+  expect(took).toBeLessThan(LIMIT(60_000));
+});
+
+test("5. Ctrl+K: «Инспектор блока», «Эллипсоид поиска в 3D», «Глобальная проверка» are available and run", async () => {
+  test.setTimeout(LIMIT(120_000));
+  const started = Date.now();
+  const palette5 = page.getByLabel("Палитра команд");
+  const found = async (query: string) => {
+    await page.keyboard.press("Control+KeyK");
+    await page.getByLabel("Поиск команды").fill(query);
+    const option = palette5.getByRole("option").first();
+    await expect(option).toBeVisible();
+    await expect(option).not.toHaveAttribute("aria-disabled", "true");
+    return option;
+  };
+
+  // the inspector: the window, empty, waits for a block
+  await found("Инспектор блока");
+  await page.keyboard.press("Enter");
+  await expect(palette5).toHaveCount(0);
+  const inspector = page.getByTestId("estimate-inspect");
+  await expect(inspector).toBeVisible({ timeout: 30_000 });
+  await inspector.getByTestId("inspect-close").click();
+  await expect(inspector).toHaveCount(0);
+
+  // the global check: its window (a row run)
+  await found("Глобальная проверка");
+  await page.keyboard.press("Enter");
+  await expect(palette5).toHaveCount(0);
+  const global = page.getByTestId("estimation-global");
+  await expect(global).toBeVisible({ timeout: 30_000 });
+  await global.getByTestId("global-close").click();
+  await expect(global).toHaveCount(0);
+
+  // the ellipsoid: the wizard of the row with its block shown → the command puts the ellipsoid in 3D
+  expect((await runCommand(page, "estimate.open", { id: row.id })).ok).toBe(true);
+  const wiz = page.getByTestId("estimation-wizard");
+  await expect(wiz).toBeVisible({ timeout: 30_000 });
+  await wiz.getByTestId("est-step-6-tab").click();
+  await wiz.getByTestId("est-preview-go").click();
+  await expect(wiz.getByTestId("est-preview-result")).toBeVisible({ timeout: LIMIT(30_000) });
+  expect((await runCommand(page, "estimate.ellipsoid", { show: false })).ok).toBe(true);
+  await expect.poll(async () => (await layers(page)).filter((k) => k.startsWith("estimate:")), { timeout: 10_000 }).toEqual([]);
+  await found("Эллипсоид поиска в 3D");
+  await page.keyboard.press("Enter");
+  await expect(palette5).toHaveCount(0);
+  await expect.poll(async () => (await preview(page))?.pose ?? null, { timeout: LIMIT(30_000) }).not.toBeNull();
+  expect((await preview(page))!.ellipsoid).not.toBeNull();
+  await wiz.getByTestId("est-close").click();
+  await expect(wiz).toHaveCount(0);
+
+  const took = Date.now() - started;
+  console.log(`estimation 5: ${(took / 1000).toFixed(1)} s`);
   expect(took).toBeLessThan(LIMIT(60_000));
 });
