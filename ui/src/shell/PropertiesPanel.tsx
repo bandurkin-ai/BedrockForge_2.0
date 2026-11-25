@@ -5,6 +5,8 @@
  */
 import { BlockProps } from "../modules/blocks/BlockProps";
 import { LayerProps } from "../modules/lines/LayerProps";
+import { LineageProps } from "../modules/lineage/LineageProps";
+import { nodeOfSelected } from "../modules/lineage/state";
 import { RasterProps } from "../modules/rasters/RasterProps";
 import { HoleCard } from "../modules/tables/HoleCard";
 import { tablesStore } from "../modules/tables/state";
@@ -19,12 +21,14 @@ export function PropertiesPanel() {
   const hole = useStore(tablesStore, (s) => s.hole !== null);
   if (!selected) return <HoleCard />;
   const key = `${selected.kind}:${selected.id}`; // a new object starts with clean fields
+  const node = nodeOfSelected(selected); // the origin and the dependents of a computed object (Д-35, ADR 0025)
   return (
     <div className={css.stack}>
       {selected.kind === "lines" && <LayerProps key={key} id={selected.id} />}
       {selected.kind === "raster" && <RasterProps key={key} id={selected.id} />}
       {selected.kind === "wireframe" && <WireframeProps key={key} id={selected.id} />}
       {selected.kind === "blocks" && <BlockProps key={key} id={selected.id} />}
+      {node && <LineageProps key={`lin:${key}`} node={node} />}
       {hole && <HoleCard />}
     </div>
   );

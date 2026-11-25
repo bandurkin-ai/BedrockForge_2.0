@@ -14,6 +14,7 @@ import { bindQaqcSetup } from "../modules/qaqc/bindSetup";
 import { bindIntercepts } from "../modules/intercepts/bind";
 import { bindVariography } from "../modules/variography/bind";
 import { bindEstimation } from "../modules/estimation/bind";
+import { bindLineage } from "../modules/lineage/bind";
 import { bindDtm } from "../modules/dtm/bind";
 import { bindModel } from "../modules/model/bind";
 import { bindDigitize } from "../modules/section/digitize";
@@ -197,5 +198,6 @@ export function createApp(opts: { persist?: boolean } = {}): App {
   bindIntercepts(app);
   bindVariography(app);
   bindEstimation(app);
+  bindLineage(app);
   return app;
 }

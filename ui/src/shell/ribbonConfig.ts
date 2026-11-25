@@ -9,6 +9,7 @@ import { seriesTab, type SeriesFlags } from "../modules/section/seriesCommands";
 import { PREP_BUTTONS, PREP_GROUP_TITLE } from "../modules/composites/commands";
 import { INTERCEPT_BUTTONS, INTERCEPT_GROUP_TITLE } from "../modules/intercepts/commands";
 import { VARIO_BUTTONS, VARIO_GROUP_TITLE, VARIO_TAB_TITLE } from "../modules/variography/commands";
+import { LINEAGE_BUTTONS, LINEAGE_GROUP_TITLE } from "../modules/lineage/commands";
 import { CHECK_BUTTONS, CHECK_GROUP_TITLE, ESTIMATE_BUTTONS, ESTIMATE_GROUP_TITLE, SIM_BUTTONS, SIM_GROUP_TITLE } from "../modules/estimation/commands";
 import { TREND_BUTTONS } from "../modules/trends/commands";
 import { FILTER_BUTTONS, FILTER_GROUP_TITLE } from "../modules/blocks/filters/commands";
@@ -309,6 +310,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
           title: "Данные",
           items: [{ command: "data.manager", label: "Менеджер данных", icon: "dataManager", hint: "Данные проекта как каталог: папки, поиск, перенос, импорт в папку и экспорт выбранного" }],
         },
+        { title: LINEAGE_GROUP_TITLE, items: LINEAGE_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: "Геостатистика", items: TREND_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: FILTER_GROUP_TITLE, items: FILTER_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: SHOW_GROUP_TITLE, items: [...SHOW_BUTTONS, ...SETTINGS_BUTTONS].map((b): RibbonItem => ({ ...b })) },
