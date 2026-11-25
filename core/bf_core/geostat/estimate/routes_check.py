@@ -25,7 +25,7 @@ from bf_core.api.errors import ApiError
 from bf_core.db import dialect
 from bf_core.storage.blobs import BlobStore
 
-from .routes_common import Payload, Sched, Svc, body_of, common_of, registered, sync
+from .routes_common import Payload, Sched, Svc, body_of, common_of, registered, sample_rows, sync
 
 router = APIRouter()
 KIND_XVAL, KIND_KNA, KIND_GLOBAL = "estimate.xval", "estimate.kna", "estimate.global"
@@ -45,9 +45,16 @@ def xval(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
     raw = body_of(body)
     project = svc.require_current(writable=True)
     ident, by = xv._parse(raw)  # noqa: SLF001
-    ident, name = _row(project, {"estimation_id": ident})
+    from . import checks
+
+    ident, name, spec, _org = checks._row(project.engine, {"estimation_id": ident})  # noqa: SLF001
+    with dialect.read_tx(project.engine) as conn:
+        rows = sample_rows(conn, [spec])
     registered(KIND_XVAL, "Перекрёстная проверка")
-    key, job_id = s.submit(KIND_XVAL, {"estimation_id": ident, "by": by}, title=f"Перекрёстная проверка: {name}")
+    params: dict[str, Any] = {"estimation_id": ident, "by": by}
+    if rows:
+        params["rows"] = rows  # for `memory_mb`: the rows of the table of the samples
+    key, job_id = s.submit(KIND_XVAL, params, title=f"Перекрёстная проверка: {name}")
     return {"source": key, "id": job_id}
 
 

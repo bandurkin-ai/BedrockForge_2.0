@@ -115,6 +115,33 @@ def test_row_bytes_counts_arrays_and_trees_once() -> None:
     assert 8000 + 100 * 3 * 8 <= got <= 8000 + 100 * 3 * 8 + 100 * 8 + 100 * 64
 
 
+# --- what the routes tell the scheduler -----------------------------------------------------------------------------
+
+
+def test_run_and_xval_tell_the_size_of_the_samples_for_the_memory(ea, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from bf_core.db.schema import dh_tables
+    from bf_core.jobs.scheduler import Scheduler
+
+    submitted: list[tuple[str, dict[str, Any]]] = []
+    submit = Scheduler.submit
+
+    def spy(self: Any, kind: str, params: dict[str, Any], *a: Any, **kw: Any) -> Any:
+        submitted.append((kind, dict(params)))
+        return submit(self, kind, params, *a, **kw)
+
+    monkeypatch.setattr(Scheduler, "submit", spy)
+    import sqlalchemy as sa
+
+    with dialect.read_tx(ea.project.engine) as conn:
+        n = int(conn.execute(sa.select(dh_tables.c.row_count).where(dh_tables.c.id == ea.w.a)).scalar_one())
+    assert n > 0
+    a = make_row(ea)["id"]
+    finish(ea, ok(ea.post(f"{GS}/estimate/run", json=run_body(ea, [a]))))
+    finish(ea, ok(ea.post(f"{GS}/estimate/xval", json={"estimation_id": a})))
+    got = dict(submitted)
+    assert got["estimate.run"]["samples"] == n and got["estimate.xval"]["rows"] == n
+
+
 # --- the freshness of the fields of a row ---------------------------------------------------------------------------
 
 

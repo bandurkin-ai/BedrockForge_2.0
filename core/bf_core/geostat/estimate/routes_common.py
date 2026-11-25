@@ -24,6 +24,20 @@ Payload = Annotated[Any, Body()]
 EVENT = "geostat.changed"
 
 
+def sample_rows(conn: Any, specs: list[Any]) -> int:
+    """The most rows of a table of the samples among the rows `specs` (`dh_tables.row_count`): what the scheduler waits
+    memory for (`memory_mb` of the jobs `estimate.run`, `estimate.xval`); 0 — it is not known."""
+    import sqlalchemy as sa
+
+    from bf_core.db.schema import dh_tables
+
+    ids = {int(sp.samples.table) for sp in specs if str(sp.samples.table).isdigit()}
+    if not ids:
+        return 0
+    got = conn.execute(sa.select(sa.func.max(dh_tables.c.row_count)).where(dh_tables.c.id.in_(ids))).scalar()
+    return int(got or 0)
+
+
 def body_of(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ApiError(422, "bad_request", "Неверные данные запроса.", "Повторите действие из окна оценки.")

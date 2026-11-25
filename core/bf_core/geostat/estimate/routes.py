@@ -28,7 +28,7 @@ from fastapi import APIRouter, Query, Request
 from bf_core.db import dialect
 from bf_core.storage.blobs import BlobStore
 
-from .routes_common import Payload, Sched, Svc, author, body_of, common_of, publish, registered, sync
+from .routes_common import Payload, Sched, Svc, author, body_of, common_of, publish, registered, sample_rows, sync
 
 router = APIRouter()
 KIND_RUN = "estimate.run"
@@ -218,9 +218,12 @@ def run(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
     with dialect.read_tx(project.engine) as conn:
         plan = jp.build(conn, BlobStore(project.folder), spec)  # 404 / 409 / 422 as the job would answer
         names = [r.name for r in plan.rows]
+        rows = sample_rows(conn, [r.spec for r in plan.rows])
     registered(KIND_RUN, "Оценка")
     params: dict[str, Any] = {"expected_version": spec.expected_version, "replace": spec.replace,
                               "plan_rows": len(names)}  # fmt: skip
+    if rows:
+        params["samples"] = rows  # for `memory_mb`: the rows of the biggest table of the samples
     if spec.plan_id is not None:
         params["plan_id"] = spec.plan_id
     else:

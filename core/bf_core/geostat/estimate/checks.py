@@ -10,8 +10,8 @@
 
 The blocks are those the job wrote for THIS row: the blocks of its domain (the field and the label of the target; rows
 of other domains share the prefix's fields, № 77) that pass its restrictor and whose `<prefix>STATUS` is 0 (Д-27); a
-block with another status is not in a sum at all (its EST is empty), and a gap of EST or of the volume is never a zero (8.0.1). The
-weight of a block is its volume, `FRAC` included (`geometry.row_volumes`). Compared:
+block with another status is not in a sum at all (its EST is empty), and a gap of EST or of the volume is never a zero
+(8.0.1). The weight of a block is its volume, `FRAC` included (`geometry.row_volumes`). Compared:
 
     composites   the samples of the domain D (as the row estimates them: after the top cut and the averaging), naive
                  and declustered by `DECL_W` (the weights of the row); mean, variance (population, Σw(z − m)²/Σw), CV
