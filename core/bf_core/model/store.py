@@ -72,8 +72,8 @@ KEYS = ("boundary", "h", "levels", "kernel", "kernel_radius", "smoothing", "tren
 
 __all__ = ["KEYS", "KIND", "LINEAGE_KIND", "GroupData", "Prepared", "begin", "commit", "commit_output", "create",
            "delete", "discard", "freshness", "get", "inputs_of", "list_rows", "load_fields", "load_spec", "output_meta",
-           "outputs_of", "prepare", "read_patches", "read_points", "read_solution", "record_run", "set_state",
-           "shas_of", "stage_patches", "stage_points", "stage_solution", "update"]  # fmt: skip
+           "outputs_of", "prepare", "read_patches", "read_points", "read_solution", "record_run", "replace_output",
+           "set_state", "shas_of", "stage_patches", "stage_points", "stage_solution", "update"]  # fmt: skip
 
 load_spec = sb.load_spec
 
@@ -278,6 +278,47 @@ def commit_output(conn: sa.Connection, store: BlobStore, staged: StagedWireframe
     if threshold is not None:
         entry["threshold"] = threshold
     return entry
+
+
+def replace_output(conn: sa.Connection, store: BlobStore, staged: StagedWireframe, model_id: int, wireframe_id: int,
+                   *, name: str, kind: str, group: int | None, wing: int | None = None,
+                   threshold: float | None = None) -> tuple[dict[str, Any], dict[str, Any]]:  # fmt: skip
+    """Inside the write transaction: the geometry of an output of the model replaced in place («Обновить», e19-api §2):
+    the same id and the same colour and attributes, the new blobs, the rows `objects` (extent, name, `meta.source`,
+    version + 1) and `wireframes` (counts, origin, stats, part table). A wireframe is immutable (`wireframes/store.py`
+    writes a geometry once): this is the one place that changes it, for the children of a model only (404 when it
+    is not one of them). Returns (the entry of `meta.outputs`, what `wireframes.store.delete_wireframe` says of the
+    geometry that went — `{id, shas, render, shared}` — for the caller that drops its levels of detail)."""
+    from bf_core.wireframes import store as wf
+
+    row = conn.execute(sa.select(objects.c.version, objects.c.meta, objects.c.parent_id).where(
+        objects.c.id == wireframe_id, objects.c.kind == wf.WIREFRAME)).first()  # fmt: skip
+    if row is None or row.parent_id != model_id:
+        raise wf.not_found()
+    old_shas = wf.blob_shas(conn, wireframe_id)
+    old_render = conn.execute(sa.select(wireframes.c.render).where(wireframes.c.object_id == wireframe_id)).scalar()
+    conn.execute(sa.delete(blob_owners).where(
+        blob_owners.c.owner_kind == wf.OWNER, blob_owners.c.owner_id == wireframe_id,
+        sa.or_(blob_owners.c.role.in_(list(wf.ARRAYS)), blob_owners.c.role.like("pack:%"))))  # fmt: skip
+    for role, tmp in list(staged.files.items()):
+        store.commit_staged(conn, tmp, media_type=wf.ARRAY_MEDIA, owner_kind=wf.OWNER, owner_id=wireframe_id,
+                            role=role)  # fmt: skip
+        del staged.files[role]
+    final = wf.free_name(conn, name, exclude_id=wireframe_id)
+    meta = {**dict(row.meta or {}), **output_meta(model_id, group, wing, threshold)}
+    n = conn.execute(sa.update(objects).where(objects.c.id == wireframe_id, objects.c.version == row.version).values(
+        name=final, name_key=dialect.name_key(final), meta=meta, extent=staged.extent, version=int(row.version) + 1,
+        updated_at=dialect.utcnow())).rowcount  # fmt: skip
+    if n != 1:
+        raise wf.not_found()
+    conn.execute(sa.update(wireframes).where(wireframes.c.object_id == wireframe_id).values(
+        point_count=len(staged.xyz), triangle_count=len(staged.tri), origin=staged.origin, stats=staged.stats,
+        render=staged.render))  # fmt: skip
+    entry: dict[str, Any] = {"wireframe_id": wireframe_id, "kind": kind, "group": group, "wing": wing, "name": final}
+    if threshold is not None:
+        entry["threshold"] = threshold
+    gone = {"id": wireframe_id, "shas": old_shas, "render": old_render, "shared": wf.geometry_shared(conn, old_shas)}
+    return entry, gone
 
 
 def outputs_of(conn: sa.Connection, meta: Mapping[str, Any]) -> list[dict[str, Any]]:
