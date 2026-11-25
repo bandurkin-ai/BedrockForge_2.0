@@ -45,6 +45,7 @@ LABELS = {
     "object:qaqc_data": "данные QAQC",
     "object:qaqc_report": "отчёт QAQC",
     "object:block_model": "блочная модель",
+    "object:estimation": "параметры оценки",
 }
 
 
@@ -125,4 +126,4 @@ class GenericObject(Provider):
 
 
 # The providers of the kinds of the project: imported here, in one place (ADR 0025 §1).
-from . import adapt_blocks, adapt_drill, adapt_objects  # noqa: E402, F401
+from . import adapt_blocks, adapt_drill, adapt_estimate, adapt_objects  # noqa: E402, F401
