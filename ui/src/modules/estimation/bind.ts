@@ -24,6 +24,7 @@ import { formOfArgs } from "./form";
 import { PlanWindow } from "./PlanWindow";
 import { choosePlan, chooseModel as choosePlanModel, confirmDiscard, deletePlan, pickModel, planById, planStore, PLAN_TITLE, PLAN_WINDOW, resetPlan, syncPlan } from "./planState";
 import { bindChecks, renderCheckWindow } from "./checksBind";
+import { bindInspect, renderInspectWindow } from "./inspect/bind";
 import { runBegin, runCancelled, runDone, runFailed, runJob, runReset } from "./runState";
 import { clearEstimations, deleteEstimation, estimableModels, estimationStore, isEstimationEvent, loadRows, rowById } from "./state";
 import { loadVariogramModels, putForm, resetWizard, setStep, startEdit, TITLE, WIZARD_WINDOW, wizardStore } from "./wizardState";
@@ -241,6 +242,7 @@ export function bindEstimation(app: App): void {
   app.registry.bind("estimate.plan", noted(app, (a, s) => openPlan(app, a, s)), needProject);
   app.registry.bind("estimate.plan_delete", noted(app, (a, s) => runPlanDelete(a, s)), needWritable(app));
   unbind.push(bindChecks(app)); // estimate.kna, .global, .qq, .swath (18.24)
+  bindInspect(app); // «Блок · i, j, k» (Д-30, 18.Д4): the command, the click on a block, the window
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadRows();
   unbind.push(
@@ -273,5 +275,5 @@ export function bindEstimation(app: App): void {
 /** The windows for the shell's window layer (`shell/Shell.tsx`); null — not a window of the estimation. */
 export function renderEstimationWindow(w: FloatWin): ReactNode | null {
   if (w.kind === WIZARD_WINDOW) return createElement(Wizard, { winId: w.id });
-  return w.kind === PLAN_WINDOW ? createElement(PlanWindow, { winId: w.id }) : (renderCheckWindow(w) ?? renderXvalWindow(w));
+  return w.kind === PLAN_WINDOW ? createElement(PlanWindow, { winId: w.id }) : (renderCheckWindow(w) ?? renderXvalWindow(w) ?? renderInspectWindow(w));
 }
