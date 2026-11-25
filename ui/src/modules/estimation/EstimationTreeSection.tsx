@@ -14,6 +14,8 @@ import { Glyph } from "../../shell/ObjectRows";
 import { TreeRow } from "../../shell/TreeRow";
 import tree from "../../shell/DataTree.module.css";
 import { blockById } from "../blocks/state";
+import { useWatch } from "../lineage/hooks";
+import { LineageBadge } from "../lineage/LineageBadge";
 import { METHOD_SHORT, METHOD_TITLES, type EstimationRow, type PlanRow } from "./api";
 import { useSel } from "./hooks";
 import { domainText, fieldsText, lastRunText, rowLine, stateText } from "./planView";
@@ -70,6 +72,7 @@ export function EstimationTree() {
   const sortedPlans = useMemo(() => plansByName(plans), [plans]);
   const run: Run = (id, args) => app.run(id, args);
   const reason: Reason = (id) => app.registry.reason(id);
+  useWatch(rows.map((r) => ({ kind: "object:estimation", id: r.id }))); // the states of the whole section in one request (Д-35)
   if (!rows.length && !plans.length) return <div className={tree.none}>{loaded ? "Нет строк — «+» открывает мастер «Оценка содержаний»" : "Нет объектов"}</div>;
   const rowMenuAt = (r: EstimationRow, e: MouseEvent) => {
     e.preventDefault();
@@ -86,7 +89,6 @@ export function EstimationTree() {
       <TreeRow label="Строки" level={2} expanded={open.rows} onToggle={() => setOpen((o) => ({ ...o, rows: !o.rows }))} after={<span className={tree.count}>{rows.length}</span>} testId="tree-est-rows" />
       {open.rows &&
         sortedRows.map((r) => {
-          const st = stateText(r);
           return (
             <TreeRow
               key={r.id}
@@ -100,13 +102,10 @@ export function EstimationTree() {
               testId={`tree-est-row-${r.id}`}
               glyph={<Glyph icon={"blocks" as IconName} />}
               after={
-                st ? (
-                  <span className={`${tree.count} ${tree.error}`} data-stale title={st}>
-                    {r.source_lost ? "источник удалён" : "устарел"}
-                  </span>
-                ) : (
+                <>
+                  <LineageBadge node={{ kind: "object:estimation", id: r.id }} />
                   <span className={tree.count}>{METHOD_SHORT[r.method]}</span>
-                )
+                </>
               }
               onContextMenu={(e) => rowMenuAt(r, e)}
             />

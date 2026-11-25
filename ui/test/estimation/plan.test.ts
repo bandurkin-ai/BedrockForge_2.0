@@ -18,6 +18,7 @@ import { domainText, fieldsText, journalLines, lastRunText, passText, prefixWarn
 import { runBegin, runJob, runStore, singularText } from "../../src/modules/estimation/runState";
 import { estimationStore, loadRows } from "../../src/modules/estimation/state";
 import { jobsStore } from "../../src/modules/jobs/state";
+import { lineageStore } from "../../src/modules/lineage/state";
 import { A, installCore, newApp, PLANS, teardown, type Core } from "./harness";
 
 let app: App;
@@ -38,7 +39,10 @@ beforeEach(async () => {
   planStore.set({ modelId: null, planId: null, name: "", version: null, items: [], picked: [], dirty: false, saving: false, issue: null });
   await loadRows();
 });
-afterEach(teardown);
+afterEach(() => {
+  lineageStore.set({ statuses: {}, version: 0 });
+  teardown();
+});
 
 const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(cond: () => boolean, ms = 2000): Promise<void> {
@@ -474,7 +478,13 @@ describe("the section «Параметры оценки» of the tree", () => {
     const html = tree();
     expect(html).toContain('data-testid="tree-est-row-41"');
     expect(html).toContain('data-testid="tree-est-plan-51"');
-    expect(html).toContain("устарел");
+    expect(html).not.toContain("data-stale"); // the word «устарел» is the badge of the graph (Д-35), once its state has come
+    expect(html).not.toContain('data-testid="lineage-badge-object:estimation-42"');
+    lineageStore.set({ statuses: { "object:estimation:42:": { kind: "object:estimation", id: 42, sub: "", state: "stale", name: "AU · OK · перех", reason: "параметры оценки «AU · OK · перех» ← изменена таблица «Композиты»", changed: false } }, version: 1 });
+    const stale = tree();
+    expect(stale).toContain('data-testid="lineage-badge-object:estimation-42"');
+    expect(stale).toContain("устарел");
+    expect(stale).toContain("← изменена таблица «Композиты»"); // the chain of the causes is in the tooltip
     expect(html.indexOf("AU · IDW · перв")).toBeLessThan(html.indexOf("AU · OK · окисл"));
     expect(rowsByName(estimationStore.get().rows).map((r) => r.name)).toEqual(["Другая модель", "AU · IDW · перв", "AU · OK · окисл", "AU · OK · перех"]);
     expect(plansByName(estimationStore.get().plans).map((p) => p.id)).toEqual([51]);

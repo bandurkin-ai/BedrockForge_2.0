@@ -23,6 +23,8 @@ import { openTool, WINDOW_PREFIX } from "./bind";
 import own from "./Composites.module.css";
 import { loadSetResults, paramsArgs, rebuildQuestion, resultLabel, resultsStore, staleText, tabMark, toolOfOp, watchResults, type ResultAction } from "./results";
 import { toolById } from "./tools";
+import { useWatch } from "../lineage/hooks";
+import { LineageBadge } from "../lineage/LineageBadge";
 import { openIntercept } from "../intercepts/bind";
 import { interceptArgs, interceptMenu } from "../intercepts/results";
 import { interceptToolOfOp } from "../intercepts/tools";
@@ -84,15 +86,6 @@ export function useResultsBySet(setIds: readonly number[]): Record<number, Resul
   return bySet;
 }
 
-/** The text after the name of a result: «устарел» (warn colour) or nothing. */
-function StaleMark({ r }: { r: ResultRow }) {
-  return r.stale ? (
-    <span className={own.staleMark} data-testid={`result-stale-${r.id}`}>
-      устарел
-    </span>
-  ) : null;
-}
-
 /** The title of a result row: what it is, why it is out of date, what a double click does. */
 export function resultTitle(r: ResultRow): string {
   const what = r.makes_table ? (r.table ? `таблица «${r.table}»` : "таблица") : r.table ? `поля в таблице «${r.table}»` : "поля в таблице источника";
@@ -105,6 +98,7 @@ export function ResultRows({ setId, results, level = 3 }: { setId: number; resul
   const app = useApp();
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [picked, setPicked] = useState<number | null>(null);
+  useWatch(results.map((r) => ({ kind: "dh_result", id: r.id }))); // the states of the whole section in one request (Д-35)
   if (!results.length) return null;
   const open = !collapsed.includes("group");
   const stale = results.filter((r) => r.stale).length;
@@ -133,7 +127,7 @@ export function ResultRows({ setId, results, level = 3 }: { setId: number; resul
             title={resultTitle(r)}
             testId={`tree-result-${r.id}`}
             className={r.stale ? own.staleRow : undefined}
-            after={<StaleMark r={r} />}
+            after={<LineageBadge node={{ kind: "dh_result", id: r.id }} />}
             onContextMenu={(e) => openResultMenu(app, r, e)}
           />
         ))}
@@ -141,10 +135,24 @@ export function ResultRows({ setId, results, level = 3 }: { setId: number; resul
   );
 }
 
-/** The mark of a result table on its tab (panel «Таблица»): «устарел» with the reason in the tooltip. */
-export function TabMark({ origin }: { origin: TableRow["origin"] | undefined }) {
+/**
+ * The mark of a result table on its tab (panel «Таблица»): «◆» and, for a table of the graph (`table` — its key, the id of `dh_tables`),
+ * the badge of its state (Д-35; the quiet dot of «актуален» is not shown). Without the key — the mark of the answer of the tab itself:
+ * «устарел» with the reason in the tooltip.
+ */
+export function TabMark({ origin, table }: { origin: TableRow["origin"] | undefined; table?: string }) {
   const m = tabMark(origin);
   if (!m) return null;
+  const id = table === undefined || table.trim() === "" ? Number.NaN : Number(table);
+  if (Number.isInteger(id))
+    return (
+      <>
+        <span className={own.resultMark} title={m.title} data-testid="table-tab-mark">
+          ◆
+        </span>
+        <LineageBadge node={{ kind: "dh_table", id }} hideCurrent />
+      </>
+    );
   return (
     <span className={m.stale ? own.staleMark : own.resultMark} title={m.title} data-testid="table-tab-mark">
       {m.stale ? m.text : "◆"}

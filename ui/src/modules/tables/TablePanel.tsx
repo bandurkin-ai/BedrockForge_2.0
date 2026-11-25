@@ -47,7 +47,7 @@ export function TablePanel() {
           {s.tabs.map((t) => (
             <button key={t.table} type="button" role="tab" aria-selected={t.table === s.table} className={t.table === s.table ? css.tabActive : css.tab} onClick={() => void openTable(t.table)}>
               {t.name} <span className={css.count}>{t.rows.toLocaleString("ru-RU")}</span>
-              <TabMark origin={t.origin} />
+              <TabMark origin={t.origin} table={t.table} />
             </button>
           ))}
         </div>

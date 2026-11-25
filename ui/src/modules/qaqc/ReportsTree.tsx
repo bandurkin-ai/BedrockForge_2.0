@@ -10,6 +10,8 @@ import { openMenu, type MenuItem } from "../../shell/ContextMenu";
 import { askText } from "../../shell/dialogs";
 import { Glyph } from "../../shell/ObjectRows";
 import { TreeRow } from "../../shell/TreeRow";
+import { useWatch } from "../lineage/hooks";
+import { LineageBadge } from "../lineage/LineageBadge";
 import type { QaqcReport } from "./api";
 import { hasXlsx, PDF_REASON, rebuildReason, reportsByName, reportsStore, reportStateTitle, staleTitle } from "./reportRun";
 
@@ -35,10 +37,9 @@ export function reportActions(r: QaqcReport, reason: (id: string) => string | nu
   ];
 }
 
-/** The label of a row: the name, «строится», «ошибка», «устарел». */
-export function reportLabel(r: Pick<QaqcReport, "name" | "state" | "stale">): string {
-  const marks = [r.state !== "ready" ? reportStateTitle(r.state) : "", r.stale ? "устарел" : ""].filter(Boolean);
-  return marks.length ? `${r.name} · ${marks.join(", ")}` : r.name;
+/** The label of a row: the name, «строится», «ошибка». «Устарел» is the badge of the graph (Д-35), after the name. */
+export function reportLabel(r: Pick<QaqcReport, "name" | "state">): string {
+  return r.state !== "ready" ? `${r.name} · ${reportStateTitle(r.state)}` : r.name;
 }
 
 export function ReportRows() {
@@ -46,6 +47,7 @@ export function ReportRows() {
   const get = () => reportsStore.get();
   const { list, error } = useSyncExternalStore(reportsStore.subscribe, get, get);
   const run: Run = (id, args) => void app.run(id, args);
+  useWatch((list ?? []).map((r) => ({ kind: "object:qaqc_report", id: r.id }))); // the states of the whole section in one request
   if (error && !list) return <div role="note">{error}</div>;
   if (!list?.length) return null;
   const menu = (r: QaqcReport, e: MouseEvent) => {
@@ -64,6 +66,7 @@ export function ReportRows() {
           title={`Отчёт QAQC «${r.name}» по данным «${r.data_name}»: ${reportStateTitle(r.state)}${r.stale ? `; ${staleTitle(r.stale)}` : ""}; двойной щелчок — вкладка «QAQC › Отчёт»`}
           testId={`tree-qaqc-report-${r.id}`}
           glyph={<Glyph icon="report" />}
+          after={<LineageBadge node={{ kind: "object:qaqc_report", id: r.id }} />}
           onContextMenu={(e) => menu(r, e)}
         />
       ))}

@@ -12,6 +12,7 @@ import { normalizeColor } from "../../shell/props";
 import type { ObjectKind } from "../../shell/selection";
 import { counted } from "../../shell/treeActions";
 import { selectWithProperties } from "../../shell/treeRun";
+import { askImpact } from "../lineage/impactAsk";
 import { deleteLineFile, renameLayer, setLayerColor } from "../lines/actions";
 import { findLayer } from "../lines/props";
 import { deleteRaster, rasterById, renameRaster } from "../rasters/actions";
@@ -121,9 +122,12 @@ export function bindObjectCommands(app: App): void {
         await deleteRaster(t.id);
       } else if (t.kind === "blocks") {
         if (!(await ask("Удалить блочную модель", `Блочная модель «${o.name}» удаляется из проекта вместе с ячейками и полями. Отменить удаление нельзя.`))) return "Отменено";
+        // what is built from it (Д-35): the window opens only when there are dependents; the person decides
+        if (!(await askImpact({ kind: "object:block_model", id: t.id }, `удалить блочную модель «${o.name}»`))) return "Отменено";
         await deleteBlockModel(t.id);
       } else {
         if (!(await ask(`Удалить: ${o.what}`, `«${o.name}» удаляется из проекта. Отменить удаление нельзя.`))) return "Отменено";
+        if (!(await askImpact({ kind: "wireframe", id: t.id }, `удалить ${o.what} «${o.name}»`))) return "Отменено";
         await deleteWireframe(t.id);
       }
       return `${capital(o.what)} «${o.name}» ${o.fem ? "удалена" : "удалён"}`;

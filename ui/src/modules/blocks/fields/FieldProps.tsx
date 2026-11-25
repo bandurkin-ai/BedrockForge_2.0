@@ -12,6 +12,8 @@ import { useApp } from "../../../shell/AppContext";
 import css from "../../../shell/PropsParts.module.css";
 import { errorText } from "../../../shell/props";
 import { closeWindow } from "../../../shell/windows";
+import { useStatus, useWatch } from "../../lineage/hooks";
+import { LineageBadge } from "../../lineage/LineageBadge";
 import { blocksStore } from "../state";
 import type { FieldRow } from "./api";
 import { RunView, useSel } from "./CommonParts";
@@ -31,6 +33,10 @@ function Row({ f, modelId, locked, onNote }: { f: FieldRow; modelId: number; loc
   const dirty = Object.keys(patch).length > 0;
   const why = deleteReason(f);
   const open = st.usageOpen === f.name;
+  // the state of the field in the graph of dependencies (Д-35; the name of a field is in lower case in a node); until it answers — the check of the list
+  const node = { kind: "bm_field", id: modelId, sub: f.name.toLowerCase() };
+  const status = useStatus(node);
+  const marked = status ? status.state !== "deleted" && status.state !== "current" : f.stale;
   const set = (p: Partial<typeof edit>) => setPropsEdit(f.name, base, p);
   const run = async (command: string, args: Record<string, unknown>) => {
     onNote(null);
@@ -49,12 +55,18 @@ function Row({ f, modelId, locked, onNote }: { f: FieldRow; modelId: number; loc
       <tr className={`${dirty ? mod.dirty : ""} ${f.stale ? mod.stale : ""}`} data-testid={`props-row-${f.name}`} data-stale={f.stale || undefined} data-dirty={dirty || undefined}>
         <td className={mod.name} title={RENAME_HINT} data-testid={`props-name-${f.name}`}>
           {f.name}
-          {f.stale && (
+          {marked && (
             <>
               {" "}
-              <span className={`${mod.badge} ${mod.staleBadge}`} title={f.staleReason ?? "Поля, из которых считалось, изменились"} data-testid={`props-stale-${f.name}`}>
-                устарел
-              </span>
+              <LineageBadge
+                node={node}
+                hideCurrent
+                fallback={
+                  <span className={`${mod.badge} ${mod.staleBadge}`} title={f.staleReason ?? "Поля, из которых считалось, изменились"} data-testid={`props-stale-${f.name}`}>
+                    устарел
+                  </span>
+                }
+              />
             </>
           )}
         </td>
@@ -133,6 +145,7 @@ export function FieldProps({ winId }: { winId: string }) {
     if (modelId !== null && !list && !st.loading && !st.error) void refreshProps(modelId);
   }, [modelId, list, st.loading, st.error]);
 
+  useWatch(list ? list.fields.map((f) => ({ kind: "bm_field", id: st.modelId ?? 0, sub: f.name.toLowerCase() })) : []); // the whole tab in one request
   const cancel = () => void cancelRun().catch((e: unknown) => setNote(errorText(e)));
 
   return (

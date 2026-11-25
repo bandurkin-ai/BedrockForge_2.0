@@ -223,7 +223,7 @@ describe("«устарел», «Перестроить», «PDF»", () => {
     expect(staleTitle(null)).toBe("");
     expect(staleTitle("data")).toBe("устарел: данные изменились");
     expect(staleTitle("config")).toBe("устарел: изменились настройка или справочник CRM");
-    expect(reportLabel({ ...REPORT, stale: "data" })).toBe("Отчёт QAQC — Контроль · устарел");
+    expect(reportLabel({ ...REPORT, stale: "data" } as typeof REPORT)).toBe("Отчёт QAQC — Контроль"); // «устарел» is the badge of the graph (Д-35), not a word of the label
     expect(reportLabel({ ...REPORT, state: "building" })).toBe("Отчёт QAQC — Контроль · строится");
     expect(rebuildReason(REPORT)).toBeNull();
     expect(rebuildReason({ ...REPORT, stale: "source_deleted" })).toMatch(/^Данные отчёта удалены/);

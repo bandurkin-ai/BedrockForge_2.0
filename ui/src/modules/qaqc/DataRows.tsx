@@ -9,6 +9,8 @@ import { useApp } from "../../shell/AppContext";
 import { openMenu } from "../../shell/ContextMenu";
 import { Glyph } from "../../shell/ObjectRows";
 import { TreeRow } from "../../shell/TreeRow";
+import { useWatch } from "../lineage/hooks";
+import { LineageBadge } from "../lineage/LineageBadge";
 import { SwathTree } from "../swath/SwathTree";
 import type { QaqcData } from "./setupApi";
 import { dataByName, dataStore } from "./setup/dataStore";
@@ -25,6 +27,7 @@ export function DataRows() {
   const getState = () => dataStore.get();
   const { list } = useSyncExternalStore(dataStore.subscribe, getState, getState);
   const run = (id: string, args: Record<string, unknown>) => void app.run(id, args);
+  useWatch(list.map((d) => ({ kind: "object:qaqc_data", id: d.id }))); // the states of the whole section in one request (Д-35)
   if (!list.length) return null;
   const menu = (d: QaqcData, e: MouseEvent) => {
     e.preventDefault();
@@ -35,13 +38,14 @@ export function DataRows() {
       {dataByName(list).map((d) => (
         <TreeRow
           key={d.id}
-          label={d.stale ? `${d.name} · устарели` : d.name}
+          label={d.name}
           ariaLabel={d.name}
           level={2}
           onActivate={() => run("qaqc.open", { section: "standards", data_id: d.id })}
           title={`Данные QAQC «${d.name}»: ${d.rows.toLocaleString("ru-RU")} записей; двойной щелчок — вкладка «QAQC»${d.stale ? "; таблица набора изменилась — «Обновить» в меню" : ""}`}
           testId={`tree-qaqc-data-${d.id}`}
           glyph={<Glyph icon="audit" />}
+          after={<LineageBadge node={{ kind: "object:qaqc_data", id: d.id }} />}
           onContextMenu={(e) => menu(d, e)}
         />
       ))}
