@@ -475,3 +475,7 @@ def hole_card(svc: Svc, set_id: int, hole_id: int) -> dict[str, Any]:
 from .routes_tools import router as _tools  # noqa: E402 - the tools routes share the prefix
 
 router.include_router(_tools)
+
+from .routes_from_model import router as _from_model  # noqa: E402 - «Модель на скважины» (Д-34 ч. 1)
+
+router.include_router(_from_model)
