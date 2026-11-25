@@ -126,6 +126,13 @@ def test_the_warm_up_leaves_no_specialization_to_the_jobs(bp) -> None:  # type: 
     model = build(bp, PLAIN, FIELDS, p, random_values(20, rng))
     run(bp, model, [2.0, 2.0, 2.0], density="SG", threads=2)
     run(bp, model, [1.5, 1.5, 1.5], threads=1)
+    # the same without FRAC (the model of a DAT/DM import) with a density field: the field read from the file is
+    # read-only and FRAC is not — a specialization of its own that the bench of a cold cache found (17.39b)
+    plain = [f for f in FIELDS if f["name"] != "FRAC"]
+    values = {k: v for k, v in random_values(20, rng).items() if k != "FRAC"}
+    model = build(bp, PLAIN, plain, p, values)
+    run(bp, model, [2.0, 2.0, 2.0], density="SG", categories=["DOM"], threads=2)
+    run(bp, model, [2.0, 2.0, 2.0], density=2.7, threads=1)
     assert signatures() == before
 
 
@@ -141,6 +148,8 @@ def test_the_shell_and_the_pick_of_a_job_find_the_kernels_compiled() -> None:
     s, w = np.zeros((60, 3), np.uint8), np.full((60, 3), 2, np.uint8)
     ok = rng.random(60) > 0.2
     k = rng.integers(0, 5, 60).astype(np.uint16)
+    s.setflags(write=False)  # the columns of the cache of a model: what the display passes (17.39b)
+    w.setflags(write=False)
     for sub in (False, True):
         f = shell.exposed(grid, p, s if sub else None, w if sub else None, ok, k, shell=True, threads=4)
         shell_merge.merge_faces(grid, f)
@@ -213,3 +222,42 @@ def test_importing_the_handlers_and_the_warm_ups_does_not_pull_numba(module: str
     r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == "", f"{module} imported: {r.stdout.strip()}"
+
+
+def test_the_slice_of_a_job_finds_the_kernels_compiled() -> None:
+    from bf_core.blocks import slice as sl
+    from bf_core.blocks.slice_poly import section_polygons
+
+    sl.warm()
+    before = signatures()
+    grid = GridV2.of({"corner": [0.0, 0.0, 0.0], "counts": [3, 3, 2], "size": [4.0, 4.0, 4.0], "div": [2, 2, 2],
+                      "rotation": 20.0, "order": "F"})  # fmt: skip
+    p = np.arange(10, dtype=np.uint64)
+    s, w = np.zeros((10, 3), np.uint8), np.full((10, 3), 2, np.uint8)
+    num, cat = np.linspace(0.0, 1.0, 10), (np.arange(10) % 3).astype(np.int32)
+    for a in (s, w, num, cat):
+        a.setflags(write=False)  # the cache of columns gives read-only ones
+    ok = np.ones(10, dtype=np.bool_)
+    for normal in ((0.0, 0.0, 1.0), (1.0, 0.0, 0.0), (1.0, 2.0, 3.0)):
+        pl = sl.plane_of(grid, (6.0, 6.0, 4.0), normal)
+        for values, kind in ((num, sl.NUMBER), (cat, sl.CATEGORY), (None, None)):
+            sl.slice_rows(grid, pl, p, s, w, ok, values, kind)
+        section_polygons(grid, pl, p, s, w, ok)
+    assert signatures() == before
+
+
+def test_the_kernels_of_the_swath_of_sub_blocks_come_from_the_cache(tmp_path: Path) -> None:
+    """They were closures (`_build`), which numba compiles anew in every process (≈ 5.7 s); now module-level."""
+    import os
+
+    cache = tmp_path / "numba"
+    cache.mkdir()
+    script = "import time\nt = time.perf_counter()\nfrom bf_core.stats import swath_sub\nswath_sub.warm()\n" \
+             "print(time.perf_counter() - t)"
+    env = {**os.environ, "NUMBA_CACHE_DIR": str(cache)}
+    took = []
+    for _ in range(2):
+        r = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=300, env=env)
+        assert r.returncode == 0, r.stderr
+        took.append(float(r.stdout.strip().splitlines()[-1]))
+    assert took[1] < 2.5 and took[1] < took[0] / 2, took
