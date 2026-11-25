@@ -1,8 +1,8 @@
 /**
  * The map of the support of a surface in the 3D window (ТЗ 7.35 Д-32 п. 2; `SceneLayer`, key `implicit-support`): the surface of an implicit
- * model painted by the distance of its vertices to the nearest data point. The geometry is that of the part of the wireframe (float32 from
- * the integer origin of the part, `viz/mesh/build.ts`), the colours — one per vertex, in the order of the vertices; `setColors` paints it
- * again without touching the geometry (the threshold D_оп moved). Drawn unlit in front of the surface of the wireframe (the polygon offset
+ * model painted by the distance of its vertices to the nearest data point. The geometry is the whole wireframe as the core gives it with
+ * the distances (float32 from an integer origin, 32-bit indices: any number of parts and triangles), the colours — one per vertex, in the
+ * order of the distances; `setColors` paints it again without touching the geometry (the threshold D_оп moved). Drawn unlit in front of the surface of the wireframe (the polygon offset
  * of the red layer of the checks), clipped like the rest of the scene. Display only: the numbers are the core's float64.
  */
 import * as THREE from "three";

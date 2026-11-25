@@ -43,8 +43,9 @@ KEYS = ("defaults", "bad_param", "refusals", "models", "model_post", "name_taken
         "model_put", "model_put_conflict", "group_post", "group_put", "group_delete", "group_not_found", "preview",
         "preview_group", "preview_no_contacts", "not_ready", "build_submit", "model_building", "build_result", "model",
         "outputs", "model_stale", "update_submit", "update_result", "to_wireframe", "check", "check_csv", "check_bad",
-        "support", "support_one", "support_f4", "support_bad", "compare_holes", "compare_bad", "from_model_submit",
-        "from_model_result", "from_model_exists", "from_model_bad", "build_failed", "model_error", "delete_conflict",
+        "support", "support_one", "support_f4", "support_mesh", "support_bad", "compare_holes", "compare_bad",
+        "from_model_submit", "from_model_result", "from_model_exists", "from_model_bad", "build_failed", "model_error",
+        "delete_conflict",
         "delete", "read_only")  # fmt: skip
 MINE = tuple(k for k in KEYS if k not in ("defaults", "bad_param", "refusals"))
 SKIP = ("versions", "seconds", "stages", "fp", "sha", "token", "params", "created_at", "updated_at", "at", "job")
@@ -175,6 +176,12 @@ def checks(c: Any, mid: int, out: dict[str, Any]) -> None:
         "status": 200,
         "body": {"type": f4.headers["content-type"], "bytes": len(f4.content), "head": head},
     }
+    mesh = c.post(f"{IMP}/models/{mid}/support", json={"wireframe_id": one, "format": "f4mesh"})
+    out["support_mesh"] = {
+        "status": 200,
+        "body": {"type": mesh.headers["content-type"], "bytes": len(mesh.content),
+                 "head": json.loads(mesh.headers["x-bf-support"])},
+    }  # fmt: skip
     out["support_bad"] = answer(c.post(f"{IMP}/models/{mid}/support", json={"threshold": -1}))
     cmp_url = f"{IMP}/models/{mid}/compare_holes"
     cmp_body = {"set_id": w.set_id, "table": str(w.litho), "field": "CODE", "size": 6}

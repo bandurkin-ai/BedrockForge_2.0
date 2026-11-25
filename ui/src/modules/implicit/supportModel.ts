@@ -1,7 +1,7 @@
 /**
  * What the map of the support (ТЗ 7.35 Д-32 п. 2) is made of, without React and three.js: the colour of a distance, the colours of all
  * the vertices of a surface (the frame of the repaint when D_оп moves: one pass over the distances, no allocation when the array is
- * given), the match of the vertices of the core with the vertices of the part of the 3D window, and the words of «Свойства».
+ * given), the surface of the core as the layer takes it (the whole wireframe, any number of parts), and the words of «Свойства».
  *
  * The colour: Cobalt where the surface lies near the data, Light Stone half way to D_оп, Copper Orange at D_оп; beyond it the copper
  * darkens (to Anthracite at twice the threshold) — «экстраполяция». A vertex without data points (NaN) is Slate, never a colour of a
@@ -9,7 +9,8 @@
  */
 import { BRAND, mix } from "../../charts/column/classes";
 import { num } from "../../shell/props";
-import type { SupportSurface } from "./checkApi";
+import type { SupportMeshData } from "../../viz/support/layer";
+import type { SupportMesh, SupportSurface } from "./checkApi";
 
 const STEPS = 256;
 /** the top of the ramp, in thresholds: 1 — Copper Orange, SPAN — the darkest copper */
@@ -78,19 +79,27 @@ export function countBeyond(values: Float32Array, threshold: number): { beyond: 
   return { beyond, noData };
 }
 
-// ---- the vertices of the core and of the 3D window ----
+// ---- the surface of the core as the 3D window draws it ----
 
 /**
- * The distances come in the order of the vertices of the wireframe; the part of the 3D window lists the vertices its triangles use, in the
- * same order (`np.unique` of the core), so a wireframe of ONE part whose every vertex is used is read as it is. For a wireframe of several
- * parts the core does not say which vertices of the wireframe are the vertices of a part — the map is not drawn (null is «можно»; the
- * text is the reason).
+ * The surface of the answer `f4mesh` as the layer takes it: the vertices and triangles of the WHOLE wireframe (any number of parts and
+ * triangles; the indices are 32-bit) in the order of the distances, so a colour of a vertex is the colour of the distance with the same
+ * number — nothing is matched. `bbox` is absolute, [xmin, ymin, zmin, xmax, ymax, zmax] (null — no vertices).
  */
-export function vertexMatch(parts: number, vertices: number, values: number): string | null {
-  if (parts !== 1)
-    return `Каркас состоит из ${parts} частей (до 64 000 треугольников каждая): ядро отдаёт расстояния по порядку вершин каркаса, а окно 3D делит его на части и вершин частей не нумерует. Таблица и доля площади за порогом доступны; раскраска — для поверхностей из одной части.`;
-  if (vertices !== values) return `У поверхности ${num(values, 0)} вершин, у части в окне 3D — ${num(vertices, 0)}: вершины не сопоставить, карта не рисуется.`;
-  return null;
+export function meshData(mesh: SupportMesh): SupportMeshData {
+  const { origin: o, positions: p } = mesh;
+  let box: number[] | null = null;
+  if (p.length >= 3) {
+    const r = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < p.length; i += 3)
+      for (let k = 0; k < 3; k++) {
+        const v = p[i + k];
+        if (v < r[k]) r[k] = v;
+        if (v > r[k + 3]) r[k + 3] = v;
+      }
+    box = [r[0] + o.x, r[1] + o.y, r[2] + o.z, r[3] + o.x, r[4] + o.y, r[5] + o.z];
+  }
+  return { origin: o, positions: p, index: mesh.index, bbox: box };
 }
 
 // ---- the words ----

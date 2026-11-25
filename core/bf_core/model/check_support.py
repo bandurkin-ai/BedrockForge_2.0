@@ -15,7 +15,10 @@ The surfaces are the `surface` outputs of the model (a domain: its isosurface); 
 gives the bodies of its groups; `wireframe_id` names one output (any kind), and only then there are `values` — the
 distances in the order of the vertices of the wireframe: `format` json — a list (null for a gap, up to 500 thousand
 vertices, else 422 `bad_param` {param: "format"} with the hint «f4»), f4 — float32 little-endian for the picture only
-(8.0.1; the meaning of the answer is in the headers of the route, `Support.summary`).
+(8.0.1; the meaning of the answer is in the headers of the route, `Support.summary`), f4mesh — the same distances
+together with the whole surface (`mesh_body`): the vertices and triangles of the wireframe itself, in the order the
+distances have, so the picture of ANY wireframe (several parts, over 64 thousand triangles) is painted without matching
+vertices.
 
 The share is written into `meta.stats.by_group[…].support_share` of the group (with `support_threshold`): a record of
 the last map, the version of the model does not change (a model edited or built meanwhile, a project «только
@@ -43,7 +46,7 @@ from .spec import parse_support, refuse
 from .spec_parts import D_MAX
 
 JSON_MAX = 500_000  # vertices: more are given as float32
-FORMATS = ("json", "f4")
+FORMATS = ("json", "f4", "f4mesh")
 
 
 @dataclass(frozen=True)
@@ -62,7 +65,7 @@ def parse(body: Any) -> Request:
         raise ApiError(422, "bad_request", "Неверные данные запроса.", "Повторите действие в окне.")
     fmt = body.get("format", "json")
     if fmt not in FORMATS:
-        raise sb.bad("format", "Формат значений: json или f4.", "Выберите json или f4.")
+        raise sb.bad("format", "Формат значений: json, f4 или f4mesh.", "Выберите json, f4 или f4mesh.")
     wid, thr = parse_support({k: v for k, v in body.items() if k in ("wireframe_id", "threshold")}, -1.0)
     given = body.get("threshold")
     return Request(wid, None if given is None or given == "" else thr, str(fmt), body)
@@ -73,6 +76,7 @@ class Support:
     out: dict[str, Any]  # the answer of §8.2 (`values` only for the format json)
     values: Any | None  # float64 [vertices] when `wireframe_id` was given (the route gives f4 as float32)
     summary: dict[str, Any] | None  # the entry of the surface asked for
+    mesh: tuple[Any, Any] | None = None  # (float64 [vertices, 3], int [triangles, 3]) of that surface — for `f4mesh`
 
 
 def _area(v: Any, t: Any) -> tuple[Any, float]:
@@ -152,6 +156,7 @@ def run(project: Any, model_id: int, req: Request) -> Support:
     shares: dict[tuple[int, int | None], tuple[float | None, float]] = {}
     values = None
     summary = None
+    mesh = None
     for o in pick:
         gid, wing = o["group"], o.get("wing")
         key = (gid, wing)
@@ -176,7 +181,7 @@ def run(project: Any, model_id: int, req: Request) -> Support:
         if gid is not None and o["kind"] == "surface":
             shares[(int(gid), None if wing is None else int(wing))] = (share, threshold)
         if req.wireframe_id is not None:
-            values, summary = d, entry
+            values, summary, mesh = d, entry, (v, t)
     info = info_of(got)
     recorded = _record(project, model_id, int(got["version"]), shares)
     out: dict[str, Any] = {"model": info, "warnings": warnings_of(info), "threshold": threshold, "d_max": d_max,
@@ -186,7 +191,22 @@ def run(project: Any, model_id: int, req: Request) -> Support:
             raise sb.bad("format", f"Вершин больше {JSON_MAX:,}: список не передать текстом.".replace(",", " "),
                          "Запросите значения в формате f4.")  # fmt: skip
         out["values"] = [None if x != x else x for x in values.tolist()]
-    return Support(out, values, summary)
+    return Support(out, values, summary, mesh if req.format == "f4mesh" else None)
 
 
-__all__ = ["FORMATS", "JSON_MAX", "Request", "Support", "parse", "run"]
+def mesh_body(values: Any, mesh: tuple[Any, Any]) -> tuple[bytes, dict[str, Any]]:
+    """The body of `f4mesh` and its description for the header: the vertices as float32 offsets (x, y, z — three per
+    vertex) from a whole-metre origin at the centre of the extent (`viz/meshes.py`, `ui/src/viz/origin.ts`: float32 is
+    for the picture only), then the distances (float32, NaN — no data points), then the triangles (uint32, three
+    vertices each), all little-endian in this order. `{origin, vertices, triangles}` is the description."""
+    v, t = np.asarray(mesh[0], dtype=np.float64), np.asarray(mesh[1])
+    origin = np.round((v.min(axis=0) + v.max(axis=0)) / 2.0) if len(v) else np.zeros(3)
+    body = b"".join((
+        (v - origin).astype("<f4").tobytes(),
+        np.asarray(values).astype("<f4").tobytes(),
+        t.astype("<u4").tobytes(),
+    ))  # fmt: skip
+    return body, {"origin": [float(x) for x in origin], "vertices": int(len(v)), "triangles": int(len(t))}
+
+
+__all__ = ["FORMATS", "JSON_MAX", "Request", "Support", "mesh_body", "parse", "run"]

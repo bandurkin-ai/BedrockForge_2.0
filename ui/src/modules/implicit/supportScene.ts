@@ -1,45 +1,25 @@
 /**
  * The map of the support in the 3D window (ТЗ 7.35 Д-32 п. 2): one layer `implicit-support` of the scene (`viz/support/layer.ts`, a lazy
- * chunk with three.js). The surface comes from the core as the part of the wireframe at the full level (`/viz/wireframes/{id}`), the
- * distances — from the route `support` (`checkApi.ts`); the layer is kept, so a scene made again (the graphics restarted, another project)
+ * chunk with three.js). The surface and its distances come from the core in one answer of the route `support` (`format: "f4mesh"`,
+ * `checkApi.ts`): the whole wireframe — the vertices and triangles in the order of the distances, so a surface of several parts or of over
+ * 64 000 triangles is painted as well as a small one, and no vertices are matched. The layer is kept, so a scene made again (the graphics restarted, another project)
  * gets it back while it is shown. `repaint` colours the vertices again without a read (D_оп moved). No React.
  */
 import { refusal } from "../../shell/objectRun";
 import type { Scene } from "../../viz/Scene";
-import { buildMeshBuffers, decodeMeshPart, readMeshManifest } from "../../viz/mesh/build";
 import type { SupportMeshData, SupportView } from "../../viz/support/layer";
 import { currentScene, onScene } from "../scene/sceneHost";
-import { callBytes } from "./checkApi";
-import { colorsOf, vertexMatch } from "./supportModel";
+import { colorsOf } from "./supportModel";
 
 export const SUPPORT_KEY = "implicit-support";
 
-/** The surface as the window draws it, and the distances of its vertices. */
+/** The surface as the window draws it (the whole wireframe), and the distances of its vertices (the same order). */
 export interface SupportCloud {
   wireframeId: number;
   mesh: SupportMeshData;
   /** m, the order of the vertices; NaN — no data points */
   values: Float32Array;
   threshold: number;
-}
-
-/** The part of a wireframe for the map; a refusal in Russian when its vertices cannot be matched with the distances (`vertexMatch`). */
-export async function loadSurface(wireframeId: number, values: number): Promise<SupportMeshData> {
-  const manifest = readMeshManifest(await (await callBytes("GET", `/viz/wireframes/${wireframeId}`)).arrayBuffer());
-  const early = manifest.parts.length === 1 ? null : vertexMatch(manifest.parts.length, 0, values);
-  if (early) throw refusal("support_parts", early, "Таблица и доля площади за порогом доступны для любой поверхности.");
-  const part = decodeMeshPart(await (await callBytes("GET", `/viz/wireframes/${wireframeId}/parts/0?lod=0`)).arrayBuffer());
-  const built = buildMeshBuffers(part.header, part.xyz, part.idx);
-  const bad = vertexMatch(1, built.vertices, values);
-  if (bad) throw refusal("support_vertices", bad, "Перестройте модель командой «Обновить» и повторите.");
-  const box = built.box;
-  const o = built.origin;
-  return {
-    origin: { x: o[0], y: o[1], z: o[2] },
-    positions: built.positions,
-    index: built.index,
-    bbox: box[0] <= box[3] ? [box[0] + o[0], box[1] + o[1], box[2] + o[2], box[3] + o[0], box[4] + o[1], box[5] + o[2]] : null,
-  };
 }
 
 let cloud: SupportCloud | null = null;
