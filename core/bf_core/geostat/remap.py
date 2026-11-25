@@ -5,7 +5,8 @@ The objects come with their rows (`archive/spec.py`: `objects` renumbered, the f
 (`source.table`, `source.domain.table`: the id as text) and the tables it was computed from (`inputs.tables[].id`).
 An id the archive does not have becomes null — the model shows «источник удалён» (`store.freshness`); the old number
 would point at another row of the new project. Names, tokens and revisions need nothing. A trend (16.16) names
-the model it was copied from (`origin.model_id`; not in the archive — null, the trend stays as it is). A row of the
+the model it was copied from (`origin.model_id`; not in the archive — null, the trend stays as it is); a structural
+trend (Э19) names its set, the table of the measurements and the wireframe the same way. A row of the
 estimation (18.11) names the block model, the samples (set, tables), the variogram models, the trend, the filter and the
 wireframes of its inline rules, and keeps the same in `inputs[].id` (a table by the map of the tables, a field of a
 model `"<model>:<name>"` by the map of the objects); an id the archive does not have becomes null (a table of the
@@ -61,12 +62,23 @@ def model_meta(meta: Mapping[str, Any], objects_of: Lookup, tables_of: Lookup) -
     return out
 
 
-def trend_meta(meta: Mapping[str, Any], objects_of: Lookup) -> dict[str, Any]:
-    """The `meta` of a trend with the id of the model of its origin in the new project."""
+def trend_meta(meta: Mapping[str, Any], objects_of: Lookup, tables_of: Lookup | None = None) -> dict[str, Any]:
+    """The `meta` of a trend with the id of the model of its origin in the new project; of a structural one (Э19) —
+    also the set (`source.set_id`), the table of the measurements (`source.table`, the id as text) and the
+    wireframe (`source.wireframe_id`): one the archive does not have becomes null, the trend shows «источник удалён»."""
     out = dict(meta)
     origin = out.get("origin")
     if isinstance(origin, Mapping) and "model_id" in origin:
         out["origin"] = {**origin, "model_id": _new(origin["model_id"], objects_of)}
+    src = out.get("source")
+    if isinstance(src, Mapping):
+        new = dict(src)
+        for key in ("set_id", "wireframe_id"):
+            if key in new:
+                new[key] = _new(new[key], objects_of)
+        if "table" in new:
+            new["table"] = None if tables_of is None else _table(new["table"], tables_of)
+        out["source"] = new
     return out
 
 
@@ -185,7 +197,7 @@ def remap_geostat(conn: sa.Connection, objects_map: Mapping[int, int], tables_ma
     )
     for model_id, kind, meta in rows.all():
         if kind == TREND:
-            new = trend_meta(meta or {}, objects_map.get)
+            new = trend_meta(meta or {}, objects_map.get, tables_map.get)
         elif kind == eb.KIND:
             new = estimation_meta(meta or {}, objects_map.get, tables_map.get)
         elif kind == SIMULATION:

@@ -12,7 +12,10 @@ A trend made of a variogram model is a copy (вопрос № 56): the angles an
 the one with the largest a1, the first of equal ones), the size shown — its a1. Editing the model does not change
 the trend; «Обновить из модели» copies again. The structure is numbered from 1, as in the window (`variography.*`).
 
-`kind: "structural"` (замеры, опорный каркас) — Э19; here it is refused with `not_ready`. Plain numpy, float64.
+`kind: "structural"` (замеры, опорный каркас; Э19, ADR 0026 решение 27) has no angles of its own: its axes follow the
+attitude of the measurements or of the wireframe from point to point (`trend_struct.local_axes`); `check_kind` lets
+it through, the callers that need one matrix (`matrix_of`, the estimation of 8.8 — вопрос № 99) refuse it with
+`trend_structural`. Plain numpy, float64.
 """
 
 from __future__ import annotations
@@ -57,18 +60,19 @@ def text_number(value: Any) -> Any:
 
 
 def check_kind(value: Any) -> str:
-    """`global` (also when absent); `structural` — 422 `not_ready` until Э19."""
+    """`global` (also when absent) or `structural`; anything else — 422 `bad_param {param: "kind"}`."""
     kind = GLOBAL if value is None or value == "" else value
-    if kind == STRUCTURAL:
-        raise geostat_error(
-            "not_ready",
-            "Структурный тренд (по замерам или опорному каркасу) будет доступен позже.",
-            "Создайте глобальный тренд: углы и отношения осей.",
-            "kind",
-        )
-    if kind != GLOBAL:
-        raise bad_param("kind", f"Неизвестный вид тренда «{str(kind)[:40]}».", "Вид тренда — global.")
-    return GLOBAL
+    if kind not in KINDS:
+        raise bad_param("kind", f"Неизвестный вид тренда «{str(kind)[:40]}».",
+                        "Вид тренда — global или structural.")  # fmt: skip
+    return str(kind)
+
+
+def structural_refusal() -> ValueError:
+    """422 `trend_structural` — a structural trend where one matrix of the axes is needed (the estimation of 8.8,
+    вопрос № 99; `matrix_of`): its axes differ from point to point."""
+    return geostat_error("trend_structural", "Структурный тренд в оценке не применяется.",
+                         "Выберите глобальный тренд или задайте углы поиска вручную.", "trend_id")  # fmt: skip
 
 
 def ratios_of(value: Any) -> tuple[float, float, float]:

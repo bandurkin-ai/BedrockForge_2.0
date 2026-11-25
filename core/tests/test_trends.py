@@ -137,7 +137,7 @@ def test_trend_refusals(tc) -> None:  # type: ignore[no-untyped-def]
     key, _ = calc(tc.project, tc.set_id, tc.a)
     mid = save(tc, key).json()["id"]
     cases = [
-        ({"kind": "structural", "ang1": 0}, 422, "not_ready", "kind"),
+        ({"kind": "structural", "ang1": 0}, 422, "bad_param", "source"),  # Э19: allowed, but needs a source
         ({"kind": "plane", "ang1": 0}, 422, "bad_param", "kind"),
         ({}, 422, "bad_param", "ang1"),
         ({"ang1": 0, "ang2": 95}, 422, "bad_param", "ang2"),
