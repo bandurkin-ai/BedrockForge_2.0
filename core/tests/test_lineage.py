@@ -340,6 +340,51 @@ def test_origin_lists_inputs_with_their_fingerprints(db_url: str, tmp_path: Path
     assert all(r["fp"] is not None and r["fp_now"] is not None for r in rows)
 
 
+# --- the adapters of the modules that keep their own inputs --------------------------------------------------------
+
+
+def test_qaqc_data_and_report_follow_their_table(db_url: str, tmp_path: Path) -> None:
+    from bf_core.qaqc import report as qr
+
+    c = build(db_url, tmp_path)
+    with dialect.write_tx(c.engine) as conn:
+        source = {"kind": "table", "set_id": c.set_id, "table_id": c.src, "set_name": "Скважины",
+                  "table_name": "Пробы", "rev": 1}  # fmt: skip
+        data = insert_object(conn, "qaqc_data", "Данные QAQC", {"uid": "u1", "source": source})
+        made = {"data_uid": "u1", "data_name": "Данные QAQC", "data_sha256": None, "inputs_sha256": "i1"}
+        rep = insert_object(conn, "qaqc_report", "Отчёт QAQC", {**made, **qr.settings_sha(*qr.current_settings(conn))})
+        lineage.sync(conn, [Node("object:qaqc_data", data), Node("object:qaqc_report", rep)])
+    nodes = [Node("object:qaqc_data", data), Node("object:qaqc_report", rep)]
+    assert {s.state for s in c.status(*nodes).values()} == {lineage.CURRENT}
+    c.edit_source()
+    got = c.status(*nodes)
+    assert got[nodes[0]].state == lineage.STALE and got[nodes[0]].reason == "изменена таблица «Пробы»"
+    assert got[nodes[1]].reason == "данные QAQC «Данные QAQC» ← изменена таблица «Пробы»"
+    with dialect.write_tx(c.engine) as conn:
+        conn.execute(sa.delete(dh_tables).where(dh_tables.c.id == c.src))
+    got = c.status(*nodes)
+    assert [s.state for s in got.values()] == [lineage.LOST, lineage.LOST]
+    with dialect.write_tx(c.engine) as conn:  # the data deleted: «источник удалён» for the report, by the module itself
+        conn.execute(sa.delete(objects).where(objects.c.id == data))
+    got = c.status(nodes[1])[nodes[1]]
+    assert got.state == lineage.LOST and "«Данные QAQC»" in (got.reason or "")
+
+
+def test_block_model_and_fields_of_a_fill_follow_their_wireframes(db_url: str, tmp_path: Path) -> None:
+    c = build(db_url, tmp_path)
+    with dialect.write_tx(c.engine) as conn:
+        fills = {"wireframes": [{"id": 424_242, "sha": "s"}]}  # a wireframe that is not in the project (deleted)
+        meta = {"inputs": fills, "source": {"op": "fill", "params": {"names": {"wireframes": {"424242": "Руда"}}}},
+                "fields": [{"name": "FRAC", "file": "cells", "source": {"op": "fill", "at": "t"}}]}  # fmt: skip
+        bm = insert_object(conn, "block_model", "Заполненная", meta)
+        lineage.sync(conn, [Node("object:block_model", bm), Node("bm_field", bm, "frac")])
+    got = c.status(Node("object:block_model", bm), Node("bm_field", bm, "frac"))
+    for s in got.values():
+        assert s.state == lineage.LOST and s.reason == "удалён каркас «Руда»", s
+    with dialect.read_tx(c.engine) as conn:
+        assert lineage.origin(conn, Node("object:block_model", bm))[0]["name"] == "Руда"
+
+
 # --- a project made before the graph, and the migration ------------------------------------------------------------
 
 
