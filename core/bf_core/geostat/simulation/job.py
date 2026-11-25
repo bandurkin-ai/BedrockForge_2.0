@@ -49,7 +49,6 @@ from bf_core.geostat.estimate import store_base as sb
 from bf_core.jobs.registry import handler
 from bf_core.storage.blobs import BlobStore
 
-from . import nodes
 from . import store as sto
 from . import store_check as sc
 from .spec import RunSpec, SimulationSpec, parse_run, parse_simulation
@@ -318,7 +317,9 @@ def plan_run(conn: sa.Connection, store: BlobStore,
         spec, _data = sc.check(conn, spec)
     inputs = sc.inputs_of(conn, spec)
     model = Model.open(conn, store, spec.model_id)
-    nodes.check_cells(int(model.grid.cells))  # 422 before the job (the index of the grid is i4 on every cell)
+    from .nodes import check_cells  # numba inside: not at the import of the handler
+
+    check_cells(int(model.grid.cells))  # 422 before the job (the index of the grid is i4 on every cell)
     return row, spec, model, inputs, targets.TargetPlan.of(conn, store, spec, model)
 
 
