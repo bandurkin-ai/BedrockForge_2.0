@@ -1,4 +1,4 @@
-// The wizard «Оценка содержаний» (Э18, 18.19) on the answers of the contract: the defaults of the core for the data of the form, the
+// The wizard «Оценка содержаний» (Э18, 18.19) on the real answers of the core: the defaults of the core for the data of the form, the
 // scale of the models of variogram (Д-38: a model in Y without its back transform is not chosen — `variogram_scale`), the save
 // (`POST` / `PUT /estimations`, the refusals under their field, 409 «Перечитать» / «Сохранить как новые»), the three steps drawn.
 import { createElement } from "react";
@@ -10,12 +10,13 @@ import { bodyOf, EMPTY_FORM, type EstimationForm } from "../../src/modules/estim
 import { openWizard } from "../../src/modules/estimation/bind";
 import { StepMethod } from "../../src/modules/estimation/StepMethod";
 import { StepSamples, countsText, mappingNotes } from "../../src/modules/estimation/StepSamples";
+import { g, nf } from "../../src/modules/estimation/Parts";
 import { StepTarget } from "../../src/modules/estimation/StepTarget";
 import { Wizard } from "../../src/modules/estimation/Wizard";
 import { readDefaults } from "../../src/modules/estimation/api";
 import { estimationStore, loadRows } from "../../src/modules/estimation/state";
 import { loadVariogramModels, putForm, requestDefaults, rereadEstimation, saveWizard, scalesOf, setForm, setStep, startEdit, wizardStore } from "../../src/modules/estimation/wizardState";
-import { A, installCore, newApp, teardown, type Core } from "./harness";
+import { A, FIELD, ID, installCore, newApp, teardown, type Core } from "./harness";
 
 let app: App;
 let core: Core;
@@ -26,7 +27,9 @@ beforeEach(() => {
 afterEach(teardown);
 
 const render = (el: ReturnType<typeof createElement>) => renderToStaticMarkup(createElement(AppContext.Provider, { value: app }, el));
-const form = (patch: Partial<EstimationForm> = {}): EstimationForm => ({ ...EMPTY_FORM, modelId: 7, domainField: "ZONE", label: "окисл", setId: 3, table: "12", field: "AU", domain: { table: "14", field: "ZONE", values: ["окисл"] }, variogramId: 21, ...patch });
+const D = A.defaults.body;
+const ROW = A.estimation.body;
+const form = (patch: Partial<EstimationForm> = {}): EstimationForm => ({ ...EMPTY_FORM, modelId: ID.model, domainField: "ZONE", label: "окисл", setId: ID.set, table: ID.table, field: FIELD, domain: { table: ID.domTable, field: "ZONE", values: ["окисл"] }, variogramId: ID.vario, ...patch });
 const flat = (s: string): string => s.replace(/[\u00a0\u202f]/g, " ");
 const requests = (route: string) => core.sent.filter((r) => `${r.method} ${r.path}` === route);
 
@@ -43,9 +46,9 @@ describe("the defaults of the core for the data of the form", () => {
     expect(wizardStore.get().defaults.phase).toBe("loading");
     await vi_waitFor(() => wizardStore.get().defaults.phase === "ok");
     const q = new URLSearchParams(requests("GET /geostat/estimate/defaults")[0].query);
-    expect(Object.fromEntries(q)).toEqual({ model_id: "7", set_id: "3", table: "12", field: "AU", method: "ok", block_domain: "ZONE", domain_table: "14", domain_field: "ZONE", domain_values: "окисл", variogram_id: "21" });
+    expect(Object.fromEntries(q)).toEqual({ model_id: String(ID.model), set_id: String(ID.set), table: ID.table, field: FIELD, method: "ok", block_domain: "ZONE", domain_table: ID.domTable, domain_field: "ZONE", domain_values: "окисл", variogram_id: String(ID.vario) });
     const d = wizardStore.get().defaults.data!;
-    expect(flat(countsText(d))).toBe("Проб: 1 192 из 1 196 (пропуск значения 4)");
+    expect(flat(countsText(d))).toBe(`Проб: ${nf(D.samples.counts.used)} из ${nf(D.samples.counts.rows)} (пропуск значения ${D.samples.counts.missing}, вне домена ${D.samples.counts.outside_domain})`);
     expect(mappingNotes(d, "окисл").matched).toContain("окисл");
     expect(mappingNotes(d, "нет такого").unmatched).toContain("не нашлось значения");
     expect(mappingNotes(d, "").matched).toBeNull();
@@ -65,7 +68,7 @@ describe("the defaults of the core for the data of the form", () => {
     await vi_waitFor(() => wizardStore.get().defaults.phase === "ok" && wizardStore.get().defaults.key.includes('"method":"nn"'));
   });
   it("a refusal of the core stands as the issue of the defaults, with the path of the body (`variogram_id` → `variogram.model_id`)", async () => {
-    putForm(form({ variogramId: 22 }));
+    putForm(form({ variogramId: ID.varioY }));
     core.force("GET /geostat/estimate/defaults", { status: 422, body: { ...A.variogram_scale.body, param: "variogram_id" } });
     requestDefaults(0);
     await vi_waitFor(() => wizardStore.get().defaults.phase === "error");
@@ -77,22 +80,22 @@ describe("the defaults of the core for the data of the form", () => {
 describe("the models of variogram: the scale (Д-38)", () => {
   it("Z; Y without the back transform; Y with it", async () => {
     await loadVariogramModels();
-    expect(scalesOf()).toEqual({ 21: "z", 22: "y", 23: "back" });
-    expect(requests("GET /geostat/variography/models/22")).toHaveLength(1);
-    expect(requests("GET /geostat/variography/models/21")).toHaveLength(0); // a model of grades has nothing to look for
+    expect(scalesOf()).toEqual({ [ID.vario]: "z", [ID.varioY]: "y", [ID.varioBack]: "back" });
+    expect(requests(`GET /geostat/variography/models/${ID.varioY}`)).toHaveLength(1);
+    expect(requests(`GET /geostat/variography/models/${ID.vario}`)).toHaveLength(0); // a model of grades has nothing to look for
   });
   it("the step 3 offers the model of Y only with the back transform; the note names the way out", async () => {
     await loadVariogramModels();
     putForm(form(), { step: 3 });
     const html = render(createElement(StepMethod));
-    expect(html).toMatch(/<option[^>]*value="21"[^>]*>AU · окисл · AU<\/option>/);
-    expect(html).toMatch(/<option[^>]*value="22"[^>]*disabled[^>]*>[^<]*в нормальных оценках — недоступна/);
-    expect(html).toMatch(/<option[^>]*value="23"(?![^>]*disabled)[^>]*>AU · Y назад · AU · Y с обратным преобразованием/);
+    expect(html).toMatch(new RegExp(`<option[^>]*value="${ID.vario}"[^>]*>${D.variogram.name} · ${FIELD}</option>`));
+    expect(html).toMatch(new RegExp(`<option[^>]*value="${ID.varioY}"[^>]*disabled[^>]*>[^<]*в нормальных оценках — недоступна`));
+    expect(html).toMatch(new RegExp(`<option[^>]*value="${ID.varioBack}"(?![^>]*disabled)[^>]*>${FIELD} · Y назад · ${FIELD} · Y с обратным преобразованием`));
     expect(html).toContain("Модель построена в нормальных оценках: такая модель не выбирается. Выполните обратное преобразование модели");
   });
   it("a model of Y chosen by a call is refused before the core is asked: `variogram_scale` under the model of the step 3", async () => {
     await loadVariogramModels();
-    putForm(form({ variogramId: 22 }));
+    putForm(form({ variogramId: ID.varioY }));
     await expect(saveWizard()).rejects.toThrow("Модель построена в нормальных оценках");
     const s = wizardStore.get();
     expect(s.issue).toMatchObject({ code: "variogram_scale", param: "variogram.model_id" });
@@ -102,7 +105,7 @@ describe("the models of variogram: the scale (Д-38)", () => {
   });
   it("the models in the options of IK «на порог»: one list for each threshold", async () => {
     await loadVariogramModels();
-    putForm(form({ method: "ik", thresholds: "0,5; 1", variogramId: null, variogramIds: [21, null] }), { step: 3 });
+    putForm(form({ method: "ik", thresholds: "0,5; 1", variogramId: null, variogramIds: [ID.vario, null] }), { step: 3 });
     const html = render(createElement(StepMethod));
     expect(html).toContain('data-testid="est-variogram-0"');
     expect(html).toContain('data-testid="est-variogram-1"');
@@ -122,22 +125,22 @@ describe("the save", () => {
     await loadVariogramModels();
     putForm(form());
     const saved = await saveWizard();
-    expect(saved).toEqual({ id: 41, name: "AU · OK · окисл", version: 1 });
+    expect(saved).toEqual(A.estimation_post.body);
     const sent = requests("POST /geostat/estimations")[0].body;
     const built = bodyOf(form(), { scales: scalesOf() });
     expect(built.ok && sent).toEqual(built.ok && built.body);
     const s = wizardStore.get();
-    expect(s.editing).toEqual({ id: 41, version: 1 });
+    expect(s.editing).toEqual({ id: saved.id, version: saved.version });
     expect(s.dirty).toBe(false);
     expect(s.saving).toBe(false);
     await vi_waitFor(() => estimationStore.get().loaded);
-    expect(estimationStore.get().rows.map((r) => r.id)).toEqual([41]);
+    expect(estimationStore.get().rows.map((r) => r.id)).toEqual(A.estimations.body.estimations.map((r: { id: number }) => r.id));
     // the second save is a replacement over the version
     setForm({ name: "Другое имя" });
     await saveWizard();
-    const put = requests("PUT /geostat/estimations/41");
+    const put = requests(`PUT /geostat/estimations/${saved.id}`);
     expect(put).toHaveLength(1);
-    expect(put[0].body).toMatchObject({ name: "Другое имя", expected_version: 1, model_id: 7 });
+    expect(put[0].body).toMatchObject({ name: "Другое имя", expected_version: saved.version, model_id: ID.model });
   });
   it("a wrong form is told at its step and does not reach the core", async () => {
     putForm(form({ disc: ["4", "11", "2"] }), { step: 3 });
@@ -174,27 +177,27 @@ describe("the save", () => {
 
 describe("editing a stored row; 409 version_conflict", () => {
   it("«Изменить»: the form is the stored row, the version goes with the save", async () => {
-    await startEdit(41);
+    await startEdit(ID.row);
     const s = wizardStore.get();
-    expect(s.form).toMatchObject({ name: "AU · OK · окисл", modelId: 7, variogramId: 21 });
-    expect(s.editing).toEqual({ id: 41, version: 2 });
+    expect(s.form).toMatchObject({ name: ROW.name, modelId: ID.model, variogramId: ID.vario });
+    expect(s.editing).toEqual({ id: ID.row, version: ROW.version });
     await loadVariogramModels();
     setForm({ disc: ["2", "2", "2"] });
     await saveWizard();
-    const put = requests("PUT /geostat/estimations/41")[0].body;
-    expect(put).toMatchObject({ expected_version: 2, disc: [2, 2, 2] });
+    const put = requests(`PUT /geostat/estimations/${ID.row}`)[0].body;
+    expect(put).toMatchObject({ expected_version: ROW.version, disc: [2, 2, 2] });
     expect(put.search).toEqual((A.estimation.body.meta as { search: unknown }).search); // the steps 4–6 go back as they were
   });
   it("another version stored: the words of the core, «Перечитать» and «Сохранить как новые»", async () => {
-    await startEdit(41);
+    await startEdit(ID.row);
     await loadVariogramModels();
     setForm({ name: "Моя правка" });
-    core.force("PUT /geostat/estimations/41", A.estimation_put_conflict);
-    await expect(saveWizard()).rejects.toThrow("изменены в другом окне");
+    core.force(`PUT /geostat/estimations/${ID.row}`, A.estimation_put_conflict);
+    await expect(saveWizard()).rejects.toThrow(A.estimation_put_conflict.body.message);
     expect(wizardStore.get().issue).toMatchObject({ code: "version_conflict", reread: true, param: null });
     expect(wizardStore.get().step).toBe(6);
     const html = render(createElement(Wizard, { winId: "w1" }));
-    expect(html).toContain("Параметры оценки изменены в другом окне.");
+    expect(html).toContain(A.estimation_put_conflict.body.message);
     expect(html).toContain("Перечитать");
     expect(html).toContain("Сохранить как новые");
     // «Сохранить как новые»: a new row, not the one of the other window
@@ -203,10 +206,10 @@ describe("editing a stored row; 409 version_conflict", () => {
     expect(requests("POST /geostat/estimations")[0].body.name).toBe("Моя правка");
   });
   it("«Перечитать»: the stored row replaces the form, the version is the new one", async () => {
-    await startEdit(41);
+    await startEdit(ID.row);
     setForm({ name: "Моя правка" });
     await rereadEstimation();
-    expect(wizardStore.get().form.name).toBe("AU · OK · окисл");
+    expect(wizardStore.get().form.name).toBe(ROW.name);
     expect(wizardStore.get().dirty).toBe(false);
   });
 });
@@ -216,12 +219,12 @@ describe("the steps drawn", () => {
     putForm(form({ domainField: "ZONE", label: "" }));
     const html = render(createElement(StepTarget));
     expect(html).toContain('data-testid="est-model"');
-    expect(html).toMatch(/<option value="7"[^>]*>Модель<\/option>/);
+    expect(html).toMatch(new RegExp(`<option value="${ID.model}"[^>]*>${D.model.name}</option>`));
     expect(html).not.toContain("Переменный шаг");
     expect(html).not.toContain(">Прототип<");
-    for (const l of ["окисл", "перех", "перв"]) expect(html).toContain(`>${l}</option>`);
-    expect(flat(html)).toContain("Блоков 1 200");
-    expect(html).toContain("размер 10 × 10 × 5 м");
+    for (const l of D.model.domain_fields[0].labels) expect(html).toContain(`>${l}</option>`);
+    expect(flat(html)).toContain(`Блоков ${nf(D.model.rows)}`);
+    expect(html).toContain(`размер ${D.model.size.join(" × ")} м`);
     expect(html).toContain('placeholder="AU · OK"'); // the name the core will give
   });
   it("step 2: the data, the soft boundary, the top cut, the weights", () => {
@@ -234,10 +237,15 @@ describe("the steps drawn", () => {
     putForm(form(), { step: 2 });
     wizardStore.set({ defaults: { phase: "ok", key: "k", seq: 1, data: readDefaults(A.defaults.body), error: null } });
     const html = flat(render(createElement(StepSamples)));
-    expect(html).toContain("Проб: 1 192 из 1 196 (пропуск значения 4)");
-    expect(html).toContain("декластерированное 1,62 г/т");
-    expect(html).toContain("веса: DECL_W");
-    expect(html).toMatch(/<td[^>]*>перв<\/td><td>112<\/td><td>0,9<\/td><td>—<\/td>/); // a gap is a dash, not 0
+    const c = D.samples.counts;
+    expect(html).toContain(`Проб: ${nf(c.used)} из ${nf(c.rows)} (пропуск значения ${c.missing}, вне домена ${c.outside_domain})`);
+    expect(html).toContain(`декластерированное ${g(D.samples.mean.declus)} ${D.samples.unit}`);
+    expect(html).toContain(`веса: ${D.samples.weights}`);
+    const v = D.samples.domain.values[1]; // the values of the domain: the count and the means of each
+    expect(html).toContain(`${v.value}</td><td>${v.n}</td><td>${g(v.naive)}</td><td>${g(v.declus)}</td>`);
+    // a gap is a dash, not 0
+    wizardStore.set({ defaults: { phase: "ok", key: "k", seq: 1, data: readDefaults({ ...D, samples: { ...D.samples, domain: { ...D.samples.domain, values: [{ value: "перв", n: 112, naive: 0.9, declus: null }] } } }), error: null } });
+    expect(flat(render(createElement(StepSamples)))).toMatch(/<td[^>]*>перв<\/td><td>112<\/td><td>0,9<\/td><td>—<\/td>/);
   });
   it("step 2: a label of the blocks with no value of the samples is told", () => {
     putForm(form({ label: "руда" }), { step: 2 });
@@ -278,8 +286,8 @@ describe("the steps drawn", () => {
     await openWizard(app);
     await vi_waitFor(() => wizardStore.get().vario.loaded);
     await loadRows();
-    expect(estimationStore.get().rows).toHaveLength(1);
-    expect(wizardStore.get().form.modelId).toBe(7);
+    expect(estimationStore.get().rows).toHaveLength(A.estimations.body.estimations.length);
+    expect(wizardStore.get().form.modelId).toBe(ID.model);
   });
 });
 
