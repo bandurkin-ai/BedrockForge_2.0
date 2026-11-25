@@ -12,6 +12,7 @@ from fastapi import APIRouter
 
 from .estimate.routes import router as estimate_router
 from .estimate.routes_check import router as estimate_check_router
+from .estimate.routes_inspect import router as inspect_router
 from .routes_trend import router as trends_router
 from .variogram.routes import router as calc_router
 from .variogram.routes_model import router as models_router
@@ -22,3 +23,4 @@ router.include_router(trends_router)
 router.include_router(calc_router)
 router.include_router(estimate_router)
 router.include_router(estimate_check_router)
+router.include_router(inspect_router)
