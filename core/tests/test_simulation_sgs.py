@@ -328,6 +328,21 @@ def test_one_realization_is_cancelled_and_reported_inside(small, monkeypatch: py
     assert len(seen) >= 3 and seen == sorted(seen) and all(0.0 < p < 1.0 for p in seen)  # inside the realization
 
 
+def test_a_sill_far_from_one_is_noted_in_the_journal(small) -> None:
+    par, s, grid, c = small
+    one = dataclasses.replace(par, n_real=1)
+
+    def noted(sill: float) -> list[str]:
+        model = Model(0.1, (Structure("spherical", sill - 0.1, 6.0, 6.0, 6.0),))
+        res = sgs.simulate(dataclasses.replace(one, model=model), s, grid, c)
+        return [line for line in res.notes if line.startswith("Порог модели")]
+
+    assert noted(1.0) == [] and noted(1.09) == [] and noted(0.92) == []  # within 0,1: nothing
+    for sill in (1.5, 0.6):
+        (line,) = noted(sill)
+        assert f"{sill:.3f}".replace(".", ",") in line and "1" in line and "не пересчитывается" in line
+
+
 def test_tick_reports_every_realization(small) -> None:
     par, s, grid, c = small
     labels: list[str] = []

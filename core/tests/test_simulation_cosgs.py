@@ -340,6 +340,29 @@ def test_one_realization_is_cancelled_and_reported_inside(small, monkeypatch: py
     assert len(seen) >= 3 and seen == sorted(seen) and all(0.0 < p < 1.0 for p in seen)  # inside the realization
 
 
+def test_a_sill_far_from_one_is_noted_in_the_journal(small) -> None:
+    par, s, grid, c, sec = small
+    one = dataclasses.replace(par, n_real=1)
+    assert not [n for n in cosgs.simulate(one, s, grid, c, sec, 0.7).notes if n.startswith("Порог модели")]
+    model = Model(0.1, (Structure("spherical", 1.4, 6.0, 6.0, 6.0),))
+    big = dataclasses.replace(one, model=model)
+    for rho in (0.7, 0.0):  # the kernel and the delegation to the SGS: one line each
+        notes = [n for n in cosgs.simulate(big, s, grid, c, sec, rho).notes if n.startswith("Порог модели")]
+        assert len(notes) == 1 and "1,500" in notes[0], rho
+
+
+def test_rho_zero_counts_the_gaps_and_says_the_secondary_is_unused(small) -> None:
+    par, s, grid, c, sec = small
+    sec = sec.copy()
+    sec[5:9] = np.nan
+    one = dataclasses.replace(par, n_real=2)
+    sgs_like = cosgs.simulate(one, s, grid, c, sec, 0.0)  # delegated to the SGS
+    kernel = cosgs.simulate(one, s, grid, c, sec, 0.0, zero_as_sgs=False)
+    gaps = int(np.isnan(sec).sum())
+    assert (sgs_like.counts[:, cosgs.C_GAP] == gaps).all() and np.array_equal(sgs_like.counts, kernel.counts)
+    assert any("не используется" in line and "ρ = 0" in line for line in sgs_like.notes)
+
+
 def test_tick_reports_every_realization(small) -> None:
     par, s, grid, c, sec = small
     labels: list[str] = []

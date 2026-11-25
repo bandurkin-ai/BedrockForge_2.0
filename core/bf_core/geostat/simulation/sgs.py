@@ -125,6 +125,18 @@ def check_params(par: SgsParams) -> SgsParams:
     return par
 
 
+SILL_TOL = 0.1  # |C₀ + ΣC − 1| above it is noted in the journal (the model is in the units of the normal scores)
+
+
+def sill_note(sill: float) -> str | None:
+    """The journal line when the sill of the model of the scores is far from 1 (GSLIB uses the model as it is: so do
+    we; the simulated scores keep their own variance only when the model is fitted to the normal scores)."""
+    if abs(float(sill) - 1.0) <= SILL_TOL:
+        return None
+    return (f"Порог модели {float(sill):.3f}".replace(".", ",") + " (C0 + ΣC) отличается от 1: нормальные оценки "
+            "имеют дисперсию 1, модель не пересчитывается (как в GSLIB). Подберите модель по нормальным оценкам.")
+
+
 # --- the nodes ----------------------------------------------------------------------------------------------------
 
 
@@ -313,6 +325,8 @@ def simulate(par: SgsParams, samples: RowSamples, grid: nd.NodeGrid, centres: np
         return SgsResult(real, real.copy() if keep_y else None, tr, counts, np.zeros(0, np.int16),
                          time.perf_counter() - t0, notes)  # fmt: skip
     cm = cov_model(par.model)
+    if (line := sill_note(cm.sill)) is not None:
+        notes.append(line)
     sr = sampler or Searcher(samples, par.ell, (Pass(1.0, 0, par.n_max, 0, 0, 0, 0),))
     cidx, cn = nd.sample_neighbours(sr, c, tick=tick)
     tpl = nd.spiral_template(par.steps, par.ell, cm, limit=par.template_limit, shape=grid.shape)

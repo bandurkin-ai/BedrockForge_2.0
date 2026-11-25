@@ -162,10 +162,13 @@ def test_grid_maps_parents_to_nodes() -> None:
 
 
 def test_grid_refuses() -> None:
-    for counts, p in (((3, 3, 3), [0, 1, 27]), ((3, 3, 3), [0, 1, 1]), ((3, 0, 3), [0]), ((2**20, 2**20, 4), [0])):
+    for counts, p, code in (((3, 3, 3), [0, 1, 27], "bad_param"), ((3, 3, 3), [0, 1, 1], "bad_param"),
+                            ((3, 0, 3), [0], "bad_param"), ((2**20, 2**20, 4), [0], "grid_too_large"),
+                            ((1000, 1000, 301), [0], "grid_too_large")):  # fmt: skip
         with pytest.raises(ApiError) as e:
             nd.NodeGrid.of(counts, np.array(p, dtype=np.uint64))
-        assert e.value.status == 422 and e.value.code == "bad_param" and e.value.hint
+        assert e.value.status == 422 and e.value.code == code and e.value.hint
+    nd.check_cells(nd.MAX_CELLS)  # the limit itself passes (nothing is allocated here)
     assert nd.NodeGrid.of((2, 2, 2), np.array([], dtype=np.uint64)).n == 0
 
 

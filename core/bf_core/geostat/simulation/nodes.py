@@ -34,6 +34,7 @@ from collections.abc import Callable, Sequence
 
 import numpy as np
 
+from bf_core.api.errors import ApiError
 from bf_core.geostat.estimate.cov import CovModel, cov_c
 from bf_core.geostat.estimate.search import Ellipsoid, Searcher, _own
 from bf_core.geostat.estimate.store_base import bad
@@ -45,6 +46,7 @@ NODES_MAX = 64  # Д-23: nodes 0–64
 TEMPLATE_MAX = 1 << 17
 BOX_MAX = 1 << 21
 CELLS_MAX = 2**31 - 1  # the index of the grid is i4
+MAX_CELLS = 300_000_000  # i4 on EVERY cell, not only the targets: 4 B × 3·10⁸ = 1,2 GB (8,6 GB at CELLS_MAX)
 PORTION = 1 << 16  # nodes per query of the samples
 TIE = 1e-12  # relative: the keys closer than this are equal
 
@@ -55,6 +57,19 @@ def check_nodes(nodes: object) -> int:
         raise bad("nodes", f"Число ранее смоделированных узлов: нужно целое число от 0 до {NODES_MAX}.",
                   "Задайте, например, 12.")  # fmt: skip
     return int(nodes)
+
+
+def check_cells(cells: int) -> None:
+    """The index of the grid takes 4 bytes a cell, whatever the number of the targets: 422 `grid_too_large` {param:
+    model_id} above `MAX_CELLS` (before anything is allocated)."""
+    if int(cells) > min(MAX_CELLS, CELLS_MAX):
+        raise ApiError(
+            422, "grid_too_large",
+            f"Сетка модели ({int(cells):,} ячеек) слишком велика для моделирования "
+            f"(не более {min(MAX_CELLS, CELLS_MAX):,}).".replace(",", " "),
+            "Возьмите модель с более крупными родительскими блоками или моделируйте часть модели.",
+            {"param": "model_id"},
+        )  # fmt: skip
 
 
 # --- the grid of the targets -----------------------------------------------------------------------------------------
@@ -78,9 +93,7 @@ class NodeGrid:
         if min(nx, ny, nz) < 1:
             raise bad("targets", "Сетка модели пуста.", "Проверьте число ячеек модели по осям.")
         cells = nx * ny * nz
-        if cells > CELLS_MAX:
-            raise bad("targets", f"Сетка из {cells} ячеек слишком велика для моделирования.",
-                      "Моделируйте часть модели (ограничитель) или укрупните ячейку.")  # fmt: skip
+        check_cells(cells)
         cell = np.asarray(p).reshape(-1).astype(np.int64)
         if cell.size and (int(cell.min()) < 0 or int(cell.max()) >= cells):
             raise bad("targets", "Номер блока выходит за пределы сетки модели.", "Проверьте столбец idx модели.")

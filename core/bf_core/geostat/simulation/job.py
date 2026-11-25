@@ -28,7 +28,8 @@ The answer (`contract_answers.simulate_result`): {simulation_id, nodes, realizat
 free, on_sample, cond {min, mean, max}}, log [lines], stages {seconds}, events}.
 
 The memory: `memory_mb(params)` is what the scheduler waits for: the realizations (f8, n_real·n), the samples of the
-nodes (n·n_max·4), the buffers of a thread (≈ 17·n bytes); the pool of `sgs.simulate` is cut to the budget.
+nodes (n·n_max·4), the buffers of a thread (≈ 57·n bytes), the index of the grid (4 bytes a cell), the tree
+(≈ 80·n), a co-SGS's secondary (24·n); the pool of `sgs.simulate` is cut to the budget.
 Heavy imports (numba, scipy, pyarrow) are inside the functions: the process of the API registers this module.
 """
 
@@ -48,6 +49,7 @@ from bf_core.geostat.estimate import store_base as sb
 from bf_core.jobs.registry import handler
 from bf_core.storage.blobs import BlobStore
 
+from . import nodes
 from . import store as sto
 from . import store_check as sc
 from .spec import RunSpec, SimulationSpec, parse_run, parse_simulation
@@ -98,15 +100,24 @@ class _Clock:
 BASE_MB, SAMPLE_MB = 330.0, 0.0006
 
 
-def node_bytes(n_real: int, n_max: int, threads: int) -> float:
-    """Bytes per node: the realizations f8, the samples of the node (i4 × n_max), the centres, the cell, the index,
-    the path / draws / flags of a thread (≈ 17 B), the f4 copy of a row group is bounded (not per node)."""
-    return n_real * 8.0 + n_max * 4.0 + 24.0 + 8.0 + 4.0 + 2.0 + threads * 17.0 + 16.0
+#: bytes per node of a thread: the path / draws / flags (≈ 17) and the temporary arrays of `backtr` (≈ 40)
+THREAD_NODE_B = 17.0 + 40.0
+#: bytes per node: the secondary of a co-SGS (`sec_in`, `sec_y`, `sec`: three f8), the tree and the neighbours (≈ 80)
+SECONDARY_NODE_B, TREE_NODE_B = 24.0, 80.0
+
+
+def node_bytes(n_real: int, n_max: int, threads: int, co: bool = False) -> float:
+    """Bytes per node: the realizations f8, the samples of the node (i4 × n_max), the centres, the cell, the index of
+    the node, the buffers of a thread (`THREAD_NODE_B`), the secondary of a co-SGS, the tree; the f4 copy of a row
+    group is bounded (not per node). The index of ALL the cells of the grid (i4) is `cells·4` — `fixed_mb`."""
+    return (n_real * 8.0 + n_max * 4.0 + 24.0 + 8.0 + 4.0 + 2.0 + threads * THREAD_NODE_B + 16.0 + TREE_NODE_B
+            + (SECONDARY_NODE_B if co else 0.0))  # fmt: skip
 
 
 def memory_mb(params: dict[str, Any]) -> int:
     """What the scheduler waits for (ADR 0002 §4): the nodes (`nodes` of the route, 1 000 000 when it does not say),
-    the realizations, the samples of the table."""
+    the cells of the grid (`cells`, default — the nodes: the index is i4 on every cell, up to 1,2 GB), the
+    realizations, the samples of the table, a co-SGS (`kind`)."""
     from bf_core.composites import strips
 
     n = int(params.get("nodes") or 1_000_000)
@@ -114,15 +125,20 @@ def memory_mb(params: dict[str, Any]) -> int:
     n_max = int(params.get("n_max") or 24)
     samples = int(params.get("samples") or 300_000)
     threads = int(params.get("threads") or strips.default_threads())
-    return int(BASE_MB + samples * SAMPLE_MB + n * node_bytes(n_real, n_max, threads) / 2**20 + 60)
+    cells = max(int(params.get("cells") or 0), n)
+    co = params.get("kind") == "cosgs"
+    return int(BASE_MB + samples * SAMPLE_MB + cells * 4.0 / 2**20 + n * node_bytes(n_real, n_max, threads, co) / 2**20
+               + 60)  # fmt: skip
 
 
-def _threads(want: int, n: int, n_real: int, n_max: int, budget_mb: float | None, samples: int) -> int:
-    """The threads the budget holds (None — no budget): the realizations are shared, a thread adds ≈ 17·n bytes."""
+def _threads(want: int, n: int, n_real: int, n_max: int, budget_mb: float | None, samples: int, *, cells: int = 0,
+             co: bool = False) -> int:  # fmt: skip
+    """The threads the budget holds (None — no budget): the realizations are shared, a thread adds `THREAD_NODE_B`
+    bytes a node."""
     if budget_mb is None:
         return max(1, want)
-    fixed = BASE_MB + samples * SAMPLE_MB + n * node_bytes(n_real, n_max, 0) / 2**20
-    per = n * 17.0 / 2**20
+    fixed = (BASE_MB + samples * SAMPLE_MB + max(cells, n) * 4.0 / 2**20 + n * node_bytes(n_real, n_max, 0, co) / 2**20)
+    per = n * THREAD_NODE_B / 2**20
     return max(1, min(want, int((float(budget_mb) - fixed) // per) if per > 0 else want))
 
 
@@ -302,6 +318,7 @@ def plan_run(conn: sa.Connection, store: BlobStore,
         spec, _data = sc.check(conn, spec)
     inputs = sc.inputs_of(conn, spec)
     model = Model.open(conn, store, spec.model_id)
+    nodes.check_cells(int(model.grid.cells))  # 422 before the job (the index of the grid is i4 on every cell)
     return row, spec, model, inputs, targets.TargetPlan.of(conn, store, spec, model)
 
 
@@ -341,7 +358,8 @@ def run_simulate(
     centres = sg.grid_centres(ng, steps)
     sampler = _sampler(spec, local, ell)
     want = strips.default_threads() if threads is None else int(threads)
-    n_threads = _threads(want, ng.n, spec.n_real, n_max, memory_mb, samples.n)
+    n_threads = _threads(want, ng.n, spec.n_real, n_max, memory_mb, samples.n, cells=int(grid.cells),
+                         co=spec.kind == "cosgs")  # fmt: skip
 
     def sim_tick(progress: float | None, label: str | None) -> None:
         if progress is None:

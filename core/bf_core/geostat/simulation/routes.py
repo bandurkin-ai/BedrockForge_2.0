@@ -164,7 +164,8 @@ def run(svc: Svc, s: Sched, body: Payload) -> dict[str, Any]:
         name = str(row.name) if row is not None else (sim.name or sc.KIND)
     registered(KIND_RUN, "Моделирование")
     params: dict[str, Any] = {"nodes": min(int(model.parents), int(model.grid.cells)), "n_real": sim.n_real,
-                              "n_max": sim.search.passes[0].n_max}  # fmt: skip
+                              "n_max": sim.search.passes[0].n_max,
+                              "cells": int(model.grid.cells), "kind": sim.kind}  # fmt: skip
     if rows:
         params["samples"] = rows  # for `memory_mb`: the rows of the table of the samples
     if spec.simulation_id is not None:

@@ -17,6 +17,7 @@ import pytest
 import sqlalchemy as sa
 
 from bf_core import lineage
+from bf_core.api.errors import ApiError
 from bf_core.blocks import store as bm
 from bf_core.db import dialect
 from bf_core.db.schema import blob_owners, objects
@@ -406,6 +407,27 @@ def test_the_memory_follows_the_work() -> None:
     assert job._threads(8, 20_000_000, 20, 24, None, 1000) == 8  # noqa: SLF001
     assert job._threads(8, 20_000_000, 20, 24, 100.0, 1000) == 1  # noqa: SLF001  # a budget below the fixed part
     assert job._threads(8, 1_000_000, 20, 24, 800.0, 1000) >= 1  # noqa: SLF001
+
+
+def test_the_memory_counts_the_index_of_the_grid_the_buffers_and_the_secondary() -> None:
+    base = {"nodes": 1_000_000, "n_real": 5, "n_max": 24, "threads": 4, "samples": 1000}
+    plain = job.memory_mb(base)
+    sparse = job.memory_mb({**base, "cells": 400_000_000})  # i4 on every cell: 1,5 GB for 1 million targets
+    assert sparse - plain >= 1400
+    assert job.memory_mb({**base, "kind": "cosgs"}) - plain >= 20  # sec_in, sec_y, sec: 3 × f8 a node
+    assert job.memory_mb({**base, "threads": 8}) - job.memory_mb({**base, "threads": 1}) >= 7 * 50  # backtr ≈ 40 B
+    # the pool is cut by the same figures
+    assert job._threads(8, 1_000_000, 5, 24, 800.0, 1000, cells=400_000_000) == 1  # noqa: SLF001
+
+
+def test_a_grid_of_too_many_cells_is_refused_in_russian(sw: SW, monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ApiError) as ei:
+        nodes.NodeGrid.of((2000, 2000, 2000), np.arange(4, dtype=np.uint64))  # 8·10⁹ cells: nothing is allocated
+    e = ei.value
+    assert e.status == 422 and e.code == "grid_too_large" and "ячеек" in e.message and e.hint
+    monkeypatch.setattr(nodes, "MAX_CELLS", 10)  # the same on the route of a run: before the long work
+    err = refused(lambda: run(sw, simulation=body(sw)), 422, "grid_too_large")
+    assert "ячеек" in err.message and err.hint
 
 
 # --- the same on SQLite and PostgreSQL ---------------------------------------------------------------------------
