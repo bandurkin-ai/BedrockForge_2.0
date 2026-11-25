@@ -3,8 +3,10 @@
  * ADR 0024 §10): without arguments a command opens its window (the model chosen in the tree, else the only one of the project);
  * with them it asks the core. The rows «Параметры оценки» follow the project: read when it opens and on `geostat.changed`
  * (`state.ts`); another project — a clean wizard. «Выполнить» asks «Заменить поля …?» when the core says `field_exists` and waits
- * for the job to its end (the stages are in «Задания»). One app at a time (the tests create several). The windows of the plan, the
- * verification and the inspector bind their commands themselves (18.21–18.25, 18.Д4).
+ * for the job to its end (the stages are in «Задания»; the journal of the result is kept for the window «План оценки», `runState.ts`).
+ * `estimate.plan` opens that window (a plan or a model), `estimate.plan_delete` deletes a plan, `estimate.run` without arguments
+ * opens it too. One app at a time (the tests create several). The windows of the verification and the inspector bind their
+ * commands themselves (18.21–18.25, 18.Д4).
  */
 import { createElement, type ReactNode } from "react";
 import type { App } from "../../shell/app";
@@ -19,15 +21,17 @@ import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { readRun, refusalOf, startRun, waitJob, type RunBody } from "./api";
 import { formOfArgs } from "./form";
-import { clearEstimations, deleteEstimation, estimationStore, isEstimationEvent, loadRows, rowById } from "./state";
+import { PlanWindow } from "./PlanWindow";
+import { choosePlan, chooseModel as choosePlanModel, confirmDiscard, deletePlan, pickModel, planById, planStore, PLAN_TITLE, PLAN_WINDOW, resetPlan, syncPlan } from "./planState";
+import { runBegin, runCancelled, runDone, runFailed, runJob, runReset } from "./runState";
+import { clearEstimations, deleteEstimation, estimableModels, estimationStore, isEstimationEvent, loadRows, rowById } from "./state";
 import { loadVariogramModels, putForm, resetWizard, setStep, startEdit, TITLE, WIZARD_WINDOW, wizardStore } from "./wizardState";
 import { Wizard } from "./Wizard";
 
 /** The window of the wizard, if open. */
 export const wizardWindow = (): string | null => windowStore.get().windows.find((w) => w.kind === WIZARD_WINDOW)?.id ?? null;
 
-/** The block models the estimation writes to: a regular step, with blocks. */
-export const estimableModels = () => blocksStore.get().list.filter((m) => !m.grid.variable && m.cells > 0);
+export { estimableModels };
 
 /** The model of a new wizard: the one selected in the tree, else the one the form has, else the only one of the project. */
 function defaultModel(app: App, have: number | null): number | null {
@@ -94,6 +98,17 @@ export async function runEstimate(a: Record<string, unknown>): Promise<string> {
   const model = blockById(modelId);
   if (!model) throw refusal("block_model_not_found", `Блочная модель №${modelId} не найдена.`, "Номера моделей — в разделе «Блочные модели» дерева.");
   const body: RunBody = { ...(planId !== null ? { plan_id: planId } : { estimation_ids: ids }), expected_version: model.version, replace: a.replace === true };
+  runBegin(modelId, model.name, planId, planId !== null ? (planById(planId)?.items ?? []) : ids);
+  try {
+    return await followRun(model, body);
+  } catch (e) {
+    runFailed(refusalOf(e));
+    throw e;
+  }
+}
+
+/** The job of the run from the start to the end: the question about the fields, the stages (`jobsStore`), the result kept for the window. */
+async function followRun(model: { name: string }, body: RunBody): Promise<string> {
   let started;
   try {
     started = await startRun(body).catch(async (e: unknown) => {
@@ -109,6 +124,7 @@ export async function runEstimate(a: Record<string, unknown>): Promise<string> {
     const r = refusalOf(e);
     throw refusal(r.code, r.message, r.hint);
   }
+  runJob(started);
   const uid = projectStore.get().current?.uid ?? null;
   let end;
   try {
@@ -117,8 +133,15 @@ export async function runEstimate(a: Record<string, unknown>): Promise<string> {
     const r = refusalOf(e);
     throw refusal(r.code, r.message, r.hint);
   }
-  if ((projectStore.get().current?.uid ?? null) !== uid) return "Проект изменился: результат больше не показывается";
-  if (end.status === "cancelled") return `Оценка модели «${model.name}» отменена: ничего не записано`;
+  if ((projectStore.get().current?.uid ?? null) !== uid) {
+    runReset();
+    return "Проект изменился: результат больше не показывается";
+  }
+  if (end.status === "cancelled") {
+    const note = `Оценка модели «${model.name}» отменена: ничего не записано`;
+    runCancelled(note);
+    return note;
+  }
   if (end.status === "failed") throw refusal(end.error?.code ?? "job_failed", end.error?.message ?? "Оценка не выполнена.", end.error?.hint ?? "Повторите оценку.");
   const done = await loadJob(started).catch((e: unknown) => {
     const r = refusalOf(e);
@@ -126,9 +149,11 @@ export async function runEstimate(a: Record<string, unknown>): Promise<string> {
   });
   const r = readRun(done.result);
   if (!r) throw refusal("bad_answer", "Ядро вернуло оценку без итогов.", "Повторите оценку; если повторится — обновите программу.");
+  const summary = runSummary(model.name, r.fields, r.version, r.log);
+  runDone(r, summary);
   void loadBlocks();
   void loadRows();
-  return runSummary(model.name, r.fields, r.version, r.log);
+  return summary;
 }
 
 /** «Оценка записана: поля AU_OK_STATUS, … в модель «M» (версия 5). Проход 1: …» */
@@ -157,6 +182,49 @@ export async function runDelete(a: Record<string, unknown>, source: CommandSourc
   }
 }
 
+// ---- the window «План оценки» ----
+
+/** The window of the plan, if open. */
+export const planWindow = (): string | null => windowStore.get().windows.find((w) => w.kind === PLAN_WINDOW)?.id ?? null;
+
+/**
+ * `estimate.plan {plan_id?, model_id?}`: the window with a plan, or with the plans of a model; without arguments — as it was left, else
+ * the model chosen in the tree (the only one of the project). A plan changed and not saved is not replaced without the person's word.
+ */
+export async function openPlan(app: App, a: Record<string, unknown>, source: CommandSource): Promise<string> {
+  const planId = typeof a.plan_id === "number" ? a.plan_id : null;
+  const modelId = typeof a.model_id === "number" ? a.model_id : null;
+  const plan = planId === null ? null : (planById(planId) ?? null);
+  if (planId !== null && !plan && estimationStore.get().loaded) throw refusal("plan_not_found", `План оценки №${planId} не найден.`, "Номера планов — в разделе «Геостатистика → Параметры оценки» дерева и в окне «План оценки».");
+  if (modelId !== null && !blockById(modelId) && blocksStore.get().loaded) throw refusal("block_model_not_found", `Блочная модель №${modelId} не найдена.`, "Номера моделей — в разделе «Блочные модели» дерева.");
+  const cur = planStore.get();
+  const sel = app.store.get().selected;
+  const model = plan?.model_id ?? modelId ?? (cur.modelId !== null ? null : pickModel(sel?.kind === "blocks" ? sel.id : null));
+  const moves = plan ? plan.id !== cur.planId : model !== null && model !== cur.modelId;
+  if (moves && source === "user" && !(await confirmDiscard())) return "Отменено";
+  if (plan) choosePlan(plan.id);
+  else if (model !== null && moves) choosePlanModel(model);
+  const open = planWindow();
+  if (open) focusWindow(open);
+  else openWindow(PLAN_WINDOW, PLAN_TITLE, "normal", {}, ...viewport());
+  return `Открыто окно «${PLAN_TITLE}»`;
+}
+
+export async function runPlanDelete(a: Record<string, unknown>, source: CommandSource): Promise<string> {
+  const id = a.id as number;
+  const plan = planById(id);
+  if (!plan && estimationStore.get().loaded) throw refusal("plan_not_found", `План оценки №${id} не найден.`, "Номера планов — в разделе «Геостатистика → Параметры оценки» дерева и в окне «План оценки».");
+  const name = plan?.name ?? `№${id}`;
+  if (source === "user" && !(await askConfirm({ title: "Удалить план оценки", message: `Удалить план «${name}»? Строки «Параметры оценки» и поля блочной модели останутся.`, okLabel: "Удалить", danger: true }))) return "Отменено";
+  try {
+    await deletePlan(id);
+    return `План «${name}» удалён; строки остались`;
+  } catch (e) {
+    const r = refusalOf(e);
+    throw refusal(r.code, r.message, r.hint);
+  }
+}
+
 // ---- the registry ----
 
 let unbind: (() => void)[] = [];
@@ -165,8 +233,11 @@ export function bindEstimation(app: App): void {
   unbind.forEach((fn) => fn());
   unbind = [];
   app.registry.bind("estimate.open", noted(app, (a) => openWizard(app, a)), needProject);
-  app.registry.bind("estimate.run", noted(app, (a) => runEstimate(a)), needWritable(app));
+  // without a plan or rows `estimate.run` is the window where they are chosen (§12: a command without parameters opens its window)
+  app.registry.bind("estimate.run", noted(app, (a, s) => (a.plan_id === undefined && a.estimation_ids === undefined ? openPlan(app, a, s) : runEstimate(a))), needWritable(app));
   app.registry.bind("estimate.delete", noted(app, (a, s) => runDelete(a, s)), needWritable(app));
+  app.registry.bind("estimate.plan", noted(app, (a, s) => openPlan(app, a, s)), needProject);
+  app.registry.bind("estimate.plan_delete", noted(app, (a, s) => runPlanDelete(a, s)), needWritable(app));
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadRows();
   unbind.push(
@@ -177,8 +248,13 @@ export function bindEstimation(app: App): void {
       uid = cur;
       clearEstimations();
       resetWizard();
+      resetPlan();
+      runReset();
       if (cur) void loadRows();
     }),
+    // the window of the plan follows the lists and the models
+    estimationStore.subscribe(syncPlan),
+    blocksStore.subscribe(syncPlan),
     onCoreEvent((event, data) => {
       if (event === "geostat.changed" && projectStore.get().current && isEstimationEvent(data)) void loadRows();
     }),
@@ -192,5 +268,6 @@ export function bindEstimation(app: App): void {
 
 /** The windows for the shell's window layer (`shell/Shell.tsx`); null — not a window of the estimation. */
 export function renderEstimationWindow(w: FloatWin): ReactNode | null {
-  return w.kind === WIZARD_WINDOW ? createElement(Wizard, { winId: w.id }) : null;
+  if (w.kind === WIZARD_WINDOW) return createElement(Wizard, { winId: w.id });
+  return w.kind === PLAN_WINDOW ? createElement(PlanWindow, { winId: w.id }) : null;
 }

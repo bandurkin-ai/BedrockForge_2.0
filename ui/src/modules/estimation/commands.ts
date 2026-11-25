@@ -3,7 +3,8 @@
  * groups «Оценка», «Проверка», «Моделирование». The ribbon, Ctrl+K, the keys of the user and the assistant run the same commands.
  * A command without arguments opens its window (ADR 0021 п. 9); the pure declarations are here (the catalog reads them first),
  * the handlers — `bind.ts` as the windows get ready: `estimate.open`, `estimate.run`, `estimate.delete` (18.19; `bindEstimation(app)`
- * takes their `stage` off), the rest stays «появится на этапе» until its window (`stage`). The parameters are flat (`ParamSchema` has no objects): the pair of the
+ * takes their `stage` off; the window of the plan (18.22) binds `estimate.plan` and `estimate.plan_delete` the same way; `estimate.run` without
+ * arguments opens it), the rest stays «появится на этапе» until its window (`stage`). The parameters are flat (`ParamSchema` has no objects): the pair of the
  * soft boundary of the contact analysis (Д-28, `estimate.open {soft: {a, b, distance}}` of the contract) is `soft_a`, `soft_b`,
  * `soft_distance`; the lists are text («41; 42»). The simulation (`simulate.*`) is Э18б.
  */
@@ -35,7 +36,25 @@ export const commands: Command[] = [
     uiOnly: true,
     stage: "Э18 (18.19)",
   },
-  { id: "estimate.plan", title: "План оценки", description: "Окно «План оценки»: строки домен × поле × метод одной блочной модели, запуск плана и журнал.", uiOnly: true, stage: "Э18 (18.22)" },
+  {
+    id: "estimate.plan",
+    title: "План оценки",
+    description:
+      "Окно «План оценки»: планы блочной модели, строки домен × поле × метод в порядке выполнения (вверх, вниз, добавить, убрать), запуск плана или выбранных строк, ход задания и журнал по проходам. " +
+      "plan_id — открыть план; model_id — планы этой блочной модели.",
+    params: { plan_id: P("integer", "номер плана оценки"), model_id: MODEL },
+    uiOnly: true,
+    stage: "Э18 (18.22)",
+  },
+  {
+    id: "estimate.plan_delete",
+    title: "Удалить план оценки",
+    description: "Удаляет план оценки: строки «Параметры оценки» и поля блочной модели остаются.",
+    params: { id: P("integer", "номер плана оценки (окно «План оценки»)") },
+    required: ["id"],
+    confirm: true,
+    stage: "Э18 (18.22)",
+  },
   {
     id: "estimate.ellipsoid",
     title: "Эллипсоид поиска в 3D",

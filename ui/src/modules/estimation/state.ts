@@ -7,6 +7,7 @@
  */
 import { errorText } from "../../shell/props";
 import { Store } from "../../shell/store";
+import { blocksStore } from "../blocks/state";
 import { projectStore } from "../projects/state";
 import { deleteEstimationApi, loadEstimation, loadEstimations, loadPlans, type EstimationInfo, type EstimationRow, type PlanRow } from "./api";
 
@@ -23,7 +24,10 @@ const EMPTY: EstimationState = { rows: [], plans: [], loaded: false, error: null
 
 export const estimationStore = new Store<EstimationState>(EMPTY);
 
-export const rowById = (id: number): EstimationRow | undefined => estimationStore.get().rows.find((r) => r.id === id);
+/** The block models the estimation writes to: a regular step, with blocks. */
+export const estimableModels = () => blocksStore.get().list.filter((m) => !m.grid.variable && m.cells > 0);
+
+export const rowById =(id: number): EstimationRow | undefined => estimationStore.get().rows.find((r) => r.id === id);
 
 export function clearEstimations(): void {
   estimationStore.set(EMPTY);
