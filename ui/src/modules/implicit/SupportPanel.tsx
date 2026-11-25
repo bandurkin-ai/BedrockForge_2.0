@@ -8,7 +8,7 @@ import { num } from "../../shell/props";
 import css from "../../shell/PropsParts.module.css";
 import mod from "./Check.module.css";
 import { numText } from "./checkModel";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 import { applyThreshold, chooseSurface, hideMap, openSupport, setThresholdText, showMap, supportStore, surfaceOf, thresholdOf } from "./SupportState";
 import { percent, RAMP_CSS, supportFacts } from "./supportModel";
 

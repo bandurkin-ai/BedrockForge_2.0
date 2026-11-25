@@ -14,7 +14,7 @@ import { requestClose, setCloseGuard } from "../../shell/windows";
 import { issueAt } from "../estimation/formBase";
 import { refusalOf, type PreviewAnswer, type Range } from "./api";
 import type { GroupRuntime } from "./groupBase";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 import mod from "./Wizard.module.css";
 import { staleLine } from "./run";
 import { implicitStore, loadDetails } from "./state";

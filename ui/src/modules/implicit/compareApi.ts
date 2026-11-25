@@ -53,7 +53,8 @@ export interface CompareAnswer {
   /** 0…1 of the length that has a code */
   agree_share: number | null;
   no_code: Tally;
-  no_trajectory: Tally & { holes: number };
+  /** the holes with no path: how many holes, how many intervals (`intervals`, not `count`) and their length */
+  no_trajectory: { holes: number; intervals: number; length: number | null };
   intervals: number;
   holes: number;
   notes: string[];
@@ -89,7 +90,7 @@ export function readCompare(raw: unknown): CompareAnswer {
     coded_length: numOrNull(r.coded_length),
     agree_share: numOrNull(r.agree_share),
     no_code: readTally(r.no_code),
-    no_trajectory: { ...readTally(lost), holes: num(lost.holes, 0) },
+    no_trajectory: { holes: num(lost.holes, 0), intervals: num(lost.intervals, 0), length: numOrNull(lost.length) },
     intervals: num(r.intervals, 0),
     holes: num(r.holes, 0),
     notes: strs(r.notes),

@@ -62,7 +62,7 @@ export function facts(a: CompareAnswer): Fact[] {
 export function remarks(a: CompareAnswer): string[] {
   const out: string[] = [];
   if (a.no_code.count > 0) out.push(`Интервалов без кода данных: ${num(a.no_code.count, 0)} (${lengthText(a.no_code.length)}) — отдельная строка матрицы, в совпадение не входят.`);
-  if (a.no_trajectory.holes > 0) out.push(`Скважин без траектории: ${num(a.no_trajectory.holes, 0)}, интервалов ${num(a.no_trajectory.count, 0)} (${lengthText(a.no_trajectory.length)}) — в сверку не вошли.`);
+  if (a.no_trajectory.holes > 0) out.push(`Скважин без траектории: ${num(a.no_trajectory.holes, 0)}, интервалов ${num(a.no_trajectory.intervals, 0)} (${lengthText(a.no_trajectory.length)}) — в сверку не вошли.`);
   return [...out, ...a.notes];
 }
 

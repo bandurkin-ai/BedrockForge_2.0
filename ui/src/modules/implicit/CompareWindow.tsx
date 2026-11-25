@@ -15,7 +15,7 @@ import { cellValue, colSum, facts, isDiagonal, METRICS, METRIC_TITLES, mismatchR
 import { choose, compareStore, goPage, gotoHole, ready, resetCompare, runCompare } from "./CompareState";
 import { whenGone } from "./CheckState";
 import mod from "./Check.module.css";
-import { useLatest, useSel } from "./hooks";
+import { useLatest, useSel } from "../estimation/hooks";
 import { implicitStore } from "./state";
 
 export function CompareWindow({ winId }: { winId: string }) {

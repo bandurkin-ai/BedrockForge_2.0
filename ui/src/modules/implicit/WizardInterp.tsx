@@ -9,7 +9,7 @@ import css from "../../shell/PropsParts.module.css";
 import { errorText } from "../../shell/props";
 import { KERNELS, KERNEL_TITLES, loadTrendChoices, type KernelKind, type SmoothingMode, type TrendChoice } from "./api";
 import type { TrendMode } from "./form";
-import { useLatest, useSel } from "./hooks";
+import { useLatest, useSel } from "../estimation/hooks";
 import mod from "./Wizard.module.css";
 import { IssueAt, NumberRow } from "./WizardParts";
 import { setForm, wizardStore } from "./wizardState";

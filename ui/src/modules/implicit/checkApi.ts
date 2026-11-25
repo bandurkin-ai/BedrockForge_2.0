@@ -284,15 +284,23 @@ export interface SupportValues {
   values: Float32Array;
 }
 
+const noSupportHeader = () =>
+  new CoreError(0, "bad_answer", "Ядро не передало параметры карты опоры (заголовок ответа пуст).", "Обновите программу или перезапустите ядро и повторите расчёт.");
+
+/** The JSON of the header `X-BF-Support`; an absent or broken header is an error (the core may not be exposing it), not an empty map. */
+function readSupportHead(header: string | null): Record<string, unknown> {
+  if (header === null || header.trim() === "") throw noSupportHeader();
+  try {
+    return obj(JSON.parse(header));
+  } catch {
+    throw noSupportHeader();
+  }
+}
+
 /** The body of the f4 answer and the header: `values` (a copy aligned to 4 bytes) and what the header says. */
 export function readSupportF4(body: ArrayBuffer, header: string | null): SupportValues {
+  const head = readSupportHead(header);
   if (body.byteLength % 4 !== 0) throw new CoreError(0, "bad_answer", "Ядро вернуло карту опоры неверной длины.", "Повторите расчёт; если повторится — обновите программу.");
-  let head: Record<string, unknown> = {};
-  try {
-    head = obj(JSON.parse(header ?? "{}"));
-  } catch {
-    head = {};
-  }
   return {
     threshold: num(head.threshold, 0),
     surface: head.surface ? readSurface(head.surface) : null,
@@ -328,12 +336,7 @@ const badMesh = () => new CoreError(0, "bad_answer", "Ядро вернуло п
  * little-endian, in this order (`bf_core/model/check_support.py: mesh_body`). The arrays are views of the body — nothing is copied.
  */
 export function readSupportMesh(body: ArrayBuffer, header: string | null): SupportMeshValues {
-  let head: Record<string, unknown> = {};
-  try {
-    head = obj(JSON.parse(header ?? "{}"));
-  } catch {
-    head = {};
-  }
+  const head = readSupportHead(header);
   const m = obj(head.mesh);
   const n = num(m.vertices, -1);
   const t = num(m.triangles, -1);

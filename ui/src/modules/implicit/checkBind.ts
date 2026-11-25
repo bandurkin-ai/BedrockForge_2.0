@@ -26,6 +26,7 @@ import { compareLine } from "./compareModel";
 import { complete, FROM_TITLE, FROM_WINDOW, fromStore, resetFrom, runFromModel, setFrom } from "./FromModelState";
 import { FromModelDialog } from "./FromModelDialog";
 import { NO_MODEL, needModel } from "./groupBase";
+import { needModelFor } from "./reasons";
 import { implicitStore, modelById } from "./state";
 import { hideMap, openSupport, reloadSupport, resetSupport, showMap, supportStore } from "./SupportState";
 import { surfaceLine } from "./supportModel";
@@ -178,9 +179,9 @@ const stampOf = (r: { version: number; state: string; stale: boolean; outputs: n
 export function bindChecks(app: App): void {
   unbind.forEach((fn) => fn());
   unbind = [];
-  app.registry.bind("implicit.check", noted(app, (a) => runCheck(app, a)), needProject);
-  app.registry.bind("implicit.support", noted(app, (a) => runSupport(app, a)), needProject);
-  app.registry.bind("implicit.compare_holes", noted(app, (a) => runCompareHoles(app, a)), needProject);
+  app.registry.bind("implicit.check", noted(app, (a) => runCheck(app, a)), needModelFor(app, needProject, "built"));
+  app.registry.bind("implicit.support", noted(app, (a) => runSupport(app, a)), needModelFor(app, needProject, "built"));
+  app.registry.bind("implicit.compare_holes", noted(app, (a) => runCompareHoles(app, a)), needModelFor(app, needProject, "built"));
   app.registry.bind("drillholes.from_model", noted(app, (a) => runFrom(a)), needWritable(app));
   let uid: string | null = projectStore.get().current?.uid ?? null;
   unbind.push(e2eHook());

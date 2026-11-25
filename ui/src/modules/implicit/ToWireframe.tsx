@@ -7,7 +7,7 @@ import { useApp } from "../../shell/AppContext";
 import css from "../../shell/PropsParts.module.css";
 import { requestClose } from "../../shell/windows";
 import { copyStore } from "./copyState";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 import mod from "./Wizard.module.css";
 import { implicitStore } from "./state";
 import { g } from "./WizardParts";

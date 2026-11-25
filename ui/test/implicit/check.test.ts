@@ -15,7 +15,7 @@ import { cellText, COLUMNS, groupText, numText, pointCloud, boxAround, checkLine
 import { checkStore, openCheck, pickRow, resetCheck, saveCsv, setHighlightText, applyHighlight, setQuery, toggleShown, parseField } from "../../src/modules/implicit/CheckState";
 import { CheckWindow } from "../../src/modules/implicit/CheckWindow";
 import { SupportPanel } from "../../src/modules/implicit/SupportPanel";
-import { applyThreshold, hideMap, resetSupport, setThresholdText, showMap, supportStore, thresholdOf, shareOf } from "../../src/modules/implicit/SupportState";
+import { applyThreshold, hideMap, openSupport, resetSupport, setThresholdText, showMap, supportStore, thresholdOf, shareOf } from "../../src/modules/implicit/SupportState";
 import { colorsOf, countBeyond, meshData, percent, supportColor, NO_DATA_COLOR } from "../../src/modules/implicit/supportModel";
 import { bindChecks } from "../../src/modules/implicit/checkBind";
 import { loadRows } from "../../src/modules/implicit/state";
@@ -121,7 +121,8 @@ describe("the answers of the core are read as they are (a gap is null, never 0)"
     expect(f4.threshold).toBe(60);
     expect(Number.isNaN(f4.values[3])).toBe(true); // no data points: NaN, not 0
     expect(R.support_f4.body.bytes).toBe(SURFACE.vertices * 4);
-    expect(() => readSupportF4(new ArrayBuffer(7), null)).toThrow(/неверной длины/);
+    expect(() => readSupportF4(new ArrayBuffer(8), null)).toThrow(/заголовок ответа пуст/);
+    expect(() => readSupportF4(new ArrayBuffer(7), "{}")).toThrow(/неверной длины/);
   });
   it("the answer f4mesh of the core: the vertices, the distances and the triangles of the whole wireframe, views of one body", () => {
     const head = R.support_mesh.body.head as { mesh: { origin: number[]; vertices: number; triangles: number } };
@@ -138,7 +139,7 @@ describe("the answers of the core are read as they are (a gap is null, never 0)"
     expect(Number.isNaN(got.values[3])).toBe(true); // no data points: NaN, not 0
     expect(got.values.buffer).toBe(m.body); // no copy
     expect(() => readSupportMesh(new ArrayBuffer(7), JSON.stringify(m.head))).toThrow(/неверной длины/);
-    expect(() => readSupportMesh(m.body, null)).toThrow(/неверной длины/);
+    expect(() => readSupportMesh(m.body, null)).toThrow(/заголовок ответа пуст/);
   });
 });
 
@@ -341,6 +342,26 @@ describe("implicit.support", () => {
     expect(html).toContain("Площадь за порогом");
     expect(html).toContain("Показать карту в 3D");
     expect(html).toContain("по умолчанию 60");
+  });
+  it("the answer of another model that came late is not painted (the window moved to the other model meanwhile)", async () => {
+    setCurrentScene(fakeScene);
+    await app.registry.execute("implicit.support", { threshold: 60 }, "claude");
+    const prev = globalThis.fetch;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(init?.body).includes("f4mesh")) await gate;
+        return prev(url, init);
+      }),
+    );
+    const late = showMap(SURFACE.id);
+    await openSupport(ID.model2); // the window is now the other model's
+    release();
+    expect(await late).toBe("Отменено");
+    expect(supportStore.get()).toMatchObject({ modelId: ID.model2, shownId: null, painting: false });
+    expect(added.has("implicit-support")).toBe(false);
   });
   it("«Показать карту в 3D»: the answer f4mesh is one layer painted by the distance; the counts and the legend", async () => {
     setCurrentScene(fakeScene);

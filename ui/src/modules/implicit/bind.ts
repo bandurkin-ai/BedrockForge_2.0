@@ -6,7 +6,7 @@
  * - `implicit.save` — the form of the wizard is written (the buttons of the wizard run this command: the registry, the log, the assistant);
  * - `implicit.update` — «Построить» / «Обновить» (`run.ts`).
  * The list of the models follows the project: read when it opens and on `implicit.changed`; another project — a clean wizard. The
- * groups, «В каркас» and «Удалить» (19.24, `groupCommands.ts`) and the check, the comparison with the holes and «Модель на скважины» (19.25, `checkBind.ts`) are bound here too; `implicit.structural` says «появится на этапе» until its window (19.26). One app at a time (the tests create several).
+ * groups, «В каркас» and «Удалить» (19.24, `groupCommands.ts`) and the check, the comparison with the holes and «Модель на скважины» (19.25, `checkBind.ts`) are bound here too; `implicit.structural` (19.26, `structuralCommand.ts`) too. One app at a time (the tests create several).
  */
 import { createElement, type ReactNode } from "react";
 import type { App } from "../../shell/app";
@@ -22,7 +22,9 @@ import { bindGroupCommands } from "./groupCommands";
 import { forgetGroups, forgetMissing, isGroupWindow } from "./groupKinds";
 import { bodyOf, boundaryGiven, EMPTY_FORM, formOfArgs, formOfMeta, freeName } from "./form";
 import { runBuild } from "./run";
+import { needModelFor } from "./reasons";
 import { runShow } from "./showCommand";
+import { forgetStructural, runStructural } from "./structuralCommand";
 import { followModels, forgetView } from "./viewState";
 import { onScene } from "../scene/sceneHost";
 import { clearImplicit, implicitStore, isImplicitEvent, loadDetails, loadRows, modelById, pickModel } from "./state";
@@ -174,7 +176,8 @@ export function bindImplicit(app: App): void {
   );
   app.registry.bind("implicit.domains", noted(app, (a, s) => runDomains(app, a, s)), needWritable(app));
   app.registry.bind("implicit.save", noted(app, (a) => runSave(a)), needWritable(app));
-  app.registry.bind("implicit.update", noted(app, (a) => runUpdate(app, a)), needWritable(app));
+  app.registry.bind("implicit.update", noted(app, (a) => runUpdate(app, a)), needModelFor(app, needWritable(app), "any"));
+  app.registry.bind("implicit.structural", noted(app, (a, s) => runStructural(app, a, s)), needWritable(app)); // the trend of the model (19.26)
   app.registry.bind("implicit.show", noted(app, (a) => runShow(app, a)), needProject); // the view only: a read-only project may show too
   bindGroupCommands(app); // the groups (19.24): shells, vein, expand; «В каркас»; «Удалить»
   bindChecks(app); // the check against the data, the comparison with the holes, «Модель на скважины» (19.25)
@@ -190,6 +193,7 @@ export function bindImplicit(app: App): void {
       clearImplicit();
       forgetView();
       forgetGroups();
+      forgetStructural();
       resetWizard();
       forgetDefaults();
       if (cur) void loadRows();

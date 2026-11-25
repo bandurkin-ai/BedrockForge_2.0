@@ -7,7 +7,7 @@ import css from "../../shell/PropsParts.module.css";
 import { sceneObjects } from "../scene/objects";
 import { dtms, solids } from "../wireframes/state";
 import { AXES, BOX_LABELS, DEFAULT_NAME, extentOf, gridOf, type BoundaryKind } from "./form";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 import mod from "./Wizard.module.css";
 import { IssueAt, NumberRow, g, nf, useRanges } from "./WizardParts";
 import { setForm, wizardStore } from "./wizardState";

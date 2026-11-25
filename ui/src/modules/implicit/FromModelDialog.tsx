@@ -12,14 +12,14 @@ import { errorText, num } from "../../shell/props";
 import css from "../../shell/PropsParts.module.css";
 import { requestClose } from "../../shell/windows";
 import { listBlockModels, type BlockModelInfo } from "../blocks/api";
-import { loadSets, loadTables, type SetRow, type TableRow } from "../composites/api";
+import { loadSets, loadTables, nextName, type SetRow, type TableRow } from "../composites/api";
 import { sceneObjects } from "../scene/objects";
 import { solids } from "../wireframes/state";
 import { whenGone } from "./CheckState";
 import mod from "./Check.module.css";
 import { argsOf, codesLine, fromStore, resetFrom, setFrom, type FromSource } from "./FromModelState";
 import { formOfMeta, TYPE_TITLES, type GroupForm } from "./form";
-import { useLatest, useSel } from "./hooks";
+import { useLatest, useSel } from "../estimation/hooks";
 import { implicitStore, loadDetails } from "./state";
 
 const SOURCES: readonly { id: FromSource; title: string; hint: string }[] = [
@@ -47,7 +47,7 @@ export function FromModelDialog({ winId }: { winId: string }) {
   useEffect(() => whenGone(winId, resetFrom), [winId]);
   const fail = (e: unknown) => setProblem(errorText(e));
   const sets = useLatest<SetRow[]>(loadSets, [], fail);
-  const tables = useLatest<TableRow[]>(s.setId === null ? null : () => loadTables(s.setId!), [s.setId], fail);
+  const tables = useLatest<TableRow[]>(s.setId === null ? null : () => loadTables(s.setId!), [s.setId, s.result?.name ?? null], fail); // read again after a write: the table just written is taken
   const closed = solids(wires).filter((w) => w.stats?.closed !== false);
   const model = models.find((m) => m.id === s.modelId) ?? null;
   // the groups of the model: the priority and the names of the codes
@@ -78,7 +78,11 @@ export function FromModelDialog({ winId }: { winId: string }) {
   const numbers = (block?.fields ?? []).filter((f) => f.kind === "number");
   // the name follows the source until the person writes one
   const name = s.nameTouched ? s.name : defaultName({ source: s.source, modelName: model?.name ?? null, table: s.table, field: s.field });
-  const taken = !!name.trim() && !!tables?.some((t) => t.name.trim().toLowerCase() === name.trim().toLowerCase());
+  const isTaken = (n: string) => !!n.trim() && !!tables?.some((t) => t.name.trim().toLowerCase() === n.trim().toLowerCase());
+  const taken = isTaken(name);
+  // the free name the dialog proposes by itself (the suggestion of the core, after a refusal, wins)
+  let free = nextName(name.trim());
+  for (let i = 0; i < 50 && isTaken(free); i++) free = nextName(free);
   const source: FromSource = s.source;
   const have = source === "model" ? s.modelId !== null : source === "meshes" ? s.meshIds.length > 0 : s.blockId !== null && !!s.field && !!s.table;
   const reason = readOnly ? "Проект открыт только для чтения" : s.setId === null ? "Выберите набор скважин" : !name.trim() ? "Задайте название новой таблицы" : !have ? (source === "model" ? "Выберите модель" : source === "meshes" ? "Выберите замкнутые каркасы" : "Выберите блочную модель, поле и таблицу интервалов") : s.busy ? "Идёт запись" : null;
@@ -223,9 +227,9 @@ export function FromModelDialog({ winId }: { winId: string }) {
             <span className={css.error} role="alert">
               {err && atName ? `${err.message} ${err.hint}` : `В наборе уже есть таблица «${name.trim()}»: запись не заменяет таблицы.`}
             </span>
-            {s.suggested && (
-              <button type="button" className={css.btn} data-testid="fm-suggested" onClick={() => setFrom({ name: s.suggested as string, nameTouched: true })}>
-                Взять «{s.suggested}»
+            {(s.suggested || taken) && (
+              <button type="button" className={css.btn} data-testid="fm-suggested" onClick={() => setFrom({ name: s.suggested ?? free, nameTouched: true })}>
+                Взять «{s.suggested ?? free}»
               </button>
             )}
           </div>

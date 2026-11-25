@@ -55,16 +55,29 @@ export async function loadRows(): Promise<void> {
 }
 
 const detailSeq = new Map<number, number>();
+const inflight = new Map<number, Promise<ModelInfo | null>>();
 
-/** The model with its parameters as stored (the wizard «Изменить», the windows of the groups, «Свойства»). */
-export async function loadDetails(id: number): Promise<ModelInfo | null> {
+/**
+ * The model with its parameters as stored (the wizard «Изменить», the windows of the groups, «Свойства»). `null` — only when another
+ * project was opened meanwhile; a read that a newer read of the same model overtook answers with that newer read.
+ */
+export function loadDetails(id: number): Promise<ModelInfo | null> {
   const mine = (detailSeq.get(id) ?? 0) + 1;
   detailSeq.set(id, mine);
   const uid = projectStore.get().current?.uid ?? null;
-  const info = await loadModel(id);
-  if (detailSeq.get(id) !== mine || projectStore.get().current?.uid !== uid) return null;
-  implicitStore.set((s) => ({ details: { ...s.details, [id]: info } }));
-  return info;
+  const p = (async (): Promise<ModelInfo | null> => {
+    try {
+      const info = await loadModel(id);
+      if (projectStore.get().current?.uid !== uid) return null;
+      if (detailSeq.get(id) !== mine) return (await inflight.get(id)) ?? implicitStore.get().details[id] ?? info; // overtaken: the newer answer
+      implicitStore.set((s) => ({ details: { ...s.details, [id]: info } }));
+      return info;
+    } finally {
+      if (detailSeq.get(id) === mine) inflight.delete(id); // the newest read leaves the map when it is done
+    }
+  })();
+  inflight.set(id, p);
+  return p;
 }
 
 /** What an `implicit.changed` event means for the list: true — read it again (a trend or a planned hole of Э19б is not a model). */

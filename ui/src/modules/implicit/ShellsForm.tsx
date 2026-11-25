@@ -11,7 +11,7 @@ import { loadFields, loadResults, loadSets, loadTables, type FieldRow, type Resu
 import { DataCheck, FieldIssue, GroupFrame, TextRow } from "./GroupParts";
 import { groupRanges } from "./groupBase";
 import { shells } from "./groupKinds";
-import { useLatest, useSel } from "./hooks";
+import { useLatest, useSel } from "../estimation/hooks";
 import { implicitStore } from "./state";
 import { MODE_TITLES, MODES, parseThresholds, shellTitle, SOURCE_TITLES, SOURCES, TRANSFORM_TITLES, TRANSFORMS, type ShellForm, type ShellMode, type ShellSource, type Transform } from "./ShellsState";
 import { wizardStore } from "./wizardState";

@@ -9,7 +9,7 @@ import { CHECK_SIZES, CHECK_SORTS, CHECK_SORT_TITLES, type CheckSort } from "./c
 import { cellText, COLUMNS, depthText, numText, pagesOf, placeText } from "./checkModel";
 import { applyHighlight, checkStore, pickRow, saveCsv, setHighlightText, setQuery, toggleShown } from "./CheckState";
 import mod from "./Check.module.css";
-import { useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
 
 const GROUP_TYPES: Record<string, string> = { domain: "домен", shell: "оболочка", vein: "жила", expand: "расширение", fault: "разлом" };
 

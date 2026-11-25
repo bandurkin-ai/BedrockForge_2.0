@@ -78,6 +78,13 @@ def test_unexpected_error_is_russian_json_with_cors(state) -> None:  # type: ign
     assert r.headers["access-control-allow-origin"] == "app://bedrockforge"
 
 
+def test_app_origin_may_read_custom_answer_headers(client: TestClient) -> None:
+    # the renderer (app://) reads the support map header across origins only if the core exposes it
+    r = client.get("/api/v1/health", headers={**H, "Origin": "app://bedrockforge"})
+    exposed = {x.strip().lower() for x in r.headers["access-control-expose-headers"].split(",")}
+    assert {"etag", "content-range", "content-length", "x-bf-support"} <= exposed
+
+
 def test_foreign_origin_rejected(client: TestClient) -> None:
     r = client.get("/api/v1/health", headers={**H, "Origin": "https://evil.example"})
     assert r.status_code == 403

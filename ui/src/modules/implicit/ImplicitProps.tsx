@@ -18,7 +18,8 @@ import { anisotropyFacts, anisotropyOf, drawable, groupStats, journalOfResult, r
 import { branchOfOutput, stateText } from "./treeModel";
 import { implicitViewStore, KIND_COLORS, KIND_TITLES, KIND_NAMES } from "./viewState";
 import { entryText } from "./showCommand";
-import { useRegistry, useSel } from "./hooks";
+import { useSel } from "../estimation/hooks";
+import { useRegistry } from "./hooks";
 import { str } from "../estimation/api";
 
 const dash = "—";

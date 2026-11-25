@@ -5,29 +5,14 @@
  * the core (the newest read only is applied); the fields are the numeric ones of the table. A source that is gone is
  * said so, with what to do. «Диски в 3D» of a stored trend — `trend.show`.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { errorText } from "../../shell/props";
 import css from "../../shell/PropsParts.module.css";
+import { useLatest } from "../estimation/hooks";
 import { loadFields, loadSets, loadWireframes, type FieldRow, type SetRow, type TableRow, type WireframeRow } from "../composites/api";
 import { loadOrientTables } from "../intercepts/api";
 import type { Trend } from "./api";
 import { DISCS_NOTE, RADIUS_RANGE, sourceText, type CheckedSource, type SourceType, type StructuralValues } from "./structural";
-
-/** The newest read of a list; null while it is read or when it is not needed. */
-function useList<T>(load: (() => Promise<T>) | null, deps: unknown[], fail: (e: unknown) => void): T | null {
-  const [value, setValue] = useState<T | null>(null);
-  const seq = useRef(0);
-  useEffect(() => {
-    const mine = ++seq.current;
-    setValue(null);
-    if (!load) return;
-    load().then(
-      (v) => mine === seq.current && setValue(v),
-      (e: unknown) => mine === seq.current && fail(e),
-    );
-  }, deps);
-  return value;
-}
 
 function Pick({ label, value, onChange, disabled, testId, children }: { label: string; value: string; onChange: (v: string) => void; disabled?: boolean; testId: string; children: ReactNode }) {
   return (
@@ -70,10 +55,10 @@ export function StructuralForm({ winId, value: v, onChange, checked, stored, dis
   const [error, setError] = useState<string | null>(null);
   const fail = (e: unknown) => setError(errorText(e));
   const measurements = v.type === "measurements";
-  const sets = useList<SetRow[]>(measurements ? loadSets : null, [measurements], fail);
-  const tables = useList<TableRow[]>(measurements && v.setId !== null ? () => loadOrientTables(v.setId!) : null, [measurements, v.setId], fail);
-  const fields = useList<FieldRow[]>(measurements && v.setId !== null && v.table ? () => loadFields(v.setId!, v.table) : null, [measurements, v.setId, v.table], fail);
-  const wireframes = useList<WireframeRow[]>(!measurements ? loadWireframes : null, [measurements], fail);
+  const sets = useLatest<SetRow[]>(measurements ? loadSets : null, [measurements], fail);
+  const tables = useLatest<TableRow[]>(measurements && v.setId !== null ? () => loadOrientTables(v.setId!) : null, [measurements, v.setId], fail);
+  const fields = useLatest<FieldRow[]>(measurements && v.setId !== null && v.table ? () => loadFields(v.setId!, v.table) : null, [measurements, v.setId, v.table], fail);
+  const wireframes = useLatest<WireframeRow[]>(!measurements ? loadWireframes : null, [measurements], fail);
   const bad = checked.ok ? null : checked.param;
   const mark = (p: string) => bad === p || undefined;
   const type = (t: SourceType) => onChange({ type: t });
