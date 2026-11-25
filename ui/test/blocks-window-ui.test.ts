@@ -467,15 +467,14 @@ describe("«Свойства»", () => {
     expect(text(h, "props-stale")).toBe("Модель устарела: изменён каркас «Руда». Пересчитайте её или исходные поля.");
   });
 
-  it("«Свойства полей…» is off with a reason until `blocks.field.props` is registered, then runs it for the model", async () => {
+  it("«Свойства полей…» runs `blocks.field.props` for the model (the command is the window of 17.36); with no handler it is off with the reason", async () => {
     let h = html(createElement(PropsPanel, { id: IDS.turned }));
-    expect(disabled(h, "props-field-props")).toBe(true);
-    expect(text(h, "props-field-props-reason")).toBe("Недоступно: Окно «Свойства полей» ещё не подключено.");
-    app.registry.register([{ id: "blocks.field.props", title: "Свойства полей", description: "Окно свойств полей блочной модели.", params: { model_id: { type: "integer", description: "модель" } } }]);
-    app.registry.bind("blocks.field.props", () => "ok");
-    h = html(createElement(PropsPanel, { id: IDS.turned }));
     expect(disabled(h, "props-field-props")).toBe(false);
     expect(has(h, "props-field-props-reason")).toBe(false);
+    app.registry.bind("blocks.field.props", null as never);
+    h = html(createElement(PropsPanel, { id: IDS.turned }));
+    expect(disabled(h, "props-field-props")).toBe(true);
+    expect(has(h, "props-field-props-reason")).toBe(true);
   });
 
   it("«Выбранный блок» is the block of the last click of this model only: the cell, the centre, the size, the values (a missing one is «—»)", () => {

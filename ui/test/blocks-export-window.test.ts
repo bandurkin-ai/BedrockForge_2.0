@@ -98,7 +98,7 @@ beforeEach(() => {
   setCoreTarget({ baseUrl: "http://127.0.0.1:1", token: "t" });
   app = createApp({ persist: false });
   app.store.set({ projectName: "Проект", projectReadOnly: false, selected: null });
-  app.registry.register(commands);
+  if (!app.registry.get("blocks.export")) app.registry.register(commands); // the catalog names modules/blocks/export now
   bindExport(app);
   blocksStore.set({ list: A.blocks.body.block_models, loaded: true, error: null, details: { [IDS.model]: A.model.body, [IDS.sub]: A.sub_model.body }, detailErrors: {} });
   filtersStore.set({ rows: A.filters.body.filters, loaded: true, selected: null, edit: null });

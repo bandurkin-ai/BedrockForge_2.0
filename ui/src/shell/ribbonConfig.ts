@@ -14,8 +14,9 @@ import { FILTER_BUTTONS, FILTER_GROUP_TITLE } from "../modules/blocks/filters/co
 import { SHOW_BUTTONS, SHOW_GROUP_TITLE } from "../modules/blocks/commands";
 import { EXCHANGE_BUTTONS, EXCHANGE_GROUP_TITLE } from "../modules/blocks/export/commands";
 import { SETTINGS_BUTTONS } from "../modules/blocks/window/commands";
-import { CREATE_BUTTONS, CREATE_GROUP_TITLE, FIELD_BUTTONS, FIELD_GROUP_TITLE } from "../modules/blocks/build/commands";
-import { REPORT_BUTTONS, REPORT_GROUP_TITLE } from "../modules/blocks/report/commands";
+import { CREATE_BUTTONS, CREATE_GROUP_TITLE, FIELD_BUTTONS as BUILD_FIELD_BUTTONS } from "../modules/blocks/build/commands";
+import { FIELD_BUTTONS, FIELD_GROUP_TITLE } from "../modules/blocks/fields/commands";
+import { REPORT_BUTTONS } from "../modules/blocks/report/commands";
 import { CHART_BUTTONS, CHART_GROUP_TITLE } from "../modules/charts/commands";
 import { STATS_BUTTONS } from "../modules/stats/commands";
 import { QAQC_BUTTONS, QAQC_GROUP_TITLE } from "../modules/qaqc/commands";
@@ -307,8 +308,7 @@ export function buildRibbon(ws: WorkspaceState, view: ViewState, series: Partial
         { title: SHOW_GROUP_TITLE, items: [...SHOW_BUTTONS, ...SETTINGS_BUTTONS].map((b): RibbonItem => ({ ...b })) },
         { title: EXCHANGE_GROUP_TITLE, items: EXCHANGE_BUTTONS.map((b): RibbonItem => ({ ...b })) },
         { title: CREATE_GROUP_TITLE, items: CREATE_BUTTONS.map((b): RibbonItem => ({ ...b })) },
-        { title: FIELD_GROUP_TITLE, items: FIELD_BUTTONS.map((b): RibbonItem => ({ ...b })) },
-        { title: REPORT_GROUP_TITLE, items: REPORT_BUTTONS.map((b): RibbonItem => ({ ...b })) },
+        { title: FIELD_GROUP_TITLE, items: [...FIELD_BUTTONS, ...BUILD_FIELD_BUTTONS, ...REPORT_BUTTONS].map((b): RibbonItem => ({ ...b })) },
         {
           title: "Обслуживание",
           items: [{ command: "jobs.clear_finished", label: "Очистить выполненные задания", icon: "clear", hint: "Убрать из списка «Задания» готовые и отменённые задания с их журналами" }],
