@@ -7,7 +7,6 @@
  */
 import { useEffect, useState } from "react";
 import { useApp } from "../../shell/AppContext";
-import { errorText } from "../../shell/props";
 import css from "../../shell/PropsParts.module.css";
 import { requestClose } from "../../shell/windows";
 import { cancelJob, jobsStore } from "../jobs/state";
@@ -16,7 +15,7 @@ import { estimationStore, rowById } from "./state";
 import { BY_HINTS, BY_TITLES, XVAL_BY, type XvalBy } from "./xvalApi";
 import { atText, BY_WORDS, COLOR_HIGH, COLOR_LOW, COLOR_NONE, numberText, staleText } from "./xvalModel";
 import { errorsShown } from "./xvalScene";
-import { hide3d, isPartial, openXval, reason3d, setBy, setTab, show3d, staleReasonOf, xvalStore, type XvalTab } from "./xvalState";
+import { hide3d, isPartial, openXval, reason3d, setBy, setTab, staleReasonOf, toggle3d, xvalStore, type XvalTab } from "./xvalState";
 import { Errors, Scatter, Summary, Table } from "./XvalParts";
 import mod from "./XvalWindow.module.css";
 
@@ -49,14 +48,10 @@ export function XvalWindow({ winId }: { winId: string }) {
   const shownReason = reason3d(s);
 
   const run = () => s.estimationId !== null && void app.run("estimate.xval", { estimation_id: s.estimationId, by: s.by }).catch(() => undefined); // a refusal stands under the bar
+  // the button is the command `estimate.xval_3d` (the same for Ctrl+K and the assistant); a refusal stands under the bar
   const to3d = () => {
     setProblem(null);
-    try {
-      if (s.shown) hide3d();
-      else show3d();
-    } catch (e) {
-      setProblem(errorText(e));
-    }
+    void toggle3d(app, s).then(setProblem);
   };
 
   return (

@@ -1,7 +1,10 @@
 // The commands `estimate.*` of the registry (Э18, 18.19; ADR 0024 §10, e18-api.md §12) on the real answers of the core: the
 // declarations (the ribbon, Ctrl+K and the assistant read them), `estimate.open` (the wizard, the arguments of the contact analysis),
 // `estimate.run` (the job, «Заменить поля?»), `estimate.delete`; the rest waits for its window and says so.
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Icon } from "../../src/shell/Icon";
 import type { App } from "../../src/shell/app";
 import { commandTools } from "../../src/shell/commands";
 import { closeDialog, dialogStore } from "../../src/shell/dialogs";
@@ -37,7 +40,7 @@ async function waitFor(cond: () => boolean, ms = 2000): Promise<void> {
 describe("the declarations", () => {
   const ids = commands.map((c) => c.id);
   it("every command of §12 of the contract that belongs to Э18 is in the catalog, once", () => {
-    for (const id of ["estimate.open", "estimate.plan", "estimate.ellipsoid", "estimate.run", "estimate.delete", "estimate.inspect", "estimate.xval", "estimate.kna", "estimate.global", "estimate.qq", "estimate.swath"]) expect(ids).toContain(id);
+    for (const id of ["estimate.open", "estimate.plan", "estimate.ellipsoid", "estimate.run", "estimate.delete", "estimate.inspect", "estimate.xval", "estimate.xval_3d", "estimate.kna", "estimate.global", "estimate.qq", "estimate.swath"]) expect(ids).toContain(id);
     expect(new Set(ids).size).toBe(ids.length);
     const catalog = moduleCommands().map((c) => c.id);
     for (const id of ids) expect(catalog.filter((x) => x === id)).toHaveLength(1);
@@ -61,13 +64,20 @@ describe("the declarations", () => {
     expect(names).not.toContain("ui_estimate_plan");
     expect(names).toContain("ui_estimate_run");
   });
-  it("the commands whose window is not ready say so; the bound ones (the wizard, the run, the deletion, the plan) are available", () => {
+  it("every command of the module is bound: none says «появится на этапе» (the list of those whose window is not ready is empty)", () => {
     const reason = (id: string) => app.registry.reason(id, { hasProject: true, hasSet: true, hasHole: false, hasObject: false, hasSection: false, editing: false, coreOnline: true });
-    for (const id of ["estimate.ellipsoid"]) expect(reason(id)).toMatch(/появится на этапе Э18/);
-    for (const id of ["estimate.open", "estimate.run", "estimate.delete", "estimate.plan", "estimate.plan_delete", "estimate.xval", "estimate.kna", "estimate.global", "estimate.qq", "estimate.swath", "estimate.inspect"]) expect(reason(id)).toBeNull();
+    const waiting = ids.filter((id) => (reason(id) ?? "").includes("появится на этапе"));
+    expect(waiting).toEqual([]);
+    for (const id of ["estimate.open", "estimate.run", "estimate.delete", "estimate.plan", "estimate.plan_delete", "estimate.params", "estimate.ellipsoid", "estimate.xval", "estimate.xval_3d", "estimate.kna", "estimate.global", "estimate.qq", "estimate.swath", "estimate.inspect"]) expect(reason(id)).toBeNull();
   });
   it("without a project the wizard is not available, with the reason", () => {
     expect(app.registry.reason("estimate.open", { hasProject: false, hasSet: false, hasHole: false, hasObject: false, hasSection: false, editing: false, coreOnline: true })).toBe("Откройте или создайте проект");
+  });
+  it("the ribbon has «Параметры оценки» (estimate.params) with an icon of the set, next to the wizard and the plan", () => {
+    const b = ESTIMATE_BUTTONS.find((x) => x.command === "estimate.params");
+    expect(b).toMatchObject({ label: "Параметры оценки", icon: "properties" });
+    expect(ESTIMATE_BUTTONS.map((x) => x.command)).toEqual(["estimate.open", "estimate.plan", "estimate.params", "estimate.ellipsoid"]);
+    expect(renderToStaticMarkup(createElement(Icon, { name: b!.icon }))).toMatch(/<path d="M/);
   });
   it("the buttons of the ribbon name registered commands", () => {
     for (const b of [...ESTIMATE_BUTTONS, ...CHECK_BUTTONS, ...SIM_BUTTONS]) {

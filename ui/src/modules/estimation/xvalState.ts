@@ -15,6 +15,7 @@ import { refusalOf, waitJob, type Refusal, type Started } from "./api";
 import { estimationStore, rowById } from "./state";
 import { loadXvalPage, NOT_FOUND, PAGE_MAX, readXvalResult, startXval, type XvalBy, type XvalHistogram, type XvalPage, type XvalRow, type XvalSummary } from "./xvalApi";
 import { errorCloud, nextSort, resultLine, type ErrorCloud, type Sort, type SortKey } from "./xvalModel";
+import type { App } from "../../shell/app";
 import { errorsShown, hideErrors, showErrors } from "./xvalScene";
 
 export const XVAL_WINDOW = "estimation-xval";
@@ -203,6 +204,12 @@ export function show3d(): ErrorCloud {
 export function hide3d(): void {
   hideErrors();
   xvalStore.set({ shown: null });
+}
+
+/** The button «Показать ошибки в 3D» / «Скрыть …»: the command `estimate.xval_3d` of the row of the window; the words of a refusal, or null. */
+export async function toggle3d(app: App, s: Pick<XvalState, "estimationId" | "shown">): Promise<string | null> {
+  const r = await app.registry.execute("estimate.xval_3d", { ...(s.estimationId !== null ? { estimation_id: s.estimationId } : {}), show: s.shown === null }, "user");
+  return r.ok ? null : r.result;
 }
 
 /** Why the table cannot be drawn in 3D now, or null. */

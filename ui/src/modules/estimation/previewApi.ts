@@ -115,6 +115,9 @@ export type PreviewAt = { ijk: Triple } | { row: number } | { xyz: Triple };
 /** `POST /estimate/preview {estimation: the body of the row, at}`: one block as the core would estimate it with these parameters. */
 export const loadPreview = async (estimation: Record<string, unknown>, at: PreviewAt): Promise<PreviewAnswer> => readPreview(await api.post(`${GEOSTAT_API}/estimate/preview`, { estimation, at }));
 
+/** The same for a stored row: `{estimation_id, at}` (the command `estimate.ellipsoid {id}`: the row as it is in the project, at a block). */
+export const loadRowPreview = async (estimationId: number, at: PreviewAt): Promise<PreviewAnswer> => readPreview(await api.post(`${GEOSTAT_API}/estimate/preview`, { estimation_id: estimationId, at }));
+
 /** The words of the reasons a candidate is in or out of the estimate (the list of the core, `E/search.REASONS`). */
 export const REASON_LABELS: Record<string, string> = {
   selected: "выбрана",

@@ -8,9 +8,10 @@
 import css from "../../shell/PropsParts.module.css";
 import { loadTrends, type Trend } from "../trends/api";
 import { PASSES_MAX } from "./formBase";
-import { effectiveFrom, passesOf, type SearchFrom, type Tri } from "./formSearch";
+import { effectiveFrom, hasVariogram, passesOf, type SearchFrom, type Tri } from "./formSearch";
 import { useLatest, useSel } from "./hooks";
 import { IssueAt, Triple } from "./Parts";
+import { chooseView, chosenPass, previewSceneStore } from "./preview";
 import mod from "./Wizard.module.css";
 import { addPass, removePass, resetPasses, setHy, setPass, setSearch, wizardStore } from "./wizardState";
 
@@ -37,7 +38,9 @@ export function StepSearch() {
   const f = useSel(wizardStore, (s) => s.form);
   const data = useSel(wizardStore, (s) => s.defaults.data);
   const trends = useLatest<Trend[]>(loadTrends, []);
-  const hasModel = f.method === "ik" && f.ikModels === "per" ? f.variogramIds.some((id) => id !== null) : f.variogramId !== null;
+  const hasModel = hasVariogram(f);
+  const view = useSel(previewSceneStore, (x) => x);
+  const shown = useSel(wizardStore, (x) => x.preview.data);
   const from = effectiveFrom(f.search, hasModel);
   const passes = passesOf(f.search, data?.params);
   const typed = f.search.passes !== null;
@@ -101,6 +104,21 @@ export function StepSearch() {
           </>
         )}
         <IssueAt at={["search.from", "search.ang1", "search.ang2", "search.ang3", "search.r1", "search.r2", "search.r3"]} id="search" />
+        <label className={css.formRow} title="Какой проход рисовать в 3D-окне: эллипсоид, блок и отобранные пробы предпросмотра">
+          <span>В 3D-окне</span>
+          <select className={css.input} aria-label="Эллипсоид в 3D" data-testid="est-3d-pass" value={view.wizard ? (view.pass === null ? "auto" : String(view.pass)) : "off"} onChange={(e) => chooseView(e.target.value)}>
+            <option value="auto">эллипсоид прохода, давшего оценку</option>
+            {passes.map((_, i) => (
+              <option key={i} value={String(i + 1)}>
+                эллипсоид прохода {i + 1}
+              </option>
+            ))}
+            <option value="off">не показывать</option>
+          </select>
+        </label>
+        <span className={css.note} data-testid="est-3d-note">
+          {shown ? `Эллипсоид прохода ${chosenPass(view.pass, shown, passes.length)} стоит в центре блока предпросмотра и следует за правкой радиусов и углов; пробы — как при последнем показе.` : "Покажите блок на шаге «Предпросмотр и запуск»: эллипсоид, блок и пробы с весами появятся в 3D-окне."}
+        </span>
       </fieldset>
 
       <fieldset className={css.group} data-testid="est-passes">
