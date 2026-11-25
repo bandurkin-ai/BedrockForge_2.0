@@ -242,7 +242,12 @@ null, search: {from, ang1…r3} | null, params: spec.defaults_json(), ranges: sp
 `commit_fields(…, source=)` + `meta.last_run` строк + `lineage.record` в одной транзакции. Отмена — между
 порциями, ничего не остаётся. Итог (`contract_answers.run_result`): `{model_id, version, plan_id | null, fields:
 [имена], rows: [{estimation_id, prefix, label, counts}], merged: [{prefix, estimation_ids}], log: [строки
-журнала], events}`; журнал называет число блоков с вырожденной системой по проходам и число усреднённых проб.
+журнала], stages, events}`; журнал называет число блоков с вырожденной системой по проходам и число усреднённых проб.
+`stages` — секунды этапов `{samples, search, write, total}`: «Пробы» (чтение и компиляция строк), «Поиск и кригинг»
+(`search`), «Запись» (`write`) и всё задание (`total`), округлено до 1 мс; образец `run_result.stages` в
+`contract_answers.json` не сверяется (время). `counts.targets` и `counts.by_status` считают строки блочной модели
+(блок вне домена строки — STATUS 1), `by_pass` и `singular` — блоки, которые ядро считало (при `sub: parent` —
+родителей).
 
 ## 7. Предпросмотр и инспектор (синхронно, то же ядро — `E/kernel.estimate_block`)
 
@@ -255,14 +260,23 @@ null, search: {from, ang1…r3} | null, params: spec.defaults_json(), ranges: sp
 
 Ответ preview — `{at {row, p, ijk}, centre, size, label, status, pass, values {ключ: число | null}, mu, samples
 [кандидат], ellipsoid {centre, ang1–3, r1–3 (× factor прохода), pass}, passes [{pass, ok, n, reason: null | "few" |
-"singular"}], origin, counts {candidates, selected}}`. Ответ inspect — `{model_id, block {ijk, p, rows, centre,
-size}, label, results: [{estimation_id, name, prefix, method, status, pass, values, stored (значения полей
-модели), same (побитно равны), changed (входы или параметры изменились: `freshness` или `same = false`), warning:
-null | "Параметры или входы изменились", mu, samples, ellipsoid, passes}]}`.
+"singular"}], origin, counts {candidates, selected}}`. Ответ inspect (`E/inspect.py`, сверено с кодом 18.Д3) —
+`{model_id, model_version, block {row, p, ijk, sub, centre, size, parent {centre, size}, rows}, results: [{estimation_id,
+name, version, method, prefix, label, sub, disc, source {set_id, table, field}, block {centre, size, rows}, domain
+{field, label, row_label}, active, status, status_label, pass, values, mu, ellipsoid, passes, counts {candidates,
+shown, selected}, soft_dist, candidates [кандидат], segments [{i, from, to, lambda, z}] (отрезки в 3D к выбранным
+пробам), fields [{key, name, dtype, unit, calc (пересчёт), stored (в поле модели), same, exists}], same (побитно
+равны записанным | null), missing_fields, changed (входы или параметры изменились: `freshness` или `same = false`),
+warning: null | "Параметры или входы изменились", warning_detail, stale_reason, lineage {state, reason, changed},
+snapshot (JSON для «Скопировать снимок»)}], warnings [строки: строка пропущена — источник удалён, блок вне доменов]}`.
+«Побитно равно» — пересчёт приведён к типу записанного поля (f4, целые) и сравнён; пустое равно пустому.
 
 Кандидат: `{i (номер в каноническом порядке), row_id (dh_rows.id первой строки), hole, from, to, xyz, z_raw, z
 (использованное: урезка, усреднение, ураганная), h (h_s), dist (евклидово), octant (0–7 в осях эллипсоида: бит 0 —
-x ≥ 0, бит 1 — y ≥ 0, бит 2 — z ≥ 0), lambda (null у невыбранных; IDW — нормированный вес; NN — 1), reason}`.
+x ≥ 0, бит 1 — y ≥ 0, бит 2 — z ≥ 0), lambda (null у невыбранных; IDW — нормированный вес; NN — 1; IK — null),
+reason (код), reason_label (подпись по-русски: у «урезана до t» — со значением t, у усреднённой — «; совпадающие
+точки усреднены: N»), merged (строк усреднено в пробу), domain (подпись домена: домен оценки, «мягкая граница» или
+другой домен)}`. В инспекторе у STATUS 2 и 3 отрезков и весов нет.
 Список — пробы с h_s ≤ r1·factor **последнего** прохода плюс пробы других доменов там же (только инспектор), не
 больше 1000 ближайших (по (h_s, i)); `counts.candidates` — всего. Коды `reason` (фиксированный список,
 `E/search.REASONS`, подписи — в `M/`):
@@ -306,22 +320,61 @@ n_kv_zero (строк с KV ≤ 0 — z_error null), n_skipped (строк STATU
 дискретизация d × d × d, d = 1…5 (трактовка); размер блока ×0,5 / ×1 / ×2 родителя. Показатели — KE, SLOPE, KV,
 SNW, `w_far` (вес самой дальней выбранной пробы), LAGR, NS, status. Рекомендация — наименьший n_max с SLOPE ≥
 0,95·max по блоку; общая — наибольшая из рекомендаций блоков (трактовка); не применяется автоматически. Форма —
-`contract_answers.kna`.
+`contract_answers.kna`. Метод строки — только SK и OK (иначе 422 `kna_method`); `estimation_id` и `estimation` — ровно
+одно из двух (иначе 422 `bad_param {param: "estimation_id"}`); ответ — `{source, id}` задания, стадии «Пробы»,
+«Варианты».
+
+Ответ задания: `{estimation_id, name, method, vary [перебираемые параметры], threshold (0,95), blocks, recommend,
+candidates, warnings}`.
+- `blocks[]`: `{at {row, p, ijk}, centre [x, y, z], size [dx, dy, dz], n_r1 (проб в радиусе r1 первого прохода), auto
+  ("много" | "средне" | "мало" | null — у блока, заданного пользователем), base (показатели блока при параметрах
+  строки), vary {параметр: [{value, KE, SLOPE, KV, SNW, w_far, LAGR, NS, status}]}, recommend {n_max}}`. `value` —
+  `n_max` целое, `radius` и `size` множитель (число), `disc` — `[d, d, d]`. Показатели блока со STATUS 1–3 — `null`,
+  не 0.
+- `recommend {n_max}` — общая рекомендация (наибольшая по блокам); `null`, если ни у одного блока нет STATUS = 0 с
+  SLOPE > 0; без `n_max` в `vary` — `{}`.
+- `candidates` — число блоков домена строки (при `sub: parent` — родителей) до обрезки списка кандидатов, из которых
+  выбраны три блока; `null`, если блоки заданы. В домене нет блоков или ни у одного нет проб в радиусе последнего
+  прохода — 422 `kna_no_blocks`.
+- `warnings` — например, «Дискретизация блока 1×1×1 (точка): размер блока не меняет оценку» при `vary` с `size` для
+  точечной строки.
 
 ### 8.3. Глобальная статистика — `POST /estimate/global` → `estimate.global` (`quick`)
 
-`{estimation_id}` → `{estimation_id, field, composites {naive, declus: {n, mean, var, cv}}, nn {n, volume, mean,
-var, cv} (NN на лету по тем же блокам, без записи, вес — объём), estimate {…} (EST блоков STATUS = 0, вес —
-объём), diff_pct (100·(mean_est − mean_declus)/mean_declus), norm (|diff_pct| ≤ 5), block_var {expected (C̄_VV
-модели для размера блока), estimate}}`; поля оценки нет в модели — 409 `not_estimated`.
+`{estimation_id}` → `{source, id}` задания (стадии «Чтение», «Ближайший сосед», «Статистика»); итог — `{estimation_id,
+name, field, status_field, model_id, method, sub, limit_pct (5), composites {naive, declus: {n, mean, var, cv},
+reference ("declus" | "naive")}, nn {n, volume, mean, var, cv} (NN на лету по тем же блокам, без записи, вес —
+объём), estimate {…} (EST блоков STATUS = 0, вес — объём; у IK — ETYPE), diff_pct (100·(mean_est −
+mean_ref)/mean_ref), norm (|diff_pct| ≤ limit_pct), diff_nn_pct, norm_nn (то же против NN), block_var {expected, sill,
+ratio, disc, size, estimate}, blocks {rows, by_status, used, empty, no_volume}, warnings}`; поля оценки нет в
+модели — 409 `not_estimated`, блоков со STATUS = 0 нет — 422 `no_estimated_blocks`.
+- `composites.reference` — с чем сравнивается оценка: `declus` (есть веса декластеризации) или `naive` (весов у
+  строки нет, в `warnings` — предупреждение); `diff_pct`, `norm` считаются от него. Дисперсия — по совокупности
+  (Σw(z − m)²/Σw).
+- `block_var.expected` — C̄_VV модели вариограммы для размера блока при дискретизации строки (у точечной строки — для
+  4×4×4: опора блока, не точки); `expected`, `sill`, `disc` и `ratio` — `null` у IK и у строки без модели вариограммы
+  (NN, IDW); `sill` — C(0) модели; `ratio` = `estimate`/`expected` (кригинг сглаживает: ниже 1); `size` — размер
+  блока (переменный шаг сетки — медианный размер, в `warnings` — предупреждение).
+- `blocks.rows` — строк в модели; `by_status` [n0, n1, n2, n3]; `used` — блоков со STATUS = 0 в сумме; `empty` —
+  STATUS = 0 без значения; `no_volume` — STATUS = 0 без объёма (нет FRAC): `empty` и `no_volume` вне статистики,
+  в `warnings` — их число.
+- Результат побитно один при 1, 2, 4, 8 потоках; порции читаются по `PORTION` строк, суммы — парные, порции
+  объединяются формулой Чана.
 
 ### 8.4. Q-Q и swath
 
-`POST /estimate/qq {estimation_id, quantiles?, weighted?: true}` — синхронно, HEAVY: форма `stats.qq.qq_samples`
-(x — композиты домена с весом DECL_W при `weighted`, y — EST блоков STATUS = 0 с весом объёма). Swath — окно Э13
-без правок ядра: ряд `{kind: "blocks", model_id, field: "<префикс>EST", filter: {op: "and", items: [{cond:
-{field: "<префикс>STATUS", op: "=", value: 0}}, домен]}}` и ряд `{kind: "samples", set_id, table, field, weight:
-"DECL_W" | null, within: "blocks"}` (`estimate.swath` открывает окно с ними).
+`POST /estimate/qq {estimation_id, quantiles?, weighted?: true}` — синхронно (без задания): `{estimation_id, name,
+field, weighted, …форма stats.qq.qq_samples (points, ratio, extremes, ks, marks), x {n, mean, var, cv}, y {…}}`
+(x — композиты домена с весом DECL_W при `weighted` и наличии весов у строки, y — EST блоков STATUS = 0 с весом
+объёма; у IK — ETYPE).
+
+Swath — `POST /estimate/swath {estimation_id, direction?: "x" | "y" | "z" (умолч. z)}` (синхронно) → `{estimation_id,
+name, direction, series}`; настройки окна Э13 без правок ядра: ряд `{kind: "blocks", model_id, field:
+"<префикс>EST" (IK — ETYPE), weight: "volume", density: null, filter: {field: домен, labels: [метка]} | null,
+filter_id}` и ряд `{kind: "samples", set_id, table, field, weight: "field" | "none", weight_field: "DECL_W" | имя |
+null, negatives: "keep", within: "blocks", within_series: 0}`. Фильтра по STATUS нет: у блоков со STATUS ≠ 0
+`<префикс>EST` пуст, и swath их пропускает. Настройки не сохраняются (`estimate.swath` открывает окно с ними;
+сохраняет сам swath).
 
 ### 8.5. Профиль блоков у контакта (Д-28)
 
@@ -578,15 +631,56 @@ graph.pin(conn, node, pinned) -> NodeStatus                 # «Закрепит
 graph.record(conn, dst, inputs) -> list[InputRef]           # входы результата — в транзакции записи; закрепление сохраняется
 graph.fingerprint(conn, node) -> str | None                 # None — узла нет
 
-# НЕ В КОДЕ на момент правки (18.12, 18.15, 18.16 — модулей нет): контракт, не сверено
-# E/job.py (18.12)
-KIND = "estimate.run"; run_estimate(engine, folder, params, tick) -> dict   # форма итога §6
+# E/job.py, job_plan.py, job_run.py (18.12) — задание `estimate.run`; сверено с кодом
+KIND = "estimate.run"; TITLE = "Оценка содержаний"; queue "heavy"; estimate_memory = memory_mb
+run_estimate(engine, folder, params, tick=_noop, *, threads=None, job_id=None, memory_mb=None, chunk=CHUNK_ROWS, portion=None) -> dict   # форма итога §6
+memory_mb(params) -> int              # что ждёт планировщик (ADR 0002 §4): пробы строк (`samples` маршрута, умолч. 300 000), куски потоков, чанк модели
+limits(plan, threads, budget_mb) -> (threads, блоков в куске)          # бюджет памяти урезает потоки и кусок
+job_plan.build(conn, store, run: RunSpec, model_view=None) -> Plan     # 404 / 409 / 422 до первого блока; Plan.rows (RowRun), .groups (Group), .names
+job_plan.PORTION = 1 << 16; job_plan.CHUNK_ROWS = 1 << 18             # блоков в куске; строк модели за чтение
+job_run.pieces(env, tick, chunk) -> Iterator[Piece]; job_run.ordered(items, fn, threads, tick)   # куски по порядку файла, потоки над кусками
+rebuild_row(svc, cap, node, body) -> None; register_rebuild() -> None  # изготовитель узла `object:estimation` для `lineage.rebuild`
 
-# E/kna.py (18.15), E/checks.py (18.16)
-analyse(project, spec, blocks, vary, *, tick=None) -> dict; auto_blocks(rk, model) -> list[dict]; recommend(rows) -> int
-global_stats(project, estimation_id, *, tick=None) -> dict; qq(project, estimation_id, quantiles, weighted) -> dict
+# E/kna.py, kna_blocks.py (18.15) — задание `estimate.kna`; сверено с кодом
+KIND = "estimate.kna"; queue "quick"; VARY = ("n_max", "radius", "disc", "size"); BLOCKS_MAX = 10; SHARE = 0.95; QUANTILES = ((0.9, "много"), (0.5, "средне"), (0.1, "мало"))
+analyse(project, spec, blocks=None, vary=None, *, origin=None, tick=_noop) -> dict    # ответ §8.2 без `estimation_id`, `name`
+analyse_blocks(rk, blocks: Sequence[BlockAt], vary=VARY, *, tick=_noop) -> {blocks, recommend}   # строка скомпилирована БЕЗ `block_size`: размер идёт с блоком
+auto_blocks(rk, targets: Targets) -> list[BlockAt]                    # «много», «средне», «мало»; 422 `kna_no_blocks`
+recommend(rows) -> int | None         # наименьший value с SLOPE ≥ 0,95·max среди STATUS = 0; None — нет или max ≤ 0
+variants(rk, name) -> [(value, rk', множитель размера)]; run_block(rk, b, scale=1.0) -> показатели; count_in(rk, centres, radius) -> i8[m]   # проб D в шаре радиуса
+run_kna(engine, folder, params, tick=_noop) -> {estimation_id, name, …analyse}   # тело задания
+kna_blocks.Blocks(…).targets(limit=TARGET_LIMIT = 200_000) -> Targets(row, p, ijk, centre, size, total); BlockAt.at() -> {row, p, ijk}
 
-# E/routes.py, E/routes_check.py (18.13): routers, подключает geostat/router.py (оркестратор); E/warm.py (18.17)
+# E/checks.py (18.16) — задание `estimate.global`; Q-Q, swath — синхронно; сверено с кодом
+KIND = "estimate.global"; queue "quick"; LIMIT_PCT = 5.0; PORTION = 1 << 16; POINT_DISC = (4, 4, 4)
+global_check(project, spec, *, origin=None, tick=_noop, threads=None) -> dict        # ответ §8.3 без `estimation_id`, `name`
+qq_check(project, spec, *, origin=None, quantiles=None, weighted=True, tick=_noop) -> dict   # §8.4
+swath_settings(spec, direction="z") -> {direction, series}                          # §8.4
+run_global(engine, folder, params, tick=_noop, threads=None); run_qq(engine, folder, params, tick=_noop)   # тела; Q-Q — не задание
+expected_variance(spec, grid_rotation, size) -> (C̄_VV | None, C(0) | None, disc | None)
+
+# E/xval.py (18.14) — см. выше (`run_xval`, `read_page`); задание `estimate.xval`, queue "heavy"
+
+# E/preview.py, defaults.py (18.13) — синхронно, слот HEAVY
+preview.preview(project, body) -> dict      # §7; light(conn, spec) — строка без тяжёлых проверок; row_of(conn, id) -> (spec, origin); forget() — кеш скомпилированных строк
+defaults.build(project, q) -> dict           # §5; model_part(conn, store, model_id) -> (описание модели, Model)
+
+# E/inspect.py, inspect_spot.py, routes_inspect.py (18.Д3) — `POST /estimate/inspect`, слот HEAVY, обгон по `channel`/`seq`
+inspect.run(project, req: InspectSpec, tok=None) -> dict    # §7; WARNING = "Параметры или входы изменились"; REASON_LABELS (код → подпись); CACHE_KEEP = 4 скомпилированных строки на процесс
+inspect.forget(); inspect_spot.forget()                     # сброс кешей (смена проекта)
+inspect_spot.locate(model, at) -> Spot; domain_of(model, spec, restrictor, spot, fields=()) -> Domain; read_fields(model, names, a, b); read_cells(model, a, b)
+
+# E/warm.py (18.17) — шаг `estimate` в `ops/warm.py` (OTHER, QUICK, HEAVY)
+PARTS = {"cov", "krige", "search", "methods", "indicator", "kernel"}; warm() -> {часть: секунды}   # часть, упавшая при прогреве, пропускается; read-only и записываемые массивы — обе сигнатуры
+contact.warm(); geo.sdf.warm()      # шаг `stats` в `ops/warm.py`: профиль блоков у контакта (Д-28)
+
+# Маршруты (подключает `geostat/router.py`; префикс `/api/v1/geostat`)
+routes.py        — /estimations, /estimations/{id}, /estimation-plans, /estimation-plans/{id}, GET /estimate/defaults, POST /estimate/run, POST /estimate/preview
+routes_check.py  — POST /estimate/xval, GET /estimations/{id}/xval, POST /estimate/kna, POST /estimate/global, POST /estimate/qq, POST /estimate/swath
+routes_inspect.py — POST /estimate/inspect
+routes_common.py — body_of, common_of (channel, seq), sync, plain (NaN, ±inf → null), publish (`geostat.changed`), registered (422 `not_ready` до подключения задания)
+# /api/v1/lineage (`lineage/router.py`, ADR 0025): POST /status, GET и POST /impact, GET /origin, POST /pin, POST /rebuild {node | kind+id+sub, with_dependents, drop_lost, dry_run}
+# jobs/registry.py: bf_core.lineage.job, …estimate.checks, …estimate.job, …estimate.kna, …estimate.xval
 ```
 
 **Э18б (`S/`):**
@@ -614,16 +708,22 @@ post(realizations: f4[n, N], stats, thresholds) -> dict[str, f8[n]]    # stats/l
 | Команда | Признаки | Маршрут / окно |
 |---|---|---|
 | `estimate.open {method?, id?, model_id?, soft_a?, soft_b?, soft_distance?}` (плоские) | uiOnly | мастер (шаги: модель, ограничитель, поля → пробы → метод и вариограмма → поиск и проходы → выходные поля → задание); `defaults`, `preview`; `id` — правка строки; `soft_*` — мягкая граница из контакта (`soft_distance` 0 — жёсткая) |
+| `estimate.save {id?, as_new?}` | — | сохраняет форму открытого мастера или окна «Параметры оценки»: `POST /estimations` (новая или `as_new`) / `PUT /estimations/{id}` (версия — из формы; 409 → «Перечитать» / «Сохранить как новую»); `id` — проверка, что форма правит эту строку (18.27в; нет в исходном плане команд — «команда = запись реестра») |
+| `estimate.plan_save {id?, model_id?, name?, items?, as_new?}` | — | `POST /estimation-plans` (без `id` или `as_new`) / `PUT /estimation-plans/{id}`; `items` — номера строк через «;» в порядке выполнения (18.27в) |
+| `estimate.params {id?}` | uiOnly | окно «Параметры оценки»: строка на одной странице, те же поля, что в мастере; `GET /estimations/{id}`, сохранение — `estimate.save` (18.20) |
 | `estimate.plan {plan_id?, model_id?}` | uiOnly | окно «План оценки»: `/estimation-plans`, `/estimations` |
 | `estimate.plan_delete {id}` | confirm | `DELETE /estimation-plans/{id}` — план уходит, строки и поля модели остаются (18.22; нет в исходном плане команд — «команда = запись реестра») |
-| `estimate.ellipsoid` | — | слой эллипсоида поиска строки (`preview` → `ellipsoid`) |
-| `estimate.run {plan_id \| estimation_ids}` | confirm (при замене полей) | `POST /estimate/run` |
+| `estimate.ellipsoid {id?, show?, pass?, block?}` | — | слой эллипсоида поиска: без `id` — эллипсоид мастера (`preview` → `ellipsoid`, радиусы и углы шага 4, ×`factor` прохода); с `id` — строка и блок `block` («i; j; k») или блок, по которому щёлкнули; `show: false` убирает слои |
+| `estimate.run {plan_id \| estimation_ids, replace?}` | confirm (при замене полей) | `POST /estimate/run`; без аргументов — окно «План оценки» |
 | `estimate.delete {id}` | confirm | `DELETE /estimations/{id}` |
-| `estimate.inspect {model_id, block \| xyz, params_id?}` | — | `POST /estimate/inspect`; окно «Блок · i, j, k» |
-| `estimate.xval {estimation_id, by?}` | — | `POST /estimate/xval` → `GET /estimations/{id}/xval` |
-| `estimate.kna`, `estimate.global`, `estimate.qq`, `estimate.swath` | — | §8.2–8.4 |
+| `estimate.inspect {model_id?, block \| xyz \| row, params_id?}` | — | `POST /estimate/inspect`; окно «Блок · i, j, k»; без `model_id` — выбранная в дереве или единственная модель с выполненной оценкой, без блока — окно ждёт щелчка по блоку в 3D (18.27в) |
+| `estimate.xval {estimation_id, by?}` | — | без `by` — окно с прежним результатом строки; с `by` — `POST /estimate/xval` → `GET /estimations/{id}/xval`, итог — сводка |
+| `estimate.xval_3d {estimation_id?, show?}` | — | пробы последней перекрёстной проверки в 3D, цвет — ошибка (оценка − истинное); берёт таблицу `GET /estimations/{id}/xval`; `show: false` убирает точки (18.21, долг 18.23) |
+| `estimate.kna {estimation_id?, vary?, block?, xyz?}`, `estimate.global {estimation_id?}`, `estimate.qq {estimation_id?}`, `estimate.swath {estimation_id?, direction?}` | — | §8.2–8.4; без строки открывается окно; `vary` — через «;», `block` — «i; j; k», несколько — через «\|» |
 | `chart.contact` + `blocks` | — | `POST /stats/contact` (§8.5) |
-| `simulate.sgs {…, secondary?}`, `simulate.sis {…}`, `simulate.post {id, …}` | —, —, confirm | §9 |
+| `lineage.status {kind?, id?, sub?}`, `lineage.impact {…}`, `lineage.pin {…, pinned?}` | —, —, — | `POST /lineage/status`, `GET /lineage/impact`, `POST /lineage/pin` (ADR 0025 §10; группа «Настройки проекта › Зависимости»; без объекта — выбранный в дереве); `lineage.impact` открывает окно «Влияние изменения», если зависимые есть |
+| `lineage.rebuild {kind?, id?, sub?, with_dependents?, drop_lost?, confirmed?}` | confirm | `POST /lineage/rebuild`; окно «Влияние изменения» показывает план (`dry_run`) и само запускает перестроение, передавая `confirmed: true` («план уже показан и подтверждён» — без повторного вопроса о плане); для ассистента план подтверждается `confirm` реестра |
+| `simulate.sgs {…, secondary?}`, `simulate.sis {…}`, `simulate.post {id, …}` | —, —, confirm | §9 (Э18б; в коде ещё нет) |
 
 Без параметров команда открывает окно; «только просмотр» — 423 у пишущих.
 
@@ -632,12 +732,21 @@ post(realizations: f4[n, N], stats, thresholds) -> dict[str, f8[n]]    # stats/l
 - `core/tests/data/estimate/params.json` — 5 строк (`idw`, `ok_point`, `sk`, `ik`, `ok_block_passes`): `body` →
   `canonical` (`spec.parse_estimation(body).canonical()`) и `columns`; круговой проход — `test_estimate_spec.py`;
   `BF_REGEN_ESTIMATE=1` переписывает `canonical` и `columns`.
-- `core/tests/data/estimate/contract_answers.json` — образцы ответов §4–9 (`defaults`, `estimations`, `estimation`,
-  `estimation_post`, `estimation_put_conflict`, `bad_param`, `variogram_scale`, `plan`, `run_submit`,
-  `run_field_exists`, `run_result`, `preview`, `inspect`, `xval_submit`, `xval`, `kna`, `global`, `simulation`,
-  `simulate_result`, `simulate_post_result`), `{status, body}`. Числа `preview`/`inspect` — Э-ОК-1 (Т8.8-1).
-  **Образцы, не настоящие ответы:** интерфейс И-А/И-Б/И-В строится на них до 18.13; принимается только на
-  настоящих (`BF_REGEN_ESTIMATE=1` в 18.13, 18.14–18.16, 18.32 заменяет файл ответами маршрутов).
+- `core/tests/data/estimate/contract_answers.json` — **настоящие ответы** маршрутов Э18 на синтетическом проекте
+  `core/tests/estapi_world.py` (25 скважин, блочная модель из трёх доменов, модель вариограммы), `{status, body}`;
+  пишет `core/tests/test_estimate_api_answers.py` (`BF_REGEN_ESTIMATE=1`), без флага тест сверяет ответы ядра с
+  файлом (числа 1e−7; времена, отпечатки, `versions`, `stages`, `token` не сравниваются). Ключи: `defaults`,
+  `estimations`, `estimation`, `estimation_post`, `estimation_put_conflict`, `bad_param`, `variogram_scale`, `plan`,
+  `run_submit`, `run_field_exists`, `run_result`, `preview`, `xval_submit`, `xval_result`, `xval`, `kna`, `global`,
+  `qq`, `swath`. Ключи `simulation`, `simulate_result`, `simulate_post_result` — образцы контракта Э18б (до 18.32),
+  `inspect` — старый образец (настоящие ответы — `inspect_answers.json`). Интерфейс принимается только на настоящих
+  ответах (`ui/test/estimation/harness.ts` читает файл).
+- `core/tests/data/estimate/inspect_answers.json` — настоящие ответы инспектора блока (`answers`: `pass_1`, `pass_3`,
+  `few_samples`, `out_of_domain`, `changed`; `errors`: `no_block`, `no_model`, `no_params`, `no_such_row`; `rows`);
+  пишет `core/tests/test_estimate_inspect_route.py` (`BF_REGEN_INSPECT=1`).
+- `core/tests/data/lineage/answers.json` (`BF_REGEN_LINEAGE=1`, `test_lineage_window_answers.py`) — ответы
+  `/lineage/*` (ADR 0025): цепочка заглушек и настоящие результаты; `core/tests/data/stats/contact_blocks_answers.json`
+  (`BF_REGEN_CONTACT_BLOCKS=1`, `test_stats_contact_blocks.py`) — профиль блоков у контакта (§8.5).
 
 ## 14. Трактовки (вне буквы ТЗ; на согласование оркестратора)
 
