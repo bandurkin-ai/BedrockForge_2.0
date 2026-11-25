@@ -44,6 +44,7 @@ HANDLER_MODULES: tuple[str, ...] = (
     "bf_core.intercepts.jobs_run",
     "bf_core.geostat.variogram.jobs",
     "bf_core.geostat.variogram.jobs_map",
+    "bf_core.lineage.job",
     "bf_core.blocks.calc_job",
     "bf_core.blocks.check_job",
     "bf_core.blocks.export",
