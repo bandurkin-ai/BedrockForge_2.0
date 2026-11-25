@@ -226,6 +226,22 @@ def test_blocks_with_another_status_and_gaps_are_not_in_the_statistics_and_not_z
     assert out["estimate"]["mean"] > wmean(vz, wz)
 
 
+def test_blocks_of_another_domain_of_the_prefix_are_not_in_the_checks(kw: W) -> None:
+    """№ 77: rows of different domains write one field of a prefix; the checks of a row count its domain only."""
+    eid, spec, org = row_of(kw, target={"domain_field": "DOM", "label": "руда"})
+    m = model_of(kw)
+    code = m.columns(["DOM"])["DOM"]
+    mine = code == m.labels("DOM").index("руда")
+    assert 0 < int(mine.sum()) < m.rows
+    est = np.where(mine, 1.5, 1.0e9)  # the sibling's blocks hold STATUS 0 and a value of their own
+    write(kw, spec, est, np.zeros(m.rows))
+    out = check(kw, eid)
+    assert out["estimate"]["n"] == int(mine.sum()) and out["estimate"]["mean"] == pytest.approx(1.5, rel=1e-12)
+    assert out["blocks"]["by_status"] == [int(mine.sum()), 0, 0, 0]
+    got = ck.run_qq(kw.project.engine, kw.project.folder, {"estimation_id": eid})
+    assert got["y"]["n"] == int(mine.sum()) and got["extremes"]["y"][1] < 3.0
+
+
 def test_the_variance_of_the_blocks_is_compared_with_cvv_of_the_model(kw: W) -> None:
     eid, spec, org = row_of(kw)
     est, status = kriged(kw, spec, org)
