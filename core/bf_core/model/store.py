@@ -410,7 +410,7 @@ def list_rows(conn: sa.Connection) -> list[dict[str, Any]]:
     created_at, updated_at}`."""
     out = []
     for r in conn.execute(sa.select(objects).where(objects.c.kind == KIND).order_by(objects.c.name_key, objects.c.id)):
-        meta = sb.viewed(conn, r.meta)
+        meta = sb.viewed(conn, r.meta, int(r.id))
         out.append({"id": int(r.id), "name": r.name, "version": int(r.version), "state": meta.get("state") or "ready",
                     **freshness(conn, meta),
                     "groups": [{"id": g.get("id"), "name": g.get("name"), "type": g.get("type")}
@@ -425,7 +425,7 @@ def get(conn: sa.Connection, model_id: int) -> dict[str, Any]:
     """`{id, name, version, meta, state, error, stale, stale_reason, source_lost, outputs, created_at, updated_at}`
     (e19-api §5); 404 `model_not_found`."""
     row = sb.stored(conn, model_id)
-    meta = sb.viewed(conn, row.meta)
+    meta = sb.viewed(conn, row.meta, int(row.id))
     return {"id": int(row.id), "name": row.name, "version": int(row.version), "meta": meta,
             "state": meta.get("state") or "ready", "error": meta.get("error"), **freshness(conn, meta),
             "outputs": outputs_of(conn, meta), "created_at": row.created_at,

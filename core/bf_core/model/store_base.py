@@ -84,9 +84,28 @@ def job_alive(conn: sa.Connection, job_id: int) -> bool:
     return status in ACTIVE
 
 
-def is_building(conn: sa.Connection, meta: Mapping[str, Any] | None) -> bool:
-    """The model is being built now: `meta.state == "building"` and its job (`meta.job_id`) is alive (a mark without a
-    job id is trusted). A mark whose job is gone (a crash, a kill, a restart) is not: the model is as it was."""
+def queued_job(conn: sa.Connection, model_id: int) -> int | None:
+    """The id of a job `implicit.build` / `implicit.update` of the model that is queued or running (its row of `jobs`;
+    `params.model_id`), else None: the model is «идёт построение» from the moment the job is queued, though the job
+    marks it in `meta` only when it starts."""
+    from bf_core.db.schema import jobs
+    from bf_core.jobs.store import ACTIVE
+
+    q = sa.select(jobs.c.id, jobs.c.params).where(
+        jobs.c.status.in_(ACTIVE), jobs.c.kind.in_(("implicit.build", "implicit.update"))).order_by(jobs.c.id)
+    for r in conn.execute(q):
+        p = r.params
+        if isinstance(p, Mapping) and p.get("model_id") == model_id:
+            return int(r.id)
+    return None
+
+
+def is_building(conn: sa.Connection, meta: Mapping[str, Any] | None, model_id: int | None = None) -> bool:
+    """The model is being built now: a job of it is queued or running (`queued_job`, when `model_id` is given), or
+    `meta.state == "building"` and its job (`meta.job_id`) is alive (a mark without a job id is trusted). A mark whose
+    job is gone (a crash, a kill, a restart, a cancel in the queue) is not: the model is as it was."""
+    if model_id is not None and queued_job(conn, model_id) is not None:
+        return True
     m = meta or {}
     if m.get("state") != "building":
         return False
@@ -115,14 +134,21 @@ def settled(meta: Mapping[str, Any] | None) -> dict[str, Any]:
     return out
 
 
-def viewed(conn: sa.Connection, meta: Mapping[str, Any] | None) -> dict[str, Any]:
-    """`meta` as the readers show it: a mark «идёт построение» whose job is gone is shown as what the model was."""
-    return dict(meta or {}) if is_building(conn, meta) else settled(meta)
+def viewed(conn: sa.Connection, meta: Mapping[str, Any] | None, model_id: int | None = None) -> dict[str, Any]:
+    """`meta` as the readers show it: «идёт построение» while a job of the model is queued or running, even before the
+    job has marked it; a mark whose job is gone is shown as what the model was."""
+    if not is_building(conn, meta, model_id):
+        return settled(meta)
+    out = dict(meta or {})
+    if out.get("state") != "building":
+        state, error = back_of(out)
+        out.update(state="building", error=None, back={"state": state, "error": error})
+    return out
 
 
 def refuse_building(conn: sa.Connection, row: Any) -> None:
     """409 `model_building` for a model that is being built (`is_building`)."""
-    if is_building(conn, row.meta):
+    if is_building(conn, row.meta, int(row.id)):
         raise building()
 
 
