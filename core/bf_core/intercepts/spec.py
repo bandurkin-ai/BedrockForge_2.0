@@ -11,11 +11,13 @@ path: «orientation.0.alpha».
 
 `spec.body` is the canonical body (`dh_results.params`): tables as ids (text), fields by their stored names, every
 number filled in, the orientation as a list; `rebind` puts the current ids into it for «Перестроить» (the tables of
-`inputs` in the order of `tables()`, the wireframes in the order of `mesh_ids()`). No numpy here (before BF-READY).
+`inputs` in the order of `tables()`, the wireframes in the order of `mesh_ids()`, a trend by its name — `trend_lookup`).
+No numpy here (before BF-READY).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,7 +26,7 @@ import sqlalchemy as sa
 from bf_core.api.errors import ApiError
 from bf_core.composites import jobs as cj
 from bf_core.db import dialect
-from bf_core.db.schema import dh_columns, dh_results, dh_tables
+from bf_core.db.schema import dh_columns, dh_results, dh_tables, objects
 
 from . import INCLUDE_REL, LINES
 from .spec_sources import (  # re-exported: the names of `spec` before the split
@@ -278,9 +280,30 @@ def check_columns(conn: sa.Connection, spec: TtSpec) -> None:
                        {"param": "table", "name": clash[0]})  # fmt: skip
 
 
-def rebind(params: dict[str, Any], tables: list[int], meshes: list[int]) -> dict[str, Any]:
+def trend_lookup(conn: sa.Connection) -> Callable[[Any, Any], int]:
+    """(old id, name) of a source `trend` → its id in this project: the old id when it still names a trend of that
+    name, else the trend of that name (the first), else 0 (`parse_orientation`: 422 `trend_not_found`) — a `.bfggis`
+    import renumbers the objects."""
+    named = {int(r.id): str(r.name_key) for r in conn.execute(sa.select(objects.c.id, objects.c.name_key)
+                                                              .where(objects.c.kind == "trend"))}  # fmt: skip
+
+    def find(old: Any, name: Any) -> int:
+        key = dialect.name_key(str(name or ""))
+        try:
+            if named.get(int(old)) == key:
+                return int(old)
+        except (TypeError, ValueError):
+            pass
+        return min((i for i, k in named.items() if k == key), default=0)
+
+    return find
+
+
+def rebind(params: dict[str, Any], tables: list[int], meshes: list[int],
+           trends: Callable[[Any, Any], int] | None = None) -> dict[str, Any]:  # fmt: skip
     """The canonical body of a result with the current ids: `tables` — of `inputs.tables` now (the order of
-    `tables()`), `meshes` — of `inputs.meshes` now (the order of `mesh_ids()`)."""
+    `tables()`), `meshes` — of `inputs.meshes` now (the order of `mesh_ids()`), `trends` (`trend_lookup`) — the ids of
+    the sources `trend` by their names; None — as they are."""
     seen: dict[str, str] = {}
     free = iter(str(t) for t in tables)
     flat = iter(meshes)
@@ -299,6 +322,8 @@ def rebind(params: dict[str, Any], tables: list[int], meshes: list[int]) -> dict
             s["table"] = table(s["table"])
         if s.get("wireframe_ids"):
             s["wireframe_ids"] = [next(flat, i) for i in s["wireframe_ids"]]
+        if s.get("source") == "trend" and trends is not None:
+            s["trend_id"] = trends(s.get("trend_id"), s.get("trend"))
         srcs.append(s)
     out["orientation"] = srcs
     return out

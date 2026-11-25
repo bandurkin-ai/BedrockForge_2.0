@@ -44,7 +44,7 @@ from tests.test_tt_mesh import Mesh, digest, merged, nothing, plate, samples, st
 
 REAL = Path(__file__).resolve().parents[2] / "tests" / "data" / "real" / "ORE SEP 2025.tridb"
 STEP, ROWS = 2.0, 230  # the intervals of a hole of the real scene
-NONE, GLOB, _DOM, CROSS, NEAR, _MEAS, _NEXT = orient.SRC_LABELS
+NONE, GLOB, _DOM, CROSS, NEAR, _MEAS, _NEXT, _TREND = orient.SRC_LABELS
 
 
 class OneAtATime:

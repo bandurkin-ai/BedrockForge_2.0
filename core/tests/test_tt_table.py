@@ -36,7 +36,7 @@ NAN = math.nan
 TOL = 1e-12
 IDS = {"A": 101, "B": 102, "C": 103, "D": 104, "E": 105, "Z": 999}  # dh_holes.id; «Z» — not in the trajectories
 GLOBAL = sp.Source("global", alpha=30.0, dipdir=120.0)
-NONE, GLOB, DOM, CROSS, NEAR, MEAS, NEXT = orient.SRC_LABELS
+NONE, GLOB, DOM, CROSS, NEAR, MEAS, NEXT, TREND = orient.SRC_LABELS  # TREND — 19.20
 
 
 def scene() -> SimpleNamespace:
@@ -577,7 +577,7 @@ def test_parameters_and_wrong_answers_of_a_source() -> None:
     long = lambda rows, traj, s, *, todo, threads=1, tick=None: orient.Given([0.0, 0.0, 2.0], 3)  # noqa: E731
     with pytest.raises(ValueError, match="unit"):
         tt.of_table(spec(mesh), lines, scene(), mesh=long)  # a wrong TT is never written silently
-    code = lambda rows, traj, s, *, todo, threads=1, tick=None: orient.Given([0.0, 0.0, 1.0], 7)  # noqa: E731
+    code = lambda rows, traj, s, *, todo, threads=1, tick=None: orient.Given([0.0, 0.0, 1.0], 8)  # noqa: E731
     with pytest.raises(ValueError, match="mesh"):
         tt.of_table(spec(mesh), lines, scene(), mesh=code)  # not a code of TT_SRC
     with pytest.raises(ValueError, match="14"):
@@ -595,6 +595,6 @@ def test_ranges_live_in_one_place() -> None:
     assert sp.RANGES["step"][:3] == (*fm.STEP_RANGE, fm.STEP_DEFAULT)
     assert sp.RANGES["d_core"][:3] == (*co.D_CORE_RANGE, co.D_CORE_DEFAULT)
     assert orient.SRC_LABELS == ("нет", "глобальная", "домен", "каркас: пересечение", "каркас: ближайшая",
-                                 "керн: замер", "керн: ближайший")  # fmt: skip
+                                 "керн: замер", "керн: ближайший", "тренд")  # fmt: skip
     assert tt.ALGO == "tt-1"
     tt.warm()

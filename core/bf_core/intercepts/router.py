@@ -162,7 +162,8 @@ def rebuild(
         now = [_current(conn, set_id, t) for t in inputs.get("tables") or []]
         if not now:
             raise ApiError(409, "source_gone", "Источник результата не найден.", "Удалите результат.")
-        again = sp.rebind(rec["params"] or {}, [int(t.id) for t in now], results.current_meshes(conn, inputs))
+        again = sp.rebind(rec["params"] or {}, [int(t.id) for t in now], results.current_meshes(conn, inputs),
+                          sp.trend_lookup(conn))
         again["set_id"] = set_id
         if rec["op"] == "tt":
             tspec = sp.parse_tt(conn, again)
