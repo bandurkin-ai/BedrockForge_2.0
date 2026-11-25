@@ -108,6 +108,18 @@ describe("«Свойства» of a block model", () => {
     ]);
     expect(sourceFacts(null)).toEqual([]);
   });
+
+  it("the source: a format is named in Russian words; a model made by an operation tells the operation, not an empty format", () => {
+    expect(sourceFacts({ format: "fbm", file: "a.fbm" })).toEqual([{ label: "Формат", value: "Datamine FBM" }, { label: "Файл", value: "a.fbm" }]);
+    expect(sourceFacts({ format: "csv_micromine" })[0].value).toBe("CSV Micromine");
+    expect(sourceFacts({ format: "dat" })[0].value).toBe("Micromine DAT");
+    expect(sourceFacts({ op: "fill" })).toEqual([{ label: "Создана", value: "Заполнение каркасами" }]);
+    expect(sourceFacts({ op: "code" })[0].value).toBe("Кодирование каркасами");
+    expect(sourceFacts({ op: "prototype" })[0].value).toBe("Прототип");
+    expect(sourceFacts({ op: "regularize" })[0].value).toBe("Регуляризация");
+    expect(sourceFacts({ op: "calc" })[0].value).toBe("Калькулятор");
+    expect(sourceFacts({})).toEqual([]);
+  });
 });
 
 // --- a small core -------------------------------------------------------------------------------------------

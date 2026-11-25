@@ -46,7 +46,9 @@ export interface BlockField {
 }
 
 export interface BlockSource {
-  format: string;
+  /** of an import; a model made by an operation has `op` (fill, code, prototype, regularize, calc) and `params` instead */
+  format?: string;
+  op?: string;
   file?: string | null;
   element?: string | null;
 }
