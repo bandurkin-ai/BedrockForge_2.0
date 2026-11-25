@@ -4,6 +4,7 @@ ADR 0015 §7).
     is_closed_solid(v, t)                (True, "") or (False, reason): the precondition of every solid operation
     boolean(a, b, op, names=, tick=)     union / intersection / difference (a − b) of two closed solids
     boolean_many(meshes, op, ...)        the same for several solids ("difference" — the first minus the rest)
+    canonical(v, t)                      the canonical form of a mesh: the same bytes whatever the order of a result
     expand(solid, distance)              not done (ADR 0015 decision 8): SolidError
 
 The bridge (`to_manifold`, `from_manifold`, `local_origin`, measures) is shared by `clip.py`, `clip_sheet.py`
@@ -343,6 +344,27 @@ def boolean(
     v, t, report = boolean_many([a, b], op, names=list(names) if names else ["Тело A", "Тело B"], tick=tick)
     report["volume_a"], report["volume_b"] = report["volumes"]
     return v, t, report
+
+
+def canonical(vertices: Any, triangles: Any) -> tuple[np.ndarray, np.ndarray]:
+    """The canonical form of a mesh (ADR 0026 решение 14): the same bytes for the same surface whatever the order in
+    which manifold3d (its threads) produced the vertices and the triangles. Vertices unused by a triangle are
+    dropped and the rest sorted by (x, y, z) (−0.0 is 0.0); a triangle is turned cyclically to start with its
+    smallest vertex number (the orientation is kept), the triangles are sorted by (a, b, c). → (float64 v×3, int32
+    t×3). Vertices with equal coordinates keep their input order (a welded result — every boolean here — has none)."""
+    v, t = mesh_arrays((vertices, triangles), "Результат")
+    if len(t) == 0:
+        return np.zeros((0, 3)), np.zeros((0, 3), dtype=np.int32)
+    used = np.flatnonzero(np.bincount(t.reshape(-1), minlength=len(v)) > 0)
+    pts = v[used] + 0.0
+    order = np.lexsort((pts[:, 2], pts[:, 1], pts[:, 0]))  # stable
+    rank = np.empty(len(v), dtype=np.int64)
+    rank[used[order]] = np.arange(len(used))
+    new = rank[t]
+    first = np.argmin(new, axis=1)
+    new = np.take_along_axis(new, (first[:, None] + np.arange(3)) % 3, axis=1)
+    rows = np.lexsort((new[:, 2], new[:, 1], new[:, 0]))
+    return np.ascontiguousarray(pts[order]), np.ascontiguousarray(new[rows], dtype=np.int32)
 
 
 def expand(solid: Any, distance: float) -> None:
