@@ -59,8 +59,9 @@ const COUNTS: readonly [keyof PreviewAnswer["counts"], string][] = [
   ["manual", "ручных"],
   ["value", "значений"],
   ["merged", "слито совпавших"],
-  ["dropped_log", "отброшено (логарифм ≤ 0)"],
-  ["no_position", "без положения"],
+  ["conflicts", "пар совпавших точек с разным значением"],
+  ["no_trajectory", "без траектории"],
+  ["no_depth", "без глубины"],
 ];
 
 /** «Данные группы»: the points the core would take for the form as typed (`POST …/points/preview`, no solution), before anything is written. */

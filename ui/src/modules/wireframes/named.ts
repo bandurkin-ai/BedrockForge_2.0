@@ -6,6 +6,7 @@ import type { App } from "../../shell/app";
 import { refusal } from "../../shell/objectRun";
 import { KIND_TITLES, type ObjectKind } from "../../shell/selection";
 import { blockById } from "../blocks/state";
+import { modelById } from "../implicit/state";
 import { lineLayers, sceneObjects } from "../scene/objects";
 import { wireframeById, type WireframeInfo } from "./state";
 
@@ -15,13 +16,14 @@ export function objectName(kind: ObjectKind, id: number): string | null {
   if (kind === "raster") return sceneObjects.get().rasters.find((r) => r.id === id)?.name ?? null;
   if (kind === "wireframe") return wireframeById(id)?.name ?? null;
   if (kind === "blocks") return blockById(id)?.name ?? null;
+  if (kind === "implicit") return modelById(id)?.name ?? null;
   return null;
 }
 
 /** «слой линий», «растр», «каркас» — or «ЦТМ» (feminine: «переименована», «удалена»). */
 export function objectWhat(kind: ObjectKind, id: number): { what: string; fem: boolean } {
   if (kind === "wireframe" && wireframeById(id)?.dtm) return { what: "ЦТМ", fem: true };
-  return { what: KIND_TITLES[kind].name, fem: kind === "blocks" };
+  return { what: KIND_TITLES[kind].name, fem: kind === "blocks" || kind === "implicit" };
 }
 
 /** «Выбран слой линий «Дороги»»; a DTM is called a DTM. */

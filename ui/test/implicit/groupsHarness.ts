@@ -93,7 +93,7 @@ export function installGroupsCore(): GroupsCore {
       }
       if (route === `POST /implicit/models/${ID.model}/points/preview`) {
         record();
-        return json({ group: null, n: 120, truncated: false, counts: { contact: 80, inside: 20, outside: 20, manual: 0, value: 0, merged: 2, dropped_log: 0, no_position: 0 }, notes: ["Совпавшие точки слиты."], points: { x: [], y: [], z: [], f: [], kind: [] } });
+        return json({ group: null, n: 120, truncated: false, counts: { contact: 80, inside: 20, outside: 20, manual: 0, value: 0, merged: 2, conflicts: 0, no_trajectory: 0, no_depth: 0 }, notes: ["Совпавшие точки слиты."], points: { x: [], y: [], z: [], f: [], kind: [] } });
       }
       if (route === `POST /implicit/models/${ID.model}/to_wireframe`) {
         record();

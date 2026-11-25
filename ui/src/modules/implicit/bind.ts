@@ -12,7 +12,7 @@ import { createElement, type ReactNode } from "react";
 import type { App } from "../../shell/app";
 import type { CommandSource } from "../../shell/commands";
 import { askConfirm } from "../../shell/dialogs";
-import { needWritable, noted, refusal, viewport } from "../../shell/objectRun";
+import { needProject, needWritable, noted, refusal, viewport } from "../../shell/objectRun";
 import { focusWindow, openWindow, updateWindow, windowStore, type FloatWin } from "../../shell/windows";
 import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
@@ -21,6 +21,9 @@ import { bindGroupCommands } from "./groupCommands";
 import { forgetGroups, forgetMissing, isGroupWindow } from "./groupKinds";
 import { bodyOf, boundaryGiven, EMPTY_FORM, formOfArgs, formOfMeta, freeName } from "./form";
 import { runBuild } from "./run";
+import { runShow } from "./showCommand";
+import { followModels, forgetView } from "./viewState";
+import { onScene } from "../scene/sceneHost";
 import { clearImplicit, implicitStore, isImplicitEvent, loadDetails, loadRows, modelById, pickModel } from "./state";
 import { ExpandForm } from "./ExpandForm";
 import { ShellsForm } from "./ShellsForm";
@@ -171,16 +174,19 @@ export function bindImplicit(app: App): void {
   app.registry.bind("implicit.domains", noted(app, (a, s) => runDomains(app, a, s)), needWritable(app));
   app.registry.bind("implicit.save", noted(app, (a) => runSave(a)), needWritable(app));
   app.registry.bind("implicit.update", noted(app, (a) => runUpdate(app, a)), needWritable(app));
+  app.registry.bind("implicit.show", noted(app, (a) => runShow(app, a)), needProject); // the view only: a read-only project may show too
   bindGroupCommands(app); // the groups (19.24): shells, vein, expand; «В каркас»; «Удалить»
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadRows();
   unbind.push(
+    bindImplicitScene(),
     // what was asked of one project does not belong to another
     projectStore.subscribe(() => {
       const cur = projectStore.get().current?.uid ?? null;
       if (cur === uid) return;
       uid = cur;
       clearImplicit();
+      forgetView();
       forgetGroups();
       resetWizard();
       forgetDefaults();
@@ -189,13 +195,37 @@ export function bindImplicit(app: App): void {
     onCoreEvent((event, data) => {
       if (event === "implicit.changed" && projectStore.get().current && isImplicitEvent(data)) void loadRows();
     }),
-    // a model that is gone leaves the wizard (its form stays as a new one: nothing to overwrite)
+    // a model that is gone leaves the wizard (its form stays as a new one: nothing to overwrite), the selection and the 3D
     implicitStore.subscribe(() => {
       forgetMissing();
+      followModels();
+      const sel = app.store.get().selected;
+      if (sel?.kind === "implicit" && implicitStore.get().loaded && !modelById(sel.id)) app.store.set({ selected: null });
       const e = wizardStore.get().editing;
       if (implicitStore.get().loaded && e && !modelById(e.id)) wizardStore.set({ editing: null, saved: null, dirty: true });
     }),
   );
+}
+
+/** The data points and the ellipsoid of the models in the main 3D: a lazy chunk with three.js, attached to every new scene. */
+export function bindImplicitScene(): () => void {
+  let detach: (() => void) | null = null;
+  let generation = 0;
+  const off = onScene((scene) => {
+    const mine = ++generation;
+    detach?.();
+    detach = null;
+    if (!scene) return;
+    void import("./scene").then((m) => {
+      if (mine === generation) detach = m.attachImplicitScene(scene);
+    });
+  });
+  return () => {
+    generation++;
+    detach?.();
+    detach = null;
+    off();
+  };
 }
 
 /** The windows for the shell's window layer (`shell/Shell.tsx`); null — not a window of the implicit modelling. */

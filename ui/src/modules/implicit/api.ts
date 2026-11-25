@@ -131,11 +131,25 @@ export interface ModelRow {
   source_lost: boolean;
   groups: number;
   outputs: number;
+  /** what the list says of the groups (`{id, name, type}`) and of the outputs (without the volumes): the branches of the tree */
+  group_list: GroupBrief[];
+  output_list: OutputInfo[];
   /** null — not built yet */
   stats: ModelStats | null;
   created_at: string | null;
   updated_at: string | null;
 }
+
+export interface GroupBrief {
+  id: number | null;
+  name: string;
+  type: string;
+}
+
+const readBrief = (raw: unknown): GroupBrief => {
+  const g = obj(raw);
+  return { id: numOrNull(g.id), name: str(g.name) ?? "", type: str(g.type) ?? "domain" };
+};
 
 export function readRow(raw: unknown): ModelRow {
   const r = obj(raw);
@@ -150,6 +164,8 @@ export function readRow(raw: unknown): ModelRow {
     source_lost: r.source_lost === true,
     groups: countOf(r.groups),
     outputs: countOf(r.outputs),
+    group_list: Array.isArray(r.groups) ? r.groups.map(readBrief) : [],
+    output_list: readOutputs(r.outputs),
     stats: s ? { points: numOrNull(s.points), patches: numOrNull(s.patches), seconds: numOrNull(s.seconds) } : null,
     created_at: str(r.created_at),
     updated_at: str(r.updated_at),
@@ -190,7 +206,9 @@ export function readOutput(raw: unknown): OutputInfo {
   };
 }
 
-const readOutputs = (v: unknown): OutputInfo[] => (Array.isArray(v) ? v.map(readOutput) : []);
+function readOutputs(v: unknown): OutputInfo[] {
+  return Array.isArray(v) ? v.map(readOutput) : [];
+}
 
 export interface ErrorInfo {
   code: string;
@@ -304,8 +322,11 @@ export interface PreviewCounts {
   manual: number;
   value: number;
   merged: number;
-  dropped_log: number;
-  no_position: number;
+  /** the pairs of points within the tolerance that keep different values */
+  conflicts: number;
+  /** the holes without a trajectory, the points without a depth (8.9.1) */
+  no_trajectory: number;
+  no_depth: number;
 }
 
 export interface PreviewAnswer {
@@ -329,7 +350,7 @@ export function readPreview(raw: unknown): PreviewAnswer {
     group: numOrNull(r.group),
     n: num(r.n, 0),
     truncated: r.truncated === true,
-    counts: { contact: n("contact"), inside: n("inside"), outside: n("outside"), manual: n("manual"), value: n("value"), merged: n("merged"), dropped_log: n("dropped_log"), no_position: n("no_position") },
+    counts: { contact: n("contact"), inside: n("inside"), outside: n("outside"), manual: n("manual"), value: n("value"), merged: n("merged"), conflicts: n("conflicts"), no_trajectory: n("no_trajectory"), no_depth: n("no_depth") },
     notes: strs(r.notes),
     points: { x: column(p.x), y: column(p.y), z: column(p.z), f: column(p.f), kind: Array.isArray(p.kind) ? p.kind.filter(isNum) : [] },
   };

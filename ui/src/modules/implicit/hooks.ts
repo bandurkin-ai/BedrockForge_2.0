@@ -21,3 +21,8 @@ export function useLatest<T>(load: (() => Promise<T>) | null, deps: unknown[], f
   }, deps);
   return value;
 }
+
+/** Re-renders when commands are bound (the reasons of the buttons change); a snapshot of the server too — the panels are drawn in the tests as text. */
+export function useRegistry(registry: { subscribe: (fn: () => void) => () => void; version: () => number }): number {
+  return useSyncExternalStore(registry.subscribe, registry.version, registry.version);
+}
