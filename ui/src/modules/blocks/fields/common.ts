@@ -111,7 +111,7 @@ export function restrictFormOfArgs(a: Args, keep: RestrictForm): RestrictForm {
 // ---- a refusal of the core in its place in the form ----
 
 /** Where a `param` of the body belongs in the forms (the head of the path; a few keys are named in the form differently). */
-const PLACE: Record<string, string> = { filter_id: "filter", expected_version: "general", src_field: "src_field", table: "table" };
+const PLACE: Record<string, string> = { filter_id: "filter", expected_version: "general", src_field: "src_field", table: "table", id: "scheme_id", name: "scheme_name" };
 
 /** The place of a refusal of the core: by its `param`, or by the code when it names none. `field` is the name asked for. */
 export function issueOfRefusal(tab: Tab, r: Refusal, restrictOn = false, filterId: number | null = null): Issue {
@@ -122,6 +122,6 @@ export function issueOfRefusal(tab: Tab, r: Refusal, restrictOn = false, filterI
   else if (r.code === "filter_field_missing") place = restrictOn && filterId === null ? "restrict" : "filter";
   else if (r.code === "scheme_not_found") place = "scheme";
   else if (r.code === "scheme_incomplete") place = "rules";
-  else if (["version_conflict", "project_read_only", "density_invalid", "classify_field_missing", "not_ready", "bad_answer"].includes(r.code)) place = "general";
+  else if (["version_conflict", "project_read_only", "density_invalid", "not_ready", "bad_answer"].includes(r.code)) place = "general";
   return issue(tab, place, r.message, r.hint, r.param);
 }

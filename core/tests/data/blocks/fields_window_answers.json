@@ -19,8 +19,8 @@
       "DOM"
      ],
      "note": null,
-     "created_at": "2026-11-24T23:39:13.567239Z",
-     "updated_at": "2026-11-24T23:39:13.567239Z"
+     "created_at": "2026-11-24T23:57:18.306212Z",
+     "updated_at": "2026-11-24T23:57:18.306212Z"
     }
    ]
   }
@@ -158,8 +158,8 @@
       "file": "m.dat"
      },
      "warnings": [],
-     "created_at": "2026-11-24T23:39:13.518855+00:00",
-     "updated_at": "2026-11-24T23:39:13.518855+00:00"
+     "created_at": "2026-11-24T23:57:18.275044+00:00",
+     "updated_at": "2026-11-24T23:57:18.275044+00:00"
     }
    ]
   }
@@ -421,8 +421,8 @@
    ],
    "inputs": null,
    "algo": null,
-   "created_at": "2026-11-24T23:39:13.518855+00:00",
-   "updated_at": "2026-11-24T23:39:13.518855+00:00"
+   "created_at": "2026-11-24T23:57:18.275044+00:00",
+   "updated_at": "2026-11-24T23:57:18.275044+00:00"
   }
  },
  "fields_before": {
@@ -896,6 +896,58 @@
     "hint": "Для категории пишите IF(AU > 1, 'руда', 'порода'); для числа — тип f8, f4, i4, i2 или i1."
    }
   },
+  "rule_ok": {
+   "request": {
+    "model_id": 1,
+    "expr": "AU >= 1"
+   },
+   "status": 200,
+   "body": {
+    "text": "AU >= 1",
+    "fields_used": [
+     "AU"
+    ],
+    "out_kind": "bool",
+    "dtype": "i1"
+   }
+  },
+  "rule_jorc": {
+   "request": {
+    "model_id": 1,
+    "expr": "PASS = 1 AND SLOPE >= 0.8 AND NH >= 3 AND AD <= 25"
+   },
+   "status": 200,
+   "body": {
+    "text": "PASS = 1 AND SLOPE >= 0.8 AND NH >= 3 AND AD <= 25",
+    "fields_used": [
+     "PASS",
+     "SLOPE",
+     "NH",
+     "AD"
+    ],
+    "out_kind": "bool",
+    "dtype": "i1"
+   }
+  },
+  "rule_field": {
+   "request": {
+    "model_id": 1,
+    "expr": "NOPE >= 1"
+   },
+   "status": 422,
+   "body": {
+    "pos": 0,
+    "line": 1,
+    "column": 1,
+    "char": "N",
+    "reason": "unknown_field",
+    "param": "expr",
+    "field": "NOPE",
+    "code": "expr_field",
+    "message": "Неизвестное поле «NOPE» (строка 1, столбец 1, символ «N»).",
+    "hint": "Возможно, имелось в виду «SLOPE». Поля модели: AU, CU, DOM, SG, FR, FR2, PASS, SLOPE, NH, AD."
+   }
+  },
   "empty": {
    "request": {
     "model_id": 1,
@@ -979,9 +1031,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.228,
-      "calc": 0.288,
-      "write": 0.015
+      "read": 0.251,
+      "calc": 0.266,
+      "write": 0.013
      },
      "events": [
       [
@@ -1107,7 +1159,7 @@
      "dtype": "cat",
      "warnings": [],
      "stages": {
-      "read": 0.004,
+      "read": 0.007,
       "calc": 0.002,
       "write": 0.011
      },
@@ -1163,9 +1215,9 @@
      "dtype": "i1",
      "warnings": [],
      "stages": {
-      "read": 0.004,
-      "calc": 0.004,
-      "write": 0.011
+      "read": 0.003,
+      "calc": 0.003,
+      "write": 0.009
      },
      "events": [
       [
@@ -1219,8 +1271,8 @@
      "dtype": "i2",
      "warnings": [],
      "stages": {
-      "read": 0.007,
-      "calc": 0.003,
+      "read": 0.004,
+      "calc": 0.002,
       "write": 0.012
      },
      "events": [
@@ -1282,9 +1334,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.004,
+      "read": 0.005,
       "calc": 0.002,
-      "write": 0.01
+      "write": 0.011
      },
      "events": [
       [
@@ -1345,9 +1397,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.006,
+      "read": 0.004,
       "calc": 0.002,
-      "write": 0.012
+      "write": 0.013
      },
      "events": [
       [
@@ -1409,9 +1461,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.009,
-      "calc": 0.003,
-      "write": 0.017
+      "read": 0.008,
+      "calc": 0.004,
+      "write": 0.023
      },
      "events": [
       [
@@ -1633,9 +1685,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.006,
+      "read": 0.008,
       "calc": 0.002,
-      "write": 0.017
+      "write": 0.013
      },
      "events": [
       [
@@ -1701,9 +1753,9 @@
      ],
      "stages": {
       "read": 0.005,
-      "calc": 0.002,
-      "write": 0.013,
-      "total": 0.02
+      "calc": 0.003,
+      "write": 0.011,
+      "total": 0.018
      },
      "events": [
       [
@@ -1764,9 +1816,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.004,
-      "calc": 0.003,
-      "write": 0.012,
+      "read": 0.003,
+      "calc": 0.002,
+      "write": 0.013,
       "total": 0.019
      },
      "events": [
@@ -1850,8 +1902,8 @@
      "stages": {
       "read": 0.005,
       "calc": 0.003,
-      "write": 0.011,
-      "total": 0.019
+      "write": 0.013,
+      "total": 0.02
      },
      "events": [
       [
@@ -1912,10 +1964,10 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.005,
+      "read": 0.006,
       "calc": 0.003,
-      "write": 0.013,
-      "total": 0.021
+      "write": 0.016,
+      "total": 0.026
      },
      "events": [
       [
@@ -1979,9 +2031,9 @@
      ],
      "stages": {
       "read": 0.005,
-      "calc": 0.003,
-      "write": 0.011,
-      "total": 0.02
+      "calc": 0.002,
+      "write": 0.015,
+      "total": 0.023
      },
      "events": [
       [
@@ -2060,10 +2112,10 @@
       "Значение по умолчанию не задано: блоки без плотности останутся пустыми."
      ],
      "stages": {
-      "read": 0.005,
-      "calc": 0.002,
-      "write": 0.012,
-      "total": 0.02
+      "read": 0.004,
+      "calc": 0.004,
+      "write": 0.01,
+      "total": 0.017
      },
      "events": [
       [
@@ -2685,10 +2737,10 @@
      },
      "warnings": [],
      "stages": {
-      "read": 0.006,
-      "calc": 0.002,
-      "write": 0.029,
-      "total": 0.037
+      "read": 0.007,
+      "calc": 0.001,
+      "write": 0.016,
+      "total": 0.024
      },
      "events": [
       [
@@ -2752,11 +2804,11 @@
      },
      "warnings": [],
      "stages": {
-      "read": 0.005,
-      "calc": 0.001,
-      "majority": 0.001,
-      "write": 0.015,
-      "total": 0.022
+      "read": 0.006,
+      "calc": 0.002,
+      "majority": 0.004,
+      "write": 0.016,
+      "total": 0.028
      },
      "events": [
       [
@@ -2817,10 +2869,10 @@
      },
      "warnings": [],
      "stages": {
-      "read": 0.012,
-      "calc": 0.002,
-      "write": 0.014,
-      "total": 0.028
+      "read": 0.007,
+      "calc": 0.003,
+      "write": 0.019,
+      "total": 0.029
      },
      "events": [
       [
@@ -2897,10 +2949,10 @@
      },
      "warnings": [],
      "stages": {
-      "read": 0.014,
+      "read": 0.006,
       "calc": 0.002,
-      "write": 0.014,
-      "total": 0.029
+      "write": 0.015,
+      "total": 0.023
      },
      "events": [
       [
@@ -2975,10 +3027,10 @@
      },
      "warnings": [],
      "stages": {
-      "read": 1.035,
-      "calc": 0.96,
-      "write": 0.022,
-      "total": 2.018
+      "read": 0.834,
+      "calc": 0.789,
+      "write": 0.016,
+      "total": 1.64
      },
      "events": [
       [
@@ -3711,7 +3763,7 @@
        "mean": 4.0227272727272725,
        "std": 4.46958731247099
       },
-      "file": "fld:c4a02799",
+      "file": "fld:edec1617",
       "source": {
        "op": "calc",
        "params": {
@@ -3723,7 +3775,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:14.621666+00:00"
+       "at": "2026-11-24T23:57:19.324639+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3748,7 +3800,7 @@
         10
        ]
       },
-      "file": "fld:83f06caf",
+      "file": "fld:d3b16904",
       "source": {
        "op": "calc",
        "params": {
@@ -3760,7 +3812,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:14.864392+00:00"
+       "at": "2026-11-24T23:57:19.565076+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3785,7 +3837,7 @@
        "mean": 0.20833333333333334,
        "std": 0.4061164310337068
       },
-      "file": "fld:b7802a5d",
+      "file": "fld:4b652e27",
       "source": {
        "op": "calc",
        "params": {
@@ -3797,7 +3849,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.104914+00:00"
+       "at": "2026-11-24T23:57:19.808460+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3822,7 +3874,7 @@
        "mean": 15.590909090909092,
        "std": 13.189731167255184
       },
-      "file": "fld:859cc64a",
+      "file": "fld:4d07b9a6",
       "source": {
        "op": "calc",
        "params": {
@@ -3834,7 +3886,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.345770+00:00"
+       "at": "2026-11-24T23:57:20.040753+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3859,7 +3911,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:b6e4e11b",
+      "file": "fld:1ef340d5",
       "source": {
        "op": "calc",
        "params": {
@@ -3877,7 +3929,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.580644+00:00"
+       "at": "2026-11-24T23:57:20.284607+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3902,7 +3954,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:ad9a102a",
+      "file": "fld:9eb8e9be",
       "source": {
        "op": "calc",
        "params": {
@@ -3920,7 +3972,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.821468+00:00"
+       "at": "2026-11-24T23:57:20.517313+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3945,7 +3997,7 @@
        "mean": 14.5,
        "std": 5.123475382979799
       },
-      "file": "fld:cda44115",
+      "file": "fld:2bbd7de7",
       "source": {
        "op": "calc",
        "params": {
@@ -3963,7 +4015,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:16.063229+00:00"
+       "at": "2026-11-24T23:57:20.771575+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3988,7 +4040,7 @@
        "mean": 2.7999999999999994,
        "std": 4.440892098500626e-16
       },
-      "file": "fld:6bb38f45",
+      "file": "fld:a168d78a",
       "source": {
        "op": "density",
        "params": {
@@ -4001,7 +4053,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.505129+00:00"
+       "at": "2026-11-24T23:57:22.238354+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4026,7 +4078,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:6bb38f45",
+      "file": "fld:a168d78a",
       "source": {
        "op": "density",
        "params": {
@@ -4039,7 +4091,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.505129+00:00"
+       "at": "2026-11-24T23:57:22.238354+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4064,7 +4116,7 @@
        "mean": 2.772916666666667,
        "std": 0.34398981533695966
       },
-      "file": "fld:5f94e620",
+      "file": "fld:1f27a25f",
       "source": {
        "op": "density",
        "params": {
@@ -4077,7 +4129,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.544602+00:00"
+       "at": "2026-11-24T23:57:21.254245+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4102,7 +4154,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:5f94e620",
+      "file": "fld:1f27a25f",
       "source": {
        "op": "density",
        "params": {
@@ -4115,7 +4167,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.544602+00:00"
+       "at": "2026-11-24T23:57:21.254245+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4140,7 +4192,7 @@
        "mean": 2.6842105263157894,
        "std": 0.29426654207356556
       },
-      "file": "fld:6971d0f1",
+      "file": "fld:aa75eb08",
       "source": {
        "op": "density",
        "params": {
@@ -4172,7 +4224,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.783838+00:00"
+       "at": "2026-11-24T23:57:21.493763+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4197,7 +4249,7 @@
        "mean": 0.3684210526315789,
        "std": 0.48237638894271995
       },
-      "file": "fld:6971d0f1",
+      "file": "fld:aa75eb08",
       "source": {
        "op": "density",
        "params": {
@@ -4229,7 +4281,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.783838+00:00"
+       "at": "2026-11-24T23:57:21.493763+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4254,7 +4306,7 @@
        "mean": 2.625,
        "std": 0.06922186552431733
       },
-      "file": "fld:7d680222",
+      "file": "fld:7dec7a96",
       "source": {
        "op": "density",
        "params": {
@@ -4267,7 +4319,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.024558+00:00"
+       "at": "2026-11-24T23:57:21.740268+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4292,7 +4344,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:7d680222",
+      "file": "fld:7dec7a96",
       "source": {
        "op": "density",
        "params": {
@@ -4305,7 +4357,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.024558+00:00"
+       "at": "2026-11-24T23:57:21.740268+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4330,7 +4382,7 @@
        "mean": 2.797727272727273,
        "std": 0.34885438246536227
       },
-      "file": "fld:626b5f4a",
+      "file": "fld:d6a6431a",
       "source": {
        "op": "density",
        "params": {
@@ -4343,7 +4395,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.267927+00:00"
+       "at": "2026-11-24T23:57:22.001434+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4368,7 +4420,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:626b5f4a",
+      "file": "fld:d6a6431a",
       "source": {
        "op": "density",
        "params": {
@@ -4381,7 +4433,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.267927+00:00"
+       "at": "2026-11-24T23:57:22.001434+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4407,7 +4459,7 @@
         16
        ]
       },
-      "file": "fld:5aef8b0f",
+      "file": "fld:3e8ed56c",
       "source": {
        "op": "classify",
        "params": {
@@ -4434,7 +4486,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:17.993909+00:00"
+       "at": "2026-11-24T23:57:22.920129+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4460,7 +4512,7 @@
         22
        ]
       },
-      "file": "fld:2465edbc",
+      "file": "fld:d782592f",
       "source": {
        "op": "classify",
        "params": {
@@ -4487,7 +4539,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.255978+00:00"
+       "at": "2026-11-24T23:57:23.169009+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4512,7 +4564,7 @@
         1
        ]
       },
-      "file": "fld:cc7ce6b6",
+      "file": "fld:e943d958",
       "source": {
        "op": "classify",
        "params": {
@@ -4535,7 +4587,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.506632+00:00"
+       "at": "2026-11-24T23:57:23.421745+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4560,7 +4612,7 @@
         7
        ]
       },
-      "file": "fld:657ffa96",
+      "file": "fld:8dc95613",
       "source": {
        "op": "classify",
        "params": {
@@ -4589,7 +4641,7 @@
         }
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.761826+00:00"
+       "at": "2026-11-24T23:57:23.664977+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4614,7 +4666,7 @@
         14
        ]
       },
-      "file": "fld:8bb781d3",
+      "file": "fld:aa0d3cb0",
       "source": {
        "op": "classify",
        "params": {
@@ -4642,7 +4694,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:21.004143+00:00"
+       "at": "2026-11-24T23:57:25.521389+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5061,7 +5113,7 @@
        "mean": 1.5590909090909093,
        "std": 1.3189731167255185
       },
-      "file": "fld:5274a3b2",
+      "file": "fld:2fe87f6d",
       "source": {
        "op": "calc",
        "params": {
@@ -5073,7 +5125,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:21.656124+00:00"
+       "at": "2026-11-24T23:57:26.166772+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5542,7 +5594,7 @@
        "mean": 4.0227272727272725,
        "std": 4.46958731247099
       },
-      "file": "fld:c4a02799",
+      "file": "fld:edec1617",
       "source": {
        "op": "calc",
        "params": {
@@ -5554,7 +5606,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:14.621666+00:00"
+       "at": "2026-11-24T23:57:19.324639+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5579,7 +5631,7 @@
         10
        ]
       },
-      "file": "fld:83f06caf",
+      "file": "fld:d3b16904",
       "source": {
        "op": "calc",
        "params": {
@@ -5591,7 +5643,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:14.864392+00:00"
+       "at": "2026-11-24T23:57:19.565076+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5616,7 +5668,7 @@
        "mean": 0.20833333333333334,
        "std": 0.4061164310337068
       },
-      "file": "fld:b7802a5d",
+      "file": "fld:4b652e27",
       "source": {
        "op": "calc",
        "params": {
@@ -5628,7 +5680,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.104914+00:00"
+       "at": "2026-11-24T23:57:19.808460+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5653,7 +5705,7 @@
        "mean": 15.590909090909092,
        "std": 13.189731167255184
       },
-      "file": "fld:859cc64a",
+      "file": "fld:4d07b9a6",
       "source": {
        "op": "calc",
        "params": {
@@ -5665,7 +5717,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.345770+00:00"
+       "at": "2026-11-24T23:57:20.040753+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5690,7 +5742,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:b6e4e11b",
+      "file": "fld:1ef340d5",
       "source": {
        "op": "calc",
        "params": {
@@ -5708,7 +5760,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.580644+00:00"
+       "at": "2026-11-24T23:57:20.284607+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5733,7 +5785,7 @@
        "mean": 14.5,
        "std": 5.123475382979799
       },
-      "file": "fld:cda44115",
+      "file": "fld:2bbd7de7",
       "source": {
        "op": "calc",
        "params": {
@@ -5751,7 +5803,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:16.063229+00:00"
+       "at": "2026-11-24T23:57:20.771575+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5776,7 +5828,7 @@
        "mean": 2.7999999999999994,
        "std": 4.440892098500626e-16
       },
-      "file": "fld:6bb38f45",
+      "file": "fld:a168d78a",
       "source": {
        "op": "density",
        "params": {
@@ -5789,7 +5841,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.505129+00:00"
+       "at": "2026-11-24T23:57:22.238354+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5814,7 +5866,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:6bb38f45",
+      "file": "fld:a168d78a",
       "source": {
        "op": "density",
        "params": {
@@ -5827,7 +5879,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.505129+00:00"
+       "at": "2026-11-24T23:57:22.238354+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5852,7 +5904,7 @@
        "mean": 2.772916666666667,
        "std": 0.34398981533695966
       },
-      "file": "fld:5f94e620",
+      "file": "fld:1f27a25f",
       "source": {
        "op": "density",
        "params": {
@@ -5865,7 +5917,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.544602+00:00"
+       "at": "2026-11-24T23:57:21.254245+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5890,7 +5942,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:5f94e620",
+      "file": "fld:1f27a25f",
       "source": {
        "op": "density",
        "params": {
@@ -5903,7 +5955,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.544602+00:00"
+       "at": "2026-11-24T23:57:21.254245+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5928,7 +5980,7 @@
        "mean": 2.6842105263157894,
        "std": 0.29426654207356556
       },
-      "file": "fld:6971d0f1",
+      "file": "fld:aa75eb08",
       "source": {
        "op": "density",
        "params": {
@@ -5960,7 +6012,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.783838+00:00"
+       "at": "2026-11-24T23:57:21.493763+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5985,7 +6037,7 @@
        "mean": 0.3684210526315789,
        "std": 0.48237638894271995
       },
-      "file": "fld:6971d0f1",
+      "file": "fld:aa75eb08",
       "source": {
        "op": "density",
        "params": {
@@ -6017,7 +6069,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.783838+00:00"
+       "at": "2026-11-24T23:57:21.493763+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6042,7 +6094,7 @@
        "mean": 2.625,
        "std": 0.06922186552431733
       },
-      "file": "fld:7d680222",
+      "file": "fld:7dec7a96",
       "source": {
        "op": "density",
        "params": {
@@ -6055,7 +6107,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.024558+00:00"
+       "at": "2026-11-24T23:57:21.740268+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6080,7 +6132,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:7d680222",
+      "file": "fld:7dec7a96",
       "source": {
        "op": "density",
        "params": {
@@ -6093,7 +6145,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.024558+00:00"
+       "at": "2026-11-24T23:57:21.740268+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6118,7 +6170,7 @@
        "mean": 2.797727272727273,
        "std": 0.34885438246536227
       },
-      "file": "fld:626b5f4a",
+      "file": "fld:d6a6431a",
       "source": {
        "op": "density",
        "params": {
@@ -6131,7 +6183,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.267927+00:00"
+       "at": "2026-11-24T23:57:22.001434+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6156,7 +6208,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:626b5f4a",
+      "file": "fld:d6a6431a",
       "source": {
        "op": "density",
        "params": {
@@ -6169,7 +6221,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.267927+00:00"
+       "at": "2026-11-24T23:57:22.001434+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6195,7 +6247,7 @@
         16
        ]
       },
-      "file": "fld:5aef8b0f",
+      "file": "fld:3e8ed56c",
       "source": {
        "op": "classify",
        "params": {
@@ -6222,7 +6274,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:17.993909+00:00"
+       "at": "2026-11-24T23:57:22.920129+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6248,7 +6300,7 @@
         22
        ]
       },
-      "file": "fld:2465edbc",
+      "file": "fld:d782592f",
       "source": {
        "op": "classify",
        "params": {
@@ -6275,7 +6327,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.255978+00:00"
+       "at": "2026-11-24T23:57:23.169009+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6300,7 +6352,7 @@
         1
        ]
       },
-      "file": "fld:cc7ce6b6",
+      "file": "fld:e943d958",
       "source": {
        "op": "classify",
        "params": {
@@ -6323,7 +6375,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.506632+00:00"
+       "at": "2026-11-24T23:57:23.421745+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6348,7 +6400,7 @@
         7
        ]
       },
-      "file": "fld:657ffa96",
+      "file": "fld:8dc95613",
       "source": {
        "op": "classify",
        "params": {
@@ -6377,7 +6429,7 @@
         }
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.761826+00:00"
+       "at": "2026-11-24T23:57:23.664977+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6402,7 +6454,7 @@
         14
        ]
       },
-      "file": "fld:8bb781d3",
+      "file": "fld:aa0d3cb0",
       "source": {
        "op": "classify",
        "params": {
@@ -6430,7 +6482,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:21.004143+00:00"
+       "at": "2026-11-24T23:57:25.521389+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6480,9 +6532,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.007,
-      "calc": 0.005,
-      "write": 0.014
+      "read": 0.005,
+      "calc": 0.003,
+      "write": 0.011
      },
      "events": [
       [
@@ -6539,10 +6591,10 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.005,
-      "calc": 0.002,
-      "write": 0.014,
-      "total": 0.022
+      "read": 0.006,
+      "calc": 0.003,
+      "write": 0.012,
+      "total": 0.02
      },
      "events": [
       [
@@ -6618,7 +6670,7 @@
        "mean": 1.5590909090909093,
        "std": 1.3189731167255185
       },
-      "file": "fld:5274a3b2",
+      "file": "fld:2fe87f6d",
       "source": {
        "op": "calc",
        "params": {
@@ -6630,7 +6682,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:21.656124+00:00"
+       "at": "2026-11-24T23:57:26.166772+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7099,7 +7151,7 @@
        "mean": 4.0227272727272725,
        "std": 4.46958731247099
       },
-      "file": "fld:5bfd594b",
+      "file": "fld:f477b821",
       "source": {
        "op": "calc",
        "params": {
@@ -7111,7 +7163,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:21.913777+00:00"
+       "at": "2026-11-24T23:57:26.406485+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7136,7 +7188,7 @@
         10
        ]
       },
-      "file": "fld:83f06caf",
+      "file": "fld:d3b16904",
       "source": {
        "op": "calc",
        "params": {
@@ -7148,7 +7200,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:14.864392+00:00"
+       "at": "2026-11-24T23:57:19.565076+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -7173,7 +7225,7 @@
        "mean": 0.20833333333333334,
        "std": 0.4061164310337068
       },
-      "file": "fld:b7802a5d",
+      "file": "fld:4b652e27",
       "source": {
        "op": "calc",
        "params": {
@@ -7185,7 +7237,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.104914+00:00"
+       "at": "2026-11-24T23:57:19.808460+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -7210,7 +7262,7 @@
        "mean": 15.590909090909092,
        "std": 13.189731167255184
       },
-      "file": "fld:859cc64a",
+      "file": "fld:4d07b9a6",
       "source": {
        "op": "calc",
        "params": {
@@ -7222,7 +7274,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.345770+00:00"
+       "at": "2026-11-24T23:57:20.040753+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -7247,7 +7299,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:b6e4e11b",
+      "file": "fld:1ef340d5",
       "source": {
        "op": "calc",
        "params": {
@@ -7265,7 +7317,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.580644+00:00"
+       "at": "2026-11-24T23:57:20.284607+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -7290,7 +7342,7 @@
        "mean": 14.5,
        "std": 5.123475382979799
       },
-      "file": "fld:cda44115",
+      "file": "fld:2bbd7de7",
       "source": {
        "op": "calc",
        "params": {
@@ -7308,7 +7360,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:16.063229+00:00"
+       "at": "2026-11-24T23:57:20.771575+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7333,7 +7385,7 @@
        "mean": 2.7999999999999994,
        "std": 4.440892098500626e-16
       },
-      "file": "fld:6bb38f45",
+      "file": "fld:a168d78a",
       "source": {
        "op": "density",
        "params": {
@@ -7346,7 +7398,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.505129+00:00"
+       "at": "2026-11-24T23:57:22.238354+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7371,7 +7423,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:6bb38f45",
+      "file": "fld:a168d78a",
       "source": {
        "op": "density",
        "params": {
@@ -7384,7 +7436,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.505129+00:00"
+       "at": "2026-11-24T23:57:22.238354+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7409,7 +7461,7 @@
        "mean": 2.772916666666667,
        "std": 0.34398981533695966
       },
-      "file": "fld:b66e2681",
+      "file": "fld:f79de11c",
       "source": {
        "op": "density",
        "params": {
@@ -7422,7 +7474,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:22.153618+00:00"
+       "at": "2026-11-24T23:57:26.647641+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7447,7 +7499,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:b66e2681",
+      "file": "fld:f79de11c",
       "source": {
        "op": "density",
        "params": {
@@ -7460,7 +7512,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:22.153618+00:00"
+       "at": "2026-11-24T23:57:26.647641+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7485,7 +7537,7 @@
        "mean": 2.6842105263157894,
        "std": 0.29426654207356556
       },
-      "file": "fld:6971d0f1",
+      "file": "fld:aa75eb08",
       "source": {
        "op": "density",
        "params": {
@@ -7517,7 +7569,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.783838+00:00"
+       "at": "2026-11-24T23:57:21.493763+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7542,7 +7594,7 @@
        "mean": 0.3684210526315789,
        "std": 0.48237638894271995
       },
-      "file": "fld:6971d0f1",
+      "file": "fld:aa75eb08",
       "source": {
        "op": "density",
        "params": {
@@ -7574,7 +7626,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.783838+00:00"
+       "at": "2026-11-24T23:57:21.493763+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7599,7 +7651,7 @@
        "mean": 2.625,
        "std": 0.06922186552431733
       },
-      "file": "fld:7d680222",
+      "file": "fld:7dec7a96",
       "source": {
        "op": "density",
        "params": {
@@ -7612,7 +7664,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.024558+00:00"
+       "at": "2026-11-24T23:57:21.740268+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7637,7 +7689,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:7d680222",
+      "file": "fld:7dec7a96",
       "source": {
        "op": "density",
        "params": {
@@ -7650,7 +7702,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.024558+00:00"
+       "at": "2026-11-24T23:57:21.740268+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7675,7 +7727,7 @@
        "mean": 2.797727272727273,
        "std": 0.34885438246536227
       },
-      "file": "fld:626b5f4a",
+      "file": "fld:d6a6431a",
       "source": {
        "op": "density",
        "params": {
@@ -7688,7 +7740,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.267927+00:00"
+       "at": "2026-11-24T23:57:22.001434+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7713,7 +7765,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:626b5f4a",
+      "file": "fld:d6a6431a",
       "source": {
        "op": "density",
        "params": {
@@ -7726,7 +7778,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.267927+00:00"
+       "at": "2026-11-24T23:57:22.001434+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7752,7 +7804,7 @@
         16
        ]
       },
-      "file": "fld:5aef8b0f",
+      "file": "fld:3e8ed56c",
       "source": {
        "op": "classify",
        "params": {
@@ -7779,7 +7831,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:17.993909+00:00"
+       "at": "2026-11-24T23:57:22.920129+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -7805,7 +7857,7 @@
         22
        ]
       },
-      "file": "fld:2465edbc",
+      "file": "fld:d782592f",
       "source": {
        "op": "classify",
        "params": {
@@ -7832,7 +7884,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.255978+00:00"
+       "at": "2026-11-24T23:57:23.169009+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -7857,7 +7909,7 @@
         1
        ]
       },
-      "file": "fld:cc7ce6b6",
+      "file": "fld:e943d958",
       "source": {
        "op": "classify",
        "params": {
@@ -7880,7 +7932,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.506632+00:00"
+       "at": "2026-11-24T23:57:23.421745+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -7905,7 +7957,7 @@
         7
        ]
       },
-      "file": "fld:657ffa96",
+      "file": "fld:8dc95613",
       "source": {
        "op": "classify",
        "params": {
@@ -7934,7 +7986,7 @@
         }
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.761826+00:00"
+       "at": "2026-11-24T23:57:23.664977+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -7959,7 +8011,7 @@
         14
        ]
       },
-      "file": "fld:8bb781d3",
+      "file": "fld:aa0d3cb0",
       "source": {
        "op": "classify",
        "params": {
@@ -7987,7 +8039,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:21.004143+00:00"
+       "at": "2026-11-24T23:57:25.521389+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -8044,7 +8096,7 @@
        "mean": 1.5590909090909093,
        "std": 1.3189731167255185
       },
-      "file": "fld:5274a3b2",
+      "file": "fld:2fe87f6d",
       "source": {
        "op": "calc",
        "params": {
@@ -8056,7 +8108,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:21.656124+00:00"
+       "at": "2026-11-24T23:57:26.166772+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8495,7 +8547,7 @@
        "mean": 4.0227272727272725,
        "std": 4.46958731247099
       },
-      "file": "fld:5bfd594b",
+      "file": "fld:f477b821",
       "source": {
        "op": "calc",
        "params": {
@@ -8507,7 +8559,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:21.913777+00:00"
+       "at": "2026-11-24T23:57:26.406485+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8532,7 +8584,7 @@
         10
        ]
       },
-      "file": "fld:83f06caf",
+      "file": "fld:d3b16904",
       "source": {
        "op": "calc",
        "params": {
@@ -8544,7 +8596,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:14.864392+00:00"
+       "at": "2026-11-24T23:57:19.565076+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -8569,7 +8621,7 @@
        "mean": 0.20833333333333334,
        "std": 0.4061164310337068
       },
-      "file": "fld:b7802a5d",
+      "file": "fld:4b652e27",
       "source": {
        "op": "calc",
        "params": {
@@ -8581,7 +8633,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.104914+00:00"
+       "at": "2026-11-24T23:57:19.808460+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -8606,7 +8658,7 @@
        "mean": 15.590909090909092,
        "std": 13.189731167255184
       },
-      "file": "fld:859cc64a",
+      "file": "fld:4d07b9a6",
       "source": {
        "op": "calc",
        "params": {
@@ -8618,7 +8670,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.345770+00:00"
+       "at": "2026-11-24T23:57:20.040753+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -8643,7 +8695,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:b6e4e11b",
+      "file": "fld:1ef340d5",
       "source": {
        "op": "calc",
        "params": {
@@ -8661,7 +8713,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:15.580644+00:00"
+       "at": "2026-11-24T23:57:20.284607+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -8686,7 +8738,7 @@
        "mean": 14.5,
        "std": 5.123475382979799
       },
-      "file": "fld:cda44115",
+      "file": "fld:2bbd7de7",
       "source": {
        "op": "calc",
        "params": {
@@ -8704,7 +8756,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:39:16.063229+00:00"
+       "at": "2026-11-24T23:57:20.771575+00:00"
       },
       "stale": true,
       "stale_reason": "Нет входов: поле или фильтр, из которых считалось, удалены или изменены.",
@@ -8729,7 +8781,7 @@
        "mean": 2.7999999999999994,
        "std": 4.440892098500626e-16
       },
-      "file": "fld:6bb38f45",
+      "file": "fld:a168d78a",
       "source": {
        "op": "density",
        "params": {
@@ -8742,7 +8794,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.505129+00:00"
+       "at": "2026-11-24T23:57:22.238354+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8767,7 +8819,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:6bb38f45",
+      "file": "fld:a168d78a",
       "source": {
        "op": "density",
        "params": {
@@ -8780,7 +8832,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.505129+00:00"
+       "at": "2026-11-24T23:57:22.238354+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8805,7 +8857,7 @@
        "mean": 2.772916666666667,
        "std": 0.34398981533695966
       },
-      "file": "fld:b66e2681",
+      "file": "fld:f79de11c",
       "source": {
        "op": "density",
        "params": {
@@ -8818,7 +8870,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:22.153618+00:00"
+       "at": "2026-11-24T23:57:26.647641+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8843,7 +8895,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:b66e2681",
+      "file": "fld:f79de11c",
       "source": {
        "op": "density",
        "params": {
@@ -8856,7 +8908,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:22.153618+00:00"
+       "at": "2026-11-24T23:57:26.647641+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8881,7 +8933,7 @@
        "mean": 2.6842105263157894,
        "std": 0.29426654207356556
       },
-      "file": "fld:6971d0f1",
+      "file": "fld:aa75eb08",
       "source": {
        "op": "density",
        "params": {
@@ -8913,7 +8965,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.783838+00:00"
+       "at": "2026-11-24T23:57:21.493763+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8938,7 +8990,7 @@
        "mean": 0.3684210526315789,
        "std": 0.48237638894271995
       },
-      "file": "fld:6971d0f1",
+      "file": "fld:aa75eb08",
       "source": {
        "op": "density",
        "params": {
@@ -8970,7 +9022,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:16.783838+00:00"
+       "at": "2026-11-24T23:57:21.493763+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8995,7 +9047,7 @@
        "mean": 2.625,
        "std": 0.06922186552431733
       },
-      "file": "fld:7d680222",
+      "file": "fld:7dec7a96",
       "source": {
        "op": "density",
        "params": {
@@ -9008,7 +9060,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.024558+00:00"
+       "at": "2026-11-24T23:57:21.740268+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -9033,7 +9085,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:7d680222",
+      "file": "fld:7dec7a96",
       "source": {
        "op": "density",
        "params": {
@@ -9046,7 +9098,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.024558+00:00"
+       "at": "2026-11-24T23:57:21.740268+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -9071,7 +9123,7 @@
        "mean": 2.797727272727273,
        "std": 0.34885438246536227
       },
-      "file": "fld:626b5f4a",
+      "file": "fld:d6a6431a",
       "source": {
        "op": "density",
        "params": {
@@ -9084,7 +9136,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.267927+00:00"
+       "at": "2026-11-24T23:57:22.001434+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -9109,7 +9161,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:626b5f4a",
+      "file": "fld:d6a6431a",
       "source": {
        "op": "density",
        "params": {
@@ -9122,7 +9174,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:39:17.267927+00:00"
+       "at": "2026-11-24T23:57:22.001434+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -9148,7 +9200,7 @@
         16
        ]
       },
-      "file": "fld:5aef8b0f",
+      "file": "fld:3e8ed56c",
       "source": {
        "op": "classify",
        "params": {
@@ -9175,7 +9227,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:17.993909+00:00"
+       "at": "2026-11-24T23:57:22.920129+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -9201,7 +9253,7 @@
         22
        ]
       },
-      "file": "fld:2465edbc",
+      "file": "fld:d782592f",
       "source": {
        "op": "classify",
        "params": {
@@ -9228,7 +9280,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.255978+00:00"
+       "at": "2026-11-24T23:57:23.169009+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -9253,7 +9305,7 @@
         1
        ]
       },
-      "file": "fld:cc7ce6b6",
+      "file": "fld:e943d958",
       "source": {
        "op": "classify",
        "params": {
@@ -9276,7 +9328,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.506632+00:00"
+       "at": "2026-11-24T23:57:23.421745+00:00"
       },
       "stale": true,
       "stale_reason": "Нет входов: поле, фильтр или каркас, из которых считалось, удалены.",
@@ -9301,7 +9353,7 @@
         7
        ]
       },
-      "file": "fld:657ffa96",
+      "file": "fld:8dc95613",
       "source": {
        "op": "classify",
        "params": {
@@ -9330,7 +9382,7 @@
         }
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:18.761826+00:00"
+       "at": "2026-11-24T23:57:23.664977+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -9355,7 +9407,7 @@
         14
        ]
       },
-      "file": "fld:8bb781d3",
+      "file": "fld:aa0d3cb0",
       "source": {
        "op": "classify",
        "params": {
@@ -9383,7 +9435,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:39:21.004143+00:00"
+       "at": "2026-11-24T23:57:25.521389+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -9600,7 +9652,7 @@
       "mean": 1.5590909090909093,
       "std": 1.3189731167255185
      },
-     "file": "fld:5274a3b2",
+     "file": "fld:2fe87f6d",
      "source": {
       "params": {
        "expr": "AU + 0",
@@ -9617,7 +9669,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:21.656124+00:00",
+      "at": "2026-11-24T23:57:26.166772+00:00",
       "op": "calc"
      }
     },
@@ -9804,7 +9856,7 @@
       "mean": 4.0227272727272725,
       "std": 4.46958731247099
      },
-     "file": "fld:5bfd594b",
+     "file": "fld:f477b821",
      "source": {
       "params": {
        "expr": "IF(AU > 1, AU * 3, 0)",
@@ -9823,7 +9875,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:21.913777+00:00",
+      "at": "2026-11-24T23:57:26.406485+00:00",
       "op": "calc"
      }
     },
@@ -9846,7 +9898,7 @@
        10
       ]
      },
-     "file": "fld:83f06caf",
+     "file": "fld:d3b16904",
      "source": {
       "params": {
        "expr": "IF(AU > 1, 'богатая', 'бедная')",
@@ -9865,7 +9917,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:14.864392+00:00",
+      "at": "2026-11-24T23:57:19.565076+00:00",
       "op": "calc"
      }
     },
@@ -9884,7 +9936,7 @@
       "mean": 0.20833333333333334,
       "std": 0.4061164310337068
      },
-     "file": "fld:b7802a5d",
+     "file": "fld:4b652e27",
      "source": {
       "params": {
        "expr": "AU > 1 AND DOM = 'Руда'",
@@ -9903,7 +9955,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:15.104914+00:00",
+      "at": "2026-11-24T23:57:19.808460+00:00",
       "op": "calc"
      }
     },
@@ -9922,7 +9974,7 @@
       "mean": 15.590909090909092,
       "std": 13.189731167255184
      },
-     "file": "fld:859cc64a",
+     "file": "fld:4d07b9a6",
      "source": {
       "params": {
        "expr": "ROUND(AU * 10, 0)",
@@ -9941,7 +9993,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:15.345770+00:00",
+      "at": "2026-11-24T23:57:20.040753+00:00",
       "op": "calc"
      }
     },
@@ -9960,7 +10012,7 @@
       "mean": 2.6888888888888887,
       "std": 1.3879997153733654
      },
-     "file": "fld:b6e4e11b",
+     "file": "fld:1ef340d5",
      "source": {
       "params": {
        "expr": "AU + 1",
@@ -9986,7 +10038,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:15.580644+00:00",
+      "at": "2026-11-24T23:57:20.284607+00:00",
       "op": "calc"
      }
     },
@@ -10005,7 +10057,7 @@
       "mean": 14.5,
       "std": 5.123475382979799
      },
-     "file": "fld:cda44115",
+     "file": "fld:2bbd7de7",
      "source": {
       "params": {
        "expr": "CU * 10",
@@ -10031,7 +10083,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:16.063229+00:00",
+      "at": "2026-11-24T23:57:20.771575+00:00",
       "op": "calc"
      }
     },
@@ -10050,7 +10102,7 @@
       "mean": 2.7999999999999994,
       "std": 4.440892098500626e-16
      },
-     "file": "fld:6bb38f45",
+     "file": "fld:a168d78a",
      "source": {
       "params": {
        "method": "constant",
@@ -10068,7 +10120,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:17.505129+00:00",
+      "at": "2026-11-24T23:57:22.238354+00:00",
       "op": "density"
      }
     },
@@ -10087,7 +10139,7 @@
       "mean": 0.0,
       "std": 0.0
      },
-     "file": "fld:6bb38f45",
+     "file": "fld:a168d78a",
      "source": {
       "params": {
        "method": "constant",
@@ -10105,7 +10157,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:17.505129+00:00",
+      "at": "2026-11-24T23:57:22.238354+00:00",
       "op": "density"
      }
     },
@@ -10124,7 +10176,7 @@
       "mean": 2.772916666666667,
       "std": 0.34398981533695966
      },
-     "file": "fld:b66e2681",
+     "file": "fld:f79de11c",
      "source": {
       "params": {
        "method": "field",
@@ -10144,7 +10196,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:22.153618+00:00",
+      "at": "2026-11-24T23:57:26.647641+00:00",
       "op": "density"
      }
     },
@@ -10163,7 +10215,7 @@
       "mean": 0.08333333333333333,
       "std": 0.2763853991962833
      },
-     "file": "fld:b66e2681",
+     "file": "fld:f79de11c",
      "source": {
       "params": {
        "method": "field",
@@ -10183,7 +10235,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:22.153618+00:00",
+      "at": "2026-11-24T23:57:26.647641+00:00",
       "op": "density"
      }
     },
@@ -10202,7 +10254,7 @@
       "mean": 2.6842105263157894,
       "std": 0.29426654207356556
      },
-     "file": "fld:6971d0f1",
+     "file": "fld:aa75eb08",
      "source": {
       "params": {
        "method": "table",
@@ -10242,7 +10294,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:16.783838+00:00",
+      "at": "2026-11-24T23:57:21.493763+00:00",
       "op": "density"
      }
     },
@@ -10261,7 +10313,7 @@
       "mean": 0.3684210526315789,
       "std": 0.48237638894271995
      },
-     "file": "fld:6971d0f1",
+     "file": "fld:aa75eb08",
      "source": {
       "params": {
        "method": "table",
@@ -10301,7 +10353,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:16.783838+00:00",
+      "at": "2026-11-24T23:57:21.493763+00:00",
       "op": "density"
      }
     },
@@ -10320,7 +10372,7 @@
       "mean": 2.625,
       "std": 0.06922186552431733
      },
-     "file": "fld:7d680222",
+     "file": "fld:7dec7a96",
      "source": {
       "params": {
        "method": "formula",
@@ -10340,7 +10392,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:17.024558+00:00",
+      "at": "2026-11-24T23:57:21.740268+00:00",
       "op": "density"
      }
     },
@@ -10359,7 +10411,7 @@
       "mean": 0.0,
       "std": 0.0
      },
-     "file": "fld:7d680222",
+     "file": "fld:7dec7a96",
      "source": {
       "params": {
        "method": "formula",
@@ -10379,7 +10431,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:17.024558+00:00",
+      "at": "2026-11-24T23:57:21.740268+00:00",
       "op": "density"
      }
     },
@@ -10398,7 +10450,7 @@
       "mean": 2.797727272727273,
       "std": 0.34885438246536227
      },
-     "file": "fld:626b5f4a",
+     "file": "fld:d6a6431a",
      "source": {
       "params": {
        "method": "field",
@@ -10418,7 +10470,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:17.267927+00:00",
+      "at": "2026-11-24T23:57:22.001434+00:00",
       "op": "density"
      }
     },
@@ -10437,7 +10489,7 @@
       "mean": 0.08333333333333333,
       "std": 0.2763853991962833
      },
-     "file": "fld:626b5f4a",
+     "file": "fld:d6a6431a",
      "source": {
       "params": {
        "method": "field",
@@ -10457,7 +10509,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:17.267927+00:00",
+      "at": "2026-11-24T23:57:22.001434+00:00",
       "op": "density"
      }
     },
@@ -10482,7 +10534,7 @@
        16
       ]
      },
-     "file": "fld:5aef8b0f",
+     "file": "fld:3e8ed56c",
      "source": {
       "params": {
        "rules": [
@@ -10516,7 +10568,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:17.993909+00:00",
+      "at": "2026-11-24T23:57:22.920129+00:00",
       "op": "classify"
      }
     },
@@ -10541,7 +10593,7 @@
        22
       ]
      },
-     "file": "fld:2465edbc",
+     "file": "fld:d782592f",
      "source": {
       "params": {
        "rules": [
@@ -10575,7 +10627,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:18.255978+00:00",
+      "at": "2026-11-24T23:57:23.169009+00:00",
       "op": "classify"
      }
     },
@@ -10598,7 +10650,7 @@
        1
       ]
      },
-     "file": "fld:cc7ce6b6",
+     "file": "fld:e943d958",
      "source": {
       "params": {
        "rules": [
@@ -10629,7 +10681,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:18.506632+00:00",
+      "at": "2026-11-24T23:57:23.421745+00:00",
       "op": "classify"
      }
     },
@@ -10652,7 +10704,7 @@
        7
       ]
      },
-     "file": "fld:657ffa96",
+     "file": "fld:8dc95613",
      "source": {
       "params": {
        "rules": [
@@ -10689,7 +10741,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:18.761826+00:00",
+      "at": "2026-11-24T23:57:23.664977+00:00",
       "op": "classify"
      }
     },
@@ -10712,7 +10764,7 @@
        14
       ]
      },
-     "file": "fld:8bb781d3",
+     "file": "fld:aa0d3cb0",
      "source": {
       "params": {
        "rules": [
@@ -10749,7 +10801,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:39:21.004143+00:00",
+      "at": "2026-11-24T23:57:25.521389+00:00",
       "op": "classify"
      }
     }
@@ -10770,8 +10822,8 @@
    ],
    "inputs": null,
    "algo": null,
-   "created_at": "2026-11-24T23:39:13.518855+00:00",
-   "updated_at": "2026-11-24T23:39:22.157595+00:00"
+   "created_at": "2026-11-24T23:57:18.275044+00:00",
+   "updated_at": "2026-11-24T23:57:26.651866+00:00"
   }
  },
  "rules": "ответы настоящего ядра через маршруты блочных моделей (test_blocks_fields_window_answers.py)"

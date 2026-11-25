@@ -16,16 +16,18 @@ import { closeWindow } from "../../../shell/windows";
 import { blocksStore } from "../state";
 import type { Dtype } from "./api";
 import { argsOfForm, DTYPE_LABEL, errorMarker, fieldRef, FUNCTIONS } from "./calcForm";
-import { chooseModel, checkNow } from "./bind";
+import { chooseModel, checkNow, showTab } from "./bind";
+import { CategoriesPanel } from "./CategoriesPanel";
+import { DensityPanel } from "./DensityPanel";
 import type { Tab } from "./common";
 import { IssueLine, ModelPicker, RestrictBox, RunView, useSel } from "./Common";
 import mod from "./Fields.module.css";
 import { cancelRun } from "./run";
-import { checkKey, fieldsStore, hasField, isRunning, modelFields, NO_CHECK, setCalc, setCheck, setIssue, setTab, TAB_TITLES } from "./state";
+import { checkKey, fieldsStore, hasField, isRunning, modelFields, NO_CHECK, setCalc, setCheck, setIssue, TAB_TITLES } from "./state";
 import { DTYPES } from "./api";
 
 /** The tabs of the window, in the order of the ribbon group «Поля». */
-export const TABS: readonly Tab[] = ["calc"];
+export const TABS: readonly Tab[] = ["calc", "density", "classify"];
 
 const KIND_TEXT = { number: "число", bool: "условие (0 или 1)", category: "категория" } as const;
 
@@ -260,13 +262,15 @@ export function CalcWindow({ winId }: { winId: string }) {
         <ModelPicker disabled={running} onChoose={chooseModel} />
         <div className={mod.tabs} role="tablist" aria-label="Операции над полями">
           {TABS.map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} data-testid={`fields-tab-${t}`} onClick={() => setTab(t)}>
+            <button key={t} type="button" role="tab" aria-selected={tab === t} data-testid={`fields-tab-${t}`} onClick={() => showTab(t)}>
               {TAB_TITLES[t]}
             </button>
           ))}
         </div>
       </div>
       {tab === "calc" && <CalcPanel winId={winId} />}
+      {tab === "density" && <DensityPanel winId={winId} />}
+      {tab === "classify" && <CategoriesPanel winId={winId} />}
     </div>
   );
 }

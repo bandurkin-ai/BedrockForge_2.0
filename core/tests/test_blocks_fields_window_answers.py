@@ -131,6 +131,9 @@ def build(c: Any) -> dict[str, Any]:
         "type_text": check(c, mid, "AU + 'a'"),
         "dtype_cat_from_number": check(c, mid, "AU * 2", dtype="cat"),
         "dtype_number_from_text": check(c, mid, "IF(AU > 1, 'a', 'b')", dtype="f8"),
+        "rule_ok": check(c, mid, "AU >= 1"),
+        "rule_jorc": check(c, mid, "PASS = 1 AND SLOPE >= 0.8 AND NH >= 3 AND AD <= 25"),
+        "rule_field": check(c, mid, "NOPE >= 1"),
         "empty": check(c, mid, "  "),
         "dtype_unknown": check(c, mid, "AU", dtype="f16"),
         "model_missing": {
@@ -419,6 +422,8 @@ def test_fields_window_answers_are_what_the_core_answers(rc) -> None:  # type: i
     assert ck["bool"]["body"]["out_kind"] == "bool" and ck["bool"]["body"]["dtype"] == "i1"
     assert ck["category"]["body"]["out_kind"] == "category" and ck["category"]["body"]["dtype"] == "cat"
     assert ck["dtype_i2"]["body"]["dtype"] == "i2"
+    assert ck["rule_ok"]["body"]["out_kind"] == "bool" and ck["rule_jorc"]["body"]["out_kind"] == "bool"
+    assert ck["rule_field"]["body"]["code"] == "expr_field"  # the rules of a scheme are checked as expressions
     for k, code in (("syntax", "expr_syntax"), ("syntax_import", "expr_syntax"), ("syntax_second_line", "expr_syntax"),
                     ("field", "expr_field"), ("type_text", "expr_type"), ("dtype_cat_from_number", "expr_type"),
                     ("dtype_number_from_text", "expr_type")):  # fmt: skip

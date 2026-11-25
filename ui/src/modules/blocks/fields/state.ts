@@ -8,9 +8,11 @@
 import { Store } from "../../../shell/store";
 import { blockById, blocksStore } from "../state";
 import { fieldsOf, type FieldInfo } from "../report/state";
-import type { CalcCheck, ExprIssue, OpResult, Refusal, Started } from "./api";
+import type { CalcCheck, ExprIssue, OpResult, Refusal, Scheme, Started } from "./api";
 import { EMPTY_CALC, type CalcForm } from "./calcForm";
+import { EMPTY_CLASSIFY, type ClassifyForm } from "./classifyForm";
 import type { Issue, Tab } from "./common";
+import { EMPTY_DENSITY, type DensityForm } from "./densityForm";
 
 export const FIELDS_WINDOW = "blocks-fields";
 
@@ -53,16 +55,31 @@ export const NO_CHECK: CheckState = { phase: "idle", key: "", result: null, issu
 
 export const checkKey = (modelId: number | null, dtype: string, expr: string): string => `${String(modelId)}|${dtype}|${expr}`;
 
+/** The schemes of categories of the project (`GET /blocks/schemes`): read when the window opens, kept after a write. */
+export interface SchemesState {
+  list: Scheme[];
+  loaded: boolean;
+  /** the words of a failed read */
+  error: string | null;
+}
+
+export const NO_SCHEMES: SchemesState = { list: [], loaded: false, error: null };
+
 export interface FieldsState {
   tab: Tab;
   modelId: number | null;
   calc: CalcForm;
+  density: DensityForm;
+  classify: ClassifyForm;
+  schemes: SchemesState;
+  /** the check of the rules of the table of the categories, by row: null — right, a text — the words of the core */
+  rulesCheck: Record<number, string | null>;
   check: CheckState;
   run: FieldRun;
   issue: Issue | null;
 }
 
-export const EMPTY_STATE: FieldsState = { tab: "calc", modelId: null, calc: EMPTY_CALC, check: NO_CHECK, run: IDLE, issue: null };
+export const EMPTY_STATE: FieldsState = { tab: "calc", modelId: null, calc: EMPTY_CALC, density: EMPTY_DENSITY, classify: EMPTY_CLASSIFY, schemes: NO_SCHEMES, rulesCheck: {}, check: NO_CHECK, run: IDLE, issue: null };
 
 export const fieldsStore = new Store<FieldsState>(EMPTY_STATE);
 
@@ -74,13 +91,28 @@ export function setTab(tab: Tab): void {
   fieldsStore.set({ tab, issue: null });
 }
 
+/** Another model: the choices that name its fields go (the name of a field is the model's); the same model keeps its forms. */
 export function setModelId(modelId: number | null): void {
-  fieldsStore.set({ modelId, issue: null, check: NO_CHECK });
+  fieldsStore.set((s) =>
+    s.modelId === modelId
+      ? { issue: null }
+      : { modelId, issue: null, check: NO_CHECK, rulesCheck: {}, density: { ...s.density, field: "", tableField: "", rows: [] }, classify: { ...s.classify, estimate: "", overrides: [] } },
+  );
 }
 
 export function setCalc(patch: Partial<CalcForm>): void {
   fieldsStore.set((s) => ({ calc: { ...s.calc, ...patch }, issue: null }));
 }
+
+export function setDensity(patch: Partial<DensityForm>): void {
+  fieldsStore.set((s) => ({ density: { ...s.density, ...patch }, issue: null }));
+}
+
+export function setClassify(patch: Partial<ClassifyForm>): void {
+  fieldsStore.set((s) => ({ classify: { ...s.classify, ...patch }, issue: null, rulesCheck: patch.rules ? {} : s.rulesCheck }));
+}
+
+export const setSchemes = (patch: Partial<SchemesState>): void => fieldsStore.set((s) => ({ schemes: { ...s.schemes, ...patch } }));
 
 export const setIssue = (issue: Issue | null): void => fieldsStore.set({ issue });
 export const setCheck = (check: CheckState): void => fieldsStore.set({ check });

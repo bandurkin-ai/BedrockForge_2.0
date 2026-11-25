@@ -33,11 +33,6 @@ export function IssueLine({ tab, place, row }: { tab: Tab; place: string; row?: 
   );
 }
 
-/** True when a row of a list (`table.values.1.density`) is the one the refusal names: the field is marked, the words stand under the list. */
-export function useBad(tab: Tab, param: string): boolean {
-  return useSel(fieldsStore, (s) => s.issue?.tab === tab && s.issue.param === param);
-}
-
 export function ModelPicker({ disabled, onChoose }: { disabled: boolean; onChoose: (id: number | null) => void }) {
   const models = useSel(blocksStore, (s) => s.list);
   const id = useSel(fieldsStore, (s) => s.modelId);

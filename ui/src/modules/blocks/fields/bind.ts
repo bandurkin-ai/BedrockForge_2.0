@@ -5,12 +5,13 @@
  * reaches the core), starts the job `blocks.calc` over the version of the model, follows it and answers with the line of
  * the log; the window shows the same run. `blocks.calc.check` only checks the expression (`POST /blocks/calc/check`): the type
  * of the result, the fields read, the canonical text — or the place of the error. The density, the categories and the
- * properties of the fields are in `opsBind.ts` and `propsBind.ts`; this file holds the window and what the tabs share.
+ * schemes are in `opsBind.ts`, the properties of the fields in `propsBind.ts`; this file holds the window and what the
+ * tabs share.
  * The window does everything through the registry (the log, the notice, the question of the assistant). No React.
  */
 import { createElement, type ReactNode } from "react";
 import type { App } from "../../../shell/app";
-import type { CommandSource } from "../../../shell/commands";
+import type { CommandContext, CommandSource } from "../../../shell/commands";
 import { needProject, noted, refusal, viewport } from "../../../shell/objectRun";
 import { errorText } from "../../../shell/props";
 import { focusWindow, openWindow, updateWindow, windowStore, type FloatWin } from "../../../shell/windows";
@@ -20,6 +21,7 @@ import { checkExpr, exprIssueOf, startCalc, type Dtype } from "./api";
 import { formOfArgs, requestOfArgs } from "./calcForm";
 import type { Args, Tab } from "./common";
 import { CalcWindow } from "./CalcWindow";
+import { refreshSchemes, runClassify, runDensity, runSchemeSave } from "./opsBind";
 import { notFound, runOp } from "./run";
 import { checkKey, currentModel, fieldsStore, FIELDS_WINDOW, NO_CHECK, resetFields, setCheck, setIssue, setModelId, setTab, TAB_TITLES } from "./state";
 
@@ -55,7 +57,7 @@ export function chooseModel(id: number | null): void {
 export function openFieldsWindow(app: App, tab?: Tab, modelId?: number | null): string {
   if (modelId !== undefined && modelId !== null && blockById(modelId)) chooseModel(modelId);
   else if (currentModel() === null || !blockById(currentModel() as number)) chooseModel(defaultModel(app));
-  if (tab) setTab(tab);
+  if (tab) showTab(tab);
   const open = windowOfFields();
   if (open) {
     retitle();
@@ -64,6 +66,12 @@ export function openFieldsWindow(app: App, tab?: Tab, modelId?: number | null): 
   }
   const id = currentModel();
   return openWindow(FIELDS_WINDOW, fieldsTitle(fieldsStore.get().tab, id === null ? null : (blockById(id)?.name ?? null)), "normal", {}, ...viewport());
+}
+
+/** A tab chosen: what it shows is read when it is first needed (the schemes of the categories). */
+export function showTab(tab: Tab): void {
+  setTab(tab);
+  if (tab === "classify" && !fieldsStore.get().schemes.loaded) void refreshSchemes();
 }
 
 // ---- the check of the expression ----
@@ -114,9 +122,9 @@ export async function runCheck(app: App, a: Args, source: CommandSource): Promis
   }
   const { modelId, body } = got.request;
   if (!blockById(modelId)) throw notFound(modelId);
-  fieldsStore.set((s) => ({ calc: formOfArgs(a, { ...s.calc, dtype: "" }) }));
   if (source === "user" || windowOfFields()) openFieldsWindow(app, "calc", modelId);
   else chooseModel(modelId);
+  fieldsStore.set((s) => ({ calc: formOfArgs(a, { ...s.calc, dtype: "" }) }));
   return checkOnly(modelId, body.expr, body.dtype);
 }
 
@@ -133,9 +141,9 @@ export async function runCalc(app: App, a: Args, source: CommandSource): Promise
   const { modelId, body } = got.request;
   const model = blockById(modelId);
   if (!model) throw notFound(modelId);
-  fieldsStore.set((s) => ({ calc: formOfArgs(a, { ...s.calc, dtype: "" }) }));
   if (source === "user" || windowOfFields()) openFieldsWindow(app, "calc", modelId);
   else chooseModel(modelId);
+  fieldsStore.set((s) => ({ calc: formOfArgs(a, { ...s.calc, dtype: "" }) }));
   const key = checkKey(modelId, fieldsStore.get().calc.dtype, body.expr);
   return runOp(
     app,
@@ -170,6 +178,10 @@ export function bindFields(app: App): void {
     (ctx) => needProject(ctx) ?? (blocksStore.get().loaded && !blocksStore.get().list.length ? "В проекте нет блочных моделей" : null),
   );
   r.bind("blocks.calc.check", noted(app, (a, source) => runCheck(app, a, source)), needProject);
+  const models = (ctx: CommandContext) => needProject(ctx) ?? (blocksStore.get().loaded && !blocksStore.get().list.length ? "В проекте нет блочных моделей" : null);
+  r.bind("blocks.density", noted(app, (a, source) => runDensity(app, a, source)), models);
+  r.bind("blocks.classify", noted(app, (a, source) => runClassify(app, a, source)), models);
+  r.bind("blocks.scheme.save", noted(app, (a, source) => runSchemeSave(app, a, source)), needProject);
   // the form belongs to the project: another project — a clean window
   let uid: string | null = projectStore.get().current?.uid ?? null;
   projectStore.subscribe(() => {
