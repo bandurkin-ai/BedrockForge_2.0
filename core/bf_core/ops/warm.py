@@ -66,11 +66,17 @@ OPS = tuple(STEPS)
 #: the job `wireframe.check` itself (`check`: the levels of detail and the checks — the window starts it after an
 #: operation), the simplified copies of the view (`levels`), the preview of a stitch (`preview`: its strips, without
 #: the checks), the section and the click of the view (`view`)
-OTHER = ("checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats", "geostat", "blocks", "estimate")
+OTHER = (
+    "checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats", "geostat", "blocks",
+    "estimate",
+)  # fmt: skip
 #: The quick worker: the checks of a body, then the operations — the stitch first; the heavy one meanwhile the strips
 #: of a stitch (`preview`), so that on a cold cache the first stitch has its two halves compiled at once (~5 s, not
 #: ~8 s), then what follows an operation and what the process of the API needs, then the operations backwards.
-QUICK = ("checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats", "geostat", "blocks", "estimate")
+QUICK = (
+    "checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats", "geostat", "blocks",
+    "estimate",
+)  # fmt: skip
 HEAVY = (
     "preview",
     "check",
