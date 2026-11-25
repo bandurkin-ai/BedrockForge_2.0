@@ -27,6 +27,7 @@ import { runBegin, runCancelled, runDone, runFailed, runJob, runReset } from "./
 import { clearEstimations, deleteEstimation, estimableModels, estimationStore, isEstimationEvent, loadRows, rowById } from "./state";
 import { loadVariogramModels, putForm, resetWizard, setStep, startEdit, TITLE, WIZARD_WINDOW, wizardStore } from "./wizardState";
 import { Wizard } from "./Wizard";
+import { bindXval, renderXvalWindow } from "./xvalBind";
 
 /** The window of the wizard, if open. */
 export const wizardWindow = (): string | null => windowStore.get().windows.find((w) => w.kind === WIZARD_WINDOW)?.id ?? null;
@@ -241,6 +242,7 @@ export function bindEstimation(app: App): void {
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadRows();
   unbind.push(
+    ...bindXval(app), // «Перекрёстная проверка» (18.23): its command, its events, its window
     // what was asked of one project does not belong to another
     projectStore.subscribe(() => {
       const cur = projectStore.get().current?.uid ?? null;
@@ -269,5 +271,6 @@ export function bindEstimation(app: App): void {
 /** The windows for the shell's window layer (`shell/Shell.tsx`); null — not a window of the estimation. */
 export function renderEstimationWindow(w: FloatWin): ReactNode | null {
   if (w.kind === WIZARD_WINDOW) return createElement(Wizard, { winId: w.id });
-  return w.kind === PLAN_WINDOW ? createElement(PlanWindow, { winId: w.id }) : null;
+  if (w.kind === PLAN_WINDOW) return createElement(PlanWindow, { winId: w.id });
+  return renderXvalWindow(w);
 }
