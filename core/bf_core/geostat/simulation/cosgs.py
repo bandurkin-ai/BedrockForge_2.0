@@ -373,12 +373,16 @@ def simulate(par: SgsParams, samples: RowSamples, grid: nd.NodeGrid, centres: np
         base = sgs.simulate(par, samples, grid, c, threads=threads, tick=tick, keep_y=keep_y, sampler=sampler)
         counts = np.zeros((par.n_real, COUNTS), dtype=np.int64)
         counts[:, : sgs.COUNTS] = base.counts
+        counts[:, C_GAP] = n_gap  # as the kernel counts them: every realization meets every gap node
+        notes.append("Вторичная переменная не используется (ρ = 0): моделирование как SGS.")
         return CosgsResult(base.real, base.y, base.transform, counts, base.cond, time.perf_counter() - t0,
                            notes + base.notes, used, pairs, sec_y, n_gap)  # fmt: skip
     n_real = par.n_real
     real = np.empty((n_real, n), dtype=np.float64)
     counts = np.zeros((n_real, COUNTS), dtype=np.int64)
     cm = cov_model(par.model)
+    if (line := sgs.sill_note(cm.sill)) is not None:
+        notes.append(line)
     sr = sampler or Searcher(samples, par.ell, (Pass(1.0, 0, par.n_max, 0, 0, 0, 0),))
     cidx, cn = nd.sample_neighbours(sr, c, tick=tick)
     tpl = nd.spiral_template(par.steps, par.ell, cm, limit=par.template_limit, shape=grid.shape)
@@ -389,16 +393,21 @@ def simulate(par: SgsParams, samples: RowSamples, grid: nd.NodeGrid, centres: np
     stop = threading.Event()
     label = f"Реализации {{}} / {n_real}"
     finished = 0
+    workers = max(1, min(int(threads), n_real))
+    inline = workers == 1  # the calling thread runs the realizations: it ticks inside them (no pool to poll)
+    due = [time.monotonic() + POLL]
 
     def run_one(r: int, work: _Work) -> int:
         def progress(k: int) -> None:
             done[r] += k
+            if inline and tick is not None and time.monotonic() >= due[0]:  # one thread: the tick goes from here
+                due[0] = time.monotonic() + POLL
+                tick(sum(done) / total, label.format(finished))
 
         _co_realization(sh, r, ys[r], counts[r], work, stop, progress)
         _back_transform(par, tr, ys[r], real[r])
         return r
 
-    workers = max(1, min(int(threads), n_real))
     if workers == 1:
         work = _Work(sh.cap, par.nodes)
         for r in range(n_real):

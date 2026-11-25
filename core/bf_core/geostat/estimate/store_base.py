@@ -176,8 +176,10 @@ def without_ids(params: Mapping[str, Any]) -> dict[str, Any]:
 
 def graph_fingerprint(params: Mapping[str, Any], inputs: Any) -> str:
     """SHA-256 of the parameters without the ids (`without_ids`) and of the fingerprints of the inputs (kind and `fp`,
-    not their ids; sorted): what a row of the graph (`object:estimation`, `object:simulation`) depends on."""
-    ins = sorted(f"{i.get('kind')}:{i.get('fp')}" for i in inputs or [] if isinstance(i, Mapping))
+    not their ids or names; in the order of the row: the position is the role — the table of the samples and the table
+    of the domain swapped are another state, and the ids that told them apart are not in the hash): what a row of the
+    graph (`object:estimation`, `object:simulation`) depends on."""
+    ins = [f"{i.get('kind')}:{i.get('fp')}" for i in inputs or [] if isinstance(i, Mapping)]
     text = json.dumps([without_ids(params), ins], ensure_ascii=False, sort_keys=True, separators=(",", ":"),
                       allow_nan=False)  # fmt: skip
     return hashlib.sha256(text.encode("utf-8")).hexdigest()

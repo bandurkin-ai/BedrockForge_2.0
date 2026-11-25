@@ -368,11 +368,17 @@ def simulate(par: SisParams, samples: RowSamples, grid: nd.NodeGrid, centres: np
     stop = threading.Event()
     label = f"Реализации {{}} / {n_real}"
     finished = 0
+    workers = max(1, min(int(threads), n_real))
+    inline = workers == 1  # the calling thread runs the realizations: it ticks inside them (no pool to poll)
+    due = [time.monotonic() + POLL]
     empty_p = np.empty((1, 1))
 
     def run_one(r: int, work: _Work) -> int:
         def progress(k: int) -> None:
             done[r] += k
+            if inline and tick is not None and time.monotonic() >= due[0]:  # one thread: the tick goes from here
+                due[0] = time.monotonic() + POLL
+                tick(sum(done) / total, label.format(finished))
 
         row = real[r] if not par.categorical else work.dummy
         _realization(sh, r, row, pall[r] if pall is not None else empty_p, counts[r], work, stop, progress)
@@ -383,7 +389,6 @@ def simulate(par: SisParams, samples: RowSamples, grid: nd.NodeGrid, centres: np
     def make_work() -> _Work:
         return _Work(sh.cap, par.nodes, n, kk, keep_p, not par.categorical)
 
-    workers = max(1, min(int(threads), n_real))
     if workers == 1:
         work = make_work()
         for r in range(n_real):

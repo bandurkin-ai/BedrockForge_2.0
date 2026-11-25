@@ -55,6 +55,19 @@ def test_the_fingerprint_does_not_name_the_objects() -> None:
     assert adapt_estimate.fingerprint(other, 4) != old  # other parameters
 
 
+def test_swapped_tables_of_one_kind_are_another_state() -> None:
+    """The samples and the domain tables swapped: the ids are not in the fingerprint, the order of the inputs (the role)
+    must be."""
+    meta = a_row()
+    two = [{"kind": "dh_table", "id": 12, "fp": "t:1", "name": "П"},
+           {"kind": "dh_table", "id": 14, "fp": "t:2", "name": "Д"}]  # fmt: skip
+    a = {**meta, "inputs": two}
+    b = {**meta, "inputs": two[::-1]}
+    assert adapt_estimate.fingerprint(a, 4) != adapt_estimate.fingerprint(b, 4)
+    renamed = {**a, "inputs": [{**two[0], "name": "Другая"}, two[1]]}  # a name is no state
+    assert adapt_estimate.fingerprint(renamed, 4) == adapt_estimate.fingerprint(a, 4)
+
+
 def test_the_hash_of_the_last_run_is_made_again_for_the_new_ids() -> None:
     meta = a_row()
     meta["last_run"] = {"job": 1, "params": sb.params_hash(sb.load_spec(meta))}
