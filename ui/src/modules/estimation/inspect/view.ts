@@ -5,7 +5,6 @@
  */
 import { fieldNumber, num } from "../../../shell/props";
 import type { Candidate, FieldCompare, InspectAnswer, InspectResult, Triple } from "./api";
-
 /** The brand colours of the layer and of the legend of the window (docs/brand/README.md). */
 export const COLORS = {
   positive: "#1f6bff",
@@ -17,6 +16,9 @@ export const COLORS = {
 } as const;
 
 export const dash = "—";
+
+/** The text of the empty window and the answer of the command without a block: a block is asked by a click in the 3D. */
+export const CLICK_HINT = "Щёлкните блок в 3D: окно покажет, какие пробы вошли в его оценку.";
 
 export const numText = (v: number | null | undefined, digits = 3): string => (v === null || v === undefined || !Number.isFinite(v) ? dash : fieldNumber(v, digits));
 
@@ -34,8 +36,25 @@ export const pointText = (p: Triple, digits = 2): string => p.map((v, i) => `${A
 export const SELECTED = "selected";
 export const OUTSIDE = "outside";
 
-/** A probe that took part in the estimation: it has a weight (a segment in 3D). */
-export const isSelected = (c: Pick<Candidate, "reason">): boolean => c.reason === SELECTED;
+/** The numbers of the probes the core drew a segment to (the ones taken into the system: `selected` and `hy_capped`). */
+export const takenSet = (r: Pick<InspectResult, "segments">): ReadonlySet<number> => new Set(r.segments.map((s) => s.i));
+
+/**
+ * A probe that took part in the estimation, as the core counts it: it has a weight λ or a segment (`selected` and `hy_capped` — the one cut
+ * to t is taken too, with its λ; `preview.ts` takes it the same way). Not `reason === "selected"`: a probe cut to t is not «selected» by the code.
+ */
+export const isSelected = (c: Pick<Candidate, "i" | "lambda">, taken?: ReadonlySet<number>): boolean => c.lambda !== null || (taken?.has(c.i) ?? false);
+
+/** The system of the row was solved (STATUS 0 or the status is not known): the weights and the segments are the core's. */
+export const solved = (r: Pick<InspectResult, "status">): boolean => r.status === null || r.status === 0;
+
+/** «система не решалась (статус 2 — мало проб)» for the row whose system was not solved (STATUS 2, 3), else null. */
+export function unsolvedNote(r: Pick<InspectResult, "status" | "status_label">): string | null {
+  return solved(r) ? null : `система не решалась (статус ${r.status}${r.status_label ? ` — ${r.status_label}` : ""})`;
+}
+
+/** The mode of the sub-blocks of the row, only if it is not the default (`parent`); null for the default. */
+export const subText = (sub: string | null | undefined): string | null => (sub === "own" ? "каждый субблок оценивается сам, со своей дискретизацией" : sub && sub !== "parent" ? `режим субблоков: ${sub}` : null);
 
 export interface ReasonOption {
   code: string;

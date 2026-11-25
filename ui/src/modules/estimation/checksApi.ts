@@ -8,12 +8,13 @@
  *
  * A gap of an answer stays `null` — never 0 (8.0.1). No React.
  */
-import { api } from "../../shell/api";
+import { api, CoreError } from "../../shell/api";
 import { normalizeSwath, type SwathSettings } from "../swath/model";
 import { GEOSTAT_API, isNum, numOrNull, obj, startedOf, str, type Started, type Triple } from "./api";
 
 const nums = (v: unknown): number[] => (Array.isArray(v) ? v.filter(isNum) : []);
-const triple = (v: unknown): Triple => (Array.isArray(v) && v.length === 3 && v.every(isNum) ? ([v[0], v[1], v[2]] as Triple) : [0, 0, 0]);
+/** A triple of numbers; null when it is not one (a gap is never [0, 0, 0] — 8.0.1). */
+const triple = (v: unknown): Triple | null => (Array.isArray(v) && v.length === 3 && v.every(isNum) ? ([v[0], v[1], v[2]] as Triple) : null);
 
 // ---- KNA (8.2) ----
 
@@ -32,7 +33,7 @@ export function knaValueText(param: KnaParam, value: number): string {
   return `×${nf(value)}`;
 }
 
-/** The indicators of a block (null where the block was not estimated: status 1–3). */
+/** The indicators of a block (null where the block was not estimated: status 1–3; the status itself is always told). */
 export interface KnaIndicators {
   KE: number | null;
   SLOPE: number | null;
@@ -83,9 +84,11 @@ export interface KnaResult {
   warnings: string[];
 }
 
-function readIndicators(raw: unknown): KnaIndicators {
+/** The indicators of a block or of a variant; null without a status (it would be taken for «оценён»). */
+function readIndicators(raw: unknown): KnaIndicators | null {
   const o = obj(raw);
-  return { KE: numOrNull(o.KE), SLOPE: numOrNull(o.SLOPE), KV: numOrNull(o.KV), SNW: numOrNull(o.SNW), w_far: numOrNull(o.w_far), LAGR: numOrNull(o.LAGR), NS: numOrNull(o.NS), status: isNum(o.status) ? o.status : 0 };
+  if (!isNum(o.status)) return null;
+  return { KE: numOrNull(o.KE), SLOPE: numOrNull(o.SLOPE), KV: numOrNull(o.KV), SNW: numOrNull(o.SNW), w_far: numOrNull(o.w_far), LAGR: numOrNull(o.LAGR), NS: numOrNull(o.NS), status: o.status };
 }
 
 /** `contract_answers.kna` (the result of the job `estimate.kna`); null — not an answer of the core. */
@@ -93,20 +96,32 @@ export function readKna(raw: unknown): KnaResult | null {
   const o = obj(raw);
   if (!isNum(o.estimation_id) || !Array.isArray(o.blocks)) return null;
   const vary = (Array.isArray(o.vary) ? o.vary : []).filter((v): v is KnaParam => (KNA_PARAMS as readonly unknown[]).includes(v));
-  const blocks: KnaBlock[] = o.blocks.map((b) => {
+  const blocks: KnaBlock[] = [];
+  for (const b of o.blocks) {
     const x = obj(b);
     const at = obj(x.at);
+    const ijk = triple(at.ijk);
+    const centre = triple(x.centre);
+    const size = triple(x.size);
+    const base = readIndicators(x.base);
+    // a block with a gap in its place, size or indicators is not an answer of the core: the whole result is refused (`bad_answer` above)
+    if (!ijk || !centre || !size || !base || !isNum(at.row) || !isNum(at.p) || !isNum(x.n_r1)) return null;
     const series: Partial<Record<KnaParam, KnaVariant[]>> = {};
     for (const p of KNA_PARAMS) {
       const list = obj(x.vary)[p];
       if (!Array.isArray(list)) continue;
-      series[p] = list.map((v) => {
-        const value = obj(v).value;
-        return { ...readIndicators(v), value: Array.isArray(value) ? (numOrNull(value[0]) ?? 0) : (numOrNull(value) ?? 0) };
-      });
+      const variants: KnaVariant[] = [];
+      for (const v of list) {
+        const ind = readIndicators(v);
+        const raw = obj(v).value;
+        const value = Array.isArray(raw) ? numOrNull(raw[0]) : numOrNull(raw);
+        if (!ind || value === null) return null;
+        variants.push({ ...ind, value });
+      }
+      series[p] = variants;
     }
-    return { at: { row: Number(at.row ?? 0), p: Number(at.p ?? 0), ijk: triple(at.ijk) }, centre: triple(x.centre), size: triple(x.size), n_r1: Number(x.n_r1 ?? 0), auto: str(x.auto), base: readIndicators(x.base), vary: series, recommend: numOrNull(obj(x.recommend).n_max) };
-  });
+    blocks.push({ at: { row: at.row, p: at.p, ijk }, centre, size, n_r1: x.n_r1, auto: str(x.auto), base, vary: series, recommend: numOrNull(obj(x.recommend).n_max) });
+  }
   return {
     estimation_id: o.estimation_id,
     name: String(o.name ?? ""),
@@ -190,6 +205,8 @@ export function readGlobal(raw: unknown): GlobalResult | null {
   const c = obj(o.composites);
   const bv = obj(o.block_var);
   const b = obj(o.blocks);
+  // the counts of the blocks are told by the core; a missing one is not 0 blocks
+  if (!isNum(b.rows) || !isNum(b.used) || !isNum(b.empty) || !isNum(b.no_volume)) return null;
   return {
     estimation_id: o.estimation_id,
     name: String(o.name ?? ""),
@@ -206,7 +223,7 @@ export function readGlobal(raw: unknown): GlobalResult | null {
     diff_nn_pct: numOrNull(o.diff_nn_pct),
     norm_nn: flag(o.norm_nn),
     block_var: { expected: numOrNull(bv.expected), estimate: numOrNull(bv.estimate), sill: numOrNull(bv.sill), ratio: numOrNull(bv.ratio), disc: nums(bv.disc), size: nums(bv.size) },
-    blocks: { rows: Number(b.rows ?? 0), by_status: nums(b.by_status), used: Number(b.used ?? 0), empty: Number(b.empty ?? 0), no_volume: Number(b.no_volume ?? 0) },
+    blocks: { rows: b.rows, by_status: nums(b.by_status), used: b.used, empty: b.empty, no_volume: b.no_volume },
     warnings: Array.isArray(o.warnings) ? o.warnings.filter((w): w is string => typeof w === "string") : [],
   };
 }
@@ -263,7 +280,7 @@ export function readQq(raw: unknown): QqAnswer | null {
 
 export async function loadQq(estimationId: number, weighted: boolean): Promise<QqAnswer> {
   const r = readQq(await api.post(`${GEOSTAT_API}/estimate/qq`, { estimation_id: estimationId, weighted }));
-  if (!r) throw new Error("Ядро вернуло Q-Q без точек.");
+  if (!r) throw new CoreError(0, "bad_answer", "Ядро вернуло Q-Q без точек.", "Повторите построение; если повторится — перезапустите ядро и сообщите разработчику.");
   return r;
 }
 

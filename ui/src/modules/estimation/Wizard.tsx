@@ -10,7 +10,7 @@ import { askConfirm } from "../../shell/dialogs";
 import css from "../../shell/PropsParts.module.css";
 import { requestClose, setCloseGuard } from "../../shell/windows";
 import { defaultsQueryOf, LAST_EDITED_STEP, STEP_TITLES, stepOfParam } from "./form";
-import { loadVariogramModels, requestDefaults, rereadEstimation, saveWizard, setIssue, setStep, wizardStore } from "./wizardState";
+import { loadVariogramModels, requestDefaults, rereadEstimation, setIssue, setStep, wizardStore } from "./wizardState";
 import { StepMethod } from "./StepMethod";
 import { StepOutputs } from "./StepOutputs";
 import { StepRun } from "./StepRun";
@@ -19,6 +19,7 @@ import { StepSamples } from "./StepSamples";
 import { StepTarget } from "./StepTarget";
 import { useSel } from "./hooks";
 import mod from "./Wizard.module.css";
+import { saveRowByCommand } from "./saveCommands";
 
 export function Wizard({ winId }: { winId: string }) {
   const app = useApp();
@@ -39,7 +40,7 @@ export function Wizard({ winId }: { winId: string }) {
   }, [winId]);
 
   const badStep = s.issue ? stepOfParam(s.issue.param) : 0;
-  const save = (asNew: boolean) => void saveWizard({ asNew }).catch(() => undefined); // a refusal stands under its field
+  const save = (asNew: boolean) => void saveRowByCommand(app, asNew); // the command `estimate.save`; a refusal stands under its field
   const reason = readOnly ? "Проект открыт только для чтения" : null;
   const conflict = s.issue?.reread ? s.issue : null;
 

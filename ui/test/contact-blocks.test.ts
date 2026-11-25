@@ -71,6 +71,11 @@ describe("the answer of the core: the profile of the blocks in the steps of the 
     expect(contactCsv({ ...WIRE.answer, blocks: undefined }).split("\r\n")[0]).toBe('"От, м";"До, м";"Сторона";"Среднее";"Проб"');
     expect(flat(blocksNote(WIRE.answer)!)).toBe("блоки «EST»: 2 742 в шагах, не оценено 2");
     expect(contactNotes(WIRE.answer).at(-1)).toContain("блоки «EST»");
+    // the blocks the profile left out and why: no value, no volume, beyond the distance, at no contact (`counts` of the core)
+    const counts = (c: Record<string, number>) => ({ ...WIRE.answer, blocks: { ...WIRE.answer.blocks!, counts: { ...WIRE.answer.blocks!.counts, ...c } } });
+    expect(flat(blocksNote(counts({ no_value: 7, no_weight: 3, beyond: 120, no_contact: 1500 }))!)).toBe("блоки «EST»: 2 742 в шагах, не оценено 2; отсеяно: без значения 5, без объёма 3, дальше расстояния контакта 120, вне контакта 1 500");
+    expect(flat(blocksNote(counts({ beyond: 9 }))!)).toBe("блоки «EST»: 2 742 в шагах, не оценено 2; отсеяно: дальше расстояния контакта 9");
+    expect(contactNotes(counts({ no_contact: 4 })).at(-1)).toContain("вне контакта 4");
     expect(contactNotes({ ...WIRE.answer, blocks: undefined }).join(" ")).not.toContain("блоки");
     const text = flat(contactSummary("К", DOM.answer));
     expect(text).toContain("блоки «EST»: гранит: блоков 480, среднее 1; диорит: блоков 480, среднее 3");

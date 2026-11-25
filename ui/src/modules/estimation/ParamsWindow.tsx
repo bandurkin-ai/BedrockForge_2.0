@@ -20,7 +20,8 @@ import { StepTarget } from "./StepTarget";
 import { stateText } from "./planView";
 import { estimationStore, rowById } from "./state";
 import mod from "./Wizard.module.css";
-import { loadVariogramModels, requestDefaults, rereadEstimation, saveWizard, setIssue, wizardStore } from "./wizardState";
+import { loadVariogramModels, requestDefaults, rereadEstimation, setIssue, wizardStore } from "./wizardState";
+import { saveRowByCommand } from "./saveCommands";
 
 export const PARAMS_WINDOW = "estimation-params";
 export const PARAMS_TITLE = "Параметры оценки";
@@ -45,7 +46,7 @@ export function ParamsWindow({ winId }: { winId: string }) {
   const row = s.editing ? rowById(s.editing.id) : undefined;
   const state = row ? stateText(row) : null;
   const reason = readOnly ? "Проект открыт только для чтения" : s.editing === null ? "Откройте сохранённую строку" : null;
-  const save = (asNew: boolean) => void saveWizard({ asNew }).catch(() => undefined); // a refusal stands under its field
+  const save = (asNew: boolean) => void saveRowByCommand(app, asNew); // the command `estimate.save`; a refusal stands under its field
   const conflict = s.issue?.reread ? s.issue : null;
 
   return (

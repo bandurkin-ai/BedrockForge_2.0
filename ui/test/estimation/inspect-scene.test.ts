@@ -179,6 +179,18 @@ describe("the scene", () => {
     expect([...layers.keys()]).toEqual([]);
     expect(sc.stats()).toEqual({ segments: null, ellipsoid: null, centre: null });
   });
+  it("another window moved, a sort or a note in the window of the inspector: nothing is drawn again (no `invalidate` for them)", () => {
+    ask("pass_1");
+    open();
+    const other = openWindow("other", "Другое", "normal", {});
+    const n = invalid;
+    for (let k = 0; k < 20; k++) windowStore.set((w) => ({ windows: w.windows.map((x) => (x.id === other ? { ...x, x: x.x + 1 } : x)) }));
+    inspectStore.set({ note: "скопировано" });
+    inspectStore.set({ sort: { key: "dist", dir: "asc" }, reason: "outside" });
+    expect(invalid).toBe(n);
+    setShow({ excluded: false }); // a toggle does
+    expect(invalid).toBe(n + 1);
+  });
   it("the toggles and the probe lit change the drawing, not the layers", () => {
     ask("pass_1");
     open();

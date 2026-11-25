@@ -154,26 +154,62 @@ export function runArgsPicked(s: PlanState = planStore.get()): Record<string, un
 
 // ---- the save ----
 
-/** `POST` (a new plan or `asNew`) or `PUT` over the version read; a refusal stands in `issue` (409 — with «Перечитать»). */
-export async function savePlan(opts: { asNew?: boolean } = {}): Promise<Saved> {
-  const s = planStore.get();
-  if (s.modelId === null) throw failWith({ code: "bad_param", message: "Блочная модель не выбрана.", hint: "Выберите модель вверху окна.", param: "model_id" });
+/** What a save of a plan writes: the arguments of the command `estimate.plan_save` (`items` null — the rows of a stored plan stay as they are). */
+export interface PlanSave {
+  /** the plan stored; null — a new one */
+  id: number | null;
+  modelId: number | null;
+  name: string;
+  items: number[] | null;
+  /** a new plan beside the stored one `id` (its name gets «(копия)» when it stays the same) */
+  asNew: boolean;
+}
+
+/** The arguments of the command from the working copy of the window (the buttons «Сохранить» and «Сохранить как новый» run it through the registry). */
+export function planSaveArgs(s: PlanState = planStore.get(), asNew = false): Record<string, unknown> {
   const name = s.name.trim();
-  planStore.set({ saving: true, issue: null });
+  return { ...(s.planId !== null ? { id: s.planId } : {}), ...(s.modelId !== null ? { model_id: s.modelId } : {}), ...(name ? { name } : {}), items: text(s.items), ...(asNew ? { as_new: true } : {}) };
+}
+
+/**
+ * `POST` (a new plan or `asNew`) or `PUT` over the version read; a refusal stands in `issue` of the window (409 — with «Перечитать») when the
+ * window holds this plan. The one writer: the buttons of the window and the command `estimate.plan_save` end here; the window follows when it holds
+ * the plan that was written (the same stored plan, or the new one it was making).
+ */
+export async function writePlan(w: PlanSave): Promise<Saved> {
+  const holds = (): boolean => {
+    const cur = planStore.get();
+    return cur.planId === w.id && cur.modelId === w.modelId;
+  };
+  if (w.modelId === null) {
+    const r: Refusal = { code: "bad_param", message: "Блочная модель не выбрана.", hint: "Выберите модель вверху окна.", param: "model_id" };
+    throw holds() ? failWith(r) : Object.assign(new Error(`${r.message} ${r.hint}`), r);
+  }
+  const name = w.name.trim();
+  const create = w.id === null || w.asNew;
+  const mine = holds();
+  if (mine) planStore.set({ saving: true, issue: null });
   try {
-    const saved =
-      s.planId === null || opts.asNew
-        ? await createPlan({ ...(name ? { name: opts.asNew && s.planId !== null && name === planById(s.planId)?.name ? `${name} (копия)` : name } : {}), model_id: s.modelId, items: s.items })
-        : await replacePlan(s.planId, s.version ?? 1, { ...(name ? { name } : {}), items: s.items });
-    planStore.set({ planId: saved.id, name: saved.name, version: saved.version, dirty: false, saving: false });
+    const saved = create
+      ? await createPlan({ ...(name ? { name: w.id !== null && name === planById(w.id)?.name ? `${name} (копия)` : name } : {}), model_id: w.modelId, items: w.items ?? [] })
+      : await replacePlan(w.id as number, (mine ? planStore.get().version : null) ?? planById(w.id as number)?.version ?? 1, { ...(name ? { name } : {}), ...(w.items ? { items: w.items } : {}) });
+    if (mine) planStore.set({ planId: saved.id, name: saved.name, version: saved.version, dirty: false, saving: false });
     await loadRows();
     return saved;
   } catch (e) {
-    const r = refusalOf(e);
-    planStore.set({ saving: false, issue: { ...r, reread: r.code === "version_conflict" } });
+    if (mine) {
+      const r = refusalOf(e);
+      planStore.set({ saving: false, issue: { ...r, reread: r.code === "version_conflict" } });
+    }
     throw e;
   }
 }
+
+/** The working copy of the window written (the tests and the code that has no registry at hand). */
+export const savePlan = (opts: { asNew?: boolean } = {}): Promise<Saved> => {
+  const s = planStore.get();
+  return writePlan({ id: s.planId, modelId: s.modelId, name: s.name, items: s.items, asNew: opts.asNew === true });
+};
 
 function failWith(r: Refusal): Error {
   planStore.set({ issue: r });

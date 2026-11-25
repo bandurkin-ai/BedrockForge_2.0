@@ -88,6 +88,26 @@ describe("the result is read", () => {
     expect(reading).toContainEqual({ done: 1, of: 2 });
     expect(xvalStore.get().reading).toBeNull();
   });
+  it("a long table: the progress at every page, the rows (and with them the sort and the scatter) only every few pages and at the end", async () => {
+    kit.clamp = 10; // 15 pages
+    const seen: unknown[] = [];
+    const reading: number[] = [];
+    const off = xvalStore.subscribe(() => {
+      const s = xvalStore.get();
+      if (seen.at(-1) !== s.rows) seen.push(s.rows);
+      if (s.reading) reading.push(s.reading.done);
+    });
+    await openXval(ROW);
+    off();
+    const of = Math.ceil(TOTAL / 10);
+    expect(requests(PAGES)).toHaveLength(of);
+    expect(xvalStore.get().rows.map((r) => r.i)).toEqual(Array.from({ length: TOTAL }, (_, i) => i));
+    expect(reading).toEqual(Array.from({ length: of - 1 }, (_, k) => k + 1)); // every page told its progress
+    // [] of the start, the first page, then pages 6 and 11 and the last one — not one new table per page
+    expect(seen.length).toBeLessThanOrEqual(6);
+    expect(seen.length).toBeLessThan(of);
+    expect(xvalStore.get().reading).toBeNull();
+  });
   it("calculated again while the table is read — it is read again from the start", async () => {
     kit.clamp = 100;
     kit.atLater = "2026-11-26T10:00:00+00:00";

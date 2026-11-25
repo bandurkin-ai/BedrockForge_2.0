@@ -4,7 +4,7 @@
  * with «Продолжить» and «Отмена» (the cross is «Отмена») and the answer is what the person chose. The change is never blocked
  * by the graph itself — the person decides. No React.
  */
-import { openWindow } from "../../shell/windows";
+import { openWindow, windowStore } from "../../shell/windows";
 import { getImpact, type LNode } from "./api";
 
 export const IMPACT_WINDOW = "lineage.impact";
@@ -19,6 +19,14 @@ export function settleAsk(token: number, ok: boolean): void {
   if (!done) return;
   waiting.delete(token);
   done(ok);
+}
+
+/**
+ * The window of the question was taken away: the cross is «Отмена». The cleanup of an effect also runs while the window stays
+ * (StrictMode of the development build, a new token) — then the question is not cancelled: only a window that is out of the store is gone.
+ */
+export function abandonAsk(token: number, winId: string): void {
+  if (!windowStore.get().windows.some((w) => w.id === winId)) settleAsk(token, false);
 }
 
 export const isAsking = (token: number): boolean => waiting.has(token);
