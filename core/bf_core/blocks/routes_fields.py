@@ -77,7 +77,7 @@ def list_fields(svc: Svc, bm_id: int) -> dict[str, Any]:
                 "stale_reason": why, "fields": fo.describe(conn, store, model)}  # fmt: skip
 
 
-@router.patch("/{bm_id}/fields/{name}")
+@router.patch("/{bm_id}/fields/{name:path}")
 def patch_field(svc: Svc, request: Request, bm_id: int, name: str, body: Payload) -> dict[str, Any]:
     from . import fields_ops as fo
 
@@ -95,7 +95,7 @@ def patch_field(svc: Svc, request: Request, bm_id: int, name: str, body: Payload
     return {"version": new_version, "field": changed[0]}
 
 
-@router.delete("/{bm_id}/fields/{name}")
+@router.delete("/{bm_id}/fields/{name:path}")
 def delete_field(
     svc: Svc, request: Request, bm_id: int, name: str, expected_version: Annotated[int | None, Query()] = None
 ) -> dict[str, Any]:
@@ -111,7 +111,7 @@ def delete_field(
     return {"version": new_version, "deleted": name}
 
 
-@router.post("/{bm_id}/fields/{name}/rebuild")
+@router.post("/{bm_id}/fields/{name:path}/rebuild")
 def rebuild_field(svc: Svc, s: Sched, bm_id: int, name: str, body: Payload) -> dict[str, Any]:
     from bf_core.jobs.registry import KINDS
 

@@ -183,8 +183,11 @@ def run_density(
         clock(0.92, S_WRITE)
         staged = w.finish()
     body = {**spec.params(), "filter_id": com.filter_id, "restrict": com.restrict}
-    with dialect.write_tx(engine) as conn:
-        version = commit_fields(conn, store, staged, source=source_of("density", dens.ALGO, body, inputs))
+    try:
+        with dialect.write_tx(engine) as conn:
+            version = commit_fields(conn, store, staged, source=source_of("density", dens.ALGO, body, inputs))
+    finally:
+        staged.discard()  # a write transaction that did not open leaves no file without an owner
     t = plan.tally
     return {"model_id": model.id, "field": spec.out, "fields": [spec.out, spec.src_field], "version": version,
             "rows": model.rows, "passed": t.passed, "defaulted": t.defaulted, "empty": t.empty,
@@ -268,8 +271,11 @@ def run_classify(
             w.write({spec.out: part})
         staged = w.finish()
     body = {**spec.params(), "scheme": spec.scheme, "filter_id": com.filter_id, "restrict": com.restrict}
-    with dialect.write_tx(engine) as conn:
-        version = commit_fields(conn, store, staged, source=source_of("classify", cat.ALGO, body, inputs))
+    try:
+        with dialect.write_tx(engine) as conn:
+            version = commit_fields(conn, store, staged, source=source_of("classify", cat.ALGO, body, inputs))
+    finally:
+        staged.discard()  # a write transaction that did not open leaves no file without an owner
     return {"model_id": model.id, "field": spec.out, "fields": [spec.out], "version": version, "rows": model.rows,
             "passed": res.passed, "counts": dict(zip(res.labels, res.counts, strict=True)),
             "unclassified": res.unclassified, "no_estimate": res.no_estimate, "stats": staged.fields[0]["stats"],

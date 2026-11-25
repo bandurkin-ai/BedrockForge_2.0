@@ -377,7 +377,8 @@ def write(fmt: str) -> Callable[[Any, Path, Any, Callable[..., None]], Any]:
         def go(progress: float | None, message: str | None) -> None:
             tick(0.0 if progress is None else progress, message)
 
-        done = export.run_export(env.engine, env.store.root.parent, {**body, "model_id": item.id}, tick=go)
+        done = export.run_export(env.engine, env.store.root.parent, {**body, "model_id": item.id}, tick=go,
+                                 registry=True)
         return Written([Path(done["path"])], int(done["bytes"]), list(done["warnings"]))
 
     return run

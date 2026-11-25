@@ -152,15 +152,16 @@ def target_path(path: str | Path, fmt: str) -> Path:
     return p if p.suffix.lower() in FORMATS[fmt] else p.with_name(p.name + FORMATS[fmt][0])
 
 
-def check_target(spec: Spec, folder: Path) -> Path:
-    """The path of a save window: full, in an existing folder, outside the project, not replaced silently."""
+def check_target(spec: Spec, folder: Path, *, in_project: bool = False) -> Path:
+    """The path of a save window: full, in an existing folder, outside the project, not replaced silently.
+    `in_project` — the export of the project (the registry of Д-17) chose the folder itself, no check of it."""
     p = Path(spec.path)
     if not p.is_absolute():
         raise bad_param("path", "Путь к файлу должен быть полным.", "Выберите файл в окне сохранения.")
     if not p.parent.is_dir():
         raise bad_param("path", "Папка для файла не найдена.", "Выберите папку заново.")
     target = target_path(p, spec.format)
-    if target.resolve().is_relative_to(Path(folder).resolve()):
+    if not in_project and target.resolve().is_relative_to(Path(folder).resolve()):
         raise ApiError(422, "bad_path", "Нельзя сохранить файл внутрь папки проекта.",
                        "Выберите другую папку, например «Документы».", {"param": "path"})  # fmt: skip
     if target.is_dir():
@@ -325,9 +326,10 @@ def _code_taken(clash: Mapping[str, int], empty: float) -> ApiError:
 
 
 def run_export(engine: sa.Engine, folder: Any, params: Mapping[str, Any], *, tick: Tick = _noop,
-               chunk: int = ROWS) -> dict[str, Any]:  # fmt: skip
+               chunk: int = ROWS, registry: bool = False) -> dict[str, Any]:  # fmt: skip
     """The body of `blocks.export` (the handler, the writers of Д-17 and the tests). `params` — the body of the request
-    and `model_id`; the checks of `request` are made again (the file may have appeared meanwhile)."""
+    and `model_id`; the checks of `request` are made again (the file may have appeared meanwhile). `registry` — the
+    call of «Экспорт проекта»: a folder inside the project is allowed there, as for the other types."""
     seen = [0.0]
 
     def go(progress: float | None = None, message: str | None = None) -> None:
@@ -337,7 +339,7 @@ def run_export(engine: sa.Engine, folder: Any, params: Mapping[str, Any], *, tic
 
     spec = parse(int(params["model_id"]), params)
     folder = Path(folder)
-    target = check_target(spec, folder)
+    target = check_target(spec, folder, in_project=registry)
     store = BlobStore(folder)
     go(0.0, "Подготовка экспорта")
     with dialect.read_tx(engine) as conn:
@@ -368,13 +370,13 @@ def run_export(engine: sa.Engine, folder: Any, params: Mapping[str, Any], *, tic
                 go(0.02 + 0.96 * (ch.start + ch.n) / model.rows,
                      f"Запись: {_n(ch.start + ch.n)} из {_n(model.rows)}")  # fmt: skip
                 batch = batch_of(model, specs, ch, mask, spec.empty if spec.format != "parquet" else None, clash)
+                if clash and spec.empty is not None:
+                    raise _code_taken(clash, spec.empty)  # at the first portion with a clash, not after the file
                 if batch is not None:
                     sink.write(batch)
                     rows += batch.n
             if not rows:
                 raise empty_result()
-            if clash and spec.empty is not None:
-                raise _code_taken(clash, spec.empty)
             done["bytes"] = sink.commit()
         except BaseException:
             sink.abort()

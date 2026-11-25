@@ -257,6 +257,22 @@ def test_grid_limits_of_v1_and_v2() -> None:
     assert refused(bs.GridV2.of, {**big, "order": "C"})["code"] == "block_model_invalid"
 
 
+def test_a_regular_grid_has_exact_lengths_and_a_fast_extent_without_a_running_sum() -> None:
+    import time
+
+    big = bs.GridV2.of({"corner": [0, 0, 0], "counts": [20_000_000, 10, 10], "size": [0.1, 1, 1]})
+    t0 = time.perf_counter()
+    ext = big.extent()
+    assert time.perf_counter() - t0 < 0.1  # no list of 2e7 steps
+    assert ext == [0.0, 0.0, 0.0, 20_000_000 * 0.1, 10.0, 10.0]  # size·count: 2000000.0, not a sum of 2e7 steps
+    small = bs.GridV2.of({"corner": [0, 0, 0], "counts": [10, 10, 10], "size": [0.1, 1, 1]})
+    assert small.lengths() == (1.0, 10.0, 10.0)
+    e = small.edges(0)
+    assert e.shape == (11,) and e[0] == 0.0 and e[3] == 3 * 0.1 and small.steps(0).tolist() == [0.1] * 10
+    var = bs.GridV2.of({"corner": [0, 0, 0], "counts": [3, 1, 1], "tensors": {"x": [1, 2, 3], "y": [1], "z": [1]}})
+    assert var.edges(0).tolist() == [0.0, 1.0, 3.0, 6.0] and var.lengths() == (6.0, 1.0, 1.0)
+
+
 def test_rows_go_by_p_then_sub_blocks() -> None:
     p = np.array([7, 3, 3, 3, 9], dtype=np.uint64)
     s = np.array([[0, 0, 0], [0, 4, 0], [4, 0, 0], [0, 0, 1], [0, 0, 0]], dtype=np.uint8)

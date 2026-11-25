@@ -10,6 +10,10 @@ The router has no prefix of its own: `blocks/router.py` includes it under `/bloc
     `omf_not_exportable`, `filter_field_missing`.
 The export writes nothing of the project but the row of the journal: it works in a project «только просмотр». The job
 not registered in this build — 422 `not_ready`. A plain `def` route runs in the thread pool.
+
+  * `POST /blocks/{id}/check` {} → {source, id} of the job `blocks.check` (queue quick; `check_job.py`: the checks of
+    7.31 and Т8.7-5 are made again and written into `meta.checks`, the version does not change; the result is
+    `{model_id, checks, events}`); 404 `block_model_not_found`, 423 `project_read_only` (it writes the meta).
 """
 
 from __future__ import annotations
@@ -29,6 +33,24 @@ router = APIRouter()
 Svc = Annotated[ProjectService, Depends(projects)]
 Sched = Annotated[Scheduler, Depends(jobs)]
 Payload = Annotated[Any, Body()]
+
+
+@router.post("/{bm_id}/check")
+def check_model(svc: Svc, s: Sched, bm_id: int) -> dict[str, Any]:
+    from bf_core.jobs.registry import KINDS as REGISTERED
+    from bf_core.storage.blobs import BlobStore
+
+    from . import check_job
+    from .model import Model
+
+    project = svc.require_current(writable=True)
+    with dialect.read_tx(project.engine) as conn:
+        Model.open(conn, BlobStore(project.folder), bm_id)  # 404 for a model that is not there
+    if check_job.KIND not in REGISTERED:
+        raise ApiError(422, "not_ready", "Проверка блочных моделей не подключена в этой сборке.",
+                       "Обновите программу.")
+    key, job_id = s.submit(check_job.KIND, {"model_id": bm_id}, title=f"{check_job.TITLE} №{bm_id}")
+    return {"source": key, "id": job_id}
 
 
 @router.post("/{bm_id}/export")

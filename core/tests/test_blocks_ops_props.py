@@ -298,6 +298,23 @@ def test_rebuild_without_its_inputs_is_source_lost(oc) -> None:  # type: ignore[
     assert tuple(fields_of(oc)) == ("AU", "CU", "N", "DOM", "AU2", "K")  # nothing was written
 
 
+def test_a_field_name_with_a_slash_is_edited_deleted_and_rebuilt(oc) -> None:  # type: ignore[no-untyped-def]
+    from urllib.parse import quote
+
+    name = "Au g/t"
+    calc(oc, "AU * 2", name, unit="г/т")
+    assert name in fields_of(oc)
+    for enc in (quote(name, safe=""), name):  # the client sends %2F; a raw slash must work as well
+        r = oc.patch(f"{BL}/{oc.mid}/fields/{enc}", json={"expected_version": version(oc), "unit": "ppm"})
+        assert r.status_code == 200, r.text
+        assert r.json()["field"]["name"] == name and r.json()["field"]["unit"] == "ppm"
+    r = oc.post(f"{BL}/{oc.mid}/fields/{quote(name, safe='')}/rebuild", json={"expected_version": version(oc)})
+    assert done(oc, r)["field"] == name
+    r = oc.delete(f"{BL}/{oc.mid}/fields/{quote(name, safe='')}", params={"expected_version": version(oc)})
+    assert r.status_code == 200 and r.json()["deleted"] == name
+    assert name not in fields_of(oc)
+
+
 def test_a_read_only_project_lists_but_does_not_edit(oc) -> None:  # type: ignore[no-untyped-def]
     calc(oc, "AU * 2", "AU2")
     v = version(oc)

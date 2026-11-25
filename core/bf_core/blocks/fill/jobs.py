@@ -427,10 +427,13 @@ def _code_fields(
         clock(0.92, S_WRITE)
         staged = fw.finish()
     source = commit.field_source("code", pr, [cells_sha])
-    with dialect.write_tx(engine) as conn:
-        version = commit_fields(conn, store, staged, source={"op": "code", **{k: v for k, v in source.items()
-                                                                              if k != "op"}})  # fmt: skip
-        name = _name(conn, model.id)
+    try:
+        with dialect.write_tx(engine) as conn:
+            version = commit_fields(conn, store, staged, source={"op": "code", **{k: v for k, v in source.items()
+                                                                                  if k != "op"}})  # fmt: skip
+            name = _name(conn, model.id)
+    finally:
+        staged.discard()  # a write transaction that did not open leaves no file without an owner
     return {"model_id": model.id, "name": name, "version": version, "rows": model.rows, "parents": model.parents,
             "fields": [spec.code_field] + ([spec.frac_field] if spec.frac_field is not None else []),
             "dropped": []}  # fmt: skip

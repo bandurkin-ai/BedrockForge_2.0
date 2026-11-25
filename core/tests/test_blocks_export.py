@@ -389,6 +389,20 @@ def test_a_gap_is_empty_never_zero_and_the_code_of_empty_is_the_users(project) -
     assert not (out_dir(project) / "k.dat").exists() and not list(out_dir(project).glob("*.part"))
 
 
+def test_a_clash_with_the_code_of_empty_stops_at_the_first_portion(project) -> None:  # type: ignore[no-untyped-def]
+    mid = model_a(project)
+    n = opened(project, mid).columns(["N"])["N"]
+    seen: list[str | None] = []
+    path = out_dir(project) / "first.csv"
+    code = float(n[~np.isnan(n)][0])
+    params = {"model_id": mid, "format": "csv", "path": str(path), "fields": ["N"], "empty": code}
+    with pytest.raises(ApiError) as e:
+        bx.run_export(project.engine, project.folder, params, tick=lambda _f, m=None: seen.append(m), chunk=16)
+    assert e.value.code == "empty_code_taken"
+    assert len([m for m in seen if m and m.startswith("Запись:")]) == 1  # not after a pass over every portion
+    assert not path.exists() and not list(out_dir(project).glob("*.part"))
+
+
 # --- encodings -------------------------------------------------------------------------------------------------------
 
 
@@ -537,6 +551,21 @@ def test_the_writers_of_the_registry_write_the_whole_model(project, fmt) -> None
     assert done.files == [path] and done.size == path.stat().st_size and ticks and w.memory(item) >= 512
     path.write_bytes(b"x")  # the window has chosen the name: a file there is replaced
     assert w.write(item, path, env, lambda f=0.0, m=None: None).size > 1  # type: ignore[misc]
+
+
+def test_the_registry_may_write_into_the_folder_of_the_project_the_route_may_not(project) -> None:  # type: ignore[no-untyped-def]
+    mid = model_a(project)
+    w = Writer("block_model", "csv", "csv", bw.write("csv"), bw.suffixes("csv"), memory=bw.memory("csv"))
+    item = Item(mid, "block_model", "Внутри", None, 1, (), {"grid_cells": 480})
+    env = Env(engine=project.engine, store=project.store)
+    inside = Path(project.folder) / "Экспорт" / "Внутри.csv"
+    inside.parent.mkdir(parents=True, exist_ok=True)
+    done = w.write(item, inside, env, lambda f=0.0, m=None: None)  # type: ignore[misc]
+    assert done.files == [inside] and inside.is_file()
+    params = {"model_id": mid, "format": "csv", "path": str(inside), "overwrite": True}
+    with pytest.raises(ApiError) as e:  # the route of the window keeps the check
+        bx.run_export(project.engine, project.folder, params)
+    assert e.value.code == "bad_path"
 
 
 def test_the_job_writes_the_journal_and_maps_the_errors(project) -> None:  # type: ignore[no-untyped-def]

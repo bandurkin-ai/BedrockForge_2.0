@@ -296,6 +296,7 @@ def series(src: Source, f: Frame, cuboid: Cuboid, *, field: str, weight: str = "
 
 MASKS: OrderedDict[tuple[Any, ...], tuple[np.ndarray, list[str]]] = OrderedDict()
 _MASK_LOCK = threading.Lock()
+_KEY_LOCKS: dict[tuple[Any, ...], threading.Lock] = {}  # a mask being made: the lock of its key
 
 
 def filter_mask(project: Any, model_id: int, filter_id: int) -> tuple[np.ndarray, list[str]]:
@@ -315,21 +316,33 @@ def filter_mask(project: Any, model_id: int, filter_id: int) -> tuple[np.ndarray
         r = restrict.prepare(model, rules, conn=conn, store=store)
         key = (project.uid, model_id, model.shas().get("cells"),
                *calc_job.inputs_of(conn, model, r.fields, rules, None))  # fmt: skip
-    with _MASK_LOCK:
+    with _MASK_LOCK:  # only the table: a mask is made under the lock of its own key
         hit = MASKS.get(key)
         if hit is not None:
             MASKS.move_to_end(key)
             return hit
-        out = np.empty(model.rows, dtype=np.bool_)
-        for ch, share in r.iter(model):
-            out[ch.start : ch.start + ch.n] = share > 0.0
-        out.setflags(write=False)
-        for k in [k for k in MASKS if k[0] != key[0] or (k[1] == key[1] and k[2] != key[2])]:
-            del MASKS[k]  # another project, an older file of the model
-        MASKS[key] = (out, list(r.warnings))
-        while len(MASKS) > 1 and sum(m.nbytes for m, _ in MASKS.values()) > MASK_LIMIT:
-            MASKS.popitem(last=False)
-        return MASKS[key]
+        key_lock = _KEY_LOCKS.setdefault(key, threading.Lock())
+    with key_lock:
+        with _MASK_LOCK:
+            hit = MASKS.get(key)  # made by the thread that held the key lock before
+            if hit is not None:
+                MASKS.move_to_end(key)
+                return hit
+        try:
+            out = np.empty(model.rows, dtype=np.bool_)
+            for ch, share in r.iter(model):
+                out[ch.start : ch.start + ch.n] = share > 0.0
+            out.setflags(write=False)
+            with _MASK_LOCK:
+                for k in [k for k in MASKS if k[0] != key[0] or (k[1] == key[1] and k[2] != key[2])]:
+                    del MASKS[k]  # another project, an older file of the model
+                MASKS[key] = (out, list(r.warnings))
+                while len(MASKS) > 1 and sum(m.nbytes for m, _ in MASKS.values()) > MASK_LIMIT:
+                    MASKS.popitem(last=False)
+                return MASKS[key]
+        finally:
+            with _MASK_LOCK:
+                _KEY_LOCKS.pop(key, None)
 
 
 def fold_selection(mask: np.ndarray, codes: Any, keep: Any) -> tuple[np.ndarray, np.ndarray]:

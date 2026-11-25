@@ -333,8 +333,11 @@ def run_calc(
     source = {"op": "calc", "algo": ALGO, "versions": _versions(), "inputs": inputs,
               "params": {"expr": spec.expr, "text": prog.expr.to_text(), "dtype": dtype, "filter_id": spec.filter_id,
                          "restrict": spec.restrict, "outside": spec.outside}}  # fmt: skip
-    with dialect.write_tx(engine) as conn:
-        version = commit_fields(conn, store, staged, source=source)
+    try:
+        with dialect.write_tx(engine) as conn:
+            version = commit_fields(conn, store, staged, source=source)
+    finally:
+        staged.discard()  # a write transaction that did not open leaves no file without an owner
     clock.close()
     stats = new["stats"]
     return {"model_id": spec.model_id, "field": new["name"], "version": version, "rows": model.rows,
