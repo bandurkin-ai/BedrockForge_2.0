@@ -134,6 +134,8 @@ export interface ClassifyBody extends Common {
   overrides?: { wireframe_id: number; label: string }[];
   majority?: number;
   estimate?: string | null;
+  /** «Префикс полей оценки» (№ 78): `PASS` схемы читается как `<префикс>PASS`; пусто — без префикса */
+  prefix?: string;
   out: string;
 }
 

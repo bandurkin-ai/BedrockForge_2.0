@@ -15,6 +15,22 @@ export const MAX_MAJORITY = 10;
 export const MAX_LABEL = 100;
 export const MAX_SCHEME_NAME = 100;
 export const SCHEME_ID = /^[A-Za-z0-9_-]{1,40}$/;
+export const MAX_PREFIX = 40;
+export const PREFIX_RE = /^[A-Za-z0-9_]{1,40}$/;
+/** The fields an estimate writes (`docs/progress/e18-api.md` §2.1): a scheme names them without a prefix. */
+const ESTIMATE_NAME = /^(?:STATUS|EST|KV|NS|NH|NHY|AD|DMIN|PASS|SLOPE|KE|LAGR|SNW|NOCT|ETYPE|P\d{1,2})$/i;
+const NAME_TOKEN = /'(?:[^']|'')*'|\[([^\]]*)\]|[\p{L}_][\p{L}\p{N}_]*/gu;
+
+/** The text of a rule with the fields of an estimate written as `<prefix>NAME` (the same renaming the core makes; for the check of a rule). */
+export function withPrefix(expr: string, prefix: string): string {
+  const p = prefix.trim();
+  if (!p) return expr;
+  return expr.replace(NAME_TOKEN, (token: string, bracket?: string) => {
+    if (token.startsWith("'")) return token;
+    if (bracket !== undefined) return ESTIMATE_NAME.test(bracket) ? `[${p}${bracket.toUpperCase()}]` : token;
+    return ESTIMATE_NAME.test(token) ? p + token.toUpperCase() : token;
+  });
+}
 
 export interface RuleRow {
   label: string;
@@ -33,6 +49,8 @@ export interface ClassifyForm {
   rules: RuleRow[];
   /** the field whose empty value means «no estimate»; "" — every block has one */
   estimate: string;
+  /** «Префикс полей оценки» as typed: `PASS` of the scheme reads `<prefix>PASS`; "" — no prefix */
+  prefix: string;
   out: string;
   /** passes of the majority filter, as typed */
   majority: string;
@@ -45,7 +63,7 @@ export interface ClassifyForm {
 
 export const DEFAULT_OUT = "CLASS";
 
-export const EMPTY_CLASSIFY: ClassifyForm = { schemeId: "jorc", rules: [], estimate: "", out: DEFAULT_OUT, majority: "0", overrides: [], r: EMPTY_RESTRICT, editId: "", editName: "" };
+export const EMPTY_CLASSIFY: ClassifyForm = { schemeId: "jorc", rules: [], estimate: "", prefix: "", out: DEFAULT_OUT, majority: "0", overrides: [], r: EMPTY_RESTRICT, editId: "", editName: "" };
 
 const bad = (place: string, message: string, hint: string, param: string | null = null) => ({ ok: false as const, issue: issue("classify", place, message, hint, param) });
 
@@ -69,6 +87,12 @@ export function pickScheme(f: ClassifyForm, schemes: readonly Scheme[], id: stri
 
 // ---- the form → the arguments of the command ----
 
+function prefixIssue(raw: string): Issue | null {
+  const p = raw.trim();
+  if (!p || PREFIX_RE.test(p)) return null;
+  return issue("classify", "prefix", `Префикс полей оценки — до ${MAX_PREFIX} знаков: латинские буквы, цифры и «_».`, "Например: EST_ или AU_OK_. Пусто — поля без префикса.", "prefix");
+}
+
 /** The arguments of `blocks.classify` from the form: the scheme when the table is the scheme's, else the rules themselves. */
 export function argsOfForm(modelId: number | null, f: ClassifyForm, schemes: readonly Scheme[]): { ok: true; args: Args } | { ok: false; issue: Issue } {
   if (modelId === null) return bad("model", "Не выбрана блочная модель.", "Выберите модель в списке.");
@@ -84,6 +108,9 @@ export function argsOfForm(modelId: number | null, f: ClassifyForm, schemes: rea
     args.rules = JSON.stringify(f.rules.map((r) => ({ label: norm(r.label), expr: r.expr })));
   }
   if (f.estimate) args.estimate = f.estimate;
+  const px = prefixIssue(f.prefix);
+  if (px) return { ok: false, issue: px };
+  if (f.prefix.trim()) args.prefix = f.prefix.trim();
   const n = nameIssue("classify", "out", f.out, "Имя поля категорий");
   if (n) return { ok: false, issue: n };
   args.out = f.out.trim();
@@ -143,6 +170,11 @@ export function requestOfArgs(a: Args): { ok: true; request: ClassifyRequest } |
     body.rules = r.rules;
   }
   if (given(a, "estimate")) body.estimate = String(a.estimate).trim();
+  if (given(a, "prefix")) {
+    const px = prefixIssue(String(a.prefix));
+    if (px) return { ok: false, issue: px };
+    if (String(a.prefix).trim()) body.prefix = String(a.prefix).trim();
+  }
   if (given(a, "out")) {
     const n = nameIssue("classify", "out", String(a.out), "Имя поля категорий");
     if (n) return { ok: false, issue: n };
@@ -192,6 +224,7 @@ export function formOfArgs(a: Args, schemes: readonly Scheme[], keep: ClassifyFo
     }
   }
   if (given(a, "estimate")) out.estimate = String(a.estimate).trim();
+  if (given(a, "prefix")) out.prefix = String(a.prefix).trim();
   if (given(a, "out")) out.out = String(a.out).trim();
   if (given(a, "majority")) out.majority = String(a.majority).trim();
   if (given(a, "overrides")) {

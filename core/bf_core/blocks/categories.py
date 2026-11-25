@@ -27,7 +27,10 @@ NaN is false). The order of the work, for every block:
 
 Fields the rules need: one the model lacks — 422 `classify_field_missing {field, model, label, param: "rules.N.expr",
 pos}`, never a quiet skip: the schemes name PASS, SLOPE, NH, AD, which a model has only after an estimate (Э18). A rule
-without a condition (the template ГКЗ) — 422 `scheme_incomplete`. The result field is `cat` (`role: class`), its
+without a condition (the template ГКЗ) — 422 `scheme_incomplete`. `prefix` («Префикс полей оценки», question № 78;
+empty — none): the fields of an estimate in a rule (PASS, KV, SLOPE, NS, NH, AD, … `schemes.ESTIMATE_FIELDS`) are read
+as `<prefix>PASS` …; the rules stay as written, the prefix is kept in `params`. The result field is `cat`
+(`role: class`), its
 labels are the labels of the rules in order, every label stays in the list even if no block got it.
 
 Every block is classified from its own row alone, so the portions of any size give the same bits; the filter works on
@@ -48,7 +51,7 @@ from bf_core.calc import ExprError, ExprFieldError, ExprTypeError, compile
 from . import geometry
 from . import schema as bs
 from .model import CHUNK, Chunk, Model
-from .schemes import MAX_RULES, check_rules
+from .schemes import MAX_RULES, check_prefix, check_rules, prefixed, prefixed_name
 
 ALGO = "classify-1"
 DEFAULT_OUT = "CLASS"
@@ -94,6 +97,7 @@ class Spec:
     majority: int
     estimate: str | None
     out: str
+    prefix: str = ""  # «Префикс полей оценки» (question № 78): `PASS` of a rule reads `<prefix>PASS`
 
     @property
     def labels(self) -> list[str]:
@@ -104,7 +108,7 @@ class Spec:
         return {
             "rules": [{"label": a, "expr": b} for a, b in self.rules], "scheme": self.scheme,
             "overrides": [{"wireframe_id": w, "label": label} for w, label in self.overrides],
-            "majority": self.majority, "estimate": self.estimate, "out": self.out,
+            "majority": self.majority, "estimate": self.estimate, "out": self.out, "prefix": self.prefix,
         }  # fmt: skip
 
 
@@ -151,8 +155,9 @@ def parse(body: Mapping[str, Any], lookup: Callable[[str], Mapping[str, Any]] | 
     out = " ".join(out.split()) if isinstance(out, str) else ""
     if not out or len(out) > bs.MAX_FIELD_NAME or out.casefold() == bs.IDX:
         raise bad_param("out", f"Имя поля — от 1 до {bs.MAX_FIELD_NAME} знаков, не «{bs.IDX}».")
+    prefix = check_prefix(body.get("prefix"))
     return Spec(tuple((r["label"], r["expr"]) for r in rules), scheme_id, tuple(overrides), majority,
-                estimate.strip() if isinstance(estimate, str) else None, out)  # fmt: skip
+                estimate.strip() if isinstance(estimate, str) else None, out, prefix)  # fmt: skip
 
 
 # --- the plan ---------------------------------------------------------------------------------------------------------
@@ -181,11 +186,12 @@ def prepare(model: Model, spec: Spec, overrides: Sequence[Weights] = (), extra_f
     names: dict[str, None] = {}
     for i, (label, expr) in enumerate(spec.rules):
         param = f"rules.{i}.expr"
-        try:
-            prog = compile(expr, schema)
+        try:  # with a prefix the names of the estimate are renamed in the tree, the places stay those of the text
+            prog = compile(prefixed(expr, spec.prefix) if spec.prefix else expr, schema, text=expr)
         except ExprFieldError as e:
             err = expr_api_error(e, expr, param)
-            raise field_missing(str(err.extra.get("field", "")), model.name, label, param, e.pos) from e
+            name = prefixed_name(str(err.extra.get("field", "")), spec.prefix)
+            raise field_missing(name, model.name, label, param, e.pos) from e
         except ExprError as e:
             raise expr_api_error(e, expr, param) from e
         if prog.out_kind not in ("bool", "num"):

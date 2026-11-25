@@ -15,7 +15,7 @@ import { errorText } from "../../../shell/props";
 import { blockById } from "../state";
 import { checkExpr, exprIssueOf, loadSchemes, putScheme, refusalOf, startClassify, startDensity } from "./api";
 import { chooseModel, openFieldsWindow, windowOfFields } from "./bind";
-import { formOfArgs as classifyFormOfArgs, pickScheme, requestOfArgs as classifyRequest, schemeRequestOfArgs } from "./classifyForm";
+import { formOfArgs as classifyFormOfArgs, pickScheme, requestOfArgs as classifyRequest, schemeRequestOfArgs, withPrefix } from "./classifyForm";
 import { given, issueOfRefusal, type Args } from "./common";
 import { formOfArgs as densityFormOfArgs, requestOfArgs as densityRequest } from "./densityForm";
 import { notFound, READ_ONLY, runOp } from "./run";
@@ -164,7 +164,7 @@ export async function checkRules(): Promise<void> {
       continue;
     }
     try {
-      await checkExpr(s.modelId, r.expr);
+      await checkExpr(s.modelId, withPrefix(r.expr, s.classify.prefix));
       out[i] = null;
     } catch (e) {
       const x = exprIssueOf(e);

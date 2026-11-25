@@ -239,7 +239,7 @@ describe("the command `blocks.classify`", () => {
     expect(c.title).toBe("Категории блоков");
     expect(c.description).toMatch(/Ровно одно из scheme/);
     expect(c.description).toMatch(/шаблон A, B, C1, C2 без порогов/);
-    expect(Object.keys(c.params!)).toEqual(["model_id", "scheme", "rules", "estimate", "overrides", "majority", "out", "filter_id", "restrict", "replace"]);
+    expect(Object.keys(c.params!)).toEqual(["model_id", "scheme", "rules", "estimate", "prefix", "overrides", "majority", "out", "filter_id", "restrict", "replace"]);
     expect(app.registry.get("blocks.scheme.save")!.confirm).toBe(true);
     app.store.set({ selected: { kind: "blocks", id: IDS.model } });
     const r = await app.registry.execute("blocks.classify", {}, "user");
