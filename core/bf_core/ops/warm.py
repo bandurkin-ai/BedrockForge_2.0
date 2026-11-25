@@ -66,16 +66,17 @@ OPS = tuple(STEPS)
 #: the job `wireframe.check` itself (`check`: the levels of detail and the checks — the window starts it after an
 #: operation), the simplified copies of the view (`levels`), the preview of a stitch (`preview`: its strips, without
 #: the checks), the section and the click of the view (`view`)
-OTHER = ("checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats", "geostat", "blocks")
+OTHER = ("checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats", "geostat", "blocks", "estimate")
 #: The quick worker: the checks of a body, then the operations — the stitch first; the heavy one meanwhile the strips
 #: of a stitch (`preview`), so that on a cold cache the first stitch has its two halves compiled at once (~5 s, not
 #: ~8 s), then what follows an operation and what the process of the API needs, then the operations backwards.
-QUICK = ("checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats", "geostat", "blocks")
+QUICK = ("checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats", "geostat", "blocks", "estimate")
 HEAVY = (
     "preview",
     "check",
     "levels",
     "view",
+    "estimate",  # the kernels of estimation compile ~20 s: the heavy worker takes them early (ADR 0024)
     *reversed(OPS),
     "checks",
     "composites",
@@ -335,6 +336,10 @@ def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None
                     from bf_core.blocks.warm import warm as warm_blocks
 
                     warm_blocks()
+                elif name == "estimate":
+                    from bf_core.geostat.estimate.warm import warm as warm_estimate
+
+                    warm_estimate()
                 elif name == "stats":
                     from bf_core.geo import sdf
                     from bf_core.geostat.estimate import contact as est_contact
