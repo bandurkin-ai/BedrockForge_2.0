@@ -261,6 +261,26 @@ dh_results = sa.Table(
     sa.Index(None, "table_id"),  # cascades from dh_tables
 )
 
+# Э18 (ADR 0025 §4, §8, §11): the graph of dependencies of computed objects. A row is an edge «dst was built from
+# src» (role `in`, with the fingerprint of the source at that time and its name for the reason after a deletion)
+# or the mark «dst is pinned» (role `pin`, src empty). Nodes are (kind, id, sub): no foreign keys — a source may be
+# deleted and the row must stay; `sub` is the name of a field of a block model (`bm_field`), else "".
+lineage = sa.Table(
+    "lineage",
+    project_md,
+    sa.Column("dst_kind", sa.String(48), primary_key=True),
+    sa.Column("dst_id", REF, primary_key=True),
+    sa.Column("dst_sub", sa.String(200), primary_key=True, default=""),
+    sa.Column("role", sa.String(8), primary_key=True, default="in"),  # in | pin
+    sa.Column("src_kind", sa.String(48), primary_key=True, default=""),
+    sa.Column("src_id", REF, primary_key=True, default=0),  # 0: the source is not in this project (archive)
+    sa.Column("src_sub", sa.String(200), primary_key=True, default=""),
+    sa.Column("pos", sa.Integer, nullable=False, default=0),  # order of the inputs
+    sa.Column("src_fp", sa.String(200)),  # fingerprint of the source when dst was built; NULL — not compared
+    sa.Column("src_name", sa.String(200), nullable=False, default=""),
+    sa.Index(None, "src_kind", "src_id"),  # «Зависимые»: who was built from this node (dst is the primary key)
+)
+
 import_log = sa.Table(
     "import_log",
     project_md,
@@ -474,6 +494,8 @@ BLOB_ROLES: frozenset[str] = frozenset(
         "cells",  # block models: Parquet of the occupied cells (ADR 0017 §3, blocks/schema.py)
         "vario",  # variogram models: the form of the calculation (JSON, ADR 0022 §12, geostat/variogram/store.py)
         "nscore",  # variogram models: the table of the normal scores (Parquet: value, score, weight)
+        "xval",  # estimation rows: the table of the cross validation (Parquet, ADR 0024 §2, geostat/estimate/xval.py)
+        "real",  # simulations: the realisations (Parquet, ADR 0024 §2, Э18б)
     }  # fmt: skip
 )
 BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:", "fld:")

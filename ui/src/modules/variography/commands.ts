@@ -19,7 +19,8 @@ const DATA: Record<string, ParamSchema> = {
   domain_table: P("string", "таблица поля домена, если не та же (по середине пробы)"),
   domain_values: P("string", "значения домена через «;», например «окисл; перех» (до 1000)"),
   weights: P("string", "поле весов; не задано — DECL_W, если есть; «нет» — без весов"),
-  transform: P("string", "преобразование: none — без него, nscore — нормальные оценки", { enum: ["none", "nscore"] }),
+  transform: P("string", "преобразование: none — без него, nscore — нормальные оценки, indicator — индикатор порога threshold (1, если z ≤ t, иначе 0)", { enum: ["none", "nscore", "indicator"] }),
+  threshold: P("number", "порог t индикатора (с transform = indicator), в единицах поля"),
 };
 
 const ANGLES: Record<string, ParamSchema> = {

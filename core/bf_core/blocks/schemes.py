@@ -16,6 +16,12 @@ Two schemes are always there, even in a project that never wrote one (version 1,
     scheme with a rule without `expr` cannot classify: 422 `scheme_incomplete` (`categories.py`).
 The user's own schemes are added by `PUT /blocks/schemes/{id}`; the two above may be rewritten, not deleted.
 
+The prefix of the fields of an estimate (подшаг 18.18, question № 78): a scheme names the fields of an estimate as the
+estimation writes them without a prefix (PASS, SLOPE, NH, AD, …, `ESTIMATE_FIELDS`); the classification takes a
+`prefix` («Префикс полей оценки», empty — as before), and a rule then reads `<prefix>PASS` for `PASS`. Only the names
+of those fields are prefixed (AU or a field of the user stays as it is); the reference keeps the schemes unprefixed.
+`prefixed(text, prefix)` gives the tree of a rule with the names changed, the places of the text stay the same.
+
     schemes(conn) -> [scheme]                 # defaults first, then the others by name; each {id, name, version, rules}
     get(conn, id) -> scheme                   # 404 `scheme_not_found`
     put(conn, id, body) -> scheme             # {expected_version?, name, rules}; 409 `version_conflict {version}`
@@ -23,6 +29,7 @@ The user's own schemes are added by `PUT /blocks/schemes/{id}`; the two above ma
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -30,7 +37,7 @@ from typing import Any
 import sqlalchemy as sa
 
 from bf_core.api.errors import ApiError
-from bf_core.calc import ExprError, parse
+from bf_core.calc import Expr, ExprError, Field, parse
 from bf_core.db.schema import settings
 
 from .filters import schema as fs
@@ -41,6 +48,14 @@ MAX_RULES = 64
 MAX_LABEL = 100
 MAX_NAME = 100
 MAX_EXPR = 4000
+MAX_PREFIX = 40
+# The keys the estimation writes (`docs/progress/e18-api.md` §2.1): STATUS, EST, KV, NS, NH, NHY, AD, DMIN, PASS,
+# SLOPE, KE, LAGR, SNW, NOCT, ETYPE and the probabilities P1…PK of the indicator kriging.
+ESTIMATE_FIELDS = frozenset(
+    ("STATUS", "EST", "KV", "NS", "NH", "NHY", "AD", "DMIN", "PASS", "SLOPE", "KE", "LAGR", "SNW", "NOCT", "ETYPE")
+)
+_PROB = re.compile(r"^P[0-9]{1,2}$")
+_PREFIX = re.compile(rf"^[A-Za-z0-9_]{{1,{MAX_PREFIX}}}$")
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 JORC_RULES = (
@@ -126,6 +141,51 @@ def check_name(raw: Any) -> str:
     if not name or len(name) > MAX_NAME:
         raise bad("name", f"Название схемы — от 1 до {MAX_NAME} знаков.")
     return name
+
+
+def check_prefix(raw: Any, param: str = "prefix") -> str:
+    """The prefix of the fields of an estimate: empty (None, «») — none; else 1–40 of A–Z, a–z, 0–9, «_»."""
+    if raw is None:
+        return ""
+    if not isinstance(raw, str):
+        raise bad(param, "Префикс полей оценки — текст.", "Введите префикс или оставьте поле пустым.")
+    text = raw.strip()
+    if text and not _PREFIX.match(text):
+        raise bad(param, f"Префикс полей оценки — до {MAX_PREFIX} знаков: латинские буквы, цифры и «_».",
+                  "Например: EST_ или AU_OK_.")  # fmt: skip
+    return text
+
+
+def estimate_field(name: str) -> bool:
+    """The name is a field an estimate writes (PASS, KV, P3, …), whatever its case."""
+    key = name.upper()
+    return key in ESTIMATE_FIELDS or bool(_PROB.match(key))
+
+
+def prefixed_name(name: str, prefix: str) -> str:
+    """`<prefix><NAME>` for a field of an estimate, any other name as it is."""
+    return prefix + name.upper() if prefix and estimate_field(name) else name
+
+
+def prefixed(text: str, prefix: str) -> Expr:
+    """The tree of a rule with the fields of an estimate renamed to `<prefix><NAME>` (the places in `text` stay)."""
+
+    def walk(node: Any) -> Any:
+        if isinstance(node, Field):
+            return dataclasses.replace(node, name=prefixed_name(node.name, prefix))
+        if isinstance(node, Expr):
+            changes: dict[str, Any] = {}
+            for f in dataclasses.fields(node):  # type: ignore[arg-type]
+                v = getattr(node, f.name)
+                if isinstance(v, Expr):
+                    changes[f.name] = walk(v)
+                elif isinstance(v, tuple) and any(isinstance(x, Expr) for x in v):
+                    changes[f.name] = tuple(walk(x) for x in v)
+            return dataclasses.replace(node, **changes)  # type: ignore[type-var]
+        return node
+
+    out: Expr = walk(parse(text))
+    return out
 
 
 # --- the reference ----------------------------------------------------------------------------------------------------

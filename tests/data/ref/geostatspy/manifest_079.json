@@ -1,0 +1,74 @@
+{
+  "generator": "tools/gen/ref_geostatspy.py --079",
+  "geostatspy_version": "0.0.79",
+  "geostatspy_source": "PyPI geostatspy==0.0.79 (MIT), throw-away environment, not a BF dependency",
+  "geostatspy_wheel_sha256": "0ab559d3b81f70f5ee03ceb89e5233984cc8ea8e9edcff9134503fe679cb9f4f",
+  "geostats_py_sha256": "eaca6786f52211e618ebd27fdda11d2edf8769e11f7410f2b0894279ddcf7a49",
+  "kb2d_fixed_sha256": "d8efa4a5cf91319f3b6e8704e36d78b90b899cfc7a8003c3d742df9f9e0f7117",
+  "python": "3.12.16",
+  "numpy": "2.5.5",
+  "seed": 42,
+  "files": {
+    "kb2d_079.json": "305a8b141108d229fcaa18052580baf288f26d7658530df0d9c4d83dceb1d87b",
+    "kb3d_079.json": "aa543dc50c8b584d1dddb6492c5e7ecc8a40477e6eb94ffa9b11ae0df73baad6"
+  },
+  "cross_checks": {
+    "kb2d_ok_point_fixed_copy_vs_079_max_abs": 0.0,
+    "kb2d_ok_point_vs_numpy_max_abs_est_var": [
+      4.049010016160537e-10,
+      2.1303442343523216e-10
+    ],
+    "kb2d_sk_point_fixed_copy_vs_079_max_abs": 0.0,
+    "kb2d_sk_point_vs_numpy_max_abs_est_var": [
+      5.89303716935774e-10,
+      2.0438994940974453e-10
+    ],
+    "kb2d_ok_block4_vs_numpy_max_abs_est_var": [
+      4.0008130142155096e-10,
+      2.0615892326603102e-10
+    ],
+    "kb2d_sk_block4_vs_numpy_max_abs_est_var": [
+      5.817710757582972e-10,
+      2.0099533148965065e-10
+    ],
+    "kb2d_block_original_raises": "NameError: name 'real' is not defined",
+    "kb3d_ok_point_nst1_vs_numpy_max_abs_est_var": [
+      5.329070518200751e-15,
+      8.326672684688674e-16
+    ],
+    "kb3d_sk_point_nst1_vs_numpy_max_abs_est_var": [
+      4.440892098500626e-15,
+      8.881784197001252e-16
+    ],
+    "kb3d_ok_point_nst2_vs_numpy_max_abs_est_var": [
+      5.329070518200751e-15,
+      9.71445146547012e-16
+    ],
+    "kb3d_ok_point_nst2_unpatched_vs_patched_max_abs_est": 0.5100592490290827,
+    "kb3d_sk_point_nst2_vs_numpy_max_abs_est_var": [
+      4.440892098500626e-15,
+      7.771561172376096e-16
+    ],
+    "kb3d_sk_point_nst2_unpatched_vs_patched_max_abs_est": 0.6287030703888503,
+    "kb3d_ok_point_nst2_dip_vs_numpy_max_abs_est_var": [
+      4.440892098500626e-15,
+      7.771561172376096e-16
+    ],
+    "kb3d_ok_point_nst2_dip_unpatched_vs_patched_max_abs_est": 0.4901786929557108,
+    "kb3d_sk_point_nst2_dip_vs_numpy_max_abs_est_var": [
+      3.552713678800501e-15,
+      8.326672684688674e-16
+    ],
+    "kb3d_sk_point_nst2_dip_unpatched_vs_patched_max_abs_est": 0.6331478761226839,
+    "kb3d_block_original_raises": "IndexError: index 4 is out of bounds for axis 0 with size 4"
+  },
+  "known_defects": [
+    "geostatspy.kb2d 0.0.79 block mode (nxdis*nydis > 1) raises NameError 'real'; after that, the inner covariance loop of C_VV sums only the last j (if i == j and cbb += cov stand outside the j loop); references for blocks come from core/tests/reference/kb2d_fixed.py",
+    "geostatspy.kb3d 0.0.79 block mode: MAXDIS = nxdis*nydis ignores nzdis, 'real' is undefined, the same C_VV loop error; block kb3d is not frozen",
+    "geostatspy.kb3d 0.0.79 with nst = 2: setrot3D_array allocates rotmat inside the structure loop, the rotation matrix of structure 0 is zeroed and it acts as a constant covariance; the committed nst = 2 cases are computed with that single allocation moved before the loop (cross-checked with numpy)",
+    "geostatspy.kb3d 0.0.79 has no search radius: the two radii only set the vertical stretch rv / rh",
+    "geostatspy.kb2d / kb3d return the grids with row 0 = northernmost (and the top level first in 3D); the committed arrays are re-ordered to ascending Z, Y, X",
+    "geostatspy.setup_rotmat 0.0.79 uses PI = 3.14159265 (truncated): kb2d differs from an exact-pi calculation by up to ~6e-10 absolute (est and var); with the same truncated pi numpy agrees to 4e-15",
+    "geostatspy.kb2d 0.0.79 treats 'na' as a count after the kd-tree query, so `na == 0` (one-sample branch) means 'no sample'; the reference nodes all have >= 2 samples"
+  ]
+}

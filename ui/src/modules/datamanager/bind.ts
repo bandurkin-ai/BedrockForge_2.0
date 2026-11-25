@@ -18,6 +18,7 @@ import { showProperties } from "../../shell/treeRun";
 import { counted } from "../../shell/treeActions";
 import { openWindow } from "../../shell/windows";
 import { loadBlocks } from "../blocks/state";
+import { askImpact } from "../lineage/impactAsk";
 import { importPaths } from "../importing/bind";
 import { moveIds } from "../projects/bind";
 import { projectStore } from "../projects/state";
@@ -152,10 +153,19 @@ export async function deleteData(app: App, a: Record<string, unknown>, source: C
     if (!ids.length) throw refusal("no_ids", "Не заданы объекты.", "Передайте ids — номера через запятую.");
     const { rows: chosen, missing } = await catalogRowsOf(ids);
     if (missing.length) throw refusal("object_not_found", `Объект №${missing[0]} не найден: ничего не удалено.`, "Обновите менеджер данных.");
-    const ok = chosen.filter((r) => objectKind(r.kind) !== null && r.state !== "building");
+    let ok = chosen.filter((r) => objectKind(r.kind) !== null && r.state !== "building");
     const left = chosen.filter((r) => !ok.includes(r));
     if (!ok.length) throw refusal("nothing_to_delete", "Эти объекты здесь не удаляются.", "Наборы скважин удаляются в дереве проекта; строящиеся — после конца задания.");
     if (!(await askConfirm(deleteQuestion(ok, left.length, source === "claude")))) return source === "claude" ? "Отменено пользователем" : "Отменено";
+    // what is built from the objects (Д-35): the window «Влияние изменения» per object that has dependents; «Отмена» keeps that one
+    const go: CatalogRow[] = [];
+    for (const r of ok) {
+      const kind = objectKind(r.kind);
+      const node = kind === "wireframe" ? "wireframe" : kind === "blocks" ? "object:block_model" : null;
+      if (!node || (await askImpact({ kind: node, id: r.id }, `удалить ${kindTitle(r.kind).toLowerCase()} «${r.name}»`))) go.push(r);
+    }
+    if (!go.length) return source === "claude" ? "Отменено пользователем" : "Отменено";
+    ok = go;
     const failed: string[] = [];
     for (const r of ok) {
       try {

@@ -19,6 +19,7 @@ ROUTER_MODULES: tuple[str, ...] = (
     "intercepts",
     "jobs",
     "license",
+    "lineage",
     "ops",
     "lines",
     "projects",

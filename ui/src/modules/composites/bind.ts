@@ -12,6 +12,7 @@ import { askConfirm } from "../../shell/dialogs";
 import { needProject, needWritable, noted, refusal, showJobs, viewport } from "../../shell/objectRun";
 import { openWindow } from "../../shell/windows";
 import { refresh as refreshJobs } from "../jobs/state";
+import { askImpact } from "../lineage/impactAsk";
 import { sceneObjects } from "../scene/objects";
 import { tablesStore } from "../tables/state";
 import { deleteResult, editOre, exportProtocol, loadFields, loadTables, lostList, rebuildResult, renameOnExists, resolveTable, startTool, type OnLost, type Started, type TableRow } from "./api";
@@ -144,6 +145,8 @@ export function bindComposites(app: App): void {
       const id = resultId(a);
       if (source === "user" && !(await askConfirm({ title: "Удалить результат", message: `Удалить результат обработки проб №${id}? Таблица-результат или записанные колонки будут удалены.`, okLabel: "Удалить", danger: true })))
         return "Отменено";
+      // what is built from the result (Д-35): the window «Влияние изменения» opens only when there are dependents; the person decides
+      if (!(await askImpact({ kind: "dh_result", id }, `удалить результат обработки проб №${id}`))) return "Отменено";
       await deleteResult(id);
       return `Результат №${id} удалён`;
     }),

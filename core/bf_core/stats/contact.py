@@ -21,6 +21,10 @@ the means is a hard boundary, a slope — a soft one (ТЗ 8.8.2). BF has no suc
         [MeshTarget.from_stats(…)], holes=…)` of the wireframe, `hole` — the dense index of the hole of every
         row in `traj` (`composites.coords.hole_index(st.hole_ids, cols.hole_db_ids)[cols.hole_of()]`; −1 — none)
     crossing_contacts(hole, frm, to, crossings, reach, eps=1e−6, threads=1, tick=None) -> Contacts   (rows as given)
+    signed_chart(dist, side, values, weights, labels, conventions, distance=20, step=1, counts=None, eps=1e−6,
+                 tick=None) -> dict
+        the same answer for rows with a distance of their own — the blocks of a model (Д-28): the volume-weighted
+        means by the steps, + `weight` (Σ volume of a step)
     warm()
 
 The rule (ADR 0019 §4). The rows of a hole go by depth (`composites.intervals.build_lines`: rows without a
@@ -366,9 +370,10 @@ def _side_of(label: str, n: np.ndarray, w: np.ndarray, s: np.ndarray, pivot: np.
 
 def _chart(
     sel: Selection, found: Contacts, st: Steps, labels: tuple[str, str], counts: dict[str, int], conventions: str,
-    eps: float, tick: Tick | None,
+    eps: float, tick: Tick | None, weight: bool = False,
 ) -> dict[str, Any]:  # fmt: skip
-    """The answer: the rows of the selection `sel` (its `rows` index `found`) by the steps `st`."""
+    """The answer: the rows of the selection `sel` (its `rows` index `found`) by the steps `st`; `weight` adds
+    `weight` — Σ w of every step (the volumes of the blocks of `signed_chart`)."""
     m = 2 * st.n_side
     n = np.zeros(m, dtype=np.int64)
     pivot, sw, cw, sm, cm = (np.zeros(m, dtype=np.float64) for _ in range(5))
@@ -384,7 +389,7 @@ def _chart(
     # the steps of each side from the contact outwards: the two sides are counted alike (the mirror)
     half = slice(st.n_side - 1, None, -1), slice(st.n_side, m)
     side_a, side_b = (_side_of(label, n[h], w[h], s[h], pivot[h]) for label, h in zip(labels, half, strict=True))
-    return {
+    out: dict[str, Any] = {
         "distance": st.distance,
         "step": st.step,
         "weighted": sel.weighted,
@@ -398,6 +403,9 @@ def _chart(
         "b": side_b,
         "conventions": conventions,
     }
+    if weight:
+        out["weight"] = [float(x) if k else 0.0 for x, k in zip(w.tolist(), n.tolist(), strict=True)]
+    return out
 
 
 # --- the chart ---------------------------------------------------------------------------------------------
@@ -514,6 +522,35 @@ def contact_chart_wireframe(
                   _part(tick, 0.8, 1.0))  # fmt: skip
 
 
+def signed_chart(
+    dist: Any, side: Any, values: Any, weights: Any, labels: tuple[str, str], conventions: str, *,
+    distance: Any = None, step: Any = None, counts: dict[str, int] | None = None, eps: float = DEPTH_EPS,
+    tick: Tick | None = None,
+) -> dict[str, Any]:  # fmt: skip
+    """The same answer for rows that carry their own distance from the contact — the blocks of a model (Д-28,
+    `geostat.estimate.contact`): `dist` — |d| (float64), `side` — 0: A, 1: B, −1: at no contact (int8), `values`,
+    `weights` (the volumes) — columns of the rows. A row takes part when it has a side, |d| ≤ D, a finite value
+    and a finite weight above zero; the others are counted in `counts` (`no_contact`, `beyond`, `no_value`,
+    `no_weight`). The steps and the means are those of `contact_chart` (`weighted` is True; `contacts`, `holes`
+    — 0); `weight` — Σ w of every step. StatsError `bad_param`, `no_values`."""
+    st = steps_of(distance, step)
+    n = int(np.asarray(side).shape[0])
+    d, sd = _column("dist", dist, n), _column("side", side, n, np.int8)
+    v, w = _column("values", values, n), _column("weights", weights, n)
+    has = sd >= 0
+    with np.errstate(invalid="ignore"):
+        reach = has & (d <= st.distance)
+        good_v, good_w = np.isfinite(v), np.isfinite(w) & (w > 0)
+    take = np.flatnonzero(reach & good_v & good_w)
+    done = {
+        **(counts or {}), "rows": n, "no_contact": int(n - np.count_nonzero(has)),
+        "beyond": int(np.count_nonzero(has & ~reach)), "no_value": int(np.count_nonzero(reach & ~good_v)),
+        "no_weight": int(np.count_nonzero(reach & good_v & ~good_w)),
+    }  # fmt: skip
+    sel = Selection(v[take], w[take], take, done, True).require()
+    return _chart(sel, Contacts(d, sd, 0, 0), st, labels, done, conventions, eps, tick, weight=True)
+
+
 def warm() -> None:
     """Compile the kernels on a few rows (the `stats` step of the warm-up)."""
     hole = np.array([0, 0, 0, 0, 1], dtype=np.int32)
@@ -525,3 +562,5 @@ def warm() -> None:
     event, sign = np.array([ENTER, LEAVE], dtype=np.uint8), np.array([-1, 1], dtype=np.int8)
     hits = SimpleNamespace(hole=np.array([0, 0]), depth=np.array([1.5, 3.0]), event=event, side=sign)
     contact_chart_wireframe(hole, frm, frm + 1.0, hits, values)
+    side = np.array([0, 1, -1, 1], dtype=np.int8)
+    signed_chart(np.array([1.0, 2.0, 3.0, 30.0]), side, np.ones(4), np.ones(4), ("A", "B"), "")

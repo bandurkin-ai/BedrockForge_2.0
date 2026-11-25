@@ -1,0 +1,46 @@
+/* The badge of a state, «Происхождение», «Зависимые», «Влияние изменения» (Д-35): the brand palette (ADR 0006) through the
+   tokens of both themes — «устарел» is the warm warning, «источник удалён» the danger, «закреплён» the accent, «актуален» quiet. */
+.badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; cursor: help; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: currentColor; }
+.current { color: var(--ok); }
+.current .dot { opacity: 0.7; }
+.stale { color: var(--warn); font-weight: 600; }
+.source_lost, .deleted { color: var(--danger); font-weight: 600; }
+.pinned { color: var(--accent); font-weight: 600; }
+.building { color: var(--text-dim); }
+.pinChanged { color: var(--warn); }
+
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.group { border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; }
+.group legend { font-family: var(--font-brand); font-weight: 600; color: var(--text-dim); padding: 0 4px; }
+.row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.grow { flex: 1; min-width: 0; }
+.note { color: var(--text-faint); margin: 0; }
+.warn { color: var(--warn); margin: 0; }
+.error { color: var(--danger); margin: 0; }
+.chain { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 2px; color: var(--text-dim); }
+.list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: baseline; padding: 2px 0; border-bottom: 1px solid var(--border); }
+.item:last-child { border-bottom: 0; }
+.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kind { color: var(--text-dim); font-size: 11px; }
+.sub { grid-column: 1 / -1; color: var(--text-dim); font-size: 11px; overflow-wrap: anywhere; }
+.fp { font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; color: var(--text-faint); }
+.counts { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; }
+.counts dt { color: var(--text-dim); display: inline; }
+.counts dd { margin: 0 0 0 4px; font-variant-numeric: tabular-nums; display: inline; }
+.scroll { overflow: auto; max-height: 260px; border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 8px; }
+.btn, .primary { padding: 2px 10px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg-hover); color: var(--text); cursor: pointer; white-space: nowrap; font: inherit; }
+.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn:disabled, .primary:disabled { opacity: 0.5; cursor: default; }
+.btn:focus-visible, .primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* the window «Влияние изменения» */
+.win { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 13px; }
+.body { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.title { margin: 0; font-family: var(--font-brand); font-size: 14px; font-weight: 600; }
+.foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.foot .grow { flex: 1; color: var(--text-dim); }
+.step { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 2px 6px; align-items: baseline; padding: 2px 0; border-bottom: 1px solid var(--border); }
+.step:last-child { border-bottom: 0; }
+.no { color: var(--text-faint); text-align: right; font-variant-numeric: tabular-nums; }

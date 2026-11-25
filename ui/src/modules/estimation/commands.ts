@@ -1,0 +1,221 @@
+/**
+ * The commands of the estimation of grades (ТЗ 8.8.4; ADR 0024 §10; docs/progress/e18-api.md §12): the tab «Геостатистика», the
+ * groups «Оценка», «Проверка», «Моделирование». The ribbon, Ctrl+K, the keys of the user and the assistant run the same commands.
+ * A command without arguments opens its window (ADR 0021 п. 9); the pure declarations are here (the catalog reads them first),
+ * the handlers — `bind.ts` as the windows get ready: `estimate.open`, `estimate.run`, `estimate.delete` (18.19; `bindEstimation(app)`
+ * takes their `stage` off; the window of the plan (18.22) binds `estimate.plan` and `estimate.plan_delete` the same way; `estimate.run` without
+ * arguments opens it), the rest stays «появится на этапе» until its window (`stage`). The parameters are flat (`ParamSchema` has no objects): the pair of the
+ * soft boundary of the contact analysis (Д-28, `estimate.open {soft: {a, b, distance}}` of the contract) is `soft_a`, `soft_b`,
+ * `soft_distance`; the lists are text («41; 42»). The simulation (`simulate.*`) is Э18б.
+ */
+import type { Command, ParamSchema } from "../../shell/commands";
+import type { IconName } from "../../shell/Icon";
+import { METHODS } from "./api";
+
+const P = (type: ParamSchema["type"], description: string, extra: Partial<ParamSchema> = {}): ParamSchema => ({ type, description, ...extra });
+
+const MODEL = P("integer", "номер блочной модели (раздел «Блочные модели» дерева)");
+const ESTIMATION = P("integer", "номер строки «Параметры оценки» (раздел «Геостатистика → Параметры оценки» дерева)");
+
+export const commands: Command[] = [
+  {
+    id: "estimate.open",
+    title: "Оценка содержаний",
+    description:
+      "Мастер оценки содержаний (8.8.4): модель, ограничитель, поля назначения → пробы (таблица, поле, домен, урезка, веса) → метод и модель вариограммы → поиск и проходы → выходные поля → задание. " +
+      "method — метод заранее (nn, idw, sk, ok, ik); id — открыть сохранённую строку для правки; model_id — блочная модель. soft_a, soft_b, soft_distance — мягкая граница из окна контактного анализа: " +
+      "домен проб A, соседний домен B и расстояние d_м. Сохраняет строку в «Параметры оценки».",
+    params: {
+      method: P("string", "метод оценки: nn, idw, sk, ok, ik", { enum: METHODS }),
+      id: ESTIMATION,
+      model_id: MODEL,
+      soft_a: P("string", "домен проб A мягкой границы (значение поля домена)"),
+      soft_b: P("string", "соседний домен B, пробы которого допускаются у границы"),
+      soft_distance: P("number", "расстояние мягкой границы d_м, м (0 — жёсткая граница)"),
+    },
+    uiOnly: true,
+    stage: "Э18 (18.19)",
+  },
+  {
+    id: "estimate.save",
+    title: "Сохранить параметры оценки",
+    description:
+      "Сохраняет форму, открытую в мастере «Оценка содержаний» или в окне «Параметры оценки», строкой «Параметры оценки»: правку открытой строки (версия проверяется) или новую строку. " +
+      "as_new=true — всегда новая строка рядом с открытой; id — номер строки, которую должна править форма (проверка: открыта другая — отказ). Не запускает оценку; ошибка в поле формы остаётся под этим полем.",
+    params: {
+      id: ESTIMATION,
+      as_new: P("boolean", "сохранить как новую строку, не заменяя открытую"),
+    },
+    stage: "Э18 (18.27в)",
+  },
+  {
+    id: "estimate.plan_save",
+    title: "Сохранить план оценки",
+    description:
+      "Сохраняет план оценки блочной модели: строки домен × поле × метод в порядке выполнения. id — стоящий в проекте план (правка), без id — новый; model_id — блочная модель; " +
+      "items — номера строк «Параметры оценки» через «;» в порядке выполнения (без items у стоящего плана строки остаются как есть); name — название; as_new=true — новый план рядом с id. Не запускает оценку.",
+    params: {
+      id: P("integer", "номер плана оценки (без него — новый план)"),
+      model_id: MODEL,
+      name: P("string", "название плана; пусто — прежнее или название ядра"),
+      items: P("string", "номера строк «Параметры оценки» через «;» в порядке выполнения, например 41; 42"),
+      as_new: P("boolean", "сохранить как новый план, не заменяя id"),
+    },
+    stage: "Э18 (18.27в)",
+  },
+  {
+    id: "estimate.plan",
+    title: "План оценки",
+    description:
+      "Окно «План оценки»: планы блочной модели, строки домен × поле × метод в порядке выполнения (вверх, вниз, добавить, убрать), запуск плана или выбранных строк, ход задания и журнал по проходам. " +
+      "plan_id — открыть план; model_id — планы этой блочной модели.",
+    params: { plan_id: P("integer", "номер плана оценки"), model_id: MODEL },
+    uiOnly: true,
+    stage: "Э18 (18.22)",
+  },
+  {
+    id: "estimate.params",
+    title: "Параметры оценки",
+    description:
+      "Окно «Параметры оценки»: просмотр и правка сохранённой строки на одной странице — те же поля, что в мастере (модель и цель, пробы, метод и вариограмма, поиск и проходы, выходные поля). " +
+      "id — номер строки «Параметры оценки»; без id — строка, открытая в мастере.",
+    params: { id: ESTIMATION },
+    uiOnly: true,
+    stage: "Э18 (18.20)",
+  },
+  {
+    id: "estimate.plan_delete",
+    title: "Удалить план оценки",
+    description: "Удаляет план оценки: строки «Параметры оценки» и поля блочной модели остаются.",
+    params: { id: P("integer", "номер плана оценки (окно «План оценки»)") },
+    required: ["id"],
+    confirm: true,
+    stage: "Э18 (18.22)",
+  },
+  {
+    id: "estimate.ellipsoid",
+    title: "Эллипсоид поиска в 3D",
+    description:
+      "Показывает в 3D эллипсоид поиска у блока: сам блок, отобранные пробы и их веса λ (положительные — Cobalt, отрицательные — Copper Orange, отброшенные — Slate). " +
+      "Без id — эллипсоид мастера (радиусы и углы шага «Поиск и проходы», по ним же обновляется) у блока последнего предпросмотра; pass — проход (по умолчанию давший оценку). " +
+      "С id — сохранённая строка «Параметры оценки»: block — ячейка родителя «i; j; k» (без неё — блок, по которому щёлкнули в 3D). show=false убирает слои.",
+    params: { id: ESTIMATION, show: P("boolean", "показать (по умолчанию) или убрать эллипсоид, блок и пробы"), pass: P("integer", "проход от 1 до 5 (мастер)"), block: P("string", "ячейка родителя «i; j; k» (для строки с id)") },
+    stage: "Э18 (18.21)",
+  },
+  {
+    id: "estimate.run",
+    title: "Выполнить оценку",
+    description:
+      "Запускает оценку плана или строк «Параметры оценки» одной блочной модели (задание estimate.run, ход — вкладка «Задания»): поля с префиксом строки (STATUS, EST, KV, NS, …) записываются в модель целиком или никак. " +
+      "plan_id — план; estimation_ids — номера строк через «;» (одна модель, совместимые префиксы). Поле уже есть в модели — вопрос «Заменить поля?»; replace=true — без вопроса. Без аргументов открывает окно «План оценки».",
+    params: {
+      plan_id: P("integer", "номер плана оценки"),
+      estimation_ids: P("string", "номера строк «Параметры оценки» через «;», например 41; 42"),
+      replace: P("boolean", "заменить поля, которые уже есть в модели, без вопроса"),
+    },
+    confirm: true,
+    stage: "Э18 (18.19)",
+  },
+  {
+    id: "estimate.delete",
+    title: "Удалить строку «Параметры оценки»",
+    description: "Удаляет строку «Параметры оценки»: она уходит из планов, поля блочной модели остаются.",
+    params: { id: ESTIMATION },
+    required: ["id"],
+    confirm: true,
+    stage: "Э18 (18.19)",
+  },
+  {
+    id: "estimate.inspect",
+    title: "Блок · i, j, k",
+    description:
+      "Инспектор блока («Геостатистика › Проверка › Инспектор блока»): какие пробы вошли в оценку блока, с какими весами и почему остальные отброшены; сверка с записанными полями. " +
+      "block — «i; j; k» родителя, xyz — «x; y; z» точки, row — номер строки блока (одно из трёх); params_id — одна строка. " +
+      "model_id — блочная модель; без неё берётся выбранная в дереве или единственная модель с выполненной оценкой. Без блока открывает окно: блок задаёт щелчок по нему в 3D.",
+    params: { model_id: MODEL, block: P("string", "ячейка родителя: i; j; k"), xyz: P("string", "точка: x; y; z, м"), row: P("integer", "номер строки блока модели (его даёт щелчок по блоку в 3D)"), params_id: ESTIMATION },
+    stage: "Э18 (18.Д4)",
+  },
+  {
+    id: "estimate.xval",
+    title: "Перекрёстная проверка",
+    description:
+      "Перекрёстная проверка строки: каждая проба или скважина убирается и оценивается по остальным (by: hole или sample). Таблица, сводка, рассеяние и гистограмма ошибок. " +
+      "Без by открывает окно с прежним результатом строки; с by выполняет проверку (задание estimate.xval, результат заменяет прежний) и отвечает сводкой: средняя ошибка, СКО, MAE, r, наклон, среднее ошибка²/KV.",
+    params: { estimation_id: ESTIMATION, by: P("string", "что исключать: hole — скважину (по умолчанию), sample — пробу", { enum: ["hole", "sample"] }) },
+    stage: "Э18 (18.23)",
+  },
+  {
+    id: "estimate.xval_3d",
+    title: "Ошибки перекрёстной проверки в 3D",
+    description:
+      "Показывает в 3D пробы последней перекрёстной проверки строки в их местах, цвет — ошибка (оценка − истинное): Cobalt — оценка ниже истинного, Copper Orange — выше. " +
+      "estimation_id — строка (без неё — строка окна проверки); show=false убирает точки из 3D. Проверка должна быть выполнена (estimate.xval с by).",
+    params: { estimation_id: ESTIMATION, show: P("boolean", "показать (по умолчанию) или убрать точки ошибок") },
+    stage: "Э18 (18.23)",
+  },
+  {
+    id: "estimate.kna",
+    title: "Анализ окрестности",
+    description:
+      "Анализ окрестности кригинга (KNA, 8.8.5): на тестовых блоках строки (SK или OK) перебирает n_max, радиусы, дискретизацию и размер блока и считает KE, SLOPE, KV, сумму отрицательных весов, вес дальней пробы, μ. Рекомендация n_max — наименьший с SLOPE не ниже 0,95 лучшего; сама не применяется. " +
+      "estimation_id — строка (SK, OK); без неё открывается окно. vary — что перебирать через «;» (n_max, radius, disc, size; без него — всё); block — блок как «i; j; k» индексов родителя, xyz — точка «x; y; z» (несколько — через «|»; без них — три блока автоматически: много, средне, мало проб). Ответ — рекомендация.",
+    params: {
+      estimation_id: ESTIMATION,
+      vary: P("string", "что перебирать через «;»: n_max, radius, disc, size (по умолчанию всё)"),
+      block: P("string", "тестовые блоки: индексы родителя «i; j; k», несколько — через «|»"),
+      xyz: P("string", "тестовые блоки: точки «x; y; z» в координатах проекта, несколько — через «|»"),
+    },
+  },
+  {
+    id: "estimate.swath",
+    title: "Swath plot оценки",
+    description: "Окно swath plot Э13 с настройками ядра для строки: оценка блоков домена и композиты домена (с весами декластеризации) по полосам. direction — ось полос: x, y или z (по умолчанию z). Настройки не сохранены: swath сохраняется в окне.",
+    params: { estimation_id: ESTIMATION, direction: P("string", "ось полос: x, y или z", { enum: ["x", "y", "z"] }) },
+  },
+  {
+    id: "estimate.global",
+    title: "Глобальная статистика оценки",
+    description: "Глобальная проверка оценки: среднее и дисперсия композитов (без весов и с весами декластеризации), ближайшего соседа и оценки по блокам домена; расхождение оценки с декластерированным средним в процентах (норма — не больше 5 %), дисперсия блоков против ожидаемой C̄_VV. Показывает и Q-Q. estimation_id — выполненная строка; без неё открывается окно.",
+    params: { estimation_id: ESTIMATION },
+  },
+  {
+    id: "estimate.qq",
+    title: "Q-Q: композиты и оценка",
+    description: "График квантиль–квантиль: композиты домена (с весами декластеризации) против оценки блоков (с весом объёма). Открывается в окне «Глобальная проверка оценки». estimation_id — выполненная строка; без неё открывается окно.",
+    params: { estimation_id: ESTIMATION },
+  },
+];
+
+/** The ribbon: the tab «Геостатистика» (`shell/ribbonConfig.ts` puts the groups in, by the orchestrator). */
+export interface EstimateButton {
+  command: string;
+  args?: Record<string, unknown>;
+  label: string;
+  icon: IconName;
+  hint: string;
+  small?: boolean;
+}
+
+const icon = (name: string): IconName => name as IconName;
+
+export const ESTIMATE_GROUP_TITLE = "Оценка";
+export const CHECK_GROUP_TITLE = "Проверка";
+export const SIM_GROUP_TITLE = "Моделирование";
+
+export const ESTIMATE_BUTTONS: readonly EstimateButton[] = [
+  { command: "estimate.open", label: "Оценка содержаний", icon: icon("blocks"), hint: "Мастер: блочная модель, пробы, метод (NN, IDW, SK, OK, IK), поиск и проходы, выходные поля" },
+  { command: "estimate.plan", label: "План оценки", icon: icon("list"), hint: "Строки домен × поле × метод одной модели: запуск и журнал", small: true },
+  { command: "estimate.params", label: "Параметры оценки", icon: icon("properties"), hint: "Сохранённая строка на одной странице: те же поля, что в мастере", small: true },
+  { command: "estimate.ellipsoid", label: "Эллипсоид поиска", icon: icon("ellipsoid"), hint: "Эллипсоид поиска и отобранные пробы у блока в 3D", small: true },
+];
+
+export const CHECK_BUTTONS: readonly EstimateButton[] = [
+  { command: "estimate.inspect", label: "Инспектор блока", icon: icon("search"), hint: "Какие пробы вошли в оценку блока и с какими весами; щёлкните блок в 3D", small: true },
+  { command: "estimate.xval", label: "Перекрёстная проверка", icon: icon("scatter"), hint: "Каждая проба или скважина оценивается по остальным: ошибки, сводка, рассеяние" },
+  { command: "estimate.kna", label: "Анализ окрестности", icon: icon("variogram"), hint: "Перебор n_max, радиусов и дискретизации: эффективность кригинга и наклон регрессии", small: true },
+  { command: "estimate.swath", label: "Swath plot", icon: icon("swath"), hint: "Композиты и оценка блоков по полосам", small: true },
+  { command: "estimate.global", label: "Глобальная статистика", icon: icon("histogram"), hint: "Среднее композитов, NN и оценки: расхождение не больше 5 %", small: true },
+  { command: "estimate.qq", label: "Q-Q", icon: icon("qq"), hint: "Квантили композитов и оценки блоков", small: true },
+];
+
+export const SIM_BUTTONS: readonly EstimateButton[] = [{ command: "estimate.open", args: { method: "ik" }, label: "Индикаторы", icon: icon("domains"), hint: "Индикаторный кригинг: пороги, модели по порогам, вероятности и E-type" }];

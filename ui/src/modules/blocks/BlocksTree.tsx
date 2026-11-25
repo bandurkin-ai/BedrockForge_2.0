@@ -11,6 +11,8 @@ import { TreeRow } from "../../shell/TreeRow";
 import { selectWithProperties } from "../../shell/treeRun";
 import { useStore } from "../../shell/useStore";
 import tree from "../../shell/DataTree.module.css";
+import { useWatch } from "../lineage/hooks";
+import { LineageBadge } from "../lineage/LineageBadge";
 import { projectStore } from "../projects/state";
 import { blocksStore, loadBlocks } from "./state";
 import { blockRow, blockSummary } from "./tree";
@@ -27,6 +29,7 @@ export function BlocksTree() {
     if (project && !loaded) void loadBlocks();
   }, [project, loaded]);
   const items = useMemo(() => list.map((b) => ({ ...b, folder: b.folder ?? null })), [list]);
+  useWatch(items.map((b) => ({ kind: "object:block_model", id: b.id }))); // the states of the whole section in one request (Д-35)
   if (!items.length) return <div className={`${tree.none} ${error ? tree.error : ""}`}>{error ?? "Нет объектов"}</div>;
   return (
     <div role="group" aria-label="Блочные модели">
@@ -47,6 +50,7 @@ export function BlocksTree() {
               title={row.title}
               testId={row.testId}
               glyph={<Glyph icon="blocks" />}
+              after={<LineageBadge node={{ kind: "object:block_model", id: b.id }} />}
               onContextMenu={menu(row.menu, local)}
             />
           );

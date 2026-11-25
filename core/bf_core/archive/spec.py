@@ -30,7 +30,10 @@ TABLES: tuple[Table, ...] = (
     Table("dh_columns", renumber=True),
     Table("dh_rows"),
     # Э12 (ADR 0018 §2): results of sample processing; their inputs hold names and revisions, not ids.
-    Table("dh_results"),
+    # renumbered (ADR 0025 §11): the graph of dependencies names a result by its id
+    Table("dh_results", renumber=True),
+    # Э18 (ADR 0025 §11): the graph of dependencies; its node ids are renumbered by `ops/provenance.remap_lineage`
+    Table("lineage"),
     Table("import_log", renumber=True),
     Table("export_log", renumber=True),
     Table("audit_runs", renumber=True),

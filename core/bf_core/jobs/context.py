@@ -12,15 +12,20 @@ import sqlalchemy as sa
 
 
 class JobCancelled(Exception):
-    """Raised by `tick()` once the user asked to cancel: the handler unwinds, nothing partial is kept."""
+    """Raised by `tick()` once the user asked to cancel: the handler unwinds, nothing partial is kept. A job that
+    finished parts before (each committed) may attach their `events` ([[event, data], …]): the scheduler publishes."""
+
+    events: list[list[Any]] | None = None
 
 
 class JobError(Exception):
     """A user-facing failure: {code, message, hint} in Russian; `retry=False` — another attempt will not help."""
 
-    def __init__(self, code: str, message: str, hint: str = "", retry: bool = False) -> None:
+    def __init__(self, code: str, message: str, hint: str = "", retry: bool = False,
+                 events: list[list[Any]] | None = None) -> None:  # fmt: skip
         super().__init__(message)
         self.code, self.message, self.hint, self.retry = code, message, hint, retry
+        self.events = events  # [[event, data], …] of what was done before the failure: the scheduler publishes them
 
 
 class JobContext:

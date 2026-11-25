@@ -64,6 +64,8 @@ import { renderExportWindow } from "../modules/blocks/export/bind";
 import { renderModelWindow } from "../modules/blocks/window/bind";
 import { renderFieldsWindow } from "../modules/blocks/fields/bind";
 import { renderVariographyWindow } from "../modules/variography/VariographyWindow";
+import { renderEstimationWindow } from "../modules/estimation/bind";
+import { renderLineageWindow } from "../modules/lineage/bind";
 
 const renderWindow: WindowRenderer = (w) => {
   switch (w.kind) {
@@ -88,7 +90,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "traces-style":
       return <SetStyleWindow kind="traces" setId={Number(w.props?.setId)} />;
     case "striplog":
-      return <StripLogWindow setId={Number(w.props?.setId)} setName={String(w.props?.setName ?? "")} tableHint={(w.props?.tableHint as string | null) ?? null} holeHint={(w.props?.holeHint as string | null) ?? null} />;
+      return <StripLogWindow setId={Number(w.props?.setId)} setName={String(w.props?.setName ?? "")} initial={w.props?.initial as never} tableHint={(w.props?.tableHint as string | null) ?? null} holeHint={(w.props?.holeHint as string | null) ?? null} />;
     case "downhole":
       return <DownholeWindow winId={w.id} setId={Number(w.props?.setId)} form={(w.props?.form as "grade" | "lith" | "event" | undefined) ?? "grade"} chartId={typeof w.props?.chartId === "number" ? w.props.chartId : null} table={(w.props?.table as string | null) ?? null} field={(w.props?.field as string | null) ?? null} focus={(w.props?.focus as string | undefined) ?? null} />;
     case "styles-import":
@@ -112,7 +114,7 @@ const renderWindow: WindowRenderer = (w) => {
     case "model-report":
       return <ReportWindow winId={w.id} {...(w.props as unknown as ReportProps)} />;
     default:
-      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w);
+      return renderSeriesWindow(w) ?? renderLinesWindow(w) ?? renderDataManagerWindow(w) ?? renderCompositesWindow(w) ?? renderChartsWindow(w) ?? renderSwathWindow(w) ?? renderQaqcSetupWindow(w) ?? renderInterceptsWindow(w) ?? renderVariographyWindow(w) ?? renderEstimationWindow(w) ?? renderLineageWindow(w) ?? renderTrendWindow(w) ?? renderFiltersWindow(w) ?? renderReportWindow(w) ?? renderBuildWindow(w) ?? renderExportWindow(w) ?? renderModelWindow(w) ?? renderFieldsWindow(w);
   }
 };
 

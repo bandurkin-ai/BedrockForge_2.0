@@ -2,10 +2,10 @@
 samples by steps of the distance from the contacts of two domains along the holes.
 
     POST /stats/contact  {…the selection of `routes_charts`, set_id, table, field, domain, domain_table, a, b,
-                          distance, step, wireframe_id, holes}
+                          distance, step, wireframe_id, holes, blocks?}
         → {set_id, field, domain, domain_table, domain_outside, wireframe_id, distance, step, weighted, counts,
            contacts, holes, edges[], mean[] (null — no samples), n[], a {label, n, mean}, b {label, n, mean},
-           conventions}
+           conventions, blocks?}
 
 The answer is that of `stats.contact.contact_chart` laid out as the window reads it
 (`ui/src/modules/charts/apiMore.ts`); `docs/progress/e13-api.md` has the exact shape. `field` — as the charts
@@ -22,6 +22,15 @@ by wireframes of `composites` takes it: `jobs_coding.bodies`, `coding.checked_ta
 `b` are not used then (`domain`, `domain_table` — null, `domain_outside` — 0; `counts.no_path` — rows of holes
 without a trajectory). The wireframe is checked before the table is read: 404 `wireframe_not_found`, 422
 `wireframe_open` / `wireframe_orientation` {param: wireframe_id} with the advice to repair it.
+
+`blocks` {model_id, field, status_field?, domain_field?} (Д-28, e18-api §8.5) adds the profile of the blocks at the same
+contact to the answer: `blocks` — `geostat.estimate.contact.blocks_profile` ({model_id, field, distance, step,
+weighted, counts, edges, mean, n, volume, a, b, conventions}; the edges are those of the samples): the mean of
+`field` of the blocks with `status_field` = 0 by the steps of the signed distance of the centre of the block to the
+contact — the closed wireframe of the samples («до каркаса»), else the category field `domain_field` of the model
+(default — `domain`) with the labels `a`, `b`. 404 `block_model_not_found`, `block_field_not_found`; 409
+`block_model_broken`; 422 `bad_param` {param: blocks, domain_field, …}, `field_not_number`, `field_not_category`,
+`variable_grid`, `no_values`.
 
 Errors `{code, message, hint, param?}`: 422 `bad_param` {param: a, b, distance, step, domain, …},
 `field_not_found` / `field_not_number` / `field_not_text` {param}, `no_values`, `too_many_series` (the settings);
@@ -118,15 +127,53 @@ def _to_wireframe(
     return {**head, **out}
 
 
+def _blocks(project: Any, settings: dict[str, Any], blocks: Any, wf: Any) -> dict[str, Any]:
+    """The profile of the blocks at the same contact (Д-28; `estimate.contact.blocks_profile`): the model, the field of
+    the estimate and `status_field` (0 — estimated) of `blocks`; the contact — the wireframe of the samples (`wf`) or
+    the domain field of the model (`blocks.domain_field`, else `domain`) with the same `a`, `b`; the same D and b."""
+    from bf_core.blocks.model import Model
+    from bf_core.charts.kinds import is_id
+    from bf_core.db import dialect
+    from bf_core.geostat.estimate import contact as ec
+    from bf_core.storage.blobs import BlobStore
+
+    from .weighted import StatsError
+
+    if not isinstance(blocks, dict) or not is_id(blocks.get("model_id")):
+        raise ra.bad("blocks", "Блочная модель задаётся номером.", "Выберите блочную модель и поле оценки.")
+    if not isinstance(blocks.get("field"), str) or not blocks["field"]:
+        raise ra.bad("blocks", "Не выбрано поле блочной модели.", "Выберите поле оценки блочной модели.")
+    target = None if wf is None else _target(project, wf)
+    with dialect.read_tx(project.engine) as conn:
+        model = Model.open(conn, BlobStore(project.folder), int(blocks["model_id"]))
+    kw: dict[str, Any] = {"wireframe": target} if target is not None else {
+        "domain_field": blocks.get("domain_field") or settings.get("domain"), "a": settings.get("a"),
+        "b": settings.get("b"),
+    }  # fmt: skip
+    try:
+        return ec.blocks_profile(model, field=blocks["field"], status_field=blocks.get("status_field") or None,
+                                 distance=settings.get("distance"), step=settings.get("step"), threads=THREADS,
+                                 **kw)  # fmt: skip
+    except StatsError as e:
+        raise ra.stats_error(e) from e
+
+
 @rc.register("contact")
 def contact_of(project: Any, settings: dict[str, Any]) -> dict[str, Any]:
+    wf = None if settings.get("wireframe_id") is None else _wireframe(project, settings["wireframe_id"])
+    out = _samples(project, settings, wf)
+    if settings.get("blocks") is not None:
+        out["blocks"] = _blocks(project, settings, settings["blocks"], wf)
+    return out
+
+
+def _samples(project: Any, settings: dict[str, Any], wf: Any) -> dict[str, Any]:
     from . import select, source
     from .contact import contact_chart
     from .routes_more import domain_codes, domain_of, number_field, weight_field_of
 
     flt = select.SampleFilter.from_settings(settings)
     set_id = ra.set_id_of(settings)
-    wf = None if settings.get("wireframe_id") is None else _wireframe(project, settings["wireframe_id"])
     t, infos = rc.table_of(project, set_id, ra.name_of(settings, "table"))
     field = number_field(t, infos, settings, "field")
     weight_field = weight_field_of(t, infos, flt)

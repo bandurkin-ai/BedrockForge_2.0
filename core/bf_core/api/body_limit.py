@@ -1,5 +1,6 @@
 """The size and the depth of the JSON bodies of the routes of charts and statistics (`/api/v1/stats/*`,
-`/api/v1/charts*`; 13.36).
+`/api/v1/charts*`; 13.36), of the estimation (`/api/v1/geostat/estimate*`, `/api/v1/geostat/estimation*`) and of the
+graph of dependencies (`/api/v1/lineage/*`; 18.27б).
 
 Their bodies are the settings of a chart (≤ 64 КБ, `charts.kinds`), a lasso (≤ 1000 vertices) or the rows of a
 selection (≤ 200 000 ids, ≈ 2,6 МБ): more than `BODY_LIMIT` (8 МБ) is 413 `request_too_large` before the body is
@@ -20,7 +21,9 @@ from .errors import error_body
 
 BODY_LIMIT = 8 * 1024 * 1024
 MAX_DEPTH = 64
-LIMITED_PREFIXES = ("/api/v1/stats/", "/api/v1/charts")
+# + the estimation (`/geostat/estimate/*`, `/geostat/estimations`, `/geostat/estimation-plans`), the graph `/lineage/*`
+LIMITED_PREFIXES = ("/api/v1/stats/", "/api/v1/charts", "/api/v1/geostat/estimate", "/api/v1/geostat/estimation",
+                    "/api/v1/lineage")  # fmt: skip
 
 _STRING = re.compile(rb'"(?:[^"\\]|\\.)*"', re.DOTALL)
 _NOT_BRACKETS = bytes(b for b in range(256) if b not in b"[]{}")

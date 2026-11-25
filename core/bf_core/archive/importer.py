@@ -20,6 +20,7 @@ from bf_core.blocks.filters.remap import remap_filters
 from bf_core.db import dialect, migrate
 from bf_core.db.schema import blobs, project_md, project_meta
 from bf_core.geostat.remap import remap_geostat
+from bf_core.ops.provenance import remap_lineage
 from bf_core.ops.provenance import remap_objects as remap_built_records
 from bf_core.projects.lock import ProjectLock
 from bf_core.projects.project import DB_FILE, SUFFIX, folder_name, make_dirs, read_manifest, write_manifest
@@ -270,6 +271,7 @@ def _restore(
     remap_charts(conn, maps.get("objects", {}))  # ids inside the settings of charts (ADR 0019 §2)
     remap_geostat(conn, maps.get("objects", {}), maps.get("dh_tables", {}))  # variogram models (ADR 0022 §12)
     remap_filters(conn, maps.get("objects", {}))  # ids of wireframes in the rules of the filters (ADR 0023 §8)
+    remap_lineage(conn, maps)  # the graph of dependencies (ADR 0025 §11)
     # files: into place and registered (owners came with blob_owners)
     now = dialect.utcnow()
     for sha, tmp in staged.items():

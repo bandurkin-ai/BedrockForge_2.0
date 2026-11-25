@@ -17,8 +17,12 @@ the middle of the sample lies in, `domain_at`); a number is compared by `format(
 The weights (by default DECL_W) only build the table of the normal scores (and are not in the sums of the pairs,
 as GSLIB): a point whose weight is missing or not positive stays in the pairs, is not a row of the table and
 reads its score from it (`no_weight`). The variable of the calculation is the value (`transform: none`) or its
-normal score (`nscore`, `stats/transforms.nscore` with the weights). `sigma2` — its variance with the divisor n
-(BF `v.var()`), 1 for the normal scores; `sigma2_z` — that of the values. The origin — the centre of the extent of
+normal score (`nscore`, `stats/transforms.nscore` with the weights) or the indicator of the threshold t
+(`indicator:<t>`: i = 1 if z ≤ t, else 0 — `indicators`; a point without a value is not a point, never an i = 0;
+ТЗ 8.8.1, ADR 0024 № 85; the weights are not used). `sigma2` — its variance with the divisor n (BF `v.var()`),
+1 for the normal scores, p(1 − p) for the indicator (p — the share of the points with z ≤ t); `sigma2_z` — that
+of the values. An indicator that is the same at every point (t below the minimum or from the maximum up) has no
+variogram: 422 `no_spread`. The origin — the centre of the extent of
 the points — is subtracted before any calculation (8.0.1); `origin` gives it back.
 
 `inputs` — what «устарел» compares (ADR 0022 §12): the tables read {id, name_key, token, rev} and the key of the
@@ -49,7 +53,7 @@ STAGE_NSCORE = "Нормальные оценки"
 class Points:
     xyz: np.ndarray  # float64 [n, 3]: X, Y, Z of the middles less `origin`
     origin: np.ndarray  # float64 [3]
-    values: np.ndarray  # float64 [n]: the variable of the calculation (z or its normal score)
+    values: np.ndarray  # float64 [n]: the variable of the calculation (z, its normal score or its indicator)
     z: np.ndarray  # float64 [n]: the values of the field
     weights: np.ndarray | None  # float64 [n], NaN — no weight; None — no weight field
     hole: np.ndarray  # int32 [n]: dense hole index (into `holes`), ascending
@@ -135,6 +139,12 @@ def _inputs(project: Any, data: spec.Data, cols: Any) -> dict[str, Any]:
             "trajectories": [str(k) for k in st.key[2:]]}  # fmt: skip
 
 
+def indicators(z: np.ndarray, t: float) -> np.ndarray:
+    """The indicator of the threshold `t`: 1.0 where z ≤ t, else 0.0 (float64); a missing z (NaN) stays NaN, no 0."""
+    z = np.asarray(z, dtype=np.float64)
+    return np.where(np.isnan(z), np.nan, (z <= t).astype(np.float64))
+
+
 def _scores(z: np.ndarray, w: np.ndarray | None) -> tuple[np.ndarray, Any]:
     """The normal scores of `z` by the table of the points with a positive weight (all without weights)."""
     from bf_core.stats.transforms import nscore
@@ -199,12 +209,20 @@ def load(project: Any, data: spec.Data, *, tick: Tick | None = None) -> Points:
     if data.transform == "nscore":
         _beat(tick, STAGE_NSCORE)
         values, table = _scores(z, w)
+    elif data.threshold is not None:
+        values = indicators(z, data.threshold)
+        if float(values.min()) == float(values.max()):
+            raise ApiError(422, "no_spread", f"Порог {format(data.threshold, '.15g')} не делит точки: индикатор "
+                           f"везде {int(values[0])}, вариограмма не определена.",
+                           "Выберите порог между наименьшим и наибольшим значением поля.",
+                           {"counts": counts, "threshold": data.threshold})  # fmt: skip
     sigma2_z = float(np.var(z))
     return Points(
         xyz=xyz - origin, origin=origin, values=values, z=z, weights=w, hole=cols.hole_of()[rows],
         holes=list(cols.holes), depth=0.5 * (cols.from_m + cols.to_m)[rows], length=length,
         row_ids=np.asarray(cols.row_ids)[rows], counts=counts,
-        sigma2=1.0 if table is not None else sigma2_z, sigma2_z=sigma2_z, median_length=float(np.median(length)),
+        sigma2=1.0 if table is not None else float(np.var(values)), sigma2_z=sigma2_z,
+        median_length=float(np.median(length)),
         transform=table, inputs=_inputs(project, data, cols),
     )  # fmt: skip
 
@@ -241,9 +259,12 @@ def defaults(project: Any, data: spec.Data) -> dict[str, Any]:
     p = load(project, data)
     with dialect.read_tx(project.engine) as conn:
         has_decl = spec._weights(conn, data.table_id, None) is not None
-    return {"set_id": data.set_id, "table": str(data.table_id), "table_name": data.table_name, "field": data.field,
-            "unit": data.unit, "transform": data.transform, "counts": p.counts, "sigma2": p.sigma2,
-            "sigma2_z": p.sigma2_z, "median_length": p.median_length, "weights": data.weights,
-            "has_decl_w": has_decl, "extent": p.extent(),
-            "defaults": spec.defaults_json(spec.defaults_for(p.median_length)),
-            "ranges": spec.ranges_json()}  # fmt: skip
+    out = {"set_id": data.set_id, "table": str(data.table_id), "table_name": data.table_name, "field": data.field,
+           "unit": data.unit, "transform": data.transform, "counts": p.counts, "sigma2": p.sigma2,
+           "sigma2_z": p.sigma2_z, "median_length": p.median_length, "weights": data.weights,
+           "has_decl_w": has_decl, "extent": p.extent(),
+           "defaults": spec.defaults_json(spec.defaults_for(p.median_length)),
+           "ranges": spec.ranges_json()}  # fmt: skip
+    if data.threshold is not None:  # the share of the points with z ≤ t (σ² = p(1 − p))
+        out["indicator"] = {"threshold": data.threshold, "p": float(np.mean(p.values))}
+    return out
