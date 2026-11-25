@@ -23,7 +23,7 @@ import { readReport, refusalOf, type ReportBody, type ReportResult } from "../sr
 import { bindReport, cancelReport, openReportWindow, renderReportWindow, windowOfReport } from "../src/modules/blocks/report/bind";
 import { commands, REPORT_BUTTONS } from "../src/modules/blocks/report/commands";
 import { copyCsv, saveCsv } from "../src/modules/blocks/report/csvOut";
-import { csvName, excludedLines, gapCell, gradeCell, gradeNames, groupsOf, metalCell, NO_VALUE, summaryText } from "../src/modules/blocks/report/format";
+import { csvName, excludedLines, fmt, gapCell, gradeCell, gradeNames, groupsOf, metalCell, NO_VALUE, summaryText } from "../src/modules/blocks/report/format";
 import { ReportTable, ResultView } from "../src/modules/blocks/report/ResultView";
 import { ReportWindow } from "../src/modules/blocks/report/ReportWindow";
 import {
@@ -44,6 +44,7 @@ import {
   resetReport,
   type ReportForm,
 } from "../src/modules/blocks/report/state";
+import { parseNumbers } from "../src/modules/blocks/build/forms";
 import type { BlockModelInfo } from "../src/modules/blocks/api";
 
 const A = JSON.parse(readFileSync(resolve(__dirname, "../../core/tests/data/blocks/report_window_answers.json"), "utf-8"));
@@ -160,6 +161,15 @@ describe("the request of the form is the body the core got", () => {
     expect(parseCutoffs("0,\n1")).toEqual({ ok: true, values: [0, 1] });
     expect(parseCutoffs("1 000; 2 500,5")).toEqual({ ok: true, values: [1000, 2500.5] });
     expect(parseCutoffs("0,5")).toEqual({ ok: true, values: [0.5] });
+    // «1 000» without «;» is digit groups or a list: not guessed (never [1, 0]), «;» tells
+    for (const text of ["1 000", "2 500 000,5"]) {
+      const g = parseCutoffs(text);
+      expect(g.ok, text).toBe(false);
+      if (!g.ok) expect(g.message + g.hint).toMatch(/«;»/);
+    }
+    expect(parseCutoffs("0 100 200")).toEqual({ ok: true, values: [0, 100, 200] });
+    expect(parseNumbers("1 000")).toBeNull();
+    expect(parseNumbers("10; 10; 5")).toEqual([10, 10, 5]);
     for (const bad of ["", "  ", "0; a", "1,2,3"]) {
       const r = parseCutoffs(bad);
       expect(r.ok, bad).toBe(false);
@@ -245,6 +255,18 @@ describe("the result of the core is read as it was written", () => {
     expect(resultOf("filtered").curve).toBeNull();
     expect(resultOf("density_field").density).toEqual({ field: "DENSITY", value: null });
     expect(resultOf("groups").density).toEqual({ field: null, value: 2.7 });
+  });
+
+  it("a tonnes value that is missing in the curve stays a gap (never 0); a tiny value is not shown as 0", () => {
+    const curve = { field: "AU", unit: null, cutoffs: [0, 1, 2], tonnes: [5, null, 1], grade: [1, 2, 3], metal: [null, null, null], metal_unit: null };
+    const r = readReport({ model_id: 1, rows: [], curve })!;
+    expect(r.curve!.tonnes).toEqual([5, null, 1]);
+    const html = renderToStaticMarkup(createElement(GradeTonnageChart, { curve: r.curve!, right: "grade" }));
+    expect(html).toContain('data-series="tonnes"');
+    expect(fmt(0)).toBe("0");
+    expect(fmt(0.00002)).toBe("2,00e-5");
+    expect(fmt(-0.00002)).toBe("-2,00e-5");
+    expect(fmt(0.0003)).toBe("0,0003");
   });
 
   it("an answer that is not a report is not read (no rows, a row without numbers)", () => {
@@ -345,7 +367,7 @@ describe("the curve", () => {
 
   it("the chart of the real curve: the tonnes fall, every grade point is drawn, a missing one is not", () => {
     const real = resultOf("defaults").curve!;
-    expect(real.tonnes[0]).toBeGreaterThan(real.tonnes[real.tonnes.length - 1]); // above a higher cut-off — less
+    expect(real.tonnes[0]!).toBeGreaterThan(real.tonnes[real.tonnes.length - 1]!); // above a higher cut-off — less
     const html = renderToStaticMarkup(createElement(GradeTonnageChart, { curve: real, right: "grade", marks: [2, 3, 5, 100] }));
     expect(html).toContain('data-series="tonnes"');
     expect(html).toContain('data-series="grade"');
@@ -529,6 +551,19 @@ describe("the command `blocks.report`", () => {
     const gone = await app.registry.execute("blocks.report", { model_id: 999 }, "claude");
     expect(gone.result).toBe("Блочная модель №999 не найдена. Номера моделей — в разделе «Блочные модели» дерева.");
     expect(reports()).toEqual([]);
+  });
+
+  it("a refusal of a stale run (the window was reset meanwhile) does not mark the form of the new state", async () => {
+    let release: (r: Response) => void = () => undefined;
+    const pending = new Promise<Response>((res) => (release = res));
+    answerFor = () => pending as unknown as Response;
+    const run = app.registry.execute("blocks.report", { model_id: IDS.model, curve: 0 }, "claude");
+    await vi.waitFor(() => expect(currentRun().phase).toBe("running"));
+    resetReport();
+    release(json(A.refused.grade_missing.body, 404));
+    const r = await run;
+    expect(r.ok).toBe(false);
+    expect(reportStore.get().issue).toBeNull();
   });
 
   it("the job that is cancelled leaves nothing: «Отменить» → the job is cancelled, the run is told so", async () => {

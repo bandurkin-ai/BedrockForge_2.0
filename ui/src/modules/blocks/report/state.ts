@@ -182,12 +182,16 @@ export function parseDecimal(text: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** «1 000», «2 500 000,5»: spaces as digit groups — told apart from a list «1 000» only by «;», so a list of this shape is not guessed. */
+export const looksGrouped = (text: string): boolean => /^[1-9]\d{0,2}(?: \d{3})+(?:[.,]\d+)?$/.test(text.trim());
+
 /**
  * «0; 0,5; 1» → [0, 0.5, 1]. The cut-offs are parted by «;», a new line or spaces (a decimal comma is a number);
  * a comma after a number («0, 1») is dropped. 1–200 numbers.
  */
 export function parseCutoffs(text: string): { ok: true; values: number[] } | { ok: false; message: string; hint: string } {
   let parts = text.split(/[;\n]+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length === 1 && looksGrouped(parts[0])) return { ok: false, message: `«${parts[0]}» — одно число или несколько?`, hint: "Пробел между разрядами и пробел между бортами не отличить: разделите борта знаком «;», например 1000; 2500." };
   if (parts.length === 1 && /\s/.test(parts[0])) parts = parts[0].split(/\s+/);
   const values: number[] = [];
   for (const p of parts) {

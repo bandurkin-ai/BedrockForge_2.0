@@ -87,8 +87,7 @@ export async function runReport(app: App, a: Args, source: CommandSource): Promi
   if (win) updateWindow(win, { title: reportTitle(model.name) });
   const seq = beginRun(got.modelId, model.name);
   const fail = (r: Refusal): never => {
-    patchRun(seq, { phase: "failed", error: r });
-    setIssue(issueOfRefusal(r, currentForm()));
+    if (patchRun(seq, { phase: "failed", error: r })) setIssue(issueOfRefusal(r, currentForm())); // a stale run does not mark the form of the new one
     throw asError(r);
   };
   const uid = projectStore.get().current?.uid ?? null;
