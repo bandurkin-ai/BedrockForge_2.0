@@ -79,8 +79,8 @@ export async function meanPlane(wireframeIds: number[]): Promise<Plane> {
 
 // ---- the preview of «Истинная мощность» ----
 
-/** TT_SRC (ADR 0021 §4): the seven texts of the core, in the order the window counts them. */
-export const TT_SOURCES = ["глобальная", "домен", "каркас: пересечение", "каркас: ближайшая", "керн: замер", "керн: ближайший", "нет"] as const;
+/** TT_SRC (ADR 0021 §4; «тренд» — Э19, вопрос № 57): the eight texts of the core (`orient.SRC_LABELS`), in the order the window counts them («нет» last). */
+export const TT_SOURCES = ["глобальная", "домен", "каркас: пересечение", "каркас: ближайшая", "керн: замер", "керн: ближайший", "тренд", "нет"] as const;
 
 /** TT_FLAG bits (ADR 0021 §4). */
 export const FLAG_BITS: readonly { bit: number; title: string; hint: string }[] = [

@@ -152,7 +152,7 @@ describe("the form of a trend", () => {
     expect(bodyOfArgs({ ang1: 360, ang2: "-3", ratios: "0,3; 0,07", color: "#F46A1A", origin: "ellipsoid" })).toEqual({ body: { ang1: 0, ang2: -3, ratios: [1, 0.3, 0.07], color: "#f46a1a", origin: { type: "ellipsoid" } } });
     expect(bodyOfArgs({ model_id: 3, structure: 2, size: 75 })).toEqual({ body: { model_id: 3, structure: 2, size: 75 } });
     expect(bodyOfArgs({ structure: 2 })).toMatchObject({ param: "structure" });
-    expect(bodyOfArgs({ kind: "structural", ang1: 0 })).toMatchObject({ param: "kind", error: expect.stringMatching(/позже/) });
+    expect(bodyOfArgs({ kind: "structural", ang1: 0 })).toMatchObject({ param: "kind", error: expect.stringMatching(/источником/) });
     expect(bodyOfArgs({ ang2: 91 })).toMatchObject({ param: "ang2" });
     expect(bodyOfArgs({ size: 1e8 })).toMatchObject({ param: "size" });
   });

@@ -67,6 +67,7 @@ export function sourceText(s: unknown): string {
     return `${title}: ${by}; кодов ${n}`;
   }
   if (src === "mesh") return `${title}: каркасы ${ids(o.wireframe_ids)}; d_max ${num(o.d_max, " м")}, r_n ${num(o.r_n, " м")}`;
+  if (src === "trend") return `${title}: тренд ${quoted(o.trend)}${typeof o.trend_id === "number" ? ` (№${o.trend_id})` : ""}`;
   if (src === "core") return `${title}: α_к ${quoted(o.alpha)}, β_к ${quoted(o.beta)}, линия ${o.line === "toh" ? "TOH" : "BOH"}, d_к ${num(o.d_core, " м")}`;
   return title || "—";
 }
@@ -172,6 +173,16 @@ const REPORT_SKIP = new Set(["written", "table_columns", "seconds", "versions", 
 
 const sourceTitle = (s: unknown): string => SOURCE_TITLES[String(s) as OrientSource] ?? String(s);
 
+/** The report of the source «тренд» (`report.sources[k]`: {source, rows, trend, no_position, nearest}): the trend, the rows without a position
+ * (no trajectory, no depth — TT_FLAG has the bit), the rows that took the nearest measurement (a structural trend with no measurement in R_тр). */
+export function trendFacts(o: Record<string, unknown>): Fact[] {
+  const out: Fact[] = [];
+  if (typeof o.trend === "string" && o.trend) out.push({ label: "Источник «тренд»: тренд", value: o.trend });
+  if (typeof o.no_position === "number") out.push({ label: "Источник «тренд»: строк без положения", value: num(o.no_position) });
+  if (typeof o.nearest === "number") out.push({ label: "Источник «тренд»: взят ближайший замер (нет замеров в R_тр)", value: num(o.nearest) });
+  return out;
+}
+
 /**
  * The summary of a result of Э15: rows by TT_SRC and by the bits of TT_FLAG (`report.counts {src, flags}` or the
  * same keys at the top — the form of the preview), then the numbers of the report with Russian names, the rows by
@@ -201,6 +212,7 @@ export function interceptReportFacts(r: ResultRow): Fact[] {
     for (const s of rep.sources as unknown[]) {
       const o = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
       if (o.source !== undefined) out.push({ label: `Строк по источнику «${sourceTitle(o.source)}»`, value: num(o.rows) });
+      if (o.source === "trend") out.push(...trendFacts(o));
     }
   if (Array.isArray(rep.absent) && rep.absent.length) out.push({ label: "Источников не было", value: rep.absent.map(sourceTitle).join(", ") });
   return out;
