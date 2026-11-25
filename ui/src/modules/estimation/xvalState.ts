@@ -62,6 +62,9 @@ export const xvalStore = new Store<XvalState>(IDLE_XVAL);
 
 let seq = 0;
 
+/** The rows of the table are put in the store once per this number of pages while it is read (the progress is told at every page). */
+export const FLUSH_PAGES = 5;
+
 const metaOf = (p: XvalPage): XvalMeta => ({ by: p.by, at: p.at, stale: p.stale, total: p.total, summary: p.summary, histogram: p.histogram });
 
 /** The rows of the table are fewer than the core has (the cap `ROWS_MAX`). */
@@ -99,12 +102,18 @@ export async function loadXval(): Promise<void> {
     let rows = first.rows;
     const of = Math.min(first.pages, Math.ceil(ROWS_MAX / PAGE_MAX));
     xvalStore.set({ phase: "ready", meta: metaOf(first), rows, tablePage: 1, reading: of > 1 ? { done: 1, of } : null, note: null });
+    let fresh: XvalRow[][] = [];
     for (let p = 2; p <= of; p++) {
       const next = await loadXvalPage(id, p, PAGE_MAX);
       if (!live()) return;
       if (next.at !== first.at) return void (await loadXval()); // calculated again while it was read
-      rows = rows.concat(next.rows);
-      xvalStore.set({ rows, reading: p < of ? { done: p, of } : null });
+      fresh.push(next.rows);
+      // the progress is told at every page, the rows only every few pages and at the end: a new table is sorted and scattered again
+      if (p === of || (p - 1) % FLUSH_PAGES === 0) {
+        rows = rows.concat(...fresh);
+        fresh = [];
+        xvalStore.set({ rows, reading: p < of ? { done: p, of } : null });
+      } else xvalStore.set({ reading: { done: p, of } });
     }
     xvalStore.set({ reading: null });
     if (errorsShown()) refresh3d();

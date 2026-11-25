@@ -76,6 +76,21 @@ describe("the states follow the project", () => {
     expect(asked()[1].body.nodes).toEqual([node(2)]);
     stop();
   });
+  it("`version` (the panels read impact and origin again by it) moves only when a state really changed", async () => {
+    const stop = watch([node(2)]);
+    await waitFor(() => statusOf(node(2)) !== undefined);
+    const v0 = lineageStore.get().version;
+    await refreshAll(); // the core tells the same
+    await refreshAll();
+    expect(lineageStore.get().version).toBe(v0);
+    put({ ...statusOf(node(2))! }); // the same state told again
+    expect(lineageStore.get().version).toBe(v0);
+    core.world.status = "status_stale";
+    await refreshAll();
+    expect(statusOf(node(2))!.state).toBe("stale");
+    expect(lineageStore.get().version).toBe(v0 + 1);
+    stop();
+  });
   it("nothing watched — nothing asked after an event", async () => {
     handleCoreEvent("objects.changed");
     await tick(REFRESH_MS * 2);

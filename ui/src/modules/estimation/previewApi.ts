@@ -4,7 +4,7 @@
  * the run, ≈ 20 ms. The answer: the estimate and the other output values, the status, the passes tried, the samples of the
  * neighbourhood with their weights λ and the reason each is in or out, the ellipsoid of the pass that gave the estimate. No React.
  */
-import { api } from "../../shell/api";
+import { api, CoreError } from "../../shell/api";
 import { GEOSTAT_API, isNum, numOrNull, obj, str, type Triple } from "./api";
 
 const triple = (v: unknown): Triple | null => (Array.isArray(v) && v.length === 3 && v.every(isNum) ? ([v[0], v[1], v[2]] as Triple) : null);
@@ -65,12 +65,24 @@ export interface PreviewAnswer {
   counts: { candidates: number; selected: number };
 }
 
+/** An answer the core could not have given: told in words with its hint (a gap is never turned into 0 — 8.0.1). */
+const bad = (): CoreError => new CoreError(0, "bad_answer", "Ядро ответило предпросмотру блока в непонятном виде.", "Повторите показ блока. Если ошибка повторяется — перезапустите ядро и сообщите разработчику.");
+
+/** The ellipsoid of the pass; null when the angles or the ranges are not numbers (nothing is drawn, nothing invented). */
+function readEllipsoid(e: Record<string, unknown>): PreviewEllipsoid | null {
+  const nums = [e.ang1, e.ang2, e.ang3, e.r1, e.r2, e.r3, e.pass];
+  if (!nums.every(isNum)) return null;
+  const [ang1, ang2, ang3, r1, r2, r3, pass] = nums as number[];
+  return { centre: triple(e.centre), ang1, ang2, ang3, r1, r2, r3, pass };
+}
+
 function readSample(raw: unknown): PreviewSample {
   const o = obj(raw);
+  if (!isNum(o.i)) throw bad();
   return {
-    i: Number(o.i ?? 0),
+    i: o.i,
     row_id: numOrNull(o.row_id),
-    hole: String(o.hole ?? ""),
+    hole: str(o.hole) ?? "",
     from: numOrNull(o.from),
     to: numOrNull(o.to),
     xyz: triple(o.xyz),
@@ -80,7 +92,7 @@ function readSample(raw: unknown): PreviewSample {
     dist: numOrNull(o.dist),
     octant: numOrNull(o.octant),
     lambda: numOrNull(o.lambda),
-    reason: String(o.reason ?? ""),
+    reason: str(o.reason) ?? "",
   };
 }
 
@@ -89,23 +101,26 @@ export function readPreview(raw: unknown): PreviewAnswer {
   const at = obj(o.at);
   const e = obj(o.ellipsoid);
   const c = obj(o.counts);
+  const status = numOrNull(o.status);
+  if (!isNum(at.row) || !isNum(at.p) || status === null || !isNum(c.candidates) || !isNum(c.selected)) throw bad();
   return {
-    at: { row: Number(at.row ?? 0), p: Number(at.p ?? 0), ijk: triple(at.ijk) },
+    at: { row: at.row, p: at.p, ijk: triple(at.ijk) },
     centre: triple(o.centre),
     size: triple(o.size),
     label: str(o.label),
-    status: numOrNull(o.status) ?? 0,
+    status,
     pass: numOrNull(o.pass),
     values: Object.fromEntries(Object.entries(obj(o.values)).map(([k, v]) => [k, numOrNull(v)])),
     mu: numOrNull(o.mu),
     samples: (Array.isArray(o.samples) ? o.samples : []).map(readSample),
-    ellipsoid: Object.keys(e).length ? { centre: triple(e.centre), ang1: Number(e.ang1 ?? 0), ang2: Number(e.ang2 ?? 0), ang3: Number(e.ang3 ?? 0), r1: Number(e.r1 ?? 0), r2: Number(e.r2 ?? 0), r3: Number(e.r3 ?? 0), pass: Number(e.pass ?? 1) } : null,
+    ellipsoid: readEllipsoid(e),
     passes: (Array.isArray(o.passes) ? o.passes : []).map((p) => {
       const x = obj(p);
-      return { pass: Number(x.pass ?? 0), ok: x.ok === true, n: Number(x.n ?? 0), reason: x.reason === "few" || x.reason === "singular" ? x.reason : null };
+      if (!isNum(x.pass) || !isNum(x.n)) throw bad();
+      return { pass: x.pass, ok: x.ok === true, n: x.n, reason: x.reason === "few" || x.reason === "singular" ? x.reason : null };
     }),
     origin: triple(o.origin),
-    counts: { candidates: Number(c.candidates ?? 0), selected: Number(c.selected ?? 0) },
+    counts: { candidates: c.candidates, selected: c.selected },
   };
 }
 

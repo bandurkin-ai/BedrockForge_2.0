@@ -24,6 +24,7 @@ import { SegmentsLayer } from "./inspect/layer";
 import { COLORS } from "./inspect/view";
 import { buildBox, buildProbes, previewSceneStore, viewOf, type BoxBuild, type Pose, type PreviewView } from "./preview";
 import { formWindowOpen } from "./previewWindows";
+import { watchSelected } from "./watch";
 import { wizardStore } from "./wizardState";
 
 export const ELLIPSOID_KEY = "estimate:ellipsoid";
@@ -97,7 +98,7 @@ export class PreviewScene {
 
   constructor(private readonly scene: Scene) {
     const sync = () => this.sync();
-    this.stops.push(previewSceneStore.subscribe(sync), wizardStore.subscribe(sync), windowStore.subscribe(sync), scene.onRestored(() => this.restore()));
+    this.stops.push(previewSceneStore.subscribe(sync), wizardStore.subscribe(sync), watchSelected(windowStore, formWindowOpen, sync), scene.onRestored(() => this.restore()));
     this.sync();
   }
 

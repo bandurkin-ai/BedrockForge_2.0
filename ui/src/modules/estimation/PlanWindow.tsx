@@ -14,11 +14,12 @@ import { cancelJob, jobsStore } from "../jobs/state";
 import { useSel } from "./hooks";
 import { PlanLog } from "./PlanLog";
 import { PlanRows } from "./PlanRows";
-import { choosePlan, chooseModel, confirmDiscard, plansOfModel, planModels, planStore, rereadPlan, runArgsPicked, runArgsPlan, savePlan, setPlanName } from "./planState";
+import { choosePlan, chooseModel, confirmDiscard, plansOfModel, planModels, planStore, rereadPlan, runArgsPicked, runArgsPlan, setPlanName } from "./planState";
 import { runReason } from "./planView";
 import mod from "./PlanWindow.module.css";
 import { estimationStore, rowById } from "./state";
 import { runStore } from "./runState";
+import { savePlanByCommand } from "./saveCommands";
 
 export function PlanWindow({ winId }: { winId: string }) {
   const app = useApp();
@@ -48,7 +49,7 @@ export function PlanWindow({ winId }: { winId: string }) {
   }, [winId]);
 
   const go = (fn: () => void) => void confirmDiscard().then((ok) => ok && fn());
-  const save = (asNew: boolean) => void savePlan({ asNew }).catch(() => undefined); // a refusal stands under the bar
+  const save = (asNew: boolean) => void savePlanByCommand(app, asNew); // the command `estimate.plan_save`; a refusal stands under the bar
   const start = (args: Record<string, unknown> | null) => args && void app.run("estimate.run", args).catch(() => undefined);
   const conflict = s.issue?.reread ? s.issue : null;
   const defaultName = model ? `План · ${model.name}` : "План оценки";

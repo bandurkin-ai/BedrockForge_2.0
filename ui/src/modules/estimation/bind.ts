@@ -5,7 +5,8 @@
  * (`state.ts`); another project — a clean wizard. «Выполнить» asks «Заменить поля …?» when the core says `field_exists` and waits
  * for the job to its end (the stages are in «Задания»; the journal of the result is kept for the window «План оценки», `runState.ts`).
  * `estimate.plan` opens that window (a plan or a model), `estimate.plan_delete` deletes a plan, `estimate.run` without arguments
- * opens it too. One app at a time (the tests create several). The windows of the verification and the inspector bind their
+ * opens it too. `estimate.save` and `estimate.plan_save` write a row and a plan: the buttons of the wizard, of «Параметры оценки» and of the
+ * plan window run these commands (the registry, the log, the keys, the assistant), they end in `saveWizard` and `writePlan`. One app at a time (the tests create several). The windows of the verification and the inspector bind their
  * commands themselves (18.23–18.25, 18.Д4); `estimate.ellipsoid` is bound by `previewBind.ts` (18.21).
  */
 import { createElement, type ReactNode } from "react";
@@ -24,12 +25,12 @@ import { formOfArgs } from "./form";
 import { PARAMS_TITLE, PARAMS_WINDOW, ParamsWindow } from "./ParamsWindow";
 import { PlanWindow } from "./PlanWindow";
 import { bindPreview } from "./previewBind";
-import { choosePlan, chooseModel as choosePlanModel, confirmDiscard, deletePlan, pickModel, planById, planStore, PLAN_TITLE, PLAN_WINDOW, resetPlan, syncPlan } from "./planState";
+import { choosePlan, chooseModel as choosePlanModel, confirmDiscard, deletePlan, pickModel, planById, planStore, PLAN_TITLE, PLAN_WINDOW, resetPlan, syncPlan, writePlan } from "./planState";
 import { bindChecks, renderCheckWindow } from "./checksBind";
 import { bindInspect, renderInspectWindow } from "./inspect/bind";
 import { runBegin, runCancelled, runDone, runFailed, runJob, runReset } from "./runState";
 import { clearEstimations, deleteEstimation, estimableModels, estimationStore, isEstimationEvent, loadRows, rowById } from "./state";
-import { loadVariogramModels, putForm, resetWizard, setStep, startEdit, TITLE, WIZARD_WINDOW, wizardStore } from "./wizardState";
+import { loadVariogramModels, putForm, resetWizard, saveWizard, setStep, startEdit, TITLE, WIZARD_WINDOW, wizardStore } from "./wizardState";
 import { Wizard } from "./Wizard";
 import { bindXval, renderXvalWindow } from "./xvalBind";
 
@@ -190,6 +191,31 @@ export async function runDelete(a: Record<string, unknown>, source: CommandSourc
   }
 }
 
+// ---- the save of a row and of a plan (the buttons of the windows run these commands) ----
+
+/** `estimate.save {id?, as_new?}`: the form of the wizard or of «Параметры оценки» is written as a row (the same `saveWizard` as the buttons use). */
+export async function runSave(a: Record<string, unknown>): Promise<string> {
+  const s = wizardStore.get();
+  if (!wizardWindow() && !paramsWindow()) throw refusal("no_wizard", "Нет открытой формы оценки: сохранять нечего.", "Откройте мастер «Оценка содержаний» или окно «Параметры оценки».");
+  if (typeof a.id === "number" && a.id !== s.editing?.id) throw refusal("bad_param", `В форме открыта не строка №${a.id}.`, "Откройте строку командой «Параметры оценки» с этим id или уберите id: форма сохранится по своим правилам.");
+  const saved = await saveWizard({ asNew: a.as_new === true });
+  return `Сохранено: «${saved.name}», версия ${saved.version}`;
+}
+
+/** `estimate.plan_save {id?, model_id?, name?, items?, as_new?}`: a plan is written (the same `writePlan` as the buttons of the window use). */
+export async function runPlanSave(a: Record<string, unknown>): Promise<string> {
+  const id = typeof a.id === "number" ? a.id : null;
+  const plan = id === null ? null : (planById(id) ?? null);
+  if (id !== null && !plan && estimationStore.get().loaded) throw refusal("plan_not_found", `План оценки №${id} не найден.`, "Номера планов — в окне «План оценки».");
+  const modelId = typeof a.model_id === "number" ? a.model_id : (plan?.model_id ?? null);
+  if (modelId === null) throw refusal("bad_param", "Блочная модель не выбрана.", "Передайте model_id: номера моделей — в разделе «Блочные модели» дерева.");
+  if (!blockById(modelId) && blocksStore.get().loaded) throw refusal("block_model_not_found", `Блочная модель №${modelId} не найдена.`, "Номера моделей — в разделе «Блочные модели» дерева.");
+  const items = a.items === undefined ? null : idsOf(a.items);
+  if (items?.some((n) => !Number.isInteger(n) || n < 1)) throw refusal("bad_param", "Номера строк плана: нужны целые числа.", "Перечислите номера через «;», например 41; 42.");
+  const saved = await writePlan({ id, modelId, name: typeof a.name === "string" ? a.name : "", items, asNew: a.as_new === true });
+  return `План «${saved.name}» сохранён (№${saved.id}, версия ${saved.version})`;
+}
+
 // ---- the window «Параметры оценки» ----
 
 /** The window of the parameters of a row, if open. */
@@ -273,6 +299,8 @@ export function bindEstimation(app: App): void {
   // without a plan or rows `estimate.run` is the window where they are chosen (§12: a command without parameters opens its window)
   app.registry.bind("estimate.run", noted(app, (a, s) => (a.plan_id === undefined && a.estimation_ids === undefined ? openPlan(app, a, s) : runEstimate(a))), needWritable(app));
   app.registry.bind("estimate.delete", noted(app, (a, s) => runDelete(a, s)), needWritable(app));
+  app.registry.bind("estimate.save", noted(app, (a) => runSave(a)), needWritable(app));
+  app.registry.bind("estimate.plan_save", noted(app, (a) => runPlanSave(a)), needWritable(app));
   app.registry.bind("estimate.params", noted(app, (a, s) => openParams(a, s)), needProject);
   app.registry.bind("estimate.plan", noted(app, (a, s) => openPlan(app, a, s)), needProject);
   app.registry.bind("estimate.plan_delete", noted(app, (a, s) => runPlanDelete(a, s)), needWritable(app));

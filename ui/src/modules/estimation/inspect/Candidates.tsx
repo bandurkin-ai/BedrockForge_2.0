@@ -7,9 +7,10 @@ import css from "../../../shell/PropsParts.module.css";
 import type { Candidate, InspectResult } from "./api";
 import mod from "./Inspect.module.css";
 import { pick, setReason, sortBy, type InspectState } from "./state";
-import { COLUMNS, countsText, dash, intervalText, isSelected, numText, reasonOptions, shownCandidates, sortMark, weightClass } from "./view";
+import { COLUMNS, countsText, dash, intervalText, isSelected, numText, reasonOptions, shownCandidates, sortMark, takenSet, unsolvedNote, weightClass } from "./view";
 
-const cell = (c: Candidate, key: (typeof COLUMNS)[number]["key"]): string => {
+/** `unsolved` — the note of a row whose system was not solved (STATUS 2, 3): a probe «выбрана» of it has no weight, the table says why. */
+const cell = (c: Candidate, key: (typeof COLUMNS)[number]["key"], unsolved: string | null = null): string => {
   switch (key) {
     case "hole":
       return c.hole;
@@ -27,8 +28,10 @@ const cell = (c: Candidate, key: (typeof COLUMNS)[number]["key"]): string => {
       return numText(c.z, 4);
     case "lambda":
       return numText(c.lambda, 5);
-    default:
-      return c.merged > 1 ? `${c.reason_label} (проб слито: ${c.merged})` : c.reason_label;
+    default: {
+      const label = unsolved && c.lambda === null && c.reason === "selected" ? `${c.reason_label}, но ${unsolved}` : c.reason_label;
+      return c.merged > 1 ? `${label} (проб слито: ${c.merged})` : label;
+    }
   }
 };
 
@@ -37,6 +40,8 @@ export function Candidates({ result, state, onInterval }: { result: InspectResul
   // a filter of a reason this row does not have is no filter (the tab changed)
   const reason = state.reason !== null && options.some((o) => o.code === state.reason) ? state.reason : null;
   const rows = shownCandidates(result.candidates, reason, state.sort);
+  const taken = takenSet(result);
+  const unsolved = unsolvedNote(result);
   return (
     <section className={mod.block} data-testid="inspect-candidates">
       <h3>Пробы в эллипсоиде последнего прохода</h3>
@@ -78,12 +83,12 @@ export function Candidates({ result, state, onInterval }: { result: InspectResul
             </thead>
             <tbody>
               {rows.map((c) => (
-                <tr key={c.i} data-testid={`inspect-row-${c.i}`} data-reason={c.reason} data-selected={isSelected(c)} data-picked={state.picked === c.i} tabIndex={0} onClick={() => pick(c.i)} onDoubleClick={() => onInterval(c)} onKeyDown={(e) => e.key === "Enter" && pick(c.i)}>
+                <tr key={c.i} data-testid={`inspect-row-${c.i}`} data-reason={c.reason} data-selected={isSelected(c, taken)} data-picked={state.picked === c.i} tabIndex={0} onClick={() => pick(c.i)} onDoubleClick={() => onInterval(c)} onKeyDown={(e) => e.key === "Enter" && pick(c.i)}>
                   {COLUMNS.map((col) => {
                     const w = col.key === "lambda" ? weightClass(c.lambda) : null;
                     return (
                       <td key={col.key} className={`${col.numeric ? mod.num : ""} ${w === "negative" ? mod.negative : ""}`.trim() || undefined} data-weight={w ?? undefined}>
-                        {cell(c, col.key)}
+                        {cell(c, col.key, unsolved)}
                       </td>
                     );
                   })}

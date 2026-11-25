@@ -14,7 +14,7 @@ import { Candidates } from "./Candidates";
 import mod from "./Inspect.module.css";
 import { openInterval } from "./interval";
 import { activeResult, inspectStore, reinspect, setActive, setNote, setShow, failText } from "./state";
-import { blockTitle, COLORS, compareText, dash, numText, pointText, snapshotText, tabLabel, valueRows, weightSums } from "./view";
+import { blockTitle, CLICK_HINT, COLORS, compareText, dash, numText, pointText, snapshotText, solved, subText, tabLabel, unsolvedNote, valueRows, weightSums } from "./view";
 
 /** The snapshot to the clipboard; the note says whether it got there. */
 export async function copySnapshot(): Promise<string> {
@@ -56,7 +56,8 @@ function Values({ r }: { r: InspectResult }) {
 
 function Passes({ r }: { r: InspectResult }) {
   const e = r.ellipsoid;
-  const sums = weightSums(r.candidates.filter((c) => c.reason === "selected"));
+  // the weights of every probe taken (`selected` and `hy_capped` — the one cut to t has a λ too); the others have none
+  const sums = weightSums(r.candidates);
   return (
     <section className={mod.block} data-testid="inspect-passes">
       <h3>Проходы поиска</h3>
@@ -163,7 +164,7 @@ export function InspectWindow({ winId }: { winId: string }) {
           </dl>
         ) : (
           <p className={css.note} data-testid="inspect-empty">
-            {s.loading ? "Блок проверяется…" : "Щёлкните блок модели в 3D или выполните «Инспектор блока»."}
+            {s.loading ? "Блок проверяется…" : CLICK_HINT}
           </p>
         )}
         <div className={mod.actions}>
@@ -222,9 +223,18 @@ export function InspectWindow({ winId }: { winId: string }) {
                 Домен <b>{r.domain.label ?? dash}</b>
                 {r.domain.row_label && r.domain.row_label !== r.domain.label ? `, блок: ${r.domain.row_label}` : ""}
               </span>
-              <span>
-                Проб в системе <b>{r.counts.selected}</b> из {r.counts.candidates}
+              <span data-testid="inspect-system" data-solved={String(solved(r))}>
+                {solved(r) ? (
+                  <>
+                    Проб в системе <b>{r.counts.selected}</b> из {r.counts.candidates}
+                  </>
+                ) : (
+                  <>
+                    Проб в системе <b>нет</b>: {unsolvedNote(r)}; кандидатов {r.counts.candidates}
+                  </>
+                )}
               </span>
+              {subText(r.sub) && <span data-testid="inspect-sub">Субблоки: {subText(r.sub)}</span>}
               {r.soft_dist !== null && r.soft_dist > 0 && <span>Мягкая граница d_м = {numText(r.soft_dist, 2)} м</span>}
             </p>
             {r.stale_reason && r.warning === null && (

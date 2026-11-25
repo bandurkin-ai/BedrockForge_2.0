@@ -15,7 +15,8 @@ import { LineageProps } from "../../src/modules/lineage/LineageProps";
 import { OriginView, shortFp } from "../../src/modules/lineage/OriginPanel";
 import { planLines, skippedLines } from "../../src/modules/lineage/rebuild";
 import { lineageStore } from "../../src/modules/lineage/state";
-import { installCore, newApp, R, S, teardown, type Core } from "./harness";
+import { dialogStore } from "../../src/shell/dialogs";
+import { answerDialog, installCore, newApp, R, S, teardown, waitFor, type Core } from "./harness";
 
 let app: App;
 let core: Core;
@@ -214,8 +215,30 @@ describe("the steps of the window", () => {
     const plan = (await planPhase(stub(2))) as Extract<Phase, { t: "plan" }>;
     const shown: Phase[] = [];
     const end = await runPhase(app, stub(2), plan.plan, false, (p) => shown.push(p));
-    expect(shown.map((p) => p.t === "running" && p.text)).toEqual(["Запуск…", "Задание №5 запущено: ход — во вкладке «Задания»."]);
+    expect(shown.map((p) => p.t === "running" && p.text)).toEqual(["Запуск… ход — во вкладке «Задания»."]);
     expect(end).toEqual({ t: "end", ok: true, text: "Перестроено объектов: 5." });
+  });
+  it("the run goes through the command `lineage.rebuild` of the registry: in its log, no second question about the plan", async () => {
+    const plan = (await planPhase(stub(2))) as Extract<Phase, { t: "plan" }>;
+    const end = await runPhase(app, stub(2), plan.plan, false, () => undefined);
+    expect(end).toMatchObject({ t: "end", ok: true });
+    const entry = app.registry.entries().find((e) => e.commandId === "lineage.rebuild");
+    expect(entry).toMatchObject({ source: "user", ok: true, args: { kind: "object:stub", id: 2, drop_lost: false, confirmed: true } });
+    expect(dialogStore.get().queue).toHaveLength(0); // the plan was shown in the window: nothing is asked again
+    expect(core.sent.filter((r) => r.path === "/lineage/rebuild").map((r) => r.body.dry_run)).toEqual([true, true, false]);
+  });
+  it("without `confirmed` the same command asks about the plan (a call from the ribbon or from the keys)", async () => {
+    const run = app.registry.execute("lineage.rebuild", { kind: "object:stub", id: 2 }, "user");
+    await waitFor(() => dialogStore.get().queue.length > 0);
+    expect(dialogStore.get().queue[0].options).toMatchObject({ title: "Перестроить с зависимыми" });
+    answerDialog(false);
+    expect(await run).toEqual({ ok: true, result: "Отменено" });
+  });
+  it("a window that is not writable or a refusal before the job: the text of the refusal, not a silence", async () => {
+    app.store.set({ projectReadOnly: true });
+    const plan = (await planPhase(stub(2))) as Extract<Phase, { t: "plan" }>;
+    const end = await runPhase(app, stub(2), plan.plan, false, () => undefined);
+    expect(end.t).toBe("error");
   });
   it("a job that was cancelled is not an error but not «done» either; a failed start is the refusal in words", async () => {
     const plan = (await planPhase(stub(2))) as Extract<Phase, { t: "plan" }>;

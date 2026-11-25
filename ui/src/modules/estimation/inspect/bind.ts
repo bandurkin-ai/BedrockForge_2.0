@@ -18,7 +18,7 @@ import { estimationStore, isEstimationEvent } from "../state";
 import type { InspectAnswer, InspectRequest, Triple } from "./api";
 import { InspectWindow } from "./InspectWindow";
 import { inspect, inspectStore, INSPECT_WINDOW, reinspect, resetInspect } from "./state";
-import { blockTitle, numText } from "./view";
+import { blockTitle, CLICK_HINT, numText, unsolvedNote } from "./view";
 
 export const INSPECT_TITLE = "Блок · i, j, k";
 
@@ -70,6 +70,8 @@ export function answerText(a: InspectAnswer): string {
     if (!r.active) return `«${r.name}»: ${r.status_label || "блок вне домена"}`;
     const est = r.values.EST !== undefined ? `, EST ${numText(r.values.EST, 4)}` : "";
     const warn = r.warning ? `; ${r.warning.toLowerCase()}` : "";
+    const note = unsolvedNote(r);
+    if (note) return `«${r.name}»: EST —, ${note}, кандидатов ${r.counts.candidates}${warn}`;
     return `«${r.name}»: ${r.status_label}${est}, проб в системе ${r.counts.selected} из ${r.counts.candidates}${warn}`;
   });
   return `${blockTitle(a)}, центр ${a.block.centre.map((v) => numText(v, 2)).join("; ")}: ${rows.length ? rows.join(" · ") : "нет строк «Параметры оценки», по которым блок оценён"}`;
@@ -101,6 +103,32 @@ function onPicked(): void {
   void openInspector({ model_id: model, row: p.answer.row }).catch(() => undefined); // a refusal stands in the window
 }
 
+/**
+ * The model of the command without `model_id`: the one chosen in the tree, else the only block model with an estimation that was run
+ * (the rows of the plan say which); null — none or several (the person clicks a block, the model comes with the click).
+ */
+export function inspectedModel(app: App): number | null {
+  const sel = app.store.get().selected;
+  if (sel?.kind === "blocks") return sel.id;
+  const ran = new Set(estimationStore.get().rows.filter((r) => r.last_run !== null).map((r) => r.model_id));
+  return ran.size === 1 ? [...ran][0] : null;
+}
+
+const given = (a: Record<string, unknown>, k: string): boolean => a[k] !== undefined && a[k] !== null && a[k] !== "";
+
+/** `estimate.inspect`: with a block — the window and the answer of the core; without — the window with the hint «Щёлкните блок в 3D». */
+export async function runInspect(app: App, a: Record<string, unknown>): Promise<string> {
+  if (!["block", "xyz", "row"].some((k) => given(a, k))) {
+    const open = inspectWindow();
+    if (open) focusWindow(open);
+    else openWindow(INSPECT_WINDOW, INSPECT_TITLE, "normal", {}, ...viewport());
+    return CLICK_HINT;
+  }
+  const model = typeof a.model_id === "number" ? a.model_id : inspectedModel(app);
+  if (model === null) throw refusal("block_model_not_found", "Не задана блочная модель.", "Выберите блочную модель в дереве или передайте model_id: номера — в разделе «Блочные модели».");
+  return openInspector(requestOf({ ...a, model_id: model }));
+}
+
 let unbind: (() => void)[] = [];
 
 export function bindInspect(app: App): void {
@@ -108,7 +136,7 @@ export function bindInspect(app: App): void {
   unbind = [];
   app.registry.bind(
     "estimate.inspect",
-    noted(app, (a) => openInspector(requestOf(a))),
+    noted(app, (a) => runInspect(app, a)),
     needProject,
   );
   let lastPicked: unknown = pickedBlockStore.get().picked;

@@ -27,7 +27,7 @@ export const estimationStore = new Store<EstimationState>(EMPTY);
 /** The block models the estimation writes to: a regular step, with blocks. */
 export const estimableModels = () => blocksStore.get().list.filter((m) => !m.grid.variable && m.cells > 0);
 
-export const rowById =(id: number): EstimationRow | undefined => estimationStore.get().rows.find((r) => r.id === id);
+export const rowById = (id: number): EstimationRow | undefined => estimationStore.get().rows.find((r) => r.id === id);
 
 export function clearEstimations(): void {
   estimationStore.set(EMPTY);
@@ -53,7 +53,7 @@ export async function loadRows(): Promise<void> {
       else stale.push(r.id);
     }
     estimationStore.set({ rows, plans, loaded: true, error: null, details });
-    for (const id of stale) void loadDetails(id);
+    for (const id of stale) void loadDetails(id).catch(() => undefined); // a failed read of the details is not an unhandled rejection: the wizard asks again when it needs them
   } catch (e) {
     if (mine !== seq) return;
     estimationStore.set({ loaded: true, error: errorText(e) });
