@@ -66,12 +66,24 @@ OPS = tuple(STEPS)
 #: the job `wireframe.check` itself (`check`: the levels of detail and the checks — the window starts it after an
 #: operation), the simplified copies of the view (`levels`), the preview of a stitch (`preview`: its strips, without
 #: the checks), the section and the click of the view (`view`)
-OTHER = ("checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats", "geostat")
+OTHER = ("checks", "check", "levels", "preview", "view", "composites", "intercepts", "stats", "geostat", "blocks")
 #: The quick worker: the checks of a body, then the operations — the stitch first; the heavy one meanwhile the strips
 #: of a stitch (`preview`), so that on a cold cache the first stitch has its two halves compiled at once (~5 s, not
 #: ~8 s), then what follows an operation and what the process of the API needs, then the operations backwards.
-QUICK = ("checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats", "geostat")
-HEAVY = ("preview", "check", "levels", "view", *reversed(OPS), "checks", "composites", "intercepts", "stats", "geostat")
+QUICK = ("checks", *OPS, "levels", "preview", "view", "check", "composites", "intercepts", "stats", "geostat", "blocks")
+HEAVY = (
+    "preview",
+    "check",
+    "levels",
+    "view",
+    *reversed(OPS),
+    "checks",
+    "composites",
+    "intercepts",
+    "stats",
+    "geostat",
+    "blocks",
+)
 X0, Y0, Z0 = 512_345.678, 6_789_012.345, 250.0  # a UTM position, as the data of a deposit
 PREFIX = "bf-warm-"  # the temporary folder of the warm-up project
 STALE_S = 24 * 3600
@@ -148,8 +160,16 @@ def project(root: Path) -> dict[str, Any]:
             square = np.column_stack([ring * 0.4 + 3.0, np.zeros(4)]) + (X0, Y0, Z0)
             ids["polygon"] = ls_store.put_layer(conn, store, from_lines("Полигон", [square], closed=[True]),
                                                 file_id=file_id)  # fmt: skip
-            plans = {"type": "plan", "p1": [X0, Y0, Z0 + 20.0], "s0": 0.0, "s1": 20.0, "step": 10.0,
-                     "towards": 5.0, "away": 5.0, "contour_layer": ids["rings"]}  # the contours on k = 2, 1, 0
+            plans = {
+                "type": "plan",
+                "p1": [X0, Y0, Z0 + 20.0],
+                "s0": 0.0,
+                "s1": 20.0,
+                "step": 10.0,
+                "towards": 5.0,
+                "away": 5.0,
+                "contour_layer": ids["rings"],
+            }  # the contours on k = 2, 1, 0
             ids["series"] = series_store.create(conn, plans, "Планы")["id"]  # fmt: skip
     finally:
         engine.dispose()
@@ -311,6 +331,10 @@ def warm(order: Iterable[str] = QUICK, *, busy: Callable[[], bool] | None = None
                     from bf_core.geostat.variogram.warm import warm as warm_geostat
 
                     warm_geostat()
+                elif name == "blocks":
+                    from bf_core.blocks.warm import warm as warm_blocks
+
+                    warm_blocks()
                 elif name == "stats":
                     from bf_core.stats.warm import warm as warm_stats
 

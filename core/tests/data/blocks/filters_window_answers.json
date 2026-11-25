@@ -1,0 +1,962 @@
+{
+ "rules": "ответы настоящего ядра через маршруты /filters (test_filters_window_answers.py); ключи test_* — пока нет blocks/restrict.py (17.8) ответ 422 not_ready",
+ "ids": {
+  "tree": 21,
+  "expr": 22,
+  "list": 23,
+  "misc": 24,
+  "wire": 25,
+  "numbers": 26
+ },
+ "model_id": 28,
+ "created": {
+  "tree": {
+   "status": 200,
+   "body": {
+    "id": 21,
+    "name": "Руда",
+    "folder": "Отчёты",
+    "version": 1,
+    "text": "AU > 1 AND DOMAIN = 2",
+    "title": "AU > 1 И DOMAIN = 2",
+    "fields": [
+     "AU",
+     "DOMAIN"
+    ],
+    "note": "Борт 1 г/т",
+    "created_at": "2026-11-24T22:33:04.163923Z",
+    "updated_at": "2026-11-24T22:33:04.163923Z",
+    "rules": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "AU",
+        "op": ">",
+        "value": 1
+       }
+      },
+      {
+       "cond": {
+        "field": "DOMAIN",
+        "op": "=",
+        "value": 2
+       }
+      }
+     ]
+    },
+    "wireframes": []
+   }
+  },
+  "expr": {
+   "status": 200,
+   "body": {
+    "id": 22,
+    "name": "Выражение",
+    "folder": null,
+    "version": 1,
+    "text": "IF(au > 1, 1, 0) = 1 AND domain IN (1, 2)",
+    "title": "IF(au > 1, 1, 0) = 1 AND domain IN (1, 2)",
+    "fields": [
+     "au",
+     "domain"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T22:33:04.173091Z",
+    "updated_at": "2026-11-24T22:33:04.173091Z",
+    "rules": {
+     "expr": "if(au > 1, 1, 0) = 1 and domain in (1, 2)"
+    },
+    "wireframes": []
+   }
+  },
+  "list": {
+   "status": 200,
+   "body": {
+    "id": 23,
+    "name": "Список",
+    "folder": null,
+    "version": 1,
+    "text": "Порода IN ('руда', 'O''Z', 3, 4.5) OR ISNULL(Порода)",
+    "title": "Порода в ('руда', 'O''Z', 3, 4.5) ИЛИ Порода — пусто",
+    "fields": [
+     "Порода"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T22:33:04.182448Z",
+    "updated_at": "2026-11-24T22:33:04.182448Z",
+    "rules": {
+     "op": "or",
+     "items": [
+      {
+       "cond": {
+        "field": "Порода",
+        "op": "in",
+        "values": [
+         "руда",
+         "O'Z",
+         3,
+         4.5
+        ]
+       }
+      },
+      {
+       "cond": {
+        "field": "Порода",
+        "op": "empty"
+       }
+      }
+     ]
+    },
+    "wireframes": []
+   }
+  },
+  "misc": {
+   "status": 200,
+   "body": {
+    "id": 24,
+    "name": "Разное",
+    "folder": null,
+    "version": 1,
+    "text": "[Au ppm] <> 'Руда' AND NOT NOT ISNULL(CU) AND (CU <= 0.5 OR CU >= -1.25)",
+    "title": "[Au ppm] <> 'Руда' И НЕ CU — не пусто И (CU <= 0.5 ИЛИ CU >= -1.25)",
+    "fields": [
+     "Au ppm",
+     "CU"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T22:33:04.190006Z",
+    "updated_at": "2026-11-24T22:33:04.190006Z",
+    "rules": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "Au ppm",
+        "op": "<>",
+        "value": "Руда"
+       }
+      },
+      {
+       "op": "not",
+       "items": [
+        {
+         "cond": {
+          "field": "CU",
+          "op": "notempty"
+         }
+        }
+       ]
+      },
+      {
+       "op": "or",
+       "items": [
+        {
+         "cond": {
+          "field": "CU",
+          "op": "<=",
+          "value": 0.5
+         }
+        },
+        {
+         "cond": {
+          "field": "CU",
+          "op": ">=",
+          "value": -1.25
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "wireframes": []
+   }
+  },
+  "wire": {
+   "status": 200,
+   "body": {
+    "id": 25,
+    "name": "Каркасы",
+    "folder": null,
+    "version": 1,
+    "text": null,
+    "title": "AU > 1 И внутри каркаса «Рудное тело 1» (по центру) ИЛИ снаружи каркаса «Рудное тело 2» (по доле) ИЛИ выше поверхности «Рельеф» (по центру)",
+    "fields": [
+     "AU"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T22:33:04.198173Z",
+    "updated_at": "2026-11-24T22:33:04.198173Z",
+    "rules": {
+     "op": "or",
+     "items": [
+      {
+       "op": "and",
+       "items": [
+        {
+         "cond": {
+          "field": "AU",
+          "op": ">",
+          "value": 1
+         }
+        },
+        {
+         "wireframe": {
+          "id": 9,
+          "side": "inside",
+          "by": "centre",
+          "m": 4
+         }
+        }
+       ]
+      },
+      {
+       "wireframe": {
+        "id": 10,
+        "side": "outside",
+        "by": "frac",
+        "m": 2
+       }
+      },
+      {
+       "surface": {
+        "id": 8,
+        "side": "above",
+        "by": "centre"
+       }
+      }
+     ]
+    },
+    "wireframes": [
+     {
+      "id": 9,
+      "name": "Рудное тело 1",
+      "available": true
+     },
+     {
+      "id": 10,
+      "name": "Рудное тело 2",
+      "available": true
+     },
+     {
+      "id": 8,
+      "name": "Рельеф",
+      "available": true
+     }
+    ]
+   }
+  },
+  "numbers": {
+   "status": 200,
+   "body": {
+    "id": 26,
+    "name": "Числа",
+    "folder": null,
+    "version": 1,
+    "text": "AU > 1e-07 AND CU < 1.2345678901234568e+17 AND ZN >= 0.1",
+    "title": "AU > 1e-07 И CU < 1.2345678901234568e+17 И ZN >= 0.1",
+    "fields": [
+     "AU",
+     "CU",
+     "ZN"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T22:33:04.205470Z",
+    "updated_at": "2026-11-24T22:33:04.205470Z",
+    "rules": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "AU",
+        "op": ">",
+        "value": 1e-07
+       }
+      },
+      {
+       "cond": {
+        "field": "CU",
+        "op": "<",
+        "value": 1.2345678901234568e+17
+       }
+      },
+      {
+       "cond": {
+        "field": "ZN",
+        "op": ">=",
+        "value": 0.1
+       }
+      }
+     ]
+    },
+    "wireframes": []
+   }
+  }
+ },
+ "refused": {
+  "name_taken": {
+   "status": 409,
+   "body": {
+    "param": "name",
+    "code": "name_taken",
+    "message": "Фильтр «руда» уже есть.",
+    "hint": "Введите другое название."
+   }
+  },
+  "name_empty": {
+   "status": 422,
+   "body": {
+    "param": "name",
+    "code": "name_empty",
+    "message": "Название фильтра не может быть пустым.",
+    "hint": "Введите название фильтра."
+   }
+  },
+  "no_rules": {
+   "status": 422,
+   "body": {
+    "param": "rules",
+    "code": "filter_rules",
+    "message": "У фильтра нет правил.",
+    "hint": "Задайте правила или выражение, например AU > 1."
+   }
+  },
+  "expr_syntax": {
+   "status": 422,
+   "body": {
+    "pos": 5,
+    "line": 1,
+    "column": 6,
+    "char": "(",
+    "reason": "unclosed_paren",
+    "param": "expr",
+    "code": "expr_syntax",
+    "message": "Не закрыта скобка (строка 1, столбец 6, символ «(»).",
+    "hint": "Добавьте закрывающую скобку «)»."
+   }
+  },
+  "expr_in_tree": {
+   "status": 422,
+   "body": {
+    "pos": 4,
+    "line": 1,
+    "column": 5,
+    "char": "",
+    "reason": "syntax",
+    "param": "rules.items.1.expr",
+    "code": "expr_syntax",
+    "message": "Выражение оборвано: ожидается значение (строка 1, столбец 5, конец выражения).",
+    "hint": "Допишите поле, число, строку, функцию или скобку."
+   }
+  },
+  "filter_rules": {
+   "status": 422,
+   "body": {
+    "param": "rules.items.1.cond.value",
+    "code": "filter_rules",
+    "message": "Значение для сравнения по порядку — число.",
+    "hint": "Введите число, например 0,5 или 12."
+   }
+  },
+  "wireframe_not_found": {
+   "status": 422,
+   "body": {
+    "param": "rules.items.1.wireframe.id",
+    "code": "wireframe_not_found",
+    "message": "Каркас №99999 не найден в проекте.",
+    "hint": "Выберите каркас из списка проекта."
+   }
+  }
+ },
+ "list": {
+  "status": 200,
+  "body": {
+   "filters": [
+    {
+     "id": 22,
+     "name": "Выражение",
+     "folder": null,
+     "version": 1,
+     "text": "IF(au > 1, 1, 0) = 1 AND domain IN (1, 2)",
+     "title": "IF(au > 1, 1, 0) = 1 AND domain IN (1, 2)",
+     "fields": [
+      "au",
+      "domain"
+     ],
+     "note": null,
+     "created_at": "2026-11-24T22:33:04.173091Z",
+     "updated_at": "2026-11-24T22:33:04.173091Z"
+    },
+    {
+     "id": 25,
+     "name": "Каркасы",
+     "folder": null,
+     "version": 1,
+     "text": null,
+     "title": "AU > 1 И внутри каркаса «Рудное тело 1» (по центру) ИЛИ снаружи каркаса «Рудное тело 2» (по доле) ИЛИ выше поверхности «Рельеф» (по центру)",
+     "fields": [
+      "AU"
+     ],
+     "note": null,
+     "created_at": "2026-11-24T22:33:04.198173Z",
+     "updated_at": "2026-11-24T22:33:04.198173Z"
+    },
+    {
+     "id": 24,
+     "name": "Разное",
+     "folder": null,
+     "version": 1,
+     "text": "[Au ppm] <> 'Руда' AND NOT NOT ISNULL(CU) AND (CU <= 0.5 OR CU >= -1.25)",
+     "title": "[Au ppm] <> 'Руда' И НЕ CU — не пусто И (CU <= 0.5 ИЛИ CU >= -1.25)",
+     "fields": [
+      "Au ppm",
+      "CU"
+     ],
+     "note": null,
+     "created_at": "2026-11-24T22:33:04.190006Z",
+     "updated_at": "2026-11-24T22:33:04.190006Z"
+    },
+    {
+     "id": 21,
+     "name": "Руда 1 г/т",
+     "folder": "Отчёты",
+     "version": 2,
+     "text": "AU > 1 AND DOMAIN = 2",
+     "title": "AU > 1 AND DOMAIN = 2",
+     "fields": [
+      "AU",
+      "DOMAIN"
+     ],
+     "note": "Борт 1 г/т",
+     "created_at": "2026-11-24T22:33:04.163923Z",
+     "updated_at": "2026-11-24T22:33:04.249078Z"
+    },
+    {
+     "id": 23,
+     "name": "Список",
+     "folder": null,
+     "version": 1,
+     "text": "Порода IN ('руда', 'O''Z', 3, 4.5) OR ISNULL(Порода)",
+     "title": "Порода в ('руда', 'O''Z', 3, 4.5) ИЛИ Порода — пусто",
+     "fields": [
+      "Порода"
+     ],
+     "note": null,
+     "created_at": "2026-11-24T22:33:04.182448Z",
+     "updated_at": "2026-11-24T22:33:04.182448Z"
+    }
+   ]
+  }
+ },
+ "full": {
+  "tree": {
+   "status": 200,
+   "body": {
+    "id": 21,
+    "name": "Руда 1 г/т",
+    "folder": "Отчёты",
+    "version": 2,
+    "text": "AU > 1 AND DOMAIN = 2",
+    "title": "AU > 1 AND DOMAIN = 2",
+    "fields": [
+     "AU",
+     "DOMAIN"
+    ],
+    "note": "Борт 1 г/т",
+    "created_at": "2026-11-24T22:33:04.163923Z",
+    "updated_at": "2026-11-24T22:33:04.249078Z",
+    "rules": {
+     "expr": "AU > 1 and DOMAIN = 2"
+    },
+    "wireframes": []
+   }
+  },
+  "expr": {
+   "status": 200,
+   "body": {
+    "id": 22,
+    "name": "Выражение",
+    "folder": null,
+    "version": 1,
+    "text": "IF(au > 1, 1, 0) = 1 AND domain IN (1, 2)",
+    "title": "IF(au > 1, 1, 0) = 1 AND domain IN (1, 2)",
+    "fields": [
+     "au",
+     "domain"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T22:33:04.173091Z",
+    "updated_at": "2026-11-24T22:33:04.173091Z",
+    "rules": {
+     "expr": "if(au > 1, 1, 0) = 1 and domain in (1, 2)"
+    },
+    "wireframes": []
+   }
+  },
+  "list": {
+   "status": 200,
+   "body": {
+    "id": 23,
+    "name": "Список",
+    "folder": null,
+    "version": 1,
+    "text": "Порода IN ('руда', 'O''Z', 3, 4.5) OR ISNULL(Порода)",
+    "title": "Порода в ('руда', 'O''Z', 3, 4.5) ИЛИ Порода — пусто",
+    "fields": [
+     "Порода"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T22:33:04.182448Z",
+    "updated_at": "2026-11-24T22:33:04.182448Z",
+    "rules": {
+     "op": "or",
+     "items": [
+      {
+       "cond": {
+        "field": "Порода",
+        "op": "in",
+        "values": [
+         "руда",
+         "O'Z",
+         3,
+         4.5
+        ]
+       }
+      },
+      {
+       "cond": {
+        "field": "Порода",
+        "op": "empty"
+       }
+      }
+     ]
+    },
+    "wireframes": []
+   }
+  },
+  "misc": {
+   "status": 200,
+   "body": {
+    "id": 24,
+    "name": "Разное",
+    "folder": null,
+    "version": 1,
+    "text": "[Au ppm] <> 'Руда' AND NOT NOT ISNULL(CU) AND (CU <= 0.5 OR CU >= -1.25)",
+    "title": "[Au ppm] <> 'Руда' И НЕ CU — не пусто И (CU <= 0.5 ИЛИ CU >= -1.25)",
+    "fields": [
+     "Au ppm",
+     "CU"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T22:33:04.190006Z",
+    "updated_at": "2026-11-24T22:33:04.190006Z",
+    "rules": {
+     "op": "and",
+     "items": [
+      {
+       "cond": {
+        "field": "Au ppm",
+        "op": "<>",
+        "value": "Руда"
+       }
+      },
+      {
+       "op": "not",
+       "items": [
+        {
+         "cond": {
+          "field": "CU",
+          "op": "notempty"
+         }
+        }
+       ]
+      },
+      {
+       "op": "or",
+       "items": [
+        {
+         "cond": {
+          "field": "CU",
+          "op": "<=",
+          "value": 0.5
+         }
+        },
+        {
+         "cond": {
+          "field": "CU",
+          "op": ">=",
+          "value": -1.25
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "wireframes": []
+   }
+  },
+  "wire": {
+   "status": 200,
+   "body": {
+    "id": 25,
+    "name": "Каркасы",
+    "folder": null,
+    "version": 1,
+    "text": null,
+    "title": "AU > 1 И внутри каркаса «Рудное тело 1» (по центру) ИЛИ снаружи каркаса «Рудное тело 2» (по доле) ИЛИ выше поверхности «Рельеф» (по центру)",
+    "fields": [
+     "AU"
+    ],
+    "note": null,
+    "created_at": "2026-11-24T22:33:04.198173Z",
+    "updated_at": "2026-11-24T22:33:04.198173Z",
+    "rules": {
+     "op": "or",
+     "items": [
+      {
+       "op": "and",
+       "items": [
+        {
+         "cond": {
+          "field": "AU",
+          "op": ">",
+          "value": 1
+         }
+        },
+        {
+         "wireframe": {
+          "id": 9,
+          "side": "inside",
+          "by": "centre",
+          "m": 4
+         }
+        }
+       ]
+      },
+      {
+       "wireframe": {
+        "id": 10,
+        "side": "outside",
+        "by": "frac",
+        "m": 2
+       }
+      },
+      {
+       "surface": {
+        "id": 8,
+        "side": "above",
+        "by": "centre"
+       }
+      }
+     ]
+    },
+    "wireframes": [
+     {
+      "id": 9,
+      "name": "Рудное тело 1",
+      "available": true
+     },
+     {
+      "id": 10,
+      "name": "Рудное тело 2",
+      "available": true
+     },
+     {
+      "id": 8,
+      "name": "Рельеф",
+      "available": true
+     }
+    ]
+   }
+  }
+ },
+ "updated": {
+  "status": 200,
+  "body": {
+   "id": 21,
+   "name": "Руда 1 г/т",
+   "folder": "Отчёты",
+   "version": 2,
+   "text": "AU > 1 AND DOMAIN = 2",
+   "title": "AU > 1 AND DOMAIN = 2",
+   "fields": [
+    "AU",
+    "DOMAIN"
+   ],
+   "note": "Борт 1 г/т",
+   "created_at": "2026-11-24T22:33:04.163923Z",
+   "updated_at": "2026-11-24T22:33:04.249078Z",
+   "rules": {
+    "expr": "AU > 1 and DOMAIN = 2"
+   },
+   "wireframes": []
+  }
+ },
+ "conflict": {
+  "status": 409,
+  "body": {
+   "version": 2,
+   "code": "version_conflict",
+   "message": "Фильтр изменён в другом окне.",
+   "hint": "Перечитайте фильтр или сохраните свой как новый."
+  }
+ },
+ "missing_version": {
+  "status": 409,
+  "body": {
+   "version": 2,
+   "code": "version_conflict",
+   "message": "Фильтр изменён в другом окне.",
+   "hint": "Перечитайте фильтр или сохраните свой как новый."
+  }
+ },
+ "usage": {
+  "status": 200,
+  "body": {
+   "usage": [
+    {
+     "kind": "object",
+     "id": 27,
+     "name": "Поле AU2",
+     "role": "filter"
+    },
+    {
+     "kind": "view",
+     "id": 28,
+     "name": "Вид проекта · Модель Б",
+     "role": "block_style"
+    }
+   ]
+  }
+ },
+ "usage_free": {
+  "status": 200,
+  "body": {
+   "usage": []
+  }
+ },
+ "in_use": {
+  "status": 422,
+  "body": {
+   "usage": [
+    {
+     "kind": "object",
+     "id": 27,
+     "name": "Поле AU2",
+     "role": "filter"
+    },
+    {
+     "kind": "view",
+     "id": 28,
+     "name": "Вид проекта · Модель Б",
+     "role": "block_style"
+    }
+   ],
+   "code": "filter_in_use",
+   "message": "Фильтр используется: «Поле AU2», «Вид проекта · Модель Б».",
+   "hint": "Выберите другой фильтр в этих местах или удалите их, затем удалите фильтр."
+  }
+ },
+ "deleted": {
+  "status": 200,
+  "body": {
+   "deleted": 26
+  }
+ },
+ "tests": {
+  "stored": {
+   "status": 200,
+   "body": {
+    "passed": 3,
+    "total": 12,
+    "weight": 3.0,
+    "warnings": []
+   }
+  },
+  "inline": {
+   "status": 200,
+   "body": {
+    "passed": 3,
+    "total": 12,
+    "weight": 3.0,
+    "warnings": []
+   }
+  },
+  "no_model": {
+   "status": 404,
+   "body": {
+    "code": "block_model_not_found",
+    "message": "Блочная модель не найдена.",
+    "hint": "Обновите дерево проекта."
+   }
+  },
+  "no_model_id": {
+   "status": 422,
+   "body": {
+    "param": "model_id",
+    "code": "bad_param",
+    "message": "Номер блочной модели задан неверно.",
+    "hint": "Выберите модель из списка."
+   }
+  }
+ },
+ "blocks": {
+  "status": 200,
+  "body": {
+   "block_models": [
+    {
+     "id": 28,
+     "name": "Модель Б",
+     "folder": null,
+     "version": 1,
+     "extent": [
+      0.0,
+      0.0,
+      0.0,
+      20.0,
+      15.0,
+      5.0
+     ],
+     "crs": null,
+     "grid": {
+      "corner": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "counts": [
+       4,
+       3,
+       2
+      ],
+      "size": [
+       5.0,
+       5.0,
+       2.5
+      ],
+      "order": "F",
+      "variable": false
+     },
+     "cells": 12,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "unit": "g/t"
+      },
+      {
+       "name": "DOMAIN",
+       "kind": "number",
+       "unit": null
+      }
+     ],
+     "source": null,
+     "warnings": [],
+     "size": 1095,
+     "created_at": "2026-11-24T22:33:04.271377+00:00",
+     "updated_at": "2026-11-24T22:33:04.271377+00:00"
+    },
+    {
+     "id": 20,
+     "name": "Блочная модель Au",
+     "folder": null,
+     "version": 1,
+     "extent": [
+      5000.0,
+      7950.0,
+      210.0,
+      5400.0,
+      8350.0,
+      410.0
+     ],
+     "crs": null,
+     "grid": {
+      "corner": [
+       5000.0,
+       7950.0,
+       210.0
+      ],
+      "counts": [
+       40,
+       40,
+       20
+      ],
+      "size": [
+       10.0,
+       10.0,
+       10.0
+      ],
+      "order": "F",
+      "variable": false
+     },
+     "cells": 32000,
+     "fields": [
+      {
+       "name": "AU",
+       "kind": "number",
+       "unit": "г/т"
+      },
+      {
+       "name": "DOMAIN",
+       "kind": "category",
+       "unit": null
+      }
+     ],
+     "source": null,
+     "warnings": [],
+     "size": 261616,
+     "created_at": "2026-11-24T22:33:03.991426+00:00",
+     "updated_at": "2026-11-24T22:33:03.991426+00:00"
+    }
+   ]
+  }
+ },
+ "wireframes": {
+  "status": 200,
+  "body": {
+   "wireframes": [
+    {
+     "id": 8,
+     "name": "Рельеф",
+     "folder": null,
+     "version": 1,
+     "dtm": {
+      "raster_id": 7,
+      "clip": true,
+      "tint": "#ffffff",
+      "opacity": 1.0,
+      "shade": true
+     }
+    },
+    {
+     "id": 9,
+     "name": "Рудное тело 1",
+     "folder": null,
+     "version": 1,
+     "dtm": null
+    },
+    {
+     "id": 10,
+     "name": "Рудное тело 2",
+     "folder": null,
+     "version": 1,
+     "dtm": null
+    },
+    {
+     "id": 11,
+     "name": "Разлом",
+     "folder": null,
+     "version": 1,
+     "dtm": null
+    },
+    {
+     "id": 15,
+     "name": "Рудное тело 3",
+     "folder": null,
+     "version": 1,
+     "dtm": null
+    }
+   ]
+  }
+ }
+}

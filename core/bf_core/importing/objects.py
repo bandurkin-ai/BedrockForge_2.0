@@ -44,6 +44,7 @@ from bf_core.formats.errors import FormatError
 from bf_core.jobs.context import JobContext, JobError
 from bf_core.jobs.registry import handler
 
+from . import object_blockfile as obf
 from . import object_blocks as ob
 from . import object_cloud as oc
 from . import object_meshes as om
@@ -100,6 +101,8 @@ def _memory(params: dict[str, Any]) -> int:
             size = oc.MEMORY_MB * 2**20  # a cloud is built in portions: the same memory whatever its size
         elif path.suffix.lower() == ".omf":
             size = ob.memory(path, size)
+        elif obf.is_blockfile(path, chosen.get(option_key(path))):
+            size = obf.memory(path, size) * 2**20
         elif path.suffix.lower() in IMAGE_SUFFIXES:
             try:
                 from bf_core.formats.raster_image import probe
@@ -376,6 +379,16 @@ def import_objects(ctx: JobContext) -> dict[str, Any]:
 
             step(0.0, None)
             chosen = options.get(option_key(g.main))
+            if obf.is_blockfile(g.main, chosen):  # a text block model (ADR 0023 §7): its own reader and writer
+                try:
+                    block_file = obf.write_blockfile(ctx, engine, store, g, chosen, _span(step, 0.0, 1.0), folder)
+                except (FormatError, OSError) as exc:
+                    fail(exc)
+                    continue
+                block_item = _Done(g.main, label, block_file.format, om.MEDIA, _settings(g, chosen))
+                block_item.blocks = block_file
+                done.append(block_item)
+                continue
             if oc.wanted(g, chosen):
                 cloud = _write_cloud(ctx, engine, store, g, chosen, _span(step, 0.0, 1.0), len(done), fail)
                 if cloud is not None:

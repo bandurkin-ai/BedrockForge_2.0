@@ -4,6 +4,7 @@ a writer registering a blob. Busy files (Windows: open mmap, WinError 32) are le
 
 from __future__ import annotations
 
+import shutil
 import time
 from dataclasses import asdict, dataclass
 
@@ -24,6 +25,7 @@ class GcReport:
     bytes: int = 0
     stray_files: int = 0
     tmp_files: int = 0
+    cache_dirs: int = 0
     busy: int = 0
 
     def as_dict(self) -> dict[str, int]:
@@ -71,4 +73,18 @@ def collect(engine: sa.Engine, store: BlobStore, *, now: float | None = None) ->
                     continue
                 except PermissionError:
                     report.busy += 1
+        _drop_block_cache(conn, store, report)
     return report
+
+
+def _drop_block_cache(conn: sa.Connection, store: BlobStore, report: GcReport) -> None:
+    """The disk cache of the columns of block models, `cache/blocks/<SHA-256 of the file>/` (stats/blocks_cache.py),
+    is derived data: a folder whose file has no owner any more (the model was deleted or its file was replaced) goes."""
+    root = store.root.parent / "cache" / "blocks"
+    if not root.is_dir():
+        return
+    owned = {str(r[0]) for r in conn.execute(sa.select(blob_owners.c.sha256).distinct())}
+    for path in root.iterdir():
+        if path.is_dir() and valid_sha(path.name) and path.name not in owned:
+            shutil.rmtree(path, ignore_errors=True)
+            report.cache_dirs += 1

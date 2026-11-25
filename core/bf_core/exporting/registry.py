@@ -1,7 +1,7 @@
 """The registry of export writers by object type (ТЗ 7.35 Д-17; ADR 0010 §1, ADR 0017 §5 «Реестр»).
 
 Every pair «object type × format» the window «Экспорт проекта» shows is a `Writer` here, or the reason why there is
-none («Экспорт блочных моделей в DAT и CSV — этап Э17»). The writers are thin wrappers over the writers of the
+none (block models: DAT, CSV and Parquet since Э17). The writers are thin wrappers over the writers of the
 modules (`exporting/writers.py`, loaded by an explicit import as `HANDLER_MODULES` — no scan of the package);
 the window, the data manager and the job `export.objects` use this one registry.
 
@@ -16,7 +16,7 @@ default (decision 6) unless it is unavailable:
 | `line_file`     | `line_file` without a cloud              | Micromine STR, DXF, Surpac STR, OMF, source     |
 | `cloud`         | `line_file` with a cloud layer           | LAS, CSV, source                                |
 | `raster`        | `raster`                                 | source file with its georeference, GeoTIFF      |
-| `block_model`   | `block_model`                            | OMF, DAT and CSV («этап Э17»), source           |
+| `block_model`   | `block_model`                            | OMF, DAT, CSV and Parquet, source           |
 
 «Исходный файл» (`source`) — the file as loaded (the `source` blob of the object or of its import, with its
 `sidecar:*` companions), byte for byte, under its own name; an object made in the project has none, and the job

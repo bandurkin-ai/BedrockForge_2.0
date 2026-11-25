@@ -36,6 +36,8 @@ export interface BlockSeries extends Look {
   density: string | null;
   /** the blocks of these values of a category field (a domain) */
   filter: { field: string; labels: string[] } | null;
+  /** a filter of the library (`objects` kind `filter`, ТЗ 7.35 Д-02): the blocks with f > 0 take part; null — no filter */
+  filter_id: number | null;
 }
 
 export interface SampleSeries extends Look {
@@ -100,7 +102,7 @@ export function defaultSwath(series: SwathSeries[] = []): SwathSettings {
 }
 
 export function blockSeries(series: readonly SwathSeries[], modelId: number | null, field: string | null, density: string | null = null): BlockSeries {
-  return { kind: "blocks", model_id: modelId, field, weight: "volume", density, filter: null, color: nextColor(series), line: true, bars: !series.some((s) => s.kind === "blocks" && s.bars) };
+  return { kind: "blocks", model_id: modelId, field, weight: "volume", density, filter: null, filter_id: null, color: nextColor(series), line: true, bars: !series.some((s) => s.kind === "blocks" && s.bars) };
 }
 
 /** Samples of a set: by length, inside the blocks of the first model when there is one (BF). */
@@ -218,7 +220,7 @@ function normalizeSeries(raw: unknown, before: SwathSeries[]): SwathSeries | nul
   if (s.kind === "blocks") {
     const f = obj(s.filter);
     const labels = f && Array.isArray(f.labels) ? [...new Set(f.labels.filter((l): l is string => typeof l === "string"))].slice(0, 1000) : [];
-    return { kind: "blocks", model_id: id(s.model_id), field: text(s.field), weight: oneOf(s.weight, ["volume", "tonnage", "none"] as const, "volume"), density: text(s.density), filter: f && text(f.field) ? { field: text(f.field)!, labels } : null, ...look };
+    return { kind: "blocks", model_id: id(s.model_id), field: text(s.field), weight: oneOf(s.weight, ["volume", "tonnage", "none"] as const, "volume"), density: text(s.density), filter: f && text(f.field) ? { field: text(f.field)!, labels } : null, filter_id: id(s.filter_id), ...look };
   }
   if (s.kind === "samples") {
     const within = oneOf(s.within, ["box", "blocks"] as const, "box");
@@ -306,7 +308,7 @@ export function swathRequest(s: SwathSettings): object {
     anchor: s.anchor,
     limits: s.limits,
     series: s.series.map((x) => {
-      if (x.kind === "blocks") return { kind: "blocks", model_id: x.model_id, field: x.field, weight: x.weight, density: x.weight === "tonnage" ? x.density : null, filter: x.filter && x.filter.labels.length ? x.filter : null };
+      if (x.kind === "blocks") return { kind: "blocks", model_id: x.model_id, field: x.field, weight: x.weight, density: x.weight === "tonnage" ? x.density : null, filter: x.filter && x.filter.labels.length ? x.filter : null, ...(x.filter_id !== null ? { filter_id: x.filter_id } : {}) };
       const wf = x.weight === "field" || x.weight === "length_field";
       return { kind: "samples", set_id: x.set_id, table: x.table, field: x.field, weight: x.weight, weight_field: wf ? x.weight_field : null, negatives: x.negatives, top_cut: x.top_cut, within: x.within, within_series: x.within === "blocks" ? x.within_series : null };
     }),
@@ -433,13 +435,13 @@ export function swathCsv(r: SwathResult, range: [number, number]): { header: str
 
 /** What was left out of a series, in words (BF `seriesNote`). */
 export function seriesNote(s: SeriesAnswer): string {
-  if (s.error) return `${s.name}: ${s.error.message}`;
+  if (s.error) return `${s.name}: ${[s.error.message, s.error.hint].filter(Boolean).join(" ")}`;
   const c = s.counts ?? {};
   const n = (v: number | undefined) => (v ?? 0).toLocaleString("ru-RU");
   const parts: string[] = [];
   if (s.kind === "blocks") {
     parts.push(`блоков в расчёте ${n(c.used)} из ${n(c.blocks ?? c.rows)}`);
-    if (c.selected !== undefined && c.selected < (c.blocks ?? c.rows ?? 0)) parts.push(`прошли отбор ${n(c.selected)}`);
+    if (c.filtered_out) parts.push(`отфильтровано ${n(c.filtered_out)}`);
     if (c.outside_box) parts.push(`вне кубоида ${n(c.outside_box)}`);
     if (c.missing) parts.push(`без значения ${n(c.missing)}`);
     if (c.bad_weight) parts.push(`без веса ${n(c.bad_weight)}`);
@@ -454,6 +456,16 @@ export function seriesNote(s: SeriesAnswer): string {
   if (c.outside_box) parts.push(`вне кубоида ${n(c.outside_box)}`);
   if (c.outside_blocks) parts.push(`вне блоков модели ${n(c.outside_blocks)}`);
   return `${s.name}: ${parts.join(", ")}.`;
+}
+
+/** The refusals of a series the card of the series says itself (the other series are counted): a filter that is gone or
+ * does not fit the model, samples «внутри блоков» of a series with a turn or sub-blocks. */
+export const SERIES_ISSUES = ["filter_not_found", "filter_field_missing", "blocks_unsupported"];
+
+/** The error of a series for its card: «message hint» in Russian, or null. */
+export function seriesIssue(s: Pick<SeriesAnswer, "error"> | undefined): string | null {
+  const e = s?.error;
+  return e && SERIES_ISSUES.includes(e.code) ? [e.message, e.hint].filter(Boolean).join(" ") : null;
 }
 
 /** The assistant's text: the name, the swaths, the totals of the series. */

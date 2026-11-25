@@ -2,11 +2,15 @@
  * Block models follow the project (ADR 0017 §3): the list is read when a project opens, on `objects.changed`
  * of a block model and when an import ends; the details «Свойства» show are read again when their version
  * moved; a selected model that is gone is not selected any more. Rename, delete and select are `object.*`
- * (`wireframes/objectCommands.ts`, `wireframes/bind.ts`). One app at a time (the tests create several).
+ * (`wireframes/objectCommands.ts`, `wireframes/bind.ts`). The display in 3D follows (`showCommands.ts`, Э17). One app at a
+ * time (the tests create several).
  */
 import type { App } from "../../shell/app";
 import { onCoreEvent, onJobFinished } from "../jobs/state";
 import { projectStore } from "../projects/state";
+import { bindCheck } from "./check";
+import { bindShow } from "./showCommands";
+import { bindSlice } from "./sliceCommands";
 import { blockById, blocksStore, clearBlocks, isBlocksEvent, loadBlocks } from "./state";
 
 let unbind: (() => void)[] = [];
@@ -17,6 +21,9 @@ export function bindBlocks(app: App): void {
   let uid: string | null = projectStore.get().current?.uid ?? null;
   if (uid) void loadBlocks();
   unbind.push(
+    bindShow(app), // the display in 3D: `blocks.show`, `.filter`, `.quick`, `.style`, `.pick` and the layers of the scene
+    bindSlice(app), // the slice by a plane, «Срез на разрезе»: `blocks.slice` and its layer
+    bindCheck(app), // «Перепроверить»: `blocks.check` (the job of the core, the checks of «Свойства»)
     projectStore.subscribe(() => {
       const cur = projectStore.get().current?.uid ?? null;
       if (cur === uid) return;

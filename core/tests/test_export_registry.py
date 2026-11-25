@@ -26,7 +26,7 @@ EXPECTED = {  # ADR 0017 §5: the formats of each type, the default first (decis
     "line_file": ["str", "dxf", "surpac", "omf", "source"],
     "cloud": ["las", "csv", "source"],
     "raster": ["source", "geotiff"],
-    "block_model": ["omf", "dat", "csv", "source"],
+    "block_model": ["omf", "dat", "csv", "parquet", "source"],
 }
 
 
@@ -51,9 +51,8 @@ def test_every_pair_is_a_writer_or_a_reason_in_russian() -> None:
                 assert why is not None and CYRILLIC.search(why.message) and CYRILLIC.search(why.hint), (kind, w.format)
             elif why is not None:  # DWG without ODA, OMF before its writer: a reason and a hint
                 assert CYRILLIC.search(why.message) and CYRILLIC.search(why.hint), (kind, w.format)
-    for fmt in ("dat", "csv"):
-        why = reg.reason_of(reg.formats_of("block_model")[EXPECTED["block_model"].index(fmt)], env)
-        assert why is not None and "этап Э17" in why.message
+    for fmt in ("dat", "csv", "parquet"):  # Э17: the writers of block models are there (the reason is only of the env)
+        assert reg.formats_of("block_model")[EXPECTED["block_model"].index(fmt)].write is not None
     dwg = reg.writer("wireframe", "dwg")
     assert dwg is not None
     no_oda = reg.reason_of(dwg, reg.Env(oda=str(Path("/нет/такого/ODAFileConverter.exe"))))
@@ -84,7 +83,7 @@ def test_formats_of_the_demo(demo) -> None:  # type: ignore[no-untyped-def]
     assert by["dtm"]["count"] >= 1
     assert by["line_file"]["count"] >= 1 and by["line_file"]["default"] == "str"
     assert by["block_model"]["count"] == 1  # «Блочная модель Au» of the demo (demo/blocks.py, 11.19)
-    assert {f["format"]: f["available"] for f in by["block_model"]["formats"]}["dat"] is False
+    assert {f["format"]: f["available"] for f in by["block_model"]["formats"]}["dat"] is True
     # the demo is made in the project: no source files — «Исходный файл» is unavailable with the reason
     src = {f["format"]: f for f in by["wireframe"]["formats"]}["source"]
     assert src["available"] is False and "исходного файла нет" in src["reason"]

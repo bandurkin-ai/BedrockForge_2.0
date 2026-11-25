@@ -32,7 +32,8 @@ const ACTIONS: Partial<Record<TreeSection, SectionAction[]>> = {
   ],
   dtm: [{ label: "Экспорт ЦТМ…", command: "wireframe.export", args: { section: "dtm" } }],
   rasters: [{ label: "Загрузить растр…", command: "rasters.upload" }],
-  blocks: [{ label: "Загрузить блочную модель…", command: "import.files", args: { kind: "omf" } }],
+  blocks: [{ label: "Загрузить блочную модель…", command: "import.files", args: { kind: "blocks" } }],
+  filters: [{ label: "Новый фильтр…", command: "filter.save" }],
   audit: [
     { label: "Новый swath plot…", command: "stats.swath" },
     { label: "Загрузить контрольные пробы QAQC…", command: "qaqc.import" },
@@ -57,7 +58,8 @@ const PLUS: Partial<Record<TreeSection, SectionPlus>> = {
   wireframes: { command: "wireframes.upload", title: "Загрузить каркасы" },
   lines: { command: "lines.upload", title: "Загрузить линии и точки: STR, DXF, SHP, MIF, XYZ" },
   rasters: { command: "rasters.upload", title: "Загрузить растр" },
-  blocks: { command: "import.files", args: { kind: "omf" }, title: "Загрузить блочную модель" },
+  blocks: { command: "import.files", args: { kind: "blocks" }, title: "Загрузить блочную модель" },
+  filters: { command: "filter.save", title: "Новый фильтр" },
   audit: { command: "stats.swath", title: "Новый swath plot" },
   reports: { command: "qaqc.open", args: { section: "report" }, title: "Сформировать отчёт QAQC" },
 };

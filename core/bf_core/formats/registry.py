@@ -172,7 +172,9 @@ TRIDB, OBJ, STL, SURPAC_DTM, DATAMINE, DATAMINE_STR, DWG = (
 )
 LAS = "las"
 OMF = "omf"
+DATAMINE_BLOCKS = "datamine_blocks"  # a block model of Datamine (`.fbm`; a `.dm` by its fields): the import of blocks
 LINES_KIND, POINTS_KIND, RASTER_KIND, WIREFRAMES_KIND, CLOUD_KIND = "lines", "points", "raster", "wireframes", "cloud"
+BLOCKS_KIND = "block_model"  # a block model: read by `importing.object_blockfile`, not by `read_objects`
 OMF_KIND = "omf"  # a project of several kinds: wireframes, a line file, block models
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp")
 WORLD_SUFFIXES = (".jgw", ".jpgw", ".pgw", ".pngw", ".tfw", ".tifw", ".bpw", ".bmpw", ".wld")
@@ -185,7 +187,7 @@ OPENED, LISTED, DRAWN = "opened", "listed", "drawn"
 SUPPORTED = (
     "Подходят: стринги .str / .pit, чертежи .dxf / .dwg, .shp, .mif, точки .xyz / .csv / .txt / .dat, "
     "каркасы .tridb / .obj / .stl / .dtm с .str / .dm, растры .jpg / .png / .tif / .bmp с файлом привязки, "
-    "облака точек .las, проекты OMF v1 .omf."
+    "облака точек .las, блочные модели .dat / .csv / .dm / .fbm, проекты OMF v1 .omf."
 )
 
 
@@ -244,6 +246,8 @@ OBJECT_FORMATS: dict[str, ObjectFormat] = {
                      choices=(("layer_field", "layer_fields"),)),
         ObjectFormat(LAS, "Облако точек LAS (.las)", CLOUD_KIND, (".las", ".laz"),
                      _F + "las", "open_las", inspector="inspect_las", cloud=True),
+        ObjectFormat(DATAMINE_BLOCKS, "Блочная модель Datamine (.dm, .fbm)", BLOCKS_KIND, (".fbm",),
+                     _F + "datamine_blocks", "open_blocks", options=("encoding",)),
         ObjectFormat(OMF, "Проект OMF v1 (.omf): каркасы, линии, блочные модели", OMF_KIND, (".omf",),
                      _F + "omf_read", "open_reader", meshes=OMF),
     )
@@ -291,7 +295,8 @@ class FileGroup:
 
 
 def _datamine(path: Path) -> ObjectFormat:
-    """A `.dm` by its fields: the triangles or the points of a wireframe, or strings (`datamine.DmHeader.kind`)."""
+    """A `.dm` by its fields: the triangles or the points of a wireframe, strings or a block model
+    (`datamine.DmHeader.kind`)."""
     from bf_core.formats import datamine as dm
     from bf_core.formats.datamine_pair import wrong_kind
 
@@ -300,7 +305,9 @@ def _datamine(path: Path) -> ObjectFormat:
         return OBJECT_FORMATS[DATAMINE]
     if header.kind == dm.STRINGS:
         return OBJECT_FORMATS[DATAMINE_STR]
-    raise wrong_kind(path, header, "wireframe")  # a block model (Э17), or a table of something else
+    if header.kind == dm.BLOCK_MODEL:  # imported as a block model (ADR 0023 §7; `object_blockfile.is_blockfile`)
+        return OBJECT_FORMATS[DATAMINE_BLOCKS]
+    raise wrong_kind(path, header, "wireframe")  # a table of something else
 
 
 def detect_object(path: str | Path, filename: str | None = None) -> ObjectFormat:
@@ -397,6 +404,12 @@ def read_objects(
     `entries` without their geometry (see `ObjectsRead`)."""
     path = Path(path)
     fmt = detect_object(path, filename)
+    if fmt.kind == BLOCKS_KIND:  # the import of block models reads them (`importing.object_blockfile`), not this
+        raise FormatError(
+            "block_model",
+            f"Файл «{Path(filename or path.name).name}» — блочная модель, а не линии, точки или каркасы.",
+            "Загрузите его через «Импорт файлов» как блочную модель.",
+        )
     try:
         module = import_module(fmt.module)
         read = getattr(module, fmt.reader)

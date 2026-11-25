@@ -414,3 +414,72 @@ export async function importQaqc(page: Page, file: string, name: string, timeout
   expect(job.status, JSON.stringify(job.error)).toBe("done");
   return job.result!.data_id as number;
 }
+
+/** An empty new project (the ribbon button, its name asked in our own window), its first frame drawn. */
+export async function newEmptyProject(page: Page, name: string): Promise<void> {
+  await expect(page.getByTestId("core-status")).toContainText("Ядро работает", { timeout: 60_000 });
+  await page.getByLabel("Лента").getByRole("button", { name: "Новый проект" }).click();
+  await page.getByRole("dialog").last().getByRole("textbox").fill(name);
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("project-selector")).toContainText(name, { timeout: 60_000 });
+  await waitFrame(page);
+}
+
+/** The columns of a small synthetic block model, as `writeDatBlocks` takes them (NaN — an empty value). */
+export interface BlockColumns {
+  /** nx · ny · nz */
+  count: number;
+  columns: { name: string; values: Float64Array }[];
+}
+
+/**
+ * A regular block model nx × ny × nz of cells `size` m, its corner at `corner`: the centres (XC YC ZC) and the sizes
+ * (XINC YINC ZINC), then AU (a cone of the ore round the middle, every 11th block without a value), DOMAIN (1 — the
+ * core of the ore, 2 — the halo, 3 — the rock) and SG (a density by the domain). Values are formulas of the indices:
+ * the same file every time. ≤ 50 thousand blocks (ADR 0023 «CI»).
+ */
+export function syntheticBlocks(nx: number, ny: number, nz: number, size: [number, number, number] = [10, 10, 5], corner: [number, number, number] = [5000, 7000, 100]): BlockColumns {
+  const n = nx * ny * nz;
+  const names = ["XC", "YC", "ZC", "XINC", "YINC", "ZINC", "AU", "DOMAIN", "SG"];
+  const cols = names.map(() => new Float64Array(n));
+  let at = 0;
+  for (let k = 0; k < nz; k++) {
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++, at++) {
+        const d = Math.sqrt(((i - nx / 2 + 0.5) / nx) ** 2 + ((j - ny / 2 + 0.5) / ny) ** 2 + ((k - nz / 2 + 0.5) / nz) ** 2);
+        const domain = d < 0.15 ? 1 : d < 0.3 ? 2 : 3;
+        const row = [
+          corner[0] + (i + 0.5) * size[0],
+          corner[1] + (j + 0.5) * size[1],
+          corner[2] + (k + 0.5) * size[2],
+          size[0],
+          size[1],
+          size[2],
+          at % 11 === 5 ? NaN : Math.round((4.5 * Math.exp(-((d / 0.28) ** 2)) + 0.05 * ((i * 7 + j * 3 + k) % 5)) * 1000) / 1000,
+          domain,
+          [0, 3.1, 2.8, 2.6][domain],
+        ];
+        row.forEach((v, c) => (cols[c][at] = v));
+      }
+    }
+  }
+  return { count: n, columns: names.map((name, c) => ({ name, values: cols[c] })) };
+}
+
+/**
+ * A Micromine DAT (the Standard header, every field a binary double `R`, NaN — empty) as `formats/micromine_write.py`
+ * writes it: «N   VARIABLES», a line per field (name padded to 10, type, width, decimals), then the records of
+ * 8 bytes per field and CRLF. For the import through the wizard without the Python of the core. → the path.
+ */
+export function writeDatBlocks(file: string, m: BlockColumns): string {
+  const head = Buffer.from(`${String(m.columns.length).padEnd(4)}VARIABLES\r\n` + m.columns.map((c) => `${c.name.padEnd(10)}R  8  3\r\n`).join(""), "ascii");
+  const size = m.columns.length * 8 + 2;
+  const body = Buffer.alloc(m.count * size);
+  for (let r = 0; r < m.count; r++) {
+    const at = r * size;
+    m.columns.forEach((c, k) => body.writeDoubleLE(c.values[r], at + k * 8));
+    body.write("\r\n", at + size - 2, "ascii");
+  }
+  fs.writeFileSync(file, Buffer.concat([head, body]));
+  return file;
+}

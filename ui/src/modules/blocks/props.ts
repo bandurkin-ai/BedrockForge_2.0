@@ -1,7 +1,9 @@
 /**
- * What «Свойства» of a block model tell (ADR 0017 §3): the grid — counts, the step (regular or variable), the
- * corner, the extent; the fields with their units and statistics (a missing value stays «—», never 0; `missing`
- * are occupied cells without a value); the source of the import; what was not carried over. Pure: no React.
+ * What «Свойства» of a block model tell (ADR 0017 §3; ADR 0023 §2, §5; ТЗ 7.31 «Свойства»): the grid — counts, the step
+ * (regular or variable), the corner, the turn about Z, the sub-blocks (the division of a parent, the levels, the blocks
+ * and the parents) and the extent; the checks of the import (duplicates, overlaps, empty and constant fields, the volume,
+ * the rows of the examples from 1); the fields with their units and statistics (a missing value stays «—», never 0;
+ * `missing` are occupied cells without a value); the source of the import; what was not carried over. Pure: no React.
  */
 import { extentFacts, num, type Fact } from "../../shell/props";
 import { count, counted } from "../../shell/treeActions";
@@ -34,9 +36,57 @@ export function stepText(b: Pick<BlockModelInfo, "grid">): string {
   return `переменный: X ${axis(t.x)}, Y ${axis(t.y)}, Z ${axis(t.z)} м`;
 }
 
+/** What the core of the model v2 adds to the answer of `GET /blocks[/{id}]` (e17-api.md §2, §4): the turn and the division of
+ * the grid, the sub-blocks, the checks of the import. Models of the earlier version have none of it. */
+export interface GridV2 {
+  /** degrees about Z, counter-clockwise seen from above; 0 — none */
+  rotation?: number;
+  /** the division of a parent into sub-blocks along each axis (1 — none) */
+  div?: [number, number, number];
+  /** the levels of the division along each axis (2^level) */
+  levels?: [number, number, number];
+}
+
+export interface CheckExample {
+  /** "duplicate" | "overlap" | "outside" | "crossing" … */
+  check: string;
+  /** the row of the file the model was made of, from 0 (the window shows it from 1) */
+  row: number;
+  other_row?: number;
+}
+
+/** `meta.checks` (e17-api.md §2): the findings of the import. */
+export interface Checks {
+  at?: string;
+  duplicates: number;
+  overlaps: { n: number; method: "exact" | "volume" | string };
+  /** the names of the fields without a single value */
+  empty: string[];
+  /** the names of the fields with one value in all the blocks */
+  constant: string[];
+  /** m³ of all the blocks */
+  volume: number | null;
+  examples: CheckExample[];
+}
+
+export interface BlockV2 {
+  sub?: boolean;
+  parents?: number;
+  rows?: number;
+  checks?: Checks | null;
+}
+
+export type BlockInfoV2 = Omit<BlockModelInfo, "grid"> & BlockV2 & { grid: BlockModelInfo["grid"] & GridV2 };
+
+/** The model as the v2 core tells it; a model of the earlier version has the same shape without the extra keys. */
+export const v2 = (b: BlockModelInfo): BlockInfoV2 => b as BlockInfoV2;
+
+const LEVELS = (l: readonly number[]): string => l.map((x) => String(x)).join(" × ");
+
 export function gridFacts(b: BlockModelInfo): Fact[] {
   const total = b.grid.counts.reduce((a, c) => a * c, 1);
   const share = total > 0 ? ` (${num((100 * b.cells) / total, 1)} %)` : "";
+  const m = v2(b);
   const facts: Fact[] = [
     { label: "Сетка", value: `${gridCounts(b)} (${counted(total, "ячейка", "ячейки", "ячеек")})` },
     { label: "Занято ячеек", value: `${count(b.cells)}${share}` },
@@ -44,9 +94,56 @@ export function gridFacts(b: BlockModelInfo): Fact[] {
     { label: "Угол модели", value: b.grid.corner.map((v, i) => `${AXES[i]} ${num(v, 3)}`).join(", ") },
     ...extentFacts(b.extent),
   ];
+  const turn = m.grid.rotation;
+  if (typeof turn === "number" && turn !== 0) facts.splice(4, 0, { label: "Поворот", value: `${num(turn, 4)}° вокруг Z, против часовой стрелки при виде сверху` });
+  const sub = subFacts(b);
+  if (sub.length) facts.splice(turn ? 5 : 4, 0, ...sub);
   if (b.crs) facts.push({ label: "Система координат", value: b.crs });
   if (typeof b.size === "number") facts.push({ label: "Файл ячеек", value: bytes(b.size) });
   return facts;
+}
+
+/** The sub-blocks of a model: the division of a parent, the levels, the blocks against the parents; none — nothing. */
+export function subFacts(b: BlockModelInfo): Fact[] {
+  const m = v2(b);
+  const div = m.grid.div;
+  if (!m.sub && !(div && div.some((d) => d > 1))) return [];
+  const out: Fact[] = [];
+  if (div) out.push({ label: "Субблоки", value: `родитель делится на ${div.map((d) => num(d, 0)).join(" × ")}${m.grid.levels ? `, уровней ${LEVELS(m.grid.levels)}` : ""}` });
+  else out.push({ label: "Субблоки", value: "есть" });
+  if (typeof m.rows === "number" && typeof m.parents === "number") out.push({ label: "Блоков и родителей", value: `${count(m.rows)} блоков в ${count(m.parents)} родителях` });
+  return out;
+}
+
+const CHECK_TITLES: Record<string, string> = { duplicate: "повтор", overlap: "перекрытие", outside: "за сеткой", crossing: "через границу родителя" };
+export const MAX_EXAMPLES = 10;
+
+/** «строка 104 — повтор строки 3» (rows from 1). */
+export function exampleText(e: CheckExample): string {
+  const title = CHECK_TITLES[e.check] ?? e.check;
+  const other = typeof e.other_row === "number" ? ` строки ${count(e.other_row + 1)}` : "";
+  return `строка ${count(e.row + 1)} — ${title}${other}`;
+}
+
+export interface CheckRow {
+  label: string;
+  value: string;
+  /** a finding (not «0»): shown as a warning */
+  found: boolean;
+}
+
+/** The checks of the import as rows of «Проверки»; null — the model was not checked (made before the checks). */
+export function checkRows(checks: Checks | null | undefined): CheckRow[] | null {
+  if (!checks) return null;
+  const method = checks.overlaps.method === "exact" ? "точно, на сетке наименьшего блока" : "по объёму в родительской ячейке";
+  const rows: CheckRow[] = [
+    { label: "Дубликаты", value: checks.duplicates ? `${count(checks.duplicates)} — остаётся первая строка` : "нет", found: checks.duplicates > 0 },
+    { label: "Перекрытия", value: checks.overlaps.n ? `${count(checks.overlaps.n)} (${method}) — строки сохранены` : `нет (${method})`, found: checks.overlaps.n > 0 },
+    { label: "Пустые поля", value: checks.empty.length ? checks.empty.join(", ") : "нет", found: checks.empty.length > 0 },
+    { label: "Постоянные поля", value: checks.constant.length ? `${checks.constant.join(", ")} — одно значение во всех блоках` : "нет", found: checks.constant.length > 0 },
+  ];
+  if (typeof checks.volume === "number") rows.push({ label: "Объём блоков", value: `${num(checks.volume, 1)} м³`, found: false });
+  return rows;
 }
 
 export interface FieldRow {
@@ -94,11 +191,16 @@ export function fieldRow(f: BlockField): FieldRow {
   return row;
 }
 
-const FORMATS: Record<string, string> = { omf: "OMF" };
+/** The names of the file formats the core reports (`format` of an import). */
+const FORMATS: Record<string, string> = { omf: "OMF", dat: "Micromine DAT", csv: "CSV / TXT", csv_micromine: "CSV Micromine", dm: "Datamine DM", fbm: "Datamine FBM" };
+/** What made a model that was not read from a file (`op` of the source: no `format`). */
+const OPS: Record<string, string> = { fill: "Заполнение каркасами", code: "Кодирование каркасами", prototype: "Прототип", regularize: "Регуляризация", calc: "Калькулятор", import: "Импорт из файла" };
 
 export function sourceFacts(s: BlockSource | null | undefined): Fact[] {
   if (!s) return [];
-  const facts: Fact[] = [{ label: "Формат", value: FORMATS[s.format] ?? s.format }];
+  const facts: Fact[] = [];
+  if (s.format) facts.push({ label: "Формат", value: FORMATS[s.format] ?? s.format });
+  else if (s.op) facts.push({ label: "Создана", value: OPS[s.op] ?? s.op });
   if (s.file) facts.push({ label: "Файл", value: s.file });
   if (s.element) facts.push({ label: "Элемент", value: s.element });
   return facts;

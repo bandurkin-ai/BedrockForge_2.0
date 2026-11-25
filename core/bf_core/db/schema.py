@@ -476,7 +476,7 @@ BLOB_ROLES: frozenset[str] = frozenset(
         "nscore",  # variogram models: the table of the normal scores (Parquet: value, score, weight)
     }  # fmt: skip
 )
-BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:")
+BLOB_ROLE_PREFIXES: tuple[str, ...] = ("sidecar:", "pack:", "fld:")
 
 
 def valid_blob_role(role: str) -> bool:

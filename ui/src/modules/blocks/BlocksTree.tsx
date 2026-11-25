@@ -1,7 +1,7 @@
 /**
  * The section «Блочные модели» of the data tree (ADR 0017 §3): a row per model in its folder, a click selects
  * it (`object.select {kind: "blocks"}`), Enter or a double click opens «Свойства»; the menu is `tree.ts`
- * `blockMenu`. The keys are those of every tree row (WAI-ARIA, `TreeRow`). No check box: no 3D before Э17.
+ * `blockMenu`. The keys are those of every tree row (WAI-ARIA, `TreeRow`). No check box: the menu shows and hides a model in 3D (`blocks.show`, Э17).
  */
 import { useEffect, useMemo } from "react";
 import { useApp } from "../../shell/AppContext";

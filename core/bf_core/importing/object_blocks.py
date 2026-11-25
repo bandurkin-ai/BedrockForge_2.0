@@ -103,7 +103,7 @@ def write_volumes(
     from bf_core.blocks import store as bm
     from bf_core.drillholes.edit import author
     from bf_core.formats.omf_read import open_reader
-    from bf_core.formats.omf_volume import read_volume
+    from bf_core.formats.omf_volume import block_sink, read_volume
     from bf_core.formats.str_layers import scaled
 
     label, who = g.main.name, author()
@@ -121,7 +121,7 @@ def write_volumes(
                 done += int(vol.entry.cells or 0)
                 tmp.mkdir(parents=True, exist_ok=True)
                 try:  # a cancel inside (its last report too) discards the staged cells there
-                    vr = read_volume(reader.file, vol, lambda grid, fields: bm.CellsWriter(store, grid, fields),
+                    vr = read_volume(reader.file, vol, block_sink(store),
                                      tmp_dir=tmp, progress=share)  # fmt: skip
                 except (FormatError, ApiError) as exc:  # ApiError: `CellsWriter` refuses the grid or the fields
                     if exc.code in FATAL:
@@ -163,11 +163,17 @@ def write_volumes(
 
 
 def entry(label: str, fmt: str, blocks: Blocks) -> dict[str, Any]:
-    """The entry of the result of the job for the block models of a file."""
-    return {
+    """The entry of the result of the job for the block models of a file. A block file (one model) adds `rows`,
+    `parents`, `sub` and `checks` {duplicates, overlaps} — what its import found (`object_blockfile`)."""
+    out = {
         "file": label, "format": fmt, "kind": BLOCK_MODELS, "object_id": blocks.ids[0], "object_ids": list(blocks.ids),
         "block_models": len(blocks.ids), "cells": blocks.cells, "skipped": len(blocks.skipped),
     }  # fmt: skip
+    first = blocks.counts[0] if blocks.counts else {}
+    if "parents" in first:
+        checks = {k: int(first.get(k, 0)) for k in ("duplicates", "overlaps")}
+        out.update(rows=int(first["cells"]), parents=int(first["parents"]), sub=bool(first.get("sub")), checks=checks)
+    return out
 
 
 def log_blocks(

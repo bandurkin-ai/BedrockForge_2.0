@@ -135,11 +135,12 @@ def test_a_cancel_at_the_last_report_stages_nothing(tmp_path: Path, monkeypatch:
             read(volume_file(tmp_path, AXES[case]), tmp_path, lambda g, f: sinks.append(Sink(g, f)) or sinks[-1],
                  progress=_stop_at_the_end)  # fmt: skip
         assert sinks[-1].discarded and not sinks[-1].finished
+    from bf_core.blocks import fields_store as fs
     from bf_core.blocks import store as bm
     from bf_core.storage.blobs import BlobStore
 
     synced: list[int] = []
-    monkeypatch.setattr(bm.os, "fsync", lambda fd: synced.append(fd))
+    monkeypatch.setattr(fs.os, "fsync", lambda fd: synced.append(fd))  # `seal` (fsync + SHA-256) of the finished file
     store = BlobStore(tmp_path / "project")
     with pytest.raises(Stop):
         read(volume_file(tmp_path, AXES["identity"]), tmp_path, lambda g, f: bm.CellsWriter(store, g, f),

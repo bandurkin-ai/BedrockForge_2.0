@@ -1,5 +1,5 @@
 {
-  "model": "opus",
+  "model": "sonnet",
     "permissions": {
     "allow": [
       "mcp__claude-code-remote__create_trigger",

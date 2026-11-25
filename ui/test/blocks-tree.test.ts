@@ -1,5 +1,5 @@
 /** Block models in the data tree and «Свойства» (ADR 0017 §3, Э11 11.13): rows and menus as data, «Показать в 3D»
- * disabled with the reason of Э17, the grid and the fields with statistics (a missing value is «—», never 0),
+ * available since Э17 17.31, the grid and the fields with statistics (a missing value is «—», never 0),
  * the list following `objects.changed {kind: "block_model"}`, and `object.select / rename / delete` with
  * `kind: "blocks"` — own windows from the interface, the version of the model, 409 with the text of the core. */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +12,7 @@ import type { BlockModelInfo } from "../src/modules/blocks/api";
 import { bindBlocks } from "../src/modules/blocks/bind";
 import { bytes, fieldRow, gridFacts, sourceFacts, stepText } from "../src/modules/blocks/props";
 import { blocksStore, clearBlocks, isBlocksEvent, loadBlockDetails, loadBlocks } from "../src/modules/blocks/state";
-import { blockKey, blockMenu, blockRow, blockSummary, SHOW_LATER } from "../src/modules/blocks/tree";
+import { blockKey, blockMenu, blockRow, blockSummary } from "../src/modules/blocks/tree";
 import { projectStore, type ProjectInfo } from "../src/modules/projects/state";
 import { sceneObjects } from "../src/modules/scene/objects";
 
@@ -39,23 +39,27 @@ describe("rows and menus of «Блочные модели»", () => {
     expect(row.testId).toBe("tree-block-7");
     expect(row.click).toBe("select");
     expect(row.buttons).toEqual([]);
-    expect(row.title).toContain(SHOW_LATER);
+    expect(row.title).toContain("показать в 3D");
     expect(blockKey(7)).toBe("bm:7");
   });
 
-  it("the menu: Свойства, Показать в 3D, Экспорт OMF…, Переименовать…, Удалить…", () => {
+  it("the menu: Свойства, Показать в 3D, Скрыть в 3D, Настройки…, Экспорт OMF…, Экспорт…, Переименовать…, Удалить…", () => {
     const menu = blockMenu({ id: 7 });
-    expect(labels(menu)).toEqual(["Свойства", "Показать в 3D", "Экспорт OMF…", "Переименовать…", "Удалить…"]);
+    expect(labels(menu)).toEqual(["Свойства", "Показать в 3D", "Скрыть в 3D", "Настройки…", "Экспорт OMF…", "Экспорт…", "Переименовать…", "Удалить…"]);
+    expect(menu.find((a) => a.label === "Показать в 3D")).toMatchObject({ command: "blocks.show", args: { model_id: 7 } });
+    expect(menu.find((a) => a.label === "Скрыть в 3D")).toMatchObject({ command: "blocks.show", args: { model_id: 7, visible: false } });
     expect(menu.find((a) => a.label === "Экспорт OMF…")).toMatchObject({ command: "omf.export", args: { dataset_ids: "7" } });
+    expect(menu.find((a) => a.label === "Экспорт…")).toMatchObject({ command: "blocks.export", args: { model_id: "7" } });
     expect(menu.find((a) => a.label === "Переименовать…")).toMatchObject({ command: "object.rename", args: { kind: "blocks", id: 7 } });
     expect(menu.find((a) => a.label === "Удалить…")).toMatchObject({ command: "object.delete", args: { kind: "blocks", id: 7 } });
   });
 
-  it("«Показать в 3D» is disabled with the reason of Э17; rename and delete are available", () => {
+  it("«Показать в 3D» and «Скрыть в 3D» are available with a project (Э17); rename and delete too", () => {
     const app = createApp({ persist: false });
     app.store.set({ projectName: "Проект" });
     const items = menuItems(app, blockMenu({ id: 7 }), () => undefined).filter((i) => !i.separator);
-    expect(items.find((i) => i.label === "Показать в 3D")?.reason).toBe("Функция появится на этапе Э17");
+    expect(items.find((i) => i.label === "Показать в 3D")?.reason).toBeNull();
+    expect(items.find((i) => i.label === "Скрыть в 3D")?.reason).toBeNull();
     expect(items.find((i) => i.label === "Свойства")?.reason).toBeNull();
     expect(items.find((i) => i.label === "Переименовать…")?.reason).toBeNull();
     expect(items.find((i) => i.label === "Удалить…")?.reason).toBeNull();
@@ -103,6 +107,18 @@ describe("«Свойства» of a block model", () => {
       { label: "Элемент", value: "Блоки" },
     ]);
     expect(sourceFacts(null)).toEqual([]);
+  });
+
+  it("the source: a format is named in Russian words; a model made by an operation tells the operation, not an empty format", () => {
+    expect(sourceFacts({ format: "fbm", file: "a.fbm" })).toEqual([{ label: "Формат", value: "Datamine FBM" }, { label: "Файл", value: "a.fbm" }]);
+    expect(sourceFacts({ format: "csv_micromine" })[0].value).toBe("CSV Micromine");
+    expect(sourceFacts({ format: "dat" })[0].value).toBe("Micromine DAT");
+    expect(sourceFacts({ op: "fill" })).toEqual([{ label: "Создана", value: "Заполнение каркасами" }]);
+    expect(sourceFacts({ op: "code" })[0].value).toBe("Кодирование каркасами");
+    expect(sourceFacts({ op: "prototype" })[0].value).toBe("Прототип");
+    expect(sourceFacts({ op: "regularize" })[0].value).toBe("Регуляризация");
+    expect(sourceFacts({ op: "calc" })[0].value).toBe("Калькулятор");
+    expect(sourceFacts({})).toEqual([]);
   });
 });
 

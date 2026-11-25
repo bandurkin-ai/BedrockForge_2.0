@@ -13,6 +13,7 @@ ROUTER_MODULES: tuple[str, ...] = (
     "composites",
     "drillholes",
     "exporting",
+    "filters",
     "geostat",
     "importing",
     "intercepts",

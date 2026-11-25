@@ -24,7 +24,7 @@ export function openDrillholeWizard(paths: string[] = [], mode: WizardMode = "ho
   openWindow("import-drillholes", MODE_TITLES[mode], "normal", Object.keys(props).length ? props : undefined, ...viewport());
 }
 
-export type ObjectsPick = "objects" | "lines" | "rasters" | "wireframes" | "omf";
+export type ObjectsPick = "objects" | "lines" | "rasters" | "wireframes" | "omf" | "blocks";
 
 /** The composition of lines, points, rasters, wireframes and OMF; `pick` — what «Добавить файлы…» of the window
  * offers; `cloud` — the window «Облако точек»: every table is a point cloud, «Добавить файлы…» offers LAS or XYZ;
@@ -47,7 +47,7 @@ export function folderNote(folder: string | null, holes: number, project: number
  * tables go to their wizard, lines, points, rasters, wireframes and OMF to the composition of «Импорт файлов», a
  * `.bfggis` to the project import; what is not loaded yet is told with its stage (ТЗ 7.8), and so is a folder that
  * does not apply (`folderNote`). */
-export async function importPaths(app: App, paths: string[], prefer: "auto" | "objects" = "auto", folder: string | null = null): Promise<string> {
+export async function importPaths(app: App, paths: string[], prefer: "auto" | "objects" = "auto", folder: string | null = null, pick?: ObjectsPick): Promise<string> {
   const route = routeImport(paths, prefer);
   const note = folderNote(folder, route.holes.length, route.project.length);
   if (route.skipped.length || note) {
@@ -59,7 +59,7 @@ export async function importPaths(app: App, paths: string[], prefer: "auto" | "o
       ...(route.skipped.length ? { log: route.skipped.join("\n") } : {}),
     });
   }
-  if (route.objects.length) openObjectsWizard(route.objects, prefer === "objects" ? "lines" : "objects", null, folder);
+  if (route.objects.length) openObjectsWizard(route.objects, pick ?? (prefer === "objects" ? "lines" : "objects"), null, folder);
   if (route.holes.length) openDrillholeWizard(route.holes);
   if (route.project.length) await app.run("project.import", { path: route.project[0] });
   const opened = [route.objects.length && "состав импорта файлов", route.holes.length && "мастер импорта скважин", route.project.length && "импорт проекта"].filter(Boolean);
@@ -83,13 +83,14 @@ export function bindImporting(app: App): void {
     },
     needProject,
   );
-  const pickAndImport = async (filter: "objects" | "omf", raw: unknown) => {
+  const pickAndImport = async (filter: "objects" | "omf" | "blocks", raw: unknown) => {
     const folder = cleanFolder(raw);
     const paths = (await bridge()?.pickFiles(filter, true)) ?? [];
     if (!paths.length) return "Отменено";
-    return importPaths(app, paths, "auto", folder);
+    // block files are told by their columns: a `.csv` or a `.dat` goes to the composition, not to the drillhole wizard
+    return filter === "blocks" ? importPaths(app, paths, "objects", folder, "blocks") : importPaths(app, paths, "auto", folder);
   };
-  app.registry.bind("import.files", (a) => pickAndImport(a.kind === "omf" ? "omf" : "objects", a.folder), needProject);
+  app.registry.bind("import.files", (a) => pickAndImport(a.kind === "omf" ? "omf" : a.kind === "blocks" ? "blocks" : "objects", a.folder), needProject);
   app.registry.bind("omf.import", (a) => pickAndImport("omf", a.folder), needProject);
   app.registry.bind(
     "points.import",

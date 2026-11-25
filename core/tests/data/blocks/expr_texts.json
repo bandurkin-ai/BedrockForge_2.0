@@ -1,0 +1,838 @@
+{
+ "v": 1,
+ "note": "Тексты калькулятора 8.7.4 (17.5): допустимые — с канонической записью, полями и функциями; недопустимые — с позицией ошибки (pos — смещение с нуля, line и column — с единицы).",
+ "valid": [
+  {
+   "text": "IF(AU > 1, AU*2, 0)",
+   "canonical": "IF(AU > 1, AU * 2, 0)",
+   "fields": [
+    "AU"
+   ],
+   "functions": [
+    "IF"
+   ]
+  },
+  {
+   "text": "AU",
+   "canonical": "AU",
+   "fields": [
+    "AU"
+   ],
+   "functions": []
+  },
+  {
+   "text": "[Au ppm] * 2",
+   "canonical": "[Au ppm] * 2",
+   "fields": [
+    "Au ppm"
+   ],
+   "functions": []
+  },
+  {
+   "text": "  au+Au  ",
+   "canonical": "au + Au",
+   "fields": [
+    "au"
+   ],
+   "functions": []
+  },
+  {
+   "text": "-2^2",
+   "canonical": "-2 ^ 2",
+   "fields": [],
+   "functions": []
+  },
+  {
+   "text": "2^3^2",
+   "canonical": "2 ^ 3 ^ 2",
+   "fields": [],
+   "functions": []
+  },
+  {
+   "text": "(2^3)^2",
+   "canonical": "(2 ^ 3) ^ 2",
+   "fields": [],
+   "functions": []
+  },
+  {
+   "text": "(-2)^2",
+   "canonical": "(-2) ^ 2",
+   "fields": [],
+   "functions": []
+  },
+  {
+   "text": "2^-1",
+   "canonical": "2 ^ -1",
+   "fields": [],
+   "functions": []
+  },
+  {
+   "text": "a-(b-c)",
+   "canonical": "a - (b - c)",
+   "fields": [
+    "a",
+    "b",
+    "c"
+   ],
+   "functions": []
+  },
+  {
+   "text": "(a-b)-c",
+   "canonical": "a - b - c",
+   "fields": [
+    "a",
+    "b",
+    "c"
+   ],
+   "functions": []
+  },
+  {
+   "text": "a/(b*c)",
+   "canonical": "a / (b * c)",
+   "fields": [
+    "a",
+    "b",
+    "c"
+   ],
+   "functions": []
+  },
+  {
+   "text": "((a))",
+   "canonical": "a",
+   "fields": [
+    "a"
+   ],
+   "functions": []
+  },
+  {
+   "text": "+a",
+   "canonical": "a",
+   "fields": [
+    "a"
+   ],
+   "functions": []
+  },
+  {
+   "text": "a−b",
+   "canonical": "a - b",
+   "fields": [
+    "a",
+    "b"
+   ],
+   "functions": []
+  },
+  {
+   "text": "x IN ('A', 'B')",
+   "canonical": "x IN ('A', 'B')",
+   "fields": [
+    "x"
+   ],
+   "functions": []
+  },
+  {
+   "text": "X in ('руда','it''s')",
+   "canonical": "X IN ('руда', 'it''s')",
+   "fields": [
+    "X"
+   ],
+   "functions": []
+  },
+  {
+   "text": "k IN (1, -2, +3.5)",
+   "canonical": "k IN (1, -2, 3.5)",
+   "fields": [
+    "k"
+   ],
+   "functions": []
+  },
+  {
+   "text": "a > 1 AND b <= 2 OR NOT c <> 3",
+   "canonical": "a > 1 AND b <= 2 OR NOT c <> 3",
+   "fields": [
+    "a",
+    "b",
+    "c"
+   ],
+   "functions": []
+  },
+  {
+   "text": "a AND (b AND c)",
+   "canonical": "a AND b AND c",
+   "fields": [
+    "a",
+    "b",
+    "c"
+   ],
+   "functions": []
+  },
+  {
+   "text": "(a OR b) AND c",
+   "canonical": "(a OR b) AND c",
+   "fields": [
+    "a",
+    "b",
+    "c"
+   ],
+   "functions": []
+  },
+  {
+   "text": "NOT (a AND b)",
+   "canonical": "NOT (a AND b)",
+   "fields": [
+    "a",
+    "b"
+   ],
+   "functions": []
+  },
+  {
+   "text": "not not a",
+   "canonical": "NOT NOT a",
+   "fields": [
+    "a"
+   ],
+   "functions": []
+  },
+  {
+   "text": "(a > 1) = (b > 2)",
+   "canonical": "(a > 1) = (b > 2)",
+   "fields": [
+    "a",
+    "b"
+   ],
+   "functions": []
+  },
+  {
+   "text": "MIN(a, b, c) + max(1, 2)",
+   "canonical": "MIN(a, b, c) + MAX(1, 2)",
+   "fields": [
+    "a",
+    "b",
+    "c"
+   ],
+   "functions": [
+    "MAX",
+    "MIN"
+   ]
+  },
+  {
+   "text": "CLIP(x, 0, 10)",
+   "canonical": "CLIP(x, 0, 10)",
+   "fields": [
+    "x"
+   ],
+   "functions": [
+    "CLIP"
+   ]
+  },
+  {
+   "text": "ROUND(AU, 2)",
+   "canonical": "ROUND(AU, 2)",
+   "fields": [
+    "AU"
+   ],
+   "functions": [
+    "ROUND"
+   ]
+  },
+  {
+   "text": "COALESCE(a, b, 0)",
+   "canonical": "COALESCE(a, b, 0)",
+   "fields": [
+    "a",
+    "b"
+   ],
+   "functions": [
+    "COALESCE"
+   ]
+  },
+  {
+   "text": "ISNULL(a) OR a < 0",
+   "canonical": "ISNULL(a) OR a < 0",
+   "fields": [
+    "a"
+   ],
+   "functions": [
+    "ISNULL"
+   ]
+  },
+  {
+   "text": "ABS(a)+SQRT(b)+LN(c)+LOG10(d)+EXP(e)+FLOOR(f)+CEIL(g)",
+   "canonical": "ABS(a) + SQRT(b) + LN(c) + LOG10(d) + EXP(e) + FLOOR(f) + CEIL(g)",
+   "fields": [
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g"
+   ],
+   "functions": [
+    "ABS",
+    "CEIL",
+    "EXP",
+    "FLOOR",
+    "LN",
+    "LOG10",
+    "SQRT"
+   ]
+  },
+  {
+   "text": "1e-3 * .5 + 12.50",
+   "canonical": "0.001 * 0.5 + 12.5",
+   "fields": [],
+   "functions": []
+  },
+  {
+   "text": "1e20",
+   "canonical": "1e+20",
+   "fields": [],
+   "functions": []
+  },
+  {
+   "text": "123456789012345678",
+   "canonical": "1.2345678901234568e+17",
+   "fields": [],
+   "functions": []
+  },
+  {
+   "text": "0.1 + 0.2",
+   "canonical": "0.1 + 0.2",
+   "fields": [],
+   "functions": []
+  },
+  {
+   "text": "[IF] + [and] + [ABS]",
+   "canonical": "[IF] + [and] + [ABS]",
+   "fields": [
+    "IF",
+    "and",
+    "ABS"
+   ],
+   "functions": []
+  },
+  {
+   "text": "Au_ppm_2 + Содержание",
+   "canonical": "Au_ppm_2 + Содержание",
+   "fields": [
+    "Au_ppm_2",
+    "Содержание"
+   ],
+   "functions": []
+  },
+  {
+   "text": "IF(a > 1, 'руда', 'порода')",
+   "canonical": "IF(a > 1, 'руда', 'порода')",
+   "fields": [
+    "a"
+   ],
+   "functions": [
+    "IF"
+   ]
+  },
+  {
+   "text": "a +\n b",
+   "canonical": "a + b",
+   "fields": [
+    "a",
+    "b"
+   ],
+   "functions": []
+  },
+  {
+   "text": "ABS (x)",
+   "canonical": "ABS(x)",
+   "fields": [
+    "x"
+   ],
+   "functions": [
+    "ABS"
+   ]
+  },
+  {
+   "text": "-x * y",
+   "canonical": "-x * y",
+   "fields": [
+    "x",
+    "y"
+   ],
+   "functions": []
+  },
+  {
+   "text": "-(x * y)",
+   "canonical": "-(x * y)",
+   "fields": [
+    "x",
+    "y"
+   ],
+   "functions": []
+  },
+  {
+   "text": "a * -b",
+   "canonical": "a * -b",
+   "fields": [
+    "a",
+    "b"
+   ],
+   "functions": []
+  },
+  {
+   "text": "--a",
+   "canonical": "--a",
+   "fields": [
+    "a"
+   ],
+   "functions": []
+  },
+  {
+   "text": "[Порода] = 'руда'",
+   "canonical": "Порода = 'руда'",
+   "fields": [
+    "Порода"
+   ],
+   "functions": []
+  }
+ ],
+ "invalid": [
+  {
+   "text": "__import__('os')",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "_",
+   "reason": "unknown_function"
+  },
+  {
+   "text": "  __import__('os')",
+   "pos": 2,
+   "line": 1,
+   "column": 3,
+   "char": "_",
+   "reason": "unknown_function"
+  },
+  {
+   "text": "AU > 1 AND os.system('x')",
+   "pos": 13,
+   "line": 1,
+   "column": 14,
+   "char": ".",
+   "reason": "bad_char"
+  },
+  {
+   "text": "eval('1+1')",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "e",
+   "reason": "unknown_function"
+  },
+  {
+   "text": "getattr(a, 'b')",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "g",
+   "reason": "unknown_function"
+  },
+  {
+   "text": "exec(\"x\")",
+   "pos": 5,
+   "line": 1,
+   "column": 6,
+   "char": "\"",
+   "reason": "bad_char"
+  },
+  {
+   "text": "a.__class__",
+   "pos": 1,
+   "line": 1,
+   "column": 2,
+   "char": ".",
+   "reason": "bad_char"
+  },
+  {
+   "text": "lambda: 1",
+   "pos": 6,
+   "line": 1,
+   "column": 7,
+   "char": ":",
+   "reason": "bad_char"
+  },
+  {
+   "text": "a b",
+   "pos": 2,
+   "line": 1,
+   "column": 3,
+   "char": "b",
+   "reason": "syntax"
+  },
+  {
+   "text": "2 2",
+   "pos": 2,
+   "line": 1,
+   "column": 3,
+   "char": "2",
+   "reason": "syntax"
+  },
+  {
+   "text": "(a",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "(",
+   "reason": "unclosed_paren"
+  },
+  {
+   "text": "a)",
+   "pos": 1,
+   "line": 1,
+   "column": 2,
+   "char": ")",
+   "reason": "syntax"
+  },
+  {
+   "text": "(a))",
+   "pos": 3,
+   "line": 1,
+   "column": 4,
+   "char": ")",
+   "reason": "syntax"
+  },
+  {
+   "text": "a +",
+   "pos": 3,
+   "line": 1,
+   "column": 4,
+   "char": "",
+   "reason": "syntax"
+  },
+  {
+   "text": "a ^",
+   "pos": 3,
+   "line": 1,
+   "column": 4,
+   "char": "",
+   "reason": "syntax"
+  },
+  {
+   "text": "a AND",
+   "pos": 5,
+   "line": 1,
+   "column": 6,
+   "char": "",
+   "reason": "syntax"
+  },
+  {
+   "text": "NOT",
+   "pos": 3,
+   "line": 1,
+   "column": 4,
+   "char": "",
+   "reason": "syntax"
+  },
+  {
+   "text": "",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "",
+   "reason": "empty"
+  },
+  {
+   "text": "   ",
+   "pos": 3,
+   "line": 1,
+   "column": 4,
+   "char": "",
+   "reason": "empty"
+  },
+  {
+   "text": "1,5",
+   "pos": 1,
+   "line": 1,
+   "column": 2,
+   "char": ",",
+   "reason": "syntax"
+  },
+  {
+   "text": "a +* b",
+   "pos": 3,
+   "line": 1,
+   "column": 4,
+   "char": "*",
+   "reason": "syntax"
+  },
+  {
+   "text": "x == 1",
+   "pos": 2,
+   "line": 1,
+   "column": 3,
+   "char": "=",
+   "reason": "bad_char"
+  },
+  {
+   "text": "x != 1",
+   "pos": 2,
+   "line": 1,
+   "column": 3,
+   "char": "!",
+   "reason": "bad_char"
+  },
+  {
+   "text": "a ** 2",
+   "pos": 2,
+   "line": 1,
+   "column": 3,
+   "char": "*",
+   "reason": "bad_char"
+  },
+  {
+   "text": "a % 2",
+   "pos": 2,
+   "line": 1,
+   "column": 3,
+   "char": "%",
+   "reason": "bad_char"
+  },
+  {
+   "text": "a; b",
+   "pos": 1,
+   "line": 1,
+   "column": 2,
+   "char": ";",
+   "reason": "bad_char"
+  },
+  {
+   "text": "a & b",
+   "pos": 2,
+   "line": 1,
+   "column": 3,
+   "char": "&",
+   "reason": "bad_char"
+  },
+  {
+   "text": "a $ b",
+   "pos": 2,
+   "line": 1,
+   "column": 3,
+   "char": "$",
+   "reason": "bad_char"
+  },
+  {
+   "text": "ABS(1,2)",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "A",
+   "reason": "arity"
+  },
+  {
+   "text": "IF(a, b)",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "I",
+   "reason": "arity"
+  },
+  {
+   "text": "MIN(a)",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "M",
+   "reason": "arity"
+  },
+  {
+   "text": "ABS()",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "A",
+   "reason": "arity"
+  },
+  {
+   "text": "ROUND(x)",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "R",
+   "reason": "arity"
+  },
+  {
+   "text": "ABS(a b)",
+   "pos": 6,
+   "line": 1,
+   "column": 7,
+   "char": "b",
+   "reason": "syntax"
+  },
+  {
+   "text": "ABS(a,",
+   "pos": 6,
+   "line": 1,
+   "column": 7,
+   "char": "",
+   "reason": "syntax"
+  },
+  {
+   "text": "ABS(a",
+   "pos": 3,
+   "line": 1,
+   "column": 4,
+   "char": "(",
+   "reason": "unclosed_paren"
+  },
+  {
+   "text": "a < b < c",
+   "pos": 6,
+   "line": 1,
+   "column": 7,
+   "char": "<",
+   "reason": "chained_compare"
+  },
+  {
+   "text": "x IN ('A') = 1",
+   "pos": 11,
+   "line": 1,
+   "column": 12,
+   "char": "=",
+   "reason": "chained_compare"
+  },
+  {
+   "text": "a = 1 IN (1)",
+   "pos": 6,
+   "line": 1,
+   "column": 7,
+   "char": "I",
+   "reason": "chained_compare"
+  },
+  {
+   "text": "a IN (b)",
+   "pos": 6,
+   "line": 1,
+   "column": 7,
+   "char": "b",
+   "reason": "syntax"
+  },
+  {
+   "text": "a IN ()",
+   "pos": 6,
+   "line": 1,
+   "column": 7,
+   "char": ")",
+   "reason": "syntax"
+  },
+  {
+   "text": "a IN 'A'",
+   "pos": 5,
+   "line": 1,
+   "column": 6,
+   "char": "'",
+   "reason": "syntax"
+  },
+  {
+   "text": "a IN ('A'",
+   "pos": 5,
+   "line": 1,
+   "column": 6,
+   "char": "(",
+   "reason": "unclosed_paren"
+  },
+  {
+   "text": "AND",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "A",
+   "reason": "syntax"
+  },
+  {
+   "text": "a AND OR b",
+   "pos": 6,
+   "line": 1,
+   "column": 7,
+   "char": "O",
+   "reason": "syntax"
+  },
+  {
+   "text": "'abc",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "'",
+   "reason": "unclosed_string"
+  },
+  {
+   "text": "a = 'abc",
+   "pos": 4,
+   "line": 1,
+   "column": 5,
+   "char": "'",
+   "reason": "unclosed_string"
+  },
+  {
+   "text": "[a",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "[",
+   "reason": "unclosed_bracket"
+  },
+  {
+   "text": "[]",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "[",
+   "reason": "syntax"
+  },
+  {
+   "text": "[ ]",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "[",
+   "reason": "syntax"
+  },
+  {
+   "text": "1e999",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "1",
+   "reason": "bad_number"
+  },
+  {
+   "text": "2AU",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "2",
+   "reason": "bad_number"
+  },
+  {
+   "text": "1.2.3",
+   "pos": 0,
+   "line": 1,
+   "column": 1,
+   "char": "1",
+   "reason": "bad_number"
+  },
+  {
+   "text": "a\n+ )",
+   "pos": 4,
+   "line": 2,
+   "column": 3,
+   "char": ")",
+   "reason": "syntax"
+  },
+  {
+   "text": "a\n\n  $",
+   "pos": 5,
+   "line": 3,
+   "column": 3,
+   "char": "$",
+   "reason": "bad_char"
+  }
+ ]
+}

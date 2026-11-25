@@ -181,7 +181,7 @@ export function SwathWindow(props: SwathWindowProps) {
           </p>
         )}
       </fieldset>
-      <SeriesList settings={s} sources={sources} onChange={setS} />
+      <SeriesList settings={s} sources={sources} answers={result?.series} onChange={setS} />
       {seriesError && (
         <p className={chart.error} role="alert">
           {seriesError}
