@@ -6,8 +6,8 @@
  * that covers more than `SPREAD` buckets (a big merged rectangle) is kept apart and tried in every bucket query.
  * A ray meets one plane of a run at one point — a bucket gives the few faces to test; the plane is rejected at once
  * when that point is outside the extent of the run. The index lives in the frame of `c` (the local axes minus
- * `origin`, float64 on the CPU) and is built where the answer is decoded (a Worker); it is a plain object over the
- * decoded arrays, nothing of three.js.
+ * `origin`, float64 on the CPU) and is built in the main thread on the first click (≈ 0.4 s at 2.5 million faces; it
+ * has no Worker); it is a plain object over the decoded arrays, nothing of three.js.
  *
  * `ray` gives the point on the face and its normal: the row of the block comes from `POST /viz/blocks/{id}/at`
  * (float64 in the core, a step inside along the normal) — the answer has no rows.
