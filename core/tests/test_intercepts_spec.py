@@ -127,7 +127,7 @@ def test_bad_sources(demo) -> None:  # type: ignore[no-untyped-def]
         e = refused(demo, sp.parse_tt, orientation=orientation)
         return e.status, e.code, str(e.extra.get("param"))
 
-    assert param([{"source": "trend"}]) == (422, "bad_param", "orientation.0.source")
+    assert param([{"source": "plane"}]) == (422, "bad_param", "orientation.0.source")  # «trend» is a source since 19.20
     assert param("global") == (422, "bad_param", "orientation")
     assert param(GLOBAL * 4) == (422, "bad_param", "orientation")
     assert param(GLOBAL * 2) == (422, "bad_param", "orientation.1.source")

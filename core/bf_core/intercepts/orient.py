@@ -31,6 +31,11 @@ Sources.
              chain is taken and `absent` names it.
     core     Measurements (α_к, β_к) of a table of the set: `core_orient.measurements` and `assign`. The depth
              of a measurement — its FROM (an event), the middle (an interval).
+    trend    A trend of the project (ТЗ 8.5.2, вопрос № 57; ADR 0026, решение 27). A global one — the plane of its
+             minor axis (the axis of the least ratio, the third by a tie: `rotation.plane_of` of its angles) for
+             every interval, as a source `global` with those angles. A structural one — the local normal
+             (`trend_struct.local_axes`, R_j's third row) at the middle of the interval, along the hole; an
+             interval without a position (no trajectory) gets none: NaN, never 0. TT_SRC — «тренд».
 α and Aп of the first two are written as the request gave them (360 → 0); of the others — by the normal, as
 `formulas.plane_angles` takes them. A normal a source gives must be a unit vector (to 1e−9): a wrong TT is
 never written silently — ValueError.
@@ -64,11 +69,11 @@ if TYPE_CHECKING:
     from .spec import Source
 
 (SRC_NONE, SRC_GLOBAL, SRC_DOMAIN, SRC_MESH_CROSSING, SRC_MESH_NEAREST, SRC_CORE_MEASURED,
- SRC_CORE_NEAREST) = range(7)  # fmt: skip
+ SRC_CORE_NEAREST, SRC_TREND) = range(8)  # fmt: skip
 #: TT_SRC of a code (ADR 0021 §4).
 SRC_LABELS = ("нет", "глобальная", "домен", "каркас: пересечение", "каркас: ближайшая", "керн: замер",
-              "керн: ближайший")  # fmt: skip
-KIND_TITLES = {"global": "глобальная", "domain": "по домену", "mesh": "каркас", "core": "керн"}
+              "керн: ближайший", "тренд")  # fmt: skip
+KIND_TITLES = {"global": "глобальная", "domain": "по домену", "mesh": "каркас", "core": "керн", "trend": "тренд"}
 UNIT_EPS = 1e-9  # |n|² − 1 of a normal a source may give
 _NAMED = 5  # codes named in a line of the journal
 
@@ -177,6 +182,9 @@ class Inputs:
     #: `domain.wireframes` → the bodies by priority (`composites.coding.Body`); None — `jobs_coding.read_bodies`
     #: (the job and the preview compute inside `jobs_coding.reading(project)`).
     bodies: Callable[[Any], Iterable[Any]] | None = None
+    #: a structural trend (its `meta`) → what `trend_struct.local_axes` reads (`trend_struct.load_source`); None —
+    #: through the project of `jobs_coding.reading` (the job and the preview compute inside it).
+    trend: Callable[[Any], Any] | None = None
 
     def table(self, table_id: int) -> Any:
         if self.lines is not None and int(self.lines.table_id) == int(table_id):
@@ -330,7 +338,67 @@ def _core(s: Any, rows: Intervals, inputs: Inputs, todo: np.ndarray, threads: in
     return Given(o.normal, src, sin_alpha=o.sin_alpha, flag=o.flag, journal=journal, report=report)
 
 
-_SOURCES: dict[str, Callable[..., Given | None]] = {"global": _global, "domain": _domain, "mesh": _mesh, "core": _core}
+def _trend_minor(meta: Any) -> tuple[float, float]:
+    """α, Aп of the plane of the global trend `meta`: the plane normal to its minor axis (the least ratio; of equal
+    ones the later axis). With the third axis — `rotation.plane_of` of its angles, as the source `global` has them."""
+    from bf_core.geostat import rotation
+    from bf_core.geostat import trend as tr
+
+    s = tr.shape(meta.get("ang1"), meta.get("ang2", 0.0), meta.get("ang3", 0.0), meta.get("ratios"))
+    minor = max(range(3), key=lambda k: (-s.ratios[k], k))
+    if minor == 2:
+        alpha, dipdir, _pitch = rotation.plane_of(s.ang1, s.ang2, s.ang3)
+        return alpha, dipdir
+    r = rotation.rotation_matrix(s.ang1, s.ang2, s.ang3)
+    n = r[minor]
+    return _plane_angles(float(n[0]), float(n[1]), float(n[2]))
+
+
+def _trend_source(s: Any, inputs: Inputs) -> Any:
+    if inputs.trend is not None:
+        return inputs.trend(s.trend_meta)
+    from bf_core.composites.jobs_coding import reading_project
+    from bf_core.geostat import trend_struct
+
+    project = reading_project()
+    if project is None:
+        raise RuntimeError("a structural trend is read inside jobs_coding.reading(project)")
+    return trend_struct.load_source(project, s.trend_meta)
+
+
+def _trend(s: Any, rows: Intervals, inputs: Inputs, todo: np.ndarray, threads: int, tick: Tick | None) -> Given:
+    meta = s.trend_meta
+    if meta.get("kind", "global") != "structural":
+        alpha, dipdir = _trend_minor(meta)
+        return Given(plane_normal(alpha, dipdir), SRC_TREND, alpha, dipdir)
+    from bf_core.composites import coords
+    from bf_core.geostat import trend_struct
+
+    at = np.flatnonzero(todo)
+    normal = np.full((rows.n, 3), np.nan)
+    if at.size == 0:
+        return Given(normal, SRC_TREND)
+    source = _trend_source(s, inputs)
+    middle = 0.5 * (rows.frm[at] + rows.to[at])
+    xyz = coords.positions(inputs.traj, rows.dense_rows()[at], middle, threads=threads, tick=_part(tick, 0.0, 0.3))
+    placed = np.isfinite(xyz).all(axis=1)  # a point without a position gets no axes: NaN, never 0
+    info: dict[str, Any] = {}
+    axes = trend_struct.local_axes(meta, xyz[placed], source=source, threads=threads, tick=_part(tick, 0.3, 1.0),
+                                   report=info)  # fmt: skip
+    n = axes[:, 2, :]
+    length = np.sqrt(np.einsum("ij,ij->i", n, n))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        normal[at[placed]] = n / length[:, None]  # unit to the last bit: `_merge` takes 1e-9
+    lost = int(np.count_nonzero(~placed))
+    journal = list(info.get("journal") or [])
+    if lost:
+        journal.append(f"Тренд «{s.trend_name}»: интервалов без положения — {_count(lost)} (ориентировки нет).")
+    report = {"trend": s.trend_name, "no_position": lost, "nearest": int(info.get("nearest") or 0)}
+    return Given(normal, SRC_TREND, journal=journal, report=report)
+
+
+_SOURCES: dict[str, Callable[..., Given | None]] = {"global": _global, "domain": _domain, "mesh": _mesh,
+                                                    "core": _core, "trend": _trend}
 
 
 # --- the chain -----------------------------------------------------------------------------------------------

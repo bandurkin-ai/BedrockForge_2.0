@@ -210,12 +210,13 @@ def compute(spec: Any, rows: orient.Intervals, inputs: orient.Inputs, *, threads
 
 
 def of_table(spec: Any, lines: Any, st: Any, *, tables: Any = None, mesh: orient.MeshSource | None = None,
-             bodies: Any = None, threads: int = 1, tick: Tick | None = None) -> TtTable:  # fmt: skip
+             bodies: Any = None, trend: Any = None, threads: int = 1, tick: Tick | None = None) -> TtTable:  # fmt: skip
     """The true thickness of every row of the snapshot `lines` (`composites.source.Lines`), in its line order
     (`lines.row_ids` are the rows written). `tables` — the other tables the orientation reads, by table id;
-    `mesh`, `bodies` — `orient.Inputs`."""
+    `mesh`, `bodies`, `trend` — `orient.Inputs`."""
     rows = orient.Intervals.of(lines, st)
-    t = compute(spec, rows, orient.Inputs(st.traj, lines, tables or {}, mesh, bodies), threads=threads, tick=tick)
+    inputs = orient.Inputs(st.traj, lines, tables or {}, mesh, bodies, trend)
+    t = compute(spec, rows, inputs, threads=threads, tick=tick)
     skipped = int(getattr(lines, "skipped", 0) or 0)
     journal = list(t.journal)
     if skipped:
