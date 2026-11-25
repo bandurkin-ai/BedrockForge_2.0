@@ -82,7 +82,9 @@ class ThresholdField:
         self.pf, self.level, self.unit, self.threads = pf, float(level), float(unit), int(threads)
 
     def __call__(self, x: F8) -> F8:
-        return (self.level - self.pf(x, threads=self.threads)) * self.unit  # type: ignore[no-any-return]
+        from bf_core.geo.iso import field_threads
+
+        return (self.level - self.pf(x, threads=field_threads(self.threads))) * self.unit  # type: ignore[no-any-return]
 
 
 def with_values(data: Points, values: F8) -> Points:

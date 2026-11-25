@@ -397,6 +397,21 @@ def test_layer_points_roles_vertices_and_spacing() -> None:
     assert (lengths <= 4.0 + 1e-9).all()
 
 
+def test_a_layer_given_to_a_group_twice_keeps_both_roles(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review 19.29б: the roles were a dict by layer id, so the second role replaced the first and the points of
+    `contact` became `inside`; every row of `spec.manual` gives its points now."""
+    from types import SimpleNamespace
+
+    ls = SimpleNamespace(name="Л", xyz=np.array([[0.0, 0, 0], [10, 0, 0]]), offsets=np.array([0, 2]), closed=[False])
+    monkeypatch.setattr(dm, "read_layers", lambda project, ids: iter([(i, ls) for i in ids]))
+    manual = [SimpleNamespace(layer_id=5, role="contact", group=1), SimpleNamespace(layer_id=5, role="inside", group=1),
+              SimpleNamespace(layer_id=6, role="outside", group=2)]  # fmt: skip
+    spec = SimpleNamespace(manual=manual, data=None)
+    parts = dm.group_layers(None, spec, 1, 0)  # type: ignore[arg-type]
+    assert len(parts) == 2
+    assert set(parts[0].f.tolist()) == {0.0} and set(parts[1].f.tolist()) == {-15.0}  # contact, inside
+
+
 def test_a_vertex_without_elevation_is_no_point_never_zero() -> None:
     xyz = np.array([[0.0, 0, 0], [10, 0, np.nan], [20, 0, 0], [30, 0, 0]])
     p = dm.layer_points(xyz, np.array([0, 4]), None, role="contact", d_max=10.0, step=50.0, group=1, name="Линия")

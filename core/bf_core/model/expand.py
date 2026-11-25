@@ -90,7 +90,9 @@ def expand_field(
 
     def field(points: np.ndarray) -> np.ndarray:
         p = np.ascontiguousarray(points, dtype=np.float64).reshape(-1, 3)
-        dist = sdf.signed_distance_to(target, p, reach=reach, threads=workers)
+        from bf_core.geo.iso import field_threads
+
+        dist = sdf.signed_distance_to(target, p, reach=reach, threads=field_threads(workers))
         out = dist - d
         out[np.isposinf(dist)] = big
         out[np.isneginf(dist)] = -big

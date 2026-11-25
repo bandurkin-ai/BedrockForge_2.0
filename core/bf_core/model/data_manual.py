@@ -135,12 +135,12 @@ def group_layers(project: Any, spec: ModelSpec, gid: int, used: int, tick: Tick 
 
         d_max, step = D_MAX, STEP
     out: list[Points] = []
-    roles = {m.layer_id: m.role for m in mine}
-    for lid, ls in read_layers(project, [m.layer_id for m in mine]):
+    # by the rows of `mine`, not by the layer id: a layer given twice with two roles gives the points of both
+    for m, (lid, ls) in zip(mine, read_layers(project, [m.layer_id for m in mine]), strict=True):
         if tick is not None:
             tick(None, f"Слой «{ls.name}»")
         p = layer_points(ls.xyz, ls.offsets if ls.offsets is not None else np.arange(len(ls.xyz) + 1), ls.closed,
-                         role=roles[lid], d_max=d_max, step=step, group=gid, layer=lid, name=ls.name)  # fmt: skip
+                         role=m.role, d_max=d_max, step=step, group=gid, layer=lid, name=ls.name)  # fmt: skip
         used += p.n
         check_size(used)
         out.append(p)

@@ -159,12 +159,12 @@ def canonical_order(xyz: Any, f: Any, kind: Any, *tie: Any) -> NDArray[np.intp]:
 
 
 def merge_coincident(xyz: Any, f: Any, tol: float = COINCIDE, *, segment: Any = None,
-                     stats: dict[str, int] | None = None) -> NDArray[np.intp]:  # fmt: skip
+                     stats: dict[str, int] | None = None, tick: Tick | None = None) -> NDArray[np.intp]:  # fmt: skip
     """The rows that stay of points in the canonical order: a point within `tol` m of an earlier kept point with an
     equal `f` is dropped (the first stays); close points with different values both stay. `segment` — the group
-    (and wing) of every row: points of different segments never merge (the rows of a segment are contiguous and
-    ordered by x). `stats` gets `merged` (rows dropped) and `conflicts` (pairs of kept points within `tol` whose values
-    differ)."""
+    (and wing) of every row: points of different segments never merge (the rows of a segment are contiguous).
+    `stats` gets `merged` (rows dropped) and `conflicts` (pairs of kept points within `tol` whose values differ).
+    The pairs come from a k-d tree of every segment (O(N log N): the holes of a vertical fan share x and y)."""
     p = np.asarray(xyz, dtype=np.float64)
     v = np.asarray(f, dtype=np.float64)
     n = int(v.shape[0])
@@ -172,23 +172,18 @@ def merge_coincident(xyz: Any, f: Any, tol: float = COINCIDE, *, segment: Any = 
     i_all: list[Any] = []
     j_all: list[Any] = []
     if n > 1:
-        x = p[:, 0]
-        idx = np.flatnonzero(_close_in_x(x, seg, 1, tol, np.arange(n - 1)))
-        k = 1
-        while idx.shape[0]:
-            j = idx + k
-            near = ((p[idx] - p[j]) ** 2).sum(axis=1) <= tol * tol
-            if near.any():
-                i_all.append(idx[near])
-                j_all.append(j[near])
-            k += 1
-            idx = idx[idx + k < n]
-            idx = idx[_close_in_x(x, seg, k, tol, idx)]
+        cut = np.zeros(1, dtype=np.int64) if seg is None else np.flatnonzero(seg[1:] != seg[:-1]) + 1
+        edges = [0, *cut.tolist(), n]
+        for a, b in zip(edges[:-1], edges[1:], strict=True):
+            _beat(tick)
+            if b - a > 1:
+                _pairs_within(p[a:b], tol, a, i_all, j_all)
     drop = np.zeros(n, dtype=bool)
     conflicts = 0
     if i_all:
         pi, pj = np.concatenate(i_all), np.concatenate(j_all)
         same = v[pi] == v[pj]
+        # drop[b] depends only on the final state of the earlier rows: the pairs go by their later row
         order = np.argsort(pj[same], kind="stable")
         for a, b in zip(pi[same][order].tolist(), pj[same][order].tolist(), strict=True):
             if not drop[a]:
@@ -201,12 +196,24 @@ def merge_coincident(xyz: Any, f: Any, tol: float = COINCIDE, *, segment: Any = 
     return np.flatnonzero(~drop)
 
 
-def _close_in_x(x: F8, seg: Any, k: int, tol: float, idx: I8) -> Any:
-    """Rows `idx` whose row `idx + k` is of the same segment and not further than `tol` along x (idx + k < n)."""
-    ok = x[idx + k] - x[idx] <= tol
-    if seg is not None:
-        ok &= seg[idx + k] == seg[idx]
-    return ok
+def _pairs_within(p: F8, tol: float, shift: int, i_all: list[Any], j_all: list[Any]) -> None:
+    """The pairs i < j of the rows of `p` (finite rows only) at a distance ≤ tol, as row numbers + `shift`. The tree
+    asks a hair wider and the exact test is the squared distance against tol² (the same bits for any size)."""
+    from scipy.spatial import cKDTree
+
+    ok = np.flatnonzero(np.isfinite(p).all(axis=1))
+    if ok.shape[0] < 2:
+        return
+    q = p[ok]
+    pairs = cKDTree(q).query_pairs(tol * (1.0 + 1e-9) + 1e-300, output_type="ndarray")
+    if not pairs.shape[0]:
+        return
+    i, j = pairs[:, 0], pairs[:, 1]
+    # the rows are ordered by x: the later row is not further than tol along x (the same test as the scan had)
+    near = (q[j, 0] - q[i, 0] <= tol) & (((q[i] - q[j]) ** 2).sum(axis=1) <= tol * tol)
+    if near.any():
+        i_all.append(ok[i[near]] + shift)
+        j_all.append(ok[j[near]] + shift)
 
 
 # --- parts into one set of points -------------------------------------------------------------------------------
@@ -262,7 +269,7 @@ def assemble(parts: Sequence[Points], *, merge: bool = True, group_names: Mappin
     if merge and f.shape[0] > 1:
         _beat(tick, None, "Данные модели: совпадающие точки")
         seg = group.astype(np.int64) * 4 + (wing.astype(np.int64) + 1)
-        keep = merge_coincident(xyz, f, COINCIDE, segment=seg, stats=stats)
+        keep = merge_coincident(xyz, f, COINCIDE, segment=seg, stats=stats, tick=tick)
         if keep.shape[0] != f.shape[0]:
             if group_names is not None or stats.get("merged"):
                 notes.extend(_merge_notes(group[np.setdiff1d(np.arange(f.shape[0]), keep)], group_names, stats))
