@@ -67,7 +67,7 @@ export async function runOp(app: App, plan: OpPlan, source: CommandSource): Prom
   const fail = (r: Refusal, place?: string): never => {
     patchRun(seq, { phase: "failed", error: r });
     const i = issueOfRefusal(plan.tab, r, plan.restrictOn, plan.filterId ?? null);
-    setIssue(place ? { ...i, place } : i);
+    setIssue(place ? { ...i, place } : plan.tab === "props" ? { ...i, place: plan.place } : i); // a row of the properties: the field it is about
     throw asError(r);
   };
   const uid = projectStore.get().current?.uid ?? null;

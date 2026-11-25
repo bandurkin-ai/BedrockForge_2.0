@@ -33,7 +33,7 @@
 .rowEdit.over { grid-template-columns: minmax(120px, 1fr) minmax(100px, 1fr) auto; }
 .rowEdit [aria-invalid="true"] { border-color: var(--danger); }
 .badge { display: inline-block; padding: 0 6px; border-radius: 8px; font-size: 11px; background: var(--bg-hover); color: var(--text-dim); white-space: nowrap; }
-.badge.stale { background: var(--warn); color: var(--bg-elev); }
+.staleBadge { background: var(--warn); color: var(--bg-elev); }
 .badge.role { background: var(--bg-active); color: var(--text); }
 .props { border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 100%; }
 .props th { position: sticky; top: 0; background: var(--bg-hover); text-align: left; color: var(--text-dim); font-family: var(--font-brand); font-weight: 600; padding: 3px 6px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; z-index: 1; }

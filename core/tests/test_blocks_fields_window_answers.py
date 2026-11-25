@@ -20,7 +20,10 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import sqlalchemy as sa
 
+from bf_core.db import dialect
+from bf_core.db.schema import objects, settings
 from tests.test_archive import wait_job
 from tests.test_blocks_fill_jobs import P, body
 from tests.test_blocks_report import API, BL, put, rc  # noqa: F401
@@ -303,6 +306,24 @@ def build(c: Any) -> dict[str, Any]:
     fl["delete_not_found"] = delete("NOPE")
     fl["delete_ok"] = delete("AU_K")
 
+    # the views of the project that name a field: «Где используется» lists them, the deletion is refused
+    style = {"colour": {"field": "AU10"}, "quick": {"items": [{"field": "AU10", "op": ">", "value": 1}]}}
+    with dialect.write_tx(c.project.engine) as conn:
+        conn.execute(sa.insert(settings).values(scope="view", key="block_styles", value={str(mid): style}, version=1))
+        now = dialect.utcnow()
+        saved = {"keys": {"block_styles": {str(mid): {"colour": {"field": "AU10"}}}}}
+        conn.execute(
+            sa.insert(objects).values(
+                kind="view", name="Мой вид", name_key="мой вид", meta=saved, sort_key=0.0, state="ready", version=1,
+                created_at=now, updated_at=now,
+            )
+        )  # fmt: skip
+    fl["list_views"] = answer(c.get(f"{BL}/{mid}/fields"))
+    fl["delete_used_by_view"] = delete("AU10")
+    with dialect.write_tx(c.project.engine) as conn:
+        conn.execute(sa.delete(settings).where(settings.c.key == "block_styles"))
+        conn.execute(sa.delete(objects).where(objects.c.kind == "view"))
+
     # AU is replaced: AU2 (read it) and the others that read it are «устарел»
     out["calc"]["replace_au"] = calc(c, mid, expr="AU + 0", field="AU", dtype="f8", unit="г/т", replace=True)
     fl["list_stale"] = answer(c.get(f"{BL}/{mid}/fields"))
@@ -522,6 +543,16 @@ def test_fields_window_answers_are_what_the_core_answers(rc) -> None:  # type: i
     refused(f["delete_conflict"], 409, "version_conflict")
     refused(f["delete_not_found"], 404, "block_field_not_found")
     assert f["delete_ok"]["status"] == 200 and f["delete_ok"]["body"]["deleted"] == "AU_K"
+    views = {x["name"]: x for x in f["list_views"]["body"]["fields"]}["AU10"]["usage"]
+    assert {(u["kind"], u["name"], u["role"]) for u in views} == {
+        ("view", "Вид проекта · Месторождение", "colour"),
+        ("view", "Вид проекта · Месторождение", "restrictor"),
+        ("view", "Мой вид", "colour"),
+    }
+    assert {u["name"] for u in refused(f["delete_used_by_view"], 422, "field_in_use")["usage"]} == {
+        "Вид проекта · Месторождение",
+        "Мой вид",
+    }
     stale = {x["name"]: x for x in f["list_stale"]["body"]["fields"]}
     assert stale["AU2"]["stale"] and stale["AU2"]["stale_reason"] and not stale["CU10"]["stale"]
     assert done(f["rebuild"])["field"] == "AU2" and done(f["rebuild_density"])["fields"] == ["DENS_F", "DENS_F_SRC"]

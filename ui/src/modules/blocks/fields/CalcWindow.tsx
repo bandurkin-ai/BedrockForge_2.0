@@ -19,6 +19,7 @@ import { argsOfForm, DTYPE_LABEL, errorMarker, fieldRef, FUNCTIONS } from "./cal
 import { chooseModel, checkNow, showTab } from "./bind";
 import { CategoriesPanel } from "./CategoriesPanel";
 import { DensityPanel } from "./DensityPanel";
+import { FieldProps } from "./FieldProps";
 import type { Tab } from "./common";
 import { IssueLine, ModelPicker, RestrictBox, RunView, useSel } from "./Common";
 import mod from "./Fields.module.css";
@@ -27,7 +28,7 @@ import { checkKey, fieldsStore, hasField, isRunning, modelFields, NO_CHECK, setC
 import { DTYPES } from "./api";
 
 /** The tabs of the window, in the order of the ribbon group «Поля». */
-export const TABS: readonly Tab[] = ["calc", "density", "classify"];
+export const TABS: readonly Tab[] = ["calc", "density", "classify", "props"];
 
 const KIND_TEXT = { number: "число", bool: "условие (0 или 1)", category: "категория" } as const;
 
@@ -271,6 +272,7 @@ export function CalcWindow({ winId }: { winId: string }) {
       {tab === "calc" && <CalcPanel winId={winId} />}
       {tab === "density" && <DensityPanel winId={winId} />}
       {tab === "classify" && <CategoriesPanel winId={winId} />}
+      {tab === "props" && <FieldProps winId={winId} />}
     </div>
   );
 }

@@ -8,7 +8,7 @@
 import { Store } from "../../../shell/store";
 import { blockById, blocksStore } from "../state";
 import { fieldsOf, type FieldInfo } from "../report/state";
-import type { CalcCheck, ExprIssue, OpResult, Refusal, Scheme, Started } from "./api";
+import type { CalcCheck, ExprIssue, FieldsList, OpResult, Refusal, Scheme, Started } from "./api";
 import { EMPTY_CALC, type CalcForm } from "./calcForm";
 import { EMPTY_CLASSIFY, type ClassifyForm } from "./classifyForm";
 import type { Issue, Tab } from "./common";
@@ -65,6 +65,28 @@ export interface SchemesState {
 
 export const NO_SCHEMES: SchemesState = { list: [], loaded: false, error: null };
 
+/** What a row of the properties holds while it is edited (the text as typed; the role "" — none). */
+export interface FieldEdit {
+  unit: string;
+  description: string;
+  role: string;
+}
+
+/** The properties of the fields of the model chosen (`GET /blocks/{id}/fields`): the list, and the edits not saved yet. */
+export interface PropsState {
+  /** the model the list is of; null — not read */
+  modelId: number | null;
+  list: FieldsList | null;
+  loading: boolean;
+  /** the words of a failed read */
+  error: string | null;
+  edits: Record<string, FieldEdit>;
+  /** the field whose «Где используется» is open */
+  usageOpen: string | null;
+}
+
+export const NO_PROPS: PropsState = { modelId: null, list: null, loading: false, error: null, edits: {}, usageOpen: null };
+
 export interface FieldsState {
   tab: Tab;
   modelId: number | null;
@@ -72,6 +94,7 @@ export interface FieldsState {
   density: DensityForm;
   classify: ClassifyForm;
   schemes: SchemesState;
+  props: PropsState;
   /** the check of the rules of the table of the categories, by row: null — right, a text — the words of the core */
   rulesCheck: Record<number, string | null>;
   check: CheckState;
@@ -79,7 +102,7 @@ export interface FieldsState {
   issue: Issue | null;
 }
 
-export const EMPTY_STATE: FieldsState = { tab: "calc", modelId: null, calc: EMPTY_CALC, density: EMPTY_DENSITY, classify: EMPTY_CLASSIFY, schemes: NO_SCHEMES, rulesCheck: {}, check: NO_CHECK, run: IDLE, issue: null };
+export const EMPTY_STATE: FieldsState = { tab: "calc", modelId: null, calc: EMPTY_CALC, density: EMPTY_DENSITY, classify: EMPTY_CLASSIFY, schemes: NO_SCHEMES, props: NO_PROPS, rulesCheck: {}, check: NO_CHECK, run: IDLE, issue: null };
 
 export const fieldsStore = new Store<FieldsState>(EMPTY_STATE);
 
@@ -96,7 +119,7 @@ export function setModelId(modelId: number | null): void {
   fieldsStore.set((s) =>
     s.modelId === modelId
       ? { issue: null }
-      : { modelId, issue: null, check: NO_CHECK, rulesCheck: {}, density: { ...s.density, field: "", tableField: "", rows: [] }, classify: { ...s.classify, estimate: "", overrides: [] } },
+      : { modelId, issue: null, check: NO_CHECK, rulesCheck: {}, props: NO_PROPS, density: { ...s.density, field: "", tableField: "", rows: [] }, classify: { ...s.classify, estimate: "", overrides: [] } },
   );
 }
 
@@ -110,6 +133,21 @@ export function setDensity(patch: Partial<DensityForm>): void {
 
 export function setClassify(patch: Partial<ClassifyForm>): void {
   fieldsStore.set((s) => ({ classify: { ...s.classify, ...patch }, issue: null, rulesCheck: patch.rules ? {} : s.rulesCheck }));
+}
+
+export const setProps = (patch: Partial<PropsState>): void => fieldsStore.set((s) => ({ props: { ...s.props, ...patch } }));
+
+/** The edit of a row: what is typed over the row as the core listed it. */
+export function setPropsEdit(name: string, base: FieldEdit, patch: Partial<FieldEdit>): void {
+  fieldsStore.set((s) => ({ props: { ...s.props, edits: { ...s.props.edits, [name]: { ...(s.props.edits[name] ?? base), ...patch } } }, issue: null }));
+}
+
+export function clearPropsEdit(name: string): void {
+  fieldsStore.set((s) => {
+    const edits = { ...s.props.edits };
+    delete edits[name];
+    return { props: { ...s.props, edits } };
+  });
 }
 
 export const setSchemes = (patch: Partial<SchemesState>): void => fieldsStore.set((s) => ({ schemes: { ...s.schemes, ...patch } }));

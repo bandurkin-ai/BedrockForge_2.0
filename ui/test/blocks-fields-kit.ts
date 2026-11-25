@@ -33,6 +33,8 @@ export const without = (b: Record<string, unknown>, ...keys: string[]): Record<s
 export interface Sent {
   method: string;
   path: string;
+  /** the query of the address, without «?» («expected_version=3») */
+  query: string;
   body: Record<string, unknown>;
 }
 
@@ -96,10 +98,11 @@ export function install(): App {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
-      const path = new URL(url).pathname.replace("/api/v1", "");
+      const href = new URL(url);
+      const path = href.pathname.replace("/api/v1", "");
       const method = init?.method ?? "GET";
       const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
-      stub.sent.push({ method, path, body });
+      stub.sent.push({ method, path, query: href.search.replace(/^\?/, ""), body });
       for (const r of stub.routes) {
         const x = r(method, path, body);
         if (x) return x;

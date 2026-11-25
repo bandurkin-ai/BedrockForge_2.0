@@ -27,21 +27,22 @@ export function countsText(r: OpResult): string {
   return r.counts ? Object.entries(r.counts).map(([k, v]) => `${k} — ${fmt(v)}`).join("; ") : "";
 }
 
-/** The line of the log for a finished run. */
+/** The line of the log for a finished run («Перестроить» says the field was made again, in the model). */
 export function summaryText(op: Op, r: OpResult, model: string): string {
-  const where = `в модель «${model}»`;
+  const again = op === "rebuild";
+  const where = again ? `в модели «${model}»` : `в модель «${model}»`;
   const version = r.version !== null ? `; версия модели ${r.version}` : "";
-  if (op === "classify" || (op === "rebuild" && r.counts)) {
+  if (op === "classify" || (again && r.counts)) {
     const cats = countsText(r);
     const nums = join([part("блоков", r.rows), part("прошло ограничитель", r.passed), part("без категории", r.unclassified), part("без оценки", r.noEstimate)]);
-    return `Категории «${r.field}» записаны ${where}: ${nums}${cats ? `; ${cats}` : ""}${version}`;
+    return `Категории «${r.field}» ${again ? "перестроены" : "записаны"} ${where}: ${nums}${cats ? `; ${cats}` : ""}${version}`;
   }
-  if (op === "density" || (op === "rebuild" && r.fields.length > 1)) {
+  if (op === "density" || (again && r.fields.length > 1)) {
     const src = r.fields[1] ? ` и источник «${r.fields[1]}»` : "";
-    return `Плотность «${r.field}»${src} записана ${where}: ${join([part("блоков", r.rows), part("прошло ограничитель", r.passed), part("подставлено по умолчанию", r.defaulted), part("без плотности", r.empty)])}${version}`;
+    return `Плотность «${r.field}»${src} ${again ? "перестроена" : "записана"} ${where}: ${join([part("блоков", r.rows), part("прошло ограничитель", r.passed), part("подставлено по умолчанию", r.defaulted), part("без плотности", r.empty)])}${version}`;
   }
   const range = rangeText(r);
-  return `Поле «${r.field}» записано ${where}: ${join([part("блоков", r.rows), part("прошло ограничитель", r.passed), part("без значения", r.missing)])}${range ? `; ${range}` : ""}${version}`;
+  return `Поле «${r.field}» ${again ? "перестроено" : "записано"} ${where}: ${join([part("блоков", r.rows), part("прошло ограничитель", r.passed), part("без значения", r.missing)])}${range ? `; ${range}` : ""}${version}`;
 }
 
 /** The title of a run as the window shows it while it goes. */

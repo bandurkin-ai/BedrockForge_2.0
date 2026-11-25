@@ -22,7 +22,8 @@ import { formOfArgs, requestOfArgs } from "./calcForm";
 import type { Args, Tab } from "./common";
 import { CalcWindow } from "./CalcWindow";
 import { refreshSchemes, runClassify, runDensity, runSchemeSave } from "./opsBind";
-import { notFound, runOp } from "./run";
+import { refreshProps, runFieldDelete, runFieldInfo, runFieldProps, runFieldRebuild } from "./propsBind";
+import { notFound, onFieldsWritten, runOp } from "./run";
 import { checkKey, currentModel, fieldsStore, FIELDS_WINDOW, NO_CHECK, resetFields, setCheck, setIssue, setModelId, setTab, TAB_TITLES } from "./state";
 
 export const fieldsTitle = (tab: Tab, model: string | null): string => (model ? `${TAB_TITLES[tab]} · ${model}` : TAB_TITLES[tab]);
@@ -72,6 +73,7 @@ export function openFieldsWindow(app: App, tab?: Tab, modelId?: number | null): 
 export function showTab(tab: Tab): void {
   setTab(tab);
   if (tab === "classify" && !fieldsStore.get().schemes.loaded) void refreshSchemes();
+  if (tab === "props") void refreshProps();
 }
 
 // ---- the check of the expression ----
@@ -182,6 +184,26 @@ export function bindFields(app: App): void {
   r.bind("blocks.density", noted(app, (a, source) => runDensity(app, a, source)), models);
   r.bind("blocks.classify", noted(app, (a, source) => runClassify(app, a, source)), models);
   r.bind("blocks.scheme.save", noted(app, (a, source) => runSchemeSave(app, a, source)), needProject);
+  r.bind("blocks.field.info", noted(app, (a, source) => runFieldInfo(app, a, source)), models);
+  r.bind("blocks.field.props", noted(app, (a) => runFieldProps(app, a)), models);
+  r.bind("blocks.field.rebuild", noted(app, (a, source) => runFieldRebuild(app, a, source)), models);
+  r.bind("blocks.field.delete", noted(app, (a, source) => runFieldDelete(app, a, source)), models);
+  // the list of the properties follows the writes: a field made or replaced, and the version of the model read elsewhere
+  onFieldsWritten((id) => {
+    if (fieldsStore.get().props.modelId === id || fieldsStore.get().tab === "props") void refreshProps(id);
+  });
+  let seen: string | null = null;
+  blocksStore.subscribe(() => {
+    const p = fieldsStore.get().props;
+    const id = p.modelId;
+    if (id === null || !p.list || p.loading) return;
+    const v = blockById(id)?.version;
+    const key = v === undefined ? null : `${id}:${v}`;
+    if (v !== undefined && v !== p.list.version && key !== seen) {
+      seen = key;
+      void refreshProps(id);
+    }
+  });
   // the form belongs to the project: another project — a clean window
   let uid: string | null = projectStore.get().current?.uid ?? null;
   projectStore.subscribe(() => {

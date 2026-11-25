@@ -19,8 +19,8 @@
       "DOM"
      ],
      "note": null,
-     "created_at": "2026-11-24T23:57:18.306212Z",
-     "updated_at": "2026-11-24T23:57:18.306212Z"
+     "created_at": "2026-11-25T00:02:27.105858Z",
+     "updated_at": "2026-11-25T00:02:27.105858Z"
     }
    ]
   }
@@ -158,8 +158,8 @@
       "file": "m.dat"
      },
      "warnings": [],
-     "created_at": "2026-11-24T23:57:18.275044+00:00",
-     "updated_at": "2026-11-24T23:57:18.275044+00:00"
+     "created_at": "2026-11-25T00:02:27.094087+00:00",
+     "updated_at": "2026-11-25T00:02:27.094087+00:00"
     }
    ]
   }
@@ -421,8 +421,8 @@
    ],
    "inputs": null,
    "algo": null,
-   "created_at": "2026-11-24T23:57:18.275044+00:00",
-   "updated_at": "2026-11-24T23:57:18.275044+00:00"
+   "created_at": "2026-11-25T00:02:27.094087+00:00",
+   "updated_at": "2026-11-25T00:02:27.094087+00:00"
   }
  },
  "fields_before": {
@@ -1031,8 +1031,8 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.251,
-      "calc": 0.266,
+      "read": 0.19,
+      "calc": 0.26,
       "write": 0.013
      },
      "events": [
@@ -1159,9 +1159,9 @@
      "dtype": "cat",
      "warnings": [],
      "stages": {
-      "read": 0.007,
+      "read": 0.004,
       "calc": 0.002,
-      "write": 0.011
+      "write": 0.008
      },
      "events": [
       [
@@ -1215,7 +1215,7 @@
      "dtype": "i1",
      "warnings": [],
      "stages": {
-      "read": 0.003,
+      "read": 0.004,
       "calc": 0.003,
       "write": 0.009
      },
@@ -1271,7 +1271,7 @@
      "dtype": "i2",
      "warnings": [],
      "stages": {
-      "read": 0.004,
+      "read": 0.005,
       "calc": 0.002,
       "write": 0.012
      },
@@ -1334,9 +1334,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.005,
+      "read": 0.004,
       "calc": 0.002,
-      "write": 0.011
+      "write": 0.01
      },
      "events": [
       [
@@ -1398,8 +1398,8 @@
      "warnings": [],
      "stages": {
       "read": 0.004,
-      "calc": 0.002,
-      "write": 0.013
+      "calc": 0.005,
+      "write": 0.009
      },
      "events": [
       [
@@ -1462,8 +1462,8 @@
      "warnings": [],
      "stages": {
       "read": 0.008,
-      "calc": 0.004,
-      "write": 0.023
+      "calc": 0.002,
+      "write": 0.009
      },
      "events": [
       [
@@ -1687,7 +1687,7 @@
      "stages": {
       "read": 0.008,
       "calc": 0.002,
-      "write": 0.013
+      "write": 0.015
      },
      "events": [
       [
@@ -1753,9 +1753,9 @@
      ],
      "stages": {
       "read": 0.005,
-      "calc": 0.003,
-      "write": 0.011,
-      "total": 0.018
+      "calc": 0.002,
+      "write": 0.009,
+      "total": 0.017
      },
      "events": [
       [
@@ -1816,10 +1816,10 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.003,
+      "read": 0.004,
       "calc": 0.002,
-      "write": 0.013,
-      "total": 0.019
+      "write": 0.01,
+      "total": 0.017
      },
      "events": [
       [
@@ -1900,9 +1900,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.005,
+      "read": 0.006,
       "calc": 0.003,
-      "write": 0.013,
+      "write": 0.011,
       "total": 0.02
      },
      "events": [
@@ -1965,9 +1965,9 @@
      "warnings": [],
      "stages": {
       "read": 0.006,
-      "calc": 0.003,
-      "write": 0.016,
-      "total": 0.026
+      "calc": 0.005,
+      "write": 0.011,
+      "total": 0.021
      },
      "events": [
       [
@@ -2031,9 +2031,9 @@
      ],
      "stages": {
       "read": 0.005,
-      "calc": 0.002,
-      "write": 0.015,
-      "total": 0.023
+      "calc": 0.003,
+      "write": 0.012,
+      "total": 0.02
      },
      "events": [
       [
@@ -2112,10 +2112,10 @@
       "Значение по умолчанию не задано: блоки без плотности останутся пустыми."
      ],
      "stages": {
-      "read": 0.004,
-      "calc": 0.004,
+      "read": 0.005,
+      "calc": 0.002,
       "write": 0.01,
-      "total": 0.017
+      "total": 0.018
      },
      "events": [
       [
@@ -2737,10 +2737,10 @@
      },
      "warnings": [],
      "stages": {
-      "read": 0.007,
-      "calc": 0.001,
-      "write": 0.016,
-      "total": 0.024
+      "read": 0.005,
+      "calc": 0.002,
+      "write": 0.015,
+      "total": 0.023
      },
      "events": [
       [
@@ -2804,11 +2804,11 @@
      },
      "warnings": [],
      "stages": {
-      "read": 0.006,
+      "read": 0.005,
       "calc": 0.002,
-      "majority": 0.004,
-      "write": 0.016,
-      "total": 0.028
+      "majority": 0.001,
+      "write": 0.011,
+      "total": 0.019
      },
      "events": [
       [
@@ -2869,10 +2869,10 @@
      },
      "warnings": [],
      "stages": {
-      "read": 0.007,
-      "calc": 0.003,
-      "write": 0.019,
-      "total": 0.029
+      "read": 0.006,
+      "calc": 0.002,
+      "write": 0.012,
+      "total": 0.02
      },
      "events": [
       [
@@ -2951,8 +2951,8 @@
      "stages": {
       "read": 0.006,
       "calc": 0.002,
-      "write": 0.015,
-      "total": 0.023
+      "write": 0.013,
+      "total": 0.02
      },
      "events": [
       [
@@ -3027,10 +3027,10 @@
      },
      "warnings": [],
      "stages": {
-      "read": 0.834,
-      "calc": 0.789,
-      "write": 0.016,
-      "total": 1.64
+      "read": 0.803,
+      "calc": 0.862,
+      "write": 0.013,
+      "total": 1.678
      },
      "events": [
       [
@@ -3763,7 +3763,7 @@
        "mean": 4.0227272727272725,
        "std": 4.46958731247099
       },
-      "file": "fld:edec1617",
+      "file": "fld:f7338dee",
       "source": {
        "op": "calc",
        "params": {
@@ -3775,7 +3775,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.324639+00:00"
+       "at": "2026-11-25T00:02:28.205184+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3800,7 +3800,7 @@
         10
        ]
       },
-      "file": "fld:d3b16904",
+      "file": "fld:2b83f07b",
       "source": {
        "op": "calc",
        "params": {
@@ -3812,7 +3812,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.565076+00:00"
+       "at": "2026-11-25T00:02:28.439226+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3837,7 +3837,7 @@
        "mean": 0.20833333333333334,
        "std": 0.4061164310337068
       },
-      "file": "fld:4b652e27",
+      "file": "fld:af852cbb",
       "source": {
        "op": "calc",
        "params": {
@@ -3849,7 +3849,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.808460+00:00"
+       "at": "2026-11-25T00:02:28.673151+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3874,7 +3874,7 @@
        "mean": 15.590909090909092,
        "std": 13.189731167255184
       },
-      "file": "fld:4d07b9a6",
+      "file": "fld:31aea4d5",
       "source": {
        "op": "calc",
        "params": {
@@ -3886,7 +3886,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.040753+00:00"
+       "at": "2026-11-25T00:02:28.907998+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3911,7 +3911,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:1ef340d5",
+      "file": "fld:15f2a686",
       "source": {
        "op": "calc",
        "params": {
@@ -3929,7 +3929,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.284607+00:00"
+       "at": "2026-11-25T00:02:29.142635+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3954,7 +3954,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:9eb8e9be",
+      "file": "fld:021b829e",
       "source": {
        "op": "calc",
        "params": {
@@ -3972,7 +3972,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.517313+00:00"
+       "at": "2026-11-25T00:02:29.378755+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -3997,7 +3997,7 @@
        "mean": 14.5,
        "std": 5.123475382979799
       },
-      "file": "fld:2bbd7de7",
+      "file": "fld:47ea6fa5",
       "source": {
        "op": "calc",
        "params": {
@@ -4015,7 +4015,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.771575+00:00"
+       "at": "2026-11-25T00:02:29.615481+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4040,7 +4040,7 @@
        "mean": 2.7999999999999994,
        "std": 4.440892098500626e-16
       },
-      "file": "fld:a168d78a",
+      "file": "fld:4204a6de",
       "source": {
        "op": "density",
        "params": {
@@ -4053,7 +4053,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.238354+00:00"
+       "at": "2026-11-25T00:02:31.037360+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4078,7 +4078,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:a168d78a",
+      "file": "fld:4204a6de",
       "source": {
        "op": "density",
        "params": {
@@ -4091,7 +4091,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.238354+00:00"
+       "at": "2026-11-25T00:02:31.037360+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4116,7 +4116,7 @@
        "mean": 2.772916666666667,
        "std": 0.34398981533695966
       },
-      "file": "fld:1f27a25f",
+      "file": "fld:44019c92",
       "source": {
        "op": "density",
        "params": {
@@ -4129,7 +4129,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.254245+00:00"
+       "at": "2026-11-25T00:02:30.086821+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4154,7 +4154,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:1f27a25f",
+      "file": "fld:44019c92",
       "source": {
        "op": "density",
        "params": {
@@ -4167,7 +4167,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.254245+00:00"
+       "at": "2026-11-25T00:02:30.086821+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4192,7 +4192,7 @@
        "mean": 2.6842105263157894,
        "std": 0.29426654207356556
       },
-      "file": "fld:aa75eb08",
+      "file": "fld:f03cf82c",
       "source": {
        "op": "density",
        "params": {
@@ -4224,7 +4224,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.493763+00:00"
+       "at": "2026-11-25T00:02:30.327310+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4249,7 +4249,7 @@
        "mean": 0.3684210526315789,
        "std": 0.48237638894271995
       },
-      "file": "fld:aa75eb08",
+      "file": "fld:f03cf82c",
       "source": {
        "op": "density",
        "params": {
@@ -4281,7 +4281,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.493763+00:00"
+       "at": "2026-11-25T00:02:30.327310+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4306,7 +4306,7 @@
        "mean": 2.625,
        "std": 0.06922186552431733
       },
-      "file": "fld:7dec7a96",
+      "file": "fld:58ad918a",
       "source": {
        "op": "density",
        "params": {
@@ -4319,7 +4319,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.740268+00:00"
+       "at": "2026-11-25T00:02:30.567421+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4344,7 +4344,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:7dec7a96",
+      "file": "fld:58ad918a",
       "source": {
        "op": "density",
        "params": {
@@ -4357,7 +4357,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.740268+00:00"
+       "at": "2026-11-25T00:02:30.567421+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4382,7 +4382,7 @@
        "mean": 2.797727272727273,
        "std": 0.34885438246536227
       },
-      "file": "fld:d6a6431a",
+      "file": "fld:73aadc4c",
       "source": {
        "op": "density",
        "params": {
@@ -4395,7 +4395,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.001434+00:00"
+       "at": "2026-11-25T00:02:30.802080+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4420,7 +4420,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:d6a6431a",
+      "file": "fld:73aadc4c",
       "source": {
        "op": "density",
        "params": {
@@ -4433,7 +4433,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.001434+00:00"
+       "at": "2026-11-25T00:02:30.802080+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4459,7 +4459,7 @@
         16
        ]
       },
-      "file": "fld:3e8ed56c",
+      "file": "fld:5c5e3e7e",
       "source": {
        "op": "classify",
        "params": {
@@ -4486,7 +4486,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:22.920129+00:00"
+       "at": "2026-11-25T00:02:31.494199+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4512,7 +4512,7 @@
         22
        ]
       },
-      "file": "fld:d782592f",
+      "file": "fld:fc2ee07c",
       "source": {
        "op": "classify",
        "params": {
@@ -4539,7 +4539,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.169009+00:00"
+       "at": "2026-11-25T00:02:31.732652+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4564,7 +4564,7 @@
         1
        ]
       },
-      "file": "fld:e943d958",
+      "file": "fld:aaa4c806",
       "source": {
        "op": "classify",
        "params": {
@@ -4587,7 +4587,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.421745+00:00"
+       "at": "2026-11-25T00:02:31.971944+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4612,7 +4612,7 @@
         7
        ]
       },
-      "file": "fld:8dc95613",
+      "file": "fld:1874ca3d",
       "source": {
        "op": "classify",
        "params": {
@@ -4641,7 +4641,7 @@
         }
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.664977+00:00"
+       "at": "2026-11-25T00:02:32.207352+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -4666,7 +4666,7 @@
         14
        ]
       },
-      "file": "fld:aa0d3cb0",
+      "file": "fld:fd499935",
       "source": {
        "op": "classify",
        "params": {
@@ -4694,7 +4694,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:25.521389+00:00"
+       "at": "2026-11-25T00:02:34.101980+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5088,6 +5088,1450 @@
     "deleted": "AU_K"
    }
   },
+  "list_views": {
+   "status": 200,
+   "body": {
+    "id": 1,
+    "name": "Месторождение",
+    "version": 26,
+    "stale": false,
+    "stale_reason": null,
+    "fields": [
+     {
+      "name": "AU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "г/т",
+      "description": null,
+      "role": "grade",
+      "labels_count": 0,
+      "stats": {
+       "count": 22,
+       "missing": 2,
+       "min": 0.0,
+       "max": 5.0,
+       "mean": 1.5590909090909093,
+       "std": 1.3189731167255185
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": false,
+      "usage": [
+       {
+        "kind": "field",
+        "id": null,
+        "name": "AU2",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "GRADE",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "ORE",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "AU10",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "AU_N",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS_M",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "K",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "K2",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "K3",
+        "role": "source"
+       }
+      ]
+     },
+     {
+      "name": "CU",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": "grade",
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.1,
+       "max": 2.4,
+       "mean": 1.25,
+       "std": 0.6922186552431728
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": false,
+      "usage": [
+       {
+        "kind": "field",
+        "id": null,
+        "name": "AU_N",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CU10",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CU10",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_T",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_T_SRC",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_E",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_E_SRC",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "K2",
+        "role": "source"
+       }
+      ]
+     },
+     {
+      "name": "DOM",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 3,
+      "stats": {
+       "count": 23,
+       "missing": 1,
+       "counts": [
+        8,
+        8,
+        7
+       ]
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": false,
+      "usage": [
+       {
+        "kind": "field",
+        "id": null,
+        "name": "ORE",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CU10",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_T",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_T_SRC",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "K",
+        "role": "source"
+       }
+      ]
+     },
+     {
+      "name": "SG",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 22,
+       "missing": 2,
+       "min": 2.2,
+       "max": 3.3500000000000005,
+       "mean": 2.797727272727273,
+       "std": 0.34885438246536227
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": false,
+      "usage": [
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_F",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_F_SRC",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_G",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "DENS_G_SRC",
+        "role": "source"
+       }
+      ]
+     },
+     {
+      "name": "FR",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": "frac",
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.0,
+       "max": 1.0,
+       "mean": 0.5,
+       "std": 0.300964632714423
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": true,
+      "deletable": false,
+      "usage": []
+     },
+     {
+      "name": "FR2",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.0,
+       "max": 1.0,
+       "mean": 0.5,
+       "std": 0.300964632714423
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "PASS",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 1.0,
+       "max": 3.0,
+       "mean": 2.0,
+       "std": 0.816496580927726
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": false,
+      "usage": [
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS_M",
+        "role": "source"
+       }
+      ]
+     },
+     {
+      "name": "SLOPE",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.4,
+       "max": 1.15,
+       "mean": 0.775,
+       "std": 0.2561737691489899
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": false,
+      "usage": [
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS_M",
+        "role": "source"
+       }
+      ]
+     },
+     {
+      "name": "NH",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.0,
+       "max": 4.0,
+       "mean": 1.9166666666666667,
+       "std": 1.3819269959814167
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": false,
+      "usage": [
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS_M",
+        "role": "source"
+       }
+      ]
+     },
+     {
+      "name": "AD",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 10.0,
+       "max": 34.0,
+       "mean": 22.0,
+       "std": 8.94427190999916
+      },
+      "file": "cells",
+      "source": null,
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": false,
+      "required": false,
+      "deletable": false,
+      "usage": [
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS",
+        "role": "source"
+       },
+       {
+        "kind": "field",
+        "id": null,
+        "name": "CLASS_M",
+        "role": "source"
+       }
+      ]
+     },
+     {
+      "name": "AU2",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 22,
+       "missing": 2,
+       "min": 0.0,
+       "max": 15.0,
+       "mean": 4.0227272727272725,
+       "std": 4.46958731247099
+      },
+      "file": "fld:f7338dee",
+      "source": {
+       "op": "calc",
+       "params": {
+        "expr": "IF(AU > 1, AU * 3, 0)",
+        "text": "IF(AU > 1, AU * 3, 0)",
+        "dtype": "f8",
+        "filter_id": null,
+        "restrict": null,
+        "outside": "keep"
+       },
+       "algo": "calc-1",
+       "at": "2026-11-25T00:02:28.205184+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "GRADE",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 2,
+      "stats": {
+       "count": 22,
+       "missing": 2,
+       "counts": [
+        12,
+        10
+       ]
+      },
+      "file": "fld:2b83f07b",
+      "source": {
+       "op": "calc",
+       "params": {
+        "expr": "IF(AU > 1, 'богатая', 'бедная')",
+        "text": "IF(AU > 1, 'богатая', 'бедная')",
+        "dtype": "cat",
+        "filter_id": null,
+        "restrict": null,
+        "outside": "keep"
+       },
+       "algo": "calc-1",
+       "at": "2026-11-25T00:02:28.439226+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "ORE",
+      "kind": "number",
+      "dtype": "i1",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.0,
+       "max": 1.0,
+       "mean": 0.20833333333333334,
+       "std": 0.4061164310337068
+      },
+      "file": "fld:af852cbb",
+      "source": {
+       "op": "calc",
+       "params": {
+        "expr": "AU > 1 AND DOM = 'Руда'",
+        "text": "AU > 1 AND DOM = 'Руда'",
+        "dtype": "i1",
+        "filter_id": null,
+        "restrict": null,
+        "outside": "keep"
+       },
+       "algo": "calc-1",
+       "at": "2026-11-25T00:02:28.673151+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "AU10",
+      "kind": "number",
+      "dtype": "i2",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 22,
+       "missing": 2,
+       "min": 0.0,
+       "max": 50.0,
+       "mean": 15.590909090909092,
+       "std": 13.189731167255184
+      },
+      "file": "fld:31aea4d5",
+      "source": {
+       "op": "calc",
+       "params": {
+        "expr": "ROUND(AU * 10, 0)",
+        "text": "ROUND(AU * 10, 0)",
+        "dtype": "i2",
+        "filter_id": null,
+        "restrict": null,
+        "outside": "keep"
+       },
+       "algo": "calc-1",
+       "at": "2026-11-25T00:02:28.907998+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": false,
+      "usage": [
+       {
+        "kind": "view",
+        "id": 1,
+        "name": "Вид проекта · Месторождение",
+        "role": "colour"
+       },
+       {
+        "kind": "view",
+        "id": 1,
+        "name": "Вид проекта · Месторождение",
+        "role": "restrictor"
+       },
+       {
+        "kind": "view",
+        "id": 4,
+        "name": "Мой вид",
+        "role": "colour"
+       }
+      ]
+     },
+     {
+      "name": "AU_N",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 18,
+       "missing": 6,
+       "min": 1.0,
+       "max": 6.0,
+       "mean": 2.6888888888888887,
+       "std": 1.3879997153733654
+      },
+      "file": "fld:15f2a686",
+      "source": {
+       "op": "calc",
+       "params": {
+        "expr": "AU + 1",
+        "text": "AU + 1",
+        "dtype": "f8",
+        "filter_id": null,
+        "restrict": {
+         "cond": {
+          "field": "CU",
+          "op": ">",
+          "value": 0.5
+         }
+        },
+        "outside": "nan"
+       },
+       "algo": "calc-1",
+       "at": "2026-11-25T00:02:29.142635+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "CU10",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": null,
+      "description": null,
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 6,
+       "missing": 18,
+       "min": 7.0,
+       "max": 21.999999999999996,
+       "mean": 14.5,
+       "std": 5.123475382979799
+      },
+      "file": "fld:47ea6fa5",
+      "source": {
+       "op": "calc",
+       "params": {
+        "expr": "CU * 10",
+        "text": "CU * 10",
+        "dtype": "f8",
+        "filter_id": 2,
+        "restrict": {
+         "cond": {
+          "field": "CU",
+          "op": ">",
+          "value": 0.5
+         }
+        },
+        "outside": "nan"
+       },
+       "algo": "calc-1",
+       "at": "2026-11-25T00:02:29.615481+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": "Плотность блока",
+      "role": "density",
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 2.8,
+       "max": 2.8,
+       "mean": 2.7999999999999994,
+       "std": 4.440892098500626e-16
+      },
+      "file": "fld:4204a6de",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "constant",
+        "default": null,
+        "out": "DENS",
+        "src_field": "DENS_SRC",
+        "value": 2.8,
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:31.037360+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS_SRC",
+      "kind": "number",
+      "dtype": "i1",
+      "unit": null,
+      "description": "Источник плотности: 0 — значение блока, 1 — подставлено «по умолчанию»",
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "std": 0.0
+      },
+      "file": "fld:4204a6de",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "constant",
+        "default": null,
+        "out": "DENS",
+        "src_field": "DENS_SRC",
+        "value": 2.8,
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:31.037360+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS_F",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": "Плотность блока",
+      "role": "density",
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 2.2,
+       "max": 3.3500000000000005,
+       "mean": 2.772916666666667,
+       "std": 0.34398981533695966
+      },
+      "file": "fld:44019c92",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "field",
+        "default": 2.5,
+        "out": "DENS_F",
+        "src_field": "DENS_F_SRC",
+        "field": "SG",
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:30.086821+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS_F_SRC",
+      "kind": "number",
+      "dtype": "i1",
+      "unit": null,
+      "description": "Источник плотности: 0 — значение блока, 1 — подставлено «по умолчанию»",
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.0,
+       "max": 1.0,
+       "mean": 0.08333333333333333,
+       "std": 0.2763853991962833
+      },
+      "file": "fld:44019c92",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "field",
+        "default": 2.5,
+        "out": "DENS_F",
+        "src_field": "DENS_F_SRC",
+        "field": "SG",
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:30.086821+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS_T",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": "Плотность блока",
+      "role": "density",
+      "labels_count": 0,
+      "stats": {
+       "count": 19,
+       "missing": 5,
+       "min": 2.4,
+       "max": 3.1,
+       "mean": 2.6842105263157894,
+       "std": 0.29426654207356556
+      },
+      "file": "fld:f03cf82c",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "table",
+        "default": null,
+        "out": "DENS_T",
+        "src_field": "DENS_T_SRC",
+        "table": {
+         "field": "DOM",
+         "default": 2.4,
+         "values": [
+          {
+           "value": "Руда",
+           "density": 3.1
+          },
+          {
+           "value": "Порода",
+           "density": 2.6
+          }
+         ]
+        },
+        "filter_id": null,
+        "restrict": {
+         "cond": {
+          "field": "CU",
+          "op": ">",
+          "value": 0.5
+         }
+        }
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:30.327310+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS_T_SRC",
+      "kind": "number",
+      "dtype": "i1",
+      "unit": null,
+      "description": "Источник плотности: 0 — значение блока, 1 — подставлено «по умолчанию»",
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 19,
+       "missing": 5,
+       "min": 0.0,
+       "max": 1.0,
+       "mean": 0.3684210526315789,
+       "std": 0.48237638894271995
+      },
+      "file": "fld:f03cf82c",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "table",
+        "default": null,
+        "out": "DENS_T",
+        "src_field": "DENS_T_SRC",
+        "table": {
+         "field": "DOM",
+         "default": 2.4,
+         "values": [
+          {
+           "value": "Руда",
+           "density": 3.1
+          },
+          {
+           "value": "Порода",
+           "density": 2.6
+          }
+         ]
+        },
+        "filter_id": null,
+        "restrict": {
+         "cond": {
+          "field": "CU",
+          "op": ">",
+          "value": 0.5
+         }
+        }
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:30.327310+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS_E",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": "Плотность блока",
+      "role": "density",
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 2.51,
+       "max": 2.74,
+       "mean": 2.625,
+       "std": 0.06922186552431733
+      },
+      "file": "fld:58ad918a",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "formula",
+        "default": 2.5,
+        "out": "DENS_E",
+        "src_field": "DENS_E_SRC",
+        "expr": "2.5 + CU / 10",
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:30.567421+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS_E_SRC",
+      "kind": "number",
+      "dtype": "i1",
+      "unit": null,
+      "description": "Источник плотности: 0 — значение блока, 1 — подставлено «по умолчанию»",
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.0,
+       "max": 0.0,
+       "mean": 0.0,
+       "std": 0.0
+      },
+      "file": "fld:58ad918a",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "formula",
+        "default": 2.5,
+        "out": "DENS_E",
+        "src_field": "DENS_E_SRC",
+        "expr": "2.5 + CU / 10",
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:30.567421+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS_G",
+      "kind": "number",
+      "dtype": "f8",
+      "unit": "т/м³",
+      "description": "Плотность блока",
+      "role": "density",
+      "labels_count": 0,
+      "stats": {
+       "count": 22,
+       "missing": 2,
+       "min": 2.2,
+       "max": 3.3500000000000005,
+       "mean": 2.797727272727273,
+       "std": 0.34885438246536227
+      },
+      "file": "fld:73aadc4c",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "field",
+        "default": null,
+        "out": "DENS_G",
+        "src_field": "DENS_G_SRC",
+        "field": "SG",
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:30.802080+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "DENS_G_SRC",
+      "kind": "number",
+      "dtype": "i1",
+      "unit": null,
+      "description": "Источник плотности: 0 — значение блока, 1 — подставлено «по умолчанию»",
+      "role": null,
+      "labels_count": 0,
+      "stats": {
+       "count": 24,
+       "missing": 0,
+       "min": 0.0,
+       "max": 1.0,
+       "mean": 0.08333333333333333,
+       "std": 0.2763853991962833
+      },
+      "file": "fld:73aadc4c",
+      "source": {
+       "op": "density",
+       "params": {
+        "method": "field",
+        "default": null,
+        "out": "DENS_G",
+        "src_field": "DENS_G_SRC",
+        "field": "SG",
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "density-1",
+       "at": "2026-11-25T00:02:30.802080+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "CLASS",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": "Категория блока по правилам схемы",
+      "role": "class",
+      "labels_count": 3,
+      "stats": {
+       "count": 22,
+       "missing": 2,
+       "counts": [
+        1,
+        5,
+        16
+       ]
+      },
+      "file": "fld:5c5e3e7e",
+      "source": {
+       "op": "classify",
+       "params": {
+        "rules": [
+         {
+          "label": "Измеренные",
+          "expr": "PASS = 1 AND SLOPE >= 0.8 AND NH >= 3 AND AD <= 25"
+         },
+         {
+          "label": "Выявленные",
+          "expr": "PASS <= 2 AND SLOPE >= 0.5 AND NH >= 2"
+         },
+         {
+          "label": "Предполагаемые",
+          "expr": "1 = 1"
+         }
+        ],
+        "scheme": "jorc",
+        "overrides": [],
+        "majority": 0,
+        "estimate": "AU",
+        "out": "CLASS",
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "classify-1",
+       "at": "2026-11-25T00:02:31.494199+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "CLASS_M",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": "Категория блока по правилам схемы",
+      "role": "class",
+      "labels_count": 3,
+      "stats": {
+       "count": 22,
+       "missing": 2,
+       "counts": [
+        0,
+        0,
+        22
+       ]
+      },
+      "file": "fld:fc2ee07c",
+      "source": {
+       "op": "classify",
+       "params": {
+        "rules": [
+         {
+          "label": "Измеренные",
+          "expr": "PASS = 1 AND SLOPE >= 0.8 AND NH >= 3 AND AD <= 25"
+         },
+         {
+          "label": "Выявленные",
+          "expr": "PASS <= 2 AND SLOPE >= 0.5 AND NH >= 2"
+         },
+         {
+          "label": "Предполагаемые",
+          "expr": "1 = 1"
+         }
+        ],
+        "scheme": "jorc",
+        "overrides": [],
+        "majority": 1,
+        "estimate": "AU",
+        "out": "CLASS_M",
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "classify-1",
+       "at": "2026-11-25T00:02:31.732652+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "K",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": "Категория блока по правилам схемы",
+      "role": "class",
+      "labels_count": 2,
+      "stats": {
+       "count": 7,
+       "missing": 17,
+       "counts": [
+        6,
+        1
+       ]
+      },
+      "file": "fld:aaa4c806",
+      "source": {
+       "op": "classify",
+       "params": {
+        "rules": [
+         {
+          "label": "Руда",
+          "expr": "AU >= 1"
+         },
+         {
+          "label": "Бедная",
+          "expr": "AU >= 0"
+         }
+        ],
+        "scheme": "my",
+        "overrides": [],
+        "majority": 0,
+        "estimate": null,
+        "out": "K",
+        "filter_id": 2,
+        "restrict": null
+       },
+       "algo": "classify-1",
+       "at": "2026-11-25T00:02:31.971944+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "K2",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": "Категория блока по правилам схемы",
+      "role": "class",
+      "labels_count": 2,
+      "stats": {
+       "count": 18,
+       "missing": 6,
+       "counts": [
+        11,
+        7
+       ]
+      },
+      "file": "fld:1874ca3d",
+      "source": {
+       "op": "classify",
+       "params": {
+        "rules": [
+         {
+          "label": "Руда",
+          "expr": "AU >= 1"
+         },
+         {
+          "label": "Бедная",
+          "expr": "AU >= 0"
+         }
+        ],
+        "scheme": null,
+        "overrides": [],
+        "majority": 0,
+        "estimate": "AU",
+        "out": "K2",
+        "filter_id": null,
+        "restrict": {
+         "cond": {
+          "field": "CU",
+          "op": ">",
+          "value": 0.5
+         }
+        }
+       },
+       "algo": "classify-1",
+       "at": "2026-11-25T00:02:32.207352+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     },
+     {
+      "name": "K3",
+      "kind": "category",
+      "dtype": "cat",
+      "unit": null,
+      "description": "Категория блока по правилам схемы",
+      "role": "class",
+      "labels_count": 2,
+      "stats": {
+       "count": 23,
+       "missing": 1,
+       "counts": [
+        9,
+        14
+       ]
+      },
+      "file": "fld:fd499935",
+      "source": {
+       "op": "classify",
+       "params": {
+        "rules": [
+         {
+          "label": "Руда",
+          "expr": "AU >= 1"
+         },
+         {
+          "label": "Бедная",
+          "expr": "AU >= 0"
+         }
+        ],
+        "scheme": null,
+        "overrides": [
+         {
+          "wireframe_id": 3,
+          "label": "Бедная"
+         }
+        ],
+        "majority": 0,
+        "estimate": null,
+        "out": "K3",
+        "filter_id": null,
+        "restrict": null
+       },
+       "algo": "classify-1",
+       "at": "2026-11-25T00:02:34.101980+00:00"
+      },
+      "stale": false,
+      "stale_reason": null,
+      "rebuildable": true,
+      "required": false,
+      "deletable": true,
+      "usage": []
+     }
+    ]
+   }
+  },
+  "delete_used_by_view": {
+   "name": "AU10",
+   "expected_version": 26,
+   "status": 422,
+   "body": {
+    "field": "AU10",
+    "usage": [
+     {
+      "kind": "view",
+      "id": 1,
+      "name": "Вид проекта · Месторождение",
+      "role": "colour"
+     },
+     {
+      "kind": "view",
+      "id": 1,
+      "name": "Вид проекта · Месторождение",
+      "role": "restrictor"
+     },
+     {
+      "kind": "view",
+      "id": 4,
+      "name": "Мой вид",
+      "role": "colour"
+     }
+    ],
+    "code": "field_in_use",
+    "message": "Поле «AU10» используется: «Вид проекта · Месторождение», «Вид проекта · Месторождение», «Мой вид».",
+    "hint": "Уберите поле из этих мест или удалите зависимые поля, затем удалите поле."
+   }
+  },
   "list_stale": {
    "status": 200,
    "body": {
@@ -5113,7 +6557,7 @@
        "mean": 1.5590909090909093,
        "std": 1.3189731167255185
       },
-      "file": "fld:2fe87f6d",
+      "file": "fld:714b6c20",
       "source": {
        "op": "calc",
        "params": {
@@ -5125,7 +6569,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:26.166772+00:00"
+       "at": "2026-11-25T00:02:34.750241+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5594,7 +7038,7 @@
        "mean": 4.0227272727272725,
        "std": 4.46958731247099
       },
-      "file": "fld:edec1617",
+      "file": "fld:f7338dee",
       "source": {
        "op": "calc",
        "params": {
@@ -5606,7 +7050,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.324639+00:00"
+       "at": "2026-11-25T00:02:28.205184+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5631,7 +7075,7 @@
         10
        ]
       },
-      "file": "fld:d3b16904",
+      "file": "fld:2b83f07b",
       "source": {
        "op": "calc",
        "params": {
@@ -5643,7 +7087,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.565076+00:00"
+       "at": "2026-11-25T00:02:28.439226+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5668,7 +7112,7 @@
        "mean": 0.20833333333333334,
        "std": 0.4061164310337068
       },
-      "file": "fld:4b652e27",
+      "file": "fld:af852cbb",
       "source": {
        "op": "calc",
        "params": {
@@ -5680,7 +7124,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.808460+00:00"
+       "at": "2026-11-25T00:02:28.673151+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5705,7 +7149,7 @@
        "mean": 15.590909090909092,
        "std": 13.189731167255184
       },
-      "file": "fld:4d07b9a6",
+      "file": "fld:31aea4d5",
       "source": {
        "op": "calc",
        "params": {
@@ -5717,7 +7161,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.040753+00:00"
+       "at": "2026-11-25T00:02:28.907998+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5742,7 +7186,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:1ef340d5",
+      "file": "fld:15f2a686",
       "source": {
        "op": "calc",
        "params": {
@@ -5760,7 +7204,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.284607+00:00"
+       "at": "2026-11-25T00:02:29.142635+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -5785,7 +7229,7 @@
        "mean": 14.5,
        "std": 5.123475382979799
       },
-      "file": "fld:2bbd7de7",
+      "file": "fld:47ea6fa5",
       "source": {
        "op": "calc",
        "params": {
@@ -5803,7 +7247,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.771575+00:00"
+       "at": "2026-11-25T00:02:29.615481+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5828,7 +7272,7 @@
        "mean": 2.7999999999999994,
        "std": 4.440892098500626e-16
       },
-      "file": "fld:a168d78a",
+      "file": "fld:4204a6de",
       "source": {
        "op": "density",
        "params": {
@@ -5841,7 +7285,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.238354+00:00"
+       "at": "2026-11-25T00:02:31.037360+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5866,7 +7310,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:a168d78a",
+      "file": "fld:4204a6de",
       "source": {
        "op": "density",
        "params": {
@@ -5879,7 +7323,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.238354+00:00"
+       "at": "2026-11-25T00:02:31.037360+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5904,7 +7348,7 @@
        "mean": 2.772916666666667,
        "std": 0.34398981533695966
       },
-      "file": "fld:1f27a25f",
+      "file": "fld:44019c92",
       "source": {
        "op": "density",
        "params": {
@@ -5917,7 +7361,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.254245+00:00"
+       "at": "2026-11-25T00:02:30.086821+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5942,7 +7386,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:1f27a25f",
+      "file": "fld:44019c92",
       "source": {
        "op": "density",
        "params": {
@@ -5955,7 +7399,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.254245+00:00"
+       "at": "2026-11-25T00:02:30.086821+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -5980,7 +7424,7 @@
        "mean": 2.6842105263157894,
        "std": 0.29426654207356556
       },
-      "file": "fld:aa75eb08",
+      "file": "fld:f03cf82c",
       "source": {
        "op": "density",
        "params": {
@@ -6012,7 +7456,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.493763+00:00"
+       "at": "2026-11-25T00:02:30.327310+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6037,7 +7481,7 @@
        "mean": 0.3684210526315789,
        "std": 0.48237638894271995
       },
-      "file": "fld:aa75eb08",
+      "file": "fld:f03cf82c",
       "source": {
        "op": "density",
        "params": {
@@ -6069,7 +7513,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.493763+00:00"
+       "at": "2026-11-25T00:02:30.327310+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6094,7 +7538,7 @@
        "mean": 2.625,
        "std": 0.06922186552431733
       },
-      "file": "fld:7dec7a96",
+      "file": "fld:58ad918a",
       "source": {
        "op": "density",
        "params": {
@@ -6107,7 +7551,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.740268+00:00"
+       "at": "2026-11-25T00:02:30.567421+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6132,7 +7576,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:7dec7a96",
+      "file": "fld:58ad918a",
       "source": {
        "op": "density",
        "params": {
@@ -6145,7 +7589,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.740268+00:00"
+       "at": "2026-11-25T00:02:30.567421+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6170,7 +7614,7 @@
        "mean": 2.797727272727273,
        "std": 0.34885438246536227
       },
-      "file": "fld:d6a6431a",
+      "file": "fld:73aadc4c",
       "source": {
        "op": "density",
        "params": {
@@ -6183,7 +7627,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.001434+00:00"
+       "at": "2026-11-25T00:02:30.802080+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6208,7 +7652,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:d6a6431a",
+      "file": "fld:73aadc4c",
       "source": {
        "op": "density",
        "params": {
@@ -6221,7 +7665,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.001434+00:00"
+       "at": "2026-11-25T00:02:30.802080+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -6247,7 +7691,7 @@
         16
        ]
       },
-      "file": "fld:3e8ed56c",
+      "file": "fld:5c5e3e7e",
       "source": {
        "op": "classify",
        "params": {
@@ -6274,7 +7718,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:22.920129+00:00"
+       "at": "2026-11-25T00:02:31.494199+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6300,7 +7744,7 @@
         22
        ]
       },
-      "file": "fld:d782592f",
+      "file": "fld:fc2ee07c",
       "source": {
        "op": "classify",
        "params": {
@@ -6327,7 +7771,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.169009+00:00"
+       "at": "2026-11-25T00:02:31.732652+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6352,7 +7796,7 @@
         1
        ]
       },
-      "file": "fld:e943d958",
+      "file": "fld:aaa4c806",
       "source": {
        "op": "classify",
        "params": {
@@ -6375,7 +7819,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.421745+00:00"
+       "at": "2026-11-25T00:02:31.971944+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6400,7 +7844,7 @@
         7
        ]
       },
-      "file": "fld:8dc95613",
+      "file": "fld:1874ca3d",
       "source": {
        "op": "classify",
        "params": {
@@ -6429,7 +7873,7 @@
         }
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.664977+00:00"
+       "at": "2026-11-25T00:02:32.207352+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6454,7 +7898,7 @@
         14
        ]
       },
-      "file": "fld:aa0d3cb0",
+      "file": "fld:fd499935",
       "source": {
        "op": "classify",
        "params": {
@@ -6482,7 +7926,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:25.521389+00:00"
+       "at": "2026-11-25T00:02:34.101980+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -6532,9 +7976,9 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.005,
-      "calc": 0.003,
-      "write": 0.011
+      "read": 0.015,
+      "calc": 0.005,
+      "write": 0.02
      },
      "events": [
       [
@@ -6591,10 +8035,10 @@
      "dtype": "f8",
      "warnings": [],
      "stages": {
-      "read": 0.006,
+      "read": 0.009,
       "calc": 0.003,
-      "write": 0.012,
-      "total": 0.02
+      "write": 0.011,
+      "total": 0.023
      },
      "events": [
       [
@@ -6670,7 +8114,7 @@
        "mean": 1.5590909090909093,
        "std": 1.3189731167255185
       },
-      "file": "fld:2fe87f6d",
+      "file": "fld:714b6c20",
       "source": {
        "op": "calc",
        "params": {
@@ -6682,7 +8126,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:26.166772+00:00"
+       "at": "2026-11-25T00:02:34.750241+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7151,7 +8595,7 @@
        "mean": 4.0227272727272725,
        "std": 4.46958731247099
       },
-      "file": "fld:f477b821",
+      "file": "fld:97261df2",
       "source": {
        "op": "calc",
        "params": {
@@ -7163,7 +8607,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:26.406485+00:00"
+       "at": "2026-11-25T00:02:35.014099+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7188,7 +8632,7 @@
         10
        ]
       },
-      "file": "fld:d3b16904",
+      "file": "fld:2b83f07b",
       "source": {
        "op": "calc",
        "params": {
@@ -7200,7 +8644,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.565076+00:00"
+       "at": "2026-11-25T00:02:28.439226+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -7225,7 +8669,7 @@
        "mean": 0.20833333333333334,
        "std": 0.4061164310337068
       },
-      "file": "fld:4b652e27",
+      "file": "fld:af852cbb",
       "source": {
        "op": "calc",
        "params": {
@@ -7237,7 +8681,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.808460+00:00"
+       "at": "2026-11-25T00:02:28.673151+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -7262,7 +8706,7 @@
        "mean": 15.590909090909092,
        "std": 13.189731167255184
       },
-      "file": "fld:4d07b9a6",
+      "file": "fld:31aea4d5",
       "source": {
        "op": "calc",
        "params": {
@@ -7274,7 +8718,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.040753+00:00"
+       "at": "2026-11-25T00:02:28.907998+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -7299,7 +8743,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:1ef340d5",
+      "file": "fld:15f2a686",
       "source": {
        "op": "calc",
        "params": {
@@ -7317,7 +8761,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.284607+00:00"
+       "at": "2026-11-25T00:02:29.142635+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -7342,7 +8786,7 @@
        "mean": 14.5,
        "std": 5.123475382979799
       },
-      "file": "fld:2bbd7de7",
+      "file": "fld:47ea6fa5",
       "source": {
        "op": "calc",
        "params": {
@@ -7360,7 +8804,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.771575+00:00"
+       "at": "2026-11-25T00:02:29.615481+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7385,7 +8829,7 @@
        "mean": 2.7999999999999994,
        "std": 4.440892098500626e-16
       },
-      "file": "fld:a168d78a",
+      "file": "fld:4204a6de",
       "source": {
        "op": "density",
        "params": {
@@ -7398,7 +8842,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.238354+00:00"
+       "at": "2026-11-25T00:02:31.037360+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7423,7 +8867,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:a168d78a",
+      "file": "fld:4204a6de",
       "source": {
        "op": "density",
        "params": {
@@ -7436,7 +8880,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.238354+00:00"
+       "at": "2026-11-25T00:02:31.037360+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7461,7 +8905,7 @@
        "mean": 2.772916666666667,
        "std": 0.34398981533695966
       },
-      "file": "fld:f79de11c",
+      "file": "fld:90a881af",
       "source": {
        "op": "density",
        "params": {
@@ -7474,7 +8918,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:26.647641+00:00"
+       "at": "2026-11-25T00:02:35.262635+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7499,7 +8943,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:f79de11c",
+      "file": "fld:90a881af",
       "source": {
        "op": "density",
        "params": {
@@ -7512,7 +8956,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:26.647641+00:00"
+       "at": "2026-11-25T00:02:35.262635+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7537,7 +8981,7 @@
        "mean": 2.6842105263157894,
        "std": 0.29426654207356556
       },
-      "file": "fld:aa75eb08",
+      "file": "fld:f03cf82c",
       "source": {
        "op": "density",
        "params": {
@@ -7569,7 +9013,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.493763+00:00"
+       "at": "2026-11-25T00:02:30.327310+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7594,7 +9038,7 @@
        "mean": 0.3684210526315789,
        "std": 0.48237638894271995
       },
-      "file": "fld:aa75eb08",
+      "file": "fld:f03cf82c",
       "source": {
        "op": "density",
        "params": {
@@ -7626,7 +9070,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.493763+00:00"
+       "at": "2026-11-25T00:02:30.327310+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7651,7 +9095,7 @@
        "mean": 2.625,
        "std": 0.06922186552431733
       },
-      "file": "fld:7dec7a96",
+      "file": "fld:58ad918a",
       "source": {
        "op": "density",
        "params": {
@@ -7664,7 +9108,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.740268+00:00"
+       "at": "2026-11-25T00:02:30.567421+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7689,7 +9133,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:7dec7a96",
+      "file": "fld:58ad918a",
       "source": {
        "op": "density",
        "params": {
@@ -7702,7 +9146,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.740268+00:00"
+       "at": "2026-11-25T00:02:30.567421+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7727,7 +9171,7 @@
        "mean": 2.797727272727273,
        "std": 0.34885438246536227
       },
-      "file": "fld:d6a6431a",
+      "file": "fld:73aadc4c",
       "source": {
        "op": "density",
        "params": {
@@ -7740,7 +9184,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.001434+00:00"
+       "at": "2026-11-25T00:02:30.802080+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7765,7 +9209,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:d6a6431a",
+      "file": "fld:73aadc4c",
       "source": {
        "op": "density",
        "params": {
@@ -7778,7 +9222,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.001434+00:00"
+       "at": "2026-11-25T00:02:30.802080+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -7804,7 +9248,7 @@
         16
        ]
       },
-      "file": "fld:3e8ed56c",
+      "file": "fld:5c5e3e7e",
       "source": {
        "op": "classify",
        "params": {
@@ -7831,7 +9275,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:22.920129+00:00"
+       "at": "2026-11-25T00:02:31.494199+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -7857,7 +9301,7 @@
         22
        ]
       },
-      "file": "fld:d782592f",
+      "file": "fld:fc2ee07c",
       "source": {
        "op": "classify",
        "params": {
@@ -7884,7 +9328,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.169009+00:00"
+       "at": "2026-11-25T00:02:31.732652+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -7909,7 +9353,7 @@
         1
        ]
       },
-      "file": "fld:e943d958",
+      "file": "fld:aaa4c806",
       "source": {
        "op": "classify",
        "params": {
@@ -7932,7 +9376,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.421745+00:00"
+       "at": "2026-11-25T00:02:31.971944+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -7957,7 +9401,7 @@
         7
        ]
       },
-      "file": "fld:8dc95613",
+      "file": "fld:1874ca3d",
       "source": {
        "op": "classify",
        "params": {
@@ -7986,7 +9430,7 @@
         }
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.664977+00:00"
+       "at": "2026-11-25T00:02:32.207352+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -8011,7 +9455,7 @@
         14
        ]
       },
-      "file": "fld:aa0d3cb0",
+      "file": "fld:fd499935",
       "source": {
        "op": "classify",
        "params": {
@@ -8039,7 +9483,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:25.521389+00:00"
+       "at": "2026-11-25T00:02:34.101980+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -8096,7 +9540,7 @@
        "mean": 1.5590909090909093,
        "std": 1.3189731167255185
       },
-      "file": "fld:2fe87f6d",
+      "file": "fld:714b6c20",
       "source": {
        "op": "calc",
        "params": {
@@ -8108,7 +9552,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:26.166772+00:00"
+       "at": "2026-11-25T00:02:34.750241+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8547,7 +9991,7 @@
        "mean": 4.0227272727272725,
        "std": 4.46958731247099
       },
-      "file": "fld:f477b821",
+      "file": "fld:97261df2",
       "source": {
        "op": "calc",
        "params": {
@@ -8559,7 +10003,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:26.406485+00:00"
+       "at": "2026-11-25T00:02:35.014099+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8584,7 +10028,7 @@
         10
        ]
       },
-      "file": "fld:d3b16904",
+      "file": "fld:2b83f07b",
       "source": {
        "op": "calc",
        "params": {
@@ -8596,7 +10040,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.565076+00:00"
+       "at": "2026-11-25T00:02:28.439226+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -8621,7 +10065,7 @@
        "mean": 0.20833333333333334,
        "std": 0.4061164310337068
       },
-      "file": "fld:4b652e27",
+      "file": "fld:af852cbb",
       "source": {
        "op": "calc",
        "params": {
@@ -8633,7 +10077,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:19.808460+00:00"
+       "at": "2026-11-25T00:02:28.673151+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -8658,7 +10102,7 @@
        "mean": 15.590909090909092,
        "std": 13.189731167255184
       },
-      "file": "fld:4d07b9a6",
+      "file": "fld:31aea4d5",
       "source": {
        "op": "calc",
        "params": {
@@ -8670,7 +10114,7 @@
         "outside": "keep"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.040753+00:00"
+       "at": "2026-11-25T00:02:28.907998+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -8695,7 +10139,7 @@
        "mean": 2.6888888888888887,
        "std": 1.3879997153733654
       },
-      "file": "fld:1ef340d5",
+      "file": "fld:15f2a686",
       "source": {
        "op": "calc",
        "params": {
@@ -8713,7 +10157,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.284607+00:00"
+       "at": "2026-11-25T00:02:29.142635+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля или фильтр, из которых считалось, или алгоритм.",
@@ -8738,7 +10182,7 @@
        "mean": 14.5,
        "std": 5.123475382979799
       },
-      "file": "fld:2bbd7de7",
+      "file": "fld:47ea6fa5",
       "source": {
        "op": "calc",
        "params": {
@@ -8756,7 +10200,7 @@
         "outside": "nan"
        },
        "algo": "calc-1",
-       "at": "2026-11-24T23:57:20.771575+00:00"
+       "at": "2026-11-25T00:02:29.615481+00:00"
       },
       "stale": true,
       "stale_reason": "Нет входов: поле или фильтр, из которых считалось, удалены или изменены.",
@@ -8781,7 +10225,7 @@
        "mean": 2.7999999999999994,
        "std": 4.440892098500626e-16
       },
-      "file": "fld:a168d78a",
+      "file": "fld:4204a6de",
       "source": {
        "op": "density",
        "params": {
@@ -8794,7 +10238,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.238354+00:00"
+       "at": "2026-11-25T00:02:31.037360+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8819,7 +10263,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:a168d78a",
+      "file": "fld:4204a6de",
       "source": {
        "op": "density",
        "params": {
@@ -8832,7 +10276,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.238354+00:00"
+       "at": "2026-11-25T00:02:31.037360+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8857,7 +10301,7 @@
        "mean": 2.772916666666667,
        "std": 0.34398981533695966
       },
-      "file": "fld:f79de11c",
+      "file": "fld:90a881af",
       "source": {
        "op": "density",
        "params": {
@@ -8870,7 +10314,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:26.647641+00:00"
+       "at": "2026-11-25T00:02:35.262635+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8895,7 +10339,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:f79de11c",
+      "file": "fld:90a881af",
       "source": {
        "op": "density",
        "params": {
@@ -8908,7 +10352,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:26.647641+00:00"
+       "at": "2026-11-25T00:02:35.262635+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8933,7 +10377,7 @@
        "mean": 2.6842105263157894,
        "std": 0.29426654207356556
       },
-      "file": "fld:aa75eb08",
+      "file": "fld:f03cf82c",
       "source": {
        "op": "density",
        "params": {
@@ -8965,7 +10409,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.493763+00:00"
+       "at": "2026-11-25T00:02:30.327310+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -8990,7 +10434,7 @@
        "mean": 0.3684210526315789,
        "std": 0.48237638894271995
       },
-      "file": "fld:aa75eb08",
+      "file": "fld:f03cf82c",
       "source": {
        "op": "density",
        "params": {
@@ -9022,7 +10466,7 @@
         }
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.493763+00:00"
+       "at": "2026-11-25T00:02:30.327310+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -9047,7 +10491,7 @@
        "mean": 2.625,
        "std": 0.06922186552431733
       },
-      "file": "fld:7dec7a96",
+      "file": "fld:58ad918a",
       "source": {
        "op": "density",
        "params": {
@@ -9060,7 +10504,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.740268+00:00"
+       "at": "2026-11-25T00:02:30.567421+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -9085,7 +10529,7 @@
        "mean": 0.0,
        "std": 0.0
       },
-      "file": "fld:7dec7a96",
+      "file": "fld:58ad918a",
       "source": {
        "op": "density",
        "params": {
@@ -9098,7 +10542,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:21.740268+00:00"
+       "at": "2026-11-25T00:02:30.567421+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -9123,7 +10567,7 @@
        "mean": 2.797727272727273,
        "std": 0.34885438246536227
       },
-      "file": "fld:d6a6431a",
+      "file": "fld:73aadc4c",
       "source": {
        "op": "density",
        "params": {
@@ -9136,7 +10580,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.001434+00:00"
+       "at": "2026-11-25T00:02:30.802080+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -9161,7 +10605,7 @@
        "mean": 0.08333333333333333,
        "std": 0.2763853991962833
       },
-      "file": "fld:d6a6431a",
+      "file": "fld:73aadc4c",
       "source": {
        "op": "density",
        "params": {
@@ -9174,7 +10618,7 @@
         "restrict": null
        },
        "algo": "density-1",
-       "at": "2026-11-24T23:57:22.001434+00:00"
+       "at": "2026-11-25T00:02:30.802080+00:00"
       },
       "stale": false,
       "stale_reason": null,
@@ -9200,7 +10644,7 @@
         16
        ]
       },
-      "file": "fld:3e8ed56c",
+      "file": "fld:5c5e3e7e",
       "source": {
        "op": "classify",
        "params": {
@@ -9227,7 +10671,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:22.920129+00:00"
+       "at": "2026-11-25T00:02:31.494199+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -9253,7 +10697,7 @@
         22
        ]
       },
-      "file": "fld:d782592f",
+      "file": "fld:fc2ee07c",
       "source": {
        "op": "classify",
        "params": {
@@ -9280,7 +10724,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.169009+00:00"
+       "at": "2026-11-25T00:02:31.732652+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -9305,7 +10749,7 @@
         1
        ]
       },
-      "file": "fld:e943d958",
+      "file": "fld:aaa4c806",
       "source": {
        "op": "classify",
        "params": {
@@ -9328,7 +10772,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.421745+00:00"
+       "at": "2026-11-25T00:02:31.971944+00:00"
       },
       "stale": true,
       "stale_reason": "Нет входов: поле, фильтр или каркас, из которых считалось, удалены.",
@@ -9353,7 +10797,7 @@
         7
        ]
       },
-      "file": "fld:8dc95613",
+      "file": "fld:1874ca3d",
       "source": {
        "op": "classify",
        "params": {
@@ -9382,7 +10826,7 @@
         }
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:23.664977+00:00"
+       "at": "2026-11-25T00:02:32.207352+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -9407,7 +10851,7 @@
         14
        ]
       },
-      "file": "fld:aa0d3cb0",
+      "file": "fld:fd499935",
       "source": {
        "op": "classify",
        "params": {
@@ -9435,7 +10879,7 @@
         "restrict": null
        },
        "algo": "classify-1",
-       "at": "2026-11-24T23:57:25.521389+00:00"
+       "at": "2026-11-25T00:02:34.101980+00:00"
       },
       "stale": true,
       "stale_reason": "Изменились поля, фильтр или каркасы, из которых считалось, или алгоритм.",
@@ -9652,7 +11096,7 @@
       "mean": 1.5590909090909093,
       "std": 1.3189731167255185
      },
-     "file": "fld:2fe87f6d",
+     "file": "fld:714b6c20",
      "source": {
       "params": {
        "expr": "AU + 0",
@@ -9669,7 +11113,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:26.166772+00:00",
+      "at": "2026-11-25T00:02:34.750241+00:00",
       "op": "calc"
      }
     },
@@ -9856,7 +11300,7 @@
       "mean": 4.0227272727272725,
       "std": 4.46958731247099
      },
-     "file": "fld:f477b821",
+     "file": "fld:97261df2",
      "source": {
       "params": {
        "expr": "IF(AU > 1, AU * 3, 0)",
@@ -9875,7 +11319,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:26.406485+00:00",
+      "at": "2026-11-25T00:02:35.014099+00:00",
       "op": "calc"
      }
     },
@@ -9898,7 +11342,7 @@
        10
       ]
      },
-     "file": "fld:d3b16904",
+     "file": "fld:2b83f07b",
      "source": {
       "params": {
        "expr": "IF(AU > 1, 'богатая', 'бедная')",
@@ -9917,7 +11361,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:19.565076+00:00",
+      "at": "2026-11-25T00:02:28.439226+00:00",
       "op": "calc"
      }
     },
@@ -9936,7 +11380,7 @@
       "mean": 0.20833333333333334,
       "std": 0.4061164310337068
      },
-     "file": "fld:4b652e27",
+     "file": "fld:af852cbb",
      "source": {
       "params": {
        "expr": "AU > 1 AND DOM = 'Руда'",
@@ -9955,7 +11399,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:19.808460+00:00",
+      "at": "2026-11-25T00:02:28.673151+00:00",
       "op": "calc"
      }
     },
@@ -9974,7 +11418,7 @@
       "mean": 15.590909090909092,
       "std": 13.189731167255184
      },
-     "file": "fld:4d07b9a6",
+     "file": "fld:31aea4d5",
      "source": {
       "params": {
        "expr": "ROUND(AU * 10, 0)",
@@ -9993,7 +11437,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:20.040753+00:00",
+      "at": "2026-11-25T00:02:28.907998+00:00",
       "op": "calc"
      }
     },
@@ -10012,7 +11456,7 @@
       "mean": 2.6888888888888887,
       "std": 1.3879997153733654
      },
-     "file": "fld:1ef340d5",
+     "file": "fld:15f2a686",
      "source": {
       "params": {
        "expr": "AU + 1",
@@ -10038,7 +11482,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:20.284607+00:00",
+      "at": "2026-11-25T00:02:29.142635+00:00",
       "op": "calc"
      }
     },
@@ -10057,7 +11501,7 @@
       "mean": 14.5,
       "std": 5.123475382979799
      },
-     "file": "fld:2bbd7de7",
+     "file": "fld:47ea6fa5",
      "source": {
       "params": {
        "expr": "CU * 10",
@@ -10083,7 +11527,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:20.771575+00:00",
+      "at": "2026-11-25T00:02:29.615481+00:00",
       "op": "calc"
      }
     },
@@ -10102,7 +11546,7 @@
       "mean": 2.7999999999999994,
       "std": 4.440892098500626e-16
      },
-     "file": "fld:a168d78a",
+     "file": "fld:4204a6de",
      "source": {
       "params": {
        "method": "constant",
@@ -10120,7 +11564,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:22.238354+00:00",
+      "at": "2026-11-25T00:02:31.037360+00:00",
       "op": "density"
      }
     },
@@ -10139,7 +11583,7 @@
       "mean": 0.0,
       "std": 0.0
      },
-     "file": "fld:a168d78a",
+     "file": "fld:4204a6de",
      "source": {
       "params": {
        "method": "constant",
@@ -10157,7 +11601,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:22.238354+00:00",
+      "at": "2026-11-25T00:02:31.037360+00:00",
       "op": "density"
      }
     },
@@ -10176,7 +11620,7 @@
       "mean": 2.772916666666667,
       "std": 0.34398981533695966
      },
-     "file": "fld:f79de11c",
+     "file": "fld:90a881af",
      "source": {
       "params": {
        "method": "field",
@@ -10196,7 +11640,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:26.647641+00:00",
+      "at": "2026-11-25T00:02:35.262635+00:00",
       "op": "density"
      }
     },
@@ -10215,7 +11659,7 @@
       "mean": 0.08333333333333333,
       "std": 0.2763853991962833
      },
-     "file": "fld:f79de11c",
+     "file": "fld:90a881af",
      "source": {
       "params": {
        "method": "field",
@@ -10235,7 +11679,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:26.647641+00:00",
+      "at": "2026-11-25T00:02:35.262635+00:00",
       "op": "density"
      }
     },
@@ -10254,7 +11698,7 @@
       "mean": 2.6842105263157894,
       "std": 0.29426654207356556
      },
-     "file": "fld:aa75eb08",
+     "file": "fld:f03cf82c",
      "source": {
       "params": {
        "method": "table",
@@ -10294,7 +11738,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:21.493763+00:00",
+      "at": "2026-11-25T00:02:30.327310+00:00",
       "op": "density"
      }
     },
@@ -10313,7 +11757,7 @@
       "mean": 0.3684210526315789,
       "std": 0.48237638894271995
      },
-     "file": "fld:aa75eb08",
+     "file": "fld:f03cf82c",
      "source": {
       "params": {
        "method": "table",
@@ -10353,7 +11797,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:21.493763+00:00",
+      "at": "2026-11-25T00:02:30.327310+00:00",
       "op": "density"
      }
     },
@@ -10372,7 +11816,7 @@
       "mean": 2.625,
       "std": 0.06922186552431733
      },
-     "file": "fld:7dec7a96",
+     "file": "fld:58ad918a",
      "source": {
       "params": {
        "method": "formula",
@@ -10392,7 +11836,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:21.740268+00:00",
+      "at": "2026-11-25T00:02:30.567421+00:00",
       "op": "density"
      }
     },
@@ -10411,7 +11855,7 @@
       "mean": 0.0,
       "std": 0.0
      },
-     "file": "fld:7dec7a96",
+     "file": "fld:58ad918a",
      "source": {
       "params": {
        "method": "formula",
@@ -10431,7 +11875,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:21.740268+00:00",
+      "at": "2026-11-25T00:02:30.567421+00:00",
       "op": "density"
      }
     },
@@ -10450,7 +11894,7 @@
       "mean": 2.797727272727273,
       "std": 0.34885438246536227
      },
-     "file": "fld:d6a6431a",
+     "file": "fld:73aadc4c",
      "source": {
       "params": {
        "method": "field",
@@ -10470,7 +11914,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:22.001434+00:00",
+      "at": "2026-11-25T00:02:30.802080+00:00",
       "op": "density"
      }
     },
@@ -10489,7 +11933,7 @@
       "mean": 0.08333333333333333,
       "std": 0.2763853991962833
      },
-     "file": "fld:d6a6431a",
+     "file": "fld:73aadc4c",
      "source": {
       "params": {
        "method": "field",
@@ -10509,7 +11953,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:22.001434+00:00",
+      "at": "2026-11-25T00:02:30.802080+00:00",
       "op": "density"
      }
     },
@@ -10534,7 +11978,7 @@
        16
       ]
      },
-     "file": "fld:3e8ed56c",
+     "file": "fld:5c5e3e7e",
      "source": {
       "params": {
        "rules": [
@@ -10568,7 +12012,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:22.920129+00:00",
+      "at": "2026-11-25T00:02:31.494199+00:00",
       "op": "classify"
      }
     },
@@ -10593,7 +12037,7 @@
        22
       ]
      },
-     "file": "fld:d782592f",
+     "file": "fld:fc2ee07c",
      "source": {
       "params": {
        "rules": [
@@ -10627,7 +12071,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:23.169009+00:00",
+      "at": "2026-11-25T00:02:31.732652+00:00",
       "op": "classify"
      }
     },
@@ -10650,7 +12094,7 @@
        1
       ]
      },
-     "file": "fld:e943d958",
+     "file": "fld:aaa4c806",
      "source": {
       "params": {
        "rules": [
@@ -10681,7 +12125,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:23.421745+00:00",
+      "at": "2026-11-25T00:02:31.971944+00:00",
       "op": "classify"
      }
     },
@@ -10704,7 +12148,7 @@
        7
       ]
      },
-     "file": "fld:8dc95613",
+     "file": "fld:1874ca3d",
      "source": {
       "params": {
        "rules": [
@@ -10741,7 +12185,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:23.664977+00:00",
+      "at": "2026-11-25T00:02:32.207352+00:00",
       "op": "classify"
      }
     },
@@ -10764,7 +12208,7 @@
        14
       ]
      },
-     "file": "fld:aa0d3cb0",
+     "file": "fld:fd499935",
      "source": {
       "params": {
        "rules": [
@@ -10801,7 +12245,7 @@
        "numexpr": "2.14.2",
        "numba": "0.68.1"
       },
-      "at": "2026-11-24T23:57:25.521389+00:00",
+      "at": "2026-11-25T00:02:34.101980+00:00",
       "op": "classify"
      }
     }
@@ -10822,8 +12266,8 @@
    ],
    "inputs": null,
    "algo": null,
-   "created_at": "2026-11-24T23:57:18.275044+00:00",
-   "updated_at": "2026-11-24T23:57:26.651866+00:00"
+   "created_at": "2026-11-25T00:02:27.094087+00:00",
+   "updated_at": "2026-11-25T00:02:35.266276+00:00"
   }
  },
  "rules": "ответы настоящего ядра через маршруты блочных моделей (test_blocks_fields_window_answers.py)"
