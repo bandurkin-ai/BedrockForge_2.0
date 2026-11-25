@@ -24,7 +24,7 @@ import { setCoreTarget } from "../src/shell/api";
 import { AppContext } from "../src/shell/AppContext";
 import type { App } from "../src/shell/app";
 import { windowStore } from "../src/shell/windows";
-import { installCore, json, MODEL, newApp, teardown } from "./estimation/harness";
+import { ID, installCore, json, MODEL, newApp, teardown } from "./estimation/harness";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const A: Record<string, { request: any; answer: ContactResult }> = JSON.parse(readFileSync(resolve(__dirname, "../../core/tests/data/stats/contact_blocks_answers.json"), "utf-8"));
@@ -144,7 +144,7 @@ describe("«Задать мягкую границу…»", () => {
   });
   afterEach(teardown);
 
-  const pair = (): ContactSettings => ({ ...settingsOf(DOM), a: "окисл", b: "перех", blocks: { model_id: 7, field: "AU" } });
+  const pair = (): ContactSettings => ({ ...settingsOf(DOM), a: "окисл", b: "перех", blocks: { model_id: ID.model, field: "AU" } });
 
   it("d_м is the person's: no distance — no command; the wireframe has no pair", () => {
     const s = pair();
@@ -155,7 +155,7 @@ describe("«Задать мягкую границу…»", () => {
     expect(softProblem({ ...s, a: null }, 5)).toMatch(/два разных домена/);
     expect(softProblem({ ...s, b: s.a }, 5)).toMatch(/два разных домена/);
     expect(softProblem({ ...s, wireframe_id: 4 }, 5)).toMatch(/для пары доменов/);
-    expect(softArgs(s, 5)).toEqual({ soft_a: "окисл", soft_b: "перех", soft_distance: 5, model_id: 7 });
+    expect(softArgs(s, 5)).toEqual({ soft_a: "окисл", soft_b: "перех", soft_distance: 5, model_id: ID.model });
     expect(softArgs({ ...s, blocks: null }, 5)).toEqual({ soft_a: "окисл", soft_b: "перех", soft_distance: 5 });
   });
 
@@ -163,7 +163,7 @@ describe("«Задать мягкую границу…»", () => {
     const before = windowStore.get().windows.length;
     expect(await openSoft(app, pair(), 5)).toBeNull();
     const f = wizardStore.get().form;
-    expect(f.modelId).toBe(7);
+    expect(f.modelId).toBe(ID.model);
     expect(f.domain?.values).toEqual(["окисл"]);
     expect(f.soft).toEqual({ on: true, domains: ["перех"], dist: "5" });
     expect(windowStore.get().windows.length).toBe(before + 1);
@@ -174,7 +174,7 @@ describe("«Задать мягкую границу…»", () => {
   });
 
   it("the window: the model of the blocks, its fields, d_м and the button", () => {
-    blocksStore.set({ list: [MODEL], loaded: true, error: null, details: { 7: MODEL }, detailErrors: {} });
+    blocksStore.set({ list: [MODEL], loaded: true, error: null, details: { [ID.model]: MODEL }, detailErrors: {} });
     const win = (s: ContactSettings) => renderToStaticMarkup(createElement(AppContext.Provider, { value: app }, createElement(ContactWindow, { winId: "w", setId: 3, setName: "Набор", settings: s })));
     let html = win({ ...pair(), blocks: null });
     for (const label of ["Блочная модель", "Расстояние d_м"]) expect(html, label).toContain(`aria-label="${label}"`);
@@ -201,7 +201,7 @@ describe("the wizard, step 2: the saved chart of the contact of this pair", () =
   const chart = { ...DOM.request, set_id: 3, domain: "ZONE", a: "окисл", b: "перех" };
   const form = (patch: Partial<EstimationForm> = {}): EstimationForm => ({
     ...EMPTY_FORM,
-    modelId: 7,
+    modelId: ID.model,
     setId: 3,
     table: "12",
     field: "AU",
