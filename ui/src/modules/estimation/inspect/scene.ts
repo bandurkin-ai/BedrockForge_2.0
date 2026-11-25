@@ -15,6 +15,7 @@ import { sceneUi } from "../../scene/sceneHost";
 import type { InspectResult } from "./api";
 import { buildSegments, drawable, ellipsoidView } from "./build";
 import { SegmentsLayer } from "./layer";
+import { watchSelected } from "../watch";
 import { activeResult, INSPECT_WINDOW, inspectStore } from "./state";
 
 export const SEGMENTS_KEY = "inspect:segments";
@@ -32,10 +33,12 @@ export class InspectScene {
   private ell: Shown<EllipsoidLayer> | null = null;
   private readonly stops: (() => void)[] = [];
   private disposed = false;
+  /** the toggles and the probe lit the layer was last drawn with: another store event (a sort, a note) redraws nothing */
+  private drawn = "";
 
   constructor(private readonly scene: Scene) {
     const sync = () => this.sync();
-    this.stops.push(inspectStore.subscribe(sync), windowStore.subscribe(sync), scene.onRestored(() => this.restore()));
+    this.stops.push(inspectStore.subscribe(sync), watchSelected(windowStore, () => this.open(), sync), scene.onRestored(() => this.restore()));
     this.sync();
   }
 
@@ -49,6 +52,7 @@ export class InspectScene {
     const r = this.open() && s.answer ? activeResult(s) : null;
     const centre = r && s.answer ? s.answer.block.centre : null;
     let changed = false;
+    let redraw = false;
 
     // the segments: built again for another row or block; the toggles and the probe lit only change the drawing
     if (!r || !centre) {
@@ -62,8 +66,13 @@ export class InspectScene {
         changed = true;
       }
       if (this.seg) {
-        this.seg.layer.setShow({ segments: s.show.segments, excluded: s.show.excluded });
-        this.seg.layer.setPicked(s.picked);
+        const look = `${s.show.segments}|${s.show.excluded}|${s.picked}`;
+        if (look !== this.drawn) {
+          this.drawn = look;
+          this.seg.layer.setShow({ segments: s.show.segments, excluded: s.show.excluded });
+          this.seg.layer.setPicked(s.picked);
+          redraw = true;
+        }
       }
       const wantEll = r.active && drawable(r.ellipsoid) && s.show.ellipsoid;
       if (!wantEll) changed = this.dropEllipsoid() || changed;
@@ -74,7 +83,7 @@ export class InspectScene {
       }
     }
     if (changed) this.scene.layerChanged?.();
-    this.scene.invalidate();
+    if (changed || redraw) this.scene.invalidate();
   }
 
   private makeSegments(r: InspectResult, centre: readonly number[], key: string): Shown<SegmentsLayer> | null {
@@ -104,6 +113,7 @@ export class InspectScene {
   private dropSegments(): boolean {
     if (!this.seg) return false;
     this.seg = null;
+    this.drawn = "";
     this.scene.removeLayer(SEGMENTS_KEY, false); // the scene disposes the layer it removes
     return true;
   }

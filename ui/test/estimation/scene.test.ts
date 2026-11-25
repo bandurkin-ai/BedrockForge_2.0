@@ -61,6 +61,18 @@ describe("the layers follow the window and the block", () => {
     expect(s.ellipsoid!.bases).toHaveLength(1);
     expect(s.pose).toEqual({ ang1: 0, ang2: 0, ang3: 0, r1: 60, r2: 60, r3: 30, centre: [500040, 6700040, 297.5], pass: 1 });
   });
+  it("another window moved or resized is not a reason to look again or to redraw: only the form window opening or closing is", () => {
+    shown();
+    win = open();
+    const other = openWindow("other", "Другое", "normal", {});
+    log.invalid = 0;
+    log.changed = 0;
+    for (let k = 0; k < 20; k++) windowStore.set((w) => ({ windows: w.windows.map((x) => (x.id === other ? { ...x, x: x.x + 1 } : x)) }));
+    expect(log.invalid).toBe(0);
+    expect(log.changed).toBe(0);
+    closeWindow(win);
+    expect(keys()).toEqual([]);
+  });
   it("the window closed takes the layers away; the window «Параметры оценки» holds the same form and shows them too", () => {
     shown();
     win = open();
