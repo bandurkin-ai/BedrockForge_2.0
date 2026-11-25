@@ -223,6 +223,11 @@ export function StepVario() {
     <>
       {f.kind === "sis" ? <Indicators f={f} /> : <ScoreModel f={f} />}
       {f.kind === "cosgs" && <Secondary f={f} />}
+      <p className={css.note}>
+        <button type="button" className={css.btn} data-testid="sim-vario-refresh" title="Прочитать модели вариограмм проекта заново (после сохранения модели в окне «Вариография»)" onClick={() => void loadVariogramModels()}>
+          Обновить список
+        </button>
+      </p>
       {vario.error && (
         <p className={css.error} role="alert">
           {vario.error}{" "}

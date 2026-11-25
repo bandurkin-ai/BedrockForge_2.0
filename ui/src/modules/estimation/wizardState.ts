@@ -11,6 +11,7 @@
 import { refusal } from "../../shell/objectRun";
 import { errorText } from "../../shell/props";
 import { Store } from "../../shell/store";
+import { onCoreEvent } from "../jobs/state";
 import { projectStore } from "../projects/state";
 import { loadModel, loadModels, type ModelRow } from "../variography/api";
 import { createEstimation, loadDefaults, loadEstimation, refusalOf, replaceEstimation, type DefaultsAnswer, type DefaultsQuery, type Refusal, type Saved, type Triple, type VarioScale } from "./api";
@@ -176,6 +177,8 @@ export async function readVariogramModels(): Promise<Pick<VarioState, "rows" | "
 /** The models of the project with the scale of each: a model in normal scores is Z only with its back transform. */
 export async function loadVariogramModels(): Promise<void> {
   const mine = ++varioSeq;
+  watchVariogramModels();
+  varioReading = true;
   const uid = projectStore.get().current?.uid ?? null;
   try {
     const { rows, backs } = await readVariogramModels();
@@ -184,7 +187,34 @@ export async function loadVariogramModels(): Promise<void> {
   } catch (e) {
     if (mine !== varioSeq) return;
     wizardStore.set({ vario: { ...EMPTY_VARIO, loaded: true, error: errorText(e) } });
+  } finally {
+    if (mine === varioSeq) varioReading = false;
   }
+}
+
+let varioReading = false;
+
+/** `geostat.changed {kind: "variogram_model"}` (a body-less event — whatever changed): the stored models are to be read again. */
+export function isVariogramModelEvent(event: string, data: string): boolean {
+  if (event !== "geostat.changed") return false;
+  try {
+    const kind = (JSON.parse(data) as { kind?: unknown }).kind;
+    return kind === undefined || kind === "variogram_model";
+  } catch {
+    return true;
+  }
+}
+
+// the list the wizard read goes stale when a model is saved or deleted in «Вариография»: it is read again while the wizard holds it
+export function onVariogramEvent(event: string, data: string): void {
+  if (isVariogramModelEvent(event, data) && projectStore.get().current && (wizardStore.get().vario.loaded || varioReading)) void loadVariogramModels();
+}
+let watching = false;
+/** The listener is put on at the first read (not when the module is loaded), once. */
+function watchVariogramModels(): void {
+  if (watching) return;
+  watching = true;
+  onCoreEvent(onVariogramEvent);
 }
 
 /** The scale of every stored model of variogram (Z / back / Y). */

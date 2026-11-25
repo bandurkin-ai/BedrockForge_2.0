@@ -46,7 +46,7 @@ export function PostWindow(_props: { winId: string }) {
     if (row) void loadBlockDetails(row.model_id);
   }, [row?.model_id]);
 
-  const stats = src ? effectiveStats(src, p.stats) : [];
+  const stats = src ? effectiveStats(src, p.stats, p.thresholds) : [];
   const prefix = p.prefix.trim() || (src ? defaultPostPrefix(src) : "");
   const t = postThresholds(p.thresholds);
   const names = src ? fieldNames(prefix, stats, isIssue(t) ? [] : t, src.categories) : [];
@@ -72,7 +72,7 @@ export function PostWindow(_props: { winId: string }) {
       <div className={mod.page} style={{ padding: "8px 12px", flex: 1 }}>
         <label className={css.formRow}>
           <span>Моделирование</span>
-          <select className={css.input} value={p.simId ?? ""} aria-label="Моделирование" data-testid="post-select" onChange={(e) => choosePost(e.target.value ? Number(e.target.value) : null)}>
+          <select className={css.input} value={p.simId ?? ""} aria-label="Моделирование" data-testid="post-select" disabled={busy} title={busy ? "Идёт постобработка: дождитесь конца или отмените задание" : undefined} onChange={(e) => choosePost(e.target.value ? Number(e.target.value) : null)}>
             <option value="">{rows.length ? "— выберите моделирование —" : "нет моделирований в проекте"}</option>
             {rowsByName(rows).map((r) => (
               <option key={r.id} value={r.id}>

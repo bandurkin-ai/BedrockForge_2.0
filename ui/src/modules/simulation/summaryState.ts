@@ -18,6 +18,7 @@ export const summaryStore = new Store<SummaryState>({ simId: null });
 export const chooseSummary = (simId: number | null): void => summaryStore.set({ simId });
 
 const nf = (n: number): string => n.toLocaleString("ru-RU");
+const nfOrDash = (n: number | null): string => (n === null ? "—" : nf(n));
 export const num = (x: number | null, digits = 4): string => (x === null ? "—" : x.toLocaleString("ru-RU", { maximumSignificantDigits: digits }));
 export const pct = (x: number | null): string => (x === null ? "—" : `${(x * 100).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} %`);
 
@@ -55,7 +56,7 @@ export function summaryFacts(s: Summary): [string, string][] {
   ];
   if (s.samples) out.push(["Проб в расчёте", `${nf(s.samples.used)} из ${nf(s.samples.rows)}`]);
   if (s.cond) out.push(["Условных данных в узле", `${num(s.cond.min)} · ${num(s.cond.mean)} · ${num(s.cond.max)} (мин · среднее · макс)`]);
-  out.push(["Вырожденных систем", nf(c.degenerate)], ["Узлов без проб в окрестности", nf(c.free)], ["Узлов на пробах", nf(c.on_sample)]);
+  out.push(["Вырожденных систем", nfOrDash(c.degenerate)], ["Узлов без проб в окрестности", nfOrDash(c.free)], ["Узлов на пробах", nfOrDash(c.on_sample)]);
   if (c.gap !== null) out.push(["Узлов без вторичной переменной", nf(c.gap)]);
   return out;
 }
