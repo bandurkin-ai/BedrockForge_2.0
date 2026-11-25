@@ -125,13 +125,24 @@ export function blocksProblem(s: ContactSettings): string | null {
   return null;
 }
 
-/** The number of blocks the profile took, with the ones left out of the estimate (STATUS ≠ 0). */
+/** The blocks the profile leaves out and why (`counts` of `signed_chart`): a block without a value, without a volume, farther than the distance, at no contact. */
+const LEFT_OUT: readonly (readonly [string, string])[] = [
+  ["no_value", "без значения"],
+  ["no_weight", "без объёма"],
+  ["beyond", "дальше расстояния контакта"],
+  ["no_contact", "вне контакта"],
+];
+
+/** The number of blocks the profile took, with the ones left out of the estimate (STATUS ≠ 0) and the others the profile did not take (with the reasons). */
 export function blocksNote(r: ContactResult): string | null {
   const b = r.blocks;
   if (!b) return null;
   const used = b.counts.in_steps ?? 0;
   const skipped = b.counts.not_estimated ?? 0;
-  return `блоки «${b.field}»: ${n(used)} в шагах${skipped ? `, не оценено ${n(skipped)}` : ""}`;
+  // the blocks «не оценено» have their value cleared by the core, so they are in `no_value` too: said once, in their own words
+  const count = (k: string): number => (k === "no_value" ? Math.max(0, (b.counts[k] ?? 0) - skipped) : (b.counts[k] ?? 0));
+  const left = LEFT_OUT.filter(([k]) => count(k) > 0).map(([k, label]) => `${label} ${n(count(k))}`);
+  return `блоки «${b.field}»: ${n(used)} в шагах${skipped ? `, не оценено ${n(skipped)}` : ""}${left.length ? `; отсеяно: ${left.join(", ")}` : ""}`;
 }
 
 /** Why the soft boundary cannot be set from this chart yet; null — it can. */

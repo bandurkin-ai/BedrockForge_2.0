@@ -2,6 +2,7 @@
 // refuse with `bad_answer` ({code, message, hint} in Russian) instead of [0, 0, 0], `value ?? 0`, `status ?? 0`, `ang ?? 0`.
 // The answers are the real ones (`contract_answers.json`) with one field taken out.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { estimationStore, loadRows } from "../../src/modules/estimation/state";
 import { CoreError } from "../../src/shell/api";
 import { loadQq, readGlobal, readKna, readQq } from "../../src/modules/estimation/checksApi";
 import { readPreview } from "../../src/modules/estimation/previewApi";
@@ -118,5 +119,27 @@ describe("the global check and the Q-Q", () => {
     expect(e).toBeInstanceOf(CoreError);
     expect(e).toMatchObject({ code: "bad_answer", message: "Ядро вернуло Q-Q без точек." });
     expect((e as CoreError).hint).toContain("Повторите");
+  });
+});
+
+describe("the rows of the project", () => {
+  it("a row changed since its details were read: the new read of the details that fails is not an unhandled rejection", async () => {
+    const rejected: unknown[] = [];
+    const on = (e: unknown) => rejected.push(e);
+    process.on("unhandledRejection", on);
+    try {
+      await loadRows();
+      const row = estimationStore.get().rows[0];
+      const old = { ...(A.estimation.body as Record<string, unknown>), id: row.id, version: row.version - 1 };
+      estimationStore.set({ details: { [row.id]: old as never } });
+      core.force(`GET /geostat/estimations/${row.id}`, { status: 500, body: { code: "boom", message: "Ядро не ответило.", hint: "Повторите." } });
+      await loadRows();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(core.sent.filter((x) => x.path === `/geostat/estimations/${row.id}`)).toHaveLength(1);
+      expect(rejected).toEqual([]);
+      expect(estimationStore.get().details[row.id]).toBeUndefined();
+    } finally {
+      process.off("unhandledRejection", on);
+    }
   });
 });
