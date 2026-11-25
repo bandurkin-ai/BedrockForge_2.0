@@ -44,7 +44,8 @@ objects(kind="estimation", parent_id=NULL).meta v1 — «Параметры оц
                          при «Перестроить»; xval / preview / inspect берут её отсюда
   + inputs [{kind, id, fp, name}]   входы в форме графа ADR 0025 (§2.3)
   + algo "est-1"; versions {numpy, scipy, numba}; created_at
-  + last_run {at, job, version (блочной модели после записи), counts, merged, class_means} | null
+  + last_run {at, job, version (блочной модели после записи), counts, merged, class_means, params} | null
+    (`params` — SHA-256 хеша параметров без имени, `store_base.params_hash`; причина «изменены параметры»)
 objects(kind="estimation_plan").meta v1 {v: 1, name, model_id, items: [estimation_id …]} — порядок = порядок строк
 object_refs(src=estimation → trend, role="trend"), (→ filter, role="filter")   — запрет удаления тренда/фильтра (409 in_use)
 blobs owner=object(estimation) role="xval"   — Parquet таблицы перекрёстной проверки (последний расчёт)
@@ -77,7 +78,7 @@ outside_domain + used` (как Э16), `merged` — сколько строк у�
 
 - STATUS ≠ 0 — все поля строки, кроме `STATUS`, пусты (NaN / null), не 0. Строки модели вне всех строк плана
   префикса — STATUS 1. Словарь кодов — `spec_parts.STATUS_LABELS`; в поле — `description` «0 — оценён; 1 — вне
-  домена; 2 — мало проб; 3 — вырожденная система» (трактовка: числовое i1, а не `cat`, — `STATUS = 0` и
+  домена; 2 — мало проб; 3 — вырожденная система» (вопрос № 95; трактовка: числовое i1, а не `cat`, — `STATUS = 0` и
   `IF(STATUS = 0, EST, -1)` ТД27-3 калькулятора 8.7.4 работают над числом; категория сравнивается по тексту
   подписи).
 - Если проход вырожден, а следующий оценил — STATUS 0, PASS = номер прохода, причина — в журнал задания.
@@ -171,7 +172,7 @@ ADR 0025 реш. 3):
   n_скв_min, n_min. Записан в `defaults.params.search.order`.
 - Мягкая граница (8.8.2, № 79; уточнение Д-28): проба S допускается для блока D, если **евклидово** расстояние
   от пробы до центра блока ≤ d_м. Д-28 даёт источник d_м и пары (A, B) — окно контактного анализа (`estimate.open
-  {soft: {a, b, distance}}` → мастер: `samples.domain.values = [a]`, `soft = {domains: [b], dist: distance}`);
+  {soft_a, soft_b, soft_distance}` → мастер: `samples.domain.values = [soft_a]`, `soft = {domains: [soft_b], dist: soft_distance}`);
   расстояние блока до границы домена (знаковое) нужно профилю блоков `chart.contact` (§8.5), а не отбору проб.
 - «Номер пробы» в правилах равенства (NN, отбор) — позиция в каноническом порядке: lexsort (X, Y, Z, значение)
   после усреднения совпадающих (≤ 1e−6 м, один домен) (№ 76).
@@ -222,6 +223,10 @@ null, search: {from, ang1…r3} | null, params: spec.defaults_json(), ranges: sp
 «Модель построена по другому полю (‹поле›).», «Модель построена по другому домену.» — предупреждения, не запрет;
 модель в Y без `back` — 422 `variogram_scale {param: "variogram_id"}` для method ≠ sgs. Декл. среднее без весов —
 наивное (`declus` = `naive`); нет значений — null.
+
+Индикаторная модель (18.10, `transform` = `indicator:<t>`, `.15g`): ответ `GET /variography/defaults` (вариография,
+Э16) дополнен `indicator {threshold, p}` — порог t и доля `p` проб с z ≤ t (σ² = p(1 − p)); преобразование
+модели хранится строкой `indicator:<t>` (ключ кеша и `meta.transform`).
 
 ## 6. Запуск — `POST /estimate/run` → задание `estimate.run` (`heavy`)
 
@@ -285,7 +290,13 @@ to, x, y, z, true, est, error, kv, z_error, pass, ns, status). `GET /estimations
 `{estimation_id, by, at, stale, total, page, pages, size, rows, summary, histogram {edges, counts}}`; нет
 расчёта — 404 `xval_not_found`. error = est − true; z_error = error/√KV (KV ≤ 0 или нет — null); summary — `{n,
 mean_error, std_error (делитель n), mae, r (Пирсон), slope (истинное на оценку: cov/var(est)), mean_ratio
-(среднее error²/KV по строкам с KV > 0; IDW, NN — null)}`; строки STATUS ≠ 0 — в таблице, вне сводки.
+(среднее error²/KV по строкам с KV > 0; IDW, NN — null), n_ratio (строк с KV > 0, по которым считан mean_ratio),
+n_kv_zero (строк с KV ≤ 0 — z_error null), n_skipped (строк STATUS ≠ 0 — вне сводки), by_status [n0, n1, n2, n3]
+(по всей таблице)}`; счётчики `n_ratio`, `n_kv_zero`, `n_skipped` — по строкам STATUS = 0; строки STATUS ≠ 0 — в
+таблице, вне сводки. `XvalTable.summary()` (задание) отдаёт сводку с `by_status`; `summary(true, est, kv)` — без него.
+`read_page(conn, store, estimation_id, page=1, size=500)` (`E/xval.py`): `rows` — словари столбцов (NaN — null),
+`size` 1…5000 (422 `bad_param {param: "size"}`), `page` — 422 `bad_param {param: "page"}`; `histogram` без расчёта —
+`{edges: [], counts: []}`; `stale` — параметры или входы строки не те, что у расчёта; `at` — время расчёта.
 
 ### 8.2. KNA — `POST /estimate/kna` → `estimate.kna` (`quick`)
 
@@ -314,12 +325,14 @@ var, cv} (NN на лету по тем же блокам, без записи, �
 
 ### 8.5. Профиль блоков у контакта (Д-28)
 
-`POST /stats/contact` (Э13) принимает `blocks: {model_id, field (поле оценки), status_field?}`: ответ получает
+`POST /stats/contact` (Э13) принимает `blocks: {model_id, field (поле оценки), status_field?, domain_field?}`: ответ получает
 `blocks: {edges (те же), mean [], n [], volume []}` — среднее поля по блокам STATUS = 0 в корзинах знакового
 расстояния центра блока до границы (A < 0 < B). Расстояние: домен из каркаса — `geo/sdf.signed_distance` (BVH,
 знак — чётность луча; ядро общее с 8.9.3), домен из поля модели — `scipy.ndimage.distance_transform_edt` по сетке
-родителей с размером ячейки (субблоки — по родителю): `E/contact.block_distance`. Команды: `chart.contact` +
-`blocks` (кнопка «Задать мягкую границу…» → `estimate.open {soft: {a, b, distance}}`, uiOnly). Подшаг — по плану
+родителей с размером ячейки (субблоки — по родителю): `E/contact.block_distance`. Контакт: при каркасе проб (`wf`) — каркас, `domain_field` не нужен и
+не используется; иначе — `domain_field` (категория модели; по умолчанию — `domain` окна), метки `a`, `b` — из
+настроек контакта. Команды: `chart.contact` +
+`blocks` (кнопка «Задать мягкую границу…» → `estimate.open {soft_a, soft_b, soft_distance}`, uiOnly). Подшаг — по плану
 оркестратора (в плане 18.x его нет).
 
 ## 9. Э18б — моделирование (`objects(kind="simulation")`, ADR 0024 §9, Д-23)
@@ -368,8 +381,8 @@ blob real: Parquet zstd, строки — цели (P, D) родителей р�
 ## 11. Интерфейсы Python
 
 Соглашения ядер: float64; NaN — пусто; numba `cache=True, nogil=True`, без `prange`, `fastmath`, BLAS; координаты
-ядер — локальные (`xyz − origin`); результат побитно одинаков при 1, 2, 4, 8 потоках; массивы целей — порции
-`CHUNK = 1 << 16`.
+ядер — локальные (`xyz − origin`); результат побитно одинаков при 1, 2, 4, 8 потоках; порции целей задаёт
+вызывающий (`run`): задание `estimate.run` — 2¹⁶ целей (§6), перекрёстная проверка — `xval.CHUNK` = 4096.
 
 ```python
 # E/spec.py, E/spec_parts.py (18.1, готово) — см. докстроки; главное:
@@ -400,95 +413,178 @@ merge_coincident(xyz, z, w, hole, dom, tol=1e-6) -> (keep: intp[m], group: intp[
 origin_of(xyz) -> f8[3]                               # центр охвата
 declus_mean(z, w) -> float | None
 
-# E/cov.py (18.3) — = variogram.model.Model.cov до 1e−15
+# E/cov.py (18.3) — = variogram.model.Model.cov до 1e−15; массивы модели: kinds i8[S], pars f8[S, 13], head f8[3] = (C0, C(0), Σc)
 @dataclass(frozen=True)
 class CovModel:
-    c0: float; sill: float              # C(0) = C0 + Σ c_s
-    kinds: i8[S]; c: f8[S]; mats: f8[S, 3, 3]   # h_r = ‖mats[s]·Δ‖ (= diag(1/a1, 1/a2, 1/a3)·R)
-    @classmethod
-    def of(cls, snapshot: Mapping | Model) -> CovModel
-cov(cm, d: f8[n, 3]) -> f8[n]; cov_star(cm, d) -> f8[n]   # C (Δ = 0 → C(0)), C* (без самородка)
-@njit cov_ij(kinds, c, mats, c0, dx, dy, dz) -> float; cov_star_ij(...) -> float
-disc_offsets(size: (dx, dy, dz), disc: (nx, ny, nz), rotation_deg: float) -> f8[N, 3]   # центры подъячеек от
-                                                       # центра блока, оси проекта (R_z(φ)); N = 1 → [[0, 0, 0]]
-cbar_iv(cm, xs: f8[n, 3], centre: f8[3], offsets) -> f8[n]
-class CvvCache: def get(self, cm, size, disc, rotation_deg) -> float     # C̄_VV; N = 1 → C(0)
+    kinds: np.ndarray; pars: np.ndarray; head: np.ndarray   # args → (kinds, pars, head); sill → head[1] = C(0); nugget → head[0]; key → байты для кеша
+cov_model(model: Model) -> CovModel                          # Model → массивы; C(0) суммируется как Model.sill
+@njit inline="always" cov_c(kinds, pars, head, dx, dy, dz) -> float         # C(Δ), с самородком; Δ = 0 → C(0)
+@njit inline="always" cov_cstar(kinds, pars, head, dx, dy, dz) -> float     # C* — без самородка
+@njit cov_pb(kinds, pars, head, px, py, pz, cx, cy, cz, offs f8[N, 3]) -> float   # C̄_iV точки p и блока (центр c, точки offs — смещения от c); N = 1 — C(Δ)
+@njit cov_bb(kinds, pars, head, offs f8[N, 3]) -> float                    # C̄_VV блока: N = 1 — C(0), иначе среднее C* по N² парам
+@njit cov_matrix(kinds, pars, head, xyz f8[n, 3], out f8[n, n]) -> None    # out[i, j] = C(x_i − x_j); нижний треугольник и симметрия
+@njit cov_rhs(kinds, pars, head, xyz f8[n, 3], centre f8[3], offs f8[N, 3], out f8[n]) -> None   # out[i] = C̄_iV
+disc_points(size, disc, phi=0.0) -> f8[N, 3]                # центры подъячеек блока (смещения от центра по осям мира; блок повёрнут на φ вокруг +Z); N = 1 → [[0, 0, 0]]
+class BlockCov(cov: CovModel):                              # кеш C̄_VV по (size, disc, φ); потокобезопасен
+    points(size, disc, phi=0.0) -> f8[N, 3]                # общий массив — только чтение
+    vv(size, disc, phi=0.0) -> float
+warm_kernels() -> None
 
 # E/krige.py (18.4)
-OUT = ("EST", "KV", "SLOPE", "KE", "LAGR", "SNW")   # индексы выхода out[6]
-@njit lu_solve(a: f8[k, k], b: f8[k], tol: float) -> bool            # на месте, выбор главного; False — < tol
-@njit krige(kinds, c, mats, c0, sill, xs: f8[n, 3], z: f8[n], centre: f8[3], offsets: f8[N, 3], cvv: float,
-            ordinary: bool, mean: float, lam: f8[n], out: f8[6], work: f8[(n + 1)·(n + 2)]) -> int
-            # 0 — решено, 3 — вырождена (главный элемент < 1e−12·C(0)); μ — out[LAGR] (SK: 0)
-krige_one(cm, xs, z, centre, offsets, cvv, *, ordinary=True, mean=0.0) -> KrigeResult   # обёртка для тестов
-    # KrigeResult(lam, mu, est, kv, slope, ke, snw, status)
+KR_OK, KR_SINGULAR, KR_NAN, KR_SIZE = 0, 1, 2, 3            # статус krige: решено / вырождена (главный элемент < 1e−12·C(0)) / NaN / n > MAX_SYS
+O_EST, O_KV, O_SLOPE, O_KE, O_LAGR, O_SNW, O_PIV = range(7) # индексы out[7]; при статусе ≠ 0 пусты out[:O_PIV]
+MAX_SYS = 129                                               # размер системы: n_max = 128 проб + строка OK
+@njit krige(kinds, pars, head, xyz, n: int, z, centre, offs, bv: float, mean: float, ok: int,
+            a, rhs, sol, out) -> int                        # ok 1 — OK, 0 — SK (mean = m); веса — sol[:n], μ — sol[n]; → KR_*
+apply_weights(sol, n, z, mean, ok) -> float                 # z* с весами sol[:n] (тот же порядок сумм; OK — без mean)
+class KrigeWork(size=MAX_SYS):                              # буферы на поток; run(cov, xyz, z, centre, offs, bv, mean=0.0, ok=1, n=None) -> int; результат — .out; lam(n); mu(n)
+warm_krige() -> None
+
+# E/samples.py (18.5) — пробы строки плана в каноническом порядке
+D, S = 0, 1                                                 # коды dom: 0 — D; 1 — S (мягкая); ≥ 2 — другие домены (dom_labels[k − 2])
+@dataclass(frozen=True)
+class RowSamples:
+    xyz: f8[n, 3]; local: f8[n, 3]                          # проекта; local = xyz − origin
+    z: f8[n]; raw: f8[n]                                    # использованное (урезка, усреднение) / до урезки
+    w: f8[n] | None                                         # веса декластеризации; NaN — нет веса; None — строка без весов
+    hole: i4[n]; holes: list[str]                           # holes — имена скважин проб (по порядку)
+    dom: i2[n]; dom_labels: list[str]
+    row_id: i8[n]; span: f8[n, 2]                           # dh_rows.id и FROM, TO первой строки
+    merged: i2[n]                                           # сколько строк усреднено (1 — нет)
+    origin: f8[3]; counts: dict; inputs: list[dict]; means: {"naive": f8|None, "declus": f8|None}   # means — по D
+    notes: list[str]                                        # строки для журнала задания
+    n -> int; in_d -> bool[n]
+    take(rows) -> RowSamples                                # подмножество (xval исключает пробу или скважину); origin, means, counts — строки
+load(project, spec, *, origin=None, all_domains=False, cancel=None) -> RowSamples   # 422 no_samples {counts}: нет проб D
+prepare(xyz, z, raw, w, hole, holes, dom, row_id, span, *, origin=None, dom_labels=None, counts=None, inputs=None, tol=TOL, cancel=None) -> RowSamples
+canonical_order(xyz, z, *ties) -> intp[n]                   # lexsort (X, Y, Z, значение), затем ties (№ 76)
+merge_coincident(xyz, dom, tol=TOL) -> (keep: intp[m], group: intp[n])   # совпадающие пробы одного домена (≤ tol, цепочки); keep — первая проба группы
+origin_of(xyz) -> f8[3]                                     # центр охвата проб (8.0.1)
+declus_mean(z, w) -> float | None
 
 # E/methods.py (18.7)
-@njit nn(z, h, idx) -> float                          # ближайшая по (h_s, номер)
-@njit idw(z, h, power, r1) -> (est, weights)          # h < 1e−9·r1 — среднее совпадающих (BF idw)
+nn(z, h, idx) -> float                                   # ближайшая по (h_s, номер); idx — позиции выборки
+idw(z, h, power, r1) -> (est: float, w: f8[n])           # h < 1e−9·r1 — среднее совпадающих (BF idw); idw_into(z, h, power, r1, w) -> float — на месте
 
 # E/search.py (18.6)
 REASONS = ("selected", "hy_capped", "outside", "hole_limit", "octant_limit", "over_n_max", "other_domain",
-           "soft_far", "hy_dropped", "merged")         # u1-коды = индекс
+           "soft_far", "hy_dropped", "merged")              # u1-коды = индекс; подписи — в M/
+EXPLAIN_MAX = 1000                                          # кандидатов инспектора
 @dataclass(frozen=True)
 class Ellipsoid:
-    angles: tuple; radii: tuple; S: f8[3, 3]          # diag(1, r1/r2, r1/r3)·R; h_s = ‖S·Δ‖; внутри — h_s ≤ r1
-    def h(self, d: f8[n, 3]) -> f8[n]; def octant(self, d) -> i1[n]   # октант в осях эллипсоида
-class Searcher:                                        # одно cKDTree на строку (D ∪ S) в шар-пространстве
-    def __init__(self, s: RowSamples, ell: Ellipsoid, passes: Sequence[Pass], soft_dist: float) -> None
-    def gather(self, centres: f8[m, 3], k: int, *, todo: bool[m] | None = None,
-               exclude: tuple[str, np.ndarray] | None = None) -> Neighbours
-               # k — номер прохода с 0; exclude ("sample", i8[m]) | ("hole", i4[m]) — xval; k_c = max(4·n_max,
-               # 64), повтор ×4 (8.8.2, решение 6)
-    def explain(self, centre: f8[3], k: int, *, pool: RowSamples | None = None) -> Candidates   # инспектор
-@dataclass
-class Neighbours:                                      # по целям порции; −1 — нет
-    idx: i8[m, n_max]; h: f8[m, n_max]; z: f8[m, n_max]   # отобранные, по (h_s, номер); z — использованное
-    n: i2[m]; nh: i2[m]; nhy: i2[m]; noct: i1[m]; ok: bool[m]   # ok — n_min, k_окт, n_скв_min выполнены
-@dataclass
-class Candidates:
-    idx: i8[k]; h: f8[k]; dist: f8[k]; octant: i1[k]; z: f8[k]; reason: u1[k]   # отсортированы по (h_s, номер)
+    angles: tuple[float, float, float]; radii: tuple[float, float, float]
+    S: f8[3, 3]                                             # diag(1, r1/r2, r1/r3)·R; h_s = ‖S·Δ‖; внутри — h_s ≤ r1
+    of(angles, radii) -> Ellipsoid                          # classmethod
+    h(d f8[n, 3]) -> f8[n]; octant(d) -> i1[n]              # октант в осях эллипсоида: бит 0 — x ≥ 0, бит 1 — y ≥ 0, бит 2 — z ≥ 0
+    r1 -> float
+@dataclass class Neighbours:                                # выборка одного прохода для m блоков; −1 / NaN — нет; строки в порядке (h_s, номер)
+    idx: i4[m, n_max]; h: f8[m, n_max]; z: f8[m, n_max]     # номера проб (позиции в RowSamples), h_s, использованное значение
+    n: i2[m]; nh: i2[m]; nhy: i2[m]; noct: i1[m]            # проб, скважин, затронуто правилом Д-29, октантов
+    ok: bool[m]                                             # n_min, k_окт, n_скв_min выполнены
+    ad: f8[m]; dmin: f8[m]                                  # AD, DMIN (евклидовы)
+    empty(m, width) -> Neighbours; put(rows, src, from_rows) # classmethod / self[rows] = src[from_rows]
+@dataclass class Found:                                     # search: по блокам — выборка первого выполненного прохода
+    nb: Neighbours; pass_: i1[m]                            # 1…P; 0 — ни один проход не выполнен («мало проб», строка пуста)
+@dataclass class Candidates:                                # инспектор: кандидаты блока по (h_s, номер), не больше EXPLAIN_MAX
+    idx: i8[k]; h: f8[k]; dist: f8[k] (евклидово); octant: i1[k]; z: f8[k] (t у урезанной); reason: u1[k] (индекс REASONS)
+    total: int; n: int; nh: int; noct: int; nhy: int; ok: bool; radius: float   # total — до обрезки; radius — r1·factor прохода
+    names() -> list[str]
+class Searcher(s: RowSamples, ell: Ellipsoid, passes: Sequence[Pass], soft_dist=0.0, *, k_c=None):   # одно дерево на строку (D ∪ S)
+    n_passes -> int; radius(k) -> float; fp_of(k) -> f8[4]
+    gather(centres f8[m, 3], k, *, todo=None, exclude=None) -> Neighbours   # проход k (с 0); exclude ("sample", i8[m]) | ("hole", i4[m]) — xval; k_c = max(4·n_max, 64), повтор ×4
+    search(centres, *, start=0, todo=None, exclude=None) -> Found           # первый проход от start, который выполнен
+    explain(centre f8[3], k, *, pool=None, limit=EXPLAIN_MAX) -> Candidates # инспектор (Д-30); выбор — как у gather, без исключения xval
 
 # E/indicator.py (18.9)
-indicators(z, thresholds) -> f8[n, K]                  # [z ≤ t_k]; NaN остаётся NaN
-@njit order_relations(F: f8[K]) -> None                # на месте: обрезка [0; 1], среднее поправок вверх и вниз
-class_means(z, w, thresholds) -> f8[K + 1]             # декл. средние классов; пустой класс — середина порогов
-@njit etype(F: f8[K], means: f8[K + 1]) -> float
+indicators(z, thresholds) -> f8[n, K]                       # [z ≤ t_k]; NaN остаётся NaN
+order_relations(f f8[K]) -> None                            # на месте (njit): обрезка [0; 1], поправка порядка GSLIB
+class_means(z, w, thresholds) -> f8[K + 1]                  # декл. средние классов; пустой класс — середина соседних порогов, крайний — его порог
+proportions(z, w, thresholds) -> f8[K]                      # декл. доли [z ≤ t_k] (среднее индикаторов; SK, 18.33); w None — простые
+etype(f f8[K], means f8[K + 1]) -> float                    # Σ (F_k − F_(k−1))·m_k (njit)
+@dataclass class IkSetup:                                   # thresholds f8[K]; covs — K моделей («per») или одна («median»); bv — C̄_VV каждой; offs f8[N, 3]; means f8[K + 1]
+    median -> bool; k -> int
+    of(thresholds, covs, means, *, size=None, disc=(1, 1, 1), phi=0.0, block_cov=None) -> IkSetup   # size None — точка (C̄_VV = C(0))
+@dataclass class IkChunk:                                   # p f8[m, K] (после поправки порядка), etype f8[m], status i1[m] (0 / 2 / 3), raw f8[m, K] (F* до поправки)
+ik_chunk(nb: Neighbours, local, centres, setup: IkSetup) -> IkChunk   # IK по выборке одного прохода
+@dataclass class IkRun:                                     # p, etype, status, pass_ i1[m] (1…P; 0 — никто), nb — выборка прохода, давшего оценку (NS, NH, NHY, NOCT, AD, DMIN)
+ik_passes(searcher, local, centres, setup, *, start=0, exclude=None) -> IkRun   # блок — первым выполненным проходом, без вырожденной системы (Д-27)
+warm_indicator() -> None
 
 # E/kernel.py (18.7) — порция → проходы → метод
 @dataclass(frozen=True)
-class RowKernel:                                       # скомпилированная строка плана
-    spec: EstimationSpec; samples: RowSamples; cov: CovModel | tuple[CovModel, ...] | None
-    ell: Ellipsoid; searcher: Searcher; offsets: f8[N, 3]; cvv: float; mean: float; class_means: f8[K + 1] | None
-compile_row(spec, samples, *, block_size: (dx, dy, dz), rotation_deg: float, cvv: CvvCache) -> RowKernel
-@dataclass
-class ChunkResult:
-    values: dict[str, f8[m]]                           # ключи outputs (P → P1…PK), float64, NaN — пусто
-    status: i1[m]; by_pass: i8[P]; singular: i8[P]
-estimate(rk, centres: f8[m, 3], *, sizes: f8[m, 3] | None = None, exclude=None) -> ChunkResult
-estimate_block(rk, centre: f8[3], size=None, *, pool: RowSamples | None = None) -> BlockDetail
-    # BlockDetail(values, status, pass_, mu, lam: f8[n_sel], candidates: Candidates, ellipsoid, passes)
-run(rk, chunks: Iterable[f8[m, 3]], *, threads: int, tick=None) -> Iterator[ChunkResult]   # порядок порций
+class RowKernel:                                            # скомпилированная строка плана
+    spec: EstimationSpec; samples: RowSamples
+    cov: CovModel | None                                    # SK, OK; None — NN, IDW; IK — модели в extra
+    ell: Ellipsoid; searcher: Searcher; blockcov: BlockCov | None
+    disc: tuple[int, int, int]; phi: float                  # дискретизация; поворот модели, °
+    size: tuple[float, float, float] | None                 # размер блоков, если все одинаковы (sub: parent — родителя)
+    mean: float                                             # SK: m
+    offsets: f8[N, 3]; cvv: float                           # подъячейки размера блока; C̄_VV (точка — C(0))
+    local: f8[n, 3]                                         # пробы в локальных координатах (как в samples.local)
+    class_means: f8[K + 1] | None; extra: dict              # IK
+compile_row(spec, samples, *, block_size=None, rotation_deg=0.0, blockcov=None, k_c=None) -> RowKernel   # blockcov — общий кеш C̄_VV моделя
+@dataclass Portion: centres f8[m, 3]; sizes f8[m, 3] | None = None; active bool[m] | None = None; exclude = None
+@dataclass ChunkResult:
+    values: dict[str, f8[m]]                                # ключи outputs (+ STATUS); NaN — нет
+    status: i1[m]; by_pass: i8[P]; singular: i8[P]         # по проходам: оценено / вырождено
+    counts: i8[4]                                           # блоки по статусам
+    neg_kv: int = 0                                         # блоки с KV < 0 (записано 0; 18.7)
+estimate(rk, centres f8[m, 3], *, sizes=None, active=None, exclude=None, local=False) -> ChunkResult   # центры — координаты проекта; local=True — уже локальные
+run(rk, chunks: Iterable[f8[m, 3] | Portion], *, threads=1, tick=None, local=False) -> Iterator[ChunkResult]   # порядок порций; threads порций сразу
+# E/kernel_block.py (18.7; kernel.estimate_block — ленивый экспорт)
+estimate_block(rk, centre f8[3], size=None, *, pool=None, active=True, local=False) -> BlockDetail   # один блок: как estimate, + кандидаты и веса (preview, inspect)
+@dataclass BlockDetail:
+    centre: f8[3]; size: tuple | None; status: int; pass_: int   # pass_ 1…P; 0 — не оценён
+    values: dict[str, float]; mu: float                     # mu — LAGR (OK); иначе NaN
+    sel: i8[n]; lam: f8[n]                                  # выбранные пробы; веса (IDW — нормированы, NN — 1, SK/OK — λ)
+    candidates: Candidates; cand_lam: f8[k]                 # прохода, давшего оценку (иначе последнего)
+    ellipsoid: dict                                         # {centre, centre_xyz, ang1–3, r1–3 (× factor), pass}
+    passes: list[dict]                                      # [{pass, ok, n, reason: None | "few" | "singular"}]
+    counts: dict                                            # {candidates, selected}
 
-# E/store.py (18.11)
-KIND = "estimation"; PLAN = "estimation_plan"
-create(conn, store, project, spec, author=None) -> {id, name, version}; update(conn, …, id, raw,
-expected_version) -> {…}; delete(conn, id) -> {deleted, plans}; get(conn, id) -> форма §4; list_rows(conn,
-model_id=None); freshness(conn, meta) -> {stale, stale_reason, source_lost}; inputs_of(conn, spec, samples) -> list
-plan_create / plan_update / plan_delete / plan_get / plan_list; check_plan(conn, items) -> [EstimationSpec]
-estimation_meta(meta, objects_of, tables_of) -> dict    # в geostat/remap.py (.bfggis)
+# E/xval.py (18.14)
+CHUNK = 4096                                                # цели в порции (отмена — между порциями)
+cross_validate(spec, samples, by="hole", *, threads=None, chunk=None, tick=None, k_c=None) -> XvalTable   # by: hole | sample; цель — положение пробы, точечно
+XvalTable: n -> int; error -> f8; z_error -> f8 (KV ≤ 0 → NaN); summary() -> dict (сводка §8.1, с by_status)
+summary(true, est, kv=None) -> dict                         # n, mean_error, std_error, mae, r, slope, mean_ratio, n_ratio, n_kv_zero, n_skipped
+histogram(error, bins=40) -> {edges, counts}
+to_parquet(t: XvalTable, meta: dict) -> bytes               # метаданные — ключ bf.xval
+read_page(conn, store, estimation_id, page=1, size=500) -> dict   # GET /estimations/{id}/xval (§8.1); 404 xval_not_found; 422 bad_param {page | size}
+run_xval(engine, folder, params, tick=_noop, threads=None) -> dict   # задание estimate.xval: {estimation_id, by?} → {estimation_id, by, n, summary, events}
 
+# E/contact.py (Д-28, 18.Д1)
+block_distance(model, *, field, a, b, tick=None) -> f8[rows]   # знаковое расстояние центра блока до контакта доменов a (< 0) и b (> 0), м; NaN — нет контакта; EDT по сетке родителей
+blocks_profile(model, *, field, a=None, b=None, domain_field=None, wireframe=None, status_field=None, distance=None, step=None, threads=1, tick=None) -> dict
+    # ровно один из: (domain_field, a, b) или wireframe; status_field — поле статуса (0 — оценён); distance, step — D и b, м (None — 20 и 1)
+# geo/sdf.py (Д-28)
+signed_distance(vertices f8[v, 3], triangles i4[t, 3], points f8[n, 3], *, reach=inf, check=True, threads=1, tick=None) -> f8[n]
+    # внутри < 0 < снаружи, м; NaN — нет координат; ±inf — нет треугольника в reach; SdfError wireframe_empty / wireframe_open (при check)
+signed_distance_to(target: MeshTarget, points, *, reach, threads, tick) -> f8[n]
+
+# E/store.py (18.11) — строки; store_base.py — KIND, PLAN, ALGO, params_hash(spec) (SHA-256 без имени)
+create(conn, store, project, spec, author=None, *, prepared=None) -> {id, name, version: 1}
+update(conn, store, project, estimation_id, raw, expected_version, *, prepared=None) -> {id, name, version}
+delete(conn, estimation_id) -> {deleted, plans}; get(conn, estimation_id) -> форма §4; list_rows(conn, model_id=None)
+# E/store_check.py — freshness(conn, meta) -> {stale, stale_reason, source_lost}; inputs_of(conn, spec, samples=None) -> list; prepare(conn, project, spec, *, old=None, old_origin=None) -> Prepared
+# E/store_plan.py — plan_create(conn, spec, author=None); plan_update(conn, plan_id, raw); plan_delete(conn, plan_id) -> {deleted}; plan_get(conn, plan_id); plan_list(conn, model_id=None); check_plan(conn, items, model_id=None, param="items") -> list[EstimationSpec]
+
+# lineage/store.py, graph.py (ADR 0025; 18.Г1–Г2, Г1 — вне ADR, см. §14)
+Node(kind, id, sub="")                                      # sub — имя поля bm_field (casefold); key() → (id, sub)
+InputRef(node, fp, name)                                    # вход: источник, отпечаток при построении (None — не сравнивать), имя
+graph.status(conn, nodes, *, store=None) -> dict[Node, NodeStatus]   # NodeStatus(node, state, name, reason, changed)
+graph.impact(conn, node) -> dict                            # «Влияние изменения» (§7)
+graph.origin(conn, node, *, store=None) -> list[dict]       # «Происхождение» (§10): входы, их отпечатки и состояния
+graph.pin(conn, node, pinned) -> NodeStatus                 # «Закрепить» / «Снять»; 404 lineage_node_not_found
+graph.record(conn, dst, inputs) -> list[InputRef]           # входы результата — в транзакции записи; закрепление сохраняется
+graph.fingerprint(conn, node) -> str | None                 # None — узла нет
+
+# НЕ В КОДЕ на момент правки (18.12, 18.15, 18.16 — модулей нет): контракт, не сверено
 # E/job.py (18.12)
 KIND = "estimate.run"; run_estimate(engine, folder, params, tick) -> dict   # форма итога §6
 
-# E/xval.py (18.14), E/kna.py (18.15), E/checks.py (18.16), E/contact.py (Д-28)
-run_xval(engine, folder, params, tick) -> dict; summary(true, est, kv) -> dict; read_page(conn, store, id, page,
-size) -> dict
-analyse(project, spec, blocks, vary, *, tick=None) -> dict; auto_blocks(rk, model) -> list[dict];
-recommend(rows) -> int
+# E/kna.py (18.15), E/checks.py (18.16)
+analyse(project, spec, blocks, vary, *, tick=None) -> dict; auto_blocks(rk, model) -> list[dict]; recommend(rows) -> int
 global_stats(project, estimation_id, *, tick=None) -> dict; qq(project, estimation_id, quantiles, weighted) -> dict
-block_distance(model, *, field: str, a: str, b: str) -> f8[rows]           # EDT по сетке родителей, A < 0 < B
-# geo/sdf.py: signed_distance(vertices f8[v, 3], triangles i4[t, 3], points f8[n, 3]) -> f8[n]  (внутри < 0)
 
 # E/routes.py, E/routes_check.py (18.13): routers, подключает geostat/router.py (оркестратор); E/warm.py (18.17)
 ```
@@ -517,8 +613,9 @@ post(realizations: f4[n, N], stats, thresholds) -> dict[str, f8[n]]    # stats/l
 
 | Команда | Признаки | Маршрут / окно |
 |---|---|---|
-| `estimate.open {method?, soft?: {a, b, distance}}` | uiOnly | мастер (шаги: модель, ограничитель, поля → пробы → метод и вариограмма → поиск и проходы → выходные поля → задание); `defaults`, `preview` |
-| `estimate.plan` | uiOnly | окно «План оценки»: `/estimation-plans`, `/estimations` |
+| `estimate.open {method?, id?, model_id?, soft_a?, soft_b?, soft_distance?}` (плоские) | uiOnly | мастер (шаги: модель, ограничитель, поля → пробы → метод и вариограмма → поиск и проходы → выходные поля → задание); `defaults`, `preview`; `id` — правка строки; `soft_*` — мягкая граница из контакта (`soft_distance` 0 — жёсткая) |
+| `estimate.plan {plan_id?, model_id?}` | uiOnly | окно «План оценки»: `/estimation-plans`, `/estimations` |
+| `estimate.plan_delete {id}` | confirm | `DELETE /estimation-plans/{id}` — план уходит, строки и поля модели остаются (18.22; нет в исходном плане команд — «команда = запись реестра») |
 | `estimate.ellipsoid` | — | слой эллипсоида поиска строки (`preview` → `ellipsoid`) |
 | `estimate.run {plan_id \| estimation_ids}` | confirm (при замене полей) | `POST /estimate/run` |
 | `estimate.delete {id}` | confirm | `DELETE /estimations/{id}` |
