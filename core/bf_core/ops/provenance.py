@@ -81,6 +81,15 @@ def remap_objects(conn: Any, objects_map: dict[int, int]) -> int:
     return changed
 
 
+def remap_lineage(conn: Any, maps: dict[str, dict[int, int]]) -> int:
+    """The graph of dependencies (ADR 0025 §11) on a `.bfggis` import: the ids of its nodes are renumbered with the
+    maps of the import ({"objects", "dh_tables", "dh_results"}); fingerprints stay, so the states survive. Returns
+    the rows kept."""
+    from bf_core.lineage.store import remap_ids
+
+    return remap_ids(conn, maps)
+
+
 def jsonable(value: Any) -> Any:
     """A report as plain JSON: numpy numbers and arrays converted, non-finite numbers to None."""
     import math

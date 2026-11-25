@@ -348,6 +348,7 @@ def create(conn: sa.Connection, store: BlobStore, staged: Staged, model: tuple[s
     )  # fmt: skip
     model_id = int(res.inserted_primary_key[0])  # type: ignore[index]
     _own_files(conn, store, model_id, staged)
+    _index(conn, model_id)
     return {"id": model_id, "name": final}
 
 
@@ -407,6 +408,8 @@ def update(conn: sa.Connection, store: BlobStore, model_id: int, *, expected_ver
     ).rowcount  # fmt: skip
     if n != 1:
         raise conflict(int(_row(conn, model_id).version))
+    if staged is not None:
+        _index(conn, model_id)  # other points: other tables
     return {"id": model_id, "name": final, "version": expected_version + 1}
 
 
@@ -414,6 +417,16 @@ def delete(conn: sa.Connection, model_id: int) -> None:
     _row(conn, model_id)
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == model_id))
     conn.execute(sa.delete(objects).where(objects.c.id == model_id))
+    from bf_core import lineage
+
+    lineage.forget_object(conn, KIND, model_id)
+
+
+def _index(conn: sa.Connection, model_id: int) -> None:
+    """The reverse index of the graph of dependencies (ADR 0025 §4): what the model was built from."""
+    from bf_core import lineage
+
+    lineage.sync(conn, [lineage.Node("object:" + KIND, model_id)])
 
 
 def owned_files(conn: sa.Connection, model_id: int) -> dict[str, str]:

@@ -183,6 +183,7 @@ def create(
     data_id = int(res.inserted_primary_key[0])  # type: ignore[index]
     store.commit_staged(conn, staged, media_type="application/vnd.apache.parquet", owner_kind=OWNER,
                         owner_id=data_id, role=ROLE)  # fmt: skip
+    _index(conn, data_id)
     return data_id
 
 
@@ -202,7 +203,15 @@ def replace(
             meta=meta, name=clean, name_key=dialect.name_key(clean), version=version, updated_at=dialect.utcnow()
         )
     )  # fmt: skip
+    _index(conn, data_id)
     return version
+
+
+def _index(conn: sa.Connection, data_id: int) -> None:
+    """The reverse index of the graph of dependencies (ADR 0025 §4): the table the data were read from."""
+    from bf_core import lineage
+
+    lineage.sync(conn, [lineage.Node("object:" + KIND, data_id)])
 
 
 def _row(conn: sa.Connection, data_id: int) -> Any:
@@ -329,6 +338,9 @@ def delete(conn: sa.Connection, data_id: int) -> dict[str, Any]:
     )
     conn.execute(sa.delete(blob_owners).where(blob_owners.c.owner_kind == OWNER, blob_owners.c.owner_id == data_id))
     conn.execute(sa.delete(objects).where(objects.c.id == data_id))
+    from bf_core import lineage
+
+    lineage.forget_object(conn, KIND, data_id)
     return {"id": data_id, "shas": shas}
 
 

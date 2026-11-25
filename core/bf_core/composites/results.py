@@ -295,7 +295,19 @@ def record(
     )
     key = res.inserted_primary_key
     assert key is not None
-    return int(key[0])
+    result_id = int(key[0])
+    _index(conn, result_id, table_id if op in TABLE_OPS else None)
+    return result_id
+
+
+def _index(conn: sa.Connection, result_id: int, table_id: int | None) -> None:
+    """The reverse index of the graph of dependencies (ADR 0025 §4): the edges of the result and of its table."""
+    from bf_core import lineage
+
+    nodes = [lineage.Node("dh_result", result_id)]
+    if table_id is not None:
+        nodes.append(lineage.Node("dh_table", table_id))
+    lineage.sync(conn, nodes)
 
 
 def mark_fresh(conn: sa.Connection, result_id: int, inputs: dict[str, Any]) -> None:
@@ -477,6 +489,11 @@ def delete_result(conn: sa.Connection, result_id: int) -> dict[str, Any]:
         conn.execute(sa.delete(dh_tables).where(dh_tables.c.id == tid))  # the record goes with it (CASCADE)
         deleted.append(tid)
     conn.execute(sa.delete(dh_results).where(dh_results.c.id == result_id))
+    from bf_core import lineage
+
+    lineage.forget(conn, lineage.Node("dh_result", result_id))  # the rows of its table go with it (ADR 0025 §4)
+    for tid in deleted:
+        lineage.forget(conn, lineage.Node("dh_table", tid))
     return {"set_id": set_id, "deleted_tables": deleted, "changed": changed, "deleted_charts": charts}
 
 
